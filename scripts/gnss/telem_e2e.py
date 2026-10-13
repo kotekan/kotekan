@@ -118,20 +118,20 @@ def write_record_files(dirpath, inst, start_win, drop=()):
     address so a stride error is caught by value, which is what THIS gate needs -- but the
     resulting E/P/L are arbitrary, so any discriminator built from them is meaningless.
 
-    One rawFileWrite-format file of record frames: [u32 meta_size][meta][frame]...
-    rawFileRead reads the metadata size once at the head of the file and then alternates
-    metadata/frame, so this is the same layout rawFileWrite produces -- which is what makes the
-    replay a genuine stand-in for the assembler's output rather than a special path.
+    One rawFileWrite-format file of record frames: [u32 meta_size][meta][frame] per frame, the
+    layout rawFileWrite produces (rawFileRead checks the size header on every frame) -- which is
+    what makes the replay a genuine stand-in for the assembler's output rather than a special
+    path.
     """
-    meta_size = 12  # GnssChanMetadata: int64 sample_seq + uint32 n_chan_scale(0)
+    meta_size = 12  # GnssChanMetadata: int64 sample_seq + uint32 reserved (0)
     path = os.path.join(dirpath, "%s_0000000.raw" % inst.replace(".", "_"))
     with open(path, "wb") as fh:
-        fh.write(struct.pack("<I", meta_size))
         for w in range(start_win, start_win + N_WINDOWS):
             for r in range(REC_PER_FRAME):
                 if (w, r) in drop:
                     continue
                 wstart = (w * REC_PER_FRAME + r) * HOPS_PER_RECORD * FFT_LEN
+                fh.write(struct.pack("<I", meta_size))
                 fh.write(struct.pack("<qI", wstart, 0))
                 body = [0.0] * (N_PRN * REC_STRIDE + N_PRN * N_CHAN * CHAN_FLOATS)
                 for p, prn in enumerate(PRNS):

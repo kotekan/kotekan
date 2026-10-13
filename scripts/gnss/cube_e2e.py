@@ -128,13 +128,12 @@ def prn_runs(p, w):
 
 
 def write_gpu_file(dirpath):
-    """One rawFileRead-format file: [u32 meta_size] then [meta][frame]... (rawFileRead reads the
-    metadata size once at the head). The assembler ignores in_buf metadata, but the file format
-    needs it present."""
-    meta_size = 12  # GnssChanMetadata: int64 sample_seq + uint32 n_chan_scale(0)
+    """One rawFileRead-format file: [u32 meta_size][meta][frame] per frame, the layout
+    rawFileWrite produces (rawFileRead checks the size header on every frame). The assembler
+    ignores in_buf metadata, but the file format needs it present."""
+    meta_size = 12  # GnssChanMetadata: int64 sample_seq + uint32 reserved (0)
     path = os.path.join(dirpath, "gpu_0000000.raw")
     with open(path, "wb") as fh:
-        fh.write(struct.pack("<I", meta_size))
         rec_global = 0
         n_frames = N_WINDOWS * REC_PER_WIN // REC_PER_FRAME
         for fi in range(n_frames):
@@ -200,6 +199,7 @@ def write_gpu_file(dirpath):
             )
             frame[OFF_CORR : OFF_CORR + corr.nbytes] = corr.tobytes()
             frame[OFF_ENERGY : OFF_ENERGY + energy.nbytes] = energy.tobytes()
+            fh.write(struct.pack("<I", meta_size))
             fh.write(struct.pack("<qI", (rec_global - REC_PER_FRAME) * REC_SAMPLES, 0))
             fh.write(frame)
     return path
