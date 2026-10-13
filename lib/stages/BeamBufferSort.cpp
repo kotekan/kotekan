@@ -241,10 +241,14 @@ void BeamBufferSort::main_thread(){
             if (align_start_time){
 	        start_marginal_nframe = (uint32_t)(samples_to_align / queue_frame_size);
 		uint32_t extra_marginal = (uint32_t)(samples_to_align % queue_frame_size);
-		if (extra_marginal > 0)
+		if (extra_marginal > 0) {
 		    // add one more marginal frame for the extra marginal samples
 	            start_marginal_nframe++;
-		in_frame_dump_offset += queue_frame_size - extra_marginal;
+		    in_frame_dump_offset += queue_frame_size - extra_marginal;
+		}
+		// If extra_marginal is 0 the aligned time is the start of frame0, so the dump
+		// starts at offset 0. Setting it to queue_frame_size would skip frame0 and
+		// start the dump queue_frame_size samples past the aligned time.
 	    }
 	    INFO("Start Marginal {:d}", start_marginal_nframe);
 
