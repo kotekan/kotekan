@@ -1,6 +1,4 @@
 e2e
-aggbench
-sumtrack_test
 # build_tool.sh writes <tool>.<hostname-short> with a plain <tool> symlink, because /home/kvand
 # is NFS-shared and two hosts building the same tool clobbered each other's binary.
 *.cf[0-9]*
@@ -12,18 +10,10 @@ sumtrack_test
 # build_tool.sh points <tool> at <tool>.<host>, so a TRACKED symlink flips every time a
 # different host builds -- and a fresh checkout hands you some other machine's binary. That is
 # how fleetdll_gate.py ran an 08-15 cx19 build against an 08-16 v5 wire format and stayed red
-# for eight days while reporting it as a fold disagreement. e2e and aggbench were
-# already ignored for this reason; these were missed.
-acqbench
+# for eight days while reporting it as a fold disagreement. e2e was already ignored for
+# this reason; these were missed.
 fleetdll
 n2dualtest
 n2dualxval
-n2timing
 prnswap
-phi16gpu
-skyacq
-phibits
-phishare
-phisharegpu
-wavebench
 telemfmt
