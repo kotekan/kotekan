@@ -179,6 +179,6 @@ add_dependencies(kotekan_cuda kotekan_gpu)
 # identical inputs. Run: ./lib/cuda/cuda_gnss_despread_test
 add_executable(cuda_gnss_despread_test cudaGnssDespreadTest.cpp)
 target_link_libraries(cuda_gnss_despread_test PRIVATE kotekan_cuda kotekan_stages kotekan_core
-                                                      kotekan_libs libexternal CUDA::cublas)
+                                                      kotekan_libs libexternal)
 target_include_directories(cuda_gnss_despread_test PRIVATE . ../stages ../stages/gnss ../core
                                                            ../utils ../metadata)
