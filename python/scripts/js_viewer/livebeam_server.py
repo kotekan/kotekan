@@ -33,7 +33,6 @@ this server before kotekan starts streaming.
 import argparse
 import json
 import logging
-import math
 import os
 import select
 import signal
@@ -41,7 +40,6 @@ import socket
 import struct
 import sys
 import time
-from datetime import datetime, timezone
 
 import numpy as np
 from autobahn.twisted.websocket import WebSocketServerFactory, WebSocketServerProtocol
@@ -113,15 +111,6 @@ WS_STUCK_PAUSED_S = 30
 # thread (skyfield + the one-time TLE fetch) and render_GET only ever serves
 # the cached result, so the Twisted reactor never blocks on orbit propagation.
 SKY_REFRESH_S = 5.0
-
-# /gps_sky reports geometry down to this elevation (deg) rather than masking at the display
-# mask, so a BELOW-HORIZON tracked PRN (e.g. a --noise-probe, seeded deep-below to measure the
-# noise floor) carries its REAL negative elevation instead of collapsing to null. That lets the
-# viewer tell "below horizon / probe" (el < 0) apart from "geometry momentarily missing" (el ==
-# null) unambiguously. -90 => every computable sat; consumers apply their own display threshold
-# (the response still carries `mask_deg`, the display mask, separately).
-SKY_REPORT_FLOOR_DEG = -90.0
-
 
 # Mode is decided by the number of visibility streams in the kotekan handshake.
 MODE_BY_NVIS = {1: "autocorr", 4: "crosscorr"}
@@ -464,10 +453,7 @@ def build_viewer_config(kotekan, args):
         # ``has_site`` is whether this server knows the observer location (so it can
         # serve /gps_sky); without it the GPS panel still shows the locked list, just
         # no sky positions.
-        "gps": {
-            "mask_deg": args.gps_mask_deg,
-            "has_site": args.lat is not None and args.lon is not None,
-        },
+        "gps": {"has_site": args.lat is not None and args.lon is not None,},
     }
 
 
@@ -848,7 +834,6 @@ def discover_broker_chains(host, port, timeout=3.0):
                 "combiner": chain,
                 "search": chain if c.get("has_search") else None,
                 "t_rec": float(c.get("t_rec") or 1e-3),
-                "peel": False,
             }
         )
     log_.info(
@@ -981,12 +966,12 @@ class GpsSkyResource(resource.Resource):
     Reply::
 
         {"ok": bool, "computing": bool, "lat": .., "lon": .., "alt": ..,
-         "mask_deg": .., "sats": [{"prn": N, "az": deg, "el": deg}, ...]}
+         "sats": [{"prn": N, "az": deg, "el": deg}, ...]}
 
     Azimuth is degrees clockwise from true North, elevation degrees above the
-    horizon; only sats above ``mask_deg`` are returned. The kotekan REST stages
-    supply the locks / |A| / SNR; this endpoint supplies *where* each sat is,
-    which needs skyfield orbit propagation (not available in the DSP).
+    horizon; the TLE fallback returns only sats above ``mask_deg``. The kotekan
+    REST stages supply the locks / |A| / SNR; this endpoint supplies *where* each
+    sat is, which needs skyfield orbit propagation (not available in the DSP).
 
     Positions are recomputed in a worker thread at most every
     :data:`SKY_REFRESH_S` and ``render_GET`` only serves the cached result, so
@@ -1063,11 +1048,10 @@ class GpsSkyResource(resource.Resource):
         sats = self._brdc_skypos(brdc_want) if brdc_want else None
         if sats is None:
             # BRDC unavailable -> everything falls back to TLE (the original behaviour).
-            return {"ok": True, "sats": self._tle_skypos(want), "src": "tle"}
+            return {"ok": True, "sats": self._tle_skypos(want)}
         if tle_want:
             sats = sats + self._tle_skypos(tle_want)
-            return {"ok": True, "sats": sats, "src": "brdc+tle"}
-        return {"ok": True, "sats": sats, "src": "brdc"}
+        return {"ok": True, "sats": sats}
 
     def _glonass_capable_set(self):
         """Cached set of GLONASS SLOTS trackable by ANY GLONASS signal we are running -- the
@@ -1242,7 +1226,6 @@ class GpsSkyResource(resource.Resource):
             "lat": self.lat,
             "lon": self.lon,
             "alt": self.alt,
-            "mask_deg": self.mask_deg,
             "sats": self._cache.get("sats", []),
         }
         if self._cache.get("error"):

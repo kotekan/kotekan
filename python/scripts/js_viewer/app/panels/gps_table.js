@@ -15,7 +15,7 @@ const PREFS_KEY = "gps_viewer_prefs_v1";
 
 // UNIFIED matrix (2026-07-28): the cell metric, switchable. Each maps to a field on the
 // per-signal metrics object (gps_feed.signal_metrics) + a formatter. Integer C/N0 / sig keep
-// the many columns tight; peel carries the ">=" lower-bound flag.
+// the many columns tight.
 const METRICS = {
     // SNR = SEARCH detection significance, the only metric here that reports on ACQUISITION
     // rather than on the deep integration. Restored 2026-07-29 (it existed as a fixed column
@@ -107,9 +107,6 @@ const METRICS = {
            fmt: m => m && m.sig ? m.sig.toFixed(0) : null},
     coh:  {label: "coh",  field: "coh_s",   unit: "s",
            fmt: m => m && m.coh_s > 0 ? m.coh_s.toFixed(2) : null},
-    peel: {label: "peel", field: "peel_db", unit: "dB",
-           fmt: m => m && m.peel_db != null
-                     ? (m.peel_bound ? "≥" : "") + m.peel_db.toFixed(0) : null},
 };
 
 // Frequency-band grouping shared across every constellation (2026-07-31). L1/E1/B1 = HIGH

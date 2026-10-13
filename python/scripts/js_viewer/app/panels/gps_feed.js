@@ -39,7 +39,7 @@ export function configure_chains(defs) {
 // UNIFIED viewer (2026-07-28): one row per satellite, every signal it carries side by side.
 // SIGNALS is the full inventory from the server's /wsport (UNIFIED_SIGNALS): each entry is one
 // signal {tag, band ("high"/"mid"/"low"), col, name, combiner (absolute stage), search|null,
-// t_rec, peel}. null = not delivered yet. The feed keys satellites by tag+prn ACROSS bands and
+// t_rec}. null = not delivered yet. The feed keys satellites by tag+prn ACROSS bands and
 // hangs each signal's metrics off r.sig_by[combiner]; the table renders one column per signal.
 export let SIGNALS = null;
 // CAPABILITY: signal key -> Set of PRNs whose satellite BLOCK actually broadcasts it (server
@@ -49,9 +49,8 @@ export let SIGNALS = null;
 // -> every cell is treated as capable, i.e. exactly the old behaviour: we never claim a
 // satellite is incapable on the strength of information we could not obtain.
 export let CAPABILITY = null;
-/// Every PRN the block map has an opinion about. A PRN outside this set is UNKNOWN -- see
-/// not_transmitted(). The server sends it as caps._prns; without it we fall back to the
-/// union of the per-signal sets, which is the same thing whenever any signal is unfiltered.
+/// Every PRN the block map has an opinion about (the server's caps._prns). A PRN outside this
+/// set is UNKNOWN -- see not_transmitted().
 export let CAPABILITY_PRNS = null;
 export function configure_signals(sigs, caps) {
     if (!Array.isArray(sigs) || !sigs.length) { SIGNALS = null; return; }
@@ -65,9 +64,7 @@ export function configure_signals(sigs, caps) {
                 by_key[s.key] = new Set(caps[s.sigid]);
         if (Object.keys(by_key).length) {
             CAPABILITY = by_key;
-            CAPABILITY_PRNS = Array.isArray(caps._prns) && caps._prns.length
-                ? new Set(caps._prns)
-                : new Set([].concat(...Object.values(by_key).map(s => [...s])));
+            CAPABILITY_PRNS = new Set(caps._prns);
         }
     }
     if (_active_feed) _active_feed._reconfigure();
@@ -92,41 +89,18 @@ export function not_transmitted(key, prn) {
 // t_rec sets the incoherent C/N0 density.
 export function signal_metrics(s, t_rec) {
     const m = {
-        amp: s.amplitude || 0, coh: s.coh_amplitude || 0, deep: s.deep_amplitude || 0,
-        dbi: s.deep_amplitude || s.unbiased_amplitude || 0,
+        amp: s.amplitude || 0,
         dop: s.doppler_hz != null ? s.doppler_hz : null,
         coh_s: s.coherence_s != null ? s.coherence_s : null,
-        deep_snr: s.deep_snr || 0, dr: s.deep_records || 0,
-        cn0: null, cn0_coh: null, peel_db: null, peel_bound: false,
-        // PROMPT LOCK (task #47): is the prompt tap on the signal at all? Every C/N0 below is
-        // built from deep_snr, and the deep fold RE-SEARCHES rate and phase -- it re-finds the
-        // satellite wherever the tap was commanded, so this panel can show 41 dB-Hz and a
-        // dll_disc of 0.01 while E/P/L sit on pure noise. That is not a hypothetical: on
-        // 2026-08-12 15:20-15:45 UTC all five chains did exactly that for 25 minutes and it
-        // was read off this display as the array's best look of the day. Default TRUE so a
-        // pre-#47 broker renders unchanged rather than greying every satellite.
-        prompt_lock: s.prompt_lock != null ? !!s.prompt_lock : true,
+        cn0: null,
     };
-    // SIGNIFICANCE: prefer the broker's published `sig`, which carries its own matched gate
-    // and names its estimator in `sig_src` (task #57, 2026-08-14).
-    //
-    // The local expression below (kept as the fallback for a pre-#57 broker) pairs a
-    // numerator and a gate that come from DIFFERENT estimators: deep_snr may be the FLEET
-    // coherent value while coherence_s is the best single INSTANCE's ladder pick. Measured
-    // on sky: PRN 26 served deep_snr 137, coh_frac 1.00, coh_src 'fleet:11', coherence_s
-    // 0.0 -- a live fleet detection rendered insignificant, flickering as the winning
-    // instance changed. Same class as the cn0_coh_db pairing bug (#35), which was fixed in
-    // the value and left in the gate.
-    //
-    // The broker's `sig` is the MEDIAN over instances (robust where the best-of-instance
-    // max churns with its winner) over a trailing window; `det_duty_s`
-    // beside it reports how often the array actually held the satellite. Read them
-    // together: sig says how loud, duty says how often. A high sig at duty 0.3 is a
-    // satellite we are losing two thirds of the time, and the display should say so.
-    m.sig = s.sig != null ? s.sig
-          : ((s.coherence_s || 0) > 0 ? Math.max(s.deep_snr || 0, s.amp_snr || 0)
-                                      : (s.amp_snr || 0));
-    m.sig_src = s.sig_src || null;
+    // SIGNIFICANCE: the broker's published `sig`, which carries its own matched gate (task
+    // #57, 2026-08-14). It is the MEDIAN over instances (robust where the best-of-instance
+    // max churns with its winner) over a trailing window; `det_duty_s` beside it reports how
+    // often the array actually held the satellite. Read them together: sig says how loud,
+    // duty says how often. A high sig at duty 0.3 is a satellite we are losing two thirds of
+    // the time, and the display should say so.
+    m.sig = s.sig != null ? s.sig : null;
     // ⚠️ duty is a DEEP-STAGE duty, not "was the satellite tracked". With the broker
     // SIGSTOPped (no commands at all) the flicker was unchanged, while prompt power sat
     // flat through every collapse -- the despread holds the sat continuously and the deep
@@ -147,9 +121,6 @@ export function signal_metrics(s, t_rec) {
     m.q = s.fleet_q != null ? s.fleet_q : null;
     m.q_floor = s.fleet_q_floor != null ? s.fleet_q_floor : null;
     m.q_inst = s.fleet_instances != null ? s.fleet_instances : null;
-    m.inst_n = s.inst_snr_n != null ? s.inst_snr_n : null;
-    m.inst_spread = (s.inst_snr_hi != null && s.inst_snr_lo != null) ?
-                    (s.inst_snr_hi - s.inst_snr_lo) : null;
     // THE C/N0 (task #57, 2026-08-15): the broker-published cn0_prompt_db -- per-record
     // prompt power, q-gated on the noise probes' own q population, probe-debiased. No fit
     // anywhere in it, sky-validated (AUC 1.000 vs the probes, split-half <= 0.1 dB,
@@ -208,31 +179,11 @@ export function signal_metrics(s, t_rec) {
     //   kcoh_eta  coherence efficiency: n_rec when the fold was fully coherent, ~1 on
     //             noise. THE number that says whether the fold worked -- a wrong rate or a
     //             phase discontinuity lands here rather than in a silently low C/N0.
-    //   kcoh_sig  fold power over the probes' IDENTICALLY-folded floor: the detection
-    //             significance for satellites below the per-record gate.
     // ⚠️ NOT the old cn0_coh_db: that came from the deep fold's per-integration rate
-    // RE-SEARCH and carried ~20 dB of its own paired scatter (#47/#66). The deep number is
-    // still computed below for offline consumers, but nothing displays it.
+    // RE-SEARCH and carried ~20 dB of its own paired scatter (#47/#66).
     m.cn0_kcoh = s.cn0_kcoh_db != null ? s.cn0_kcoh_db : null;
     m.kcoh_eta = s.kcoh_eta != null ? s.kcoh_eta : null;
     m.kcoh_n = s.kcoh_n != null ? s.kcoh_n : null;
-    m.kcoh_sig = s.kcoh_sig != null ? s.kcoh_sig : null;
-    m.kcoh_rate = s.kcoh_rate_hz != null ? s.kcoh_rate_hz : null;
-    // The deep-fold number stays COMPUTED (offline consumers of this feed may read it)
-    // but is no longer a display column anywhere -- see the table/history panels.
-    if (s.cn0_coh_db != null)
-        m.cn0_coh = s.cn0_coh_db;
-    else if (m.coh_s > 0 && m.deep_snr > 0)
-        m.cn0_coh = 20 * Math.log10(m.deep_snr) - 10 * Math.log10(m.coh_s);
-    // peel depth (dB) = 20 log10(deep/peel_deep), valid only where the PRIMARY deep cleared
-    // its floor; at-floor residual -> a lower bound (the detection-limit ratio), rendered ">=".
-    const pdeep = s.peel_deep || 0, psnr = s.peel_deep_snr || 0;
-    const dfl = s.deep_floor || 0, dsnr = s.deep_snr || 0;
-    if (pdeep > 0 && m.deep > 0 && dfl > 0 && dsnr > 1.1 * dfl) {
-        m.peel_bound = psnr <= 1.1 * dfl;
-        m.peel_db = m.peel_bound ? 20 * Math.log10(dsnr / dfl)
-                                 : 20 * Math.log10(m.deep / pdeep);
-    }
     return m;
 }
 
@@ -306,7 +257,7 @@ export class GpsFeed {
 
     // Signal descriptors: the server inventory verbatim (absolute stage names), with
     // visibility inherited from the constellation tag (one G/E/C toggle hides all that sat's
-    // signals -- the row itself). t_rec/peel/band/col ride along for the table + C/N0.
+    // signals -- the row itself). t_rec/band/col ride along for the table + C/N0.
     _build_signals() {
         if (!SIGNALS) return [];
         for (const s of SIGNALS) {
@@ -418,14 +369,8 @@ export class GpsFeed {
             const id = tag + prn;
             if (!sats.has(id)) sats.set(id, {
                 id, tag, prn, az: null, el: null, snr: null, detected: false,
-                amp: 0, coh: 0, deep: 0, dbi: 0, sig: 0, deep_snr: 0, dr: 0,
-                cn0: null, cn0_duty: null, cn0_coh: null, dop: null, coh_s: null,
-                cn0_kcoh: null, kcoh_eta: null, kcoh_n: null,
-                // Paired with cn0_coh below, NOT summarised independently -- see there.
-                prompt_lock: true,
-                peel_db: null, peel_bound: false,
-                sig_by: {},     // unified: combiner-key -> signal_metrics()
-                n_sig: 0,       // unified: signals this sat is locked on
+                amp: 0, sig: 0, cn0: null,
+                sig_by: {},     // combiner-key -> signal_metrics()
             });
             return sats.get(id);
         };
@@ -469,38 +414,11 @@ export class GpsFeed {
                     const prev = r.sig_by[sg.key];
                     if (prev && prev.snr != null) m.snr = prev.snr;
                     r.sig_by[sg.key] = m;
-                    if ((m.sig || 0) >= SNR_LOCK) r.n_sig += 1;
                     // Row summary = the BEST signal (sky colour, sort default, lock gate).
                     if ((m.sig || 0) > (r.sig || 0)) {
-                        r.sig = m.sig; r.deep_snr = m.deep_snr; r.coh_s = m.coh_s;
-                        r.dop = m.dop; r.amp = m.amp;
+                        r.sig = m.sig; r.amp = m.amp;
                     }
-                    if (m.cn0 != null && (r.cn0 == null || m.cn0 > r.cn0)) {
-                        r.cn0 = m.cn0;
-                        r.cn0_duty = m.cn0_duty;   // the flag moves with its number
-                    }
-                    // The coherent one and its coherence efficiency, same best-signal
-                    // rule -- and eta travels WITH the value it qualifies, or a
-                    // healthy signal's eta could grey a different signal's C/N0.
-                    if (m.cn0_kcoh != null
-                        && (r.cn0_kcoh == null || m.cn0_kcoh > r.cn0_kcoh)) {
-                        r.cn0_kcoh = m.cn0_kcoh;
-                        r.kcoh_eta = m.kcoh_eta;
-                        r.kcoh_n = m.kcoh_n;
-                    }
-                    // ...and the COHERENT one alongside, or the table's C/N0-coh column
-                    // and its sort would read empty in flat mode while the unified cells
-                    // showed values. Both are row summaries = best signal, same rule.
-                    // ⚠️ THE FLAG MOVES WITH THE NUMBER IT QUALIFIES (task #47). Taking the
-                    // row's prompt_lock as, say, "any signal locked" while the row's
-                    // cn0_coh comes from the max would let a blind signal's C/N0 be shown
-                    // under a different signal's lock -- the same mismatched-pairing shape
-                    // that produced the phantom C/N0 scatter in #35. One assignment, one
-                    // measurement.
-                    if (m.cn0_coh != null && (r.cn0_coh == null || m.cn0_coh > r.cn0_coh)) {
-                        r.cn0_coh = m.cn0_coh;
-                        r.prompt_lock = m.prompt_lock;
-                    }
+                    if (m.cn0 != null && (r.cn0 == null || m.cn0 > r.cn0)) r.cn0 = m.cn0;
                 }
             // BEAM SUMMARY per (sat, signal), off the per-element table (#57 step 2).
             // Attached onto the same sig_by entry the status built, so a beam cell and

@@ -17,15 +17,6 @@
 //   * dop       -- tracked Doppler (Hz). Should be a smooth orbital curve; steps are seed
 //                  re-anchors (staleness releases / escapes), the churn signature.
 //   * snr       -- SEARCH detection significance (acquire grid), independent of tracking.
-//   * peel      -- fused voltage-peel depth (dB) = 20 log10(deep / peel_deep). OPEN ORANGE
-//                  TRIANGLES are BOUNDS, not measurements: once the residual reaches the
-//                  combiner's detection floor the ratio stops measuring the peel and starts
-//                  measuring the floor, so those points read "≥ x dB" (an unbounded division
-//                  reported 61 dB on 2026-07-24 -- every way a depth measurement fails makes
-//                  the peel look BETTER). Filled blue = a real measurement above the floor.
-//                  This series is the one to watch over TIME: the peel oscillates with the
-//                  30 s GPS frame (constructed bits cover subframes 1-3 only), and a log line
-//                  sampling at 9.984 s aliases that at 3.005x into a flat-looking collapse.
 //
 // POINTS, NOT LINES: emits are irregular and gapped (a dropout is real information), so
 // connecting them draws structure that isn't in the data.
@@ -74,16 +65,12 @@ const MODES = {
     coh_s:   {label: "coh",      axis: "coherent window (s)", unit: " s", fmt: ".3f", zero: true},
     dop:     {label: "dop",      axis: "tracked Doppler (Hz)", unit: " Hz", fmt: ".1f"},
     snr:     {label: "snr",      axis: "search significance (σ)", unit: "σ", fmt: ".1f", zero: true},
-    peel:    {label: "peel",     axis: "voltage-peel depth (dB)", unit: " dB", fmt: ".1f",
-              zero: true},
 };
 const MODE_ORDER = ["cn0", "cn0_kcoh", "q", "beam_amp", "beam_ph", "sig", "coh_s", "dop",
-                    "snr", "peel"];
+                    "snr"];
 
-// Unified overlay: signal draw order (frequency-ascending, pilot after its data sibling) and a
-// distinct-per-trace palette. Colours are by POSITION among a sat's signals, not fixed per
+// A distinct-per-trace palette. Colours are by POSITION among a sat's signals, not fixed per
 // signal, so any constellation's 2-5 signals stay visually separable.
-const SIG_ORDER = {CA: 0, L1C: 1, E1C: 2, B1C: 3, B2b: 4, Q: 6, E5a: 7, B2a: 8};
 const SIG_PALETTE = ["#4d9de0", "#6fbf73", "#e8923c", "#c65d21", "#d64550", "#8e6fb0", "#39a0a0"];
 
 export class GpsAmpHistoryPanel {
@@ -155,11 +142,8 @@ export class GpsAmpHistoryPanel {
     }
 
     _blank() {
-        // `bound` parallels `peel`: true where the residual sat at the combiner's detection
-        // floor, i.e. the point is a LOWER BOUND. Kept as its own array so the plot can never
-        // render a bound as a measurement (see the header note).
         return {t: [], cn0: [], cn0_kcoh: [], q: [], beam_amp: [], beam_ph: [], sig: [],
-                coh_s: [], dop: [], snr: [], peel: [], bound: []};
+                coh_s: [], dop: [], snr: []};
     }
 
     // Append one per-signal metrics sample to a history series, with dedup + ring trim.
@@ -198,7 +182,6 @@ export class GpsAmpHistoryPanel {
         h.beam_amp.push(src.beam_amp != null ? src.beam_amp : null);
         h.beam_ph.push(src.beam_ph != null ? src.beam_ph : null);
         h.coh_s.push(src.coh_s); h.dop.push(src.dop); h.snr.push(snr);
-        h.peel.push(src.peel_db); h.bound.push(!!src.peel_bound);
         if (h.t.length > MAX_PTS) for (const k of Object.keys(h)) h[k].shift();
         // Mark dirty when this series belongs to the SELECTED satellite. Keys are
         // "G11|<signal>" while `selected` is the sat "G11", so compare the sat part -- else
@@ -275,9 +258,7 @@ export class GpsAmpHistoryPanel {
     _redraw() {
         if (this.selected == null || !window.Plotly) return;
         const M = MODES[this.mode];
-        const keys = this._series_keys(this.selected)
-            .sort((a, b) => (SIG_ORDER[(this.meta.get(a) || {}).col] || 99)
-                          - (SIG_ORDER[(this.meta.get(b) || {}).col] || 99));
+        const keys = this._series_keys(this.selected);
         const traces = [];
         const now_bits = [];
         keys.forEach((k, i) => {
