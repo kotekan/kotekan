@@ -169,12 +169,12 @@ not run alongside with its own copy of the tau formula. Same rule as
 `gnssSeedTransport.hpp`: the convention lives in one function and both the harness and the
 shipped path call it.
 
-⚠️ And the existing actuator gate, `scripts/gnss/fast_trim_e2e.py`, has a **3-PRN fixture**
--- which is precisely why it could not catch the regression where 5 Hz was requested and
-1.5 Hz delivered (`fleet_dll_comb` was decoding every PRN and using one). It reached 4.39 Hz
-either way. **A gate smaller than production cannot measure a cost that scales with
-production.** The gate needs a production-sized PRN and instance count before it is allowed
-to certify a rate.
+⚠️ And the Python arm's actuator gate, `scripts/gnss/fast_trim_e2e.py` (removed with it), had a
+**3-PRN fixture** -- which is precisely why it could not catch the regression where 5 Hz was
+requested and 1.5 Hz delivered (`fleet_dll_comb` was decoding every PRN and using one). It
+reached 4.39 Hz either way. **A gate smaller than production cannot measure a cost that scales
+with production.** The gate needs a production-sized PRN and instance count before it is
+allowed to certify a rate.
 
 ## 8. Milestones
 
