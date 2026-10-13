@@ -69,7 +69,7 @@ def main():
     )
     a = ap.parse_args()
     if not os.path.exists(a.exe):
-        raise SystemExit("no %s -- build it with ./build_tool.sh e2e" % a.exe)
+        raise SystemExit("no %s -- build it with site/build_tool.sh e2e" % a.exe)
 
     # LOCATE THE NULL, don't assume it. err is linear in the commanded trim with unit slope
     # (the trim is added to the model phase), so one probe finds it exactly.

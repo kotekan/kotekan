@@ -713,18 +713,20 @@ def main():
     # should get it wrong.
     if not args.no_build:
         b = subprocess.run(
-            [os.path.join(_HERE, "build_tool.sh"), "fleetdll"],
+            [os.path.join(_HERE, "site", "build_tool.sh"), "fleetdll"],
             capture_output=True,
             text=True,
             cwd=_HERE,
         )
         if b.returncode != 0:
             raise SystemExit(
-                "build_tool.sh fleetdll FAILED:\n%s\n%s"
+                "site/build_tool.sh fleetdll FAILED:\n%s\n%s"
                 % (b.stdout[-2000:], b.stderr[-2000:])
             )
     if not os.path.exists(args.exe):
-        raise SystemExit("no %s -- build it with ./build_tool.sh fleetdll" % args.exe)
+        raise SystemExit(
+            "no %s -- build it with site/build_tool.sh fleetdll" % args.exe
+        )
 
     tmp = args.keep or tempfile.mkdtemp(prefix="fleetdll_gate-")
     os.makedirs(tmp, exist_ok=True)
