@@ -7,6 +7,7 @@
 #include "visUtil.hpp"
 
 #include <cmath>
+#include <cstdint>
 #include <cstring>
 #include <functional>
 

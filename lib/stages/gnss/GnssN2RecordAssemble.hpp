@@ -11,9 +11,7 @@
 #include "buffer.hpp"
 #include "bufferContainer.hpp"
 
-#include <cstdint>
 #include <string>
-#include <vector>
 
 /**
  * @class GnssN2RecordAssemble
@@ -77,11 +75,6 @@ private:
 
     /// Tile geometry, recomputed from config exactly as cudaCorrelatorDual does.
     int _na16, _nt16, _nlive16, _n_mixed, _n_aa, _n_bb, _n_tile;
-
-    /// int32 offset of tile (ihi, jhi) within one (t, f) slice of the full triangle.
-    static size_t tri_off(int ihi, int jhi) {
-        return 512 * ((size_t)ihi * (ihi + 1) / 2 + jhi);
-    }
 };
 
 #endif // GNSS_N2_RECORD_ASSEMBLE_HPP
