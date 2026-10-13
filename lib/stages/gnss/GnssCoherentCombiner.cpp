@@ -128,9 +128,6 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
         _navhead.assign(_n_prn, {});
         _navwipe.assign(_n_prn, {});
     }
-    // peel_depth: buffer the residual prompt (record slots 20-23) and run the same deep estimator
-    // on it at emit. Needs a deep-wipe path (navwipe_bit_records or secondary_overlay).
-    _peel_depth = config.get_default<bool>(unique_name, "peel_depth", false);
     _bit_export = config.get_default<bool>(unique_name, "bit_export", false);
     _bit_pred_horizon_s = config.get_default<double>(unique_name, "bit_pred_horizon_s", 4.0);
     if (_bit_export) {
@@ -141,13 +138,6 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
     // is set.
     _bp_veto.assign(_n_prn, 0);
     _bp_agree.assign(_n_prn, 1);
-    if (_peel_depth) {
-        _navbuf_res.assign(_n_prn, {});
-        _navhead_res.assign(_n_prn, {});
-        if (!_wipe_buffer)
-            WARN("GnssCoherentCombiner: peel_depth set but no deep-wipe path configured "
-                 "(navwipe_bit_records / secondary_overlay) -- peel depth will read 0");
-    }
 
     _st_prn.assign(_n_prn, 0);
     _st_amp.assign(_n_prn, 0.0f);
@@ -185,9 +175,7 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
     _st_adr_n.assign(_n_prn, 0);
     _st_coh_s.assign(_n_prn, 0.0f);
     _st_deep_floor.assign(_n_prn, 0.0f);
-    _st_peel_deep.assign(_n_prn, 0.0f);
-    _st_peel_incoh.assign(_n_prn, 0.0f);
-    _st_peel_deep_snr.assign(_n_prn, 0.0f);
+
     _dr_phase.assign(_n_prn, -1);
     _dr_utc.assign(_n_prn, 0.0);
     _dr_prn.assign(_n_prn, -1);
@@ -688,29 +676,12 @@ void GnssCoherentCombiner::main_thread() {
                     // Overlay-wiped record for the linear carrier fit; 0 when unanchored, which
                     // the fit skips.
                     _navwipe[p].push_back(v_ok ? v_cur : std::complex<double>(0.0, 0.0));
-                    if (_peel_depth) { // residual prompt, same slide (see the block-mode note)
-                        double rr = 0.0, ri = 0.0, rhr = 0.0, rhi = 0.0;
-                        for (float* in2 : ins) {
-                            const float* rc = in2 + (size_t)p * _rec_stride;
-                            rr += rc[gnss::REC_RES_RE];
-                            ri += rc[gnss::REC_RES_IM];
-                            rhr += rc[gnss::REC_RES_PH_RE];
-                            rhi += rc[gnss::REC_RES_PH_IM];
-                        }
-                        _navbuf_res[p].emplace_back(rr / energy, ri / energy);
-                        _navhead_res[p].emplace_back(h_energy > 0.0 ? rhr / energy : rr / energy,
-                                                     h_energy > 0.0 ? rhi / energy : ri / energy);
-                    }
                     if ((int)_navbuf[p].size() > _integration_length) {
                         _navbuf[p].erase(_navbuf[p].begin());
                         _navsky[p].erase(_navsky[p].begin());
                         _navutc[p].erase(_navutc[p].begin());
                         _navhead[p].erase(_navhead[p].begin());
                         _navwipe[p].erase(_navwipe[p].begin());
-                        if (_peel_depth) {
-                            _navbuf_res[p].erase(_navbuf_res[p].begin());
-                            _navhead_res[p].erase(_navhead_res[p].begin());
-                        }
                     }
                 }
                 if (_rec_export > 0 && energy > 0.0)
@@ -737,23 +708,6 @@ void GnssCoherentCombiner::main_thread() {
                     _navutc[p].push_back(utc_p);
                     _navhead[p].emplace_back(h_energy > 0.0 ? ahr : ar, h_energy > 0.0 ? ahi : ai);
                     _navwipe[p].push_back(v_ok ? v_cur : std::complex<double>(0.0, 0.0));
-                    if (_peel_depth) {
-                        // Residual prompt (slots 20-23), normalized by the same prompt energy so
-                        // it is in _navbuf's |A| units and the depth is a plain ratio. Its head
-                        // belongs to the same code-period segment as the prompt's, so the overlay
-                        // wipe applies unchanged.
-                        double rr = 0.0, ri = 0.0, rhr = 0.0, rhi = 0.0;
-                        for (float* in2 : ins) {
-                            const float* rc = in2 + (size_t)p * _rec_stride;
-                            rr += rc[gnss::REC_RES_RE];
-                            ri += rc[gnss::REC_RES_IM];
-                            rhr += rc[gnss::REC_RES_PH_RE];
-                            rhi += rc[gnss::REC_RES_PH_IM];
-                        }
-                        _navbuf_res[p].emplace_back(rr / energy, ri / energy);
-                        _navhead_res[p].emplace_back(h_energy > 0.0 ? rhr / energy : rr / energy,
-                                                     h_energy > 0.0 ? rhi / energy : ri / energy);
-                    }
                 }
                 if (_rec_export > 0 && energy > 0.0)
                     push_recex(p, cur_hop, ar, ai, energy);
@@ -808,9 +762,9 @@ void GnssCoherentCombiner::main_thread() {
         std::vector<double> deep_rate_q(_n_prn, 0.0);    // its peak/median, which gates it
         std::vector<double> deep_rate_full(_n_prn, 0.0); // uncapped argmax: the carrier loop's
         std::vector<double> deep_rate_full_q(_n_prn, 0.0); // measurement, not the fold's
-        std::vector<double> coh_frac(_n_prn, 0.0);  // |sum|/sum|.| of the winning deep stream
-        std::vector<int> pt_hw(_n_prn, 0);          // winning tracker half-width (0 = straight)
-        std::vector<double> peel_rsnr(_n_prn, 0.0); // residual deep significance (peel_depth)
+        std::vector<double> coh_frac(_n_prn, 0.0); // |sum|/sum|.| of the winning deep stream
+        std::vector<int> pt_hw(_n_prn, 0);         // winning tracker half-width (0 = straight)
+
         std::vector<NavObs> nav_obs(_bit_export ? _n_prn : 0); // full-window bit decisions
         // Each deep estimator's free parameters (alignment, bit signs, candidate choice) rectify
         // pure noise to a floor, so without a gate an unlocked satellite would report coherence
@@ -1179,10 +1133,6 @@ void GnssCoherentCombiner::main_thread() {
                     _navutc[p].clear();
                     _navhead[p].clear();
                     _navwipe[p].clear();
-                    if (_peel_depth) {
-                        _navbuf_res[p].clear();
-                        _navhead_res[p].clear();
-                    }
                 }
             } else if (!_secondary.empty() || !_l1co.empty()) {
                 // Dataless pilot: wipe the known secondary overlay at its best alignment for a
@@ -1244,29 +1194,7 @@ void GnssCoherentCombiner::main_thread() {
                         deep_rec[p] = (int)full_len;
                         coh_s[p] = 0.0; // no rung beat its floor: no coherent detection
                     }
-                    // Peel depth on the overlay path: wipe the residual the same way, on the
-                    // trailing window and at the phase the prompt won with. overlay_wipe_at's phase
-                    // is relative to the start of the array it is given, so the full window with
-                    // a shorter rung's phase would misalign by (N - len) mod L chips; a misaligned
-                    // wipe does not cohere, which inflates the depth.
-                    if (_peel_depth && deep_rec[p] > 0 && nh_phase[p] >= 0
-                        && _navbuf_res[p].size() == _navutc[p].size()
-                        && _navhead_res[p].size() == _navbuf_res[p].size()
-                        && (size_t)deep_rec[p] <= _navbuf_res[p].size()) {
-                        const size_t len = (size_t)deep_rec[p];
-                        const std::vector<std::complex<double>> rs(_navbuf_res[p].end() - (long)len,
-                                                                   _navbuf_res[p].end());
-                        const std::vector<double> us(ub.end() - (long)len, ub.end());
-                        const std::vector<std::complex<double>> hs(
-                            _navhead_res[p].end() - (long)len, _navhead_res[p].end());
-                        const auto rw = gnss::overlay_wipe_at(rs, us, *ov, nh_phase[p], &hs);
-                        rec[gnss::CMB_PEEL_DEEP] = (float)rw.amplitude;
-                        peel_rsnr[p] = rw.snr;
-                        double s2 = 0.0;
-                        for (const auto& v : rs)
-                            s2 += std::norm(v);
-                        rec[gnss::CMB_PEEL_INCOH] = (float)std::sqrt(s2 / (double)len);
-                    }
+
                     // Dead-reckon anchor: a floor-cleared win pins the overlay alignment at the
                     // winning rung's first capture UTC. The overlay advances one chip per record
                     // (one primary period), so later emits can wipe at the predicted phase with
@@ -1310,10 +1238,6 @@ void GnssCoherentCombiner::main_thread() {
                     _navutc[p].clear();
                     _navhead[p].clear();
                     _navwipe[p].clear();
-                    if (_peel_depth) {
-                        _navbuf_res[p].clear();
-                        _navhead_res[p].clear();
-                    }
                 }
             } else if (_navwipe_bit_records > 0) {
                 const auto& ab = _navbuf[p];
@@ -1368,44 +1292,13 @@ void GnssCoherentCombiner::main_thread() {
                     deep_floor[p] = nav_floor(full_len);
                     coh_s[p] = 0.0; // no rung beat its floor: no coherent detection
                 }
-                // Peel depth: the same nav-bit wipe on the residual buffer, over the trailing
-                // window the prompt won with (deep_rec; the full window if none), so the ratio
-                // compares like with like. No ladder of its own: a healthy residual sits at the
-                // floor, where a ladder would pick the noisiest short rung. navwipe_amplitude
-                // re-runs its own bit sync, so only the length carries over.
-                if (_peel_depth && !_navbuf_res[p].empty()
-                    && _navbuf_res[p].size() == _navutc[p].size()
-                    && _navhead_res[p].size() == _navbuf_res[p].size()) {
-                    const size_t len =
-                        (deep_rec[p] > 0 && (size_t)deep_rec[p] <= _navbuf_res[p].size())
-                            ? (size_t)deep_rec[p]
-                            : _navbuf_res[p].size();
-                    const std::vector<std::complex<double>> rs(_navbuf_res[p].end() - (long)len,
-                                                               _navbuf_res[p].end());
-                    const std::vector<double> us(_navutc[p].end() - (long)len, _navutc[p].end());
-                    const std::vector<std::complex<double>> hs(_navhead_res[p].end() - (long)len,
-                                                               _navhead_res[p].end());
-                    double rsnr = 0.0;
-                    const double ramp = navwipe_amplitude(rs, us, &rsnr, &hs);
-                    rec[gnss::CMB_PEEL_DEEP] = (float)ramp;
-                    peel_rsnr[p] = rsnr;
-                    // Incoherent residual amplitude: RMS of the per-record |A_res|, defined even
-                    // at the floor.
-                    double s2 = 0.0;
-                    for (const auto& v : rs)
-                        s2 += std::norm(v);
-                    rec[gnss::CMB_PEEL_INCOH] = (float)std::sqrt(s2 / (double)len);
-                }
+
                 if (!_rolling) { // block clears the window; rolling slides it (capped above)
                     _navbuf[p].clear();
                     _navsky[p].clear();
                     _navutc[p].clear();
                     _navhead[p].clear();
                     _navwipe[p].clear();
-                    if (_peel_depth) {
-                        _navbuf_res[p].clear();
-                        _navhead_res[p].clear();
-                    }
                 }
             } else if (_deep_plain) {
                 // Plain coherent sum, no wipe. The replica already carries the secondary overlay
@@ -1607,9 +1500,7 @@ void GnssCoherentCombiner::main_thread() {
                 _st_pt_hw[p] = (float)pt_hw[p];
                 if (_rec_export > 0)
                     _st_recex[p] = _recex[p];
-                _st_peel_deep[p] = rec[gnss::CMB_PEEL_DEEP];
-                _st_peel_incoh[p] = rec[gnss::CMB_PEEL_INCOH];
-                _st_peel_deep_snr[p] = (float)peel_rsnr[p];
+
                 if (_bit_export)
                     _st_nav_obs[p] = std::move(nav_obs[p]);
                 // Pilot bit prediction: the overlay is deterministic, so project the dead-reckon
@@ -1789,13 +1680,7 @@ void GnssCoherentCombiner::get_status_callback(kotekan::connectionInstance& conn
                          // tracker half-width in records; 0 = straight sum, -1 = sky-corrected.
                          {"coh_frac", _st_coh_frac[p]},
                          {"pt_hw", _st_pt_hw[p]},
-                         // Deep and incoherent |A| of the peel residual, 0 when this chain does
-                         // not peel; depth_db = 20*log10(deep_amplitude/peel_deep).
-                         {"peel_deep", _st_peel_deep[p]},
-                         {"peel_incoh", _st_peel_incoh[p]},
-                         // The residual deep's significance: compare this, not peel_deep, with
-                         // deep_floor to decide whether the depth is only a lower bound.
-                         {"peel_deep_snr", _st_peel_deep_snr[p]},
+
                          {"dll_disc", _st_dll_disc[p]},
                          // Fleet DLL (docs/CHORD_GNSS_SHARED_DLL.md): dll_disc is a ratio, and the
                          // full-band discriminator is (sum e_pow - sum l_pow)/(sum e_pow + sum

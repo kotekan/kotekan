@@ -85,7 +85,7 @@
  * @conf phase_track_widths  Int list (default [1, 2, 4, 8]). Tracker half-widths, records.
  * @conf sky_deep            Bool (default false). Sky-corrected prompt as a plain-sum candidate.
  * @conf record_export       Int (default 0 = off). Per-PRN record ring length for get_records.
- * @conf peel_depth          Bool (default false). Deep and incoherent |A| of the peel residual.
+
  * @conf bit_export          Bool (default false). Publish nav_obs and bit_pred in get_status.
  * @conf bit_pred_horizon_s  Float (default 4). Seconds of predicted overlay chips.
  * @conf adr_smooth_records  Int (default 1). Records per ADR block for anchored overlay pilots.
@@ -262,11 +262,7 @@ private:
     /// Parallel to _navbuf. Feeds the carrier-residual fit linearly (prewiped), avoiding the
     /// squared raw A, which overlay transitions null at boundary fraction 0.5.
     std::vector<std::vector<std::complex<double>>> _navwipe;
-    /// Peel depth (config peel_depth). A peeling tracker writes a residual prompt (slots 20-23)
-    /// beside the full correlation; _navbuf_res and _navhead_res buffer it like _navbuf and
-    /// _navhead, and the emit runs the same deep estimator on it (overlay and nav-bit wipe
-    /// paths) into CMB_PEEL_DEEP. 20*log10(CMB_DEEP/CMB_PEEL_DEEP) is the achieved depth.
-    bool _peel_depth = false;
+
     /// Publish the nav-bit wipe's per-bit decisions ("nav_obs") and a pilot's predicted overlay
     /// chips ("bit_pred") in get_status (config bit_export).
     bool _bit_export = false;
@@ -299,9 +295,8 @@ private:
         bool record_grid = true;
     };
     std::vector<BitPred> _st_bit_pred;
-    double _bit_pred_horizon_s = 4.0;                            ///< seconds of chips to publish
-    std::vector<std::vector<std::complex<double>>> _navbuf_res;  ///< residual prompt A per record
-    std::vector<std::vector<std::complex<double>>> _navhead_res; ///< residual head segment
+    double _bit_pred_horizon_s = 4.0; ///< seconds of chips to publish
+
 
     // Snapshot of the last emit for REST (under _st_mtx).
     std::vector<int> _st_prn;
@@ -375,11 +370,7 @@ private:
     /// Noise-rectification floor (a significance) of the reported rung; deep_snr near it means
     /// no coherent detection.
     std::vector<float> _st_deep_floor;
-    std::vector<float> _st_peel_deep;  ///< deep |A| of the peel residual (0 when not peeling)
-    std::vector<float> _st_peel_incoh; ///< incoherent |A| of the peel residual
-    /// Significance of the residual deep: compare this, not the amplitude peel_deep, against
-    /// deep_floor.
-    std::vector<float> _st_peel_deep_snr;
+
 
     // Accumulated carrier phase (ADR), built per record from increments of
     // Phi_rx = Phi_cmd - arg(A)/2pi (gnssRecord.hpp): Phi_cmd's increment arrives in slot 15
