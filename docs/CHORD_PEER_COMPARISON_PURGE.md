@@ -125,10 +125,9 @@ the circular median becomes a cross-check rather than the source.
 **5. S4, S3, S5 → churn audit.** Each already has partial treatment; the work is to state the
 membership-invariance property and test it, not to rewrite.
 
-**6. Enforcement.** `scripts/gnss/site/peer_audit.py` re-runs the classifier. Wire it into
-`scripts/gnss/site/gate.sh` as a static leg once Categories 1 and 2 are closed, so a new peer
-comparison cannot land silently — the same reasoning as the pyflakes leg
-([[chord-shadow-was-dead-static-gate]]).
+**6. Enforcement.** None is wired. The regex lead-finder (`peer_audit.py`) and the refactor
+gate it was meant to join as a static leg (`gate.sh`) were both retired unwired; git history has
+them if a new peer comparison ever needs hunting.
 
 ## Method, and what it does NOT cover
 

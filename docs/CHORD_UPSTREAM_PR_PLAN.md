@@ -226,8 +226,8 @@ by line count, lowest by risk — none of it compiles into kotekan.
 
 1. **Generated configs** — RESOLVED 2026-10-08: untracked; ship the generator, templates,
    manifest and one example (see cleanup round 2).
-2. **The acceptance gate cannot run upstream.** Six of `gate.sh`'s seven fixtures are 38–100 MB
-   transcripts outside git (`/home/kvand/gnss/fixtures/`, NFS), with only their `.digest`
+2. **The acceptance gate cannot run upstream.** Six of the seven `broker_equiv` fixtures are
+   38–100 MB transcripts outside git (`/home/kvand/gnss/fixtures/`, NFS), with only their `.digest`
    committed; several tests also read fixtures from there. OPEN: say so plainly in the PR, or
    make one on-sky arm fetchable.
 3. **Citations of `docs/gnss_gpu_migration.md`** — RESOLVED 2026-10-08: dropped.
@@ -253,7 +253,7 @@ Six read-only reviewers at `9f555d4be`; condensed notes with file:line detail in
 confidence and no live behaviour change. Verify every batch with: CUDA `-Werror` build +
 boost tests on cf05, `kotekan --check-config` on the nine live configs, `gen_fleet --check`
 byte-identical, broker `gnss_broker/test_*.py` + `selftest.py` under venv-ft (niced), and for
-broker changes `broker_equiv.py check` on cf05 (never `gate.sh` beside the live stack).
+broker changes `broker_equiv.py check` on cf05 (never beside the live stack).
 ⚠️ Run heavy scans on cf05, not the gnss VM (six reviewers pushed its load to ~33).
 
 **A. Fix first — blocks every upstream PR's CI.**
@@ -298,8 +298,7 @@ broker changes `broker_equiv.py check` on cf05 (never `gate.sh` beside the live 
 
 **D. Operations found along the way.** Logs are not rotated (`/var/tmp/gnss-logs` 44 GB in 22
 days, ~2 GB/day, 161 GB free; `systemd/gnss.logrotate` targets a missing dir and is not
-installed). `gate.sh` cannot pass (on-sky digests moved, `holds` nondeterministic): re-bless or
-retire. 41 `python/scripts/gnss` tests have no runner. `live_element_gate.py` broken since
+installed). 41 `python/scripts/gnss` tests have no runner. `live_element_gate.py` broken since
 10-02. `gnss_transit_arcs.py` uses the pre-#99 station (155 m off). Viewer: layout key v7, reset
 clears v6.
 

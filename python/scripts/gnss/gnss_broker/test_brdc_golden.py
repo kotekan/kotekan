@@ -23,7 +23,7 @@ its content is.
 
 FIXTURE: $GNSS_FIXTURES/brdc_merge_golden, from scripts/gnss/brdc_fixture_capture.py.
 A MISSING FIXTURE IS A FAILURE, NOT A SKIP -- "the gate did not run" and "the gate passed" must
-never look alike (gate.sh's own rule, and the fleetdll lesson behind it).
+never look alike (the fleetdll lesson).
 """
 import gzip
 import hashlib
