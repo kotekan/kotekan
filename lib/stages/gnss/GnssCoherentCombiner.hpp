@@ -16,7 +16,7 @@
 #include "prometheusMetrics.hpp" // for Counter, Gauge (real-time cost instrumentation)
 #include "restServer.hpp"        // for connectionInstance
 
-#include <array>   // for array (per-rung ladder dump)
+#include <array>   // for array (record export entries)
 #include <complex> // for complex
 #include <cstdint> // for int8_t
 #include <mutex>   // for mutex
@@ -103,7 +103,6 @@ public:
                          kotekan::bufferContainer& buffer_container);
     void main_thread() override;
 
-    static constexpr int RECORD_FLOATS = gnss::RECORD_FLOATS; // schema: gnssRecord.hpp
     static constexpr int RECORD_UTC_SLOT = gnss::RECORD_UTC_SLOT;
 
 private:
@@ -202,7 +201,6 @@ private:
     /// u_re, u_im, <|A_e|^2>, <|ref|^2>, normalized at emit like the element blocks.
     std::vector<float> _st_elem;
     double _st_elem_keff = 0.0; ///< effective records behind the snapshot (significance input)
-    double _alpha_el = 0.0;     ///< rolling EMA weight for the per-antenna state
     int _integration_length;    ///< block: records/output; rolling: EMA time constant (records)
     bool _rolling;              ///< rolling EMA integration vs block-and-reset
     int _emit_every;            ///< rolling: records between emits (output cadence)
@@ -307,8 +305,7 @@ private:
 
     // Snapshot of the last emit for REST (under _st_mtx).
     std::vector<int> _st_prn;
-    std::vector<float> _st_amp, _st_coh, _st_deep, _st_deep_snr, _st_amp_snr, _st_amp_dbi, _st_dop,
-        _st_cp;
+    std::vector<float> _st_amp, _st_coh, _st_deep, _st_deep_snr, _st_amp_snr, _st_dop, _st_cp;
     std::vector<int> _st_nh_phase; ///< secondary-overlay alignment found per PRN (-1 = n/a)
     /// Count of emits whose anchor projection disagreed with the searched overlay phase, each
     /// of which suppressed that emit's bit_pred. Cumulative per PRN; published as "bp_veto"
@@ -329,14 +326,6 @@ private:
     /// Absolute hop index labelling the E/P/L window (rolling: its newest record; block: its
     /// first); -1 = no frame metadata. The fleet combine groups instances by it; see _fft_len.
     long long _st_pow_hop = -1;
-    // Ingestion clock (under _st_mtx): the newest capture UTC gathered and the wall clock at
-    // that gather, taken before processing (pow_hop and _st_utc describe the last emit).
-    double _ingest_utc = 0.0;
-    double _ingest_unix = 0.0;
-    /// Every ladder rung's (records, snr, span_s), longest first. deep_snr reports one rung (the
-    /// best that cleared its floor, else the full window), so it cannot tell a signal that never
-    /// cohered from one that cohered over windows too short to clear the floor.
-    std::vector<std::vector<std::array<float, 3>>> _st_rungs;
     /// Phase-rate search before the deep plain sum (config deep_rate_search). A rate is applied
     /// only when the spectrum's peak/median reaches _deep_rate_min_q, and only from bins within
     /// +-_deep_rate_max_hz.
@@ -386,10 +375,6 @@ private:
     /// Noise-rectification floor (a significance) of the reported rung; deep_snr near it means
     /// no coherent detection.
     std::vector<float> _st_deep_floor;
-    /// Noise-debiased coherent power (Hz) over the full window, with no ladder and no detection
-    /// gate, so an average over emits stays unbiased at weak signal (~0 mean on noise). Not
-    /// computed on the combined overlay and nav-bit path.
-    std::vector<float> _st_deep_pow;
     std::vector<float> _st_peel_deep;  ///< deep |A| of the peel residual (0 when not peeling)
     std::vector<float> _st_peel_incoh; ///< incoherent |A| of the peel residual
     /// Significance of the residual deep: compare this, not the amplitude peel_deep, against
@@ -410,9 +395,7 @@ private:
     /// _adr_cyc's arc. Its change over a poll divided by the record count is a fine
     /// carrier-rate measurement free of the large commanded integral.
     std::vector<double> _res_cyc;
-    std::vector<double> _st_res; ///< REST snapshot of _res_cyc, at emit
-    std::vector<double> _adr_cph_prev;
-    std::vector<double> _adr_rate;
+    std::vector<double> _st_res;  ///< REST snapshot of _res_cyc, at emit
     std::vector<double> _adr_t0;  ///< arc start capture-UTC (lock time = utc - t0)
     std::vector<int> _adr_arc;    ///< arc id: ++ on every continuity break (slip counter)
     std::vector<int> _adr_n;      ///< records accumulated in this arc
@@ -455,7 +438,7 @@ private:
     std::vector<int> _st_deep_rec; ///< records in the chosen deep window (= full window unless the
                                    ///< auto-coherence ladder found a shorter, more coherent one)
 
-    /// Guards the _st_* snapshots and the ingestion clock; REST reads them from its own thread.
+    /// Guards the _st_* snapshots; REST reads them from its own thread.
     std::mutex _st_mtx;
 };
 

@@ -155,7 +155,6 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
     _st_deep.assign(_n_prn, 0.0f);
     _st_deep_snr.assign(_n_prn, 0.0f);
     _st_amp_snr.assign(_n_prn, 0.0f);
-    _st_amp_dbi.assign(_n_prn, 0.0f);
     _st_nh_phase.assign(_n_prn, -1);
     _st_dop.assign(_n_prn, 0.0f);
     _st_cp.assign(_n_prn, 0.0f);
@@ -164,7 +163,6 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
     _st_p_pow.assign(_n_prn, 0.0f);
     _st_l_pow.assign(_n_prn, 0.0f);
     _st_nchan.assign(_n_prn, 0.0f);
-    _st_rungs.assign(_n_prn, {});
     _st_head_frac.assign(_n_prn, 0.0f);
     _st_s4.assign(_n_prn, 0.0f);
     _st_s4_raw.assign(_n_prn, 0.0f);
@@ -175,8 +173,6 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
     _trim_cyc.assign(_n_prn, 0.0);
     _res_cyc.assign(_n_prn, 0.0);
     _st_res.assign(_n_prn, 0.0);
-    _adr_cph_prev.assign(_n_prn, 0.0);
-    _adr_rate.assign(_n_prn, 0.0);
     _adr_t0.assign(_n_prn, 0.0);
     _adr_arc.assign(_n_prn, 0);
     _adr_n.assign(_n_prn, 0);
@@ -189,7 +185,6 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
     _st_adr_n.assign(_n_prn, 0);
     _st_coh_s.assign(_n_prn, 0.0f);
     _st_deep_floor.assign(_n_prn, 0.0f);
-    _st_deep_pow.assign(_n_prn, 0.0f);
     _st_peel_deep.assign(_n_prn, 0.0f);
     _st_peel_incoh.assign(_n_prn, 0.0f);
     _st_peel_deep_snr.assign(_n_prn, 0.0f);
@@ -303,7 +298,6 @@ void GnssCoherentCombiner::main_thread() {
     _acc_eu_r.assign((size_t)_n_prn * _n_elements, 0.0);
     _acc_eu_i.assign((size_t)_n_prn * _n_elements, 0.0);
     _acc_euq.assign((size_t)_n_prn * _n_elements, 0.0);
-    _alpha_el = 1.0 / (double)_integration_length;
     long long n_roll = 0;   // rolling: total records seen (for EMA bias correction)
     long long win_hop = -1; // absolute hop index labelling the current E/P/L window
     int since_emit = 0;     // rolling: records since the last emit
@@ -370,21 +364,6 @@ void GnssCoherentCombiner::main_thread() {
             _prev_utc0 = rec_utc(ins[0]);
         }
 
-        // Ingestion clock, recorded before any processing: the newest capture UTC gathered and
-        // the wall clock at that moment. get_status serves both beside utc (the last processed
-        // window), so a consumer can separate record staleness from processing lag.
-        {
-            double newest_utc = 0.0;
-            for (const float* fin : ins)
-                newest_utc =
-                    std::max(newest_utc, *reinterpret_cast<const double*>(fin + RECORD_UTC_SLOT));
-            const double wall =
-                std::chrono::duration<double>(std::chrono::system_clock::now().time_since_epoch())
-                    .count();
-            std::lock_guard<std::mutex> lk(_st_mtx);
-            _ingest_utc = newest_utc;
-            _ingest_unix = wall;
-        }
 
         // Absolute hop index of this record's window, from the frame metadata
         // (GnssGpuRecordAssemble sets sample_seq to the window start). Every node's sample_seq
@@ -483,12 +462,12 @@ void GnssCoherentCombiner::main_thread() {
                     const double euq = rr * rr + ri * ri;
                     const size_t k = (size_t)p * _n_elements + el;
                     if (_rolling) {
-                        _acc_epow_el[k] += _alpha_el * (p2e - _acc_epow_el[k]);
-                        _acc_ear[k] += _alpha_el * (aer - _acc_ear[k]);
-                        _acc_eai[k] += _alpha_el * (aei - _acc_eai[k]);
-                        _acc_eu_r[k] += _alpha_el * (eur - _acc_eu_r[k]);
-                        _acc_eu_i[k] += _alpha_el * (eui - _acc_eu_i[k]);
-                        _acc_euq[k] += _alpha_el * (euq - _acc_euq[k]);
+                        _acc_epow_el[k] += alpha * (p2e - _acc_epow_el[k]);
+                        _acc_ear[k] += alpha * (aer - _acc_ear[k]);
+                        _acc_eai[k] += alpha * (aei - _acc_eai[k]);
+                        _acc_eu_r[k] += alpha * (eur - _acc_eu_r[k]);
+                        _acc_eu_i[k] += alpha * (eui - _acc_eu_i[k]);
+                        _acc_euq[k] += alpha * (euq - _acc_euq[k]);
                     } else {
                         _acc_epow_el[k] += p2e;
                         _acc_ear[k] += aer;
@@ -817,7 +796,6 @@ void GnssCoherentCombiner::main_thread() {
         std::vector<double> deep_snr(_n_prn, 0.0);  // significance of the deep detection (for REST)
         std::vector<double> amp_snr(_n_prn, 0.0);   // noise-debiased incoherent significance (REST)
         std::vector<int> nh_phase(_n_prn, -1);      // secondary-overlay alignment found (-1 = n/a)
-        std::vector<double> amp_dbi(_n_prn, 0.0);   // noise-debiased (unbiased) signal amplitude
         std::vector<double> s4_raw(_n_prn, 0.0);    // amplitude scintillation index (raw)
         // Carrier-phase jitter (rad); NaN = not measured this emit. Only carrier_resid_hz sets it.
         std::vector<double> sigma_phi(_n_prn, NAN);
@@ -825,27 +803,15 @@ void GnssCoherentCombiner::main_thread() {
                                                 // only); NaN = not available (data fit / no fit)
         std::vector<double> coh_s(_n_prn, 0.0); // measured coherence: span of the winning window
         std::vector<int> deep_rec(_n_prn, 0);   // records in the winning deep window
-        std::vector<double> deep_floor(_n_prn, 0.0); // rectification floor at the reported rung
-        // Every rung's (len, snr, span_s), longest-first as walked. deep_snr is a max over the
-        // ladder and cannot say whether the phase never cohered (short rungs also at floor) or
-        // cohered but no window cleared the bar (short rungs high, long rungs collapsing).
-        std::vector<std::vector<std::array<float, 3>>> rungs(_n_prn);
-        std::vector<double> deep_rate(_n_prn, 0.0);        // phase-rate removed before the deep sum
-        std::vector<double> deep_rate_q(_n_prn, 0.0);      // its peak/median, which gates it
-        std::vector<double> deep_rate_full(_n_prn, 0.0);   // uncapped argmax: the carrier loop's
+        std::vector<double> deep_floor(_n_prn, 0.0);     // rectification floor at the reported rung
+        std::vector<double> deep_rate(_n_prn, 0.0);      // phase-rate removed before the deep sum
+        std::vector<double> deep_rate_q(_n_prn, 0.0);    // its peak/median, which gates it
+        std::vector<double> deep_rate_full(_n_prn, 0.0); // uncapped argmax: the carrier loop's
         std::vector<double> deep_rate_full_q(_n_prn, 0.0); // measurement, not the fold's
         std::vector<double> coh_frac(_n_prn, 0.0);  // |sum|/sum|.| of the winning deep stream
         std::vector<int> pt_hw(_n_prn, 0);          // winning tracker half-width (0 = straight)
         std::vector<double> peel_rsnr(_n_prn, 0.0); // residual deep significance (peel_depth)
         std::vector<NavObs> nav_obs(_bit_export ? _n_prn : 0); // full-window bit decisions
-        // Fixed-window, noise-debiased coherent power (Hz) for the beam map, the coherent twin of
-        // the incoherent x = s^2/N. Always computed over the full window with no ladder and no
-        // detection gate, so an average over emits is unbiased at any signal level (average the
-        // linear estimator including its noise; never threshold, then average). The noise mean
-        // of snr^2 is subtracted: 2(ln n + gamma) for a searched overlay alignment (max over n
-        // trials of ~Exp(2)), ~2 at a dead-reckoned one, floor^2 + 1 for the nav-bit wipe and
-        // the plain sum. The composed overlay + nav-bit branch leaves it 0.
-        std::vector<double> deep_pow(_n_prn, 0.0);
         // Each deep estimator's free parameters (alignment, bit signs, candidate choice) rectify
         // pure noise to a floor, so without a gate an unlocked satellite would report coherence
         // over the full window. A rung must reach FLOOR_MARGIN x its floor to count; when none
@@ -1068,8 +1034,6 @@ void GnssCoherentCombiner::main_thread() {
                 const double var = std::max(0.0, m4 - m2 * m2);
                 const double s2 = std::sqrt(std::max(0.0, m2 * m2 - var));
                 const double noise = m2 - s2;
-                amp_dbi[p] =
-                    std::sqrt(s2); // unbiased signal amplitude (~0 for noise, =signal for a sat)
                 // Normalise by the H0 std of the s^2 estimator (~N/K^{1/4}) so noise reads ~1
                 // regardless of K.
                 amp_snr[p] = noise > 1e-12 ? s2 * std::pow(Keff, 0.25) / noise : 0.0;
@@ -1188,7 +1152,6 @@ void GnssCoherentCombiner::main_thread() {
                             full_snr = snr;
                             full_len = len;
                         }
-                        rungs[p].push_back({(float)len, (float)snr, (float)coh_span(ub, len)});
                         if (snr < FLOOR_MARGIN * nav_floor(len))
                             continue; // indistinguishable from noise rectification
                         if (!cleared || snr > deep_snr[p] * 1.05) {
@@ -1262,7 +1225,7 @@ void GnssCoherentCombiner::main_thread() {
                             full = ow;
                             full_len = len;
                         }
-                        rungs[p].push_back({(float)len, (float)ow.snr, (float)coh_span(ub, len)});
+
                         if (ow.snr < FLOOR_MARGIN * flr)
                             continue; // indistinguishable from noise rectification
                         if (!cleared || ow.snr > deep_snr[p] * 1.05) {
@@ -1340,36 +1303,6 @@ void GnssCoherentCombiner::main_thread() {
                             ++_bp_veto[p];
                         }
                     }
-                    if (full_len > 1 && ub.size() >= full_len) {
-                        const double t0f = ub[ub.size() - full_len];
-                        const double span = ub.back() - t0f;
-                        const double T = span * (double)full_len / (double)(full_len - 1);
-                        const double rec_dt = span / (double)(full_len - 1);
-                        bool dr_ok = _dr_phase[p] >= 0 && rec_dt > 0.0
-                                     && _dr_prn[p] == (int)std::lround(ref_prn[p]);
-                        if (dr_ok) {
-                            const long long steps =
-                                (long long)std::llround((t0f - _dr_utc[p]) / rec_dt);
-                            const int L_ov = (int)ov->size();
-                            const int ph = (int)(((_dr_phase[p] + steps) % L_ov + L_ov) % L_ov);
-                            const auto dw = gnss::overlay_wipe_at(ab, ub, *ov, ph, &hb);
-                            // /2: snr^2 normalizes the noise per axis (1 dof), while the
-                            // incoherent x uses the complex (2 dof) noise power. With
-                            // snr^2 = n A^2/sigma_axis^2 and x = A^2/(2 sigma^2), the raw value
-                            // is 2 x / T_rec, so dividing by 2 puts deep_pow on x's C/N0-density
-                            // convention.
-                            if (T > 0.0 && dw.snr > 0.0)
-                                deep_pow[p] = (dw.snr * dw.snr - 2.0) / (2.0 * T);
-                            else
-                                dr_ok = false;
-                        }
-                        if (!dr_ok) { // no anchor yet: searched full window, selection-debiased
-                            const double bias =
-                                2.0 * (std::log((double)std::max<size_t>(ov->size(), 2)) + 0.5772);
-                            if (T > 0.0)
-                                deep_pow[p] = (full.snr * full.snr - bias) / (2.0 * T);
-                        }
-                    }
                 }
                 if (!_rolling) {
                     _navbuf[p].clear();
@@ -1417,7 +1350,6 @@ void GnssCoherentCombiner::main_thread() {
                         full_snr = snr;
                         full_len = len;
                     }
-                    rungs[p].push_back({(float)len, (float)snr, (float)coh_span(ub, len)});
                     if (snr < FLOOR_MARGIN * nav_floor(len))
                         continue; // indistinguishable from noise rectification
                     if (!cleared || snr > deep_snr[p] * 1.05) {
@@ -1435,13 +1367,6 @@ void GnssCoherentCombiner::main_thread() {
                     deep_rec[p] = (int)full_len;
                     deep_floor[p] = nav_floor(full_len);
                     coh_s[p] = 0.0; // no rung beat its floor: no coherent detection
-                }
-                if (full_len > 1 && ub.size() >= full_len) {
-                    const double span = ub.back() - ub[ub.size() - full_len];
-                    const double T = span * (double)full_len / (double)(full_len - 1);
-                    const double flr0 = nav_floor(full_len);
-                    if (T > 0.0) // /2: same 1-dof -> 2-dof convention as the overlay path
-                        deep_pow[p] = (full_snr * full_snr - (flr0 * flr0 + 1.0)) / (2.0 * T);
                 }
                 // Peel depth: the same nav-bit wipe on the residual buffer, over the trailing
                 // window the prompt won with (deep_rec; the full window if none), so the ratio
@@ -1605,7 +1530,6 @@ void GnssCoherentCombiner::main_thread() {
                         deep_rate_full[p] = rate_fhz;
                         deep_rate_full_q[p] = rate_fq;
                     }
-                    rungs[p].push_back({(float)len, (float)cs.snr, (float)coh_span(ub, len)});
                     // With a rate applied, the gate is the search's own peak/median q rather than
                     // a closed-form floor: oversampled bins are far from independent, so
                     // sqrt(2 ln n) + 1 overstates the noise maximum. q is measured on the same
@@ -1639,12 +1563,6 @@ void GnssCoherentCombiner::main_thread() {
                     coh_frac[p] = full_cf;
                     pt_hw[p] = full_hw;
                 }
-                if (full_len > 1 && ub.size() >= full_len) {
-                    const double span = ub.back() - ub[ub.size() - full_len];
-                    const double T = span * (double)full_len / (double)(full_len - 1);
-                    if (T > 0.0) // same 1-dof -> 2-dof debias as the other paths
-                        deep_pow[p] = (full.snr * full.snr - (flr * flr + 1.0)) / (2.0 * T);
-                }
             }
             rec[gnss::CMB_COH_FRAC] = (float)coh_frac[p];
             *reinterpret_cast<double*>(rec + RECORD_UTC_SLOT) = ref_utc[p];
@@ -1676,13 +1594,11 @@ void GnssCoherentCombiner::main_thread() {
                 _st_deep_snr[p] = (float)deep_snr[p];
                 _st_nh_phase[p] = nh_phase[p];
                 _st_amp_snr[p] = (float)amp_snr[p];
-                _st_amp_dbi[p] = (float)amp_dbi[p];
                 _st_dop[p] = rec[1];
                 _st_cp[p] = rec[2];
                 _st_coh_s[p] = (float)coh_s[p];
                 _st_deep_rec[p] = deep_rec[p];
                 _st_deep_floor[p] = (float)deep_floor[p];
-                _st_rungs[p] = rungs[p];
                 _st_deep_rate[p] = (float)deep_rate[p];
                 _st_deep_rate_q[p] = (float)deep_rate_q[p];
                 _st_deep_rate_full[p] = (float)deep_rate_full[p];
@@ -1691,7 +1607,6 @@ void GnssCoherentCombiner::main_thread() {
                 _st_pt_hw[p] = (float)pt_hw[p];
                 if (_rec_export > 0)
                     _st_recex[p] = _recex[p];
-                _st_deep_pow[p] = (float)deep_pow[p];
                 _st_peel_deep[p] = rec[gnss::CMB_PEEL_DEEP];
                 _st_peel_incoh[p] = rec[gnss::CMB_PEEL_INCOH];
                 _st_peel_deep_snr[p] = (float)peel_rsnr[p];
@@ -1853,19 +1768,11 @@ void GnssCoherentCombiner::get_status_callback(kotekan::connectionInstance& conn
                          {"deep_snr", _st_deep_snr[p]},
                          {"amp_snr", _st_amp_snr[p]},
                          {"nh_phase", _st_nh_phase[p]},
-                         {"unbiased_amplitude", _st_amp_dbi[p]},
                          {"doppler_hz", _st_dop[p]},
                          {"code_phase_chips", _st_cp[p]},
                          {"coherence_s", _st_coh_s[p]},
                          {"deep_records", _st_deep_rec[p]},
                          {"deep_floor", _st_deep_floor[p]},
-                         {"deep_pow_hz", _st_deep_pow[p]},
-                         // Every ladder rung this emit, longest-first, as [records, snr, span_s].
-                         // A signal that never coheres sits at the floor on every rung; one that
-                         // coheres but is weak rises as the rung shortens or peaks mid-ladder.
-                         // The plain and overlay branches use one floor for all rungs (deep_floor);
-                         // the nav-bit wipe's floor grows with rung length.
-                         {"rungs", _st_rungs[p]},
                          // Phase-rate search: the linear rate removed before the deep sum (Hz,
                          // signed, modulo the record rate) and its spectrum's peak/median, the
                          // detection statistic for the plain coherent rung. 0 = the search did not
@@ -1919,16 +1826,6 @@ void GnssCoherentCombiner::get_status_callback(kotekan::connectionInstance& conn
                          {"subband_realigns", (double)_realigns},
                          {"carrier_hz_resid", _st_car_resid[p]},
                          {"utc", _st_utc[p]},
-                         // Staleness clocks. serve_unix: wall clock of this reply; utc far from it
-                         // means a stale F-engine time reference. ingest_utc: newest capture UTC
-                         // ingested; utc is the newest processed, and the gap is processing lag.
-                         // ingest_unix: wall clock at that ingestion; serve_unix - ingest_unix is
-                         // the snapshot's age.
-                         {"serve_unix", std::chrono::duration<double>(
-                                            std::chrono::system_clock::now().time_since_epoch())
-                                            .count()},
-                         {"ingest_utc", _ingest_utc},
-                         {"ingest_unix", _ingest_unix},
                          // Accumulated carrier phase (cycles) on the current unbroken arc, its
                          // id, its length in records, and how long it has held (s). 0 cycles
                          // with a new arc id means the arc just restarted.
