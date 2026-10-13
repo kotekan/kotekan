@@ -698,7 +698,6 @@ def stage_detections_to_seeds(ctx):
                         ),
                         every_s=60.0,
                     )
-                    _seed_rate = _model
                     # ── #100 (--fit-flush-on-reject): a rejected fit is not just a bad
                     # RATE -- the seed's POSITION is the same fit EVALUATED at ref_hop,
                     # so a wrap-blown slope moves the command by (slope error x history
