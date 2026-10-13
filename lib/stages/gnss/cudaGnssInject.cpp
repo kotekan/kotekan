@@ -26,14 +26,13 @@ cudaGnssInject::cudaGnssInject(Config& config, const std::string& unique_name,
     _num_times(config.get<int>(unique_name, "num_times")),
     _num_elements(config.get<int>(unique_name, "num_elements")),
     _num_local_freq(config.get<int>(unique_name, "num_local_freq")),
-    _num_synth(config.get_default<int>(unique_name, "num_synth", 128)),
+    _num_synth(config.get<int>(unique_name, "num_synth")),
     _voltage_name(config.get<std::string>(unique_name, "voltage_name")),
-    _gnss_synth_name(config.get_default<std::string>(unique_name, "gnss_synth_name", "gnss_synth")),
+    _gnss_synth_name(config.get<std::string>(unique_name, "gnss_synth_name")),
     _gnss_local_channels(config.get<std::vector<std::int32_t>>(unique_name, "gnss_local_channels")),
-    _synth_lane_base(config.get_default<int>(unique_name, "synth_lane_base", 0)),
-    _synth_lane_pitch(config.get_default<int>(unique_name, "synth_lane_pitch", _num_synth)),
-    _gnss_synth_channels(
-        config.get_default<std::vector<std::int32_t>>(unique_name, "gnss_synth_channels", {})),
+    _synth_lane_base(config.get<int>(unique_name, "synth_lane_base")),
+    _synth_lane_pitch(config.get<int>(unique_name, "synth_lane_pitch")),
+    _gnss_synth_channels(config.get<std::vector<std::int32_t>>(unique_name, "gnss_synth_channels")),
     voltage(_voltage_name, "E",
             std::array<std::ptrdiff_t, 4>{_buffer_depth * _num_times, _num_local_freq, 2,
                                           _num_elements / 2},
@@ -64,22 +63,17 @@ cudaGnssInject::cudaGnssInject(Config& config, const std::string& unique_name,
         FATAL_ERROR("cudaGnssInject: lanes [{:d}, {:d}) do not fit a synth lane axis of {:d} "
                     "on 16-lane tile rows (synth_lane_base / synth_lane_pitch / num_synth)",
                     _synth_lane_base, _synth_lane_base + _num_synth, _synth_lane_pitch);
-    // The synth array's channel axis: every local channel (the one-chain layout), or the
-    // correlator's comb (compact). Each covering channel maps to its index on that axis.
-    if (_gnss_synth_channels.empty()) {
-        _synth_n_chan = _num_local_freq;
-        _h_chan_map.assign(_gnss_local_channels.begin(), _gnss_local_channels.end());
-    } else {
-        _synth_n_chan = (int)_gnss_synth_channels.size();
-        for (std::int32_t f : _gnss_local_channels) {
-            const auto it = std::find(_gnss_synth_channels.begin(), _gnss_synth_channels.end(), f);
-            if (it == _gnss_synth_channels.end())
-                FATAL_ERROR("cudaGnssInject: covering channel {:d} is not on the synth array's "
-                            "channel axis (gnss_synth_channels) -- the correlator would never "
-                            "read this chain's replica there",
-                            f);
-            _h_chan_map.push_back((int)(it - _gnss_synth_channels.begin()));
-        }
+    // The synth array's channel axis is the correlator's comb (gnss_synth_compact). Each
+    // covering channel maps to its index on that axis.
+    _synth_n_chan = (int)_gnss_synth_channels.size();
+    for (std::int32_t f : _gnss_local_channels) {
+        const auto it = std::find(_gnss_synth_channels.begin(), _gnss_synth_channels.end(), f);
+        if (it == _gnss_synth_channels.end())
+            FATAL_ERROR("cudaGnssInject: covering channel {:d} is not on the synth array's "
+                        "channel axis (gnss_synth_channels) -- the correlator would never "
+                        "read this chain's replica there",
+                        f);
+        _h_chan_map.push_back((int)(it - _gnss_synth_channels.begin()));
     }
 
     voltage.register_consumer();
@@ -89,7 +83,7 @@ cudaGnssInject::cudaGnssInject(Config& config, const std::string& unique_name,
 
     // Control block: the epl layout without corr (see the header), sized for every PRN active
     // in every record (gnss_gpu::max_jobs).
-    _mem_ctl = config.get_default<std::string>(unique_name, "gnss_ctl_name", "gnss_n2ctl");
+    _mem_ctl = config.get<std::string>(unique_name, "gnss_ctl_name");
     _ctl_off_energy =
         gnss_gpu::off_prnctl() + sizeof(gnss_gpu::PrnCtl) * gnss_gpu::MAX_REC * S.n_prn;
     _ctl_bytes = _ctl_off_energy
@@ -104,11 +98,9 @@ cudaGnssInject::cudaGnssInject(Config& config, const std::string& unique_name,
              "relative to the decode (measured on sky 2026-07-30); with this false the "
              "synthetic lanes despread the conjugate of the sky and every tile reads NOISE.");
     INFO("cudaGnssInject: {:d} PRN slots x 4 lanes into '{:s}' [{:d}][{:d}][{:d}] at lanes "
-         "[{:d}, {:d}), {:d} records/frame, channels {:d}{:s}, conjugate {:s}",
+         "[{:d}, {:d}), {:d} records/frame, channels {:d}, conjugate {:s}",
          S.n_prn, _gnss_synth_name, _num_times, _synth_n_chan, _synth_lane_pitch, _synth_lane_base,
-         _synth_lane_base + _num_synth, n_rec, S.n_chan,
-         _gnss_synth_channels.empty() ? "" : " (compact channel axis)",
-         S._conjugate ? "ON" : "off");
+         _synth_lane_base + _num_synth, n_rec, S.n_chan, S._conjugate ? "ON" : "off");
 }
 
 cudaGnssChordTrackState* cudaGnssInject::st() {

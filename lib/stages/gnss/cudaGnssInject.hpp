@@ -29,7 +29,7 @@
  * Seeds, fleet trims and slot membership live in the command's @ref cudaGnssChordTrackState.
  * Several injectors (one per chain) can run in one kotekan instance, each with its own state
  * but one REST server between them, so each needs its own seed_endpoint, trim_endpoint,
- * set_trim_endpoint, get_prns_endpoint and set_prns_endpoint; the defaults would collide.
+ * set_trim_endpoint, get_prns_endpoint and set_prns_endpoint.
  *
  * Replicas are synthesized per record (hops_per_record; 4 records per 8192-hop frame at CHORD),
  * from gnss::propagate_seed at each record's window start with the fleet code trim from
@@ -49,22 +49,19 @@
  * @conf As the ring consumers (buffer_depth, num_times, num_elements, num_local_freq,
  *       voltage_name), plus the @ref cudaGnssChordTrackState keys (set `n_elements: 1`; it is
  *       unused here), and:
- * @conf  num_synth            Int. Lanes this chain writes (4 per PRN slot). Default 128.
+ * @conf  num_synth            Int. Lanes this chain writes (4 per PRN slot).
  * @conf  synth_lane_base      Int. First lane of this chain in the synth array, a multiple of
- *                             16 (tile rows). Default 0.
+ *                             16 (tile rows).
  * @conf  synth_lane_pitch     Int. Width of the synth array's lane axis (the correlator's
- *                             num_synth), a multiple of 16. Default num_synth.
+ *                             num_synth), a multiple of 16.
  * @conf  gnss_synth_name      String. Named GPU array shared with cudaCorrelatorDual.
- *                             Default "gnss_synth".
  * @conf  gnss_local_channels  List of Int. Local frame channel index of each covering
  *                             channel, in local (bank) order. Must have n_channels entries.
  *                             Global freq_ids do not go here.
  * @conf  gnss_synth_channels  List of Int. The synth array's channel axis as local frame
  *                             channels (the correlator's comb, for gnss_synth_compact); must
- *                             contain every gnss_local_channels entry. Default empty: every
- *                             local channel.
- * @conf  gnss_ctl_name        String. Named GPU array for the control block. Default
- *                             "gnss_n2ctl".
+ *                             contain every gnss_local_channels entry.
+ * @conf  gnss_ctl_name        String. Named GPU array for the control block.
  */
 class cudaGnssInject : public cudaCommand {
 public:
@@ -89,8 +86,7 @@ private:
     const std::string _voltage_name;
     const std::string _gnss_synth_name;
     std::vector<std::int32_t> _gnss_local_channels;
-    /// Synth array layout (see the @conf list). The defaults (0, num_synth, empty) give one
-    /// chain per array over every local channel.
+    /// Synth array layout (see the @conf list).
     const std::int32_t _synth_lane_base;
     const std::int32_t _synth_lane_pitch;
     std::vector<std::int32_t> _gnss_synth_channels;

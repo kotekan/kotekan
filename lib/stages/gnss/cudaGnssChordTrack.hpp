@@ -31,13 +31,13 @@
  * @conf channel_ids     List of Int. Global PFB bin of each covering channel, in local order.
  * @conf n_elements      Int. Required, but only logged.
  * @conf samples_per_data_set Int. Hops per frame.
- * @conf hops_per_record Int. Hops per record; must divide samples_per_data_set. Default 2048.
- * @conf fft_length      Int. Real samples per hop. Default 16384.
- * @conf sample_rate     Double. Real sample rate, Hz. Default 3.2e9.
+ * @conf hops_per_record Int. Hops per record; must divide samples_per_data_set.
+ * @conf fft_length      Int. Real samples per hop.
+ * @conf sample_rate     Double. Real sample rate, Hz.
  * @conf f_offset_hz     Double. Carrier offset from band centre, Hz (on CHORD, the carrier
- *                       itself). Default 0.
+ *                       itself).
  * @conf conjugate       Bool. The F-engine output is conjugated. Default false.
- * @conf dll_spacing     Double. Early/Late offset, chips. Default 0.5.
+ * @conf dll_spacing     Double. Early/Late offset, chips.
  * @conf frame0_utc      Double. UTC of absolute sample 0; overrides the telescope's. Default 0.
  * @conf seed_ttl_s      Double. Seed lifetime without a refresh, s; 0 = never. Default 60.
  * @conf trim_ttl_s      Double. Trim lifetime without a refresh, s; 0 = never. Default 0.
@@ -47,11 +47,11 @@
  * @conf despread_chips_centered Bool. Must be true when despread_max_chips is set; the capped
  *                               window is always centred. Default true.
  * @conf phi_fp16        Bool. Store the Phi tables as fp16. Default false.
- * @conf seed_endpoint   String. POST /set_seeds. Default "/chord_track/set_seeds".
- * @conf trim_endpoint   String. GET /get_trim. Default "/chord_track/get_trim".
- * @conf set_trim_endpoint String. POST /set_trim. Default "/chord_track/set_trim".
- * @conf get_prns_endpoint String. GET /get_prns. Default "/chord_track/get_prns".
- * @conf set_prns_endpoint String. POST /set_prns. Default "/chord_track/set_prns".
+ * @conf seed_endpoint   String. POST /set_seeds.
+ * @conf trim_endpoint   String. GET /get_trim.
+ * @conf set_trim_endpoint String. POST /set_trim.
+ * @conf get_prns_endpoint String. GET /get_prns.
+ * @conf set_prns_endpoint String. POST /set_prns.
  */
 class cudaGnssChordTrackState : public cudaCommandState {
 public:
@@ -132,8 +132,8 @@ public:
     // Geometry. n_prn is immutable; @c prns is not (see above).
     std::vector<int> prns;
     int n_prn = 0, n_chan = 0, n_elem = 0;
-    int hops_per_record = 0, n_hops_frame = 0, fft_len = 16384;
-    double sample_rate = 3.2e9, f_offset_hz = 0.0, dll_spacing = 0.5;
+    int hops_per_record = 0, n_hops_frame = 0, fft_len = 0;
+    double sample_rate = 0.0, f_offset_hz = 0.0, dll_spacing = 0.0;
     bool _conjugate = false; ///< F-engine conjugation (see DespreadParams::conj_data)
     double frame0_utc = 0.0; ///< UTC of absolute sample 0; 0 = unknown, and the record
                              ///< assembler then stamps records from the host clock

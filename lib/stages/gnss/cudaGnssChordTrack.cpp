@@ -28,14 +28,14 @@ cudaGnssChordTrackState::cudaGnssChordTrackState(Config& config, const std::stri
     n_chan = config.get<int>(unique_name, "n_channels");
     n_elem = config.get<int>(unique_name, "n_elements");
     n_hops_frame = config.get<int>(unique_name, "samples_per_data_set");
-    hops_per_record = config.get_default<int>(unique_name, "hops_per_record", 2048);
-    fft_len = config.get_default<int>(unique_name, "fft_length", 16384);
-    sample_rate = config.get_default<double>(unique_name, "sample_rate", 3.2e9);
-    f_offset_hz = config.get_default<double>(unique_name, "f_offset_hz", 0.0);
+    hops_per_record = config.get<int>(unique_name, "hops_per_record");
+    fft_len = config.get<int>(unique_name, "fft_length");
+    sample_rate = config.get<double>(unique_name, "sample_rate");
+    f_offset_hz = config.get<double>(unique_name, "f_offset_hz");
     // F-engine conjugation (see DespreadParams::conj_data). CHORD needs true: otherwise the
     // replica correlates with the conjugate of the sky and reads noise.
     _conjugate = config.get_default<bool>(unique_name, "conjugate", false);
-    dll_spacing = config.get_default<double>(unique_name, "dll_spacing", 0.5);
+    dll_spacing = config.get<double>(unique_name, "dll_spacing");
     trim_ttl_s = config.get_default<double>(unique_name, "trim_ttl_s", 0.0);
     trim_clamp = config.get_default<double>(unique_name, "trim_clamp", 3.0);
     // Record epoch: frame0_utc is the UTC of absolute sample 0, which is the telescope's
@@ -160,27 +160,22 @@ cudaGnssChordTrackState::cudaGnssChordTrackState(Config& config, const std::stri
     // first frame.
     fold.init(n_prn);
 
-    const std::string ep =
-        config.get_default<std::string>(unique_name, "seed_endpoint", "/chord_track/set_seeds");
+    const std::string ep = config.get<std::string>(unique_name, "seed_endpoint");
     kotekan::restServer::instance().register_post_callback(
         ep, std::bind(&cudaGnssChordTrackState::set_seeds_callback, this, _1, _2));
-    const std::string tep =
-        config.get_default<std::string>(unique_name, "trim_endpoint", "/chord_track/get_trim");
+    const std::string tep = config.get<std::string>(unique_name, "trim_endpoint");
     kotekan::restServer::instance().register_get_callback(
         tep, std::bind(&cudaGnssChordTrackState::get_trim_callback, this, _1));
     // GnssFleetTrim's actuator.
-    const std::string sep =
-        config.get_default<std::string>(unique_name, "set_trim_endpoint", "/chord_track/set_trim");
+    const std::string sep = config.get<std::string>(unique_name, "set_trim_endpoint");
     kotekan::restServer::instance().register_post_callback(
         sep, std::bind(&cudaGnssChordTrackState::set_trim_callback, this, _1, _2));
     // Slot membership. Always registered, with no enable flag on the node: whether to apply
     // swaps is the broker's decision (it also has a report-only mode).
-    const std::string gpe =
-        config.get_default<std::string>(unique_name, "get_prns_endpoint", "/chord_track/get_prns");
+    const std::string gpe = config.get<std::string>(unique_name, "get_prns_endpoint");
     kotekan::restServer::instance().register_get_callback(
         gpe, std::bind(&cudaGnssChordTrackState::get_prns_callback, this, _1));
-    const std::string spe =
-        config.get_default<std::string>(unique_name, "set_prns_endpoint", "/chord_track/set_prns");
+    const std::string spe = config.get<std::string>(unique_name, "set_prns_endpoint");
     kotekan::restServer::instance().register_post_callback(
         spe, std::bind(&cudaGnssChordTrackState::set_prns_callback, this, _1, _2));
     INFO_NON_OO("cudaGnssChordTrack: {:d} PRN x {:d} chan x {:d} elem, {:d} hops/record "
