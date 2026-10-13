@@ -245,7 +245,6 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
             _proj_dropped.assign((size_t)n, 0);
             _slot_was_run.assign((size_t)n, 0);
             _slot_run_since.assign((size_t)n, 0.0);
-            _slot_probe_broker.assign((size_t)n, 0);
             _cal_proj = _cal;
             _cap_plain.assign((size_t)n, -1.0);
             _cap_proj.assign((size_t)n, -1.0);
@@ -256,8 +255,6 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
             _proj_probe_frac.assign(fids.size(), 0.0);
             _proj_probe_on.assign(fids.size(), 0);
             _proj_probe_used.assign(fids.size(), 0);
-            _proj_steer_all.assign((size_t)n * fids.size() * _n_elements,
-                                   gnss::ElemSteer::cf(1.0f, 0.0f));
             _proj_steered.assign((size_t)n, 0);
             _proj_owner_probe = unique_name + "/probe";
             _proj_k_ch.assign(fids.size(), 0);
@@ -279,10 +276,8 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
     _phi_cyc.assign(n, 0.0);
     _phi_cmd_prev.assign(n, 0.0);
     _phi_cmd_ok.assign(n, 0);
-    _fcar_prev.assign(n, 0.0);
     _fnco_prev.assign(n, 0.0);
     _fcar_prev_ok.assign(n, 0);
-    _a_prev.assign(n, {0.0, 0.0});
     _a_prev_ok.assign(n, 0);
     _elem_prev_ok.assign(n, 0);
     _wstart_prev.assign(n, 0);
@@ -499,25 +494,6 @@ void GnssGpuRecordAssemble::set_sat_geometry_callback(kotekan::connectionInstanc
             _bore_post_t.store(now_s);
         }
         std::lock_guard<std::mutex> lk(_steer_mtx);
-        // "_probes": [prn, ...], this chain's noise probes (below-horizon PRNs). Once a post
-        // names them, the projection's probe stack uses exactly those slots; until then a probe
-        // is a slot running for at least elem_proj_probe_since_s with no fresh geometry
-        // (geometry is posted only above the horizon).
-        {
-            auto pi = request.find("_probes");
-            if (pi != request.end() && pi->is_array() && !_slot_probe_broker.empty()) {
-                std::fill(_slot_probe_broker.begin(), _slot_probe_broker.end(), 0);
-                for (const auto& v : *pi) {
-                    if (!v.is_number_integer())
-                        continue;
-                    const int prn = v.get<int>();
-                    for (size_t p = 0; p < _prns.size() && p < _slot_probe_broker.size(); ++p)
-                        if (_prns[p] == prn)
-                            _slot_probe_broker[p] = 1;
-                }
-                _probes_from_broker = true;
-            }
-        }
         for (auto it = request.begin(); it != request.end(); ++it) {
             const int prn = std::atoi(it.key().c_str());
             if (prn <= 0 || !it.value().is_array() || it.value().size() < 2)
@@ -581,10 +557,8 @@ int GnssGpuRecordAssemble::follow_frame_prns(const void* pctl_v, int n_prn) {
         _phi_cyc[(size_t)p] = 0.0;
         _phi_cmd_prev[(size_t)p] = 0.0;
         _phi_cmd_ok[(size_t)p] = 0;
-        _fcar_prev[(size_t)p] = 0.0;
         _fnco_prev[(size_t)p] = 0.0;
         _fcar_prev_ok[(size_t)p] = 0;
-        _a_prev[(size_t)p] = {0.0, 0.0};
         _a_prev_ok[(size_t)p] = 0;
         _elem_prev_ok[(size_t)p] = 0;
         _wstart_prev[(size_t)p] = 0;
@@ -719,9 +693,11 @@ void GnssGpuRecordAssemble::main_thread() {
             }
         }
         const int n_chan = hdr.n_chan;
-        // Output rows per spec: 4, or 6 when the frame carries the peel residual in rows 4/5.
-        // 0 reads as 4 (gnssGpuChain.hpp).
-        const int n_rows_spec = (hdr.n_rows_spec > 0) ? hdr.n_rows_spec : ROWS_PLAIN;
+        if (hdr.n_rows_spec != ROWS_PLAIN) {
+            FATAL_ERROR("GnssGpuRecordAssemble: frame n_rows_spec {:d} != ROWS_PLAIN ({:d})",
+                        hdr.n_rows_spec, ROWS_PLAIN);
+            return;
+        }
         const int64_t* winstart = (const int64_t*)(in + off_winstart());
         const PrnCtl* pctl = (const PrnCtl*)(in + off_prnctl());
         // Adopt the producer's slot -> PRN map before anything in this frame is labelled or
@@ -732,7 +708,7 @@ void GnssGpuRecordAssemble::main_thread() {
         // pass the writer's n_elem, or every energy read lands inside the corr block (and a zero
         // P energy makes the combiner treat the record as inactive).
         const double* energy = (const double*)(in
-                                               + off_energy(n_prn, n_chan, n_rows_spec,
+                                               + off_energy(n_prn, n_chan, ROWS_PLAIN,
                                                             (_n_elements > 0) ? _n_elements : 1));
         // Per-channel weights for the cross-channel sums (gnssChanPower.hpp): 1/rms of each
         // channel's measured power, scaled to mean 1, so a channel enters by its signal-to-noise
@@ -829,9 +805,8 @@ void GnssGpuRecordAssemble::main_thread() {
                     continue;
                 }
                 // Cross-channel sum over the covering mask, per correlator row: E, P, L and
-                // P_HEAD (the prompt's head segment, gnssRecord.hpp slots 16-18), plus rows 4/5
-                // (the peel residual, slots 20-23) when present. PrnCtl::job0 already carries
-                // the per-spec row stride, so the row is job0 + t.
+                // P_HEAD (the prompt's head segment, gnssRecord.hpp slots 16-18). PrnCtl::job0
+                // already carries the per-spec row stride, so the row is job0 + t.
                 //
                 // With an element axis the correlation array is [rows][n_chan][n_elem] and the
                 // sum runs per antenna. The energies are [rows][n_chan]: one replica is
@@ -839,14 +814,14 @@ void GnssGpuRecordAssemble::main_thread() {
                 // record header only. n_elements == 0 gives n_e = 1, the single-antenna layout.
                 const int n_e = (_n_elements > 0) ? _n_elements : 1;
                 const int ref_e = (_n_elements > 0) ? _reference_element : 0;
-                std::complex<double> g3[6]; // reference element, for the header + NCO/gain state
-                double e3[6];               // element-independent
-                _g_elem.assign((size_t)n_rows_spec * n_e, std::complex<double>(0.0, 0.0));
+                std::complex<double> g3[ROWS_PLAIN]; // reference element: header, NCO/gain state
+                double e3[ROWS_PLAIN];               // element-independent
+                _g_elem.assign((size_t)ROWS_PLAIN * n_e, std::complex<double>(0.0, 0.0));
                 // Live projection (see the header): a non-source slot's rows are projected in
                 // place in the input frame before anything reads them, so the sum below, the
                 // taps, the cube and the element blocks all see the same projected data.
                 if (_proj_k_rec > 0 && _proj_mode.load() == 2 && !_proj_isB[p])
-                    proj_slot_inplace(const_cast<double*>(corr), &c, n_chan, n_e, n_rows_spec);
+                    proj_slot_inplace(const_cast<double*>(corr), &c, n_chan, n_e, ROWS_PLAIN);
                 // Steer this satellite's elements if its geometry is fresh. The slot's table is
                 // copied under the lock and read from the copy, so a concurrent
                 // /set_sat_geometry cannot rewrite it mid-combine.
@@ -878,7 +853,7 @@ void GnssGpuRecordAssemble::main_thread() {
                         }
                     }
                 }
-                for (int t = 0; t < n_rows_spec; ++t) {
+                for (int t = 0; t < ROWS_PLAIN; ++t) {
                     const size_t row = (size_t)(c.job0 + t) * n_chan;
                     double e = 0.0;
                     for (int ch = 0; ch < n_chan; ++ch)
@@ -925,7 +900,7 @@ void GnssGpuRecordAssemble::main_thread() {
                     if (_elem_shared.load())
                         shared_hold(p);
                     if (ec.warm()) {
-                        for (int t = 0; t < n_rows_spec; ++t)
+                        for (int t = 0; t < ROWS_PLAIN; ++t)
                             g3[t] = ec.combine(&_g_elem[(size_t)t * n_e]);
                         // The deep fold's input: the same prompt by split aperture, one half of
                         // the elements derotated by the other half's phase (combine_split). A
@@ -1000,11 +975,10 @@ void GnssGpuRecordAssemble::main_thread() {
                 rec[gnss::REC_L_ENERGY] = (float)e3[2];
 
                 // Carrier NCO. reanchored 1 is a fresh acquisition and resets the phase history;
-                // f_nco changes the slope of phi, never steps it. reanchored 2 and 3 are the same
-                // continuous re-pin and differ only in who computes the step: 3 carries it in
-                // c.dcyc, because differencing two GHz-scale fcar values here would lose ~0.4 rad
-                // (gnssGpuChain.hpp PrnCtl::dcyc).
-                const bool repin = (c.reanchored == 2 || c.reanchored == 3);
+                // f_nco changes the slope of phi, never steps it. reanchored 3 is a continuous
+                // re-pin whose step the producer carries in c.dcyc (gnssGpuChain.hpp
+                // PrnCtl::dcyc).
+                const bool repin = (c.reanchored == 3);
                 if (c.reanchored == 1 || (repin && !_fcar_prev_ok[p])) {
                     // Fresh acquisition, or a re-pin with no previous fcar: no phase history to
                     // keep. Break the arc.
@@ -1023,11 +997,8 @@ void GnssGpuRecordAssemble::main_thread() {
                     // is then free, so a producer can re-pin every record and the within-record
                     // decoherence that grows with anchor age, ~(dop_rate*age*t_rec)^2, never
                     // builds up.
-                    const double t_pin = (double)wstart / _sample_rate;
-                    const double dcyc =
-                        (c.reanchored == 3) ? c.dcyc : (c.fcar - _fcar_prev[p]) * t_pin;
-                    _phi_cyc[p] += dcyc;
-                    _phi[p] = std::remainder(_phi[p] + 2.0 * M_PI * dcyc, 2.0 * M_PI);
+                    _phi_cyc[p] += c.dcyc;
+                    _phi[p] = std::remainder(_phi[p] + 2.0 * M_PI * c.dcyc, 2.0 * M_PI);
                 }
                 // Diagnostic pass-through: the values the despread actually handed the kernel
                 // (gnssRecord.hpp REC_ANG0, REC_PHI_DDOP). Written for every record, including
@@ -1092,7 +1063,7 @@ void GnssGpuRecordAssemble::main_thread() {
                         W.phi0[p] = _phi[p];
                     // n_reanchor counts only fresh acquisitions (reanchored 1), which reset _phi
                     // mid-window where no constant can undo it; consumers drop those windows.
-                    // Re-pins (2 and 3) were folded into _phi above and keep the window
+                    // Re-pins (3) were folded into _phi above and keep the window
                     // continuous, and a producer may re-pin every record.
                     if (c.reanchored == 1)
                         W.nreanchor[p] += 1;
@@ -1228,18 +1199,6 @@ void GnssGpuRecordAssemble::main_thread() {
                 rec[gnss::REC_PH_RE] = (float)gh_corr.real();
                 rec[gnss::REC_PH_IM] = (float)gh_corr.imag();
                 rec[gnss::REC_PH_ENERGY] = (float)e3[3];
-                // Peel residual (slots 20-23), only when the frame carries rows 4/5: the prompt
-                // and its head on the voltage after this PRN's own waveform was subtracted, with
-                // the prompt's rotation so the combiner can apply the same per-segment overlay
-                // wipe. Left at zero otherwise, which consumers read as absent.
-                if (n_rows_spec > ROW_RES_PH) {
-                    const std::complex<double> gr = g3[ROW_RES_P] * rot;
-                    const std::complex<double> grh = g3[ROW_RES_PH] * rot;
-                    rec[gnss::REC_RES_RE] = (float)gr.real();
-                    rec[gnss::REC_RES_IM] = (float)gr.imag();
-                    rec[gnss::REC_RES_PH_RE] = (float)grh.real();
-                    rec[gnss::REC_RES_PH_IM] = (float)grh.imag();
-                }
                 // Element blocks. Every antenna gets the same rotation: the NCO is a per-PRN
                 // model, not a per-antenna one, so the inter-element phase differences, which are
                 // the measurement, are preserved.
@@ -1258,20 +1217,9 @@ void GnssGpuRecordAssemble::main_thread() {
                         eb[gnss::ELEM_L_IM] = (float)gL.imag();
                         eb[gnss::ELEM_PH_RE] = (float)gH.real();
                         eb[gnss::ELEM_PH_IM] = (float)gH.imag();
-                        if (n_rows_spec > ROW_RES_PH) {
-                            const std::complex<double> gr =
-                                _g_elem[(size_t)ROW_RES_P * n_e + el] * rot;
-                            const std::complex<double> grh =
-                                _g_elem[(size_t)ROW_RES_PH * n_e + el] * rot;
-                            eb[gnss::ELEM_RES_RE] = (float)gr.real();
-                            eb[gnss::ELEM_RES_IM] = (float)gr.imag();
-                            eb[gnss::ELEM_RES_PH_RE] = (float)grh.real();
-                            eb[gnss::ELEM_RES_PH_IM] = (float)grh.imag();
-                        }
                     }
                 }
 
-                _a_prev[p] = (e3[1] > 0.0) ? g_corr / e3[1] : std::complex<double>(0.0, 0.0);
                 _a_prev_ok[p] = 1;
                 _elem_prev_ok[p] = 1;
                 _wstart_prev[p] = wstart;
@@ -1289,7 +1237,6 @@ void GnssGpuRecordAssemble::main_thread() {
                     _phi_cmd_ok[p] ? (float)(phi_cmd_cyc - _phi_cmd_prev[p]) : 0.0f;
                 _phi_cmd_prev[p] = phi_cmd_cyc;
                 _phi_cmd_ok[p] = 1;
-                _fcar_prev[p] = c.fcar;
                 _fcar_prev_ok[p] = 1;
             }
 
@@ -2183,7 +2130,6 @@ void GnssGpuRecordAssemble::get_elem_cal_callback(kotekan::connectionInstance& c
         pj["probe_frac_min"] = _proj_probe_frac_min.load();
         pj["group"] = _proj_group;
         pj["sys"] = std::string(1, _proj_sys);
-        pj["probes_from_broker"] = _probes_from_broker.load();
         pj["k"] = _proj_k_rec;
         pj["us_per_record"] = _proj_us;
         pj["active_records"] = _proj_active_records;
@@ -2250,11 +2196,6 @@ void GnssGpuRecordAssemble::proj_reset_slot(size_t p, double now_s) {
     _proj_dropped[p] = 0;
     _slot_was_run[p] = 0;
     _slot_run_since[p] = now_s;
-    {
-        // The REST geometry handler writes this vector under _steer_mtx; so do we.
-        std::lock_guard<std::mutex> lk(_steer_mtx);
-        _slot_probe_broker[p] = 0;
-    }
 }
 
 void GnssGpuRecordAssemble::proj_prepare_record(const double* corr, const void* pctl_rec_v,
@@ -2296,14 +2237,13 @@ void GnssGpuRecordAssemble::proj_prepare_record(const double* corr, const void* 
     }
 
     // 1. Sources among the own slots: running, geometry fresh, inside elem_proj_deg of
-    //    boresight; nearest first, at most rank_max. A probe (the broker's "_probes", or else a
-    //    slot running for at least elem_proj_probe_since_s with no fresh geometry) feeds the
-    //    probe stack.
+    //    boresight; nearest first, at most rank_max. A probe (a slot running for at least
+    //    elem_proj_probe_since_s with no fresh geometry; geometry is posted only above the
+    //    horizon) feeds the probe stack.
     const double az = _bore_az_deg * M_PI / 180.0, el = _bore_el_deg * M_PI / 180.0;
     const double eb[3] = {std::cos(el) * std::sin(az), std::cos(el) * std::cos(az), std::sin(el)};
     std::vector<std::pair<double, int>> cand;
     std::vector<uint8_t> probe_flag((size_t)n_prn, 0);
-    const bool broker_probes = _probes_from_broker.load();
     const double deg = _proj_deg.load();
     {
         std::lock_guard<std::mutex> lk(_steer_mtx);
@@ -2318,10 +2258,7 @@ void GnssGpuRecordAssemble::proj_prepare_record(const double* corr, const void* 
                 const double sep = std::acos(c) * 180.0 / M_PI;
                 if (sep < deg)
                     cand.emplace_back(sep, p);
-            } else if (broker_probes
-                           ? (_slot_probe_broker[(size_t)p] != 0)
-                           : (!fresh
-                              && now_s - _slot_run_since[(size_t)p] >= _proj_probe_since_s)) {
+            } else if (!fresh && now_s - _slot_run_since[(size_t)p] >= _proj_probe_since_s) {
                 probe_flag[(size_t)p] = 1;
             }
         }
@@ -2548,9 +2485,7 @@ void GnssGpuRecordAssemble::proj_prepare_record(const double* corr, const void* 
     for (int ch = 0; ch < n_chan; ++ch) {
         gnss::ProjEntry e;
         e.owner = unique_name;
-        e.sys = _proj_sys;
         e.src = 0;
-        e.wstart = wstart;
         e.t_pub = now_s;
         e.n = n_e;
         e.k = 0;
@@ -2559,11 +2494,6 @@ void GnssGpuRecordAssemble::proj_prepare_record(const double* corr, const void* 
             const auto& T = *_proj_own[(size_t)p];
             if (!T.warm(ch) || T.k(ch) <= 0 || e.k >= kmax)
                 continue;
-            if (e.k == 0) {
-                e.prn = _prns[(size_t)p];
-                e.sep_deg = cand[ci].first;
-                e.frac = T.frac(ch, 0);
-            }
             unsteer(ci, ch, T.q(ch, 0), _v_scratch.data());
             for (int i = 0; i < n_e; ++i)
                 e.q.emplace_back((float)_v_scratch[(size_t)i].real(),
@@ -2577,10 +2507,7 @@ void GnssGpuRecordAssemble::proj_prepare_record(const double* corr, const void* 
         if (_proj_probe_used[(size_t)ch] && _proj_probe_on[(size_t)ch] && _proj_probe.k(ch) > 0) {
             gnss::ProjEntry pe;
             pe.owner = _proj_owner_probe;
-            pe.sys = _proj_sys;
             pe.src = 1;
-            pe.frac = _proj_probe.frac(ch, 0);
-            pe.wstart = wstart;
             pe.t_pub = now_s;
             pe.n = n_e;
             pe.k = 0;

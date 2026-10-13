@@ -82,8 +82,7 @@ private:
                                   ///< inter-element fringe rotation as a satellite transits
     // Element steering (gnssElemSteer.hpp).
     gnss::ElemSteer _steer;          ///< per-(slot, channel, element) geometric phasors
-    std::mutex _steer_mtx;           ///< guards _steer and _slot_probe_broker (REST vs main)
-    double _steer_t0 = 0.0;          ///< unused
+    std::mutex _steer_mtx;           ///< guards _steer (REST vs main)
     double _elem_sum_min_w = 0.02;   ///< the reference element stays the phase anchor while its
                                      ///< weight is at least this fraction of the strongest's
     std::vector<gnss::ElemCal> _cal; ///< per PRN slot
@@ -185,7 +184,7 @@ private:
     uint8_t _steer_nchan_warned = 0;
     std::vector<uint8_t> _anchor_warned; ///< one WARN per PRN when the phase anchor leaves the
                                          ///< reference element; cleared when the cal is rebuilt
-    /// Scratch, [n_rows_spec][n_elem]: the per-antenna covering-mask sum, reused per PRN so the
+    /// Scratch, [ROWS_PLAIN][n_elem]: the per-antenna covering-mask sum, reused per PRN so the
     /// per-record path does not allocate.
     std::vector<std::complex<double>> _g_elem;
 
@@ -195,9 +194,7 @@ private:
                                        ///< export; _phi takes the same steps, wrapped, in rad
     std::vector<double> _phi_cmd_prev; ///< previous record's commanded phase (cycles)
     std::vector<uint8_t> _phi_cmd_ok;
-    std::vector<double> _fcar_prev; ///< previous record's replica f_ref (to size the re-pin step)
     std::vector<uint8_t> _fcar_prev_ok;
-    std::vector<std::complex<double>> _a_prev;
     std::vector<uint8_t> _a_prev_ok;
     std::vector<int64_t> _wstart_prev;
 
@@ -311,7 +308,7 @@ private:
     void set_elem_gain_callback(kotekan::connectionInstance& conn, nlohmann::json& request);
     /// Geometry for the element steering: POST {"<prn>": [az_deg, el_deg, az_rate_dps,
     /// el_rate_dps, t_utc], ...} (a bare [az_deg, el_deg] is held), with optional
-    /// "_bore": [sep_deg, t_utc] and "_probes": [prn, ...].
+    /// "_bore": [sep_deg, t_utc].
     void set_sat_geometry_callback(kotekan::connectionInstance& conn, nlohmann::json& request);
     void set_elem_sum_adapt_callback(kotekan::connectionInstance& conn, nlohmann::json& request);
     void set_elem_sum_shared_callback(kotekan::connectionInstance& conn, nlohmann::json& request);
@@ -341,7 +338,7 @@ private:
     /// covariance. A probe direction (own or a sibling's) is used only while the broker reports
     /// a satellite inside elem_proj_deg, and not when proj_identify names it as one steered
     /// slot's own signature. A slot that has run for elem_proj_probe_since_s and has no fresh
-    /// geometry is a probe, unless the broker names the probes in "_probes".
+    /// geometry is a probe.
     std::atomic<int> _proj_mode{0};
     std::atomic<double> _proj_deg{4.0};
     std::atomic<int> _proj_rank_max{2};
@@ -369,9 +366,6 @@ private:
     std::vector<uint8_t> _proj_isProbe;   ///< [n_prn] slot fed the probe stack this record
     std::vector<uint8_t> _slot_was_run;   ///< [n_prn] run flag of the previous record
     std::vector<double> _slot_run_since;  ///< [n_prn] steady time the slot started running
-    std::vector<uint8_t>
-        _slot_probe_broker; ///< [n_prn] named a probe by the broker (under _steer_mtx)
-    std::atomic<bool> _probes_from_broker{false};
     int64_t _proj_wstart_prev = 0;
     int _proj_k_rec = 0; ///< max k over channels this record (0 = inert)
     uint64_t _proj_solve_ctr = 0;
@@ -381,9 +375,7 @@ private:
     std::vector<std::complex<double>>
         _g_proj; ///< [n_elem] projected, steered, channel-summed prompt
     std::vector<std::complex<double>> _v_scratch; ///< [n_elem]
-    std::vector<gnss::ElemSteer::cf>
-        _proj_steer_all; ///< [n_prn][n_chan][n_elem]; allocated but never written or read
-    std::vector<uint8_t> _proj_steered; ///< [n_prn] slot had a fresh table this record
+    std::vector<uint8_t> _proj_steered;           ///< [n_prn] slot had a fresh table this record
     std::string _proj_owner_probe; ///< unique_name + "/probe" (the board owner of the probe stack)
     std::vector<int> _proj_sig;    ///< signature of the source set, for change detection
     std::vector<uint8_t> _proj_probe_used;  ///< [n_chan] a probe direction was used this record
