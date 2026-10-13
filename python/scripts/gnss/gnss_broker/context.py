@@ -22,9 +22,7 @@ THE SPLIT BELOW IS LOAD-BEARING, not organisational:
 
 ⚠️ `t0` IS THE FROZEN CYCLE CLOCK, NOT THE WALL CLOCK. Every gate, age and EMA in a pass
 evaluates at one instant rather than smearing over the pass's own processing time. Where a
-stage genuinely needs real elapsed time -- the #90 admission gate's decorrelation window is the
-standing example, because it is a statement about fold windows and not about cycles -- it must
-call `time.time()` explicitly and say why.
+stage genuinely needs real elapsed time it must call `time.time()` explicitly and say why.
 
 ⚠️ THIS IS A REFERENCE HOLDER, NOT A FACADE. It deliberately does no work: no properties, no
 derived values, no logic. Anything computed belongs in the stage that computes it or on one of
@@ -110,7 +108,6 @@ class ChainContext(object):
         "dllp",
         "drp",
         "handover",
-        "adm_gate",
         "g3_ramp",
         "cb",
         "car",

@@ -39,92 +39,11 @@ def stage_fleet_trim_arming(ctx):
         ]
         for _p in _now_present:
             ctx.dls.hold[_p] = time.time()
-        # ── #91(b): THE BROWNOUT FREEZE ──────────────────────────────────────────────
-        # A chain-wide presence collapse is not N satellites setting; it is the FOLD
-        # failing (E3: every sat at once, ~9 min, while the sibling band held). Releasing
-        # the trims turns that fade into a full per-sat re-pull, because an unarmed trim
-        # leaks to erasure in ~5.6 s.
-        #
-        # ⚠️ THE HOLD IS A FREEZE, NOT AN ARM, AND THE DIFFERENCE IS THE WHOLE POINT.
-        # Leaving the PRNs armed would have the C++ loop integrate a NOISE discriminator:
-        # `gnssFleetDll.hpp` says outright that the probe/deep/quality gates are POLICY and
-        # live in this broker, so the fast loop drives whatever it is handed. Disarming
-        # erases the trim. Only zeroing BOTH gain and leak retains the value -- and the
-        # policy already carries them per chain, so the freeze needs no C++ change:
-        # dll_integrate((1-0)*trim + 0*tau) == trim, exactly.
-        #
-        # Per-chain is the right granularity precisely BECAUSE a brownout is chain-wide.
-        _brown_hold = (
-            ctx.args.fleet_trim_brownout_hold_s > 0.0 and ctx.brown.established()
-        )
-        # ── #106 ESTABLISHMENT FREEZE: BUILT, FLOWN, FALSIFIED, DEFAULT OFF (2026-09-02) ──
-        # ⚠️⚠️ DO NOT TURN THIS ON WITHOUT NEW EVIDENCE. It is kept because the instrument
-        # is worth having and the flight is worth recording, not because it works.
-        #
-        # THE HYPOTHESIS. Every broker restart cost ~8 min of gps_l5 q thrash (15:28,
-        # 16:20 and 17:32 on 2026-09-02), and the FLEET-TRIM READBACK series looked like a
-        # confession -- the fast loop driving itself into its own clamp and back out:
-        #
-        #   17:32:44  mean +0.170  max 0.546     restart; normal
-        #   17:34:44  mean +1.109  max 2.182     climbing through the warmup
-        #   17:36:46  mean +1.144  max 3.000     AT THE CLAMP (feed opened 17:36:12)
-        #   17:38:50  mean +1.701  max 3.000     still clamped
-        #   17:40:53  mean +0.162  max 0.591     collapsed back; steady state is 0.2-0.5
-        #
-        # Common-mode too -- all seven PRNs one sign -- which reads as "chasing a clock or
-        # seed STEP rather than per-sat noise". Freezing it held max|trim| at 0.615 across
-        # five identical readbacks through exactly that window: the actuation worked.
-        #
-        # ⚠️ AND THE FLEET GOT WORSE. Paired restarts, gps_l5, fraction of rows above the
-        # q=2.2 gate over the first nine minutes:
-        #
-        #   loop LIVE   (17:32)   57-95%   mean_q 2.4-3.3
-        #   loop FROZEN (19:17)   14-38%   mean_q 1.1-1.8
-        #
-        # Worse on every single minute, and BOTH converge to ~100% at +9 to +12 min. That
-        # last fact is the real finding: THE TRANSIENT'S LENGTH IS SET BY THE SEEDS
-        # SETTLING, NOT BY THE LOOP. So the clamp excursion is a SYMPTOM. The loop was not
-        # integrating garbage -- it was absorbing a real common-mode establishment offset,
-        # and it reached the clamp because the offset exceeds 3 chips. Freeze it and
-        # nothing absorbs that offset, the despread sits off-peak, and q collapses.
-        #
-        # A real fix belongs at the seed/clock step, or in a WIDER clamp during
-        # establishment -- the opposite direction from holding the loop down.
-        #
-        # ⚠️ INERT UNDER --transcript-read, AND THAT IS A CORRECTNESS REQUIREMENT, NOT A
-        # CONVENIENCE. The window is wall-clock from broker start, so in a replay whether
-        # a given cycle is inside it depends on how long the replay TAKES -- a fixture
-        # digest that moves with machine speed is a gate that cries wolf, and this repo's
-        # rule is that such a gate is worse than none. Replay has no clock bootstrap, no
-        # seed audit and no joint feed to settle either, so there is nothing here for it
-        # to reproduce. Same treatment as the #90 admission gate, which broker_equiv is
-        # blind to by construction for the same reason; the coverage lives in
-        # test_trimarm.py instead, where the clock is an argument.
-        _estab_left = 0.0
-        if ctx.args.fleet_trim_establish_hold_s > 0.0 and not getattr(
-            ctx.args, "transcript_read", None
-        ):
-            _estab_left = (
-                ctx.args.joint_feed_warmup_s
-                + ctx.args.fleet_trim_establish_hold_s
-                - (time.time() - ctx.broker_t0)
-            )
-        _estab_hold = _estab_left > 0.0
-        # ⚠️ A FREEZE, NOT A DISARM, for exactly the reason #91(b) records below: disarming
-        # ERASES the standing trim (an unarmed trim leaks to zero in ~5.6 s), which would
-        # turn every broker restart into a full per-sat re-pull. Zeroing gain AND leak
-        # retains it -- dll_integrate((1-0)*trim + 0*tau) == trim -- and needs no C++
-        # change. The PRNs stay armed so the Python integrator still stands down and
-        # authority is never held by both arms.
-        _freeze = _brown_hold or _estab_hold
-        _hold_s = (
-            max(ctx.args.fleet_trim_hold_s, ctx.args.fleet_trim_brownout_hold_s)
-            if _brown_hold
-            else ctx.args.fleet_trim_hold_s
-        )
         # PRESENCE WITH A HOLD, not presence sampled at an instant -- see the flag.
         _armed = sorted(
-            _p for _p, _t in ctx.dls.hold.items() if time.time() - _t < _hold_s
+            _p
+            for _p, _t in ctx.dls.hold.items()
+            if time.time() - _t < ctx.args.fleet_trim_hold_s
         )
         # THE HANDOVER'S HALF-STEP: record what we are about to hand the fast loop, so
         # NEXT cycle's slow integrator stands down for exactly the PRNs the C++ side is
@@ -157,9 +76,8 @@ def stage_fleet_trim_arming(ctx):
                     # rate. The slow DLL's dll_gain/dll_leak_present are NOT reused here: those
                     # constants are per-update at THIS process's cadence, and reusing them at
                     # 23.84 Hz is exactly the limit cycle of 2026-08-15. See the two flags.
-                    # #91(b): frozen during a brownout -- retained, driven by nothing.
-                    "gain_per_s": 0.0 if _freeze else ctx.args.fleet_trim_bandwidth,
-                    "leak_per_s": 0.0 if _freeze else ctx.args.fleet_trim_leak_per_s,
+                    "gain_per_s": ctx.args.fleet_trim_bandwidth,
+                    "leak_per_s": ctx.args.fleet_trim_leak_per_s,
                     "clamp": 3.0,
                     "spacing": ctx.args.dll_spacing,
                     "targets": ["%s/set_trim" % t for t in ctx.trackers],
@@ -197,30 +115,6 @@ def stage_fleet_trim_arming(ctx):
             # (trim_ttl_s) rather than standing forever.
             ctx.dls.stat["fail"] += 1
             ctx.dls.stat["last_err"] = str(_e)
-        if _brown_hold:
-            # Loud and rate-limited: a frozen loop is a state someone must be able to see
-            # in the log, or "the trims stopped moving" reads as a dead controller.
-            _log_rl(
-                "fleet-trim-freeze",
-                "%s: #91 BROWNOUT FREEZE -- %d PRN(s) HELD (gain=leak=0, hold %.0f s): "
-                "standing trims retained, loop driving nothing until presence returns"
-                % (log_tag() or ctx.args.signal, len(_armed), _hold_s),
-                every_s=30.0,
-            )
-        elif _estab_hold:
-            # Named apart from the brownout on purpose: same actuation, completely
-            # different cause, and reading an establishment freeze as a presence collapse
-            # would send someone hunting a fade that never happened.
-            _log_rl(
-                "fleet-trim-estab",
-                "%s: ESTABLISHMENT FREEZE -- %d PRN(s) HELD (gain=leak=0, %.0f s "
-                "remain): standing trims retained while the clock, the seed audit and "
-                "the joint feed settle. Without this the fast loop chases the "
-                "establishment step common-mode into its %.1f-chip clamp for ~8 min "
-                "(measured 2026-09-02) and every q-gated instrument reads the thrash."
-                % (log_tag() or ctx.args.signal, len(_armed), _estab_left, 3.0),
-                every_s=60.0,
-            )
         _log_rl(
             "fleet-trim",
             "FLEET-TRIM %s: %d PRN(s) armed to %s, %d posts / %d failed%s"

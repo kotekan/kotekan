@@ -98,7 +98,6 @@ class DllLoopState(object):
         "armed_last",
         "stat",
         "deep_gate_seen",
-        "reseed_prns",
     )
 
     def __init__(self):
@@ -126,7 +125,6 @@ class DllLoopState(object):
         self.deep_gate_seen = (
             {}
         )  # prn -> last time the SEARCH saw it above the deep bar (#79)
-        self.reseed_prns = None  # the #50 armed set: None, True (all), or a set of PRNs
 
 
 class HoldState(object):
@@ -166,7 +164,6 @@ class CpTracking(object):
         "ph_hist",
         "dop_clamped",
         "nh_pending",
-        "integ_hist",
         "rej_streak",
         "nh_votes",
         "nh_common",
@@ -193,10 +190,6 @@ class CpTracking(object):
             None  # (delta_chips, utc_resolved, n_prns, weight_frac) once the
         )
         # fleet consensus resolves; a run constant barring clock steps
-        self.integ_hist = (
-            {}
-        )  # prn -> [(t, integ_chips)]: per-sat integrity baseline for
-        # the RELATIVE escape veto (--integ-veto-baseline-s, #98/#99)
         self.rej_streak = {}  # prn -> consecutive cp-rate rejections; at
         # --fit-flush-on-reject the wrap-poisoned history is flushed
 

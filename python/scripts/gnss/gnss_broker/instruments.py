@@ -203,7 +203,7 @@ def instr_tap_walk(ctx):
         # the gathered frames; everything after it -- the aggregate, the per-channel
         # merge, the presence policy -- is unchanged and stays here.
         _tsrc_cpp = None
-        if ctx.args.comb_taps_cpp and ctx.args.fleet_trim_url:
+        if ctx.args.comb_taps_cpp >= 2 and ctx.args.fleet_trim_url:
             _tsrc_cpp = lambda _ch, _pr: combdll.taps_from_rest(
                 _get, ctx.args.fleet_trim_url, _ch, prns=_pr
             )
@@ -211,7 +211,7 @@ def instr_tap_walk(ctx):
             _cf = combdll.fleet_dll_comb(
                 ctx.telem_client,
                 ctx.telem_chain,
-                taps_src=_tsrc_cpp if ctx.args.comb_taps_cpp >= 2 else None,
+                taps_src=_tsrc_cpp,
                 n_win=(ctx.args.telem_dll_windows or ctx.args.telem_windows),
                 min_instances=ctx.args.dll_min_instances,
                 k_sigma=ctx.args.dll_quality_sigma,
@@ -235,62 +235,6 @@ def instr_tap_walk(ctx):
                 "comb-dll-err",
                 "COMB-DLL: failed (%s) -- the polled discriminator is unchanged" % e,
             )
-        # SHADOW: fetch the C++ taps, build the SAME product from them, and report the
-        # paired difference on the loop's own cycles. Costs one GET and one rebuild and
-        # changes nothing -- which is the point: the offline gate proves the arithmetic
-        # on identical bytes, and this proves the two arms are looking at the same sky
-        # through the same window depth with the same instance tags, which no offline
-        # fixture can.
-        if ctx.args.comb_taps_cpp == 1 and _tsrc_cpp is not None and _cf:
-            try:
-                _cx = combdll.fleet_dll_comb(
-                    ctx.telem_client,
-                    ctx.telem_chain,
-                    taps_src=_tsrc_cpp,
-                    n_win=(ctx.args.telem_dll_windows or ctx.args.telem_windows),
-                    min_instances=ctx.args.dll_min_instances,
-                    k_sigma=ctx.args.dll_quality_sigma,
-                    q_fallback=ctx.args.dll_quality_min,
-                    prns=set(ctx.seeds) or None,
-                    probe_prns=ctx.probe_set,
-                    deep_gate_prns=ctx.dllp.deep_gate_eff,
-                    deep_gate_margin=ctx.args.dll_deep_gate_margin,
-                    coh_from=ctx.dllp.fleet,
-                    admit_displaced=ctx.dllp.admit_disp,
-                )
-                _sh = sorted(set(_cf) & set(_cx))
-                if _sh:
-                    _dd = sorted(abs(_cf[p]["disc"] - _cx[p]["disc"]) for p in _sh)
-                    _dq = sorted(abs(_cf[p]["q"] - _cx[p]["q"]) for p in _sh)
-                    _log(
-                        "COMB-TAPS shadow %s: %d shared PRN(s) (py %d, cpp %d); "
-                        "|ddisc| med %.2e max %.2e; |dq| med %.2e max %.2e"
-                        % (
-                            ctx.telem_chain,
-                            len(_sh),
-                            len(_cf),
-                            len(_cx),
-                            _dd[len(_dd) // 2],
-                            _dd[-1],
-                            _dq[len(_dq) // 2],
-                            _dq[-1],
-                        )
-                    )
-                else:
-                    _log_rl(
-                        "comb-taps-empty",
-                        "COMB-TAPS shadow %s: NO SHARED PRNs (py %d, cpp %d) -- "
-                        "that is a chain-name, window-depth or instance-tag "
-                        "mismatch, not a rounding difference"
-                        % (ctx.telem_chain, len(_cf), len(_cx)),
-                        every_s=60.0,
-                    )
-            except Exception as e:
-                _log_rl(
-                    "comb-taps-sh",
-                    "COMB-TAPS shadow failed (%s) -- nothing changed" % e,
-                    every_s=60.0,
-                )
         if _cf:
             _shared = sorted(set(_cf) & set(ctx.dllp.fleet or {}))
             _dd = sorted(_cf[p]["disc"] - ctx.dllp.fleet[p]["disc"] for p in _shared)

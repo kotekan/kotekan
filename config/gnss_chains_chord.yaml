@@ -277,7 +277,7 @@ common:
   # coherence_s and the quadrature fallback come from the combiner's DEEP FOLD, which is not
   # in the gathered stream. That poll still must be made.
     telem-coherent: true
-  # ⚠️ SHADOW (1), NOT ARMED (2) -- 2026-08-23. Takes the comb DLL's per-PRN lobe and
+  # Takes the comb DLL's per-PRN lobe and
   # per-channel taps from the gather's C++ reduction (<fleet-trim-url>/get_taps) instead of
   # rebuilding them here by walking every (window, instance, record, PRN, channel) of the
   # gathered stream: ~140k channel-tuples per chain per cycle, ~700k across the fleet, ~18% of
@@ -289,9 +289,8 @@ common:
   # cannot see is a LIVE mismatch -- chain naming, window depth, instance tags -- which would
   # give two self-consistent answers about different things. Nor can broker_equiv: the gather
   # is a raw socket, not transport, so a replay carries no telemetry at all and falls back to
-  # the polled discriminator. Shadow measures exactly that: watch the COMB-TAPS line's
-  # |ddisc| / |dq| and its shared-PRN count before setting 2.
-  # ⚠️ ARMED (2) 2026-08-23, on this evidence, and revert to 1 or 0 with one line:
+  # the polled discriminator.
+  # ⚠️ ARMED (2) 2026-08-23, on this evidence, and revert to 0 with one line:
   #   OFFLINE, identical bytes: e/p/l/n_chan agree to 1e-9, n_rec and hop EXACT, per PRN
   #     AND per channel (fleetdll_gate.py TAPS + SPLIT-RING legs).
   #   LIVE shadow, all five chains: same PRN counts, ALL shared -- so chain naming, instance
@@ -371,16 +370,6 @@ chains:
     # clock, as the model-primary chains always have. Pre-reg:
     # fixtures/expectations_20260830_cp_rate_model_primary.txt
         cp-rate-model-primary: 1
-    # ARMED 2026-08-28 late (#98 follow-on): the escape referee's INTEGRITY VETO judged on
-    # the EXCURSION from the sat's own 10-min integ median, not the absolute value. #99's
-    # chronic per-sat model offsets (G28 -8 chips all evening) made the absolute veto
-    # permanent for exactly the sats that needed escapes: a hold with a bad frozen entry
-    # rate walked +28 chips in 5 min, un-evictable. Judge: a walking hold ESCAPEs within
-    # ~2 min of its CP_ERR 9-median crossing the bar, CP_ERR resets <1 chip on re-anchor,
-    # p recovers; REVERT if any sat logs >4 ESCAPEs in 10 min (escape churn is what the
-    # veto exists to prevent) or gps dropout exceeds 2x the bds_b2a control.
-    # Revert: delete this line + broker restart (absolute veto returns).
-        integ-veto-baseline-s: 600
     # ARMED 2026-08-28 late (#100): flush a PRN's cp-fit history after 3 consecutive
     # cp-rate rejections -- a rejected fit also poisons the seed POSITION (evaluated from
     # the same blown fit), and the poison self-sustains for ~8 min at fit-hist-len 256
@@ -1178,21 +1167,6 @@ chains:
     # Controls kept: bds_b2b (same-band pair to the armed b2a) and gps_l5, both unarmed.
         trackers: "http://cx19:12048/gnss{0..1}_e5a_inject,http://cx27:12048/gnss{0..1}_e5a_inject,http://cx42:12048/gnss{0..1}_e5a_inject,http://cx43:12048/gnss{0..1}_e5a_inject,http://cx44:12048/gnss{0..1}_e5a_inject,http://cx51:12048/gnss{0..1}_e5a_inject"
         combiner: gnss0_e5a_n2combine
-    # ARM 17 RE-FLY (2026-08-25 12:2x UTC): row-injected fold rates on the v1-fed rows.
-    # The 08-21 "wash" was VOID (dead gather loop); the 08-23 staleness objection is
-    # answered by the 16 s span feed (rows ~0.3 Hz, e5b-fed, shared per (E,prn)).
-    # Confident rows only (sigma bar 0.5, the void flight's named lever). Controls
-    # in-poll: gal_e5b + bds_b2a folds. Pre-reg: expectations_20260825_arm17_refly.txt.
-    # kcoh-rate-from-row: 1    # TOGGLED OFF 14:1x 08-25: attribution test -- Galileo q SD
-    # kcoh-row-max-sigma: 0.5  # doubled across today's arm boundaries (both bands) while
-    #                          # b2a improved; 35-min paired toggle decides arm vs sky.
-    #                          # Re-arm or retire per the verdict in the arm-17 fixture.
-    # #90 ARM (2026-08-24 ~23:3x UTC, THIS CHAIN ONLY -- gal_e5b left off as the same-sat
-    # in-time control while E32 is latched on BOTH bands): the #50 far-regime re-seed plus
-    # the absent-admission clause. E32's latch anatomy and the pre-registered falsifier are
-    # in fixtures/expectations_20260824_e32_readmission.txt. Disarm = comment these two out.
-    # reseed-spec-tau: "32"   # DISARMED 00:2x 08-25: F2 tripped (sign-alternating fires)
-    # reseed-admit-absent: 1
     # GAP-1 v1 SHADOW ARM (2026-08-25 00:23 UTC): 16 s baseline for the fine phase
     # observable. This chain's rrate-phase-feed is FALSE, so only the JRRP shadow changes;
     # e5b (per-poll) is the control. Pre-reg: expectations_20260825_gap1_spanv1.txt.
@@ -1738,60 +1712,6 @@ chains:
     # stranded it. Arm A is not an independent knob here, it is the other half.
     # bds_b2a keeps arm A ALONE, so the pair stays separable: bds isolates the C++ floor,
     # gal tests the complete mechanism. Revert: delete this line + broker restart.
-    # ── #50 FAR-REGIME RE-SEED, same satellite, 2026-08-12 ────────────────────────────
-    # The deep gate above admits E33 to the loop; this gives the loop something to follow
-    # when it gets there. Far off-peak E, P and L are ALL noise, so q -> 1.0 and disc -> 0 --
-    # measured on E33 within minutes of arming #49 (q 0.96-1.04, disc -0.02, trim 0.00, while
-    # deep_snr was 23-36). spec_tau reads the offset off the CROSS-CHANNEL phase ramp instead,
-    # which does not need E/P/L to straddle the peak.
-    # Fires only when: #49 says present AND q < 1.20 AND spec_peak_ratio >= 1.5 (a
-    # shuffled-null significance, cleared by 11.3% of emissions ~ one chance per 5 min against
-    # 25-45 min excursions). Steps the SEED by half the fitted tau -- the sign is validated,
-    # the magnitude is not -- and REFUSES a fit at the +-2 chip span edge, which is a
-    # saturation rather than a measurement.
-    # JUDGE WITH: RESEED log lines + deep_gate_watch.py, on whether E33's excursions on this
-    # band get SHORTER than on gal_e5b. Not on C/N0 (#47). Revert: delete.
-    # DISARMED 2026-08-12 20:30 -- IT DID NOT CONVERGE. 74 firings in ~1 h, each stepping the
-    # seed +0.25..+0.40 chips, while tau STAYED at +0.5..+0.8 the whole time (~22 chips of
-    # cumulative seed motion with no reduction in the measured offset). A converging loop must
-    # show tau shrinking; this did not, so one of: the step never reaches the tracker, the sign
-    # is inverted, or spec_tau is not measuring the commanded-vs-true offset. ALSO: the fit rail
-    # is NOT +-2.0 -- observed taus reach +-2.180 -- so --spec-span-chips is miscalibrated and
-    # the span-edge guard was refusing good fits (1.9-2.18) while not knowing the true rail.
-    # Re-arm only after #53 (aligned windows) makes tau trustworthy, and with a convergence
-    # assertion in the loop: if tau does not fall after N steps, stop and say so.
-    # reseed-spec-tau: "33"
-    # ...AND UNRAIL THE RATE LIMIT, or the line above cannot show anything. The flat
-    # 0.05 chips/event cap had 47% of steps sitting exactly on it while satellites were
-    # 5-8 chips from their model -- of order an hour to close, against a ~600 s
-    # oscillation -- so moving the target changed the step not at all.
-    #
-    # ACQUISITION AUTHORITY, TRACKING RESTRAINT (KV's design): a seed far from its target
-    # may move at 0.5 chips/event (the E/P/L span), and reverts to the 0.05 crawl once
-    # inside 0.2 chips. Keyed on DISTANCE rather than track age so it re-arms when an
-    # established track drifts off -- which is the oscillation case itself, and the one an
-    # age-based schedule would tighten and then strand.
-    #
-    # DELIBERATELY NOT SET ON gal_e5b / bds_b2a: they are the control arms.
-    # ⚠️ REVERTED 2026-08-11 18:00, ~30 min after deploy. The trust gate only opened once
-    # the joint state converged, so the acquisition ceiling began engaging at 17:30 -- 22
-    # MINUTES after the restart that shipped it (0/64 events at cap 0.5 in the 17:20 bin,
-    # 39/151 in the 17:30 bin), and slew events per bin jumped 64 -> 151. KV independently
-    # reported every Galileo and BeiDou satellite degrading "~30 min ago" and asked whether
-    # it was the last broker restart: it was the change from that restart, acting late.
-    #
-    # THE LESSON IS THE DELAY, not the ceiling. A gated change does not take effect when
-    # you deploy it -- it takes effect when its gate opens, which here was tied to filter
-    # convergence and therefore invisible in the first minutes of watching. I checked at
-    # 17:10 and 17:12, saw 0% engagement, and read that as "deployed but not yet active"
-    # rather than as "the experiment has not started". Watch until the gate OPENS.
-    #
-    # Re-enable behind a measurement of what 0.5 chips/event does to a LOCKED tracker --
-    # the reverted 10 s re-pin (deep_snr 221 -> 17) says that limit exists for a reason,
-    # and 0.5 was picked from the E/P/L span rather than from anything measured here.
-    # dr-slew-cap-acq: 0.5
-    # dr-slew-near-chips: 0.2
-    # dr-slew-trust-sigma: 0.5
 
   # BeiDou B2a -- structurally identical to E5a: same 1176.45 MHz carrier, same 1023000-chip
   # code, same 100 ms CS secondary, so it rides the SAME voltage tap and the same clock. Model-
@@ -2162,7 +2082,7 @@ chains:
     # JUDGE (~15 min): JRR line flips fold-fed -> fine-fed; rrate sigmas drop toward mm/s
     # from the fold feed's m/s; e5a controls unchanged in-poll; q duty flat vs e5a.
     # THEN: step 2 = regress d(b_sat)/dt vs the fine-fed rrate for the coupling sign;
-    # step 3 = arm --rr-bsat-chips-per-m (GAP 3); step 4 = rrate-command on e5a (GAP 1).
+    # step 3 = the rrate -> b_sat coupling (GAP 3); step 4 = rrate-command on e5a (GAP 1).
         rrate-phase-feed: true
     # ── #49 ARMED 2026-08-15 21:15Z (KV): the last two chains, control group RETIRED ──────
     # THE A/B ALREADY PAID OUT, on a single satellite through boresight. E28's served C/N0,
@@ -2328,26 +2248,6 @@ chains:
     # THE FED CHAIN (rrate-phase-feed true here) with the non-overlap feed throttle.
     # Pre-reg: expectations_20260825_spanv1_e5b_feed.txt. e5a stays shadow reference.
         rrate-phase-span-s: 16
-    # #90 ARM re-fly (2026-08-25 ~00:2x UTC): the e5a arm never fired -- the 23:55 restart's
-    # fresh solve healed e5a's E32 at birth (mechanism UNJUDGED), and the first flight found
-    # the admission clause sitting BELOW the loop's own `if not present: continue` (dead code
-    # for its target -- fixed by hoisting, digests 4/4 EQUIVALENT). E32 is still latched on
-    # THIS chain with qualifying same-sign fits, so the arm moves here; e5a (recovered,
-    # q>2.6) is the healthy-side control: its arm stays and must NOT fire.
-    # reseed-spec-tau: "32"   # DISARMED 00:2x 08-25: F2 tripped -- see expectations file
-    # reseed-admit-absent: 1
-    # ── #90 v2 FLIGHT 3 (2026-08-25 21:5x): ARMED ON THIS CHAIN ONLY, e5a = control ─────
-    # The v2 guards fly for the first time (two DECORRELATED strikes >=60 s apart,
-    # |dtau| <= 0.5 value consistency, 180 s cooldown, flicker-proof strike memory --
-    # written after flight 2's F2: sign-alternating fires, ratio-at-poll-cadence is not
-    # significance in the latched regime). "all" not "32": the latch is generic (today
-    # E4 sat ABSENT here 85 min, 19:10-20:35 UTC, with per-minute qualifying fits) and
-    # a one-PRN arm misses the next episode. The #50 gates + v2 double-strike bound the
-    # surface. Pre-reg: expectations_20260825_90_v2_flight3.txt (P2 = absence-to-
-    # readmission < 15 min vs the 85-min baseline, paired vs e5a; F3 = any fire on a
-    # sat present within 300 s).
-    # reseed-spec-tau: "all"    # DISARMED 23:3x 08-25: F3 TRIPPED (fires on threshold-
-    # reseed-admit-absent: 1     # flicker sats present 100-210 s prior; see fixture)
         spectrum-endpoints: "http://cx19:12048/gnss{0..1}_e5b_n2assemble,http://cx27:12048/gnss{0..1}_e5b_n2assemble,http://cx42:12048/gnss{0..1}_e5b_n2assemble,http://cx43:12048/gnss{0..1}_e5b_n2assemble,http://cx44:12048/gnss{0..1}_e5b_n2assemble,http://cx51:12048/gnss{0..1}_e5b_n2assemble"
         dll-combiners: &e5b_cmb "http://cx19:12048/gnss{0..1}_e5b_n2combine,http://cx27:12048/gnss{0..1}_e5b_n2combine,http://cx42:12048/gnss{0..1}_e5b_n2combine,http://cx43:12048/gnss{0..1}_e5b_n2combine,http://cx44:12048/gnss{0..1}_e5b_n2combine,http://cx51:12048/gnss{0..1}_e5b_n2combine"
     # ⚠️ RETIRED 2026-08-23 -- THIS WAS ~15% OF THE BROKER, FOR A COMPARISON THAT HAD

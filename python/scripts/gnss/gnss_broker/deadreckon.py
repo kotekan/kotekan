@@ -1223,14 +1223,6 @@ def dr_joint_shadow(ctx):
             _js = ctx.rx.joint_receiver(
                 ctx.band_id, ctx.code_len, clk0=float(ctx.dr_state.get("clk") or 0.0)
             )
-            # #33 gap 3: refresh the coupling constant on the SHARED object
-            # every cycle rather than only at construction -- any consumer
-            # site can be the creator (thread startup order), and a kwarg
-            # passed only here would silently lose that race. Idempotent:
-            # the flag lives in the common yaml section, same value from
-            # every chain. A change of value is logged by the filter's own
-            # F-matrix taking effect (0.0 = identity, no code path change).
-            _js.rr_bsat_chips_per_m = float(ctx.args.rr_bsat_chips_per_m)
             # The code phases fed below are in THIS chain's chips, mod its code; every
             # consumer at another chip rate converts through this declaration.
             ctx.rx.joint_declare_unit(ctx.chain_id, ctx.args.chip_rate_hz, ctx.code_len)
@@ -1380,7 +1372,6 @@ def dr_joint_shadow(ctx):
                 ctx.code_len,  # warm start, see above
                 clk0=float(ctx.dr_state.get("clk") or 0.0),
             )
-            _js.rr_bsat_chips_per_m = float(ctx.args.rr_bsat_chips_per_m)  # see 3a
             ctx.rx.joint_declare_unit(
                 ctx.chain_id, ctx.args.chip_rate_hz, ctx.code_len
             )  # see above

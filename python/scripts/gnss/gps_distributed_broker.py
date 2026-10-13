@@ -87,7 +87,6 @@ from gnss_broker.fits import (  # noqa: E402
 )
 from gnss_broker.publish import FleetPublisher  # noqa: E402
 from gnss_broker.seed import Seed  # noqa: E402  (task #83)
-from gnss_broker.admission import AdmissionGate  # noqa: E402  (#90/#50)
 from gnss_broker.handover import TrimHandover  # noqa: E402  (task #92)
 from gnss_broker.rampfit import RampTracker  # noqa: E402  (task #93 shadow)
 from gnss_broker.cli import (
@@ -345,41 +344,6 @@ def main(argv=None, rx=None, publisher=None):
     # #79: PRN -> last time the SEARCH saw it at/above --dll-deep-gate-from-search. The
     # auto-generated half of the deep-gate set; unioned with _deep_gate each cycle.
     _dg_auto_last = [set()]  # last logged auto set, so the line prints on CHANGE only
-    _rs = (args.reseed_spec_tau or "").strip()
-    if _rs.lower() == "all":
-        _dls.reseed_prns = True
-    elif _rs:
-        _dls.reseed_prns = {int(x) for x in _rs.replace(",", " ").split()}
-    else:
-        _dls.reseed_prns = None
-    # #90 ABSENT-PRN ADMISSION. The strike/cooldown/was-present/population state and all four
-    # flights' guards live in gnss_broker/admission.py, where they are unit-testable offline --
-    # every one of those guards used to need a broker restart against the live fleet to
-    # exercise, which is what made #90 cost four flights in one evening.
-    _adm_gate = AdmissionGate(armed=bool(args.reseed_admit_absent))
-    if _dls.reseed_prns:
-        _log(
-            "SPEC-TAU RE-SEED (#50) active on %s: q<%.2f, spec_peak_ratio>=%.2f, gain %.2f, "
-            "cap %.2f chips, span +-%.1f. Fires only where the discriminator has NO GRADIENT "
-            "(far off-peak, E~P~L~noise); applied as a SEED step so the slew cap cannot "
-            "swallow it"
-            % (
-                "ALL PRNs"
-                if _dls.reseed_prns is True
-                else "PRN " + ",".join(str(p) for p in sorted(_dls.reseed_prns)),
-                args.reseed_q_max,
-                args.reseed_min_ratio,
-                args.reseed_gain,
-                args.reseed_max_chips,
-                args.spec_span_chips,
-            )
-        )
-        if not _deep_gate:
-            _log(
-                "SPEC-TAU RE-SEED (#50) WARNING: no --dll-deep-gate is set, so the PRNs this "
-                "targets will mostly fail `present` and never reach the re-seed test at all "
-                "(that is the #49 latch). Arm both, or this does nothing."
-            )
     if _deep_gate:
         _log(
             "DLL DEEP GATE (#49) active on %s at %.1fx deep_floor -- these PRNs are trimmed "
@@ -618,25 +582,6 @@ def main(argv=None, rx=None, publisher=None):
     # consumption sites add a float zero and the replay digests are untouched.
     bsat = SatBiasFilter(gain=args.bsat_gain)
     joint_consume = {c.strip() for c in args.joint_consume.split(",") if c.strip()}
-    # ⚠️ CONSTELLATION-QUALIFIED, and this cost a void first run (2026-08-10). The joint state
-    # is keyed (constellation, prn) because GPS 4, Galileo 4 and BeiDou 4 are three unrelated
-    # spacecraft. A bare "--joint-mask-prn 4" matched the PRN NUMBER on every chain, so masking
-    # one vetted GPS satellite silently also masked two Galileo/BeiDou ones nobody had looked
-    # at -- and the residual that came back was theirs, not the one under test. A bare number
-    # is now REFUSED rather than guessed at: the test is about a specific satellite.
-    joint_mask = set()
-    for _tok in args.joint_mask_prn.replace(" ", "").upper().split(","):
-        if not _tok:
-            continue
-        if _tok[0].isalpha():
-            joint_mask.add((_tok[0], int(_tok[1:])))
-        else:
-            raise SystemExit(
-                "--joint-mask-prn %r: qualify the PRN with its constellation (G4, E12, C33). "
-                "GPS 4, Galileo 4 and BeiDou 4 are different satellites and a bare number "
-                "masks all three -- which is how the first P2c run measured a satellite that "
-                "was never chosen." % _tok
-            )
 
     # -- P2C, THE ROTATING FORM (2026-08-10) ------------------------------------------------
     # A hand-picked PRN is a sample of ONE satellite at ONE geometry, and on a transit
@@ -749,14 +694,8 @@ def main(argv=None, rx=None, publisher=None):
             _p2c_summary(js, t_now, "hold complete")
 
     def _p2c_hold(js, key):
-        """True once this sat is BOTH masked and established -- see --joint-mask-after."""
-        if args.joint_p2c_rotate:
-            return key == p2c["key"] and key in js._idx
-        return (
-            key in joint_mask
-            and key in js._idx
-            and js._n.get(key, 0) >= args.joint_mask_after
-        )
+        """True while this sat is the one the P2C rotation is coasting."""
+        return key == p2c["key"] and key in js._idx
 
     def _joint_state(rx_, band, a):
         """The joint state IF it is fit to be consumed, else None (never raises: a consumer
@@ -1611,7 +1550,6 @@ def main(argv=None, rx=None, publisher=None):
         dllp=_dllp,
         drp=_drp,
         handover=_handover,
-        adm_gate=_adm_gate,
         g3_ramp=_g3_ramp,
         seeds=seeds,
         dr_state=dr_state,
@@ -2355,29 +2293,7 @@ def main(argv=None, rx=None, publisher=None):
         # could NOT fit its own slope (weak / just-acquired / coasting) as carrier-aiding + (l-a).
         # The code-side twin of the carrier clock_bias: strong detections calibrate the clock so weak
         # ones never drift off-peak. Ephemeris-free (v/c cancels). Bounded +-50 ppm against a rogue fit.
-        # ── #91(c): DO NOT RE-FIT THE CLOCK FROM A COLLAPSING POPULATION ─────────────
-        # --code-bias-min-sats is an ABSOLUTE floor (2). A chain that fell from 7 present
-        # to 2 still passes it -- and that is precisely the population whose fit swung the
-        # (l-a) clock +-96 chips on 2026-08-25 and had its garbage rate (+0.041 ppm, 40x
-        # normal) adopted into every seed, a positive feedback that SUSTAINED the outage.
-        # The relative collapse is what D1 measures, so hold the last good EMA through it.
-        # Holding is the conservative direction: the oscillator does not care that our
-        # satellites went away, and the EMA is slow by design.
-        _cb_frozen = bool(args.code_bias_brownout_hold and _brown.established())
-        if _cb_frozen:
-            _log_rl(
-                "la-freeze",
-                "code-rate clock (l-a) HELD at %s ppm through the brownout (#91c): "
-                "%d fit sample(s) this cycle are a collapsed population, not a clock"
-                % (
-                    "%+.3f" % (_cb.code_ema * 1e6)
-                    if _cb.code_ema is not None
-                    else "unset",
-                    len(_ctx.la_samples),
-                ),
-                every_s=60.0,
-            )
-        if not _cb_frozen and len(_ctx.la_samples) >= args.code_bias_min_sats:
+        if len(_ctx.la_samples) >= args.code_bias_min_sats:
             raw_cb = statistics.median(_ctx.la_samples)
             if abs(raw_cb) < args.code_bias_max * 1e-6:
                 _cb.code_ema = (

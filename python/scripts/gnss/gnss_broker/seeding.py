@@ -1334,23 +1334,7 @@ def stage_detections_to_seeds(ctx):
         if ctx.dr_state is not None and ctx.dr_state.get("integ"):
             _iv = ctx.dr_state["integ"].get(prn)
             if _iv is not None and ctx.t0 - _iv[1] < 10.0:
-                _iv_dev = _iv[0]
-                # #98/#99 RELATIVE FORM (--integ-veto-baseline-s): a CHRONIC per-sat model
-                # offset (#99, +-5 chips) is that sat's NORMAL, not evidence against this
-                # fit -- the absolute test vetoed G28's escape all evening while its bad
-                # hold walked +28 chips. Judge the EXCURSION from the sat's own recent
-                # median; a real search lobe-jump still moves integ instantly. Falls back
-                # to the absolute test until >=5 baseline samples exist (cold start).
-                _bl_s = ctx.args.integ_veto_baseline_s
-                if _bl_s > 0.0:
-                    _ih = ctx.cpt.integ_hist.setdefault(prn, [])
-                    if not _ih or _ih[-1][0] != _iv[1]:
-                        _ih.append((_iv[1], _iv[0]))
-                        del _ih[:-64]
-                    _base = [v for (_t, v) in _ih if ctx.t0 - _t <= _bl_s]
-                    if len(_base) >= 5:
-                        _iv_dev = _iv[0] - statistics.median(_base)
-                if abs(_iv_dev) > ctx.args.hold_max_cp_err:
+                if abs(_iv[0]) > ctx.args.hold_max_cp_err:
                     integ_veto = True
         cp_err_med_ok = (
             cp_err is not None
