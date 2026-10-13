@@ -23,9 +23,8 @@ here and run both.
 THIS; never the reverse. If you find yourself wanting best_eph or predict_all in here, the
 question you are asking belongs upstairs.
 
-⚠️ MUTABLE MODULE STATE LIVES HERE, NOT IN THE FACADE: LOG_HOOK, _src_dead, _HOURLY_STATIONS.
-`gnss_ephemeris` forwards READS via module __getattr__, but a WRITE through the facade would
-land on the facade and be silently ignored -- so writers must target this module by name.
+Mutable module state lives here (LOG_HOOK, _src_dead, _HOURLY_STATIONS): read and write it
+through this module by name.
 """
 import json
 import os

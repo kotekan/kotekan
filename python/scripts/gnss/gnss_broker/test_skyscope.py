@@ -237,8 +237,6 @@ def _rinex(prns, age_s=0.0):
 
 
 def test_hourly_coverage():
-    import gnss_ephemeris as ge
-
     print("_fetch_station_hourly: coverage is the quota, not the number of sources")
     from datetime import datetime, timezone
     import urllib.request
@@ -280,9 +278,6 @@ def test_hourly_coverage():
         return _Resp(gzip.compress((_HDR + _rinex(catalogue[st])).encode("ascii")))
 
     tmp = tempfile.mkdtemp(prefix="hourlytest-")
-    # ⚠️ THE MODULE, NOT THE FACADE. gnss_ephemeris forwards reads through a module
-    # __getattr__ and cannot forward writes, so patching ge._HOURLY_STATIONS would bind a name
-    # the merge never reads and this test would silently exercise the REAL station list.
     import gnss_brdc_supply as ge_sup
 
     saved = (ge_sup._HOURLY_STATIONS, urllib.request.urlopen, ge_sup.LOG_HOOK)
@@ -303,7 +298,7 @@ def test_hourly_coverage():
             "WIDEBB",
         ]
         asked[:] = []
-        p = ge._fetch_station_hourly(datetime.now(timezone.utc), tmp, "tok")
+        p = ge_sup._fetch_station_hourly(datetime.now(timezone.utc), tmp, "tok")
         body = gzip.open(p, "rt").read()
         check(
             "C19" in body,
@@ -341,7 +336,7 @@ def test_hourly_coverage():
         ge_sup._HOURLY_STATIONS = ["NOBDS1", "NOBDS2"]
         asked[:] = []
         logs[:] = []
-        ge._fetch_station_hourly(datetime.now(timezone.utc), tmp, "tok")
+        ge_sup._fetch_station_hourly(datetime.now(timezone.utc), tmp, "tok")
         check(
             any("BELOW TARGET" in m for m in logs),
             "a merge with 18 BDS-2 sats and no BDS-3 reports BELOW TARGET, not silence",
@@ -360,7 +355,7 @@ def test_hourly_coverage():
         os.makedirs(tmp, exist_ok=True)
         ge_sup._HOURLY_STATIONS = ["WIDEAA", "WIDEBB"]
         asked[:] = []
-        ge._fetch_station_hourly(datetime.now(timezone.utc), tmp, "tok")
+        ge_sup._fetch_station_hourly(datetime.now(timezone.utc), tmp, "tok")
         check(
             len(asked) >= 2,
             "even a station that alone meets every target gets a second source "
@@ -372,15 +367,15 @@ def test_hourly_coverage():
 
 
 def test_station_diversity():
-    import gnss_ephemeris as ge
+    import gnss_brdc_supply as sup
 
     print("the station list: geography is the point")
-    tail = [s[-3:] for s in ge._HOURLY_STATIONS]
+    tail = [s[-3:] for s in sup._HOURLY_STATIONS]
     check(
         len(set(tail)) >= 4,
         "at least four countries in the list (it was CAN,CAN,CAN,CAN,USA,BEL)",
     )
-    head = [s[-3:] for s in ge._HOURLY_STATIONS[:4]]
+    head = [s[-3:] for s in sup._HOURLY_STATIONS[:4]]
     check(
         len(set(head)) >= 3,
         "and the first four -- the ones a good hour actually reaches -- are not one country",
@@ -393,14 +388,14 @@ def test_station_diversity():
 
 
 def test_brdc_sources():
-    import gnss_ephemeris as ge
+    import gnss_brdc_supply as sup
 
     print("_brdc_sources: the CDDIS fallback must ask for a file CDDIS actually holds")
-    saved = ge._earthdata_token
-    ge._earthdata_token = lambda: "TESTTOKEN"
+    saved = sup._earthdata_token
+    sup._earthdata_token = lambda: "TESTTOKEN"
     try:
         for kind in ("S", "R"):
-            srcs = ge._brdc_sources(kind, 2026, 239)
+            srcs = sup._brdc_sources(kind, 2026, 239)
             urls = [u for u, _ in srcs]
             check(
                 len(urls) == 2 and "bkg.bund.de" in urls[0],
@@ -424,59 +419,61 @@ def test_brdc_sources():
                 not cd.endswith("/daily/2026/brdc/" + cd.rsplit("/", 1)[-1]),
                 "kind %s: never /daily/YYYY/brdc/ -- legacy .YYn/.YYg only" % kind,
             )
-        s_url = ge._brdc_sources("S", 2026, 239)[1][0]
-        r_url = ge._brdc_sources("R", 2026, 239)[1][0]
+        s_url = sup._brdc_sources("S", 2026, 239)[1][0]
+        r_url = sup._brdc_sources("R", 2026, 239)[1][0]
         check(
             s_url != r_url,
             "S and R map to DIFFERENT CDDIS products (BRDM00DLR vs BRDC00IGS), not one file",
         )
     finally:
-        ge._earthdata_token = saved
+        sup._earthdata_token = saved
 
 
 def test_404_is_not_a_dead_host():
     import urllib.error
-    import gnss_ephemeris as ge
+    import gnss_brdc_supply as sup
 
     print("_src_failed: a 404 is a statement about the PATH, not about the host")
-    saved = dict(ge._src_dead)
+    saved = dict(sup._src_dead)
     try:
-        ge._src_dead.clear()
+        sup._src_dead.clear()
         # The daily fetch asks CDDIS for the CURRENT day, which CDDIS never publishes -- a
         # guaranteed 404. Under the old rule that disabled cddis.nasa.gov for 300 s, taking
         # the YESTERDAY fetch (which exists, and is the whole fallback while BKG is down)
         # down with it.
         url = "https://cddis.nasa.gov/archive/gnss/data/daily/2026/239/26p/x.rnx.gz"
-        ge._src_failed(url, exc=urllib.error.HTTPError(url, 404, "Not Found", {}, None))
+        sup._src_failed(
+            url, exc=urllib.error.HTTPError(url, 404, "Not Found", {}, None)
+        )
         check(
-            not ge._src_skip(
+            not sup._src_skip(
                 "https://cddis.nasa.gov/archive/gnss/data/daily/2026/238/"
                 "26p/y.rnx.gz"
             ),
             "a 404 on one path leaves every OTHER path on that host reachable",
         )
 
-        ge._src_dead.clear()
-        ge._src_failed(url, exc=urllib.error.URLError("timed out"))
+        sup._src_dead.clear()
+        sup._src_failed(url, exc=urllib.error.URLError("timed out"))
         check(
-            ge._src_skip(url),
+            sup._src_skip(url),
             "a TIMEOUT still blacklists the host -- that is the case the "
             "negative cache exists for (BKG, twice now)",
         )
 
-        ge._src_dead.clear()
-        ge._src_failed(
+        sup._src_dead.clear()
+        sup._src_failed(
             url, exc=urllib.error.HTTPError(url, 503, "Service Unavailable", {}, None)
         )
         check(
-            ge._src_skip(url),
+            sup._src_skip(url),
             "and so does a 5xx -- the server answered, but not with data",
         )
 
-        ge._src_dead.clear()
-        ge._src_failed(url)  # the not-gzip case: a 200 serving a login/error page
+        sup._src_dead.clear()
+        sup._src_failed(url)  # the not-gzip case: a 200 serving a login/error page
         check(
-            ge._src_skip(url),
+            sup._src_skip(url),
             "a 200 that is not gzip blacklists too (login/error page)",
         )
 
@@ -485,41 +482,43 @@ def test_404_is_not_a_dead_host():
         # CURRENT hour, whose directory does not exist yet -- so GSSC blacklisted itself on
         # its very first call and the whole 12-station x 4-hour walk collapsed to one attempt.
         ftp = "ftp://gssc.esa.int/gnss/data/hourly/2026/239/12/BRUX00BEL_R_x_01H_MN.rnx.gz"
-        ge._src_dead.clear()
-        ge._src_failed(
+        sup._src_dead.clear()
+        sup._src_failed(
             ftp,
             exc=urllib.error.URLError(
                 "ftp error: 550 CWD command failed: directory not found."
             ),
         )
         check(
-            not ge._src_skip(ftp),
+            not sup._src_skip(ftp),
             "an FTP 550 (no such directory) is a PATH failure -- the hour is not published "
             "yet, the mirror is fine",
         )
 
-        ge._src_dead.clear()
-        ge._src_failed(
+        sup._src_dead.clear()
+        sup._src_failed(
             ftp, exc=urllib.error.URLError("ftp error: 421 service not available")
         )
-        check(ge._src_skip(ftp), "but an FTP 421 (service unavailable) does blacklist")
+        check(sup._src_skip(ftp), "but an FTP 421 (service unavailable) does blacklist")
 
-        ge._src_dead.clear()
-        ge._src_failed(ftp, exc=urllib.error.URLError("[Errno 111] Connection refused"))
-        check(ge._src_skip(ftp), "and so does a refused connection")
+        sup._src_dead.clear()
+        sup._src_failed(
+            ftp, exc=urllib.error.URLError("[Errno 111] Connection refused")
+        )
+        check(sup._src_skip(ftp), "and so does a refused connection")
     finally:
-        ge._src_dead.clear()
-        ge._src_dead.update(saved)
+        sup._src_dead.clear()
+        sup._src_dead.update(saved)
 
 
 def test_hourly_mirrors():
     import datetime
-    import gnss_ephemeris as ge
+    import gnss_brdc_supply as sup
 
     print("_hourly_sources: the CURRENT day must not be single-homed")
     when = datetime.datetime(2026, 8, 27, 11, tzinfo=datetime.timezone.utc)
 
-    with_tok = ge._hourly_sources("BRUX00BEL", when, "TESTTOKEN")
+    with_tok = sup._hourly_sources("BRUX00BEL", when, "TESTTOKEN")
     hosts = [u.split("/")[2] for u, _ in with_tok]
     check(
         len(set(hosts)) >= 2, "two INDEPENDENT hosts serve each station file, not one"
@@ -533,7 +532,7 @@ def test_hourly_mirrors():
     # down. On any day BKG is also down -- as on 2026-08-27 -- these hourlies are the ONLY
     # source of a current-day ephemeris for E and C, so a token-only path is a single point
     # of failure for the whole live sky.
-    no_tok = ge._hourly_sources("BRUX00BEL", when, None)
+    no_tok = sup._hourly_sources("BRUX00BEL", when, None)
     check(
         len(no_tok) >= 1,
         "with NO token there is still a source -- the sky does not depend on a credential",
@@ -563,7 +562,7 @@ def test_hourly_coverage_beats_recency():
     UNANCHORED, nothing trimmed, no line naming the cause.
     """
     import tempfile
-    from gnss_ephemeris import (
+    from gnss_brdc_supply import (
         _hourly_target_met,
         _hourly_cov_read,
         _hourly_cov_write,
@@ -652,7 +651,7 @@ def test_coverage_counts_only_usable_records():
     Counting distinct PRNs counts what is PRESENT; the exit test wants what is USABLE.
     """
     from datetime import datetime, timezone, timedelta
-    from gnss_ephemeris import _rec_is_fresh, _HOURLY_KEEP_S
+    from gnss_brdc_supply import _rec_is_fresh, _HOURLY_KEEP_S
 
     print("\ncoverage counts USABLE records, not merely present ones")
     now = datetime(2026, 8, 27, 20, 0, 0, tzinfo=timezone.utc)

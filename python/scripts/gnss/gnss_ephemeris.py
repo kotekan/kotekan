@@ -20,19 +20,10 @@ Usage:
     eph = parse_rinex_nav(path)                  # {(sys, prn): [records]}
     pred = predict_all(eph, lat, lon, alt, t_utc)  # {(sys,prn): dict(az, el, range_m,
                                                    #   range_rate_mps, sat_clk_s, ...)}
-Self-test: python3 gnss_ephemeris.py            (fetch + predict, prints visible sats)
 """
-import json
 import gzip
 import math
-import os
-import re
-import threading
-import sys
-import time
-import urllib.request
-import urllib.parse
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 
 C_LIGHT = 299792458.0
 GPS_UTC_LEAP = 18.0  # GPST - UTC (2026; bump at the next leap second)
@@ -46,34 +37,9 @@ F_REL = -4.442807633e-10  # relativistic clock coefficient (s/sqrt(m))
 
 
 # ---------------------------------------------------------------------------------------
-# THE SUPPLY LAYER lives in gnss_brdc_supply (split 2026-08-27). It is imported rather than
-# merged back so that a caller wanting orbits does not drag in the fetch machinery.
-#
-# ⚠️ READS ARE FORWARDED, WRITES ARE NOT -- and that asymmetry is deliberate rather than an
-# oversight. `from x import *` would COPY the bindings, so a rebind in the supply module
-# (LOG_HOOK is rebound, not mutated) would leave this module serving a stale value forever:
-# exactly the silent-divergence class this codebase has spent a day removing. The module
-# __getattr__ below therefore forwards every read LIVE. It cannot forward writes (PEP 562
-# defines no module __setattr__), so `gnss_ephemeris.LOG_HOOK = f` would set an attribute
-# here that nothing reads. Writers target gnss_brdc_supply by name; there are five, and they
-# all say so at the call site.
-import gnss_brdc_supply as _supply
+# THE SUPPLY LAYER lives in gnss_brdc_supply (split 2026-08-27); everything but fetch_brdc is
+# read and written there by name.
 from gnss_brdc_supply import fetch_brdc  # noqa: F401  (physics calls it as a default)
-
-
-def __getattr__(name):
-    """Forward every supply name LIVE, so the two modules can never disagree about state."""
-    try:
-        return getattr(_supply, name)
-    except AttributeError:
-        raise AttributeError(
-            "module %r has no attribute %r (and neither does gnss_brdc_supply)"
-            % (__name__, name)
-        )
-
-
-def __dir__():
-    return sorted(set(list(globals()) + dir(_supply)))
 
 
 def _f(s):
@@ -252,16 +218,14 @@ def _parse_rinex_nav_file(path):
             # flags and subframes 2/3's IODE (read by the group-delay terms below
             # and the LNAV decode's BRDC cross-check).
             # ORBIT 1 = [IODE, Crs, dn, M0] (0-3); ORBIT 5 = [IDOT, L2 codes, week,
-            # L2P flag] (16-19); ORBIT 6 = [accuracy, health, TGD, IODC] (20-23);
-            # ORBIT 7 = [transmission time, fit interval] (24-25). health=orb[21]
-            # above is the anchor that fixes this indexing.
+            # L2P flag] (16-19); ORBIT 6 = [accuracy, health, TGD, IODC] (20-23).
+            # health=orb[21] above is the anchor that fixes this indexing.
             iode=orb[0],
             l2_codes=orb[17],
             l2p_flag=orb[19],
             accuracy=orb[20],
             tgd=orb[22],
             iodc=orb[23],
-            fit=orb[25] if len(orb) > 25 else 0.0,
         )
         # toe as absolute GPST: the RINEX week field is the system's own week count --
         # GPS/GAL: GPS-aligned continuous week; BDS: BDT week (epoch 2006-01-01) + 14 s.
@@ -578,28 +542,3 @@ def predict_all(
             toe_age_s=t - e["toe_gpst"],
         )
     return out
-
-
-if __name__ == "__main__":
-    lat, lon, alt = 43.968697, -79.252106, 260.0
-    path = fetch_brdc()
-    print("BRDC:", path)
-    eph = parse_rinex_nav(path)
-    print("parsed: %d sats (%s)" % (len(eph), "".join(sorted(set(k[0] for k in eph)))))
-    pred = predict_all(eph, lat, lon, alt, datetime.now(timezone.utc), mask_deg=5.0)
-    print("visible now: %d" % len(pred))
-    for (s, p), v in sorted(pred.items(), key=lambda kv: -kv[1]["el"])[:12]:
-        dop = -v["range_rate_mps"] / C_LIGHT * 1575.42e6
-        print(
-            "  %s%02d el %4.1f az %5.1f  range %8.1f km  dop %+7.1f Hz  clk %+9.3f us  toe_age %4.0f min"
-            % (
-                s,
-                p,
-                v["el"],
-                v["az"],
-                v["range_m"] / 1e3,
-                dop,
-                v["sat_clk_s"] * 1e6,
-                v["toe_age_s"] / 60,
-            )
-        )

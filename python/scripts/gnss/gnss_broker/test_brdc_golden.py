@@ -86,11 +86,11 @@ def _serve(names):
     return fake
 
 
-def _merge(ge, when, names, cache_dir):
+def _merge(sup, when, names, cache_dir):
     saved = urllib.request.urlopen
     try:
         urllib.request.urlopen = _serve(names)
-        return ge._fetch_station_hourly(when, cache_dir, "tok")
+        return sup._fetch_station_hourly(when, cache_dir, "tok")
     finally:
         urllib.request.urlopen = saved
 
@@ -100,12 +100,9 @@ def _digest(path):
 
 
 def main():
-    import gnss_ephemeris as ge
-    import gnss_brdc_supply as _supply
+    import gnss_brdc_supply as sup
 
-    _supply.LOG_HOOK = (
-        lambda m: None
-    )  # ⚠️ the module, not the facade -- writes do not forward
+    sup.LOG_HOOK = lambda m: None
 
     man = os.path.join(FIXTURE, "manifest.json")
     if not os.path.exists(man):
@@ -130,7 +127,7 @@ def main():
 
     d = tempfile.mkdtemp(prefix="brdcgold-")
     try:
-        p = _merge(ge, when, allf, d)
+        p = _merge(sup, when, allf, d)
         if p is None:
             print("FAIL: the merge returned None on a fixture of %d files" % len(allf))
             return 1
@@ -149,7 +146,7 @@ def main():
         os.utime(
             os.path.join(d, "hourly_MN.rnx.gz"), (0, 0)
         )  # expire the cache gate only
-        p2 = _merge(ge, when, allf, d)
+        p2 = _merge(sup, when, allf, d)
         check(
             _digest(p2) == got,
             "re-merging the same inputs changes nothing (idempotent)",
@@ -160,9 +157,9 @@ def main():
         # constellation's coverage would silently depend on when the broker happened to start.
         d2 = tempfile.mkdtemp(prefix="brdcgold2-")
         try:
-            _merge(ge, when, newest, d2)
+            _merge(sup, when, newest, d2)
             os.utime(os.path.join(d2, "hourly_MN.rnx.gz"), (0, 0))
-            p3 = _merge(ge, when, allf, d2)
+            p3 = _merge(sup, when, allf, d2)
             check(
                 _digest(p3) == got,
                 "accumulating newest-hour-then-all equals all-at-once (order independent)",

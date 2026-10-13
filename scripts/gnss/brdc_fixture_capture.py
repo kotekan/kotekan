@@ -33,7 +33,7 @@ sys.path.insert(
         "gnss",
     ),
 )
-import gnss_ephemeris as ge  # noqa: E402
+import gnss_brdc_supply as sup  # noqa: E402
 
 # Enough stations to exercise the coverage exit test (some carry no BeiDou at all) without
 # making the fixture heavy. Two hours: the walk always attempts the two newest.
@@ -51,16 +51,16 @@ def main():
         )
     )
     os.makedirs(out, exist_ok=True)
-    tok = ge._earthdata_token()
+    tok = sup._earthdata_token()
     # Capture against the hour that just CLOSED, not the current one: the current hour is
     # published nowhere and a fixture of 404s tests nothing.
     when = datetime.now(timezone.utc).replace(minute=30, second=0, microsecond=0)
     got, manifest = 0, {"when": when.strftime("%Y-%m-%dT%H:%M:%SZ"), "files": []}
     for dh in range(1, N_HOURS + 1):
         h = when - timedelta(hours=dh)
-        for st in ge._HOURLY_STATIONS[:N_STATIONS]:
+        for st in sup._HOURLY_STATIONS[:N_STATIONS]:
             name = None
-            for url, hdrs in ge._hourly_sources(st, h, tok):
+            for url, hdrs in sup._hourly_sources(st, h, tok):
                 try:
                     with urllib.request.urlopen(
                         urllib.request.Request(url, headers=hdrs), timeout=25
@@ -69,7 +69,7 @@ def main():
                     if raw[:2] != b"\x1f\x8b":
                         continue
                     name = url.rsplit("/", 1)[-1]
-                    ge._atomic_write_bytes(os.path.join(out, name), raw)
+                    sup._atomic_write_bytes(os.path.join(out, name), raw)
                     n = len(
                         gzip.decompress(raw).decode("ascii", "replace").splitlines()
                     )
