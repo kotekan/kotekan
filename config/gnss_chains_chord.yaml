@@ -68,7 +68,6 @@ common:
 
   # -- shared loop settings (identical in both launch scripts today) ---------------------
     almanac: true
-    almanac-source: brdc
     dead-reckon: true
     dr-clock-chips: 0.0
   # MEASURED CODE BIASES over the broadcast term (A0b part 2, 2026-08-23). Every chain:
@@ -76,8 +75,6 @@ common:
   # ONLY source there is (TGD_B2ap is B-CNAV2; RINEX 3 has nothing). ⚠️ Zero-mean per
   # constellation by construction -> per-sat only, never a common offset.
     dcb-bias: true
-    seed-doppler: auto
-    dll-gain: 0.25
   # -- task #33 P3: the per-sat carrier state (rrate rows + receiver f_carrier) ----------
   # SHADOW ON EVERYWHERE (2026-08-13): measurement-only by construction -- with
   # rrate-command off this cannot change a seed or a POST. Every chain feeds so the
@@ -280,8 +277,6 @@ common:
   # #52 fix). ⚠️ ENABLE PER CHAIN, HALF THE FLEET AT A TIME, so each arm has a same-poll
   # control: gal_e5a commanded vs bds_b2a open on the SAME carrier is the clean pair.
   # A before/after across restarts cannot resolve it -- the sky churns faster.
-    code-bias-alpha: 0.05
-    code-bias-min-sats: 2
     # 2026-10-11 (#119): 1200 s, inside the unwrap's unambiguous range (5115 chips at ~3.45-4.05 chips/s
     # = 21-25 min); 3600 let a 25-60 min re-entry unwrap onto the wrong branch.
     fit-gap-s: 1200
@@ -491,9 +486,8 @@ chains:
     # the hand list keeps 27 at snr 56). Deliberately an increment, not a widening: the
     # --dll-deep-gate note warns that admitting the whole fleet at once trades the latch for
     # an oscillation and makes the A/B unreadable. Widen only after this pair is judged.
-    # Revert: delete these two lines and restart.
+    # Revert: delete this line and restart.
         dll-deep-gate-from-search: 100
-        dll-deep-gate-search-hold-s: 90
     # -- #51: THE CODE LOOP ON THE TELEMETRY CLOCK, THIS CHAIN ONLY -------------------------
     # THE DEFECT: the DLL's authority is a step PER UPDATE and the update rate was the ~12 s
     # policy cycle, so the loop ran 23x slower than the drift and could never hold lock.
