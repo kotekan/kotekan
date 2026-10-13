@@ -22,7 +22,7 @@ RECS_PER_GRID = F.GRID_HOPS // HPR  # 96 records between grid hops
 
 def _fold(st, hop, dop=1000.0, n_inst=3):
     """One record at `hop` with `n_inst` agreeing instances."""
-    per_inst = {i: (dop, 0.0, complex(1.0, 0.0), 1.0) for i in range(n_inst)}
+    per_inst = {i: (dop, 0.0, complex(1.0, 0.0)) for i in range(n_inst)}
     return F.fold_record(st, hop, per_inst, hpr=HPR)
 
 

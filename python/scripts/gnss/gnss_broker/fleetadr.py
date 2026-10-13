@@ -79,7 +79,6 @@ if none can, the arc ends -- an increment we cannot account for is a break, not 
 """
 import array
 import cmath
-import collections
 import math
 from fractions import Fraction
 
@@ -92,7 +91,6 @@ from gnss_broker.telem import (
     REC_PH_RE,
     REC_PH_IM,
     REC_TRIM_INC,
-    REC_PHI0,
     REC_PROJ_COST,
     REC_PROJ_K,
     REC_PROJ_SRC,
@@ -109,7 +107,6 @@ class SatAdr(object):
     __slots__ = (
         "hop",
         "hop0",
-        "s_prev",
         "adr",
         "trim",
         "res",
@@ -118,7 +115,6 @@ class SatAdr(object):
         "n_inst",
         "inst_prev",
         "inst_x",
-        "breaks",
         "t",
         "grid",
         "dark",
@@ -134,9 +130,6 @@ class SatAdr(object):
     def __init__(self):
         self.hop = None  # hop of the last record folded
         self.hop0 = None  # first hop of the current arc
-        self.s_prev = (
-            None  # sum of the previous record's S_i (diagnostic amplitude only)
-        )
         self.adr = (
             0.0  # DOPPLER-ONLY cycles since hop0 (commanded minus residual, minus
         )
@@ -152,7 +145,6 @@ class SatAdr(object):
         self.inst_x = (
             {}
         )  # inst -> that instance's own continuous residual phase, cycles
-        self.breaks = 0  # arcs ended by a gap or an unaccountable increment
         self.t = 0.0  # wall time of the last fold
         # THE GRID SNAPSHOTS [(hop, adr, arc, n), ...], oldest first, at most GRID_KEEP of
         # them: the state at each recent record whose hop is a multiple of GRID_HOPS. Every
@@ -205,11 +197,10 @@ def fold_record(
 ):
     """Fold one record hop into `st`.
 
-    per_inst: {inst: (dop_hz, trim_inc, S_i, phi0, r)} for the instances that despread this
-    PRN at `hop`, S_i the instance's squared prompt AS EXPORTED, phi0 the assembler's NCO
-    accumulator (REC_PHI0) and r the record's index in its frame. Returns True if the record
-    extended the arc, False if it started a new one (or was dropped for having too few
-    instances).
+    per_inst: {inst: (dop_hz, trim_inc, S_i, ...)} for the instances that despread this PRN at
+    `hop`, S_i the instance's squared prompt AS EXPORTED; any further slots are not read here.
+    Returns True if the record extended the arc, False if it started a new one (or was dropped
+    for having too few instances).
     """
     # THE PROMPT MUST STILL CARRY THE SIGNAL. A record whose prompts have lost the signal is
     # silent, not measuring: their phases are noise, and an increment folded from them walks
@@ -272,11 +263,11 @@ def fold_record(
     st.n_silent = sum(1 for v in per_inst.values() if v[2] != 0) if st.silent else 0
     if len(usable) < min_inst:
         # energy-less (or silent) records: remember them, the gap is judged when energy returns
-        st.dark = getattr(st, "dark", 0) + 1
+        st.dark += 1
         if st.silent:
-            st.dark_silent = getattr(st, "dark_silent", 0) + 1
+            st.dark_silent += 1
         for i, v in per_inst.items():
-            st.inst_prev[i] = (hop, v[0], v[2], v[3])
+            st.inst_prev[i] = (hop, v[0], v[2])
         return False
     prev = st.hop
     contiguous = prev is not None and 0 < hop - prev <= max_gap_rec * hpr
@@ -339,7 +330,6 @@ def fold_record(
         ok = True
     else:
         if st.hop is not None:
-            st.breaks += 1
             # ⚠️ SAY WHY. Every arc break costs the carrier level of this satellite, and a
             # break on every satellite of every chain in the same second is a broker or node
             # event, not sky. The archive can measure the gap but cannot tell records that
@@ -351,8 +341,8 @@ def fold_record(
                 "hop": hop,
                 "n_rec": st.n,
                 "gap_rec": _gap,
-                "dark_rec": getattr(st, "dark", 0),
-                "silent_rec": getattr(st, "dark_silent", 0),
+                "dark_rec": st.dark,
+                "silent_rec": st.dark_silent,
                 "n_usable": len(usable),
                 "n_vouch": len(vouch),
                 "inst_lag_rec": [(hop - h) / float(hpr) for h in _seen[-3:]],
@@ -365,11 +355,10 @@ def fold_record(
         st.inst_x = {i: 0.0 for i in usable}
         st.n = 1
         ok = False
-    st.s_prev = sum(v[2] for v in usable.values())
     st.hop = hop
     st.n_inst = len(usable)
     for i, v in per_inst.items():
-        st.inst_prev[i] = (hop, v[0], v[2], v[3])
+        st.inst_prev[i] = (hop, v[0], v[2])
     for i in [i for i in st.inst_x if i not in usable]:
         del st.inst_x[i]  # gone: it rejoins at the fleet's phase
     if hop % GRID_HOPS == 0:
@@ -379,9 +368,9 @@ def fold_record(
 
 
 def records_of_frame(f, want):
-    """{prn: {r: (dop_hz, trim_inc, S_i, phi0, r, proj_cost, proj_k, proj_src)}} for one sender's
-    frame, decoded in one pass. The last three are the projection slots (gnssRecord.hpp), carried
-    for the published row only; the fold reads the first four.
+    """{prn: {r: (dop_hz, trim_inc, S_i, proj_cost, proj_k, proj_src)}} for one sender's frame,
+    decoded in one pass. The last three are the projection slots (gnssRecord.hpp), carried for
+    the published row only; the fold reads the first three.
 
     S_i = H^2 + T^2 with H the head amplitude and T = A - H, AS EXPORTED (no phi0 rotation --
     see the module note); 0 when the record carries no prompt energy (silence, not a measurement).
@@ -413,8 +402,6 @@ def records_of_frame(f, want):
                 float(a[b + REC_DOPPLER]),
                 float(a[b + REC_TRIM_INC]),
                 S,
-                float(a[b + REC_PHI0]),
-                r,
                 float(a[b + REC_PROJ_COST]),
                 int(a[b + REC_PROJ_K]),
                 int(a[b + REC_PROJ_SRC]),
@@ -432,7 +419,6 @@ class FleetAdr(object):
         self.hpr = int(hpr)
         self.max_gap_rec = int(max_gap_rec)
         self.min_inst = int(min_inst)
-        self.windows_lost = 0
 
     def fold_windows(self, client, chain, prns, now, lag=1):
         """Fold every window newer than the last one folded. Returns the number of windows."""
@@ -444,9 +430,7 @@ class FleetAdr(object):
         ]
         for st in self.sats.values():
             st.proj = [0.0, 0, 0, 0]
-        if self.last_win is not None and wins and wins[0] > self.last_win + 1:
-            # windows the ring already dropped: the arcs will break honestly on the gap
-            self.windows_lost += wins[0] - self.last_win - 1
+        # windows the ring already dropped leave a hop gap: the arcs break honestly on it
         for w in wins:
             frames = client.frame_set(chain, w)
             by_hop = {}  # hop -> prn -> inst -> (dcmd, trim, S)
@@ -460,12 +444,11 @@ class FleetAdr(object):
                     if st is None:
                         st = self.sats[prn] = SatAdr()
                     for v in per_inst.values():
-                        if len(v) > 5:
-                            if v[5] >= 0.0:
-                                st.proj[0] += v[5]
-                                st.proj[1] += 1
-                            st.proj[2] = max(st.proj[2], v[6])
-                            st.proj[3] |= v[7]
+                        if v[3] >= 0.0:
+                            st.proj[0] += v[3]
+                            st.proj[1] += 1
+                        st.proj[2] = max(st.proj[2], v[4])
+                        st.proj[3] |= v[5]
                     fold_record(
                         st,
                         hop,
@@ -538,7 +521,6 @@ class FleetAdr(object):
                 "proj_src": s.proj[3],
                 "trim_cycles": s.trim,
                 "res_cycles": s.res,
-                "breaks": s.breaks,
                 # the full received phase, the exact nominal added back to the
                 # Doppler-only accumulator (a double holds ~3e13 cycles to 4e-3)
                 "cycles": float(Fraction(s.adr) + nominal),
