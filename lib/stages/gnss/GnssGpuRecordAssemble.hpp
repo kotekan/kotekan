@@ -127,11 +127,11 @@ private:
     /// vector per band shared by every instance (python/scripts/gnss/elem_shared_ref.py), so a
     /// poor own pin cannot leave this instance's global phase arbitrary against the others.
     /// "live" pins each pol's <F, G> real positive, in full for a first model and slewed at
-    /// _fleet_slew_rad_s for a warm one (gnssSharedPin.hpp); "log" only reports; "off" ignores
-    /// F. A half F does not describe (sim < _fleet_min_sim) keeps the own pin, which follows
-    /// the model's phase in live mode so that falling back never steps it.
+    /// _fleet_slew_rad_s for a warm one (gnssSharedPin.hpp); "off" ignores F. A half F does not
+    /// describe (sim < _fleet_min_sim) keeps the own pin, which follows the model's phase in
+    /// live mode so that falling back never steps it.
     std::vector<std::complex<double>> _g_fleet_ref; ///< [n_elem]; empty = no reference
-    std::atomic<int> _fleet_mode{0};                ///< 0 off, 1 log, 2 live
+    std::atomic<int> _fleet_mode{0};                ///< 0 off, 1 live
     std::atomic<bool> _fleet_ref_present{false};    ///< _g_fleet_ref non-empty (for REST)
     double _fleet_slew_rad_s = M_PI / 180.0;
     double _fleet_min_sim = 0.5; ///< a 16-element noise model scores ~0.2 against any F
@@ -297,7 +297,7 @@ private:
     void set_sat_geometry_callback(kotekan::connectionInstance& conn, nlohmann::json& request);
     void set_elem_sum_adapt_callback(kotekan::connectionInstance& conn, nlohmann::json& request);
     void set_elem_sum_shared_callback(kotekan::connectionInstance& conn, nlohmann::json& request);
-    /// {"ref": [[re, im], ...] ([] clears), "mode": "off|log|live", "slew_deg_s": x}, every
+    /// {"ref": [[re, im], ...] ([] clears), "mode": "off|live", "slew_deg_s": x}, every
     /// field optional; staged, applied at the next consensus update (about once a second, and
     /// only while elem_sum_shared is on).
     void set_elem_sum_shared_ref_callback(kotekan::connectionInstance& conn,

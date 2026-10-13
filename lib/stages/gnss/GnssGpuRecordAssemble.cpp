@@ -110,13 +110,11 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
             config.get_default<std::string>(unique_name, "elem_sum_shared_ref_mode", "off");
         if (mode == "off")
             _fleet_mode = 0;
-        else if (mode == "log")
-            _fleet_mode = 1;
         else if (mode == "live")
-            _fleet_mode = 2;
+            _fleet_mode = 1;
         else {
             FATAL_ERROR("GnssGpuRecordAssemble[{:s}]: elem_sum_shared_ref_mode '{:s}' is not "
-                        "off | log | live",
+                        "off | live",
                         unique_name, mode);
             return;
         }
@@ -1706,7 +1704,7 @@ void GnssGpuRecordAssemble::shared_consensus(double now_s) {
         _g_shared[(size_t)e] += beta * (acc[(size_t)e] / A - _g_shared[(size_t)e]);
     // Pin to the fleet reference where it applies (live mode, and F describes this half): in
     // full for a first model, slewed for a warm one. Otherwise pin to the instance's own pin.
-    const bool fleet_live = _fleet_mode.load() == 2 && !_g_fleet_ref.empty();
+    const bool fleet_live = _fleet_mode.load() == 1 && !_g_fleet_ref.empty();
     bool fleet_used[2] = {false, false};
     gnss::RefOffset offs[2];
     if (fleet_live)
@@ -1820,7 +1818,7 @@ void GnssGpuRecordAssemble::shared_consensus(double now_s) {
 
 namespace {
 const char* fleet_mode_name(int m) {
-    return m == 2 ? "live" : (m == 1 ? "log" : "off");
+    return m == 1 ? "live" : "off";
 }
 } // namespace
 
@@ -1855,7 +1853,7 @@ void GnssGpuRecordAssemble::fleet_ref_apply_pending() {
         _fleet_slew_rad_s = slew * M_PI / 180.0;
     // Leaving live, or losing F: the own pin takes over from the model's current phase, so the
     // switch itself never steps it.
-    if (((was == 2 && _fleet_mode.load() != 2) || (ref_set && _g_fleet_ref.empty()))
+    if (((was == 1 && _fleet_mode.load() != 1) || (ref_set && _g_fleet_ref.empty()))
         && _g_shared_warm) {
         _g_pin_ref = _g_shared;
         _g_pin_ref_ok = true;
@@ -1870,7 +1868,7 @@ void GnssGpuRecordAssemble::fleet_ref_apply_pending() {
 
 void GnssGpuRecordAssemble::set_elem_sum_shared_ref_callback(kotekan::connectionInstance& conn,
                                                              nlohmann::json& request) {
-    // {"ref": [[re, im], ...] (n_elements pairs; [] clears), "mode": "off|log|live",
+    // {"ref": [[re, im], ...] (n_elements pairs; [] clears), "mode": "off|live",
     //  "slew_deg_s": x}, every field optional. Staged; applied at the next consensus update
     // (~1 s, while elem_sum_shared is on). Posted by python/scripts/gnss/elem_shared_ref.py.
     std::vector<std::complex<double>> ref;
@@ -1894,9 +1892,9 @@ void GnssGpuRecordAssemble::set_elem_sum_shared_ref_callback(kotekan::connection
         }
         if (request.contains("mode")) {
             const std::string m = request.at("mode").get<std::string>();
-            mode = (m == "off") ? 0 : (m == "log") ? 1 : (m == "live") ? 2 : -2;
+            mode = (m == "off") ? 0 : (m == "live") ? 1 : -2;
             if (mode == -2)
-                throw std::runtime_error("'mode' must be off | log | live");
+                throw std::runtime_error("'mode' must be off | live");
         }
         if (request.contains("slew_deg_s")) {
             slew = request.at("slew_deg_s").get<double>();
