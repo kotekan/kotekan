@@ -36,17 +36,15 @@
  * @conf sample_rate     Double. Real sample rate, Hz.
  * @conf f_offset_hz     Double. Carrier offset from band centre, Hz (on CHORD, the carrier
  *                       itself).
- * @conf conjugate       Bool. The F-engine output is conjugated. Default false.
+ * @conf conjugate       Bool. Must be true: the F-engine output is conjugated, and
+ *                       cudaGnssInject always conjugates the replica. Default true.
  * @conf dll_spacing     Double. Early/Late offset, chips.
  * @conf frame0_utc      Double. UTC of absolute sample 0; overrides the telescope's. Default 0.
- * @conf seed_ttl_s      Double. Seed lifetime without a refresh, s; 0 = never. Default 60.
- * @conf trim_ttl_s      Double. Trim lifetime without a refresh, s; 0 = never. Default 0.
- * @conf trim_clamp      Double. Bound on |trim|, chips. Default 3.
- * @conf despread_max_chips      Int. Cap on the per-hop chip gather, a window centred on the
- *                               PFB span; 0 = full span. Default 0.
- * @conf despread_chips_centered Bool. Must be true when despread_max_chips is set; the capped
- *                               window is always centred. Default true.
- * @conf phi_fp16        Bool. Store the Phi tables as fp16. Default false.
+ * @conf trim_ttl_s      Double. Trim lifetime without a refresh, s; must be > 0. Default 4.
+ * @conf despread_max_chips      Int. Must be 80: the despread gathers an 80-chip window
+ *                               centred on the PFB span. Default 80.
+ * @conf despread_chips_centered Bool. Must be true. Default true.
+ * @conf phi_fp16        Bool. Must be true: the Phi tables are fp16. Default true.
  * @conf seed_endpoint   String. POST /set_seeds.
  * @conf trim_endpoint   String. GET /get_trim.
  * @conf set_trim_endpoint String. POST /set_trim.
@@ -134,7 +132,6 @@ public:
     int n_prn = 0, n_chan = 0, n_elem = 0;
     int hops_per_record = 0, n_hops_frame = 0, fft_len = 0;
     double sample_rate = 0.0, f_offset_hz = 0.0, dll_spacing = 0.0;
-    bool _conjugate = false; ///< F-engine conjugation (see DespreadParams::conj_data)
     double frame0_utc = 0.0; ///< UTC of absolute sample 0; 0 = unknown, and the record
                              ///< assembler then stamps records from the host clock
 
@@ -151,10 +148,10 @@ public:
         double phase_ref_chips = -1.0; ///< physical code phase at ref_hop (-1 = derive from cp)
         double t_recv = 0.0;           ///< steady_clock seconds when this seed last arrived
     };
-    /// Drop a seed not refreshed within this many seconds (config `seed_ttl_s`, 0 = never), so a
-    /// satellite that has set stops being despread. The broker re-seeds every cycle, so the
-    /// default is many refreshes of margin.
-    double seed_ttl_s = 60.0;
+    /// Drop a seed not refreshed within this many seconds, so a satellite that has set stops
+    /// being despread within a minute. The broker re-seeds every cycle, so this is many
+    /// refreshes of margin.
+    static constexpr double seed_ttl_s = 60.0;
 
     /// Snapshot the live trims, expiring any whose controller stopped posting.
     std::vector<double> snapshot_trims(std::vector<int>& expired);
@@ -183,14 +180,14 @@ public:
     //
     // A trim expires: one not refreshed within trim_ttl_s goes to zero (a step of up to
     // trim_clamp) rather than stand as a fixed code offset once its controller has stopped,
-    // which the broker's own DLL would then fight. 0 disables expiry.
+    // which the broker's own DLL would then fight.
     double trim_ttl_s = 0.0;
     std::vector<double> trim_t_recv; ///< steady-clock stamp of the last /set_trim, per PRN
     uint64_t trim_posts = 0;         ///< /set_trim requests accepted
     uint64_t trim_expired = 0;
 
-    double trim_clamp = 3.0;  ///< |trim| bound, chips
-    std::mutex trim_mtx;      ///< guards the trim vectors and counters
+    static constexpr double trim_clamp = 3.0; ///< |trim| bound, chips
+    std::mutex trim_mtx;                      ///< guards the trim vectors and counters
     std::vector<double> trim; ///< per-PRN cp trim, chips (applied cp = model + trim)
     /// Re-pin fold history per slot, shared by the command's instances; GPU thread only. The
     /// producer's dcyc = (applied - dop_prev) * t_abs is the carrier-phase step from the

@@ -304,8 +304,7 @@ __global__ void gnss_pack44_kernel(const float2* __restrict__ wave,
                                    const int* __restrict__ slot2spec, int n_slot, int n_chan,
                                    int n_hops, const int* __restrict__ chan_map,
                                    int frame_chan_stride, int n_lanes, int lane_base,
-                                   int lane_pitch, int conj_replica,
-                                   unsigned char* __restrict__ synth) {
+                                   int lane_pitch, unsigned char* __restrict__ synth) {
     const int idx = blockIdx.x * blockDim.x + threadIdx.x;
     const int lane = idx % n_lanes;
     const int c = (idx / n_lanes) % n_chan;
@@ -328,9 +327,9 @@ __global__ void gnss_pack44_kernel(const float2* __restrict__ wave,
             if (rms > 0.0f) {
                 const float s = 7.0f / (3.0f * rms);
                 int qr = __float2int_rn(s * w.x);
-                // Conjugate the replica, not the data (see launch_pack44's conj_replica):
-                // the mixed tile then equals the tracker's sum_t conj(D) conj(R) directly.
-                int qi = __float2int_rn(conj_replica ? -s * w.y : s * w.y);
+                // Conjugate the replica, not the data (see launch_pack44): the mixed tile
+                // then equals the tracker's sum_t conj(D) conj(R) directly.
+                int qi = __float2int_rn(-s * w.y);
                 qr = qr < -7 ? -7 : (qr > 7 ? 7 : qr);
                 qi = qi < -7 ? -7 : (qi > 7 ? 7 : qi);
                 out = (unsigned char)(((qr + 8) << 4) | ((qi + 8) & 0xf));
@@ -345,14 +344,13 @@ __global__ void gnss_pack44_kernel(const float2* __restrict__ wave,
 cudaError_t launch_pack44(const float2* wave, const double* energy, const DespreadJob* jobs,
                           const int* slot2spec, int n_slot, int n_chan, int n_hops,
                           const int* chan_map, int frame_chan_stride, int n_lanes, int lane_base,
-                          int lane_pitch, bool conj_replica, unsigned char* synth,
-                          cudaStream_t stream) {
+                          int lane_pitch, unsigned char* synth, cudaStream_t stream) {
     const long total = (long)n_hops * n_chan * n_lanes;
     const int threads = 256;
     const long blocks = (total + threads - 1) / threads;
     gnss_pack44_kernel<<<(unsigned)blocks, threads, 0, stream>>>(
         wave, energy, jobs, slot2spec, n_slot, n_chan, n_hops, chan_map, frame_chan_stride,
-        n_lanes, lane_base, lane_pitch, conj_replica ? 1 : 0, synth);
+        n_lanes, lane_base, lane_pitch, synth);
     return cudaGetLastError();
 }
 

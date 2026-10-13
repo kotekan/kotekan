@@ -32,12 +32,15 @@ cudaGnssChordTrackState::cudaGnssChordTrackState(Config& config, const std::stri
     fft_len = config.get<int>(unique_name, "fft_length");
     sample_rate = config.get<double>(unique_name, "sample_rate");
     f_offset_hz = config.get<double>(unique_name, "f_offset_hz");
-    // F-engine conjugation (see DespreadParams::conj_data). CHORD needs true: otherwise the
-    // replica correlates with the conjugate of the sky and reads noise.
-    _conjugate = config.get_default<bool>(unique_name, "conjugate", false);
+    // CHORD's F-engine output is conjugated relative to the decode, and cudaGnssInject always
+    // absorbs that by conjugating the replica (launch_pack44).
+    if (!config.get_default<bool>(unique_name, "conjugate", true))
+        FATAL_ERROR("cudaGnssChordTrack: conjugate: false is not supported; the replica is "
+                    "always conjugated to absorb the F-engine conjugation");
     dll_spacing = config.get<double>(unique_name, "dll_spacing");
-    trim_ttl_s = config.get_default<double>(unique_name, "trim_ttl_s", 0.0);
-    trim_clamp = config.get_default<double>(unique_name, "trim_clamp", 3.0);
+    trim_ttl_s = config.get_default<double>(unique_name, "trim_ttl_s", 4.0);
+    if (!(trim_ttl_s > 0.0))
+        FATAL_ERROR("cudaGnssChordTrack: trim_ttl_s {:g} must be > 0", trim_ttl_s);
     // Record epoch: frame0_utc is the UTC of absolute sample 0, which is the telescope's
     // to_time_ns(0), from the GPS time0 it reads at startup. A config copy cannot follow an
     // F-engine restart, and an epoch wrong by a constant is invisible to every estimator that
@@ -79,9 +82,6 @@ cudaGnssChordTrackState::cudaGnssChordTrackState(Config& config, const std::stri
              "absolute record time.",
              frame0_utc);
     }
-    // 0 = never expire. The broker re-seeds every cycle, so 60 s is many refreshes of margin
-    // while still retiring a satellite that has set within a minute.
-    seed_ttl_s = config.get_default<double>(unique_name, "seed_ttl_s", 60.0);
 
     if (hops_per_record <= 0 || n_hops_frame % hops_per_record != 0)
         FATAL_ERROR("cudaGnssChordTrack: hops_per_record {:d} must divide samples_per_data_set "
@@ -120,35 +120,22 @@ cudaGnssChordTrackState::cudaGnssChordTrackState(Config& config, const std::stri
     // The despread takes each channel's global bin, since the comb is sparse.
     despread = std::make_unique<GnssCudaDespread>(*replica, n_prn, channel_ids, hops_per_record,
                                                   sample_rate);
-    // Cap the per-hop PFB chip gather to a window centred on the span (0 = the full span, ~210
-    // chips at CHORD geometry). Synthesis cost is linear in the depth, but a capped gather is a
-    // different replica. At CHORD geometry (scripts/gnss/e2e --max-chips) a centred window
-    // reproduces the full-depth code phase down to 60 chips; below that the warning marks the
-    // run as timing-only. The despread has no one-sided cap, so despread_chips_centered may
-    // only be true.
-    const int max_chips = config.get_default<int>(unique_name, "despread_max_chips", 0);
-    if (max_chips > 0) {
-        if (!config.get_default<bool>(unique_name, "despread_chips_centered", true))
-            FATAL_ERROR("cudaGnssChordTrack: despread_chips_centered: false is not supported; "
-                        "the despread_max_chips window is always centred on the PFB span");
-        despread->set_max_chips(max_chips);
-        if (max_chips < 60)
-            WARN_NON_OO("cudaGnssChordTrack: despread_max_chips={:d} CENTERED is BELOW THE "
-                        "VALIDATED FLOOR of 60 (the 2-node comb flips to a grating lobe at "
-                        "52). Timing experiments only; detections and locks are INVALID.",
-                        max_chips);
-        else
-            INFO_NON_OO("cudaGnssChordTrack: despread_max_chips={:d} CENTERED (item 6) -- "
-                        "central window of the ~210-chip span; {:.2f}x less synthesis work",
-                        max_chips, 210.0 / (double)max_chips);
-    }
-
-    // fp16 Phi tables halve their device footprint, at a storage error of ~3.3e-4.
-    if (config.get_default<bool>(unique_name, "phi_fp16", false)) {
-        despread->set_phi_fp16();
-        INFO_NON_OO("cudaGnssChordTrack: fp16 Phi tables ARMED (item 3) -- resident Phi "
-                    "halved; despread_batch will refuse while set");
-    }
+    // The per-hop PFB chip gather is an 80-chip window centred on the ~210-chip span, 2.6x
+    // less synthesis work than the full span. A capped gather is a different replica, but at
+    // CHORD geometry (scripts/gnss/e2e --max-chips --chips-centered) a centred window
+    // reproduces the full-depth code phase down to 60 chips. The Phi tables are fp16, half the
+    // device footprint at a storage error of ~3.3e-4. The config keys are read only to refuse
+    // any other setting.
+    constexpr int max_chips = 80;
+    if (config.get_default<int>(unique_name, "despread_max_chips", max_chips) != max_chips
+        || !config.get_default<bool>(unique_name, "despread_chips_centered", true)
+        || !config.get_default<bool>(unique_name, "phi_fp16", true))
+        FATAL_ERROR("cudaGnssChordTrack: the despread runs only a centred {:d}-chip gather with "
+                    "fp16 Phi; despread_max_chips must be {:d}, despread_chips_centered and "
+                    "phi_fp16 true",
+                    max_chips, max_chips);
+    despread->set_max_chips(max_chips);
+    despread->set_phi_fp16();
 
     seeds.assign((size_t)n_prn, Seed{});
     trim.assign((size_t)n_prn, 0.0);
@@ -399,8 +386,6 @@ void cudaGnssChordTrackState::set_seeds_callback(kotekan::connectionInstance& co
 void cudaGnssChordTrackState::expire_trims_locked(std::vector<int>& expired) {
     // Zero a trim whose controller stopped posting (see trim_ttl_s). Slots with no post since
     // start or since their last reset have trim_t_recv 0 and are skipped.
-    if (trim_ttl_s <= 0.0)
-        return;
     const double now =
         std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
     for (int p = 0; p < n_prn; ++p)
@@ -425,14 +410,13 @@ cudaGnssChordTrackState::snapshot_seeds(std::vector<int>& expired) {
     const double now =
         std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
     std::lock_guard<std::mutex> lk(seed_mtx);
-    if (seed_ttl_s > 0.0)
-        for (int p = 0; p < n_prn; ++p) {
-            auto& sd = seeds[(size_t)p];
-            if (sd.have && sd.t_recv > 0.0 && (now - sd.t_recv) > seed_ttl_s) {
-                sd.have = false;
-                expired.push_back(prns[(size_t)p]);
-            }
+    for (int p = 0; p < n_prn; ++p) {
+        auto& sd = seeds[(size_t)p];
+        if (sd.have && sd.t_recv > 0.0 && (now - sd.t_recv) > seed_ttl_s) {
+            sd.have = false;
+            expired.push_back(prns[(size_t)p]);
         }
+    }
     return seeds;
 }
 

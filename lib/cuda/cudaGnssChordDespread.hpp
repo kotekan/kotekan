@@ -107,6 +107,12 @@ cudaError_t launch_correlate_nm(const unsigned char* data, const float* chan_sca
  * recomputes the scale from the energy rows over hops_per_record and divides it out; for the
  * P_HEAD lane its scale differs from this one.
  *
+ * The replica's imag is negated before quantizing, the path-B counterpart of
+ * @ref DespreadParams::conj_data: the N^2 kernel has no conjugate flag and the antenna input is
+ * shared, so CHORD's F-engine conjugation is absorbed on the replica side. It cannot be fixed
+ * downstream: the correlator forms sum_t R conj(D) and the tracker sum_t conj(D) conj(R), which
+ * are not conjugates of each other.
+ *
  * @param wave       [3*n_job][n_chan][n_hops] float2, from @ref launch_waveform
  * @param energy     [4*n_job][n_chan] double, rows E/P/L/P_HEAD, from @ref launch_waveform.
  *                   cudaGnssInject passes the frame's first record for every record, so the
@@ -116,13 +122,6 @@ cudaError_t launch_correlate_nm(const unsigned char* data, const float* chan_sca
  * @param chan_map   [n_chan] device: position of each covering channel on the synth array's
  *                   channel axis
  * @param frame_chan_stride length of the synth array's channel axis
- * @param conj_replica negate the replica's imag before quantizing, the path-B counterpart of
- *        @ref DespreadParams::conj_data. The N^2 kernel has no conjugate flag and the antenna
- *        input is shared, so the F-engine's conjugation has to be absorbed on the replica side.
- *        It must match the tracker's `conjugate` (otherwise path B correlates against the
- *        conjugate of the sky and reads noise at every code phase), and it cannot be fixed
- *        downstream: the correlator forms sum_t R conj(D) and the tracker sum_t conj(D)
- *        conj(R), which are not conjugates of each other.
  * @param n_lanes    lanes this chain writes (4 per slot); all are written, inactive slots as 0x88
  * @param lane_base  first lane of this chain on the synth array's lane axis (a multiple of 16,
  *                   one tile row), so several chains can share one array
@@ -132,8 +131,7 @@ cudaError_t launch_correlate_nm(const unsigned char* data, const float* chan_sca
 cudaError_t launch_pack44(const float2* wave, const double* energy, const DespreadJob* jobs,
                           const int* slot2spec, int n_slot, int n_chan, int n_hops,
                           const int* chan_map, int frame_chan_stride, int n_lanes, int lane_base,
-                          int lane_pitch, bool conj_replica, unsigned char* synth,
-                          cudaStream_t stream);
+                          int lane_pitch, unsigned char* synth, cudaStream_t stream);
 
 } // namespace gnss_cuda
 
