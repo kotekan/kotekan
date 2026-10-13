@@ -8,7 +8,7 @@ What is open on the CHORD side (branch `kv/chord-gnss`). Closed items are in
 present except the 09-14 mitigations of #131 (gone with the launchers) and the generator's profiling switch #114 relied
 on. Closed since 10-11: **#55, #62, #63, #113, #115, #121, #125, #144, #146 residual, #150, #159, #161, #172, #173,
 #174**, the #1750 latent lock (PR #1763), and the 10-11 batch (#31, #34, #88, #102, #107 residual, #112, #123,
-#130/#153, #133, #149, #160, #162). Opened: **#175–#188**. The 10-11 and 10-13 memory notes record every check.
+#130/#153, #133, #149, #160, #162). Opened: **#175–#189**. The same evening the ready-now set ran in two reviewed lanes and merged: **#186, #183** closed; **#176, #175** have their guards built (live at the next broker restart); **#119, #152** are instrumented; **#94**'s gauge test is in; **#131**'s shutdown race is fixed and its death not reproduced. The 10-11 and 10-13 memory notes record every check.
 
 **Fleet state (10-13): the F-engine is OFF** (since 10-12 17:05Z, for about a week); the six nodes are down, their hosts
 up; the broker, obs writers and viewer run the merged tree on the gnss VM, the gather and aggregator the 10-12 binaries.
@@ -108,14 +108,6 @@ deleted the dead relative arm and kept the absolute veto as it ran; the yaml key
 **Question:** is the relative veto wanted? If so it is new work (from git history, without the override), judged on a
 night's veto counts per chain against the absolute one; if not, close.
 
-### #186 — `seeding.py` appends to `err_hist` twice, the second time unconditionally (2026-10-13)
-**What [tree]:** `gnss_broker/seeding.py:1173-1185`: the guarded append (`if cp_err is not None`) is followed by an
-unguarded one, so a measured error enters the 9-sample history twice (halving the median gate's window) and a `None`
-enters it when there is no measurement; `statistics.median` at :1227 then raises on the `None`. Not seen live; latent
-because `cp_err` is rarely `None` on a tracked PRN.
-**Fix:** delete the second append. Check: the broker's `test_seeding`-style replays unchanged, plus one step with
-`cp_err = None`.
-
 ### #187 — clean-up that waits on the new binaries and the restarted broker (2026-10-13)
 **What [tree]:** (a) the generator still emits keys the C++ now reads only to refuse other values (cudaGnssInject
 `conjugate`, `phi_fp16`, `despread_max_chips`, `despread_chips_centered`, `trim_endpoint`; cudaCorrelatorDual
@@ -163,6 +155,26 @@ instance, its rotated discriminator is identically zero).
   delta that moves more than ~0.3 chips from the previous adopted one unless it persists for two solves.
 - **Check:** `grep 'JOINT-CLK' broker.log | grep ADOPTED` and the |delta| census taken at the 10-12 telemetry v8 rollout.
 
+- **Fix [built 10-13, `6e73de015`; live at the next broker restart]:** `dr_joint_clk` keeps the joint clock it last
+  adopted (`dr_state["jclk_last"]`) and refuses a joint clock more than 0.3 chips from it until the new level has held,
+  to 0.3, for 30 s (`joint_clk_max_step_chips` / `joint_clk_step_hold_s`, frozen in `cli.py`); a bounds refusal
+  restarts the hold; the refusal reads `JOINT-CLK: ... -> REFUSED (step -0.664 chips from the last adopted joint clock;
+  the new level has held 0 of 30 s)`. The 5-chip / 0.50-sigma bounds are unchanged. It keys on the joint clock LEVEL,
+  not the delta this entry named: over 10-11 16:22Z → 10-12 13:00Z the legacy median's churn steps the delta > 0.3
+  chips 90 times while the joint steps 21, so a delta-keyed guard would park each consumer on the churned legacy clock
+  ~67 times a day. The hold is in seconds because the cycle is 2 s and the JOINT-CLK line is 30-s rate-limited: "two
+  consecutive solves" at the cycle cadence would have confirmed the 40-s C33 excursion.
+- **Offline proof (gal_e5a JOINT-CLK lines, 30-s cadence):** 12:58:17Z (−0.806, 0.664 below the last adopted 149.450)
+  REFUSED, 12:58:53Z (−0.066) ADOPTED directly; the C13 run at 12:00Z is followed (two lines wait one line and are
+  confirmed on the next; at the 2-s cadence its steps are 0.02 chips and never meet the guard). Over the span the guard
+  refuses 5 of the 51 |delta| > 0.5 adoptions and 13 lines in all; 9 of the 13 are levels that held and were adopted one
+  line later. No persistent level is refused for longer than the hold. At the live cadence the guard caps a C33-type
+  excursion at ~0.3 chips plus the legacy offset rather than refusing it outright; the #142-style alternative (hold the
+  joint while the transit sky has a feeder-band satellite inside the bound) is the stronger fix if this proves soft.
+- **Check:** `gnss_broker.test_jointstep`; on the sky, `grep 'JOINT-CLK' broker.log | grep 'REFUSED (step'` through the
+  next transit of a 1176.45-MHz emitter, and no `FADR BREAK ... dark` on every chain after a JOINT-CLK adoption.
+  Digests unchanged (no replay carries a refused adoption).
+
 ### #175 — after a transit's null crossing every E6 tracker is re-seeded ~0.45 chips off its peak and rails there for an hour (2026-10-11)
 **What [live 22:34–23:35Z]:** E06 passed 0.24° from boresight at 22:27Z (E6 prompt 3.5 million × the floor). As it
 crossed the dish's first null (2.8–3.5°, 22:34–22:36Z) the chain browned out (PROMPT-CN0 of every PRN down 15–30 dB,
@@ -181,6 +193,24 @@ tracker the half chip back; only a fresh displaced-presence admission does.
 not N detections: refuse `presence-admit-displaced` while a BROWNOUT is open or when ≥3 PRNs report the same offset
 within 0.1 chips in one cycle; and a PRN whose disc has sat at the clamp for >60 s with SPEC-FIT tau disagreeing
 should re-run presence (the escape path the bright ones took).
+
+**Fix, 10-13 (`9f193b74e`; live at the next broker restart):** `displaced_chain_event` (fleet.py) refuses a cycle's
+displaced admissions while D1's BROWNOUT is open on the chain, or when three or more of them lie within 0.1 chips of
+one another; refused rows fall back to the q/prompt verdict, one `PRESENCE -displaced: <reason> -- N PRN(s) at off
+a..b REFUSED` line per cycle and reason (30-s rate limit). Rows within 0.1 chips of their peak are exempt from both
+rules: the deep path admits dim on-peak satellites by the dozen on BeiDou, and refusing them emptied the chain in the
+replay (the exemption removes about half the refusals the bare rules would make). The brownout read is the previous
+cycle's. **Offline:** the 10-11 22:34:52Z admission (E31/E4/E23/E5/E16 at +0.41..+0.47) is refused as one offset — the
+brownout opened ~20 s later, so the offset rule is the one that catches it; E23 at 22:38:56Z (−0.200, deep) is refused
+inside the 22:37–22:39Z brownout; E4 at 23:24:35Z (+0.589) and the other fourteen single admissions are admitted. Over
+10-11 16:22Z → 10-13 00:22Z, 18 same-offset lines (every one a chain-wide step, including the #176 adoption's ×0.5
+echo on gal_e6 at 12:58:49Z) and 38 brownout lines of ~1500. A persistent chain-wide step is refused every cycle by
+design: fix the clock, do not re-seed N satellites. Digests unchanged (no transcript carries the flag).
+**Still open:** the escape for a PRN whose disc has sat at the clamp > 60 s while SPEC-FIT tau disagrees — it needs a
+per-PRN 60-s history (a detector beside D3, fed from the fleet row's disc, the readback trim and `spec_fit[prn].tau`) and
+an actuator that releases the C++ loop's standing trim or re-seeds the PRN; not a presence verdict. The `PRESENCE
++displaced` line is rate-limited to one per 120 s, so the log under-reports admissions. **Check live:** `grep 'PRESENCE
+-displaced' broker.log` through the next E06/E31 transit; the dim E6 PRNs' DLL disc should not rail after the null.
 
 ### #171 — the ALERT files reach no one (2026-10-09)
 **What [tree]:** `chain_health_cron.sh` (cf06, */15) and `elem_ref_cron.sh` (gnss, */5) write ALERT files that
@@ -288,6 +318,21 @@ from on-peak trackers (present, q above floor), freeze it inside the transit vet
 detector stays as the backstop.
 **Check:** replaying the 09-23 and 09-28 windows alarms within 10 min of onset and the re-anchor brings d back
 inside ±1 chip of ref; zero alarms on a quiet day; e5a/b2a `code_resid_m` returns to its pre-transit level.
+
+**10-13: the detector replayed over the whole log, 09-18 22:33Z → 10-13 12:56Z (20,849 scored minutes; healthy d
+p1/p50/p99 −0.15/+0.21/+0.46 chips).** Three alarms: the two known (09-23 +2.02, 09-28 −2.19) and a THIRD, **10-06
+10:27–12:15Z, d −1.96**: gps_l5's search was dead 07:10–10:23Z (0 integrity residuals, dead-reckon clock frozen at
+133.74 chips, the joint at ~137, unscored), and when it re-acquired at ~150.0 the joint followed only to 148.2 and sat
+2.0 chips low for 1 h 45 min, recovering by itself 12:11–12:18Z. Before #125, so the e5a-feed mechanism; zero alarms
+10-07 → 10-12 17:07Z (the last gps_l5 solve before the F-engine went off). Two things to carry: (1) the healthy-d
+reference moved with the membership, as warned — p50 +0.22 through 10-10, +0.13 on 10-11, −0.06 on 10-12 — so
+`--ref 0.3` is now asymmetric; re-derive it on the first full day back; (2) the detector is blind exactly when the
+joint is worst: the joint sat ~13 chips off for 3 h on 10-06 while gps_l5 had no solve, unscored by design (a second
+metric that needs no legacy clock, e.g. the gal_e5a − gal_e5b `code_resid_m` difference, would see it).
+**Check stays open:** a week of zero alarms after #125 (only ~1.7 scored days exist, 10-11 16:22 → 10-12 17:07Z). Run:
+the `JOINT-CLK | gps_l5 dead-reckon clock | BORESIGHT TRANSIT` lines of each rotated log through
+`fixtures/obs/joint_latch_detect.py`, per file and concatenated in order (its >1 h backward-jump rule assigns days;
+verify the rollover count against the rotation dates). Helpers and the per-day table: `~/gnss/builds/readynow/work152/`.
 
 ### #155 — dTEC arcs die in transits of 1176-MHz emitters: the fleet ADR holds the arc while the victim band's residual is dark (2026-09-29)
 **⚡ 10-12 status (four nights 10-08 19:00Z to 10-12 00:40Z, `out/transit_arcs_1012`, events_1012.txt; closure per day
@@ -418,6 +463,20 @@ slope.
 
 ✅ 10-11: the `--fit-gap-s 3600` half is fixed — 1200 s in `common` (inside the unwrap's 21–25 min unambiguous
 range), live at the 12:58Z broker restart. What is left is the garbage's origin, above.
+
+**10-13: the fit's INPUT samples are not in the log** — the cp-fit line carries only the fit's output (`cp_ref @ h0`,
+slope, pts) at a 10-s rate limit — so the dragging sample cannot be named offline from any existing log. `0a43f3557`
+(live at the next broker restart) logs the last 12 (hop, cp in seed currency, det dop Hz) at every FLUSHED. What the
+10-12 log does show for PRN 24 (03:26–03:32Z, el 54°): the first flush (03:28:54) was a 256-point history whose slope
+went 0.015 → 0.082 → 0.741 → 1.383 chips/s in 44 s while the search Doppler scattered ±50–100 Hz (measured
+alternating +62/+188 against a predicted ~+140) and the long-code residuals ran 1000–5000 chips at snr 30–41, just
+above `--fit-min-snr 30`; every flush after it was a 3–5-point rebuild at |slope| 18–1238 chips/s, one per ~20 s. Over
+the 10-11/10-12 logs 534 of 583 flushes that pair with a cp-fit line are on ≤ 8-point histories: the garbage is the
+FRESH weak detections, and the flush cascade is the symptom. The replay gate cannot see this guard at all — no fixture
+enables `--cp-rate-model-tol`; one transcript recorded with the live knobs would make it real.
+**Check:** on the next sky day take one `history at flush` line for PRN 24/8/18/32/26, unwrap the cp column by nearest
+wrap and see whether the dragging step rides a det-dop jump (~1560 chips per Hz of Doppler error at that run age) or a
+low-snr sample; the fix is then a higher `--fit-min-snr` or a seed-currency step gate, not the flush.
 
 ### #120 — the stack's boot path: the VM's units are untested across a reboot, and cf06's cube leg has no unit
 **[live 10-11]** The broker, gather, aggregator, eight obs writers, viewer and rail run on the gnss VM as user units
@@ -693,6 +752,21 @@ pre-systemd launchers), so the next death leaves no backtrace; the gather now ru
 `Restart=on-failure`, 30 s. The fix is in the gather binary on the VM (the reaper path), deployable without a node
 cycle; a flap harness (connect, take nothing, repeat 20×/min) is the test.
 
+**10-13: read, sanitised, flapped — not reproduced.** The one defect found by reading and confirmed by ThreadSanitizer
+is the stage-7 one: `~GnssTelemGather` closed `_listen_fd` while the accept thread polled it — fixed (`c955796ff`:
+shutdown, join, then close; `client_drops` under its own mutex, `bad_frames` atomic). A shutdown-time race, so it cannot
+explain a death mid-run. The flap harness now exists: `scripts/gnss/telem_flap.py --kotekan <bin> --config
+config/generated/chord_gnss_gather.yaml --capture fixtures/tec_wander/telem/telem_l5_20261012_1252.bin [--clients N
+--flaps-per-min R --read --no-sender]` (ports moved +1000; exits non-zero if the gather dies; the e5a_e6 capture is v7
+and the v8 gather rejects it). The UNFIXED build survived 20/min, 200/min × 10 clients, reading clients, no-sender and a
+starved host (a reading client dropped every 3 s, as the broker was on 09-14) with no ASAN/UBSAN report; the fixed build
+survived 10 min at 20/min (203 drops) and 10 min at 10 reading clients × 200/min (17,045 drops, 858 reaps).
+**What is left:** the 09-14 exit itself — no FATAL, no `terminate called`, no core, under 21 parallel replays on the
+same host — fits a SIGKILL (OOM) better than a stage bug. cf06's kernel log for 2026-09-14 20:50–21:05 settles it
+(`sudo journalctl -k --since "2026-09-14 20:50" --until "2026-09-14 21:05"`, or `zgrep -a "Sep 14 20:5"
+/var/log/kern.log*.gz | grep -i -E "oom|Killed process"`): an OOM kill closes this as host starvation; nothing there
+leaves it open with the harness as the standing check. The fix deploys with a gather restart on the VM, no node cycle.
+
 ### #114 — `cudaRFISKtilde` is 6× slower on gpu0 than gpu1 on the same node
 **[live]** 12.89 ms vs 2.12 ms per frame on cx43 with identical per-GPU configuration, and it is
 the largest non-inject kernel on the busier GPU. Per the standing rule that **nothing is
@@ -750,14 +824,6 @@ first), then `gnss_broker/`, then the tools, scripts and viewer. Exclude files o
 #1752). Afterwards: the cf05 `vpy.sh`-style checks (broker tests, the seven `broker_equiv` replay digests identical,
 `gen_fleet --check`, obs/viewer argv parse), `stack_contract_gate.sh`, then KV restarts the Python services (the obs
 writers wait for the anchor since `a74c3c75e`, so a restart during an outage is safe).
-
-### #183 — the transit census drops a window without saying so (2026-10-12)
-**What [tree]:** `gnss_transit_arcs.py` keeps a window only if 10 min of context fit inside the span on both sides
-(`t0 - pad - 720 >= t_lo`, `t1 + pad + 720 <= t_hi`) and it starts more than 15 min after `--split`; anything else is
-skipped silently. On 10-12 the C33 pass (0.61°) vanished from the census twice, first for a span one minute short, then
-for starting 6 min after the split, and the regroup printed only the passes that were left.
-**Fix:** print each dropped window with its reason, beside the kept ones. Check: rerun the C33 census with
-`--t-hi 13:18 --split 12:37:14` and see C33 listed as dropped (span) and dropped (split).
 
 ### #157 — `test_buffer_peek` fails its `peeks_won > 0` check under ThreadSanitizer (flaky under slowdown; found 2026-09-30)
 - **What:** under TSan's slowdown the worker thread wins every iteration, so `BOOST_CHECK(peeks_won > 0)`
@@ -872,6 +938,19 @@ legacy still owns the segment — and **S3–S6**, which are "state the membersh
 and write the test", are not started. There is no gauge/membership test among the 20 broker test
 files. Separately and not evidence against the gauge: the standing `SEED-OFFSET joint-vs-legacy`
 control reports **39% refusals** (936 of 2371) and nobody reads it.
+
+**10-13 (`ff13934c8`): S1 demoted; the S2 gauge's membership invariance is tested; S3–S6 are not.** S2 is what runs:
+every `joint_receiver()` constructs the prior gauge and seven of eight chains run `joint-consume: clk`, so
+`dr_joint_clk` sets the seeds' clock level from the joint state; the circular median keeps the long-code period, is the
+fallback on a refused joint clock, and gps_l5 (`rate,slew`) alone still flies it by manifest choice. `deadreckon.py`
+says so, and the 30-s `dead-reckon clock` line carries `(median: a cross-check, the adopted joint clock is the level;
+...)` or `(median: the level on this chain; ...)` per chain — prefix and the `drift ... integrity:` tail unchanged for
+`joint_latch_detect.py`. `gnss_broker/test_gauge_churn.py` states the property with the median gauge as control: a
+join or leave moves the prior gauge's clk < 0.06 chips in the following 90 s (median gauge 0.82 / 1.22), clk + b_i holds
+to 0.17 for every stayer, clk_rate < 0.001, and `gauge_mode="prior"` at all seven call sites. The S3 (combiner NH
+median), S4 (F-engine axis max over rows) and S5/S6 sites are population statistics with no level to pin; a churn test
+for them needs a different property (a bounded step per membership change) and is still open. The "39% refusals" above
+is not the SEED-OFFSET line (that line has no refusal in it; JOINT-CLK REFUSED ran ~31% on 10-12): re-attribute or drop.
 
 ### #106 — the establishment excursion, and the one instrument that was never built
 The withdrawn freeze is correctly fenced (default 0.0, absent from the yaml). The cause is still
