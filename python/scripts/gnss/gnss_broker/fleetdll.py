@@ -263,7 +263,6 @@ def stage_fleet_dll(ctx):
                     ctx.args.coh_min_instances,
                     ctx.args.coh_min_records,
                     prns=set(ctx.seeds) or None,
-                    log=None,
                     floor_margin=ctx.args.coh_floor_margin,
                     seed=int(_now()),
                 )
