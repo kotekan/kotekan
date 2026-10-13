@@ -615,7 +615,7 @@ snapshot, `config/elem_shared_ref_20261009.json` (R 0.976–0.999), went live by
 check above is still open: it has not yet run against a current reference.
 **2026-10-10:** the F-engine came back re-based at 01:31Z with new per-board phases; the acting cron re-took all
 eight bands by 02:10Z (committed as `config/elem_shared_ref_20261010.json`, 2bad4afda) and every instance applied
-it. A node restarted after a re-take and before the commit runs up to 30 min on the stale file (`--act-every`).
+it. A node restarted after a re-take and before the commit runs up to 30 min on the stale file (`ACT_EVERY_S` in elem_shared_ref.py).
 **Still open:** the no-restart re-base check above, and the file is re-taken by the cron, not by the re-base itself.
 The alerting TODO is #171.
 

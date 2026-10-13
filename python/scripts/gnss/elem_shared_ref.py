@@ -2,13 +2,12 @@
 """The fleet reference of the shared element model's phase pin (#154).
 
   snapshot OUT.json   Poll every n2assemble's /get_elem_cal and form, per band and pol, the
-                      consensus of the warm, unfrozen models (instances more than --exclude-deg
+                      consensus of the warm, unfrozen models (instances more than EXCLUDE_DEG
                       off it, or whose shape it does not describe, are left out and listed).
                       The vector is phased so the included instances' offsets average zero, and
                       written with the array epoch the configs were generated for. The generator
                       copies each band's entry into that band's assemblers (--elem-shared-ref).
-  post FILE           POST every band's reference to its instances (--mode, --slew-deg-s,
-                      --only cx27/0,cx42).
+  post FILE           POST every band's reference to its instances (--mode).
   status [FILE]       Per instance and pol: offset and shape similarity against FILE (works on any
                       binary), plus the node's own fleet_ref block where the binary has one.
   watch FILE DIR      The safety net (scripts/gnss/site/elem_ref_cron.sh, every 5 min): per band, R and
@@ -16,12 +15,12 @@
                       what needs a person. With --act it also
                       - POSTs the reference (--mode) to an instance that holds none, holds one in
                         another mode, holds one that does not describe its model while FILE's
-                        does, or is > --alert-deg off for > --min-run s outside a freeze (at most
-                        every --act-every s);
+                        does, or is > ALERT_DEG off for > MIN_RUN_S outside a freeze (at most
+                        every ACT_EVERY_S);
                       - re-takes a band whose reference describes fewer than half of its models
-                        for > --min-run s (new F-engine gains), when two thirds of the instances
+                        for > MIN_RUN_S (new F-engine gains), when two thirds of the instances
                         agree on a consensus, writes it to DIR/auto_ref.json and POSTs it (at most
-                        every --retake-every s). That file is the reference in use until FILE is
+                        every RETAKE_EVERY_S). That file is the reference in use until FILE is
                         newer, and ALERT says so until it is committed.
                       Without --act nothing is changed.
 
@@ -46,6 +45,12 @@ K = os.path.normpath(
 )
 GEN = os.path.join(K, "config", "generated", "chord_gnss_%s_multi.yaml")
 PORT = 12048
+EXCLUDE_DEG = 30.0  # snapshot leaves out instances this far off the consensus
+MIN_SIM = 0.5  # shape similarity below which a reference does not describe a model
+ALERT_DEG = 45.0  # watch: an instance this far off the reference starts an episode
+MIN_RUN_S = 900.0  # an episode (or a stale reference) counts once it lasts this long
+ACT_EVERY_S = 1800.0  # --act re-posts to one instance at most this often
+RETAKE_EVERY_S = 7200.0  # --act re-takes one band's reference at most this often
 
 
 def nodes():
@@ -217,7 +222,7 @@ def snapshot(a):
             )
     for band in sorted({band_of(st) for _, st in res}):
         try:
-            entry = band_consensus(res, band, a.exclude_deg, a.min_sim)
+            entry = band_consensus(res, band, EXCLUDE_DEG, MIN_SIM)
         except ValueError as e:
             sys.exit(str(e))
         for pol in (0, 1):
@@ -240,8 +245,8 @@ def snapshot(a):
         "epoch": epoch,
         "n_elements": n_elem,
         "taken_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "exclude_deg": a.exclude_deg,
-        "min_sim": a.min_sim,
+        "exclude_deg": EXCLUDE_DEG,
+        "min_sim": MIN_SIM,
         "bands": bands,
     }
     with open(a.out, "w") as f:
@@ -260,13 +265,6 @@ def load_ref(path):
     return snap
 
 
-def selected(node, stage, only):
-    if not only:
-        return True
-    name = inst_name(node, stage)
-    return any(o in (node, name, band_of(stage)) for o in only)
-
-
 def post_one(node, stage, body):
     """POST one assembler's reference; returns its reply."""
     req = urllib.request.Request(
@@ -281,15 +279,12 @@ def post_one(node, stage, body):
 
 def post(a):
     snap = load_ref(a.file)
-    only = [o for o in (a.only or "").split(",") if o]
     body_extra = {}
     if a.mode:
         body_extra["mode"] = a.mode
-    if a.slew_deg_s is not None:
-        body_extra["slew_deg_s"] = a.slew_deg_s
     for node, stage in endpoints():
         band = band_of(stage)
-        if band not in snap["bands"] or not selected(node, stage, only):
+        if band not in snap["bands"]:
             continue
         try:
             rep = post_one(
@@ -422,7 +417,7 @@ def watch(a):
                 if o is not None:
                     sims[pol].append(o[1])
         if not any(
-            len(v) >= 4 and 2 * sum(x < a.min_sim for x in v) >= len(v)
+            len(v) >= 4 and 2 * sum(x < MIN_SIM for x in v) >= len(v)
             for v in sims.values()
         ):
             state["stale"].pop(band, None)
@@ -432,15 +427,15 @@ def watch(a):
         what = "%s: the reference describes %s halves for %.0f min" % (
             band,
             "/".join(
-                "%d of %d" % (sum(x >= a.min_sim for x in v), len(v))
+                "%d of %d" % (sum(x >= MIN_SIM for x in v), len(v))
                 for v in sims.values()
             ),
             dur / 60.0,
         )
-        if dur < a.min_run:
+        if dur < MIN_RUN_S:
             continue
         try:
-            new = band_consensus(res, band, 30.0, a.min_sim)
+            new = band_consensus(res, band, 30.0, MIN_SIM)
             need = max(4, math.ceil(2 * max(len(v) for v in sims.values()) / 3))
             if min(new["n"]) < need or min(new["sim_median"]) < 0.8:
                 raise ValueError(
@@ -456,10 +451,10 @@ def watch(a):
                 % (what, new["R"], new["n"])
             )
             continue
-        if now - state["retaken"].get(band, 0) < a.retake_every:
+        if now - state["retaken"].get(band, 0) < RETAKE_EVERY_S:
             lines.append(
                 "%s, and it was re-taken less than %.0f h ago"
-                % (what, a.retake_every / 3600)
+                % (what, RETAKE_EVERY_S / 3600)
             )
             continue
         snap = dict(
@@ -538,12 +533,12 @@ def watch(a):
                     if key in state["bad"]:
                         seen.add(key)
                     continue
-                if fr and o[1] >= a.min_sim and fr["sim"][pol] < a.min_sim:
+                if fr and o[1] >= MIN_SIM and fr["sim"][pol] < MIN_SIM:
                     why.append("pol%d: the node's reference does not describe it" % pol)
-                if abs(o[0]) > a.alert_deg:
+                if abs(o[0]) > ALERT_DEG:
                     seen.add(key)
                     t0 = state["bad"].setdefault(key, now)
-                    if now - t0 < a.min_run or band in stale:
+                    if now - t0 < MIN_RUN_S or band in stale:
                         continue
                     lines.append(
                         "%s %+.0f deg (sim %.2f) for %.0f min, node mode %s%s"
@@ -553,19 +548,17 @@ def watch(a):
                             o[1],
                             (now - t0) / 60.0,
                             fr.get("mode", "n/a (binary without #154)"),
-                            "; its shape is not the fleet's"
-                            if o[1] < a.min_sim
-                            else "",
+                            "; its shape is not the fleet's" if o[1] < MIN_SIM else "",
                         )
                     )
-                    if o[1] >= a.min_sim:
+                    if o[1] >= MIN_SIM:
                         why.append("pol%d %+.0f deg off" % (pol, o[0]))
             act_key = "%s %s" % (name, band)
             if not why or not fr or frozen or a.mode == "off":
                 continue
             if not a.act:
                 lines.append("%s: %s; post the reference" % (act_key, "; ".join(why)))
-            elif now - state["acted"].get(act_key, 0) >= a.act_every:
+            elif now - state["acted"].get(act_key, 0) >= ACT_EVERY_S:
                 ok, note = post_note(node, stage, entry["ref"], a.mode, "; ".join(why))
                 (notes if ok else lines).append(note)
                 state["acted"][act_key] = now
@@ -600,7 +593,7 @@ def watch(a):
                 for b, v in sorted(cur["bands"].items())
             ),
             len(state["bad"]),
-            a.alert_deg,
+            ALERT_DEG,
             len(lines),
             len(notes),
             "".join("\n  " + ln for ln in lines),
@@ -616,27 +609,16 @@ def main():
     sub = ap.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("snapshot")
     s.add_argument("out")
-    s.add_argument("--exclude-deg", type=float, default=30.0)
-    s.add_argument("--min-sim", type=float, default=0.5)
     p = sub.add_parser("post")
     p.add_argument("file")
-    p.add_argument("--mode", choices=("off", "log", "live"))
-    p.add_argument("--slew-deg-s", type=float)
-    p.add_argument(
-        "--only", help="comma list of nodes (cx27), instances (cx27/0) or bands (e6)"
-    )
+    p.add_argument("--mode", choices=("off", "live"))
     t = sub.add_parser("status")
     t.add_argument("file", nargs="?")
     w = sub.add_parser("watch")
     w.add_argument("file")
     w.add_argument("dir")
-    w.add_argument("--alert-deg", type=float, default=45.0)
-    w.add_argument("--min-run", type=float, default=900.0)
-    w.add_argument("--min-sim", type=float, default=0.5)
-    w.add_argument("--mode", choices=("off", "log", "live"), default="live")
+    w.add_argument("--mode", choices=("off", "live"), default="live")
     w.add_argument("--act", action="store_true")
-    w.add_argument("--act-every", type=float, default=1800.0)
-    w.add_argument("--retake-every", type=float, default=7200.0)
     a = ap.parse_args()
     {"snapshot": snapshot, "post": post, "status": status, "watch": watch}[a.cmd](a)
 
