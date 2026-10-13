@@ -109,8 +109,8 @@ void oneDiskVDIFWrite::main_thread(){
     long intsec_offset = 0;
     char setting_log_file[full_path_len];
     char data_log_file[full_path_len];
-    FILE* setting_file;
-    FILE* j_file;
+    FILE* setting_file = nullptr;
+    FILE* j_file = nullptr;
 
     MergedBeamMetadata* in_metadata = nullptr;
     timespec out_frame_unix_time;
@@ -330,7 +330,9 @@ void oneDiskVDIFWrite::main_thread(){
     }
     // free vdif frame 
     free(vdif_frame);
-    fclose(j_file);
+    // The data log is only opened when writing to disk.
+    if (j_file != nullptr)
+        fclose(j_file);
     
 }
 
