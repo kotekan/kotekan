@@ -799,10 +799,14 @@ def test_fetch_brdc_off_the_loop():
     )
     calls = []
     gate = threading.Event()
+    # Thread.start() returns before the thread's body runs, so `calls` is empty until the
+    # refresh thread reaches slow(); `entered` is what "in flight" means to this test.
+    entered = threading.Event()
     real = sup._fetch_brdc_now
 
     def slow(when=None, cache_dir=sup.CACHE):
         calls.append((threading.current_thread().name, cache_dir))
+        entered.set()
         gate.wait(3.0)
         return ["fresh"]
 
@@ -821,6 +825,7 @@ def test_fetch_brdc_off_the_loop():
                 == sorted([daily, "hourly_MN.rnx.gz"]),
                 "...with the cached daily and hourly merge",
             )
+            check(entered.wait(3.0), "the refresh thread is in flight")
             sup.fetch_brdc(cache_dir=d)
             check(
                 len(calls) == 1,
