@@ -613,12 +613,10 @@ def stage_detections_to_seeds(ctx):
         elif _dr is not None:
             seed.put("dop_fit", epoch=ref_hop, doppler_rate_hz_s=_dr)
             ctx.dop_rate_fitted[prn] = _dr
-        fit = fit_cp_rate(
-            ctx.cp_to_seed_currency(
-                h, seed_dop, float(seed.get("doppler_rate_hz_s", 0.0) or 0.0)
-            ),
-            ctx.code_len,
+        _hc = ctx.cp_to_seed_currency(
+            h, seed_dop, float(seed.get("doppler_rate_hz_s", 0.0) or 0.0)
         )
+        fit = fit_cp_rate(_hc, ctx.code_len)
         if fit is not None:
             rate, h0, cp_ref = fit
             # ── THE CODE-RATE CROSS-CHECK (#96, --cp-rate-model-tol) ──────────────────
@@ -718,6 +716,22 @@ def stage_detections_to_seeds(ctx):
                                 _n,
                                 rate * ctx.args.hops_per_sec,
                                 _model * ctx.args.hops_per_sec,
+                            )
+                        )
+                        # The samples the fit ingested are logged nowhere else (the
+                        # cp-fit line carries the fit's OUTPUT), so a flush is the one
+                        # moment the sample that dragged the slope can be named
+                        # offline: the tail of the history in the fit's own currency,
+                        # with each detection's reported Doppler (the alias bin it rode).
+                        _log(
+                            "PRN %d cp-fit history at flush, newest last "
+                            "(hop,cp chips in seed currency,det dop Hz): %s"
+                            % (
+                                prn,
+                                " ".join(
+                                    "%d,%.1f,%+.0f" % (hh, cc, dd)
+                                    for (hh, cc), (_, _, dd) in zip(_hc[-12:], h[-12:])
+                                ),
                             )
                         )
                     else:
