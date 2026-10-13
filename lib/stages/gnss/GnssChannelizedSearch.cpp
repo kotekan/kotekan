@@ -557,7 +557,7 @@ void GnssChannelizedSearch::search_snapshot() {
         gnss::AcquisitionResult a{};
         int best_nh = -1;
         std::vector<double> surf;
-        std::vector<std::vector<cf>> dch(_n_chan, std::vector<cf>(hpr));
+        std::vector<std::vector<cf>> dch; // the CPU acquire's window, sized on first use
         gnss::AcquisitionSurface dims{};
         // Alignments to scan: pred +- _nh_hint_span with a fresh hint, else all of them. Each
         // costs a full surface. pred rounds a non-integer period count, so it can be off by one
@@ -585,9 +585,8 @@ void GnssChannelizedSearch::search_snapshot() {
             for (int i = 0; i < _n_nh; ++i)
                 nh_scan.push_back(i);
         for (int nh : nh_scan) {
-            // Materialise this alignment from the bank:
-            //     R[m] = s(k0[m]+nh)*head[m] + s(k0[m]+1+nh)*tail[m].
-            // The sign pair depends only on the hop and the alignment, so it is computed once per
+            // This alignment's replica is R[m] = s(k0[m]+nh)*head[m] + s(k0[m]+1+nh)*tail[m]. The
+            // sign pair depends only on the hop and the alignment, so it is computed once per
             // hop rather than per channel.
             _sgn0.resize((size_t)Mp);
             _sgn1.resize((size_t)Mp);
@@ -595,21 +594,10 @@ void GnssChannelizedSearch::search_snapshot() {
                 _sgn0[(size_t)m] = (float)_replica->overlay_sign(_repl_k0[(size_t)m], nh);
                 _sgn1[(size_t)m] = (float)_replica->overlay_sign(_repl_k0[(size_t)m] + 1, nh);
             }
-            for (size_t ii = 0; ii < cov_local.size(); ++ii) {
-                const size_t lc = (size_t)cov_local[ii];
-                const cf* __restrict hd = _repl_head[(size_t)p][lc].data();
-                const cf* __restrict tl = _repl_tail[(size_t)p][lc].data();
-                cf* __restrict outv = _repl_scratch[lc].data();
-                const float* __restrict a0 = _sgn0.data();
-                const float* __restrict a1 = _sgn1.data();
-                for (int m = 0; m < Mp; ++m)
-                    outv[m] = hd[m] * a0[m] + tl[m] * a1[m];
-            }
-            const std::vector<std::vector<cf>>& repl0 = _repl_scratch;
             gnss::AcquisitionResult ai{};
 #ifdef GNSS_CUDA
             if (gpu_ok) {
-                // Device path: the GPU applies the sign pair itself, so _repl_scratch is unused.
+                // Device path: the GPU applies the sign pair itself.
                 dims = gnss::surface_dims(cov_global, _fft_len, (int)grid.size(), Mp,
                                           _acquire_fine_step);
                 _cuda_acq->clear_surface();
@@ -625,13 +613,26 @@ void GnssChannelizedSearch::search_snapshot() {
             } else
 #endif
             {
+                // Materialise R into _repl_scratch on the covering rows.
+                for (size_t ii = 0; ii < cov_local.size(); ++ii) {
+                    const size_t lc = (size_t)cov_local[ii];
+                    const cf* __restrict hd = _repl_head[(size_t)p][lc].data();
+                    const cf* __restrict tl = _repl_tail[(size_t)p][lc].data();
+                    cf* __restrict outv = _repl_scratch[lc].data();
+                    const float* __restrict a0 = _sgn0.data();
+                    const float* __restrict a1 = _sgn1.data();
+                    for (int m = 0; m < Mp; ++m)
+                        outv[m] = hd[m] * a0[m] + tl[m] * a1[m];
+                }
+                if (dch.empty())
+                    dch.assign(_n_chan, std::vector<cf>(hpr));
                 surf.assign(surf.size(), 0.0); // reuse the allocation, drop the previous alignment
                 for (int w = 0; w < nwin; ++w) {
                     for (int lc = 0; lc < _n_chan; ++lc)
                         for (int m = 0; m < hpr; ++m)
                             dch[lc][m] = _snapshot[((size_t)(w * hpr + m)) * _n_chan + lc];
                     dims = gnss::channelized_accumulate(
-                        dch, repl0, cov_local, grid, _sample_rate, _n_chan, surf, _acq_ws,
+                        dch, _repl_scratch, cov_local, grid, _sample_rate, _n_chan, surf, _acq_ws,
                         cov_global, _fft_len, _acquire_threads, _acquire_fine_step);
                 }
                 _last_surface_cells = dims.size();
@@ -718,24 +719,25 @@ void GnssChannelizedSearch::search_snapshot() {
             // r2c fold conjugates the channel frequency axis -> flip Doppler sign.
             const double dop = -a.doppler_hz;
             // Refine the code phase with refine_peak or refine_peak_cuda (gnssSeedTransport.hpp),
-            // which scripts/gnss/e2e.cpp also drives. The covering channels' data columns do not
-            // depend on the trial phase, so they are copied once.
-            std::vector<std::vector<cf>> d(cov_local.size(), std::vector<cf>(hpr));
-            for (size_t i = 0; i < cov_local.size(); ++i)
-                for (int m = 0; m < hpr; ++m)
-                    d[i][m] = _snapshot[((size_t)m) * _n_chan + cov_local[i]];
-            const int rh = (_refine_hops > 0 && _refine_hops < hpr) ? _refine_hops : hpr;
+            // which scripts/gnss/e2e.cpp also drives.
             double best_cp;
 #ifdef GNSS_CUDA
             if (!_cuda_ref_groups.empty()) {
-                // Reads the snapshot in its [hop][n_chan] layout; `d` is for the CPU refine.
-                // Unlike refine_peak it takes no nh_phase (see refine_peak_cuda).
+                // Reads the snapshot in its [hop][n_chan] layout. Unlike refine_peak it takes no
+                // nh_phase (see refine_peak_cuda).
                 best_cp = gnss::refine_peak_cuda(_cuda_ref_groups, *_replica, p, _snapshot.data(),
                                                  _n_chan, anchor, a.code_phase_chips, dop,
                                                  _sample_rate, _refine_span, _refine_step);
             } else
 #endif
             {
+                // The covering channels' data columns do not depend on the trial phase, so they
+                // are copied once.
+                std::vector<std::vector<cf>> d(cov_local.size(), std::vector<cf>(hpr));
+                for (size_t i = 0; i < cov_local.size(); ++i)
+                    for (int m = 0; m < hpr; ++m)
+                        d[i][m] = _snapshot[((size_t)m) * _n_chan + cov_local[i]];
+                const int rh = (_refine_hops > 0 && _refine_hops < hpr) ? _refine_hops : hpr;
                 best_cp = gnss::refine_peak(
                     *_replica, p, d, cov_global, a.code_phase_chips, (_n_nh > 1) ? best_nh : -1,
                     dop, anchor, rh, _sample_rate, _refine_span, _refine_step, _acquire_threads);
