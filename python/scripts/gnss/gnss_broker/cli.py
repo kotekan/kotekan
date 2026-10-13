@@ -177,9 +177,10 @@ _FROZEN = dict(
     #   median at 19:39, the clock froze at 19:47 and never re-solved, because the scatter that
     #   triggers the refusal is itself sustained BY the frozen clock (the model drifts off the
     #   sky, every sat reads as noise, MAD stays at 2045). Before the guard existed this same
-    #   failure random-walked out in ~15-20 min (docs 11.33); the guard stopped the corruption
-    #   and removed the escape with it. A forced re-roll is explicitly a RE-ROLL, not a
-    #   measurement -- it restores the random walk rather than pretending to solve.
+    #   failure random-walked out in ~15-20 min (be7d46e8e:docs/gnss_gpu_search.md 11.33); the
+    #   guard stopped the corruption and removed the escape with it. A forced re-roll is
+    #   explicitly a RE-ROLL, not a measurement -- it restores the random walk rather than
+    #   pretending to solve.
     dr_solve_refused_rebootstrap_s=300.0,
     # --drop-amplitude
     #   combined |A| below which a tracked PRN is coasting (fallback metric when the combiner
@@ -435,8 +436,8 @@ _FROZEN = dict(
     #   scan away from the signal and no detection can arrive to correct it -- a closed
     #   loop whose only escape was the code clock random-walking back onto truth by
     #   chance (observed 2026-08-10: ~15 min of self-reinforcing outage that read as a
-    #   frontend sensitivity loss, docs 11.33). Default 600 s is ~half the 1276 s
-    #   per-PRN revisit, so a healthy fleet always has fresh samples and only a
+    #   frontend sensitivity loss, be7d46e8e:docs/gnss_gpu_search.md 11.33). Default 600 s is ~half
+    #   the 1276 s per-PRN revisit, so a healthy fleet always has fresh samples and only a
     #   genuinely starved one widens.
     nh_hint_max_age_s=600.0,
     # --period-check-snr
@@ -763,7 +764,7 @@ _FROZEN = dict(
     #   minimum detection SNR for a residual to enter the JOINT solve. The default matches
     #   --period-check-snr, whose docstring records the measurement: below it a detection's
     #   phase is noise with ~2000-chip residuals. Ungated, ONE such detection walked the state
-    #   to -0.028 ppm on 2026-08-09 (docs 11.23).
+    #   to -0.028 ppm on 2026-08-09 (be7d46e8e:docs/gnss_gpu_search.md 11.23).
     joint_min_snr=60.0,
     # --joint-slew-max-chips
     #   P2b consumer 3: refuse the joint slew target if it disagrees with the legacy (clock EMA

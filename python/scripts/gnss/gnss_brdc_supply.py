@@ -941,8 +941,8 @@ def _fetch_brdc_now(when=None, cache_dir=CACHE):
     directory -- no cache, no network, no date logic. This is what makes the broker
     equivalence gate hermetic: a transcript replay is a claim about CODE, but the ephemeris
     is an input too, refreshed several times a day, and it moved the on-sky digests TWICE in
-    two days with byte-identical code (docs/gnss_gpu_search.md 11.18.2b -- the second time
-    was midnight UTC rolling the day-of-year during a review of unrelated work). Replays run
+    two days with byte-identical code (be7d46e8e:docs/gnss_gpu_search.md 11.18.2b -- the second
+    time was midnight UTC rolling the day-of-year during a review of unrelated work). Replays run
     against a committed-by-hash snapshot; live brokers never set this and keep the fresh sky.
 
     Historically this returned one path chosen by a fragile single-file fallback: prefer the

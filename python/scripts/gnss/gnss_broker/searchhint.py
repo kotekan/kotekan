@@ -111,7 +111,7 @@ def stage_narrow_search(ctx):
                 # chance. Observed 2026-08-10 17:06-17:21: the clock wandered
                 # 6996 -> 5095 -> 1797 -> 1555 -> 9210 -> 134 chips and only then snapped
                 # to 150.8 and locked, ~15 min of a self-reinforcing outage that read as a
-                # frontend sensitivity loss (docs 11.33).
+                # frontend sensitivity loss (be7d46e8e:docs/gnss_gpu_search.md 11.33).
                 # #161: detections the clock solve does not vouch for (on noise, or on a
                 # collapsed sky) teach the hint a wrong epoch, and the +-2 narrowing then
                 # confirms it from the next detections. Learn nothing while the solve is

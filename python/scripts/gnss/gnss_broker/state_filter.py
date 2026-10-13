@@ -118,11 +118,11 @@ class JointReceiverState:
 
     THE REVISION THIS IMPLEMENTS. SatBiasFilter above estimates b_sat with no clock state,
     which is sound only while the clock is somebody else's solved constant. It is not: the
-    BRDC model is per-satellite wrong by +-3-7 chips (docs 11.22), the existing clock is
-    the circular MEDIAN of exactly those wrong residuals, and b_sat and clk are degenerate
-    within a single epoch -- N sats, N+2 unknowns, N measurements. The ONLY thing that
-    separates them is that the clock moves fast and the biases do not, i.e. process noise,
-    i.e. a filter. Estimating biases first (SatBiasFilter) means estimating them with no
+    BRDC model is per-satellite wrong by +-3-7 chips (be7d46e8e:docs/gnss_gpu_search.md 11.22),
+    the existing clock is the circular MEDIAN of exactly those wrong residuals, and b_sat and
+    clk are degenerate within a single epoch -- N sats, N+2 unknowns, N measurements. The ONLY
+    thing that separates them is that the clock moves fast and the biases do not, i.e. process
+    noise, i.e. a filter. Estimating biases first (SatBiasFilter) means estimating them with no
     clock removed, which is today's failure mode. Hence: one solve, never staged.
 
     THE MEASUREMENT is the same scalar for every source, which is what makes constellations

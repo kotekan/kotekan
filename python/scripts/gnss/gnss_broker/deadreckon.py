@@ -114,8 +114,8 @@ def dr_clock_solve(ctx):
         # unconditionally, snapped straight into dr_state["clk"], and shipped as
         # every satellite's seed.
         #
-        # THAT IS THE OTHER HALF OF THE 2026-08-10 LOOP (docs 11.33): a wrong
-        # clock produced wrong seeds and wrong hints, which prevented the
+        # THAT IS THE OTHER HALF OF THE 2026-08-10 LOOP (be7d46e8e:docs/gnss_gpu_search.md 11.33): a
+        # wrong clock produced wrong seeds and wrong hints, which prevented the
         # detections that would have corrected it, and the only escape was the
         # clock random-walking back onto truth (6996 -> 5095 -> 1797 -> 1555 ->
         # 9210 -> 134 chips over ~15 min, then a snap to 150.8 and lock). Three
@@ -123,8 +123,8 @@ def dr_clock_solve(ctx):
         #
         # THE SEPARATION IS ENORMOUS, so the bound is not a tuning knob: real
         # per-sat offsets cluster inside ~+-10 chips (the joint state measures the
-        # biases at +-5, docs 11.22 quotes +-3-7), while uniform noise over a
-        # 10230-chip code has a MAD of ~2557. Anything from 50 to 500 separates
+        # biases at +-5, be7d46e8e:docs/gnss_gpu_search.md 11.22 quotes +-3-7), while uniform noise
+        # over a 10230-chip code has a MAD of ~2557. Anything from 50 to 500 separates
         # them; 100 is the middle of that range in log terms.
         _mad = sorted(abs(c - cen[len(cen) // 2]) for c in cen)[len(cen) // 2]
         if _mad > ctx.args.dr_max_solve_mad_chips and _dr_clock_guarded(ctx):
@@ -2410,8 +2410,8 @@ def stage_dead_reckon(ctx):
             # minus the prediction, epoch-normalized to now (the offset drifts at
             # f_chip*(l-a)); the circular median over sats is the receiver clock.
             ctx.drp.offs = []
-            # DETECTION AGE per sat (task #33, docs 11.22 follow-up). The epoch
-            # normalization below ages each latched detection by drift*(t_now - t_i)
+            # DETECTION AGE per sat (task #33, be7d46e8e:docs/gnss_gpu_search.md 11.22 follow-up).
+            # The epoch normalization below ages each latched detection by drift*(t_now - t_i)
             # with drift = f_chip*(l-a): the l-a EMA's measured noise is +-0.05-0.07
             # chips/s, and detections latch for up to the 1276 s per-PRN revisit --
             # so the normalization term can carry CHIPS of error that scale with THIS
@@ -2551,8 +2551,8 @@ def stage_dead_reckon(ctx):
             # `offs` IS the measurement, and always was. d_i = clk + b_i: the physical
             # code phase the search measured, minus the pure model, with no clock
             # removed. Today the next 40 lines take its circular median as the clock
-            # and treat the per-sat spread (+-3-7 chips, docs 11.22) as an error to be
-            # gated on; the joint solve reads the SAME numbers as clock PLUS per-sat
+            # and treat the per-sat spread (+-3-7 chips, be7d46e8e:docs/gnss_gpu_search.md 11.22) as
+            # an error to be gated on; the joint solve reads the SAME numbers as clock PLUS per-sat
             # bias and estimates both, separated by process noise rather than by a
             # threshold. Shadow: logged beside the median it will replace, consumed by
             # NOTHING, so every transcript digest is untouched.

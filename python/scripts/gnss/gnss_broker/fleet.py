@@ -4,8 +4,8 @@ Extracted verbatim from gps_distributed_broker.py (task #27 M1). Both take an en
 list and return a per-PRN dict; both are per-CHAIN operations in the unified broker (each
 signal has its own combiners), but neither holds state between calls.
 
-See docs/CHORD_GNSS_SHARED_DLL.md for fleet_dll and gnss_gpu_search.md 11.15 for
-fleet_coherent's one-way split and shuffled-null floor.
+See docs/CHORD_GNSS_SHARED_DLL.md for fleet_dll. fleet_coherent's one-way split is introduced in
+be7d46e8e:docs/gnss_gpu_search.md 11.14.2; its docstring specifies the shuffled-null floor.
 """
 import cmath
 import math

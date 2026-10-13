@@ -1425,7 +1425,8 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
             "deep_rate_min_q": 10.0,
             # The SKY-PHASE-CORRECTED prompt (record slots 24/25, gnssElemCal's leave-one-out
             # element derotation) competes as a deep-fold rung under the same measured floor as
-            # every other candidate, so a cold or bad cal loses on merit (docs 11.32).
+            # every other candidate, so a cold or bad cal loses on merit
+            # (be7d46e8e:docs/gnss_gpu_search.md 11.32).
             "sky_deep": True,
             "fft_len": cfg["fengine"]["fft_length"],
             "record_export": 128,
