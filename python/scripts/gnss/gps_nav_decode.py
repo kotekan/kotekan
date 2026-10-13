@@ -5,7 +5,8 @@ The 50 bps data (20 ms/bit) is organized as 30-bit words (24 data + 6 parity),
 10 words per 300-bit / 6 s subframe, 5 subframes per frame. This module:
 
   * parity_check / parity_encode -- the IS-GPS-200 (1+2) Hamming parity, including
-    the D30* data inversion and D29*/D30* chaining between words.
+    the D30* data inversion and D29*/D30* chaining between words; trim_word -- the
+    word 2/10 trim that re-seeds the chain at each subframe boundary.
   * frame_sync -- locate subframe starts by the TLM preamble (0x8B) confirmed by
     parity over the first two words, and resolve the stream POLARITY (the data may
     arrive inverted; parity on the recovered bits is polarity-independent, and the
@@ -58,6 +59,20 @@ def parity_encode(data24, D29s, D30s):
         [b ^ D30s for b in d], D29s, D30s
     )  # parity over recovered (=source) bits
     return np.array(d + par, dtype=np.int8)
+
+
+def trim_word(data24, D29s, D30s):
+    """Solve bits 23-24 (the two non-information bits of words 2 and 10) so the word's
+    D29=D30=0 -- the ICD trim that re-seeds the parity chain at every subframe boundary.
+    Returns the 24 data bits with the two trim bits set."""
+    s = [int(b) & 1 for b in data24]
+    for d24v in (0, 1):
+        for d23v in (0, 1):
+            s[22], s[23] = d23v, d24v
+            par = _parity_bits(s, D29s, D30s)
+            if par[4] == 0 and par[5] == 0:
+                return s
+    raise RuntimeError("trim solve failed")  # unreachable for valid inputs
 
 
 def parity_check(word30, D29s, D30s):

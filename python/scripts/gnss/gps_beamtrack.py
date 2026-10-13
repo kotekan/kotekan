@@ -1,36 +1,12 @@
 #!/usr/bin/env python3
 """Celestrak TLE helpers (satellites by PRN, sky position, geometric Doppler, signal
-capability by block) and the reader for the per-PRN raw record layout.
-
-``read_records`` reads the GpsReplicaCorrelator/airspy record files, one record per PRN
-per integration::
-
-    9 x float32: prn, doppler_hz, code_phase_chips, peak_amp, peak_re,
-                 peak_im, snr, nav_sign, phase_cont
-    1 x float64: UTC seconds (trailing two float32 slots)
-"""
+capability by block)."""
 
 import os
-import struct
 import sys
 from datetime import datetime, timedelta, timezone
 
 import numpy as np
-
-RECORD_SLOTS = 11  # float32 slots per PRN record
-RECORD_BYTES = RECORD_SLOTS * 4
-UTC_SLOT = 9  # trailing float64 occupies slots 9-10
-FIELDS = [
-    "prn",
-    "doppler_hz",
-    "code_phase_chips",
-    "peak_amp",
-    "peak_re",
-    "peak_im",
-    "snr",
-    "nav_sign",
-    "phase_cont",
-]
 
 # Celestrak GPS operational TLEs.
 DEFAULT_TLE_URL = "https://celestrak.org/NORAD/elements/gp.php?GROUP=gps-ops&FORMAT=tle"
@@ -39,43 +15,6 @@ DEFAULT_TLE_URL = "https://celestrak.org/NORAD/elements/gp.php?GROUP=gps-ops&FOR
 # IGS SINEX by catalog number (these names have no PRN field), which load_gps_satellites()
 # already does as its unnamed-satellite fallback.
 GLONASS_TLE_URL = "https://celestrak.org/NORAD/elements/gp.php?GROUP=glo-ops&FORMAT=tle"
-
-
-def _infer_n_prn(path):
-    """Infer PRNs-per-frame from a single-frame file size: 4-byte meta header
-    plus n_prn * RECORD_BYTES of payload."""
-    size = os.path.getsize(path)
-    payload = size - 4
-    if payload <= 0 or payload % RECORD_BYTES != 0:
-        raise ValueError(
-            "%s: size %d not a single frame of %d-byte records (pass --n-prn for "
-            "multi-frame files)" % (path, size, RECORD_BYTES)
-        )
-    return payload // RECORD_BYTES
-
-
-def read_records(paths, n_prn=None):
-    """Read all records from the given file paths into a structured array with
-    columns FIELDS + 'utc'. Each file is a sequence of frames, each frame a
-    4-byte metadata length (expected 0) followed by n_prn records."""
-    if n_prn is None:
-        n_prn = _infer_n_prn(paths[0])
-    frame_stride = 4 + n_prn * RECORD_BYTES
-
-    rows = []
-    for path in paths:
-        buf = open(path, "rb").read()
-        for off in range(0, len(buf) - frame_stride + 1, frame_stride):
-            meta = struct.unpack_from("<I", buf, off)[0]
-            base = off + 4 + meta
-            for p in range(n_prn):
-                ro = base + p * RECORD_BYTES
-                vals = np.frombuffer(buf, dtype="<f4", count=9, offset=ro)
-                utc = struct.unpack_from("<d", buf, ro + UTC_SLOT * 4)[0]
-                rows.append(tuple(vals) + (utc,))
-
-    dtype = [(f, "<f4") for f in FIELDS] + [("utc", "<f8")]
-    return np.array(rows, dtype=dtype)
 
 
 # Galileo TLE names ('GSAT0207 (GALILEO 14)') carry the GSAT platform number, NOT the E-PRN

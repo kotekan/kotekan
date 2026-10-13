@@ -40,27 +40,26 @@ from gps_nav_decode import (
     PREAMBLE,
     decode_subframe,
     frame_sync,
+    parity_encode,
     parse_lnav_ephemeris,
     set_how_tow,
+    trim_word,
 )  # noqa: E402
-from gps_navdecode import (
-    _trim_word,
-    encode_word,
-)  # noqa: E402  (ICD trim: chain resets/subframe)
 
 
 def encode_subframe_trimmed(data_words):
     """Encode 10x24 data words into the 300 transmitted bits the ICD way: chain starts
     clean each subframe, and words 2 (HOW) and 10 are TRIMMED (their 2 non-information
     bits solved so parity ends D29=D30=00) -- which is exactly what makes per-subframe
-    independent prediction valid. Unlike gps_navdecode.encode_subframe this does NOT
-    rebuild the HOW, so the stored alert/AS flags survive; the caller sets the TOW."""
+    independent prediction valid. It does NOT rebuild the HOW, so the stored alert/AS flags
+    survive; the caller sets the TOW."""
     bits, d29s, d30s = [], 0, 0
     for w, src in enumerate(data_words):
         src = [int(x) for x in src]
         if w in (1, 9):
-            src = _trim_word(src, d29s, d30s)
-        word, d29s, d30s = encode_word(src, d29s, d30s)
+            src = trim_word(src, d29s, d30s)
+        word = parity_encode(src, d29s, d30s)
+        d29s, d30s = int(word[28]), int(word[29])
         bits.extend(int(x) for x in word)
     return np.array(bits, dtype=np.int8)
 
