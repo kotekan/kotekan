@@ -66,7 +66,7 @@ def stage_nav_bits(ctx):
                 if ctx.nav.bcnav3 is None:
                     from bcnav3_predictor import Bcnav3Predictor
 
-                    ctx.nav.bcnav3 = Bcnav3Predictor(log=_log)
+                    ctx.nav.bcnav3 = Bcnav3Predictor()
                     _log("B-CNAV3 decoder armed (combiner exports nav_obs)")
                 ctx.nav.bcnav3.ingest(_p, _r["nav_obs"])
             else:
@@ -130,7 +130,7 @@ def stage_nav_bits(ctx):
                 if ctx.nav.inav is None:
                     from inav_predictor import InavPredictor
 
-                    ctx.nav.inav = InavPredictor(log=_log)
+                    ctx.nav.inav = InavPredictor()
                     _log("I/NAV decoder armed on aux chain %s" % ctx.nav.inav_combiner)
                 ctx.nav.inav.ingest(_p, _r["nav_obs"])
             # 60 s health + BRDC cross-check (Kepler only; alm_sys is 'E' for the GAL broker).
@@ -185,7 +185,7 @@ def stage_nav_bits(ctx):
                 if ctx.nav.fnav is None:
                     from fnav_predictor import FnavPredictor
 
-                    ctx.nav.fnav = FnavPredictor(log=_log)
+                    ctx.nav.fnav = FnavPredictor()
                     _log("F/NAV decoder armed on aux chain %s" % ctx.nav.fnav_combiner)
                 ctx.nav.fnav.ingest(_p, _r["nav_obs"])
             # 60 s health + BRDC cross-check (Kepler only; alm_sys is 'E' for the GAL broker)
@@ -234,7 +234,7 @@ def stage_nav_bits(ctx):
                 if ctx.nav.bcnav2 is None:
                     from bcnav2_predictor import Bcnav2Predictor
 
-                    ctx.nav.bcnav2 = Bcnav2Predictor(log=_log)
+                    ctx.nav.bcnav2 = Bcnav2Predictor()
                     _log(
                         "B-CNAV2 decoder armed on aux chain %s"
                         % ctx.nav.bcnav2_combiner
@@ -286,7 +286,7 @@ def stage_nav_bits(ctx):
                 if ctx.nav.bcnav1 is None:
                     from bcnav1_predictor import Bcnav1Predictor
 
-                    ctx.nav.bcnav1 = Bcnav1Predictor(log=_log)
+                    ctx.nav.bcnav1 = Bcnav1Predictor()
                     _log(
                         "B-CNAV1 decoder armed on aux chain %s"
                         % ctx.nav.bcnav1_combiner
@@ -338,7 +338,7 @@ def stage_nav_bits(ctx):
                 if ctx.nav.cnav2 is None:
                     from cnav2_predictor import Cnav2Predictor
 
-                    ctx.nav.cnav2 = Cnav2Predictor(log=_log)
+                    ctx.nav.cnav2 = Cnav2Predictor()
                     _log(
                         "CNAV-2 decoder armed on aux chain %s" % ctx.nav.cnav2_combiner
                     )

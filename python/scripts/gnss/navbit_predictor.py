@@ -485,8 +485,6 @@ class LnavPredictor:
 
 # ------------------------------------------------------------------- self-test
 def _selftest():
-    from gps_nav_decode import parity_encode
-
     rng = np.random.RandomState(7)
     # Build 4 frames (20 subframes) of a synthetic LNAV stream with proper structure:
     # sf 1-3 constant data; sf 4/5 pages varying by frame (so hold-prediction would fail

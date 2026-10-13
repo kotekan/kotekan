@@ -35,7 +35,6 @@ class _PrnState:
         self.emits = {}  # slot0 -> np.array(+-1) one per distinct nav_obs emit
         self.grid0 = None  # per-PRN symbol-grid origin (E5b-I stitcher fix)
         self.last_obs = None
-        self.pol = None
         self.frames = {}  # mestype -> (frame_bits[486], sow, t_decoded)
         self.n_frames = 0  # frames decoded (preamble+LDPC found + CRC ok)
         self.last_sow = None
@@ -43,11 +42,9 @@ class _PrnState:
 
 
 class Bcnav3Predictor:
-    def __init__(self, log=None):
+    def __init__(self):
         self._p = {}
-        self._log = log or (lambda m: None)
         self._min_gap = 1.0
-        self._last_decode = 0.0
 
     # ----------------------------------------------------------------- ingest
     def ingest(self, prn, obs):
@@ -132,9 +129,8 @@ class Bcnav3Predictor:
         for _run0, signs in self._runs(st):
             if len(signs) < FRAME:
                 continue
-            for _i, pol, bits, mt, sow in B.find_frames(signs.astype(float), prn):
+            for _i, _pol, bits, mt, sow in B.find_frames(signs.astype(float), prn):
                 st.n_frames += 1
-                st.pol = pol
                 st.last_sow = sow
                 st.frames[mt] = (bits, sow, time.time())
 
@@ -149,34 +145,11 @@ class Bcnav3Predictor:
         fresh = {mt: v[0] for mt, v in st.frames.items() if now - v[2] < FRAME_TTL_S}
         return B.parse_bcnav3_ephemeris(fresh)
 
-    def messages(self, prn):
-        st = self._p.get(prn)
-        if st is None:
-            return []
-        return [{"mestype": mt, "sow": v[1]} for mt, v in sorted(st.frames.items())]
-
-    def frame_hex(self, prn, mt):
-        """Raw decoded frame as hex (for Phase 2 field mapping against live data)."""
-        st = self._p.get(prn)
-        if st is None or mt not in st.frames:
-            return None
-        b = st.frames[mt][0]
-        return "".join(
-            "%x"
-            % (
-                B._uint(b[i : i + 4])
-                if i + 4 <= len(b)
-                else B._uint(b[i:] + [0] * (i + 4 - len(b)))
-            )
-            for i in range(0, len(b), 4)
-        )
-
     def health(self, prn):
         st = self._p.get(prn)
         if st is None:
             return None
         return {
-            "pol": st.pol,
             "pages": st.n_frames,
             "words": st.n_frames,
             "have": sorted(st.frames),
@@ -193,46 +166,14 @@ def _selftest():
 
     rng = np.random.RandomState(7)
     prn = 33
-    G._init_gf()
+    G._NB.init_gf()
 
     # info-systematic LDPC encode: solve H c = 0 with the first 81 GF symbols = the frame.
     def encode_frame(frame486):
-        info = G._bin2gf(np.array(frame486, dtype=np.uint8))  # 81 GF symbols
-        H = [[0] * G.N_VAR for _ in range(G.N_CHECK)]
-        for i in range(G.N_CHECK):
-            for k in range(len(G.H_BCNV3_IDX[i])):
-                H[i][G.H_BCNV3_IDX[i][k]] = G.H_BCNV3_ELE[i][k]
-        rhs = [0] * G.N_CHECK
-        for i in range(G.N_CHECK):
-            for col in range(G.N_CHECK):
-                if H[i][col]:
-                    rhs[i] ^= G._gf_mul(H[i][col], int(info[col]))
-        Hp = [[H[i][G.N_CHECK + j] for j in range(G.N_CHECK)] for i in range(G.N_CHECK)]
-        p = [0] * G.N_CHECK
-        r = 0
-        piv_col = [-1] * G.N_CHECK
-        for col in range(G.N_CHECK):
-            pr = next((rr for rr in range(r, G.N_CHECK) if Hp[rr][col] != 0), None)
-            if pr is None:
-                continue
-            Hp[r], Hp[pr] = Hp[pr], Hp[r]
-            rhs[r], rhs[pr] = rhs[pr], rhs[r]
-            inv = G.GF_VEC[(G.Q_GF - 1 - G.GF_POW[Hp[r][col]]) % (G.Q_GF - 1)]
-            Hp[r] = [G._gf_mul(inv, x) for x in Hp[r]]
-            rhs[r] = G._gf_mul(inv, rhs[r])
-            for rr in range(G.N_CHECK):
-                if rr != r and Hp[rr][col]:
-                    f = Hp[rr][col]
-                    Hp[rr] = [
-                        Hp[rr][cc] ^ G._gf_mul(f, Hp[r][cc]) for cc in range(G.N_CHECK)
-                    ]
-                    rhs[rr] ^= G._gf_mul(f, rhs[r])
-            piv_col[r] = col
-            r += 1
-        for rr in range(r):
-            p[piv_col[rr]] = rhs[rr]
-        code = list(int(x) for x in info) + p
-        return G._gf2bin(np.array(code, dtype=np.uint8))
+        info = G._NB.bin2gf(np.array(frame486, dtype=np.uint8))  # 81 GF symbols
+        return G._NB.encode_systematic(
+            G.H_BCNV3_IDX, G.H_BCNV3_ELE, G.N_CHECK, G.N_VAR, info
+        )
 
     truth = {}
     frames = {}
@@ -255,7 +196,7 @@ def _selftest():
             sym.append(np.where(frame_syms == 0, 1.0, -1.0))
     pm = np.concatenate(sym)
 
-    pred = Bcnav3Predictor(log=print)
+    pred = Bcnav3Predictor()
     pred._min_gap = 0.0
     e = 0
     while e + FRAME <= len(pm):
@@ -273,7 +214,7 @@ def _selftest():
     h = pred.health(prn)
     print("health:", h)
     ok = bool(h and h["words"] >= 2 and set((10, 30)) <= set(h["have"]))
-    msgs = {m["mestype"]: m["sow"] for m in pred.messages(prn)}
+    msgs = {mt: v[1] for mt, v in pred._p[prn].frames.items()}
     if msgs.get(10) != truth[10] or msgs.get(30) != truth[30]:
         print("FAIL: SOW mismatch", msgs, truth)
         ok = False

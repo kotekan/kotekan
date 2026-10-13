@@ -134,8 +134,6 @@ class _PrnState:
         )
         self.pol = {}  # slot0 -> resolved emit sign (+-1) in one consistent frame
         self.decoded = {}  # start_slot -> data bits[300] (0/1), CRC-verified
-        self.msg_type = {}
-        self.tow_at = {}
         self.eph10 = None
         self.eph11 = None
         self.n_decoded = 0
@@ -199,7 +197,6 @@ class CnavPredictor:
         slot0 = min(m)
         hi = max(m)
         arr = np.zeros(hi - slot0 + 1, dtype=np.int8)
-        ok = True
         for s, v in m.items():
             arr[s - slot0] = v
         if (
@@ -408,8 +405,6 @@ class CnavPredictor:
                     for m in msgs:
                         ss = lo + ph + 2 * m["index"]
                         st.decoded[ss] = np.array(m["bits"], dtype=np.int8)
-                        st.msg_type[ss] = m["type"]
-                        st.tow_at[ss] = m["tow"]
                         if m["type"] == 10:
                             st.eph10 = st.decoded[ss]
                         elif m["type"] == 11:
@@ -427,8 +422,6 @@ class CnavPredictor:
                     if len(st.decoded) > DECODED_MAX:
                         for s in sorted(st.decoded)[:-DECODED_MAX]:
                             st.decoded.pop(s, None)
-                            st.msg_type.pop(s, None)
-                            st.tow_at.pop(s, None)
                     for s in list(st.pol):  # bound pol to live emits
                         if s not in st.emits:
                             st.pol.pop(s, None)
@@ -471,15 +464,6 @@ class CnavPredictor:
             return None
         utc0 = slot_now * SYM_S
         return {"utc0": utc0, "bit_s": SYM_S, "bits": [int(x) for x in out]}
-
-    def messages(self, prn):
-        st = self._p.get(prn)
-        if st is None:
-            return []
-        return [
-            {"start_slot": s, "tow": st.tow_at[s], "type": st.msg_type[s]}
-            for s in sorted(st.decoded)
-        ]
 
     def ephemeris(self, prn):
         """CNAV ephemeris (SI) from the latest type-10 + type-11, consistency-gated toe==toe2."""

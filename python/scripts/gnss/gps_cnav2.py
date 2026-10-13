@@ -27,7 +27,6 @@ from galileo_inav import crc24q, _uint  # CRC-24Q + MSB-first bit->uint (shared)
 SYM_S = 0.010  # L1C-D symbol = 10 ms (100 sps), one 10 ms BOC(1,1) code period
 FRAME_SYMS = 1800  # 18 s frame
 N_SF1 = 52  # subframe 1 (TOI) symbols
-N_IL = FRAME_SYMS - N_SF1  # 1748 interleaved SF2+SF3 symbols
 IL_ROWS, IL_COLS = 46, 38  # block interleaver: syms[52:].reshape(46,38).T.ravel()
 N_SF2, K_SF2 = 1200, 600  # SF2 LDPC(1200,600)
 N_SF3, K_SF3 = 548, 274  # SF3 LDPC(548,274)

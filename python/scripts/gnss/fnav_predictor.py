@@ -33,17 +33,14 @@ class _PrnState:
     def __init__(self):
         self.emits = {}  # slot0 -> np.array(+-1) one per distinct nav_obs emit
         self.last_obs = None  # (utc_ref, phase, br) dedup
-        self.pol = None  # last resolved carrier polarity (health only)
         self.pages = {}  # page_type -> (iodnav, content_bits[238], t_decoded)
         self.n_pages = 0  # pages decoded (sync-valid)
         self.n_crc = 0  # pages assembled with valid CRC
-        self.last_decode = 0.0
 
 
 class FnavPredictor:
-    def __init__(self, log=None):
+    def __init__(self):
         self._p = {}
-        self._log = log or (lambda m: None)
         self._min_gap = (
             1.0  # s between decode attempts across all PRNs (0 = off, self-test)
         )
@@ -136,7 +133,6 @@ class FnavPredictor:
                             st.n_pages += 1
                             crc_ok, pt = G.check_page(bits)
                             if crc_ok and pt is not None:
-                                st.pol = int(pol)
                                 iod = G._uint(bits[6:16])
                                 st.pages[pt] = (iod, bits, time.time())
                                 st.n_crc += 1
@@ -159,18 +155,11 @@ class FnavPredictor:
             return None
         return eph
 
-    def messages(self, prn):
-        st = self._p.get(prn)
-        if st is None:
-            return []
-        return [{"page_type": pt, "iodnav": v[0]} for pt, v in sorted(st.pages.items())]
-
     def health(self, prn):
         st = self._p.get(prn)
         if st is None:
             return None
         return {
-            "pol": st.pol,
             "pages": st.n_pages,
             "words": st.n_crc,
             "have": sorted(st.pages),
@@ -208,7 +197,7 @@ def _selftest():
             sym.append(np.where(G.encode_page(pages[pt]) == 0, 1.0, -1.0))
     pm = np.concatenate(sym).astype(np.int8)
 
-    pred = FnavPredictor(log=print)
+    pred = FnavPredictor()
     pred._min_gap = 0.0
     ELEN = PAGE  # 500 = one page per emit (clean case)
     e = 0

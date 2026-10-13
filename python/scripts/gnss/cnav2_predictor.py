@@ -30,20 +30,16 @@ class _PrnState:
         self.emits = {}  # slot0 -> np.array(0/1) one per distinct nav_obs emit
         self.grid0 = None
         self.last_obs = None
-        self.rev = None
         self.sf2 = None  # (bits[600], t_decoded)
-        self.sf3 = None  # (bits[274], t_decoded)
         self.toi = None
         self.n_frames = 0
         self.last_decode = 0.0
 
 
 class Cnav2Predictor:
-    def __init__(self, log=None):
+    def __init__(self):
         self._p = {}
-        self._log = log or (lambda m: None)
         self._min_gap = 1.0
-        self._last_decode = 0.0
 
     # ----------------------------------------------------------------- ingest
     def ingest(self, prn, obs):
@@ -122,11 +118,10 @@ class Cnav2Predictor:
         for _run0, syms in self._runs(st):
             if len(syms) < NEED:
                 continue
-            for _i, toi, sf2, sf3 in C2.find_frames(syms):
+            for _i, toi, sf2, _sf3 in C2.find_frames(syms):
                 st.n_frames += 1
                 st.toi = toi
                 st.sf2 = (sf2, time.time())
-                st.sf3 = (sf3, time.time())
 
     # ----------------------------------------------------------------- serve
     def ephemeris(self, prn):
@@ -135,42 +130,16 @@ class Cnav2Predictor:
             return None
         return C2.parse_cnav2_ephemeris(st.sf2[0])
 
-    def symbol_transition_rate(self, prn):
-        """Fraction of adjacent symbols that DIFFER, over the longest contiguous run.
-
-        ★ THE INSTRUMENT THAT SAYS "the decoder is fine, the sky is empty" (2026-08-03).
-        CNAV-2 symbols are LDPC-coded, so a real message sits at ~0.5; even an all-zero
-        message still shows the 52-symbol SF1/TOI burst every 1800 symbols (~0.014). A
-        value at the noise floor (<0.05 on a STRONG sat, where noise cannot be flipping
-        signs) means the data component carries NO modulation at all -- the satellite is
-        radiating an unmodulated L1C-D carrier, not a message we are failing to decode.
-        Measured 0.003 on PRN 4 (GPS III-1, deep_snr 138) against 0.46 on the L1C-P
-        pilot's L1CO overlay through the identical path, so it is the AIR, not us.
-        """
-        st = self._p.get(prn)
-        if st is None:
-            return None
-        runs = self._runs(st)
-        if not runs:
-            return None
-        syms = max((s for _, s in runs), key=len)
-        if len(syms) < 2:
-            return None
-        return float(np.mean(syms[1:] != syms[:-1]))
-
     def health(self, prn):
         st = self._p.get(prn)
         if st is None:
             return None
-        tr = self.symbol_transition_rate(prn)
         return {
             "pages": st.n_frames,
             "words": st.n_frames,
             "toi": st.toi,
             "have": ([2, 3] if st.sf2 else []),
             "eph": self.ephemeris(prn) is not None,
-            # ~0.5 = a real message; ~0 on a strong sat = an UNMODULATED data channel
-            "trans": None if tr is None else round(tr, 4),
         }
 
 
@@ -207,7 +176,7 @@ def _selftest():
     f1, _, _ = build(101)
     stream = np.hstack([f0, f1]).astype(np.int8)  # 3600 symbols
 
-    pred = Cnav2Predictor(log=print)
+    pred = Cnav2Predictor()
     pred._min_gap = 0.0
     e = 0
     ELEN = 100

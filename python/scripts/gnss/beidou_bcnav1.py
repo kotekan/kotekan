@@ -244,7 +244,7 @@ if __name__ == "__main__":
         (H_SF2_IDX, H_SF2_ELE, 100, 200, 1200),
         (H_SF3_IDX, H_SF3_ELE, 44, 88, 528),
     ):
-        info = rng.integers(0, Q_GF if False else 64, m).astype(np.uint8)
+        info = rng.integers(0, 64, m).astype(np.uint8)
         cw = _NB.encode_systematic(idx, ele, m, n, info)
         bits, nerr = _NB.decode(idx, ele, m, n, cw)
         clean_ok = nerr == 0 and np.array_equal(bits, cw[: m * 6])
@@ -261,7 +261,6 @@ if __name__ == "__main__":
 
     # 4. END TO END: plant an ephemeris in SF2 (+CRC), LDPC-encode both subframes, interleave,
     # prepend SF1(prn,soh), feed as symbols -> find_frames -> recover the ephemeris.
-    Q_GF = 64
     prn, soh = 19, 137
     sf2 = [0] * SF2_BITS
     truth = {}

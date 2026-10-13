@@ -29,18 +29,14 @@ class _PrnState:
     def __init__(self):
         self.emits = {}
         self.last_obs = None
-        self.pol = None
-        self.soh = None
         self.sf2 = None  # (sf2_bits[600], t_decoded)
         self.n_frames = 0
         self.n_crc = 0
-        self.last_decode = 0.0
 
 
 class Bcnav1Predictor:
-    def __init__(self, log=None):
+    def __init__(self):
         self._p = {}
-        self._log = log or (lambda m: None)
         self._min_gap = 1.0
         self._last_decode = 0.0
 
@@ -114,11 +110,9 @@ class Bcnav1Predictor:
         for _run0, signs in self._runs(st):
             if len(signs) < FRAME:
                 continue
-            for _i, pol, soh, sf2, _sf3 in B.find_frames(prn, signs.astype(float)):
+            for _i, _pol, _soh, sf2, _sf3 in B.find_frames(prn, signs.astype(float)):
                 st.n_frames += 1
                 st.n_crc += 1
-                st.pol = pol
-                st.soh = soh
                 st.sf2 = (sf2, time.time())
 
     # ----------------------------------------------------------------- serve
@@ -131,18 +125,11 @@ class Bcnav1Predictor:
             return None
         return B.parse_bcnav1_ephemeris(st.sf2[0])
 
-    def messages(self, prn):
-        st = self._p.get(prn)
-        if st is None or st.sf2 is None:
-            return []
-        return [{"subframe": 2, "soh": st.soh}]
-
     def health(self, prn):
         st = self._p.get(prn)
         if st is None:
             return None
         return {
-            "pol": st.pol,
             "pages": st.n_frames,
             "words": st.n_crc,
             "have": ([2] if st.sf2 is not None else []),
@@ -182,7 +169,7 @@ def _selftest():
     pm = np.where(stream == 0, 1.0, -1.0)
 
     B._INVERT[0] = None
-    pred = Bcnav1Predictor(log=print)
+    pred = Bcnav1Predictor()
     pred._min_gap = 0.0
     # 1 s emits (100 syms) from a CONTIGUOUS tracking run: one global carrier-sign convention
     # across the whole run (continuous phase), which find_frames resolves via its pol=+-1. A
