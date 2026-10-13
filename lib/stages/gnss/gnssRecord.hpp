@@ -297,8 +297,7 @@ constexpr int CMB_ELEM_AMP_COH = 3;   ///< |<A_e>|: coherent amplitude. Below th
 ///
 /// Appended rather than interleaved, so a consumer that indexes by record_stride() and a
 /// configured n_prn reads the records unchanged. A consumer that infers n_prn from frame_size
-/// (GnssCoherentCombiner does when n_prn is not configured) would count the comb as records;
-/// give it an explicit `n_prn`.
+/// would count the comb as records; give it an explicit `n_prn`.
 ///
 /// The values are per record: rotated by the same NCO phase as slots 3/4 (@ref REC_PHI0),
 /// combined over elements like the header, and weighted per channel like the record sums.

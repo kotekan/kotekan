@@ -1,7 +1,6 @@
 /**
  * @file
- * @brief Coherently recombine per-subband GNSS despread products into the full-band complex
- *        amplitude.
+ * @brief Full-band complex amplitude per PRN and its temporal and deep coherent integration.
  *  - GnssCoherentCombiner : public kotekan::Stage
  */
 
@@ -25,27 +24,20 @@
 
 /**
  * @class GnssCoherentCombiner
- * @brief The reassembly seam of the distributed-band pipeline.
+ * @brief Integrates one node's per-record despread into amplitudes and loop observables.
  *
- * Each tracker emits, per PRN per window, the un-normalized coherent correlation @f$ G_m @f$
- * and replica energy @f$ E_m @f$ over its channel slice. The despread is a sum over channels,
- * so both are additive across the channel partition, and this stage forms the full-band
- * matched-filter amplitude
- *   @f$ \hat A = (\sum_m G_m) / (\sum_m E_m) @f$
- * which is identical to despreading all covering channels in one place.
+ * Each record carries, per PRN, the un-normalized coherent correlation @f$ G @f$ and replica
+ * energy @f$ E @f$ summed over the covering channels, and this stage forms the matched-filter
+ * amplitude @f$ \hat A = G / E @f$. The broker combines across nodes. The output uses the
+ * combiner record layout of gnssRecord.hpp.
  *
- * Inputs are aligned by each record's capture UTC (an input lagging the newest by more than
- * half a record is advanced). Records are summed by index, so every input must carry the same
- * PRN order. The output uses the combiner record layout of gnssRecord.hpp.
- *
- * Temporal integration over @c integration_length records gives both the incoherent amplitude
+ * Temporal integration is an exponential moving average with time constant
+ * K = @c integration_length records (alpha = 1/K), updated every record and emitted every K/10
+ * records without reset. It gives both the incoherent amplitude
  * @f$ \sqrt{\langle|A|^2\rangle} @f$ (slot 3, ~sqrt(K) SNR, no phase needed) and the coherent
  * mean @f$ \langle A\rangle @f$ (slots 4-6, up to K SNR, but only while the carrier phase is
- * stable across the K records). Two cadences (@c integration_mode):
- *  - @c block (default): accumulate K records, emit once, reset.
- *  - @c rolling: an exponential moving average with time constant K records (alpha = 1/K),
- *    updated every record and emitted every integration_length/10 records without reset. Divided by
- *    1-(1-alpha)^n at emit, so it reads a true running mean from the first record.
+ * stable across the K records). Each is divided by 1-(1-alpha)^n at emit, so it reads a true
+ * running mean from the first record.
  *
  * Slot 8 is a deep coherent |A| over the buffered per-record A, by one of three paths:
  *  - nav-bit wipe (@c navwipe_bit_records): records are grouped into data-bit epochs, each
@@ -59,11 +51,11 @@
  * as a coherent detection only if its SNR clears twice its noise-rectification floor (or, where
  * a rate search was applied, the search's peak/median gate).
  *
- * @conf n_prn               Int. Records (PRNs) per frame; default from the input frame size.
- * @conf n_elements          Int (default 0). Per-antenna blocks per PRN record; 0 = none.
- * @conf integration_length  Int (default 1). block: records per output. rolling: EMA time
- *                           constant in records, and the length of the deep window.
- * @conf integration_mode    String (default "block"). "block" or "rolling".
+ * @conf n_prn               Int. Records (PRNs) per frame.
+ * @conf n_elements          Int. Per-antenna blocks per PRN record, >= 1.
+ * @conf integration_length  Int (default 1). EMA time constant in records, and the length of
+ *                           the deep window.
+ * @conf integration_mode    String. Must be "rolling". Default "rolling".
  * @conf navwipe_bit_records Int (default 0 = off). Records per data bit, e.g. 20 for 1 ms GPS
  *                           L1 C/A records. Needs integration_length >> this.
  * @conf secondary_overlay   String (default ""). Shared overlay name from the gnssOverlay
@@ -79,12 +71,12 @@
  * @conf deep_rate_min_q     Float. Must be 10, the peak/median the rate search must reach.
  *                           Default 10.
  * @conf phase_track         Bool. Must be false. Default false.
- * @conf fft_len             Int (default 0). F-engine FFT length, to turn sample_seq into hops.
+ * @conf fft_len             Int. F-engine FFT length, to turn sample_seq into hops.
  * @conf record_export       Int (default 0 = off). Per-PRN record ring length for get_records.
  * @conf bit_export          Bool (default false). Publish nav_obs in get_status.
  *
- * @buffer in_bufs Per-subband tracker records (gnssRecord.hpp tracker layout: a RECORD_FLOATS
- *                 header plus n_elements element blocks per PRN).
+ * @buffer in_bufs A list of one buffer: the node's records (gnssRecord.hpp tracker layout: a
+ *                 RECORD_FLOATS header plus n_elements element blocks per PRN).
  * @buffer out_buf Combined records (gnssRecord.hpp combiner layout: 3 = |A|_incoh,
  *                 4,5 = <A>, 6 = |<A>|_coh, 7 = n_chan, 8 = deep |A|, 9-10 = UTC).
  *
@@ -105,7 +97,7 @@ private:
     /// REST get_records: per-record complex prompts for the fleet's coherent combine (see
     /// _rec_export); registered when record_export > 0.
     void get_records_callback(kotekan::connectionInstance& conn);
-    /// REST get_elements: per-element complex-gain snapshot; registered when n_elements > 0.
+    /// REST get_elements: per-element complex-gain snapshot.
     void get_elements_callback(kotekan::connectionInstance& conn);
 
     /// Per-bit observations from one navwipe evaluation, for the broker's navigation-message
@@ -164,15 +156,12 @@ private:
     double carrier_resid_hz(const std::vector<std::complex<double>>& a,
                             const std::vector<double>& utc, double* sigma_phi_out = nullptr) const;
 
-    std::vector<Buffer*> in_bufs;
+    Buffer* in_buf;
     Buffer* out_buf;
     int _n_prn;
 
-    /// Per-antenna blocks per PRN record (config n_elements); 0 = none, and the per-antenna
-    /// path is skipped.
-    int _n_elements = 0;
+    int _n_elements = 0; ///< per-antenna blocks per PRN record (config n_elements)
     int _rec_stride = gnss::RECORD_FLOATS;  ///< floats per PRN record, = record_stride(_n_elements)
-    std::vector<double> _ge_r, _ge_i;       ///< scratch: per-antenna prompt summed over subbands
     std::vector<double> _acc_epow_el;       ///< [n_prn][n_elem] <|A_e|^2>, the beam-map estimator
     std::vector<double> _acc_ear, _acc_eai; ///< [n_prn][n_elem] <A_e>
     /// [n_prn][n_elem] per-element complex gain: A_e * conj(ref_e) accumulated per record, with
@@ -186,22 +175,14 @@ private:
     /// u_re, u_im, <|A_e|^2>, <|ref|^2>, normalized at emit like the element blocks.
     std::vector<float> _st_elem;
     double _st_elem_keff = 0.0; ///< effective records behind the snapshot (significance input)
-    int _integration_length;    ///< block: records/output; rolling: EMA time constant (records)
-    bool _rolling;              ///< rolling EMA integration vs block-and-reset
-    int _emit_every;            ///< rolling: records between emits (output cadence)
+    int _integration_length;    ///< EMA time constant (records)
+    int _emit_every;            ///< records between emits (output cadence)
     int _navwipe_bit_records;   ///< records per nav bit (0 = no wipe)
     /// Shared secondary overlay wiped ahead of the nav-bit wipe; empty if unused.
     std::vector<int8_t> _secondary;
-    /// Subband UTC alignment in the gather loop: the observed record period, input 0's previous
-    /// UTC, and the number of realignments (non-zero means an input dropped a frame relative to
-    /// the others).
-    double _rec_dt_est = 0.0;
-    double _prev_utc0 = 0.0;
-    unsigned long _realigns = 0;
     /// F-engine FFT length (samples per hop), used only to turn GnssChanMetadata::sample_seq, an
     /// absolute sample index, into the absolute hop index the rest of the chain uses (the fleet
-    /// DLL groups on it; docs/CHORD_GNSS_SHARED_DLL.md). 0 = unset: pow_hop then carries the raw
-    /// sample index, and pow_fft_len (also published) says which it is.
+    /// DLL groups on it; docs/CHORD_GNSS_SHARED_DLL.md).
     int _fft_len = 0;
     std::vector<std::vector<std::complex<double>>> _navbuf; ///< per-PRN per-record A, deep window
     /// Per-PRN per-record sky-phase-corrected A (record slots 24/25, gnssElemCal.hpp's
@@ -239,14 +220,13 @@ private:
     /// Fleet DLL (docs/CHORD_GNSS_SHARED_DLL.md): the window-averaged Early/Prompt/Late powers
     /// behind _st_dll_disc, published raw because ratios do not sum: the fleet discriminator
     /// (sum E - sum L)/(sum E + sum L) is not a function of the per-instance ones. All three
-    /// are |sum of subband correlations|^2 / energy^2, so q = 2P/(E+L) is comparable across
-    /// instances.
+    /// are |correlation|^2 / energy^2, so q = 2P/(E+L) is comparable across instances.
     std::vector<float> _st_e_pow;
     std::vector<float> _st_p_pow;
     std::vector<float> _st_l_pow;
     std::vector<float> _st_nchan; ///< covering channels that contributed (weight; 0 = dead)
-    /// Absolute hop index labelling the E/P/L window (rolling: its newest record; block: its
-    /// first); -1 = no frame metadata. The fleet combine groups instances by it; see _fft_len.
+    /// Absolute hop index labelling the E/P/L window (its newest record); -1 = no frame
+    /// metadata. The fleet combine groups instances by it; see _fft_len.
     long long _st_pow_hop = -1;
     /// The phase rate removed before the deep plain sum and its peak/median. A rate is applied
     /// only when the spectrum's peak/median reaches DEEP_RATE_MIN_Q, and only from bins within
@@ -267,8 +247,7 @@ private:
     int _rec_export = 0;
     std::vector<std::vector<std::array<double, 4>>> _recex, _st_recex;
     /// Append one record to the export ring, trimming to _rec_export. Independent of the
-    /// deep-window buffers, which are trimmed by _integration_length and absent in configs that
-    /// do not wipe.
+    /// deep-window buffers, which are trimmed by _integration_length.
     void push_recex(int p, long long hop, double re, double im, double energy);
     std::vector<float> _st_head_frac; ///< boundary fraction f = <head energy>/<prompt energy>
     std::vector<float> _st_s4;        ///< amplitude scintillation index, thermal floor removed

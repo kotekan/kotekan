@@ -32,32 +32,41 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
                                            bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container,
           std::bind(&GnssCoherentCombiner::main_thread, this)) {
-    in_bufs = get_buffer_array("in_bufs");
-    for (Buffer* b : in_bufs)
-        b->register_consumer(unique_name);
+    // One record stream: the node's assembler sums every covering channel, and the broker
+    // combines across nodes.
+    const std::vector<Buffer*> in_bufs = get_buffer_array("in_bufs");
+    if (in_bufs.size() != 1) {
+        FATAL_ERROR("GnssCoherentCombiner: in_bufs has {:d} buffers; exactly one is supported",
+                    in_bufs.size());
+        return;
+    }
+    in_buf = in_bufs[0];
+    in_buf->register_consumer(unique_name);
     out_buf = get_buffer("out_buf");
     out_buf->register_producer(unique_name);
 
-    // Element axis: 0 = single-antenna records with no element blocks; the per-element path is
-    // then skipped.
-    _n_elements = config.get_default<int>(unique_name, "n_elements", 0);
+    _n_elements = config.get<int>(unique_name, "n_elements");
+    if (_n_elements < 1) {
+        FATAL_ERROR("GnssCoherentCombiner: n_elements {:d} must be >= 1", _n_elements);
+        return;
+    }
     _rec_stride = gnss::record_stride(_n_elements);
 
-    // Records per frame: configured, else inferred from the first input frame size.
-    _n_prn = config.get_default<int>(unique_name, "n_prn", 0);
-    if (_n_prn <= 0 && !in_bufs.empty())
-        _n_prn = in_bufs[0]->frame_size / (int)sizeof(float) / _rec_stride;
+    _n_prn = config.get<int>(unique_name, "n_prn");
+    if (_n_prn < 1) {
+        FATAL_ERROR("GnssCoherentCombiner: n_prn {:d} must be >= 1", _n_prn);
+        return;
+    }
     // The record width is a C++ constant but the frames are sized in yaml, so check that every
-    // frame holds n_prn records. An inferred n_prn is only as right as the yaml frame size.
+    // frame holds n_prn records.
     {
         const size_t need = (size_t)_n_prn * _rec_stride * sizeof(float);
-        for (Buffer* b : in_bufs)
-            if ((size_t)b->frame_size < need) {
-                FATAL_ERROR("GnssCoherentCombiner: input frame {:d} B < {:d} PRN x {:d} floats "
-                            "({:d} B). Bump 'record_floats' in the config to {:d}.",
-                            (size_t)b->frame_size, _n_prn, _rec_stride, need, _rec_stride);
-                return;
-            }
+        if ((size_t)in_buf->frame_size < need) {
+            FATAL_ERROR("GnssCoherentCombiner: input frame {:d} B < {:d} PRN x {:d} floats "
+                        "({:d} B). Bump 'record_floats' in the config to {:d}.",
+                        (size_t)in_buf->frame_size, _n_prn, _rec_stride, need, _rec_stride);
+            return;
+        }
         if ((size_t)out_buf->frame_size < need) {
             FATAL_ERROR("GnssCoherentCombiner: out_buf frame {:d} B < {:d} PRN x {:d} floats "
                         "({:d} B). Bump 'record_floats' in the config to {:d}.",
@@ -68,11 +77,16 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
 
     _integration_length =
         std::max(1, config.get_default<int>(unique_name, "integration_length", 1));
+    // Integration is a rolling EMA (see the hpp); the key remains only to refuse another mode.
     const std::string mode =
-        config.get_default<std::string>(unique_name, "integration_mode", "block");
-    _rolling = (mode == "rolling");
-    // Rolling output cadence: ~10 outputs per time constant. Block mode emits once per
-    // integration_length records.
+        config.get_default<std::string>(unique_name, "integration_mode", "rolling");
+    if (mode != "rolling") {
+        FATAL_ERROR("GnssCoherentCombiner: integration_mode '{:s}' is not supported; it must be "
+                    "'rolling'",
+                    mode);
+        return;
+    }
+    // Output cadence: ~10 outputs per time constant.
     _emit_every = std::max(1, _integration_length / 10);
     _navwipe_bit_records = config.get_default<int>(unique_name, "navwipe_bit_records", 0);
     // secondary_overlay: a shared overlay over a data component (GPS L5-I: CNAV under NH10). The
@@ -109,9 +123,12 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
                     DEEP_RATE_MIN_Q);
         return;
     }
-    // Converts sample_seq to the absolute hop index (see the hpp). 0 = unset: pow_hop is then
-    // the sample index, and pow_fft_len says which.
-    _fft_len = config.get_default<int>(unique_name, "fft_len", 0);
+    // Converts sample_seq to the absolute hop index (see the hpp).
+    _fft_len = config.get<int>(unique_name, "fft_len");
+    if (_fft_len < 1) {
+        FATAL_ERROR("GnssCoherentCombiner: fft_len {:d} must be >= 1", _fft_len);
+        return;
+    }
 
     // Real-time cost (see the hpp). Duty cycle = (d ingest_us + d emit_us) / (d records x record
     // period): below 1 the stage keeps up; at or above 1 it is saturated and more buffering only
@@ -197,19 +214,16 @@ void GnssCoherentCombiner::main_thread() {
         kotekan::restServer::instance().register_get_callback(
             unique_name + "/get_records",
             std::bind(&GnssCoherentCombiner::get_records_callback, this, _1));
-    if (_n_elements > 0)
-        kotekan::restServer::instance().register_get_callback(
-            unique_name + "/get_elements",
-            std::bind(&GnssCoherentCombiner::get_elements_callback, this, _1));
+    kotekan::restServer::instance().register_get_callback(
+        unique_name + "/get_elements",
+        std::bind(&GnssCoherentCombiner::get_elements_callback, this, _1));
 
-    std::vector<frameID> in_ids;
-    for (Buffer* b : in_bufs)
-        in_ids.emplace_back(b);
+    frameID in_id(in_buf);
     frameID out_id(out_buf);
 
-    // Per-PRN integration accumulators. block: running sums over _integration_length records.
-    // rolling: exponential moving averages (alpha = 1/_integration_length), bias-corrected at
-    // emit by dividing by (1 - (1-alpha)^n_roll) so they read true running means from record 1.
+    // Per-PRN integration accumulators: exponential moving averages (alpha =
+    // 1/_integration_length), bias-corrected at emit by dividing by (1 - (1-alpha)^n_roll) so
+    // they read true running means from record 1.
     std::vector<double> acc_pow(_n_prn), acc_ar(_n_prn), acc_ai(_n_prn), acc_nchan(_n_prn);
     std::vector<double> acc_pow2(_n_prn); // <|A|^4>, for the noise-debiased incoherent significance
     std::vector<double> acc_epow(_n_prn), acc_lpow(_n_prn); // <|E|^2>, <|L|^2> for the DLL disc
@@ -222,7 +236,7 @@ void GnssCoherentCombiner::main_thread() {
     // in the window (0 or 1 = at an edge). Diagnostic only.
     std::vector<double> acc_he(_n_prn), acc_pe(_n_prn);
     // Shared carrier loop: vector-averaged cross-record phase product per PRN over the emit
-    // window. S += (A_k conj A_{k-1})^{2|1}; at emit resid_hz = arg(S)/{2|1}/(2 pi <dt>).
+    // window. S += (A_k conj A_{k-1})^2; at emit resid_hz = arg(S)/2/(2 pi <dt>).
     std::vector<std::complex<double>> car_S(_n_prn);
     std::vector<double> car_dt(_n_prn);
     std::vector<int> car_n(_n_prn);
@@ -230,97 +244,34 @@ void GnssCoherentCombiner::main_thread() {
     std::vector<double> car_prev_utc(_n_prn, -1.0);
     std::vector<float> ref_prn(_n_prn), ref_dop(_n_prn), ref_cp(_n_prn);
     std::vector<double> ref_utc(_n_prn);
-    int n_acc = 0; // block: records in the current block
-    // Per-antenna state (empty and untouched when n_elements == 0).
-    _ge_r.assign((size_t)_n_elements, 0.0);
-    _ge_i.assign((size_t)_n_elements, 0.0);
+    // Per-antenna state.
     _acc_epow_el.assign((size_t)_n_prn * _n_elements, 0.0);
     _acc_ear.assign((size_t)_n_prn * _n_elements, 0.0);
     _acc_eai.assign((size_t)_n_prn * _n_elements, 0.0);
     _acc_eu_r.assign((size_t)_n_prn * _n_elements, 0.0);
     _acc_eu_i.assign((size_t)_n_prn * _n_elements, 0.0);
     _acc_euq.assign((size_t)_n_prn * _n_elements, 0.0);
-    long long n_roll = 0;   // rolling: total records seen (for EMA bias correction)
+    long long n_roll = 0;   // total records seen (for EMA bias correction)
     long long win_hop = -1; // absolute hop index labelling the current E/P/L window
-    int since_emit = 0;     // rolling: records since the last emit
-    const double alpha = 1.0 / (double)_integration_length; // rolling EMA weight
+    int since_emit = 0;     // records since the last emit
+    const double alpha = 1.0 / (double)_integration_length; // EMA weight
 
     while (!stop_thread) {
-        // Gather the i-th frame of every subband (same window, same PRN order).
-        std::vector<float*> ins;
-        bool stopping = false;
-        for (size_t i = 0; i < in_bufs.size(); ++i) {
-            float* in = (float*)in_bufs[i]->wait_for_full_frame(unique_name, in_ids[i]);
-            if (in == nullptr) {
-                stopping = true;
-                break;
-            }
-            ins.push_back(in);
-        }
-        if (stopping)
+        float* in = (float*)in_buf->wait_for_full_frame(unique_name, in_id);
+        if (in == nullptr)
             break;
-
-        // Align the subbands by each record's capture UTC (RECORD_UTC_SLOT), not by frame index.
-        // Taking the i-th frame of every input is right only while every input drops
-        // identically, which fails when one voltage tap drops a frame and never holds across
-        // hosts; one lost frame would offset a subband by a record permanently and the combine
-        // would quietly decohere. Advance any stream that lags the newest by more than half a
-        // record period, estimated from the observed spacing since it differs between bands.
-        if (in_bufs.size() > 1) {
-            const auto rec_utc = [this](const float* in) {
-                return *reinterpret_cast<const double*>(in + RECORD_UTC_SLOT);
-            };
-            if (_rec_dt_est <= 0.0 && _prev_utc0 > 0.0) {
-                const double d = rec_utc(ins[0]) - _prev_utc0;
-                if (d > 0.0)
-                    _rec_dt_est = d; // first positive gap: enough to bound "half a record"
-            }
-            if (_rec_dt_est > 0.0) {
-                // Bounded: a stream far behind is a fault, not jitter, and spinning here would
-                // stall every other subband.
-                for (int guard = 0; guard < 64 && !stopping; ++guard) {
-                    double newest = rec_utc(ins[0]);
-                    for (size_t i = 1; i < ins.size(); ++i)
-                        newest = std::max(newest, rec_utc(ins[i]));
-                    bool moved = false;
-                    for (size_t i = 0; i < ins.size(); ++i) {
-                        if (newest - rec_utc(ins[i]) > 0.5 * _rec_dt_est) {
-                            in_bufs[i]->mark_frame_empty(unique_name, in_ids[i]++);
-                            float* nx =
-                                (float*)in_bufs[i]->wait_for_full_frame(unique_name, in_ids[i]);
-                            if (nx == nullptr) {
-                                stopping = true;
-                                break;
-                            }
-                            ins[i] = nx;
-                            moved = true;
-                            ++_realigns;
-                        }
-                    }
-                    if (!moved)
-                        break;
-                }
-                if (stopping)
-                    break;
-            }
-            _prev_utc0 = rec_utc(ins[0]);
-        }
-
 
         // Absolute hop index of this record's window, from the frame metadata
         // (GnssGpuRecordAssemble sets sample_seq to the window start). Every node's sample_seq
         // derives from the same F-engine counter, so equal hop is the same window exactly, with
-        // no tolerance as UTC would need; the fleet DLL groups on it. Input 0 only: the realign
-        // loop has put every input on the same window. cur_hop is this record's hop, for the
-        // per-record export; win_hop labels the emitted window.
+        // no tolerance as UTC would need; the fleet DLL groups on it. cur_hop is this record's
+        // hop, for the per-record export; win_hop labels the emitted window (its newest record,
+        // as ref_utc is).
         long long cur_hop = -1;
         {
-            const GnssChanMetadata* mi = get_gnss_chan_metadata(in_bufs[0], in_ids[0]);
-            cur_hop = (mi && mi->sample_seq >= 0)
-                          ? (_fft_len > 0 ? mi->sample_seq / _fft_len : (long long)mi->sample_seq)
-                          : -1;
-            if (_rolling || n_acc == 0) // rolling: the newest record, as ref_utc is; block: the
-                win_hop = cur_hop;      // window's first, as ref_utc is
+            const GnssChanMetadata* mi = get_gnss_chan_metadata(in_buf, in_id);
+            cur_hop = (mi && mi->sample_seq >= 0) ? mi->sample_seq / _fft_len : -1;
+            win_hop = cur_hop;
         }
 
         // The cost clock starts after the input wait: blocking on input is idle time, and
@@ -328,96 +279,60 @@ void GnssCoherentCombiner::main_thread() {
         const double _t_ingest0 = current_time();
 
         for (int p = 0; p < _n_prn; ++p) {
-            // Sum the un-normalized correlation and replica energy across subbands
-            // (the cross-channel coherent combine), then the full-band amplitude.
-            double gr = 0.0, gi = 0.0, energy = 0.0, nchan = 0.0;
-            double skr = 0.0, ski = 0.0; // sky-phase-corrected prompt (REC_SKY_*), summed like it
-            double er = 0.0, ei = 0.0, e_energy = 0.0, lr = 0.0, li = 0.0, l_energy = 0.0;
-            double ghr = 0.0, ghi = 0.0, h_energy = 0.0; // prompt head segment (slots 16-18)
-            const float* ref = ins[0] + (size_t)p * _rec_stride; // PRN/dop/cp/UTC reference
-            if (_n_elements > 0) {
-                std::fill(_ge_r.begin(), _ge_r.end(), 0.0);
-                std::fill(_ge_i.begin(), _ge_i.end(), 0.0);
-            }
-            for (float* in : ins) {
-                const float* rec = in + (size_t)p * _rec_stride;
-                gr += rec[3];
-                gi += rec[4];
-                energy += rec[5];
-                nchan += rec[6];
-                // Early/Late (gnssRecord.hpp): additive across subbands like the prompt. Only
-                // their powers feed the DLL discriminator, so per-subband NCO phases do not
-                // matter.
-                er += rec[gnss::REC_E_RE];
-                ei += rec[gnss::REC_E_IM];
-                e_energy += rec[gnss::REC_E_ENERGY];
-                lr += rec[gnss::REC_L_RE];
-                li += rec[gnss::REC_L_IM];
-                l_energy += rec[gnss::REC_L_ENERGY];
-                // Head segment: additive across subbands like the prompt it is a piece of.
-                ghr += rec[gnss::REC_PH_RE];
-                ghi += rec[gnss::REC_PH_IM];
-                h_energy += rec[gnss::REC_PH_ENERGY];
-                // Sky-corrected prompt: additive like the prompt. Each subband corrected it with
-                // its own elements, so the corrections are independent.
-                skr += rec[gnss::REC_SKY_RE];
-                ski += rec[gnss::REC_SKY_IM];
-                // Per-antenna prompt, summed across subbands like the prompt.
-                if (_n_elements > 0) {
-                    const float* eb0 = in + gnss::elem_offset((int)p, 0, _n_elements);
-                    for (int el = 0; el < _n_elements; ++el) {
-                        const float* eb = eb0 + (size_t)el * gnss::ELEM_FLOATS;
-                        _ge_r[el] += eb[gnss::ELEM_P_RE];
-                        _ge_i[el] += eb[gnss::ELEM_P_IM];
-                    }
-                }
-            }
+            // The un-normalized correlation and replica energy over the covering channels, and
+            // from them the full-band amplitude.
+            const float* ref = in + (size_t)p * _rec_stride;
+            const double gr = ref[3], gi = ref[4], energy = ref[5], nchan = ref[6];
+            // Early/Late (gnssRecord.hpp): only their powers feed the DLL discriminator.
+            const double er = ref[gnss::REC_E_RE], ei = ref[gnss::REC_E_IM],
+                         e_energy = ref[gnss::REC_E_ENERGY];
+            const double lr = ref[gnss::REC_L_RE], li = ref[gnss::REC_L_IM],
+                         l_energy = ref[gnss::REC_L_ENERGY];
+            // Prompt head segment (slots 16-18).
+            const double ghr = ref[gnss::REC_PH_RE], ghi = ref[gnss::REC_PH_IM],
+                         h_energy = ref[gnss::REC_PH_ENERGY];
+            // Sky-phase-corrected prompt (REC_SKY_*).
+            const double skr = ref[gnss::REC_SKY_RE], ski = ref[gnss::REC_SKY_IM];
             const double ar = energy > 0.0 ? gr / energy : 0.0;
             const double ai = energy > 0.0 ? gi / energy : 0.0;
             // Per-antenna amplitude A_e = G_e / E, normalized by the shared replica energy E that
             // every antenna correlated against, so values are comparable across antennas (the
-            // beam map is the relative response across dishes). Accumulated like the prompt
-            // (EMA when rolling, sum otherwise). |A_e|^2 is incoherent and needs no per-antenna
-            // phase model; <A_e> keeps the phase.
-            if (_n_elements > 0) {
+            // beam map is the relative response across dishes). Accumulated like the prompt.
+            // |A_e|^2 is incoherent and needs no per-antenna phase model; <A_e> keeps the phase.
+            {
+                const float* eb0 = in + gnss::elem_offset((int)p, 0, _n_elements);
                 // Unweighted array sum of the raw per-antenna prompts, for the leave-one-out
                 // reference below. The raw G_e are upstream of the element cal, so no element's
                 // noise can enter its own reference through a fitted weight.
                 double gsum_r = 0.0, gsum_i = 0.0;
                 for (int el = 0; el < _n_elements; ++el) {
-                    gsum_r += _ge_r[el];
-                    gsum_i += _ge_i[el];
+                    const float* eb = eb0 + (size_t)el * gnss::ELEM_FLOATS;
+                    gsum_r += eb[gnss::ELEM_P_RE];
+                    gsum_i += eb[gnss::ELEM_P_IM];
                 }
                 for (int el = 0; el < _n_elements; ++el) {
-                    const double aer = energy > 0.0 ? _ge_r[el] / energy : 0.0;
-                    const double aei = energy > 0.0 ? _ge_i[el] / energy : 0.0;
+                    const float* eb = eb0 + (size_t)el * gnss::ELEM_FLOATS;
+                    const double ger = eb[gnss::ELEM_P_RE], gei = eb[gnss::ELEM_P_IM];
+                    const double aer = energy > 0.0 ? ger / energy : 0.0;
+                    const double aei = energy > 0.0 ? gei / energy : 0.0;
                     const double p2e = aer * aer + aei * aei;
                     // Complex gain product A_e * conj(ref_e), with ref_e the other elements' sum
                     // in this record. The sky phase is common to both and cancels per record,
                     // which the raw mean _acc_ear cannot do (it averages the phase itself and
                     // collapses). The element's noise is uncorrelated with its leave-one-out
                     // reference, so the mean is unbiased for g_e * <|s_ref|^2> with no debias.
-                    const double rr = energy > 0.0 ? (gsum_r - _ge_r[el]) / energy : 0.0;
-                    const double ri = energy > 0.0 ? (gsum_i - _ge_i[el]) / energy : 0.0;
+                    const double rr = energy > 0.0 ? (gsum_r - ger) / energy : 0.0;
+                    const double ri = energy > 0.0 ? (gsum_i - gei) / energy : 0.0;
                     const double eur = aer * rr + aei * ri;
                     const double eui = aei * rr - aer * ri;
                     const double euq = rr * rr + ri * ri;
                     const size_t k = (size_t)p * _n_elements + el;
-                    if (_rolling) {
-                        _acc_epow_el[k] += alpha * (p2e - _acc_epow_el[k]);
-                        _acc_ear[k] += alpha * (aer - _acc_ear[k]);
-                        _acc_eai[k] += alpha * (aei - _acc_eai[k]);
-                        _acc_eu_r[k] += alpha * (eur - _acc_eu_r[k]);
-                        _acc_eu_i[k] += alpha * (eui - _acc_eu_i[k]);
-                        _acc_euq[k] += alpha * (euq - _acc_euq[k]);
-                    } else {
-                        _acc_epow_el[k] += p2e;
-                        _acc_ear[k] += aer;
-                        _acc_eai[k] += aei;
-                        _acc_eu_r[k] += eur;
-                        _acc_eu_i[k] += eui;
-                        _acc_euq[k] += euq;
-                    }
+                    _acc_epow_el[k] += alpha * (p2e - _acc_epow_el[k]);
+                    _acc_ear[k] += alpha * (aer - _acc_ear[k]);
+                    _acc_eai[k] += alpha * (aei - _acc_eai[k]);
+                    _acc_eu_r[k] += alpha * (eur - _acc_eu_r[k]);
+                    _acc_eu_i[k] += alpha * (eui - _acc_eu_i[k]);
+                    _acc_euq[k] += alpha * (euq - _acc_euq[k]);
                 }
             }
             // Head amplitude normalized by the total prompt energy, so head + tail == A and the
@@ -504,69 +419,42 @@ void GnssCoherentCombiner::main_thread() {
                 car_prev[p] = A;
                 car_prev_utc[p] = utc_p;
             }
-            if (_rolling) { // exponential moving average (no reset; integrates indefinitely)
-                acc_pow[p] += alpha * (p2 - acc_pow[p]);
-                acc_pow2[p] += alpha * (p2 * p2 - acc_pow2[p]);
-                acc_epow[p] += alpha * (e2 - acc_epow[p]);
-                acc_lpow[p] += alpha * (l2 - acc_lpow[p]);
-                acc_ppow[p] += alpha * ((ar * ar + ai * ai) - acc_ppow[p]);
-                acc_he[p] += alpha * (h_energy - acc_he[p]);
-                acc_pe[p] += alpha * (energy - acc_pe[p]);
-                acc_ar[p] += alpha * (ar - acc_ar[p]);
-                acc_ai[p] += alpha * (ai - acc_ai[p]);
-                acc_nchan[p] += alpha * (nchan - acc_nchan[p]);
-                if (energy > 0.0) {
-                    // Sliding window of the last _integration_length records for the deep
-                    // estimators. Records with no despread (PRN inactive this window) are not
-                    // buffered: the wipes index by UTC, so they become gaps like dropped
-                    // records. Zeros would dilute the amplitude without adding to the
-                    // orthogonal-noise estimate, inflating the significance.
-                    _navbuf[p].emplace_back(ar, ai);
-                    _navsky[p].push_back(A_sky);
-                    _navutc[p].push_back(utc_p);
-                    // Head segment; without one the whole record is the head, which reduces the
-                    // segmented wipe to the unsegmented one.
-                    _navhead[p].emplace_back(h_energy > 0.0 ? ahr : ar, h_energy > 0.0 ? ahi : ai);
-                    if ((int)_navbuf[p].size() > _integration_length) {
-                        _navbuf[p].erase(_navbuf[p].begin());
-                        _navsky[p].erase(_navsky[p].begin());
-                        _navutc[p].erase(_navutc[p].begin());
-                        _navhead[p].erase(_navhead[p].begin());
-                    }
-                }
-                if (_rec_export > 0 && energy > 0.0)
-                    push_recex(p, cur_hop, ar, ai, energy);
-                ref_prn[p] = ref[0]; // reference = the latest record (rolling has no block start)
-                ref_dop[p] = ref[1];
-                ref_cp[p] = ref[2];
-                ref_utc[p] = utc_p;
-            } else { // block: running sums, reset at emit
-                acc_pow[p] += p2;
-                acc_pow2[p] += p2 * p2;
-                acc_epow[p] += e2;
-                acc_lpow[p] += l2;
-                acc_ppow[p] += ar * ar + ai * ai;
-                acc_he[p] += h_energy;
-                acc_pe[p] += energy;
-                acc_ar[p] += ar;
-                acc_ai[p] += ai;
-                acc_nchan[p] += nchan;
-                if (energy > 0.0) { // per-record (A, UTC) for the deep wipe;
-                    // zero-energy records are gaps, as in rolling mode.
-                    _navbuf[p].emplace_back(ar, ai);
-                    _navsky[p].push_back(A_sky);
-                    _navutc[p].push_back(utc_p);
-                    _navhead[p].emplace_back(h_energy > 0.0 ? ahr : ar, h_energy > 0.0 ? ahi : ai);
-                }
-                if (_rec_export > 0 && energy > 0.0)
-                    push_recex(p, cur_hop, ar, ai, energy);
-                if (n_acc == 0) { // window reference from the first record of the block
-                    ref_prn[p] = ref[0];
-                    ref_dop[p] = ref[1];
-                    ref_cp[p] = ref[2];
-                    ref_utc[p] = utc_p;
+            // Exponential moving average (no reset; integrates indefinitely).
+            acc_pow[p] += alpha * (p2 - acc_pow[p]);
+            acc_pow2[p] += alpha * (p2 * p2 - acc_pow2[p]);
+            acc_epow[p] += alpha * (e2 - acc_epow[p]);
+            acc_lpow[p] += alpha * (l2 - acc_lpow[p]);
+            acc_ppow[p] += alpha * ((ar * ar + ai * ai) - acc_ppow[p]);
+            acc_he[p] += alpha * (h_energy - acc_he[p]);
+            acc_pe[p] += alpha * (energy - acc_pe[p]);
+            acc_ar[p] += alpha * (ar - acc_ar[p]);
+            acc_ai[p] += alpha * (ai - acc_ai[p]);
+            acc_nchan[p] += alpha * (nchan - acc_nchan[p]);
+            if (energy > 0.0) {
+                // Sliding window of the last _integration_length records for the deep
+                // estimators. Records with no despread (PRN inactive this window) are not
+                // buffered: the wipes index by UTC, so they become gaps like dropped records.
+                // Zeros would dilute the amplitude without adding to the orthogonal-noise
+                // estimate, inflating the significance.
+                _navbuf[p].emplace_back(ar, ai);
+                _navsky[p].push_back(A_sky);
+                _navutc[p].push_back(utc_p);
+                // Head segment; without one the whole record is the head, which reduces the
+                // segmented wipe to the unsegmented one.
+                _navhead[p].emplace_back(h_energy > 0.0 ? ahr : ar, h_energy > 0.0 ? ahi : ai);
+                if ((int)_navbuf[p].size() > _integration_length) {
+                    _navbuf[p].erase(_navbuf[p].begin());
+                    _navsky[p].erase(_navsky[p].begin());
+                    _navutc[p].erase(_navutc[p].begin());
+                    _navhead[p].erase(_navhead[p].begin());
                 }
             }
+            if (_rec_export > 0 && energy > 0.0)
+                push_recex(p, cur_hop, ar, ai, energy);
+            ref_prn[p] = ref[0]; // reference = the latest record
+            ref_dop[p] = ref[1];
+            ref_cp[p] = ref[2];
+            ref_utc[p] = utc_p;
         }
 
         if (_m_ingest_us)
@@ -574,27 +462,21 @@ void GnssCoherentCombiner::main_thread() {
         if (_m_records)
             _m_records->inc(); // the data clock: records consumed (x record period = data time)
 
-        for (size_t i = 0; i < in_bufs.size(); ++i)
-            in_bufs[i]->mark_frame_empty(unique_name, in_ids[i]++);
+        in_buf->mark_frame_empty(unique_name, in_id++);
 
-        if (_rolling) {
-            ++n_roll;
-            if (++since_emit < _emit_every)
-                continue; // EMA keeps integrating; emit only every _emit_every records
-            since_emit = 0;
-        } else if (++n_acc < _integration_length) {
-            continue; // keep accumulating
-        }
+        ++n_roll;
+        if (++since_emit < _emit_every)
+            continue; // EMA keeps integrating; emit only every _emit_every records
+        since_emit = 0;
 
         float* out = (float*)out_buf->wait_for_empty_frame(unique_name, out_id);
         if (out == nullptr)
             break;
         // Again after the blocking wait: downstream backpressure is not this stage's cost.
         const double _t_emit0 = current_time();
-        // block: divide sums by the block count. rolling: the EMA is already a mean, so just
-        // undo the warm-up bias (1-(1-alpha)^n_roll) -> a true running mean from record 1.
-        const double inv =
-            _rolling ? 1.0 / (1.0 - std::pow(1.0 - alpha, (double)n_roll)) : 1.0 / (double)n_acc;
+        // The EMA is already a mean, so just undo the warm-up bias (1-(1-alpha)^n_roll) -> a
+        // true running mean from record 1.
+        const double inv = 1.0 / (1.0 - std::pow(1.0 - alpha, (double)n_roll));
         std::vector<float> p_pow_out(_n_prn, 0.0f); // fleet-DLL prompt power (see acc_ppow)
         std::vector<double> deep_snr(_n_prn, 0.0);  // significance of the deep detection (for REST)
         std::vector<double> amp_snr(_n_prn, 0.0);   // noise-debiased incoherent significance (REST)
@@ -609,8 +491,6 @@ void GnssCoherentCombiner::main_thread() {
         std::vector<double> deep_rate_full(_n_prn, 0.0); // uncapped argmax: the carrier loop's
         std::vector<double> deep_rate_full_q(_n_prn, 0.0); // measurement, not the fold's
         std::vector<double> coh_frac(_n_prn, 0.0); // |sum|/sum|.| of the winning deep stream
-
-
         std::vector<NavObs> nav_obs(_bit_export ? _n_prn : 0); // full-window bit decisions
         // Each deep estimator's free parameters (alignment, bit signs, candidate choice) rectify
         // pure noise to a floor, so without a gate an unlocked satellite would report coherence
@@ -739,7 +619,7 @@ void GnssCoherentCombiner::main_thread() {
                 return 0.0;
             return (u.back() - u[u.size() - len]) * (double)len / (double)(len - 1);
         };
-        const double Keff = _rolling ? (double)_integration_length : (double)n_acc;
+        const double Keff = (double)_integration_length;
         for (int p = 0; p < _n_prn; ++p) {
             float* rec = out + (size_t)p * _rec_stride;
             for (int f = 0; f < _rec_stride; ++f) // whole record: element blocks too
@@ -754,7 +634,7 @@ void GnssCoherentCombiner::main_thread() {
             rec[7] = (float)(acc_nchan[p] * inv);                   // covering channels used
             // Per-antenna beam map, with the same `inv` normalization as rec[3], so
             // CMB_ELEM_AMP_INCOH is directly comparable with it.
-            if (_n_elements > 0) {
+            {
                 // The element-gain REST snapshot: same emit and normalization, under the status
                 // mutex since REST reads it from another thread.
                 std::lock_guard<std::mutex> elk(_st_mtx);
@@ -787,8 +667,7 @@ void GnssCoherentCombiner::main_thread() {
                 rec[gnss::CMB_DLL_DISC] =
                     (e_pow + l_pow) > 0.0 ? (float)((e_pow - l_pow) / (e_pow + l_pow)) : 0.0f;
                 // Fleet DLL (docs/CHORD_GNSS_SHARED_DLL.md): the prompt power, for the status
-                // snapshot. E and L are in the record and P is not, and acc_ppow is reset at the
-                // end of this emit in block mode, so it is carried out here.
+                // snapshot. E and L are in the record and P is not, so it is carried out here.
                 p_pow_out[p] = (float)(acc_ppow[p] * inv);
                 // Boundary fraction f (diagnostic; the inv normalization cancels in the ratio).
                 rec[gnss::CMB_HEAD_FRAC] = acc_pe[p] > 0.0 ? (float)(acc_he[p] / acc_pe[p]) : 0.0f;
@@ -796,8 +675,8 @@ void GnssCoherentCombiner::main_thread() {
                 // broker integrates into carrier_trim_hz for every subband tracker. Preferred
                 // estimate: a bit-robust phase-slope fit over the whole deep-wipe window, whose
                 // long baseline gives a low-variance frequency. The short-baseline
-                // consecutive-record product car_S is the fallback when there is no wipe buffer
-                // or it holds fewer than 16 records.
+                // consecutive-record product car_S is the fallback while the window holds fewer
+                // than 16 records.
                 double resid_hz = 0.0;
                 if (_navbuf[p].size() >= 16) {
                     resid_hz = carrier_resid_hz(_navbuf[p], _navutc[p], &sigma_phi[p]);
@@ -958,14 +837,6 @@ void GnssCoherentCombiner::main_thread() {
                     deep_floor[p] = nav_floor(full_len);
                     coh_s[p] = 0.0; // no rung beat its floor: no coherent detection
                 }
-                // Block mode: clear the window after the emit. Block-mode buffering has no
-                // length cap, so without a clear the buffers grow without bound.
-                if (!_rolling) {
-                    _navbuf[p].clear();
-                    _navsky[p].clear();
-                    _navutc[p].clear();
-                    _navhead[p].clear();
-                }
             } else if (_navwipe_bit_records > 0) {
                 const auto& ab = _navbuf[p];
                 const auto& ub = _navutc[p];
@@ -1019,17 +890,10 @@ void GnssCoherentCombiner::main_thread() {
                     deep_floor[p] = nav_floor(full_len);
                     coh_s[p] = 0.0; // no rung beat its floor: no coherent detection
                 }
-
-                if (!_rolling) { // block clears the window; rolling slides it (capped above)
-                    _navbuf[p].clear();
-                    _navsky[p].clear();
-                    _navutc[p].clear();
-                    _navhead[p].clear();
-                }
             } else {
                 // Plain coherent sum, no wipe. The replica already carries the secondary overlay
                 // (GPS_L5_Q_NH: NH20 tiled into 204600 chips), so each record arrives
-                // overlay-free and the deep integration is a straight sum. The wipe paths cannot
+                // overlay-free and the deep integration is a straight sum. The overlay wipe cannot
                 // serve this case: overlay_apply advances the overlay one chip per record, which
                 // holds only when a record is one primary period, and a CHORD record is 2048
                 // hops = 10.4857 periods.
@@ -1162,17 +1026,7 @@ void GnssCoherentCombiner::main_thread() {
             // Absolute hop of this window, beside the UTC: the key the fleet DLL groups on, so a
             // recorded .raw says exactly which window each row is. The same for every PRN.
             *reinterpret_cast<long long*>(rec + gnss::CMB_HOP_SLOT) = win_hop;
-            if (!_rolling) {
-                acc_pow[p] = acc_pow2[p] = acc_ar[p] = acc_ai[p] = acc_nchan[p] = acc_epow[p] =
-                    acc_lpow[p] = acc_ppow[p] = acc_he[p] = acc_pe[p] = 0.0; // block: reset
-                for (int el = 0; el < _n_elements; ++el) { // per-antenna block reset
-                    const size_t k = (size_t)p * _n_elements + el;
-                    _acc_epow_el[k] = _acc_ear[k] = _acc_eai[k] = 0.0;
-                }
-            }
         }
-        if (!_rolling)
-            n_acc = 0;
 
         // REST snapshot of this emit.
         {
@@ -1338,16 +1192,16 @@ void GnssCoherentCombiner::get_status_callback(kotekan::connectionInstance& conn
                          // Fleet DLL (docs/CHORD_GNSS_SHARED_DLL.md): dll_disc is a ratio, and the
                          // full-band discriminator is (sum e_pow - sum l_pow)/(sum e_pow + sum
                          // l_pow) over every instance, so the three powers ship raw. All are built
-                         // as |sum of subband correlations|^2 / energy^2, so
-                         // q = 2*p_pow/(e_pow+l_pow) is comparable across instances.
+                         // as |correlation|^2 / energy^2, so q = 2*p_pow/(e_pow+l_pow) is
+                         // comparable across instances.
                          {"e_pow", _st_e_pow[p]},
                          {"p_pow", _st_p_pow[p]},
                          {"l_pow", _st_l_pow[p]},
                          {"n_chan", _st_nchan[p]},
                          // Grouping key: absolute hop index of the window these powers cover, from
                          // the F-engine counter every node shares; equal hop is the same window
-                         // exactly. pow_fft_len 0 means pow_hop is a raw sample index (fft_len not
-                         // configured); pow_hop -1 means the record frames carried no metadata.
+                         // exactly. pow_fft_len is the FFT length behind it; pow_hop -1 means the
+                         // record frames carried no metadata.
                          {"pow_hop", _st_pow_hop},
                          {"pow_fft_len", _fft_len},
                          // Boundary fraction f: where the code-period boundary sits in the despread
@@ -1358,10 +1212,6 @@ void GnssCoherentCombiner::get_status_callback(kotekan::connectionInstance& conn
                          {"s4", _st_s4[p]},
                          {"s4_raw", _st_s4_raw[p]},
                          {"sigma_phi", _st_sigma_phi[p]},
-
-                         // Nonzero: an input dropped a frame relative to the others and was
-                         // realigned.
-                         {"subband_realigns", (double)_realigns},
                          {"carrier_hz_resid", _st_car_resid[p]},
                          {"utc", _st_utc[p]},
                          // Accumulated carrier phase (cycles) on the current unbroken arc, its
