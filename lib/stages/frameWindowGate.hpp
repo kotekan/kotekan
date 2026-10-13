@@ -12,7 +12,6 @@
 #include "bufferContainer.hpp"
 #include "prometheusMetrics.hpp"
 
-#include <atomic>
 #include <cstdint>
 #include <mutex>
 #include <string>
@@ -30,9 +29,8 @@
  *
  * Several input buffers can be gated as a tuple: frame k of every input is read, passed or
  * dropped together, so the sink files stay frame-aligned (a tiles frame and its control block,
- * say). The clock is the sequence number of one of them (@c clock_buf), read either from its
- * metadata (@c chordMetadata::fpga_seq_num or @c GnssChanMetadata::sample_seq, else -1) or from
- * an int64 at a byte offset inside the frame itself.
+ * say). The clock is the sequence number of one of them (@c clock_buf): an int64 at a byte
+ * offset inside that frame.
  *
  * REST (all under this stage's unique_name):
  *  - ``POST .../arm``     ``{"start_seq": X, "end_seq": Y}``: pass frames with
@@ -54,9 +52,9 @@
  * @conf in_bufs        Array of buffer names.
  * @conf out_bufs       Array of buffer names, same length as in_bufs.
  * @conf clock_buf      Int, default 0. Index into in_bufs of the buffer that carries the clock.
- * @conf clock_source   String, default "metadata". "metadata" reads fpga_seq_num / sample_seq;
- *                      "frame" reads an int64 at byte offset @c clock_offset of the clock frame.
- * @conf clock_offset   Int, default 0. Byte offset for clock_source "frame".
+ * @conf clock_source   String, default "frame", the only value accepted: the clock is the int64
+ *                      at byte offset @c clock_offset of the clock frame.
+ * @conf clock_offset   Int, default 0. Byte offset of the clock in the clock frame.
  *
  * @par Metrics
  * @metric kotekan_framewindowgate_passed_frames_total   Tuples copied to the outputs.
@@ -73,13 +71,12 @@ public:
     void main_thread() override;
 
 private:
-    int64_t read_seq(const uint8_t* frame, int frame_id) const;
+    int64_t read_seq(const uint8_t* frame) const;
     void copy_frame(Buffer* src, int src_id, Buffer* dst, int dst_id);
 
     std::vector<Buffer*> _in_bufs;
     std::vector<Buffer*> _out_bufs;
     int _clock_buf;
-    bool _clock_from_frame;
     size_t _clock_offset;
 
     // Window state and counters, guarded by _mtx: shared by the REST callbacks and main_thread.

@@ -1,8 +1,6 @@
 #include "frameWindowGate.hpp"
 
-#include "GnssChanMetadata.hpp"
 #include "StageFactory.hpp"
-#include "chordMetadata.hpp"
 #include "kotekanLogging.hpp"
 #include "metadata.hpp"
 #include "restServer.hpp"
@@ -45,18 +43,11 @@ FrameWindowGate::FrameWindowGate(Config& config, const std::string& unique_name,
     if (_clock_buf < 0 || (size_t)_clock_buf >= _in_bufs.size())
         throw std::runtime_error(fmt::format(
             fmt("FrameWindowGate[{:s}]: clock_buf {:d} out of range"), unique_name, _clock_buf));
-    const std::string src =
-        config.get_default<std::string>(unique_name, "clock_source", "metadata");
-    if (src == "metadata")
-        _clock_from_frame = false;
-    else if (src == "frame")
-        _clock_from_frame = true;
-    else
-        throw std::runtime_error(fmt::format(
-            fmt("FrameWindowGate[{:s}]: clock_source must be \"metadata\" or \"frame\""),
-            unique_name));
+    if (config.get_default<std::string>(unique_name, "clock_source", "frame") != "frame")
+        throw std::runtime_error(
+            fmt::format(fmt("FrameWindowGate[{:s}]: clock_source must be \"frame\""), unique_name));
     _clock_offset = config.get_default<size_t>(unique_name, "clock_offset", 0);
-    if (_clock_from_frame && _clock_offset + sizeof(int64_t) > _in_bufs[_clock_buf]->frame_size)
+    if (_clock_offset + sizeof(int64_t) > _in_bufs[_clock_buf]->frame_size)
         throw std::runtime_error(fmt::format(
             fmt("FrameWindowGate[{:s}]: clock_offset {:d} outside the {:d}-byte clock frame"),
             unique_name, _clock_offset, _in_bufs[_clock_buf]->frame_size));
@@ -136,18 +127,10 @@ FrameWindowGate::~FrameWindowGate() {
     rest.remove_get_callback(unique_name + "/status");
 }
 
-int64_t FrameWindowGate::read_seq(const uint8_t* frame, int frame_id) const {
-    if (_clock_from_frame) {
-        int64_t v;
-        std::memcpy(&v, frame + _clock_offset, sizeof(v));
-        return v;
-    }
-    auto meta = _in_bufs[_clock_buf]->get_metadata(frame_id);
-    if (auto cm = std::dynamic_pointer_cast<chordMetadata>(meta))
-        return cm->get_fpga_seq_num();
-    if (auto gm = std::dynamic_pointer_cast<GnssChanMetadata>(meta))
-        return gm->sample_seq;
-    return -1;
+int64_t FrameWindowGate::read_seq(const uint8_t* frame) const {
+    int64_t v;
+    std::memcpy(&v, frame + _clock_offset, sizeof(v));
+    return v;
 }
 
 void FrameWindowGate::copy_frame(Buffer* src, int src_id, Buffer* dst, int dst_id) {
@@ -188,7 +171,7 @@ void FrameWindowGate::main_thread() {
         if (eof)
             break;
 
-        const int64_t seq = read_seq(frames[_clock_buf], in_id[_clock_buf]);
+        const int64_t seq = read_seq(frames[_clock_buf]);
 
         bool armed, in_window, past_end;
         int64_t start, end;
