@@ -93,6 +93,13 @@ that goes with it.
 | #186 | `seeding.py` appended a detection's `cp_err` to the 9-sample median history twice, the second time unguarded, so a `None` could enter it | `a7f5744d5` (10-13; live since the 21:05Z broker restart) | one append, under `cp_err is not None`, pinned by `test_holdchain` (ast); 22 broker tests + selftest pass; the seven replay digests byte-identical, so no replay had a median-gate decision riding on the doubled sample |
 | #183 | `gnss_transit_arcs.py` dropped a transit window that did not fit the span or straddled `--split` without saying so (C33 vanished twice on 10-12) | `0308a4fe5` (10-13) | every dropped window is printed after the kept list as `DROPPED (span: needs <t_lo> .. <t_hi>; split: straddles <split> +15 min)`; the C33 rerun on cf06 lists it dropped for both reasons and the 10-12 census is unchanged; control windows are still skipped silently |
 
+## Handed off — faults we found whose fix is someone else's
+
+| # | what we measured | who has it | how it closes |
+|---|---|---|---|
+| #166 | with rows C/D enabled in the X-engine config every frame reported 100% packet loss: the F-engine does not send those boards (10-10; rolled back `e635d6619`) | site (fpga_master); KV 10-13: "understood upstream and not ours to fix" | the 64-input GNSS plan waits on it; check the packet rate against the board count before enabling dishes again |
+| #167 | the `digitalgain_20261007T213936Z` table quantizes pol 1 to 0.12–0.27 LSB rms in the GNSS bands (X ~0.5); the cause of the rest of #163's E6 sharpness gap | the F-engine group; KV 10-11: "I've told the F-engine folks, there's nothing more we can do on this" | a new table; our noise normalisation (#163, live 10-12) already removes the shape term, the level term is theirs |
+
 ## Closed because the premise died (moot)
 
 | # | the premise | what killed it |

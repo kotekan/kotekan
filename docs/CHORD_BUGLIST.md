@@ -1039,21 +1039,6 @@ binary (0011cf3b1), the #164 lockout and recv1 restart at 00:57–01:15Z, the F-
 Also one corrupt-sequence packet on cx27 at 10-10 20:18:45Z from raw source ID 6, which is not an A, B or RFI board
 (formerly #174; one event, noted because #1750 stops kotekan on a capture fault).
 
-### #167 — the 10-07 digital-gain table quantizes pol 1 to ~0.1–0.3 LSB in the GNSS bands (2026-10-10)
-**What [archive, recv1 subset autos 10-10 01:59Z vs 10-07]:** table `digitalgain_20261007T213936Z` (live since the
-10-08 F-engine restart) replaced the 09-25 GNSS-band cuts: at 1170–1182 / 1200–1214 / 1260–1285 MHz the 4-bit data
-sit at X ~0.5, Y 0.12–0.27 LSB rms per component (10-07: 0.7–0.9 both); L2 (1227) and 700 MHz are normal (~1.6–1.9).
-Y mostly quantizes to zero: a heavy pol-1 quantization loss in exactly the bands we track. Candidate cause of #163.
-Not a recv1 fault: the GNSS nodes see the same voltages. **Lever:** site — restore the 09-25 GNSS-band settings or
-raise Y ~3–4×. Ours: none. Memory note `chord-fengine-gains-20261007-gnss-bands` has the per-band numbers.
-
-### #166 — the F-engine is not sending rows C and D (2026-10-10)
-**What [live 10-10 11:48–12:0xZ]:** with C/D enabled in the X-engine config (chord 13e442ac6) every frame reported
-100% packet loss: packet rate 1.73 M/s against 1.82 with C/D marked missing (ten boards would be ~1.7×); recv1 wrote
-fill, GNSS rail power 0 on every channel. Rolled back (e635d6619). Blocks the 32-dish / 64-input GNSS plan.
-**Lesson:** before enabling dishes in the X-engine config, check the F-engine sends their boards (packet rate vs board
-count). **Lever:** site (fpga_master).
-
 ### #163 — E6 peak sharpness fell 3.65 → 2.4 at the 10-07 F-engine restart while every other chain's rose (2026-10-08)
 Broker DLL q (2P/(E+L)) on strong satellites: gal_e6 3.5–4.5 for three weeks, 2.3–2.5 from the first post-restart data
 (10-08 00:27Z); over the same step gal_e5a 4.1 → 5.5, e5b 3.4 → 4.5, b3i 4.3 → 5.8, l5 4.0 → 5.3. E6 stays locked
