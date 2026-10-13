@@ -33,26 +33,18 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 ap = argparse.ArgumentParser()
 ap.add_argument("--port", type=int, default=12777)
-ap.add_argument("--prns", default="3,19,26,32")
-ap.add_argument("--hop0", type=int, default=114436200145)
-ap.add_argument("--hops-per-sec", type=float, default=195312.5)
-ap.add_argument(
-    "--revisit-s",
-    type=float,
-    default=1.0,
-    help="snapshot-hop advance between successive detection sets",
-)
-ap.add_argument("--code-length", type=float, default=10230.0)
-ap.add_argument(
-    "--time0",
-    type=float,
-    default=1786167610.000002870,
-    help="the anchor served at telescope/time0_ns (CHORD's real one by default, "
-    "so the CL/dead-reckon arithmetic sees a plausible epoch)",
-)
 a = ap.parse_args()
 
-PRNS = [int(x) for x in a.prns.split(",") if x.strip()]
+# The fleet broker_fake_l5.jsonl was recorded against. Fixed, not flags: a fleet that differs
+# from the blessed fixture's records a transcript the fixture's digest says nothing about.
+PRNS = [3, 19, 26, 32]
+HOP0 = 114436200145
+HOPS_PER_SEC = 195312.5
+REVISIT_S = 1.0  # snapshot-hop advance between successive detection sets
+CODE_LENGTH = 10230.0
+# The anchor served at telescope/time0_ns: CHORD's real one, so the dead-reckon arithmetic
+# sees a plausible epoch.
+TIME0 = 1786167610.000002870
 _n = [0]  # detection-poll counter: the ONLY state, so output is a pure function
 _lock = threading.Lock()
 _seeds = [[]]  # last seed payload received, echoed into the status table
@@ -65,20 +57,20 @@ def _detections():
         k = _n[0]
         _n[0] += 1
     out = []
-    dh = int(a.revisit_s * a.hops_per_sec)
+    dh = int(REVISIT_S * HOPS_PER_SEC)
     for i, prn in enumerate(PRNS):
-        t = k * a.revisit_s
+        t = k * REVISIT_S
         dop = -1500.0 + 120.0 * i + 0.42 * t  # Hz, drifting like a real pass
-        cp = (137.5 * (i + 1) + 0.0361 * dop * t) % a.code_length
+        cp = (137.5 * (i + 1) + 0.0361 * dop * t) % CODE_LENGTH
         out.append(
             {
                 "prn": prn,
                 "snr": 34.0 + 3.0 * math.sin(0.7 * k + i),
                 "doppler_hz": dop,
                 "code_phase_chips": cp,
-                "ref_hop": a.hop0 + k * dh,
+                "ref_hop": HOP0 + k * dh,
                 "nh": (k + i) % 20,
-                "code_phase_long_chips": cp + a.code_length * ((k + i) % 20),
+                "code_phase_long_chips": cp + CODE_LENGTH * ((k + i) % 20),
                 "code_phase_at_ref_chips": cp,
             }
         )
@@ -118,7 +110,7 @@ def _status():
                 "dll_disc": d,
                 "records": 100,
                 "n_chan": 7,
-                "hop": a.hop0 + k * int(a.revisit_s * a.hops_per_sec),
+                "hop": HOP0 + k * int(REVISIT_S * HOPS_PER_SEC),
             }
         )
     return rows
@@ -143,7 +135,7 @@ class H(BaseHTTPRequestHandler):
         if p.endswith("get_status"):
             return self._send(_status())
         if "time0_ns" in p:
-            return self._send({"time0_ns": a.time0 * 1e9})
+            return self._send({"time0_ns": TIME0 * 1e9})
         return self._send([])
 
     def do_POST(self):
