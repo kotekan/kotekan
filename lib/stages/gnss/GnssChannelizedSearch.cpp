@@ -43,6 +43,14 @@ GnssChannelizedSearch::GnssChannelizedSearch(Config& config, const std::string& 
 
     in_buf = get_buffer("in_buf");
     in_buf->register_consumer(unique_name);
+    // Frames are placed in the snapshot by the F-engine's sample_seq, which only GnssChanMetadata
+    // carries.
+    if (!metadata_is_gnss_chan(in_buf)) {
+        FATAL_ERROR("GnssChannelizedSearch[{:s}]: in_buf has no GnssChanMetadata, so frames "
+                    "carry no sample_seq to place them by",
+                    unique_name);
+        return;
+    }
 
     const std::string signal = config.get_default<std::string>(unique_name, "signal", "GPS_L1CA");
     const gnss::SignalDescriptor* sig = gnss::signal_by_name(signal);
@@ -58,30 +66,21 @@ GnssChannelizedSearch::GnssChannelizedSearch(Config& config, const std::string& 
     _N = config.get<int>(unique_name, "spectrum_length");
     _fft_len = 2 * _N;
     _chan_offset = config.get_default<int>(unique_name, "channel_offset", 0);
-    // A sparse subband (a strided comb of bins) needs channel_ids; channel_offset describes only
-    // a contiguous run. A wrong channel list correlates the data against the replica for another
-    // part of the spectrum, which gives a noise surface rather than an error.
-    _chan_ids = config.get_default<std::vector<int>>(unique_name, "channel_ids", {});
+    // The global spectrum index of every local channel (a strided comb, or a contiguous run). A
+    // wrong channel list correlates the data against the replica for another part of the
+    // spectrum, which gives a noise surface rather than an error.
+    _chan_ids = config.get<std::vector<int>>(unique_name, "channel_ids");
     _n_chan = config.get<int>(unique_name, "n_channels");
-    if (_chan_ids.empty()) {
-        if (_chan_offset < 0 || _n_chan <= 0 || _chan_offset + _n_chan > _N) {
-            FATAL_ERROR("GnssChannelizedSearch: channel slice [{:d},{:d}) invalid for N={:d}",
-                        _chan_offset, _chan_offset + _n_chan, _N);
-            return;
-        }
-    } else {
-        if ((int)_chan_ids.size() != _n_chan) {
-            FATAL_ERROR("GnssChannelizedSearch: channel_ids has {:d} entries but n_channels is "
-                        "{:d}",
-                        _chan_ids.size(), _n_chan);
-            return;
-        }
-        for (int c : _chan_ids)
-            if (c < 0 || c >= _N) {
-                FATAL_ERROR("GnssChannelizedSearch: channel_id {:d} outside [0,{:d})", c, _N);
-                return;
-            }
+    if ((int)_chan_ids.size() != _n_chan) {
+        FATAL_ERROR("GnssChannelizedSearch: channel_ids has {:d} entries but n_channels is {:d}",
+                    _chan_ids.size(), _n_chan);
+        return;
     }
+    for (int c : _chan_ids)
+        if (c < 0 || c >= _N) {
+            FATAL_ERROR("GnssChannelizedSearch: channel_id {:d} outside [0,{:d})", c, _N);
+            return;
+        }
     const int num_taps = config.get_default<int>(unique_name, "num_taps", 4);
     const std::string win = config.get_default<std::string>(unique_name, "pfb_window", "hamming");
 
@@ -832,8 +831,6 @@ void GnssChannelizedSearch::search_worker() {
 }
 
 int GnssChannelizedSearch::local_of_global(int c) const {
-    if (_chan_ids.empty())
-        return (c >= _chan_offset && c < _chan_offset + _n_chan) ? (c - _chan_offset) : -1;
     for (size_t i = 0; i < _chan_ids.size(); ++i)
         if (_chan_ids[i] == c)
             return (int)i;
@@ -861,7 +858,6 @@ void GnssChannelizedSearch::main_thread() {
     int frame_in = 0;
     bool filling = false;
     size_t filled_hops = 0; // hops actually copied into the current snapshot (for the drop log)
-    long long abs_hops = 0; // total hops consumed from the stream (absolute reference)
 
     while (!stop_thread) {
         auto* in_local = (cf*)in_buf->wait_for_full_frame(unique_name, frame_in);
@@ -869,14 +865,16 @@ void GnssChannelizedSearch::main_thread() {
             break;
         const int frame_hops = in_buf->frame_size / (int)sizeof(cf) / _n_chan;
 
-        // Absolute hop index of this frame's first hop, from the F-engine's sample_seq
-        // metadata (shared across nodes); fall back to a local count if absent.
-        long long frame_first_hop = abs_hops;
-        if (metadata_is_gnss_chan(in_buf)) {
-            auto* mi = get_gnss_chan_metadata(in_buf, frame_in);
-            if (mi && mi->sample_seq >= 0)
-                frame_first_hop = mi->sample_seq / _fft_len;
+        // Absolute hop index of this frame's first hop, from the F-engine's sample_seq metadata
+        // (shared across nodes).
+        const GnssChanMetadata* mi = get_gnss_chan_metadata(in_buf, frame_in);
+        if (mi == nullptr || mi->sample_seq < 0) {
+            FATAL_ERROR("GnssChannelizedSearch[{:s}]: frame {:d} has no sample_seq, so it cannot "
+                        "be placed in time",
+                        unique_name, frame_in);
+            break;
         }
+        const long long frame_first_hop = mi->sample_seq / _fft_len;
 
         if (!filling) {
             std::lock_guard<std::mutex> lk(_m);
@@ -925,7 +923,6 @@ void GnssChannelizedSearch::main_thread() {
         // Always release the frame at once: never backpressure.
         in_buf->mark_frame_empty(unique_name, frame_in);
         frame_in = (frame_in + 1) % in_buf->num_frames;
-        abs_hops += frame_hops;
     }
 
     {

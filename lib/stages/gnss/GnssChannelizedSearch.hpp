@@ -44,10 +44,10 @@
  * @conf signal/sample_rate/spectrum_length/num_taps/pfb_window  As the F-engine.
  * @conf f_offset         Double (default 0). Carrier frequency in the channelized spectrum, Hz
  *                        (bin f_offset / (sample_rate / fft_len)).
- * @conf channel_offset   Int (default 0). Global index of this subband's channel 0, for a
- *                        contiguous subband.
- * @conf channel_ids      Array<Int> (optional). Global index of each local channel, for a
- *                        sparse subband (a strided comb). Overrides channel_offset.
+ * @conf channel_offset   Int (default 0). Global index of this subband's first channel, for
+ *                        the no-coverage log.
+ * @conf channel_ids      Array<Int>. Global index of each local channel (a strided comb or a
+ *                        contiguous run).
  * @conf n_channels       Int. Channels owned by this subband.
  * @conf prns             Array<Int>. PRN in each slot.
  * @conf doppler_min/max/step  Double (default -6000/6000/500). Blind Doppler grid, Hz. A
@@ -77,7 +77,8 @@
  * is skipped for the pass, so the cost follows the visible set even when @c prns lists a whole
  * constellation.
  *
- * @buffer in_buf This subband's channels, [hop][n_channels] cfloat32.
+ * @buffer in_buf This subband's channels, [hop][n_channels] cfloat32, with GnssChanMetadata
+ *                (each frame is placed by its sample_seq).
  *
  * @author Keith Vanderlinde
  */
@@ -135,8 +136,7 @@ private:
         double code_phase_at_ref_chips = -1.0;
     };
 
-    /// Local channel of global spectrum index @c c (-1 = not ours). Identity+offset for a
-    /// contiguous subband; a lookup when @c channel_ids is given.
+    /// Local channel of global spectrum index @c c (-1 = not ours), from @c channel_ids.
     int local_of_global(int c) const;
 
     Buffer* in_buf;
@@ -145,7 +145,7 @@ private:
     int _fft_len;
     int _chan_offset;
     int _n_chan;
-    std::vector<int> _chan_ids; ///< global index per local channel; empty = contiguous
+    std::vector<int> _chan_ids; ///< global index per local channel
     int _hops_per_record;       ///< hops per integration window
     int _acquire_windows;       ///< windows accumulated per snapshot
     int _hold_snapshots;        ///< keep a detection valid this many non-detecting snapshots
