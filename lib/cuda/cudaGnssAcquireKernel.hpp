@@ -5,69 +5,38 @@
 
 /**
  * @file
- * @brief GPU acquisition kernels: correlate front end, surface aggregate and peak reductions.
+ * @brief GPU acquisition kernels: correlate front end, surface aggregate and peak reduction.
  *
  * The aggregate is the GPU version of gnss::aggregate_accumulate (gnssChannelizedAcquire.cpp),
  * which dominates a blind search on the CPU:
  *
  *     D(q,i) = sum_c P_c(q) e^{+i 2 pi f_c (i * s_step) / sph},   surf(q,i) += |D(q,i)|^2
  *
- * The numbers below use CHORD's blind dimensions: nc=79, n_dop=321, Mp=3125, s_cols=128.
+ * The literal sum costs nc * s_cols complex MACs per row (nc=79, s_cols=128 at CHORD's blind
+ * dimensions, with n_dop=321, Mp=3125). When `s_cols * s_step == s_stored`, the ramp depends on
+ * the channel only through `(f_c - f_0)/(sph/s_stored) mod s_cols`, up to a channel-independent
+ * phase factor that |D|^2 drops. The sum is then an s_cols-point inverse DFT of the channels
+ * folded into s_cols bins: an identity about the ramp, exact for any signal. The tables shrink
+ * to nc bin indices and an s_cols/2 twiddle table (staged in shared memory), and the flop count
+ * drops ~18x. GnssCudaAcquire runs this folded form over the channel-major layout
+ * (@ref launch_aggregate_cdq).
  *
- *  - Direct: the literal sum, nc * s_cols complex MACs per row, from an [nc][s_cols] ramp table
- *    (81 KB, too large for shared memory, so it is read through L2).
- *
- *  - Folded: when `s_cols * s_step == s_stored`, the ramp depends on the channel only through
- *    `(f_c - f_0)/(sph/s_stored) mod s_cols`, up to a channel-independent phase factor that
- *    |D|^2 drops. The sum is then an s_cols-point inverse DFT of the channels folded into
- *    s_cols bins: an identity about the ramp, exact for any signal. The tables shrink to nc
- *    bin indices and an s_cols/2 twiddle table (staged in shared memory), and the flop count
- *    drops ~18x.
- *
- * GnssCudaAcquire runs the folded form over the channel-major layout
- * (@ref launch_aggregate_cdq). @ref launch_aggregate takes the channel-fastest layout and
- * offers both forms, for scripts/gnss/aggbench.
- *
- * Precision: the CPU reference accumulates the surface in double, these kernels in float, so
- * scripts/gnss/aggbench validates both forms against gnss::aggregate_accumulate at blind
- * dimensions rather than toy ones.
+ * Precision: the CPU reference accumulates the surface in double, these kernels in float.
  */
 namespace gnss_cuda {
 
-/// Aggregate one window into `surf` (accumulating, as the CPU path does).
-/// @param P       device [n_dop][Mp][nc] complex, channel fastest, so one row's channels are
-///                one coalesced load
-/// @param surf    device [n_dop][Mp][s_cols] float, accumulated into (zero it before window 0)
-/// @param ramp    device [nc][s_cols] complex, e^{+i 2 pi f_c i s_step / sph}; direct path only
-/// @param bin     device [nc] int fold bins; folded path only
-/// @param twiddle device [s_cols/2] complex, e^{+2 pi i j / s_cols}; folded path only
-/// @param folded  select the folded path (the caller must have checked its precondition)
-void launch_aggregate(const float2* P, float* surf, const float2* ramp, const int* bin,
-                      const float2* twiddle, int nc, int n_dop, int Mp, int s_cols, bool folded,
-                      cudaStream_t stream);
-
 /// Folded aggregate over the channel-major layout `P[nc][n_dop][Mp]`, cuFFT's natural inverse
-/// output; @c bin and @c twiddle as in @ref launch_aggregate. cuFFT can write the
-/// channel-fastest layout only with `ostride = nc`, i.e. 8-byte writes at a 632-byte stride,
-/// each in its own memory sector. Here the transpose happens through a shared-memory tile on
-/// the read side instead, where it costs no extra traffic.
+/// output, accumulated into `surf` [n_dop][Mp][s_cols] float (zero it before window 0).
+/// @c bin is the device [nc] int fold bins and @c twiddle the device [s_cols/2] complex
+/// e^{+2 pi i j / s_cols}. cuFFT can write the channel-fastest layout only with
+/// `ostride = nc`, i.e. 8-byte writes at a 632-byte stride, each in its own memory sector. Here
+/// the transpose happens through a shared-memory tile on the read side instead, where it costs
+/// no extra traffic.
 /// Each block runs one thread per fine-lag column with (1.5*s_cols + 32*nc) float2 of dynamic
 /// shared memory and no opt-in, so s_cols must be at most 1024 and that total at most 48 KB;
 /// outside those limits the launch fails and the launcher does not report it.
 void launch_aggregate_cdq(const float2* P, float* surf, const int* bin, const float2* twiddle,
                           int nc, int n_dop, int Mp, int s_cols, cudaStream_t stream);
-
-/// Peak and sum of a surface, on device, so the surface never crosses PCIe. Writes {peak, sum}
-/// as one float2 to `out_val[0]` and the flat argmax to `out_idx[0]`; ties go to the lowest
-/// index. `scratch` must hold @ref peak_scratch_bytes(n_cells) bytes.
-void launch_peak(const float* surf, long n_cells, float2* out_val, long long* out_idx,
-                 void* scratch, cudaStream_t stream);
-
-/// Blocks @ref launch_peak uses for `n_cells`.
-int peak_blocks(long n_cells);
-
-/// Bytes of scratch @ref launch_peak needs for `n_cells`.
-size_t peak_scratch_bytes(long n_cells);
 
 /// Per-Doppler max, sum and argmax, written to host arrays of length `n_dop`; synchronizes
 /// `stream`. The search needs each Doppler bin's own max over lag (the pair-sum plane selection,

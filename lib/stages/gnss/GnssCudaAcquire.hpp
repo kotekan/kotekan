@@ -83,17 +83,7 @@ public:
                                         double chip_rate, long code_length,
                                         bool pairsum_select = false) const;
 
-    /// Peak / mean of the accumulated surface, computed on the device.
-    struct Peak {
-        double peak;
-        double mean;
-        long long index; ///< flat index into [n_dop][Mp][s_cols]
-        int d, q, s;     ///< decomposed
-    };
-    Peak peak() const;
-
-    /// Copy the surface back: the large transfer the design avoids, for diagnostics only
-    /// (scripts/gnss/acqbench.cpp compares it with the CPU reference).
+    /// Copy the surface back: the large transfer the design avoids, for diagnostics only.
     void download_surface(std::vector<double>& out) const;
 
     int n_dop() const {

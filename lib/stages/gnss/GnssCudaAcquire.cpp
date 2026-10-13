@@ -43,8 +43,6 @@ struct GnssCudaAcquire::Impl {
     int* dBin = nullptr;    // [nc]
     int* dShift = nullptr;  // [max_dop]
     float2* dTw = nullptr;  // [s_cols/2]
-    float2* dVal = nullptr; // peak {max, sum}
-    long long* dIdx = nullptr;
     void* dScratch = nullptr;
 
     cufftHandle planFwdData = 0; // batch nc, len Mp, contiguous
@@ -84,14 +82,8 @@ GnssCudaAcquire::GnssCudaAcquire(int nc, int Mp, int M, int n_chan_total, int ma
     alloc((void**)&_p->dBin, (size_t)nc * sizeof(int), "bin");
     alloc((void**)&_p->dShift, (size_t)max_dop * sizeof(int), "shift");
     alloc((void**)&_p->dTw, (size_t)(s_cols / 2) * sizeof(float2), "twiddle");
-    alloc((void**)&_p->dVal, sizeof(float2), "val");
-    alloc((void**)&_p->dIdx, sizeof(long long), "idx");
-    // One scratch buffer serves both reductions, peak() and peak_result(), so size it for the
-    // larger.
-    alloc(&_p->dScratch,
-          std::max(gnss_cuda::peak_scratch_bytes((long)max_dop * Mp * s_cols),
-                   gnss_cuda::peak_dop_scratch_bytes((long)Mp * s_cols, max_dop)),
-          "scratch");
+    // peak_result's per-Doppler reduction partials.
+    alloc(&_p->dScratch, gnss_cuda::peak_dop_scratch_bytes((long)Mp * s_cols, max_dop), "scratch");
 
     ck(cudaStreamCreate(&_p->stream), "stream");
 
@@ -120,8 +112,6 @@ GnssCudaAcquire::~GnssCudaAcquire() {
     cudaFree(_p->dBin);
     cudaFree(_p->dShift);
     cudaFree(_p->dTw);
-    cudaFree(_p->dVal);
-    cudaFree(_p->dIdx);
     cudaFree(_p->dScratch);
     if (_p->stream)
         cudaStreamDestroy(_p->stream);
@@ -264,25 +254,6 @@ void GnssCudaAcquire::accumulate(const float* sgn0, const float* sgn1) {
 
     gnss_cuda::launch_aggregate_cdq(_p->dX, _p->dSurf, _p->dBin, _p->dTw, _nc, _nd, _Mp, _s_cols,
                                     _p->stream);
-}
-
-GnssCudaAcquire::Peak GnssCudaAcquire::peak() const {
-    const long n = surface_cells();
-    gnss_cuda::launch_peak(_p->dSurf, n, _p->dVal, _p->dIdx, _p->dScratch, _p->stream);
-    float2 v;
-    long long idx = -1;
-    ck(cudaMemcpyAsync(&v, _p->dVal, sizeof(float2), cudaMemcpyDeviceToHost, _p->stream), "val");
-    ck(cudaMemcpyAsync(&idx, _p->dIdx, sizeof(long long), cudaMemcpyDeviceToHost, _p->stream),
-       "idx");
-    ck(cudaStreamSynchronize(_p->stream), "sync peak");
-    Peak pk{};
-    pk.peak = v.x;
-    pk.mean = (double)v.y / (double)n;
-    pk.index = idx;
-    pk.s = (int)(idx % _s_cols);
-    pk.q = (int)((idx / _s_cols) % _Mp);
-    pk.d = (int)(idx / ((long)_s_cols * _Mp));
-    return pk;
 }
 
 gnss::AcquisitionResult GnssCudaAcquire::peak_result(const gnss::AcquisitionSurface& dims,
