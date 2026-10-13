@@ -9,7 +9,7 @@ cross-checks bit-exact against gen_code('E5BI'/'E5BQ', prn) for all 50 PRNs.
 
 E5b shares 1207.14 MHz with BeiDou B2b, so one mid-band capture validates both. Same discipline
 as the E5a/B2b tables: an ICD transcription (via PocketSDR T.Takasu) asserted here and finally
-proven by live acquisition off the retuned 1207.14 MHz dongle (mid_band_decode.py --sig e5b).
+proven by live acquisition off the retuned 1207.14 MHz dongle.
 
     python3 e5b_code_check.py     # exits non-zero on any mismatch
 """
