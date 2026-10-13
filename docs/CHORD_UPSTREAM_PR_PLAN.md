@@ -226,7 +226,7 @@ by line count, lowest by risk — none of it compiles into kotekan.
 
 1. **Generated configs** — RESOLVED 2026-10-08: untracked; ship the generator, templates,
    manifest and one example (see cleanup round 2).
-2. **The acceptance gate cannot run upstream.** Six of the seven `broker_equiv` fixtures are
+2. **The acceptance gate cannot run upstream.** Five of the six `broker_equiv` fixtures are
    38–100 MB transcripts outside git (`/home/kvand/gnss/fixtures/`, NFS), with only their `.digest`
    committed; several tests also read fixtures from there. OPEN: say so plainly in the PR, or
    make one on-sky arm fetchable.
