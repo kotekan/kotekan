@@ -29,6 +29,15 @@ BOOST_AUTO_TEST_CASE(bpsk_half_bandwidth_is_chip_rate) {
     BOOST_CHECK_CLOSE(half_bandwidth_hz(gnss::GPS_L1CA), 1.023e6, 1e-9);
 }
 
+BOOST_AUTO_TEST_CASE(tdm_half_bandwidth_is_the_combined_rate) {
+    // L2C CM/CL are the even/odd chips of a 1.023 Mcps stream: the lobe is the stream's.
+    BOOST_CHECK_CLOSE(half_bandwidth_hz(gnss::GPS_L2C_CM), 1.023e6, 1e-9);
+    BOOST_CHECK_CLOSE(half_bandwidth_hz(gnss::GPS_L2C_CL), 1.023e6, 1e-9);
+    gnss::SignalDescriptor component = gnss::GPS_L2C_CM;
+    component.time_multiplexed = false; // the component rate alone: half the lobe
+    BOOST_CHECK_CLOSE(half_bandwidth_hz(component), 511.5e3, 1e-9);
+}
+
 BOOST_AUTO_TEST_CASE(boc_half_bandwidth_uses_outer_lobe) {
     gnss::SignalDescriptor boc = gnss::GPS_L1CA;
     boc.mod = gnss::Modulation::BOC;
@@ -55,6 +64,23 @@ BOOST_AUTO_TEST_CASE(covering_channels_selects_overlapping_block) {
     BOOST_REQUIRE_EQUAL(ids.size(), 11u);
     for (size_t i = 0; i < ids.size(); ++i)
         BOOST_CHECK_EQUAL(ids[i], 5u + i); // returned ordered by center freq
+}
+
+BOOST_AUTO_TEST_CASE(l2c_covering_channels_span_the_combined_lobe) {
+    // 200 kHz channels centered on L2. The 511.5 kHz component rate covers offsets
+    // k in [-3, 3] (7 channels); the 1.023 MHz combined lobe covers [-5, 5] (11), as L1 C/A.
+    const double w = 0.2e6;
+    const int n = 21;
+    auto grid = uniform_grid(gnss::GPS_L2C_CM.carrier_hz, w, n);
+
+    auto ids = covering_channels(grid, gnss::GPS_L2C_CM, 0.0);
+    BOOST_REQUIRE_EQUAL(ids.size(), 11u);
+    BOOST_CHECK_EQUAL(ids.front(), 5u);
+    BOOST_CHECK_EQUAL(ids.back(), 15u);
+
+    gnss::SignalDescriptor component = gnss::GPS_L2C_CM;
+    component.time_multiplexed = false;
+    BOOST_CHECK_EQUAL(covering_channels(grid, component, 0.0).size(), 7u);
 }
 
 BOOST_AUTO_TEST_CASE(covering_channels_is_order_independent) {

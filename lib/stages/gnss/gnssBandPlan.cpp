@@ -13,8 +13,10 @@ double half_bandwidth_hz(const SignalDescriptor& sig) {
         // null is a further n*1.023 MHz out. Use that outer edge.
         return (sig.boc_m + sig.boc_n) * kBaseRate;
     }
-    // BPSK: first spectral null is one chip rate from the carrier.
-    return sig.chip_rate_hz;
+    // BPSK: first spectral null is one chip rate from the carrier. A time-multiplexed
+    // component (L2C CM/CL) is one parity of a combined stream chipping twice as fast, and
+    // that combined rate sets the lobe.
+    return sig.time_multiplexed ? 2.0 * sig.chip_rate_hz : sig.chip_rate_hz;
 }
 
 BandSpan occupied_band(const SignalDescriptor& sig, double max_doppler_hz) {
