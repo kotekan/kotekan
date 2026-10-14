@@ -589,9 +589,9 @@ veto pooled over constellations (`sky.py closest_to_boresight`, the nightly cube
 `viscap_metadata`'s `sat_azel.csv`; an R broker would now take a BRDC almanac instead of TLE (nothing runs one).
 **Still G/E/C-only:** the supply's hourly coverage target (`_HOURLY_TARGET`), `gen_fleet` `SYS_OF`, the cube's
 `CHAIN_SYS`; accuracy past ±15 min from a record is unvalidated (`predict_all`'s 4-h default lets it happen, with one
-warning per process). **Decide before the next broker restart:** GLONASS enters the pooled railing veto and the transit
-sky as soon as the broker restarts on this tree — wanted, or gated? The #56 1202 MHz feature can now be tested against
-real GLONASS positions from the archive.
+warning per process). **KV 10-14: as is — GLONASS enters the pooled railing veto and the transit sky at the next broker restart;** the chain
+is to be built out next time on sky. The #56 1202 MHz feature can now be tested against real GLONASS positions from the
+archive.
 
 ## Open — the fix is in the NODE BINARY (queue for the next cycle)
 
