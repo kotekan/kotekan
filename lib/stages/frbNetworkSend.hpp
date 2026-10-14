@@ -17,7 +17,7 @@
 #include "json.hpp" // for json
 
 #include <atomic>             // for atomic_bool
-#include <bits/chrono.h>      // for operator==, operator>, seconds, steady_clock, time_point
+#include <chrono>             // for second
 #include <condition_variable> // for condition_variable
 #include <functional>         // for reference_wrapper
 #include <map>                // for map
@@ -31,30 +31,22 @@
  * @brief frbNetworkSend Network transmission stage for FRB obs
  *
  *
- * This is an Kotekan stage that read packetized data from frbPostProcess and transmits 1024 beams
- * to 256 links of frb backend. frbNetworkSend distributes the out going traffic to four VLANS
- * (10.6 10.7 10.8 10.9) on single 1 Gig port. The frb total data rate is ~0.55 gbps. The node IP
- * address is derived by parsing the hostname.
- *
  * @par REST Endpoints
- * @endpoint /frb/update_gains/``gpu_id`` Any contact here triggers a re-parse of the gains file.
- * @endpoint /frb/update_destination Set the active status of param ``host`` to value of param
- * ``active``. Data is sent only to active hosts.
+ * @endpoint /frb/update_beam_offset Set ``beam_offset`` to the value of param ``beam_offset``.
  *
  * @par Buffers
  * @buffer in_buf The kotkean buffer to hold the data to be transmitted to L1 nodes
- *      @buffer_format Array of signed char
- *      @buffer_metadata none
+ *      @buffer_format Array of uint8 quantized by cudaQuantize8
+ *      @buffer_metadata chordMetadata
  * @buffer offsetscale_buf The kotkean buffer to hold the offset and scale
  *      values for the data blocks to be transmitted to L1 nodes
- *      @buffer_format Array of pairs of float32
- *      @buffer_metadata none
+ *      @buffer_format Array of pairs of float16 produced by cudaQuantize8
+ *      @buffer_metadata chordMetadata
  *
  *
- * @conf   udp_frb_packet_size  Int (default 4264). packet size including header
+ * @conf   udp_frb_packet_size  Int (default 4272). packet size including header
  * @conf   udp_frb_port_number  Int (default 1313). UDP destination port of the FRB streams. The
  *                              source port is assigned by the OS.
- * @conf   number_of_nodes      Int (default 256). Number of L0 nodes
  * @conf   number_of_subnets    Int (default 4). Number of subnets or VLANS used for transmission of
  * FRB data. Use magic value of 0 for local testing.
  * @conf   local_ips            Array of Strings. Optional. The local address to send from on each
@@ -64,7 +56,6 @@
  * @conf   packets_per_stream   Int (default 8). Number of packets for each stream within each frame
  * @conf   L1_node_ips          Array of Strings. List of IPs to send to. (?)
  * @conf   beam_offset          Int (default 0). Offset the beam_id going to L1 Process
- * @conf   column_mode          bool (default false) Send beams in a single CHIME cylinder.
  * @conf   ping_interval        Uint32 (default 6 min) Time in seconds between sending a ping to
  * check destination is live
  * @conf   quick_ping_interval  Uint32 (default 5 sec) Time in seconds for sending pings when a live
@@ -90,11 +81,7 @@ public:
     virtual ~frbNetworkSend();
 
     /// Callback to update the beam offset
-    void update_offset_callback(kotekan::connectionInstance& conn, nlohmann::json& json_request);
-
-    /// Callback to change destination active status
-    void set_destination_active_callback(kotekan::connectionInstance& conn,
-                                         nlohmann::json& json_request);
+    bool update_offset_callback(nlohmann::json& json_request);
 
     /// main thread
     void main_thread() override;
@@ -167,9 +154,6 @@ private:
     /// port number
     int udp_frb_port_number;
 
-    /// number of L0 nodes
-    int number_of_nodes;
-
     /// number of VLANS, use magic value of 0 to use 127.0.0.1 only
     int number_of_subnets;
 
@@ -190,14 +174,11 @@ private:
     int num_frequencies;
 
     // hard-coded size constraints (due ot packet layout expected by receiver)
-    static const int _nfreq_coarse = 4;
-    static const int _factor_upchan_out = 16;
-    static const int _timesamples_per_frb_packet = 16;
-    static const int _nbeams = 4;          // number of beams per FRB network packets
-    static const int _total_nbeams = 1024; // number of beams formed by beamformer
-
-    // Beam kotekan::Configuration Mode
-    bool column_mode;
+    static constexpr int _nfreq_coarse = 4;
+    static constexpr int _factor_upchan_out = 16;
+    static constexpr int _timesamples_per_frb_packet = 16;
+    static constexpr int _nbeams = 4;          // number of beams per FRB network packets
+    static constexpr int _total_nbeams = 1024; // number of beams formed by beamformer
 
     /// Interval between checks of a node's liveliness
     const std::chrono::seconds _ping_interval;
@@ -227,6 +208,10 @@ private:
 
     // the telescope object to handle conversion to site time
     const Telescope& tel;
+
+    // threads used to check aliveness of receivers
+    std::thread send_ping_thread;
+    std::thread receive_ping_thread;
 
     /// initialize sockets used to send data to FRB nodes
     int initialize_source_sockets();
