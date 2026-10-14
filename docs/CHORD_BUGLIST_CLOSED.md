@@ -155,6 +155,14 @@ cost ~0.2–0.3 adoptions/min on one chain and the fix was not load-bearing.
 
 ## Answered by measurement — questions that had an answer, not a fix
 
+**#147 — the 2026-09-26 22:01Z event was a ~3 ppb step of the site frequency reference, not ours.** Every
+chain and every instance at once: a carrier offset scaling with carrier frequency (E6/E5a ratio 1.09, expected 1.087), a
+−37 m (−127 ns) code step, carrier residual ±2.5 Hz for more than 14 min, beam-cube 1-s coherence 0.90 → 0.03 for ~2 h,
+no lock loss, no broker event, and gps_l5's code-rate clock estimate moving the same ~3 ppb. That signature is a
+reference (maser/GPSDO or the F-engine clock) stepping; nothing in our chain scales with carrier frequency on its own.
+Closed 2026-10-13 (KV) as a one-off with the signature recorded here so the next one is recognised in a minute and
+vetoed from any coherence statistic. Evidence `fixtures/projtest/forensics/l5/ev2201*.py`.
+
 **#56 — the hourly signal swings are near-boresight satellite transits (most of them).**
 Confirmed 2026-09-10 against the cached BRDC for the archived days: bins with a GNSS satellite
 inside the HWHM run a median `elem_power_max` of 34.0, bins with one at 1.24–5° run 18.6–24.5,
