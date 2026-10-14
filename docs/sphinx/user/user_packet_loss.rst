@@ -1,15 +1,18 @@
 .. _packet_loss:
 
-***********
-Packet Loss
-***********
+*********************
+Packet Loss in CHIME
+*********************
 
 F-engine packets can be lost on the network, or rejected on arrival. Kotekan
 does not interpolate across lost samples. It sets them to zero, and keeps track
 of which output samples depend on them. This page describes how a lost packet
-propagates through the CUDA pipelines, and in particular which FRB output
+propagates through the CHIME CUDA pipeline, and in particular which FRB output
 samples it invalidates. For comparison, the last section describes how the AMD
 (HSA) CHIME FRB pipeline handled packet loss.
+
+This page describes CHIME only. It does not describe CHORD or the other
+instruments, whose packet loss handling differs.
 
 Detecting lost packets
 ======================
@@ -56,7 +59,7 @@ The FRB output mask
 ===================
 
 An FRB output sample is invalid if it depends on any lost input sample. The FRB
-beams themselves are not changed; instead the pipelines produce a separate mask
+beams themselves are not changed; instead the pipeline produces a separate mask
 of the FRB output, ``host_frb_pl_mask_buffer``, with one byte per output sample
 and frequency: 1 if the sample is valid, 0 if not. It has the dimensions
 ``[Ttilde][Fbar]``, the same time samples and frequencies as the FRB1 beams, and
@@ -65,37 +68,31 @@ is written next to the quantized FRB beams.
 ``cudaPLMaskFRB1`` calculates this mask. It is the PL mask counterpart of the
 FRB1 beamformer: an FRB1 output sample sums :math:`T_d` consecutive
 upchannelized samples over all dishes and both polarizations, so it is valid
-only if the PL mask is valid for all of them. As for the FRB1 beams, there is
-one ``cudaPLMaskFRB1`` per upchannelization factor, and each writes its
-frequency range of a shared ring buffer. For :math:`U > 1` its input is the
-upchannelized PL mask. For :math:`U = 1` the FRB1 beamformer reads the voltages
-directly, so its mask reads the expanded PL mask and skips the same input
-samples as that beamformer.
+only if the PL mask is valid for all of them. CHIME upchannelizes all FRB
+frequencies by :math:`U = 16` and downsamples by :math:`T_d = 24`, so its input
+is the PL mask upchannelized by 16.
 
-Altogether, an FRB1 output sample with :math:`U > 1` depends on
-:math:`(T_d + M - 1) U` input samples. With the 4-tap PFB, these overlap the
-input samples of the neighbouring output samples by :math:`(M-1) U / 2` on each
-side. A lost packet near the boundary of an FRB1 output sample therefore also
-invalidates the neighbouring sample. (For CHIME, :math:`U = 16` and
-:math:`T_d = 24`: each output sample covers 384 input samples and depends on
-432.) Because the PL mask flags samples in pairs, a window that begins or ends
+Altogether, an FRB1 output sample depends on :math:`(T_d + M - 1) U` input
+samples: it covers 384 input samples and depends on 432. With the 4-tap PFB,
+these overlap the input samples of the neighbouring output samples by
+:math:`(M-1) U / 2 = 24` on each side. A lost packet near the boundary of an
+FRB1 output sample therefore also invalidates the neighbouring sample. Because the PL mask flags samples in pairs, a window that begins or ends
 in the middle of a pair may include one more lost sample than necessary; this
 only invalidates more samples, never fewer.
 
 The FRB2 beamformer forms each output beam from the FRB1 beams at the same time
 and frequency, so the mask also applies to the FRB2 beams.
 
-The quantizers
-==============
+The quantizer
+=============
 
-``cudaQuantize8`` (CHIME) and ``cudaQuantize4`` (CHORD, pathfinder, HIRAX)
-quantize the FRB2 beams in chunks, each with its own offset and scale. Both read
-the FRB output mask and skip invalid samples when choosing a chunk's offset and
-scale: ``cudaQuantize8`` maps the minimum and maximum of the valid samples to
-the codes 1 and 254, and ``cudaQuantize4`` uses the mean and standard deviation
-of the valid samples. Invalid samples are still quantized, and may be clipped. A
-chunk without valid samples has offset and scale 0. The quantizers check that
-the mask describes the same samples and frequencies as the beams.
+``cudaQuantize8`` quantizes the FRB2 beams to 8 bits in chunks of 16 times and
+16 frequencies, each with its own offset and scale. It reads the FRB output mask
+and skips invalid samples when choosing a chunk's offset and scale: the minimum
+and maximum of the valid samples map to the codes 1 and 254. Invalid samples are
+still quantized, and may be clipped. A chunk without valid samples has offset
+and scale 0. The quantizer checks that the mask describes the same samples and
+frequencies as the beams.
 
 The AMD CHIME FRB pipeline
 ==========================
