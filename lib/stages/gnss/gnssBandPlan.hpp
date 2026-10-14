@@ -41,7 +41,8 @@ struct BandSpan {
 };
 
 /// One-sided half-width of the signal's main spectral lobe(s), in Hz. BPSK: the first null,
-/// one chip rate from the carrier. BOC(m,n): the outer null of the upper subcarrier lobe,
+/// one chip rate from the carrier; a time-multiplexed component (L2C CM/CL) spans the combined
+/// stream, twice its own rate. BOC(m,n): the outer null of the upper subcarrier lobe,
 /// (m+n)*1.023 MHz from the carrier.
 double half_bandwidth_hz(const SignalDescriptor& sig);
 
