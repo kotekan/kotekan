@@ -165,6 +165,29 @@ depth vs the current stage per satellite; (d) canary cx51, judge = recv1 subset-
 through a quiet hour and a transit, then the fleet. Before any of it, at the F-engine's return: check the 10-03..10-12
 Cas A / Cyg A transits against the stage's k/lambda0 gauges (archive) for continuum triggers in the lobes.
 
+### #191 — close the joint receiver state out: feed every chain, per-constellation biases, retire the fallbacks (2026-10-14, KV: "work on getting this finished when the sky comes back")
+**What [tree, measured 10-12 00:30-12:00Z, `fixtures/jointstate/`]:** the joint state is live on every chain but fed by
+gps_l5 alone (#125), so b_sat exists for GPS only and the other seven chains' per-satellite code residual lives in the
+gather's trims. The trims and the obs `code_resid_m` show: no per-band receiver delay (E5a/E5b/E6 agree to 0.2 m on the
+same satellites; `tau_band` dropped); per-CONSTELLATION offsets (Galileo +11.5 m on all three bands against the GPS-fed
+clock, broadcast GAGP A0 -1 ns, so it is ours: the un-added constellation-mean TGD plus a receiver inter-signal term);
+per-SIGNAL group-delay gaps (B2a vs B2b/B3I 14-15 m uniform to +-0.6 m; L5 vs L2C +10 m, no L2C term; E6 no term, E2/E8/
+E11/E12 -4..-11 m); the per-satellite part repeats across a constellation's bands and is mostly the slant atmosphere (the
+model has none). The fallbacks do not fire (JOINT-CLK adopted 1366/1376 per chain, joint rate every cycle, SatBiasFilter
+0.01 chips). The P1 spectrum fit's peak/floor is 1.00 on a closed loop and cannot gate a feed. #93 closed code-carrier
+coupling by measurement; no step.
+**Plan (docs/CHORD_JOINT_TRACKING.md section 6):** offline now: (0a) the group-delay audit (L2C, E6, B2b terms; which
+side of the B2a/B3I 14 m is wrong; add the constellation-mean broadcast term back under CAS), gate `isb_obs.py`
+same-satellite differences ionosphere-only; (0b) troposphere + Klobuchar in the range model, gate b_sat inside +-0.2
+chips on the 10-12 replay, digests re-blessed; (0c) one code unit with conversion at the feed, isb_E/isb_C states,
+coast-on-refusal consumer, selftests. At the return, broker only, one step per restart: (1) the trkresid observable from
+every chain as a SHADOW feed gated on present + fleet q + |spec_tau| + the transit veto + a set gate, no fallback path,
+judged by the fed-vs-unfed trend test (#85's form), isb convergence to the 0a table, 24 h of zero latch alarms; (2)
+`joint-consume: clk,rate,slew` on every chain with the seed offset clk + isb_sys + b_i, judged by the trims going to
+zero; (3) retire the SatBiasFilter, the l-a seed rate and the sibling-level adoption, re-bless. Carrier commands on the
+five uncommanded chains, P3 and the node model are separate.
+**Check:** each step's gate above; the standing readback trims per chain median within +-0.05 chips after step 2.
+
 ### #176 — the joint clock adopts a one-off 0.8-chip outlier inside a transit and every 10.23-Mcps chain loses its prompts (2026-10-12)
 - **What:** C33 (0.61°, CA 12:54:15Z 10-12). Through the pass the joint solve's sigma grew 0.42 → 0.68 and was REFUSED
   (bound 0.50); at 12:58:17Z, C33 at ~1.9°, a 4-satellite solve 0.806 chips from legacy with sigma 0.228 passed the

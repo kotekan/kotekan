@@ -5,11 +5,16 @@ it is the frame the existing pieces slot into. Prior art it builds on: the fleet
 fleet-coherent combine (`gnss_broker/fleet.py`), the dead-reckon model, the Receiver's
 shared clock/bias store (task #27 M3), and the slewed seed refresh (#30).
 
-**Status 2026-10-13: live.** The joint solve is `python/scripts/gnss/gnss_broker/state_filter.py`
-and every chain consumes it through `joint-consume` (`config/gnss_chains_chord.yaml`). It
-carries clk, clk_rate, f_carrier and b_sat[i]; `tau_band` is not built (only gps_l5 feeds code
-measurements, so there is no second band to reference). P3 and P4 (§4) are not started. The
-on-sky shadow and arming record that was §3b-3d is at `be7d46e8e:docs/CHORD_JOINT_TRACKING.md`.
+**Status 2026-10-14: live, fed by one chain.** The joint solve is
+`python/scripts/gnss/gnss_broker/state_filter.py` and every chain consumes it through
+`joint-consume` (`config/gnss_chains_chord.yaml`). It carries clk, clk_rate, f_carrier, b_sat[i]
+and rrate[i]; the code side is fed by gps_l5's search detections only (the gal_e5a feed was
+removed 2026-10-11, #125), so b_sat exists for GPS satellites only and the other seven chains'
+per-satellite code residual lives in the gather's fleet trims. `tau_band` is not built and §6
+drops it: the measurement shows no per-band receiver delay, only per-constellation and
+per-signal offsets. P3 and P4 (§4) are not started. §6 is the plan to close the system out
+(buglist #191). The on-sky shadow and arming record that was §3b-3d is at
+`be7d46e8e:docs/CHORD_JOINT_TRACKING.md`.
 
 ## 1. Why
 
@@ -164,3 +169,131 @@ strictly better than per-sat biases and folds into P4's calibration work.
   * fleet_coherent's self-reference lessons apply verbatim to the slope fit: the fold's
     floor must be MEASURED on a channel-shuffled null each cycle, never assumed, and any
     derotation must be leave-one-out. (See the docstrings in fleet.py; they are the spec.)
+
+## 6. Closing the system out (2026-10-14)
+
+What runs today, per family, and where (measured 2026-10-12 00:30-12:00Z, the last quiet
+half-day before the F-engine went off; tools and outputs in `fixtures/jointstate/`):
+
+| family | joint state (broker) | beside it | gather | node |
+|---|---|---|---|---|
+| receiver | clk, clk_rate, f_carrier | per-chain median clock + sibling adoption (the level the joint delta lands on); l-a EMA; clock-frequency bias (search hints); NH clock-mod fit | | |
+| constellation | nothing | | | |
+| band / signal | nothing | | uniform standing trims per chain | |
+| satellite | b_sat (GPS only), rrate (all chains) | P1 SatBiasFilter per chain; hold state, cp fits (gps_l5); carrier command applied | trim integrator per (chain, PRN) | seed, trim (4 s TTL), ElemCal, steer |
+
+### 6.1 What the trims and the obs archive say
+
+Standing C++ trims (median over the window, chips of the chain) and the obs `code_resid_m`
+chain medians relative to gps_l5 (metres; the same-satellite cross-chain differences cancel
+the receiver clock):
+
+| chain | trim | vs gps_l5 | same-satellite differences |
+|---|---|---|---|
+| gps_l5 | 0.00 (per PRN -0.13..+0.23) | 0 | |
+| gps_l2c | -0.03 (L2C chips) | -9.2 | l5 - l2c +10.3 m, per PRN +5.6..+16.3 |
+| gal_e5a | +0.39 | +11.8 | e5a - e5b -0.16 m (p10/p90 -0.7/+0.9) |
+| gal_e5b | +0.41 | +11.5 | e5b - e6 +0.4 m median; E2 -11.0, E11 -9.1, E12 -5.7, E8 -4.0 |
+| gal_e6 | +0.19 (E6 chips = +0.38 at 10.23 Mcps) | +11.4 | |
+| bds_b2a | +0.23 | +6.6 | b2a - b2b +15.0 +-0.7 m uniform; b2a - b3i +13.9 +-0.6 m uniform |
+| bds_b2b | -0.25 | -9.2 | b2b - b3i -1.2 m |
+| bds_b3i | -0.18 | -6.5 | |
+
+1. **There is no per-band receiver delay.** Galileo's three carriers (1176, 1207, 1278 MHz) agree
+   on the same satellites to 0.2 m in the median, and the per-PRN trim pattern is identical on
+   E5a, E5b and E6 (E7 +0.1, E28 +0.08 on both E5 bands). One timestream through one PFB has one
+   clock; the analog chain's group-delay dispersion across 100 MHz is below 1 ns. `tau_band`
+   is dropped from the state.
+2. **The uniform offsets are per constellation.** Galileo sits +11.5 m (38 ns) late against the
+   GPS-fed clock on every band. The broadcast Galileo-GPS time offset (RINEX 4 GAGP A0 in the
+   hourly BRDC) is -1 ns, so the offset is ours: the GPS chain's clock absorbs the
+   constellation-common part of -gamma TGD (~+15 ns; the CAS DCB product is zero-mean per
+   constellation and the broadcast mean is not added back) and the remainder is a receiver
+   inter-signal term (replica or correlator convention between the GPS and Galileo codes).
+   Static, so a nuisance state per constellation (isb_E, isb_C; GPS defines zero) absorbs it.
+3. **The per-signal gaps are group-delay handling, not physics.** B2a carries CAS C6I-C5P, B2b
+   the broadcast TGD2 fallback and B3I is the datum, and B2a differs from both by 14-15 m with
+   +-0.6 m scatter across 24 satellites, tighter than any real satellite group-delay spread:
+   one side carries a uniform error. L2C and E6 get no term at all (no CAS pair reached,
+   broadcast 0): L5 - L2C reads +10 m with +-4 m per satellite, E6 reads -4..-11 m on E2, E8,
+   E11, E12.
+4. **The per-satellite part is b_sat and it is mostly atmosphere.** The same satellite carries
+   the same deviation on every band of its constellation (C41 -0.5 chips on B2b and B3I). On
+   gps_l5 the per-PRN b_sat medians sit within +-0.13 chips and swing to -1.2 chips at rise. The
+   range model has no troposphere and no ionosphere (gnss_ephemeris.py, sky.py), so b_sat is the
+   slant atmosphere (2.3 m / sin el dry tropo; 0.29 m per TECU at L5 times the obliquity) plus
+   the group-delay residual and the ephemeris error along the line of sight.
+5. **The fallbacks do not fire.** JOINT-CLK adopted on 1366-1367 of 1376 lines per chain; the
+   joint code rate was taken on every cycle of every chain (zero `NOT taken`); the P1
+   SatBiasFilter applies a median 0.01 chips (p90 0.03). The median clock is not a fallback but
+   the level the joint delta is applied to, and the owner of the long-code segment.
+6. **The P1 spectrum fit cannot gate a feed.** On a closed loop its peak/floor reads 1.00 in the
+   median with 0.3-2.8% of entries at >= 1.5 (|tau| median 0.016 chips): the ratio is 1 by
+   construction when tau ~ 0. On-peak evidence is the fleet DLL's q.
+7. **Code-carrier coupling needs no step.** #93 measured the aiding gain at -0.06 with a 95% CI
+   excluding the +-1 physics requires by 10x (24 h, 8 chains); the per-satellite code ramps are
+   not range-rate errors. The coupling that exists stays as built: clk_rate to the code rate,
+   rrate to the carrier command.
+
+### 6.2 The state after the close
+
+    x = [ clk, clk_rate, f_carrier, isb_E, isb_C, b_sat[i], rrate[i] ]
+
+One unit for the code states: 10.23-Mcps chips, the first feeder's. Every feeder converts its
+chips in (chip_rate ratio) and every consumer converts out, as `dr_joint_clk` already does; the
+per-feeder unit declaration and the "mixed units -> refuse" rule go. The modulus stays the
+shortest contributing code (1 ms). isb_sys is born with the constellation's first feed (prior
+sigma 1 chip, process noise ~1 ns per hour) and GPS defines zero. b_sat keeps its prior gauge.
+A consumer that refuses the joint clock coasts on clk + clk_rate dt, never on the median.
+
+### 6.3 Steps and gates
+
+Offline now, on the obs archive and the replays (no sky needed):
+
+  0a. **Group-delay audit.** Add the missing terms (L2C: CAS C1C-C2L/C2X through the C1W pivot,
+      else CNAV ISC_L2C; E6: C1C-C6C; B2b: C7D), decide which side of the B2a/B3I 14 m carries
+      the error (PVT per-signal clocks on a day, `gnss_pvt.py`, and the ionosphere ratio between
+      the pairs), and add the constellation-mean broadcast term back when CAS is used.
+      Gate: `isb_obs.py` same-satellite differences read ionosphere only: band-ratio consistent,
+      |median| < 1 m, no satellite beyond 3 m.
+  0b. **Atmosphere in the range model.** Saastamoinen troposphere with a mapping function from
+      the site height and a standard atmosphere; Klobuchar ionosphere from the BRDC (a GIM
+      later). Gate: per-satellite `code_resid_m` against elevation flattens, and gps_l5's
+      b_sat p10/p90 come inside +-0.2 chips on the 10-12 replay. The transcript digests move:
+      re-bless with this step's commit, on the fresh replays #184 waits for.
+  0c. **The state.** One unit with conversion at the feed; isb_E, isb_C; the coast-on-refusal
+      consumer; selftest cases for each (a second constellation joining, an isb birth, a refusal
+      coasting, a mass birth). Gate: selftest and `broker_equiv` green, fakefleet runs.
+
+At the F-engine's return, broker only, one step per restart:
+
+  1.  **Code feed from every chain, shadow.** The measurement is trkresid's observable
+      (`cp_phys - cp_model - clk`, every chain, detectors or not): the DLL's replica placement,
+      which is the sky only while the loop is on the peak. Gates on the feed: present, fleet q
+      above its floor, |spec_tau| < 0.3 chips whenever the spectrum fit is valid, outside the
+      transit veto for any satellite transmitting in the chain's band (#144 sky), after the
+      warm-up, and a set gate of >= 3 satellites per chain per cycle. No fallback path: a
+      satellite that fails a gate contributes nothing (the #85 feed's fallback to
+      `seed + trim - model` was the #152 latch pathway). Served and logged, consumed by nothing.
+      Gate (the GAP 2 mirror test, #85's form): the fed chains' y trends agree with the unfed
+      chains' to 0.001 chips/s; isb_E and isb_C converge to the 0a table within 1 m; Galileo and
+      BeiDou b_sat within +-0.3 chips; 24 h of `joint_latch_detect.py` with zero alarms and a
+      re-derived reference.
+  2.  **Consume on every chain.** `joint-consume: clk,rate,slew` everywhere; the seed offset is
+      clk + isb_sys + b_i; the SatBiasFilter stops feeding seeds. Gate: readback trims per chain
+      median within +-0.05 chips and per PRN within +-0.1 (the constellation offsets move from
+      the trims into isb); the post-restart readback decay no slower than before; same-satellite
+      `code_resid_m` differences unchanged from step 0a's table.
+  3.  **Retire.** SatBiasFilter; the l-a EMA as a seed rate (keep the solve as the cp-rate
+      tolerance reference until that reference is the joint rate); the sibling clock adoption
+      as a level (the median solve stays as the modulus owner and the counterfactual the
+      JOINT-CLK line prints). Dead-code pass, digests re-blessed.
+  4.  Later and separate: the carrier command on the five uncommanded chains, one per restart,
+      judged against the gal_e5a/gal_e5b envelope; P3 (the lanes) after #189; the element model
+      stays node-local (#154).
+
+Risks named in advance: the mirror (the trkresid observable is the sky only on-peak, so the q
+gate is load-bearing and step 1's trend test is the proof); transits (feed and adoption frozen
+inside the veto, #176's step guard stays); the long-code segment (the median keeps it until the
+joint carries the NH epoch); mass birth (clk_rate prior 0.05 chips/s and the birth gate, as
+#86 left them).
