@@ -5,10 +5,10 @@
 #include "buffer.hpp"            // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "chordMetadata.hpp"     // for get_chord_metadata
+#include "configUpdater.hpp"     // for configUpdater
 #include "frb_functions.h"       // for FRBHeader
 #include "kotekanLogging.hpp"    // for DEBUG, INFO, WARN, FATAL_ERROR, ERROR
 #include "network_functions.hpp" // for receive_ping, send_ping
-#include "restServer.hpp"        // for restServer, HTTP_RESPONSE, connectionInstance
 #include "tx_utils.hpp"          // for add_nsec, CLOCK_ABS_NANOSLEEP, get_vlan_from_ip, parse_...
 
 #include "fmt.hpp" // for compile_string_to_view, format, format_string
@@ -44,9 +44,7 @@ using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
 
-using kotekan::connectionInstance;
-using kotekan::HTTP_RESPONSE;
-using kotekan::restServer;
+using kotekan::configUpdater;
 
 REGISTER_KOTEKAN_STAGE(frbNetworkSend);
 
@@ -82,24 +80,76 @@ frbNetworkSend::frbNetworkSend(Config& config_, const std::string& unique_name,
                         i, local_ips[i], i + 6);
     packets_per_stream = config.get_default<int>(unique_name, "packets_per_stream", 8);
     beam_offset = config.get_default<int>(unique_name, "beam_offset", 0);
-    column_mode = config.get_default<bool>(unique_name, "column_mode", false);
     samples_per_packet = config.get_default<int>(unique_name, "timesamples_per_frb_packet", 16);
     num_frequencies = config.get<int>(unique_name, "num_frequencies");
 
-    assert(samples_per_packet == _timesamples_per_frb_packet);
-    assert(packets_per_stream
-           == 8); // as in CHIME production, more here, but will chunk up like this
+    if (!(samples_per_packet == _timesamples_per_frb_packet))
+        FATAL_ERROR("samples_per_packet must be {:d} to be compatible with the existing L1 "
+                    "reciever, but got {:d}",
+                    _timesamples_per_frb_packet, samples_per_packet);
+    if (!(packets_per_stream == 8)) {
+        // 8 per input frame in CHIME production, more here, but will chunk up like this
+        FATAL_ERROR("packets_per_stream must be 8 to be compatible with the existing L1 receiver, "
+                    "but got {:d}",
+                    packets_per_stream);
+    }
+    if (!(num_frequencies % _nfreq_coarse == 0)) {
+        FATAL_ERROR("The total number of coarse frequencies {:d} must be a multiple of the number "
+                    "coarse frequencies per FRB packet {:d}, but is not",
+                    num_frequencies, _nfreq_coarse);
+    }
 
-    assert(num_frequencies % _nfreq_coarse == 0);
+    // size of UPD packets based on input parameters
+    const size_t data_nbytes = _nbeams * _nfreq_coarse * _factor_upchan_out;
+    static_assert(sizeof(FRBHeader) == 32);
+    const size_t variable_size_part = sizeof(uint16_t) * _nbeams +       // beam_ids
+                                      sizeof(uint16_t) * _nfreq_coarse + // coarse_freq_ids
+                                      // TODO: see how the quantizer generates these
+                                      sizeof(float) * _nbeams * _nfreq_coarse + // scale
+                                      sizeof(float) * _nbeams * _nfreq_coarse;  // offset
+    const size_t expected_udp_frb_packet_size =
+        sizeof(FRBHeader) + variable_size_part + data_nbytes;
+    if (!(expected_udp_frb_packet_size == udp_frb_packet_size)) {
+        FATAL_ERROR("Unexpected UDP packet size {:d} in config "
+                    "file, expected {:d}",
+                    udp_frb_packet_size, expected_udp_frb_packet_size);
+    }
+
     if (_ping_dead_threshold != std::chrono::seconds::zero()) {
         INFO("Pinging every {} / {}", _quick_ping_interval, _ping_interval);
     } else {
         INFO("L1 ping check is disabled");
     }
+
+    // beam offset (coudl be called right away)
+    // subscribe in constructor which is single threaded due to lack to of
+    // locking in configUpdater
+    using namespace std::placeholders;
+    configUpdater::instance().subscribe(
+        this, std::bind(&frbNetworkSend::update_offset_callback, this, _1));
 }
 
 frbNetworkSend::~frbNetworkSend() {
-    restServer::instance().remove_json_callback("/frb/update_beam_offset");
+    // notify the worker threads that we are ending (forcible if needs be)
+    if (!stop_thread) {
+        ping_cv.notify_all();
+    } else {
+        if (send_ping_thread.joinable()) {
+            pthread_cancel(send_ping_thread.native_handle());
+        }
+        if (receive_ping_thread.joinable()) {
+            pthread_cancel(receive_ping_thread.native_handle());
+        }
+    }
+
+    // wait for threads before closing fds still in use by select()
+    if (send_ping_thread.joinable()) {
+        send_ping_thread.join();
+    }
+
+    if (receive_ping_thread.joinable()) {
+        receive_ping_thread.join();
+    }
 
     for (auto src : src_sockets) {
         close(src.socket_fd);
@@ -112,18 +162,18 @@ frbNetworkSend::~frbNetworkSend() {
 }
 
 
-void frbNetworkSend::update_offset_callback(connectionInstance& conn,
-                                            nlohmann::json& json_request) {
+bool frbNetworkSend::update_offset_callback(nlohmann::json& json_request) {
     // no need for a lock here, beam_offset copied into a local variable for use
     try {
         beam_offset = json_request["beam_offset"];
     } catch (...) {
-        conn.send_error("Couldn't parse new beam_offset parameter.", HTTP_RESPONSE::BAD_REQUEST);
-        return;
+        ERROR("Couldn't parse new beam_offset parameter {:s}.", nlohmann::to_string(json_request));
+        return true;
     }
     INFO("Updating beam_offset to {:d}", beam_offset);
-    conn.send_empty_reply(HTTP_RESPONSE::OK);
+    // a different "beam_offset" than the one updated via http
     config.update_value(unique_name, "beam_offset", beam_offset);
+    return true;
 }
 
 void frbNetworkSend::main_thread() {
@@ -137,8 +187,6 @@ void frbNetworkSend::main_thread() {
     int number_of_l1_links = initialize_destinations();
     INFO("number_of_l1_links: {:d}", number_of_l1_links);
 
-    std::thread send_ping_thread;
-    std::thread receive_ping_thread;
     if (_ping_dead_threshold != std::chrono::seconds::zero()) {
         initialize_pinging_sockets();
 
@@ -153,25 +201,17 @@ void frbNetworkSend::main_thread() {
         pthread_setaffinity_np(receive_ping_thread.native_handle(), sizeof(cpu_set_t), &cpuset);
     }
 
-    // rest server
-    using namespace std::placeholders;
-    restServer& rest_server = restServer::instance();
-    std::string endpoint = "/frb/update_beam_offset";
-    rest_server.register_post_callback(
-        endpoint, std::bind(&frbNetworkSend::update_offset_callback, this, _1, _2));
-
-    // config.update_value(unique_name, "beam_offset", beam_offset);
-
-    int frame_id = 0;
-    uint8_t* beams_buffer = (uint8_t*)in_buf->wait_for_full_frame(unique_name, frame_id);
+    int in_frame_id = 0;
+    uint8_t* beams_buffer = (uint8_t*)in_buf->wait_for_full_frame(unique_name, in_frame_id);
     if (beams_buffer == nullptr)
         return;
+    int offsetscale_frame_id = 0;
     float16_t* offsetscale_buffer =
-        (float16_t*)offsetscale_buf->wait_for_full_frame(unique_name, frame_id);
+        (float16_t*)offsetscale_buf->wait_for_full_frame(unique_name, offsetscale_frame_id);
     if (offsetscale_buffer == nullptr)
         return;
 
-    auto metadata = get_chord_metadata(in_buf, frame_id);
+    auto metadata = get_chord_metadata(in_buf, in_frame_id);
     auto in_coarse_freq = metadata->get_coarse_freq();
     const auto beams_frame_desc = in_buf->get_frame_desc<kotekan::GenericNDArray>();
     const auto offsetscale_frame_desc = offsetscale_buf->get_frame_desc<kotekan::GenericNDArray>();
@@ -251,9 +291,10 @@ void frbNetworkSend::main_thread() {
     const uint64_t initial_fpga_count = metadata->get_fpga_seq_num();
     if (initial_fpga_count % (samples_per_packet * packets_per_stream * time_downsampling_fpga)
         != 0) {
-        ERROR("initial fpga couunt {} is not aligned with a 2018 CHIME frame size ({}). This will "
-              "break the L1 receiver code",
-              initial_fpga_count, samples_per_packet * packets_per_stream * time_downsampling_fpga);
+        FATAL_ERROR(
+            "initial fpga count {} is not aligned with a 2018 CHIME frame size ({}). This will "
+            "break the L1 receiver code",
+            initial_fpga_count, samples_per_packet * packets_per_stream * time_downsampling_fpga);
     }
     uint64_t last_fpga_count = initial_fpga_count;
 
@@ -261,16 +302,33 @@ void frbNetworkSend::main_thread() {
 
         // reading the next frame and comparing the fpga clock with the monotonic clock.
         if (count != 0) {
-            beams_buffer = (uint8_t*)in_buf->wait_for_full_frame(unique_name, frame_id);
+            beams_buffer = (uint8_t*)in_buf->wait_for_full_frame(unique_name, in_frame_id);
             if (beams_buffer == nullptr)
                 break;
             offsetscale_buffer =
-                (float16_t*)offsetscale_buf->wait_for_full_frame(unique_name, frame_id);
+                (float16_t*)offsetscale_buf->wait_for_full_frame(unique_name, offsetscale_frame_id);
             if (offsetscale_buffer == nullptr)
                 break;
 
-            metadata = get_chord_metadata(in_buf, frame_id);
+            metadata = get_chord_metadata(in_buf, in_frame_id);
             in_coarse_freq = metadata->get_coarse_freq();
+
+            // sanity checks on input data
+            const auto offsetscale_metadata =
+                get_chord_metadata(offsetscale_buf, offsetscale_frame_id);
+            if (metadata->get_fpga_seq_num() != offsetscale_metadata->get_fpga_seq_num()) {
+                FATAL_ERROR(
+                    "beam ({:s}) and offsetscale buffers ({:s}) are not in sync ({:d} != {:d})",
+                    in_buf->buffer_name, offsetscale_buf->buffer_name, metadata->get_fpga_seq_num(),
+                    offsetscale_metadata->get_fpga_seq_num());
+            }
+            if (in_coarse_freq.size() != size_t(num_frequencies * _factor_upchan_out)) {
+                FATAL_ERROR(
+                    "This stage hard-codes an upchannelization factor of {:d} and thus expects "
+                    "{:d} frequencies for {:d} coarse frequencies but received {:d}",
+                    _factor_upchan_out, num_frequencies * _factor_upchan_out, num_frequencies,
+                    in_coarse_freq.size());
+            }
 
             clock_gettime(CLOCK_MONOTONIC, &t1);
 
@@ -285,7 +343,7 @@ void frbNetworkSend::main_thread() {
                 uint64_t nanos_skipped = frames_skipped * time_interval;
                 add_nsec(t0, nanos_skipped);
             }
-            uint64_t offset = (t0.tv_sec * 1e9 + t0.tv_nsec - initial_nsec)
+            uint64_t offset = (t0.tv_sec * 1'000'000'000UL + t0.tv_nsec - initial_nsec)
                               - (metadata->get_fpga_seq_num() - initial_fpga_count) * fpga_ns;
             if (offset != 0)
                 WARN("OFFSET in not zero ");
@@ -309,7 +367,6 @@ void frbNetworkSend::main_thread() {
         DEBUG("Beam offset: {:d}", local_beam_offset);
 
         // r4 is e_stream (or link) below
-        size_t total_data_sent = 0;
         for (int fbar64 = 0; fbar64 < num_frequencies / _nfreq_coarse;
              ++fbar64) { // TODO: think about swapping this with the
                          // ttilde16_low16_by_packets_per_stream loop to keep all frequencies closer
@@ -447,21 +504,25 @@ void frbNetworkSend::main_thread() {
                                                          .msg_control = nullptr,
                                                          .msg_controllen = 0,
                                                          .msg_flags = 0};
+
                                     ssize_t expected_send_len = 0;
                                     for (size_t i = 0; i < hdr.msg_iovlen; ++i)
                                         expected_send_len += hdr.msg_iov[i].iov_len;
-
+                                    // udp_frb_packet_size checked against packet structure in
+                                    // constructor
+                                    assert(expected_send_len == udp_frb_packet_size);
                                     const ssize_t send_len =
                                         sendmsg(src_sockets[dst.sending_socket].socket_fd, &hdr, 0);
                                     if (send_len != expected_send_len) {
                                         char ip_addr[64] = "<unknown>";
-                                        ERROR("Error sending to {:s}: {:d}",
-                                              inet_ntop(AF_INET, hdr.msg_name, ip_addr,
-                                                        sizeof(ip_addr)),
-                                              send_len);
+                                        ERROR(
+                                            "Error sending to {:s}: {:d}",
+                                            inet_ntop(
+                                                AF_INET,
+                                                &static_cast<sockaddr_in*>(hdr.msg_name)->sin_addr,
+                                                ip_addr, sizeof(ip_addr)),
+                                            send_len);
                                     }
-
-                                    total_data_sent += msg_iov[1].iov_len;
                                 }
                             }
                         }
@@ -477,21 +538,14 @@ void frbNetworkSend::main_thread() {
                 }
             }
         }
-        assert(total_data_sent == in_buf->frame_size);
 
-        in_buf->mark_frame_empty(unique_name, frame_id);
-        offsetscale_buf->mark_frame_empty(unique_name, frame_id);
-        frame_id = (frame_id + 1) % in_buf->num_frames;
+        in_buf->mark_frame_empty(unique_name, in_frame_id);
+        offsetscale_buf->mark_frame_empty(unique_name, offsetscale_frame_id);
+        in_frame_id = (in_frame_id + 1) % in_buf->num_frames;
+        offsetscale_frame_id = (offsetscale_frame_id + 1) % offsetscale_buf->num_frames;
         count++;
     }
     ping_cv.notify_all();
-
-    if (send_ping_thread.joinable()) {
-        send_ping_thread.join();
-    }
-    if (receive_ping_thread.joinable()) {
-        receive_ping_thread.join();
-    }
 }
 
 int frbNetworkSend::initialize_source_sockets() {
@@ -535,7 +589,7 @@ int frbNetworkSend::initialize_source_sockets() {
         // use a larger send buffer for the socket
         const int n = 256 * 1024 * 1024;
         if (setsockopt(sock_fd, SOL_SOCKET, SO_SNDBUF, (void*)&n, sizeof(n)) < 0) {
-            FATAL_ERROR("Network Thread: setsockopt() failed: %s ", strerror(errno));
+            FATAL_ERROR("Network Thread: setsockopt() failed: {:s}", strerror(errno));
             return -1;
         }
 
