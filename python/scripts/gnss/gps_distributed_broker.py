@@ -71,19 +71,19 @@ from gnss_broker.transport import (  # noqa: E402
     install_dns_cache,
     record_cycle,
 )
-from gnss_broker import telem as _telem  # noqa: E402  (task #59 gather)
+from gnss_broker import telem as _telem  # noqa: E402
 from gnss_broker.fits import (  # noqa: E402
     tracker_phase_at,
     rate_residuals,
     cp_rate_from_code_bias,
 )
 from gnss_broker.publish import FleetPublisher  # noqa: E402
-from gnss_broker.seed import Seed  # noqa: E402  (task #83)
+from gnss_broker.seed import Seed  # noqa: E402
 from gnss_broker.cli import (
     build_parser,
     _FROZEN,
     SIGNAL_IMPLIED,
-)  # noqa: E402  (task #89 flag surface)
+)  # noqa: E402
 from gnss_broker.context import ChainContext  # noqa: E402  (the stage interface)
 from gnss_broker.clockbias import ClockBias  # noqa: E402  (the receiver LO bias)
 from gnss_broker.loopstate import (  # noqa: E402
@@ -96,7 +96,7 @@ from gnss_broker.loopstate import (  # noqa: E402
 )
 from gnss_broker import deadreckon  # noqa: E402  (the clock pipeline)
 from gnss_broker import almanac as almanac_stage  # noqa: E402  (orbit + visibility)
-from gnss_broker import ratefeed  # noqa: E402  (#33 rate feeds)
+from gnss_broker import ratefeed  # noqa: E402  (the carrier-rate feeds)
 from gnss_broker import trimarm  # noqa: E402  (C++ trim arming)
 from gnss_broker import prnmap  # noqa: E402  (live PRN membership)
 from gnss_broker import searchhint  # noqa: E402  (narrow the search)
