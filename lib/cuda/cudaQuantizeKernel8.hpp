@@ -10,7 +10,7 @@
 #include <cuda_runtime.h>
 
 // `pl_mask[time * pl_mask_stride + freq]` is the packet loss mask of the input (1 = valid). Masked
-// samples are quantized as usual, but are skipped when choosing each chunk's offset and scale.
+// samples are skipped when choosing each chunk's offset and scale, and are encoded as 0, as is nan.
 void cpu_quantize8(const float16_t* input, const std::uint8_t* pl_mask, int pl_mask_stride,
                    float16_t* outputf, std::uint8_t* outputi);
 

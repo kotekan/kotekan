@@ -356,15 +356,12 @@ public:
                                             FATAL_ERROR("Unexpected value {}", i);
                                         const float x = i == 0 ? 0.0f / 0.0f : offset + scale * i;
 
-                                        // Masked values are quantized as usual, but they did not
-                                        // determine the offset and scale and may be clamped. Only
-                                        // finite values must remain numbers.
+                                        // Masked values are encoded as 0
                                         if (!valid(freq, time)) {
-                                            if (isfinite(expected_x) && i == 0)
-                                                FATAL_ERROR("Found inconsistent masked value: "
-                                                            "beam {}, freq {}, time {}, want {}, "
-                                                            "have {}",
-                                                            beam, freq, time, expected_x, x);
+                                            if (i != 0)
+                                                FATAL_ERROR("Found masked value encoded as {}: "
+                                                            "beam {}, freq {}, time {}",
+                                                            int(i), beam, freq, time);
                                             continue;
                                         }
 

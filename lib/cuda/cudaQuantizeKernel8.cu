@@ -116,7 +116,8 @@ void cpu_quantize8_chunk(const __half* __restrict__ const input,
     // Calculate offset and scale.
     // There are 254 possible uint8 values since we don't use 0 or 255 for regular values.
     // Values are reconstructed as `offset + scale * n`, with `uint8 n`.
-    // NaN in the input is represented as `n = 0`.
+    // NaN in the input, and samples the packet loss mask marks as invalid, are represented as
+    // `n = 0`.
     constexpr int outi_min = 1;
     constexpr int outi_max = 254;
     constexpr float outf_min = outi_min - 0.5f;
@@ -159,8 +160,9 @@ void cpu_quantize8_chunk(const __half* __restrict__ const input,
             const float y = scale == 0 ? 0.0f : (x - offset) / scale;
             // Round
             const int j = sane_lrint(y);
-            // Clamp; use 0 for nan
-            const int k = isnan(x) ? 0 : max(outi_min, min(outi_max, j));
+            // Clamp; use 0 for nan and for invalid samples
+            const bool valid = pl_mask[time * pl_mask_stride + freq];
+            const int k = !valid || isnan(x) ? 0 : max(outi_min, min(outi_max, j));
             // Store
             outputi[out_ind] = k;
         }
@@ -232,7 +234,7 @@ __global__ void gpu_quantize8_chunks(const __half* __restrict__ const input,
     const int in_freq_chunk = threadIdx.x / 2;       // 0..15
 
     // The packet loss mask is the same for all beams. Load this thread's 8 values once; masked
-    // samples are skipped when finding the minimum and maximum.
+    // samples are skipped when finding the minimum and maximum, and are encoded as 0.
     bool valid[8];
     for (int i = 0; i < 8; ++i)
         valid[i] = pl_mask[time(in_time_chunk + i, time_outer) * pl_mask_stride
@@ -348,23 +350,23 @@ __global__ void gpu_quantize8_chunks(const __half* __restrict__ const input,
 
         const __half2 y01 =
             __hmax2_nan(minh, __hmin2_nan(maxh, __hfma2(x01, inv_scaleh2, inv_offseth2)));
-        const int i0 = half2int(__low2half(y01));
-        const int i1 = half2int(__high2half(y01));
+        const int i0 = valid[0] ? half2int(__low2half(y01)) : 0;
+        const int i1 = valid[1] ? half2int(__high2half(y01)) : 0;
 
         const __half2 y23 =
             __hmax2_nan(minh, __hmin2_nan(maxh, __hfma2(x23, inv_scaleh2, inv_offseth2)));
-        const int i2 = half2int(__low2half(y23));
-        const int i3 = half2int(__high2half(y23));
+        const int i2 = valid[2] ? half2int(__low2half(y23)) : 0;
+        const int i3 = valid[3] ? half2int(__high2half(y23)) : 0;
 
         const __half2 y45 =
             __hmax2_nan(minh, __hmin2_nan(maxh, __hfma2(x45, inv_scaleh2, inv_offseth2)));
-        const int i4 = half2int(__low2half(y45));
-        const int i5 = half2int(__high2half(y45));
+        const int i4 = valid[4] ? half2int(__low2half(y45)) : 0;
+        const int i5 = valid[5] ? half2int(__high2half(y45)) : 0;
 
         const __half2 y67 =
             __hmax2_nan(minh, __hmin2_nan(maxh, __hfma2(x67, inv_scaleh2, inv_offseth2)));
-        const int i6 = half2int(__low2half(y67));
-        const int i7 = half2int(__high2half(y67));
+        const int i6 = valid[6] ? half2int(__low2half(y67)) : 0;
+        const int i7 = valid[7] ? half2int(__high2half(y67)) : 0;
 
         const std::uint64_t outi = (std::uint64_t(i0) << 0x00) | (std::uint64_t(i1) << 0x08)
                                    | (std::uint64_t(i2) << 0x10) | (std::uint64_t(i3) << 0x18)

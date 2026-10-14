@@ -58,12 +58,13 @@ upchannelizer, so that both outputs begin at input sample
 The FRB output mask
 ===================
 
-An FRB output sample is invalid if it depends on any lost input sample. The FRB
-beams themselves are not changed; instead the pipeline produces a separate mask
+An FRB output sample is invalid if it depends on any lost input sample. The FRB1
+and FRB2 beams themselves are not changed; instead the pipeline produces a mask
 of the FRB output, ``host_frb_pl_mask_buffer``, with one byte per output sample
 and frequency: 1 if the sample is valid, 0 if not. It has the dimensions
 ``[Ttilde][Fbar]``, the same time samples and frequencies as the FRB1 beams, and
-is written next to the quantized FRB beams.
+is written next to the quantized FRB beams. The quantizer encodes invalid
+samples as 0 (see below).
 
 ``cudaPLMaskFRB1`` calculates this mask. It is the PL mask counterpart of the
 FRB1 beamformer: an FRB1 output sample sums :math:`T_d` consecutive
@@ -90,8 +91,8 @@ The quantizer
 16 frequencies, each with its own offset and scale. It reads the FRB output mask
 and skips invalid samples when choosing a chunk's offset and scale: the minimum
 and maximum of the valid samples map to the codes 1 and 254. Invalid samples are
-still quantized, and may be clipped. A chunk without valid samples has offset
-and scale 0. The quantizer checks that the mask describes the same samples and
+encoded as 0, the code that also represents not-a-number, as in the AMD
+pipeline. A chunk without valid samples has offset and scale 0. The quantizer checks that the mask describes the same samples and
 frequencies as the beams.
 
 The AMD CHIME FRB pipeline
@@ -138,7 +139,8 @@ did not use a PL mask on the GPU:
      - 4-tap PFB; a loss can also invalidate a neighbouring FRB sample
    * - FRB output
      - dropped samples encoded as byte 0 in the FRB packets
-     - FRB beams unchanged; separate mask ``host_frb_pl_mask_buffer``
+     - invalid samples encoded as byte 0; also a separate mask
+       ``host_frb_pl_mask_buffer``
    * - Quantizer
      - skips dropped samples for scale and offset
      - skips invalid samples for scale and offset
