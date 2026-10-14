@@ -204,7 +204,7 @@ run_frb1_pl_U{{ U }}:
         commands:
         - name: cudaPLMaskFRB1
           pl_mask_name: upchan_U{{ U }}_expanded_pl_mask
-          frb_pl_mask_name: frb1_pl_mask
+          frb1_pl_mask_name: frb1_pl_mask
           num_frequencies: upchan_U{{ U }}_max_num_channels
           upchannelization_factor: {{ U }}
           downsampling_factor: frb_downsampling_factor / {{ U }}

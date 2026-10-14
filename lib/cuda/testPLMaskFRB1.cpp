@@ -41,7 +41,7 @@ public:
         std::mt19937_64 rng(0x9e3779b97f4a7c15ULL);
 
         // Run one test case: invent input [size_in][num_frequencies][num_elements], run GPU + CPU,
-        // and compare the whole output, including the bytes that must remain untouched.
+        // and compare the whole output, including the bytes the kernel does not write.
         const auto run_case = [&](const ptrdiff_t num_elements, const int U, const int Td,
                                   const ptrdiff_t num_frequencies, const int Fmin, const int Fmax,
                                   const ptrdiff_t num_frequencies_out, const int Fbar_out_min,
@@ -69,7 +69,7 @@ public:
                 x = v;
             }
 
-            // Bytes that are not written must keep this value
+            // The kernel writes only 0 and 1; the bytes it does not write keep this value
             const uint8_t untouched = 0x55;
 
             // GPU: copy input up, run the kernel, copy output back

@@ -215,7 +215,8 @@ public:
 
         ////////////////////////////////////////////////////////////////////////////////
 
-        // Set packet loss mask; use a larger stride to test it
+        // Set packet loss mask; use a larger stride to test it. The 3 extra entries per time are
+        // padding that the quantizer does not read.
         const int pl_mask_stride = in_nfreqs + 3;
         std::vector<std::uint8_t> pl_mask(in_ntimes * pl_mask_stride, 0xff);
         for (int time = 0; time < in_ntimes; ++time)

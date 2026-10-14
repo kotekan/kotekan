@@ -418,6 +418,8 @@ run_frb1_pl_U{{ U }}:
             host_frb1_pl_mask_ringbuffer: host_frb1_pl_mask_ringbuffer
         commands:
         - name: cudaPLMaskFRB1
+{# As for the FRB1 beamformers: U=1 selects its channels from all coarse channels, while for U>1
+   the PL mask upchannelizer has already selected them #}
 {% if U == 1 %}
           pl_mask_name: pl_expanded_mask
           Fmin: {{ channels[U][0] }}
@@ -428,7 +430,7 @@ run_frb1_pl_U{{ U }}:
           Fmin: 0
           Fmax: {{ channels[U][1] - channels[U][0] }}
 {% endif %}
-          frb_pl_mask_name: frb1_pl_mask
+          frb1_pl_mask_name: frb1_pl_mask
           upchannelization_factor: {{ U }}
           downsampling_factor: frb_downsampling_factor / {{ U }}
           Fbar_out_min: {{ out_channels[U][0] }}

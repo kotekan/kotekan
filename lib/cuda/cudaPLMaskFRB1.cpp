@@ -88,7 +88,12 @@ public:
  * @conf  max_upchannelization_factor  Int.  Only for U=1: the largest upchannelization factor
  *                                           used in this run, which determines the skipped input
  *                                           samples.
- * @conf  Fmin                         Int.  First input frequency to process.
+ * @conf  Fmin                         Int.  First input frequency to process. For U=1 the input
+ *                                           is the expanded PL mask of all coarse frequencies, so
+ *                                           this selects the U=1 channels; for U>1 the
+ *                                           upchannelizer has already selected them, and this
+ *                                           is usually 0. (The same holds for the FRB1
+ *                                           beamformers' `Fbar_in_min`.)
  * @conf  Fmax                         Int.  One past the last input frequency to process.
  * @conf  Fbar_out_min                 Int.  First output frequency to write.
  * @conf  Fbar_out_max                 Int.  One past the last output frequency to write; must be
@@ -96,7 +101,7 @@ public:
  * @conf  num_output_frequencies       Int.  Number of output frequencies (of all producers).
  * @conf  num_output_times             Int.  Size of the output ring buffer, in output samples.
  * @conf  pl_mask_name                 String.  Base name for the input PL mask buffers.
- * @conf  frb_pl_mask_name             String.  Base name for the output PL mask buffers.
+ * @conf  frb1_pl_mask_name             String.  Base name for the output PL mask buffers.
  */
 // clang-format on
 class cudaPLMaskFRB1 : public cudaCommand {
@@ -136,14 +141,14 @@ private:
 
     // Kotekan buffer names
     const std::string pl_mask_name;
-    const std::string frb_pl_mask_name;
+    const std::string frb1_pl_mask_name;
 
     // Buffers
     NDArrayRingBuffer<kotekan::uint1x8_t, 5> pl_mask;
-    NDArrayRingBuffer<std::uint8_t, 2> frb_pl_mask;
+    NDArrayRingBuffer<std::uint8_t, 2> frb1_pl_mask;
 
     // State shared by all instances
-    const std::shared_ptr<cudaPLMaskFRB1State> state;
+    const std::shared_ptr<cudaPLMaskFRB1State> shared_state;
 
     // Where this instance's input begins in its first input row, and how many output samples
     // it produces
@@ -154,8 +159,9 @@ private:
     bool did_set_metadata;
 };
 
-// Serializes the metadata updates of all producers of the shared output buffer
-static std::mutex frb_pl_mask_lock;
+// Serializes the metadata updates of all cudaPLMaskFRB1 instances, which are the producers of the
+// shared output buffers
+static std::mutex frb1_pl_mask_lock;
 
 REGISTER_CUDA_COMMAND_WITH_STATE(cudaPLMaskFRB1, cudaPLMaskFRB1State);
 
@@ -186,7 +192,7 @@ cudaPLMaskFRB1::cudaPLMaskFRB1(kotekan::Config& config, const std::string& uniqu
     poison_buffers(config.get_default<bool>(unique_name, "poison_buffers", false)),
     // Buffer names
     pl_mask_name(config.get<std::string>(unique_name, "pl_mask_name")),
-    frb_pl_mask_name(config.get<std::string>(unique_name, "frb_pl_mask_name")),
+    frb1_pl_mask_name(config.get<std::string>(unique_name, "frb1_pl_mask_name")),
     // Buffers
     pl_mask(pl_mask_name, "pl_mask_exp",
             std::array<std::ptrdiff_t, 5>{
@@ -196,18 +202,18 @@ cudaPLMaskFRB1::cudaPLMaskFRB1(kotekan::Config& config, const std::string& uniqu
             std::array<std::ptrdiff_t, 5>{64 * upchannelization_factor, 1, 1, 8,
                                           8 * upchannelization_factor},
             *this),
-    frb_pl_mask(frb_pl_mask_name, "pl_mask_I",
-                std::array<std::ptrdiff_t, 2>{num_output_times, num_output_frequencies},
-                std::array<std::string, 2>{"Ttilde", "Fbar"},
-                std::array<std::ptrdiff_t, 2>{
-                    std::ptrdiff_t(upchannelization_factor) * downsampling_factor, 1},
-                *this),
+    frb1_pl_mask(frb1_pl_mask_name, "pl_mask_I",
+                 std::array<std::ptrdiff_t, 2>{num_output_times, num_output_frequencies},
+                 std::array<std::string, 2>{"Ttilde", "Fbar"},
+                 std::array<std::ptrdiff_t, 2>{
+                     std::ptrdiff_t(upchannelization_factor) * downsampling_factor, 1},
+                 *this),
     // The factory creates the state object of the type registered for this command
-    state(std::static_pointer_cast<cudaPLMaskFRB1State>(state)), bit_offset(-1), num_times_out(-1),
-    did_set_metadata(false)
+    shared_state(std::static_pointer_cast<cudaPLMaskFRB1State>(state)), bit_offset(-1),
+    num_times_out(-1), did_set_metadata(false)
 //
 {
-    if (!this->state)
+    if (!shared_state)
         FATAL_ERROR("cudaPLMaskFRB1 {:s}: missing command state", unique_name);
     if (!(upchannelization_factor >= 1 && downsampling_factor >= 1))
         FATAL_ERROR("upchannelization_factor ({:d}) and downsampling_factor ({:d}) must be "
@@ -246,7 +252,7 @@ cudaPLMaskFRB1::cudaPLMaskFRB1(kotekan::Config& config, const std::string& uniqu
                     in_ringbuf, T_skip);
 
     pl_mask.register_consumer();
-    frb_pl_mask.register_producer();
+    frb1_pl_mask.register_producer();
 
     set_command_type(gpuCommandType::KERNEL);
 }
@@ -263,7 +269,7 @@ int cudaPLMaskFRB1::wait_on_precondition() {
 
     // Where does our input begin? Output sample `k` covers the input samples
     // [T_skip + Td * k, T_skip + Td * (k + 1)).
-    const std::ptrdiff_t T_begin = T_skip + downsampling_factor * state->num_produced;
+    const std::ptrdiff_t T_begin = T_skip + downsampling_factor * shared_state->num_produced;
     const std::ptrdiff_t read_head = pl_mask.peek_read_head();
     if (read_head < 0)
         return -1; // shutting down
@@ -274,7 +280,7 @@ int cudaPLMaskFRB1::wait_on_precondition() {
     bit_offset = int(T_begin % 64);
 
     const std::ptrdiff_t in_ringbuf = pl_mask.get_ndarray().extent(0);
-    const std::ptrdiff_t out_ringbuf = frb_pl_mask.get_ndarray().extent(0);
+    const std::ptrdiff_t out_ringbuf = frb1_pl_mask.get_ndarray().extent(0);
 
     DEBUG("Waiting for pl_mask input ringbuffer data for frame {:d}...", gpu_frame_id);
     const int in_errcode = pl_mask.wait_and_claim_readable([&](const std::ptrdiff_t available) {
@@ -290,13 +296,13 @@ int cudaPLMaskFRB1::wait_on_precondition() {
     });
     if (in_errcode < 0)
         return in_errcode;
-    state->num_produced += num_times_out;
+    shared_state->num_produced += num_times_out;
 
     DEBUG("Done waiting for pl_mask for frame {:d}; will read {:d} input rows starting at bit "
           "{:d} and produce {:d} output samples",
           gpu_frame_id, pl_mask.get_read_valid().size(), bit_offset, num_times_out);
 
-    const int out_errcode = frb_pl_mask.wait_for_writable(num_times_out);
+    const int out_errcode = frb1_pl_mask.wait_for_writable(num_times_out);
     if (out_errcode < 0)
         return out_errcode;
 
@@ -315,13 +321,13 @@ cudaEvent_t cudaPLMaskFRB1::execute(cudaPipelineState& /*pipestate*/,
 
         // Our output buffer has multiple producers. They must serialize setting their part of
         // the metadata.
-        std::lock_guard<std::mutex> lock(frb_pl_mask_lock);
+        std::lock_guard<std::mutex> lock(frb1_pl_mask_lock);
 
         const auto in_meta = pl_mask.get_metadata();
-        const bool out_has_metadata = frb_pl_mask.has_metadata();
+        const bool out_has_metadata = frb1_pl_mask.has_metadata();
         if (!out_has_metadata)
-            frb_pl_mask.set_metadata(in_meta);
-        const auto out_meta = frb_pl_mask.get_metadata();
+            frb1_pl_mask.set_metadata(in_meta);
+        const auto out_meta = frb1_pl_mask.get_metadata();
 
         const std::vector<int> in_coarse_freq = in_meta->get_coarse_freq();
         const std::vector<int> in_freq_upchan_factor = in_meta->get_freq_upchan_factor();
@@ -349,6 +355,12 @@ cudaEvent_t cudaPLMaskFRB1::execute(cudaPipelineState& /*pipestate*/,
         for (int f = Fmin; f < Fmax; ++f) {
             for (int u = 0; u < upchannelization_factor; ++u) {
                 const int fbar = Fbar_out_min + upchannelization_factor * (f - Fmin) + u;
+                // Producers must write disjoint frequency ranges
+                if (!(out_coarse_freq.at(fbar) == -1 && out_freq_upchan_factor.at(fbar) == -1
+                      && out_freq_upchan_index.at(fbar) == -1))
+                    FATAL_ERROR("Another producer of buffer {:s} already writes output frequency "
+                                "{:d}, which {:s} writes as well",
+                                frb1_pl_mask_name, fbar, get_unique_name());
                 out_coarse_freq.at(fbar) = in_coarse_freq.at(f);
                 out_freq_upchan_factor.at(fbar) =
                     in_freq_upchan_factor.at(f) * upchannelization_factor;
@@ -368,8 +380,8 @@ cudaEvent_t cudaPLMaskFRB1::execute(cudaPipelineState& /*pipestate*/,
         else if (out_meta->get_time_downsampling_fpga() != out_time_downsampling_fpga)
             FATAL_ERROR("Another producer of buffer {:s} set time_downsampling_fpga={:d}, but "
                         "{:s} produces {:d}",
-                        frb_pl_mask_name, out_meta->get_time_downsampling_fpga(), get_unique_name(),
-                        out_time_downsampling_fpga);
+                        frb1_pl_mask_name, out_meta->get_time_downsampling_fpga(),
+                        get_unique_name(), out_time_downsampling_fpga);
 
         // All producers must agree on the start time, as for the FRB1 output `I`
         if (in_meta->has_fpga_seq_num()) {
@@ -382,25 +394,25 @@ cudaEvent_t cudaPLMaskFRB1::execute(cudaPipelineState& /*pipestate*/,
                      || out_meta->get_fpga_seq_num() != out_fpga_seq_num)
                 FATAL_ERROR("Another producer of buffer {:s} starts at fpga_seq_num={:d}, but "
                             "{:s} starts at {:d}",
-                            frb_pl_mask_name,
+                            frb1_pl_mask_name,
                             out_meta->has_fpga_seq_num() ? out_meta->get_fpga_seq_num() : -1,
                             get_unique_name(), out_fpga_seq_num);
         } else if (out_has_metadata && out_meta->has_fpga_seq_num()) {
             FATAL_ERROR("Another producer of buffer {:s} starts at fpga_seq_num={:d}, but the "
                         "input of {:s} has no fpga_seq_num",
-                        frb_pl_mask_name, out_meta->get_fpga_seq_num(), get_unique_name());
+                        frb1_pl_mask_name, out_meta->get_fpga_seq_num(), get_unique_name());
         }
     }
 
     const std::uint64_t* const in_memory =
         reinterpret_cast<const std::uint64_t*>(pl_mask.get_ndarray().data());
-    std::uint8_t* const out_memory = frb_pl_mask.get_ndarray().data();
+    std::uint8_t* const out_memory = frb1_pl_mask.get_ndarray().data();
 
     const std::ptrdiff_t size_in = pl_mask.get_ndarray().extent(0);
     const std::ptrdiff_t pos_in = pl_mask.get_read_valid().begin() % size_in;
-    const std::ptrdiff_t size_out = frb_pl_mask.get_ndarray().extent(0);
-    const std::ptrdiff_t pos_out = frb_pl_mask.get_write_valid().begin() % size_out;
-    assert(frb_pl_mask.get_write_valid().size() == num_times_out);
+    const std::ptrdiff_t size_out = frb1_pl_mask.get_ndarray().extent(0);
+    const std::ptrdiff_t pos_out = frb1_pl_mask.get_write_valid().begin() % size_out;
+    assert(frb1_pl_mask.get_write_valid().size() == num_times_out);
 
     // Inner (fast) input dimension as `uint64` elements: P * (D/8)
     const std::ptrdiff_t num_elements =
@@ -417,7 +429,7 @@ cudaEvent_t cudaPLMaskFRB1::execute(cudaPipelineState& /*pipestate*/,
 void cudaPLMaskFRB1::finalize_frame() {
     // Advance the ring buffers
     pl_mask.finish_read();
-    frb_pl_mask.finish_write();
+    frb1_pl_mask.finish_write();
 
     cudaCommand::finalize_frame();
 }

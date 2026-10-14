@@ -83,7 +83,7 @@ void cpu_quantize4_chunk(const __half* __restrict__ const input,
         sum += x;
         sum2 += x * x;
     }
-    // Calculate the mean and corrected standard deviation. (Without valid values these are nan,
+    // Calculate the mean and corrected standard deviation. (Without valid values the mean is nan,
     // and the offset and scale below become zero.)
     const float mean = sum / count;
     const float stddev = sqrt(fmax(0.0f, sum2 / count - mean * mean));
@@ -191,11 +191,12 @@ __global__ void gpu_quantize4_chunks(
     // The packet loss mask is the same for all beams. Load this thread's 8 values once, and count
     // the valid values in the chunk; masked samples are skipped when finding the mean and
     // standard deviation.
-    float valid[8];
-    for (int i = 0; i < 8; ++i)
-        valid[i] = pl_mask[(dim1 + 8 * thread + i) * pl_mask_stride + dim2] ? 1.0f : 0.0f;
-    float count = ((valid[0] + valid[1]) + (valid[2] + valid[3]))
-                  + ((valid[4] + valid[5]) + (valid[6] + valid[7]));
+    bool valid[8];
+    int count = 0;
+    for (int i = 0; i < 8; ++i) {
+        valid[i] = pl_mask[(dim1 + 8 * thread + i) * pl_mask_stride + dim2];
+        count += valid[i];
+    }
     count += __shfl_sync(0xffffffff, count, thread ^ 0x01);
     count += __shfl_sync(0xffffffff, count, thread ^ 0x02);
     count += __shfl_sync(0xffffffff, count, thread ^ 0x04);
@@ -249,6 +250,7 @@ __global__ void gpu_quantize4_chunks(
         sum += __shfl_sync(0xffffffff, sum, thread ^ 0x10);
         sum2 += __shfl_sync(0xffffffff, sum2, thread ^ 0x10);
 
+        // (Without valid values the mean is nan, and the offset and scale below become zero.)
         const float mean = sum / count;
         const float stddev = sqrt(fmax(0.0f, sum2 / count - mean * mean));
         constexpr int outi_min = -7;
