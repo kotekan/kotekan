@@ -472,7 +472,7 @@ void frbNetworkSend::main_thread() {
                                     if (send_len != expected_send_len) {
                                         char ip_addr[64] = "<unknown>";
                                         ERROR("Error sending to {:s}: {:d}",
-                                              inet_ntop(AF_INET, hdr.msg_name, ip_addr,
+                                              inet_ntop(AF_INET, &static_cast<sockaddr_in*>(hdr.msg_name)->sin_addr, ip_addr,
                                                         sizeof(ip_addr)),
                                               send_len);
                                     }
