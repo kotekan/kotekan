@@ -4,8 +4,8 @@
     python3 config/bffs_bad_inputs.py                 # print the update body (JSON)
     python3 config/bffs_bad_inputs.py --out FILE      # write it, for a POST
 
-bffs (the observatory's bad-feed flagger, on choco) keeps its list as FEED LABELS in
-/var/lib/choco/bffs/state.json and POSTs their POSITIONS in the label list it keeps beside them --
+bffs (the observatory's bad-feed flagger, on choco) keeps its list as feed labels in
+/var/lib/choco/bffs/state.json and POSTs their positions in the label list it keeps beside them --
 the flat [P][D] input index -- with start_time = its update time plus choco's sync_delay
 (/etc/choco/bffs.yaml). choco relays that to every node in its cx group, except nodes in
 maintenance mode, which ours are: choco would also push configs we must not have overwritten. So
@@ -13,7 +13,7 @@ we rebuild the identical body here, for two consumers that must never disagree:
 
   * config/gen_chord_gnss_config.py injects it into every node config it writes, so a node starts
     on the current list (a node down when bffs changed it would otherwise start on a stale one);
-  * scripts/gnss/bad_inputs_cron.sh POSTs it to the running nodes whenever bffs changes it.
+  * scripts/gnss/site/bad_inputs_cron.py POSTs it to running GNSS nodes whose list differs.
 
 Identical means byte-identical to what a stock node holds: scripts/gnss/stock_parity.py --live
 compares it.

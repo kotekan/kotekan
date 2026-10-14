@@ -1,18 +1,16 @@
 #!/usr/bin/env python3
-"""RECORD_FLOATS / ELEM_FLOATS, read from the C++ header that defines them.
+"""Record and wire-frame layout constants (RECORD_FLOATS, ELEM_FLOATS, ...), read from the C++
+headers that define them.
 
-WHY THIS FILE EXISTS. The record width is a C++ constant (gnssRecord.hpp) but the frame is
-sized in yaml (`n_prn * record_floats * sizeof_float`), and until 2026-08-07 nothing linked
-the two. RECORD_FLOATS went 24 -> 26 on the CHORD branch and the airspy generator source kept
-saying 24, so 34 airspy stages FATAL'd at construction on a frame 256 B short per PRN. The
-guard that caught it is good (it prints the number to use), but the drift should not be
-possible in the first place -- so the generator now READS the header instead of restating
-it. It had the same latent bug in a different disguise: a Python literal
-`26 + n_elem * 12` whose comment claimed the value was "kept in one place".
+The widths are C++ constants (gnssRecord.hpp, gnssTelem.hpp, gnssGpuChain.hpp) but kotekan
+frames are sized in the generated yaml (`n_prn * record_floats * sizeof_float32`). The generator
+reads the constants from the headers instead of restating them, so they cannot drift. The
+frame-size expressions below (telem_frame_bytes, cube_frame_bytes) restate their C++
+counterparts and must change with them.
 
 Parsed, not imported: these are plain `constexpr int` one-liners, and a regex over them is
-cheaper and more robust than any build-time codegen. If the header stops matching, this
-raises rather than silently returning a stale default.
+cheaper than any build-time codegen. If a header stops matching, this raises rather than
+silently returning a stale default.
 """
 
 import os
@@ -74,21 +72,13 @@ def record_stride(n_elem):
 def prnctl_bytes():
     """sizeof(gnss_gpu::PrnCtl) -- parsed from its static_assert in gnssGpuChain.hpp.
 
-    ⚠️ THIS EXISTS BECAUSE THE LITERAL 64 TOOK THE FLEET DOWN (2026-08-16). The CHORD
-    generator sized the path-B epl/ctl frames by restating gnss_gpu::frame_bytes() inline,
-    `48 + 8*16 + 64*16*n_prn + ...`, where the 64 was sizeof(PrnCtl). Adding two doubles to
-    PrnCtl for #72 grew it to 80, the generated frame stayed 6144 B short
-    (= (80-64)*16*24), and EVERY NODE refused to start:
-
-        GnssN2RecordAssemble: out_buf frame_size 5615792 < 5621936 needed
-
-    The stage's own guard caught it loudly rather than corrupting memory, which is the design
-    working -- but the drift should not have been possible. Same medicine as record_floats:
-    read the number, never restate it.
+    The generator sizes the epl and ctl frames with it (gnss_gpu::frame_bytes, restated in
+    Python with this one term read). A literal copy goes stale when PrnCtl grows, and every node
+    then refuses to start on a frame that is (new - old) * 16 * n_prn bytes short.
 
     Parsed from the static_assert rather than a constexpr because the size is the compiler's
-    to decide; the assert is the one place the expected value is written down, and it is
-    checked against reality at every build.
+    to decide; the assert is the one place the expected value is written down, and every build
+    checks it.
     """
     with open(CHAIN_HEADER) as fh:
         text = fh.read()
@@ -103,33 +93,33 @@ def prnctl_bytes():
 
 
 def telem_header_bytes():
-    """gnss::TELEM_HEADER_BYTES -- the task #59 wire header (gnssTelem.hpp)."""
+    """gnss::TELEM_HEADER_BYTES -- the telemetry wire frame's header (gnssTelem.hpp)."""
     return _read("TELEM_HEADER_BYTES", TELEM_HEADER)
 
 
 def telem_max_chan():
-    """gnss::TELEM_MAX_CHAN -- comb columns reserved per wire row."""
+    """gnss::TELEM_MAX_CHAN -- the most comb columns a wire row may carry (not the stride)."""
     return _read("TELEM_MAX_CHAN", TELEM_HEADER)
 
 
 def chan_floats():
-    """gnss::CHAN_FLOATS -- floats per comb column (prompt re, im, energy)."""
+    """gnss::CHAN_FLOATS -- floats per comb column (re, im, energy for prompt, early, late)."""
     return _read("CHAN_FLOATS")
 
 
 def telem_row_floats(n_cols):
-    """gnss::telem_row_floats -- the record header PLUS this sender's own comb columns."""
+    """gnss::telem_row_floats -- the record header plus this sender's own comb columns."""
     return record_floats() + n_cols * chan_floats()
 
 
 def telem_frame_bytes(n_rec, n_prn, n_cols):
-    """Bytes of one telemetry wire frame -- the SAME expression as gnss::telem_frame_bytes.
+    """Bytes of one telemetry wire frame -- the same expression as gnss::telem_frame_bytes.
 
-    ⚠️ THE SHAPE IS PER SENDER: an instance ships the comb columns it despreads and its chain's
-    PRN row count, so this is not one number for the fleet. The GATHER's receive buffer is sized
-    to the WIDEST sender and accepts anything up to that (bufferRecv `allow_short_frames`); a
-    sender whose frame exceeds it has its connection closed by bufferRecv, so the gather must be
-    sized from the max over every sender the same generator run produces.
+    The shape is per sender: an instance ships the comb columns it despreads and its chain's PRN
+    row count. The gather's bufferRecv accepts any frame up to its buffer (`allow_short_frames`)
+    and closes the connection of a sender whose frame exceeds it, so the generator sizes the
+    gather for the widest possible sender on each axis: telem_rows_max() rows and TELEM_MAX_CHAN
+    columns.
     """
     return telem_header_bytes() + n_rec * n_prn * telem_row_floats(n_cols) * 4
 
@@ -144,8 +134,8 @@ def cube_header_bytes():
 
     Parsed from the header's own expression rather than restated here: it is written as
     `104 + CUBE_CHAIN_CHARS`, and a literal copy would go stale the first time a field is
-    added -- silently, because a frame that is merely the WRONG SIZE is closed by bufferRecv
-    with a message about frame_size and nothing about this file.
+    added -- silently, because bufferRecv closes a frame of the wrong size with a message about
+    frame_size and nothing about this file.
     """
     with open(HEADER) as fh:
         text = fh.read()
@@ -165,13 +155,12 @@ def cube_header_bytes():
 
 
 def cube_frame_bytes(max_prn, max_bins, n_elem):
-    """Bytes of one beam-cube wire frame -- the SAME expression as gnss::cube_frame_bytes.
+    """Bytes of one beam-cube wire frame -- the same expression as gnss::cube_frame_bytes.
 
-    ⚠️ UNIFORM ACROSS EVERY SENDER, like the task #59 telemetry frame and for the same reason:
-    one bufferRecv serves the whole fleet, and it CLOSES any connection whose frame_size
-    disagrees with its buffer. Chains carry 1-7 covering channels and 24-32 PRN slots, so the
-    frame is sized for the maxima and the unused rows are zero -- padding on the wire, stripped
-    by the archiver.
+    Uniform across every sender, unlike the telemetry frame: one bufferRecv serves the whole
+    fleet and closes any connection whose frame_size disagrees with its buffer. The frame is
+    sized for the maxima (the generator's CUBE_MAX_PRN slots and CUBE_MAX_BINS channels); a
+    chain with fewer sends zero rows, which the offline converter strips.
     """
     return (
         cube_header_bytes()

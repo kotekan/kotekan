@@ -1,14 +1,18 @@
 #!/usr/bin/env python3
-"""Map the 1176.45 MHz GNSS signals onto the CHORD comb, per node.
+"""Map GNSS signals onto the CHORD comb, per node.
 
 A Python mirror of lib/stages/gnss/gnssBandPlan.cpp: same half_bandwidth /
 occupied_band / covering_channels semantics, including the open-interval
 passband overlap test (a channel counts if its passband overlaps the occupied
-band at all, not merely if its centre falls inside).
+band at all, not merely if its centre falls inside). One difference: for a
+time-multiplexed signal (L2C CM/CL) the C++ half-bandwidth is twice the chip
+rate, while this mirror uses the chip rate (signal_table() does not parse
+time_multiplexed).
 
-Used to answer, before any config exists: which freq_ids does each node hold
-that carry the signal, how much of the main lobe do a given set of nodes see,
-and where does the delay response alias?
+config/gen_chord_gnss_config.py takes each chain's covering channels from
+here. As a script it reports, for the node file's primary signal: which
+freq_ids each node holds that carry it, how much of the main lobe a given set
+of nodes sees, and where the delay response aliases.
 
     python3 config/chord_band_plan.py                 # report for all nodes
     python3 config/chord_band_plan.py --nodes cx19 cx27
@@ -61,11 +65,10 @@ def covering_channels(chans, carrier_hz, chip_rate_hz, max_doppler_hz, **kw):
 def signal_table(header=None):
     """Every SignalDescriptor in lib/stages/gnss/gnssSignal.hpp, by name.
 
-    PARSED, not transcribed. The descriptors are spec constants that already live in
-    exactly one place, and a second copy here would drift silently -- the failure mode
-    would be a config whose covering channels disagree with the replica the stage builds,
-    i.e. a tracker looking in the wrong part of the band and reporting noise (the DC-replica
-    lesson, chord_gnss_node.yaml). Each row is:
+    Parsed, not transcribed: the descriptors are spec constants that live in one place, and a
+    second copy here would drift silently. A config whose covering channels disagree with the
+    replica the stage builds has its tracker look in the wrong part of the band and report
+    noise. Each row is:
 
         inline constexpr SignalDescriptor NAME = {
             "NAME", carrier_hz, chip_rate_hz, code_length, code_period_s,
