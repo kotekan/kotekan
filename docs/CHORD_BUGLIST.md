@@ -8,7 +8,7 @@ What is open on the CHORD side (branch `kv/chord-gnss`). Closed items are in
 present except the 09-14 mitigations of #131 (gone with the launchers) and the generator's profiling switch #114 relied
 on. Closed since 10-11: **#55, #62, #63, #113, #115, #121, #125, #144, #146 residual, #150, #159, #161, #172, #173,
 #174**, the #1750 latent lock (PR #1763), and the 10-11 batch (#31, #34, #88, #102, #107 residual, #112, #123,
-#130/#153, #133, #149, #160, #162). Opened: **#175–#189**. The same evening the ready-now set ran in two reviewed lanes and merged: **#186, #183** closed; **#176, #175** have their guards built (live since the 21:05Z broker restart); **#119, #152** are instrumented; **#94**'s gauge test is in; **#131**'s shutdown race is fixed and its death not reproduced. The 10-11 and 10-13 memory notes record every check.
+#130/#153, #133, #149, #160, #162). Opened: **#175–#189**. The same evening the ready-now set ran in two reviewed lanes and merged: **#186, #183** closed; **#176, #175** have their guards built (live since the 21:05Z broker restart); **#119, #152** are instrumented; **#94**'s gauge test is in; **#131**'s shutdown race is fixed and its death not reproduced. Overnight (10-14) the hygiene set merged, nothing live changed: the `test_skyscope` flake and the replay goldens fixed, **#129**'s GLONASS propagator landed, **#180** and **#179** fixed in the tree for the next node binary. The 10-11 and 10-13 memory notes record every check.
 
 **Fleet state (10-13): the F-engine is OFF** (since 10-12 17:05Z, for about a week); the six nodes are down, their hosts
 up; the broker, obs writers and viewer run the merged tree on the gnss VM, the gather and aggregator the 10-12 binaries.
@@ -100,6 +100,17 @@ and its flag. The replays predate the L5 code fix (#177) and telemetry v8, so re
 arms would bless a run nobody can reproduce.
 **Fix:** once the F-engine is back, record fresh replays from the live chains, retire the four arms and re-bless the
 digests in one commit. Check: `broker_equiv` identical on the new replays before and after the retire.
+
+**10-13, the goldens (`8a392bd66`, `d6042214b`, `8b276f8ab`):** three of the six committed `scripts/gnss/fixtures/*.digest`
+had been red since c4512de93. Bisected on cf06: `broker_onsky_l5` moved at f29211e30 then 34acbcf90 (#161: the NH hint
+learns nothing while the solve is unestablished); `broker_onsky_e5a_20260826` and `b2a_20260826` at f94da37de (the lobe
+DLL changed the gather taps' shape, so the recorded per-instance replies no longer parse and the two comb cycles fall to
+the polled discriminator). Every move has its commit; all seven are re-blessed at the current tree, `l5_holds` has its
+first golden, and `broker_equiv.py check` is green on all seven. **What the bisect exposed:** the three 08-26 replays
+diverge from their recordings on the gather GETs (~1760 `TRANSCRIPT DIVERGENCE` lines each), so no golden exercises the
+C++-taps arm or `PROMPT-CN0` from recorded taps — the gate covers the polled fallback, not the arm that runs live. The
+fresh captures this entry waits for must be recorded with the gather GET order the replay asks for (or the replay made
+order-tolerant), or the comb-taps arm stays uncovered.
 
 ### #185 — the #98 relative integrity veto never ran: `_FROZEN` pinned `integ-veto-baseline-s` to 0 over the yaml's 600 (2026-10-13)
 **What [tree]:** the chains yaml asked for the relative veto (`integ-veto-baseline-s: 600`, #98) but the broker's
@@ -502,6 +513,15 @@ enables `--cp-rate-model-tol`; one transcript recorded with the live knobs would
 wrap and see whether the dragging step rides a det-dop jump (~1560 chips per Hz of Doppler error at that run age) or a
 low-snr sample; the fix is then a higher `--fit-min-snr` or a seed-currency step gate, not the flush.
 
+**10-13 [tree]: the replay gate now reaches the guard.** `broker_equiv.py` takes broker flags after `--` for `digest`
+and `bless` (appended after the transcript's argv, so they override it) and `bless --variant <name>` writes a second
+golden that records those flags; `check` verifies every golden of a transcript (`d6042214b`).
+`broker_onsky_l5_holds.jsonl.gz.cprate.digest` (`8b276f8ab`) replays the holds capture under the live knobs
+(fit-hist-len 256, fit-min-snr 30, cp-rate-model-tol 0.5, fit-flush-on-reject 3). On that 210-s capture the guard is a
+no-op — 0 REJECTED, 0 FLUSHED, max fit-to-clock deviation 0.14 chips/s — so the golden pins the no-op; the branch is
+reached (tol 1e-6 / flush 1: 18 rejections, 54 flushes). Not covered: `--fit-gap-s 1200` and `--cp-rate-model-primary 1`
+(the transcript records 3600 and the variant appends only the four knobs).
+
 ### #120 — the stack's boot path: the VM's units are untested across a reboot, and cf06's cube leg has no unit
 **[live 10-11]** The broker, gather, aggregator, eight obs writers, viewer and rail run on the gnss VM as user units
 (`~/.config/systemd/user`; `gnss-stack.target` in `default.target.wants`; `Linger=yes`; every unit
@@ -555,6 +575,24 @@ and never from Celestrak. A TLE catalogue lists an object in orbit, which is not
 `_n2dual/commands`), so C56–C58 are outside it even though SINEX has them assigned and BRDC
 carries C56/C58. Small, and separate from the above.
 
+**✅ THE PROPAGATOR LANDED (10-14, `330e11d04`; in the tree, live on the broker side at its next restart).**
+`parse_rinex_nav` reads R records (four lines; the PZ-90.11 state vector kept in metres; epoch UTC + 18 s) and
+`glonass_state` integrates the ICD equations of motion (J2, the Coriolis and centrifugal terms, the record's lunisolar
+accelerations held constant) by RK4 at 60 s; `sat_pos_clk`/`_pos_only` branch on R, so `predict_all`,
+`transit_arcs.sat_azel` and everything keyed on `OMEGA_E` place GLONASS. **Validated** against GFZ0MGXRAP DOY 284
+(MGEX rapid, from `ftp://gssc.esa.int/gnss/products/<week>/`; igs.ign.fr refuses cf06): 21 satellites, 5990 epochs
+within ±15 min of a record, 3.39 m rms, max 8.16 m (R12); the residual is a per-satellite constant (phase centre vs
+centre of mass), not integrator drift. `test_glonass_eph.py` pins R02 against the SP3 and a known pass (78.90° el to
+0.01°). All seven replay digests are unchanged with GLONASS integrated inside them.
+**What gains GLONASS for free:** the transit sky (#144 — NORAD 40748 is the one object still in no BRDC), the railing
+veto pooled over constellations (`sky.py closest_to_boresight`, the nightly cube's veto), `gnss_transit_arcs`,
+`viscap_metadata`'s `sat_azel.csv`; an R broker would now take a BRDC almanac instead of TLE (nothing runs one).
+**Still G/E/C-only:** the supply's hourly coverage target (`_HOURLY_TARGET`), `gen_fleet` `SYS_OF`, the cube's
+`CHAIN_SYS`; accuracy past ±15 min from a record is unvalidated (`predict_all`'s 4-h default lets it happen, with one
+warning per process). **Decide before the next broker restart:** GLONASS enters the pooled railing veto and the transit
+sky as soon as the broker restarts on this tree — wanted, or gated? The #56 1202 MHz feature can now be tested against
+real GLONASS positions from the archive.
+
 ## Open — the fix is in the NODE BINARY (queue for the next cycle)
 
 
@@ -605,11 +643,26 @@ the 511.5 kHz component rate. The bank models the 1.023 Mcps combined stream, wh
 **Fix:** use the combined rate (`chip_rate_hz * 2` when `time_multiplexed`). Check: the search's L2C channel count
 before/after, and the aggregator's L2C `search_snr` on the same satellites.
 
+**Fixed [tree 10-13, `55d222a79`; rides the next node binary]:** `half_bandwidth_hz` returns `2 * chip_rate_hz` when the
+descriptor is time-multiplexed (L2C CM and CL): 1.023 MHz, the combined stream's first null. `test_gnss_band_plan` pins
+the half-bandwidth and the covering count — on a 200 kHz grid centred on L2 the L2C set goes from 7 channels to 11, the
+span L1 C/A gets; the new cases fail against the unfixed function (7, 511.5 kHz). Nothing deployed changes until the
+aggregator runs the next binary; then its L2C channel set roughly doubles and the check is the L2C `search_snr` on the
+same satellites before/after (and the per-subband channel budget, if any L2C config is tight).
+
 ### #180 — Galileo E1/E6 memory codes index the table before range-checking the PRN (2026-10-12)
 **What [tree]:** `generate_e1b/e1c/e6b/e6c_code` evaluate `*_HEX[prn - 1]` before `decode()` throws for PRN outside
 1..50, so an out-of-range PRN reads past the array first. `ChannelizedReplicaBank::set_prn` relies on the throw to refuse
 a PRN with no code, so a swap to PRN > 50 on a live E6 or E1 chain is undefined behaviour. E5a/E5b check first.
 **Fix:** range-check in the four generators before indexing. Check: a boost case calling each with 0 and 51.
+
+**Fixed [tree 10-13, `8b3c8fa40`; rides the next node binary]:** `decode()` in both files takes the table and indexes it
+after the 1..50 check; the four generators pass the table, the exception is unchanged so `set_prn`'s catch sees no
+difference. New `tests/boost/test_galileo_codes`: PRN 1 and 50 first-24-chip pins for E1B/E1C/E6B/E6C against the ICD
+hex (an independent Python read) and the balances, and the throw on 0/51 for all five generators. The plain throw cases
+pass at HEAD too — the stray read is a pointer never dereferenced — so the defect was shown with AddressSanitizer
+(global-buffer-overflow 8 bytes before `E1B_HEX` before, clean after). kotekan and the ten existing GNSS boost suites
+pass on cf05. Closes at the node cycle that carries it.
 
 ### #181 — the replica bank applies no shared overlay for B2I, L3OC and L2OC (2026-10-12, dormant)
 **What [tree]:** the shared-overlay ladder in the `ChannelizedReplicaBank` constructor omits `BDS_B2I`, `GLO_L3OC_P/D`
