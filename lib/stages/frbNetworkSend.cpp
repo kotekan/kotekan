@@ -273,6 +273,22 @@ void frbNetworkSend::main_thread() {
             metadata = get_chord_metadata(in_buf, frame_id);
             in_coarse_freq = metadata->get_coarse_freq();
 
+            // sanity checks on input data
+            const auto offsetscale_metadata = get_chord_metadata(offsetscale_buf, frame_id);
+            if (metadata->get_fpga_seq_num() != offsetscale_metadata->get_fpga_seq_num()) {
+                FATAL_ERROR(
+                    "beam ({:s}) and offsetscale buffers ({:s}) are not in sync ({:d} != {:d})",
+                    in_buf->buffer_name, offsetscale_buf->buffer_name, metadata->get_fpga_seq_num(),
+                    offsetscale_metadata->get_fpga_seq_num());
+            }
+            if (in_coarse_freq.size() != size_t(num_frequencies * _factor_upchan_out)) {
+                FATAL_ERROR(
+                    "This stage hard-codes an upchannelization factor of {:d} and thus expects "
+                    "{:d} frequencies for {:d} coarse frequencies but received {:d}",
+                    _factor_upchan_out, num_frequencies * _factor_upchan_out, num_frequencies,
+                    in_coarse_freq.size());
+            }
+
             clock_gettime(CLOCK_MONOTONIC, &t1);
 
             add_nsec(t0, time_interval);
