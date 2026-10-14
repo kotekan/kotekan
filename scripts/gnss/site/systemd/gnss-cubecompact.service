@@ -1,0 +1,29 @@
+[Unit]
+Description=CHORD GNSS beam-cube compactor loop (raw -> L0 -> rungs -> daily publish)
+Documentation=file:///home/kvand/gnss/kotekan/scripts/gnss/site/cubecompact_up.sh
+# This host only (see gnss-cube.target).
+ConditionHost=|cf06
+ConditionHost=|cf06.site.chord-observatory.ca
+RequiresMountsFor=/home/kvand /mnt/cs00
+After=gnss-cubearch.service
+PartOf=gnss-cube.target
+
+[Service]
+Type=simple
+# What cubecompact_up.sh refuses on: no h5py (venv-ft has none), no raw tree.
+ExecStartPre=/home/kvand/gnss/venv/bin/python -c "import h5py, numpy"
+ExecStartPre=/usr/bin/test -d /mnt/cs00/data/kvand/gnss_cube/raw
+ExecStart=/home/kvand/gnss/kotekan/scripts/gnss/site/run_component.sh cubecompact
+# ⚠️ TWO COMPACTORS ON ONE L0 TREE CORRUPT IT, AND SO DOES HALF A PASS. A stop therefore
+# signals the LOOP ALONE (KillMode=mixed): it lets an in-flight gnss_cube_compact.py or publish
+# finish (~25 s; the once-a-day rung + publish pass, minutes) and exits; only after the
+# timeout is anything left killed.
+KillMode=mixed
+TimeoutStopSec=900
+Restart=on-failure
+RestartSec=60
+StandardOutput=append:/tmp/gnss_cubecompact.log
+StandardError=inherit
+
+[Install]
+WantedBy=gnss-cube.target

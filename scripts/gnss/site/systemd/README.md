@@ -28,3 +28,24 @@ crontab.
 `gnss-obs@.service` is templated on the chain name; `gnss-stack.target` pulls in the eight
 instances the chain manifest lists. Keep that list and
 `config/gnss_chains_chord.yaml` in step — the manifest is the armed authority, this is a mirror.
+
+## The cf06 cube leg: `gnss-cube.target`
+
+`gnss-cubearch.service` (the beam-cube archiver, `cubearch_up.sh --check` as its pre-flight) and
+`gnss-cubecompact.service` (the compactor loop, which finishes its in-flight pass on a stop)
+carry `ConditionHost=cf06` and hang off `gnss-cube.target`, not the stack target. The install
+script copies them with the rest, and they stay inert everywhere until the target is enabled
+**on cf06**, with the by-hand archiver and compactor stopped first (#120):
+
+```sh
+systemctl --user daemon-reload && systemctl --user enable --now gnss-cube.target
+```
+
+Their logs stay where the launchers put them, `/tmp/gnss_cubearch.log` and
+`/tmp/gnss_cubecompact.log` on cf06.
+
+## Beside them, not of them
+
+`claude-screen.service` in the same installed directory is the operator console (the Claude Code
+sessions in the `claude` screen, resumed with Remote Control at boot). It is installed by hand
+from `~/.config/claude-screen`, not by `install_user_units.sh`, and is not part of the stack.

@@ -2,6 +2,7 @@
 # Bring the GNSS BEAM-CUBE ARCHIVER up on the host it is run from (cf06 in practice).
 #
 #   scripts/gnss/site/cubearch_up.sh [config] [log]
+#   scripts/gnss/site/cubearch_up.sh --check [config]   # the pre-flight only (the unit's ExecStartPre)
 #
 # This is the far side of the beam-cube push leg: one bufferRecv on :11070 for the whole fleet's
 # completed ~1 s (subband x element) windows, and a rawFileWrite that lands them on cs00. It is
@@ -15,15 +16,18 @@
 # into a missing archiver buries its own logs, and the windows sent meanwhile are gone -- the
 # senders drop rather than block, which is what keeps an archive from ever stalling a tracker.
 #
-# ⚠️ NOTHING RESTARTS THIS ON A REBOOT. cf06 takes an unattended kernel reboot at 03:03 whenever
-# one lands (2026-08-12, 08-19, 09-05) and every process here is a manual nohup, so the archive
-# simply stops with the fleet looking perfectly healthy. Until a boot unit exists, a gap that
-# starts at 03:0x is this, not the instrument.
+# ⚠️ A REBOOT STOPS A BY-HAND ARCHIVER. cf06 takes an unattended kernel reboot at 03:03 whenever
+# one lands (2026-08-12, 08-19, 09-05); a nohup'd process simply stops with the fleet looking
+# perfectly healthy, and a gap that starts at 03:0x is this, not the instrument. The boot unit
+# is gnss-cubearch.service (gnss-cube.target, scripts/gnss/site/systemd; its ExecStartPre is
+# this script's --check); once that target is enabled on cf06, use it instead of this launcher.
 #
 # Three hard-won rules: run the DPDK-free binary (NFS holds two build trees), poll for the
 # port instead of sleeping, and check the log for a FatalError rather than trusting that a
 # process exists.
 set -u
+CHECK=0
+[ "${1:-}" = "--check" ] && { CHECK=1; shift; }
 K=/home/kvand/gnss/kotekan
 H=$(hostname -s)
 BIN=${GNSS_BIN:-$K/build_nodpdk/kotekan/kotekan}   # cf06 has no DPDK
@@ -86,6 +90,10 @@ if [ "$MISMATCH" = 1 ]; then
     echo "connection and deliver NOTHING. Regenerate both from the same tree:" >&2
     echo "  python3 $K/scripts/gnss/gen_fleet.py $K/config/gnss_fleet_chord.yaml" >&2
     exit 1
+fi
+if [ "$CHECK" = 1 ]; then
+    echo "cube archiver pre-flight OK on $H: $(basename "$CFG"), recv :$PORT, frame $FRAME B, $DIR writable"
+    exit 0
 fi
 
 pkill -9 -f "[k]otekan -c .*cubearch" 2>/dev/null || true

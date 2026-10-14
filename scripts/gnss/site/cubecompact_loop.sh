@@ -5,7 +5,13 @@ set -u
 PY=$1; TOOL=$2; RAW=$3; ROOT=$4; PERIOD=$5
 SELFDIR=$(cd "$(dirname "$0")" && pwd)   # beamcube_daily.sh is this script's sibling
 last_rung_day=""
-while true; do
+# A stop is a SIGTERM to this loop alone (gnss-cubecompact.service, KillMode=mixed). bash runs
+# the trap only once the foreground command completes, so an in-flight gnss_cube_compact.py
+# or publish finishes its file and nothing is left half-written -- two compactors on one L0
+# tree, or half a pass, corrupt it. The sleep is backgrounded so a stop during it is immediate.
+stopping=0
+trap 'stopping=1' TERM
+while [ "$stopping" = 0 ]; do
     echo "== $(date -u +%FT%TZ) compact"
     "$PY" -u "$TOOL" compact --raw "$RAW" --out "$ROOT" 2>&1
     # Yesterday's rungs, once the day has been closed for 20 min (the last raw file of a day
@@ -48,5 +54,7 @@ while true; do
         fi
         last_rung_day=$today
     fi
-    sleep "$PERIOD"
+    [ "$stopping" = 0 ] || break
+    sleep "$PERIOD" & wait $! || true
 done
+echo "== $(date -u +%FT%TZ) compactor loop stopped on SIGTERM after a complete pass"

@@ -70,11 +70,12 @@ gnss_chain_rf() {          # gnss_chain_rf <chain> -> "chain sys carrier chip co
     echo "$GNSS_CHAIN_RF" | awk -v c="$1" '$1 == c {print; found=1} END {exit !found}'
 }
 
-gnss_components() { echo "broker gather aggregator viewer obs rail"; }
+gnss_components() { echo "broker gather aggregator viewer obs rail"; }   # the VM's stack
+gnss_cube_components() { echo "cubearch cubecompact"; }                      # cf06's cube leg
 
 # ── the definitions ────────────────────────────────────────────────────────────────────────
 gnss_component() {
-    local name=${1:?gnss_component <broker|gather|aggregator|viewer|obs|rail>}
+    local name=${1:?gnss_component <broker|gather|aggregator|viewer|obs|rail|cubearch|cubecompact>}
     GNSS_CWD=""
     case "$name" in
 
@@ -148,6 +149,23 @@ gnss_component() {
                    --out "$GNSS_OBS_OUT/rf_chan_%Y%m%d.jsonl")
         ;;
 
+    cubearch)
+        # ⚠️ cf06 ONLY -- the far side of the beam-cube push leg: one bufferRecv on :11070 for
+        # the whole fleet's windows and a rawFileWrite onto /mnt/cs00. ARCHIVER FIRST, THEN THE
+        # NODES (cubearch_up.sh says why). The pre-flight -- config present, archive dir
+        # writable, sender/receiver frame_size agree -- is `cubearch_up.sh --check`, which
+        # gnss-cubearch.service runs as ExecStartPre.
+        GNSS_EXEC=("$GNSS_BIN" -c
+                   "${GNSS_CUBEARCH_CFG:-$GNSS_K/config/generated/chord_gnss_cubearch.yaml}")
+        ;;
+    cubecompact)
+        # ⚠️ cf06 ONLY -- the compactor loop (raw -> L0 -> rungs -> the daily publish): the same
+        # five arguments cubecompact_up.sh passes by hand. h5py lives in venv, never venv-ft.
+        local root=${CUBE_ROOT:-/mnt/cs00/data/kvand/gnss_cube}
+        GNSS_EXEC=("$GNSS_K/scripts/gnss/site/cubecompact_loop.sh" "$GNSS_VENV/bin/python"
+                   "$GNSS_K/python/scripts/gnss/gnss_cube_compact.py"
+                   "${CUBE_RAW:-$root/raw}" "$root" "${CUBE_COMPACT_PERIOD:-300}")
+        ;;
     *)
         echo "stack_components: unknown component '$name' (have: $(gnss_components))" >&2
         return 1 ;;

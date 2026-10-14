@@ -8,6 +8,7 @@
 #
 #     run_component.sh broker|gather|aggregator|viewer
 #     GNSS_CHAIN=gps_l5 run_component.sh obs
+#     run_component.sh cubearch|cubecompact   # cf06's cube leg (gnss-cube.target)
 #     run_component.sh --print <name>     # show argv + env, run nothing (what the gate uses)
 set -eu
 
@@ -17,7 +18,7 @@ here=$(cd "$(dirname "$0")" && pwd)
 
 PRINT=0
 [ "${1:-}" = "--print" ] && { PRINT=1; shift; }
-name=${1:?usage: run_component.sh [--print] <broker|gather|aggregator|viewer|obs>}
+name=${1:?usage: run_component.sh [--print] <broker|gather|aggregator|viewer|obs|rail|cubearch|cubecompact>}
 
 gnss_component "$name"
 [ -n "${GNSS_CWD:-}" ] && cd "$GNSS_CWD"

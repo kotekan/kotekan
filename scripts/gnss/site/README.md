@@ -11,4 +11,5 @@ Things outside the repository that name these paths, and must follow a move:
 * the gnss crontab: `eop_cron.sh`, `bad_inputs_cron.py`, `elem_ref_cron.sh`;
 * the cf06 crontab: `chain_health_cron.sh`;
 * the cf06 compactor loop, which finds `beamcube_daily.sh` beside itself: restart it with
-  `cubecompact_up.sh`.
+  `cubecompact_up.sh` (or, once `gnss-cube.target` is enabled on cf06, `systemctl --user
+  restart gnss-cubecompact`).
