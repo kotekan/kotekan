@@ -31,11 +31,6 @@
  * @brief frbNetworkSend Network transmission stage for FRB obs
  *
  *
- * This is an Kotekan stage that read packetized data from frbPostProcess and transmits 1024 beams
- * to 256 links of frb backend. frbNetworkSend distributes the out going traffic to four VLANS
- * (10.6 10.7 10.8 10.9) on single 1 Gig port. The frb total data rate is ~0.55 gbps. The node IP
- * address is derived by parsing the hostname.
- *
  * @par REST Endpoints
  * @endpoint /frb/update_gains/``gpu_id`` Any contact here triggers a re-parse of the gains file.
  * @endpoint /frb/update_destination Set the active status of param ``host`` to value of param
