@@ -12,7 +12,8 @@ over ALL tracked sats, robust median (each sat is an independent clock measureme
 outliers flag stale ephemerides / maneuvers / false locks).
 
 Supports GPS (G), Galileo (E), BeiDou-3 (C; BDT = GPST - 14 s handled; GEOs excluded
-upstream by the BEIDOU-3 name filter). Pure stdlib + math -- no georinex dependency.
+upstream by the BEIDOU-3 name filter) and GLONASS (R; a PZ-90.11 state vector integrated
+by Runge-Kutta rather than a Keplerian set). Pure stdlib + math -- no georinex dependency.
 
 Usage:
     from gnss_ephemeris import fetch_brdc, parse_rinex_nav, predict_all
@@ -23,6 +24,7 @@ Usage:
 """
 import gzip
 import math
+import warnings
 from datetime import datetime, timezone
 
 C_LIGHT = 299792458.0
@@ -31,8 +33,19 @@ BDT_GPST = -14.0  # BDT = GPST - 14 s
 GPS_EPOCH = datetime(1980, 1, 6, tzinfo=timezone.utc)
 
 # Gravitational parameter / earth rotation per constellation ICD.
-MU = {"G": 3.986005e14, "E": 3.986004418e14, "C": 3.986004418e14}
-OMEGA_E = {"G": 7.2921151467e-5, "E": 7.2921151467e-5, "C": 7.292115e-5}
+MU = {"G": 3.986005e14, "E": 3.986004418e14, "C": 3.986004418e14, "R": 3.986004418e14}
+OMEGA_E = {
+    "G": 7.2921151467e-5,
+    "E": 7.2921151467e-5,
+    "C": 7.292115e-5,
+    "R": 7.292115e-5,
+}
+# PZ-90.11 (GLONASS ICD): the oblateness term of the equations of motion. PZ-90.11 and ITRF
+# agree to centimetres, so no frame transform is applied to the result.
+A_E_PZ90 = 6378136.0
+J2_PZ90 = 1082.62575e-6
+GLONASS_STEP_S = 60.0  # RK4 step; the ICD's recommended maximum
+GLONASS_INTENDED_S = 900.0  # a record is meant for +-15 min about its epoch tb
 F_REL = -4.442807633e-10  # relativistic clock coefficient (s/sqrt(m))
 
 
@@ -49,7 +62,7 @@ def _f(s):
 
 
 def parse_rinex_nav(paths):
-    """RINEX 3 mixed nav -> {(sys, prn): [eph dicts sorted by toe_gpst]}. G/E/C only.
+    """RINEX 3 mixed nav -> {(sys, prn): [eph dicts sorted by toe_gpst]}. G/E/C/R.
 
     `paths` is a single path OR a list of paths (fetch_brdc returns a list). A list is merged
     PER-PRN: the union of every source's records, deduped by toe, so the freshest valid
@@ -90,12 +103,10 @@ def glonass_freq_channels(paths=None):
     replaced, so a hardcoded table silently goes stale and points the search at the wrong
     carrier).
 
-    ★ AND WHY IT IS NOT parse_rinex_nav(). That parser filters `sysc in "GEC"` and skips GLONASS
-    entirely, correctly: GLONASS broadcasts a position/velocity/acceleration state vector to be
-    integrated by Runge-Kutta, not a Keplerian element set, so none of the orbit code applies.
-    But k is just an INTEGER sitting in those same records -- no orbit maths needed to read it.
-    This function takes only that one field and ignores everything else, so we get the frequency
-    plan from an authoritative live source without owning a GLONASS propagator.
+    ★ AND WHY IT IS NOT parse_rinex_nav(). That parser reads the whole R record (the state
+    vector for the propagator; k is e["k"]) for every system in the file. k is just an INTEGER
+    sitting in those records -- no orbit parse needed to read it -- so a caller that wants the
+    frequency plan alone takes this one field and pays for nothing else.
 
     RINEX 3 GLONASS record = 4 lines: epoch/clock, then X/X'/X''/health, Y/Y'/Y''/**freq num**,
     Z/Z'/Z''/age. k is the 4th field of the SECOND orbit line. Returns {} if nothing parses.
@@ -145,13 +156,14 @@ def _parse_rinex_nav_file(path):
         i += 1
     i += 1
     out = {}
-    # broadcast orbit line counts per system (RINEX 3): G/E/C all use 7 orbit lines.
+    # broadcast orbit line counts per system (RINEX 3): G/E/C use 7 orbit lines, R uses 3.
     while i < len(lines):
         line = lines[i]
         sysc = line[0] if line else ""
-        if sysc not in "GEC":
+        if sysc not in "GECR":
             i += 1
             continue
+        norb = 3 if sysc == "R" else 7
         try:
             prn = int(line[1:3])
             yy, mo, dd, hh, mi, ss = (
@@ -164,19 +176,24 @@ def _parse_rinex_nav_file(path):
             )
             af = [_f(line[23:42]), _f(line[42:61]), _f(line[61:80])]
             orb = []
-            for k in range(1, 8):
+            for k in range(1, norb + 1):
                 l2 = lines[i + k]
                 orb += [_f(l2[4:23]), _f(l2[23:42]), _f(l2[42:61]), _f(l2[61:80])]
         except Exception:
             i += 1
             continue
-        i += 8
+        i += norb + 1
         toc = datetime(
             yy, mo, dd, hh, mi, ss, tzinfo=timezone.utc
         )  # in the SYSTEM time
         toc_gpst = (toc - GPS_EPOCH).total_seconds()
         if sysc == "C":
             toc_gpst -= BDT_GPST  # BDT epoch -> GPST seconds-since-GPS-epoch
+        if sysc == "R":
+            e = _glonass_record(prn, af, orb, toc_gpst + GPS_UTC_LEAP)
+            if e is not None:
+                out.setdefault((sysc, prn), []).append(e)
+            continue
         e = dict(
             sys=sysc,
             prn=prn,
@@ -235,15 +252,94 @@ def _parse_rinex_nav_file(path):
             e["toe_gpst"] = (e["week"] + 1356.0) * 604800.0 + e["toe_sow"] - BDT_GPST
         if e["sqrta"] > 1000.0:  # sanity: reject empty/garbled records
             out.setdefault((sysc, prn), []).append(e)
-        # (GLONASS and SBAS records have different layouts; skipped by the sysc filter.)
+        # (SBAS, QZSS and NavIC records are skipped by the sysc filter.)
     for k in out:
         out[k].sort(key=lambda e: e["toe_gpst"])
     return out
 
 
+def _glonass_record(prn, af, orb, tb_gpst):
+    """GLONASS R record -> eph dict. The three orbit lines carry X/X'/X''/health, Y/Y'/Y''/k and
+    Z/Z'/Z''/age in PZ-90.11 km; stored here in metres. The epoch is tb in UTC, so the caller
+    passes it as GPST. af0/af1 are the RINEX fields (-tau_n, +gamma_n), the same sign convention
+    as the G/E/C clock polynomial, so the clock reads af0 + af1 * (t - toc) for every system."""
+    pos = (orb[0] * 1e3, orb[4] * 1e3, orb[8] * 1e3)
+    if (
+        math.sqrt(sum(p * p for p in pos)) < 1.0e6
+    ):  # sanity: reject empty/garbled records
+        return None
+    return dict(
+        sys="R",
+        prn=prn,
+        af0=af[0],
+        af1=af[1],
+        frame_time=af[2],
+        pos=pos,
+        vel=(orb[1] * 1e3, orb[5] * 1e3, orb[9] * 1e3),
+        acc=(orb[2] * 1e3, orb[6] * 1e3, orb[10] * 1e3),
+        health=orb[3],
+        k=int(round(orb[7])),
+        age=orb[11],
+        toc_gpst=tb_gpst,
+        toe_gpst=tb_gpst,
+    )
+
+
+def _glonass_deriv(s, acc):
+    """d/dt of the state (x, y, z, vx, vy, vz) in the rotating PZ-90.11 frame: central + J2
+    gravity, centrifugal and Coriolis terms, and the record's lunisolar acceleration held
+    constant (GLONASS ICD equations of motion)."""
+    x, y, z, vx, vy, vz = s
+    r2 = x * x + y * y + z * z
+    r = math.sqrt(r2)
+    mu = MU["R"]
+    w = OMEGA_E["R"]
+    g = -mu / (r2 * r)
+    j = -1.5 * J2_PZ90 * mu * A_E_PZ90 * A_E_PZ90 / (r2 * r2 * r)
+    z5 = 5.0 * z * z / r2
+    return (
+        vx,
+        vy,
+        vz,
+        g * x + j * x * (1.0 - z5) + w * w * x + 2.0 * w * vy + acc[0],
+        g * y + j * y * (1.0 - z5) + w * w * y - 2.0 * w * vx + acc[1],
+        g * z + j * z * (3.0 - z5) + acc[2],
+    )
+
+
+def glonass_state(e, t_gpst):
+    """PZ-90.11 ECEF position (m) and velocity (m/s) at t_gpst: 4th-order Runge-Kutta from the
+    record's state at tb, at GLONASS_STEP_S or finer. A record is meant for +-15 min about tb;
+    further is allowed with a warning, since the oblateness-only model drifts past that."""
+    dt = t_gpst - e["toe_gpst"]
+    if abs(dt) > GLONASS_INTENDED_S:
+        warnings.warn(
+            "GLONASS record propagated beyond 15 min of its epoch", stacklevel=2
+        )
+    n = max(1, int(math.ceil(abs(dt) / GLONASS_STEP_S)))
+    h = dt / n
+    acc = e["acc"]
+    s = e["pos"] + e["vel"]
+    for _ in range(n):
+        k1 = _glonass_deriv(s, acc)
+        k2 = _glonass_deriv([s[i] + 0.5 * h * k1[i] for i in range(6)], acc)
+        k3 = _glonass_deriv([s[i] + 0.5 * h * k2[i] for i in range(6)], acc)
+        k4 = _glonass_deriv([s[i] + h * k3[i] for i in range(6)], acc)
+        s = [
+            s[i] + h / 6.0 * (k1[i] + 2.0 * k2[i] + 2.0 * k3[i] + k4[i])
+            for i in range(6)
+        ]
+    return tuple(s[:3]), tuple(s[3:])
+
+
 def sat_pos_clk(e, t_gpst):
-    """ICD Kepler propagation -> ECEF position (m), velocity (m/s), clock offset (s).
+    """ICD propagation -> ECEF position (m), velocity (m/s), clock offset (s): Kepler for
+    G/E/C, the integrated state vector for R.
     t_gpst = seconds since the GPS epoch (continuous, no week rollover)."""
+    if e["sys"] == "R":
+        pos, vel = glonass_state(e, t_gpst)
+        # -tau_n + gamma_n * (t - tb); the ICD folds the relativistic term into tau_n.
+        return pos, vel, e["af0"] + e["af1"] * (t_gpst - e["toc_gpst"])
     mu = MU[e["sys"]]
     om_e = OMEGA_E[e["sys"]]
     a = e["sqrta"] ** 2
@@ -415,6 +511,8 @@ def group_delay_s(e, signal, dcb=None):
 
 
 def _pos_only(e, t_gpst):
+    if e["sys"] == "R":
+        return glonass_state(e, t_gpst)[0]
     mu = MU[e["sys"]]
     om_e = OMEGA_E[e["sys"]]
     a = e["sqrta"] ** 2
