@@ -428,11 +428,9 @@ def main(argv=None, rx=None, publisher=None):
                 # ★ A PARSE THAT SUCCEEDS WITH ZERO SATS IS A FAILURE, not a result. Only an
                 # EXCEPTION used to reach the TLE fallback below, so an almanac that simply has
                 # nothing for this constellation left the chain hinting NOTHING -- indistinguish-
-                # able, from the outside, from codes that do not correlate. GLONASS makes this
-                # reachable by construction: gnss_ephemeris' RINEX parser filters on sysc in
-                # "GEC", so every R record is skipped and an R broker parses a full file into
-                # zero satellites, every time. Falling through to TLE is right for ANY
-                # constellation the almanac does not cover.
+                # able, from the outside, from codes that do not correlate. A BRDC file that
+                # carries nothing for this constellation parses to zero satellites; falling
+                # through to TLE is right for ANY constellation the almanac does not cover.
                 _log(
                     "almanac: BRDC parsed but has 0 %s sats%s -> treating as UNAVAILABLE and "
                     "falling back to TLE"

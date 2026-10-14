@@ -500,7 +500,7 @@ def transit_sky(ge, eph, lat, lon, alt_m, t_utc):
     off boresight on 2026-09-28, was the N^2 top vector inside 2 deg, and turned the shared model
     toward itself fleet-wide while `shared_frozen` stayed 0. Never for seeds, probes or hints --
     those keep predict_all's defaults, and nothing here carries a clock. Objects in no BRDC at all
-    (NORAD 40748, GLONASS) are still invisible; a TLE supplement is the follow-up."""
+    (NORAD 40748, BEIDOU-3S M2S) are still invisible; a TLE supplement is the follow-up."""
     pa = ge.predict_all(
         eph,
         lat,

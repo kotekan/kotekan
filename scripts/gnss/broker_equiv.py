@@ -344,7 +344,8 @@ def main():
     )
     ap.add_argument(
         "--variant",
-        help="for `bless`: write `<transcript>.<variant>.digest`, recording the flags "
+        help="for `bless`, given BEFORE the transcript (what follows it is the replay's "
+        "argv): write `<transcript>.<variant>.digest`, recording the flags "
         "after -- in it; for `check`: verify only that golden",
     )
     a = ap.parse_args()
