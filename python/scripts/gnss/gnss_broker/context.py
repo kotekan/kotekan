@@ -1,33 +1,25 @@
 """The per-chain cycle context: what a stage needs that is not its own local state.
 
-WHY THIS EXISTS. The broker's stages were extracted as NESTED routines, which cost nothing
-because a closure supplies every free name automatically. That is also the problem: it makes
-the interface invisible. Measured 2026-08-26, the 29 stages between them read **210 distinct
-free names** out of `main()`, and no stage declares which. Moving a stage into its own module
-is impossible until that set is named, and reading one honestly is hard for the same reason.
+Stages read their inputs off this object rather than out of main()'s closure, so the interface
+between the broker loop and its stages is named in one place: `__slots__`. It has two halves.
 
-THE SPLIT BELOW IS LOAD-BEARING, not organisational:
+  Stable      bound once during startup and never rebound inside the cycle loop, so safe to
+              hold by reference. Several are mutable containers (`seeds`, `cp_held`,
+              `dr_state`) that are mutated in place, never replaced; if one is ever reassigned
+              per cycle, this context silently goes stale.
 
-  STABLE      bound once during startup and NEVER rebound inside the cycle loop (measured: 39
-              of the 45 names the stages actually share). Safe to hold by reference forever.
-              Note that several are mutable containers -- `seeds`, `cp_held`, `dr_state` -- and
-              they are mutated IN PLACE, never replaced, which is exactly why holding a
-              reference is sound. If any of them ever starts being reassigned per cycle, this
-              context silently goes stale, so that is the rule to preserve.
+  Per-cycle   rebound on every pass: `t0` and `best` through `begin_cycle()`, and `status`,
+              `pred`, `up` and `probe_set` by direct assignment where they are computed. A
+              stage that reads one off the context reads this cycle's value; a stage that
+              captured it at construction would read the first cycle's forever.
 
-  PER-CYCLE   rebound on every pass: `t0`, `best`, `status`, `pred`, `up`, `probe_set`. These
-              are refreshed by `begin_cycle()` at the top of the loop. A stage that reads one
-              of these off the context is reading THIS cycle's value; a stage that captured it
-              at construction time would read the first cycle's forever.
+`t0` is the frozen cycle clock: wall time sampled once per pass (transport._Transcript.tick), so
+every gate, age and EMA in a pass evaluates at one instant rather than across the pass's own
+processing time. A stage that needs real elapsed time calls `time.time()` explicitly and says why.
 
-⚠️ `t0` IS THE FROZEN CYCLE CLOCK, NOT THE WALL CLOCK. Every gate, age and EMA in a pass
-evaluates at one instant rather than smearing over the pass's own processing time. Where a
-stage genuinely needs real elapsed time it must call `time.time()` explicitly and say why.
-
-⚠️ THIS IS A REFERENCE HOLDER, NOT A FACADE. It deliberately does no work: no properties, no
-derived values, no logic. Anything computed belongs in the stage that computes it or on one of
-the owner objects (`dllp`, `drp`, ...). A context that starts computing becomes a
-second place where behaviour lives, and then nobody can tell which one a bug is in.
+This is a reference holder, not a facade: no properties, no derived values, no logic. Anything
+computed belongs in the stage that computes it or on one of the owner objects (`dllp`, `drp`,
+...), so that behaviour lives in one place.
 
 @author Keith Vanderlinde
 """
@@ -78,9 +70,7 @@ class ChainContext(object):
         "max_gap_hops",
         "cp_to_seed_currency",
         "sig_of_last",
-        # Helper callables the stages share. They are passed rather than imported because each
-        # closes over this chain's configuration; a module-level copy would need the whole
-        # config threaded through it again.
+        # Helper callables the stages share: closures over this chain's configuration in main().
         "dh_obs",
         "cp_predicted",
         "joint_state",
@@ -88,14 +78,11 @@ class ChainContext(object):
         "p2c_tick",
         "p2c_hold",
         "decoded_entries",
-        # The newest F-engine HOP this chain has seen, for scheduling a fleet-simultaneous
-        # PRN swap (prnmap._at_hop). None whenever the axis is unknown -- NEVER 0.0, which
-        # would read as a valid hop near the epoch and schedule every swap into the past.
-        # `fe_hop_t` is the WALL INSTANT the hop was fetched, and it is not optional: the
-        # status poll happens early in the cycle and the swap posts later in the same one, so
-        # a deadline built on the raw hop is already seconds into the past by the time it is
-        # sent -- which silently degrades the swap to apply-immediately, the exact failure
-        # this scheduling exists to prevent.
+        # The newest F-engine hop this chain has seen (the combiner's pow_hop), for scheduling
+        # a fleet-simultaneous PRN swap (prnmap._at_hop), and the cycle-clock time it was read,
+        # so the scheduler can age a sample left from an earlier cycle. Both None whenever the
+        # axis is unknown, never 0.0, which would read as a valid hop near the epoch and
+        # schedule every swap into the past.
         "fe_hop_now",
         "fe_hop_t",
         # ---- owner objects (each stage's own state lives on its owner) ----------------
@@ -143,9 +130,8 @@ class ChainContext(object):
         # {combiner url: (newest pow_hop, first seen at it)}, for fleet.live_instances
         "fleet_hop_hist",
         # ---- per-cycle: written directly by the stage that computes them ---------------
-        # Attributes rather than loop locals for one reason: a module-level stage can assign
-        # `ctx.have_sig`, where it could never declare `nonlocal have_sig`. That is the whole
-        # escape from the nonlocal wall.
+        # Attributes rather than loop locals because a module-level stage can assign
+        # `ctx.have_sig`, where it could not declare `nonlocal have_sig`.
         "t0",
         "best",
         "status",
@@ -167,16 +153,13 @@ class ChainContext(object):
         "transit_pd",
     )
 
-    # Slots whose "not yet known" value is not None, as FACTORIES.
+    # Slots whose "not yet known" value is not None, as factories. They must be factories, not
+    # values: broker_multi runs several chains in one process, and a mutable literal here would
+    # be one dict on the class, shared by every chain's context.
     #
-    # ⚠️ FACTORIES, NOT VALUES, AND THIS IS NOT STYLE. `broker_multi` runs FIVE CHAINS IN ONE
-    # PROCESS. A mutable default written as a literal here would be one dict on the class,
-    # shared by every chain's context -- gal_e5a and bds_b2b would be reading and writing the
-    # same status table. That is the cross-chain contamination this project has a standing
-    # rule about, arriving through a back door.
-    #
-    # `utc0_sample0` is 0.0 rather than None because it is compared numerically before the
-    # first fetch succeeds; None would raise there instead of reading as "no anchor yet".
+    # `utc0_sample0` is 0.0 rather than None because it is used in arithmetic before the first
+    # fetch succeeds; None would raise there, while 0.0 reads as "no anchor yet" in the truth
+    # tests that guard it.
     DEFAULTS = {
         "utc0_sample0": float,
         "status": dict,
@@ -193,23 +176,16 @@ class ChainContext(object):
                 setattr(self, k, make() if make is not None else None)
 
     def begin_cycle(self, t0=_UNSET, best=_UNSET):
-        """Refresh the per-cycle half, at each point one of these is rebound.
+        """Refresh `t0` or `best`, called where the loop rebinds each.
 
-        Not a single call at the top of the pass: these do not all become available at the
-        same moment (`pred` and `up` are produced by the almanac stage partway through), so
-        each is refreshed where it is actually assigned.
+        The sentinel, not None, marks an argument as absent, so None can be set: a "skip if
+        None" default would leave the previous cycle's value in place.
 
-        ⚠️ THE SENTINEL IS NOT PEDANTRY. A value here can legitimately be None on a given
-        cycle, and a "skip if None" default would silently leave the PREVIOUS cycle's value
-        in place -- stale, plausible, and wrong. None must be settable.
-
-        ⚠️ ONLY VALUES ASSIGNED EXACTLY ONCE PER PASS BELONG HERE. `pred`, `up`, `status` and
+        Only values assigned exactly once per pass belong here. `pred`, `up`, `status` and
         `probe_set` are written straight onto the context instead, because each is rebound
-        MORE than once in a cycle -- `probe_set` starts empty and is replaced when noise
-        probes are selected. A refresh call placed after the first assignment left the context
-        holding the empty set while the loop went on using the full one; the digest gate
-        caught it. A value with two assignment sites has two chances to be forgotten, so it
-        should not have a second home at all.
+        more than once in a pass (`probe_set` starts empty and is replaced when noise probes
+        are selected); a refresh call after the first assignment would leave the context
+        holding the earlier value while the loop used the later one.
         """
         if t0 is not _UNSET:
             self.t0 = t0

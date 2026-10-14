@@ -1,18 +1,14 @@
-"""The DLL stage's instrument suite: everything hung off the fleet poll that MEASURES.
+"""The DLL stage's instrument suite: everything hung off the fleet poll that measures.
 
-WHAT IS AND IS NOT HERE. The fleet delay-lock stage does two unrelated jobs in one pass: it
-closes the code loop (that is `_stage_dll_control`, and it is the only part that actuates),
-and it runs a suite of diagnostics off the same poll of the same endpoints. This module is the
-second job. Nothing here writes a seed, a trim or a command; every function returns None and
-communicates by filling in `ctx.dllp`.
+The fleet delay-lock stage (fleetdll.stage_fleet_dll) does two jobs in one pass: it closes the
+code loop (codeloop.stage_dll_control) and it runs diagnostics off the same poll of the same
+endpoints. This module is the second job. Its functions measure, log, publish and feed
+estimators (b_sat); none writes a trim or a command, and only instr_model_primacy changes who
+owns a seed (it decides which satellites the dead-reckon model seeds). Every function returns
+None and communicates through ctx, mostly `ctx.dllp`.
 
-⚠️ THAT PROPERTY IS WHY THESE MOVED FIRST. A pure measurement has no ordering hazard against
-the control path, so relocating it cannot change what the instrument does to the sky -- only
-what it reports. The stages that actuate are a harder problem and stay nested for now.
-
-⚠️ MEASUREMENT BUGS DO NOT CRASH, THEY PRODUCE WRONG VERDICTS. That is the worst failure mode
-this project has, and each function below carries the specific trap that has already bitten
-its own measurement. Read those before changing one.
+A measurement bug does not crash; it produces a wrong verdict. Each docstring below names its
+measurement's known trap: read it before changing the function.
 
 Every function takes the `ChainContext` and nothing else -- see `context.py` for what that
 holds and, more importantly, for the stable/per-cycle split that makes holding it sound.
@@ -37,15 +33,15 @@ from gnss_broker.fleet import (
 
 
 def instr_coherent_rows(ctx):
-    """INSTRUMENT: one log line for both coherent-combine paths (fleet and N2).
+    """FLEET-COH: one log line for both coherent-combine paths (A: --dll-combiners or the
+    gather, B: --n2-combiners), plus the FLEET-INST and FLEET-DROP lines.
         
-    ⚠️ per_inst IS PRINTED BESIDE THE FLEET NUMBER ON PURPOSE. The fleet total alone cannot
-    distinguish "the combine worked" from "one instance was already strong" -- and those two have
-    opposite implications for every conclusion drawn from a coherent gain."""
+    The best single instance's snr is printed beside the fleet number on purpose: the fleet
+    total alone cannot distinguish "the combine worked" from "one instance was already
+    strong", and those have opposite implications for any conclusion drawn from a coherent
+    gain."""
     if ctx.dllp.fcoh or ctx.dllp.fcoh_n2:
-        # One line, both paths, only PRNs one of them actually detected. per_inst is
-        # printed alongside the fleet number because the fleet total alone cannot
-        # distinguish "the combine worked" from "one instance was already strong".
+        # One line, both paths, only PRNs one of them detected.
         rows = []
         for prn in sorted(set(ctx.dllp.fcoh) | set(ctx.dllp.fcoh_n2)):
             a, b = ctx.dllp.fcoh.get(prn), ctx.dllp.fcoh_n2.get(prn)
@@ -53,10 +49,10 @@ def instr_coherent_rows(ctx):
                 continue
 
             def _f(v):
-                # per_inst is url -> deep_snr (a FLOAT, not a row); best_inst_snr is
-                # already reduced for us. '*' marks a value that did NOT clear the
-                # shuffled-null floor -- printed anyway, because a number just under
-                # the bar is the useful one when judging whether a fleet is big enough.
+                # per_inst is url -> deep_snr (a float, not a row); best_inst_snr is its
+                # max. '*' marks a value that did not clear the shuffled-null floor,
+                # printed anyway: a number just under the bar is the useful one when
+                # judging whether a fleet is big enough.
                 if not v:
                     return "--"
                 return "%.0f/%d%s (best inst %.0f, floor %.1f)" % (
@@ -70,21 +66,18 @@ def instr_coherent_rows(ctx):
             rows.append("PRN %d A %s | B %s" % (prn, _f(a), _f(b)))
         if rows:
             _log("FLEET-COH: " + "; ".join(rows))
-        # FLEET-INST (task #40). The FLEET-COH line reduces 12 instances to a max,
-        # and a max cannot separate a COMMON fluctuation (sky, or the shared broker
-        # seed -- the two surviving suspects for the level-proportional scatter)
-        # from independent per-instance noise. Log every instance's own deep snr
-        # plus the alignment, so the common/independent split is computable per
-        # emit offline. Path A only -- path B's per_inst rides the same dict if
-        # ever needed. Instance order is SORTED BY URL, stable across polls, so a
-        # column in the log is a node/GPU throughout.
+        # FLEET-INST: FLEET-COH reduces the instances to a max, which cannot separate a
+        # common fluctuation (sky, or the shared broker seed) from independent
+        # per-instance noise. Log every instance's own deep snr and the alignment, so
+        # the split is computable per emit offline. Path A only. Instances are sorted
+        # by URL, stable across polls.
         for prn in sorted(ctx.dllp.fcoh):
             v = ctx.dllp.fcoh[prn]
             pi = v.get("per_inst") or {}
             if len(pi) < 2:
                 continue
-            # Values are TAGGED (cx19/1) rather than positional so a missing instance
-            # cannot shift the columns of every instance after it.
+            # Values are tagged by instance (elemgain._tag) rather than positional, so a
+            # missing instance cannot shift the columns of every instance after it.
             _log(
                 "FLEET-INST: PRN %d align %.3f n_rec %d %s"
                 % (
@@ -94,12 +87,10 @@ def instr_coherent_rows(ctx):
                     " ".join("%s=%.1f" % (elemgain._tag(u), pi[u]) for u in sorted(pi)),
                 )
             )
-        # WHO WAS LEFT OUT, AND WHY (2026-08-12). fleet_coherent now anchors on the
-        # freshest window instead of demanding unanimity, so a stalled instance
-        # degrades the combine instead of killing it -- but a fleet quietly running
-        # on 7 of 8 is exactly the state that hid a frozen GPU for an hour. Name the
-        # dropped instances and how many hops they had in the window, so "we are
-        # combining fewer nodes than we own" is visible without polling by hand.
+        # FLEET-DROP: fleet_coherent anchors on the freshest window rather than demanding
+        # unanimity, so a stalled instance degrades the combine instead of killing it, and
+        # a fleet quietly running short can hide a frozen GPU. Name the dropped instances
+        # and how many hops they shared with the window.
         _dropped = {}
         for prn, v in sorted(ctx.dllp.fcoh.items()):
             for u, n_h in v.get("dropped") or []:
@@ -123,18 +114,18 @@ def instr_coherent_rows(ctx):
 
 
 def instr_rf_stats(ctx):
-    """INSTRUMENT: RF/SK statistics poll, published for the band-power and RFI watch.
+    """RF/SK statistics poll (--rf-stats-endpoints), published for the band-power and RFI watch.
         
-    Throttled on its own clock (--rf-stats-poll-s) rather than the cycle, because it is a
+    Throttled on its own clock (rf_stats_poll_s) rather than the cycle, because it is a
     diagnostic and must never pace the control loop."""
     if ctx.args.rf_stats_endpoints and ctx.publisher is not None:
         _rf_ep = parse_endpoints(ctx.args.rf_stats_endpoints, ctx.base)
         if _rf_ep and ctx.t0 - ctx.rf_last[0] >= ctx.args.rf_stats_poll_s:
             ctx.rf_last[0] = ctx.t0
-            # The declared band set (--rf-bands), resolved ONCE per poll from chain names
-            # to carriers via the signal table. Empty list -> rf_lobes names nothing and
-            # the panel shows the old unnamed rows, which is the correct degradation: a
-            # missing declaration must cost a label, never produce a wrong one.
+            # The declared band set (--rf-bands), resolved once per poll from chain names
+            # to carriers via the signal table. An empty list leaves every row unnamed,
+            # the correct degradation: a missing declaration must cost a label, never
+            # produce a wrong one.
             _carr = signals.carriers_for_chains(
                 [c for c in (ctx.args.rf_bands or "").split(",") if c.strip()]
             )
@@ -168,9 +159,9 @@ def instr_rf_stats(ctx):
                     ),
                     every_s=300.0,
                 )
-                # A rail is not a level, it is DAMAGE: past a few percent the
-                # quantiser is discarding the signal it is meant to carry, and
-                # everything downstream reads it as a coherence loss.
+                # A rail is damage, not a level: past ~1% of nibbles the quantiser is
+                # discarding the signal it is meant to carry, and everything downstream
+                # reads it as a coherence loss.
                 if _clip > 0.01:
                     _log_rl(
                         "rfclip",
@@ -184,18 +175,17 @@ def instr_rf_stats(ctx):
 
 
 def instr_tap_walk(ctx):
-    """INSTRUMENT: the fleet tap walk (--telem-dll), and the C++ taps arm.
+    """The comb DLL (--telem-dll): the fleet discriminator rebuilt from the gathered taps.
         
-    Walks the gathered telemetry frames into the per-PRN aggregate the DLL then acts on.
-    `--comb-taps-cpp` replaces the Python walk with the C++ one; everything after it -- the
-    aggregate, the per-channel merge, the presence policy -- is unchanged and stays here, which is
-    what makes the two arms comparable at all.
+    Walks the gathered telemetry frames into the per-PRN aggregate the DLL then acts on. With
+    --comb-taps-cpp 2 and --fleet-trim-url the taps come from the gather's C++ reduction
+    instead; everything after (the aggregate, the per-channel merge, the presence policy) is
+    the same code, which is what makes the two arms comparable.
         
-    ⚠️ IT PRODUCES `_dllp.fleet`, the per-PRN state dict the whole cycle reads."""
+    When it returns PRNs it replaces `ctx.dllp.fleet`, the per-PRN state the rest of the cycle
+    reads; otherwise the polled discriminator stands — the COMB-DLL line compares the two."""
     if ctx.args.telem_dll and ctx.telem_client is not None:
-        # THE C++ TAPS ARM (--comb-taps-cpp). `taps_src` replaces the Python walk over
-        # the gathered frames; everything after it -- the aggregate, the per-channel
-        # merge, the presence policy -- is unchanged and stays here.
+        # The C++ taps arm: `taps_src` replaces the Python walk over the gathered frames.
         _tsrc_cpp = None
         if ctx.args.comb_taps_cpp >= 2 and ctx.args.fleet_trim_url:
             _tsrc_cpp = lambda _ch, _pr: combdll.taps_from_rest(
@@ -212,14 +202,13 @@ def instr_tap_walk(ctx):
                 q_fallback=ctx.args.dll_quality_min,
                 prns=set(ctx.seeds) or None,
                 probe_prns=ctx.probe_set,
-                # #79: the SAME effective set as the polled arm above. This is the
-                # arm that ships on gps_l5 (COMB-DLL replaces `fleet` below), so
-                # gating it on the hand-listed set alone would compute the
-                # auto-admission and then throw it away.
+                # The same effective deep-gate set as the polled arm: this arm replaces
+                # `fleet` below, so gating it on the hand-listed set alone would compute
+                # the auto-admission and then throw it away.
                 deep_gate_prns=ctx.dllp.deep_gate_eff,
                 deep_gate_margin=ctx.args.dll_deep_gate_margin,
-                # deep_snr / deep_floor / coherence_s AND the quadrature fallback,
-                # from the arm that has them
+                # deep_snr / deep_floor / coherence_s and the quadrature fallback, from
+                # the arm that has them
                 coh_from=ctx.dllp.fleet,
                 admit_displaced=ctx.dllp.admit_disp,
             )
@@ -232,7 +221,7 @@ def instr_tap_walk(ctx):
         if _cf:
             _shared = sorted(set(_cf) & set(ctx.dllp.fleet or {}))
             _dd = sorted(_cf[p]["disc"] - ctx.dllp.fleet[p]["disc"] for p in _shared)
-            # XCOH per PRESENT PRN: the lobe sum's own check that the senders' phi0 put them
+            # xcoh per present PRN: the lobe sum's own check that the senders' phi0 put them
             # on one reference. A present PRN reading ~0 is a cross-sender reference loss --
             # its prompt is then below what per-sender summing would give -- and this is
             # the only place that loss is visible from (q and disc both stay plausible).
@@ -269,21 +258,21 @@ def instr_tap_walk(ctx):
 
 
 def instr_prompt_cn0(ctx):
-    """INSTRUMENT: served prompt C/N0 (#57 step 1) from the gathered frames.
+    """Served prompt C/N0 (combdll.prompt_cn0), debiased against the noise probes.
         
-    The same C++ arm as the comb taps and under the same flag; this walks the gathered frames a
-    SECOND time for the same channel tuples, which is the cost being traded for an independent
-    estimate.
+    Under the same flags as the comb taps' C++ arm (--comb-taps-cpp 2, --fleet-trim-url) it
+    reads the gather's reduced records; otherwise it walks the gathered frames a second time
+    for the same channel tuples, the cost of an independent estimate.
         
-    ⚠️ SERVED C/N0 IS BLIND TO CODE ERROR (#47) -- it is computed from the prompt correlator, so a
-    satellite sitting off the peak can read healthy. Never judge lock on it; judge on q."""
+    Served C/N0 is blind to code error: it comes from the prompt correlator, so a satellite
+    sitting off the peak can read healthy. Never judge lock on it; judge on q."""
     if ctx.dllp.run_pcn0:
         try:
             ctx.dllp.pcn0 = combdll.prompt_cn0(
                 ctx.telem_client,
                 ctx.telem_chain,
-                # The same C++ arm as the comb taps, under the same flag: this walks
-                # the gathered frames a SECOND time for the same channel-tuples.
+                # The same C++ arm as the comb taps, under the same flags; without it
+                # the gathered frames are walked a second time.
                 recs_src=(
                     (
                         lambda _ch, _pr: combdll.recs_from_rest(
@@ -317,10 +306,9 @@ def instr_prompt_cn0(ctx):
                 if v["cn0_db"] is not None and not v["probe"]
             ]
             _any = next(iter(ctx.dllp.pcn0.values()))
-            # sigma2 is IN the line on purpose: it is a live, probe-anchored noise
-            # power at cycle cadence -- the first greppable series for #56's
-            # fleet-wide level swings (measured moving 3 dB in 2 min on 2026-08-15,
-            # carrying every satellite's served C/N0 with it, common-mode).
+            # sigma2 is in the line on purpose: a live, probe-anchored noise power at cycle
+            # cadence, the series that shows a fleet-wide level swing carrying every
+            # satellite's served C/N0 with it, common-mode.
             _log_rl(
                 "pcn0",
                 "PROMPT-CN0 %s: %s | present at t>=%.0f, q_noise %.2f, sigma2 %.3e "
@@ -345,12 +333,12 @@ def instr_prompt_cn0(ctx):
 
 
 def instr_element_poll(ctx):
-    """INSTRUMENT: per-element complex gain poll (#57 step 2, elemgain).
+    """Per-element complex gain poll (--element-poll, elemgain) from the combiners.
         
-    ⚠️ ELEMCAL MUST ACTUALLY WARM. The weak-lock hunt of 2026-08-20 ended here: trackers re-anchor
-    roughly every record, and BOTH reset() and the warmth-growing update() were tied to that, so
-    the calibrator never accumulated. The array was already phase-coherent (equal-weight coherence
-    1.00) -- the estimator was the patient."""
+    Publishes the gain table, stale instances excluded, and under --element-archive-dir
+    appends the raw per-instance values for present satellites and probes to
+    elem_<chain>_<YYYYMMDD>.jsonl. Polled every element_poll_every_s, and every cycle in a
+    transcript replay, which must make the same calls as the recording."""
     if (
         ctx.args.element_poll
         and ctx.dll_combiners
@@ -362,9 +350,9 @@ def instr_element_poll(ctx):
         ctx.elem_poll_t[0] = _now()
         try:
             _pe, _srv = elemgain.poll_elements(ctx.dll_combiners)
-            # WEDGED INSTANCES ARE EXCLUDED AND NAMED (see elemgain.drop_stale):
-            # a frozen combiner keeps serving byte-identical gains from a sky ten
-            # minutes gone, and a median over instances would blend them in.
+            # Wedged instances are excluded and named (elemgain.drop_stale): a frozen
+            # combiner keeps serving identical gains from a sky minutes gone, and a median
+            # over instances would blend them in.
             _pe, _stale = elemgain.drop_stale(_pe) if _pe else ({}, [])
             _etab = elemgain.gain_table(_pe, ctx.probe_set) if _pe else {}
             if _etab and ctx.publisher is not None:
@@ -389,9 +377,9 @@ def instr_element_poll(ctx):
                 ),
                 every_s=120.0,
             )
-            # RAW archive, present sats + probes, throttled. Reopened per tick --
-            # at one append a minute a persistent handle buys nothing and a
-            # reopened one survives log rotation and NFS hiccups.
+            # Raw archive, present satellites and probes, every element_archive_every_s.
+            # Reopened per write: at one append a minute a persistent handle buys nothing,
+            # and a reopened one survives log rotation and NFS hiccups.
             if (
                 _etab
                 and ctx.args.element_archive_dir
@@ -439,10 +427,12 @@ def instr_element_poll(ctx):
 
 
 def instr_model_primacy(ctx):
-    """INSTRUMENT: model-primacy census -- which satellites the model, not the search, is driving.
+    """Model primacy (--model-primacy-max): which satellites the model, not the search, seeds.
         
-    Reads the innovation p95 population to decide whether a flipped satellite is genuinely
-    model-primary or merely DETECTION-STARVED, which look identical in any single-cycle view."""
+    Flips in the eligible satellites with the lowest MINNOV p95 up to the cap, and flips one
+    back when its p95 rises past model_primacy_exit_p95 or its referee starves. The p95
+    population is what separates a satellite that is genuinely model-primary from one merely
+    detection-starved, which look identical in any single-cycle view."""
     if ctx.args.model_primacy_max > 0:
         _mp_p95 = {
             int(_p): (v["minnov_p95_10m"], v["minnov_n_10m"])
@@ -456,12 +446,11 @@ def instr_model_primacy(ctx):
                 > ctx.args.model_primacy_starve_s
             )
             if _p in ctx.dr_untrusted:
-                # The legacy a0 integrity (EMA clock, no b_sat, ~1-chip bar)
-                # judges a model the flip does not run: the flipped seed is the
-                # JOINT model's (clk+b_sat via the slew). MINNOV referees flipped
-                # sats -- the p95/starve exits below. The dr loop's seeding guard
-                # exempts flipped sats for the same reason (BOTH sites, or the
-                # sat is orphaned seedless). Keep the disagreement visible:
+                # dr_untrusted judges the solved-clock model without b_sat, which a
+                # flipped seed does not run: the flipped seed is the joint model's
+                # (clk + b_sat, via the slew), and MINNOV referees it through the exits
+                # below. The dead-reckon seeding guard exempts flipped satellites for the
+                # same reason, or they would be left seedless. Log the disagreement.
                 _log_rl(
                     "mp-legacy-%d" % _p,
                     "MODEL-PRIMACY NOTE PRN %d: legacy integrity flags the "
@@ -504,8 +493,8 @@ def instr_model_primacy(ctx):
                 break
             ctx.mp_flipped.add(_p)
             ctx.dr_state["seeded"].add(_p)
-            # A standing hold is a SEARCH-currency freeze; the model owns the
-            # seed now, so the freeze is released (the dr guard relies on this).
+            # A standing hold is a search-currency freeze; the model owns the seed now,
+            # so the hold is released (the dead-reckon guard relies on this).
             ctx.cp_held.discard(_p)
             ctx.mp_last_det[_p] = _now()
             _log(
@@ -523,12 +512,12 @@ def instr_model_primacy(ctx):
 
 
 def instr_kcoh(ctx):
-    """INSTRUMENT: the known-rate coherent estimator (#57 step 3, cn0_kcoh).
+    """KCOH: the known-rate coherent C/N0 estimator (combdll.coh_cn0).
         
-    ⚠️ THE RATE IT DEROTATES WITH MUST BE CAUSAL. `_kcoh_rates` is updated AFTER each cycle's fold
-    from that cycle's record-stream fit, so the fold only ever uses a rate estimated from EARLIER
-    records. That is the entire difference between this estimator and the deep fold it replaces --
-    a fold derotated by a rate fitted to its own records measures the fit, not the sky."""
+    The rate it derotates with must be causal. `ctx.kcoh_rates` is updated after each cycle's
+    fold from that cycle's record-stream fit (fleetdll), so the fold only uses a rate estimated
+    from earlier records. A fold derotated by a rate fitted to its own records, as the deep
+    fold's per-integration rate search is, measures the fit, not the sky."""
     if ctx.dllp.run_est:
         try:
             ctx.dllp.kcoh = combdll.coh_cn0(
@@ -573,23 +562,21 @@ def instr_kcoh(ctx):
 
 
 def instr_spectrum_fit(ctx):
-    """INSTRUMENT: the spectrum delay fit (#32/#53), which feeds the #50 re-seed.
+    """The fleet phase-slope delay fit (--spectrum-endpoints): per-PRN tau, which feeds b_sat.
         
-    ⚠️ THE PEAK RATIO IS A SHUFFLED-NULL SIGNIFICANCE, built from the same points with values
-    reassigned within each instance. Passing the bar means the fold beat its own null; it is not a
-    tuned constant. It is ALSO not significance at poll cadence in the latched regime -- ratios up
-    to 3.2 attached to contradictory taus seconds apart is what tripped #90's flight 2."""
+    The peak ratio (p/f) is a shuffled-null significance, built from the same points with the
+    phases permuted within each instance. Passing the bar means the fold beat its own null; it
+    is not a tuned constant. It is also not a significance at poll cadence in the latched
+    regime: high ratios can attach to contradictory taus seconds apart."""
     if ctx.spectrum_endpoints:
         try:
-            # ALIGNED GATHER (task #53). Every instance must sum the same records
-            # on one phase reference, or each carries a free phase (the defect of
-            # #52). The addressable path names ONE window index, asks every
-            # instance for exactly that window, rotates each reply onto a single
-            # phase reference (phi0), drops PRNs whose accumulator was re-anchored
-            # mid-window, and ASSERTS that the same index meant the same samples
-            # everywhere. Instances that cannot address windows (a node still on a
-            # pre-#53 config) are EXCLUDED rather than mixed in -- one unaligned
-            # member puts the free phase straight back.
+            # Aligned gather: every instance must sum the same records on one phase
+            # reference, or each carries a free phase. fleet_spectrum_aligned names one
+            # window index, asks every instance for exactly that window, rotates each
+            # reply onto one phase reference (phi0), drops PRNs whose accumulator
+            # re-anchored mid-window, and refuses the window unless the index meant the
+            # same samples everywhere. An instance that cannot serve the window is dropped
+            # rather than mixed in: one unaligned member puts the free phase back.
             _spec, _smeta = fleet_spectrum_aligned(
                 ctx.spectrum_endpoints,
                 prns=set(ctx.seeds) or None,
@@ -643,15 +630,13 @@ def instr_spectrum_fit(ctx):
                 ),
                 every_s=30.0,
             )
-            # FEED b_sat (task #33). Presence-gated by the same lock metric the
-            # reseed logic trusts (deep-certified sig), because P1 measured weak-sat
-            # tau to be self-reference-biased toward zero -- a weak "tau ~ 0" is not
-            # a measurement. The filter adds its own thin-fleet and lobe gates.
-            # ⚠️ DELIBERATELY NOT given the fold-independent prompt path that the
-            # re-pin gate got (#58): this one admits a MEASUREMENT, not a retention
-            # decision, and P1 measured weak-sat tau biased toward zero by
-            # self-reference. "The prompt is on the signal" does not establish that
-            # this poll's tau is trustworthy. Separate question, separate evidence.
+            # Feed b_sat, gated on the lock metric the dead-reckon re-pin trusts
+            # (sig_of >= lock_snr): a weak satellite's tau is biased toward zero by
+            # self-reference, so a weak tau ~ 0 is not a measurement. SatBiasFilter adds
+            # its own thin-fleet and lobe gates. Deliberately not given the
+            # fold-independent prompt path the re-pin gate has: this admits a
+            # measurement, not a retention decision, and a prompt on the signal does not
+            # make this poll's tau trustworthy.
             for prn, v in ctx.dllp.spec_fit.items():
                 if ctx.sig_of(ctx.status.get(prn, {})) >= ctx.args.lock_snr:
                     ctx.bsat.update(prn, v["tau_chips"], v["n_inst"], ctx.t0)

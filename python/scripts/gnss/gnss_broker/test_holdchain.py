@@ -1,15 +1,13 @@
 """The seed-disposition chain in seeding.py: escape-if -> hold-elif -> release-else.
 
-The defect this pins (shipped 2026-07-20 -> 2026-08-28): the TRACK-vs-MODEL monitor,
-documented "log-only", was inserted BETWEEN the escape `if` and the hold `elif`. That
-re-chained the elif to the monitor's own condition, so whenever a held sat had a fresh
-detection while dr integrity was populated, freeze/translate/release were ALL skipped and
-the seed silently became a per-detection re-anchor. On sky: every deep-gate GPS sat
-re-anchored every ~2 s once integrity warmed (~10 min after a restart), the DLL railed
-chasing the stepping command, and q cratered every few minutes (G28, 08-28 evening).
-The cold-start judge missed it because integrity was still empty then.
+The log-only TRACK-vs-MODEL monitor must stay a standalone statement above the escape `if`.
+Placed between the escape `if` and the hold `elif`, it re-chains the `elif` to its own
+condition: whenever a held satellite has a fresh detection while the dead-reckon integrity
+residuals are populated, freeze/translate/release are all skipped and the seed silently becomes
+a per-detection re-anchor, which the DLL then chases. A check at cold start cannot see it,
+because the integrity residuals are still empty then.
 
-An `elif` has no name for what it chains to -- only structure pins it. Hence ast, not grep.
+An `elif` has no name for what it chains to; only structure pins it. Hence ast, not grep.
 
     python3 -m gnss_broker.test_holdchain
 

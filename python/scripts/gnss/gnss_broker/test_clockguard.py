@@ -1,24 +1,24 @@
-"""#142: the receiver clock's guards -- at the source that solves it, and on the paths that copy it.
+"""The receiver clock's guards: at the source that solves it, and on the paths that copy it.
 
     /home/kvand/gnss/venv-ft/bin/python -m gnss_broker.test_clockguard     (from python/scripts/gnss)
 
-The legacy clock solve is a circular median of per-satellite code offsets from the search's
-detections. Inside a boresight transit the search reports noise code phases just over its bar,
-two of them agreeing inside the MAD bound pass as a median, and the clock steps hundreds of
-chips; every consumer then copied the step (the cross-band bootstrap, unbounded) or escaped
-onto it (#104's 300-s staleness escape). Every check below drives the REAL functions from a
-FRESH state -- a prime, then the first solve -- because a mid-stream replay never exercises the
-first cycles after a restart, and that is where a guard is most likely to deadlock or crash.
+The dead-reckon clock solve is a circular median of per-satellite code offsets from the
+search's detections. Inside a boresight transit the search reports noise code phases just over
+its bar; two of them agreeing inside the MAD bound pass as a median and would step the clock by
+hundreds of chips, and every consumer would copy the step (the cross-band bootstrap) or escape
+onto it (the 300 s staleness escape). Every check below drives the real functions from a fresh
+state (a prime, then the first solve), because a mid-stream replay never exercises the first
+cycles after a restart, and that is where a guard is most likely to deadlock or crash.
 
   SOURCE    dr_clock_solve + dr_clock_quality: the bootstrap stays unlimited; an established
-            clock moves only on >= --dr-update-min-sats with a step inside
-            --dr-clock-step-max-chips; a larger step needs consecutive agreeing solves of NEW
+            clock moves only on >= dr_update_min_sats with a step inside
+            dr_clock_step_max_chips; a larger step needs consecutive agreeing solves of new
             detections (a re-pin); a confirmed clock freezes inside a transit, never re-rolls,
             and is held at zero rate and contributed whenever it is not updated.
   COPY      dr_clock_adopt_rx (cross-band bootstrap + same-band adoption) and dr_joint_clk:
-            the cross-band bootstrap is bounded by the #104 bound as a TIME; a refusal holds at
-            zero rate; the 300-s escape is suppressed while JOINT-CLK adopts, and returns 300 s
-            after it stops.
+            the cross-band bootstrap is bounded by --dr-clock-adopt-max-chips as a time; a
+            refusal holds at zero rate; the 300 s escape is suppressed while JOINT-CLK adopts,
+            and returns 300 s after it stops.
 
 @author Keith Vanderlinde
 """
@@ -83,7 +83,8 @@ def _wrap(d, L=L5_LEN):
 
 # ---- the solving chain ------------------------------------------------------------------------
 def _l5(freeze_deg=5.0, min_sats=4, step_max=5.0, repin=3):
-    """gps_l5 as the broker starts it: --dr-clock-chips 0.0 PRIME, no drift, the #142 knobs."""
+    """gps_l5 as the broker starts it: primed by --dr-clock-chips 0.0, no drift, the clock
+    guards at their production values."""
     c = NS()
     c.args = NS(
         dr_min_sats=2,
@@ -150,7 +151,7 @@ def _clk_now(c):
 
 
 def _established(c, t0=100.0):
-    """Cold start -> bootstrap -> one in-bound 5-sat update: a CONFIRMED clock at t0 + 2."""
+    """Cold start -> bootstrap -> one in-bound 5-sat update: a confirmed clock at t0 + 2."""
     _cycle(c, t0, _good(5))
     _cycle(c, t0 + 2.0, _good(5))
     return t0 + 2.0
@@ -160,14 +161,14 @@ def test_cold_start_unchanged():
     print("cold start: the prime, the first solve, the first cycles")
     _capture()
     c = _l5()
-    # cycle 1 of a restart: no detections yet (the ephemeris just loaded) -- nothing happens,
+    # cycle 1 of a restart: no detections yet (the ephemeris just loaded): nothing happens,
     # nothing is contributed, and nothing reads a field the first pass has not stamped
     ok = not _cycle(c, 100.0, [])
     check(
         ok and c.dr_state["clk"] == 0.0 and c.dr_state.get("clk_primed"),
         "no detections: the 0.00 prime stands, nothing contributed",
     )
-    # the first solve: a 2-sat median 150 chips from the prime, with a satellite AT boresight
+    # the first solve: a 2-sat median 150 chips from the prime, with a satellite at boresight
     n = len(LOGS)
     got = _cycle(c, 102.0, [TRUE_CLK + 0.3, TRUE_CLK - 0.4], sky=_sky(0.2))
     check(
@@ -184,7 +185,7 @@ def test_cold_start_unchanged():
         and c.dr_state.get("clk_transit") is None,
         "...an UNCONFIRMED clock: a satellite at boresight does not freeze it",
     )
-    # cycle 3: an in-bound 5-sat update confirms it; the EMA is the unchanged arithmetic
+    # cycle 3: an in-bound 5-sat update confirms it and moves the clock by the plain EMA step
     before = c.dr_state["clk"]
     _cycle(c, 104.0, _good(5), sky=_sky(0.2))
     raw = c.drp.raw_clk
@@ -214,7 +215,7 @@ def test_unconfirmed_bootstrap_not_frozen_but_repinned():
         abs(_wrap(c.dr_state["clk"] - TRUE_CLK - 3040.0)) < 1e-9,
         "bootstrap on two agreeing noise detections (the pre-#142 draw, unchanged)",
     )
-    # the real sky, thin (2-3 sats): an UNCONFIRMED clock re-pins on --dr-min-sats solves
+    # the real sky, thin (2-3 sats): an unconfirmed clock re-pins on solves of dr_min_sats
     n = len(LOGS)
     for k in range(3):
         _cycle(c, 102.0 + 2 * k, _good(3), sky=_sky(1.0))
@@ -248,7 +249,7 @@ def test_two_sat_corrupted_step_rejected():
         c.dr_state["clk_t"] == t + 2.0 and abs(_clk_now(c) - held) < 1e-12,
         "...ZERO-RATE hold: clk_t moved to now, dr_seed's clk_now is the held value",
     )
-    # the same with four satellites agreeing (a 4-sat corrupted solve): refused as a STEP
+    # the same with four satellites agreeing (a 4-sat corrupted solve): refused as a step
     n = len(LOGS)
     got = _cycle(
         c,
@@ -300,7 +301,7 @@ def test_genuine_repin_after_confirmation():
         "raw_prev" not in c.dr_state and c.dr_state.get("clk_confirmed") is True,
         "...no drift pair across the step; the clock stays confirmed",
     )
-    # a stalled search: the SAME detections three cycles running are one measurement
+    # a stalled search: the same detections three cycles running are one measurement
     c2 = _l5()
     t = _established(c2)
     held = c2.dr_state["clk"]
@@ -388,7 +389,8 @@ def test_confirmed_clock_never_rerolled():
         got and c.dr_state["clk"] == held and c.dr_state["clk_t"] == c.drp.now_w,
         "one offset (no median at all): held at zero rate and contributed",
     )
-    # the pre-#142 latch escape still exists where nothing confirmed the clock
+    # the MAD re-bootstrap (dr_solve_refused_rebootstrap_s) still fires where nothing
+    # confirmed the clock
     c2 = _l5()
     _cycle(c2, 100.0, _good(3))  # bootstrap, unconfirmed
     n = len(LOGS)
@@ -613,7 +615,7 @@ def test_declared_repin_reaches_consumers():
     rx.contribute_clock_mod_epoch("gps_l5", (TRUE_CLK / L5_RATE) % 0.02, 0.02, 6, 99.0)
     same = _consumer(rx, "gal_e5a", L5_RATE, L5_LEN, "1176.45MHz")
     cross = _consumer(rx, "gps_l2c", L2C_RATE, L2C_LEN, "1227.60MHz")
-    # the source bootstraps 15 chips off (a bad first pass) -- epoch 1; both consumers adopt it
+    # the source bootstraps 15 chips off (a bad first pass), epoch 1; both consumers adopt it
     bad = TRUE_CLK - 15.0
     _cycle(src, 100.0, _good(7, bad))
     src_e = src.dr_state.get("clk_epoch")
@@ -656,7 +658,7 @@ def test_declared_repin_reaches_consumers():
         and _logged("cross-band clock from 'gps_l5' stepped", n),
         "cross-band L2C consumer adopts it at once too (converted)",
     )
-    # an UNDECLARED step in the published value (epoch unchanged) is still refused
+    # an undeclared step in the published value (epoch unchanged) is still refused
     held_s, held_x = same.dr_state["clk"], cross.dr_state["clk"]
     rx.contribute_dr_clock(
         "gps_l5",

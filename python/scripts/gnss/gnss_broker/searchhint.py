@@ -1,12 +1,13 @@
-"""Narrowing the search: push per-satellite predicted Doppler to the detectors.
+"""Narrowing the search: push per-satellite predicted Doppler, and the NH overlay alignment,
+to the detectors.
 
 Each search then scans a window around the prediction instead of the blind grid, which is what
-makes acquisition affordable at all. Pure output -- it POSTs hints and returns nothing.
+makes acquisition affordable at all. Pure output: it POSTs hints and returns nothing.
 
-⚠️ A HINT IS ONLY AS GOOD AS THE CLOCK IT CARRIES. When the receiver clock bias is stale the
-margin must WIDEN rather than the hint narrow. A confidently wrong narrow window is worse than
-no hint: the search then cannot find the very signal whose detection would correct the bias, so
-the error sustains itself. See `clockbias.py`.
+A hint is only as good as the clock it carries. When the receiver clock bias is stale the
+margin widens rather than the hint narrowing. A confidently wrong narrow window is worse than
+no hint: the search then cannot find the very signal whose detection would correct the bias,
+so the error sustains itself. See `clockbias.py`.
 
 @author Keith Vanderlinde
 """
@@ -16,14 +17,11 @@ from gnss_broker.clockhealth import dr_solve_healthy
 
 
 def stage_narrow_search(ctx):
-    """2b: ALMANAC-NARROW THE SEARCH -- push per-PRN predicted Doppler to the detectors.
-        
-    Each search then scans a window around the prediction instead of the blind grid, which is what
-    makes acquisition affordable. Pure output: it POSTs hints and returns nothing to the cycle.
-        
-    ⚠️ THE HINT IS ONLY AS GOOD AS THE CLOCK IT CARRIES. When the receiver clock bias is stale the
-    margin must widen rather than the hint narrow -- a confidently wrong narrow window is worse
-    than no hint at all, because the search then cannot find what it was told to look near."""
+    """Push per-PRN predicted Doppler (--narrow-search) and NH alignment hints (--nh-hint) to
+    the detectors.
+
+    Doppler hints cover every up, capable PRN, with the narrow margin once the clock bias is
+    solved and not stale and the wide margin otherwise (see the module docstring)."""
     if ctx.args.narrow_search and ctx.args.almanac and ctx.pred:
         margin = (
             ctx.args.search_margin_hz
@@ -36,41 +34,16 @@ def stage_narrow_search(ctx):
             if (ctx.up is None or p in ctx.up)
             and (ctx.capable is None or p in ctx.capable)
         ]
-        # SECONDARY-CODE ALIGNMENT HINT, the Doppler hint's twin and the bigger saving:
-        # the acquire builds a FULL surface per alignment, so 20 of them are ~92% of a pass.
-        # We echo back the stage's OWN last reported nh with the hop it was measured at, and
-        # it propagates by counter arithmetic (one index per code period, an exact hop
-        # count). Self-referential on purpose: no GPS time, no range model, nothing to
-        # bootstrap -- a PRN with no hint simply scans all 20 as before, and one detection
-        # establishes it. Only worth anything because the revisit is now short: over the
-        # 1276 s revisit this fleet had before 2026-08-04 the prediction would drift 4.3
-        # periods and be worse than useless.
-        # OFF BY DEFAULT, and it must stay off until the reported nh is reproducible.
-        # Measured 2026-08-04: propagating the search's own reported alignment forward gets
-        # 4 of 26 right, whether or not the code phase is carried. PRN 3 reported 11->11
-        # over 78.2 s and 11->10 over 77.7 s -- gaps differing by exactly 0 mod 20 periods,
-        # so no propagation law fits. Posting a wrong hint NARROWS the scan away from the
-        # truth, which is worse than not hinting: self-healing (the TTL restores the full
-        # scan) but at the cost of a revisit each time.
-        # ALIGNMENT HINT from the EPHEMERIS, not from echoing our own report back.
-        #
-        # nh is the overlay chip index at TRANSMIT, so BRDC gives it outright:
+        # NH alignment hint (--nh-hint). The acquire builds a full surface per overlay
+        # alignment, so scanning all of them is most of a pass. nh is the overlay chip index
+        # at transmit, so the ephemeris gives it outright (pred[3] is the range in m, pred[4]
+        # the broadcast satellite clock in s):
         #   nh = round((gpst(t) - range/c + clk_sv) / period) mod overlay_len
-        # (proven to 0.01 chip offline).
-        # What that leaves is ONE global constant -- the receiver clock reference -- shared
-        # by every satellite and measured from any detection at all. Measured on sky
-        # 2026-08-04: PRN 3 gave offset 16 on nine consecutive detections, and pooled across
-        # six satellites 100% of samples landed within +-2 of 16.
-        #
-        # Strictly better than echoing our own nh back: no propagation law (mine got 4 of 26
-        # right), no dependence on the previous detection, and it works for a satellite
-        # NEVER detected -- which is the real prize, since a first acquisition otherwise
-        # pays the full 20-way scan.
-        #
-        # OPEN: the +-2 jitter should not exist. nh is deterministic given ephemeris and
-        # time, so a spread means something upstream is not -- likely the same cause that
-        # broke propagation (suspect the 16-period acquire window against a 20-chip
-        # overlay, 16 !== 0 mod 20). The span absorbs it; it does not explain it.
+        # That leaves one global constant, the receiver clock reference, shared by every
+        # satellite and measured from any detection. So a satellite never detected is hinted
+        # too, where a first acquisition would otherwise pay the full scan. The search scans
+        # nh_hint_span alignments either side of the hint, which absorbs the measured offset's
+        # scatter of a couple of alignments (its cause is not established).
         nh_hints = []
         if ctx.args.nh_hint and ctx.pred and ctx.utc0_sample0:
             try:
@@ -90,32 +63,20 @@ def stage_narrow_search(ctx):
                         % ctx.args.nh_overlay_len
                     )
 
-                # (a) re-measure the constant from every fresh detection we have
+                # (a) Re-measure the constant from each new detection. A PRN counts again
+                # only when its ref_hop moves: re-appending an unchanged detection every
+                # cycle would fill the window with copies, and nh_hint_min_samples would then
+                # count uptime rather than evidence.
                 #
-                # ⚠️ "FRESH" MEANS A NEW DETECTION, NOT A NEW CYCLE. This loop used to
-                # append every nh_seen entry every cycle, so an unchanged detection was
-                # re-appended every --interval seconds and the 64-sample window filled
-                # with the SAME value repeated. nh_hint_min_samples then read that as 64
-                # independent confirmations of an offset that might rest on one stale
-                # detection -- a sample count that measures uptime rather than evidence.
-                # ref_hop identifies the detection, so admit a PRN only when its ref_hop
-                # has actually moved.
+                # Samples age out after nh_hint_max_age_s, and with fewer than
+                # nh_hint_min_samples fresh the offset is dropped (below). Without that
+                # expiry a wrong offset sustains itself: the search, narrowed onto the wrong
+                # overlay phase, detects nothing that could correct it.
                 #
-                # AND THE HISTORY AGES. The comment at nh_seen's refresh says a wrong hint
-                # is "recoverable -- the hint expires and the full scan returns", but
-                # nothing implemented that expiry: nh_offset kept its last value forever
-                # and the ±2-of-20 narrowing kept being pushed. That closes a loop with no
-                # restoring force -- bad clock -> bad hint -> search narrowed onto the
-                # wrong overlay phase -> no detections -> the clock cannot be re-solved --
-                # and the only escape is the code clock random-walking back onto truth by
-                # chance. Observed 2026-08-10 17:06-17:21: the clock wandered
-                # 6996 -> 5095 -> 1797 -> 1555 -> 9210 -> 134 chips and only then snapped
-                # to 150.8 and locked, ~15 min of a self-reinforcing outage that read as a
-                # frontend sensitivity loss (be7d46e8e:docs/gnss_gpu_search.md 11.33).
-                # #161: detections the clock solve does not vouch for (on noise, or on a
-                # collapsed sky) teach the hint a wrong epoch, and the +-2 narrowing then
-                # confirms it from the next detections. Learn nothing while the solve is
-                # not established; the expiry below widens the search on its own.
+                # Nothing is learned while the clock solve is not established
+                # (dr_solve_healthy False): detections it does not vouch for (noise, a
+                # collapsed sky) would teach a wrong offset that the narrowed search then
+                # confirms. The expiry widens the search on its own meanwhile.
                 _learn = (
                     dr_solve_healthy(getattr(ctx, "dr_state", None), ctx.t0)
                     is not False
@@ -156,8 +117,9 @@ def stage_narrow_search(ctx):
                         )
                     )
                     ctx.nho.offset[0] = None
-                # (b) circular median: the offsets cluster, so rotate to the mode before
-                # taking it, or a cluster straddling the 0/20 wrap averages to nonsense.
+                # (b) Circular median: the offsets cluster, so rotate to the mode before
+                # taking it, or a cluster straddling the 0/overlay_len wrap averages to
+                # nonsense.
                 if len(_fresh) >= ctx.args.nh_hint_min_samples:
                     _mode = max(set(_fresh), key=_fresh.count)
                     _rot = [
@@ -172,8 +134,8 @@ def stage_narrow_search(ctx):
                     ctx.nho.offset[0] = (
                         _mode + _rot[len(_rot) // 2]
                     ) % ctx.args.nh_overlay_len
-                # (c) hint EVERY visible sat, detected or not, at a hop the stage can
-                # propagate over a few seconds rather than a minute
+                # (c) Hint every visible satellite, detected or not, referenced to this
+                # cycle's hop so the search propagates it over seconds rather than a minute.
                 if ctx.nho.offset[0] is not None:
                     _rh_now = int(
                         round((ctx.t0 - ctx.utc0_sample0) * ctx.args.hops_per_sec)
@@ -203,10 +165,9 @@ def stage_narrow_search(ctx):
                 pushed += 1
             except Exception as e:
                 _log("set_doppler_hints %s failed: %s" % (d_ep, e))
-            # SEPARATE try: a detector running a binary without /set_nh_hint 404s here, and
-            # sharing the block above would make that failure look like the DOPPLER hint
-            # failing -- silently un-narrowing the search on every cycle during a rolling
-            # upgrade. Rate-limited because a stale binary fails every single cycle.
+            # A separate try: a detector whose binary lacks /set_nh_hint fails here, and
+            # sharing the block above would report it as the Doppler hint failing.
+            # Rate-limited because such a binary fails every cycle.
             if nh_hints:
                 try:
                     _post("%s/set_nh_hint" % d_ep, nh_hints)

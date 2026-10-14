@@ -2,12 +2,12 @@
 
     python3 -m gnss_broker.test_fleet_rebase
 
-THE BUG THIS PINS (found 2026-10-02). fleet_dll took the fleet hop as the newest instance's --
-right for a laggard, which is only ever behind. A re-base restarts the F-engine counter at 0,
-and a node not yet relaunched keeps serving its pre-outage row, hours of counting AHEAD of the
-live ones: it won the max, the live instances fell outside hop_window, and the published fleet
-hop was the old session's. The obs writers stamped rows new frame0 + old hop, which is how rows
-dated 10-02 00:49 landed in a file on 09-28 at 20:16:38. The numbers below are that event's.
+fleet_dll takes the fleet hop as the newest instance's, which is right for a laggard (only ever
+behind). A re-base restarts the F-engine counter at 0, and a node not yet relaunched keeps
+serving its pre-outage row, far ahead of the live ones. Not excluded, it wins the
+max, the live instances fall outside hop_window, and the published fleet hop is the old
+session's; the obs writers then stamp rows with the new frame0 and the old hop, dating them
+that far in the future. The numbers below are from a real re-base.
 
 @author Keith Vanderlinde
 """
@@ -18,9 +18,9 @@ import gnss_broker.fleet as fleet
 from gnss_broker.fleet import fleet_dll, live_instances
 
 RATE = 195312.5
-FRAME0_NEW = 1790626549.0  # 09-28 20:15:49 re-base
-NOW = 1790626598.0  # 09-28 20:16:38
-H_OLD = 53825781250  # the 09-25 session's last hop (09-28 19:04:24)
+FRAME0_NEW = 1790626549.0  # the new session's frame-0 UTC, s
+NOW = 1790626598.0  # 49 s after the re-base
+H_OLD = 53825781250  # the old session's last hop, ~3.2 days of counting
 H_NEW = int((NOW - 2.0 - FRAME0_NEW) * RATE)
 
 _fails = []
@@ -46,7 +46,7 @@ def test_live_instances():
     hist = {u: (H_OLD - i, NOW - 3600.0) for i, u in enumerate("abcd")}
     ex = live_instances({u: h for u, (h, _) in hist.items()}, hist, NOW)
     check("outage: nobody advances, nobody accused", ex == {}, str(ex))
-    # the re-base: a and b relaunch (a backwards jump IS a change), c and d still serve old rows
+    # the re-base: a and b relaunch (a backwards jump is a change), c and d still serve old rows
     ex = live_instances(
         {"a": H_NEW, "b": H_NEW - 4096, "c": H_OLD - 2, "d": H_OLD - 3}, hist, NOW
     )
@@ -56,7 +56,7 @@ def test_live_instances():
         str(ex),
     )
 
-    # a broker restarted on the NEW anchor has no history -- the anchor alone must do it
+    # a broker restarted on the new anchor has no history: the anchor alone must do it
     ex = live_instances(
         {"a": H_NEW, "c": H_OLD - 2}, {}, NOW, anchor_utc=FRAME0_NEW, hops_per_sec=RATE
     )

@@ -1,17 +1,17 @@
 """The code loop's per-satellite decisions: the DLL control loop.
 
-The DLL control loop is the only part of the fleet delay-lock stage that ACTUATES -- everything
+The DLL control loop is the only part of the fleet delay-lock stage that actuates; everything
 else hung off that poll is instrumentation (see `instruments.py`).
 
-⚠️ NO LIVE code_phase_rate MEANS HOLD, NOT INTEGRATE. The receiver clock runs ~3.45 chips/s,
-which is ~11 chips per loop round trip, fed forward by the seed. With no live rate the trim
-would face the whole 11 chips -- far outside the +-0.5 chip pull-in, unrecoverable -- and it
-would read as the DLL diverging rather than as the feed-forward being absent.
+On the fleet path, a seed with no code_phase_rate (absent or zero) means hold, not integrate.
+The uncalibrated receiver clock runs ~3.45 chips/s, ~11 chips per loop round trip, and the
+seed's code_phase_rate feeds that forward. Without it the trim would face the whole 11 chips, far
+outside the +-0.5 chip pull-in, and the failure would read as the DLL diverging rather than as
+the feed-forward being absent.
 
-⚠️ THE `DLL:` LINE BUILT HERE LISTS ONLY PRESENCE-PASSING SATELLITES. Any per-satellite
-statistic computed over it measures SURVIVORS: a satellite whose q craters leaves the sample
-entirely. That produced a wrong "no harm" verdict on 2026-08-25, where E4 was absent from the
-line for exactly the 85 minutes it was sick. Judge on a source that keeps the sick ones.
+The `DLL:` line built here lists only the satellites that passed this cycle's gates, so a
+statistic computed over it measures survivors: a satellite whose q craters leaves the sample.
+Judge on a series that keeps every seeded satellite (ctx.qpop, the QPOP line).
 
 @author Keith Vanderlinde
 """
@@ -21,36 +21,25 @@ from gnss_broker import combdll
 
 
 def stage_dll_control(ctx):
-    """3c: THE DLL CONTROL LOOP -- per satellite, decide and integrate the code trim.
-        
-    The only part of the DLL stage that ACTUATES. Everything above it is instrumentation.
-        
-    ⚠️ NO LIVE code_phase_rate MEANS HOLD, NOT INTEGRATE. The clock offset is ~3.45 chips/s = 11
-    chips per loop round trip, fed forward by the seed. With no live rate the trim would face the
-    whole 11 chips -- far outside the +-0.5 chip pull-in, unrecoverable, and it would read as the
-    DLL diverging rather than as the feed-forward being absent.
-        
-    ⚠️ THE `DLL:` LINE THIS BUILDS LISTS ONLY PRESENCE-PASSING SATELLITES. Any per-satellite
-    statistic computed over it measures SURVIVORS. That cost a wrong "no harm" verdict on
-    2026-08-25; judge on a source that keeps the sick ones."""
+    """3c: the DLL control loop -- per satellite, decide and integrate the code trim.
+
+    The only part of the DLL stage that actuates. Appends one ctx.dllp.report entry (the `DLL:`
+    line) per satellite that passed this cycle's gates; see the module docstring for the rate
+    gate and for why that line measures survivors."""
     for prn in list(ctx.seeds):
         rec = ctx.status.get(prn, {})
         fl = ctx.dllp.fleet.get(prn)
         if fl is not None:
-            # THE FLEET PATH. Gate on the summed q against a floor MEASURED from this
-            # cycle's own q population, not against a constant and not against the
-            # single-instance significance. sig_of(rec) is one node's 6.7% view and
-            # would keep vetoing precisely the satellites this exists for; a fixed bar
-            # is worse still, because summing tightens the noise distribution instead
-            # of raising q, so the correct bar FALLS as instances are added and any
-            # constant is right for exactly one fleet size (see fleet_dll).
+            # Fleet path: gate on `present` (fleet.apply_presence: q and prompt power against
+            # floors measured each cycle from the noise probes, plus the deep-gate and displaced
+            # routes), never on a constant bar. Summing instances tightens the noise
+            # distribution instead of raising q, so a fixed bar suits one fleet size only.
+            # sig_of(rec) is one instance's view of a fraction of the band and would veto
+            # exactly the satellites the fleet sum exists for.
             #
-            # THE RATE GATE (design section 7, and it is not optional): the clock offset
-            # is 3.45 chips/s = 11 chips per loop round trip, fed forward by the seed's
-            # code_phase_rate. The trim only ever absorbs the residual. With no live
-            # rate the trim would face the whole 11 chips -- far outside the +-0.5 chip
-            # pull-in, unrecoverable, and it would read as the DLL diverging rather than
-            # the feed-forward being absent. So HOLD instead of integrating.
+            # Rate gate (docs/CHORD_GNSS_SHARED_DLL.md section 7): the trim absorbs only the
+            # residual left by the seed's code_phase_rate feed-forward, so with an absent or zero
+            # rate it holds (see the module docstring).
             if not float(ctx.seeds[prn].get("code_phase_rate", 0.0) or 0.0):
                 _log_rl(
                     "dll-norate-%d" % prn,
@@ -59,8 +48,8 @@ def stage_dll_control(ctx):
                 continue
             if not fl["present"]:
                 continue
-            # One integration per new WINDOW -- an exact integer test, where the
-            # single-instance path below can only watch for a changed float.
+            # One integration per new window: an exact integer test on the window's hop, where
+            # the single-combiner path below can only watch for a changed float.
             if fl["hop"] == ctx.dls.last_hop.get(prn):
                 continue
             ctx.dls.last_hop[prn] = fl["hop"]
@@ -69,65 +58,44 @@ def stage_dll_control(ctx):
             disc = float(rec.get("dll_disc", 0.0))
             if ctx.sig_of(rec) < ctx.args.lock_snr or disc == 0.0:
                 continue
-            # One integration per NEW measurement: the combiner emits a fresh disc each
-            # integration window (~1 s) while this loop polls at ~5 Hz -- integrating the
-            # stale value 5x per emit over-applies the gain (part of the 2026-07-07 L1
-            # runaway). A changed value marks a fresh emit.
+            # One integration per new measurement: the combiner emits a fresh disc once per
+            # integration window, and this loop may poll several times within one window;
+            # re-integrating a stale value over-applies the gain. A changed value marks a
+            # fresh emit.
             if disc == ctx.dls.last.get(prn):
                 continue
             ctx.dls.last[prn] = disc
-        # LEAKY integrator: mean-reverts, so discriminator NOISE cannot random-walk the
-        # trim to the clamp (a pure integrator did -- L1 trims reached +-1 to 3 chips
-        # over 2 min, dragging the code off the +-0.5-chip peak and collapsing the deep
-        # while the search stayed strong). Steady state gain*tau/leak still nulls a real
-        # static fit bias; noise averages over ~1/leak windows.
-        # LEAK GATE. The leak exists because a PURE integrator random-walked the trim
-        # into the clamp on discriminator noise (L1, 2026-07-07). But it also CAPS the
-        # correction: steady state is trim = (gain/leak)*tau and |tau| <= 0.25 chips, so
-        # at gain 0.25 / leak 0.05 nothing beyond 1.25 chips is reachable. Measured
-        # 2026-08-04: PRN 9 parked at trim +1.00 with disc railed at -0.984 -- the loop
-        # pushing as hard as it can and still not arriving.
+        # Leaky integrator: the trim mean-reverts, so discriminator noise cannot random-walk it
+        # to the clamp; noise averages over ~1/leak updates. The leak also caps the correction:
+        # steady state is trim = (gain/leak)*tau with |tau| <= 0.25*(spacing/0.5) chips
+        # (combdll.dll_tau), so at 0.5-chip spacing, gain 0.25 and leak 0.05 nothing beyond
+        # 1.25 chips is reachable and the +-3.0 chip clamp never binds.
         #
-        # What the leak was standing in for was a signal test, and the fleet path now
-        # HAS one: `present` is a self-calibrating significance on the summed prompt
-        # power (fleet_dll), and a PRN that fails it is skipped entirely rather than
-        # leaked. So on the fleet path the leak can be much smaller -- it keeps the slow
-        # mean-reversion that stops a long-lived bias accumulating, without capping the
-        # correction below the errors we actually have. The single-combiner fallback
-        # keeps the original leak: it has no such gate, and that is where the runaway
-        # happened.
+        # The fleet path, where `present` already confirms signal, takes dll_leak_present; the
+        # single-combiner path, which has no such gate, takes dll_leak. Both are frozen at 0.05
+        # in cli._FROZEN, which says why a smaller leak on the fleet path is worse.
         leak = ctx.args.dll_leak_present if fl is not None else ctx.args.dll_leak
-        # ONE EXPRESSION, ONE PLACE (2026-08-15). The delay estimate and this recurrence
-        # live in combdll.dll_integrate / gnss::dll_integrate, which are the same
-        # expression, and scripts/gnss/fleetdll_gate.py compares the C++ and Python arms
-        # on identical bytes.
+        # One expression, one place: the update is combdll.dll_integrate, the twin of
+        # gnss::dll_integrate, and scripts/gnss/fleetdll_gate.py compares the C++ and Python
+        # arms on identical bytes.
         #
-        # ⚠️ NOT WHEN THE C++ FLEET LOOP OWNS THIS CHAIN. Two integrators correcting
-        # one code error double-apply during pull-in and fight at the null -- and
-        # this one bakes its trim into the SEED cp while the fleet loop's arrives at
-        # the tracker, so they stack invisibly. The slow loop still MEASURES (the
-        # disc/q log lines stay); it just stops actuating.
-        # THE HANDOVER, not a flag-day (#79; the condition eec1d2f12 attached to any
-        # re-arm). The old test was `not args.fleet_trim_url` -- chain-wide, so setting
-        # the flag silenced the Python integrator for EVERY PRN while the C++ loop
-        # trimmed only those already armed. On a chain whose search hands presence to
-        # the C++ side that is harmless; on the four DEAD-RECKON chains it removed the
-        # only route from off-peak to on-peak and left 0-1 armed with no code loop at
-        # all -- measured, and the reason #49 was disarmed there.
+        # Not while the C++ fleet loop owns this PRN. Two integrators on one code error
+        # double-apply during pull-in and fight at the null, and they stack invisibly: this
+        # trim is added to the seed's code phase at POST time (seeding.py), while the C++ trim
+        # is applied at the tracker. Authority is per PRN and follows dls.armed_last, the set
+        # last posted to the gather (trimarm.py), not what this cycle is about to decide.
+        # Python integrates the PRNs outside that set and stands down for each one the fast
+        # loop takes, so while the POSTs succeed no PRN is trimmed by both and none falls
+        # between them. With --fleet-trim-url set, trimarm arms every PRN present within the
+        # last fleet_trim_hold_s, so Python trims a PRN only on the cycle it turns present
+        # after a longer absence, or on the single-combiner path while it is not held armed.
+        # Standing down it still measures: the dedup state advances and the DLL line still
+        # reports the PRN.
         #
-        # So: authority is per-PRN and follows the LAST POSTED armed set (what the C++
-        # loop is actuating this instant, not what this cycle is about to decide).
-        # Python integrates for PRNs the fast loop is not touching -- acquisition
-        # authority -- and stands down for each one as the fast loop takes it. Never
-        # both (two integrators on one state is the #52 disease), never neither.
-        #
-        # The standing trim is NOT popped at handover: it is baked into the seed's
-        # code_phase_chips at post time and stays a valid offset, which the C++ loop
-        # then corrects the residual of, starting from zero. That keeps the phase
-        # continuous across the transition in the direction that matters (acquire ->
-        # track). ⚠️ The reverse transition still steps: a disarmed C++ trim expires at
-        # the tracker's 4 s TTL while Python resumes from its standing value. That is
-        # the pre-existing expiry-is-a-step hazard (audit section 6), not new here.
+        # The standing trim is not popped at handover: it stays in the seed as a valid offset,
+        # and the C++ loop corrects the residual. On release the C++ trim leaks away gradually
+        # (the gather keeps posting the decaying value) while this integrator resumes from its
+        # standing value, so what the C++ loop had corrected must be re-acquired here.
         if prn not in ctx.dls.armed_last:
             ctx.dls.trim[prn] = combdll.dll_integrate(
                 ctx.dls.trim.get(prn, 0.0),
@@ -139,10 +107,7 @@ def stage_dll_control(ctx):
             )
         ctx.dllp.report.append(
             "PRN %d disc %+.3f trim %+.2f%s"
-            # .get: when the C++ fleet loop owns this chain the integrator above is
-            # skipped and dll_trim may have no entry -- indexing it killed the gps_l5
-            # chain thread with KeyError(20) at 13:17:11 on 2026-08-15, and the seeds
-            # expired 60 s later. The DLL line still reports disc/q; trim reads 0.
+            # .get: a PRN the C++ loop owns may never have had a Python trim; it reads 0.
             % (
                 prn,
                 disc,
@@ -155,9 +120,9 @@ def stage_dll_control(ctx):
                     len(ctx.dll_combiners),
                     fl["q"],
                     fl["p_pow"] / fl["p_med"] if fl.get("p_med") else 0.0,
-                    # Which gate admitted this PRN (#49). Printed only for the
-                    # deep gate, so the opt-in set is identifiable in the log
-                    # without diffing against the prompt-gated majority.
+                    # Which gate admitted this PRN, printed only for the deep gate so the
+                    # deep-gated set is identifiable in the log without diffing against the
+                    # prompt-gated majority.
                     ""
                     if fl.get("present_gate") != "deep"
                     else " DEEP %.1f/%.1f"

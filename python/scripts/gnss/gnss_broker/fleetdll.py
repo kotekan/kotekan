@@ -1,15 +1,15 @@
 """3c: the fleet delay-lock stage -- poll the discriminator, then run everything hung off it.
 
 This is the shell. It fills `ctx.dllp.fleet` (the cycle's central per-satellite state), calls
-the eight `instruments` diagnostics, and finally `codeloop.stage_dll_control`, the only part
-that actuates.
+the eight `instruments` diagnostics, then `codeloop.stage_dll_control`, the only part that
+actuates, and after it the D0/D1/D3 detectors and the stall checks.
 
-⚠️ THE q FLOOR IS MEASURED FROM THIS CYCLE'S OWN POPULATION, NEVER A CONSTANT. Summing across
-instances tightens the noise distribution instead of raising q, so the correct bar FALLS as
+The q floor is measured from this cycle's noise probes, never a constant. Summing across
+instances tightens the noise distribution instead of raising q, so the correct bar falls as
 instances are added: any fixed constant is right for exactly one fleet size.
 
-⚠️ JUDGE LOCK ON q, NEVER ON sig/deep/cn0_coh. Those duty-cycle with the known-rate fold and
-will read as lock loss when the tracking is fine.
+Judge lock on q, never on sig/deep/cn0_coh. Those duty-cycle with the known-rate fold and
+read as lock loss while the tracking is fine.
 
 @author Keith Vanderlinde
 """
@@ -27,22 +27,20 @@ from gnss_broker import fleetadr
 
 
 def stage_fleet_dll(ctx):
-    """3c: THE FLEET DELAY-LOCK LOOP -- the instrument suite, then the control loop.
-        
-    Polls the fleet discriminator into `_dllp.fleet` (the cycle's central per-satellite state),
-    runs the eight _instr_* diagnostics hung off that same poll, and finally calls the one routine
-    that actuates: _stage_dll_control.
-        
-    ⚠️ THE q FLOOR IS MEASURED FROM THIS CYCLE'S OWN POPULATION, NEVER A CONSTANT. Summing
-    tightens the noise distribution instead of raising q, so the correct bar FALLS as instances are
-    added: any fixed constant is right for exactly one fleet size."""
+    """3c: the fleet delay-lock loop -- the instrument suite, then the control loop.
+
+    Polls the fleet discriminator into `ctx.dllp.fleet` (the cycle's central per-satellite
+    state), runs the `instruments.instr_*` diagnostics and measurements hung off that same
+    poll, then the one routine that actuates, `codeloop.stage_dll_control`, then the detectors.
+    Does nothing when dll_gain is 0."""
     if ctx.args.dll_gain > 0.0:
-        # FLEET COMBINE (docs/CHORD_GNSS_SHARED_DLL.md). Sum the RAW powers across every
-        # instance that reports the same window, then form ONE discriminator. Ratios do not
+        # Fleet combine (docs/CHORD_GNSS_SHARED_DLL.md): sum the raw powers across every
+        # instance that reports the same window, then form one discriminator. Ratios do not
         # sum -- (SUM E - SUM L)/(SUM E + SUM L) is not any function of the per-instance
-        # dll_disc values -- which is exactly why the combiner publishes e_pow/l_pow/p_pow.
-        # #79: the effective deep-gate set = hand-listed PRNs UNION the ones the search
-        # is currently detecting. `True` (--dll-deep-gate all) stays absorbing.
+        # dll_disc values -- which is why the combiner publishes e_pow/l_pow/p_pow.
+        # The effective deep-gate set is the hand-listed PRNs (--dll-deep-gate) plus those the
+        # search detected at snr >= --dll-deep-gate-from-search within
+        # --dll-deep-gate-search-hold-s. 'all' (True) already covers every PRN.
         ctx.dllp.deep_gate_eff = ctx.deep_gate
         if ctx.args.dll_deep_gate_from_search > 0.0 and ctx.deep_gate is not True:
             _fresh_dg = {
@@ -68,19 +66,19 @@ def stage_fleet_dll(ctx):
                     )
                     ctx.dg_auto_last[0] = set(_fresh_dg)
         ctx.dllp.inst_hops = {}
-        # THE E3 ADMISSION (--presence-admit-displaced): thresholds bundled once so the
-        # polled arm, the comb arm and its shadow all judge with the SAME numbers -- two
-        # copies of an admission policy is how an A/B stops measuring the powers.
+        # Displaced admission (--presence-admit-displaced): the thresholds are bundled once so
+        # the polled arm (fleet_dll) and the comb arm (instr_tap_walk) judge with the same
+        # numbers; with two copies of the policy, comparing the arms would compare the copies.
         ctx.dllp.admit_disp = (
             {
                 "pedestal_max": ctx.args.presence_disp_pedestal_max,
                 "off_max_chips": ctx.args.presence_disp_off_max,
-                # the OFFSET-BLIND evidence bar (see apply_presence): a
-                # detector that re-searches code phase, so it does not
-                # inherit the displacement it is being asked to judge
+                # the offset-blind evidence bar (fleet.apply_presence): a detector
+                # that re-searches code phase, so it does not inherit the
+                # displacement it is being asked to judge
                 "deep_margin": ctx.args.presence_disp_deep_margin,
-                # #175: no displaced admission while the chain is browned out. D1 is
-                # fed after the poll below, so this is the previous cycle's verdict.
+                # no displaced admission while the chain is browned out. D1 is fed
+                # after the poll below, so this is the previous cycle's verdict.
                 "browned_out": ctx.brown.active(),
             }
             if ctx.args.presence_admit_displaced
@@ -94,13 +92,13 @@ def stage_fleet_dll(ctx):
             ctx.args.dll_quality_min,
             deep_gate_prns=ctx.dllp.deep_gate_eff,
             deep_gate_margin=ctx.args.dll_deep_gate_margin,
-            # the noise ANCHOR for the presence floor (#49): without it
-            # the bar is built from the tracked population and becomes a
-            # peer competition. See the note in fleet_dll.
+            # the noise probes anchor the presence floor; with too few
+            # reporting, the chain is UNANCHORED and admits nobody
+            # (fleet.apply_presence)
             probe_prns=ctx.probe_set,
-            # #70: collect the per-instance newest hop from the poll we are
-            # already making. No extra HTTP -- fleet_dll parses pow_hop for
-            # the currency check and then aggregates the axis away.
+            # the newest hop per instance, from the poll fleet_dll already
+            # makes (no extra HTTP), for the axis and stall checks below; the
+            # aggregate throws that per-instance axis away
             src_hops=ctx.dllp.inst_hops,
             admit_displaced=ctx.dllp.admit_disp,
             # judge each instance before its rows count: a pre-re-base row
@@ -110,22 +108,9 @@ def stage_fleet_dll(ctx):
             anchor_utc=ctx.utc0_sample0 or None,
             hops_per_sec=ctx.args.hops_per_sec,
         )
-        # TASK #63: THE SAME DISCRIMINATOR, FORMED HERE FROM THE UN-SUMMED COMB. The powers
-        # above were built by each tracker summing across its own channels -- "the one
-        # combine the broker can never undo" -- and everything derived from them inherits
-        # that. combdll rebuilds them from the per-channel Early/Prompt/Late the transport
-        # ships, in the one place that can see the whole band.
-        #
-        # THE POLLED ARM IS STILL COMPUTED ABOVE, ON PURPOSE, AND FOR TWO REASONS: the deep
-        # statistics are not in the comb (they come from the combiner's fold, so they are
-        # handed across as coh_rows), and running both makes the swap self-monitoring --
-        # the log line below is the same paired comparison the offline A/B makes, on the
-        # loop's own cycles. Any cycle where the gather has nothing for this chain simply
-        # keeps the polled fleet.
-        # ⚠️ AN UNANCHORED CHAIN MUST BE LOUD. --presence-require-probes refuses the verdict
-        # rather than guessing it, and a refusal that only shows up as "0 present" is
-        # indistinguishable from a dead sky -- which is exactly the ambiguity this whole
-        # afternoon was spent removing. Say WHY, and say what to do about it.
+        # A chain whose presence floor has no noise anchor refuses every verdict (UNANCHORED):
+        # nobody is admitted and nothing is trimmed. Log why and what to fix, so the refusal
+        # is not mistaken for an empty sky.
         _fl0 = next(iter((ctx.dllp.fleet or {}).values()), None)
         if _fl0 is not None and _fl0.get("present_gate") == "UNANCHORED":
             _log_rl(
@@ -138,40 +123,40 @@ def stage_fleet_dll(ctx):
                 % _fl0.get("n_probe_q", 0),
                 every_s=60.0,
             )
+        # The comb arm (--telem-dll): the same discriminator rebuilt from the per-channel
+        # Early/Prompt/Late the transport ships, rather than from powers each tracker already
+        # summed across its own channels. When the gather has windows for this chain it
+        # replaces ctx.dllp.fleet. The polled arm above still runs: the deep statistics come only
+        # from the combiner's fold (handed across as coh_from), and the COMB-DLL line compares
+        # the two arms.
         instruments.instr_tap_walk(ctx)
-        # PROMPT HOLD for the NEXT cycle's lock gate (fold-independent, see
-        # --lock-prompt-hold). Mutated in place, never rebound: the gate closes over it.
+        # Prompt hold for the next cycle's lock gates: the fleet prompt ratio p_pow/p_med
+        # (lock_prompt_hold, read by the coast/drop gate and the dead-reckon re-pin) and the
+        # fleet q (lock_q, the dead-reckon re-pin). q is the metric lock is judged on.
         ctx.hold.prev.clear()
         ctx.hold.q.clear()
         for _p, _fl in (ctx.dllp.fleet or {}).items():
             _pm = _fl.get("p_med")
             if _pm:
                 ctx.hold.prev[_p] = _fl["p_pow"] / _pm
-            # ...and the FLEET DISCRIMINATOR QUALITY, from the same dict, for the same
-            # next-cycle gate. See --lock-q: q is the metric this project judges lock on
-            # everywhere EXCEPT, until now, the one decision that can destroy a lock.
             if _fl.get("q") is not None:
                 ctx.hold.q[_p] = float(_fl["q"])
-        # CROSS-NODE COHERENT COMBINE. Separate from the DLL on purpose: the DLL sums
-        # POWERS (phase-free, which is what makes it cheap) while this removes the common
-        # per-record PHASE, and the two answer different questions off the same endpoints.
-        # It touches NO loop -- purely an observable, published for the viewer and the beam
-        # map -- so a fault here can degrade what is displayed but can never move the code
-        # or carrier loops.
+        # Cross-node coherent combine. Separate from the DLL: the DLL sums powers (phase-free,
+        # which is what makes it cheap), while this removes the common per-record phase, and the
+        # two answer different questions off the same endpoints. It actuates nothing: it is
+        # published for the viewer and the beam map, and its record-stream rate (rate_hz) is
+        # the rate the KCOH fold derotates with next cycle. A failure costs this cycle's rows.
         ctx.dllp.fcoh = {}
-        # TASK #59. The gather feed, when it is asked for AND actually has this chain's
-        # windows. `source=None` falls straight through to the REST poll below, so a gather
-        # that is down, restarting, or simply not carrying this chain costs a rate-limited
-        # log line and nothing else -- the two feeds run side by side until the new one has
-        # been shown ON SKY to be at least as good, and neither is load-bearing for the
-        # other.
+        # With --telem-coherent, fleet_coherent reads this chain's windows from the gather
+        # (telem coherent_source) instead of polling /get_records. source=None, when the
+        # gather is down, restarting or not carrying this chain, falls back to the REST poll at
+        # the cost of a rate-limited log line.
         _tsrc = None
         if ctx.telem_client is not None:
-            # THE ALIGNMENT CHECK, PUBLISHED. `spread` is max-min of the instances' newest
+            # The telemetry alignment check. `spread` is max-min of the live instances' newest
             # window index: 0 or 1 is the transport working. Logged whether or not anything
-            # consumes the feed, because the entire argument for this transport is that
-            # misalignment becomes visible immediately instead of surfacing weeks later as
-            # a physics anomaly (#46, #52, #53 all did).
+            # consumes the feed, so a misalignment shows at once rather than later as a physics
+            # anomaly.
             _st = ctx.telem_client.stats()
             _cs = _st["chains"].get(ctx.telem_chain)
             if not _cs:
@@ -183,10 +168,9 @@ def stage_fleet_dll(ctx):
                     ",".join(_cs["stale"]),
                 )
             else:
-                # SPREAD IS OVER LIVE INSTANCES ONLY; the stale ones are NAMED. A stopped
-                # instance keeps its last window forever, so folding it into the spread
-                # turns every instance death into a four-digit alarm about alignment --
-                # which is the one number here that must stay trustworthy.
+                # Spread is over live instances only; the stale ones are named. A stopped
+                # instance keeps its last window forever, so folding it into the spread would
+                # turn every instance death into a large alignment alarm.
                 _msg = "chain %s: %d live, win %d..%d spread %d%s" % (
                     ctx.telem_chain,
                     _cs["live"],
@@ -236,28 +220,20 @@ def stage_fleet_dll(ctx):
                 prns=set(ctx.seeds) or None,
                 floor_margin=ctx.args.coh_floor_margin,
                 seed=int(_now()),
-                # lets it fit the record-stream carrier rate off
-                # the records it already fetched (#33 coarse feed).
-                # ⚠️ HOPS, NOT RECORDS. get_records' first tuple
-                # element is a HOP COUNT -- phaseslope.py divides
-                # it by 195312.5, not by the record rate. Passing
-                # hops_per_sec/2048 made the time axis 2048x too
-                # long, so every fitted rate came out 2048x too
-                # SMALL: +-0.005 Hz where the fold read +-10,
-                # ratio 1907-2140 across satellites.
+                # lets it fit the record-stream carrier rate (rate_hz) off
+                # the records it already fetched. Hops per second, not records:
+                # a record's first tuple element is a hop count.
                 hop_rate_hz=ctx.args.hops_per_sec,
-                # #59: when set, the poll is skipped entirely and
-                # this identical estimator runs on the gathered
-                # records instead.
+                # when set, the poll is skipped and the same estimator runs on
+                # the gathered records
                 source=_tsrc,
             )
         except Exception as e:
             _log_rl("fleet-coh", "fleet coherent: skipped this cycle (%s)" % e)
-        # PATH B, same estimator, separate population. Reported side by side rather than
-        # merged: blending the two streams would make the very comparison this exists to
-        # support impossible, and their per-record noise is NOT independent (both despread
-        # the same antenna voltages), so a merged sum would not buy the sqrt(2) it appears
-        # to. Publishes nothing and touches no loop.
+        # Path B (--n2-combiners): the same estimator on a separate population, reported beside
+        # path A in the FLEET-COH line rather than merged. Merging would hide the comparison, and
+        # both despread the same antenna voltages, so their noise is not independent and a merged
+        # sum would not buy the sqrt(2) it appears to. Publishes nothing and touches no loop.
         ctx.dllp.fcoh_n2 = {}
         if ctx.n2_combiners:
             try:
@@ -272,43 +248,31 @@ def stage_fleet_dll(ctx):
             except Exception as e:
                 _log_rl("fleet-coh-n2", "fleet coherent (path B): skipped (%s)" % e)
         instruments.instr_coherent_rows(ctx)
-        # FLEET PHASE-SLOPE DELAY FIT (task #32, docs/CHORD_JOINT_TRACKING.md P1).
-        # MEASUREMENT ONLY: touches no seed and no loop -- it is logged and published so
-        # it can be judged against the disc, the E/L asymmetry and GPS's search-measured
-        # code phase BEFORE anything consumes it (the #30 rule: measure the statistic
-        # before the loop). Gated on its OWN flag, which is what keeps every recorded
-        # transcript replaying byte-identically: replay is strict-ordered, an
-        # unrecorded GET is a TRANSCRIPT DIVERGENCE, and old transcripts' argv does not
-        # carry --spectrum-endpoints, so replays never issue the new polls.
+        # Fleet phase-slope delay fit (--spectrum-endpoints, docs/CHORD_JOINT_TRACKING.md). Its
+        # tau feeds b_sat (SatBiasFilter, bsat_gain), which the dead-reckon seeds add to the
+        # model's code phase. On its own flag because replay is strict-ordered: an unrecorded GET
+        # is a TRANSCRIPT DIVERGENCE, and a replay of a transcript recorded without the flag
+        # never issues these polls.
         ctx.dllp.spec_fit = {}
         instruments.instr_spectrum_fit(ctx)
-        # THE SERVED C/N0 (task #57): per-record prompt power off the gather feed,
-        # q-gated, debiased against the noise probes. Fits NOTHING -- the deep fold's
-        # per-integration rate re-search is a fit on something the tracking loop already
-        # fixed, and its ~20 dB of paired self-scatter is why cn0_coh_db cannot be the
-        # radiometry. Measurement-only: touches no loop, issues no polls (the telemetry
-        # client is a push stream, so recorded transcripts replay byte-identically).
-        # Needs the probes as its noise anchor; without them it publishes nothing rather
-        # than falling back to the peer competition (#49's lesson).
-        # Throttle (--estimator-every-s): both telemetry-walk estimators run together,
-        # at most this often; the last values keep being served in between. Defined
-        # HERE because this is the FIRST of the two blocks in cycle order.
+        # The served C/N0 (instr_prompt_cn0, combdll.prompt_cn0): per-record prompt power off
+        # the gather feed, debiased against the noise probes. It fits nothing, unlike the deep
+        # fold, whose per-integration rate re-search on something the tracking loop already
+        # fixed carries ~20 dB of paired self-scatter; that is why cn0_coh_db cannot be the
+        # radiometry. Measurement only. It needs the probes as its noise anchor; without them it
+        # publishes nothing rather than falling back to a peer comparison.
+        # estimator_every_s throttles the telemetry-walk estimators; the last values are served
+        # in between. run_est is set here because this is the first of the two blocks in cycle
+        # order.
         ctx.dllp.run_est = (
             ctx.telem_client is not None and ctx.probe_set and _now() >= ctx.est_next[0]
         )
         if ctx.dllp.run_est:
             ctx.est_next[0] = _now() + ctx.args.estimator_every_s
-        # ⚠️ THE THROTTLE EXISTS FOR THE *WALK*, NOT FOR THE ESTIMATOR. Its whole
-        # justification (see --estimator-every-s) is that these are "pure-Python walks over
-        # ~1500 record decodes each", which at every-cycle cadence across five chains ate
-        # ~75% of the interpreter and starved the telemetry reader. With --comb-taps-cpp
-        # armed, PROMPT-CN0 no longer walks anything: it fetches an already-reduced series
-        # from the gather. So the reason to throttle IT is gone, and throttling it now only
-        # costs the served C/N0 its freshness -- the rows keep serving a value up to
-        # --estimator-every-s old for no saving at all.
-        #
-        # KCOH still walks and stays throttled. They were gated together because they had
-        # the same cost; they no longer do, so they no longer share a gate.
+        # The throttle exists for the walk, not for the estimator: each walk is pure Python over
+        # ~1500 record decodes. With --comb-taps-cpp >= 2 and --fleet-trim-url, prompt C/N0
+        # fetches the gather's already-reduced series instead of walking, so it runs every cycle
+        # (throttling it would only age the served value) and only KCOH stays throttled.
         ctx.dllp.run_pcn0 = ctx.dllp.run_est or (
             ctx.args.comb_taps_cpp >= 2
             and ctx.args.fleet_trim_url
@@ -317,60 +281,46 @@ def stage_fleet_dll(ctx):
         )
         ctx.dllp.pcn0 = ctx.est_last["pcn0"]
         instruments.instr_prompt_cn0(ctx)
-        # THE KNOWN-RATE COHERENT C/N0 (task #57 step 3): the ~1 s fold with the rate
-        # INJECTED from the PREVIOUS cycle's record-stream fit (_kcoh_rates, updated
-        # below AFTER the fold so this integration never consumes a rate estimated
-        # from itself). No search, no q gate -- a fixed-rate fold over noise is noise,
-        # which is why this cannot fire on noise the way the deep fold did, and why it
-        # reaches the deep-sidelobe satellites a per-record gate never passes.
-        # Measurement-only; rides the same telemetry the comb DLL uses.
-        # Same throttle gate as PROMPT-CN0 above (_run_est, set there -- the first of
-        # the two telemetry-walk blocks in cycle order).
+        # The known-rate coherent C/N0 (instr_kcoh, combdll.coh_cn0): the ~1 s fold centred on
+        # the previous cycle's record-stream rate (ctx.kcoh_rates, updated below after the fold,
+        # so this integration never uses a rate fitted to its own records) or on zero, plus a
+        # one-parameter residual-rate fit that the probes ride identically, so the probe floor
+        # absorbs its gain on noise. No q gate, so it reaches the deep-sidelobe satellites a
+        # per-record gate never passes. Rides the same telemetry as the comb DLL, throttled with
+        # run_est; its rate feeds the joint rrate state only under --rrate-kcoh-feed.
         ctx.dllp.kcoh = ctx.est_last["kcoh"]
         instruments.instr_kcoh(ctx)
-        # NOW the rates for the NEXT cycle, from THIS cycle's record-stream fit.
+        # The rates for the next cycle, from this cycle's record-stream fit.
         for _p, _fc2 in (ctx.dllp.fcoh or {}).items():
             _r2 = _fc2.get("rate_hz")
             if _r2 is not None:
                 ctx.kcoh_rates[_p] = float(_r2)
-        # THE PER-ELEMENT COMPLEX GAIN (task #57 step 2): amplitude AND phase per
-        # antenna, per instance -- the beam/peel coefficients. Assembled from the
-        # combiners' /get_elements (raw leave-one-out cross-products accumulated per
-        # record node-side, where the element axis lives), significance-anchored on the
-        # noise probes per (instance, element). Measurement-only; touches no loop.
-        # ── #8: RF-PATH HEALTH, POLLED ──────────────────────────────────────────────
-        # Clip fraction and per-band power from each GPU's voltage tap. Measurement
-        # only: it steers nothing and gates nothing, exactly like the element poll below.
-        #
-        # ⚠️ THIS IS THE ONE NUMBER THAT SEPARATES "LOUD" FROM "RAILED", and we have
-        # never had it. The fleet's amplitudes swing 5-10x an hour (#56) with the root
-        # upstream of both tracking and the combine, and on 08-18 something lit up the
-        # band hard enough to take chains down for hours -- with no way to tell whether
-        # the front end saturated or merely saw a large linear signal. Those two have
-        # different fixes and we could not distinguish them.
-        #
-        # Grouped into LOBES by channel contiguity (rf_lobes), because the tap's channel
-        # list is the union of every chain's covering set and therefore arrives as one
-        # run per band. A band-selective source is only diagnosable against a band that
-        # was quiet in the SAME sample.
+        # RF-path health (instr_rf_stats): clip fraction and per-band power from each GPU's
+        # voltage tap. Measurement only: it steers and gates nothing. The clip fraction is what
+        # separates a saturated front end from a large linear signal, which need different
+        # fixes. Channels are grouped into bands by contiguity and band identity
+        # (fits.rf_lobes), because a band-selective source is diagnosable only against a band
+        # that was quiet in the same sample.
         instruments.instr_rf_stats(ctx)
 
-        # ⚠️ NEVER THROTTLE IN REPLAY. A transcript is an ordered recording of every GET,
-        # checked by URL as it is consumed, so making FEWER calls than the recording
-        # desynchronises the stream: the next endpoint reads the previous one's response
-        # and `_get` catches the divergence per call, so the replay limps on producing
-        # garbage instead of stopping. Found the hard way -- this moved the holds digest
-        # and it looked like the (unrelated) _solve refactor until the two arms were
-        # diffed and BOTH gave the same moved digest. "TRANSCRIPT DIVERGENCE at get #116"
-        # was in the replay's own stderr the whole time.
+        # The per-element complex gain (instr_element_poll): amplitude and phase per antenna,
+        # per instance, the beam/peel coefficients. Assembled from the combiners'
+        # /get_elements (leave-one-out cross-products accumulated per record on the node, where
+        # the element axis lives), significance-anchored on the noise probes per (instance,
+        # element). Measurement only; touches no loop.
         #
-        # The general rule: broker_equiv can gate what a call COMPUTES, never how OFTEN it
-        # is made. Any cadence change is live-only and needs a live measurement.
+        # Never throttle in replay: the element poll runs every cycle while a transcript is
+        # read. A transcript is an ordered recording of every GET, checked by URL as it is
+        # consumed, so making fewer calls than the recording desynchronises the stream: each
+        # later call consumes another call's entry, _get raises TRANSCRIPT DIVERGENCE on the URL
+        # mismatch, and the callers catch it, so the replay continues on wrong data instead of
+        # stopping. broker_equiv can gate what a call computes, never how often it is made; a
+        # cadence change is live-only and needs a live measurement.
         instruments.instr_element_poll(ctx)
-        # #83 2(d): the served innovation -- freshest value + 10-minute p95 per PRN.
-        # The statistic is cut by TIME here at read, not by count at write: a PRN
-        # detected once in ten minutes reports that one sample, and a PRN that set
-        # 20 minutes ago stops being served instead of fossilizing its last window.
+        # The served innovation: freshest value and 10-minute p95 per PRN. Cut by time here at
+        # read, not by count at write: a PRN detected once in ten minutes reports that one
+        # sample, one with no sample in ten minutes stops being served, and its history is
+        # dropped after twenty.
         ctx.dllp.innov_pub = {}
         for _p, _ih in list(ctx.innov_hist.items()):
             if _now() - _ih[-1][0] > 1200.0:
@@ -386,9 +336,9 @@ def stage_fleet_dll(ctx):
                 "innov_p95_10m": _av[max(0, math.ceil(0.95 * len(_av)) - 1)],
                 "innov_n_10m": len(_win),
             }
-        # #83 P3-3a: the MODEL innovation rides the same rows -- minnov_* keys. A PRN
-        # can carry either or both (INNOV needs a standing seed, MINNOV an established
-        # joint row); absent keys mean "not measurable", never zero.
+        # The model innovation rides the same rows as minnov_* keys. A PRN can carry either or
+        # both (INNOV needs a standing seed, MINNOV an established joint row); absent keys mean
+        # "not measurable", never zero.
         for _p, _mh in list(ctx.minnov_hist.items()):
             if _now() - _mh[-1][0] > 1200.0:
                 del ctx.minnov_hist[_p]
@@ -404,13 +354,13 @@ def stage_fleet_dll(ctx):
                     "minnov_n_10m": len(_win),
                 }
             )
-        # ── #83 P3-3b: THE FLIP DECISION (see --model-primacy-max) ──
-        # One writer for mp_flipped, once per cycle, from the MEASURED p95s built
-        # above. ENTER: p95 < gate with enough samples; the best-p95 eligible PRNs
-        # fill the cap, the rest are the in-poll controls. EXIT: p95 beyond the
-        # hysteresis bound, or the referee starved (no detection while flipped for
-        # --model-primacy-starve-s). Every transition is one loud line -- a flip
-        # whose firing cannot be seen is how gates fail here.
+        # ── The model-primacy flip decision (--model-primacy-max) ──
+        # The one writer of mp_flipped, once per cycle, from the measured p95s built above.
+        # Enter: p95 below model_primacy_p95 over at least model_primacy_min_n samples; the
+        # best-p95 eligible PRNs fill the cap and the rest are logged as the controls. Exit: p95
+        # above model_primacy_exit_p95, or the referee starved (no MINNOV in the 10-minute
+        # window, or no detection while flipped for model_primacy_starve_s). Every transition
+        # logs one line.
         instruments.instr_model_primacy(ctx)
         if ctx.dllp.innov_pub:
             _log_rl(
@@ -483,7 +433,7 @@ def stage_fleet_dll(ctx):
                 every_s=60.0,
             )
         if ctx.publisher is not None:
-            # Published BEFORE the trim update so the row shows the state the loop acted
+            # Published before the trim update so the row shows the state the loop acted
             # on, not the state after it acted -- otherwise a reader can never see the
             # input that produced a given correction.
             ctx.publisher.update(
@@ -508,10 +458,10 @@ def stage_fleet_dll(ctx):
         codeloop.stage_dll_control(ctx)
         if ctx.dllp.report:
             _log("DLL: " + "; ".join(ctx.dllp.report))
-        # ── D0: THE POPULATION-HONEST q SERIES ────────────────────────────────────────
-        # Recorded for EVERY seeded satellite, present or not -- the line above lists only
-        # the ones that passed the presence gate, so a satellite whose q craters leaves it.
-        # A statistic over that line measures survivors, and survivors always look healthy.
+        # ── D0: the population-honest q series ─────────────────────────────────────────────
+        # Recorded for every seeded satellite, present or not. The DLL line above lists only the
+        # ones that passed the presence gate, so a satellite whose q craters leaves it, and a
+        # statistic over that line measures survivors.
         ctx.qpop.note_cycle(ctx.t0, set(ctx.seeds), ctx.dllp.fleet)
         _tag = log_tag() or ctx.args.signal
         _qline = ctx.qpop.line(_tag)
@@ -519,8 +469,8 @@ def stage_fleet_dll(ctx):
             _log_rl("qpop", _qline, every_s=120.0)
 
         # ── D1: the chain-wide brownout, as a labelled episode ────────────────────────
-        # Promoted out of #90's admission gate, where it silently suppressed fires and
-        # nothing downstream could tell a window had contained one.
+        # Labelled so a window that contained one can be excluded or stratified. Its active()
+        # state also blocks displaced admission (above) and is passed to D3 (below).
         _npres = sum(
             1
             for _f in (ctx.dllp.fleet or {}).values()
@@ -530,12 +480,11 @@ def stage_fleet_dll(ctx):
         if _bmsg:
             _log("%s: %s" % (_tag, _bmsg))
 
-        # ── THE BORESIGHT-TRANSIT VETO (D3) ────────────────────────────────────────────
-        # Pooled over EVERY constellation -- ctx.transit_pd carries all three (the geometry-only
-        # sky, health gate off, #144: an unhealthy satellite still rails), and the quantiser is
-        # shared, so a per-chain answer would be worse than none (it would clean the chain
-        # carrying the bright satellite and leave the rest looking like clean controls).
-        # Transits recur on the SIDEREAL day, so this is predictable rather than bad luck.
+        # ── The boresight-transit veto (D3) ───────────────────────────────────────────────
+        # Pooled over every constellation: ctx.transit_pd is the geometry-only sky
+        # (sky.transit_sky, health gate off, since an unhealthy satellite still rails), and the
+        # quantiser is shared, so a per-chain answer would be worse than none: it would clear
+        # the chain carrying the bright satellite and leave the rest looking like clean controls.
         _near = (
             nearest_boresight(ctx.transit_pd)
             if ctx.args.detector_transit_veto_deg > 0.0
@@ -562,7 +511,7 @@ def stage_fleet_dll(ctx):
             if not isinstance(_sr, dict) or _sr.get("trim_chips") is None:
                 continue
             if not _sr.get("armed"):
-                ctx.saw.drop(_sp)  # a released trim decays by the LEAK, not a wipe
+                ctx.saw.drop(_sp)  # a released trim decays by the leak, not a wipe
                 continue
             _sq = ctx.qpop.summary(_sp)
             _sbt = ctx.birth_steps.get(_sp)
@@ -590,13 +539,12 @@ def stage_fleet_dll(ctx):
                     ),
                 )
             )
-            # Cleared after logging, for the reason spelled out under cp_rate_rejected below:
-            # an uncleared reject dict replays every PRN ever rejected, verbatim, forever, and
-            # identical stale values repeating for minutes are read as a live fault.
+            # Cleared after logging: an uncleared dict repeats every PRN ever rejected with
+            # identical stale values, which reads as a live fault. cp_rate_rejected likewise.
             ctx.dop_rate_rejected.clear()
-        # The same report for the CODE rate (#96). Separate line, not folded into the one
-        # above: these reject against the POOLED CLOCK rather than an orbit model, and a
-        # reader who cannot tell which reference rejected a fit cannot act on it.
+        # The same report for the code rate, on its own line: these reject against the pooled
+        # clock rather than an orbit model, and a reader who cannot tell which reference
+        # rejected a fit cannot act on it.
         if ctx.cp_rate_rejected:
             _log(
                 "cp-rate: %d fit(s) REJECTED against the pooled clock (kept the clock "
@@ -609,16 +557,13 @@ def stage_fleet_dll(ctx):
                     ),
                 )
             )
-            # Cleared after logging: without this the line replays every PRN ever
-            # rejected, verbatim and forever (measured 2026-08-28 22:46 -- '11 fits
-            # REJECTED' repeating identical stale values for minutes, which misread as
-            # a live clock fault). The dop-rate report above clears for the same reason.
+            # Cleared after logging, for the same reason as dop_rate_rejected above.
             ctx.cp_rate_rejected.clear()
         _absent = sorted(
             p for p in ctx.seeds if ctx.seeds[p].get("doppler_rate_hz_s") is None
         )
         if _absent:
-            # No carrier extrapolation AND no quadratic code term for these sats.
+            # No carrier extrapolation and no quadratic code term for these satellites.
             _log(
                 "dop-rate: %d seeded PRN(s) have NO doppler rate at all: %s"
                 % (len(_absent), _absent[:8])
@@ -636,17 +581,16 @@ def stage_fleet_dll(ctx):
                 ),
                 every_s=60.0,
             )
-        # The BAR, every cycle it is measured. A threshold on a noisy statistic that is
-        # never printed is a threshold nobody can audit -- and this one legitimately moves
-        # with the fleet size, so a reader has to be able to see where it went.
+        # The presence bar, logged (rate-limited) whenever it is measured. A threshold on a
+        # noisy statistic that is never printed cannot be audited, and this one moves with the
+        # fleet size.
         if ctx.dllp.fleet:
             any_fl = next(iter(ctx.dllp.fleet.values()))
             _log_rl(
                 "dll-floor",
-                # WHICH ARM produced these numbers. Since #63 this line can describe
-                # either the polled powers or the ones formed here from the comb, and
-                # a floor with no provenance is exactly the kind of number that gets
-                # compared across a switch without anyone noticing it changed source.
+                # Which arm produced these numbers: the polled powers, or the
+                # comb arm's ("comb"). A floor with no provenance gets compared
+                # across a switch without anyone noticing it changed source.
                 "fleet DLL [%s]: %d PRN(s) over %d combiner(s), %d present, "
                 "q floor %.2f%s"
                 % (
@@ -661,44 +605,12 @@ def stage_fleet_dll(ctx):
                     % (any_fl["q_med"], any_fl["q_sigma"]),
                 ),
             )
-        # ── THE INSTANCE LIVENESS GUARD (#70, 2026-08-18) ──────────────────────────
-        # WHY THIS EXISTS, and why the guard we already had could not do it. On 08-18's
-        # full-fleet restart FOUR instances came up wedged -- cx42/gnss0, cx43/gnss0,
-        # cx44/gnss1, cx51/gnss0 -- each with its DPDK capture window frozen and the
-        # ENTIRE 195,313 pkt/s stream being dropped, and each serving plausible,
-        # well-formed rows to every poll for as long as it was left alone. An earlier
-        # instance of the same fault ran on cx19 for 25 HOURS and 18.7 billion dropped
-        # packets before a human noticed.
-        #
-        # ⚠️ "ALL 12 RESPOND" IS NOT "ALL 12 ARE ALIVE". That is the whole trap, and it
-        # is why this keys on a COUNTER and never on reachability: healthy is ~5.9M
-        # hops per 30 s, wedged is exactly 0, and both answer 200.
-        #
-        # ⚠️ AND IT IS NOT --fe-axis-stale-s, which watches the MAXIMUM hop over
-        # instances. That question ("has the time base frozen?") is real and that guard
-        # caught the cx19 collapse -- but eleven healthy instances keep the maximum
-        # climbing, so it was correctly silent through all four wedges. The axis it
-        # cannot resolve is per-instance, and this is that axis. Both stay.
-        #
-        # FREE: the hop comes from the fleet DLL poll above, which already parses
-        # pow_hop for its currency check and then aggregates the per-instance axis away.
-        # The decision is a pure function in fits.py (test_instance_stall.py) with a
-        # CONTROL CLAUSE -- if most of the fleet is also standing still this is global
-        # (a paused F-engine, a replay, a clock step) and accusing an instance would
-        # point the next hour in the wrong direction, so it says nothing instead.
-        # ── LINK 1 OF THE WALKOFF CHAIN, MEASURED PER INSTANCE ────────────────────
-        # ⚠️ THE POPULATION IS THE POINT, AND I GOT IT WRONG ONCE. The obvious place for
-        # this is beside `_fh = max(pow_hop)` in the status block -- but that `status` is
-        # `{prn: row}` from ONE combiner, and every PRN in a poll carries the SAME
-        # pow_hop, so it reports spread 0.00 s across 32 rows and says nothing about the
-        # fleet. The axis lag that link 1 is
-        # about is ACROSS INSTANCES: on 2026-08-23, gps_l5/gal_e5a read -18.0..-19.3 s
-        # while bds_b2a read -7.8 s at the same instant. `_inst_hops_now` is the right
-        # population -- the newest hop per combiner, from the poll fleet_dll already makes.
-        #
-        # Sign convention matches _dax below: NEGATIVE = that instance lags the wall.
-        # POSITIVE = a hop the F-engine has not reached, i.e. link 2's FUTURE HOP, which
-        # is impossible for a processed record and names the instance serving it.
+        # ── Per-instance axis lag ─────────────────────────────────────────────────────────
+        # Each instance's newest hop (ctx.dllp.inst_hops, from the fleet DLL poll) against the
+        # wall clock. The --combiner status cannot show this: it is one instance, and every PRN
+        # in a poll carries the same pow_hop. Negative = the instance lags the wall. Positive =
+        # a hop the F-engine has not reached, impossible for a processed record, so instances
+        # more than 0.5 s ahead are named.
         if ctx.utc0_sample0 and ctx.dllp.inst_hops:
             _w = _now()
             _ia = sorted(
@@ -727,19 +639,20 @@ def stage_fleet_dll(ctx):
                     ),
                     every_s=30.0,
                 )
-        # ⚠️⚠️ dr_state CAN BE None, AND DEREFERENCING IT HERE KILLED ALL FIVE CHAINS
-        # (2026-08-28 00:11). It starts None and is only assigned when the dead-reckon block
-        # succeeds -- which is inside a try/except that DISABLES dead reckoning and logs
-        # "dead-reckon unavailable", leaving None behind. This line then raised
-        # AttributeError inside the cycle, which is fatal to a chain rather than to a stage.
+        # ── Instance liveness ─────────────────────────────────────────────────────────────
+        # A wedged instance (capture window frozen, its whole stream dropped) still answers
+        # every poll with plausible, well-formed rows, so this keys on the hop counter, never
+        # on reachability: healthy advances ~5.9M hops per 30 s, wedged exactly 0.
+        # fe_axis_stale_s cannot see it: it watches only the --combiner instance's hop. The
+        # verdict is fits.instance_stall_verdict (test_instance_stall.py), which stays silent
+        # when most of the fleet is also standing still (a global cause: a paused F-engine, a
+        # replay, a clock step).
         #
-        # A chain that has lost dead reckoning should run DEGRADED, not die: everything else
-        # in this stage -- the trims, the presence verdicts, the axis checks -- is still
-        # valid. Skipping one stall check is a smaller loss than the whole chain, and the
-        # difference decided a fleet-wide outage.
-        #
-        # ⚠️ SAY SO RATHER THAN SKIPPING QUIETLY. A silent skip here would make a chain with
-        # no dead reckoning indistinguishable from one whose instances are simply healthy.
+        # dr_state is None when dead reckoning is off (no --dead-reckon or no --almanac) or failed
+        # to initialise ('dead-reckon unavailable' at startup). Skip the check rather than
+        # dereference it: an exception here kills the chain, not the stage, while the trims,
+        # presence verdicts and axis checks are still valid. Say so, so a chain without dead
+        # reckoning is not mistaken for one whose instances are healthy.
         if ctx.dllp.inst_hops and ctx.dr_state is None:
             _log_rl(
                 "inststall-nodr",
@@ -777,26 +690,17 @@ def stage_fleet_dll(ctx):
                     every_s=300.0,
                 )
 
-        # ── THE q STALL GUARD (#70/#87, 2026-08-18) ────────────────────────────────
-        # WHY THIS EXISTS: on 08-18 three chains sat in a degraded steady state for
-        # 3.5 h after the RFI outage railed their C++ trims -- gal_e5b at q_med 1.09
-        # against its own 2.09 baseline -- and NOTHING said so. The numbers were in
-        # this very log the whole time; it took a same-time-of-day comparison, run by
-        # hand because someone asked for a status check, to see it. A degradation
-        # that only a human comparison can find is a degradation that runs for hours.
+        # ── The q stall guard ─────────────────────────────────────────────────────────────
+        # This chain's q duty (fraction of judged satellites at q >= q_stall_bar) over a
+        # trailing window, against the best duty it has reached in this process. Without it a
+        # chain can sit in a degraded steady state for hours, visible only to a same-time-of-day
+        # comparison. Self-referential because chains differ ~4x in duty by construction: a
+        # fleet-common bar would cry wolf on bds_b2b or never fire on gps_l5. The baseline only
+        # rises, so a chain that degrades cannot redefine normal downward.
         #
-        # WHAT IT WATCHES: this chain's own q duty (fraction of judged sats at
-        # q >= --q-stall-bar) over a trailing window, against the BEST duty this chain
-        # has reached in this process's lifetime. Self-referential on purpose: chains
-        # differ 4x in duty by construction (#49), so a fleet-common bar would either
-        # cry wolf on bds_b2b or never fire on gps_l5. The baseline only RISES, so a
-        # chain that degrades cannot quietly redefine "normal" downward -- which is
-        # exactly how the 3.5 h went unnoticed.
-        #
-        # ⚠️ IT IS A NOTICE, NOT A CONTROL. It changes nothing and gates nothing: a
-        # guard that acts on a statistic this noisy would be a new failure mode, and
-        # the honest recovery (a NODE restart, which clears the C++ trim state a
-        # broker restart cannot) is not the broker's to perform.
+        # A notice, not a control: it changes and gates nothing. Acting on a statistic this
+        # noisy would be a new failure mode, and the recovery (a node restart, which clears the
+        # C++ trim state a broker restart cannot) is not the broker's to perform.
         if ctx.dllp.fleet:
             _qs = [v["q"] for v in ctx.dllp.fleet.values() if v.get("q") is not None]
             if _qs:
@@ -806,10 +710,9 @@ def stage_fleet_dll(ctx):
                 _qh = ctx.dr_state.setdefault("q_hist", [])
                 _qh.append((ctx.t0, _duty))
                 del _qh[: max(0, len(_qh) - 4000)]
-                # The decision itself is a PURE function in fits.py so it can be
-                # tested against a constructed collapse (test_q_stall.py) -- the
-                # on-sky fixtures run ~11 cycles at a duty that never falls, so a
-                # replay cannot distinguish "did not fire" from "cannot fire".
+                # The decision is a pure function (fits.q_stall_verdict) so a constructed
+                # collapse can test it (test_q_stall.py): the on-sky replay fixtures never see
+                # the duty fall, so a replay cannot tell "did not fire" from "cannot fire".
                 _qb, _qv = q_stall_verdict(
                     _qh,
                     ctx.t0,

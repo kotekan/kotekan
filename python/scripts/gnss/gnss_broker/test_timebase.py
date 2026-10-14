@@ -1,4 +1,4 @@
-"""The time-base detector: an epoch shift is a SPREAD ∝ Doppler rate; a clock bias is an OFFSET.
+"""The time-base detector: an epoch shift is a spread ∝ Doppler rate; a clock bias is an offset.
 
     python3 -m unittest gnss_broker.test_timebase
 """

@@ -2,16 +2,15 @@
 
     python3 -m gnss_broker.test_context
 
-WHY THIS EXISTS. A slot the broker declares but never passes is silently None, and the symptom
-appears far away and much later -- `ctx.lc_seg > 1` raising a TypeError deep inside the seeding
-stage, on the one code path that reads it. That happened on 2026-08-26 with `lc_seg`/`lc_epoch`,
-and nothing but a replay caught it.
+A slot the broker declares but never passes is silently None, and the symptom appears far away
+and much later: a comparison like `ctx.lc_seg > 1` raising a TypeError deep inside a stage, on
+the one code path that reads it.
 
-This is a STRUCTURAL check, not a value check: several slots are legitimately None at
-construction (`dr_eph_mod` without --dead-reckon,
-`brdc_alm` before the first fetch), so asserting non-None would be wrong. What can be asserted
-is that every slot is accounted for -- passed by the constructor call, given a default, or
-declared per-cycle and written by the stage that computes it.
+This is a structural check, not a value check: several slots are legitimately None at
+construction (`dr_eph_mod` without --dead-reckon, `brdc_alm` before the first fetch), so
+asserting non-None would be wrong. What can be asserted is that every slot is accounted for:
+passed by the constructor call, given a default, or declared per-cycle and written by the stage
+that computes it.
 
 @author Keith Vanderlinde
 """
@@ -23,7 +22,7 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 BROKER = os.path.join(os.path.dirname(HERE), "gps_distributed_broker.py")
 
-# Written by whichever stage computes them, once the cycle is under way -- never passed in.
+# Written by whichever stage computes them, once the cycle is under way; never passed in.
 PER_CYCLE = {
     "t0",
     "best",
@@ -59,16 +58,11 @@ def check(ok, what):
 
 
 def test_chainview_covers_the_publisher():
-    """⚠️ EVERY PUBLIC FleetPublisher METHOD MUST EXIST ON THE PER-CHAIN VIEW.
+    """Every public FleetPublisher method must exist on the per-chain view.
 
-    The broker only ever holds a _ChainView, so a method added to FleetPublisher and forgotten
-    here is an AttributeError at the first call -- on whichever chain happens to use it, while
-    the others run on. That is exactly what killed gps_l5 on 2026-08-19: set_rf was added to
-    the publisher and not the view, and the one chain with rf-stats-endpoints armed died at its
-    first poll. The chain that carries the only search, and whose clock the other four adopt,
-    is the worst one to lose.
-
-    This is the check that would have caught it, and it is cheap.
+    The broker only ever holds a _ChainView, so a method added to FleetPublisher and missing
+    from the view is an AttributeError at the first call, killing whichever chain uses it while
+    the others run on.
     """
     from gnss_broker.publish import FleetPublisher, _ChainView
 

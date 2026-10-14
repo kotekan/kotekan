@@ -1,9 +1,10 @@
-"""D0: the survivor-bias case, replayed.
+"""The population detectors: QSeries, BrownoutDetector, SawtoothDetector.
 
     python3 -m gnss_broker.test_detectors
 
-The test that matters is `test_the_e4_case`: it reconstructs the shape that produced a wrong
-verdict on 2026-08-25 and asserts the series reports it honestly where the DLL line did not.
+The central case is `test_the_e4_case`, a satellite sick enough to leave the sample: a q
+statistic over its present samples alone describes a satellite that was fine, for as long as it
+was fine, so the series must carry the presence fraction beside it.
 
 @author Keith Vanderlinde
 """
@@ -37,7 +38,7 @@ def fleet(present_q):
     }
 
 
-# ---- THE CASE THAT COST A VERDICT ---------------------------------------------------------
+# ---- QSeries: a satellite sick enough to leave the sample ---------------------------------
 def test_the_e4_case():
     print("the E4 case (2026-08-25): a satellite sick enough to leave the sample")
 
@@ -65,7 +66,7 @@ def test_the_e4_case():
         "the survivor statistic is not wrong, it is answering a different question",
     )
 
-    # The comparison that was actually made: PRN 4 against a healthy neighbour, on q alone.
+    # PRN 4 against a healthy neighbour, on q alone.
     n9, npres9, mean9, sd9, frac9 = q.summary(9)
     check(
         abs(sd - sd9) < 1e-9,
@@ -141,7 +142,7 @@ def test_no_side_effects():
     )
 
 
-# ---- D1: THE BROWNOUT ---------------------------------------------------------------------
+# ---- BrownoutDetector ---------------------------------------------------------------------
 def test_brownout():
     print("D1: the brownout episode (the 2026-08-25 23:00 shape)")
 
@@ -152,7 +153,7 @@ def test_brownout():
     check(not any(msgs), "a steady chain says nothing at all")
     check(not d.active(), "and is not browned out")
 
-    # e5b's collapse: 7 -> 3 satellites, held for six minutes.
+    # A collapse from 7 to 3 satellites, held for six minutes.
     opened = [d.note_cycle(200.0 + i * 10.0, 3) for i in range(36)]
     fired = [m for m in opened if m]
     check(d.active(), "the collapse opens an episode")
@@ -169,7 +170,7 @@ def test_brownout():
         "with the baseline and the worst count",
     )
 
-    # A brief dip is not an episode -- a chain that flickers must not fill the log.
+    # A brief dip is not an episode: a chain that flickers must not fill the log.
     d2 = BrownoutDetector(min_len_s=60.0)
     for i in range(10):
         d2.note_cycle(i * 10.0, 8)
@@ -186,7 +187,7 @@ def test_brownout():
     )
 
 
-# ---- D3: THE HANDOVER SAWTOOTH ------------------------------------------------------------
+# ---- SawtoothDetector: the handover sawtooth ----------------------------------------------
 def test_sawtooth():
     print("D3: the handover sawtooth (#92's P2 population)")
 
@@ -214,7 +215,7 @@ def test_sawtooth():
         "a trim that never ramped past the bar cannot wipe",
     )
 
-    # A brownout takes trims away chain-wide; that is D1's event, not this one.
+    # A brownout takes trims away chain-wide; that is BrownoutDetector's event, not this one.
     d3 = SawtoothDetector(ramp_chips=0.5)
     for i in range(30):
         d3.note(i * 10.0, 9, i * 0.05)
@@ -224,8 +225,8 @@ def test_sawtooth():
         "look heterogeneous",
     )
 
-    # A wipe during a railing transit belongs to the transit (three fired inside one on
-    # 2026-08-26 17:42-17:43). Counting them would put geometry into #92's P2 population.
+    # A wipe during a railing transit belongs to the transit; counting it would mix geometry
+    # into the handover population.
     d5 = SawtoothDetector(ramp_chips=0.5, wipe_frac=0.5)
     for i in range(30):
         d5.note(i * 10.0, 5, i * 0.05)
@@ -233,10 +234,9 @@ def test_sawtooth():
         d5.note(300.0, 5, 0.02, in_transit=True) is None,
         "a wipe inside a transit is silent",
     )
-    # ⚠️ NOT "the same wipe fires later": once suppressed, the trim is already gone, so there
-    # is nothing left to report -- which is precisely what makes it the transit's event and
-    # not the handover's. What must survive is the DETECTOR: a new ramp that wipes on a clear
-    # array is still caught.
+    # Not "the same wipe fires later": once suppressed, the trim is already gone and there is
+    # nothing left to report, which is what makes it the transit's event. What must survive
+    # is the detector: a new ramp that wipes on a clear array is still caught.
     for i in range(31, 61):
         d5.note(i * 10.0, 5, (i - 31) * 0.05)
     check(
@@ -245,7 +245,7 @@ def test_sawtooth():
         "leave the detector deaf",
     )
 
-    # A gradual decay is the LEAK, not a discontinuity.
+    # A gradual decay is the leak, not a discontinuity.
     d4 = SawtoothDetector(ramp_chips=0.5, wipe_frac=0.5)
     for i in range(30):
         d4.note(i * 10.0, 4, i * 0.05)
@@ -262,9 +262,9 @@ def test_sawtooth_v2():
             d.note(i * 10.0, 7, i * 0.05)
         return d
 
-    # THE FIRST FLIGHT'S POLLUTION (2026-08-26 14:54): 6 of 12 reports in the broker's
-    # first two minutes. Inside the hold-off nothing is reported, and the cooldown is NOT
-    # stamped, so the same satellite still reports once the process is old enough.
+    # Startup hold-off: seeds churn while the clock converges. Inside the hold-off nothing is
+    # reported, and the cooldown is not stamped, so the same satellite still reports once the
+    # process is old enough.
     d = ramped()
     check(
         d.note(300.0, 7, 0.02, uptime_s=120.0) is None,
@@ -277,8 +277,8 @@ def test_sawtooth_v2():
         "the SAME satellite fires later -- suppression must not stamp the cooldown",
     )
 
-    # THE PRN 34 CASE (gal_e5a 14:54:16): a trim ramping on a satellite that was absent
-    # with q ~1.3 the whole time is churn-chasing, not sky work.
+    # A trim ramping on a satellite that was absent, or present at q ~1.3, the whole time is
+    # chasing churn, not doing sky work.
     d2 = ramped()
     check(
         d2.note(300.0, 7, 0.02, present_frac=0.4) is None,
@@ -295,9 +295,9 @@ def test_sawtooth_v2():
         "a healthy locked satellite's wipe IS reported",
     )
 
-    # THE TWO CLASSES. A wipe just after a BIRTH-STEP is the population #92's handover
-    # addresses; one with no rebase in the window is the slew-transfer class (gps_l5's
-    # ~600 s cadence) and judging the handover on it would judge the wrong mechanism.
+    # Two classes: a wipe within rebase_window_s of a birth step is a REBASE-WIPE (the seed
+    # re-based under the trim); one with no birth step in the window is a BARE-WIPE, typically
+    # a slew transfer, a different mechanism.
     d5 = ramped()
     m = d5.note(300.0, 7, 0.02, rebase_age_s=5.0)
     check(m is not None and "REBASE-WIPE" in m, "rebase 5 s before: REBASE-WIPE")
@@ -324,11 +324,10 @@ if __name__ == "__main__":
         test_sawtooth_v2,
     ):
         fn()
-    # ---- the span must be reported as CENSORED when it fills the window ----------------
-    # A ramp older than window_s reports a span pinned just under it, so the reports cluster
-    # at ~window_s and read as a PERIOD in the plant. That misreading cost a retraction on
-    # 2026-08-27 ("12 of 37 railed at a 1800 s quantum" -- my own lookback). A censored value
-    # is a LOWER BOUND and must print as one.
+    # ---- the span is reported as censored when it fills the window -------------------
+    # A ramp older than window_s reports a span pinned just under it, so the reports would
+    # cluster at ~window_s and read as a period in the plant. A censored value is a lower
+    # bound and must print as one.
     d = SawtoothDetector(window_s=1800.0, cooldown_s=0.0, startup_hold_s=0.0)
     t0 = 10000.0
     msg = None
@@ -343,7 +342,7 @@ if __name__ == "__main__":
         "           %s" % (msg or "")[:150],
     )
 
-    # a SHORT ramp inside the window reports an exact span, with no censoring marker
+    # a short ramp inside the window reports an exact span, with no censoring marker
     d2 = SawtoothDetector(window_s=1800.0, cooldown_s=0.0, startup_hold_s=0.0)
     msg2 = None
     for k in range(0, 20):  # 20 x 20 s = 400 s, well inside

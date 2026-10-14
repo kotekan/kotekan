@@ -1,29 +1,24 @@
-"""The ephemeris SUPPLY has an output gate now.
+"""Output gate for the ephemeris supply: the merged hourly BRDC file must hash to the golden.
 
     python3 gnss_broker/test_brdc_golden.py                  # check against the golden digest
-    python3 gnss_broker/test_brdc_golden.py --print-digest    # after a DELIBERATE change
+    python3 gnss_broker/test_brdc_golden.py --print-digest    # after a deliberate change
 
-WHY THIS EXISTS. broker_equiv replays pin the sky through GNSS_BRDC_DIR, so the fetch/merge path
-NEVER EXECUTES in any of the seven digest fixtures -- all seven stayed EQUIVALENT across six
-supply defects fixed in one evening (2026-08-27: sources-not-coverage, recency-not-coverage,
-presence-not-usability, a CDDIS mirror that could only 404, a 404 blacklisting a live host, and
-a merge that rebuilt instead of accumulating). Every one changed the CONTENT of the merged file
-and no gate could see it.
+broker_equiv replays pin the sky through GNSS_BRDC_DIR, so the fetch/merge path never runs in
+a replay digest, and a defect that changes the content of the merged file passes that gate.
 
-test_skyscope.py covers the POLICY decisions -- does the walk stop on the right thing, does a
-thin merge get the short TTL. This covers the OUTPUT: real captured station files, a pinned
+test_skyscope.py covers the policy decisions (does the walk stop on the right thing, does a
+thin merge get the short TTL). This covers the output: real captured station files, a pinned
 clock, the whole merge, one hash.
 
-⚠️ THE GOLDEN LIVES HERE, IN GIT, UNDER REVIEW -- not in the fixture manifest. A golden
-regenerated alongside its fixture can never go red, which is the defect this file exists to
-catch, not to reproduce.
+The golden lives here, in git, under review, not in the fixture manifest: a golden regenerated
+alongside its fixture can never go red.
 
-⚠️ HASH THE DECOMPRESSED BYTES. gzip embeds an mtime, so the .gz is not reproducible even when
-its content is.
+The hash is over the decompressed bytes: gzip embeds an mtime, so the .gz is not reproducible
+even when its content is.
 
-FIXTURE: $GNSS_FIXTURES/brdc_merge_golden, from scripts/gnss/brdc_fixture_capture.py.
-A MISSING FIXTURE IS A FAILURE, NOT A SKIP -- "the gate did not run" and "the gate passed" must
-never look alike (the fleetdll lesson).
+Fixture: $GNSS_FIXTURES/brdc_merge_golden, from scripts/gnss/brdc_fixture_capture.py. A missing
+fixture is a failure, not a skip: "the gate did not run" and "the gate passed" must never look
+alike.
 """
 import gzip
 import hashlib
@@ -78,9 +73,9 @@ def _serve(names):
         if n in names and os.path.exists(p):
             with open(p, "rb") as f:
                 return _R(f.read())
-        # ⚠️ 404, NOT a bare exception. A 404 is a statement about the PATH and must not
-        # blacklist the host -- otherwise the second hour of the walk is served by a mirror
-        # this test itself killed, and the golden would encode that accident.
+        # A 404, not a bare exception: a 404 is about the path and must not blacklist the host
+        # (_src_failed), or the rest of the walk would skip a mirror this test disabled and the
+        # golden would encode that accident.
         raise urllib.error.HTTPError(req.full_url, 404, "Not Found", None, None)
 
     return fake
@@ -141,8 +136,8 @@ def main():
             "          got    %s\n          golden %s" % (got, GOLDEN),
         )
 
-        # IDEMPOTENT. Re-merging the same inputs into a store that already holds them must not
-        # change the file -- records are keyed (sys, prn, toc) precisely so a re-fetch is free.
+        # Idempotent: re-merging the same inputs into a store that already holds them must not
+        # change the file. Records are keyed (sys, prn, toc) so that a re-fetch is free.
         os.utime(
             os.path.join(d, "hourly_MN.rnx.gz"), (0, 0)
         )  # expire the cache gate only
@@ -152,9 +147,9 @@ def main():
             "re-merging the same inputs changes nothing (idempotent)",
         )
 
-        # ORDER INDEPENDENT. Accumulating hour-by-hour must land on the same file as taking
-        # both at once. Otherwise the store's content depends on fetch HISTORY, and a
-        # constellation's coverage would silently depend on when the broker happened to start.
+        # Order independent: accumulating hour by hour must land on the same file as taking
+        # both at once, or the store's content, and a constellation's coverage, would depend on
+        # when the broker started.
         d2 = tempfile.mkdtemp(prefix="brdcgold2-")
         try:
             _merge(sup, when, newest, d2)

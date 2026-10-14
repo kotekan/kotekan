@@ -2,15 +2,14 @@
 
     python3 -m gnss_broker.test_prnmap
 
-WHY THIS EXISTS RATHER THAN A FIXTURE. The digest gate replays logged cycles; this stage
-GETs and POSTs to node endpoints that a replay does not have, so its decision function would
-never run and would never be compared to anything -- the blind spot that let the dead C_LIGHT
-import ship. And unlike most broker policy, the cost of getting this one wrong is not a bad
-number: it is a SLOT SWAP, which throws away a working satellite's acquisition. So the
-hysteresis is asserted here directly.
+The replay gate (scripts/gnss/broker_equiv.py) does not exercise this stage: its recordings
+run with --prn-reconfig at the default, off. And a wrong decision here is not a bad number but
+a slot swap, which throws away a working satellite's acquisition. So the policy is asserted
+directly.
 
-WHAT IS BEING PINNED:
-  * a candidate below the admit mask claims nothing, however long a slot has been free;
+What is pinned:
+  * a candidate below the admit mask (not a noise probe) evicts nobody, however long it
+    waits, while a dead slot still goes to any satellite;
   * two unwanted satellites never trade a slot (the map is a fixed point, not a flip-flop);
   * a node that left the fleet's map (a restart, a missed post) is put back on it, alone and
     once per interval; a split with no reference -- no majority, nothing this broker posted
@@ -45,7 +44,7 @@ class Args(object):
         self.prn_reconfig_axis_max_age_s = 30.0
         self.hops_per_sec = 125000.0
         self.prn_reconfig_heartbeat_s = (
-            1e18  # off by default in tests; check 11 arms it
+            1e18  # no heartbeat unless a check sets one (the heartbeat check)
         )
         self.noise_probes = 0
         self.signal = "GAL_E5A_Q_CS"
@@ -53,7 +52,8 @@ class Args(object):
 
 
 class Ctx(object):
-    """Only what prnmap reads: args, trackers, t0, pred, and its own owner."""
+    """Only what prnmap reads: args, trackers, detectors, t0, pred, fe_hop_now / fe_hop_t
+    and its PrnMapState."""
 
     def __init__(self, slots, pred, t0=1000.0, **kw):
         self.args = Args(**kw)
@@ -62,16 +62,16 @@ class Ctx(object):
         self.t0 = t0
         self.pred = {p: (0.0, 0.0, el, 0.0, 0.0) for p, el in pred.items()}
         self.prnmap = prnmap.PrnMapState()
-        # What the fake nodes HOLD. The stage clears its cache after every POST and will not
-        # decide again until a full sweep has read the map back, so the test has to model the
-        # nodes actually applying it -- which is the loop being tested, not scaffolding.
+        # What the fake nodes hold. The stage clears its cache after every POST and decides
+        # again only after a full sweep has read the map back, so the test models the nodes
+        # applying it: that read-back loop is part of what is tested.
         self.node_state = list(slots)
         self.prnmap.maps = {ep: list(slots) for ep in self.trackers}
         self.prnmap.poll_t = t0  # pre-swept: no HTTP in this test
-        # The F-engine hop the scheduler writes its deadline against, and the wall instant it
-        # was sampled. None models "the axis is unknown", which must degrade to an UNSCHEDULED
-        # post, not to no post. fe_hop_t defaults to t0 -- i.e. the poll happened at the top of
-        # this cycle, which is where the real one happens.
+        # The F-engine hop the deadline is built on, and when it was sampled. None models an
+        # unknown axis, which must degrade to an unscheduled post, not to no post. fe_hop_t
+        # defaults to t0: a status poll this cycle, stamped on the frozen cycle clock as the
+        # broker does.
         self.fe_hop_now = (
             kw.pop("fe_hop_now", 1_000_000_000.0)
             if "fe_hop_now" in kw
@@ -121,14 +121,9 @@ def main():
     prnmap._log = _rec_log
     prnmap._log_rl = _rec_log_rl
 
-    # ---- 1. THE WHOLE MAP, EVERY CYCLE, WITH ELEVATION HYSTERESIS ---------------------
-    # ⚠️ SUPERSEDES THE HOLD-TIMER TESTS (2026-08-27). The old policy held a down incumbent
-    # for 3 h and a dead slot for 2 h before reusing either, with the clocks in this in-memory
-    # state -- so every broker restart reset them and, measured after a day of restarts, the
-    # eviction path had NEVER FIRED IN PRODUCTION: "7 dead, 15 below 0 deg" and "NO slot is
-    # evictable" in one heartbeat, with E36 unslotted at 82 deg. KV: "3 below horizon + all
-    # above", pushed regularly. The hysteresis those timers were standing in for is now
-    # ELEVATION hysteresis, which no restart can lose.
+    # ---- the whole map, every cycle, with elevation hysteresis -------------------------
+    # No hold timers: a satellite up at 83 deg takes a below-horizon incumbent's slot on the
+    # first cycle. The hysteresis is in elevation, which a broker restart cannot lose.
     POSTS[:] = []
     ctx = Ctx([1, 2, 3], {1: -20.0, 2: 40.0, 3: 30.0, 36: 83.0})
     run_cycle(ctx, 1000.0)
@@ -148,11 +143,9 @@ def main():
             "the swap replaces the down incumbent in ITS slot, leaving the rest alone",
         )
 
-    # ---- 2. HYSTERESIS: a held satellite is not dropped the instant it dips -------------
-    # The lesson the down-clock encoded, and it still holds: BRDC visibility flickers, and a
-    # slot that flickers is a satellite that never locks. It is now expressed in elevation --
-    # admitted above admit_deg, KEPT until it falls below evict_deg -- so it survives a
-    # restart, which the timer never did.
+    # ---- hysteresis: a held satellite is not dropped the instant it dips --------------
+    # Admitted above admit_deg, kept until it falls below evict_deg: BRDC visibility
+    # flickers, and a slot that flickers is a satellite that never locks.
     POSTS[:] = []
     ctx = Ctx([1, 2, 3], {1: 2.0, 2: 40.0, 3: 30.0, 9: 2.0})
     run_cycle(ctx, 1000.0)
@@ -168,9 +161,8 @@ def main():
         "edges or it is not hysteresis",
     )
 
-    # ---- 3. A DEAD SLOT IS REUSED AT ONCE ----------------------------------------------
-    # A PRN with no ephemeris produces literally nothing. Waiting 2 h to reclaim its slot was
-    # never justified by a re-acquisition cost, because there was nothing to re-acquire.
+    # ---- a dead slot is reused at once -------------------------------------------------
+    # A PRN with no ephemeris produces nothing, so there is nothing to re-acquire.
     POSTS[:] = []
     ctx = Ctx(
         [1, 2, 3], {2: 40.0, 3: 30.0, 36: 83.0}
@@ -181,14 +173,12 @@ def main():
         "a slot holding a PRN with NO ephemeris is reclaimed on sight",
     )
 
-    # ---- 4. A FREE SLOT GOES TO ANYONE, INCLUDING A LOW SATELLITE ----------------------
-    # ⚠️ THIS TEST ASSERTED THE BUG until 2026-08-27 and then CAUGHT ITS REGRESSION the same
-    # day. The admit mask exists to justify an EVICTION; a free slot is not an eviction. The
-    # first version of the whole-map policy re-broke it: a satellite at +4 deg is neither "up"
-    # (below the 10 deg admit mask) nor a probe (above -15 deg), so it fell in the gap and was
-    # refused a slot that was standing empty.
+    # ---- a free slot goes to anyone, including a low satellite -------------------------
+    # The admit mask justifies an eviction, and a free slot is not one. A satellite at +4 deg
+    # is neither up (below the 10 deg admit mask) nor a probe (above -15 deg), and must still
+    # get a slot that stands empty.
     POSTS[:] = []
-    ctx = Ctx([1, 2, 3], {2: 40.0, 3: 30.0, 36: 4.0})  # PRN 1 GONE -> slot 0 is FREE
+    ctx = Ctx([1, 2, 3], {2: 40.0, 3: 30.0, 36: 4.0})  # PRN 1 gone: slot 0 is free
     run_cycle(ctx, 1000.0)
     check(
         any(36 in pl["prns"] for _u, pl in POSTS),
@@ -196,8 +186,8 @@ def main():
         "probe today and a tracked satellite tomorrow",
     )
 
-    # ... but it must NOT buy an eviction. Every slot occupied by a satellite that is UP:
-    # nothing is free, and a 4 deg candidate is not worth a re-acquisition.
+    # ... but it must not buy an eviction. Every slot holds a satellite that is up: nothing
+    # is free, and a 4 deg candidate is not worth a re-acquisition.
     POSTS[:] = []
     ctx = Ctx([1, 2, 3], {1: 20.0, 2: 40.0, 3: 30.0, 36: 4.0})
     run_cycle(ctx, 1000.0)
@@ -207,10 +197,9 @@ def main():
         "a 4 deg satellite does NOT evict anyone (the up-now bar still governs swaps)",
     )
 
-    # ---- 4b. the probe supply is never evicted -----------------------------------------
-    # A satellite deep below the horizon for hours IS the chain's noise anchor. Trading it
-    # for one more tracked satellite costs the presence gate its floor, which is worth far
-    # more than the satellite the swap bought.
+    # ---- the probe supply is never evicted ---------------------------------------------
+    # The deepest below-horizon satellites are the chain's noise probes. Trading one for
+    # another tracked satellite costs the presence gate its noise floor.
     POSTS[:] = []
     deep = {
         1: -70.0,
@@ -239,12 +228,11 @@ def main():
         "... but with only 2 needed, the shallowest deep slot IS free to be traded",
     )
 
-    # ---- 4c. AN UNWANTED SATELLITE DOES NOT DISPLACE ANOTHER ---------------------------
-    # Every slot holds a real satellite and one more has none, all of them below the horizon
-    # and none a probe. The leftover-slot fill used to give the deepest unwanted occupant's
-    # slot to the unslotted one, and the next cycle traded them back: BeiDou's slot 12 flipped
-    # every interval from 01:25 to 06:37Z on 2026-10-07, each flip a cold acquisition on
-    # twelve instances. Production thresholds.
+    # ---- an unwanted satellite does not displace another -------------------------------
+    # Every slot holds a real satellite and one more has none, all below the horizon and none
+    # a probe. The leftover-slot fill must not hand an unwanted occupant's slot to the
+    # unslotted one: the next cycle would trade them back, a cold acquisition every interval
+    # on every instance. Production thresholds.
     POSTS[:] = []
     sky = {1: 40.0, 2: 30.0, 3: -70.0, 4: -55.0, 5: -20.0, 6: -54.0}  # 6 has no slot
     ctx = Ctx(
@@ -263,7 +251,7 @@ def main():
         "every interval",
     )
     sky_dead = dict(sky)
-    del sky_dead[5]  # ... but a DEAD slot still fills
+    del sky_dead[5]  # ... but a dead slot still fills
     POSTS[:] = []
     ctx = Ctx(
         [1, 2, 3, 4, 5],
@@ -279,13 +267,13 @@ def main():
         "... while a slot whose PRN has no prediction is still handed to the unslotted one",
     )
 
-    # ---- 6. off does nothing at all ---------------------------------------------------
+    # ---- off does nothing at all -------------------------------------------------------
     POSTS[:] = []
     ctx = Ctx([1, 2, 3], {2: 40.0, 3: 30.0, 36: 83.0}, prn_reconfig="off")
     run_cycle(ctx, 1000.0 + 100000.0)
     check(not POSTS, "off is off")
 
-    # ---- 7. disagreeing nodes stop the stage ------------------------------------------
+    # ---- disagreeing nodes with no reference stop the stage ----------------------------
     POSTS[:] = []
     ctx = Ctx([1, 2, 3], {2: 40.0, 3: 30.0, 36: 83.0})
 
@@ -304,11 +292,8 @@ def main():
         "nothing -- nothing here is per-node, and neither side is the fleet's",
     )
 
-    # ---- 7b. A NODE BACK ON ITS BOOT LIST IS PUT BACK ON THE FLEET'S MAP -----------------
-    # A node restart reverts that node to its config's list. The stage used to treat that
-    # split like any other and change nothing, indefinitely: cx19 restarted at 06:37Z on
-    # 2026-10-07 and held two BeiDou satellites the fleet had swapped out, and lacked the two
-    # it had swapped in, until the broker was changed.
+    # ---- a node back on its boot list is put back on the fleet's map -------------------
+    # A node restart reverts that node to its config's list.
     fleet, boot = [1, 2, 36], [1, 2, 3]
     nodes = ["http://node%d" % i for i in range(1, 5)]
     sky = {1: 40.0, 2: 30.0, 36: 83.0, 3: -5.0}
@@ -316,7 +301,7 @@ def main():
     odd["http://node4"] = list(boot)
 
     def sweep(ctx, maps, t, pending=None):
-        CTX[0] = None  # a resync reaches ONE node, not the shared node_state
+        CTX[0] = None  # a resync reaches one node, not the shared node_state
         ctx.t0 = t
         ctx.prnmap.poll_t = t
         ctx.prnmap.maps = {k: list(v) for k, v in maps.items()}
@@ -345,7 +330,7 @@ def main():
     sweep(ctx, {n: list(fleet) for n in nodes}, 1001.0)
     check(len(POSTS) == n_posts, "once it holds the map again, nothing more is posted")
 
-    # ---- 7c. THE MAP THIS BROKER LAST POSTED IS THE REFERENCE ---------------------------
+    # ---- the map this broker last posted is the reference -----------------------------
     POSTS[:] = []
     ctx = Ctx(fleet, sky)
     ctx.prnmap.applied = list(fleet)
@@ -356,7 +341,7 @@ def main():
         "missed it (a timeout, a restart) and is sent it",
     )
 
-    # ---- 7d. MID-CROSSING IS NOT A SPLIT -------------------------------------------------
+    # ---- mid-crossing is not a split --------------------------------------------------
     POSTS[:] = []
     LOGS[:] = []
     ctx = Ctx(fleet, sky)
@@ -372,7 +357,7 @@ def main():
         "... and the crossing is not called a split",
     )
 
-    # ---- 7f. A NODE THAT STAYS OFF THE MAP IS RETRIED ONCE PER INTERVAL ------------------
+    # ---- a node that stays off the map is retried once per interval -------------------
     POSTS[:] = []
     ctx = Ctx(fleet, sky, prn_reconfig_interval_s=120.0)
     ctx.trackers = nodes
@@ -385,7 +370,7 @@ def main():
     sweep(ctx, odd, 1121.0)
     check(len(POSTS) == 2, "... and is retried once the interval has passed")
 
-    # ---- 8. no prediction this cycle -> change nothing ---------------------------------
+    # ---- no prediction this cycle: change nothing --------------------------------------
     POSTS[:] = []
     ctx = Ctx([1, 2, 3], {})
     run_cycle(ctx, 1000.0)
@@ -396,12 +381,9 @@ def main():
         "outage -- the 2026-08-19 stale-EOP lesson)",
     )
 
-    # ---- 9. MANY SLOTS, ONE POST, ONE DEADLINE -----------------------------------------
-    # ⚠️ SUPERSEDES "one slot per interval" (2026-08-27). The old policy dribbled one slot out
-    # per 15 min, so a sky that had moved took hours to follow and the fleet crossed a
-    # discontinuity once per slot. Moving the whole map in ONE scheduled post is strictly
-    # better: the nodes cross once, and the map is never in a half-applied state no node
-    # agreed to. PRNs 1 and 2 are both gone from BRDC, two satellites are waiting.
+    # ---- many slots, one post, one deadline -------------------------------------------
+    # Several slots move in one scheduled post: the nodes cross once, and the map is never
+    # half-applied. PRNs 1 and 2 are both gone from BRDC; two satellites are waiting.
     POSTS[:] = []
     ctx = Ctx([1, 2, 3], {3: 30.0, 30: 70.0, 36: 83.0})
     run_cycle(ctx, 1000.0)
@@ -424,9 +406,9 @@ def main():
         "has to complete before another decision anyway",
     )
 
-    # ---- 10. the loop CONVERGES: once the nodes hold the map, nothing more is posted ----
-    # The stage decides from the READ-BACK map, so a POST that took must stop being re-issued.
-    # If it did not, this would swap one slot every interval forever.
+    # ---- the loop converges: once the nodes hold the map, nothing more is posted ------
+    # The stage decides from the read-back map, so a POST that took is not re-issued;
+    # otherwise it would swap a slot every interval forever.
     POSTS[:] = []
     ctx = Ctx([1, 2, 3], {3: 30.0, 36: 83.0})  # PRN 1 and 2 gone, one candidate
     run_cycle(ctx, 1000.0)
@@ -441,10 +423,10 @@ def main():
     )
     check(36 in ctx.node_state, "... and the nodes ended up holding the new satellite")
 
-    # ---- 11. the heartbeat: armed-and-idle must be VISIBLE -----------------------------
+    # ---- the heartbeat: armed and idle must be visible --------------------------------
     # Having nothing to propose is the normal state, so a stage that only speaks when it acts
-    # is indistinguishable from one that is not running. Nothing here is posted, so the
-    # heartbeat is asserted on the LOG rather than on POSTS.
+    # is indistinguishable from one that is not running. Nothing is posted here, so the
+    # heartbeat is asserted on the log rather than on POSTS.
     POSTS[:] = []
     LOGS[:] = []
     ctx = Ctx([1, 2, 3], {1: 40.0, 2: 40.0, 3: 30.0})
@@ -467,10 +449,10 @@ def main():
         "... and it does beat again after the interval",
     )
 
-    # ---- 12. the map is PUBLISHED for read-only consumers, and fails OPEN ---------------
-    # The probe selector (--probe-require-slot) reads the live map but proposes no swaps --
-    # and a consumer must never act on a partial or split map. This is what stops the probe
-    # filter from silently emptying the probe set on a half-swept fleet.
+    # ---- the map is published for read-only consumers, and fails open ----------------
+    # The probe selector (--probe-require-slot) reads the live map but proposes no swaps, and
+    # must never act on a partial or split map: that would drop real probes from the probe
+    # set on a half-swept fleet.
     POSTS[:] = []
     ctx = Ctx([1, 2, 3], {1: 40.0, 2: 40.0, 3: 30.0})
     run_cycle(ctx, 1000.0)
@@ -484,7 +466,7 @@ def main():
     CTX[0] = ctx2
     ctx2.t0 = 1000.0
     ctx2.prnmap.poll_t = 1000.0
-    ctx2.prnmap.maps = {"http://node1": [1, 2, 3]}  # HALF a sweep (2 endpoints)
+    ctx2.prnmap.maps = {"http://node1": [1, 2, 3]}  # half a sweep (2 endpoints)
     prnmap.stage_prn_membership(ctx2)
     check(
         ctx2.prnmap.consensus is None,
@@ -502,17 +484,16 @@ def main():
         "--prn-reconfig off: the stage does nothing at all (no GET -- replay stays exact)",
     )
 
-    # ---- 12. SCHEDULED SWAPS: one frame, fleet-wide ------------------------------------
-    # ⚠️ THE DEFECT THIS PREVENTS IS INVISIBLE DOWNSTREAM. A map posted "now" lands on
-    # whatever frame each node happens to be building, so the combiner folds one window whose
-    # instances disagree about which satellite slot p IS. Every row is individually
-    # well-formed, so nothing downstream can catch it -- it is the accumulator-identity trap
-    # with a network delay for a cause.
+    # ---- scheduled swaps: one frame, fleet-wide ---------------------------------------
+    # A map posted for "now" lands on whatever frame each node is building, so the combiner
+    # folds a window whose instances disagree about which satellite slot p holds. Every row is
+    # well-formed on its own, so nothing downstream can catch it.
     print("scheduled swaps: every node crosses on the SAME frame")
     POSTS[:] = []
     _c = Ctx([1, 2, 3], {1: +40.0, 2: -50.0, 3: -60.0, 9: +30.0}, prn_reconfig="apply",)
-    # The axis was polled 3 s ago -- at the TOP of the cycle that is now posting. The
-    # deadline must be advanced across that gap, not written against the stale hop.
+    # The axis sample is 3 s old (left by an earlier cycle; the broker stamps this cycle's
+    # with t0). The deadline must advance it by that age, not be written against the stale
+    # hop.
     _c.fe_hop_now = 1_000_000_000.0
     _c.fe_hop_t = 2000.0 - 3.0
     run_cycle(_c, 2000.0)
@@ -536,15 +517,15 @@ def main():
         "the deadline is HOPS: axis + (age + lead) x hops_per_sec, NOT samples "
         "(%d, got %s)" % (_want, _seqs),
     )
-    # ⚠️ THE REGRESSION: without the age term the deadline is 3 s of hops in the PAST, which
-    # every node meets on its very next frame -- an unscheduled swap wearing a schedule.
+    # Without the age term the deadline would be 1 s in the past (lead 2 s, age 3 s), met by
+    # every node on its next frame: an unscheduled swap that claims a schedule.
     check(
         min(_seqs) > 1_000_000_000 + int(round(3.0 * _c.args.hops_per_sec)),
         "... and it is strictly AHEAD of the fleet's position at post time",
     )
 
-    # A STALE AXIS IS NOT EXTRAPOLATED. Past the age cap the swap still posts -- fail-open,
-    # a slot stuck on a set satellite is worse -- but without a fabricated coordination point.
+    # A stale axis is not extrapolated. Past prn_reconfig_axis_max_age_s the swap still posts
+    # (fail open: a slot stuck on a set satellite is worse), but without a deadline.
     POSTS[:] = []
     LOGS[:] = []
     _c4 = Ctx(
@@ -566,9 +547,8 @@ def main():
         "one against, and a deadline it cannot honour would wedge its map",
     )
 
-    # ⚠️ NO AXIS -> POST ANYWAY, UNSCHEDULED. An unsynchronised swap is worse than a
-    # synchronised one and far better than none: a slot stuck on a set satellite produces
-    # nothing at all. This is the fail-open direction, and it is deliberate.
+    # No axis: post anyway, unscheduled. An unsynchronised swap is worse than a synchronised
+    # one and better than none, since a slot stuck on a set satellite produces nothing.
     POSTS[:] = []
     _c2 = Ctx(
         [1, 2, 3], {1: +40.0, 2: -50.0, 3: -60.0, 9: +30.0}, prn_reconfig="apply",
@@ -583,10 +563,9 @@ def main():
     )
     check(all(b.get("prns") for _, b in _tp), "... and still carries the map")
 
-    # ---- 4b. THE HYSTERESIS BAND MUST BE A BAND ---------------------------------------
-    # ⚠️ admit <= evict is the flap generator: the same satellite is admitted and evicted on
-    # alternate cycles and each flap is a cold acquisition, which reads as "low satellites
-    # cannot be tracked" -- a fault the stage would manufacture and then be believed about.
+    # ---- the hysteresis band must be a band -------------------------------------------
+    # With admit <= evict the same satellite is admitted and evicted on alternate cycles,
+    # each flap a cold acquisition that reads as "low satellites cannot be tracked".
     print("\nthe hysteresis band: admit must be ABOVE evict")
     POSTS[:] = []
     LOGS[:] = []
@@ -604,7 +583,7 @@ def main():
     )
     check(not POSTS, "... and nothing is posted on a degenerate band")
 
-    # The armed setting itself: admit AT the horizon, evict below it, is a valid band.
+    # The production setting, admit at the horizon and evict below it, is a valid band.
     POSTS[:] = []
     LOGS[:] = []
     _c6 = Ctx(
@@ -626,11 +605,10 @@ def main():
         "... and a satellite at +3 deg -- refused by the old 10 deg mask -- gets a slot",
     )
 
-    # ---- 5. THE DEADLINE CLOCK IS ALIVE ----------------------------------------------
-    # ⚠️ THE REGRESSION THIS EXISTS FOR: a node that answers get_prns is a node whose frame
-    # loop is turning, so last_hop < 0 means nothing is feeding note_frame_hop() and every
-    # scheduled swap degrades to apply-immediately. That state ran unnoticed on twelve nodes
-    # because nothing asked. Assert that it is now impossible to run silently.
+    # ---- the deadline clock is alive --------------------------------------------------
+    # A node that answers get_prns has a turning frame loop, so last_hop < 0 means nothing
+    # feeds note_frame_hop() and every scheduled swap there applies immediately. The stage
+    # must say so.
     print("\nthe deadline clock: last_hop < 0 on a live node is an ALARM")
     _c3 = Ctx([1, 2, 3], {1: +40.0}, prn_reconfig="apply")
     _ep = _c3.trackers[0]
@@ -642,7 +620,7 @@ def main():
         return {"prns": [1, 2, 3], "last_hop": 1_000_000_000}
 
     def _get_absent(url, timeout=5.0):
-        return {"prns": [1, 2, 3]}  # an OLD node binary: no field at all
+        return {"prns": [1, 2, 3]}  # a node binary without the field
 
     for _fn, _want_alarm, _what in (
         (_get_dead, True, "last_hop = -1"),
@@ -664,10 +642,9 @@ def main():
         )
     prnmap._get = _no_get
 
-    # ---- 6. A SATELLITE THAT CANNOT BROADCAST THE SIGNAL IS NOT A CANDIDATE ------------
-    # ⚠️ 11 of gps_l5's 32 slots held Block IIR / IIR-M satellites, which predate L5 entirely.
-    # G7 sat at 70 deg elevation reporting q 0.96 forever: a slot spent, and a noise row
-    # folded into the presence population that every gate then has to survive.
+    # ---- a satellite that cannot broadcast the signal is not a candidate -------------
+    # Block IIR / IIR-M satellites predate L5: in an L5 slot each is a wasted slot and a
+    # noise row in the presence population.
     print("\nsignal capability: from the IGS metadata SINEX, not Celestrak")
     import tempfile as _tf, os as _os
     from gnss_broker import prnmap as _pm
@@ -711,8 +688,8 @@ def main():
                 "Galileo: not modelled, so nothing excluded -- a filter that pretended "
                 "otherwise would be a second way for a constellation to go dark",
             )
-            # ⚠️ AND A RE-USED PRN MUST RESOLVE TO TODAY'S SATELLITE. G22 was IIR-A; if a
-            # retired assignment won, a live satellite could be excluded by a dead one's block.
+            # A re-used PRN must resolve to today's satellite: an expired assignment (SVN
+            # G099 flew G01 until 1995) must not count.
             open(_f, "a").write(
                 "+SATELLITE/PRN\n"
                 " G099 1990:001:00000 1995:001:00000 G01\n"

@@ -1,10 +1,11 @@
 """The joint-clock consumer ("joint-consume: clk"): one unit before any comparison.
 
-The joint state holds the receiver clock in its FEEDERS' chips (10.23 Mcps: gps_l5 detections,
-gal_e5a model-primary); every consumer compares it with its own clock in its own chips. These
-checks pin the conversion with the live numbers (joint 150.2 reference chips = 14.7 us =
+The joint state holds the receiver clock in its feeders' chips (10.23 Mcps: the chains with
+detections, gps_l5); every consumer compares it with its own clock in its own chips. These
+checks pin the conversion with live-sized numbers (joint 150.2 reference chips = 14.7 us =
 7.51 L2C-CM chips = 75.1 E6 chips), the bounds' unit (reference chips on every chain), the
-window a longer code keeps, and that the 10.23-Mcps chains are bit-for-bit unchanged.
+window a longer code keeps, and that on 10.23-Mcps chains the conversion is bit for bit the
+plain wrapped difference.
 
     python3 -m gnss_broker.test_jointclk
 
@@ -37,10 +38,10 @@ def check(ok, what):
         _fails.append(what)
 
 
-REF_RATE, REF_LEN = 10.23e6, 10230.0  # the feeders' chips (gps_l5, gal_e5a)
+REF_RATE, REF_LEN = 10.23e6, 10230.0  # the feeders' chips (gps_l5)
 L2C_RATE, L2C_LEN = 0.5115e6, 10230.0  # CM: 10230 chips / 20 ms
 E6_RATE, E6_LEN = 5.115e6, 5115.0  # E6-C: 5115 chips / 1 ms
-MAX_CHIPS, MAX_SIGMA = 5.0, 0.5  # --joint-clk-max-chips / --joint-clk-max-sigma
+MAX_CHIPS, MAX_SIGMA = 5.0, 0.5  # joint_clk_max_chips / joint_clk_max_sigma
 delta = Receiver.joint_clk_delta
 
 
@@ -49,7 +50,7 @@ def _bits(x):
 
 
 def _old_delta(joint, legacy, code_len):
-    """The consumer's arithmetic before the conversion, verbatim."""
+    """The unconverted wrapped difference, valid only when both clocks share one unit."""
     return ((joint - legacy + code_len / 2.0) % code_len) - code_len / 2.0
 
 
@@ -107,8 +108,8 @@ def _consume(
 
 
 def test_live_numbers_convert():
-    # Live broker, same instant: joint 150.442, gps_l2c legacy 7.513, gal_e6 legacy 75.116.
-    # Unconverted these read delta +142.9 and +75.3 and were refused on every cycle.
+    # One instant of the live broker: joint 150.442, gps_l2c legacy 7.513, gal_e6 legacy
+    # 75.116. Compared unconverted they read delta +142.9 and +75.3 and would be refused.
     d, dj = delta(150.442, REF_RATE, REF_LEN, 7.513, L2C_RATE, L2C_LEN)
     check(
         abs(d - 0.0091) < 1e-9 and abs(dj - 0.182) < 1e-9,
@@ -184,8 +185,8 @@ def test_step_refused_in_both_units():
 
 
 def test_sigma_bound_is_reference_chips():
-    # Straight after a broker restart the joint read sigma 0.627 (n 10). In CM chips that is
-    # 0.031 and would pass a 0.5 bound; the bound is reference chips, so it must refuse.
+    # A joint sigma of 0.627 reference chips (as after a broker restart) is 0.031 in CM chips
+    # and would pass a 0.5 bound there; the bound is reference chips, so it must refuse.
     clk, line = _consume(L2C_RATE, L2C_LEN, 7.522, 150.379, sigma=0.627)
     check(
         abs(clk - 7.522) < 1e-12 and "REFUSED" in line,
@@ -239,7 +240,7 @@ def test_windows():
 
 
 def test_ten_mcps_unchanged():
-    """Factor exactly 1.0 and window == our code: the old arithmetic, bit for bit."""
+    """Factor exactly 1.0 and window == our code: the plain wrapped difference, bit for bit."""
     rnd = random.Random(143)
     vals = [
         0.0,
@@ -277,7 +278,7 @@ def test_ten_mcps_unchanged():
         "10.23 Mcps: %d pairs, delta and adopted clock bit-identical (%d differ)"
         % (len(pairs), bad),
     )
-    # The whole consumer, against the pre-conversion line for the same inputs.
+    # The whole consumer, against the line the unconverted arithmetic gives for the same inputs.
     for leg, jc, sg in (
         (150.238, 150.435, 0.047),
         (10079.332, 150.660, 0.062),
@@ -376,9 +377,9 @@ def rate_consumer_divisors(path=BROKER):
 
 
 def test_rate_consumer_unit():
-    """joint-consume 'rate': clk_rate is JOINT chips/s, so the fractional rate is clk_rate over
-    the JOINT chip rate; cp_rate_from_code_bias then multiplies by OUR chip rate. Dividing by our
-    own rate instead seeded L2C 20x and E6 2x the code rate every other chain gets."""
+    """joint-consume 'rate': clk_rate is in joint chips/s, so the fractional rate is clk_rate
+    over the joint chip rate; cp_rate_from_code_bias then multiplies by our chip rate. Dividing
+    by our own rate instead would seed L2C 20x and E6 2x the code rate every other chain gets."""
     n, divs, reads_unit = rate_consumer_divisors()
     check(
         n == 1 and len(divs) >= 2 and all(d == "_ju[0]" for d in divs) and reads_unit,
@@ -434,9 +435,9 @@ def seed_offset_site(path=DEADRECKON):
 
 
 def test_seed_offset_per_prn():
-    """The per-PRN SEED-OFFSET comparison converts like the consumer: the old one compared
-    raw chips and logged every gps_l2c line at +142.8 and every gal_e6 line at +75.7 chips
-    REFUSED on the live broker while both chains adopted the joint clock 99.9% of the time."""
+    """The per-PRN SEED-OFFSET comparison converts like the consumer. Compared in raw chips,
+    every gps_l2c line would read ~+142.8 and every gal_e6 line ~+75.7 chips and be refused,
+    while both chains adopt the joint clock."""
     calls, oks, mods = seed_offset_site()
     check(
         calls == [("(_d3, _d3j)", "ctx.rx.joint_clk_delta")] and not mods,
@@ -447,8 +448,8 @@ def test_seed_offset_per_prn():
         oks == ["abs(_d3j) <= ctx.args.joint_slew_max_chips"],
         "...and bounds it in the joint's chips (%s)" % oks,
     )
-    # The live lines: joint +150.310 vs legacy +7.529 (L2C PRN 18), +150.850 vs +75.148
-    # (E6 PRN 10). Both were a few tenths of a reference chip apart, not 142.8 / 75.7.
+    # Two live cases: joint +150.310 vs legacy +7.529 (L2C PRN 18), +150.850 vs +75.148
+    # (E6 PRN 10). Both are a few tenths of a reference chip apart, not 142.8 / 75.7.
     d, dj = delta(150.310, REF_RATE, REF_LEN, 7.529, L2C_RATE, L2C_LEN)
     check(
         abs(d + 0.0135) < 1e-9 and abs(dj + 0.270) < 1e-9 and abs(dj) <= MAX_CHIPS,

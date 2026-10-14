@@ -37,8 +37,9 @@ class Sky(object):
         return hop / HPS
 
     def phi_res(self, hop):
-        """Phi_rx - Phi_cmd: what the prompt's phase carries (cycles). Kept ANALYTIC: the two
-        phases are ~5e14 cycles and their difference in doubles would be 0.06-cycle garbage."""
+        """Phi_rx - Phi_cmd: what the prompt's phase carries (cycles). Kept analytic: the two
+        phases are ~5e14 cycles, and their difference in doubles would carry 0.06-cycle
+        rounding."""
         t = self.t(hop)
         return self.resid_hz * t + 0.05 * math.sin(2 * math.pi * t / 30.0)
 
@@ -48,8 +49,8 @@ class Sky(object):
             self.chip = -self.chip
         # arg(A) = 2pi (Phi_cmd - Phi_rx)
         ang = -2 * math.pi * self.phi_res(hop)
-        # the prompt is rotated by exp(-i phi) and phi ACCUMULATES: a wrong step at each frame's
-        # first record mis-rotates that record and every record after it (a random walk)
+        # bad_boundary models a wrong fold at each frame's first record; the rotation
+        # accumulates, so it mis-rotates that record and every record after it
         nfr = (hop - HOP0) // (4 * HPR)
         ang -= self.bad_boundary * nfr
         out = {}
@@ -155,15 +156,12 @@ class TestFold(unittest.TestCase):
 
     def test_clustered_half_cycle_slips_do_not_walk_the_median(self):
         """A weak satellite's instances slip by exactly +-0.5 cycle (the squared phasor's
-        ambiguity), and they slip TOGETHER: a common disturbance pushes several over the wrap in
-        the same record, same direction (live capture: of 134 slip-seconds on one satellite, 38
-        were pairs, 8 triples, 3 quads). Re-seating them to a median taken with the slipped values
-        in the sorted list moved that median by their ranks, and the re-seated copies kept the
-        ranks, so the fleet phase random-walked -- 0.05-0.3 cycle over 8000 records here, 3x the
-        closure wander on sky. Repairing each slip by whole half-cycles first leaves the median
-        where the unslipped majority puts it. (An even split -- half the fleet slipping together
-        -- is undecidable by any median and steps both ways of doing it; it is rare and not
-        tested.)"""
+        ambiguity), and they slip together: a common disturbance pushes several over the wrap in
+        the same record, in the same direction. Re-seating them to a median taken with the
+        slipped values still in the sorted list moves that median by their ranks, and the fleet
+        phase random-walks. Repairing each slip by whole half-cycles first leaves the median
+        where the unslipped majority puts it. (An even split, half the fleet slipping together,
+        is undecidable by any median; it is rare and not tested.)"""
         errs = []
         for seed in (1, 2, 3, 4, 5):
 
@@ -182,8 +180,8 @@ class TestFold(unittest.TestCase):
             hops = [HOP0 + k * HPR for k in range(8000)]
             st = run(sky, hops)
             errs.append(st.adr - dop_only(sky, hops[-1], hops[0]))
-        # judged on the rms over seeds: a walk is a distribution, not one draw. The re-seat
-        # measured 0.086 here (0.03-0.17 per seed); the repair ~0.02.
+        # judged on the rms over seeds: a walk is a distribution, not one draw. The bound sits
+        # between the repair (~0.02) and a rank-moving re-seat (~0.09).
         rms = math.sqrt(sum(e * e for e in errs) / len(errs))
         self.assertLess(
             rms, 0.04, "rms %.3f over seeds %s" % (rms, [round(e, 3) for e in errs])
@@ -218,8 +216,9 @@ class TestFold(unittest.TestCase):
         self.assertLess(abs(st.adr - want), 1e-3)
 
     def test_a_short_fleet_gap_is_bridged_by_vouching_increments(self):
-        """Every instance skipped one record: their next slot-15 spans two records, which is
-        exactly our step, so the arc continues and the phase is still right."""
+        """Every instance skipped one record, so each was present at the fleet's previous
+        record and vouches for the two-record step: the arc continues and the phase is still
+        right."""
         sky = Sky()
         hops = [HOP0 + k * HPR for k in range(100) if k != 40]
         st = run(sky, hops)
@@ -248,7 +247,7 @@ class TestFold(unittest.TestCase):
 
     def test_no_voucher_ends_the_arc(self):
         """Instances 0-2 all missed record 40 but 3-5 were there: at 41 the fleet step is
-        one record and only 3-5 can vouch. If those are ALSO absent at 41, nobody covers
+        one record and only 3-5 can vouch. If those are also absent at 41, nobody covers
         the step and the arc must end rather than guess."""
         sky = Sky(n_inst=6)
         hops = [HOP0 + k * HPR for k in range(60)]
@@ -266,7 +265,7 @@ class TestFold(unittest.TestCase):
 
     def test_instance_constants_may_differ_by_anything(self):
         """Each instance's exported prompt carries its own arbitrary constant; the increment
-        must not depend on them (a phasor sum WOULD)."""
+        must not depend on them (a phasor sum would)."""
         random.seed(5)
         sky = Sky(n_inst=12)
         sky.phi0 = [random.uniform(-math.pi, math.pi) for _ in sky.phi0]

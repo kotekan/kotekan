@@ -1,5 +1,5 @@
-"""The joint clock's gauge is membership-invariant (#94): a satellite joining or leaving the
-state does not move the clock level the seeds fly, and the gauge every joint_receiver() call
+"""The joint clock's gauge is membership-invariant: a satellite joining or leaving the state
+does not move the clock level the seeds fly, and the gauge every joint_receiver() call
 constructs is the prior gauge that has that property.
 
 The circular-median clock (deadreckon.dr_clock_solve) steps 1-2 chips when its membership
@@ -27,7 +27,7 @@ def check(ok, what):
         _fails.append(what)
 
 
-CLK = 151.0  # chips, the live receiver clock
+CLK = 151.0  # chips, a receiver clock level
 SIGMA = 0.3  # chips, the per-measurement noise
 DT = 2.0  # s, the poll cycle
 FLEET = {
@@ -37,7 +37,7 @@ FLEET = {
     ("C", 39): -1.7,
     ("G", 14): +4.1,
     ("G", 21): -2.7,
-}  # chips: the measured model-error scale; sorted, the median pair is (-1.7, +0.8)
+}  # chips, biases at the model-error scale; sorted, the median pair is (-1.7, +0.8)
 JOINER = (("G", 7), +1.4)  # sorted in, the median becomes +0.8: a 1.25-chip step
 LEAVER = ("C", 39)  # sorted out, the median becomes +0.8: the same 1.25-chip step
 

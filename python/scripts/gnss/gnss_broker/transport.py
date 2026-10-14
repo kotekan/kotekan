@@ -1,8 +1,7 @@
 """Broker transport: logging, REST, endpoint expansion, and the transcript gate.
 
-Extracted verbatim from gps_distributed_broker.py (task #27 M1). Nothing here holds any
-per-signal or per-chain state, which is exactly why it can move first: the unified broker
-needs one copy of it, not one per constellation.
+Holds no per-signal state. One copy serves every chain thread of a broker_multi process; the
+log tag, the frozen cycle clock and the keep-alive pool are thread-local.
 """
 import gzip
 import hashlib
@@ -19,39 +18,19 @@ from datetime import datetime
 
 
 # ---------------------------------------------------------------------------------------
-# DNS CACHE -- the broker's cycle time was name resolution (2026-08-23).
+# DNS cache. Every new HTTP connection resolves its host name, and the broker host's resolver
+# queries share its 1 GbE link with the fleet's frame-synced telemetry bursts, so a lookup
+# occasionally loses its packets and waits out the resolver's 5 s timeout, stalling the chain
+# thread for all of it.
 #
-# THE MEASUREMENT. `urllib.request.urlopen` resolves the hostname on EVERY call: no
-# keep-alive, no connection pool, no cache. fleet_coherent walks its 12 combiner endpoints
-# SERIALLY, twice per chain per cycle, so one broker cycle costs ~480 getaddrinfo calls --
-# and /etc/resolv.conf carries three search domains, so a short name like "cx19" can cost
-# three queries each. On cf06 over 30 s:
+# The lock is never held across a lookup: holding it would serialise every thread's
+# resolution behind whichever one is stalled. Two threads resolving the same name both
+# resolve it, which is harmless.
 #
-#     getaddrinfo n=7314   median 0.4 ms   p90 0.7   p99 2.0   max 5005.6 ms
-#       >1 s: 6 calls  --  and those 6 ARE ~ALL 30.5 s of DNS time
-#
-# Six calls in seven thousand hit a 5-SECOND resolver timeout, and they were the entire
-# cycle budget: 15 s median, 43 s max, against --interval 2. Live stack sampling put 39.7%
-# of all chain-thread wall time in this ONE stdlib frame (76% in transport HTTP overall).
-#
-# WHY IT TIMES OUT, AND WHY IT IS NOT A DNS FAULT. cf06 resolves via a single server out
-# eno8303 -- the one 1 GbE that also carries the fleet's telemetry, measured at 402 Mbps and
-# bursty BY DESIGN (the senders are frame-synced, so they burst together). The query packets
-# drown in the burst and systemd-resolved falls back to its timeout. CONTROL, same names and
-# same server from a quiet host: 69,888 lookups, max 8.0 ms, ZERO over 1 s. So this is the
-# mechanism behind the telem-gather comment's "the transport costs ~5 s per cycle, and the
-# cost is ON THE WIRE" -- that A-B-A was right; it is DNS loss, not REST bandwidth. All 12
-# combiners answer in 0.26 s for 3.9 MB.
-#
-# ⚠️ THE LOCK IS NEVER HELD ACROSS A LOOKUP. Holding it would serialise every thread's
-# resolution behind whichever one is currently stalled for 5 s -- the exact failure this
-# exists to remove, made global. Two threads racing to resolve the same name simply both
-# resolve it; that is rare and harmless.
-#
-# ⚠️ STALE-IF-ERROR IS DELIBERATE. `_dns_good` is kept separately from the TTL cache, so a
-# lookup that FAILS falls back to the last answer that worked rather than taking the node
-# out of the fleet. These are fixed-address lab machines; a stale address is recoverable
-# (the connect fails and the poll is skipped for one cycle), a 5 s stall is not.
+# Stale-if-error is deliberate: `_dns_good` outlives the TTL cache, so a failed lookup falls
+# back to the last answer that worked rather than taking the node out of the fleet. These are
+# fixed-address lab machines; a stale address costs a failed connect and one skipped poll,
+# a 5 s stall costs the cycle.
 _DNS_TTL_S = 300.0
 _dns_cache = {}  # key -> (expiry, result)
 _dns_good = {}  # key -> result, last one that resolved (never expires)
@@ -60,7 +39,8 @@ _dns_real = None
 
 
 def install_dns_cache():
-    """Wrap socket.getaddrinfo with a TTL cache. Idempotent; safe to call per chain thread."""
+    """Wrap socket.getaddrinfo with a TTL cache. Idempotent but not locked: the first call
+    must precede any concurrent one (broker_multi installs it before any chain starts)."""
     global _dns_real
     if _dns_real is not None:
         return
@@ -90,27 +70,23 @@ def install_dns_cache():
 
 
 # ---------------------------------------------------------------------------------------
-# KEEP-ALIVE POOL -- one TCP connection per (thread, host:port), reused across calls.
+# Keep-alive pool: one TCP connection per (thread, host:port), reused across calls.
 #
-# WHY. The nodes answer in milliseconds, but a FRESH connection to them from the broker
-# host can stall for seconds: its single 1 GbE ingress carries the whole fleet's
-# frame-synced telemetry bursts and drops a few percent of the nodes' segments, and a lost
-# SYN-ACK has no fast retransmit, only the 1 s -> 2 s -> 4 s RTO ladder. A data segment lost
-# on an OPEN connection costs one 200 ms RTO; a handshake segment lost costs seconds. Nothing
-# on the node is blocked -- an already-open connection to the same node, probed alongside a
-# stalling fresh one, sees none of it. So this is the same fix the DNS cache above was: take
-# the per-call handshake off a link that loses handshakes. It also stops loading the nodes'
-# TIME-WAIT tables with one dead socket per request.
+# The nodes answer in milliseconds, but a fresh connection from the broker host can stall
+# for seconds: its 1 GbE ingress carries the fleet's frame-synced telemetry bursts and drops
+# some of the nodes' segments, and a lost SYN-ACK has no fast retransmit, only the
+# 1 s -> 2 s -> 4 s RTO ladder, where a segment lost on an open connection costs one ~200 ms
+# RTO. Reusing connections takes the handshake off that link, and keeps the nodes' TIME-WAIT
+# tables from filling with one dead socket per request.
 #
-# ⚠️ PER THREAD. http.client connections are not thread-safe and the chain threads run
-# their cycles concurrently; a thread-local pool needs no lock and costs threads x nodes
-# sockets (the fd soft limit is raised below so that can never be the failure).
+# Per thread: http.client connections are not thread-safe and the chain threads run their
+# cycles concurrently. A thread-local pool needs no lock and costs threads x nodes sockets;
+# _raise_fd_soft_limit lifts the fd soft limit on first use so that is never the failure.
 #
-# ⚠️ SEMANTICS PRESERVED. Same socket timeout for connect and every read as urlopen had;
-# status >= 400 raises urllib.error.HTTPError exactly as urlopen did, so callers' except
-# clauses see the same types. ONE free retry on a REUSED connection when the failure is
-# the connection itself (the server closed an idle keep-alive, which is not a fault) --
-# never on a timeout, never on a fresh connection.
+# Callers see urlopen's semantics: the same timeout for connect and every read, and
+# urllib.error.HTTPError on status >= 400. A failure of a reused connection itself (the
+# server closed an idle keep-alive, which is not a fault) gets one retry; a timeout or a
+# fresh connection gets none.
 _tl = threading.local()
 _fd_raised = False
 
@@ -203,38 +179,20 @@ def http_request(method, url, timeout, data=None, headers=None):
 
 
 # ---------------------------------------------------------------------------------------
-# TRANSCRIPT -- record/replay of every external interaction (task #27 M0, the refactor gate).
+# Transcript: record/replay of every external interaction, the broker's refactoring gate.
+# One run's whole conversation with the world is recorded, replayed against changed code
+# (scripts/gnss/broker_equiv.py), and the POST stream must come out byte-identical. That bar
+# is legitimate here: Python neither contracts nor reassociates float expressions, so a pure
+# code move reproduces arithmetic exactly and a digest mismatch means a real change.
 #
-# WHY. This file is 6400 lines, `main()` is 5100 of them, and every comment block in it is a
-# scar from a real outage. It cannot be restructured on inspection. The gate is behavioural
-# equivalence: record one run's entire conversation with the world, replay it against the
-# refactored code, and require the POST stream to come out BYTE-IDENTICAL.
+# Three independent streams (`now`, `get`, `post`) rather than one interleaved log: a
+# refactor may move when the clock is read relative to a poll, but must not change which
+# endpoints are polled, in what order, or what is posted. A get out of order fails on its URL.
 #
-# Byte-identical is a legitimate bar here, unlike in the CUDA kernels: Python neither
-# contracts nor reassociates float expressions, so a pure code move reproduces arithmetic
-# exactly. A hash mismatch therefore means a real change, never numerical weather.
-#
-# THREE INDEPENDENT STREAMS (`now`, `get`, `post`) rather than one interleaved log. A
-# refactor legitimately reorders WHEN the clock is read relative to a poll; it must not
-# change WHICH endpoints are polled, in what order, or what is posted. Separate streams
-# make the first free and keep the second two strict -- a get that arrives out of order
-# fails on the URL, which is exactly the signal wanted.
-#
-# ONE DELIBERATE BEHAVIOUR CHANGE, and it is the reason `_now()` exists at all: the cycle
-# clock is FROZEN for the duration of a cycle. Until now the ~40 clock reads in one pass
-# drifted apart by however long the pass took, so a gate evaluated late in the cycle used a
-# different "now" than one evaluated early.
-#
-# MEASURED, do not guess (the first draft of this comment said "~0.3 s" from nothing):
-# cf06's live GPS L5 broker, 600 log lines, intra-cycle spread median 0.035 s, p90 1.71 s,
-# max 1.79 s -- against a 2 s interval. So on the real fleet the spread is most of a cycle,
-# not a rounding error. It is still far inside every threshold these gates use (10 s log
-# limits, 60 s anchor re-check, minutes for staleness and watchdogs), and it was never
-# meaningful ordering -- it was whichever endpoints happened to be slow that pass. Freezing
-# makes one cycle evaluate at one instant, which is what all of them meant.
-#
-# The loop's own sleep computation deliberately keeps a REAL clock read (below), so the
-# control cadence is unchanged.
+# The cycle clock (`_now()`) is frozen for the duration of a cycle, so every gate in one pass
+# evaluates at one instant instead of at whenever the slow endpoints before it returned.
+# The main loop's pacing sleep reads the real clock, so the control cadence does not depend
+# on it.
 # ---------------------------------------------------------------------------------------
 
 
@@ -248,11 +206,10 @@ class _Transcript:
         self._fh = None
         self._rd = {"now": [], "get": [], "post": []}
         self._ix = {"now": 0, "get": 0, "post": 0}
-        self._owner = None  # only the main thread is transcribed; see below
-        # PER THREAD, not per process (task #27 M5). One process now runs several chains
-        # in several threads, each on its own cycle; a shared frozen clock would have chain
-        # B silently stamping chain A's cycle with B's instant -- and the failure would look
-        # like clock jitter, not like a data race.
+        self._owner = None  # only the thread that opened the transcript is transcribed
+        # The frozen clock is per thread, not per process: one process runs several chains in
+        # threads, each on its own cycle, and a shared clock would stamp chain A's cycle with
+        # chain B's instant, which looks like clock jitter rather than a data race.
         self._t = threading.local()
         self.posts = []  # replay+record: the ordered POST stream (the gate output)
         self.argv = None  # the recording run's own argv, carried in the header
@@ -260,23 +217,20 @@ class _Transcript:
     # -- lifecycle ------------------------------------------------------------------
     def open_write(self, path, argv):
         self.mode, self._owner = "write", threading.get_ident()
-        # LINE-buffered: a recording is normally ended by killing the broker, and a block
-        # buffer would throw away the last few seconds -- or, worse, leave a half-written
-        # JSON line that makes the whole transcript unreadable.
+        # Line-buffered: a recording normally ends with the broker being killed, and a block
+        # buffer would lose the last few seconds or leave a half-written JSON line that makes
+        # the whole transcript unreadable.
         self._fh = open(path, "w", buffering=1)
-        # The header carries the recording run's argv so a replay is self-describing: the
-        # harness re-invokes the broker with the SAME flags rather than a human retyping 30
-        # of them and quietly getting one wrong. (broker_up_extra.sh is 12 hand-typed
-        # constants, several of which fail silently when mistyped -- that class of error is
-        # exactly what a gate must not depend on.)
+        # The header carries the recording run's argv so a replay is self-describing:
+        # broker_equiv.py re-invokes the broker with the same flags instead of retyped ones,
+        # several of which would fail silently if mistyped.
         self._emit({"k": "argv", "v": list(argv)})
 
     def open_read(self, path):
         self.mode, self._owner = "read", threading.get_ident()
-        # .gz transparently: an on-sky transcript is ~1.3 MB per cycle (the combiner status
-        # responses are the bulk), so a minute of real fleet is ~73 MB raw and ~21 MB
-        # compressed. Those live outside git -- the DIGEST is what gets versioned -- and
-        # reading them compressed keeps that practical.
+        # Reads .gz transparently: on-sky transcripts are large (mostly combiner status
+        # responses) and are kept gzipped outside git; only their digests are versioned
+        # (scripts/gnss/fixtures).
         opener = gzip.open if path.endswith(".gz") else open
         with opener(path, "rt") as f:
             for line in f:
@@ -296,8 +250,8 @@ class _Transcript:
 
     def _mine(self):
         # The publisher serves HTTP from a daemon thread and reads the clock there. Those
-        # reads are not part of the control flow and must not enter the stream, or the
-        # recording would depend on when a browser happened to poll.
+        # reads are not control flow and must not enter the stream, or the recording would
+        # depend on when a browser happened to poll.
         return self.mode is not None and threading.get_ident() == self._owner
 
     def _emit(self, rec):
@@ -322,17 +276,14 @@ class _Transcript:
         return self._t.v
 
     def now(self):
-        # ⚠️ THE FROZEN CLOCK APPLIES IN EVERY MODE, INCLUDING LIVE. The first version of
-        # this gated on `_mine()`, i.e. on a transcript being open -- so production kept a
-        # live clock and only a RECORDING froze it. That is the one thing a recorder must
-        # never do: the transcript would then describe a run that never happens, and the
-        # gate would be measuring the instrumentation. Caught 2026-08-08 while making the
-        # clock thread-local for M5.
+        # The frozen clock applies in every mode, including live. Freezing it only while a
+        # transcript is open would make a recording describe a run that never happens in
+        # production, and the gate would measure the instrumentation.
         #
-        # The discriminator is not "is a transcript open" but "is this a thread that runs
-        # cycles". A chain thread calls tick() and gets its own frozen instant; the
-        # publisher's HTTP thread never does, so `v` is unset there and it reads the real
-        # clock -- which is right, since its timestamps are not part of any cycle.
+        # The discriminator is whether this thread runs cycles. A chain thread calls tick()
+        # and gets its own frozen instant; the publisher's HTTP thread never does, so `v` is
+        # unset there and it reads the real clock, which is right since its timestamps are not
+        # part of any cycle.
         v = getattr(self._t, "v", None)
         return time.time() if v is None else v
 
@@ -362,15 +313,11 @@ class _Transcript:
         return v
 
     def post(self, url, payload, timeout):
-        # The POST stream IS the gate: captured BEFORE any transport can fail, so a run
-        # against a dead fleet still produces a comparable trace.
+        # The POST stream is the gate's output, captured before any transport can fail, so a
+        # run against a dead fleet still produces a comparable trace.
         #
-        # ⚠️ ONLY WHILE A TRANSCRIPT IS OPEN. The first version appended unconditionally and
-        # nothing ever drains it, so a live broker grew this list forever: MEASURED at
-        # 69 MB/hour on the CHORD GPS chain (1.6 GB/day, and it would have multiplied by
-        # chain count under broker_multi.py). Nothing in live mode ever reads `posts` --
-        # digest() is only called by the harness, which always has a transcript open -- so
-        # gating on mode costs the gate nothing.
+        # Only while a transcript is open: nothing drains `posts`, so a live broker would grow
+        # it without bound, and digest() is read only at the end of a replay.
         if self.mode is not None:
             self.posts.append((url, json.dumps(payload, sort_keys=True)))
         if self.mode == "read" and self._mine():
@@ -414,24 +361,14 @@ class _Transcript:
         return h.hexdigest()
 
 
-# -- HTTP TIMING ----------------------------------------------------------------------
-# WHY THIS EXISTS. Free-threading landed (2026-08-24) and the cycle did not move: 10.04 s
-# before, 9.98 s after, with the process using 0.72 CORES. Five threads that can now truly
-# run at once are using less than one core between them, so the cycle is not compute at all
-# -- it is waiting, and no amount of parallelism shortens a wait.
+# -- HTTP timing ----------------------------------------------------------------------
+# Per-endpoint call count, total and max wait, and failures, measured in the process that
+# makes the calls (http_timing_report). A log line can show only where time passed, not
+# which call it was spent waiting on.
 #
-# Attribution by log line could only say "~1.7 s elapses here", and said it after a dozen
-# UNRELATED lines, which is the signature of one blocking call whose caller varies rather
-# than of expensive work. That is as far as the log can take it. This measures the calls
-# themselves, in the process that makes them, which is the only place the number is real.
-#
-# Costs a perf_counter pair and a dict update per request against calls that take ~1 s.
-# NOT gated behind a flag: an instrument you have to switch on is one you do not have during
-# the incident that needed it.
-#
-# ⚠️ DIGEST-SAFE BY CONSTRUCTION. It touches neither `posts` nor control flow, so the
-# broker_equiv POST stream cannot move -- but re-run the four transcripts anyway, because
-# "cannot move" is a claim about code I just wrote.
+# Always on: it costs a perf_counter pair and a dict update per request, and an instrument
+# that must be switched on is missing during the incident that needs it. It touches neither
+# `posts` nor control flow, so the transcript digest cannot move.
 _http_lk = threading.RLock()
 _http = {}  # key -> [n, total_s, max_s, n_fail]
 
@@ -440,9 +377,8 @@ def _http_key(url):
     """host + endpoint, with the instance index folded out.
 
     gnss0_e5a_inject and gnss1_e5a_inject are the same endpoint on two GPUs and belong in
-    one row; cx19 and cx51 are DIFFERENT MACHINES and must not be, because "one node is
-    slow" and "this endpoint is slow" call for opposite fixes and the whole point of the
-    tool is telling them apart.
+    one row; cx19 and cx51 are different machines and must not share one, because "one node
+    is slow" and "this endpoint is slow" call for different fixes.
     """
     try:
         rest = url.split("://", 1)[1]
@@ -473,27 +409,15 @@ _cyc = {}  # chain -> [n, total_busy_s, max_busy_s, n_overrun]
 
 
 def record_cycle(chain, busy_s, interval_s):
-    """How long one pass of the control loop ACTUALLY took, before its pacing sleep.
+    """Record how long one pass of the control loop took, before its pacing sleep.
 
-    ⚠️ THE LOOP PERIOD IS NOT THE LOOP COST, and reading one for the other cost this project
-    real time. `--interval` paces the loop, so once the work fits inside it the observed
-    period pins to the interval and stops carrying any information about the work at all --
-    it reports the setting back to you.
-
-    ⚠️⚠️ AND THE HEADLINE "10 s CYCLE" WAS NEVER A CADENCE AT ALL. It is the spacing of the
-    `fleet DLL [comb]` line, which goes through `_log_rl(..., every_s=10.0)` -- the LOG RATE
-    LIMITER's default. It does not scale with `--interval`: halve the interval and that line
-    still prints every 10 s. `_log_rl` fires on the first pass at or after 10 s and is skipped
-    entirely when the path produces nothing, so the old 15-19 s was a 10 s floor plus how often
-    the fleet-DLL path came back empty -- a reliability number wearing a latency number's
-    clothes. A line's period tells you its LOGGER's throttle until you have checked which
-    logger it uses; `FLEET-INST` is plain `_log` and does track the loop.
-
-    Which is why this COUNTS passes instead of timing a log line. A counter has no throttle.
-
-    This is the number that actually moves: busy time per pass, and the fraction of passes
-    that overran. Slack here is the licence to lower --interval; overruns are the reason it
-    was raised.
+    The loop period is not the loop cost: --interval paces the loop, so once the work fits
+    the observed period pins to the interval and says nothing about the work. Nor is the
+    spacing of a log line a cadence: a line logged through _log_rl repeats at its throttle
+    (every_s, 10 s by default) whatever the interval, and not at all on a pass that logs
+    nothing. So this counts and times the passes themselves: busy time per pass and the
+    fraction that overran. Slack here is room to lower --interval; overruns are a reason to
+    raise it.
     """
     with _cyc_lk:
         e = _cyc.get(chain)
@@ -541,9 +465,8 @@ def cycle_report(interval_s=None, reset=True):
 def http_timing_report(top=10, reset=True):
     """One block of lines: the endpoints this process actually waited on.
 
-    Sorted by TOTAL time, not by max. A 5 s outlier once a minute is a curiosity; forty
-    calls at 1.2 s is the cycle, and sorting by max buries the second behind the first --
-    which is how the 2026-08-23 hunt spent an hour on tail latency.
+    Sorted by total time, not by max: a 5 s outlier once a minute matters less than forty
+    calls at 1.2 s, and sorting by max would bury the second behind the first.
     """
     with _http_lk:
         snap = sorted(_http.items(), key=lambda kv: -kv[1][1])
@@ -581,15 +504,13 @@ def _post(url, payload, timeout=5.0):
     return _TR.post(url, payload, timeout)
 
 
-# PER-CHAIN LOG TAG (task #27 M5). One process now runs several chains in several threads,
-# and their log lines interleave. Without a tag the journal becomes unreadable at exactly
-# the moment it matters most -- and worse, plausibly misreadable: "DLL: PRN 3 disc +0.012"
-# means something different on L5 than on E5a, and nothing in the line says which. Set per
-# thread, so a chain tags itself once and every _log below it inherits it.
+# Per-chain log tag. One process runs several chains in threads and their log lines
+# interleave, and a line such as "DLL: PRN 3 disc +0.012" means something different on L5
+# than on E5a. Set per thread (set_log_tag), so a chain tags itself once and every _log on
+# that thread carries it.
 #
-# Empty by default, so a single-chain run's output is byte-identical to before -- the
-# equivalence gate covers POSTs, not stderr, and a silently reformatted log is exactly the
-# kind of change that makes an old autopsy grep stop matching.
+# Empty by default, so a single-chain run's lines keep their format: the equivalence gate
+# covers POSTs, not stderr, and a reformatted log breaks existing greps.
 _tag = threading.local()
 
 
@@ -598,20 +519,19 @@ def set_log_tag(tag):
 
 
 def log_tag():
-    """This thread's chain name ("gps_l5"), or "" outside a chain thread.
+    """This thread's chain name ("gps_l5") on a broker_multi chain thread; "" when unset.
 
     broker_multi runs every chain in one process as a thread and tags it with the chain key
-    from gnss_chains_chord.yaml, so this IS the chain identity -- and it is the same string the
-    trackers stamp on every telemetry frame (task #59, gnssTelem.hpp). Read it rather than
-    re-deriving the chain from --signal: they agree today and nothing enforces that they must.
+    from its chains yaml (config/gnss_chains_chord.yaml), so this is the chain identity, and
+    it is the same string the trackers stamp on every telemetry frame (gnssTelem.hpp). Read it
+    rather than re-deriving the chain from --signal: nothing enforces that the two agree.
     """
     return getattr(_tag, "v", "").strip()
 
 
 def _log(msg):
-    # Timestamped (2026-07-19): every autopsy this week had to reconstruct event times by
-    # correlating line numbers against the status stream -- the 07-18 carrier-latch hunt
-    # lost an hour to it. Wall-clock, subsecond: cheap, greppable, sortable.
+    # Wall-clock time to the millisecond, so events can be timed from the log alone:
+    # cheap, greppable, sortable.
     print(
         "[broker%s %s] %s"
         % (getattr(_tag, "v", ""), datetime.now().strftime("%H:%M:%S.%f")[:-3], msg),
@@ -620,18 +540,16 @@ def _log(msg):
     )
 
 
-# Rate-limit keys are per THREAD as well: two chains sharing one key would silence each
+# Rate-limit keys include the chain's log tag: two chains sharing one key would silence each
 # other's lines at random, which reads as "that chain stopped logging".
 _log_rl_last = {}
 
 
 def _log_rl(key, msg, every_s=10.0):
-    """Rate-limited _log for PER-CYCLE state lines (meas/pred, cp-fit, clock, active...):
-    at the 0.2 s poll cadence they were ~25-30 MB/h per broker (~5 GB/day fleet-wide,
-    measured 2026-07-19) while carrying ~50x duplicate content. One line per key per
-    every_s keeps the journal readable and the history dense enough for every autopsy
-    this project has actually run (the 07-18 hunts used >=1 s granularity). EVENT lines
-    (HOLD/RELEASE/ESCAPE/REACQ/WATCHDOG/TRANSLATE/fits-changed...) stay unlimited."""
+    """Rate-limited _log for per-cycle state lines: at most one line per (chain tag, key)
+    per every_s seconds of the cycle clock (_now). Per-cycle lines repeat mostly unchanged,
+    so this keeps the journal readable while keeping the history dense enough to reconstruct
+    events. Event lines go through _log and are never limited."""
     now = _now()
     key = (getattr(_tag, "v", ""), key)  # see _log_rl_last: per-chain, not shared
     if now - _log_rl_last.get(key, 0.0) >= every_s:

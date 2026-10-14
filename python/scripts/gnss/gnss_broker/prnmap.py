@@ -1,37 +1,28 @@
-"""LIVE PRN MEMBERSHIP: keep each node's slot->PRN map in step with the sky.
+"""Live PRN membership: keep each node's slot->PRN map in step with the sky.
 
-THE PROBLEM THIS EXISTS FOR. The node's PRN list was a hand-written comma string in
-`config/gnss_fleet_chord.yaml` and the broker's view of the constellation comes from live BRDC
-every cycle. Nothing reconciled the two, so they drifted apart in silence. Measured
-2026-08-26: Galileo carried FIVE slots whose satellites no longer exist, while E36 -- which
-transits at 83 deg elevation, essentially through the main beam -- had no slot at all. Slots
-were not scarce; we simply had the wrong 32. It cost more than one satellite: the noise-probe
-selector picks the DEEPEST below-horizon PRN, which is exactly what an excluded slot tends to
-be, so it picked E36, the node could not represent it, the probe never reported, and both
-Galileo chains silently fell from the q+p presence gate to BRIGHTNESS-ONLY.
+The nodes boot on the PRN lists in config/gnss_fleet_chord.yaml, while the broker sees the
+constellation through live BRDC every cycle. This stage reconciles the two: the slots hold
+the satellites that are up, plus the --noise-probes deepest below -15 deg, the rule the probe
+selector picks noise probes by (a probe the nodes hold no slot for is seeded but never
+reports).
 
-⚠️ THE SLOT COUNT IS FIXED; ONLY MEMBERSHIP MOVES. n_prn sizes every buffer, GPU allocation
-and wire frame in the pipeline, so changing it is a fleet-wide re-plumb and a node restart.
-Swapping which satellite sits in a slot, at constant count, changes no size anywhere. That is
-enough -- Galileo needs 28 of 32.
+The slot count is fixed; only membership moves. n_prn sizes every buffer, GPU allocation and
+wire frame in the pipeline, so changing it is a fleet-wide re-plumb and a node restart.
+Swapping which satellite sits in a slot, at constant count, changes no size anywhere.
 
-⚠️ A SWAP COSTS A FULL RE-ACQUISITION, so this is deliberately reluctant. The node resets the
-slot COLD (code table, Phi cache, carrier NCO, seed, trim, power averages, element cal): that
-is correct -- none of it describes the new satellite -- and it is also expensive. Recomputing
-membership straight from BRDC every cycle would churn slots on every ephemeris flicker, which
-is #92's disease one level up. Hence: an incumbent must be gone or DOWN for hours before its
-slot is reclaimed, a candidate must be genuinely up, and at most one slot moves per interval.
+A swap costs a full re-acquisition: the node resets the slot cold (code table, Phi cache,
+carrier NCO, seed, trim, power averages, element cal), since none of it describes the new
+satellite. Changes are therefore damped: elevation hysteresis (desired_map), a held satellite
+keeps its slot, and at most one whole-map post per --prn-reconfig-interval-s.
 
-DEFAULT IS `off` (the stage does nothing; the replay fixtures' argv predates the flag); every
-live chain runs `apply`.
+--prn-reconfig defaults to off (the stage does nothing; the replay fixtures' argv predates the
+flag); every live chain runs `apply`.
 
-⚠️ WHY THE NODE IS ASKED RATHER THAN ASSUMED. The broker does not read the node's config; it
-GETs the live map. So the map it diffs against is what the node actually holds, including
-after a node restart reverted it to the config's list -- which it will, because this mechanism
-is deliberately NOT persistent. The config remains the boot state; this is a runtime overlay,
-and a restart is a clean slate rather than a silently-inherited history. A node that comes
-back on its boot list while the rest of the fleet holds the broker's map is put back on that
-map (_resync_split); until it is, the fleet is split and no other change is made.
+The broker does not read the node's config; it GETs the live map, so it diffs against what
+each node actually holds. The map is a runtime overlay, not persisted: a node restart reverts
+that node to its config list. A node back on its boot list while the rest of the fleet holds
+the broker's map is put back on that map (_resync_split); until it is, the fleet is split and
+nothing else changes.
 
 @author Keith Vanderlinde
 """
@@ -44,7 +35,7 @@ from gnss_broker.transport import _get, _post, _log, _log_rl, log_tag
 
 
 class PrnMapState(object):
-    """One chain's view of node membership, and the hysteresis that governs changes."""
+    """One chain's view of node membership, and the timers that pace changes."""
 
     __slots__ = (
         "maps",
@@ -65,52 +56,48 @@ class PrnMapState(object):
         self.pending = {}  # endpoint -> a staged swap had not crossed when it was read
         self.applied = None  # the last map this broker posted and a node accepted
         self.resync_t = {}  # endpoint -> t of the last resync posted to it
-        self.poll_t = 0.0  # last GET of the endpoint at `cursor`
-        self.cursor = 0  # round-robin: ONE endpoint per cycle (see _poll)
-        self.last_swap_t = 0.0  # rate limit
+        self.poll_t = 0.0  # when _poll last ran
+        self.cursor = 0  # round-robin index of the next endpoint to GET (see _poll)
+        self.last_swap_t = 0.0  # last whole-map post (--prn-reconfig-interval-s)
         self.err = ""
         self.swaps = 0
-        self.beat_t = 0.0  # last heartbeat (see the note in stage_prn_membership)
-        # The unanimous live slot->PRN list, or None. READ by the probe selector;
-        # None whenever the sweep is incomplete or the nodes disagree.
+        self.beat_t = 0.0  # last heartbeat line (prn_reconfig_heartbeat_s)
+        # The unanimous live slot->PRN list, or None while the sweep is incomplete or the
+        # nodes disagree. Read by the probe selector (--probe-require-slot).
         self.consensus = None
 
 
 def _endpoints(ctx):
-    """The tracker endpoints -- the producer owns membership, so it is the one asked."""
+    """The tracker endpoints: the producer owns membership, so it is the one asked."""
     return list(ctx.trackers or [])
 
 
 def _followers(ctx):
-    """Stages that hold their OWN copy of the map and must be driven in step.
+    """Stages that hold their own copy of the map and must be driven in step: the search.
 
-    Only the SEARCH: the record assembler learns the map from the frame itself
-    (gnss_gpu::PrnCtl::prn), which is why it needs no endpoint and cannot drift. The search
-    has no such channel -- it hunts the satellites its list names, so a stale list there is a
-    satellite it can never detect -- and it is asked for the same map with the same payload.
+    The record assembler learns the map from the frame itself (gnss_gpu::PrnCtl::prn), so it
+    needs no endpoint and cannot drift. The search has no such channel: it hunts the
+    satellites its list names, so a stale list there is a satellite it can never detect. It is
+    posted the same map, without the deadline (see _apply_map).
 
-    ⚠️ THEY ARE NOT POLLED FOR CONSENSUS. The producer is the authority; a follower that
-    refuses a swap logs and is left behind rather than dragging the producer back, because a
-    search that lags by one satellite is a degradation and a producer that lags is a lie about
-    what the records contain.
+    Followers are not polled for consensus. The producer is the authority; a follower that
+    refuses a swap is logged and left behind rather than holding the producer back, because a
+    search one satellite behind is a degradation, while a producer behind misstates what the
+    records contain.
     """
     return list(ctx.detectors or [])
 
 
 def _poll(ctx, st, eps):
-    """GET **one** endpoint's live map per call, round-robin.
+    """GET one endpoint's live map per call, round-robin.
 
-    ⚠️ ONE, NOT ALL, AND THAT IS THE WHOLE DESIGN OF THIS FUNCTION. The stage runs inside the
-    cycle loop, so a sweep of every endpoint costs (n_dead x timeout) on ONE cycle -- 12 nodes
-    against a 5 s timeout is a full minute of broker stall the first time site work takes the
-    fleet down. That is #81 exactly ("a dead feed cost a full timeout per frame", the failure
-    that put the search 48.9 s behind sky). Polling one per cycle bounds the damage to a single
-    timeout and still sweeps 12 endpoints in ~24 s at the live 2 s interval, comfortably inside
-    the 60 s poll period.
+    The stage runs inside the cycle loop, so GETting every endpoint in one call would cost
+    n_dead x timeout on a single cycle whenever nodes are down. One GET per call bounds that
+    to one prn_reconfig_timeout_s; stage_prn_membership spaces the calls at least
+    poll_s / n_endpoints apart, so a full sweep takes at least prn_reconfig_poll_s.
 
-    A failing endpoint is DROPPED from the map rather than left stale: a node that stopped
-    answering has not agreed to anything, and letting its last answer stand would hide a split
-    map behind a corpse.
+    An endpoint that fails is dropped from the map rather than left stale: a node that stopped
+    answering has not agreed to anything, and its last answer would hide a split map.
     """
     if not eps:
         return
@@ -126,13 +113,9 @@ def _poll(ctx, st, eps):
         else:
             st.maps.pop(ep, None)
             st.pending.pop(ep, None)
-        # ⚠️ IS THE DEADLINE EVEN TESTABLE? A node that answers this GET is running, so its
-        # frame loop is turning; last_hop < 0 then means NO producer is feeding the deadline
-        # clock, and every scheduled swap silently degrades to apply-immediately. That is
-        # precisely how this mechanism shipped inert (2026-08-27: note_frame_hop() was wired
-        # into cudaGnssChordTrack, the fleet runs cudaGnssInject), and nothing anywhere said
-        # so -- the swaps posted, the nodes took them, the logs read healthy. Ask the question
-        # the swap depends on, out loud, every time.
+        # A node that answers this GET is running, so last_hop < 0 (or no last_hop at all)
+        # means nothing feeds its deadline clock (note_frame_hop), and every scheduled swap
+        # there applies at once with no error on either side. Nothing else would show it.
         _lh = r.get("last_hop")
         if _lh is None or int(_lh) < 0:
             _log_rl(
@@ -156,10 +139,9 @@ def _poll(ctx, st, eps):
 def _consensus(maps):
     """The map every reporting node agrees on, or None.
 
-    ⚠️ DISAGREEMENT IS NOT AVERAGED. Nothing here is per-node -- a per-node PRN list would be a
-    bug on its own (chord-nothing-is-per-node) -- so a split map never drives a decision. It is
-    either a node that lost the fleet's map, which _resync_split puts back, or ambiguous, in
-    which case nothing changes.
+    Disagreement is not averaged. Nothing in the pipeline is per-node, so a split map never
+    drives a decision: it is either a node that lost the fleet's map, which _resync_split puts
+    back, or ambiguous, and then nothing changes.
     """
     if not maps:
         return None
@@ -228,17 +210,18 @@ def _resync_split(ctx, st, eps, now):
 
 
 # ---------------------------------------------------------------------------------------
-# SIGNAL CAPABILITY: which satellites can carry this chain's signal at all
+# Signal capability: which satellites can carry this chain's signal at all
 # ---------------------------------------------------------------------------------------
 _IGS_SNX = os.path.join(
     os.path.expanduser("~"), ".cache", "kotekan_gps", "igs_satellite_metadata.snx"
 )
 
-# Which IGS metadata BLOCK strings carry each civil signal. Block names come from the SINEX
+# Which IGS metadata block strings carry each civil signal. Block names come from the SINEX
 # SATELLITE/IDENTIFIER column ("GPS-IIA", "GPS-IIR-A", "GPS-IIR-M", "GPS-IIF", "GPS-IIIA").
 # L1 C/A -> every satellite; L2C -> IIR-M and newer; L5 -> IIF and newer; L1C -> III only.
-# (gps_beamtrack._signal_block_filter encodes the same knowledge against SHORT names parsed
-# from TLE titles; this works from the authoritative registry instead -- see below.)
+# gps_beamtrack._signal_block_filter holds the same table for the short block names in
+# Celestrak TLE titles; gps_distributed_broker falls back to it when the registry excludes
+# nothing.
 def _block_carries(signal, block):
     s, b = (signal or "").upper(), (block or "").upper()
     if "L1CA" in s:
@@ -254,9 +237,9 @@ def _block_carries(signal, block):
     if "L1C" in s:
         return b.startswith("GPS-III")
     if s.startswith("BDS"):
-        # B1C, B2a and B2b are BDS-3 signals; B1I/B2I/B3I are on BDS-2 and BDS-3 alike. The
-        # block type says which a satellite is, not its PRN: IGS moved BDS-3 MEOs onto the
-        # retired BDS-2 PRNs C11-C14 in 2026 (#150).
+        # B1C, B2a and B2b are BDS-3 signals; B1I and B3I are on BDS-2 and BDS-3 alike. The
+        # block type says which a satellite is, not its PRN: re-used BDS-2 PRNs below 19,
+        # C11-C14 among them, fly BDS-3 satellites.
         if "B1C" in s or "B2A" in s or "B2B" in s:
             return b.startswith("BDS-3")
         return True
@@ -264,32 +247,22 @@ def _block_carries(signal, block):
 
 
 def signal_incapable_prns(signal):
-    """PRNs that provably CANNOT broadcast `signal`, or an empty set if we cannot tell.
+    """PRNs that cannot broadcast `signal`, or an empty set if that cannot be established.
 
-    ⚠️⚠️ WE WERE TRACKING SATELLITES THAT HAVE NEVER TRANSMITTED THE SIGNAL. Measured
-    2026-08-28: 11 of gps_l5's 32 slots held Block IIR / IIR-M satellites, which predate L5
-    entirely -- G7 sat at 70 deg elevation reporting q 0.96 forever. Each cost a tracker slot
-    and folded a noise row into the presence population every gate downstream must survive.
+    A satellite that predates the signal (Block IIR / IIR-M on L5, for example) would
+    otherwise hold a tracker slot and add a noise row to the presence population.
 
-    ⚠️ THE SOURCE IS THE IGS METADATA SINEX, NOT CELESTRAK. The first version of this read the
-    BLOCK out of Celestrak TLE titles ("GPS BIIR-5  (PRN 22)"). KV, immediately: we moved off
-    Celestrak long ago because it carries a multitude of errors, BeiDou worst of all -- and
-    _igs_prn_by_catnum's own docstring says the same thing, that constellations whose TLE
-    titles carry no PRN resolve through the SINEX instead. Reintroducing a TLE-title
-    dependency for satellite identity was a step backwards onto a source already rejected.
-    igs_satellite_metadata.snx is the authoritative multi-GNSS SVN / COSPAR / SatCat / PRN
-    registry: SVN -> block from SATELLITE/IDENTIFIER, SVN -> CURRENT PRN from SATELLITE/PRN
-    with its validity window, so a re-used PRN resolves to the satellite flying it TODAY.
+    The source is the IGS metadata SINEX (prn_blocks), not Celestrak TLE titles, which carry
+    identity errors, BeiDou worst of all.
 
-    ⚠️ EXCLUDE ONLY WHAT WE CAN PROVE, KEEP EVERYTHING ELSE. Missing file, unparseable line,
-    PRN absent from the registry, or a constellation/signal we do not model all yield "not
-    incapable" -- because wrongly excluding a real satellite means it can never be tracked and
-    nothing says why, which is far worse than keeping a dead slot. Same polarity as
-    _rec_is_fresh: reject the provable, never refuse on doubt.
+    Only what can be proven is excluded. A missing file, an unparseable line, a PRN absent
+    from the registry, or a constellation or signal not modelled all yield "not incapable": a
+    real satellite wrongly excluded can never be tracked and nothing says why, which is worse
+    than a dead slot. Same polarity as gnss_brdc_supply._rec_is_fresh.
 
-    GPS and BeiDou are modelled (the BDS-3-only signals B1C/B2a/B2b against the BDS-2 blocks;
-    the PRN >= 19 floor the BeiDou chains used to rely on broke when IGS re-used C11-C14 for
-    BDS-3 MEOs, #150). Every Galileo satellite carries E5a/E5b, so nothing is modelled there.
+    GPS and BeiDou are modelled (for BeiDou, the BDS-3-only B1C/B2a/B2b against the BDS-2
+    blocks); every other constellation returns an empty set. Galileo needs no model: every
+    Galileo satellite carries the signals the chains track.
     """
     s = (signal or "").upper()
     sysc = "G" if s.startswith("GPS") else "C" if s.startswith("BDS") else None
@@ -299,8 +272,9 @@ def signal_incapable_prns(signal):
 
 
 def block_carries(signal, block):
-    """Public face of _block_carries, for consumers outside the broker (the viewer's
-    capability marking). One place owns which block first carried each civil signal."""
+    """Public face of _block_carries for consumers outside the broker (the viewer's
+    capability marking, viscap_metadata.py), so one place owns which block carries each civil
+    signal."""
     return _block_carries(signal, block)
 
 
@@ -310,16 +284,14 @@ def gps_prn_blocks():
 
 
 def prn_blocks(sysc):
-    """{prn -> block} for every CURRENTLY-assigned PRN of constellation `sysc` ("G", "C"), from
+    """{prn -> block} for every currently assigned PRN of constellation `sysc` ("G", "C"), from
     the IGS metadata SINEX.
 
-    The registry half of signal_incapable_prns, exposed so the viewer can mark
-    not-transmitted cells from the SAME source the broker filters on -- its first version
-    parsed Celestrak TLE titles, which is the identity source KV rejected for the broker
-    (and it gated on cache age, so a month-old TLE file silently disabled the marking
-    fleet-wide, 2026-08-31). SVN -> block from SATELLITE/IDENTIFIER, SVN -> current PRN
-    from SATELLITE/PRN with its validity window, so a re-used PRN resolves to the
-    satellite flying it TODAY even in an old file. {} on any failure (fail open)."""
+    The registry half of signal_incapable_prns, exposed so the viewer marks not-transmitted
+    cells from the same source the broker filters on. SVN -> block comes from
+    SATELLITE/IDENTIFIER and SVN -> PRN from SATELLITE/PRN, keeping an assignment only while
+    its Valid_To is open or not yet past today (Valid_From is not checked), so a re-used PRN
+    resolves to the satellite flying it now. {} on any failure (fail open)."""
     try:
         svn_block, svn_prn = {}, {}
         section = None
@@ -355,11 +327,12 @@ def prn_blocks(sysc):
 
 
 def stage_prn_membership(ctx):
-    """Reconcile the nodes' slot->PRN map against live BRDC. Off unless --prn-reconfig.
+    """Reconcile the nodes' slot->PRN map against live BRDC. Does nothing unless
+    --prn-reconfig apply.
 
-    Produces at most ONE swap per --prn-reconfig-interval-s, and only when an incumbent has
-    been evictable for hours and a candidate is genuinely up. See the module docstring for why
-    it is this reluctant.
+    Each cycle computes the wanted map (desired_map); when it differs from the nodes' map it
+    is posted whole, on one deadline, at most once per --prn-reconfig-interval-s. The module
+    docstring says why changes are damped.
     """
     a = ctx.args
     if a.prn_reconfig == "off":
@@ -369,17 +342,17 @@ def stage_prn_membership(ctx):
     eps = _endpoints(ctx)
 
     # ---- 1. What the nodes hold ---------------------------------------------------------
-    # The sweep is spread one endpoint per cycle, so `poll_s` divided by the number of
-    # endpoints is the per-endpoint cadence -- not a burst every poll_s.
+    # One endpoint is read every poll_s / n_endpoints (at most one per cycle), so each is
+    # re-read about once per poll_s rather than all of them in one burst.
     if eps and now - st.poll_t >= a.prn_reconfig_poll_s / float(len(eps)):
         st.poll_t = now
         _poll(ctx, st, eps)
     # A full sweep must have completed before the map means anything: a partial one looks like
     # unanimity among however few nodes have answered so far.
     cur = _consensus(st.maps) if len(st.maps) >= len(eps) else None
-    # PUBLISHED for consumers that only READ it (the probe selector). None whenever the sweep
-    # is incomplete or the nodes disagree, so every consumer falls back to its previous
-    # behaviour rather than acting on a partial truth.
+    # Published for read-only consumers (the probe selector). None while the sweep is
+    # incomplete or the nodes disagree, and consumers then fall back to their unfiltered
+    # behaviour rather than act on a partial map.
     st.consensus = cur
     if cur is None:
         if st.maps and len(st.maps) >= len(eps):
@@ -395,14 +368,14 @@ def stage_prn_membership(ctx):
         return
 
     # ---- 2. What the sky says -----------------------------------------------------------
-    # ctx.pred is THIS chain's constellation already filtered by capability: brdc_predict is
-    # called with alm_sys and alm_min_prn, which is the same "C1-C14 are BDS-2 and do not
-    # broadcast B2a" rule the manifest states beside the list. So absence from pred means
-    # "not a satellite this chain could ever track", not merely "not up".
+    # ctx.pred holds this chain's constellation, below-horizon satellites included. On the
+    # BRDC path it is already filtered by ctx.capable (--signal-capability) or, on a BeiDou
+    # chain without one, by the PRN floor alm_min_prn. Absence from pred therefore means no
+    # ephemeris or not trackable on this signal, not merely "not up".
     el = {p: v[2] for p, v in (ctx.pred or {}).items()}
-    # ⚠️ A SATELLITE THAT CANNOT BROADCAST THIS SIGNAL IS NOT A CANDIDATE FOR A SLOT. Dropping
-    # them here (rather than in desired_map) means they read as "not in the sky" throughout:
-    # never wanted, and their slots therefore reusable.
+    # A satellite that cannot broadcast this signal is not a candidate for a slot. Dropping
+    # it here rather than in desired_map makes it read as absent throughout: never wanted,
+    # and its slot reusable.
     _incap = signal_incapable_prns(getattr(a, "signal", ""))
     if _incap:
         _drop = sorted(p for p in el if p in _incap)
@@ -426,27 +399,15 @@ def stage_prn_membership(ctx):
     held = set(cur)
 
     # ---- 3. Who wants a slot, and who can give one up -----------------------------------
-    # ⚠️ THE UP-NOW BAR IS ABOUT PAYING FOR AN EVICTION, NOT ABOUT DESERVING A SLOT.
-    # A candidate must be above the admit mask before it is worth EVICTING someone for --
-    # a swap costs a re-acquisition, so only buy it for a satellite we can use immediately.
-    # But a DEAD slot costs nothing to fill, and applying the up-now test to a free slot was
-    # simply wrong: it left five Galileo slots empty while E36 -- active, and the satellite
-    # this whole mechanism exists for -- was refused because it happened to be below the
-    # horizon at that moment, and the heartbeat reported "0 satellites waiting for a slot"
-    # beside five empty slots (KV, 2026-08-27).
-    #
-    # A below-horizon satellite in a FREE slot is not idle capacity, it is immediately useful:
-    # it is exactly what the noise PROBES need. So free slots take any active satellite,
-    # deepest-first (the best probes), and only evictions demand up-now.
-    # The decision itself is desired_map() below; this is only for the heartbeat's count.
+    # Unslotted satellites above the admit mask, for the heartbeat's "waiting for a slot"
+    # count only; desired_map() decides. There a slot holding a real satellite is given up
+    # only for one above the admit mask or a noise probe (a swap costs a re-acquisition),
+    # while a dead slot costs nothing to fill and goes to any satellite.
     want = [p for p in el if p not in held and el[p] >= a.prn_reconfig_admit_deg]
 
-    # ⚠️ A HEARTBEAT, BECAUSE SILENCE HERE IS AMBIGUOUS. Every other branch of this stage only
-    # speaks when it has something to propose, so an armed chain with nothing to do looks
-    # EXACTLY like a stage that is not running -- and the normal state is nothing to do:
-    # measured 2026-08-26, E36 is the one satellite this mechanism exists for and it sits below
-    # the admit mask for ~13 h of every day. "Armed and healthy" has to be visible, or the
-    # first question after every restart is unanswerable without a code read.
+    # Heartbeat: every other branch speaks only when it has something to propose, and
+    # nothing to do is the normal state, so without it an armed, idle stage looks the same as
+    # one that is not running.
     tag = log_tag() or a.signal
     if now - st.beat_t >= a.prn_reconfig_heartbeat_s:
         st.beat_t = now
@@ -468,28 +429,14 @@ def stage_prn_membership(ctx):
                 (" | last error: %s" % st.err) if st.err else "",
             )
         )
-    # ---- 3a. THE WHOLE MAP, EVERY CYCLE ---------------------------------------------------
-    # KV, 2026-08-27: "the broker should push regular updates of available PRNs to all
-    # trackers. 3 below horizon + all above." One statement of intent, re-evaluated each
-    # cycle, replacing the old one-slot-per-15-minutes eviction with its multi-hour hold
-    # timers -- a design that in production NEVER FIRED ONCE. Two reasons, and the second is
-    # the one that mattered: `prn-reconfig` never left `report`, and `down_since`/`gone_since`
-    # live in this in-memory state, so every broker restart reset them to now. Measured
-    # 2026-08-27, after a day of restarts: the heartbeat reported "7 dead, 15 below 0 deg"
-    # and "NO slot is evictable" in the same breath, while E36 sat unslotted at 82 deg -- the
-    # best satellite in the sky, structurally invisible, in a chain with nine free slots.
-    #
-    # ⚠️ NO HOLD TIMERS IN THE DECISION AT ALL, DELIBERATELY. A PRN with no ephemeris is dead
-    # NOW, not in two hours; a satellite below the horizon is below it NOW. The timers were
-    # standing in for hysteresis, and hysteresis is what desired_map does properly (admit
-    # above admit_deg, keep until below evict_deg) without any state that a restart can lose.
+    # ---- 3a. The whole map, every cycle ------------------------------------------------
+    # One statement of intent (all satellites up plus the noise probes), re-evaluated each
+    # cycle, with no hold timers: a PRN with no ephemeris is dead now, and the hysteresis is
+    # in elevation (desired_map), so a broker restart loses no state the decision needs.
     n_probe = max(0, int(getattr(a, "noise_probes", 0) or 0))
-    # ⚠️ THE HYSTERESIS BAND MUST BE A BAND. admit <= evict makes admission and eviction the
-    # same test, so a satellite sitting on the threshold is admitted and evicted on alternate
-    # cycles -- and every flap is a COLD acquisition, which looks exactly like a satellite
-    # that cannot be tracked at low elevation. That is a fault this stage would otherwise
-    # manufacture and then be believed about, so it is checked where the numbers are used,
-    # not left to a docstring.
+    # The hysteresis band must be a band. With admit <= evict a satellite at the threshold
+    # is admitted and evicted on alternate cycles, each flap a cold acquisition that looks
+    # like a satellite that cannot be tracked low. Checked here, where the numbers are used.
     if a.prn_reconfig_admit_deg <= a.prn_reconfig_evict_deg:
         _log_rl(
             "prnmap-hyst",
@@ -506,7 +453,7 @@ def stage_prn_membership(ctx):
     )
     moved = [i for i in range(len(cur)) if want_map[i] != cur[i]]
     if unplaced:
-        # A REAL CAPACITY DECISION, and it must be said rather than silently absorbed.
+        # A capacity decision: logged, not absorbed silently.
         _log_rl(
             "prnmap-full",
             "PRN MAP %s: %d satellite(s) want a slot and cannot have one (%s) -- every "
@@ -527,9 +474,8 @@ def stage_prn_membership(ctx):
         len(moved),
         ", ".join("s%d %d->%d" % (i, cur[i], want_map[i]) for i in moved[:6]),
     )
-    # ONE POST, WHOLE MAP, ONE DEADLINE. Moving several slots in a single scheduled swap is
-    # strictly better than dribbling them out one per interval: the nodes cross once instead
-    # of N times, and the map is never in a half-applied state that no node agreed to.
+    # One post, the whole map, one deadline: the nodes cross once however many slots move,
+    # and the map is never half-applied.
     if now - st.last_swap_t < a.prn_reconfig_interval_s:
         return
     _apply_map(ctx, st, cur, want_map, moved, _why, el, now)
@@ -537,28 +483,24 @@ def stage_prn_membership(ctx):
 
 
 def desired_map(cur, el, n_probe, admit_deg, evict_deg):
-    """The map the chain SHOULD hold: every satellite worth tracking, plus the probes.
+    """The map the chain should hold: every satellite worth tracking, plus the noise probes.
 
-    KV's policy, 2026-08-27: "3 below horizon + all above." One statement of intent, evaluated
-    every cycle, rather than the old one-slot-at-a-time eviction with hours-long hold timers --
-    which never once fired in production, because the timers live in memory and every broker
-    restart reset them.
+    Wanted: every satellite up (admitted at >= `admit_deg`, a held one kept until it falls
+    below `evict_deg`), then the `n_probe` deepest below -15 deg as noise probes.
 
     Returns (want_map, unplaced). `want_map` is `cur` with as much of the wanted set placed as
-    there are slots; `unplaced` is whoever did not fit, best-first, which is a REAL capacity
-    decision the caller must report rather than hide.
+    there are slots; `unplaced` is whoever did not fit, best first, which the caller must
+    report rather than hide.
 
-    ⚠️ STABILITY IS THE POINT, NOT MINIMALITY. Every slot that changes costs a re-acquisition,
-    so a satellite already held KEEPS ITS SLOT and only genuinely unwanted slots are reused.
-    Recomputing an "optimal" assignment each cycle would churn the whole map for no gain --
-    the same reason the probe selector's deepest-N is sticky.
+    Stability over minimality: every changed slot costs a re-acquisition, so a satellite
+    already held keeps its slot and only unwanted slots are reused. Recomputing an optimal
+    assignment each cycle would churn the map for no gain.
 
-    ⚠️ HYSTERESIS, or a satellite at the horizon flaps in and out every cycle and each flap is
-    a re-acquisition: admitted above `admit_deg`, kept until it falls below `evict_deg`. The
-    two must differ; with admit == evict this degenerates to a flapper.
+    Hysteresis: without it a satellite at the horizon flaps in and out every cycle, each flap
+    a re-acquisition. The caller refuses admit_deg <= evict_deg.
     """
     held = set(cur)
-    # WANTED: everything up (with hysteresis), then the deepest below-horizon as probes.
+    # Wanted: everything up (with hysteresis), then the deepest below -15 deg as probes.
     up = sorted(
         (p for p, e in el.items() if e >= admit_deg or (p in held and e >= evict_deg)),
         key=lambda p: -el[p],
@@ -568,9 +510,9 @@ def desired_map(cur, el, n_probe, admit_deg, evict_deg):
     ]
     want = list(dict.fromkeys(up + probes))  # ordered, de-duplicated: up wins ties
     place = [p for p in want if p not in held]
-    # Reusable slots, worst-first: PRNs the sky has nothing to say about at all (gone from
-    # BRDC -- no ephemeris, so they produce literally nothing), then the ones furthest below
-    # the horizon. Never a slot we still want.
+    # Reusable slots, worst first: PRNs with no prediction at all (no ephemeris, or dropped
+    # as incapable), which produce nothing, then the ones furthest below the horizon. Never a
+    # slot we still want.
     free = sorted(
         (i for i, p in enumerate(cur) if p not in want),
         key=lambda i: (cur[i] in el, el.get(cur[i], -91.0)),
@@ -579,15 +521,14 @@ def desired_map(cur, el, n_probe, admit_deg, evict_deg):
     for i, prn in zip(free, place):
         want_map[i] = prn
     unplaced = place[len(free) :]
-    # ⚠️ AND A DEAD SLOT LEFT OVER GOES TO WHOEVER IS LEFT. A slot whose PRN has no prediction
-    # at all produces nothing, so handing it to ANY real satellite is pure gain, with nothing
-    # to re-acquire. This is the 2026-08-27 lesson restated: the admit mask exists to justify
-    # an EVICTION, and a free slot is not an eviction. Without this a satellite at +4 deg --
-    # too low to admit, too high to be a probe -- falls in the gap and is refused a slot that
-    # is standing empty.
-    # ⚠️ ONLY A DEAD SLOT. A slot holding a real satellite we merely do not want keeps it:
-    # trading it for another unwanted satellite gains nothing and costs a cold acquisition,
-    # and with one satellite left unslotted the two trade places every interval.
+    # A dead slot left over goes to the best remaining satellite. A slot whose PRN has no
+    # prediction produces nothing, so filling it costs no re-acquisition; the admit mask
+    # justifies evictions, and this is not one. Without it a satellite between -15 deg and the
+    # admit mask (too high to be a probe, too low to admit) is refused a slot that stands
+    # empty.
+    # Only a dead slot: a slot holding a real satellite we merely do not want keeps it.
+    # Trading it for another unwanted satellite gains nothing and costs a cold acquisition,
+    # and with one satellite left unslotted the two would trade places every interval.
     if len(place) < len(free):
         spare = [i for i in free[len(place) :] if cur[i] not in el]
         rest = sorted(
@@ -599,28 +540,26 @@ def desired_map(cur, el, n_probe, admit_deg, evict_deg):
 
 
 def _at_hop(ctx, a, now):
-    """The absolute F-engine HOP every node should swap on, or None if we cannot pick one.
+    """The absolute F-engine hop every node should swap on, or None if one cannot be picked.
 
-    ⚠️⚠️ THE POINT IS THAT TWELVE NODES CROSS THE DISCONTINUITY ON THE SAME FRAME. A map
-    posted "now" lands on whatever frame each node happens to be building, so the combiner
-    folds one window whose instances disagree about which satellite slot p IS -- an
-    accumulator-identity error, and an invisible one, because every row is individually
-    well-formed. Naming an absolute sample makes the swap simultaneous by construction.
+    The point is that every node crosses the discontinuity on the same frame. A map posted for
+    "now" lands on whatever frame each node is building, so the combiner folds a window whose
+    instances disagree about which satellite slot p holds: an accumulator-identity error that
+    no row shows, since each is well-formed on its own. Naming an absolute hop makes the swap
+    simultaneous by construction.
 
-    ⚠️ THE F-ENGINE COUNTER, NOT WALL TIME. It is the axis the records are indexed by and it
-    is identical on every node; wall time is not (the AXIS INST spread runs to seconds), so a
-    wall deadline would put the nodes back on twelve different frames.
+    The F-engine counter, not wall time: it is the axis the records are indexed by and it is
+    identical on every node, while the nodes run at different lags behind the sky (the AXIS
+    INST line), so a wall-clock deadline would land on a different frame on each.
 
-    ⚠️⚠️ HOPS. `fe_hop_now` is the combiner's `pow_hop`, which is sample_seq/fft_len, and that
-    is the only view of the axis the broker has. The first version of this posted the number
-    under the key `at_seq` into a node that compared it against sample_seq -- 16384x larger --
-    so the deadline was always already past and every swap took the apply-immediately degrade
-    while logging as scheduled. The unit is in the wire key now (`at_hop`) so the two sides
-    cannot drift apart again silently.
+    Hops, not samples: `fe_hop_now` is the combiner's pow_hop (sample_seq / fft_len), and the
+    node tests the deadline against its frame's first hop. The wire key `at_hop` names the
+    unit.
 
-    Returns None when the axis is unknown -- and the caller then posts WITHOUT a deadline,
-    i.e. the old ASAP behaviour. Fail-open is right here (a slot stuck on a set satellite
-    produces nothing at all) but it is never SILENT: both degrade paths log.
+    None when the axis is unknown, too old, or the deadline cannot be computed; the caller
+    then posts without a deadline and each node applies at its next frame boundary. That
+    fails open, because a slot stuck on a set satellite produces nothing, but every None path
+    logs.
     """
     fh = getattr(ctx, "fe_hop_now", None)
     ft = getattr(ctx, "fe_hop_t", None)
@@ -636,12 +575,12 @@ def _at_hop(ctx, a, now):
         return None
     try:
         hps = float(a.hops_per_sec)
-        # ⚠️ ADVANCE THE HOP TO NOW. `fh` was read during this cycle's status poll, which runs
-        # near the top of the cycle; this stage runs near the bottom. On the live fleet that
-        # gap is seconds and the lead is 2 s, so a deadline built on the raw `fh` lands in the
-        # PAST and every node applies at its own next frame boundary -- the unsynchronised
-        # swap this whole mechanism exists to avoid, arrived at silently because an
-        # already-past deadline is indistinguishable from a met one.
+        # Advance the sample to the cycle clock by its age, then add the lead. The status
+        # poll stamps fe_hop_t on the frozen cycle clock, so this cycle's sample has age 0
+        # and prn_reconfig_lead_s must cover the in-cycle delay to the POST; a positive age
+        # means this cycle's status poll failed and the sample is left from an earlier one.
+        # A deadline already past is applied at each node's next frame, indistinguishable
+        # from a met one.
         age = float(now) - float(ft)
         if not (0.0 <= age <= float(a.prn_reconfig_axis_max_age_s)):
             _log_rl(
@@ -656,10 +595,9 @@ def _at_hop(ctx, a, now):
         lead = float(a.prn_reconfig_lead_s)
         return int(round(float(fh) + (age + lead) * hps))
     except Exception as e:
-        # ⚠️ SAY SO. A bare `return None` degrades every swap to unscheduled and looks exactly
-        # like a healthy fleet with a quiet sky -- the silent-fallback shape purged on
-        # 2026-08-27. A missing or unparseable knob is a CONFIG fault; it must be loud even
-        # though the swap still goes out.
+        # Log it: a silent None would degrade every swap to unscheduled and look like a
+        # healthy fleet with a quiet sky. A missing or unparseable setting is a configuration
+        # fault, even though the swap still goes out.
         _log_rl(
             "prnmap-sched",
             "PRN MAP %s: cannot compute a swap deadline (%s) -- posting UNSCHEDULED. "
@@ -671,12 +609,9 @@ def _at_hop(ctx, a, now):
 
 
 def _apply_map(ctx, st, cur, want_map, moved, why, el, now):
-    """POST the WHOLE map to every producer, then to the followers, on one deadline.
-
-    ⚠️ ONE IMPLEMENTATION AND ONE POST. The previous version moved a single slot per call and
-    had two callers (free-slot fill, eviction); the whole map on one deadline is strictly
-    better -- the nodes cross once instead of N times, and the map is never in a half-applied
-    state that no node ever agreed to."""
+    """POST the whole map to every producer with one deadline, then to the followers without
+    it. One post moves any number of slots, so the nodes cross once and the map is never
+    half-applied."""
     a = ctx.args
     tag = log_tag() or a.signal
     st.last_swap_t = now
@@ -694,18 +629,17 @@ def _apply_map(ctx, st, cur, want_map, moved, why, el, now):
     n_follow = 0
     for ep in _followers(ctx):
         try:
-            # ⚠️ THE SEARCH GETS THE MAP BUT NOT THE DEADLINE. It has no frame boundary to
-            # test one against -- it applies between passes -- and a deadline it cannot
-            # honour would just wedge its map. It is also not in the record path, so an
-            # early swap there costs a re-scan, not a corrupted accumulator.
+            # The search gets the map but not the deadline: it applies a staged map between
+            # passes, with no frame boundary to test a deadline against. It is not in the
+            # record path, so an early swap there costs a re-scan, not a corrupted
+            # accumulator.
             _post(
                 "%s/set_prns" % ep, {"prns": want_map}, timeout=a.prn_reconfig_timeout_s
             )
             n_follow += 1
         except Exception as e:
-            # A search whose list did not move searches for a satellite that has no slot and
-            # misses one that does: a real degradation, and one worth naming, but not a reason
-            # to leave the producer half-swapped.
+            # A search whose list did not move hunts a satellite that has no slot and misses
+            # one that has: worth logging, but no reason to leave the producer half-swapped.
             _log(
                 "PRN MAP: follower %s refused the map (%s) -- it now searches a DIFFERENT "
                 "set from the one the tracker holds." % (ep, e)
@@ -716,11 +650,10 @@ def _apply_map(ctx, st, cur, want_map, moved, why, el, now):
         return
     st.swaps += 1
     st.applied = list(want_map)
-    # ⚠️ THE LOCAL MAP IS NOT UPDATED HERE. The next poll reads it back from the nodes, so
-    # what this stage diffs against is always what the nodes actually hold -- a POST that
-    # 200s but does not take (a slot the node refuses because the PRN has no code for that
-    # signal) would otherwise be invisible for as long as the broker ran.
-    st.maps.clear()  # force a FULL re-sweep before the next decision
+    # The local map is not updated here: the next sweep reads it back, so the stage always
+    # diffs against what the nodes hold, and a POST that is accepted but does not take stays
+    # visible.
+    st.maps.clear()  # a full re-sweep before the next decision
     st.poll_t = 0.0
     _log(
         "PRN MAP %s: %s -- posted to %d/%d node(s)%s%s, %s. Every moved slot acquires COLD: "

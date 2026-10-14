@@ -1,36 +1,32 @@
-"""The Receiver: what every chain on this telescope shares (task #27 M3).
+"""The Receiver: what every chain on this telescope shares.
 
-WHAT BELONGS HERE is decided by physics, not by convenience. CHORD is ONE receiver: one
-F-engine digitising the whole band off one GPS-disciplined reference. GPS L5 and Galileo
-E5a are not two receivers -- both launch scripts pass `--carrier-hz 1176.45e6`, because
-they are the same 24 MHz of sky through the same feed, the same cable and the same clock.
-Anything that is a property of the instrument rather than of a signal lives here and is
-estimated ONCE:
+What belongs here is decided by physics. CHORD is one receiver: one F-engine digitising the
+whole band off one GPS-disciplined reference. GPS L5 and Galileo E5a both run at
+--carrier-hz 1176.45e6 because they are the same 24 MHz of sky through the same feed, cable
+and clock. Anything that is a property of the instrument rather than of a signal lives here
+and is estimated once:
 
-    time anchor   utc0_sample0 -- the F-engine's frame 0. One number for the telescope.
-    sky           the BRDC store. Multi-system by construction (keys are (sys, prn)) and
-                  filtered per chain at predict time, so ONE parse serves every
-                  constellation -- today each broker parses its own copy and throws the
-                  other systems away.
-    code clock    PER BAND. Cable and PFB group delay are per carrier, so a code bias
-                  measured at 1176.45 MHz is not the one at 1207 MHz. This is
-                  load-bearing rather than decoration.
+    time anchor   utc0_sample0, the F-engine's frame 0. One number for the telescope.
+    sky           the BRDC store. Multi-system (keys are (sys, prn)) and filtered per chain
+                  at predict time, so one parse serves every constellation.
+    code clock    per band. Cable and PFB group delay are per carrier, so a code bias
+                  measured at 1176.45 MHz is not the one at 1207.14 MHz.
 
-CONTRIBUTE / CONSUME, NEVER OVERWRITE. A chain that has solved a quantity itself keeps its
-own estimate and merely PUBLISHES it here; a chain that has not solved it (E5a runs
-`--detectors` empty by design and can never solve a clock) CONSUMES a sibling's. That is
-already the shape of `--dr-clock-adopt`; this class only replaces
-its transport -- a JSON file written at flush cadence and re-read with a staleness gate
--- with the object the two chains could have shared all along.
+Contribute / consume, never overwrite. A chain that solves a quantity itself keeps its own
+estimate and publishes it here; a chain that cannot (one with --detectors empty never solves
+a clock) consumes a sibling's. --dr-clock-adopt takes its donor clock from here.
 
-⚠️ IT FOLLOWS THAT A SINGLE CHAIN IS UNAFFECTED, by construction: it always has its own
-estimate, so `consume` never returns anything it did not itself contribute. That is what
-keeps the M3 equivalence gate green, and it is a property of the contract, not a
-coincidence to be re-checked at every call site.
+A single chain is therefore unaffected by construction: every consumer excludes the caller,
+so a chain alone gets back only what it supplied itself (the time anchor, the BRDC store,
+the joint state it feeds). That is a property of the contract, not something to re-check at
+every call site.
 
-WHAT IS DELIBERATELY NOT HERE: anything per-signal. Seeds, per-PRN track state, the DLL and
-carrier loops, the CL machinery, nav decode -- all of that is the chain's, and the chain is
-still `main()`'s closure (see 31896a862:docs/CHORD_BROKER_REFACTOR.md, the note above M3).
+Per-signal state is deliberately not here: seeds, per-PRN track state, the DLL and carrier
+loops, the CL machinery and nav decode belong to the chain.
+
+Chains are threads of one process (scripts/gnss/broker_multi.py). Every method that reads or
+writes shared state takes the one RLock (time_anchor's fetch and brdc's build run outside it),
+and a contributed _Shared is replaced, never mutated.
 """
 import threading
 
@@ -58,29 +54,27 @@ class Receiver(object):
         self._brdc = {}  # cache key -> the {"mod","eph","eph_t"} state dict
         self._code = {}  # (band, chain) -> _Shared (dimensionless l-a)
         self._dr = {}  # (band, chain) -> _Shared (chips, + drift in extra)
-        self._clkmod = {}  # chain -> _Shared (the receiver clock in SECONDS,
-        # known mod extra["epoch_s"] -- e.g. the NH joint
-        # fit's consensus, clock mod 20 ms). The epoch
-        # EXTENSION a short-window donor clock needs.
+        self._clkmod = {}  # chain -> _Shared (the receiver clock in seconds,
+        # known mod extra["epoch_s"], e.g. the NH joint
+        # fit's clock mod 20 ms): what extends a
+        # short-window donor clock.
         self._joint = {}  # "__receiver__" -> the one JointReceiverState
         self._joint_unit = {}  # chain -> (chip_rate_hz, code_len) of the code
-        # phases it FEEDS into the receiver-wide joint state
+        # phases it feeds into the receiver-wide joint state
 
-    # -- the joint receiver state (task #33) -----------------------------------------------
+    # -- the joint receiver state -----------------------------------------------------------
     def joint_receiver(self, band, code_len, **kw):
-        """P3: ONE joint state for the WHOLE RECEIVER, shared by every chain.
+        """One joint state for the whole receiver, shared by every chain.
 
-        Created on first use so a process that never enables the joint solve never imports
-        numpy.
+        Created on first use, so a process that never runs the joint solve never builds it
+        (its constructor imports numpy).
 
-        ⚠️ THE MODULUS IS THE CATCH, and it is why this takes a code_len argument rather than
-        inheriting one. Chains here carry different code periods -- GPS L5 NH 204600 chips
-        (20 ms), E5a/B2a CS100 1023000 (100 ms), B2b 10230 (1 ms) -- and a shared state has
-        ONE wrap. A measurement from a 10230-chip chain is only known mod 10230, so the state
-        must wrap at the SMALLEST contributing period or it would treat an aliased value as a
-        real excursion. We therefore take the running minimum and REBUILD if a shorter-code
-        chain joins later; the clock is ~151 chips, comfortably inside 10230, and
-        `joint_ambiguous()` below is the guard that says so out loud if that stops being true.
+        The modulus is why this takes code_len. A shared state has one wrap, and a
+        measurement from a chain with a shorter code is known only mod that code, so the
+        state must wrap at the shortest period any caller passes, or it would treat an
+        aliased value as a real excursion. A shorter code_len shortens the modulus in place;
+        joint_ambiguous() reports a clock that has grown close to the wrap. code_len is
+        compared as given, in the caller's own chips.
 
         Same argument as the clock adoption's modulus rule: reducing to a shorter period is
         well defined, lengthening is not.
@@ -94,57 +88,54 @@ class Receiver(object):
                 kw["code_len"] = float(code_len)
                 self._joint["__receiver__"] = JointReceiverState(**kw)
             elif float(code_len) < cur.L:
-                # ADOPT THE SHORTER PERIOD IN PLACE -- never rebuild. Rebuilding discarded
-                # every row, so a second constellation joining WIPED the population already
-                # working (measured 2026-08-21 14:16: 5 healthy GPS rows lost the instant
-                # gal_e5a was fed, state back as all-Galileo, clock re-converged ~14 chips
-                # away, every consumer refused it including GPS). Reducing a modulus loses
-                # no information -- see JointReceiverState.shorten_modulus -- so the state
-                # migrates instead: same rows, same covariance, clk re-wrapped.
+                # Shorten in place, never rebuild: a rebuild would discard every converged
+                # row the moment another chain joined. Reducing a modulus loses no
+                # information (JointReceiverState.shorten_modulus): same rows, same
+                # covariance, clk re-wrapped.
                 cur.shorten_modulus(float(code_len))
             return self._joint["__receiver__"]
 
     def joint_ambiguous(self):
-        """True when the receiver clock has grown close enough to the state's wrap that a
-        measurement from the shortest-code chain could be aliased. A consumer must not
-        believe clk while this holds -- it is the modular-arithmetic twin of
-        the 'a value mod 10230 means nothing to a 1023000-chip chain' guard."""
+        """True when |clk| exceeds 0.4 of the state's wrap, close enough that a measurement
+        from the shortest-code chain could be aliased. A consumer should not believe clk
+        while this holds; the JOINT[shadow] log line marks it AMBIGUOUS."""
         with self._lock:
             st = self._joint.get("__receiver__")
             return bool(st is not None and abs(st.clk) > 0.4 * st.L)
 
     def joint_declare_unit(self, chain, chip_rate_hz, code_len):
-        """A chain that FEEDS code phases into the joint state declares the chips they are in.
+        """A chain that feeds code phases into the joint state declares the chips they are in.
 
         The state stores bare numbers: its clk, biases and sigma are in the chips of whoever
         fed it, known mod that feeder's code. Nothing inside the filter records which chips
-        those are, so a consumer at another chip rate cannot convert without being told --
-        and the unit must come from the measurements, not from the consumer's assumption.
-        Declared on every feed cycle, before the feed, so a state fit to consume always has
-        a declaration behind it."""
+        those are, so a consumer at another chip rate cannot convert without being told, and
+        the unit must come from the feeders, not from the consumer's assumption. Declared on
+        every feed cycle, before the feed, so a state fit to consume always has a declaration
+        behind it."""
         with self._lock:
             self._joint_unit[chain] = (float(chip_rate_hz), float(code_len))
 
     def joint_unit(self):
         """(chip_rate_hz, code_len) of the joint state's code phases, or None when no feeder
-        has declared one or the feeders DISAGREE. One state holds one unit: mixed-rate
-        feeds cannot be converted by any single factor, so a consumer must refuse them."""
+        has declared one or the feeders disagree. One state holds one unit: mixed-rate feeds
+        cannot be converted by any single factor, so a consumer must refuse them."""
         with self._lock:
             units = set(self._joint_unit.values())
             return units.pop() if len(units) == 1 else None
 
     # -- time anchor --------------------------------------------------------------------
     def time_anchor(self, fetch, chain):
-        """The F-engine's frame-0 UTC, fetched at most ONCE per process.
+        """The F-engine's frame-0 UTC, latched at most once per process.
 
         `fetch` is called only if nobody has it yet, and may raise or return a falsy value
-        (the endpoint being down is the normal outage case) -- in which case nothing is
-        latched and the next chain tries again.
+        (the endpoint being down is the normal outage case); then nothing is latched and the
+        next chain tries again.
 
-        ⚠️ Deliberately does NOT re-anchor. A changed frame 0 also invalidates the epoch
-        every NODE cached at ITS startup, so the correct response is an operator restarting
-        the fleet; silently re-anchoring here would fix this process's arithmetic and leave
-        the nodes wrong. The loop's periodic re-read exists to SAY SO, loudly, not to heal.
+        Never re-anchors. A changed frame 0 also invalidates the epoch every node cached at
+        its own startup, so re-anchoring here would fix this process's arithmetic and leave
+        the nodes wrong. The broker loop's 60 s re-read logs TIME ANCHOR CHANGED and, after
+        _ANCHOR_STRIKES confirmations, exits the process so the startup path latches the new
+        frame 0.
         """
         with self._lock:
             if self._anchor:
@@ -177,9 +168,11 @@ class Receiver(object):
     def brdc(self, key, build):
         """The shared BRDC store for `key`, built once.
 
-        The parse is multi-system -- entries are keyed (sys, prn) and every consumer filters
-        at predict time -- so ONE store serves GPS, Galileo and BeiDou together. Today each
-        broker parses its own copy of the same file and discards the other constellations.
+        The parse is multi-system (entries keyed (sys, prn), each consumer filtering at
+        predict time), so one store serves GPS, Galileo and BeiDou together. `build` runs
+        outside the lock, so two chains that miss together may both build; the first stored
+        wins and both get it. The returned dict is shared and is mutated by
+        sky.brdc_predict without this lock.
         """
         with self._lock:
             if key in self._brdc:
@@ -190,47 +183,35 @@ class Receiver(object):
 
     # -- clocks -------------------------------------------------------------------------
     def contribute_code_bias(self, chain, band, la, n_sats, t):
-        """Publish the code-side (l-a) bias. PER BAND: group delay is per carrier."""
+        """Publish the code-rate clock offset (l-a), a fractional frequency, keyed by band.
+        code_bias_any_band reads it across bands: a rate carries no per-band delay."""
         if la is None:
             return
         with self._lock:
             self._code[(band, chain)] = _Shared(float(la), chain, int(n_sats or 0), t)
 
     def code_bias(self, band, exclude=None, max_age_s=120.0, t_now=None):
-        """The best OTHER chain's (l-a) in this band, or None. Weighted by satellite count --
-        the only quality signal any of these estimators carries -- and aged out, because a
-        chain that stopped solving must stop being believed rather than fading silently."""
+        """Another chain's (l-a) in this band, or None. The one fitted from the most
+        satellites wins (the only quality signal these estimators carry), and an entry older
+        than max_age_s is skipped, because a chain that stopped solving must stop being
+        believed rather than fading silently."""
         return self._best(self._code, exclude, max_age_s, t_now, key2=band)
 
     def code_bias_any_band(self, exclude=None, max_age_s=120.0, t_now=None):
-        """(l-a) from ANY band -- the clock RATE is receiver-wide even though the PHASE is not.
+        """(l-a) from any band: the clock rate is receiver-wide even though the phase is not.
 
-        ⚠️ READ THIS BEFORE USING IT FOR ANYTHING ELSE. `contribute_code_bias` is keyed per band
-        because group delay is per carrier, and that is right for the code PHASE: a signal at
-        1207.14 MHz arrives through a different filter chain than one at 1176.45 and sits at a
-        different delay (`tau_band`). But the value stored here is a FRACTIONAL FREQUENCY --
-        dimensionless, consumed as `code_bias * chip_hz / hops_per_sec` -- and tau_band is a
-        CONSTANT offset whose time derivative is zero. A per-band delay therefore contributes
-        NOTHING to the rate, so the rate is a property of the receiver, not of the band.
+        Group delay is per carrier, which matters for the code phase: a signal at 1207.14 MHz
+        arrives through a different filter chain than one at 1176.45 MHz and sits at a
+        different delay (tau_band). But (l-a) is a fractional frequency (consumed as
+        code_bias * chip_hz / hops_per_sec, fits.cp_rate_from_code_bias), and tau_band is a
+        constant whose time derivative is zero, so the rate is a property of the receiver.
 
-        WHY IT HAD TO EXIST (task #34, 2026-08-09). The per-band gate is a bootstrap trap for
-        any band that cannot solve its own clock. Measured on sky: gal_e5a and bds_b2a adopted
-        the clock 102 and 107 times from gps_l5 on the same 1176.45 MHz, while gal_e5b and
-        bds_b2b -- the first chains at 1207.14 -- adopted it ZERO times, ever, and sat at the
-        startup "PRIMED 0.00 chips" value. That left code_phase_rate = 0.0 on all 19 of their
-        PRNs, so the fleet DLL logged "no live code_phase_rate, holding trim" and never closed,
-        the code phase walked open-loop at ~0.003-0.01 chips/s (the #30 rate), the instances
-        drifted apart from each other (fleet_coh_align 0.16 against 0.51 on the working bands),
-        the fleet-coherent combine never cleared its floor (fleet_present 0/19), and every
-        published number fell back to a single instance. The loop closes on itself: no clock ->
-        no rate -> no lock -> no detections -> no measured (l-a) -> no clock.
+        Without this a band where no chain solves its own clock has no rate: its seeds ship
+        code_phase_rate 0, the fleet DLL never closes, and the loop closes on itself (no
+        clock -> no rate -> no lock -> no detections -> no measured (l-a) -> no clock).
 
-        It is also self-defeating: `tau_band` is unobservable until the second band tracks, and
-        the second band could not track because nothing supplied a band-offset clock.
-
-        THE PHASE IS STILL PER BAND and this does not change that -- `dr_clock` keeps its band
-        key, and adopting a code PHASE across carriers would inject exactly the tau_band offset
-        we are trying to measure. This is the rate only.
+        The phase stays per band: dr_clock keeps its band key, because adopting a code phase
+        across carriers carries exactly the tau_band offset (see dr_clock_any_band).
         """
         return self._best(self._code, exclude, max_age_s, t_now, key2=None)
 
@@ -247,35 +228,25 @@ class Receiver(object):
         held=False,
         healthy=None,
     ):
-        """Publish the dead-reckon receiver clock (chips, mod the code period) + drift.
+        """Publish the dead-reckon receiver clock (chips, mod the code period) and its drift.
 
-        ⚠️ THIS IS THE SEAM `--dr-clock-adopt` PAPERS OVER. `dr_state` straddles the
-        receiver/chain boundary: clk and drift are the RECEIVER's, while seeded/pin/pd are
-        the chain's per-PRN bookkeeping. Splitting them is the single highest-value
-        structural change in this refactor -- it is why a detector-less chain needed a JSON
-        file, a flush cadence and a two-read slew gate to learn a number the process next
-        door already had.
+        clk and drift are the receiver's; the rest of dr_state is the chain's per-PRN
+        bookkeeping and stays with the chain.
 
-        Carried WITH its code length: chips are modular, and a value mod 10230 means nothing
-        to a chain whose code is 1023000 long. A consumer that ignores this would adopt a
-        number that is numerically fine and physically wrong -- silently.
+        Carried with its code length: chips are modular, and a value mod 10230 means nothing
+        to a chain whose code is 1023000 long. A consumer that ignored this would adopt a
+        number that is numerically fine and physically wrong.
 
-        ⚠️ AND WITH ITS CHIP RATE (2026-08-31, the gal_e6 bring-up root). The clock is a
-        TIME -- a receiver property -- and "chips" are only a unit: 150.2 chips at
-        10.23 Mcps is 14.7 us, which is 75.1 chips at E6's 5.115 Mcps. Every consumer
-        before gal_e6 ran at the donor's own 10.23 Mcps, so the missing conversion was
-        invisible for the life of the instrument: the cross-band bootstrap handed E6 a
-        clock exactly 2x true (+75 E6 chips of code error on every seed -- outside every
-        pull-in window; dll_disc read noise while codes, Doppler and RF all verified
-        clean). The unit trap wears the SAME costume as the modulus trap the paragraph
-        above documents: numerically fine, physically wrong, silently.
+        And with its chip rate: the clock is a time and chips are only a unit. 150.2 chips at
+        10.23 Mcps is 14.7 us, which is 75.1 chips at E6's 5.115 Mcps; taken as raw chips the
+        clock would read as twice the time (Receiver.clock_chips_convert).
 
-        AND WITH ITS EPOCH (#142): a count the solving chain bumps each time it SNAPS its
-        clock on purpose (bootstrap, re-roll, confirmed re-pin). A consumer bounds every step
-        of the published value except one that arrives with an epoch it has not adopted --
-        so a deliberate re-pin reaches it at once and an undeclared step is refused. None =
-        not declared (every step bounded). `held` marks a value the solving chain is HOLDING
-        at zero rate (it did not update this cycle): valid at any instant, so a consumer takes
+        And with its epoch: a count the solving chain bumps each time it snaps its clock on
+        purpose (bootstrap, re-roll, confirmed re-pin). A consumer bounds every step of the
+        published value except one that arrives with an epoch it has not adopted, so a
+        deliberate re-pin reaches it at once and an undeclared step is refused. None = not
+        declared (every step bounded). `held` marks a value the solving chain is holding at
+        zero rate (it did not update this cycle): valid at any instant, so a consumer takes
         it at its own now instead of extrapolating it from `t`.
         """
         if chips is None:
@@ -292,7 +263,7 @@ class Receiver(object):
                     "chip_rate_hz": chip_rate_hz,
                     "epoch": epoch,
                     "held": bool(held),
-                    # #161: False = the solving chain's search solve is not established
+                    # False = the solving chain's search solve is not established
                     # (clockhealth.dr_solve_healthy); a consumer must not bootstrap from it.
                     # None = the contributor made no claim.
                     "healthy": healthy,
@@ -303,36 +274,29 @@ class Receiver(object):
         return self._best(self._dr, exclude, max_age_s, t_now, key2=band)
 
     def dr_clock_any_band(self, exclude=None, max_age_s=120.0, t_now=None):
-        """The dead-reckon clock PHASE from any band -- a BOOTSTRAP PRIOR, not a measurement.
+        """The dead-reckon clock phase from any band: a bootstrap prior, not a measurement.
 
-        ⚠️ THIS ONE REALLY IS APPROXIMATE, unlike code_bias_any_band. The receiver clock is a
-        receiver property and is common to every band, but the number stored here is a code
-        PHASE, so a consumer in another band inherits the donor's group delay: the adopted
-        value is off by exactly `tau_band`, the per-carrier instrumental delay difference (plus
-        an ionospheric term, which is tiny -- 40.3*TEC/c*(1/fa^2-1/fb^2) is ~0.005 chips per
-        10 TECU between the E5 sidebands).
+        Unlike code_bias_any_band this one is approximate. The receiver clock is common to
+        every band, but the number stored here is a code phase, so a consumer in another band
+        inherits the donor's group delay: the adopted value is off by tau_band, the
+        per-carrier instrumental delay difference (plus an ionospheric term, which is tiny:
+        40.3*TEC/c*(1/fa^2-1/fb^2) is ~0.005 chips per 10 TECU between the E5 sidebands).
 
-        WHY THAT IS THE RIGHT TRADE. The alternative is what the second band actually did all
-        day: sit at the startup prime of 0.00 chips while the true receiver clock was ~150.7,
-        i.e. 150 chips of code-phase error against a +-1 chip correlation peak. Nothing can
-        track through that, so nothing ever measured tau_band, so the per-band scoping that
-        exists to PROTECT tau_band was the reason it stayed unmeasurable. Borrowing the phase
-        replaces a 150-chip error with a tau_band-sized one, which is inside the DLL's pull-in,
-        and the loop's steady-state residual then IS tau_band -- the measurement we wanted.
-
-        So this is explicitly a BOOTSTRAP: it gets a cold band onto the peak, and the residual
-        it leaves behind is the science. The caller must log it as borrowed and must not treat
-        the adopted value as a measurement of this band's clock (dr_state keeps `clk_primed`
-        semantics accordingly). Task #34.
+        That is the right trade. A band that solves no clock otherwise sits at its primed
+        value, wrong by the whole receiver clock against a +-1 chip correlation peak; nothing
+        tracks through that, so tau_band is never measured. Borrowing the phase leaves a
+        tau_band-sized error inside the DLL's pull-in, and the loop's steady-state residual
+        then is tau_band. The caller logs the adoption as a cross-band BOOTSTRAP, never as a
+        same-band ADOPTED, so the log tells a borrowed phase from a measured one.
         """
         return self._best(self._dr, exclude, max_age_s, t_now, key2=None)
 
     def contribute_clock_mod_epoch(
         self, chain, seconds, epoch_s, n_sats, t, healthy=None
     ):
-        """The receiver clock as a TIME, known mod epoch_s. Contributed by an estimator
-        that resolves a LONGER modulus than any code period -- today the NH joint fit
-        (clock mod 20 ms from every strong GPS sat voting). Consumers use it to extend a
+        """The receiver clock as a time, known mod epoch_s. Contributed by an estimator that
+        resolves a longer modulus than a primary code period: the NH joint fit (--nh-joint;
+        clock mod 20 ms from the strong GPS satellites' votes). Consumers use it to extend a
         precise short-window donor clock across their own longer code period."""
         with self._lock:
             self._clkmod[chain] = _Shared(
@@ -346,7 +310,8 @@ class Receiver(object):
     def clock_mod_epoch(self, min_epoch_s, exclude=None, max_age_s=3600.0, t_now=None):
         """Freshest clock-mod record whose epoch covers min_epoch_s. The long default age
         bound is deliberate: the quantity is a run constant (the F-engine axis is
-        drift-free), refreshed every cycle while enough strong sats vote."""
+        drift-free), refreshed each time the NH joint fit reaches its quorum while the
+        contributing chain's search solve is established."""
         with self._lock:
             best = None
             for chain, rec in self._clkmod.items():
@@ -368,16 +333,16 @@ class Receiver(object):
     def clock_extend_mod(
         donor_seconds, donor_window_s, mod_seconds, mod_epoch_s, our_window_s
     ):
-        """Extend a donor clock known mod its (short) window across OUR (longer) code
+        """Extend a donor clock known mod its (short) window across our (longer) code
         period, using an independent measurement of the same clock mod >= our window.
 
-        The donor supplies the PRECISION (e.g. gps_l5's clock, ~20 ns, mod 1 ms); the
-        mod measurement supplies only the AMBIGUITY RESOLUTION (which of the donor's
-        windows -- candidates are a full donor window apart, so it needs to be right
-        only to half of that). Returns (seconds mod our_window_s, resid_s), where
-        resid_s is the disagreement between the extended donor and the mod measurement:
-        the caller must refuse the extension when |resid_s| is a large fraction of the
-        donor window, because then the k choice itself is in doubt."""
+        The donor supplies the precision (e.g. gps_l5's clock mod 1 ms); the mod
+        measurement supplies only the ambiguity resolution, which of the donor's windows.
+        Candidates are a full donor window apart, so it need be right only to half of that.
+        Returns (seconds mod our_window_s, resid_s), where resid_s is the disagreement
+        between the extended donor and the mod measurement: the caller must refuse the
+        extension when |resid_s| is a large fraction of the donor window, because then the
+        k choice itself is in doubt."""
         dm = float(mod_seconds) % float(mod_epoch_s)
         k = round((dm - float(donor_seconds)) / float(donor_window_s))
         t_full = float(donor_seconds) + k * float(donor_window_s)
@@ -387,23 +352,23 @@ class Receiver(object):
 
     @staticmethod
     def clock_chips_convert(donor_chips, donor_rate_hz, our_rate_hz, our_code_len):
-        """A donor's clock, re-expressed in OUR chips and reduced mod OUR code.
+        """A donor's clock, re-expressed in our chips and reduced mod our code.
 
-        The clock is a TIME; chips are a unit. Selftest-gated with the exact gal_e6 numbers
-        so the unit trap cannot silently return."""
+        The clock is a time; chips are a unit. selftest.py checks it with gal_e6's numbers
+        (150.2 chips at 10.23 Mcps = 75.1 chips at 5.115 Mcps)."""
         return (float(donor_chips) * our_rate_hz / donor_rate_hz) % our_code_len
 
     @staticmethod
     def joint_clk_delta(
         joint_chips, joint_rate_hz, joint_code_len, our_chips, our_rate_hz, our_code_len
     ):
-        """The correction that moves OUR clock onto the joint clock: (delta in our chips,
+        """The correction that moves our clock onto the joint clock: (delta in our chips,
         the same delta in the joint's chips).
 
-        Both clocks are the same receiver TIME in different units and known mod different
+        Both clocks are the same receiver time in different units and known mod different
         windows: the joint mod its feeders' code (joint_code_len joint chips), ours mod our
         code. The joint is converted into our chips first, then the difference is wrapped in
-        the SHORTER of the two windows, the only one both values are defined in. So the
+        the shorter of the two windows, the only one both values are defined in. So the
         joint moves our clock only within that window and our clock keeps saying which
         period of a longer code we are in (a 20 ms L2C-CM code under a 1 ms joint window).
 

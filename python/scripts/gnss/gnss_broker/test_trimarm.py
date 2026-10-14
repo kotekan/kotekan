@@ -1,11 +1,11 @@
-"""The fast loop's arming POLICY: what the gather is told it may actuate.
+"""The fast loop's arming policy: what the gather is told it may actuate.
 
     python3 -m gnss_broker.test_trimarm     (or: pytest gnss_broker/test_trimarm.py)
 
 `stage_fleet_trim_arming` is the only place the C++ fast loop's authority is set. The stage
-POSTs, so `_post` is captured rather than sent: what this file asserts is the POLICY DOCUMENT
-the gather would receive -- which PRNs are armed (presence with a hold), the loop constants,
-and the probe-anchored floor.
+POSTs, so `_post` is captured rather than sent, and this file asserts on the policy document
+the gather would receive: which PRNs are armed (presence with a hold), the loop constants, and
+the probe-anchored floor.
 
 @author Keith Vanderlinde
 """
@@ -93,7 +93,7 @@ def main():
     check(ctx.dls.armed_last == {1, 8, 10}, "armed_last records what was handed over")
     check(ctx.dls.stat["posts"] == 1, "one policy POST counted")
 
-    # 2. PRESENCE WITH A HOLD: a PRN absent this cycle stays armed inside the hold and is
+    # 2. Presence with a hold: a PRN absent this cycle stays armed inside the hold and is
     #    released once it has been absent longer than fleet_trim_hold_s.
     now = time.time()
     pol, _ = run(present=(1,), hold={8: now - 10.0, 10: now - 100.0})
@@ -102,8 +102,8 @@ def main():
         "absent 10 s: still armed; absent 100 s (> 30 s hold): released",
     )
 
-    # 3. ONLY A PROBE-ANCHORED FLOOR SHIPS. A peer-bar floor would rebuild the competition
-    #    the absolute floor removes, so anything else ships 0 (the C++ side refuses).
+    # 3. Only a probe-anchored floor ships. A peer-bar floor would rebuild the competition
+    #    the absolute floor removes, so anything else ships 0 (the C++ loop then steps none).
     pol, _ = run(
         fleet={1: {"present": True, "p_floor_src": "probes:3", "p_floor": 0.02}}
     )

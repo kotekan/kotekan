@@ -1,29 +1,28 @@
-"""TIME-BASE DETECTOR: is the epoch the nodes serve the epoch the sky is on?
+"""Time-base detector: is the epoch the nodes serve the epoch the sky is on?
 
-THE FAULT THIS NAMES. Every node latches the F-engine's sample-0 epoch from chive at startup.
-When the F-engine re-bases while chive still serves the old value, the nodes come back on a
-stale epoch, AGREE with each other, and every consumer -- this broker, the observables writers
--- takes their word: t = frame0 + hop lands hours in the past. Nothing then complains, because
-tracking is blind: the L5 search acquires by scanning, the trackers follow the sky, the data
-keeps flowing -- on the wrong day, with the geometry evaluated there. Twice in one week the
-tell was found offline, in the archive, a day later.
+The fault. Every node latches the F-engine's sample-0 epoch from chive at startup. When the
+F-engine re-bases while chive still serves the old value, the nodes come back on a stale epoch,
+agree with each other, and every consumer (this broker, the observables writers) takes their
+word: t = frame0 + hop lands hours in the past. Tracking does not notice: the L5 search acquires
+by scanning, the trackers follow the sky, and the data keeps flowing with the geometry
+evaluated at the wrong time.
 
-THE TELL IS ALREADY COMPUTED EVERY CYCLE. The blind search reports each satellite's measured
+The tell is computed every cycle anyway. The blind search reports each satellite's measured
 Doppler; the almanac predicts it from BRDC at the epoch the broker believes. Their difference is
-normally ONE number for all satellites (the receiver clock frequency bias, tens of Hz) plus a
-few Hz of scatter. A wrong epoch instead puts every satellite off by ITS OWN Doppler rate times
-the epoch error -- a spread across satellites, not an offset, growing with |dt| at ~0.3-0.5 Hz
-per second of error -- and one shift dt explains the whole spread. That is a fingerprint no
-clock bias, ephemeris error or front-end fault shares.
+normally one number for all satellites (the receiver clock frequency bias, tens of Hz) plus a
+few Hz of scatter. A wrong epoch instead puts each satellite off by its own Doppler rate times
+the epoch error: a spread across satellites, not an offset, growing at ~0.3-0.5 Hz per second
+of error, and one shift dt explains the whole spread. No clock bias, ephemeris error or
+front-end fault shares that fingerprint.
 
-WHAT IT DOES. Per cycle, with >= min_sats fresh detections: rms of the residuals about their
-median; above spread_hz for `persist` consecutive cycles it raises the verdict, fits dt as the
-least-squares slope of (residual - median) against (rate - median rate) and says how much of
-the spread that one number explains. The verdict is MODULE-LEVEL, shared by every chain in the
-process: an epoch is a property of the telescope, not a chain, and only the chains with a blind
-search can measure it while every chain must carry the flag. It clears after `clear_after`
-consecutive quiet cycles. Consumers (publish.py -> gnss_observables.py) withhold geometry while
-it stands; the log line repeats no faster than an operator can act on it.
+Per cycle, with >= min_sats fresh detections, the detector takes the rms of the residuals
+about their median. Above spread_hz for `persist` consecutive cycles it raises the verdict, fits
+dt as the least-squares slope of (residual - median) against (rate - median rate), and reports
+how much of the spread that one number explains. The verdict is module-level, shared by every
+chain in the process: an epoch is a property of the telescope, not of a chain, and only the
+chains with a blind search can measure it while every chain must carry the flag. It clears
+after `clear_after` consecutive quiet cycles. Consumers (publish.py -> gnss_observables.py)
+withhold geometry while it stands; observe() logs at most once a minute.
 """
 import math
 
@@ -66,14 +65,14 @@ class TimeBaseDetector(object):
         self, min_sats=4, spread_hz=100.0, persist=3, clear_after=2, fit_frac=0.3
     ):
         self.min_sats = int(min_sats)
-        self.spread_hz = float(spread_hz)  # ~0.4 Hz/s x 250 s: below this is noise/bias
+        self.spread_hz = float(spread_hz)  # ~0.4 Hz/s x 250 s; below it, noise and bias
         self.persist = int(persist)
         self.clear_after = int(clear_after)
         self.fit_frac = float(
             fit_frac
-        )  # post-fit rms below this fraction of the spread
-        self.bad = 0  # = "one epoch shift explains it"
-        self.quiet = 0
+        )  # "one epoch shift explains it": post-fit rms below this fraction of the spread
+        self.bad = 0  # consecutive cycles at or above spread_hz
+        self.quiet = 0  # consecutive cycles below it
         self.verdict = VERDICT
 
     def note(self, t, pairs, chain=None):

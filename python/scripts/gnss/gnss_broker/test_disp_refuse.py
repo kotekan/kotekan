@@ -1,16 +1,17 @@
-"""#175: the displaced admission refuses a chain event.
+"""The displaced admission refuses a chain event.
 
     python3 -m gnss_broker.test_disp_refuse
 
-No recorded transcript carries --presence-admit-displaced, so the digest gate never executes
-this branch; the shapes are asserted here against apply_presence and displaced_chain_event,
-the rule both DLL arms and the shadow judge with.
+No recorded transcript carries --presence-admit-displaced, so the digest gate
+(scripts/gnss/broker_equiv.py) never executes this branch; the shapes are asserted here against
+apply_presence and displaced_chain_event, the rule both DLL arms (fleet_dll and fleet_dll_comb)
+judge with.
 
-THE EVENT PINNED. 2026-10-11 22:34:52Z, gal_e6, E06 crossing the dish's first null: PRESENCE
-admitted every PRN at once, all at +0.41..+0.47 chips, and the DLL of E4/E5/E9/E16/E28 sat at
-the +0.5 clamp for an hour after. N satellites do not move by one offset in one cycle; the
-chain did. The later single admissions (E4 at 23:24:35Z, +0.589) are the gate doing its job
-and must still pass.
+The fixture rows are gal_e6 PRESENCE +displaced lines. While one satellite crossed the dish's
+first null, every PRN was admitted at once, all at +0.41..+0.47 chips: N satellites do not move
+by one offset in one cycle, the chain did, and admitting them re-seeds each off its peak, where
+the leak-bounded DLL then holds it. A single admission (E4 alone at +0.589) is the gate doing
+its job and must still pass.
 
 @author Keith Vanderlinde
 """
@@ -73,9 +74,9 @@ def verdict(out, adm):
     return out, lines
 
 
-# ---- THE RULE, ON THE LOGGED NUMBERS -----------------------------------------------------
+# ---- The rule, on the logged numbers -----------------------------------------------------
 
-# gal_e6 22:34:52Z: (prn, off, ped, p/floor, via-p), as the PRESENCE +displaced line said.
+# gal_e6, the null crossing: (prn, off, ped, p/floor, via-p) from the PRESENCE +displaced line.
 NULL_CROSSING = [
     (31, +0.466, 0.052, 20.6, True),
     (4, +0.410, 0.055, 20.6, True),
@@ -83,12 +84,12 @@ NULL_CROSSING = [
     (5, +0.419, 0.044, 10.9, True),
     (16, +0.452, 0.043, 6.6, True),
 ]
-# gal_e6 23:24:35Z: E4 alone, +0.589.
+# gal_e6: E4 admitted alone at +0.589.
 E4_ALONE = [(4, +0.589, 0.059, 8.7, True)]
-# gal_e6 22:41:02Z: two at one offset (E6 -0.251, E4 -0.273) -- under the chain bar.
+# gal_e6: two at one offset (E6 -0.251, E4 -0.273), under the chain bar of three.
 TWO_SAME = [(6, -0.251, 0.066, 28.1, True), (4, -0.273, 0.038, 14.6, True)]
-# bds_b2a, most cycles: dim satellites the offset-blind fold sees ON their peak. Not
-# displaced, so there is no chain event in them -- refusing these would empty the chain.
+# bds_b2a: dim satellites the offset-blind fold admits on their peak, as in most cycles. Not
+# displaced, so there is no chain event in them; refusing these would empty the chain.
 ON_PEAK = [
     (22, -0.002, 0.218, 0.7, False),
     (39, -0.012, 0.061, 0.3, False),
@@ -137,7 +138,7 @@ def test_rule():
     )
 
 
-# ---- THE GATE, END TO END ----------------------------------------------------------------
+# ---- The gate, end to end ----------------------------------------------------------------
 
 # Bright, displaced, inside the pull-in range: the shape the displaced gate exists to admit.
 # Three identical rows decompose to one offset.

@@ -1,38 +1,25 @@
-"""TASK #59: the broker's end of the frame-synced tracker telemetry stream.
+"""The broker's end of the frame-synced tracker telemetry stream.
 
-Connects to the GATHER instance (a small kotekan on the broker host: one bufferRecv for the
-whole fleet, plus GnssTelemGather) and keeps a short ring of recent WINDOWS, each holding
-whichever instances have reported it.
+Connects to the gather instance (a small kotekan on the broker host: one bufferRecv for the
+whole fleet, plus GnssTelemGather) and keeps a short ring of recent windows per chain, each
+holding whichever instances have reported it.
 
-WHAT THIS REPLACES, AND WHY IT IS NOT JUST FASTER. The broker used to make ~60 REST round
-trips per cycle -- 12 instances x 5 chains -- each landing at a different wall time, and then
-had to work out afterwards which instance and which window each reply described. Every one of
-those inferences went wrong somewhere in a single week:
+Every frame carries its own address: its chain, its instance, and an absolute window index
+that each sender computes from the F-engine's sample counter,
+wstart / (records_per_frame * hops_per_record * fft_len), with the same three configured
+integers. Grouping instances is an exact integer match; nothing is inferred from when a reply
+arrived.
 
-  * #53 -- /get_spectrum windows were "whatever accumulated since your last GET", so no two
-    instances ever summed the same records, and there was no way to ask for the past.
-  * #52 -- the cross-instance delay fit then absorbed that misalignment into a free phase per
-    instance: it FITTED what it should have DERIVED.
-  * #33 -- the carrier-rate feed differenced `res_cycles` across a "served row" that silently
-    changed instance. One instance reads 0.82 Hz; the served row read 4.92. Six times worse,
-    from addressing alone, and it looked exactly like physics.
-  * #46 -- 0.105 s of record-time spread between instances that nothing in the design buffers.
+Two rules for consumers:
 
-Here the address travels WITH the data: every frame carries its chain, its instance, and an
-ABSOLUTE window index computed from the F-engine's own sample counter
-(wstart / (records_per_frame * hops_per_record * fft_len)) by each sender from the same three
-configured integers. Grouping instances is an exact integer match. Nothing is inferred.
+  1. Never difference an accumulator across instances: each instance's running total has its
+     own origin. What arrives here is per-record increments (gnssRecord.hpp slots 15/19) and
+     per-record correlations. Accumulate once, per instance, over a run known to be
+     contiguous; do not rebuild a running total such as /get_status res_cycles here.
 
-TWO RULES THE REST OF THE BROKER MUST KEEP:
-
-  1. ⚠️ NEVER DIFFERENCE AN ACCUMULATOR ACROSS INSTANCES. What arrives here is per-record
-     INCREMENTS (gnssRecord.hpp slots 15/19) and per-record correlations. Accumulate ONCE, per
-     instance, over a run known to be contiguous. `res_cycles` from /get_status is the thing
-     that was wrong; do not rebuild it here.
-
-  2. ⚠️ A WINDOW IS NOT COMPLETE THE MOMENT IT APPEARS. Senders are independent, so the newest
-     window is always still filling. Every accessor takes `lag` (default 1 window, ~168 ms) and
-     skips that many of the newest -- cheaper and more honest than waiting on a quorum that a
+  2. A window is not complete when it first appears. Senders are independent, so the newest
+     window is always still filling. windows() and coherent_source() take `lag` (default 1
+     window, ~42 ms) and skip that many of the newest, rather than wait on a quorum that a
      down instance would never deliver.
 """
 import array
@@ -44,25 +31,19 @@ import time
 
 from .transport import _log, _log_rl
 
-# gnssTelem.hpp -- keep in step with TelemHeader. The magic and version are checked on every
-# frame, so a drift here surfaces immediately as "no frames" rather than as wrong numbers.
+# gnssTelem.hpp TELEM_MAGIC, TELEM_VERSION and TelemHeader: keep in step. Magic, version and
+# n_row are checked on every frame, so a mismatch shows as rejected frames, not wrong numbers.
 _MAGIC = 0x314C5447
-# v2: the row carries the UNSUMMED COMB after the record header, and the header carries the
-# columns' freq_ids. The cross-channel sum in the tracker destroyed the frequency axis a delay
-# lives on, which forced fleet_coherent to FIT a per-instance constant instead of DERIVING one.
-# v7 (2026-10-01): RECORD_FLOATS 29 -> 30 for REC_PROJ_COST.
-# v8 (2026-10-12): RECORD_FLOATS 30 -> 32 for REC_PROJ_K and REC_PROJ_SRC.
 _VERSION = 8
 _HDR = struct.Struct("<IHHHHHHIIQQqdIHH16s16s8H")
 _HDR_BYTES = 112
 _MAX_CHAN = 8
 _CHAN_FLOATS = 9
-CHAN_RE, CHAN_IM, CHAN_ENERGY = 0, 1, 2  # PROMPT (unchanged from v2)
-CHAN_E_RE, CHAN_E_IM, CHAN_E_ENERGY = 3, 4, 5  # EARLY
-CHAN_L_RE, CHAN_L_IM, CHAN_L_ENERGY = 6, 7, 8  # LATE
-# gnssRecord.hpp RECORD_FLOATS. Verified against every frame's own n_row field, because a
-# tracker rebuilt with a wider record and a broker that was not is precisely the silent
-# mis-stride this transport exists to stop tolerating.
+CHAN_RE, CHAN_IM, CHAN_ENERGY = 0, 1, 2  # prompt
+CHAN_E_RE, CHAN_E_IM, CHAN_E_ENERGY = 3, 4, 5  # early
+CHAN_L_RE, CHAN_L_IM, CHAN_L_ENERGY = 6, 7, 8  # late
+# gnssRecord.hpp RECORD_FLOATS, checked against every frame's own n_row: a tracker built with a
+# wider record than this broker would otherwise be read at the wrong stride.
 _ROW_FLOATS = 32
 
 # Row slots we name here (gnssRecord.hpp). The rest of the row travels intact and is available
@@ -82,13 +63,13 @@ REC_E_IM = 12
 REC_L_RE = 13
 REC_L_IM = 14
 REC_CPHASE = 15
-# #72: the two per-(instance, PRN) carrier quantities that no external measurement can reach --
-# ang0 as the KERNEL got it, and the Phi-cache staleness. See gnssRecord.hpp REC_ANG0.
+# Per-(instance, PRN) carrier state that no external measurement reaches: ang0 as the kernel
+# used it, and the Phi-cache staleness (gnssRecord.hpp REC_ANG0, REC_PHI_DDOP).
 REC_ANG0 = 26
 REC_PHI_DDOP = 27
-# #72 ROOT CAUSE, made recoverable: the rotation exp(-i*phi0) applied to slots 3/4 and to every
-# comb column before export. Its origin is per-instance ARBITRARY, so multiply the comb by
-# exp(+i*phi0) to put every instance on one common reference. See gnssRecord.hpp REC_PHI0.
+# The rotation exp(-i*phi0) applied to slots 3/4 and to every comb column. Its origin is
+# arbitrary per instance, so multiply by exp(+i*phi0) to put instances on one reference before
+# combining them within a record (gnssRecord.hpp REC_PHI0).
 REC_PHI0 = 28
 REC_PH_RE = 16
 REC_PH_IM = 17
@@ -105,22 +86,22 @@ REC_PROJ_COST = 29
 REC_PROJ_K = 30
 REC_PROJ_SRC = 31
 
-# Widest row the format admits -- gnss::telem_row_floats(TELEM_MAX_CHAN), i.e. RECORD_FLOATS +
-# TELEM_MAX_CHAN * CHAN_FLOATS; TELEM_MAX_CHAN is also the size of the header's freq_id array. ⚠️ NOT THE STRIDE: from v6 every sender ships only the comb columns it
-# despreads and declares that width in the header (`row_total`). Striding by this constant
-# reads a narrow sender's rows at a wide sender's offsets -- plausible numbers, wrong PRNs.
+# Widest row the format admits: gnss::telem_row_floats(TELEM_MAX_CHAN), i.e. RECORD_FLOATS +
+# TELEM_MAX_CHAN * CHAN_FLOATS; TELEM_MAX_CHAN is also the size of the header's freq_id array.
+# Not the stride: each sender ships only the comb columns it despreads and declares that width
+# in the header (`row_total`). Striding by this constant reads a narrower sender's rows at the
+# wrong offsets: plausible numbers, wrong PRNs.
 _MAX_ROW_TOTAL = _ROW_FLOATS + _MAX_CHAN * _CHAN_FLOATS
 
 assert _HDR.size == _HDR_BYTES, "TelemHeader struct format does not match gnssTelem.hpp"
 
 
 class TelemFrame(object):
-    """One sender's records for one window. Rows are decoded LAZILY.
+    """One sender's records for one window. Rows are decoded lazily.
 
-    At 60 senders x 23.84 frames/s the reader thread sees ~1430 frames/s, and unpacking 4160
-    floats on every one of them would cost more than the whole broker cycle. The header is 96
-    bytes of struct.unpack; the payload is kept as bytes and decoded only for the PRNs someone
-    actually asks about.
+    Every sender delivers one frame per window (~24 per second), and decoding every payload on
+    arrival would spend most of the work on rows nobody reads. The 112-byte header is unpacked
+    once; the payload is kept as bytes and decoded only for the PRNs someone asks about.
     """
 
     __slots__ = (
@@ -166,9 +147,9 @@ class TelemFrame(object):
             chain,
             inst,
         ) = hdr[:18]
-        # THE COMB'S COLUMN LABELS ride on the frame, never configured here: a configured copy
-        # is one more thing that can drift out of step with the node it describes, and a delay
-        # fit over mislabelled frequencies is confidently wrong rather than absent.
+        # The comb's column labels ride on the frame and are never configured here: a
+        # configured copy can drift out of step with the node it describes, and a delay fit
+        # over mislabelled frequencies is confidently wrong rather than absent.
         self.chan_ids = list(hdr[18 : 18 + _MAX_CHAN])[: self.n_chan]
         self.chain = chain.split(b"\0", 1)[0].decode("ascii", "replace")
         self.inst = inst.split(b"\0", 1)[0].decode("ascii", "replace")
@@ -177,19 +158,20 @@ class TelemFrame(object):
         self.rx = rx
 
     def has_record(self, r):
-        """Was record slot r filled? A missing record is a HOLE AT A KNOWN INDEX, never a shift."""
+        """Was record slot r filled? A missing record is a hole at a known index, never a shift."""
         return bool(self.present & (1 << r))
 
     def hop(self, r):
-        """Absolute F-engine hop index of record slot r -- the same key /get_records used."""
+        """Absolute F-engine hop index of record slot r: the same key /get_records uses."""
         return (self.wstart0 + r * self.hops_per_record * self.fft_len) // self.fft_len
 
     def _index(self):
         if self._idx is None:
             idx = {}
-            # PRN lives in row slot 0 of every row (the assembler writes it even for a PRN that
-            # did not run this window), so the map is read from the data rather than assumed
-            # from a configured PRN list the broker would have to keep in step.
+            # Each row's PRN (REC_PRN) is read from record slot 0: GnssTelemPack fixes the row
+            # map for the whole window and leaves unused rows zero, so a frame without record
+            # slot 0 reads as carrying no PRNs. The map is read from the data rather than from a
+            # configured PRN list the broker would have to keep in step.
             for p in range(self.n_prn):
                 off = _HDR_BYTES + p * self.row_total * 4
                 prn = int(struct.unpack_from("<f", self._buf, off)[0] + 0.5)
@@ -218,23 +200,20 @@ class TelemFrame(object):
     def comb_epl(self, r, prn):
         """The comb with all three taps: [(freq_id, E, P, L, (eE, eP, eL)), ...], or [].
 
-        THE DLL's INPUT once the tracker stops summing. Each tap is energy-normalised by ITS OWN
-        replica energy, and all three were element-combined and NCO-rotated identically in the
-        assembler -- a discriminator built from taps combined even slightly differently measures
+        The input of the comb DLL (combdll.py). Each tap is normalised by its own replica
+        energy, and all three were element-combined and NCO-rotated identically in the
+        assembler: a discriminator built from taps combined even slightly differently measures
         the difference between the combines rather than the code offset.
 
-        ⚠️ SUMMING P*eP OVER THE COLUMNS DOES **NOT** EXACTLY REPRODUCE THE HEADER'S PROMPT --
-        measured 1-11% on sky, 2026-08-14, and the reason is worth knowing. ElemCal::combine is
-        linear, so summing over channels and combining over elements DO commute; the difference
-        is that the assembler calls ec.update() BETWEEN writing the header (which uses the
-        previous record's weights, causally) and writing this comb (which uses weights already
-        updated with THIS record). So the comb is element-combined with weights one record
-        newer, and -- worse -- weights that saw the very record they are applied to. The
-        long-standing /get_spectrum export has the same property. See task #62.
-
-        For a delay fit across channels this is harmless: every column of one instance shares
-        the same weights, so the RAMP is unaffected. Do not use the residual as a cross-check of
-        the header until #62 is fixed; it is a known offset, not a transport error.
+        Summing P*eP over the columns does not exactly reproduce the header's prompt.
+        ElemCal::combine is linear, so the channel sum and the element combine commute; but
+        while the element cal adapts, the assembler calls ec.update() between the header's
+        combine (the previous record's weights, causal) and the comb's (weights already updated
+        with this record). So the comb is combined with weights one record newer, which have
+        seen the record they are applied to; the /get_spectrum export shares this. Every column
+        of one instance shares the same weights, so a delay fit across channels (the phase
+        ramp) is unaffected. The residual is a known offset, not a transport error: do not use
+        it as a check of the header.
         """
         p = self._index().get(int(prn))
         if p is None or not self.has_record(r) or not self.n_chan:
@@ -267,20 +246,19 @@ class TelemFrame(object):
 class TelemClient(object):
     """Socket thread + store thread + a bounded per-chain window ring.
 
-    Reconnects forever. A gather that is down must cost the broker NOTHING: every accessor
-    simply returns empty, and the caller falls back to the REST path it already has. That is
-    the whole migration strategy -- both feeds live side by side until the new one has been
-    shown, on sky, to be at least as good.
+    Reconnects forever. A gather that is down never blocks the broker: the window accessors
+    return empty, fleet_coherent and the comb DLL fall back to their REST polls, and what only
+    the stream feeds (the fleet ADRs, the telemetry C/N0 estimators) has no input until it
+    returns.
 
-    ⚠️ THE SOCKET IS DRAINED BY A THREAD THAT DOES NOTHING ELSE. The gather delivers a frame
-    whole or drops the client (GnssTelemGather: a client that cannot take a frame within its
-    fixed 200 ms send_deadline_ms is closed), and the stream carries EVERY chain on one
-    connection, so a stall of the reading thread is not one chain's problem: it is every
-    fleet-ADR arc on every chain broken at once. The kernel's socket buffers cover only a
-    fraction of a second at the stream's rate, and the ring lock is contended by every chain's
-    control pass. So the socket thread reads bytes and hands them to a queue, and a second
-    thread parses them and takes the ring lock. Nothing the consumers do can stop the socket
-    draining.
+    The socket is drained by a thread that does nothing else. The gather delivers a frame
+    whole or drops the client (GnssTelemGather closes a client that cannot take a frame within
+    its fixed 200 ms send_deadline_ms), and one connection carries every chain, so a stall of
+    the reading thread breaks every fleet-ADR arc on every chain at once. The kernel's socket
+    buffer covers only a fraction of a second at the stream's rate, and the ring lock is
+    contended by every chain's control pass. So the socket thread reads bytes into a queue,
+    and a second thread parses them and takes the ring lock; nothing the consumers do can stop
+    the socket draining.
     """
 
     def __init__(
@@ -300,9 +278,9 @@ class TelemClient(object):
         self.host = host
         self.port = port
         self.depth = int(depth)
-        # An F-engine re-base moves the window counter far backwards. These mirror
-        # GnssFleetTrim's defaults (gnssFleetDll.hpp) so the gather and the broker re-anchor on
-        # the same event; see _store_frame.
+        # An F-engine re-base moves the window counter far backwards. These mirror the
+        # thresholds of gnss::FleetDll (gnssFleetDll.hpp, run by GnssFleetTrim on the gather) so
+        # the gather and the broker re-anchor on the same event; see _store_frame.
         self.epoch_margin = int(epoch_margin)
         self.epoch_strikes = int(epoch_strikes)
         self.epoch_resets = 0
@@ -312,15 +290,14 @@ class TelemClient(object):
         self._backwards = (
             {}
         )  # chain -> consecutive such frames; epoch_strikes of them re-anchor
-        # Optional chain filter, applied at PARSE time. The stream carries all five chains on
-        # one connection, so a long collection (tens of seconds of records) otherwise costs 5x
-        # the memory for data the caller will throw away -- which is the difference between a
-        # 30 s diagnostic being affordable and not. None = keep everything (the broker's case).
+        # Optional chain filter, applied before a frame is stored. The stream carries every
+        # chain on one connection, so without it a long collection for one chain also holds
+        # every other chain's frames. None = keep everything (the broker's case).
         self.chains_filter = set(chains) if chains else None
         self.retry_s = float(retry_s)
-        # How long a silent gather is tolerated before we look at the socket again. A parameter
-        # rather than a constant so the quiet path is TESTABLE in a fraction of a second -- the
-        # bug it guards against took twelve hours of silence to show up in production.
+        # Socket read timeout. Before a frame starts, a timeout is silence and the loop only
+        # re-checks the stop flag (see _read_loop); part-way through a frame it is fatal. A
+        # parameter so tests can exercise the quiet path in a fraction of a second.
         self.read_timeout_s = float(read_timeout_s)
         self._lock = threading.Lock()
         # chain -> OrderedDict{win: {inst: TelemFrame}}, oldest first, capped at `depth`
@@ -330,9 +307,9 @@ class TelemClient(object):
         self._stop = threading.Event()
         # Frames read off the socket and not yet parsed into the ring: (bytes, rx_time). The
         # socket thread appends, the store thread pops; the condition's lock is held for one
-        # deque operation and never across a parse or the ring lock. Bounded in BYTES because
-        # senders ship different frame sizes: past the bound the OLDEST frames are dropped and
-        # counted, which costs the affected windows (the fold breaks those arcs honestly) but
+        # deque operation and never across a parse or the ring lock. Bounded in bytes because
+        # senders ship different frame sizes: past the bound the oldest frames are dropped and
+        # counted, which costs the affected windows (the fold breaks those arcs on the gap) but
         # never the connection.
         self._pending = collections.deque()
         self._pending_bytes = 0
@@ -342,15 +319,15 @@ class TelemClient(object):
         self.pending_dropped = (
             0  # frames discarded because the queue was over its bound
         )
-        # A connection that LIVED and was then closed by the gather is reconnected at once: a
-        # dropped client is a momentary stall on our side, and every second before the
+        # A connection that lived at least fast_retry_after_s and then ended is reconnected at
+        # once: a dropped client is a momentary stall on our side, and every second before the
         # reconnect is a second of records lost on every chain. The backoff (retry_s) is for a
         # gather that is down, i.e. a connection that failed or died young.
         self.fast_retry_after_s = float(fast_retry_after_s)
         self.fast_reconnects = 0
         # Receive buffer asked for on each new socket; see _connect. 0 leaves the kernel's
         # autotuning alone. `rcvbuf_actual` is what the kernel granted, which is the number
-        # worth reading: the request is doubled and then clamped to net.core.rmem_max.
+        # worth reading: the request is clamped to net.core.rmem_max and then doubled.
         self.rcvbuf_bytes = int(rcvbuf_bytes)
         self.rcvbuf_actual = None
         self.connected = False
@@ -379,17 +356,16 @@ class TelemClient(object):
             self._pending_cv.notify_all()
 
     def _connect(self):
-        """Open the socket with its receive buffer sized BEFORE connect().
+        """Open the socket with its receive buffer sized before connect().
 
-        ⚠️ SO_RCVBUF HAS TO PRECEDE connect(). The window scale is negotiated in the handshake
+        SO_RCVBUF has to precede connect(): the window scale is negotiated in the handshake
         from the buffer size at that moment, so a buffer enlarged afterwards cannot be
-        advertised in full. And the size matters most in the seconds just after a connect: the
-        kernel starts a fresh connection near 128 kB and autotunes upwards over tens of
-        seconds, while this stream carries every chain at tens of MB/s and the gather drops a
-        client that cannot take a frame within its 200 ms send deadline. Since a drop is now
-        followed by an immediate reconnect, leaving it to autotuning would re-enter that ramp
-        on every drop -- the weakest moment, re-entered exactly when the link is already in
-        trouble.
+        advertised in full. The size matters most just after a connect: the kernel starts a
+        fresh connection near 128 kB and autotunes upwards over tens of seconds, while this
+        stream carries every chain at tens of MB/s and the gather drops a client that cannot
+        take a frame within its 200 ms send deadline. A dropped connection that lived is
+        reconnected at once (see fast_retry_after_s), so leaving the size to autotuning would
+        re-enter that ramp on every drop, exactly when the link is already in trouble.
         The kernel clamps the request to net.core.rmem_max, so a host without the sysctl gets
         its maximum rather than an error.
         """
@@ -413,9 +389,9 @@ class TelemClient(object):
             try:
                 sock = self._connect()
                 sock.settimeout(self.read_timeout_s)
-                # KEEPALIVE, because a read timeout no longer means "reconnect" (see
-                # _read_loop): silence is now tolerated, so the ONLY thing left to notice a
-                # gather whose host vanished without closing the socket is the kernel's probe.
+                # Keepalive: a read timeout is tolerated as silence (see _read_loop), so the
+                # kernel's probe is what notices a gather whose host vanished without closing
+                # the socket.
                 sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
                 for opt, val in (
                     ("TCP_KEEPIDLE", 30),
@@ -447,8 +423,8 @@ class TelemClient(object):
                 fast = lived is not None and lived >= self.fast_retry_after_s
                 if fast:
                     self.fast_reconnects += 1
-                    # An EVENT line, not rate-limited: each one is a fleet-wide arc break and
-                    # the autopsy needs every timestamp.
+                    # Not rate-limited: each one breaks every chain's arcs, and every
+                    # timestamp matters.
                     _log(
                         "telem: gather %s:%d closed a connection that lived %.0f s (%s) -- "
                         "reconnecting now; the frames in between are lost on every chain and "
@@ -472,12 +448,12 @@ class TelemClient(object):
                 self._stop.wait(self.retry_s)
 
     def _recv_exactly(self, sock, n, quiet_ok=False):
-        """Read exactly n bytes. `quiet_ok` tolerates a read timeout BEFORE the first byte.
+        """Read exactly n bytes. `quiet_ok` tolerates a read timeout before the first byte.
 
-        ⚠️ ONLY before the first byte. A timeout part-way through a frame is a desynchronised
-        stream, and continuing past it would resume parsing at an offset -- plausible numbers on
-        the wrong rows, the exact failure this transport exists to stop tolerating. So the
-        caller may treat "nothing arrived" as silence, and everything else stays fatal.
+        Only before the first byte: a timeout part-way through a frame leaves the stream
+        desynchronised, and continuing would resume parsing at an offset, giving plausible
+        numbers on the wrong rows. So the caller may treat "nothing arrived" as silence, and
+        everything else stays fatal.
         """
         chunks = []
         got = 0
@@ -502,12 +478,10 @@ class TelemClient(object):
         do not belong on this thread: see the class note on why a stall here is fleet-wide.
         """
         while not self._stop.is_set():
-            # A QUIET GATHER IS NOT A BROKEN ONE. With the fleet down there is nothing to
-            # forward, and tearing the connection down on the read timeout meant reconnecting
-            # every ~35 s for as long as the outage lasted -- which leaked one socket per cycle
-            # on the gather (it only noticed a dead client when a write to it failed) until it
-            # hit EMFILE and stopped serving anything, REST included. Wait instead; keepalive
-            # above is what detects a link that is genuinely gone.
+            # A quiet gather is not a broken one: with the fleet down it has nothing to
+            # forward. A timeout before a frame starts is silence, so keep waiting rather than
+            # churn reconnects for the length of an outage; keepalive (see _run) detects a link
+            # that is gone.
             raw = self._recv_exactly(sock, 4, quiet_ok=True)
             if raw is None:
                 continue
@@ -527,8 +501,8 @@ class TelemClient(object):
             n = len(self._pending)
             if n > self.pending_peak:
                 self.pending_peak = n
-            # Over the bound: shed the OLDEST, keep the connection. Never shed the frame just
-            # appended -- a bound smaller than one frame must still let frames through.
+            # Over the bound: shed the oldest, keep the connection. Never shed the frame just
+            # appended: a bound smaller than one frame must still let frames through.
             while (
                 self._pending_bytes > self.pending_max_bytes and len(self._pending) > 1
             ):
@@ -565,11 +539,11 @@ class TelemClient(object):
                 % (hdr[0], hdr[1], hdr[4], _MAGIC, _VERSION, _ROW_FLOATS),
             )
             return
-        # THE SHAPE IS THE SENDER'S AND IT IS CHECKED AGAINST THE LENGTH PREFIX. Senders
-        # ship different widths (their own comb columns) and different row counts (their
-        # chain's), so the stride cannot be assumed -- and a stride that disagrees with the
-        # bytes on the wire is exactly the failure that reads plausible numbers off the
-        # wrong rows. n_rec, n_prn, max_chan, row_total are hdr[2], [3], [14], [15].
+        # The shape is the sender's, checked against the length prefix. Senders ship
+        # different widths (their own comb columns) and different row counts (their chain's),
+        # so the stride cannot be assumed, and a stride that disagrees with the bytes on the
+        # wire reads plausible numbers off the wrong rows. n_rec, n_prn, n_chan, max_chan,
+        # row_total are hdr[2], [3], [5], [14], [15].
         length = len(buf)
         if (
             hdr[14] > _MAX_CHAN
@@ -595,8 +569,8 @@ class TelemClient(object):
             self.last_rx = f.rx
             key = (f.chain, f.inst)
             prev = self._seen_seq.get(key)
-            # The SENDER'S OWN counter is the only thing that can say a frame was lost. A rate
-            # that looks right can still be missing every fourth frame.
+            # Only the sender's own counter can say a frame was lost: a rate that looks right
+            # can still be missing every fourth frame.
             if prev is not None and f.seq > prev + 1:
                 self.gaps += f.seq - prev - 1
             self._seen_seq[key] = f.seq
@@ -604,23 +578,21 @@ class TelemClient(object):
             if ring is None:
                 ring = self._store[f.chain] = collections.OrderedDict()
             if f.win not in ring:
-                # Eviction must drop the OLDEST WINDOW, not the least-recently-written one: a
+                # Eviction must drop the oldest window, not the least recently written one: a
                 # laggard instance opening a window its peers finished long ago would otherwise
-                # push it to the front of the ring and evict a NEWER window instead. Senders
-                # are independent processes, so out-of-order window opens are normal, not an
-                # error -- which is why the ring is re-sorted rather than assumed monotone.
+                # push it to the front of the ring and evict a newer window instead. Senders
+                # are independent processes, so out-of-order window opens are normal, which is
+                # why the ring is re-sorted rather than assumed monotone.
                 newest = next(reversed(ring)) if ring else None
-                # AN EPOCH RESET IS A LARGE, PERSISTENT BACKWARDS JUMP -- the gather's rule
+                # An epoch reset is a large, persistent backwards jump: the gather's rule
                 # (gnssFleetDll.hpp), mirrored so both ends re-anchor on the same event. A
                 # laggard is a few windows behind while its peers are not; a frame0 move lands
-                # the WHOLE stream far below everything held and keeps doing it. Without this
-                # the post-re-base windows are inserted, sorted to the front, and evicted
-                # first, forever: every frame after an F-engine restart is discarded and every
-                # instance reads stale, while frames/gaps look healthy. One corrupt header
-                # cannot trigger it: epoch_strikes consecutive such frames must arrive, and
-                # any frame that is not far behind clears the run. Until the run completes the
-                # frame is handled exactly as before -- inserted, re-sorted, evicted when the
-                # ring is full -- so nothing changes for a stream that never re-bases.
+                # the whole stream far below everything held and keeps it there. Without the
+                # reset, post-re-base windows are sorted to the front of a full ring and evicted
+                # first, so every frame after an F-engine restart is discarded while frames and
+                # gaps look healthy. One corrupt header cannot trigger it: epoch_strikes
+                # consecutive window-opening frames must be far behind, and one that is not
+                # clears the run. Until the run completes the frame is stored like any other.
                 if newest is not None and newest - f.win > self.epoch_margin:
                     self.far_behind += 1
                     self._backwards[f.chain] = self._backwards.get(f.chain, 0) + 1
@@ -655,10 +627,9 @@ class TelemClient(object):
     def windows(self, chain, lag=1):
         """Window indices held for `chain`, oldest first, excluding the `lag` newest.
 
-        ⚠️ THE LAG IS NOT OPTIONAL PADDING. Senders are independent processes on six machines;
-        the newest window is always still arriving. Taking it would silently combine a
-        four-instance version of a window with the twelve-instance version of its neighbours,
-        which reads as a fleet that keeps changing size.
+        The lag is not padding. Senders are independent processes on several machines, so the
+        newest window is always still arriving; taking it would combine a partial window with
+        complete neighbours, which reads as a fleet that keeps changing size.
         """
         with self._lock:
             ws = sorted(self._store.get(chain, {}).keys())
@@ -673,11 +644,9 @@ class TelemClient(object):
         """The `got` structure fleet_coherent builds from /get_records, from telemetry instead.
 
         Returns (got, fleet_now_hop) with got = {inst: {prn: {hop: (A, energy)}}} where
-        A = (P_re + i P_im)/P_energy and energy = P_energy -- the SAME two numbers the combiner
+        A = (P_re + i P_im)/P_energy and energy = P_energy: the same two numbers the combiner
         publishes (it forms ar = gr/energy and exports that), so the estimator downstream is
-        untouched and the two feeds are directly comparable. That is the point: one estimator,
-        two transports, and the difference between them is then a measurement rather than an
-        argument.
+        unchanged and a difference between the two feeds measures the transport.
 
         Records with zero energy are dropped exactly as /get_records drops them (a PRN that did
         not run is silence, not a row of zeros).
@@ -714,18 +683,14 @@ class TelemClient(object):
         return got, fleet_now
 
     def stats(self, stale_after_s=5.0):
-        """Transport health -- and the alignment check, served rather than inferred.
+        """Transport health, including the cross-instance alignment check.
 
-        `spread` is max(win) - min(win) over the LIVE instances of a chain. Zero or one is the
-        transport working; anything larger is the misalignment this whole change exists to make
-        visible instead of leaving it to be found six weeks later as a physics anomaly.
+        `spread` is max(win) - min(win) over the live instances of a chain. Zero or one is the
+        transport working; anything larger is misalignment between senders.
 
-        ⚠️ LIVE ONLY, and that is load-bearing. A stopped instance keeps its last window
-        forever, so one dead sender drives the raw spread to the number of windows since it
-        died -- measured 984 within a minute on 2026-08-14 while the nine live instances sat at
-        1. Reported raw, this number would cry wolf on every instance death and be ignored by
-        the second week. The stale ones are listed BY NAME instead, because "who left" is the
-        actionable half.
+        Live only: a stopped instance keeps its last window forever, so one dead sender would
+        drive the raw spread to the number of windows since it died. Instances not heard from
+        within stale_after_s are listed by name in `stale` instead.
         """
         now = time.time()
         with self._lock:
@@ -782,19 +747,17 @@ _shared_lock = threading.Lock()
 
 
 def shared_client(host, port, depth=256):
-    """ONE reader thread per process, shared by every chain.
+    """One reader thread per process, shared by every chain.
 
-    broker_multi runs all five chains as threads of one process (task #27), and the gather
-    stream carries every chain on one connection -- so a client per chain would open five
-    connections and decode the same 24 MB/s five times over, four of them discarded. The store
-    is already keyed by chain, so sharing costs nothing and the accessors are unchanged.
+    broker_multi runs every chain as a thread of one process, and the gather stream carries
+    every chain on one connection, so a client per chain would open one connection per chain
+    and parse the whole stream once per chain. The store is keyed by chain, so sharing changes
+    no accessor.
     """
-    # ⚠️ DEPTH IS IN WINDOWS, AND A WINDOW IS ONE FRAME = 4 RECORDS = 41.9 ms. 64 windows held
-    # 2.7 s against a fold that runs once per 2.0 s control pass: any pass 0.7 s longer than
-    # usual evicted unfolded windows and broke every fleet-ADR arc on the chain (FADR BREAK
-    # gap 5-9 records, dark 0, a few times an hour), and the 2-hourly dead-reckon reload's
-    # 2-2.6 s lost exactly that much on every chain at once. 256 windows = 10.7 s, ~216 kB per
-    # chain-window, ~+380 MB for eight chains: retention, no change in what is folded.
+    # Depth is in windows, and a window is one frame (4 records, ~42 ms at the configured
+    # packing), so 256 windows hold ~10.7 s. The fleet-ADR fold reads every window since its
+    # last pass, so the ring must outlast the longest control pass: a window evicted before it
+    # is folded breaks every fleet-ADR arc on the chain (a FADR BREAK line).
     key = (host, int(port))
     with _shared_lock:
         c = _shared.get(key)

@@ -1,19 +1,19 @@
 """Decoding the broadcast navigation message, and cross-checking it against BRDC.
 
-Eight decoders (LNAV, CNAV, CNAV-2, F/NAV, I/NAV, B-CNAV1/2/3), cross-checked against the
-BRDC almanac. The decoders are created lazily and PERSIST
-across cycles on `ctx.nav` -- one that is rebuilt has forgotten the subframes it had
-collected and can never complete an ephemeris.
+Eight decoders (LNAV, CNAV, CNAV-2, F/NAV, I/NAV, B-CNAV1/2/3). Every decoded ephemeris is
+cross-checked against the downloaded BRDC ephemeris whenever the BRDC store is loaded
+(--almanac-source brdc); CNAV-2 decodes none. The decoders are created lazily and persist
+across cycles on `ctx.nav`: one that is rebuilt has forgotten the subframes it had collected
+and can never complete an ephemeris.
 
-⚠️ OFF IN PRODUCTION. `--nav-bits` is not set in the CHORD yaml, so nothing here runs on the
-live instrument and no fixture reaches it. Changes are unverified until the flag is armed --
-the same blind spot the carrier loop has, and the reason a latent bug can sit in either
-indefinitely.
+Idle on CHORD: --nav-bits defaults on but self-gates on nav_obs, which no CHORD combiner
+exports (bit_export), and no aux combiner is configured. No test reaches this stage, so a
+change here is unverified until one of those is set.
 
-⚠️ THE CROSS-CHECK IS THE POINT, NOT THE DECODE. A decoder that produces an ephemeris nobody
-compared against broadcast is a second authority that can drift from the first without either
-side erroring. `_dh_obs` records the agreement continuously so a drift shows up as a trend
-rather than as a surprise.
+The cross-check is the point, not the decode: a decoded ephemeris nobody compares with
+broadcast is a second authority that can drift from the first without either side erroring.
+ctx.dh_obs records each decoder's health and BRDC position residual on the 60 s health
+cadence (the decode-health export, --decode-health-file), so a drift shows as a trend.
 
 @author Keith Vanderlinde
 """
@@ -31,22 +31,20 @@ from gnss_broker.sky import (
 
 
 def stage_nav_bits(ctx):
-    """NAV BITS: decode the broadcast navigation message and cross-check it against BRDC.
-        
-    Holds the lazily-created decoder objects (LNAV, CNAV, CNAV2, FNAV, INAV, BCNAV1/2/3). They
-    are created on the first row that needs them and must persist across cycles -- hence the nonlocal list, which is the whole reason this block
-    resisted extraction until its state was named.
-        
-    ⚠️ OFF IN PRODUCTION (`--nav-bits` is not set in the CHORD yaml), so the fixture gate is BLIND
-    to every line below it. Changes here are unverified until the flag is armed."""
+    """Decode the broadcast navigation message and cross-check it against BRDC.
+
+    The decoders live on ctx.nav (loopstate.NavDecoders): created on the first row that needs
+    them and kept across cycles. nav_obs from this broker's own combiner go to the decoder
+    --nav-decoder names; each aux combiner's go to its own decoder.
+
+    Idle on CHORD (see the module docstring); no test reaches it."""
     if ctx.args.nav_bits:
         for _p, _r in ctx.status.items():
             if "nav_obs" not in _r:
                 continue
-            # Route nav_obs to the decoder this band actually speaks. L1CA carries LNAV
-            # (periodic subframes); L2C-CM / L5-I carry CNAV (FEC+CRC, no fixed schedule).
-            # Sending CNAV symbols to the LNAV frame-sync just spins forever finding no
-            # preamble.
+            # Route nav_obs to the decoder this band speaks. L1 C/A carries LNAV (periodic
+            # subframes); L2C-CM and L5-I carry CNAV (FEC + CRC, no fixed schedule). CNAV
+            # symbols sent to the LNAV frame sync never find a preamble.
             if ctx.args.nav_decoder == "cnav":
                 if ctx.nav.cnav is None:
                     from cnav_predictor import CnavPredictor
@@ -55,8 +53,8 @@ def stage_nav_bits(ctx):
                     _log("CNAV decoder armed (combiner exports nav_obs)")
                 ctx.nav.cnav.ingest(_p, _r["nav_obs"])
             elif ctx.args.nav_decoder == "bcnav3":
-                # BeiDou B2b B-CNAV3: the PRIMARY chain's own nav decoder (NB-LDPC block, not a
-                # bit-prediction scheme -> no peel role, pure decode + BRDC xcheck).
+                # BeiDou B2b B-CNAV3, the B2b chain's own message: an NB-LDPC block code, not a
+                # bit-prediction source, so this is decode and BRDC cross-check only.
                 if ctx.nav.bcnav3 is None:
                     from bcnav3_predictor import Bcnav3Predictor
 
@@ -70,13 +68,12 @@ def stage_nav_bits(ctx):
                     ctx.nav.navbits = LnavPredictor(log=_log)
                     _log("nav-bit predictor armed (combiner exports nav_obs)")
                 ctx.nav.navbits.ingest(_p, _r["nav_obs"])
-        # AUXILIARY CNAV CHAIN (--cnav-combiner, S4): a second combiner polled only for its
-        # CNAV symbols. At L5 this broker's own combiner is the Q PILOT -- its nav_obs are
-        # deterministic overlay predictions handled above -- while CNAV arrives on the
-        # derived L5-I data sibling, which no broker otherwise reads. Failure here is
-        # deliberately NON-FATAL and quiet-ish: this is an observability path, and a chain
-        # that has not acquired yet simply returns nothing. It must never disturb the
-        # tracking loop that shares this cycle.
+        # Aux CNAV chain (--cnav-combiner): a second combiner polled only for its CNAV
+        # symbols. At L5 this broker's own combiner is the Q pilot, whose nav_obs are
+        # deterministic overlay signs handled above, while CNAV arrives on the derived L5-I
+        # data sibling, which no broker otherwise reads. A failed read is logged
+        # (rate-limited) and skipped: this is an observability path and must never disturb
+        # the tracking loop that shares this cycle. The aux blocks below follow the same shape.
         if ctx.nav.cnav_combiner:
             try:
                 _aux = {
@@ -99,7 +96,7 @@ def stage_nav_bits(ctx):
                     ctx.nav.cnav = CnavPredictor(log=_log)
                     _log("CNAV decoder armed on aux chain %s" % ctx.nav.cnav_combiner)
                 ctx.nav.cnav.ingest(_p, _r["nav_obs"])
-        # S5 D-component #1: Galileo E1B I/NAV, the exact CNAV-aux analogue.
+        # Galileo I/NAV from its aux data chain (--inav-combiner).
         if ctx.nav.inav_combiner:
             try:
                 _iaux = {
@@ -122,9 +119,9 @@ def stage_nav_bits(ctx):
                     ctx.nav.inav = InavPredictor()
                     _log("I/NAV decoder armed on aux chain %s" % ctx.nav.inav_combiner)
                 ctx.nav.inav.ingest(_p, _r["nav_obs"])
-            # 60 s health + BRDC cross-check (Kepler only; alm_sys is 'E' for the GAL broker).
-            # I/NAV rides E1B on L1 and E5b-I on the mid band -- SAME message + decoder; label
-            # the decode-health obs by the actual carrier (from the aux combiner name).
+            # 60 s health + BRDC cross-check (Kepler only; alm_sys is 'E' for a Galileo chain).
+            # I/NAV rides E1B on L1 and E5b-I on the mid band with the same message and
+            # decoder, so the decode-health label follows the aux combiner's name.
             if ctx.nav.inav is not None and _now() - ctx.nav.inav_log_t[0] > 60.0:
                 ctx.nav.inav_log_t[0] = _now()
                 _inav_sig = (
@@ -154,7 +151,7 @@ def stage_nav_bits(ctx):
                         )
                     )
                     ctx.dh_obs(_inav_sig, _p, h, eph, xc)
-        # S5 D-component #2: Galileo E5a-I F/NAV, the exact I/NAV-aux analogue on L5.
+        # Galileo E5a-I F/NAV from its aux data chain (--fnav-combiner).
         if ctx.nav.fnav_combiner:
             try:
                 _faux = {
@@ -177,7 +174,7 @@ def stage_nav_bits(ctx):
                     ctx.nav.fnav = FnavPredictor()
                     _log("F/NAV decoder armed on aux chain %s" % ctx.nav.fnav_combiner)
                 ctx.nav.fnav.ingest(_p, _r["nav_obs"])
-            # 60 s health + BRDC cross-check (Kepler only; alm_sys is 'E' for the GAL broker)
+            # 60 s health + BRDC cross-check (Kepler only; alm_sys is 'E' for a Galileo chain)
             if ctx.nav.fnav is not None and _now() - ctx.nav.fnav_log_t[0] > 60.0:
                 ctx.nav.fnav_log_t[0] = _now()
                 for _p in sorted(ctx.nav.fnav._p):
@@ -202,7 +199,7 @@ def stage_nav_bits(ctx):
                         )
                     )
                     ctx.dh_obs("GAL_E5AI_FNAV", _p, h, eph, xc)
-        # S5 D-component #3: BeiDou B2a B-CNAV2 (first LDPC), the F/NAV-aux analogue on BDS.
+        # BeiDou B2a B-CNAV2 from its aux data chain (--bcnav2-combiner).
         if ctx.nav.bcnav2_combiner:
             try:
                 _baux = {
@@ -229,7 +226,7 @@ def stage_nav_bits(ctx):
                         % ctx.nav.bcnav2_combiner
                     )
                 ctx.nav.bcnav2.ingest(_p, _r["nav_obs"])
-            # 60 s health + BRDC cross-check (alm_sys is 'C' for the BDS broker)
+            # 60 s health + BRDC cross-check (alm_sys is 'C' for a BeiDou chain)
             if ctx.nav.bcnav2 is not None and _now() - ctx.nav.bcnav2_log_t[0] > 60.0:
                 ctx.nav.bcnav2_log_t[0] = _now()
                 for _p in sorted(ctx.nav.bcnav2._p):
@@ -254,7 +251,7 @@ def stage_nav_bits(ctx):
                         )
                     )
                     ctx.dh_obs("BDS_B2A_BCNAV2", _p, h, eph, xc)
-        # S5 D-component #4 (LAST): BeiDou B1C B-CNAV1, the B-CNAV2-aux analogue on L1 BDS.
+        # BeiDou B1C B-CNAV1 from its aux data chain (--bcnav1-combiner).
         if ctx.nav.bcnav1_combiner:
             try:
                 _c1aux = {
@@ -305,8 +302,8 @@ def stage_nav_bits(ctx):
                         )
                     )
                     ctx.dh_obs("BDS_B1C_BCNAV1", _p, h, eph, xc)
-        # GPS L1C-D CNAV-2: the bcnav1-aux analogue on the L1C broker (alm_sys 'G'). The broker's
-        # own --combiner is the L1C-P pilot; the CNAV-2 data symbols come off the derived L1C-D.
+        # GPS L1C-D CNAV-2 from its aux data chain (--cnav2-combiner; alm_sys 'G'). The
+        # broker's own --combiner is the L1C-P pilot; the data symbols come off the L1C-D sibling.
         if ctx.nav.cnav2_combiner:
             try:
                 _c2aux = {
@@ -338,7 +335,7 @@ def stage_nav_bits(ctx):
                     h = ctx.nav.cnav2.health(_p)
                     if not h or not h["words"]:
                         continue
-                    # no ephemeris: CNAV-2 SF2 has no field table (gps_cnav2)
+                    # No ephemeris: gps_cnav2 has no field table for the SF2 orbit set.
                     _log(
                         "cnav2 PRN %d: %d frames CRC-OK, toi=%s"
                         % (_p, h["words"], h["toi"])
@@ -350,10 +347,10 @@ def stage_nav_bits(ctx):
                 h = ctx.nav.navbits.health(_p)
                 if not h:
                     continue
-                # Now that LNAV extracts the orbit set (subframes 1-3), surface the live
-                # ephemeris + a BRDC position cross-check exactly as CNAV/I-NAV do -- this is
-                # the live validator of the LNAV_EPH_FIELDS bit offsets (near-zero dpos, since
-                # BRDC IS the LNAV message) and the on-node BRDC-fallback source for L1.
+                # The decoded orbit set (subframes 1-3) with a BRDC position cross-check. BRDC's
+                # GPS record is the LNAV message, so dpos is near zero unless an offset in
+                # gps_nav_decode.LNAV_EPH_FIELDS is wrong; the same ephemeris feeds the
+                # decoded-ephemeris BRDC fallback for L1.
                 eph_s = ""
                 e = None
                 if h["synced"]:
@@ -377,20 +374,17 @@ def stage_nav_bits(ctx):
                         )
                     )
                 else:
-                    # Not synced: say why -- contiguous run vs total history vs what sync needs.
+                    # Not synced: the contiguous run, the total history, and what sync needs.
                     _log(
                         "navbit PRN %d: NO SYNC (contig run %d/%d, hist %d)"
                         % (_p, h["run"], h["need"], h["hist"])
                     )
                 ctx.dh_obs("GPS_L1_LNAV", _p, h, e, eph_s)
-        # CNAV decode health + the live ephemeris (types 10+11). eph toe/e prove a decoded
-        # ephemeris set. S4 EPHEMERIS CROSS-CHECK: propagate the live-decoded CNAV ephemeris
-        # and the independently-downloaded BRDC (LNAV) ephemeris to the SAME absolute instant
-        # (the CNAV toe) and report the ECEF position residual. Two independent nav messages,
-        # two encodings (CNAV FEC+CRC vs LNAV parity), one truth -- a small residual VALIDATES
-        # the whole decode chain against an outside reference, and is the foundation for
-        # eventually trusting live CNAV ephemeris over the 2 h-latency download. Cheap (Kepler
-        # propagation, no Viterbi), so it rides the existing 60 s health cadence.
+        # CNAV decode health and the decoded ephemeris (message types 10 + 11), with the BRDC
+        # cross-check: the decoded CNAV ephemeris and the downloaded BRDC (LNAV) ephemeris are
+        # propagated to the same instant (the CNAV toe) and the ECEF position residual is
+        # reported. Two independent encodings of one orbit, so a small residual validates the
+        # whole decode chain. Kepler propagation only, cheap enough for the 60 s cadence.
         if ctx.nav.cnav is not None and _now() - ctx.nav.log_t > 60.0:
             ctx.nav.log_t = _now()
             for _p in sorted(ctx.nav.cnav._p):
@@ -418,9 +412,9 @@ def stage_nav_bits(ctx):
                         % (_p, h["emits"], h["g2"])
                     )
                 ctx.dh_obs(ctx.nav.cnav_sig, _p, h, e, eph_s)
-        # B-CNAV3 decode health (BeiDou B2b PRIMARY chain). Frame decode is convention-complete
-        # (LDPC + CRC); the message-type histogram + SOW logged here is exactly what maps the
-        # ephemeris field table (Phase 2), after which eph + a BRDC dpos xcheck join (like cnav).
+        # B-CNAV3 decode health (the B2b chain's own message): CRC-passing frames, the message
+        # types held, the last SOW, and once a Type 10 is in hand its ephemeris and BRDC
+        # cross-check.
         if ctx.nav.bcnav3 is not None and _now() - ctx.nav.bcnav3_log_t[0] > 60.0:
             ctx.nav.bcnav3_log_t[0] = _now()
             for _p in sorted(ctx.nav.bcnav3._p):

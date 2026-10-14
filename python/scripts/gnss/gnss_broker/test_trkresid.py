@@ -37,8 +37,9 @@ class TestLift(unittest.TestCase):
                 self.assertLess(abs(tr.wrap(got - want, L)), 2e-3)
 
     def test_float32_doppler_is_a_tenth_of_a_chip_lever(self):
-        """slot 1 is float32: one ulp at 2 kHz (1.2e-4 Hz) moves the lift by ~0.1-0.5 chips at
-        this uptime. That is the record-level scatter this module averages away."""
+        """slot 1 is float32: its rounding at 2 kHz (up to half an ulp, 1.2e-4 Hz) moves the
+        lift by up to ~0.5 chips at this uptime (~3850 chips per Hz). That is the record-level
+        scatter this module averages away."""
         dop = -2182.9377
         a = tr.phys_chips(arg_for(1000.0, dop), dop, HOP, HPS, CHIP, CARR, L)
         b = tr.phys_chips(arg_for(1000.0, dop), f32(dop), HOP, HPS, CHIP, CARR, L)
@@ -55,8 +56,8 @@ class TestResidual(unittest.TestCase):
         self.pd = {("G", p): {"el": 40.0} for p in self.bias}
 
     def model(self, v, t_abs):
-        # some smooth physical phase: nominal ramp is NOT here (cp_predicted excludes it too,
-        # in the sense that both sides carry the same t*f_chip); any function works.
+        # Any smooth physical phase works: arg_for removes the nominal ramp and phys_chips adds
+        # it back, so the model need not carry it.
         return (1234.5 + 17.3 * t_abs) % L
 
     def records(self, prn, n, quantize=True):

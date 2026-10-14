@@ -1,8 +1,9 @@
-"""#97: the overlay-period debounce -- the verdict traps, not the plumbing.
+"""The overlay-period debounce (--nh-period-debounce): the verdict traps, not the plumbing.
 
 The state machine under test mirrors the inline block in seeding.py (nh_pending /
-_nh_deferred); reachability of that block is proven on sky (phdeb/ADOPTED log lines),
-not here.
+_nh_deferred), and test_source_matches_seeding_py checks that its key lines are still there.
+Whether the block is reached is not tested here; on sky it logs "period DEBOUNCED" and "period
+ADOPTED" lines.
 
     python3 -m gnss_broker.test_nhdebounce
 
@@ -26,7 +27,7 @@ LLC = CODE_LEN * LC_SEG
 
 
 class Machine(object):
-    """The debounce state machine, as spliced into seeding.py."""
+    """The debounce state machine, a copy of the inline block in seeding.py."""
 
     def __init__(self, n):
         self.n = n
@@ -100,10 +101,10 @@ def test_alternating_flips_never_adopt():
 
 
 def test_fine_phase_is_never_invented():
-    """THE 2026-08-02 TRAP. The deferral may only move the period, never the phase."""
+    """The trap: the deferral may only move the period, never the fine phase."""
     q = Machine(2)
     q.det(7, 5000.0, 0)
-    ph, _ = q.det(7, 5003.7 - CODE_LEN, +1)  # flipped AND drifted 3.7 chips
+    ph, _ = q.det(7, 5003.7 - CODE_LEN, +1)  # flipped and drifted 3.7 chips
     check(
         abs(ph - 5003.7) < 1e-9,
         "deferred seed keeps the measured 3.7-chip drift -- only the period is held",

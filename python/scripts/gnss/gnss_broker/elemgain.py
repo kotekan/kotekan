@@ -1,31 +1,30 @@
-"""THE PER-ELEMENT COMPLEX GAIN, from the combiners' /get_elements (task #57 step 2).
+"""The per-element complex gain table, from the combiners' /get_elements.
 
 What the node accumulates (GnssCoherentCombiner): per (PRN, element), an EMA of
 
-    u_e = A_e * conj(ref_e),   ref_e = the sum of the OTHER elements' prompts, SAME record
+    u_e = A_e * conj(ref_e),   ref_e = the sum of the other elements' prompts, same record
 
 so the sky phase -- common across elements, near-white in time (gnssElemCal.hpp) -- cancels
 per record before any averaging. The mean of u_e is unbiased for the element's complex gain
 times <|ref|^2>: the element's noise is uncorrelated with its leave-one-out reference, so
-noise averages down coherently instead of rectifying. The reference is built from the RAW
-per-antenna prompts, upstream of the element cal's weights, so #62's non-causal weighting
-cannot enter. This module turns those raw parts into the served table:
+noise averages down instead of rectifying. The reference is built from the raw per-antenna
+prompts, upstream of the element cal's weights, so the cal's data-dependent weighting cannot
+enter. This module turns those raw parts into the served table:
 
-    amp_e   = |u_e| / q_e          gain magnitude, in array-mean units
-    phase_e = arg(u_e)             gain phase RELATIVE TO THE ARRAY MEAN -- the peel/beam
-                                   coefficient. Absolute phase does not exist; this one does.
-    sig_e   = |u_e| / n_floor_e    significance against the PER-ELEMENT noise anchor:
-                                   n_floor_e = median over the NOISE PROBES' |u_e| at the
-                                   same (instance, element). Same probe discipline as
-                                   cn0_prompt: the probes
+    amp_e   = |u_e| / q_e          gain magnitude in array-mean units (q_e = <|ref_e|^2>)
+    phase_e = arg(u_e)             gain phase relative to the array mean: the peel/beam
+                                   coefficient (an absolute phase is not observable)
+    sig_e   = |u_e| / n_floor_e    significance against the per-element noise anchor:
+                                   n_floor_e = median over the noise probes' |u_e| at the
+                                   same (instance, element). As in cn0_prompt, the probes
                                    ride the identical pipeline, so every normalisation
-                                   cancels in the ratio. NO peer fallback -- without probe
-                                   rows the sig column is simply absent, never guessed.
+                                   cancels in the ratio. Without probe rows the sig column
+                                   is absent; no peer value is substituted.
 
-Each INSTANCE keeps its own row set on purpose: an instance is ~7 frequency channels, so the
-per-instance axis IS the frequency axis -- a per-element delay is a phase ramp across it,
-and reducing instances away would destroy exactly what a peel solution needs. A combined
-number can be rebuilt from the parts; parts can never be recovered from a combined number.
+Each instance keeps its own row set: an instance is ~7 frequency channels, so the
+per-instance axis is the frequency axis. A per-element delay is a phase ramp across it, which
+reducing instances away would destroy. A combined number can be rebuilt from the parts, never
+the reverse.
 """
 import cmath
 import math
@@ -35,7 +34,7 @@ from .transport import _get, _log_rl
 
 
 def _tag(url):
-    """http://cx19:12049/gnss1_e5b_n2combine -> cx19/1 (stable, sortable, column-safe)."""
+    """http://cx19:12048/gnss1_e5b_n2combine -> cx19/1 (stable, sortable, column-safe)."""
     m = re.search(r"//(\w+):\d+/\w*?(\d)[^/]*$", url)
     return "%s/%s" % (m.group(1), m.group(2)) if m else url[-12:]
 
@@ -43,8 +42,8 @@ def _tag(url):
 def poll_elements(endpoints):
     """{tag: {prn: {u:[(re,im)..], p2:[..], q:[..], keff, hop}}} plus the served-count.
 
-    Unreachable or pre-#57 instances (404: the endpoint ships with the next node restart)
-    are skipped and counted, never fatal -- the table degrades, the caller logs the count.
+    An unreachable instance (down, or a node without /get_elements) is skipped, never fatal;
+    `served` counts the instances that answered, and the caller logs it.
     """
     out, served = {}, 0
     for url in endpoints:
@@ -77,19 +76,14 @@ def poll_elements(endpoints):
 def drop_stale(per_inst, max_lag_s=10.0, hop_rate_hz=195312.5):
     """Drop instances whose element snapshot is far behind the fleet's newest. -> (kept, dropped)
 
-    ⚠️ THIS IS NOT A REFINEMENT, IT IS THE DIFFERENCE BETWEEN A BEAM MAP AND A MIXTURE.
-    Measured 2026-08-15 17:55: cx19/0, cx42/0 and cx43/0 served e5a element blocks a
-    CONSTANT ~115 million hops (~10 minutes) behind the other nine, which agreed to 0.36 s
-    -- byte-identical gains poll after poll (#60's wedged chain, visible here because the
-    element export carries pow_hop). A median over instances then mixes a 10-minute-old sky
-    with the live one, and the summary jumps whenever the ordering flips: that is a
-    candidate mechanism for beam-amplitude scatter that has nothing to do with the array.
-    Same discipline as fleet_coherent's window anchor -- drop and NAME, never silently sum.
+    `dropped` is [(tag, seconds behind, or None if the instance served no hop)]. A wedged
+    combiner keeps serving identical gains from a sky minutes gone (its pow_hop stops), and a
+    median over instances would mix that sky with the live one, jumping whenever the ordering
+    flips. Stale instances are dropped and named, never silently summed; fleet_coherent does
+    the same when it anchors on the freshest window.
 
-    ⚠️ The TELEMETRY-fed estimators (comb DLL, cn0_prompt, kcoh) are immune by construction:
-    they key on an absolute window index, so a frozen instance simply stops appearing in the
-    recent windows. Only this REST-polled table needed the guard. Worth remembering when
-    judging which numbers a wedged instance can and cannot corrupt.
+    The telemetry-fed estimators (comb DLL, cn0_prompt, KCOH) need no such guard: they key on
+    an absolute window index, so a frozen instance simply stops appearing in recent windows.
     """
     newest = {}
     for tag, d in per_inst.items():
@@ -113,15 +107,15 @@ def drop_stale(per_inst, max_lag_s=10.0, hop_rate_hz=195312.5):
 def gain_table(per_inst, probe_prns, min_keff=8.0):
     """The served table: {prn: {probe, inst: {tag: {keff, amp[], ph[], sig[]}}}}.
 
-    sig is present only where the probes provided a per-(instance, element) noise anchor;
-    a table with amp/ph but no sig says exactly what it knows and no more.
+    Rows with keff below min_keff are skipped. sig is present only where the probes provided a
+    per-(instance, element) noise anchor; a table with amp/ph but no sig claims no
+    significance.
 
-    ⚠️ Feed this the OUTPUT OF drop_stale(), not a raw poll -- see there.
+    Feed this the output of drop_stale(), not a raw poll (see there).
     """
     probe_prns = set(int(p) for p in (probe_prns or ()))
-    # Per-element noise floor per instance: median over probe PRNs of |u_e|. Median of
-    # (typically) 3 probes is coarse per element, but |u| under noise is one-sided and the
-    # anchor is only a SIGNIFICANCE scale -- amp/ph are served undivided by it.
+    # Per-element noise floor per instance: the median over probe PRNs of |u_e|. Over ~3 probes
+    # it is coarse, but it only scales sig; amp and ph do not use it.
     floors = {}
     for tag, d in per_inst.items():
         rows = [v for p, v in d.items() if p in probe_prns and v["keff"] >= min_keff]

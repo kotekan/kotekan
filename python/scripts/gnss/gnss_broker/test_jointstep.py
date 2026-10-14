@@ -1,9 +1,9 @@
-"""The JOINT-CLK step guard (#176): a one-off excursion of the joint clock is refused, a
-level that holds is followed after the hold, a walk and the legacy median's churn never meet it.
+"""The JOINT-CLK step guard: a one-off excursion of the joint clock is refused, a level that
+holds is followed after the hold, and neither a walk nor the legacy median's churn meets it.
 
-The sequences are the gal_e5a JOINT-CLK lines of 2026-10-12 (legacy, joint, sigma, n at the
-line's own time): the C33 pass whose 0.806-chip adoption at 12:58:17Z took every 10.23-Mcps
-chain's prompts, the slow C13 run at 12:00Z that broke nothing, and the 07:50Z excursion.
+The sequences are gal_e5a JOINT-CLK lines (legacy, joint, sigma, n at the line's own time): a
+C33 pass with a one-line 0.806-chip excursion, which adopted would move every 10.23-Mcps chain's
+seeds off their prompts; a slow C13 walk that must be followed; and a 1-chip level that holds.
 
     python3 -m gnss_broker.test_jointstep
 
@@ -28,9 +28,9 @@ def check(ok, what):
 REF_RATE, REF_LEN = 10.23e6, 10230.0
 STEP, HOLD = 0.3, 30.0
 
-# (time, legacy, joint, sigma, n): the C33 pass, 12:55-13:01Z. Sigma crosses the 0.50 bound at
-# 12:56; the 4-satellite solve at 12:58:17 passes the bounds 0.664 chips below the last
-# adopted joint clock and is gone 36 s later.
+# (time, legacy, joint, sigma, n): the C33 pass. Sigma crosses the 0.50 bound at 12:56:17; the
+# 4-satellite solve at 12:58:17 passes the bounds 0.664 chips below the last adopted joint clock
+# and is gone by the next line.
 C33 = [
     ("12:55:17.859", 149.593, 149.466, 0.416, 6),
     ("12:55:47.867", 149.593, 149.450, 0.465, 6),
@@ -46,7 +46,7 @@ C33 = [
     ("13:00:53.947", 149.593, 149.182, 0.158, 5),
 ]
 
-# The C13 run, 11:50-12:12Z: +0.56 -> +0.98 -> +0.58 chips over 8 min, every line adopted live.
+# The C13 run: the joint walks +0.56 -> +0.98 -> +0.58 chips from the legacy over 8 min.
 C13 = [
     ("11:50:28.393", 150.019, 150.085, 0.104, 6),
     ("11:50:58.404", 150.009, 150.045, 0.100, 7),
@@ -94,7 +94,7 @@ C13 = [
     ("12:11:58.625", 150.373, 150.261, 0.080, 8),
 ]
 
-# 07:50Z: the joint drops 1.0 chip, holds it for 90 s and comes back.
+# The joint drops ~1 chip, holds it for ~90 s and comes back.
 EXC = [
     ("07:50:25.659", 150.351, 150.224, 0.389, 5),
     ("07:50:55.636", 150.351, 149.335, 0.243, 5),
@@ -194,11 +194,11 @@ def test_c33_outlier_refused():
         abs(clk["13:00:53.947"] - 149.593) < 1e-9,
         "13:00:53 -0.411 (0.497 below the last adopted) refused the same way",
     )
-    # At the 2-s cycle the excursion between the lines is a decay, 148.79 at 12:58:14 back to
-    # 149.53 by 12:58:52 (the SEED-OFFSET medians -0.82, -0.52, +0.13 at :16, :24, :52). No
-    # 0.3-chip level of it holds 30 s, so the chain stays on the legacy clock until the joint
-    # is back within 0.3 of the last adopted level and then follows it home: the largest step
-    # the seeds see is the 0.3 tolerance plus the legacy's own 0.14 offset, not 0.806.
+    # At the 2-s chain cycle the excursion is a decay, 148.79 at 12:58:14 back to 149.53 by
+    # 12:58:52. No 0.3-chip level of it holds 30 s, so the chain stays on the legacy clock until
+    # the joint is back within 0.3 of the last adopted level and then follows it home: the
+    # largest step the seeds see is the 0.3 tolerance plus the legacy's own 0.14 offset, not
+    # 0.806.
     ch = _Chain()
     ch.cycle(_sod("12:55:47.867"), 149.593, 149.450, 0.465, 6)
     t, joint, steps, adopted = _sod("12:58:14"), 148.79, [], []

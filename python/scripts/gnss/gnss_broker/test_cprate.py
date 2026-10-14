@@ -1,4 +1,5 @@
-"""#96: the code-rate cross-check. The traps that would give a wrong verdict, not a crash.
+"""The code-rate cross-check (--cp-rate-model-tol): the traps that would give a wrong verdict,
+not a crash.
 
     python3 -m gnss_broker.test_cprate
 
@@ -31,7 +32,7 @@ def _dev_chips_s(rate, clock_ema):
 
 
 def test_unbounded_fit_is_the_defect():
-    """fit_cp_rate has no bound of its own -- the guard cannot live inside it."""
+    """fit_cp_rate has no bound of its own, so the guard lives in its caller."""
     # A single mis-wrapped point injects a code period; the slope follows it anywhere.
     hist = [(0, 100.0), (1000, 100.5), (2000, 101.0), (3000, 101.5 + CODE_LEN)]
     fit = fit_cp_rate(hist, CODE_LEN)
@@ -49,14 +50,14 @@ def test_unbounded_fit_is_the_defect():
 
 
 def test_clean_fit_is_admitted():
-    """A fit that agrees with the pooled clock must pass at the armed tolerance."""
-    clock = 4.62e-9  # the l-a measured live on the DR chains
+    """A fit that agrees with the pooled clock must pass at the configured tolerance."""
+    clock = 4.62e-9  # a calibrated l-a (dimensionless)
     model = cp_rate_from_code_bias(clock, HPS, CHIP)
     check(
         abs(_dev_chips_s(model, clock)) == 0.0,
         "a fit equal to the pooled clock has zero deviation",
     )
-    # Real fit scatter on a healthy sat, measured 2026-08-28: SD ~0.06 chips/s.
+    # Fit scatter on a healthy satellite is ~0.06 chips/s SD.
     jitter = model + 0.06 / HPS
     check(
         abs(_dev_chips_s(jitter, clock)) < 0.5,
@@ -66,7 +67,7 @@ def test_clean_fit_is_admitted():
 
 def test_blown_fit_is_rejected():
     clock = 4.62e-9
-    for slope_chips_s in (2.16, 177.0, 994.0):  # the measured p90 / p99 / max
+    for slope_chips_s in (2.16, 177.0, 994.0):  # blown-fit slopes, mild to gross
         rate = slope_chips_s / HPS
         check(
             abs(_dev_chips_s(rate, clock)) > 0.5,
@@ -75,12 +76,12 @@ def test_blown_fit_is_rejected():
 
 
 def test_guard_is_on_deviation_not_magnitude():
-    """THE TRAP. An absolute ceiling would reject the feed-forward the trim needs.
+    """The trap: an absolute ceiling would reject the feed-forward the trim needs.
 
     The receiver clock is ~0.047 chips/s calibrated but ~3.45 chips/s uncalibrated
-    (codeloop's note). With the clock genuinely at 3.45, a fit AT 3.45 is correct and
-    must pass -- an absolute bound of 0.5 would have rejected it and left the trim
-    facing ~11 chips per round trip.
+    (codeloop.py). With the clock genuinely at 3.45, a fit at 3.45 is correct and must pass;
+    an absolute bound of 0.5 would reject it and leave the trim facing ~11 chips per round
+    trip.
     """
     clock_uncal = 3.45 / CHIP  # the dimensionless l-a that gives 3.45 chips/s
     model = cp_rate_from_code_bias(clock_uncal, HPS, CHIP)

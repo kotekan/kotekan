@@ -1,25 +1,20 @@
-"""The dead-reckon clock DRIFT must not be measured on frozen data, and must not outlive it.
+"""The dead-reckon clock drift must not be measured on frozen data, and must not outlive it.
 
     /home/kvand/gnss/venv-ft/bin/python -m gnss_broker.test_drift_freeze     (from python/scripts/gnss)
 
-WHY THIS EXISTS (2026-09-03 19:37 UTC). The F-engine stopped streaming; every instance's
-pow_hop froze; `*** TIME BASE FROZEN` printed on schedule -- LOG ONLY. The orbit model kept
-moving with the wall clock against the frozen detections, so consecutive clock solves
-differed by the SKY's motion and dr_clock_quality read that as clock drift: the 0.05-EMA
-walked -0.005 -> -0.031 -> -0.26 -> -0.3543 chips/s with every step inside the 1.0 bound,
-and then held -0.3543 for SEVENTEEN HOURS, through an F-engine restart and a fleet restart,
-because a clock walking 10 chips between solves seeds every tracker off-peak and no solve
-ever came back to re-measure it. Same-band adoption copied it to gal_e5a and bds_b2a within
-10 s; the cross-band bootstrap does not carry drift, so the other five chains were spared and
-the fault wore a band-split costume that read as "GPSDO lost". #75 (2026-08-18) was the same
-class; the detector it produced was left log-only (the #98 shape).
+When the F-engine stops streaming, every instance's pow_hop freezes while the orbit model keeps
+moving with the wall clock, so consecutive clock solves differ by the sky's motion and
+dr_clock_quality would read that as clock drift. Each pairwise estimate can stay inside
+dr_max_drift_chips_s while the drift EMA walks far from the truth; a wrong drift walks every
+seed off-peak, so no later solve comes back to re-measure it, and same-band adoption copies it
+to the sibling chains.
 
 Three properties, each a test:
-  1. FROZEN DATA FREEZES THE STATE: while the newest telemetry hop has not advanced past
-     --dr-clock-freeze-s, the raw solve is not applied and no drift is differenced; raw_prev
+  1. Frozen data freezes the state: while the newest telemetry hop has not advanced for
+     dr_clock_freeze_s, the raw solve is not applied and no drift is differenced; raw_prev
      is dropped so the first pair across the gap is never taken either.
-  2. A DRIFT EXPIRES: a value unrefreshed for --dr-drift-max-age-s reverts to the (l-a) model.
-  3. ADOPTION CARRIES "UNKNOWN": the adopter takes the donor's drift even when it is None,
+  2. A drift expires: a value unrefreshed for dr_drift_max_age_s reverts to the (l-a) model.
+  3. Adoption carries "unknown": the adopter takes the donor's drift even when it is None,
      instead of keeping its own.
 
 @author Keith Vanderlinde
@@ -127,7 +122,7 @@ def test_frozen_axis_holds_the_solve():
     check("raw_prev" not in c.dr_state, "frozen axis: raw_prev dropped")
     check(c.dr_state.get("clk_frozen") is True, "frozen axis: state marked frozen")
     check(len(c.rx.contrib) == n_contrib, "frozen axis: nothing published to siblings")
-    # still frozen 60 s later: still held (no re-log storm either -- just held)
+    # still frozen 60 s later: still held
     c.drp.now_w = t + 69.0
     c.drp.raw_clk = 100.0
     dr.dr_clock_quality(c)
@@ -135,8 +130,8 @@ def test_frozen_axis_holds_the_solve():
         c.dr_state["drift"] == drift_before and "raw_prev" not in c.dr_state,
         "frozen 60 s: still held, still no raw_prev",
     )
-    # axis advances again: this cycle's solve is the FIRST of a new pair -- no
-    # difference across the gap, drift untouched, raw_prev re-armed
+    # axis advances again: this cycle's solve is the first of a new pair, so nothing is
+    # differenced across the gap, drift is untouched and raw_prev is re-armed
     c.drp.now_w = t + 71.0
     c.fe_axis[0] = (c.fe_axis[0][0] + 1.0, t + 70.5)
     c.drp.raw_clk = 151.0
@@ -169,8 +164,8 @@ def test_no_axis_at_all_does_not_freeze():
 
 
 def test_drift_expires():
-    """The expiry lives at the propagation site (a big function); assert the RULE on its text
-    and exercise the arithmetic the same way, so the two cannot drift silently."""
+    """The expiry lives inside the large propagation function, so the rule is asserted on
+    deadreckon's source text."""
     import inspect
 
     src = inspect.getsource(dr)

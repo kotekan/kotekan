@@ -1,13 +1,13 @@
-"""#105: the seed-side clock-freq bias must not carry the hint EMA's quantization wander.
+"""The seed-side clock-frequency bias (ClockBias.seed) must not carry the hint EMA's wander.
 
-The defect this pins: seeds and search hints shared ClockBias.value, so the a=0.05 EMA's
-+-10 Hz wander (median of 62.5 Hz bin-quantized detection sawtooths at ~5-sat counts) was
-commanded into every replica's code rate, integrating ~1 chip off-peak fleet-wide every
-~5 minutes (the q-crash bursts). Under the default the seed mirrors the hint EMA exactly.
+The hint EMA smooths a median of Doppler-grid-quantized detections from a few satellites and
+wanders by Hz. A search window tolerates that; a seed commands it into its replica's carrier and
+code rate, which integrates into code-phase error and walks the chain off peak.
 
-#141: under 'zero' the seed is 0.0 through every event that moves the others -- first solve,
-crawl, stale re-solve -- while the hint side (value/ema) keeps solving, because the search still
-needs it. A snap commanded one few-satellite median into every L5 seed at once.
+Under --seed-bias-source ema (the default) the seed mirrors the hint EMA exactly. Under 'zero'
+the seed is 0.0 through every event that moves the hint side (first solve, crawl, stale
+re-solve), while value/ema keep solving because the search still needs them; a snap would
+command one few-satellite median into every seed at once.
 """
 import ast
 import os
@@ -34,7 +34,7 @@ def run_solves(cb, raws, source, bias_alpha=0.05):
 
 class TestSeedBias(unittest.TestCase):
     def test_default_mirrors_hint_ema(self):
-        """source='ema' is the pre-#105 behaviour byte-for-byte: seed == value always."""
+        """source='ema': the seed equals the hint value after every solve."""
         cb = ClockBias()
         raws = [10.0, -20.0, 35.0, -5.0, 0.0, 12.5]
         run_solves(cb, raws, "ema")
@@ -46,8 +46,8 @@ class TestSeedBias(unittest.TestCase):
         self.assertEqual(cb.seed, 0.0)
 
     def test_zero_never_moves_the_seed(self):
-        """'zero': first solve, crawl, and stale re-solve all leave the seed at exactly 0.0
-        (the measured snaps were +16, -23, +11, -12 Hz), and every return value agrees."""
+        """'zero': first solve, crawl, and stale re-solve all leave the seed at exactly 0.0,
+        and every return value agrees."""
         cb = ClockBias()
         seeds = run_solves(cb, [16.0], "zero")  # first solve
         self.assertIs(type(cb.seed), float)
@@ -76,18 +76,18 @@ class TestSeedBias(unittest.TestCase):
         self.assertEqual(z.seed, 0.0)
 
     def test_zero_ignores_a_warm_start(self):
-        """A warm start writes `ema` (and `cal`), never `seed`: the seed
-        is 0.0 before the first solve and stays there after it."""
+        """An `ema` (and `cal`) already set before the first solve never reaches `seed`: the
+        seed is 0.0 before the first solve and stays there after it."""
         cb = ClockBias()
-        cb.ema = cb.cal = -17.9  # what the warm start does
+        cb.ema = cb.cal = -17.9  # a held value before the first solve
         self.assertEqual(cb.seed, 0.0)
         run_solves(cb, [-15.0, -16.0], "zero")
         self.assertEqual(cb.seed, 0.0)
         self.assertNotEqual(cb.ema, -17.9)
 
     def test_ema_unchanged_by_zero(self):
-        """Adding 'zero' changes nothing for 'ema': it is the hint EMA (warm-started or
-        not) -- checked against the closed form, not against the code."""
+        """'ema': the seed is the hint EMA, checked against the closed form rather than
+        against the code."""
         cb = ClockBias()
         run_solves(cb, [5.0, 9.0], "ema")
         self.assertEqual(cb.seed, 5.0 + 0.05 * (9.0 - 5.0))
@@ -111,8 +111,8 @@ def _cb_attrs(path):
 
 
 class TestSeedBiasWiring(unittest.TestCase):
-    """'zero' is only as good as the claim that update_seed is the seed's ONLY writer and
-    that the seed builders read `seed`, never the hint bias. Both are structural."""
+    """'zero' holds only if update_seed is the seed's only writer and the seed builders read
+    `seed`, never the hint bias. Both are structural, so both are checked on the source."""
 
     SOURCES = [
         os.path.join(HERE, n)
@@ -138,11 +138,10 @@ class TestSeedBiasWiring(unittest.TestCase):
             )
 
     def test_first_seed_guard_is_mode_independent(self):
-        """The guard withholds first seeds until a bias exists, in EVERY seed-bias mode. Under
-        'zero' the seed no longer needs the bias, but the guard also keeps a chain's first
-        seeds off its first cycle, which runs before dead-reckoning has stamped the cycle's
-        clock (drp.now_w is None): exempting 'zero' let gps_l5 seed on cycle 1 and die in
-        _nh_joint_consensus on None - None."""
+        """The guard withholds first seeds until a bias exists, in every seed-bias mode. Under
+        'zero' the seed does not need the bias, but the guard also keeps first seeds off a
+        chain's first cycle, which runs before the dead-reckon stage stamps drp.now_w: a first
+        seed then would raise in _nh_joint_consensus (None - None)."""
         with open(os.path.join(HERE, "seeding.py")) as f:
             tree = ast.parse(f.read())
         tests = [

@@ -1,47 +1,37 @@
-"""Automatic pathology detectors: make the already-understood failures announce themselves.
+"""Pathology detectors: make the already-understood failures label themselves.
 
-WHY THESE EXIST. Every mechanism found in the week to 2026-08-26 came from a human noticing a
-shape in the viewer. That works and should continue. But the same pathologies now RECUR, and
-on 2026-08-25 the recurrence actively corrupted an experiment: four #90 admission fires rode
-an unnoticed band brownout, and a "no harm" verdict was computed on a population that silently
-dropped the sick satellites.
+Each detector turns a known failure shape into a logged, labelled event, so a case study
+starts from a labelled event and an arm is never judged across an unnoticed one. They do not
+replace looking at the data; they keep a recurring pathology from passing unseen.
 
-So the goal is NOT to replace case studies. It is to make the understood pathologies label
-themselves, so a case study starts from a labelled event and an arm is never judged across an
-unnoticed one.
-
-Everything here is READ-ONLY. No detector writes a seed, a trim, or a command; each one
-observes state another stage already computed. That is deliberate: a detector that can change
-the instrument is no longer measuring it.
+No detector writes a seed, a trim or a command; each observes state another stage already
+computed, because a detector that can change the instrument is no longer measuring it. Two
+gates read their output: displaced admission is refused while BrownoutDetector.active()
+(fleet.displaced_chain_event), and --hold-on-present admits a hold on a run of present
+cycles in the QSeries (seeding._present_streak).
 
 @author Keith Vanderlinde
 """
 
 
-# ── D0: THE POPULATION-HONEST q SERIES ────────────────────────────────────────────────────
+# ── D0: the population-honest q series ────────────────────────────────────────────────────
 
 #: What the series knows about a satellite on a given cycle.
 PRESENT = "present"  # in the fleet aggregate and passing the presence gate
-ABSENT = "absent"  # SEEDED, and the model says it is up -- but the gate says no
-DROPPED = "dropped"  # no longer seeded at all (set, or retired)
+ABSENT = "absent"  # seeded, but no fleet row this cycle or the gate said no
+DROPPED = "dropped"  # in the series but no longer seeded
 
 
 class QSeries(object):
-    """Per-satellite q history that KEEPS the satellites that stopped reporting.
+    """Per-satellite q history that keeps the satellites that stopped reporting.
 
-    ⚠️ THIS IS THE WHOLE POINT, AND IT IS EASY TO MISS. The broker's `DLL:` log line lists
-    only satellites that passed the presence gate, so a satellite whose q craters LEAVES THE
-    SAMPLE. Any statistic computed over that line measures SURVIVORS -- and survivors always
-    look healthy, because that is what being a survivor means.
+    The broker's `DLL:` log line lists only satellites that passed the presence gate, so a
+    satellite whose q craters leaves the sample, and any statistic over that line measures
+    survivors, which look healthy by construction. Judge an arm on this series instead.
 
-    Measured cost, 2026-08-25: E4 was absent from the e5b line for 85 minutes, which was
-    exactly its sick interval, while a q-SD comparison over that line reported "no harm" for
-    an armed change. The verdict was withdrawn. Any future arm judges on THIS series.
-
-    A satellite that is absent contributes a sample with `q=None` and `state=ABSENT` rather
-    than contributing nothing. `summary()` reports both the survivor statistic and the honest
-    one, side by side, so the difference between them is visible rather than a matter of
-    which source somebody happened to use.
+    An absent satellite contributes a sample with `q=None` and `state=ABSENT` rather than
+    nothing. `summary()` reports the q statistics over the present samples together with the
+    present fraction, so how much of the window they describe is always visible.
     """
 
     def __init__(self, window_s=900.0):
@@ -50,11 +40,12 @@ class QSeries(object):
         self.hist = {}
 
     def note_cycle(self, t, seeded, fleet):
-        """Record one cycle for EVERY seeded satellite, present or not.
+        """Record one cycle for every seeded satellite, present or not.
 
         `seeded` is the set of PRNs the broker is currently seeding; `fleet` is the per-PRN
-        aggregate (may be None when the DLL did not run this cycle). A PRN in `hist` but no
-        longer in `seeded` is recorded as DROPPED once, then ages out of the window.
+        aggregate (None when the DLL did not run this cycle, which records every seeded PRN
+        ABSENT). A PRN in `hist` but no longer in `seeded` gets a DROPPED sample every cycle;
+        that keeps its history non-empty, so it stays in the series at 0% present.
         """
         rows = fleet or {}
         for prn in set(seeded) | set(self.hist):
@@ -76,11 +67,10 @@ class QSeries(object):
     def summary(self, prn):
         """(n_total, n_present, q_mean, q_sd, present_frac) over the window, or None.
 
-        ⚠️ q_mean/q_sd ARE OVER THE PRESENT SAMPLES ONLY -- there is no q when a satellite is
-        absent, and inventing one would be worse than omitting it. `present_frac` is what
-        makes the statistic honest: it says how much of the window those numbers describe. A
-        q_sd computed over 15% presence is not a measurement of that satellite's stability,
-        it is a measurement of the 15% it was well enough to be seen.
+        q_mean and q_sd are over the present samples only: an absent satellite has no q, and
+        inventing one would be worse than omitting it. `present_frac` says how much of the
+        window those numbers describe; a q_sd over 15% presence describes the 15% the
+        satellite was well enough to be seen, not its stability.
         """
         h = self.hist.get(prn)
         if not h:
@@ -94,10 +84,10 @@ class QSeries(object):
         return n, len(qs), mean, var ** 0.5, len(qs) / float(n)
 
     def line(self, chain, max_prns=12):
-        """One compact log line: the satellites whose window is LEAST present come first.
+        """One compact log line (QPOP): the least-present satellites first, at most max_prns.
 
-        Sorted by presence rather than by PRN deliberately -- the interesting satellite is the
-        one that is missing, and a PRN-ordered line buries it among the healthy ones.
+        Sorted by presence rather than by PRN: the interesting satellite is the one that is
+        missing, and a PRN-ordered line buries it among the healthy ones.
         """
         rows = []
         for prn in self.hist:
@@ -128,28 +118,23 @@ class QSeries(object):
         )
 
 
-# ── D1: THE BROWNOUT DETECTOR (#91) ───────────────────────────────────────────────────────
+# ── D1: the brownout detector ─────────────────────────────────────────────────────────────
 
 
 class BrownoutDetector(object):
-    """A chain-wide collapse in how many satellites are present, as a labelled EPISODE.
+    """A chain-wide collapse in how many satellites are present, as a labelled episode.
 
-    ⚠️ THE POINT IS THE LABEL, NOT THE SUPPRESSION. This rule already existed inside #90's
-    admission gate, where it silently held fires back. That is the right action but the wrong
-    place to leave it: nothing downstream could tell that a window contained a brownout, so on
-    2026-08-25 four admission fires rode an unnoticed one and the arm judging them was
-    confounded before it started. Promoted here, an episode is a thing a judge script can
-    exclude or stratify by.
+    The point is the label: an episode is logged (BROWNOUT open / closed) so a judge can
+    exclude or stratify by it, and active() is read by displaced admission and by D3.
 
-    ⚠️ A COLLAPSE IS RELATIVE TO THIS CHAIN'S OWN RECENT PEAK, never to a constant. Fleet
-    size, elevation mask and constellation all set the normal count, so any fixed threshold is
-    right for exactly one chain at one time of day.
+    A collapse is relative to this chain's own peak over window_s, never to a constant: fleet
+    size, elevation mask and constellation all set the normal count. An episode opens when the
+    present count falls below frac x that peak (peak >= min_base) and is announced once it
+    has lasted min_len_s.
 
-    ⚠️ IT IS A CHAIN-LEVEL FAULT, WHICH IS WHY IT DESERVES A NAME. When e5b collapses while
-    e5a holds steady, the fold or the band is the patient -- and per-satellite corrections are
-    then treating the wrong organ. That band-vs-band asymmetry is what identified the
-    2026-08-25 23:00 event; this detector reports one chain, and comparing chains is the
-    judge's job.
+    It is a chain-level fault: when one band collapses while another holds, the fold or the
+    band is at fault, not the satellites. This detector reports one chain; comparing chains is
+    the judge's job.
     """
 
     def __init__(self, window_s=600.0, frac=0.6, min_base=4, min_len_s=60.0):
@@ -202,35 +187,31 @@ class BrownoutDetector(object):
         return None
 
     def active(self):
-        """Is a brownout in progress? D3 asks, because a trim wiped during a chain-wide
-        collapse is not a per-satellite fault."""
+        """Is a brownout in progress (from the first low cycle, before it is announced)? D3
+        asks because a trim wiped during a chain-wide collapse is not a per-satellite fault,
+        and displaced admission because a displacement then reports the chain's lost power."""
         return self.open_ep is not None
 
 
-# ── D3: THE HANDOVER SAWTOOTH (#92) ───────────────────────────────────────────────────────
+# ── D3: the handover sawtooth ─────────────────────────────────────────────────────────────
 
 
 class SawtoothDetector(object):
-    """A standing trim that ramps, then gets wiped -- the shape #92 exists to remove.
+    """A standing trim that ramps, then gets wiped.
 
-    THE MECHANISM. The seed and the C++ standing trim are two halves of one number: the
-    tracker despreads at (seed + trim). When the seed re-bases, the trim goes on carrying
-    chips accumulated against the old basis, the tap moves, the satellite walks off the peak,
-    and the loop rebuilds the trim from scratch over ~25 minutes. Then it happens again.
+    The seed and the C++ standing trim are two halves of one number: the tracker despreads at
+    seed + trim. When the seed re-bases, the trim still carries chips accumulated against the
+    old basis, the tap moves, the satellite walks off the peak, and the loop rebuilds the trim
+    from scratch.
 
-    ⚠️ THE WIPE IS THE EVENT, NOT THE RAMP. A trim that ramps and keeps ramping is the loop
-    working: it is tracking a real drift. What makes it a sawtooth is the DISCONTINUITY at the
-    end -- the accumulated correction being discarded rather than handed over. Reporting on
-    ramp alone would flag every healthy satellite on a chain with clock drift.
+    The wipe is the event, not the ramp. A trim that keeps ramping is the loop tracking a real
+    drift; a sawtooth is the discontinuity at the end, the accumulated correction discarded
+    rather than handed over. Reporting on the ramp alone would flag every healthy satellite on
+    a chain with clock drift. The detector collects qualifying episodes automatically rather
+    than relying on the ones somebody noticed.
 
-    ⚠️ AND THIS IS WHY #92's P2 HAS STAYED OPEN. Every >=0.3-chip event examined by eye so far
-    was restart or flicker churn, not a drift-then-rebase. The detector's job is to produce
-    the population automatically, so P2 is judged on episodes that qualify rather than on
-    whichever one somebody happened to notice.
-
-    ⚠️ IT MUST DISTINGUISH ITSELF FROM D1. A brownout wipes trims too, by taking the whole
-    chain's presence away at once, so `browned_out` suppresses reporting -- superposing the
-    two is what made E3's per-satellite structure look heterogeneous in the first place.
+    A brownout (D1) wipes trims too, by taking the whole chain's presence away at once, so
+    `browned_out` suppresses reporting; mixing the two classes would hide each one's structure.
     """
 
     def __init__(
@@ -246,14 +227,14 @@ class SawtoothDetector(object):
         self.window_s = float(window_s)
         self.wipe_frac = float(wipe_frac)
         self.cooldown_s = float(cooldown_s)
-        # FIRST FLIGHT (2026-08-26 14:54): 6 of 12 reports landed inside the broker's first
-        # two minutes -- seed churn while the clock converges. The cure is a hold-off.
+        # No report within startup_hold_s of broker start: seeds churn while the clock
+        # converges, and those wipes are not handover events.
         self.startup_hold_s = float(startup_hold_s)
-        # A wipe within this many seconds of a BIRTH-STEP for the same PRN is the class the
-        # #92 handover addresses; a wipe with no rebase in the window is the SLEW-TRANSFER
-        # class (gps_l5, ~600 s churn cadence: the seed slews onto a stepped target and the
-        # trim's content transfers into it -- the tap barely moves and the cost is chopped
-        # ramp windows, not lost lock). Superposing them is E3's heterogeneity mistake.
+        # A wipe within this many seconds after a birth step for the same PRN (ctx.birth_steps,
+        # stamped at a dead-reckon re-birth) is a REBASE-WIPE: the seed re-based under the
+        # trim. Otherwise it is a BARE-WIPE, typically a slew transfer: the seed slews onto a
+        # stepped target and the trim's content moves into it, so the tap barely moves and the
+        # cost is chopped ramp windows, not lost lock. The two are reported apart.
         self.rebase_window_s = float(rebase_window_s)
         self.hist = {}  # prn -> [(t, trim)]
         self.reported = {}  # prn -> t of last report
@@ -273,10 +254,10 @@ class SawtoothDetector(object):
         """Feed one satellite's standing trim. Returns a message on a wipe, else None.
 
         `uptime_s` gates the startup hold-off; `rebase_age_s` (seconds since this PRN's last
-        BIRTH-STEP, None if never) classifies the wipe; `present_frac`/`q_mean` come from D0's
-        window and disqualify a trim that was never doing sky work -- a ramp on a satellite
-        that is absent or at the q floor is churn-chasing, and counting it (PRN 34 on e5a,
-        14:54:16) pollutes both sides of the P2 comparison. Suppressions never stamp the
+        birth step, None if never) classifies the wipe; `present_frac` and `q_mean` come from
+        D0's window and disqualify a trim that was never doing sky work (present_frac < 0.5 or
+        q_mean < 2.0): a ramp on a satellite that is absent or at the q floor is chasing churn.
+        `browned_out` and `in_transit` suppress reporting. Suppressions never stamp the
         cooldown, so a suppressed report cannot swallow a later real one.
         """
         h = self.hist.setdefault(prn, [])
@@ -286,17 +267,15 @@ class SawtoothDetector(object):
         if len(h) < 3 or browned_out:
             return None
         if in_transit:
-            # The same array-wide event, costing #92's P2 count rather than #90's base rate:
-            # a satellite knocked off its peak by railing releases its trim, and that wipe is
-            # the transit's, not the handover's. Three BARE-WIPEs fired inside one on
-            # 2026-08-26 17:42-17:43 (gps_l5 PRN 28/27/10).
+            # A boresight transit rails the quantiser and knocks satellites off their peaks on
+            # every chain at once; the wipes that follow are the transit's, not a handover's.
             return None
 
         prev_t, prev = h[-2]
         peak = max(abs(v) for _, v in h[:-1])
         if peak < self.ramp_chips:
             return None
-        # A WIPE: the magnitude collapses in a single step, from a value that had ramped.
+        # A wipe: the magnitude collapses in a single step, from a value that had ramped.
         if abs(prev) >= self.ramp_chips and abs(trim) <= self.wipe_frac * abs(prev):
             if uptime_s is not None and uptime_s < self.startup_hold_s:
                 return None
@@ -315,16 +294,10 @@ class SawtoothDetector(object):
                 )
                 else "BARE-WIPE"
             )
-            # ⚠️⚠️ THE SPAN IS CENSORED BY MY OWN WINDOW, AND IT MUST SAY SO.
-            # `hist` is trimmed to window_s, so a ramp older than that reports a span pinned
-            # just under it and the reports CLUSTER at ~1800 s -- which reads as a 30-minute
-            # PERIOD in the plant and is nothing of the kind. I made exactly that misreading
-            # on 2026-08-27 and had to retract it: "12 of 37 railed at a 1800 s quantum" was
-            # my detector's lookback, not the sky's clock. Same family as reading SPEC-FIT's
-            # tap-relative tau as an absolute during the E3 chase.
-            #
-            # A censored value is a LOWER BOUND, so print it as one. ">=1798 s" cannot be
-            # mistaken for a measurement the way "1798 s" was.
+            # The span is censored by the detector's own window: `hist` is trimmed to window_s,
+            # so a ramp older than that reports a span just under it, and the reports cluster
+            # near window_s as if the plant had that period. A span within 5% of the window is
+            # a lower bound and is printed as one (">=").
             span = t - h[0][0]
             censored = span >= 0.95 * self.window_s
             return (
@@ -350,5 +323,5 @@ class SawtoothDetector(object):
         return None
 
     def drop(self, prn):
-        """Forget a satellite: a released trim decays by the LEAK, which is not a wipe."""
+        """Forget a satellite: a released trim decays by the leak, which is not a wipe."""
         self.hist.pop(prn, None)

@@ -1,10 +1,11 @@
-"""#161: a whole-period clock error must be visible, and a bootstrap must not take one.
+"""A whole-period clock error must be visible, and a bootstrap must not take one.
 
-gps_l2c's code is 20 ms; the joint clock is known mod 1 ms. On 2026-10-08 a cross-band
-bootstrap from gps_l5 (then locked on noise) put gps_l2c's clock 10 ms off, and the JOINT-CLK
-consumer, comparing modulo 1 ms, adopted it as a +0.001-chip delta every cycle for 8 hours.
-These checks drive the real consumer with the clock-mod-20-ms record present and absent, and
-the health rule that gates the donor, the record and the hint.
+gps_l2c's code is 20 ms; the joint clock is known mod 1 ms. A gps_l2c clock whole milliseconds
+off (a cross-band bootstrap from a donor locked on noise) reads to the JOINT-CLK consumer,
+comparing modulo 1 ms, as a tiny delta, and adopting it every cycle keeps the wrong clock
+fresh, so the bootstrap that would correct it never re-arms. These checks drive the real
+consumer with the clock-mod-20-ms record present and absent, and the health rule that gates the
+donor, the record and the hint.
 
     python3 -m gnss_broker.test_clockperiod
 
@@ -122,7 +123,7 @@ def test_health_rule():
 
 def test_l2c_whole_period_is_visible():
     rec = JOINT / REF_RATE  # the NH fit agrees with the joint: 14.682 us mod 20 ms
-    # 10 ms off (the 2026-10-08 state): the 1-ms delta is +0.001 CM, the record says 10 ms.
+    # 10 ms off: the 1-ms delta is +0.001 CM, the record says 10 ms.
     clk, line = _consume(L2C_RATE, L2C_LEN, 7.509 + 10.0 * 511.5, record_s=rec)
     check(
         "REFUSED" in line
@@ -136,13 +137,14 @@ def test_l2c_whole_period_is_visible():
         "REFUSED" in line and "whole-period" in line,
         "L2C +1 ms with the record: REFUSED",
     )
-    # In the right millisecond: adopted and moved within the window as before.
+    # In the right millisecond: adopted and moved within the window.
     clk, line = _consume(L2C_RATE, L2C_LEN, 7.60, record_s=rec)
     check(
         "ADOPTED" in line and abs(clk - 7.51) < 1e-9,
         "L2C in the right ms with the record: ADOPTED -> 7.510 (%s)" % line[:60],
     )
-    # The record disagrees with the joint itself (half a joint window): no verdict from it.
+    # The record disagrees with the joint itself by 0.4 ms, past the quarter-window bar on
+    # clock_extend_mod's residual: no verdict from it.
     clk, line = _consume(L2C_RATE, L2C_LEN, 7.509 + 5115.0, record_s=rec + 0.4e-3)
     check(
         "ADOPTED" in line,

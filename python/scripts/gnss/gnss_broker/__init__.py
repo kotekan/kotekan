@@ -1,4 +1,3 @@
-"""Broker internals, split out of gps_distributed_broker.py (task #27).
-
-Plan of record: 31896a862:docs/CHORD_BROKER_REFACTOR.md.
+"""Broker internals: the stages and state behind gps_distributed_broker.py, which keeps main()
+and one chain's loop.
 """

@@ -1,22 +1,18 @@
-"""The E3 fix, presence half: the displaced-row admission, on the numbers that motivated it.
+"""Displaced-row admission (--presence-admit-displaced) and the probe anchor, in apply_presence.
 
     python3 -m gnss_broker.test_epl_admit
 
-WHY THIS EXISTS RATHER THAN A FIXTURE. The digest gate replays recorded POST streams, and no
-recorded transcript carries --presence-admit-displaced -- so the admission branch would never
-execute in replay and never be compared to anything (the C_LIGHT blind spot). The decisive
-cases are also SHAPES, not cycles: the E3 collapse row, the bright-flat row, the beyond-range
-row. They are asserted here directly, against apply_presence itself -- the one shared policy
-both DLL arms judge with -- not against a paraphrase of it.
+The cases are row shapes, not cycles (the collapse row, the bright-flat row, the
+beyond-range row), so they are asserted directly against fleet.apply_presence, the one
+policy both DLL arms judge with, rather than through a replay.
 
-THE DEGENERACY BEING BROKEN. q ~ 1 means "off-peak" OR "weak", and the q bar reads both as
-weak. The (E/P, L/P) decomposition separates them exactly: a displaced row's power went to a
-NEIGHBOURING TAP (pedestal low), a weak row's went to NOISE (pedestal high). The dangerous
-mistake in each direction:
-  * refuse the displaced-but-strong row -> the E3 latch (an offset suppresses q, so the
-    fault disables its own cure: 12 minutes of outage from a 60 s fade);
-  * admit the bright-flat row -> trimming on noise, the 2026-08-14 bds_b2a PRN 32/35 failure
-    that the q bar exists to prevent.
+The degeneracy being broken: q ~ 1 means "off-peak" or "weak", and the q bar reads both as
+weak. The (E/P, L/P) decomposition separates them: a displaced row's power went to a
+neighbouring tap (low pedestal), a weak row's went to noise (high pedestal). The mistake in
+each direction:
+  * refuse the displaced-but-strong row -> a latch: the offset suppresses q, so the fault
+    disables its own cure;
+  * admit the bright-flat row -> trimming on noise, which the q bar exists to prevent.
 Both directions are pinned below.
 
 @author Keith Vanderlinde
@@ -69,24 +65,18 @@ def coh(deep_snr, deep_floor):
 
 
 def test_blind_evidence():
-    """The admission's EVIDENCE must not be an on-peak statistic.
+    """The admission's evidence must not be an on-peak statistic.
 
-    ⚠️ THE BUG THIS PINS (KV, 2026-08-27). This gate exists to rescue the satellite whose
-    taps are off the peak, and it required prompt power above the probe floor to believe the
-    satellite was there at all -- but PROMPT POWER IS SUPPRESSED BY EXACTLY THAT OFFSET. It
-    is q's disease one step along, and it was the third time the same kind of statistic was
-    swapped for another of its kind (q -> prompt -> prompt), against a comment in this very
-    file saying "do not fix this a third time with another tap ratio".
-
-    Measured on sky the day it was found: 7 satellites seen by an OFFSET-BLIND detector at
-    deep_snr 18-56 and C/N0 up to 26.8 dB-Hz, prompt power 0.5-2.7x noise. The prompt bar
-    admitted TWO. The other five failed on p precisely because they were displaced.
+    The gate exists to rescue a satellite whose taps are off the peak, and prompt power is
+    suppressed by exactly that offset, so a prompt-power bar refuses the satellites it is
+    meant to rescue; every tap ratio has the same bias. The evidence is the combiner's
+    deep fold (deep_snr against deep_margin x deep_floor), which re-searches code phase and so
+    sees the satellite wherever the tap sits; prompt power above the probe bar is accepted too.
     """
     print("admit-displaced: the evidence must be OFFSET-BLIND")
 
-    # bds_b2a PRN 20, from the 2026-08-27 12:4x poll: displaced, prompt DIM (2.65x, under the
-    # 3x probe bar), but the deep fold -- which re-searches code phase -- sees it at 55 sigma
-    # against a floor of 2.67.
+    # Displaced and dim: prompt 2.4x the probe median, under the 3x probe bar, but the deep
+    # fold sees it at deep_snr 55 against a floor of 2.67.
     dim_but_detected = row(0.90, +0.65, 2.4)
     dim_but_detected["coh_row"] = coh(55.0, 2.67)
     out = verdict(fleet(**{"20": dim_but_detected}), ADMIT)
@@ -101,8 +91,8 @@ def test_blind_evidence():
         "and the admission is ATTRIBUTABLE to the blind detector, not to prompt power",
     )
 
-    # The same row with NO deep evidence at all must still be refused -- otherwise this has
-    # just widened the gate rather than changed what it asks.
+    # The same row with no deep evidence must still be refused; otherwise the gate has only
+    # been widened, not changed in what it asks.
     no_deep = row(0.90, +0.65, 2.4)
     out2 = verdict(fleet(**{"20": no_deep}), ADMIT)
     check(
@@ -111,8 +101,8 @@ def test_blind_evidence():
         "quantity, it did not go away",
     )
 
-    # A centred NOISE realisation, detected or not, must stay out: the pedestal test is what
-    # guards that, and loosening the evidence must not have loosened it.
+    # A centred noise realisation stays out, detected or not: the pedestal test guards that,
+    # whatever the evidence.
     noise = row(1.02, +0.00, 2.4)  # q ~ 1, disc ~ 0 -> huge pedestal
     noise["coh_row"] = coh(55.0, 2.67)
     out3 = verdict(fleet(**{"21": noise}), ADMIT)
@@ -122,7 +112,7 @@ def test_blind_evidence():
         "test still does that work (the 2026-08-14 trimming-on-noise case)",
     )
 
-    # Beyond the DLL's pull-in range: refused, correctly -- that one needs the search.
+    # Beyond the DLL's pull-in range: refused; that one needs the search, not the loop.
     far = row(0.40, +0.45, 20.0)
     far["coh_row"] = coh(55.0, 2.67)
     out4 = verdict(fleet(**{"22": far}), ADMIT)
@@ -132,8 +122,8 @@ def test_blind_evidence():
         "detected -- a detection is not a reason to arm a loop with no gradient to follow",
     )
 
-    # A bright row keeps the old path and the old label, so the A/B can separate "the deep
-    # path did the work" from "it would have passed on prompt anyway".
+    # A bright displaced row admits on prompt and is labelled q+p, so the gate label tells
+    # whether the deep fold or prompt power carried each admission.
     bright = row(0.90, -0.65, 20.0)
     out5 = verdict(fleet(**{"23": bright}), ADMIT)
     check(
@@ -152,7 +142,7 @@ def test_blind_evidence():
 
 
 def main():
-    # ---- 0. the algebra itself, on the banked E3 numbers -------------------------------
+    # ---- 0. epl_decompose on the collapse row and on E = P = L --------------------------
     off, ped = epl_decompose(1.16, -0.70)
     check(
         abs(off - 0.337) < 0.01 and abs(ped - 0.119) < 0.01,
@@ -164,7 +154,7 @@ def main():
         "E = P = L decodes to pedestal INF -- the no-information answer, never a small offset",
     )
 
-    # ---- 1. flag OFF: the E3 row is refused, exactly as it was on the day --------------
+    # ---- 1. admission off: the collapse row is refused (the latch) ----------------------
     out = verdict(fleet(), None)  # baseline sanity first
     check(
         out[7]["present"] and out[12]["present"],
@@ -172,14 +162,14 @@ def main():
     )
     check(not any(out[p]["present"] for p in PROBES), "probes are not present")
 
-    e3 = row(1.16, -0.70, 20.0)  # the collapse row: displaced 0.34 chips, BRIGHT
+    e3 = row(1.16, -0.70, 20.0)  # the collapse row: displaced 0.34 chips, bright
     out = verdict(fleet() | {3: dict(e3)}, None)
     check(
         not out[3]["present"],
         "flag OFF: the E3 row fails presence (this is the latch, reproduced)",
     )
 
-    # ---- 2. flag ON: the E3 row is admitted, and labelled ------------------------------
+    # ---- 2. admission on: the collapse row is admitted, and labelled --------------------
     out = verdict(fleet() | {3: dict(e3)}, ADMIT)
     check(
         out[3]["present"] and out[3]["present_gate"] == "q+p:probes+disp",
@@ -194,17 +184,16 @@ def main():
         "... while an on-peak row's verdict and gate label are untouched",
     )
 
-    # ---- 3. the OTHER direction: bright-flat is still refused --------------------------
-    # E = P = L at 20x the floor is a smeared or noise-shaped response with no peak under
-    # ANY tap. Admitting it would re-create the 2026-08-14 trimming-on-noise failure with
-    # extra steps -- the pedestal (inf) is what refuses it.
+    # ---- 3. the other direction: bright-flat is still refused --------------------------
+    # E = P = L at 20x the floor is a smeared or noise-shaped response with no peak under any
+    # tap; admitting it would trim on noise. The pedestal (inf) is what refuses it.
     out = verdict(fleet() | {5: row(1.00, 0.00, 20.0)}, ADMIT)
     check(
         not out[5]["present"],
         "bright but FLAT (E=P=L at 20x): refused -- pedestal inf, no peak to pull in",
     )
 
-    # ---- 4. displaced but DIM: refused by the same p bar as everyone -------------------
+    # ---- 4. displaced, dim, no deep evidence: refused by the p bar ---------------------
     out = verdict(fleet() | {6: row(1.16, -0.70, 1.5)}, ADMIT)
     check(
         not out[6]["present"],
@@ -227,9 +216,8 @@ def main():
         % (q8, d8),
     )
 
-    # ---- 6. WITHOUT probes the admission cannot fire at all ----------------------------
-    # The p bar without probes is a peer competition; admission on top of one would admit
-    # peers' noise. The branch is inside the probe-anchored gate by construction.
+    # ---- 6. without probes the admission cannot fire -----------------------------------
+    # With no probes every row is refused UNANCHORED before the displaced branch is reached.
     out = {7: row(3.4, -0.05, 50.0), 12: row(3.1, 0.08, 30.0), 3: dict(e3)}
     apply_presence(
         out, k_sigma=3.0, q_fallback=2.2, probe_prns=None, admit_displaced=ADMIT
@@ -240,7 +228,7 @@ def main():
         % out[3].get("present_gate"),
     )
 
-    # ---- 7. flag OFF leaves every verdict AND every key identical ----------------------
+    # ---- 7. the admission changes only the displaced row's verdict ---------------------
     base = fleet() | {3: dict(e3)}
     a = verdict({k: dict(v) for k, v in base.items()}, None)
     b = verdict({k: dict(v) for k, v in base.items()}, None)
@@ -249,14 +237,14 @@ def main():
     same = all(a[k]["present"] == c[k]["present"] for k in a if k != 3)
     check(same, "the flag changes PRN 3's verdict and nobody else's")
 
-    # ---- 8. NO PROBE ANCHOR -> REFUSE. The peer branch is DELETED, not defaulted off ----
-    # (KV, 2026-08-27: "peer comparisons can never tell us about a given signal".) The
-    # fallback passed about half the population by construction; with too few probes the
-    # honest answer is "I cannot tell", and it must be SAID. There is no longer a flag: the
-    # refusal is the only path, because there is nothing left to fall back to.
+    # ---- 8. no probe anchor -> refuse ---------------------------------------------------
+    # With fewer than 3 probes the noise floor is unmeasured and every row is refused
+    # UNANCHORED, unconditionally. There is no bar built from the tracked population to fall
+    # back to: a median-based bar over the tracked satellites passes about half of them by
+    # construction, whatever the sky.
     thin = {
         90: row(0.95, 0.02, 1.0),
-        91: row(1.00, -0.03, 1.1),  # only TWO probes
+        91: row(1.00, -0.03, 1.1),  # only two probes
         7: row(3.40, -0.05, 50.0),
         12: row(3.10, 0.08, 30.0),
         3: row(2.90, 0.02, 25.0),
@@ -273,17 +261,14 @@ def main():
         "... and NOBODY is admitted (no presence -> no arming -> no trimming)",
     )
     check(b[7]["n_probe_q"] == 2, "... and the row records how many probes there were")
-    # ⚠️ A REFUSAL MUST STILL EMIT A WELL-FORMED ROW. With too few rows to characterise a
-    # population _floor returns (None, None, None); publishing that raw q_floor took bds_b2a
-    # down with TypeError('must be real number, not NoneType') the moment a downstream log
-    # line formatted it with %.2f. "I cannot judge" is a verdict, not a licence to emit None
-    # into fields every consumer already treats as numbers.
+    # A refusal must still emit a well-formed row: consumers format q_floor with %.2f, so with
+    # the noise q unmeasured it carries q_fallback, never None.
     thin4 = {
         90: row(0.9, 0.0, 1.0),
         91: row(1.0, 0.0, 1.1),
         7: row(3.4, 0.0, 50.0),
         12: row(3.1, 0.0, 30.0),
-    }  # 4 rows: _floor gives None
+    }  # two probes: the noise q is unmeasured
     d = {k: dict(v) for k, v in thin4.items()}
     apply_presence(d, k_sigma=3.0, q_fallback=2.2, probe_prns={90, 91})
     check(
@@ -297,7 +282,7 @@ def main():
     except TypeError:
         fmt_ok = False
     check(fmt_ok, "... and formats with %.2f exactly as the shipped log line does")
-    # and it must NOT fire when the probes ARE sufficient
+    # and it must not fire when there are enough probes
     c = fleet() | {3: row(2.90, 0.02, 25.0)}
     apply_presence(c, k_sigma=3.0, q_fallback=2.2, probe_prns=PROBES)
     check(
@@ -305,13 +290,10 @@ def main():
         "with 3 probes the refusal does not fire and the normal gate runs",
     )
 
-    # ⚠️ THE PEER BRANCH IS GONE FROM THE SOURCE, NOT JUST FROM THE CALL PATH. A flag can be
-    # re-set and a default can be flipped back; this asserts the code itself no longer builds
-    # a bar out of the tracked population. If someone reintroduces it, this goes red before
-    # anything reaches the sky.
-    # ⚠️ STRIP COMMENTS FIRST. The deletion is explained in a comment that necessarily
-    # QUOTES the deleted expression, so a naive substring search finds the documentation and
-    # reports the bug it is documenting. Ban the executable line, not the prose about it.
+    # The source itself must not build a bar out of the tracked population: a flag can be
+    # re-set and a default flipped back, so this checks the code, not the call path.
+    # Comments are stripped first, so a comment naming the expression cannot fail the check;
+    # apply_presence's docstring is not stripped.
     import inspect
     from gnss_broker import fleet as _fleet
 

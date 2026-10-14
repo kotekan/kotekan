@@ -1,27 +1,27 @@
-"""The TRACKER's code observable: the replica's physical code phase minus the model.
+"""The tracker's code observable: the replica's physical code phase minus the model.
 
 Every record the fleet emits carries, in slots 1 and 2, the Doppler the despread ran at and
-the sample-0-anchored code ARGUMENT in that Doppler's currency (gnssRecord.hpp, the slot-2
-currency contract). propagate_seed puts the standing fleet trim inside that argument, so
+the sample-0-anchored code argument in that Doppler's currency (gnssRecord.hpp, the slot-2
+currency contract). gnss::propagate_seed puts the standing fleet trim inside that argument, so
 
     cp_phys(hop) = REC_CP + t_abs * f_chip * (1 + sgn * REC_DOPPLER / f_c)      (mod L)
 
-IS the tracker's code phase: the replica placement the closed DLL holds on the correlation
+is the tracker's code phase: the replica placement the closed DLL holds on the correlation
 peak. wrap(cp_phys - cp_model - clk) is then a code residual in this chain's chips with the
-receiver clock removed -- the same quantity the dead-reckon integrity residual forms from the
-SEARCH's detections, but measured by the stage that resolves ~1e-2 chips rather than the one
-that resolves ~0.5. Unlike `offs`, it exists on every chain, detectors or not: a model-primary
-chain has no detections, but it has records.
+receiver clock removed: the quantity the dead-reckon integrity residual forms from the search's
+detections (ctx.drp.offs), but measured by the stage that resolves ~1e-2 chips rather than the
+one that resolves ~0.5. It exists on every chain, detectors or not: a model-primary chain has
+no detections, but it has records.
 
-WHY RECORDS ARE AVERAGED. Slot 1 is float32, so its ulp at a few kHz is ~1e-4 Hz, and the
-lift above multiplies it by t_abs * f_chip / f_c -- thousands of chips per Hz at any real
+Why records are averaged. Slot 1 is float32, so its ulp at a few kHz is ~2-5e-4 Hz, and the
+lift above multiplies it by t_abs * f_chip / f_c, thousands of chips per Hz at any real
 uptime. One record's reconstruction therefore carries ~0.1-0.3 chips of quantization noise,
 white from record to record because the propagated Doppler crosses many ulps per record.
 Averaging every instance's records over the newest windows takes it to ~1e-2 chips. The
 instances agree to one ulp (one seed, one fleet trim: nothing here is per-node), so the
-fleet's records are one population, not twelve.
+fleet's records are one population, not one per instance.
 
-WHY THE NOMINAL RAMP IS INTEGER ARITHMETIC. t_abs * f_chip is ~1e12 chips; taken as a double
+Why the nominal ramp is integer arithmetic. t_abs * f_chip is ~1e12 chips; taken as a double
 and reduced mod L it keeps ~1e-3 chips, which is fine, but the exact form costs one bigint
 multiply and removes the question. Only the Doppler term (1e6-1e7 chips) is a float.
 """
@@ -33,7 +33,7 @@ def phys_chips(cp_arg, dop_hz, hop, hps, chip_rate_hz, carrier_hz, code_len, sgn
     """Physical code phase (chips, mod code_len) of a record's replica at its first sample.
 
     `hps` is the hop rate as a Fraction (hops per second); `cp_arg`/`dop_hz` are the record's
-    own slot 2 / slot 1 -- they MUST come from the same record (the argument is only meaningful
+    own slot 2 / slot 1 and must come from the same record (the argument is only meaningful
     against the Doppler it was expressed in).
     """
     n_num = (
@@ -94,13 +94,14 @@ def residuals(
     """Per-PRN tracker residual, chips, clock removed. Pure: every input is a number or a dict.
 
     records: {prn: [(hop, cp_arg, dop_hz)]}; pd: {(tag, prn): predict_all row}; cp_predicted(v,
-    t_abs) the model's physical code phase EXCLUDING the receiver clock (deadreckon's); clk the
+    t_abs) the model's physical code phase excluding the receiver clock (deadreckon's); clk the
     solved clock (chips), drift its rate (chips/s, may be None); t_now_abs the capture age the
     clock is referenced to. Each record's offset is normalised to t_now_abs by the drift, as
     the integrity residual is, then wrapped about the clock; the per-PRN value is the mean of
     the wrapped records and `sd` their scatter (the float32 quantization, mostly).
 
-    Returns {prn: {"chips", "sd", "n", "hop"}}; a PRN with no model row or no records is absent.
+    Returns {prn: {"chips", "raw", "sd", "n", "hop"}}; a PRN with no model row or no records is
+    absent, and so is every PRN while clk is None.
     """
     out = {}
     if clk is None:
@@ -126,8 +127,8 @@ def residuals(
         m = sum(ds) / len(ds)
         sd = math.sqrt(sum((x - m) ** 2 for x in ds) / len(ds)) if len(ds) > 1 else 0.0
         r_clk = wrap(r0 + m, code_len)
-        # `raw` keeps the receiver clock IN (the code RANGE residual, what a carrier residual
-        # also carries, so the two can be differenced); `chips` has the solved clock removed
+        # `raw` keeps the receiver clock in (the code range residual, which a carrier residual
+        # also carries, so the two can be differenced); `chips` has the solved clock removed.
         out[prn] = {
             "chips": r_clk,
             "raw": wrap(r_clk + clk, code_len),
@@ -140,17 +141,17 @@ def residuals(
 
 def tracker_residuals(ctx, n_win=2):
     """The stage entry point: records from the telem client (falling back to the fleet's
-    coherent row -- one record, ~0.2 chips of quantization), model and clock from the
-    dead-reckon products. {} until a clock exists, which is the honest state to publish."""
+    coherent row, one record with ~0.2 chips of quantization), model and clock from the
+    dead-reckon products. {} until a clock exists."""
     st = ctx.dr_state or {}
     pd = st.get("pd")
     clk = st.get("clk")
     if not pd or clk is None or ctx.drp.t_now_abs is None or ctx.cp_predicted is None:
         return {}
-    # ONLY SATELLITES THE FLEET IS ON. A replica that is not on its signal still has a code
-    # phase, and the number this module would make from it is a wrong answer with a small
-    # formal error (a replica parked on noise sits still: chips off, sd ~0). The presence
-    # verdict is the fleet DLL's own; the below-horizon noise probes are excluded by name.
+    # Only satellites the fleet is on. A replica that is off its signal still has a code phase,
+    # and the residual made from it is wrong with a small formal error (a replica parked on
+    # noise sits still: chips off, sd ~0). Presence is the fleet DLL's verdict; the
+    # below-horizon noise probes are excluded by name.
     probes = ctx.probe_set or set()
     fleet = {
         p: v

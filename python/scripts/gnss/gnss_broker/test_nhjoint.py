@@ -1,8 +1,8 @@
 """--nh-joint: the joint overlay fit -- the verdict traps, not the plumbing.
 
-Unlike test_nhdebounce this imports the REAL helpers from seeding.py (they are
-standalone functions); only the inline apply/referee glue is proven on sky
-(NH-JOINT / nhjapp / nhjref / nhjskip log lines), not here.
+Unlike test_nhdebounce this imports the real helpers from seeding.py (they are standalone
+functions). The inline apply and referee glue in the seed loop is not covered here; on sky it
+shows in the NH-JOINT lines and the nhjapp/nhjref log keys.
 
     python3 -m gnss_broker.test_nhjoint
 
@@ -130,7 +130,7 @@ def test_split_votes_do_not_resolve():
 
 
 def test_boundary_is_not_special():
-    # receiver clock exactly on a segment boundary: an INTEGER vote would split 50/50
+    # receiver clock exactly on a segment boundary: an integer vote would split 50/50
     # between adjacent labels; the continuous consensus must still resolve one value.
     ctx = mk_ctx(delta_true_chips=0.5 * CODE_LEN)
     errs = (-30.0, 25.0, -20.0, 30.0, -25.0, 20.0)
@@ -156,7 +156,7 @@ def test_noisy_sat_is_carried():
         _nh_joint_vote(
             ctx, prn, true_ph(ctx, prn, 1000 + j), 1000 + j, 120.0, ctx.drp.now_w
         )
-    # G1-style: fine phase right, segment pure noise (7 periods off)
+    # fine phase right, segment pure noise (7 periods off)
     prn, wrong = 27, 7
     ph_meas = (true_ph(ctx, prn, 2000) + wrong * CODE_LEN) % LLC
     _nh_joint_vote(

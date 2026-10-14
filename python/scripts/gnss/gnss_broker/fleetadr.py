@@ -1,81 +1,78 @@
-"""FLEET ADR: the accumulated carrier phase at EXACT hops, from the telemetry records.
+"""Fleet ADR: the accumulated carrier phase at exact hops, from the telemetry records.
 
-THE OBSERVABLE. The tracker removes a commanded carrier phase Phi_cmd from the data and the
+The observable. The tracker removes a commanded carrier phase Phi_cmd from the data and the
 prompt carries what is left, so the received carrier phase is Phi_rx = Phi_cmd - arg(A)/2pi
 (gnssRecord.hpp). Both halves are ambiguous on their own and both ambiguities die in the
-per-record INCREMENT: the commanded advance over a record is known from the Doppler the
-replica ran at, and the measured half is arg(A_k conj A_{k-1}) -- ~1e-3 cycles per record
+per-record increment: the commanded advance over a record is known from the Doppler the
+replica ran at, and the measured half is arg(A_k conj A_{k-1}), ~1e-3 cycles per record
 while the carrier loop holds, against an unambiguous range of +-0.25.
 
-WHY NOT SLOT 15. The record's own commanded increment (REC_CPHASE) is float32, and on CHORD
+Why not slot 15. The record's own commanded increment (REC_CPHASE) is float32, and on CHORD
 the commanded phase is anchored at RF, so the increment is ~1.2e7 cycles per record and the
-slot quantizes it to WHOLE CYCLES (every live value is an exact integer). An ADR folded from
-it -- the C++ combiner's `adr_cycles` -- is a +-0.5 cycle/record random walk plus the
-re-anchor steps of each window's first record, not a carrier phase. The replica runs at a
-constant f_c + dop within a record (propagate_seed per record, the re-pin step folded so the
-prompt stays continuous), so the commanded advance over [k-1, k] is exactly
+slot rounds it to whole cycles. An ADR folded from it (the C++ combiner's adr_cycles) is a
++-0.5 cycle per record random walk, not a carrier phase. The replica runs at a constant
+f_c + dop within a record (propagate_seed per record, the re-pin step folded so the prompt
+stays continuous), so the commanded advance over [k-1, k] is exactly
     (f_c + dop_{k-1}) * dt
 with dop from slot 1 (float32, ~20 cycles of Doppler per record: ulp 2e-6) and dt from the
-integer hops. The nominal f_c*dt is exact in rationals and kept OUT of the accumulator, which
+integer hops. The nominal f_c*dt is exact in rationals and kept out of the accumulator, which
 therefore holds only the Doppler-integrated phase and never loses a double's precision.
 
-THE CARRIER TRIM IS NOT IN THE EXPORT. The despread runs its replica at dop + ctrim, and the
+The carrier trim is not in the export. The despread runs its replica at dop + ctrim, and the
 assembler then rotates the exported prompt by the NCO phase it accumulates from f_nco = ctrim,
-which takes the trim back out: what ships is the prompt relative to the MODEL Doppler alone.
+which takes the trim back out: what ships is the prompt relative to the model Doppler alone.
 So the commanded advance the export is measured against is dop*dt, and slot 19 (the applied
-trim, integrated) is carried here only as a record of what the carrier loop commanded
-(`trim_cycles`). Adding it to the advance put the trim into the ADR once: measured as a
-geometry-free drift between a trim-commanded band and an untrimmed one equal to
-lambda * d(trim)/dt satellite by satellite (slope 1.01, r 0.999), which no ionosphere makes.
+trim's phase increment over the record) is carried here only as a record of what the carrier
+loop commanded (`trim_cycles`). Adding it to the advance would put the trim into the ADR: a
+geometry-free drift of lambda * d(trim)/dt between a trimmed band and an untrimmed one,
+which no ionosphere makes.
 
-WHY IT LIVES HERE. Every record in the telemetry carries its absolute hop; every chain shares
-the one F-engine hop axis; so an ADR folded here is exact where it matters -- pairing two bands
-into the geometry-free combination needs equal epochs to ~1e-12 s, i.e. the same integer hop --
-and common across all bands at once. Stamped with the arc's first hop too.
+Why it lives here. Every record in the telemetry carries its absolute hop and every chain
+shares the one F-engine hop axis, so an ADR folded here is exact where it matters (pairing two
+bands into the geometry-free combination needs equal epochs to ~1e-12 s, i.e. the same integer
+hop) and common across all bands at once. Stamped with the arc's first hop too.
 
-THE FLEET COMBINE IS A SUM OF CROSS-PRODUCTS, NOT OF PHASORS. Every instance despreads the
-same seed with the same fleet trim, so their prompts are one phasor seen through twelve
-channel subsets -- but each carries a different constant (the assembler's NCO origin is set
-per instance) AND that NCO is where the tracker folds the re-pin phase steps (Delta_dop*t_abs,
-~0.3 cycles per record at this uptime) to keep the exported prompt continuous. REC_PHI0 is
-that accumulator, and it jumps by radians every record. The comb's cross-instance rule
-(multiply by exp(+i*phi0)) puts instances on one reference WITHIN a record; applied across
-records it re-injects the folded steps, and an ADR built that way walks by hundreds of cycles
-(measured before this was understood). So the exported prompt is used AS EXPORTED, and the
-per-record increment is
-    dres = arg( sum_inst S_i(k) * conj(S_i(k-1)) ) / 4pi,    S_i = H_i^2 + T_i^2,
-where H is the head amplitude and T = A - H: the per-instance constants cancel in each
-product and the fold stays folded. Squaring makes S sign-free (overlay pilots flip sign record
-to record) and straddle-immune (both segments of a record that spans a secondary-chip
-transition add in power). A tracker that does not segment writes head == A, tail 0, and S
-reduces to A^2.
+The increments are cross-products, not phasors. Every instance despreads the same seed with
+the same fleet trim, so their prompts are one phasor seen through each instance's channel
+subset, but each carries a different constant (the assembler's NCO origin is set per
+instance), and that NCO is where the tracker folds the re-pin phase steps (Delta_dop*t_abs)
+to keep the exported prompt continuous. REC_PHI0 is that accumulator, and it jumps by radians
+every record. The comb's cross-instance rule (multiply by exp(+i*phi0)) puts instances on one
+reference within a record; applied across records it re-injects the folded steps, and an ADR
+built that way walks by hundreds of cycles. So the exported prompt is used as exported, and
+each instance's per-record increment is
+    arg( S_i(k) * conj(S_i(k-1)) ) / 4pi,    S_i = H_i^2 + T_i^2,
+where H is the head amplitude and T = A - H: the instance's constant cancels in the product
+and the fold stays folded. Squaring makes S sign-free (overlay pilots flip sign record to
+record) and straddle-immune (both segments of a record that spans a secondary-chip transition
+add in power). A record with no head (PH zero: a tracker that does not segment) is taken as
+head == A, tail 0, and S reduces to A^2.
 
-THE FLEET COMBINE IS A MEDIAN OF PER-INSTANCE PHASES, NOT OF INCREMENTS. Consecutive
-increments of ONE instance telescope -- sum_k arg(S_i(k) conj S_i(k-1)) is the phase of S_i(k)
+The fleet combine is a median of per-instance phases, not of increments. Consecutive
+increments of one instance telescope: sum_k arg(S_i(k) conj S_i(k-1)) is the phase of S_i(k)
 minus that of S_i(0), and the per-record noise does not accumulate. A fleet increment formed
-first (the phase of sum_i S_i(k) conj S_i(k-1), or a median of the twelve) does NOT telescope:
-its weights (|S_i|^2, which swing with where the secondary chip flips inside each record) and
-its membership change every record, so each fleet increment carries fresh noise and their sum
-is a random walk (the published ADR's residual rate had the 1/sqrt(tau) Allan deviation of
-one, while the median of per-instance phases on the same records was white). So each vouching
-instance keeps its own continuous residual phase, an
-instance that (re)joins is placed at the fleet's value, an instance that slips by a half cycle
-(the squared phasor's period) is REPAIRED by whole half-cycles before the median is taken (a
-re-seat after the fact moves the median by the slippers' ranks, permanently -- see the note in
-fold_record), and the fleet residual is the median of the instances' phases.
+first (the phase of sum_i S_i(k) conj S_i(k-1), or a median of the instances' increments)
+does not telescope: its weights (|S_i|^2, which swing with where the secondary chip flips
+inside each record) and its membership change every record, so each fleet increment carries
+fresh noise and their sum is a random walk. So each vouching instance keeps its own
+continuous residual phase, an instance that (re)joins is placed at the fleet's value, an
+instance that slips by a half cycle (the squared phasor's period) is repaired by whole
+half-cycles before the median is taken (see the note in fold_record), and the fleet residual
+is the median of the instances' phases.
 
-THE BROKER DOES NOT RE-FOLD THE PRODUCER'S PHASE. The assembler folds the replica's per-record
-re-pin step into its NCO from a history shared across the pipeline's command instances, so the
-exported prompt is continuous across frame boundaries as well as inside a frame. A repair here
-keyed on REC_PHI0's per-record step (once used to undo a per-instance history) cannot tell a
-wrong boundary fold from a seed re-pin: at a re-pin the step is thousands of cycles modulo one,
-i.e. a random angle, and a "repair" of a boundary that happens to be a re-pin record injects a
-random half-cycle into the arc. That is a per-satellite rate error the loop's own estimators
-never see. A wrong producer fold is a producer bug, fixed at the producer.
+The broker does not re-fold the producer's phase. The assembler folds the replica's
+per-record re-pin step into its NCO from a history shared across the pipeline's command
+instances, so the exported prompt is continuous across frame boundaries as well as inside a
+frame. A repair here keyed on REC_PHI0's per-record step cannot tell a wrong boundary fold
+from a seed re-pin: at a re-pin the step is thousands of cycles modulo one, i.e. a random
+angle, and a "repair" of a boundary that happens to be a re-pin record injects a random
+half-cycle into the arc, a per-satellite rate error the loop's own estimators never see. A
+wrong producer fold is a producer bug, fixed at the producer.
 
-THE COMMANDED INCREMENT MUST COVER OUR STEP. The advance over (prev -> hop) needs the Doppler
+The commanded increment must cover our step. The advance over (prev -> hop) needs the Doppler
 the replica ran at from prev, so only instances that were present at prev can vouch for it;
-if none can, the arc ends -- an increment we cannot account for is a break, not a guess.
+if fewer than min_inst can, the arc ends: an increment we cannot account for is a break, not
+a guess.
 """
 import array
 import cmath
@@ -131,7 +128,7 @@ class SatAdr(object):
         self.hop = None  # hop of the last record folded
         self.hop0 = None  # first hop of the current arc
         self.adr = (
-            0.0  # DOPPLER-ONLY cycles since hop0 (commanded minus residual, minus
+            0.0  # Doppler-only cycles since hop0 (commanded minus residual, minus
         )
         # the nominal f_c*dt, which is added back exactly at publish)
         self.trim = 0.0  # commanded carrier-trim cycles over the same arc
@@ -146,21 +143,19 @@ class SatAdr(object):
             {}
         )  # inst -> that instance's own continuous residual phase, cycles
         self.t = 0.0  # wall time of the last fold
-        # THE GRID SNAPSHOTS [(hop, adr, arc, n), ...], oldest first, at most GRID_KEEP of
+        # The grid snapshots [(hop, adr, arc, n), ...], oldest first, at most GRID_KEEP of
         # them: the state at each recent record whose hop is a multiple of GRID_HOPS. Every
         # chain's records sit on hops that are multiples of the record length, so grid hops
-        # are the SAME hops on every chain -- the epochs at which two bands pair exactly. The
+        # are the same hops on every chain: the epochs at which two bands pair exactly. The
         # live value above is whatever hop this cycle ended on.
         #
-        # ⚠️ A HISTORY, NOT THE NEWEST ONLY. Consumers poll on their own clock: the
-        # observables writer at 2 s against this 1.0066 s grid, which is exactly Nyquist. A
-        # single slot therefore hands each poller its own alternating half of the grid hops --
-        # measured 50% per chain, and because each chain lands on its own alternate a band
-        # PAIR shared only 40% and a triple 35%. The hops were never missing, only unsampled.
-        # Four snapshots span ~4 s, so consecutive 2 s polls overlap by two and no hop is lost
-        # unless a poll is more than GRID_KEEP grid hops late.
+        # A history, not the newest only. The fold and the publish run once per broker cycle
+        # (--interval, 2 s in production) against this ~1.0066 s grid, so a single slot would
+        # publish every other grid hop, each chain its own alternate, and bands would pair on
+        # few of them. Four snapshots span ~4 s, so consecutive 2 s cycles overlap by two and
+        # no hop is lost unless a cycle is more than GRID_KEEP grid hops late.
         self.grid = []
-        self.dark = 0  # consecutive energy-less records since the last good fold
+        self.dark = 0  # consecutive records with too few usable instances since the last good fold
         self.dark_silent = 0  # of those, records that silence (not absence) made dark
         self.lvl = {}  # inst -> [level dB, records learned] of its prompt power |S_i|
         self.n_silent = 0  # instances in the last record when it was silent
@@ -198,26 +193,26 @@ def fold_record(
     """Fold one record hop into `st`.
 
     per_inst: {inst: (dop_hz, trim_inc, S_i, ...)} for the instances that despread this PRN at
-    `hop`, S_i the instance's squared prompt AS EXPORTED; any further slots are not read here.
+    `hop`, S_i the instance's squared prompt as exported; any further slots are not read here.
     Returns True if the record extended the arc, False if it started a new one (or was dropped
     for having too few instances).
     """
-    # THE PROMPT MUST STILL CARRY THE SIGNAL. A record whose prompts have lost the signal is
+    # The prompt must still carry the signal. A record whose prompts have lost the signal is
     # silent, not measuring: their phases are noise, and an increment folded from them walks
     # the arc by up to a quarter cycle per record while the arc key holds (a bright satellite
-    # crossing the beam took every Galileo arc on E5a and E5b 10-170 cycles off on 2026-10-11
-    # this way, #155). A silent record is treated like an energy-less one, so the arc ends and
-    # a new one starts when the signal returns. Silence needs BOTH of: the instances' prompt
-    # power down dark_db against their own level (median over instances), and their phase
-    # steps disagreeing (R, the mean resultant of the unit steps S_i(k) conj S_i(k-1), below
-    # R_MIN; ~1 while the phase is measured, ~0.25 for twelve noise prompts), for
-    # SILENT_MIN_REC records in a row. Power alone is not enough: a strong satellite swings
-    # 10-14 dB with its phase still measured (L5 G23, R 0.8-0.94, 2026-10-12), and a seed
-    # re-pin dips every instance for one record. Silence ends when the power is back, or when
-    # the steps agree again for SILENT_MIN_REC records. The level is a dB mean over
-    # ~LVL_EMA_REC records, learning from every record whose phase is measured or whose power
-    # is within the margin, and decaying lvl_decay_db_h under a dip it does not learn from.
-    # |S_i| is energy-normalised, so a gain change does not move it.
+    # crossing the beam blinds every arc it captures this way). A silent record is treated
+    # like an energy-less one, so the arc ends and a new one starts when the signal returns.
+    # Silence needs both of: the instances' prompt power down dark_db against their own level
+    # (median over instances), and their phase steps disagreeing (R, the mean resultant of the
+    # unit steps S_i(k) conj S_i(k-1), below R_MIN; ~1 while the phase is measured, ~0.25 for
+    # twelve noise prompts), for SILENT_MIN_REC records in a row, each verdict needing
+    # R_MIN_INST instances. Power alone is not enough: a strong satellite's power can swing by
+    # more than dark_db with its phase still measured, and a seed re-pin dips every instance
+    # for one record. Silence ends when the power is back, or when the steps agree again for
+    # SILENT_MIN_REC records. The level is a dB mean over ~LVL_EMA_REC records, learning from
+    # every record whose phase is measured or whose power is within the margin, and decaying
+    # lvl_decay_db_h under a dip it does not learn from. |S_i| is the prompt normalised by
+    # its replica energy (records_of_frame).
     decay_db = lvl_decay_db_h * (hpr / float(hps)) / 3600.0
     z = 0j
     n_r = 0
@@ -262,7 +257,8 @@ def fold_record(
     usable = {} if st.silent else {i: v for i, v in per_inst.items() if v[2] != 0}
     st.n_silent = sum(1 for v in per_inst.values() if v[2] != 0) if st.silent else 0
     if len(usable) < min_inst:
-        # energy-less (or silent) records: remember them, the gap is judged when energy returns
+        # too few usable instances (no prompt, or silent): remember them; the gap is judged
+        # when enough return
         st.dark += 1
         if st.silent:
             st.dark_silent += 1
@@ -285,7 +281,7 @@ def fold_record(
     if len(vouch) >= min_inst:
         dcmd = sorted(st.inst_prev[i][1] * dt for i, _v in vouch)[len(vouch) // 2]
         trim = sorted(v[1] for _i, v in vouch)[len(vouch) // 2]
-        # each voucher advances ITS OWN phase; the fleet value is the median of the phases
+        # each voucher advances its own phase; the fleet value is the median of the phases
         for i, v in vouch:
             x = st.inst_x.get(i, st.res)
             st.inst_x[i] = x + cmath.phase(v[2] * st.inst_prev[i][2].conjugate()) / (
@@ -293,18 +289,15 @@ def fold_record(
             )
         xs = sorted(st.inst_x[i] for i, _v in vouch)
         res = xs[len(xs) // 2]
-        # ⚠️ A SLIP IS REPAIRED BEFORE THE MEDIAN IS TAKEN, NOT RE-SEATED AFTER. The squared
-        # phasor's increment is ambiguous by half a cycle, so a weak instance whose prompt
-        # phase moves more than a quarter cycle in one record steps its own sum by exactly
-        # +-0.5. Re-seating it to a median taken WITH the slipped values inside the sorted
-        # list moves that median -- one rank per slipper, several ranks when a weak satellite's
-        # instances slip together -- and the re-seated copies then hold those ranks, so the
-        # step stays. Measured on live telemetry replayed through this function: the fleet
-        # phase of a weak satellite walked 3x more with the re-seat than with the repair
-        # (1.4 vs 0.5 TECU of closure at 300 s), while strong satellites were bit-identical.
-        # Undoing each slip by whole half-cycles puts the instance back at its own rank first,
-        # so the median never sees it move; re-seating remains only for an excursion that is
-        # not a multiple of a half cycle.
+        # A slip is repaired before the final median is taken, not re-seated after. The
+        # squared phasor's increment is ambiguous by half a cycle, so a weak instance whose
+        # prompt phase moves more than a quarter cycle in one record steps its own sum by
+        # exactly +-0.5. Re-seating it to a median taken with the slipped values inside the
+        # sorted list moves that median (one rank per slipper, several when a weak satellite's
+        # instances slip together), and the re-seated copies then hold those ranks, so the
+        # step stays. Undoing each slip by whole half-cycles puts the instance back at its own
+        # rank first, so the median never sees it move; re-seating remains only for an
+        # excursion that is not a multiple of a half cycle.
         repaired = False
         for i, _v in vouch:
             d = st.inst_x[i] - res
@@ -330,11 +323,13 @@ def fold_record(
         ok = True
     else:
         if st.hop is not None:
-            # ⚠️ SAY WHY. Every arc break costs the carrier level of this satellite, and a
-            # break on every satellite of every chain in the same second is a broker or node
-            # event, not sky. The archive can measure the gap but cannot tell records that
-            # never arrived from records that arrived without energy; this can, and the
-            # instances' last-seen hops say whether the telemetry stopped or the trackers did.
+            # Say why. Every arc break costs the carrier level of this satellite, and a break
+            # on every satellite of every chain in the same second is a broker or node event,
+            # not sky. The break records the gap, the records folded with too few usable
+            # instances (dark, silent ones counted apart) and the instances' last-seen hops,
+            # which say whether the telemetry stopped or the trackers did. A record with no
+            # prompt energy on any instance never reaches the fold (records_of_frame leaves it
+            # out), so it shows as gap, not dark.
             _gap = (hop - prev) / float(hpr) if prev is not None else float("nan")
             _seen = sorted(st.inst_prev.get(i, (None,))[0] or 0 for i in per_inst)
             st.last_break = {
@@ -372,8 +367,8 @@ def records_of_frame(f, want):
     decoded in one pass. The last three are the projection slots (gnssRecord.hpp), carried for
     the published row only; the fold reads the first three.
 
-    S_i = H^2 + T^2 with H the head amplitude and T = A - H, AS EXPORTED (no phi0 rotation --
-    see the module note); 0 when the record carries no prompt energy (silence, not a measurement).
+    S_i = H^2 + T^2 with H the head amplitude and T = A - H, as exported (no phi0 rotation; see
+    the module note). A record with no prompt energy (P_energy <= 0) is left out.
     """
     idx = f._index()
     rows = {prn: p for prn, p in idx.items() if prn in want}
@@ -433,7 +428,7 @@ class FleetAdr(object):
         # windows the ring already dropped leave a hop gap: the arcs break honestly on it
         for w in wins:
             frames = client.frame_set(chain, w)
-            by_hop = {}  # hop -> prn -> inst -> (dcmd, trim, S)
+            by_hop = {}  # hop -> prn -> inst -> the records_of_frame tuple
             for inst, f in frames.items():
                 for prn, recs in records_of_frame(f, want).items():
                     for r, v in recs.items():
@@ -459,13 +454,13 @@ class FleetAdr(object):
                     )
                     st.t = now
             self.last_win = w
-        # satellites that stopped arriving: forget them after a while so a return is a new arc
+        # satellites that stopped arriving: forget them after 30 s so a return is a new arc
         for prn in [p for p, s in self.sats.items() if now - s.t > 30.0]:
             del self.sats[prn]
-        # one line per cycle naming every arc that broke and why -- a fleet-wide break reads as
-        # one line with every PRN and the same gap, which is the signature to look for. A
-        # seeded satellite nobody tracks folds noise: the silence gate ends such an arc every
-        # few records, so only an arc that lived BREAK_LOG_MIN_REC records is worth a line.
+        # One FADR BREAK line per cycle naming every arc that broke and why: a fleet-wide break
+        # reads as one line with every PRN and the same gap, which is the signature to look
+        # for. A seeded satellite nobody tracks folds noise in short arcs, so only an arc that
+        # lived BREAK_LOG_MIN_REC records gets a line.
         broke = [
             (p, s.last_break)
             for p, s in self.sats.items()
@@ -541,9 +536,8 @@ class FleetAdr(object):
                         ),
                     }
                 )
-                # The same four quantities for each retained hop, newest last. The scalars
-                # above are unchanged and remain the newest, so every existing consumer keeps
-                # working and only a consumer that wants the phase-independent grid reads this.
+                # g_hist: [hop, dop_cycles, cycles, n_rec] for each retained grid hop of this
+                # arc, newest last; the g_* scalars above are its last entry.
                 out[prn]["g_hist"] = [
                     [h, a, float(Fraction(a) + Fraction(h - s.hop0) / HPS * fc), n]
                     for h, a, _arc, n in g

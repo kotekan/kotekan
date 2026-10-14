@@ -1,14 +1,18 @@
-"""Is a chain's search-anchored clock solve established? (#161)
+"""Is a chain's search-anchored clock solve established?
 
 The dead-reckon clock stage keeps, per detected satellite, the integrity residual of the
-search's code phase against the solved clock (`dr_state["integ"][prn] = (chips, t)`). A solve
-is established when at least two fresh residuals sit inside a chip and none sits far off (one
-satellite is unfalsifiable; the #152 latch detector asks for three, this gate asks for the
-minimum that can be wrong). A chain with nothing to solve (no detections, or a
-collapsed sky with no predictions) is not established, and neither is one locked on noise,
-whose residuals scatter over the code. The 2026-10-08 incident was both in turn: gps_l5
-bootstrapped gps_l2c's clock 10 ms off while on noise, and the hint learned the same wrong
-epoch from the noise detections.
+search's code phase against the model with the solved clock removed
+(`dr_state["integ"][prn] = (chips, t)`). A solve is established when at least two fresh
+residuals sit inside a chip and none sits far off: one satellite is unfalsifiable, two is the
+minimum that can disagree. A chain with nothing to solve (no detections, or a collapsed sky
+with no predictions) is not established, and neither is one locked on noise, whose residuals
+scatter over the code.
+
+While a chain's solve is not established, no chain in another band bootstraps its clock from
+it (deadreckon's cross-band bootstrap), its NH search hint learns no overlay offset
+(searchhint), and its clock mod the overlay epoch is not published (seeding). A chain locked
+on noise would otherwise hand another band a clock whole code periods off, and the hint would
+learn the same wrong epoch.
 """
 
 
@@ -19,10 +23,10 @@ def dr_solve_healthy(
     judged: a chain that has not solved at all yet makes no claim, so a fresh broker's first
     bootstrap is not held up by it. Consumers refuse on False only.
 
-    Established = at least `min_sats` fresh residuals inside `max_chips` and none beyond
-    `max_any_chips` (the #104 adoption bound). A healthy gps_l5 carries a tracker or two past
-    the escape bar at 1-2 chips (TRACK-vs-MODEL), which is a tracker's problem, not an
-    unestablished solve; on noise the residuals scatter over the whole code."""
+    Established = at least `min_sats` residuals younger than `max_age_s` inside `max_chips`,
+    and none beyond `max_any_chips` (default 5 chips, the clock-adoption bound the chains yaml
+    sets with --dr-clock-adopt-max-chips). The wide outer bound lets an established solve carry
+    a satellite or two at 1-2 chips; on noise the residuals scatter over the whole code."""
     if not dr_state or "integ" not in dr_state:
         return None
     integ = dr_state.get("integ") or {}

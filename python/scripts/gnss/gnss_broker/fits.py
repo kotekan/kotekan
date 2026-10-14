@@ -1,21 +1,22 @@
-"""Broker fits: code-phase and Doppler rate estimation, and the code-clock bias.
+"""Broker fits and pure decisions: rate fits, the code-clock bias, seed-phase currency, RF lobes
+and the stall verdicts.
 
-Extracted verbatim from gps_distributed_broker.py (task #27 M1). Pure functions of their
-arguments -- no globals, no I/O -- so they are testable in isolation for the first time.
+Functions of their arguments, with no globals and no I/O of their own (rate_residuals logs through
+an optional callback; rate_residuals and split_erratic_offsets update caller-owned state passed
+in), so each is testable in isolation.
 """
 from gnss_broker import signals
 
 
 def fit_cp_rate(hist, code_len):
-    """Least-squares fit cp0 vs capture hop -> (rate chips/hop, hop_ref, cp_ref).
+    """Least-squares fit of cp0 against capture hop -> (rate chips/hop, hop_ref, cp_ref), or None.
 
-    The search anchors each cp0 to its snapshot hop (capture time, shared with the
-    tracker via fpga_seq), but cp0 drifts ~linearly with that hop (residual code-rate
-    error). Fitting the slope lets the tracker extrapolate to its own window hop and
-    sit on the peak -- a first-order code model that removes the seed-staleness bias.
-    Returns None if there isn't enough spread to fit. cp0 is unwrapped (period
-    code_len) along the sequence before fitting; the result is anchored at the latest
-    hop. hop is centred to keep the (large) absolute index from losing precision.
+    Each search cp0 is anchored to its capture hop and drifts roughly linearly with it (the
+    residual code-rate error); the slope lets the tracker extrapolate to its own window hop and
+    sit on the peak. cp0 is unwrapped to the nearest wrap (period code_len) along the sequence
+    before fitting. Hops are referenced to the latest one, which keeps the large absolute index
+    from costing precision, and the result is anchored there (cp_ref is mod code_len). Returns
+    None with fewer than 3 points or no spread in hop.
     """
     if len(hist) < 3:
         return None
@@ -41,18 +42,16 @@ def fit_cp_rate(hist, code_len):
 
 
 def fit_dop_rate(hist, hops_per_sec, min_pts, min_span_s, max_rate):
-    """Least-squares slope of MEASURED Doppler vs time -> doppler_rate_hz_s, or None.
+    """Least-squares slope of measured Doppler against time -> doppler_rate_hz_s, or None.
 
-    Replaces BRDC's range-rate differencing over a 4 s epoch pair, which is a numerical
-    derivative evaluated where the curvature is largest (near zenith, exactly where the strong
-    passes are). Measured 2026-08-04: BRDC gave PRN 3 -0.4699 Hz/s against -0.578 from the
-    Doppler track, and that 0.108 Hz/s error is ~0.7 rad of phase curvature inside the 1.05 s
-    deep window -- part of the 2.55 rad that costs the coherent sum 29 dB.
+    The model's rate (BRDC range rate differenced over a 4 s epoch pair) is a numerical
+    derivative, weakest near zenith, where the curvature peaks and the strong passes are. The
+    detections' own Doppler track measures the slope directly.
 
     Returns None unless there are min_pts points spanning min_span_s, because a slope fitted to
-    a short baseline is fitted to detection noise: with ~1.5 Hz per-point scatter the slope
-    error is ~sigma/(T*sqrt(N/12)), so 4 points over 44 s give ~0.06 Hz/s (already better than
-    BRDC) and 8 over 88 s give ~0.02 Hz/s. Below that the model's rate is the better bet.
+    a short baseline fits detection noise: with per-point scatter sigma the slope error is
+    ~sigma/(T*sqrt(N/12)), so at ~1.5 Hz scatter 4 points over 44 s give ~0.06 Hz/s and 8 over
+    88 s ~0.02 Hz/s. Also None when |slope| exceeds max_rate.
     """
     if len(hist) < max(2, min_pts):
         return None
@@ -67,29 +66,24 @@ def fit_dop_rate(hist, hops_per_sec, min_pts, min_span_s, max_rate):
     if den <= 0.0:
         return None
     rate = sum((x - mt) * (y - mf) for x, y in zip(t, f)) / den
-    # PHYSICAL BOUND, not a tuned one: GPS Doppler acceleration peaks at ~0.94 Hz/s at L1, so
-    # ~0.70 Hz/s at L5 (scaled by 1176.45/1575.42). A fit beyond that is detection noise, not
-    # sky -- observed immediately on deploy, PRN 20 fitted at -1.16 Hz/s -- and seeding it would
-    # ADD curvature error rather than remove it. Reject rather than clamp: a rejected fit falls
-    # back to the almanac's rate, which is at least physical.
+    # max_rate is a physical bound, not a tuned one: GPS Doppler acceleration peaks near
+    # 0.94 Hz/s at L1 (~0.70 Hz/s at L5, scaled by 1176.45/1575.42), so a larger fit is detection
+    # noise and seeding it would add curvature error. Reject rather than clamp: the caller then
+    # keeps the model's rate.
     return rate if abs(rate) <= max_rate else None
 
 
 def code_clock_bias_sample(rate_chips_per_hop, hops_per_sec, chip_hz):
     """One satellite's estimate of the receiver LO-vs-ADC clock offset (l - a), dimensionless.
 
-    CONVENTION (the 2026-07-04 L5 finding): the fitted slope here is the drift of the SEARCH's
-    absolute-anchored cp0, which is a RESIDUAL rate -- the replica/search already apply the
-    geometric code Doppler internally (chip_per_sample scales with the seeded Doppler; the
-    search references cp back to sample 0 with the matching term). What remains in the cp0
-    slope is f_chip * (l - a) (+ the small Doppler-quantization residue), so
+    The fitted slope is the drift of the search's sample-0-anchored cp0, a residual rate: the
+    replica and the search already apply the geometric code Doppler (chip_per_sample scales with
+    the seeded Doppler, and the search references cp back to sample 0 with the matching term).
+    What remains in the slope is f_chip * (l - a), plus a small Doppler-quantization residue, so
         l - a  =  slope / f_chip
-    with NO carrier_frac subtraction: v/c never appears in a residual slope. (The original
-    formula subtracted doppler/carrier, valid for OFFLINE raw-drift measurements, where the
-    code drift is measured without a feed-forward -- but applied to
-    residual-convention slopes it contaminated l-a by the per-sat carrier_frac: the estimates
-    disagreed band-to-band (+0.25 ppm L1 / -0.63 ppm L5) where the residual reading agrees
-    (+0.03 / -0.04 ppm, both near the GPSDO's measured +0.06).)
+    with no carrier_frac subtraction: v/c never appears in a residual slope. Subtracting
+    doppler/carrier is right only for a raw code drift measured without the feed-forward; applied
+    to a residual slope it contaminates l - a by each satellite's carrier_frac.
     """
     return rate_chips_per_hop * hops_per_sec / chip_hz
 
@@ -108,53 +102,44 @@ def rate_residuals(
     rate_field="deep_rate_hz",
     q_field="deep_rate_q",
 ):
-    """Per-PRN carrier residual (Hz) from the combiner's phase-rate search.
+    """Per-PRN carrier-rate residual (Hz) from the combiner's phase-rate search.
 
-    TWO FAILURE MODES, TWO DEFENCES. Measured on sky 2026-08-04 by splitting each PRN's records
-    into independent halves and fitting each:
+    Returns (residuals, consensus): residuals is {prn: residual_hz} for the PRNs that pass every
+    gate and the clip, consensus their amp_snr-weighted mean (the median when the clip leaves
+    none); ({}, None) when nothing passes the gates.
 
-        amp_snr 83.7 -> halves agree to 0.000 Hz      amp_snr 9.3 -> 0.093 Hz
-        amp_snr 44.2 -> 0.186                         amp_snr 9.5 -> 41.7 Hz  <-- WRONG BIN
-        amp_snr 43.1 -> 0.466
+    A weak satellite does not merely scatter: the search lands on the wrong spectral bin and is
+    off by tens of Hz. An average alone cannot survive that, and a hard gate alone throws away
+    usable satellites, so both:
 
-    So a strong sat is pinned to ~0.2 Hz (against the <1 Hz a 1.05 s window needs), while a weak
-    one does not merely scatter -- it lands on the wrong spectral bin and is off by tens of Hz.
-    An average alone cannot survive that, and a hard gate alone throws away sats that are
-    perfectly usable. Hence both:
+      1. A hard gate on the search's own peak/median (q_field >= min_q): signal reads ~18-22 and
+         noise ~3-6, so the bar is a property of the measurement, not of SNR.
+      2. A clip about the median across PRNs (clip_hz), then the amp_snr-weighted consensus.
+         The median comes first because a wrong-bin outlier is arbitrarily far and would drag
+         any mean; weighting then lets the strongest satellites dominate what survives.
 
-      1. HARD GATE on the search's own peak/median (deep_rate_q): 17.9-22.0 on signal vs 2.8-6.1
-         on noise, so min_q sits in the gap and is a property of the measurement, not of SNR.
-      2. ROBUST WEIGHTED CONSENSUS across PRNs, weight = amp_snr, after clipping about the
-         MEDIAN. The median comes first precisely because a wrong-bin outlier is arbitrarily far
-         and would drag any mean; weighting then lets the 83-sigma sat dominate the 9-sigma ones
-         inside the surviving set, which is the right thing when precision tracks SNR.
+    A PRN that passes keeps its own residual: the per-satellite differences are real (they are
+    what a per-PRN trim exists for). A PRN that fails is left out; the consensus is returned for
+    a caller that wants the common-mode value instead.
 
-    A PRN that passes the gate keeps its OWN residual -- the per-satellite differences are real
-    (they are what a per-PRN trim exists for). One that fails INHERITS the consensus, which is
-    far better than either a wrong bin or no correction at all, because the dominant term is
-    common-mode (every node reports the same rate for a given PRN to within one search bin).
-
-    Returns {prn: residual_hz}; empty when nothing clears the gate.
+    With prev_hop (and optionally prev_val and unit_hop) the caller supplies per-stream
+    continuity state, which this updates; see the continuity and slew gates below.
     """
     cand = {}
     gapped, stepped = [], []
     for prn, rec in (status or {}).items():
-        # rate_field/q_field (#40): the FOLD's pick (deep_rate_hz) is clamped to
-        # deep_rate_max_hz and degrades to a noise bin past the cap; the carrier loop must
-        # read deep_rate_full_hz instead. Same gates either way -- a caller choosing the
-        # full fields brings its OWN prev_hop/prev_val state, never shares this one.
+        # rate_field/q_field: deep_rate_hz is the fold's pick, capped at the combiner's
+        # DEEP_RATE_MAX_HZ (25 Hz), and past the cap it reports a noise bin; the carrier loop
+        # reads the uncapped deep_rate_full_hz. The gates are the same either way, but each
+        # field set needs its own prev_hop/prev_val state.
         q = float(rec.get(q_field) or 0.0)
         f = rec.get(rate_field)
         if f is None or q < min_q:
             continue
-        # CONTINUITY GATE (2026-08-04). Measured per emit window: when the sequence is
-        # CONTIGUOUS the rate walks -0.24..-0.72 Hz per emit (~-0.36 Hz/s), smooth and
-        # trackable. Every jump of tens of Hz lands on a GAP, where the PRN was dropped and
-        # the tracker re-anchored -- so the step across a gap is a reference change, not a
-        # measurement, and integrating it walks the trim to the rail. Same rule the nh anchor
-        # and code_phase_chips already taught us: never transport a quantity across a
-        # discontinuity. After a gap we RE-BASELINE (record the hop, skip this sample) rather
-        # than guess.
+        # Continuity gate. Across a gap in a PRN's sequence the tracker has re-anchored, so the
+        # step is a reference change, not a measurement, and integrating it walks the trim to
+        # the rail. Never transport a quantity across a discontinuity: after a gap, record the
+        # hop and skip the sample (re-baseline) rather than guess.
         h = rec.get("pow_hop")
         if prev_hop is not None:
             if h is None or h < 0:
@@ -163,15 +148,12 @@ def rate_residuals(
             prev_hop[int(prn)] = h
             if ph is None or h == ph:
                 continue  # first sight, or the same window again
-            # SPACING IS ONE EMIT, NOT ONE RECORD. This compared (h - ph) against
-            # max_gap * rec_hops = 4096 hops, i.e. two RECORDS -- but successive observations
-            # are one EMIT apart, measured at 389120 hops = 190 records = 1.99 s. So the test
-            # overshot by ~95x and gated out EVERY sample: 118 log lines, zero measurements
-            # admitted, the carrier loop starved while appearing to run. Derive the unit from
-            # the stream instead of naming it: emits share one pow_hop across all PRNs, and
-            # the cadence is a property of the combiner's window, not of anything the broker
-            # knows. `unit` is the running minimum positive step, so a PRN whose first sighting
-            # straddles a gap self-corrects as soon as one contiguous pair arrives.
+            # The gap is measured in emits, not records: successive observations are one
+            # combiner emit apart (~2 s), a cadence the broker does not configure. So the unit
+            # is derived from the stream: emits share one pow_hop across all PRNs, and unit_hop
+            # holds the smallest step seen, so a PRN whose first pair straddles a gap
+            # self-corrects once a contiguous pair arrives. Without unit_hop the unit is
+            # rec_hops.
             step = h - ph
             if unit_hop:
                 unit_hop[0] = min(unit_hop[0], step) if unit_hop[0] else step
@@ -179,15 +161,12 @@ def rate_residuals(
             if step > max_gap * u * 1.5:  # 1.5: jitter margin on the derived unit
                 gapped.append(int(prn))
                 continue  # re-anchored: re-baselined above, skip
-            # SLEW GATE. The hop gap above only catches re-anchors that COINCIDE with a dropped
-            # window, and the tracker's f_ref fence does not: it fires mid-tracking whenever
-            # |f_ref - dop| exceeds fll_reacq_hz, adopting the new seed wholesale. The
-            # phase-continuity fold keeps Phi_cmd smooth across that, but the FREQUENCY steps --
-            # so a fence re-anchor is a reference change with no gap to mark it.
-            #
-            # It is separable by size. Measured per emit: contiguous tracking steps -0.238 to
-            # -0.715 Hz (the residual drifting at the Doppler rate against a FIXED f_ref), while
-            # the smallest observed re-anchor jump was 7.6 Hz. max_step sits in that gap.
+            # Slew gate. The gap test catches only re-anchors that coincide with a dropped
+            # window. The tracker's f_ref follows the seed, so a new seed with a different
+            # Doppler steps it mid-track: the record assembler keeps the phase continuous across
+            # that re-pin, but the frequency steps, with no gap to mark it. It is separable by
+            # size: contiguous emits step under ~1 Hz, a re-anchor several Hz, and max_step sits
+            # between.
             pf = prev_val.get(int(prn)) if prev_val is not None else None
             if prev_val is not None:
                 prev_val[int(prn)] = float(f)
@@ -211,11 +190,10 @@ def rate_residuals(
         return (
             {},
             None,
-        )  # (residuals, consensus) -- ALWAYS a 2-tuple; a bare {} here killed
-        # the broker the first time every PRN was gated out at once
+        )  # (residuals, consensus): always a 2-tuple, the caller unpacks it
     vals = sorted(v[0] for v in cand.values())
     med = vals[len(vals) // 2]
-    # Clip about the median, then weight. clip_hz <= 0 disables the clip (keep everything gated).
+    # Clip about the median, then weight. clip_hz <= 0 disables the clip.
     keep = {
         p: (f, w)
         for p, (f, w) in cand.items()
@@ -237,52 +215,43 @@ def rate_residuals(
 
 
 def cp_rate_from_code_bias(code_bias, hops_per_sec, chip_hz):
-    """Seed the cp0 slope (chips/hop) for a not-yet-fittable sat from the calibrated (l - a).
+    """Seed the cp0 slope (chips/hop) for a satellite with no fit yet, from the calibrated (l - a).
 
-    RESIDUAL convention (2026-07-04 L5 finding): cp0 is absolute-anchored and the replica applies
-    the geometric code Doppler itself, so the correct seeded slope is ONLY the clock residual
+    Residual convention, as in code_clock_bias_sample: cp0 is anchored at sample 0 and the
+    replica applies the geometric code Doppler itself, so the seeded slope is the clock residual
+    alone,
         cp0_rate = f_chip * (l - a)
-    The original formula added doppler/f_carrier -- the FULL physics code rate -- which the
-    replica then applied AGAIN: unfitted sats slid off-peak at the code-Doppler rate. Fatal at
-    L5 (+-30 chips/s -> off the +-1 chip peak in <1 s; the replay smoking gun: seeded cp 6690,
-    displayed 6477 after 65 s = -3.28 chips/s = exactly dop/f * f_chip), historically masked at
-    L1 (+-3 chips/s) by fast fits + the old per-record pull-in re-centering."""
+    Adding doppler/f_carrier (the full code rate) would apply the code Doppler twice, and an
+    unfitted satellite would slide off the +-1-chip peak at the code-Doppler rate (~30 chips/s
+    at L5, in under a second)."""
     return code_bias * chip_hz / hops_per_sec
 
 
 def adr_fine_rate(rec, prev, rec_dt, wall_dt=None):
-    """#33 PLL fine observable: the residual carrier rate from the ADR's residual half.
+    """PLL fine observable: the residual carrier rate from the ADR's residual half.
 
-    res_cycles is the combiner's running sum of MEASURED per-record residual phase
-    increments (dres) on the current arc -- memoryless per record and fold-proof at
-    converged residuals (~3e-3 cyc/record against a +-0.25 window). Its difference over a
-    poll span, divided by the record count, is a carrier-rate measurement whose precision
-    is (per-record phase noise)/span: ~5 mHz over 20 s -- the budget class the rate
-    search's spectrum cannot reach.
+    res_cycles is the combiner's running sum of measured per-record residual phase increments
+    (dres) on the current arc: memoryless per record and fold-proof at converged residuals
+    (~3e-3 cycles per record against a +-0.25 window). Its difference over a poll span, divided
+    by the span, is a carrier-rate measurement with precision (per-record phase noise)/span,
+    ~5 mHz over 20 s, which the rate search's spectrum cannot reach.
 
-    GATES, all structural: same arc (a break means unobserved whole cycles -- no
-    measurement); the record counter advanced (a frozen combiner must read as absent,
-    never as 0 Hz); both endpoints present; and, when the caller supplies wall_dt, the
-    record-implied span must agree with the wall-clock span.
+    Gates, all structural: same arc (a break means unobserved whole cycles); the record counter
+    advanced (a frozen combiner must read as absent, never as 0 Hz); both endpoints present;
+    and, when the caller supplies wall_dt, the record-implied span within 25% of it.
 
-    THE ACCUMULATOR-IDENTITY RULE (wall_dt's real job, restated 2026-08-24): res_cycles
-    and trim_cycles are accumulators private to ONE combiner process, each with its own
-    arbitrary arc zero -- so a difference is only defined between two snapshots of the
-    SAME accumulator. Never difference across accumulators; when the observable must
-    combine instances, self-difference each accumulator and FUSE the resulting rates
-    (they measure one physical quantity; the fusion weight is each accumulator's own
-    noise). That rule is instance-count-agnostic: it holds unchanged when an instance
-    carries 16 subbands or one. The wall_dt gate is the tripwire for a changed
-    accumulator identity slipping between snapshots (a restart, a re-config, or --
-    historically -- a serving path that picked best-of-instance per poll and so churned
-    the identity; measured 2026-08-14 on a held +5.00 Hz trim: same-accumulator pairs
-    read 5.0000 exactly, cross-accumulator pairs 0.23-16.7 Hz. The current status path
-    polls one configured combiner, so churn is gone, but the gate stays -- it is what
-    makes the pairing an invariant rather than a deployment accident). A span/wall
-    mismatch invalidates the whole difference, not just the applied reference. Returns
-    (rate_cycles_per_s, n_records, applied_hz) in the
-    combiner's INTERNAL (r2c-flipped) sign convention -- the caller applies the calibrated
-    sign, which is measured on sky against deep_rate_full_hz, never assumed.
+    The wall_dt gate enforces accumulator identity. res_cycles and trim_cycles are private to one
+    combiner process, each with its own arbitrary arc zero, so a difference is defined only
+    between two snapshots of the same accumulator. Never difference across accumulators; to
+    combine instances, self-difference each and fuse the rates, weighted by each accumulator's
+    own noise. That holds however many subbands an instance carries. A restart, a
+    re-configuration or a switch of serving instance between snapshots changes the identity, and
+    the span/wall mismatch is how it shows; it invalidates the whole difference, not just the
+    applied reference.
+
+    Returns (rate_cycles_per_s, n_records, applied_hz), or None, in the combiner's internal
+    (r2c-flipped) sign convention: the caller applies the calibrated sign, measured on sky
+    against deep_rate_full_hz, never assumed.
     """
     if not isinstance(rec, dict) or not isinstance(prev, dict):
         return None
@@ -297,48 +266,34 @@ def adr_fine_rate(rec, prev, rec_dt, wall_dt=None):
     span = (n1 - n0) * rec_dt
     if wall_dt is not None and (wall_dt <= 0.0 or abs(span - wall_dt) > 0.25 * wall_dt):
         return None
-    # THE MEASURED APPLIED COMMAND (2026-08-14 02:xx, the last assumption removed).
-    # trim_cycles integrates the commanded-trim increments the tracker ACTUALLY applied,
-    # on the same arc as res_cycles -- so d(trim)/d(span) is the applied carrier command
-    # over EXACTLY the measured span, from the same data stream. The broker's own
-    # rr_cmd_applied is an assumption (posted != applied, one-poll-lag class), and a
-    # slowly wrong applied-reference is a marginal integrator: arm 8's fleet-common
-    # +0.3-0.7 Hz/min ramp. None when the field is absent (old binary): the caller then
-    # falls back to its assumption, loudly.
+    # The measured applied command. trim_cycles integrates the commanded-trim increments the
+    # tracker actually applied, on the same arc as res_cycles, so its difference over the span
+    # is the applied carrier command over exactly the measured span. The broker's own record
+    # (RateFeedState.cmd_applied) is only what it posted (posting is not applying, and lags a
+    # poll), and a slowly wrong applied reference makes the rate integrator marginal. None when
+    # a record lacks the field; the caller then uses the posted command's span mean.
     t1 = rec.get("trim_cycles")
     t0v = prev.get("trim_cycles")
     applied = ((t1 - t0v) / span) if (t1 is not None and t0v is not None) else None
     return (r1 - r0) / span, n1 - n0, applied
 
 
-# (An `unalias` helper lived here for ~40 minutes on 2026-08-13: it unwrapped the rrate
-#  feed's measurements toward the filter's own prediction, on the theory that deep_rate_hz
-#  wrapped mod 9.537 Hz. The theory was WRONG -- built from 1-3 noisy samples per sat --
-#  and the construction was SELF-REFERENTIAL: a walking row dragged its unwrap anchor with
-#  it and commands ran away past +-10 Hz. The real mechanism was the deep_rate_max_hz CAP
-#  turning out-of-window residuals into in-cap noise picks; the fix is the combiner's
-#  deep_rate_full_* fields (#40), consumed via rate_field/q_field above.)
-
-# --- dead-reckon seed currency (task #30) -----------------------------------------------
+# --- dead-reckon seed currency ----------------------------------------------------------
 #
-# The two directions of the SAME mapping, kept adjacent so they cannot drift apart. The
-# broker's dead-reckon seeder built cp0 inline (the dr_cp0 formula below) while nothing ever
-# computed the inverse -- so when #30 needed "where does the TRACKER think the code is right
-# now", there was no function to ask. These mirror gnss::propagate_seed's phase model
-# line-for-line (gnssSeedTransport.cpp): the sample-0 back-reference scales the nominal
-# advance by the code Doppler over the WHOLE time since sample 0, cp_rate is the residual
-# clock slope in chips/HOP (see cp_rate_from_code_bias above), and the quadratic term is
-# 0.5*(f_chip/f_carrier)*dop_rate*dt^2 from the seed's reference hop.
+# The forward and inverse of one mapping, kept adjacent so they cannot drift apart. They mirror
+# gnss::propagate_seed's phase model (gnssSeedTransport.cpp): the sample-0 back-reference scales
+# the nominal advance by the code Doppler over the whole time since sample 0, cp_rate is the
+# residual clock slope in chips per hop (see cp_rate_from_code_bias above), and the quadratic
+# term is 0.5*(f_chip/f_carrier)*dop_rate*dt^2 from the seed's reference hop.
 
 
 def dr_cp0(phys_chips, t_abs, doppler_hz, chip_hz, carrier_hz, code_doppler_sign, mod):
     """Physical code phase (incl. receiver clock) at t_abs -> the sample-0 seed currency.
 
-    This IS the dead-reckon seeder's birth formula, extracted verbatim: subtract the
-    Doppler-scaled nominal advance since sample 0. `t_abs` is seconds since sample 0 and
-    must be the same instant the seed's ref_hop encodes (ref_hop = round(t_abs * hps));
-    the sub-hop rounding cancels because the physical phase and the back-reference advance
-    at the same rate to first order."""
+    The dead-reckon seeder's birth formula: subtract the Doppler-scaled nominal advance since
+    sample 0. `t_abs` is seconds since sample 0 and must be the same instant the seed's ref_hop
+    encodes (ref_hop = round(t_abs * hps)); the sub-hop rounding cancels because the physical
+    phase and the back-reference advance at the same rate to first order."""
     return (
         phys_chips
         - t_abs * chip_hz * (1.0 + code_doppler_sign * doppler_hz / carrier_hz)
@@ -346,14 +301,14 @@ def dr_cp0(phys_chips, t_abs, doppler_hz, chip_hz, carrier_hz, code_doppler_sign
 
 
 def dr_seed_phys(seed, h1, hops_per_sec, chip_hz, carrier_hz, code_doppler_sign, mod):
-    """Physical code phase (chips, mod `mod`) the TRACKER's propagation implies at hop h1.
+    """Physical code phase (chips, mod `mod`) the tracker's propagation implies at hop h1.
 
-    The exact inverse of dr_cp0 plus the tracker's own extrapolation terms, i.e. what
-    gnss::propagate_seed will hand the despread at h1 for this seed: the back-reference
-    undone at the SEED's Doppler (the mapping is defined by the doppler the seed carries,
-    not the doppler the sky has -- the cp-currency rule), the residual clock slope, and the
-    dop_rate quadratic. Used by the slewed refresh to measure how far the live model has
-    walked away from what a held seed is actually despreading at."""
+    The exact inverse of dr_cp0 plus the tracker's own extrapolation terms: the back-reference
+    undone at the seed's Doppler (the mapping is defined by the Doppler the seed carries, not the
+    one the sky has), the residual clock slope, and the dop_rate quadratic. It models the cp0
+    argument only; for a seed carrying code_phase_at_ref_chips, which propagate_seed prefers,
+    tracker_phase_at is the model. Used by the slewed refresh to measure how far the live model
+    has walked from what a held seed is despreading at."""
     t1 = h1 / hops_per_sec
     dt = (h1 - seed["ref_hop"]) / hops_per_sec
     return (
@@ -368,18 +323,16 @@ def retag_seed_doppler(
     cp_chips, old_dop, new_dop, t_eval_s, chip_hz, carrier_hz, code_doppler_sign, mod
 ):
     """Re-express a sample-0 cp in a new Doppler's currency, preserving the physical
-    phase AT t_eval_s (#44 / #45 step 4).
+    phase at t_eval_s.
 
-    The ONLY correct t_eval_s is NOW: the tracker rebuilds the phase as
-    cp0 + t*f_chip*(1 + k*dop) with t elapsed since sample 0, so changing dop by ddop
-    moves the physical phase at time t by t*f_chip*k*ddop -- the translation must cancel
-    it where the despread is actually running, which is the present. The coast path
-    translated at the seed's ANCHOR epoch instead: that preserves the phase at the
-    anchor and steps the phase NOW by anchor_age * k_c * ddop per forecast update --
-    integrated over a coast at dop rate r, ~(f_chip/f_car)*r*age^2/2 chips of silent
-    walk-off (the residual half of "long coasts silently lost the code peak"). The hold
-    path always used the current epoch; now both go through this one function, kept
-    beside dr_cp0/dr_seed_phys so the three transport directions cannot drift apart.
+    The only correct t_eval_s is now: the tracker rebuilds the phase as
+    cp0 + t*f_chip*(1 + k*dop), with t elapsed since sample 0 and k = code_doppler_sign/f_carrier,
+    so changing dop by ddop moves the physical phase at time t by t*f_chip*k*ddop, and the
+    translation must cancel that where the despread is running. Translating at the seed's anchor
+    epoch instead preserves the phase at the anchor and steps it now by anchor_age*f_chip*k*ddop
+    per forecast update: over a coast at Doppler rate r, ~(f_chip/f_carrier)*r*age^2/2 chips of
+    silent walk-off. Kept beside dr_cp0 and dr_seed_phys so the three transport directions cannot
+    drift apart.
     """
     return (
         cp_chips
@@ -398,30 +351,23 @@ def seed_phase_at_ref(
     fft_len=None,
 ):
     """Broker-held physical phase -> `code_phase_at_ref_chips`, the field the tracker
-    prefers over the sample-0 argument (#45 step 6).
+    prefers over the sample-0 argument.
 
-    THE CONVERSION IS NOT OPTIONAL AND IT IS NOT A DETAIL. The broker's dr_cp0/dr_seed_phys
-    pair references a hop at its FIRST sample; ChannelizedReplicaBank -- and therefore
-    phase_from_arg, propagate_seed and every replica -- references it at the LAST
-    (window_start + fft_len - 1). One hop apart: 52.3713 chips at CHORD. Shipping the
-    broker's phase unconverted steps the commanded code by exactly that.
+    The conversion is required. The broker's dr_cp0/dr_seed_phys pair references a hop at its
+    first sample; ChannelizedReplicaBank, and therefore phase_from_arg, propagate_seed and every
+    replica, references it at the last (window_start + fft_len - 1). That is one hop apart,
+    ~52.4 chips at 10.23 Mcps, and shipping the broker's phase unconverted steps the commanded
+    code by exactly that. test_track_vs_fit.py checks the conversion against the argument path's
+    reconstruction.
 
-    MEASURED, not asserted (scripts/gnss/e2e_phase_transport.py at 31896a862, real
-    propagate_seed + real GPU despread, PRN 3):
-        arg    (production, cp0 only)          worst |err| 0.788 chips
-        phase  (unconverted)                   worst |err| 51.999   <- the whole hop
-        phase+ (this function)                 worst |err| 0.785    <- agrees to 0.003
-    Re-run that after touching this, and note the middle row: it is what a "harmless
-    refactor" of the seed transport looks like when the convention is dropped.
+    The phase is shipped because cp0 back-references through t_abs (days), so the pair
+    (cp0, dop) means something only together: a producer that updates one without re-projecting
+    the other injects t_abs*f_chip/f_carrier chips per Hz (~1700 at L5 after 2.3 days). A phase
+    at its own epoch has no partner to fall out of step with.
 
-    Why ship the phase at all: cp0 back-references through t_abs (~2.3 days), so the pair
-    (cp0, dop) only means anything TOGETHER -- every producer that updates one without
-    re-projecting the other injects ~1700 chips/Hz (#42's writer, #44's coast). A phase at
-    its own epoch has no partner to fall out of step with.
-
-    `fft_len` supplies the exact "-1 sample" term; omitted, the offset is one whole hop and
-    the residual is 0.0064 chips (two orders below the DLL's pull-in, and a constant, so it
-    lands in the clock rather than in tracking).
+    `fft_len` supplies the exact "-1 sample" term; omitted, the offset is one whole hop and the
+    error is one sample (0.0064 chips at 10.23 Mcps), a constant far below the DLL's pull-in
+    that lands in the clock rather than in tracking.
     """
     per_hop = (
         chip_hz / hops_per_sec * (1.0 + code_doppler_sign * doppler_hz / carrier_hz)
@@ -433,19 +379,17 @@ def seed_phase_at_ref(
 def tracker_phase_at(
     seed, h1, hops_per_sec, chip_hz, carrier_hz, code_doppler_sign, mod, fft_len=None
 ):
-    """The phase the TRACKER will command at hop h1 for this seed -- mirroring
-    gnss::propagate_seed, including WHICH code reference it actually uses (#45 step 7).
+    """The phase the tracker will command at hop h1 for this seed, mirroring
+    gnss::propagate_seed, including which code reference it uses.
 
-    propagate_seed prefers `code_phase_at_ref_chips` over `code_phase_chips` whenever the
-    former is >= 0 ("transported as a phase: no back-reference at all"), and the two are
-    computed by DIFFERENT broker paths -- cp0 from cp_long, the phase from the search's
-    cp_at_ref -- so they are not interchangeable. Any audit that models cp0 while the
-    tracker reads the phase is measuring a stream nobody consumes: that is #43, whose
-    symptom was +-90,000-chip "steps" on gps_l5 while the same satellites tracked at
-    40 dB-Hz with live DLL trim.
+    propagate_seed prefers `code_phase_at_ref_chips` over `code_phase_chips` whenever the former
+    is >= 0, and the broker computes the two on different paths (cp0 from cp_long, the phase
+    from the search's cp_at_ref), so they are not interchangeable. An audit that models cp0
+    while the tracker reads the phase measures a stream nobody consumes.
 
     Returns the phase in the C++ last-sample convention (see seed_phase_at_ref), so it is
-    directly comparable between consecutive seeds -- which is the seed audit's whole job.
+    directly comparable between consecutive seeds, which is what the seed audit and the
+    innovation need.
     """
     per_hop = (
         chip_hz
@@ -483,53 +427,37 @@ def tracker_phase_at(
 
 
 def rf_lobes(chans, power, clip_lo, clip_hi, freq_ids=None, carriers=None):
-    """Group one tap's per-channel RF stats into BANDS. Pure; see test_rf_lobes.py.
+    """Group one tap's per-channel RF stats into bands. Pure; see test_rf_lobes.py.
 
-    The tap serves a flat channel list because that is what it walks. But the list is the
-    UNION of every chain's covering set on that GPU, so it arrives as contiguous runs.
+    The tap serves a flat channel list, the union of every chain's covering set on that GPU, so
+    it arrives as contiguous runs. Contiguity alone does not identify bands: instances differ in
+    which bands they hold (only some own an L2C channel), and abutting bands form one run
+    (bds_b3i at 1268.52 MHz, whose BPSK(10) mainlobe edge lands on gal_e6's 1278.75 carrier).
+    So `band` is the identity: it comes from the absolute freq_id the tap serves alongside
+    `chans` (GnssChordVoltageTap reads it from the frame's chord metadata, never from config),
+    and means the same on every instance whatever local subset that node holds. `lobe` is only
+    an index within this tap's list and is not comparable across instances.
 
-    ⚠⚠ LOBES ARE NOW NAMED, AND NUMBERING ALONE WAS SILENTLY WRONG (2026-09-02). The old
-    contract was "contiguity is the band grouping, and lobe 0 is always the lower band on
-    every instance". That held while the fleet ran two well-separated bands and BROKE without
-    a single error when it stopped:
+    Runs split on a channel gap or a band change. Without freq_ids (a node that does not serve
+    them, or a tap that has not yet measured a chord-metadata frame) or without `carriers`, rows
+    carry no band name and the grouping is contiguity alone: an unnamed row, never a wrongly
+    named one.
 
-      * gps_l2c adds ONE channel near 1227.6 MHz, and only 5 of 12 instances own one
-        (cx19/g1 6284, cx27/g0 6288, cx42/g1 6285, cx43/g1 6286, cx51/g1 6287; cx44 owns
-        none). So instances disagree on lobe COUNT, and index 2 meant L2C on five of them and
-        something else on the rest.
-      * bds_b3i (1268.52) and gal_e6 (1278.75) ABUT -- B3I's BPSK(10) mainlobe edge lands on
-        E6's carrier -- so their channels form ONE contiguous run that contiguity cannot
-        split. Two bands were being medianed into one row.
-
-    A consumer keyed on index therefore compared different bands across instances and the
-    only symptom was a permanent amber "instances disagree on lobe count" banner. `band` is
-    now the identity: it comes from the ABSOLUTE freq_id the tap serves alongside `chans`
-    (GnssChordVoltageTap: read from the frame's own chord metadata, never from config), so it
-    means the same thing on every instance no matter which local subset that node holds.
-
-    Runs split on BOTH a channel gap and a band change. Without freq_ids -- an older node
-    binary, or a frame that carried no chord metadata -- `band` is None and the grouping
-    degrades to exactly the old contiguity behaviour, so a mixed-binary fleet during a
-    rolling restart shows old-style rows rather than wrong ones.
-
-    POWER IS MEANED, CLIP IS MAXED, and the asymmetry is deliberate: power is a LEVEL and the
-    band's average is the honest summary, while clip is DAMAGE -- one railing channel corrupts
-    what passes through it, and averaging it across thirteen quiet neighbours hides exactly the
-    narrowband case this exists to catch (#56, and the 08-18 event was one band of two).
+    Power is meaned and clip is maxed: power is a level, so the band average is the summary,
+    while clip is damage, and one railing channel averaged across a dozen quiet neighbours
+    would hide exactly the narrowband case this exists to catch.
     """
     n = min(len(chans), len(power), len(clip_lo), len(clip_hi))
     if n == 0:
         return []
-    # freq_ids is OPTIONAL and must be exactly parallel to chans to be usable. A short or
-    # ragged array means the two are not describing the same channels, and a misaligned band
-    # name is worse than none -- fall back to unnamed rather than label channel k with
-    # channel j's frequency.
+    # freq_ids is optional and must be exactly parallel to chans to be usable: a misaligned band
+    # name is worse than none, so a short or ragged array falls back to unnamed.
     fids = list(freq_ids) if freq_ids else []
     if len(fids) != len(chans):
         fids = []
-    # `carriers` is the DECLARED band set (broker --rf-bands). Without it the labeller has
-    # the whole RF_BAND_BY_CARRIER table as candidates and will name a band we do not fly --
-    # E5b's lower shoulder came back as GLONASS "L3". No declaration, no names.
+    # `carriers` is the declared band set (broker --rf-bands). The full RF_BAND_BY_CARRIER table
+    # would name bands CHORD does not fly (E5b's lower shoulder reads as GLONASS L3), so with no
+    # declaration nothing is named.
     named = [
         signals.band_of_freq_id(fids[i], carriers)
         if (fids and carriers)
@@ -569,7 +497,7 @@ def rf_lobes(chans, power, clip_lo, clip_hi, freq_ids=None, carriers=None):
         out.append(rec)
 
     for i in order:
-        # Split on a channel GAP or a band CHANGE. The band test is what separates the
+        # Split on a channel gap or a band change. The band test is what separates the
         # abutting bds_b3i and gal_e6 runs, which no gap ever will.
         if run and (chans[i] != chans[run[-1]] + 1 or band[i] != band[run[-1]]):
             flush(run)
@@ -580,30 +508,26 @@ def rf_lobes(chans, power, clip_lo, clip_hi, freq_ids=None, carriers=None):
 
 
 def instance_stall_verdict(prev, cur, now, min_stall_s, min_frac_advancing=0.5):
-    """Which instances are SERVING but not ADVANCING. Pure; see test_instance_stall.py.
+    """Which instances are serving but not advancing. Pure; see test_instance_stall.py.
 
     `prev` is {url: (hop, first_seen_at_this_hop)} carried across cycles, `cur` is {url: hop}
     from this cycle. Returns (new_prev, stalled) where `stalled` is a list of
     (url, hop, seconds_stuck) for instances whose newest hop has not moved in >= min_stall_s
     while the fleet around them advanced.
 
-    ⚠️ WHY THIS EXISTS WHEN --fe-axis-stale-s ALREADY WATCHES THE HOP. That guard watches the
-    MAXIMUM hop across instances, which answers "has the whole time base frozen?" -- a real
-    question, and it caught the cx19 collapse. It cannot see ONE instance of twelve wedged,
-    because the eleven healthy ones keep the maximum climbing. On 2026-08-18 four instances
-    wedged at once and that guard stayed correctly silent the entire time. This one is
-    per-instance, which is the axis the other cannot resolve.
+    fe_axis_stale_s cannot see this: it watches the hop of the one --combiner instance, which
+    answers "has the time base frozen?" but not whether any other instance has wedged. This
+    check is per instance.
 
-    ⚠️ AND IT KEYS ON THE COUNTER, NEVER ON REACHABILITY, because the whole trap is that a
-    wedged instance ANSWERS. cx42/port 0 served plausible, well-formed rows while its capture
-    window was frozen and the entire 195,313 pkt/s stream was being dropped; "all 12 respond"
-    said nothing. An instance missing from `cur` is UNREACHABLE, a different fault that is
-    already visible as n_src falling -- it is dropped from the state here, never accused.
+    It keys on the hop counter, never on reachability, because a wedged instance still answers:
+    with its capture window frozen and its whole stream dropped, it serves plausible,
+    well-formed rows. An instance missing from `cur` is unreachable, a different fault already
+    visible as n_src falling; it is dropped from the state here, never accused.
 
     `min_frac_advancing` is the control clause: if most of the fleet is also standing still,
-    this is not a per-instance stall but something global (a paused F-engine, a clock step,
-    a replay), and calling it an instance fault would point the next hour in the wrong
-    direction. Returns no accusations in that case -- deliberately silent rather than wrong.
+    the cause is global (a paused F-engine, a clock step, a replay), not a per-instance stall,
+    and accusing an instance would point the diagnosis the wrong way. Returns no accusations
+    in that case.
     """
     new = {}
     for url, hop in cur.items():
@@ -623,24 +547,20 @@ def instance_stall_verdict(prev, cur, now, min_stall_s, min_frac_advancing=0.5):
 
 
 def q_stall_verdict(hist, now, window_s, frac, min_best, best, min_samples=10):
-    """#70/#87 THE q STALL VERDICT: has this chain been quietly degraded?
+    """The q stall verdict: has this chain been quietly degraded?
 
-    `hist` is [(t, duty)] appended once per broker cycle, `best` the highest windowed
-    duty seen so far this session (None before any verdict). Returns
-    (new_best, verdict_or_None); the verdict is (current, best, frac_of_best).
+    `hist` is [(t, duty)] appended once per broker cycle, `best` the highest windowed median
+    duty seen so far this session (None before the first). Returns (new_best, verdict_or_None);
+    the verdict is (current, best, current/best).
 
-    WHY A PURE FUNCTION, AND WHY IT LIVES HERE: the first version of this lived inline in
-    main() and could not be tested -- the on-sky fixtures run ~11 cycles at a duty that
-    never falls, so a forced-trip replay could not make it fire, and "it did not fire"
-    was indistinguishable from "it cannot fire". A guard nobody can trip is not a guard
-    (chord-a-gate-that-cannot-fail), so the decision is separated from the plumbing and
-    tested against a constructed collapse.
+    A pure function so a constructed collapse can test it (test_q_stall.py): the on-sky replay
+    fixtures are too short for the duty to fall, so a replay cannot tell "did not fire" from
+    "cannot fire".
 
-    SELF-REFERENTIAL BY DESIGN: chains differ ~4x in duty by construction (#49), so the
-    baseline is the chain's own best, never a fleet-common bar. The baseline only RISES:
-    a degrading chain must not be allowed to redefine "normal" downward, which is exactly
-    how #87 ran for 3.5 h. min_best exempts a chain with no headroom to fall from
-    (bds_b2b lives near 0.2 for structural nav-bit reasons, #31).
+    The baseline is the chain's own best, never a fleet-common bar, because chains differ ~4x
+    in duty by construction. It only rises, so a degrading chain cannot redefine normal
+    downward. min_best exempts a chain with no headroom to fall from (bds_b2b sits near 0.2 for
+    structural nav-bit reasons).
     """
     cut = now - window_s
     recent = [d for t, d in hist if t >= cut]
@@ -655,43 +575,24 @@ def q_stall_verdict(hist, now, window_s, frac, min_best, best, min_samples=10):
 
 
 def split_erratic_offsets(offs, hist, now_w, bound_chips, max_age_s, code_len):
-    """Split clock-solve offsets into (keep, drop) on per-satellite CONTINUITY of raw d_i.
+    """Split clock-solve offsets into (keep, drop) on per-satellite continuity of the raw d_i.
 
-    `offs` is [(prn, d_i)], d_i = clk + b_i: both stable, so a real satellite's d_i moves
-    a few chips between cycles at most.
+    `offs` is [(prn, d_i)], d_i = clk + b_i: both are stable, so a real satellite's d_i moves a
+    few chips between cycles at most. A satellite whose d_i moved more than bound_chips (wrapped
+    to half a code period) since its value at most max_age_s ago is dropped.
 
-    ⚠️ HISTORY, because this function has now been wrong in BOTH directions and the second
-    time was worse (2026-08-11):
+    Test the raw d_i; do not subtract a Doppler lever (t_i*chip_rate*sign*dop/carrier). The
+    search's published cp0 embeds that term with the same Doppler and ref_hop, and cp_loc adds
+    it back (gnssSeedTransport.cpp detection_phase), so raw d_i never carries it. Subtracting it
+    reintroduces ~1700 chips per Hz of Doppler re-estimate, every satellite trips the guard, and
+    the caller's min-sats floor keeps them all. The call site logs WHAT MOVED (d cp_loc, dt_i,
+    ddop) for each dropped satellite.
 
-    * The 2026-08-11 afternoon "Doppler lever" version subtracted
-      lever = t_i*chip_rate*sign*dop/carrier from d_i before differencing, on the theory
-      that d_i carried the detection Doppler times the 2.24-day sample-0 age (1696
-      chips/Hz). The arithmetic of the lever is real -- but it CANCELS EXACTLY inside
-      cp_loc, because the search's published cp0 embeds -t*chip_rate*sign*dop/carrier
-      with the SAME dop and the SAME ref_hop (gnssSeedTransport.cpp detection_phase);
-      cp_loc adds it back. Raw d_i never carried the lever at all. Subtracting it
-      RE-INTRODUCED the term, so (d - lev) stepped 1696*ddop for any Doppler re-estimate
-      > 0.059 Hz -- i.e. every satellite, every cycle (detection Doppler jitters +-60 Hz
-      pass to pass). The guard then flagged all sats, hit the min-sats floor, and kept
-      everything: a no-op that also invalidated the A/B that "measured" the lever fix.
-      MEASURED live 2026-08-11 21:1x: "6 PRN(s) jumped ... keeping all" every cycle;
-      and 1423 consecutive live detections show cp_loc continuous to median 0.27 chips
-      (p99 2.37, none > 5), so raw d_i is the right quantity to test.
+    `hist` is {prn: (t, d_i)} from the previous cycle and is mutated here: every satellite's
+    current value is recorded, dropped ones included, so a track that settles can rejoin.
 
-    * The still-open question this guard exists for: the 2026-08-10 PRN 2 incident
-      (a non-L5 PRN reading noise, +-3000-chip swings dragging the median) and the
-      2026-08-11 19:24-19:38 burst of genuine raw-d_i jumps (era-dependent, absent from
-      the live stream at 21:xx). When it fires again, the WHAT MOVED log at the call
-      site now decomposes d(cp_loc) -- the cancelled, physical quantity -- so the next
-      reading of it does not have to guess (raw dcp is uniform mod L by construction
-      and means nothing without the embed removed).
-
-    `hist` is {prn: (t, d_i)} from the previous cycle and IS MUTATED here (every
-    satellite's current value is recorded, including dropped ones -- a track that
-    settles down must be able to rejoin).
-
-    A satellite with no fresh history is always kept: the test needs two cycles, and
-    refusing first sightings would stall the bootstrap.
+    A satellite with no fresh history is always kept: the test needs two cycles, and refusing
+    first sightings would stall the bootstrap.
     """
     keep, drop = [], []
     for prn, d in offs:

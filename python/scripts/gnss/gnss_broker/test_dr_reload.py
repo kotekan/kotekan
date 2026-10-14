@@ -1,11 +1,10 @@
-"""#151: the seeding ephemeris reloads on the sky's 900-s cadence; the DCB table stays slow.
+"""The seeding ephemeris reloads on the sky's 900-s cadence; the DCB table stays slow.
 
-The defect this pins: the dead-reckon copy of the broadcast ephemeris reloaded every 7200 s
-while a record is valid for 4 h from its toe and the late-publishing hourly records (BeiDou's
-by more than an hour) left in-view satellites with nothing newer than the reload's own
-horizon -- so every 2 h a whole constellation's seeds and transit-sky rows expired together
-until the next reload. The DCB walk-back is a live HTTPS request per missing day, so it must
-not follow the ephemeris onto the fast cadence.
+A broadcast record is valid for 4 h from its toe, and the hourly records publish late (BeiDou's
+by more than an hour), so on a slow reload an in-view satellite's newest record can expire
+before the next reload, taking a whole constellation's seeds and transit-sky rows with it. The DCB
+walk-back is an HTTPS request per missing day, so it must not follow the ephemeris onto the
+fast cadence.
 """
 import ast
 import os

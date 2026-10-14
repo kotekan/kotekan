@@ -1,12 +1,11 @@
-"""Unit checks for the pieces the transcript gate cannot reach (task #27).
+"""Direct checks for broker behaviour the transcript gate cannot reach.
 
-`scripts/gnss/broker_equiv.py` proves the broker's POST stream is unchanged, but it can
-only exercise the code paths its fixture happens to reach -- and the synthetic fixture
-reaches neither the frozen clock's live-mode behaviour nor anything multi-chain, because
-both need a second thread to be observable at all. Those are exactly the places where a
-plausible-looking implementation can be silently wrong, so they get direct assertions.
+`scripts/gnss/broker_equiv.py` proves the broker's POST stream is unchanged, but only on
+the code paths its fixtures reach, and a replay never runs the frozen clock in live mode or
+on a second thread. Those, the shared Receiver, the named signals and the estimator and
+filter contracts get direct assertions here. Every PRNG is seeded.
 
-    python3 gnss_broker/selftest.py
+    python3 gnss_broker/selftest.py      # from python/scripts/gnss
 """
 import os
 import sys
@@ -29,10 +28,9 @@ def check(name, cond, detail=""):
 
 
 # -- the frozen cycle clock ---------------------------------------------------------------
-# This one exists because the first implementation gated the freeze on a transcript being
-# open, so production kept a LIVE clock and only a recording froze it -- a recorder that
-# changes what it records. The gate could not see it (both sides of the comparison were
-# recordings); only a live-mode assertion can.
+# The freeze must hold in live mode, not only while a transcript is open, or a recording
+# would change what it records. The transcript gate compares recordings with recordings and
+# cannot see this; only a live-mode assertion can.
 transport._TR.tick()
 _a = transport._now()
 time.sleep(0.02)
@@ -80,8 +78,8 @@ rx.brdc("k", lambda: _built.append(1) or {"eph": {}})
 rx.brdc("k", lambda: _built.append(1) or {"eph": {}})
 check("brdc: built once per key", len(_built) == 1, "%d builds" % len(_built))
 
-# THE CONTRACT THAT KEEPS SINGLE-CHAIN BEHAVIOUR IDENTICAL: a chain never consumes what it
-# itself contributed. If this ever fails, every equivalence result in this refactor is void.
+# A chain never consumes what it contributed itself, so a chain alone in a process computes
+# exactly what it would without the shared Receiver; the transcript gate relies on this.
 rx.contribute_code_bias("gps_l5", "1176.45MHz", -12.5e-6, 6, 1000.0)
 check(
     "clock: a chain does not consume its OWN estimate",
@@ -100,8 +98,8 @@ check(
     "clock: the better-supported estimate wins", _s.value == -9.0e-6, "n=%d" % _s.weight
 )
 
-# Code side is PER BAND: group delay does not survive a retune, so a bias measured at
-# 1176.45 MHz must not be visible to a chain at 1207.14.
+# The band-scoped lookup stays per band: a bias contributed at 1176.45 MHz is not returned
+# for 1207.14 MHz (code_bias_any_band is the cross-band fallback, checked below).
 rx.contribute_code_bias("gps_l5", "1176.45MHz", 2.6e-6, 5, 1000.0)
 check(
     "code bias: visible inside the band",
@@ -120,9 +118,10 @@ check(
 )
 
 # -- signals ------------------------------------------------------------------------------
-# Cross-checks against numbers written by other people in other files. gps_l5 -> 20/0.02 is
-# broker_up.sh's; gal_e5a and bds_b2a -> 100/0.1 are broker_up_extra.sh's; gps_l2c -> 75/1.5
-# is the constant the broker's own CL comment names; gps_l1ca is the airspy L1 replay bench's.
+# Cross-checks the values signals.py derives from gnssSignal.hpp against independently
+# written ones: carrier, chip rate, primary length, and the long code's segment count and
+# repeat period (L5 NH20 20 x 1 ms; E5a and B2a 100 x 1 ms; L2C CL 75 x 20 ms = 1.5 s;
+# L1 C/A has no long code).
 for key, want in (
     ("gps_l5", (1176.45e6, 10.23e6, 10230, 20, 0.02)),
     ("gal_e5a", (1176.45e6, 10.23e6, 10230, 100, 0.1)),
@@ -144,12 +143,12 @@ for key, want in (
         "%s vs %s" % (got, want),
     )
 
-# -- dead-reckon seed currency (task #30) -------------------------------------------------
-# The slewed refresh depends on two properties of dr_cp0/dr_seed_phys and dies silently
-# without either: (1) they are exact inverses, so "where does the tracker think the code is"
-# is answerable; (2) re-anchoring a seed at a later hop WITH A DIFFERENT DOPPLER moves the
-# implied physical phase by exactly zero -- the property the reverted 10 s repin lacked and
-# the whole reason the slew is safe to run every cycle. Deterministic PRNG: this is a gate.
+# -- dead-reckon seed currency -----------------------------------------------------------
+# The slewed refresh (deadreckon.py) re-anchors a locked seed every pass and relies on two
+# properties of dr_cp0/dr_seed_phys, failing silently without either: (1) they are exact
+# inverses, so "where does the tracker think the code is" is answerable; (2) re-anchoring a
+# seed at a later hop with a different Doppler moves the implied physical phase by exactly
+# zero, which is what makes the slew safe to run every pass.
 import random as _rnd
 
 from fits import dr_cp0, dr_seed_phys  # noqa: E402
@@ -182,7 +181,7 @@ check(
     _w_rt < 1e-3,
     "worst %.3e chips over 500 trials" % _w_rt,
 )
-# continuity: roll to h1 at a CHANGED doppler; implied phys at h1 must not move at all
+# continuity: roll to h1 at a changed Doppler; implied phys at h1 must not move at all
 _rnd.seed(31)
 _w_cont = 0.0
 for _ in range(500):
@@ -215,12 +214,11 @@ check(
     "worst %.3e chips over 500 trials" % _w_cont,
 )
 
-# -- fleet phase-slope delay fit (task #32) -----------------------------------------------
-# The fitter must (1) recover a known delay with the right SIGN and milli-chip accuracy from
-# the REAL fleet comb geometry (stride-16 with per-node offsets -- the union is what beats
-# the 3.27-chip grating lobes), (2) read peak/floor ~1 on pure noise, and (3) be
-# deterministic (it feeds a digest-gated process; a wandering fit would look like broker
-# non-determinism three layers away).
+# -- fleet phase-slope delay fit ---------------------------------------------------------
+# The fitter must (1) recover a known delay with the right sign, to within 0.02 chips, from
+# the fleet's comb geometry (stride-16 combs with per-node offsets: their union is what
+# resolves the 3.27-chip grating lobes), (2) read peak/floor ~1 on pure noise, and (3) be
+# deterministic, since it runs inside the digest-gated broker.
 import cmath as _cm
 
 from gnss_broker.fleet import fit_spectrum_delay  # noqa: E402
@@ -275,19 +273,18 @@ check(
     fit_spectrum_delay(_p, _CHIPR, _W) == fit_spectrum_delay(_p, _CHIPR, _W),
 )
 
-# -- SatBiasFilter (task #33, P2 step 1) --------------------------------------------------
-# The b_sat loop's four contractual behaviours, each traceable to a measured P1 caveat:
-# converge to a constant bias through realistic noise; REJECT lobe captures at +-3.27
-# outright (never average them in); stop APPLYING (not remembering) a stale bias; and
-# refuse thin fleets, whose fits scattered 3x wider during the rolling restart.
+# -- SatBiasFilter ------------------------------------------------------------------------
+# The b_sat loop's four behaviours: converge to a constant bias through realistic noise;
+# reject lobe captures at +-3.27 chips outright, never averaging them in; stop applying (but
+# remember) a stale bias; refuse thin fleets, whose fits scatter several times wider.
 from gnss_broker.state_filter import SatBiasFilter  # noqa: E402
 
 _rnd.seed(33)
 _bf = SatBiasFilter(gain=0.02, innovation_max=1.0, max_age_s=600.0, min_inst=6)
 _t = 0.0
-for _ in range(600):  # ~20 min at 2 s: P1's own measurement span
+for _ in range(600):  # ~20 min at 2 s
     _t += 2.0
-    _bf.update(3, 0.081 + _rnd.gauss(0, 0.35), 12, _t)  # E5a PRN 3, as measured
+    _bf.update(3, 0.081 + _rnd.gauss(0, 0.35), 12, _t)  # an E5a-scale bias and noise
 check(
     "SatBiasFilter converges to the P1-measured bias",
     abs(_bf.get(3, _t) - 0.081) < 0.03,
@@ -307,10 +304,10 @@ check(
     _bf.get(3, _t + 601.0) == 0.0 and "3:" in _bf.summary(_t + 601.0),
 )
 
-# -- JointReceiverState (task #33, P2a: the REVISION) --------------------------------------
-# CHORD_JOINT_TRACKING section 3a's contract. These are not "does the maths run" checks --
-# each is one of the claims the revision makes about WHY a joint solve beats the staged
-# design it replaces, written so that a regression toward per-sat tracking fails loudly.
+# -- JointReceiverState -------------------------------------------------------------------
+# The contract of docs/CHORD_JOINT_TRACKING.md section 3a. Each check is one of the reasons a
+# joint solve beats a staged per-satellite design, written so that a regression toward
+# per-satellite tracking fails.
 from gnss_broker.state_filter import JointReceiverState  # noqa: E402
 
 
@@ -340,21 +337,18 @@ _TB = {
     ("C", 39): -1.7,
     ("G", 14): +4.1,
     ("G", 21): -2.7,
-}  # chips: the MEASURED model-error scale
+}  # chips: the scale of the model's per-satellite error
 _js = JointReceiverState(q_b=0.013, gauge_sigma=0.1)
 _t = _run(_js, 151.0, _TB, 0.0, 400)  # ~13 min at 2 s
-# The gauge defines clk as the fleet mean, so compare clk+b_i per sat, not clk alone.
+# The gauge defines clk against the fleet (the median bias), so compare clk+b_i per
+# satellite, not clk alone.
 _err = max(abs(_js.predicted(k) - (151.0 + b)) for k, b in _TB.items())
 check(
     "JointReceiverState recovers clk+b_sat at the chips-wrong model scale",
     _err < 0.25,
     "worst %.3f chips over %d sats" % (_err, len(_TB)),
 )
-# ⚠️ STALE FOR FOUR DAYS AND INVISIBLE: this asserted mean(b) = 0, the convention the gauge
-# ABANDONED on 2026-08-23 when the pin moved to the median -- so it has failed on every run
-# since, and nobody saw, because selftest.py does not match the gate's test_*.py glob. (The
-# gate now runs it explicitly; same defect class as the fleetdll symlink that was red for
-# eight days.) The gauge pins the MEDIAN element, so that is what the check must say.
+# The default gauge ("median") pins the median bias, not the mean.
 _bs = sorted(_js.bias(k) for k in _TB)
 _med_b0 = (
     _bs[len(_bs) // 2]
@@ -368,12 +362,10 @@ check(
     % (_med_b0, sum(_js.bias(k) for k in _TB) / len(_TB)),
 )
 
-# BIRTH: the clock's ABSOLUTE value must survive the first cycle. The first version put
-# the whole offset into b0 by hand, and the gauge -- seeing no cross-covariance to a
-# newborn row -- sheared it back out of the biases without depositing it in clk, so the
-# state read `clk +0.000 +- 200` with the biases spread +-4.7. It ground its way back over
-# ~400 cycles, which also means a clock near L/2 would have converged to a WRAPPED ALIAS.
-# Caught on the first line of on-sky shadow output, not by this file; hence this check.
+# Birth: the clock's absolute value must survive the first cycle. An offset placed in the
+# biases is sheared back out by the gauge (it sees no cross-covariance to a newborn row)
+# without reaching clk, which then grinds back over hundreds of cycles, and a clock near L/2
+# would converge to a wrapped alias.
 _rnd.seed(4242)
 _jb = JointReceiverState()
 _jb.cycle([(k, 151.0 + b + _rnd.gauss(0, 0.3), 0.3) for k, b in _TB.items()], 2.0)
@@ -390,15 +382,15 @@ check(
     "clk %+.1f (want ~5100)" % _jw2.clk,
 )
 
-# THE SPLIT IS BANDWIDTH. A COMMON step must land in clk (fast, shared); a PER-SAT step
-# must land in that sat's b (slow, private). Getting this backwards is exactly the
+# The split is bandwidth. A common step must land in clk (fast, shared); a per-satellite
+# step must land in that satellite's b (slow, private). Getting this backwards is the
 # misspecification that makes the plant oscillate.
 _b_before = {k: _js.bias(k) for k in _TB}
 _c_before = _js.clk
 _t = _run(_js, 156.0, _TB, _t, 120)  # +5 chips common
-# Same staleness as above: comparing clk to the absolute 156 assumed the MEAN convention
-# (median-gauge clk sits at 156 + median-vs-mean of the biases, ~-0.45 for _TB). What a
-# common step must do is CONVENTION-FREE: clk moves by the step, the biases do not move.
+# Compared as a step, not against the absolute 156: under the median gauge clk sits at 156
+# plus the biases' median-vs-mean offset (~-0.45 for _TB). What a common step must do does
+# not depend on the gauge: clk moves by the step and the biases do not.
 check(
     "a COMMON offset moves clk (by the step), not the biases",
     abs((_js.clk - _c_before) - 5.0) < 0.4
@@ -408,7 +400,7 @@ check(
 )
 _clk_before = _js.clk
 _TB2 = dict(_TB)
-_TB2[("E", 3)] += 2.0  # ONE sat walks 2 chips
+_TB2[("E", 3)] += 2.0  # one satellite walks 2 chips
 _t = _run(_js, 156.0, _TB2, _t, 300)
 check(
     "a PER-SAT offset moves that bias, not the clock",
@@ -418,9 +410,9 @@ check(
     % (_js.bias(("E", 3)) - _b_before[("E", 3)], _js.clk - _clk_before),
 )
 
-# THE DISCRIMINATING TEST (section 3a): take a sat to no usable SNR and stop feeding it.
-# Its replica must keep moving with the SHARED clock while its bias holds -- that is the
-# property the rejected "anchor each sat to its own track" design does not have.
+# The discriminating test (section 3a): take a satellite to no usable SNR and stop feeding
+# it. Its prediction must keep moving with the shared clock while its bias holds, which a
+# design anchoring each satellite to its own track cannot do.
 _rnd.seed(77)
 _jc = JointReceiverState(q_b=0.013)
 _t = _run(_jc, 151.0, _TB, 0.0, 400)
@@ -432,15 +424,14 @@ check(
     "coast error %.3f chips after 600 s dark, clock moved %.1f"
     % (_jc.predicted(("E", 5)) - _truth_5, _run.clk - 151.0),
 )
-# clk_rate: check the PAIR (unbiased AND quiet). A Kalman velocity is noisy by
-# construction, so a single instantaneous sample against a tight bar tests luck -- the
-# first version of this check failed at 2 sigma on a correct filter. Average over a
-# window for the mean, and measure the scatter separately, because the scatter is the
-# quantity that decides whether this state can replace the l-a EMA at all.
+# clk_rate: check both bias and scatter. A Kalman velocity is noisy by construction, so a
+# single instantaneous sample against a tight bar tests luck: average over a window for the
+# mean, and measure the scatter separately, because the scatter decides whether this state
+# can replace the l-a EMA.
 from math import sqrt as _msqrt
 
 _rates = []
-_t0r, _clk0r = _t, _run.clk  # CONTINUE the ramp; a fresh origin per step is no ramp
+_t0r, _clk0r = _t, _run.clk  # continue the ramp; a fresh origin per step is no ramp
 for _ in range(300):
     _t += 2.0
     _clkr = _clk0r + 0.01 * (_t - _t0r)
@@ -459,11 +450,10 @@ check(
     "sd %.5f chips/s (l-a EMA scatter was 0.07)" % _sr,
 )
 
-# ROBUSTNESS. These reproduce the 2026-08-09 production incident directly: the filter
-# replaced a circular MEDIAN (outlier-proof) with a MEAN-gauged solve (not), and one
-# weak-sat detection -- the broker documents snr<60 giving ~2000-chip residuals -- walked
-# clk_rate to +0.074 ppm in 60 s, which then fed every unlocked seed 17 chips/min of
-# fictitious code drift. Each guard gets a check that FAILS without it.
+# Robustness. Unlike the circular median of the legacy clock, the solve is not
+# outlier-proof by construction: one weak-satellite detection thousands of chips off could
+# walk clk_rate and feed every unlocked seed a fictitious code drift. Each guard gets a
+# check that fails without it.
 _rnd.seed(808)
 _jr2 = JointReceiverState()
 _t2 = 0.0
@@ -490,7 +480,7 @@ check(
     abs(_jr2.clk_rate - _rate_ok) < 0.002,
     "rate %+.5f -> %+.5f chips/s (incident reached +0.76)" % (_rate_ok, _jr2.clk_rate),
 )
-# An ESTABLISHED sat throwing an outlier is the innovation gate's job.
+# An established satellite's outlier is the innovation gate's job.
 _rej0 = _jr2.rejected
 _t2 += 2.0
 _jr2.cycle([(("G", 11), 151.0 + 900.0, 0.3)], _t2)
@@ -524,13 +514,13 @@ check(
     "peak |rate| %.5f chips/s during the gauge re-reference" % _rmax,
 )
 
-# ── #94/S2: THE PRIOR GAUGE -- an absolute reference cannot step on membership ─────────
-# (KV, 2026-08-27). The median gauge defines clk against the POPULATION, so removing the
-# satellite that IS the median element steps bare clk by construction. The prior gauge's
-# reference is per-satellite and absolute, so the same event must move clk by ~nothing.
-# _TB's biases sorted: -3.4 -2.7 -1.7 +0.8 +2.9 +4.1 -- the median pair is (-1.7, +0.8).
-# Removing ("C", 39) (b = -1.7) moves the 5-sat median to +0.8: a 1.25-chip step in the
-# median-gauge convention, and the DISCRIMINATION both halves of this test hang on.
+# ── the prior gauge: an absolute reference does not step on membership ───────────────
+# The median gauge defines clk against the population, so removing the satellite that is
+# the median element steps bare clk by construction. The prior gauge's reference is
+# per-satellite and absolute, so the same event must move clk by ~nothing.
+# _TB's biases sorted: -3.4 -2.7 -1.7 +0.8 +2.9 +4.1, so the median pair is (-1.7, +0.8).
+# Removing ("C", 39) (b = -1.7) moves the 5-satellite median to +0.8: a 1.25-chip step in
+# the median-gauge convention, which both halves of this test discriminate on.
 def _churn_step(mode):
     """(at-event |dclk| within 5 cycles of the drop, settled |dclk| 300 cycles later,
         worst |d(clk+b_i)| over survivors, peak |rate| post-drop)."""
@@ -547,7 +537,7 @@ def _churn_step(mode):
     _keep = {k: b for k, b in _TB.items() if k != ("C", 39)}
     _n0 = len(_j._idx)
     _ev_clk, _rpk, _dropped_at = None, 0.0, None
-    _pre_ev = _j.clk  # clk on the cycle BEFORE the drop
+    _pre_ev = _j.clk  # clk on the cycle before the drop
     for _i in range(760):  # the drop lands at ~450 (max_age_s = 900 s)
         _tt += 2.0
         _j.cycle(
@@ -567,10 +557,9 @@ def _churn_step(mode):
     return _ev_clk, _settled, _wsum, _rpk
 
 
-# _TB residuals under either gauge centre near zero; removing ("C", 39) (residual ~ -1.25)
-# moves the survivors' MEDIAN by ~1.25 and their MEAN by ~0.25 chips. The median gauge pins
-# the former INSTANTLY (gauge_sigma 0.1 acts within a couple of cycles); the prior gauge
-# has no instantaneous pin at all and only re-equilibrates toward the latter, slowly.
+# Removing ("C", 39) moves the survivors' median by ~1.25 chips and their mean by a few
+# tenths. The median gauge pins the former at once (gauge_sigma 0.1 acts within a couple of
+# cycles); the prior gauge has no instantaneous pin and relaxes toward the latter, slowly.
 _pe, _psl, _pw, _pr = _churn_step("prior")
 _me, _msl, _mw, _mr2 = _churn_step("median")
 check(
@@ -599,23 +588,19 @@ check(
     "peak |rate| %.5f chips/s (bound 0.002, same as the median-mode bench)" % _pr,
 )
 
-# ROBUSTNESS RE-SUPPLIED (the 2026-08-09 lesson, third statement of it). The prior is
-# Huber-clamped, so it must (a) pull a uniformly displaced comb home -- the 2026-08-10
-# failure had the zero-centred inlier screen switch the gauge OFF at exactly that moment --
-# and (b) give ONE wild bias only a bounded pull on clk, not a proportional one.
-# THE TRADE IS DOCUMENTED IN gauge() AND ASSERTED HERE: with Huber R-inflation the comb's
-# +97-chip innovations are all far past cap, so healing is SLOW by design (immunity fast,
-# healing slow). What must hold throughout a displaced-comb episode is (a) the gauge never
-# switches itself off -- the 2026-08-10 zero-centred screen went silently dead here and the
-# comb sat at +97 for 50 min with NOTHING pulling -- and (b) clk + b_i stays correct, so
-# every sum-reading consumer rides through the episode untouched.
+# Robustness of the prior gauge. Its pull is Huber-weighted (see gauge()): it must (a) pull
+# a uniformly displaced comb home, and (b) give one wild bias only a bounded pull on clk, not
+# a proportional one. The comb's +97-chip innovations are all far past the Huber cap, so
+# healing is slow by design. What must hold throughout a displaced-comb episode is (a) the
+# gauge never switches itself off, as an inlier screen centred on zero would, and (b)
+# clk + b_i stays correct, so every consumer of the sum rides through the episode.
 _rnd.seed(813)
 _jh = JointReceiverState(gauge_mode="prior")
 _t5 = 0.0
 for _ in range(400):
     _t5 += 2.0
     _jh.cycle([(k, 151.0 + b + _rnd.gauss(0, 0.3), 0.3) for k, b in _TB.items()], _t5)
-for _k5 in _TB:  # the 2026-08-10 shape: comb at +97, clk at -97
+for _k5 in _TB:  # displaced comb: every bias +97, clk -97
     _jh.x[_jh._idx[_k5]] += 97.0
 _jh.x[0] -= 97.0
 _sums_ok = {k: _jh.predicted(k) for k in _TB}
@@ -639,14 +624,12 @@ check(
     "worst sum error %.3f chips during the heal" % _worst_sum,
 )
 
-# A WILD BIAS MUST ADD NOTHING BEYOND WHAT SILENCE ALONE DOES. The paired control is the
-# whole test: run the same fleet twice from the same seed -- once merely SILENCING a sat,
-# once corrupting its state by +97 AND silencing it -- and require the clk trajectories to
-# agree. Whatever silencing legitimately does to the soft-mean equilibrium (age-out at
-# 900 s, slow re-centre) happens in BOTH arms; the +97 itself must contribute ~nothing,
-# because R-inflation cuts its weight by (97/cap)^2 ~ 260x. The first implementation
-# (hard clamp at gauge_max_b, full gain) failed this by 2.27 chips and DID NOT recover;
-# a freshness screen then moved the churn to the silencing edge instead of removing it.
+# A wild bias must add nothing beyond what silence alone does. The paired control is the
+# whole test: run the same fleet twice from the same seed, once merely silencing a
+# satellite and once corrupting its state by +97 and silencing it, and require the clk
+# trajectories to agree. Whatever silencing does to the soft-mean equilibrium (age-out at
+# 900 s, slow re-centre) happens in both arms; the +97 itself must contribute ~nothing,
+# because R-inflation cuts its weight by (97/cap)^2 ~ 260x.
 def _wild_run(hack):
     _rnd.seed(814)
     _j = JointReceiverState(gauge_mode="prior")
@@ -675,10 +658,9 @@ def _wild_run(hack):
 
 _tw, _tc = _wild_run(True), _wild_run(False)
 _dmax = max(abs(a - b) for a, b in zip(_tw, _tc))
-# 0.25 is the honest bound, not a target: measured 0.156 -- the residual is 450 cycles of
-# the 1/260-weighted pull before age-out, against 2.27-AND-GROWING for the hard clamp. A
-# +97-chip state corruption has no production pathway (the innovation and birth gates own
-# that, tested above); this asserts the gauge cannot AMPLIFY one into a clock error.
+# The bound allows for ~450 cycles of the 1/260-weighted pull before age-out. A +97-chip
+# state corruption has no production pathway (the innovation and birth gates, tested above,
+# prevent it); this asserts the gauge cannot amplify one into a clock error.
 check(
     "PRIOR gauge: a +97-chip wild bias adds ~nothing beyond silencing alone",
     _dmax < 0.25,
@@ -686,7 +668,7 @@ check(
     "version: 2.27 and growing)" % _dmax,
 )
 
-# The gate must not DEADLOCK. A genuine step (clock event, re-anchor) is rejected by a
+# The gate must not deadlock. A genuine step (clock event, re-anchor) is rejected by a
 # normalized gate, so without an escape the state never follows it and every later
 # measurement is rejected too -- forever. Garbage is sporadic; a real move persists.
 _rnd.seed(811)
@@ -695,7 +677,7 @@ _t4 = 0.0
 for _ in range(400):
     _t4 += 2.0
     _jd.cycle([(k, 151.0 + b + _rnd.gauss(0, 0.3), 0.3) for k, b in _TB.items()], _t4)
-for _ in range(60):  # the clock STEPS 40 chips and stays there
+for _ in range(60):  # the clock steps 40 chips and stays there
     _t4 += 2.0
     _jd.cycle([(k, 191.0 + b + _rnd.gauss(0, 0.3), 0.3) for k, b in _TB.items()], _t4)
 check(
@@ -719,12 +701,11 @@ check(
     ("G", 2) not in _jw._idx and ("G", 1) in _jw._idx,
 )
 
-# -- CROSS-BAND (l-a): the rate is receiver-wide, the phase is not (task #34) -------------
-# The per-band gate on code_bias is a BOOTSTRAP TRAP for any band with no chain that can solve
-# its own clock, and 1207.14 MHz was exactly that: gal_e5b/bds_b2b adopted (l-a) zero times
-# while their 1176.45 siblings adopted it 102/107 times, leaving code_phase_rate = 0.0 on all
-# 19 PRNs and the code loop open. These assert the fix AND its limit -- the rate crosses bands,
-# the PHASE must not, because a per-band phase offset IS tau_band.
+# -- cross-band (l-a): the rate is receiver-wide, the phase is not -----------------------
+# A band where no chain solves its own clock gets no (l-a) from the band-scoped lookup, so
+# its seeds would carry code_phase_rate 0 and its code loop would never close. The rate
+# crosses bands (code_bias_any_band); the phase must not, because a per-band phase offset is
+# tau_band.
 _rx = receiver.Receiver()
 _rx.contribute_code_bias("gps_l5", "1176.45MHz", 1.5e-6, 6, 1000.0)
 check(
@@ -749,7 +730,7 @@ check(
     "cross-band fallback still honours max_age_s",
     _rx.code_bias_any_band(exclude="gal_e5b", t_now=1000.0 + 500.0) is None,
 )
-# The PHASE stays per band -- adopting it across carriers would inject tau_band itself.
+# The phase stays per band: adopting it across carriers would inject tau_band itself.
 _rx.contribute_dr_clock(
     "gps_l5", "1176.45MHz", 151.0, 0.01, 1000.0, 1023000, chip_rate_hz=10.23e6
 )
@@ -758,12 +739,10 @@ check(
     _rx.dr_clock("1207.14MHz", exclude="gal_e5b", t_now=1000.0) is None
     and _rx.dr_clock("1176.45MHz", exclude="gal_e5a", t_now=1000.0) is not None,
 )
-# ── CHIPS ARE A UNIT, THE CLOCK IS A TIME (2026-08-31, the gal_e6 bring-up root) ────────
-# The cross-band bootstrap adopted donor chips RAW; every consumer before gal_e6 shared the
-# donor's 10.23 Mcps so the missing rate conversion was invisible for the instrument's whole
-# life. gal_e6 (5.115 Mcps) adopted 150.2 "chips" = 2x the true clock TIME = +75 E6 chips of
-# code error on every seed -- pure noise, with codes/Doppler/RF all individually verified.
-# These are the exact numbers of the incident, so the trap cannot silently return.
+# ── chips are a unit, the clock is a time ────────────────────────────────────────────
+# A donor clock in chips must be converted through the two chip rates: 150.2 chips at
+# 10.23 Mcps is 75.1 chips at gal_e6's 5.115 Mcps, and adopted raw it reads as twice the
+# clock time (+75 chips of code error on every seed).
 check(
     "cross-rate clock adoption halves gps chips for the 5.115 Mcps consumer",
     abs(receiver.Receiver.clock_chips_convert(150.2, 10.23e6, 5.115e6, 5115) - 75.1)
@@ -774,10 +753,10 @@ check(
     abs(receiver.Receiver.clock_chips_convert(150.2, 10.23e6, 10.23e6, 10230) - 150.2)
     < 1e-9,
 )
-# THE EPOCH EXTENSION (gps_l2c's bootstrap): a donor precise mod its SHORT window plus an
-# independent clock-mod measurement covering OUR longer period. Donor gps_l5: 152.22 chips
-# @ 10.23 Mcps = 14.879 us, window 1 ms; NH joint consensus says clock mod 20 ms ~ 40 us
-# (noisy to +-100 us -- it only has to pick among candidates 1 ms apart). Truth 14.879 us.
+# The epoch extension (gps_l2c's bootstrap): a donor precise mod its short window plus an
+# independent clock-mod measurement covering our longer period. Donor gps_l5: 152.22 chips
+# at 10.23 Mcps = 14.879 us, window 1 ms; the NH joint fit says clock mod 20 ms ~ 40 us
+# (it only has to pick among candidates 1 ms apart). Truth 14.879 us.
 _t, _r = receiver.Receiver.clock_extend_mod(152.22 / 10.23e6, 1e-3, 40e-6, 0.02, 0.02)
 check(
     "epoch extension recovers the donor's precision, k from the mod measurement",
@@ -829,11 +808,12 @@ check(
     "%.6g chips/hop" % _r_e5b,
 )
 
-# -- CROSS-BAND CLOCK PHASE: a bootstrap, with a modulus rule (task #34) ------------------
-# Layer 2 (the rate) was necessary and NOT sufficient: with the clock 150 chips out there is no
-# peak for a rate to hold. These assert the bootstrap AND its guard rail -- a clock may be
-# reduced to a shorter code but never lengthened, because a value known mod 10230 says nothing
-# about which of the 100 periods of a 1023000-chip code it sits in.
+# -- cross-band clock phase: a bootstrap, with a modulus rule -----------------------------
+# The rate alone is not enough: with the clock 150 chips out there is no peak for a rate to
+# hold. These check the phase bootstrap and its guard: a clock may be reduced to a shorter
+# code but not lengthened on its own, because a value known mod 10230 says nothing about
+# which of the 100 periods of a 1023000-chip code it sits in (only the epoch extension above
+# can resolve that).
 _rx2 = receiver.Receiver()
 _rx2.contribute_dr_clock("gps_l5", "1176.45MHz", 150.74, 0.01, 2000.0, 1023000)
 check(
@@ -850,7 +830,7 @@ check(
     "reducing to a SHORTER code is well defined (150.74 mod 10230)",
     abs((_c.value % 10230.0) - 150.74) < 1e-9,
 )
-# The refusal that matters: a short-code donor must not seed a long-code consumer.
+# The refusal that matters: a short-code donor must not seed a long-code consumer alone.
 _rx3 = receiver.Receiver()
 _rx3.contribute_dr_clock("bds_b2b", "1207.14MHz", 150.74, 0.01, 2000.0, 10230)
 _c3 = _rx3.dr_clock_any_band(exclude="gal_e5a", t_now=2000.0)
@@ -863,7 +843,7 @@ check(
     _rx2.dr_clock_any_band(exclude="gps_l5", t_now=2000.0) is None
     and _rx2.dr_clock_any_band(exclude="gal_e5b", t_now=2000.0 + 500.0) is None,
 )
-# The error the bootstrap accepts is tau_band-sized, not 150 chips -- state the arithmetic.
+# The error the bootstrap accepts is tau_band-sized, not 150 chips: the arithmetic.
 check(
     "bootstrap replaces a 150-chip error with a sub-chip one",
     abs(150.74 - 0.0) > 100.0 and abs((150.74 % 10230.0) - 150.74) < 1e-9,

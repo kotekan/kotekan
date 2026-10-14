@@ -1,28 +1,14 @@
 """Per-satellite state tables, grouped by the loop that owns them.
 
-WHY GROUPED, AND WHY NOT ONE BAG. `main()` held roughly ninety long-lived tables as bare
-locals -- `car_trim`, `wd_birth`, `nh_offset` and their neighbours -- with nothing saying which
-loop owned which, or which had to move together. That is not merely untidy: it is why a stage
-cannot leave `main()` (a bare local has no home to reference from another module), and it is
-how the carrier loop was able to assign over the DLL's `fleet` dict for a whole cycle without
-anything noticing.
+Each class is one loop's memory: the tables that would be reset together if that loop were
+restarted. main() builds one owner per class and hands it to the stages through the context
+(ctx.dls, ctx.cpt, ...), so a stage in another module reaches a table through its owner.
+An owner's name in main() must be used for nothing else there: rebinding it, even as a loop
+variable or an unpack target, silently replaces the owner for every later line.
 
-Each class below is ONE loop's memory. The test for membership is not "is it about
-satellites" -- everything here is -- but "would these be reset together if the loop were
-restarted". A table that would survive its neighbours' reset belongs somewhere else.
-
-⚠️ GIVE THE OWNER A NAME NOTHING ELSE USES. The first version of this called them `_car` and
-`_wd` -- and `_car` is already a tuple element in the dead-reckon seeding loop, `_wd` already a
-field of the seed-audit unpack. The second one is the worse case: it sits at `main()`'s own
-level, so it REBOUND the owner every cycle, which is precisely the `fleet`-clobber class this
-refactor exists to eliminate. Nothing broke only because no later line used it. The names are
-`_carrier` and `_watchdog` now, and an owner name should be checked against the file before it
-is chosen.
-
-⚠️ THESE ARE PER-PRN DICTS, MUTATED IN PLACE. Nothing here should ever be REBOUND
-(`self.trim = {}`); clear it instead. A rebind breaks every reference the context is holding,
-silently, and the symptom appears in whichever stage reads it next rather than where it
-happened.
+The per-PRN dicts and sets are mutated in place, never rebound: clear() rather than
+`self.trim = {}`, so a table aliased anywhere (a local, a helper's argument) is never left
+reading a dead copy. RateFeedState's per-cycle fields are the exception and say so.
 
 @author Keith Vanderlinde
 """
@@ -31,38 +17,39 @@ happened.
 class NhOverlay(object):
     """Neumann-Hoffman overlay alignment: which overlay chip the sky is on.
 
-    ⚠️ THE OVERLAY SIDEBANDS LAND ON THE SEARCH GRID while the true peak scallops between
-    bins (#41). Comparing candidates on raw bin power therefore prefers a sideband; the
-    comparison has to happen on the parabola VERTEX. The benches missed this for a while
-    because their truth Doppler sat exactly on-grid, where the two agree.
+    `seen` holds each PRN's nh as the C++ search reported it. The search compares overlay
+    candidates on the parabola vertex: an overlay-mismatch sideband lands on a Doppler grid
+    bin while the true peak scallops between bins, so raw bin power would prefer the sideband.
+    searchhint.py (--nh-hint) learns one receiver offset from these reports.
     """
 
     __slots__ = ("last_rh", "off_hist", "offset", "seen")
 
     def __init__(self):
-        self.last_rh = {}  # prn -> ref_hop already folded in, so a stale detection
-        #        cannot be re-counted and fake a full window of agreement
-        # POOLED, not per-PRN: (t, predicted - reported) is ONE receiver-clock constant, and
-        # it is timestamped so the offset can EXPIRE rather than harden.
+        # prn -> the ref_hop last folded into off_hist: an unchanged detection is not counted
+        # again, so nh_hint_min_samples counts evidence rather than uptime
+        self.last_rh = {}
+        # Pooled over PRNs: (t, (predicted - reported nh) mod nh_overlay_len). The offset is one
+        # receiver-clock constant; the timestamp lets a sample expire (nh_hint_max_age_s).
         self.off_hist = []
-        # A ONE-CELL LIST, not a scalar: the calibrated constant is read and rewritten from
-        # several places, and the cell is what makes those the same object.
+        # [offset in overlay chips]: the circular median of the fresh samples, None while
+        # fewer than nh_hint_min_samples are fresh
         self.offset = [None]
-        self.seen = {}  # prn -> (nh, ref_hop) last REPORTED by the search
+        self.seen = {}  # prn -> (nh, ref_hop) last reported by the search
 
 
 class DllLoopState(object):
     """The code delay-lock loop's memory, and the arming handshake with the C++ gather.
 
-    ⚠️ AUTHORITY IS HELD BY EXACTLY ONE ARM AT A TIME. `armed_last` is what was last POSTED to
-    the gather -- what the C++ loop is actuating RIGHT NOW -- not what this cycle is about to
-    compute. The Python integrator stands down per-PRN against that set, so the trim is never
-    driven by both and never by neither. It is recorded BEFORE the POST rather than after,
-    because a failed POST must leave both sides believing the C++ side is still driving.
+    One arm drives each PRN's trim. `armed_last` is the armed set last sent to the gather,
+    whose C++ loop actuates it; the Python integrator (codeloop.py) stands down for those
+    PRNs. It is recorded before the POST, so after a failed POST a PRN armed since the last
+    successful one is driven by neither arm, and one released since then by both, until a POST
+    succeeds (trimarm.stage_fleet_trim_arming).
 
-    ⚠️ `hold` IS PRESENCE WITH A MEMORY, not presence at an instant. A satellite flickering
-    across the deep gate would otherwise be armed and released every cycle, and an arming
-    change costs the standing trim.
+    `hold` is presence with a memory: a PRN stays armed for fleet_trim_hold_s after it was
+    last present. A released trim leaks away, so a satellite flickering across the presence
+    gate would otherwise lose its standing trim every cycle.
     """
 
     __slots__ = (
@@ -81,43 +68,42 @@ class DllLoopState(object):
         self.last = {}  # prn -> last discriminator seen (dedup: one integration/emit)
         self.last_hop = (
             {}
-        )  # prn -> last window index integrated (an exact integer test)
-        # prn -> the gather's reported standing trim. seed + THIS is where the tracker's tap
-        # actually sits, which is the number every downstream judge of the seed was missing.
+        )  # prn -> hop of the last window integrated (an exact integer test)
+        # prn -> the gather's /get_dll row (trim_chips, armed). The tracker despreads at
+        # seed + trim_chips; cleared when a read fails, so missing means unknown.
         self.readback = {}
-        self.hold = {}  # prn -> last time PRESENT (the arming hold)
-        self.armed_last = set()  # what the C++ loop is actuating right now
-        # arming POSTs made / failed, and the last POST or readback error (the FLEET-TRIM log)
+        self.hold = {}  # prn -> wall time last present (the arming hold)
+        self.armed_last = set()  # the armed set last sent to the gather
+        # arming POSTs made / failed, and the last POST or readback error (the FLEET-TRIM line)
         self.stat = {"posts": 0, "fail": 0, "last_err": ""}
         self.deep_gate_seen = (
             {}
-        )  # prn -> last time the SEARCH saw it above the deep bar (#79)
+        )  # prn -> t0 of the last search detection at snr >= --dll-deep-gate-from-search
 
 
 class HoldState(object):
-    """Why a satellite is being held rather than dropped, and for how long.
+    """Lock evidence carried between cycles, and the counters that hold or coast a seed.
 
-    ⚠️ A HOLD IS NOT A LOCK. These tables decide whether to keep feeding a seed through a
-    dropout; they say nothing about whether the tracker is actually on the peak. Judge that on
-    q, never on hold state -- and never on sig/deep/cn0_coh, which duty-cycle with the fold.
+    A hold is not a lock: `miss` and `low_hits` decide whether a seed is kept through a
+    dropout, not whether the tracker is on the peak. Judge lock on q, never on hold state or
+    on sig/deep/cn0_coh, which duty-cycle with the fold.
     """
 
     __slots__ = ("miss", "prev", "q", "low_hits")
 
     def __init__(self):
-        self.miss = {}  # prn -> consecutive polls with no usable record
-        self.prev = {}  # prn -> the tracker's own last propagation (the slew anchor)
-        self.q = {}  # prn -> last fleet q seen while held
-        self.low_hits = {}  # prn -> consecutive below-threshold polls
+        self.miss = {}  # prn -> consecutive sub-gate reads of a held PRN (held below 3)
+        self.prev = {}  # prn -> last cycle's fleet prompt ratio p_pow/p_med
+        self.q = {}  # prn -> last cycle's fleet q
+        self.low_hits = {}  # prn -> below-lock polls in a row (dropped at coast_polls)
 
 
 class CpTracking(object):
     """Per-satellite code-phase history: fits, escapes, and the translated set.
 
-    ⚠️ code_phase_chips IS AN ARGUMENT, NOT A TRANSPORTABLE QUANTITY. It is meaningful only
-    against the epoch it was measured at (~5095 chips per Hz of Doppler), so it must never be
-    transported or DIFFERENCED across epochs -- only `cp_at_ref` is comparable. Half the
-    histories here exist to make that distinction checkable after the fact.
+    code_phase_chips is an argument, not a transportable quantity: it means something only
+    against the epoch it was measured at (~5095 chips per Hz of Doppler), so it is never
+    transported or differenced across epochs; only the at-ref phase is comparable.
     """
 
     __slots__ = (
@@ -136,26 +122,27 @@ class CpTracking(object):
     )
 
     def __init__(self):
-        self.err_hist = {}  # prn -> recent (predicted - observed) code phase
-        self.escape = {}  # prn -> escape-detector state
-        self.escape_sign = {}  # prn -> the sign it escaped in
-        self.hist = {}  # prn -> recent (t, cp) for the rate fit
-        self.translated = set()  # prns whose cp has been translated this pass
-        self.dop_hist = {}  # prn -> recent Doppler observations
-        self.ph_hist = {}  # prn -> recent carrier-phase observations
-        self.dop_clamped = set()  # prns whose Doppler hit a clamp this pass
+        # prn -> a held PRN's last 9 innovations (detection - forecast - trim)
+        self.err_hist = {}
+        self.escape = {}  # prn -> consecutive same-sign escapes (re-anchor at 5)
+        self.escape_sign = {}  # prn -> the last escape's cp_err (its sign)
+        self.hist = {}  # prn -> recent (ref_hop, cp, dop) for the rate fit
+        self.translated = set()  # prns whose TRANSLATE line has been logged
+        self.dop_hist = {}  # prn -> recent (ref_hop, dop) for the Doppler-rate fit
+        self.ph_hist = {}  # prn -> (ref_hop, ph, dop) for the period-continuity check
+        self.dop_clamped = set()  # prns whose DOP-CLAMP line has been logged
         self.nh_pending = {}  # prn -> (m, count): a measured overlay period awaiting
-        # confirmation before it may rewrite the standing one (#97)
+        # --nh-period-debounce confirmation before it replaces the standing one
         self.nh_votes = (
             {}
-        )  # prn -> (utc, delta_chips, weight): each detection's measured
-        # receiver-common overlay offset (chips mod the overlay epoch);
-        # the NH20 label is ONE receiver clock mod 20 ms that every
-        # satellite votes on, never N per-sat 20-way guesses (--nh-joint)
+        )  # prn -> (wall time, delta_chips, weight): each detection's measured
+        # receiver-common overlay offset (chips mod the overlay epoch). The
+        # offset is one receiver clock mod the overlay epoch that every
+        # satellite votes on, not a per-satellite guess (--nh-joint)
         self.nh_common = (
-            None  # (delta_chips, utc_resolved, n_prns, weight_frac) once the
+            None  # (delta_chips, t_resolved, n_prns, weight_frac) once the votes
         )
-        # fleet consensus resolves; a run constant barring clock steps
+        # resolve; kept until a newer resolution, never expired
         self.rej_streak = {}  # prn -> consecutive cp-rate rejections; at
         # --fit-flush-on-reject the wrap-poisoned history is flushed
 
@@ -163,22 +150,21 @@ class CpTracking(object):
 class RateFeedState(object):
     """The carrier-rate observables fed to the joint receiver, and their commanded half.
 
-    ⚠️ THE REFERENCE IS THE WHOLE POINT. `deep_rate` is measured on records the tracker has
-    ALREADY derotated by the commanded trim, so what the search reports is only what REMAINS.
-    The standing command (`cmd_applied`) is added back so the observable describes the SKY.
-    Feed the residual raw and the estimator measures its own actuator -- that is #33 GAP 2's
-    mirror, and it is invisible in the numbers because a mirror looks like a good fit.
+    `cmd_applied` is the standing carrier command (Hz) shipped last poll, the reference the
+    coarse and KCOH feeds add back to each measured residual under --rrate-feed-applied 1.
+    That is right only for a tracker whose records still carry the actuation; a record
+    assembler that folds the applied trim out already reports the whole residual, and adding
+    the command back makes each row integrate its own actuation (see that flag).
 
-    ⚠️ `full_ok` IS HOW THE COMMAND REFUSES A DEGRADED FEED. Past its cap, `deep_rate_hz`
-    reports the best in-cap bin -- which is NOISE, and is what walked arm 1. The full-band
-    field distinguishes them; without it the loop must not close.
+    `full_ok` is how the command refuses a degraded feed: past its cap `deep_rate_hz` reports
+    the best in-cap bin, which is noise, so no command is computed in a poll where no row
+    carries the uncapped deep_rate_full_* fields.
 
-    ⚠️ ONE RESIDUAL COMPUTATION PER POLL. `rate_residuals` consumes a window: asked twice in a
-    cycle it reads "the same window again" and returns {} the second time.
+    One residual computation per poll: `rate_residuals` advances its per-PRN continuity state,
+    so asked twice in a cycle it reads the same window again and returns {} the second time.
 
-    The per-cycle fields (`resid2`, `full_ok`) are unconditionally reassigned
-    at the top of every pass. They live here rather than as loop locals so that a stage which
-    computes them can be a module-level function -- an attribute needs no `nonlocal`.
+    The per-cycle fields (`resid2`, `full_ok`) are reassigned every pass. They live here rather
+    than as loop locals so the stages that read them can be module-level functions.
     """
 
     __slots__ = (
@@ -204,10 +190,9 @@ class RateFeedState(object):
         # ---- per-cycle, reassigned every pass ----
         self.resid2 = {}  # prn -> carrier-rate residual on the uncapped fields
         self.full_ok = False  # is the full-band rate field present this cycle?
-        # How many commands hit the slew rail this pass, and how many were released. These
-        # are `+=` counters, and an augmented assignment READS before it writes -- which is
-        # what made them impossible to leave as loop locals once the stage that increments
-        # them became a function. That cost gal_e5a a chain death on 2026-08-26.
+        # How many commands hit the slew rail this pass, and how many were released (the
+        # JRR-CMD line). `+=` counters incremented inside stage_push_seeds, so they cannot be
+        # loop locals; the broker zeroes them before each call.
         self.railed = 0
         self.released = 0
 
@@ -215,14 +200,13 @@ class RateFeedState(object):
 class NavDecoders(object):
     """The broadcast navigation-message decoders, created lazily and kept across cycles.
 
-    Eight decoders, one per message format. Each is built on the first row that needs it and must then PERSIST --
-    a decoder that is rebuilt has forgotten the subframes it had collected, so it can never
-    complete an ephemeris. Holding them as attributes is what let the nav-bit stage leave
-    `main()`: eleven `nonlocal` declarations cannot cross a module boundary.
+    Eight decoders, one per message format. Each is built on the first row that needs it and
+    must then persist: a rebuilt decoder has forgotten the subframes it had collected, so it
+    can never complete an ephemeris.
 
-    ⚠️ OFF IN PRODUCTION. `--nav-bits` is not set in the CHORD yaml, so none of this runs on
-    the live instrument and no fixture reaches it. Changes here are unverified until the flag
-    is armed -- the same blind spot the carrier loop has.
+    Idle on CHORD: --nav-bits defaults on but self-gates on nav_obs, which no CHORD combiner
+    exports (bit_export), and no aux combiner (--cnav-combiner and the rest) is configured.
+    No test reaches the nav-bits stage either.
     """
 
     __slots__ = (
@@ -260,9 +244,8 @@ class NavDecoders(object):
         self.bcnav2 = None  # BeiDou B-CNAV2
         self.bcnav3 = None  # BeiDou B-CNAV3
         self.log_t = 0.0  # last summary-line time (rate limit)
-        # ⚠️ ONE-CELL LISTS, not floats. Each is a rate-limit stamp mutated in place by the
-        # decoder that owns it; the cell is what makes the reader and the writer the same
-        # object. Flattening them to scalars would silently give every writer its own copy.
+        # One-cell lists [t]: each decoder's 60 s health-line stamp, written as x_log_t[0].
+        # log_t above is shared by the LNAV and CNAV health lines.
         self.inav_log_t = [0.0]
         self.fnav_log_t = [0.0]
         self.bcnav1_log_t = [0.0]
@@ -271,8 +254,8 @@ class NavDecoders(object):
         self.cnav2_log_t = [0.0]
         # Which CNAV variant this chain's carrier implies (L2C vs L5), resolved once.
         self.cnav_sig = None
-        # Per-decoder combiner endpoints: a nav decode reads a DIFFERENT stream from the
-        # tracking chain, so these are separate endpoints and may each be absent.
+        # Aux combiner endpoints (--cnav-combiner etc.), each None unless set: the data
+        # symbols come from a sibling chain, not from this broker's own pilot combiner.
         self.cnav_combiner = None
         self.cnav2_combiner = None
         self.fnav_combiner = None

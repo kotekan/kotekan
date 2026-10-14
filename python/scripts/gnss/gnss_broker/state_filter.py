@@ -1,16 +1,9 @@
-"""The receiver-state filter (task #33, docs/CHORD_JOINT_TRACKING.md section 3).
+"""The receiver-state filters (docs/CHORD_JOINT_TRACKING.md section 3).
 
-Built INCREMENTALLY, one state behind one gate at a time -- the #30 lesson is that a
-plausible estimator change deployed whole can make a working instrument worse in ways its
-own diagnostics excuse. First state to close the loop: the per-satellite slow bias b_sat,
-because P1 measured it directly (E5a PRN 3 +0.081 +- 0.016 chips at 5.2 sigma, PRN 23
--0.090 at 6.6 sigma, B2a 36 -0.087 -- while GPS's search-anchored sats hold zero to
-+-0.03), it is physical (iono at 1176 MHz is 0.1-0.3 chips, plus tropo and BRDC error),
-and it is exactly what the #30 slew institutionalizes today by holding seeds at a model
-that does not know it.
-
-The clock/rate/carrier states arrive in SHADOW MODE next: updated and logged beside the
-EMAs they will replace, consumed by nothing until the comparison says so.
+SatBiasFilter: a chain-local, slow per-satellite code bias b_sat fed by the fleet slope-fit
+tau. JointReceiverState: one receiver-wide Kalman state over the clock (clk, clk_rate), the
+per-satellite code biases b_sat[i], the carrier frequency offset f_carrier and the
+per-satellite range-rate errors rrate[i], shared by every chain thread.
 """
 import math
 import threading
@@ -19,15 +12,11 @@ import threading
 def _locked(fn):
     """Serialize a JointReceiverState entry point on the instance lock.
 
-    THE 07:05 INCIDENT (2026-08-18): the joint state is ONE object shared by five chain
-    threads -- gps_l5's code cycle(), every chain's kcoh update_rrate(), gal_e5a's fine
-    phase feed, gauges, predict(), and the age-out _drop() -- and Receiver.joint_receiver()
-    locks only the LOOKUP. Every structure mutation (x and P resized in two adjacent
-    statements) was racing every other; at 07:05:17 a thread switch landed between them
-    during a C-sat rejection storm and x/P desynced by one row (112 vs 111), after which
-    every birth appended into inconsistent geometry (the mismatch grew to 771) and the
-    broker's per-consumer guard reported "disabled this cycle" for three hours. The
-    matrices are ~100x100 -- the lock costs nothing against a 2 s poll cycle."""
+    One state is shared by every chain thread (the code feed's cycle(), each chain's rate
+    feeds, the gauges, predict() and the age-out _drop()), and Receiver.joint_receiver()
+    locks only the lookup. x and P are resized in separate statements, so an unlocked thread
+    switch between them desyncs their shapes and every later birth builds on the mismatch.
+    The matrices are about 100 rows, so the lock is cheap against a 2 s cycle."""
 
     def _wrap(self, *a, **k):
         with self._lk:
@@ -42,29 +31,24 @@ def _locked(fn):
 class SatBiasFilter:
     """Per-satellite slow code-phase bias (chips), estimated from the fleet slope-fit tau.
 
-    tau measures sky-minus-replica directly (P1's sign convention, proven by the GPS
-    zero-check and the E/L anti-correlation), so once seeds CONSUME b_sat the measured tau
-    becomes the filter's residual: convergence drives tau -> 0 while b_sat holds the bias.
-    That closure is also the health metric -- if b_sat wanders instead of holding values
-    near P1's open-loop means, the loop is eating its own error signal and must be opened.
+    tau is sky minus replica, and the dead-reckon seeds add b_sat, so the measured tau is
+    the filter's residual: convergence drives tau to 0 while b_sat holds the bias. If b_sat
+    wanders instead of holding, the loop is feeding back its own error and must be opened.
 
-    THE THREE GATES, each from a measured P1 caveat rather than taste:
-      * PRESENCE (caller-side): weak-sat tau is self-reference-biased toward zero (the
-        phi_i solve at tau=0 pre-aligns that point), so a weak sat's "tau ~ 0" is NOT a
-        measurement. The caller only feeds tau for sats passing its lock metric, and this
-        class additionally requires min_inst instances -- a 4-instance fit during a rolling
-        restart read 0.9 chips of scatter where 12 instances read 0.27.
-      * INNOVATION: lobe captures land near +-3.27 chips (measured ~0.3% of strong
-        windows, NOT flagged by peak/floor) and real biases are < ~0.3, so anything with
-        |tau - b| > innovation_max is rejected as an outlier, counted, never averaged in.
-      * AGE: iono decorrelates over tens of minutes, so a bias not measured for max_age_s
-        stops being APPLIED (get() returns 0) while the value is retained for logging --
-        a stale correction silently applied is exactly the un-inspectable state this
-        filter exists to remove.
+    Three gates:
+      * Presence (caller side): a weak satellite's tau is biased toward zero by self-reference
+        (the phi_i solve at tau = 0 pre-aligns that point), so it is not a measurement. The
+        caller feeds tau only for satellites passing its lock metric, and this class also
+        requires min_inst instances: fits from a few instances scatter several times more.
+      * Innovation: lobe captures land near +-3.27 chips and are not flagged by peak/floor,
+        while real biases are under ~0.3, so |tau - b| > innovation_max is counted as a
+        rejection and never averaged in.
+      * Age: iono decorrelates over tens of minutes, so a bias not measured for max_age_s
+        stops being applied (get() returns 0) but is kept for logging.
 
-    Slow by design: gain 0.02/update at ~2 s cadence is a ~100 s time constant, far above
-    the measurement noise (steady-state sigma_b ~ 0.04 chips at sigma_win 0.4) and far
-    below the iono timescale. Clamped because no physical bias at this band is a chip.
+    Slow by design: gain 0.02 per update at a ~2 s cadence is a ~100 s time constant, well
+    above the measurement noise and well below the iono timescale. Clamped because no
+    physical bias at this band reaches a chip.
     """
 
     def __init__(
@@ -95,7 +79,7 @@ class SatBiasFilter:
         return True
 
     def get(self, prn, t_now):
-        """The bias to APPLY (chips): 0 unless measured recently enough to trust."""
+        """The bias to apply (chips): 0 unless measured within max_age_s."""
         t = self._t.get(prn)
         if t is None or (t_now - t) > self.max_age_s:
             return 0.0
@@ -114,67 +98,40 @@ class SatBiasFilter:
 
 
 class JointReceiverState:
-    """P2a: ONE joint solve over [clk, clk_rate, b_sat[i]] (CHORD_JOINT_TRACKING section 3a).
+    """One joint solve over [clk, clk_rate, b_sat[i]] (docs/CHORD_JOINT_TRACKING.md section
+    3a), plus the carrier rows f_carrier and rrate[i].
 
-    THE REVISION THIS IMPLEMENTS. SatBiasFilter above estimates b_sat with no clock state,
-    which is sound only while the clock is somebody else's solved constant. It is not: the
-    BRDC model is per-satellite wrong by +-3-7 chips (be7d46e8e:docs/gnss_gpu_search.md 11.22),
-    the existing clock is the circular MEDIAN of exactly those wrong residuals, and b_sat and
-    clk are degenerate within a single epoch -- N sats, N+2 unknowns, N measurements. The ONLY
-    thing that separates them is that the clock moves fast and the biases do not, i.e. process
-    noise, i.e. a filter. Estimating biases first (SatBiasFilter) means estimating them with no
-    clock removed, which is today's failure mode. Hence: one solve, never staged.
+    Why one solve: the BRDC model is wrong per satellite by chips, and b_sat and clk are
+    degenerate within a single epoch (N satellites, N+2 unknowns, N measurements). Only their
+    timescales separate them -- the clock moves fast, the biases slowly -- which is process
+    noise, i.e. a filter. Estimating the biases first would estimate them with no clock
+    removed.
 
-    THE MEASUREMENT is the same scalar for every source, which is what makes constellations
-    poolable at all:
+    The measurement is the same scalar for every source:
 
-        y_i = (where the replica actually is, physically) - (pure model, no clock, no bias)
+        y_i = (where the replica is) - (pure model, no clock, no bias) = clk + b_i + noise
 
-    For a MODEL-PRIMARY sat (E5a/B2a) that is `dr_seed_phys(seed) + dll_trim - cp_predicted`
-    plus the fleet slope-fit tau (sky-minus-replica, P1's proven sign). For a SEARCH-ANCHORED
-    sat (GPS) it is the dead-reckon integrity residual BEFORE the median is removed -- the
-    quantity the broker has logged every cycle for a month while treating its per-sat spread
-    as an error rather than as the b_sat measurement it always was. Both satisfy
+    The broker feeds the dead-reckon offsets of search detections (dr_joint_shadow): the
+    search's code phase minus the model, before the legacy clock solve takes their circular
+    median.
 
-        y_i = clk + b_i + noise
+    clk and clk_rate are fast and shared; each b_i is bounded and moves on minute timescales
+    (q_b is ~0.1 chips per 60 s). A satellite that loses SNR keeps its last b_i while its
+    prediction moves with the shared clock (section 3a's test; the selftest's coast check).
 
-    so the whole receiver -- three constellations, two seeding disciplines -- contributes to
-    one clock.
+    The gauge: adding c to clk and subtracting c from every b_i predicts identical
+    measurements, so the common mode is unobservable and gauge() pins it (see gauge_mode).
+    Under the prior gauge, a soft mean(b) = 0, one satellite whose true bias moves by d
+    shifts clk by ~d/N and every other bias by ~-d/N; clk + b_i, the only observable a
+    consumer reads, is unaffected.
 
-    WHY THE STATE STAYS SMALL WHERE IT COUNTS. b_sat[i] is per-satellite, so the state grows
-    with the fleet; the vector-tracking win survives because what carries a fading satellite
-    is BANDWIDTH, not parameter count. clk/clk_rate are fast and shared; each b_i is bounded
-    and moves on minute timescales (q_b defaults to ~0.1 chips per 60 s), contributing no
-    fast dynamics. A satellite that loses SNR keeps its last b_i frozen and its replica
-    keeps moving with the shared clock -- that is the discriminating test in section 3a, and
-    `coast_error` exercises it in the selftest.
+    Every code-phase innovation is wrapped into [-L/2, L/2). The state itself is unwrapped,
+    so clk_rate sees a continuous clock.
 
-    THE GAUGE. Adding c to clk and subtracting c from every b_i predicts identical
-    measurements: the common mode is structurally unobservable and would random-walk. It is
-    pinned by a mean(b) = 0 pseudo-measurement over the ACTIVE sats each cycle, which is not
-    an arbitrary choice -- it makes clk "the fleet-mean offset" and b_i "this sat's deviation
-    from it", exactly the convention the circular-median clock already implies, so the
-    shadow comparison is like-for-like.
-
-    Modulo: every innovation is wrapped into (-L/2, L/2]. The state itself is unwrapped, so
-    clk_rate sees a continuous clock.
-
-    ⚠️ ROBUSTNESS IS NOT OPTIONAL HERE, AND IT WAS LEARNED THE EXPENSIVE WAY. This state
-    replaces a CIRCULAR MEDIAN, which is outlier-proof by construction; the gauge above is a
-    MEAN, which is not. Deployed on 2026-08-09 with no input quality gate, innov_max=None
-    and a birth path that bypassed gating, it took ONE weak-sat detection -- the broker's own
-    comments document snr<60 giving ~2000-chip residuals -- to walk clk_rate to +0.074 ppm
-    in 60 s. On sky it reached -0.028 ppm and fed every unlocked seed 17 chips/min of
-    fictitious drift. THE LESSON: when replacing a robust estimator with an efficient one,
-    the robustness has to be re-supplied explicitly, or it is simply gone.
-
-    KNOWN AND INTENDED -- THE GAUGE LEAKS 1/N. One satellite whose true bias moves by d
-    shifts the fleet mean by d/N, so the gauge moves clk by d/N and every other bias by
-    -d/N (measured in the selftest: d = 2.0 chips over 6 sats -> dclk = 0.30). This is not
-    an error, it is what "clk is the fleet mean" MEANS, and it is the same convention the
-    circular-median clock already had. It does argue for keeping N healthy: with three
-    constellations feeding one clock the leak is ~4%, and it is another reason not to let
-    a chain solve its own clock in isolation.
+    The legacy clock is a circular median, outlier-proof by construction; this filter is
+    not, so robustness is supplied explicitly: the birth window (birth_max), the normalized
+    innovation gate and its corroborated escape, the rate ceiling (rate_max), the P floor
+    and the deaf latch.
     """
 
     def __init__(
@@ -215,214 +172,135 @@ class JointReceiverState:
         self._np = np
         self._lk = (
             threading.RLock()
-        )  # see _locked: five chain threads share this object
+        )  # see _locked; re-entrant because locked methods call each other
         self.L = float(code_len)
         self.sigma_clk0 = float(sigma_clk0)
-        # ⚠️ THE RATE PRIOR IS PHYSICS, NOT A CEILING (2026-08-21; task #86's root).
-        # This defaulted to 1.0 chips/s -- the SAME value as rate_max, the absolute garbage
-        # ceiling, which this class's own note describes as "0.1 ppm ... 2500x the truth".
-        # A prior that wide makes clk_rate almost a free parameter at birth, so the first
-        # innovations land in it: measured, ONE 0.94-chip innovation taught -0.1002 chips/s
-        # (K1 0.107) -- and predict() then integrates that rate, walking the clock away from
-        # a state that can no longer accept the measurements which would correct it. Seen
-        # live 2026-08-21: clk +684 against a legacy truth of 151, rate +0.53 chips/s,
-        # updates frozen, sigma still reporting 0.040. That is #86's "fresh filter pins
-        # clk_rate at hundreds of times truth and self-locks", and the RATE-TEACH forensics
-        # already in this file name it in one line.
-        # The receiver's actual drift, measured the same day on all five chains
-        # independently (DRCLK): 0.0006-0.0065 chips/s. 0.05 is ~8x the largest of those --
-        # generous for anything physical, 20x tighter than the ceiling, and it changes ONLY
-        # the transient: the converged state is identical (clk 151.50, rate +0.00089 at
-        # every setting tried), while the worst birth excursion falls 0.0395 -> 0.0077.
-        # rate_max stays 1.0 as the separate garbage bound; a prior and a ceiling are
-        # different statements and should never have shared a number.
+        # Prior sigma of clk_rate (chips/s). The receiver's true drift is under ~0.01 chips/s,
+        # so 0.05 is generous for anything physical. It must not be as wide as rate_max, the
+        # garbage ceiling: a near-free rate learns from the first innovations, predict()
+        # integrates it, and clk walks away from the measurements that would correct it. The
+        # prior only shapes the transient; the converged state does not depend on it.
         self.sigma_rate0 = float(sigma_rate0)
         self.sigma_b0 = float(sigma_b0)
         # process noise, per sqrt(second)
-        self.q_clk = float(q_clk)  # clock white walk beyond what clk_rate explains
-        # clk_rate random walk -- the l-a EMA's job. MEASURED CHOICE, not taste: at 6 sats
-        # and sigma 0.3 chips, q_rate 2e-3 gives a rate estimate with sd 0.0035 chips/s
-        # (3.4e-4 ppm) while 1e-4 gives 0.00035 and still tracks a 0.01 chips/s ramp with
-        # no measurable lag (verified over 3000 s). The estimate is unbiased at every
-        # setting, so this trades ONLY noise against agility -- and the thing being tracked
-        # is a GPS-disciplined oscillator, whose rate does not wander at milli-chips/s per
-        # root-second. Anything looser just re-imports the l-a EMA's +-0.007 ppm scatter,
-        # which is what this state exists to remove.
+        self.q_clk = float(q_clk)  # clock random walk beyond what clk_rate explains
+        # clk_rate random walk. This trades rate noise against agility only (the estimate is
+        # unbiased at any value): at 6 satellites and sigma 0.3 chips, 1e-4 gives a rate sd of
+        # ~0.00035 chips/s and still follows a 0.01 chips/s ramp without visible lag, where
+        # 2e-3 gives 0.0035. The reference is GPS-disciplined, so its rate wanders far slower.
         self.q_rate = float(q_rate)
-        # Membership changes re-reference the gauge EXACTLY instead of inflating the clock
-        # (see _membership_changed). Default off: this changes filter behaviour on a state
-        # that has diverged twice, so it arms deliberately.
+        # Median gauge only: on a membership change, re-reference exactly instead of
+        # inflating the clock (see _membership_changed). Off by default.
         self.rereference = bool(rereference)
-        self.q_b = float(q_b)  # per-sat bias walk: SLOW is the whole point
+        self.q_b = float(q_b)  # per-sat bias walk, chips per sqrt(s); slow by design
         self.gauge_sigma = float(gauge_sigma)
-        # ── THE GAUGE'S REFERENCE: "median" (population) or "prior" (absolute) ──────────
-        # #94/S2 (KV, 2026-08-27): the median gauge defines b_i as "this satellite's
-        # deviation from the fleet", so b_i is a fleet-relative quantity BY CONSTRUCTION and
-        # the state steps when the population changes. "prior" replaces the population pin
-        # with a per-satellite absolute prior b_i ~ N(0, gauge_prior_sigma) -- see gauge().
+        # The gauge's reference. "median" pins the population's middle bias, so b_i is
+        # fleet-relative and the state steps when the population changes. "prior" gives
+        # each b_i an absolute prior N(0, gauge_prior_sigma) instead (see gauge()); the
+        # broker runs "prior".
         self.gauge_mode = str(gauge_mode)
         if self.gauge_mode not in ("median", "prior"):
             raise ValueError(
                 "gauge_mode must be 'median' or 'prior', not %r" % gauge_mode
             )
-        # PHYSICALLY MOTIVATED, not tuned: b_sat is the residual per-satellite code bias
-        # after the BRDC model -- ephemeris residual (~1-2 m), satellite group-delay /
-        # DCB mismatch (~1-3 m), and the DIFFERENTIAL part of iono+tropo at 1176 MHz
-        # (up to ~10-20 m at low elevation; the common part belongs to clk). One chip is
-        # 29.3 m, so |b| <~ 1 chip is the physical envelope and 2.0 chips is that envelope
-        # with margin. On sky 2026-08-27 the live b_sat values were +-0.02 chips.
+        # b_sat is the per-satellite code bias left after the BRDC model: ephemeris residual
+        # (~1-2 m), group delay / DCB mismatch (~1-3 m) and the differential part of
+        # iono+tropo at 1176 MHz (up to ~10-20 m at low elevation; the common part belongs
+        # to clk). One chip is 29.3 m, so |b| <~ 1 chip is the physical envelope and 2.0
+        # chips is that envelope with margin.
         self.gauge_prior_sigma = float(gauge_prior_sigma)
         self.max_age_s = float(max_age_s)
-        # ROBUSTNESS, ALL THREE FROM ONE INCIDENT (2026-08-09, see the class note below).
+        # Innovation gating (see update()).
         self.innov_max = innov_max  # absolute garbage ceiling (chips), any state
         self.innov_nsigma = (
-            innov_nsigma  # and the UNCERTAINTY-SCALED gate that does the work
+            innov_nsigma  # the gate in units of sqrt(S); this one does the work
         )
         self.reject_escape = (
-            reject_escape  # consecutive rejections before we believe reality
+            reject_escape  # run length (consecutive rejections) the escape needs
         )
         self._rej_run = {}  # key -> consecutive rejections
-        # ...and the innovations THEMSELVES, because the escape hatch tests whether the run
-        # agrees with itself, not merely that it is long (2026-08-10; see update()).
-        self._rej_hist = {}  # key -> recent rejected innovations (rolling)
+        # The rejected measurements themselves: the escape requires the run to agree with
+        # itself, not merely to be long.
+        self._rej_hist = {}  # key -> recent rejected measurements y (rolling)
         self.escape_spread = float(escape_spread)
-        # An escape may believe a run that AGREES; it may not believe one that is
-        # physically impossible. Same separation argument as the clock solve's MAD
-        # bound: real per-sat offsets cluster inside ~+-10 chips while a wrap alias is
-        # thousands, so anything from 50 to 500 separates them.
+        # An escape may believe a run that agrees, but not one that is physically
+        # impossible. Same separation as the clock solve's MAD bound: real per-sat offsets
+        # cluster inside ~+-10 chips while a wrap alias is thousands, so anything from 50 to
+        # 500 separates them.
         self.escape_max_step = float(escape_max_step)
-        # ...UNLESS THE EVIDENCE IS EXTRAORDINARY. escape_max_step is a flat ceiling, and a
-        # flat ceiling cannot express "I would believe this if enough independent things
-        # said it". The per-satellite consistency test above is weaker than it looks: it
-        # asks whether ONE satellite agrees with ITSELF, and _rej_hist is keyed per
-        # satellite, so a single sat feeding coherent nonsense clears it alone. That is
-        # precisely how PRN 25 -- transited out of the beam, code phase uniform over 10230
-        # chips -- talked the filter into a -1396 chip step on 2026-08-10 with nothing to
-        # contradict it.
-        #
-        # Independent satellites are the axis that test is missing. Their code phases share
-        # exactly one thing, the receiver clock, so a step that MANY of them report at once
-        # is a clock event almost by definition, while noise has no reason to agree across
-        # satellites at all. So a step beyond escape_max_step may still be believed, but
-        # only with corroboration: escape_min_sats DISTINCT satellites, each with its own
-        # self-consistent run, all implying the same step to within escape_spread.
-        #
-        # This is the "extraordinary claims" rule with the count done on the right noun.
-        # Thirty rejections from nine satellites in thirty seconds are not thirty
-        # independent samples -- they are nine satellites and a correlation time -- so the
-        # evidence is counted in SATELLITES, never in samples.
+        # Beyond escape_max_step a step is believed only with corroboration: escape_min_sats
+        # distinct satellites, each with its own coherent run, implying the same step to
+        # within escape_spread. One satellite agreeing with itself says nothing about the
+        # clock (one satellite can feed a self-consistent wrong value); the receiver
+        # clock is the one term independent satellites share, so agreement across them is
+        # a clock event. The evidence is counted in satellites, never in samples.
         self.escape_min_sats = int(escape_min_sats)
         self.rate_max = float(
             rate_max
         )  # chips/s; 1.0 = 0.1 ppm = 2500x the GPSDO truth
-        # DEAFNESS DETECTOR (2026-08-21). A state that is badly wrong rejects every
-        # measurement, so it never corrects, so it stays wrong -- and meanwhile predict()
-        # keeps integrating clk_rate, which walks the clock away at whatever rate it last
-        # believed. Observed live: clk +684 against a legacy truth of 151, rate +0.53
-        # chips/s, updates frozen at 101 while rejections climbed past 140, sigma reporting
-        # 0.040 -- i.e. the filter claiming 25x better than its real error by a factor of
-        # 13000 -- and NOT ONE log line, for ten minutes. The escape hatch cannot help
-        # here: it fires per satellite on a coherent run, and a state this far out rejects
-        # newcomers at BIRTH (birth_max), which never touches _rej_hist. So nothing
-        # noticed. Consumers were safe only because their own delta bounds refused it,
-        # which is luck rather than design: a state that has stopped listening must SAY SO
-        # and must not be served as if healthy.
-        self.deaf_after = 40  # consecutive rejections with zero accepts -> DEAF
-        self.rej_since_upd = 0  # rejections since the last ACCEPTED update
+        # Deaf latch. A state wrong enough to reject every measurement never corrects, while
+        # predict() keeps integrating clk_rate and walks it further away. The escape cannot
+        # catch this: it fires per satellite on a coherent run, and such a state refuses
+        # newcomers at birth (birth_max), which never reaches _rej_hist. After deaf_after
+        # consecutive rejections with nothing accepted the state latches `deaf` and notes it;
+        # the broker's _joint_state then refuses it to the code consumers. The next accepted
+        # update clears it.
+        self.deaf_after = 40  # consecutive rejections with zero accepts -> deaf
+        self.rej_since_upd = 0  # rejections since the last accepted update
         self.deaf = False  # latched: this state has stopped accepting anything
-        # birth_max default 50 -> 12 (2026-08-12): the 00:08 zombie's garbage biases
-        # (+-20-46 chips) all slid UNDER 50. Real biases measure <= ~6 (G28 -5.7 the
-        # largest ever seen healthy); 12 is 2x margin. Note the gate is open during
-        # bootstrap BY DESIGN (P00 >= 100), so this alone cannot stop garbage-era
-        # births -- that is the feed warmup's job (broker --joint-feed-warmup-s).
-        self.birth_max = birth_max  # refuse to BIRTH a sat implausibly far from clk
-        self.gauge_max_b = gauge_max_b  # a wild bias does not get a vote in the gauge
-        # P FLOOR (2026-08-12, the zombie's terminal symptom). A flood of self-consistent
-        # measurements crushed P[0,0] to ~1e-7: gain ~0, sigma printed 0.000, rej=0 -- a
-        # zero-gain state cannot MOVE and cannot REJECT, so no escape hatch can ever
-        # rescue it. No amount of self-agreeing evidence may claim the clock (or a bias)
-        # better than the floor; healthy runs measure sigma 0.05-0.08, so 0.04 caps
-        # confidence just below the best honest reading without touching normal operation.
+        # Healthy biases stay within ~6 chips; 12 is 2x margin. The window is open during
+        # bootstrap (see update()), so garbage from before the clock is determined is kept
+        # out by the broker's joint_feed_warmup_s instead.
+        self.birth_max = birth_max  # refuse to birth a sat implausibly far from clk
+        self.gauge_max_b = gauge_max_b  # median gauge: inlier bound about the median
+        # P floor (1-sigma, chips) on clk and the bias rows. A flood of self-consistent
+        # measurements can crush P toward zero, and a zero-gain state cannot move, so no
+        # escape can rescue it. Healthy clock sigma is ~0.05-0.08 chips, so 0.04 sits just
+        # below the best honest value without touching normal operation.
         self.p_floor = float(p_floor)
-        # ...and bootstrap is bounded by accepted updates as well as by P00 (see update()).
+        # Bootstrap also ends after this many accepted updates, whatever P00 says (update()).
         self.birth_gate_after = int(birth_gate_after)
-        # Events worth an operator's attention (escapes, incoherent runs, gauge fallbacks).
-        # The filter has no logger of its own, so it queues one-line notes and the broker
-        # drains them. The single most damaging event of 2026-08-10 fired SILENTLY.
+        # Events worth an operator's attention (escapes, incoherent runs, the deaf latch,
+        # gauge fallbacks). The filter has no logger, so it queues one-line notes and the
+        # broker drains them.
         self.notes = []
-        # -- f_carrier (P2, 2026-08-10): the RECEIVER-WIDE carrier frequency offset -------
-        # Declared as the 3rd element of x in CHORD_JOINT_TRACKING.md section 1 and never
-        # built until now. It is created LAZILY, on the first carrier measurement, so a
-        # chain that never feeds one keeps the exact state layout (and transcript digests)
-        # it had before.
+        # f_carrier: the receiver-wide carrier frequency offset (Hz at f_ref_hz), one number
+        # for every satellite, the shape of an LO error; per-satellite errors belong in the
+        # rrate rows. Its row is created on the first carrier measurement, so a state fed no
+        # carrier keeps the code-only layout.
         #
-        # WHAT IT IS, AND WHAT IT IS NOT. This is ONE offset shared by every satellite --
-        # the right shape for an LO error. The 0.478 Hz seed jitter measured on GPS
-        # (section 3d) is PER-SATELLITE, injected by the search -> clock-solve -> seed path,
-        # and this state cannot absorb that: a common state fitted to per-sat noise just
-        # averages it. Fixing GPS's seed is a separate, larger win and needs no filter.
-        # Do not read a healthy f_carrier as evidence that the seed problem is gone.
-        #
-        # THE MEASUREMENT. Feed `deep_rate_hz`, NOT `carrier_hz_resid`. carrier_hz_resid is
-        # documented SIGNAL-FREE at CHORD SNR (0.519 Hz on signal, 0.492 on noise), so a
-        # filter fed by it produces a confident, meaningless estimate -- the failure mode of
-        # a self-referential phase estimator, which shows up in the VARIANCE, not the mean.
-        # deep_rate_hz is already characterised (since 2026-08-04): peak/median 17.9-22.0
-        # on signal vs 2.8-6.1 on noise, precision ~0.2 Hz
-        # by split-half on strong sats, with the gate --carrier-rate-min-q 10.0. Pass that
-        # gate's q as the quality cut and ~0.2 Hz as sigma_hz.
+        # Feed it a carrier rate that depends on the signal (the broker's deep_rate_full_hz
+        # gated on carrier_rate_min_q, the fine ADR phase rate and the KCOH fold rate), never
+        # carrier_hz_resid, which reads the same on noise as on signal at CHORD SNR: a filter
+        # fed by it produces a confident, meaningless estimate.
         self.sigma_fcar0 = float(sigma_fcar0)
-        self.q_fcar = float(q_fcar)  # Hz per sqrt(s); a GPSDO-disciplined LO, so SLOW
+        self.q_fcar = float(q_fcar)  # Hz per sqrt(s); a GPSDO-disciplined LO, so slow
         self._fcar_idx = None  # row in x, or None until the first carrier update
 
-        # -- rrate_sat: the PER-SATELLITE ORBITAL DOPPLER ERROR (task #33 P3, 2026-08-14) --
-        # ⚠️ THIS IS NOT A PER-SATELLITE f_carrier, AND THE DISTINCTION IS PHYSICAL. An LO or
-        # clock frequency error is ONE number for the whole receiver -- it cannot vary
-        # satellite to satellite, and f_carrier above is correctly receiver-wide. What varies
-        # per satellite is the ORBIT: a range-rate model error for that satellite, which only
-        # becomes Hz when multiplied by a carrier. So this state is held in m/s, where it is
-        # BAND-INDEPENDENT and physically meaningful, not in Hz at some reference band.
+        # rrate: each satellite's range-rate model error (m/s), i.e. its orbit error. An LO
+        # error is one number for the receiver (f_carrier); what varies per satellite is the
+        # orbit, which becomes Hz only through a carrier. Held in m/s it is band-independent:
+        # a satellite's E5a and E5b Doppler errors are one range-rate error seen through two
+        # carriers (1207.14/1176.45 = 1.0261 apart), so both bands update the same row.
         #
         #     y_(i,b) [Hz] = -(f_b/c) * rrate_i   +   (f_b/f_ref) * f_carrier   +   noise
         #                     \_ orbit, per sat _/     \_ LO, receiver-wide _/
         #
-        # The two are degenerate WITHIN one band -- both scale with f_b -- and are separated
-        # only by the same thing that separates clk from b_sat: one is common across
-        # satellites and the other is not. Hence one solve, never staged.
+        # Within one band the two terms are degenerate (both scale with f_b); like clk and
+        # b_sat they are separated only because one is common across satellites, hence one
+        # solve. Their common mode is unobservable and gauge_rrate() pins it.
         #
-        # WHY m/s IS THE RIGHT UNIT AND Hz IS NOT. The same satellite's E5a and E5b Doppler
-        # errors are not two numbers, they are ONE range-rate error seen through two carriers
-        # (1207.14/1176.45 = 1.0261 apart). Holding the state in m/s makes both bands
-        # measurements OF THE SAME ROW; holding it in Hz-at-a-reference-band would work
-        # arithmetically but invites exactly the per-band duplication this task exists to
-        # remove -- today gal_e5a and gal_e5b fit this quantity independently and never
-        # compare, because dop_hist is a local in a per-chain main().
-        #
-        # THE GAUGE, same argument as b_sat: adding c to f_carrier and subtracting the
-        # equivalent from every rrate_i predicts identical measurements, so the common mode is
-        # unobservable and would random-walk. mean(rrate) = 0 over active satellites pins it,
-        # making f_carrier "the receiver-wide term" and rrate_i "this orbit's deviation".
-        #
-        # ⚠️ NOT YET COUPLED TO b_sat, DELIBERATELY -- see the note on update_rrate(). b_sat
-        # (chips) and rrate (m/s) are the POSITION and VELOCITY of one per-satellite range
-        # error and a proper vector state would link them; that link is the carrier-aided code
-        # loop and it is the obvious next step. It is not taken here because a per-satellite
-        # RATE state is precisely what diverged on mass birth (the filter read an OFFSET as a
-        # RATE, 12.5 ppm), and that failure is worth re-earning deliberately rather than by
-        # accident.
-        # The carrier the receiver-wide f_carrier is EXPRESSED AT. Latched on the first
-        # carrier measurement if not given -- so a single-band deployment never has to
-        # state it, and a second band arriving later cannot silently redefine what
-        # f_carrier means.
+        # Not coupled to b_sat: b_sat (chips) and rrate (m/s) are the position and velocity of
+        # one per-satellite range error, and a vector state would link them (a carrier-aided
+        # code loop). That link is not built: a rate state fed by code offsets can read an
+        # offset step as a rate (see rate_max).
+        # The carrier f_carrier is expressed at. Latched from the first carrier measurement if
+        # not given, so a band arriving later cannot redefine what f_carrier means.
         self.f_ref_hz = float(f_ref_hz) if f_ref_hz else None
         self.sigma_rr0 = float(sigma_rr0)
-        self.q_rr = float(q_rr)  # m/s per sqrt(s); orbit error, so SLOW
-        # Moderate on purpose, but NOT because a stiffer one breaks it -- that was my first
-        # diagnosis and it is WRONG. The freeze measured while building this (one satellite
-        # rejected 298 times of 300, innov 17.6 Hz against a 3.1 Hz bar) came from the BIRTH
-        # PATH and the missing escape, not the gauge: with those fixed, a 0.02 gauge converges
-        # to 2e-11. Recorded because I changed three things at once and credited the wrong one;
-        # test_a_stiff_gauge_is_NOT_what_froze_it pins the correction so it stays corrected.
+        self.q_rr = float(q_rr)  # m/s per sqrt(s); orbit error, so slow
+        # Moderate by choice: stiffer and looser gauges converge too (test_rrate_state.py,
+        # test_a_stiff_gauge_is_NOT_what_froze_it).
         self.rr_gauge_sigma = float(rr_gauge_sigma)
         self._rr_idx = {}  # key -> row in x
         self._rr_t_seen = {}  # key -> last carrier measurement time
@@ -431,24 +309,9 @@ class JointReceiverState:
         self.n_rrate = 0
         self.rrate_rejected = 0
         self.x = np.zeros(2)  # [clk chips, clk_rate chips/s]
-        # WARM START (2026-08-11). Starting at 0 when the receiver clock is ~151 chips is
-        # not a neutral prior, it is a DEADLOCK: every measurement then arrives ~151 chips
-        # out, which is beyond escape_max_step (100), so the escape hatch refuses the
-        # correction as "a wrap alias, not a clock" and the state rejects 100% of updates
-        # forever, sitting at clk ~ -1 and sliding. Observed on sky 2026-08-11 15:25 UTC:
-        # 34 rejections agreeing to 0.22 chips, all implying +151.7, all refused.
-        #
-        # The bound is not wrong in KIND -- the clock IS physically bounded, so a
-        # thousand-chip step really is noise -- it was simply set below the very quantity
-        # it guards. Whoever creates this state already has a perfectly good clock estimate
-        # (the legacy dead-reckon solve); handing it over costs nothing and removes the
-        # cold-start case entirely, so the escape machinery below is left to handle only
-        # the hard case it was written for: a state poisoned in flight.
-        #
-        # Exactly the lesson of #28, which fixed this same shape for the dead-reckon clock:
-        # a filter that re-bootstraps from 0 on every restart is one restart away from
-        # measuring nothing. clk0=0.0 keeps the old behaviour for callers that have no
-        # estimate to offer.
+        # Warm start: clk0 seeds clk when the state is created; the prior sigma is still
+        # sigma_clk0. dr_joint_shadow passes its dead-reckon clock, but any earlier
+        # joint_receiver() call creates the state without one.
         self.x[0] = float(clk0)
         self.P = np.diag([sigma_clk0 ** 2, sigma_rate0 ** 2])
         self._idx = {}  # key -> row in x
@@ -482,10 +345,9 @@ class JointReceiverState:
             return str(key)
 
     def _reject(self, why=None):
-        """Count a rejection and latch DEAFNESS if nothing has been accepted for a long
-        run. See the rej_since_upd note in __init__: the failure this catches is a state
-        that is wrong enough to refuse every measurement, which then never corrects while
-        clk_rate keeps walking it further away. Silent for ten minutes when it happened."""
+        """Count a rejection; after deaf_after consecutive rejections with nothing accepted,
+        latch `deaf` and say so in a note (see the deaf latch in __init__). The next accepted
+        update clears it."""
         self.rejected += 1
         self.rej_since_upd += 1
         if (not self.deaf) and self.rej_since_upd >= self.deaf_after:
@@ -506,25 +368,23 @@ class JointReceiverState:
             )
 
     def _note(self, msg):
-        """Queue a one-line operator note; the broker drains `notes` each cycle. Bounded, so
-        a pathological chain cannot grow this without limit."""
+        """Queue a one-line operator note; the broker drains `notes` each cycle. Bounded to
+        the newest 200, so a pathological chain cannot grow it without limit."""
         self.notes.append(msg)
         if len(self.notes) > 200:
             del self.notes[:-200]
 
     @_locked
     def drain_notes(self):
-        # Locked like every other public method: the swap is read-then-rebind, so two chains
-        # draining at once can both take the list and one of them loses its notes. They are
-        # diagnostics, which is exactly why this went unnoticed -- a lost note is silence, and
-        # silence is what a healthy filter looks like.
+        # Locked: the swap reads then rebinds, so an unlocked drain could lose or duplicate
+        # notes.
         out, self.notes = self.notes, []
         return out
 
     def _drop(self, keys):
-        """Remove stale sats. Their rows leave the state entirely -- a sat that has not
-        been measured in max_age_s must not keep voting in the gauge, which would drag the
-        clock toward a bias nothing is refreshing."""
+        """Remove stale sats. Their rows leave the state entirely: a sat with no accepted
+        measurement in max_age_s must not keep voting in the gauge, which would drag the
+        clock toward a bias nothing refreshes. Only b_sat rows are dropped; rrate rows stay."""
         if not keys:
             return
         np = self._np
@@ -536,18 +396,14 @@ class JointReceiverState:
             del self._idx[k], self._t_seen[k], self._n[k]
             self._rej_run.pop(k, None)
             self._rej_hist.pop(k, None)
-        # Reindex from the SURVIVING ROW ORDER, not from a hardcoded base of 2. The old
-        # form assumed every row past clk_rate was a satellite; the f_carrier and rrate
-        # rows share that space, and a base-2 renumber would silently alias one of them
-        # onto a satellite.
+        # Reindex from the surviving row order: the f_carrier and rrate rows share the space
+        # past clk_rate, so a renumber from a fixed base would alias them onto satellites.
         remap = {old_row: new_row for new_row, old_row in enumerate(keep)}
         self._idx = {k: remap[i] for k, i in self._idx.items() if i in remap}
-        # f_carrier rides the same remap. Missing this is how a receiver-wide state silently
-        # aliases onto a satellite's bias row the first time a sat ages out.
+        # f_carrier and the rrate rows take the same remap, or they would point at another
+        # row after the drop.
         if self._fcar_idx is not None:
             self._fcar_idx = remap.get(self._fcar_idx)
-        # rrate rides the same remap. A per-satellite row that is not remapped points at
-        # ANOTHER satellite's state after a drop -- silent, and wrong in the worst way.
         self._rr_idx = {
             k: remap[i] for k, i in self._rr_idx.items() if remap.get(i) is not None
         }
@@ -557,42 +413,32 @@ class JointReceiverState:
         self._membership_changed()
 
     def _membership_changed(self):
-        """A satellite joining or leaving changes WHICH sats the mean(b)=0 gauge averages
-        over, so the gauge legitimately steps clk (~1 chip at 6 sats -- measured). That step
-        is a GAUGE artefact, not clock motion, and must not be differentiated into clk_rate:
-        untreated it spikes the rate ~0.005 chips/s per event, which is 12x the true value.
+        """Handle the gauge step a satellite joining or leaving can cause.
 
-        TWO TREATMENTS, and the second supersedes the first.
+        Under the median gauge a membership change can step clk (~1 chip at 6 sats). That
+        step is a change of convention, not clock motion, and must not be differentiated
+        into clk_rate, so each mode zeroes the clk/rate cross-covariance (the exact relabel
+        only when it shifts something). Beyond that:
 
-        LEGACY (rereference=False): break the clk/rate correlation and widen the clock so
-        the step is absorbed as offset rather than as rate. It works at 6+ satellites, but
-        it treats the artefact as NEW INFORMATION -- P[0,0] += 4 makes the clock uncertain
-        to ~2 chips, so the next measurement moves it hard, and predict() rebuilds the
-        clk<->rate correlation immediately (F[0,1] = dt), which feeds the yank into the
-        rate, which integrates back into the clock. MEASURED 2026-08-21 at n=4 with
-        per-cycle churn: clk swinging 15 chips over 3 min and clk_rate wandering 0.0275
-        chips/s -- 80x the 0.00035 sd this q_rate is chosen to give -- so BOTH Galileo
-        chains' joint-clk consumers refused the state on every cycle (delta > 5 chip bound)
-        and GAP 2 could not proceed. The treatment is sound at large n and self-defeating
-        at small n, which is exactly when the state most needs to survive.
+        prior: nothing; no satellite's prior mentions another, so nothing steps.
 
-        EXACT RE-REFERENCE (rereference=True): a gauge change is a change of COORDINATES,
-        not an observation. Shift the common mode out of the biases and into clk:
+        median, rereference=False: also add 4 chips^2 to P[0,0] so the step is absorbed as
+        offset. This treats the step as new information: the next measurement moves the
+        clock hard, predict() rebuilds the clk/rate correlation at once (F[0,1] = dt), and
+        the yank reaches the rate. Sound with many satellites, self-defeating with few and
+        frequent churn.
 
-            delta = mean(b over the new membership);  b_i -= delta;  clk += delta
+        median, rereference=True: relabel exactly, shifting the common mode out of the
+        biases and into clk:
 
-        Then clk + b_i -- the only observable any consumer reads -- is INVARIANT for every
-        satellite, and mean(b) = 0 holds exactly, so gauge() has nothing to do and there is
-        no step for anyone to absorb. No uncertainty is injected because none was created:
-        the filter knows exactly as much after the relabelling as before. P is carried
-        through the same linear map (P -> A P A^T) so the covariance stays consistent with
-        the shifted state rather than silently describing the old parameterisation."""
+            delta = median(b over the new membership);  b_i -= delta;  clk += delta
+
+        clk + b_i, the only observable a consumer reads, is unchanged for every satellite,
+        and the gauge has nothing left to pin. P is carried through the same linear map
+        (P -> A P A^T); no uncertainty is injected because none was created."""
         if self.gauge_mode == "prior":
-            # Nothing to relabel: no per-sat prior mentions any other satellite, so the
-            # gauge target did not step -- only the slow EQUILIBRIUM moved (by ~b_gone/N,
-            # paced by gauge_prior_sigma). KEEP THE RATE SHIELD for that relaxation: it is
-            # gauge-convention motion, not clock motion, and must not be differentiable
-            # into clk_rate -- the same argument as the exact-re-reference path below.
+            # Nothing to relabel; only the slow equilibrium moves (by ~b_gone/N, paced by
+            # gauge_prior_sigma), and that relaxation is gauge motion, not clock motion.
             self.P[0, 1] = self.P[1, 0] = 0.0
             return
         if not self.rereference:
@@ -603,9 +449,8 @@ class JointReceiverState:
         idx = list(self._idx.values())
         if not idx:
             return
-        # MEDIAN, matching gauge() (2026-08-23): the re-reference must shift by the same
-        # statistic the gauge pins, or every membership change would leave a residual
-        # (mean - median) step for the next gauge() to grind out through gauge_sigma.
+        # The median, as gauge() pins: shifting by any other statistic would leave a residual
+        # step for the next gauge() to grind out through gauge_sigma.
         _ordered = sorted(idx, key=lambda i: float(self.x[i]))
         _n = len(_ordered)
         _sel = (
@@ -616,9 +461,9 @@ class JointReceiverState:
         delta = sum(w * float(self.x[j]) for j, w in _sel)
         if delta == 0.0:
             return
-        # x' = A x, with A: clk += median(b), b_i -= median(b) -- still an exact linear
-        # relabelling (the median rows are fixed at relabel time), so P -> A P A^T below
-        # stays the correct covariance transport.
+        # x' = A x, with A: clk += median(b), b_i -= median(b). An exact linear relabelling
+        # (the median rows are fixed at relabel time), so P -> A P A^T is the correct
+        # covariance transport.
         A = np.eye(self.x.size)
         for j, w in _sel:
             A[0, j] += w  # clk picks up the median of the biases
@@ -626,20 +471,15 @@ class JointReceiverState:
                 A[i, j] -= w  # every bias loses it
         self.x = A @ self.x
         self.P = A @ self.P @ A.T
-        # KEEP THE RATE SHIELD. The legacy treatment's other half is still right and is
-        # independent of the inflation: a gauge relabelling is not clock MOTION, so it must
-        # not be differentiable into clk_rate. Dropping this alongside the inflation doubled
-        # the rate wander in the churn bench (range 0.0053 -> 0.0114 chips/s); keeping it
-        # with the exact re-reference gets both -- no injected uncertainty AND no rate
-        # contamination.
+        # A relabelling is not clock motion, so it must not be differentiated into clk_rate.
         self.P[0, 1] = self.P[1, 0] = 0.0
 
     # -- filter ------------------------------------------------------------------
     @_locked
     def predict(self, t_now):
-        # Geometry tripwire. Under the lock this cannot desync; if it ever reads unequal
-        # again the cause is a NEW unlocked mutation path, and the loud named error beats
-        # three hours of "matmul: core dimension" (the 07:05 incident's actual symptom).
+        # Geometry tripwire. Under the lock x and P cannot desync, so unequal sizes mean an
+        # unlocked mutation path; fail here by name rather than with a numpy shape error in
+        # a later update.
         if self.x.size != self.P.shape[0]:
             raise RuntimeError(
                 "JOINT STATE DESYNC: x has %d rows, P has %d -- an "
@@ -669,13 +509,11 @@ class JointReceiverState:
         self.P[1, 0] += qr * dt ** 2 / 2.0
         self.P[1, 1] += qr * dt
         if n > 2:
-            # The f_carrier row is NOT a satellite bias and must not collect q_b -- it is
-            # in Hz, not chips, and q_b would inflate it by ~1000x its own process noise.
+            # q_b (chips) goes on the bias rows only; f_carrier (Hz) and the rrate rows (m/s)
+            # take their own process noise below.
             other = set()
             if self._fcar_idx is not None:
                 other.add(self._fcar_idx)
-            # rrate rows are m/s, not chips -- q_b would inflate them by ~1000x their own
-            # process noise, the same trap the f_carrier line above avoids.
             other |= set(self._rr_idx.values())
             srows = [i for i in range(2, n) if i not in other]
             if srows:
@@ -684,10 +522,9 @@ class JointReceiverState:
             if self._fcar_idx is not None:
                 self.P[self._fcar_idx, self._fcar_idx] += self.q_fcar ** 2 * dt
             for i in self._rr_idx.values():
-                self.P[i, i] += self.q_rr ** 2 * dt  # orbit error: a white walk
-        # P floor -- see __init__. Applied to clk and the satellite-bias rows (NOT
-        # f_carrier or rrate: different units and timescales own their own priors). The
-        # floor goes on the DIAGONAL only; correlations keep whatever structure they earned.
+                self.P[i, i] += self.q_rr ** 2 * dt  # orbit error: a random walk
+        # P floor (see __init__) on clk and the bias rows, not on f_carrier or rrate, whose
+        # units and timescales differ. Diagonal only; the correlations are left as they are.
         if self.p_floor > 0.0:
             f2 = self.p_floor ** 2
             if self.P[0, 0] < f2:
@@ -702,21 +539,17 @@ class JointReceiverState:
                         self.P[i, i] = f2
 
     def _scalar_update(self, H, y, R):
-        """One scalar measurement, innovation already wrapped by the caller."""
+        """One scalar measurement; y is the innovation, wrapped by the caller where it is a
+        code phase. Returns the normalized innovation y/sqrt(S), or 0.0 if S <= 0."""
         np = self._np
         PH = self.P @ H
         S = float(H @ PH + R)
         if S <= 0.0:
             return 0.0
         K = PH / S
-        # RATE FORENSICS (2026-08-18, the +0.27 chips/s lock). Twice on sky a fresh
-        # filter's clk_rate pinned at 0.26-0.34 (650x truth) within minutes of a restart
-        # into a healthy sky and self-locked behind its own innovation gate -- and three
-        # offline reproductions (mass birth, staggered march, sparse-then-burst at sky
-        # accept density) all HEALED instead of locking, so the teaching path is not
-        # understood. Log every update that moves the rate by >0.01 chips/s (25x truth)
-        # with enough context to name the teacher: the measurement row shape, innovation,
-        # and gain. Log-only; the POST digest cannot see it.
+        # RATE-TEACH: note every update that moves clk_rate by more than 0.01 chips/s (~25x
+        # the true drift), with the measurement's rows, innovation and gain, so the
+        # measurement that taught a wild rate can be named. Log only.
         _dr = float(K[1] * y) if self.x.size > 1 else 0.0
         if abs(_dr) > 0.01:
             _hn = [i for i in range(len(H)) if H[i] != 0.0]
@@ -736,8 +569,8 @@ class JointReceiverState:
                 )
             )
         self.x = self.x + K * y
-        # Joseph form: this filter runs for days at 2 s cadence with sats entering and
-        # leaving, and the simple (I-KH)P loses symmetry/positivity over that many updates.
+        # Joseph form: this filter runs for days at a 2 s cadence with sats entering and
+        # leaving, and the simple (I-KH)P loses symmetry and positivity over that many updates.
         n = self.x.size
         A = np.eye(n) - np.outer(K, H)
         self.P = A @ self.P @ A.T + np.outer(K, K) * R
@@ -749,26 +582,17 @@ class JointReceiverState:
 
     @_locked
     def shorten_modulus(self, code_len):
-        """Adopt a SHORTER code period, keeping every row (task GAP-2, 2026-08-21).
+        """Adopt a shorter code period, keeping every row.
 
-        A chain with a shorter code joining the receiver used to REBUILD this object from
-        scratch, discarding x and P -- so feeding a second constellation wiped the
-        population that was already working. Measured live 14:16-14:19: arming Galileo on
-        gal_e5a (whose CODE_LEN differs from gps_l5's) dropped 5 healthy GPS rows, the
-        state came back all-Galileo, its clock re-converged onto the new population ~14
-        chips from the Galileo legacy clock, and every consumer -- GPS included -- refused
-        it. The filter was correct throughout; the BOOKKEEPING threw away the answer.
-
-        Reducing the modulus is well defined and loses no information (the class note's own
-        rule: 'reducing to a shorter period is well defined, lengthening is not'):
-          * the biases and clk_rate are small SIGNED offsets, not modular
-            residues -- they carry over untouched;
-          * the covariance is unchanged: knowing a value mod a shorter period does not make
-            any estimate less certain;
+        Receiver.joint_receiver() calls this when a chain with a shorter code joins, so the
+        rows already converged survive. Reducing the modulus loses no information:
+          * the biases and clk_rate are small signed offsets, not modular residues, and carry
+            over untouched;
+          * the covariance is unchanged: knowing a value mod a shorter period makes no
+            estimate less certain;
           * only clk is a modular residue, so it alone is re-wrapped into the new period.
-        Refuses to LENGTHEN, because a measurement known only mod 10230 cannot be promoted
-        to mod 1023000 without inventing the segment -- the same asymmetry the clock
-        adoption's modulus rule rests on.
+        Refuses to lengthen: a measurement known only mod 10230 cannot be promoted to mod
+        1023000 without inventing the segment.
 
         Returns True if the modulus changed.
         """
@@ -783,42 +607,27 @@ class JointReceiverState:
     @_locked
     def update(self, key, y_chips, sigma_chips, t_now):
         """Feed one y_i = clk + b_i observation. Returns the normalized innovation, or
-        None if rejected/deferred. A NEW satellite is BORN AT ITS MEASUREMENT (b0 = y - clk)
-        rather than walked in from zero at loop gain: the model error it must absorb is
-        chips, and starting at zero would drag the clock for minutes (section 3a)."""
+        None if the input is unusable or rejected. A new satellite's row is added at b = 0
+        with prior sigma_b0 and takes a normal update, so its first innovation lands in clk
+        while the clock is unknown and in its own bias once the clock is determined; it is
+        never walked in from zero at loop gain, which would drag the clock for minutes."""
         np = self._np
         if not (math.isfinite(y_chips) and sigma_chips > 0.0):
             return None
         self.predict(t_now)
         born = key not in self._idx
         if born:
-            # BIRTH THROUGH THE COVARIANCE, not by hand. The obvious version -- set
-            # b0 = y - clk and return -- puts the whole offset into the bias, and since a
-            # newborn row has ZERO cross-covariance with clk, the mean(b)=0 gauge then
-            # shears that offset straight back out of the biases without ever depositing it
-            # in the clock. Deployed 2026-08-09 and caught on the first shadow line: six
-            # sats born at once, biases spread +-4.7 chips, and `clk +0.000 +- 200` -- the
-            # clock's absolute value simply lost. It recovered over ~400 cycles by grinding
-            # a 151-chip innovation down, which is both slow and a wrap hazard: at a clock
-            # near L/2 that innovation folds and the filter converges to an ALIAS.
-            # Adding the row at b0 = 0 with its prior sigma and running a normal update
-            # instead lets the gains do it: sigma_clk0 >> sigma_b0 means the first
-            # satellite's innovation lands ~entirely in clk (the clock is what is unknown),
-            # while later ones -- facing an already-determined clock -- land in their own
-            # bias. Same intent, correct mechanism, no special case.
-            # BIRTH WINDOW. Birth is the one path with no innovation to gate on, which is
-            # exactly how the 2026-08-09 incident got in. Once the clock is determined,
-            # refuse a newborn whose measurement is implausibly far from it: a real bias is
-            # chips, a weak-sat detection is hundreds. While the clock is still unknown
-            # (large P00) everything is accepted, because that is the bootstrap.
-            # ⚠️ "LARGE P00 MEANS BOOTSTRAP" IS AN ASSUMPTION, AND IT FAILED (2026-08-22).
-            # P00 < 100 was meant to read "the clock is determined yet?", but a degenerate
-            # tau row pinned P00 at 396 PERMANENTLY, so this gate -- the only thing standing
-            # between a weak-sat measurement and a birth -- was open for the entire run, not
-            # just during bootstrap. Biases reached -1693 chips. A gate whose enabling
-            # condition can be held false forever by an unrelated fault is not a gate.
-            # So bootstrap is ALSO bounded by evidence: once the state has accepted
-            # birth_gate_after updates it is past bootstrap by definition, whatever P00 says.
+            # Birth goes through the covariance, not by hand. Writing b0 = y - clk would put
+            # the whole offset in a row with no cross-covariance to clk, and the gauge would
+            # then shear it out of the biases without depositing it in clk, losing the
+            # clock's absolute value (and near L/2 converging to a wrapped alias). With
+            # sigma_clk0 >> sigma_b0 the gains split the first innovations correctly.
+            # Birth window: a birth has no innovation to gate on, so once the clock is
+            # determined a newborn more than birth_max chips from clk is refused (a real bias
+            # is chips, a weak-sat detection hundreds). The clock counts as determined when
+            # P00 < 100 or after birth_gate_after accepted updates; the second bound holds
+            # even if a degenerate row keeps P00 high. With fewer than two satellites every
+            # birth is accepted.
             if (
                 self.birth_max is not None
                 and len(self._idx) >= 2
@@ -833,19 +642,12 @@ class JointReceiverState:
         H[0] = 1.0
         H[i] = 1.0
         innov = self.wrap(y_chips - float(H @ self.x))
-        # NOT on the birth cycle: a newborn sits at b=0, so its innovation is the WHOLE
-        # measurement (~the clock, 151 chips here) and any physical gate would reject it --
-        # which is precisely what happened when innov_max was first given a finite value:
-        # every satellite was born and then immediately refused, and the filter read zero
-        # forever. Birth is vetted by birth_max above; the innovation gate is for sats that
-        # already have a state to be inconsistent with.
-        # THE GATE IS NORMALIZED, not absolute. A fixed chip bound cannot be both tight
-        # enough to catch garbage on a converged state and loose enough to let a legitimate
-        # innovation through after a gap -- set to 30 chips it evicted the ENTIRE state
-        # after a 900 s outage, because the clock's extrapolated uncertainty had genuinely
-        # grown past the bound and every satellite was refused, then aged out. Scaling by
-        # sqrt(S) is the filter saying "I no longer know where the clock is", which is the
-        # correct response to an outage. The absolute innov_max stays as a garbage ceiling.
+        # Not on the birth cycle: a newborn sits at b = 0, so its innovation carries its whole
+        # bias (and at bootstrap the whole clock), and birth_max vets it instead.
+        # The gate is normalized by sqrt(S): a fixed chip bound tight enough to catch garbage
+        # on a converged state would, after an outage, refuse every satellite whose clock
+        # uncertainty had legitimately grown, and they would then age out. innov_max stays
+        # as an absolute garbage ceiling.
         if not born:
             PH_ = self.P @ H
             S_ = float(H @ PH_ + sigma_chips ** 2)
@@ -854,43 +656,17 @@ class JointReceiverState:
                 self.innov_max is not None and abs(innov) > self.innov_max
             )
             if _bad:
-                # ESCAPE HATCH. A gate with no way out is a deadlock: a genuine step (a
-                # clock event, a re-anchor) is rejected, so the state never follows it, so
-                # every subsequent measurement is rejected too -- forever. After
-                # reject_escape consecutive rejections, believe the world rather than the
-                # state, and inflate the covariance so the correction is taken quickly.
-                #
-                # PERSISTENCE IS NOT ENOUGH, and assuming it was cost the whole state on
-                # 2026-08-10. The original test counted consecutive rejections and never
-                # asked whether the rejected measurements agreed with EACH OTHER. PRN 25
-                # transited out of the primary beam (elevation RISING 45->65 deg, deep_snr
-                # 30->2.4, coh_frac 0.94->0.19) and its code phase became uniform noise over
-                # the 10230-chip code. Five uniform draws are perfectly "persistent" and
-                # mutually meaningless: the hatch believed a -1396-chip innovation, which
-                # corrupted clk, which made every OTHER sat's innovation large, which
-                # escaped them too, until the gauge had no inliers left and switched itself
-                # off (see gauge()). The observable clk + b_i stayed correct throughout,
-                # so nothing downstream noticed for 50 minutes.
-                #
-                # A REAL move is CONSISTENT: the state is not moving (every measurement is
-                # being rejected), so a genuine re-anchor gives the same innovation every
-                # time. Noise does not. Requiring the run to agree with itself within
-                # escape_spread is a far stronger discriminator than any magnitude bound --
-                # five uniform draws landing within 5 chips of each other has probability
-                # ~(2*5/10230)^4 ~ 1e-8 -- and because it is strong, it can be trusted with
-                # LARGE innovations, which keeps the deadlock escape this hatch exists for.
-                # That is why there is deliberately no absolute ceiling here: a consistent
-                # 1400-chip move is a real re-anchor and must be followed; an inconsistent
-                # one is noise at any magnitude.
-                # CONSISTENCY IS TESTED ON THE MEASUREMENT y, NOT ON THE INNOVATION, and the
-                # difference is not pedantry. An innovation is y minus a MOVING state: while
-                # a run of rejections is in progress the gauge and the process model keep
-                # shifting x, so a satellite reporting the same thing every time produces
-                # innovations that drift apart. Measured: clean sigma-0.3 measurements gave
-                # an innovation spread of 20 chips purely because the state was sliding
-                # underneath them, which would block the hatch exactly when a real re-anchor
-                # needs it. y is what the satellite actually said; two honest measurements of
-                # a static truth agree no matter what the filter did in between.
+                # Escape. A gate with no way out deadlocks on a genuine step (a clock event, a
+                # re-anchor): the state never follows it, so every later measurement is
+                # rejected too. After reject_escape consecutive rejections that agree with
+                # each other to within escape_spread, believe them and inflate P so the step
+                # is taken quickly. Agreement, not persistence, is the test: a satellite that
+                # has left the beam reports code phase uniform over the code, which persists
+                # but does not agree (on a 10230-chip code, four uniform draws all within 5
+                # chips of a fifth: (10/10230)^4 ~ 1e-12).
+                # Agreement is tested on the measurement y, not the innovation: while a run of
+                # rejections lasts, the gauge and the process model keep moving x, so honest
+                # repeated measurements give innovations that drift apart.
                 hist = self._rej_hist.setdefault(key, [])
                 hist.append(y_chips)
                 if len(hist) > self.reject_escape:
@@ -904,9 +680,8 @@ class JointReceiverState:
                 if spread is None or spread > self.escape_spread:
                     self._reject("incoherent-run")
                     if spread is not None:
-                        # The run is long but INCOHERENT: this satellite is feeding noise,
-                        # which is a tracking failure and not a state failure. Say so --
-                        # silence here is what let the 2026-08-10 event pass unremarked.
+                        # A full run that disagrees with itself: this satellite is feeding
+                        # noise, a tracking failure rather than a state failure. Say so.
                         self._note(
                             "REJECT-RUN %s: %d consecutive, spread %.1f chips "
                             "(> escape_spread %.1f) -- incoherent, NOT believed; "
@@ -919,27 +694,16 @@ class JointReceiverState:
                             )
                         )
                     return None
-                # HOW BIG A STEP IS THE RUN ASKING US TO BELIEVE? The consistency test above
-                # only asks whether the rejected measurements agree with EACH OTHER. They
-                # can agree perfectly and still imply a step that is not physical: on a
-                # 10230-chip code, a jump of thousands is a WRAP ALIAS, not a clock. Once
-                # believed it is applied at near-unit gain (P[0,0] += 25 against R = 0.09),
-                # so the state moves by essentially the whole innovation -- and then every
-                # subsequent measurement disagrees, producing more runs, more escapes, and a
-                # free-running state.
-                #
-                # MEASURED 2026-08-10 22:22-22:45 UTC: escapes believing -2766, +4521 and
-                # +2669 chip steps drove clk to +169517 chips at a rate of +127.66 chips/s
-                # (12.5 ppm, against a GPS-disciplined truth of 4e-5 ppm), b_sat to +-300
-                # chips, and 1050 rejections against 280 updates -- the filter deaf and
-                # free-running, 90 s after a clean start.
+                # A coherent run can still imply an unphysical step: on a 10230-chip code a
+                # jump of thousands is a wrap alias, not a clock. Once believed it is applied
+                # at near-unit gain (P[0,0] += 25 against R = sigma^2, 0.09 at the broker's
+                # joint_sigma of 0.3 chips), so the state moves by the whole innovation, every
+                # other satellite then disagrees, and the escapes feed on each other.
                 if abs(innov) > self.escape_max_step:
-                    # EXTRAORDINARY CLAIM -> EXTRAORDINARY EVIDENCE. Count how many OTHER
-                    # satellites are independently asking for the SAME step right now.
-                    # Every implied step is recomputed here, at this instant, against the
-                    # current state -- so they are all referred to one epoch and the
-                    # "innovations drift while the state slides" problem that forced the
-                    # spread test onto y does not arise for the comparison BETWEEN sats.
+                    # Beyond escape_max_step, require escape_min_sats satellites (this one
+                    # included) with their own coherent runs implying the same step. Each
+                    # implied step is recomputed against the current state, so all are
+                    # referred to one epoch.
                     _corr = self._corroborators(key, innov)
                     if _corr + 1 < self.escape_min_sats:
                         self._reject("escape-refused")
@@ -994,75 +758,35 @@ class JointReceiverState:
 
     @_locked
     def gauge(self):
-        """Pin the unobservable common mode: MEDIAN(b over active sats) = 0.
+        """Pin the unobservable common mode of clk and the biases (gauge_mode).
 
-        ⚠️ MEDIAN, NOT MEAN (2026-08-23). The clock level is unobservable -- any gauge is a
-        CONVENTION -- and the instrument already has one: the legacy clock is the circular
-        MEDIAN of the same residuals, and every seed is placed against it. A mean(b)=0
-        convention made bare clk a different clock from the one the seeds fly, differing by
-        (mean - median) of a small skewed sample: measured 2026-08-22, the consumers that
-        read bare clk saw it wander +-1.3 chips as membership churned (steps of exactly
-        b_newcomer/n at each rise/set) while the median stayed put, sd 0.92 vs 0.13 chips
-        paired. Pinning the median makes bare clk SHARE the legacy convention -- the same
-        anchor, but filtered, with a rate state -- and a rise/set steps it only when the
-        middle element itself changes, not by every newcomer's b/n. clk + b_i (the only
-        gauge-invariant observable) is unchanged by construction either way."""
+        "median" pins median(b) = 0 over the inlier satellites: the convention of the legacy
+        clock, the circular median of the same residuals, so bare clk steps on a rise or set
+        only when the middle element changes. "prior" (what the broker runs) gives each b_i
+        an absolute prior instead; see below. clk + b_i, the only gauge-invariant
+        observable, is unchanged by either."""
         np = self._np
         if self.gauge_mode == "prior":
-            # ── #94/S2: THE ABSOLUTE GAUGE (KV, 2026-08-27) ────────────────────────────
-            # "We should never be comparing between real satellite signals." The median pin
-            # below is a POPULATION statement: it defines clk as the fleet's middle offset,
-            # so bare clk steps whenever the middle element changes -- ~1 chip at 6 sats,
-            # the churn that motivated the exact re-reference machinery.
+            # Prior gauge: each b_i carries a weak absolute prior b_i ~ N(0,
+            # gauge_prior_sigma), applied every cycle as a pseudo-measurement. No prior
+            # mentions another satellite, so a rise or set relabels nothing and steps
+            # nothing. In steady state the split settles at a soft mean(b) ~ 0, so the
+            # population enters only through that slow equilibrium: a membership change moves
+            # it by ~b_gone/N and the state relaxes there over many cycles.
             #
-            # Here each b_i instead carries its own weak absolute prior, b_i ~ N(0,
-            # gauge_prior_sigma), applied every cycle as a pseudo-measurement. What this
-            # does and does not do:
-            #  * The common mode (add c to clk, subtract c from every b_i) is still
-            #    structurally unobservable from the measurements; the priors are now the
-            #    ONLY thing that pins it, and they pin it WITHOUT REFERENCE TO MEMBERSHIP:
-            #    no satellite's prior mentions any other satellite, so a rise or set is a
-            #    non-event -- nothing is relabelled and nothing steps.
-            #  * In steady state the split settles where the priors are least violated,
-            #    which is a SOFT mean(b) ~ 0. That is unavoidable -- the decomposition is
-            #    unidentifiable and every gauge allocates it somewhere -- but the population
-            #    now enters only through a SLOW equilibrium (paced by the prior strength),
-            #    never through an instantaneous pin. A membership change moves the
-            #    equilibrium by ~b_gone/N and the state relaxes there over many cycles,
-            #    which the rate shield in _membership_changed keeps out of clk_rate.
-            #  * clk + b_i -- the only gauge-invariant observable, and what predicted()
-            #    serves -- is measurement-determined and unaffected by the gauge choice.
+            # Robustness: beyond cap = 3 sigma, R is inflated by (|y|/cap)^2 (Huber), so the
+            # pull falls as ~1/|y| and a wild bias is nearly ignored while ordinary
+            # re-centring runs at full strength. A hard clamp would keep full gain on the
+            # outlier and drag clk through the correlations. Unlike an inlier screen centred
+            # on zero, the prior never switches itself off. The trade: a uniformly displaced
+            # comb heals slowly (all its innovations are beyond cap). That is accepted
+            # because clk + b_i stays correct throughout, while a dragged clk would corrupt
+            # the rate and the bare-clk consumers at once.
             #
-            # ROBUSTNESS RE-SUPPLIED EXPLICITLY (the 2026-08-09 lesson, again), and the
-            # FORM matters: Huber R-INFLATION, not a hard clamp. A clamp bounds the
-            # innovation but keeps full gain, so a 97-chip outlier still pulls every cycle
-            # at clamp strength -- measured in the selftest, that dragged clk 0.07
-            # chips/cycle through the P correlations while the sub-chip RECOVERY
-            # innovations got no more gain than the outlier did. Inflating R by
-            # (|y|/cap)^2 beyond cap = 3 sigma makes the pull FALL with outlier size
-            # (step ~ 1/|y|): a wild bias is quasi-ignored, while ordinary re-centring
-            # runs at full strength. And -- unlike an inlier SCREEN centred on zero -- the
-            # prior never switches itself off: the 2026-08-10 failure (every bias at +97,
-            # zero-centred inlier set empty, gauge silently dead for 50 minutes) cannot
-            # recur. THE TRADE, stated so nobody re-tunes it into the wrong corner: a
-            # uniformly displaced comb now heals SLOWLY (its innovations are all beyond
-            # cap), where the median gauge healed fast. That is the chosen allocation --
-            # immunity fast, healing slow -- because clk + b_i stays correct throughout a
-            # displaced-comb episode (every consumer reads the sum), while a dragged clk
-            # poisons the rate and the bare-clk consumers immediately. You cannot have
-            # fast comb-healing AND wild-bias immunity without a population statement,
-            # which is the thing this mode exists to remove.
-            # ⚠️ NO FRESHNESS SCREEN, DELIBERATELY -- IT WAS TRIED AND IT WAS WORSE. A rule
-            # that dropped the prior for sats without a recent accepted measurement was the
-            # first fix for the wild-bias drag, and instrumenting the state showed it
-            # created its own churn: the soft-mean equilibrium re-centres the moment a
-            # satellite goes SILENT (-b_i/N within the relax time), which is a second
-            # membership edge 30 s after the first. The R-inflation below already does the
-            # real work, population-free: a bias's WEIGHT in the equilibrium falls as
-            # 1/|y|^2 past the cap, so a wild or stale-and-drifting bias simply stops
-            # counting, gradually, with no edge to step across. Every active sat keeps its
-            # prior until the ordinary age-out -- the same membership semantics as the
-            # median gauge, minus the pin.
+            # No freshness screen: dropping the prior for satellites without a recent
+            # measurement re-centres the equilibrium when a satellite goes silent, a second
+            # membership edge. The R-inflation already cuts a drifting bias's weight
+            # gradually, and every satellite keeps its prior until the ordinary age-out.
             for key, i in list(self._idx.items()):
                 y = -float(self.x[i])
                 _R = self.gauge_prior_sigma ** 2
@@ -1073,24 +797,12 @@ class JointReceiverState:
                 H[i] = 1.0
                 self._scalar_update(H, y, _R)
             return
-        # A wild bias gets no vote. (Historically the pin was a MEAN over this inlier set;
-        # the pin itself is now the median, but the inlier screen below stays -- it is what
-        # keeps a wild bias from BECOMING the middle element of a small set.)
-        #
-        # INLIERS ARE RELATIVE TO THE MEDIAN, NOT TO ZERO, and that is the whole robustness
-        # argument rather than a detail. Measuring |b_i| against zero silently assumes the
-        # biases are ALREADY centred -- i.e. it assumes the very thing the gauge exists to
-        # enforce. When that assumption failed on 2026-08-10 (every bias driven to ~+97 by a
-        # corrupted clk) the inlier set came back EMPTY, `len(use) < 2` returned early, and
-        # the gauge quietly stopped running for 50 minutes. A gauge that switches itself off
-        # exactly when the state most needs pinning is worse than none, because the common
-        # mode is then unobservable and clk drifts freely while clk + b_i stays right --
-        # invisible to every consumer that reads the sum.
-        #
-        # The median is always an inlier of itself, so this set is never empty; with a
-        # single wild sat it excludes exactly that sat, as before; and with the state
-        # uniformly displaced it includes everything and pulls the whole comb back. That
-        # last case is self-healing, which the zero-centred form could not be.
+        # Median gauge. Inliers lie within gauge_max_b of the median, so a wild bias cannot
+        # become the middle element of a small set. They are measured from the median, not
+        # from zero: a zero-centred screen assumes the biases are already centred, and when
+        # every bias is displaced it comes back empty and the gauge stops, leaving clk free
+        # to drift while clk + b_i still looks right. Centred on the median, a single wild
+        # sat is excluded, and a uniformly displaced comb is included whole and pulled back.
         idx = list(self._idx.values())
         if len(idx) < 2:
             return
@@ -1103,18 +815,16 @@ class JointReceiverState:
             or abs(float(self.x[i]) - med) <= self.gauge_max_b
         ]
         if len(use) < 2:
-            # Cannot happen with the median centre (the median's own neighbours are always
-            # within range), but if it ever does, that is an alarm and not a reason to skip:
-            # pin on everything rather than leave the common mode floating.
+            # The biases are spread wider than gauge_max_b about the median. Pin on all of
+            # them rather than leave the common mode floating, and say so.
             self._note(
                 "GAUGE: only %d inlier(s) of %d about median %+.2f -- pinning on ALL"
                 % (len(use), len(idx), med)
             )
             use = idx
         H = np.zeros(self.x.size)
-        # The median element(s) of b over the inlier set: one row for an odd count, the two
-        # central rows at half weight for an even one -- H @ x IS the median, so the pin
-        # stays a linear measurement and _scalar_update propagates P exactly as before.
+        # H selects the median of the inliers (the middle row, or the two middle rows at half
+        # weight), so H @ x is the median and the pin stays a linear measurement.
         _ordered = sorted(use, key=lambda i: float(self.x[i]))
         _n = len(_ordered)
         if _n % 2:
@@ -1125,17 +835,14 @@ class JointReceiverState:
         self._scalar_update(H, -float(H @ self.x), self.gauge_sigma ** 2)
 
     def _corroborators(self, key, innov):
-        """How many OTHER satellites have a self-consistent rejection run implying the SAME
-        step as `innov`, right now.
+        """How many other satellites have a coherent rejection run implying the same step
+        as `innov` now.
 
-        The discriminator the per-satellite test cannot provide. Independent satellites
-        share exactly one term -- the receiver clock -- so agreement ACROSS them is evidence
-        about the clock, while a single satellite agreeing with itself is evidence only that
-        its own measurement is repeatable (uniform noise over the code is repeatable in
-        exactly the wrong way, which is what cost the state on 2026-08-10).
-
-        Only fully-formed runs vote: a satellite must have reject_escape samples and pass
-        the same escape_spread coherence test as the caller.
+        Independent satellites share one term, the receiver clock, so agreement across them
+        is evidence about the clock, while one satellite agreeing with itself shows only that
+        its measurement repeats. A run votes only if it holds reject_escape samples and
+        passes the same escape_spread test as the caller; its implied step is its newest
+        measurement against the current prediction.
         """
         n = 0
         for k2, h2 in self._rej_hist.items():
@@ -1150,7 +857,7 @@ class JointReceiverState:
 
     @_locked
     def cycle(self, measurements, t_now):
-        """predict -> updates -> gauge -> expire, in the one order that is correct.
+        """One cycle: predict, update each measurement, gauge, clamp the rate, expire.
 
         `measurements` is an iterable of (key, y_chips, sigma_chips). Returns the number
         accepted."""
@@ -1160,15 +867,12 @@ class JointReceiverState:
             if self.update(key, y, sig, t_now) is not None:
                 n_ok += 1
         self.gauge()
-        # PHYSICAL RATE CEILING (2026-08-10 divergence). The reference is GPS-disciplined:
-        # measured truth ~4e-4 chips/s, the noisiest legitimate estimator scatters +-0.07.
-        # rate_max = 1.0 chips/s (0.1 ppm) is 2500x the truth, so nothing real is clamped --
-        # same separation argument as the broker's --dr-max-drift-chips-s, which is the
-        # bound that stopped this incident's 12.5 ppm from ever reaching a seed. The state
-        # must refuse to CARRY an impossible rate, not merely refuse to publish it: rate
-        # multiplies dt in every predict, so a wild value corrupts clk within seconds and
-        # then every innovation wraps. Clamp AND widen P[1,1] so the rate re-learns from
-        # measurements instead of trusting the clamped value.
+        # Physical rate ceiling. The reference is GPS-disciplined (true drift ~4e-4
+        # chips/s), so rate_max = 1.0 chips/s (0.1 ppm) clamps nothing real; the broker
+        # bounds its drift estimate the same way (dr_max_drift_chips_s). The state must not
+        # carry an impossible rate, not merely refuse to publish it: the rate multiplies dt
+        # in every predict, so a wild value corrupts clk within seconds. Clamp and widen
+        # P[1,1] so the rate re-learns from measurements.
         if abs(float(self.x[1])) > self.rate_max:
             _was = float(self.x[1])
             self.x[1] = self.rate_max if _was > 0 else -self.rate_max
@@ -1183,10 +887,10 @@ class JointReceiverState:
         self._drop([k for k, t in self._t_seen.items() if (t_now - t) > self.max_age_s])
         return n_ok
 
-    # -- readout -----------------------------------------------------------------
+    # -- carrier rows and readout ------------------------------------------------
     def _add_fcar(self):
-        """Give f_carrier its own row, lazily. Chains that never feed a carrier measurement
-        keep the exact state layout they had before this existed."""
+        """Give f_carrier its own row, on the first carrier measurement, so a state fed no
+        carrier keeps the code-only layout."""
         np = self._np
         i = self.x.size
         self.x = np.append(self.x, 0.0)
@@ -1214,22 +918,19 @@ class JointReceiverState:
 
     @_locked
     def update_rrate(self, key, y_hz, t_now, f_band_hz, sigma_hz=0.2):
-        """One carrier-frequency measurement for ONE satellite, from ONE band.
+        """One carrier-frequency measurement for one satellite, from one band.
 
-        `y_hz` is that satellite's measured carrier residual in this band -- feed
-        deep_rate_hz, gated on deep_rate_q, for the reasons f_carrier's note gives (
-        carrier_hz_resid is documented SIGNAL-FREE at CHORD SNR, so a filter fed by it
-        produces a confident meaningless estimate).
+        `y_hz` is that satellite's measured carrier-rate residual in this band (Hz); feed a
+        rate that depends on the signal, for the reasons f_carrier's note in __init__ gives.
 
             y = -(f_b/c) * rrate_i  +  (f_b/f_ref) * f_carrier  +  noise
 
-        BOTH ROWS ARE UPDATED BY ONE MEASUREMENT, which is the whole point: the receiver-wide
-        term and the per-orbit term are degenerate within a band and are separated only by
-        the fact that one is shared. A second band on the SAME satellite lands on the SAME
-        rrate row with a different f_b, which is how cross-band information actually combines
-        instead of being fitted twice.
+        One measurement updates both rows: the receiver-wide and per-orbit terms are
+        degenerate within a band and are separated only because one is shared. A second band
+        on the same satellite lands on the same rrate row with a different f_b, so the bands
+        combine instead of being fitted twice.
 
-        Returns the accepted innovation (Hz), or None if gated out.
+        Returns the accepted innovation (Hz), 0.0 for a birth, or None if gated out.
         """
         np = self._np
         self.predict(t_now)
@@ -1238,23 +939,19 @@ class JointReceiverState:
             self.f_ref_hz = f_b
         f_ref = float(self.f_ref_hz)
         if self._fcar_idx is None:
-            # No receiver-wide term yet: the first measurement cannot separate the two, so it
-            # all goes to f_carrier -- the shared term is the better prior for one sample, and
-            # the gauge will hand back whatever is really per-satellite as soon as a second
-            # satellite reports.
+            # The first carrier measurement: one sample cannot split the receiver-wide term
+            # from this orbit's, so f_carrier takes it all and the gauge hands back the
+            # per-satellite part once a second satellite reports.
             self._add_fcar()
             self.x[self._fcar_idx] = y_hz * (f_ref / f_b)
-            # ...and give this satellite its row NOW, at zero. One measurement cannot split
-            # the receiver-wide term from this orbit's deviation, so f_carrier takes it all
-            # and the gauge hands back whatever is really per-satellite once a second
-            # satellite reports. Without a row here the FIRST satellite is structurally
-            # unable to disagree with the value it itself defined.
+            # The satellite gets its row now, at zero; without one it could never disagree
+            # with the value it defined.
             self._add_rrate(key, 0.0, t_now)
             return 0.0
         if key not in self._rr_idx:
-            # Birth on the measurement, like b_sat: initialise to the residual left AFTER the
-            # current receiver-wide estimate, not to zero. Walking in from zero at loop gain
-            # is how a real per-sat offset gets read as noise for its first minutes.
+            # Birth on the measurement: initialise to the residual left after the current
+            # receiver-wide estimate, so a real per-sat offset is not read as noise while
+            # the row walks in from zero at loop gain.
             resid = y_hz - (f_b / f_ref) * float(self.x[self._fcar_idx])
             self._add_rrate(key, -resid * self.C_LIGHT / f_b, t_now)
             return 0.0
@@ -1268,31 +965,20 @@ class JointReceiverState:
         if var > 0.0 and abs(innov) > self.innov_nsigma * var ** 0.5:
             self.rrate_rejected += 1
             self._rr_reject_run[key] = self._rr_reject_run.get(key, 0) + 1
-            # ESCAPE. A gate with no way out turns a bad birth into a permanent one: the state
-            # is confident, the satellite is real, and every cycle it is thrown away for
-            # disagreeing. Measured while building this -- one satellite rejected 298 times
-            # out of 300. After a sustained run of consistent rejections, believe the
-            # SATELLITE and re-open its row rather than the estimate that has stopped
-            # predicting it. Same principle as the code path's escape.
+            # Escape. A gate with no way out turns a bad birth into a permanent one. After
+            # rr_escape_runs consecutive rejections (a count only; no agreement test), the
+            # row is re-opened.
             if self._rr_reject_run[key] >= self.rr_escape_runs:
-                # RE-OPEN, DO NOT ADOPT (2026-08-13, the PRN 32 walk). The code filter's
-                # escape snaps x to the rejected measurement because there a sustained
-                # rejection means a REAL satellite the gate wrongly excluded. On carrier
-                # rows the sustained-rejection population is different: weak sats whose
-                # rate picks scatter multi-Hz emit to emit -- junk the gate is RIGHT to
-                # reject. Snapping adopts the junk, and the command then walks (measured:
-                # -7 -> -14.5 Hz in 4 min). Re-opening P alone gets both cases right:
-                # sigma growth de-commands the sat (the --rrate-cmd-max-sigma gate), and
-                # a genuinely mis-converged row is pulled in by NORMAL updates the moment
-                # its measurements turn consistent -- through a wide-open gate.
+                # Re-open, do not adopt. On carrier rows a sustained rejection usually means
+                # a weak satellite whose rate picks scatter by several Hz, which the gate is
+                # right to refuse; adopting them would walk the command. Re-opening P alone
+                # handles both cases: the wider sigma de-commands the satellite (the
+                # broker's rrate_cmd_max_sigma gate), and a mis-converged row is pulled in by
+                # normal updates through the wide gate once its measurements turn consistent.
                 i_ = self._rr_idx[key]
-                # DECORRELATE, not just re-open (2026-08-25): setting the diagonal while
-                # keeping the row's stale cross-terms can leave |P_ij| > sqrt(P_ii P_jj)
-                # -- a non-PSD covariance whose later updates walk OTHER diagonals
-                # negative. That is how gal_e5a's rrate_sigma went COMPLEX at 05:42 (the
-                # escape path fires constantly in a churn storm, ~40 births/min). A row
-                # being re-opened is declared statistically suspect; its second-order
-                # links to every other state are part of what is suspect. Zero them.
+                # Zero the row's cross-covariances too: resetting the diagonal alone can
+                # leave |P_ij| > sqrt(P_ii P_jj), a non-PSD covariance whose later updates
+                # drive other diagonals negative.
                 self.P[i_, :] = 0.0
                 self.P[:, i_] = 0.0
                 self.P[i_, i_] = self.sigma_rr0 ** 2
@@ -1320,14 +1006,14 @@ class JointReceiverState:
 
     @_locked
     def gauge_rrate(self):
-        """Pin mean(rrate) = 0 over the active satellites.
+        """Pin mean(rrate) = 0 over the rrate rows within max(10 sigma_rr0, 1 m/s) of their
+        median (all rows if fewer than two qualify). Rows are never aged out, so a satellite
+        that has set keeps its vote.
 
-        Without this, f_carrier and the rrate rows share an unobservable common mode: add c
-        to the receiver-wide term, subtract the equivalent from every orbit, and every
-        prediction is identical. Same construction as gauge() for b_sat, including the
-        median-centred inlier test -- a wild orbit does not get a vote, and the estimator
-        this replaces (a per-chain fit with no shared term at all) had no common mode to
-        pin, so the robustness has to be supplied here rather than inherited.
+        Without this, f_carrier and the rrate rows share an unobservable common mode:
+        shifting the receiver-wide term and every orbit by equivalent amounts leaves every
+        prediction unchanged. The screen is centred on the median so a wild orbit gets no
+        vote.
         """
         np = self._np
         idx = list(self._rr_idx.values())
@@ -1360,24 +1046,21 @@ class JointReceiverState:
         i = self._rr_idx.get(key)
         if i is None:
             return float("inf")
-        # A NEGATIVE diagonal is a numerically broken covariance, and Python's
-        # **0.5 turns it into a COMPLEX number that detonates at whatever
-        # comparison touches it next (gal_e5a died 5.5 h on exactly this,
-        # 2026-08-25 05:42). Broken must read as UNMEASURED, never as confident:
-        # inf sends every sigma gate to its refuse branch. (not v >= 0 also
-        # catches NaN.)
+        # A negative diagonal is a numerically broken covariance, and ** 0.5 of a negative
+        # float is complex in Python, which fails at the next comparison. Broken reads as
+        # unmeasured: inf sends every sigma gate to its refuse branch (not v >= 0 also
+        # catches NaN).
         _v = float(self.P[i, i])
         return float("inf") if not (_v >= 0.0) else _v ** 0.5
 
     @_locked
     def carrier_correction_hz(self, key, f_band_hz):
-        """THE ONE COMMAND: total carrier correction for this satellite in this band, Hz.
+        """Total carrier correction for this satellite in this band (Hz).
 
-        This is what a seed adds to its model Doppler -- receiver-wide term and orbit term
-        together, scaled to the band being seeded. It exists so there is exactly ONE number
-        leaving the estimator per (satellite, band), rather than a seed and a separate trim
-        that a continuity gate then has to referee. See task #33: the reason the shared
-        carrier loop was structurally inert was two controllers on one state.
+        What a seed adds to its model Doppler: the receiver-wide term and the orbit term
+        together, scaled to the band being seeded. It is the one number the estimator emits
+        per (satellite, band): one command, rather than a seed plus a separate trim on the
+        same state.
         """
         f_b = float(f_band_hz)
         f_ref = float(self.f_ref_hz or f_b)
@@ -1391,7 +1074,7 @@ class JointReceiverState:
 
     @_locked
     def f_carrier_sigma(self):
-        """Its 1-sigma uncertainty (Hz). inf before any measurement -- an UNMEASURED state
+        """Its 1-sigma uncertainty (Hz). inf before any measurement: an unmeasured state
         must not read as a confident zero, which is how a dead feed passes for a healthy one."""
         if self._fcar_idx is None:
             return float("inf")
@@ -1407,15 +1090,10 @@ class JointReceiverState:
     def clk_rate(self):
         return float(self.x[1])
 
-    # ⚠️ THE READ ACCESSORS TOLERATE A STALE INDEX. The filter is SHARED ACROSS CHAIN
-    # THREADS (the in-process clock), and diagnostics iterate a snapshot of _idx while
-    # another chain's membership update is resizing x/P -- measured 2026-08-15 17:01:29:
-    # sigma() indexed P[0, 57] on a 57x57 P during the post-restart mass re-acquisition
-    # and the IndexError KILLED the gps_l5 chain thread (seeds then expired and the chain
-    # went dark until the next broker restart). A stale index is answerable: the clk-only
-    # value (sigma) / 0.0 (bias) is what the caller would have gotten a moment earlier,
-    # and a DIAGNOSTIC must never be able to kill a chain. The real membership lock is
-    # #33's business; these guards make stale READS safe regardless.
+    # The read accessors tolerate a key that has left the state. Callers iterate an unlocked
+    # snapshot of _idx while another chain's cycle drops rows, so a missing key reads as the
+    # clock-only sigma or a 0.0 bias rather than raising: a diagnostic must never kill a
+    # chain thread.
     @_locked
     def bias(self, key):
         i = self._idx.get(key)

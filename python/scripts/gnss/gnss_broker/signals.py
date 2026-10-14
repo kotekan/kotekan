@@ -1,38 +1,28 @@
-"""Named GNSS signals for the broker (task #27 M2).
+"""Named GNSS signals for the broker's --signal.
 
-THE PROBLEM. Today a broker chain is defined by twelve loose scalars on a command line:
+A chain's code constants (constellation, carrier, chip rate, code length, long-code segments
+and epoch, overlay length) all fail silently when mistyped: with a wrong overlay length the
+seed lands in an effectively random one of the overlay periods. --signal sets them from one
+name.
 
-    --constellation E --carrier-hz 1176.45e6 --chip-rate-hz 10.23e6 --code-length 10230 \\
-    --long-code-segments 100 --long-code-epoch-s 0.1 --nh-overlay-len 100 ...
+The source of truth is lib/stages/gnss/gnssSignal.hpp, whose `SignalDescriptor`s build the
+trackers' replica bank. The header is parsed rather than retyped here, so the two cannot
+drift apart, and a name the header does not define is an error at startup.
 
-Every one of them fails SILENTLY when mistyped. broker_up_extra.sh says so in its own
-comments -- "getting these wrong does not error: the overlay period is computed mod the
-wrong length and the seed lands in an effectively random one of the 100 periods" -- and
-that is exactly the 2026-08-08 E5a failure mode, arrived at from the other direction (the
-dead-reckon model reducing mod one primary period). A chain should be named, not retyped.
-
-THE SOURCE OF TRUTH IS THE C++ HEADER, NOT THIS FILE. lib/stages/gnss/gnssSignal.hpp holds
-28 `SignalDescriptor`s, and it is what the trackers' replica bank is actually built from.
-Retyping those numbers here would create a second authority that can drift from the first
-without either side erroring -- the same class of defect this module exists to remove. So
-the header is PARSED, and a name that is not in it is a hard failure at the door.
-
-THE CHAIN IS A PAIR, and that is the subtlety worth stating. The search acquires the
-PRIMARY code; the tracker despreads the LONG one with the secondary baked in:
+A chain is a pair. The search acquires the primary code; the tracker despreads the long code
+with the secondary built in:
 
     gps_l5   GPS_L5_Q    10230 chips / 1 ms      GPS_L5_Q_NH    204600 / 20 ms
     gal_e5a  GAL_E5A_Q   10230 chips / 1 ms      GAL_E5A_Q_CS  1023000 / 100 ms
     gps_l2c  GPS_L2C_CM  10230 chips / 20 ms     GPS_L2C_CL     767250 / 1.5 s
 
 so `long_code_segments` = long.code_length / primary.code_length and `long_code_epoch_s` =
-long.code_period_s. Where no long descriptor exists (B1C, E1C) the overlay rides the bank's
-single-sequence slot and the same two numbers come from the primary's own
-`secondary_length` -- which agrees with the pair wherever both are defined. Checked, not
-assumed: see `_derive` and the self-check at the bottom.
+long.code_period_s. Where no long descriptor exists (B1C, E1C) the same two numbers come
+from the primary's own `secondary_length`, which must agree with the pair wherever both are
+defined (`_derive` enforces it; selftest.py cross-checks the derived values).
 
-WHAT IS NOT HERE, deliberately: `hops_per_sec` (the F-engine's record geometry -- a
-RECEIVER property, identical for every signal on the instrument) and `code_doppler_sign`
-(a decode convention). Those are receiver-scope and move to the receiver config in M6.
+Receiver-scope constants are not set here: --hops-per-sec (the F-engine's record geometry,
+the same for every signal on the instrument) and code_doppler_sign (a decode convention).
 """
 import os
 import re
@@ -87,12 +77,11 @@ def _load_descriptors(path=None):
 
 # chain key -> (primary descriptor, long/tracker descriptor or None, min_prn or None)
 #
-# min_prn 19 marks the BDS-3-only signals: the BDS-2 birds broadcast B1I at 1561 MHz,
-# 14 MHz outside the science band, so there is nothing to despread -- yet they are real,
-# healthy, overhead satellites that every other gate waves through. Only capability excludes
-# them, and the IGS registry's block types decide it (prnmap.signal_incapable_prns, implied
-# as --signal-capability for these chains); the floor is the fallback when the registry is
-# unreadable. PRNs are not a proxy any more: IGS re-used C11-C14 for BDS-3 MEOs (#150).
+# min_prn 19 marks the BDS-3-only signals (B1C, B2a, B2b). A BDS-2 satellite carries none of
+# them yet passes every visibility, ephemeris and health gate, so only capability excludes it.
+# A min_prn also implies --signal-capability: the IGS registry's block types decide
+# (prnmap.signal_incapable_prns), because some PRNs below 19 (C11-C14) are BDS-3 satellites.
+# The PRN floor is the fallback when the registry is unreadable.
 _CHAINS = {
     "gps_l1ca": ("GPS_L1CA", None, None),
     "gps_l1c": ("GPS_L1C_P", None, None),
@@ -105,24 +94,22 @@ _CHAINS = {
     "bds_b1c": ("BDS_B1C_P", None, 19),
     "bds_b2a": ("BDS_B2A_P", "BDS_B2A_P_CS", 19),
     "bds_b2b": ("BDS_B2B_I", None, 19),
-    # B3I is NOT BDS-3-only (min_prn None): BDS-2 broadcasts it too. The deployed PRN
-    # LIST still mirrors b2a/b2b's 19-42 (the tau_band cross-band discipline wants the
-    # same rays); widening to BDS-2 birds is a later, deliberate step.
+    # B3I is broadcast by BDS-2 and BDS-3 alike, so no min_prn and no capability gate; the
+    # broker's BeiDou fallback floor (PRN >= 19) still applies.
     "bds_b3i": ("BDS_B3I", "BDS_B3I_NH", None),
     "glo_l3oc": ("GLO_L3OC_P", None, None),
 }
 
 
-# RF band names, keyed by carrier to 10 kHz. This is the COLUMN a viewer groups by, and it is
-# NOT the signal's own name: Galileo E5a and GPS L5 are both the L5 band (they share 1176.45
-# MHz, which is the whole reason they share a receiver), while E5a-Q and L5-Q are different
-# signals within it. Getting this wrong puts every signal in its own column and defeats the
-# point of the table. Module-level because two consumers need it WITHOUT a signal in hand:
-# SignalDef.rf_band (carrier -> name) and band_of_freq_id (a bare channel -> name).
+# RF band names, keyed by carrier in MHz rounded to 1 kHz. This is the column a viewer groups
+# by, not the signal's own name: Galileo E5a and GPS L5 are both the L5 band (they share
+# 1176.45 MHz, and so a receiver), while E5a-Q and L5-Q are different signals within it.
+# Module-level so carriers_for_chains can name a carrier without a SignalDef; band_of_freq_id
+# takes the (carrier, name) pairs it returns.
 RF_BAND_BY_CARRIER = {
     1575.42: "L1",  # GPS L1 C/A + L1C, Galileo E1, BeiDou B1C
     1227.60: "L2",  # GPS L2C
-    1176.45: "L5",  # GPS L5, Galileo E5a, BeiDou B2a  <- CHORD's band today
+    1176.45: "L5",  # GPS L5, Galileo E5a, BeiDou B2a
     1207.14: "E5b",  # Galileo E5b, BeiDou B2b/B2I
     1278.75: "E6",  # Galileo E6
     1268.52: "B3",  # BeiDou B3I
@@ -132,24 +119,23 @@ RF_BAND_BY_CARRIER = {
     1248.06: "G2",  # GLONASS L2OC
 }
 
-# CHORD's F-engine channel pitch. freq_id is a PHYSICAL bin index, so the centre frequency is
-# exactly freq_id * this (config/chord_gnss_node.yaml: channel_width_hz 195312.5, and its
-# note on the bin order). Same constant as GnssGpuRecordAssemble.cpp's 0.1953125.
+# CHORD's F-engine channel pitch (1600 MHz / 8192). freq_id is a physical bin index, so a
+# channel's centre is exactly freq_id * this (channel_width_hz in config/chord_gnss_node.yaml,
+# and the same constant in GnssGpuRecordAssemble.cpp).
 FREQ_ID_MHZ = 0.1953125
 
-# How far from a carrier a channel may sit and still be called part of that band. The widest
-# signal we fly is BPSK(10) -- a 10.23 MHz mainlobe half-width -- so 12 MHz admits a whole
-# mainlobe and a little shoulder, and rejects a channel that belongs to nothing we track.
+# How far from a carrier a channel may sit and still be named for that band. The widest
+# signal flown is BPSK(10), a 10.23 MHz mainlobe half-width, so 12 MHz admits the whole
+# mainlobe and a little shoulder and rejects a channel that belongs to no tracked band.
 _BAND_CLAIM_MHZ = 12.0
 
 
 def carriers_for_chains(chain_names):
-    """[(carrier MHz, band name)] for the given chain names -- the DECLARED band set.
+    """Sorted [(carrier MHz, band name)] for the given chain names: the declared band set.
 
-    Physics comes from gnssSignal.hpp via the descriptor table, so a carrier is never typed
-    a second time; the config only declares WHICH chains the receiver flies. Unknown names
-    are skipped rather than fatal: this feeds a health panel, and a typo should cost a label,
-    not a chain.
+    Carriers come from gnssSignal.hpp via the descriptor table; the config only declares
+    which chains the receiver flies. Unknown names are skipped rather than fatal: this feeds
+    a health panel, and a typo should cost a label, not a chain.
     """
     out = []
     for name in chain_names or []:
@@ -169,24 +155,18 @@ def carriers_for_chains(chain_names):
 def band_of_freq_id(freq_id, carriers):
     """(band name, carrier MHz) for the RF band a CHORD channel sits in; (None, None) if none.
 
-    ⚠️⚠️ `carriers` IS THE DECLARED SET; THE FULL TABLE WOULD INVENT BANDS. Measured while this
-    was being written: with the full RF_BAND_BY_CARRIER table as candidates, cx19/gnss1's
-    channels 287-288 (1199.2 and 1202.3 MHz) came back as "L3" -- they sit nearer GLONASS
-    L3OC's 1202.025 carrier than Galileo E5b's 1207.14, and CHORD does not fly L3OC at all.
-    The lower shoulder of a band we DO track was confidently named as a band we do not. Pass
-    the carriers the receiver actually flies (see carriers_for_chains and the broker's
-    --rf-bands, declared in config/gnss_chains_chord.yaml) and the ambiguity disappears,
-    because the only candidates are bands that really are in the data.
+    `carriers` must be the declared set (carriers_for_chains of the broker's --rf-bands), not
+    the full RF_BAND_BY_CARRIER table. With the full table, E5b's lower shoulder (about
+    1199-1202 MHz) sits nearer GLONASS L3OC's 1202.025 MHz carrier than E5b's 1207.14 and is
+    named L3, a band CHORD does not fly.
 
-    ⚠️ NEAREST CARRIER, NOT CONTAINMENT, among those candidates. bds_b3i (1268.52, BPSK(10))
-    has a mainlobe edge at exactly gal_e6's carrier (1278.75), so the occupied bands OVERLAP
-    and containment has no single answer there. Nearest splits at the midpoint, gives the
-    same answer on every instance, and groups each channel with the neighbourhood a
-    band-selective source moves as a unit -- which is the question the panel exists to ask.
+    Among the candidates the nearest carrier wins, not containment: bds_b3i's BPSK(10)
+    mainlobe (1268.52 MHz) reaches gal_e6's carrier at 1278.75, so the occupied bands overlap.
+    Nearest splits at the midpoint and gives the same answer on every instance. A channel
+    more than _BAND_CLAIM_MHZ from every candidate is unnamed.
 
-    ⚠️ THE INPUT IS AN ABSOLUTE freq_id, never a local comb index. Local index is meaningless
-    off the node (nodes hold different subsets), which is the whole reason the tap serves
-    freq_ids alongside chans. A local index here yields a confident wrong band.
+    `freq_id` is the absolute F-engine bin index, never a local comb index: nodes hold
+    different channel subsets, so a local index yields a wrong band.
     """
     if freq_id is None:
         return (None, None)
@@ -245,11 +225,7 @@ class SignalDef(object):
         self.nh_overlay_len = sec or self.long_code_segments
 
     # -- derived, so no caller recomputes them differently -------------------------
-    # RF band names, keyed by carrier to 10 kHz. This is the COLUMN a viewer groups by, and
-    # it is NOT the signal's own name: Galileo E5a and GPS L5 are both the L5 band (they
-    # share 1176.45 MHz, which is the whole reason they share a receiver), while E5a-Q and
-    # L5-Q are different signals within it. Getting this wrong puts every signal in its own
-    # column and defeats the point of the table.
+    # See RF_BAND_BY_CARRIER.
     _RF_BAND = RF_BAND_BY_CARRIER
 
     @property
@@ -260,19 +236,17 @@ class SignalDef(object):
         mhz = round(self.carrier_hz / 1e6, 3)
         return self._RF_BAND.get(mhz, "%.2fMHz" % mhz)
 
-    # Human names, derived from the descriptor rather than typed a second time. A viewer
-    # that draws "gps_l5 GPS_L5_Q" is showing its plumbing; these come from the same source
-    # as every other constant, so a new signal is named correctly the day it is added.
+    # Human names, derived from the descriptor name rather than typed a second time, so a new
+    # descriptor is named correctly as soon as it is added.
     _SYS_NAME = {"GPS": "GPS", "GAL": "Galileo", "BDS": "BeiDou", "GLO": "GLONASS"}
 
     @property
     def short(self):
         """Column-header form: L5-Q, E5a-Q, B2a-P, L2C-CM, L1CA, L3OC-P.
 
-        ⚠️ ONLY the a/b band suffix lowercases, and only after a digit: E5A->E5a, B2B->B2b.
-        A blanket "first letter up, rest down" looks tidier and is wrong -- it produces L2c,
-        B1c, L1ca, L3oc, none of which is how anyone writes these signals. The descriptor
-        names are already correct; leave them alone except where convention differs."""
+        Only an A/B band suffix after a letter and a digit is lowercased (E5A -> E5a,
+        B2B -> B2b); every other part keeps the descriptor's case, so L2C, B1C, L1CA and L3OC
+        stay as conventionally written."""
         out = []
         for p in self.primary.split("_")[1:]:
             m = re.match(r"^([A-Z]\d)([AB])$", p)
@@ -301,12 +275,11 @@ class SignalDef(object):
 
 
 def _derive(descs, prim, lng):
-    """(long_code_segments, long_code_epoch_s), from the PAIR when there is one.
+    """(long_code_segments, long_code_epoch_s), from the pair when there is one.
 
-    Both routes are computed wherever both exist and required to agree -- the overlay
-    length and the long code's own length are two statements of the same fact, and a
-    disagreement means the header is inconsistent, which is worth a crash rather than a
-    coin flip between them."""
+    Where both the primary's secondary_length and a long descriptor exist they must agree:
+    they state the same fact, so a disagreement means the header is inconsistent and raises
+    ValueError rather than picking one."""
     _, _, clen, per, sec = descs[prim]
     from_sec = (sec, per * sec) if sec else None
     from_long = None
@@ -325,7 +298,7 @@ def _derive(descs, prim, lng):
         )
     got = from_long or from_sec
     if got is None:
-        # No secondary and no long code: the primary IS the whole code (GPS L1 C/A).
+        # No secondary and no long code: the primary is the whole code (GPS L1 C/A).
         return 1, per
     return got
 

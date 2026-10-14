@@ -1,12 +1,8 @@
 """Sky: BRDC prediction, visibility, and the broadcast-vs-decoded ephemeris cross-checks.
 
-Extracted verbatim from gps_distributed_broker.py (task #27 M1).
-
-THIS IS THE SHARED LAYER. Every function here is indexed by constellation and takes the
-ephemeris state as an argument -- none of it is per-signal. In the unified broker one Sky
-serves every chain, which is the whole point: a CNAV decode on L5 produces the ephemeris
-E5a needs, and today that is thrown away at the process boundary
-(31896a862:docs/CHORD_BROKER_REFACTOR.md 1.2).
+Every function here is indexed by constellation and takes the ephemeris state as an
+argument; none of it is per-signal. The BRDC store is shared (Receiver.brdc hands every chain
+in the process the same dict), so one parse serves every constellation.
 """
 import math
 import re
@@ -18,60 +14,51 @@ C_LIGHT = 299792458.0  # m/s
 
 
 def brdc_predict(state, lat, lon, alt_m, sysc, min_prn, t_utc, f_carrier_hz):
-    """BRDC-almanac analog of gps_beamtrack.predict_dopplers for ONE constellation:
-    {prn: (doppler_hz, doppler_rate_hz_s, elevation_deg, range_m, sat_clk_s)}.
+    """BRDC analogue of gps_beamtrack.predict_dopplers for one constellation:
+    {prn: (doppler_hz, doppler_rate_hz_s, elevation_deg, range_m, sat_clk_s, az_deg,
+    az_rate_deg_s, el_rate_deg_s, t_unix)}.
 
-    Same tuple layout/sign convention as the TLE path (+Doppler = approaching), extended
-    with the broadcast SATELLITE CLOCK (the TLE class has none) -- the nh time-assist
-    convention is t_sv = t_gpst - range/c + clk (proven to 0.01 chip, c31_convention.py).
-    All elevations are returned (down to -90): the noise probes pick the deepest-BELOW-
-    horizon sats. Rate = range-rate differencing over a 4 s epoch pair, like the
-    dead-reckon block. Full-sky predict_all is ~1.2 ms, so per-cycle cost is trivial
-    (the skyfield path it replaces was heavier).
+    The first four elements have the TLE path's layout and sign convention (+Doppler =
+    approaching); the rest are BRDC-only. sat_clk_s is the broadcast satellite clock, for the
+    nh time-assist convention t_sv = t_gpst - range/c + clk. All elevations are returned
+    (down to -90): the noise probes pick the deepest below-horizon satellites. The rates are
+    differenced over a 4 s epoch pair (t_utc, t_utc + 4 s).
     """
     ge = state["mod"]
-    # Hand the ephemeris library this chain's tagged logger, once. `_log` reads a thread-local
-    # tag, so one global install still labels every chain's line correctly -- and the chain that
-    # pays for a fetch is the one that reports what it got.
+    # Install the broker's logger as the BRDC supply's LOG_HOOK, once. `_log` reads a
+    # thread-local tag, so one install labels each line with the chain whose thread logged it;
+    # lines from the supply's brdc-refresh thread carry no chain tag.
     # LOG_HOOK lives on gnss_brdc_supply; gnss_ephemeris re-exports only fetch_brdc.
     import gnss_brdc_supply as _supply
 
     if getattr(_supply, "LOG_HOOK", "unset") is None:
         _supply.LOG_HOOK = _log
     now = _now()
-    # ⚠️⚠️ ASK AS OFTEN AS THE PRODUCT UPDATES, NOT AS OFTEN AS THE DAILY DOES. This gate was
-    # 7200 s, inherited from the DAILY file's own 2 h re-fetch rule -- but the sky is served by
-    # the STATION-HOURLY merge, which updates every hour, and a broadcast record is only valid
-    # for 4 h from its toe. So between refreshes the toe ages monotonically and satellites drop
-    # out of the prediction ONE AT A TIME as they cross the window, for up to two hours, with
-    # nothing in the log to say the sky is thinning rather than setting.
+    # Re-parse every 900 s, as often as the product updates. The sky is served by the
+    # station-hourly merge, which updates every hour, and a broadcast record is valid for 4 h
+    # from its toe. With a slower gate the toes age between refreshes: satellites drop out of
+    # the prediction one at a time as they cross the window, with nothing in the log to say
+    # the sky is thinning rather than setting, and the survivors are predicted from ever-older
+    # records, a growing model error the fast loop absorbs into a deeper and deeper trim.
     #
-    # MEASURED 2026-08-27, 73 min after a refresh (KV: "far fewer sats available than usual"):
-    #     at the refresh   G28 / E25 / C21 predictable
-    #     73 min later     G19 / E17 / C 7   -- Galileo's oldest toe at 233 min of 240
-    # And it is not only a count. A satellite still inside the window is being predicted from an
-    # ever-older record, so its model error GROWS; the fast loop absorbs that into a deeper and
-    # deeper trim until it hits the +-3 chip clamp and the peak walks off the prompt tap. The
-    # E3/E32 dropouts that afternoon track the staleness, not the sky.
-    #
-    # THIS IS CHEAP. fetch_brdc holds its own caches -- 2 h for the daily, 30 min for the
-    # station-hourly merge -- so a call inside those windows is a dict lookup and a parse, not
-    # a fetch. The gate here only decides how soon we NOTICE that something newer exists.
+    # This is cheap. fetch_brdc keeps its own caches (2 h for the daily, 30 min for the
+    # station-hourly merge) and refreshes them on a daemon thread, so a call costs a parse,
+    # not a fetch. The gate only decides how soon a newer file is noticed.
     if state["eph"] is None or now - state["eph_t"] > 900.0:
-        # Current-day BRDC files GROW; fetch_brdc re-fetches a cache older than 2 h. Pass
-        # t_utc so a replay gets the DAY-MATCHED file -- today's file
-        # cannot predict another epoch (best_eph 4 h window).
+        # Current-day BRDC files grow; fetch_brdc re-fetches a daily older than 2 h. Pass
+        # t_utc so a replay gets the day-matched file: today's file cannot predict another
+        # epoch (best_eph's 4 h window).
         try:
             _old_eph = state["eph"]
-            # block only while there is NO sky at all; with one in hand the fetch must not
+            # block only while there is no sky at all; with one in hand the fetch must not
             # stall the pass (gnss_brdc_supply: the refresh runs on a thread).
             state["eph"] = ge.parse_rinex_nav(
                 ge.fetch_brdc(t_utc, block=_old_eph is None)
             )
             state["eph_t"] = now
             _n = len(state["eph"])
-            # Say so only when the SET changed. At a 15 min cadence an unconditional line is
-            # 96 lines a day of "still 101 sats", which is how a real thinning gets missed.
+            # Log only when the count changed: a line every 15 min regardless would bury a
+            # real thinning.
             if _n != state.get("eph_n"):
                 _log(
                     "brdc almanac: ephemeris refreshed (%d sats%s)"
@@ -86,7 +73,7 @@ def brdc_predict(state, lat, lon, alt_m, sysc, min_prn, t_utc, f_carrier_hz):
         except Exception as e:
             state["eph_t"] = (
                 now - 7200.0 + 600.0
-            )  # coast on the old set, retry in 10 min
+            )  # coast on the old set; 6600 s is past the 900 s gate, so the next call retries
             if state["eph"] is None:
                 raise
             _log(
@@ -110,19 +97,16 @@ def brdc_predict(state, lat, lon, alt_m, sysc, min_prn, t_utc, f_carrier_hz):
             if v2
             else 0.0
         )
-        # ⚠️ AZIMUTH IS ELEMENT 5 AND IT IS APPENDED, NEVER INSERTED. Every consumer indexes
-        # this tuple positionally (pred[p][0], [1], [2], [3]) and nothing unpacks it strictly,
-        # so growing it at the end is safe and reordering it would be silent corruption.
-        # az exists so the broker can SERVE the sky: the viewer used to re-derive it by
-        # fetching and merging its own ephemeris, which made it a second writer of the shared
-        # cache (2026-08-27) and let its sky plot disagree with the broker's while claiming to
-        # be "the SAME source the tracker uses".
+        # Elements are appended, never inserted: consumers index this tuple positionally
+        # (almanac.py rebuilds it as ctx.pred) and nothing unpacks it strictly, so growing it
+        # at the end is safe and reordering it would be silent corruption. az (element 5) is
+        # what the broker serves on get_sky.
         #
-        # Elements 6-8 (az rate, el rate, deg/s, and the unix epoch az/el describe) are for the
-        # element steering: a 30-s geometry snapshot drifts ~0.2 m of path across the array by
-        # the next post, so the assemblers extrapolate along the track (gnssElemSteer.hpp). The
-        # epoch travels WITH the tuple so a bridged (frozen) sky extrapolates from when it was
-        # true rather than being stamped as current.
+        # Elements 6-8 (az rate and el rate in deg/s, and the unix epoch az/el describe) are for
+        # the element steering: geometry is posted every ~30 s, so the assemblers extrapolate
+        # along the track between posts (gnssElemSteer.hpp). The epoch travels with the tuple so
+        # a bridged (frozen) sky extrapolates from when it was true rather than being stamped
+        # as current.
         if v2:
             _daz = (v2["az"] - v["az"] + 540.0) % 360.0 - 180.0
             _az_rate, _el_rate = _daz / dt, (v2["el"] - v["el"]) / dt
@@ -139,59 +123,35 @@ def brdc_predict(state, lat, lon, alt_m, sysc, min_prn, t_utc, f_carrier_hz):
             _el_rate,
             t_utc.timestamp(),
         )
-    # PREDICTION-COLLAPSE GUARD (2026-07-19): the daily BRDC's C/E nav records can LAG the
-    # GPS ones by hours, so an entire constellation's newest toe crosses best_eph's window
-    # at ONE instant -- measured 11:59:57Z: 13 seeded sats dropped 'set below horizon' in
-    # one cycle (incl. C31 at el 70) and the hint-gated search went DARK for the remainder
-    # of the 2 h refresh period. If the predicted-sat count collapses below half its
-    # running peak: force an early re-fetch (the CDN file has usually grown past the gap
-    # by then; retry at 10 min if not) and BRIDGE with the last good prediction set --
-    # a coasted el is drop-gate-grade for hours, and a stale dop hint degrades the search
-    # no worse than the no-hint darkness it replaces.
-    # ⚠️⚠️ THE COLLAPSE BOOKKEEPING IS PER-CONSTELLATION AND THE STATE DICT IS NOT.
-    # `state` is the SHARED BRDC store -- receiver.brdc() hands every chain the same object so
-    # one parse serves G/E/C (that part is deliberate and right). But `peak_n` and `last_good`
-    # are statements about ONE constellation's sky, and writing them at `state` scope made both
-    # of them cross-constellation (2026-08-27, KV: "why are there zero probe sats on BeiDou"):
+    # Prediction-collapse guard. The daily BRDC's C/E nav records can lag the GPS ones by hours,
+    # so a whole constellation's newest toe can leave best_eph's window at one instant: every
+    # satellite of it drops in one cycle and the hint-gated search goes dark. If the predicted
+    # count falls below half its running peak, force an early refresh and bridge with the last
+    # good prediction: a coasted el is drop-gate-grade for hours, and a stale Doppler hint
+    # degrades the search no worse than no hint at all.
     #
-    #   peak_n  became a MAX OVER CONSTELLATIONS. BeiDou has ~13 sats in its eph window against
-    #           GPS's ~24, so `len(out) < 0.5 * peak` was true permanently: bds_b2a fired
-    #           PREDICTION COLLAPSE 9 ms after its own almanac init, against a peak it had
-    #           never set, and never came out of it.
-    #   last_good became WHICHEVER CHAIN PREDICTED LAST. So the bridge -- the thing that exists
-    #           to coast one constellation's sky through a thin refresh -- handed BeiDou GPS's
-    #           and Galileo's satellites, complete with their elevations. Measured in the log:
-    #           `bds_b2a: noise probe PRN 1 seeded (elev -88)` and `bds_b2b: noise probe PRN 3
-    #           seeded (elev -32)` on chains whose min_prn is 19, 1.5 s after the Galileo chains
-    #           seeded the same PRN 3. Sub-19 PRNs cannot come out of BeiDou's own filtered
-    #           output. The probe selector then picked those foreign PRNs, the ones that
-    #           happened to land in 19-42 survived --probe-require-slot, and bds_b2a sat at 2
-    #           probes -> UNANCHORED -> nothing admitted, nothing trimmed.
-    #
-    # Same shape as the four fallbacks audited on 2026-08-26 (the appendix of
-    # docs/CHORD_PEER_COMPARISON_PURGE.md): a fallback reproduces the primary path's OUTPUT while
-    # dropping one of its invariants -- here the constellation identity -- and runs exactly when the
-    # primary is already degraded. Scope is (sysc, min_prn) because min_prn is part of what defines
-    # this chain's population.
+    # The bookkeeping is per scope; the store is not. `state` is the shared BRDC store
+    # (Receiver.brdc hands every chain the same dict), but peak_n and last_good describe one
+    # constellation's sky. Kept at store scope, peak_n would be a max over constellations,
+    # holding BeiDou (fewer satellites in its eph window than GPS) below half of it for good,
+    # and last_good would bridge one constellation with another's satellites. Scope is
+    # (sysc, min_prn) because min_prn is part of what defines this chain's population.
     sc = state.setdefault("scope", {}).setdefault((sysc, min_prn), {})
     peak = sc.get("peak_n", 0)
     if len(out) >= peak:
         sc["peak_n"] = peak = len(out)
     if peak >= 4 and len(out) < 0.5 * peak:
-        # THE REFETCH IS A SHARED SIDE EFFECT and keeps a shared cooldown: eph_t governs the one
-        # store, so three constellations must not each force their own re-download. The
-        # ANNOUNCEMENT is per-scope, because "BeiDou collapsed" is not news GPS can deliver.
+        # The refresh is a shared side effect with a shared 600 s cooldown: eph_t governs the
+        # one store, so the constellations must not each force their own. The announcement is
+        # per scope.
         if now - state.get("collapse_refetch_t", 0.0) > 600.0:
             state["collapse_refetch_t"] = now
-            state["eph_t"] = now - 7201.0  # re-fetch on the next cycle
+            state["eph_t"] = now - 7201.0  # re-parse on the next call
         lg = sc.get("last_good")
         if lg:
-            # ⚠️ A BRIDGED SKY IS A STALE SKY AND IT MUST SAY SO EVERY TIME IT IS SERVED.
-            # This used to log only inside the 600 s refetch guard, so the FIRST cycle of a
-            # collapse announced itself and the next several hundred were silent -- while every
-            # one of them returned a frozen elevation set that the drop gate, the probe
-            # selector and the search hints all read as live. bds_b2a bridged for 25 minutes on
-            # one line of log. Rate-limited, but on its own key, and it carries the AGE.
+            # A bridged sky is stale and says so every time it is served: the drop gate, the
+            # probe selector and the search hints all read its frozen elevations as live.
+            # Rate-limited on its own key, outside the refresh cooldown, and it carries the age.
             sc.setdefault("bridge_since", now)
             _log_rl(
                 "brdc-bridge",
@@ -220,10 +180,9 @@ def brdc_predict(state, lat, lon, alt_m, sysc, min_prn, t_utc, f_carrier_hz):
 
 
 def _dh_dpos(xc):
-    """Pull the numeric BRDC-agreement residual (metres) out of an xcheck suffix string, or
-    None. The xcheck functions return a human suffix (' | BRDC dpos=0.05 m ...'); the
-    decode-health export wants the number. Parsing the string we already control keeps the five
-    shared, tested xcheck functions untouched (they ride the live seed loop)."""
+    """The numeric BRDC-agreement residual (metres) in an xcheck suffix, or None. The xcheck
+    functions return log text (' | BRDC dpos=0.05 m ...'); the decode-health export wants the
+    number, so it is parsed back out of that text."""
     if not xc:
         return None
     m = re.search(r"dpos=([-+]?\d+(?:\.\d+)?)", xc)
@@ -231,11 +190,11 @@ def _dh_dpos(xc):
 
 
 def _cnav_brdc_xcheck(brdc_alm, sys, prn, cnav_eph, log):
-    """S4 ephemeris cross-check: ECEF position residual between the live-decoded CNAV ephemeris
-    and the downloaded BRDC (LNAV) ephemeris, both propagated to the SAME absolute instant (the
-    CNAV toe). Returns a short suffix for the health log. Two independent messages/encodings of
-    one orbit -> a small residual validates the decode; a huge one flags a decode/convention
-    fault or a week mismatch (shown via the toe delta). Kepler propagation only, no Viterbi."""
+    """Ephemeris cross-check: ECEF position residual between the live-decoded CNAV ephemeris
+    and the downloaded BRDC (LNAV) ephemeris, both propagated to the same absolute instant (the
+    CNAV toe). Returns a short suffix for the health log. Two independent encodings of one
+    orbit, so a small residual validates the decode; a huge one flags a decode or convention
+    fault, or a week mismatch (shown by the toe delta). Kepler propagation only."""
     try:
         import gps_cnav as _C
 
@@ -247,7 +206,7 @@ def _cnav_brdc_xcheck(brdc_alm, sys, prn, cnav_eph, log):
         if be is None:
             return " | BRDC:stale"
         toe = cnav_eph["toe"]
-        # the CNAV toe is seconds-of-week; place it in the BRDC record's CONTINUOUS GPS frame via
+        # the CNAV toe is seconds-of-week; place it in the BRDC record's continuous GPS frame via
         # that record's week start (toe_gpst - toe_sow), assuming the same GPS week (a big toe
         # delta in the log flags a week straddle).
         t_com = (be["toe_gpst"] - be["toe_sow"]) + toe
@@ -260,12 +219,12 @@ def _cnav_brdc_xcheck(brdc_alm, sys, prn, cnav_eph, log):
 
 
 def _inav_brdc_xcheck(brdc_alm, sys, prn, inav_eph, log):
-    """S5 ephemeris cross-check, the _cnav_brdc_xcheck analogue for Galileo I/NAV: ECEF
-    position residual between the live-decoded I/NAV ephemeris and BRDC, both propagated to
-    the I/NAV t0e. BRDC's Galileo record IS I/NAV-derived, so a right decode matches it to a
-    few metres; a huge residual flags a decode/convention fault (the G2 or field-offset
-    conventions galileo_inav flagged as ICD-owned) or a week straddle (shown via toe delta).
-    Kepler only, no Viterbi."""
+    """The _cnav_brdc_xcheck analogue for Galileo I/NAV: ECEF position residual between the
+    live-decoded I/NAV ephemeris and BRDC, both propagated to the I/NAV t0e. BRDC's Galileo
+    record is I/NAV-derived, so a correct decode matches it to a few metres; a huge residual
+    flags a decode or convention fault (the G2 inversion and interleaver orientation that
+    galileo_inav isolates as ICD-owned constants) or a week straddle (shown by the toe delta).
+    Kepler only."""
     try:
         import galileo_inav as _I
 
@@ -291,13 +250,12 @@ def _inav_brdc_xcheck(brdc_alm, sys, prn, inav_eph, log):
 
 
 def _lnav_brdc_xcheck(brdc_alm, sys, prn, lnav_eph, log):
-    """LNAV ephemeris cross-check, the _inav_brdc_xcheck analogue for GPS L1 C/A. Unlike the
-    other constellations this is the STRONGEST possible check: BRDC's GPS record IS the LNAV
-    message, and sv_position_lnav is the same legacy Keplerian math as ge.sat_pos_clk, so a
-    correct on-node decode matches BRDC to ~centimetres (the only residual is a different
-    upload set, shown via the toe/IODE deltas). A large dpos here means a WRONG field offset in
-    LNAV_EPH_FIELDS -- this is the live validator that pack/unpack cannot be (see that table's
-    note). Kepler only, no framing."""
+    """LNAV ephemeris cross-check, the _inav_brdc_xcheck analogue for GPS L1 C/A, and the
+    strongest of them: BRDC's GPS record is the LNAV message, and sv_position_lnav is the same
+    legacy Keplerian math as ge.sat_pos_clk, so a correct on-node decode matches BRDC to
+    centimetres (the only residual is a different upload set, shown by the toe/IODE deltas).
+    A large dpos here means a wrong field offset in LNAV_EPH_FIELDS: this is the live
+    validator a pack/unpack round-trip cannot be (see that table's note). Kepler only."""
     try:
         import gps_nav_decode as _L
 
@@ -324,11 +282,11 @@ def _lnav_brdc_xcheck(brdc_alm, sys, prn, lnav_eph, log):
 
 
 def _fnav_brdc_xcheck(brdc_alm, sys, prn, fnav_eph, log):
-    """S5 ephemeris cross-check for Galileo E5a-I F/NAV, the _inav_brdc_xcheck analogue.
-    F/NAV and I/NAV describe the SAME Galileo orbit through different framing, so a correct
-    F/NAV decode matches BRDC to a few metres just as I/NAV does; a huge residual flags a
-    decode/convention fault (the sync / interleaver / field-offset conventions galileo_fnav
-    flagged as ICD-owned, pending live symbols) or a week straddle. Kepler only."""
+    """Ephemeris cross-check for Galileo E5a-I F/NAV, the _inav_brdc_xcheck analogue. F/NAV
+    and I/NAV describe the same Galileo orbit through different framing, so a correct F/NAV
+    decode matches BRDC to a few metres just as I/NAV does; a huge residual flags a decode or
+    convention fault (the sync, interleaver and field-offset conventions galileo_fnav
+    isolates as ICD-owned constants) or a week straddle. Kepler only."""
     try:
         import galileo_fnav as _F
 
@@ -354,11 +312,11 @@ def _fnav_brdc_xcheck(brdc_alm, sys, prn, fnav_eph, log):
 
 
 def _bcnav2_brdc_xcheck(brdc_alm, sys, prn, bcnav2_eph, log):
-    """S5 ephemeris cross-check for BeiDou B2a B-CNAV2, the _fnav_brdc_xcheck analogue on the
-    BDS broker (sys='C'). B-CNAV2 and BRDC describe the same BDS-3 orbit through different
+    """Ephemeris cross-check for BeiDou B2a B-CNAV2, the _fnav_brdc_xcheck analogue for a
+    BeiDou chain (sys='C'). B-CNAV2 and BRDC describe the same BDS-3 orbit through different
     framing, so a correct decode matches BRDC to a few metres; a huge residual flags a decode
-    fault (the NB-LDPC / field-offset / GEO-vs-MEO conventions beidou_bcnav2 flagged as
-    ICD-owned, pending live symbols). Kepler/CNAV only."""
+    fault (the preamble, bit-order and field-offset conventions beidou_bcnav2 isolates as
+    ICD-owned). Kepler/CNAV only."""
     try:
         import beidou_bcnav2 as _B
 
@@ -385,9 +343,11 @@ def _bcnav2_brdc_xcheck(brdc_alm, sys, prn, bcnav2_eph, log):
 
 
 def _bcnav3_brdc_xcheck(brdc_alm, sys, prn, bcnav3_eph, log):
-    """S5 ephemeris cross-check for BeiDou B2b B-CNAV3, the _bcnav2_brdc_xcheck analogue. Ready
-    for Phase 2 (needs beidou_bcnav3.sv_position_bcnav3 + a filled BCNV3_EPH_FIELDS); until then
-    the ephemeris is None so this is never reached. Kepler/CNAV-style."""
+    """Ephemeris cross-check for BeiDou B2b B-CNAV3, the _bcnav2_brdc_xcheck analogue.
+    Message Type 10 carries the same BDS-3 CNAV orbit block as B-CNAV1 SF2, propagated with the
+    B-CNAV2 math (beidou_bcnav3.sv_position_bcnav3), so a correct decode matches BRDC to a few
+    metres. The nav-bits stage appends it to the bcnav3 decode-health line once a Type 10
+    ephemeris is in hand. Kepler/CNAV-style."""
     try:
         import beidou_bcnav3 as _B
 
@@ -414,9 +374,9 @@ def _bcnav3_brdc_xcheck(brdc_alm, sys, prn, bcnav3_eph, log):
 
 
 def _bcnav1_brdc_xcheck(brdc_alm, sys, prn, bcnav1_eph, log):
-    """S5 ephemeris cross-check for BeiDou B1C B-CNAV1, the _bcnav2_brdc_xcheck analogue on the
-    L1 BDS broker (sys='C'). B-CNAV1 SF2 and BRDC describe the same BDS-3 orbit; a correct
-    decode matches BRDC to a few metres. Same CNAV propagation as B-CNAV2."""
+    """Ephemeris cross-check for BeiDou B1C B-CNAV1, the _bcnav2_brdc_xcheck analogue for a B1C
+    chain (sys='C'). B-CNAV1 SF2 and BRDC describe the same BDS-3 orbit; a correct decode
+    matches BRDC to a few metres. Same CNAV propagation as B-CNAV2."""
     try:
         import beidou_bcnav1 as _B
 
@@ -442,9 +402,10 @@ def _bcnav1_brdc_xcheck(brdc_alm, sys, prn, bcnav1_eph, log):
         return " | BRDC xcheck err: %s" % ex
 
 
-# ---- BORESIGHT GEOMETRY (the quantiser-railing veto) ---------------------------------------
-# CHORD's dishes sit 8.59 deg SOUTH of zenith (dec +40.73): boresight is az 180.0, el 81.41.
-# ⚠️ `telescope.dish_coelev_deg` in the generated configs reads -27.3 and does NOT give this.
+# ---- Boresight geometry (the quantiser-railing veto) ---------------------------------------
+# CHORD's dishes sit 8.59 deg south of zenith (dec +40.73): boresight is az 180.0, el 81.41.
+# `telescope.dish_coelev_deg` in the captured base config (config/base/live_config_*.json)
+# reads -27.3 and does not give this.
 BORESIGHT_AZ_DEG = 180.0
 BORESIGHT_EL_DEG = 81.41
 
@@ -465,12 +426,10 @@ def boresight_sep_deg(el_deg, az_deg, el0=BORESIGHT_EL_DEG, az0=BORESIGHT_AZ_DEG
 def nearest_boresight(pd, el0=BORESIGHT_EL_DEG, az0=BORESIGHT_AZ_DEG):
     """(separation_deg, (sys, prn)) for the visible satellite closest to boresight, or None.
 
-    ⚠️ POOLED OVER EVERY CONSTELLATION ON PURPOSE, and `pd` carries all three. One satellite
-    near boresight rails the 4+4b quantiser for EVERY chain -- they share the nibbles -- so a
-    per-constellation answer would clear the chain carrying the bright satellite and leave the
-    others contaminated while looking like clean controls. Measured 2026-08-26: with a sat
-    inside 3 deg the tracked population drops from 7 satellites per epoch to 4, and the
-    survivors read 2-3 dB HIGH.
+    Pooled over every constellation on purpose; `pd` (the transit sky) carries all of them.
+    One satellite near boresight rails the 4+4b quantiser for every chain, since they share
+    the nibbles, so a per-constellation answer would clear the chain carrying the bright
+    satellite and leave the others contaminated while looking like clean controls.
     """
     best = None
     for key, v in (pd or {}).items():
@@ -491,16 +450,15 @@ TRANSIT_MAX_AGE_S = 86400.0
 
 
 def transit_sky(ge, eph, lat, lon, alt_m, t_utc):
-    """GEOMETRY ONLY. {(sys, prn): {az, el, health, toe_age_s}} over every constellation in `eph`,
-    with predict_all's health gate OFF and a day of toe validity (#144).
+    """Geometry only: {(sys, prn): {az, el, health, toe_age_s}} over every constellation in
+    `eph`, with predict_all's health gate off and a day of toe validity.
 
     This is the sky the shared-model transit freeze (almanac `_bore`), the dead-reckon clock
     freeze and the railing veto read. The strict sky drops an unhealthy or stale-ephemeris
-    satellite, and that satellite still transmits: E14 = E202, flagged unhealthy, passed 0.66 deg
-    off boresight on 2026-09-28, was the N^2 top vector inside 2 deg, and turned the shared model
-    toward itself fleet-wide while `shared_frozen` stayed 0. Never for seeds, probes or hints --
-    those keep predict_all's defaults, and nothing here carries a clock. Objects in no BRDC at all
-    (NORAD 40748, BEIDOU-3S M2S) are still invisible; a TLE supplement is the follow-up."""
+    satellite, but that satellite still transmits, and passing near boresight it still
+    captures the shared element model. Never for seeds, probes or hints: those keep
+    predict_all's defaults, and nothing here carries a clock. Objects in no BRDC at all stay
+    invisible."""
     pa = ge.predict_all(
         eph,
         lat,

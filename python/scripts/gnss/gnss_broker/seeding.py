@@ -1,24 +1,26 @@
 """Detections into seeds, and the coast/drop decision that retires them.
 
-`stage_detections_to_seeds` is the longest stage in the cycle and the one every other depends
-on: it turns the search's (snr, doppler, code phase, ref_hop) into the seed triple the trackers
-consume. `stage_coast_drop` is its other end -- when a satellite sets, or merely fades.
+`stage_detections_to_seeds` turns each PRN's best detection this cycle (snr, Doppler, code
+phase, ref_hop) into the seed the trackers consume; `stage_coast_drop` coasts a seed through a
+fade and drops it when the coast runs out or its satellite sets; `stage_push_seeds` posts the
+seeds to the trackers.
 
-⚠️ AN ALIAS-BIN DETECTION IS HARMLESS. DO NOT "FIX" IT. The search's Doppler is ambiguous mod
-1/(2*t_rec) -- 25 Hz on 20 ms records. The search back-projects cp0 to sample 0 using the SAME
-reported Doppler, and `cp_to_seed_currency` adds that projection back with the same numbers, so
-the round trip is exact whatever bin the Doppler rode. A "fold" that replaced dop before the
-currency conversion broke exactly that cancellation, by K*t_abs*k*q. It was live for part of a
-day in July 2026, which is why this paragraph exists.
+An alias-bin detection is harmless; do not "fix" it. The search's Doppler is ambiguous mod
+1/(2*t_rec), 25 Hz on 20 ms records. The search back-projects cp0 to sample 0 with the same
+reported Doppler, and `cp_to_seed_currency` adds that projection back with the same numbers,
+so the round trip is exact whatever bin the Doppler rode. Replacing the Doppler (folding it
+into another bin) before the currency conversion breaks that cancellation, by
+t_abs*f_chip/f_carrier chips per Hz of change.
 
-⚠️ code_phase_chips IS AN ARGUMENT, NOT A TRANSPORTABLE QUANTITY -- meaningful only against
-the epoch it was measured at (~5095 chips per Hz of Doppler). Never transport or DIFFERENCE
-one; only `cp_at_ref` is comparable.
+code_phase_chips is an argument, not a transportable quantity: it means something only
+against the Doppler and epoch it was measured at (the lever is t_abs*f_chip/f_carrier chips
+per Hz, thousands of chips at a multi-day t_abs). Never transport or difference one; only
+`cp_at_ref` is comparable.
 
-⚠️ MODEL-OWNED SATELLITES ARE EXEMPT FROM THE TLE UP-SET when dropping. The up-set mismaps some
-BeiDou birds, so for dead-reckoned satellites the BRDC elevation governs -- in the dead-reckon
-stage, not here. Dropping a bird the model still tracks hands the chain a hole it then has to
-re-acquire from nothing.
+Dead-reckoned (model-owned) seeds are exempt from the almanac up-set: the dead-reckon stage
+drops them on its own BRDC elevation, and the up-set can disagree with it (the TLE almanac
+mismaps some BeiDou PRNs). Dropping a satellite the model still tracks leaves the chain to
+re-acquire it from nothing.
 
 @author Keith Vanderlinde
 """
@@ -41,14 +43,14 @@ from gnss_broker.fits import (
 
 
 def _present_streak(ctx, prn):
-    """Trailing run of PRESENT cycles in the population-honest series (D0's ctx.qpop).
+    """Trailing run of "present" cycles for PRN in ctx.qpop, the population-honest series.
 
-    Reads the same per-cycle presence the fleet controller trims on -- NOT the `DLL:` log
-    line (survivors only) and NOT amp_snr (the coherent arc). Returns 0 when the series
-    has never seen the PRN.
+    This is the per-cycle presence the fleet controller admits trims on, not the `DLL:` log
+    line (survivors only) and not amp_snr (the coherent arc). Returns 0 when the series has
+    never seen the PRN.
     """
-    hist = ctx.qpop.hist.get(prn)  # qpop is an unconditional ctx slot: no swallow --
-    if not hist:  # a missing attribute must CRASH, not run inert (#93)
+    hist = ctx.qpop.hist.get(prn)  # qpop is always set on the context, so no getattr:
+    if not hist:  # a missing qpop must raise, not run inert
         return 0
     n = 0
     for _t, _q, state in reversed(hist):
@@ -59,11 +61,11 @@ def _present_streak(ctx, prn):
 
 
 def _nh_joint_pred_chips(ctx, prn, t_utc):
-    """Predicted overlay-epoch phase (chips) of PRN's code at receiver wall time t_utc,
-    transmit-aligned: gpst(t) - tau + sat_clock, mod the overlay epoch. Deliberately NO
-    receiver-clock term -- that missing term is the ONE common unknown the fleet votes on.
-    Same convention as the search's nh hint (searchhint.py), proven on sky; the broadcast
-    sat clock matters here because segments are 1 ms, not 1.5 s."""
+    """Predicted phase (chips, mod the overlay epoch) of PRN's code at receiver wall time
+    t_utc, transmit-aligned: gpst(t) - tau + sat_clock. There is deliberately no receiver-clock
+    term: it is the one common unknown the votes resolve. Same convention as the search's nh
+    hint (searchhint.py); the broadcast satellite clock matters because an overlay segment is
+    one code period (1 ms at L5)."""
     import gnss_ephemeris as _eph
 
     v = ctx.pred[prn]
@@ -72,12 +74,11 @@ def _nh_joint_pred_chips(ctx, prn, t_utc):
 
 
 def _nh_joint_vote(ctx, prn, ph_ref, ref_hop, snr, now):
-    """One detection's vote: the receiver-common overlay offset implied by its measured
-    phase-at-its-own-epoch. delta = (measured - predicted) mod LLc is the receiver clock
-    in chips mod the overlay epoch -- the SAME number for every satellite when the model
-    is right, so the per-sat spread in the NH-JOINT log is the model's own referee.
-    Votes only from phases at their own epoch (cp0-route periods are noise: 0.58
-    overlay periods per Hz of Doppler error)."""
+    """Record one detection's vote: the receiver-common overlay offset implied by its phase at
+    its own epoch. delta = (measured - predicted) mod LLc is the receiver clock in chips mod
+    the overlay epoch, the same number for every satellite when the model is right, so the
+    per-satellite spread in the NH-JOINT log checks the model. Only phases at their own epoch
+    vote: a period carried through cp0 rides the t_abs Doppler lever and is noise."""
     t_ref = ctx.utc0_sample0 + ref_hop / ctx.args.hops_per_sec
     LLc = ctx.lc_seg * ctx.code_len
     delta = (ph_ref - _nh_joint_pred_chips(ctx, prn, t_ref)) % LLc
@@ -86,12 +87,11 @@ def _nh_joint_vote(ctx, prn, ph_ref, ref_hop, snr, now):
 
 
 def _nh_joint_consensus(ctx, now):
-    """Resolve (or keep) the common offset from the standing votes: circular weighted
-    median over chips-mod-LLc. CONTINUOUS, not an integer vote -- the sub-ms part of the
-    receiver clock is common too, and an integer vote splits 50/50 when it sits near a
-    segment boundary; in the continuous domain the boundary does not exist.
-    A resolved consensus is a run constant: it is kept when votes thin out and only ever
-    REPLACED by a newer resolution (never silently expired)."""
+    """Resolve (or keep) the common offset from the standing votes: a circular weighted median
+    over chips mod LLc. Continuous, not an integer vote: the sub-ms part of the receiver clock
+    is common too, and an integer vote splits when the offset sits near a segment boundary.
+    A resolved consensus is a run constant: it is kept when votes thin out and only replaced by
+    a newer resolution, never expired."""
     a = ctx.args
     LLc = ctx.lc_seg * ctx.code_len
     votes = ctx.cpt.nh_votes
@@ -160,16 +160,12 @@ def _nh_joint_consensus(ctx, now):
                 )
             )
         ctx.cpt.nh_common = (dstar, now, len(inl), (w_in / w_tot) if w_tot else 0.0)
-        # Contribute the resolved clock-mod-epoch to the Receiver AS A TIME: this is the
-        # epoch extension a short-window donor clock needs to bootstrap a chain whose code
-        # period is LONGER than the donor's (gps_l2c's 20 ms vs gps_l5's 1 ms window --
-        # exactly the case the cross-band bootstrap's modulus guard rightly refuses
-        # without it). Chips are a unit; the clock is a time.
-        # #161: only from an established search solve. On 2026-10-08 the votes came from
-        # noise detections on a collapsed sky, the record walked 0.02 -> 10.02 ms, and
-        # gps_l2c bootstrapped onto it; a consumer cannot tell a walked record from a
-        # measured one, so it is not published at all. The last published record stays
-        # (its age is what consumers bound).
+        # Publish the resolved clock mod the overlay epoch to the Receiver, as a time: a chain whose
+        # code period is longer than its donor's window (gps_l2c's 20 ms against gps_l5's 1 ms)
+        # needs it to bootstrap from the donor's clock. Published only while this chain's search
+        # solve is established (dr_solve_healthy not False): votes from noise detections can walk
+        # the record, and a consumer cannot tell a walked record from a measured one. The last
+        # published record stands; consumers bound its age.
         if getattr(ctx, "rx", None) is not None:
             if dr_solve_healthy(getattr(ctx, "dr_state", None), now) is not False:
                 ctx.rx.contribute_clock_mod_epoch(
@@ -192,9 +188,9 @@ def _nh_joint_consensus(ctx, now):
 
 
 def _nh_joint_snap(ctx, prn, ph_ref, ref_hop, dstar):
-    """Snap a measured phase's overlay SEGMENT to the consensus, keeping its fine phase:
-    the derived label is (predicted + common offset), the measurement keeps sub-chip
-    authority. Returns (snapped_ph, k_segments_moved)."""
+    """Snap a measured phase's overlay segment to the consensus, keeping its fine phase: the
+    segment comes from (prediction + common offset), the sub-chip phase from the measurement.
+    Returns (snapped_ph, k_segments_moved)."""
     t_ref = ctx.utc0_sample0 + ref_hop / ctx.args.hops_per_sec
     LLc = ctx.lc_seg * ctx.code_len
     want = (_nh_joint_pred_chips(ctx, prn, t_ref) + dstar) % LLc
@@ -203,12 +199,12 @@ def _nh_joint_snap(ctx, prn, ph_ref, ref_hop, dstar):
 
 
 def stage_coast_drop(ctx):
-    """COAST / DROP: retire seeds for satellites that have set, and coast the ones merely fading.
-        
-    ⚠️ MODEL-OWNED SATS ARE EXEMPT FROM THE TLE UP-SET. The up-set mismaps some BeiDou birds, so
-    for dead-reckoned satellites the BRDC elevation governs the drop instead -- in the dead-reckon
-    stage, not here. Dropping a bird the model is still tracking would hand the chain a hole it
-    would then try to re-acquire from scratch."""
+    """COAST / DROP: drop seeds whose satellite has set, and coast the ones merely fading.
+
+    A visible seed that was not re-detected keeps its anchor and has its Doppler forecast
+    forward; it is dropped once its lock metric has stayed below the bar for the coast budget.
+    Noise probes are left alone, and dead-reckoned seeds are exempt from both drops (see the
+    module docstring)."""
     for prn in list(ctx.seeds):
         if prn in ctx.probe_set:
             continue
@@ -217,8 +213,6 @@ def stage_coast_drop(ctx):
             and prn not in ctx.up
             and not (ctx.dr_state is not None and prn in ctx.dr_state["seeded"])
         ):
-            # (model-owned sats are exempt: the TLE up-set mismaps some BDS birds;
-            # their BRDC elevation governs the drop, in the dead-reckon block)
             _log("drop PRN %d (set below horizon)" % prn)
             del ctx.seeds[prn]
             ctx.cp_held.discard(prn)
@@ -227,42 +221,24 @@ def stage_coast_drop(ctx):
             continue
         if (
             prn in ctx.best
-        ):  # re-detected -> re-anchored in the seed loop above (coast reset there)
+        ):  # re-detected: stage_detections_to_seeds re-anchored it and reset the coast
             continue
-        # not re-detected this poll but still visible -> COAST: forecast the Doppler forward.
+        # not re-detected this poll but still visible -> coast: forecast the Doppler forward.
         if ctx.dr_state is not None and prn in ctx.dr_state["seeded"]:
-            # model-owned (dead-reckoned) seed: its doppler is FROZEN between re-pins
-            # (each pin refreshes dop+cp+rate TOGETHER, currency-consistent); the TLE
-            # pred must not touch it -- the BDS TLE<->PRN mapping mismaps some birds
-            # (PRN 39: TLE el <5 vs BRDC el 10), so BRDC governs these sats entirely.
+            # Dead-reckoned seed: its Doppler is frozen between re-pins, each of which refreshes
+            # Doppler, code phase and rate together; the almanac forecast must not touch it.
             pass
         elif ctx.args.almanac and prn in ctx.pred:
-            # ⚠️ THE SEED'S DOPPLER IS VALID AT ref_hop, NOT AT NOW (2026-08-16).
-            # gnss::propagate_seed computes
-            #     dop_applied(t) = sd.doppler_hz + sd.dop_rate * (t - ref_hop)
-            # so writing the forecast's NOW value into `doppler_hz` while leaving
-            # `ref_hop` at the last re-detection makes the tracker add dop_rate*age on
-            # top of a value that is ALREADY current. The applied Doppler then advances
-            # at ~2x the true rate until the next detection re-anchors ref_hop, and
-            # snaps back when it does -- the sawtooth measured on sky: drift -0.63 Hz/s
-            # against a model -0.35, gap 60-81 Hz just before the snap, and
-            # 69 Hz = 0.60 chips/s of CODE rate, which drags the prompt tap off-peak in
-            # under two seconds. That is the churn (deep sig 1600 -> 3 on G23).
-            #
-            # Same disease as REC_PHI0 and as #44 itself: a VALUE updated to now while
-            # its EPOCH says otherwise ([[#45]] value/currency/epoch). Two consequences,
-            # both fixed here:
-            #   1. store the Doppler BACK-PROPAGATED to ref_hop, so propagate_seed
-            #      reconstructs the forecast exactly at now for ANY age;
-            #   2. compare like with like when re-tagging cp -- the old EFFECTIVE
-            #      Doppler at now, not the ref_hop-epoch number, or the ddop handed to
-            #      retag_seed_doppler is inflated by that same dop_rate*age and kicks
-            #      the code phase as well.
-            # age = 0 whenever the sample-0 anchor is unknown, which reduces this to the
-            # previous behaviour rather than guessing.
+            # The seed's Doppler is valid at ref_hop, not at now: propagate_seed applies
+            #     doppler_hz + doppler_rate_hz_s * (t - t(ref_hop))
+            # so the forecast is stored back-propagated to ref_hop, and the tracker rebuilds it
+            # exactly at now for any age. Storing the now-value beside the old ref_hop would add
+            # rate*age on top, running the applied Doppler at ~2x the true rate until the next
+            # detection re-anchors ref_hop. For the same reason the code-phase retag compares the
+            # old and new Doppler both at now, so a standing rate cancels. With no sample-0 anchor
+            # (utc0_sample0 unset) age is 0.
             _rate_new = ctx.pred[prn][1]
-            # the rate the TRACKER will actually propagate with: absent key => 0, and
-            # then there is no double-count to undo.
+            # The rate the tracker propagates with: none without the key, so nothing to undo.
             _rate_eff = _rate_new if "doppler_rate_hz_s" in ctx.seeds[prn] else 0.0
             _age = 0.0
             if ctx.utc0_sample0:
@@ -273,27 +249,16 @@ def stage_coast_drop(ctx):
                 )
             new_dop = (
                 ctx.pred[prn][0] + ctx.cb.seed
-            )  # the forecast AT NOW (#105: seed bias)
+            )  # the forecast at now, with the seed-side clock bias
             _old_rate = ctx.seeds[prn].get("doppler_rate_hz_s", 0.0)
-            # what the tracker is APPLYING at this instant, i.e. the currency cp is in
+            # the Doppler the tracker is applying now
             old_dop = ctx.seeds[prn].get("doppler_hz", new_dop) + _old_rate * _age
             if new_dop != old_dop:
-                # CURRENCY-CORRECT the coast, UNCONDITIONALLY (2026-07-19 audit A4): cp0
-                # is meaningful only in its doppler's currency -- updating the forecast
-                # dop WITHOUT re-expressing cp walks the despread by t_abs*f_chip*ddop/
-                # f_c chips at soak age (the t_abs lever the code-currency rule forbids;
-                # why long coasts silently lost the code peak).
-                #
-                # #44 (2026-08-12): the first fix translated at the SEED'S ANCHOR epoch
-                # (ref_hop) -- which preserves the phase at the anchor and steps the
-                # phase NOW by anchor_age * k_c * ddop per forecast update, i.e. the
-                # residual half of the very symptom it targeted (~k_c*r*age^2/2 chips
-                # of silent walk-off over a coast). The correct epoch is NOW, same as
-                # the hold-path TRANSLATE has always used; both now go through
-                # retag_seed_doppler so the algebra lives once, beside dr_cp0/
-                # dr_seed_phys, with its own regression test. When the sample-0 anchor
-                # is not known (no utc0_sample0), keep the old anchor-epoch behaviour:
-                # a partial correction still beats the raw-dop overwrite it replaced.
+                # Re-express cp0 in the new Doppler's currency at every forecast update: cp0 means
+                # something only paired with its Doppler, and changing the Doppler alone walks the
+                # despread by t_abs*f_chip*ddop/f_carrier chips. retag_seed_doppler preserves the
+                # phase at now; without a sample-0 anchor (utc0_sample0 unset) it works at the
+                # seed's ref_hop epoch instead, a partial correction.
                 _t_retag = (
                     (ctx.drp.now_w - ctx.utc0_sample0)
                     if ctx.utc0_sample0
@@ -312,7 +277,7 @@ def stage_coast_drop(ctx):
                         ctx.args.code_doppler_sign,
                         ctx.code_len,
                     ),
-                    # STORE AT ref_hop, not at now (see the note above).
+                    # stored at ref_hop, not at now (see above)
                     doppler_hz=new_dop - _rate_eff * _age,
                 )
             if "doppler_rate_hz_s" in ctx.seeds[prn]:
@@ -326,16 +291,16 @@ def stage_coast_drop(ctx):
             metric, thresh = ctx.sig_of(rec), ctx.args.lock_snr
         else:
             metric, thresh = float(rec.get("amplitude", 0.0)), ctx.args.drop_amplitude
-        # FOLD-INDEPENDENT HOLD (#58). OR-ed against its own bar, never max()-ed into
-        # `metric`: prompt hold is a power ratio and `metric` is a debiased sigma.
+        # Fold-independent lock (lock_prompt_hold), OR-ed against its own bar and never max()-ed
+        # into `metric`: the prompt ratio is a power ratio, `metric` a debiased sigma (or |A|).
         if metric >= thresh or ctx.hold.prev.get(prn, 0.0) >= ctx.args.lock_prompt_hold:
             ctx.hold.low_hits[
                 prn
             ] = 0  # lock holding through the dropout -> reset coast
         else:
             ctx.hold.low_hits[prn] = ctx.hold.low_hits.get(prn, 0) + 1
-            # dead-reckoned seeds are MODEL-owned: visible + predicted = keep despreading
-            # (their whole point is sats with no signal above the search threshold)
+            # Dead-reckoned seeds are model-owned and never coast out: they exist for satellites
+            # with no signal above the search threshold.
             if ctx.hold.low_hits[prn] >= ctx.coast_polls and not (
                 ctx.dr_state is not None and prn in ctx.dr_state["seeded"]
             ):
@@ -353,30 +318,24 @@ def stage_coast_drop(ctx):
 
 
 def stage_detections_to_seeds(ctx):
-    """1: DETECTIONS -> SEEDS. Turn this cycle's best-SNR detection per PRN into a tracker seed.
-        
-    The longest single stage in the cycle, and the one every other stage depends on: it converts
-    the search's (snr, doppler, code phase, ref_hop) into the seed triple the trackers consume,
-    via cp_to_seed_currency.
-        
-    ⚠️ AN ALIAS-BIN DETECTION IS HARMLESS -- DO NOT "FIX" IT. The search's Doppler is ambiguous
-    mod 1/(2*t_rec) (25 Hz on 20 ms records). The search back-projects cp0 to sample 0 with the
-    SAME reported dop, and cp_to_seed_currency adds that projection back with the same numbers, so
-    the round trip is exact whatever bin the Doppler rode. A "fold" that replaced dop before the
-    currency conversion broke exactly that cancellation, by K*t_abs*k*q -- it was live for part of
-    a day in 2026-07-20 and is the reason this comment is here."""
+    """1: DETECTIONS -> SEEDS. Turn this cycle's best detection per PRN into a tracker seed.
+
+    Converts the search's (snr, Doppler, code phase, ref_hop) into the seed the trackers
+    consume, via cp_to_seed_currency, refines it from the per-PRN fits, and applies the
+    hold/escape policy that decides whether the detection may move a standing seed. An
+    alias-bin detection is harmless (see the module docstring)."""
     for prn, (snr, dop, cp, ref_hop, det_nh, cp_long, cp_at_ref) in ctx.best.items():
         v_dr = ctx.dr_pd.get((ctx.args.dr_constellation, prn)) if ctx.dr_pd else None
         if ctx.up is not None and prn not in ctx.up:
-            # accept the detection anyway if BRDC says it's up: the TLE up-set
-            # mismaps some BDS birds (PRN 39: TLE el<5 vs BRDC el 10)
+            # Accept it anyway if the dead-reckon BRDC sky has it above the mask: the almanac up-set
+            # can disagree (the TLE almanac mismaps some BeiDou PRNs).
             if v_dr is None or v_dr["el"] < ctx.args.mask_deg:
                 continue
-        # #79: THE SEARCH IS THE ADMISSION AUTHORITY for the trim presence gate. Stamped
-        # here -- after the visibility filter, so a spurious below-horizon detection
-        # cannot arm a correction, and before every seeding-policy filter below, because
-        # eligibility asks "is this satellite up and detectable", not "did this cycle
-        # like the detection well enough to re-seed from it".
+        # The search is the admission authority for the trim presence gate
+        # (--dll-deep-gate-from-search). Stamped after the visibility filter, so a spurious
+        # below-horizon detection cannot arm a correction, and before every seeding-policy filter
+        # below: eligibility asks whether the satellite is up and detectable, not whether this cycle
+        # re-seeds from the detection.
         if (
             ctx.args.dll_deep_gate_from_search > 0.0
             and snr >= ctx.args.dll_deep_gate_from_search
@@ -388,18 +347,16 @@ def stage_detections_to_seeds(ctx):
             if (ctx.args.almanac and prn in ctx.pred)
             else dop
         )
-        # Dead-reckon armed: prefer the BRDC doppler for EVERY seed -- the same model
-        # that owns the undetected sats. Mixing sources stepped the seed doppler by
-        # the TLE-vs-BRDC error at every DR<->search handoff (~25 Hz on a stale TLE
-        # = the whole E1 hold fence; observed E32 RELEASE ddop -25, 2026-07-13).
-        # THE DOPPLER AND THE CODE PHASE DO NOT HAVE TO SHARE A TRUST DECISION.
-        # dr_untrusted is set for two unlike reasons: a stale ephemeris (the orbit
-        # itself is doubtful -- true for range AND range-rate) or a code-phase
-        # integrity residual over --dr-max-integrity-chips (1.0 chip ~ 30 m, which is
-        # ordinary iono + b_sat and says nothing about the range rate). Under
-        # --dr-doppler-ignores-integrity only the first demotes the Doppler, so a
-        # satellite flipping trust no longer switches its seed between two BRDC
-        # evaluations -- and the seed IS the replica's carrier phase.
+        # With dead-reckoning, prefer the BRDC Doppler for every seed: the same model owns the
+        # undetected satellites, and mixing sources would step the seed Doppler by the
+        # almanac-vs-dead-reckon difference at every handoff between the two.
+        #
+        # dr_untrusted has two unlike reasons: a stale ephemeris (doubtful for range and range rate
+        # alike) or a code-phase integrity residual over dr_max_integrity_chips (1 chip, ~30 m at
+        # 10.23 Mcps: ordinary iono plus b_sat, which says nothing about range rate). Under
+        # --dr-doppler-ignores-integrity only the first demotes the Doppler, so a satellite flipping
+        # trust does not switch its seed, which is the replica's carrier phase, between two Doppler
+        # models.
         _unt = ctx.dr_untrusted.get(prn)
         _dop_trusted = _unt is None or (
             ctx.args.dr_doppler_ignores_integrity
@@ -421,39 +378,29 @@ def stage_detections_to_seeds(ctx):
                     % (prn, _unt),
                     every_s=120.0,
                 )
-        # ...unless the measured Doppler is explicitly preferred (--seed-doppler det). Last
-        # word, so it overrides the model AND the DR: those two exist to keep the seed
-        # smooth and to own undetected sats, but neither helps a sat we HAVE measured, and
-        # a model error rides the seed's whole extrapolation age at 0.0087 chips/Hz/s.
+        # --seed-doppler det: the measured Doppler has the last word, over the model and the
+        # dead-reckon value. Those exist to keep the seed smooth and to own undetected satellites;
+        # for a measured satellite a model error rides the seed's whole extrapolation age at
+        # f_chip/f_carrier chips per Hz per second.
         if ctx.args.seed_doppler == "det":
             _dop_src = "det"
             seed_dop = dop
-        # SEED-STEP ATTRIBUTION (2026-07-18, the one-grid-step NCO disease): any seed
-        # doppler step > 10 Hz vs the sat's previous seed is loud, with its source --
-        # a ~exact-doppler_step jump here is the smoking gun for a grid/quantization
-        # slip upstream (the hint-anchored search grid was one such; fixed same day).
+        # Seed Doppler step tripwire: a step over 10 Hz from the satellite's previous seed is logged
+        # with its source; a step of almost exactly one search-grid Doppler step points at a grid or
+        # quantization slip upstream.
         _prev_sd = ctx.seeds.get(prn, {}).get("doppler_hz")
         if _prev_sd is None and ctx.args.almanac and not ctx.cb.available:
-            # S2d: the condition is now "no bias FROM ANY SOURCE", not "this chain has
-            # not solved its own". Same guard, wider supply. It is the exact deadlock
-            # that cost 2h45m on 2026-07-27: L5 GPS could measure one satellite, never
-            # reached --bias-min-sats, so this line withheld every first seed -- while
-            # its two siblings sat in the same band holding the right answer (+32 Hz)
-            # and its OWN l-a fit held a better one still. With the fused state that
-            # chain is `bias_available` from cycle 1 and never enters this branch.
-            #
-            # BIAS-UNSOLVED FIRST-SEED GUARD (2026-07-18): a first seed sent before the
-            # clock-freq bias solves carries the FULL dongle offset (~150 Hz at L1,
-            # measured: PRN 5 first seed 1146.5 vs det 974.1 at bias +0.0). A strong sat
-            # can lock and enter hold-freeze on that wrong currency within seconds --
-            # the startup race behind the stochastic diseased-node births (rails at
-            # first seeding, fleet-dependent). Detections don't need seeds, so holding
-            # off costs ~2 s of acquisition and delays nothing else: the bias solves
-            # from the same detections this cycle already collected.
+            # No first seed until this chain's clock-frequency bias is solved (cb.available: a bias
+            # EMA from its own multi-satellite solve). Under --seed-bias-source ema a first seed
+            # sent earlier carries the receiver's whole frequency offset, and a strong satellite can
+            # lock and enter the hold freeze in that wrong currency within seconds. The guard stays
+            # in every mode: cb.available is false on a chain's first cycle, which runs before the
+            # dead-reckon stage stamps drp.now_w, and a first seed then would raise in
+            # _nh_joint_consensus (test_seed_bias.py pins this). Detections do not need seeds, and
+            # the bias solves from the same detections.
             continue
         if _prev_sd is None:
-            # FIRST seed: full attribution (the rail onsets coincide with first seeding,
-            # and a first seed has no previous value for the step tripwire to fire on).
+            # First seed: log it in full; the step tripwire has no previous value to compare.
             _log(
                 "PRN %d FIRST SEED dop %.1f (src=%s, det=%.1f, pred=%s, bias %+.1f)"
                 % (
@@ -468,11 +415,8 @@ def stage_detections_to_seeds(ctx):
                 )
             )
         elif abs(seed_dop - _prev_sd) > 10.0 and prn in ctx.cp_held:
-            # HELD sat: the candidate walks while the emitted tuple stays frozen /
-            # translated -- this "step" is never applied as-is, and logging it every
-            # cycle flooded the logs (195k lines on L1 GPS in 3 h, 2026-07-18). The
-            # tripwire's purpose (grid/quantization slips on LIVE seeds) is served by
-            # the un-held branch below.
+            # Held satellite: the candidate Doppler walks while the emitted seed stays frozen or
+            # translated, so this step is never applied as is, and logging it would flood.
             pass
         elif abs(seed_dop - _prev_sd) > 10.0:
             _log(
@@ -480,21 +424,13 @@ def stage_detections_to_seeds(ctx):
                 % (prn, seed_dop - _prev_sd, _prev_sd, seed_dop, _dop_src, dop)
             )
 
-        # Maintain a per-PRN cp0-vs-hop history (only distinct snapshots; the search
-        # holds its detection between updates) and fit the first-order code drift.
-        # DOPPLER-RATE HISTORY. The seed's doppler_rate_hz_s drives BOTH the tracker's
-        # carrier NCO (out.doppler_hz = doppler + dop_rate*dt) and the quadratic CODE term
-        # (quad = 0.5*(chip/f_c)*dop_rate*dt^2), so its error shows up twice. BRDC computes
-        # it by range-rate differencing over a 4 s epoch pair -- a numerical derivative, and
-        # we use it at the worst moment, near zenith where the curvature peaks. Measured
-        # 2026-08-04: BRDC gave PRN 3 -0.4699 Hz/s where the Doppler track said -0.578, and
-        # that 0.108 Hz/s residual is ~0.7 rad of phase curvature inside the 1.05 s deep
-        # window -- a direct contributor to the 2.55 rad that costs the coherent sum 29 dB.
-        #
-        # We measure the Doppler every pass, so fit its slope instead. Well-conditioned at
-        # an 11 s revisit: four points span ~44 s over which the Doppler moves ~25 Hz
-        # against ~1.5 Hz per-detection noise. Same gap rule as the cp history -- a gap
-        # means re-acquisition and the old slope is stale.
+        # Doppler-rate history. The seed's doppler_rate_hz_s drives both the tracker's carrier NCO
+        # and the quadratic code term, so its error counts twice. The BRDC rate is a numerical
+        # derivative (range rate over a 4 s epoch pair), weakest near zenith where the curvature
+        # peaks; the Doppler is measured every pass, so its slope is fitted instead (fit_dop_rate
+        # below). Both histories keep only distinct snapshots (the search serves a detection until
+        # it updates it), and a gap beyond max_gap_hops is a re-acquisition that drops the old
+        # history.
         dh_ = ctx.cpt.dop_hist.get(prn, [])
         if dh_ and (ref_hop - dh_[-1][0]) > ctx.max_gap_hops:
             dh_ = []
@@ -506,13 +442,9 @@ def stage_detections_to_seeds(ctx):
         h = ctx.cpt.hist.get(prn, [])
         if h and (ref_hop - h[-1][0]) > ctx.max_gap_hops:
             h = []  # gap too large -> re-acquisition, old slope is stale
-        # SNR gate (2026-08-02). The slope this fit is trying to resolve is ~0.0148
-        # chips/s -- the drift from a ~1.7 Hz Doppler error. A detection near the
-        # acquire threshold has a phase that is simply noise (measured on CHORD: below
-        # snr ~60 the within-period residual runs ~2000 chips against a few chips above
-        # it), so ONE such point does not degrade the fit, it destroys it. Default 0
-        # keeps every point, which is the prototype's behaviour and right there: its
-        # detections sit far above threshold and its revisit is seconds.
+        # Only detections at or above --fit-min-snr enter the cp history: the fit resolves a slope
+        # of ~0.01 chips/s, and a near-threshold detection's phase is noise, so one such point
+        # destroys the fit rather than degrading it.
         if not h or ref_hop != h[-1][0]:
             if snr >= ctx.args.fit_min_snr:
                 h.append((ref_hop, cp, dop))
@@ -526,10 +458,9 @@ def stage_detections_to_seeds(ctx):
                 )
         ctx.cpt.hist[prn] = h
 
-        # The bare-detection cp is in the DETECTION's Doppler currency; the tracker will
-        # despread at seed_dop. Convert (else a sat first acquired at t_abs inherits a
-        # t_abs*f_chip*(dop-seed_dop)/f_c offset -- chips off-peak for any mid-run
-        # acquisition, before tracking even starts).
+        # The detection's cp is in its own Doppler's currency; the tracker despreads at seed_dop.
+        # Convert, or a satellite first acquired at t_abs starts off peak by
+        #     t_abs*f_chip*(dop - seed_dop)/f_carrier chips.
         ((_, cp_seed_cur),) = ctx.cp_to_seed_currency([(ref_hop, cp, dop)], seed_dop)
         seed = Seed.born(
             "det",
@@ -539,21 +470,17 @@ def stage_detections_to_seeds(ctx):
             code_phase_rate=0.0,
             ref_hop=ref_hop,
         )
-        # The doppler SOURCE was arbitrated above (_dop_src: pred | dr | det), BEFORE
-        # the tuple existed, so the constructor's blanket "det" under-describes the
-        # one field three estimators fight over. Re-attribute -- same value, provenance
-        # only: the audit trail then separates a model-seeded doppler from a measured
-        # one, the very distinction Phase 3's per-PRN primacy gate decides on.
+        # Re-attribute the Doppler to the source chosen above (_dop_src): same value, provenance
+        # only, so SEEDAUDIT's owner trail separates a model-seeded Doppler from a measured one.
         seed.put("dop_sel:" + _dop_src, epoch=ref_hop, doppler_hz=seed_dop)
-        # 2nd-order carrier feed-forward: hand the tracker the almanac Doppler RATE (Hz/s, sign-
-        # applied like doppler_hz); the tracker integrates it in its NCO (never a replica
-        # retune -- that walks the absolutely-anchored code/carrier off-peak) so the deep-
-        # integration residual stays flat even at zenith (max Doppler acceleration).
+        # Doppler-rate feed-forward (Hz/s, sign applied like doppler_hz). The tracker integrates it
+        # in its NCO and the quadratic code term, never by retuning the replica, which would walk
+        # the absolutely anchored code and carrier off peak.
         v2_dr = ctx.dr_pd2.get((ctx.args.dr_constellation, prn)) if ctx.dr_pd2 else None
         v0_dr = ctx.dr_pd0.get((ctx.args.dr_constellation, prn)) if ctx.dr_pd0 else None
         if v2_dr is not None and v0_dr is not None:
-            # BRDC doppler rate, CENTRAL difference over the +/-2 s pair straddling now_w
-            # (task #52). Centred, so the rate is tagged at now_w rather than 2 s late.
+            # BRDC Doppler rate, central difference over the pd0/pd2 pair at now_w -/+ 2 s, so the
+            # rate is tagged at now_w.
             seed.put(
                 "dop_model",
                 epoch=ref_hop,
@@ -565,9 +492,8 @@ def stage_detections_to_seeds(ctx):
                 ),
             )
         elif v_dr is not None and v2_dr is not None:
-            # Fallback for the first cycle, before pd0 exists: the OLD forward form, and
-            # it is deliberately still here rather than silently emitting nothing -- but it
-            # is 2 s mis-tagged, so it must not be the steady state.
+            # Fallback when pd0 lacks the PRN (pd0 is cached with pd and pd2, so this is rare): a
+            # forward difference over [now_w, now_w + 2 s], i.e. the rate 1 s after its tag.
             seed.put(
                 "dop_model",
                 epoch=ref_hop,
@@ -580,20 +506,11 @@ def stage_detections_to_seeds(ctx):
             )
         elif ctx.args.almanac and prn in ctx.pred:
             seed.put("dop_model", epoch=ref_hop, doppler_rate_hz_s=ctx.pred[prn][1])
-        # MEASURED rate beats the model's, and it is the LAST word here for the same reason
-        # --seed-doppler det is: the model exists to own sats we have not measured. Gated on
-        # enough points over enough baseline that the slope is real rather than fitted to
-        # detection noise.
-        # CROSS-CHECK THE FIT AGAINST THE MODEL BEFORE ADOPTING IT. Measured on sky
-        # 2026-08-05, seeded rate vs the Doppler actually observed over 140 s: PRN 8 seeded
-        # 2.18x too small (-0.195 against -0.424), PRN 30 seeded the WRONG SIGN (+0.205
-        # against -0.155), and PRNs 5/7/16 seeded None while drifting at -0.15..-0.45 Hz/s.
-        # The rate is fitted from the MEASURED Doppler, which carries ~6 Hz of per-pass
-        # search scatter (8.20.5), and it was the last word unconditionally -- a noisy
-        # estimator overriding a model one, the same trade --seed-doppler det got wrong.
-        # dop_rate_max only bounds the MAGNITUDE, so a wrong-signed or half-size fit inside
-        # +-0.8 sails through. Its error costs twice: the carrier NCO extrapolation AND the
-        # quadratic code term both use it.
+        # A measured rate (fit_dop_rate) has the last word, as --seed-doppler det does, once it has
+        # dop_rate_min_pts points over dop_rate_min_span_s and lies inside dop_rate_max. It must
+        # also agree with the model to dop_rate_model_tol: the fit rides the detections' Doppler
+        # scatter, and dop_rate_max bounds only the magnitude, so a wrong-signed or half-size fit
+        # would pass it.
         _model_dr = seed.get("doppler_rate_hz_s")
         _dr = fit_dop_rate(
             ctx.cpt.dop_hist.get(prn, []),
@@ -607,8 +524,8 @@ def stage_detections_to_seeds(ctx):
             and _model_dr is not None
             and abs(_dr - _model_dr) > ctx.args.dop_rate_model_tol
         ):
-            # The two disagree by more than the model's own accuracy: trust the MODEL, which
-            # comes from an orbit rather than from detection noise, and say so.
+            # The fit and the model disagree beyond the model's accuracy: keep the model's rate,
+            # which comes from an orbit rather than from detection noise.
             ctx.dop_rate_rejected[prn] = (_dr, _model_dr)
         elif _dr is not None:
             seed.put("dop_fit", epoch=ref_hop, doppler_rate_hz_s=_dr)
@@ -619,52 +536,20 @@ def stage_detections_to_seeds(ctx):
         fit = fit_cp_rate(_hc, ctx.code_len)
         if fit is not None:
             rate, h0, cp_ref = fit
-            # ── THE CODE-RATE CROSS-CHECK (#96, --cp-rate-model-tol) ──────────────────
-            # The residual code rate is COMMON-MODE. propagate_seed feeds the geometry
-            # forward itself (gnssSeedTransport: chips_per_hop scales by the sat's own
-            # Doppler), so what is left for this seed to carry is the receiver's l-a
-            # clock -- one number for every satellite on the chain. Satellite clock drift
-            # (af1 ~ 1e-12 s/s) is three orders below it. Measured 2026-08-28: every
-            # present gal/bds sat was commanded ONE value (0.0486 chips/s, SD 0.019 shared)
-            # while gps_l5 was commanded a DIFFERENT value per satellite, SD 0.052-0.064,
-            # 3x the scatter.
+            # Code-rate cross-check (--cp-rate-model-tol). The residual code rate is common mode:
+            # propagate_seed feeds each satellite's geometric code Doppler forward, so what this
+            # seed carries is the receiver's l-a clock, one number for the chain (satellite clock
+            # drift, af1 ~1e-12 s/s, is three orders smaller). Only a chain with detectors reaches
+            # this fit (gps_l5 in production); the chains without detectors borrow its l-a through
+            # the Receiver (the dead-reckon stage).
             #
-            # WHY ONLY gps_l5, and it is NOT "the search chain vs the dead-reckon chains":
-            # `dead-reckon` is set in the config's COMMON block, so all five chains run it.
-            # The discriminator is `detectors`, which only gps_l5 has -- this stage is
-            # stage_detections_to_seeds, so a chain with no detector never arrives here at
-            # all (17304 cp-fits on gps_l5 that day against 4 on gal_e5a and 1 on bds_b2a).
-            # The other four also carry `dr-clock-adopt`, so their code rate comes from the
-            # adopted/joint clock as one shared number. gps_l5 has neither: it is the clock
-            # MASTER the others adopt from (#75), so it cannot adopt, and its rate is
-            # whatever this fit last returned.
-            #
-            # fit_cp_rate is unbounded -- it returns whatever least squares gives, and its
-            # cp history is unwrapped mod code_len by nearest-wrap, so one mis-wrap injects
-            # a whole code period into the slope: p90 2.16, p99 177, max 994 chips/s that
-            # day. THE SIBLING FIT ALREADY HAS THIS GUARD (fit_dop_rate + the
-            # --dop-rate-model-tol cross-check below it, added 2026-08-05 for exactly this
-            # failure); the code rate never got one.
-            #
-            # Bound the DEVIATION FROM THE POOLED CLOCK, never the magnitude: the receiver
-            # clock is ~0.047 chips/s calibrated but runs ~3.45 chips/s uncalibrated
-            # (codeloop's feed-forward note), so an absolute ceiling would reject the very
-            # feed-forward the trim cannot live without. The pooled l-a tracks whatever the
-            # clock actually is; only the per-sat departure from it is unphysical.
-            #
-            # REJECT THE RATE, KEEP THE POSITION. cp_ref/h0 are a re-anchor and stay good
-            # even when the slope is noise -- dropping the whole fit would trade a bad rate
-            # for a stale phase.
-            #
-            # Measured on 2026-08-28's log, 15058 fits with an in-sample control and
-            # stratified by pre-fit prompt/noise (the confounder: a fading sat makes a
-            # noisy fit AND drops out on its own). At matched strength p/noise 5-15 the
-            # 40 s dropout rate was 0.4% after a clean fit and 21.4% after a rejected one
-            # -- and rejected-fit sats at 5-15 dropped MORE than CLEAN-fit sats that were
-            # genuinely weaker (8.8% at p/noise 0-5), which is the ordering weakness alone
-            # cannot produce. tol 0.5 sits mid-plateau: 0.3-1.0 all reject 2.3% of fits and
-            # catch 34.3% of every gps_l5 dropout, so the number is not a tuned edge.
-            # 0 disables the cross-check (the pre-2026-08-28 behaviour).
+            # fit_cp_rate is unbounded and unwraps its history to the nearest code period, so one
+            # mis-wrap puts a whole period into the slope. Bound the deviation from the pooled
+            # clock, not the magnitude: the clock runs ~3.45 chips/s uncalibrated (codeloop), and an
+            # absolute ceiling would reject the feed-forward the trim needs. A rejection is logged
+            # and counts toward --fit-flush-on-reject; it does not change the seeded rate, which is
+            # the clock's only under --cp-rate-model-primary (below). The fit's position (cp_ref at
+            # h0) is seeded either way. 0 disables.
             _seed_rate = rate
             _tol = getattr(ctx.args, "cp_rate_model_tol", 0.0)
             if _tol > 0.0 and ctx.cb.code_ema is not None:
@@ -691,16 +576,12 @@ def stage_detections_to_seeds(ctx):
                         ),
                         every_s=60.0,
                     )
-                    # ── #100 (--fit-flush-on-reject): a rejected fit is not just a bad
-                    # RATE -- the seed's POSITION is the same fit EVALUATED at ref_hop,
-                    # so a wrap-blown slope moves the command by (slope error x history
-                    # span): SEEDAUDIT measured a +4067-chip step on G9 while the rate
-                    # guard stood (2026-08-28 22:45). And the poison is self-sustaining:
-                    # off-peak command -> weak detections -> re-poisoned history, for as
-                    # long as the history remembers (~8 min at fit-hist-len 256). After
-                    # N consecutive rejections the fit has left physics: flush the
-                    # history and let the sat ride the birth path while a clean fit
-                    # rebuilds (6 pts + 30 s). 0 disables.
+                    # --fit-flush-on-reject: the seed's position is the same fit evaluated at
+                    # ref_hop, so a wrap-blown slope also moves the command by (slope error x
+                    # history span), and the poison sustains itself (off-peak command, weak
+                    # detections, re-poisoned history) for as long as the history lasts. After N
+                    # consecutive rejections the history is flushed and the satellite is seeded from
+                    # its detections until a clean fit rebuilds. 0 disables.
                     _n = ctx.cpt.rej_streak.get(prn, 0) + 1
                     _flush_n = getattr(ctx.args, "fit_flush_on_reject", 0)
                     if _flush_n > 0 and _n >= _flush_n:
@@ -718,11 +599,10 @@ def stage_detections_to_seeds(ctx):
                                 _model * ctx.args.hops_per_sec,
                             )
                         )
-                        # The samples the fit ingested are logged nowhere else (the
-                        # cp-fit line carries the fit's OUTPUT), so a flush is the one
-                        # moment the sample that dragged the slope can be named
-                        # offline: the tail of the history in the fit's own currency,
-                        # with each detection's reported Doppler (the alias bin it rode).
+                        # The fit's input samples are logged nowhere else, so the flush logs the
+                        # history's tail in the fit's own currency with each detection's reported
+                        # Doppler (the alias bin it rode), to name the sample that dragged the
+                        # slope.
                         _log(
                             "PRN %d cp-fit history at flush, newest last "
                             "(hop,cp chips in seed currency,det dop Hz): %s"
@@ -738,20 +618,11 @@ def stage_detections_to_seeds(ctx):
                         ctx.cpt.rej_streak[prn] = _n
                 else:
                     ctx.cpt.rej_streak.pop(prn, None)
-            # ── #103 (--cp-rate-model-primary): the fitted RATE becomes monitor-only and
-            # the COMMAND rides the pooled-clock model rate for every fit, not just the
-            # rejected ones -- gps_l5 joins the rate policy the four model-primary chains
-            # already run. Measured basis (2026-08-30, TRACK-vs-MODEL census): gps_l5
-            # tracks drift off-model at ~0.006-0.03 chips/s per-sat random-sign (the
-            # fitted-rate supply's error), saturate the fleet trim's 1.25-chip ceiling in
-            # minutes, and churn through escape/rebirth ~445x/night -- while the
-            # model-primary chains' trim drift (0.09-0.26 mchips/s) shows the model rate
-            # is ~100x better post-#99. The fit's POSITION is kept (the tol guard's own
-            # rule: reject the rate, keep the position); the tol/flush machinery above
-            # still protects the position against wrap-poisoned histories; and `rate`
-            # still feeds the l-a pool below (a measurement, not a command).
-            # Cold start (code_ema None) falls back to the fitted rate, exactly as the
-            # tol guard does.
+            # --cp-rate-model-primary: the command rides the pooled-clock model rate for every fit
+            # and the fitted rate is monitor-only, as on the model-primary chains. The fit's
+            # position is kept, the tol/flush guard above still protects it, and `rate` still feeds
+            # the l-a pool below as a measurement. Before the clock has an EMA (code_ema None) the
+            # fitted rate is seeded.
             if (
                 getattr(ctx.args, "cp_rate_model_primary", 0)
                 and ctx.cb.code_ema is not None
@@ -759,12 +630,9 @@ def stage_detections_to_seeds(ctx):
                 _seed_rate = cp_rate_from_code_bias(
                     ctx.cb.code_ema, ctx.args.hops_per_sec, ctx.args.chip_rate_hz,
                 )
-            # ⚠️ SUBSTITUTE THE COMMAND ONLY, NEVER THE MEASUREMENT. `rate` stays the
-            # FITTED slope below this line, because the consumer underneath is a
-            # measurement: code_clock_bias_sample() contributes this satellite's l-a sample
-            # to the very pool `_model` was computed from. Overwriting `rate` here would feed
-            # the clock a sample derived from the clock -- a self-reference that reinforces
-            # whatever the pool already believes, which is the mirror #33/GAP-2 was.
+            # Substitute the command only, never the measurement: `rate` stays the fitted slope,
+            # because code_clock_bias_sample() below contributes it to the very l-a pool `_model`
+            # came from, and feeding the pool its own output would reinforce whatever it believes.
             seed.put(
                 "cp_fit",
                 epoch=h0,
@@ -773,15 +641,16 @@ def stage_detections_to_seeds(ctx):
                 code_phase_chips=cp_ref,
             )
             ctx.fitted.add(prn)
-            # This fit contributes an (l-a) sample: its code_frac minus the sat's carrier_frac.
-            # Only strong, geometry-clean detections (SNR gate) -- weak/noisy slopes would bias it.
+            # This fit's (l-a) sample: its slope over f_chip. The slope is residual (the replica
+            # feeds the geometric code Doppler forward), so no carrier term is subtracted.
             la = code_clock_bias_sample(
                 rate, ctx.args.hops_per_sec, ctx.args.chip_rate_hz,
             )
-            # PER-SAMPLE gate: a single noisy/unwrap-blown slope fit is a large l-a outlier
-            # that the few-sat median can't reject -- and a wandering pooled l-a swings the
-            # seeded code rate (+-1 ppm = +-1 chip/s), walking the deep integration off-peak
-            # within its ~1 s window (the 2026-07-07 L1 deep decay). Bound to --code-bias-max.
+            # Per-sample gate: a noisy or unwrap-blown slope is a large l-a outlier that a
+            # few-satellite median cannot reject, and a wandering pooled l-a moves every seeded code
+            # rate (1 ppm = f_chip*1e-6 chips/s), walking the deep integration off peak within its
+            # ~1 s window. Bounded by code_bias_max (ppm), and only from detections at acquire_snr
+            # or above.
             if snr >= ctx.args.acquire_snr and abs(la) < ctx.args.code_bias_max * 1e-6:
                 ctx.la_samples.append(la)
             _log_rl(
@@ -790,67 +659,45 @@ def stage_detections_to_seeds(ctx):
                 "(%d pts, l-a %+.3f ppm)"
                 % (prn, cp_ref, h0, rate * ctx.args.hops_per_sec, len(h), la * 1e6),
             )
-        # MEASURED overlay alignment (the search reports the long-code phase).
-        # Both cp0 and the seed are arguments in the same C = arg + n*cps convention, so
-        # matching the primary phase AND the overlay index gives simply
+        # Measured overlay alignment: the search reports the long-code phase. cp0 and the seed are
+        # both arguments in the C = arg + n*cps convention, so matching the primary phase and the
+        # overlay index gives
         #     cp_long = cp_primary + nh * CODE_LEN   (mod LC_SEG*CODE_LEN)
-        # -- no wall clock, no range model, no half-period accuracy requirement, and
-        # per-satellite rather than one fitted constant for the whole sky.
+        # per satellite, with no wall clock or range model.
         if cp_long >= 0.0 and ctx.lc_seg > 1:
-            # The SEARCH already reduced this at the overlaid code's own length, so it
-            # carries the period. Reconstructing it here -- from `nh`, or from absolute
-            # time -- means re-deriving a convention the search already knows, which is
-            # where every previous attempt went wrong.
+            # The search already reduced this at the overlaid code's own length, so it carries the
+            # period; re-deriving it here (from nh or absolute time) would duplicate a convention
+            # the search owns.
             seed.put(
                 "nh_lift",
                 epoch=ref_hop,
                 code_phase_chips=cp_long % (ctx.lc_seg * ctx.code_len),
             )
             ctx.cl_report.append("PRN %d long-cp (search)" % prn)
-            # And carry the PHASE at the search's own epoch. cp0 back-references to sample
-            # 0 through a Doppler-scaled rate, which multiplies the reported Doppler's
-            # error by ~5900 chips/Hz = 0.58 overlay PERIODS per Hz -- so the period that
-            # survives that route is noise. A phase at its own epoch has no such lever.
+            # Carry the phase at the search's own epoch too. cp0 refers back to sample 0 through the
+            # reported Doppler, which turns Doppler error into whole code periods on the t_abs
+            # lever; a phase at its own epoch has no such lever.
             if cp_at_ref >= 0.0:
                 LLc = ctx.lc_seg * ctx.code_len
                 ph = cp_at_ref % LLc
-                # ── THE JOINT OVERLAY FIT (--nh-joint): vote on the RAW measured phase,
-                # before the debounce or any offset touches it. One common unknown, every
-                # satellite's word counts once; see _nh_joint_vote.
+                # Joint overlay fit (--nh-joint): vote on the raw measured phase, before the
+                # debounce or any offset touches it (_nh_joint_vote).
                 _nhj_ok = (
                     ctx.args.nh_joint != "off"
                     and ctx.utc0_sample0
                     and ctx.args.almanac
                     and prn in ctx.pred
                 )
-                _ph_raw = ph  # the source's own word, before the debounce touches it --
-                # the vote, the referee, and the apply-side snap all read THIS, never the
-                # mutated ph (first deployment read post-debounce ph and faithfully
-                # alarmed on the debounce's own stale standing period, 2026-08-31)
+                _ph_raw = ph  # the measured phase, before the debounce can move it:
+                # the vote, the referee and the apply-side snap read this, never the debounced ph
                 if _nhj_ok and snr >= ctx.args.nh_joint_min_snr:
                     _nh_joint_vote(ctx, prn, _ph_raw, ref_hop, snr, ctx.drp.now_w)
-                # PERIOD CONTINUITY IS A CHECK, NOT AN AUTHORITY (2026-08-02).
-                #
-                # This existed because the search could not report the overlay period: it
-                # lifted by best_nh alone and dropped the coarse lag's whole-period count,
-                # so the reported period was wrong ~half the time. Since 4371ff4eb the
-                # search MEASURES it (from AcquisitionResult::peak_tau_samples), verified
-                # 16/16 on injection and 9/9 on sky above snr 60. The source is now right,
-                # so overriding it from history is strictly a way to be wrong.
-                #
-                # And this loop could only ever be wrong in one direction. It stored its
-                # OWN correction in ph_hist and predicted the next pass from that, so a
-                # single bad correction was permanent: every later measurement got snapped
-                # into agreement with the original error. Self-consistent, absolutely
-                # wrong -- and with no residual gate, a marginal detection whose phase is
-                # noise still yielded a confident-looking integer m. Measured 2026-08-02:
-                # PRN 21 was period-consistent at the source across three consecutive
-                # detections and collected four "corrections" anyway.
-                #
-                # So: compute it, log the disagreement, apply NOTHING, and store the
-                # MEASURED phase. That turns the resolver into a regression detector for
-                # the search's period -- a nonzero m on a STRONG satellite now means the
-                # source broke, which is worth an alarm rather than a silent repair.
+                # Period continuity is a check, not an authority. The search measures the overlay
+                # period (AcquisitionResult::peak_tau_samples), so overriding it from history can
+                # only add error, and a resolver that stored its own corrections would make one bad
+                # correction permanent. This predicts the period from the previous strong detection,
+                # logs any disagreement (a nonzero m on a strong satellite means the source broke)
+                # and stores the measured phase; the only change it may make is the debounce below.
                 _nh_deferred = False
                 prev = ctx.cpt.ph_hist.get(prn)
                 if prev is not None:
@@ -871,9 +718,7 @@ def stage_detections_to_seeds(ctx):
                         )
                         ph_pred = (
                             ph0 + dh * rate
-                        ) % LLc  # NB not `pred` -- that is the
-                        # almanac prediction dict's name, and shadowing it once broke a
-                        # later reader with a TypeError.
+                        ) % LLc  # predicted phase at this detection's hop
                         m = (
                             int(round(((ph_pred - ph) % LLc) / ctx.code_len))
                             % ctx.lc_seg
@@ -882,8 +727,8 @@ def stage_detections_to_seeds(ctx):
                             resid = (
                                 (ph + m * ctx.code_len - ph_pred + LLc / 2) % LLc
                             ) - LLc / 2
-                            # Only a STRONG disagreement is evidence about the source; a
-                            # marginal detection disagreeing tells us about the detection.
+                            # Only a strong disagreement is evidence about the source; a marginal
+                            # detection disagreeing tells us about the detection.
                             sev = (
                                 "SOURCE PERIOD DISAGREES"
                                 if snr >= ctx.args.period_check_snr
@@ -897,33 +742,15 @@ def stage_detections_to_seeds(ctx):
                                 every_s=60.0,
                             )
                         if m and ctx.args.nh_period_debounce > 0:
-                            # ── THE PERIOD DEBOUNCE (#97, --nh-period-debounce) ──────────
-                            # The search's measured overlay period TOGGLES +-1 on strong
-                            # satellites (snr 284-413 measured 2026-08-28, fine phase right
-                            # to ~0.5 chip, period alone wrong; ~37-49 alarms/h fleet-wide
-                            # and present in the 08-19 archive). Each single-detection flip
-                            # rewrote the seed by a whole code period, all 12 nodes stepped
-                            # together (SEEDAUDIT +-10230-chip step-back pairs 2 s apart),
-                            # q cratered for 1-2 polls, and the per-sat whole-period step
-                            # rate ranked exactly with the observed q churn (G18 39/55min
-                            # worst, G26 8 best).
-                            #
-                            # A CHANGED period must be confirmed by this many CONSECUTIVE
-                            # detections (same m) before it is adopted. Until then the seed
-                            # carries the MEASURED fine phase with the STANDING period --
-                            # we never invent a phase, we only refuse to move the ambiguity
-                            # integer on one detection's word.
-                            #
-                            # This is NOT the retired 2026-08-02 self-poisoning
-                            # override. That loop stored its
-                            # OWN correction in ph_hist, so one bad fix was permanent.
-                            # Here, ph_hist is NOT updated while a period is pending
-                            # (neither with the correction nor with the unconfirmed
-                            # measurement -- storing the flipped phase is what made the
-                            # NEXT, correct detection alarm and step back), and a real
-                            # period change is adopted after N consecutive detections
-                            # (~2N s at the revisit), so there is no deadlock at a wrong
-                            # value.
+                            # Period debounce (--nh-period-debounce): the search's measured period
+                            # can toggle +-1 on strong satellites with the fine phase right, and
+                            # each single-detection flip would step every node's seed by a whole
+                            # code period. A changed period is adopted only after this many
+                            # consecutive detections with the same m; until then the seed carries
+                            # the measured fine phase with the standing period. ph_hist is not
+                            # updated while a period is pending (storing the flipped phase would
+                            # make the next, correct detection alarm), and a real change passes
+                            # after N detections, so a wrong standing value cannot deadlock.
                             _pm, _pc = ctx.cpt.nh_pending.get(prn, (0, 0))
                             _pc = _pc + 1 if _pm == m else 1
                             ctx.cpt.nh_pending[prn] = (m, _pc)
@@ -946,37 +773,27 @@ def stage_detections_to_seeds(ctx):
                                 )
                         elif not m:
                             ctx.cpt.nh_pending.pop(prn, None)
-                # Feed history only from detections whose phase means something. Below the
-                # bar the phase is noise (measured: snr < 60 gives ~2000-chip within-period
-                # residuals against a few chips above it), and a noise entry poisons every
-                # comparison until that PRN is seen again -- 90-270 s at CHORD's revisit.
-                # A DEBOUNCE-DEFERRED period feeds nothing: the corrected phase is our own
-                # word (the 2026-08-02 poison) and the measured one is unconfirmed.
+                # Feed ph_hist only from detections whose phase means something: below
+                # period_check_snr the phase is noise and would poison every comparison until the
+                # PRN is seen again (a PRN's first entry is kept whatever its SNR). A
+                # debounce-deferred period feeds nothing: the corrected phase is our own word and
+                # the measured one is unconfirmed.
                 if not _nh_deferred and (
                     snr >= ctx.args.period_check_snr or prn not in ctx.cpt.ph_hist
                 ):
                     ctx.cpt.ph_hist[prn] = (ref_hop, ph, dop)
-                # ── THE JOINT OVERLAY FIT, apply side: below --period-check-snr the
-                # measured label is noise (G1's ran uniform over 0..19, stepping the seed
-                # a whole code period every ~4 min, 2026-08-31); with a resolved consensus
-                # the segment is DERIVED (prediction + common offset) and the measurement
-                # keeps only its sub-chip fine phase. Model-primacy: strong measured
-                # labels stay authoritative and the consensus is their REFEREE -- a strong
-                # disagreement is an alarm about the source, not a correction.
-                # ph_hist is already fed above (measured, strong-only), so nothing
-                # derived is ever stored as the satellite's own word (the 2026-08-02 trap).
+                # Joint overlay fit, apply side: with a resolved consensus the overlay segment is
+                # derived (prediction + common offset) and the measurement keeps only its sub-chip
+                # fine phase. ph_hist was fed above from measured phases only, so nothing derived is
+                # stored as the satellite's own word.
                 if _nhj_ok:
                     _nhc = _nh_joint_consensus(ctx, ctx.drp.now_w)
                     if _nhc is not None:
-                        # The derived segment applies to EVERY satellite, strong included:
-                        # the consensus IS the weighted median of the strong population's
-                        # raw phases, so a healthy majority defines it and no single
-                        # sat's label toggle -- or a poisoned ph_hist standing period,
-                        # which the debounce can defer forever when weak noise keeps
-                        # resetting its confirm counter (PRN 4/6, -4/-6 periods,
-                        # 2026-08-31) -- can move its own seed. The measurement keeps
-                        # sub-chip authority through its fine phase; a nonzero k on a
-                        # STRONG detection is the referee's alarm about the source.
+                        # The derived segment applies to every satellite, strong included: the
+                        # consensus is the weighted median of the strong population's raw phases, so
+                        # no single satellite's label toggle (or a stale ph_hist standing period the
+                        # debounce keeps deferring) can move its own seed. A nonzero k on a strong
+                        # detection is the referee's alarm about the source.
                         _ph_j, _k_j = _nh_joint_snap(
                             ctx, prn, _ph_raw, ref_hop, _nhc[0]
                         )
@@ -1007,77 +824,50 @@ def stage_detections_to_seeds(ctx):
                         ph = _ph_j
                 ph = ph % LLc
                 seed.put("nh_lift", epoch=ref_hop, code_phase_at_ref_chips=ph)
-        # HOLD-ON-LOCK: once a PRN shows a real lock, FREEZE its cp anchor + rate and let the
-        # DLL trim own the sub-chip residual. The search's per-fix cp is only good to ~1-2
-        # chips (hop-resolution coarse + refine), so re-anchoring from the fit at every cycle
-        # injects that jitter into the despread 5x per second -- the replay signature: the
-        # incoherent amplitude flaps full-scale<->zero on seconds timescales and the deep
-        # never builds past the lucky windows (measured 2026-07-11, 07-04 capture). Classic
-        # acquisition->track handoff: the fit is for CAPTURE, the (frozen anchor + DLL) for
-        # TRACKING. Doppler keeps refreshing (carrier fence semantics unchanged); on lock
-        # loss the coast/drop path clears the seed and re-acquisition seeds fresh from the fit.
-        # The seed's (cp0, rate, ref_hop, doppler) form the tracker's code CURRENCY: cp0 is
-        # an absolute-sample-0 phase whose meaning shifts by t_abs*f_chip/f_c chips PER HZ
-        # of doppler change. The currency must therefore be PIECEWISE-CONSTANT while
-        # locked -- a merely-smooth doppler (detection grid jitter, clock-bias EMA wobble)
-        # multiplies t_abs and walks/jitters the despread off-peak (blind replay: +-12 Hz
-        # grid jitter -> +-0.5 chip at t=60 s; live soak: 0.2 Hz EMA wobble -> 0.5 chip at
-        # t=1 h). Freeze the WHOLE tuple; release on amp collapse or when the frozen
-        # doppler goes stale enough to decohere the 1-record despread itself.
+        # Hold on lock: once a PRN shows a real lock, freeze its seed tuple and let the DLL own the
+        # sub-chip residual. The search's per-fix cp is good to ~1-2 chips, so re-anchoring on every
+        # fit would inject that jitter into the despread; the fit is for capture, the frozen anchor
+        # plus the DLL for tracking.
+        #
+        # (cp0, rate, ref_hop, Doppler) is the tracker's code currency: cp0 shifts by
+        # t_abs*f_chip/f_carrier chips per Hz of Doppler change, so the currency must be piecewise
+        # constant while locked (a merely smooth Doppler multiplies t_abs and walks the despread).
+        # The whole tuple is frozen; a Doppler move beyond the hold_max_dop_hz fence is translated
+        # into the new currency, not released. The hold is released after 3 consecutive reads below
+        # the lock gate or by the escape referee, and the released seed re-anchors on this cycle's
+        # detection.
         prev = ctx.seeds.get(prn)
-        # TRACK-vs-SEARCH consistency (the hold's independent referee): the freeze
-        # trusts the DLL to own the sub-chip residual, but a sharp-ACF (BOC)
-        # discriminator has a FINITE capture range (~1/3 chip at 0.5-eff-chip
-        # spacing) with further STABLE equilibria beyond it (prompt R ~ -0.25,
-        # -12 dB). An excursion past capture (a jittery era, one bad re-anchor)
-        # leaves the DLL contentedly servoing the WRONG lobe: deep stays coherent
-        # (and floor-certified), amp bleeds ~12 dB, and the hold never lets go --
-        # observed 2026-07-12 pm: C34 amp 440->0 over 35 min at deep 100+, the
-        # track parked ~0.75 chips off while the search kept finding the true
-        # peak at >100 sigma. The search FIT (sub-0.1-chip stable at 20 MSPS) is
-        # the referee: persistent disagreement beyond the capture range releases
-        # the freeze so the seed re-anchors on the true peak.
+        # Track-vs-search referee (the escape below): the freeze trusts the DLL, but a sharp-ACF
+        # (BOC) discriminator has a finite capture range (~1/3 chip at 0.5-chip effective spacing)
+        # with stable false equilibria beyond it (prompt R ~ -0.25, -12 dB). A track pushed past
+        # capture servoes the wrong lobe while deep stays coherent and amp bleeds ~12 dB, and the
+        # hold never lets go. The search is the referee: a persistent disagreement beyond the
+        # capture range releases the freeze and re-anchors the seed on the search.
         cp_err = None
-        # #76/#83 2(d): the EFFECTIVE trim -- what the tracker is actually adding to
-        # the model phase right now: the Python slow integrator's value PLUS the C++
-        # fleet loop's standing trim, read back last cycle (#76; ~one cycle old, since
-        # the readback rides the policy block which runs after this loop). The handover
-        # (180429f07) means at most one arm is normally nonzero per PRN, but the sum is
-        # correct in every regime, including the release ramp when both exist. Until
-        # #76 every consumer here used dll_trim alone: an armed PRN was judged as if
-        # untrimmed while up to 3 chips of command stood at the trackers.
+        # The effective trim the tracker adds to the model phase: the Python integrator's dls.trim
+        # plus the C++ fleet loop's standing trim from the readback (one cycle old: the trim-arming
+        # stage refreshes it after this one). Normally only one arm is nonzero per PRN, but the sum
+        # is right in every regime, including a handover where both are.
         _trim_eff = ctx.dls.trim.get(prn, 0.0) + (
             (ctx.dls.readback.get(prn) or {}).get("trim_chips", 0.0)
         )
-        # THE DETECTION'S OWN PHYSICAL PHASE at its epoch: cp0 and dop were published
-        # together, so undoing the pair reintroduces no translation -- which is the
-        # entire #42 fix. (cp_at_ref would be better conditioned but lives in the C++
-        # last-sample convention and carries the anchor Doppler term.) Hoisted out of
-        # the hold branch: the innovation below wants it for every detection.
+        # The detection's physical phase at its epoch, rebuilt from the (cp0, dop) pair the search
+        # published together, so no translation enters. (cp_at_ref is in the C++ last-sample
+        # convention and carries the anchor Doppler term.)
         _cpe_recon = (
             cp
             + (ref_hop / ctx.args.hops_per_sec)
             * ctx.args.chip_rate_hz
             * (1.0 + ctx.args.code_doppler_sign * dop / ctx.args.carrier_hz)
         ) % ctx.code_len
-        # ── #83 2(d): THE INNOVATION, computed for EVERY accepted detection ──
-        # Measurement minus forecast (chips, wrapped to one period), evaluated BEFORE
-        # this cycle overwrites the seed with the very detection being judged. SERVED
-        # (log + publisher rows) and, when the PRN is held, it IS the escape referee's
-        # statistic below -- one number, two consumers, so the referee and the
-        # published innovation can never disagree. This is also the number Phase 3's
-        # per-PRN model-primacy gate reads (p95 |innov| < ~1 chip over 10 min) and the
-        # one-controller carrier design's code-side measurement.
+        # The innovation: measurement minus forecast (chips, wrapped to one code period), for every
+        # accepted detection, before this cycle overwrites the seed with it. It is published
+        # (innov_hist: the INNOV log line and the publisher rows) and, for a held PRN, it is the
+        # escape referee's statistic below, so the two cannot disagree.
         _inv = None
-        # ⚠️ DR-OWNED SEEDS ARE EXCLUDED (2026-08-17 13:20, found by the flip's first
-        # arm): their ref_hop is stamped from WALL time (int(t_now_abs*hops_per_sec))
-        # while a detection's ref_hop rides the F-ENGINE hop counter -- a cross-axis
-        # dh, so the "innovation" reads the wall-vs-F-engine offset's sub-second part
-        # times the chip rate (ms -> thousands of chips; integer seconds vanish, 1 s =
-        # 100.0 periods exactly). Measured on flipped G26: INNOV p95 2598 while MINNOV
-        # p95 1.27, q 3.12 and trim -1.4 all said the tap was fine. The same axis
-        # mismatch is the leading suspect for the 2(b) DR-chain audit steps. MINNOV is
-        # the dr-owned satellites' referee; INNOV resumes when the search re-anchors.
+        # Dead-reckoned seeds are excluded; MINNOV is their referee. Their ref_hop comes from the
+        # dead-reckon time base, which is the wall clock unless --dr-fengine-axis, and a
+        # wall-clock ref_hop against a detection's F-engine hop reads the axis offset as chips.
         if (
             prev is not None
             and (ctx.dr_state is None or prn not in ctx.dr_state["seeded"])
@@ -1091,17 +881,11 @@ def stage_detections_to_seeds(ctx):
                 )
             )
         ):
-            # FORECAST WHAT THE TRACKER RUNS, not the cp0 fiction. The first deploy of
-            # this block used dr_seed_phys (the cp0-argument
-            # path): every PRN read thousands of chips, sign-flipping, p95 ~5000 --
-            # wrap-uniform, two uncorrelated phases -- while q and the trims said the
-            # taps were fine. The tracker prefers code_phase_at_ref_chips
-            # (propagate_seed), and seed writers legitimately move doppler_hz without
-            # re-projecting cp0, so the cp0-implied phase swings by the t_abs lever
-            # (~5600 chips/Hz). tracker_phase_at picks the same reference
-            # propagate_seed does (#45 step 7 -- same lesson as #43's 90,000-chip
-            # fiction). The measurement moves to the same LAST-SAMPLE convention with
-            # its OWN doppler (the hop-epoch convention: 52.37 chips if mixed).
+            # Forecast what the tracker runs: tracker_phase_at mirrors propagate_seed, including its
+            # preference for code_phase_at_ref_chips over cp0. A forecast from cp0 would swing on
+            # the t_abs lever, because seed writers legitimately move doppler_hz without
+            # re-projecting cp0. The measurement moves to the same last-sample convention with its
+            # own Doppler (_hop_off_det).
             _fc = tracker_phase_at(
                 prev,
                 ref_hop,
@@ -1122,17 +906,15 @@ def stage_detections_to_seeds(ctx):
             ) - ctx.code_len / 2.0
             _ih = ctx.innov_hist.setdefault(prn, [])
             _ih.append((ctx.t0, _inv))
-            # Bounds MEMORY only: the 10-minute statistic is cut by time at read
-            # (the publish block), so this cap can never shorten the window.
+            # Keeps the newest 120 samples; the publish block cuts the 10-minute statistic by time
+            # from these, so above one sample per 5 s the cap, not 10 minutes, sets the window.
             del _ih[:-120]
-        # ── #83 P3-3b: MODEL-PRIMARY PRNs stop here ──
-        # This detection has already done everything it is allowed to do: the #79
-        # deep-gate stamp (above), INNOV (above), and the joint feed + MINNOV run in
-        # their own block from `offs`. The SEED stays the MODEL's -- the dr slew path
-        # owns it via the eligibility exceptions there -- so the re-anchor, the
-        # hold/escape machinery and the commit below are all bypassed. The search
-        # remains the referee THROUGH MINNOV: its exit gate (p95 hysteresis +
-        # starvation) hands the PRN back, and the next detection re-anchors normally.
+        # Model-primary PRNs (mp_flipped) stop here. The detection has done all it may: the
+        # deep-gate stamp above, and the joint feed and MINNOV in the dead-reckon stage (the PRN is
+        # dead-reckon-owned, so INNOV is skipped). The seed stays the model's, slewed by the
+        # dead-reckon stage, so the re-anchor, hold/escape and commit below are bypassed. MINNOV's
+        # exit gate (p95 hysteresis or starvation) hands the PRN back to the search, whose next
+        # detection re-anchors it.
         if prn in ctx.mp_flipped:
             ctx.mp_last_det[prn] = ctx.t0
             continue
@@ -1143,29 +925,10 @@ def stage_detections_to_seeds(ctx):
                 k in seed for k in ("code_phase_chips", "code_phase_rate", "ref_hop")
             )
         ):
-            # AT-EPOCH COMPARISON (#42 -> #45 step 1, 2026-08-12). The sample-0
-            # currency comparison that lived here manufactured -t_abs*k*d(clock_bias)
-            # chips of phantom whenever the seed-vs-detection dop bias moved (an EMA
-            # DESIGNED to move): 145 CP_ERR-DECOMP specimens in 7 min, seven false
-            # ESCAPES in one evening against tracks healthy at 40 dB-Hz. The
-            # candidate tuple reaching this point can be PAIR-INCONSISTENT (label
-            # stepped, cp0 unmoved) and no translation survives that. So: compare
-            # physical phases at the DETECTION's epoch instead -- the search's own
-            # cp_at_ref (dt=0, its Doppler estimate does not enter) against where
-            # dr_seed_phys puts the tracker's despread.
-            # #83 2(d) ADDENDUM (2026-08-17): the referee now CONSUMES THE INNOVATION
-            # above -- forecast by tracker_phase_at, the reference propagate_seed
-            # actually prefers -- instead of dr_seed_phys (the
-            # cp0-argument path). On sky the cp0 fiction read wrap-uniform thousands
-            # of chips (p95 ~5000) on satellites tracking cleanly: seed writers move
-            # doppler_hz without re-projecting cp0, and the implied phase swings on
-            # the t_abs lever (~5600 chips/Hz). That is the named mechanism behind
-            # the +-700-4500-chip CP_ERR reports of 08-16/17 -- the referee had been
-            # accusing healthy tracks with a number drawn from a uniform
-            # distribution, and only the sign-consistency + median gates kept it
-            # from escaping constantly. Confirmed as a discriminating pair on the
-            # holds fixture: same replay, forecast swapped, innovations collapse to
-            # p95 1.6-2.3 chips.
+            # At-epoch comparison: the escape referee consumes the innovation above (the detection's
+            # physical phase against tracker_phase_at, net of the trim), so the seed-vs-detection
+            # Doppler bias does not enter, and the referee and the published INNOV are the same
+            # number.
             cp_err = _inv
             if cp_err is not None and abs(cp_err) > ctx.args.hold_max_cp_err:
                 _log_rl(
@@ -1184,31 +947,21 @@ def stage_detections_to_seeds(ctx):
                     ),
                     every_s=60.0,
                 )
-            # MEDIAN GATE (2026-07-19): the per-detection cp noise is 0.03-0.5 chips
-            # (per-sat conditions -- multipath/BOC refine; measured same-instrument at
-            # t_abs 100 s AND 27000 s, i.e. FLAT in run age: the earlier 'growth law'
-            # was the logged cp_ref coordinate wobbling with dop_seed x t_abs, which
-            # the currency translation above cancels in cp_err by construction). The
-            # 5-consecutive-sign rule alone still lets a noisy-conditions sat sustain
-            # a false accusation; a 9-sample median cannot be dragged over the bar by
-            # single-point noise, only by a persistent physical walk.
+            # Median gate: per-detection cp noise is 0.03-0.5 chips depending on the satellite
+            # (multipath, BOC refine), so the 5-consecutive-sign rule alone lets a noisy satellite
+            # sustain a false accusation; the median of the last 9 cycles' values must also exceed
+            # the bar.
             if cp_err is not None:
                 ctx.cpt.err_hist.setdefault(prn, []).append(cp_err)
                 del ctx.cpt.err_hist[prn][:-9]
-        # Count only SIGN-CONSISTENT disagreements: a real wrong-lobe park is
-        # one-signed; search-fit noise on a weak sat alternates (first deploy:
-        # weak GPS sats escaped every minute on -0.5/+1.3/-0.5 flip-flops, and
-        # each escape re-injects the seed jitter + forces an overlay re-align).
-        # FIT-QUALITY gate (2026-07-12 evening): only a trustworthy fit may accuse the
-        # track -- >=6 history points (fit noise ~ per-fix/sqrt(n)) and a solid current
-        # detection (2x the acquire gate). Ungated, weak-sat fit noise drove 627 escapes
-        # in 2.7 h and each one re-anchored the seed (the churn behind the GPS "wobble").
-        # + FIT SPAN >= 30 s (2026-07-19 eve): point COUNT is not maturity -- L2C's
-        # snapshots arrive fast enough that 6 points span ~13 s, over which the code-
-        # Doppler QUADRATIC is unresolvable, so the fit carries the curvature-bias class
-        # (the birth zombies the watchdog had to keep cleaning). A 30 s floor makes the
-        # curvature term observable on every chain; on L1 (6 points ~ 60-80 s) it is a
-        # no-op. This gate feeds BOTH the escape referee and hold admission.
+        # Escape counting: only sign-consistent disagreements count. A real wrong-lobe park is
+        # one-signed; search-fit noise on a weak satellite alternates, and every escape re-injects
+        # seed jitter and forces an overlay re-align.
+        #
+        # fit_trusted gates both the escape referee and hold admission: >= 6 history points (fit
+        # noise ~ per-fix/sqrt(n)), a span of at least fit_maturity_span_s (point count alone is not
+        # maturity when snapshots arrive fast; the span makes the code-Doppler quadratic
+        # observable), and a detection at twice acquire_snr.
         fit_span_s = (
             ((h[-1][0] - h[0][0]) / ctx.args.hops_per_sec) if len(h) >= 2 else 0.0
         )
@@ -1218,15 +971,14 @@ def stage_detections_to_seeds(ctx):
             and fit_span_s >= ctx.args.fit_maturity_span_s
             and snr >= 2.0 * ctx.args.acquire_snr
         )
-        # AMP VETO (see --escape-amp-veto): a full-amplitude hold is on the main peak
-        # by construction -- refuse the fit's accusation rather than drag it off.
+        # Amp veto (escape_amp_veto): a hold despreading at full amplitude is on the main peak,
+        # since the false lobes sit ~12 dB down; refuse the fit's accusation.
         amp_now = float((ctx.status.get(prn) or {}).get("amp_snr", 0) or 0)
         amp_veto = amp_now > ctx.args.escape_amp_veto
-        # INTEGRITY VETO (2026-07-19 eve, audit follow-up): never re-anchor onto a fit
-        # the BRDC model itself disputes. The dead-reckon machinery already computes a
-        # per-sat integrity residual (search-vs-model, solved clock removed, normally
-        # +-0.2 chips): if a FRESH residual says the search's own position is off by
-        # more than the escape bar, the fit is the suspect, not the track.
+        # Integrity veto: never re-anchor onto a fit the BRDC model disputes. A fresh (< 10 s)
+        # dead-reckon integrity residual (search against model, solved clock removed, normally +-0.2
+        # chips) beyond hold_max_cp_err says the search's own position is off, so the fit is the
+        # suspect, not the track.
         integ_veto = False
         if ctx.dr_state is not None and ctx.dr_state.get("integ"):
             _iv = ctx.dr_state["integ"].get(prn)
@@ -1254,20 +1006,14 @@ def stage_detections_to_seeds(ctx):
             ctx.cpt.escape_sign[prn] = cp_err
         else:
             ctx.cpt.escape[prn] = 0
-        # ⚠ CHAIN HAZARD (2026-08-28): this monitor lived BETWEEN the escape `if`
-        # below and the hold `elif` from 2026-07-20 to 2026-08-28, silently re-chaining
-        # the elif to THIS condition: whenever a held sat had a fresh detection and
-        # dr integrity was populated, freeze/translate/release all skipped and the seed
-        # became a per-detection re-anchor (G28's q drops, 08-28 evening). It sits ABOVE
-        # the escape `if` now, as a standalone statement, and must never be moved into
-        # that chain. test_holdchain.py pins the structure.
-        # TRACK-vs-MODEL MONITOR (2026-07-20, log-only; audit follow-up census): the
-        # referee's reference is the search FIT; the model-referenced track residual
-        # is r_i - cp_err (search-vs-model minus search-vs-track, same chip units).
-        # Log when the MODEL says the track is past the escape bar -- especially when
-        # the fit-referenced referee stays quiet (veto / immature fit): those are the
-        # cases an upgraded model-referenced referee would catch. Decide on enforcement
-        # from this census, not from theory (the referee has bitten guessers before).
+        # This monitor must stay a standalone statement above the escape `if`: placed between that
+        # `if` and the hold `elif`, it would re-chain the `elif` to its own condition and silently
+        # turn the hold into a per-detection re-anchor. test_holdchain.py pins it.
+        #
+        # Track-vs-model monitor (log only): the model-referenced track residual is r_i - cp_err
+        # (search-vs-model minus search-vs-track, both in chips). It logs when the model puts the
+        # track past the escape bar, notably while the fit-referenced referee is quiet (vetoed or
+        # immature fit).
         if (
             cp_err is not None
             and ctx.dr_state is not None
@@ -1309,31 +1055,19 @@ def stage_detections_to_seeds(ctx):
             ctx.dls.last.pop(prn, None)
             ctx.cp_held.discard(prn)
             ctx.hold.miss.pop(prn, None)
-        # HOLD ADMISSION REQUIRES FIT MATURITY (2026-07-19 eve, the Tier-3 burn-in fix):
-        # a birth-window anchor (wide margins, unsolved bias, <6-point fit) can be chips
-        # wrong, and granting it hold protection created the zombie cohorts that made
-        # every relaunch take 5-20 min to heal (or forever, pre-watchdog: the L2C 18%
-        # mornings). Until the sat's own cp fit is trusted -- the SAME predicate the
-        # escape referee requires before it may accuse a track -- the seed keeps riding
-        # the maturing fit (the weak-sat path, measured born-clean tonight), which is
-        # self-correcting. Only a mature anchor earns protection; expected burn-in
-        # collapses to the fit-maturation time (~6 search snapshots, ~60-80 s).
-        # Already-held sats are unaffected (the cp_held alternative below).
+        # Hold admission requires a mature fit (fit_trusted, the escape referee's own predicate): a
+        # birth-window anchor (wide margins, unsolved bias, a short fit) can be chips wrong, and
+        # protecting it would freeze the error. Until then the seed rides the maturing fit, which
+        # corrects itself. Already-held PRNs are unaffected (the cp_held alternatives below).
         elif prev is not None and (
             (
                 ctx.sig_of_last(ctx.status.get(prn)) >= ctx.args.hold_snr
                 and (prn in ctx.cp_held or fit_trusted)
             )
-            # ── #96/#97 CLOSURE: HOLD ON THE LOCK STATISTIC (--hold-on-present) ──
-            # The freeze below IS the architecture -- frozen tuple, DLL owns the
-            # residual, CP_ERR referee -- but amp_snr rides the coherent arc,
-            # which flickers with the deep fold (#58), so locked satellites sat
-            # un-held taking per-detection REPLACEs. Presence here is the
-            # population-honest fleet gate (ctx.qpop, the series that admits
-            # trims): the sat this branch protects is exactly the sat whose
-            # trims the fleet controller is already trusting. fit_trusted still
-            # required: a birth-window anchor must mature before it earns
-            # protection (the 2026-07-19 zombie-cohort lesson).
+            # --hold-on-present: also hold on fleet presence (ctx.qpop, the series that admits
+            # trims). amp_snr rides the coherent arc and flickers with the deep fold, which leaves
+            # locked satellites un-held; presence marks exactly the satellites whose trims the fleet
+            # controller already trusts. fit_trusted is still required.
             or (
                 ctx.args.hold_on_present > 0
                 and fit_trusted
@@ -1341,26 +1075,21 @@ def stage_detections_to_seeds(ctx):
             )
             or (prn in ctx.cp_held and ctx.hold.miss.get(prn, 0) < 3)
         ):
-            # PERSISTENT-loss release (2026-07-12 evening): a single blank/stale status
-            # read (sig 0.0 -- a poll racing the emit, a slow combiner cycle) used to
-            # release the hold instantly: 562 of 736 releases in 2.7 h fired at
-            # amp_snr < 8, mostly 0.0, and every release re-fit the seed (dop jump) and
-            # paid the ~0.9 Hz x ~5 s carrier re-anchor transient -- the 2 s-median
-            # churn behind the GPS coherence wobble (settled sats measure 0.06 Hz).
-            # A held sat now rides through up to 3 consecutive sub-gate reads; doppler
-            # STALENESS still releases immediately (real currency decoherence).
+            # Persistent-loss release: a single blank or stale status read (sig 0.0 from a poll
+            # racing the emit) must not release the hold, since every release re-fits the seed and
+            # pays a carrier re-anchor transient. A held PRN rides through up to 3 consecutive
+            # sub-gate reads.
             if ctx.sig_of_last(ctx.status.get(prn)) >= ctx.args.hold_snr:
                 ctx.hold.miss[prn] = 0
             elif ctx.args.hold_on_present > 0 and _present_streak(ctx, prn) >= 1:
-                # Presence sustains a hold the sig path would starve: the sig read races
-                # the emit (562/736 releases fired at sig ~0.0, 2026-07-12), while the
-                # fleet gate is the statistic the trims already ride.
+                # Presence sustains a hold the sig path would starve: the sig read races the emit,
+                # while the fleet gate is the statistic the trims already ride.
                 ctx.hold.miss[prn] = 0
             else:
                 ctx.hold.miss[prn] = ctx.hold.miss.get(prn, 0) + 1
             ddop = seed["doppler_hz"] - prev["doppler_hz"]
-            # SAFETY NET (design (b)): bound a single cycle's Doppler move. A real MEO
-            # Doppler moves <1 Hz per 0.2 s cycle; this only fires on a bad model, and it
+            # Safety net: bound one cycle's Doppler move to dop_max_rate_hz (3x the fence, at least
+            # 5 Hz). A real MEO Doppler moves under ~1 Hz/s, so this fires only on a bad model; it
             # bounds the damage rather than forbidding motion.
             if abs(ddop) > ctx.args.dop_max_rate_hz:
                 if prn not in ctx.cpt.dop_clamped:
@@ -1372,8 +1101,8 @@ def stage_detections_to_seeds(ctx):
                     )
                 ddop = math.copysign(ctx.args.dop_max_rate_hz, ddop)
                 seed.put("dop_clamp", doppler_hz=prev["doppler_hz"] + ddop)
-            # Freeze the currency while the Doppler move is inside the hold_max_dop_hz fence;
-            # translate it once the move exceeds the fence.
+            # Freeze the currency while the Doppler move is inside the hold_max_dop_hz fence (0.1
+            # cycle per record); translate it once the move exceeds the fence.
             if abs(ddop) <= ctx.args.hold_max_dop_hz or ddop == 0.0:
                 # Currency frozen: the whole tuple rides unchanged.
                 seed.put(
@@ -1384,19 +1113,11 @@ def stage_detections_to_seeds(ctx):
                     code_phase_rate=prev["code_phase_rate"],
                     ref_hop=prev["ref_hop"],
                 )
-                # #80 FIX (2026-08-16): the at-ref phase is PART of the tuple and the
-                # tracker PREFERS it (gnssSeedTransport.cpp:325 -- phase_ref_chips >= 0
-                # wins over cp_chips unconditionally). Leaving the DETECTION's fresh
-                # phase beside the frozen ref_hop commanded the despread off-peak by
-                # the full inter-snapshot code advance (~4665 chips mod-period per
-                # 6.29 s revisit, wrapping): measured on sky 2026-08-16 23:15 --
-                # CP_ERR +1005..+4516 chips on ALL six held sats at hold_age 12-15 s,
-                # prompt amps collapsed 21-77 -> 3-16 while the re-searching deep fold
-                # kept sig above the release bar, so the mispaired hold NEVER let go
-                # (#48's "prompt on noise", mechanism). Freeze means freeze: the phase
-                # rides from prev (where it is paired with prev's ref_hop), or ships
-                # not at all -- the tracker then falls back to the frozen (cp0, dop)
-                # argument pair, which is the hold's original contract.
+                # The at-ref phase is part of the tuple and propagate_seed prefers it over cp0, so
+                # it rides from prev, where it is paired with prev's ref_hop. The detection's fresh
+                # phase beside the frozen ref_hop would command the despread off peak by the code
+                # advance between the two epochs. With none in prev the field is dropped and the
+                # tracker uses the frozen (cp0, dop) pair.
                 if "code_phase_at_ref_chips" in prev:
                     seed.put(
                         "hold_freeze",
@@ -1406,35 +1127,19 @@ def stage_detections_to_seeds(ctx):
                 else:
                     seed.pop("code_phase_at_ref_chips", None)
             else:
-                # ---- CURRENCY TRANSLATION (2026-07-14): a DOPPLER UPDATE IS NOT A LOSS
-                # OF LOCK. The replica is anchored at sample 0, so the tracker builds the
-                # code phase as
+                # Currency translation: a Doppler update is not a loss of lock. The tracker builds
+                # the code phase from the sample-0 anchor as
                 #     cp(t) = cp0 + t*f_chip*(1 + sign*dop/f_carrier)
-                # -- the Doppler is applied over the ENTIRE elapsed time, RETROACTIVELY.
-                # cp0 is therefore not "the code phase": it is a coordinate that only
-                # means anything PAIRED WITH A DOPPLER. Change dop by ddop and leave cp0
-                # alone and the physical code jumps by t*f_chip*ddop/f_carrier -- ~20
-                # chips for a 10 Hz fence step at an hour of run age, and the lever arm
-                # GROWS with t.
-                #
-                # Historically the fence RELEASED the hold and re-anchored cp on the
-                # search fit. The 20-chip currency jump was bookkeeping and harmless; the
-                # damage was throwing away a good anchor and replacing it with a MEASURED
-                # one. The fit's noise is nothing on GPS's broad triangular peak, but a
-                # BOC(1,1) peak is ~3x sharper: measured 2026-07-14, C19 collapsed 42 ->
-                # 20 dB-Hz and took ~5 s of DLL re-convergence, EVERY
-                # hold_max_dop_hz/|dop_rate| = 10 Hz / 0.55 Hz/s = 18 s. ~25% of every
-                # emit, on every locked BOC satellite, on all three constellations.
-                #
-                # So: keep the anchor and re-express it in the new Doppler's currency.
-                # Pure arithmetic, no measurement, no fit noise, nothing for the deep
-                # integration to trip over. The new slope is the BETTER one (dop is a
-                # better estimate of the truth), so code_phase_rate is left alone -- only
-                # the retroactive part needs absorbing.
+                # so the Doppler applies over the whole elapsed time: changing dop by ddop with cp0
+                # fixed jumps the physical phase by t*f_chip*ddop/f_carrier chips, a lever that
+                # grows with t. Releasing the hold here would trade a good anchor for a measured
+                # one, whose noise costs a sharp BOC peak C/N0 and seconds of DLL re-convergence. So
+                # keep the anchor and re-express it in the new Doppler's currency: pure arithmetic,
+                # no fit noise. code_phase_rate is left alone; only the retroactive part needs
+                # absorbing.
                 t_now = ref_hop / ctx.args.hops_per_sec
-                # doppler_hz keeps its NEW value -- that is the point -- and is
-                # re-attributed here because the translation is what makes the
-                # (cp0, dop) pair valid at the shipped ref_hop by construction.
+                # doppler_hz keeps its new value and is re-attributed here: the translation is what
+                # makes the (cp0, dop) pair valid at the shipped ref_hop.
                 seed.put(
                     "translate",
                     epoch=prev["ref_hop"],
@@ -1451,11 +1156,9 @@ def stage_detections_to_seeds(ctx):
                     ref_hop=prev["ref_hop"],
                     doppler_hz=seed["doppler_hz"],
                 )
-                # #80 FIX, translate arm: same as the freeze arm above. prev's at-ref
-                # phase is a PHYSICAL phase at prev's ref_hop -- a doppler update does
-                # not move it (the new doppler enters the forward propagation, not the
-                # anchor), so it rides unchanged where the fresh detection's phase must
-                # not.
+                # As in the freeze arm: prev's at-ref phase is a physical phase at prev's ref_hop,
+                # which a Doppler update does not move (the new Doppler enters the forward
+                # propagation, not the anchor), so it rides unchanged.
                 if "code_phase_at_ref_chips" in prev:
                     seed.put(
                         "translate",
@@ -1508,30 +1211,25 @@ def stage_detections_to_seeds(ctx):
 
 def stage_push_seeds(ctx):
     """4: PUSH the consensus seeds to every tracker.
-        
-    The cycle's actuation point: whatever the stages above decided, this is what the trackers
-    receive. The DLL trim is applied at POST time only, so the stored seed stays the model's view
-    and the trim stays the loop's -- keeping the two ledgers separable is what makes #92's handover
-    expressible at all.
-        
-    ⚠️ PUBLISHED DOPPLER IS THE COMMAND, NOT AN ESTIMATE. Continuity of what the tracker is told
-    beats freshness of what we last measured; a seed that jumps to the newest estimate every cycle
-    makes the tracker chase the estimator's noise.
 
-    ⚠️ THE RAILED/RELEASED COUNTERS ARE `+=` ON A COUNTER INITIALISED BY THE CYCLE, so they
-    must be nonlocal. An augmented assignment READS before it writes, so a name analysis that
-    records only the Store misses it. It cost gal_e5a a chain death at 12:49 on 2026-08-26."""
+    The cycle's actuation point: whatever the stages above decided, this is what the trackers
+    receive. The Python DLL trim is added to the posted copy only, so the stored seed stays the
+    model's view and the trim stays the loop's, and the two ledgers remain separable.
+
+    The published Doppler is the command, not an estimate: continuity of what the tracker is
+    told beats freshness of what was last measured, and a seed that jumped to every new
+    estimate would make the tracker chase the estimator's noise.
+
+    ctx.rf.railed and ctx.rf.released are `+=` counters for the JRR-CMD line; the broker zeroes
+    them before each call."""
     for prn, v in sorted(ctx.seeds.items()):
         d = dict(prn=prn, **v)
         if ctx.dls.trim.get(prn):
             d["code_phase_chips"] = d["code_phase_chips"] + ctx.dls.trim[prn]
-            # ⚠️ AUDIT §4.6 (#83 2(b) precondition): THE TRIM MUST MOVE THE PHASE TOO.
-            # propagate_seed PREFERS code_phase_at_ref_chips whenever the payload
-            # carries it -- which the search-fed path always does -- so a trim written
-            # only into cp0 was written into the field the tracker ignores: the Python
-            # slow trim has been a NO-OP on every phase-carrying seed, and enabling
-            # --seed-phase-transport on the DR chains would have silently disabled
-            # their only code loop. One trim, both currencies, same instant.
+            # The trim must move the at-ref phase too: propagate_seed prefers
+            # code_phase_at_ref_chips whenever the payload carries it (search-fed seeds on an
+            # overlaid code, and dead-reckoned ones under --seed-phase-transport), so a trim written
+            # only into cp0 would be ignored. One trim, both currencies, same instant.
             if (
                 d.get("code_phase_at_ref_chips", -1.0) is not None
                 and d.get("code_phase_at_ref_chips", -1.0) >= 0.0
@@ -1541,16 +1239,14 @@ def stage_push_seeds(ctx):
                     d["code_phase_at_ref_chips"] + ctx.dls.trim[prn]
                 ) % _tmod
         if ctx.jrc is not None and prn not in ctx.probe_set:
-            # Probes excepted: no carrier, and a moving trim moves the REPORTED Doppler,
-            # which the beam map's churn gate reads as sky. A sat whose row has not
-            # converged carries no trim: commanding from a wide row would inject the
-            # filter's own transient into the NCO.
+            # Probes are excepted: no carrier, and a moving trim moves the reported Doppler, which
+            # the beam map's churn gate reads as sky. A satellite whose rrate row has not converged
+            # carries no trim: commanding from a wide row would inject the filter's own transient
+            # into the NCO.
             _k = (ctx.args.dr_constellation, int(prn))
-            # ARM-12 GUARD: the row's own satellite must be DETECTED this cycle
-            # (kcoh sig >= --rrate-cmd-min-sig) before it may command. The sigma
-            # gate alone admitted E4's confident-noise row (see the flag's help).
-            # No kcoh row (throttled estimator at startup, or the sat absent from
-            # the fold) counts as NOT detected: no evidence, no command.
+            # --rrate-cmd-min-sig: the row's own satellite must be detected this cycle (kcoh sig at
+            # or above the bar) before it may command; the sigma gate alone admits a confident
+            # estimate of noise. No kcoh row counts as not detected.
             _cmd_sig_ok = True
             if ctx.args.rrate_cmd_min_sig > 0.0:
                 _cmd_sig_ok = (
@@ -1562,12 +1258,11 @@ def stage_push_seeds(ctx):
                     _cmd = max(
                         -ctx.args.carrier_max_hz, min(ctx.args.carrier_max_hz, _cmd)
                     )
-                # SLEW toward the target from the command actually POSTED last poll
-                # (--rrate-cmd-slew-hz): the feed's reference is only exact for a
-                # command that holds still over the emit lag, so the step is bounded
-                # and the bound is what makes the closed loop stable. Railed steps
-                # are counted into the JRR-CMD line -- a rail that never clears is
-                # a target out of reach, not convergence in progress.
+                # Slew toward the target from the command posted last poll (rrate_cmd_slew_hz): the
+                # feed's reference is exact only for a command that holds still over the emit lag,
+                # so bounding the step is what keeps the closed loop stable. Railed steps are
+                # counted into the JRR-CMD line; a rail that never clears is a target out of reach,
+                # not convergence in progress.
                 _prev = ctx.rf.cmd_applied.get(prn, 0.0)
                 if ctx.args.rrate_cmd_slew_hz > 0.0:
                     _stp = max(
@@ -1579,12 +1274,10 @@ def stage_push_seeds(ctx):
                     _cmd = _prev + _stp
                 d["carrier_trim_hz"] = _cmd
                 ctx.rr_cmd_new[prn] = _cmd
-        # RELEASE-SLEW (arm 12). A sat that exits the command set -- sig bar lost,
-        # sigma widened, receiver row gone -- used to fall back to 0 in ONE
-        # poll: an instant step of its whole standing command, the exact reference
-        # discontinuity the slew bound exists to prevent, taken at release instead
-        # of at pull-in. Walk it back at the same bounded rate; drop out only once
-        # within one step of zero.
+        # Release slew: a PRN that leaves the command set (sig bar lost, sigma widened, row gone)
+        # walks its standing command back to 0 at the same bounded rate instead of stepping, the
+        # reference discontinuity the slew bound exists to prevent. It drops out once within one
+        # step of zero.
         if (
             ctx.args.rrate_command
             and prn not in ctx.rr_cmd_new
@@ -1600,6 +1293,6 @@ def stage_push_seeds(ctx):
                 d["carrier_trim_hz"] = _cmd
                 ctx.rr_cmd_new[prn] = _cmd
                 ctx.rf.released += 1
-            # else: within one step of zero (or slew disabled) -- final sub-slew
-            # step back to 0, and the sat leaves rr_cmd_applied.
+            # Otherwise (within one step of zero, or slew disabled) no carrier_trim_hz is posted,
+            # which the tracker reads as 0, and the PRN leaves ctx.rf.cmd_applied.
         ctx.payload.append(d)
