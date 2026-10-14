@@ -38,6 +38,10 @@ add_executable(test_galileo_codes test_galileo_codes.cpp ../../lib/stages/gnss/g
                                   ../../lib/stages/gnss/galileoE6Code.cpp)
 target_include_directories(test_galileo_codes PRIVATE ../../lib/stages ../../lib/stages/gnss)
 
+# BeiDou B3I: two LFSRs with the ICD's G1 truncation, no FFTW.
+add_executable(test_beidou_b3i_code test_beidou_b3i_code.cpp ../../lib/stages/gnss/beidouB3ICode.cpp)
+target_include_directories(test_beidou_b3i_code PRIVATE ../../lib/stages ../../lib/stages/gnss)
+
 # Pure band-plan logic: compile the source directly, no Telescope/FFTW needed.
 add_executable(test_gnss_band_plan test_gnss_band_plan.cpp ../../lib/stages/gnss/gnssBandPlan.cpp)
 target_include_directories(test_gnss_band_plan PRIVATE ../../lib/stages ../../lib/stages/gnss)

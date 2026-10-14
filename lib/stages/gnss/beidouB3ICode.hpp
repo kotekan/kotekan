@@ -12,11 +12,13 @@
  * with the same 50 bps D1 message and the same 20-chip NH secondary (one chip per 1 ms period,
  * 20 ms per symbol). PRN 1..63.
  *
- * G1 is not free-running: its 13-stage m-sequence (period 8191) is shorter than the code, and
- * G1 is reset to all-ones when it reaches the state with register indices 0 and 1 low and the
- * rest high (see generate_b3i_code). Without the reset the first 8189 chips are unchanged and
- * only the tail diverges, so the code correlates weakly instead of not at all. The per-PRN
- * diversity is in G2's initial state, not in an output tap as on B1I.
+ * G1 is not free-running: its 13-stage m-sequence (period 8191) is shorter than the code, so
+ * the ICD truncates it to 8190 chips -- the register goes back to all-ones instead of shifting
+ * out of the phase 1111111111100 (stages 1..13), which is the last chip of each cycle (see
+ * generate_b3i_code). Without the reset the first 8190 chips are unchanged and only the tail
+ * diverges, so the code correlates weakly instead of not at all; resetting one chip early (an
+ * 8189 cycle, #178) costs a uniform 1.9 dB the same way. The per-PRN diversity is in G2's
+ * initial state, not in an output tap as on B1I.
  *
  * Sign convention: ICD logic 0 -> +1, 1 -> -1, as in beidouB1ICode.hpp.
  */

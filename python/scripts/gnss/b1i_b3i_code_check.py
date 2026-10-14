@@ -14,10 +14,15 @@ DATA-ONLY (no pilot), and both carry the SAME 20-chip D1 NH secondary 0000010011
     exactly the BDS-3 satellites (the ones actually overhead). Checked by asserting PRN 38..63
     are distinct from each other AND balanced -- a dropped third tap breaks both.
   * B3I -- G1 is NOT free-running: its natural period exceeds the 10230-chip code, so the ICD
-    RESETS it to all-ones on reaching 0011111111111. Omit the reset and the first ~8190 chips
-    are still correct while the tail diverges, giving a code that correlates WEAKLY instead of
-    not at all -- the hardest failure to attribute. Checked by the fingerprints, which cover
-    the whole 10230 and so cannot pass without the reset.
+    RESETS it to all-ones INSTEAD OF SHIFTING out of the phase 1111111111100 (stages 1..13),
+    which makes that phase the 8190th and last chip of each cycle. Omit the reset and the
+    first 8190 chips are still correct while the tail diverges, giving a code that correlates
+    WEAKLY instead of not at all -- the hardest failure to attribute; reset one chip EARLY
+    (an 8189 cycle, gnss-sdr's reading, ours until #178) and the tail is wrong the same way,
+    1002 chips and 1.9 dB on every PRN. Checked by the fingerprints, which cover the whole
+    10230 and so cannot pass with either mistake. They were computed from two independent
+    implementations that agree (Peter Monta's GNSS-DSP-tools b3i.py, PocketSDR's sdr_code.py),
+    not from the model below.
 
 ⚠️ These are STRUCTURAL checks, not a bit-exact comparison against an external reference. The
 real validation is a sky lock: coherent tracking requires the code, its rate and its secondary
@@ -44,11 +49,11 @@ _FP_B1I = {
     63: (1363507217, 1023),
 }
 _FP_B3I = {
-    1: (2623635003, 5105),
-    7: (2160214820, 5105),
-    19: (858640360, 5113),
-    38: (4140033058, 5173),
-    63: (1481222794, 5095),
+    1: (835331407, 5123),
+    7: (761862224, 5113),
+    19: (2659619996, 5109),
+    38: (1533591382, 5115),
+    63: (4125291006, 5115),
 }
 
 P1 = [
@@ -223,12 +228,15 @@ def b3i(prn, init=None):
     out = []
     for _ in range(B3I_N):
         out.append(-1 if (g1[0] ^ g2[0]) else 1)
-        f1 = g1[0] ^ g1[9] ^ g1[10] ^ g1[12]
-        f2 = g2[0] ^ g2[1] ^ g2[3] ^ g2[4] ^ g2[6] ^ g2[7] ^ g2[8] ^ g2[12]
-        g1[:12], g2[:12] = g1[1:], g2[1:]
-        g1[12], g2[12] = f1, f2
         if g1[0] == 0 and g1[1] == 0 and all(g1[k] == 1 for k in range(2, 13)):
-            g1 = [1] * 13  # ★ the ICD reset -- see the header
+            g1 = [1] * 13  # ★ the ICD reset, instead of the shift -- see the header
+        else:
+            f1 = g1[0] ^ g1[9] ^ g1[10] ^ g1[12]
+            g1[:12] = g1[1:]
+            g1[12] = f1
+        f2 = g2[0] ^ g2[1] ^ g2[3] ^ g2[4] ^ g2[6] ^ g2[7] ^ g2[8] ^ g2[12]
+        g2[:12] = g2[1:]
+        g2[12] = f2
     return out
 
 

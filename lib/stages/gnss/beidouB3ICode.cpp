@@ -41,23 +41,27 @@ std::array<int8_t, B3I_CODE_LENGTH> generate_b3i_code(int prn) {
         // ICD logic level -> BPSK: 0 -> +1, 1 -> -1 (see the header's convention note).
         out[(size_t)k] = (g1[0] ^ g2[0]) ? -1 : 1;
 
-        const int fb1 = g1[0] ^ g1[9] ^ g1[10] ^ g1[12];
-        const int fb2 = g2[0] ^ g2[1] ^ g2[3] ^ g2[4] ^ g2[6] ^ g2[7] ^ g2[8] ^ g2[12];
-        for (int i = 0; i < 12; ++i) {
-            g1[i] = g1[i + 1];
-            g2[i] = g2[i + 1];
-        }
-        g1[12] = fb1;
-        g2[12] = fb2;
-
-        // The G1 reset (see the header): back to all-ones on reaching the state with indices 0
-        // and 1 low and the rest high. Without it the tail of every code diverges.
+        // G1 (ICD 4.3): the register goes back to all-ones INSTEAD OF SHIFTING when its phase
+        // is 1111111111100 (stages 1..13; indices 1 and 0 low here, index 0 being the output
+        // end). That phase is the 8190th and last chip of the truncated cycle, so it is tested
+        // after the chip is taken and before the shift. Testing after the shift, as gnss-sdr
+        // does, drops the chip and makes the cycle 8189 (#178).
         bool at_reset = (g1[0] == 0 && g1[1] == 0);
         for (int i = 2; i < 13 && at_reset; ++i)
             at_reset = (g1[i] == 1);
-        if (at_reset)
+        if (at_reset) {
             for (int i = 0; i < 13; ++i)
                 g1[i] = 1;
+        } else {
+            const int fb1 = g1[0] ^ g1[9] ^ g1[10] ^ g1[12];
+            for (int i = 0; i < 12; ++i)
+                g1[i] = g1[i + 1];
+            g1[12] = fb1;
+        }
+        const int fb2 = g2[0] ^ g2[1] ^ g2[3] ^ g2[4] ^ g2[6] ^ g2[7] ^ g2[8] ^ g2[12];
+        for (int i = 0; i < 12; ++i)
+            g2[i] = g2[i + 1];
+        g2[12] = fb2;
     }
     return out;
 }
