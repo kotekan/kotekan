@@ -1457,6 +1457,9 @@ FRB:
         ring_buffer_size: gpu_buffer_depth * upchan_U16_max_num_output_channels * frb_num_output_times
         metadata_pool: main_pool
 
+{%- if do_once_and_dump %}
+    # Host copy of the packet loss mask, for debugging. The quantizer encodes invalid samples as 0,
+    # so the mask is not needed after quantization.
     host_frb_pl_mask_buffer:
         kotekan_buffer: ndarray
         num_frames: host_buffer_depth
@@ -1466,16 +1469,7 @@ FRB:
         dimnames: ["Ttilde", "Fbar"]
         dimscalings: [frb_downsampling_factor, 1]
         metadata_pool: main_pool
-
-    host_frb_pl_mask_buffer_post:
-        kotekan_buffer: ndarray
-        num_frames: host_buffer_depth
-        value_type: uint8
-        extents: [frb_num_output_times, upchan_U16_max_num_output_channels]
-        quantity_name: "pl_mask_I"
-        dimnames: ["Ttilde", "Fbar"]
-        dimscalings: [frb_downsampling_factor, 1]
-        metadata_pool: main_pool
+{%- endif %}
 
     host_frb2_beams_buffer:
         kotekan_buffer: ndarray
@@ -1884,7 +1878,9 @@ FRB:
                 host_frb1_pl_mask_ringbuffer: host_frb1_pl_mask_ringbuffer
                 host_frb2_weights_ringbuffer: host_frb2_weights_ringbuffer
             out_buffers:
+{%- if do_once_and_dump %}
                 host_frb_pl_mask_buffer: host_frb_pl_mask_buffer
+{%- endif %}
                 host_frb1_beams_buffer: host_frb1_beams_buffer
                 host_frb2_beams_buffer: host_frb2_beams_buffer
                 host_frb3_beams_buffer: host_frb3_beams_buffer
@@ -1916,12 +1912,14 @@ FRB:
               frb1_max_num_times: buffer_depth * frb_num_output_times
               gpu_mem_pl_mask: frb1_pl_mask
             - name: cudaSyncOutput
+{%- if do_once_and_dump %}
             - name: cudaCopyFromRingbuffer
               host_signal: host_frb1_pl_mask_ringbuffer
               gpu_mem_input: frb1_pl_mask_buffer
               output_size: upchan_U16_max_num_output_channels * frb_num_output_times
               ring_buffer_size: gpu_buffer_depth * output_size
               out_buf: host_frb_pl_mask_buffer
+{%- endif %}
             - name: cudaCopyFromRingbuffer
               # TODO: Don't do this in production
               host_signal: host_frb1_beams_ringbuffer
@@ -1947,13 +1945,6 @@ FRB:
         out_buf: host_frb3_beams_buffer_post
         updatable_config: /updatable_config/enable_frb_out
 
-    switch_frb_pl_mask_out:
-        kotekan_stage: bufferSwitch
-        in_bufs:
-          - enabled: host_frb_pl_mask_buffer
-        out_buf: host_frb_pl_mask_buffer_post
-        updatable_config: /updatable_config/enable_frb_out
-
 {%- if do_once_and_dump %}
     # dump data for debugging
     dump_frb_beams:
@@ -1970,6 +1961,12 @@ FRB:
             input_order: CHIMEBeamformer # this makes no sense, but is required
             in_buf: host_frb1_beams_buffer
             file_name: host_frb1_beams_buffer
+        pl_mask:
+            kotekan_stage: hdf5FileWrite
+            base_dir: frb_beams
+            input_order: CHIMEBeamformer # this makes no sense, but is required
+            in_buf: host_frb_pl_mask_buffer
+            file_name: host_frb_pl_mask_buffer
         beams2:
             kotekan_stage: hdf5FileWrite
             base_dir: frb_beams
@@ -2054,16 +2051,6 @@ write_frb:
     in_buf: host_frb3_beams_buffer_post
     file_name: host_frb3_beams_buffer
     create_single_file: false  # dim 0 has extent 1; single file needs a gap-free stream
-    input_order: CHIMEBeamformer
-
-write_frb_pl_mask:
-    kotekan_stage: hdf5FileWrite
-    log_level: warn
-    use_compression: false
-    base_dir: frb_beams
-    in_buf: host_frb_pl_mask_buffer_post
-    file_name: host_frb_pl_mask_buffer
-    create_single_file: false
     input_order: CHIMEBeamformer
 
 # enable to dump sk statistics data

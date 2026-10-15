@@ -60,11 +60,12 @@ The FRB output mask
 
 An FRB output sample is invalid if it depends on any lost input sample. The FRB1
 and FRB2 beams themselves are not changed; instead the pipeline produces a mask
-of the FRB output, ``host_frb_pl_mask_buffer``, with one byte per output sample
-and frequency: 1 if the sample is valid, 0 if not. It has the dimensions
-``[Ttilde][Fbar]``, the same time samples and frequencies as the FRB1 beams, and
-is written next to the quantized FRB beams. The quantizer encodes invalid
-samples as 0 (see below).
+of the FRB output, with one byte per output sample and frequency: 1 if the
+sample is valid, 0 if not. It has the dimensions ``[Ttilde][Fbar]``, the same
+time samples and frequencies as the FRB1 beams. The quantizer reads it and
+encodes invalid samples as 0 (see below), so the mask is not needed after
+quantization; it is copied to the host (``host_frb_pl_mask_buffer``) and written
+only for debugging (``do_once_and_dump``).
 
 ``cudaPLMaskFRB1`` calculates this mask. It is the PL mask counterpart of the
 FRB1 beamformer: an FRB1 output sample sums :math:`T_d` consecutive
@@ -139,8 +140,7 @@ did not use a PL mask on the GPU:
      - 4-tap PFB; a loss can also invalidate a neighbouring FRB sample
    * - FRB output
      - dropped samples encoded as byte 0 in the FRB packets
-     - invalid samples encoded as byte 0; also a separate mask
-       ``host_frb_pl_mask_buffer``
+     - invalid samples encoded as byte 0
    * - Quantizer
      - skips dropped samples for scale and offset
      - skips invalid samples for scale and offset
