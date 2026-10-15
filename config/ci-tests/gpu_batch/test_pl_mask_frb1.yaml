@@ -1,3 +1,4 @@
+---
 # Standalone test of the FRB1 PL mask CUDA kernel: the testPLMaskFRB1 stage invents data, runs the
 # GPU kernel and the CPU reference, and compares them byte for byte.
 # All test parameters are hard-coded in the stage, so no config is required beyond the stage itself.
