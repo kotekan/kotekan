@@ -47,7 +47,6 @@
  * @conf   udp_frb_packet_size  Int (default 4264). packet size including header
  * @conf   udp_frb_port_number  Int (default 1313). UDP destination port of the FRB streams. The
  *                              source port is assigned by the OS.
- * @conf   number_of_nodes      Int (default 256). Number of L0 nodes
  * @conf   number_of_subnets    Int (default 4). Number of subnets or VLANS used for transmission of
  * FRB data. Use magic value of 0 for local testing.
  * @conf   local_ips            Array of Strings. Optional. The local address to send from on each
@@ -159,9 +158,6 @@ private:
 
     /// port number
     int udp_frb_port_number;
-
-    /// number of L0 nodes
-    int number_of_nodes;
 
     /// number of VLANS, use magic value of 0 to use 127.0.0.1 only
     int number_of_subnets;
