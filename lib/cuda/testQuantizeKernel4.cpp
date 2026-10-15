@@ -223,14 +223,12 @@ public:
                                 const int i = i01[time - time2];
                                 const float x = i == -8 ? 0.0f / 0.0f : offset + scale * i;
 
-                                // Masked values are quantized as usual, but they did not
-                                // determine the offset and scale and may be clamped. Only finite
-                                // values must remain numbers.
+                                // Masked values are encoded as -8
                                 if (!valid(freq, time)) {
-                                    if (isfinite(expected_x) && i == -8)
-                                        FATAL_ERROR("Found inconsistent masked value: beam {}, "
-                                                    "freq {}, time {}, want {}, have {}",
-                                                    beam, freq, time, expected_x, x);
+                                    if (i != -8)
+                                        FATAL_ERROR("Found masked value encoded as {}: beam {}, "
+                                                    "freq {}, time {}",
+                                                    i, beam, freq, time);
                                     continue;
                                 }
 

@@ -40,9 +40,10 @@ using kotekan::mod;
  * @brief cudaCommand quantizing the FRB2 beams to 4 bits.
  *
  * The beams are quantized in chunks, each with its own offset and scale. Samples that the packet
- * loss mask `gpu_mem_pl_mask` marks as invalid are quantized as usual, but are skipped when
- * choosing the offset and scale. The mask is the ring buffer written by `cudaPLMaskFRB1`; each
- * frame reads `num_times` of its samples, as `cudaFRBBeamReformer` reads the FRB1 beams.
+ * loss mask `gpu_mem_pl_mask` marks as invalid are skipped when choosing the offset and scale,
+ * and are encoded as -8, the code that also represents nan. The mask is the ring buffer written by
+ * `cudaPLMaskFRB1`; each frame reads `num_times` of its samples, as `cudaFRBBeamReformer` reads the
+ * FRB1 beams.
  *
  * @conf  frb1_max_num_times        Int.  Size of the packet loss mask ring buffer, in samples.
  * @conf  frb1_max_num_frequencies  Int.  Number of frequencies of the packet loss mask.
