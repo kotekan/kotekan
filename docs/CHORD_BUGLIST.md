@@ -922,37 +922,90 @@ the ephemeris epoch.
 
 ## Open — bench or offline, no deployment at all
 
-### #188 — comment pass, stage 8: the Python, scripts and hand-maintained configs still narrate their history (2026-10-13, ON HOLD)
-**What [tree]:** stages 5–7 of the comment pass (`800e1e17c..be7d46e8e`, 10-12) covered the C++ only: `lib/stages`,
-`lib/cuda`, `tests/boost`, `external/n2k_dual`, `lib/metadata`, `lib/utils` — 128 files; stage 7 took 8772 → 6072 comment
-lines and corrected 374 stale ones. Stage 8 was planned and never started (the dead-code audit took its slot). Counted
-10-13 after the dead-code merge (`git grep -c '^\s*#'`; "dated" = lines carrying a 2026-MM-DD date, which undercounts:
-most history reads "used to", "armed", "reverted", "found by"):
+### #193 — string pass (comment pass, stage 9): help text, log text and emitted headers still narrate their history (2026-10-15, PLANNED for the Monday week-limit rollover)
+**What [tree]:** stage 8 (#188) left every string literal alone, because strings are code. They carry the same history
+the comments did. Inventory at `6c0ac9b93` (`~/gnss/builds/stage9/inventory.py`, json beside it): **166 literals with
+hard markers** (dates, `#NNN`, task refs, emoji, commit hashes, "used to") — cli.py help 49, other help 9, broker
+log/print 20, tool log/print 9, other strings 48 (mostly the generator's emitted config headers), shell echo 8, viewer JS
+14, C++ log 8 — plus ~236 multi-word ALL-CAPS phrases, many of them log TAGS that must stay. The stage-8 agents also listed
+~250 strings (`string_cruft` in `~/gnss/builds/commentpass/findings_s8_{configs,broker,rest}.json`) that are stale
+without any marker (e.g. `--prn-reconfig-interval-s` help still says one slot moves per interval; `--fit-min-snr` says
+"CHORD wants ~60" against a live 30; `--rest-port` help says "NOT 12048" for a 12048 default). 417 argparse flags in all
+(cli.py 108, the generator 42, 32 other scripts 267).
 
-| family | files | comment lines | dated |
-|---|---|---|---|
-| `config/chord_gnss_node.yaml`, `gnss_fleet_chord.yaml`, `gnss_chains_chord.yaml` | 3 | 3002 | 220 (the chains yaml 166, the worst file in the tree) |
-| `config/gen_chord_gnss_config.py` | 1 | 873 | 48 |
-| `python/scripts/gnss/gnss_broker/` | 49 | 5730 | 394 |
-| `python/scripts/gnss/*.py` (the tools) | 67 | 2372 | 197 |
-| `python/scripts/js_viewer/` | 10 | 298 | 37 |
-| `scripts/gnss/*.{py,sh}`, `scripts/gnss/site/` | 53 | 1253 | 92 |
-| `docs/*.md` | 17 | — | 191 — out of scope unless KV says otherwise: the buglist, runbook and handoffs carry dated state by design |
+**Scope, in tiers:**
+- **9a, help text = documentation.** Every `help=` / `description=` / `epilog=` / `usage=` string, reviewed in full for
+  accuracy like the stage-8 docstrings (each flag's default and consumer checked), history out.
+- **9b, operator messages.** Log/print/raise/SystemExit text, shell echo/usage, viewer UI strings: only literals that
+  carry history or are wrong (the inventory + the `string_cruft` lists), plus ALL-CAPS emphasis that is not a tag.
+- **9c, C++ log text** in lib/stages/gnss (8 literals): rides the next node binary; needs the cf05 build checks.
+- **9d, the generator's emitted config headers** (gather, cube archiver, node headers). This changes every generated
+  config's header, so after the merge KV regenerates (gen_fleet manifest + the three instance recipes; auto mode blocks
+  it) or `node_up.sh` warns "no longer matches" and `gen_fleet --check` is red. Harmless while the nodes are down.
 
-**How, when it resumes (KV 10-13: on hold — "these audits really chewed through usage limits"):** the stage 5–7 method,
-one or two agents at a time. The brief is `~/gnss/builds/commentpass/STYLE.md` with `exemplar.diff` (a comment states an
-invariant or a why; dates, "used to", armed/reverted, debugging steps and found-by notes go — git has them; a wrong
-comment is corrected, never deleted; a doubt is a finding, not an edit, in the `findings_s7.json` shape). Work on a
-branch off `kv/chord-gnss` in its own worktree, never the main checkout (the stack runs from it). Every agent edit is
-proved comment-only before it is committed, per language: yaml — `yaml.safe_load` of old and new identical, and
-`gen_fleet.py --preview-dir` plus the three instance recipes byte-identical against the pre-edit generator; Python — the
-`tokenize` stream minus COMMENT/NL tokens identical, docstrings diffed and reviewed separately (they are the functional
-text), then `venv-ft/bin/python -m pyflakes` and `/opt/kotekan_env/bin/black --check` (CI's black); shell —
-comment-stripped text identical plus `bash -n`. Order: the three configs and the generator (what an operator reads
-first), then `gnss_broker/`, then the tools, scripts and viewer. Exclude files owned by open PRs (#1675, #1750, #1751,
-#1752). Afterwards: the cf05 `vpy.sh`-style checks (broker tests, the seven `broker_equiv` replay digests identical,
-`gen_fleet --check`, obs/viewer argv parse), `stack_contract_gate.sh`, then KV restarts the Python services (the obs
-writers wait for the anchor since `a74c3c75e`, so a restart during an outage is safe).
+**Never change (the protected list, built deterministically before any agent runs):** a log message's leading tag
+(CHAIN DIED, REFUSED (step, PRESENCE ±displaced, JOINT-CLK, COMB-DLL, SEED-OFFSET, JRRP, MODEL-UNTRUSTED, REBASE-WIPE,
+BARE-WIPE, DEEP GATE, FADR BREAK, LABEL CONSENSUS, CLOCK BIAS ...); any fragment quoted in docs/*.md (41 quotes in the
+buglist, closed list, runbook, joint-tracking doc), in the memory files, in the site scripts' grep/awk patterns, in the
+14 tests that match log or note text (test_brdc_golden, test_clockguard, test_disp_refuse, test_epl_admit,
+test_fleetadr, test_jointclk, test_jointstep, test_skyscope, test_timebase, test_trimarm, test_arraymap,
+test_obs_day_roll, test_rrate_state, test_state_filter); format specifiers (`%s %d %(name)s {} {:d}`) in count and
+order; key=value field names; units. argparse help is %-formatted: a literal `%` must stay `%%`.
+
+**Proof, per edit (prove_s9.py, written first, tested against deliberate bad edits as prove_s8 was):** Python — the AST
+is identical after blanking only the allowed constants (help/description/epilog/usage values; the message argument of
+log/print/raise/SystemExit calls; the generator's header strings), the format-spec signature of every changed literal
+is unchanged, every protected fragment in an old literal is still in the new one, pyflakes and CI's black as stage 8;
+shell — bash's re-serialisation identical outside the echo/printf lines, `bash -n`; JS — acorn tokens identical except
+string tokens; C++ — tokens identical with string literals masked, placeholders unchanged, CI's clang-format. The broker
+replay digest hashes the POST stream only (`broker_equiv.py`), so log text cannot move a golden: all seven must stay
+equivalent.
+
+**Method:** as stage 8 — branch `kv/string-pass-s9` off `kv/chord-gnss`, worktree `~/gnss/strings9-wt`; two sequential
+lanes (2 agents at a time), rewrite → adversarial review per group, one consistency pass; brief = STYLE_S8.md plus a
+string section. ~13 groups: cli.py help ×2 sections; generator help + emitted headers; broker messages ×3; tools help +
+messages ×3; scripts + site ×2; viewer JS + server; C++ log text. ~27 agents, about one stage-8 family of cost
+(~8–10M subagent tokens), 3–4 h. On a session limit: freeze the journal results, relaunch a reduced script, tell
+cut-off groups their files are partial (never `resumeFromRunId` across parallel lanes).
+
+**Verify:** prove_s9 over every file; `--help` for every argparse script in both trees (exit 0, no traceback);
+cf06 `~/gnss/builds/commentpass/{verify_s8.sh,verify_s8_tools.sh}` base vs edit (broker tests incl. the 14 above,
+selftest, the seven goldens, the tool tests, pyflakes); `check_js.sh` on the gnss VM (cf06 has no node); `gen_equiv.sh`
+comparing config bodies (headers differ by design under 9d); 9c: the cf05 CUDA + CPU builds, boost, `--check-config`.
+Then ask KV to merge; after it, KV regenerates the configs (9d) and restarts the Python services when convenient.
+
+### #192 — the stage-8 reviewers confirmed ~200 small bugs; stage a repair run, not 200 entries (2026-10-15, OPEN)
+**What [tree]:** reading every comment against its code in stage 8 (#188) surfaced 199 findings that an adversarial
+reviewer judged real (184) or unsure (15): configs + generator 25, broker 74, tools/scripts/site/viewer 100. Raw lists
+with file, line, mechanism and the reviewer's note: `~/gnss/builds/commentpass/findings_s8_{configs,broker,rest}.json`,
+digests `s8_{broker,rest}_summary.txt` (the config family's list is in the memory note for #188). At least 20 are
+repeats of the same fault, so ~175 unique. Rough split: ~30 log or text only (fold into #193), ~40 latent, 14 tests or
+gates that cannot fail, ~13 config/generator choices, the rest small behaviour bugs, most in offline tools and the
+viewer, a minority on the broker's live path. The `cruft_candidates` lists in the same files are a second dead-code
+round's input.
+
+**Two verified and live now (minutes each, could go ahead of the run):** the viewer's lock rule — `gps_feed.js`
+`_merge` never copies `q`, `q_floor` or `noise_probe` onto the row, so the q lock of `caaedbca1` never runs, the feed
+panel still locks on `sig`, and a noise probe can show locked; and `scripts/gnss/site/stack_components.sh:117`
+hard-codes `_2026` in the viewer's `--pvt-obs-globs`, so the PVT panel finds no obs files from 2027-01-01.
+
+**For KV, not the run:** `bds_b2a` sets `rrate-command` with `rrate-feed-applied` at its default 1 (gal_e5a/e5b set 0;
+the flag's help says 1 double-counts on the folded assembler); `config/chord_band_plan.py`'s `half_bandwidth_hz` missed
+#179's change, so node L2C chains still cover ±511.5 kHz (changing it changes node channel sets: sky-judged); the GNSS
+GPU0 merged cudaProcess is pinned to core 4, production's `frame_service_cpu` (19/24/31 overlap half 1); the B3I PRN
+list seeds C06–08/C11–14 under the broker's floor of 19; `joint-p2c-rotate` withholds the best satellite from the
+live-consumed joint solve.
+
+**Plan for the run (after #193, so the agents read clean text):** step 0, one agent: dedupe, re-verify the "unsure"
+ones, and tier the list — T1 offline-fixable with an offline test (tools, viewer, scripts, the gates that cannot fail:
+the L3OC/L2OC/GLONASS code checks exit 0 when their C++ fails to compile, three tool tests cannot fail, ft_stress's
+torn-read check cannot fire, `broker_equiv`'s dirty-tree check ignores modules the broker imports); T2 broker live path
+(re-base hazards in `fleetadr.last_win` and `fits.unit_hop` — latent while the broker exits on a re-base; the q-stall
+guard's `dr_state` None → CHAIN DIED; the 120-sample innov/minnov caps that make the "10-min" p95 ~4 min; `telem._index`
+reading PRNs from slot 0 only; the TLE path posting az 0; gal_e6 shrinking the shared joint modulus to 5115) — fixed
+offline like the ready-now set, goldens re-blessed with each mover named, judged on sky at the return; T3 KV decisions
+(above). Then file-disjoint groups, fix + test + adversarial review per group, two lanes of one agent; the cf06/cf05
+checks as stage 8. Cost about one and a half stage-8 families (~15M subagent tokens), 5–6 h.
 
 ### #157 — `test_buffer_peek` fails its `peeks_won > 0` check under ThreadSanitizer (flaky under slowdown; found 2026-09-30)
 - **What:** under TSan's slowdown the worker thread wins every iteration, so `BOOST_CHECK(peeks_won > 0)`
