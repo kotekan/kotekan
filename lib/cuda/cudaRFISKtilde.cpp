@@ -261,7 +261,10 @@ int cudaRFISKtilde::wait_on_precondition() {
     const std::ptrdiff_t rfi_S012_read_max =
         min(min(rfi_S012_ringbuf / buffer_depth, bf_mask_lifetime_end - rfi_S012_begin),
             round_up(rfi_S012_begin + 1, rfi_num_times) - rfi_S012_begin);
-    assert(rfi_S012_read_max > 0);
+
+    if (rfi_S012_read_max <= 0)
+        FATAL_ERROR("Computed a negative max `rfi_S012` elements to read: {:d}", rfi_S012_read_max);
+
     std::ptrdiff_t rfi_S012_read = -1;
     const int rfi_S012_errcode =
         rfi_S012.wait_and_claim_readable([&](const std::ptrdiff_t available_elements) {
@@ -274,8 +277,14 @@ int cudaRFISKtilde::wait_on_precondition() {
         return rfi_S012_errcode;
     DEBUG("Done waiting for rfi_S012 input ringbuffer data for frame {:d}; will read {:d} elements",
           gpu_frame_id, rfi_S012_read);
-    assert(rfi_S012.get_read_valid().begin() == rfi_S012_begin);
-    assert(rfi_S012.get_read_valid().end() <= bf_mask_lifetime_end);
+
+    if (rfi_S012.get_read_valid().begin() != rfi_S012_begin)
+        FATAL_ERROR("rfi_S012 `rad_valid` does not match the expected start ({:d} != {:d})",
+                    rfi_S012.get_read_valid().begin(), rfi_S012_begin);
+
+    if (rfi_S012.get_read_valid().end() > bf_mask_lifetime_end)
+        FATAL_ERROR("Requested read range {:d} beyond the current bad feed mask lifetime {:d}",
+                    rfi_S012.get_read_valid().end(), bf_mask_lifetime_end);
 
     // Read the bad feed mask element covering these data. We claim it only when we have
     // reached the end of its lifetime, i.e. when this is the last frame that will use it.
@@ -299,7 +308,9 @@ int cudaRFISKtilde::wait_on_precondition() {
     DEBUG("Done waiting for bf_mask input ringbuffer data for frame {:d}; using element {:d}{:s}",
           gpu_frame_id, bf_mask_element, bf_mask_last_use ? " (last use)" : "");
     // The two ringbuffers must agree on which mask element covers these data
-    assert(bf_mask.get_read_valid().begin() == bf_mask_element);
+    if (bf_mask.get_read_valid().begin() != bf_mask_element)
+        FATAL_ERROR("Mismatched expected bad feed element: {:d} != {:d}",
+                    bf_mask.get_read_valid().begin(), bf_mask_element);
 
     DEBUG("Waiting for rfi_SKtilde output ringbuffer space for frame {:d}...", gpu_frame_id);
     const std::ptrdiff_t rfi_Sktilde_written = rfi_S012_read;
