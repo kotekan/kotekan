@@ -410,6 +410,60 @@ public:
         // Check GPU result
         check_result();
 
+        ////////////////////////////////////////////////////////////////////////////////
+
+        // Check that each value lands at its own time: quantize a ramp in time that is the same
+        // for all frequencies and beams. The scale is then small, and a misplaced value is off by
+        // many quantization steps.
+        for (int beam = 0; beam < in_nbeams; ++beam)
+            for (int freq = 0; freq < in_nfreqs; ++freq)
+                for (int time = 0; time < in_ntimes; ++time)
+                    inputat(beam, freq, time) = float16_t(time % out_ntimes_chunk);
+
+        const auto check_ramp = [&]() {
+            for (int beam_outer = 0; beam_outer < out_nbeams_outer; ++beam_outer)
+                for (int freq_outer = 0; freq_outer < out_nfreqs_outer; ++freq_outer)
+                    for (int time_outer = 0; time_outer < out_ntimes_outer; ++time_outer)
+                        for (int beam_packet = 0; beam_packet < out_nbeams_packet; ++beam_packet)
+                            for (int freq_packet = 0; freq_packet < out_nfreqs_packet;
+                                 ++freq_packet) {
+                                const float offset =
+                                    offsetscaleat(beam_outer, freq_outer, time_outer, beam_packet,
+                                                  freq_packet, 0);
+                                const float scale =
+                                    offsetscaleat(beam_outer, freq_outer, time_outer, beam_packet,
+                                                  freq_packet, 1);
+                                for (int freq_chunk = 0; freq_chunk < out_nfreqs_chunk;
+                                     ++freq_chunk)
+                                    for (int time_chunk = 0; time_chunk < out_ntimes_chunk;
+                                         ++time_chunk) {
+                                        const int i =
+                                            beamsat(beam_outer, freq_outer, time_outer, beam_packet,
+                                                    freq_packet, freq_chunk, time_chunk);
+                                        const float x = offset + scale * i;
+                                        if (!(std::fabs(x - time_chunk) <= scale))
+                                            FATAL_ERROR("Ramp: time {} quantized as {} (value {}), "
+                                                        "offset {}, scale {}",
+                                                        time_chunk, i, x, offset, scale);
+                                    }
+                            }
+        };
+
+        INFO("Testing ramp on CPU...");
+        cpu_quantize8(input.data(), offsetscale.data(), beams.data());
+        check_ramp();
+
+        INFO("Testing ramp on GPU...");
+        CHECK_CUDA_ERROR(cudaMemcpy(gpu_input, input.data(), input.size() * sizeof *input.data(),
+                                    cudaMemcpyHostToDevice));
+        gpu_quantize8(gpu_input, gpu_offsetscale, gpu_beams, nullptr);
+        CHECK_CUDA_ERROR(cudaMemcpy(offsetscale.data(), gpu_offsetscale,
+                                    offsetscale.size() * sizeof *offsetscale.data(),
+                                    cudaMemcpyDeviceToHost));
+        CHECK_CUDA_ERROR(cudaMemcpy(beams.data(), gpu_beams, beams.size() * sizeof *beams.data(),
+                                    cudaMemcpyDeviceToHost));
+        check_ramp();
+
         // Done.
         TEST_PASSED();
     }

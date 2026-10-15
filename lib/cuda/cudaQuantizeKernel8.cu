@@ -151,8 +151,8 @@ void cpu_quantize8_chunk(const __half* __restrict__ const input, __half* __restr
             const int out_ind = time + out_ntimes_chunk * freq;
             // Get value
             const float x = __half2float(input[in_ind]);
-            // Scale
-            const float y = scale == 0 ? float(outi_min + outi_max) / 2.0f : (x - offset) / scale;
+            // Scale. (A zero scale maps all values to `outi_min`, as on the GPU.)
+            const float y = scale == 0 ? 0.0f : (x - offset) / scale;
             // Round
             const int j = sane_lrint(y);
             // Clamp; use 0 for nan
@@ -243,8 +243,8 @@ __global__ void gpu_quantize8_chunks(const __half* __restrict__ const input,
         const half2x4 xs01234567 = load_half2x4(input + input_offset_01234567);
         const __half2 x01 = xs01234567.x;
         const __half2 x23 = xs01234567.y;
-        const __half2 x45 = xs01234567.w;
-        const __half2 x67 = xs01234567.z;
+        const __half2 x45 = xs01234567.z;
+        const __half2 x67 = xs01234567.w;
 
         const float x0 = __half2float(__low2half(x01));
         const float x1 = __half2float(__high2half(x01));
