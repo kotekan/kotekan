@@ -922,7 +922,7 @@ the ephemeris epoch.
 
 ## Open — bench or offline, no deployment at all
 
-### #193 — string pass (comment pass, stage 9): help text, log text and emitted headers still narrate their history (2026-10-15, PLANNED for the Monday week-limit rollover)
+### #193 — string pass (comment pass, stage 9): help text, log text and emitted headers still narrate their history (2026-10-15, PLANNED for the Monday week-limit rollover, or Sunday if credits remain)
 **What [tree]:** stage 8 (#188) left every string literal alone, because strings are code. They carry the same history
 the comments did. Inventory at `6c0ac9b93` (`~/gnss/builds/stage9/inventory.py`, json beside it): **166 literals with
 hard markers** (dates, `#NNN`, task refs, emoji, commit hashes, "used to") — cli.py help 49, other help 9, broker
@@ -974,7 +974,7 @@ selftest, the seven goldens, the tool tests, pyflakes); `check_js.sh` on the gns
 comparing config bodies (headers differ by design under 9d); 9c: the cf05 CUDA + CPU builds, boost, `--check-config`.
 Then ask KV to merge; after it, KV regenerates the configs (9d) and restarts the Python services when convenient.
 
-### #192 — the stage-8 reviewers confirmed ~200 small bugs; stage a repair run, not 200 entries (2026-10-15, OPEN)
+### #192 — comment pass, stage 10: the repair run for the ~200 small bugs the stage-8 reviewers confirmed (2026-10-15, PLANNED after stage 9)
 **What [tree]:** reading every comment against its code in stage 8 (#188) surfaced 199 findings that an adversarial
 reviewer judged real (184) or unsure (15): configs + generator 25, broker 74, tools/scripts/site/viewer 100. Raw lists
 with file, line, mechanism and the reviewer's note: `~/gnss/builds/commentpass/findings_s8_{configs,broker,rest}.json`,
@@ -984,10 +984,12 @@ gates that cannot fail, ~13 config/generator choices, the rest small behaviour b
 viewer, a minority on the broker's live path. The `cruft_candidates` lists in the same files are a second dead-code
 round's input.
 
-**Two verified and live now (minutes each, could go ahead of the run):** the viewer's lock rule — `gps_feed.js`
-`_merge` never copies `q`, `q_floor` or `noise_probe` onto the row, so the q lock of `caaedbca1` never runs, the feed
-panel still locks on `sig`, and a noise probe can show locked; and `scripts/gnss/site/stack_components.sh:117`
-hard-codes `_2026` in the viewer's `--pvt-obs-globs`, so the PVT panel finds no obs files from 2027-01-01.
+**Fixed ahead of the run (10-15):** the viewer's lock rule — `gps_feed.js` `_merge` never copied `q`, `q_floor` or
+`noise_probe` onto the row, so the q lock of `caaedbca1` never ran, the feed panel locked on `sig` and a noise probe
+could show locked; `test_lock_metrics.py` now also runs its rows through `_merge` (3 checks failed before the fix).
+And `stack_components.sh` hard-coded `_2026` in the viewer's `--pvt-obs-globs` (the PVT panel would have found no obs
+file from 2027-01-01); the glob now takes any 8-digit date and matches the same 262 files. Live: the panel at the next
+browser reload, the glob at the next gnss-viewer restart (stack_contract_gate flags the viewer's argv until then).
 
 **For KV, not the run:** `bds_b2a` sets `rrate-command` with `rrate-feed-applied` at its default 1 (gal_e5a/e5b set 0;
 the flag's help says 1 double-counts on the folded assembler); `config/chord_band_plan.py`'s `half_bandwidth_hz` missed
@@ -996,7 +998,7 @@ GPU0 merged cudaProcess is pinned to core 4, production's `frame_service_cpu` (1
 list seeds C06–08/C11–14 under the broker's floor of 19; `joint-p2c-rotate` withholds the best satellite from the
 live-consumed joint solve.
 
-**Plan for the run (after #193, so the agents read clean text):** step 0, one agent: dedupe, re-verify the "unsure"
+**Plan for stage 10 (after stage 9, #193, so the agents read clean text):** step 0, one agent: dedupe, re-verify the "unsure"
 ones, and tier the list — T1 offline-fixable with an offline test (tools, viewer, scripts, the gates that cannot fail:
 the L3OC/L2OC/GLONASS code checks exit 0 when their C++ fails to compile, three tool tests cannot fail, ft_stress's
 torn-read check cannot fire, `broker_equiv`'s dirty-tree check ignores modules the broker imports); T2 broker live path
