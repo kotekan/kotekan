@@ -32,18 +32,16 @@
  *
  *
  * @par REST Endpoints
- * @endpoint /frb/update_gains/``gpu_id`` Any contact here triggers a re-parse of the gains file.
- * @endpoint /frb/update_destination Set the active status of param ``host`` to value of param
- * ``active``. Data is sent only to active hosts.
+ * @endpoint /frb/update_beam_offset Set ``beam_offset`` to the value of param ``beam_offset``.
  *
  * @par Buffers
  * @buffer in_buf The kotkean buffer to hold the data to be transmitted to L1 nodes
- *      @buffer_format Array of signed char
- *      @buffer_metadata none
+ *      @buffer_format Array of uint8 quantized by cudaQuantize8Chime
+ *      @buffer_metadata chordMetadata
  * @buffer offsetscale_buf The kotkean buffer to hold the offset and scale
  *      values for the data blocks to be transmitted to L1 nodes
- *      @buffer_format Array of pairs of float32
- *      @buffer_metadata none
+ *      @buffer_format Array of pairs of float16 produced by cudaQuantize8
+ *      @buffer_metadata chordMetadata
  *
  *
  * @conf   udp_frb_packet_size  Int (default 4264). packet size including header
