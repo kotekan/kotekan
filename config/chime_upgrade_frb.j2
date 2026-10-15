@@ -378,7 +378,7 @@ dbg_read_voltages_{{ id }}:
     input_dir: debug-data
     out_buf: host_voltage_buffer_{{ id }}
     file_name: host_voltage_buffer_{{ id }}
-{% endfor $}
+{% endfor %}
 
 {%- for id in range(4) %}
 dbg_read_lostsamples_{{ id }}:
