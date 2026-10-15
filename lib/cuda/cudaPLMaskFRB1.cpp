@@ -285,7 +285,11 @@ int cudaPLMaskFRB1::wait_on_precondition() {
     DEBUG("Waiting for pl_mask input ringbuffer data for frame {:d}...", gpu_frame_id);
     const int in_errcode = pl_mask.wait_and_claim_readable([&](const std::ptrdiff_t available) {
         using std::min;
-        // Produce as many whole output samples as the readable rows hold
+        // Produce as many whole output samples as the readable rows hold, but read and write at
+        // most a quarter of each ring buffer at a time, as the other ring buffer consumers do. If a
+        // stage was blocked and data accumulated, processing all of it at once could require more
+        // output space than is free, and the pipeline could stall. A quarter corresponds to one
+        // voltage frame in our configurations; the value was found empirically.
         const std::ptrdiff_t rows = min(available, in_ringbuf / 4);
         num_times_out = min((64 * rows - bit_offset) / downsampling_factor, out_ringbuf / 4);
         if (num_times_out <= 0)
