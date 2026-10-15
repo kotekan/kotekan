@@ -93,15 +93,14 @@ export class App {
         // pipeline mode (autocorr vs. crosscorr).
         this.layout = new LayoutManager({root: "#layout-root"});
 
-        // The WebSocket lives on THIS server's ws_port. Ask the server we loaded from
-        // (same-origin /wsport) instead of hardcoding 8539. Fall back to 8539 if the endpoint
-        // is missing (older server).
+        // The WebSocket is on this server's ws_port, so ask the server the page came from
+        // (same-origin /wsport); 8539 when it does not answer.
         this._wire_status_banner();
         fetch("wsport").then(r => r.ok ? r.json() : null).catch(() => null).then(cfg => {
             // Adopt the constellation legend/colours before the socket opens.
             if (cfg && cfg.chains) configure_chains(cfg.chains);
-            // Unified viewer: the full signal inventory. Sets the feed to poll every band's
-            // combiner and the table to render one column per signal.
+            // Unified viewer: the full signal inventory, so the feed polls every signal's
+            // combiner and the table renders one column per signal.
             if (cfg && cfg.unified && cfg.signals) configure_signals(cfg.signals, cfg.capability);
             const ws_port = (cfg && cfg.ws_port) || 8539;
             this.socket = new Socket({app: this,
@@ -189,10 +188,10 @@ export class App {
             airspy_stages: k.airspy_stages || ["airspy_input"],
             lag_align_stage: k.lag_align_stage || null,
         });
-        // GPS-only mode (lean live config, no power stream): there's no
-        // waterfall/spectrum to build. ONE shared GpsFeed polls kotekan REST +
-        // /gps_sky; the skyplot and the detections table are separate resizable
-        // cards consuming it (so they always agree, incl. the G/E/C toggles).
+        // GPS mode (no power stream): no waterfall or spectrum to build. One shared GpsFeed
+        // polls the REST port (the broker publisher) and /gps_sky; the sky, table, history
+        // and stream-health cards all consume it, so they agree, and the sky and table share
+        // its constellation toggles.
         if (cfg_mode === "gps") {
             const g = cfg.gps || {};
             const feed = new GpsFeed({app: this});
@@ -204,8 +203,7 @@ export class App {
             this.panels.push(new GpsTablePanel({
                 target: "gps_table_card", feed, has_site: g.has_site,
             }));
-            // Per-PRN time series (C/N₀ coh/inc, sig, coh, dop, snr) -- buffered in-browser,
-            // fed by the same GpsFeed as the sky + table.
+            // Per-satellite time series of a selectable observable, buffered in the browser.
             this.layout.addWidget({mount_id: "gps_amp_card", title: "GNSS history",
                                    x: 0, y: 8, w: 12, h: 5, min_w: 4, min_h: 3});
             this.panels.push(new GpsAmpHistoryPanel({target: "gps_amp_card", feed}));
@@ -214,13 +212,13 @@ export class App {
             this.layout.addWidget({mount_id: "airspy_stats_card", title: "Stream health",
                                    x: 0, y: 13, w: 12, h: 2, min_w: 4, min_h: 2});
             this.panels.push(new AirspyStatsPanel({target: "airspy_stats_card", feed}));
-            // On-node nav-decode health (per data signal: synced / eph / BRDC dpos / freshness).
-            // Reads the viewer server's /decode_health endpoint, not the kotekan feed.
+            // Nav-decode health (per data signal: synced / eph / BRDC dpos / freshness). Reads
+            // the viewer server's /decode_health endpoint, not the GpsFeed.
             this.layout.addWidget({mount_id: "decode_health_card", title: "Nav decode health",
                                    x: 0, y: 15, w: 12, h: 3, min_w: 4, min_h: 2});
             this.panels.push(new DecodeHealthPanel({target: "decode_health_card"}));
-            // Position self-survey (gnss_pvt): single-frequency best-fit + per-signal offsets.
-            // Its own widget; reads the same /decode_health endpoint's `pvt`.
+            // Position self-survey (gnss_pvt): single-frequency best-fit and per-signal
+            // offsets, from the same /decode_health endpoint's `pvt`.
             this.layout.addWidget({mount_id: "position_survey_card", title: "Position self-survey",
                                    x: 0, y: 18, w: 12, h: 4, min_w: 4, min_h: 2});
             this.panels.push(new PositionSurveyPanel({target: "position_survey_card"}));

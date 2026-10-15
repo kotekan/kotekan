@@ -1,42 +1,41 @@
 #!/usr/bin/env python3
-"""CNAV (L2C-CM / L5-I) decode for the shared-knowledge broker (S3).
+"""CNAV (L2C-CM / L5-I) decode.
 
-The CNAV analog of navbit_predictor.LnavPredictor, but a DIFFERENT shape because CNAV is a
-different problem -- and because the LIVE symbol stream taught us two things the offline decode
-gate could not (both diagnosed on-air 2026-07-28, see the header lessons below):
+The CNAV analog of navbit_predictor.LnavPredictor, but a different shape because CNAV is a
+different problem:
 
     combiner get_status "nav_obs"  ->  per-emit polarity islands  ->  CRC-guided decode  ->  msgs
                               (gps_cnav.py frames the messages; galileo_inav.py holds the FEC/CRC)
 
-WHY IT IS NOT A COPY OF THE LNAV PREDICTOR:
+Why it is not a copy of the LNAV predictor:
 
-  * NOT CHEAPLY PREDICTABLE. LNAV subframes 1-3 repeat every 30 s with only a TOW increment.
-    CNAV interleaves message TYPES on a control-segment schedule that is NOT contractually
-    fixed, and the code is continuous rate-1/2 K=7. So there is no reliable future-symbol
-    table -- and none is needed: CL (Mechanism A) already gives L2C a sub-floor DATALESS
-    pilot, so CNAV's prizes are the live EPHEMERIS (types 10+11 -> BRDC cross-check) and the
-    S4 L5-I cross-band feed, NOT the CM self-wipe.
+  * Not cheaply predictable. LNAV subframes 1-3 repeat every 30 s with only a TOW increment.
+    CNAV interleaves message types on a control-segment schedule that is not contractually
+    fixed, and the code is continuous rate-1/2 K=7, so there is no reliable future-symbol
+    table. None is needed: CL already gives L2C a dataless pilot, so the decode is for the
+    ephemeris (types 10+11 -> BRDC cross-check).
 
-  * ★ TWO LIVE-ONLY FAULTS the offline gate (synthetic, module-consistent symbols) could never
-    show, both fixed here:
-     1. G2-INVERSION CONVENTION. The on-air symbols are G2-*not*-inverted relative to
-        the module encoder (measured: a single strong emit round-trips through Viterbi at 0.86
-        agreement raw but 0.99 with every-other-symbol flipped). The fix is to flip the 2nd
-        symbol of each phase-aligned pair (`x[1::2]`) before Viterbi -- searched as g2 in {0,1}
-        and locked once a CRC passes (it is a constant of the link).
-     2. PER-EMIT POLARITY IS NOT CHAINABLE. Each nav_obs emit is a ~4 s squaring-estimated
-        window whose global sign is independent; consecutive emits are 4 s apart in carrier
-        phase, so theta-chaining (what LNAV uses) MISSES flips and a single missed flip mid-run
-        makes the convolutional decode garbage. The emits only share ONE boundary slot, too thin
-        to vote. So polarity is resolved the only way that works: CRC-GUIDED brute force over the
-        per-emit sign pattern in a short window (a real message spans ~3 emits).
+  * G2-inversion convention. On air the GPS CNAV symbols are not G2-inverted, while the
+    module encoder inverts G2 (galileo_inav.G2_INVERT, the Galileo convention). With g2 set,
+    the decoder flips the 2nd symbol of each phase-aligned pair (`x[1::2]`) before Viterbi;
+    it searches g2 in {False, True} and locks it on the first CRC pass (a constant of the
+    link).
 
-Consumed by gps_distributed_broker.py under --nav-decoder cnav (the L2C broker): it logs decode
-health + the live ephemeris.
+  * Per-emit polarity is not chainable. Each nav_obs emit is a squaring-estimated window
+    whose global sign is independent, and a single missed flip mid-run makes the
+    convolutional decode garbage. The decoder is sized for abutting ~4 s (~200-symbol)
+    emits: consecutive emits are then 4 s apart in carrier phase, so theta-chaining (what
+    LNAV uses) misses flips, and they share only one boundary slot, too thin to vote
+    reliably. So polarity is resolved by CRC: a search over the per-emit sign pattern in a
+    short window (a message spans ~3 emits).
+
+Consumed by gnss_broker/navbits.py, under --nav-decoder cnav or on the aux chain named by
+--cnav-combiner (L5-I); navbits.py logs the decode health and the decoded ephemeris with its
+BRDC cross-check.
 
 Self-test: python3 cnav_predictor.py  (synthetic continuous CNAV stream chopped into
 polarity-scrambled emits -> the CRC-guided decoder must recover the messages and the
-ephemeris; g2=0 wins there because the synthetic symbols ARE module convention).
+ephemeris; g2=False wins there because the synthetic symbols use the module convention).
 """
 import itertools
 import os
@@ -54,32 +53,30 @@ from galileo_inav import (
 
 SYM_S = 0.020  # L2C-CM record = 20 ms = one CNAV symbol (50 sps)
 MSG_SYMS = C.MSG_BITS * 2  # 600 symbols per 300-bit message (12 s)
-WIN_EMITS = 7  # emits per decode window. A 300-bit message is 600 symbols, and the K=7
-# Viterbi needs ~35 bits to converge at each end, so a usable decode
-# wants ~2 messages of contiguous symbols -- ~6-7 emits (~201 syms /
-# ~4 s each). Fewer silently fails to place the preamble (found live: an
-# 801-symbol / 4-emit window decodes NOTHING even under full brute force;
-# ~1200 does). The combiner emits nav_obs CONTIGUOUSLY (block mode, every
-# ~200 records / 4 s) -- but only while the box keeps up: a decode that
-# blocks the poll loop past the 4 s emit period MISSES an emit and self-
-# fragments the run (measured -- the whole reason the decode is staggered +
-# budget-capped below). The window takes the LONGEST contiguous run.
-# Polarity within a run is resolved by _try_decode (cold: rotated 2^k
-# brute; warm: chained candidate + 1/2-emit-flip repair).
-COLD_EMITS = 5  # window (emits) for a COLD PRN's full 2^k brute (2^5=32 sign patterns).
+WIN_EMITS = 7  # emits per warm decode window. A 300-bit message is 600 symbols, and the
+# K=7 Viterbi needs ~35 bits to converge at each end, so a usable decode
+# wants ~2 messages of contiguous symbols: ~6-7 emits of ~200 symbols
+# (~4 s) each. A shorter window often fails to place the preamble. With
+# abutting emits (one ~200-record window every 4 s), a decode that blocks
+# the poll loop past the 4 s emit period misses an emit and fragments the
+# run, which is why the decode is staggered and budget-capped below. The
+# window takes the longest contiguous run. Polarity within a run is
+# resolved by _try_decode (cold: rotated 2^k brute; warm: chained
+# candidate + 1/2-emit-flip repair).
+COLD_EMITS = 5  # window (emits) for a cold PRN's full 2^k brute (2^5=32 sign patterns).
 VITERBI_BUDGET = (
-    40  # hard cap on Viterbi calls per decode attempt (~1.7 s at ~40 ms each) --
+    40  # hard cap on Viterbi calls per decode attempt. It covers a cold attempt
 )
-# covers a cold attempt (2^COLD_EMITS at ONE rotated phase/g2 = 32) and any
-# warm attempt, while staying under the 4 s emit period so a decode never
-# stalls the poll loop long enough to miss an emit and fragment nav_obs.
+# (2^COLD_EMITS at one rotated phase/g2 = 32) and any warm attempt, and keeps
+# an attempt well under the 4 s emit period, so a decode never stalls the poll
+# loop long enough to miss an emit and fragment nav_obs.
 COLD_TRIES = (
     6  # free quick cold-bootstrap attempts before exponential backoff kicks in.
 )
-# A DECODABLE PRN locks within ~4 (the phase/g2 rotation cycles in 4); a
+# A decodable PRN locks within ~4 (the phase/g2 rotation cycles in 4); a
 # PRN that never locks (too weak / no data) is the one to back off, because
-# its full 2^COLD_EMITS brute every round-robin turn is a CONTINUOUS load
-# that dropped L5 frames in the deployed broker (2026-07-28).
+# its full 2^COLD_EMITS brute every round-robin turn is a continuous load on
+# the poll loop.
 COLD_BACKOFF_BASE = (
     8.0  # s; retry a stuck cold PRN after BASE, then 2x each further failure...
 )
@@ -90,7 +87,7 @@ COLD_BACKOFF_MAX = (
 EMIT_MAX = 48  # keep ~48 emits (~3 min) per PRN
 DECODED_MAX = 80  # keep the last ~80 decoded messages (~16 min)
 TRY_EVERY_SYMS = (
-    200  # attempt a decode once per ~4 s of NEW symbols per PRN (one new emit)
+    200  # attempt a decode once per ~4 s of new symbols per PRN (one new emit)
 )
 
 
@@ -149,9 +146,10 @@ class CnavPredictor:
     def __init__(self, log=None):
         self._p = {}
         self._log = log or (lambda m: None)
-        # The G2-inversion convention is a LINK constant (same for every L2C PRN); the first PRN
-        # to CRC locks it here and the rest skip that half of the search. pair_phase is NOT shared
-        # -- pseudorange shifts each PRN's symbol grid by up to a symbol -- so it stays per-PRN.
+        # The G2-inversion convention is a link constant (same for every PRN of the signal); the
+        # first PRN to pass CRC locks it here and the rest skip that half of the search.
+        # pair_phase is not shared -- pseudorange shifts each PRN's symbol grid by up to a
+        # symbol -- so it stays per-PRN.
         self._g2 = None
         self._min_gap = (
             1.0  # s between decode attempts across all PRNs (see ingest); 0 = off
@@ -163,7 +161,7 @@ class CnavPredictor:
 
     # ---------------- ingest ----------------
     def ingest(self, prn, obs):
-        """Store one combiner nav_obs (hard +-1 SYMBOLS) as an absolute-slot polarity island."""
+        """Store one combiner nav_obs (hard +-1 symbols) as an absolute-slot polarity island."""
         st = self._p.setdefault(prn, _PrnState())
         try:
             utc_ref = float(obs["utc_ref"])
@@ -205,16 +203,16 @@ class CnavPredictor:
             for s in sorted(st.emits)[:-EMIT_MAX]:
                 st.emits.pop(s, None)
         newest = hi
-        # STAGGER + ROUND-ROBIN across PRNs. The broker ingests all ~12 PRNs back-to-back in one
-        # poll loop; if every cold PRN ran a full decode that cycle, the loop would spend ~13 s and
-        # MISS the emits arriving meanwhile -> fragmented nav_obs -> nobody decodes. So gate on wall
-        # time (~one decode per poll cycle, cycle << the 4 s emit period so contiguity holds) AND
-        # rotate WHICH PRN decodes: without the round set the first PRN in iteration order wins the
-        # gate every cycle and the rest never decode (measured -- only PRN 1 ever attempted).
-        # self._min_gap = 0 disables the gate (the single-PRN self-test). COLD BACKOFF: a cold PRN
-        # (phase is None) that keeps failing its full 2^k brute is a continuous drain -- exempt it
-        # after COLD_TRIES via exponential backoff (locked PRNs are cheap incremental, never backed
-        # off). Without this the ~half of PRNs that never lock dropped L5 frames in the live broker.
+        # Stagger and round-robin across PRNs. The broker ingests every PRN back-to-back in one
+        # poll loop; if every cold PRN ran a full decode in one cycle, the loop would stall for
+        # seconds and miss the emits arriving meanwhile, fragmenting nav_obs so nothing decodes.
+        # So gate on wall time (at most one decode per _min_gap, well under the 4 s emit period)
+        # and rotate which PRN decodes: without the round set, the first PRN in iteration order
+        # would win the gate every cycle and the rest would never decode. self._min_gap = 0
+        # disables the gate (the single-PRN self-test). Cold backoff: a cold PRN (phase is None)
+        # that keeps failing its full 2^k brute is a continuous load, so after COLD_TRIES
+        # failures it retries on an exponential backoff (locked PRNs decode incrementally and
+        # are never backed off).
         now = time.time()
         due = st.try_slot is None or newest - st.try_slot >= TRY_EVERY_SYMS
         cold = st.phase is None
@@ -226,7 +224,7 @@ class CnavPredictor:
         ):
             st.try_slot = newest
             self._round.add(prn)
-            # a round is complete once every currently-ELIGIBLE PRN has had a turn (backed-off cold
+            # a round is complete once every currently-eligible PRN has had a turn (backed-off cold
             # PRNs are not eligible, so they don't stall the rotation among the active ones).
             eligible = sum(
                 1
@@ -252,20 +250,20 @@ class CnavPredictor:
 
     # ---------------- decode ----------------
     # Polarity is resolved by CRC, not chaining. Each nav_obs emit's global sign is independent and
-    # the 1-slot overlap between emits is too thin to chain reliably (~90%/boundary -> a 7-emit
-    # window fails most of the time). Instead, every attempt decodes the freshest contiguous window
-    # while brute-forcing ONLY the per-emit signs still unknown (st.pol holds the rest); pair_phase
-    # (per-PRN, pseudorange-shifted) and g2 (a global link constant) lock on the first CRC. In
-    # steady state only the newest 1-2 emits are free -> 2-4 Viterbi passes; a cold PRN pays a
-    # one-time 2^k over the window's k emits (with the global-sign branch, since nothing is fixed).
+    # abutting emits share only one slot, too thin to chain reliably: one bad link in a 7-emit
+    # window ruins the decode. Instead, every attempt decodes the freshest emits of the longest
+    # contiguous run while searching only the per-emit signs still unknown (st.pol holds the
+    # rest); pair_phase (per-PRN, pseudorange-shifted) and g2 (a global link constant) lock on the
+    # first CRC. In steady state only the newest 1-2 emits are free -> 2-4 Viterbi passes; a cold
+    # PRN pays a 2^k over the window's k emits, which covers the global sign.
     def _try_decode(self, prn, st):
         starts = sorted(st.emits)
         if len(starts) < 3:
             return
         # Group emits into maximal contiguous runs (each next emit abuts/overlaps the prior, i.e.
-        # starts no later than one slot past its end), then take the LONGEST run -- NOT simply the
-        # freshest: the newest emit is often isolated by a certification gap, and insisting on it
-        # collapses the window to one emit. Ties go to the fresher run.
+        # starts no later than one slot past its end), then take the longest run, not simply the
+        # freshest: the newest emit is often isolated by a gap, and insisting on it collapses the
+        # window to one emit. Ties go to the fresher run.
         runs = [[starts[0]]]
         for s in starts[1:]:
             prev = runs[-1][-1]
@@ -274,9 +272,9 @@ class CnavPredictor:
             else:
                 runs.append([s])
         best = max(runs, key=lambda r: (len(r), r[-1]))
-        # COLD PRN (nothing resolved yet): use a SMALL window and a full 2^k brute -- guaranteed to
-        # find the polarity (diag-proven) and bounded (2^COLD_EMITS). WARM PRN: the freshest
-        # WIN_EMITS, resolved emits fixed from st.pol, only the newest few brute-forced cheaply.
+        # Cold PRN (no emit of the run resolved yet): a small window and a full 2^k brute over
+        # every sign pattern, bounded by 2^COLD_EMITS. Warm PRN: the freshest WIN_EMITS,
+        # resolved emits fixed from st.pol, only the free ones searched.
         cold = not any(s in st.pol for s in best)
         chain = best[-(COLD_EMITS if cold else WIN_EMITS) :]
         if len(chain) < 3:
@@ -291,15 +289,14 @@ class CnavPredictor:
         if lo % 2:  # even-anchor: the pair grid is absolute (utc)
             lo += 1
         if hi - lo + 1 < MSG_SYMS:
-            # SAY SO. This window can never hold a message, and returning quietly here is
-            # indistinguishable from "decoding, just not yet" -- the chain simply reports
-            # NO DECODE forever. It is reachable by configuration, not just by bad luck: the
-            # window is COUNTED IN EMITS (WIN_EMITS / COLD_EMITS) while what matters is the
-            # SYMBOL SPAN, so a combiner emitting shorter windows than L2C's 4 s silently
-            # starves it -- L5-I at a 1 s emit span offers 350 symbols against the 600 needed.
-            # The fix is on the PRODUCER (raise that chain's integration_length so one emit
-            # spans more symbols); raising the emit COUNT is not available, because a cold
-            # bootstrap is 2^COLD_EMITS Viterbis.
+            # Say so once per PRN. This window can never hold a message, and returning quietly
+            # is indistinguishable from "decoding, just not yet": the chain would report NO
+            # DECODE forever. It is reachable by configuration: the window is counted in emits
+            # (WIN_EMITS / COLD_EMITS) while what matters is the symbol span, so a combiner
+            # emitting shorter windows than L2C's 4 s starves it. The fix is on the producer
+            # (raise that chain's integration_length so one emit spans more symbols); raising
+            # the emit count is not available, because a cold bootstrap is 2^COLD_EMITS
+            # Viterbis.
             if len(chain) >= (COLD_EMITS if cold else WIN_EMITS):
                 self._warn_short = getattr(self, "_warn_short", set())
                 if prn not in self._warn_short:
@@ -322,8 +319,8 @@ class CnavPredictor:
         free_idx = [k for k, s in enumerate(chain) if s not in st.pol]
         phases = (st.phase,) if st.phase is not None else (0, 1)
         g2s = (self._g2,) if self._g2 is not None else (False, True)
-        # A COLD attempt does a full 2^k brute but over only ONE (phase, g2) per call, rotating
-        # across calls -- so each attempt is 2^COLD_EMITS Viterbis (~1.5 s), staying under the 4 s
+        # A cold attempt does a full 2^k brute but over only one (phase, g2) per call, rotating
+        # across calls, so each attempt is at most 2^COLD_EMITS Viterbis and stays under the 4 s
         # emit period (a longer stall misses emits and fragments the contiguity the brute needs).
         if cold:
             opts = [(ph, g2) for ph in phases for g2 in g2s]
@@ -332,14 +329,12 @@ class CnavPredictor:
                 (opts[st.boot % len(opts)][1],),
             )
             st.boot += 1
-        # BOUNDED, NEVER-BLOCKING candidate set. The decode runs in the broker's single poll loop;
-        # a long brute force (2^free is 5 s) would make it MISS the emits that arrive meanwhile,
-        # fragmenting the very contiguity it needs (measured: heavy decode -> gappy nav_obs -> no
-        # decode -> heavier decode). So no 2^free. Instead: the OVERLAP-CHAINED sign pattern (right
-        # ~90%/boundary -> usually decodes as-is), plus a SINGLE-emit-flip repair per free emit
-        # (fixes the one bad chain link -> ~92% of contiguous windows), plus the global negation
-        # for the cold case (nothing resolved yet -> the global sign is unconstrained). Worst case
-        # ~2*(free+1) candidates -> a few hundred ms, never a stall.
+        # Bounded candidate set. The decode runs in the broker's single poll loop; a long brute
+        # force would make it miss the emits that arrive meanwhile, fragmenting the very
+        # contiguity it needs. Cold: every sign pattern of the free emits (at most
+        # 2^COLD_EMITS). Warm: the overlap-chained sign pattern (usually decodes as-is), plus
+        # every 1- and 2-emit flip of the free emits (repairs one or two bad chain links). The
+        # Viterbi calls are capped at VITERBI_BUDGET either way.
         chained = base.copy()
         acc = {}
         for k, s in enumerate(chain):
@@ -359,7 +354,7 @@ class CnavPredictor:
         base_free = [int(chained[k]) for k in free_idx]
         nf = len(base_free)
         if cold:
-            # Full brute over the small cold window: EVERY sign pattern (covers the global sign).
+            # Full brute over the small cold window: every sign pattern (covers the global sign).
             combos = list(itertools.product((1, -1), repeat=nf))
         else:
             # Warm: chained candidate + 1- and 2-emit-flip repairs of the (few) free emits.
@@ -396,7 +391,7 @@ class CnavPredictor:
                         self._log(
                             "cnav PRN %d: locked g2_invert=%d (global)" % (prn, int(g2))
                         )
-                    # store messages; record pol ONLY for emits a decoded message actually spans
+                    # store messages; record pol only for emits a decoded message actually spans
                     # (an unspanned free emit's sign was untested -> leave it for a later window).
                     spanned = set()
                     for m in msgs:
@@ -475,8 +470,9 @@ def _selftest():
         np.int8
     )  # transmitted +-1 (module convention)
 
-    # Feed as ~201-symbol emits (the live cadence) with an INDEPENDENT random global sign each
-    # (the squaring estimate's arbitrary per-emit polarity) -- the CRC search must resolve it.
+    # Feed as abutting ~201-symbol emits (the geometry the window constants assume) with an
+    # independent random global sign each (the squaring estimate's arbitrary per-emit
+    # polarity) -- the CRC search must resolve it.
     pred = CnavPredictor(log=print)
     pred._min_gap = (
         0.0  # the self-test feeds all emits in <1 s of wall time; no stagger
@@ -494,7 +490,7 @@ def _selftest():
             "bits": [[i, int(pm[e + i]) * sgn] for i in range(ELEN)],
         }
         pred.ingest(prn, obs)
-        e += ELEN - 1  # overlap by one slot, as the live combiner does
+        e += ELEN - 1  # the next emit starts on this one's last slot
     h = pred.health(prn)
     print("health:", h)
     assert h["synced"], "no CNAV decode"

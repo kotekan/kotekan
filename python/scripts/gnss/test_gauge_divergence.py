@@ -1,21 +1,18 @@
 #!/usr/bin/env python3
-"""The joint filter diverges: P collapses and the state free-runs (task #33).
+"""The joint filter must not diverge: P collapsing and the state free-running.
 
-OBSERVED ON SKY 2026-08-10 22:22-22:45 UTC, within 90 s of a clean start:
-    22:22:56  clk +149.330 +-1.826  rate   +0.0000 c/s  upd=4   rej=0
-    22:23:28  clk +526.922 +-0.000  rate  +13.4549 c/s  upd=22  rej=11
-    22:24:00  clk +7743.5  +-0.000  rate +126.1682 c/s  upd=28  rej=41
-    22:45:06  clk +169517  +-0.000  rate +127.6563 c/s  upd=280 rej=1050
-b_sat reached +-300 chips against a design range of +-3-7, and 79% of measurements
-were rejected -- the signature of a covariance that has collapsed to zero, after
-which the Kalman gain is zero and no measurement can correct anything.
+The failure mode: with P collapsed to zero the Kalman gain is zero and no measurement can
+correct anything, so clk and clk_rate run away, b_sat reaches hundreds of chips against a
+physical range of a few, and most measurements are rejected.
 
-THE MECHANISM UNDER TEST: gauge() pins mean(b)=0 by applying a scalar pseudo-
-measurement with sigma=gauge_sigma EVERY cycle, on the SAME linear combination.
-A real measurement carries new information; this one does not -- it is a
-statement about coordinates, not about the sky. Re-applying it forever drives P
-in that direction to sigma/sqrt(n), and since clk is exactly degenerate with
-mean(b), the cross-covariance carries the collapse into clk.
+The mechanism under test: gauge() (the default median gauge here) pins median(b) = 0 by
+applying a scalar pseudo-measurement with sigma=gauge_sigma every cycle on the same linear
+combination. A real measurement carries new information; this one does not: it is a
+statement about coordinates, not about the sky. Re-applied forever with nothing to replenish
+P, it would drive P in that direction toward sigma/sqrt(n), and since clk is exactly
+degenerate with the gauged combination, the cross-covariance would carry the collapse into
+clk. The tests feed a static receiver and check that the state stays put, P does not
+collapse, and measurements keep being accepted.
 
 Run: python3 test_gauge_divergence.py
 """
@@ -39,7 +36,7 @@ BIASES = {
 
 
 def run(n_cycles, dt=2.0, noise=0.0, **kw):
-    """Feed a PERFECTLY STATIC receiver: constant clock, constant biases, no drift.
+    """Feed a perfectly static receiver: constant clock, constant biases, no drift.
     Any rate the filter reports is manufactured; any variance collapse is its own."""
     f = JointReceiverState(code_len=10230.0, **kw)
     seq = [0.13, -0.07, 0.21, -0.19, 0.05, -0.11, 0.17, -0.03]  # deterministic
@@ -54,7 +51,7 @@ def run(n_cycles, dt=2.0, noise=0.0, **kw):
 
 class TestGaugeDivergence(unittest.TestCase):
     def test_static_receiver_stays_static(self):
-        """THE HEADLINE. Nothing moves, so clk must stay at 150 and rate at ~0."""
+        """Nothing moves, so clk must stay at 150 and the rate at ~0."""
         f = run(400, noise=0.2)
         self.assertAlmostEqual(
             f.clk,
@@ -69,8 +66,8 @@ class TestGaugeDivergence(unittest.TestCase):
         )
 
     def test_covariance_does_not_collapse(self):
-        """P must stay finite. Once sigma(clk) is 0 the gain is 0 and the filter is deaf --
-        which is what 1050 rejections against 280 updates looks like from outside."""
+        """sigma(clk) must not collapse: at 0 the gain is 0 and the filter is deaf, rejecting
+        the measurements that would correct it."""
         f = run(400, noise=0.2)
         s_clk = float(f.P[0, 0]) ** 0.5
         self.assertGreater(
@@ -102,8 +99,8 @@ class TestGaugeDivergence(unittest.TestCase):
             )
 
     def test_observable_is_preserved_by_the_gauge(self):
-        """clk + b_i is what the sky measures. The gauge fixes COORDINATES and must leave
-        that sum untouched -- if it moves the sum, it is inventing information."""
+        """clk + b_i is what the sky measures. The gauge fixes coordinates and must leave
+        that sum untouched; if it moves the sum, it is inventing information."""
         f = run(30, noise=0.0)
         before = {k: f.clk + f.bias(k) for k in BIASES}
         f.gauge()
@@ -117,13 +114,13 @@ class TestGaugeDivergence(unittest.TestCase):
 
 
 class TestEscapeStepBound(unittest.TestCase):
-    """The escape hatch must not believe a WRAP ALIAS.
+    """The escape must not believe a wrap alias.
 
     The consistency test asks whether the rejected measurements agree with each other.
-    They can agree perfectly and still imply a step that is not physical -- on a
-    10230-chip code, thousands of chips is an alias. Believed, it is applied at
-    near-unit gain (P[0,0] += 25 against R = 0.09) and the state moves by the whole
-    innovation, which is what drove clk to +169517 on sky.
+    They can agree perfectly and still imply a step that is not physical: on a 10230-chip
+    code, thousands of chips is an alias. Believed, it is applied at near-unit gain
+    (P[0,0] += 25 against R = 0.09), the state moves by the whole innovation, every other
+    satellite then disagrees, and the escapes feed on each other.
     """
 
     def _drive(self, step, **kw):
@@ -133,7 +130,7 @@ class TestEscapeStepBound(unittest.TestCase):
                 [(k, TRUE_CLK + b, 0.3) for k, b in sorted(BIASES.items())], c * 2.0,
             )
         settled = f.clk
-        # now ONE satellite reports a consistent, far-displaced value many times over
+        # now one satellite reports a consistent, far-displaced value many times over
         for c in range(20, 40):
             ms = [
                 (k, TRUE_CLK + b, 0.3)
@@ -157,7 +154,7 @@ class TestEscapeStepBound(unittest.TestCase):
         )
 
     def test_a_physical_step_is_still_believed(self):
-        """The bound must not disable the escape -- that was its own incident."""
+        """The bound must not disable the escape for a physical step."""
         f, settled = self._drive(20.0, escape_max_step=100.0)
         self.assertTrue(
             any("-- believing a" in n for n in f.notes) or abs(f.clk - settled) > 0.5,
@@ -174,10 +171,9 @@ class TestEscapeStepBound(unittest.TestCase):
 
 
 class TestMassBirth(unittest.TestCase):
-    """THE SKY INCIDENT (22:23): six sats born inside one cycle window while every
-    measurement steps +9 chips coherently. The filter must take the step as a clock
-    OFFSET, never as a RATE -- a common-mode jump across all satellites is by
-    construction not a frequency."""
+    """Six satellites born inside one cycle window while every measurement steps +9 chips
+    coherently. The filter must take the step as a clock offset, never as a rate: a
+    common-mode jump across all satellites is by construction not a frequency."""
 
     def _incident(self, **kw):
         f = JointReceiverState(code_len=10230.0, **kw)
@@ -230,7 +226,7 @@ class TestMassBirth(unittest.TestCase):
         the reference is GPS-disciplined and 1 chip/s is 0.1 ppm = 2500x the truth."""
         f = JointReceiverState(code_len=10230.0)
         f.cycle([(k, TRUE_CLK + b, 0.3) for k, b in sorted(BIASES.items())], 0.0)
-        f.x[1] = 13.45  # inject the sky's value
+        f.x[1] = 13.45  # inject a wild rate
         f.cycle([(k, TRUE_CLK + b, 0.3) for k, b in sorted(BIASES.items())], 2.0)
         self.assertLessEqual(
             abs(f.clk_rate),

@@ -1,16 +1,11 @@
 #!/usr/bin/env python3
-"""The observables record must be filed under the day it was MEASURED.
+"""The observables record must be filed under the day it was measured.
 
-THE BUG THIS PINS (2026-09-10): gnss_observables expanded its --out template once, at
-startup, and held that handle for the life of the process. A logger begun on 09-05 wrote
-<chain>_20260905.jsonl until it was restarted on 09-09 -- four days and 2.0 GB of rows in
-a file named for the first of them, while 09-06, 09-07 and 09-08 had no observables file
-at all. Nothing failed: the rows were correct, the filename was a lie, and every consumer
-that opens a day by name saw an empty day.
-
-Both the --out help text and its launcher already claimed the file rolled at UTC midnight, so
-the two places a reader would check to confirm the behaviour both asserted it. That is why
-these tests assert the ROLL, not the docstring.
+gnss_observables (make_obs_writer) expands its --out template per row, against the row's own
+epoch, so one long-lived logger writes one file per UTC day. A template expanded once at
+startup would put every row in the file named for the first day: nothing fails, the rows are
+correct, and every consumer that opens a day by name sees an empty day. These tests assert the
+roll itself, not the help text that describes it.
 
 Run: python3 test_obs_day_roll.py
 """
@@ -25,7 +20,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from gnss_observables import make_obs_writer  # noqa: E402
 
-# 2026-09-09 23:59:59 UTC and the two seconds either side of the boundary.
+# 2026-09-09 23:59:59 UTC, one second before a UTC midnight.
 T_LATE = 1788998399.0
 DAY_S = 86400.0
 
@@ -52,7 +47,7 @@ class TestObsDayRoll(unittest.TestCase):
             return [json.loads(l) for l in fh]
 
     def test_rolls_at_utc_midnight(self):
-        """THE REGRESSION. One writer, epochs either side of midnight, two files."""
+        """One writer, epochs either side of midnight, two files."""
         w = self._w()
         w(T_LATE, {"prn": 1, "t": T_LATE})
         w(T_LATE + 2.0, {"prn": 1, "t": T_LATE + 2.0})
@@ -64,7 +59,7 @@ class TestObsDayRoll(unittest.TestCase):
         self.assertEqual(len(self._rows("gps_l5_20260910.jsonl")), 1)
 
     def test_a_row_lands_under_the_day_it_was_measured(self):
-        """Filed by the ROW's epoch, not by wall-clock-at-poll: the two differ either
+        """Filed by the row's epoch, not by wall-clock-at-poll: the two differ either
         side of midnight and only the epoch is what consumers join on."""
         w = self._w()
         for k in range(4):
@@ -105,7 +100,7 @@ class TestObsDayRoll(unittest.TestCase):
         self.assertEqual(len(self._rows("gps_l5_20260909.jsonl")), 2)
 
     def test_a_template_with_no_date_codes_still_works(self):
-        """--out /tmp/x.jsonl (the default, and every replay) opens exactly one file."""
+        """A fixed --out path with no strftime codes opens exactly one file."""
         p = os.path.join(self.d, "flat.jsonl")
         w = self._w(p)
         w(T_LATE, {"a": 1})

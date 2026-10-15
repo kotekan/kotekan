@@ -1,32 +1,28 @@
 #!/usr/bin/env python3
-"""THE ACTUATOR'S SIGN, measured through the shipped chain (task #51 F3).
+"""Measure the DLL actuator's sign through the shipped chain.
 
-A code loop with the sign inverted does not track badly -- it DIVERGES, and no update rate,
-gain or clamp saves it. The sign lives in a convention shared by four components (the
+A code loop with the sign inverted does not track badly, it diverges, and no update rate, gain
+or clamp saves it. The sign rests on a convention shared by four components (the
 discriminator's E/L labelling, tau's definition, the trim's addition to the model phase in
-propagate_seed, and the despread's spacing), and this repository has been bitten repeatedly by
-exactly that kind of cross-component convention: gnssSeedTransport.hpp exists because every
-seeding bug in the week to 2026-08-02 lived between two stages and was invisible to a test of
-either alone.
+propagate_seed, and the despread's spacing), and a mismatch between two of them is invisible to
+a test of either alone.
 
-So this measures it end to end rather than reasoning about it. `e2e --skip-search --trim X`
-commands the actuator exactly as cudaGnssInject does, on a synthetic sky with known truth:
-a trim is then a KNOWN code error of known sign, and the question is whether the loop's
-response points back.
+So this measures it end to end. `e2e --skip-search --trim X` hands the trim to propagate_seed as
+cudaGnssInject does, on a synthetic sky with known truth: a trim is then a known code error of
+known sign, and the question is whether the loop's response points back.
 
     tau = -clamp(disc)/4 * (spacing/0.5)          (gnss::dll_tau / combdll.dll_tau)
-    trim <- trim + gain*tau                       (dll_integrate)
+    trim <- (1-leak)*trim + gain*tau              (dll_integrate)
 
 Negative feedback requires sign(tau) == -sign(err) for every point inside the pull-in region.
 
     ./trim_sign_gate.py            # sweep, verdict
     ./trim_sign_gate.py -v         # and print the table
 
-⚠️ THE NULL IS NOT AT trim 0. e2e's default seed carries a real 27 s age and a real Doppler
-rate, so the open-loop error is ~-1.17 chips. The first version of this sweep ran +-0.4 chips
-about ZERO, which put every sample outside the +-0.5-chip pull-in region where the E/L
-discriminator has no gradient at all -- disc sat railed near -0.94 and the sweep "showed"
-nothing. The null is located first, and the sweep is about the null.
+The null is not at trim 0: e2e's default seed has a nonzero age and Doppler rate, so the
+open-loop error is over a chip. A sweep about trim 0 would sit outside the +-0.5-chip pull-in
+region, where the E/L discriminator is railed and has no gradient, so the null is located first
+and the sweep is centred on it.
 """
 import argparse
 import os
@@ -71,8 +67,9 @@ def main():
     if not os.path.exists(a.exe):
         raise SystemExit("no %s -- build it with site/build_tool.sh e2e" % a.exe)
 
-    # LOCATE THE NULL, don't assume it. err is linear in the commanded trim with unit slope
-    # (the trim is added to the model phase), so one probe finds it exactly.
+    # Locate the null rather than assume it. err is linear in the commanded trim:
+    # propagate_seed adds the trim in combined chips and e2e divides err by comb_mult, so the
+    # slope is 1/comb_mult and null = -err0 is exact only for comb_mult 1.
     err0, _q0, _d0 = run(a.exe, 0.0, a.extra)
     null = -err0
     print("open-loop error %+.4f chips -> null at trim %+.4f" % (err0, null))
@@ -87,7 +84,7 @@ def main():
         for t, e, q, d in rows:
             print("  %+6.3f  %+7.4f  %6.3f  %+8.4f  %+8.4f" % (t, e, q, d, -d / 4.0))
 
-    # ---- THE VERDICT ------------------------------------------------------------------
+    # ---- The verdict ------------------------------------------------------------------
     bad = []
     inside = [r for r in rows if abs(r[1]) < 0.45]  # the pull-in region; outside it the
     if len(inside) < 5:  # discriminator has no gradient at all

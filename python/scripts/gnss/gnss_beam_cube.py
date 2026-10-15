@@ -1,58 +1,50 @@
 #!/usr/bin/env python3
-"""Beam data cube: response vs (chain, subband, element, healpix) -- built, and exported.
+"""Beam data cube: response vs (chain, subband, element, healpix), built and exported.
 
     build   archives -> one master cube per UTC day (sparse .npz accumulators)
-    export  master cubes -> one browser cube per day (.bin + .json) for the viewer
+    export  master cubes -> per day a .json manifest and one .bin per chain, plus index.json,
+            for the viewer
 
-WHY A CUBE AND NOT A MAP. gnss_beam_map.py already makes beautiful maps, and every one of them
-is a COLLAPSE: over elements, over frequency, or both. The parts are what the instrument
-actually measures, and the collapses are display defaults -- so the cube stores the parts and
-lets the viewer do the summing. A combined number can always be rebuilt from the parts; the
-parts can never be recovered from a combined number.
+The cube stores what the instrument measures, per element and per channel; a map is a collapse
+over some of those axes, and the viewer does the summing. A combined number can be rebuilt
+from the parts, never the reverse.
 
-⚠️⚠️ WHICH FIELD IS THE BEAM, restated because it has cost a day already. The beam is
-PROBE-DEBIASED `p2` = <|A_e|^2>. It is NOT `|u|/q`: that is a ratio to the array mean, so it
-is flat across the sky BY CONSTRUCTION -- every element rises and falls with its own
-reference -- and mapping it yields a smooth, plausible, entirely meaningless ~6 dB all-sky
-"beam". The tell was physical, not statistical: a 6 m dish at 1176 MHz cannot have a 6 dB
-full-sky pattern. See docs/CHORD_BEAM_MAPS.md §2.
+The beam is the debiased power <|A_e|^2> (`p2` in the element archive, `incoh/w` in the cube
+archive). It is not `|u|/q`: that is a ratio to the array mean, flat across the sky by
+construction, and mapping it gives a plausible but meaningless ~6 dB all-sky pattern (a 6 m
+dish at 1176 MHz cannot have one). See docs/CHORD_BEAM_MAPS.md §2.
 
-⚠️ WHAT IS STORED IS AN ACCUMULATOR, NEVER A dB. Each cell keeps (n, s1, s2) over LINEAR
-debiased power, so cells, subbands, elements, chains and DAYS all combine by ADDITION and
-adding a night never requires reprocessing an old one. dB happens once, in the viewer, at the
-end -- which is also the only way a "sum over elements" toggle can mean anything, since you
-cannot add decibels.
+What is stored is an accumulator, never a dB. Each cell keeps (n, s1, s2) over linear debiased
+power, so cells, subbands, elements, chains and days combine by addition, and adding a night
+never reprocesses an old one. dB is taken once, in the viewer, at the end.
 
-TWO SOURCES, ONE OUTPUT FORMAT
-  --source elem  (default, works today)  fixtures/obs/elem_<chain>_<YYYYMMDD>.jsonl
-        The element archive. Per-element, but the covering channels were already summed
-        upstream, so the subband axis comes out LENGTH 1 per chain. The 8 chains still give
-        real coarse frequency (5 distinct bands), which is why this is worth building now.
+Two sources, one output format:
+  --source elem  (default)  fixtures/obs/elem_<chain>_<YYYYMMDD>.jsonl
+        The element archive. Per element, but the covering channels are already summed
+        upstream, so each chain's subband axis has length 1; the chains still give coarse
+        frequency (5 distinct bands).
   --source l0    <archive>/<sender>/<YYYYMMDD>.h5   (archive = .../gnss_cube/l0/<pointing>)
-        The recorded beam-cube archive (docs/CHORD_CUBE_ARCHIVE.md): per (subband, element)
-        rows on ~1 s windows, pushed by every instance and folded on cf06 -- 89 sender files
-        per day, ~11 per chain (6 nodes x 2 GPUs). A rung directory (.../rung12/<pointing>) is
-        accepted too: same row schema, 12 or 60 windows pre-summed, ~10x faster to build from.
-        ⚠️ Rows carry BOTH sums. `incoh` is the beam and is what this builds maps from; `coh`
-        (with `phi0` and `n_reanchor`) is the arc, for calibration and the phased-array map.
-        ⚠️ THE ARCHIVE ROOT IS A POINTING. One master cube is one pointing by construction:
-        the path names it, the attrs confirm it, and two pointings in one build are refused.
-        ⚠️ NO PROBE FLAG TRAVELS IN THE CUBE FRAME, so the pedestal comes from the rows
-        themselves: per (sender, subband, element, 5 min) the MEDIAN mean power over every
-        slot. It is the pedestal because the beam is narrow: a satellite is inside the main
-        lobe for minutes of a pass and in sidelobes 10-20 dB under the noise for the rest, so
-        11 of the 12 slots are noise at any moment and the median never sees the bright one.
-        (A probe's incoh is the same noise; this is the same estimator with a different
-        selection rule.) The bias from many faint sidelobe sats is a few percent of the
-        pedestal -- far under the ~20 dB the map spans.
+        The beam-cube archive (docs/CHORD_CUBE_ARCHIVE.md): per (subband, element) rows on
+        ~1 s windows, pushed by every instance and folded by gnss_cube_compact.py, one file per
+        sender per day. A rung directory (.../rung12/<pointing>) is accepted too: its rows
+        carry the same w and incoh, summed over 12 or 60 windows, so far fewer rows to read.
+        Rows carry both sums: `incoh` is the beam and is what this reads; `coh` (L0) and
+        `cohref` (rung) are the coherent sums, for calibration.
+        The archive root is a pointing: one master cube is one pointing, the path names it,
+        the attrs confirm it, and two pointings in one build are refused.
+        No probe flag travels in the cube frame, so the pedestal comes from the rows: per
+        (sender, subband, element, 5 min), the median mean power over every slot. The beam is
+        narrow, so a satellite is in the main lobe for minutes of a pass and 10-20 dB under
+        the noise in the sidelobes for the rest; nearly every slot is noise at any moment and
+        the median does not see the bright one. The bias from many faint sidelobe satellites
+        is a few percent of the pedestal, far under the ~20 dB the map spans.
 
-⚠️ THE RAILING VETO IS CROSS-CHAIN, AND THAT IS THE POINT. A satellite within ~5 deg of
-boresight rails the 4+4b quantiser for EVERY chain at once -- they all ride the same nibbles.
-A per-chain veto would clean the chain carrying the bright satellite and leave the other seven
-contaminated WHILE THEY LOOK LIKE CLEAN CONTROLS. Here the veto is computed from geometry over
-all three constellations, independent of what any chain happened to be tracking, and applied
-to every chain of that epoch. Vetoing removes the main lobe itself; that is the honest outcome,
-not a bug -- the main lobe is what breaks the measurement.
+The railing veto is cross-chain. A satellite within --veto-deg (default 5) of boresight rails
+the 4+4b quantiser for every chain at once, since they share the same nibbles; a per-chain
+veto would clean the chain tracking it and leave the others contaminated while they look like
+clean controls. The veto is computed from BRDC geometry over every constellation, independent
+of what any chain tracks, and applied to every chain for that minute. It removes the main lobe
+itself: the main lobe is what rails the quantiser.
 
 @author Keith Vanderlinde
 """
@@ -74,20 +66,20 @@ R_REF = 20.2e6            # m: the dB zero for range normalisation (semi-synchro
 import gnss_arraymap                                  # noqa: E402  (same directory)
 import gnss_chain_health                              # noqa: E402  (same directory)
 
-BORE_AZ, BORE_EL = 180.0, 81.41   # docs/CHORD_BEAM_MAPS.md §5 -- NOT telescope.dish_coelev_deg
-MIN_ELEMS = 8             # an instance with fewer live elements says nothing about the beam
-FLOOR_BIN_S = 300.0       # probe-pedestal bin: per (instance, element, 5 min)
+BORE_AZ, BORE_EL = 180.0, 81.41   # docs/CHORD_BEAM_MAPS.md §5; not telescope.dish_coelev_deg
+MIN_ELEMS = 8             # a sample with fewer live elements says nothing about the beam
+FLOOR_BIN_S = 300.0       # pedestal bin: per (instance, subband, element, 5 min)
 HEALTH_DIR = "/home/kvand/gnss/fixtures/obs/health"   # gnss_chain_health.py masks, per day
-GEOM_BIN_S = 60.0         # BRDC evaluated once per (prn, minute), interpolation-free
+GEOM_BIN_S = 60.0         # BRDC evaluated once per minute, at its midpoint; no interpolation
 
-# Chain -> constellation letter, for the BRDC lookup. Declared, never guessed from the
-# frequency: naming a band by nearest carrier is what invented a "GLONASS L3" we do not fly.
+# Chain -> constellation letter, for the BRDC lookup. Declared, not inferred from the
+# frequency: constellations share carriers.
 CHAIN_SYS = {"gps_l5": "G", "gps_l2c": "G", "gal_e5a": "E", "gal_e5b": "E", "gal_e6": "E",
              "bds_b2a": "C", "bds_b2b": "C", "bds_b3i": "C"}
 
 # Cube-archive sender ("cx19_gnss0_b2b_n2assemble") -> chain. The band token is the stage's
-# infix; the GPS L5 stage carries none. DECLARED, like CHAIN_SYS: a sender with an unlisted
-# infix is skipped loudly, never guessed.
+# infix; the GPS L5 stage carries none. Declared, like CHAIN_SYS: a sender with an unlisted
+# infix maps to no chain, and find_inputs does not read its files.
 SENDER_BAND_CHAIN = {"": "gps_l5", "l2c": "gps_l2c", "e5a": "gal_e5a", "e5b": "gal_e5b",
                      "e6": "gal_e6", "b2a": "bds_b2a", "b2b": "bds_b2b", "b3i": "bds_b3i"}
 
@@ -101,10 +93,9 @@ def sender_chain(sender):
 
 
 # ─────────────────────────────────────────────────────────────────────────────────────────
-# healpix. Only ang2pix RING is needed, so it is inlined rather than dragging in healpy --
-# the builder then runs in venv-ft alongside everything else instead of needing /home/kvand/
-# gnss/venv. Verified against healpy in test_beam_cube.py; if that test is not passing, do
-# not trust a map made with this.
+# healpix. Only ang2pix RING is needed, so it is inlined and the build needs no healpy
+# (--source elem runs in venv-ft; --source l0 needs h5py, from /home/kvand/gnss/venv).
+# tests/test_beam_cube.py checks it against healpy; do not trust a map while that test fails.
 # ─────────────────────────────────────────────────────────────────────────────────────────
 def ang2pix_ring(nside, theta, phi):
     """HEALPix RING pixel index for colatitude theta and longitude phi (radians, arrays)."""
@@ -147,8 +138,8 @@ def ang2pix_ring(nside, theta, phi):
 def azel_to_pix(nside, az_deg, el_deg):
     """Local horizon frame: colatitude from zenith, longitude = azimuth (N=0, clockwise).
 
-    Deliberately the LOCAL frame, not celestial: the beam is fixed to the dish, so a
-    celestial pixelisation would smear a stationary pattern across the sky as the earth turns.
+    The local frame, not celestial: the beam is fixed to the dish, so a celestial
+    pixelisation would smear a stationary pattern across the sky as the earth turns.
     """
     theta = np.radians(90.0 - np.asarray(el_deg, dtype=float))
     phi = np.radians(np.asarray(az_deg, dtype=float))
@@ -162,7 +153,7 @@ def angsep_deg(az1, el1, az2, el2):
 
 
 # ─────────────────────────────────────────────────────────────────────────────────────────
-# Geometry, shared by every chain of a day so the veto is genuinely cross-chain.
+# Geometry, shared by every chain of a day so the veto is cross-chain.
 # ─────────────────────────────────────────────────────────────────────────────────────────
 class Geometry:
     """BRDC positions on a 1-minute grid, plus the cross-chain railing veto for that minute."""
@@ -193,11 +184,11 @@ class Geometry:
         return self._pos[key]
 
     def vetoed(self, t):
-        """True if ANY satellite of ANY constellation is inside veto_deg of boresight.
+        """True if any satellite of any constellation is within veto_deg of boresight.
 
-        Pooled over all three constellations on purpose: the chains share the 4+4b nibbles,
-        so a veto computed per chain would clean the one carrying the bright satellite and
-        leave the rest contaminated while looking like clean controls.
+        Pooled over constellations because the chains share the 4+4b nibbles: a veto computed
+        per chain would clean the one carrying the bright satellite and leave the rest
+        contaminated while they look like clean controls.
         """
         if self.veto_deg <= 0.0:
             return False
@@ -220,8 +211,7 @@ class Geometry:
 
 
 # ─────────────────────────────────────────────────────────────────────────────────────────
-# The accumulator. Sparse over pixels: a day of tracks touches a small fraction of the sky,
-# and storing the full outer product dense is what turns a 2 MB cube into a 60 MB one.
+# The accumulator. Sparse over pixels: a day of tracks touches a small fraction of the sky.
 # ─────────────────────────────────────────────────────────────────────────────────────────
 class CubeAccum:
     def __init__(self, nside, n_elem):
@@ -286,11 +276,11 @@ class CubeAccum:
 # build
 # ─────────────────────────────────────────────────────────────────────────────────────────
 def probe_floors(paths, tmin, tmax):
-    """Probe pedestal per (instance, subband, element, 5-min bin), as a MEDIAN.
+    """Probe pedestal per (instance, subband, element, 5-min bin), as a median.
 
-    Per ELEMENT and per SUBBAND, never medianed across either: elements differ in gain by
-    design and bands differ in noise figure, so a floor averaged over them over-subtracts the
-    quiet ones into negative power.
+    Per element and per subband, never medianed across either: elements differ in gain and
+    bands differ in noise figure, so a floor averaged over them over-subtracts the quiet ones
+    into negative power.
     """
     acc = defaultdict(lambda: defaultdict(list))
     for path in paths:
@@ -342,7 +332,7 @@ def build_day(args, chain, paths, day_unix, geom):
                     continue
                 if d.get("probe"):
                     stats["probe"] += 1
-                    continue           # a probe is the FLOOR, never a beam sample
+                    continue           # a probe is the floor, never a beam sample
                 rows = _rows(d)
                 if not rows or len(rows[0]) < MIN_ELEMS:
                     stats["short"] += 1
@@ -363,9 +353,9 @@ def build_day(args, chain, paths, day_unix, geom):
                     stats["low"] += 1
                     continue
                 pix = int(azel_to_pix(args.nside, np.array([az]), np.array([el]))[0])
-                # Range normalisation in the POWER domain: a satellite is ~2.5 dB stronger
-                # overhead than at the horizon from spreading loss alone, which would
-                # masquerade as beam. Power scales as r^2 relative to the reference range.
+                # Range normalisation in power: from spreading loss alone a satellite is ~2 dB
+                # stronger overhead than at the horizon, which would masquerade as beam.
+                # Received power falls as 1/r^2, so each sample is scaled by (r/R_REF)^2.
                 rscale = 1.0 if args.no_range_norm else (rng / R_REF) ** 2
                 for sub, row in enumerate(rows):
                     fl = floors.get((d.get("inst"), sub, int(t // FLOOR_BIN_S))) or {}
@@ -373,9 +363,9 @@ def build_day(args, chain, paths, day_unix, geom):
                     live = np.zeros(acc.n_elem, bool)
                     for e in range(min(acc.n_elem, len(row))):
                         p2e, f = row[e], fl.get(e)
-                        # DEBIAS IN POWER, and DROP a sample below its own pedestal rather
-                        # than clamping it: clamping piles non-detections at an artificial
-                        # floor and manufactures a beam edge exactly where the beam ends.
+                        # Debias in power, and drop a sample below its own pedestal rather
+                        # than clamp it: clamping piles non-detections at an artificial floor
+                        # and manufactures a beam edge exactly where the beam ends.
                         if p2e > 0.0 and f is not None and f > 0.0 and p2e > f:
                             p[e] = (p2e - f) * rscale
                             live[e] = True
@@ -399,10 +389,10 @@ def build_day(args, chain, paths, day_unix, geom):
 def _h5_rows(path):
     """One L0 or rung file -> (attrs, t[R], prn[R], P[R,S,E] mean power (nan: bin unused)).
 
-    `incoh/w` is the mean |A_e|^2 per (record, channel) term in BOTH formats: a rung row is
+    `incoh/w` is the mean |A_e|^2 per (record, channel) term in both formats: a rung row is
     the window sums added, and a ratio of sums is still a mean. Time is the window's UTC
-    (L0: through the window table, exact -- every row idx is a window idx) or the block's
-    mid-point (rung).
+    (L0: through the window table, exact, since every row idx is a window idx) or the
+    mid-point of the row's first and last window (rung).
     """
     import h5py
     with h5py.File(path, "r") as f:
@@ -427,10 +417,9 @@ def _h5_rows(path):
 def _h5_freq_ids(path):
     """Absolute F-engine channel per bin of one archive file (list of int), or None.
 
-    Each bin is ONE channel (freq_id_lo == freq_id_hi everywhere in the archive). Rungs built
-    before 2026-09-06 carry no freq ids; the L0 file they were folded from sits at the same
-    <pointing>/<sender>/<day>.h5 under l0/, so read them there rather than ship a
-    "null..null" axis."""
+    Each bin must be one channel (freq_id_lo == freq_id_hi), or this exits. A rung without
+    freq_id attrs takes them from the L0 file it was folded from, at the same
+    <pointing>/<sender>/<day>.h5 under l0/."""
     import h5py
     with h5py.File(path, "r") as f:
         fmt = f.attrs.get("format")
@@ -454,48 +443,32 @@ def _h5_freq_ids(path):
 
 
 def prn_gain_table(args, chain, paths, day_unix, geom, dth=5.0, dphi=90.0, iters=12):
-    """Per-PRN level offset in dB, solved JOINTLY with a coarse beam by median polish.
+    """Per-PRN level offset in dB, solved jointly with a coarse beam by median polish.
 
-    WHY THIS EXISTS. Received power goes as G_ant(direction) * EIRP_sat(off-nadir) / r^2. The
-    build already divides out each element's noise pedestal and corrects range, but NOTHING
-    removes the satellite's own transmit power and antenna pattern -- so every satellite paints
-    its track at its own level and the map grows arcs along the bright ones.
+    Received power goes as G_ant(direction) * EIRP_sat(off-nadir) / r^2. The build divides out
+    each element's noise pedestal and corrects range, but not the satellite's own transmit
+    power and antenna pattern, so without this each satellite paints its track at its own
+    level and the map grows arcs along the bright ones. The per-PRN level is a property of the
+    satellite and repeats from day to day.
 
-    MEASURED 2026-09-19 on 20260915/16 rung12, 20-70 deg off boresight, after pedestal and
-    range: the per-PRN level spans 13.0 dB (gps_l5, 21 PRNs; 16.2 dB over 28 Galileo PRNs),
-    rms 3.9 dB -- against a map that spans ~20 dB end to end. It is a SATELLITE PROPERTY, not
-    noise: the two days correlate at r = 0.971 with 1.0 dB day-to-day scatter against a 4.05 dB
-    between-PRN spread.
+    Solved jointly, not as each satellite's own mean: a satellite that only crosses a bright
+    part of the beam would absorb that beam signal into its gain. Median polish alternates
+    gain(prn) and beam(cell) on a coarse grid, so a satellite is referenced to the others
+    crossing the same cells. Medians, so a railing pass does not drag its own gain up.
 
-    ⚠️ SOLVED JOINTLY, NOT AS EACH SATELLITE'S OWN MEAN. A satellite that only ever transits a
-    bright part of the beam would have that beam signal absorbed into its "gain" and flattened
-    out of the map. Median polish alternates gain(prn) and beam(cell) on a COARSE grid, so a
-    satellite is referenced to the other satellites crossing the same cells, not to itself.
-    Robust (medians, not means) because a railing pass would otherwise drag its own gain up.
+    The grid must be coarse enough that satellites share cells. With one PRN in a cell,
+    beam = value - gain absorbs everything and the gain solves to zero, which looks like
+    "nothing to correct". Over one day a healpix nside-16 cell is typically crossed by one
+    satellite; the default dth 5 x dphi 90 deg cells about boresight are crossed by several.
+    theta x phi rather than healpix because the beam is mostly radial; dphi 90 keeps
+    quadrant-scale azimuthal structure (the cos(2*PA) elongation) in the beam, not the gains.
+    A median occupancy under 3 PRNs per cell is reported on stderr.
 
-    ⚠️⚠️ THE GRID MUST BE COARSE ENOUGH THAT SATELLITES SHARE CELLS, and this is the whole
-    difficulty. The first cut used healpix nside 16 and solved gains of 0.08 dB p-p against a
-    measured 13 dB -- because over one day the MEDIAN nside-16 cell is crossed by exactly ONE
-    satellite (only 16% see three or more). With one PRN in a cell, beam = value - gain
-    absorbs everything and gain solves to zero: the fit is degenerate and reports "nothing to
-    correct", which looks exactly like success. Measured PRNs per cell, gps_l5 over 20260915:
-
-        healpix nside 16    median  1   16% of cells have >=3      DEGENERATE
-        healpix nside  8    median  2   48%
-        healpix nside  4    median  4   92%
-        theta 5 x phi 90    median  8   94%                        <- used here
-        theta 5 x phi 360   median 17  100%   (no azimuth left in the beam)
-
-    theta x phi about boresight rather than healpix: the beam is dominantly radial, so this
-    buys occupancy where it is cheap. phi 90 keeps quadrant-scale azimuthal structure -- the
-    ~2 dB cos(2*PA) elongation -- in the BEAM instead of letting it leak into the gains.
-
-    The gains are centred on their own median, so the map's absolute level is unchanged -- this
-    redistributes between satellites, it does not rescale the result.
+    The gains are centred on their median, so the map's absolute level is unchanged.
     """
     sys_ = CHAIN_SYS[chain]
     lvl = defaultdict(list)          # (prn, coarse cell) -> [log10 power]
-    raw = defaultdict(list)          # prn -> [log10 power], for the degeneracy guard
+    raw = defaultdict(list)          # prn -> [log10 power], for the printed raw spread
     for path in paths:
         try:
             a, t, prn, P = _h5_rows(path)
@@ -577,24 +550,17 @@ def prn_gain_table(args, chain, paths, day_unix, geom, dth=5.0, dphi=90.0, iters
     out = {p_: 10.0 * (gain[p_] - mid) for p_ in prns}     # dB, centred
     sp = np.array(list(out.values()))
     occ = np.array([len({k[0] for k in cell if k[1] == x_}) for x_ in pixs])
-    # ⚠️ GUARD THE DEGENERACY, because it fails SILENTLY. Compare what was solved against the
-    # raw per-PRN scatter: a well-posed fit recovers most of it, an under-determined one
-    # returns ~0 and looks like "nothing to correct". This caught the nside-16 version.
+    # The raw per-PRN spread is printed for reference, not as a check: a satellite that stays
+    # at high theta is faint because the beam is faint there, and the fit rightly leaves that
+    # in the beam, so the solved and raw spreads are not expected to match.
     rawmed = {p_: float(np.median(v)) for p_, v in raw.items() if len(v) >= 200}
     rawsp = 10.0 * float(np.std(list(rawmed.values()))) if len(rawmed) > 3 else float("nan")
     print("  %s: per-PRN gains over %d satellite(s), %d coarse cell(s) "
           "(median %d PRN/cell): spread %.2f dB p-p, %.2f dB rms; raw per-PRN rms %.2f dB"
           % (chain, len(prns), len(pixs), int(np.median(occ)) if len(occ) else 0,
              sp.max() - sp.min(), sp.std(), rawsp))
-    # ⚠️ THE GUARD IS OCCUPANCY, NOT "solved vs raw". Those two are NOT meant to match: a
-    # satellite that lives at high theta looks faint because the BEAM is faint there, and the
-    # fit is supposed to leave that in the beam. Measured on 20260915 gps_l5 -- raw per-PRN
-    # spread 4.98 dB rms, of which the fit attributes only ~1.2 dB to the satellite. An
-    # earlier version alarmed on that ratio and called a CORRECT fit under-determined.
-    # What actually fails is occupancy: with ~1 PRN per cell the fit is degenerate and returns
-    # zeros. Verified by injection on the real occupancy (gnss_beam_cube inject test): a known
-    # 7.85 dB rms gain comes back at r = 1.0000 exactly, and r = 0.996 with 3 dB of per-cell
-    # noise. So trust a small answer when the cells are populated, and only here.
+    # The guard is occupancy: with too few PRNs per cell the fit is degenerate and returns ~0
+    # whatever the truth, so a small answer is trusted only when the cells are populated.
     med_occ = int(np.median(occ)) if len(occ) else 0
     if med_occ < 3:
         print("  ⚠️ %s: median %d PRN per cell -- the (gain, beam) fit is UNDER-DETERMINED and "
@@ -609,13 +575,10 @@ def build_day_h5(args, chain, paths, day_unix, geom, prn_gain=None):
     sys_ = CHAIN_SYS[chain]
     acc, pointing = None, None
     stats = defaultdict(int)
-    # ⚠️⚠️ THE SUBBAND AXIS IS THE ABSOLUTE F-ENGINE CHANNEL, NEVER THE INSTANCE'S BIN INDEX.
-    # An instance holds the 6-7 channels its node was dealt (cx19/gnss0 has 5972, 5988, ...;
-    # cx27/gnss1 has 5976, 5992, ...): bin 0 of one instance and bin 0 of another are
-    # DIFFERENT frequencies, and the fleet together records ~79 distinct channels of the L5
-    # band. Keying cells on the local bin index summed those into 7 fake "subbands" -- an
-    # instance grouping that means nothing physical. So: union of freq_ids across every sender
-    # file of the chain first, then each file's bins land on their own channel.
+    # The subband axis is the absolute F-engine channel, never the instance's bin index: each
+    # instance holds the few channels its node was dealt, so bin 0 of two instances are two
+    # different frequencies. The axis is the union of freq_ids over every sender file of the
+    # chain, and each file's bins land on their own channel.
     fid_by_path = {}
     for path in paths:
         fid_by_path[path] = _h5_freq_ids(path)
@@ -641,7 +604,7 @@ def build_day_h5(args, chain, paths, day_unix, geom, prn_gain=None):
             acc.n_sub = len(band)
         inday = (t >= tmin) & (t < tmax)
         stats["rows"] += int(inday.sum())
-        # -- pedestal: per (5-min, subband, element) median over every slot (see docstring) ----
+        # -- pedestal: per (5-min, subband, element) median over every slot (module docstring) --
         tb = ((t - day_unix) // FLOOR_BIN_S).astype(int)
         floor = np.full_like(P, np.nan)
         for b in np.unique(tb[inday]):
@@ -669,11 +632,10 @@ def build_day_h5(args, chain, paths, day_unix, geom, prn_gain=None):
         ok = inday & ~vet_r & ~np.isnan(el_r)
         stats["low"] += int((ok & (el_r <= args.mask_deg)).sum())
         ok &= el_r > args.mask_deg
-        # THE CHAIN'S OWN VERDICT ON ITSELF. The archive carries no lock flag, so a chain that
-        # lost the fleet and kept emitting records writes noise into the cube at a level the
-        # pedestal cannot tell from a weak sky -- the observables writers' prompt_lock /
-        # fleet_present flags, folded into 5-min bins by gnss_chain_health.py, are the only
-        # record of it. Bins the mask marks unhealthy are dropped here, per chain.
+        # The cube archive carries no lock flag, so a chain that lost the fleet and kept
+        # emitting records writes noise the pedestal cannot tell from a weak sky. The
+        # chain-health mask (gnss_chain_health.py: the observables writers' fleet_present
+        # fraction per 5-min bin) records it; masked bins are dropped, per chain.
         unhealthy = gnss_chain_health.unhealthy(getattr(args, "_health", {}), chain, t)
         stats["unhealthy"] += int((ok & unhealthy).sum())
         ok &= ~unhealthy
@@ -682,28 +644,25 @@ def build_day_h5(args, chain, paths, day_unix, geom, prn_gain=None):
         pix = azel_to_pix(args.nside, az_r[ok], el_r[ok]).astype(np.int64)
         rscale = np.ones(int(ok.sum())) if args.no_range_norm else (rng_r[ok] / R_REF) ** 2
         Pk, Fk = P[ok], floor[ok]
-        # Debias in POWER; DROP a sample under its own pedestal (never clamp -- see build_day).
-        # ⚠️ IN UNITS OF THE PEDESTAL. The cube's |A_e|^2 is normalised by the channel's own
-        # replica energy (A = G/E_c), so a bin's scale is 1/E_c^2 -- the BPSK(10) main lobe
-        # gives the centre channels ~20 dB less pedestal than the edge ones in these units,
-        # and a raw sum over subbands is then just the edge bins. Measured 2026-09-05: PRN 28
-        # at 52 deg off axis was +7 dB per centre bin and "0 dB" in the raw 7-bin sum. Dividing
-        # by each (bin, element)'s own pedestal makes every cell "received power per element
-        # over that element's noise in that channel": dimensionless, comparable across bins,
-        # elements and chains, and what a sum over any axis in the viewer can mean.
-        # --unbiased keeps the samples UNDER the pedestal too: (P-F)/F averaged with its sign
-        # is an unbiased pattern estimate whose noise averages DOWN with samples, where the
-        # drop leaves a positive floor of ~0.4 sigma per cell (the half-normal mean) that no
-        # amount of data lowers. The drop is the elem-archive convention and the default; the
-        # unbiased map can go negative in a cell, which the viewer shows as "below floor".
+        # Debias in power and drop a sample under its own pedestal (never clamp; see
+        # build_day), in units of the pedestal. The cube's |A_e|^2 is normalised by the
+        # channel's own replica energy (A = G/E_c), so a bin's scale is 1/E_c^2: under a
+        # BPSK(10) main lobe the centre channels sit ~20 dB below the edge ones, and a raw sum
+        # over subbands would be just the edge bins. Dividing by each (bin, element)'s own
+        # pedestal makes a cell "received power per element over that element's noise in that
+        # channel": dimensionless, and comparable across bins, elements and chains.
+        # --unbiased keeps the samples under the pedestal too: (P-F)/F averaged with its sign
+        # is an unbiased pattern estimate whose noise falls with more samples, while the drop
+        # leaves a positive floor of ~0.8 sigma per cell (the half-normal mean) that no amount
+        # of data lowers. The drop is the default and the elem-archive convention; an unbiased
+        # cell can go negative, and the viewer leaves blank a pixel whose summed s1 is <= 0.
         with np.errstate(all="ignore"):
             valid = (Pk > 0.0) & (Fk > 0.0)
             live = valid if args.unbiased else (valid & (Pk > Fk))
-            # Per-satellite level, if solved. Applied HERE -- in power, alongside the range
-            # scale -- so it divides out the satellite's EIRP before the sample ever reaches a
-            # pixel. A PRN with no solved gain (too few cells) passes through at 1.0 rather
-            # than being dropped: an unnormalised sample is worse than nothing only if it is
-            # also unlabelled, and stats["prn_ungained"] counts them.
+            # Per-satellite level, if solved, applied in power alongside the range scale so it
+            # divides out the satellite's EIRP before the sample reaches a pixel. A PRN with no
+            # solved gain (too few cells) passes through at 1.0 and is counted in
+            # stats["prn_ungained"].
             if prn_gain:
                 gdb = np.array([prn_gain.get(int(p_), np.nan) for p_ in prn[ok]])
                 stats["prn_ungained"] += int(np.isnan(gdb).sum())
@@ -752,9 +711,9 @@ def cmd_build(args):
     for daystr in args.days:
         day_unix = datetime.strptime(daystr, "%Y%m%d").replace(
             tzinfo=timezone.utc).timestamp()
-        # WHICH ARRAY WAS THIS DAY? Resolved before any work, because the answer can be "not
-        # one array" -- a recabling or a re-pointing inside the day makes the master a sum of
-        # two things, and no amount of care later can unmix it.
+        # Which array was this day? Resolved first: a recabling or re-pointing inside the day
+        # would make the master a sum of two arrays that nothing later can unmix, so
+        # gnss_arraymap.for_day refuses a day that straddles an epoch change.
         try:
             epoch = gnss_arraymap.for_day(daystr)
         except gnss_arraymap.Refused as exc:
@@ -836,12 +795,13 @@ def cmd_build(args):
 # export: master -> browser cube
 # ─────────────────────────────────────────────────────────────────────────────────────────
 def cmd_export(args):
-    """One .bin + .json per day. The browser sums; the server does not pre-collapse anything.
+    """Per day a .json manifest and one .bin per chain; index.json over the masters given.
 
-    ⚠️ DOWNSAMPLING HAPPENS HERE, NOT IN THE BROWSER. Healpix downsampling is trivial
-    arithmetic (RING -> NEST -> shift -> RING), but the browser cannot downsample a cube it
-    has not downloaded, and at full resolution x 52 subbands x 32 elements a day is ~60 MB
-    per chain. So the master keeps every pixel and this writes the viewer's working set.
+    index.json is rewritten from the masters on the command line alone, so pass every day.
+    The browser does the sums; the export only downsamples pixels (RING -> NEST -> shift ->
+    RING) and, with --subbands, groups channels. Downsampling happens here because the
+    browser cannot downsample a cube it has not downloaded: the master keeps every pixel and
+    this writes the viewer's working set.
     """
     os.makedirs(args.outdir, exist_ok=True)
     index = []
@@ -861,9 +821,8 @@ def cmd_export(args):
             pix, n, s1 = z["pix_%d" % i], z["n_%d" % i], z["s1_%d" % i]
             if shift:
                 pix = ring_downgrade(pix, nside0, nside)
-            # Bin subbands, then coalesce duplicate pixels created by the downgrade. Both are
-            # plain sums BECAUSE the stored quantity is an accumulator -- this is the payoff
-            # for never storing dB.
+            # Bin subbands, then coalesce duplicate pixels created by the downgrade: both are
+            # plain sums because the stored quantity is a linear accumulator.
             n, s1, sub_fid = bin_subbands(n, s1, meta["chains"][i]["freq_ids"], args.subbands)
             pixu, inv = np.unique(pix, return_inverse=True)
             if len(pixu) != len(pix):
@@ -872,12 +831,9 @@ def cmd_export(args):
                 np.add.at(nn, (slice(None), slice(None), inv), n)
                 np.add.at(ss, (slice(None), slice(None), inv), s1)
                 n, s1 = nn, ss
-            # PIXEL CENTRES SHIP WITH THE CUBE. The viewer needs an (az, el) for every pixel
-            # to draw anything, and the alternative -- a second, hand-ported healpix in
-            # JavaScript with nothing to check it against -- is exactly the kind of unverified
-            # duplicate that put the beam in the wrong place once already. The page ports
-            # ang2pix for speed but VERIFIES the port against these centres on load and
-            # refuses to draw if they disagree, so the arithmetic is checked, not trusted.
+            # Pixel centres ship with the cube: on load the page's JS ang2pix port must
+            # reproduce every centre's pixel index (verifyPixelisation in beamcube.js), or the
+            # page refuses to draw.
             az, el = pix_centres(pixu, nside)
             chains.append({"chain": c["chain"], "sys": c["sys"],
                            "n_sub": int(n.shape[0]), "n_elem": int(n.shape[1]),
@@ -886,21 +842,20 @@ def cmd_export(args):
             arrays.append((pixu.astype(np.int32),
                            np.stack([az, el], 1).astype(np.float32).ravel(),
                            n.astype(np.uint32), s1.astype(np.float32)))
-        # CROSS-CHAIN OFFSETS. Pedestal units remove each bin's own noise-floor scale, but the
-        # sky signal per chain still differs (satellite EIRP per band, code bandwidth caught by
-        # the comb), so two chains are two beams with different zeros. The offset that brings
-        # each chain onto the reference is measured where every chain samples the SAME
-        # structure -- the main-lobe annulus (default 2..12 deg off boresight; the peak ring
-        # sits at 4..8 deg) -- as the median pixel level there. It ships as a DEFAULT the
-        # viewer applies and lets the reader tweak; it is never baked into the cube.
+        # Cross-chain offsets. Pedestal units remove each bin's own noise-floor scale, but the
+        # sky signal still differs per chain (satellite EIRP per band, code bandwidth caught by
+        # the comb), so two chains are two beams with different zeros. Each chain's offset from
+        # --offset-ref (the first chain, if that one is absent) is the difference of median
+        # pixel levels in --offset-annulus (default 2..12 deg off boresight), where every chain
+        # samples the same structure. The viewer applies it as an editable default; it is
+        # never baked into the cube.
         ref = next((c for c in chains if c["chain"] == args.offset_ref), chains[0])
         for c in chains:
             c["offset_db"] = (round(c["lobe_db"] - ref["lobe_db"], 2)
                               if c["lobe_db"] is not None and ref["lobe_db"] is not None else 0.0)
         day = meta["day"]
-        # ONE .bin PER CHAIN, fetched by the page only when that chain is selected: with the
-        # full channel axis (79 channels x 32 elements x ~1500 pixels) a chain is ~30 MB at
-        # nside 32 and a day of 8 chains would be ~250 MB up front.
+        # One .bin per chain, fetched by the page only when that chain is selected: with the
+        # full channel axis a chain is tens of MB at nside 32.
         total = 0
         for c, arr in zip(chains, arrays):
             blob = b"".join(a.tobytes() for a in arr)
@@ -916,18 +871,17 @@ def cmd_export(args):
                "veto_deg": meta["veto_deg"], "range_norm": meta["range_norm"],
                "offset_ref": ref["chain"], "offset_annulus_deg": list(args.offset_annulus),
                "chains": chains,
-               # Byte offsets so the viewer slices one ArrayBuffer instead of parsing.
+               # The .bin layout; the viewer slices one ArrayBuffer in this order.
                "layout": "per chain file: pix int32[n_pix], centre float32[n_pix*2] "
                          "(az,el degrees), n uint32[n_sub*n_elem*n_pix], "
                          "s1 float32[n_sub*n_elem*n_pix]"}
         with open(os.path.join(args.outdir, "cube_%s.json" % day), "w") as fh:
             json.dump(man, fh)
-        # array_epoch rides in the index, not just the per-day manifest: the page picks days
-        # from the index and THE BROWSER SUMS THEM. Summing across an epoch boundary co-adds
-        # two different instruments -- after 2026-09-14 19:08Z, three dishes have their feed
-        # planes the other way round -- and the result is not an error, just a quietly wrong
-        # picture. A null here means a master built before the field existed, which is NOT a
-        # promise that it is one epoch: cube_20260914 straddled the rewire and read null.
+        # array_epoch goes in the index as well as the manifest: the page sums the days picked
+        # from the index, and a sum across an epoch boundary co-adds two different arrays
+        # without any error. The page does not compare it (sameCurrency in beamcube.js checks
+        # units and pointing only). A null means a master built without the field, which is no
+        # promise of a single epoch.
         index.append({"day": day, "bytes": total,
                       "array_epoch": meta.get("array_epoch"),
                       "array_epoch_key": meta.get("array_epoch_key"),
@@ -956,11 +910,10 @@ def lobe_level_db(n, s1, az, el, annulus, min_n=8):
 
 
 def pix_centres(pix, nside):
-    """(az, el) in degrees for each RING pixel centre. EXPORT ONLY -- uses healpy.
+    """(az, el) in degrees for each RING pixel centre, from healpy (export only).
 
-    The build path deliberately does not import healpy (it runs in venv-ft, over whole days,
-    and only needs ang2pix); the export runs once per day offline, so leaning on the reference
-    implementation here costs nothing and removes a second place to get pix2ang wrong.
+    The build needs only ang2pix and does not import healpy; the export uses the reference
+    pix2ang rather than a second hand-written pixelisation.
     """
     try:
         import healpy as hp
@@ -990,13 +943,10 @@ def bin_subbands(n, s1, freq_ids, nbin):
     return nn, ss, fid
 
 
-# --- RING <-> NEST. Only needed for the downgrade. ----------------------------------------
-# nest2ring is the closed form (verified against healpy at nside 4..128, 20k random pixels
-# each, zero mismatches). ring2nest is its INVERSE PERMUTATION rather than a second closed
-# form: my hand-written ring->xyf inversion was wrong for 100% of pixels at every nside, and
-# an exact inverse of a verified map cannot be wrong in a way the verified map is not. The
-# permutation is npix entries (49,152 at nside 64) built once per nside and cached, which is
-# cheaper than the arithmetic it replaces at the sizes this runs on.
+# --- RING <-> NEST, needed only for the downgrade. ----------------------------------------
+# nest2ring is the closed form, checked against healpy by tests/test_beam_cube.py. ring2nest
+# is its exact inverse permutation (npix entries, built once per nside and cached) rather than
+# a second closed form, so it cannot be wrong in a way nest2ring is not.
 _R2N_CACHE = {}
 
 

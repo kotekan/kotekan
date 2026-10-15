@@ -1,45 +1,44 @@
 #!/usr/bin/env python3
-"""The broker refactor's equivalence gate (task #27 M0, 31896a862:docs/CHORD_BROKER_REFACTOR.md).
-
-`gps_distributed_broker.py` is 6400 lines with a 5100-line `main()`, and every comment block
-in it is a scar from a real outage. Restructuring it on inspection is not a plan. So:
+"""Equivalence gate for broker refactors: record a broker run, replay it, hash the POST stream.
 
   1. RECORD a real run's entire conversation with the world
          broker_equiv.py record out.jsonl -- <the usual broker flags> --interval 2
-     (or add `--transcript-write out.jsonl` to any existing launch script, which is what you
-     want for the on-sky captures -- it is side-effect-free and costs a JSON line per poll.)
+     (or add `--transcript-write out.jsonl` to an existing launch; it is side-effect-free and
+     costs a JSON line per poll).
 
-  2. REPLAY it against whatever the code has become, and hash the POST stream
+  2. REPLAY it against the current code and hash the POST stream
          broker_equiv.py digest out.jsonl
 
   3. GATE a refactor: the digest must not move.
-         broker_equiv.py check out.jsonl              # vs out.jsonl.digest
-         broker_equiv.py bless out.jsonl              # record the current digest as golden
+         broker_equiv.py check out.jsonl    # vs scripts/gnss/fixtures/out.jsonl.digest
+         broker_equiv.py bless out.jsonl    # record the current digest as golden
 
-     A replay runs under the transcript's own flags, so a knob that lives in the config
-     and in no recording -- the cp-rate guard, --cp-rate-model-tol / --fit-flush-on-reject
-     -- is code the gate never executes. A second golden pins the same recording with
-     flags appended to the transcript's, under its own name:
+     A replay runs under the transcript's own flags, so a knob set only in the config and in
+     no recording (--cp-rate-model-tol / --fit-flush-on-reject) is code the plain golden
+     never executes. A variant golden pins the same recording with flags appended to the
+     transcript's, under its own name:
          broker_equiv.py digest out.jsonl -- --cp-rate-model-tol 0.5 --fit-flush-on-reject 3
          broker_equiv.py bless --variant cprate out.jsonl -- --cp-rate-model-tol 0.5 ...
      The golden is out.jsonl.cprate.digest and records the appended flags beside the
      digest; `check out.jsonl` verifies every golden of the transcript, each under its
      own flags.
 
-The POST stream is the right gate because it is the broker's entire output: seeds to the
-trackers, search commands, nav bits, carrier trim. Two brokers that POST the same bytes in
-the same order ARE the same broker as far as the instrument is concerned.
+The POST stream is the broker's entire output: seeds to the trackers, search commands, nav
+bits, carrier trim. Two brokers that POST the same bytes in the same order are the same
+broker as far as the instrument is concerned.
 
-Byte-identical is a legitimate bar here (contrast the CUDA gates, where fmaf contraction
-moves with kernel shape): Python neither contracts nor reassociates float arithmetic, so a
-pure code move reproduces the numbers exactly. A moved digest is a real change.
+Byte-identical is a fair bar here (unlike the CUDA gates, where fmaf contraction moves with
+kernel shape): Python neither contracts nor reassociates float arithmetic, so a pure code
+move reproduces the numbers exactly. A moved digest is a real change.
 
-  4. SELF-TEST -- because a gate that cannot fail is not a gate:
+  4. SELF-TEST, because a gate that cannot fail is not a gate:
          broker_equiv.py selftest out.jsonl
-     replays twice (must agree) and then replays with a one-part-in-1e12 perturbation
-     injected into the loop gains (must DISAGREE). If the perturbed run still matches, the
-     transcript does not exercise the code and the gate is decorative -- see the warning in
-     31896a862:docs/CHORD_BROKER_REFACTOR.md 3.2 about transcripts captured against a dead fleet.
+     refuses a transcript with no POSTs, replays twice (must agree), then replays once per
+     knob (carrier_hz, hops_per_sec, dll_gain, code_bias_alpha, bias_alpha) scaled by
+     1 + 1e-6. At least one must move the digest, or the transcript does not exercise the
+     code and the gate is decorative; the knobs that do move it are the fixture's coverage.
+
+Goldens and the fixture list are in scripts/gnss/fixtures/ (README.md there).
 """
 import argparse
 import glob
@@ -54,26 +53,20 @@ import sys
 K = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 BROKER = os.path.join(K, "python", "scripts", "gnss", "gps_distributed_broker.py")
 PY = os.environ.get("GNSS_PY", "/home/kvand/gnss/venv/bin/python")
-# The pinned nav snapshot every replay runs against. Blob-side like the transcripts (NFS,
-# not in git -- ~3.5 MB); the DIGEST records its fingerprint, so `git status` cannot see it
-# drift but `check` can and says so.
+# The shared pinned nav snapshot replays read when a transcript has no sidecar (NFS, not in
+# git). A golden records its fingerprint, so a `check` whose digest moved says whether the pin
+# changed too.
 BRDC_PIN = os.environ.get("GNSS_BRDC_PIN", "/home/kvand/gnss/fixtures/brdc_pin")
 
 
 def _pin_for(transcript):
-    """THE PIN THIS TRANSCRIPT WAS RECORDED AGAINST, not whatever the shared one holds now.
+    """The BRDC snapshot this transcript replays against: `<transcript>.brdc/` if present,
+    else the shared pin.
 
-    ⚠️ WHY PER-FIXTURE (2026-08-26). The shared pin covers the days its fixtures were
-    captured on, and nothing else -- it held DOY 219-228 while a fresh capture landed on
-    DOY 238, so a replay of the new transcript would have had NO ephemeris for its own
-    satellites. The obvious repair, dropping today's nav files into the shared pin, is the
-    trap: the pin is hashed WHOLE into every digest, so adding a file moves the fingerprint
-    of all four existing fixtures at once and their gates go red for a reason that has
-    nothing to do with code.
-
-    So a fixture may carry its own snapshot as `<transcript>.brdc/`, which is used in
-    preference to the shared pin. Self-contained, and adding tomorrow's capture cannot
-    disturb yesterday's gate. Fixtures with no sidecar keep the shared pin exactly as before.
+    The shared pin covers only the days its fixtures were captured on. Adding a new day's
+    nav files to it would change what every fixture without a sidecar parses, and so the pin's
+    fingerprint and possibly those fixtures' digests; a new capture carries its own snapshot as
+    a sidecar instead.
     """
     side = transcript + ".brdc"
     return side if os.path.isdir(side) else BRDC_PIN
@@ -106,24 +99,17 @@ RETIRED_FLAGS = {
 
 
 def _open(path):
-    """Transcripts of a real fleet are ~1.3 MB per cycle, so they live gzipped and OUTSIDE
-    the repo -- only the digest is versioned. Read either form transparently."""
+    """Open a transcript, gzipped (`.gz`) or plain. On-sky transcripts are large and live
+    gzipped outside the repo; only their digests are versioned."""
     return gzip.open(path, "rt") if path.endswith(".gz") else open(path)
 
 
 def _gold_path(transcript, variant=None):
-    """THE GOLDEN DIGEST LIVES IN THE REPO, ALWAYS -- never beside the transcript.
+    """The golden's path, scripts/gnss/fixtures/<transcript name>[.<variant>].digest: in the
+    repo, never beside the transcript.
 
-    ⚠️ THIS WAS A REAL SILENT FAILURE (found 2026-08-08). The golden used to be
-    `transcript + ".digest"`, which for the on-sky fixtures put it on NFS at
-    /home/kvand/gnss/fixtures/ -- OUTSIDE git. `bless` wrote there, `check` read there, and
-    the copy under scripts/gnss/fixtures/ was a hand-made mirror. The E5a mirror was
-    committed carrying 776c70ff..., a number that NO commit in the history reproduces:
-    blessed from a dirty tree, then the tree moved before the commit landed. The gate was
-    green-or-red against a phantom for its whole life.
-
-    A gate's expectation is source. Put it under version control and the failure cannot
-    recur -- a stale golden becomes a diff in `git status` instead of a file nobody looks at.
+    A gate's expectation is source. On-sky transcripts live on NFS outside git, so a golden
+    beside them would be unversioned; in the repo a stale golden shows up in `git status`.
     """
     name = os.path.basename(transcript) + (".%s" % variant if variant else "")
     return os.path.join(FIXTURES, name + ".digest")
@@ -137,9 +123,10 @@ def _goldens(transcript):
 def _tree_state():
     """(sha, dirty) of the tree that a digest is being blessed from.
 
-    A digest is a claim about code. Recording WHICH code makes a stale golden diagnosable in
-    one line instead of three worktree replays, and a dirty tree is recorded as dirty
-    because a bless from uncommitted work describes something unreproducible.
+    A digest is a claim about code. Recording which commit makes a stale golden diagnosable.
+    Uncommitted changes to the broker, gnss_broker/ or this harness are flagged dirty, because
+    a bless from uncommitted work cannot be reproduced; other modules the broker imports are
+    not checked.
     """
 
     def _git(*a):
@@ -152,7 +139,7 @@ def _tree_state():
 
     sha = _git("rev-parse", "--short", "HEAD") or "unknown"
     # The harness counts too: `replay` builds the argv, so a change here can move the digest
-    # every bit as much as a change in the broker.
+    # as much as a change in the broker.
     dirty = bool(
         _git(
             "status",
@@ -167,30 +154,18 @@ def _tree_state():
 
 
 def _brdc_fingerprint(cache=None):
-    """Short hash of the BRDC nav files the replay will parse.
+    """Short hash of the .rnx/.rnx.gz nav files in `cache` (default: the shared pin), "none"
+    if it cannot be read.
 
-    ⚠️ THE GATE HAS A THIRD INPUT AND IT IS NOT THE TRANSCRIPT. A transcript freezes the
-    fleet conversation, but the broadcast ephemeris is fetched by gnss_ephemeris.fetch_brdc
-    through its OWN urllib -- not through transport.py -- into ~/.cache/kotekan_gps, and it
-    is refreshed several times a day. So the digest is a function of (code, transcript,
-    TODAY'S EPHEMERIS), and the third term changes on its own.
-
-    Found the hard way 2026-08-09: the E5a golden was blessed at 20:36, the daily BRDC file
-    was rewritten at 20:44, and every replay after that produced a different digest with
-    IDENTICAL code -- one seed's cp0 moved 0.1 chips because a satellite's freshest toe had
-    changed. I had already blamed the earlier instance of this on a dirty-tree bless, which
-    was wrong: no tree was ever dirty, the sky's ephemeris simply moved on.
-
-    A model-primary chain (E5a/B2a) is maximally exposed because EVERY seed comes from the
-    model. GPS L5 is search-anchored and its digest survived the same update.
-
-    Recording the fingerprint does not make the gate hermetic -- pinning the files would (see
-    task #29) -- but it makes a moved digest self-explaining instead of a mystery that costs
-    an afternoon.
+    The ephemeris is a replay input the transcript does not hold: the broker fetches it
+    through gnss_brdc_supply's own urllib, not through transport.py. Replays read a pinned
+    snapshot (GNSS_BRDC_DIR), and `bless` records this fingerprint beside the digest so that
+    a digest moved by a changed snapshot says so. A model-primary chain (E5a/B2a) is the most
+    exposed, since every seed comes from the model.
     """
     cache = (
         cache or BRDC_PIN
-    )  # what replays READ -- never the live cache, which refreshes daily
+    )  # what replays read, never the live cache, which refreshes several times a day
     h = hashlib.sha256()
     try:
         for name in sorted(os.listdir(cache)):
@@ -207,8 +182,8 @@ def _brdc_fingerprint(cache=None):
 
 
 def _read_gold(path):
-    """First token is the digest; the rest of the line is provenance. Old single-token
-    goldens still read correctly."""
+    """(digest, provenance): the first token of the golden's first line, then the rest of
+    that line ("" for a golden that holds only the digest)."""
     with open(path) as f:
         head = f.readline().split()
     return (head[0] if head else ""), " ".join(head[1:])
@@ -253,17 +228,15 @@ def replay(path, env=None, extra=()):
     argv = _strip(argv, "--publish-port")
     for flag, nargs in RETIRED_FLAGS.items():
         argv = _strip(argv, flag, nargs)
-    # `extra` goes AFTER the transcript's flags: argparse keeps the last value, so a
+    # `extra` goes after the transcript's flags: argparse keeps the last value, so a
     # golden's flags override the recording's.
     cmd = [PY, "-u", BROKER] + argv + list(extra)
     cmd += ["--transcript-read", path, "--publish-port", "0"]
     e = dict(os.environ)
-    # PIN THE SKY (task #29). The ephemeris is a replay input every bit as much as the
-    # transcript: gnss_ephemeris.fetch_brdc pulls it through its own urllib into a cache that
-    # refreshes several times a day, and it moved the on-sky digests twice in two days with
-    # byte-identical code -- the second time because midnight UTC rolled the day-of-year
-    # mid-review. Replays read exactly the nav files in the pinned snapshot, so the digest is
-    # a function of (code, transcript) and nothing else.
+    # Pin the sky. The ephemeris is a replay input as much as the transcript, and the live
+    # cache refreshes several times a day (and rolls with the UTC day-of-year). Replays read
+    # exactly the nav files in the pinned snapshot, so the digest is a function of
+    # (code, transcript) and nothing else.
     e["GNSS_BRDC_DIR"] = pin or BRDC_PIN
     e.update(env or {})
     p = subprocess.run(cmd, capture_output=True, text=True, env=e, cwd=K)
@@ -350,12 +323,9 @@ def main():
     )
     a = ap.parse_args()
     extra = [x for x in a.rest if x != "--"]
-    # ⚠️ ABSOLUTE, BEFORE ANYTHING USES IT. The replay runs the broker as a subprocess with
-    # cwd=K (the repo root), so a transcript named relative to the CALLER's directory --
-    # `broker_equiv.py check fixtures/broker_fake_l5.jsonl`, run from scripts/gnss, which is
-    # the obvious way to type it -- resolves inside the child against the wrong directory and
-    # dies with FileNotFoundError on a file that plainly exists. It reads as a missing fixture
-    # rather than as a path bug, and it cost a detour on 2026-08-15.
+    # Absolute before anything uses it: the replay runs the broker with cwd=K (the repo root),
+    # so a path relative to the caller's directory (`check fixtures/broker_fake_l5.jsonl` from
+    # scripts/gnss) would resolve against the wrong directory in the child.
     a.transcript = os.path.abspath(a.transcript)
     gold = _gold_path(a.transcript, a.variant)
 
@@ -425,20 +395,17 @@ def main():
                 "an unseeded RNG, a set iteration)." % (d1, d2)
             )
         print("determinism OK   %s  (%d cycles, %d posts)" % (d1, n["now"], n["post"]))
-        # The gate must be able to FAIL. Nudge each knob by one part in a million -- far
-        # below anything physical (0.25 -> 0.25000025) -- and require the digest to move.
+        # The gate must be able to fail. Scale each knob by 1 + 1e-6, far below anything
+        # physical (0.25 -> 0.25000025), and require the digest to move.
         #
-        # SEVERAL KNOBS, NOT ONE, because a fixture only covers what it runs: the synthetic
-        # fleet exercises the DLL, while the e2e fixture (real GPU, known truth) runs with
-        # --dll-gain 0 and is purely a seed-arithmetic test. Perturbing only the loop gains
-        # there reports GATE IS BLIND when the truth is "this fixture does not cover the
-        # loops". So: report WHICH knobs move it -- that is a direct read on coverage.
+        # Several knobs, because a fixture covers only what it runs: a model-primary chain
+        # with no detections, or one run with --dll-gain 0, never reaches the DLL, and
+        # perturbing only the loop gains would call it blind. The knobs that move the digest
+        # are a direct read on coverage.
         #
-        # ⚠️ AND NOT 1e-12, which was the first attempt and cried blind on the synthetic
-        # fixture too. That was not blindness, it was arithmetic: 1e-12 on a gain of 0.25
-        # moves a ~0.01-chip trim by 1e-14, landing on a code phase of ~5000 chips where a
-        # double resolves ~1e-12. The perturbation vanished BELOW the number it was added
-        # to. A sensitivity test must clear the representation of what it perturbs.
+        # 1e-6 and not smaller: the perturbation must survive the arithmetic it feeds. 1e-12
+        # on a gain of 0.25 moves a ~0.01-chip trim by ~1e-14, below the ~1e-12 resolution of
+        # a double at a code phase of ~5000 chips.
         moved = []
         for knob in (
             "carrier_hz",

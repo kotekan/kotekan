@@ -1,23 +1,23 @@
 #!/bin/bash
 # Keep the running GNSS nodes' live EOP table ahead of the clock. Cron, on the gnss VM.
 #
-# WHY. The EOP table is a rolling ~6-day window, and a node that asks for a time past its last
-# entry does not degrade: n2_accumulate raises a FatalError and the whole kotekan shuts down.
-# A one-off push is therefore a fuse, not a fix. This refreshes the live copy from the
-# observatory's file every run, so the fuse never reaches the end.
+# The EOP table is a rolling window of a few days, and a node asked for a time past its last
+# entry does not degrade: the stock telescope block sets fatal_eop_out_of_range, so kotekan
+# shuts down. A one-off push only moves that deadline; this refreshes the live copy from the
+# observatory's file every run, so the end is never reached.
 #
-# WHAT IT DOES, each run:
-#   1. stage choco:/var/lib/choco/eop/state.json (rewritten there daily ~12:00 UTC); refuse a
-#      table whose last entry is already in the past -- pushing a stale table looks like
+# Each run:
+#   1. stage choco:/var/lib/choco/eop/state.json (rewritten there daily, ~12:00 UTC); refuse a
+#      table whose last entry is already in the past, since pushing a stale table looks like
 #      maintenance happened
 #   2. for each node, read the live config; a node qualifies only if it answers, is running a
 #      GNSS config (gnssN_* stages present) and holds an EOP table. A down, restarting or
 #      non-GNSS node is skipped and logged, never an error.
 #   3. push (eop_push.sh, which reads the table back) only to qualifying nodes whose live table
-#      ends EARLIER than the staged one. Re-running is a no-op.
+#      ends earlier than the staged one. Re-running is a no-op.
 #   4. regenerate the on-disk node configs when their table ends earlier than the staged one and
-#      they still match the manifest apart from live data (#173), so a relaunch never starts on a
-#      table that has ended.
+#      they still match the manifest apart from live data, so a relaunch never starts on a table
+#      that has ended.
 #
 #   crontab:  17 * * * *  /home/kvand/gnss/kotekan/scripts/gnss/site/eop_cron.sh
 #   env:      GNSS_NODES (default the six), EOP_LOG (default /var/tmp/gnss-logs/eop_cron.log)
@@ -77,10 +77,10 @@ else
     echo "  nothing to push"
 fi
 
-# The on-disk configs too (#173): a relaunch starts from the file, and a table that has ended kills
-# the node until the next push reaches it. Regenerate them only when they still match the manifest
-# apart from live data (gen_fleet --check normalises the EOP table and the bad inputs out of the
-# comparison), so a hand-edited or half-edited manifest is never written under a node.
+# The on-disk configs too: a relaunch starts from the file, and a node started on a table that
+# has ended shuts down. Regenerate them only when they still match the manifest apart from live
+# data (gen_fleet --check leaves the EOP table and the bad inputs out of the comparison), so a
+# hand-edited or half-edited manifest is never written under a node.
 PY=/home/kvand/gnss/venv/bin/python
 MAN="$K/config/gnss_fleet_chord.yaml"
 DISK_END=$("$PY" - "$K"/config/generated/chord_gnss_cx*_multi.yaml <<'PYE'

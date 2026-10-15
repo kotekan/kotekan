@@ -1,30 +1,29 @@
 #!/bin/bash
-# WHY IS THIS NODE'S GPU-n PIPELINE DEAD? One command, no restart, no reboot (task #60).
+# Why is this node's GPU-n pipeline dead? One command, no restart, no reboot.
 #
-# THE WEDGE, as measured 2026-08-15 on cx19/cx42/cx43: every stage on GPU 0 -- the five GNSS
-# combiners AND the main N2 accumulator -- stopped within 16 ms of each other and stayed
-# stopped. It cost three node reboots and a day of confusion before anyone looked at the
-# packet counters, because the symptom surfaces far downstream (a beam-amplitude column
-# scattering 1-9) and every obvious suspect is innocent:
+# In a wedge every stage on one GPU (the GNSS combiners and the main N2 accumulator) stops at
+# the same hop and stays stopped. The symptom surfaces far downstream, and every obvious
+# suspect is innocent:
 #
-#   the GPU     0% util, 31 C, memory still allocated, no Xid, no ECC -- IDLE, not hung
+#   the GPU     0% util, memory still allocated, no Xid, no ECC: idle, not hung
 #   the NIC     link up, zero rx_errors, packets arriving at full rate
-#   the chains  all five stop at the IDENTICAL hop, so it is upstream of every combiner
+#   the chains  all stop at the identical hop, so the cause is upstream of every combiner
 #
-# What is actually broken is one step further up: the distributor ring for that port is
-# never drained, so 99.5% of arriving packets are dropped at the ring and the whole GPU
-# pipeline starves. The tell is a SLEEPING dpdk-worker: those are poll-mode threads that
-# should spin forever, and a blocked one means it is waiting on a full output buffer, i.e.
-# back-pressure from a downstream stage that stopped consuming.
+# The break is one step further up: the distributor ring for that port is never drained, so
+# nearly every arriving packet is dropped at the ring and the whole GPU pipeline starves. The
+# tell is a sleeping dpdk-worker: these are poll-mode threads that should spin forever, and a
+# blocked one is waiting on a full output buffer, i.e. back-pressure from a downstream stage
+# that stopped consuming.
 #
-# THE DISCRIMINATOR, measured 3 wedged vs 3 healthy nodes, no overlap whatsoever:
-#     wedged   dpdk-worker3/4 state S, ~3100 ticks (frozen); ring drops 276-281 MILLION
-#     healthy  all six workers state R, ~257000 ticks;        ring drops 0
+# The discriminator, with no overlap between wedged and healthy nodes:
+#     wedged   a dpdk-worker in state S, CPU ticks frozen; ring drops climbing
+#     healthy  every dpdk-worker in state R;                ring drops 0
 #
 # usage:  node_wedge_probe.sh [node ...]        (default: the whole fleet)
-#         node_wedge_probe.sh --bt cx19         ⚠️ needs sudo; dumps thread backtraces so
-#                                                the stage that stopped consuming can be
-#                                                NAMED rather than inferred.
+#         node_wedge_probe.sh --bt cx19         also prints, for the first node, the gdb command
+#                                                (needs sudo on the node) that dumps thread
+#                                                backtraces, so the stage that stopped consuming
+#                                                can be named rather than inferred.
 set -u
 NODES_DEFAULT="cx19 cx27 cx42 cx43 cx44 cx51"
 BT=0

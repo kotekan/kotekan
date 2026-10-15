@@ -9,34 +9,30 @@ ConditionHost=|gnss.site.chord-observatory.ca
 RequiresMountsFor=/home/kvand
 After=network-online.target remote-fs.target
 Wants=network-online.target
-# The gather's trim-in socket is bound to 127.0.0.1, so these two are one machine by
-# construction, not by convenience.
+# The gather serves the broker's telemetry stream on 127.0.0.1 (serve_host), so these two run
+# on one machine by construction.
 After=gnss-gather.service
 PartOf=gnss-stack.target
-# StartLimit* live in [Unit], not [Service] -- systemd silently ignores them
-# in [Service] and the crash loop then has no limit at all.
+# StartLimit* are [Unit] settings. In [Service] systemd ignores StartLimitIntervalSec=, and
+# the default 10 s interval never fills at this RestartSec, so a crash loop would not stop.
 StartLimitIntervalSec=300
 StartLimitBurst=5
 
 [Service]
 Type=simple
-# ⚠️ NO Environment= HERE ON PURPOSE. The broker needs free-threaded 3.14t (GNSS_PY) and a
-# one-thread BLAS cap (#134), and BOTH now live beside the argv in stack_components.sh, so the
-# command and the environment cannot be ported apart again. Verify with stack_contract_gate.sh,
-# which compares a RUNNING process against that definition -- argv and environment.
+# No Environment= here on purpose: the broker's free-threaded python (GNSS_PY) and one-thread
+# BLAS cap live beside its argv in stack_components.sh.
 
 # Restart on a non-zero exit (including exit 3, a changed F-engine frame0), with a burst limit
 # so a crash loop stops instead of hiding behind a restart.
-# ⚠️ ExecStart goes through run_component.sh so that the argv AND the environment come
-# from ONE definition (scripts/gnss/site/stack_components.sh). Inlining the command here is
-# how #134 happened: the command line was reproduced faithfully and the broker's
-# OPENBLAS_NUM_THREADS export, which is not on it, was not.
-# stack_contract_gate.sh proves a running process still matches the definition.
+# ExecStart goes through run_component.sh so the argv and the environment come from one
+# definition (scripts/gnss/site/stack_components.sh); stack_contract_gate.sh checks a running
+# process against it.
 ExecStart=/home/kvand/gnss/kotekan/scripts/gnss/site/run_component.sh broker
 Restart=on-failure
 RestartSec=5
 # No swap on this box, so a leak must hit a cgroup limit and restart one unit rather than let
-# the kernel pick a victim. 582 MB is the steady state.
+# the kernel pick a victim. 3G is several times the broker's steady state.
 MemoryAccounting=yes
 MemoryMax=3G
 LimitNOFILE=65536

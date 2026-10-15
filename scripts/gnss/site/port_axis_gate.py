@@ -1,30 +1,25 @@
 #!/usr/bin/env python3
-"""THE TWO PORTS OF A NODE MUST AGREE ON THE FPGA SEQ AXIS.
+"""Check that the two ports of each node agree on the FPGA seq axis.
 
-WHY THIS EXISTS (2026-08-31, cx19 port 1). After a node restart, an F-engine
-link can come back from the switch-port bounce DESYNCED AND DARK: valid CRS
-packets at the full rate, ZERO payloads, and a seq axis that resumed ~25 s
-behind the fleet (the board's counter paused while the link was down). The
-capture worker then tracks that stale axis faithfully -- frames advance at
-exactly real time, all-zero, stamped hundreds of frames old. EVERY health
-instrument stays green: packet counters full rate, zero drops, all threads
-accruing CPU, GPU 75% busy, records arriving at the gather with age ~20 ms.
-The ONLY tells are (a) the gather's last_win for that instance pinned a
-constant N windows behind its siblings, and (b) this check: the two ports'
-newest FPGA_SEQ_NUM differ by N frames instead of <=2.
-
-Measured that day: cx19 port1-port0 = -608.0 frames (-25.50 s); the five
-healthy nodes all read +1.0 frame (ring-position jitter).
+After a node restart an F-engine link can come back from the switch-port bounce desynced and
+dark: valid CRS packets at the full rate, all-zero payloads, and a seq axis that resumed behind
+the fleet because the board's counter paused while the link was down. The capture worker tracks
+that stale axis faithfully, so frames advance at real time, all zero, stamped old, and every
+health counter (packet rate, drops, thread CPU, GPU load, record age at the gather) stays
+normal. Two things show it: the gather's last_win for that instance sits a constant N windows
+behind its siblings, and the two ports' newest FPGA_SEQ_NUM differ by N frames. Healthy ports
+differ by about one frame (ring-position jitter).
 
 usage:  port_axis_gate.py [node ...]     (default: the whole fleet)
-exit 0 = every node's ports agree within TOL; exit 1 = a stale axis, named.
+exit 0 = every node's ports agree within TOL_FRAMES; exit 1 = a stale axis or an unreachable
+node, named.
 """
 import json
 import sys
 import urllib.request
 
 NODES_DEFAULT = ["cx19", "cx27", "cx42", "cx43", "cx44", "cx51"]
-TOL_FRAMES = 4  # ring-position jitter is +-1; leave headroom, catch 600+
+TOL_FRAMES = 4  # ring-position jitter is +-1 frame; 4 leaves headroom
 SAMPLES_PER_FRAME = 8192
 FRAME_S = 0.04194304
 

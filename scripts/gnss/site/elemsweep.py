@@ -4,16 +4,15 @@
     elemsweep.py                      # per-element power on every node, one table
     elemsweep.py --set 9              # point every node's search tap at element 9
 
-WHY THIS EXISTS. On 2026-08-07 the search's reference element (0) was dark. Because the
-search correlates a SINGLE element against a perfect replica, it despread literal zeros for
-an entire session: no detections, and -- the tell nobody read correctly for hours -- a best
-peak BELOW the pure-noise ceiling, because correlating against zeros gives a surface
-smoother than noise. Finding it meant dumping a buffer and decoding base64 by hand; fixing
-it meant regenerating seven configs and restarting six nodes.
+The search correlates a single element, the one its tap copies, against a replica, so a dark
+element gives no detections and a best peak below the pure-noise ceiling (correlating against
+zeros gives a surface smoother than noise). This table finds a dark element from the running
+nodes; --set re-points the running taps without a config change (a restart restores the
+config's element_offset).
 
-POWER IS NOT HEALTH. Mean power separates DARK from NOT-DARK and nothing else: a
+Power is not health. Mean power separates dark from not-dark and nothing else: a
 self-oscillating amplifier is loud, an amplifier with the sky disconnected is loud, and a
-healthy feed is loud. They differ in whether the samples contain GPS -- which only a despread
+healthy feed is loud. They differ in whether the samples contain GPS, which only a despread
 can answer, and this table is not one.
 """
 
@@ -44,11 +43,11 @@ def _post(url, payload, timeout=8):
 
 
 def power_table(nodes):
-    """Per-element mean power, per node. The tracking tap reports EVERY element."""
+    """Per-element mean power, per node. The search tap copies one element, but its
+    element_power covers every element of the input frame."""
     out = {}
     for n in nodes:
         try:
-            # the tracking tap sees all elements; the search tap sees one
             d = _get("http://%s:%d/gnss0_srch_tap/element_power" % (n, PORT))
             out[n] = d.get("element_power", [])
         except Exception as e:

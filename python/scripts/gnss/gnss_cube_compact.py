@@ -1,39 +1,40 @@
 #!/usr/bin/env python3
-"""Offline compaction of the raw beam-cube archive -- the trim ladder (recording plan P3/P4).
+"""Offline compaction of the raw beam-cube archive into L0 HDF5 files and summed rungs.
 
     gnss_cube_compact.py compact  --raw DIR --out ROOT [--include-open] [--batch N]
         raw rawFileWrite bundles  ->  L0 HDF5, one file per (pointing, sender, UTC day):
-        <ROOT>/l0/<pointing>/<sender>/<YYYYMMDD>.h5. Only LIVE slots are kept (a slot with
+        <ROOT>/l0/<pointing>/<sender>/<YYYYMMDD>.h5. Only live slots are kept (a slot with
         n_rec == 0 is silence, not a zero -- see gnssRecord.hpp), the pad is dropped, and the
         window's UTC is written next to its F-engine sample index. Idempotent: a manifest at
-        <ROOT>/l0/manifest.json records every raw file already folded in.
+        <ROOT>/l0/manifest.json records every raw file already folded in or refused.
     gnss_cube_compact.py rung     --n 12|60 FILE.h5 [...] --out ROOT
-        L0  ->  <ROOT>/rung<n>/...: exact SUMS over n consecutive windows (absolute blocks,
-        idx // n, so every sender's rungs line up in time). Per (block, slot) with ONE prn.
+        L0  ->  <ROOT>/rung<n>/...: sums over n consecutive windows (absolute blocks,
+        idx // n, so every sender's rungs line up in time), accumulated in float64 and stored
+        as float32. One row per (block, slot, prn).
     gnss_cube_compact.py ls       FILE.h5 [...]
-        completeness: windows present vs the day, holes attributed sender-drop / downstream,
-        live rows, bytes.
+        completeness: windows present vs each file's own span, holes attributed sender-drop /
+        host-wide / downstream, live rows, bytes.
     gnss_cube_compact.py verify   --raw FILE.raw --l0 ROOT [--n 50]
         round trip: N random live (window, slot) cells of a raw file re-read from the L0 tree
-        and compared BIT-FOR-BIT (float32 in, float32 out; nothing here is a summary).
+        and compared bit for bit (float32 in, float32 out; nothing here is a summary).
 
-⚠️ RUN THIS ON cf06 (`/home/kvand/gnss/venv/bin/python`, absolute paths), never on a node.
-   The raw tree is on /mnt/cs00; cx43 is a production node and a 9 MB/s read there is a tax on
-   the tracker it does not need to pay.
+Run on cf06 with /home/kvand/gnss/venv/bin/python (venv-ft has no h5py) and absolute paths,
+never on a node: the raw tree is on /mnt/cs00, and the nodes are production trackers.
 
-⚠️ THE TIME AXIS. A frame carries utc0 (UTC of F-engine sample 0) and this tool believes it,
-   GATED against the raw file's mtime: rawFileWrite closes a file within seconds of its last
-   frame, so |utc(last window) - mtime| > --mtime-tol seconds means the epoch is wrong (or the
-   F-engine restarted since) and the file is REFUSED, not dated wrong. A v2 frame (archived
-   2026-09-05 before the v3 cycle) carries no utc0 and is refused.
+The time axis. A frame carries utc0 (UTC of F-engine sample 0); the last frame's utc0 dates
+every frame of its raw file, gated against the file's mtime: rawFileWrite closes a file within
+seconds of its last frame, so |utc(last window) - mtime| > --mtime-tol seconds means the epoch
+does not describe the file (or the F-engine restarted since), and the file is refused rather
+than misdated. A file whose frames carry no utc0 (v2) is refused. A refusal is recorded in
+the manifest; the file is read again only if its mtime changes or --redo is given, and never
+if its size changed (see cmd_compact).
 
-⚠️ NOTHING HERE IS A dB, AND NOTHING IS A MEAN. L0 copies the frame's linear SUMS with their
-   term counts (`w`), so cells still add; a rung is a sum of sums. The one derived quantity, the
-   rung's `cohref` = SUM_windows coh[e] * conj(coh[ref_elem]), exists because a coherent sum
-   across windows is meaningless without a common phase reference (phi0 is per window), while
-   the cross-element product is blind to that common phase and is exactly the per-element
-   relative response the phased-array calibration wants. `ref_elem` is recorded in the attrs;
-   `cohpow` = SUM |coh|^2 is the per-window coherence power for the coherence self-check.
+Nothing here is a dB, and nothing is a mean. L0 copies the frame's linear sums with their term
+counts (`w`), so cells still add; a rung is a sum of sums. The one derived quantity, the rung's
+`cohref` = SUM_windows coh[e] * conj(coh[ref_elem]), exists because a coherent sum across
+windows needs a common phase reference (phi0 is per window), while the cross-element product
+is blind to that common phase and is the per-element relative response the phased-array
+calibration wants. `ref_elem` is recorded in the attrs; `cohpow` = SUM_windows |coh|^2.
 
 @author Keith Vanderlinde
 """
@@ -98,7 +99,10 @@ def sender_name(chain):
 # pointings: declared epochs, never inferred from the data
 # ---------------------------------------------------------------------------------------------
 def load_pointings(path):
-    """Tiny YAML subset reader: a list of {id, from, to, ...} mappings. No pyyaml in venv."""
+    """Tiny YAML-subset reader for the pointings file: a list of {id, from, to, ...} mappings.
+
+    Returns sorted (t0, t1 or None, id); a missing file gives [].
+    """
     if not os.path.exists(path):
         return []
     epochs, cur = [], None
@@ -134,8 +138,8 @@ def pointing_at(epochs, t):
     for t0, t1, pid in epochs:
         if t >= t0 and (t1 is None or t < t1):
             return pid
-    # ⚠️ Undeclared is a fact worth keeping visible in the path, not a silent default: a
-    # beam map built from an "unknown" epoch is a map of an unknown pointing.
+    # An undeclared time goes under "unknown" in the path, visibly, rather than into a guessed
+    # pointing: a map built from it is a map of an unknown pointing.
     return "unknown"
 
 
@@ -210,16 +214,11 @@ class L0File:
                         f"{path}: existing file has {k}={a[k]}, frame says {v} -- "
                         f"the sender's geometry changed mid-day; refusing to mix"
                     )
-            # An F-engine re-base mid-day puts two epochs in one day. That is NOT a reason to
-            # refuse the day: every consumer reads ABSOLUTE time -- win/utc here, rows/utc0|utc1
-            # after `rung`, and gnss_beam_cube.py reads those two and never this attribute -- and
-            # win/utc was computed from each frame's OWN utc0 as it was folded, so rows stay
-            # correctly dated straight across the boundary. Refusing cost us 09-15..09-17: this
-            # SystemExit aborted the whole run on 09-14, so the ~21k clean files behind it were
-            # never folded at all, and three good days went unpublished.
-            # ⚠️ THE GUARD THAT MATTERS IS THE MTIME GATE in cmd_compact. That is what catches a
-            # frame stamped with a STALE epoch -- the real corruption, and a different thing from
-            # a day that honestly contains two. Do not relax that one to make a day fold.
+            # A different utc0 (an F-engine re-base mid-day) is not refused: consumers read
+            # absolute time (win/utc here, rows/utc0|utc1 in a rung; gnss_beam_cube.py never
+            # reads the utc0 attribute), win/utc comes from each raw file's own utc0, and
+            # utc0_set records every epoch seen. The guard against a stale epoch is the mtime
+            # gate in cmd_compact; do not relax it to make a day fold.
         self.win = {
             k: []
             for k in (
@@ -329,12 +328,11 @@ def raw_files(rawdir, include_open):
     if not files:
         raise SystemExit(f"no .raw under {rawdir}")
     if not include_open:
-        # The newest file is the one rawFileWrite is still appending to; everything before it is
-        # closed (900 frames or the writer moved on). A file that is not the newest but is short
-        # is a writer that was restarted -- complete as far as it will ever be.
-        # NEWEST BY MTIME, NOT BY NAME: a restarted writer may use another file_name prefix
-        # (gnss_cube_r2_* after the 2026-09-06 flip), and the alphabetically last file is then
-        # a closed one that would never be folded while the truly open file got folded early.
+        # The newest file is the one rawFileWrite is still appending to; the others are closed
+        # (full, or left short by a writer restart, which makes them as complete as they will
+        # ever be). Newest by mtime, not by name: a writer restarted with another file_name
+        # sorts elsewhere, and the alphabetically last file could then be a closed one (never
+        # folded) while the open one was folded early.
         files.remove(max(files, key=os.path.getmtime))
     return files
 
@@ -377,17 +375,16 @@ def cmd_compact(args):
         if prev and prev["size"] == st.st_size and not args.redo:
             if not prev.get("refused"):
                 continue
-            # A recorded refusal is skipped only while the file is BYTE-FOR-BYTE the one we
-            # refused. Someone repairing a stale epoch in place would very likely leave the
-            # size unchanged, and a refusal that outlived its own evidence would quietly
-            # discard the repair -- so mtime has to match too, and a touched file is retried.
+            # A recorded refusal is skipped only while size and mtime both match: an in-place
+            # repair of a stale epoch would likely keep the size, so a touched file is retried.
             if prev.get("mtime") == st.st_mtime:
                 reskipped += 1
                 continue
         if prev and prev["size"] != st.st_size:
-            # Grew since we folded it: rows already in L0 cannot be un-appended, and appending
-            # the whole file again would duplicate. Only the newest file is ever open, so this
-            # means --include-open was used on it earlier; it needs a --redo of that day.
+            # Grew since it was folded: rows already in L0 cannot be removed, and folding the
+            # whole file again would duplicate them. Only the newest file is open, so this
+            # follows an earlier --include-open on it. --redo does not bypass this check, and a
+            # refused file whose size changed (nothing of it in L0) is skipped here too.
             print(
                 f"⚠️ {key}: size {prev['size']} -> {st.st_size} since it was compacted "
                 f"(--include-open earlier?). SKIPPED; rebuild the day with --redo.",
@@ -448,13 +445,9 @@ def cmd_compact(args):
                 f"describe this file. REFUSED.",
                 file=sys.stderr,
             )
-            # RECORD THE REFUSAL, do not just skip it. The verdict is a property of the file's
-            # own bytes (its frames' utc0 against its mtime), so it cannot change on a retry --
-            # but every pass was re-READING the file to reach that verdict again. With 349 of
-            # them at ~91 MB, one pass moved ~32 GB and took 345 s against a 300 s loop period:
-            # the compactor never idled and cf06's 1 GbE stayed saturated, for no work at all.
-            # `--redo` still retries, and the end-of-run line below keeps the count visible so
-            # a growing refusal set cannot hide in the manifest.
+            # Record the refusal: the verdict depends only on the file's frames and mtime, so
+            # without it every pass would re-read every refused file for the same answer.
+            # --redo retries, and the end-of-run line reports how many were skipped.
             manifest[key] = dict(
                 size=st.st_size,
                 mtime=st.st_mtime,
@@ -510,16 +503,16 @@ def cmd_compact(args):
                 f"({stats['frames'] / max(el, 1e-9):.0f} frames/s)",
                 flush=True,
             )
-            # Close files for days that can no longer receive rows (keeps handles bounded).
+            # Close the files of earlier days to keep handles bounded; a later row for one of
+            # them reopens it for append.
             days = sorted({k[2] for k in open_files})
             if len(days) > 1:
                 for k in [k for k in open_files if k[2] != days[-1]]:
                     open_files.pop(k).close()
     for lf in open_files.values():
         lf.close()
-    # ⚠️ SAVE UNCONDITIONALLY. A refusal `continue`s past the batch block above, so a pass that
-    # refused everything -- exactly the steady state this guards against -- would otherwise
-    # never persist its refusals and would re-read every one of them again next pass.
+    # Save unconditionally: a refused or empty file `continue`s past the batch block above, so
+    # a pass that only refused would otherwise never persist its refusals.
     save_manifest(args.out, manifest)
     el = time.time() - t_start
     print(
@@ -549,14 +542,13 @@ def expand_h5(paths):
 
 
 def cmd_ls(args):
-    """Completeness per L0 file, with every hole ATTRIBUTED.
+    """Completeness per L0 file, with every hole attributed.
 
     Three faults look alike in one file's window index and are told apart here:
       sender dropped   the frame's cumulative `dropped` rose across the gap: the assembler's
-                       output buffer was full (tracker outran the archive) -- the node's fault;
-      host-wide        every sender on that host has the same gap: the NODE was down or
-                       restarting (a node_up leaves ~75 windows of nothing, fleet cycles do it
-                       to every host at once) -- not a loss in the recording chain at all;
+                       output buffer was full (tracker outran the archive), the node's fault;
+      host-wide        every file of that host that covers the gap has a gap there: the node
+                       was down or restarting, not a loss in the recording chain;
       downstream       only this sender, counter flat: bufferSend drop_frames, the network, or
                        the archiver -- the recording chain's fault, and the one worth chasing.
     """
@@ -585,13 +577,11 @@ def cmd_ls(args):
                 for j in np.nonzero(dd > 1)[0]
             }
             info.append((p, d))
-    # host-wide = every other sender file of that host has a gap at the same place. The edges never
-    # match exactly: senders close their last window a second apart, and the GPU-1 stages come up
-    # ~5 windows after GPU-0 at a restart -- so two gaps agree when they OVERLAP by >= 80% of the
-    # longer one (09-06 cx19 restart: gnss0 77 windows, gnss1 82-83, offset 1-2).
-    # Only files whose window range COVERS the gap get a vote -- ls over several days lists
-    # files that never saw that hour, and a file with no gap because it has no such windows is
-    # not evidence that the sender was fine.
+    # Host-wide: every file of the host whose window range covers the gap (at least two, this
+    # one included) has a gap there. Edges never match exactly (senders close their last window
+    # a second apart, and GPU-1 stages start a few windows after GPU-0 at a restart), so two
+    # gaps agree when they overlap by >= 80% of the longer one. A file that does not cover the
+    # gap gets no vote: having no windows there is no evidence that the sender was fine.
     by_host = {}
     for p, d in info:
         if d:
@@ -686,7 +676,7 @@ def cmd_rung(args):
             incoh = f["rows/incoh"][:]
             widx = f["win/idx"][:]
             wutc = f["win/utc"][:]
-            # -- reference element: the strongest MEAN incoh over the file ----------------------
+            # -- reference element: the largest total incoh over the file -----------------------
             ref = int(np.argmax(incoh.sum(axis=(0, 1))))
             # -- group (block, slot, prn); a prn change inside a block makes a second row --------
             blk = idx // n
@@ -724,7 +714,7 @@ def cmd_rung(args):
             )
             c128 = coh.astype(np.complex128)
             np.add.at(out["cohref"], inv, c128 * np.conj(c128[:, :, ref : ref + 1]))
-            # block time: from the window table (utc of the block's first/last window present)
+            # row time: UTC of the row's first and last window (idx0, idx1), from the window table
             worder = np.argsort(widx)
             widx_s, wutc_s = widx[worder], wutc[worder]
             pos0 = np.searchsorted(widx_s, out["idx0"])

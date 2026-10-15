@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Validate hop-rate channelized-replica generation against the exact full-PFB.
 
-Pathway #5: the per-sample polyphase filter that makes R_c collapses to a per-CHIP
-filter, because the spreading code is constant over a chip (~Fs/f_chip samples).
-This harness replicates the exact C++ PFB (gnssChannelizedReplica.cpp / pfbPrototype)
-and checks the chip-collapse reproduces it when a nav-bit edge falls on a code-period
-boundary (the case tests/boost/test_gnss_channelized_replica.cpp leaves to this file):
+The per-sample polyphase filter that makes R_c collapses to a per-chip filter, because the
+spreading code is constant over a chip (~Fs/f_chip samples). This harness replicates the
+exact C++ PFB (gnssChannelizedReplica.cpp / pfbPrototype) and prints how closely the
+chip-collapse reproduces it when a nav-bit edge falls on a code-period boundary (the case
+tests/boost/test_gnss_channelized_replica.cpp leaves to this file). It asserts nothing:
+read the printed dB.
 
   exact_pfb       -- the reference (code x carrier -> push/fold -> rfft), bit-for-bit
                      the same algorithm as ChannelizedReplicaBank::channels().
@@ -99,12 +100,13 @@ def hoprate_prefix(
     navbit=None,
     navbit_per_hop=False,
 ):
-    """EXACT hop-rate generator via the prefix-sum: each chip's filter contribution is
-    Phi[k_hi] - Phi[k_lo-1] over its INTEGER tap range -- no interpolation, because the
-    chip boundaries land between integer taps. O(n_chips)/hop, memory = the prefix sum.
-    Edge 1 (chip edge in the filter) is exact here. navbit applies the +-1 data; per-chip
-    (navbit_per_hop=False) is exact (the bit edge is chip-aligned), per-hop is the cheap
-    post-multiply approximation that smears the ~P hops straddling a bit edge."""
+    """Exact hop-rate generator via the prefix sum: each chip's filter contribution is
+    Phi[k_hi+1] - Phi[k_lo] (Phi[k] = sum of filt[0:k]) over its integer tap range -- no
+    interpolation, because the chip boundaries land between integer taps. O(n_chips) per hop,
+    memory = the prefix sum. Chip edges inside the filter span are exact. navbit applies the
+    +-1 data: per chip (navbit_per_hop=False) is exact (the bit edge is chip-aligned), per hop
+    is the cheap post-multiply approximation that smears the ~num_taps hops straddling a bit
+    edge."""
     Lc = len(code)
     Lf = fft_len * num_taps
     cps = chip_rate / Fs * (1.0 + cd_sign * dop / f_carrier)
@@ -144,7 +146,8 @@ def db(x):
 
 
 def main():
-    # airspy-scale params (== ChannelizedReplicaBank usage): Fs 5 MSPS, N=20.
+    # airspy-scale params, as in test_gnss_channelized_replica.cpp's 5 MSPS case: N=20
+    # channels, fft_len = 2N.
     Fs, fft_len, num_taps = 5.0e6, 40, 4
     chip_rate, f_offset, f_carrier = 1.023e6, 1.25e6, 1575.42e6
     proto = pfb_prototype(fft_len, num_taps, "hamming")
@@ -189,7 +192,7 @@ def main():
         window_start,
         n_hops,
         navbit=navbit,
-    )  # the TRUE wiped replica
+    )  # the exact data-wiped replica
     for j in (8, 10, 12):
         exact_w = hoprate_prefix(
             code,

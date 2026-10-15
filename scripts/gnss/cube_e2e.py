@@ -1,35 +1,34 @@
 #!/usr/bin/env python3
-"""END-TO-END GATE for the beam-cube recording leg (#110) -- offline, ~15 s, no sky, no GPU.
+"""End-to-end gate for the beam-cube recording leg: offline, ~15 s, no sky, no GPU.
 
-Drives the SHIPPED CODE, not a model of it: real GnssGpuRecordAssemble with the cube ARMED,
-real bufferSend, real bufferRecv, real rawFileWrite, then the real reader
-(gnss_cube_read.iter_frames). Only the GPU despread output is synthetic -- rawFileRead replays
-gnss_gpu::FrameHdr/PrnCtl/corr/energy frames this script writes.
+Drives the shipped code, not a model of it: real GnssGpuRecordAssemble with the cube armed,
+bufferSend, bufferRecv and rawFileWrite, then the real reader (gnss_cube_read.iter_frames).
+Only the GPU despread output is synthetic: rawFileRead replays gnss_gpu::FrameHdr/PrnCtl/
+corr/energy frames this script writes.
 
-    python3 scripts/gnss/cube_e2e.py [--binary PATH] [--keep]
+    python3 scripts/gnss/cube_e2e.py [--binary PATH] [--keep] [--timeout S]
 
-WHY THIS EXISTS. The leg shipped 2026-09-05 behind three checks -- config validation, a
-synthetic-sender wire loopback, a frame-size comparison -- and every one of them tested code
-DOWNSTREAM of the bug. The assembler never ran. On sky, every node segfaulted 45-75 s after
-start: emit_cube_window marked frames full with no metadata object and bufferSend dereferenced
-the null (#110). A gate for a producer must RUN THE PRODUCER; this one does.
+A gate for a producer must run the producer. Config validation, a synthetic-sender wire
+loopback or a frame-size comparison all test code downstream of the assembler, and cannot see
+an assembler fault such as emitting cube frames with no metadata object, which bufferSend
+drops.
 
-WHAT IT CHECKS, each against a specific way the leg can fail silently:
+What it checks, each against a way the leg can fail silently:
 
-  [0] THE PROCESS SURVIVES ITS FIRST EMIT. The #110 shape: connections up, zero frames, node
-      dead. kotekan must still be alive after the whole replay has been sent.
+  [0] THE PROCESS SURVIVES ITS FIRST EMIT. A producer fault shows as connections up, zero
+      frames, node dead. kotekan must still be alive after the whole replay has been sent.
 
   [1] EVERY WINDOW ARRIVES, IN ORDER, WITH NO DROPS. Window indices consecutive, sender
-      dropped_windows 0, the last window (never closed -- no later one opens) is NOT emitted.
+      dropped_windows 0, and the last window (never closed: no later one opens) not emitted.
 
-  [2] SILENCE IS SILENCE. A slot the producer never ran must carry prn = 0 and all-zero rows --
+  [2] SILENCE IS SILENCE. A slot the producer never ran must carry prn = 0 and all-zero rows,
       never a row of zeros labelled with a PRN, which downstream reads as "no power here".
-      A PRN that starts LATE appears only from its first window.
+      A PRN that starts late appears only from its first window.
 
   [3] THE NUMBERS. Each (PRN, bin, element) cell is written with its own address as a value
       (a mark), and the replica energy varies per channel, so the 1/E_c normalisation, the
       per-record accumulation, the element stride and the pad-stripping in the reader are all
-      checked by VALUE: coh = n_rec * mark (rot == 1 with f_nco == 0), incoh = n_rec * mark^2,
+      checked by value: coh = n_rec * mark (rot == 1 with f_nco == 0), incoh = n_rec * mark^2,
       w = n_rec, energy = n_rec * E_c, freq_id lo/hi = channel_ids, phi0 == 0,
       n_reanchor == the one fresh acquisition planted.
 
@@ -59,8 +58,8 @@ import gnss_cube_read as cr  # noqa: E402
 from gnss_record_layout import record_stride, cube_frame_bytes  # noqa: E402
 from telem_e2e import kotekan_binary  # noqa: E402
 
-# Ports deliberately far from anything live (11040-11070, 12048-12052 are in use on the site,
-# telem_e2e.py holds 11890/11891/12890). A gate that collides with production is not a gate.
+# Ports clear of the site's live kotekan and broker ports (11025-11070, 12048-12060) and of
+# telem_e2e.py's (11890/11891/12890). A gate that collides with production is not a gate.
 PORT_RECV = 11893
 PORT_REST = 12893
 
@@ -72,16 +71,16 @@ REC_SAMPLES = HOPS_PER_RECORD * FFT_LEN
 REC_PER_FRAME = 4  # records per GPU frame, as on CHORD
 REC_PER_WIN = 8  # records per cube window (production is 96; the arithmetic is
 # identical and this keeps the gate to seconds)
-N_WINDOWS = 6  # windows of data replayed; N_WINDOWS-1 are provably complete
+N_WINDOWS = 6  # windows of data replayed; the last is never closed, so N_WINDOWS-1 emit
 N_PRN = 4
 PRNS = [3, 7, 19, 25]
-DEAD_PRN = 19  # never runs: must be SILENCE on the wire
+DEAD_PRN = 19  # never runs: must be silence on the wire
 LATE_PRN = 25  # runs from window LATE_FROM on
 LATE_FROM = 3
 REANCHOR_AT = (
     2,
     1,
-)  # (window, record) where PRN 3 sees a FRESH acquisition (reanchored 1)
+)  # (window, record) where PRN 3 sees a fresh acquisition (reanchored 1)
 N_CHAN = 7
 CHAN_IDS = [5972, 5988, 6004, 6020, 6036, 6052, 6068]
 N_ELEM = 4
@@ -92,7 +91,7 @@ CUBE_MAX_BINS = 8
 CUBE_GPU = 1
 CHAIN = "cube_e2e/gate"
 
-# gnss_gpu layout (gnssGpuChain.hpp). Restated here ONLY as sizes; the assembler is the reader.
+# gnss_gpu layout (gnssGpuChain.hpp), restated only to write frames; the assembler is the reader.
 HDR_FMT = "<iiiiqdiiq"  # n_rec n_prn n_chan n_jobs seq0 utc0 n_rows_spec _pad0 _pad1
 assert struct.calcsize(HDR_FMT) == 48
 PRNCTL_FMT = (
@@ -110,7 +109,7 @@ GPU_FRAME_BYTES = OFF_ENERGY + 8 * MAX_JOBS * N_CHAN
 
 def mark(p, ch, el):
     """The cell's own address as a value: exact in float32 and small enough that
-    REC_PER_WIN * mark^2 < 2^24 stays exact too (max 8 * 399^2 = 1.27e6)."""
+    REC_PER_WIN * mark^2 < 2^24 stays exact too (max 8 * 464^2 = 1.72e6)."""
     return float(100 * (p + 1) + 10 * ch + el + 1)
 
 
@@ -176,8 +175,8 @@ def write_gpu_file(dirpath):
                             ec = energy_of(ch)
                             energy[job0 + t, ch] = ec
                             for el in range(N_ELEM):
-                                # PROMPT row carries the mark; the others carry a decoy that
-                                # must never reach the cube (it reads row job0+1 only).
+                                # The prompt row carries the mark; the others carry a decoy
+                                # that must never reach the cube (it reads row job0+1 only).
                                 v = mark(p, ch, el) if t == 1 else -777.0
                                 corr[job0 + t, ch, el, 0] = v * ec
                                 corr[job0 + t, ch, el, 1] = 0.0
@@ -284,7 +283,7 @@ def main():
     print("scratch  %s" % d)
 
     want_windows = N_WINDOWS - 1
-    # ⚠️ --bind-address IS NOT OPTIONAL: kotekan's REST default is 0.0.0.0:12048, PRODUCTION's
+    # --bind-address is required: kotekan's REST default is 0.0.0.0:12048, the production REST
     # port on a node.
     proc = subprocess.Popen(
         [binary, "--config", cfg, "--bind-address", "127.0.0.1:%d" % PORT_REST],
@@ -347,7 +346,7 @@ def main():
                 wstart0=w * REC_PER_WIN * REC_SAMPLES,
                 wstart1=(w * REC_PER_WIN + REC_PER_WIN - 1) * REC_SAMPLES,
                 utc0=1.7e9,
-            )  # v3: the producer's frame0 epoch, carried not inferred
+            )  # utc0 (cube v3): the producer's UTC of sample 0, carried, not inferred
             for k, v in exp.items():
                 if h[k] != v:
                     fails.append("%s header %s = %r, expected %r" % (tag, k, h[k], v))

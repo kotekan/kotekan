@@ -1,24 +1,24 @@
-// Nav-decode health panel: what the on-node decoders are doing, per civil data signal.
+// Nav-decode health panel: what the brokers' nav decoders are doing, per civil data signal.
 //
 // Data is the viewer server's /decode_health endpoint, which merges the per-broker
-// decode_health/*.json files (see python/scripts/gnss/decode_health.py). One row per
-// decoded signal, grouped GPS -> Galileo -> BeiDou; each shows how many satellites are
-// SYNCED, how many yielded a full EPHEMERIS, the BRDC-agreement residual (dpos, the
-// "is our decode trustworthy" number), and how fresh the newest decode is. A signal whose
-// broker file goes stale drops out of the endpoint entirely -> the row disappears, which is
-// the honest thing on a decode outage (no frozen last-value).
+// decode_health/*.json files (python/scripts/gnss/decode_health.py). One row per decoded
+// signal, grouped GPS -> Galileo -> BeiDou; each shows how many satellites are synced, how
+// many yielded a full ephemeris, the BRDC-agreement residual (dpos, the "is our decode
+// trustworthy" number), and how fresh the newest decode is. A signal whose broker file goes
+// stale drops out of the endpoint, so its row disappears rather than freezing at its last
+// value.
 //
 // Self-contained: fetches its own endpoint on a timer (same origin as the viewer, so no
-// CORS), independent of the kotekan-REST GpsFeed the sky/table use.
+// CORS), independent of the GpsFeed the sky and table use.
 
 const CONSTS = [
     {tag: "G", name: "GPS"},
     {tag: "E", name: "Galileo"},
     {tag: "C", name: "BeiDou"},
 ];
-// Column-group key -> display name. The keys are high/mid/low (they were the GPS names
-// L1/L2/L5 until 2026-09-17, which read as signal names for multi-constellation groups).
-// Mirrored in app/panels/gps_table.js and livebeam_server.py -- rename in all three.
+// Column-group key -> display name, mirrored in app/panels/gps_table.js and livebeam_server.py's
+// BAND_ORDER (rename all three together). A band with no entry renders as its raw key, as
+// decode_health.py's L1/L2/L5 (SIGNAL_BAND) do.
 const BAND_LABEL = {high: "High", mid: "Mid", low: "Low"};
 // Friendly signal names keyed on the decode_health signal id.
 const SIG_NAME = {
@@ -32,10 +32,9 @@ function dot(color, title) {
          + `border-radius:50%;background:${color};vertical-align:middle"></span>`;
 }
 
-// Overall per-signal status: green healthy, amber degraded/stale, grey no-sync.
-// Freshest decode across a signal's satellites = the LIVENESS number. A single set /
-// false-lock straggler must not make an actively-decoding chain look dead, so the headline is
-// min(last_s), not the worst sat. `nStale` (last_s > 300 s) is surfaced separately.
+// The freshest decode across a signal's satellites is the liveness number: a set or
+// false-locked straggler must not make an actively decoding chain look dead, so the headline
+// is min(last_s), not the worst satellite. nStale (last_s > 300 s) counts the stragglers.
 function freshest(sig) {
     const v = (sig.sats || []).map(s => s.last_s).filter(x => x != null);
     return v.length ? Math.min(...v) : null;
@@ -44,6 +43,7 @@ function nStale(sig) {
     return (sig.sats || []).filter(s => s.last_s != null && s.last_s > 300).length;
 }
 
+// Overall per-signal status: green healthy, amber stale or BRDC-disagreeing, grey no sync.
 function status(sig) {
     const f = freshest(sig);
     const fresh = f == null || f < 120;
@@ -139,7 +139,6 @@ export class DecodeHealthPanel {
               + `${chains.length} broker${chains.length === 1 ? "" : "s"} reporting`
               + (staleWorst > 30 ? ` · oldest ${staleWorst.toFixed(0)} s ago` : "")
               + ` · dpos = decoded-vs-BRDC position residual</div>`;
-        // The position self-survey (pvt) is its own widget now -- see panels/position_survey.js.
         this.root.innerHTML = html;
     }
 }

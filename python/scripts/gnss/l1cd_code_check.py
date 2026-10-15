@@ -2,11 +2,12 @@
 """GPS L1C-D (data) spreading-code bit-exactness check (IS-GPS-800).
 
 Mirrors lib/stages/gnss/gpsL1CCode.cpp::generate_l1cd_code (the shared L1C Weil construction --
-Legendre L(t)*L(t+w) + a 7-chip insertion at p -- with the L1C-D per-PRN indices) and asserts it
-against self-contained fingerprints, so the C++ transcription can be regression-checked WITHOUT
-PocketSDR. If PocketSDR's sdr_code is importable, it additionally cross-checks bit-exact against
-gen_code_L1CPD for all 32 PRNs. The RAW ranging code (pre-BOC) is what the C++ returns; the
-BOC(1,1) modulation is applied downstream in the replica bank.
+Legendre L(t)*L(t+w) + a 7-chip insertion at p -- with the L1C-D per-PRN indices) and asserts the
+mirror against PocketSDR-verified fingerprints, so it runs without PocketSDR. The C++ is not read
+or compiled: the index tables are a copy kept in step by hand. If PocketSDR's sdr_code is
+importable, the construction is also cross-checked bit-exact against gen_code_L1CPD for all 32
+PRNs (fed this file's indices). The C++ returns the raw ranging code (pre-BOC); the BOC(1,1)
+modulation is applied downstream in the replica bank.
 
     python3 l1cd_code_check.py     # exits non-zero on any mismatch
 """

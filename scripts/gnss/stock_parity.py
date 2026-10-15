@@ -1,24 +1,22 @@
 #!/usr/bin/env python3
-"""Is a GNSS node config's STOCK half production's? Checked block by block, not asserted.
+"""Is a GNSS node config's stock half production's? Checked block by block, not asserted.
 
     scripts/gnss/stock_parity.py config/generated/chord_gnss_cx51_multi.yaml
     scripts/gnss/stock_parity.py config/generated/chord_gnss_cx51_multi.yaml --live cx47
 
-Our six nodes run production's pipeline and the GNSS branch in ONE kotekan (DPDK owns the
-NICs). Everything that is not GNSS -- every block not named gnss* -- feeds the shared receiver
-(recv1: the N^2 visibilities, the DishInputs subset, the bad-feed mask), so it must be what a
-stock node runs. Until 2026-10-02 it was not: the generator injected into a capture from
-08-31, which went stale without a sound, and our nodes shipped self-consistent, wrong N^2 --
-two boards short, an old dish table, no subset, no mask (fixtures/stock_parity_20261002/).
+The GNSS nodes run production's pipeline and the GNSS branch in one kotekan (DPDK owns the
+NICs). Every top-level block not named gnss* feeds the shared receiver (recv1: the N^2
+visibilities, the DishInputs subset, the bad-feed mask), so it must be what a stock node
+runs. A stale base fails silently: the nodes ship self-consistent, wrong N^2.
 
-THE REFERENCE. By default, the STOCK RENDER of config/chord/pathfinder.j2 (and its includes),
-rendered exactly as kotekan renders it -- which is also the generator's base. With --live, a
-running stock node's /config, which also carries the values choco PUSHES at runtime (the EOP
+The reference is by default the stock render of config/chord/pathfinder.j2 (and its includes),
+rendered exactly as kotekan renders it, which is also the generator's base. With --live, a
+running stock node's /config, which also carries the values choco pushes at runtime (the EOP
 table, bffs's bad inputs): those must then be equal too, so --live checks the live injection
 end to end.
 
-THE RULE. Every difference is DECLARED below, with its reason, or the check fails. A
-deviation nobody wrote down is how the last base drifted.
+Every difference is declared below, with its reason, or the check fails: an unrecorded
+deviation is how a base drifts.
 """
 import argparse
 import fnmatch
@@ -36,8 +34,8 @@ TEMPLATE = os.path.join(ROOT, "config", "chord", "pathfinder.j2")
 
 # (path pattern, kinds, why). Kinds: + added, - removed, ~ changed. Patterns are fnmatch over
 # the dotted path with list indices as plain components (commands[0] matches commands.*). Each
-# is DATA-NEUTRAL --
-# none changes what reaches recv1 -- and each is ours to upstream or retire.
+# is ours to upstream or retire. All but two are data-neutral; the excision exemption and the
+# N2 projection change what recv1 receives in the GNSS lobes, by design.
 DECLARED = [
     (
         "rest_server",
@@ -73,7 +71,7 @@ DECLARED = [
     ),
 ]
 # Values stock gets by REST at runtime; the generator injects the current ones. Different from
-# the bare render by design, and EQUAL to a live stock node's -- so --live does not allow them.
+# the bare render by design, and equal to a live stock node's, so --live does not allow them.
 LIVE = [
     (
         "earth_rotation_data.earth_orientation_parameter_table",
@@ -156,7 +154,7 @@ def differences(ref, cfg):
 
 def classify(diffs, live=False):
     """Split differences into (declared, undeclared). `live`: the reference is a running stock
-    node, so the runtime-pushed values must MATCH rather than merely differ from the render."""
+    node, so the runtime-pushed values must match it rather than merely differ from the render."""
     allowed = DECLARED + ([] if live else LIVE)
     declared, undeclared = [], []
     for kind, path, detail in diffs:

@@ -1,27 +1,17 @@
 #!/usr/bin/env python3
-"""THE EPHEMERIS SUPPLY: where broadcast nav files come from, and how we know they are complete.
+"""Broadcast-ephemeris supply: where the nav files come from and whether they cover the sky.
 
-Split out of gnss_ephemeris.py on 2026-08-27. That module is two subsystems that change for
-entirely different reasons -- IGS infrastructure on one side, orbital mechanics on the other --
-and only this side had produced six defects in a single evening:
+The sources are the merged daily BRDC (BKG, then CDDIS) and a rolling store of IGS
+station-hourly files; parse_rinex_nav merges them per PRN. The broker owns the cache; other
+processes should read it through cached_brdc().
 
-    sources-not-coverage   the merge counted stations that ANSWERED, not satellites carried
-    recency-not-coverage   it took the first hour that returned anything and stopped
-    presence-not-usability it counted records too old to predict from
-    a mirror that could only 404   CDDIS asked under a path that has never held the product
-    a 404 blacklisting a live host the by-design current-day 404 disabled the real fallback
-    a merge that rebuilt, not accumulated   so an hourly constellation sawtoothed to nothing
+broker_equiv replays pin the sky through GNSS_BRDC_DIR, so the fetch and merge code never runs
+in a replay digest. Its gates are gnss_broker/test_skyscope.py (the policy decisions) and
+gnss_broker/test_brdc_golden.py (the merged file, byte for byte, against captured station
+files and a pinned clock). Run both after any change here.
 
-Every one of them changed the CONTENT of the merged file, and NOT ONE was visible to the digest
-gate: broker_equiv replays pin the sky through GNSS_BRDC_DIR, so this code never runs in a
-replay and all seven fixtures stayed EQUIVALENT throughout. The gates that DO cover it are
-gnss_broker/test_skyscope.py (the policy decisions) and gnss_broker/test_brdc_golden.py (the
-merged file, byte for byte, against captured station files and a pinned clock). Change anything
-here and run both.
-
-⚠️ THE DEPENDENCY IS ONE-WAY: this module knows nothing about orbits. gnss_ephemeris imports
-THIS; never the reverse. If you find yourself wanting best_eph or predict_all in here, the
-question you are asking belongs upstairs.
+The dependency is one-way: gnss_ephemeris imports this module, never the reverse, and nothing
+here knows about orbits. Code that needs best_eph or predict_all belongs in gnss_ephemeris.
 
 Mutable module state lives here (LOG_HOOK, _src_dead, _HOURLY_STATIONS): read and write it
 through this module by name.
@@ -40,30 +30,20 @@ CACHE = os.path.join(os.path.expanduser("~"), ".cache", "kotekan_gps")
 
 
 def _atomic_write_bytes(path, data):
-    """Write `data` to `path` atomically: a sibling .tmp then os.replace (atomic on the same
-    filesystem). The cache is SHARED across the per-band obs loggers, so a plain open().write()
-    lets another band's reader hit a half-written gzip mid-download -> parse exception ->
-    'geometry omitted' -> a dropped az/el row (the L2C/L5 beam-map coverage gap). os.replace
-    makes readers see only the old or the new file, never a torn one."""
-    # ⚠️ THE TEMP NAME MUST BE UNIQUE PER WRITER, and this used a fixed `path + ".tmp"`.
-    # The docstring above already says the cache is SHARED across writers -- five chain
-    # threads, and a search instance beside them -- so two of them refreshing the same day's
-    # file both opened the SAME temp path, interleaved their bytes into it, and then both
-    # renamed. os.replace makes the RENAME atomic; it does nothing about two writers sharing
-    # the file being renamed. Usually the two downloads are identical and the corruption is
-    # invisible; the case that bites is one of them truncated (a timeout, a short read), which
-    # publishes a torn gzip that every reader then fails to parse.
-    #
-    # Not a free-threading bug -- file writes release the GIL, so this races today. Found by
-    # the concurrency audit for the free-threaded move (31896a862:docs/CHORD_FREE_THREADING.md).
+    """Write `data` to `path` atomically: a per-writer temp file beside it, then os.replace
+    (atomic on one filesystem). The cache is shared across processes and threads, so a reader
+    sees the old file or the new one, never a half-written gzip."""
+    # The temp name must be unique per writer. Several threads and processes refresh the same
+    # file; os.replace makes the rename atomic but does nothing for two writers sharing one
+    # temp file, which interleaves their bytes and can publish a torn gzip no reader can parse.
+    # File writes release the GIL, so threads race here with or without free threading.
     tmp = "%s.tmp.%d.%d" % (path, os.getpid(), threading.get_ident())
     try:
         with open(tmp, "wb") as f:
             f.write(data)
         os.replace(tmp, path)
     except BaseException:
-        # Leaving a stray .tmp.<pid>.<tid> behind would accumulate one file per failed
-        # refresh per thread, forever, in a cache directory nobody prunes.
+        # Remove the temp file: nothing prunes this cache directory.
         try:
             os.unlink(tmp)
         except OSError:
@@ -82,38 +62,27 @@ def _earthdata_token():
 
 
 # CDDIS's merged daily mixed-nav products, by the `kind` slot the caller is filling. These are
-# NOT the BKG filename -- see _brdc_sources.
+# not the BKG product name; see _brdc_sources.
 _CDDIS_DAILY = {
     "R": "BRDC00IGS_R_%04d%03d0000_01D_MN.rnx.gz",  # IGS merged broadcast
-    "S": "BRDM00DLR_S_%04d%03d0000_01D_MN.rnx.gz",
-}  # DLR multi-GNSS
+    "S": "BRDM00DLR_S_%04d%03d0000_01D_MN.rnx.gz",  # DLR multi-GNSS
+}
 
 
 def _brdc_sources(kind, year, doy):
     """Ordered (url, headers) mirrors for one daily mixed-nav file of variant `kind` (R or S):
-      1. BKG (igs.bkg.bund.de) -- the historical no-auth source, product BRDC00WRD.
-      2. CDDIS (cddis.nasa.gov) with an Earthdata bearer token -- for when BKG is unreachable
-         (2026-07-21: igs.bkg.bund.de went down and the node lost all ephemeris).
+      1. BKG (igs.bkg.bund.de), no auth, product BRDC00WRD.
+      2. CDDIS (cddis.nasa.gov) with an Earthdata bearer token, when one exists: BRDC00IGS_R
+         (IGS) and BRDM00DLR_S (DLR) under /gnss/data/daily/YYYY/DDD/YYp/. The BKG product
+         name does not exist there; CDDIS's daily/YYYY/brdc/ holds only the legacy short-name
+         GPS/GLONASS files.
     CDDIS accepts `Authorization: Bearer <token>` directly on the archive URL (a valid token
     returns the file, an invalid one 401s), so no cookie/redirect handling is needed.
 
-    ⚠️⚠️ THE CDDIS FALLBACK ASKED FOR A FILE CDDIS HAS NEVER HELD, AND SO COULD ONLY 404
-    (found 2026-08-27, while BKG was unreachable for the second time). It reused BKG's product
-    name -- BRDC00WRD_{R,S}_..._01D_MN.rnx.gz -- against /gnss/data/daily/YYYY/brdc/, a
-    directory that holds ONLY the legacy short-name GPS/GLONASS files (brdcDDD0.YYn/.YYg). No
-    mixed-nav file has ever lived there under any name. So the mirror added specifically to
-    survive a BKG outage returned 404 on its first, second and every subsequent call, in
-    complete silence: `_fetch_brdc_merged` treats a failed source as "try the next one", and
-    when the next one is the end of the list the whole day is skipped. That is a fallback that
-    CANNOT SUCCEED -- the same defect class as a search that cannot return a positive.
-    CDDIS does carry merged dailies, under /gnss/data/daily/YYYY/DDD/YYp/, as BRDC00IGS_R
-    (IGS) and BRDM00DLR_S (DLR). Measured on DOY 238: G32/E30/C39 and G32/E30/C36 -- as wide
-    as BKG's, or wider.
-
-    ⚠️ BUT CDDIS PUBLISHES ONLY CLOSED DAYS. The YYp directory for the CURRENT day does not
-    exist (404), so this mirror can rescue `back=1` and any replay, and CANNOT rescue today.
-    When BKG is down, the CURRENT day has exactly one source: the station-hourly merge
-    (_fetch_station_hourly). That is why its coverage test is load-bearing, not cosmetic.
+    CDDIS publishes only closed days: the current day's YYp directory 404s, so this mirror
+    can serve the previous day and replays, never today. While BKG is down, today's only
+    source is the station-hourly merge (_fetch_station_hourly), which is why its coverage
+    test matters.
     """
     name = "BRDC00WRD_%s_%04d%03d0000_01D_MN.rnx.gz" % (kind, year, doy)
     srcs = [
@@ -136,26 +105,16 @@ def _brdc_sources(kind, year, doy):
     return srcs
 
 
-# Well-run IGS stations to borrow FRESH ephemeris from (per-station hourly mixed-nav) when the
-# merged daily BRDC is stale -- e.g. during a BKG/IGS outage the merged product's own toe's can
-# freeze hours back while individual stations keep decoding the live broadcast. Broadcast
-# ephemeris is receiver-independent, so any station that tracked a sat carries that sat's current
-# ephemeris; a handful of geographically-spread stations covers the visible set.
+# IGS stations whose hourly mixed-nav files feed the station-hourly merge. Broadcast ephemeris is
+# receiver-independent, so any station that tracked a satellite carries its current ephemeris,
+# and the stations keep decoding the live broadcast while the merged daily's newest records lag
+# hours behind (a BKG or IGS outage).
 #
-# ⚠️⚠️ GEOGRAPHIC DIVERSITY IS THE WHOLE POINT, AND THE LIST DID NOT HAVE ANY (2026-08-27).
-# The first four entries were all Canadian, the merge stopped at the first four stations that
-# ANSWERED, and two of those carry no BeiDou at all -- so BRUX, sixth and worth 15 in-slot BDS
-# on its own, was never reached. A satellite that is below the horizon at every station in the
-# list has no ephemeris ANYWHERE in the merge, and BDS-3's MEO plane spends its thin time over
-# eastern North America. Measured at 10 UTC that day, with BKG down and the hourly carrying the
-# whole sky:
-#     the 4 stations that answered : 15 BDS,  11 in slots 19-42
-#     with these stations added    : 37 BDS,  23 in slots 19-42
-# The BeiDou chains were left with 2 probe-eligible satellites against the 3 the presence gate
-# needs, so bds_b2a ran UNANCHORED -- nothing admitted, nothing trimmed.
-#
-# Ordered best-coverage-first (BRUX/KIRU are strong on all three constellations) so the
-# coverage test below can stop early on a good hour instead of walking the whole list.
+# Geographic diversity is the point: a satellite below the horizon at every listed station has
+# no ephemeris anywhere in the merge, so the list spans continents (test_skyscope checks the
+# country mix). Ordered best-coverage-first (BRUX and KIRU are strong on all three
+# constellations) so the fetch budget, _HOURLY_MAX_FETCH, goes to the widest stations first and
+# a top-up hour meets the target in fewer fetches.
 _HOURLY_STATIONS = [
     "BRUX00BEL",
     "KIRU00SWE",
@@ -171,44 +130,38 @@ _HOURLY_STATIONS = [
     "NRC100CAN",
 ]
 
-# What "enough coverage" means, per constellation: (min_prn, distinct PRNs >= min_prn) across
-# the merged bodies.
-# ⚠️ THIS IS THE FIX FOR COUNTING STATIONS. `len(bodies) >= 4` counted sources, and a source
-# that carries zero BeiDou is not a source of BeiDou -- NRC1 and STJO both answered with 0 BDS
-# and both consumed a slot in the quota. Count the THING WE WANT.
-# ⚠️ AND THE THING WE WANT FOR C IS BDS-3, NOT BDS. C01-C18 are BDS-2: they broadcast B1I, not
-# B2a/B2b, and every BeiDou chain here runs alm_min_prn = 19 for exactly that reason. A bare
-# "21 BeiDou satellites" looks healthy while only 16 of them are satellites this observatory
-# can track -- a count that includes what you cannot use is the same mistake as a probe with no
-# slot. Measured 2026-08-27 12:21: BRUX alone carries C21/16-BDS-3 and would have satisfied a
-# target of 18-counting-BDS-2 on its own, stopping the merge one station in.
-# The targets sit below a full constellation (G ~32, E ~28, BDS-3 ~24 reachable) because one
-# hour never sees all of it: they mean "this merge is not obviously starved", not "complete".
+# What "enough coverage" means, per constellation: (min_prn, required count of distinct PRNs
+# >= min_prn with a usable record). Count satellites, not stations that answered: a station
+# that carries no BeiDou is not a source of BeiDou. For C the floor is 19, the broker's BDS-3
+# PRN floor (min_prn in gnss_broker/signals.py, alm_min_prn in gps_distributed_broker.py):
+# BDS-2 satellites do not broadcast B1C/B2a/B2b, and counting them makes a thin BDS-3 sky look
+# healthy.
+# The targets sit below a full constellation (G ~32, E ~28, BDS-3 ~24 reachable): they mean
+# "this merge is not starved", not "complete".
 _HOURLY_TARGET = {"G": (1, 20), "E": (1, 18), "C": (19, 20)}
+# Station files _hourly_target_met requires. The walk's exit test passes it
+# max(fetched, _HOURLY_MIN_STATIONS), so this does not bind there.
 _HOURLY_MIN_STATIONS = (
-    2  # never trust ONE file, however wide: a truncated or mid-write hourly
+    2  # one file, however wide, may be a truncated hourly that looks like a thin sky
 )
-# is indistinguishable from a thin sky, and a second source is ~5 s
+# Successful station-file fetches per walk, across all hours: the walk unions hours until the
+# target is met, so a per-hour cap would let one thin hour spend the allowance and still come
+# back short.
 _HOURLY_MAX_FETCH = (
-    12  # bound the cost: ~1.5 MB and a few seconds. It is a budget over the
+    12  # a budget of ~1.5 MB and a few seconds, spent on the widest stations first
 )
-# WHOLE walk now, not per hour -- the walk unions hours until the
-# coverage target is met, so a per-hour cap would let one thin hour
-# spend the entire allowance and still come back short.
-_HOURLY_TTL_S = 1800.0  # reuse a merge that MET its target for half an hour
+_HOURLY_TTL_S = 1800.0  # reuse a merge that met its target for half an hour
+# A below-target merge is retried sooner: the usual cause is merging early in the hour, before
+# the slow stations upload the hour that just closed, and they are usually there minutes later.
 _HOURLY_THIN_TTL_S = (
-    300.0  # ...but retry a BELOW-TARGET one in five minutes. The usual cause
+    300.0  # but retry a below-target merge after five minutes (see above)
 )
-# is merging early in the hour, before the slow stations have
-# uploaded the hour that just closed, and they are typically there
-# a few minutes later -- so the retry is cheap and usually wins.
 _HOURLY_COV = "hourly_MN.cov.json"
 
 
 def _hourly_cov_write(cache_dir, thin, got):
-    """Record whether the merge beside it met target. The cache gate cannot re-derive this
-    cheaply (it would have to parse and re-count every call), and a gate that cannot tell a
-    thin file from a full one is exactly the defect this pair of functions exists to close."""
+    """Record beside the merged file whether it met its target, so the cache gate can pick its
+    TTL without parsing and recounting the file."""
     try:
         _atomic_write_bytes(
             os.path.join(cache_dir, _HOURLY_COV),
@@ -221,23 +174,14 @@ def _hourly_cov_write(cache_dir, thin, got):
 
 
 def _hourly_cov_read(cache_dir):
-    """(thin, got). ⚠️ UNKNOWN COUNTS AS THIN. A merge written before this bookkeeping existed,
-    or a sidecar lost to a partial write, must get the SHORT ttl and be re-merged -- assuming
-    a file is complete because we cannot tell is how the thin merge survived 30 minutes in the
-    first place.
+    """(thin, got): got is the coverage summary, or why it is unknown. Unknown counts as thin:
+    a missing or unreadable record gets the short TTL and a re-merge, never the assumption that
+    the file is complete.
 
-    ⚠️⚠️ AND A SIDECAR OLDER THAN ITS FILE MEANS SOMEONE ELSE WROTE THE FILE. This cache is
-    shared: any process importing this module writes the same path, and a long-running one
-    holds whatever version of this code it imported at start. Measured 2026-08-27 21:42 -- the
-    js_viewer had been up for NINE DAYS and was rebuilding hourly_MN.rnx.gz from a pre-rolling-
-    store copy of the merge, leaving 29 records past the 240 min keep window and a sidecar
-    33 minutes older than the file it claimed to describe. Every fix made to the merge that
-    evening was being periodically undone, silently, by a second writer.
-
-    We cannot stop another process writing, and should not try. What we CAN do is refuse to
-    believe a coverage record that does not belong to the file beside it -- which routes a
-    foreign write straight into the thin path, so our own logic re-merges within the short TTL
-    instead of inheriting whatever the other writer produced.
+    A record more than 1 s older than its file means another writer produced the file. The
+    cache is shared, and a long-running process runs whatever version of this code it imported
+    at start, so its merge may be wrong. That case reads as thin with a FOREIGN WRITE reason,
+    so our own logic re-merges within the short TTL instead of keeping the other writer's file.
     """
     try:
         cov = os.path.join(cache_dir, _HOURLY_COV)
@@ -262,32 +206,20 @@ def _hourly_cov_read(cache_dir):
         return True, "no coverage record"
 
 
-# How old a broadcast record may be and still COUNT toward the merge's coverage. Deliberately
-# tighter than predict_all's 4 h validity: a record at 3h59m satisfies the predictor for one
-# more minute and then stops, so counting it as coverage buys a merge that is starved before
-# the next refresh. Half the window leaves the sky usable across a full refresh interval.
 def _rec_is_fresh(line, when):
-    """Is this RINEX 3 nav record's epoch recent enough to COUNT toward coverage?
+    """Is this RINEX 3 nav record's epoch within _HOURLY_KEEP_S of `when`, so it counts toward
+    coverage?
 
-    ⚠️ THE WINDOW IS THE VALIDITY WINDOW, NOT A TIGHTER "FRESHNESS". It was 2 h for the few
-    hours between introducing this test and introducing the rolling store, on the reasoning
-    that a nearly-expired record should not satisfy the exit test. With a store that rebuilt
-    itself every call that was right. With one that ACCUMULATES it is wrong, and measurably so:
-    BDS-3 updates hourly on the hour and IGS hourlies publish ~15-25 min late, so BeiDou's
-    freshest record is legitimately up to ~2 h 25 min old -- and a 2 h cut therefore counted
-    **C0** on a store holding **23 predictable BeiDou satellites**, declared BELOW TARGET, and
-    would have walked every station and every hour once every 300 s to fix a sky that was
-    already complete.
+    The window is predict_all's validity window, not a tighter freshness cut. BDS-3 updates
+    hourly on the hour and IGS hourlies publish ~15-25 min late, so BeiDou's freshest record
+    is legitimately up to ~2 h 25 min old; a cut under that age would count a full BeiDou sky
+    as missing and send the walk over every station and hour. Fresh records still arrive every
+    call because the walk always fetches the two newest hours; the exit test only asks whether
+    the window holds enough of the sky.
 
-    The reason a tight cut is no longer needed is structural, not a relaxation: the walk now
-    ALWAYS attempts the two newest hours, so new records arrive every call regardless of what
-    the exit test says. The exit test's only remaining job is "do I have enough of the sky
-    across the window", and the honest measure of that is the window itself.
-
-    The record's first line carries sys+PRN then the toc as `YYYY MM DD HH MM SS`. Anything
-    unparseable counts as FRESH: this test exists to reject records we can prove are stale,
-    not to silently shrink coverage whenever a format surprises us -- refusing on doubt here
-    would make the merge walk every station and every hour for nothing.
+    The record's first line carries sys+PRN, then the toc as `YYYY MM DD HH MM SS`. Anything
+    unparseable counts as fresh: the test rejects only records it can prove stale, so a format
+    surprise does not shrink coverage.
     """
     try:
         f = line[4:23].split()
@@ -313,12 +245,10 @@ def _hourly_target_met(seen, fetched):
     )
 
 
-# This module is a LIBRARY -- imported by the broker, the gates and half a dozen one-shot
-# scripts -- so it owns no logger. LOG_HOOK lets a host install its own tagged one (the broker
-# sets it to the per-chain `_log` on the first predict); until then, stderr, which the broker
-# unit already folds into the broker log (StandardError=inherit). Silent is not an
-# option here: a thin merge is invisible downstream and only shows up as a collapsed
-# prediction, minutes later, on a different chain.
+# This module is a library and owns no logger. A host installs its own through LOG_HOOK (the
+# broker's sky.py sets its `_log`); until then messages go to stderr, which the broker unit
+# appends to the broker log (StandardError=inherit). A thin merge must be logged: downstream it
+# is invisible until a constellation's prediction collapses.
 LOG_HOOK = None
 
 
@@ -334,18 +264,12 @@ def _log_hourly(msg):
 
 
 def _hourly_sources(station, when, token):
-    """Ordered (url, headers) mirrors for ONE station's hourly mixed-nav file.
+    """Ordered (url, headers) mirrors for one station's hourly mixed-nav file: CDDIS (when an
+    Earthdata token exists), then ESA's GSSC (anonymous FTP).
 
-    ⚠️⚠️ THE CURRENT DAY HANGS ENTIRELY OFF THIS FUNCTION, SO IT MUST NOT BE SINGLE-HOMED.
-    Measured 2026-08-27: BKG unreachable (second outage), and CDDIS publishes merged dailies
-    only for CLOSED days -- so on any day BKG is down, these per-station hourlies are the ONLY
-    source of a current-day ephemeris for E and C. They were fetched from CDDIS alone, behind
-    an Earthdata bearer token: one expired credential or one CDDIS outage and every chain goes
-    dark on the live sky, with nothing else to fall back to.
-
-    ESA's GSSC carries the same IGS per-station hourly products, anonymously. It is not merely
-    a spare: measured the same afternoon, GSSC had hour 11 populated (230 stations) while
-    CDDIS's hour-11 directory was still empty, so it is sometimes an hour FRESHER.
+    While BKG is down these hourlies are the only current-day ephemeris (CDDIS publishes merged
+    dailies only for closed days), so they must not depend on one host or one credential. GSSC
+    carries the same IGS hourly products and sometimes publishes an hour before CDDIS.
     """
     srcs = []
     doy = when.timetuple().tm_yday
@@ -368,11 +292,10 @@ def _hourly_sources(station, when, token):
     return srcs
 
 
-# How much history the rolling store keeps. predict_all's validity window is 4 h from toe, so a
-# record older than this cannot contribute to any prediction and is pure weight.
-# ⚠️ FILTERED ON toc, NOT toe -- the epoch on the record's first line. They coincide for GPS and
-# Galileo and sit within minutes for BeiDou, and the margin below absorbs that; parsing toe would
-# mean parsing the whole record, which is parse_rinex_nav's job, not the supply layer's.
+# How much history the rolling store keeps: predict_all's 4 h validity window, so an older
+# record cannot contribute to any prediction. Filtered on toc (the epoch on the record's first
+# line), not toe: they coincide for GPS and Galileo and differ by minutes for BeiDou, and
+# parsing toe means parsing the whole record, which is parse_rinex_nav's job.
 _HOURLY_KEEP_S = 14400.0
 
 
@@ -417,8 +340,8 @@ def _toc_of(key, default=None):
 def _store_load(cache_dir, when):
     """The rolling store: {(sys, prn, toc): text}, pruned to _HOURLY_KEEP_S, plus its header.
 
-    ⚠️ UNPARSEABLE toc IS KEPT, not dropped -- the same rule as _rec_is_fresh. This layer
-    discards what it can prove is expired; it never discards on doubt.
+    An unparseable toc is kept, as in _rec_is_fresh: this layer drops what it can prove
+    expired, never on doubt.
     """
     import gzip
 
@@ -443,43 +366,25 @@ def _store_load(cache_dir, when):
 
 
 def _fetch_station_hourly(when, cache_dir, token):
-    """MERGE several IGS stations' hourly mixed-nav into one fresh nav file -- a fallback for a
-    stale merged daily, and THE only current-day source when the daily mirrors are down. One
-    station is unreliable (a given hour it may carry Galileo/BeiDou but no fresh GPS), so union
-    a handful for full-constellation coverage: keep one header, concatenate every station's
-    record block. UNIONS ACROSS HOURS until coverage is met.
-    Returns cache_dir/hourly_MN.rnx.gz or None.
+    """Merge IGS stations' hourly mixed-nav files into the rolling store,
+    cache_dir/hourly_MN.rnx.gz, and return its path (None if there is nothing to write).
 
-    ⚠️⚠️ COVERAGE DECIDES, NOT RECENCY -- AND THE FIRST VERSION LET RECENCY DECIDE SILENTLY.
-    An IGS station publishes the hour that just CLOSED, and the uploads trickle in over the
-    following ~40 min. This used to take the first hour that returned ANY station and stop.
-    Measured 2026-08-27, two runs 22 min apart on the SAME hour (17 UTC):
-        18:17 -- 404 records, C>=19 = 12   (half the stations had not uploaded yet)
-        18:39 -- 823 records, C>=19 = 21
-    The thin one won because it came first, the 30-minute cache gate then pinned it, and a
-    thin merge is indistinguishable downstream from a healthy one -- it just starves a
-    constellation somewhere else. It left BeiDou with 2 probe-eligible satellites against the
-    3 the presence gate needs, so both b2a and b2b ran UNANCHORED: nothing admitted, nothing
-    trimmed, for half an hour, with no line anywhere naming the cause.
+    It backs up a stale merged daily and is the only current-day source while the daily
+    mirrors are down. One station's hour may lack a constellation, so the walk unions stations
+    over the two newest hours, then tops up from older hours until every constellation meets
+    _HOURLY_TARGET.
 
-    An hour older is ~1 h more toe age against a 4 h validity window -- nothing. Missing half
-    the constellation is not nothing. So the walk now UNIONS hours and stops on COVERAGE:
-    same statistic the merge already computed, now used as the exit test instead of "somebody
-    answered". Same lesson as the four other fallbacks purged today -- a degraded path that
-    reproduces the OUTPUT (a file) while dropping the SAFEGUARD (that the file is complete).
+    Coverage decides, not recency. A station publishes the hour that just closed and uploads
+    trickle in over the next ~40 min, so the first hour that answers is often half-populated,
+    and a thin merge looks healthy downstream while it starves a constellation. An hour older
+    costs ~1 h of toe age against a 4 h window; missing half a constellation costs far more.
     """
     import gzip
 
-    # Cache-gate: hourly station files update ~hourly, and fetch_brdc now includes this in EVERY
-    # merge (not just during a daily outage), so reuse a recent local rather than re-pulling a
-    # handful of station files each call. 30 min keeps it fresh without hammering CDDIS.
-    #
-    # ⚠️ BUT A THIN MERGE IS CACHED FOR MINUTES, NOT THE FULL PERIOD. Pinning a starved file
-    # for 30 min is what turned "we merged early in the hour" into "BeiDou is dark until the
-    # next refresh"; the stations that were missing are usually there a few minutes later, so
-    # the retry is nearly free and almost always succeeds. The coverage is recorded next to
-    # the file because it cannot be recovered from the file cheaply, and a cache gate that
-    # cannot tell a thin file from a full one is the bug restated.
+    # Cache gate: _fetch_brdc_now calls this on every refresh, so reuse the merged file for
+    # _HOURLY_TTL_S when it met its target, but only for _HOURLY_THIN_TTL_S when it did not:
+    # the missing stations usually upload within minutes. Whether it met its target is recorded
+    # beside the file (_hourly_cov_write), since recounting means parsing it.
     local = os.path.join(cache_dir, "hourly_MN.rnx.gz")
     if os.path.exists(local):
         age = time.time() - os.path.getmtime(local)
@@ -493,27 +398,15 @@ def _fetch_station_hourly(when, cache_dir, token):
                     % (cov, age, _HOURLY_THIN_TTL_S - age)
                 )
             return local
-    # ---- THE ROLLING STORE ---------------------------------------------------------------
-    # ⚠️⚠️ ACCUMULATE, DO NOT REBUILD. Every earlier version built the file from ONLY the hours
-    # it walked that call, so the file held exactly enough history to satisfy the count at the
-    # instant it was written -- and nothing for the hours after. That is fine for a
-    # constellation whose records arrive continuously and fatal for one that updates on a
-    # schedule. BDS-3 broadcasts hourly ON THE HOUR and IGS hourlies publish ~15-25 min after
-    # the hour closes, so BeiDou's freshest available record ages 25 min -> 2 h 25 min and then
-    # steps back. Measured 2026-08-27 20:57 UTC, identical at all twelve stations (it is a
-    # property of the CONSTELLATION, not of any mirror): G freshest 55 min, E 75, C 115.
-    # The merge then held C 28 records at toc age 115/175/295 min against Galileo's 284 -- the
-    # median BeiDou record was 73% expired the moment the file was written, so an hour later it
-    # fell out of predict_all's 4 h window and predictable C went 23 -> 8. Both BeiDou chains
-    # drifted back toward PRESENCE UNANCHORED, on a healthy sky, with every source working.
-    #
-    # And there is NO daily backstop to cover the gap: today's daily has never been fetched
-    # (BKG down, CDDIS publishes only CLOSED days) and yesterday's is ~25 h old, every record
-    # far past 4 h. The whole sky rests on this file, so this file has to hold the window.
-    #
-    # Keeping a rolling union over _HOURLY_KEEP_S makes coverage a property of the WINDOW rather
-    # than of one fetch. Records are keyed (sys, prn, toc), so re-fetching an hour is idempotent
-    # and two stations carrying the same broadcast record store it once.
+    # ---- the rolling store ---------------------------------------------------------------
+    # Accumulate, do not rebuild. A file built from only this call's hours holds just enough
+    # history for the count at the moment it is written. BDS-3 updates hourly on the hour and
+    # IGS hourlies publish ~15-25 min after the hour closes, so BeiDou's freshest available
+    # record is up to ~2 h 25 min old, and a rebuilt file's BeiDou records can expire before the
+    # next refresh. While BKG is down no daily covers that gap (CDDIS publishes only closed
+    # days, and yesterday's records are past 4 h), so this file must hold the whole window.
+    # Records are keyed (sys, prn, toc), so re-fetching an hour is idempotent and a record
+    # carried by two stations is stored once.
     store, header = _store_load(cache_dir, when)
     n_start = len(store)
     fetched = 0
@@ -526,11 +419,9 @@ def _fetch_station_hourly(when, cache_dir, token):
     done = set()  # (station, hour) already fetched -- never pay twice
     for dh in (0, 1, 2, 3):
         h = when - timedelta(hours=dh)
-        # ⚠️ THE EXIT TEST GOVERNS HOW FAR BACK TO WALK, NOT WHETHER TO FETCH AT ALL. With a
-        # store that already satisfies coverage, an unconditional `if met: break` would stop
-        # before pulling the newest hour and the store would never refresh -- it would coast to
-        # expiry and then collapse, which is the bug this block exists to end, wearing a
-        # different hat. So the two newest hours are ALWAYS attempted; older ones are top-up.
+        # The exit test decides how far back to walk, not whether to fetch: the two newest
+        # hours are always attempted, older ones only to top up coverage. Stopping as soon as
+        # the store met its target would stop it refreshing, and it would coast to expiry.
         if dh >= 2 and _hourly_target_met(seen, max(fetched, _HOURLY_MIN_STATIONS)):
             break
         for st in _HOURLY_STATIONS:
@@ -541,14 +432,13 @@ def _fetch_station_hourly(when, cache_dir, token):
             if (st, h.hour) in done:
                 continue
             done.add((st, h.hour))
-            # ⚠️ MIRROR ORDER IS PER STATION, NOT PER HOUR. A mirror that has not published
-            # this hour yet 404s while the other already has it, and the point is to get the
-            # FRESHEST hour available anywhere -- not to pick a host and then walk backwards
-            # in time on it alone.
+            # Mirror order is per station, not per hour: a mirror that has not published this
+            # hour yet 404s while the other may have it, and the aim is the freshest hour
+            # available anywhere, not one host walked backwards in time.
             txt = None
             for url, hdrs in _hourly_sources(st, h, token):
-                # A dead host must be paid for ONCE, not once per station: twelve stations x a
-                # 20 s timeout is four minutes of a broker cycle.
+                # A dead host is paid for once, not once per station: twelve stations x a 20 s
+                # timeout is four minutes.
                 if _src_skip(url):
                     continue
                 try:
@@ -563,8 +453,8 @@ def _fetch_station_hourly(when, cache_dir, token):
                 except Exception as e:
                     _src_failed(
                         url, exc=e
-                    )  # 404 = this hour is not published yet, not a
-                    continue  # dead host -- _src_failed knows the difference
+                    )  # a 404 or FTP 550 is an hour not yet published, not a
+                    continue  # dead host; _src_failed blacklists only the latter
             if txt is None:
                 continue
             k = txt.find("END OF HEADER")
@@ -574,8 +464,6 @@ def _fetch_station_hourly(when, cache_dir, token):
             if header is None:
                 header = txt[:eoh]
             fetched += 1
-            # INTO THE STORE, keyed (sys, prn, toc): re-fetching an hour is idempotent, and two
-            # stations carrying the same broadcast record store it once.
             for sysc, prn, toc, text in _split_records(txt[eoh:]):
                 t = _toc_of((sysc, prn, toc))
                 if t is not None and abs((when - t).total_seconds()) > _HOURLY_KEEP_S:
@@ -584,16 +472,8 @@ def _fetch_station_hourly(when, cache_dir, token):
             for ln in txt[eoh:].splitlines():
                 if len(ln) > 3 and ln[0] in seen and ln[1:3].isdigit():
                     prn = int(ln[1:3])
-                    # ⚠️⚠️ COUNT WHAT IS USABLE, NOT WHAT IS PRESENT. The exit test asks
-                    # "have I got enough satellites"; a record whose toe is already past the
-                    # predictor's validity window answers yes and predicts nothing. Measured
-                    # 2026-08-27 20:18, on a merge that reported `target met` with C21:
-                    # only SEVEN of those 21 BeiDou records were predictable, and the probe
-                    # band had 2 candidates against the 3 the presence gate needs -- so both
-                    # BeiDou chains sat UNANCHORED behind a merge that called itself full.
-                    # This is the same defect as counting SOURCES instead of coverage, and
-                    # as stopping on recency instead of coverage: an exit test on a PROXY
-                    # for the thing wanted rather than on the thing itself.
+                    # Count usable records, not present ones: a record past the predictor's
+                    # validity window satisfies a count and predicts nothing.
                     if prn >= _HOURLY_TARGET[ln[0]][0] and _rec_is_fresh(ln, when):
                         seen[ln[0]].add(prn)
     # ---- one file: the whole rolling window, not just this call's fetches -----------------
@@ -602,14 +482,15 @@ def _fetch_station_hourly(when, cache_dir, token):
     got = "/".join("%s%d" % (k2, len(seen[k2])) for k2 in "GEC")
     thin = [k2 for k2, v in _HOURLY_TARGET.items() if len(seen[k2]) < v[1]]
     hours = sorted({hh for _, hh in done})
-    # Oldest first, so best_eph's scan and any human reading the file both see time order.
+    # Oldest first, then by key: a deterministic order (test_brdc_golden hashes the file) that
+    # reads in time order.
     order = sorted(
         store, key=lambda k: (_toc_of(k, datetime(1980, 1, 6, tzinfo=timezone.utc)), k)
     )
     bodies = [store[k] for k in order]
-    # ⚠️ A NEGATIVE AGE IS NORMAL, NOT A BUG. GPS/Galileo centre toe in the fit interval, so a
-    # freshly broadcast record is routinely stamped up to ~1 h AHEAD of now. Say "ahead" rather
-    # than printing a minus sign that reads like a clock fault at 3am.
+    # A negative age is normal: GPS and Galileo centre toe in the fit interval, so a fresh record
+    # is often stamped up to ~1 h ahead of now. The log says "ahead" rather than printing a
+    # minus sign that reads as a clock fault.
     span = [t for t in (_toc_of(k) for k in order) if t is not None]
     if span:
         _n = (when - max(span)).total_seconds() / 60.0
@@ -621,9 +502,8 @@ def _fetch_station_hourly(when, cache_dir, token):
     else:
         age = "?"
     if thin:
-        # ⚠️ SAY SO. A merge that never reached its target still returns a file, and a thin
-        # file is indistinguishable from a healthy one downstream -- it just makes a
-        # constellation's prediction collapse an hour later, somewhere else.
+        # A below-target merge still returns a file, so log it: downstream a thin file looks
+        # healthy until a constellation's prediction collapses.
         _log_hourly(
             "BRDC hourly merge: %d station-file(s) over hour(s) %s -> %s; BELOW TARGET "
             "for %s (want %s). Prediction for %s will be thin -- probes, drop gates "
@@ -659,11 +539,11 @@ def _fetch_station_hourly(when, cache_dir, token):
 
 
 def _try_refresh_daily(kind, year, doy, cache_dir, tok):
-    """Best-effort fetch of ONE daily-BRDC variant for the per-PRN merge -- S (CDDIS super-sled,
-    widest coverage) or R (BKG). Reuses a <2 h cache, else re-downloads via the same mirror list
-    as the primary (_brdc_sources routes each variant to whoever serves it). Returns its cached
-    path or None; never raises. This is what guarantees the FRESH variant reaches the merge even
-    when the primary fetch returned the frozen one -- the BKG-froze-at-08:00 / CDDIS-fresh case."""
+    """Best-effort fetch of one daily-BRDC variant (S or R) for the per-PRN merge. Reuses a
+    cache younger than 2 h, else downloads through _brdc_sources. Returns the cached path or
+    None; never raises. Fetching each variant on its own lets a fresh one reach the merge when
+    _fetch_brdc_merged returned a frozen one (one variant can stop updating mid-day while the
+    other does not)."""
     name = "BRDC00WRD_%s_%04d%03d0000_01D_MN.rnx.gz" % (kind, year, doy)
     local = os.path.join(cache_dir, name)
     if os.path.exists(local) and time.time() - os.path.getmtime(local) < 7200:
@@ -686,28 +566,21 @@ def _try_refresh_daily(kind, year, doy, cache_dir, tok):
         except Exception as e:
             _src_failed(url, exc=e)
             continue
-    # EVERY source skipped means every source is cooling down. Clear the marks and let the next
-    # call try again rather than starving forever on our own bookkeeping.
+    # Every source was skipped, so every one is cooling down: clear all the marks so the next
+    # call retries at once instead of waiting out the cooldown.
     if tried == 0:
         _src_dead.clear()
     return local if os.path.exists(local) else None
 
 
-# ── NEGATIVE CACHE FOR DEAD SOURCES (2026-08-27) ───────────────────────────────────────────
-# ⚠️ A DEAD MIRROR MUST BE PAID FOR ONCE, NOT ONCE PER CHAIN PER REFRESH. Every fetch here is
-# SYNCHRONOUS inside the broker's cycle, and the sources are tried in order, so while
-# igs.bkg.bund.de is unreachable each of the five chain threads independently opens a socket to
-# it and blocks for the full 30 s connect timeout -- before falling through to CDDIS, which
-# works. Observed 2026-08-27: five sockets in SYN-SENT to 141.74.52.58:443 on every cycle, the
-# broker crawling, and startup taking minutes instead of seconds. The data was never at risk
-# (the fallback delivers); the LATENCY was, and it is the kind that reads as "the broker hung".
-#
-# So: remember which source URL prefix just failed and skip it for _SRC_COOLDOWN_S. The cost of
-# being wrong is bounded and self-correcting -- a source that recovers is retried after the
-# cooldown, and the merge is per-PRN freshest-wins, so skipping a live-but-slow mirror for a
-# few minutes costs nothing a later merge cannot repair.
+# ── Negative cache for dead sources ────────────────────────────────────────────────────────
+# A dead mirror is paid for once, not on every fetch. The sources are tried in order and an
+# unreachable host blocks each attempt for the full timeout (30 s per daily, 20 s per station
+# file) before the next mirror is tried. A host that fails is skipped for _SRC_COOLDOWN_S.
+# Being wrong is bounded: a recovered host is retried after the cooldown, and the merge is
+# per-PRN freshest-wins, so a later merge repairs anything a skipped mirror would have supplied.
 _SRC_COOLDOWN_S = 300.0
-_src_dead = {}  # url prefix -> time.time() when it may be retried
+_src_dead = {}  # scheme://host -> time.time() when it may be retried
 
 
 def _src_key(url):
@@ -723,19 +596,19 @@ def _src_skip(url, now=None):
     return _src_dead.get(_src_key(url), 0.0) > (now or time.time())
 
 
-# Statuses that are a statement about the PATH, not about the host. Everything else -- a
-# timeout, a refused connection, a 5xx, a 200 that is not gzip -- says the mirror is not
+# Statuses that are a statement about the path, not the host. Any other failure (a timeout, a
+# refused connection, a 5xx, a daily mirror's 200 that is not gzip) says the host is not
 # serving, and blacklisting it is right.
 _PATH_STATUS = (404, 410)
-# The FTP dialect of the same thing. 550 is "no such file or directory", 450 is "temporarily
-# unavailable" -- both about the path. urllib wraps them in a URLError with no .code, so the
-# status only survives in the message ("ftp error: 550 CWD command failed: ...").
+# The FTP equivalents: 550 "no such file or directory", 450 "file unavailable" and 553 "file
+# name not allowed". urllib wraps them in a URLError with no .code, so the status survives only
+# in the message ("ftp error: 550 CWD command failed: ...").
 _FTP_PATH_RE = re.compile(r"ftp error:\s*(\d{3})")
 _FTP_PATH_STATUS = ("550", "450", "553")
 
 
 def _is_path_failure(exc):
-    """Is this exception about the PATH (absent file) rather than the HOST (not serving)?"""
+    """Is this exception about the path (absent file) rather than the host (not serving)?"""
     if exc is None:
         return False
     if getattr(exc, "code", None) in _PATH_STATUS:
@@ -745,23 +618,13 @@ def _is_path_failure(exc):
 
 
 def _src_failed(url, now=None, exc=None):
-    """Blacklist a source host for the cooldown -- unless the failure was about the PATH.
+    """Blacklist a source host for _SRC_COOLDOWN_S, unless the failure was about the path.
 
-    ⚠️ A 404 IS NOT A DEAD HOST, AND TREATING IT AS ONE POISONS THE MIRROR THAT WORKS
-    (2026-08-27). The key is scheme+host, deliberately, so one dead server is skipped for
-    every path under it. But the daily fetch asks CDDIS for the CURRENT day, and CDDIS only
-    publishes CLOSED days -- so that request 404s every time, by design, and it was marking
-    the whole of cddis.nasa.gov dead for 300 s. The very next call is the one that fetches
-    YESTERDAY's daily from CDDIS, which does exist and is exactly the fallback that has to
-    work while BKG is unreachable. A guaranteed-absent path was disabling a live server.
-
-    ⚠️ AND IT HAS AN FTP DIALECT, found the same afternoon by actually exercising the new
-    GSSC mirror: the hour-walk starts at the CURRENT hour, whose directory does not exist
-    yet, and GSSC answers `URLError('ftp error: 550 CWD command failed')` -- no `.code` at
-    all, so the HTTP-only test passed it straight through to the blacklist. ONE not-yet-
-    published hour disabled the entire mirror for 300 s, on its first call: the whole
-    12-station x 4-hour walk collapsed to a single attempt. Fixing only the HTTP half would
-    have shipped a second mirror that never fetched anything.
+    The key is scheme+host, so one dead server is skipped for every path under it. An absent
+    path is not a dead host: CDDIS never has the current day's daily, and the hour walk starts
+    at the current hour, which no mirror has published yet. Those requests fail by design, as
+    an HTTP 404 or an FTP 550 (a URLError with no .code), and blacklisting on them would
+    disable the host that serves the previous day or the previous hour.
     """
     if _is_path_failure(exc):
         return
@@ -772,36 +635,27 @@ def _src_ok(url):
     _src_dead.pop(_src_key(url), None)
 
 
-# A daily older than this cannot carry a record inside predict_all's 4 h toe window, so a
-# read-only consumer gains nothing by parsing it. Generous (dailies are written once and then
-# only re-fetched when stale) but bounded.
+# A daily last written longer ago than this cannot hold a record inside predict_all's 4 h toe
+# window, so cached_brdc skips it. Generous but bounded: a daily is rewritten only while its
+# day is current.
 _CACHED_DAILY_MAX_AGE_S = 172800.0  # 2 days
 
 
 def cached_brdc(cache_dir=CACHE):
-    """READ-ONLY: the nav files already on disk, best-first. Never fetches, never writes.
+    """Read-only: the nav files already in the cache, freshest first by mtime. Never fetches,
+    never writes.
 
-    ⚠️⚠️ FOR EVERY CONSUMER THAT IS NOT THE BROKER. This cache is a shared path, and any process
-    importing this module can write it -- including one that has been up for days holding an old
-    copy of the merge. Measured 2026-08-27: the js_viewer (up since Aug 19) was calling
-    fetch_brdc() purely to draw a sky plot, and so was refetching and REBUILDING the merged file
-    on its own schedule with nine-day-old logic. Its rewrites left 29 records past the keep
-    window and a coverage sidecar 33 minutes older than the file it described, and they silently
-    undid the broker's rolling store several times in one evening.
-
-    ONE WRITER. The broker owns this cache because it is the process whose correctness depends
-    on it; everyone else reads what is there and degrades gracefully when it is missing. A
-    consumer that only wants geometry should ideally not touch the cache at all -- it should ask
-    the broker, which already knows every satellite's az/el -- but read-only closes the write
-    hole immediately and without a protocol change.
+    For every consumer that is not the broker. The cache is shared, and a process that writes
+    it with its own copy of the merge logic (a long-running one runs whatever version it
+    imported) undoes the broker's rolling store. The broker owns the cache because its
+    correctness depends on it; everyone else reads what is there. A consumer that only wants
+    geometry could instead ask the broker, which knows every satellite's az/el.
 
     Returns [] when the cache is empty, so callers can fall back rather than raise.
     """
-    # ⚠️ THE SAME SHORT LIST fetch_brdc BUILDS, NOT THE WHOLE DIRECTORY. The cache accumulates
-    # every daily ever downloaded -- 59 files here on the first try -- and handing all of them
-    # to parse_rinex_nav would parse tens of megabytes to produce records that best_eph then
-    # discards for being days past their toe. Take the station-hourly plus dailies touched
-    # within _CACHED_DAILY_MAX_AGE_S; anything older cannot contribute to a 4 h window.
+    # Not the whole directory: the cache keeps every daily ever downloaded, and parsing them all
+    # costs tens of megabytes for records best_eph then discards. Take the station-hourly merge
+    # plus dailies written within _CACHED_DAILY_MAX_AGE_S.
     try:
         names = [f for f in os.listdir(cache_dir) if f.endswith((".rnx", ".rnx.gz"))]
     except Exception:
@@ -820,24 +674,22 @@ def cached_brdc(cache_dir=CACHE):
     return [f for _, f in out]
 
 
-# ── THE FETCH RUNS OFF THE CONTROL LOOP ────────────────────────────────────────────────────
-# A network fetch inside the broker's control pass is a STALL: every station file carries a
-# 20 s timeout and the daily mirrors 30 s, while the telemetry ring holds ~10 s of windows.
-# A stall longer than the ring loses windows, and fleetadr.fold_record then breaks every
-# fleet-ADR arc on that chain -- correctly, an increment it cannot account for is a break --
-# so one slow mirror throws away the carrier level of every satellite on every chain at once.
-# The loop is therefore handed what is already on disk, and the refresh runs on ONE daemon
-# thread at a time; the next call after it lands sees the new files. The synchronous path is
-# kept for the cases where there is nothing to hand out: a pinned replay (hermetic by
-# definition), an empty cache, and a caller that says so because it has no ephemeris at all.
+# ── The fetch runs off the control loop ────────────────────────────────────────────────────
+# A network fetch inside the broker's control pass stalls it (20 s per station file, 30 s per
+# daily mirror) past the telemetry ring's ~10 s of windows. Lost windows make
+# fleetadr.fold_record break every fleet-ADR arc on that chain, so one slow mirror would throw
+# away the carrier level of every satellite on every chain. The loop is handed what is already
+# on disk, and one daemon thread at a time refreshes it; the next call after it lands sees the
+# new files. The synchronous path remains for when there is nothing to hand out: a pinned
+# replay, an empty cache, or a caller with no ephemeris at all (block=True).
 _REFRESH = {"thread": None, "lock": threading.Lock()}
 
 
 def _cached_sources(when, cache_dir):
-    """What _fetch_brdc_now would return with NO network: the daily variants on disk for
-    `when`'s day -- the previous day only when this day has none, the rule _fetch_brdc_merged
-    applies -- then the station-hourly merge. [] when nothing is cached. Order is immaterial
-    to parse_rinex_nav, which merges per PRN by freshest toe."""
+    """The cached files fetch_brdc hands out without touching the network: the daily variants
+    on disk for `when`'s day (the previous day's only when this day has none, as in
+    _fetch_brdc_merged), then the station-hourly merge. [] when nothing is cached.
+    parse_rinex_nav merges per PRN by toe, so the order only breaks identical-toe ties."""
     out = []
     for back in (0, 1):
         d = when - timedelta(days=back)
@@ -858,8 +710,8 @@ def _cached_sources(when, cache_dir):
 
 
 def _refresh_in_background(when, cache_dir):
-    """Start the synchronous fetch on a daemon thread unless one is still running. Returns
-    True when a thread was started. Its failure is logged and leaves the disk as it was."""
+    """Start _fetch_brdc_now on a daemon thread unless one is still running. Returns True when
+    a thread was started. A failure is logged and the cached files stay in service."""
     with _REFRESH["lock"]:
         t = _REFRESH["thread"]
         if t is not None and t.is_alive():
@@ -898,11 +750,10 @@ def _offline_cache_dir(when, cache_dir):
     """A `when` more than an hour from the wall clock gets its own cache, cache_dir/offline/<day>.
 
     The rolling store in cache_dir belongs to the process that follows the clock (the broker).
-    An offline caller asking for another day's sky (the beam cube, #159) used to merge the
-    live store against that day, prune it to that window and rewrite it: the broker's next
-    reload then loaded yesterday's records, reported PREDICTION COLLAPSE and dropped every
-    satellite below the BRDC horizon (2026-10-08 01:36Z, 45 min of no sky). The guard lives
-    here, not in the callers, so no caller can do that again."""
+    An offline caller asking for another day's sky (the beam cube) would otherwise merge the
+    live store against that day, prune it to that window and rewrite it, and the broker's next
+    reload would load the wrong day's records and lose the sky. The guard lives here, not in
+    the callers, so no caller can bypass it."""
     if when is None or os.path.basename(os.path.dirname(cache_dir)) == "offline":
         return cache_dir
     if abs((datetime.now(timezone.utc) - when).total_seconds()) < _OFFLINE_WHEN_S:
@@ -913,14 +764,13 @@ def _offline_cache_dir(when, cache_dir):
 
 
 def fetch_brdc(when=None, cache_dir=CACHE, block=False):
-    """Ordered list of BRDC nav-source files for `when`, WITHOUT blocking the caller on the
-    network: the files already on disk are returned and a refresh is started on a daemon
-    thread (see the module note above). Synchronous -- the full _fetch_brdc_now -- only when
-    GNSS_BRDC_DIR pins the sky, when the cache is empty, or when block=True: a caller with no
+    """Ordered list of BRDC nav-source files for `when`, without blocking the caller on the
+    network: the files already on disk are returned and a refresh starts on a daemon thread
+    (see the note above _REFRESH). Synchronous (the full _fetch_brdc_now) only when
+    GNSS_BRDC_DIR pins the sky, when nothing is cached, or when block=True: a caller with no
     ephemeris yet must wait, one with an ephemeris must not.
 
-    The ordering/merging contract and the supply history are documented on _fetch_brdc_now,
-    which is the function this used to be."""
+    The ordering and merging contract is documented on _fetch_brdc_now."""
     if os.environ.get("GNSS_BRDC_DIR") or block:
         return _fetch_brdc_now(when, cache_dir)
     when = when or datetime.now(timezone.utc)
@@ -933,29 +783,18 @@ def fetch_brdc(when=None, cache_dir=CACHE, block=False):
 
 
 def _fetch_brdc_now(when=None, cache_dir=CACHE):
-    """SYNCHRONOUS. Ordered list of currently-available BRDC nav-source files (best-first). parse_rinex_nav
-    merges them PER-PRN (freshest toe per PRN wins, union of records), so no single frozen
-    product can starve a PRN another source carries fresh.
+    """Synchronous: fetch, then return the ordered list of BRDC nav-source files, best-first.
+    parse_rinex_nav merges them per PRN (union of records, freshest toe per PRN wins), so one
+    frozen product cannot starve a PRN another source carries fresh. Every source contributes;
+    callers do parse_rinex_nav(fetch_brdc(...)).
 
-    ⚠️ GNSS_BRDC_DIR PINS THE SKY (task #29). When set, return exactly the nav files in that
-    directory -- no cache, no network, no date logic. This is what makes the broker
-    equivalence gate hermetic: a transcript replay is a claim about CODE, but the ephemeris
-    is an input too, refreshed several times a day, and it moved the on-sky digests TWICE in
-    two days with byte-identical code (be7d46e8e:docs/gnss_gpu_search.md 11.18.2b -- the second
-    time was midnight UTC rolling the day-of-year during a review of unrelated work). Replays run
-    against a committed-by-hash snapshot; live brokers never set this and keep the fresh sky.
+    GNSS_BRDC_DIR pins the sky: when set, return exactly the nav files in that directory (no
+    cache, no network, no date logic), and raise if it holds none. That makes broker_equiv's
+    replays hermetic: the ephemeris is an input too, refreshed several times a day, and it
+    moves the on-sky digests with identical code. Live brokers never set it.
 
-    Historically this returned one path chosen by a fragile single-file fallback: prefer the
-    merged daily, and only if IT was globally stale (>2.5 h) borrow the station-hourly instead.
-    That failed on a PARTIAL freeze -- 2026-07-22 BKG's daily froze at 08:00 UTC, so the code
-    dropped to the station-hourly, which carries only a thin ~18-PRN BeiDou set and has no C39 at
-    all, while the CDDIS daily (fresh C39 to 16:00) sat unused in cache -> C31/C39 showed 'el --'
-    despite strong tracking. Now every source contributes and the merge picks each PRN's freshest
-    record. Callers all do parse_rinex_nav(fetch_brdc()), which accepts a list transparently.
-
-    ⚠️ THIS FUNCTION FETCHES AND WRITES, so it is for the process that OWNS the cache -- the
-    broker. Anything else wanting geometry should use cached_brdc(), or better, ask the broker.
-    See cached_brdc for what a second writer did to this cache on 2026-08-27."""
+    This function fetches and writes, so it belongs to the process that owns the cache, the
+    broker. Anything else that wants geometry should use cached_brdc() or ask the broker."""
     pin = os.environ.get("GNSS_BRDC_DIR")
     if pin:
         pinned = sorted(
@@ -971,21 +810,10 @@ def _fetch_brdc_now(when=None, cache_dir=CACHE):
         return pinned
     when = when or datetime.now(timezone.utc)
     cache_dir = _offline_cache_dir(when, cache_dir)
-    # ⚠️⚠️ THE DAILY IS PREFERRED, NOT REQUIRED -- AND LETTING IT RAISE TOOK THE FLEET DOWN
-    # (2026-08-28 00:11). _fetch_brdc_merged raises when no daily is reachable and none is
-    # cached, and that propagated out of fetch_brdc, so the almanac reported "unavailable",
-    # fell back to a skyfield path that is not installed, disabled dead reckoning, left
-    # dr_state None, and every chain then died on the first unguarded deref.
-    #
-    # It fired at the UTC DAY ROLL. BKG has been unreachable all day and CDDIS publishes only
-    # CLOSED days, so the daily for the new day does not exist and will not today. A broker
-    # already running sails through midnight on the almanac in memory; every restart after
-    # 00:00 dies at startup. That is a supply outage turned into a total one by an exception.
-    #
-    # And it was NEVER NECESSARY: the station-hourly merge is a complete substitute -- this
-    # module's own comments say it is THE only current-day source when BKG is down -- and at
-    # the moment of the outage it held 1145 records over a 4 h window, G32/E30/C23, enough for
-    # 30 satellites above the horizon. The sky was sitting in the cache the whole time.
+    # The daily is preferred, not required. _fetch_brdc_merged raises when no daily is
+    # reachable or cached, as can happen after the UTC day roll while BKG is down
+    # (CDDIS publishes only closed days). The station-hourly merge alone still carries a usable
+    # sky, so log the failure and go on rather than discard it.
     srcs = []
     try:
         srcs.append(_fetch_brdc_merged(when, cache_dir))  # authoritative daily
@@ -998,9 +826,9 @@ def _fetch_brdc_now(when=None, cache_dir=CACHE):
         )
     tok = _earthdata_token()
     doy = when.timetuple().tm_yday
-    # Both daily variants (S first = widest), then the station-hourly -- each best-effort and
-    # cache-gated, so a failure just leaves `primary` and never blocks. A stale/frozen variant is
-    # harmless: its older toe's simply lose the per-PRN freshest-toe selection.
+    # Both daily variants (S first), then the station-hourly merge, each best-effort and
+    # cache-gated: a failure only leaves that source out. A stale variant is harmless; its
+    # older toes lose the per-PRN freshest-toe selection.
     for kind in ("S", "R"):
         p = _try_refresh_daily(kind, when.year, doy, cache_dir, tok)
         if p and p not in srcs:
@@ -1009,8 +837,7 @@ def _fetch_brdc_now(when=None, cache_dir=CACHE):
     if hourly and hourly not in srcs:
         srcs.append(hourly)
     if not srcs:
-        # BOTH paths gone. NOW it is fatal, and says which two things failed rather than
-        # naming only the last one tried.
+        # The daily and the hourly both failed: fatal, and the message names both.
         raise RuntimeError(
             "no BRDC source at all: the daily is unreachable/uncached AND the "
             "station-hourly merge returned nothing. Check BKG/CDDIS/GSSC "
@@ -1023,23 +850,17 @@ def _fetch_brdc_merged(when=None, cache_dir=CACHE):
     """The merged daily BRDC file for `when` (BKG first, CDDIS-with-token fallback)."""
     os.makedirs(cache_dir, exist_ok=True)
     when = when or datetime.now(timezone.utc)
-    # Process each DAY fully -- fresh cache, then (re-)download, then a STALE same-day cache --
-    # BEFORE falling back to the previous day. This ordering is load-bearing: a current-day
-    # file predicts even hours stale (its toe's still bracket "now"), but YESTERDAY's file
-    # predicts NOTHING today (all toe's > best_eph's 4 h window -> predict_all returns 0 ->
-    # the broker seeds/hints nothing -> the require_hint search goes dark on every band).
-    # The old code returned a cached yesterday file (back==1) UNCONDITIONALLY the moment a
-    # current-day re-fetch failed, handing the broker a dead-on-arrival ephemeris during a
-    # BRDC-server outage (2026-07-21: whole node stopped acquiring while today's valid file
-    # sat one line up in the cache). Fix: only fall to the previous day when THIS day yields
-    # nothing at all -- not merely because its re-download failed.
+    # Finish each day (fresh cache, then download, then a stale same-day cache) before falling
+    # back to the previous day. A current-day file predicts even when hours stale, because its
+    # toes still bracket now; yesterday's stops predicting a few hours into the UTC day
+    # (best_eph's 4 h window), and then the broker seeds and hints nothing. So the previous
+    # day is used only when this day yields nothing at all, not merely when its download fails.
     for back in (0, 1):
         d = when - timedelta(days=back)
         doy = d.timetuple().tm_yday
-        # (kind, local path) PAIRS, not bare paths: the mirrors serve DIFFERENT product names
-        # for the same variant (BKG BRDC00WRD vs CDDIS BRDC00IGS/BRDM00DLR), so the download
-        # loop below needs to know which variant slot it is filling. A bare path list left
-        # `kind` leaking out of the loop that built it -- always "R" by the time it was read.
+        # (kind, local path) pairs: the mirrors serve different product names for the same
+        # variant (BKG BRDC00WRD vs CDDIS BRDC00IGS/BRDM00DLR), so the download loop below
+        # needs to know which variant slot it is filling.
         locals_ = [
             (
                 kind,
@@ -1050,21 +871,18 @@ def _fetch_brdc_merged(when=None, cache_dir=CACHE):
             )
             for kind in ("S", "R")
         ]
-        # 1) a FRESH current-day cache (< 2 h) or ANY cached previous-day file (final/immutable)
-        #    is usable as-is, no network needed.
+        # 1) a fresh current-day cache (< 2 h) or any cached previous-day file (final) is
+        #    usable as-is, no network needed.
         for _kind, local in locals_:
             if os.path.exists(local) and (
                 back == 1 or time.time() - os.path.getmtime(local) < 7200
             ):
                 return local
-        # 2) (re-)download this day (current-day files GROW through the day, so refresh a stale
-        #    cache to pull the newest toe's). Try each mirror (BKG, then CDDIS if a token exists);
+        # 2) (re-)download this day (current-day files grow through the day, so refresh a stale
+        #    cache to pull the newest toes). Try each mirror (BKG, then CDDIS if a token exists);
         #    a valid BRDC is gzip, so reject anything without the gzip magic (an auth/error page
-        #    served as 200 must never be cached as if it were ephemeris).
-        # ⚠️ THE SAME NEGATIVE CACHE AS _fetch_brdc_variant, AND IT MUST BE. This is a second
-        # copy of that mirror loop, and patching only the other one left BKG being dialled on
-        # every cycle anyway -- five sockets still in SYN-SENT, from HERE (2026-08-27). Two
-        # copies of a retry policy is two places to fix and one to forget.
+        #    served as 200 must never be cached as if it were ephemeris). This loop repeats
+        #    _try_refresh_daily's and must keep the same negative cache.
         for kind, local in locals_:
             for url, headers in _brdc_sources(kind, d.year, doy):
                 if _src_skip(url):
@@ -1082,7 +900,7 @@ def _fetch_brdc_merged(when=None, cache_dir=CACHE):
                 except Exception as e:
                     _src_failed(url, exc=e)
                     continue
-        # 3) download failed but a STALE same-day cache exists -> use it (still predicts) rather
+        # 3) download failed but a stale same-day cache exists -> use it (still predicts) rather
         #    than falling to the previous day's dead-for-today ephemeris.
         for _kind, local in locals_:
             if os.path.exists(local):

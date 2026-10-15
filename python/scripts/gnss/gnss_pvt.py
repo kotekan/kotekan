@@ -1,20 +1,19 @@
 """Single-point position (PVT self-survey) from the code observable.
 
-Now that the code observable is metre-good (the REC_CP export-currency fix), the obs logs carry a
-per-satellite `code_resid_m` = measured code range MINUS the model range predicted at the CONFIG
-position, plus `az`/`el`. That residual is exactly a LINEARIZED single-point-position observation
-about the config position:
+The obs logs carry a per-satellite `code_resid_m` (measured code range minus the model range
+predicted at the configured position) and `az`/`el`. That residual is a linearized
+single-point-position observation about the configured position:
 
     code_resid_i  ~=  -e_i . dx  +  c*dt_group  +  (iono_i + multipath_i + noise_i)
 
 where e_i is the line-of-sight unit vector (rx -> sat, from az/el) and dx is the receiver-position
-correction. The common receiver/dongle clock is a free parameter PER GROUP -- one group per
-(constellation, band), since each band's dongle and each constellation carry a different clock/
-inter-system bias. Least-squares over (dx, {dt_group}) recovers the position; the post-fit residual
-scales the covariance -> a real 1-sigma error ellipse. Because the config position is the true site,
-this is a SELF-SURVEY / validation: it should return the config position to within a few metres
-(single-frequency, so iono is uncorrected and sets the floor), and the offset + error are the
-"is the whole chain self-consistent" check.
+correction. The receiver clock is a free parameter per group (livebeam_server uses one group per
+chain), since each band and constellation carries its own clock and inter-system bias. Least
+squares over (dx, {dt_group}) recovers the position; the post-fit residual scales the covariance
+into a 1-sigma error ellipse. Because the configured position is the true site, this is a
+self-survey: it should return that position to within a few metres (single frequency, so the
+uncorrected ionosphere sets the floor), and the offset and its error check that the whole chain
+is self-consistent.
 
 Pure geometry; no network, no broker state. Solve per group and a combined best-fit.
 """
@@ -99,9 +98,10 @@ def _solve(rows, n_groups, reject_floor=60.0, reject_k=5.0):
     max(reject_floor, reject_k * median|post|) and redundancy remains. Weights are 1/sigma^2
     from each measurement's own scatter (see solve); the rejection test stays in metres so
     a heavily down-weighted row can still be thrown out for being wrong rather than merely
-    noisy. Returns (dx[3], clocks[n_groups], sigma0, sigma_diag, Ninv_unit, n_used, n_rej)
-    or None; sigma0 is the unitless a-posteriori factor (1.0 = the scatter matched the
-    weights) and sigma_diag the 1-sigma parameter errors in metres."""
+    noisy. Returns (dx[3], clocks[n_groups], sigma0, sigma_diag, Ninv_unit, n_used, n_rej,
+    rms_m) or None; sigma0 is the unitless a-posteriori factor (1.0 = the scatter matched the
+    weights), sigma_diag the 1-sigma parameter errors in metres and rms_m the unweighted
+    post-fit rms in metres."""
     npar = 3 + n_groups
     kept = list(rows)
     n_rej = 0
@@ -154,14 +154,15 @@ def hatch_smooth(rows, window_s, wrap_m=None):
     not see: code noise, code multipath, and twice the ionosphere (the code-carrier
     divergence, slow). So the mean of (code - carrier) over a window is a low-noise estimate
     of that constant, and carrier_now + that mean is the code range with the carrier's noise
-    and the code's absoluteness. Carrier phase must never be averaged ACROSS an arc break --
-    the constant changes there -- so only rows sharing the newest row's `adr_arc` enter.
+    and the code's absoluteness. Carrier phase must never be averaged across an arc break (the
+    constant changes there), so only rows on the newest row's carrier arc (`carr_arc`, else
+    `adr_arc`) enter.
 
-    `rows` are obs-log dicts (t, code_resid_m, carr_resid_m, adr_arc) for ONE (sys, prn, band);
-    the newest row is the epoch reported. `wrap_m` is the code period in metres: the code
-    residual is modular, so each row is first unwrapped to within half a period of the newest.
-    Falls back to a plain boxcar of the code when no carrier is available, and to the single
-    newest row when the window holds nothing else.
+    `rows` are obs-log dicts (t, code_resid_m, carr_resid_m, carr_arc or adr_arc) for one
+    (sys, prn, band); the newest row is the epoch reported. `wrap_m` is the code period in
+    metres: the code residual is modular, so each row is first unwrapped to within half a
+    period of the newest. Falls back to a plain boxcar of the code when no carrier is available
+    or the boxcar is quieter, and to the single newest row when the window holds nothing else.
     """
     rows = sorted(
         (
@@ -176,7 +177,7 @@ def hatch_smooth(rows, window_s, wrap_m=None):
     new = rows[-1]
 
     def _arc(r):
-        # the arc the CARRIER residual lives on (carr_arc), falling back to the ADR's
+        # the arc the carrier residual lives on (carr_arc), falling back to the ADR's
         a = r.get("carr_arc")
         return a if a is not None else r.get("adr_arc")
 
@@ -197,12 +198,10 @@ def hatch_smooth(rows, window_s, wrap_m=None):
 
     c = [_code(r) for r in sel]
     m_box, sd_box = _msd(c)
-    # THE CARRIER MUST EARN ITS PLACE. Hatch is only a gain when code - carrier is quieter
-    # than the code alone; a carrier that jumps between rows (a phase reference that moved, an
-    # arc the logger did not mark, an accumulated phase stamped at a different epoch than the
-    # row) makes it catastrophically worse, and the obs logs have carried exactly that. So
-    # both estimates are formed and the quieter one is reported. When the carrier is healthy
-    # this picks Hatch by orders of magnitude; when it is not, nothing is lost.
+    # Hatch helps only when code - carrier is quieter than the code alone; a carrier that jumps
+    # between rows (a moved phase reference, an unmarked arc break, a phase stamped at a
+    # different epoch than the row) makes it far worse. So both estimates are formed and the
+    # quieter one is reported.
     carr_ok = new.get("carr_resid_m") is not None and all(
         r.get("carr_resid_m") is not None for r in sel
     )
@@ -224,20 +223,21 @@ def solve(
     sigma_default_m=5.0,
 ):
     """PVT self-survey. `measurements`: iterable of dicts {group, az, el, resid_m} where `group`
-    is a (constellation, band) label, optionally with `sd_m` and `n` (the smoother's scatter and
-    support): each row is weighted 1/sigma^2 with sigma = max(sigma_floor_m, sd_m/sqrt(n)), or
-    sigma_default_m when it carries no scatter. This is what keeps a chain in its post-restart
-    transient (residuals jumping by chips, sd of 100 m) from steering the fit while seven quiet
-    chains sit at 3 m. A group whose label ends in "-IF" is an IONO-FREE
-    (dual-frequency) group; those are solved together into `combined_if`, and the single-frequency
-    groups into `combined`, so the two never mix (their clock biases differ and an IF sat is
-    correlated with its own single-freq rows). Returns {groups: {group: result}, combined,
-    combined_if}.
+    labels one receiver clock (a constellation and band), optionally with `sd_m` and `n` (the
+    smoother's scatter and support): each row is weighted 1/sigma^2 with
+    sigma = max(sigma_floor_m, sd_m/sqrt(n)), or sigma_default_m when it carries no scatter, so
+    a chain in its post-restart transient (residuals jumping by chips) is down-weighted rather
+    than steering the fit. A group whose label ends in "-IF" is an iono-free (dual-frequency)
+    group; those are solved together into `combined_if` and the single-frequency groups into
+    `combined`, so the two never mix (their clock biases differ and an IF satellite is
+    correlated with its own single-frequency rows). Returns
+    {groups: {group: result}, combined, combined_if}.
 
-    Each result: n_sats, position (lat/lon/alt + ECEF), offset dENU (m) from the config a-priori,
-    clock (m), resid_rms_m, sigma_enu (1-sigma m), dops. `combined`/`combined_if` solve their
-    groups jointly with one clock per group -- the best-fit position + error. `combined_if` is the
-    few-metre iono-free answer; `combined` the single-frequency (iono-limited) one for comparison."""
+    Each result: n_sats, n_rejected, lat/lon/alt and ecef, d_e/d_n/d_u (m) from the a-priori,
+    clock_m, resid_rms_m, sigma0, sigma_e/sigma_n/sigma_u (1-sigma m) and pdop/hdop/vdop.
+    `combined`/`combined_if` solve their groups jointly with one clock per group (clocks_m;
+    clock_m is None): the best-fit position and error. `combined_if` is the iono-free answer;
+    `combined` the single-frequency, iono-limited one."""
     apr = _llh_to_ecef(lat0, lon0, alt0)
     R = _enu_axes(lat0, lon0)  # rows E,N,U in ECEF
     # bucket usable measurements by group
@@ -254,10 +254,10 @@ def solve(
             else sigma_default_m
         )
         by_group.setdefault(g, []).append((_los_enu(az, el), float(res), sig))
-    # GROSS pre-filter: the good satellites cluster within ~tens of metres of the group median
-    # while bad ones (wrong sub-code-period ambiguity / mislock) sit km away. Cut those against
-    # the robust median BEFORE the LS, so even a thin group (too few sats to reject in-fit) is
-    # not wrecked by an outlier the iterative RAIM cannot afford to drop.
+    # Gross pre-filter: good satellites cluster within tens of metres of the group median while
+    # bad ones (wrong sub-code-period ambiguity, mislock) sit km away. Cutting at 1 km from the
+    # median before the LS keeps a thin group (too few satellites to reject in the fit) from
+    # being wrecked by an outlier the iterative RAIM cannot afford to drop.
     for g in list(by_group):
         obs = by_group[g]
         if len(obs) >= 4:
@@ -302,10 +302,10 @@ def solve(
             if _ok(Ninv, sd, nu, 4):
                 out["groups"][g] = _pack(dx, clk[0], sig0, sd, Ninv, nu, nr, rms)
 
-    # combined: one clock column per group. Solve single-frequency groups and iono-free (-IF)
-    # groups SEPARATELY -- an IF group's clock folds two dongle clocks together and its sats are
-    # the same physical satellites as the single-freq rows, so mixing them double-counts and
-    # cross-contaminates the two clock frames.
+    # combined: one clock column per group. Single-frequency and iono-free (-IF) groups are
+    # solved separately: an IF group's clock folds two bands' clocks together and its
+    # satellites are the same ones as the single-frequency rows, so mixing them double-counts
+    # and cross-contaminates the two clock frames.
     def _combined(sel):
         if not sel:
             return None

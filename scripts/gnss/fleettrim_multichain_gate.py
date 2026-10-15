@@ -1,27 +1,27 @@
 #!/usr/bin/env python3
-"""Gate: /set_policy must be per-chain, and a silent chain must disarm (#49 arming).
+"""Gate: GnssFleetTrim's /set_policy must be per-chain, and a silent chain's policy must expire.
 
-WHY THIS EXISTS. Every broker chain thread POSTs a payload naming ONLY its own chain:
+Every broker chain thread POSTs a payload naming only its own chain:
 
     {"chains": {"gal_e5a": {"armed": [...], "targets": [...], ...}}}
 
-while GnssFleetTrim used to store it with `_policy = got` -- a wholesale replace. With ONE
-armed chain that is invisible, and gps_l5 was the only armed chain for a day. The moment a
-second chain is armed the two clobber each other at the policy cadence and both fall to a
-duty cycle set by whoever posted last. It would have presented as "arming gal_e5a broke
-gps_l5", which is the most expensive possible way to learn it.
+If the stage replaced its stored policy wholesale on each POST, one armed chain would look
+fine, but two would clobber each other at the policy cadence and both fall to a duty cycle set
+by whoever posted last.
 
-⚠️ WHAT A GATE MUST VARY. The axis here is the NUMBER OF CHAINS POSTING, so this posts two
-and checks BOTH survive. A single-chain check cannot fail against either implementation and
-would have passed happily all day. Leg 3 exists for the same reason in reverse: it proves
-the anti-latch property the wholesale replace used to buy is still bought, by STOPPING a
-chain and watching it go -- an expiry that never fires is a gate that cannot fail.
+The axis this gate varies is the number of chains posting: leg 1 posts two and checks both
+survive (a single-chain check cannot fail against either implementation); leg 2 re-posts one
+and checks the other is untouched and the re-posted one is replaced, not merged. Leg 3 checks
+the other direction: a chain that stops posting must leave the stored policy after
+policy_ttl_s while a chain that keeps posting survives, and policy_expired must show that the
+expiry fired. It reads policy_armed_requested only; FleetDll keeps an expired chain's last
+armed set (GnssFleetTrim::rearm).
 
-Runs the real binary against a real config on offset ports; no data flows, which is the
-point (`policy_armed_requested` is read straight off _policy, so it is legible with the
-buffer empty). ~25 s.
+Runs the real binary against a real config on offset ports with no data flowing:
+`policy_armed_requested` is read straight off the stored policy, so it is legible with the
+buffer empty. Takes about 25 s.
 
-    scripts/gnss/fleettrim_multichain_gate.py [--bin PATH] [--config PATH]
+    scripts/gnss/fleettrim_multichain_gate.py [--bin PATH] [--config PATH] [--stage NAME]
 """
 import argparse
 import json
@@ -113,7 +113,7 @@ def main():
             )
             return 1
 
-        # ── LEG 1: two chains, posted separately, must BOTH stay armed ────────────────
+        # ── Leg 1: two chains, posted separately, must both stay armed ────────────────
         _post(base + "/set_policy", policy_for("gps_l5", [1, 3, 10]))
         _post(base + "/set_policy", policy_for("gal_e5a", [6, 12, 19, 29]))
         st = _get(base + "/get_stats")
@@ -131,8 +131,8 @@ def main():
                 % st.get("post_targets")
             )
 
-        # ── LEG 2: re-posting ONE chain must not disturb the other, and must still
-        #    expire a PRN that chain stopped naming (per-chain replace, not merge) ─────
+        # ── Leg 2: re-posting one chain must not disturb the other, and must still
+        #    disarm a PRN that chain stopped naming (per-chain replace, not merge) ─────
         _post(base + "/set_policy", policy_for("gps_l5", [1]))
         st = _get(base + "/get_stats")
         req = st.get("policy_armed_requested", {})
@@ -151,8 +151,9 @@ def main():
                 % req.get("gps_l5")
             )
 
-        # ── LEG 3: a chain that STOPS posting must disarm. Keep gps_l5 alive across the
-        #    TTL so the sweep is proven selective, not a global timeout. ───────────────
+        # ── Leg 3: a chain that stops posting must expire. gps_l5 keeps posting across the
+        #    TTL, which shows the sweep is selective, not a global timeout; with no frames
+        #    flowing, its POSTs are also what run the sweep (rearm()). ──────────────────
         t0 = time.time()
         while time.time() - t0 < TTL + 4.0:
             _post(base + "/set_policy", policy_for("gps_l5", [1]))

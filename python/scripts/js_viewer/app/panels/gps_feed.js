@@ -1,28 +1,29 @@
-// Shared GNSS data feed for the sky + detections panels: ONE poll loop merging
-//   * /gps_sky                 (viewer server)  -> {prn, az, el, const} positions
-//   * <search>/get_detections  (kotekan REST)   -> acquired PRNs + search SNR
-//   * <combiner>/get_status    (kotekan REST)   -> per-PRN amplitudes / deep / dop / coh
-// per signal, keyed "G12"/"E25"/"C19". Panels subscribe with
-// feed.on(cb) and re-render on every merged tick; per-constellation visibility
-// toggles live here too (persisted), so the sky and the table always agree.
+// Shared GNSS data feed for the sky, table, history and stream-health panels. One poll loop
+// merges /gps_sky (viewer server: {prn, az, el, const} positions) with, per signal, the broker
+// publisher's
+//   * <search>/get_detections   -> acquired PRNs + search SNR
+//   * <combiner>/get_status     -> per-PRN metrics (signal_metrics)
+//   * <combiner>/get_elements   -> per-element gains (beam_summary)
+// into one row per satellite keyed "G12"/"E25"/"C19", and passes one receiver-wide get_rf
+// document through as gnss_rf. Panels subscribe with feed.on(cb) and re-render on every merged
+// tick. The per-constellation visibility toggles live here too (persisted), so the sky and the
+// table agree.
 
 const POLL_MS = 1500;
-const AMP_LOCK = 0.30;      // |A| fallback lock (only where no significance is reported)
-const SNR_LOCK = 3.0;       // significance (sigma above noise) -- LEGACY lock, see Q_LOCK
-// THE LOCK BAR IS q. Same numbers gps_table.js colours on, so the two panels cannot
-// disagree: >= Q_LOCK is a lock (its green), and <= q_floor * Q_FLOOR_MARGIN is AT the
-// measured noise (its red). The floor is published per cycle, so the bar is never
-// hardcoded when the broker knows better.
+const AMP_LOCK = 0.30;      // |A| lock bar where no row reports sig
+const SNR_LOCK = 3.0;       // sig lock bar (sigma above noise) for rows without q
+// The lock bars on q. gps_table.js colours q with the same numbers, so the panels agree:
+// >= Q_LOCK is a lock (green), <= q_floor * Q_FLOOR_MARGIN is at the measured noise (red).
+// q_floor is published by the broker each cycle.
 const Q_LOCK = 2.2;
 const Q_FLOOR_MARGIN = 1.15;
-// The pre-#57 incoherent C/N0 has a pole at u -> a; refuse the last decade before it.
-// 0.95 caps the expression at ~40 dB-Hz, which is the top of the physical GNSS range.
+// The fallback incoherent C/N0 in signal_metrics() has a pole at u -> a; refuse u/a above
+// this. 0.95 caps it at ~40 dB-Hz for a 1 ms t_rec.
 const CN0_INC_MAX_RATIO = 0.95;
 const PREFS_KEY = "gps_viewer_prefs_v1";
 
-// Constellation identity: display name (sky legend) and the display colour (matches the
-// matplotlib composite-map palette G/E/C = blue/orange/red so plots and viewer read the same).
-// The server delivers it via /wsport (configure_chains below).
+// The constellation legend, [{tag, name, color}], delivered by the server's /wsport
+// (configure_chains below).
 export let CHAINS = [];
 export const chain_color = tag =>
     (CHAINS.find(c => c.tag === tag) || {}).color || "#8a8f98";
@@ -36,21 +37,21 @@ export function configure_chains(defs) {
     if (_active_feed) _active_feed._reconfigure();
 }
 
-// UNIFIED viewer (2026-07-28): one row per satellite, every signal it carries side by side.
-// SIGNALS is the full inventory from the server's /wsport (UNIFIED_SIGNALS): each entry is one
-// signal {tag, band ("high"/"mid"/"low"), col, name, combiner (absolute stage), search|null,
-// t_rec}. null = not delivered yet. The feed keys satellites by tag+prn ACROSS bands and
-// hangs each signal's metrics off r.sig_by[combiner]; the table renders one column per signal.
+// The signal inventory from the server's /wsport (UNIFIED_SIGNALS), one entry per broker chain:
+// {tag, sys, band ("high"/"mid"/"low"), col, name, sigid, combiner, search|null, t_rec}.
+// combiner and search are chain ids, used as the REST path segment. SIGNALS is null until
+// delivered. The feed keys satellites by constellation+PRN across bands and hangs each signal's
+// metrics off r.sig_by[combiner]; the table renders one column per signal.
 export let SIGNALS = null;
-// CAPABILITY: signal key -> Set of PRNs whose satellite BLOCK actually broadcasts it (server
-// side, from the cached Celestrak block names). Lets the table separate "this satellite does
-// not transmit that signal" from "it does and we are not seeing it" -- a Block IIR sat blank
-// across L1C/L2C/L5 is correct, the same blanks on a Block III sat are a fault. Empty/absent
-// -> every cell is treated as capable, i.e. exactly the old behaviour: we never claim a
-// satellite is incapable on the strength of information we could not obtain.
+// Signal key -> Set of GPS PRNs whose satellite block broadcasts it (the server's
+// _gps_signal_capability, from the IGS registry). Lets the table separate "this satellite does
+// not transmit that signal" from "it does and we are not seeing it": a Block IIR satellite
+// blank across L1C/L2C/L5 is correct, the same blanks on a Block III satellite are a fault.
+// null -> every cell is treated as capable: never claim a satellite is incapable on
+// information that could not be obtained.
 export let CAPABILITY = null;
-/// Every PRN the block map has an opinion about (the server's caps._prns). A PRN outside this
-/// set is UNKNOWN -- see not_transmitted().
+/// Every GPS PRN the registry knows (the server's caps._prns). A PRN outside this set is
+/// unknown -- see not_transmitted().
 export let CAPABILITY_PRNS = null;
 export function configure_signals(sigs, caps) {
     if (!Array.isArray(sigs) || !sigs.length) { SIGNALS = null; return; }
@@ -69,24 +70,19 @@ export function configure_signals(sigs, caps) {
     }
     if (_active_feed) _active_feed._reconfigure();
 }
-/// true when `prn` is known NOT to transmit the signal `key`. False when capable OR unknown.
+/// true when `prn` is known not to transmit the signal `key`; false when capable or unknown.
 ///
-/// ⚠️ ABSENT IS UNKNOWN, NOT INCAPABLE. A PRN missing from the block map has to fall through
-/// as capable, or missing DATA becomes a positive CLAIM -- which is the one thing the
-/// CAPABILITY docstring above says this must never do. It did exactly that: PRN 2 is absent
-/// from the cached TLE (so are 1 and 8), and the table marked it "not broadcast by this
-/// satellite" while the blind search was detecting it at 28 sigma on its own ephemeris
-/// Doppler (+1122 measured vs +1122 predicted, 2026-08-10). CAPABILITY_PRNS is the set of
-/// PRNs the map actually knows about; anything outside it is unknown and renders as
-/// "no detection" rather than "not transmitted".
+/// A PRN absent from CAPABILITY_PRNS is unknown and falls through as capable, so missing
+/// registry data renders as "no detection" rather than as a claim that the satellite does not
+/// transmit.
 export function not_transmitted(key, prn) {
     if (!(CAPABILITY && CAPABILITY[key])) return false;
     if (CAPABILITY_PRNS && !CAPABILITY_PRNS.has(prn)) return false;   // absent => unknown
     return !CAPABILITY[key].has(prn);
 }
 
-// One combiner get_status record -> the derived per-signal metrics the panels display.
-// t_rec sets the incoherent C/N0 density.
+// One combiner get_status row -> the per-signal metrics the panels display. t_rec (the
+// signal's code period, s) scales the fallback incoherent C/N0.
 export function signal_metrics(s, t_rec) {
     const m = {
         amp: s.amplitude || 0,
@@ -94,113 +90,89 @@ export function signal_metrics(s, t_rec) {
         coh_s: s.coherence_s != null ? s.coherence_s : null,
         cn0: null,
     };
-    // SIGNIFICANCE: the broker's published `sig`, which carries its own matched gate (task
-    // #57, 2026-08-14). It is the MEDIAN over instances (robust where the best-of-instance
-    // max churns with its winner) over a trailing window; `det_duty_s` beside it reports how
-    // often the array actually held the satellite. Read them together: sig says how loud,
-    // duty says how often. A high sig at duty 0.3 is a satellite we are losing two thirds of
-    // the time, and the display should say so.
+    // sig: the broker's published significance, from the first source that applies (the
+    // known-rate fold when it cohered, else the incoherent t-statistic, ...; sig_src names it).
+    // det_duty_s is the fraction of the broker's samples in the last 120 s in which the median
+    // instance's deep SNR beat the fleet floor. Read them together: sig says how loud, duty
+    // says how often.
     m.sig = s.sig != null ? s.sig : null;
-    // ⚠️ duty is a DEEP-STAGE duty, not "was the satellite tracked". With the broker
-    // SIGSTOPped (no commands at all) the flicker was unchanged, while prompt power sat
-    // flat through every collapse -- the despread holds the sat continuously and the deep
-    // fold keeps failing to certify it. `hold` below is the number that does not flicker.
+    // duty is a deep-stage duty, not "was the satellite tracked": the deep fold can fail to
+    // certify a satellite the despread holds continuously. prompt_hold (fleet prompt power over
+    // the probes' noise median) is the number that does not flicker with the deep stage.
     m.duty = s.det_duty_s != null ? s.det_duty_s : null;
     m.hold = s.prompt_hold != null ? s.prompt_hold : null;
-    // THE CODE-LOOP QUALITY, q (2026-08-18). The broker has published fleet_q per PRN since
-    // the fleet DLL landed and nothing consumed it, which left the most load-bearing
-    // tracking metric in the logs only. q is the fleet discriminator's quality ratio: the
-    // prompt-vs-shoulder statistic the DLL itself gates on, so it answers "is the code
-    // loop ON the correlation peak", which no power metric can. It is the number every
-    // sky verdict this week was actually decided on -- #49's fast-loop verdict, #87's
-    // stale-trim regression (q_med 2.09 -> 1.09 while C/N0 stayed put), the flip's holds.
-    // ⚠️ JUDGE LOCK ON q, NEVER ON sig/deep/C-N0: those ride the deep fold, which
-    // re-searches and will certify a satellite whose prompt tap is on noise (#47).
-    // q_floor is the per-cycle noise median the broker measured, so the display can show
-    // the bar this q is being judged against rather than a hardcoded 2.2.
+    // q: the fleet discriminator's quality ratio (prompt vs shoulders), the statistic the DLL
+    // gates on. It says whether the code loop is on the correlation peak, which no power
+    // metric can. Judge lock on q, never on sig/deep/C/N0: those ride the deep fold, which
+    // re-searches rate and phase and will certify a satellite whose prompt tap is on noise.
+    // q_floor is the broker's presence bar on q, measured from the noise probes each cycle
+    // (fleet.apply_presence; its q_fallback when fewer than 3 probes report); q_inst counts
+    // the contributing instances.
     m.q = s.fleet_q != null ? s.fleet_q : null;
     m.q_floor = s.fleet_q_floor != null ? s.fleet_q_floor : null;
     m.q_inst = s.fleet_instances != null ? s.fleet_instances : null;
-    // THE C/N0 (task #57, 2026-08-15): the broker-published cn0_prompt_db -- per-record
-    // prompt power, q-gated on the noise probes' own q population, probe-debiased. No fit
-    // anywhere in it, sky-validated (AUC 1.000 vs the probes, split-half <= 0.1 dB,
-    // two-feed pairing <= 0.35 dB). It supersedes BOTH numbers this panel used to carry:
-    // the incoherent one was biased (E[|P|^2] carries sigma^2 undebiased -- the 22-25
-    // dB-Hz rectification floor) and the coherent one rode the deep fold's per-integration
-    // rate re-search (~20 dB of its own paired scatter, #47/#66). cn0_duty is the lock
-    // duty the value is conditioned on -- a low duty means the number rests on few
-    // gate-passing records and should be read with that beside it, so it travels WITH the
-    // value everywhere (the #47 rule: the flag moves with the number it qualifies).
+    // cn0 is the broker's cn0_prompt_db (combdll.prompt_cn0): per-record prompt power, kept
+    // where presence is established and the prompt is the tallest tap, debiased by the noise
+    // probes; no fit. cn0_duty is the fraction of records kept: at low duty the value rests on
+    // few records, so the duty travels with the value to every display.
     m.cn0_duty = s.cn0_prompt_duty != null ? s.cn0_prompt_duty : null;
-    // ⚠️ THE NOISE PROBES RIDE THE SAME ROWS. They are seeded PRNs followed where nothing is
-    // transmitting, which is what makes them a floor -- publish.py flags them precisely "so
-    // no consumer plots a below-horizon noise reference as a satellite", and until 2026-08-26
-    // no consumer read the flag. gps_sky.js dropped them only when el < 0, so a probe seeded
-    // above the horizon rendered as a locked satellite with a C/N0 beside it.
+    // The noise probes (seeded PRNs where nothing transmits) ride the same rows; the broker
+    // flags them so no consumer draws a noise reference as a satellite.
     m.noise_probe = !!s.noise_probe;
     if (s.cn0_prompt_db != null) {
         m.cn0 = s.cn0_prompt_db;
     } else if (s.cn0_prompt_duty !== undefined) {
-        // ⚠️ A #57 BROKER THAT DECLINED, AND A GAP IS THE HONEST RENDER. cn0_prompt_db is
-        // null exactly when the q-gate passed too few records for the value to mean
-        // anything -- publish.py says it outright: "a duty near 0 means the number rests on
-        // a handful of upward fluctuations (decline it)". Falling through to the old
-        // estimator here overrode that refusal with a fabricated number: on 2026-08-26,
-        // with the analog front-ends powered down, this path drew 80-100 dB-Hz across the
-        // history panel for satellites whose q was sitting at 1.0. A hole in the trace says
-        // "the estimator refused"; a number says "41 dB-Hz" and destroys that.
+        // The broker ran the estimator and declined (presence not established, or too few
+        // on-peak records). A gap is the honest render: falling through to the fallback
+        // below would replace the refusal with a number.
         m.cn0 = null;
     } else {
-        // PRE-#57 BROKER ONLY (neither key present). Kept so an old chain renders
-        // something, but bounded, because the expression is not safe near no-signal:
+        // Neither key: the row has no prompt C/N0 (a broker or chain without one, e.g. no
+        // noise probes). Fallback incoherent estimate, bounded because the expression is not
+        // safe near no-signal:
         //
         //   C/N0 = (S/N)/T  with  S = u^2  and  N = a^2 - u^2
         //
-        // ⚠️ THERE IS A POLE AT u -> a. The debias stops subtracting anything when there is
-        // no signal, so the denominator collapses and the value diverges. Measured with the
-        // front-ends down: gps_l5 PRN 28 served u/a = 1.0000 and this returned 89 dB-Hz
-        // while fleet_q read 1.15. So: refuse near the pole, and refuse outright when q
-        // says the loop is not on the peak.
-        // ⚠️ ITS ABSOLUTE SCALE IS ALSO SUSPECT ON CHORD: t_rec is the CODE PERIOD (1 ms),
-        // but a CHORD record is 2048 hops x 5.12 us = 10.486 ms, so dividing by t_rec
-        // overstates the density by 10*log10(10.4857) = 10.2 dB. Correct on airspy, where
-        // a record IS one code period. Read this column as a relative number only.
+        // There is a pole at u -> a, where a row with no noise reference sits (the debias
+        // subtracts nothing), so refuse above CN0_INC_MAX_RATIO and whenever q says the loop
+        // is off the peak. The absolute scale is also off on CHORD: t_rec is the code period,
+        // but a CHORD record is 2048 hops x 5.12 us = 10.486 ms, so for a 1 ms code this
+        // overstates the density by 10*log10(10.486) = 10.2 dB. Correct on airspy, where a
+        // record is one code period. Read it as a relative number only.
         const a = s.amplitude || 0, u = s.unbiased_amplitude || 0;
         const ratio = a > 0 ? u / a : 1.0;
         const q_says_locked = (m.q == null) || (m.q >= Q_LOCK);
         if (a > u && u > 0 && ratio <= CN0_INC_MAX_RATIO && q_says_locked)
             m.cn0 = 10 * Math.log10(((u * u) / (a * a - u * u)) / t_rec);
     }
-    // THE COHERENT C/N0 (task #57 step 3): the ~1 s KNOWN-RATE fold -- rate injected from
-    // the previous cycle's record-stream fit, never searched. This is the deep-sidelobe
-    // instrument (~10log10(n_rec) more sensitive than the per-record number above), and
-    // the pair is the diagnostic again: on a strong satellite the two must AGREE, and a
-    // coherent value far below its incoherent partner means coherence was lost, not signal.
+    // cn0_kcoh: the ~1 s known-rate coherent fold (combdll.coh_cn0), centred on the previous
+    // cycle's record-stream rate rather than searched. ~10log10(n_rec) more sensitive than the
+    // per-record number above, and on a strong satellite the two must agree: a coherent value
+    // far below its per-record partner means coherence was lost, not signal.
     //   kcoh_eta  coherence efficiency: n_rec when the fold was fully coherent, ~1 on
-    //             noise. THE number that says whether the fold worked -- a wrong rate or a
-    //             phase discontinuity lands here rather than in a silently low C/N0.
-    // ⚠️ NOT the old cn0_coh_db: that came from the deep fold's per-integration rate
-    // RE-SEARCH and carried ~20 dB of its own paired scatter (#47/#66).
+    //             noise. A wrong rate or a phase discontinuity shows here rather than as a
+    //             silently low C/N0.
+    // Not cn0_coh_db, which comes from the deep fold's per-integration rate re-search.
     m.cn0_kcoh = s.cn0_kcoh_db != null ? s.cn0_kcoh_db : null;
     m.kcoh_eta = s.kcoh_eta != null ? s.kcoh_eta : null;
     m.kcoh_n = s.kcoh_n != null ? s.kcoh_n : null;
     return m;
 }
 
-// THE BEAM SUMMARY (task #57 step 2). One /get_elements row -- {probe, inst: {tag: {keff,
-// amp[], ph[], sig[]}}} -- reduced to the three numbers a table cell can carry:
-//   beam_n    live elements (sig >= 3 against the per-element PROBE floor), median over
-//             instances. sig absent (no probe anchor) -> every element counts, honestly
-//             weaker.
-//   beam_amp  median over instances of the median LIVE element amplitude, normalized by
-//             (n_elem - 1) so a uniform array reads ~1.0 (the raw amp is in units of the
-//             OTHER elements' sum).
+// One /get_elements row -- {probe, inst: {tag: {keff, amp[], ph[], sig[]}}} -- reduced to the
+// three numbers a table cell can carry:
+//   beam_n    live elements (sig >= 3 against the per-element probe floor), median over
+//             instances. null when the row has no sig (no probe rows); every element then
+//             counts as live.
+//   beam_amp  median over instances of the median live-element amplitude, scaled by
+//             (n_elem - 1) so a uniform array reads ~1.0 (the raw amp is relative to the sum
+//             of the other elements).
 //   beam_ph   median over instances of the circular RMS spread of the live elements'
-//             phases (deg). Phase is RELATIVE TO THE ARRAY MEAN -- the peel coefficient
-//             -- so this is "how far from phased-up is the array on this satellite": ~0
-//             after a good cal, growing as cables/pointing decohere.
-// The FULL per-element vectors ride the broker's /get_elements and the NFS archive; this
-// is the glanceable summary, not the beam map itself.
+//             phases (deg). The phase is relative to the array mean (the peel coefficient),
+//             so this is how far the array is from phased up on this satellite: ~0 after a
+//             good cal.
+// The full per-element vectors are on the broker's /get_elements and in its element archive
+// (--element-archive-dir).
 export function beam_summary(row) {
     if (!row || !row.inst) return null;
     const med = a => {
@@ -247,24 +219,22 @@ export class GpsFeed {
         this._timer = setInterval(() => this._tick(), POLL_MS);
     }
 
-    // (Re)build the descriptor lists + per-constellation visibility. chains is the
-    // per-CONSTELLATION list (sky legend, colours, G/E/C vis chips); signals is the flat
+    // (Re)build the descriptor lists and the per-constellation visibility. chains is the
+    // per-constellation list (sky legend, colours, visibility chips); signals is the flat
     // per-signal list.
     _rebuild() {
         this.chains = this._build_chains();
         this.signals = this._build_signals();
     }
 
-    // Signal descriptors: the server inventory verbatim (absolute stage names), with
-    // visibility inherited from the constellation tag (one G/E/C toggle hides all that sat's
-    // signals -- the row itself). t_rec/band/col ride along for the table + C/N0.
+    // Signal descriptors: the server inventory verbatim, with visibility inherited from the
+    // constellation (one toggle hides the satellite's row, all its signals). t_rec/band/col
+    // ride along for the table and the C/N0.
     _build_signals() {
         if (!SIGNALS) return [];
         for (const s of SIGNALS) {
-            // Register visibility under the CONSTELLATION (sys), not the display tag, so the
-            // one GPS toggle hides C/A and L1C together -- they are the same satellite. Keying
-            // this by tag created a phantom "L" entry that no chip ever rendered and nothing
-            // could turn off.
+            // Keyed by the satellite's constellation (sys), the key the toggles and the rows
+            // use, so one toggle hides every signal of a satellite.
             const k = s.sys || s.tag;
             if (!(k in this.vis))
                 this.vis[k] = (this._prefs && this._prefs.vis && k in this._prefs.vis)
@@ -273,7 +243,7 @@ export class GpsFeed {
         return SIGNALS.map(s => Object.assign({}, s));
     }
 
-    // The per-constellation descriptors from the current module CHAINS. Visibility defaults ON
+    // The per-constellation descriptors from the current module CHAINS. Visibility defaults on
     // per tag, overridden by any persisted preference. Rerun by _reconfigure.
     _build_chains() {
         const chains = CHAINS.map(c => Object.assign({}, c));
@@ -284,8 +254,8 @@ export class GpsFeed {
         return chains;
     }
 
-    // The server delivered this band's tables (configure_chains / configure_signals) after
-    // construction: rebuild and re-render so the legend/colours/columns reflect the real config.
+    // The server's tables (configure_chains / configure_signals) arrived after construction:
+    // rebuild and re-render so the legend, colours and columns match them.
     _reconfigure() {
         this._rebuild();
         this._emit();
@@ -309,25 +279,20 @@ export class GpsFeed {
         const k = this.app.kotekan;
         const jget = (p) => p ? p.then(r => r.ok ? r.json() : null).catch(() => null)
                               : Promise.resolve(null);
-        // One poll unit per SIGNAL (search may be null -> skipped). Each yields
+        // One poll unit per signal (a null search is skipped), each yielding
         // [detections, status, elements].
         const units = this.signals;
         const per_unit = units.map(u => Promise.all([
             u.search ? jget(k.stageGet(u.search, "get_detections")) : Promise.resolve(null),
             jget(k.stageGet(u.combiner, "get_status")),
-            // Per-element beam table (task #57 step 2): served by the BROKER publisher on
-            // the same stage path. A 404 (pre-#57 broker, or nodes not yet serving the
-            // element export) resolves null and every beam cell renders "—".
+            // Per-element gain table, served by the broker publisher on the same chain path
+            // (broker --element-poll). Until it has rows the beam cells have no value.
             jget(k.stageGet(u.combiner, "get_elements")),
         ]));
-        // #8: RF-PATH HEALTH from the broker publisher (get_rf). ONE call per tick, not one
-        // per unit -- the voltage tap is per GPU and serves every signal on it, so this is a
-        // property of the RECEIVER and the broker publishes it receiver-wide. Any registered
-        // chain's path reaches the same document.
-        //
-        // ⚠️ The comment below used to say CHORD's front end "exposes none of this". As of
-        // 2026-08-18 it exposes clip fraction and per-band power (task #8); a 404 here just
-        // means the broker predates it, or the node-side monitor is not armed.
+        // RF-path health (get_rf): one call per tick, not per unit. The voltage tap is per GPU
+        // and serves every signal on it, so the broker publishes it receiver-wide and any
+        // chain's path returns the same document. Its instances map stays empty until the
+        // broker polls the taps (--rf-stats-endpoints).
         const rfP = units.length
             ? jget(k.stageGet(units[0].combiner, "get_rf")) : Promise.resolve(null);
         Promise.all([
@@ -340,19 +305,19 @@ export class GpsFeed {
             // blank every |A| for a frame (that would look like a mass drop).
             const last = this._last;
             if (sky) last.sky = sky;
-            // Hold the last good RF document. An empty instances map is a broker that has
-            // not polled yet and must NOT evict a good one -- the same rule as `elem` below.
+            // Hold the last good RF document: an empty instances map (not polled yet) must not
+            // evict a good one, the same rule as `elem` below.
             if (gnss_rf && gnss_rf.instances
                 && Object.keys(gnss_rf.instances).length) last.gnss_rf = gnss_rf;
-            // Stored per SIGNAL (keyed by combiner).
+            // Stored per signal (keyed by combiner).
             const store = (last.units = last.units || {});
             units.forEach((u, i) => {
                 const [det, status, elem] = res[i];
                 const l = (store[u.key] = store[u.key] || {});
                 if (det) l.det = det;
                 if (status) l.status = status;
-                // Only a table with rows counts as data; {} is the pre-first-cycle broker
-                // and must not evict the last good one.
+                // Only a table with rows counts as data; {} (not polled yet) must not evict
+                // the last good one.
                 if (elem && elem.prns && Object.keys(elem.prns).length) l.elem = elem;
             });
             this._emit();
@@ -384,20 +349,16 @@ export class GpsFeed {
             const l = store[sg.key] || {};
             if (Array.isArray(l.det))
                 for (const d of l.det) {
-                    // sys, NOT tag: the satellite ROW is keyed by constellation, the signal
-                    // COLUMN by tag. GPS L1C carries tag "L" so its series stays distinct
-                    // from C/A on the same PRN, but it is a GPS bird -- keying the row by
-                    // tag split one Block III satellite into a G20 row and an L20 row,
-                    // against the whole "one satellite per row" premise of this viewer.
+                    // The row is keyed by the satellite's constellation (sys), the column by
+                    // signal, so every signal a satellite carries lands in one row.
                     const r = get(sg.sys || sg.tag, d.prn);
                     r.detected = true;
                     if (d.snr != null) {
-                        // Keep the search SNR PER SIGNAL, not just as a row maximum: it is
-                        // the one metric that reports on the ACQUISITION rather than the
-                        // deep integration, so "strong in search, wrong downstream" is
-                        // exactly the state it exists to show -- and a row max hides which
-                        // signal is which. The row-level r.snr (sky colour, sort) is
-                        // unchanged.
+                        // Keep the search SNR per signal as well as the row maximum: it is
+                        // the one metric that reports on acquisition rather than the deep
+                        // integration, so "strong in search, wrong downstream" must stay
+                        // visible per signal. The row-level r.snr (sky colour, sort) is the
+                        // maximum.
                         const e = (r.sig_by[sg.key] = r.sig_by[sg.key] || {});
                         e.snr = Math.max(e.snr || 0, d.snr);
                         if (r.snr == null || d.snr > r.snr) r.snr = d.snr;
@@ -414,17 +375,15 @@ export class GpsFeed {
                     const prev = r.sig_by[sg.key];
                     if (prev && prev.snr != null) m.snr = prev.snr;
                     r.sig_by[sg.key] = m;
-                    // Row summary = the BEST signal (sky colour, sort default, lock gate).
+                    // Row summary = the best signal (sky colour, sort, the sig lock rule).
                     if ((m.sig || 0) > (r.sig || 0)) {
                         r.sig = m.sig; r.amp = m.amp;
                     }
                     if (m.cn0 != null && (r.cn0 == null || m.cn0 > r.cn0)) r.cn0 = m.cn0;
                 }
-            // BEAM SUMMARY per (sat, signal), off the per-element table (#57 step 2).
-            // Attached onto the same sig_by entry the status built, so a beam cell and
-            // its C/N0 cell always describe the same signal. Staleness-gated: a
-            // stalled broker table must render as absent, not as fresh (the utc rides
-            // the table for exactly this).
+            // Beam summary per (satellite, signal), attached to the same sig_by entry the
+            // status built, so a beam cell and its C/N0 cell describe the same signal. A
+            // table whose utc is 300 s or older renders as absent, not as fresh.
             const et = l.elem;
             if (et && et.prns && (et.utc == null || Date.now() / 1000 - et.utc < 300)) {
                 for (const pk of Object.keys(et.prns)) {
@@ -439,35 +398,23 @@ export class GpsFeed {
             }
         }
         const list = [...sats.values()];
-        // ⚡ "LOCKED" IS q -- THE CODE LOOP ON THE PEAK -- NOT "something was significant".
+        // "Locked" (r.active) means the code loop is on the peak, judged on q, not that
+        // something was significant: sig rides the deep and known-rate folds, which re-search
+        // rate and phase and certify whatever they land on, noise included, so a dead band can
+        // serve sig in the thousands while q sits at its noise floor.
         //
-        // sig rides the deep / known-rate fold, and that fold RE-SEARCHES rate and phase:
-        // it certifies whatever it lands on, including noise (#47, and the deep_snr-fires-
-        // on-noise result). The failure is not subtle. On 2026-08-26 the analog front-ends
-        // were powered down for site work, and with NOTHING on the wire every satellite on
-        // every chain still served sig 900..10,000 -- three orders of magnitude past the
-        // 3-sigma bar below -- while fleet_q sat at 0.79..1.15, exactly its noise floor.
-        // The sky panel drew a full constellation of locked satellites against a dead band.
-        //
-        // q is the fleet discriminator's prompt-vs-shoulder ratio, so it answers "is the
-        // loop ON the correlation peak", which no power metric can. signal_metrics() has
-        // carried it since 2026-08-18 with the rule written above it in capitals; only this
-        // line was still asking sig.
-        //
-        // Marginal satellites (above the noise floor but under Q_LOCK -- amber in the
-        // table) render IDLE here. That is deliberate and it is the conservative
-        // direction: this panel answers "is it locked", and half-locked is not locked.
+        // A row carrying q is active when q >= Q_LOCK and q is above q_floor * Q_FLOOR_MARGIN.
+        // Marginal rows (above the floor, under Q_LOCK; amber in the table) render idle, the
+        // conservative direction. A noise probe is never active. A row without q falls back to
+        // sig >= SNR_LOCK, or to detection / |A| where no row reports sig.
         const have_sig = list.some(r => r.sig > 0);
         for (const r of list) {
             if (r.noise_probe)
-                // A noise reference cannot be locked, whatever it is reporting -- that is
-                // the entire point of it.
                 r.active = false;
             else if (r.q != null)
                 r.active = (r.q >= Q_LOCK)
                            && !(r.q_floor != null && r.q <= r.q_floor * Q_FLOOR_MARGIN);
             else
-                // No q on this chain (a broker predating the fleet DLL): old rule, intact.
                 r.active = have_sig ? (r.sig >= SNR_LOCK)
                                     : (r.detected || r.amp >= AMP_LOCK);
         }
@@ -480,7 +427,7 @@ export class GpsFeed {
             sky: this._last.sky,
             vis: this.vis, chains: this.chains,
             signals: this.signals,
-            gnss_rf: this._last.gnss_rf || null,      // #8: F-engine clip + per-band power
+            gnss_rf: this._last.gnss_rf || null,      // receiver-wide RF health (get_rf)
         };
         for (const cb of this._listeners) {
             try { cb(payload); } catch (e) { console.error("gps feed listener:", e); }

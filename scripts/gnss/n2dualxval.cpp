@@ -1,26 +1,28 @@
 /**
  * @file
- * @brief M3: cross-validate path B (n2k_dual N x M tiles) against path A (launch_correlate_nm)
- *        at deployed CHORD L5 geometry, with REAL replicas. GPU required.
+ * @brief Cross-validates path B (n2k_dual N x M tiles) against path A
+ *        (GnssCudaDespread::enqueue_batch_nm, launch_correlate_nm) at CHORD L5 geometry with
+ *        real replicas. Needs a GPU.
  *
- * Both paths consume the IDENTICAL 4+4b voltage frame, so the data (and its noise) cancels
- * EXACTLY in the comparison: the A-vs-B difference isolates the ONE thing path B changes --
- * the replica is quantized to 4+4b synthetic lanes instead of consumed as float2. Antenna 0
- * carries a noiseless strong signal for a clean quantization-loss figure; antennas 1..31 are
- * realistic (noise rms 2 lsb + signal 1 lsb).
+ * Both paths read the same 4+4b voltage frame, so the data and its noise cancel exactly in
+ * the comparison, and the difference isolates what path B changes: the replica is quantized
+ * into 4+4b synthetic lanes instead of used as float2. Antenna 0 carries a strong noiseless
+ * signal for a clean quantization-loss figure; antennas 1..31 carry noise of rms 2 lsb per
+ * component plus the signal at 1/5 of antenna 0's amplitude.
  *
- * Frame: [n_hops=2048][F=8][E=128] native CHORD layout == the dual correlator's e_in_a
- * verbatim (that identity is the point of path B). Synthetic input: lane 4*i+t = spec i's
- * E/P/L/P_HEAD replica, quantized with per-lane scale, P_HEAD = P gated to hops [0, m_head)
- * (zero = offset 0x88 beyond), unused lanes/channels 0x88.
+ * Frame: [n_hops=2048][F=8][E=128], CHORD's native layout, which is the dual correlator's
+ * e_in_a as is. Synthetic input: lane 4*i+t is spec i's E/P/L/P_HEAD replica, quantized on
+ * the host at 7/peak per lane; P_HEAD is P gated to hops [0, m_head) and zero (0x88) after;
+ * unused lanes and channels are 0x88. cudaGnssInject packs with launch_pack44 instead, at
+ * 7/(3 rms) per lane and channel, so the loss figures this tool prints are its own packer's.
  *
- * The conjugation orientation of the mixed tiles vs path A's convention is detected
- * EMPIRICALLY and printed -- it feeds the M5 consumer, and conjugation errors on this
- * instrument have a history (F-engine conjugation; validate numerically, never by eye).
+ * The conjugation orientation of the mixed tiles relative to path A is detected from the data
+ * and printed, since a consumer of the tiles has to match it.
  *
- * Output: per row-type (E/P/L/PH) relative error stats, amplitude loss in dB, phase rms;
- * plus the M^2 replica cross-terms vs a CPU float reference. Exit 1 on structural failure
- * (NaN, empty, orientation ambiguous); the loss figures are printed for judgment.
+ * Usage: n2dualxval [seed [--conj]]. Output: per row type (E/P/L/PH) relative error, amplitude
+ * loss in dB and phase rms, plus the M^2 replica cross-terms against a CPU float reference.
+ * Exits 1 on a CUDA error, an ambiguous orientation or a NaN; the loss figures are printed for
+ * judgment.
  */
 
 #include "GnssCudaDespread.hpp"
@@ -61,16 +63,15 @@ static constexpr int N_SPEC = 4; // 16 lanes of 128
 
 int main(int argc, char** argv) {
     const unsigned seed = argc > 1 ? (unsigned)atoi(argv[1]) : 4242u;
-    // --conj: simulate the CHORD F-ENGINE CONJUGATION (the frame carries conj(sky), measured
-    // 2026-07-30) and exercise both sides' compensation -- path A's DespreadParams::conj_data
-    // and path B's conjugated replica in the pack. Without this the harness only ever proved the
-    // unconjugated case, which is why the live tiles read noise on 2026-08-06.
+    // --conj: simulate the CHORD F-engine conjugation (the frame carries conj(sky)) and exercise
+    // both sides' compensation, path A's DespreadParams::conj_data and path B's conjugated
+    // replica in the pack. Without it only the unconjugated case is tested.
     const bool CONJ = (argc > 2 && std::string(argv[2]) == "--conj");
     std::mt19937 rng(seed);
     std::normal_distribution<float> gauss(0.0f, 1.0f);
     std::uniform_real_distribution<double> uni(0.0, 1.0);
 
-    // ---- bank + despread (the shipped path-A machinery) ------------------------------------
+    // ---- bank + despread: path A, whose replica synthesis cudaGnssInject also runs --------
     const auto* sig = gnss::signal_by_name("GPS_L5_Q_NH");
     if (!sig) {
         printf("no signal descriptor\n");
@@ -79,7 +80,7 @@ int main(int argc, char** argv) {
     std::vector<int> prns{3, 7, 13, 25};
     gnss::ChannelizedReplicaBank bank(*sig, FS, F_OFF, NCH, TAPS, dsp::Window::Hamming, prns);
 
-    std::vector<int> chan_ids_global; // stride-16 comb, as deployed on cx19 GPU0
+    std::vector<int> chan_ids_global; // stride-16 comb, one GPU's share of a deployed chain
     for (int k = 0; k < 7; k++)
         chan_ids_global.push_back(5972 + 16 * k);
     const int n_chan = (int)chan_ids_global.size();
@@ -98,10 +99,9 @@ int main(int argc, char** argv) {
         specs[i].doppler_hz = -2500.0 + 1300.0 * i;
         specs[i].covering = covering;
     }
-    // Park spec 1 just below a combined-code-period boundary so the boundary lands mid-window
-    // and the P_HEAD gate (m_head strictly inside (0, n_hops)) actually gets exercised: the
-    // window spans ~107k of the 204.6k-chip combined period, so arbitrary seeds miss it half
-    // the time (and all four defaults above happen to miss it).
+    // Spec 1's seed puts a combined-code-period boundary mid-window, so the P_HEAD gate
+    // (m_head strictly inside (0, n_hops)) is exercised. The window spans ~107k of the
+    // 204.6k-chip combined period, and the seeds above put no boundary in it.
     specs[1].cp_seed = 160000.0;
 
     // ---- device buffers for path A ---------------------------------------------------------
@@ -126,7 +126,7 @@ int main(int argc, char** argv) {
     CK(cudaMalloc(&d_chan_idx, n_chan * sizeof(int)));
 
     std::vector<float> h_scale(n_chan, 1.0f); // lsb units straight through
-    std::vector<int> h_chan_idx(covering);    // frame channels 0..6 (LOCAL indices)
+    std::vector<int> h_chan_idx(covering);    // frame channels 0..6 (local indices)
     CK(cudaMemcpy(d_chan_scale, h_scale.data(), n_chan * 4, cudaMemcpyHostToDevice));
     CK(cudaMemcpy(d_chan_idx, h_chan_idx.data(), n_chan * 4, cudaMemcpyHostToDevice));
     CK(cudaMemset(d_frame, 0x88, frame_bytes)); // zero frame for the wave-materialising pass
@@ -151,9 +151,10 @@ int main(int argc, char** argv) {
         printf("  spec %d: PRN slot %d dop %+.0f Hz cp %.3f m_head %d n_chips %d\n", i, specs[i].p,
                specs[i].doppler_hz, specs[i].cp_seed, jobs[i].m_head, jobs[i].n_chips);
 
-    // ---- build the REAL frame: noise + per-antenna signal from the P replica ---------------
-    // Antenna 0: signal only, amplitude 5 lsb (clean quantization-loss channel).
-    // Antennas 1..31: noise rms 2 lsb + signal amplitude 1 lsb, random per-(spec,antenna) phase.
+    // ---- build the voltage frame: noise + per-antenna signal from the P replica ------------
+    // Antenna 0: signal only, 5 x the replica (the clean quantization-loss channel).
+    // Antennas 1..31: noise rms 2 lsb per component + 1 x the replica, random phase per
+    // (spec, antenna). Every spec's signal is summed, then clipped to +-7.
     std::vector<cd> gains((size_t)N_SPEC * N_ELEM);
     for (auto& g : gains) {
         double ph = 2.0 * M_PI * uni(rng);
@@ -169,7 +170,7 @@ int main(int argc, char** argv) {
                 }
                 const double amp = (e == 0) ? 5.0 : 1.0;
                 for (int i = 0; i < N_SPEC; i++) {
-                    cf w = wat(i, 1, c, m); // PROMPT replica
+                    cf w = wat(i, 1, c, m); // prompt replica
                     const cd s = amp * gains[(size_t)i * N_ELEM + e] * cd(w.real(), w.imag());
                     // The F-engine emits conj(sky); path A undoes it with conj_data, path B
                     // by injecting a conjugated replica.
@@ -184,7 +185,7 @@ int main(int argc, char** argv) {
             }
     CK(cudaMemcpy(d_frame, h_frame.data(), frame_bytes, cudaMemcpyHostToDevice));
 
-    // ---- path A on the real frame ----------------------------------------------------------
+    // ---- path A on the voltage frame -------------------------------------------------------
     despr.enqueue_batch_nm(d_frame, d_chan_scale, d_chan_idx, d_wave, N_ELEM, NSA, NFRAME,
                            window_start, specs, d_jobs, d_corr, d_energy, nullptr, CONJ);
     CK(cudaDeviceSynchronize());
@@ -200,7 +201,7 @@ int main(int argc, char** argv) {
     std::vector<double> lane_scale((size_t)4 * N_SPEC, 1.0);
     for (int i = 0; i < N_SPEC; i++)
         for (int t = 0; t < 4; t++) {
-            const int wrow = (t == 3) ? 1 : t; // P_HEAD packs the PROMPT, gated below
+            const int wrow = (t == 3) ? 1 : t; // P_HEAD packs the prompt, gated below
             float peak = 0.0f;
             for (int c = 0; c < n_chan; c++)
                 for (int m = 0; m < N_HOPS; m++) {
@@ -323,7 +324,7 @@ int main(int argc, char** argv) {
     }
 
     // ---- M^2 block: replica cross-terms vs CPU float reference -----------------------------
-    // V[128+4i+ta][128+4i+tb] should equal s_a s_b sum_m,c w_ta conj(w_tb) (per channel f=c).
+    // V[128+4i+ta][128+4i+tb] / (s_a s_b) should equal sum_m w_ta conj(w_tb) at channel f = c.
     {
         printf("\nM^2 replica cross-terms (spec 0, mid channel): tile vs float reference\n");
         int i = 0, c = 3;
@@ -335,9 +336,9 @@ int main(int argc, char** argv) {
                        + 32 * ilo + 2 * jlo;
             cd V = cd(vis[o], vis[o + 1])
                    / (lane_scale[(size_t)4 * i + ta] * lane_scale[(size_t)4 * i + tb]);
-            // The tiles hold the PACKED replica, which is conj(R) when the F-engine
-            // conjugation is being compensated -- so the reference must be conjugated too,
-            // or this reads as a 0.4 relative error that is purely a convention mismatch.
+            // The tiles hold the packed replica, which is conj(R) when the F-engine
+            // conjugation is compensated, so the reference is conjugated too; otherwise a
+            // convention mismatch reads as a large relative error.
             cd R(0.0, 0.0);
             for (int m = 0; m < N_HOPS; m++) {
                 cf a = wat(i, ta, c, m), b = wat(i, tb, c, m);

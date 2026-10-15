@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
 """GLONASS L2OC-p ranging-code check (1248.06 MHz, modernised CDMA pilot).
 
-★ THE CLAIM THIS EXISTS TO VERIFY: L2OC-p's base ranging code is BIT-IDENTICAL to L3OC-p's --
-GLONASS reuses one sequence across the L2 and L3 CDMA pilots, and the only difference is the
-modulation on top (L2OC applies a per-chip [0,0,1,-1] BOC(1,1)+TDM expansion; L3OC uses it raw).
-This checker re-derives the L3OC-p base INDEPENDENTLY, applies the expansion, and asserts the
-C++ matches chip for chip -- so the reuse is a checked fact, not an assumption.
+L2OC-p's base ranging code is bit-identical to L3OC-p's: GLONASS reuses one sequence across the
+L2 and L3 CDMA pilots, and only the modulation on top differs (L2OC applies a per-chip
+[0,0,1,-1] BOC(1,1)+TDM expansion; L3OC uses it raw). The reuse comes from the reference
+(PocketSDR gen_code_G2OCP). This checker re-derives the L3OC-p base independently of the C++,
+applies the expansion, and compares the C++ with it chip for chip.
 
-Checks: the base equals the independently-derived L3OC-p code; the [0,0,1,-1] expansion is applied
-exactly (every 4-slot group is [0, 0, +base, -base]); half the chips are zero and the non-zeros
-balance; the 50-chip OC2 secondary matches the reference; codes are distinct across PRN; and, if a
-compiler is available, the C++ matches python chip for chip.
+Checks: the base equals l3oc_code_check's L3OC-p derivation (PRN 1, when that module imports);
+the [0,0,1,-1] expansion is applied exactly (every 4-slot group is [0, 0, +base, -base]); half
+the chips are zero and the non-zeros balance; the 50-chip OC2 secondary matches the reference;
+codes are distinct across PRN; and, if a compiler is available, the C++ matches python chip for
+chip.
 
     python3 l2oc_code_check.py     # exits non-zero on any mismatch
 """
@@ -90,8 +91,8 @@ OC2_REF = (
     1,
 )
 
-# Recorded from the run that passed the bit-exact C++/python + reuse checks. popcount is 10230
-# (half of 40920: every base +1 chip yields one +1 and one -1 after [0,0,+c,-c]).
+# Recorded while the C++ and python codes matched bit for bit, so these pin both. popcount is
+# 10230, a quarter of 40920: every base chip yields one +1 and one -1 after [0,0,+c,-c].
 FP = {
     1: (0x802F373E, 10230),
     7: (0xE848631E, 10230),
@@ -234,7 +235,7 @@ def main():
         )
 
     # ---- the reuse claim, checked against the L3OC checker's own construction -------------
-    # (the base used here is _l3ocp_base; if l3oc_code_check is importable, cross-check it)
+    # (the base used here is _l3ocp_base; cross-check it when l3oc_code_check is importable)
     try:
         sys.path.insert(0, HERE)
         import l3oc_code_check as l3

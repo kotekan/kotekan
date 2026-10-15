@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Pinning tests for the broker's seed-phase transport in gnss_broker/fits.py (#44 / #45):
+"""Pinning tests for the broker's seed-phase transport in gnss_broker/fits.py:
 retag_seed_doppler, seed_phase_at_ref and tracker_phase_at.
 
 Run: python3 test_track_vs_fit.py
@@ -18,14 +18,13 @@ CARR = 1176.45e6
 SGN = 1.0
 L = 10230.0
 MOD = 20 * L  # seeds live mod the long code
-T0 = 195000.0  # ~2.26 days of F-engine age -- the lever regime
+T0 = 195000.0  # ~2.26 days of F-engine age, where t_abs multiplies any Doppler error
 H0 = int(round(T0 * HPS))
 
 
 class TestRetagSeedDoppler(unittest.TestCase):
-    """retag_seed_doppler (#44 / #45 step 4): a dop re-tag must preserve the physical
-    phase where the despread is RUNNING -- the present -- not where the seed happens to
-    be anchored."""
+    """retag_seed_doppler: a Doppler re-tag must preserve the physical phase where the
+    despread is running (now), not where the seed is anchored."""
 
     def _phys(self, cp0, dop, t):
         return (cp0 + t * CHIP * (1.0 + SGN * dop / CARR)) % MOD
@@ -40,20 +39,19 @@ class TestRetagSeedDoppler(unittest.TestCase):
         after = self._phys(cp0_new, dopB, t_now)
         # Bar sits just above the double-precision floor, not at zero: the phys
         # reconstruction runs through t*f_chip ~ 2e12 chips where one ulp is 2.4e-4,
-        # and a few ulps accumulate across retag + rebuild. 2e-3 chips = ~0.2 mm of
-        # code -- physics never sees it; a LOGIC error here is chips, not milli-chips.
+        # and a few ulps accumulate across retag + rebuild. 2e-3 chips is ~6 cm of code;
+        # a logic error here is chips, not milli-chips.
         self.assertLess(abs(((after - before + MOD / 2) % MOD) - MOD / 2), 2e-3)
 
-    # ---- the DOPPLER's own epoch (2026-08-16) ----------------------------------------
+    # ---- the Doppler's own epoch ---------------------------------------------------------
     #
-    # The cp re-tag above was only half of it. `doppler_hz` is ALSO an epoch-bearing value:
-    # gnss::propagate_seed applies dop_applied(t) = doppler_hz + dop_rate*(t - ref_hop), so
-    # doppler_hz must be the Doppler AT ref_hop. The coast path stored the forecast's NOW
-    # value there, leaving ref_hop at the last re-detection -- the tracker then added
-    # dop_rate*age on top of an already-current number and the applied Doppler ran at ~2x
-    # the true rate until the next detection snapped it back.
-    #
-    # These two tests pin the fix and the defect the same way the pair above does.
+    # `doppler_hz` is epoch-bearing too: gnss::propagate_seed applies
+    # dop_applied(t) = doppler_hz + dop_rate*(t - ref_hop), so doppler_hz must be the Doppler
+    # at ref_hop. A current forecast stored against an older ref_hop gets dop_rate*age added
+    # on top, and the applied Doppler runs at ~2x the true rate until the next detection
+    # re-anchors ref_hop. The broker's coast re-tag (seeding.py) stores the forecast
+    # back-propagated to ref_hop. These tests model propagate_seed with _applied and call no
+    # broker code.
 
     @staticmethod
     def _applied(stored_dop, rate, age):
@@ -61,10 +59,10 @@ class TestRetagSeedDoppler(unittest.TestCase):
         return stored_dop + rate * age
 
     def test_stored_doppler_is_back_propagated_to_ref_hop(self):
-        """For ANY age, the tracker must end up applying the forecast's NOW value."""
+        """For any age, the tracker must end up applying the forecast's current value."""
         rate, forecast_now = -0.35, 245.0
         for age in (0.0, 10.0, 200.0, 600.0, 3600.0):
-            stored = forecast_now - rate * age  # the fix
+            stored = forecast_now - rate * age  # back-propagated to ref_hop
             self.assertAlmostEqual(
                 self._applied(stored, rate, age),
                 forecast_now,
@@ -73,12 +71,10 @@ class TestRetagSeedDoppler(unittest.TestCase):
             )
 
     def test_the_doppler_epoch_tripwire(self):
-        """The defect, pinned: storing the NOW value against a stale ref_hop makes the
-        applied Doppler wrong by exactly dop_rate*age, and the applied RATE twice the true
-        one. Measured on sky before the fix: drift -0.63 Hz/s against a model -0.35, and a
-        60-81 Hz gap at ~200 s of age. If an edit reverts the epoch, this fails loudly."""
+        """Storing the current value against a stale ref_hop makes the applied Doppler wrong
+        by exactly dop_rate*age, and the applied rate twice the true one."""
         rate, forecast_now, age = -0.35, 245.0, 200.0
-        bad = self._applied(forecast_now, rate, age)  # the defect: stored at NOW
+        bad = self._applied(forecast_now, rate, age)  # stored at now: wrong
         self.assertAlmostEqual(
             bad - forecast_now,
             rate * age,
@@ -92,17 +88,15 @@ class TestRetagSeedDoppler(unittest.TestCase):
         self.assertAlmostEqual((d1 - bad) / 1.0, 2.0 * rate, places=6)
 
     def test_the_doppler_epoch_also_biases_the_cp_retag(self):
-        """Second consequence: comparing a ref_hop-epoch old_dop against a NOW-epoch
-        new_dop inflates the ddop handed to retag_seed_doppler by dop_rate*age, so the code
-        phase is kicked too. The fix compares the old EFFECTIVE Doppler at now."""
+        """Comparing a ref_hop-epoch old_dop with a current-epoch new_dop inflates the ddop
+        handed to retag_seed_doppler by dop_rate*age, so the code phase is kicked too; the
+        comparison must use the old effective Doppler at now."""
         rate, age = -0.35, 200.0
-        # "no news": the forecast at now is EXACTLY what the stored seed propagates to,
-        # so a correct comparison must see ddop = 0. (My first version wrote
-        # `245.0 - rate*age` and the test failed against correct code -- the propagation
-        # runs FORWARD from ref_hop, so it is a plus.)
+        # No news: the forecast at now is exactly what the stored seed propagates to
+        # (forward from ref_hop, hence the plus), so a correct comparison must see ddop = 0.
         stored_at_ref = 245.0
         forecast_now = stored_at_ref + rate * age
-        ddop_wrong = forecast_now - stored_at_ref  # what the old code saw
+        ddop_wrong = forecast_now - stored_at_ref  # old_dop at its ref_hop epoch
         ddop_right = forecast_now - (stored_at_ref + rate * age)  # like for like
         self.assertAlmostEqual(ddop_right, 0.0, places=9)  # nothing actually changed
         self.assertAlmostEqual(abs(ddop_wrong), abs(rate) * age, places=9)
@@ -113,9 +107,9 @@ class TestRetagSeedDoppler(unittest.TestCase):
         )
 
     def test_the_anchor_epoch_tripwire(self):
-        """The #44 defect, pinned: translating at a 600-s-stale anchor steps the phase
-        NOW by anchor_age * (f_chip/f_car) * ddop ~ 10.4 chips for a 2 Hz re-tag. If a
-        future edit moves the epoch back to the anchor, this fails loudly."""
+        """Translating at a 600-s-stale anchor steps the phase now by
+        anchor_age * (f_chip/f_car) * ddop, ~10.4 chips for a 2 Hz re-tag: the error a caller
+        makes by evaluating at the anchor instead of now."""
         cp0, dopA, ddop = 4321.0, 1000.0, 2.0
         t_anchor = T0
         t_now = T0 + 600.0
@@ -137,10 +131,9 @@ class TestRetagSeedDoppler(unittest.TestCase):
 
 
 class TestSeedPhaseTransport(unittest.TestCase):
-    """seed_phase_at_ref (#45 step 6): the broker's held phase -> the field the tracker
-    prefers. The conversion is the whole test -- the unconverted value is 52 chips wrong,
-    which is total loss of lock, and the e2e gate measured exactly that
-    (scripts/gnss/e2e_phase_transport.py at 31896a862: arg 0.788 / phase 51.999 / phase+ 0.785)."""
+    """seed_phase_at_ref: the broker's held phase -> the field the tracker prefers. The
+    conversion is the point: unconverted, the value is one hop (~52 chips) off, a total loss
+    of lock."""
 
     def test_offset_is_one_hop(self):
         from gnss_broker.fits import seed_phase_at_ref
@@ -159,14 +152,15 @@ class TestSeedPhaseTransport(unittest.TestCase):
 
     def test_round_trip_matches_the_tracker(self):
         """The invariant the tracker enforces: phase_from_arg(dr_cp0(phys)) == the shipped
-        phase. Both sides here are the broker's; the C++ agreement is the e2e gate's job."""
+        phase. Both sides here are the broker's; the C++ agreement is scripts/gnss/e2e.cpp's
+        job."""
         from gnss_broker.fits import seed_phase_at_ref
 
         phys, dop = 4321.0, -876.0
         h = H0 + int(11.0 * HPS)
         cp0 = dr_cp0(phys, h / HPS, dop, CHIP, CARR, SGN, MOD)
         shipped = seed_phase_at_ref(phys, dop, CHIP, HPS, CARR, SGN, MOD, 8192)
-        # what the tracker reconstructs from the ARGUMENT (its own last-sample reference)
+        # what the tracker reconstructs from the argument (its own last-sample reference)
         per_hop = CHIP / HPS * (1.0 + SGN * dop / CARR)
         from_arg = (
             cp0
@@ -178,10 +172,10 @@ class TestSeedPhaseTransport(unittest.TestCase):
         )
 
     def test_a_doppler_edit_cannot_move_the_phase(self):
-        """WHY the phase is shipped at all: cp0 is only meaningful paired with its dop, and
-        a producer that edits one without the other injects ~1700 chips/Hz. The phase has
-        no partner -- re-tagging the Doppler leaves it where it is (bar the code-rate
-        term, which is physics, not bookkeeping)."""
+        """Why the phase is shipped: cp0 is meaningful only paired with its Doppler, and a
+        producer that edits one without the other injects ~1700 chips/Hz at this age. The
+        phase has no partner: re-tagging the Doppler leaves it where it is, bar the per-hop
+        code-rate term."""
         from gnss_broker.fits import seed_phase_at_ref
 
         phys = 4321.0
@@ -195,8 +189,8 @@ class TestSeedPhaseTransport(unittest.TestCase):
 
 
 class TestTrackerPhaseAt(unittest.TestCase):
-    """tracker_phase_at (#45 step 7 / #43): the seed audit must model the reference
-    propagate_seed ACTUALLY reads, not the one the broker happens to have computed."""
+    """tracker_phase_at: the seed audit must model the reference propagate_seed actually
+    reads, not the one the broker happened to compute."""
 
     DOP = 1894.984
     FFT = 8192
@@ -229,8 +223,8 @@ class TestTrackerPhaseAt(unittest.TestCase):
         self.assertAlmostEqual(a, b, delta=1e-3)
 
     def test_the_phase_wins_when_they_disagree(self):
-        """THE #43 BUG. cp0 and the phase come from different broker paths and CAN
-        disagree; the tracker reads the phase, so the audit must too."""
+        """cp0 and the phase come from different broker paths and can disagree; the tracker
+        reads the phase, so the audit must too."""
         from gnss_broker.fits import tracker_phase_at, seed_phase_at_ref
 
         h = H0
@@ -239,8 +233,8 @@ class TestTrackerPhaseAt(unittest.TestCase):
         )
         d = self._seed(4321.0, h, code_phase_at_ref_chips=shipped)
         got = tracker_phase_at(d, h, HPS, CHIP, CARR, SGN, MOD, self.FFT)
-        # the SHIPPED value is the expectation, not the broker-convention phase it was
-        # built from -- they differ by the hop offset, which is the point of the field
+        # the shipped value is the expectation, not the broker-convention phase it was
+        # built from: they differ by the hop offset, which is the point of the field
         self.assertAlmostEqual(
             ((got - shipped + MOD / 2) % MOD) - MOD / 2,
             0.0,
@@ -268,8 +262,8 @@ class TestTrackerPhaseAt(unittest.TestCase):
         )
 
     def test_a_pair_inconsistent_seed_no_longer_reads_as_a_step(self):
-        """The audit's purpose: a seed whose cp0 is stale but whose PHASE is correct is
-        not a discontinuity for the tracker, and must not be reported as one."""
+        """The audit's purpose: a seed whose cp0 is stale but whose phase is correct is not
+        a discontinuity for the tracker, and must not be reported as one."""
         from gnss_broker.fits import tracker_phase_at, seed_phase_at_ref
 
         h0, h1 = H0, H0 + int(8.0 * HPS)

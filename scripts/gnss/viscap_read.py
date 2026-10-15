@@ -13,25 +13,31 @@ CTL FRAME (lib/stages/gnss/gnssGpuChain.hpp): FrameHdr(48) | winstart int64[16] 
 PrnCtl(80)[16 rec][n_prn] | energy f64[4*n_prn*16 jobs][n_chan]. seq0 is the absolute
 F-engine ADC sample (3.2 GS/s; one hop = 16384 samples, one frame = 8192 hops = 134217728
 samples) of the frame's first hop; utc0 the UTC of sample 0; winstart[r] the absolute sample of
-sub-integration r (2048 hops = 33554432 samples apart). energy[(job0+t)*n_chan + c] is the TRUE (pre-quantization)
-replica energy of lane row t of that PRN slot over one record.
+sub-integration r (2048 hops = 33554432 samples apart). energy[(job0+t)*n_chan + c] is the
+pre-quantization replica energy of lane row t of that PRN slot over one record.
 
 TILES FRAME: int32 [n_rec][n_chan][n_tile][16][16][2] (re, im), n_tile per channel =
-  mixed  : nsb16 synth rows (ihi 8..) x nlive16 live columns -> tile (ihi-8)*nlive16 + slot
+  mixed  : nsb16 synth rows (ihi 8..) x nlive16 live columns -> tile (ihi-8)*nlive16 + jhi
   AA     : lower triangle over live columns, tile n_mixed + k1*(k1+1)/2 + k2 (k1 >= k2)
   BB     : lower triangle over the synth rows, tile n_mixed + n_aa + k1*(k1+1)/2 + k2
-           (gnss_gather_bb: the replica x replica block that completes the (N+M)^2)
-Synth lane L = 4*slot + row (row 0 E, 1 P, 2 L, 3 P_HEAD) sits at gi = 128 + L: ihi = gi>>4,
-ilo = gi&15. Element e (0..n_live-1, in live-column slot order) is at jhi = e>>4, jlo = e&15.
+           (gather_cap_bb, set by the generator's --vis-capture-bb: the replica x replica
+           block that completes the (N+M)^2)
+Synth lane L = lane_base + 4*slot + row (row 0 E, 1 P, 2 L, 3 P_HEAD; lane_base 0 for a
+one-chain capture) sits at gi = 128 + L: ihi = gi>>4, ilo = gi&15. Element e (0..n_live-1, in
+live-column order) is at jhi = e>>4, jlo = e&15.
 V_mixed[lane, e] = sum synth * conj(antenna)  (cudaCorrelatorDual: synth on the row side).
 V_aa[i, j]       = sum E_i * conj(E_j), i >= j.
 V_bb[a, b]       = sum synth_a * conj(synth_b), a >= b (raw tile units: divide by s_a * s_b).
-The replica lanes were quantized to 4 bits with s = 7 / (3 * sqrt(energy_rec0 / hops_per_record))
-frozen at record 0 of the frame; divide V_mixed by s for the tracker's absolute units.
+The replica lanes were quantized to 4+4 bits with s = 7 / (3 * sqrt(energy_rec0 /
+hops_per_record)) frozen at record 0 of the frame; divide V_mixed by s for the tracker's
+absolute units. GnssN2RecordAssemble computes the same s. The pack itself takes the P_HEAD
+lane's rms over the record's m_head hops, so for that lane this s is not the pack's.
 
-Absolute channel ids and the live element ids are not in the frames: --config pulls
-channel_ids from the instance's cudaGnssInject block and array.live_element_ranges from
-config/chord_gnss_node.yaml, so every axis written to the h5 is ABSOLUTE (freq_id, element).
+Absolute channel ids and the live element ids are not in the frames: channel_ids come from the
+chain's cudaGnssInject block in --config and array.live_element_ranges from --node-yaml
+(default config/chord_gnss_node.yaml), so every axis written to the h5 is absolute (freq_id,
+element). A merged capture's tiles carry the capture gather's channels (gather_cap_channels);
+the reader assumes they are this chain's channel_ids.
 """
 import argparse
 import glob
@@ -133,8 +139,8 @@ def config_axes(config_path, gpu, tag, node_yaml):
     import yaml
 
     cfg = yaml.safe_load(open(config_path))
-    # one process per chain, or (several chains in one pass) the GPU's process holding this
-    # chain's injector among others
+    # The chain's own n2dual block, or the GPU's merged gnss<gpu>_n2dual (several chains in one
+    # pass) that holds this chain's injector among others.
     dual = cfg.get("gnss%d%s_n2dual" % (gpu, tag)) or cfg["gnss%d_n2dual" % gpu]
     inj = next(
         c
@@ -163,9 +169,10 @@ def config_axes(config_path, gpu, tag, node_yaml):
 
 
 def config_lanes(config_path, gpu, tag, gather="cap"):
-    """The capture's replica side: {has_aa, has_bb, num_synth, lane_base} from the correlator
-    block. One chain per correlator: its own keys. Several chains in one pass (gnss_gathers):
-    the named gather's keys -- the capture gather 'cap' spans the captured chains' lanes."""
+    """The capture's replica side: {has_aa, has_bb, num_synth, lane_base, merged} from the
+    correlator block. One chain per correlator: its own keys. Several chains in one pass
+    (gnss_gathers): the named gather's keys -- the capture gather 'cap' spans the captured
+    chains' lanes."""
     import yaml
 
     cfg = yaml.safe_load(open(config_path))
@@ -188,8 +195,8 @@ def config_lanes(config_path, gpu, tag, gather="cap"):
             lane_base=int(inj.get("synth_lane_base", 0)) - cap_base,
             merged=True,
         )
-    # One chain per correlator, gnss_gather_aa/bb on it: the per-chain captures up to 10-06.
-    # cudaCorrelatorDual now refuses that shape, so only those archives read this way.
+    # One chain per correlator with gnss_gather_aa/bb on it: cudaCorrelatorDual refuses that
+    # config (it requires gnss_gathers), so only archives captured in that layout read this way.
     return dict(
         has_aa=bool(corr.get("gnss_gather_aa")),
         has_bb=bool(corr.get("gnss_gather_bb")),
@@ -242,7 +249,8 @@ def read_pair(ctl_paths, tile_paths, n_tile, n_chan_expect=None, max_frames=0):
 
 def decode(frames, n_live, hops, has_aa, has_bb=False, num_synth=128, lane_base=0):
     """Frames -> dict of record-indexed arrays (R = frames x n_rec):
-    winstart[R] i8, prn/run/fcar_report/f_nco/fcar/cp_seed[R, n_prn], energy/scale[R, n_prn, 4, n_chan],
+    winstart[R] i8, prn/run/fcar_report/f_nco/fcar/cp_seed[R, n_prn],
+    energy/scale[R, n_prn, 4, n_chan],
     vis_mixed[R, n_chan, n_prn, 4, n_live] c8 (raw tile units; divide by scale) -- this ctl's
     slots, whose lanes start at lane_base on the frame's synth axis,
     vis_aa[R, n_chan, n_live, n_live] c8 (Hermitian-completed) or None,

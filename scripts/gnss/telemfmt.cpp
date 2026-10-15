@@ -1,15 +1,11 @@
-// telemfmt -- emit ONE task-#59 telemetry frame, straight from the C++ wire structs, so the
-// broker's parser can be checked against the definition instead of against a transcription of
-// it. Built and run by python/scripts/gnss/test_telem.py; needs no kotekan libraries (the wire
-// header is standalone), so the test compiles it on the fly and always tests the CURRENT
-// gnssTelem.hpp rather than a binary someone built once.
+// telemfmt: write one telemetry frame from the C++ wire structs, so the broker's parser
+// (gnss_broker/telem.py) is checked against gnssTelem.hpp itself rather than a transcription of
+// it. python/scripts/gnss/test_telem.py compiles and runs it in setUpClass; it needs only the
+// headers in lib/stages/gnss, so the test always exercises the current gnssTelem.hpp.
 //
-// WHY THIS EXISTS. gnssTelem.hpp is a C++ struct and gnss_broker/telem.py is a struct.Struct
-// format string: two independent statements of one layout. Every field-order or padding change
-// silently shifts the Python parse, and a shifted parse does not raise -- it yields plausible
-// numbers with the wrong meaning, which is the exact failure mode this whole transport exists
-// to stop tolerating (see the module header in telem.py). A python-only test can only prove the
-// parser is self-consistent. This one makes the C++ the reference.
+// gnssTelem.hpp and telem.py's struct format strings state one layout twice. A field-order or
+// padding change shifts the Python parse without raising, giving plausible numbers with the
+// wrong meaning; a Python-only test can prove only that the parser agrees with itself.
 //
 //   usage: telemfmt <out.bin>     writes one frame; prints the layout as JSON on stdout
 
@@ -42,18 +38,16 @@ int main(int argc, char** argv) {
     h.seq = 42ull;
     h.wstart0 = (int64_t)h.win * n_rec * h.hops_per_record * h.fft_len;
     h.utc0 = 1786285988.5;
-    // Slot 2 DELIBERATELY MISSING: a dropped record must read as a hole at a known index, not
-    // as a shift of everything after it. That distinction is the whole reason slots are
-    // addressed rather than appended, so the fixture exercises it.
+    // Slot 2 is left empty: a dropped record must read as a hole at its own index, not as a
+    // shift of the records after it.
     h.present = 0b1011u;
     gnss::telem_set_name(h.chain, "gal_e5a");
     gnss::telem_set_name(h.inst, "cx42.1");
 
     const int n_chan = 5;
-    // max_chan IS THE ROW STRIDE and it is NEITHER n_chan NOR the format ceiling here, on
-    // purpose: a reader that strides by TELEM_MAX_CHAN reads every row at the wrong offset, and
-    // a reader that strides by n_chan reads all but the first. The sixth column stays ZERO, so
-    // a reader that ignores n_chan is caught too.
+    // max_chan is the row stride and differs from both n_chan and TELEM_MAX_CHAN, so a reader
+    // that strides by either reads every row after the first at the wrong offset. The sixth
+    // column stays zero, so a reader that ignores n_chan is caught too.
     const int n_cols = 6;
     h.n_chan = (uint16_t)n_chan;
     h.max_chan = (uint16_t)n_cols;
@@ -69,9 +63,8 @@ int main(int argc, char** argv) {
                 row[f] = (float)(1000 * r + 10 * p + f);
             row[gnss::REC_PRN] = (float)(100 + p);
             row[gnss::REC_P_ENERGY] = (float)(p + 1); // > 0 so every row survives the energy gate
-            // THE COMB: a distinct, reproducible value per (record, PRN, channel, slot) so a
-            // parser that gets the row stride or the comb offset wrong reads a number that
-            // provably belongs somewhere else rather than a plausible one.
+            // A distinct value per (record, PRN, channel, slot), so a wrong row stride or comb
+            // offset reads a number that identifiably belongs to another cell.
             for (int ch = 0; ch < n_chan; ++ch) {
                 float* cb = row + gnss::telem_chan_offset(ch);
                 cb[gnss::CHAN_RE] = (float)(100000 * r + 1000 * p + 10 * ch + 1);
@@ -84,8 +77,8 @@ int main(int argc, char** argv) {
                 cb[gnss::CHAN_L_IM] = (float)(100000 * r + 1000 * p + 10 * ch + 6);
                 cb[gnss::CHAN_L_ENERGY] = (float)(ch + 1);
             }
-            // UTC is a DOUBLE aliased over two float slots -- the one place a naive
-            // float-by-float parse gets a plausible-looking wrong answer.
+            // UTC is a double aliased over two float slots, the one field a float-by-float
+            // parse gets plausibly wrong.
             *reinterpret_cast<double*>(row + gnss::RECORD_UTC_SLOT) =
                 1786285988.5 + 0.0104857 * r + 0.001 * p;
         }

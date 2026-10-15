@@ -1,30 +1,29 @@
 #!/usr/bin/env python3
-"""GNSS OBSERVABLES RECORD -- the instrument's primary data product (RINEX in spirit).
+"""GNSS observables record: the instrument's primary data product (RINEX in spirit).
 
 One JSONL row per satellite per band per epoch, carrying the two ranging observables and
 the geometry needed to interpret them:
 
     CODE   code_resid_m: the tracker's model-removed code range (src trk), else the
-           search's (dr_integ); + the record's raw (cp_rec_chips, dop_rec_hz, rec_hop)
+           search's (dr_integ); plus the record's raw (cp_rec_chips, dop_rec_hz, rec_hop)
            triple and dll_disc
-    PHASE  adr_cycles       (accumulated carrier phase on an unbroken arc, + arc id/length)
-    POWER  cn0_dbhz, sig    (coherent + incoherent)
-    GEOM   az, el, range_m, sat_clk_s, range_rate  (BRDC, evaluated AT THE EPOCH)
+    PHASE  adr_cycles and the fleet ADR (fadr_*), each with its arc id
+    POWER  cn0_coh_dbhz, cn0_inc_dbhz, cn0_prompt_dbhz, cn0_kcoh_dbhz, sig
+    GEOM   az, el, range_m, range_rate_mps, sat_clk_s  (BRDC, evaluated at the epoch)
 
-Deliberately RAW: no receiver clock removed, no ionosphere modelled, no arcs levelled. Every
-derived quantity (receiver clock, TEC, DCBs, scintillation indices) is a function of these
-rows and is computed OFFLINE, where it can be re-derived when the model improves. The record
-is the contract; everything downstream is opinion.
+Deliberately raw: no ionosphere modelled, no arcs levelled, and the tracker's code residual
+(code_resid_src trk) keeps the receiver clock; only the search's (dr_integ) has it removed.
+Every derived quantity (receiver clock, TEC, DCBs, scintillation indices) is a function of
+these rows and is computed offline, where it can be re-derived when the model improves.
 
-WHY BOTH OBSERVABLES: code is unambiguous but noisy and multipath-ridden (metres); carrier is
-exquisite (millimetres) but ambiguous by a whole number of cycles, and that ambiguity resets
-at every arc break. The standard recipe -- and the one the TEC work will use -- levels each
-carrier arc onto the code within that arc, buying carrier precision with code absoluteness.
-This is why the arc id matters as much as the phase itself: a levelling that spans a slip is
-a wrong answer with a small formal error, the worst kind.
+Why both observables: code is unambiguous but noisy and multipath-ridden (metres); carrier is
+millimetre-precise but ambiguous by a whole number of cycles, and that ambiguity resets at
+every arc break. Levelling each carrier arc onto the code within that arc buys carrier
+precision with code absoluteness, which is why the arc id matters as much as the phase: a
+levelling that spans a slip is a wrong answer with a small formal error.
 
-MULTI-BAND: run one instance per chain. The geometry-free combination of two bands' rows for
-the same satellite is the ionosphere -- which is the point of the exercise.
+Run one instance per chain. The geometry-free combination of two bands' rows for the same
+satellite is the ionosphere.
 
 Usage: the obs component of scripts/gnss/site/stack_components.sh holds the argv, one writer
 per chain.
@@ -45,25 +44,25 @@ from gnss_brdc_supply import cached_brdc
 # The F-engine hop: an emit's epoch is frame0 + hop * SAMPLES_PER_HOP / SAMPLE_RATE_HZ.
 SAMPLES_PER_HOP = 16384
 SAMPLE_RATE_HZ = 3.2e9
-# Status field holding the emit's ABSOLUTE F-engine hop. The epoch is built from this integer,
+# Status field holding the emit's absolute F-engine hop. The epoch is built from this integer,
 # never from a UTC difference: two 1.79e9 floats subtract to 2.4e-7 s of resolution, which is
-# 2.4 chips (73 m) of code.
+# 2.4 chips (71 m) at 10.23 Mchip/s.
 HOP_KEY = "fleet_hop"
-# Rows from a live broker are ~1.5 s old; one further than this from wall clock is mis-stamped
-# (the re-base case is in row_epoch()).
+# Rows from a live broker are a few seconds old; one further than this from wall clock is
+# mis-stamped (row_epoch() covers the re-base case).
 MAX_EPOCH_SKEW_S = 60.0
 # Re-read /telescope/time0_ns this often and exit 3 when it has moved (see the poll loop).
 FRAME0_RECHECK_S = 60.0
-# How stale the broker's trk / dr_integ residual may be before the row carries none (they
-# refresh ~30 s).
+# How old the broker's trk or dr_integ residual (trk_resid_age_s, dr_integ_age_s) may be and
+# still be used for code_resid_m.
 INTEG_MAX_AGE_S = 90.0
-# toe validity window for GEOMETRY (az/el/range). Wider than the 4 h dead-reckon default so a
-# stale-in-memory or offline ephemeris still yields az/el through an overnight network gap
-# (Keplerian propagation is sub-degree for many hours). toe_age_s is logged per row so
-# precision consumers can still gate on freshness.
+# toe validity window for geometry (az/el/range). Wider than predict_all's 4 h default, which
+# dead reckoning keeps, so a stale or offline ephemeris still yields az/el through an overnight
+# network gap (Keplerian propagation stays sub-degree for many hours). eph_age_s rides every
+# row with geometry so precision consumers can still gate on freshness.
 EPH_GEOM_WINDOW_S = 21600.0
-# Poll period. Rows are written once per COMBINER EMIT (deduped on the arc/record counters),
-# so polling faster than the emit is free.
+# Poll period. Rows are written once per combiner emit (deduped on the arc/record counters),
+# so polling faster than the emit costs nothing.
 POLL_S = 1.0
 
 
@@ -76,23 +75,17 @@ def _get(url, timeout=3.0):
 
 
 def cn0_dbhz(row, deep_snr, coherence_s):
-    """Coherent C/N0 (dB-Hz): PREFER the broker's own `cn0_coh_db`, and only fall back to the
-    local 20log10(deep_snr) - 10log10(T) when serving an older broker that does not publish it.
+    """Coherent C/N0 (dB-Hz): the broker's `cn0_coh_db`, else (absent or None)
+    20log10(deep_snr) - 10log10(T) from the row.
 
-    ⚠️ THE FALLBACK IS THE BUG THIS FUNCTION USED TO BE (task #47, 2026-08-12). Recomputing from
-    the ROW's deep_snr silently re-introduced everything task #35 fixed one layer upstream: that
-    field is OVERRIDDEN in publish.py by the fleet-coherent value or the quadrature fallback, so
-    it mixes estimator populations with different normalisations. publish.py deliberately builds
-    cn0_coh_db from the BEST SINGLE INSTANCE's own deep_snr over that instance's own coherent
-    span -- one estimator, one normalisation, continuous across serving states -- and this
-    function threw that away and recomputed the mixture. MEASURED live on gal_e5a the same day:
-    the recomputation runs up to +9.7 dB hot against the published value, worst on exactly the
-    PRNs carrying `coh_src: quad:12` (the 10log10(12) = 10.8 dB inflation of docs 11.31).
-    So every observables file and every viewer trace written since #35 landed carries the
-    UN-fixed number, while the broker's own REST surface carried the fixed one.
+    The fallback is not the same estimator. The row's deep_snr is overridden in publish.py by
+    the fleet-coherent value or the quadrature fallback (coh_src fleet:N / quad:N), so it mixes
+    populations with different normalisations and reads up to ~10 dB hot on quad rows;
+    cn0_coh_db is built from the best single instance's deep_snr over that instance's own
+    coherent span.
 
-    Coherence is still required: a floored deep is rectification noise. Whether the PROMPT was
-    on the signal at all is a separate question this number cannot answer -- see prompt_lock."""
+    Coherence is still required: a floored deep is rectification noise. Whether the prompt was
+    on the signal at all is a separate question this number cannot answer; see prompt_lock."""
     pub = row.get("cn0_coh_db")
     if pub is not None:
         return pub
@@ -103,10 +96,10 @@ def cn0_dbhz(row, deep_snr, coherence_s):
 
 def cn0_inc_dbhz(amp, unbiased, t_rec):
     """Incoherent C/N0 (dB-Hz) from the single-record power ratio x = u^2/(a^2 - u^2). Needs
-    no coherence at all, so it survives where the coherent estimator drops out -- BUT its noise
-    split is the 4th-moment debias, which a BOC pilot's amplitude modulation fools (reads low by
-    ~10log10(t_rec): E1C ~-7, B1C ~-13 dB). Kept as the phase-blind estimator + a commercial-Rx
-    comparison; cross-check it against cn0_coh."""
+    no coherence, so it survives where the coherent estimator drops out, but its noise split is
+    the 4th-moment debias, which a BOC pilot's amplitude modulation fools (reads low by
+    ~10log10(t_rec / 1 ms): E1C ~-7, B1C ~-13 dB). Kept as the phase-blind estimator and for
+    comparison with commercial receivers; cross-check it against cn0_coh."""
     if amp and unbiased and amp > unbiased > 0 and t_rec > 0:
         x = (unbiased * unbiased) / (amp * amp - unbiased * unbiased)
         return 10.0 * math.log10(x / t_rec)
@@ -116,18 +109,15 @@ def cn0_inc_dbhz(amp, unbiased, t_rec):
 def row_epoch(r, frame0, now):
     """(t_epoch, hop, None) for a row this writer may record, else (None, hop, why).
 
-    THE EPOCH IS THE HOP, OR THERE IS NO ROW. The epoch is
-    frame0 + hop * SAMPLES_PER_HOP / SAMPLE_RATE_HZ, an exact integer on the F-engine counter.
-    A missing or non-positive hop (the comb's -1 = "no window") means no row: an unanchored row
-    is junk, the same rule as t_epoch < 1e9 below.
+    The epoch is frame0 + hop * SAMPLES_PER_HOP / SAMPLE_RATE_HZ, from an integer on the
+    F-engine counter. A missing or non-positive hop (the comb's -1 = "no window") means no row:
+    an unanchored row is junk, the same rule as t_epoch < 1e9 below.
 
-    THE WALL-CLOCK GATE (MAX_EPOCH_SKEW_S). This writer polls a LIVE broker, so a row's
-    epoch is seconds old -- ~1.5 s in steady state. One that is not is mis-stamped, not late:
-    right after an F-engine re-base the broker's fleet hop can still come from the PREVIOUS
-    session's windows, and new frame0 + old hop lands hours or days in the future. Files roll on
-    the row's epoch, so those rows headed future days' files: gal_e5a_20261002.jsonl was created
-    on 09-28 at 20:16:38, 48 s after that day's re-base, by rows stamped 10-02 00:49:00
-    (= the previous session's last hop, at 09-28 19:04:24, read against the new frame0).
+    The wall-clock gate (MAX_EPOCH_SKEW_S): this writer polls a live broker, so a row's epoch
+    is seconds old, and one that is not is mis-stamped rather than late. Right after an
+    F-engine re-base the broker's fleet hop can still come from the previous session's
+    windows, and new frame0 + old hop lands hours or days in the future; since files roll on
+    the row's epoch, those rows would create future days' files.
     """
     hop = r.get(HOP_KEY) or r.get("pow_hop") or 0
     if not hop or hop < 0:
@@ -141,24 +131,16 @@ def row_epoch(r, frame0, now):
 
 
 def make_obs_writer(path_tmpl, label="", log=None):
-    """Append-only JSONL row writer whose file ROLLS on the row's own UTC.
+    """Append-only JSONL row writer whose file rolls on the row's own UTC.
 
     Returns f(t_utc, row) -> the path written, reopening whenever the strftime-expanded
-    path changes.
+    path changes, so one long-lived writer produces one file per UTC day.
 
-    ⚠️⚠️ WHY THIS IS A FUNCTION AND NOT A `open()` AT STARTUP (2026-09-10). The path used
-    to be strftime-expanded ONCE, before the poll loop, so a logger begun on the 5th kept
-    writing <chain>_20260905.jsonl for as long as it lived: measured on cf06, four days
-    and 2.0 GB of rows in a file named for the first of them, while 09-06, 09-07 and
-    09-08 had no observables file at all. Both the --out help text and its launcher already
-    asserted that the file rolled at UTC midnight -- the promise was in two places and the
-    behaviour in none, which is precisely why it survived a month of daily use.
-
-    ⚠️ THE KEY IS THE ROW'S EPOCH, NOT WALL-CLOCK-AT-POLL. The two differ either side of
+    The key is the row's epoch, not wall clock at poll. The two differ either side of
     midnight, and the epoch (the emit's capture time) is what every consumer joins on, so
-    filing by it is the only choice under which "the rows in <day>.jsonl are that day's
-    measurements" is true. A row is always written -- an epoch outside today never means
-    a dropped row, only a differently-named file.
+    filing by it is what makes "the rows in <day>.jsonl are that day's measurements" true.
+    A row is always written: an epoch outside today means a differently named file, never a
+    dropped row.
     """
     state = {"path": None, "fh": None}
 
@@ -224,8 +206,8 @@ def main():
         "the 5th wrote the 5th's filename for four days and the days between "
         "had no file at all.)",
     )
-    # ── THE ANCHOR. The F-engine's own sample-0 epoch is served exactly (nanoseconds,
-    # identical on every node) at /telescope/time0_ns.
+    # The anchor: the F-engine's sample-0 epoch, served exactly (nanoseconds, identical on
+    # every node) at /telescope/time0_ns.
     ap.add_argument(
         "--frame0-url",
         required=True,
@@ -234,10 +216,10 @@ def main():
     )
     args = ap.parse_args()
 
-    # FATAL rather than 0.0: a missing anchor is not a degraded mode, it is every code
-    # residual silently null -- which is how this went unnoticed for as long as it did.
-    # A node that does not answer (the F-engine off) is waited for, not exited on: the
-    # unit's Restart=on-failure would turn the exit into a 10 s re-import loop from NFS.
+    # Fatal rather than 0.0: a missing anchor is not a degraded mode, it is every code
+    # residual silently null. A node that does not answer (the F-engine off) is waited for,
+    # not exited on: the unit's Restart=on-failure would turn the exit into a 10 s re-import
+    # loop from NFS.
     _t0, _wait_warn_t = None, 0.0
     while not _t0:
         try:
@@ -278,7 +260,7 @@ def main():
     write_row = make_obs_writer(
         args.out, "%s [%s/%s]" % (args.band, args.sys, args.combiner)
     )
-    # The first file is not opened until the first row, so announce the PATTERN here: a
+    # The first file is not opened until the first row, so announce the pattern here: a
     # chain that never emits would otherwise leave an empty log, with no way to tell
     # "wrong flags" from "nothing to record".
     print(
@@ -316,16 +298,13 @@ def main():
         dets = _get("%s/%s/get_detections" % (args.url, args.search)) or []
         det_snr = {int(d["prn"]): d.get("snr") for d in dets if "prn" in d}
         now = time.time()
-        # ── THE ANCHOR IS RE-READ, AND A CHANGE IS FATAL ON PURPOSE. frame0 is latched once
-        # per process, and an F-engine re-base restarts the hop counter without telling
-        # anyone: t_epoch = frame0 + hop then stamps the new session onto the OLD epoch --
-        # every row lands in a past day's file, non-monotonic in file order, with az/el/range
-        # evaluated at that past instant (tracked satellites below the horizon, code and
-        # carrier residuals against the wrong range). The broker already refuses to carry a
-        # moved anchor (gnss_broker/receiver.time_anchor; its supervisor restarts it) and
-        # this is the same rule here: exit 3 is a failure to systemd, which restarts the unit
-        # on the new epoch and a new day file. An unreadable endpoint keeps the latched
-        # anchor and is logged, not fatal -- only a DIFFERENT value is.
+        # The anchor is re-read, and a change is fatal on purpose. frame0 is latched once per
+        # process, and an F-engine re-base restarts the hop counter: t_epoch = frame0 + hop
+        # would then stamp the new session onto the old epoch, filing rows under a past day
+        # with az/el/range evaluated at that past instant. The broker never re-anchors either
+        # (gnss_broker/receiver.time_anchor) and exits on a confirmed change. Exit 3 is a
+        # failure to systemd, which restarts the unit on the new epoch. An unreadable endpoint
+        # keeps the latched anchor and is logged; only a different value is fatal.
         if now - frame0_check_t >= FRAME0_RECHECK_S:
             frame0_check_t = now
             try:
@@ -358,11 +337,9 @@ def main():
                         file=sys.stderr,
                     )
 
-        # STALE-GEOMETRY PROBE (2026-07-20): a loaded eph whose newest toe has aged past the
-        # window yields ZERO sats -> az/el/range silently vanish, and the plain 2 h timer
-        # would leave it that way for up to 2 h (measured: L1-GPS ran 4 h geometry-blind
-        # while fresh BRDC sat in the cache). Probe once every 5 min; an empty predict for
-        # THIS constellation forces a re-fetch now.
+        # Stale-geometry probe: a loaded eph whose newest toe has aged past the window yields
+        # no satellites, so az/el/range silently vanish until the 2 h reload. Probe every
+        # 5 min; an empty predict for this constellation forces a reload now.
         stale_geom = False
         if eph is not None and now - eph_probe_t > 300.0:
             eph_probe_t = now
@@ -381,9 +358,8 @@ def main():
                 stale_geom = True
         if eph is None or now - eph_t > 7200 or stale_geom:
             try:
-                # READ-ONLY. The nav cache has ONE writer, the broker (gnss_brdc_supply.
-                # cached_brdc); eight of these were rebuilding its rolling store on their
-                # own schedule. An empty cache is "geometry omitted", never a fetch.
+                # Read-only (gnss_brdc_supply.cached_brdc): the broker is the nav cache's one
+                # writer. An empty cache omits geometry; it never triggers a fetch.
                 srcs = cached_brdc()
                 if not srcs:
                     raise RuntimeError(
@@ -418,12 +394,11 @@ def main():
                 if last.get(prn) == (arc, nrec):
                     continue  # same combiner emit, already recorded
                 last[prn] = (arc, nrec)
-                # EPOCH = the emit's own capture time. Wall-clock-at-poll is a different
-                # (and wrong) instant: pipeline latency and emit jitter of 0.1 s smear a
-                # 2 kHz Doppler by ~200 cycles, and every geometry term is evaluated at the
-                # epoch, so the error would land straight in the ionosphere estimate.
-                # EXACT on CHORD: an integer hop count off the F-engine's own counter, scaled
-                # by two integers -- never (t_now - utc0) on two 1.79e9 floats. No hop, or an
+                # Epoch = the emit's own capture time. Wall clock at poll is a different
+                # instant: 0.1 s of pipeline latency and emit jitter smears a 2 kHz Doppler by
+                # ~200 cycles, and every geometry term is evaluated at the epoch, so the error
+                # would land in the ionosphere estimate. The hop count is an integer off the
+                # F-engine counter, never (t_now - utc0) on two 1.79e9 floats. No hop, or an
                 # epoch far from wall clock, is no row (row_epoch says why).
                 t_epoch, hop, why = row_epoch(r, frame0, now)
                 if why is not None:
@@ -435,15 +410,14 @@ def main():
                     last.pop(prn, None)  # never dedup a later good row against this one
                     continue
                 v = None
-                # ⚠️ WHILE THE BROKER SAYS THE EPOCH IS SUSPECT, THERE IS NO GEOMETRY. A row
-                # evaluated at a wrong instant is not degraded geometry, it is a different
-                # satellite's position wearing this PRN's number (measured: 71% of strong
-                # satellites "below the horizon"). The row's own measurements are kept.
+                # While the broker says the epoch is suspect (gnss_broker/timebase) the row
+                # carries no geometry: evaluated at a wrong instant it is not degraded geometry
+                # but another position wearing this PRN's number. The row's own measurements
+                # are kept.
                 epoch_suspect = bool(r.get("time_base_suspect"))
-                # ONE SATELLITE, NOT THE SKY. predict_all works satellite by satellite, and each
-                # row needs only its own: handing it the whole store (100 satellites, ~40k
-                # records over the cached days) cost 18 ms a call, twice per row, and made the
-                # eight writers the gnss VM's heaviest load after the broker (2026-09-27).
+                # Hand predict_all this PRN's records only: it evaluates every satellite it is
+                # given, and the whole store (every constellation over the cached days) would
+                # cost a full-sky solve per call, two calls per row.
                 _k1 = (args.sys, prn)
                 _eph1 = {_k1: eph[_k1]} if (eph and _k1 in eph) else {}
                 if eph and not epoch_suspect:
@@ -461,30 +435,28 @@ def main():
                         v = None
                 adr = r.get("adr_cycles")
                 trim = r.get("trim_cycles")
-                # ---- CMC INPUTS. code_resid = c*dt_rx + I + multipath. Pair it with the
-                # carrier residual
+                # CMC inputs. code_resid = c*dt_rx + I + multipath (range form). Pair it with
+                # the carrier residual
                 #     carr_resid = -adr*lambda - range   (our ADR counts +dop, so it measures
-                #                                         MINUS range)
-                # and CMC = code_resid - carr_resid = 2I + code multipath + a per-arc constant.
-                # THAT is the deterministic multipath metric; it could not be built from the
-                # logged fields alone, which is why it is computed here, at the source.
+                #                                         minus range)
+                # and CMC = code_resid - carr_resid = 2I + code multipath + a per-arc constant,
+                # the deterministic multipath metric. Computed here because the fleet-ADR form
+                # needs the model range at fadr_hop, which the row does not carry.
                 code_resid_m = None
                 carr_resid_m = None
                 code_resid_src = None
                 carr_resid_src = None
                 _clk_in = False
                 if v is not None and adr is not None:
-                    # ⚡⚡ PREFER THE TRACKER'S RESIDUAL OVER THE SEARCH'S. dr_integ is the
-                    # search detection's code phase against the model -- the acquisition
-                    # estimate, ~0.5 chips of white noise per satellite. trk_resid is the
-                    # closed fleet DLL's replica placement against the same model and the
-                    # same clock (gnss_broker/trkresid), resolves ~1e-2 chips, and exists on
-                    # every chain, detectors or not. Taken in SECONDS: the broker's chips
-                    # are its own currency (CM chips on L2C) and metres must not guess it.
-                    # The RANGE form (receiver clock left in, trk_range_s) is the row's
-                    # code_resid_m -- "receiver clock NOT removed" is this record's contract,
-                    # and the carrier residual below carries the same clock, so code minus
-                    # carrier is clock-free.
+                    # Prefer the tracker's residual over the search's. dr_integ is the search
+                    # detection's code phase against the model, clock removed: the acquisition
+                    # estimate, ~0.5 chips of white noise per satellite. The tracker residual
+                    # is the closed fleet DLL's replica placement against the same model
+                    # (gnss_broker/trkresid), resolves ~1e-2 chips, and exists on every chain,
+                    # detectors or not. It is taken in seconds because the broker's chips are
+                    # its own currency (CM chips on L2C). The range form (trk_range_s, receiver
+                    # clock left in) is used so that code minus the carrier residual below,
+                    # which carries the same clock, is clock-free.
                     _ts = r.get("trk_range_s")
                     _clk_in = _ts is not None
                     _ta = r.get("trk_resid_age_s")
@@ -498,12 +470,12 @@ def main():
                         code_resid_src = "dr_integ"
                     carr_resid_m = -adr * lam - v["range_m"]
                     carr_resid_src = "adr"
-                    # ⚡ THE FLEET ADR, at ITS OWN hop (gnss_broker/fleetadr). adr_cycles above
-                    # is one instance's accumulator with its epoch hidden; a carrier phase
-                    # counts 1.17e9 cycles/s, so a residual built from it at the row's epoch is
-                    # off by c*dt. fadr_dop_cycles is the Doppler-only phase at fadr_hop, and
-                    # the model range is evaluated at exactly that hop -- so the residual is
-                    # the geometry-free carrier range on this arc, up to the arc's constant.
+                    # The fleet ADR at its own hop (gnss_broker/fleetadr). adr_cycles above is
+                    # one instance's accumulator with its epoch hidden, and a carrier phase
+                    # moves ~1e9 cycles/s, so a residual built from it at the row's epoch is
+                    # off by c*dt. fadr_dop_cycles is the Doppler-only phase at fadr_hop and
+                    # the model range is evaluated at exactly that hop, so the residual is the
+                    # model-removed carrier range on this arc, up to the arc's constant.
                     _fh = r.get("fadr_hop")
                     _fd = r.get("fadr_dop_cycles")
                     if _fh and _fd is not None and eph:
@@ -530,9 +502,9 @@ def main():
                     "prn": prn,
                     "band": args.band,
                     "carrier_hz": args.carrier_hz,
-                    # --- CODE: commanded code phase + the DLL's unapplied sub-chip residual.
-                    # Kept separate on purpose: the trim is a loop state, the discriminator is
-                    # a measurement, and offline gets to decide how much of it to believe.
+                    # Code: commanded code phase and the DLL's unapplied sub-chip residual, kept
+                    # separate: the trim is a loop state, the discriminator a measurement, and
+                    # offline decides how much of it to believe.
                     "cp_chips": r.get("code_phase_chips"),
                     "dll_disc": r.get("dll_disc"),
                     "proj_b": r.get("proj_b"),
@@ -540,8 +512,8 @@ def main():
                     "proj_src": r.get("proj_src"),
                     "code_len": args.code_length,
                     "chip_rate_hz": args.chip_rate_hz,
-                    # --- PHASE: cycles on THIS arc (0 at an arc start). Ambiguous by an
-                    # integer; arc id is what tells you when the ambiguity changed.
+                    # Phase: cycles on this arc (0 at an arc start). Ambiguous by an integer;
+                    # the arc id says when the ambiguity changed.
                     "adr_cycles": adr,
                     "trim_cycles": trim,
                     "adr_m": (adr * lam) if adr is not None else None,
@@ -549,7 +521,7 @@ def main():
                     "adr_records": nrec,
                     "code_resid_m": code_resid_m,  # model-removed code range (CMC input)
                     "code_resid_src": code_resid_src,  # trk | dr_integ
-                    "code_resid_clk": _clk_in,  # True: receiver clock IN (range form)
+                    "code_resid_clk": _clk_in,  # True when trk_range_s was served (range form)
                     # the tracker residual's own scatter and support (metres, records)
                     "code_resid_sd_m": (
                         (r.get("trk_resid_sd_chips") or 0.0)
@@ -561,9 +533,9 @@ def main():
                     "code_resid_n": (
                         r.get("trk_resid_n") if code_resid_src == "trk" else None
                     ),
-                    # the record's own (argument, Doppler, hop) triple, verbatim: the RAW code
+                    # the record's own (argument, Doppler, hop) triple, verbatim: the raw code
                     # observable, from which any residual can be re-derived offline against a
-                    # better model. Only meaningful as a triple (chord-cp-currency).
+                    # better model. The argument is meaningful only with its Doppler and hop.
                     "cp_rec_chips": r.get("cp_rec_chips"),
                     "dop_rec_hz": r.get("dop_rec_hz"),
                     "rec_hop": r.get("rec_hop"),
@@ -574,9 +546,9 @@ def main():
                     "carr_arc": (
                         r.get("fadr_arc") if carr_resid_src == "fadr" else arc
                     ),
-                    # THE FLEET ADR, verbatim: Doppler-only cycles and the full phase, both at
-                    # fadr_hop, on arc fadr_arc that began at fadr_hop0. Every chain's rows carry
-                    # hops on the one F-engine axis, so two bands pair at EQUAL hops exactly.
+                    # The fleet ADR, verbatim: Doppler-only cycles and the full phase, both at
+                    # fadr_hop, on arc fadr_arc that began at fadr_hop0. Hops are on the one
+                    # F-engine axis every chain shares.
                     "fadr_dop_cycles": r.get("fadr_dop_cycles"),
                     "fadr_cycles": r.get("fadr_cycles"),
                     "fadr_hop": r.get("fadr_hop"),
@@ -587,22 +559,22 @@ def main():
                     "fadr_n_silent": r.get("fadr_n_silent"),
                     "fadr_trim_cycles": r.get("fadr_trim_cycles"),
                     "fadr_res_cycles": r.get("fadr_res_cycles"),
-                    # the same ADR at the fleet-wide grid hop: EQUAL hops across every chain
+                    # the same ADR at the fleet-wide grid hop, equal across every chain, and
+                    # the recent grid hops (fadr_g_hist) so bands pair whatever the poll phase
                     "fadr_g_hop": r.get("fadr_g_hop"),
                     "fadr_g_hist": r.get("fadr_g_hist"),
                     "fadr_g_dop_cycles": r.get("fadr_g_dop_cycles"),
                     "fadr_g_cycles": r.get("fadr_g_cycles"),
                     "adr_lock_s": r.get("adr_lock_s"),
-                    # --- POWER
+                    # Power
                     "cn0_coh_dbhz": cn0_dbhz(
                         r, r.get("deep_snr"), r.get("coherence_s")
                     ),
-                    # IS THE PROMPT TAP ACTUALLY ON THE SIGNAL? (task #47) Every C/N0 above is
-                    # blind to code error -- deep_snr comes from the RE-SEARCHING deep fold, so
-                    # it re-finds the satellite wherever the tap was commanded. Carried per-row
-                    # so that offline can no longer average a blind window into a health number:
-                    # 7-30% of bright-LOOKING samples on 2026-08-11/12 were blind.
-                    # `prompt_lock` False => cn0_coh_dbhz is a deep-fold significance, not a C/N0.
+                    # Is the prompt tap on the signal? cn0_coh_dbhz is blind to code error:
+                    # deep_snr comes from the deep fold, which re-searches and re-finds the
+                    # satellite wherever the tap was commanded. Carried per row so offline does
+                    # not average a blind window into a health number. prompt_lock False means
+                    # cn0_coh_dbhz is a deep-fold significance, not a C/N0.
                     "prompt_lock": r.get("prompt_lock"),
                     "prompt_rayleigh": r.get("prompt_rayleigh"),
                     "fleet_present": r.get("fleet_present"),
@@ -611,26 +583,25 @@ def main():
                     "cn0_inc_dbhz": cn0_inc_dbhz(
                         r.get("amplitude"), r.get("unbiased_amplitude"), t_rec
                     ),
-                    # --- THE SERVED RADIOMETRY (task #57, 2026-08-15). Per-record prompt
-                    # power, q-gated, debiased against the below-horizon probes; NO fit
-                    # anywhere in it, unlike cn0_coh above (whose deep fold re-searches a
-                    # rate per integration and carries ~20 dB of paired self-scatter).
-                    # Validated on sky: split-half <= 0.1 dB, two-feed pairing <= 0.35 dB
-                    # corrected. duty is the lock duty
-                    # the value is conditioned on -- offline consumers decline low-duty
-                    # rows rather than average them; noise_probe marks the below-horizon
+                    # The served radiometry (combdll.prompt_cn0): per-record prompt power, kept
+                    # where the prompt is the tallest tap, debiased against the below-horizon
+                    # probes, with no fit in it (cn0_coh's deep fold re-searches a rate per
+                    # integration). duty is the fraction of records kept: offline consumers
+                    # decline low-duty rows rather than average them. split_db is the
+                    # even/odd-record self-consistency. noise_probe marks the below-horizon
                     # noise references riding the same rows (never satellites).
                     "cn0_prompt_dbhz": r.get("cn0_prompt_db"),
                     "cn0_prompt_duty": r.get("cn0_prompt_duty"),
                     "cn0_prompt_split_db": r.get("cn0_prompt_split_db"),
                     "noise_probe": r.get("noise_probe"),
-                    # The known-rate coherent fold (#57 step 3): the deep-sidelobe
-                    # radiometry (+~10log10(n_rec) sensitivity over cn0_prompt), rate
-                    # injected causally, never searched. kcoh_sig is its detection
-                    # significance vs the probes' identical fold; kcoh_eta the coherence
-                    # efficiency (n_rec = fully coherent, ~1 = noise). On strong
-                    # satellites cn0_kcoh and cn0_prompt must agree -- their difference
-                    # per row is the standing cross-check, archived here.
+                    # The known-rate coherent fold (combdll.coh_cn0): the radiometry for
+                    # deep-sidelobe satellites below the per-record gate, centred on the
+                    # previous cycle's record-stream rate (or zero) with a one-parameter
+                    # residual-rate fit the probes share. kcoh_sig is its significance over the
+                    # probes' identical fold; kcoh_eta the coherence efficiency (n_rec = fully
+                    # coherent, ~1 = no coherent gain). On strong satellites cn0_kcoh and
+                    # cn0_prompt must agree; their per-row difference is the standing
+                    # cross-check.
                     "cn0_kcoh_dbhz": r.get("cn0_kcoh_db"),
                     "cn0_kcoh_sky_dbhz": r.get("cn0_kcoh_sky_db"),
                     "kcoh_sig": r.get("kcoh_sig"),
@@ -643,18 +614,16 @@ def main():
                     "doppler_hz": r.get("doppler_hz"),
                     "carrier_hz_resid": r.get("carrier_hz_resid"),
                     # boundary_f: the code-period boundary's offset inside the despread window.
-                    # Pre-feab8b04 amplitude went as |2f-1|, so f~0.5 nulled the sat (the
-                    # "bistable"); the segmented despread killed that dependence. Logged so a
-                    # soak can PROVE C/N0 is independent of f (the direct regression test) --
-                    # it was REST-only before, which is exactly why the 07-15 overnight
-                    # couldn't be tested statistically.
+                    # On an overlay signal |A|^2 nulls at f = 0.5; the combiner's incoherent
+                    # power uses |head|^2 + |tail|^2, which does not. Logged so offline can check
+                    # that C/N0 does not depend on f.
                     "boundary_f": r.get("boundary_f"),
                     "s4": r.get("s4"),
                     "s4_raw": r.get("s4_raw"),
                     "sigma_phi": r.get("sigma_phi"),
                 }
-                # --- GEOMETRY (BRDC at this epoch). Receiver clock NOT removed: solving it is
-                # a downstream job, and a row that has had a model subtracted can never be
+                # Geometry (BRDC at this epoch). Receiver clock not removed: solving it is a
+                # downstream job, and a row that has had a model subtracted cannot be
                 # un-subtracted when the model improves.
                 if v is not None:
                     row.update(
@@ -668,12 +637,9 @@ def main():
                         }
                     )
                 write_row(t_epoch, row)
-        # PHASE-LOCK the cadence to the wall-clock interval grid (2026-07-19): dTEC pairing
-        # intersects epochs EXACTLY across bands, and free-running loops land on arbitrary
-        # per-process phases -- measured tonight: the L1 and L2C loggers both ran 2 s
-        # cadences on OPPOSITE second parity, so the G:L1xL2C pair had literally zero
-        # common epochs all day while L1xL5 worked by parity luck. Sleeping to the next
-        # multiple of the interval puts every band's logger on one shared grid.
+        # Sleep to the next multiple of POLL_S on the wall clock, so every chain's writer
+        # polls on one shared grid. A row's epoch is its emit hop, not the poll time, so the
+        # grid sets only when an emit is picked up.
         now = time.time()
         dt = POLL_S - (now % POLL_S)
         time.sleep(dt if dt > 0.05 else dt + POLL_S)

@@ -1,19 +1,16 @@
-"""Task #33 P3: the per-satellite ORBITAL range-rate error, shared across bands.
+"""The per-satellite orbital range-rate error (rrate), shared across bands.
 
-WHAT THIS STATE IS, because the name matters and I got it wrong first. f_carrier is
-RECEIVER-WIDE -- an LO/clock frequency error is one number for the whole receiver and cannot
-vary satellite to satellite (KV, 2026-08-14). What varies per satellite is the ORBIT: a
-range-rate model error, in m/s, which becomes Hz only when multiplied by a carrier.
+f_carrier is receiver-wide: an LO/clock frequency error is one number for the whole receiver and
+cannot vary from satellite to satellite. What varies per satellite is the orbit: a range-rate
+model error, in m/s, which becomes Hz only when multiplied by a carrier.
 
     y_(i,b) [Hz] = -(f_b/c) * rrate_i  +  (f_b/f_ref) * f_carrier  +  noise
 
-The two are degenerate WITHIN one band -- both scale with f_b -- and are separated only by the
-same thing that separates clk from b_sat: one is shared across satellites and the other is not.
+The two are degenerate within one band (both scale with f_b) and are separated the same way clk
+is separated from b_sat: one is shared across satellites and the other is not.
 
-⚠️ THE STATE IS IN m/s ON PURPOSE. One satellite's E5a and E5b errors are not two numbers, they
-are ONE range-rate error seen through two carriers 1.0261 apart. That is what makes cross-band
-information ADD rather than be fitted twice, which is the entire point of the task: today
-gal_e5a and gal_e5b fit this quantity independently and never compare.
+The state is in m/s so that one satellite's E5a and E5b errors are one range-rate error seen
+through two carriers 1.0261 apart: cross-band information adds instead of being fitted twice.
 """
 import math
 import unittest
@@ -46,8 +43,8 @@ def run(state, truth, fcar, bands=(F_E5A,), n=400, t0=100.0, sigma=0.2):
 
 class TestSeparatesOrbitFromReceiver(unittest.TestCase):
     def test_recovers_both_terms(self):
-        """The load-bearing case: a receiver-wide offset AND per-satellite orbit errors,
-        recovered separately from measurements that only ever see their sum."""
+        """A receiver-wide offset and per-satellite orbit errors, recovered separately from
+        measurements that only see their sum."""
         s = JointReceiverState(code_len=10230.0)
         truth = {11: -3.0, 21: 2.0, 28: 1.0}  # mean 0, matching the gauge
         run(s, truth, fcar=0.5)
@@ -57,10 +54,9 @@ class TestSeparatesOrbitFromReceiver(unittest.TestCase):
         self.assertEqual(s.rrate_rejected, 0)
 
     def test_f_carrier_stays_receiver_wide(self):
-        """⚠️ THE PHYSICS KV INSISTED ON. A per-satellite orbit error must NOT be absorbed
-        into f_carrier beyond the gauge's structural 1/N -- an LO error is one number for the
-        whole receiver. Move ONE satellite by 6 m/s and f_carrier may shift by at most its
-        share of the fleet mean, not by the whole thing."""
+        """A per-satellite orbit error must not leak into f_carrier beyond the gauge's
+        structural 1/N share: an LO error is one number for the whole receiver. Move one
+        satellite by 6 m/s and f_carrier may shift by at most its share of the fleet mean."""
         s = JointReceiverState(code_len=10230.0)
         truth = {11: 0.0, 21: 0.0, 28: 0.0, 30: 0.0, 32: 0.0, 34: 0.0}
         run(s, truth, fcar=0.0, n=300)
@@ -68,9 +64,9 @@ class TestSeparatesOrbitFromReceiver(unittest.TestCase):
         truth[11] = 6.0  # one orbit goes wrong
         run(s, truth, fcar=0.0, n=300, t0=500.0)
         moved_hz = abs(s.f_carrier() - base)
-        # 6 m/s over 6 sats = 1 m/s of fleet mean = (f/c)*1 = 3.92 Hz IF it leaked fully.
-        # The gauge's 1/N share is that same 3.92 Hz -- so the test is that it is NOT MORE,
-        # i.e. the per-sat term took the rest.
+        # 6 m/s over 6 satellites moves the fleet mean by 1 m/s = (f/c)*1 = 3.92 Hz, the
+        # gauge's 1/N share. f_carrier may move by that (+10%) and no more: the per-satellite
+        # row takes the rest.
         self.assertLess(moved_hz, 1.1 * (F_E5A / C) * (6.0 / len(truth)))
         self.assertAlmostEqual(
             s.rrate(11) - sum(s.rrate(p) for p in truth) / len(truth),
@@ -81,8 +77,8 @@ class TestSeparatesOrbitFromReceiver(unittest.TestCase):
 
 class TestCrossBandIsOneRow(unittest.TestCase):
     def test_two_bands_land_on_the_same_satellite_row(self):
-        """THE POINT OF THE TASK. E5a and E5b measurements of one satellite are one quantity
-        seen through two carriers; they must reinforce a single row, not create two."""
+        """E5a and E5b measurements of one satellite are one quantity seen through two
+        carriers; they must update a single row, not create two."""
         s = JointReceiverState(code_len=10230.0)
         truth = {11: -3.0, 21: 2.0, 28: 1.0}
         run(s, truth, fcar=0.5, bands=(F_E5A, F_E5B))
@@ -91,8 +87,8 @@ class TestCrossBandIsOneRow(unittest.TestCase):
             self.assertAlmostEqual(s.rrate(prn), rr, delta=0.05)
 
     def test_a_band_only_seen_once_still_gets_the_scaling_right(self):
-        """E5b barely detects anything on sky, so its satellites must inherit the shared
-        solution and be commanded at THEIR carrier, not E5a's."""
+        """A band that contributes no measurements (E5b here) inherits the shared solution and
+        gets each satellite's correction scaled to the E5b carrier, not E5a's."""
         s = JointReceiverState(code_len=10230.0)
         truth = {11: -3.0, 21: 2.0, 28: 1.0}
         run(s, truth, fcar=0.5, bands=(F_E5A,))
@@ -100,14 +96,13 @@ class TestCrossBandIsOneRow(unittest.TestCase):
         got_b = s.carrier_correction_hz(11, F_E5B)
         self.assertAlmostEqual(got_a, y_of(truth[11], 0.5, F_E5A), delta=0.05)
         self.assertAlmostEqual(got_b, y_of(truth[11], 0.5, F_E5B), delta=0.05)
-        # and the two differ by exactly the carrier ratio, which is the whole reason the
-        # state is held in m/s
+        # the two differ by exactly the carrier ratio, which is why the state is held in m/s
         self.assertAlmostEqual(got_b / got_a, F_E5B / F_E5A, places=6)
 
     def test_same_carrier_different_constellation_pools(self):
-        """On CHORD, GPS L5 / E5a / B2a all sit at 1176.45 MHz. Different constellations at
-        the SAME carrier must feed one f_carrier -- that is what makes the receiver-wide term
-        well determined instead of one constellation's private median."""
+        """On CHORD, GPS L5, E5a and B2a all sit at 1176.45 MHz, and every constellation
+        feeds the one receiver-wide f_carrier. Two feeds at that carrier (on the same keys
+        here, so the same rows) must still recover it."""
         s = JointReceiverState(code_len=10230.0)
         truth = {11: -2.0, 21: 2.0}
         run(s, truth, fcar=0.7, bands=(F_E5A, F_B2A))
@@ -116,15 +111,9 @@ class TestCrossBandIsOneRow(unittest.TestCase):
 
 class TestTheBugsFoundWhileBuilding(unittest.TestCase):
     def test_a_stiff_gauge_is_NOT_what_froze_it(self):
-        """⚠️ A CORRECTION TO MY OWN DIAGNOSIS, kept as a test so it stays corrected.
-
-        The filter froze while being built -- one satellite rejected 298 times out of 300,
-        innov 17.6 Hz against a 3.1 Hz bar -- and I blamed a gauge 100x stiffer than the
-        prior, loosening it in the same edit that fixed the birth path and added the escape.
-        Three changes, one attributed cause. With birth and escape correct, a 0.02 gauge
-        converges to ~2e-11: the stiffness was never the problem.
-
-        The value shipped is moderate on its own merits, not as a repair."""
+        """The rrate rows converge at gauge sigmas 0.02, 0.5 and 2.0: with a correct birth and
+        escape, gauge stiffness does not freeze the filter. The default rr_gauge_sigma (0.5)
+        is moderate by choice."""
         for gs in (0.02, 0.5, 2.0):
             s = JointReceiverState(code_len=10230.0, rr_gauge_sigma=gs)
             truth = {11: -3.0, 21: 2.0, 28: 1.0}
@@ -161,10 +150,10 @@ class TestTheBugsFoundWhileBuilding(unittest.TestCase):
 
 
 class TestClosedLoopReference(unittest.TestCase):
-    """THE BROKER'S REFERENCE RULE (--rrate-command). deep_rate_hz is measured on records
-    the tracker already derotated by the commanded trim, so the broker must feed
-    y = residual + command_applied -- the value referenced to the BASE seed. This class
-    closes the loop under that rule."""
+    """The broker's reference rule under --rrate-command with --rrate-feed-applied 1: the rate
+    residual is measured on records the tracker already derotated by the commanded trim, so the
+    broker feeds y = residual + command applied, referenced to the base seed. This class closes
+    the loop under that rule."""
 
     def _run_loop(self, n=300):
         truth = {11: -3.0, 21: 2.0, 28: 1.0}
@@ -175,7 +164,7 @@ class TestClosedLoopReference(unittest.TestCase):
         for k in range(n):
             for prn, rr in truth.items():
                 y_true = y_of(rr, fcar, F_E5A)
-                resid[prn] = y_true - cmd[prn]  # what deep_rate_hz reports
+                resid[prn] = y_true - cmd[prn]  # the measured rate residual
                 y_fed = resid[prn] + cmd[prn]
                 s.update_rrate(prn, y_fed, 100.0 + k, F_E5A)
             s.gauge_rrate()
@@ -194,11 +183,11 @@ class TestClosedLoopReference(unittest.TestCase):
 
 
 class TestClosedLoopLag(unittest.TestCase):
-    """ARM 3's walk (2026-08-13 15:26): the measured residual reflects the command posted
-    LAG polls earlier, while the feed adds back the LATEST command -- y_fed carries a
-    (cmd_now - cmd_then) misreference that is self-reinforcing at full slew. The command
-    slew bound (--rrate-cmd-slew-hz) bounds the misreference and it decays to zero at the
-    fixed point. This simulates exactly that loop."""
+    """Under --rrate-feed-applied 1 the measured residual reflects the command posted `lag`
+    polls earlier, while the feed adds back the latest command, so y_fed carries a
+    (cmd_now - cmd_then) misreference that reinforces itself at full slew. The broker's
+    per-poll command slew bound (rrate_cmd_slew_hz) bounds the misreference, which decays to
+    zero at the fixed point. This simulates that loop."""
 
     def _run(self, slew, n=400, lag=2, meas_noise=0.0, seed=7):
         import random
@@ -211,8 +200,8 @@ class TestClosedLoopLag(unittest.TestCase):
         for k in range(n):
             for prn, rr in truth.items():
                 y_true = y_of(rr, fcar, F_E5A)
-                resid = y_true - hist[prn][-1]  # measured under the OLD command
-                y_fed = resid + hist[prn][0]  # broker adds back the LATEST
+                resid = y_true - hist[prn][-1]  # measured under the oldest command
+                y_fed = resid + hist[prn][0]  # broker adds back the latest
                 if meas_noise:
                     y_fed += rng.gauss(0.0, meas_noise)
                 s.update_rrate(prn, y_fed, 100.0 + k, F_E5A)
@@ -226,21 +215,19 @@ class TestClosedLoopLag(unittest.TestCase):
         return {p: abs(y_of(truth[p], fcar, F_E5A) - hist[p][0]) for p in truth}
 
     def test_slewed_loop_converges_under_lag_and_noise(self):
-        # The bound is set by the filter's own steady state (q_rr holds the row loose to
-        # track drift), not by the loop: ~0.4 Hz at 0.3 Hz measurement noise. The claim
-        # pinned here is BOUNDED AND SMALL vs the multi-Hz walk, not noiseless perfection.
+        # The floor is the filter's own steady state (q_rr holds the row loose enough to
+        # track drift), not the loop's. The bound pins bounded and small against a multi-Hz
+        # walk, not noiseless convergence.
         err = self._run(slew=0.5, meas_noise=0.3)
         for prn, e in err.items():
             self.assertLess(e, 0.8, "PRN %d standing error %.2f Hz" % (prn, e))
 
     def test_the_adopt_escape_was_the_amplifier(self):
-        """HISTORY, kept as a test. When the escape ADOPTED the rejected measurement,
-        this sim showed the unbounded loop ending >2x worse than the slew-bounded one --
-        the lag misreference fed noise into reject runs, and every 8th rejection SNAPPED
-        the row (the arm-3 walk, and live PRN 32's -7 -> -14.5 Hz in arm 7). With the
-        escape re-opening P WITHOUT adopting, the amplifier is gone: both loops converge
-        to the same filter-limited floor. The slew bound stays as defense-in-depth for
-        transients; this pins that the ESCAPE no longer manufactures instability."""
+        """The rrate escape re-opens P without adopting the rejected measurements. An escape
+        that adopted them would snap the row to lag-misreferenced noise every rr_escape_runs
+        rejections and amplify the walk. Without that amplifier the free loop converges to the
+        same filter-limited floor as the slew-bounded one; the slew bound remains for
+        transients."""
         bounded = max(self._run(slew=0.5, meas_noise=0.3).values())
         free = max(self._run(slew=0.0, meas_noise=0.3).values())
         self.assertLess(bounded, 0.8)
@@ -252,10 +239,10 @@ class TestClosedLoopLag(unittest.TestCase):
 
 
 class TestFullBandFields(unittest.TestCase):
-    """#40: the rrate feed must read the UNCAPPED rate fields. deep_rate_hz is the FOLD's
-    pick, clamped to deep_rate_max_hz -- past the cap it degrades to the best in-cap noise
-    bin, and closing a loop on that walked arm 1 (~1 Hz/min). rate_residuals therefore
-    takes the field names; these pin that the selection actually selects."""
+    """The rrate feed must read the uncapped rate fields. deep_rate_hz is the fold's pick,
+    capped at the combiner's DEEP_RATE_MAX_HZ, and past the cap it reports the best in-cap
+    noise bin, so a loop closed on it walks. rate_residuals takes the field names as
+    arguments; these pin that the selection selects."""
 
     def setUp(self):
         from gnss_broker.fits import rate_residuals
@@ -308,11 +295,10 @@ class TestFullBandFields(unittest.TestCase):
 
 
 class TestCoarseFineHandoff(unittest.TestCase):
-    """THE FLL->PLL HANDOFF (--rrate-coarse-deweight). Both feeds hit the SAME row, so
-    relative weight is what decides which observable governs: the coarse one arrives every
-    poll at 60 mHz scatter, the fine one ~1/min at 16 mHz. At equal sigma the coarse feed
-    wins on sheer count and the row tracks ITS noise -- measured live as phi0 bouncing
-    0.4-1.1 rad while the fine feed was firing and being out-voted."""
+    """The FLL->PLL handoff (--rrate-coarse-deweight). Both feeds update the same row, so
+    their relative weight decides which observable governs it: the coarse one arrives every
+    poll with ~60 mHz scatter, the fine one about once a minute at ~16 mHz. At equal sigma the
+    coarse feed wins on count and the row tracks its noise."""
 
     F = F_E5A
     TRUTH = -2.0  # m/s on one satellite
@@ -320,12 +306,9 @@ class TestCoarseFineHandoff(unittest.TestCase):
     def _row_after(self, deweight, n_poll=240, fine_every=12, seed=5):
         """Returns |rrate(11) - gauge-centred truth|, m/s.
 
-        ⚠️ MEASURE AGAINST THE GAUGE, not against raw truth. gauge_rrate() pins
-        mean(rrate) = 0, so every row sits at truth minus the fleet mean BY CONSTRUCTION
-        -- a first draft of this test read a flat 0.500 m/s "error" on both arms, which
-        was the gauge offset (mean of {-2, +1}), not estimator error, and it swamped the
-        effect under test. Same trap as any statistic quoted before its constraint is
-        removed."""
+        Measured against the gauge, not raw truth: gauge_rrate() pins mean(rrate) = 0, so
+        every row sits at its truth minus the fleet mean by construction, and that offset
+        (0.5 m/s here) would swamp the effect under test."""
         import random
 
         rng = random.Random(seed)
@@ -352,15 +335,14 @@ class TestCoarseFineHandoff(unittest.TestCase):
         return abs(s.rrate(11) - centred)
 
     def test_deweighted_row_follows_the_fine_observable(self):
-        """With the handoff on, the row's error must sit at the FINE noise scale."""
+        """With the handoff on, the row's error must sit at the fine noise scale."""
         err_hz = self._row_after(deweight=8.0) * (self.F / C)
         self.assertLess(err_hz, 0.05, "phase-governed row off by %.3f Hz" % err_hz)
 
     def test_the_deweight_is_what_does_it(self):
-        """Same measurements, equal weights: the frequent coarse feed dominates and the
-        row lands measurably further from truth. This is the live pathology in miniature
-        -- and the reason the fine feed alone was not enough. Averaged over seeds: one
-        realisation of a noise comparison is not a result."""
+        """Same measurements at equal weights: the frequent coarse feed dominates and the row
+        lands further from truth, so the fine feed alone is not enough. Averaged over seeds,
+        since one realisation of a noise comparison decides nothing."""
         gov = sum(self._row_after(deweight=8.0, seed=s) for s in range(6)) / 6.0
         flat = sum(self._row_after(deweight=1.0, seed=s) for s in range(6)) / 6.0
         self.assertLess(
@@ -372,10 +354,10 @@ class TestCoarseFineHandoff(unittest.TestCase):
 
 
 class TestAdrFineRate(unittest.TestCase):
-    """#33 PLL fine observable: res_cycles differenced over adr_records. The gates are
-    structural and each one exists because its absence is a known disease: an arc break
-    means unobserved whole cycles (no measurement, not zero); a frozen counter must read
-    ABSENT (a dead feed passing for healthy is the chord-served-cn0 class)."""
+    """The PLL fine observable: res_cycles differenced over adr_records. Each gate is
+    structural: an arc break means unobserved whole cycles (no measurement, not zero); a
+    frozen counter must read as absent, never as 0 Hz, or a dead feed passes for a healthy
+    one."""
 
     R = 2048.0 / 195312.5
 
@@ -397,12 +379,12 @@ class TestAdrFineRate(unittest.TestCase):
         rate, n, applied = out
         self.assertAlmostEqual(rate, 2.0 / (1900 * self.R), places=9)
         self.assertEqual(n, 1900)
-        self.assertIsNone(applied)  # no trim_cycles served -> caller falls back, loudly
+        self.assertIsNone(applied)  # no trim_cycles: the caller uses the posted command
 
     def test_applied_command_is_measured_not_assumed(self):
-        """THE ARM-8 LESSON: the reference must come from the tracker's own integrated
-        trim (trim_cycles), same span, same stream -- never from what the broker believes
-        it posted. 40 cycles of trim over 1900 records = the applied command in Hz."""
+        """The reference comes from the tracker's own integrated trim (trim_cycles), same
+        span, same stream, never from what the broker believes it posted. 40 cycles of trim
+        over 1900 records is the applied command in Hz."""
         out = self.f(
             self._row(3, 1900, 2.5, trim=41.0), self._row(3, 0, 0.5, trim=1.0), self.R
         )
@@ -423,12 +405,10 @@ class TestAdrFineRate(unittest.TestCase):
         )
 
     def test_serving_churn_span_wall_mismatch_is_no_measurement(self):
-        """THE CHURN LESSON (2026-08-14, exposed by the honest trim_cycles): the served
-        row is best-of-instance and the winner churns; instances' arcs began minutes
-        apart, so a cross-instance difference passes the arc gate (every instance is on
-        arc 1) with a record-implied span wrong by up to 12x. Measured on a held +5 Hz
-        trim: same-instance pairs 5.0000 exactly, cross-instance 0.23-16.7 Hz. A span
-        that disagrees with the wall clock is not a measurement."""
+        """The served row is best-of-instance and the winner churns. Instances' arcs began
+        at different times, so a cross-instance difference passes the arc gate (every
+        instance is on arc 1) with a record-implied span that can be wrong many times over.
+        A span that disagrees with the wall clock is not a measurement."""
         # 5660 records claim a 59.3 s span across a 5.0 s wall gap -> rejected.
         self.assertIsNone(
             self.f(
@@ -449,7 +429,7 @@ class TestAdrFineRate(unittest.TestCase):
 
     def test_no_wall_clock_means_no_churn_gate(self):
         """wall_dt is optional: a caller without a poll clock keeps the structural gates
-        and simply cannot discriminate churn (the pre-2026-08-14 behavior)."""
+        and cannot detect churn."""
         self.assertIsNotNone(
             self.f(self._row(1, 5660, 2.5), self._row(1, 0, 0.5), self.R)
         )

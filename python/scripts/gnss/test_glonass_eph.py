@@ -1,20 +1,19 @@
 #!/usr/bin/env python3
-"""#129: the GLONASS propagator, pinned against an orbit it did not come from.
+"""The GLONASS propagator, pinned against an orbit it did not come from.
 
-WHY EACH CHECK EXISTS
-  * THE PARSE. An R record is four lines, not eight, and the state vector is in km; a
-    wrong line count or unit would still produce a dict. The pin is one real record from
-    BRDC00WRD_R DOY 284 (2026-10-11), with its epoch in UTC and its channel number k.
-  * THE INTEGRATION, against GFZ0MGXRAP_20262840000 (the MGEX rapid orbit, ITRF, centre of
-    mass), Lagrange-interpolated (9 points of the 5 min grid, leave-one-out 0.6 mm) to the
-    record's tb and tb +- 600 s. Over the whole day and 21 satellites the propagator sits
-    3.4 m rms off the SP3 (max 8.2 m); the residual is the record's own offset (phase centre
-    vs centre of mass, plus the broadcast error) and does not grow over the 10 min, which is
-    the check that tells an integrator from a drift.
-  * THE SKY. predict_all must place the satellite where the SP3 does: R02's pass over the
-    station on 2026-10-11 peaks at 78.9 deg, with az/el taken from the SP3 position in an
-    independent ENU computation.
-  * THE RANGE CONTRACT. A record is meant for +-15 min about tb; further is allowed and
+What each check guards:
+  * The parse. An R record is four lines, not eight, and the state vector is in km; a wrong
+    line count or unit would still produce a dict. The pin is one real record from
+    BRDC00WRD_R day 284, with its epoch in UTC and its channel number k.
+  * The integration, against GFZ0MGXRAP_20262840000 (the MGEX rapid orbit, ITRF, centre of
+    mass), Lagrange-interpolated (9 points of the 5 min grid, mm-accurate) to the record's tb
+    and tb +- 600 s. The propagator sits a few metres off the SP3 (under the 10 m bound): the
+    record's own offset (phase centre vs centre of mass, plus the broadcast error). That
+    offset must not grow over the 10 min, which is what tells an integrator from a drift.
+  * The sky. predict_all must place the satellite where the SP3 does: R02 near the top of a
+    78.9 deg pass over the station, with az/el taken from the SP3 position in an independent
+    ENU computation.
+  * The range contract. A record is meant for +-15 min about tb; further is allowed and
     warns, so a stale sky is visible rather than silently wrong.
 """
 import math

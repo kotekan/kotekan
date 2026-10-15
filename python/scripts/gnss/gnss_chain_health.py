@@ -2,18 +2,18 @@
 """Per-chain tracking-health mask from the observables writers' own flags.
 
 Every obs record carries the tracker's verdict on itself: `prompt_lock`, `prompt_rayleigh`,
-`fleet_present`. A chain whose records are ~95% Rayleigh for twelve hours is not tracking,
-whatever level its despread happens to report -- and the beam cube, which carries none of
-these flags, will average that noise into a map. This turns the flags into a per-chain,
-per-bin mask (JSON) and a list of episodes, so a map build can veto them and a monitor can
-page on them.
+`fleet_present`. A chain whose records are mostly Rayleigh is not tracking, whatever level its
+despread reports, and the beam cube, which carries none of these flags, would average that
+noise into a map. This turns the flags into a per-chain, per-bin mask (JSON) and a list of
+episodes, so a map build can veto them and a monitor can flag them.
 
     gnss_chain_health.py <obs jsonl...> [--min-run 900] [--out mask.json] [--tail-bytes N]
                          [--recent S] [--alert-file PATH]
 
-Records are binned BIN_S (300 s) and counted above EL_MIN (15 deg). An EPISODE is >= --min-run
-seconds of consecutive bins with present-fraction < MIN_PRESENT (0.3).
-Exit status 1 if any episode is found (so a cron can alert on it).
+Records are binned BIN_S (300 s) and counted above EL_MIN (15 deg). A bin is unhealthy when it
+holds at least 20 records and its fleet_present fraction is < MIN_PRESENT (0.3); an episode is
+>= --min-run seconds of consecutive unhealthy bins. Each file is binned on its own, keyed by its
+records' band. Exit status 1 if any episode is found (so a cron can alert on it).
 
 --tail-bytes N   read only the last N bytes of each file (the live check every 15 min must
                  not re-read a day's several GB over NFS; ~40 MB is about an hour of records).

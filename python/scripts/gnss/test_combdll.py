@@ -1,19 +1,18 @@
 #!/usr/bin/env python3
-"""Tests for the comb-derived fleet DLL (gnss_broker/combdll.py), task #63.
+"""Tests for the comb-derived fleet DLL (gnss_broker/combdll.py).
 
     python3 python/scripts/gnss/test_combdll.py
 
-WHAT THESE ARE FOR. The live A/B (scripts/gnss/comb_dll_ab.py at 31896a862) shows the comb path
-agrees with the polled one on sky, but agreement on today's sky cannot tell a coherent channel
-combine from an incoherent one -- with every channel roughly in phase the two differ only in scale,
-and the DLL's ratios divide the scale out. So the properties that MATTER are pinned here on
-constructed data where they separate: a phase-opposed comb must cancel, the sum across SENDERS must
-be coherent too (after the REC_PHI0 rotation -- the lobe is the unit, not the sender), and a
-missing record must be a hole rather than a zero.
+Agreement with the polled path on sky cannot tell a coherent channel combine from an incoherent
+one: with every channel roughly in phase the two differ only in scale, and the DLL's ratios
+divide the scale out. So the properties that matter are pinned here on constructed data where
+they separate: a phase-opposed comb must cancel, the sum across senders must be coherent too
+(after the REC_PHI0 rotation; the lobe is the unit, not the sender), and a missing record must
+be a hole rather than a zero.
 
-The wire layout these frames assume is proved against the C++ header by test_telem.py's
-test_wire_format_matches_cpp; if the layout moves, that test fails first and these stop being
-meaningful rather than becoming quietly wrong.
+The wire layout these frames assume is checked against the C++ header by test_telem.py's
+TestWireFormat; if the layout moves, that test fails first and these stop being meaningful
+rather than becoming quietly wrong.
 """
 import cmath
 import math
@@ -42,7 +41,7 @@ def make_frame(
     fft_len=16384,
     phi0=0.0,
 ):
-    """One wire frame with an EXPLICIT comb.
+    """One wire frame with an explicit comb.
 
     `taps` is {(record, prn_index, channel_index): (A_early, A_prompt, A_late, energy)} with
     complex A; anything unlisted defaults to (0.5, 1+0j, 0.25, 1.0). PRN numbers are 1+index.
@@ -53,7 +52,7 @@ def make_frame(
         present = (1 << n_rec) - 1
     n_chan = len(chan_ids)
     ids = list(chan_ids) + [0] * (telem._MAX_CHAN - n_chan)
-    # The stride is the SENDER'S: rows carry this instance's comb columns only.
+    # The stride is the sender's: rows carry this instance's comb columns only.
     row_total = telem._ROW_FLOATS + n_chan * telem._CHAN_FLOATS
     wstart0 = win * n_rec * hops_per_record * fft_len
     hdr = telem._HDR.pack(
@@ -136,12 +135,11 @@ class TestInstancePowers(unittest.TestCase):
         self.assertAlmostEqual(d["n_chan"], 3.0, places=6)
 
     def test_the_channel_combine_is_COHERENT(self):
-        """Two channels in antiphase must CANCEL, not add.
+        """Two channels in antiphase must cancel, not add.
 
-        The one property an incoherent |A_c|^2 sum -- the obvious "simplification" -- gets
-        wrong, and the reason it would never show up on sky: with the comb roughly in phase,
-        coherent and incoherent differ only by a scale factor that the DLL's ratios divide
-        straight back out. Here they differ by everything.
+        An incoherent |A_c|^2 sum gets this wrong, and on sky it would not show: with the comb
+        roughly in phase, coherent and incoherent differ only by a scale factor that the DLL's
+        ratios divide back out. Here they differ completely.
         """
         taps = {}
         for r in range(4):
@@ -151,16 +149,16 @@ class TestInstancePowers(unittest.TestCase):
         d = one(c, [100])[1]
         self.assertAlmostEqual(d["p"], 0.0, places=9)
         self.assertAlmostEqual(d["e"], 0.0, places=9)
-        # ...while the per-channel powers, which are single-channel by construction, are NOT
+        # ...while the per-channel powers, which are single-channel by construction, are not
         # zero: |A|^2 = 1 on each. A cancelling full-band sum over live channels is the
         # signature the frequency axis exists to show.
         self.assertAlmostEqual(d["chan"][5972][1], 1.0, places=6)
         self.assertAlmostEqual(d["chan"][5988][1], 1.0, places=6)
 
     def test_energy_weighting_is_by_replica_energy_not_by_channel_count(self):
-        # One loud channel (energy 9) and one quiet (energy 1), same amplitude: A stays 1.
-        # A count-weighted mean would agree here; an UNWEIGHTED sum of A would not, so make
-        # the amplitudes differ too: A = 1 at E=9 and A = 3 at E=1 -> (9+3)/10 = 1.2.
+        # One loud channel (energy 9) and one quiet (energy 1). At equal amplitudes a
+        # count-weighted mean would pass too, so the amplitudes differ: A = 1 at E=9 and
+        # A = 3 at E=1 -> energy-weighted (9+3)/10 = 1.2, count-weighted 2.
         taps = {}
         for r in range(4):
             taps[(r, 0, 0)] = (0j, 1 + 0j, 0j, 9.0)
@@ -170,20 +168,19 @@ class TestInstancePowers(unittest.TestCase):
         self.assertAlmostEqual(d["p"], 1.2 ** 2, places=6)
 
     def test_a_missing_record_is_a_hole_not_a_zero(self):
-        """present = 0b0101: two live records. The mean must be over the LIVE ones.
+        """present = 0b0101: two live records, and the mean must be over those.
 
-        Averaging the absent records in as zeros halves the power and reports a satellite as
-        two flavours of fainter than it is -- the same pathology the deep fold's zero-padding
-        had (a tiny |A| at an enormous fake significance).
+        Averaging the absent records in as zeros would halve the power and report the
+        satellite fainter than it is.
         """
         c = client_with([make_frame(present=0b0101)])
         d = one(c, [100])[1]
         self.assertEqual(d["n_rec"], 2)
-        self.assertAlmostEqual(d["p"], 1.0, places=6)  # NOT 0.5
+        self.assertAlmostEqual(d["p"], 1.0, places=6)  # not 0.5
 
 
 class TestFleetCombine(unittest.TestCase):
-    """B. Across senders: ONE coherent sum over the lobe, and the sender is not a unit."""
+    """B. Across senders: one coherent sum over the lobe, and the sender is not a unit."""
 
     def _frames(self, phi=(0.0, 0.0), **kw):
         return [
@@ -199,7 +196,7 @@ class TestFleetCombine(unittest.TestCase):
         out = self._fleet()
         v = out[1]
         self.assertEqual(v["n_src"], 2)
-        # Six channels at A = 1: |6|^2 / 6^2 = 1.0. The sender count does NOT appear -- a
+        # Six channels at A = 1: |6|^2 / 6^2 = 1.0. The sender count does not appear: a
         # signal reads the same power however many senders carry it; only the noise falls.
         self.assertAlmostEqual(v["p_pow"], 1.0, places=6)
         self.assertAlmostEqual(v["e_pow"], 0.25, places=6)
@@ -209,11 +206,11 @@ class TestFleetCombine(unittest.TestCase):
         self.assertAlmostEqual(v["q"], 2 * 1.0 / 0.3125, places=6)
 
     def test_senders_add_COHERENTLY_after_the_phi0_rotation(self):
-        """The whole point. Each sender's comb is stamped with its own arbitrary phi0
-        (gnssRecord.hpp REC_PHI0); the consumer's exp(+i*phi0) puts them on one reference.
-        With the rotation applied, two senders at different phi0 sum to full power; drop it
-        and a pi offset cancels the lobe sum outright. The per-channel table is a power and
-        cannot see any of this."""
+        """Each sender's comb is stamped with its own arbitrary phi0 (gnssRecord.hpp
+        REC_PHI0); the consumer's exp(+i*phi0) puts them on one reference. With the rotation
+        applied, two senders at different phi0 sum to full power; without it a pi offset
+        cancels the lobe sum outright. The per-channel table is a power and cannot see any of
+        this."""
         v = self._fleet(phi=(0.3, 0.3 + math.pi))[1]
         self.assertAlmostEqual(v["p_pow"], 1.0, places=6)
         self.assertAlmostEqual(v["e_pow"], 0.25, places=6)
@@ -223,9 +220,9 @@ class TestFleetCombine(unittest.TestCase):
             self.assertAlmostEqual(t["chan"][fid][1], 1.0, places=6)
 
     def test_a_sender_in_antiphase_cancels_the_lobe(self):
-        """Same two senders, but the SECOND's comb genuinely sits at -A (no phi0 to explain
-        it): the lobe sum cancels. An instance-coherent combine would have reported full
-        power from each and summed them -- blind to the cross-sender phase."""
+        """Same two senders, but the second's comb genuinely sits at -A (no phi0 to explain
+        it): the lobe sum cancels. An instance-coherent combine would report full power from
+        each and sum them, blind to the cross-sender phase."""
         taps = {
             (r, p, ch): (-0.5 + 0j, -1 + 0j, -0.25 + 0j, 1.0)
             for r in range(4)
@@ -243,7 +240,7 @@ class TestFleetCombine(unittest.TestCase):
         self.assertAlmostEqual(t["chan"][5976][1], 1.0, places=6)
 
     def test_a_partial_record_is_excluded_not_reweighted(self):
-        """min_instances is a COMPLETENESS gate on the record. Sender B drops records 1 and 3;
+        """min_instances is a completeness gate on the record. Sender B drops records 1 and 3;
         with min_instances=2 those records leave the mean; with 1 they stay, at the same
         normalised power (three channels at A=1 read 1.0 exactly as six do)."""
         frames = [
@@ -287,7 +284,7 @@ class TestFleetCombine(unittest.TestCase):
         self.assertAlmostEqual(v["p_pow"], 1.0, places=6)  # the lobe sum is untouched
 
     def test_presence_policy_is_the_shared_one(self):
-        """The keys apply_presence writes must be here -- it is the SAME function fleet_dll
+        """The keys apply_presence writes must be here: it is the same function fleet_dll
         calls, so a comb row and a polled row cannot reach different verdicts from equal
         numbers."""
         v = self._fleet()[1]
@@ -313,26 +310,25 @@ class TestFleetCombine(unittest.TestCase):
         fed = combdll.fleet_dll_comb(
             c, "gps_l5", n_win=4, lag=0, coh_from=polled, deep_gate_prns=True
         )[1]
-        # No probes in this fixture, so presence is UNANCHORED and admits nobody -- by
-        # design (fleet.apply_presence). What is pinned here is that the deep statistics
-        # TRAVEL, whatever the verdict.
+        # No probes in this fixture, so presence is UNANCHORED and admits nobody, by design
+        # (fleet.apply_presence). What is pinned here is that the deep statistics travel,
+        # whatever the verdict.
         self.assertEqual(fed["present_gate"], "UNANCHORED")
         self.assertEqual(fed["coh_row"]["deep_snr"], 40.0)
-        # ALL THREE keys travel. coh_quad is the publisher's continuity fallback; losing it
-        # is a 5-8 dB step in the served C/N0 that looks like a display quirk (docs 11.31).
+        # All three keys travel. coh_quad is the publisher's quadrature fallback; without it
+        # the served deep_snr drops to the best single instance's, several dB lower.
         self.assertEqual(fed["coh_src"], "http://cx19:12048/x")
         self.assertEqual(fed["coh_quad"], (55.0, 7))
 
 
 class TestPhaseSensitivity(unittest.TestCase):
-    """C. What the frequency axis is FOR: a delay across the comb shows up here."""
+    """C. What the frequency axis is for: a delay across the comb shows up here."""
 
     def test_a_ramp_across_channels_suppresses_the_full_band_sum(self):
         """Per-channel powers are blind to a delay; the coherent sum is not.
 
-        This is the measurement the tracker's cross-channel sum made impossible to see: with
-        the comb summed on the node, a full-band sum suppressed by a phase ramp is
-        indistinguishable from a satellite that is simply faint.
+        A cross-channel sum formed on the node hides this: a full-band sum suppressed by a
+        phase ramp is then indistinguishable from a satellite that is simply faint.
         """
         ids = (5972, 5988, 6004, 6020)
         taps = {}

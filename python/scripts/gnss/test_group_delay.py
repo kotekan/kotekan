@@ -1,19 +1,18 @@
 #!/usr/bin/env python3
-"""A0b: the broadcast group-delay term, with the controls that make it a test rather than
-a restatement of the implementation.
+"""The broadcast group-delay term (gnss_ephemeris.group_delay_s), with the controls that make
+it a test rather than a restatement of the implementation.
 
-WHY EACH CHECK EXISTS
-  * SIGN AND SCALE against a hand-worked ICD number -- the whole term is one multiply, so
-    the only ways to get it wrong are the sign and the gamma, and both are silent.
-  * THE CROSS-TYPE CONVERSIONS. Our BRDC carries BOTH Galileo nav types (19 F/NAV + 11
-    I/NAV on 2026-08-23) and best_eph picks by freshness, so a satellite's clock reference
-    can FLIP mid-run. The identity that must hold is that E1's clock is the same however
-    you reach it; if it does not, a refresh steps that satellite.
-  * THE NEGATIVE CONTROL. signal=None must return exactly 0.0 -- every non-broker caller
-    (TEC, observables, the sky map) relies on that to stay byte-identical.
-  * B2a MUST RETURN ZERO, and that is a REQUIREMENT rather than an omission: TGD_B2ap lives
-    in B-CNAV2 and RINEX 3 does not carry it. Borrowing TGD2 (a different band) would be a
-    plausible-looking wrong answer, which is worse than none.
+Why each check exists:
+  * Sign and scale against a hand-worked ICD number: the term is one multiply, so the only
+    ways to get it wrong are the sign and the gamma, and both are silent.
+  * The cross-type conversions. The BRDC carries both Galileo nav types and best_eph picks by
+    toe, so a satellite's clock reference can change mid-run. E1's clock must be the same
+    however it is reached; if it is not, a refresh steps that satellite.
+  * The negative control. signal=None must return exactly 0.0: every non-broker caller (TEC,
+    observables, the sky map) relies on that to keep the broadcast clock.
+  * B2a must return zero from the broadcast path, as a requirement rather than an omission:
+    TGD_B2ap lives in B-CNAV2 and RINEX 3 does not carry it. Borrowing TGD2 (a different
+    band) would be a plausible-looking wrong answer, which is worse than none.
 """
 import os
 import sys
@@ -39,9 +38,9 @@ def _c(tgd1=0.0, tgd2=0.0):
 
 class TestGPS(unittest.TestCase):
     def test_l5_scales_by_gamma_and_flips_sign(self):
-        """IS-GPS-705: an L5 user owes gamma_15 * TGD, subtracted from the clock. The live
-        median TGD is -8.38 ns, so the correction is POSITIVE ~+15 ns -- if this comes out
-        negative the seeds move the wrong way by twice the term."""
+        """IS-GPS-705: an L5 user owes gamma_15 * TGD, subtracted from the clock. A typical
+        TGD of -8.38 ns gives a positive correction of ~+15 ns; a sign error moves the seeds
+        the wrong way by twice the term."""
         self.assertAlmostEqual(
             group_delay_s(_g(tgd=-8.38 * NS), "gps_l5"),
             +GAMMA_L1L5 * 8.38 * NS,
@@ -55,8 +54,8 @@ class TestGPS(unittest.TestCase):
         )
 
     def test_iodc_is_not_mistaken_for_a_second_delay(self):
-        """orb[23] is IODC for GPS, not a group delay. A value of 7.0 (seconds!) must not
-        reach the clock -- the field is shared with Galileo's BGD_E5b by slot index."""
+        """orb[23] is IODC for GPS, not a group delay; the slot is shared with Galileo's
+        BGD_E5b and BeiDou's TGD2. An IODC of 7, read as seconds, must not reach the clock."""
         self.assertEqual(group_delay_s(_g(tgd=0.0, tgd2=7.0), "gps_l5"), 0.0)
 
 
@@ -74,12 +73,11 @@ class TestGalileo(unittest.TestCase):
         )
 
     def test_e1_clock_is_reference_invariant(self):
-        """THE IDENTITY THE CROSS-TYPE CONVERSIONS EXIST FOR. t_E1 = t_IF_a - BGD_a =
-        t_IF_b - BGD_b, so with t_IF_a and t_IF_b differing by (BGD_a - BGD_b), an E1 user
-        must land on the same clock from either record type. The two BROADCAST clocks
-        differ by (BGD_a - BGD_b), so that offset is removed from the I/NAV side before
-        comparing. This is what stops a freshness-driven F/NAV <-> I/NAV flip from
-        stepping a satellite."""
+        """The identity the cross-type conversions exist for: t_E1 = t_IF_a - BGD_a =
+        t_IF_b - BGD_b, so an E1 user must land on the same clock from either record type.
+        The two broadcast clocks differ by (BGD_a - BGD_b), so that offset is removed from
+        the I/NAV side before comparing. This is what stops an F/NAV <-> I/NAV change at a
+        refresh from stepping a satellite."""
         a, b = 3.03 * NS, 3.26 * NS
         from_fnav = group_delay_s(_e(a, b, fnav=True), "gal_e1")
         from_inav = group_delay_s(_e(a, b, fnav=False), "gal_e1") - (a - b)
@@ -109,9 +107,9 @@ class TestGalileo(unittest.TestCase):
 
 class TestBeiDou(unittest.TestCase):
     def test_b2a_is_zero_because_the_term_is_not_broadcast(self):
-        """NOT an omission. TGD_B2ap is a B-CNAV2 parameter and RINEX 3 carries only
-        TGD1 (B1I/B3I) and TGD2 (B2I/B3I). Borrowing TGD2 would apply a 1207 MHz delay to
-        an 1176 MHz signal -- confidently wrong beats honestly absent."""
+        """Not an omission: TGD_B2ap is a B-CNAV2 parameter and RINEX 3 carries only TGD1
+        (B1I/B3I) and TGD2 (B2I/B3I). Borrowing TGD2 would apply a 1207 MHz delay to an
+        1176 MHz signal; absent is better than plausibly wrong."""
         self.assertEqual(
             group_delay_s(_c(tgd1=-4.3 * NS, tgd2=-4.3 * NS), "bds_b2a"), 0.0
         )
@@ -124,7 +122,7 @@ class TestBeiDou(unittest.TestCase):
 
 class TestNegativeControls(unittest.TestCase):
     def test_no_signal_is_exactly_zero(self):
-        """Every non-broker caller passes nothing and must be byte-identical to before."""
+        """Every non-broker caller passes no signal and must get the broadcast clock as is."""
         for e in (_g(tgd=-8.4 * NS), _e(3 * NS, 3 * NS), _c(-4.3 * NS, -4.3 * NS)):
             self.assertEqual(group_delay_s(e, None), 0.0)
             self.assertEqual(group_delay_s(e, ""), 0.0)
@@ -137,8 +135,9 @@ class TestNegativeControls(unittest.TestCase):
         self.assertEqual(group_delay_s(_g(tgd=0.0), "gps_l5"), 0.0)
 
     def test_magnitude_stays_in_the_measured_band(self):
-        """A guard against a units slip: the live BRDC spans -45..+47 ns, so no correction
-        may exceed ~100 ns (0.9 chips). A ppm/seconds mix-up would blow straight past it."""
+        """A guard against a units slip: broadcast group delays span about -45..+47 ns, so
+        no correction may exceed ~100 ns (~1 chip at 10.23 Mcps). A ppm/seconds mix-up would
+        blow straight past it."""
         for e, sig in (
             (_g(tgd=-45 * NS), "gps_l5"),
             (_e(-16 * NS, 4 * NS), "gal_e5a"),
@@ -153,10 +152,9 @@ class TestNegativeControls(unittest.TestCase):
 
 
 class TestDcbSource(unittest.TestCase):
-    """The DCB path (gnss_dcb) as a SOURCE for group_delay_s, with the controls that
-    matter: it must override the broadcast term when present, fall back cleanly when not,
-    and stay continuous across a Galileo record-type flip -- the same invariance the
-    broadcast path is tested for above, now through measured biases."""
+    """The DCB path (gnss_dcb) as a source for group_delay_s: it must override the broadcast
+    term when present, fall back per satellite when not, and stay continuous across a Galileo
+    record-type change, the same invariance the broadcast path is tested for above."""
 
     def setUp(self):
         import gnss_dcb
@@ -169,7 +167,8 @@ class TestDcbSource(unittest.TestCase):
         }
 
     def test_bds_b2a_is_reachable_where_broadcast_is_not(self):
-        """THE WHOLE REASON THIS EXISTS. b_C6I - b_C5P = DSB(C1P,C5P) - DSB(C1P,C6I)."""
+        """B2a has no broadcast term, so the DCB path is its only source.
+        b_C6I - b_C5P = DSB(C1P,C5P) - DSB(C1P,C6I)."""
         v = self.m.signal_bias_s(self.tab, "C", 26, "bds_b2a")
         self.assertAlmostEqual(v, 5e-9, places=15)
         self.assertEqual(
@@ -192,20 +191,20 @@ class TestDcbSource(unittest.TestCase):
     def test_galileo_agrees_across_record_types(self):
         """Same invariance as the broadcast path: reaching E5a from an I/NAV record must
         equal reaching it from an F/NAV one. With full DSBs there is no approximation, so
-        this should hold EXACTLY rather than to a few ns."""
+        this should hold exactly rather than to a few ns."""
         fnav = self.m.signal_bias_s(self.tab, "E", 7, "gal_e5a", gal_inav=False)
         inav = self.m.signal_bias_s(self.tab, "E", 7, "gal_e5a", gal_inav=True)
         d15, d17 = -4e-9, -6e-9
-        # the two DATUMS differ by  b_IF(1,5) - b_IF(1,7); removing it must reconcile them
+        # the two datums differ by b_IF(1,5) - b_IF(1,7); removing it must reconcile them
         offset = GAMMA_E1E5A * d15 / (GAMMA_E1E5A - 1.0) - (
             d17 / (GAMMA_E1E5B - 1.0) + d15
         )
         self.assertAlmostEqual(fnav - inav, offset, places=18)
 
     def test_zero_mean_is_a_property_of_the_product(self):
-        """Guards the claim the flag help makes. If a future product drops the zero-mean
-        condition this test fails and the 'cannot explain a common offset' caveat must be
-        rewritten rather than silently carried forward."""
+        """Guards the zero-mean claim in --dcb-bias's help and gnss_dcb's docstring. If a
+        product drops the zero-mean condition this fails, and the statement that the product
+        cannot explain a common offset must be rewritten."""
         import os
 
         p = self.m.fetch_dcb()
@@ -226,9 +225,9 @@ class TestDcbSource(unittest.TestCase):
 
 
 class TestDcbStaleness(unittest.TestCase):
-    """#111: a dead token is invisible because fetch_dcb serves the cache. These pin the
-    three things that make it visible -- the product's own epoch, the token's expiry, and
-    a reason code that tells a missing credential from an unreachable network."""
+    """A dead token is invisible because fetch_dcb serves the cache. These pin the three
+    things that make it visible: the product's own epoch, the token's expiry, and a reason
+    code that tells a missing credential from an unreachable network."""
 
     def setUp(self):
         import gnss_dcb

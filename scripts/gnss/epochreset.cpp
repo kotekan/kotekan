@@ -1,23 +1,20 @@
 /**
  * @file
- * @brief A1 REGRESSION: does the fleet fold survive an F-engine frame0 move?
+ * @brief Checks that the fleet DLL fold survives an F-engine frame0 move.
  *
- * The defect (211153b59^:docs/CHORD_BUGLIST.md A1, rank 1 for three days because it VOIDS
- * EXPERIMENTS): `win` is absolute from the F-engine's frame0, `FleetDll` kept a strictly
- * monotone per-chain high-water mark, and an F-engine restart therefore made every
- * subsequent frame LATE **forever** -- the fold froze while `/get_dll` kept serving its
- * last aggregate at 200 OK with an identical `hop` on every row, the 60 TCP connections
- * stayed ESTABLISHED, and nothing looked down.
+ * `win` counts from the F-engine's frame0, so an F-engine restart makes every sender's window
+ * index restart small. A fold that only keeps a per-chain high-water mark would then drop every
+ * later frame as LATE while `/get_dll` keeps serving its last aggregate, with nothing looking
+ * down. FleetDll::fold re-anchors after _epoch_strikes consecutive frames more than
+ * _epoch_margin windows back. The cases check that it does, that a laggard or a single
+ * far-back frame does not, and that the trims and arming survive the re-anchor.
  *
- * WHY A DRIVER AND NOT A FIXTURE. There is no raw telemetry capture in the tree, and
- * hand-rolling the wire format in Python is exactly how the fleetdll gate spent eight days
- * green while every v5 frame came back BAD_HEADER. This builds frames with the SHIPPED
- * helpers (gnssTelem.hpp) and calls the SHIPPED fold, so a wire-format change breaks it
- * loudly instead of silently.
+ * Frames are built with the gnssTelem.hpp helpers and fed to the shipped FleetDll::fold, so a
+ * wire-format change breaks this tool instead of passing against a hand-written copy.
  *
  *   scripts/gnss/site/build_tool.sh epochreset && scripts/gnss/epochreset
  *
- * Prints one line per case and exits non-zero on the first failure.
+ * Prints one line per check and exits non-zero if any check failed.
  *
  * @author Keith Vanderlinde
  */
@@ -39,9 +36,8 @@ constexpr int N_PRN = 2;
 constexpr int N_CHAN = 2;
 constexpr int PRN = 7;
 
-/// One sender's frame for window `win`. `off` shifts EARLY vs LATE power so the
-/// discriminator is non-zero and a frozen fold is visible as a stale value, not just a
-/// missing one.
+/// One sender's frame for window `win`. `off` shifts early against late power so the
+/// discriminator is non-zero and a frozen fold shows as a stale value, not just a missing one.
 std::vector<char> make_frame(const std::string& inst, uint64_t win, uint64_t seq, double off) {
     std::vector<char> buf(telem_frame_bytes(N_REC, N_PRN, N_CHAN), 0);
     auto* h = (TelemHeader*)buf.data();
@@ -129,7 +125,7 @@ uint64_t updates_of(FleetDll& d) {
 int main() {
     printf("A1 epoch-reset regression (gnss::FleetDll, shipped wire format)\n");
 
-    // ---- CASE 1: THE DEFECT ITSELF -- frame0 moves, the stream restarts small. --------
+    // ---- Case 1: frame0 moves and the stream restarts small. ----
     {
         FleetDll d(4, 2);
         for (uint64_t w = 5000; w < 5020; ++w)
@@ -138,8 +134,8 @@ int main() {
         check(before > 0, "baseline: the pre-reset stream folds");
         const double d_before = disc_of(d);
 
-        // The F-engine restarts: every sender's win restarts near zero, with the sky
-        // now on the OTHER side of the peak so a frozen fold is visibly stale.
+        // The F-engine restarts: every sender's win restarts near zero, with the discriminator
+        // on the other side of the peak so a frozen fold is visibly stale.
         for (uint64_t w = 0; w < 40; ++w)
             push(d, w, 1000 + w, -0.20);
 
@@ -151,23 +147,23 @@ int main() {
         check(c.n_epoch_reset == 1, "exactly one epoch reset was declared");
     }
 
-    // ---- CASE 2: A LAGGARD IS NOT AN EPOCH CHANGE. ------------------------------------
-    // A sender a few windows behind must still be dropped as LATE, and must NEVER
-    // re-anchor the chain -- that would make the aggregate depend on arrival order.
+    // ---- Case 2: a laggard is not an epoch change. ----
+    // A sender within _epoch_margin of newest is dropped as LATE and never re-anchors the
+    // chain; re-anchoring on it would make the aggregate depend on arrival order.
     {
         FleetDll d(4, 2);
         for (uint64_t w = 5000; w < 5040; ++w)
             push(d, w, w, 0.20);
         const uint64_t newest_before = d.chains().at("gal_e5a").newest;
         for (int i = 0; i < 30; ++i)
-            push(d, 5000, 9000 + i, 0.20); // 40 windows back, repeatedly
+            push(d, 5000, 9000 + i, 0.20); // 39 windows behind newest, repeatedly
         const auto& c = d.chains().at("gal_e5a");
         check(c.n_epoch_reset == 0, "a 40-window laggard does NOT re-anchor");
         check(c.newest == newest_before, "the high-water mark is unmoved by the laggard");
         check(c.n_late >= 30, "laggard frames are counted LATE");
     }
 
-    // ---- CASE 3: ONE far-back frame cannot re-anchor (a corrupt header must not). -----
+    // ---- Case 3: one far-back frame, such as a corrupt header, cannot re-anchor. ----
     {
         FleetDll d(4, 2);
         for (uint64_t w = 5000; w < 5040; ++w)
@@ -182,9 +178,8 @@ int main() {
               "and an in-order frame clears the strike run");
     }
 
-    // ---- CASE 4: THE TRIMS SURVIVE. --------------------------------------------------
-    // An F-engine restart must not turn into a fleet-wide pull-in: only the window state
-    // is epoch-scoped. (This is the property d01c0c1be's trim store also protects.)
+    // ---- Case 4: the trims survive. ----
+    // An F-engine restart must not force a fleet-wide pull-in: only the window state is reset.
     {
         FleetDll d(4, 2);
         TrimPolicy p;

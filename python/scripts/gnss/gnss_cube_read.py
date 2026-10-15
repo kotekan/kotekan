@@ -4,21 +4,19 @@
     gnss_cube_read.py ls   <path> [...]        completeness: senders, windows, holes, drops
     gnss_cube_read.py head <file> [--n 1]      one frame's header and a slice of its arrays
 
-⚠️ THE FILE IS SELF-DELIMITING AND SELF-DESCRIBING, AND NOTHING HERE IS CONFIGURED.
-Each frame arrives as `uint32 metadata_size | metadata | frame` (rawFileWrite), and the frame's
-own header carries the maxima it was sized for -- so this reader never needs the generator's
-flags, the node config, or the frame size. That is deliberate: an archive that can only be read
-with the config that produced it stops being readable the day the config moves on.
+The file is self-delimiting and self-describing, and nothing here is configured. Each frame
+is stored as `uint32 metadata_size | metadata | frame` (rawFileWrite), and the frame's own
+header carries the maxima it was sized for, so this reader needs neither the generator's flags,
+the node config nor the frame size: the archive stays readable after the config changes.
 
-⚠️ WHAT IS AND IS NOT A LOSS. `dropped_windows` is CUMULATIVE per sender, so a rise between
-consecutive frames sizes a gap the SENDER made (a full output buffer). A hole in the window
-index NOT matched by a rise happened downstream -- bufferSend's drop_frames, the network, the
-archiver's own drop_frames -- and the two are worth telling apart, because the first is a
-tracker running hot and the second is a transport or a disk. `ls` reports them separately.
+What is and is not a loss. `dropped_windows` is cumulative per sender, so a rise between
+consecutive frames sizes a gap the sender made (a full output buffer). A hole in the window
+index not matched by a rise happened downstream -- bufferSend's drop_frames, the network, the
+archiver's own drop_frames. The first is a tracker running hot, the second a transport or a
+disk, so `ls` reports them separately.
 
-⚠️ POWER SUMS, NEVER dB. incoh/coh are SUMS over the records in a window (accumulated in
-double, shipped as float32) with `w` the term count -- so a mean is incoh/w and windows ADD.
-Decibels do not, which is the whole reason the wire carries linear accumulators.
+Power sums, never dB. incoh/coh are sums over the records in a window (accumulated in double,
+shipped as float32) with `w` the term count, so a mean is incoh/w and windows add.
 """
 
 import argparse
@@ -31,17 +29,17 @@ import numpy as np
 
 CUBE_VERSION_MIN = 2
 CUBE_CHAIN_CHARS = 48
-# Header size BY VERSION. v2 (2026-09-04, on disk 09-05 15:xx-...) had the chain string at 96;
-# v3 (2026-09-05) inserted `double utc0` at 96 and moved the chain to 104. A reader that knows
-# only one of them either mis-splits the other's frames or refuses an archive that is perfectly
-# good, so both are here and the version field picks.
+# Fixed header bytes (= offset of the chain string) by version: v2 has the chain at 96; v3 puts
+# `double utc0` at 96 and the chain at 104. The frame's version field selects, so archives of
+# both versions stay readable.
 CUBE_FIXED_BYTES = {2: 96, 3: 104}
 CUBE_HEADER_BYTES = {v: n + CUBE_CHAIN_CHARS for v, n in CUBE_FIXED_BYTES.items()}
 CUBE_HEADER_MIN = min(CUBE_HEADER_BYTES.values())  # enough to read the version + maxima
 
 
 def frame_bytes(max_prn, max_bins, n_elem, version=3):
-    """The SAME expression as gnss::cube_frame_bytes / gnss_record_layout.cube_frame_bytes."""
+    """Same expression as gnss::cube_frame_bytes and config/gnss_record_layout.py, which size
+    the current version; `version` selects the header size."""
     return (
         CUBE_HEADER_BYTES[version]
         + max_bins * 2 * 4
@@ -70,8 +68,8 @@ def parse_header(buf):
             f"cube frame version {ver}: this reader knows {sorted(CUBE_HEADER_BYTES)}"
             f" -- update CUBE_FIXED_BYTES from gnssRecord.hpp"
         )
-    # utc0: UTC of absolute sample 0 (v3). A v2 frame has none -- the reader reports None; it is
-    # never guessed here.
+    # utc0: UTC of absolute F-engine sample 0 (v3). A v2 frame has none: reported as None,
+    # never guessed.
     utc0 = struct.unpack_from("<d", buf, 96)[0] if ver >= 3 else None
     co = CUBE_FIXED_BYTES[ver]
     chain = buf[co : co + CUBE_CHAIN_CHARS].split(b"\0")[0].decode("ascii", "replace")
@@ -97,7 +95,7 @@ def parse_header(buf):
 
 
 def parse_arrays(buf, h):
-    """The five payload blocks, sliced to the ACTUAL extents (the pad is dropped here)."""
+    """The five payload blocks, sliced to the actual extents (the pad is dropped here)."""
     mp, mb, ne = h["max_prn"], h["max_bins"], h["n_elem"]
     np_, nb = h["n_prn"], h["n_bin"]
     o = h["header_bytes"]
@@ -137,8 +135,8 @@ def parse_arrays(buf, h):
 def iter_frames(path, want_arrays=True):
     """Yield (header, arrays|None) for every frame in one raw file.
 
-    A TRUNCATED TAIL IS NORMAL, NOT AN ERROR: the archiver is writing the newest file while this
-    reads it, and a kill leaves a partial frame. Stop cleanly at the first short read -- but
+    A truncated tail is normal, not an error: the archiver may be writing the newest file while
+    this reads it, and a kill leaves a partial frame. Stop cleanly at the first short read; but
     anything else (a bad version, a length that does not advance) is a real corruption and
     raises, because silently skipping bytes would resynchronise onto garbage.
     """
@@ -225,7 +223,7 @@ def cmd_ls(args):
         else 0
     )
     print(f"\nwindow {secs:.5f} s")
-    # ⚠️ THE TWO KINDS OF LOSS ARE NOT THE SAME FAULT, so they are never added together.
+    # The two kinds of loss are different faults, so they are never added together.
     print(
         f"holes in the window index : {grand_holes}   "
         f"(missing frames NOT claimed by any sender)"

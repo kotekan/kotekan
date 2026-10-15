@@ -4,17 +4,17 @@ Mirrors bcnav2_predictor.py: ingest the combiner's per-PRN nav_obs symbol emits,
 an absolute-time symbol timeline, decode, and serve the ephemeris for the BRDC cross-check.
 beidou_bcnav3.py is the codec (PRN-specific 22-sym framesync + GF(64) NB-LDPC(162,81) + CRC-24Q).
 
-Unlike the S5 D-component siblings, B2b is a PRIMARY acquired chain (not a pilot-derived data
-sibling), so this runs on the B2b broker's OWN combiner via --nav-decoder bcnav3. A frame is a
-SINGLE self-contained 1000-symbol unit (1 s at 1000 sps) with its own CRC -- no cross-frame
-pairing (the I/NAV even/odd trap does not apply here), and the B2b symbol is 1 ms (br=1) so the
-export is contiguous, exactly the property E5b-I's 4 ms data channel lacked.
+Unlike the aux-chain decoders, B2b is a primary acquired chain (not a pilot-derived data
+sibling), so this runs on the B2b broker's own combiner via --nav-decoder bcnav3. A frame is a
+single self-contained 1000-symbol unit (1 s at 1000 sps) with its own CRC -- no cross-frame
+pairing as in I/NAV -- and the B2b symbol is 1 ms (br=1), so the export is contiguous.
 
 nav_obs: {utc_ref, rec_dt, br, phase, bits=[[idx,+-1],...]}. For B2b the combiner emits one symbol
 per 1 ms (navwipe_bit_records 1 -> br=1, rec_dt=0.001, br*rec_dt=0.001).
 
-The stitcher carries the two weak-data fixes proven on E5b-I (grid-anchored slots + gappy-emit
-salvage): no-ops for a clean br=1 stream, but robust if B2b ever exports with gaps.
+The stitcher anchors slots to a per-PRN grid and keeps the contiguous segments of a gappy emit,
+as inav_predictor does: neither matters for a clean br=1 stream; they keep a br>1 or gappy
+export decodable.
 """
 
 import time
@@ -25,15 +25,15 @@ import beidou_bcnav3 as B
 
 SYM_S = B.SYM_S  # 0.001
 FRAME = B.FRAME_SYMS  # 1000 symbols per frame (1 s)
-EMIT_MAX = 16  # bound the stitched emit cache per PRN (a 1000-sym frame is 1 s of
-# emits; ~16 frames of history is ample AND bounds the find_frames scan)
+EMIT_MAX = 16  # bound the stitched emit cache per PRN; this also bounds the find_frames
+# scan, which rescans every cached run on each decode
 FRAME_TTL_S = 3600.0  # a cached frame older than this is stale (ephemeris ~ hourly)
 
 
 class _PrnState:
     def __init__(self):
         self.emits = {}  # slot0 -> np.array(+-1) one per distinct nav_obs emit
-        self.grid0 = None  # per-PRN symbol-grid origin (E5b-I stitcher fix)
+        self.grid0 = None  # per-PRN symbol-grid origin (see inav_predictor.ingest)
         self.last_obs = None
         self.frames = {}  # mestype -> (frame_bits[486], sow, t_decoded)
         self.n_frames = 0  # frames decoded (preamble+LDPC found + CRC ok)
@@ -78,7 +78,7 @@ class Bcnav3Predictor:
             m[base + bi] = sg
         if len(m) < 2:
             return
-        # store each maximal CONTIGUOUS segment (salvage gappy emits)
+        # store each maximal contiguous segment (salvage gappy emits)
         slots = sorted(m)
         seg = 0
         for i in range(len(slots)):
@@ -92,8 +92,8 @@ class Bcnav3Predictor:
         if len(st.emits) > EMIT_MAX:
             for s in sorted(st.emits)[:-EMIT_MAX]:
                 st.emits.pop(s, None)
-        # PER-PRN decode throttle (not the shared self._last_decode bcnav2 uses): the broker ingests
-        # every PRN each poll, so a single shared gate lets only the FIRST PRN in dict order decode
+        # Per-PRN decode throttle (not the shared self._last_decode bcnav2 uses): the broker ingests
+        # every PRN each poll, so a single shared gate lets only the first PRN in dict order decode
         # -- if that one is weak, no frames ever land while strong sats go undecoded. Per-PRN gating
         # decodes each satellite once per _min_gap.
         now = time.time()
@@ -136,8 +136,8 @@ class Bcnav3Predictor:
 
     # ----------------------------------------------------------------- serve
     def ephemeris(self, prn):
-        """SI ephemeris from the cached message types (Phase 2: BCNV3_EPH_FIELDS). None until the
-        live message-type layout is mapped."""
+        """SI ephemeris from the cached message types (beidou_bcnav3.parse_bcnav3_ephemeris: type
+        10 carries the whole orbit), or None until a type 10 within FRAME_TTL_S is cached."""
         st = self._p.get(prn)
         if st is None:
             return None
@@ -161,7 +161,7 @@ class Bcnav3Predictor:
 # ------------------------------------------------------------------- self-test
 def _selftest():
     """Encode chosen 486-bit frames into valid LDPC codewords, wrap with the PRN preamble, feed as
-    br=1 symbol emits, and recover the frames (message types + CRC) through the full predictor."""
+    br=1 symbol emits, and recover the frames (message types + SOW) through the full predictor."""
     import beidou_bcnav3 as G
 
     rng = np.random.RandomState(7)

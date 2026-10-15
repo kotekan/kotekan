@@ -1,7 +1,8 @@
-"""_pvt_measurements must name a group by its CARRIER, not by a substring of the chain name.
+"""_pvt_measurements must give each chain its own clock group, named by the obs row's band.
 
-The substring version classified every CHORD row as L1 (case-sensitive "L5" against "gps_l5"),
-which mislabelled the panel and would have put L2C and L5 on one clock.
+gnss_pvt.solve fits one receiver clock per group, and chains on different signals do not
+share a clock offset: GPS L5 and L2C must land in separate groups, and no chain may be
+relabelled from a substring of its name (an L5 row read as "G-L1").
 """
 import json, os, sys, tempfile, time, unittest
 

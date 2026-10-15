@@ -1,23 +1,26 @@
 #!/usr/bin/env python3
-"""Does the viewer call a dead band 'locked'? Run the SHIPPED js against real rows.
+"""Does the viewer call a dead band 'locked'? Run the shipped JS against real rows.
 
     /home/kvand/gnss/venv-ft/bin/python test_lock_metrics.py [publisher_host:port]
 
-WHY THIS EXISTS. On 2026-08-26 the analog front-ends were powered down for site work. With
-nothing on the wire, every satellite on every chain still served sig 900..10,000 -- three
-orders of magnitude past the 3-sigma lock bar -- so the sky panel drew a full constellation
-of locked satellites, and the retired incoherent C/N0 fallback drew 80-100 dB-Hz beside them.
-Both numbers were confidently wrong, and nothing in the viewer disagreed with them.
+With nothing on the wire a chain can still serve sig in the thousands, far past the 3-sigma
+bar, and the incoherent C/N0 has a pole at u -> a. A lock rule keyed on sig, or an unguarded
+C/N0, then draws a full constellation of locked satellites at implausible C/N0 on a dead
+band. This checks that the lock rule judges on q against the published floor (sig decides
+only where a chain publishes no q), that a noise probe never reads locked, and that the
+C/N0 refuses rather than diverges.
 
-⚠️ IT PARSES THE REAL FILE. The lock rule and signal_metrics() are extracted from
-app/panels/gps_feed.js by brace matching and executed, so this cannot drift from what the
-browser runs the way a re-implementation would. A syntax error in the panel fails this too --
-which matters, because the app is served with no build step and a syntax error is a silently
-dead panel, and `node` is not installed on any host here.
+It parses the real file. The lock rule and signal_metrics() are extracted from
+app/panels/gps_feed.js by brace matching and executed with dukpy, so this cannot drift from
+what the browser runs the way a re-implementation would. A syntax error in the extracted code
+fails this too; check_js.sh syntax-checks every viewer file.
 
-⚠️ AND IT NEEDS BOTH DIRECTIONS. A test that only checks "noise reads unlocked" passes just
-as well on a viewer that never reports a lock at all, so the healthy synthetic rows below are
-not decoration: they are what makes the negative result mean something.
+It checks both directions. A test that only checks "noise reads unlocked" passes just as well
+on a viewer that never reports a lock at all, so the healthy synthetic rows below are what
+make the negative result mean something.
+
+The live section fetches each chain's get_status by running curl on cf06 over ssh, so
+publisher_host:port must be reachable from cf06. It prints counts and asserts nothing.
 
 @author Keith Vanderlinde
 """
@@ -143,7 +146,7 @@ def main():
     js = build_js()
     print("extracted lock rule + signal_metrics from gps_feed.js (it parses)\n")
 
-    # ---- POSITIVE CONTROL: a healthy satellite must still read locked -------------------
+    # ---- positive control: a healthy satellite must read locked -------------------------
     print(
         "healthy satellites (synthetic) -- the direction that makes a null mean something"
     )
@@ -188,7 +191,7 @@ def main():
             "fleet_q": 2.4,
             "fleet_q_floor": 2.3,
             "sig": 9e3,
-        },  # above bar, AT floor
+        },  # above the bar, at the floor
     ]
     r = {x["prn"]: x for x in run_js(js, edge)}
     check(
@@ -202,7 +205,7 @@ def main():
         "because the published floor beats a hardcoded number",
     )
 
-    # ---- sig must no longer be able to manufacture a lock --------------------------------
+    # ---- sig cannot override q; it decides only where no q is published -----------------
     print("\nsig cannot manufacture a lock any more")
     r = {
         x["prn"]: x
@@ -220,7 +223,7 @@ def main():
     # ---- the C/N0 pole -------------------------------------------------------------------
     print("\nthe pre-#57 incoherent C/N0 and its pole at u -> a")
     pole = [
-        # A #57 broker that declined: duty present, value null -> a GAP, never a fallback.
+        # A broker that declined: duty present, no cn0_prompt_db -> a gap, never a fallback.
         {
             "prn": 8,
             "fleet_q": 1.0,
@@ -230,7 +233,7 @@ def main():
             "amplitude": 2.8e-7,
             "unbiased_amplitude": 2.79999e-7,
         },
-        # A genuinely old broker (neither key) at the pole.
+        # A broker that publishes neither key, at the pole (u/a ~ 1).
         {
             "prn": 9,
             "fleet_q": 1.0,
@@ -239,7 +242,7 @@ def main():
             "amplitude": 2.8e-7,
             "unbiased_amplitude": 2.79999e-7,
         },
-        # An old broker on a real signal: still renders.
+        # Neither key, on a real signal: still renders.
         {
             "prn": 10,
             "fleet_q": 3.0,
@@ -295,7 +298,7 @@ def main():
     )
     check(r[12]["active"], "the identical NON-probe row does read locked (the control)")
 
-    # ---- THE LIVE ROWS -------------------------------------------------------------------
+    # ---- the live rows -------------------------------------------------------------------
     print("\nlive rows from the publisher at %s" % host)
     tot = locked = withc = 0
     worst = None
@@ -322,7 +325,7 @@ def main():
                 "   loudest sig: %s PRN %s  sig %.0f  q %s  active=%s"
                 % (worst[1], worst[2], worst[0], worst[3], worst[4])
             )
-        # No assertion on the count: this file must stay useful WITH signal, where a nonzero
+        # No assertion on the count: this file must stay useful with signal, where a nonzero
         # locked count is the correct answer. The number is printed so a human can read it
         # against what the sky is actually doing.
 

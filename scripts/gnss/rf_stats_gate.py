@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
-"""#8 RF-STATS GATE -- judge GnssChordVoltageTap's clip/band-power pass on known bytes.
+"""RF-stats gate: judge GnssChordVoltageTap's clip/band-power pass on known bytes.
 
     scripts/gnss/rf_stats_gate.py [--kotekan PATH] [--port 12099]
 
-WHAT IT DOES. Runs the REAL stage inside a REAL kotekan pipeline (config/gates/rf_stats_gate.yaml),
-fed by testDataGen's `constu8` so that every 4+4b sample in the frame is a byte we chose, and
-reads the REAL /rf_stats endpoint. For a constant byte V the answer is arithmetic, not an
-estimate:
+Runs the real stage inside a real kotekan pipeline (config/gates/rf_stats_gate.yaml), fed by
+testDataGen's `constu8` so that every 4+4b sample in the frame is a byte we chose, and reads
+the real /rf_stats endpoint. For a constant byte V the answer is arithmetic, not an estimate:
 
     re = (V >> 4) - 8      im = (V & 0x0F) - 8      both in [-8, +7]
     power    = re^2 + im^2
@@ -15,28 +14,25 @@ estimate:
 
 so every served number is compared against an exact value, not a tolerance.
 
-⚠️ WHY NOT A UNIT TEST OF THE EXPRESSION. #71's carrier-NCO gate validated a formula against my
-own model of the truth, passed at 9e-16 rad, and the shipped code was still wrong where it met
-its caller. A gate on an expression is not a gate on a stage. This one exercises the config
-read, the frame walk, the strides, the normalisation, the mutex hand-off and the JSON -- the
-whole path the fleet actually serves.
+Why not a unit test of the expression: a formula can match a model of the truth while the
+shipped code is wrong where it meets its caller. A gate on an expression is not a gate on a
+stage. This one exercises the config read, the frame walk, the strides, the normalisation, the
+mutex hand-off and the JSON -- the whole path the fleet serves.
 
-⚠️ WHAT THIS GATE DOES *NOT* COVER, stated so nobody reads more into a pass than is there:
-  * NIBBLE ORDER. power and clip are symmetric in re and im, so swapping the high and low
-    nibbles is INVISIBLE here -- 0x0F and 0xF0 give identical answers by construction. Nibble
+What this gate does not cover, so nobody reads more into a pass than is there:
+  * Nibble order. power and clip are symmetric in re and im, so swapping the high and low
+    nibbles is invisible here -- 0x0F and 0xF0 give identical answers by construction. Nibble
     order is pinned elsewhere (element_power's identical decode, and the despread itself).
-  * CHANNEL INDEXING. constu8 fills every channel identically, so a wrong channel still reads
-    the right number. The arm below with band_power_chans out of range covers the bounds check
-    only. A non-uniform source would be needed for the indexing itself.
-  * DECIMATION. The fixture runs stride 1 / period 0 (exhaustive) so that a mismatch is a bug
-    and never a sampling artifact. Production's stride 32 / period 10 is a cost knob on the
-    same code path, not a second path -- but this gate does not measure the sampling error that
-    knob introduces.
+  * Channel indexing. constu8 fills every channel identically, so a wrong channel still reads
+    the right number; checking the indexing needs a non-uniform source.
+  * Decimation. The fixture runs stride 1 / period 0 (exhaustive) so that a mismatch is a bug
+    and never a sampling artifact. Production's hop stride 32 and --rf-stats-period-s period
+    (1 s on the fleet, 10 s by default) are cost knobs on the same code path, not a second
+    path, but this gate does not measure the sampling error they introduce.
 
-THE CONTROL ARM IS THE POINT OF THE LAST CASE. With `band_power_chans` empty the feature must
-report enabled=false and passes=0 -- i.e. the default really is OFF, and the other arms are
-measuring something this one cannot. A gate whose every arm passes regardless of the axis under
-test is not a gate (docs: "a gate that cannot fail").
+The last arm is the control. With `band_power_chans` empty the feature must report
+enabled=false and passes=0: the default really is off, and the other arms measure something
+this one cannot. A gate whose every arm passes regardless of the axis under test is not a gate.
 """
 import argparse, json, os, subprocess, sys, tempfile, time, urllib.request
 
@@ -98,8 +94,8 @@ def run_once(kotekan, port, value, chans, timeout_s=25.0):
             try:
                 with urllib.request.urlopen(url, timeout=1.0) as r:
                     last = json.loads(r.read().decode())
-                # An endpoint that answers is not a measurement that ran -- wait for a PASS.
-                # (Same trap as "a REST endpoint answering 200 is not a live instance.")
+                # An endpoint that answers is not a measurement that ran: wait for a pass
+                # (or for enabled=false, which the control arm expects).
                 if not last.get("enabled") or last.get("passes", 0) > 0:
                     return last
             except Exception:
@@ -196,7 +192,7 @@ def main():
         if bad:
             fails.append((value, bad))
 
-    # ---- THE CONTROL ARM: with no channels configured the feature must be genuinely OFF ----
+    # ---- the control arm: with no channels configured the feature must be off ----
     print("-" * 78)
     try:
         r = run_once(args.kotekan, args.port, 0xFF, [], timeout_s=15.0)

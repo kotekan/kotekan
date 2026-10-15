@@ -4,10 +4,11 @@ Ported from PocketSDR sdr_nb_ldpc.py (T.Takasu): GF(64) tables + Tanner-graph QS
 extended-min-sum (EMS) check-node update, plus per-node edge groupings so an errored-frame
 decode stays O(sum degree^2) not O(edges^2) (fast enough for the live broker loop).
 
-Parameterized by (H_idx, H_ele, m, n): B-CNAV2 uses (48,96); B-CNAV1 uses SF2 (100,200) and
-SF3 (44,88); the H matrices are ICD-defined, transcribed by PocketSDR from the BDS ICDs. The
-code is SYSTEMATIC (info = first m GF symbols), so at deep-integration SNR the received codeword
-is error-free -> the syndrome passes on iteration 0 and decode is a parity check.
+Parameterized by (H_idx, H_ele, m, n): B-CNAV2 uses (48,96); B-CNAV1 uses SF2 (100,200) (SF3
+is not decoded); B-CNAV3 uses (81,162). The H matrices are ICD-defined, transcribed by
+PocketSDR from the BDS ICDs. The code is systematic (info = first m GF symbols), so at
+deep-integration SNR the received codeword is error-free -> the syndrome passes on iteration 0
+and decode is a parity check.
 """
 
 import math

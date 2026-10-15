@@ -1,13 +1,12 @@
-// Overhead-sky panel: a standard GNSS skyplot (zenith centre, horizon rim,
-// North up, azimuth clockwise) of every visible satellite, its own resizable
-// card. Data comes from the shared GpsFeed (see gps_feed.js); the detections
-// table is a separate panel (gps_table.js) fed by the same poller.
+// Overhead-sky panel: a standard GNSS skyplot (zenith centre, horizon rim, North up, azimuth
+// clockwise) of every visible satellite, its own resizable card. Data comes from the shared
+// GpsFeed (gps_feed.js); the detections table is a separate panel (gps_table.js) fed by the
+// same poller.
 //
-// Constellation styling: dot STROKE + label carry the constellation colour
-// (G blue / E orange / C red, matching the composite-map palette); the FILL
-// stays the search-SNR ramp (red-orange at the acquire floor -> green when
-// strong), so identity and signal strength read independently. The legend
-// chips (bottom-left) toggle each constellation on/off, shared with the table.
+// The dot's stroke carries the constellation colour (from the server's legend); an active
+// dot's fill is the search-SNR ramp (red-orange at the acquire floor -> green when strong), so
+// identity and signal strength read independently. The legend chips (bottom-left) toggle each
+// constellation, shared with the table.
 
 import {chain_color} from "./gps_feed.js";
 
@@ -100,11 +99,9 @@ export class GpsSkyPanel {
             if (r.el < 0) continue;   // below the horizon (e.g. a noise probe) -> off the plot
             const cc = chain_color(r.tag);
             const {x, y} = project(r.az, r.el);
-            // Compact symbols (user request 2026-07-12): ~35% smaller than v1 so dense
-            // constellations don't overlap -- active 1.6..2.5 (was 2.4..3.8), idle 1.25.
-            // Colour by search SNR when we have it, else by the combined significance (the
-            // unified feed may lock a sat with no search stage -- e.g. the derived L2C-CL --
-            // so snr can be null on a genuinely strong satellite).
+            // Small symbols so dense constellations do not overlap: active 1.6..2.5 by |A|,
+            // idle 1.25. Colour by search SNR, else by sig: a chain with no search stage leaves
+            // snr null on a strong satellite.
             const shade = r.snr != null ? r.snr : (r.sig || null);
             const rad = r.active ? 1.6 + Math.min(0.9, r.amp) : 1.25;
             const dot = svg("circle", {cx: x, cy: y, r: rad,

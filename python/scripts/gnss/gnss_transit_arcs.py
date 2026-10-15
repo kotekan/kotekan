@@ -2,17 +2,18 @@
 """Do the dTEC arcs survive boresight transits? A before/after census around a change (--split),
 with matched quiet windows as the control.
 
-TRANSITS come from the broadcast ephemeris for EVERY G/E/C satellite in it, healthy or not and
+Transits come from the broadcast ephemeris for every G/E/C satellite in it, healthy or not and
 tracked or not: an untracked emitter (E14, the BDS-3 PRNs below 19, G19's L2 P(Y)) leaks into
 our chains exactly as a tracked one does. A transit is the span within --bore-deg of boresight
-(az 180, el 81.41); 5 deg is the #142 freeze's own bound.
+(az 180, el 81.41); the 5 deg default is the bound of the broker's transit clock freeze
+(dr_clock_transit_freeze_deg in gnss_broker/cli.py).
 
 TEC is gnss_tec_chord.py's product, rebuilt with its rules: fadr_g_dop_cycles of two bands
 paired at the same fleet grid hop, arcs keyed (fadr_arc, fadr_hop0) in both, coherent C/N0 >=
 25 dB-Hz on both, a hole > 30 s ends an arc, a 1-s change > 5 cm splits it, >= 300 s and 30
-hops, local-scatter noise <= 0.5 TECU. (One deliberate difference: hops are ordered by time
-and a hop that goes backwards ends an arc, so a window that crosses an F-engine re-base,
-which restarts the hop count, cannot pair across it.)
+hops, local-scatter noise <= 0.5 TECU. One difference: samples are keyed (F-engine epoch, hop)
+and a change of epoch ends an arc, so a window that crosses an F-engine re-base, which
+restarts the hop count, cannot pair across it.
 
 Per transit and pair, every satellite with clean TEC on both bands (C/N0 >= 25, el >= 15) in
 the 2 min before the window's entry (--pad-s before it) is classified by what is left at the
@@ -23,23 +24,23 @@ exit (--pad-s after it):
                --jump-tecu (a line fitted to 10 min of clean data each side, compared at
                mid-window): the carrier phase held, only the product's gate cut it
   SLIPPED      both fleet-ADR arcs held but the level jumps by more than --jump-tecu
-  HELD-UNSEEN  both fleet-ADR arcs held, too little clean data after to test the level
+  HELD-UNSEEN  both fleet-ADR arcs held, too little clean data on a side to test the level
   LOCK LOST    a band's fleet-ADR arc restarted inside the window
-  GONE         no rows on a band after the window
+  GONE         no rows with both bands in the 5 min after the window
   NO ARC       clean data going in, but no product arc spanning the entry (too short, or
                dropped by the noise gate) -- counted so nothing leaves the census silently
 The transiting satellite itself is counted apart as SELF.
 Per chain, independent of TEC: of the PRNs present (fleet_present, el >= 25) going in, how many
 kept their fleet-ADR arc (the tracking lock) through the window.
-CONTROL windows have the same lengths, sit 45-90 min from a transit with no transit within 30 min
+Control windows have the same lengths, sit 45-90 min from a transit with no transit within 30 min
 and no --events entry within 10 min, and go through the same census. Galileo's triple-frequency
 closure TEC(E5b x E6) - TEC(E5a x E6) is ionosphere-free, so its jump across a window measures the
-instrument alone. VTEC (the figures' right column) is vtec_plot's thin-shell mapping at 350 km with
-each arc's offset fitted; an arc whose mapping factor swings < 0.4 has that offset ill-determined
-and is drawn faint.
+instrument alone. VTEC (the figures' right column) is a thin-shell mapping at 350 km with each
+arc's offset fitted (vertical()); an arc whose mapping factor swings < 0.4 has that offset
+ill-determined and is drawn faint.
 
-usage (on the analysis host, never on the VM that runs the stack: it parses ~8 GB of JSON; needs
-numpy and matplotlib; ~2 min):
+usage (on the analysis host, never on the VM that runs the stack: it parses GBs of observables
+JSON; needs numpy and matplotlib):
   python gnss_transit_arcs.py --t-lo YYYY-MM-DDTHH:MM:SS --split YYYY-MM-DDTHH:MM:SS \
       --out OUT_PREFIX [--t-hi ...] [--events FILE] [--broker-lines FILE]
 --events: one "YYYY-MM-DDTHH:MM:SS label" per line (restarts, aborts): drawn on the plots and kept
@@ -65,7 +66,7 @@ import gnss_ephemeris as ge  # noqa: E402
 
 OBS = "/home/kvand/gnss/fixtures/obs"
 NAV = os.path.expanduser("~/.cache/kotekan_gps")
-# The station scripts/gnss/passwatch.py used (at 31896a862).
+# The station, as in gnss_beam_cube.py.
 LAT, LON, ALT = 49.32075144444, -119.62081125, 545.0
 BORE_AZ, BORE_EL = 180.0, 81.41
 PAIRS = [("gal_e5a", "gal_e6"), ("bds_b2a", "bds_b3i"), ("gps_l5", "gps_l2c")]
@@ -108,9 +109,9 @@ def epoch_of(t, hop):
 def order(d):
     """Keys in time order. Every sample is keyed (epoch, hop): the hop count restarts at 0 at a
     re-base, so two epochs in one span reuse the same hop values, and a dict keyed by hop alone
-    overwrites one day's samples with another's. Ordering by a row's `t` instead swaps
-    neighbours: `t` is the POLL instant, up to ~2 s after the hop it reports, and fadr_g_hist
-    hops take their time from it."""
+    overwrites one day's samples with another's. Ordering by a row's `t` instead can swap
+    neighbours: `t` is the row's emit epoch, not its grid hop's, and fadr_g_hist hops take
+    their time from it."""
     return sorted(d)
 
 
@@ -130,9 +131,9 @@ def bore_sep(az, el):
 
 # ---------------------------------------------------------------------------------- transits
 def nav_paths(t_lo, t_hi):
-    """Every cached source for each day, merged per PRN by parse_rinex_nav: a day's R file can be
-    thin (a third of the S file's records, with whole satellites missing), and a transit of a
-    satellite no source carries is simply not listed."""
+    """Every cached BRDC source for each day (R and S daily files, plus the hourly file), merged
+    per PRN by parse_rinex_nav: a day's R file can miss whole satellites, and a transit of a
+    satellite no source carries is not listed."""
     out, t = [], t_lo - 86400
     while t <= t_hi + 86400:
         tag = time.strftime("%Y%j", time.gmtime(t))
@@ -148,7 +149,7 @@ def nav_paths(t_lo, t_hi):
 
 
 def sat_azel(e, gpst, rx):
-    """predict_all's geometry WITHOUT its health filter (an unhealthy satellite still emits)."""
+    """predict_all's geometry without its health filter (an unhealthy satellite still emits)."""
     tau = 0.075
     for _ in range(2):
         pos, _vel, _clk = ge.sat_pos_clk(e, gpst - tau)
@@ -215,8 +216,9 @@ def transits(t_lo, t_hi, bore_deg):
 
 # ------------------------------------------------------------------------------------ loading
 def load_band(band, days, t_lo, t_hi):
-    """can: gnss_tec_chord.load() exactly (C/N0 gate first); raw: every row of a real satellite
-    (no noise probe, el >= 10), ungated. Both {prn: {(epoch, g_hop): tuple}}."""
+    """can: what gnss_tec_chord.load() keeps (C/N0 gate, grid history), as (g_dop_cycles, arc,
+    t, az, el); raw: every row of a real satellite (no noise probe, el >= 10), ungated, as
+    (g_dop_cycles, arc, t, el, C/N0, fleet_present). Both {prn: {(epoch, g_hop): tuple}}."""
     can = collections.defaultdict(dict)
     raw = collections.defaultdict(dict)
     for day in days:
@@ -360,10 +362,10 @@ RE_KM, SHELL_KM, MIN_DM = 6371.0, 350.0, 0.4
 
 
 def vertical(st, el):
-    """fixtures/tec_wander/vtec_plot.py's mapping: STEC = M(el) * V + B per arc (thin shell), with B
-    the arc's unknown constant. Dividing an arc-mean-removed slant by M would bend a flat VTEC into
-    (M - Mbar)/M, so B is fitted with a constant V and (STEC - B)/M is returned, mean removed. B is
-    poorly determined when M barely changes: faint = the mapping swings less than MIN_DM."""
+    """Thin-shell mapping at SHELL_KM: STEC = M(el) * V + B per arc, with B the arc's unknown
+    constant. Dividing an arc-mean-removed slant by M would bend a flat VTEC into (M - Mbar)/M,
+    so B is fitted with a constant V and (STEC - B)/M is returned, mean removed. B is poorly
+    determined when M barely changes: faint = the mapping swings less than MIN_DM."""
     ok = np.isfinite(el)
     out = np.full(len(st), np.nan)
     if ok.sum() < 30:
@@ -470,7 +472,7 @@ def classify(w, arcs, rj, pad, jump_tecu):
 
 
 def zoom_series(w, rj, c, span_s=2400.0, pad=60.0):
-    """Detrended TEC of the lock arc that ENTERED the window: TEC minus the line fitted to the
+    """Detrended TEC of the lock arc that entered the window: TEC minus the line fitted to the
     10 clean minutes before it. Continuity reads as a flat line through the shaded span."""
     t = rj["t"]
     te = w["t0"] - pad
@@ -666,8 +668,8 @@ def lock_job(args):
 
 
 # ---------------------------------------------------------------------------------- figures
-# outcome colours: the four ordered outcomes pass the dataviz validator (CVD, normal-vision,
-# contrast) on white; the neutrals are named in every legend, never colour alone
+# outcome colours: the four ordered outcomes stay distinct under colour-vision deficiency and
+# keep contrast on white; the neutrals are named in every legend, never colour alone
 COL = {
     "SURVIVED": "#2b7bba",
     "BRIDGEABLE": "#1a9e77",
@@ -920,7 +922,8 @@ def figures(period, pw, pair_res, out, pad):
     fig.savefig(f, dpi=100, bbox_inches="tight")
     plt.close(fig)
     files.append(f)
-    # 3. the dTEC arcs, slant (left) and vertical (right); arcs that entered a transit coloured by outcome
+    # 3. the dTEC arcs, slant (left) and vertical (right); arcs that entered a transit are
+    # coloured by outcome
     fig, axes = plt.subplots(
         len(pair_res), 2, figsize=(22, 11.5), sharex=True, squeeze=False
     )
@@ -1037,7 +1040,7 @@ def main():
             time.time() - t0,
         )
     )
-    # usable: 10 min of context each side inside the data, not straddling the split; every
+    # usable: 12 min of context each side inside the data, not straddling the split; every
     # window the ephemeris found is listed, a dropped one with the reason, so none leaves silently
     keep, dropped = [], []
     for w in wins:

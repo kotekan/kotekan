@@ -1,18 +1,17 @@
 #!/usr/bin/env python3
-"""The broker only ever holds a _ChainView -- so every publisher method it calls must exist
-on the PROXY, not just on FleetPublisher.
+"""The broker only ever holds a _ChainView, so every publisher method it calls must exist
+on the proxy, not just on FleetPublisher.
 
     python3 python/scripts/gnss/test_chainview_surface.py
 
-⚠️ WHY THIS EXISTS. On 2026-08-19 set_rf was added to FleetPublisher and not to _ChainView.
-register() hands the broker a view, so the first `publisher.set_rf(...)` raised
-AttributeError and killed the chain -- and because rf-stats-endpoints is armed on gps_l5
-alone, the casualty was the ONLY chain with a search, whose clock the other four adopt. The
-other four ran on happily, so the process looked alive.
+register() hands the broker a view, so a method added to FleetPublisher but not to
+_ChainView raises AttributeError at its first call and kills that chain while the others run
+on, and the process looks alive. A broker replay fixture vouches only for what it runs: a
+call behind a flag no fixture arms (--rf-stats-endpoints, say) is never reached. This test
+asks a different question -- does the proxy cover the surface? -- and needs no fixture.
 
-Four fixtures replay the broker end to end and NONE of them caught it, because none arms
-rf-stats-endpoints. A digest gate vouches for what its fixture runs and nothing else. This
-test asks a different question -- does the proxy cover the surface? -- and needs no fixture.
+It collects calls on a bare `publisher` name in gps_distributed_broker.py only; calls made
+through ctx.publisher in the gnss_broker modules are not seen.
 """
 import ast
 import os
@@ -41,7 +40,7 @@ def main():
         if isinstance(n, ast.FunctionDef) and not n.name.startswith("_")
     }
 
-    # What does the broker actually call on its publisher handle?
+    # The calls on a bare `publisher` name in gps_distributed_broker.py.
     src = open(BROKER).read()
     called = set()
     for node in ast.walk(ast.parse(src)):
@@ -58,9 +57,9 @@ def main():
     print("broker calls on `publisher.`  : %s" % ", ".join(sorted(called)))
     print("-" * 72)
 
-    # register() is the FACTORY -- it is called on the publisher to OBTAIN a view, so it
-    # legitimately does not appear on the view. Anything else that the broker calls and the
-    # view lacks is a live AttributeError waiting for the chain that arms it.
+    # register() is the factory: it is called on the publisher to obtain a view, so it does
+    # not appear on the view. Anything else the broker calls that the view lacks is an
+    # AttributeError waiting for the chain that arms it.
     FACTORY = {"register"}
     missing = sorted(
         m for m in called if m in pub_m and m not in view_m and m not in FACTORY

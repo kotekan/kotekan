@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Self-test for viscap_read: synthetic tiles + ctl frames with a known value in every cell,
 written in rawFileWrite framing, decoded through load(), and checked cell by cell for the
-mixed, AA and BB blocks (lane/element/tile addressing, Hermitian completion, ctl join).
+mixed, AA and BB blocks (lane/element/tile addressing, Hermitian completion, ctl join). The
+configs use the one-chain correlator layout (gnss_gather_aa/bb); the merged capture gather
+(capvistiles series, nonzero lane_base) is not exercised.
 
     viscap_selftest.py            # exits 0 on PASS
 """

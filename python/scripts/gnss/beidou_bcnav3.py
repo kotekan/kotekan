@@ -1,25 +1,25 @@
 """BeiDou-3 B2b-I B-CNAV3 codec: frame symbols <-> nav bits, and the ephemeris parse.
 
-The B2b DATA-channel message (BDS-SIS-ICD-B2b, Open Service Signal B2b v1.0). Like B-CNAV2 it is
-protected by a NON-BINARY LDPC over GF(64), but a bigger code -- (n=162, k=81) in 6-bit symbols
+The B2b data-channel message (BDS-SIS-ICD-B2b, Open Service Signal B2b v1.0). Like B-CNAV2 it is
+protected by a non-binary LDPC over GF(64), but a bigger code -- (n=162, k=81) in 6-bit symbols
 (972 coded bits -> 486 info bits) vs B-CNAV2's (96,48). The GF(64) tables + QSPA/EMS decoder are
-the SAME shared nb_ldpc.py; only the H matrix + frame geometry differ. CRC-24Q reused as always.
+the shared nb_ldpc.py; only the H matrix + frame geometry differ. CRC-24Q as for the others.
 
 Frame (per BDS-SIS-ICD-B2b): 1000 symbols = 1 s at 1000 sps (a B2b symbol is 1 ms = one B2b-I
 primary code period, no secondary -> navwipe_bit_records 1). Structure: 16-symbol PREAMBLE
-(0xEB90) + 6-symbol PRN + 6 reserved + 972 LDPC symbols. The framesync pattern is PRN-SPECIFIC
-(preamble || PRN), unlike B-CNAV2's fixed preamble; the PRN is therefore in the SYNC header, not
+(0xEB90) + 6-symbol PRN + 6 reserved + 972 LDPC symbols. The framesync pattern is PRN-specific
+(preamble || PRN), unlike B-CNAV2's fixed preamble; the PRN is therefore in the sync header, not
 the LDPC-protected info. The 972 LDPC symbols (frame[28:1000]) decode to a 486-bit info frame:
 MesType(6) + SOW(20) + payload(436) + CRC-24(24).
 
 Verbatim from PocketSDR (sdr_ldpc.py H_BCNV3_idx/ele + sdr_nav.py decode_B2BI/BCNV3, T.Takasu,
-ICD-transcribed). Decoder is SYSTEMATIC (info = first 81 GF symbols = 486 bits); at our deep-
-integration SNR the codeword is error-free, so decode is essentially a parity check.
+ICD-transcribed). The code is systematic (info = first 81 GF symbols = 486 bits): an error-free
+codeword passes the syndrome on iteration 0, and the decoder iterates only when there are errors.
 
-★ ICD-OWNED CONVENTIONS (flippable, to be LIVE-VERIFIED via the BRDC dpos, the B-CNAV2 lesson):
-the preamble polarity (both tried) and -- for the ephemeris -- the message-type layout + field
-offsets/scales. The frame decode (LDPC + CRC) is convention-COMPLETE and self-validating (the
-CRC is the truth); the ephemeris field table is filled in against LIVE frames + the BRDC dpos.
+ICD-owned conventions: the preamble polarity (find_frames tries both) and, for the ephemeris, the
+message-type layout and field offsets/scales. The frame decode (LDPC + CRC) is self-validating
+(the CRC is the check); the ephemeris field table is validated by the broker's BRDC cross-check
+(gnss_broker/sky.py _bcnav3_brdc_xcheck).
 """
 
 import math
@@ -270,11 +270,10 @@ def find_frames(symbols, prn):
 
 
 # ------------------------------------------------------------------ ephemeris (Message Type 10)
-# The full BDS-3 CNAV orbit is in Message Type 10. LIVE-MAPPED 2026-08-03: a change-detection over
-# consecutive type-10 frames showed bits [26:462] STABLE (the ephemeris) between SOW[6:26] and
-# CRC[462:486]; the orbit is the SAME contiguous BDS-3 CNAV parameter block as B-CNAV1 SF2, at the
-# B-CNAV1 SF2 offsets MINUS 9 (its t_oe 39 -> 30, ... C_UC 443 -> 434). VERIFIED against BRDC:
-# dpos 0.015-0.079 m across PRN 23/25/32/37/41 (SatType 3 MEO). Scales are the shared BDS-3 CNAV
+# The full BDS-3 CNAV orbit is in Message Type 10, within bits [26:462] between SOW[6:26] and
+# CRC[462:486]: the same contiguous BDS-3 CNAV parameter block as B-CNAV1 SF2, at the B-CNAV1
+# SF2 offsets minus 9 (its t_oe 39 -> 30, ... C_UC 443 -> 434). The offsets were mapped from live
+# frames, not an ICD table; the BRDC cross-check validates them. Scales are the shared BDS-3 CNAV
 # set (identical to B-CNAV1/2). name -> (start bit in the 486-bit frame, length, signed, scale).
 BCNV3_EPH_FIELDS = {
     "t_oe": (30, 11, False, 300.0),
@@ -301,7 +300,7 @@ BCNV3_EPH_FIELDS = {
 
 def parse_bcnav3_ephemeris(frames_by_type):
     """{mestype: 486-bit frame} -> SI ephemeris (A_ref resolved by SatType), or None if type 10 is
-    missing. Type 10 carries the WHOLE orbit -- no cross-frame matching (unlike B-CNAV2's 10+11)."""
+    missing. Type 10 carries the whole orbit -- no cross-frame matching (unlike B-CNAV2's 10+11)."""
     f = frames_by_type.get(10)
     if f is None:
         return None
@@ -330,8 +329,8 @@ if __name__ == "__main__":
     fails = 0
 
     def _random_codeword():
-        """A RANDOM valid codeword (H c = 0) as bits -- rigorous decoder test: random info
-        symbols, systematic parity."""
+        """A random valid codeword (H c = 0) as bits: random info symbols, systematic parity,
+        so the decoder test does not rest on the all-zero word."""
         info = [int(rng.integers(0, Q_GF)) for _ in range(N_CHECK)]
         return _NB.encode_systematic(H_BCNV3_IDX, H_BCNV3_ELE, N_CHECK, N_VAR, info)
 

@@ -1,17 +1,16 @@
 #!/usr/bin/env python3
 """Galileo E6-B / E6-C spreading-code bit-exactness check (EU E6-B/C Codes Technical Note).
 
-Regression-checks lib/stages/gnss/galileoE6Code.cpp WITHOUT needing gnss-sdr or PocketSDR on
-the box: it re-decodes the hex tables straight out of the .cpp with an INDEPENDENT reimpl of
-the bit unpacking, then asserts structural invariants + stored fingerprints.
+Regression-checks lib/stages/gnss/galileoE6Code.cpp without needing gnss-sdr or PocketSDR: it
+re-decodes the hex tables straight out of the .cpp with an independent reimplementation of the
+bit unpacking, then asserts structural invariants and stored fingerprints.
 
-★ THE INVARIANT THAT PINS THE PADDING (the only subtle thing about E6): the hex is 1279 chars
-= 5116 bits for a 5115-chip code, so exactly one bit is padding. Chars 0..1277 give all four
-bits (5112) and char 1278 gives only its TOP THREE -- gnss-sdr's reader is the authority
-("last bit is filled up with a zero"). The check: EVERY one of the 100 primary codes is
-balanced at exactly 2558 ones / 2557 zeros (sum +1 over an odd length). Take 5116 bits and
-every code reads +2; take 5114 and the balance scatters. Uniform +1 across all 100 is only
-consistent with the correct extraction -- which is why this is a real test, not a tautology.
+The invariant that pins the padding: the hex is 1279 chars = 5116 bits for a 5115-chip code, so
+exactly one bit is padding. Chars 0..1277 give all four bits (5112) and char 1278 gives only its
+top three; gnss-sdr's reader is the authority ("last bit is filled up with a zero"). The check:
+every one of the 100 primary codes has exactly 2558 chips of +1 and 2557 of -1 (sum +1 over an
+odd length). Take 5116 bits and every code reads +2; take 5114 and the balance scatters. Uniform
++1 across all 100 is only consistent with the correct extraction, so the test can fail.
 
     python3 e6_code_check.py     # exits non-zero on any mismatch
 """
@@ -71,7 +70,7 @@ def _tables(text, name, per):
 
 
 def _decode(hexs, n):
-    """Independent reimpl of galileoE6Code.cpp::decode -- MSB-first, bit 0 -> +1, 1 -> -1."""
+    """Independent reimplementation of galileoE6Code.cpp decode(): MSB-first, 0 -> +1, 1 -> -1."""
     out = []
     for i in range(n):
         v = int(hexs[i // 4], 16)

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-# GAP 2: a shorter-code chain joining the receiver must ADD rows, not rebuild the state.
-# Reproduces the 2026-08-21 14:16 live failure (5 healthy GPS rows wiped the instant
-# gal_e5a was fed). Run: python3 test_joint_modulus_migrate.py -- prints PASS/FAIL.
-# CONTROL: reverting receiver.py's migrate to the old rebuild makes this print FAIL.
+# A shorter-code chain joining the receiver must add rows, not rebuild the joint state:
+# Receiver.joint_receiver shortens the modulus in place, so converged GPS rows and their
+# predicted observables survive gal_e5a joining. Control: a rebuild there prints FAIL.
+# Run: python3 test_joint_modulus_migrate.py -- prints PASS/FAIL; exit status is 0 either way.
 import os, sys, random
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -29,7 +29,7 @@ clk_before = st.clk
 L_before = st.L
 obs_before = {k: st.predicted(k) for k in G}
 
-# THE EVENT: a shorter-code chain joins the receiver
+# A shorter-code chain joins the receiver
 st2 = rx.joint_receiver("1176.45MHz", L_E5A)
 n_after = len(st2._idx)
 clk_after = st2.clk
@@ -47,7 +47,7 @@ dobs = (
 print(
     f"  GPS rows kept: {kept}/{len(G)}      max change in predicted(clk+b): {dobs:.6f} chips"
 )
-# and the new constellation joins ADDITIVELY
+# ...and the new constellation joins additively
 for c in range(20):
     t += 2.0
     for k in G + E:

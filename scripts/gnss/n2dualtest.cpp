@@ -1,22 +1,33 @@
 /**
  * @file
- * @brief M1/M2 gate for n2k_dual (the two-input N^2 clone). GPU required.
+ * @brief Bitwise checks of n2k_dual, the two-input N^2 correlator. Needs a GPU.
  *
- * What is proven, in order:
+ * In order, by the labels the tool prints:
  *
- *   [1] REFERENCE     n2k(128,NF) == CPU reference           (validates the reference itself)
- *   [2] CLONE         dual(128+0)  == n2k(128) bitwise       (NSB=0 regression gate)
- *   [4] DUAL          dual(128+128) == CPU reference over the concatenated 256 stations
- *                     (covers AA + mixed + BB tiles, with a random RFI mask)
- *   [5] CLASS MASK    dual(mask=MIXED|BB) matches the full run on mixed+BB tiles bitwise
+ *   [1]  n2k(128, NF) == CPU reference              (validates the reference itself)
+ *   [2]  dual(128+0) == n2k(128)                    (the dual kernel with no B input)
+ *   [4]  dual(128+128) == CPU reference over the concatenated 256 stations
+ *        (AA, mixed and BB tiles, with a random RFI mask)
+ *   [5]  block mask MIXED|BB == the full run on the mixed and BB tiles
+ *   [5b] block mask AA|MIXED == the full run on the AA and mixed tiles, and
+ *   [5c] leaves the BB region unwritten
+ *   [6]  a freq_map launch == the full run's tiles for the mapped channels
+ *   [7]  compact B input == the padded freq_map launch
+ *   [8]  dual(128+384), three chains' lanes in one launch, == CPU reference over 512 stations
+ *   [9]  each chain's rows of that launch == dual(128+128) over its lanes alone
  *
- * All outputs are int32 -- every comparison is EXACT equality. Comparisons cover only the
- * defined entries: stored tiles (ihi >= jhi) and, within them, global i >= j (the kernel
- * writes deterministic garbage above the diagonal of diagonal tiles; not part of the
- * contract, not compared).
+ * cudaCorrelatorDual launches with mask MIXED|BB (plus AA when a gather asks for it), a
+ * freq_map and compact B. [5] checks the mask without a freq_map, and [6] and [7] check the
+ * freq_map and compact B with every block on; no case runs all three together.
+ *
+ * All outputs are int32, so every comparison is exact. Only defined entries are compared:
+ * stored tiles (ihi >= jhi) and, within them, global i >= j; the kernel writes deterministic
+ * garbage above the diagonal of diagonal tiles.
  *
  * Geometry: NF=8, nt_outer=2, nt_inner=1024 (T=2048, exercising touter and both rfimask
  * coarse-time blocks). Data: random 4+4 offset-encoded, values in [-7,7] (never -8).
+ *
+ * Usage: n2dualtest [seed]. Exits 1 on a CUDA error or any failed comparison.
  */
 
 #include <cstdint>
@@ -45,7 +56,8 @@ static constexpr int T = NT_OUTER * NT_INNER;
 static constexpr int NSA = 128;
 static constexpr int NSB = 128;
 static constexpr int NS = NSA + NSB;
-// The shared-synth geometry (one pass per GPU, 2026-10-06): three chains' 128 lanes each.
+// Shared-synth geometry: one launch per GPU over several chains' lanes, here three chains of
+// 128 lanes each.
 static constexpr int NSB3 = 384;
 static constexpr int NS3 = NSA + NSB3;
 static constexpr int NCHAIN = NSB3 / NSB;
@@ -55,8 +67,8 @@ static int ntiles(int ns) {
     return m * (m + 1) / 2;
 }
 
-// RFI mask bit for (f, t), decoding the RING layout exactly as the kernel's access_rfimask
-// and gpuSimulateN2kCorr do: uint index (t%1024)/32 + f*32 + (t/1024)*32*NF, bit t%32.
+// RFI mask bit for (f, t), decoding the ring layout as the kernel's access_rfimask and
+// gpuSimulateN2kCorr do: uint index (t%1024)/32 + f*32 + (t/1024)*32*NF, bit t%32.
 static bool mask_bit(const std::vector<uint32_t>& rm, int f, int t) {
     int idx = ((t & 1023) >> 5) + f * 32 + (t >> 10) * 32 * NF;
     return (rm[idx] >> (t & 31)) & 1;
@@ -116,9 +128,9 @@ struct CmpStats {
     int first_bad_printed = 0;
 };
 
-// Compare defined entries of two vis buffers with per-buffer station counts and a tile
-// predicate (global tile coords of the LARGER-or-equal geometry; both buffers must contain
-// the tile). ns_x/ns_y give each buffer's own fstride; tiles are addressed by (ihi, jhi).
+// Compare the defined entries of two vis buffers over the tiles both hold that pass @p want.
+// ns_x/ns_y give each buffer's own fstride; a tile's offset (ihi, jhi) within a frequency does
+// not depend on the station count.
 static void cmp_tiles(CmpStats& st, const char* label, const int* X, int ns_x, const int* Y,
                       int ns_y, bool (*want)(int ihi, int jhi)) {
     const size_t fx = (size_t)ntiles(ns_x) * 512, fy = (size_t)ntiles(ns_y) * 512;
@@ -166,11 +178,8 @@ static bool tiles_aa(int ihi, int jhi) {
 static bool tiles_mixed_bb(int ihi, int jhi) {
     return !tiles_aa(ihi, jhi);
 }
-/// The block classes the GNSS chain actually SHIPS with (31896a862:docs/CHORD_GPU_TODO.md 1b): AA
-/// is the antennas' own N^2, MIXED is the despread. BB (synth x synth) has no consumer -- its
-/// only reader threw the value away -- so it is masked off. Gate [5] masks off AA, which is
-/// the MIRROR of this; a mask path can be right in one direction and wrong in the other, so
-/// the shipped combination gets its own case.
+/// The BB (synth x synth) block. [5] masks AA off and [5b] masks BB off: a mask path can be
+/// right in one direction and wrong in the other, so each direction gets its own case.
 static bool tiles_bb_only(int ihi, int jhi) {
     return ihi >= NSA / 16 && jhi >= NSA / 16;
 }
@@ -187,7 +196,7 @@ static int report(const char* name, const CmpStats& st) {
 int main(int argc, char** argv) {
     const unsigned seed = argc > 1 ? (unsigned)atoi(argv[1]) : 12345u;
     std::mt19937 rng(seed);
-    std::uniform_int_distribution<int> nib(1, 15); // offset-encoded [-7,7]; NEVER 0 (= -8)
+    std::uniform_int_distribution<int> nib(1, 15); // offset-encoded [-7,7]; never 0 (-8)
     std::uniform_real_distribution<double> uni(0.0, 1.0);
 
     printf("n2dualtest: NF=%d nt_outer=%d nt_inner=%d NSA=%d NSB=%d seed=%u\n", NF, NT_OUTER,
@@ -236,7 +245,7 @@ int main(int argc, char** argv) {
     CK(cudaMemset(vd0, 0xa5, nvis_a * 4));
     CK(cudaMemset(vd, 0xa5, nvis_d * 4));
     CK(cudaMemset(vm, 0xa5, nvis_d * 4));
-    // 0xa5 fill is LOAD-BEARING for [5c]: an untouched BB region must still read 0xa5a5a5a5.
+    // [5c] relies on the 0xa5 fill: an unwritten BB region still reads 0xa5a5a5a5.
     CK(cudaMemset(vam, 0xa5, nvis_d * 4));
 
     // ---- runs ----------------------------------------------------------------------------
@@ -254,7 +263,7 @@ int main(int argc, char** argv) {
     n2k_dual::DualCorrelator dmask(pm);
     dmask.launch(vm, da, db, drm, NT_OUTER, NT_INNER, nullptr, true);
 
-    // THE SHIPPED MASK: AA | MIXED, i.e. BB off (GPU TODO 1b).
+    // AA | MIXED, BB off: the mirror of [5].
     n2k_dual::DualCorrelatorParams pam(NSA, NSB, NF,
                                        n2k_dual::BLOCK_MASK_AA | n2k_dual::BLOCK_MASK_MIXED);
     n2k_dual::DualCorrelator dam(pam);
@@ -293,12 +302,12 @@ int main(int argc, char** argv) {
         cmp_tiles(st, "mask", hvm.data(), NS, hvd.data(), NS, tiles_mixed_bb);
         fails += report("[5] class-mask MIXED|BB vs full, bitwise", st);
     }
-    // [5b] THE SHIPPED MASK. Two independent claims, because 1b relies on BOTH:
-    //   (a) every AA and MIXED tile is bit-identical to the full launch -- masking must not
-    //       perturb what it keeps, and the surviving blocks must land at their FULL-TRIANGLE
-    //       offsets (this is what lets the tile gather stay unchanged);
-    //   (b) the BB region is UNTOUCHED, still holding the 0xa5 fill -- i.e. the mask really
-    //       skipped that work rather than computing it anyway.
+    // [5b] and [5c], mask AA|MIXED. Two separate claims:
+    //   (a) every AA and mixed tile is bit-identical to the full launch: masking does not
+    //       perturb what it keeps, and the kept blocks sit at their full-triangle offsets,
+    //       which cudaCorrelatorDual's tile gather assumes;
+    //   (b) the BB region still holds the 0xa5 fill, so the masked work was skipped rather
+    //       than computed.
     {
         CmpStats st;
         cmp_tiles(st, "shipmask", hvam.data(), NS, hvd.data(), NS, tiles_aa_mixed);
@@ -324,9 +333,9 @@ int main(int argc, char** argv) {
         fails += report("[5c] BB region left UNCOMPUTED under the shipped mask", st);
     }
 
-    // [6] FREQUENCY MAP: a launch over a SUBSET of channels must reproduce the full launch's
-    // tiles for exactly those channels, in the order named. Deliberately out of order and
-    // non-contiguous -- an identity-ish map would pass even if the mapping were ignored.
+    // [6] Frequency map: a launch over a subset of channels must reproduce the full launch's
+    // tiles for exactly those channels, in the order named. The map is out of order and
+    // non-contiguous, since a near-identity map would pass even if the mapping were ignored.
     {
         const std::vector<int> fmap{5, 2, 7, 0};
         n2k_dual::DualCorrelatorParams pf(NSA, NSB, NF, n2k_dual::BLOCK_MASK_ALL, fmap);
@@ -362,10 +371,10 @@ int main(int argc, char** argv) {
             }
         fails += report("[6] freq_map {5,2,7,0} vs full, bitwise", st);
 
-        // [7] COMPACT B: the replica input holds only the mapped channels, [T][4][NSB] in
-        // freq_map order, and must reproduce the padded freq-map launch bitwise. The map is
-        // out of order on purpose: a kernel that addressed B by the real channel would read
-        // the wrong slices and fail here.
+        // [7] Compact B: the replica input holds only the mapped channels, [T][4][NSB] in
+        // freq_map order, and must reproduce the padded freq_map launch bitwise. Because the
+        // map is out of order, a kernel that addressed B by the real channel would read the
+        // wrong slices and fail here.
         {
             std::vector<uint8_t> hbc((size_t)T * fmap.size() * NSB);
             for (int t = 0; t < T; t++)
@@ -404,11 +413,11 @@ int main(int argc, char** argv) {
         }
     }
 
-    // [8] + [9] THE SHARED SYNTH AXIS: one launch over 128 + 384 stations, three chains' lanes
-    // side by side. [8] the whole 512-station triangle against the CPU reference (the new
-    // instantiation); [9] each chain's mixed and BB tiles, read out of the shared launch at
-    // its own rows, are bitwise what a one-chain launch over its lanes alone produces -- the
-    // property that lets the assemblers keep their frames when the chains share a pass.
+    // [8] and [9], the shared synth axis: one launch over 128 + 384 stations, three chains'
+    // lanes side by side. [8] checks the whole 512-station triangle against the CPU reference.
+    // [9] checks that each chain's mixed and BB tiles, read from the shared launch at its own
+    // rows, are bitwise what a one-chain launch over its lanes alone produces, which lets each
+    // chain's record assembler keep its frame layout when the chains share a pass.
     {
         std::vector<uint8_t> hb3((size_t)T * NF * NSB3);
         for (auto& v : hb3)

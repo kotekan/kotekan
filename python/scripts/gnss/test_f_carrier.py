@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""f_carrier, the receiver-wide carrier-frequency state (task #33 P2).
+"""f_carrier, the receiver-wide carrier-frequency state of JointReceiverState.
 
-The properties that matter are the ones whose failures are SILENT: a state that
+The properties that matter are the ones whose failures are silent: a state that
 aliases onto a satellite bias row after a prune, a state that collects the wrong
 process noise, and an unmeasured state that reads as a confident zero.
 
@@ -35,8 +35,8 @@ class TestFCarrier(unittest.TestCase):
         )
 
     def test_does_not_collect_the_satellite_process_noise(self):
-        """q_b is in CHIPS and ~1000x q_fcar. If the row is swept up with the sat biases,
-        its variance grows at the wrong rate and the gate opens far too wide."""
+        """q_b is in chips and, in this fixture, 10^4 x q_fcar. If the row is swept up with the
+        sat biases, its variance grows at the wrong rate and the gate opens far too wide."""
         f = fresh(q_b=10.0, q_fcar=0.001)
         for i in range(31):
             f.update_rrate(("G", 1), 0.0, float(i), F_L5, 0.1)
@@ -50,8 +50,8 @@ class TestFCarrier(unittest.TestCase):
         )
 
     def test_survives_a_satellite_prune_without_aliasing(self):
-        """THE SILENT ONE. Rows are renumbered when a stale sat is dropped; if _fcar_idx
-        is not remapped it points at whatever slid into its slot -- a sat's bias, in chips."""
+        """Rows are renumbered when a stale sat is dropped; if _fcar_idx is not remapped it
+        points at whatever slid into its slot -- a sat's bias, in chips."""
         f = fresh(max_age_s=50.0)
         # birth two sats through the public cycle path, then the carrier state
         f.cycle([(("G", 1), 10.0, 0.3), (("G", 2), 11.0, 0.3)], 0.0)
@@ -73,7 +73,7 @@ class TestFCarrier(unittest.TestCase):
         )
 
     def test_code_path_is_untouched_when_no_carrier_is_fed(self):
-        """A chain that never feeds a carrier keeps its exact old state layout."""
+        """A chain that never feeds a carrier gets no carrier row."""
         a = fresh()
         a.cycle([(("G", 1), 10.0, 0.3), (("G", 2), 11.0, 0.3)], 0.0)
         a.cycle([(("G", 1), 10.2, 0.3), (("G", 2), 11.1, 0.3)], 10.0)

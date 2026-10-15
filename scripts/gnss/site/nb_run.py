@@ -6,8 +6,8 @@
 Code cells run in one shared namespace; stdout, stderr, the last expression's repr and any
 matplotlib figures left open at the end of a cell become that cell's outputs (text/plain,
 image/png). The first failing cell stops the run, its traceback is stored, and the exit code
-is 1. This exists so the tutorial notebooks under scripts/gnss can be validated and shipped
-with real outputs from an environment that has numpy/matplotlib but not nbformat.
+is 1. This lets the GNSS tutorial notebooks be validated and shipped with real outputs from an
+environment that has numpy/matplotlib but not nbformat.
 """
 import argparse
 import ast

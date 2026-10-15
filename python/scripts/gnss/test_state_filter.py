@@ -1,18 +1,14 @@
 #!/usr/bin/env python3
-"""Regression tests for JointReceiverState, built around the 2026-08-10 incident.
+"""Tests for JointReceiverState's escape and median gauge against a satellite feeding noise.
 
-THE INCIDENT, because these tests only make sense against it. The GPS-only joint state ran
-healthy for eight hours (clk 148-151 chips, sigma 0.05-0.16, mean(b) ~ 0.00, 1.2% rejection).
-At 10:22 PRN 25 transited out of the primary beam -- elevation RISING 45->65 deg, so not a
-set -- and its tracker output became uniform noise over the 10230-chip code (deep_snr 30->2.4,
-coh_frac 0.94->0.19). The filter's escape hatch counted five consecutive rejections, concluded
-"a real move is PERSISTENT", and believed a -1396-chip innovation. That corrupted clk, which
-made every other satellite's innovation large, which escaped them too, until no bias was
-within gauge_max_b of zero and the gauge switched itself off. clk read +50.8 against a true
-+148 for fifty minutes -- and NOTHING downstream noticed, because the observable combination
-clk + b_i stayed correct the whole time.
+A satellite that transits out of the primary beam, not only one that sets, can stay tracked
+while its output is uniform noise over the 10230-chip code. An escape that believed any
+persistent run of rejections would take a ~-1400-chip innovation from it; that corrupts clk,
+every other satellite's innovation becomes large and escapes too, and a gauge whose inlier set
+is centred on zero then finds no inliers and stops pinning. clk can then sit far from the truth
+with nothing downstream noticing, because the observable clk + b_i stays correct throughout.
 
-Both halves are tested: the hatch must not believe incoherent runs, and the gauge must never
+Both halves are tested: the escape must not believe incoherent runs, and the gauge must never
 stop pinning.
 """
 import os
@@ -32,8 +28,7 @@ def _healthy(sigma=0.3, n_sat=6, cycles=60, seed=1):
 
     rng = random.Random(seed)
     js = JointReceiverState(code_len=L)
-    # the six sats and their biases as the state actually held them at 10:21, one minute
-    # before the incident
+    # six satellites with biases of the size a converged state holds
     biases = dict(
         zip(
             [("gps", p) for p in (6, 11, 21, 24, 25, 28)][:n_sat],
@@ -55,15 +50,14 @@ def _healthy(sigma=0.3, n_sat=6, cycles=60, seed=1):
 
 class TestEscapeHatch(unittest.TestCase):
     def test_healthy_state_converges(self):
-        """Baseline: the filter reproduces the state we actually ran overnight."""
+        """Baseline: the filter converges to the true clock and biases."""
         js, biases, _, _ = _healthy()
         self.assertAlmostEqual(js.x[0], TRUE_CLK, delta=0.5)
         for k, b in biases.items():
             self.assertAlmostEqual(js.bias(k), b, delta=0.5)
 
     def test_noise_satellite_does_not_destroy_the_state(self):
-        """THE INCIDENT. One satellite feeds uniform noise over the code; the state must
-        survive it. Before the fix this drove clk from +148 to -1242 in a single cycle."""
+        """One satellite feeds uniform noise over the code; the state must survive it."""
         js, biases, t, rng = _healthy()
         bad = ("gps", 25)
         for _ in range(40):  # 20 minutes of a beam-exited satellite
@@ -73,7 +67,7 @@ class TestEscapeHatch(unittest.TestCase):
                 for k, b in biases.items()
                 if k != bad
             ]
-            meas.append((bad, rng.uniform(0.0, L), 0.3))  # uniform noise, as measured
+            meas.append((bad, rng.uniform(0.0, L), 0.3))  # uniform noise over the code
             js.cycle(meas, t)
         self.assertAlmostEqual(
             js.x[0], TRUE_CLK, delta=1.0, msg="clk was dragged by a noise satellite"
@@ -89,8 +83,8 @@ class TestEscapeHatch(unittest.TestCase):
             )
 
     def test_genuine_step_is_still_followed(self):
-        """The hatch must keep doing its job: a CONSISTENT step is a real re-anchor and has
-        to be believed, or the gate is a deadlock. This is the case the hatch exists for."""
+        """The escape must keep doing its job: a consistent step is a real re-anchor and has
+        to be believed, or the gate is a deadlock. This is the case the escape exists for."""
         js, biases, t, rng = _healthy()
         moved = ("gps", 24)
         step = 40.0  # far outside any normalized gate
@@ -110,11 +104,9 @@ class TestEscapeHatch(unittest.TestCase):
                 ],
                 t,
             )
-        # MEDIAN CONVENTION (2026-08-23; was mean). One sat moving by d does not move the
-        # median at all, so the sat keeps the WHOLE step and clk stays put. This is the
-        # point of the change: under the mean gauge this same event leaked d/N into every
-        # consumer's clock (and a rise/set stepped it by b/n -- the measured +-1.3 chip
-        # wander of 2026-08-22). Pinning both numbers documents the new convention.
+        # Median gauge: one satellite moving by d does not move the median, so that
+        # satellite keeps the whole step and clk stays put, where a mean gauge would leak
+        # d/N into every consumer's clock. Both numbers are pinned.
         self.assertAlmostEqual(
             js.bias(moved),
             biases[moved] + step,
@@ -136,7 +128,8 @@ class TestEscapeHatch(unittest.TestCase):
         )
 
     def test_escape_is_logged(self):
-        """The most damaging event of 2026-08-10 fired silently. It must not be able to."""
+        """An escape moves the state by a whole step; it must always leave an operator
+        note."""
         js, biases, t, rng = _healthy()
         moved = ("gps", 24)
         for _ in range(12):
@@ -163,7 +156,7 @@ class TestEscapeHatch(unittest.TestCase):
         self.assertTrue(any("-- believing a" in n for n in notes), notes)
 
     def test_incoherent_run_is_reported(self):
-        """A satellite feeding noise is a TRACKING failure; the filter should say so rather
+        """A satellite feeding noise is a tracking failure; the filter should say so rather
         than silently rejecting forever."""
         js, biases, t, rng = _healthy()
         bad = ("gps", 25)
@@ -184,21 +177,20 @@ class TestEscapeHatch(unittest.TestCase):
 
 class TestGauge(unittest.TestCase):
     def test_gauge_does_not_switch_itself_off_when_uniformly_displaced(self):
-        """The second half of the incident, tested narrowly and at the point it broke.
+        """A uniformly displaced comb must still be pinned, tested narrowly at gauge().
 
-        This deliberately does NOT simulate forward from a hand-edited state: writing x
-        without writing a consistent P describes a situation the filter was never in, and the
-        resulting trajectory measures the surgery rather than the fix. The defect was
-        precise -- the INLIER SET came back empty and gauge() returned without pinning
-        anything -- so that is what is asserted, on exactly the state the sky produced at
-        11:12 (every bias ~ +97 against a clk 97 chips low)."""
+        This deliberately does not simulate forward from a hand-edited state: writing x
+        without a consistent P describes a situation the filter is never in, and the
+        trajectory would measure the edit rather than the gauge. The failure is precise (an
+        empty inlier set, and gauge() returning without pinning anything), so that is what is
+        asserted, on a state with every bias ~ +97 against a clk 97 chips low."""
         js, biases, _, _ = _healthy()
         for i in js._idx.values():
             js.x[i] += 97.0
         js.x[0] -= 97.0
 
-        # The OLD rule, stated explicitly so the regression is documented rather than
-        # implied: measured against ZERO, every satellite is an outlier and the set is empty.
+        # A zero-centred inlier rule, stated explicitly: measured against zero, every
+        # satellite is an outlier and the set is empty, so this state exercises the failure.
         old_use = [i for i in js._idx.values() if abs(float(js.x[i])) <= js.gauge_max_b]
         self.assertEqual(
             len(old_use),
@@ -222,7 +214,7 @@ class TestGauge(unittest.TestCase):
         )
 
     def test_gauge_still_excludes_a_single_wild_bias(self):
-        """...without losing the property it was given gauge_max_b for."""
+        """The median-centred inlier set still excludes a single wild bias (gauge_max_b)."""
         js, biases, t, rng = _healthy()
         wild = ("gps", 25)
         js.x[js._idx[wild]] = -1400.0

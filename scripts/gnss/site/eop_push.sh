@@ -1,15 +1,15 @@
 #!/bin/bash
-# Push the current EOP table into every RUNNING GNSS node kotekan, and read it back.
+# Push the current EOP table into every running GNSS node kotekan, and read it back.
 #
-# WHY THIS EXISTS. The EOP table lives in the generated node configs and ROLLS (a 6-entry,
-# ~5-day window): a table that was fresh at generation is past its edge within a week, and
-# 18 days past it killed recv1 outright on 2026-08-19 (dUT1 5 ms wrong -> every N2 frame's
-# time metadata rejected). The table is REST-updatable in the running process
-# (kotekan_update_endpoint) -- which also means A NODE RESTART SILENTLY REVERTS IT to the
-# config file's stale copy. So: run this AFTER every node bring-up, and any time the window
-# is near its edge. The 2026-08-24 restart reverted Jim's Friday curls exactly this way.
+# The EOP table lives in the generated node configs and is a rolling window of a few days, so a
+# table that was fresh at generation is past its end within a week, and a node asked for a time
+# past the end shuts down (the stock telescope block sets fatal_eop_out_of_range). The table is
+# REST-updatable in the running process (kotekan_update_endpoint), which also means a node
+# restart reverts it to the config file's copy. So run this after every node bring-up, and
+# whenever the window nears its end; eop_cron.sh runs it hourly for nodes whose live table is
+# behind.
 #
-# SOURCE. The observatory keeps the rolling file at choco:/var/lib/choco/eop/state.json
+# Source: the observatory keeps the rolling file at choco:/var/lib/choco/eop/state.json
 # (refreshed daily at ~12:00). eop_cron.sh, hourly on gnss, stages it at
 # /var/tmp/gnss-logs/eop-state.json, which is the default here; run this on gnss.
 #
@@ -42,8 +42,8 @@ for n in $NODES; do
     code=$(curl -sS -o /dev/null -w "%{http_code}" --max-time 8 -X POST \
         -H 'Content-Type: application/json' --data-binary @"$F" \
         "http://$n:12048/earth_rotation_data" 2>/dev/null || echo 000)
-    # READ IT BACK. A 200 proves the POST parsed, not that the table the process now
-    # holds is the one we sent -- and the whole point of this script is the live copy.
+    # Read it back: a 200 proves the POST parsed, not that the process now holds the table
+    # we sent, and the live copy is the point of this script.
     rb=$(curl -s --max-time 8 "http://$n:12048/config" 2>/dev/null | python3 -c "
 import json, sys, datetime
 try:

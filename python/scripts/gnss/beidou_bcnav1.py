@@ -1,26 +1,26 @@
 """BeiDou-3 B1C B-CNAV1 codec: frame symbols <-> nav bits, and the ephemeris parse.
 
-The FOURTH and LAST civil S5 D-component (2026-07-30). B-CNAV1 rides the B1C DATA channel on
-the L1 band (1575.42, beside E1B). It REUSES the GF(64) non-binary LDPC decoder (nb_ldpc.py)
-built for B-CNAV2 -- a different H matrix (SF2 = NB-LDPC(200,100)) -- and the B-CNAV2
-CNAV-style ephemeris propagation (sv_position_bcnav2), since B-CNAV1 and B-CNAV2 share the
-BDS-3 ephemeris parameter set. What is NEW here:
+B-CNAV1 rides the B1C data channel on the L1 band (1575.42 MHz, beside E1B). It reuses the
+GF(64) non-binary LDPC decoder (nb_ldpc.py) shared with B-CNAV2, with its own H matrix (SF2 =
+NB-LDPC(200,100)), and the B-CNAV2 CNAV-style ephemeris propagation (sv_position_bcnav2), since
+B-CNAV1 and B-CNAV2 share the BDS-3 ephemeris parameter set. Specific to B-CNAV1:
 
   * an 1800-symbol / 18 s frame = SF1 (72 syms: PRN + SOH as short BCH/LFSR sequences, the
-    frame-sync pattern) + a BLOCK-INTERLEAVED (36x48) SF2/SF3;
-  * SF2 -> 600 bits (the FULL ephemeris + clock, one subframe -- simpler than B-CNAV2's two
-    frames) with its own CRC-24Q. SF3 (iono/other, NB-LDPC(88,44)) is de-interleaved off the
-    frame but not decoded: nothing parses it;
+    frame-sync pattern) + a block-interleaved (36x48) SF2/SF3;
+  * SF2 -> 600 bits (the full ephemeris and clock in one subframe, where B-CNAV2 spreads the
+    orbit over message types 10 and 11) with its own CRC-24Q. SF3 (iono/other, NB-LDPC(88,44))
+    is de-interleaved off the frame but not decoded: nothing parses it;
   * frame sync by generating the expected SF1 (PRN-specific 21 syms + SOH-specific 51 syms,
     searching SOH 0..199) rather than a fixed preamble.
 
 Frame timing: a B1C-data symbol is 10 ms (one 10230-chip BOC(1,1) code period; 50 bps through
 the rate-1/2 LDPC = 100 sps), so SF1/SF2/SF3 = 72/1200/528 symbols after de-interleave.
 
-★ ICD-OWNED CONVENTIONS (flippable, LIVE-VERIFIED via BRDC dpos): the data-bit inversion into
-the LDPC (PocketSDR applies a `^1`; here resolved by trying both and gating on CRC, then cached)
-and the ephemeris offsets (from andrewkamble88/gnss-sdr@bds_b1c Beidou_B1C.h). Sources: PocketSDR
-(SF1 LFSRs, interleaver, H matrices) + that B1C fork (SF2 ephemeris layout).
+Two conventions are ICD-owned: the data-bit inversion into the LDPC (PocketSDR applies a `^1`;
+find_frames tries both, gates on the CRC and caches the result in _INVERT) and the ephemeris
+offsets (from andrewkamble88/gnss-sdr@bds_b1c Beidou_B1C.h), which the broker's BRDC
+cross-check (gnss_broker/sky.py _bcnav1_brdc_xcheck) validates. Sources: PocketSDR (SF1 LFSRs,
+interleaver, H matrices) + that B1C fork (SF2 ephemeris layout).
 """
 
 import numpy as np
@@ -156,11 +156,11 @@ def find_frames(prn, symbols):
         i += 1
 
 
-# ------------------------------------------------------------------ ephemeris (SF2, types shared with B-CNAV2)
+# ------------------------------------------------------- ephemeris (SF2, types shared with B-CNAV2)
 # name -> (start bit in the 600-bit SF2 [0-indexed], length, signed, scale). Offsets from
-# andrewkamble88/gnss-sdr@bds_b1c BEIDOU_B1C.h (1-indexed -> my_start = offset-1; SatType/scales
-# IDENTICAL to B-CNAV2, verified against beidou_cnav1_navigation_message.cc). LIVE-VERIFIED via
-# BRDC dpos. The WHOLE orbit is in SF2 (one subframe) -- no cross-frame matching.
+# andrewkamble88/gnss-sdr@bds_b1c Beidou_B1C.h (1-indexed there: start = offset - 1); SatType
+# and scales are the B-CNAV2 ones. The BRDC cross-check validates the offsets. The whole orbit
+# is in SF2 (one subframe), so there is no cross-frame matching.
 BCNV1_SF2_EPH_FIELDS = {
     "t_oe": (39, 11, False, 300.0),
     "SatType": (50, 2, False, 1.0),
@@ -250,7 +250,7 @@ if __name__ == "__main__":
     print("3. SF2 NB-LDPC: %s" % ("OK" if p3 == 0 else "FAIL %d" % p3))
     fails += p3
 
-    # 4. END TO END: plant an ephemeris in SF2 (+CRC), LDPC-encode it, interleave with an SF3
+    # 4. end to end: plant an ephemeris in SF2 (+CRC), LDPC-encode it, interleave with an SF3
     # filler, prepend SF1(prn,soh), feed as symbols -> find_frames -> recover the ephemeris.
     prn, soh = 19, 137
     sf2 = [0] * SF2_BITS

@@ -1,23 +1,23 @@
 """GPS L1C-D CNAV-2 codec: frame symbols <-> nav bits (IS-GPS-800).
 
-The 4th GPS-family nav message (after LNAV / CNAV) and our FIRST binary LDPC. A CNAV-2 frame is
-1800 symbols = 18 s at 100 sps (a 10 ms L1C-D record = one symbol):
+CNAV-2 is protected by a binary LDPC code. A CNAV-2 frame is 1800 symbols = 18 s at 100 sps (a
+10 ms L1C-D record = one symbol):
 
   Subframe 1 (52 syms): TOI (Time Of Interval, 9 bits) as a fixed per-TOI pattern -- 1 explicit
-      bit9 + a 51-symbol 8-stage-LFSR sequence XOR bit9. Used ONLY for frame sync + polarity.
+      bit9 + a 51-symbol 8-stage-LFSR sequence XOR bit9. Used only for frame sync + polarity.
   Subframes 2+3 (1748 syms): block-interleaved (write 46x38 by rows, read by columns), then
       Subframe 2 = LDPC(1200,600) -> 600 info bits (ephemeris + clock + CRC-24Q);
       Subframe 3 = LDPC(548,274)  -> 274 info bits (page-typed: UTC/iono/EOP/... + CRC-24Q).
 
-The LDPC is SYSTEMATIC (info = the first k bits of the codeword -- PocketSDR decode_B_LDPC returns
-dblk[:m]). At our deep-integration SNR the codeword is error-free, so decode = deinterleave, take
-the systematic prefix, CRC-check -- no iteration (the B-CNAV2 discipline; adding a binary min-sum
-pass would only extend it to weaker sats). Frame geometry + the SF1 LFSR are transcribed from
-PocketSDR (sdr_nav.py decode_L1CD/decode_CNV2/sync_CNV2_frame, T.Takasu).
+The LDPC is systematic (info = the first k bits of the codeword, as PocketSDR's decode_B_LDPC
+returns dblk[:m]). The decode relies on the deep-integration SNR giving an error-free codeword:
+deinterleave, take the systematic prefix, CRC-check, with no LDPC iteration, so a frame with an
+error in its info bits fails the CRC and is dropped; a binary min-sum pass would extend the
+decode to weaker satellites. Frame geometry + the SF1 LFSR are transcribed from PocketSDR
+(sdr_nav.py decode_L1CD/decode_CNV2/sync_CNV2_frame, T.Takasu).
 
-The frame decode (LDPC systematic + CRC) is convention-COMPLETE and self-validating (CRC is the
-truth). The SF2 ephemeris (the CNAV Keplerian set) has no field table: it was to be mapped
-against live frames + the BRDC dpos, as B-CNAV3's type 10 was, and never was.
+The frame decode (systematic extract + CRC) is self-validating: the CRC is the check. The SF2
+ephemeris (the CNAV Keplerian set) has no field table, so this codec yields no ephemeris.
 """
 
 import numpy as np
@@ -30,7 +30,7 @@ N_SF1 = 52  # subframe 1 (TOI) symbols
 IL_ROWS, IL_COLS = 46, 38  # block interleaver: syms[52:].reshape(46,38).T.ravel()
 N_SF2, K_SF2 = 1200, 600  # SF2 LDPC(1200,600)
 N_SF3, K_SF3 = 548, 274  # SF3 LDPC(548,274)
-N_TOI = 400  # TOI counts 0..399 (2 s each -> 800 s / 18 s frames... sync only)
+N_TOI = 400  # TOI counts 18 s frames, 0..399 within each two-hour interval
 
 
 # ------------------------------------------------------------------ SF1 (TOI) sync pattern
@@ -42,7 +42,7 @@ def _rev_reg(R, n):
 
 
 def _lfsr_bits(N, R, tap, n):
-    """PocketSDR LFSR (n-stage): yields N outputs, bit = R&1 (0/1)."""
+    """PocketSDR LFSR (n-stage): returns N outputs, bit = R&1 (0/1)."""
     out = np.zeros(N, dtype=np.int8)
     for i in range(N):
         out[i] = R & 1
@@ -57,9 +57,10 @@ _CNV2_SF1 = {}
 def _sf1(toi):
     """52-symbol (0/1) subframe-1 pattern for TOI `toi` (== PocketSDR CNV2_SF1[toi])."""
     if toi not in _CNV2_SF1:
-        # PocketSDR: code = LFSR(51, rev_reg(t&0xFF,8), 0b10011111, 8) as CHIP(+1/-1); the SF1 data
-        # symbols are ((code+1)//2) ^ bit9, prefixed by the explicit bit9. Our _lfsr_bits yields the
-        # bit R&1 directly; CHIP[b]=+1 if b==0 else -1, so (CHIP+1)//2 = 1-b -> the SF1 bit is (1-b)^bit9.
+        # PocketSDR: code = LFSR(51, rev_reg(t&0xFF,8), 0b10011111, 8) as CHIP(+1/-1); the SF1
+        # data symbols are ((code+1)//2) ^ bit9, prefixed by the explicit bit9. _lfsr_bits returns
+        # the bit R&1 directly; CHIP[b]=+1 if b==0 else -1, so (CHIP+1)//2 = 1-b -> the SF1 bit is
+        # (1-b)^bit9.
         b = _lfsr_bits(51, _rev_reg(toi & 0xFF, 8), 0b10011111, 8)
         bit9 = (toi >> 8) & 1
         data = ((1 - b) ^ bit9).astype(np.int8)
@@ -68,8 +69,8 @@ def _sf1(toi):
 
 
 def sync_cnv2(syms1852):
-    """Given 1852 hard symbols (0/1) [1800 frame + next-frame's 52-sym SF1], find the TOI + polarity.
-    Returns (toi, rev) or (None, None). rev=0 normal, 1 inverted (carrier ambiguity)."""
+    """Given 1852 hard symbols (0/1) [1800 frame + next-frame's 52-sym SF1], find the TOI +
+    polarity. Returns (toi, rev) or (None, None). rev=0 normal, 1 inverted (carrier ambiguity)."""
     s = np.asarray(syms1852, dtype=np.int8)
     if len(s) < 1852:
         return None, None
@@ -129,7 +130,7 @@ def _sf1_lut():
 
 
 def find_frames(syms):
-    """Slide over a hard-symbol run; at each offset use the SF1 dict as a CHEAP membership filter
+    """Slide over a hard-symbol run; at each offset use the SF1 dict as a cheap membership filter
     ("could this be a frame start?"), then sync_cnv2 for the actual (toi, rev) and decode. Yields
     (offset, toi, SF2, SF3) per CRC-OK frame. The dict alone can't name the TOI -- SF1 patterns
     collide under inversion (_sf1(a) == _sf1(b)^1), so head-only lookup is ambiguous; sync_cnv2's

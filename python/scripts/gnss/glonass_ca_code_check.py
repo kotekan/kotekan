@@ -1,18 +1,16 @@
 #!/usr/bin/env python3
 """GLONASS FDMA C/A ranging-code check (L1OF / L2OF, 511 chips at 511 kcps).
 
-★ This code gets a SHARPER test than any other signal we carry, because it is a pure
-MAXIMAL-LENGTH SEQUENCE rather than a Gold code. An m-sequence has IDEAL two-valued periodic
-autocorrelation: exactly +511 at zero shift and exactly -1 at all 510 others. So the check is
-not "sidelobes are low enough", it is "every one of the 510 sidelobes equals -1 EXACTLY". An
-off-by-one in the tap set, the output stage or the shift direction fails that instantly -- there
-is no room for a nearly-right code to pass. Balance is exactly -1 and the longest CIRCULAR run
-is exactly 9; see the notes at each check for why those are the right numbers (both tripped me
-up first time round, and both were the test being wrong rather than the code).
+The code is a pure maximal-length sequence rather than a Gold code, so it gets an exact test.
+An m-sequence has two-valued periodic autocorrelation: +511 at zero shift and -1 at all 510
+others. The check is that every one of the 510 sidelobes equals -1 exactly, so an off-by-one in
+the tap set, the output stage or the shift direction fails it; a nearly-right code cannot pass.
+Balance is exactly -1 and the longest circular run is exactly 9; the notes at each check say why
+those are the right numbers.
 
-★ And there is only ONE code: every GLONASS satellite transmits it. Satellites are separated by
-FREQUENCY (channel k -> f0 + k*437.5 kHz on L2), not by code. So there is no PRN loop here and no
-per-satellite table anywhere -- the per-satellite story lives entirely in the carrier.
+There is only one code: every GLONASS satellite transmits it. Satellites are separated by
+frequency (channel k -> f0 + k*437.5 kHz on L2), not by code, so there is no PRN loop here and
+no per-satellite table; the per-satellite difference is entirely in the carrier.
 
 Checks, in order: the C++ literals are parsed back out and asserted; the sequence is regenerated
 independently in python; the m-sequence properties are asserted exactly; and if a compiler is
@@ -42,7 +40,7 @@ FINGERPRINT = (
 
 
 def ca_code():
-    """The 9-stage m-sequence, in the reference convention: emit stage `out_stage`, shift RIGHT,
+    """The 9-stage m-sequence, in the reference convention: emit stage `out_stage`, shift right,
     load parity(stage tap_a ^ stage tap_b) into `fb_stage`. Chips are logic 0 -> +1."""
     r = REF["seed"]
     out = []
@@ -141,8 +139,8 @@ def main():
 
     c = ca_code()
 
-    # ---- m-sequence properties, asserted EXACTLY ----------------------------
-    # A degree-9 m-sequence has 256 binary ONES and 255 zeros. Under our house convention
+    # ---- m-sequence properties, asserted exactly ----------------------------
+    # A degree-9 m-sequence has 256 binary ones and 255 zeros. Under our house convention
     # (logic 0 -> +1, logic 1 -> -1) that is 255 x (+1) and 256 x (-1), i.e. balance -1 and a
     # +1-count of 255. (Balance +1 would mean the convention had been inverted somewhere.)
     bal = sum(c)
@@ -174,8 +172,8 @@ def main():
         )
 
     # Run-length check: a degree-n m-sequence contains exactly one run of n identical chips.
-    # ⚠️ It MUST be evaluated CIRCULARLY -- the sequence is periodic, and the long run straddles
-    # the buffer boundary for this seed, so a linear scan reports 8 and cries wolf.
+    # It must be evaluated circularly: the sequence is periodic and, for this seed, the long run
+    # straddles the buffer boundary, so a linear scan finds only 8.
     runs, cur = [], 1
     for i in range(1, 2 * N):  # two periods -> every circular run appears
         if c[i % N] == c[(i - 1) % N]:

@@ -1,34 +1,29 @@
 """Galileo E5a-I F/NAV codec: page symbols <-> nav bits, and the ephemeris parse.
 
-The second S5 D-component (2026-07-30). Same FEC FAMILY as E1B I/NAV, so it REUSES
-galileo_inav's Viterbi (rate-1/2 K=7, G=171/133, G2 inverted -- proven on live E1B) and
-CRC-24Q directly. What differs, and lives here:
+F/NAV uses the same FEC as E1B I/NAV, so it reuses galileo_inav's Viterbi (rate-1/2 K=7,
+G=171/133, G2 inverted) and CRC-24Q directly. What differs, and lives here:
 
   * symbol rate 50 sps (20 ms symbols) vs I/NAV's 250 sps (4 ms);
-  * a page is 10 s = 500 symbols = 12-symbol SYNC + 488 data, and the 488 data symbols are
+  * a page is 10 s = 500 symbols = 12-symbol sync + 488 data, and the 488 data symbols are
     the rate-1/2 FEC of 244 bits (238 content + 6 tail), block-interleaved 61x8;
-  * NO even/odd split -- an F/NAV page is a SINGLE 500-symbol unit (unlike I/NAV, where a
-    word spans an even + an odd page part); the CRC-24 spans the page's content directly;
-  * F/NAV page TYPES 1-4 carry the ephemeris/clock, on a different bit layout from I/NAV.
+  * no even/odd split: an F/NAV page is a single 500-symbol unit (unlike I/NAV, where a
+    word spans an even and an odd page part), and the CRC-24 spans the page's content;
+  * F/NAV page types 1-4 carry the ephemeris and clock, on a different bit layout from I/NAV.
 
-★ ICD-OWNED CONVENTIONS, isolated as flippable constants and VERIFIED ONLY ON LIVE SYMBOLS
-(the E1B lesson: a roundtrip self-test is blind to them -- encode and decode agree on any
-choice, and the live CRC is the only judge): the sync pattern, the interleaver orientation,
-and the ephemeris field offsets. G2 inversion is inherited from galileo_inav (True, already
-live-verified for the shared FEC). If the first real E5a decode finds PAGES (sync) but zero
-CRC-valid content, scan these before touching logic.
+The ICD owns three conventions a roundtrip self-test cannot see, since encode and decode agree
+on any choice: the sync pattern, the interleaver orientation and the ephemeris field offsets.
+A CRC on live symbols checks the first two; the broker's BRDC cross-check
+(gnss_broker/sky.py _fnav_brdc_xcheck) checks the offsets. G2 inversion is inherited from
+galileo_inav. A decode that finds sync but no CRC-valid page points at these constants, not
+the logic.
 
-⚠️ BLOCKED on live validation until the E5a-I spreading-code table exists (galileoE5aCode has
-only the E5a-Q pilot; E5a-I needs its own per-PRN LFSR start values from the ICD). This file
-is the offline-testable half.
-
-Refs: Galileo OS SIS ICD (F/NAV page layout, FEC, interleaver, sync). gps_cnav.py /
-galileo_inav.py are the structural templates.
+Refs: Galileo OS SIS ICD (F/NAV page layout, FEC, interleaver, sync). galileo_inav.py is the
+structural template.
 """
 
 import numpy as np
 
-# reuse the SHARED FEC + CRC from the I/NAV codec (same convolutional code + CRC-24Q)
+# reuse the shared FEC + CRC from the I/NAV codec (same convolutional code + CRC-24Q)
 from galileo_inav import (
     conv_encode,
     viterbi_decode,
@@ -43,7 +38,7 @@ from galileo_inav import (
 SYM_S = 0.020  # E5a-I symbol = 20 ms (50 sps)
 
 # F/NAV page: 500 symbols = SYNC (12) + interleaved data (488)
-SYNC = [1, 0, 1, 1, 0, 1, 1, 1, 0, 0, 0, 0]  # F/NAV sync pattern (ICD; verify on live)
+SYNC = [1, 0, 1, 1, 0, 1, 1, 1, 0, 0, 0, 0]  # F/NAV sync pattern (ICD)
 N_SYNC = len(SYNC)  # 12
 INTERLEAVE_ROWS = 8
 INTERLEAVE_COLS = 61
@@ -55,9 +50,9 @@ CRC_AT = CRC_SPAN  # CRC occupies bits [214:238]
 
 
 def interleave(sym):
-    """Write 488 encoded symbols into a 61x8 matrix by ROWS, read by COLUMNS. Orientation
-    ICD-owned -> verify on live symbols (interleave/deinterleave are exact inverses so the
-    self-test is blind to it, exactly as for I/NAV)."""
+    """Write 488 encoded symbols into a 61x8 matrix by rows, read it by columns. The
+    orientation is ICD-owned: interleave/deinterleave are exact inverses, so only a CRC on
+    live symbols can check it, as for I/NAV."""
     m = np.asarray(sym, dtype=np.int8).reshape(INTERLEAVE_COLS, INTERLEAVE_ROWS)
     return m.T.reshape(-1)
 
@@ -123,16 +118,14 @@ def build_page(page_type, payload=None):
 # --------------------------------------------------------------------------
 # F/NAV ephemeris: page types 1-4 -> Keplerian set (SI), then ECEF
 # --------------------------------------------------------------------------
-# name -> (page type, start bit WITHIN the 238-bit content [0-indexed, the 6-bit page-type
-# field is bits 0..5], length, signed, scale). Offsets/pages are the ONE thing a roundtrip
-# cannot check (the E1B field-offset lesson) -- LIVE-VERIFIED against the gnss-sdr Galileo_FNAV.h
-# tables and confirmed by the BRDC dpos cross-check 2026-07-30. gnss-sdr uses 1-indexed offsets
-# from the same page frame, so my_start = gnss_offset - 1 (checked on M0: {17,32} -> start 16 =
-# type(6)+IODnav(10)). Scales are IDENTICAL to the I/NAV table (both Galileo Kepler); only the
-# page/bit LAYOUT differs -- and it differs a LOT from a naive guess: t0e is on PAGE 3 (not 4),
-# OMEGA0 + iDot are on PAGE 2 (not 3), and page 4 carries only Cic/Cis (the rest is GST-UTC).
+# name -> (page type, start bit in the 238-bit content [0-indexed; the 6-bit page-type field
+# is bits 0..5], length, signed, scale). Offsets follow gnss-sdr's Galileo_FNAV.h, which counts
+# 1-indexed from the same page frame: start = gnss_offset - 1 (M0: {17,32} -> start 16 =
+# type(6)+IODnav(10)). Scales are the I/NAV ones (both Galileo Kepler); only the page and bit
+# layout differs: t0e is on page 3, OMEGA0 and iDot on page 2, and page 4 carries only Cic/Cis
+# (the rest is GST-UTC). A roundtrip cannot check the offsets; the BRDC cross-check does.
 FNAV_EPH_FIELDS = {
-    # Page 1 (clock): IODnav@6, t0c@22, af0@36, af1@67, af2@88
+    # Page 1 (clock): SVID@6, IODnav@12, t0c@22, af0@36, af1@67, af2@88
     "t0c": (1, 22, 14, False, 60.0),
     "af0": (1, 36, 31, True, _P(34)),
     "af1": (1, 67, 21, True, _P(46)),
@@ -160,10 +153,10 @@ FNAV_EPH_FIELDS = {
 
 
 def parse_fnav_ephemeris(pages_by_type):
-    """pages_by_type: {page_type: 238-bit content}. The ORBIT lives on types 2,3,4 (required
-    -- enough for the BRDC position cross-check); type 1 (clock t0c/af*) is folded in when
+    """pages_by_type: {page_type: 238-bit content}. The orbit lives on types 2,3,4 (required,
+    and enough for the BRDC position cross-check); type 1 (clock t0c/af*) is folded in when
     present but not required. Returns the SI Keplerian set, or None if an orbit page is
-    missing / the IODnav across 2,3,4 disagrees."""
+    missing or the IODnav across 2,3,4 disagrees."""
     if not all(t in pages_by_type for t in (2, 3, 4)):
         return None
     iod = [_uint(pages_by_type[t][6:16]) for t in (2, 3, 4)]  # IODnav in the eph pages
@@ -185,7 +178,7 @@ sv_position_fnav = sv_position_inav
 
 
 # --------------------------------------------------------------------------
-# self-test: the codec is SELF-CONSISTENT (ICD-correctness pends live E5a symbols)
+# self-test: self-consistency only; the ICD conventions need live symbols
 # --------------------------------------------------------------------------
 if __name__ == "__main__":
     import sys

@@ -1,32 +1,34 @@
 #!/usr/bin/env python3
-"""LNAV nav-bit decode (P7a).
+"""LNAV nav-bit decode.
 
     combiner get_status "nav_obs"  ->  stitch  ->  frame_sync/decode  ->  ephemeris
                                                         (gps_nav_decode.py does the LNAV work)
 
-Consumed by gnss_broker/navbits.py for the decode, the ephemeris cross-check against BRDC
-and the decoded-eph fallback. It also scores how well each newly decoded subframe could have
-been PREDICTED from the earlier ones (health()["mismatch"], logged as predict-mismatch) --
-the predictability measure behind the removed peel's nav-bit tables.
+Consumed by gnss_broker/navbits.py (the decode and the ephemeris cross-check against BRDC)
+and by the decoded-eph fallback in gps_distributed_broker.py. It also scores how well each
+newly decoded subframe could have been predicted from the earlier ones (health()["mismatch"],
+logged as predict-mismatch).
 
 Three design facts this leans on:
-  * POLARITY. Each combiner emit resolves its +-1 ambiguity independently (theta0 = the
+  * Polarity. Each combiner emit resolves its +-1 ambiguity independently (theta0 = the
     squaring estimate's half-angle, reduced to (-pi/2, pi/2]), so consecutive emits can be
     globally flipped relative to each other. The export carries rot = e^{-i*theta0}; the true
-    carrier phase is continuous at a certified lock, so the relative flip between emits is
-    round(dtheta/pi) odd -- chained here, then VERIFIED by LNAV parity (frame_sync), with a
-    boundary-flip repair search when parity disagrees. The ABSOLUTE polarity stays arbitrary:
+    carrier phase is continuous at lock, so the relative flip between emits is
+    round(dtheta/pi) odd -- chained here, then verified by LNAV parity (frame_sync), with a
+    boundary-flip repair search when parity disagrees. The absolute polarity stays arbitrary:
     the mismatch score compares each subframe at its better polarity.
-  * CHAIN RESET. LNAV trims words 2 (HOW) and 10 so their parity ends D29*=D30*=00 -- the
-    parity chain RESETS at every subframe boundary. Prediction is therefore per-subframe
+  * Chain reset. LNAV trims words 2 (HOW) and 10 so their parity ends D29*=D30*=00 -- the
+    parity chain resets at every subframe boundary. Prediction is therefore per-subframe
     independent, and an unknown subframe-4/5 page blanks only its own words 3-10.
-  * PREDICTABILITY. Subframes 1-3 repeat with only the HOW TOW advancing (+5/frame);
-    subframes 4/5 cycle a 25-frame supercycle (page key = tow % 125). Coverage ramps from
-    ~60% at first sync to ~93+% after one 12.5 min supercycle. Bits that cannot be predicted
-    are 0 = unknown and are not scored.
+  * Predictability. Subframes 1-3 repeat with only the HOW TOW advancing (+5/frame);
+    subframes 4/5 cycle a 25-frame supercycle (page key = tow % 125). Once subframes 1-3 are
+    held, coverage is over 60% of the frame (they plus TLM+HOW of subframes 4/5), and most
+    of it after one 12.5 min supercycle. Bits that cannot be predicted are 0 = unknown and
+    are not scored.
 
 Self-test: python3 navbit_predictor.py   (synthetic multi-frame stream, chopped into
-polarity-scrambled emits, must sync and predict the next frame exactly for subframes 1-3).
+polarity-scrambled emits, must sync, predict the next frame exactly for subframes 1-3 and
+extract the ephemeris).
 """
 import math
 import os
@@ -48,11 +50,11 @@ from gps_nav_decode import (
 
 
 def encode_subframe_trimmed(data_words):
-    """Encode 10x24 data words into the 300 transmitted bits the ICD way: chain starts
-    clean each subframe, and words 2 (HOW) and 10 are TRIMMED (their 2 non-information
-    bits solved so parity ends D29=D30=00) -- which is exactly what makes per-subframe
-    independent prediction valid. It does NOT rebuild the HOW, so the stored alert/AS flags
-    survive; the caller sets the TOW."""
+    """Encode 10x24 data words into the 300 transmitted bits the ICD way: the chain starts
+    clean each subframe, and words 2 (HOW) and 10 are trimmed (their 2 non-information
+    bits solved so parity ends D29=D30=00), which is what makes per-subframe prediction
+    valid. It does not rebuild the HOW, so the stored alert/AS flags survive; the caller sets
+    the TOW."""
     bits, d29s, d30s = [], 0, 0
     for w, src in enumerate(data_words):
         src = [int(x) for x in src]
@@ -67,52 +69,41 @@ def encode_subframe_trimmed(data_words):
 BIT_S = 0.020  # nominal LNAV bit (s, capture clock)
 SYNC_MIN_BITS = 620  # ~2 subframes + slack before attempting frame_sync
 SCAN_MAX_BITS = (
-    3000  # 60 s: the newest bits are the only ones that can hold an undecoded
+    3000  # 60 s: only the newest bits can hold an undecoded subframe, and frame_sync
 )
-# subframe, and rescanning the whole history was the broker's hot spot
+# is a per-bit Python loop, too slow to rescan the whole history on every try
 REPAIR_MIN_S = (
-    30.0  # min seconds between polarity-repair searches per PRN. Deliberately
+    30.0  # min seconds between polarity-repair searches per PRN. Long on purpose:
 )
-# long: this is a LOW-YIELD recovery path -- the polarity-chain theory
-# was REFUTED as the sync blocker (weak sats fail under EVERY polarity
-# assignment; the real cause is bit errors), so it mostly burns CPU on
-# satellites it cannot rescue. A sat that has not synced in minutes can
-# wait another 30 s.
+# a satellite that fails sync usually has bit errors, which no polarity assignment
+# repairs, so the search mostly costs CPU on satellites it cannot rescue.
 TRY_EVERY_BITS = (
-    150  # only attempt sync/decode once per ~3 s of NEW bits per PRN. It was
+    150  # attempt sync/decode at most once per ~3 s of new bits per PRN; subframes
 )
-# run on EVERY ingest, and the broker re-ingests the same emit ~5x
-# (polls at 5 Hz; the combiner refreshes nav_obs ~1 Hz) with no dedup,
-# so the work was ~25x oversubscribed: 34 ms x 15 PRNs x 5 Hz = 2.5
-# core-seconds per second against a 1-core process. Subframes arrive
-# every 6 s and the scan window holds 60 s, so nothing is missed.
-REPAIR_WIN = 1000  # repair searches only the TRAILING bits: syncing needs just
-# SYNC_MIN_BITS consistent ones, and the freshest are both sufficient
-# and likeliest to belong to the current arc. Searching the whole run
-# cost ~1.6 s an attempt for no extra reach.
+# arrive every 6 s and the scan window holds 60 s, so nothing is missed.
+REPAIR_WIN = 1000  # repair searches only the trailing bits: sync needs just
+# SYNC_MIN_BITS consistent ones, and the freshest are likeliest to belong to the
+# current arc.
 HIST_MAX_SLOTS = (
-    64000  # ~21 min of bit history (covers one 12.5 min supercycle + slack)
+    64000  # ~21 min of bit history; sync scans only the trailing SCAN_MAX_BITS
 )
 SF_BITS = 300
 
 
 class FleetPages:
-    """Cross-satellite sf4/5 page store: Layer 2 of the nav-bit supply.
+    """Cross-satellite sf4/5 page store, voted by unanimity.
 
-    GPS subframe 4/5 pages are UPLOADED almanac data and are ~79% word-identical across the
-    constellation at matched TOW (measured 2026-07-25) -- but not ~100%, because satellites
-    carry uploads of different vintages. So no single donor can be trusted; a word is taken
-    only when >= MIN_DONORS satellites agree BIT-FOR-BIT (unanimity; measured yield 66.5% of
-    sf4/5 data words, stable at 2/3/4 donors).
+    GPS subframe 4/5 pages are uploaded almanac data, so most words match across the
+    constellation at matched TOW, but not all: satellites carry uploads of different
+    vintages. No single donor can be trusted, so a word is taken only when at least
+    MIN_DONORS satellites hold the page and all of them agree bit for bit.
 
-    THE PARITY CHAIN IS THE HARD CONSTRAINT. Transmitted bits of word w+1 are
+    The parity chain is the hard constraint. Transmitted bits of word w+1 are
     data(w+1) XOR D30(w): an unknown word breaks the chain, so every later word in that
-    subframe is untransmittable EVEN IF its data is known -- consumers must zero from the
-    first unknown word onward (`prefix_mask`). 66% of WORDS is therefore NOT 66% of bits;
-    the realized bit yield is measured, not assumed. (Words 1-2, TLM+HOW, are always known:
-    the chain re-seeds to D29=D30=0 at every subframe boundary by the ICD trim.)
-
-    Prize, measured 2026-07-26: the sf4/5 hole costs 3.3 dB of peel depth 40% of the time.
+    subframe is untransmittable even if its data is known -- consumers must zero from the
+    first unknown word onward (`prefix_mask`). The fraction of known words is therefore not
+    the fraction of predictable bits. (Words 1-2, TLM+HOW, are always known: the chain
+    re-seeds to D29=D30=0 at every subframe boundary by the ICD trim.)
     """
 
     MIN_DONORS = 2
@@ -121,14 +112,15 @@ class FleetPages:
         self.votes = {}  # (sfid, page) -> {prn: [10x24 int8 words]}
 
     def offer(self, prn, sfid, page, data):
-        """A freshly DECODED page from a synced satellite (10x24 parity-clean words)."""
+        """A freshly decoded page from a synced satellite (10x24 parity-clean words)."""
         self.votes.setdefault((sfid, page), {})[prn] = [
             np.array(d, dtype=np.int8).copy() for d in data
         ]
 
     def lookup(self, sfid, page):
-        """(words[10], known[10]) by unanimity over donors, or None if no donors.
-        Words 0-1 (TLM/HOW) are the CALLER's job -- TLM is constellation-common and HOW is
+        """(words[10], known[10]) by unanimity over donors, or None when fewer than
+        MIN_DONORS donors hold the page or no data word is unanimous.
+        Words 0-1 (TLM/HOW) are the caller's job -- TLM is constellation-common and HOW is
         computed per TOW -- so only data words 2-9 are voted here."""
         donors = self.votes.get((sfid, page))
         if not donors or len(donors) < self.MIN_DONORS:
@@ -150,7 +142,7 @@ class FleetPages:
 
     @staticmethod
     def prefix_mask(known):
-        """known[10] -> the CHAIN-VALID prefix: True up to (excluding) the first unknown
+        """known[10] -> the chain-valid prefix: True up to (excluding) the first unknown
         word; everything after an unknown word is untransmittable (see class docstring)."""
         out = [False] * 10
         for w in range(10):
@@ -167,7 +159,7 @@ class _PrnState:
         self.pol = 1  # chained polarity applied to incoming emits
         self.bit_s = BIT_S  # measured bit duration (br * rec_dt)
         # sync state
-        self.sync = None  # (slot0, tow0, sfid0): subframe START at slot0
+        self.sync = None  # (slot0, tow0, sfid0): subframe start at slot0
         self.sf_data = {}  # sfid (1..3) -> 10x24 data words (latest)
         self.pages = {}  # (sfid, tow % 125) -> 10x24 data words (sf 4/5 supercycle)
         self.tlm = {}  # sfid -> word-1 data (TLM; near-constant, kept per sfid)
@@ -178,7 +170,7 @@ class _PrnState:
             0.0  # last polarity-repair attempt (rate limit, see REPAIR_MIN_S)
         )
         self.last_obs = (
-            None  # (utc_ref, phase) of the last emit folded in -- the broker
+            None  # (utc_ref, phase, br) of the last emit folded in -- the broker
         )
         # re-polls the same one several times over
         self.try_slot = (
@@ -236,9 +228,8 @@ class LnavPredictor:
             utc_bit = utc_ref + (bi * br - phase) * rec_dt
             slot = int(round(utc_bit / st.bit_s))
             st.hist[slot] = sg * st.pol
-        # Bound the history. Slots only ever increase, so the cut point is a subtraction --
-        # the old sorted(st.hist)[...] re-sorted up to 64k keys on EVERY ingest once the
-        # history saturated, which is exactly when the node has been up long enough to care.
+        # Bound the history to the newest HIST_MAX_SLOTS slots: the cut point is a subtraction
+        # from max(), with no sort.
         if len(st.hist) > HIST_MAX_SLOTS:
             cut = max(st.hist) - HIST_MAX_SLOTS
             st.hist = {k: v for k, v in st.hist.items() if k >= cut}
@@ -253,16 +244,9 @@ class LnavPredictor:
     def _contig_run(self, st):
         """Trailing contiguous slot run (start_slot, bits +-1 list), capped at SCAN_MAX_BITS.
 
-        TWO COSTS REMOVED (measured 2026-07-25; the L1 GPS broker sat at 61% CPU where every
-        other broker was ~5%, and it is the only one running this):
-          * the old version did `sorted(st.hist)` -- up to 64k keys -- on EVERY ingest of EVERY
-            PRN, synced or not. Walking back from max() with dict probes is O(run), no sort.
-          * it then handed the WHOLE run to frame_sync, which is a Python per-bit loop:
-            113 ms at 10k bits, 726 ms at the 64k cap, per ingest, per satellite.
-        Nothing needs the full 21 min rescanned -- only the newest bits can hold an undecoded
-        subframe, and at a 0.2 s cycle a 60 s window is re-examined ~300 times over. Sync is
-        unaffected (SYNC_MIN_BITS is 620, far inside the window) and the anchor it produces is
-        fresher, which is strictly better.
+        Walks back from max() with dict probes: O(run), no sort. The cap bounds the work
+        handed to frame_sync, a per-bit Python loop; only the newest bits can hold an
+        undecoded subframe, and SYNC_MIN_BITS sits far inside the window.
         """
         if not st.hist:
             return None
@@ -284,12 +268,10 @@ class LnavPredictor:
         )  # +-1 -> 0/1
         hits = frame_sync(bits01)
         if not hits:
-            # Parity disagreed: likely one wrong polarity-chain link inside the run. Repair
-            # search: flip the suffix at each emit-boundary-sized step until parity syncs.
-            # RATE-LIMITED: this is a RECOVERY path, but it ran on every ingest of every PRN
-            # that never syncs -- i.e. hardest on the weak satellites it least often helps
-            # (measured 57.5 ms/ingest each, against a 0.2 s cycle shared by ~6 of them).
-            # Retrying a few seconds later costs nothing: the bits are still there.
+            # Parity disagreed: possibly one wrong polarity-chain link inside the run. Repair
+            # search: flip the suffix at each 50-bit step until parity syncs. Rate-limited to
+            # one search per REPAIR_MIN_S per PRN: it runs hardest on the weak satellites it
+            # least often helps, and the bits are still there on the next try.
             now = time.time()
             if now - st.repair_t < REPAIR_MIN_S:
                 return
@@ -311,7 +293,7 @@ class LnavPredictor:
                         if s in st.hist:
                             st.hist[s] = -st.hist[s]
                     st.pol = -st.pol  # future emits chain off the repaired suffix
-                    # continue with the repaired TAIL: slot0 moves with it so the decode
+                    # continue with the repaired tail: slot0 moves with it so the decode
                     # below and st.sync stay in absolute slots.
                     bits01 = cand
                     slot0 = slot0 + base
@@ -333,11 +315,11 @@ class LnavPredictor:
                 got = 1 - 2 * bits01[idx : idx + SF_BITS].astype(int)  # 0/1 -> +-1
                 known = pred != 0
                 if known.any():
-                    # POLARITY-FREE score: the prediction lives in the canonical (ICD 0/1)
-                    # frame while the chained history carries an arbitrary global sign --
-                    # a constant flip is NOT an error (the peel's gain absorbs it), so score
-                    # each subframe at its better polarity. A real content mismatch (data-set
-                    # update, wrong page) still shows: it is wrong in BOTH polarities.
+                    # Polarity-free score: the prediction lives in the canonical (ICD 0/1)
+                    # frame while the chained history carries an arbitrary global sign, so a
+                    # constant flip is not an error; score each subframe at its better
+                    # polarity. A real content mismatch (data-set update, wrong page) still
+                    # shows: it is wrong in both polarities.
                     w = int((pred[known] != got[known]).sum())
                     st.n_pred_checked += int(known.sum())
                     st.n_pred_wrong += min(w, int(known.sum()) - w)
@@ -362,10 +344,10 @@ class LnavPredictor:
             unknown_tail = data is None
             fleet_known = None
             if data is None and sfid in st.tlm and sfid in st.how:
-                # Page unseen by THIS satellite: TLM + HOW are still exact (the HOW template
-                # carries the quasi-static alert/AS flags; TOW is set below), and the FLEET
+                # Page unseen by this satellite: TLM + HOW are still exact (the HOW template
+                # carries the quasi-static alert/AS flags; TOW is set below), and the fleet
                 # may know the data words -- unanimity across other satellites' decodes of
-                # the same supercycle page (Layer 2; see FleetPages).
+                # the same supercycle page (see FleetPages).
                 data = [st.tlm[sfid], st.how[sfid]] + [np.zeros(24, dtype=np.int8)] * 8
                 fl = self.fleet.lookup(sfid, tow % 125)
                 if fl is not None:
@@ -386,7 +368,7 @@ class LnavPredictor:
             if fleet_known is None:
                 out[60:] = 0  # words 3-10 unknown (only TLM+HOW predicted)
             else:
-                # Fleet-filled: emit only the CHAIN-VALID prefix. Transmitted bits of word
+                # Fleet-filled: emit only the chain-valid prefix. Transmitted bits of word
                 # w+1 depend on D30 of word w, so the first unknown word ends what can be
                 # emitted -- a known word after a gap is real data but untransmittable.
                 pm = FleetPages.prefix_mask(fleet_known)
@@ -400,8 +382,9 @@ class LnavPredictor:
         """Decoded LNAV clock+ephemeris (SI) from the latest subframes 1/2/3, or None until all
         three are decoded and their issue-of-data (IODE/IODC) agree -- guarding against a set
         stitched across a data-set upload. Fields per gps_nav_decode.LNAV_EPH_FIELDS (angles in
-        radians; toe/toc in GPS seconds-of-week). Consumed by the decoded-eph BRDC fallback and
-        the health panel exactly like the CNAV/I-NAV decoders' .ephemeris()."""
+        radians; toe/toc in GPS seconds-of-week). Consumed by the decoded-eph BRDC fallback
+        (gps_distributed_broker.py) and by gnss_broker/navbits.py (BRDC cross-check,
+        decode-health export)."""
         st = self._p.get(prn)
         if st is None or not all(k in st.sf_data for k in (1, 2, 3)):
             return None
@@ -414,10 +397,11 @@ class LnavPredictor:
         st = self._p.get(prn)
         if st is None:
             return None
-        # run/hist diagnose the UNSYNCED case, which is the one that costs peel depth: sync needs
-        # SYNC_MIN_BITS *contiguous* slots, so a PRN can accumulate plenty of bits and still never
-        # sync if its stream is gappy (every gap truncates the trailing run). run << hist == gaps;
-        # run ~ hist but < SYNC_MIN_BITS == simply not enough history yet.
+        # run/hist diagnose the unsynced case: sync needs SYNC_MIN_BITS *contiguous* slots, so a
+        # PRN can accumulate plenty of bits and still never sync if its stream is gappy (every
+        # gap truncates the trailing run). run is capped at SCAN_MAX_BITS, so compare it with
+        # min(hist, SCAN_MAX_BITS): well below it means gaps; near it but < SYNC_MIN_BITS means
+        # not enough history yet.
         run = self._contig_run(st)
         return {
             "synced": st.sync is not None,
@@ -476,12 +460,11 @@ def _selftest():
     stream = np.array(stream, dtype=np.int8)
     pm = (1 - 2 * stream).astype(np.int8)  # 0/1 -> +-1 transmitted signs
 
-    # Feed as 50-bit emits with a drifting carrier. The emit's global sign is NOT free: the
-    # combiner decides signs against the mod-pi REDUCED axis e^{-i*theta_red}, so the flip is
+    # Feed as 50-bit emits with a drifting carrier. The emit's global sign is not free: the
+    # combiner decides signs against the mod-pi reduced axis e^{-i*theta_red}, so the flip is
     # exactly the branch the reduction removed -- sign = +1 when the true phasor projects onto
     # the +axis, -1 when onto the -axis. The reduced theta sequence then jumps by ~pi exactly
-    # when the true phase crosses +-pi/2, which is what the chain detects. Model that faithfully
-    # (the earlier independent-random-flip model was wrong and correctly failed to sync).
+    # when the true phase crosses +-pi/2, which is what the chain detects.
     pred = LnavPredictor(log=print)
     theta_true = 0.3
     for e in range(0, len(pm) - 50, 50):
@@ -504,7 +487,7 @@ def _selftest():
         pred.ingest(7, obs)
     st = pred._p[7]
     assert st.sync is not None, "no frame sync"
-    # Predict each subframe of the frame AFTER the ingested stream (what the mismatch score
+    # Predict each subframe of the frame after the ingested stream (what the mismatch score
     # compares against each new decode); compare vs a freshly encoded truth frame.
     ok = wrong = unknown = 0
     for k in range(5):

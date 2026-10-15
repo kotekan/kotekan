@@ -1,24 +1,23 @@
 #!/bin/bash
-# Start the beam-cube COMPACTOR loop on cf06 -- raw rawFileWrite bundles -> L0 HDF5 -> rungs.
+# Start the beam-cube compactor loop on cf06: raw rawFileWrite bundles -> L0 HDF5 -> rungs.
 #
-# WHAT IT DOES, FOREVER, every CUBE_COMPACT_PERIOD seconds (default 300):
-#   1. gnss_cube_compact.py compact   folds every CLOSED raw file not yet in the manifest into
-#      <ROOT>/l0/<pointing>/<sender>/<YYYYMMDD>.h5 (idempotent; ~17x faster than real time).
+# The loop (cubecompact_loop.sh) runs every CUBE_COMPACT_PERIOD seconds (default 300):
+#   1. gnss_cube_compact.py compact   folds every closed raw file not yet in the manifest into
+#      <ROOT>/l0/<pointing>/<sender>/<YYYYMMDD>.h5 (idempotent).
 #   2. once per UTC day, after 00:20 UTC: gnss_cube_compact.py rung --n 12 and --n 60 for
-#      YESTERDAY's L0 files (a rung is a full rebuild of the day, so it waits for the day to close).
+#      yesterday's L0 files (a rung rebuilds the whole day, so it waits for the day to close),
+#      then beamcube_daily.sh publishes the day's beam map.
 #
-# WHY A LOOP AND NOT A CRON: the cf06 stack (agg, gather, broker, cubearch, obs, viewer) is
-# started by *_up.sh scripts that a person runs after a reboot, and it is checked by looking for
-# the process. A cron entry would be the one piece that is not visible that way. P6 turns all of
-# these into boot units together.
+# gnss-cubecompact.service (gnss-cube.target) runs the same loop at boot, through
+# run_component.sh; once that target is enabled on cf06, use it instead of this launcher.
 #
-# ⚠️ RUNS ON cf06 ONLY. The raw tree is on /mnt/cs00 and the nodes are production trackers.
+# Runs on cf06 only: the raw tree is on /mnt/cs00, and the nodes are production trackers.
 #
 # usage:  ssh cf06 '/home/kvand/gnss/kotekan/scripts/gnss/site/cubecompact_up.sh'
 #         CUBE_ROOT=/mnt/cs00/data/kvand/gnss_cube_test ... (a test run)
 set -u
 K=/home/kvand/gnss/kotekan
-PY=${GNSS_PY:-/home/kvand/gnss/venv/bin/python}     # needs h5py: venv, NOT venv-ft
+PY=${GNSS_PY:-/home/kvand/gnss/venv/bin/python}     # needs h5py: venv, not venv-ft
 ROOT=${CUBE_ROOT:-/mnt/cs00/data/kvand/gnss_cube}
 RAW=${CUBE_RAW:-$ROOT/raw}
 PERIOD=${CUBE_COMPACT_PERIOD:-300}
@@ -37,14 +36,14 @@ if ! "$PY" -c "import h5py, numpy" 2>/dev/null; then
 fi
 [ -d "$RAW" ] || { echo "REFUSING: raw tree $RAW does not exist" >&2; exit 1; }
 
-# The bracket trick -- a bare pkill -f pattern matches this script's own command line.
+# The bracket keeps the pattern from matching a command line that carries the pattern itself
+# (a `bash -c` running this line); a bare pattern would kill that shell.
 pkill -f "[c]ubecompact_loop.sh" 2>/dev/null || true
 
-# ⚠️⚠️ WAIT FOR THE CHILD, NOT JUST THE LOOP. pkill takes down the bash loop and leaves any
-# in-flight `gnss_cube_compact.py` ORPHANED -- a pass runs ~25 s and the rung/publish pass runs
-# minutes. Starting the new loop on a 1 s sleep would put two compactors on the same 89 L0
-# files, which is a corrupting write, not a slow one. Wait for the old child to finish (it is
-# append-per-raw-file and exits cleanly), and only give up after 15 min.
+# Wait for the old pass to end. pkill signals the loop alone, and the loop finishes its pass
+# before it exits (its TERM trap), so a gnss_cube_compact.py can still be running (a compact
+# pass takes tens of seconds, the rung and publish pass minutes). Two compactors on one L0 tree
+# corrupt it; give up after 15 min.
 for _i in $(seq 1 180); do
     pgrep -f "[g]nss_cube_compact.py" >/dev/null || break
     [ "$_i" = 1 ] && echo "waiting for the in-flight compact pass to finish..."
@@ -55,7 +54,8 @@ if pgrep -f "[g]nss_cube_compact.py" >/dev/null; then
     echo "L0 tree corrupt it -- find out what that pass is doing before starting another." >&2
     exit 1
 fi
-# Same for a publish left holding the lock: it reads the archive and writes the viewer dir.
+# Likewise (for up to 10 min) for the old pass's publish: it holds beamcube_daily.sh's lock, so
+# a publish started meanwhile would exit with nothing done.
 for _i in $(seq 1 120); do
     pgrep -f "[b]eamcube_daily.sh" >/dev/null || break
     sleep 5

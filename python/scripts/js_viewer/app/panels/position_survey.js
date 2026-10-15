@@ -1,12 +1,12 @@
-// Position self-survey panel: a from-the-code single-point position (gnss_pvt), reported as the
-// OFFSET from the surveyed config site with 1-sigma error bars.
+// Position self-survey panel: a single-point position from the code observables (gnss_pvt),
+// reported as the offset from the configured site (--lat/--lon/--alt) with 1-sigma error bars.
 //
-// Split out of the nav-decode-health panel so the position solution stands on its own. The
-// best-fit is the single-frequency solve across every chain (combined -- iono-limited, ~10 m
-// class); the per-group table doubles as a per-signal code-quality readout.
+// The best-fit is gnss_pvt's `combined` solve, every single-frequency group together with one
+// clock per group, so it is ionosphere-limited; the per-group table doubles as a per-signal
+// code-quality readout.
 //
 // Data is the viewer server's /decode_health endpoint (its `pvt` block, computed by gnss_pvt and
-// cached server-side). Same origin as the viewer -> no CORS; independent of the kotekan feed.
+// cached server-side). Same origin as the viewer -> no CORS; independent of the GpsFeed.
 
 function hyp(a, b) { return Math.sqrt(a * a + b * b); }
 
@@ -35,7 +35,7 @@ export class PositionSurveyPanel {
         this._render((data && data.pvt) || null);
     }
 
-    // best-fit line: bold label, horiz±/vert±, sats, PDOP, and the solved lat/lon/alt.
+    // Best-fit line: bold label, horiz±/vert±, sats, PDOP, and the solved lat/lon/alt.
     _fitLine(c, label, labelColor) {
         const ho = hyp(c.d_e, c.d_n), sh = hyp(c.sigma_e, c.sigma_n);
         return `<div style="padding:3px 8px;font-size:12px">`
@@ -92,9 +92,9 @@ export class PositionSurveyPanel {
             }
             h += `</tbody></table>`;
         }
-        // The per-satellite inputs the fit ate: which observable, how many rows were
-        // smoothed and the code scatter they showed. A satellite whose sd is far above its
-        // neighbours' is the one to look at; "single" means no smoothing happened.
+        // The per-satellite inputs to the fit: its residual, how many rows the smoothing
+        // (gnss_pvt.hatch_smooth) used and their code scatter. A satellite whose sd is far above
+        // its neighbours' is the one to look at; "single" means one row, so no smoothing.
         const meas = (pvt.meas || []).slice().sort((a, b) =>
             a.group < b.group ? -1 : a.group > b.group ? 1 : (a.prn || 0) - (b.prn || 0));
         if (meas.length) {

@@ -5,34 +5,34 @@
     radial  one PNG: radial cuts vs off-boresight angle, one curve per element or per channel
     gains   the per-element normalisation the cube implies, printed and plotted
 
-WHY A SECOND TOOL. The viewer works at nside 16-32 because a browser has to download the cube;
-a master is built at whatever nside the archive supports (128 is ~0.46 deg pixels, still ~8x
-finer than the 3.5 deg main lobe) and nothing here is size-limited. Same accumulators, same
-units, no re-reduction: this reads the SAME masters the viewer eats.
+The viewer works at nside 16-32 because a browser has to download the cube; a master is built
+at whatever nside the archive supports (128 is ~0.46 deg pixels, still ~8x finer than the
+3.5 deg main lobe) and nothing here is size-limited. This reads the masters the viewer's
+export is built from: same accumulators, same units, no re-reduction.
 
-⚠️ EVERY AXIS IS ABSOLUTE. `--freqs` are absolute freq_ids, never per-chain bin indices, so
-`--freqs 5988 --chains bds_b2a gal_e5a gps_l5` is ONE channel of the 1176 MHz band seen by
-three chains -- not "bin 5988 of each list". `--elements` are element ids.
+Every axis is absolute. `--freqs` are absolute freq_ids, never per-chain bin indices, so
+`--freqs 5988 --chains bds_b2a gal_e5a gps_l5` is one channel of the 1176 MHz band seen by
+three chains, not "bin 5988 of each list". `--elements` are element ids.
 
-NORMALISATION -- THE PART THAT DECIDES WHETHER ELEMENTS ARE COMPARABLE
-Each cube cell is already in PEDESTAL units: the sample was divided by that (element, channel,
-5-min)'s own noise floor, so a cell is "power over this element's own noise in this channel".
-That removes each element's RECEIVER scale but not its SKY response: a low-gain element sees a
-weaker sky over the same noise, and the residual per-element scale is what `--elem-norm` fits.
+Normalisation decides whether elements are comparable. Each cube cell is in pedestal units:
+the sample was divided by that (element, channel, 5-min)'s own noise floor, so a cell is
+"power over this element's own noise in this channel". That removes each element's receiver
+scale but not its sky response: a low-gain element sees a weaker sky over the same noise, and
+the residual per-element scale is what `--elem-norm` fits.
 
-  svd     (default) rank-1 fit of the LINEAR element x pixel matrix; each element's gain is its
+  svd     (default) rank-1 fit of the linear element x pixel matrix; each element's gain is its
           amplitude in the dominant mode. Uses every well-sampled pixel of the fit region, so
           it is driven by the whole pattern rather than by one bright pixel.
   svd-log the same fit in dB, i.e. a two-way (element + pixel) additive model. Insensitive to
           the main lobe dominating the fit; use it when the lobe is vetoed away or saturated.
-  peak    divide by each element's own peak pixel. HERE FOR COMPARISON, and it is the reason
-          this option list exists: with the main lobe vetoed out the peak sits on the ragged
-          lobe EDGE, where a pixel's mean is built from few samples and swings by dB, so it
-          normalises by the noise of one pixel and drives that scatter into every other pixel.
+  peak    divide by each element's own peak pixel; kept for comparison. With the main lobe
+          vetoed out the peak sits on the ragged lobe edge, where a pixel's mean is built from
+          few samples and swings by dB, so it normalises by the noise of one pixel and drives
+          that scatter into every other pixel.
   none    no per-element gain; shows the raw spread between elements.
 
-The gain vector is reported with the dominant mode's variance share -- if that share is low the
-elements are NOT one pattern times a scale and no single number can normalise them.
+The gain vector is reported with the dominant mode's variance share: if that share is low the
+elements are not one pattern times a scale and no single number can normalise them.
 
 @author Keith Vanderlinde
 """
@@ -115,9 +115,9 @@ def parse_elems(spec, n_elem):
 def gather(masters, freqs, chain_offsets=None):
     """Sum the selected channels of every day and chain into per-element full-sky accumulators.
 
-    Returns (N[E, npix] int64, S[E, npix] float64, nside, info). Pure addition on the stored
-    accumulators -- days, chains and channels combine by summing, which is the whole reason the
-    cube stores (n, s1) over linear power and never dB.
+    Returns (N[E, npix] int64, S[E, npix] float64, nside, info). Days, chains and channels
+    combine by summing the stored accumulators, which is why the cube stores (n, s1) in linear
+    power, never dB.
     """
     nside = masters[0]["nside"]
     n_elem = max(c["n"].shape[1] for m in masters for c in m["chains"].values())
@@ -165,8 +165,8 @@ def gather(masters, freqs, chain_offsets=None):
 def chain_offsets_from(masters, freqs, annulus, min_n, ref):
     """Per-chain dB offset onto `ref`, measured as the median level in the lobe annulus.
 
-    The same alignment the exporter ships to the viewer, recomputed here over ALL the selected
-    days at once (the exporter does it per day) so a multi-day map has one consistent zero.
+    The same alignment the exporter ships to the viewer, computed here over all the selected
+    days at once (the exporter does it per day) so a multi-day map has one zero.
     """
     lev = {}
     for name in sorted({n for m in masters for n in m["chains"]}):
@@ -209,11 +209,14 @@ def pix_azel(nside):
 
 # ── per-element normalisation ──────────────────────────────────────────────────────────────
 def elem_gains(N, S, mode, min_n, fit_mask, quiet=False):
-    """Per-element linear gain, one number per element, geometric mean 1.
+    """Per-element linear gain, geometric mean 1 over the live elements. NaN for a dark element
+    and, in svd mode, for one with a non-positive dominant-mode amplitude; mode "none" returns
+    1.0 for every element.
 
-    `fit_mask` selects the pixels the fit may use (see --fit-radius): the model is "one pattern
-    times a per-element scale", and it is only true where every element actually sees the same
-    sky, so the fit gets the well-sampled region and the far skirt rides along.
+    Returns (gains, live, dominant-mode variance share, pixels fitted). `fit_mask` selects the
+    pixels the fit may use (see --fit-radius): the model is "one pattern times a per-element
+    scale", which holds only where every element sees the same sky, so the fit uses the
+    well-sampled region and the far skirt follows.
     """
     E = N.shape[0]
     g = np.ones(E)
@@ -243,7 +246,7 @@ def elem_gains(N, S, mode, min_n, fit_mask, quiet=False):
             gl = np.ones(E)
             gl[live] = 10.0 ** (rows / 10.0)
             g = gl
-        else:  # "svd": rank-1 in LINEAR power
+        else:  # "svd": rank-1 in linear power
             u, s, _ = np.linalg.svd(M, full_matrices=False)
             share = float(s[0] ** 2 / (s ** 2).sum())
             a = u[:, 0]
@@ -276,24 +279,25 @@ def elem_gains(N, S, mode, min_n, fit_mask, quiet=False):
 def collapse(
     N, S, gains, elems, smooth_deg=0.0, nside=None, weight="ivar", min_occ=0.5
 ):
-    """Gain-corrected, n-weighted mean power per pixel over the chosen elements.
+    """Gain-corrected weighted mean power per pixel over the chosen elements.
 
-    `smooth_deg` widens the bin instead of interpolating the answer: the NUMERATOR and the
-    DENOMINATOR are smoothed with the same kernel and divided afterwards, so a smoothed pixel
-    is the sample-weighted mean over the kernel -- the same estimator as a coarser nside, just
-    centred everywhere. Interpolating the RATIO would invent a level in an empty pixel from a
-    neighbour's, which at these fill fractions is most of the map.
+    Returns (mean, den), den being the summed weight: the sample count for weight "n", the
+    g^2-weighted count for "ivar". `smooth_deg` widens the bin instead of interpolating the
+    answer: numerator and denominator are smoothed with the same kernel and divided afterwards,
+    so a smoothed pixel is the weighted mean over the kernel, the same estimator as a coarser
+    nside but centred everywhere. Interpolating the ratio would invent a level in an empty pixel
+    from a neighbour's, which at these fill fractions is most of the map.
     """
     num = np.zeros(N.shape[1])
     den = np.zeros(N.shape[1], np.float64)
     for e in elems:
         if not np.isfinite(gains[e]):
             continue
-        # INVERSE-VARIANCE, NOT SAMPLE COUNT. Correcting an element by its gain divides its
-        # NOISE by the same gain, so a -18 dB element arrives 60x amplified; weighting that by
-        # sample count alone lets the elements that measure nothing dominate the average. A
-        # gain-corrected sample has variance ~sigma^2/g^2, so its weight is g^2 -- which also
-        # retires the dark elements without a threshold anyone has to choose.
+        # Inverse-variance weights by default. Correcting an element by its gain divides its
+        # noise by the same gain, so a -18 dB element arrives ~60x amplified, and weighting by
+        # sample count alone lets the elements that measure nothing dominate. A gain-corrected
+        # sample has variance ~sigma^2/g^2, so its weight is g^2, which also retires the dark
+        # elements without a threshold.
         w = gains[e] ** 2 if weight == "ivar" else 1.0
         num += w * S[e] / gains[e]
         den += w * N[e]
@@ -311,18 +315,18 @@ def collapse(
 
         occ = sm((den > 0).astype(float))  # how much of the kernel saw real data
         num, den = np.maximum(sm(num), 0.0), np.maximum(sm(den), 0.0)
-        # ⚠️ A SMOOTHED COUNT IS NOT EVIDENCE OF COVERAGE. The kernel's tail carries weight from
+        # A smoothed count is not evidence of coverage: the kernel's tail carries weight from
         # every neighbour, and a neighbour holding 50,000 samples leaks past any absolute
-        # threshold into a pixel that has none of its own -- which paints the vetoed hole around
-        # boresight full of data that was never measured there. So a pixel survives only if at
-        # least `min_occ` of the kernel's weight comes from pixels that actually held samples.
+        # threshold into a pixel with none of its own, filling the vetoed hole around boresight
+        # with data never measured there. So a pixel survives only if at least `min_occ` of the
+        # kernel's weight comes from pixels that held samples.
         den = np.where(occ >= min_occ, den, 0.0)
     with np.errstate(all="ignore"):
         return np.where(den > 0, num / np.maximum(den, 1e-9), np.nan), den
 
 
 def _hp_verbose():
-    """healpy dropped `verbose` in 1.15; probe once so the call works on either."""
+    """True when hp.smoothing still takes `verbose` (newer healpy dropped it)."""
     import inspect
     import healpy as hp
 
@@ -336,8 +340,8 @@ def uvec(az, el):
 
 
 def centre_azel(spec):
-    """--centre: "boresight" | "zenith" | "AZ,EL". Zenith keeps az 180 as the north reference,
-    so a hemisphere plot has the same orientation as every patch: north up, east left."""
+    """--centre: "boresight" | "zenith" | "AZ,EL". Zenith uses az 180, the boresight azimuth,
+    so a hemisphere plot has the same axes as a boresight patch (see patch())."""
     if spec in (None, "", "boresight"):
         return BORE_AZ, BORE_EL
     if spec == "zenith":
@@ -349,10 +353,11 @@ def centre_azel(spec):
 def patch(vals, nside, radius_deg, size, proj="azeq", centre=None):
     """Resample a full-sky array onto a square patch centred on `centre` (default boresight).
 
-    Azimuthal equidistant by default so a radius on the image IS an angle in degrees -- the
+    Azimuthal equidistant by default, so a radius on the image is an angle in degrees: the
     projection to read ring radii off, and the one that turns a 90 deg radius into the whole
-    visible hemisphere with the horizon as the rim. `x` is EAST, `y` is NORTH, and the image is
-    drawn with east to the LEFT (looking up at the sky, azimuth running clockwise from north).
+    visible hemisphere with the horizon as the rim. `x` runs toward increasing azimuth and `y`
+    toward the zenith, so at the az-180 centres (boresight, and zenith via centre_azel) +x is
+    west and +y is north. draw_map draws +x on the left.
     """
     import healpy as hp
 
@@ -445,9 +450,9 @@ def draw_map(img, ax_deg, title, sub, png, vmin, vmax, cbar_label, rings=(), sky
         vmax=vmax,
         interpolation="nearest",
     )
-    a.invert_xaxis()  # east to the left: the view looking UP
+    a.invert_xaxis()  # +x on the left
     # Graticule colour follows the ground it is drawn on: white over the dense bright data of a
-    # boresight patch, black on an all-sky where most of the frame is empty and the HORIZON is
+    # boresight patch, black on an all-sky where most of the frame is empty and the horizon is
     # the line a reader needs to find first.
     gcol = "k" if sky else "w"
     for r in rings:
@@ -464,7 +469,7 @@ def draw_map(img, ax_deg, title, sub, png, vmin, vmax, cbar_label, rings=(), sky
             )
         )
         lab = ("horizon" if horizon else "el %g°" % (90.0 - r)) if sky else ("%g°" % r)
-        # The horizon label goes INSIDE its ring: outside it would sit on the compass letter.
+        # The horizon label goes inside its ring: outside it would sit on the compass letter.
         a.annotate(
             lab,
             (0, r),
@@ -480,11 +485,11 @@ def draw_map(img, ax_deg, title, sub, png, vmin, vmax, cbar_label, rings=(), sky
     a.plot(0, 0, "+", color=gcol, ms=9, mew=1.0, alpha=0.8, zorder=3)
     if sky:
         # Compass and the boresight, because a hemisphere has no other landmarks. Boresight is
-        # 8.59 deg south of zenith, so it must be DRAWN, not assumed at the centre.
+        # 8.59 deg south of zenith, so it is drawn, not assumed at the centre.
         rr = ax_deg[-1]
         a.set_xlim(
             rr * 1.1, -rr * 1.1
-        )  # room for the compass; x already runs east-left
+        )  # room for the compass; the x axis is already inverted
         a.set_ylim(-rr * 1.1, rr * 1.1)
         for lbl, (dx, dy) in (
             ("N", (0, 1)),
@@ -800,10 +805,10 @@ def cmd_radial(args):
         prof.append([lab, cen, med, lo, hi])
     if not prof:
         sys.exit("no series had enough pixels -- lower --min-n or widen --bin-deg")
-    # PER-SERIES LEVEL. Channels are NOT on one level even in pedestal units: a cell is signal
+    # Per-series level. Channels are not on one level even in pedestal units: a cell is signal
     # over that channel's own noise, and the BPSK(10) spectrum puts ~12 dB more signal in a
     # centre channel than an edge one. Referencing each curve to its own level in a wide
-    # annulus compares the SHAPE, which is the question a frequency sweep is asking.
+    # annulus compares the shape, which is what a frequency sweep asks.
     if args.series_ref:
         a, b = args.series_ref
         for pr in prof:
@@ -853,7 +858,7 @@ def cmd_radial(args):
         f0 = freq_hz(d["freqs"], d["masters"])
         ad = airy_db(t, f0, args.dish) - airy_db(np.array([1e-6]), f0, args.dish)[0]
         # Anchor the ideal pattern to the data at the innermost measured annulus. The nulls run
-        # to -inf and would own the y-range, so it is CLIPPED to the panel, not fitted to it.
+        # to -inf and would own the y-range, so it is clipped to the panel, not fitted to it.
         ad = (
             ad
             + np.nanmax([pr[2][0] for pr in prof])
@@ -927,9 +932,9 @@ def cmd_gains(args):
     )
     for m in modes:
         g, live, share, npx = elem_gains(d["N"], d["S"], m, args.min_n, fit, quiet=True)
-        # THE NUMBER THAT DECIDES BETWEEN MODES. A normalisation is good if it makes the
+        # The score that decides between modes: a normalisation is good if it makes the
         # elements agree, so profile every live element and report the spread about their
-        # median: same data, same bins, one scalar per mode.
+        # median (same data, same bins, one scalar per mode).
         curves = []
         want = set(parse_elems(args.elements, len(g)))
         for e in [x for x in np.flatnonzero(live) if int(x) in want]:

@@ -1,24 +1,22 @@
 #!/usr/bin/env python3
-"""Broadcast-ephemeris dead-reckoning: fetch + parse the IGS multi-GNSS BRDC RINEX-3 nav
-file and predict per-satellite position / range / range-rate / SATELLITE CLOCK -- the two
-quantities the TLE/almanac class fundamentally lacks at useful precision (TLE: km orbits,
-no usable clock; BRDC: ~1-2 m orbits, ~5 ns clocks, refreshed ~2-hourly).
+"""Broadcast-ephemeris prediction: parse the IGS multi-GNSS BRDC RINEX 3 nav file and predict
+per-satellite position, range, range rate and satellite clock, the precision a TLE/almanac
+lacks (TLE: km orbits, no usable clock; BRDC: ~1-2 m orbits, ~5 ns clocks, refreshed about
+every 2 h).
 
-This is the precision layer under dead-reckoned operations (2026-07-13): with it +
-receiver time to <~300 ns, code phase is predictable to <0.3 chips for every visible
-satellite -- the search demotes to bootstrap (one-time receiver-clock solve), fallback,
-and integrity monitor. The receiver-clock solve itself: measured-vs-predicted code phase
-over ALL tracked sats, robust median (each sat is an independent clock measurement;
-outliers flag stale ephemerides / maneuvers / false locks).
+This is the precision layer under the broker's dead reckoning: with BRDC and a receiver clock
+known to ~300 ns, every visible satellite's code phase is predictable to about the same, so the
+search serves as bootstrap, fallback and integrity monitor (gnss_broker/deadreckon solves the
+clock).
 
-Supports GPS (G), Galileo (E), BeiDou-3 (C; BDT = GPST - 14 s handled; GEOs excluded
-upstream by the BEIDOU-3 name filter) and GLONASS (R; a PZ-90.11 state vector integrated
-by Runge-Kutta rather than a Keplerian set). Pure stdlib + math -- no georinex dependency.
+Supports GPS (G), Galileo (E), BeiDou (C; BDT = GPST - 14 s) and GLONASS (R; a PZ-90.11 state
+vector integrated by Runge-Kutta rather than a Keplerian set). BeiDou GEO records get the
+MEO/IGSO equations; the ICD's GEO rotation is not applied. Pure stdlib and math.
 
 Usage:
     from gnss_ephemeris import fetch_brdc, parse_rinex_nav, predict_all
-    path = fetch_brdc()                          # cached daily file
-    eph = parse_rinex_nav(path)                  # {(sys, prn): [records]}
+    paths = fetch_brdc()                         # cached nav files, best-first
+    eph = parse_rinex_nav(paths)                 # {(sys, prn): [records]}
     pred = predict_all(eph, lat, lon, alt, t_utc)  # {(sys,prn): dict(az, el, range_m,
                                                    #   range_rate_mps, sat_clk_s, ...)}
 """
@@ -28,7 +26,7 @@ import warnings
 from datetime import datetime, timezone
 
 C_LIGHT = 299792458.0
-GPS_UTC_LEAP = 18.0  # GPST - UTC (2026; bump at the next leap second)
+GPS_UTC_LEAP = 18.0  # GPST - UTC, s; update at the next leap second
 BDT_GPST = -14.0  # BDT = GPST - 14 s
 GPS_EPOCH = datetime(1980, 1, 6, tzinfo=timezone.utc)
 
@@ -50,9 +48,9 @@ F_REL = -4.442807633e-10  # relativistic clock coefficient (s/sqrt(m))
 
 
 # ---------------------------------------------------------------------------------------
-# THE SUPPLY LAYER lives in gnss_brdc_supply (split 2026-08-27); everything but fetch_brdc is
-# read and written there by name.
-from gnss_brdc_supply import fetch_brdc  # noqa: F401  (physics calls it as a default)
+# The BRDC supply (fetch, cache, merge) is gnss_brdc_supply. fetch_brdc is re-exported for
+# callers that reach it through this module (the broker, gnss_beam_cube, gen_fleet).
+from gnss_brdc_supply import fetch_brdc  # noqa: F401  (re-exported)
 
 
 def _f(s):
@@ -64,14 +62,11 @@ def _f(s):
 def parse_rinex_nav(paths):
     """RINEX 3 mixed nav -> {(sys, prn): [eph dicts sorted by toe_gpst]}. G/E/C/R.
 
-    `paths` is a single path OR a list of paths (fetch_brdc returns a list). A list is merged
-    PER-PRN: the union of every source's records, deduped by toe, so the freshest valid
-    ephemeris for each PRN is available no matter which source carries it. This is what lets a
-    frozen daily product (BKG stuck at 08:00 UTC) be transparently backfilled by a sibling
-    source (the CDDIS daily, or the station-hourly merge) that still has the sat -- the root of
-    the C31/C39 'el --' gap: C39 was absent from the sparse hourly the old single-file fallback
-    picked, but present fresh in the CDDIS daily sitting unused in cache. sources are passed
-    best-first, so a daily's record wins an identical-toe tie over the same record elsewhere."""
+    `paths` is a single path or a list of paths (fetch_brdc returns a list). A list is merged
+    per PRN: the union of every source's records, deduplicated by toe, so a satellite missing
+    or stale in one product (a frozen daily, the sparse station-hourly merge) is filled from
+    another. A file that fails to parse is skipped. The first path wins a same-toe tie, so
+    pass sources best-first."""
     if isinstance(paths, (list, tuple)):
         merged = {}
         for p in paths:
@@ -93,24 +88,20 @@ def parse_rinex_nav(paths):
 
 
 def glonass_freq_channels(paths=None):
-    """{slot: frequency-channel number k} for GLONASS, read from the SAME BRDC files everything
+    """{slot: frequency-channel number k} for GLONASS, read from the same BRDC files everything
     else uses. `paths` defaults to fetch_brdc().
 
-    ★ WHY THIS EXISTS AS ITS OWN PARSER. GLONASS is FDMA: every satellite transmits the SAME
-    511-chip code and is separated by CARRIER, satellite k sitting at 1246.0 + k*0.4375 MHz on
-    L2. So a GLONASS receiver needs k per satellite before it can even search -- and k is not in
-    the TLE, not in the satellite name, and NOT a constant (it is reassigned as satellites are
-    replaced, so a hardcoded table silently goes stale and points the search at the wrong
-    carrier).
+    GLONASS is FDMA: every satellite transmits the same 511-chip code and is separated by
+    carrier, satellite k sitting at 1246.0 + k*0.4375 MHz on L2. A receiver needs k per
+    satellite before it can search, and k is not in the TLE or the satellite name and is
+    reassigned as satellites are replaced, so a hardcoded table goes stale.
 
-    ★ AND WHY IT IS NOT parse_rinex_nav(). That parser reads the whole R record (the state
-    vector for the propagator; k is e["k"]) for every system in the file. k is just an INTEGER
-    sitting in those records -- no orbit parse needed to read it -- so a caller that wants the
-    frequency plan alone takes this one field and pays for nothing else.
+    parse_rinex_nav() also yields k (e["k"]), but parses every system's full records; this
+    reads the one integer and nothing else.
 
-    RINEX 3 GLONASS record = 4 lines: epoch/clock, then X/X'/X''/health, Y/Y'/Y''/**freq num**,
-    Z/Z'/Z''/age. k is the 4th field of the SECOND orbit line. Returns {} if nothing parses.
-    ⚠️ k is NOT unique across the constellation: antipodal satellites share a channel (they are
+    RINEX 3 GLONASS record = 4 lines: epoch/clock, then X/X'/X''/health, Y/Y'/Y''/freq num,
+    Z/Z'/Z''/age; k is the 4th field of the second orbit line. Returns {} if nothing parses.
+    k is not unique across the constellation: antipodal satellites share a channel (they are
     never simultaneously visible), so expect ~14 distinct values over ~24 satellites.
     """
     if paths is None:
@@ -142,12 +133,12 @@ def glonass_freq_channels(paths=None):
                 continue
             i += 4
             if -7 <= k <= 6 and 1 <= slot <= 32:
-                out.setdefault(slot, k)  # first (freshest source) wins
+                out.setdefault(slot, k)  # first (best) source wins
     return out
 
 
 def _parse_rinex_nav_file(path):
-    """Parse ONE RINEX 3 mixed-nav file -> {(sys, prn): [eph dicts sorted by toe_gpst]}."""
+    """Parse one RINEX 3 mixed-nav file -> {(sys, prn): [eph dicts sorted by toe_gpst]}."""
     op = gzip.open if path.endswith(".gz") else open
     with op(path, "rt", errors="replace") as f:
         lines = f.readlines()
@@ -185,7 +176,7 @@ def _parse_rinex_nav_file(path):
         i += norb + 1
         toc = datetime(
             yy, mo, dd, hh, mi, ss, tzinfo=timezone.utc
-        )  # in the SYSTEM time
+        )  # in the system's own time
         toc_gpst = (toc - GPS_EPOCH).total_seconds()
         if sysc == "C":
             toc_gpst -= BDT_GPST  # BDT epoch -> GPST seconds-since-GPS-epoch
@@ -215,28 +206,19 @@ def _parse_rinex_nav_file(path):
             crc=orb[13],
             omega=orb[14],
             omegadot=orb[15],
-            # health = BROADCAST ORBIT 6 field 2 (orb[21]): SV health (G/E) / SatH1 (C).
-            # It was orb[25] -- field 2 of orbit line 7 -- which is a DIFFERENT quantity in
-            # every system, and the mistake was invisible in two of the three:
-            #   G: Fit interval  -> reads 4.0 on every healthy sat -> the strict G/E gate in
-            #      predict_all rejected THE ENTIRE GPS CONSTELLATION (measured 2026-07-16:
-            #      predict_all returned 0 GPS of 32 parsed, so every GPS observable row was
-            #      logged with NO el/az/range -> no CMC, no IPP, and TEC from L1+L2C (both
-            #      GPS!) was impossible). This is the real cause of the "el 1% populated"
-            #      symptom that the BRDC staleness fix (6976642e) only partly addressed.
-            #   E: blank -> 0.0 -> Galileo passed the gate BY ACCIDENT.
-            #   C: AODC -> ~1 -> BeiDou was let through by the SatH1 exemption below, which
-            #      was written for orb[21] all along but never actually read it.
+            # health = BROADCAST ORBIT 6 field 2 (orb[21]): SV health (G/E), SatH1 (C).
+            # Field 2 of orbit line 7 (orb[25]) is a different quantity in every system
+            # (GPS fit interval, BeiDou AODC), and predict_all's health gate reads this one.
             idot=orb[16],
             week=orb[18],
             health=orb[21],
             toc_gpst=toc_gpst,
-            # Fields the ORBIT model does not need: subframe 1's URA/IODC/TGD/L2
-            # flags and subframes 2/3's IODE (read by the group-delay terms below
-            # and the LNAV decode's BRDC cross-check).
+            # Fields the orbit model does not need: subframe 1's URA/IODC/TGD/L2 flags and
+            # subframes 2/3's IODE (read by group_delay_s and sky._lnav_brdc_xcheck).
             # ORBIT 1 = [IODE, Crs, dn, M0] (0-3); ORBIT 5 = [IDOT, L2 codes, week,
-            # L2P flag] (16-19); ORBIT 6 = [accuracy, health, TGD, IODC] (20-23).
-            # health=orb[21] above is the anchor that fixes this indexing.
+            # L2P flag] (16-19); ORBIT 6 = [accuracy, health, TGD, IODC] (20-23). The names
+            # are GPS's; Galileo's l2_codes is its data-sources word and tgd/iodc are
+            # BGD(E1,E5a)/BGD(E1,E5b), BeiDou's tgd/iodc are TGD1/TGD2 (see group_delay_s).
             iode=orb[0],
             l2_codes=orb[17],
             l2p_flag=orb[19],
@@ -244,8 +226,8 @@ def _parse_rinex_nav_file(path):
             tgd=orb[22],
             iodc=orb[23],
         )
-        # toe as absolute GPST: the RINEX week field is the system's own week count --
-        # GPS/GAL: GPS-aligned continuous week; BDS: BDT week (epoch 2006-01-01) + 14 s.
+        # toe as absolute GPST: the RINEX week field is the system's own week count (GPS and
+        # Galileo: the GPS-aligned continuous week; BeiDou: the BDT week, epoch 2006-01-01).
         if sysc in "GE":
             e["toe_gpst"] = e["week"] * 604800.0 + e["toe_sow"]
         else:
@@ -366,21 +348,10 @@ def sat_pos_clk(e, t_gpst):
     X = x * co - y * ci * so
     Y = x * so + y * ci * co
     Z = y * si
-    # VELOCITY BY CENTRAL DIFFERENCE. This was a FORWARD difference over 0.5 s, commented
-    # "adequate: range-rate to ~mm/s". It is not, and the error is not noise -- a forward
-    # difference does not estimate v(t), it estimates v(t + h/2). That is a 0.25 s TIME-TAG
-    # OFFSET, and a time offset in Doppler is dop_rate * 0.25.
-    #
-    # Along the line of sight a 0.37 Hz/s Doppler rate is ~0.094 m/s^2 of range acceleration,
-    # so the bias is 0.094 * 0.25 = 0.024 m/s -> 0.09 Hz at 1176.45 MHz. The cross-window phase
-    # budget (task #52) needs the carrier to ~15 mHz for 0.1 rad over one 1.049 s window, so
-    # this ONE first-order scheme was 6x the entire budget.
-    #
-    # Central differencing costs one extra position evaluation and is second-order: the leading
-    # error becomes (h^2/6)*jerk, and for a GPS-altitude orbit (omega^3 r ~ 8e-5 m/s^3) that is
-    # ~3e-6 m/s -- 13 microHz, four orders below the budget. Do NOT shrink h to compensate for
-    # the old scheme: the bias is first-order in h, so halving h only halves it, while the
-    # central form removes it outright.
+    # Velocity by central difference over +-0.5 s. A forward difference estimates v(t + h/2), a
+    # 0.25 s time-tag offset: at a 0.37 Hz/s Doppler rate that is 0.024 m/s, 0.09 Hz at L5, six
+    # times the ~15 mHz a 0.1 rad phase budget over a 1 s window allows. The central form's
+    # leading error is (h^2/6)*jerk, ~3e-6 m/s at GPS altitude.
     dt = 0.5
     e2 = dict(e)
     pp = _pos_only(e2, t_gpst + dt)
@@ -397,7 +368,7 @@ def sat_pos_clk(e, t_gpst):
     return (X, Y, Z), V, clk
 
 
-# -- BROADCAST GROUP DELAY (task A0b) -----------------------------------------------------
+# -- Broadcast group delay ----------------------------------------------------------------
 # Carrier frequencies (Hz) and the gamma = (f_ref/f_signal)^2 scalings the ICDs use.
 F_E1 = F_L1 = 1575.42e6
 F_E5A = F_L5 = 1176.45e6
@@ -413,42 +384,35 @@ _GAL_CLK_E5B = 0x200
 
 
 def group_delay_s(e, signal, dcb=None):
-    """Seconds to ADD to the broadcast clock so it refers to `signal`'s own code phase.
+    """Seconds to add to the broadcast clock so it refers to `signal`'s own code phase.
 
-    THE BROADCAST CLOCK IS NOT REFERENCED TO OUR SIGNAL. Every constellation fits its clock
-    to some other combination -- GPS LNAV to L1/L2, Galileo F/NAV to E1/E5a and I/NAV to
-    E1/E5b, BeiDou legacy to B3I -- and a single-frequency user of anything else owes the
-    corresponding differential. Until 2026-08-23 nothing here applied it: the decoders
-    parsed TGD/BGD and the correction path ignored them (buglist A0b).
+    The broadcast clock is fitted to some other signal combination (GPS LNAV to L1/L2, Galileo
+    F/NAV to E1/E5a and I/NAV to E1/E5b, BeiDou D1/D2 to B3I), so a single-frequency user of
+    any other signal owes the corresponding group-delay differential.
 
-    SIZE, MEASURED on the 2026-08-23 BRDC before writing this: the CONSTELLATION-COMMON
-    part is small -- GPS TGD median -8.4 ns -> +0.15 chips at L5, Galileo BGD -0.9 ns ->
-    +0.02 chips -- and a common term is degenerate with the receiver clock anyway, so a
-    chain that solves its own clock never sees it. What this actually buys is the PER-SAT
-    spread: GPS TGD ranges -17.7..+6.5 ns and BDS TGD +-45 ns, i.e. +-0.3..0.5 chips
-    landing straight in b_sat. Do NOT expect it to move a constellation offset.
+    A constellation-common part is degenerate with the receiver clock, so a chain that solves
+    its own clock never sees it. What this buys is the per-satellite spread (GPS TGD spans tens
+    of ns, BeiDou TGD +-45 ns: tenths of a chip at 10.23 Mchip/s), which otherwise lands in
+    the satellite's code bias. It does not move a constellation offset.
 
-    OUR GALILEO BRDC IS MIXED, and best_eph picks by freshness: 19 sats carried F/NAV
-    (clock ref E5a,E1) and 11 carried I/NAV (clock ref E5b,E1) on 2026-08-23. So the
-    reference a satellite gets is arbitrary AND CAN FLIP at a refresh. Both cross-type
-    conversions are implemented from the ICD identity t_E1 = t_IF_a - BGD_a = t_IF_b -
-    BGD_b; without them a record-type flip would step that satellite's clock by a few ns.
+    The Galileo BRDC mixes F/NAV and I/NAV records and best_eph picks by toe alone, so the clock
+    reference a satellite gets can change at a refresh. Both cross-type conversions follow the
+    ICD identity t_E1 = t_IF_a - BGD_a = t_IF_b - BGD_b, so a record-type change does not step
+    the satellite's clock by the BGD difference.
 
-    Returns 0.0 when the term is unavailable rather than guessing -- notably BeiDou B2a,
-    whose TGD_B2ap lives in B-CNAV2 and is absent from RINEX 3 (only TGD1 B1I/B3I and
-    TGD2 B2I/B3I are broadcast there).
+    Returns 0.0 for a signal not handled below (GPS L2C and Galileo E6 among them) and when the
+    term is unavailable rather than guessing, notably BeiDou B2a, whose TGD_B2ap is in B-CNAV2
+    and absent from RINEX 3 (which carries only TGD1 B1I/B3I and TGD2 B2I/B3I).
     """
     if not signal:
         return 0.0
     sig = str(signal).lower()
     sysc = e.get("sys")
-    # MEASURED BIAS BEATS BROADCAST, when we have it (2026-08-23). The MGEX DCB product
-    # covers every signal we track -- including BeiDou B2a, whose broadcast term is not in
-    # RINEX 3 at all -- and is a global-network estimate rather than the satellite's own.
-    # ⚠️ It is ZERO-MEAN PER CONSTELLATION by construction, so it supplies the PER-SAT
-    # spread and never a constellation-common level; the broadcast term is the only source
-    # of the latter, and for B2a there is none. Falls through to broadcast when a pair is
-    # missing, so a partial product degrades per-satellite rather than all-or-nothing.
+    # Measured DCBs (gnss_dcb.signal_bias_s) take precedence when loaded. They cover GPS L5,
+    # Galileo E5a/E5b and BeiDou B2a/B2b (B2a's broadcast term is not in RINEX 3 at all) and
+    # return None otherwise, so a missing pair falls through to the broadcast term for that
+    # satellite alone. The product is zero-mean per constellation, so it carries the
+    # per-satellite spread and no constellation-common level; only the broadcast term has one.
     if dcb:
         try:
             import gnss_dcb as _dcbmod
@@ -466,10 +430,11 @@ def group_delay_s(e, signal, dcb=None):
         except Exception:
             pass
     tgd = float(e.get("tgd") or 0.0)  # G: TGD | E: BGD(E1,E5a) | C: TGD1(B1I,B3I)
-    tgd2 = float(e.get("iodc") or 0.0)  # E: BGD(E1,E5b) | C: TGD2(B2I,B3I) | G: IODC(!)
+    tgd2 = float(e.get("iodc") or 0.0)  # E: BGD(E1,E5b) | C: TGD2(B2I,B3I) | G: IODC
     if sysc == "G":
-        # IS-GPS-705: an L5 user owes gamma_15 * TGD (plus ISC_L5I5, which is CNAV-only and
-        # not in RINEX 3 -- so this is the larger half of the term, not all of it).
+        # L5: TGD scaled to L5 as 1/f^2 (gamma_15 * TGD). IS-GPS-705's term is -TGD + ISC_L5I5
+        # (the form the DCB path computes), but ISC_L5I5 is CNAV-only and not in RINEX 3; the
+        # scaling matches it only if the satellite's group delays go as 1/f^2.
         if "l5" in sig:
             return -GAMMA_L1L5 * tgd
         if "l1" in sig:
@@ -499,9 +464,9 @@ def group_delay_s(e, signal, dcb=None):
             return -(tgd if ref_a else tgd2)
         return 0.0
     if sysc == "C":
-        # BDS legacy D1/D2 clock is B3I-referenced. B2b shares B2I's carrier (1207.14 MHz),
-        # so TGD2 is the right band term for it; B2a (1176.45) needs TGD_B2ap, which this
-        # message does not carry -- return 0 and stay honest rather than borrow TGD2.
+        # The D1/D2 clock is B3I-referenced. B2b shares B2I's carrier (1207.14 MHz), so TGD2
+        # applies to it; B2a (1176.45 MHz) needs TGD_B2ap, which RINEX 3 does not carry, so it
+        # gets 0 rather than a borrowed TGD2.
         if "b2b" in sig:
             return -tgd2
         if "b1" in sig:
@@ -564,7 +529,7 @@ def gpst_of_utc(t_utc):
 
 
 def best_eph(records, t_gpst, max_age=14400.0):
-    """Freshest record whose toe is within max_age (4 h) of t; None if all stale."""
+    """The record whose toe is nearest t, within max_age (default 4 h); None if all stale."""
     cand = [e for e in records if abs(t_gpst - e["toe_gpst"]) < max_age]
     return min(cand, key=lambda e: abs(t_gpst - e["toe_gpst"])) if cand else None
 
@@ -581,19 +546,22 @@ def predict_all(
     dcb=None,
     health_gate=True,
 ):
-    """Per visible sat: az/el, geometric range (m) with Earth-rotation (Sagnac)
-    correction, range-rate (m/s), sat clock (s). Receiver clock NOT included --
-    solving it from measured-vs-predicted IS the time bootstrap.
+    """Per visible satellite: az/el, geometric range (m) with the Earth-rotation (Sagnac)
+    correction, range rate (m/s) and satellite clock (s). The receiver clock is not included:
+    solving it from measured minus predicted is the time bootstrap.
 
-    max_age (s) is the toe validity window (default 4 h). GEOMETRY-only callers
-    (observables az/el/range for the sky map / mapping factor) can widen it so a
-    stale-in-memory or offline-cached ephemeris still yields az/el through a network
-    gap -- Keplerian propagation is sub-degree/few-km for many hours past toe. The
-    precise-clock callers (dead-reckon) keep the tight default; toe_age_s is per-sat
-    so a consumer can still gate on freshness.
+    max_age (s) is the toe validity window (default 4 h). Geometry-only callers (gnss_observables,
+    sky.transit_sky, the beam cube) widen it so a stale or offline-cached ephemeris still yields
+    az/el through a network gap; Keplerian propagation stays sub-degree and within a few km for
+    many hours past toe. Dead reckoning, which needs the clock, keeps the default; toe_age_s is
+    per satellite so a consumer can still gate on freshness.
 
-    health_gate=False keeps unhealthy G/E records: GEOMETRY ONLY (sky.transit_sky, #144) --
-    an unhealthy satellite still transmits and still captures the array. Seeds never set it."""
+    `signal` (with `dcb`) refers sat_clk_s to that signal's code (group_delay_s; tgd_s is the
+    correction applied). signal=None leaves the broadcast clock as it is.
+
+    health_gate=False keeps unhealthy records (BeiDou is never gated, see below), for geometry
+    only (sky.transit_sky): an unhealthy satellite still transmits and still captures the
+    array. Seeds never set it."""
     t = gpst_of_utc(t_utc)
     rx = _ecef_of_llh(lat, lon, alt)
     out = {}
@@ -602,16 +570,10 @@ def predict_all(
         if e is None:
             continue
         if health_gate and e.get("health", 0) not in (0, 0.0) and key[0] != "C":
-            # BDS exemption -- KEPT, but its original rationale was an artifact and is void:
-            # it was written when health was misparsed from orb[25], which for BDS is AODC
-            # (~1 on everything). The 2026-07-13 "healthy C21 reads health=1" evidence was
-            # really "C21's AODC is 1" and proves nothing about SatH1. With the field fixed
-            # (orb[21]) BDS SatH1 reads 0.0 on 36 of 37 sats, i.e. it looks as trustworthy
-            # as G/E. Left permissive for now because a BDS-3 sat CAN legitimately carry
-            # SatH1=1 (the word is B1I-referenced) while its B1C is fine -- dropping it would
-            # silently lose that sat. The measured-vs-predicted integrity residuals referee.
-            # TODO: re-test strict-for-C on sky now that the word is real; if no healthy sat
-            # is lost, delete this exemption.
+            # BeiDou is exempt: SatH1 describes B1I, so a BDS-3 satellite can carry SatH1 = 1
+            # while the signal a chain tracks is fine, and the gate would drop it.
+            # TODO: try the strict gate for C on sky; if no healthy satellite is lost, remove
+            # the exemption.
             continue
         # light-time + Sagnac: two iterations are plenty
         tau = 0.075
@@ -627,8 +589,8 @@ def predict_all(
         if el < mask_deg:
             continue
         rr = sum((p - r) * v for p, r, v in zip(pos_rx, rx, vel)) / rng
-        # A0b: the broadcast clock refers to some OTHER signal combination; make it refer
-        # to ours. `signal=None` (every non-broker caller) keeps the old, uncorrected value.
+        # Refer the broadcast clock to `signal` (group_delay_s). Only dead reckoning passes
+        # one; signal=None leaves the clock as broadcast.
         _gd = group_delay_s(e, signal, dcb)
         out[key] = dict(
             az=az,

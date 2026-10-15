@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The fleet reference of the shared element model's phase pin (#154).
+"""The fleet reference of the shared element model's phase pin.
 
   snapshot OUT.json   Poll every n2assemble's /get_elem_cal and form, per band and pol, the
                       consensus of the warm, unfrozen models (instances more than EXCLUDE_DEG
@@ -10,22 +10,22 @@
   post FILE           POST every band's reference to its instances (--mode).
   status [FILE]       Per instance and pol: offset and shape similarity against FILE (works on any
                       binary), plus the node's own fleet_ref block where the binary has one.
-  watch FILE DIR      The safety net (scripts/gnss/site/elem_ref_cron.sh, every 5 min): per band, R and
-                      each instance's offset against FILE into DIR/current.json; DIR/ALERT lists
-                      what needs a person. With --act it also
+  watch FILE DIR      The safety net (scripts/gnss/site/elem_ref_cron.sh, every 5 min): per
+                      band, R and each instance's offset against FILE into DIR/current.json;
+                      DIR/ALERT lists what needs a person. With --act it also
                       - POSTs the reference (--mode) to an instance that holds none, holds one in
                         another mode, holds one that does not describe its model while FILE's
                         does, or is > ALERT_DEG off for > MIN_RUN_S outside a freeze (at most
                         every ACT_EVERY_S);
-                      - re-takes a band whose reference describes fewer than half of its models
-                        for > MIN_RUN_S (new F-engine gains), when two thirds of the instances
+                      - re-takes a band whose reference describes at most half of its models
+                        for > MIN_RUN_S (new F-engine gains): when two thirds of the instances
                         agree on a consensus, writes it to DIR/auto_ref.json and POSTs it (at most
                         every RETAKE_EVERY_S). That file is the reference in use until FILE is
                         newer, and ALERT says so until it is committed.
                       Without --act nothing is changed.
 
-Instances are read from config/generated/chord_gnss_<node>_multi.yaml (port 12048). Band names
-are snap_xinst.py's: l5 for gnss<g>_n2assemble, else the chain tag (e5a, b2a, ...).
+Instances are read from config/generated/chord_gnss_<node>_multi.yaml (port 12048). Band names:
+l5 for gnss<g>_n2assemble, else the chain tag (e5a, b2a, ...).
 """
 import argparse
 import concurrent.futures
@@ -125,7 +125,8 @@ def unit(v):
 
 
 def consensus(vs):
-    """Phase-aligned mean of unit vectors (snap_xinst.py's construction)."""
+    """Phase-aligned unit mean of unit vectors: five passes, each rotating every vector onto the
+    previous pass's mean (the first pass onto the first key's vector)."""
     keys = sorted(vs)
     ref = vs[keys[0]].copy()
     for _ in range(5):
@@ -404,8 +405,8 @@ def watch(a):
     res = poll()
     lines, notes = [], []  # lines need a person (ALERT); notes are what --act did
 
-    # A band whose reference describes fewer than half of its models (the F-engine's gains
-    # changed) is re-taken from the fleet consensus, if most of the fleet agrees on one.
+    # A band whose reference describes at most half of its models (the F-engine's gains
+    # changed) is re-taken from the fleet consensus, if two thirds of the fleet agree on one.
     stale, retook = set(), False
     for band, entry in sorted(snap["bands"].items()):
         F = np.array([complex(x, y) for x, y in entry["ref"]])

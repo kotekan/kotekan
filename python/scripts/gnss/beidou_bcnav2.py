@@ -1,25 +1,25 @@
 """BeiDou-3 B2a B-CNAV2 codec: frame symbols <-> nav bits, and the ephemeris parse.
 
-The third S5 D-component (2026-07-30) and the FIRST non-binary FEC: B-CNAV2 protects its frame
-with a NON-BINARY LDPC over GF(64) -- an (n=96, k=48) code in 6-bit symbols (576 coded bits ->
-288 info bits) -- NOT the rate-1/2 K=7 Viterbi + CRC-24Q the two Galileo decoders share. So the
-codec spine is new here; only the CRC-24Q (BDS uses the same 0x1864CFB) is reused.
+B-CNAV2 protects its frame with a non-binary LDPC over GF(64) -- an (n=96, k=48) code in 6-bit
+symbols (576 coded bits -> 288 info bits) -- not the rate-1/2 K=7 Viterbi the two Galileo
+decoders share. Only the CRC-24Q (BDS uses the same 0x1864CFB) and the bit helpers are reused
+from galileo_inav.
 
 Frame (per BDS-SIS-ICD-B2a): 600 symbols = 3 s at 200 sps (a B2a-data symbol is 5 ms = one 5-chip
 B2AD secondary period). Structure: 24-symbol PREAMBLE (0xE24DE8 pattern) + 576 LDPC symbols. The
 576 symbols decode to a 288-bit frame: PRN(6) + MesType(6) + SOW(18) + payload(234) + CRC-24(24).
-The ephemeris spans MesType 10 (ephemeris-I + clock) and MesType 11 (ephemeris-II), a CNAV-style
-set (dA off a reference semi-major axis, Adot, dn0, dn0dot -- like GPS L2C CNAV, NOT LNAV sqrtA).
+The ephemeris spans MesType 10 (ephemeris I) and MesType 11 (ephemeris II), a CNAV-style set
+(dA off a reference semi-major axis, Adot, dn0, dn0dot -- like GPS L2C CNAV, not LNAV sqrtA).
 
-The GF(64) tables, the QSPA/EMS decoder, and the H matrix are ported verbatim from PocketSDR
-(sdr_nb_ldpc.py / sdr_ldpc.py, T.Takasu) which transcribes them from the ICD. The decoder is
-SYSTEMATIC (info = first 48 GF symbols = 288 bits) and at our deep-integration SNR the received
-codeword is error-free, so the syndrome passes on iteration 0 and decode is essentially a parity
-check -- the QSPA only iterates when there are real errors.
+The H matrix here and the GF(64) tables and QSPA/EMS decoder in nb_ldpc.py are ported from
+PocketSDR (sdr_nb_ldpc.py / sdr_ldpc.py, T.Takasu), which transcribes them from the ICD. The
+code is systematic (info = first 48 GF symbols = 288 bits): an error-free codeword passes the
+syndrome on iteration 0, and the QSPA iterates only when there are errors.
 
-★ ICD-OWNED CONVENTIONS (flippable, LIVE-VERIFIED via the BRDC dpos, the E1B/E5a lesson): the
-preamble polarity (both tried), the GF symbol bit-order, and the ephemeris field offsets/scales
-(from gnss-sdr's Beidou_B2a.h). A roundtrip is blind to these; the live CRC + dpos are the judge.
+The ICD owns conventions a roundtrip cannot check: the preamble polarity (find_frames tries
+both), the GF symbol bit order, and the ephemeris field offsets and scales (from gnss-sdr's
+Beidou_B2a.h). The CRC on live frames checks the first two; the broker's BRDC cross-check
+(gnss_broker/sky.py _bcnav2_brdc_xcheck) checks the offsets.
 """
 
 import math
@@ -41,8 +41,8 @@ CRC_AT = FRAME_BITS - 24  # 264: CRC-24 occupies bits [264:288]
 BDS_MU = 3.986004418e14
 BDS_OMEGA_E = 7.292115e-5
 BDS_PI = 3.1415926535898
-A_REF_MEO = 27906100.0  # reference semi-major axis, MEO (m) -- IGSO/MEO CNAV eph
-A_REF_IGSO = 42162200.0  # reference semi-major axis, IGSO (m)
+A_REF_MEO = 27906100.0  # reference semi-major axis, MEO (m)
+A_REF_IGSO = 42162200.0  # reference semi-major axis, IGSO and GEO (m)
 
 # ------------------------------------------------------------------ GF(64) NB-LDPC (shared)
 # The decoder + GF(64) tables live in nb_ldpc.py (shared with B-CNAV1/3).
@@ -196,12 +196,12 @@ def find_frames(symbols):
 
 # ------------------------------------------------------------------ ephemeris (types 10, 11)
 # name -> (mestype, start bit in the 288-bit frame [0-indexed], length, signed, scale).
-# ICD-OWNED offsets, transcribed from dole7890/gnss-sdr@b2a_pvt BEIDOU_B2a.h (1-indexed there,
-# my_start = offset - 1; SOW {13,18} -> start 12 matches PocketSDR getbitu(data,12,18)) ->
-# LIVE-VERIFIED via BRDC dpos. CNAV-style (B-CNAV1/2 shared): A = A_ref(SatType) + dA + Adot*tk;
-# n = n0 + dn0 + 0.5*dn0dot*tk. Angle fields are in SEMICIRCLES -> scale folds in BDS_PI (radians),
-# exactly like the Galileo tables. Types 10 (eph-I + clock refs) and 11 (eph-II); no IODE in 11,
-# so the pair is matched by temporal freshness (BDS eph ~hourly), validated by the dpos check.
+# ICD-owned offsets, from dole7890/gnss-sdr@b2a_pvt Beidou_B2a.h (1-indexed there: start =
+# offset - 1; SOW {13,18} -> start 12 matches PocketSDR getbitu(data,12,18)), validated by the
+# BRDC cross-check. CNAV-style (B-CNAV1/2 shared): A = A_ref(SatType) + dA + Adot*tk;
+# n = n0 + dn0 + 0.5*dn0dot*tk. Angle fields are in semicircles; the scale folds in BDS_PI
+# (radians), as in the Galileo tables. Types 10 (ephemeris I) and 11 (ephemeris II); type 11
+# has no IODE, so bcnav2_predictor pairs them by freshness (BDS ephemeris is ~hourly).
 BCNV2_EPH_FIELDS = {
     # Type 10 -- Ephemeris I
     "t_oe": (10, 61, 11, False, 300.0),
@@ -296,8 +296,8 @@ def sv_position_bcnav2(eph, t):
 
 # ------------------------------------------------------------------ self-test
 def _nullspace_codeword(rng):
-    """Build a RANDOM valid GF(64) codeword (H c = 0) by Gaussian elimination over GF(64),
-    for a rigorous decoder self-test (not the degenerate all-zero word)."""
+    """Build a random valid GF(64) codeword (H c = 0) by Gaussian elimination over GF(64),
+    so the decoder self-test does not rest on the degenerate all-zero word."""
     # dense H: N_CHECK x N_VAR over GF(64)
     H = [[0] * N_VAR for _ in range(N_CHECK)]
     for i in range(N_CHECK):

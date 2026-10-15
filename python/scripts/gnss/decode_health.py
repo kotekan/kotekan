@@ -1,15 +1,14 @@
-"""On-node nav-decode health export (viewer surface + the fallback's status hook).
+"""On-node nav-decode health export: the data behind the viewer's decode-health panel.
 
-WRITE-ONLY: every broker that decodes a nav
-message publishes, per (signal, PRN), what it already computes on the 60 s health cadence --
-whether the satellite is SYNCED, whether a full ephemeris was EXTRACTED, the BRDC-agreement
-residual (`dpos_m`), and how FRESH the decode is. One JSON object per broker chain, atomically
-replaced; the viewer (and, later, the decoded-eph BRDC fallback) reads the directory and merges.
+Every broker that decodes a nav message (--decode-health-file) publishes, per (signal, PRN),
+what it already computes on the 60 s health cadence -- whether the satellite is synced, whether
+a full ephemeris was extracted, the BRDC-agreement residual (`dpos_m`), and how fresh the
+decode is. One JSON object per broker chain, atomically replaced. The broker only writes; the
+viewer server (livebeam_server.py, /decode_health) reads the directory and merges it with
+read_all.
 
-Why a file, not an endpoint: the broker has no HTTP server (it only POSTs seeds to kotekan),
-and the viewer already runs Python on the same host. A tmp+rename file means a reader never sees
-a half-written object and the broker can never be taken down by a diagnostic riding in its
-control loop.
+Why a file: the viewer runs on the same host, a tmp+rename file means a reader never sees a
+half-written object, and no reader can reach into the broker's control loop.
 
 Current state only -- history is the logger's job. Absent is `null`, never 0.
 """
@@ -19,8 +18,9 @@ import os
 
 SCHEMA = 1
 
-# Display order + the frequency band each decoded signal sits on, so the viewer groups them
-# without re-deriving it. Keyed by the `signal` string the broker observes under.
+# The constellation and frequency band each decoded signal sits on, so the viewer groups them
+# without re-deriving it. Keyed by the `signal` string the broker observes under; a signal not
+# listed is exported with the writer's sys and band "?".
 SIGNAL_BAND = {
     "GPS_L1_LNAV": ("G", "L1"),
     "GPS_L2C_CNAV": ("G", "L2"),
@@ -57,23 +57,23 @@ class DecodeHealthWriter:
         self.stale_sat_s = float(stale_sat_s)
         self.dead_decode_s = float(dead_decode_s)
         self._last = 0.0
-        # PERSISTENT current state: observe() runs on the 60 s health cadence but flush() runs
-        # every broker cycle (~0.2 s), so _sats must survive flushes -- else the file is empty
-        # 99% of the time. A sat not re-observed for stale_sat_s is dropped (set / decoder gone).
+        # _sats persists across flushes (a failed export clears it): observe() runs on the 60 s
+        # health cadence but flush() every broker cycle. A sat not re-observed for stale_sat_s
+        # is dropped (set, or its decoder gone).
         self._sats = {}  # (signal, prn) -> field dict (current state)
         self._seen_t = (
             {}
         )  # (signal, prn) -> wall-clock t of last observe (for aging out)
         self._count = {}  # (signal, prn) -> last seen monotonic decode count
-        self._decode_t = {}  # (signal, prn) -> wall-clock t when count last INCREASED
+        self._decode_t = {}  # (signal, prn) -> wall-clock t when count last increased
         self._fails = 0
 
     def observe(self, signal, prn, t_now, count=None, **fields):
         """Record one satellite's decode state for `signal`.
 
         `count` is any monotonic per-satellite decode counter (decoded subframes / pages /
-        messages). The writer times when it last INCREASED and reports the age as `last_s` --
-        that is the honest "last decode" metric (a synced-but-stalled sat reads old, not fresh).
+        messages). The writer times when it last increased and reports the age as `last_s` --
+        the "last decode" metric (a synced-but-stalled sat reads old, not fresh).
         """
         try:
             key = (str(signal), int(prn))
@@ -96,12 +96,11 @@ class DecodeHealthWriter:
             if not force and t_now - self._last < self.flush_s:
                 return False
             self._last = t_now
-            # Age out a satellite when the decoder DROPS it (not re-observed within stale_sat_s)
-            # OR when its decode has been frozen far longer (dead_decode_s): a set / false-lock
-            # sat lingers in the decoder's PRN dict and keeps being observed with a static count,
-            # so observe-based aging alone never clears it -- it would sit forever at last_s ~=
-            # uptime and clutter the list. dead_decode_s is generous so a slow-but-alive weak sat
-            # survives between its infrequent decodes.
+            # Age out a satellite when the decoder drops it (not re-observed within stale_sat_s)
+            # or when its decode count has been frozen for dead_decode_s: a set or false-lock
+            # sat stays in the decoder's PRN dict and keeps being observed with a static count,
+            # so observe-based aging alone would keep it at last_s ~= uptime. dead_decode_s is
+            # generous so a slow-but-alive weak sat survives between its infrequent decodes.
             for key in list(self._seen_t):
                 seen = self._seen_t.get(key, 0.0)
                 dec = self._decode_t.get(key, seen)
@@ -162,12 +161,13 @@ def _read_one(path, max_age_s, t_now):
 def read_all(dirpath, max_age_s=120.0, t_now=None):
     """Merge every fresh broker file under `dirpath` into a per-signal view for the viewer:
 
-        {"signals": {sig: {"sys","band","n_sync","n_eph","worst_dpos_m","median_dpos_m",
-                           "oldest_decode_s","sats":[row,...]}},
-         "chains": [{"chain","t_age_s"}...]}
+        {"signals": {sig: {"sys","band","n_sats","n_sync","n_eph","worst_dpos_m",
+                           "median_dpos_m","newest_decode_s","oldest_decode_s","n_stale",
+                           "sats":[row,...]}},
+         "chains": [{"chain","t_age_s"}...]}    (chains is empty unless t_now is given)
 
-    A stale file (broker died / no fresh publish) is DROPPED, not served -- the viewer then
-    shows the signal going dark, which is the honest thing on a decode outage.
+    With t_now given, a file older than max_age_s (broker died / no fresh publish) is dropped,
+    not served -- the viewer then shows the signal going dark on a decode outage.
     """
     import statistics
 
@@ -207,8 +207,8 @@ def read_all(dirpath, max_age_s=120.0, t_now=None):
         g["n_eph"] = sum(1 for r in rows if r.get("eph"))
         g["worst_dpos_m"] = max(dpos) if dpos else None
         g["median_dpos_m"] = statistics.median(dpos) if dpos else None
-        # newest = the LIVENESS number (a set/false-lock straggler must not make an active chain
-        # look dead); oldest kept for the straggler count.
+        # newest_decode_s is the liveness number (a set/false-lock straggler must not make an
+        # active chain look dead); n_stale counts the stragglers (last decode > 300 s).
         g["newest_decode_s"] = min(last) if last else None
         g["oldest_decode_s"] = max(last) if last else None
         g["n_stale"] = sum(1 for x in last if x > 300)

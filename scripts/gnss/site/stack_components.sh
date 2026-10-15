@@ -1,29 +1,24 @@
 #!/bin/bash
-# THE SINGLE DEFINITION OF WHAT EACH GNSS COMPONENT IS. Sourced, never executed.
+# The single definition of what each GNSS component runs. Sourced, never executed.
 #
-# WHY THIS EXISTS. The systemd units were first written by reproducing each component's COMMAND
-# LINE faithfully -- and the broker's `export OPENBLAS_NUM_THREADS=1` is not on its command line,
-# so it was silently dropped and the broker spent two thirds of its cycles in OpenBLAS's
-# busy-wait until `perf` found it (#134). A definition that carries the argv and the environment
-# TOGETHER makes that failure structural rather than a thing to remember.
+# Each definition carries the argv and the environment together. A unit written from a
+# component's command line alone drops every variable that is not on it, such as the broker's
+# OPENBLAS_NUM_THREADS=1.
 #
-# ⚠️ WHY THE UNITS EXEC A FOREGROUND RUNNER, NOT A DAEMONISING LAUNCHER. A launcher that does
-# `nohup setsid ... &` plus `disown`, and `pkill`s a previous instance first, is three separate
-# faults under systemd --
-#   * `Type=simple` expects ExecStart to BE the process; a script that backgrounds and exits
-#     looks like a service that died on startup;
-#   * `setsid` deliberately detaches the child from the unit's cgroup, so systemd loses
-#     supervision entirely -- no Restart=, no MemoryMax, no clean stop;
+# The units exec a foreground runner, not a daemonising launcher. A launcher that does
+# `nohup setsid ... &` plus `disown`, and `pkill`s a previous instance first, breaks systemd:
+#   * `Type=simple` expects ExecStart to be the process; a script that backgrounds and exits
+#     looks like a service that died on startup, and its cgroup is then stopped with it;
+#   * the backgrounded child is not the unit's main PID, so Restart= never sees it die;
 #   * the internal `pkill` races systemd's own restart logic.
-# So the shared definition is the truth and a FOREGROUND runner (`run_component.sh`) execs it.
 #
-#     stack_components.sh          <- what to run, and with what environment  (HERE)
+#     stack_components.sh          <- what to run, and with what environment  (here)
 #            |
-#            +-- run_component.sh  <- execs it in the FOREGROUND
+#            +-- run_component.sh  <- execs it in the foreground
 #                           |
 #                           +-- systemd ExecStart=          (the live path)
 #
-#     stack_contract_gate.sh       <- proves a RUNNING process still matches this file
+#     stack_contract_gate.sh       <- checks a running process still matches this file
 #
 # Usage:
 #     . stack_components.sh
@@ -36,10 +31,10 @@ set -u
 GNSS_K=${GNSS_K:-/home/kvand/gnss/kotekan}
 GNSS_ROOT=${GNSS_ROOT:-/home/kvand/gnss}
 GNSS_VENV=${GNSS_VENV:-$GNSS_ROOT/venv}            # 3.12, everything except the broker
-GNSS_VENV_FT=${GNSS_VENV_FT:-$GNSS_ROOT/venv-ft}   # 3.14t free-threaded, THE BROKER ONLY
+GNSS_VENV_FT=${GNSS_VENV_FT:-$GNSS_ROOT/venv-ft}   # 3.14t free-threaded, the broker only
 
-# The kotekan binary: the DPDK-free build. The stack runs on the gnss VM, never on a cx node
-# (the nodes run the DPDK build through node_up.sh).
+# The kotekan binary: the DPDK-free build. These components run on the gnss VM and cf06, never
+# on a cx node (the nodes run the DPDK build through node_up.sh).
 GNSS_BIN=${GNSS_BIN:-$GNSS_K/build_nodpdk/kotekan/kotekan}
 
 GNSS_BROKER_URL=${GNSS_BROKER_URL:-http://127.0.0.1:12060}
@@ -48,10 +43,10 @@ GNSS_OBS_OUT=${GNSS_OBS_OUT:-$GNSS_ROOT/fixtures/obs}
 GNSS_SITE_LL=${GNSS_SITE_LL:-"--lat 49.32001414 --lon -119.62262691 --alt 545"}
 
 # ── the eight chains and their RF constants ────────────────────────────────────────────────
-# One copy. These are NOT free parameters: carrier, chip rate and code length must match the
-# SignalDef the broker runs, which it prints at startup ("signal gps_l5: SignalDef(...)"); if a
-# chain's signal changes, take the numbers from that line. L2C's chips are CM chips at
-# 0.5115 Mcps (the CM/CL multiplex), 586 m each, not 29 m.
+# Not free parameters: carrier, chip rate and code length must match the SignalDef the broker
+# runs, which it logs at startup ("signal gps_l5: SignalDef(...)"); if a chain's signal
+# changes, take the numbers from that line. L2C's chips are CM chips at 0.5115 Mcps (the
+# CM/CL multiplex), 586 m each, not 29 m.
 #   chain  sys carrier_hz   chip_rate_hz  code_len
 GNSS_CHAIN_RF="
 gps_l5  G 1176450000 10230000 10230
@@ -80,15 +75,14 @@ gnss_component() {
     case "$name" in
 
     broker)
-        # ⚠️ FREE-THREADED 3.14t. Under the GIL the gather drops its consumer every 15 s, every
-        # chain reports all instances stale, and only L5 keeps working -- which makes the
-        # failure look survivable. It is not; it cost two hours of dead chains.
+        # Free-threaded 3.14t. Under the GIL the gather keeps dropping the broker's connection
+        # and every chain reports all instances stale; L5 alone keeps working, which makes the
+        # failure look survivable.
         export GNSS_PY="${GNSS_PY:-$GNSS_VENV_FT/bin/python}"
-        # ⚠️ ONE BLAS THREAD (#134). numpy's OpenBLAS pool defaults to one BUSY-SPINNING worker
-        # per core and the joint filter's ~57x57 matmuls wake all of them: ~53 cores of spin on
-        # cf06, which starved the telemetry reader; 4.3 cores of 6 on the VM, two thirds of them
-        # in blas_thread_server against 0.52% in the actual dgemm. At these sizes one thread is
-        # also simply faster. THIS IS PART OF THE COMMAND, NOT AN OPTIMISATION.
+        # One BLAS thread. numpy's OpenBLAS pool starts a busy-spinning worker per core, and
+        # the joint filter's small matmuls wake all of them; the spin takes most of the CPU
+        # and starves the telemetry reader. At these sizes one thread is also faster. Part of
+        # the command, not an optimisation.
         export OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 NUMEXPR_NUM_THREADS=1
         GNSS_EXEC=("$GNSS_PY" -u "$GNSS_K/scripts/gnss/broker_multi.py"
                    "${GNSS_CHAINS_YAML:-$GNSS_K/config/gnss_chains_chord.yaml}")
@@ -101,23 +95,20 @@ gnss_component() {
         ;;
 
     aggregator)
-        # Needs CUDA: the search runs on the GPU (use_cuda_acquire). Not a -DUSE_CUDA=OFF tree.
-        # The config is generated and untracked. Regenerate it with
+        # The search runs on the GPU (use_cuda_acquire), so GNSS_BIN must be a CUDA build, not
+        # a -DUSE_CUDA=OFF tree. The config is generated and untracked. Regenerate it with
         #   config/gen_chord_gnss_config.py --base config/base/live_config_20260730.json \
         #       --node cx19 --aggregator-instance cx19 cx27 cx42 cx43 cx44 cx51 \
         #       --rest-port 12050 --cuda-acquire --aggregator-cores 0,1,2,3,4,5 \
         #       --out config/generated/chord_gnss_agg6_cuda.yaml
-        # The running copy was hand-patched before those flags existed (its header says how);
-        # it differs from this only in which of the six cores each stage gets and in
-        # gps_search's debug log level.
         GNSS_EXEC=("$GNSS_BIN" --config
                    "${GNSS_AGG_CFG:-$GNSS_K/config/generated/chord_gnss_agg6_cuda.yaml}"
                    --bind-address "0.0.0.0:12050")
         ;;
 
     viewer)
-        # ⚠️ The cwd is load-bearing: livebeam_server.py resolves its static assets relative to
-        # it. Reproduce the argument list exactly rather than tidying it.
+        # The cwd is load-bearing: the script is named by a relative path, and it serves its
+        # static files from its own directory.
         GNSS_CWD="$GNSS_K/python/scripts/js_viewer"
         GNSS_EXEC=("$GNSS_VENV/bin/python" -u livebeam_server.py
                    --no-power-stream --http-port "${GNSS_VIEWER_PORT:-8080}" --ws-port 8539
@@ -150,17 +141,17 @@ gnss_component() {
         ;;
 
     cubearch)
-        # ⚠️ cf06 ONLY -- the far side of the beam-cube push leg: one bufferRecv on :11070 for
-        # the whole fleet's windows and a rawFileWrite onto /mnt/cs00. ARCHIVER FIRST, THEN THE
-        # NODES (cubearch_up.sh says why). The pre-flight -- config present, archive dir
-        # writable, sender/receiver frame_size agree -- is `cubearch_up.sh --check`, which
+        # cf06 only: the far side of the beam-cube push leg, one bufferRecv on :11070 for the
+        # whole fleet's windows and a rawFileWrite onto /mnt/cs00. Start it before the nodes
+        # (cubearch_up.sh says why). The pre-flight (config present, archive dir writable,
+        # sender/receiver frame_size agree) is `cubearch_up.sh --check`, which
         # gnss-cubearch.service runs as ExecStartPre.
         GNSS_EXEC=("$GNSS_BIN" -c
                    "${GNSS_CUBEARCH_CFG:-$GNSS_K/config/generated/chord_gnss_cubearch.yaml}")
         ;;
     cubecompact)
-        # ⚠️ cf06 ONLY -- the compactor loop (raw -> L0 -> rungs -> the daily publish): the same
-        # five arguments cubecompact_up.sh passes by hand. h5py lives in venv, never venv-ft.
+        # cf06 only: the compactor loop (raw -> L0 -> rungs -> the daily publish), with the
+        # same five arguments cubecompact_up.sh passes. h5py lives in venv, not venv-ft.
         local root=${CUBE_ROOT:-/mnt/cs00/data/kvand/gnss_cube}
         GNSS_EXEC=("$GNSS_K/scripts/gnss/site/cubecompact_loop.sh" "$GNSS_VENV/bin/python"
                    "$GNSS_K/python/scripts/gnss/gnss_cube_compact.py"

@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Regression tests for the clock-solve guards (task #39).
+"""Tests for the clock-solve continuity guard (gnss_broker/fits.py split_erratic_offsets).
 
-Reproduces the 2026-08-10 19:39 UTC incident: PRN 2, which is not L5-capable, entered
-the receiver-clock population as a noise/cross-correlation track and dragged the median
-until the solve latched and never recovered. The offsets below are the real integrity
-residuals from that run's broker log.
+A satellite that is not L5-capable (PRN 2 here) can enter the receiver-clock population as a
+noise or cross-correlation track whose offset is uniform over the code; enough such tracks
+drag the circular median and get the solve refused. The PRN 2 offsets below are integrity
+residuals of such a track, taken from a broker log.
 
 Run: python3 test_clock_solve_guards.py
 """
@@ -20,9 +20,8 @@ CODE_LEN = 10230.0
 BOUND = 100.0
 MAX_AGE = 120.0
 
-# PRN 2's successive integrity residuals, read off /tmp/gnss_broker.log 19:47-19:55.
-# Uniform over +-CODE_LEN/2 -- a real satellite cannot move 5000 chips in 30 s (that
-# would be 500 km of range change).
+# PRN 2's successive integrity residuals: uniform over +-CODE_LEN/2. A real satellite
+# cannot move 5000 chips in 30 s (that would be ~150 km of range change).
 PRN2 = [
     -3226.49,
     2430.60,
@@ -36,7 +35,7 @@ PRN2 = [
     3549.15,
     2304.64,
 ]
-# Healthy satellites from the same lines: residuals of a few chips about a common clock.
+# Healthy satellites over the same cycles: residuals of a few chips about a common clock.
 HEALTHY = {
     1: [150.9, 151.2, 150.7, 151.4, 150.2, 151.0, 150.6, 151.3, 150.4, 150.8, 151.1],
     3: [152.5, 152.7, 153.1, 152.3, 152.9, 152.6, 153.0, 152.4, 152.8, 152.5, 152.9],
@@ -66,7 +65,7 @@ class TestErraticGuard(unittest.TestCase):
         self.assertEqual(dropped[0], [])
 
     def test_noise_track_is_excluded_from_cycle_two(self):
-        """THE INCIDENT: PRN 2 must be gone by the second cycle and stay gone."""
+        """The noise track (PRN 2) must be gone by the second cycle and stay gone."""
         kept, dropped = run_cycles(len(PRN2))
         for i in range(1, len(PRN2)):
             self.assertIn(
@@ -83,14 +82,12 @@ class TestErraticGuard(unittest.TestCase):
             self.assertNotIn(prn, d)
 
     def test_one_bad_track_does_not_by_itself_break_the_median(self):
-        """CALIBRATION, and it corrects the original #39 story.
+        """Calibration: a circular median absorbs a minority.
 
-        A circular median absorbs a minority. MEASURED against 4 healthy satellites:
-        1-3 noise tracks leave the median at 152.6 with MAD 3-6; the break happens at
-        4 of 8 -- median 383.6, MAD 233, i.e. past --dr-max-solve-mad-chips. So PRN 2
-        alone did NOT latch the clock on 2026-08-10, and the guard's value is that it
-        keeps the bad population BELOW half, not that it rescues a majority-noise
-        solve. What drove the other satellites bad that evening is still open.
+        Against 4 healthy satellites, one noise track leaves the MAD inside the bound; at 4
+        of 8 the MAD passes dr_max_solve_mad_chips and the solve is refused. One noise track
+        alone does not break the solve: the guard's value is keeping the bad population
+        below half, not rescuing a majority-noise solve.
         """
 
         def med_mad(vals):
@@ -140,8 +137,8 @@ class TestErraticGuard(unittest.TestCase):
             )
 
         self.assertEqual(sorted(p for p, _ in drop), sorted(erratic))
-        # MAD is what the code actually gates on, and unlike the median it is inflated
-        # by noise wherever it lands -- so this is the robust statement of the property.
+        # MAD is what the code gates on, and unlike the median it is inflated by noise
+        # wherever the noise lands, so this is the robust statement of the property.
         _, mad_raw = med_mad([d for _, d in offs])
         med_ok, mad_ok = med_mad([d for _, d in keep])
         self.assertGreater(
@@ -195,32 +192,27 @@ class TestErraticGuard(unittest.TestCase):
 
 
 class TestDopplerEmbedCancellation(unittest.TestCase):
-    """Pins the 2026-08-11 evening correction, which RETRACTED the same afternoon's
-    "Doppler lever" version of this guard.
+    """The Doppler lever cancels in cp_loc, so the guard tests the raw d_i.
 
-    The lever arithmetic (t_i * chip_rate / carrier ~ 1684 chips/Hz at 2.24 days of run
-    age) is real, but it appears in the search's published cp0 with a MINUS sign
-    (gnssSeedTransport.cpp detection_phase: cp0 = best_cp - off - drift) and in the
-    broker's cp_loc with a PLUS sign, same dop, same ref_hop -- so raw d_i never carried
-    it at all. MEASURED live 2026-08-11: cp_loc continuity over 1423 consecutive
-    detections is median 0.27 chips with Doppler jitter of +-60 Hz pass to pass.
+    The lever (t_i * chip_rate / carrier, ~1700 chips/Hz at ~2.26 days of run age) is real,
+    but it enters the search's published cp0 with a minus sign (gnssSeedTransport.cpp
+    detection_phase: cp0 = best_cp - off - drift) and the broker's cp_loc with a plus sign,
+    same dop, same ref_hop, so raw d_i never carries it.
 
-    The lever-subtracting guard therefore RE-INTRODUCED the term: (d - lev) stepped
-    1696 chips per Hz of Doppler re-estimate, flagged every satellite every cycle, hit
-    the min-sats floor and kept everything -- a silent no-op, live for ~2.5 h, and the
-    "before/after" measurement used to justify it was made against that no-op.
-    (Same class as the gates in [a-gate-that-cannot-fail]: it could not NOT fire.)
+    A guard that subtracts the lever reintroduces it: (d - lev) steps ~1700 chips per Hz of
+    Doppler re-estimate, every satellite trips every cycle, and the caller's min-sats floor
+    keeps them all, so the guard never acts.
     """
 
-    T_I = 195032.0  # s since sample 0, as measured 2026-08-11 20:43
+    T_I = 195032.0  # s since sample 0 (~2.26 days)
     CHIP = 10.23e6
     CARR = 1176.45e6
     LEV = T_I * CHIP / CARR  # ~1696 chips per Hz
 
     def test_the_embed_cancels_in_cp_loc(self):
-        """The whole argument in one assertion: build cp0 the way the search does,
-        reconstruct cp_loc the way the broker does, step the Doppler estimate by an
-        ordinary pass-to-pass jitter, and cp_loc must not move."""
+        """Build cp0 the way the search does, reconstruct cp_loc the way the broker does,
+        step the Doppler estimate by an ordinary pass-to-pass jitter: cp_loc must not
+        move."""
         best_cp = 4321.0  # physical phase at the snapshot start
         for dop in (1000.0, 1061.0, 875.5, 1125.0):  # +-60-125 Hz pass jitter
             t_i = self.T_I
@@ -233,11 +225,11 @@ class TestDopplerEmbedCancellation(unittest.TestCase):
 
     def test_an_ordinary_doppler_step_does_not_eject(self):
         """A 1.5 Hz Doppler re-estimate leaves d_i untouched (the embed cancels), so the
-        plain guard keeps the satellite. This is what the lever version got wrong: it
+        plain guard keeps the satellite. A lever-subtracting guard would eject it, having
         subtracted the lever from a quantity that never contained it."""
         hist = {}
         split_erratic_offsets([(5, 150.0)], hist, 0.0, BOUND, MAX_AGE, CODE_LEN)
-        # same clk + b_i; the Doppler moved 1.5 Hz and d_i therefore did NOT move
+        # same clk + b_i; the Doppler moved 1.5 Hz and d_i therefore did not move
         keep, drop = split_erratic_offsets(
             [(5, 150.4)], hist, 30.0, BOUND, MAX_AGE, CODE_LEN
         )
@@ -245,11 +237,10 @@ class TestDopplerEmbedCancellation(unittest.TestCase):
         self.assertEqual([p for p, _ in keep], [5])
 
     def test_the_lever_guard_would_have_flagged_everyone(self):
-        """The failure mode of the retracted version, kept as a spec of what NOT to
-        rebuild: subtracting a per-cycle lever from a lever-free d_i steps the tested
-        quantity by ~1696 chips/Hz of ddop, over the 100-chip bound for any
-        ddop > 0.059 Hz -- and pass-to-pass ddop is tens of Hz."""
-        ddop = 1.5  # an UNREMARKABLE step
+        """What a lever-subtracting guard does: subtracting a per-cycle lever from a
+        lever-free d_i steps the tested quantity by ~1696 chips/Hz of ddop, over the
+        100-chip bound for any ddop > 0.059 Hz, while pass-to-pass ddop is tens of Hz."""
+        ddop = 1.5  # an unremarkable step
         stepped = abs(self.LEV * ddop)  # what (d - lev) moved by
         self.assertGreater(
             stepped, 20.0 * BOUND, "1.5 Hz should overwhelm the bound 20x over"
@@ -261,7 +252,7 @@ class TestDopplerEmbedCancellation(unittest.TestCase):
         )
 
     def test_a_real_code_jump_is_still_caught(self):
-        """The PRN 2 incident remains the guard's reason to exist."""
+        """A jump of thousands of chips, like the noise track's, is still dropped."""
         hist = {}
         split_erratic_offsets([(2, 150.0)], hist, 0.0, BOUND, MAX_AGE, CODE_LEN)
         keep, drop = split_erratic_offsets(

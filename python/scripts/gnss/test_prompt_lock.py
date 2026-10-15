@@ -1,9 +1,8 @@
-"""The served C/N0 (#35): gnss_observables must emit the broker's published cn0_coh_db, not a
-value it recomputes from the row's deep_snr.
+"""The served C/N0: gnss_observables must emit the broker's published cn0_coh_db, not a value
+it recomputes from the row's deep_snr.
 
-⚠️ These tests must VARY THE AXIS (see chord-a-gate-that-cannot-fail): the fixture row is one on
-which the published and the recomputed values differ, so a writer that used either path
-unconditionally fails one of them.
+These tests vary the axis: the fixture row is one on which the published and the recomputed
+values differ, so a writer that used either path unconditionally fails one of them.
 """
 import math
 import unittest
@@ -12,9 +11,9 @@ from gnss_observables import cn0_dbhz
 
 
 class TestObservablesUsesPublishedCn0(unittest.TestCase):
-    """The #35 regression: gnss_observables recomputed cn0 from the row's OVERRIDDEN deep_snr
-    instead of taking the broker's cn0_coh_db, re-mixing the estimator populations that #35
-    separated. Measured live on gal_e5a: up to +9.7 dB hot, worst on `coh_src: quad:12`."""
+    """publish.py overrides the row's deep_snr with the fleet-coherent or quadrature-fallback
+    value, so a C/N0 recomputed from it mixes estimator populations and reads up to ~10 dB hot
+    on quad rows; cn0_coh_db is built from the best single instance."""
 
     def test_published_value_wins_over_recomputation(self):
         # A quadrature-fallback row: deep_snr is the inflated fleet-population number, while
@@ -35,8 +34,8 @@ class TestObservablesUsesPublishedCn0(unittest.TestCase):
         )
 
     def test_falls_back_only_when_broker_is_old(self):
-        """An older broker publishes no cn0_coh_db; we must still emit something rather than
-        drop the observable entirely."""
+        """A row without cn0_coh_db falls back to the recomputation rather than dropping the
+        observable."""
         row = {"deep_snr": 39.26, "coherence_s": 1.0486}
         got = cn0_dbhz(row, row["deep_snr"], row["coherence_s"])
         self.assertAlmostEqual(

@@ -1,20 +1,19 @@
-// Beam-cube viewer. Loads whole days of cube into the browser and does every collapse here,
-// so "sum over elements" and "sum over subbands" are one line each instead of a re-export.
+// Beam-cube viewer. Loads the selected days' cubes (one .bin per chain, on demand) and does
+// every collapse in the browser, so summing over elements or channels needs no re-export.
 //
-// ⚠️ THE SUMS ARE OVER ACCUMULATORS, NEVER OVER dB. Each cell carries (n, s1) of LINEAR
-// debiased power; a collapse adds s1 and adds n, and 10*log10 happens exactly once at the
-// end. Averaging decibels would be wrong in a way that still looks like a beam -- it
-// systematically under-weights the bright pixels and flattens the very structure being
-// measured. Every accumulation below is therefore linear.
+// The sums are over accumulators, never over dB. Each cell carries (n, s1) of linear debiased
+// power; a collapse adds s1 and adds n, and 10*log10 is taken once at the end. Averaging
+// decibels under-weights the bright pixels and flattens the structure being measured, while
+// still looking like a beam.
 
 'use strict';
 
 const S = {
   index: null, days: [], cache: new Map(),
   chains: [], sel: new Set(), nsub: 1, nelem: 32,
-  axis: [],              // ABSOLUTE freq_ids covered by the selected chains, sorted (the slider)
-  elOn: null,            // Set of enabled element indices (the sum AND the scan use it)
-  polSel: 'both',        // 'both' | 0 | 1 -- the VIEW, a second layer over elOn, never edits it
+  axis: [],              // absolute freq_ids covered by the selected chains, sorted (the slider)
+  elOn: null,            // Set of enabled element indices (the sum and the enabled-only slider)
+  polSel: 'both',        // 'both' | 0 | 1 -- the view, a second layer over elOn, never edits it
   offset: new Map(),     // chain -> dB offset applied when summing/comparing chains
   cmap: 0, grid: true, hover: null,
 };
@@ -24,12 +23,10 @@ const CMAPS = ['turbo', 'viridis', 'magma'];
 const R = 330, CX = 360, CY = 360;   // sky disc, canvas coordinates
 
 // ── healpix ang2pix RING ─────────────────────────────────────────────────────────────────
-// A PORT, AND IT IS VERIFIED, NOT TRUSTED. The export ships every pixel's (az, el) centre;
-// on load we run this port over those centres and require it to reproduce the pixel index
-// for all of them. A wrong pixelisation does not throw -- it draws a perfectly plausible
-// beam in the wrong place -- and the Python side of exactly this arithmetic was already
-// wrong once (ring2nest, 100% of pixels). So it gets a gate, and the page refuses to draw
-// rather than showing a map it cannot vouch for.
+// A port of healpy's ang2pix, checked on load: the export ships every pixel's (az, el) centre,
+// and verifyPixelisation requires this port to reproduce every pixel index. A wrong
+// pixelisation does not throw, it draws a plausible beam in the wrong place, so on any
+// mismatch the page refuses to draw.
 function ang2pixRing(nside, theta, phi) {
   const npix = 12 * nside * nside;
   const z = Math.cos(theta), za = Math.abs(z);
@@ -56,9 +53,9 @@ const azelToPix = (nside, az, el) =>
   ang2pixRing(nside, (90 - el) * Math.PI / 180, az * Math.PI / 180);
 
 // ── colour ───────────────────────────────────────────────────────────────────────────────
-// Compact anchor-interpolated maps. Perceptual ordering matters more than prettiness here:
-// the reader's question is "is this pixel brighter than that one", and a map that is not
-// monotone in lightness answers it wrongly.
+// Compact anchor-interpolated maps. The reader's question is "is this pixel brighter than
+// that one": viridis and magma are monotone in lightness and answer it directly; turbo (the
+// default) is not.
 const ANCHORS = {
   turbo: [[48,18,59],[70,107,227],[36,187,201],[130,231,100],[240,205,55],[246,120,32],[165,24,10]],
   viridis: [[68,1,84],[65,68,135],[42,120,142],[34,168,132],[122,209,81],[253,231,37]],
@@ -73,9 +70,8 @@ function ramp(name, x) {
 }
 
 // ── data ─────────────────────────────────────────────────────────────────────────────────
-// A day is a manifest plus one .bin PER CHAIN, fetched only when that chain is selected: the
-// channel axis is the full band (79 absolute F-engine channels for L5), so a chain is ~30 MB
-// and a whole day up front would be ~250 MB.
+// A day is a manifest plus one .bin per chain, fetched only when that chain is selected: with
+// the full channel axis a chain is tens of MB at nside 32.
 async function loadDay(day) {
   if (S.cache.has(day)) return S.cache.get(day);
   const man = await (await fetch(`cube_${day}.json`)).json();
@@ -105,8 +101,8 @@ async function loadChain(man, c) {
   c.loaded = true;
 }
 
-// THE GATE. Reproduce every shipped pixel centre's index with the JS port; any disagreement
-// means the port and the exporter do not share a convention and nothing below can be trusted.
+// Reproduce every shipped pixel centre's index with the JS port; any disagreement means the
+// port and the exporter do not share a convention, so the chain fails to load.
 function verifyPixelisation(man, c) {
   for (let i = 0; i < c.n_pix; i++) {
     const got = azelToPix(man.nside, c.ctr[2 * i], c.ctr[2 * i + 1]);
@@ -119,16 +115,16 @@ function verifyPixelisation(man, c) {
   }
 }
 
-// Collapse the selected days x chains x subbands x elements into per-pixel (n, s1).
-// Pure addition, on linear power. Returns a Map pix -> [n, s1].
+// Collapse the selected days x chains x channels x elements into per-pixel (n, s1), by
+// addition on the linear accumulators (s1 scaled by the chain's offset). Returns a Map
+// pix -> [n, s1].
 function collapse() {
   const acc = new Map();
   const subAll = document.getElementById('subsum').checked;
   const elAll = document.getElementById('elsum').checked;
-  // The subband slider walks S.axis, the union of ABSOLUTE channels over the selected chains.
-  // A chain joins a channel only where it covers it: gps_l5 and gal_e5b never share one, so
-  // a position on the slider is ONE frequency however many chains are ticked -- not "bin 3
-  // of whichever list each chain happens to have" (which was 5978 on l5 and 6134 on e5b).
+  // The channel slider walks S.axis, the union of absolute channels over the selected chains.
+  // A chain contributes only where it covers that channel, so a slider position is one
+  // frequency however many chains are ticked.
   const fidOne = S.axis[Math.min(+document.getElementById('sub').value, S.axis.length - 1)];
   const elOne = +document.getElementById('el').value;
   const [i0, i1] = dayRange();
@@ -137,21 +133,20 @@ function collapse() {
   for (let d = i0; d <= i1; d++) {
     const man = S.cache.get(S.days[d]);
     if (!man) continue;
-    // NEVER SUM TWO CURRENCIES. An elem-archive day is in raw power, a cube day is in
+    // Never sum two currencies. An elem-archive day is in raw power, a cube day is in
     // pedestal units ((P-F)/F), and a repoint is a different beam altogether. A day whose
     // units or pointing differ from the first selected day is skipped, and syncLabels says so.
+    // The array epoch is not compared.
     if (!sameCurrency(man, ref)) continue;
     for (const c of man.chains) {
       if (!S.sel.has(c.chain) || !c.loaded) continue;
       const P = c.n_pix;
       const e0 = elAll ? 0 : Math.min(elOne, c.n_elem - 1);
       const e1 = elAll ? c.n_elem - 1 : e0;
-      // The per-chain offset brings this chain onto the reference chain's zero (manifest
-      // default, reader-tweakable). Applied to the LINEAR accumulator, so the sum over
-      // chains is a weighted mean of aligned patterns, not of raw ones.
-      // Where several chains cover the same channel (l5/e5a/b2a all sit on 5972..6076) the
-      // pixel is their n-WEIGHTED mean: a chain that put 200 samples in a pixel outweighs
-      // one that put 2. A pixel only one chain reached is that chain's value, unchanged.
+      // The per-chain offset (manifest default, reader-editable) brings this chain onto the
+      // reference chain's zero. It scales the linear accumulator, so where several chains
+      // cover the same channel (l5/e5a/b2a) the pixel is the n-weighted mean of aligned
+      // patterns; a pixel only one chain reached is that chain's value.
       const gain = Math.pow(10, -(S.offset.get(c.chain) || 0) / 10);
       for (let s = 0; s < c.n_sub; s++) {
         if (!subAll && c.freq_ids[s][0] !== fidOne) continue;
@@ -173,9 +168,9 @@ function collapse() {
   return acc;
 }
 
-// The subband axis: every ABSOLUTE channel any selected (and loaded) chain covers in the
-// selected days, sorted. Rebuilt whenever the selection or the day range changes; the slider
-// keeps the same frequency across rebuilds when that frequency is still on the axis.
+// The channel axis: every absolute channel any selected (and loaded) chain covers in the
+// selected days of the first day's currency, sorted. Rebuilt whenever the selection or the day
+// range changes; the slider keeps its frequency across rebuilds while it is still on the axis.
 function rebuildAxis() {
   const [i0, i1] = dayRange();
   const ref = S.cache.get(S.days[i0]);
@@ -232,9 +227,9 @@ function draw() {
   }
   const dr = +document.getElementById('dr').value;
   const norm = document.getElementById('peaknorm').checked;
-  // Peak-normalise the VALUES, not just the axis labels. Setting the scale to -dr..0 while
-  // leaving v in raw dB clips the entire map to one colour -- and because the disc still
-  // fills, it reads as "the beam is flat" rather than as a broken scale.
+  // Peak-normalise the values, not just the axis labels. Setting the scale to -dr..0 while
+  // leaving v in raw dB clips the entire map to one colour, and because the disc still fills,
+  // it reads as "the beam is flat" rather than as a broken scale.
   if (norm && peak > -Infinity)
     for (const [k, v] of db) db.set(k, v - peak);
   const hi = norm ? 0 : peak, lo = hi - dr;
@@ -305,8 +300,8 @@ function drawGrid(g) {
     const r = a * Math.PI / 180;
     g.fillText(lab, CX + (R + 13) * Math.sin(r) - 4, CY - (R + 13) * Math.cos(r) + 4);
   }
-  // Boresight: az 180, el 81.41 (docs/CHORD_BEAM_MAPS.md). The map should peak here -- it is
-  // drawn as a PREDICTION to check the measurement against, never fitted to it.
+  // Boresight: az 180, el 81.41 (docs/CHORD_BEAM_MAPS.md §5). The map should peak here; it
+  // is drawn as a prediction to check the measurement against, never fitted to it.
   const brr = R * (90 - 81.41) / 90, ba = Math.PI;
   const bx = CX + brr * Math.sin(ba), by = CY - brr * Math.cos(ba);
   g.strokeStyle = '#4fd0c7'; g.lineWidth = 1.4;
@@ -334,9 +329,9 @@ function drawColorbar(lo, hi) {
 }
 
 // ── chrome ───────────────────────────────────────────────────────────────────────────────
-// Band membership, so mixing is flagged rather than silently averaged. Bands sit ~11 dB
-// apart in gain, and the cube's dB zero is arbitrary PER CHAIN -- so a sum across bands is
-// not a better-sampled beam, it is two beams with different offsets added together.
+// Band (MHz) per chain, so mixing bands is flagged rather than silently averaged. Bands
+// differ in gain and the cube's dB zero is per chain, so a sum across bands is not a
+// better-sampled beam but two beams with different offsets added together.
 const BAND = {
   gps_l5: '1176', gal_e5a: '1176', bds_b2a: '1176',
   gal_e5b: '1207', bds_b2b: '1207',
@@ -356,11 +351,11 @@ function checkBands() {
   } else el.innerHTML = '';
 }
 
-// TWO INDEPENDENT LAYERS, and everything that consumes the element axis goes through elActive:
-//   S.elOn   the reader's mask -- which elements are GOOD. Edited rarely, saved per browser.
-//   S.polSel the view -- which pol is on screen. Flipped constantly, never edits the mask.
-// They were one layer at first, and selecting a pol silently re-enabled every masked-out dead
-// feed. An element contributes only if BOTH allow it.
+// Two independent layers; the element sum and the enabled-only slider go through elActive,
+// and an element contributes only if both allow it:
+//   S.elOn   the reader's mask -- which elements are good. Edited rarely, saved per browser.
+//   S.polSel the view -- which pol is on screen. Flipped often, never edits the mask, so a
+//            pol flip cannot re-enable a masked feed.
 const polHalf = () => Math.floor(S.nelem / 2);
 const polAllows = e => S.polSel === 'both' || ((e < polHalf()) === (S.polSel === 0));
 const elActive = e => (!S.elOn || S.elOn.has(e)) && polAllows(e);
@@ -380,11 +375,11 @@ function bindUI() {
       draw();
     });
   }
-  // TWO LINKED ELEMENT SLIDERS. `el` walks every antenna, toggled-off ones included, so a
-  // reader can still go and look at the ones they masked out of the sum; `elon` walks only
-  // the enabled ones. Moving either moves the other. When `el` sits on a masked antenna the
-  // enabled-only slider has nothing to point at: it is greyed (not disabled) and parks at the
-  // nearest enabled one so the next nudge starts from somewhere sensible.
+  // Two linked element sliders. `el` walks every antenna, toggled-off ones included, so a
+  // reader can still look at the ones masked out of the sum; `elon` walks only the enabled
+  // ones. Moving either moves the other. When `el` sits on a masked antenna the enabled-only
+  // slider has nothing to point at: it is greyed (not disabled) and parks at the nearest
+  // enabled one, so the next nudge starts from somewhere sensible.
   const elon = document.getElementById('elon');
   elon.addEventListener('input', () => {
     const on = enabledList();
@@ -445,12 +440,11 @@ function syncLabels() {
           : `all (${S.axis.length})`;
   document.getElementById('drlab').textContent = document.getElementById('dr').value + ' dB';
   document.getElementById('mnlab').textContent = document.getElementById('mn').value;
-  // Elements 4, 5, 12, 13 are dark: their LNAs are broken and are not coming back. Not a
-  // fault to chase -- it is the instrument -- so the viewer says so instead of showing an
-  // empty sky and letting the reader diagnose it again.
+  // An element in DARK is the instrument, not a fault to chase: the label says so beside its
+  // empty map.
   const one = +document.getElementById('el').value;
-  // nOn is the EFFECTIVE count -- mask AND pol -- because that is what the map is actually a
-  // sum over. Reporting the mask size alone would overstate it whenever a pol is hidden.
+  // nOn is the effective count (mask and pol), because that is what the map is a sum over;
+  // the mask size alone would overstate it whenever a pol is hidden.
   const nOn = enabledList().length;
   const nMask = S.elOn ? S.elOn.size : S.nelem;
   const polTxt = S.polSel === 'both' ? '' : ` · pol ${S.polSel} only (slot, not feed plane`
@@ -461,7 +455,7 @@ function syncLabels() {
       : `${nOn} of ${S.nelem} elements in the sum`
         + (S.polSel !== 'both' && nMask > nOn ? ` (${nMask} unmasked, ${nMask - nOn} in the hidden pol)` : '')
         + (S.polSel === 'both' && nOn < S.nelem ? ' (toggle below)' : '') + polTxt;
-  const masked = elOn && !elActive(one);   // by the reader's mask OR by the hidden pol
+  const masked = elOn && !elActive(one);   // by the reader's mask or by the hidden pol
   document.getElementById('ellab').textContent =
     elOn ? '#' + one + (masked ? ' (masked out of the sum)' : '') : `all (${nOn})`;
   // Keep the enabled-only slider in step with the full one.
@@ -482,7 +476,7 @@ function syncLabels() {
   } else document.getElementById('elonlab').textContent = on.length ? `${on.length} enabled` : 'none enabled';
   for (const b of document.querySelectorAll('#elgrid button')) {
     const e = +b.dataset.e;
-    // `on` stays the READER'S mask so it is still legible while a pol is hidden; `polout` dims
+    // `on` stays the reader's mask so it is still legible while a pol is hidden; `polout` dims
     // the half that is out of view. Two states, because they mean different things.
     b.classList.toggle('on', !S.elOn || S.elOn.has(e));
     b.classList.toggle('polout', !polAllows(e));
@@ -495,11 +489,10 @@ function syncLabels() {
     const b = document.getElementById(id);
     if (b) b.classList.toggle('on', S.polSel === v);
   }
-  // The axis is the ABSOLUTE F-engine channel (0.1953125 MHz each), the union over every
-  // instance of the fleet AND over the selected chains -- never an instance's local bin
-  // index, which means nothing physical (bin 0 of cx19/gnss0 is 5972, bin 0 of cx27/gnss1
-  // is 5976). Chains that share a channel (l5/e5a/b2a) are averaged there; chains in other
-  // bands (e5b, b3i, e6, l2c) simply extend the axis.
+  // The axis is the absolute F-engine channel (0.1953125 MHz each), the union over the
+  // fleet's instances and the selected chains, never an instance's local bin index. Chains
+  // that share a channel (l5/e5a/b2a) are averaged there; chains in other bands extend the
+  // axis.
   const A = S.axis;
   let info = '';
   if (A.length) {
@@ -634,13 +627,13 @@ async function boot() {
   document.getElementById('elnone').addEventListener('click', () => setAll(() => false));
   document.getElementById('ellive').addEventListener('click', () => setAll(e => !DARK.includes(e)));
   document.getElementById('elinv').addEventListener('click', () => { const was = S.elOn; setAll(e => !was.has(e)); });
-  // The pol view. A RADIO, not a selection: one click flips, and none of it touches S.elOn, so
+  // The pol view. A radio, not a selection: one click flips, and none of it touches S.elOn, so
   // the reader's masking of dead feeds survives every flip. The cube packs element = pol*16 +
   // dish, so a pol is exactly a half: 0..15 and 16..31.
-  // ⚠️ POL IS THE SLOT, NOT THE FEED PLANE. Identical only from 2026-09-14 19:08Z: before the
-  // rewire A06, A07 and B07 carried slot 0 on plane B while the other thirteen carried plane A,
-  // so a per-pol average over a pre-rewire day mixes 13 dishes of one plane with 3 of the other.
-  // The day's array_epoch (now in index.json) is what tells you which side you are on.
+  // Pol is the slot, not the feed plane. In the first array epoch in
+  // config/chord_array_epochs.json three dishes carried slot 0 on plane B, so a per-pol average
+  // over a day of that epoch mixes planes. index.json records each day's array_epoch; the page
+  // does not check it.
   const POL_TITLE = 'pol = the SLOT (element = pol*16 + dish), not the feed plane. '
                   + 'Before the 2026-09-14 19:08Z rewire, A06/A07/B07 sat on the other plane '
                   + 'in slot 0, so a per-pol average over an earlier day mixes both planes.';
@@ -655,8 +648,7 @@ async function boot() {
     b.title = POL_TITLE;
     b.addEventListener('click', () => setPol(v));
   }
-  // Default to a single chain: a first view that silently mixed bands would teach the wrong
-  // reading of the very axis this page exists to separate.
+  // Default to a single chain, so the first view does not mix bands.
   const first = box.querySelector('input');
   if (first) { first.checked = true; S.sel.add(first.value); }
   await ensureDaysLoaded();                   // now the selected chain's .bin

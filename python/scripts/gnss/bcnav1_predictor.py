@@ -1,11 +1,11 @@
-"""Streaming BeiDou B1C B-CNAV1 decoder for the broker (S5 D-component #4, the LAST).
+"""Streaming BeiDou B1C B-CNAV1 decoder for the broker.
 
 Mirrors bcnav2_predictor.py: ingest the combiner's per-PRN nav_obs symbol emits, stitch them
 into an absolute-time symbol timeline, decode, and serve the ephemeris for the BRDC cross-check.
 beidou_bcnav1.py is the codec (SF1 framesync + 36x48 de-interleave + GF(64) NB-LDPC SF2 +
 CRC-24Q + BDS-3 CNAV-style ephemeris).
 
-SIMPLER TO SERVE than B-CNAV2: the WHOLE orbit is in SF2 (one subframe), so any CRC-valid SF2
+Simpler to serve than B-CNAV2: the whole orbit is in SF2 (one subframe), so any CRC-valid SF2
 yields a full ephemeris -- no cross-frame type matching. The frame is 1800 symbols (18 s), and
 find_frames needs the PRN (the SF1 sync pattern is PRN-specific).
 
@@ -117,7 +117,7 @@ class Bcnav1Predictor:
 
     # ----------------------------------------------------------------- serve
     def ephemeris(self, prn):
-        """SI ephemeris from the cached SF2 (the full orbit), fresh."""
+        """SI ephemeris from the cached SF2 (the full orbit) if decoded within SF2_TTL_S."""
         st = self._p.get(prn)
         if st is None or st.sf2 is None:
             return None
@@ -166,10 +166,10 @@ def _selftest():
     B._INVERT[0] = None
     pred = Bcnav1Predictor()
     pred._min_gap = 0.0
-    # 1 s emits (100 syms) from a CONTIGUOUS tracking run: one global carrier-sign convention
-    # across the whole run (continuous phase), which find_frames resolves via its pol=+-1. A
-    # B-CNAV1 frame is 18 s / ~18 emits, so unlike the shorter signals it cannot re-sync
-    # per-emit -- it needs a phase-continuous run (the realistic locked-tracking case).
+    # 1 s emits (100 syms) sharing one global carrier sign across the whole run, which
+    # find_frames resolves via its pol=+-1. A B-CNAV1 frame is 18 s / ~18 emits, so unlike the
+    # shorter signals it cannot re-sync per emit: it decodes only from a run whose emits share
+    # one sign.
     sgn = 1 - 2 * rng.randint(0, 2)
     ELEN = 100
     e = 0

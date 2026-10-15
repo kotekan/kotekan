@@ -1,15 +1,15 @@
-"""Streaming Galileo E5a-I F/NAV decoder for the broker (S5 D-component #2).
+"""Streaming Galileo E5a-I F/NAV decoder for the broker.
 
 Mirrors inav_predictor.py: ingest the combiner's per-PRN nav_obs symbol emits, stitch them
 into an absolute-time symbol timeline, decode, and serve the ephemeris for the BRDC
 cross-check. galileo_fnav.py is the codec (FEC / interleaver / CRC / page assembly /
 ephemeris field tables); this is the per-PRN state machine around it.
 
-SIMPLER THAN I/NAV. An F/NAV page is a SINGLE self-contained 500-symbol unit with its own
-CRC-24 and 12-symbol sync -- there is NO even/odd split, so decoding is just find-sync ->
-decode page -> CRC, with no cross-part pairing. Framesync is a sync correlation (both
+Simpler than I/NAV. An F/NAV page is a single self-contained 500-symbol unit with its own
+CRC-24 and 12-symbol sync -- there is no even/odd split, so decoding is just find-sync ->
+decode page -> CRC, with no cross-part pairing. Framesync is a sync pattern match (both
 polarities, since each emit's carrier sign is independent, exactly as for I/NAV). A page is
-trustworthy the moment it lands with a valid CRC; the ephemeris assembles once page TYPES
+trustworthy the moment it lands with a valid CRC; the ephemeris assembles once page types
 2,3,4 (the orbit) are held with a consistent IODnav.
 
 nav_obs interface (identical to CNAV/INAV): {utc_ref, rec_dt, br, phase, bits=[[idx,+-1],...]}.
@@ -91,7 +91,8 @@ class FnavPredictor:
 
     # ----------------------------------------------------------------- decode
     def _runs(self, st):
-        """Merge the stitched emits into maximal contiguous symbol runs (slot0, signs)."""
+        """Merge the stitched emits into maximal contiguous symbol runs (slot0, signs). Emit
+        polarities are not reconciled, so a run can flip sign at an emit boundary."""
         if not st.emits:
             return []
         runs = []
@@ -103,7 +104,7 @@ class FnavPredictor:
                 cur0, cur = s0, a.copy()
                 continue
             end = cur0 + len(cur)
-            if s0 <= end:  # overlap/abut: splice (shared slot signs agree)
+            if s0 <= end:  # overlap/abut: splice; the earlier emit's signs win
                 ov = end - s0
                 if ov < len(a):
                     cur = np.concatenate([cur, a[ov:]])
@@ -119,11 +120,11 @@ class FnavPredictor:
             n = len(soft)
             i = 0
             while i + PAGE <= n:
-                # ALWAYS try both polarities: each emit's carrier sign is independent, so a
-                # single locked polarity would blind us to pages from opposite-sign emits.
-                # The sync anchors each page to the TRUE polarity frame; decoded content is
-                # absolute. Do NOT jump on a bare sync (a false 12-symbol sync ~1/4096 would
-                # derail alignment) -- step by 1 and let the CRC be the true filter.
+                # Always try both polarities: each emit's carrier sign is independent, so a
+                # single locked polarity would miss pages from opposite-sign emits. The sync
+                # anchors each page to the true polarity frame; decoded content is absolute.
+                # Do not jump on a bare sync (a false 12-symbol sync ~1/4096 would derail
+                # alignment) -- step by 1 and let the CRC be the true filter.
                 for pol in (1.0, -1.0):
                     seg = pol * soft[i : i + PAGE]
                     hard = (seg[: G.N_SYNC] < 0).astype(np.int8)
@@ -141,8 +142,8 @@ class FnavPredictor:
 
     # ----------------------------------------------------------------- serve
     def ephemeris(self, prn):
-        """SI Keplerian set from cached page types 2,3,4 (orbit) with a CONSISTENT IODnav,
-        fresh; folds in page 1 (clock) when held."""
+        """SI Keplerian set from page types 2,3,4 (orbit) cached within PAGE_TTL_S with one
+        IODnav; folds in page 1 (clock) when held."""
         st = self._p.get(prn)
         if st is None:
             return None
@@ -190,7 +191,7 @@ def _selftest():
         pages[pt][G.CRC_AT : G.CRC_AT + 24] = [(crc >> (23 - i)) & 1 for i in range(24)]
     truth = G.parse_fnav_ephemeris(pages)
 
-    # build the symbol stream: one page per type, repeated, INDEPENDENT random polarity/emit
+    # build the symbol stream: one page per type, repeated, independent random polarity/emit
     sym = []
     for _ in range(3):
         for pt in (1, 2, 3, 4):

@@ -5,11 +5,13 @@ an absolute-time symbol timeline and decode CRC-valid frames. gps_cnav2.py is th
 framesync + block deinterleave + systematic LDPC extract + CRC-24Q); it has no SF2 ephemeris field
 table, so there is no ephemeris to serve.
 
-Like B-CNAV1 the frame is 18 s (1800 symbols) -- long, so it needs a phase-CONTINUOUS run to
-decode (find_frames needs 1852 contiguous symbols = frame + the next frame's SF1). The L1C-D
-combiner emits one symbol per 10 ms (navwipe_bit_records 1 -> br=1, rec_dt=0.010); integration_
-length 100 = a 1 s emit, longer than the broker's 0.2 s poll, so windows never drop (no B2b
-count-vs-time trap). br=1 -> no slot jitter. The stitcher carries the E5b-I fixes anyway.
+Like B-CNAV1 the frame is 18 s (1800 symbols) -- long, so it decodes only from a run whose
+emits share one carrier sign (find_frames needs 1852 contiguous symbols = frame + the next
+frame's SF1). The L1C-D combiner emits one symbol per 10 ms (navwipe_bit_records 1 -> br=1,
+rec_dt=0.010); integration_length 100 gives each emit a 1 s window, longer than the broker's
+--interval, so the windows of successive polls overlap and no symbol is lost between them.
+br=1 has no slot jitter; the stitcher still anchors slots to a per-PRN grid and salvages gappy
+emits, as inav_predictor does.
 """
 
 import time
@@ -138,7 +140,7 @@ class Cnav2Predictor:
 # ------------------------------------------------------------------- self-test
 def _selftest():
     """Build CNAV-2 frames (systematic SF2/SF3 + CRC + arbitrary parity, SF1, interleave), feed as
-    br=1 10 ms emits, recover the SF2/SF3 + TOI through the full predictor."""
+    1 s emits of br=1 10 ms symbols, recover the SF2 + TOI through the full predictor."""
     import gps_cnav2 as C
     from galileo_inav import crc24q
 
@@ -172,7 +174,7 @@ def _selftest():
     pred._min_gap = 0.0
     e = 0
     ELEN = 100
-    sgn = -1  # ONE polarity for the whole contiguous run (carrier stays locked);
+    sgn = -1  # one polarity for the whole contiguous run;
     # find_frames' both-polarity check resolves the global flip.
     while e + ELEN <= len(stream):
         obs = {

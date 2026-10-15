@@ -2,31 +2,31 @@
 """BeiDou B1I / B3I ranging-code check (BDS-SIS-ICD-B1I v3.0 / -B3I v1.0).
 
 Regression-checks lib/stages/gnss/beidouB1ICode.cpp and beidouB3ICode.cpp by re-running the
-ICD LFSR constructions here, INDEPENDENTLY of the C++, and asserting structural invariants plus
-stored fingerprints. Needs neither gnss-sdr nor PocketSDR (neither is installed on this box).
+ICD LFSR constructions here, independently of the C++ code, and asserting structural invariants
+plus stored fingerprints. The B3I G2 initial states are read from the C++ table (B3I_G2_INIT);
+the fingerprints pin them. Needs neither gnss-sdr nor PocketSDR.
 
-★ Both signals are LEGACY BeiDou, ALGORITHMIC (not memory codes like B1C/B2a/B2b), 1 ms period,
-DATA-ONLY (no pilot), and both carry the SAME 20-chip D1 NH secondary 00000100110101001110.
+Both are legacy BeiDou signals: LFSR-generated, 1 ms period, data only (no pilot), and both
+carry the same 20-chip D1 NH secondary 00000100110101001110.
 
-⚠️ THE TWO TRAPS THIS GUARDS, one per signal:
-  * B1I -- the G2 output tap is TWO taps XORed for PRN 1..37 and **THREE** for PRN 38..63. Most
+Two failure modes this guards, one per signal:
+  * B1I -- the G2 output tap is two taps XORed for PRN 1..37 and three for PRN 38..63. Most
     published tables stop at 37, so a transcription that stops there produces garbage for
-    exactly the BDS-3 satellites (the ones actually overhead). Checked by asserting PRN 38..63
-    are distinct from each other AND balanced -- a dropped third tap breaks both.
-  * B3I -- G1 is NOT free-running: its natural period exceeds the 10230-chip code, so the ICD
-    RESETS it to all-ones INSTEAD OF SHIFTING out of the phase 1111111111100 (stages 1..13),
+    exactly the BDS-3 satellites. Checked by asserting PRN 38..63 are distinct from each other
+    and balanced; a dropped third tap fails both.
+  * B3I -- G1 is not free-running: its natural period exceeds the 10230-chip code, so the ICD
+    resets it to all-ones instead of shifting out of the phase 1111111111100 (stages 1..13),
     which makes that phase the 8190th and last chip of each cycle. Omit the reset and the
     first 8190 chips are still correct while the tail diverges, giving a code that correlates
-    WEAKLY instead of not at all -- the hardest failure to attribute; reset one chip EARLY
-    (an 8189 cycle, gnss-sdr's reading, ours until #178) and the tail is wrong the same way,
-    1002 chips and 1.9 dB on every PRN. Checked by the fingerprints, which cover the whole
-    10230 and so cannot pass with either mistake. They were computed from two independent
-    implementations that agree (Peter Monta's GNSS-DSP-tools b3i.py, PocketSDR's sdr_code.py),
-    not from the model below.
+    weakly instead of not at all, the hardest failure to attribute. Reset one chip early (an
+    8189 cycle, gnss-sdr's reading) and the tail is wrong the same way: 1002 chips and 1.9 dB
+    on every PRN. Checked by the fingerprints, which cover all 10230 chips and so cannot pass
+    with either mistake. They were computed from two independent implementations that agree
+    (Peter Monta's GNSS-DSP-tools b3i.py, PocketSDR's sdr_code.py), not from the model below.
 
-⚠️ These are STRUCTURAL checks, not a bit-exact comparison against an external reference. The
-real validation is a sky lock: coherent tracking requires the code, its rate and its secondary
-to all be right at once (that is what settled Galileo E6 -- see galileoE6Code.hpp).
+Apart from the B3I fingerprints these are structural checks, not a bit-exact comparison against
+an external reference. The final validation is a sky lock: coherent tracking needs the code,
+its rate and its secondary all right at once.
 
     python3 b1i_b3i_code_check.py     # exits non-zero on any mismatch
 """
@@ -229,7 +229,7 @@ def b3i(prn, init=None):
     for _ in range(B3I_N):
         out.append(-1 if (g1[0] ^ g2[0]) else 1)
         if g1[0] == 0 and g1[1] == 0 and all(g1[k] == 1 for k in range(2, 13)):
-            g1 = [1] * 13  # ★ the ICD reset, instead of the shift -- see the header
+            g1 = [1] * 13  # the ICD reset, instead of the shift (see the docstring)
         else:
             f1 = g1[0] ^ g1[9] ^ g1[10] ^ g1[12]
             g1[:12] = g1[1:]

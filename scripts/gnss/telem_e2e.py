@@ -1,36 +1,34 @@
 #!/usr/bin/env python3
-"""END-TO-END GATE for the task #59 tracker->broker transport -- offline, ~20 s, no sky.
+"""End-to-end gate for the tracker->broker telemetry transport: offline, ~20 s, no sky.
 
-Drives the SHIPPED CODE, not a model of it: real GnssTelemPack, real bufferSend, real
-bufferRecv, real GnssTelemGather, real gnss_broker/telem.py. Only the record source is
-synthetic -- rawFileRead replays record frames this script writes, complete with the
-GnssChanMetadata (sample_seq) the packer keys on.
+Drives the shipped code, not a model of it: real GnssTelemPack, bufferSend, bufferRecv,
+GnssTelemGather and gnss_broker/telem.py. Only the record source is synthetic: rawFileRead
+replays record frames this script writes, complete with the GnssChanMetadata (sample_seq)
+the packer keys on.
 
-    python3 scripts/gnss/telem_e2e.py [--keep]
+    python3 scripts/gnss/telem_e2e.py [--keep] [--timeout S]
 
-WHY AN E2E AND NOT JUST THE UNIT TESTS. test_telem.py proves the parser matches gnssTelem.hpp
-and that the window store behaves. It cannot prove the two ends AGREE -- the packer's slot
-addressing, the bufferSend/bufferRecv frame-size and config_tracker contract, the gather's
-length-prefixed stream, and the client's grouping are four separate places where a mismatch
-delivers plausible data with the wrong address. Every historical instance of that class (#46,
-#52, #53, and the 6x error in #33's carrier-rate feed) was found on sky, weeks late, and read
-as physics.
+test_telem.py checks the parser against gnssTelem.hpp and the window store's behaviour. It
+cannot show that the two ends agree: the packer's slot addressing, the bufferSend/bufferRecv
+frame-size and config_tracker contract, the gather's length-prefixed stream and the client's
+grouping are four places where a mismatch delivers plausible data with the wrong address,
+which on sky reads as physics.
 
-THE THREE THINGS IT ACTUALLY TESTS, each written against a specific way the REST path failed:
+What it tests:
 
-  [1] PROVENANCE. Every row that comes out the far end must be byte-identical to the row
-      written for that (instance, hop, PRN). The payload encodes its own address, so a
-      mis-paired frame is caught rather than averaged.
+  [1] PROVENANCE. Every checked value that comes out the far end must be the one written for
+      that (instance, hop, PRN), and the wire must carry exactly the despread PRNs. The
+      payload encodes its own address, so a mis-paired frame is caught rather than averaged.
+      The comb columns are checked the same way, with their freq_id labels.
 
-  [2] GROUPING BY ABSOLUTE WINDOW, NOT ARRIVAL ORDER. One simulated instance starts LATE, so
-      its Nth frame is not its peers' Nth frame. Grouped by arrival order (which is what
-      polling 12 REST endpoints sequentially amounts to), it would be paired with the wrong
-      window -- and the resulting fleet sum would look fine and be wrong. Grouped by wstart,
-      it lands where it belongs and simply has no data for the earliest windows.
+  [2] GROUPING BY ABSOLUTE WINDOW, NOT ARRIVAL ORDER. One simulated instance starts late, so
+      its Nth frame is not its peers' Nth frame. Grouped by arrival order it would be paired
+      with the wrong window, and the fleet sum would look fine and be wrong. Grouped by
+      wstart, it lands where it belongs and simply has no data for the earliest windows.
 
   [3] A DROPPED RECORD IS A HOLE, NOT A SHIFT. One instance omits one record slot. Its
       neighbours must keep their own hops, and the fleet's hop sets must still agree on the
-      records that ARE there.
+      records that are there.
 """
 import argparse
 import json
@@ -57,8 +55,8 @@ from gnss_record_layout import (
     telem_max_chan,
 )
 
-# Ports deliberately far from anything live (11040-11061, 12048-12051 are all in use on the
-# site). A gate that collides with production is worse than no gate.
+# Ports clear of the site's live kotekan and broker ports (11025-11070, 12048-12060). A gate
+# that collides with production is worse than no gate.
 PORT_RECV = 11890
 PORT_SERVE = 11891
 PORT_REST = 12890
@@ -66,45 +64,43 @@ PORT_REST = 12890
 HOPS_PER_RECORD = 2048
 FFT_LEN = 16384
 REC_PER_FRAME = 4
-# ROW COMPACTION (task #64): the wire carries FEWER rows than the record buffer has PRN slots,
-# and GnssTelemPack fills them with the PRNs that were actually despread. MAX_PRN < N_PRN is the
-# whole point -- the previous code FATAL_ERRORed on exactly this configuration, so a regression
-# to slot-indexed rows cannot pass this gate.
+# Row compaction: the wire carries fewer rows (max_prn) than the record buffer has PRN slots,
+# and GnssTelemPack fills them with the PRNs actually despread. MAX_PRN < N_PRN, so slot-indexed
+# rows cannot pass this gate.
 MAX_PRN = 3
 N_PRN = 4
 N_ELEM = 2
 N_WINDOWS = 12
 PRNS = [3, 7, 10, 26]
-# One configured PRN that is NOT being despread. It must occupy no row at all: silence is not a
+# One configured PRN that is not being despread. It must occupy no row at all: silence is not a
 # row of zeros, and a zero row would be indistinguishable downstream from a satellite that was
 # tracked and found nothing.
 DEAD_PRN = 7
 LIVE_PRNS = [p for p in PRNS if p != DEAD_PRN]
 
-# The three simulated instances. cx51.1 starts LATE -- see [2] above.
+# The three simulated instances. cx51.1 starts late; see [2] above.
 INSTANCES = [("cx19.0", 0), ("cx42.1", 0), ("cx51.1", 3)]
 
 REC_STRIDE = record_stride(N_ELEM)
 N_CHAN = 5  # < TELEM_MAX_CHAN: the sender's row is narrower than the format's
-# ceiling, so the receive buffer is bigger than the frames and the
-# short-frame path through bufferRecv is what this exercises
-CHAN_FLOATS = 9  # E/P/L per channel (gnssRecord.hpp v3)
+# ceiling, so the receive buffer is bigger than the frames and this
+# exercises the short-frame path through bufferRecv
+CHAN_FLOATS = 9  # re, im, energy for each of P, E, L (gnssRecord.hpp)
 CHAN_IDS = [5972 + 16 * k for k in range(N_CHAN)]
 
 
 def _mark(inst, wstart, prn, slot):
-    """The value written into row slot `slot`. Encodes its own full address.
+    """The value written into row slot `slot`: it encodes its own address.
 
-    Distinct for every (instance, record, PRN, slot), and reproducible on the far side -- so
-    "did this row come from where the header says it did?" is a direct comparison rather than a
-    plausibility argument.
+    instance index x 4e6 + record x 1000 + PRN x 10 + slot, reproducible on the far side, so
+    "did this row come from where the header says it did?" is a direct comparison. Distinct
+    across instances and records; within one record PRN x 10 + slot can repeat, since comb
+    slots run to 404 (PRN 3 slot 100 equals PRN 10 slot 30).
 
-    ⚠️ TWO CONSTRAINTS, both learned by getting them wrong here. The value must be BELOW 2^24
-    so it survives the float32 record slot EXACTLY -- a mark near 1.7e7 quantizes to a ulp of 2
-    and the comparison starts failing on rows that are perfectly fine. And the instance term
-    must be a fixed index, never hash(): PYTHONHASHSEED is randomized per process, so a
-    hash-derived mark makes the gate pass or fail depending on the run, which is worse than no
-    gate.
+    The value must stay below 2^24 so it survives the float32 record slot exactly (above that
+    the ulp is 2 and correct rows fail the comparison). The instance term must be a fixed
+    index, never hash(): PYTHONHASHSEED is randomised per process, so a hash-derived mark
+    would make the result depend on the run.
     """
     ih = [i for i, (n, _) in enumerate(INSTANCES) if n == inst][0]
     rec = wstart // (HOPS_PER_RECORD * FFT_LEN)
@@ -114,14 +110,16 @@ def _mark(inst, wstart, prn, slot):
 
 
 def write_record_files(dirpath, inst, start_win, drop=()):
-    """⚠️ THE COMB MARKS ARE NOT A SIGNAL. They encode their own (instance, hop, PRN, channel)
-    address so a stride error is caught by value, which is what THIS gate needs -- but the
-    resulting E/P/L are arbitrary, so any discriminator built from them is meaningless.
+    """Write one rawFileWrite-format file of record frames for `inst`, omitting the
+    (window, record slot) pairs in `drop`; return its path.
 
-    One rawFileWrite-format file of record frames: [u32 meta_size][meta][frame] per frame, the
-    layout rawFileWrite produces (rawFileRead checks the size header on every frame) -- which is
-    what makes the replay a genuine stand-in for the assembler's output rather than a special
-    path.
+    Each frame is [u32 meta_size][meta][frame], the layout rawFileWrite produces and
+    rawFileRead checks on every frame, so the replay stands in for the assembler's output
+    rather than taking a special path.
+
+    The comb marks are not a signal. They encode their own (instance, hop, PRN, channel)
+    address so a stride error is caught by value, but the resulting E/P/L are arbitrary and
+    any discriminator built from them is meaningless.
     """
     meta_size = 12  # GnssChanMetadata: int64 sample_seq + uint32 reserved (0)
     path = os.path.join(dirpath, "%s_0000000.raw" % inst.replace(".", "_"))
@@ -144,15 +142,15 @@ def write_record_files(dirpath, inst, start_win, drop=()):
                     body[base + telem.REC_P_ENERGY] = (
                         0.0 if prn == DEAD_PRN else float(prn)
                     )
-                    # Element blocks: filled with a sentinel that must NEVER appear on the
-                    # wire. The transport ships the record HEADER only, and a stride bug would
+                    # Element blocks: filled with a sentinel that must never appear on the
+                    # wire. The transport ships the record header only, and a stride bug would
                     # smuggle these through looking like data.
                     for s in range(telem._ROW_FLOATS, REC_STRIDE):
                         body[base + s] = -12345.0
-                    # THE COMB, appended after every PRN record exactly as the assembler writes
-                    # it (gnssRecord.hpp chan_offset). Encodes its own full address so a stride
-                    # error anywhere between here and the broker is caught by value, not by
-                    # plausibility.
+                    # The comb block, after the last PRN record, per PRN then channel, exactly
+                    # as the assembler writes it (gnssRecord.hpp chan_offset). Each column
+                    # encodes its own address, so a stride error anywhere between here and the
+                    # broker is caught by value, not by plausibility.
                     cb0 = N_PRN * REC_STRIDE + (p * N_CHAN) * CHAN_FLOATS
                     for ch in range(N_CHAN):
                         cb = cb0 + ch * CHAN_FLOATS
@@ -168,11 +166,10 @@ def write_record_files(dirpath, inst, start_win, drop=()):
 
 
 def write_config(dirpath):
-    """One kotekan process: three sender legs + the gather, joined over localhost.
+    """One kotekan config: a sender leg per instance plus the gather, joined over localhost.
 
-    Both halves in one instance on purpose -- config/live_l5.yaml has used the same
-    bufferSend/bufferRecv-to-127.0.0.1 node mimic since the airspy days, and it exercises the
-    real socket path (framing, header contract, frame-size check) without needing two machines.
+    Both halves run in one process on purpose: bufferSend to 127.0.0.1 still exercises the real
+    socket path (framing, header contract, frame-size check) without needing two machines.
     """
     lines = [
         "type: config",
@@ -184,9 +181,9 @@ def write_config(dirpath):
         "telescope: {name: ICETelescope, num_polarizations: 1, num_dishes: 1,"
         " query_gps: false, require_gps: false}",
         "rest_server: {port: %d}" % PORT_REST,
-        # THE RECEIVE BUFFER IS THE CEILING, THE SENDERS ARE NARROWER -- the deployed shape,
-        # and the reason `allow_short_frames` is on: it holds the widest row the format admits
-        # while every sender here ships N_CHAN columns.
+        # The receive buffer is the ceiling and the senders are narrower, as deployed, hence
+        # `allow_short_frames`: it holds the widest row the format admits while every sender
+        # here ships N_CHAN columns.
         "telem_buf: {kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: 256,"
         " frame_size: %d}"
         % telem_frame_bytes(REC_PER_FRAME, MAX_PRN, telem_max_chan()),
@@ -236,8 +233,9 @@ def write_config(dirpath):
 
 
 def kotekan_binary():
-    """The DPDK build on a node, the DPDK-free one elsewhere: /home is NFS with two build trees
-    and the wrong one fails in a way that reads as a config problem."""
+    """The DPDK build on a cx node, the DPDK-free one elsewhere, falling back to whichever
+    exists: /home is NFS with two build trees, and the wrong one fails in a way that reads as a
+    config problem."""
     host = socket.gethostname().split(".")[0]
     cand = (
         [os.path.join(K, "build", "kotekan", "kotekan")]
@@ -263,7 +261,7 @@ def main():
     a = ap.parse_args()
 
     d = tempfile.mkdtemp(prefix="telem_e2e-")
-    # cx51.1 drops one record: window 5's slot 2. See [3].
+    # cx51.1 drops record slot 2 of absolute window 8 (its sixth window). See [3].
     drops = {"cx51.1": {(5 + 3, 2)}}
     for inst, start in INSTANCES:
         write_record_files(d, inst, start, drop=drops.get(inst, ()))
@@ -273,9 +271,8 @@ def main():
     print("kotekan  %s" % binary)
     print("scratch  %s" % d)
 
-    # ⚠️ --bind-address IS NOT OPTIONAL HERE. Without it kotekan's REST server takes its
-    # built-in default of 0.0.0.0:12048 -- which on a cx node is PRODUCTION's port. A gate that
-    # can steal the instrument's REST port is not a gate.
+    # --bind-address is required: without it kotekan's REST server binds its built-in default
+    # 0.0.0.0:12048, which on a cx node is the production REST port.
     proc = subprocess.Popen(
         [binary, "--config", cfg, "--bind-address", "127.0.0.1:%d" % PORT_REST],
         stdout=open(log, "wb"),
@@ -329,7 +326,7 @@ def main():
             % (len(wins), wins[0] if wins else "-", wins[-1] if wins else "-")
         )
 
-        # -- [1] PROVENANCE: every row is byte-identical to what was written for its address --
+        # -- [1] PROVENANCE: every checked value is the one written for its address ----------
         checked = 0
         for w in wins:
             for inst, f in client.frame_set("gps_l5", w).items():
@@ -337,9 +334,9 @@ def main():
                     if not f.has_record(r):
                         continue
                     wstart = f.wstart0 + r * HOPS_PER_RECORD * FFT_LEN
-                    # [1a] COMPACTION: exactly the despread PRNs, and nothing else. Checked per
-                    # record because the pack builds ONE row map for the whole window -- if it
-                    # ever rebuilt mid-frame, some record would disagree here.
+                    # [1a] Compaction: exactly the despread PRNs, and nothing else. prns() is the
+                    # frame's row map, read from record slot 0; a map rebuilt mid-frame would
+                    # show in the per-slot marks below, not here.
                     got_prns = f.prns()
                     if got_prns != LIVE_PRNS:
                         fails.append(
@@ -368,8 +365,8 @@ def main():
                             telem.REC_SKY_IM,
                         ):
                             want_v = _mark(inst, wstart, prn, s)
-                            # EXACT: the mark is an integer below 2^24, so a float32 round trip
-                            # is lossless and any difference at all is a real mis-addressing.
+                            # Exact: the mark is an integer below 2^24, so a float32 round trip
+                            # is lossless and any difference is a real mis-addressing.
                             if row[s] != want_v:
                                 fails.append(
                                     "%s w%d r%d PRN %d slot %d: %g != %g (the row came "
@@ -381,11 +378,11 @@ def main():
                                 "%s w%d r%d PRN %d: an ELEMENT block leaked into the "
                                 "wire row -- the stride is wrong" % (inst, w, r, prn)
                             )
-                        # [1b] THE COMB, v2. Same provenance rule: every column must be the
-                        # value written for that (instance, hop, PRN, channel), and its label
-                        # must be the freq_id the sender was configured with. A comb whose
-                        # columns survive but whose labels do not is worse than no comb -- the
-                        # delay fit downstream would be confidently wrong.
+                        # [1b] The comb. Same provenance rule: each column must carry the value
+                        # written for that (instance, hop, PRN, channel), divided by its replica
+                        # energy, and its label must be the freq_id the sender was configured
+                        # with. Columns that survive under wrong labels are worse than no comb:
+                        # the delay fit downstream would be confidently wrong.
                         cmb = [
                             (fid, P, en[1]) for fid, _E, P, _L, en in f.comb_epl(r, prn)
                         ]
@@ -394,7 +391,7 @@ def main():
                                 "%s w%d r%d PRN %d: %d comb columns, expected %d"
                                 % (inst, w, r, prn, len(cmb), N_CHAN)
                             )
-                        # E/L too: a tap that survives with the wrong VALUE is the failure a
+                        # E/L too: a tap that survives with the wrong value is the failure a
                         # shape-only check would miss.
                         for ch, (fid, E, P, L, _en) in enumerate(f.comb_epl(r, prn)):
                             for tag, got, off in (

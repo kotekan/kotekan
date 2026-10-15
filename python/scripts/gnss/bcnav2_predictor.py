@@ -1,14 +1,15 @@
-"""Streaming BeiDou B2a B-CNAV2 decoder for the broker (S5 D-component #3, first LDPC).
+"""Streaming BeiDou B2a B-CNAV2 decoder for the broker.
 
 Mirrors fnav_predictor.py: ingest the combiner's per-PRN nav_obs symbol emits, stitch them into
 an absolute-time symbol timeline, decode, and serve the ephemeris for the BRDC cross-check.
 beidou_bcnav2.py is the codec (24-sym preamble framesync + GF(64) NB-LDPC + CRC-24Q + BDS-3
 CNAV-style ephemeris); this is the per-PRN state machine around it.
 
-Structurally like F/NAV -- a B-CNAV2 frame is a SINGLE self-contained 600-symbol unit (24
+Structurally like F/NAV -- a B-CNAV2 frame is a single self-contained 600-symbol unit (24
 preamble + 576 LDPC) with its own CRC, no cross-frame pairing at the symbol level. The
-ephemeris spans message TYPES 10 (eph-I) and 11 (eph-II), matched by temporal freshness (BDS
-eph ~hourly, type 11 has no IODE), exactly as F/NAV matches its page types.
+ephemeris spans message types 10 (eph-I) and 11 (eph-II), paired by freshness alone (both
+cached within FRAME_TTL_S; BDS eph ~hourly, type 11 has no IODE), where F/NAV checks IODnav
+across its page types.
 
 nav_obs: {utc_ref, rec_dt, br, phase, bits=[[idx,+-1],...]}. For B2a-data the combiner emits one
 symbol per 5 ms (navwipe_bit_records 5 over 1 ms records -> br=5, rec_dt=0.001, br*rec_dt=0.005).
@@ -31,7 +32,7 @@ class _PrnState:
         self.emits = {}  # slot0 -> np.array(+-1) one per distinct nav_obs emit
         self.last_obs = None
         self.frames = {}  # mestype -> (frame_bits[288], sow, t_decoded)
-        self.n_frames = 0  # frames decoded (preamble+LDPC found)
+        self.n_frames = 0  # frames decoded (find_frames yields only CRC-OK frames)
         self.n_crc = 0  # frames with valid CRC
 
 
@@ -119,7 +120,7 @@ class Bcnav2Predictor:
 
     # ----------------------------------------------------------------- serve
     def ephemeris(self, prn):
-        """SI ephemeris from cached message types 10 & 11 (the orbit), fresh."""
+        """SI ephemeris from message types 10 & 11 (the orbit) cached within FRAME_TTL_S."""
         st = self._p.get(prn)
         if st is None:
             return None
@@ -148,7 +149,7 @@ def _selftest():
     prn = 30
 
     # build valid LDPC codewords whose info bits are a chosen 288-bit frame (types 10, 11)
-    # with a CONSISTENT ephemeris + valid CRC, then feed as symbol emits and recover it.
+    # with a consistent ephemeris + valid CRC, then feed as symbol emits and recover it.
     B._NB.init_gf()
     # plant a known ephemeris across types 10/11
     frames = {10: [0] * B.FRAME_BITS, 11: [0] * B.FRAME_BITS}
@@ -165,7 +166,7 @@ def _selftest():
         ]
     truth = B.parse_bcnav2_ephemeris(frames)
 
-    # encode each 288-bit frame into a valid 576-bit LDPC codeword whose FIRST 288 bits are the
+    # encode each 288-bit frame into a valid 576-bit LDPC codeword whose first 288 bits are the
     # frame (info-systematic): the decoder returns the first 288.
     def encode_frame(frame288):
         info = B._NB.bin2gf(np.array(frame288, dtype=np.uint8))  # 48 GF symbols

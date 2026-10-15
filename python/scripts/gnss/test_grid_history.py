@@ -1,10 +1,10 @@
-"""#117 -- the grid snapshot is a HISTORY, and that is what makes two bands pair.
+"""The grid snapshot is a history, and that is what makes two bands pair.
 
-The broker folds a record every GRID_HOPS (~1.0066 s) but the observables writer polls at
-2 s. That is exactly Nyquist, so a single-slot snapshot hands each poller its own alternating
-half of the grid hops; because each chain lands on its own alternate, a band PAIR shared ~40%
-of the grid and a triple ~35%. The hops were never missing from the broker -- only from the
-poll. These tests pin the retention, the arc rule, and the pairing yield the fix exists for.
+Grid hops come every GRID_HOPS (~1.0066 s), but each chain publishes once per 2 s broker
+cycle. That is exactly Nyquist, so a single-slot snapshot would hand each publish its own
+alternating half of the grid hops; each chain lands on its own alternate, so bands would pair
+on few of them. These tests pin the retention, the arc rule, and the pairing yield the history
+exists for.
 """
 import os
 import sys
@@ -27,9 +27,9 @@ def _fold(st, hop, dop=1000.0, n_inst=3):
 
 
 def _run(st, n_grid, first_rec=0):
-    """Fold CONSECUTIVE records spanning `n_grid` grid hops.
+    """Fold consecutive records spanning `n_grid` grid hops.
 
-    ⚠️ Stepping a whole grid hop per fold would be a 96-record gap, which breaks the arc on
+    Stepping a whole grid hop per fold would be a 96-record gap, which breaks the arc on
     every step (max_gap_rec=3) and leaves n_rec at 1 -- nothing publishes and the history
     never fills. Chains fold every record; only every 96th is a grid hop, which is exactly
     what makes the grid a shared key in the first place.
@@ -51,7 +51,7 @@ class TestGridRetention(unittest.TestCase):
 
     def test_only_grid_multiples_are_snapshotted(self):
         """A record off the grid never enters the history -- the grid is the pairing key."""
-        st = _run(F.SatAdr(), 1)  # lands exactly one record past the first grid hop
+        st = _run(F.SatAdr(), 1)  # records 0..96: ends exactly on grid hop GRID_HOPS
         self.assertEqual([g[0] for g in st.grid], [0, F.GRID_HOPS])
         _fold(st, (RECS_PER_GRID + 2) * HPR)  # a record, but not a grid hop
         self.assertEqual([g[0] for g in st.grid], [0, F.GRID_HOPS])
@@ -62,7 +62,7 @@ class TestGridRetention(unittest.TestCase):
 
 
 class TestPairingYield(unittest.TestCase):
-    """THE POINT OF THE FIX, as a number.
+    """The pairing yield the history exists for, as a number.
 
     Two chains poll the same 1.0066 s grid every 2 s at different phases. Model what each
     poll can report, with and without the history, and count the grid hops the two share.
@@ -88,7 +88,7 @@ class TestPairingYield(unittest.TestCase):
 
     def test_newest_only_loses_half_the_grid_and_most_of_the_pairs(self):
         a_new, _ = self._polls(0.0)
-        b_new, _ = self._polls(1.0)  # the other chain, half a grid hop out of phase
+        b_new, _ = self._polls(1.0)  # the other chain, half a poll period out of phase
         total = max(max(a_new), max(b_new)) + 1
         self.assertLess(
             len(a_new) / total, 0.65, "a 2 s poll cannot see every 1.0066 s hop"

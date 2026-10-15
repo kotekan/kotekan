@@ -1,22 +1,24 @@
-"""Streaming Galileo E1B I/NAV decoder for the broker (S5 D-component #1).
+"""Streaming Galileo I/NAV decoder for the broker (E1B, or E5b-I on the mid band).
 
 Mirrors cnav_predictor.py: ingest the combiner's per-PRN nav_obs symbol emits, stitch them
 into an absolute-time symbol timeline, decode, and serve the ephemeris for the BRDC
 cross-check. galileo_inav.py is the codec (FEC / interleaver / CRC / word assembly /
 ephemeris field tables); this is the per-PRN state machine around it.
 
-SIMPLER THAN CNAV IN ONE WAY, HARDER IN ANOTHER. Simpler: I/NAV carries a 10-symbol SYNC
-pattern in every page part, so framesync is a correlation, not the CRC-guided phase
+Simpler than CNAV in one way, harder in another. Simpler: I/NAV carries a 10-symbol SYNC
+pattern in every page part, so framesync is a pattern match, not the CRC-guided phase
 brute-force CNAV needs (CNAV has no in-stream sync). Harder: a nav word is split across an
-EVEN page part and the ODD one 250 symbols later, and the CRC spans both -- so decoding is
+even page part and the odd one 250 symbols later, and the CRC spans both -- so decoding is
 find-sync -> decode page part -> pair even+odd -> assemble -> CRC, and a word is only
 trustworthy once both halves land with a valid CRC.
 
-Carrier polarity is a per-emit sign ambiguity (the tracker's phase lock is mod pi): every
-page part is tried in both polarities, and its sync anchors the content to the true frame.
+Carrier polarity is a per-emit sign ambiguity (the combiner's squaring estimate of the carrier
+phase is mod pi): every page part is tried in both polarities, and its sync anchors the
+content to the true frame.
 
 nav_obs interface (identical to CNAV): {utc_ref, rec_dt, br, phase, bits=[[idx, +-1],...]}.
-For E1B the combiner emits one symbol per 4 ms record (br=1, rec_dt=0.004).
+For E1B the combiner emits one symbol per 4 ms record (br=1, rec_dt=0.004); E5b-I has the
+same 4 ms symbol over several records (br>1).
 """
 
 import time
@@ -70,11 +72,10 @@ class InavPredictor:
         st.last_obs = key
         sym_s = br * rec_dt
         # Symbol 0's absolute time, phase-corrected onto the symbol grid. Anchoring every emit to
-        # a PER-PRN grid origin (grid0) and indexing slots RELATIVE to it keeps round() near an
-        # integer, so consecutive emits abut exactly. Rounding each symbol's ABSOLUTE time instead
-        # (the old code) jitters +-1 slot whenever phase/br is fractional (br>1, e.g. E5b-I br=4):
-        # that 1-slot gap fragments the run and breaks I/NAV even/odd page pairing. br=1 (E1B) has
-        # an integer phase shift and was immune; this is identical for it (grid0 absorbs its offset).
+        # a per-PRN grid origin (grid0) and indexing slots relative to it keeps round() near an
+        # integer, so consecutive emits line up exactly. Rounding each symbol's absolute time
+        # instead jitters +-1 slot whenever phase/br is fractional (br>1, e.g. E5b-I br=4), and
+        # that 1-slot gap fragments the run and breaks I/NAV even/odd page pairing.
         t0 = utc_ref - phase * rec_dt
         if st.grid0 is None:
             st.grid0 = t0
@@ -88,10 +89,9 @@ class InavPredictor:
             m[slot] = sg
         if len(m) < 2:
             return
-        # Store every maximal CONTIGUOUS segment of the emit, not just gap-free emits. A weak data
-        # channel (E5b-I) exports gappy per-symbol streams -- dropping the whole emit on any gap
-        # (the old behaviour) discarded 100% of E5b-I emits. Its clean runs still carry decodable
-        # page parts and stitch with neighbours; the _runs/_decode path already handles the rest.
+        # Store every maximal contiguous segment (2+ symbols) of the emit, not just gap-free
+        # emits: a weak data channel (E5b-I) exports gappy per-symbol streams, and their clean
+        # runs still carry decodable page parts and stitch with neighbours in _runs.
         slots = sorted(m)
         seg = 0
         for i in range(len(slots)):
@@ -105,7 +105,8 @@ class InavPredictor:
         if len(st.emits) > EMIT_MAX:
             for s in sorted(st.emits)[:-EMIT_MAX]:
                 st.emits.pop(s, None)
-        # decode gate (spread work across PRNs, as CNAV does)
+        # decode gate: at most one decode per _min_gap, shared by all PRNs (no round-robin,
+        # unlike CNAV)
         now = time.time()
         if self._min_gap and now - self._last_decode < self._min_gap:
             return
@@ -114,7 +115,8 @@ class InavPredictor:
 
     # ----------------------------------------------------------------- decode
     def _runs(self, st):
-        """Merge the stitched emits into maximal contiguous symbol runs (slot0, signs)."""
+        """Merge the stitched emits into maximal contiguous symbol runs (slot0, signs). Emit
+        polarities are not reconciled, so a run can flip sign at an emit boundary."""
         if not st.emits:
             return []
         runs = []
@@ -126,7 +128,7 @@ class InavPredictor:
                 cur0, cur = s0, a.copy()
                 continue
             end = cur0 + len(cur)
-            if s0 <= end:  # overlap/abut: splice (shared slot signs agree)
+            if s0 <= end:  # overlap/abut: splice; the earlier emit's signs win
                 ov = end - s0
                 if ov < len(a):
                     cur = np.concatenate([cur, a[ov:]])
@@ -139,15 +141,15 @@ class InavPredictor:
     def _decode(self, prn, st):
         for run0, signs in self._runs(st):
             soft = signs.astype(float)
-            # collect sync-aligned page parts (both polarities unless already locked)
+            # collect sync-aligned page parts (both polarities)
             parts = {}  # start_slot -> content_bits[114]
             i = 0
             n = len(soft)
             while i + PAGE <= n:
-                # ALWAYS try both polarities: each emit's carrier sign is independent, so a
-                # single locked polarity would blind us to page parts from opposite-sign
-                # emits. The sync anchors each part to the TRUE polarity frame, so the
-                # decoded content is absolute regardless of the raw emit sign.
+                # Always try both polarities: each emit's carrier sign is independent, so a
+                # single locked polarity would miss page parts from opposite-sign emits. The
+                # sync anchors each part to the true polarity frame, so the decoded content is
+                # absolute regardless of the raw emit sign.
                 got = None
                 for pol in (1, -1):
                     seg = pol * soft[i : i + PAGE]
@@ -160,20 +162,20 @@ class InavPredictor:
                 if got is not None:
                     parts[run0 + i] = got
                     st.n_pages += 1
-                # do NOT jump on a bare sync: a false sync (10 symbols matching 0101100000
-                # by chance, ~1/1024 in FEC data) would jump PAST the real page parts and
-                # derail alignment. The CRC at the WORD level (below) is the true filter, so
+                # Do not jump on a bare sync: a false sync (10 symbols matching 0101100000
+                # by chance, ~1/1024 in FEC data) would jump past the real page parts and
+                # derail alignment. The CRC at the word level (below) is the true filter, so
                 # collect every sync-valid candidate and let CRC reject the false ones.
                 i += 1
-            # pair EVEN (flag 0) at slot s with ODD (flag 1) at slot s+PAGE; assemble+CRC
+            # pair even (flag 0) at slot s with odd (flag 1) at slot s+PAGE; assemble+CRC
             for s in sorted(parts):
                 even = parts[s]
                 odd = parts.get(s + PAGE)
                 if odd is None:
                     continue
-                # even/odd raw polarities MAY differ (opposite-sign emits) -- each part's
+                # even/odd raw polarities may differ (opposite-sign emits) -- each part's
                 # content is already in the true frame via its sync, so only the even/odd
-                # FLAGS gate the pairing, not the raw signs.
+                # flags gate the pairing, not the raw signs.
                 if int(even[0]) != 0 or int(odd[0]) != 1:
                     continue
                 res = G.assemble_word(even, odd)
@@ -188,7 +190,7 @@ class InavPredictor:
 
     # ----------------------------------------------------------------- serve
     def ephemeris(self, prn):
-        """SI Keplerian set from cached Word Types 1-4 with a CONSISTENT IODnav, fresh."""
+        """SI Keplerian set from Word Types 1-4 cached within WORD_TTL_S, one IODnav."""
         st = self._p.get(prn)
         if st is None:
             return None
@@ -245,14 +247,13 @@ def _selftest():
             sym.append(np.where(G.encode_page_part(odd) == 0, 1.0, -1.0))
     pm = np.concatenate(sym).astype(np.int8)  # transmitted +-1 (0->+1, 1->-1)
 
-    # Feed as page-aligned emits (one 250-symbol page part each) with an INDEPENDENT
+    # Feed as page-aligned emits (one 250-symbol page part each) with an independent
     # random polarity per emit -- the combiner's deep-integration sign is arbitrary per
     # emit. I/NAV's sync lets each page part self-resolve its own polarity, so as long as
     # a page part lands within one single-polarity span it decodes; page-length emits are
-    # the clean case. (A sub-page emit that splits a page part across a polarity flip
-    # corrupts THAT part -- a graceful loss: the ephemeris still assembles from the parts
-    # that land clean. Handling straddles needs per-emit polarity resolution -- a TODO to
-    # settle against the real E1B combiner's emit cadence, not a correctness gap here.)
+    # the clean case. (A page part split across a polarity flip between emits is lost; the
+    # ephemeris still assembles from the parts that land clean. The decoder does not
+    # resolve per-emit polarity across such a straddle.)
     pred = InavPredictor()
     pred._min_gap = 0.0
     ELEN = PAGE  # 250 = one page part per emit

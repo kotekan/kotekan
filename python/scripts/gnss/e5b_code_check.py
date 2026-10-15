@@ -2,14 +2,14 @@
 """Galileo E5b-I / E5b-Q spreading-code bit-exactness check (Galileo OS SIS ICD).
 
 Mirrors lib/stages/gnss/galileoE5bCode.cpp exactly (same shared 14-stage Fibonacci lfsr14,
-all-ones X1, per-PRN X2 start tables, and the pre-resolved X1/X2 taps) and asserts it against
-PocketSDR-verified fingerprints, so the C++ transcription can be regression-checked WITHOUT
-PocketSDR present. If PocketSDR's sdr_code is importable (e.g. on PATH), it additionally
+all-ones X1, per-PRN X2 start tables, and the pre-resolved X1/X2 taps) and asserts the mirror
+against PocketSDR-verified fingerprints, so it runs without PocketSDR present. The primary-code
+constants are a copy kept in step with the C++ by hand; the CS100 secondary tables are parsed
+from the C++ by name. If PocketSDR's sdr_code is importable (on PYTHONPATH), it also
 cross-checks bit-exact against gen_code('E5BI'/'E5BQ', prn) for all 50 PRNs.
 
-E5b shares 1207.14 MHz with BeiDou B2b, so one mid-band capture validates both. Same discipline
-as the E5a/B2b tables: an ICD transcription (via PocketSDR T.Takasu) asserted here and finally
-proven by live acquisition off the retuned 1207.14 MHz dongle.
+E5b shares 1207.14 MHz with BeiDou B2b. As with the E5a and B2b tables, the codes are an ICD
+transcription (via PocketSDR, T. Takasu) asserted here; live acquisition is the final proof.
 
     python3 e5b_code_check.py     # exits non-zero on any mismatch
 """
@@ -23,7 +23,7 @@ X1_TAP = 0x040B  # shared X1 tap (ICD 0o64021)
 E5BI_X2_TAP = 0x1265  # E5b-I X2 tap (ICD 0o51445)
 E5BQ_X2_TAP = 0x2331  # E5b-Q X2 tap (ICD 0o43143)
 
-# Per-PRN X2 START values (bit-reversed ICD Annex C), == galileoE5bCode.cpp tables.
+# Per-PRN X2 start values (bit-reversed ICD Annex C), == galileoE5bCode.cpp tables.
 E5BI_X2_START = (
     0x025C,
     0x390D,
@@ -178,25 +178,16 @@ def _fp(code):
     return (zlib.crc32(bits.encode()) & 0xFFFFFFFF, sum(1 for x in code if x > 0))
 
 
-# -- E5b-Q CS100 SECONDARY -----------------------------------------------------------------
+# -- E5b-Q CS100 secondary -----------------------------------------------------------------
 #
-# ⚠️ WHAT THIS CAN AND CANNOT PROVE. The per-PRN CS100 overlay in galileoE5bCode.cpp was, until
-# 2026-08-09, asserted by NOTHING: the primaries above have this bit-exactness gate for all 50
-# PRNs, while CS100_E5BQ_HEX appeared in exactly one place -- its own definition -- with a
-# comment claiming provenance (PocketSDR CS100[50:100]) and no check behind it. That is the
-# failure mode that hides longest, because a wrong 100-chip overlay leaves the 1 ms primary
-# correlation intact and only destroys integration BEYOND one code period.
+# What this can and cannot prove. A wrong 100-chip overlay leaves the 1 ms primary correlation
+# intact and only destroys integration beyond one code period, so the primary checks above
+# cannot see it. The fingerprints below were computed from the current table: they are a
+# regression gate (an edit, a re-paste, a half-applied patch), not a correctness proof.
 #
-# The fingerprints below are computed FROM THE CURRENT TABLE, so they are a REGRESSION gate --
-# they catch an edit, a re-paste or a half-applied patch. They are NOT a correctness proof, and
-# calling them one would be exactly the "gate that cannot fail" this project keeps re-learning.
-#
-# THE CORRECTNESS EVIDENCE IS THE SKY, and it is per-PRN. The deep window is ~1.05 s = 1000
-# primary periods = 10 full CS100 cycles, so a wrong secondary cannot produce a coherent
-# detection: it would cancel itself. Every PRN in SKY_CONFIRMED below reached deep_snr > 20 at
-# coh_frac > 0.90 on the 2026-08-09 soak, i.e. its overlay is right. PRN 29 peaked at deep 670
-# with coh 1.00. That is stronger evidence than any table comparison, and it only became
-# available once the second band could track at all (task #34).
+# Correctness evidence comes from the sky, per PRN. A deep window spans several 100 ms CS100
+# cycles, so a wrong secondary cancels itself and cannot give a coherent detection.
+# SKY_CONFIRMED lists the PRNs whose overlay reached deep_snr > 20 at coh_frac > 0.90.
 CS100_TABLE_CRC32 = 0xC19C50AB  # crc32 of all 50 hex strings concatenated
 CS100_FP = {  # prn: (crc32 of the 100-bit string, popcount of 1s)
     1: (0x88582830, 54),
@@ -267,9 +258,10 @@ def check_cs100():
         min(pops) >= 45 and max(pops) <= 55,
         "range %d..%d" % (min(pops), max(pops)),
     )
-    # Near-orthogonality: a duplicated or shifted-in entry survives every check above but
-    # shows here. For random +-1 length-100 sequences sd = 10, so over 1225 pairs an extreme
-    # of ~3.5 sd is EXPECTED -- the bar is set where a genuine collision (|corr| -> 100) lands.
+    # Near-orthogonality: a near-duplicate entry (one hex digit off) passes the distinctness
+    # check but shows here. For random +-1 length-100 sequences sd = 10, so over 1225 pairs an
+    # extreme of ~3.5 sd is expected; the bar of 50 sits between that and a collision
+    # (|corr| ~ 100).
     worst = 0
     for i in range(50):
         bi = bits(b[i])

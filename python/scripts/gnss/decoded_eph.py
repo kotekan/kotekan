@@ -1,33 +1,31 @@
-"""Predict from ON-NODE DECODED ephemeris -- the BRDC fallback for network loss.
+"""Predict from the broker's own decoded ephemeris: the fallback while no BRDC is loaded.
 
-The broker's whole predict/seed path runs on `gnss_ephemeris.predict_all(eph, ...)`, which is
-fed by a NETWORK fetch (`fetch_brdc`). When that fetch fails (no connectivity, mirror outage)
-the broker goes dark. But each constellation's decoder already extracts a full, BRDC-validated
-ephemeris on-node (the 60 s dpos cross-check proves sub-metre agreement). This module turns those
-decoded ephemerides into the SAME per-satellite output `predict_all` produces, so the broker can
-keep predicting off its own decode when the network drops.
+Dead reckoning normally predicts with `gnss_ephemeris.predict_all` over the BRDC files
+`fetch_brdc` supplies. While no BRDC ephemeris is loaded (no connectivity, a mirror outage), the
+broker's nav decoders still hold full ephemerides, each cross-checked against BRDC
+(sky._*_brdc_xcheck). This module turns them into the per-satellite output `predict_all`
+produces, so dead reckoning keeps predicting (gnss_broker/deadreckon; decoded_eph_fallback in
+gnss_broker/cli.py).
 
-WHY NOT convert decoded -> RINEX records and reuse predict_all directly: the CNAV / B-CNAV2
-ephemerides use the MODERNIZED orbit model (A_ref+dA, A_dot, dn0_dot, i0_dot) that the legacy
-`sat_pos_clk` cannot represent. So we reuse each decoder's OWN `sv_position_*` (the exact
-propagator the dpos cross-check validated) and replicate only the geometry wrapper here --
-byte-for-byte the light-time/Sagnac/az-el/range-rate block from `predict_all`.
+Why not convert decoded records to RINEX and reuse predict_all: the CNAV and B-CNAV2
+ephemerides use the modernized orbit model (A_ref+dA, A_dot, dn0_dot, i0_dot), which the legacy
+`sat_pos_clk` cannot represent. So each decoder's own `sv_position_*` (the propagator the BRDC
+cross-check validates) is reused, and only the geometry wrapper is replicated here: the same
+light-time/Sagnac/az-el/range-rate block as `predict_all`.
 
-SCOPE / HONESTY:
-  * POSITION -> az/el/range: exact (validated propagator).
-  * VELOCITY -> range-rate/Doppler: central finite-difference of position (the propagators return
-    no velocity); ~mm/s accurate, i.e. sub-0.1 Hz at L1 -- ample for search Doppler hints.
-  * sat_clk_s: from the decoder's clock terms WHERE it exposes them (Galileo I/NAV & F/NAV carry
-    af0/af1/af2+t0c; CNAV/B-CNAV keep clock in separate message types and may not) -> None when
-    absent. Geometry and Doppler do NOT need it; only ABSOLUTE code-phase seeding does, and an
-    already-tracking sat's DLL holds code phase regardless. So the fallback keeps acquisition,
-    hints and the sky alive through an outage; precise cold code-seeding degrades where the clock
-    is absent -- flagged, not hidden.
+Scope:
+  * Position -> az/el/range: the decoder's propagator.
+  * Velocity -> range rate/Doppler: central difference of position (the propagators return no
+    velocity); ~mm/s, sub-0.1 Hz at L1, ample for search Doppler hints.
+  * sat_clk_s: the decoder's clock polynomial where CLOCK_FIELDS lists one (Galileo I/NAV and
+    F/NAV, GPS LNAV), else None; no relativistic or group-delay term. Geometry and Doppler do
+    not need it; only absolute code-phase seeding does, and a tracking satellite's DLL holds
+    code phase regardless. So the fallback keeps acquisition, hints and the sky alive; cold
+    code seeding degrades where the clock is absent.
 
-Only a per-constellation broker's OWN sats are covered (its decoder), which is exactly the set it
-predicts. Fail-safe by construction: every entry is independently guarded so one bad ephemeris
-cannot take out the rest, and a caller wraps the whole thing so the fallback can never worsen an
-outage.
+Only the broker's own satellites are covered (its decoders), which is the set it predicts.
+Every entry is guarded separately so one bad ephemeris cannot take out the rest, and the caller
+wraps the whole call so the fallback cannot worsen an outage.
 """
 
 import math
@@ -40,8 +38,8 @@ from gnss_ephemeris import BDT_GPST, C_LIGHT, OMEGA_E, _azel, _ecef_of_llh, gpst
 CLOCK_FIELDS = {
     "GAL_E1B_INAV": ("af0", "af1", "af2", "t0c"),
     "GAL_E5AI_FNAV": ("af0", "af1", "af2", "t0c"),
-    # GPS LNAV carries its clock in subframe 1 (af0/af1/af2 about toc) -- so unlike CNAV, the L1
-    # fallback can seed ABSOLUTE code phase, not just geometry/Doppler.
+    # GPS LNAV carries its clock in subframe 1 (af0/af1/af2 about toc), so unlike CNAV the L1
+    # fallback can seed absolute code phase, not just geometry and Doppler.
     "GPS_L1_LNAV": ("af0", "af1", "af2", "toc"),
 }
 
@@ -64,11 +62,11 @@ def _sat_clock(eph, signal, t_sow):
 def predict_one(sv_pos, eph, sys, signal, rx, lat, lon, t_sow, toe_age_s, dt=0.5):
     """One satellite's az/el/range/range-rate/sat_clk, mirroring predict_all's per-sat block.
 
-    ★ FRAME: `t_sow` and everything `sv_pos`/`_sat_clock` see is the constellation's SECONDS-OF-
-    WEEK, because the decoder propagators (`sv_position_inav/_fnav/_cnav/_bcnav1/_bcnav2`) week-
-    wrap `tk = t - t0e` with a per-week fold and so REQUIRE a sow time, not continuous GPST.
-    `sv_pos(eph, t_sow) -> ECEF (x,y,z)`. `toe_age_s` (continuous) is supplied by the caller for
-    the report only. Returns the dict predict_all emits, or None on any failure."""
+    `t_sow` and everything `sv_pos`/`_sat_clock` see is the constellation's seconds of week: the
+    decoder propagators (`sv_position_*`) fold `tk = t - t0e` per week and so need a
+    seconds-of-week time, not continuous GPST. `sv_pos(eph, t_sow) -> ECEF (x,y,z)`.
+    `toe_age_s` (continuous) is supplied by the caller for the report only. Returns
+    predict_all's dict without tgd_s, or None on any failure."""
     try:
         om_e = OMEGA_E[sys]
         tau = 0.075
@@ -81,8 +79,8 @@ def predict_one(sv_pos, eph, sys, signal, rx, lat, lon, t_sow, toe_age_s, dt=0.5
             pos_rx = (px, py, pos[2])
             az, el, rng = _azel(rx, pos_rx, lat, lon)
             tau = rng / C_LIGHT
-        # velocity by central difference of the (un-rotated) position, exactly the frame
-        # predict_all's analytic `vel` lives in -> range-rate matches to the finite-diff error.
+        # velocity by central difference of the un-rotated position, the frame predict_all's
+        # `vel` lives in, so range rate matches it to the finite-difference error
         pa = sv_pos(eph, t_sow - tau + dt)
         pb = sv_pos(eph, t_sow - tau - dt)
         vel = [(a - b) / (2.0 * dt) for a, b in zip(pa, pb)]
@@ -103,13 +101,12 @@ def predict_from_decoders(entries, lat, lon, alt, t_utc, mask_deg=0.0, max_age=1
     """predict_all-shaped output from decoded ephemerides.
 
     `entries`: list of (sys, prn, signal, eph_dict, sv_pos_fn, toe_gpst). `toe_gpst` is the
-    ephemeris reference in the CONTINUOUS GPST frame, used for the toe-age gate + report; pass
-    None to skip the gate (age unknown). The propagators themselves are fed SECONDS-OF-WEEK
-    (see predict_one). Returns {(sys, prn): {...}}.
+    ephemeris reference in continuous GPST, used for the toe-age gate and the report; pass None
+    to skip the gate (age unknown). The propagators themselves are fed seconds of week (see
+    predict_one). Returns {(sys, prn): {...}}.
 
     Independent per-entry guards: one malformed ephemeris drops that satellite, never the set.
-    Side-effect-free, so a caller can try/except it around the network fetch with zero risk to
-    the running loop."""
+    Side-effect free, so a caller can wrap it in try/except without risk to the running loop."""
     t = gpst_of_utc(t_utc)
     t_sow = (
         t - (t // 604800) * 604800

@@ -1,42 +1,42 @@
 #!/usr/bin/env python3
-"""F1 GATE (task #51): does the C++ fleet discriminator agree with the Python one?
+"""Gate: does the C++ fleet discriminator agree with the Python one?
 
-Builds a fixture of telemetry frames, hands the SAME BYTES to both arms, and compares the
+Builds a fixture of telemetry frames, hands the same bytes to both arms, and compares the
 discriminator they produce for every PRN:
 
     Python:  gnss_broker.telem.TelemFrame -> TelemClient._store_frame -> combdll.fleet_dll_comb
     C++:     scripts/gnss/fleetdll  ->  gnss::FleetDll  (lib/stages/gnss/gnssFleetDll.hpp)
 
 Neither arm is a model of the other: both are the shipped code. The Python side goes through
-the REAL client ring (so `windows(lag=1)` and the eviction policy are exercised, not
-reimplemented), and the C++ side is the same header GnssFleetTrim runs in production.
+the real client ring (so `windows(lag=1)` and the eviction policy are exercised, not
+reimplemented), and the C++ side is the same header GnssFleetTrim runs in production. Further
+legs compare the per-PRN and per-channel taps, the per-record series and the integrator's trim
+series, and check xcoh, the C++ arm's late-frame drop, taps_win != n_win, the trim store and
+the absolute floor.
 
-WHY BYTES AND NOT NUMBERS. Every transport defect this project has paid for lived in a
-CONVENTION between two components -- what a number means, what it is reduced modulo, which
-epoch it references -- and none was visible to a test of either component alone. A fixture of
-floats handed to two parsers tests the parsers. A fixture of BYTES tests the contract.
+Bytes, not numbers: a defect in the convention between two components (what a number means,
+what it is reduced modulo, which epoch it references) is invisible to a test of either alone.
+A fixture of floats handed to two parsers tests the parsers; a fixture of bytes tests the
+contract.
 
     ./fleetdll_gate.py                 # build, run both arms, compare
-    ./fleetdll_gate.py --self-test     # ALSO prove the comparison can fail (see below)
+    ./fleetdll_gate.py --self-test     # also prove the comparison can fail (see below)
     ./fleetdll_gate.py --keep DIR      # leave the fixture and both answers behind
 
-⚠️ THE GATE MUST BE ABLE TO FAIL. --self-test perturbs one channel of one record by 1% and
-requires the comparison to report a difference. A gate that only ever passes has told you
-nothing, and this repository has shipped two of those (docs/CHORD_FAST_TRIM.md 7b).
+The gate must be able to fail. --self-test perturbs one channel's early tap in one record
+(x1.01 + 1.0) and requires both arms to still agree with each other while differing from the
+clean answer, then moves one sender's REC_PHI0 and requires the lobe power to move.
 
-⚠️ THE COHERENCE UNIT IS THE LOBE, NEVER THE SENDER. Each sender's rows carry REC_PHI0, the
-per-sender phase reference the assembler applied, and the fixture writes a DIFFERENT one per
-sender, record and PRN, rotating that sender's comb by exp(-i*phi0) so that ONLY the
-rotation by exp(+i*phi0) recovers the common reference. An arm that dropped the rotation, or
-formed a power per sender before adding, gives a different lobe power here. Absolute freq_ids
-are disjoint per sender (the fleet's `mod 8` grouping) except one deliberate duplicate, so
-the per-channel table's dup handling is exercised too.
+The coherence unit is the lobe, never the sender. Each sender's rows carry REC_PHI0, the
+per-sender phase reference the assembler applied, and the fixture writes a different one per
+sender, record and PRN, rotating that sender's comb by exp(-i*phi0) so that only the rotation
+by exp(+i*phi0) recovers the common reference. An arm that dropped the rotation, or formed a
+power per sender before adding, gives a different lobe power here. Absolute freq_ids are
+disjoint per sender (stride 8, offset by the sender index) except one deliberate duplicate, so
+the per-channel table's duplicate handling is exercised too.
 
-⚠️ AND IT MUST BE PRODUCTION-SIZED. A 3-PRN fixture could not catch the regression where 5 Hz
-was requested and 1.5 Hz delivered. This one carries PRN and instance counts in the production
-range for the same reason, even though F1 measures no rate: the shapes a bug hides in (row
-compaction, an instance with a different channel count, a PRN below min_instances) do not
-appear at three PRNs.
+The fixture is large enough for the shapes a bug hides in (row compaction, instances with
+different channel counts, a PRN below min_instances), which do not appear at three PRNs.
 """
 import argparse
 import json
@@ -55,17 +55,17 @@ from gnss_broker import combdll, telem  # noqa: E402
 
 
 # ---------------------------------------------------------------------------------------------
-# The fixture. Deliberately built from the SAME struct the broker parses with (telem._HDR), so a
-# layout drift fails here as a struct error rather than as quietly wrong numbers.
+# The fixture. Built from the same struct the broker parses with (telem._HDR), so a layout
+# drift fails here as a struct error rather than as quietly wrong numbers.
 # ---------------------------------------------------------------------------------------------
 
-N_REC = 4  # records per frame -- production
-N_PRN = 16  # rows per record   -- production after #64
+N_REC = 4  # records per frame, as in production
+N_PRN = 16  # rows per record (production chains carry ~31)
 HOPS_PER_RECORD = 2048
 FFT_LEN = 16384
 SPACING = 0.5  # E/L spacing, chips
 
-#: (instance, n_chan). Instances carry DIFFERENT channel counts on purpose: n_chan is a
+#: (instance, n_chan). Instances carry different channel counts on purpose: n_chan is a
 #: per-sender header field, and a consumer that assumes one value reads the next row's floats.
 INSTANCES = [
     ("cx19.0", 7),
@@ -76,14 +76,14 @@ INSTANCES = [
     ("cx42.1", 6),
 ]
 
-#: The freq_id one sender carries that another also does. A freq_id is ABSOLUTE and belongs to
+#: The freq_id one sender carries that another also does. A freq_id is absolute and belongs to
 #: exactly one sender per window; two senders both carrying it is a routing fault upstream that
-#: the per-channel table must DROP (and count) rather than average, while the lobe sum keeps it.
+#: the per-channel table must drop (and count) rather than average, while the lobe sum keeps it.
 DUP_FID = 5960
 
 
 def chan_ids_for(i, n_chan):
-    """A sender's absolute freq_ids: the fleet's `freq_id mod n_inst` grouping, disjoint per
+    """A sender's absolute freq_ids: stride 8, offset by the sender index, so disjoint per
     sender, plus DUP_FID on the last sender (already the first sender's first channel)."""
     ids = [5960 + i + 8 * k for k in range(n_chan)]
     if i == len(INSTANCES) - 1:
@@ -104,21 +104,12 @@ TARGETS = {
     9: (0.22, 0.80),  # early shoulder
     27: (-0.31, 0.65),  # late shoulder
     3: (0.55, 0.40),  # far out
-    11: (0.10, 0.50),  # ONE instance only -> must be excluded by min_instances
-    20: (0.15, 0.60),  # TWO instances on odd windows, one on even: complete in HALF
+    11: (0.10, 0.50),  # one instance only -> must be excluded by min_instances
+    20: (0.15, 0.60),  # two instances on odd windows, one on even: complete in half
     # the windows, so the record-level gate must bite per window
     16: (0.00, 0.02),  # essentially noise
-    # ⚠️ THE SIGNAL-FREE POPULATION IS LOAD-BEARING, NOT PADDING (added 2026-08-23).
-    # The C++ integrator's information test is `p_pow >= sig_k * MEDIAN(p_pow over this
-    # window's rows)` -- self-calibrating on the assumption that most PRNs are
-    # signal-free at any moment, which is true on sky (24-31 rows per chain, a handful
-    # live) and was NOT true of this fixture. With only 4/9/27/3/16 producing rows the
-    # median WAS a signal level: floor 1.156e-01 against a strongest target of 8.78e-02,
-    # so every armed PRN was SKIPPED, n_steps stayed 0, and the F2 leg could not run.
-    # It reported "the C++ integrator stepped on nothing" -- which read as a code fault
-    # and was a fixture fault. Same disease as the broker's own presence bar before
-    # --noise-probes: a median over a population with no signal-free members is not a
-    # noise level. These six carry rows and no signal, so the floor calibrates.
+    # Near-noise rows (amplitude ~0.02), as on sky, where most of a chain's rows carry little
+    # or no signal at any moment. They are never armed (SIGNAL_PRNS).
     5: (0.00, 0.02),
     12: (0.00, 0.015),
     18: (0.00, 0.025),
@@ -127,9 +118,8 @@ TARGETS = {
     30: (0.00, 0.017),
 }
 
-#: PRNs the F2 leg arms: real signal only. 11 is the min_instances exclusion; the noise PRNs
-#: above are deliberately NOT armed -- they exist to calibrate the floor, and arming them would
-#: assert that the loop steps on noise, which is the one thing the floor exists to prevent.
+#: PRNs the integrator legs arm: real signal only. 11 is the min_instances exclusion; the
+#: near-noise PRNs are not armed, since arming them would ask the loop to step on noise.
 SIGNAL_PRNS = [3, 4, 9, 27]
 
 
@@ -139,16 +129,16 @@ def _R(x):
 
 
 def _chan_block(rng, prn, fid, dead_energy, phi0, ramp=0.7, amp_scale=1.0):
-    """One channel's nine floats: E, P, L as the assembler writes them (raw, un-normalised),
-    on the SENDER'S reference: the common phase rotated by exp(-i*phi0)."""
+    """One channel's nine floats, prompt then early then late (re, im, replica energy each),
+    raw as the assembler writes them, on the sender's reference: the common phase rotated by
+    exp(-i*phi0)."""
     d, amp = TARGETS[prn]
     amp *= amp_scale
     if dead_energy:
-        # No live comb this channel this record -- the assembler leaves the energy at zero and
-        # the consumer must SKIP it. Zeroing it in instead would dilute the power exactly the
-        # way the deep fold's zero-padding did.
+        # No live comb on this channel this record: the assembler leaves the energy at zero
+        # and the consumer must skip it; averaging the zeros in would dilute the power.
         return [0.0] * 9
-    e_p = 40.0 + 3.0 * (fid % 5)  # replica energy: per-channel, not per-tap
+    e_p = 40.0 + 3.0 * (fid % 5)  # prompt replica energy, varying per channel
     phi = ramp * fid + 0.3 * prn - phi0  # a per-channel phase, so |sum| != sum|.|
     noise = lambda: rng.gauss(0.0, 0.02 * amp + 0.01)
 
@@ -178,11 +168,10 @@ def build_frame(
     ramp=0.7,
     amp_scale=1.0,
 ):
-    """One wire frame, bytes. `prn_rows` is the row->PRN map (row compaction, #64)."""
-    # THE SENDER'S OWN STRIDE, as a real sender builds it: the row carries this instance's
-    # comb columns and no reserved ones. The gate's senders have DIFFERENT n_chan, so a fold
-    # that strides by the format's ceiling reads most of them at the wrong offsets -- which is
-    # the failure this fixture has to be able to catch.
+    """One wire frame, bytes. `prn_rows` is the row->PRN map (row compaction)."""
+    # The sender's own stride, as a real sender builds it: the row carries this instance's
+    # comb columns and no reserved ones. The senders here have different n_chan, so a fold
+    # that strides by the format's ceiling reads most of them at the wrong offsets.
     row_total = telem._ROW_FLOATS + n_chan * telem._CHAN_FLOATS
     wstart0 = win * N_REC * HOPS_PER_RECORD * FFT_LEN
     chan_ids = chan_ids_for(inst_idx, n_chan) + [0] * (telem._MAX_CHAN - n_chan)
@@ -212,15 +201,15 @@ def build_frame(
     for r in range(N_REC):
         for p, prn in enumerate(prn_rows):
             base = (r * N_PRN + p) * row_total
-            # PRN is written on EVERY row of EVERY record, including records that did not run
-            # -- that is what lets the row map be read from the data instead of configured.
+            # PRN is written on every row of every record, including records that did not
+            # run, so the row map is read from the data instead of configured.
             rows[base + telem.REC_PRN] = float(prn)
             if prn == 0 or not (present & (1 << r)):
                 continue
             phi0 = phi0_for(inst_idx, r, prn)
             rows[base + telem.REC_PHI0] = phi0
-            # PROJECTION COST (REC_PROJ_COST), a per-sender pattern so the (1 - b) weight path
-            # is exercised in both arms: not applicable on instance 0, graded on the others.
+            # Projection cost (REC_PROJ_COST), a per-sender pattern so the (1 - b) weight path
+            # is exercised in both arms: no basis (-1) on instance 0, graded on the others.
             rows[base + telem.REC_PROJ_COST] = (
                 -1.0
                 if inst_idx == 0
@@ -244,7 +233,7 @@ def build_frame(
 
 
 def build_fixture(n_win, seed=20260815, ramp=0.7, amp_scale=1.0):
-    """[(bytes, chain)] in DELIVERY ORDER -- window-major, as the live path sees them.
+    """[(bytes, chain)] in delivery order: window-major, as the live path sees them.
 
     `ramp` is the per-channel phase slope (rad per freq_id); `amp_scale` multiplies every
     PRN's amplitude. Both exist for the XCOH leg, which needs a stream whose senders are
@@ -256,18 +245,18 @@ def build_fixture(n_win, seed=20260815, ramp=0.7, amp_scale=1.0):
     for win in range(n_win):
         for chain in ("gps_l5", "gal_e5a"):
             for i, (inst, n_chan) in enumerate(INSTANCES):
-                # ROW COMPACTION (#64): the row->PRN map differs per instance and is NOT the
+                # Row compaction: the row->PRN map differs per instance and is not the
                 # configured PRN order. An arm that assumed row == PRN index would read another
                 # satellite's comb and produce a confident wrong discriminator.
                 prns = [4, 9, 27, 3, 16, 5, 12, 18, 21, 24, 30]
                 if i == 0:
-                    prns = prns + [11, 20]  # PRN 11 on ONE instance only
+                    prns = prns + [11, 20]  # PRN 11 on one instance only
                 if i == 1 and win % 2:
                     prns = prns + [20]  # PRN 20 reaches two only on odd windows
                 order = list(prns)
                 rng.shuffle(order)
                 prn_rows = order + [0] * (N_PRN - len(order))
-                # A record slot that did not run is a HOLE AT A KNOWN INDEX. Vary which.
+                # A record slot that did not run is a hole at a known index. Vary which.
                 present = 0xF if (win + i) % 4 else 0xD
                 frames.append(
                     (
@@ -305,7 +294,7 @@ def write_stream(path, frames):
 
 
 def python_arm(frames, n_win, min_instances):
-    """combdll.fleet_dll_comb, through the REAL client ring."""
+    """combdll.fleet_dll_comb, through the real client ring."""
     client = telem.TelemClient(host="127.0.0.1", port=0, depth=64)
     for buf, _chain in frames:
         hdr = telem._HDR.unpack_from(buf, 0)
@@ -329,13 +318,11 @@ def python_arm(frames, n_win, min_instances):
 
 
 def python_taps(frames, n_win, min_instances):
-    """combdll.lobe_taps, per PRN AND per channel, through the REAL client ring.
+    """combdll.lobe_taps, per PRN and per channel, through the real client ring.
 
-    The object the C++ `taps()` accessor forms on the gather host. Compared field by field
-    because THIS PATH HAS NO OTHER GATE: broker_equiv replays only what goes through
-    gnss_broker.transport, and the telemetry stream is a raw socket, so a replay runs with no
-    telemetry at all and quietly falls back to the polled discriminator. The digest stays green
-    while testing none of it.
+    The object the C++ `taps()` accessor forms on the gather host, compared field by field
+    because no other gate covers this path: broker_equiv replays only what goes through
+    gnss_broker.transport, and telemetry arrives on a raw socket, so its replays carry none.
     """
     client = telem.TelemClient(host="127.0.0.1", port=0, depth=64)
     for buf, _chain in frames:
@@ -440,12 +427,11 @@ def compare_taps(py, cpp):
 
 
 def python_recs(frames, n_win):
-    """combdll.lobe_records -- prompt_cn0's `recs`: {(win, slot): {prn: [e, p, l, n_inst,
-    n_chan]}}, through the REAL client ring.
+    """combdll.lobe_records, prompt_cn0's `recs`: {(win, slot): {prn: [e, p, l, n_inst,
+    n_chan]}}, through the real client ring.
 
     The estimator's own input, so the gate compares what it consumes and not a paraphrase.
-    The statistics ON TOP of this -- the probe anchor, the Gamma-mean debias, the q gate, the
-    clip -- stay in Python and are not what this leg is about.
+    The statistics prompt_cn0 applies on top stay in Python and are outside this leg.
     """
     client = telem.TelemClient(host="127.0.0.1", port=0, depth=64)
     for buf, _chain in frames:
@@ -528,12 +514,8 @@ def cpp_arm(
         cmd += ["--arm", ",".join(str(p) for p in sorted(arm))]
         for k in ("gain", "leak", "clamp", "spacing"):
             cmd += ["--" + k, repr((pol or {}).get(k, DEFAULT_POLICY[k]))]
-        # ⚠️ ALWAYS PASSED (2026-08-27). The peer-median branch is DELETED, so an omitted
-        # floor no longer means "use the other gate", it means REFUSE -- every armed PRN
-        # leak-only, n_steps 0. Every leg below therefore supplies one explicitly, and the
-        # BASELINE is GATE_NOBODY: a floor below every satellite's power, which on this
-        # fixture is byte-identical to what the peer median used to do (it gated nobody
-        # here, which is why the old `p_floor_abs=1e-30` leg could assert exactly that).
+        # Always passed: an omitted floor (0) means refuse, every armed PRN leak-only with
+        # n_steps 0. The baseline is GATE_NOBODY, a floor below every power in the fixture.
         cmd += ["--p-floor-abs", repr((pol or {}).get("p_floor_abs", GATE_NOBODY))]
     r = subprocess.run(cmd, capture_output=True, text=True)
     if r.returncode != 0:
@@ -541,28 +523,28 @@ def cpp_arm(
     return json.loads(r.stdout)
 
 
-#: The shipped broker defaults (--dll-gain, --dll-leak-present, the +-3 clamp, --dll-spacing).
-#: ⚠️ leak 0.05 puts the integrator's steady state at gain*0.25/leak = 1.25 chips, so the 3.0
-#: clamp is unreachable BY CONSTRUCTION -- see combdll.dll_integrate. The gate uses the shipped
-#: values deliberately: a gate run at constants nobody deploys measures a loop nobody runs.
-#: A floor below every power in the fixture: gates nobody, so it is the NEUTRAL baseline the
-#: other legs are compared against. Not zero -- zero now means "refuse everything".
+#: A floor below every power in the fixture: it gates nobody, so it is the neutral baseline the
+#: other legs are compared against. Not zero: zero means refuse everything.
 GATE_NOBODY = 1e-30
 
-#: The LOOP recurrence's constants -- what dll_integrate takes. Kept separate from the gate.
+#: The loop recurrence's constants, what dll_integrate takes, kept separate from the gate. They
+#: are TrimPolicy's defaults and the broker's slow-DLL per-update values (--dll-gain,
+#: cli._FROZEN's dll_leak_present, the +-3 clamp, --dll-spacing); the live fast loop instead
+#: converts the broker's per-second values at its measured close rate. Leak 0.05 caps the
+#: steady state at gain*0.25/leak = 1.25 chips, so integration alone never reaches the 3.0
+#: clamp (see combdll.dll_integrate).
 LOOP_POLICY = {"gain": 0.25, "leak": 0.05, "clamp": 3.0, "spacing": 0.5}
 
 DEFAULT_POLICY = dict(LOOP_POLICY, p_floor_abs=GATE_NOBODY)
 
 
 def python_disc_series(frames, chain, wins_seen, n_win, min_instances):
-    """{win: {prn: disc}} -- Python's fleet discriminator at EVERY window close, not just the last.
+    """{win: {prn: disc}}: Python's fleet discriminator at every window close, not just the last.
 
-    F1 compared the two arms at the end of the stream. That is enough to catch a wrong fold and
-    not enough to certify the INTEGRATOR, which walks the whole series: one window disagreeing in
-    the middle would be invisible at the end but would have moved every trim after it. Built by
-    replaying prefixes of the same bytes through the real client, which is slow and exact --
-    both correct properties for a gate.
+    Comparing the arms at the end of the stream catches a wrong fold but does not certify the
+    integrator, which walks the whole series: one window disagreeing mid-stream is invisible at
+    the end yet moves every trim after it. Built by replaying prefixes of the same bytes through
+    the real client: slow and exact.
     """
     out = {}
     for w in wins_seen:
@@ -572,8 +554,8 @@ def python_disc_series(frames, chain, wins_seen, n_win, min_instances):
             if hdr[9] > w:  # header field 9 is `win`
                 continue
             client._store_frame(telem.TelemFrame(hdr, buf, 0.0))
-        # lag=0: the C++ CLOSED w (a newer frame arrived), so w is inside its ring. Slicing to
-        # the last n_win of everything <= w reproduces exactly the ring it aggregated on.
+        # lag=0: the C++ closed w (a newer frame arrived), so w is inside its ring. Slicing to
+        # the last n_win of everything <= w reproduces the ring it aggregated on.
         ws = client.windows(chain, lag=0)[-n_win:]
         if not ws:
             continue
@@ -592,9 +574,9 @@ def python_disc_series(frames, chain, wins_seen, n_win, min_instances):
 # The comparison
 # ---------------------------------------------------------------------------------------------
 
-#: Fields compared, with tolerances. disc and q are what the loop ACTUATES on, so they are held
-#: tightest; the powers are sums whose instance ordering differs between a Python dict and a
-#: std::map, which is float noise at ~1e-16 and nothing else.
+#: Fields compared, with relative tolerances: 1e-9 for the floats (n_chan is a mean), whose
+#: summation order can differ between a Python dict and a std::map at the ~1e-16 level, and
+#: exact for n_src, n_rec and hop.
 FIELDS = [
     ("disc", 1e-9),
     ("q", 1e-9),
@@ -642,7 +624,7 @@ def compare(py, cpp):
 
 
 def describe(py):
-    """What the fixture actually exercised -- so a vacuous pass is visible as one."""
+    """What the fixture actually exercised, so a vacuous pass is visible as one."""
     lines = []
     for chain in sorted(py):
         rows = py[chain]
@@ -691,16 +673,11 @@ def main():
     )
     args = ap.parse_args()
 
-    # ⚠️ BUILD IT. DO NOT TRUST THE BINARY THAT IS THERE (2026-08-23).
-    # `fleetdll` is a SYMLINK to a per-host build (build_tool.sh writes $N.$HOSTNAME so two
-    # hosts sharing this NFS tree do not clobber each other). Checking only that the path
-    # exists therefore tests WHOEVER BUILT LAST, on WHATEVER SOURCE THEY HAD. Found the hard
-    # way: the link pointed at a cx19 binary from 08-15, the wire format went to v5 on 08-16
-    # (RECORD_FLOATS 28 -> 29), and every frame in the fixture came back BAD_HEADER. The gate
-    # had been red for eight days and reported it as "Python has a row, C++ does not" -- which
-    # reads as a fold disagreement, not a stale binary. This is exactly what
-    # "verify what RUNS, not what you built" is about, and a GATE is the last place that
-    # should get it wrong.
+    # Build first rather than trust the binary that is there: `fleetdll` is a symlink to a
+    # per-host build (build_tool.sh writes $N.$HOST so hosts sharing this NFS tree do not
+    # clobber each other), so an existing path only says someone built it, from some source.
+    # A binary on an older wire format rejects every frame as BAD_HEADER, which this gate
+    # reports as "Python has a row, C++ does not", not as a stale binary.
     if not args.no_build:
         b = subprocess.run(
             [os.path.join(_HERE, "site", "build_tool.sh"), "fleetdll"],
@@ -742,9 +719,8 @@ def main():
     for line in describe(py):
         print(line)
 
-    # ⚠️ AN EXPERIMENT THAT CANNOT SUCCEED IS NOT AN EXPERIMENT. Before believing a match,
-    # check the fixture produced something a mismatch could show up in: several PRNs, a spread
-    # of discriminators, and the min_instances exclusion actually biting.
+    # Before believing a match, check that the fixture produced something a mismatch could
+    # show in: several PRNs, a spread of discriminators, and the min_instances exclusion biting.
     problems = []
     for chain, rows in py.items():
         if len(rows) < 4:
@@ -763,7 +739,7 @@ def main():
                 "%s PRN 11 was NOT excluded -- min_instances is not being applied,"
                 " so the gate is not testing what it claims" % chain
             )
-        # PRN 20 is complete on ODD windows only: it must be present, and with FEWER records
+        # PRN 20 is complete on odd windows only: it must be present, and with fewer records
         # than an always-complete PRN. Present with as many says the gate is per PRN, not per
         # record; absent says it is per PRN the other way round.
         if 20 not in rows or 4 not in rows:
@@ -804,13 +780,12 @@ def main():
     n = sum(len(r) for r in py.values())
     print("\nPASS -- %d PRN rows agree across both arms on identical bytes." % n)
 
-    # THE ONE PLACE THE ARMS ARE MEANT TO DIVERGE, asserted rather than left to be discovered.
-    # A frame for an already-closed window is folded by the PYTHON store (it keys on `win` and
-    # will happily amend a window still inside the ring) and DROPPED by the C++ (a control loop
-    # cannot retroactively amend a step it has already taken, and re-opening a window would
-    # make the aggregate depend on arrival order -- the exact inference #59 removed).
-    # Frequency is a fact about the fleet, not an assumption: `late_frames` is served by
-    # GnssFleetTrim/get_stats and must be watched on sky, not presumed small.
+    # The one place the arms are meant to diverge, asserted here. A frame for an already-closed
+    # window is folded by the Python store (it keys on `win` and amends a window still inside
+    # the ring) and dropped by the C++ (a control loop cannot amend a step it has already
+    # taken, and reopening a window would make the aggregate depend on arrival order). How
+    # often it happens is a fact about the fleet: GnssFleetTrim's /get_stats serves
+    # `late_frames`.
     late = frames + [frames[0]]  # replay the very first frame at the end of the stream
     p3 = os.path.join(tmp, "frames_late.bin")
     write_stream(p3, late)
@@ -829,10 +804,10 @@ def main():
         return 1
     print("LATE-FRAME PASS -- counted (1) and dropped; the answer is unchanged.")
 
-    # ---- THE PER-PRN / PER-CHANNEL LOBE TAPS ----------------------------------------------
-    # A tighter comparison than the discriminator legs above, and deliberately so: disc and q
-    # are RATIOS, so a common factor on E, P and L cancels and a whole class of fold error
-    # survives them. These are the unreduced numbers.
+    # ---- The per-PRN / per-channel lobe taps ----------------------------------------------
+    # A tighter comparison than the discriminator legs above: disc and q are ratios, so a
+    # common factor on E, P and L cancels and a whole class of fold error survives them. These
+    # are the unreduced numbers.
     pt = python_taps(frames, args.n_win, args.min_instances)
     bad_t = compare_taps(pt, cpp)
     if bad_t:
@@ -865,15 +840,15 @@ def main():
         "table and counted (%s)." % (n_it, n_ch, DUP_FID, n_dup)
     )
 
-    # ---- XCOH MEANS WHAT IT CLAIMS -----------------------------------------------------------
-    # TAPS PASS says the arms agree on xcoh; it says nothing about whether xcoh is the
-    # statistic it claims to be. Three streams settle that, each through BOTH arms:
+    # ---- xcoh means what it claims -----------------------------------------------------------
+    # TAPS PASS says the arms agree on xcoh, not that xcoh is the statistic it claims to be.
+    # Three streams settle that, each through both arms:
     #   co-phased  -- ramp 0: every sender's prompt sits on the common reference after the
     #                 exp(+i*phi0) rotation, so every PRN with signal must read ~1;
     #   noise      -- amp_scale 0: unrelated phasors, so every PRN must read ~0 (the main
     #                 fixture's "noise" PRNs are 2-sigma signals, not noise);
-    #   reference loss -- the co-phased stream with ONE sender's phi0 moved pi on every row
-    #                 of one PRN: that PRN's xcoh must FALL, and only that PRN's.
+    #   reference loss -- the co-phased stream with one sender's phi0 moved pi on every row
+    #                 of one PRN: that PRN's xcoh must fall, and only that PRN's.
     # The main fixture itself is not used: its within-sender ramp gives senders of different
     # channel counts different partial-sum phases, which is real arithmetic but not a
     # reference the statistic is meant to score.
@@ -954,7 +929,7 @@ def main():
         % (lo_sig, hi_nz, co[("gps_l5", 4)], lo[("gps_l5", 4)])
     )
 
-    # ---- THE PER-RECORD SERIES (the served C/N0's input) --------------------------------
+    # ---- The per-record series (the served C/N0's input) --------------------------------
     pr = python_recs(frames, args.n_win)
     bad_r = compare_recs(pr, cpp)
     if bad_r:
@@ -968,14 +943,13 @@ def main():
         "n_inst/n_chan exactly." % n_rr
     )
 
-    # ---- THE SHIPPING CONFIGURATION: taps_win != n_win ---------------------------------
-    # Production runs the loop on 2 windows and serves the broker 32 -- different questions,
-    # and they used to be answered with one number. A gate run only at taps_win == n_win would
-    # never touch the split, so it is exercised here, with BOTH halves asserted:
+    # ---- The shipping configuration: taps_win != n_win ---------------------------------
+    # Production runs the loop on 2 windows and serves the broker 32. A gate run only at
+    # taps_win == n_win would never touch the split, so both halves are asserted here:
     #   (a) the served taps deepen to the requested window count, and
-    #   (b) THE LOOP DOES NOT MOVE. That is the whole risk of sharing one ring: if aggregate()
-    #       started walking the deeper slice, the discriminator would silently average 8
-    #       windows where the policy says 2, and every trim step would be formed on stale sky.
+    #   (b) the loop does not move. That is the risk of sharing one ring: if aggregate()
+    #       walked the deeper slice, the discriminator would average taps_win windows where
+    #       the policy asks for n_win, and every trim step would be formed on stale sky.
     deep = 2 * args.n_win
     c_deep = cpp_arm(args.exe, path, args.n_win, args.min_instances, taps_win=deep)
     if compare(py, c_deep):
@@ -1001,16 +975,17 @@ def main():
         % (deep, args.n_win)
     )
 
-    # ---- THE INTEGRATOR (F2) -----------------------------------------------------------
-    # Two legs, deliberately separate, because a single end-to-end comparison would let a fold
-    # error and a recurrence error cancel:
-    #   (a) the C++ disc at EVERY window close matches Python's on the same window set;
+    # ---- The integrator -----------------------------------------------------------------
+    # Two legs, kept separate because a single end-to-end comparison would let a fold error
+    # and a recurrence error cancel:
+    #   (a) the C++ disc at every window close matches Python's on the same window set;
     #   (b) Python's dll_integrate, driven by that disc series, reproduces the C++ trim series.
-    # (b) alone would be circular if (a) were not established; (a) alone is what F1 already did,
-    # but only at the last window.
+    # (b) alone would be circular without (a); (a) extends the discriminator leg above from
+    # the last window to every window. Both run at GATE_NOBODY: the series also records
+    # leak-only updates with the last stepped disc, which (b) would replay as steps.
     ARM = list(
         SIGNAL_PRNS
-    )  # see SIGNAL_PRNS: the noise PRNs calibrate, they do not arm
+    )  # see SIGNAL_PRNS: the near-noise PRNs are never armed, only the real signals
     cpp2 = cpp_arm(args.exe, path, args.n_win, args.min_instances, arm=ARM)
     series = cpp2.get("series", {}).get("gps_l5", {})
     if not series:
@@ -1043,10 +1018,8 @@ def main():
                     "PRN %d win %d disc: py %.12g vs cpp %.12g" % (prn, win, ref, disc)
                 )
             n_disc += 1
-            # (b) the recurrence, driven by the SAME disc
-            # ⚠️ THE LOOP CONSTANTS ONLY. p_floor_abs is the window GATE, which lives in
-            # the C++ integrator and has no Python counterpart -- splatting the whole policy
-            # in hands dll_integrate a kwarg it has never taken.
+            # (b) the recurrence, driven by the same disc. Loop constants only: p_floor_abs
+            # is the C++ integrator's window gate, and dll_integrate takes no such argument.
             trim = combdll.dll_integrate(trim, disc, **LOOP_POLICY)
             if abs(trim - cpp_trim) > 1e-12 * max(1.0, abs(trim)):
                 bad_i.append(
@@ -1060,8 +1033,9 @@ def main():
             print("  %s" % m)
         return 1
 
-    # ⚠️ AND CHECK IT ACTUALLY MOVED. An integrator that returned 0 every step would pass every
-    # comparison above. The trims must be non-trivial and must show the leak ceiling.
+    # And check that it moved: an integrator that returned 0 every step would pass every
+    # comparison above, so some final trim must be non-trivial. The leak ceiling is printed
+    # beside the largest trim for reference.
     finals = {int(p): rows[-1][2] for p, rows in series.items() if rows}
     ceiling = DEFAULT_POLICY["gain"] * 0.25 / DEFAULT_POLICY["leak"]
     if max(abs(v) for v in finals.values()) < 1e-3:
@@ -1076,12 +1050,11 @@ def main():
         "  final trims: %s"
         % ", ".join("PRN %d %+.4f" % (p, v) for p, v in sorted(finals.items()))
     )
-    # ---- THE TRIM STORE: a gather restart must stop costing the fleet its pull-in --------
-    # GnssFleetTrim holds TrimState in process, so restarting it zeroed every integrator:
-    # measured 2026-08-23 as q 2.0-3.7 -> ~1.0 fleet-wide with 0-1 "present" per chain, because
-    # every tracker was left off-peak by however much trim was standing. This asserts the
-    # save/adopt path, INCLUDING its refusals -- a store that is adopted when it should not be
-    # is worse than none, because it commands a code step nothing verified.
+    # ---- The trim store: a gather restart must not cost the fleet its pull-in -----------
+    # GnssFleetTrim holds its trims in process; without the store a restart leaves every
+    # tracker off-peak by its standing trim. This asserts the save/adopt path including its
+    # refusals: a store adopted when it should not be is worse than none, because it commands
+    # a code step nothing verified.
     snap = cpp2.get("trim_snapshot", {}).get("chains", {})
     if not snap.get("gps_l5"):
         print("FAIL -- the armed run produced no trim snapshot to persist.")
@@ -1090,7 +1063,7 @@ def main():
     with open(store, "w") as fh:
         json.dump({"saved_unix": 0.0, "chains": snap}, fh)
 
-    # (a) ADOPTED when the broker arms the PRN, and the loop resumes FROM the stored value.
+    # (a) Adopted when the broker arms the PRN, and the loop resumes from the stored value.
     c_res = cpp_arm(
         args.exe, path, args.n_win, args.min_instances, arm=ARM, trim_in=store
     )
@@ -1101,7 +1074,7 @@ def main():
             % (n_stored, len(snap), c_res.get("trim_adopted"))
         )
         return 1
-    # The restored run must NOT reproduce the cold run: it starts from the stored trims.
+    # The restored run must not reproduce the cold run: it starts from the stored trims.
     cold = cpp2.get("series", {}).get("gps_l5", {})
     warm = c_res.get("series", {}).get("gps_l5", {})
     first_cold = {p: v[0][2] for p, v in cold.items() if v}
@@ -1113,8 +1086,8 @@ def main():
         )
         return 1
 
-    # (b) REFUSED when nothing armed that PRN. This is the whole reason adoption is gated on
-    # arming rather than done at load: policy stays with the broker.
+    # (b) Refused when nothing armed that PRN: adoption is gated on arming, not done at load,
+    # so policy stays with the broker.
     c_noarm = cpp_arm(args.exe, path, args.n_win, args.min_instances, trim_in=store)
     if c_noarm.get("trim_adopted", 0) != 0:
         print(
@@ -1123,7 +1096,7 @@ def main():
         )
         return 1
 
-    # (c) REFUSED when the value is not physical. A store is a file on disk and can be
+    # (c) Refused when the value exceeds the clamp. A store is a file on disk and can hold
     # anything; the clamp is the contract.
     bad = os.path.join(tmp, "trims_bad.json")
     with open(bad, "w") as fh:
@@ -1151,18 +1124,13 @@ def main():
         % (ceiling, max(abs(v) for v in finals.values()))
     )
 
-    # ---- THE ABSOLUTE WINDOW GATE (the E3 fix, 2026-08-26) -----------------------------
-    # integrate()'s per-window gate was 3x the window's own population median -- a PEER
-    # COMPETITION on CHORD, where the armed rows are mostly real satellites (the premise
-    # "the median is the no-signal level" held only on airspy, where --noise-probes seeded
-    # genuine noise rows). Measured: gal_e5b PRN 33 leak-only on 75% of its windows, E3's
-    # trim erased at ~20x the actual probe floor. TrimPolicy::p_floor_abs replaces the peer
-    # median with the broker's probe-anchored floor. Three properties, all load-bearing:
-    #   (a) UNSET = byte-identical -- every case above already ran unset against Python;
-    #   (b) a floor BETWEEN two armed satellites' powers flips the weaker one to leak-only
-    #       and leaves the stronger one's trim series BYTE-IDENTICAL -- it changes exactly
-    #       what it claims and nothing else;
-    #   (c) a floor below everything reproduces the unset census exactly.
+    # ---- The absolute window gate (TrimPolicy::p_floor_abs) ----------------------------
+    # integrate() steps an armed PRN only in windows whose p_pow reaches the broker's
+    # probe-anchored floor; other windows are leak-only. The floor is absolute: one relative
+    # to the other PRNs' powers would compare satellites with each other, not with noise. A
+    # floor between two armed satellites' powers must turn the weaker one fully leak-only and
+    # leave the stronger one's skip count and trim series identical to the GATE_NOBODY
+    # baseline: the floor changes who is gated, never the arithmetic.
     rows_a = {
         int(k): v
         for k, v in cpp2.get("chains", {}).get("gps_l5", {}).get("prns", {}).items()
@@ -1206,12 +1174,9 @@ def main():
             "flag must change only who is gated, never the arithmetic." % hi_prn
         )
         return 1
-    # ⚠️ NO FLOOR => REFUSE, and this leg is what stops that regressing to "no gate".
-    # Deleting the peer median left a fork in the road: p_floor_abs <= 0 could mean "gate on
-    # nothing" (step every window) or "refuse" (leak every window). Ungated, an off-peak
-    # discriminator random-walks the trim to the clamp -- measured on sky, PRN 23, 3.4 chips
-    # in 32 s with disc sign-flipping the whole way -- so refusing is the only safe reading,
-    # and a future simplification that "helpfully" treats 0 as no-gate must go red here.
+    # No floor means refuse, never "no gate": p_floor_abs <= 0 must leak every armed window.
+    # Ungated, an off-peak discriminator flips sign every window and random-walks the trim to
+    # the clamp. This leg fails if 0 is ever treated as no gate.
     pol_none = dict(DEFAULT_POLICY, p_floor_abs=0.0)
     c_none = cpp_arm(
         args.exe, path, args.n_win, args.min_instances, arm=ARM, pol=pol_none
@@ -1238,27 +1203,22 @@ def main():
     )
 
     if args.self_test:
-        # THE GATE MUST BE ABLE TO FAIL. Nudge one channel of one record by 1% and require the
-        # comparison to notice. If this passes, the comparison is not comparing.
+        # The gate must be able to fail. Nudge one channel's early tap in one record
+        # (x1.01 + 1.0) and require the comparison to notice; if it does not, the comparison
+        # is not comparing.
         #
-        # ⚠️ THE FRAME HAS TO BE ONE THE ANSWER DEPENDS ON. The first version poked frame 0 and
-        # the self-test failed -- correctly: with n_win 4 and 12 windows the ring holds windows
-        # 7..10, and window 0 fell out of it long before the end of the file. A perturbation
-        # outside the averaging window is invisible BY DESIGN, and reading that as "the fold is
-        # broken" would have been a wasted afternoon. Window W-2 is the NEWEST CLOSED window,
-        # so it is in the ring for any n_win >= 1.
+        # The poked frame must be one the answer depends on: a perturbation outside the
+        # averaging ring is invisible by design (with n_win 4 and 12 windows the ring holds
+        # windows 7..10). With --no-flush the newest window stays open, so window W-2 is the
+        # newest closed one and is in the ring for any n_win >= 1.
         n_per_win = 2 * len(INSTANCES)  # two chains
         poke_at = (args.windows - 2) * n_per_win
         buf = bytearray(frames[poke_at][0])
-        # ⚠️ POKE A PRN THAT CONTRIBUTES -- DO NOT POKE A FIXED ROW (2026-08-23).
-        # This used to poke row 0, whose PRN is whatever the fixture's SHUFFLE put there
-        # (row compaction, #64). It landed on PRN 11 -- the row that exists precisely to be
-        # EXCLUDED by min_instances -- so the "perturbation" was applied to the one satellite
-        # guaranteed not to reach the answer, and the self-test reported the comparison as
-        # insensitive when it was the poke that was inert. A self-test that can be defeated by
-        # reordering the fixture is not a self-test. Find the row by PRN.
-        # The poked frame's stride is ITS sender's, off its own header (n_row_total), never a
-        # constant: senders here carry different comb widths.
+        # Poke a row whose PRN contributes, found by PRN rather than by a fixed index: the
+        # row order is the fixture's shuffle (row compaction), and a fixed row could land on
+        # PRN 11, which min_instances excludes, leaving the poke inert. The stride is the poked
+        # sender's own, off its header (n_row_total), never a constant: senders here carry
+        # different comb widths.
         _row_total = telem._HDR.unpack_from(buf, 0)[15]
         _row = None
         for _r in range(N_PRN):
@@ -1290,9 +1250,9 @@ def main():
             python_arm(poked, args.n_win, args.min_instances),
             cpp_arm(args.exe, p2, args.n_win, args.min_instances),
         )
-        # Both arms see the SAME poked bytes, so they must still AGREE with each other -- the
-        # self-test proves the arms track each other, and the check below proves the comparison
-        # is sensitive at all by requiring the poked answer to differ from the clean one.
+        # Both arms see the same poked bytes, so they must still agree with each other; the
+        # check below shows the comparison is sensitive at all by requiring the poked answer to
+        # differ from the clean one.
         if bad2:
             print(
                 "SELF-TEST FAIL: the arms disagree on the perturbed fixture: %s"
@@ -1312,10 +1272,10 @@ def main():
             "sees the perturbation (%d field(s) moved)." % len(moved)
         )
 
-        # AND THE ROTATION MUST BE LOAD-BEARING. Move ONE sender's phi0 on that same row by
-        # 1 rad without touching its comb: that sender's partial sum now lands off the common
+        # And the rotation must matter. Move one sender's phi0 on that same row by 1 rad
+        # without touching its comb: that sender's partial sum now lands off the common
         # reference and the lobe power must change. If it does not, the arms agree on a sum
-        # that ignores REC_PHI0 -- coherent per sender, not per lobe.
+        # that ignores REC_PHI0: coherent per sender, not per lobe.
         buf = bytearray(frames[poke_at][0])
         off = telem._HDR_BYTES + _row * _row_total * 4 + telem.REC_PHI0 * 4
         (v,) = struct.unpack_from("<f", buf, off)

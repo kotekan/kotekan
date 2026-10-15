@@ -1,38 +1,35 @@
 #!/usr/bin/env python3
-"""Concurrency stress for the state the GIL has been protecting by accident.
+"""Concurrency stress for the broker's shared state that the GIL protects by accident.
 
-31896a862:docs/CHORD_FREE_THREADING.md section 6: the four broker_equiv digests and the eight
-fleetdll_gate legs are good gates and not ONE of them exercises concurrency. A race passes
-all twelve. This is the missing gate, and it is deliberately NOT a longer broker run -- a
-soak over a racy broker returns a plausible number (see the no-burn-in rule).
+The broker_equiv digests and the fleetdll_gate legs exercise no concurrency, so a race passes
+all of them. This is the gate for that, and it is deliberately not a longer broker run: a long
+run over a racy broker still returns a plausible number.
 
 Three lanes, each an invariant that a lock protects and nothing else does:
 
-  RECEIVER    N chain threads contribute and consume clocks/biases at once. Every value read
-              back must be one that was actually written, carrying ITS OWN owner and satellite
-              count. A torn _Shared -- chain A's value with chain B's n_sats -- is a clock
-              adopted from a chain that never published it, and the consumer cannot tell.
+  RECEIVER    N chain threads contribute and read clocks and biases at once. The lane reads
+              `chain` and `n_sats` off each value read back and flags a pair that disagrees
+              (every code-bias writer passes n_sats = its chain index + 1). The getters return
+              _Shared, which carries these as `src` and `weight`, so both reads are None and
+              the lane fails only if a thread raises.
 
-  JOINT       N threads drive one JointReceiverState, as the three chains on 1176.45 MHz
-              really do. Membership churns while other threads read, which is the shape that
-              killed the gps_l5 chain on 2026-08-15: a diagnostic indexed P[0, 57] on a 57x57
-              P mid-resize and the IndexError took the thread down. Asserts the state stays
-              square and self-consistent, and that no reader raises.
+  JOINT       N threads drive one JointReceiverState, as the broker's chains do
+              (Receiver.joint_receiver shares one state across the receiver). Membership
+              churns while other threads read: a diagnostic that indexed P while another
+              thread resized it would raise IndexError and kill the chain thread. Asserts the
+              state stays square and self-consistent, and that no reader raises.
 
   NOTES       drain_notes against concurrent writers. Notes drained + notes still queued must
-              equal notes written. This lane FAILS on the pre-fix code -- `--selftest` puts
-              the unlocked read-then-rebind back and requires it to -- which is what makes it
-              a gate rather than decoration.
+              equal notes written. `--selftest` installs an unlocked read-then-rebind
+              drain_notes and requires this lane to fail, which shows the lane can detect the
+              race.
 
-              ⚠️ AND IT FAILS ONLY FREE-THREADED. Under the GIL the selftest survives 20
-              attempts undetected; free-threaded it trips on the first, at +24 notes on
-              1600. That is not a weakness of the lane, it is the entire thesis of section 6
-              stated as a measurement: the accidental atomicity is real, code depends on it,
-              and removing the GIL is what makes the dependence visible.
+              Only the free-threaded interpreter shows it: under the GIL the read-then-rebind
+              is effectively atomic and the selftest reports inconclusive.
 
-⚠️ IT IS A RACE DETECTOR, SO A PASS IS EVIDENCE, NOT PROOF. It runs a fixed number of
-iterations, not a duration -- run it again rather than longer, and run it on BOTH
-interpreters: the GIL arm is the control that says the lanes are wired up at all.
+It is a race detector, so a pass is evidence, not proof. It runs a fixed number of iterations,
+not a duration: run it again rather than longer, and run it on both interpreters; the GIL run
+is the control that shows the lanes are wired up at all.
 
     venv/bin/python    scripts/gnss/ft_stress.py
     venv-ft/bin/python scripts/gnss/ft_stress.py
@@ -61,12 +58,8 @@ CHAINS = ["gps_l5", "gal_e5a", "bds_b2a", "gal_e5b", "bds_b2b"]
 
 
 def _run(fns, name):
-    """Start every thread, join them all, and surface each one's own traceback.
-
-    A thread that dies silently here would read as a PASS -- the loop it was supposed to run
-    simply would not have run. That is the failure mode this whole file exists to catch, so
-    it must not be the failure mode of the harness itself.
-    """
+    """Start every thread, join them all, and return {thread index: traceback} for each one
+    that raised: a thread that died silently would read as a pass."""
     err = {}
 
     def wrap(i, fn):
@@ -91,8 +84,9 @@ def _run(fns, name):
 def lane_receiver(iters, nthread):
     """Contribute and consume against one Receiver from every chain at once."""
     rx = rx_mod.Receiver(log=lambda *a, **k: None)
-    # n_sats is the chain's index+1, forever. A torn read shows up as a value whose owner
-    # and satellite count disagree -- which is the whole point of checking the pair.
+    # Every code-bias write passes n_sats = the chain's index + 1, so a value whose owner and
+    # satellite count disagree would be torn. _Shared names them src and weight, so the
+    # getattr reads below return None and this check never fires.
     bad = []
 
     def worker(i):
@@ -130,7 +124,7 @@ def lane_receiver(iters, nthread):
 
 
 def lane_joint(iters, nthread):
-    """One JointReceiverState, many chains -- the real 1176.45 MHz arrangement."""
+    """One JointReceiverState, many chains, as Receiver.joint_receiver shares it."""
     js = state_filter.JointReceiverState(code_len=10230.0)
     bad = []
 
@@ -150,8 +144,8 @@ def lane_joint(iters, nthread):
             try:
                 js.predict(t)
                 js.gauge()
-                # The read accessors that are deliberately unlocked, plus locked ones that
-                # index by membership -- this is the 2026-08-15 shape.
+                # clk and clk_rate are unlocked properties; bias, sigma and age index by
+                # membership while other threads change it.
                 js.clk
                 js.clk_rate
                 for prn in prns:
@@ -175,7 +169,7 @@ def lane_joint(iters, nthread):
 
 
 def lane_notes(iters, nthread):
-    """drain_notes against concurrent writers: not one note may be lost."""
+    """drain_notes against concurrent writers: no note may be lost or duplicated."""
     js = state_filter.JointReceiverState(code_len=10230.0)
     drained = []
     lock = threading.Lock()
@@ -184,12 +178,9 @@ def lane_notes(iters, nthread):
     def worker(i):
         local = []
         for k in range(iters):
-            # UNDER THE LOCK, because that is the production contract: `_note` is private and
-            # all of its call sites sit inside @_locked methods (update, predict, gauge,
-            # cycle, update_rrate). Poking it bare -- which is how this
-            # lane was first written -- races the drainer's rebind against an append no
-            # production path can make, and reports lost notes that the broker cannot lose.
-            # A harness that violates the contract it is testing manufactures its own bugs.
+            # Under js._lk, as in production: `_note` is private and every call site runs
+            # inside an @_locked method. An unlocked append would race the drainer in a way no
+            # production path can, and report lost notes the broker cannot lose.
             with js._lk:
                 js._note("t%d-%d" % (i, k))
             if k % 4 == 3:
@@ -199,12 +190,10 @@ def lane_notes(iters, nthread):
             drained.extend(local)
 
     err = _run([worker] * nthread, "notes")
-    # `_note` TRIMS THE QUEUE TO 200, so notes legitimately disappear once it overflows and
-    # the count invariant stops meaning anything. What matters is not how many notes were
-    # written in total -- they are drained as they go -- but how many can pile up BETWEEN
-    # drains: every thread drains each 4th iteration, so the queue holds at most about
-    # 4 per thread, plus slack. Comparing the TOTAL against the bound (which is how this was
-    # first written) declares a perfectly conclusive 16-thread run inconclusive.
+    # `_note` keeps only the newest 200 notes, so the count invariant holds only while the
+    # queue cannot overflow. What bounds the queue is the pile-up between drains, not the
+    # total written: every thread drains each 4th iteration, so the queue holds about 4 notes
+    # per thread; in_flight allows 5.
     left = len(js.drain_notes())
     bad, inconclusive = [], None
     in_flight = nthread * 5
@@ -215,10 +204,9 @@ def lane_notes(iters, nthread):
             % (nthread, in_flight)
         )
     elif len(drained) + left != written:
-        # BOTH DIRECTIONS ARE THE SAME DEFECT. The unlocked swap is read-then-rebind, so two
-        # drainers take the SAME list object and both return its contents: the dominant
-        # failure is DUPLICATION (drained > written), not loss. An operator reading the log
-        # sees a note twice and concludes the filter did something twice.
+        # Either sign is the same defect. An unlocked read-then-rebind lets two drainers take
+        # the same list object and both return it, so the usual symptom is duplication
+        # (drained > written): an operator reading the log sees a note twice.
         d = len(drained) + left - written
         bad.append(
             "MISCOUNT %+d note(s) (%s): wrote %d, drained %d, queued %d"
@@ -253,8 +241,8 @@ def main():
     gil = getattr(sys, "_is_gil_enabled", lambda: True)()
 
     if a.selftest:
-        # The defect as it stood before the audit: read-then-rebind with no lock, so two
-        # chains draining at once can both take the list and one loses its notes.
+        # drain_notes without its lock: read-then-rebind, so two chains draining at once can
+        # take the same list.
         def unlocked_drain(self):
             out, self.notes = self.notes, []
             return out
@@ -274,10 +262,8 @@ def main():
                 return 0
         print("  20 attempts, nothing detected")
         if gil:
-            # NOT a broken harness. The GIL makes the read-then-rebind effectively atomic,
-            # so the defect is INVISIBLE here -- which is the finding, not a shortfall: it
-            # is section 6's argument ("a race would pass every gate") reproduced on demand.
-            # Run this arm under the free-threaded interpreter to see the lane bite.
+            # Not a harness fault: the GIL makes the read-then-rebind effectively atomic, so
+            # the race cannot show here. The selftest means something only free-threaded.
             print(
                 "SELFTEST INCONCLUSIVE UNDER THE GIL -- expected. The GIL hides this "
                 "defect; that is WHY the audit had to be an audit. Re-run free-threaded."
@@ -304,8 +290,8 @@ def main():
         err, bad, inconclusive = fn(a.iters, a.threads)
         dt = time.perf_counter() - t0
         if inconclusive and not (err or bad):
-            # NOT a failure. A gate that cries FAIL when it merely could not tell teaches
-            # everyone to ignore its red, which costs more than the lane is worth.
+            # Reported as SKIP, not FAIL: a lane that could not tell must not turn the gate
+            # red, or its red stops meaning a detected defect.
             skipped += 1
             print("  %-9s SKIP  (%.2f s) -- %s" % (name, dt, inconclusive))
         elif err or bad:

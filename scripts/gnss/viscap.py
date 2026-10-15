@@ -1,18 +1,20 @@
 #!/usr/bin/env python3
 """Arm, watch and disarm the fleet's (N+M)^2 visibility capture.
 
-Each GNSS instance built with --vis-capture carries a FrameWindowGate (gnss<g>_viscap_gate)
-between its dual correlator and two rawFileWrites. The gate passes frames only inside an
-armed [start_seq, end_seq) window, where seq is the ABSOLUTE F-engine sample of the frame's
-first hop -- one clock for the whole fleet, so arming every gate on the same numbers makes
-every node's files start on the same hop.
+Each GPU of a GNSS instance built with --vis-capture carries a FrameWindowGate
+(gnss<g>_viscap_gate) between its dual correlator and the rawFileWrites: one for the capture
+tiles and one ctl writer per captured chain. The gate passes frames only inside an armed
+[start_seq, end_seq) window, where seq is the absolute F-engine sample of the frame's first
+hop -- one clock for the whole fleet, so arming every gate on the same numbers makes every
+node's files start on the same hop.
 
     viscap.py status                       # last seq, armed windows, counters, per gate
     viscap.py arm --start-in 30 --duration 300     # fleet-wide window, 30 s from now, 5 min
     viscap.py arm --start-seq S --end-seq E # explicit window (frame-aligned by the gate)
     viscap.py disarm                        # close every window now
+    viscap.py watch [--every 5]             # status every 5 s until no gate is armed
 
-The seq rate is MEASURED (two status polls) rather than assumed, and cross-checked against
+The seq rate is measured (two status polls) rather than assumed, and cross-checked against
 the frame geometry (8192 hops x 5.12 us). Files land in <record_dir>/viscap on each node's
 own nvme (default /tmp/gnss/viscap); see scripts/gnss/viscap_read.py for the layout and
 docs/CHORD_VIS_CAPTURE.md for the whole procedure.
@@ -25,7 +27,7 @@ import urllib.request
 
 NODES = ["cx19", "cx27", "cx42", "cx43", "cx44", "cx51"]
 PORT = 12048
-# The gps_l5 chain is the primary (no tag); an extra chain's gate is gnss<g>_<tag>_viscap_gate.
+# One gate per GPU gates every captured chain on that GPU.
 GATES = ["gnss0_viscap_gate", "gnss1_viscap_gate"]
 FRAME_S = 8192 * 5120e-9  # hops per frame x hop length -- the geometry cross-check only
 

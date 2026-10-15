@@ -3,7 +3,7 @@
 
     /home/kvand/gnss/venv/bin/python -m unittest discover -s python/scripts/gnss -p 'test_*.py'
 
-Most of these are about what the module REFUSES. A resolver that answers every question is
+Most of these are about what the module refuses. A resolver that answers every question is
 worse than none: the failure this exists to prevent is a beam map quietly summing two different
 arrays, and that only shows up as a slightly wrong answer nobody can trace.
 """
@@ -106,8 +106,8 @@ class TestResolve(unittest.TestCase):
         self.assertEqual(am.at("20301231", self.be).name, "e2")
 
     def test_gap_refuses(self):
-        # The day of the recabling: both neighbours exist, the hour does not. Refusing is the
-        # answer, and it is the whole point of the hook.
+        # A day in the gap between two epochs: both neighbours exist, the day has none.
+        # Refusing is the answer.
         with self.assertRaises(am.NoEpoch):
             am.at("20260915", self.be)
 
@@ -146,7 +146,7 @@ class TestSpan(unittest.TestCase):
             am.require_single("20260908", "20260920", self.be)
 
     def test_span_reaching_into_a_gap_refuses(self):
-        # 09-14 -> 09-16 touches e1 and then the gap; it must not come back as "just e1".
+        # A span from e1 into the gap must not come back as "just e1".
         with self.assertRaises(am.NoEpoch):
             am.span("20260914", "20260916", self.be)
 
@@ -184,7 +184,7 @@ class TestNumbering(unittest.TestCase):
 
     def test_cube_axis_is_not_the_correlator_axis(self):
         self.assertEqual(self.e.element(cube=9).index, 9)
-        self.assertEqual(self.e.element(cube=25).index, 73)  # NOT 25
+        self.assertEqual(self.e.element(cube=25).index, 73)  # not 25
         self.assertEqual(self.e.element(cube=25).dish, 9)
         self.assertEqual(self.e.element(cube=25).slot, 1)
 
@@ -344,7 +344,7 @@ class TestShippedTable(unittest.TestCase):
                 self.assertFalse(el.known)
 
     def test_every_five_day_master_we_hold_is_one_epoch(self):
-        # The maps already built (20260906..10) must not have straddled anything.
+        # The five-day masters 20260906..10 must lie in a single epoch.
         e = am.assert_compatible(
             [
                 {"day": d}

@@ -5,17 +5,15 @@
 #   beamcube_daily.sh 20260907     # a named day
 #   BEAMCUBE_FORCE=1 beamcube_daily.sh 20260907    # rebuild a master that already exists
 #
-# WHY THIS EXISTS: until 2026-09-10 these two commands were hand-run, and the failure mode is
-# invisible -- the viewer keeps serving its last export, which is indistinguishable from a
-# healthy viewer. Four days of data sat unpublished that way. The compactor loop already knows
-# the exact moment a day's rungs are complete, so it is the right place to call this from.
+# The compactor loop (cubecompact_loop.sh) calls this as soon as a day's rungs are complete. An
+# unpublished day is invisible: the viewer keeps serving its last export, which looks exactly
+# like a healthy viewer.
 #
-# ⚠️ THE EXPORT TAKES EVERY MASTER, ALWAYS. `export` rewrites index.json from its arguments
-# alone, so passing only the new day would drop every other day off the page. The glob below is
-# the whole point of having a script: it cannot be got wrong by hand.
+# The export takes every master. `export` rewrites index.json from its arguments alone, so
+# passing only the new day would drop every other day off the page; the glob below does it.
 set -u
 K=/home/kvand/gnss/kotekan
-PY=${GNSS_PY:-/home/kvand/gnss/venv/bin/python}     # needs h5py + healpy: venv, NOT venv-ft
+PY=${GNSS_PY:-/home/kvand/gnss/venv/bin/python}     # needs h5py + healpy: venv, not venv-ft
 TOOL=$K/python/scripts/gnss/gnss_beam_cube.py
 BEAM=${BEAMCUBE_DIR:-/home/kvand/gnss/fixtures/beamcube}
 ROOT=${CUBE_ROOT:-/mnt/cs00/data/kvand/gnss_cube}
@@ -33,9 +31,9 @@ if ! flock -n 9; then
     exit 0
 fi
 
-# ⚠️ ONE MASTER IS ONE POINTING, and the pointing is a DECLARED epoch table that can change
-# under us. Rather than bake p0_dec40p73 in, find which pointing actually holds this day and
-# refuse if more than one does -- summing two pointings is the error this guards.
+# One master is one pointing, and the pointings are a declared epoch table
+# (config/pointings.yaml) that can change. Find the pointing that holds this day and refuse if
+# more than one does: summing two pointings is the error this guards.
 mapfile -t POINTINGS < <(
     for p in "$ROOT"/rung12/*/; do
         compgen -G "$p"'*/'"$DAY"'.h5' >/dev/null 2>&1 && basename "$p"
@@ -55,14 +53,14 @@ MASTER=$BEAM/cube_${DAY}_nside${NSIDE}.npz
 if [ -s "$MASTER" ] && [ -z "${BEAMCUBE_FORCE:-}" ]; then
     say "master exists, skipping build: $MASTER (BEAMCUBE_FORCE=1 to rebuild)"
 else
-    # THE CHAIN-HEALTH MASK FIRST. After one F-engine re-base four chains sat on noise for 12 h; the
-    # cube folded every one of those records, and the observables writers had flagged
-    # all of it. gnss_chain_health.py turns those flags into per-chain 5-min bins and the build
-    # vetoes them (--health-mask auto finds this file). A failed mask run must not stop the
-    # build: exit 1 there means "episodes found", which is the point.
-    # An existing mask is kept (BEAMCUBE_REMASK=1 to regenerate): a day whose writers carried a
-    # wrong time base gets its mask built by hand from the re-timed archive (fixtures/obs_retimed),
-    # and the nightly run must not replace that with one built from the raw files.
+    # The chain-health mask first. The cube carries no tracking flags, so it folds the records
+    # of a chain that sat on noise; the observables writers flag them. gnss_chain_health.py
+    # turns those flags into per-chain 5-min bins and the build vetoes them (its --health-mask
+    # auto reads fixtures/obs/health/mask_<day>.json, this file at the default $OBS). A failed
+    # mask run must not stop the build: exit 1 there means "episodes found", which is the point.
+    # An existing mask is kept (BEAMCUBE_REMASK=1 to regenerate): a mask built by hand, for a
+    # day whose writers carried a wrong time base, must not be replaced by one built from the
+    # raw observables.
     OBS=${GNSS_OBS_OUT:-/home/kvand/gnss/fixtures/obs}
     shopt -s nullglob; OBSFILES=("$OBS"/*_"$DAY".jsonl); shopt -u nullglob
     if [ -s "$OBS/health/mask_$DAY.json" ] && [ -z "${BEAMCUBE_REMASK:-}" ]; then
@@ -75,7 +73,7 @@ else
     fi
     say "build $DAY nside $NSIDE from ${POINTINGS[0]}"
     # Build into a staging dir: a half-written master that the export then reads is worse than
-    # no master, and the build writes its .npz incrementally.
+    # no master, and the build writes its .npz in place.
     STAGE=$BEAM/.staging_$DAY.$$
     mkdir -p "$STAGE" || exit 1
     trap 'rm -rf "$STAGE"' EXIT

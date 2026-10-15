@@ -1,30 +1,27 @@
 #!/bin/bash
-# Bring the GNSS BEAM-CUBE ARCHIVER up on the host it is run from (cf06 in practice).
+# Bring the GNSS beam-cube archiver up on the host it is run from (cf06 in practice).
 #
 #   scripts/gnss/site/cubearch_up.sh [config] [log]
 #   scripts/gnss/site/cubearch_up.sh --check [config]   # the pre-flight only (the unit's ExecStartPre)
 #
-# This is the far side of the beam-cube push leg: one bufferRecv on :11070 for the whole fleet's
-# completed ~1 s (subband x element) windows, and a rawFileWrite that lands them on cs00. It is
-# the ARCHIVE -- the thing per-element/per-frequency beam maps are built from -- and it is a
-# SEPARATE process from both the gather and the search aggregator on purpose: a gather restart
-# wipes every standing trim and the aggregator is bounced routinely, and neither should be able
-# to punch a hole in a record.
+# The far side of the beam-cube push leg: one bufferRecv on :11070 for the whole fleet's
+# completed ~1 s (subband x element) windows, and a rawFileWrite that lands them on cs00. This
+# archive is what the per-element, per-frequency beam maps are built from. It is a separate
+# process from the gather and the search aggregator so that restarting either cannot punch a
+# hole in it.
 #
-# ⚠️ ORDER MATTERS: ARCHIVER FIRST, THEN THE NODES. There are NINETY senders (15 assemblers x 6
-# nodes), each logging a WARN per connection attempt at reconnect_time 30. A fleet restarted
-# into a missing archiver buries its own logs, and the windows sent meanwhile are gone -- the
-# senders drop rather than block, which is what keeps an archive from ever stalling a tracker.
+# Start the archiver before the nodes. There are ~90 senders (one per chain instance, ~15 per
+# node), each logging a WARN per connection attempt every 30 s (reconnect_time), and windows
+# sent while the archiver is down are lost: the senders drop rather than block, so the archive
+# can never stall a tracker.
 #
-# ⚠️ A REBOOT STOPS A BY-HAND ARCHIVER. cf06 takes an unattended kernel reboot at 03:03 whenever
-# one lands (2026-08-12, 08-19, 09-05); a nohup'd process simply stops with the fleet looking
-# perfectly healthy, and a gap that starts at 03:0x is this, not the instrument. The boot unit
-# is gnss-cubearch.service (gnss-cube.target, scripts/gnss/site/systemd; its ExecStartPre is
-# this script's --check); once that target is enabled on cf06, use it instead of this launcher.
+# A reboot stops an archiver started by hand. cf06 takes unattended kernel reboots at ~03:03,
+# and a gap that starts then is this, not the instrument. The boot unit is gnss-cubearch.service
+# (gnss-cube.target, scripts/gnss/site/systemd), whose ExecStartPre is this script's --check;
+# once that target is enabled on cf06, use it instead of this launcher.
 #
-# Three hard-won rules: run the DPDK-free binary (NFS holds two build trees), poll for the
-# port instead of sleeping, and check the log for a FatalError rather than trusting that a
-# process exists.
+# Run the DPDK-free binary (NFS holds two build trees), poll for the port instead of sleeping,
+# and check the log for a FatalError rather than trusting that a process exists.
 set -u
 CHECK=0
 [ "${1:-}" = "--check" ] && { CHECK=1; shift; }
@@ -57,9 +54,9 @@ PY
 EOF
 echo "cube archiver: $(basename "$CFG") -- recv :$PORT, frame $FRAME B, writing $DIR"
 
-# ⚠️ THE ARCHIVE DIRECTORY MUST EXIST AND BE WRITABLE BEFORE THE STAGE OPENS A FILE.
-# rawFileWrite takes base_dir straight from the config and dies on a missing path, and on cs00
-# that is an NFS mount which can be absent without the host noticing.
+# The archive directory must exist and be writable before the stage opens a file: rawFileWrite
+# takes base_dir from the config and exits on a missing path, and on cs00 that is an NFS mount
+# that can be absent without the host noticing.
 if ! mkdir -p "$DIR" 2>/dev/null || ! touch "$DIR/.wtest" 2>/dev/null; then
     echo "FAILED: cannot write $DIR (mounted? owned by you?)." >&2
     exit 1
@@ -70,12 +67,9 @@ if [ -n "$AVAIL" ] && [ "$AVAIL" -lt 500 ]; then
     echo "  ⚠️ only ${AVAIL} GB free on $DIR -- this leg writes ~780 GB/day RAW." >&2
 fi
 
-# ⚠️ THE FLEET'S FRAME SIZE MUST MATCH THIS BUFFER, AND A MISMATCH IS SILENT WHERE IT MATTERS.
-# bufferRecv compares the sender's frame_size against its own and CLOSES the connection -- so a
-# disagreement never corrupts data, it just delivers none, from a listener that is up, on a port
-# that is open, with senders that keep reconnecting. It cost exactly one afternoon here: the
-# frame grew by 8 bytes (the maxima that make the archive self-describing) and the node configs
-# had not been regenerated. Check it BEFORE anything writes a file.
+# The fleet's cube frame_size must match this buffer's. bufferRecv closes a connection whose
+# frame_size differs, so a mismatch corrupts nothing but delivers nothing, from a listener that
+# is up, on an open port, with senders that keep reconnecting. Check it before anything writes.
 MISMATCH=0
 for f in "$K"/config/generated/chord_gnss_cx*_multi.yaml; do
     [ -f "$f" ] || continue

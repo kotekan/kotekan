@@ -1,15 +1,14 @@
-"""The 07:05 incident's regression test: five threads share one JointReceiverState.
+"""Five threads share one JointReceiverState; its instance lock keeps x and P consistent.
 
-2026-08-18 07:05:17 on sky: a thread switch inside a structure mutation (x and P are
-resized in adjacent statements) desynced the shared filter by one row during a C-sat
-rejection storm; every subsequent birth appended into inconsistent geometry (112 vs 111
-growing to 771) and the joint state was silently dead for three hours behind per-consumer
-guards. The fix is the instance lock (_locked on every public entry point).
+A thread switch inside a structure mutation (x and P are resized in adjacent statements)
+desyncs the shared filter by one row; every later birth then appends into inconsistent
+geometry, and the joint state is silently dead behind per-consumer guards. The instance lock
+(_locked on every public entry point) prevents it.
 
 Both arms run here, so the gate is shown able to fail:
-  - LOCKED (the fix): geometry must stay consistent under a hostile switch interval.
-  - UNLOCKED (the control): the same workload with the lock stubbed out must reproduce
-    the desync -- if it cannot, this test is not exercising the race and a green LOCKED
+  - Locked: geometry must stay consistent under a hostile switch interval.
+  - Unlocked (the control): the same workload with the lock stubbed out must reproduce
+    the desync -- if it cannot, this test is not exercising the race and a green locked
     arm proves nothing.
 
 Run: python3 -m unittest test_joint_thread_safety

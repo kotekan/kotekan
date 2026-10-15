@@ -1,26 +1,21 @@
-// LIVE PRN MEMBERSHIP: does a slot swap actually reach the code the GPU correlates against?
+// Checks that a live PRN slot swap reaches the code table the GPU correlates against.
 //
 //   scripts/gnss/site/build_tool.sh prnswap && scripts/gnss/prnswap
 //
-// WHY THIS TOOL EXISTS. docs/CHORD_LIVE_PRN_RECONFIG.md lets the broker repoint a PRN slot at
-// a different satellite while the pipeline runs. The dangerous failure is not a crash: it is a
-// swap that updates the HOST's idea of the map and not the DEVICE's code table, so the slot
-// keeps correlating the departed satellite's code against the new satellite's model. That
-// produces no error, no warning and no output -- just one slot that never locks again, on a
-// node, indefinitely. Nothing else in the tree can see it, because every host-side check
-// agrees with itself by construction.
+// docs/CHORD_LIVE_PRN_RECONFIG.md lets the broker repoint a PRN slot at a different satellite
+// while the pipeline runs. A swap that updates the host's map but not the device's code table
+// raises no error: the slot keeps correlating the old satellite's code and never locks again,
+// and every host-side check agrees with itself. So the test synthesizes the new satellite's
+// signal, despreads it in the swapped slot, and requires the correlation to appear there and
+// the old satellite's to vanish.
 //
-// So the decisive test is the one below: synthesize the NEW satellite's signal, despread it in
-// the swapped slot, and require the correlation to appear -- and the OLD satellite's signal to
-// stop correlating there. That is a statement about the bytes on the GPU, not about a map.
+// It also covers two engines sharing one bank, as the search does (one GnssCudaDespread per
+// <=64-channel refine group over a single ChannelizedReplicaBank). The bank is shared but the
+// device tables are not, so an engine that compared against the bank's PRN would skip its own
+// upload.
 //
-// It also pins the two-engines-one-bank case, which is what the search runs (one
-// GnssCudaDespread per <=64-channel refine group over a single ChannelizedReplicaBank). The
-// bank is shared, the device tables are not, and an engine that short-circuits on the BANK's
-// PRN would silently skip its own upload.
-//
-// ⚠️ RUN IT ON cf06, NOT ON A TRACKING NODE. It allocates a despread engine and launches
-// kernels; the nodes' GPUs are 62-79% busy with the live chains.
+// Run it on cf06, not on a tracking node: it allocates a despread engine and launches kernels
+// on a GPU the live chains are using.
 //
 // @author Keith Vanderlinde
 #include "GnssCudaDespread.hpp"
@@ -45,8 +40,8 @@ static void check(bool ok, const char* what) {
 }
 
 int main() {
-    // L1 C/A at the GX10 geometry: small, fast, and the code tables differ strongly between
-    // PRNs, which is exactly the property under test.
+    // L1 C/A at a small geometry (5 MHz, 20 channels): fast, and the code tables differ
+    // strongly between PRNs, which is the property under test.
     const double fs = 5.0e6, f_off = 1.25e6;
     const int N = 20, taps = 4;
     const double dop = -2900.0, cp_true = 517.25;
@@ -59,10 +54,9 @@ int main() {
     }
     const auto win = dsp::window_from_string("hamming");
 
-    // ---- 1. THE BANK: a swapped slot must equal a slot BUILT that way ------------------
-    // Not "looks plausible" -- byte-identical. The constructor and set_prn share one code
-    // expansion for exactly this reason; if they ever fork, the divergence would be invisible
-    // and would present as one satellite being mysteriously untrackable.
+    // ---- 1. The bank: a swapped slot is byte-identical to a slot built that way ----
+    // The constructor and set_prn share one code expansion (build_full_code); if they diverged,
+    // the only symptom would be one satellite that cannot be tracked.
     gnss::ChannelizedReplicaBank bank(*sig, fs, f_off, N, taps, win, {PRN_A, PRN_B});
     gnss::ChannelizedReplicaBank ref(*sig, fs, f_off, N, taps, win, {PRN_C, PRN_B});
     check(bank.prns() == std::vector<int>({PRN_A, PRN_B}), "the bank remembers its PRN list");
@@ -81,7 +75,7 @@ int main() {
     check(bank.prns() == std::vector<int>({PRN_C, PRN_B}), "the bank's map follows the swap");
     check(bank.set_prn(0, PRN_C), "a no-op swap succeeds and costs nothing");
 
-    // ---- 2. THE DEVICE: does the swap reach the bytes the kernel reads? ----------------
+    // ---- 2. The device: the swap reaches the bytes the kernel reads ----
     // Fresh bank, so the engines below start from the same place the pipeline does.
     gnss::ChannelizedReplicaBank live(*sig, fs, f_off, N, taps, win, {PRN_A, PRN_B});
     const int n_hops = live.repl_period_hops();
@@ -92,8 +86,8 @@ int main() {
         local[c] = c;
     const long long w0 = 114436200145LL * (long long)(2 * N); // CHORD-scale absolute anchor
 
-    // "Sky" for a given PRN INDEX in a bank: the replica itself, no noise -- this is a test of
-    // which code is loaded, not of sensitivity, so a clean signal makes the answer unambiguous.
+    // "Sky" for a slot of a bank: the replica itself, without noise. This tests which code is
+    // loaded, not sensitivity, so a clean signal makes the answer unambiguous.
     auto sky_of = [&](gnss::ChannelizedReplicaBank& b, int slot) {
         const auto ch = b.channels_hoprate(slot, w0, cp_true, dop, n_hops, cover);
         std::vector<cf> w((size_t)n_hops * n_chan);
@@ -109,11 +103,11 @@ int main() {
     const auto sky_c = sky_of(gen_c, 0);
 
     GnssCudaDespread eng1(live, 2, cover, n_hops, fs);
-    GnssCudaDespread eng2(live, 2, cover, n_hops, fs); // SAME bank, own device table
+    GnssCudaDespread eng2(live, 2, cover, n_hops, fs); // same bank, own device table
 
-    // Normalised prompt amplitude for slot 0 against a given sky: |corr| / energy. ~1 when the
-    // loaded code matches the sky, ~0 when it does not (a C/A cross-correlation floor is
-    // -24 dB, so the two are not close).
+    // Normalised prompt amplitude for slot 0 against a given sky: |corr| / replica energy. ~1
+    // when the loaded code matches the sky, ~0 when it does not (C/A cross-correlation is at
+    // most ~-24 dB).
     auto amp = [&](GnssCudaDespread& e, const std::vector<cf>& sky) {
         e.upload_window(sky.data(), w0);
         GnssCudaDespread::Spec sp;
@@ -141,11 +135,10 @@ int main() {
           "AFTER the swap slot 0 correlates PRN C's sky -- the DEVICE code table moved");
     check(a_after1 < 0.1 * c_after1, "... and PRN A's sky no longer correlates there");
 
-    // ---- 3. TWO ENGINES, ONE BANK ------------------------------------------------------
-    // The bank now says slot 0 holds PRN C, because engine 1 changed it. Engine 2's device
-    // table still holds PRN A. An implementation that short-circuits on the BANK would decide
-    // it had nothing to do and leave engine 2 correlating the wrong code forever -- with the
-    // host map insisting everything is fine.
+    // ---- 3. Two engines, one bank ----
+    // The bank says slot 0 holds PRN C because engine 1 changed it, while engine 2's device
+    // table still holds PRN A. An engine that compared against the bank would do nothing and
+    // leave engine 2 correlating the wrong code, with the host map reporting the swap done.
     const double c_eng2_stale = amp(eng2, sky_c);
     check(c_eng2_stale < 0.1, "engine 2 has NOT silently followed the shared bank");
     check(eng2.set_prn(0, PRN_C, nullptr), "engine 2 accepts the same swap");

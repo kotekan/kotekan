@@ -2,27 +2,25 @@
 # Stop the cf06 beam-cube leg (static viewer :8877, compactor loop, archiver), in dependency
 # order, archiving its logs first.
 #
-# ⚠️ THE LIVE STACK IS NOT THIS SCRIPT'S BUSINESS. The broker, gather, aggregator, obs writers
-# and live viewer run under systemd on the gnss VM; stop them there (docs/CHORD_GNSS_RUNBOOK.md).
-# This only covers what is still on cf06, and its log archiving only covers cf06's own /tmp.
+# The live stack is not stopped here: the broker, gather, aggregator, obs writers, rail recorder
+# and live viewer run under systemd on the gnss VM (gnss-stack.target); stop them there
+# (docs/CHORD_GNSS_RUNBOOK.md). This covers only the cube leg on cf06, and its log archiving
+# covers only cf06's own /tmp.
 #
-# WHY THIS EXISTS: the cube leg has three `*_up.sh` scripts and NO way down, so every teardown
-# was hand-assembled from `ps` output at the moment it was needed -- which is how a component
-# gets missed. Two were missed the first time this was written by hand: the static viewer
-# (`python3 -m http.server 8877`, which matches none of the obvious patterns) and the
-# cube-compactor loop. They are both in the table below now.
+# The cube leg has three `*_up.sh` scripts (beamview_up.sh, cubecompact_up.sh, cubearch_up.sh)
+# and this is their way down. The table below names every process, including the static viewer
+# (`python3 -m http.server 8877`), which matches none of the obvious patterns.
 #
-# ⚠️ /tmp IS CLEARED ON BOOT (`D /tmp` in /usr/lib/tmpfiles.d/tmp.conf) and cf06 reboots weekly
-# at ~03:03. A stack log that is not archived before a teardown is gone at the next boot, not at
-# the next restart -- which is why this archives BEFORE it stops, and why that is not optional
-# for the live logs.
+# /tmp is cleared on boot (`D /tmp` in /usr/lib/tmpfiles.d/tmp.conf) and cf06 takes unattended
+# reboots near 03:03 (about weekly), so a log not archived before a teardown is gone at the next
+# boot. Hence the archive runs before the stop.
 #
-# ORDER IS CONSUMERS BEFORE PRODUCERS: the viewer serves what the compactor publishes, and the
+# Consumers stop before producers: the viewer serves what the compactor publishes, and the
 # compactor folds what the archiver writes. Down is the reverse of up.
 #
 # usage:  stack_down.sh              # archive live logs, then stop everything
 #         stack_down.sh --no-archive # stop only
-#         stack_down.sh --list       # show what WOULD be stopped, change nothing
+#         stack_down.sh --list       # show what would be stopped, change nothing
 set -u
 LOGDIR=/home/kvand/gnss/logs
 STALE_H=6            # logs untouched this long are history, not this run -- skipped
@@ -63,7 +61,7 @@ if [ "$ARCHIVE" = 1 ]; then
             continue
         fi
         echo "  keep  $(basename "$f") ($(du -h "$f" | cut -f1))"
-        # -1: this runs while someone is waiting to go home; the ratio hardly differs on text.
+        # -1: fast, and the ratio hardly differs on text.
         nice -n 10 gzip -1 -c "$f" > "$LOGDIR/$(basename "$f" .log)_$T.log.gz" &
         pids="$pids $!"
     done
@@ -79,8 +77,9 @@ while IFS='|' read -r name pat; do
         printf '%-16s not running\n' "$name"
         continue
     fi
-    # TERM first, always. These write files (records, cubes, jsonl rows); -9 on the archiver or
-    # a writer truncates whatever was mid-write, and every one of them exits cleanly on TERM.
+    # TERM first: these write files, and KILL truncates whatever was mid-write. The compactor
+    # loop exits on TERM only after any in-flight pass, which can outlast the 10 s wait; KILL
+    # then stops the loop alone and the pass's own process runs on to the end.
     pkill -TERM -f "$pat" 2>/dev/null
     for _ in $(seq 1 20); do
         sleep 0.5

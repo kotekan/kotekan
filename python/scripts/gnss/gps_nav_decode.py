@@ -4,22 +4,22 @@
 The 50 bps data (20 ms/bit) is organized as 30-bit words (24 data + 6 parity),
 10 words per 300-bit / 6 s subframe, 5 subframes per frame. This module:
 
-  * parity_check / parity_encode -- the IS-GPS-200 (1+2) Hamming parity, including
+  * parity_check / parity_encode -- the IS-GPS-200 (32,26) Hamming parity, including
     the D30* data inversion and D29*/D30* chaining between words; trim_word -- the
     word 2/10 trim that re-seeds the chain at each subframe boundary.
   * frame_sync -- locate subframe starts by the TLM preamble (0x8B) confirmed by
-    parity over the first two words, and resolve the stream POLARITY (the data may
-    arrive inverted; parity on the recovered bits is polarity-independent, and the
-    preamble on the recovered bits fixes the absolute sign).
+    parity over the first two words. Parity and preamble are checked on the recovered
+    (D30*-corrected) bits, which are the same whichever polarity the stream arrives
+    in, so no polarity decision is needed.
   * decode_how -- TOW-count and subframe ID from the HOW word.
+  * decode_subframe -- a subframe's 10 parity-checked data words; parse_lnav_ephemeris /
+    sv_position_lnav -- subframes 1-3 to the clock and orbit set, and its propagation.
 
-The point for the calibrator: a validated, polarity-locked bit sequence to WIPE off
-a satellite's data modulation so coherent integration runs past the 20 ms nav bit.
-Bits are decoded from a STRONG reference (main beam / bright sat) and reused on the
-weak sidelobe measurement -- the message is identical for every beam.
+navbit_predictor.py runs this decoder on the combiner's nav_obs; the broker cross-checks
+the decoded ephemeris against BRDC and feeds it to the decoded-ephemeris fallback.
 
 Decoder works on hard bits (0/1). Upstream forms them from the per-20 ms despread
-sign; this module validates/syncs/polarity-locks them.
+sign; this module validates and syncs them.
 """
 import math
 
@@ -53,7 +53,7 @@ def _parity_bits(d24, D29s, D30s):
 
 def parity_encode(data24, D29s, D30s):
     """Encode 24 data bits into a 30-bit word with correct parity (for tests/prediction).
-    data24 are the source bits BEFORE the D30* inversion the receiver sees."""
+    data24 are the source bits before the D30* inversion the receiver sees."""
     d = [(int(b) ^ D30s) & 1 for b in data24]  # transmitted bits = source XOR D30*
     par = _parity_bits(
         [b ^ D30s for b in d], D29s, D30s
@@ -148,19 +148,18 @@ def set_how_tow(how_data, tow):
 
 
 # ---- ephemeris extraction (subframes 1-3, IS-GPS-200 Table 20-III) -----------
-# The decoder already yields per-subframe DATA words (10 x 24 bits, parity stripped and
-# D30*-corrected -- decode_subframe's `data`). This turns subframes 1/2/3 into the Keplerian
-# clock+orbit set and propagates it, so an L1-only GPS satellite feeds the decoded-eph BRDC
-# fallback exactly as the CNAV (L2C/L5) decoders do. GPS LNAV is the LEGACY orbit model
-# (sqrtA direct, no A_dot/dn0_dot) -- the same math as gnss_ephemeris.sat_pos_clk / Galileo
-# sv_position_inav -- so this reuses that propagation, only fed seconds-of-week.
+# Input is decode_subframe's per-subframe data words (10 x 24 bits, parity stripped and
+# D30*-corrected). Subframes 1/2/3 become the Keplerian clock+orbit set, so an L1-only GPS
+# satellite feeds the decoded-ephemeris BRDC fallback as the CNAV (L2C/L5) decoders do. GPS
+# LNAV is the legacy orbit model (sqrtA direct, no A_dot/dn0_dot), the same math as
+# gnss_ephemeris.sat_pos_clk and Galileo sv_position_inav, fed seconds-of-week.
 #
-# Fields are addressed as (word_index 0-9, start-bit 0-indexed within that word's 24 DATA bits,
+# Fields are addressed as (word_index 0-9, start-bit 0-indexed within that word's 24 data bits,
 # length); multi-word quantities (M0/e/sqrtA/OMEGA0/i0/omega, IODC) list their MSB then LSB
 # segments, concatenated MSB-first. Angular fields are in semicircles -> * pi for radians.
-# ⚠️ These bit offsets are the ONE thing a pack/unpack round-trip cannot check; the LIVE BRDC
-# position cross-check (_lnav_brdc_xcheck in the broker; near-zero since BRDC *is* LNAV) is the
-# real validator. If it disagrees, correct THIS table, not the propagation.
+# A pack/unpack round-trip cannot check these bit offsets; the broker's BRDC position
+# cross-check (gnss_broker/sky.py _lnav_brdc_xcheck) can, and reads near zero because BRDC's
+# GPS record is the LNAV message. If it disagrees, correct this table, not the propagation.
 GPS_PI = 3.1415926535898
 GPS_MU = 3.986005e14
 GPS_OMEGA_E = 7.2921151467e-5
@@ -216,8 +215,9 @@ def _lnav_field(sf_data, segments, signed, scale):
 
 def parse_lnav_ephemeris(sf1, sf2, sf3):
     """Decode the LNAV clock+ephemeris (SI) from subframes 1, 2, 3 (each a list of 10 data
-    words of 24 bits). Returns the eph dict, or None if the two IODEs / IODC LSBs disagree
-    (a mixed upload set). Angular elements are radians; toe/toc/WN in their native units."""
+    words of 24 bits). Returns the eph dict, or None if a subframe is missing or short;
+    `_iod_consistent` is False when the two IODEs and IODC's 8 LSBs disagree (a mixed upload
+    set). Angular elements are radians; toe/toc in seconds of week, WN the raw 10-bit week."""
     src = {1: sf1, 2: sf2, 3: sf3}
     if any(v is None or len(v) < 10 for v in src.values()):
         return None
@@ -307,7 +307,7 @@ if __name__ == "__main__":
         print("  start %4d  TOW %d  subframe %d" % (idx, tow, sfid))
     assert [h[2] for h in hits] == sfid_seq, "subframe IDs mismatch"
     assert [h[1] for h in hits] == [1000, 1001, 1002], "TOW mismatch"
-    # Polarity independence: a globally-inverted stream recovers the SAME data.
+    # Polarity independence: a globally-inverted stream recovers the same data.
     inv = frame_sync(stream ^ 1)
     assert [(h[1], h[2]) for h in inv] == [
         (h[1], h[2]) for h in hits
@@ -320,9 +320,9 @@ if __name__ == "__main__":
         "OK: parity + frame sync + HOW + polarity-independence + error-detect all pass"
     )
 
-    # --- ephemeris field table: SELF-CONSISTENT pack/unpack + no overlaps/overruns ---
-    # (This proves the table is internally consistent, NOT that the offsets match the ICD --
-    # only the live BRDC position cross-check confirms that, see the field-table note.)
+    # --- ephemeris field table: self-consistent pack/unpack + no overlaps/overruns ---
+    # (This proves the table is internally consistent, not that the offsets match the ICD;
+    # only the BRDC position cross-check confirms that, see the field-table note.)
     sfw = {sf: [np.zeros(24, dtype=np.int8) for _ in range(10)] for sf in (1, 2, 3)}
     truth = {}
     for name, (sf, segs, signed, scale) in LNAV_EPH_FIELDS.items():
@@ -357,10 +357,9 @@ if __name__ == "__main__":
         "OK: LNAV ephemeris field table self-consistent (pack/unpack, no overlap/overrun)"
     )
 
-    # --- propagator agreement: sv_position_lnav == the trusted legacy sat_pos_clk ---
-    # Feed one synthetic orbit to BOTH the new LNAV propagator and gnss_ephemeris.sat_pos_clk
-    # (the RINEX/BRDC propagator the dpos cross-check already validates) at several epochs; they
-    # implement the same legacy Keplerian math, so they must agree to ~mm.
+    # --- propagator agreement: sv_position_lnav == gnss_ephemeris.sat_pos_clk ---
+    # One synthetic orbit through both propagators (sat_pos_clk is the RINEX/BRDC one) at
+    # several epochs; they implement the same legacy Keplerian math, so they must agree to ~mm.
     import gnss_ephemeris as _ge
 
     orbit = dict(

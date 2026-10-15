@@ -1,10 +1,10 @@
 [Unit]
 Description=CHORD GNSS beam-cube leg: archiver + compactor (cf06 only)
 Documentation=file:///home/kvand/gnss/kotekan/scripts/gnss/site/cubearch_up.sh
-# ⚠️ cf06 ONLY, and both services say so too: the user-unit copies live in the NFS-shared home
-# and a login anywhere starts kvand's user manager there (gnss-stack.target has the 2026-10-02
-# lesson). NOT ENABLED until the archiver moves onto it at the F-engine return (#120): on cf06,
-# with the bare archiver and compactor stopped,
+# cf06 only, and both services say so too: the user-unit copies live in the NFS-shared home and
+# a login anywhere starts kvand's user manager there (gnss-stack.target says why that matters).
+# To run the archiver and compactor under it instead of by hand (cubearch_up.sh,
+# cubecompact_up.sh), on cf06 with those stopped:
 #   systemctl --user daemon-reload && systemctl --user enable --now gnss-cube.target
 ConditionHost=|cf06
 ConditionHost=|cf06.site.chord-observatory.ca

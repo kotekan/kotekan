@@ -1,7 +1,7 @@
 #!/bin/bash
-# Live chain-health check -- every 15 minutes from cron on cf06.
+# Live chain-health check: every 15 minutes from cron on cf06.
 #
-# Reads the TAIL of today's (and, in the first hour, yesterday's) observables files, so a pass
+# Reads the tail of today's (and, in the first hour, yesterday's) observables files, so a pass
 # costs ~40 MB per chain over NFS rather than the day's several GB, and flags any chain whose
 # fleet_present fraction has been under 30% for 15+ minutes ending within the last hour.
 #

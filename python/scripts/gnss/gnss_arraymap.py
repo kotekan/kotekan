@@ -8,22 +8,20 @@
     masters   CUBE.npz...   preflight: may these masters be co-added?
     check                   validate the table against the shipped config
 
-WHY THIS EXISTS. The element -> physical feed map is NOT a constant. On 2026-09-15 the site
-team rewired three dishes, so element 9 before that date and element 9 after it are different
-polarisations of the same dish; re-pointing moves the boresight every few months; and the live
-element set has grown before and will grow again. Anything that co-adds across time -- a beam
-map summed over days, most of all -- has to know whether the thing it is summing stayed the
-same thing. Today that knowledge is a table in config/; the intent is a database. Everything
-here goes through `JsonBackend`, so that swap is one class.
+The element -> physical feed map is not a constant: a recabling can make one element index a
+different polarisation of the same dish, a re-pointing moves the boresight, and the live
+element set changes. Anything that co-adds across time, a beam map summed over days most of
+all, has to know whether what it sums stayed the same thing. The map is a table,
+config/chord_array_epochs.json, read only through `JsonBackend`, so another store is one class.
 
-TWO NUMBERINGS, AND THEY ARE DIFFERENT AXES. The correlator element index runs 0..127 and is
+Two numberings, on different axes. The correlator element index runs 0..127 and is
 `pol*64 + dish`; the beam cube packs a 32-wide axis, `pol*16 + dish`, in `cube_order`. Crossing
 them silently mislabels every polarisation, which is why `element()` takes one or the other
 explicitly and there is no arithmetic anywhere else.
 
-THE RESOLVER NEVER EXTRAPOLATES. A time outside every recorded interval raises `NoEpoch`. That
-includes the deliberate gap over the day of a recabling whose hour nobody wrote down: refusing
-to answer is the correct answer there, and it is the whole value of the hook.
+The resolver never extrapolates. A time outside every recorded interval raises `NoEpoch`,
+including a gap left in the table over a change whose exact time is unknown: refusing to
+answer is the correct answer there.
 
 @author Keith Vanderlinde
 """
@@ -45,7 +43,7 @@ class Refused(Exception):
 
     The two subclasses answer different questions -- "nothing is recorded here" vs "too much
     is" -- but a caller about to co-add wants both, and which one fires depends on where the
-    unrecorded gaps happen to fall. Catching only one is a bug waiting for a boundary to move.
+    unrecorded gaps fall. Catching only one breaks when a boundary moves.
     """
 
 
@@ -61,7 +59,7 @@ class Straddle(Refused):
 def as_utc(t):
     """datetime | unix seconds | 'YYYYMMDD' | ISO-8601 -> aware UTC datetime.
 
-    A bare 'YYYYMMDD' means the START of that UTC day. A day is the unit the cube builds in, so
+    A bare 'YYYYMMDD' means the start of that UTC day. A day is the unit the cube builds in, so
     a day string that lands inside an epoch gap is a real question about that build, not a
     rounding accident -- see `day_span`.
     """
@@ -160,7 +158,7 @@ class ArrayEpoch(object):
 
     # -- identity ---------------------------------------------------------------------------
     def key(self):
-        """Stable short id: the name plus a digest of what the table actually SAYS.
+        """Stable short id: the name plus a digest of what the table says.
 
         The name alone is not enough to stamp an artifact with. If the table is corrected in
         place -- a plane pinned, a position re-measured -- artifacts built against the old
@@ -225,8 +223,8 @@ class ArrayEpoch(object):
 class JsonBackend(object):
     """The shipped table, config/chord_array_epochs.json.
 
-    epochs() returns the epochs sorted by valid_from, non-overlapping. Gaps are allowed and
-    meaningful: a gap is "we do not know", and the resolver raises inside one.
+    epochs() returns the epochs sorted by valid_from; `check` validates that none overlap. Gaps
+    are allowed and meaningful: a gap is "we do not know", and the resolver raises inside one.
     """
 
     def __init__(self, path=CONFIG):
@@ -338,10 +336,9 @@ def for_day(daystr, be=None):
 def assert_compatible(metas, be=None):
     """Refuse a co-add of artifacts that are not the same array. `metas` are master meta dicts.
 
-    Accepts anything carrying `day`, and uses `array_epoch_key` when present. Masters built
-    before this module existed carry no stamp; those are resolved from their `day` instead and
-    reported as such, because silently trusting an unstamped artifact is how a mixed sum
-    happens. Returns (epoch, [notes]).
+    Accepts anything carrying `day`, and uses `array_epoch_key` when present. A master without
+    the stamp is resolved from its `day` and reported in the notes, because silently trusting
+    an unstamped artifact is how a mixed sum happens. Returns (epoch, [notes]).
     """
     seen, notes, unstamped = {}, [], []
     for m in metas:

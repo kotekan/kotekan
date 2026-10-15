@@ -1,35 +1,28 @@
 #!/usr/bin/env python3
-"""One broker process, many signals (task #27 M5).
+"""One broker process, many signals: every chain of a chains yaml runs as a thread.
 
     broker_multi.py config/gnss_chains_chord.yaml [--list] [extra broker args...]
 
-WHAT THIS REPLACES. Today CHORD runs `broker_up.sh` for GPS L5 and `broker_up_extra.sh e5a`
-for Galileo E5a, side by side. Those two chains are on the SAME CARRIER -- both pass
-`--carrier-hz 1176.45e6` -- through the same feed, the same cable, the same F-engine and
-the same GPS-disciplined clock. They are not two receivers; they are one receiver estimated
-twice, and everything that costs comes from the process boundary between them:
+A chain's flags are the yaml's `common:` block overlaid with its own block under `chains:`;
+the extra args are appended to every chain. --list prints the resolved flags and exits.
 
-  * the receiver clock had to be hand-pasted, then serialised through a JSON file with a
-    flush cadence and a two-read slew gate, to cross four inches of memory;
-  * the F-engine time anchor was fetched and latched independently, so two processes could
-    straddle a restart and disagree forever, each certain;
-  * the BRDC file was parsed twice and each copy's other constellations thrown away
-    (measured: one parse holds 32 GPS and 33 Galileo satellites);
-  * the viewer needed one instance per broker.
+Chains on one carrier (GPS L5 and Galileo E5a both run at --carrier-hz 1176.45e6) see the
+same feed, cable, F-engine and GPS-disciplined clock: they are one receiver, estimated per
+signal. In one process they share a `Receiver` (gnss_broker/receiver.py): one F-engine time
+anchor, one multi-system BRDC store, and clock estimates one chain contributes and another
+consumes. They also share one REST publisher.
 
-HOW IT WORKS, AND WHY IT IS SO SMALL. `main()` is a closure whose locals are exactly one
-chain's state -- that is what a closure is. So running N chains is calling it N times, in N
-threads, with one shared `Receiver`. There is no chain object to build, and the 3252-line
-cycle body is untouched.
+`broker.main()` keeps exactly one chain's state in its locals, so running N chains is
+calling it N times, in N threads, with one shared Receiver; there is no chain object.
 
-THREADS, NOT A SEQUENTIAL SWEEP. A chain issues ~25 HTTP requests per cycle against a 2 s
-interval with 5 s timeouts; four chains in series would not fit in the interval, and the
-first slow endpoint would delay every other signal's seeds. Chains share nothing mutable
-except the Receiver, which is locked and contribute/consume only.
+Threads, not a sequential sweep: a chain makes many HTTP requests per cycle with 5 s
+timeouts against a 2 s interval, so chains in series would not fit, and one slow endpoint
+would delay every other signal's seeds. Chains share nothing mutable except the Receiver
+(locked, contribute/consume only) and the publisher.
 
-A CHAIN THAT DIES MUST NOT TAKE THE OTHERS WITH IT, and must not die quietly either -- a
-silently missing chain looks exactly like a satellite-free band. Each thread logs its own
-death loudly and the driver reports which chains are still alive on exit.
+A chain that dies must not take the others with it, and must not die quietly: a missing
+chain looks exactly like a satellite-free band. Each thread logs its own death, the driver
+logs the set of live chains whenever it changes, and the process exits 1 when none is left.
 """
 import argparse
 import faulthandler
@@ -39,29 +32,16 @@ import sys
 import threading
 import time
 
-# WHY: this process is five chain threads plus a telemetry reader, and when a cycle takes
-# 15 s nobody can say WHICH of them is waiting for what. `top` says 6% CPU, `wchan` says
-# futex, and neither names a line of Python. py-spy cannot attach after the fact either --
-# ptrace_scope is 1 on these hosts and the broker is daemonised, so it is nobody's child.
+# SIGUSR1 dumps every thread's stack to stderr (the log), to answer which chain thread is
+# waiting on what when a cycle runs long: `wchan` says only futex, and py-spy cannot attach
+# (ptrace_scope is 1 on these hosts and the daemonised broker is nobody's child).
 #
 #     kill -USR1 $(pgrep -f '[b]roker_multi')      -> every thread's stack to stderr (the log)
 #
-# Free when unused, costs one signal handler, and answers the question in one line instead
-# of a restart under a profiler. Added 2026-08-23 after the cycle-time hunt spent an hour
-# inferring from wait channels.
-#
-# ⚠️⚠️ ONE DUMP AT A TIME. DO NOT USE THIS AS A SAMPLING PROFILER -- IT KILLED THE BROKER.
-# faulthandler walks every thread's frame objects from inside a signal handler, without the
-# GIL, while those threads are running and mutating them. That is fine for the occasional
-# look (12 signals at 0.9 s: survived; and it is what the module is FOR -- a process that is
-# usually already dying). Driven at 45 signals in 40 s against five busy chain threads it
-# raced and the process vanished mid-dump: no traceback, no fatal line, no OOM, nothing in
-# dmesg -- just a log that stops in the middle of a stack. Cost the instrument ~80 s of
-# downtime plus a settle, on 2026-08-23, to learn this.
-#
-# If you want a profile, profile a REPLAY (broker_equiv holds the transcripts and has no
-# side effects) or launch the broker as py-spy's child. Use this to answer "where is it
-# stuck RIGHT NOW", once.
+# One dump at a time; never drive it as a sampling profiler. faulthandler walks the other
+# threads' frames from a signal handler, without the GIL, while they run and mutate them, and
+# rapid repeated dumps against busy chain threads can kill the process with no traceback. To
+# profile, profile a replay (broker_equiv.py) or launch the broker as py-spy's child.
 faulthandler.register(signal.SIGUSR1, all_threads=True, chain=False)
 
 K = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -141,9 +121,9 @@ def main():
 
     rx = receiver.Receiver(log=transport._log)
     transport.set_log_tag("driver")
-    # ONE PUBLISHER FOR THE WHOLE PROCESS (task #27 M6), on the first --publish-port found:
-    # two ports would put us straight back to a viewer instance per constellation. Chains
-    # are told apart by /<chain>/get_status or ?chain=<id>.
+    # One publisher for the whole process, on the first non-zero --publish-port in chain
+    # order, so one viewer origin serves every chain. Chains are told apart by
+    # /<chain>/get_status or ?chain=<id>.
     port = None
     for name, argv in chains:
         if "--publish-port" in argv:
@@ -151,7 +131,8 @@ def main():
             if p not in ("0", ""):
                 port = int(p)
                 break
-    # Before any chain starts polling: name resolution was this process's cycle time.
+    # Before any chain starts polling: an uncached DNS lookup can stall a chain thread for
+    # the resolver's 5 s timeout (see transport.install_dns_cache).
     transport.install_dns_cache()
     pub = publish.FleetPublisher(port, transport._log) if port else None
     if pub:
@@ -171,21 +152,19 @@ def main():
         )
         t.start()
         threads.append(t)
-        # Stagger the starts. Not a settling wait -- there is no such thing here (every
-        # timescale in this system is seconds or faster). It is so the first chain latches
-        # the time anchor and builds the BRDC store while the second is still parsing
-        # arguments, which keeps the startup log readable and the shared fetches to one.
+        # Stagger the starts, not a settling wait: the first chain usually latches the time
+        # anchor and builds the BRDC store before the next asks. Both run outside the
+        # Receiver's lock, so chains that miss together would each fetch; the stagger also
+        # keeps the startup log readable.
         time.sleep(0.25)
 
-    # WHERE THE CYCLE ACTUALLY GOES. The driver is the only thread that belongs to no chain,
-    # so it is the only place a PROCESS-WIDE number can be logged without picking a chain to
-    # blame. It also means this needed no change to the 5100-line main().
+    # Cycle and HTTP timing reports. The driver is the only thread that belongs to no chain,
+    # so it logs the process-wide numbers. Every 60 s, not every cycle: each report is about
+    # ten lines and what it measures moves on the scale of minutes. Both reports reset on read,
+    # so each block covers the interval since the last.
     #
-    # Every 60 s, not every cycle: the report is ~10 lines and the thing it measures moves on
-    # the scale of minutes. A per-cycle dump would be six times the volume of the thing being
-    # diagnosed. Reset-on-read, so each block covers exactly the interval since the last.
-    # For the slack column. Chains can in principle differ; they do not today, and a wrong
-    # denominator would be worse than none, so take it only when every chain agrees.
+    # The slack column's interval: taken from the chains' --interval only when every chain
+    # that sets one agrees, since a wrong denominator is worse than none.
     ivs = set()
     for _, argv in chains:
         if "--interval" in argv:

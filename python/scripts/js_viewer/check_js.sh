@@ -1,13 +1,13 @@
 #!/bin/sh
-# Syntax-check every viewer JS file. Run after ANY viewer edit -- the app is served straight
-# to the browser with no build step, so a syntax error only shows up as a silently dead panel.
+# Syntax-check every viewer JS file. Run after any viewer edit: the app is served straight to
+# the browser with no build step, so a syntax error only shows up as a silently dead panel.
+# Exits nonzero if any file fails.
 #
-# The files are ES modules but named .js, and `node --check` parses .js as CommonJS: pointing it
-# straight at them reports "To load an ES module..." for every file, which looks like 35 failures
-# and is really zero. Copying to a .mjs makes node parse them as the modules they are.
+# The files are ES modules named .js, and `node --check` parses .js as CommonJS: pointed
+# straight at them it reports "To load an ES module..." for every file. Copying each to a .mjs
+# makes node parse it as the module it is.
 #
-# Needs: apt-get install --no-install-recommends nodejs   (2026-07-24: 0 upgraded, no nvidia/
-# kernel packages touched -- safe under the GX10 fragile-driver rule).
+# Needs node: apt-get install --no-install-recommends nodejs
 set -u
 dir=$(dirname "$0")
 tmp=$(mktemp -d) || exit 1

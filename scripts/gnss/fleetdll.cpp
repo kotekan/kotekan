@@ -1,25 +1,24 @@
 /**
  * @file
- * @brief OFFLINE DRIVER for gnss::FleetDll -- the fast loop's discriminator, on a file.
+ * @brief Offline driver for gnss::FleetDll, the fast loop's discriminator, on a file.
  *
- * Task #51 milestone F1's gate. Reads telemetry frames in the gather's own wire format
- * (`[uint32 LE length][length bytes]`, GnssTelemGather.hpp) and prints what the SHIPPED
- * arithmetic makes of them, as JSON on stdout.
+ * Reads telemetry frames in the gather's wire format (`[uint32 LE length][length bytes]`,
+ * GnssTelemGather.hpp) and prints what the shipped arithmetic makes of them, as JSON on stdout.
  *
- * WHY IT IS THE SHIPPED CODE AND NOT A MODEL OF IT. Same rule as scripts/gnss/e2e.cpp: a
- * harness that re-derives the arithmetic tests the harness author's understanding, which is
- * exactly the thing already known to be unreliable here. This includes gnssFleetDll.hpp and
- * calls it. If the fold is wrong, this is wrong in the same way, and the gate against the
- * Python arm (scripts/gnss/fleetdll_gate.py) is what catches it.
+ * It includes gnssFleetDll.hpp and calls it rather than re-deriving the arithmetic (the rule of
+ * scripts/gnss/e2e.cpp): a harness that re-derives it tests its author's understanding. If the
+ * fold is wrong this is wrong in the same way, and scripts/gnss/fleetdll_gate.py, which
+ * compares it with the Python arm, catches it.
  *
- *   ./build_tool.sh fleetdll && ./fleetdll frames.bin
+ *   scripts/gnss/site/build_tool.sh fleetdll && scripts/gnss/fleetdll frames.bin
  *
- * usage: fleetdll <file> [--n-win N] [--min-instances N] [--no-flush]
+ * usage: fleetdll <file> [--n-win N] [--min-instances N] [--taps-win N] [--trim-in FILE]
+ *                 [--no-flush] [--arm PRN,PRN,...] [--gain G] [--leak L] [--clamp C]
+ *                 [--spacing S] [--p-floor-abs P]
  *
- * ⚠️ --no-flush leaves the last window(s) OPEN, i.e. absent from the answer, which is what the
- * live path does (the next frame is the completion signal). The default flushes so a fixture's
- * final window is not silently missing -- but a gate comparing against the Python arm should
- * choose whichever matches how the Python arm windowed the same file.
+ * --no-flush leaves the last window open, so it is absent from the answer, as on the live path
+ * (the next frame closes a window). The default flushes so a fixture's final window is not
+ * missing; a comparison with the Python arm must match how the Python arm windowed the file.
  *
  * @author Keith Vanderlinde
  */
@@ -62,7 +61,7 @@ int main(int argc, char** argv) {
         else if (a == "--taps-win" && i + 1 < argc)
             taps_win = std::atoi(argv[++i]); // 0 = follow --n-win
         else if (a == "--trim-in" && i + 1 < argc)
-            trim_in = argv[++i]; // a trim store to offer at ARMING, as the stage does
+            trim_in = argv[++i]; // a trim store to offer at arming, as the stage does
         else if (a == "--no-flush")
             do_flush = false;
         else if (a == "--arm" && i + 1 < argc) {
@@ -80,10 +79,9 @@ int main(int argc, char** argv) {
         else if (a == "--spacing" && i + 1 < argc)
             pol.spacing = std::atof(argv[++i]);
         else if (a == "--p-floor-abs" && i + 1 < argc)
-            // The broker-anchored absolute window gate (TrimPolicy::p_floor_abs). 0 (the
-            // default) = the original peer-median gate, byte-identical -- which is exactly
-            // what the equivalence gate asserts; a run WITH it is the arm that proves the
-            // flag changes only what it claims to.
+            // The absolute window gate (TrimPolicy::p_floor_abs), the broker's probe-anchored
+            // floor in p_pow units. 0 (the default) is no floor: every armed PRN's window is
+            // leak-only and nothing steps.
             pol.p_floor_abs = std::atof(argv[++i]);
         else {
             std::fprintf(stderr, "unknown argument: %s\n", a.c_str());
@@ -116,12 +114,13 @@ int main(int argc, char** argv) {
     std::vector<uint8_t> buf;
     uint64_t n_frames = 0, n_bad = 0, n_late = 0;
 
-    // THE INTEGRATOR SERIES. Every (window, disc, trim) the loop actually stepped on, so the
-    // gate can drive the PYTHON integrator with the SAME disc sequence and compare trims. That
-    // decomposition matters: the disc agreement is established separately, per window, against
-    // Python's own fleet_dll_comb, so this leg tests the RECURRENCE in isolation rather than
-    // re-testing the fold. Arming is done here at start because the offline harness has no
-    // policy cycle -- on the live path the broker publishes it (docs/CHORD_FAST_TRIM.md 4).
+    // The integrator series: (last_win, last_disc, trim) per PRN at every update from its
+    // first step on, so the gate can drive the Python integrator with the same disc sequence and
+    // compare trims. The disc is compared per window separately, so the trims test the
+    // recurrence alone. A leak-only update also advances last_win, and its entry carries the
+    // last stepped disc, so the series replays exactly only while no armed window is skipped.
+    // The harness arms from --arm because it has no policy cycle; live, the broker posts the
+    // armed set (docs/CHORD_FAST_TRIM.md section 4).
     std::map<std::string, std::map<int, std::vector<std::array<double, 3>>>> series;
     std::map<std::string, std::map<int, uint64_t>> seen_win;
     while (true) {
@@ -148,14 +147,13 @@ int main(int argc, char** argv) {
             n_bad++;
         else if (st == gnss::FoldStatus::LATE)
             n_late++;
-        // Arm on first sight of a chain: set_armed needs the chain to exist, and the harness
-        // learns the chain names from the wire exactly as the stage does.
+        // Arm on first sight of a chain: the harness learns chain names from the wire, as the
+        // stage does.
         if (!arm.empty() && st == gnss::FoldStatus::OK && !series.count(chain)) {
             series[chain];
             dll.set_armed(chain, arm, pol);
-            // THE STAGE'S ADOPTION PATH, exercised here rather than modelled: a restored trim
-            // is offered ONLY once policy has armed the PRN. Offering it at load would let it
-            // leak to erasure before the first /set_policy (~5.6 s vs an ~11 s cycle).
+            // The stage's adoption path: a restored trim is offered only once its PRN is
+            // armed, since an unarmed trim leaks away before the broker's first /set_policy.
             if (!restore.empty()) {
                 auto ri = restore.find(chain);
                 if (ri != restore.end())
@@ -164,15 +162,13 @@ int main(int argc, char** argv) {
                             n_adopted++;
             }
         }
-        // Sample whatever stepped. `last_win` changing IS the step, so this cannot double-count
-        // a window nor miss one -- a frame-count heuristic could do both.
+        // Sample on each change of last_win, which integrate() sets on every update, so no
+        // update is counted twice, as a frame-count heuristic could do. When one fold closes
+        // several windows only the last is sampled, and the end-of-file flush is not sampled.
         for (const auto& cv : dll.chains())
             for (const auto& tv : cv.second.trim) {
-                // ⚠️ THE SENTINEL MUST NOT BE A LEGAL WINDOW INDEX. This defaulted to 0, which
-                // IS window 0 in any fixture that starts there -- so the loop's very first step
-                // was silently never recorded, and every trim afterwards looked one step ahead
-                // of the reference. It presented as an integrator disagreement (~2x on the
-                // first sample) and was a harness bug. Caught by the gate, 2026-08-15.
+                // The never-seen sentinel must not be a legal window index: with 0, a fixture
+                // starting at window 0 would lose the loop's first step.
                 auto ins = seen_win[cv.first].emplace(tv.first, UINT64_MAX);
                 uint64_t& prev = ins.first->second;
                 if (tv.second.n_steps > 0 && tv.second.last_win != prev) {
@@ -219,13 +215,10 @@ int main(int argc, char** argv) {
                             {"newest_win", cv.second.newest}};
     }
     out["chains"] = chains;
-    // THE LOBE-COHERENT, PER-CHANNEL TAPS -- the object combdll.lobe_taps builds in Python by
-    // walking every (window, sender, record, PRN, channel). Emitted so the gate can compare
-    // the two arms field by field on identical bytes, which is the only thing that makes
-    // moving the reduction off the broker safe: the telemetry path is INVISIBLE to
-    // broker_equiv (the gather is a raw socket, not gnss_broker.transport, so a replay runs
-    // with no telemetry at all and silently falls back to the polled discriminator). The
-    // digest would stay green while testing none of this.
+    // The lobe-coherent per-PRN and per-channel taps, the object combdll.lobe_taps builds by
+    // walking every (window, sender, record, PRN, channel), so the gate can compare the two
+    // arms field by field on identical bytes. broker_equiv cannot cover this path: telemetry
+    // arrives on a raw socket, not through gnss_broker.transport, so its replays carry none.
     nlohmann::json taps = nlohmann::json::object();
     for (const auto& cv : dll.taps()) {
         nlohmann::json pj = nlohmann::json::object();
@@ -247,9 +240,8 @@ int main(int argc, char** argv) {
     }
     out["taps"] = taps;
     // The per-record series (combdll.prompt_cn0's `recs`), flat and time-ordered:
-    // [win, slot, prn, n_inst, n_chan, e, p, l]. Flat rather than nested because it is a SERIES --
-    // nesting it by window would invite a consumer to reduce it, which is the one thing the
-    // served C/N0 must not have done for it.
+    // [win, slot, prn, n_inst, n_chan, e, p, l]. Flat because it is a series: the served C/N0
+    // gates individual records, so nothing may reduce it per window first.
     nlohmann::json rs = nlohmann::json::object();
     for (const auto& cv : dll.rec_series()) {
         nlohmann::json arr = nlohmann::json::array();
@@ -285,10 +277,9 @@ int main(int argc, char** argv) {
             sj[cv.first] = pj;
         }
         out["series"] = sj;
-        // The integrator's step/skip census, per PRN. The skip counter is the window gate's
-        // entire observable effect (a skipped window is leak-only), so an arm that changes the
-        // gate MUST move exactly this and nothing else -- which is what the equivalence gate's
-        // --p-floor-abs case asserts.
+        // The integrator's step/skip census, per PRN. A skipped window is leak-only, so the
+        // counts show how many windows the floor gated; fleetdll_gate.py's abs-floor leg checks
+        // that a floor gates only the PRNs below it.
         nlohmann::json kj = nlohmann::json::object();
         for (const auto& cv : dll.chains()) {
             nlohmann::json pj = nlohmann::json::object();

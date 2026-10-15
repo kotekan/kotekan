@@ -1,24 +1,26 @@
 #!/usr/bin/env python3
 """TEC sky movie: differential slant TEC interpolated over the local sky dome, one frame
-per time bin, satellites marked at their true (az, el), stitched to mp4.
+per time bin, satellites marked at their true (az, el), stitched to mp4 (an animated GIF
+where there is no ffmpeg).
 
     python3 gnss_tec_chord.py --since-h 7 --out /tmp/tec_run
     python3 gnss_tec_movie.py /tmp/tec_run_series.npz --outdir /tmp/tec_movie \
             [--frame-s 120] [--window-s 300] [--highpass-s 1200] [--video out.mp4]
 
-LEVELING. Carrier arcs are relative (each re-zeros at its start), so the per-arc constant is
-unknown until leveling. Two modes:
-  * default (no --ionex): each arc is HIGH-PASSED (running mean over --highpass-s removed).
-    The map then shows medium-scale structure -- wave activity / TIDs -- honestly, with zero
-    absolute claim. This is the prototype mode.
-  * --ionex FILE (hook, Monday): level each arc's mean onto the IONEX map value at its
-    pierce points, giving absolute TEC. fetch: ftp://gssc.esa.int/gnss/products/ionex/
-    (anonymous, same host as the DCBs). Not implemented yet -- the function raises with
-    a pointer, so the plumbing is visible and testable today.
+Leveling. Carrier arcs are relative (gnss_tec_chord.py removes each arc's mean), so the per-arc
+constant is unknown until leveled. Two modes:
+  * default (no --ionex): each arc is high-passed (running mean over --highpass-s removed).
+    The map then shows medium-scale structure (wave activity, TIDs) with no absolute claim.
+  * --ionex auto|FILE: each arc is shifted so its median residual to the GIM's slant TEC at
+    its pierce points is zero, then divided by the mapping factor: absolute
+    vertical-equivalent TEC.
+    'auto' fetches each covered UTC day from ftp://gssc.esa.int/gnss/products/ionex/
+    (anonymous): rapid maps first, CODE's predictions as the fallback.
 
-RENDERING. Sky dome projected az/el -> (x, y) = (sin az, cos az) * (90 - el)/90 (zenith at
-center, north up). RBF (thin-plate) interpolation over the measurement points per frame,
-masked where the nearest measurement is > --mask-deg away (no data invented over holes).
+Rendering. Sky dome projected az/el -> (x, y) = (sin az, cos az) * (90 - el)/90 (zenith at
+center, north up, east right). Per frame, a linear-kernel RBF over the measurement points,
+masked where the nearest measurement is > --mask-deg away (no data invented over holes); or,
+with --voronoi, nearest-satellite cells over the whole accessible sky (accessible_sky).
 """
 import argparse
 import glob
@@ -61,11 +63,11 @@ def sky_xy(az, el):
 
 
 def accessible_sky(GX, GY, lat_deg, incl_deg, alt_km, el_mask_deg):
-    """ANALYTIC "where can a GNSS satellite ever appear" for this site.
+    """Where a GNSS satellite can ever appear from this site, computed from the geometry.
 
     A satellite in a circular orbit of inclination i never exceeds geocentric latitude |i|,
-    so from latitude phi there is a permanent cutout toward the pole -- a direction is
-    reachable only if the SUB-SATELLITE point it implies lies within +-i.
+    so from latitude phi there is a permanent cutout toward the pole: a direction is
+    reachable only if the sub-satellite point it implies lies within +-i.
 
     For a look direction (az, el), the Earth-centred angle from the observer to the
     satellite is
@@ -75,18 +77,11 @@ def accessible_sky(GX, GY, lat_deg, incl_deg, alt_km, el_mask_deg):
         sin(psi) = sin(phi) cos(gamma) + cos(phi) sin(gamma) cos(az)
     Reachable iff |psi| <= i.
 
-    This replaces the empirical union-of-discs mask, which was a SAMPLING estimate of this
-    same region: it was ragged where passes are sparse, needed morphological repair, and
-    could only ever be as complete as the run. The geometry is known exactly, so use it.
-
-    VALIDATED by inversion on real sky (2026-07-26): feeding the observed (az, el) back
-    through this same relation gives max sub-satellite |lat| of 55.6 (GPS), 56.5 (BeiDou),
-    57.2 (Galileo) against nominal 55/55/56 -- i.e. the formula reproduces the inclinations,
-    and Galileo has DRIFTED above nominal. Containment of real samples at incl=58: 99.9%.
-    A mask that excludes real satellites is simply wrong, so check containment when changing
-    these numbers.
-    Note the boundary is a property of the SITE, not of the data -- at 44 N with i~56 deg the
-    cutout is a cap around the pole that widens toward the horizon (a horseshoe on the dome).
+    A mask that excludes real satellites is wrong: Galileo's sub-satellite latitude reaches
+    above its nominal 56 deg, which is why --incl defaults to 58. Check the containment of
+    observed samples when changing --incl or --orbit-km. The boundary is a property of the
+    site, not of the data: at mid-northern latitudes the cutout is a cap around the pole that
+    widens toward the horizon (a horseshoe on the dome).
     """
     R = 6371.0
     rr = np.hypot(GX, GY)  # sky_xy: r = (90-el)/90
@@ -105,7 +100,8 @@ def accessible_sky(GX, GY, lat_deg, incl_deg, alt_km, el_mask_deg):
 
 
 def fetch_ionex(day):
-    """Fetch (with cache) one UTC day's GIM: rapid first, CODE 1-day predicted fallback."""
+    """Fetch (cached in /tmp/ionex_cache) one UTC day's GIM: the CODE, ESA and JPL rapid maps
+    first, then CODE's 1- and 2-day predictions."""
     import subprocess
     import urllib.request
 
@@ -367,9 +363,9 @@ def main():
     for k in d:
         d[k] = d[k][ok]
     if args.ionex:
-        # ABSOLUTE MODE: level each arc's mean onto the IONEX GIM prediction at its pierce
-        # points, then display VERTICAL-equivalent TEC (slant / mapping) -- the elevation
-        # trend removed so the map shows ionosphere, not geometry.
+        # Absolute mode: shift each arc so its median residual to the GIM's slant prediction at
+        # its pierce points is zero, then display vertical-equivalent TEC (slant / mapping), so
+        # the map shows ionosphere, not the elevation trend.
         eps, lats, lons, maps, hgt = load_ionex_days(args.ionex, d["t"])
         ipla, iplo, M = ipp(d["az"], d["el"], args.lat, args.lon, hgt)
         vpred = ionex_at(eps, lats, lons, maps, d["t"], ipla, iplo)
@@ -414,7 +410,7 @@ def main():
     t0, t1 = d["t"].min(), d["t"].max()
     n_frames = int((t1 - t0) / args.frame_s)
     if absolute:
-        # Anchor the scale at ZERO TECU: the colormap then reads as absolute fraction
+        # Anchor the scale at zero TECU: the colormap then reads as an absolute fraction
         # (a wiggle of X TECU on a Y-TECU field is visibly X/Y of the ramp), instead of
         # a stretched slice that exaggerates structure.
         vhi = np.percentile(x, 98)
@@ -428,16 +424,12 @@ def main():
     horizon = GX ** 2 + GY ** 2 <= 1.0
     from datetime import datetime, timezone
 
-    # Per-sat time-sorted (t, value, sky-x, sky-y) for window-median + short-gap bridging. sky_xy
-    # is precomputed per measurement so the hold interpolates CARTESIAN sky position (no azimuth
-    # wraparound) and TEC together.
+    # Per-sat time-sorted (t, value, sky-x, sky-y, sys, prn) for window-median and short-gap
+    # bridging. sky_xy is precomputed per measurement so the hold interpolates Cartesian sky
+    # position (no azimuth wraparound) and TEC together.
     _pxall, _pyall = sky_xy(d["az"], d["el"])
-    # ---- ACCESSIBLE-SKY MASK (Voronoi tiling target): ANALYTIC, from site geometry.
-    # "Everything except the cap where nothing ever goes" -- computed, not sampled. See
-    # accessible_sky(): a look direction is reachable only if its implied sub-satellite
-    # latitude is within the constellation inclination. The empirical predecessor (union of
-    # discs around every observed sample, then morphological repair) estimated this same
-    # region from data and was ragged wherever passes were sparse.
+    # Accessible-sky mask (the Voronoi tiling target), from the site and orbit geometry, not the
+    # data: every direction except the cap no satellite reaches (see accessible_sky()).
     ACCESS = accessible_sky(GX, GY, args.lat, args.incl, args.orbit_km, args.el_mask)
     print(
         f"accessible sky (analytic, lat {args.lat:.1f}, incl {args.incl:.0f} deg, "
@@ -472,7 +464,7 @@ def main():
     )  # trailing fields for --smooth-frames
     for fi in range(n_frames):
         tc = t0 + (fi + 0.5) * args.frame_s
-        # one point per sat: median over the frame window, OR (if the sat dropped out but its
+        # one point per sat: median over the frame window, or (if the sat dropped out but its
         # samples bracket tc within --max-hold-s) a linear bridge so the patch doesn't flicker.
         pts, vals, labs = [], [], []
         half = args.window_s / 2
@@ -504,23 +496,18 @@ def main():
             # frame's spatial median is the honest zero
         grid = np.column_stack([GX.ravel(), GY.ravel()])
         if args.voronoi:
-            # Nearest-satellite (Voronoi) tiling, masked to the convex hull of the sat points so
-            # we tile the COVERED sky, not empty dome. Temporal --smooth-frames then blends the
-            # moving cell boundaries (a pixel that flips A->B between frames nanmeans to a gradient).
+            # Nearest-satellite (Voronoi) tiling. Temporal --smooth-frames blends the moving cell
+            # boundaries (a pixel that flips A->B between frames nanmeans to a gradient).
             try:
                 Z = NearestNDInterpolator(pts, vals)(grid).reshape(GX.shape)
             except Exception:
                 continue
-            # Tile the ENTIRE GNSS-ACCESSIBLE SKY, not the current frame's convex hull.
-            # The hull shrinks and lurches as satellites rise and set, so the map kept
-            # re-cropping itself and the eye read the CROP as structure. The accessible
-            # region is a fixed property of the site + constellation geometry (at 44 N with
-            # ~55 deg inclinations there is a permanent northern cap no satellite reaches),
-            # so it is computed ONCE from every sample in the series (ACCESS) and applied to
-            # every frame. Cells therefore extrapolate outward to the edge of reachable sky.
-            # ⚠️ That IS extrapolation: a pixel far from any current satellite shows its
-            # nearest neighbour's value, not a measurement -- honest for a Voronoi map, but
-            # the further from a sat marker, the softer the claim.
+            # Tile the whole accessible sky (ACCESS), not the current frame's convex hull: the
+            # hull shrinks and lurches as satellites rise and set, and the eye reads the crop as
+            # structure. ACCESS is fixed by the site and orbit geometry, so it is computed once
+            # and applied to every frame. Cells extrapolate to the edge of reachable sky: a
+            # pixel far from any current satellite shows its nearest neighbour's value, not a
+            # measurement.
             Z[~ACCESS | ~horizon] = np.nan
         else:
             try:
@@ -615,20 +602,16 @@ def main():
         written += 1
     print(f"wrote {written} frames -> {args.outdir}")
     if written > 3:
-        # Absolute --video paths are honoured as given; bare names land in --outdir.
-        # (os.path.join silently produced outdir/data/beam/... for an absolute-looking
-        # relative path and ffmpeg failed AFTER all frames were rendered.)
+        # An absolute --video path is used as given; a relative one lands in --outdir.
         out = (
             args.video
             if os.path.isabs(args.video)
             else os.path.join(args.outdir, args.video)
         )
         os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
-        # ⚠️ THERE IS NO ffmpeg ON THIS CLUSTER (checked cx43 and cf06, 2026-09-10) and
-        # installing one needs root. Every frame rendered and then the encode raised
-        # FileNotFoundError -- the whole run wasted at the last step. Fall back to an
-        # animated GIF via Pillow, already a matplotlib dependency: bigger, but it plays
-        # anywhere and needs nothing installed. mp4 stays the default where ffmpeg exists.
+        # mp4 via ffmpeg where it is installed; otherwise an animated GIF via Pillow (a
+        # matplotlib dependency): bigger, but it needs nothing installed. The CHORD hosts
+        # have no ffmpeg and installing one needs root.
         if shutil.which("ffmpeg"):
             subprocess.run(
                 [

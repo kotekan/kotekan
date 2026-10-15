@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
-"""A row's epoch is its F-engine hop, and it must be NOW-ish -- or there is no row.
+"""A row's epoch is its F-engine hop, and it must be within MAX_EPOCH_SKEW_S of now, or there
+is no row.
 
-THE BUG THIS PINS (found 2026-10-02): gal_e5a_20261002.jsonl was created on 09-28 at 20:16:38,
-48 s after that day's F-engine re-base. The writer had restarted on the new frame0, but the
-broker's fleet hop still came from the previous session's windows, and new frame0 + old hop is
-10-02 00:49:00. Files roll on the row's epoch, so those rows headed a file four days early. A row
-with no hop at all fell back to the broker's `utc`, which the broker documents as diagnostic-only.
+Right after an F-engine re-base the writer runs on the new frame0 while the broker's fleet hop
+can still come from the previous session's windows: new frame0 + old hop lands days in the
+future, and since files roll on the row's epoch, those rows would head a future day's file. A
+row with no hop has no epoch; the broker's `utc` is diagnostic only.
 
-The numbers below are the incident's own.
+The constants below are a real re-base: the previous session's frame0 and last window, the
+new frame0, and a write 49 s after the re-base.
 
 Run: python3 test_obs_epoch_gate.py
 """
@@ -24,10 +25,10 @@ from gnss_observables import (  # noqa: E402
 )
 
 HOP_S = SPH / SR
-FRAME0_OLD = 1790346673.000002861  # 09-25 session
-FRAME0_NEW = 1790626549.000002861  # 09-28 20:15:49 re-base
-WRITE_T = 1790626598.0  # 09-28 20:16:38, when the bad rows were written
-OLD_LAST = 1790622264.6  # 09-28 19:04:24.6, the old session's last window
+FRAME0_OLD = 1790346673.000002861  # frame0 of the previous session
+FRAME0_NEW = 1790626549.000002861  # frame0 after the re-base
+WRITE_T = 1790626598.0  # the write, 49 s after the re-base
+OLD_LAST = 1790622264.6  # the previous session's last window
 
 
 def epoch(r, now):
@@ -47,7 +48,7 @@ class TestRowEpoch(unittest.TestCase):
         t, _, why = epoch({"fleet_hop": stale, "pow_hop": 9435136}, WRITE_T)
         self.assertIsNone(t)
         self.assertEqual(why, "skew")
-        # and that refused row would have been stamped 10-02 00:49:00, the incident's stamp
+        # ...which new frame0 + stale hop would have stamped ~3.2 days after the write
         self.assertAlmostEqual(FRAME0_NEW + stale * HOP_S, 1790902140.6, delta=0.01)
 
     def test_no_hop_is_no_row(self):
@@ -60,8 +61,8 @@ class TestRowEpoch(unittest.TestCase):
             self.assertEqual(epoch(r, WRITE_T)[2], "no-hop", r)
 
     def test_the_combs_no_window_marker_is_not_a_hop(self):
-        # combdll seeds its aggregate with hop -1; it is truthy, and used to be stamped
-        # frame0 - 5 us -- days in the past.
+        # combdll seeds its aggregate with hop -1 ("no window"); it is truthy, and as a hop
+        # it would stamp frame0 - 5 us, before the session's first hop.
         self.assertEqual(epoch({"fleet_hop": -1}, WRITE_T)[2], "no-hop")
 
     def test_pow_hop_is_the_fallback_hop(self):

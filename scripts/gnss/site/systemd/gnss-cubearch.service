@@ -12,14 +12,14 @@ PartOf=gnss-cube.target
 
 [Service]
 Type=simple
-# Pre-flight: config present, archive dir writable, sender/receiver frame_size agree -- a
-# mismatch delivers NOTHING from a listener that is up (cubearch_up.sh says what it cost).
+# Pre-flight: config present, archive dir writable, sender/receiver frame_size agree; a
+# frame_size mismatch delivers nothing from a listener that is up.
 ExecStartPre=/home/kvand/gnss/kotekan/scripts/gnss/site/cubearch_up.sh --check
-# ⚠️ ExecStart goes through run_component.sh so that the argv AND the environment come from
-# ONE definition (scripts/gnss/site/stack_components.sh); gnss-broker.service has #134.
+# ExecStart goes through run_component.sh so the argv and the environment come from one
+# definition (scripts/gnss/site/stack_components.sh).
 ExecStart=/home/kvand/gnss/kotekan/scripts/gnss/site/run_component.sh cubearch
-# ARCHIVER FIRST, THEN THE NODES: the 90 senders drop rather than block, so a restart here
-# loses windows and never stalls a tracker.
+# Start the archiver before the nodes (cubearch_up.sh says why). The ~90 senders drop rather
+# than block, so a restart here loses windows but never stalls a tracker.
 Restart=on-failure
 RestartSec=30
 StandardOutput=append:/tmp/gnss_cubearch.log

@@ -1,12 +1,13 @@
 #!/bin/sh
-# Install the stack as systemd USER units on this host. No root anywhere.
+# Install the stack as systemd user units. No root anywhere.
 #
-# The .service and .target files beside this script ARE the units, and are installed verbatim:
-# they are the canonical form and the place the hard-won settings are explained, so the
-# installed copies are never edited by hand (two hand-maintained copies agree on the day they
-# are written and diverge on the first edit). They run as the user (no User=), hang off
-# default.target, and log to a LOCAL dir, /var/tmp/gnss-logs -- not /var/log (no root) and NOT
-# the NFS home (259 MB/h of appends over NFS, and O_APPEND is not atomic there).
+# The .service and .target files beside this script are the units, installed verbatim: they are
+# the canonical form and where the settings are explained, so the installed copies are never
+# edited by hand. They run as the user (no User=) and hang off default.target. The stack units
+# log to a local dir, /var/tmp/gnss-logs (cf06's cube units to /tmp): not /var/log (no root)
+# and not the NFS home (heavy appends, and O_APPEND is not atomic over NFS). The install dir is
+# in the NFS-shared home, so every host sees the units; each unit's ConditionHost= keeps it to
+# its own host.
 set -eu
 SRC=$(cd "$(dirname "$0")" && pwd)
 DST=${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user

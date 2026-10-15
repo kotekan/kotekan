@@ -106,10 +106,10 @@ WS_BUFFER_MIN_BYTES = 16 * 1024  # floor (also the autocorr value)
 WS_STUCK_PAUSED_S = 30
 
 
-# How often the /gps_sky endpoint recomputes satellite az/el. GPS sats move
-# <~0.1 deg/s, so a few seconds is plenty; the recompute runs in a worker
-# thread (skyfield + the one-time TLE fetch) and render_GET only ever serves
-# the cached result, so the Twisted reactor never blocks on orbit propagation.
+# Minimum interval between /gps_sky recomputes of satellite az/el. MEO satellites move
+# ~0.01 deg/s, so a few seconds is plenty. The recompute (the broker's /get_sky, plus TLE for
+# GLONASS or as the fallback) runs in a worker thread and render_GET serves only the cached
+# result, so the Twisted reactor never blocks on it.
 SKY_REFRESH_S = 5.0
 
 # Mode is decided by the number of visibility streams in the kotekan handshake.
@@ -385,11 +385,10 @@ def build_viewer_config(kotekan, args):
     and which optional integrations (CCERA pointing, galaxy view) to enable.
 
     ``kotekan`` is None in GPS-only mode (--no-power-stream): there is no power
-    waterfall, so mode is "gps" and the client builds just the GPS panel.
+    waterfall, so mode is "gps" and the client builds only the GNSS panels.
     """
     if kotekan is None:
-        # GPS-only: no power stream, so no waterfall/spectrum fields. The client
-        # sees mode "gps" and builds only the GPS Sky panel (REST-polled).
+        # GPS-only: no power stream, so no waterfall or spectrum fields.
         mode = "gps"
         airspy_stages, frame_period_s = [], 0.0
         nfreq, nvis, vis_labels = 0, 0, []
@@ -450,9 +449,8 @@ def build_viewer_config(kotekan, args):
             "galaxy_view": bool(args.galaxy_view_url),
             "galaxy_view_url": args.galaxy_view_url,
         },
-        # ``has_site`` is whether this server knows the observer location (so it can
-        # serve /gps_sky); without it the GPS panel still shows the locked list, just
-        # no sky positions.
+        # ``has_site``: whether --lat/--lon are set. Without a site /gps_sky has no
+        # positions; the table still lists the locked satellites and says "no site".
         "gps": {"has_site": args.lat is not None and args.lon is not None,},
     }
 
@@ -523,9 +521,8 @@ class LiveBeamWSProtocol(WebSocketServerProtocol):
         self._stuck_watchdog = None
 
         kotekan = self.factory.kotekan
-        # GPS-only mode (no power stream): just ship the viewer_config and stop.
-        # There are no power frames to push, so we skip the producer/backpressure
-        # plumbing and the FREQLIST entirely. The client builds the GPS panel.
+        # GPS-only mode: there are no power frames to push, so send only the
+        # viewer_config and skip the producer/backpressure plumbing and the FREQLIST.
         if kotekan is None:
             self.sendMessage(
                 json.dumps(
@@ -717,9 +714,9 @@ class ModeResource(resource.Resource):
         return json.dumps({"mode": mode}).encode("utf-8")
 
 
-# The signal inventory, one row per broker chain (see discover_broker_chains for the row
-# shape). main() fills it on a --unified start; _gps_signal_capability() and the GLONASS sky
-# filter read it at call time.
+# The signal inventory, one row per broker chain (discover_broker_chains gives the row shape).
+# main() fills it on a --unified start, before _gps_signal_capability() and the GLONASS sky
+# filter read it.
 UNIFIED_SIGNALS = []
 
 # Signal-id prefix -> constellation letter; main() backfills each row's "sys" with it.
@@ -733,10 +730,9 @@ BAND_ORDER = ["high", "mid", "low"]
 def _group_of(carrier_hz, who=""):
     """Column group for a signal, from its carrier -- the only input that cannot drift.
 
-    A signal with no carrier cannot be classified, and the two ways of being wrong are not
-    equal: an unknown group is DROPPED from the table (that is the 2026-08-09 fault), while a
-    guessed one merely renders in the wrong column. So guess, and say so -- a warning in the
-    log beats a column that quietly is not there.
+    A signal with no carrier cannot be classified. The table drops a group it does not know,
+    while a guessed group only renders in the wrong column, so this guesses the last group
+    and logs a warning.
     """
     f = float(carrier_hz or 0.0)
     if f > 0.0:
@@ -752,19 +748,15 @@ def _group_of(carrier_hz, who=""):
 def _band_of(carrier_hz):
     """RF-band column group (high/mid/low) from the sky carrier.
 
-    ⚠️ THE L5/L2 BOUNDARY IS 1.22 GHz, NOT 1.20 (KV, 2026-08-31): Galileo E5 is ONE
-    AltBOC(15,10) centred at 1191.795 MHz and BeiDou B2 is ACE-BOC on the same centre --
-    E5b/B2b at 1207.14 are the UPPER SIDEBANDS of the same transmission as E5a/B2a at
-    1176.45, one modulator, coherent. Splitting the pair across column groups drew a
-    physical unit as two bands. So: low = the E5/B2 complex + GLONASS L3OC (1202.03,
-    GLONASS's L5-class signal); mid = L2C (1227.60), GLONASS L2 (1246-1248), B3I
-    (1268.52), E6 (1278.75); high >= 1.40 GHz.
-    A 1.20 GHz threshold put 1207.14 in mid alongside E6/B3I -- wrong side of the split.
+    The low/mid boundary is 1.22 GHz. Galileo E5 is one AltBOC(15,10) signal centred at
+    1191.795 MHz and BeiDou B2 is ACE-BOC on the same centre, so E5b/B2b (1207.14) are the
+    upper sidebands of the same coherent transmission as E5a/B2a (1176.45) and belong in one
+    group. Low = the E5/B2 complex and GLONASS L3OC (1202.03); mid = L2C (1227.60), GLONASS
+    L2 (1246-1248), B3I (1268.52), E6 (1278.75); high >= 1.40 GHz.
 
-    ⚠️ THE KEYS ARE NOT SIGNAL NAMES. They were 'L1'/'L2'/'L5' until 2026-09-17, which read as
-    GPS signal names for groups that are multi-constellation and always displayed as
-    High/Mid/Low. Do not reintroduce a GPS name here: the broker's per-signal taxonomy
-    ('L5', 'E5b', 'B3', 'E6', 'L2') is a DIFFERENT axis that legitimately uses them.
+    The keys are deliberately not signal names: the groups are multi-constellation and display
+    as High/Mid/Low, while the broker's per-signal taxonomy ('L5', 'E5b', 'B3', 'E6', 'L2') is
+    a different axis that uses those names.
     """
     if carrier_hz >= 1.40e9:
         return "high"
@@ -774,17 +766,17 @@ def _band_of(carrier_hz):
 
 
 def discover_broker_chains(host, port, timeout=3.0):
-    """Ask a BROKER publisher what chains it is actually running (task #27 M6).
+    """Ask the broker publisher which chains it is running (GET /get_chains).
 
     Returns the viewer's chain dicts, or None on any failure.
 
-    The broker knows every chain it runs, its constellation, its band and its record length,
-    because those came from lib/stages/gnss/gnssSignal.hpp. Asking IT is both simpler and
-    honest: what the viewer draws is then what is actually being tracked, not what a table
-    written for a different instrument says should be.
+    Each chain's descriptor (constellation, carrier, record length, whether a search feeds
+    it) comes from the broker's own arguments, its --signal descriptor
+    (lib/stages/gnss/gnssSignal.hpp) where it has one, so the viewer draws what is being
+    tracked rather than a static table.
 
-    The stage names it returns are CHAIN IDS, which the publisher accepts as a path segment
-    (/gps_l5/get_status) -- so one viewer instance polls every constellation on one port.
+    The stage names it returns are chain ids, which the publisher accepts as a path segment
+    (/gps_l5/get_status), so one viewer instance polls every constellation on one port.
     """
     import json as _json
     import urllib.request as _u
@@ -809,27 +801,15 @@ def discover_broker_chains(host, port, timeout=3.0):
         out.append(
             {
                 "tag": c.get("constellation") or "G",
-                # RF band (L1/L2/L5), NOT the signal name -- it is the table's
-                # column, and GPS L5-Q and Galileo E5a-Q belong in the SAME one.
-                #
-                # ⚠️ THE BROKER'S rf_band IS A DIFFERENT TAXONOMY AND MUST BE VALIDATED,
-                # not trusted. It names the band physically -- "E5b", "B3", "L3", "E6" --
-                # while this table has exactly three COLUMN GROUPS, and _band_of() below
-                # already declares the intent: 1.22-1.40 GHz (L2C, B3I, E6) is mid.
-                # Taking the string raw put Galileo E5b and BeiDou B2b in a group named
-                # "E5b" that band_rank has never heard of, so both signals were
-                # discovered, polled, and then silently dropped from the table -- the
-                # viewer showed NO COLUMNS for a band that was tracking end to end
-                # (2026-08-09). The carrier is the one input that cannot be out of step,
-                # so it is now the ONLY input: since the group keys stopped being
-                # GPS names there is no longer any string the two taxonomies share, and
-                # the old "trust it if it looks like one of ours" shortcut could only
-                # ever fire on a coincidence.
+                # The table's column group (high/mid/low), from the carrier alone: GPS L5
+                # and Galileo E5a share one. The broker's rf_band names the band physically
+                # ("E5b", "B3", "L3", "E6"), a different taxonomy, and the table drops a
+                # group it does not know (see _group_of).
                 "band": _group_of(c.get("carrier_hz"), chain),
                 "col": c.get("short") or chain,
                 "name": c.get("label") or chain,
                 "sigid": c.get("sigid"),
-                # BOTH point at the chain id: the publisher serves merged detections and
+                # Both point at the chain id: the publisher serves merged detections and
                 # merged status on one port and filters on the path segment.
                 "combiner": chain,
                 "search": chain if c.get("has_search") else None,
@@ -847,27 +827,21 @@ def discover_broker_chains(host, port, timeout=3.0):
 
 
 def _gps_signal_capability():
-    """{sigid: [PRNs that BROADCAST it]} for the GPS signals in UNIFIED_SIGNALS.
+    """{sigid: [GPS PRNs whose block broadcasts it]} for every signal in UNIFIED_SIGNALS that
+    has a sigid, plus "_prns": every GPS PRN the registry knows.
 
     Lets the table distinguish "this satellite does not transmit that signal" from "it does and
-    we are not seeing it" -- the difference between a blank row and a fault. A Block IIR sat
-    showing 238 sigma on L1 C/A and nothing on L1C/L2C/L5 is CORRECT (IIR predates all three);
-    the same pattern on a Block III sat is a real problem, and the table could not tell them
-    apart.
+    we are not seeing it": a Block IIR satellite carries none of L1C, L2C and L5, so blanks
+    there are correct, while the same blanks on a Block III satellite are a fault.
 
-    ⚠️ THE SOURCE IS THE IGS METADATA SINEX VIA gnss_broker.prnmap -- THE SAME REGISTRY THE
-    BROKER'S --signal-capability FILTERS ON. The first version parsed Celestrak TLE titles
-    (the identity source KV rejected for the broker: "a multitude of errors, BeiDou worst")
-    and gated on the TLE cache's age -- so when the brokers stopped refreshing that cache,
-    the marking silently disabled itself fleet-wide and every non-L5 sat rendered as a plain
-    "--" (found 2026-08-31: the cache was 31 days old). The registry has no such rot: SVN ->
-    current PRN carries a VALIDITY WINDOW, so a re-used PRN resolves to the satellite flying
-    it today even in an old file, and prnmap.block_carries is the one place that owns which
-    block first carried each civil signal. Viewer and broker can no longer disagree.
+    The source is the IGS metadata SINEX via gnss_broker.prnmap, the registry the broker's
+    --signal-capability filters on, and prnmap.block_carries owns which block first carried
+    each civil signal, so viewer and broker cannot disagree. SVN -> PRN assignments carry a
+    validity window, so a re-used PRN resolves to the satellite flying it today. Celestrak TLE
+    titles are not used: they carry identity errors, BeiDou worst.
 
-    Returns {} on any failure -- the client then falls back to today's behaviour (everything
-    unknown reads as "no detection"), which is the safe direction: never claim a satellite is
-    incapable when we could not check.
+    Returns {} on any failure, and the client then marks nothing as not transmitted: never
+    claim a satellite is incapable when that could not be checked.
     """
     try:
         sys.path.insert(
@@ -887,14 +861,12 @@ def _gps_signal_capability():
         for s in UNIFIED_SIGNALS:
             sid = s.get("sigid")
             if not sid:
-                continue  # non-GPS: no capability model here -> client shows "--"
+                continue  # no sigid: no list, so the client shows "no detection"
             caps[sid] = sorted(
                 p for p, b in blocks.items() if prnmap.block_carries(sid, b)
             )
-        # WHICH PRNs THE MAP ACTUALLY KNOWS. Without this the client cannot tell "this block
-        # does not carry that signal" from "this PRN is not in the registry", and it rendered
-        # the second as the first -- PRN 2 is absent from the cache and was marked "not
-        # broadcast" while being tracked at 28 sigma.
+        # The PRNs the registry knows, so the client can tell "this block does not carry the
+        # signal" from "this PRN is not in the registry" (unknown, shown as no detection).
         caps["_prns"] = sorted(blocks)
         return caps
     except Exception as e:
@@ -907,11 +879,11 @@ def _gps_signal_capability():
 
 
 class WsPortResource(resource.Resource):
-    """``GET /wsport`` -> ``{"ws_port": N}`` for THIS server, plus the signal inventory when
+    """``GET /wsport`` -> ``{"ws_port": N}`` for this server, plus the signal inventory when
     --unified.
 
     The browser loads the page from one server's http_port but must open the WebSocket on the
-    SAME server's ws_port, so the client fetches this (same-origin, so it hits the right
+    same server's ws_port, so the client fetches this (same-origin, so it hits the right
     server) and connects to the port it returns.
     """
 
@@ -923,22 +895,21 @@ class WsPortResource(resource.Resource):
         self.unified = unified
         if not unified:
             return
-        # UNIFIED: advertise the whole signal inventory. The client keys satellites by
-        # tag+prn across every band and polls every combiner here; it draws the table from
-        # `signals` (a sub-table per constellation, a column per RF band). `chains` is the
-        # sky legend + per-constellation colours, one entry per CONSTELLATION.
+        # Unified: advertise the whole signal inventory. The client keys satellites by
+        # tag+prn across every band, polls every combiner listed, and draws the table from
+        # `signals` (a sub-table per constellation, a column per signal under its band group).
+        # `chains` is the sky legend and colours, one entry per constellation.
         self.signals = [dict(c) for c in broker_chains or []]
-        # Attach the transmitting-PRN list per signal so the table can say
-        # "not transmitted" instead of "not detected". Computed once here (cheap: one
-        # cached-file parse), empty when unavailable -> client keeps today's behaviour.
+        # The transmitting-PRN list per signal, so the table can say "not transmitted"
+        # instead of "not detected". Computed once (one cached-file parse); {} when
+        # unavailable, and the client then marks nothing as not transmitted.
         self.capability = _gps_signal_capability()
         _legend = [
             {"tag": "G", "name": "GPS", "color": "#4d9de0"},
             {"tag": "E", "name": "Galileo", "color": "#e8923c"},
             {"tag": "C", "name": "BeiDou", "color": "#d64550"},
-            # GLONASS (2026-08-04): violet, distinct from the G/E/C palette. PRNs here are
-            # orbital SLOT numbers, which is what the L3OC code index turned out to be --
-            # so tag+prn keys GLONASS satellites the same way as the rest.
+            # GLONASS PRNs are orbital slot numbers (the L3OC code index is the slot), so
+            # tag+prn keys GLONASS satellites the same way as the rest.
             {"tag": "R", "name": "GLONASS", "color": "#9b6fd6"},
         ]
         # Only the constellations actually being tracked: an empty sub-table for a
@@ -961,23 +932,26 @@ class WsPortResource(resource.Resource):
 
 
 class GpsSkyResource(resource.Resource):
-    """``GET /gps_sky`` -> predicted GPS sky positions for the viewer's sky plot.
+    """``GET /gps_sky`` -> predicted GNSS sky positions for the viewer's sky plot.
 
     Reply::
 
         {"ok": bool, "computing": bool, "lat": .., "lon": .., "alt": ..,
-         "sats": [{"prn": N, "az": deg, "el": deg}, ...]}
+         "sats": [{"prn": N, "const": tag, "az": deg, "el": deg}, ...]}
 
-    Azimuth is degrees clockwise from true North, elevation degrees above the
-    horizon; the TLE fallback returns only sats above ``mask_deg``. The kotekan
-    REST stages supply the locks / |A| / SNR; this endpoint supplies *where* each
-    sat is, which needs skyfield orbit propagation (not available in the DSP).
+    plus ``"error"`` after a failed compute. Azimuth is degrees clockwise from true
+    North, elevation degrees above the horizon; only the TLE path applies
+    ``mask_deg``. The broker's REST endpoints supply the locks and metrics; this
+    endpoint supplies where each satellite is: the broker's /get_sky for G/E/C, and
+    Celestrak TLE + skyfield for GLONASS and for everything when the broker cannot
+    answer.
 
-    Positions are recomputed in a worker thread at most every
-    :data:`SKY_REFRESH_S` and ``render_GET`` only serves the cached result, so
-    the reactor never blocks on skyfield or the TLE fetch. Degrades to
-    ``ok=False`` (no skyfield / no observer site / TLE network down) and the
-    panel falls back to the REST-only locked list.
+    Positions are recomputed in a worker thread, on request, at most every
+    :data:`SKY_REFRESH_S`; ``render_GET`` only serves the cached result, so the
+    reactor never blocks on the broker, skyfield or a TLE fetch. With no observer
+    site, or when the compute raises, the reply is ``ok=False`` and the panel falls
+    back to the REST-only locked list; a failed TLE fetch drops only that
+    constellation.
     """
 
     isLeaf = True
@@ -988,20 +962,22 @@ class GpsSkyResource(resource.Resource):
         resource.Resource.__init__(self)
         self.lat, self.lon, self.alt, self.mask_deg = lat, lon, alt, mask_deg
         self._broker = broker  # (host, port) of the broker's publisher
-        # The GLONASS signals actually running (sigids, e.g. GLO_L2OF / GLO_L3OC_P), so the R sky
-        # layer can filter to what ANY of them can track rather than to one signal's capability.
-        # None/empty -> no per-signal filter (show every GLONASS sat).
+        # The GLONASS signals running (sigids, e.g. GLO_L2OF, GLO_L3OC_P), so the R sky layer
+        # can filter to what any of them can track rather than to one signal's capability.
+        # Empty -> no filter (show every GLONASS satellite).
         self.glonass_sigids = list(glonass_sigids or [])
         self._cache = {"ok": False, "sats": []}  # last good (or empty) result
-        self._sats = None  # cached {prn: EarthSatellite} (TLE fallback)
-        # (the parsed-BRDC cache that used to live here is gone: the broker serves the sky
-        #  now, so this process neither parses nor fetches ephemeris -- see _brdc_skypos)
-        self._glo_capable = None  # cached set of GLONASS slots any running R
-        self._glo_capable_t = None  # signal can track (union); None = no filter
+        self._sats = None  # {tag: {prn: EarthSatellite}}, loaded once (TLE path)
+        # No broadcast ephemeris is parsed or fetched here: the broker serves the sky
+        # (_brdc_skypos).
+        # GLONASS slots any running R signal can track (None = no filter), and the monotonic
+        # time they were computed (they are kept 1 h).
+        self._glo_capable = None
+        self._glo_capable_t = None
         self._last_compute = None  # monotonic s of last attempt
         self._refreshing = False
 
-    # Viewer tag -> ephemeris system letter.
+    # Viewer tag -> the "const" letter of a broker /get_sky row (no R: GLONASS is TLE-only).
     _TAG_SYS = {"G": "G", "E": "E", "C": "C"}
 
     def _need_refresh(self):
@@ -1011,9 +987,8 @@ class GpsSkyResource(resource.Resource):
             return True
         return (time.monotonic() - self._last_compute) >= SKY_REFRESH_S
 
-    # Constellations served on the sky plot: tag + Celestrak TLE group. GPS, Galileo and
-    # BeiDou B1C all share the 1575.42 tune, so the tri-constellation configs track all
-    # three; a group whose TLE fetch fails is skipped (the others still render).
+    # Constellations on the sky plot: tag and Celestrak TLE group URL. A group whose TLE
+    # fetch fails is skipped; the others still render.
     CONSTELLATIONS = (
         ("G", None),  # None -> gps_beamtrack.DEFAULT_TLE_URL (gps-ops)
         ("E", "https://celestrak.org/NORAD/elements/gp.php?GROUP=galileo&FORMAT=tle"),
@@ -1021,52 +996,41 @@ class GpsSkyResource(resource.Resource):
         ("R", "https://celestrak.org/NORAD/elements/gp.php?GROUP=glo-ops&FORMAT=tle"),
     )
 
-    # Constellations gnss_ephemeris can actually propagate. Its RINEX parser filters on
-    # sysc in "GEC", and GLONASS broadcasts a position/velocity/acceleration state vector
-    # integrated by Runge-Kutta rather than a Keplerian element set, so there is nothing for
-    # sat_pos_clk to work with. 'R' therefore comes from TLE even when BRDC is healthy --
-    # see _compute, which merges the two sources rather than choosing between them.
+    # Constellations taken from the broker's /get_sky. 'R' always comes from TLE, even when
+    # the broker's sky is healthy; _compute merges the two sources rather than choosing.
     _BRDC_TAGS = frozenset(("G", "E", "C"))
 
     def _compute(self):
-        """Runs in a worker thread. PRIMARY: broadcast-ephemeris (BRDC) geometry via predict_all
-        -- the SAME source the tracker uses, so the sky plot agrees with what we actually lock,
-        and it is PRN-intrinsic (no fragile TLE name->PRN mapping, which had mis-placed BeiDou
-        MEOs C31/C39 below the horizon while we were tracking them at +17/+27 deg). FALLBACK:
-        Celestrak TLE + skyfield, used only when the BRDC is unavailable (offline / parse fail).
+        """Runs in a worker thread. G/E/C come from the broker's /get_sky, the
+        broadcast-ephemeris geometry the tracker uses, keyed by PRN: the sky plot agrees with
+        what is locked and needs no TLE name -> PRN mapping. GLONASS, and every constellation
+        when the broker cannot answer, comes from Celestrak TLE + skyfield.
 
-        ★ The two sources are MERGED, not chosen between. GLONASS has no BRDC path at all (see
-        _BRDC_TAGS), so the old "if BRDC returned anything, use it and stop" would have taken the
-        BRDC result for GPS/Galileo/BeiDou and silently dropped GLONASS from the sky plot
-        entirely -- satellites we are actively locking, absent from the picture, with nothing
-        anywhere saying why. Same shape as the broker's zero-satellite almanac trap: a source
-        succeeding for SOME constellations is not the same as it covering the ones you asked for.
+        The two sources are merged, not chosen between: the broker path has no GLONASS, so
+        taking its answer alone would drop GLONASS from the sky plot while it is being tracked.
         """
         want = [c[0] for c in self.CONSTELLATIONS]
         brdc_want = [t for t in want if t in self._BRDC_TAGS]
         tle_want = [t for t in want if t not in self._BRDC_TAGS]
         sats = self._brdc_skypos(brdc_want) if brdc_want else None
         if sats is None:
-            # BRDC unavailable -> everything falls back to TLE (the original behaviour).
+            # Broker sky unavailable: every constellation comes from TLE.
             return {"ok": True, "sats": self._tle_skypos(want)}
         if tle_want:
             sats = sats + self._tle_skypos(tle_want)
         return {"ok": True, "sats": sats}
 
     def _glonass_capable_set(self):
-        """Cached set of GLONASS SLOTS trackable by ANY GLONASS signal we are running -- the
-        UNION of each running R signal's capability. It MUST be a union, not one signal's set,
-        because the R sky layer aggregates every GLONASS signal onto one marker per satellite.
+        """Cached (1 h) set of GLONASS slots trackable by any running GLONASS signal: the union
+        of each running R signal's capability. It must be a union, not one signal's set,
+        because the R sky layer draws every GLONASS signal on one marker per satellite: L3OC is
+        GLONASS-K only while L2OF is on every satellite, so filtering to L3OC alone would hide
+        satellites that L2OF tracks.
 
-        ★ WHY THE UNION MATTERS (the bug this fixes, 2026-08-04): L3OC is GLONASS-K only (7 sats)
-        while L2OF is on EVERY satellite (~26 with a known channel). Filtering the whole R sky to
-        L3OC capability hid every non-K satellite -- so with both signals running, only the K sats
-        showed and L2OF's ~19 other trackable satellites vanished from the plot. A satellite that
-        carries L2OF but not L3OC is not a silent bird; it is trackable, and belongs in the sky.
-
-        The union conditions on what is ACTUALLY running (self.glonass_sigids from the live
-        /config): L3OC alone -> K only; L2OF present -> all known-k slots. None => no filter (no
-        GLONASS signals, or a capability lookup that covered ~everything and so carried no info)."""
+        The union follows self.glonass_sigids (the GLONASS signals in the broker's chain
+        inventory at startup): L3OC alone -> K slots only; L2OF present -> every slot with a
+        known frequency channel k. None => no filter (no GLONASS signals, or the lookups came
+        back empty or raised)."""
         if (
             self._glo_capable_t is not None
             and (time.monotonic() - self._glo_capable_t) < 3600.0
@@ -1077,12 +1041,11 @@ class GpsSkyResource(resource.Resource):
             import gps_beamtrack as bt
 
             for sigid in self.glonass_sigids:
-                # ⚠️ Use the CLEAN primitive per signal, not signal_capable_prns: for an FDMA
-                # signal that function falls back to the WHOLE slot set when the frequency plan
-                # is unavailable (its block filter is None -> "all"), which is indistinguishable
-                # by size from the legitimate ~26-slot known-k set. glonass_fdma_trackable() and
-                # the K-marker path both return empty on failure instead, never a spurious full
-                # set -- so the union stays trustworthy without a fragile size threshold.
+                # FDMA signals use glonass_fdma_trackable(), not signal_capable_prns: when the
+                # frequency plan is unavailable the latter returns every slot, which cannot be
+                # told from a real known-k set. glonass_fdma_trackable() returns empty on
+                # failure and the K-marker lookup raises, so a failed lookup never adds every
+                # slot to the union.
                 if "OF" in sigid.upper():
                     union |= bt.glonass_fdma_trackable()  # known-k, empty on failure
                 else:
@@ -1102,27 +1065,22 @@ class GpsSkyResource(resource.Resource):
         self._glo_capable_t = time.monotonic()
         return self._glo_capable
 
-    # Rows older than this are refused rather than drawn. A broker whose prediction has
-    # frozen must read as "no sky", not as satellites standing still -- the same lesson as the
-    # broker's own TIME BASE FROZEN guard, applied at the consumer.
+    # Broker sky rows older than this are dropped rather than drawn, so a broker whose
+    # prediction has stopped advancing does not show satellites standing still. When every
+    # row is stale, _brdc_skypos returns None and the sky comes from TLE.
     _SKY_MAX_AGE_S = 300.0
 
     def _brdc_skypos(self, want):
-        """Sky positions from the BROKER, or None if it cannot supply them.
+        """Sky positions for the tags in `want` from the broker's /get_sky, or None if it
+        cannot supply them.
 
-        ⚠️⚠️ THIS USED TO COMPUTE ITS OWN. It imported gnss_ephemeris and called fetch_brdc(),
-        which FETCHES FROM THE NETWORK AND WRITES the shared nav cache -- so this long-lived
-        process was a second writer of the broker's cache, using whatever copy of the merge it
-        imported at startup (measured 2026-08-27: nine days old, silently reverting the
-        broker's rolling store several times in one evening).
+        The broker already computes every satellite's az/el from the ephemeris it tracks with;
+        reading them keeps the sky plot consistent with the tracker. This process must not
+        fetch broadcast ephemeris itself: gnss_brdc_supply.fetch_brdc() refreshes the shared
+        nav cache, and a long-lived second writer with its own copy of the merge code would
+        revert the broker's store.
 
-        And it was wrong on its own terms. This method's whole justification was to use "the
-        SAME source the tracker uses, so the sky plot agrees with what we actually lock" --
-        but re-deriving a quantity from the same inputs is not the same as reading it, and two
-        independent derivations can disagree while both claim to be canonical. The broker
-        already knows every satellite's az/el. Ask it.
-
-        Returns None on any failure, which is the TLE fallback's existing cue.
+        Returns None on any failure, which is the cue for the TLE fallback.
         """
         import urllib.request  # module-local, matching this file's existing style
 
@@ -1172,8 +1130,8 @@ class GpsSkyResource(resource.Resource):
 
     def _tle_skypos(self, want=None):
         """Sky positions from Celestrak TLE + skyfield propagation, for the tags in `want`
-        (default: all configured). Used as the whole-sky fallback when BRDC is unavailable, and
-        as the ONLY source for constellations BRDC cannot propagate (GLONASS)."""
+        (default: all configured). The whole-sky fallback when the broker's sky is unavailable,
+        and the only source for GLONASS. The TLEs are loaded once per process."""
         from gps_beamtrack import DEFAULT_TLE_URL, load_gps_satellites, predict_skypos
 
         if self._sats is None:
@@ -1235,11 +1193,11 @@ class GpsSkyResource(resource.Resource):
 
 def _pvt_measurements(globs, max_age_s, t_now, smooth_s=90.0):
     """Per-(sys, prn, chain) code observation across the obs logs, for the PVT self-survey:
-    the freshest row's epoch, CARRIER-SMOOTHED over the last `smooth_s` seconds of its own
-    arc (gnss_pvt.hatch_smooth). One row per satellite-chain (pilot/data of the same sat
-    dedupe to one, same geometry). Residuals are wrapped clock-dominated ranges -> de-wrapped
-    per group to the group median so the common clock is a single free parameter and no sat
-    straddles a code-period edge. Returns a list of {group, az, el, resid_m, n, sd_m, method}.
+    the freshest row's epoch, carrier-smoothed over the last `smooth_s` seconds of its own
+    arc (gnss_pvt.hatch_smooth). One row per satellite-chain. Residuals are wrapped,
+    clock-dominated ranges, de-wrapped per group to the group median so the common clock is
+    a single free parameter and no satellite straddles a code-period edge. Returns a list of
+    {group, sys, prn, az, el, resid_m}, plus n, sd_m and method where smoothing succeeded.
 
     The group is the obs row's band, i.e. the chain: one chain, one clock.
     """
@@ -1288,8 +1246,8 @@ def _pvt_measurements(globs, max_age_s, t_now, smooth_s=90.0):
                             continue
                         if t < t_floor:
                             continue
-                        # a replica that is not on its signal has a code phase but no range;
-                        # rows written before the broker gated this carry the flags to say so
+                        # a replica that is not on its signal (a noise probe, or not
+                        # fleet_present) has a code phase but no range
                         if d.get("noise_probe") or d.get("fleet_present") is False:
                             continue
                         key = (sysid, prn, fr)
@@ -1303,9 +1261,9 @@ def _pvt_measurements(globs, max_age_s, t_now, smooth_s=90.0):
                         latest[key] = (t, fr, az, el, float(res), L)
             except Exception:
                 continue
-    # CARRIER-SMOOTH each satellite's code residual over its own arc (gnss_pvt.hatch_smooth).
-    # The tracker's code observable is white at ~0.1-0.25 chips per record and the carrier
-    # holds arcs for hours, so the smoothed value is the near-free order-of-magnitude win.
+    # Carrier-smooth each satellite's code residual over its own arc (gnss_pvt.hatch_smooth):
+    # the code observable is white at ~0.1-0.25 chips per record, while the carrier holds arcs
+    # for hours.
     extra = {}
     for key, v in list(latest.items()):
         hs = _pvt.hatch_smooth(hist.get(key, []), smooth_s, wrap_m=v[5])
@@ -1346,7 +1304,7 @@ def _pvt_measurements(globs, max_age_s, t_now, smooth_s=90.0):
 
 class DecodeHealthResource(resource.Resource):
     """``GET /decode_health`` -> merged on-node nav-decode health (from the brokers' JSON files)
-    PLUS a PVT self-survey computed from the obs-log code residuals (:mod:`gnss_pvt`). Stale
+    plus a PVT self-survey computed from the obs-log code residuals (:mod:`gnss_pvt`). Stale
     broker files / obs rows are dropped, so a decoder or the position solve going dark shows up
     as the row/section disappearing, not a frozen last value. PVT is cached (recomputed every
     `pvt_ttl_s`) since it tail-reads several obs logs and solves."""
@@ -1366,7 +1324,7 @@ class DecodeHealthResource(resource.Resource):
         # while the high ones sit within a few hundredths.
         self.pvt_smooth_s = 90.0
         self.pvt_min_el_deg = 15.0
-        # PVT wants NEAR-SIMULTANEOUS observations: the receiver clock (a free per-group param) is
+        # PVT wants near-simultaneous observations: the receiver clock (a free per-group param) is
         # assumed common across a group's sats, and a disciplined-oscillator drift of ~1e-9 over
         # 120 s is already ~36 m. 30 s keeps that error small while still catching ~1 row/sat.
         self.pvt_max_age_s = 30.0
@@ -1570,10 +1528,10 @@ def main():
     )
     log.startLogging(sys.stdout, setStdout=False)
 
-    # The signal list comes from the BROKER: it reports the chains it is ACTUALLY RUNNING,
-    # with constellation, carrier, record length and whether a search feeds each. Reassigning
-    # the module global is enough: _gps_signal_capability() reads it at call time. Done after
-    # logging is configured so the discovery summary lands in the viewer log.
+    # The signal list comes from the broker: the chains it is running, with constellation,
+    # carrier, record length and whether a search feeds each. Reassigning the module global is
+    # enough: _gps_signal_capability() reads it at call time. Done after logging is configured
+    # so the discovery summary lands in the viewer log.
     _bchains = None
     if args.unified:
         _bchains = discover_broker_chains(args.kotekan_host, args.kotekan_rest_port)
@@ -1596,8 +1554,8 @@ def main():
     static_dir = os.path.dirname(os.path.abspath(__file__))
 
     # GPS-only mode skips the kotekan power stream entirely (no blocking accept,
-    # no waterfall) and serves just the GPS panel + /gps_sky. Otherwise stand up
-    # the power stream as usual (blocks on accept until kotekan connects).
+    # no waterfall) and serves only the GNSS panels (/gps_sky, /decode_health).
+    # Otherwise stand up the power stream (blocks on accept until kotekan connects).
     if args.no_power_stream:
         kotekan = None
         log_.info("GPS-only mode: no power stream (waterfall disabled)")
@@ -1626,28 +1584,24 @@ def main():
     # "I edited the JS but the browser ignored me" trouble during development.
     root = NoCacheFile(static_dir)
     root.putChild(b"mode", ModeResource(kotekan))
-    # ONE VIEWER, EVERY CONSTELLATION (task #27 M6): the broker publisher names its own
-    # chains. _bchains was fetched once, up where the signal table is built -- re-asking here
-    # would be a second round trip for an answer we already have, and could disagree with it.
+    # One viewer, every constellation: the broker publisher names its own chains. Reuse
+    # _bchains from the signal table above; asking again could return a different answer.
     root.putChild(
         b"wsport",
         WsPortResource(args.ws_port, unified=args.unified, broker_chains=_bchains),
     )
 
-    # GPS sky positions (az/el) for the live-status panel. gps_beamtrack lives
-    # one dir up (python/scripts); add it to the path so the worker thread can
-    # import it. Only stood up when the panel is enabled, so a plain radio-
-    # astronomy run doesn't pull in skyfield / fetch TLEs.
+    # Sky positions and decode health for the GNSS panels. Only stood up when the panel is
+    # enabled, so a plain radio-astronomy run does not pull in skyfield or fetch TLEs.
     if gps_enabled:
-        # python/scripts (parent of js_viewer) AND python/scripts/gnss -- the GNSS helpers
-        # (gps_beamtrack et al.) moved into the gnss/ subpackage on 2026-07-14 and this
-        # bare-name import is how the sky panel finds them. Missing it makes /gps_sky return
-        # {"sats": []} with an error nobody looks at, and the viewer just quietly loses the sky.
+        # The GNSS helpers (gps_beamtrack, gnss_pvt, decode_health) are bare-name imports from
+        # python/scripts/gnss. Without it on the path every /gps_sky compute fails, and the
+        # sky plot is empty with the import error only in the reply and the log.
         _scripts = os.path.dirname(static_dir)
         sys.path.insert(0, _scripts)
         sys.path.insert(0, os.path.join(_scripts, "gnss"))
-        # GLONASS sky filter is the UNION of the running R signals' capabilities (L3OC = K
-        # only, L2OF = all known-k), so a satellite trackable by ANY of them shows. Derived from
+        # GLONASS sky filter is the union of the running R signals' capabilities (L3OC = K
+        # only, L2OF = all known-k), so a satellite trackable by any of them shows. Derived from
         # the same discovered inventory the table uses, so a band swap needs no viewer edit.
         _glo_sigids = sorted(
             {

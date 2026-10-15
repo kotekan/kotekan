@@ -1,13 +1,13 @@
 #!/bin/bash
 # Build one of the offline GNSS diagnostic tools against the already-built kotekan libraries.
-# usage: ./build_tool.sh <name>          (compiles <name>.cpp -> <name> in this directory)
+# usage: ./build_tool.sh <name>          (compiles scripts/gnss/<name>.cpp -> scripts/gnss/<name>)
 #        KBUILD=build_nodpdk ./build_tool.sh <name>
 #
 # KBUILD picks the kotekan build tree to link against. It matters because /home/kvand is NFS
 # shared: `build/` is a cx node's DPDK build and `build_nodpdk/` is cf06's, and linking a tool
-# on cf06 against the node build fails on the DPDK symbols. Output goes to $S/$N.$HOSTNAME_SHORT
+# on cf06 against the node build fails on the DPDK symbols. Output goes to $S/$N.<short host>
 # with a plain $S/$N symlink, so two hosts building the same tool over NFS do not clobber each
-# other's binary (they did, and the failure looks like "the tool suddenly segfaults").
+# other's binary; a clobbered binary shows up as a tool that suddenly segfaults.
 set -e
 K=/home/kvand/gnss/kotekan
 B=$K/${KBUILD:-build}
@@ -39,8 +39,8 @@ for l in lib/stages/libkotekan_stages.a lib/utils/libkotekan_utils.a lib/core/li
     [ -f "$B/$l" ] && LIBS="$LIBS $B/$l"
 done
 
-# The n2k correlator libs are SHARED; link + rpath them when the tree has them (tools that
-# don't use them are unaffected -- lazy binding).
+# The n2k correlator libs are shared; link and rpath them when the tree has them. A tool that
+# uses none of their symbols gets no dependency on them (the toolchain links --as-needed).
 RPATHS=""
 for l in external/n2k/libn2k.so external/n2k_dual/libn2k_dual.so; do
     [ -f "$B/$l" ] && LIBS="$LIBS $B/$l" && RPATHS="$RPATHS -Wl,-rpath,$B/$(dirname $l)"

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Pack a visibility capture into the (N+M)(N+M+1)/2 triangle per record and channel.
 
-    viscap_triangle.py <dir> --node cx19 --gpu 0 --tags ,_e5a,_b2a --config <node yaml> \
+    viscap_triangle.py <dir> --node cx19 --gpu 0 --tags ,_e5a,_b2a --config <generated config> \
         --node-yaml config/chord_gnss_node.yaml --to-h5 cx19_gnss0_tri.h5 [--p-only] [--raw]
 
 The axis is [the N live elements | the M synth lanes of the capture frame]. V[i, j] = x_i conj(x_j)
@@ -12,15 +12,17 @@ replica x replica block from the BB tiles. Blocks the capture did not gather are
 Each --tags entry names a chain whose ctl series sits beside the tiles (the primary is ''),
 and its ctl gives the PRN, run flag and 4-bit quantizer scale of its own lanes per record.
 By default every lane and the replica block are divided by those scales (synth lanes then
-carry the replica's true pre-quantization amplitude); --raw keeps tile units. Lanes no ctl
-covers (idle slots beyond a chain's list) are zero in the tiles and marked chain '' here.
---p-only keeps one lane per slot (the prompt), dropping E, L and P_HEAD.
+carry the replica's pre-quantization amplitude, except P_HEAD: see viscap_read); --raw keeps
+tile units. Lanes no ctl covers (idle slots beyond a chain's list) are zero in the tiles and
+marked chain '' here. --p-only keeps one lane per slot (the prompt), dropping E, L and P_HEAD.
 
-Output (h5): tri[R, C, K] complex64, K = M(M+1)/2, the UPPER triangle (i <= j) in row-major
-order over the M = N + L axis; axis_kind[M] ('E' element / 'L' lane), axis_id[M] (element id
-or lane index); lane_chain[L], lane_slot[L], lane_row[L] (0 E, 1 P, 2 L, 3 P_HEAD); per record
-lane_prn[R, L], lane_run[R, L]; winstart[R] (absolute ADC sample); freq_id[C]. Processed a
-few files at a time, so a whole capture streams through.
+Output (h5): tri[R, C, K] complex64, the upper triangle (i <= j) in row-major order over the
+N + L axis (L the lanes kept), K = (N+L)(N+L+1)/2; axis_kind[N+L] ('E' element / 'L' lane),
+axis_id[N+L] (element id or lane index); lane_chain[L], lane_slot[L], lane_row[L] (0 E, 1 P,
+2 L, 3 P_HEAD); per record lane_prn[R, L], lane_run[R, L]; winstart[R] (absolute ADC sample);
+freq_id[C], element_id[N]. Processed --chunk files at a time, so a whole capture streams
+through. C and freq_id come from the first --tags chain, so every captured chain must cover
+the same channels.
 """
 import argparse
 import os

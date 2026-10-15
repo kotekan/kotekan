@@ -1,23 +1,23 @@
 """GPS CNAV (L2C / L5) navigation-message decoder.
 
-CNAV rides the L2C CM (or L5 I5) channel at 25 bps, rate-1/2 convolutionally
-encoded to 50 sps. cnav_predictor.py decodes the combiner's nav_obs soft symbols
-through:
+CNAV rides the L2C CM channel at 25 bps and the L5 I5 channel at 50 bps, rate-1/2
+convolutionally encoded to 50 and 100 sps. cnav_predictor.py decodes the combiner's
+nav_obs soft symbols through:
 
-    soft symbols -> Viterbi (rate 1/2, K=7, G=171/133 oct, G2 inverted)
-                 -> 25 bps bits -> frame sync (8-bit preamble) -> CRC-24Q
+    soft symbols -> Viterbi (rate 1/2, K=7, G=171/133 oct)
+                 -> bits -> frame sync (8-bit preamble) -> CRC-24Q
                  -> field parse (message type, PRN, TOW).
 
 Distinct from LNAV (gps_nav_decode.py): FEC + CRC instead of Hamming parity, and
-message-type framing instead of fixed subframes. build_cnav_message (with
-galileo_inav.conv_encode) round-trips a synthetic message in tests without live
-sky data. Ephemeris/clock field tables (message types 10/11/30..37) are a
-mechanical follow-on.
+message-type framing instead of fixed subframes. cnav_predictor's self-test round-trips
+messages built by build_cnav_message (encoded with galileo_inav.conv_encode) without
+live sky data. CNAV_EPH_FIELDS covers the ephemeris (message types 10 and 11); the
+clock messages (30-37) are not parsed.
 """
 
-# The rate-1/2 K=7 FEC (G1=171, G2=133 oct, G2 inverted) and CRC-24Q (0x1864CFB) are the SAME
-# code Galileo I/NAV uses; galileo_inav.py holds the one copy (conv_encode, viterbi_decode,
-# crc24q, _uint).
+# The rate-1/2 K=7 FEC (G1=171, G2=133 oct) and CRC-24Q (0x1864CFB) are the code Galileo I/NAV
+# uses, except that Galileo inverts G2; galileo_inav.py holds the one copy (conv_encode,
+# viterbi_decode, crc24q, _uint); cnav_predictor's g2 search bridges the G2 difference.
 from galileo_inav import crc24q, _uint
 
 PREAMBLE = [1, 0, 0, 0, 1, 0, 1, 1]

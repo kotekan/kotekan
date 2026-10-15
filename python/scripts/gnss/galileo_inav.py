@@ -1,26 +1,25 @@
 """Galileo E1B I/NAV codec: page-part symbols <-> nav bits, and CRC-24.
 
-The first S5 D-component (2026-07-30). Mirrors gps_cnav.py -- and shares its FEC and CRC
-by construction: Galileo I/NAV uses the SAME rate-1/2 K=7 convolutional code (G1=171,
-G2=133 oct) and the SAME CRC-24Q (0x1864CFB) as GPS CNAV. This module holds the one copy
-of both; gps_cnav, cnav_predictor, galileo_fnav, gps_cnav2 and beidou_bcnav* import it.
-What differs, and lives here: the block interleaver (30x8), the 10-symbol synchronisation
-pattern, and the even/odd page-part framing.
+Galileo I/NAV uses the same rate-1/2 K=7 convolutional code (G1=171, G2=133 oct) as GPS CNAV,
+except that Galileo inverts G2, and the same CRC-24Q (0x1864CFB). This module holds the one
+copy of both; gps_cnav, cnav_predictor, galileo_fnav, gps_cnav2 and beidou_bcnav* import it.
+What is specific to I/NAV, and lives here: the block interleaver (30x8), the 10-symbol
+synchronisation pattern, and the even/odd page-part framing.
 
-E1B is the DATA channel (250 sps = 4 ms symbols); the pilot E1C carries no data. A page
-part is 1 s = 250 symbols = 10 sync + 240 data; the 240 data symbols are the rate-1/2 FEC
-of 120 bits (114 page-part content + 6 convolutional tail), block-interleaved. A NOMINAL
-page is 2 s = an EVEN page part then an ODD page part; the CRC-24 spans the two.
+E1B is the data channel (250 sps = 4 ms symbols); the pilot E1C carries no data. E5b-I carries
+the same message, and the broker decodes either with this codec. A page part is 1 s = 250
+symbols = 10 sync + 240 data; the 240 data symbols are the rate-1/2 FEC of 120 bits (114
+page-part content + 6 convolutional tail), block-interleaved. A nominal page is 2 s = an even
+page part then an odd page part; the CRC-24 spans the two.
 
-★ TWO CONVENTIONS THIS CODE FIXES BUT THE ICD OWNS, both verifiable only against LIVE
-symbols (a roundtrip self-test cannot see them -- encode and decode agree on any choice):
-G2 inversion (GPS inverts the second FEC output; Galileo does NOT -- set here to False) and
-the interleaver read/write orientation. Both are isolated as module constants so a live
-decode that fails CRC can flip them without touching the logic. This file's self-test
-proves the codec is SELF-CONSISTENT; ICD-correctness is the live-symbol step.
+Two conventions are owned by the ICD and invisible to a roundtrip self-test, since encode and
+decode agree on any choice: the G2 inversion (G2_INVERT) and the interleaver orientation
+(interleave). Each is set to the value that gives CRC-valid words on live E1B symbols and is
+isolated in one place, so a decode that fails CRC can be checked against them without touching
+the logic. The self-test proves the codec self-consistent, not ICD-correct.
 
-Refs: Galileo OS SIS ICD (I/NAV page layout, FEC, interleaver, sync). gps_cnav.py is the
-structural template; cnav_predictor.py will be the streaming wrapper (next).
+Refs: Galileo OS SIS ICD (I/NAV page layout, FEC, interleaver, sync). inav_predictor.py is the
+streaming decoder around this codec.
 """
 
 import math
@@ -30,10 +29,8 @@ import numpy as np
 SYM_S = 0.004  # E1B symbol = 4 ms (250 sps)
 K = 7
 POLY = (0o171, 0o133)  # G1, G2 -- identical to GPS CNAV
-G2_INVERT = True  # VERIFIED on live E1B symbols 2026-07-30 (a convention scan
-# decoded 160 CRC-valid words at True+swap, 0 otherwise). The
-# roundtrip self-test was blind to this -- encode/decode agree on
-# any choice -- exactly why it was flagged for the live step.
+G2_INVERT = True  # Galileo inverts G2; GPS CNAV does not (see cnav_predictor's g2).
+# Only a CRC on live symbols can check this: encode and decode agree on any choice.
 NSTATES = 1 << (K - 1)  # 64
 CRC24Q_POLY = 0x1864CFB  # same CRC-24Q as CNAV
 
@@ -111,11 +108,10 @@ def viterbi_decode(symbols, known_start=True):
 # block interleaver (30 cols x 8 rows), CRC-24Q -- I/NAV specific
 # --------------------------------------------------------------------------
 def interleave(sym):
-    """Write the 240 encoded symbols into a 30x8 matrix by ROWS, read by COLUMNS.
-    ★ Orientation VERIFIED on live E1B symbols 2026-07-30 (the convention scan: this
-    orientation + G2_INVERT True decoded 160 CRC-valid words; the other three combinations
-    of {G2, orientation} decoded 0). interleave/deinterleave are exact inverses, so the
-    roundtrip self-test could not tell this from the transpose -- the live CRC did."""
+    """Write the 240 encoded symbols into a 30x8 matrix by rows, read it by columns.
+    With G2_INVERT True, this orientation (not its transpose) gives CRC-valid words on live
+    E1B symbols. interleave/deinterleave are exact inverses, so a roundtrip cannot tell the
+    two apart."""
     m = np.asarray(sym, dtype=np.int8).reshape(INTERLEAVE_COLS, INTERLEAVE_ROWS)
     return m.T.reshape(-1)
 
@@ -159,7 +155,8 @@ def encode_page_part(content_bits):
 
 def decode_page_part(symbols, want_sync=True):
     """250 soft symbols (bipolar: +~0, -~1) -> (content_bits[114], sync_ok).
-    Strips the sync, deinterleaves, Viterbi-decodes. Returns None if too short."""
+    Strips the sync, deinterleaves, Viterbi-decodes. Returns (None, False) if too short or,
+    with want_sync, if the sync pattern does not match."""
     s = np.asarray(symbols, dtype=float)
     if len(s) < PAGE_PART_SYMS:
         return None, False
@@ -175,9 +172,9 @@ def decode_page_part(symbols, want_sync=True):
 
 
 # --------------------------------------------------------------------------
-# nominal-page word assembly: EVEN + ODD page parts -> 128-bit word + CRC-24
+# nominal-page word assembly: even + odd page parts -> 128-bit word + CRC-24
 # --------------------------------------------------------------------------
-# A nominal page (2 s) is an EVEN page part then an ODD one, each 114 content bits:
+# A nominal page (2 s) is an even page part then an odd one, each 114 content bits:
 #   even: [even/odd=0][page_type=0][data 112]                        (2 + 112 = 114)
 #   odd : [even/odd=1][page_type=0][data 16][reserved 64][crc 24][ssp 8]  (2+16+64+24+8=114)
 # The 128-bit nav word = even.data(112) + odd.data(16); word type = word[0:6].
@@ -226,13 +223,12 @@ GAL_MU = 3.986004418e14  # Galileo GM (WGS-close; GPS uses 3.986005e14)
 GAL_OMEGA_E = 7.2921151467e-5
 _P = lambda n: 2.0 ** (-n)
 
-# name -> (word type, start bit WITHIN the 128-bit word AFTER the 6-bit type field
-# [0-indexed], length, signed, scale). ⚠️ ICD-TRANSCRIBED FROM MEMORY OF THE Galileo
-# OS SIS ICD I/NAV layout -- the offsets are the ONE thing a roundtrip cannot check;
-# the live BRDC position cross-check (a few metres if right, wildly off if a field is
-# misplaced) is the real validator. If that fails, correct THIS table, not the math.
-# Layout within each word: [type 6][IODnav 10][fields...]. Start bits below are the
-# absolute bit index in the 128-bit word.
+# name -> (word type, start bit [0-indexed] in the 128-bit word, length, signed, scale), per
+# the Galileo OS SIS ICD I/NAV layout. Each word is [type 6][IODnav 10][fields...], and start
+# bits count from the word's first bit, type field included. A roundtrip cannot check the
+# offsets; the broker's BRDC position cross-check (gnss_broker/sky.py _inav_brdc_xcheck) can:
+# a few metres if right, far off if a field is misplaced. If it fails, correct this table, not
+# the math.
 INAV_EPH_FIELDS = {
     # Word Type 1: IODnav, t0e, M0, e, sqrtA
     "t0e": (1, 16, 14, False, 60.0),
@@ -251,7 +247,7 @@ INAV_EPH_FIELDS = {
     "Cus": (3, 72, 16, True, _P(29)),
     "Crc": (3, 88, 16, True, _P(5)),
     "Crs": (3, 104, 16, True, _P(5)),
-    # Word Type 4: Cic, Cis, t0c, af0, af1, af2 (SVID at 16..22 ignored here)
+    # Word Type 4: Cic, Cis, t0c, af0, af1, af2 (SVID, bits 16-21, ignored here)
     "Cic": (4, 22, 16, True, _P(29)),
     "Cis": (4, 38, 16, True, _P(29)),
     "t0c": (4, 54, 14, False, 60.0),
@@ -285,8 +281,8 @@ def parse_inav_ephemeris(words_by_type):
 
 
 def sv_position_inav(eph, t):
-    """ECEF (x,y,z) m from I/NAV ephemeris. Standard Keplerian propagation (identical
-    math to GPS LNAV/CNAV; Galileo transmits sqrtA directly). t in Galileo system time
+    """ECEF (x,y,z) m from I/NAV ephemeris. Standard Keplerian propagation (the GPS LNAV
+    math with Galileo constants; Galileo transmits sqrtA directly). t in Galileo system time
     of week (seconds)."""
     A = eph["sqrtA"] ** 2
     tk = t - eph["t0e"]
@@ -318,7 +314,7 @@ def sv_position_inav(eph, t):
 
 
 # --------------------------------------------------------------------------
-# self-test: the codec is SELF-CONSISTENT (ICD-correctness is the live step)
+# self-test: self-consistency only; the ICD conventions need live symbols
 # --------------------------------------------------------------------------
 if __name__ == "__main__":
     import sys
@@ -326,10 +322,9 @@ if __name__ == "__main__":
     rng = np.random.default_rng(0)
     fails = 0
 
-    # 1a. FEC+interleaver roundtrip, CLEAN: content -> symbols -> content, exact.
-    # (Tests the decode; sync robustness is 1c. A hard 10/10 sync check under AWGN
-    # rejects ~2% of pages -- that is framesync sensitivity, NOT a decode error, so it
-    # must not be conflated with codec correctness the way the first cut did.)
+    # 1a. FEC+interleaver roundtrip, clean: content -> symbols -> content, exact.
+    # The sync gate is off here and in 1b: under AWGN a hard 10/10 sync check also rejects
+    # pages, which is framesync sensitivity, not a decode error.
     f1a = 0
     for _ in range(200):
         content = rng.integers(0, 2, PAGE_PART_BITS).astype(np.int8)
@@ -394,10 +389,10 @@ if __name__ == "__main__":
         % ("OK" if p5 == 0 else "FAIL %d" % p5)
     )
 
-    # 6. ephemeris field pack/unpack is SELF-CONSISTENT: place known integer codes in
+    # 6. ephemeris field pack/unpack is self-consistent: place known integer codes in
     #    each word by the field table, parse, recover the scaled values. (This checks
-    #    the table is internally consistent -- NOT that the offsets match the ICD; only
-    #    a live BRDC position check can confirm that.)
+    #    the table is internally consistent, not that the offsets match the ICD; only
+    #    the BRDC position cross-check can confirm that.)
     words = {}
     truth = {}
     for name, (wt, start, length, signed, scale) in INAV_EPH_FIELDS.items():
@@ -408,8 +403,8 @@ if __name__ == "__main__":
     for name, (wt, start, length, signed, scale) in INAV_EPH_FIELDS.items():
         code = (
             5 if not (start + length <= WORD_BITS) else (1 << (length - 1)) - 1
-        )  # a value
-        # place a distinctive code, guard overlaps by using a small unique per field
+        )  # unused: reassigned below
+        # a nonzero per-field code that fits in `length` bits (overlaps are checked below)
         code = (hash(name) % ((1 << (length - 1)) - 1 if length > 1 else 1)) + 1
         for k in range(length):
             words[wt][start + k] = (code >> (length - 1 - k)) & 1

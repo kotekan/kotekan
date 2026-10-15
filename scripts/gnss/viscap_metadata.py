@@ -1,32 +1,39 @@
 #!/usr/bin/env python3
 """Write the metadata bundle a vis-capture needs to be interpreted without this repo.
 
-    viscap_metadata.py /home/kvand/gnss/fixtures/viscap_20260907
+    viscap_metadata.py CAPTURE_DIR
+
+CAPTURE_DIR holds <node>/ subdirectories with the visctl series and configs/ with the node
+configs (chord_gnss_cx*_multi.yaml, chord_gnss_node.yaml) snapshotted at capture time.
 
 Produces <dir>/metadata/:
   timing.json     sample clock (3.2 GS/s), hop/record/frame geometry, utc0, the captured
-                  seq windows (from the ctl files of one instance) and their UTC.
-  elements.csv    element_id -> dish index, polarization, dish label, grid indices, ENU
-                  position (m) along the grid axes (grid_x_axis ~ East, grid_y_axis ~ North,
-                  see station.json) -- for the 32 live elements. Station id convention:
-                  dish = e % num_dishes, pol = e // num_dishes. Plus the array epoch covering
-                  the capture start and the element's beam-cube index in it (gnss_arraymap;
-                  both empty when no epoch is recorded for that time).
-  channels.csv    (node, gpu) -> the ABSOLUTE freq_ids that instance correlated, in MHz.
+                  seq windows (from the first node's gnss0 visctl series) and their UTC.
+  elements.csv    element_id -> dish index, polarization, dish label, grid indices, position
+                  (m) along the grid axes (grid_x_axis ~ East, grid_y_axis ~ North, see
+                  station.json) -- for every element in array.live_element_ranges. Station id
+                  convention: dish = e % num_dishes, pol = e // num_dishes. Plus the array
+                  epoch covering the capture start and the element's beam-cube index in it
+                  (gnss_arraymap; both empty when no epoch is recorded for that time).
+  channels.csv    (node, gpu) -> chan_index, absolute freq_id and freq_MHz, from the first
+                  cudaGnssInject (the primary chain's) in each gnss<gpu>_n2dual block.
   slots.csv       (node, gpu, chain) -> the PRN in each correlator slot, its signal and the
                   chain's synth lane base, from every cudaGnssInject in the node configs.
   gps_l5_capability.csv  GPS PRN -> block, and whether that block carries L5 (IGS SINEX).
-  station.json    the broker's receiver coordinates (#99-solved phase centre), the node
-                  configs' array origin (origin_itrs_*) with the difference stated, and the
-                  boresight sat_azel.csv measures sep_deg from.
+  station.json    the broker's receiver coordinates (the dishes' effective phase centre,
+                  common lat/lon/alt in --chains), the node configs' array origin
+                  (origin_itrs_*) with the difference stated, and the boresight sat_azel.csv
+                  measures sep_deg from.
   sat_azel.csv    az/el/range/range-rate, separation from boresight and the ephemeris health
-                  word for EVERY satellite in the broadcast ephemeris (unhealthy ones still
-                  radiate, so the broker's health gate is not applied), every --step s across
-                  each window, at the broker's coordinates.
+                  word for every satellite with a broadcast record within 6 h (unhealthy ones
+                  still radiate, so the broker's health gate is not applied), every --step s
+                  across each window, at the broker's coordinates.
   brdc/           the RINEX navigation files used.
 
-Everything here is derived from the configs snapshotted in <dir>/configs/ (written at
-capture time) and the broker's cached BRDC; rerunning it regenerates the bundle.
+The timing, elements, channels and slots come from the capture itself (visctl headers and the
+snapshotted configs); the station from --chains (the repo's chains file by default), the GPS
+blocks from the current IGS SINEX cache, and the ephemeris from the broker's cached BRDC.
+Rerunning regenerates the bundle.
 """
 import argparse
 import csv
@@ -49,7 +56,7 @@ import gnss_arraymap as amap  # noqa: E402
 import gnss_ephemeris as eph  # noqa: E402
 from gnss_broker import prnmap  # noqa: E402
 
-BORE_AZ_EL = (178.4, 81.60)  # boresight (deg), the 2026-10-02 input-averaged fit
+BORE_AZ_EL = (178.4, 81.60)  # boresight (deg), from the input-averaged beam fit
 FS_HZ = 3.2e9
 FFT = 16384  # samples per hop
 HOPS_PER_RECORD = 2048
@@ -104,8 +111,9 @@ def sep_deg(az, el):
 
 
 def predict_all_health_agnostic(E, lat, lon, alt, t_utc, max_age):
-    """eph.predict_all's light-time/Sagnac loop without its health gate, which drops G/E
-    records with health != 0: {(sys, prn): dict}, the record's health word included."""
+    """eph.predict_all's light-time/Sagnac loop without its health gate (which drops every
+    non-BeiDou record with health != 0) and without the clock terms: {(sys, prn): dict}, the
+    record's health word included."""
     t = eph.gpst_of_utc(t_utc)
     rx = eph._ecef_of_llh(lat, lon, alt)
     out = {}
@@ -260,7 +268,8 @@ def main():
             )
 
     # ---- channels and PRN slots per instance. One cudaGnssInject per chain: in its own
-    #      gnss<g>_<tag>_n2dual process, or all of a GPU's chains in gnss<g>_n2dual (merged)
+    #      gnss<g>_<tag>_n2dual block, or all of a GPU's chains in gnss<g>_n2dual (merged).
+    #      channels.csv reads only the first injector of gnss<g>_n2dual.
     with open(os.path.join(out, "channels.csv"), "w", newline="") as fc, open(
         os.path.join(out, "slots.csv"), "w", newline=""
     ) as fs:

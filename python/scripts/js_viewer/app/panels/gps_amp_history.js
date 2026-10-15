@@ -1,50 +1,39 @@
-// GNSS per-PRN time series: pick a satellite and an observable, watch it evolve.
+// GNSS per-satellite time series: pick a satellite and an observable, watch it evolve. One
+// trace per signal the satellite carries.
 //
-// Observables (the dropdown), all straight off the shared GpsFeed so this panel and the
-// table can never disagree:
-//   * C/N₀      -- cn0_prompt_db (task #57): per-record prompt power, q-gated on the noise
-//                  probes' q population, probe-debiased. THE radiometry; supersedes the old
-//                  coh/inc pair (inc was rectification-biased, coh rode the deep fold's
-//                  per-integration rate re-search and its ~20 dB paired self-scatter).
-//   * beam A/φ  -- the per-element complex-gain summary (#57 step 2): median live-element
-//                  amplitude (1 = uniform array) and the circular RMS of the element
-//                  phases about the array mean (the peel coefficient's dispersion). The
-//                  full per-element vectors ride /get_elements and the NFS archive.
-//   * sig       -- combined significance (σ above noise): deep when floor-certified, else
-//                  the moment-debiased incoherent amp_snr. The lock metric.
-//   * coh       -- the auto-ladder's winning coherent window (s). Its collapses ARE the
-//                  carrier-coherence story; 0 = no rung beat its rectification floor.
-//   * dop       -- tracked Doppler (Hz). Should be a smooth orbital curve; steps are seed
-//                  re-anchors (staleness releases / escapes), the churn signature.
-//   * snr       -- SEARCH detection significance (acquire grid), independent of tracking.
+// Observables (the dropdown, MODES), all read off the shared GpsFeed so this panel and the
+// table cannot disagree:
+//   * C/N₀ prompt -- cn0_prompt_db: per-record prompt power, presence- and on-peak-gated,
+//                    probe-debiased.
+//   * C/N₀ coh    -- cn0_kcoh_db: the ~1 s known-rate coherent fold.
+//   * q           -- the code-loop quality (fleet discriminator); the lock metric.
+//   * beam A/φ    -- the per-element complex-gain summary (gps_feed.beam_summary): median
+//                    live-element amplitude (1 = uniform array) and the circular RMS of the
+//                    element phases about the array mean.
+//   * sig         -- the broker's significance (σ above noise), from the first source that
+//                    applies (sig_src).
+//   * coh         -- the auto-ladder's winning coherent window (s); 0 = no rung beat its
+//                    rectification floor.
+//   * dop         -- the published doppler_hz (Hz), the broker's commanded seed: a staircase
+//                    that steps at each re-seed.
+//   * snr         -- search detection significance (acquire grid), independent of tracking.
 //
-// POINTS, NOT LINES: emits are irregular and gapped (a dropout is real information), so
-// connecting them draws structure that isn't in the data.
+// Points, not lines: samples are irregular and gapped (a dropout is real information), so
+// connecting them draws structure that is not in the data.
 //
-// History is buffered in-browser only (tiny, not served forward, fresh on reload).
+// History is buffered in the browser only (not served, fresh on reload).
 
-const MAX_PTS = 10000;      // per-PRN cap (~4 h at 1.5 s); bounds RENDER cost, not RAM
+const MAX_PTS = 10000;      // per-series cap (~4 h at the 1.5 s poll); bounds the render cost
 const LN10_10 = 10 / Math.LN10;   // 10/ln10 = 4.3429; d(dB)/dx = LN10_10 / x
 
-// key -> {label, unit, fmt, zero (y-axis rangemode tozero)}
-// ONE C/N0 (task #57, 2026-08-15): the coh/inc pair is retired from display. `cn0` is now
-// cn0_prompt_db off the feed -- per-record prompt power, q-gated, probe-debiased -- which
-// supersedes both (the incoherent one was rectification-biased, the coherent one carried
-// the deep fold's ~20 dB of paired self-scatter). The beam modes are #57 step 2: the
-// per-element complex-gain summary (median live-element amplitude; circular RMS of the
-// element phases about the array mean -- the peel coefficient's dispersion).
-// A cn0_prompt point below this lock duty is dropped from the trace rather than drawn: the
-// estimator still publishes at very low duty (measured 0.08-0.14 across four rows with the
-// band completely dead on 2026-08-26 -- two of them NOISE PROBES), and one unqualified point
-// in a history trace is indistinguishable from a real one. Mirrors the eta qualifier the
-// coherent trace already applies below, and the 0.7 dimming the table already applies.
+// A prompt C/N0 point below this lock duty is dropped from the trace rather than drawn: the
+// estimator still publishes at low duty, and one unqualified point in a history trace looks
+// like a real one. The coherent trace applies the eta qualifier the same way, and the table
+// dims below 0.7 duty.
 const CN0_MIN_DUTY = 0.25;
 
+// key -> {label, axis, unit, fmt (d3 format), zero (y-axis rangemode tozero)}
 const MODES = {
-    // ⚠️ NOT "inc" any more: this is cn0_prompt_db (per-record prompt power, q-gated,
-    // probe-debiased), which RETIRED the incoherent/coherent pair. The old label outlived
-    // the old estimator and had people reading a rectification-biased number that is no
-    // longer computed.
     cn0:      {label: "C/N₀ prompt", axis: "C/N₀ prompt, per-record (dB-Hz)",
                unit: " dB-Hz", fmt: ".1f"},
     cn0_kcoh: {label: "C/N₀ coh", axis: "C/N₀ coherent, known-rate fold (dB-Hz)",
@@ -53,12 +42,9 @@ const MODES = {
                fmt: ".2f", zero: true},
     beam_ph:  {label: "beam φ",  axis: "element phase spread (deg RMS)", unit: "°",
                fmt: ".0f", zero: true},
-    // q -- THE CODE-LOOP QUALITY over time (2026-08-18). The fleet discriminator's
-    // prompt-vs-shoulder ratio, i.e. "is the code loop on the peak". This is the series
-    // that would have shown #87's stale-trim regression the moment it started: gal_e5b's
-    // q fell 2.09 -> 1.09 and sat there for 3.5 h while every C/N0 trace looked normal.
-    // Judge lock HERE, not on sig/C-N0 -- the deep fold re-searches and will certify a
-    // satellite whose prompt tap is on noise (#47). ~2.2 is the working lock bar.
+    // q: the fleet discriminator's prompt-vs-shoulder ratio, "is the code loop on the peak".
+    // Judge lock here, not on sig or C/N0: the deep fold re-searches and will certify a
+    // satellite whose prompt tap is on noise. 2.2 is the lock bar (gps_feed's Q_LOCK).
     q:       {label: "q",        axis: "code-loop quality (fleet discriminator)", unit: "",
               fmt: ".2f", zero: true},
     sig:     {label: "sig",      axis: "significance (σ)", unit: "σ", fmt: ".1f", zero: true},
@@ -69,7 +55,7 @@ const MODES = {
 const MODE_ORDER = ["cn0", "cn0_kcoh", "q", "beam_amp", "beam_ph", "sig", "coh_s", "dop",
                     "snr"];
 
-// A distinct-per-trace palette. Colours are by POSITION among a sat's signals, not fixed per
+// A distinct-per-trace palette. Colours go by position among a satellite's signals, not by
 // signal, so any constellation's 2-5 signals stay visually separable.
 const SIG_PALETTE = ["#4d9de0", "#6fbf73", "#e8923c", "#c65d21", "#d64550", "#8e6fb0", "#39a0a0"];
 
@@ -82,8 +68,8 @@ export class GpsAmpHistoryPanel {
         this.mode = "cn0";
         this._dirty = false;
         this._plotted = false;
-        // Signals the user has toggled OFF, by signal column ("E5a-Q", "E5b-Q", ...).
-        // Kept by SIGNAL rather than by series key so the choice survives changing PRN --
+        // Signals the user has toggled off, by signal column ("E5a-Q", "E5b-Q", ...).
+        // Kept by signal rather than by series key so the choice survives changing PRN:
         // "show me only E5a" is a viewing mode, not a per-satellite decision. Plotly's own
         // legend click cannot do this job here: _redraw calls Plotly.react on every
         // feed tick with freshly built traces, which resets legend visibility a second later.
@@ -153,29 +139,26 @@ export class GpsAmpHistoryPanel {
         const n = h.t.length;
         if (n && h.sig[n - 1] === src.sig && h.coh_s[n - 1] === src.coh_s
             && h.dop[n - 1] === src.dop && h.snr[n - 1] === snr) return;
-        // ⚠️ DO NOT REPLOT AN ESTIMATE THAT HAS NOT BEEN RECOMPUTED. The C/N0 estimators
-        // run on their own cadence (--estimator-every-s) and the broker keeps serving the
-        // last value in between, so at a 1.5 s poll one estimate becomes ~26 identical
-        // points: the history drew flat plateaus with cliffs between them and looked like
-        // a quantised instrument. Identical floats out of a floating-point estimator mean
-        // "same computation", so dropping the repeats is safe and the plot then shows one
-        // point per actual measurement.
+        // Do not replot an estimate that has not been recomputed. The broker reruns its C/N0
+        // estimators every estimator_every_s (the prompt C/N0 every cycle on a chain that reads
+        // the gather's reduced taps) and serves the last values in between, so successive polls
+        // repeat one estimate. Identical floats from a floating-point estimator mean the same
+        // computation, so a sample whose non-null cn0 and whose cn0_kcoh both repeat the last
+        // stored values is dropped, for every observable, and the C/N0 traces show one point
+        // per estimate.
         if (n && h.cn0[n - 1] === src.cn0 && h.cn0_kcoh[n - 1] === src.cn0_kcoh
             && src.cn0 != null) return;
         h.t.push(now);
-        // ⚠️ QUALIFIED, for the same reason the coherent trace below is. A null cn0_duty is
-        // a pre-#57 broker and passes (there is no duty to judge it by); anything else must
-        // earn its point.
+        // Qualified like the coherent trace below: a null cn0_duty (the fallback estimator) has
+        // no duty to judge and passes; a noise probe or a duty below CN0_MIN_DUTY is a gap.
         h.cn0.push((src.cn0 != null && !src.noise_probe
                     && (src.cn0_duty == null || src.cn0_duty >= CN0_MIN_DUTY))
                    ? src.cn0 : null);
         h.sig.push(src.sig);
-        // ⚠️ ONLY PLOT A COHERENT POINT THE FOLD ACTUALLY EARNED. eta well below n_rec
-        // means the records did not add coherently, so the value is the noise floor
-        // (~0 dB-Hz), not a C/N0 -- E19 through boresight drew a whole trace of those on
-        // 2026-08-15 and it read as "the coherent estimator is broken" when what it was
-        // reporting was "there is no coherence here". The table greys the same case; a
-        // history plot has no room for a qualifier, so the honest rendering is a GAP.
+        // A coherent point is plotted only when the fold cohered (eta >= n_rec/4). Below that
+        // the records did not add coherently and the value is the noise floor, not a C/N0.
+        // The table greys the same case; a history plot has no room for a qualifier, so it is
+        // a gap.
         h.cn0_kcoh.push((src.cn0_kcoh != null && src.kcoh_eta != null && src.kcoh_n
                          && src.kcoh_eta >= 0.25 * src.kcoh_n) ? src.cn0_kcoh : null);
         h.q.push(src.q != null ? src.q : null);
@@ -183,27 +166,24 @@ export class GpsAmpHistoryPanel {
         h.beam_ph.push(src.beam_ph != null ? src.beam_ph : null);
         h.coh_s.push(src.coh_s); h.dop.push(src.dop); h.snr.push(snr);
         if (h.t.length > MAX_PTS) for (const k of Object.keys(h)) h[k].shift();
-        // Mark dirty when this series belongs to the SELECTED satellite. Keys are
-        // "G11|<signal>" while `selected` is the sat "G11", so compare the sat part -- else
-        // the plot renders once (newPlot) and never react()s again (static after frame 1).
+        // Mark dirty when this series belongs to the selected satellite. Keys are
+        // "G11|<signal>" while `selected` is the satellite "G11", so compare the satellite
+        // part; without the dirty flag _redraw never calls Plotly.react after the newPlot.
         if (key.split("|")[0] === this.selected) this._dirty = true;
     }
 
     _on_feed({sats, signals}) {
         const now = new Date();
         for (const r of sats || []) {
-            // One history series per (satellite, signal) -- a sat carries several.
+            // One history series per (satellite, signal).
             for (const sg of signals || []) {
                 if (sg.tag !== r.tag) continue;
                 const m = r.sig_by && r.sig_by[sg.key];
                 if (!m || !(m.sig > 0 || m.amp > 0 || m.cn0 != null)) continue;
                 const key = r.id + "|" + sg.key;
                 this.meta.set(key, {col: sg.col});
-                // Search SNR IS per-signal: gps_feed stashes each detection's snr at
-                // sig_by[key].snr and carries it onto the metrics object, precisely so
-                // "strong in search, wrong downstream" stays visible. (undefined for a signal
-                // with no blind acquisition at all, e.g. E5a/B2a, which is a genuine gap, not
-                // a zero.)
+                // Search SNR is per signal (gps_feed keeps each detection's snr on
+                // sig_by[key]). A signal with no search stage has none: a gap, not a zero.
                 this._push(key, m, now, m.snr != null ? m.snr : null);
             }
         }
@@ -214,7 +194,7 @@ export class GpsAmpHistoryPanel {
     // Keep the dropdown in sync with the series we've seen (sorted), preserving the selection.
     // Keys are "G11|gps_l5"; sort by constellation then PRN.
     _sync_dropdown() {
-        // The selector picks a SATELLITE (G11); the plot overlays a trace per signal it
+        // The selector picks a satellite (G11); the plot overlays a trace per signal it
         // carries. So dedup the sat|signal history keys down to distinct sat ids.
         const sat_of = k => k.split("|")[0];
         const ids = [...new Set([...this.hist.keys()].map(sat_of))];
@@ -253,8 +233,7 @@ export class GpsAmpHistoryPanel {
     _len(id) { return this._series_keys(id).reduce((n, k) => n + this.hist.get(k).t.length, 0); }
 
     // Overlay one trace per signal the selected satellite carries (CM vs CL vs L5... on one
-    // axis) -- the shared-knowledge comparison. Colour + legend by signal; the "thing to plot"
-    // dropdown picks the observable for all of them.
+    // axis). Colour and legend by signal; the observable dropdown applies to all of them.
     _redraw() {
         if (this.selected == null || !window.Plotly) return;
         const M = MODES[this.mode];
@@ -276,7 +255,7 @@ export class GpsAmpHistoryPanel {
                 visible: off ? "legendonly" : true,
                 hovertemplate: `${col} · %{x|%H:%M:%S}<br>%{y:${M.fmt}}${M.unit}<extra></extra>`,
             });
-            // latest non-null for the summary line. The label is the toggle: struck through
+            // Latest non-null for the summary line. The label is the toggle: struck through
             // and greyed when hidden, so the control shows its own state.
             const style = off ? `color:#bbb;text-decoration:line-through` : `color:${color}`;
             const cell = v => `<span data-sig="${col}" title="click to show/hide ${col}" `

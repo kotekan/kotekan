@@ -1,7 +1,9 @@
-"""#70/#87: the q stall verdict must fire on a real collapse and stay quiet otherwise.
+"""The q stall verdict (fits.q_stall_verdict) must fire on a real collapse and stay quiet
+otherwise.
 
-The regression it encodes is 2026-08-18: gal_e5b's q duty fell 0.44 -> 0.19 after the
-RFI outage railed its C++ trims, and sat there for 3.5 h with nothing saying so.
+The collapse fixture is a chain whose q duty falls from 0.44 to 0.19 and stays there, as when
+its C++ trims rail: the chain keeps running and nothing else says so. W, FRAC and MINBEST are
+the broker's q_stall_window, q_stall_frac and q_stall_min_best.
 
 Run: python3 -m unittest test_q_stall
 """
@@ -26,7 +28,7 @@ def run(duties, cadence=13.0):
 
 class TestQStall(unittest.TestCase):
     def test_fires_on_the_e5b_collapse(self):
-        # 60 cycles healthy at 0.44, then the collapse to 0.19 (#87's actual numbers)
+        # 60 cycles healthy at 0.44, then the collapse to 0.19
         best, fired = run([0.44] * 60 + [0.19] * 60)
         self.assertAlmostEqual(best, 0.44, places=6)
         self.assertTrue(fired, "the guard never fired on a 0.44 -> 0.19 collapse")

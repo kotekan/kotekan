@@ -1,14 +1,14 @@
 #!/bin/bash
-# Prove that each RUNNING component still matches stack_components.sh -- argv AND environment.
+# Check that each running component still matches stack_components.sh: argv and environment.
 #
-# WHY THE ENVIRONMENT IS HALF THE POINT. #134: the systemd unit reproduced the broker's command
-# line faithfully and dropped `export OPENBLAS_NUM_THREADS=1`, which is not on the command line.
-# Nothing failed; the broker just spent two thirds of its cycles in OpenBLAS's busy-wait until
-# perf found it. Comparing argv alone would have passed that. So this compares both.
+# The environment is half the point: a unit can reproduce a command line exactly and still drop
+# a variable that is not on it (the broker's OPENBLAS_NUM_THREADS=1). Nothing fails when that
+# happens, and an argv comparison alone passes it.
 #
 #     stack_contract_gate.sh            # every component that is running
 #     stack_contract_gate.sh broker     # just one
-# Exits non-zero on the first mismatch, so it is usable as a gate.
+# A component that is not running is skipped. Exits non-zero if any checked component
+# mismatches, so it is usable as a gate.
 set -u
 here=$(cd "$(dirname "$0")" && pwd)
 bad=0 checked=0

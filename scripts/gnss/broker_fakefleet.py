@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""A synthetic fleet for the broker's equivalence gate (task #27 M0).
+"""A synthetic fleet for the broker's equivalence gate (broker_equiv.py).
 
-WHY THIS EXISTS. The gate in `broker_equiv.py` needs a transcript, and the best transcripts
-come from real chains -- on-sky GPS L5, model-primary E5a, the L2C replay bench. None of
-them is available with the F-engine down, which is exactly when a refactor gets done. This
-serves a deterministic, self-contained fleet so a transcript can always be captured:
+The gate needs a transcript. The best come from real chains, but none is available with the
+F-engine down, so this serves a deterministic, self-contained fleet from which a transcript
+can always be captured:
 
     broker_fakefleet.py --port 12777 &
     broker_equiv.py record /tmp/t.jsonl -- \
@@ -15,15 +14,15 @@ serves a deterministic, self-contained fleet so a transcript can always be captu
         --carrier-hz 1176.45e6 --chip-rate-hz 10.23e6 --code-length 10230 \
         --hops-per-sec 195312.5 --nh-overlay-len 20 --interval 0.05 --acquire-snr 12
 
-It is NOT a simulator and makes no claim to be physical. It exists to drive code paths:
-detections that ADVANCE (so cp_hist fills, the rate fit runs, freshness stamps move), a
-status table that reports locks (so the hold/watchdog/DLL/carrier paths execute), and a
-time anchor (so the anchor-dependent arithmetic runs). What it must never be is STATIC -- a
-frozen fleet replays perfectly and tests nothing, which is the trap
-31896a862:docs/CHORD_BROKER_REFACTOR.md 3.2 warns about and which cost two scans on 2026-08-08.
+It is not a simulator and makes no claim to be physical. It drives code paths: detections
+that advance (so cp_hist fills, the rate fit runs, freshness stamps move), a status table
+that reports locks (so the hold/watchdog/DLL/carrier paths execute), and a time anchor (so
+the anchor-dependent arithmetic runs). It must never be static: a frozen fleet replays
+perfectly and tests nothing.
 
-Everything it emits is a deterministic function of the poll index, so two recordings of the
-same length are identical apart from wall-clock timing (which the transcript pins anyway).
+Everything it emits is a deterministic function of the detection-poll index and the seeds
+last POSTed to it, so two recordings of the same length are identical apart from wall-clock
+timing (which the transcript pins anyway).
 """
 import argparse
 import json
@@ -42,17 +41,17 @@ HOP0 = 114436200145
 HOPS_PER_SEC = 195312.5
 REVISIT_S = 1.0  # snapshot-hop advance between successive detection sets
 CODE_LENGTH = 10230.0
-# The anchor served at telescope/time0_ns: CHORD's real one, so the dead-reckon arithmetic
-# sees a plausible epoch.
+# The anchor served at telescope/time0_ns: a real CHORD frame-0 time, so the dead-reckon
+# arithmetic sees a plausible epoch.
 TIME0 = 1786167610.000002870
-_n = [0]  # detection-poll counter: the ONLY state, so output is a pure function
+_n = [0]  # detection-poll counter; with _seeds, the only state
 _lock = threading.Lock()
 _seeds = [[]]  # last seed payload received, echoed into the status table
 
 
 def _detections():
-    """One set per poll, at an advancing ref_hop. Doppler drifts, code phase drifts with
-    it (roughly the real code-Doppler ratio), so the rate fit has something to fit."""
+    """One set per poll, at an advancing ref_hop. Doppler drifts linearly and code phase
+    drifts in proportion to Doppler x time, so the rate fit has something to fit."""
     with _lock:
         k = _n[0]
         _n[0] += 1
@@ -145,10 +144,9 @@ class H(BaseHTTPRequestHandler):
         except Exception:
             body = {}
         if self.path.rstrip("/").endswith("set_seeds"):
-            # The broker POSTs a bare LIST of seed dicts; tolerate a {"seeds": [...]}
-            # wrapper too so this fixture survives a schema change without going silently
-            # empty (an empty seed table here means an empty status table, which reads as
-            # "the broker stopped seeding" -- a fixture must not be able to fake that).
+            # The broker POSTs a bare list of seed dicts; a {"seeds": [...]} wrapper is
+            # accepted too, so a switch to that form does not silently empty the seed table
+            # (an empty status table reads as "the broker stopped seeding").
             if isinstance(body, list):
                 rows = body
             elif isinstance(body, dict):

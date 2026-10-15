@@ -1,6 +1,6 @@
-// Stream-health strip: the F-engine front end (#8) -- per-band rail and power, spectral
-// kurtosis and drop counters from the broker's get_rf, which the shared GpsFeed already
-// fetches (~1.5 s), so this panel adds no load.
+// Stream-health strip: the F-engine front end -- per-band rail and power, spectral kurtosis
+// and drop counters from the broker's get_rf, which the shared GpsFeed already fetches
+// (~1.5 s), so this panel adds no load.
 //
 // Color language: green = healthy, amber = attention, red = data being lost.
 
@@ -16,39 +16,26 @@ export class AirspyStatsPanel {
         if (this.el) this.el.innerHTML = this._gnss_block();
     }
 
-    // ── #8: THE F-ENGINE FRONT END ─────────────────────────────────────────────────────
-    // One row per RF BAND, aggregated across the fleet's twelve instances.
+    // The F-engine front end: one row per RF band, aggregated across the fleet's instances.
     //
-    // ⚠️⚠️ THE KEY IS THE BAND, AND IT USED TO BE THE LOBE INDEX, WHICH WENT SILENTLY WRONG.
-    // The old argument was that a lobe is a run of contiguous LOCAL comb indices and local
-    // index tracks frequency order, so lobe 0 was the lower band on every instance. True for
-    // two well-separated bands; false from the moment the fleet grew to eight chains:
+    // Rows key on `band`, which the broker derives from the absolute freq_id the tap serves
+    // (GnssChordVoltageTap reads it from the frame's chord metadata; fits.rf_lobes), so it
+    // means the same on every instance whatever local channel subset the node holds. The lobe
+    // index does not: instances differ in which bands they hold (only some own an L2C
+    // channel), and abutting bands (bds_b3i, gal_e6) form one contiguous run. A lobe with no
+    // `band` (the tap served no freq_ids, or broker --rf-bands is not declared) still renders,
+    // keyed by index, and a banner says those rows are not comparable with the named ones.
     //
-    //   * gps_l2c contributes ONE channel and only 5 of 12 instances own one, so instances
-    //     disagree on lobe COUNT and index 2 was L2C on five of them, B3I+E6 on the rest --
-    //     this panel medianed power across two different bands into one row and the only
-    //     symptom was a permanently-lit amber "disagree on lobe count" banner.
-    //   * bds_b3i and gal_e6 ABUT, so contiguity cannot separate them at all.
+    // Partial coverage is not a fault: a narrow band (L2C) lands on only some instances by
+    // design, so the coverage cell is grey and its tooltip names the missing instances; the
+    // worst-instance column carries fault state.
     //
-    // Rows now key on `band`, which the broker derives from the ABSOLUTE freq_id the tap
-    // serves (GnssChordVoltageTap reads it from the frame's own chord metadata). That means
-    // the same thing on every instance regardless of which local subset the node holds.
-    // A lobe with no `band` (older node binary, or --rf-bands not declared) still renders,
-    // keyed by index and labelled the old way, and the banner then says the rows are not
-    // comparable rather than pretending they are.
+    // Clip is the headline and it is a max, not a mean: one railing channel on one instance is
+    // a real fault, and averaging it across a healthy fleet hides it. The worst instance is
+    // named for the same reason.
     //
-    // ⚠️ PARTIAL COVERAGE IS NOT A FAULT HERE. "5/12" on the L2 row is CORRECT -- L2C's
-    // mainlobe is six freq_ids wide and five land on distinct instances. Partial coverage is
-    // therefore grey and names the missing instances in the tooltip; only a full-fleet band
-    // going short is worth colour, and the worst-instance column already carries fault state.
-    //
-    // ⚠️ CLIP IS THE HEADLINE AND IT IS A MAX, NOT A MEAN. One railing channel on one
-    // instance is a real fault; averaging it across a healthy fleet is how it stays
-    // invisible. The worst instance is NAMED for the same reason.
-    //
-    // ⚠️ "NOT ARMED" MUST NOT LOOK LIKE "QUIET". Off and unreachable render grey with an
-    // explicit word, never as a green zero -- a dark strip that reads as "no RFI" when it
-    // means "nothing is measuring" is worse than no strip at all.
+    // "Not armed" must not look like "quiet": off and unreachable render grey with an explicit
+    // word, never as a green zero.
     _gnss_block() {
         const g = this._gnss;
         if (!g || !g.instances) return "";
@@ -77,9 +64,9 @@ export class AirspyStatsPanel {
                   — these cells are NOT a measurement of zero (rf-stats is off, or the
                   broker has no get_rf)</div></div>`;
         }
-        // Group every instance's lobes by BAND; fall back to lobe index for any that carry
-        // no band, so a mixed-binary fleet renders both kinds side by side rather than
-        // merging them.
+        // Group every instance's lobes by band; fall back to lobe index for any that carry
+        // no band, so a fleet with both kinds renders them side by side rather than merging
+        // them.
         const groups = new Map();
         let unnamed = 0;
         for (const [u, v] of on) {
@@ -105,11 +92,10 @@ export class AirspyStatsPanel {
             return a.idx - b.idx;
         });
         const mixed = unnamed > 0 && unnamed < on.length;
-        // The all-unnamed fleet keeps the ORIGINAL warning: with no band identity anywhere,
-        // lobe index is the only key available and a disagreement in lobe COUNT is exactly
-        // the "these rows may be different bands" case the banner was written for. Once
-        // bands are named this test is meaningless -- instances legitimately differ (only
-        // 5 of 12 own an L2C channel) -- which is why it is scoped to the legacy path.
+        // With no band names anywhere, lobe index is the only key, so instances disagreeing on
+        // lobe count means rows may compare different bands. Named instances legitimately
+        // differ in lobe count (only some own an L2C channel), so this applies only when every
+        // instance is unnamed.
         const legacyCounts = new Set(on.map(([, v]) => (v.lobes || []).length));
         const legacyMixed = unnamed === on.length && legacyCounts.size > 1;
         let rows = "";
@@ -176,7 +162,7 @@ export class AirspyStatsPanel {
             rows += `<div style="padding:.15em .5em;font-size:.8em;color:#e8a13c;">
                 ⚠️ instances disagree on lobe count — rows may compare different bands</div>`;
 
-        // #8+: RFI (spectral kurtosis) — same get_rf instances, folded in by --rfi-stats.
+        // RFI (spectral kurtosis): the same get_rf instances, folded in by broker --rfi-stats.
         const skOn = on.filter(([, v]) => v && v.sk);
         if (skOn.length) {
             let worstU = null, worstSK = 1, totFlag = 0, band = null;
@@ -197,7 +183,7 @@ export class AirspyStatsPanel {
                 + `<div style="flex:0 0 9em;padding:.15em .5em;font-size:.85em;color:#8a8f98;white-space:nowrap;overflow:hidden;" title="${worstU || ""}">${worstU ? short(worstU) : "—"}</div></div>`;
         }
 
-        // #8+: drop counters (cumulative) — folded in by --drop-stats. Worst instance per class.
+        // Drop counters (cumulative), folded in by broker --drop-stats. Worst instance per class.
         const drOn = on.filter(([, v]) => v && v.drops);
         if (drOn.length) {
             const worst = (key) => { let u = null, val = -1;

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""#8+ stream health: SK RFI reduction and drop-counter parsing.
+"""Stream health (gnss_broker.fleet): SK RFI reduction and drop-counter parsing.
 
     python3 python/scripts/gnss/test_stream_health.py
 
-sk_summary reduces the per-element SK array to a flag count against a band that SCALES with
+sk_summary reduces the per-element SK array to a flag count against a band that scales with
 the estimator's accumulation; parse_drops pulls the right counters out of a /metrics dump.
 """
 import os
@@ -35,14 +35,14 @@ def main():
     if s["sk_flagged"] != 0:
         fails.append("clean SK flagged %d (want 0)" % s["sk_flagged"])
 
-    # 3. a jammed channel (SK far from 1) is flagged, and named as worst.
+    # 3. a jammed element (SK far from 1) is flagged, and named as worst.
     s = sk_summary({"ema_frames": 256, "sk": [1.0, 1.0, 5.0, 1.0]})  # element 2 jammed
     if s["sk_flagged"] != 1 or s["sk_worst"] != 2:
         fails.append(
             "jam: flagged=%d worst=%d (want 1, 2)" % (s["sk_flagged"], s["sk_worst"])
         )
 
-    # 4. the flag band TIGHTENS with more accumulation (more frames -> smaller sigma).
+    # 4. the flag band tightens with more accumulation (more frames -> smaller sigma).
     lo256 = sk_summary({"ema_frames": 256, "sk": [1.0]})["sk_lo"]
     lo64 = sk_summary({"ema_frames": 64, "sk": [1.0]})["sk_lo"]
     if not (lo256 > lo64):  # 256 frames -> band closer to 1 than 64 frames
@@ -50,7 +50,7 @@ def main():
             "band should tighten with frames: lo256=%.3f lo64=%.3f" % (lo256, lo64)
         )
 
-    # 4b. null (unpopulated) channels are dropped, not crashed on or counted.
+    # 4b. null (unpopulated) elements are dropped, not crashed on or counted.
     s = sk_summary({"ema_frames": 256, "sk": [1.0, None, 5.0, None, 1.0]})
     if s is None or s["sk_flagged"] != 1 or s["sk_n"] != 3 or s["sk_worst"] != 2:
         fails.append("null channels mishandled: %r" % s)

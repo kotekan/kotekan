@@ -3,16 +3,16 @@
 
     */5 * * * *  /home/kvand/gnss/kotekan/scripts/gnss/site/bad_inputs_cron.py
 
-WHY. choco relays bffs's list to every node in its cx group EXCEPT nodes in maintenance mode, and
+choco relays bffs's list to every node in its cx group except nodes in maintenance mode, and
 ours are in maintenance mode: choco would also push configs we must not have overwritten. So a bffs
-change reaches the stock nodes and not ours, and our bad-feed mask -- folded into N2Accumulate and
-sent to recv1 beside the N^2 -- stays stale until a node restarts on a regenerated config. The
-same gap eop_cron.sh closes for the EOP table, here at bffs's cadence rather than hourly.
+change reaches the stock nodes and not ours, and our bad-feed mask (folded into N2Accumulate and
+sent to recv1 beside the N^2) stays stale until a node restarts on a regenerated config. The
+same gap eop_cron.sh closes for the EOP table, here every 5 minutes rather than hourly.
 
-EACH RUN (cheap when nothing changed):
+Each run (cheap when nothing changed):
   1. stage bffs's state.json + bffs.yaml from choco only when state.json changed (mtime and size,
-     by ssh stat: the file carries ~2.5 MB of history), and build the update body with
-     config/bffs_bad_inputs.py -- the translation the generator uses, so a restarted node and a
+     by ssh stat: the file carries megabytes of history), and build the update body with
+     config/bffs_bad_inputs.py, the translation the generator uses, so a restarted node and a
      running one cannot disagree;
   2. read each node's live config: only a node that answers and runs a GNSS config (gnssN_*
      stages) qualifies. A stock node or a down one is skipped, never pushed to;

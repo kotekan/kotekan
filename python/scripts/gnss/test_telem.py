@@ -1,24 +1,22 @@
 #!/usr/bin/env python3
-"""Tests for the task #59 tracker->broker telemetry transport (gnss_broker/telem.py).
+"""Tests for the tracker->broker telemetry transport (gnss_broker/telem.py).
 
-TWO KINDS OF TEST HERE, and the first is the one that matters:
+Three groups of test here, and the first is the one that matters:
 
-  A. CROSS-LANGUAGE. scripts/gnss/telemfmt.cpp is COMPILED AND RUN, so the parser is checked
-     against gnssTelem.hpp itself rather than against a transcription of it. The struct and the
-     struct.Struct format string are two independent statements of one layout, and a drift
-     between them does not raise -- it yields plausible numbers with the wrong meaning. That is
-     precisely the class of defect this transport exists to remove, so it would be absurd to
-     introduce a new instance of it in the parser.
+  A. Cross-language. scripts/gnss/telemfmt.cpp is compiled and run, so the parser is checked
+     against gnssTelem.hpp itself rather than against a transcription of it. The C++ struct and
+     the struct.Struct format string are two independent statements of one layout, and a drift
+     between them does not raise: it yields plausible numbers with the wrong meaning.
 
-  B. BEHAVIOURAL. The window ring, the lag rule, hole-vs-shift on a dropped record, and the
-     cross-instance grouping -- each written against the specific way its REST predecessor
-     failed (#53, #52, #46, #33). Every one of these is a case where the old path produced a
-     confident wrong answer rather than an error.
+  B. Behavioural. The window ring, the lag rule, hole-vs-shift on a dropped record, and the
+     cross-instance grouping: each is a case where a transport that inferred alignment would
+     give a confident wrong answer rather than an error.
 
-  C-F. TRANSPORT LIVENESS, each against a real socket: silence is not a broken link (C), the
-     socket thread is never stalled by the ring lock (D), and a connection the gather closed
-     after it lived is reconnected at once (E), and the receive buffer is pinned before
-     connect rather than autotuned up from 128 kB (F). C and D were each a fleet-wide outage.
+  C-F. Transport liveness, each against a real socket: silence is not a broken link (C), the
+     socket thread is never stalled by the ring lock (D), a connection the gather closed after
+     it lived is reconnected at once (E), and the receive buffer is pinned before connect
+     rather than autotuned up from 128 kB (F). A failure of C or D stops the stream for the
+     whole fleet.
 
     python3 python/scripts/gnss/test_telem.py
 """
@@ -51,11 +49,11 @@ def _make_frame(
     rows=None,
     utc0=0.0,
 ):
-    """Build one wire frame in Python -- for the BEHAVIOURAL tests only.
+    """Build one wire frame in Python -- for the behavioural tests only.
 
-    The layout it assumes is the one test_wire_format_matches_cpp proves correct, so these
-    tests are not quietly re-deriving the format: if the C++ moves, that test fails first and
-    these become meaningless rather than misleading.
+    The layout it assumes is the one TestWireFormat proves correct, so these tests are not
+    quietly re-deriving the format: if the C++ moves, those tests fail first and these become
+    meaningless rather than misleading.
     """
     if present is None:
         present = (1 << n_rec) - 1
@@ -88,8 +86,7 @@ def _make_frame(
     for r in range(n_rec):
         for p in range(n_prn):
             base = (r * n_prn + p) * row_total
-            # the comb: A = 1 exactly on every column, energy 1, so a caller can check that
-            # summing A*E over columns reproduces the header prompt
+            # the comb: P = 1 exactly on every column, energy 1
             for ch in range(n_chan):
                 cb = base + telem._ROW_FLOATS + ch * telem._CHAN_FLOATS
                 body[cb + telem.CHAN_RE] = 1.0
@@ -105,7 +102,7 @@ def _make_frame(
             body[base + telem.REC_P_ENERGY] = 2.0
             body[base + telem.REC_P_RE] = 2.0 * (1 + p)  # A = 1+p exactly
             body[base + telem.REC_P_IM] = 0.0
-            body[base + telem.REC_CPHASE] = 0.25  # a per-record INCREMENT, cycles
+            body[base + telem.REC_CPHASE] = 0.25  # a per-record increment, cycles
             body[base + telem.REC_TRIM_INC] = 0.01
     if rows:
         for (r, p, slot), v in rows.items():
@@ -194,8 +191,8 @@ class TestWireFormat(unittest.TestCase):
         self.assertEqual(row[telem.REC_CPHASE], 3000 + 20 + telem.REC_CPHASE)
 
     def test_missing_slot_is_a_hole_not_a_shift(self):
-        # telemfmt sets present = 0b1011: slot 2 absent. The records after it must keep THEIR
-        # OWN identity -- a transport that appended instead of addressing would hand slot 3's
+        # telemfmt sets present = 0b1011: slot 2 absent. The records after it must keep their
+        # own identity: a transport that appended instead of addressing would hand slot 3's
         # data back as slot 2, and every downstream number would be one record stale with
         # nothing to show for it.
         f = telem.TelemFrame(telem._HDR.unpack_from(self.raw, 0), self.raw, 0.0)
@@ -207,12 +204,12 @@ class TestWireFormat(unittest.TestCase):
         self.assertEqual(f.row(3, 100)[telem.REC_P_IM], 3000 + 0 + telem.REC_P_IM)
 
     def test_comb_labels_and_values(self):
-        # THE v2 PAYLOAD. telemfmt writes comb[ch] = 100000*r + 1000*p + 10*ch + {1,2} with
-        # energy ch+1, and freq_ids on a real stride-16 comb. Every element of the address
-        # (record, PRN, channel, slot) is in the value, so a wrong row stride or a wrong comb
-        # offset returns a number that provably belongs somewhere else.
+        # telemfmt writes comb[ch] = 100000*r + 1000*p + 10*ch + {1,2} with energy ch+1, and
+        # freq_ids on a real stride-16 comb. Every element of the address (record, PRN,
+        # channel, slot) is in the value, so a wrong row stride or a wrong comb offset returns
+        # a number that provably belongs somewhere else.
         f = telem.TelemFrame(telem._HDR.unpack_from(self.raw, 0), self.raw, 0.0)
-        # max_chan IS THE STRIDE and it is the SENDER's, not the format's ceiling; the two
+        # max_chan is the row stride and it is the sender's, not the format's ceiling; the two
         # are deliberately different in this fixture, so a reader that confuses them fails here.
         self.assertEqual(self.meta["max_chan_const"], telem._MAX_CHAN)
         self.assertLess(self.meta["max_chan"], self.meta["max_chan_const"])
@@ -237,9 +234,8 @@ class TestWireFormat(unittest.TestCase):
             )
 
     def test_comb_epl_carries_all_three_taps(self):
-        # v3: E/P/L per channel is what lets the DLL leave the tracker's summed slots. telemfmt
-        # writes +1/+2 for P, +3/+4 for E, +5/+6 for L, so a tap swap is a WRONG VALUE rather
-        # than a plausible one.
+        # E/P/L per channel is the comb DLL's input (combdll.py). telemfmt writes +1/+2 for P,
+        # +3/+4 for E, +5/+6 for L, so a tap swap is a wrong value rather than a plausible one.
         f = telem.TelemFrame(telem._HDR.unpack_from(self.raw, 0), self.raw, 0.0)
         epl = f.comb_epl(3, 102)
         self.assertEqual(len(epl), 5)
@@ -252,7 +248,7 @@ class TestWireFormat(unittest.TestCase):
             self.assertEqual((eE, eP, eL), (ch + 1, ch + 1, ch + 1))
 
     def test_unused_comb_columns_do_not_leak(self):
-        # telemfmt ships 6 columns and fills 5 ON PURPOSE. The reserved-but-unused one must read
+        # telemfmt ships 6 columns and fills 5 on purpose. The reserved-but-unused one must read
         # as absent, never as the neighbouring row's first channel -- which is what a row stride
         # computed from n_chan instead of the header's max_chan would hand back.
         f = telem.TelemFrame(telem._HDR.unpack_from(self.raw, 0), self.raw, 0.0)
@@ -272,8 +268,8 @@ class TestWireFormat(unittest.TestCase):
         f = telem.TelemFrame(telem._HDR.unpack_from(self.raw, 0), self.raw, 0.0)
         self.assertEqual(f.hop(0), f.wstart0 // 16384)
         self.assertEqual(f.hop(1) - f.hop(0), 2048)
-        # The key /get_records used, so the two feeds are directly comparable -- which is what
-        # makes an A/B between them a measurement instead of an argument.
+        # The key /get_records uses, so the two feeds are directly comparable and an A/B
+        # between them is a measurement.
         self.assertEqual(f.hop(3), f.win * 4 * 2048 + 3 * 2048)
 
 
@@ -295,9 +291,9 @@ class TestWindowRing(unittest.TestCase):
         )
 
     def test_lag_hides_the_newest_window(self):
-        # #53's defect in one assertion: the newest window is ALWAYS still filling, because the
-        # senders are independent processes. Reading it combines a partial fleet with its
-        # neighbours' full one, which reads as a fleet that keeps changing size.
+        # The newest window is always still filling, because the senders are independent
+        # processes. Reading it combines a partial fleet with its neighbours' full one, which
+        # reads as a fleet that keeps changing size.
         c = self._client()
         self._feed(c, _make_frame(inst="cx19.0", win=10))
         self._feed(c, _make_frame(inst="cx19.0", win=11))
@@ -334,20 +330,20 @@ class TestWindowRing(unittest.TestCase):
         self.assertEqual(c.chains(), ["gal_e5a", "gps_l5"])
         self.assertEqual(list(c.frame_set("gal_e5a", 10)), ["cx19.0"])
 
-    # -- epoch resets (2026-09-14): an F-engine re-base restarts the window counter ------------
+    # -- epoch resets: an F-engine re-base restarts the window counter -------------------------
     def _fill(self, c, lo, hi, insts=("cx19.0", "cx42.0")):
         for w in range(lo, hi):
             for inst in insts:
                 self._feed(c, _make_frame(inst=inst, win=w))
 
     def test_a_persistent_large_backwards_jump_resets_the_ring(self):
-        # Before the fix these frames were inserted, sorted to the front and evicted first --
-        # every one discarded, every instance stale, for as long as the process lived.
+        # Without the reset these frames are sorted to the front of a full ring and evicted
+        # first: every one discarded, every instance stale, for as long as the process lives.
         c = self._client(depth=16)
         self._fill(c, 1000, 1010)
         for w in range(
             5, 5 + c.epoch_strikes - 1
-        ):  # strikes 1..7: counted, kept as before
+        ):  # strikes 1..7: counted, stored as usual
             self._feed(c, _make_frame(inst="cx19.0", win=w))
         self.assertEqual(c.epoch_resets, 0)
         self.assertEqual(c.far_behind, c.epoch_strikes - 1)
@@ -393,16 +389,14 @@ class TestWindowRing(unittest.TestCase):
 class TestQuietGatherDoesNotReconnect(unittest.TestCase):
     """C. Silence is not a broken link.
 
-    ⚠️ WHY THIS TEST EXISTS. The client used to treat its read timeout as "gather unavailable"
-    and reconnect. With the fleet down there is nothing to forward, so it reconnected every
-    ~35 s for as long as the outage lasted -- and the gather only ever noticed a dead client
-    when a WRITE to it failed, which with no senders never happens. Twelve hours of that left
-    969 sockets in CLOSE_WAIT, the accept() calls failing with EMFILE, and the gather serving
-    nothing at all -- REST included -- exactly as the fleet came back.
+    With the fleet down the gather has nothing to forward, and it notices a dead client only
+    when a write to it fails, which with no senders never happens. A client that reconnected
+    on every read timeout would leave a socket in CLOSE_WAIT at the gather each time, until
+    accept() fails with EMFILE and the gather serves nothing at all, REST included.
     """
 
     def _serve(self, sock, gap_s):
-        """One frame, then GAP (longer than the client's read timeout), then a second frame."""
+        """One frame, then a gap (longer than the client's read timeout), then a second frame."""
         conn, _ = sock.accept()
         self.conns += 1
         try:
@@ -445,17 +439,17 @@ class TestQuietGatherDoesNotReconnect(unittest.TestCase):
             c.stop()
         srv.close()
 
-        # BOTH frames arrive, ACROSS a gap three times the read timeout...
+        # Both frames arrive, across a gap three times the read timeout...
         self.assertEqual(c.frames, 2, "the frame after the silence never arrived")
-        # ...on ONE connection. This is the assertion that would have caught the leak: the
-        # accept count is what the gather pays for, one leaked socket per reconnect.
+        # ...on one connection. The accept count is what the gather pays for: one leaked
+        # socket per reconnect.
         self.assertEqual(self.conns, 1, "the client reconnected across a quiet gather")
         self.assertEqual(c.connects, 1)
         self.assertEqual(c.bad, 0)
 
 
 class TestCoherentSource(unittest.TestCase):
-    """B. The /get_records replacement, in the shape fleet_coherent already consumes."""
+    """B. coherent_source(): the /get_records data from telemetry, in fleet_coherent's shape."""
 
     def _client(self):
         c = telem.TelemClient(depth=16)
@@ -480,10 +474,9 @@ class TestCoherentSource(unittest.TestCase):
         self.assertEqual(now, max(hops))
 
     def test_instances_land_on_identical_hops(self):
-        # THE WHOLE POINT. Two instances that reported the same window must produce the SAME
-        # hop keys -- no tolerance, no nearest-match. Under the REST path this was inferred
-        # from arrival order and from a UTC each instance stamped independently (#46 measured
-        # 0.105 s of spread in exactly that stamp).
+        # Two instances that reported the same window must produce the same hop keys: no
+        # tolerance, no nearest match. Arrival order and a UTC each instance stamps
+        # independently can only approximate that.
         c = self._client()
         self._feed(c, _make_frame(inst="cx19.0", win=10))
         self._feed(c, _make_frame(inst="cx42.1", win=10))
@@ -515,12 +508,12 @@ class TestCoherentSource(unittest.TestCase):
 
 
 class TestStaleness(unittest.TestCase):
-    """B. Live-vs-stale, because the first version of this metric could not tell them apart.
+    """B. Live versus stale.
 
-    On sky, 2026-08-14: cx43's GPU-0 chain died and its frozen window index drove the reported
-    spread to 984 within a minute, while the nine live instances sat at 1. A health number that
-    screams on every instance death is a health number nobody reads by the second week -- so
-    the verdict is over LIVE senders and the stale ones are named.
+    A stopped instance keeps its last window forever, so one dead sender would drive the raw
+    spread to the number of windows since it died, while over the live instances it stays at 0
+    or 1. A health number that alarms on every instance death stops being read, so the verdict
+    is over live senders and the stale ones are named.
     """
 
     def _feed(self, c, raw, rx):
@@ -565,7 +558,7 @@ class TestStaleness(unittest.TestCase):
 
 class TestStats(unittest.TestCase):
     def test_spread_reports_misalignment_among_LIVE_instances(self):
-        # The alignment check, served rather than inferred: three instances all delivering NOW,
+        # The alignment check, served rather than inferred: three instances all delivering now,
         # one of them on a different window. That is the real fault -- and it is a different
         # thing from an instance that stopped (TestStaleness), which is why the two must not
         # share a number. This one has to keep firing.
@@ -594,7 +587,7 @@ def _listen():
 
     srv = _s.socket(_s.AF_INET, _s.SOCK_STREAM)
     srv.setsockopt(_s.SOL_SOCKET, _s.SO_REUSEADDR, 1)
-    # A SMALL SEND BUFFER, set before accept so every accepted connection inherits it, and set
+    # A small send buffer, set before accept so every accepted connection inherits it, and set
     # explicitly so the kernel does not autotune it upwards. Production's slack is a fraction
     # of a second at the stream's rate; without this the loopback kernel would quietly hold
     # megabytes for a stalled reader and these tests would pass on the code they are meant to
@@ -608,14 +601,13 @@ def _listen():
 class TestSocketDrainsIndependentOfTheRing(unittest.TestCase):
     """D. The socket thread never waits on the ring.
 
-    ⚠️ WHY THIS TEST EXISTS. The gather closes a client that cannot take a frame within
-    200 ms, the stream carries every chain on one connection, and the kernel buffers hold only
-    a fraction of a second at the stream's rate -- so a reader that parsed and took the ring
-    lock between two recv() calls turned any contention on that lock into a dropped
-    connection, a fixed 5 s reconnect wait, and ~500 records missing on EVERY instance of
-    EVERY chain: a fleet-wide fleet-ADR arc break. Four of them in eight hours. Here the ring
-    lock is held for 1.5 s while the server pushes 2 MB through a 64 kB send buffer: the send
-    must finish while the lock is still held.
+    The gather closes a client that cannot take a frame within 200 ms, the stream carries
+    every chain on one connection, and the kernel buffers hold only a fraction of a second at
+    the stream's rate. A reader that parsed and took the ring lock between two recv() calls
+    would turn any contention on that lock into a dropped connection and records missing on
+    every instance of every chain: a fleet-wide fleet-ADR arc break. Here the ring lock is held
+    for 1.5 s while the server pushes ~2.2 MB through a 64 kB send buffer: the send must finish
+    while the lock is still held.
     """
 
     def _serve(self, srv, n):
@@ -711,7 +703,7 @@ class TestSocketDrainsIndependentOfTheRing(unittest.TestCase):
             srv.close()
         self.assertIsNone(self.err)
         self.assertIsNotNone(self.t_sent)
-        # Over the bound the OLDEST frames go, counted, and the NEWEST window is what lands.
+        # Over the bound the oldest frames go, counted, and the newest window is what lands.
         self.assertGreaterEqual(c.pending_dropped, n - 6)
         self.assertEqual(c.frames + c.pending_dropped, n)
         self.assertIn(1000 + n - 1, c.windows("gps_l5", lag=0))
@@ -719,10 +711,10 @@ class TestSocketDrainsIndependentOfTheRing(unittest.TestCase):
 
 
 class TestReconnectPolicy(unittest.TestCase):
-    """E. A connection the gather closed after it LIVED is reconnected at once.
+    """E. A connection the gather closed after it lived is reconnected at once.
 
     Every second between the drop and the reconnect is a second of records lost on every
-    chain, and the fold cannot bridge it. The backoff is for a gather that is DOWN -- a
+    chain, and the fold cannot bridge it. The backoff is for a gather that is down -- a
     connection refused or one that died young -- where retrying at once would only churn.
     """
 
@@ -795,8 +787,8 @@ class TestReceiveBufferIsPinned(unittest.TestCase):
 
     The kernel starts a connection near 128 kB and autotunes up over tens of seconds. This
     stream runs at tens of MB/s, the gather drops a client that cannot take a frame in time,
-    and a drop is now followed by an IMMEDIATE reconnect -- so leaving the size to autotuning
-    would re-enter the smallest-buffer ramp on every drop, at the worst possible moment.
+    and a drop is followed by an immediate reconnect, so leaving the size to autotuning would
+    re-enter the smallest-buffer ramp on every drop, at the worst possible moment.
     """
 
     def _connected_client(self, **kw):
@@ -838,7 +830,7 @@ class TestReceiveBufferIsPinned(unittest.TestCase):
         self.assertIsNotNone(
             c.rcvbuf_actual, "the client never recorded a receive buffer"
         )
-        # Linux stores 2x the request, then clamps to rmem_max.
+        # Linux clamps the request to rmem_max, then stores twice that.
         self.assertGreaterEqual(c.rcvbuf_actual, min(2 * req, rmem_max))
         self.assertEqual(c.stats()["rcvbuf"], c.rcvbuf_actual)
 

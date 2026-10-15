@@ -1,5 +1,5 @@
 #!/bin/bash
-# #154 safety net for the shared element model's phase pin -- every 5 minutes from cron on gnss.
+# Safety net for the shared element model's phase pin: every 5 minutes from cron on gnss.
 #
 # Compares every assembler's shared model with the committed fleet reference (the manifest's
 # elem-shared-ref, the file the node configs were generated from):

@@ -5,17 +5,17 @@
     scripts/gnss/gen_fleet.py config/gnss_fleet_chord.yaml --check    # verify, write nothing
     scripts/gnss/gen_fleet.py config/gnss_fleet_chord.yaml --node cx19 --print-cmd
 
-WHAT THIS IS FOR. `gen_chord_gnss_config.py` takes ~48 flags and, until 2026-08-09, the set
-that produced the running fleet was recorded nowhere -- so six configs the instrument ran on
-were unreproducible in practice, and changing a node meant hand-patching a file stamped DO
-NOT HAND-EDIT. This driver makes the flags a committed artifact and `--check` makes that
-enforceable: it regenerates into memory and compares byte-for-byte, so a hand-edit, a stale
-base, or a generator whose output moved all show up as a red gate rather than as a node that
-quietly differs from its five siblings.
+The manifest holds every node's config/gen_chord_gnss_config.py flags, so each config can be
+reproduced from a committed file; a node's config is regenerated, never hand-edited.
 
-`--check` is a GATE. It exits non-zero on the first mismatch and prints the diff, and it is
-the thing to run before any fleet restart -- a node started from a config nobody can
-regenerate is a node whose behaviour has no explanation when it misbehaves.
+`--check` is the gate to run before a fleet restart. It regenerates every node into memory,
+compares the result byte for byte with the file on disk (the live EOP and bad-input values
+aside) and checks the file against the stock render (stock_parity.py), so a hand-edit, a
+changed base or a generator whose output moved all fail. It prints a diff per mismatching node
+and exits 1 if any node differs, 2 if the generator cannot run.
+
+`--check-prns` is a separate, network-dependent check of the manifest's PRN lists against live
+BRDC.
 """
 import argparse
 import difflib
@@ -34,8 +34,8 @@ OUTDIR = os.path.join(K, "config", "generated")
 
 
 def _split_header(text):
-    """(leading '#' comment lines, the YAML body). The generator emits its provenance header and
-    then yaml.safe_dump(sort_keys=True) -- no comments inside the body."""
+    """(leading '#' comment lines, the YAML body). The generator writes its provenance header,
+    then yaml.safe_dump(sort_keys=True), so the body holds no comments."""
     lines = text.splitlines(True)
     n = 0
     while n < len(lines) and lines[n].startswith("#"):
@@ -44,15 +44,13 @@ def _split_header(text):
 
 
 def _drop_live(text):
-    """Blank the LIVE values out of a rendered config: the Earth-orientation table and bffs's
-    bad-input block. Both are fetched at generation time (choco), both move on their own --
-    the EOP window rolls daily, the bad-input list whenever bffs flags a feed -- and neither is
-    a declared choice, so --check must not report them as drift.
+    """Blank the live values in a rendered config: the Earth-orientation table and bffs's
+    bad-input block. Both are fetched at generation time and move on their own (the EOP window
+    rolls daily, the bad-input list changes whenever bffs flags a feed), so --check must not
+    report them as drift.
 
-    Parse-based, then re-dumped exactly as the generator dumps: the round trip is byte-exact for
-    these files (checked on all six), so everything outside those two values still compares
-    byte for byte. (A line-based version once ended the EOP block on its first entry and passed
-    the happy path anyway -- nothing it was meant to skip was skipped.)
+    Parsed, then re-dumped exactly as the generator dumps, so the round trip is byte-exact and
+    everything outside those two values still compares byte for byte.
     """
     head, body = _split_header(text)
     cfg = yaml.load(body, Loader=getattr(yaml, "CSafeLoader", yaml.SafeLoader))
@@ -73,10 +71,10 @@ def _drop_live(text):
 
 
 def _live_inputs_missing(text):
-    """Why a generated config must NOT be written, or None. Both live values must have come from
-    a live source: an empty EOP table floods 'Requesting EOP later than in table' and stamps a
-    wrong dUT1 (it killed recv1's writer 2026-08-19); the template's bad-input block flags no
-    feed at all, and the mask rides to recv1 with the N^2."""
+    """Why a generated config must not be written, or None. Both live values must have come from
+    a live source: the stock template's EOP table is empty, and the stock telescope block sets
+    fatal_eop_out_of_range, so a node without a current table shuts down; the template's
+    bad-input block flags no feed at all, and the mask rides to recv1 with the N^2."""
     cfg = yaml.load(
         _split_header(text)[1], Loader=getattr(yaml, "CSafeLoader", yaml.SafeLoader)
     )
@@ -97,9 +95,8 @@ def flags_from(mapping):
     """Manifest keys -> generator flags, same convention as gnss_chains_chord.yaml:
     true -> a bare flag, false/None -> omitted, anything else -> --key value.
 
-    A LIST repeats the flag: `extra-signal: [A, B]` -> `--extra-signal A --extra-signal B`,
-    which is what argparse's action="append" wants. Needed the moment a node carries more
-    than one extra chain (E5a *and* B2a on the same 1176.45 MHz tap).
+    A list repeats the flag, as argparse's action="append" expects:
+    `extra-signal: [A, B]` -> `--extra-signal A --extra-signal B`.
     """
     out = []
     for k, v in mapping.items():
@@ -112,39 +109,27 @@ def flags_from(mapping):
     return out
 
 
-# ---- THE CONTENT GATE (--check-prns) -------------------------------------------------------
-# ⚠️ `--check` compares the GENERATED FILES byte-for-byte and is deliberately offline and
-# deterministic. This is a different question and deliberately a different flag: are the PRN
-# lists in the manifest still TRUE OF THE SKY? They are hand-written strings, and the comments
-# beside them are human snapshots of which slots carry an active satellite. The broker, by
-# contrast, reads live BRDC every cycle -- so the two drift apart the moment the constellation
-# changes, silently, with no error anywhere.
+# ---- PRN content gate (--check-prns) -------------------------------------------------------
+# --check compares the generated files and is offline and deterministic. --check-prns asks a
+# different question: are the manifest's hand-written PRN lists, the slots each node boots
+# with, still true of the sky? They drift as the constellation changes, and nothing else
+# checks the manifest against live BRDC (the broker's PRN map only re-assigns running slots).
 #
-# THAT DRIFT HAS ALREADY COST US (2026-08-26). The Galileo list says "the range 1-36 minus the
-# slots with no active satellite. Exactly 32 -- full." Measured: FIVE dead slots (1, 14, 18,
-# 22, 24) and E36 ACTIVE BUT EXCLUDED. Nothing was scarce -- we carried five empty slots while
-# locking out a live satellite. And because the broker's noise-probe selector picks the DEEPEST
-# below-horizon PRN, it kept choosing E36, which the node cannot represent; the probe was
-# seeded, never reported, and both Galileo chains silently fell back from the q+p presence gate
-# to BRIGHTNESS-ONLY for want of a third probe.
-#
-# EXIT CODE DISCRIMINATES, because the two findings are not equally bad:
-#   EXCLUDED (active, rises here, no slot)  -> a satellite we cannot see. FAILS.
-#   DEAD     (slot, no active satellite)    -> wasted capacity. WARNS.
-# A dead slot is only a problem when paired with an exclusion, which is exactly today's case.
+# The two findings are not equally bad, and the exit code says so:
+#   EXCLUDED (active, capable, rises here, no slot)  -> a satellite missing from the list: fails.
+#   DEAD     (slot, no active satellite)             -> wasted capacity: warns.
 SYS_OF = {"GPS": "G", "GAL": "E", "BDS": "C"}
 LAT, LON, ALT = 49.32075144444, -119.62081125, 545.0
-# ⚠️ CAPABILITY, NOT JUST ACTIVITY -- and without this the gate cries wolf, which is worse
-# than no gate. BeiDou B2a/B2b are BDS-3 signals the BDS-2 satellites do not broadcast, and
-# L2C/L5 are carried only by the newer GPS blocks, so their exclusion from a list is CORRECT
-# and must never be reported as a fault. The rule comes from the IGS registry's block types
-# (prnmap.signal_incapable_prns), the same source the broker filters on: a PRN floor stopped
-# being a proxy when IGS re-used C11-C14 for BDS-3 MEOs (#150). A list that deliberately
-# MIRRORS a sibling's (B3I follows B2a/B2b so tau_band sees the same rays) is judged by the
-# sibling's capability.
+# Capability, not just activity: BeiDou B2a/B2b are BDS-3 signals the BDS-2 satellites do not
+# broadcast, and L2C/L5 are carried only by the newer GPS blocks, so leaving those satellites
+# out of a list is correct and must not be reported. The rule is the IGS registry's block types
+# (prnmap.signal_incapable_prns), the source the broker filters on; a PRN floor is no proxy,
+# since BeiDou re-uses low PRNs for BDS-3 satellites. A list that mirrors a sibling's (B3I
+# follows B2a/B2b so tau_band sees the same rays) is judged by the sibling's capability.
 MIRRORS = {"BDS_B3I_NH": "BDS_B2A_P_CS"}
-# A satellite that only grazes the horizon has no claim on a slot: use the tracking mask, not
-# el > 0. C56 peaks at 6.1 deg over a whole day -- visible to geometry, useless to the loop.
+# Degrees: only a satellite whose peak elevation here exceeds this counts as excluded; one that
+# merely grazes the horizon has no claim on a boot slot. The manifest's BeiDou lists are cut at
+# the same threshold.
 RISE_DEG = 10.0
 
 
@@ -166,8 +151,8 @@ def check_prns(man, rise_deg=RISE_DEG, hours=24.0, step_min=10.0):
         return 0
 
     eph = parse_rinex_nav(fetch_brdc(datetime.now(timezone.utc)))
-    # Max elevation over a whole day: a satellite that never rises here has no claim on a
-    # slot however active it is (the BeiDou list is already built this way, and says so).
+    # Peak elevation over the sweep: a satellite that never rises here has no claim on a slot,
+    # however active it is.
     now = time.time()
     peak = {}
     for k in range(int(hours * 60 / step_min)):
@@ -197,8 +182,8 @@ def check_prns(man, rise_deg=RISE_DEG, hours=24.0, step_min=10.0):
         dead = sorted(cfg - active)
         excluded = sorted((active & rises) - cfg)
         if not active:
-            # An empty sky cannot exclude anything, so without this the gate reads GREEN on a
-            # stale or missing ephemeris (a GNSS_BRDC_DIR pin two days old did exactly that).
+            # An empty sky excludes nothing, so without this a stale or missing ephemeris
+            # would pass.
             bad += 1
             print(
                 "%-16s FAIL  no active satellite in the sky: stale or empty ephemeris"
@@ -317,8 +302,8 @@ def main():
         )
     suffix = man.get("suffix", "")
     common = flags_from(man.get("common") or {})
-    # THE STOCK HALF IS CHECKED, NOT TRUSTED: every config, written or checked, is diffed against
-    # the stock render (stock_parity.py) and anything undeclared stops it. Rendered once here.
+    # Every config, written or checked, is diffed against the stock render (stock_parity.py);
+    # an undeclared difference stops a write and fails --check. Rendered once here.
     stock_ref = stock_parity.render_stock(base)
 
     def parity(text):
@@ -356,12 +341,9 @@ def main():
         # generator writes its human summary to stderr, so stdout is the file exactly.
         p = subprocess.run(cmd, capture_output=True, text=True, cwd=K)
         if p.returncode != 0:
-            # ⚠️ EXIT 2, NOT 1. Exit 1 means "the config differs from the manifest" and
-            # nothing else; a generator that failed to RUN has said nothing about the config.
-            # Conflating them made node_up.sh's preflight report "does not match
-            # config/gnss_fleet_chord.yaml" on cx27/cx42/cx51 on 2026-08-09 while all six were
-            # byte-identical -- a confident, specific, wrong claim that sent KV hunting a
-            # config problem that did not exist. A checker that cannot run must say so.
+            # Exit 2, not 1: exit 1 means the config differs from the manifest, and
+            # node_up.sh's preflight reads it that way. A generator that failed to run has
+            # said nothing about the config.
             sys.stderr.write(p.stderr[-3000:] + "\n")
             sys.stderr.write(
                 "generator failed for %s (exit %d)\n" % (node, p.returncode)
@@ -385,12 +367,9 @@ def main():
                         % len(undeclared),
                     )
                 )
-            # ATOMIC: a sibling .tmp then os.replace. A plain open(out,"w") leaves a window
-            # where a concurrent reader -- node_up.sh's preflight, another --check, or kotekan
-            # itself starting -- sees a TRUNCATED config. It reads as a difference, so the
-            # preflight reports "no longer matches the manifest" about a file that is merely
-            # half-written. Same fix and same reason as gnss_ephemeris._atomic_write_bytes,
-            # which exists because readers were catching half-written BRDC gzips.
+            # Atomic (a sibling .tmp, then os.replace): a concurrent reader (node_up.sh's
+            # preflight, another --check, kotekan starting) must never see a truncated config,
+            # which reads as a difference or fails to load.
             tmp = out + ".tmp"
             with open(tmp, "w") as f:
                 f.write(text)
@@ -404,13 +383,6 @@ def main():
             continue
         have = open(out).read()
 
-        # ⚠️ THE EARTH-ROTATION TABLE IS LIVE DATA, NOT A DECLARED CHOICE (2026-08-19).
-        # It is fetched from the running fleet at generation time and is a rolling ~5-day
-        # window, so it MOVES ON ITS OWN roughly daily. Comparing it here would report drift
-        # on all six nodes every morning for a reason nobody intends to reproduce -- and this
-        # file's own docstring is about why that is worse than not checking: a gate that
-        # cries wolf is a gate people learn to skip. Normalise it out of BOTH sides and let
-        # everything else stay byte-exact.
         undeclared = parity(have)
         if undeclared:
             bad.append(node + ":stock")
@@ -420,6 +392,8 @@ def main():
             )
             for kind, path, detail, _ in undeclared[:12]:
                 print("    !!  %s %s  %s" % (kind, path, detail))
+        # The EOP table and bad-input block are live data that move on their own: blank them on
+        # both sides (_drop_live) and keep everything else byte-exact.
         have_c, text_c = _drop_live(have), _drop_live(text)
         if have_c == text_c and have != text:
             print(

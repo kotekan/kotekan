@@ -2,30 +2,29 @@
 """GLONASS L3OC ranging-code check (data L3OCd + pilot L3OCp, 1202.025 MHz).
 
 Checks lib/stages/gnss/glonassL3OCCode.cpp three ways:
-  1. **Constants**: the LFSR seeds/taps/lengths are parsed OUT of the C++ and asserted against
-     the reference values, so a typo in a binary literal fails here rather than on the sky.
-  2. **Algorithm**: the construction is re-run in pure python, INDEPENDENTLY of the C++, and
+  1. **Constants**: the LFSR seeds, taps and lengths are parsed out of the C++ and asserted
+     against the reference values, so a typo in a binary literal fails here rather than on the
+     sky.
+  2. **Algorithm**: the construction is re-run in pure python, independently of the C++, and
      structural invariants are asserted (distinctness, balance, autocorrelation sidelobes,
      data/pilot disjointness).
   3. **Bit-exactness**: if a C++ compiler is available, the module is compiled with a throwaway
-     main() and its codes are compared to python's CHIP FOR CHIP. This is the check the earlier
-     signals could not make -- their codes came from large transcribed tables, so python could
-     only re-derive from the same table. L3OC is fully algorithmic, so the two implementations
-     are genuinely independent and an exact match means something.
+     main() and its codes are compared to python's chip for chip. L3OC is fully algorithmic, so
+     the two implementations are independent and an exact match is meaningful.
 
-★ Construction: a SHARED 14-stage LFSR (DC1) times a PER-SATELLITE 7-stage LFSR that differs
-only in its initial state -- `prn` for the data component, `prn + 64` for the pilot. The 7-stage
-polynomial is primitive, so its 127 non-zero states are cyclic shifts of ONE m-sequence: the
+Construction: a shared 14-stage LFSR (DC1) times a per-satellite 7-stage LFSR that differs only
+in its initial state -- `prn` for the data component, `prn + 64` for the pilot. The 7-stage
+polynomial is primitive, so its 127 non-zero states are cyclic shifts of one m-sequence: the
 per-satellite diversity is a code-phase offset, and data (shifts 1..63) and pilot (65..127) are
 disjoint families.
 
-⚠️ THE TRAP THIS GUARDS: code index 0 seeds the short LFSR with all-zeros, an ABSORBING state
-that emits a constant sequence -- so index 0 does not yield a poor code, it yields DC1 itself,
-which would correlate against every satellite. Checked explicitly below.
+Code index 0 seeds the short LFSR with all zeros, an absorbing state that emits a constant
+sequence, so index 0 yields DC1 itself, which would correlate against every satellite. Checked
+explicitly below.
 
-⚠️ Still NOT guarded: whether the code index equals the orbital slot number. That is an ICD
-question no structural test can answer; it is settled on the sky by searching the full index
-range. See the header of glonassL3OCCode.hpp.
+Not checked: whether the code index equals the orbital slot number. No structural test can
+answer that, so the L3OC signal descriptors take the PRN as a code index 1..63 and do not assume
+it is the slot. See the header of glonassL3OCCode.hpp.
 
     python3 l3oc_code_check.py     # exits non-zero on any mismatch
 """
@@ -55,8 +54,8 @@ REF = {
     "pilot_offset": 64,
 }
 
-# (crc32 of the code as a "01" string with +1 -> "1", popcount of +1). Recorded from the run
-# that passed the bit-exact C++/python comparison, so these pin BOTH implementations.
+# (crc32 of the code as a "01" string with +1 -> "1", popcount of +1). Recorded while the C++
+# and python codes matched bit for bit, so these pin both implementations.
 FINGERPRINTS = {
     "L3OCd": {
         1: (0x05D98A18, 5094),
@@ -74,9 +73,9 @@ FINGERPRINTS = {
 
 
 def _lfsr(n_out, seed, tap, n):
-    """Fibonacci LFSR in the reference convention: emit the LOW bit, shift RIGHT, and load the
-    parity of the tapped bits into bit n-1. Emitting BEFORE shifting is what makes the seed the
-    source of chip 0. Chips are logic 0 -> +1 (house convention, and PocketSDR's CHIP=(1,-1))."""
+    """Fibonacci LFSR in the reference convention: emit the low bit, shift right, and load the
+    parity of the tapped bits into bit n-1. Emitting before shifting makes the seed the source
+    of chip 0. Chips are logic 0 -> +1 (house convention, and PocketSDR's CHIP=(1,-1))."""
     r = seed
     out = []
     for _ in range(n_out):
@@ -178,8 +177,8 @@ int main() {
 
 
 def _peak_sidelobe_db(code):
-    """Worst off-peak circular autocorrelation, in dB below the peak. Pure python FFT-free would
-    be O(N^2)=1e8; use numpy when available and skip otherwise."""
+    """Worst off-peak circular autocorrelation, in dB relative to the peak, via numpy's FFT.
+    Returns None without numpy (a pure-python O(N^2) loop would be ~1e8 operations)."""
     try:
         import numpy as np
     except ImportError:
@@ -219,8 +218,8 @@ def main():
         codes[("L3OCd", prn)] = _code(prn, False, dc1)
         codes[("L3OCp", prn)] = _code(prn, True, dc1)
 
-    # index 0 is the absorbing state -- confirm it really does collapse, so the range check in
-    # the C++ is guarding something real rather than being decorative.
+    # Index 0 is the absorbing state: confirm it collapses to DC1, so the C++ range check
+    # guards a real failure.
     zero = _code(0, False, dc1)
     if zero != dc1:
         print(

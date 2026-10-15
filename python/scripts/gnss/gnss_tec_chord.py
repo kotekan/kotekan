@@ -1,36 +1,32 @@
 #!/usr/bin/env python3
-"""Geometry-free slant TEC on CHORD, paired at EXACT fleet-ADR grid hops.
+"""Geometry-free slant TEC on CHORD, paired at exact fleet-ADR grid hops.
 
     gnss_tec_chord.py --since-h 7 --out /tmp/tec_chord
     gnss_tec_chord.py --pair gal_e5a:gal_e6 --pair gps_l5:gps_l2c --since-h 7 --out /tmp/tec
 
-Emits <out>_series.npz with EXACTLY the columns gnss_tec_movie.py reads
+Emits <out>_series.npz with exactly the columns gnss_tec_movie.py reads
 (t, sys, prn, arc, tecu, az, el), plus <out>_arcs.json and <out>_tec.png.
 
-WHY THE AIRSPY-ERA METHOD DOES NOT CARRY OVER. Almost none of the prototype's machinery
-survives the move:
-  * IT INTERPOLATES band B onto band A's row epochs. On CHORD that is fatal, not approximate:
-    `adr_cycles` is one instance's accumulator stamped by record COUNT, so the epoch it
-    implies is wrong by ~101 ms rms, and a full-carrier ADR turns that into c*dt = 3e7 m.
-    Here the two bands are read at the SAME INTEGER HOP and nothing is interpolated.
-  * IT REMOVES THE COMMON MODE IN RATE, because three dongles meant three clocks and an
-    inter-band drift of ~264 TECU/s. CHORD has ONE F-engine clock for every band, so the
-    inter-band term is a CONSTANT (a hardware delay) and dies with the arc mean. Removing it
-    in rate here would subtract real ionosphere.
-  * ITS ARC RULES bridge coherence_s dropouts. `fadr_arc` is already the certified-continuous
-    arc: it ends only where an increment could not be accounted for.
+Design constraints of the CHORD data:
+  * The two bands are read at the same integer hop, never interpolated onto each other's row
+    epochs: `adr_cycles` is one instance's accumulator stamped by record count, so the epoch
+    it implies is off by ~0.1 s rms, and a full-carrier ADR turns that into c*dt ~ 3e7 m.
+  * No common mode is removed in rate. CHORD has one F-engine clock for every band, so the
+    inter-band term is a constant (a hardware delay) that goes with the arc mean; removing a
+    rate would subtract real ionosphere.
+  * `fadr_arc` is already the continuous arc: it ends only where an increment could not be
+    accounted for. Joint arcs are further cut at gaps and steps (--max-gap-s, --step-m).
 Everything downstream (gnss_tec_movie.py, the IONEX leveling) reads this tool's output.
 
-⚠️ THE PAIRING KEY IS `fadr_g_hop`, NOT `fadr_hop`. Both are exact, but a chain's records land
-on multiples of ITS OWN record length, so two chains' `fadr_hop` values are generally different
+The pairing key is `fadr_g_hop`, not `fadr_hop`. Both are exact, but a chain's records land on
+multiples of its own record length, so two chains' `fadr_hop` values are generally different
 hops. `fadr_g_hop` is the fleet grid (fleetadr.GRID_HOPS = 96*2048 ~ 1.0066 s), a hop every
-chain lands on -- the only epochs at which two bands pair with no interpolation at all.
+chain lands on: the only epochs at which two bands pair with no interpolation.
 
-⚠️ WHAT THIS IS AND IS NOT. Output is RELATIVE slant TEC: each joint arc has its own mean
-removed, so it carries the arc's SHAPE, not an absolute. The two constants it cannot see are
-the satellite DCB and the receiver's inter-band delay for that pair. Absolute TEC needs
-leveling onto the code-gf arc mean plus those DCBs -- `gnss_tec_movie.py --ionex` levels a
-whole frame against a CODE/IONEX map instead, which is the honest way to get a number.
+Output is relative slant TEC: each joint arc has its own mean removed, so it carries the arc's
+shape, not an absolute. The two constants it cannot see are the satellite DCB and the
+receiver's inter-band delay for that pair. Absolute TEC needs leveling onto the code-gf arc
+mean plus those DCBs; `gnss_tec_movie.py --ionex` levels each arc onto a GIM (IONEX) instead.
 """
 import argparse
 import collections
@@ -44,8 +40,7 @@ K = 40.308e16  # m^3/s^2/TECU
 GRID_HOPS = 96 * 2048  # fleetadr.GRID_HOPS
 GRID_SECONDS = 1.006632  # wall seconds per GRID_HOPS: the grid cadence
 
-# Carrier centres, Hz -- these MUST match the SignalDef the broker runs (GNSS_CHAIN_RF in
-# scripts/gnss/site/stack_components.sh).
+# Carrier centres, Hz; must match GNSS_CHAIN_RF in scripts/gnss/site/stack_components.sh.
 FREQ = {
     "gps_l5": 1176.45e6,
     "gps_l2c": 1227.60e6,
@@ -65,7 +60,8 @@ DEFAULT_PAIRS = ["gal_e5a:gal_e6", "bds_b2a:bds_b3i", "gps_l5:gps_l2c"]
 
 
 def load(path, since_s, cn0_min):
-    """{prn: {g_hop: (g_dop_cycles, fadr_arc, t, az, el)}} for one band."""
+    """One band's file -> ({prn: {g_hop: (g_dop_cycles, arc, t, az, el)}}, rows, kept), with
+    arc = (fadr_arc, fadr_hop0)."""
     out = collections.defaultdict(dict)
     n = kept = 0
     with open(path) as fh:
@@ -82,35 +78,32 @@ def load(path, since_s, cn0_min):
             gh, gc = d.get("fadr_g_hop"), d.get("fadr_g_dop_cycles")
             if not gh or gc is None:
                 continue
-            # C/N0 gate on the COHERENT estimator: a dead PRN still exports a fleet ADR (it is
-            # built from commanded Doppler plus a residual that is pure noise when nothing is
-            # locked), and it looks like a 20 TECU/min "ionosphere". Measured 09-10: E13 at
-            # -7 dB-Hz gave 24 TECU rms against 0.09 for the same arc length at 31 dB-Hz.
+            # C/N0 gate on the coherent estimator: a dead PRN still exports a fleet ADR (built
+            # from commanded Doppler plus a residual that is pure noise when nothing is locked),
+            # and it reads as tens of TECU per minute of "ionosphere".
             cn = d.get("cn0_kcoh_dbhz")
             if cn is None or cn < cn0_min:
                 continue
-            # ⚠️ THE ARC KEY IS (fadr_arc, fadr_hop0), NEVER fadr_arc ALONE. FleetAdr forgets a
-            # satellite that has been absent 30 s and its arc counter restarts at 1, so "arc 1"
-            # before and after a dropout are two accumulators with unrelated origins. Keyed on
-            # the arc id alone they pair as one arc and the join reads as a 1e5 TECU step;
-            # hop0 is the arc's first hop and changes with every genuine break.
+            # The arc key is (fadr_arc, fadr_hop0), never fadr_arc alone. FleetAdr forgets a
+            # satellite absent for 30 s and its arc counter restarts, so "arc 1" before and
+            # after a dropout are two accumulators with unrelated origins; keyed on the id
+            # alone they would pair as one arc with a 1e5 TECU step at the join. hop0 is the
+            # arc's first hop and changes with every break.
             arc = (d.get("fadr_arc"), d.get("fadr_hop0"))
             out[d["prn"]][gh] = (gc, arc, d["t"], d.get("az"), d.get("el"))
             kept += 1
-            # #117: the row also carries the last few grid hops (fleetadr.GRID_KEEP). Take
-            # them. The writer polls at 2 s against a 1.0066 s grid -- exactly Nyquist -- so
-            # reading only fadr_g_hop samples alternate hops, and because each chain lands on
-            # its own alternate a band PAIR then shares ~40% of the grid rather than ~100%.
-            # The hops were never missing from the broker, only from the poll.
-            # setdefault: the same grid hop carries the same snapshot whichever row reported
-            # it, so first-writer-wins is deterministic and costs nothing.
+            # The row also carries the last few grid hops (fadr_g_hist, fleetadr.GRID_KEEP).
+            # Rows come once per combiner emit, not once per grid hop, so fadr_g_hop alone
+            # misses hops, each chain different ones, and a band pair would share only part of
+            # the grid. A grid hop carries the same snapshot whichever row reported it, so the
+            # first one stored wins.
             for e in d.get("fadr_g_hist") or []:
                 h, a = e[0], e[1]
                 if h == gh or h in out[d["prn"]]:
                     continue
-                # The row's `t` is the poll instant; each earlier grid hop happened one grid
-                # cadence further back. az/el move ~0.01 deg over that span, far below
-                # anything the pairing or the mapping function resolves.
+                # Dated from the row's `t` (its emit epoch), one grid cadence further back per
+                # hop. az/el move ~0.01 deg over that span, far below anything the pairing or
+                # the mapping function resolves.
                 out[d["prn"]][h] = (
                     a,
                     arc,
@@ -123,15 +116,16 @@ def load(path, since_s, cn0_min):
 
 
 def joint_arcs(A, B, prn, max_gap_hops):
-    """Runs of common grid hops over which BOTH bands' fadr_arc is unchanged."""
+    """(runs, why): runs of common grid hops over which both bands' arc key holds and no gap
+    exceeds max_gap_hops; why[i] names what started run i."""
     hops = sorted(set(A[prn]) & set(B[prn]))
     segs, cur, why = [], [], ["start"]
     for h in hops:
         if cur:
             p = cur[-1]
-            # Name the boundary: the census of WHY arcs end is the diagnostic the plot cannot
-            # give (an arc restart in a band, or a hole in the common grid -- which is a
-            # dropout or the C/N0 gate, not the ADR).
+            # Name the boundary: the census of why arcs end is the diagnostic the plot cannot
+            # give (an arc restart in a band, or a hole in the common grid, which is a dropout
+            # or the C/N0 gate, not the ADR).
             r = (
                 "arc_a"
                 if A[prn][h][1] != A[prn][p][1]
@@ -242,12 +236,12 @@ def main():
         for prn in sorted(set(A) & set(B)):
             segs, why = joint_arcs(A, B, prn, max_gap_hops)
             if args.step_m > 0:
-                # ⚠️ SPLIT AT STEPS. A weak satellite's fleet ADR takes half-cycle-class jumps
-                # that fadr_arc does not flag (the arc is the accumulator's continuity, not its
-                # sanity); one such jump inside a 30-min arc dominates every statistic of it.
-                # A 1-s change of the combination larger than --step-m in EITHER band is a
-                # jump, and the arc is cut there (the same rule fixtures/tec_wander/
-                # triple_closure.py uses to census them).
+                # Split at steps. A weak satellite's fleet ADR takes half-cycle-class jumps that
+                # fadr_arc does not flag (the arc is the accumulator's continuity, not its
+                # sanity), and one such jump inside a 30-min arc dominates every statistic of
+                # it. A change of the combination larger than --step-m between hops less than
+                # three grid periods apart is a jump in one band or the other, and the arc is
+                # cut there.
                 cut, cwhy = [], []
                 for seg, w in zip(segs, why):
                     cur = [seg[0]]
@@ -271,18 +265,17 @@ def main():
                 if span < args.min_arc_s or len(seg) < 30:
                     short[w] += 1
                     continue
-                # ⚠️ SIGN, DERIVED NOT GUESSED (this was wrong for one commit). The obs
-                # writer builds carr_resid_m = -fadr_dop_cycles*lam - range_m and expects it
-                # to sit near zero, so lam*adr = -rho. The ionosphere ADVANCES the carrier,
+                # Sign. The obs writer builds carr_resid_m = -fadr_dop_cycles*lam - range_m and
+                # expects it near zero, so lam*adr = -rho. The ionosphere advances the carrier,
                 # so the measured carrier range is rho - I with I = 40.308*TEC/f^2 > 0, i.e.
                 #     lam*adr = -(rho - I) = -rho + I
                 # and the geometry cancels in the difference, leaving
                 #     la*adr_a - lb*adr_b = I_a - I_b = mpt*TEC     with mpt > 0 for fa < fb.
-                # No minus. The check that this is right is that the fitted slope against the
-                # obliquity is POSITIVE (it is the vertical TEC): see --check-obliquity.
+                # No minus. A check: the fitted slope of TEC against the obliquity factor (the
+                # vertical TEC) must come out positive.
                 gf = [(la * A[prn][h][0] - lb * B[prn][h][0]) / mpt for h in seg]
                 m = sum(gf) / len(gf)
-                gf = [x - m for x in gf]  # RELATIVE: the arc constant is unknowable
+                gf = [x - m for x in gf]  # relative: the arc constant is unknown
                 sd = math.sqrt(sum(x * x for x in gf) / len(gf))
                 # scatter about a 31-point local mean = the measurement noise, not the arc shape
                 res = []

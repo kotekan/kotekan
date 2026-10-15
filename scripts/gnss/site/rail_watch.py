@@ -1,34 +1,28 @@
 #!/usr/bin/env python3
-"""Log the ADC rail (clip) fraction and band power at a FIXED cadence, fleet-wide.
+"""Log the ADC rail (clip) fraction and band power at a fixed cadence, fleet-wide.
 
     rail_watch.py record [--out FILE] [--endpoints ...]   # per channel, every pass (1 Hz)
 
-WHY THIS EXISTS. Bright-transit clipping events happen a few times a day: a satellite
-passes near boresight, total band power rises, the 4+4b quantiser starts railing, and every
-OTHER satellite is desensitised by small-signal suppression while the bright one is barely
-touched. Measured 2026-08-22 00:38-01:05 UTC -- clip 0.085% -> 5.57%, G9's q RISING to 5.4
-(r = +0.86 vs clip) while E8 collapsed 3.0 -> 1.0 and sat there.
+Bright-transit clipping: a satellite passes near boresight, total band power rises, the 4+4b
+quantiser starts railing, and every other satellite is desensitised by small-signal
+suppression while the bright one is barely touched.
 
-⚠️ THAT EVENT HAD TO BE RECONSTRUCTED FROM LOG LINES, and it is why this exists. The only
-history was the broker's `RF PATH` line at ~5 min cadence plus the `⚠️ RF CLIPPING` warnings,
-which fire only ABOVE 1%. So the sampling density was correlated with the value being
-measured -- fine for showing the shape, useless for a lag or a cross-correlation. A fixed
-cadence is the whole point; do not make this event-triggered.
+The broker logs `RF PATH` every ~5 min and `RF CLIPPING` only above 1%, so its sampling
+density follows the value being measured: enough to show the shape of an event, useless for
+a lag or a cross-correlation. A fixed cadence is the point; do not make this event-triggered.
 
-WHAT IT RECORDS, per instance per pass, one JSON line (the exact keys are in record()):
-  * clip_hi / clip_lo  -- per-CHANNEL rail fraction
-  * elem_clip          -- per-ELEMENT rail fraction (128), which localises a clipping event to
+What it records, per instance per pass, one JSON line (the exact keys are in record()):
+  * clip_hi / clip_lo  -- per-channel rail fraction
+  * elem_clip          -- per-element rail fraction (128), which localises a clipping event to
                           a feed rather than the band
-  * power              -- the band power itself. THIS IS THE DISCRIMINATOR the reconstruction
-                          could not settle: if clipping rises because total power rises, the
-                          cause is a source or an interferer; if power is flat while clip
+  * power              -- the band power. If clipping rises because total power rises, the
+                          cause is a source or an interferer; if power is flat while clipping
                           rises, it is a gain or quantiser-scaling change.
-  * age_s, fpga_seq, passes, enabled -- so a FROZEN monitor is visible as frozen. A stale
-    endpoint answering 200 with plausible numbers is this project's most repeated trap
-    (#70/#87, the wedged gather, the stranded capture windows); `enabled` false is recorded
-    as off, never as zeros, and unreachable is a third state again.
+  * age_s, fpga_seq, passes, enabled -- so a frozen monitor shows as frozen: a stale endpoint
+    can answer 200 with plausible numbers. `enabled` false is recorded as off, never as
+    zeros, and unreachable is a third state.
 
-Deliberately standalone: no broker change, no node change, nothing in the control path.
+Standalone: no broker change, no node change, nothing in the control path.
 """
 import argparse
 import json
@@ -48,9 +42,9 @@ def _r(v, n=4):
 
 
 def record(args):
-    """EVERY rf_stats pass, per channel, one JSON line per (instance, pass).
+    """Every rf_stats pass, per channel, one JSON line per (instance, pass).
 
-    The node computes one pass per band_power_period_s (1 s in the manifest) from ONE frame, and
+    The node computes one pass per band_power_period_s (1 s in the manifest) from one frame, and
     `passes` counts them. Polling at twice that rate and writing only when `passes` moves keeps
     every pass exactly once whatever the phase between the two clocks; a pass missed because
     the poll came late is visible as a jump in `pass`, never as a silent gap.

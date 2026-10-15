@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Flap harness for GnssTelemGather (#131): a gather fed a telemetry capture while a client
+"""Flap harness for GnssTelemGather: a gather fed a telemetry capture while a client
 connects to its serve port, takes nothing, and reconnects at a fixed rate.
 
     telem_flap.py --kotekan <build>/kotekan/kotekan \\
                   --config config/generated/chord_gnss_gather.yaml \\
-                  --capture fixtures/tec_wander/telem/telem_l5_20261012_1252.bin \\
+                  --capture <telemetry capture>.bin \\
                   [--duration 600] [--flaps-per-min 20] [--clients 1] [--read] [--no-sender]
-                  [--port-offset 1000] [--workdir /var/tmp/kvand-ready/flap]
+                  [--port-offset 1000] [--workdir DIR] [--env VAR=VALUE ...]
 
 The gather is started from a copy of the config with every port moved by --port-offset, so it
 can run beside a live stack. The capture is the gather's own serve stream ([uint32 length][frame],
@@ -152,9 +152,10 @@ class Sender(threading.Thread):
 
 
 class Flapper(threading.Thread):
-    """Connect to the serve port, read nothing, reconnect every 60/flaps_per_min seconds. The
-    gather drops a client that reads nothing once the socket buffer is full and its send
-    deadline expires; a client whose period ends first is closed here and reaped there."""
+    """Connect to the serve port, hold the connection for 60/flaps_per_min seconds reading
+    nothing (or draining the stream with `read`), then close and reconnect. The gather drops a
+    client that reads nothing once the socket buffer is full and its send deadline expires; a
+    client whose period ends first is closed here and reaped there."""
 
     def __init__(self, port, flaps_per_min, stop, read):
         super().__init__(daemon=True)

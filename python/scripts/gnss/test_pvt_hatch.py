@@ -74,9 +74,9 @@ class T(unittest.TestCase):
         self.assertEqual(n, 30)
 
     def test_a_jumping_carrier_loses_to_the_boxcar(self):
-        """The obs logs have carried an accumulated phase discontinuous by many kilometres
-        inside one nominal arc. Hatch on that is catastrophic; the smoother must notice and
-        use the code."""
+        """An accumulated phase can jump by many kilometres inside one nominal arc. Hatch on
+        that is catastrophic; the smoother must notice (the boxcar is quieter) and use the
+        code."""
         r = rows(60, code_sd=1.0)
         for i, x in enumerate(r):
             x["carr_resid_m"] += 1.0e10 * (

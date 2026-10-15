@@ -1,21 +1,21 @@
 // ============================================================================================
-// THE END-TO-END SEEDING HARNESS. Build this before touching anything else in the chain.
+// End-to-end seeding harness.
 // ============================================================================================
 //
-// Inject a KNOWN code phase into a noiseless synthetic CHORD sky, push it through the ACTUAL
-// SHIPPED code of every stage between the antenna and the despread, and print the error in
-// chips at each hand-off. No sky, no GPUs full of real data, no waiting for a transit; runs in
-// seconds and is fully deterministic.
+// Injects a known code phase into a synthetic CHORD sky (noiseless unless --noise), pushes it
+// through the production code of every stage between the antenna and the despread, and prints
+// the error in chips at each hand-off. It needs no sky data, runs in seconds and is
+// deterministic.
 //
 //   truth (cp204, dop, at absolute window W0)
 //     |
-//     |  gnss::ChannelizedReplicaBank::channels_hoprate   <- the same generator the sky is
-//     v                                                       modelled with (GPS_L5_Q_NH)
+//     |  gnss::ChannelizedReplicaBank::channels_hoprate   <- the generator the replicas use
+//     v                                                       (tracker signal, e.g. GPS_L5_Q_NH)
 //   synthetic channelized data
 //     |
 //     |  gnss::channelized_accumulate / channelized_peak  <- GnssChannelizedSearch's acquire
-//     |  gnss::ChannelizedReplicaBank::hoprate_stream     <- ...its refine
-//     |  gnss::detection_phase                            <- ...its reporting  [SHIPPED]
+//     |  gnss::refine_peak                                <- ...its refine
+//     |  gnss::detection_phase                            <- ...its reporting
 //     v
 //   detection {cp0, cp_long, cp_at_ref, nh, dop}          == /get_detections
 //     |
@@ -23,29 +23,21 @@
 //     v
 //   seed {code_phase_at_ref_chips, ref_hop, doppler_hz, code_phase_rate, ...}
 //     |
-//     |  gnss::propagate_seed                             <- cudaGnssInject  [SHIPPED]
+//     |  gnss::propagate_seed                             <- cudaGnssInject
 //     v
 //   commanded argument cp per record
 //     |
-//     |  GnssCudaDespread::despread_batch                 <- the GPU kernel  [SHIPPED]
+//     |  GnssCudaDespread::despread_batch                 <- the GPU kernel
 //     v
 //   E/P/L power  +  error vs truth, in chips
 //
-// WHY IT EXISTS. Every seeding bug in the week to 2026-08-02 lived in the CONVENTION BETWEEN
-// two stages -- what a number means, what it is reduced modulo, which epoch it references --
-// and none was visible to a test of either stage alone. Each component passed its own test and
-// the chain still failed, so bugs were found one at a time, in deployment order, over three
-// days. Three separately paper-derived mappings reached deployment WRONG in one week. This
-// tool would have settled each of them in minutes.
+// The conventions between stages (what a number means, what it is reduced modulo, which epoch
+// it refers to) are invisible to a test of either stage alone. The harness calls the stage
+// arithmetic (gnssSeedTransport.hpp) instead of restating it, so it tests the code that runs.
 //
-// The one rule that makes it worth anything: it CALLS the stage arithmetic (gnssSeedTransport)
-// rather than restating it. A harness that re-derives the mapping tests the harness author's
-// understanding of the mapping, which is precisely the thing already known to be unreliable.
-//
-// THE KEY TRICK that makes arbitrary seed ages free: a `code_phase_chips` ARGUMENT is
-// referenced to absolute sample 0, so ONE argument describes the satellite for all time.
-// Synthesizing a record at window W with argument cp204 gives exactly the continuation of the
-// same signal -- so a 300 s seed age costs one extra 2048-hop synthesis, not 300 s of samples.
+// A `code_phase_chips` argument is referred to absolute sample 0, so one argument describes the
+// satellite for all time: synthesizing a record at window W with argument cp204 continues the
+// same signal, and a 300 s seed age costs one more 2048-hop synthesis, not 300 s of samples.
 //
 // Build:  scripts/gnss/site/build_tool.sh e2e
 // Run:    scripts/gnss/e2e --help
@@ -75,45 +67,46 @@
 using cf = std::complex<float>;
 
 // ---------------------------------------------------------------------------------------------
-// Options -- every geometry number the live chain uses, so a run can be pointed at the exact
-// production configuration (or at a deliberately perturbed one, to see what breaks).
+// Options: the geometry numbers the live chain uses, so a run can be pointed at a production
+// configuration or at a perturbed one.
 // ---------------------------------------------------------------------------------------------
 struct Opt {
     int prn = 3;
-    double cp204 = 137456.75;        ///< the INJECTED truth: generator argument, mod 204600
-    double dop = 1893.4;             ///< the INJECTED truth Doppler, Hz
-    long long hop0 = 114436200145LL; ///< snapshot start hop (~6.8 days of uptime, as on sky)
-    double age_s = 27.0;             ///< seed age at the first tracker record (live: <= ~27 s)
+    double cp204 = 137456.75;        ///< injected truth: generator argument, mod 204600
+    double dop = 1893.4;             ///< injected truth Doppler, Hz, constant over the run
+    long long hop0 = 114436200145LL; ///< snapshot start hop (~6.8 days of F-engine uptime)
+    double age_s = 27.0;             ///< seed age at the first tracker record
     int nrec = 4;                    ///< tracker records to propagate through
     double rec_gap_s = 10.0;         ///< spacing between the records we test
 
-    // Search side (chord_gnss_agg.yaml gps_search)
+    // Search side: a 27-channel stride-4 comb
     int s_chan0 = 5972, s_stride = 4, s_nchan = 27;
     double dop_half = 1000.0, dop_step = 31.25;
     int acquire_windows = 1, fine_step = 32, threads = 6;
-    /// How many replica-periods of data the REFINE integrates over. The stage (and this
-    /// harness until now) refines on window 0 only, i.e. 16 ms. The refine's job is to pick
-    /// between grating lobes that differ by only ~15%, so its noise -- not the margin -- is
-    /// what decides, and that falls as sqrt of the integration length. The overlay is indexed
-    /// by ABSOLUTE period inside hoprate_stream, so a longer window stays coherent for free.
+    /// Replica periods of data the refine integrates over. The stage refines on at most the
+    /// first window (16 ms at L5). The refine picks between grating lobes of nearly equal
+    /// height, so its noise decides, and that falls as the square root of the integration
+    /// length. hoprate_stream indexes the overlay by absolute period, so a longer window stays
+    /// coherent.
     int refine_windows = 1;
-    // Defaults MATCH WHAT SHIPS: refine_span 0 -> fft_len (the stage default, one whole
-    // hop = the full lag ambiguity), refine_step 303 (what gen_chord_gnss_config.py
-    // emits: fft_len/n_chan/2). The old 4096/75 here were the hand-added override that
-    // turned out to BE the bug -- a harness defaulting to a broken config silently
-    // reproduces the break and calls it baseline.
+    // refine_span 0 means fft_len, the stage default (one hop, the full lag ambiguity);
+    // refine_step 303 is what gen_chord_gnss_config.py emits for this comb, fft_len/n_chan/2.
+    // A harness defaulting to anything else would reproduce a misconfiguration and call it the
+    // baseline.
     int refine_span = 0, refine_step = 303;
-    int refine_hops = 0; ///< refine integration hops (0 = the full record)
+    /// Refine integration hops; 0 = the whole refine window. Production runs 391, two L5 code
+    /// periods (gen_chord_gnss_config.py's refine_hops), so pass --refine-hops 391 to match it.
+    int refine_hops = 0;
 
-    // Tracker side (chord_gnss_cx19.yaml gnss0_track)
+    // Tracker side: one GPU's stride-16 comb of 7 channels
     int t_chan0 = 5972, t_stride = 16, t_nchan = 7;
     int hops_per_record = 2048;
     double dll_spacing = 0.5;
-    /// [#51 F3] THE COMMANDED DLL TRIM, chips, handed to propagate_seed exactly as
-    /// cudaGnssInject hands it the fleet controller's value. With a perfect seed
-    /// (--skip-search) a nonzero trim IS a known code error of known sign, which makes this
-    /// the sign test for the whole actuator: the loop must respond with tau = -disc/4 pointing
-    /// BACK toward zero. A sign error here diverges the loop, and no amount of rate fixes it.
+    /// Commanded DLL trim, chips, passed to propagate_seed as cudaGnssInject passes the fleet
+    /// controller's value. With an exact seed (--skip-search --seed-dop-rate 0) a nonzero trim
+    /// is a known code error of known sign, so this is the sign test for the actuator: the
+    /// loop's correction tau = -disc/4 (dll_tau at 0.5-chip spacing) must point back toward
+    /// zero. A sign error here makes the loop diverge.
     double trim_chips = 0.0;
 
     // Shared geometry
@@ -121,46 +114,38 @@ struct Opt {
     int spectrum_length = 8192, num_taps = 4;
     double code_doppler_sign = 1.0;
 
-    /// TRACKER (baked-overlay) signal. The SEARCH signal is derived by stripping the _NH/_CS
-    /// suffix (GPS_L5_Q_NH -> GPS_L5_Q, GAL_E5A_Q_CS -> GAL_E5A_Q). Per-PRN-secondary signals
-    /// (the _CS pair) have no blind search -- the bank's single-sequence overlay slot skips
-    /// them -- so they require --skip-search (docs/CHORD_MULTIBAND.md section 5).
+    /// Tracker signal, overlay tiled into the code. The search signal is this name minus its
+    /// _NH/_CS suffix (GPS_L5_Q_NH -> GPS_L5_Q, GAL_E5A_Q_CS -> GAL_E5A_Q). Per-PRN-secondary
+    /// signals (the _CS ones) have no blind search, because the bank's single-sequence overlay
+    /// slot cannot hold them, so they need --skip-search (docs/CHORD_MULTIBAND.md section 5).
     const char* signal = "GPS_L5_Q_NH";
 
-    // Seed perturbations. These are the levers the chain is actually sensitive to,
-    // exposed so a sweep can measure the sensitivity instead of arguing about it.
-    double seed_dop_err = 0.0; ///< Hz added to the seed's Doppler only (not the truth)
-    double seed_cp_err = 0.0;  ///< chips added to the seed's code phase only (not the truth).
-                               ///< +k*primary_len = a SECONDARY-PHASE error on a baked _CS/_NH
-                               ///< signal: calibrates what a wrong CS/NH period looks like
-                               ///< downstream (the E6 bring-up tool).
+    // Seed perturbations, applied to the seed only (never the truth), so a sweep can measure
+    // the chain's sensitivity to each.
+    double seed_dop_err = 0.0; ///< Hz added to the seed's Doppler
+    double seed_cp_err = 0.0;  ///< chips added to the seed's code phase. +k*primary_len is a
+                               ///< secondary-phase error on a _CS/_NH signal: it shows what a
+                               ///< wrong overlay period looks like downstream.
     double seed_cp_rate = 0.0; ///< chips/hop residual handed to the tracker
-    /// Hz/s handed to the tracker. ⚠️ NOT ZERO, AND THAT IS THE POINT (task #52, 2026-08-13).
-    ///
-    /// This defaulted to 0.0, and a satellite whose Doppler never moves has no re-pin: the
-    /// replica's f_ref is identical in every record, so the (delta f)*t_abs phase step that
-    /// dominates the live chain CANNOT ARISE HERE. That is why this harness reported a
-    /// per-record phase residual of 0.0008 rad while the sky read 0.745, and why it printed
-    /// "the live floor comes from something this harness does not model" for weeks. It was
-    /// modelling it fine; it was handed a satellite that does not exist.
-    ///
-    /// -0.369 Hz/s is PRN 21's measured rate on 2026-08-13 -- mid-range for the E5a fleet
-    /// (0.036 to 0.369 across 12 satellites). With it, coherent snr collapses 3394 -> 5.4 and
-    /// the residual reproduces the live floor with NO NOISE. A gate has to vary the axis the
-    /// defect lives on, and for this whole family of bugs that axis is (small number) x
-    /// (huge absolute argument): hop0 supplies the huge argument, this supplies the small one.
-    /// Set --seed-dop-rate 0 to recover the old blind behaviour deliberately.
+    /// Hz/s handed to the tracker. Only the seed carries it: the synthetic sky's Doppler stays
+    /// at --dop, so a non-zero rate is also a seed error, rate*dt in Doppler and, through
+    /// propagate_seed's quadratic term, 0.5*(chip_rate/f_offset)*rate*dt^2 in code phase
+    /// (~1.2 chips at L5 for the default at the 27 s age, ~5 chips by record 3). The default
+    /// is a real satellite's rate rather than zero because with zero the commanded Doppler is
+    /// the same in every record, and the per-record phase step (delta f)*t_abs that a changing
+    /// Doppler causes at days of uptime cannot arise. That family of defects is a small number
+    /// times a huge absolute argument: hop0 supplies the argument and this the small number.
+    /// --seed-dop-rate 0 removes it.
     double seed_dop_rate = -0.36893;
-    int quantize = 0;            ///< 1 = 4+4b like the F-engine, 0 = float (noiseless)
+    int quantize = 0;            ///< 1 = 4+4b like the F-engine, 0 = float
     int skip_search = 0;         ///< 1 = seed straight from truth (isolates the tracker leg)
-    bool cuda_refine = false;    ///< also run the GPU refine and compare (A5)
-    int max_chips = 0;           ///< truncate the PFB chip gather (0 = full span)
+    bool cuda_refine = false;    ///< also run the GPU refine and compare it with the CPU one
+    int max_chips = 0;           ///< truncate the search's PFB chip gather (0 = full span)
     bool chips_centered = false; ///< center the truncation window on the prototype peak
-    /// Additive complex Gaussian noise, std as a MULTIPLE of the synthetic signal's rms.
-    /// This is the regime knob that --quantize is not: quantizing a noiseless full-scale
-    /// signal changes nothing (measured, byte-identical), because on sky the satellite sits
-    /// far UNDER the noise floor and every margin the refine relies on -- notably "the true
-    /// grating lobe beats its neighbour by 15%" -- is an infinite-SNR statement without it.
+    /// Additive complex Gaussian noise, std as a multiple of the synthetic signal's rms, on the
+    /// search snapshot and on every tracker record. --quantize alone does not set the SNR
+    /// regime: on sky the satellite is far below the noise, and without noise every margin the
+    /// refine relies on (the true grating lobe beating its neighbour) holds at infinite SNR.
     double noise = 0.0;
     int trials = 1;         ///< independent noise realizations (>1 prints a distribution)
     unsigned nseed = 12345; ///< RNG seed, so a run is reproducible
@@ -223,7 +208,7 @@ static bool arg_eq(const char* a, const char* b) {
 
 // ---------------------------------------------------------------------------------------------
 // Wrap a chip difference into (-half, +half]. Every error in this tool is a phase difference
-// modulo the long code, so this is the only sane way to print one.
+// modulo a code length.
 // ---------------------------------------------------------------------------------------------
 static double wrap(double x, double period) {
     double r = std::fmod(x, period);
@@ -234,8 +219,8 @@ static double wrap(double x, double period) {
     return r;
 }
 
-// 4+4b offset-encoded round trip, as the F-engine -> GnssChordDequantize does it live.
-// Scaled so the peak lands near full scale; that is what the live AGC targets.
+// 4+4b round trip, as the F-engine and GnssChordDequantize apply it live, scaled so the peak
+// component lands at 6.
 static void quantize44(std::vector<std::vector<cf>>& ch) {
     double peak = 0.0;
     for (const auto& c : ch)
@@ -252,9 +237,9 @@ static void quantize44(std::vector<std::vector<cf>>& ch) {
 
 int main(int argc, char** argv) {
     Opt o;
-    // Whether the caller PINNED these, as opposed to inheriting the L5 defaults. --f-offset
-    // recentres the combs on the new carrier, but only over defaults -- an explicit --t-chan0
-    // must always win, or a deliberate "carrier here, comb there" test becomes unexpressible.
+    // Whether the caller set these explicitly. --f-offset recentres only combs left at their
+    // L5 defaults, so an explicit --t-chan0 or --s-chan0 still allows a deliberate "carrier
+    // here, comb there" test.
     int f_offset_set = 0, t_chan0_set = 0, s_chan0_set = 0;
     for (int i = 1; i < argc; ++i) {
         const char* a = argv[i];
@@ -353,35 +338,23 @@ int main(int argc, char** argv) {
 
     const int FFT = 2 * o.spectrum_length;
 
-    // -- BAND: recentre the combs on the carrier ------------------------------------------
+    // -- Band: recentre the combs on the carrier ------------------------------------------
     //
-    // ⚠️ THIS HARNESS WAS BAND-BLIND, AND THAT IS THE WHOLE POINT OF THIS BLOCK. f_offset was
-    // a struct field with no flag, hardcoded at 1176.45e6, and it built the synthetic sky AND
-    // the replica at that one value -- so it was self-consistent at ANY carrier. Asked to
-    // validate GAL_E5B_Q_CS (1207.14 MHz) it ran that signal's CODE at L5's CARRIER and
-    // returned a triumphant 0.000 chips. It could not detect a band-dependent fault, which is
-    // the entire fault class a second band introduces
-    // (be7d46e8e:docs/gnss_gpu_search.md 11.24).
+    // The synthetic sky and the replica are both built at f_offset, so the harness is
+    // self-consistent at any carrier and sees a band-dependent fault only if f_offset is the
+    // band under test. The combs have to move with it: L5's default comb (t_chan0 5972) under
+    // another band's carrier would not overlap the replica at all, and the zero correlation
+    // would say nothing about the signal. So --f-offset recentres both combs unless
+    // --t-chan0/--s-chan0 set them.
     //
-    // Moving the carrier alone is NOT enough and would be a worse trap than the original: the
-    // channel combs default to L5's (t_chan0 5972), so a bare --f-offset would put the replica
-    // at 1207.14 MHz and the channels at 1176.45 MHz -- zero overlap, zero correlation, and a
-    // "failure" that says nothing about the signal. So the combs FOLLOW the carrier unless the
-    // caller pins them explicitly, which keeps --f-offset a statement about the BAND rather
-    // than about one of the four numbers a band is made of.
+    // The recentred comb stays on the node grid: its members satisfy freq_id % stride ==
+    // (default chan0) % stride, and its centre is the nearest such bin to the carrier. For the
+    // tracker comb, L5 1176.45 MHz -> bin 6023.424 -> centre 6020 -> chan0 5972 (the default),
+    // and E5b 1207.14 MHz -> bin 6180.557 -> centre 6180 -> chan0 6132.
     //
-    // The recentring reproduces the node grid rather than inventing one: comb members satisfy
-    // freq_id % stride == (default chan0) % stride, so the comb stays on the channels a node
-    // actually holds, and the centre is the NEAREST such bin to the carrier. Checked against
-    // config/chord_band_plan.py's covering_channels for both bands: L5 1176.45 MHz -> bin
-    // 6023.4240 -> centre 6020 -> chan0 5972 (the historical default, reproduced exactly), and
-    // E5b 1207.14 MHz -> bin 6180.5568 -> centre 6180 -> chan0 6132, inside the fleet's real
-    // covering set 6128..6233.
-    //
-    // NOTE the two carriers sit +0.4240 and -0.4432 channels off their nearest centre -- same
-    // size, OPPOSITE SIGN. That is deliberate to preserve here: it is exactly the asymmetry a
-    // floor()-vs-round() bug anywhere in a carrier->bin conversion would expose, being exact
-    // for L5 and a whole channel (195.3 kHz) wrong for E5b.
+    // The two carriers sit +0.424 and -0.443 channels from their nearest bin, so a floor() in
+    // place of round() in any carrier-to-bin conversion is exact for L5 and a whole channel
+    // (195.3 kHz) off for E5b.
     if (f_offset_set) {
         const double bin_w = o.sample_rate / (double)FFT;
         auto recentre = [&](int chan0, int stride, int nchan) {
@@ -417,12 +390,11 @@ int main(int argc, char** argv) {
         t_cov.push_back(c);
     }
 
-    // TWO banks, exactly as production runs them, and the difference between them is the whole
-    // reason this harness exists: the SEARCH works in the primary code (e.g. GPS_L5_Q,
-    // L = 10230) with the overlay carried separately as an alignment index, while the TRACKER
-    // works in the overlaid code (e.g. GPS_L5_Q_NH, L = 204600) with the overlay baked into
-    // the table. Everything that has gone wrong in seeding has gone wrong in that translation.
-    // The search signal is the tracker name minus its _NH/_CS suffix.
+    // Two banks, as production runs them. The search works in the primary code (e.g.
+    // GPS_L5_Q, L = 10230) with the overlay carried separately as an alignment index; the
+    // tracker works in the overlaid code (e.g. GPS_L5_Q_NH, L = 204600) with the overlay tiled
+    // into the table. The translation between the two is what this harness checks. The search
+    // signal is the tracker name minus its _NH/_CS suffix.
     const std::string tname(o.signal);
     std::string sname = tname;
     for (const char* suf : {"_NH", "_CS"}) {
@@ -440,17 +412,16 @@ int main(int argc, char** argv) {
     }
     gnss::ChannelizedReplicaBank sbank(*sig_s, o.sample_rate, o.f_offset, o.spectrum_length,
                                        o.num_taps, dsp::Window::Hamming, {o.prn});
-    // Two slots holding the SAME PRN: slot 0 takes the tracker's commanded phase, slot 1 the
-    // truth -- both ride one kernel launch against one uploaded window (the device job arena is
-    // sized by PRN slot count).
+    // Two slots holding the same PRN: slot 0 takes the tracker's commanded phase, slot 1 the
+    // truth, so both ride one kernel launch against one uploaded window (despread_batch holds
+    // at most n_prn jobs; see max_batch_specs).
     gnss::ChannelizedReplicaBank tbank(*sig_t, o.sample_rate, o.f_offset, o.spectrum_length,
                                        o.num_taps, dsp::Window::Hamming, {o.prn, o.prn});
     sbank.code_doppler_sign = o.code_doppler_sign;
-    // TRUNCATE THE ANALYSIS BANK ONLY. sbank builds the SEARCH's replica; the synthetic sky comes
-    // from tbank (channels_hoprate at [1]). Capping both would make the measurement
-    // self-consistent -- the sky and the replica would be truncated identically, the error would
-    // come out ~0, and it would mean nothing. This way the truth keeps the full 210-chip PFB span
-    // and the search analyses with a shorter one, which is exactly the on-sky situation.
+    // Truncate the search bank only. sbank builds the search's replica; the synthetic sky comes
+    // from tbank (channels_hoprate in [1]). Truncating both would make the sky and the replica
+    // agree by construction and the error ~0. The sky keeps the full ~210-chip PFB span and the
+    // search analyses with a shorter one, as on sky.
     if (o.max_chips > 0) {
         sbank.set_max_chips(o.max_chips);
         if (o.chips_centered) {
@@ -467,9 +438,9 @@ int main(int argc, char** argv) {
     const int Mp = sbank.repl_period_hops();
     const long long anchor = (long long)Mp * FFT; // what the search generates repl0 at
     const double L = (double)sbank.code_length();
-    // Overlay period count from the CODE-LENGTH RATIO, not the search bank's overlay slot:
+    // Overlay period count from the code-length ratio, not the search bank's overlay slot:
     // the two agree for shared secondaries (L5: 204600/10230 = 20 = NH20), but per-PRN
-    // secondaries (E5a/B2a CS100) are absent from the bank's single-sequence slot, where the
+    // secondaries (E5a/B2a CS100) are absent from the bank's single-sequence slot, while the
     // ratio still reads 100.
     const int n_nh = (int)(sig_t->code_length / sig_s->code_length);
     if ((long)n_nh * sig_s->code_length != sig_t->code_length) {
@@ -509,18 +480,17 @@ int main(int argc, char** argv) {
            o.s_stride, o.t_nchan, o.t_stride, o.quantize ? "4+4b QUANTIZED" : "float (noiseless)");
     printf("================================================================================\n\n");
 
-    // The truth, in the currency each leg has to get right. The argument is constant over all
-    // time (that is what an argument IS), so the true physical phase at any window is one call.
-    // In WIRE units: component chips, what cp_at_ref reports and the broker ships in
-    // code_phase_at_ref_chips. phase_from_arg returns COMBINED chips (comb_mult x), and feeding
-    // that straight into the seed made this harness agree with propagate_seed while the sky
-    // disagreed (L2C, comb_mult 2: "ph@ref 11011" on a 10230-chip code was the tell).
+    // The true physical phase at any window, from the injected argument (constant for all
+    // time), in wire units: component chips, as cp_at_ref reports and seeds carry in
+    // code_phase_at_ref_chips. phase_from_arg returns combined chips (comb_mult x component),
+    // hence the division; without it the harness agrees with propagate_seed on a TDM signal
+    // (L2C, comb_mult 2) while the sky does not.
     auto truth_phase_at = [&](long long wstart) {
         return tbank.phase_from_arg(o.cp204, wstart, o.dop) / (double)tbank.comb_mult();
     };
 
     // -----------------------------------------------------------------------------------------
-    // LEG 1: the search. Synthesize the snapshot, run the shipped acquire + refine, and report
+    // Leg 1: the search. Synthesize the snapshot, run the shipped acquire + refine, and report
     // through the shipped gnss::detection_phase().
     // -----------------------------------------------------------------------------------------
     gnss::DetectionPhase dp;
@@ -551,13 +521,10 @@ int main(int argc, char** argv) {
         std::vector<double> snrs;
         auto data = clean;
 
-        // ANCHOR THE GRID ABSOLUTELY, as GnssChannelizedSearch does (134f197dc): integer
-        // multiples of doppler_step, NOT the hint. Anchoring to the hint slides the origin with
-        // the satellite, so every trial samples the SAME sub-bin position -- which silently
-        // turned the first Doppler-bias sweep here into seven measurements of one point (all
-        // +1.6 to +1.8 Hz, "independent of Doppler", which is exactly what a fixed sub-bin
-        // offset looks like). The stage got this right for a live reason; the harness must
-        // match it or it cannot see interpolation error at all.
+        // The grid sits on integer multiples of dop_step, as in GnssChannelizedSearch, not on
+        // the hint. A grid anchored to the hint moves with the satellite, so every trial would
+        // sample the same sub-bin position and a Doppler sweep could not see interpolation
+        // error.
         std::vector<double> grid;
         if (o.dop_half <= 0.0)
             grid.push_back(-o.dop); // r2c fold: the grid runs in the flipped convention
@@ -567,7 +534,7 @@ int main(int argc, char** argv) {
                 grid.push_back(f);
         }
 
-        // STAGE TIMERS: measure the stages before optimising any of them.
+        // Per-stage timers.
         double T_acq = 0.0, T_ref = 0.0;
         const auto tnow = [] {
             return std::chrono::duration<double>(
@@ -577,7 +544,7 @@ int main(int argc, char** argv) {
         gnss::AcquireWorkspace ws;
         gnss::AcquisitionSurface adims{}; // hoisted: the summary below needs s_stored
         for (int trial = 0; trial < std::max(1, o.trials); ++trial) {
-            // Fresh realization each trial; the CLEAN signal is never overwritten.
+            // Fresh realization each trial; the clean signal is never overwritten.
             if (o.noise > 0.0) {
                 for (size_t c = 0; c < clean.size(); ++c)
                     for (size_t m = 0; m < clean[c].size(); ++m)
@@ -595,10 +562,9 @@ int main(int argc, char** argv) {
                 auto repl0 = sbank.channels_hoprate(0, anchor, 0.0, 0.0, Mp, s_chans, {}, nh);
                 gnss::AcquisitionSurface dims{};
                 surf.assign(surf.size(), 0.0);
-                // ACQUIRE accumulates acquire_windows, NOT nwin. nwin is only how much data was
-                // synthesized (max of acquire_windows and refine_windows); conflating them made
-                // --refine-windows silently raise acquire_windows, which smears across NH bins --
-                // acquire snr fell 185->55 and the period broke 0/12 -> 10/12, all of it artifact.
+                // The acquire accumulates acquire_windows, not nwin, which is only how much data
+                // was synthesized (the larger of acquire_windows and refine_windows), so
+                // --refine-windows does not also lengthen the acquire.
                 for (int wi = 0; wi < std::max(1, o.acquire_windows); ++wi) {
                     for (int c = 0; c < o.s_nchan; ++c)
                         for (int m = 0; m < Mp; ++m)
@@ -619,7 +585,7 @@ int main(int argc, char** argv) {
             snr = a.snr;
             det_dop = -a.doppler_hz; // r2c fold conjugates the channel frequency axis
 
-            // ---- THE SHIPPED REFINE (de-alias, then localize) ----
+            // ---- the stage's refine (refine_peak: de-alias, then localize) ----
             const int rhops = Mp * std::max(1, o.refine_windows);
             std::vector<std::vector<cf>> d((size_t)o.s_nchan, std::vector<cf>((size_t)rhops));
             for (int c = 0; c < o.s_nchan; ++c)
@@ -634,10 +600,11 @@ int main(int argc, char** argv) {
             T_ref += tnow() - t_ref0;
             printf("    [stages] acquire %.2fs | refine %.2fs\n", T_acq, T_ref);
 #ifdef GNSS_CUDA
-            // A5 VALIDATION. The GPU refine must return the SAME code phase as the CPU one, on the
-            // same data, with the same scan geometry -- it is a reuse of GnssCudaDespread, not a
-            // different algorithm, so anything but agreement to float precision is a bug. Run both
-            // and print the delta rather than trusting the speedup.
+            // The GPU refine (refine_peak_cuda) runs the same scan as refine_peak on the same
+            // data, so the two should agree to float precision, except that it takes no nh_phase:
+            // a search bank with a per-period overlay (GPS_L5_Q) is scanned overlay-blind there,
+            // so a MISMATCH on such a bank is not by itself a GPU fault. Both run and the delta
+            // is printed.
             if (o.cuda_refine) {
                 const int rh = (o.refine_hops > 0 && o.refine_hops < rhops) ? o.refine_hops : rhops;
                 const size_t nc = d.size();
@@ -650,9 +617,8 @@ int main(int argc, char** argv) {
                 std::vector<int> loc(nc);
                 for (size_t i = 0; i < nc; ++i)
                     loc[i] = (int)i;
-                // One engine per <=64-channel group: chan_mask is a uint64_t. The harness comb is
-                // 27 channels so this is a single group, but exercise the same code path the live
-                // 79-channel aggregator takes.
+                // One engine per <=64-channel group: chan_mask is a uint64_t. The default comb
+                // is one group, but this is the grouping code a wider comb needs.
                 std::vector<std::unique_ptr<GnssCudaDespread>> engines;
                 std::vector<gnss::CudaRefineGroup> rgroups;
                 const size_t GMAX = 64;
@@ -679,22 +645,20 @@ int main(int argc, char** argv) {
                        std::fabs(gcp - best_cp) < 1e-6 ? "OK" : "MISMATCH");
             }
 #endif
-            // ---- THE SHIPPED REPORTING ARITHMETIC ----
-            // The coarse lag runs over Mp = 3125 hops = 16 code periods and therefore carries a
-            // whole-period count that detection_phase folds back in (the lag-period lift).
+            // ---- the stage's reporting arithmetic ----
+            // The coarse lag spans Mp hops (3125 = 16 code periods at L5), so it carries a
+            // whole-period count that detection_phase folds back in.
             dp = gnss::detection_phase(sbank, best_cp, best_nh, n_nh, det_dop, o.hop0, anchor,
                                        o.sample_rate, a.peak_tau_samples);
 
             const double ph_true = truth_phase_at(W0);
             const double e_ref = wrap(dp.cp_at_ref - ph_true, LL);
 
-            // PERIOD DIAGNOSTICS. The acquire's coarse lag runs over a FULL replica period,
-            // Mp*sph samples = 16 primary code periods at CHORD -- but `code_phase_chips` is that
-            // lag reduced mod ONE period, so the whole-period part of the lag is discarded before
-            // anything downstream sees it. The overlay is 20 periods and 16 is not 0 mod 20, so
-            // that discarded count is exactly the term the nh lift needs and does not have.
-            // Printed here so the relationship can be READ OFF ground truth rather than derived on
-            // paper for a fourth time.
+            // Period diagnostics. The coarse lag spans a full replica period (16 primary periods
+            // at L5), but `code_phase_chips` is that lag mod one period. The overlay is 20
+            // periods and 16 is not 0 mod 20, so the whole-period count matters; detection_phase
+            // recovers it from peak_tau_samples. Printed against the truth so the relation can be
+            // read off directly.
             const double tau_chips =
                 (double)a.peak_tau_samples * sbank.chip_rate_hz() / o.sample_rate;
             const int tau_per = ((int)std::floor(tau_chips / L)) % n_nh;
@@ -716,9 +680,9 @@ int main(int argc, char** argv) {
             snrs.push_back(snr);
         } // trial
         if (o.trials > 1) {
-            // A "wrong lobe" is a within-period error beyond half a grating spacing. The comb's
-            // fine-lag response repeats every s_stored samples, so that is the natural unit:
-            // anything past half of it means the refine chose the neighbour.
+            // A "wrong lobe" is a within-period error beyond half a grating spacing: the comb's
+            // fine-lag response repeats every s_stored samples, so past half of that the refine
+            // chose a neighbour.
             const double lobe = (double)((adims.s_stored > 0) ? adims.s_stored : FFT)
                                 * sbank.chip_rate_hz() / o.sample_rate;
             int wrong = 0, badper = 0;
@@ -755,7 +719,7 @@ int main(int argc, char** argv) {
     }
 
     // -----------------------------------------------------------------------------------------
-    // LEG 2: the seed, built directly from the detection (what the broker does when it has
+    // Leg 2: the seed, built directly from the detection (what the broker does when it has
     // nothing to add).
     // -----------------------------------------------------------------------------------------
     gnss::SeedState sd;
@@ -769,7 +733,7 @@ int main(int argc, char** argv) {
            sd.phase_ref_chips, sd.doppler_hz, sd.cp_rate, sd.dop_rate);
 
     // -----------------------------------------------------------------------------------------
-    // LEG 3: the tracker. Propagate through the shipped gnss::propagate_seed(), synthesize the
+    // Leg 3: the tracker. Propagate through the shipped gnss::propagate_seed(), synthesize the
     // record at its true window, and despread on the GPU with the shipped kernel.
     // -----------------------------------------------------------------------------------------
     printf("[3] TRACK + DESPREAD  (seed age %.1f s at record 0, records %.1f s apart)\n", o.age_s,
@@ -788,30 +752,21 @@ int main(int argc, char** argv) {
         const long long h = o.hop0 + age_hops + (long long)r * gap_hops;
         const long long W = h * (long long)FFT;
 
-        // ---- THE SHIPPED PROPAGATION ARITHMETIC ----
-        // trim defaults to 0 (the OPEN loop, which is what every other bench here wants).
-        // --trim commands the actuator, so the sign of the response can be measured rather
-        // than reasoned about (#51 F3).
+        // ---- the tracker's propagation (propagate_seed) ----
+        // trim defaults to 0, the open loop. --trim commands the actuator, so the sign of the
+        // response can be measured.
         const gnss::SeedPropagation pr =
             gnss::propagate_seed(tbank, sd, h, o.sample_rate, o.f_offset, o.trim_chips);
 
-        // The error is a difference of PHYSICAL PHASES at this window -- never of arguments.
-        //
-        // The first version of this harness printed wrap(pr.cp - cp204), i.e. it compared the
-        // commanded ARGUMENT against the injected one, and reported 8650 chips of error on a
-        // chain that was in fact ~0.4 chips off. Two arguments derived at Dopplers 1.7 Hz apart
-        // differ by 1.7 * 5095 = 8650 chips BY CONSTRUCTION and describe the same signal; the
-        // difference cancels when each is fed to the generator alongside its own Doppler. That
-        // is the exact mistake this whole tool exists to catch, made inside the tool, caught in
-        // one run by the despread power disagreeing with the arithmetic. Leave the warning here.
-        // pr.phase_now is the bank's currency (COMBINED chips); the truth is in wire units.
+        // The error is a difference of physical phases at this window, never of arguments: two
+        // arguments derived at Dopplers 1 Hz apart differ by ~5095 chips at 6.8 days of uptime
+        // and describe the same signal. pr.phase_now is in combined chips; the truth is in wire
+        // (component) units.
         const double err = wrap(pr.phase_now / (double)tbank.comb_mult() - truth_phase_at(W), LL);
 
         auto rec = tbank.channels_hoprate(0, W, o.cp204, o.dop, o.hops_per_record, t_chans, {}, -1);
-        // --noise REACHES THE TRACKER LEG TOO (2026-08-04). It did not before: noise was added
-        // only to the search snapshot, so every record despread here was noiseless no matter
-        // what --noise said, and a sweep over it returned bit-identical numbers at every level.
-        // That makes the whole tracker/deep leg untestable against the one regime that matters.
+        // --noise applies to every tracker record too, from its own RNG stream, so the tracker
+        // and deep-fold legs see the same SNR regime as the search.
         if (o.noise > 0.0) {
             double s2 = 0.0;
             size_t ns = 0;
@@ -851,19 +806,15 @@ int main(int argc, char** argv) {
         prompts.push_back(res[0][1].correlation);
     }
 
-    // ---- THE DEEP FOLD, on the SAME statistic the combiner publishes ----
-    // Live, deep_snr sits at 10-14 for EVERY satellite across a 9x range of amp_snr, which
-    // means the fold is limited by a per-record phase error rather than by noise: coherent_sum
-    // estimates its own noise from the records' scatter about the mean phase, so a systematic
-    // phase error makes the signal cancel and the statistic saturate at sqrt(N)/sigma_phi.
-    // Run it here with NO noise and a perfect seed: if sigma_phi survives that, the floor is in
-    // our arithmetic and not on the sky.
+    // ---- the deep fold, with the combiner's own coherent_sum ----
+    // coherent_sum takes its noise from the records' component orthogonal to the sum, so a
+    // per-record phase error sigma_phi caps its snr near sqrt(N)/sigma_phi whatever the signal
+    // strength. With no noise and an exact seed (--skip-search --seed-dop-rate 0), any sigma_phi
+    // left is in the arithmetic, not on the sky.
     if (prompts.size() >= 4) {
         const int N = (int)prompts.size();
-        // DEROTATE FIRST, as the combiner does. Folding raw prompts measures the RAMP, not the
-        // residual: at a 5 Hz seed error the raw fold collapses to snr 0.58 while the residual
-        // about the ramp is 0.0115 rad, i.e. clean. Comparing that raw number against the live
-        // deep_snr (which IS derotated by the rate search) compares two different quantities.
+        // Derotate first, as the combiner's rate search does: a fold of raw prompts measures the
+        // phase ramp from a Doppler error, not the residual about it.
         std::vector<std::complex<double>> der = prompts;
         { // best-fit linear phase over the record index, removed as a frequency
             std::vector<double> p0(prompts.size());
@@ -893,8 +844,8 @@ int main(int argc, char** argv) {
                 der[i] = prompts[i] * std::polar(1.0, -sl * i);
         }
         const gnss::OverlayWipeResult cs = gnss::coherent_sum(der);
-        // ... and again after removing a best-fit LINEAR phase ramp, which is what the
-        // combiner's rate search does before folding. Any residual after that is not a ramp.
+        // Residual of the unwrapped per-record phase about a best-fit linear ramp: whatever is
+        // left is not a ramp.
         std::vector<double> ph(prompts.size());
         double pu = 0.0, prev = 0.0;
         for (size_t i = 0; i < prompts.size(); ++i) { // unwrapped phase
@@ -929,13 +880,10 @@ int main(int argc, char** argv) {
         printf("    coherent snr %.2f   amplitude %.6g\n", cs.snr, cs.amplitude);
         printf("    implied sigma_phi = sqrt(N)/snr = %.4f rad\n",
                cs.snr > 0 ? std::sqrt((double)N) / cs.snr : 0.0);
-        // ⚠️ IS THE UNWRAP EVEN VALID? sig_res unwraps the per-record phase, which assumes the
-        // step between records is under pi. When it is not -- and with a real Doppler rate at
-        // days of uptime it routinely is not -- the unwrap aliases and sig_res stops being a
-        // measurement: it saturates near the uniform-phase value and stays there no matter how
-        // much better or worse the arithmetic gets. That is how this line read 1.1-1.2 rad
-        // across THREE DECADES of uptime and a 16x improvement showed as nothing (task #52).
-        // Say "unresolved" rather than print a number that looks like data.
+        // The unwrap assumes the phase step between records is under pi. With a real Doppler
+        // rate at days of uptime it often is not; the unwrap then aliases and sig_res saturates
+        // near the uniform-phase value whatever the arithmetic does, so a large median step is
+        // reported as unresolved instead of as a number.
         double med_step;
         {
             std::vector<double> st;
@@ -970,13 +918,12 @@ int main(int argc, char** argv) {
                 : ">>> noiseless chain is phase-clean; the live floor comes from something this "
                   "harness does not model (overlay/nav wipe, straddle, multi-channel, or the sky)");
 
-        // ---- [4a] THE PER-RECORD STEP SERIES, the statistic that discriminates on sky ----
-        // A smooth model mismatch (a quadratic phase) gives a per-record step that is nearly
-        // CONSTANT from record to record: small step rms. A per-record reference error gives
-        // steps that vary randomly: an OFFSET error telescopes (lag-1 autocorrelation -0.5), a
-        // WALK does not (lag-1 ~0). The sky reads step rms ~0.06 cycles at lag-1 ~-0.1, so
-        // this line is what a reproduction must match, not the about-a-ramp residual (which
-        // cannot tell a quadratic from noise).
+        // ---- [4a] the per-record phase step series ----
+        // A smooth model mismatch (a quadratic phase) gives nearly constant steps, so a small
+        // step sd. A per-record reference error gives random steps: an independent offset per
+        // record differences to a lag-1 autocorrelation of -0.5, a random walk to ~0. Unlike the
+        // residual about a ramp, this separates a quadratic from noise, so it is the statistic
+        // to compare with the sky.
         auto step_stats = [&](const std::vector<std::complex<double>>& ps, const char* tag) {
             std::vector<double> stp;
             for (size_t i = 1; i < ps.size(); ++i) {

@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """BeiDou-3 B2b-I spreading-code bit-exactness check (BDS-SIS-ICD-B2b / PPP-B2b).
 
-Mirrors lib/stages/gnss/beidouB2bCode.cpp exactly (same 13-stage Fibonacci LFSRs, taps and
-per-PRN G2 start table) and asserts it against PocketSDR-verified fingerprints, so the C++
-transcription can be regression-checked WITHOUT PocketSDR present. If PocketSDR's sdr_code is
-importable (e.g. on PATH), it additionally cross-checks bit-exact against gen_code('B2BI', prn).
+Mirrors lib/stages/gnss/beidouB2bCode.cpp (same 13-stage Fibonacci LFSRs, taps and per-PRN G2
+start table) and asserts the mirror against PocketSDR-verified fingerprints, so it runs without
+PocketSDR present. The C++ is not read or compiled: the two copies of the table are kept in step
+by hand. If PocketSDR's sdr_code is importable (on PYTHONPATH), the fingerprinted PRNs are also
+cross-checked bit-exact against gen_code('B2BI', prn).
 
-Same discipline as the B2a/B1C tables: the code itself is an ICD transcription (via PocketSDR
-T.Takasu), so its correctness is asserted here and finally proven by live acquisition off the
-retuned 1207.14 MHz dongle.
+As with the B2a and B1C tables, the code is an ICD transcription (via PocketSDR, T. Takasu)
+asserted here; live acquisition is the final proof.
 
     python3 b2b_code_check.py     # exits non-zero on any mismatch
 """

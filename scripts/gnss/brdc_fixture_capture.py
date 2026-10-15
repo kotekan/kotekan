@@ -1,18 +1,17 @@
 #!/usr/bin/env python3
-"""Freeze a set of IGS station-hourly files so the merge can be tested BYTE-FOR-BYTE offline.
+"""Freeze a set of IGS station-hourly files so the merge can be tested byte for byte offline.
 
     scripts/gnss/brdc_fixture_capture.py [outdir]      # default $GNSS_FIXTURES/brdc_merge_golden
 
-WHY THIS EXISTS. The digest gate cannot see the ephemeris supply at all: broker_equiv replays
-pin the sky through GNSS_BRDC_DIR, so the fetch/merge path never executes and all seven fixtures
-stayed EQUIVALENT across the six supply defects fixed on 2026-08-27. That subsystem has a real
-policy surface now -- mirrors, station list, per-constellation coverage targets, two cache TTLs,
-a negative cache, a freshness window and a rolling store -- and nothing proved its OUTPUT.
+The broker_equiv digest gate cannot see the ephemeris supply: replays pin the sky through
+GNSS_BRDC_DIR, so the fetch and merge path never runs. The supply has its own policy surface
+(mirrors, station list, per-constellation coverage targets, two cache TTLs, a negative cache,
+a freshness window and a rolling store), and its output needs its own gate.
 
-This captures the INPUTS (real station files, real RINEX quirks) and pins the clock, so
-test_brdc_golden.py can run the whole merge hermetically and hash the result.
+This captures the inputs (real station files, real RINEX quirks) and pins the clock, so
+gnss_broker/test_brdc_golden.py can run the whole merge hermetically and hash the result.
 
-⚠️ THE CLOCK IS PART OF THE FIXTURE. The merge prunes and counts against `when`, so a capture
+The clock is part of the fixture: the merge prunes and counts against `when`, so a capture
 without a pinned timestamp is not reproducible. It goes in the manifest.
 """
 import gzip
@@ -52,8 +51,8 @@ def main():
     )
     os.makedirs(out, exist_ok=True)
     tok = sup._earthdata_token()
-    # Capture against the hour that just CLOSED, not the current one: the current hour is
-    # published nowhere and a fixture of 404s tests nothing.
+    # Capture the hours before the current one: the current hour is published nowhere yet,
+    # and a fixture of 404s tests nothing.
     when = datetime.now(timezone.utc).replace(minute=30, second=0, microsecond=0)
     got, manifest = 0, {"when": when.strftime("%Y-%m-%dT%H:%M:%SZ"), "files": []}
     for dh in range(1, N_HOURS + 1):

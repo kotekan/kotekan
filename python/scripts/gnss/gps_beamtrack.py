@@ -11,19 +11,17 @@ import numpy as np
 # Celestrak GPS operational TLEs.
 DEFAULT_TLE_URL = "https://celestrak.org/NORAD/elements/gp.php?GROUP=gps-ops&FORMAT=tle"
 # Celestrak GLONASS operational TLEs. Names carry the Uragan number, with GLONASS-K marked by a
-# trailing K -- the capability marker glonass_block_by_prn() reads. Slot numbers come from the
-# IGS SINEX by catalog number (these names have no PRN field), which load_gps_satellites()
-# already does as its unnamed-satellite fallback.
+# trailing K, the capability marker glonass_block_by_prn() reads. These names have no PRN field,
+# so load_gps_satellites() takes the slot from the IGS SINEX by catalog number.
 GLONASS_TLE_URL = "https://celestrak.org/NORAD/elements/gp.php?GROUP=glo-ops&FORMAT=tle"
 
 
-# Galileo TLE names ('GSAT0207 (GALILEO 14)') carry the GSAT platform number, NOT the E-PRN
-# (SVID) the spreading codes are keyed by. The mapping is operator metadata: transcribed from
+# Galileo TLE names ('GSAT0207 (GALILEO 14)') carry the GSAT platform number, not the E-PRN
+# (SVID) the spreading codes are keyed by. The mapping is operator metadata, transcribed from
 # the ESA GSC constellation-information page (gsc-europa.eu/system-service-status/
-# constellation-information, fetched 2026-07-11; machine-extracted, 32 entries). It changes
-# only at launches/decommissionings -- a TLE GSAT missing here is skipped with a warning
-# (decommissioned or not yet mapped; refresh from the GSC page). GSAT0104 (E20, failed 2014)
-# and GSAT0205 (E24) absent from the page are intentionally unmapped.
+# constellation-information). It changes only at launches and decommissionings: a TLE GSAT
+# missing here is skipped with a warning (refresh from the GSC page). GSAT0104 (E20) and
+# GSAT0205 (E24) are not on that page and stay unmapped.
 GSAT_TO_PRN = {
     "GSAT0101": 11,
     "GSAT0102": 12,
@@ -62,12 +60,12 @@ GSAT_TO_PRN = {
 
 def _igs_prn_by_catnum():
     """{NORAD catalog number: (constellation letter, prn int)} from the IGS satellite
-    metadata SINEX (files.igs.org/pub/station/general/igs_satellite_metadata.snx) -- the
-    authoritative multi-GNSS SVN/COSPAR/SatCat/PRN registry. Constellations whose TLE names
-    carry no PRN (BeiDou 'BEIDOU-3 M23', and a backstop for Galileo) resolve through this:
-    TLEs carry the catalog number, the SINEX maps it to the CURRENTLY-VALID PRN assignment.
-    Cached beside the TLEs for 30 days; empty dict if unavailable (offline -> those sats
-    are skipped with a warning)."""
+    metadata SINEX (files.igs.org/pub/station/general/igs_satellite_metadata.snx), the
+    multi-GNSS SVN/COSPAR/SatCat/PRN registry. TLE names that carry no PRN (GLONASS, BeiDou
+    'BEIDOU-3 M23') resolve through it: the TLE carries the catalog number, the SINEX maps it
+    to the PRN assignment that has not ended (open, or ending in the future). Re-downloaded
+    beside the TLEs when older than 30 days (a stale copy is kept if the download fails); empty
+    dict, with one warning, if there is no copy at all."""
     import re, time, urllib.request
 
     cache = os.path.join(os.path.expanduser("~"), ".cache", "kotekan_gps")
@@ -115,30 +113,25 @@ def _igs_prn_by_catnum():
 
 
 def load_gps_satellites(tle_source):
-    """Return {prn: EarthSatellite} from a Celestrak TLE file/URL.
+    """Return {prn: EarthSatellite} from a Celestrak TLE file or URL.
 
-    GPS names carry the PRN as '... (PRN NN)'; Galileo names carry 'GSAT####' which is
-    mapped to the E-PRN via GSAT_TO_PRN -- so the same loader (and everything downstream:
-    visibility, predicted Doppler, az/el) serves both constellations; the caller picks the
-    constellation by the TLE GROUP in the url (gps-ops / galileo).
+    The PRN comes from the name where it carries one: GPS '... (PRN NN)', BeiDou '... (Cnn)',
+    Galileo 'GSAT####' via GSAT_TO_PRN. Any other name (GLONASS, unlabelled BeiDou) resolves
+    by catalog number through the IGS SINEX. The caller picks the constellation by the TLE
+    GROUP in the URL (gps-ops, galileo, beidou, glo-ops).
 
-    A URL is downloaded into a per-user cache dir (~/.cache/kotekan_gps), not the
-    current directory: skyfield names the cache after the URL basename, so the
-    default loader otherwise drops a stray 'gp.php' in the repo root on every run.
-    The cache is shared across scripts and reused until stale, so this also avoids
-    re-hitting Celestrak each broker cycle. Local file paths load in place."""
+    A URL is downloaded into ~/.cache/kotekan_gps rather than the working directory, where
+    skyfield's default loader would write 'gp.php'. The file is shared across scripts and
+    reused for as long as it exists: nothing here re-downloads it. Local paths load in place."""
     import re
     from skyfield.api import Loader, load
 
     if isinstance(tle_source, str) and tle_source.startswith(("http://", "https://")):
         cache = os.path.join(os.path.expanduser("~"), ".cache", "kotekan_gps")
         os.makedirs(cache, exist_ok=True)
-        # Cache PER GROUP: every Celestrak gp.php URL shares the basename "gp.php", and
-        # skyfield keys its cache on the basename -- so gps-ops/galileo/beidou would all
-        # silently REUSE whichever group was fetched first (observed: the viewer plotted
-        # Galileo and BeiDou "positions" exactly on top of the GPS sats, and the E/C brokers
-        # hinted GPS Doppler at E/C PRNs -- Galileo detected anyway only because the wide
-        # pre-solve margins covered the error). Name the file after the GROUP query param.
+        # One cache file per group: every Celestrak URL has the basename "gp.php", and
+        # skyfield keys its cache on the basename, so without the GROUP in the file name every
+        # group would reuse whichever one was fetched first.
         m = re.search(r"GROUP=([A-Za-z0-9_-]+)", tle_source)
         fname = "tle_%s.txt" % (m.group(1) if m else "default")
         sats = Loader(cache, verbose=False).tle_file(tle_source, filename=fname)
@@ -151,9 +144,8 @@ def load_gps_satellites(tle_source):
         if m:
             by_prn[int(m.group(1))] = s
             continue
-        # BeiDou names carry the PRN as '... (C46)' -- and it DISAGREES with the IGS SINEX
-        # mapping for several sats (C46/C48 mapped to stale assignments there), so the name
-        # is authoritative when present; the SINEX below is the fallback for unnamed sats.
+        # BeiDou names carry the PRN as '... (C46)'. The name wins over the SINEX, which can
+        # hold a stale assignment (C46, C48); the SINEX below serves the names without one.
         m = re.search(r"\(C(\d+)\)", name)
         if m:
             by_prn[int(m.group(1))] = s
@@ -170,7 +162,7 @@ def load_gps_satellites(tle_source):
                     file=sys.stderr,
                 )
             continue
-        # No PRN in the name (BeiDou et al.): NORAD catalog number -> IGS SINEX registry.
+        # No PRN in the name (GLONASS, unlabelled BeiDou): NORAD catalog number -> IGS SINEX.
         global _IGS_CAT_MAP
         if _IGS_CAT_MAP is None:
             _IGS_CAT_MAP = _igs_prn_by_catnum()
@@ -184,11 +176,10 @@ _IGS_CAT_MAP = None
 
 
 def gps_block_by_prn(tle_source=DEFAULT_TLE_URL, _sats=None):
-    """Return {prn: block} (e.g. 'IIF', 'IIR', 'IIRM', 'III') read from the Celestrak TLE
-    NAMES ('GPS BIII-10 (PRN 13)'). Satellite BLOCK/signal capability is NOT carried by any
-    almanac or the TLE elements themselves -- it is metadata -- but Celestrak encodes it in
-    the sat name, so we read it from the SAME live feed the visibility uses instead of
-    hardcoding a list that goes stale as satellites launch / commission / retire."""
+    """Return {prn: block} (e.g. 'IIF', 'IIR', 'IIRM', 'III'; '?' if none) read from the
+    Celestrak TLE names ('GPS BIII-10 (PRN 13)'). The block, and so the signal capability, is
+    not in any almanac or in the elements, but Celestrak puts it in the name, so it comes from
+    the same feed as the visibility rather than from a hard-coded list."""
     import re
 
     sats = _sats if _sats is not None else load_gps_satellites(tle_source)
@@ -202,14 +193,11 @@ def gps_block_by_prn(tle_source=DEFAULT_TLE_URL, _sats=None):
 def glonass_block_by_prn(tle_source=GLONASS_TLE_URL, _sats=None):
     """Return {slot: block} for GLONASS, where block is 'K' for a GLONASS-K satellite and 'M'
     otherwise. Celestrak names carry the Uragan number in parentheses and mark the K-series with
-    a trailing K -- 'COSMOS 2501 (702K)' is a K, 'COSMOS 2456 (730)' is not. Exactly the trick
-    gps_block_by_prn() uses on 'GPS BIII-10 (PRN 13)': read the capability from the SAME live
-    feed the visibility comes from, so it tracks launches and retirements by itself.
+    a trailing K: 'COSMOS 2501 (702K)' is a K, 'COSMOS 2456 (730)' is not. Like
+    gps_block_by_prn(), it reads the capability from the feed the visibility comes from.
 
-    ★ This is what gates L3OC: only the K satellites carry GLONASS's CDMA signals (7 of 28
-    operational as of 2026-08). 'M' lumps together GLONASS-M and anything unrecognised -- the
-    distinction that matters here is K vs not-K, and calling the remainder 'M' is accurate for
-    every currently-operational non-K satellite."""
+    This gates L3OC: only the K satellites carry GLONASS's CDMA signals. 'M' covers GLONASS-M
+    and anything unrecognised; the distinction that matters is K vs not-K."""
     import re
 
     sats = _sats if _sats is not None else load_gps_satellites(tle_source)
@@ -222,10 +210,11 @@ def glonass_block_by_prn(tle_source=GLONASS_TLE_URL, _sats=None):
 
 def _signal_block_filter(signal):
     """Predicate over a GPS block name ('IIR','IIRM','IIF','III',...) selecting the blocks that
-    broadcast `signal`. Returns None when EVERY GPS satellite carries the signal (no filter).
-    Block name is as read from the Celestrak TLE by gps_block_by_prn(). Signal is the config's
-    `signal:` token (e.g. GPS_L1CA, GPS_L2C_CM, GPS_L5_Q, GPS_L1C_P). Which block first carried
-    each civil signal: L1 C/A -> all; L2C -> Block IIR-M+; L5 -> Block IIF+; L1C -> Block III."""
+    broadcast `signal`. Returns None when every GPS satellite carries the signal, or the signal
+    is not recognised (no filter). Block name is as read by gps_block_by_prn(). `signal` is the
+    broker's --signal-capability value, a chain name (gps_l5, gps_l2c) or a signal token
+    (GPS_L5_Q, GPS_L1C_P), matched case-insensitively by substring. Which blocks carry each
+    civil signal: L1 C/A -> all; L2C -> Block IIR-M+; L5 -> Block IIF+; L1C -> Block III."""
     s = (signal or "").upper()
     if "L1CA" in s:  # L1 C/A: every GPS satellite (check before 'L1C')
         return None
@@ -248,16 +237,15 @@ def _glonass_block_filter(signal):
 
 
 def glonass_fdma_trackable(_cache={}):
-    """Slots we can actually track on GLONASS FDMA = those with a known frequency-channel number.
+    """GLONASS slots trackable on FDMA: those with a known frequency-channel number.
 
-    ★ FDMA capability is not about the satellite's generation, it is about whether we KNOW ITS
-    CARRIER. Every satellite transmits L1OF/L2OF, but they are separated by frequency, so a slot
-    whose k we cannot read is one we would have to search at the wrong frequency -- it has no
-    business in a seed or hint list. That makes "has a k" the natural capability test, filling the
-    same role the GPS block name and the GLONASS 'K' marker play for the CDMA signals.
+    FDMA capability is not the satellite's generation but whether its carrier is known. Every
+    satellite transmits L1OF/L2OF, separated by frequency, so a slot whose k cannot be read
+    would be searched at the wrong frequency and has no place in a seed or hint list. "Has a
+    k" plays the role the GPS block name and the GLONASS 'K' marker play for CDMA signals.
 
-    Cached for an hour; empty set on failure => caller disables the filter rather than darking
-    the chain (the standing fail-open-is-worse-than-fail-loud tradeoff for capability lookups)."""
+    Cached for an hour, a failure included. On failure it returns an empty set, with a stderr
+    line, and the caller disables the filter rather than darkening the chain."""
     import time
 
     now = time.monotonic()
@@ -279,14 +267,15 @@ def glonass_fdma_trackable(_cache={}):
 
 
 def signal_capable_prns(signal, tle_source=DEFAULT_TLE_URL, _sats=None):
-    """PRNs whose satellite block actually broadcasts `signal`, from the live Celestrak names, so
-    it tracks launches/commissioning automatically. Returns ALL PRNs when the signal is on every
-    satellite (GPS L1 C/A, GLONASS L1OF/L2OF) or is unknown. Non-transmitting sats belong nowhere
-    near a search list -- correlating their (absent) code only wastes channels and manufactures
-    false detections.
+    """PRNs whose satellite block broadcasts `signal`, from the Celestrak names. Returns every
+    PRN in the TLE group when the signal is on every satellite (GPS L1 C/A) or is unknown.
+    GLONASS FDMA returns the slots with a known frequency channel (glonass_fdma_trackable),
+    or every slot if that lookup fails. A satellite that does not transmit the signal has no
+    place in a search list: correlating its absent code wastes channels and makes false
+    detections.
 
-    Dispatches on the signal token's constellation prefix: GLO_* reads the GLONASS K marker (and
-    defaults to the glo-ops TLE group), everything else reads the GPS block name."""
+    Dispatches on the signal's constellation prefix: GLO_* reads the GLONASS K marker (and
+    swaps the GPS default TLE group for glo-ops), everything else reads the GPS block name."""
     sig_u = (signal or "").upper()
     if sig_u.startswith("GLO_") and "OF" in sig_u:
         # FDMA: capability = "we know this satellite's carrier" (see glonass_fdma_trackable).
@@ -295,10 +284,9 @@ def signal_capable_prns(signal, tle_source=DEFAULT_TLE_URL, _sats=None):
             return cap
         # fall through to the block path (which returns everything) if the plan is unavailable
     if (signal or "").upper().startswith("GLO_"):
-        # Guard the easy mistake: a GLONASS signal asked for against the GPS default TLE group
-        # would find no 'K' marker on anything and return an EMPTY set, which callers treat as
-        # "lookup failed -> filter disabled". Substitute the right group instead of silently
-        # producing a filter that does nothing.
+        # A GLONASS signal asked for against the GPS default TLE group would find no 'K' marker
+        # and return an empty set, which callers treat as "lookup failed, filter disabled".
+        # Substitute the GLONASS group instead.
         blocks = glonass_block_by_prn(
             GLONASS_TLE_URL if tle_source == DEFAULT_TLE_URL else tle_source, _sats
         )
@@ -321,16 +309,15 @@ def predict_dopplers(
     tle_source=DEFAULT_TLE_URL,
     _sats=None,
 ):
-    """Predict {prn: (doppler_hz, doppler_rate_hz_per_s, elevation_deg, range_m)} for GPS sats
-    at a receiver (lat, lon, alt_m WGS84) and time t_utc (UTC datetime, default now).
-    range_m is the slant range (for propagation delay, ~64-89 ms; TLE accuracy ~km -> ~us,
-    far better than the ~10 ms the CL time-assist needs). Access entries by INDEX so the
-    tuple can grow.
+    """Predict {prn: (doppler_hz, doppler_rate_hz_per_s, elevation_deg, range_m)} for the TLE's
+    satellites at a receiver (lat, lon, alt_m WGS84) and time t_utc (UTC datetime, default
+    now). range_m is the slant range, for the propagation delay (~64-89 ms; a TLE's ~km error
+    is ~us). Access entries by index so the tuple can grow.
 
-    This is the GEOMETRIC (line-of-sight range-rate) Doppler only. It does NOT
-    include the receiver clock-frequency error, which adds a *common* offset across
-    all PRNs (airspy TCXO ~1 ppm -> ~+-1.5 kHz at L1); solve that one bias from the
-    measured Doppler of an acquired sat, then it applies to every prediction.
+    This is the geometric (line-of-sight range-rate) Doppler only. It does not include the
+    receiver clock-frequency error, which adds a common offset across all PRNs (a 1 ppm TCXO
+    gives ~1.5 kHz at L1); solve that one bias from the measured Doppler of an acquired
+    satellite and it applies to every prediction.
 
     Sign convention: +Doppler = satellite approaching (received carrier shifted up),
     matching the GNSS pipeline's reported Doppler. Requires skyfield. Pass _sats
@@ -372,14 +359,13 @@ def predict_dopplers(
 def predict_skypos(
     lat, lon, alt_m, prns=None, t_utc=None, tle_source=DEFAULT_TLE_URL, _sats=None
 ):
-    """Predict {prn: (az_deg, el_deg)} for GPS sats at a receiver (lat, lon,
+    """Predict {prn: (az_deg, el_deg)} for the TLE's satellites at a receiver (lat, lon,
     alt_m WGS84) and time t_utc (UTC datetime, default now).
 
     Azimuth is degrees clockwise from true North (N=0, E=90); elevation is
-    degrees above the horizon. Companion to predict_dopplers (which returns the
-    line-of-sight Doppler + elevation but drops azimuth); this is what the live
-    viewer's sky plot needs. Pass _sats (a {prn: EarthSatellite} from
-    load_gps_satellites) to avoid reloading TLEs. Requires skyfield.
+    degrees above the horizon. Companion to predict_dopplers, which drops azimuth;
+    the live viewer's TLE sky positions come from here. Pass _sats (a {prn: EarthSatellite}
+    from load_gps_satellites) to avoid reloading TLEs. Requires skyfield.
     """
     from skyfield.api import load, wgs84
 
