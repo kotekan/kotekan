@@ -91,9 +91,23 @@ def build_js():
     if not m:
         raise SystemExit("cannot find the lock block in %s" % FEED)
     lock = m.group(1)
+    # _merge() itself, so the rules are also checked on the rows the panel renders: the row
+    # summary must carry what the lock rule reads (q, q_floor, noise_probe).
+    merge = "function " + brace_block(src, r"_merge\(\) \{")
     return """
 %s
 %s
+%s
+function run_merged(units) {
+    var panel = {_last: {units: units},
+                 signals: [{key: "a", sys: "G", t_rec: 0.001}, {key: "b", sys: "G", t_rec: 0.001}]};
+    var list = _merge.call(panel);
+    var out = [];
+    for (var k = 0; k < list.length; k++)
+        out.push({prn: list[k].prn, active: !!list[k].active,
+                  q: list[k].q === undefined ? null : list[k].q});
+    return out;
+}
 function run(rows, t_rec) {
     var list = [];
     for (var i = 0; i < rows.length; i++) {
@@ -113,6 +127,7 @@ function run(rows, t_rec) {
 """ % (
         consts,
         metrics,
+        merge,
         lock,
     )
 
@@ -121,6 +136,10 @@ def run_js(js, rows, t_rec=0.001):
     return dukpy.evaljs(
         js + "\nrun(dukpy['rows'], dukpy['t_rec']);", rows=rows, t_rec=t_rec
     )
+
+
+def run_merged(js, units):
+    return dukpy.evaljs(js + "\nrun_merged(dukpy['units']);", units=units)
 
 
 def fetch(host, chain):
@@ -297,6 +316,35 @@ def main():
         "construction, and publish.py flags it so no consumer plots it as a satellite",
     )
     check(r[12]["active"], "the identical NON-probe row does read locked (the control)")
+
+    # ---- the same rules through _merge(), the rows the panel renders ---------------------
+    print("\nthrough _merge() -- the rows the panel actually renders")
+    dead = dict(prn=6, fleet_q=1.0, fleet_q_floor=1.1, sig=1e4)
+    probe = dict(prn=11, fleet_q=3.5, fleet_q_floor=1.1, sig=9e3, noise_probe=True)
+    two_a = dict(prn=7, fleet_q=1.0, fleet_q_floor=1.1, sig=1e4)
+    two_b = dict(prn=7, fleet_q=3.0, fleet_q_floor=1.1, sig=50.0)
+    no_q = dict(prn=8, sig=5000.0)
+    r = {
+        x["prn"]: x
+        for x in run_merged(
+            js,
+            {
+                "a": {"status": [healthy[0], dead, probe, two_a, no_q]},
+                "b": {"status": [two_b]},
+            },
+        )
+    }
+    check(
+        r[1]["active"], "a healthy satellite reads LOCKED through _merge (the control)"
+    )
+    check(not r[6]["active"], "sig 10,000 with q 1.0 reads UNLOCKED through _merge")
+    check(not r[11]["active"], "a noise probe reads UNLOCKED through _merge")
+    check(
+        r[7]["active"] and r[7]["q"] == 3.0,
+        "a satellite dead on one signal and locked on another reads LOCKED, on the "
+        "locked signal's q",
+    )
+    check(r[8]["active"], "a row with no q on any signal still falls back to sig")
 
     # ---- the live rows -------------------------------------------------------------------
     print("\nlive rows from the publisher at %s" % host)

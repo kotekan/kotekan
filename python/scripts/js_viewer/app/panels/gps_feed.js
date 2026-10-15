@@ -335,6 +335,7 @@ export class GpsFeed {
             if (!sats.has(id)) sats.set(id, {
                 id, tag, prn, az: null, el: null, snr: null, detected: false,
                 amp: 0, sig: 0, cn0: null,
+                q: null, q_floor: null, noise_probe: false,
                 sig_by: {},     // combiner-key -> signal_metrics()
             });
             return sats.get(id);
@@ -380,6 +381,13 @@ export class GpsFeed {
                         r.sig = m.sig; r.amp = m.amp;
                     }
                     if (m.cn0 != null && (r.cn0 == null || m.cn0 > r.cn0)) r.cn0 = m.cn0;
+                    // The lock rule's inputs: the signal with the highest q, judged against its
+                    // own floor. A satellite that is a noise probe on any signal is below the
+                    // horizon on all of them.
+                    if (m.q != null && (r.q == null || m.q > r.q)) {
+                        r.q = m.q; r.q_floor = m.q_floor;
+                    }
+                    if (m.noise_probe) r.noise_probe = true;
                 }
             // Beam summary per (satellite, signal), attached to the same sig_by entry the
             // status built, so a beam cell and its C/N0 cell describe the same signal. A
