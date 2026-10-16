@@ -1,0 +1,290 @@
+# -*-yaml-*-
+
+# CHIME HFB beamformer setup
+
+################################################################################
+
+hfb_downsampling_factor: 16384
+hfb_second_downsampling_factor: 20   # (41.94304 ms -> 838.8608 ms)
+hfb_num_output_times: 1
+
+hfb2_num_beams_x: 4
+hfb2_num_beams_y: 256
+hfb2_num_beams: hfb2_num_beams_x * hfb2_num_beams_y
+hfb2_beam_separation_x: 1.3 / 4
+hfb2_beam_separation_y: 90.0 / 256
+
+# The HFB2 beamforming weights are valid for this many input samples. This must be a multiple of
+# hfb_num_output_times * hfb_downsampling_factor * hfb_second_downsampling_factor, the number of
+# input samples the HFB2 beamformer processes per kernel invocation. The weights matrices are large
+# and are recalculated on the GPU, so keep this long: about a minute here, and possibly much longer
+# (e.g. 24 h) in production.
+hfb2_weights_lifetime_in_samples: 72 * hfb_num_output_times * hfb_downsampling_factor * hfb_second_downsampling_factor # 60.3979776 s
+# Number of weights matrices in the GPU ring buffer. Each takes
+# 2 * upchan_hfb_upchan_U128_max_num_output_channels * hfb2_num_beams * frb1_num_beams_Q * frb1_num_beams_P
+# bytes (16 GiB), so there is room for only one. The HFB2 beamformer then waits for the next
+# matrix to be calculated (about 75 ms on an A40) once per lifetime.
+hfb2_weights_ring_depth: 1
+
+# hfb_chunk_size: 256
+
+# The HFB1 beamforming weights are valid for this many input samples (about one second). The
+# U = 128 HFB1 kernel processes multiples of 128 * 128 = 16384 input samples, so this must be a
+# multiple of 16384. The HFB1 stages see this as their frb1_phase_lifetime_in_samples.
+hfb1_phase_lifetime_in_samples: 24 * num_times
+
+################################################################################
+
+# Buffers
+
+# Phases
+
+# One frame is one set of weights, covering hfb1_phase_lifetime_in_samples input samples.
+host_hfb1_U128_phase_buffer:
+    kotekan_buffer: ndarray
+    num_frames: buffer_depth
+    value_type: float16
+    extents: [1, upchan_hfb_upchan_U128_max_num_channels * 128, num_polarizations, num_dishes_x, num_dishes_y, num_components]
+    quantity_name: "W"
+    dimnames: ["TW", "Fbar", "P", "dishN", "dishM", "C"]
+    dimscalings: [hfb1_phase_lifetime_in_samples, 1, 1, 1, 1, 1]
+    metadata_pool: main_pool
+host_hfb1_U128_phase_ringbuffer:
+    kotekan_buffer: ring
+    ring_buffer_size: buffer_depth * sizeof_float16 * upchan_hfb_upchan_U128_max_num_channels * 128 * num_polarizations * num_dishes_x * num_dishes_y * num_components
+    metadata_pool: main_pool
+
+# One frame of positions per hfb2_weights_lifetime_in_samples input samples
+host_hfb2_beam_positions_buffer:
+    kotekan_buffer: ndarray
+    num_frames: buffer_depth
+    value_type: float32
+    extents: [hfb2_num_beams, 2]
+    quantity_name: "frb2_beam_positions"
+    dimnames: ["R", "X/Y"]
+    dimscalings: [1, 1]
+    metadata_pool: main_pool
+
+host_hfb2_beam_ids_buffer:
+    kotekan_buffer: ndarray
+    num_frames: buffer_depth
+    value_type: uint64
+    extents: [hfb2_num_beams]
+    quantity_name: "frb2_beam_ids"
+    dimnames: ["R"]
+    dimscalings: [1]
+    metadata_pool: main_pool
+
+# The weights are calculated on the GPU, directly into this ring buffer, one matrix
+# [Fbar, R, beamQ, beamP] per hfb2_weights_lifetime_in_samples input samples. There is no host copy.
+host_hfb2_weights_ringbuffer:
+    kotekan_buffer: ring
+    ring_buffer_size: hfb2_weights_ring_depth * sizeof_float16 * upchan_hfb_upchan_U128_max_num_output_channels * hfb2_num_beams * frb1_num_beams_Q * frb1_num_beams_P
+    metadata_pool: main_pool
+
+# Beams
+
+host_hfb1_beams_ringbuffer:
+    kotekan_buffer: ring
+    num_frames: buffer_depth
+    ring_buffer_size: buffer_depth * sizeof_float16 * frb1_num_beams_P * frb1_num_beams_Q * upchan_hfb_upchan_U128_max_num_output_channels * hfb_num_output_times * hfb_second_downsampling_factor
+    metadata_pool: main_pool
+
+host_hfb1_accumulated_beams_ringbuffer:
+    kotekan_buffer: ring
+    num_frames: buffer_depth
+    ring_buffer_size: buffer_depth * sizeof_float16 * frb1_num_beams_P * frb1_num_beams_Q * upchan_hfb_upchan_U128_max_num_output_channels * 1
+    metadata_pool: main_pool
+
+host_hfb2_beams_buffer:
+    kotekan_buffer: ndarray
+    num_frames: buffer_depth
+     #frame_size: sizeof_float16 * hfb2_num_beams * upchan_hfb_upchan_U128_max_num_output_channels * hfb_num_output_times
+    value_type: float16
+    extents: [1, hfb2_num_beams, upchan_hfb_upchan_U128_max_num_output_channels, hfb_num_output_times]
+    quantity_name: "I2"
+    dimnames: ["Ttildehi256", "R", "Fbar", "Ttildelo256"]
+    dimscalings: [hfb_downsampling_factor * hfb_second_downsampling_factor * hfb_num_output_times, 1, 1, hfb_downsampling_factor * hfb_second_downsampling_factor]
+    metadata_pool: main_pool
+
+# host_hfb3_beams_buffer:
+#     kotekan_buffer: standard
+#     num_frames: buffer_depth
+#     frame_size: sizeof_uint8 * hfb2_num_beams * upchan_hfb_upchan_U128_max_num_output_channels * hfb_num_output_times
+#     metadata_pool: main_pool
+# 
+# host_hfb3_beams_offsetscale_buffer:
+#     kotekan_buffer: standard
+#     num_frames: buffer_depth
+#     # the output is quantized in chunks of `hfb_chunk_size`
+#     frame_size: sizeof_float16 * 2 * hfb2_num_beams * upchan_hfb_upchan_U128_max_num_output_channels * hfb_num_output_times / hfb_chunk_size
+#     metadata_pool: main_pool
+
+################################################################################
+
+# Stages
+
+# HFB 1
+
+run_set_hfb1_U128_phase:
+    kotekan_stage: setFRB1Phase
+    # Must match the HFB voltage chain (run_upchan_hfb_U128)
+    max_upchannelization_factor: 128
+    num_dishes_x: 256           # tranposed dish layout
+    num_dishes_y: 4
+    upchan_factor: 128
+    upchan_min_channel: upchan_hfb_upchan_U128_min_channel
+    upchan_max_channel: upchan_hfb_upchan_U128_max_channel
+    upchan_max_num_channels: upchan_hfb_upchan_U128_max_num_channels
+    frb1_phase: host_hfb1_U128_phase_buffer
+    frb1_phase_lifetime_in_samples: hfb1_phase_lifetime_in_samples
+    # The weight stream starts at the sequence number of the first voltage frame
+    metadata_source:
+{% for id in range(16) %}   # num_frequencies = 16
+        - host_voltage_buffer_{{ id }}
+{% endfor %}
+
+# Send the weights to their GPU ringbuffer. One set of weights covers
+# hfb1_phase_lifetime_in_samples input samples, so this runs far less often than run_hfb1_U128.
+run_send_hfb1_U128_phase:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_hfb1_U128_phase_buffer: host_hfb1_U128_phase_buffer
+        out_buffers:
+            host_hfb1_U128_phase_ringbuffer: host_hfb1_U128_phase_ringbuffer
+        commands:
+        - name: cudaCopyToRingbuffer
+          input_size: sizeof_float16 * upchan_hfb_upchan_U128_max_num_channels * 128 * num_polarizations * num_dishes_x * num_dishes_y * num_components
+          ring_buffer_size: buffer_depth * input_size
+          in_buf: host_hfb1_U128_phase_buffer
+          signal_buf: host_hfb1_U128_phase_ringbuffer
+          gpu_mem_output: hfb1_U128_phase_buffer
+
+run_hfb1_U128:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_upchan_hfb_U128_voltage_ringbuffer: host_upchan_hfb_U128_voltage_ringbuffer
+            host_hfb1_U128_phase_ringbuffer: host_hfb1_U128_phase_ringbuffer
+        out_buffers:
+            host_hfb1_beams_ringbuffer: host_hfb1_beams_ringbuffer
+        commands:
+        - name: cudaCHIMEFRBBeamformer_chime_U128_K4
+          voltage_name: upchan_hfb_U128_voltage
+          frb_phase_name: hfb1_U128_phase
+          frb_beamgrid_name: hfb1_beams
+          frb1_phase_lifetime_in_samples: hfb1_phase_lifetime_in_samples
+
+run_hfb1_accumulate_U128:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_hfb1_beams_ringbuffer: host_hfb1_beams_ringbuffer
+        out_buffers:
+            host_hfb1_accumulated_beams_ringbuffer: host_hfb1_accumulated_beams_ringbuffer
+        commands:
+        - name: cudaHFB1Accumulate
+          hfb1_beams_name: hfb1_beams
+          hfb1_accumulated_beams_name: hfb1_accumulated_beams
+          num_frequencies: upchan_hfb_upchan_U128_max_num_output_channels
+
+# HFB 2 and 3
+
+run_set_hfb2_beams:
+    kotekan_stage: setFRBBeams
+    # Must match the HFB voltage chain (run_upchan_hfb_U128)
+    max_upchannelization_factor: 128
+    metadata_source: host_voltage_buffer_0
+    out_pos_buf: host_hfb2_beam_positions_buffer
+    out_id_buf: host_hfb2_beam_ids_buffer
+    time_downsampling_fpga: hfb2_weights_lifetime_in_samples
+    mode: grid_degrees
+    num_beams: hfb2_num_beams
+    num_x: hfb2_num_beams_x
+    num_y: hfb2_num_beams_y
+    x_min: -hfb2_beam_separation_x * (hfb2_num_beams_x - 1) / 2.0
+    x_max: hfb2_beam_separation_x * (hfb2_num_beams_x - 1) / 2.0
+    y_min: -hfb2_beam_separation_y * (hfb2_num_beams_y - 1) / 2.0
+    y_max: hfb2_beam_separation_y * (hfb2_num_beams_y - 1) / 2.0
+
+# Calculate the weights on the GPU, one matrix per positions frame. This runs once per
+# hfb2_weights_lifetime_in_samples, so a single command instance suffices. The frequencies come
+# from the voltage buffers' metadata.
+run_calc_hfb2_weights:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        buffer_depth: 1
+        in_buffers:
+            host_hfb2_beam_positions_buffer: host_hfb2_beam_positions_buffer
+{% for id in range(16) %}   # num_frequencies = 16
+            host_voltage_buffer_{{ id }}: host_voltage_buffer_{{ id }}
+{% endfor %}
+        out_buffers:
+            host_hfb2_weights_ringbuffer: host_hfb2_weights_ringbuffer
+        commands:
+        - name: cudaInputData
+          in_buf: host_hfb2_beam_positions_buffer
+          gpu_mem: hfb2_beam_positions_buffer
+        - name: cudaSyncInput
+        - name: cudaCalcFRB2Weights
+          upchannelization_schedule_name: /upchan_hfb
+          frb2_num_beams_x: hfb2_num_beams_x
+          frb2_num_beams_y: hfb2_num_beams_y
+          frb2_num_frequencies: upchan_hfb_upchan_U128_max_num_output_channels
+          frb2_weights_lifetime_in_samples: hfb2_weights_lifetime_in_samples
+          frb2_weights_ring_depth: hfb2_weights_ring_depth
+          frb2_beam_positions_name: hfb2_beam_positions
+          frb2_weights_name: hfb2_weights
+          metadata_source:
+{% for id in range(16) %}   # num_frequencies = 16
+            - host_voltage_buffer_{{ id }}
+{% endfor %}
+
+run_hfb23:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_hfb1_accumulated_beams_ringbuffer: host_hfb1_accumulated_beams_ringbuffer
+            host_hfb2_weights_ringbuffer: host_hfb2_weights_ringbuffer
+        out_buffers:
+            host_hfb2_beams_buffer: host_hfb2_beams_buffer
+            # host_hfb3_beams_buffer: host_hfb3_beams_buffer
+            # host_hfb3_beams_offsetscale_buffer: host_hfb3_beams_offsetscale_buffer
+        commands:
+        - name: cudaFRBBeamReformer
+          frb1_max_num_frequencies: upchan_hfb_upchan_U128_max_num_output_channels
+          frb1_max_num_times: buffer_depth * hfb_num_output_times
+          frb2_num_frequencies: upchan_hfb_upchan_U128_max_num_output_channels
+          frb2_num_beams: hfb2_num_beams
+          frb2_num_times: hfb_num_output_times
+          frb2_weights_lifetime_in_samples: hfb2_weights_lifetime_in_samples
+          frb2_weights_ring_depth: hfb2_weights_ring_depth
+          in_signal: host_hfb1_accumulated_beams_ringbuffer
+          frb1_beams_name: hfb1_accumulated_beams
+          frb2_weights_name: hfb2_weights
+          frb2_beams_name: hfb2_beams
+          frb_downsampling_factor: hfb_downsampling_factor * hfb_second_downsampling_factor
+        # - name: cudaQuantize8
+        #   # the output is quantized in chunks of `hfb_chunk_size`
+        #   num_beams: hfb2_num_beams
+        #   num_frequencies: upchan_hfb_upchan_U128_max_num_output_channels
+        #   num_times: hfb_num_output_times
+        #   gpu_mem_input: hfb2_beams
+        #   gpu_mem_output: hfb3_beams
+        #   gpu_mem_offsetscale: hfb3_beams_offsetscale
+        - name: cudaSyncOutput
+        - name: cudaOutputData
+          gpu_mem: hfb2_beams_buffer
+          out_buf: host_hfb2_beams_buffer
+        # - name: cudaOutputData
+        #   gpu_mem: hfb3_beams_buffer
+        #   out_buf: host_hfb3_beams_buffer
+        # - name: cudaOutputData
+        #   gpu_mem: hfb3_beams_offsetscale_buffer
+        #   out_buf: host_hfb3_beams_offsetscale_buffer
