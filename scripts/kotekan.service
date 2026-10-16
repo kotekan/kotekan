@@ -1,9 +1,16 @@
 [Unit]
 Description=kotekan
-After=syslog.target network.target
+# A --bind-address on a specific interface needs that interface up.
+Wants=network-online.target
+After=syslog.target network-online.target
 
 [Service]
 Type=simple
+# The service user needs access to the hugepage mount, the DPDK runtime
+# directory, and the NIC (vfio) and GPU device nodes.
+User=kotekan
+Group=kotekan
+LimitMEMLOCK=infinity
 Restart=always
 RestartSec=10
 WorkingDirectory=/var/lib/kotekan

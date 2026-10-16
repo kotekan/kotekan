@@ -97,6 +97,10 @@ target_link_libraries(test_fmt PRIVATE kotekan_libs kotekan_utils)
 add_executable(test_restclient test_restclient.cpp)
 target_link_libraries(test_restclient PRIVATE libexternal kotekan_libs kotekan_utils kotekan_core)
 
+add_executable(test_restserver_bind test_restserver_bind.cpp)
+target_link_libraries(test_restserver_bind PRIVATE libexternal kotekan_libs kotekan_utils
+                                                   kotekan_core)
+
 # test_bip_buffer needs fmt
 add_executable(test_bip_buffer test_bip_buffer.cpp)
 target_link_libraries(test_bip_buffer PRIVATE libexternal kotekan_libs kotekan_utils kotekan_core)
