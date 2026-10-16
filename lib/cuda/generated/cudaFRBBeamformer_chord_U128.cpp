@@ -6,6 +6,7 @@
  * Do not modify this C++ file, your changes will be lost.
  */
 
+#include "CHORDTelescope.hpp"
 #include "DataType.hpp"
 #include "NDArrayBuffer.hpp"
 #include "NDArrayRingBuffer.hpp"
@@ -911,13 +912,21 @@ cudaEvent_t cudaFRBBeamformer_chord_U128::execute(cudaPipelineState& /*pipestate
         // The first `ndishes` dishes are real dishes,
         // the remaining dishes are not real and exist only to label the unoccupied dish locations.
 
-        const Telescope& tel = Telescope::instance();
+        const CHORDTelescope* const tel =
+            dynamic_cast<const CHORDTelescope*>(&Telescope::instance());
+        if (!tel)
+            FATAL_ERROR("Kernel FRBBeamformer_chord_U128 needs a CHORDTelescope for its dish "
+                        "layout, not {:s}",
+                        Telescope::instance().get_name());
 
-        // The input order is a Beamformer type (P slow, D fast), so the first num_dishes
-        // entries contain the grid indices of all connected dishes.
+        // The input order is a Beamformer type (P slow, D fast), so dish indices are input indices.
+        std::vector<int> array_dish_at_loc(cuda_dish_layout_M * cuda_dish_layout_N);
+        for (int locM = 0; locM < cuda_dish_layout_M; ++locM)
+            for (int locN = 0; locN < cuda_dish_layout_N; ++locN)
+                array_dish_at_loc.at(locM + cuda_dish_layout_M * locN) =
+                    tel->get_dish_idx_at_grid_indices({locM, locN});
         const std::vector<int> dish_index_at_loc = kotekan::frb_dish_index_at_location(
-            tel.get_main_array_grid_indices(cuda_number_of_dishes, tel.fiducial_element_order()),
-            cuda_dish_layout_M, cuda_dish_layout_N);
+            array_dish_at_loc, cuda_number_of_dishes, cuda_dish_layout_M, cuda_dish_layout_N);
         for (int locM = 0; locM < cuda_dish_layout_M; ++locM) {
             for (int locN = 0; locN < cuda_dish_layout_N; ++locN) {
                 const int dish_index = dish_index_at_loc.at(locM + cuda_dish_layout_M * locN);
