@@ -244,7 +244,7 @@ void frbNetworkSend::main_thread() {
     if (initial_fpga_count % (samples_per_packet * packets_per_stream * time_downsampling_fpga)
         != 0) {
         FATAL_ERROR(
-            "initial fpga couunt {} is not aligned with a 2018 CHIME frame size ({}). This will "
+            "initial fpga count {} is not aligned with a 2018 CHIME frame size ({}). This will "
             "break the L1 receiver code",
             initial_fpga_count, samples_per_packet * packets_per_stream * time_downsampling_fpga);
     }
@@ -295,7 +295,7 @@ void frbNetworkSend::main_thread() {
                 uint64_t nanos_skipped = frames_skipped * time_interval;
                 add_nsec(t0, nanos_skipped);
             }
-            uint64_t offset = (t0.tv_sec * 1e9 + t0.tv_nsec - initial_nsec)
+            uint64_t offset = (t0.tv_sec * 1'000'000'000UL + t0.tv_nsec - initial_nsec)
                               - (metadata->get_fpga_seq_num() - initial_fpga_count) * fpga_ns;
             if (offset != 0)
                 WARN("OFFSET in not zero ");
@@ -549,7 +549,7 @@ int frbNetworkSend::initialize_source_sockets() {
         // use a larger send buffer for the socket
         const int n = 256 * 1024 * 1024;
         if (setsockopt(sock_fd, SOL_SOCKET, SO_SNDBUF, (void*)&n, sizeof(n)) < 0) {
-            FATAL_ERROR("Network Thread: setsockopt() failed: %s ", strerror(errno));
+            FATAL_ERROR("Network Thread: setsockopt() failed: {:s}", strerror(errno));
             return -1;
         }
 
