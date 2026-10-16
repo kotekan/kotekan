@@ -16,6 +16,7 @@
 #include "cudaDeviceInterface.hpp"
 #include "cudaUtils.hpp"
 #include "div.hpp"
+#include "frbDishLayout.hpp"
 #include "ringbuffer.hpp"
 
 #include <algorithm>
@@ -923,83 +924,18 @@ cudaEvent_t cudaFRBBeamformer_hirax_U32::execute(cudaPipelineState& /*pipestate*
 
         const Telescope& tel = Telescope::instance();
 
-        // First obtain from the Telescope the grid indices of every dish in the input data.
         // The input order is a Beamformer type (P slow, D fast), so the first num_dishes
-        // entries will contain the grid indices for all connected dishes.
-        std::vector<grid_idx_2d_t> grid_indices =
-            tel.get_main_array_grid_indices(cuda_number_of_dishes, tel.fiducial_element_order());
-
-        // Now build:
-        // 1) a table of grid locations populated with the index of the dish at that location,
-        //      or -1 if it is unfilled.
-        // 2) a list of dish indices which do *not* correspond to dishes on the grid. This includes
-        //      dishes in the input array (with d < cuda_num_dishes) and "surplus" dishes used to
-        //      fill out the array (since dish_layout_M * dish_layout_N may be > num_dishes)
-        int array_dish_count = 0;
-        std::vector<int> dish_index_at_loc(cuda_dish_layout_M * cuda_dish_layout_N, -1);
-        std::vector<int> surplus_dishes{};
-        for (int d = 0; d < cuda_number_of_dishes; ++d) {
-            const grid_idx_2d_t grid_idx = grid_indices.at(d);
-            // Non-array dishes (e.g. RFI antennae) have grid indices -1.  Skip them.
-            if (grid_idx.at(0) < 0 || grid_idx.at(1) < 0) {
-                surplus_dishes.push_back(d);
-                continue;
-            }
-            // Assign a 1D address for this dish location. M/X fast, N/Y slow.
-            const int loc_idx = grid_idx.at(0) + cuda_dish_layout_M * grid_idx.at(1);
-            // Fill it with this dish index.
-            dish_index_at_loc.at(loc_idx) = d;
-            ++array_dish_count;
-        }
-        for (int d = cuda_number_of_dishes; d < cuda_dish_layout_M * cuda_dish_layout_N; ++d) {
-            surplus_dishes.push_back(d);
-        }
-        if (array_dish_count + surplus_dishes.size()
-            != std::size_t(cuda_dish_layout_M) * std::size_t(cuda_dish_layout_N))
-            FATAL_ERROR(
-                "Dish bookkeeping is inconsistent for kernel FRBBeamformer_hirax_U32: {:d} array "
-                "dishes plus {:d} surplus dishes do not fill the {:d}x{:d} dish grid",
-                array_dish_count, surplus_dishes.size(), int(cuda_dish_layout_M),
-                int(cuda_dish_layout_N));
-
-        // Finally we can build the host_S_buffer.  First initialize with -1 as a sentinel.
-        for (std::size_t s = 0; s < host_S_buffer.size(); ++s)
-            host_S_buffer.at(s) = -1;
-        // Loop through grid locations and assign dish indices.
-        size_t surplus_idx = 0;
+        // entries contain the grid indices of all connected dishes.
+        const std::vector<int> dish_index_at_loc = kotekan::frb_dish_index_at_location(
+            tel.get_main_array_grid_indices(cuda_number_of_dishes, tel.fiducial_element_order()),
+            cuda_dish_layout_M, cuda_dish_layout_N);
         for (int locM = 0; locM < cuda_dish_layout_M; ++locM) {
             for (int locN = 0; locN < cuda_dish_layout_N; ++locN) {
-                // Calculate location idx as above, M fast, N slow
-                const int loc_idx = locM + cuda_dish_layout_M * locN;
-                // The dish at this position, or -1 if unoccupied
-                const int dish_index = dish_index_at_loc.at(loc_idx);
-
-                if (dish_index >= 0) {
-                    // This location holds a real dish, record its location
-                    host_S_buffer.at(2 * dish_index + 0) = locM;
-                    host_S_buffer.at(2 * dish_index + 1) = locN;
-                } else {
-                    // This location is empty, assign it a surplus dish index
-                    const int surplus_dish_index = surplus_dishes.at(surplus_idx);
-                    host_S_buffer.at(2 * surplus_dish_index + 0) = locM;
-                    host_S_buffer.at(2 * surplus_dish_index + 1) = locN;
-                    ++surplus_idx;
-                }
+                const int dish_index = dish_index_at_loc.at(locM + cuda_dish_layout_M * locN);
+                host_S_buffer.at(2 * dish_index + 0) = locM;
+                host_S_buffer.at(2 * dish_index + 1) = locN;
             }
         }
-        // Confirm we used all surplus dishes.
-        if (surplus_idx != surplus_dishes.size())
-            FATAL_ERROR("Kernel FRBBeamformer_hirax_U32 placed {:d} of {:d} surplus dishes on the "
-                        "dish grid",
-                        surplus_idx, surplus_dishes.size());
-        // Confirm the grid is filled. `S` is about to be copied to the GPU; a sentinel left here
-        // would make the kernel scatter dishes to undefined grid locations.
-        for (std::size_t s = 0; s < host_S_buffer.size(); ++s)
-            if (host_S_buffer.at(s) < 0)
-                FATAL_ERROR(
-                    "Kernel FRBBeamformer_hirax_U32 left entry {:d} of the dish location map `S` "
-                    "unassigned (value {:d})",
-                    s, host_S_buffer.at(s));
 
         // Done! Copy to the GPU.
         CHECK_CUDA_ERROR(cudaMemcpyAsync(S_memory, host_S_buffer.data(), S_length_in_bytes,
