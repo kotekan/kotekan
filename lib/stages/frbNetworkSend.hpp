@@ -82,11 +82,7 @@ public:
     virtual ~frbNetworkSend();
 
     /// Callback to update the beam offset
-    void update_offset_callback(kotekan::connectionInstance& conn, nlohmann::json& json_request);
-
-    /// Callback to change destination active status
-    void set_destination_active_callback(kotekan::connectionInstance& conn,
-                                         nlohmann::json& json_request);
+    bool update_offset_callback(nlohmann::json& json_request);
 
     /// main thread
     void main_thread() override;

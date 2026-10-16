@@ -5,10 +5,10 @@
 #include "buffer.hpp"            // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "chordMetadata.hpp"     // for get_chord_metadata
+#include "configUpdater.hpp"     // for configUpdater
 #include "frb_functions.h"       // for FRBHeader
 #include "kotekanLogging.hpp"    // for DEBUG, INFO, WARN, FATAL_ERROR, ERROR
 #include "network_functions.hpp" // for receive_ping, send_ping
-#include "restServer.hpp"        // for restServer, HTTP_RESPONSE, connectionInstance
 #include "tx_utils.hpp"          // for add_nsec, CLOCK_ABS_NANOSLEEP, get_vlan_from_ip, parse_...
 
 #include "fmt.hpp" // for compile_string_to_view, format, format_string
@@ -44,9 +44,7 @@ using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
 
-using kotekan::connectionInstance;
-using kotekan::HTTP_RESPONSE;
-using kotekan::restServer;
+using kotekan::configUpdater;
 
 REGISTER_KOTEKAN_STAGE(frbNetworkSend);
 
@@ -99,8 +97,6 @@ frbNetworkSend::frbNetworkSend(Config& config_, const std::string& unique_name,
 }
 
 frbNetworkSend::~frbNetworkSend() {
-    restServer::instance().remove_json_callback("/frb/update_beam_offset");
-
     for (auto src : src_sockets) {
         close(src.socket_fd);
     }
@@ -112,18 +108,18 @@ frbNetworkSend::~frbNetworkSend() {
 }
 
 
-void frbNetworkSend::update_offset_callback(connectionInstance& conn,
-                                            nlohmann::json& json_request) {
+bool frbNetworkSend::update_offset_callback(nlohmann::json& json_request) {
     // no need for a lock here, beam_offset copied into a local variable for use
     try {
         beam_offset = json_request["beam_offset"];
     } catch (...) {
-        conn.send_error("Couldn't parse new beam_offset parameter.", HTTP_RESPONSE::BAD_REQUEST);
-        return;
+        ERROR("Couldn't parse new beam_offset parameter {:s}.", nlohmann::to_string(json_request));
+        return true;
     }
     INFO("Updating beam_offset to {:d}", beam_offset);
-    conn.send_empty_reply(HTTP_RESPONSE::OK);
+    // a different "beam_offset" than the one updated via http
     config.update_value(unique_name, "beam_offset", beam_offset);
+    return true;
 }
 
 void frbNetworkSend::main_thread() {
@@ -153,14 +149,10 @@ void frbNetworkSend::main_thread() {
         pthread_setaffinity_np(receive_ping_thread.native_handle(), sizeof(cpu_set_t), &cpuset);
     }
 
-    // rest server
+    // beam offset
     using namespace std::placeholders;
-    restServer& rest_server = restServer::instance();
-    std::string endpoint = "/frb/update_beam_offset";
-    rest_server.register_post_callback(
-        endpoint, std::bind(&frbNetworkSend::update_offset_callback, this, _1, _2));
-
-    // config.update_value(unique_name, "beam_offset", beam_offset);
+    configUpdater::instance().subscribe(
+        this, std::bind(&frbNetworkSend::update_offset_callback, this, _1));
 
     int in_frame_id = 0;
     uint8_t* beams_buffer = (uint8_t*)in_buf->wait_for_full_frame(unique_name, in_frame_id);
