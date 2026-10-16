@@ -80,7 +80,6 @@ frbNetworkSend::frbNetworkSend(Config& config_, const std::string& unique_name,
                         i, local_ips[i], i + 6);
     packets_per_stream = config.get_default<int>(unique_name, "packets_per_stream", 8);
     beam_offset = config.get_default<int>(unique_name, "beam_offset", 0);
-    column_mode = config.get_default<bool>(unique_name, "column_mode", false);
     samples_per_packet = config.get_default<int>(unique_name, "timesamples_per_frb_packet", 16);
     num_frequencies = config.get<int>(unique_name, "num_frequencies");
 
