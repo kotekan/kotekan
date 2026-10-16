@@ -794,7 +794,21 @@ int main(int argc, char** argv) {
         exit(-1);
     }
     const std::vector<std::string> bind_addresses = regex_split(bind_address.substr(0, colon), ",");
-    const int bind_port = std::stoi(bind_address.substr(colon + 1));
+    // The port must be a whole number in 0..65535: stoi would accept "12048x" and wrap 70000.
+    const std::string port_str = bind_address.substr(colon + 1);
+    std::size_t parsed = 0;
+    unsigned long port = 0;
+    try {
+        port = std::stoul(port_str, &parsed);
+    } catch (const std::exception&) {
+        parsed = 0;
+    }
+    if (parsed != port_str.size() || port > 65535) {
+        ERROR_NON_OO("The bind port {:s} is not valid, it should be a number from 0 to 65535",
+                     port_str.c_str());
+        exit(-1);
+    }
+    const int bind_port = int(port);
     // The validation modes must never bind the REST port: the whole point is to
     // be runnable on a node that already has a kotekan instance on it.
     const bool validate_only = check_config || dry_run;
