@@ -141,7 +141,8 @@ upchannelizer output start ``T*``, ``coarse_freq`` / ``freq_upchan_factor`` /
      - Visibility phases match geometry (sign, conjugation). The tone is in the predicted fine
        channel with the predicted phase for each U. CHIME: U=16 and U=128 agree. Beams peak in
        the right place.
-     - N2 2°; upchan 2° mean, 15° 99th percentile; peak index exact
+     - N2 2°; upchan 2° mean, 15° 99th percentile; BB/FRB1 peak index exact; FRB2 source beam
+       within 0.5% of the peak (grating-lobe ties)
    * - T3 Quantization
      - Noise (σ = 2.8 LSB) plus a weak tone.
      - upchan, BB, FRB3 vs FRB2
@@ -214,10 +215,10 @@ These features are missing in kotekan. Add the tests once they exist.
 Findings
 ========
 
-* **FRB1 is mirrored along M (grid x)** (T2, pathfinder): the FRB1 beam index along M peaks at
-  ``-2θ_M mod 2M`` instead of ``2θ_M``, while N (grid y) is correct. The FRB2 weights assume
-  ``2θ_M``, so FRB2 beams are mirrored in x as well. The test input, BB and N2 agree with each
-  other on the sign of x.
+* **FRB1 was mirrored along M (grid x)** (T2, pathfinder). The FRB1 beam index along M peaked
+  at ``-2θ_M mod 2M`` instead of ``2θ_M``, while N (grid y) was correct. The FRB2 weights assume
+  ``2θ_M``, so FRB2 beams were mirrored in x as well. The second FFT in ``julia/kernels/frb.jl``
+  had the wrong sign; kotekan/kotekan#1779 fixes it, and these tests are based on that fix.
 * ``N2Accumulate`` requires correlation frames to start at multiples of the frame length. The
   tests assume that the receivers guarantee this.
 
