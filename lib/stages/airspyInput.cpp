@@ -1,17 +1,19 @@
 #include "airspyInput.hpp"
 
-#include "Config.hpp"          // for Config
-#include "NDArray.hpp"         // for GenericNDArray
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
-#include "airspyFrameDesc.hpp" // for make_input_desc
-#include "buffer.hpp"          // for Buffer
-#include "bufferContainer.hpp" // for bufferContainer
-#include "kotekanLogging.hpp"  // for ERROR, INFO, DEBUG, FATAL_ERROR
-#include "restServer.hpp"      // for connectionInstance, HTTP_RESPONSE, restServer
+#include "Config.hpp"            // for Config
+#include "NDArray.hpp"           // for GenericNDArray
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
+#include "airspyFrameDesc.hpp"   // for make_input_desc
+#include "buffer.hpp"            // for Buffer
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "kotekanLogging.hpp"    // for ERROR, INFO, DEBUG, FATAL_ERROR, WARN
+#include "prometheusMetrics.hpp" // for Metrics, Counter
+#include "restServer.hpp"        // for connectionInstance, HTTP_RESPONSE, restServer
 
 #include "fmt.hpp" // for compile_string_to_view, format
 
 #include <algorithm>          // for min
+#include <chrono>             // for milliseconds
 #include <cmath>              // for sqrt
 #include <condition_variable> // for condition_variable
 #include <fcntl.h>            // for open, O_RDWR
@@ -22,11 +24,13 @@
 #include <stdint.h>           // for uint32_t, uint8_t
 #include <stdlib.h>           // for free, abs, malloc
 #include <string.h>           // for memcpy
+#include <thread>             // for sleep_for
 #include <unistd.h>           // for size_t, close, usleep
 
 using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
+using kotekan::prometheus::Metrics;
 
 REGISTER_KOTEKAN_STAGE(airspyInput);
 
@@ -65,17 +69,23 @@ airspyInput::airspyInput(Config& config, const std::string& unique_name,
 
     _airspy_sn = config.get_default<long>(unique_name, "serial", 0);
     _airspy_fn = config.get_default<std::string>(unique_name, "airspy_file", "");
+    _adcstat_timeout_ms = config.get_default<int>(unique_name, "adcstat_timeout_ms", 250);
 }
 
 airspyInput::~airspyInput() {
+    // Wake any REST callback waiting on a pending adcstat request, then remove the callbacks
+    // (which waits for running ones) before the device goes away.
+    adcstat_cv.notify_all();
+    kotekan::restServer& rest_server = kotekan::restServer::instance();
+    rest_server.remove_json_callback(unique_name + "/set_config");
+    rest_server.remove_get_callback(unique_name + "/adcstat");
+    rest_server.remove_get_callback(unique_name + "/get_config");
     if (a_device != nullptr) {
         airspy_stop_rx(a_device);
         airspy_close(a_device);
     }
     if (airspy_opened)
         airspy_exit();
-    // Wake any REST callback waiting on a pending adcstat request.
-    adcstat_cv.notify_all();
 }
 
 void airspyInput::get_config_callback(kotekan::connectionInstance& conn) {
@@ -91,8 +101,19 @@ void airspyInput::get_config_callback(kotekan::connectionInstance& conn) {
 
 void airspyInput::adcstat_callback(kotekan::connectionInstance& conn) {
     std::unique_lock<std::mutex> lock(adcstat_mutex);
+    // Stats published for an earlier request that timed out are stale.
+    adcstat_ready = false;
     dump_adcstat = true;
-    adcstat_cv.wait(lock, [this] { return adcstat_ready || stop_thread; });
+    // If no frame arrives (device not streaming, or out_buf full) an unbounded wait here would
+    // block every REST endpoint, since they share one thread.
+    if (!adcstat_cv.wait_for(lock, std::chrono::milliseconds(_adcstat_timeout_ms),
+                             [this] { return adcstat_ready || stop_thread; })) {
+        dump_adcstat = false;
+        lock.unlock();
+        conn.send_error("Timed out waiting for a frame from the airspy.",
+                        kotekan::HTTP_RESPONSE::REQUEST_FAILED);
+        return;
+    }
     if (stop_thread) {
         lock.unlock();
         conn.send_error("Stage shutting down.", kotekan::HTTP_RESPONSE::INTERNAL_ERROR);
@@ -179,15 +200,6 @@ void airspyInput::set_config_callback(kotekan::connectionInstance& conn,
 }
 
 void airspyInput::main_thread() {
-    using namespace std::placeholders;
-    kotekan::restServer& rest_server = kotekan::restServer::instance();
-    rest_server.register_post_callback(unique_name + "/set_config",
-                                       std::bind(&airspyInput::set_config_callback, this, _1, _2));
-    rest_server.register_get_callback(unique_name + "/adcstat",
-                                      std::bind(&airspyInput::adcstat_callback, this, _1));
-    rest_server.register_get_callback(unique_name + "/get_config",
-                                      std::bind(&airspyInput::get_config_callback, this, _1));
-
     frame_id = 0;
     frame_loc = 0;
     recv_busy = (pthread_mutex_t)PTHREAD_MUTEX_INITIALIZER;
@@ -207,11 +219,52 @@ void airspyInput::main_thread() {
     if (a_device == nullptr)
         return;
 
+    // The callbacks use the device and recv_busy, so register them only now.
+    using namespace std::placeholders;
+    kotekan::restServer& rest_server = kotekan::restServer::instance();
+    rest_server.register_post_callback(unique_name + "/set_config",
+                                       std::bind(&airspyInput::set_config_callback, this, _1, _2));
+    rest_server.register_get_callback(unique_name + "/adcstat",
+                                      std::bind(&airspyInput::adcstat_callback, this, _1));
+    rest_server.register_get_callback(unique_name + "/get_config",
+                                      std::bind(&airspyInput::get_config_callback, this, _1));
+
     err = airspy_start_rx(a_device, airspy_callback, static_cast<void*>(this));
     if (err != AIRSPY_SUCCESS) {
         FATAL_ERROR("airspy_start_rx() failed: {:s} ({:d})",
                     airspy_error_name((enum airspy_error)err), err);
         return;
+    }
+
+    stream_watchdog();
+}
+
+void airspyInput::stream_watchdog() {
+    auto& dropped =
+        Metrics::instance().add_counter("kotekan_airspyinput_dropped_samples_total", unique_name);
+    const auto report_interval = std::chrono::seconds(30);
+    uint64_t last_dropped = 0, reported_dropped = 0;
+    auto next_drop_report = std::chrono::steady_clock::now();
+
+    while (!stop_thread) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        // libairspy stops for good when a USB transfer fails.
+        if (!airspy_is_streaming(a_device)) {
+            FATAL_ERROR("libairspy stopped streaming, which it does when a USB transfer fails.");
+            return;
+        }
+
+        const uint64_t n_dropped = samples_dropped;
+        dropped.inc(n_dropped - last_dropped);
+        last_dropped = n_dropped;
+        const auto now = std::chrono::steady_clock::now();
+        if (n_dropped > reported_dropped && now >= next_drop_report) {
+            WARN("libairspy dropped {:d} samples ({:d} in total) because the stage fell behind, "
+                 "usually waiting for an empty out_buf frame; the stream has a gap there.",
+                 n_dropped - reported_dropped, n_dropped);
+            reported_dropped = n_dropped;
+            next_drop_report = now + report_interval;
+        }
     }
 }
 
@@ -224,6 +277,8 @@ int airspyInput::airspy_callback(airspy_transfer_t* transfer) {
 void airspyInput::airspy_producer(airspy_transfer_t* transfer) {
     // Serialise overlapping callbacks; libairspy can in principle deliver them concurrently.
     pthread_mutex_lock(&recv_busy);
+
+    samples_dropped += transfer->dropped_samples;
 
     void* in = transfer->samples;
     size_t bt = transfer->sample_count * BYTES_PER_SAMPLE;

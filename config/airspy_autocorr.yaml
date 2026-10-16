@@ -18,6 +18,12 @@ log_level: info
 
 instrument_name: airspy
 
+# kotekan builds a telescope at startup; the airspy stages do not use it.
+telescope:
+    name: ICETelescope
+    num_polarizations: 1
+    num_dishes: 1
+
 # Permit cross-origin REST access so the browser-based viewer can call
 # airspyInput's set_config / get_config / adcstat endpoints.
 # Scoped to the viewer's own origin(s) via an allowlist (validated Origin
@@ -59,6 +65,13 @@ airspy_input:
     gain_if: 10  #0-15
     biast_power: false
 #    serial: 0x03A464C834658167  # uncomment & edit to pick a specific dongle
+
+# Stop kotekan if the device starts but never delivers, or stops delivering.
+input_monitor:
+    kotekan_stage: monitorBuffer
+    bufs: [input_buf]
+    timeout: 5
+    wait_for_first_frame: false
 
 
 spectrum_output:
