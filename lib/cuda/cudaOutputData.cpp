@@ -52,6 +52,8 @@ cudaOutputData::cudaOutputData(Config& config, const std::string& unique_name,
     } else {
         _gpu_mem = config.get<std::string>(unique_name, "gpu_mem");
         gpu_buffers_used.push_back(std::make_tuple(_gpu_mem, true, true, false));
+        // Taken in execute(); attribute it to this stage now (see gpuMemoryClaims.hpp).
+        device.register_gpu_memory_name(_gpu_mem);
     }
 
     set_command_type(gpuCommandType::COPY_OUT);

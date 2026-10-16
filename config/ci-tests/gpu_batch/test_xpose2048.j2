@@ -15,6 +15,8 @@ num_elements: num_polarizations * num_dishes
 num_components: 2 # Re/Im
 num_freq_host_buf: 1
 {% set num_freq_gpu_buf = 16 %}
+{# run_xpose2048's cuda_stream_base, a pipeline index. test_xpose2048_stream_base.j2 includes this file with 1. #}
+{% set xpose_stream_base = xpose_stream_base | default(0) %}
 num_freq_gpu_buf: {{ num_freq_gpu_buf }}
 
 samples_per_data_set: 16384
@@ -125,6 +127,8 @@ run_xpose2048:
     gpu_0:
         kotekan_stage: cudaProcess
         gpu_id: 0
+        cuda_stream_base: {{ xpose_stream_base }}
+        num_cuda_streams: {{ 3 * xpose_stream_base + 3 }}
         buffer_depth: gpu_buffer_depth
         frame_arrival_period: network_frame_arrival_period
         num_times: samples_per_data_set
