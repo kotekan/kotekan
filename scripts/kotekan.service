@@ -4,6 +4,11 @@ After=syslog.target network.target
 
 [Service]
 Type=simple
+# The service user needs access to the hugepage mount, the DPDK runtime
+# directory, and the NIC (vfio) and GPU device nodes.
+User=kotekan
+Group=kotekan
+LimitMEMLOCK=infinity
 Restart=always
 RestartSec=10
 WorkingDirectory=/var/lib/kotekan
