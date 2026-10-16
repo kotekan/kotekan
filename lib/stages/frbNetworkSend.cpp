@@ -104,6 +104,14 @@ frbNetworkSend::~frbNetworkSend() {
     for (auto fd : ping_src_fd) {
         close(fd);
     }
+
+    if (send_ping_thread.joinable()) {
+        send_ping_thread.join();
+    }
+
+    if (receive_ping_thread.joinable()) {
+        receive_ping_thread.join();
+    }
 }
 
 
@@ -132,8 +140,6 @@ void frbNetworkSend::main_thread() {
     int number_of_l1_links = initialize_destinations();
     INFO("number_of_l1_links: {:d}", number_of_l1_links);
 
-    std::thread send_ping_thread;
-    std::thread receive_ping_thread;
     if (_ping_dead_threshold != std::chrono::seconds::zero()) {
         initialize_pinging_sockets();
 
@@ -494,13 +500,6 @@ void frbNetworkSend::main_thread() {
         count++;
     }
     ping_cv.notify_all();
-
-    if (send_ping_thread.joinable()) {
-        send_ping_thread.join();
-    }
-    if (receive_ping_thread.joinable()) {
-        receive_ping_thread.join();
-    }
 }
 
 int frbNetworkSend::initialize_source_sockets() {
