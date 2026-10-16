@@ -159,6 +159,11 @@ updatable_config:
     kotekan_update_endpoint: "json"
     enabled: false
 
+frb:
+  update_beam_offset:
+    kotekan_update_endpoint: "json"
+    beam_offset: 0
+
 dataset_manager:
   use_dataset_broker: True
   ds_broker_host: "10.5.60.1"
@@ -2064,6 +2069,7 @@ FRB:
         udp_frb_port_number: 1314 # 1313
         num_frequencies: num_local_freq # total number of *coarse* frequencies
         number_of_subnets: 0 # testing mode
+        updatable_config: /frb/update_beam_offset
         # don't ping
         ping_dead_threshold: 0
         L1_node_ips:
