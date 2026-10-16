@@ -1,6 +1,8 @@
 [Unit]
 Description=kotekan
-After=syslog.target network.target
+# A --bind-address on a specific interface needs that interface up.
+Wants=network-online.target
+After=syslog.target network-online.target
 
 [Service]
 Type=simple
