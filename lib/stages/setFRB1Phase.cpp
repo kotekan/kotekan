@@ -1,5 +1,6 @@
-#include "Config.hpp"   // for Config
-#include "DataType.hpp" // for float16_t
+#include "CHORDTelescope.hpp" // for CHORDTelescope
+#include "Config.hpp"         // for Config
+#include "DataType.hpp"       // for float16_t
 #include "NDArray.hpp"
 #include "Stage.hpp"                    // for Stage
 #include "StageFactory.hpp"             // for REGISTER_KOTEKAN_STAGE
@@ -23,9 +24,9 @@
 #include <functional> // for function
 #include <limits>     // for numeric_limits
 #include <memory>     // for allocator, __shared_ptr_access, shared_ptr
+#include <numeric>    // for iota
 #include <optional>   // for optional
 #include <string>     // for basic_string, string
-#include <utility>    // for swap
 #include <vector>     // for vector
 
 /**
@@ -45,8 +46,8 @@
  *
  * The weights are constant except for the bad feed mask: weight frame `k` is made from mask frame
  * `k`, so the mask must have the same lifetime. The weight of a dish grid cell is zero if the
- * feed the FRB1 kernel places there (see `frb_dish_index_at_location`) is bad. This includes
- * feeds outside the main array, which the kernel places on otherwise empty cells.
+ * feed the FRB1 kernel places there (see `frb_dish_index_at_location`) is bad. On CHORD this
+ * includes feeds outside the main array, which the kernel places on otherwise empty cells.
  *
  * @par Buffers
  * @buffer frb1_phase      The weights, [TW=1][Fbar][P][dishN][dishM][C], float16
@@ -206,17 +207,25 @@ public:
                     std::sqrt(bound / kotekan::frb1_intensity_limit));
         }
 
-        // The feed at each dish grid cell, placed as the FRB1 kernels place them. The grid
-        // indices are (M, N), swapped from the telescope's (x, y) if necessary. Padding dishes
+        // The feed at each dish grid cell, placed as the FRB1 kernels place them. Padding dishes
         // (index >= num_dishes) have no feed and are not masked.
-        const Telescope& tel = Telescope::instance();
-        std::vector<grid_idx_2d_t> grid_indices =
-            tel.get_main_array_grid_indices(num_dishes, tel.fiducial_element_order());
-        if (frb1_swap_MN)
-            for (grid_idx_2d_t& grid_idx : grid_indices)
-                std::swap(grid_idx.at(0), grid_idx.at(1));
-        const std::vector<int> dish_index_at_loc =
-            kotekan::frb_dish_index_at_location(grid_indices, num_dishes_M, num_dishes_N);
+        std::vector<int> dish_index_at_loc(num_dishes_M * num_dishes_N);
+        const CHORDTelescope* const chord_tel =
+            dynamic_cast<const CHORDTelescope*>(&Telescope::instance());
+        if (chord_tel) {
+            // The grid indices are (M, N), swapped from the telescope's (x, y) if necessary
+            for (int dish_M = 0; dish_M < num_dishes_M; ++dish_M)
+                for (int dish_N = 0; dish_N < num_dishes_N; ++dish_N)
+                    dish_index_at_loc.at(dish_M + num_dishes_M * dish_N) =
+                        chord_tel->get_dish_idx_at_grid_indices(
+                            frb1_swap_MN ? grid_idx_2d_t{dish_N, dish_M}
+                                         : grid_idx_2d_t{dish_M, dish_N});
+            dish_index_at_loc = kotekan::frb_dish_index_at_location(dish_index_at_loc, num_dishes,
+                                                                    num_dishes_M, num_dishes_N);
+        } else {
+            // The CHIME FRB1 kernels have no dish layout: cell `i` holds dish `i`
+            std::iota(dish_index_at_loc.begin(), dish_index_at_loc.end(), 0);
+        }
 
         const std::shared_ptr<const kotekan::GenericNDArray> frame_desc =
             frb1_phase_buffer->get_frame_desc<kotekan::GenericNDArray>();

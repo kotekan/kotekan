@@ -6,7 +6,6 @@
 #ifndef FRB_DISH_LAYOUT_HPP
 #define FRB_DISH_LAYOUT_HPP
 
-#include "Telescope.hpp"      // for grid_idx_2d_t
 #include "kotekanLogging.hpp" // for FATAL_ERROR_NON_OO
 
 #include <cstddef> // for size_t
@@ -19,50 +18,48 @@ namespace kotekan {
  *
  * The FRB1 kernels (`julia/kernels/frb.jl`) place every dish at a cell of an `M` x `N` grid
  * (their dish layout `S`) and multiply it by the weight `W` of that cell. Main array dishes sit at
- * their grid indices. The remaining cells are filled in order (`m` slow, `n` fast) with the other
- * dishes: first the input dishes outside the main array (e.g. RFI antennas, Missing dishes, whose
- * grid indices are negative), then padding dishes `num_dishes`, `num_dishes + 1`, ... that do not
- * exist in the input.
+ * their grid location (see `CHORDTelescope::get_dish_idx_at_grid_indices`). The remaining cells
+ * are filled in order (`m` slow, `n` fast) with the other dishes: first the input dishes outside
+ * the main array (e.g. RFI antennas, Missing dishes), then padding dishes `num_dishes`,
+ * `num_dishes + 1`, ... that do not exist in the input.
  *
- * @param grid_indices The grid indices (m, n) of the input dishes; its size is `num_dishes`
- * @param M            The size of the dish grid in the fast direction
- * @param N            The size of the dish grid in the slow direction
+ * @param array_dish_at_loc The main array dish at cell `m + M * n`, or -1 if there is none
+ * @param num_dishes        The number of input dishes
+ * @param M                 The size of the dish grid in the fast direction
+ * @param N                 The size of the dish grid in the slow direction
  * @return The dish index at cell `m + M * n`
  */
-inline std::vector<int> frb_dish_index_at_location(const std::vector<grid_idx_2d_t>& grid_indices,
-                                                   const int M, const int N) {
-    const int num_dishes = grid_indices.size();
+inline std::vector<int> frb_dish_index_at_location(const std::vector<int>& array_dish_at_loc,
+                                                   const int num_dishes, const int M, const int N) {
     if (num_dishes > M * N)
         FATAL_ERROR_NON_OO("{:d} dishes do not fit the {:d}x{:d} dish grid", num_dishes, M, N);
+    if (array_dish_at_loc.size() != std::size_t(M * N))
+        FATAL_ERROR_NON_OO("The dish table has {:d} cells, but the dish grid is {:d}x{:d}",
+                           array_dish_at_loc.size(), M, N);
 
-    std::vector<int> dish_index_at_loc(M * N, -1);
-    std::vector<int> surplus_dishes;
-    for (int d = 0; d < num_dishes; ++d) {
-        const grid_idx_2d_t grid_idx = grid_indices.at(d);
-        if (grid_idx.at(0) < 0 || grid_idx.at(1) < 0) {
-            surplus_dishes.push_back(d);
+    std::vector<bool> placed(M * N, false);
+    for (const int d : array_dish_at_loc) {
+        if (d < 0)
             continue;
-        }
-        if (grid_idx.at(0) >= M || grid_idx.at(1) >= N)
-            FATAL_ERROR_NON_OO("Dish {:d} has grid indices ({:d}, {:d}) outside the {:d}x{:d} "
-                               "dish grid",
-                               d, grid_idx.at(0), grid_idx.at(1), M, N);
-        const int loc_idx = grid_idx.at(0) + M * grid_idx.at(1);
-        if (dish_index_at_loc.at(loc_idx) >= 0)
-            FATAL_ERROR_NON_OO("Dishes {:d} and {:d} have the same grid indices ({:d}, {:d})",
-                               dish_index_at_loc.at(loc_idx), d, grid_idx.at(0), grid_idx.at(1));
-        dish_index_at_loc.at(loc_idx) = d;
+        if (d >= num_dishes || placed.at(d))
+            FATAL_ERROR_NON_OO("Dish {:d} is not a unique input dish (num_dishes {:d})", d,
+                               num_dishes);
+        placed.at(d) = true;
     }
-    for (int d = num_dishes; d < M * N; ++d)
-        surplus_dishes.push_back(d);
 
-    // Every dish is either on the grid or surplus, and there are M * N of them, so the surplus
-    // dishes exactly fill the empty cells
-    std::size_t surplus_idx = 0;
-    for (int m = 0; m < M; ++m)
-        for (int n = 0; n < N; ++n)
-            if (dish_index_at_loc.at(m + M * n) < 0)
-                dish_index_at_loc.at(m + M * n) = surplus_dishes.at(surplus_idx++);
+    // Every dish is either in the main array or surplus, and there are M * N of them, so the
+    // surplus dishes exactly fill the empty cells
+    std::vector<int> dish_index_at_loc = array_dish_at_loc;
+    int surplus_dish = 0;
+    for (int m = 0; m < M; ++m) {
+        for (int n = 0; n < N; ++n) {
+            if (dish_index_at_loc.at(m + M * n) >= 0)
+                continue;
+            while (placed.at(surplus_dish))
+                ++surplus_dish;
+            dish_index_at_loc.at(m + M * n) = surplus_dish++;
+        }
+    }
 
     return dish_index_at_loc;
 }
