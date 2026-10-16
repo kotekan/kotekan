@@ -2117,7 +2117,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
 
     # TODO: determine types and sizes automatically
     Smn_memory = Array{Int16x2}(undef, M * N)
-    W_memory = Array{Float16x2}(undef, M * N * Fbar_in * P)
+    W_memory = Array{Float16x2}(undef, M * N * P * Fbar_W)
     E_memory = Array{Int4x8}(undef, idiv(D, 4) * P * Fbar_in * Tbar)
     I_wanted = Array{Float16x2}(undef, M * 2 * N * Fbar_out * Ttilde)
     info_wanted = Array{Int32}(undef, num_threads * num_warps * num_blocks)
@@ -2154,14 +2154,26 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
         Ttildemin = Int32(0)
         Ttildemax = Int32(Ttildemin + fld(Tbarmax - Tbarmin, Tds))
 
-        Fbar_in_min = Int32(0)
-        Fbar_in_max = Int32(min(Fbar_in, Fbar_out))
-        Fbar_out_min = Int32(0)
-        Fbar_out_max = Int32(min(Fbar_in, Fbar_out))
+        # As in Kotekan, `W` holds just the frequency span, which therefore cannot exceed `Fbar_W`
+        max_span = U * fld(min(Fbar_in, Fbar_W, Fbar_out), U)
+        if run_selftest
+            # A random span, placed at random in the input and the output
+            span = U * rand(1:(max_span ÷ U))
+            Fbar_in_min = Int32(rand(0:(Fbar_in - span)))
+            Fbar_out_min = Int32(rand(0:(Fbar_out - span)))
+        else
+            span = max_span
+            Fbar_in_min = Int32(0)
+            Fbar_out_min = Int32(0)
+        end
+        Fbar_in_max = Int32(Fbar_in_min + span)
+        Fbar_out_max = Int32(Fbar_out_min + span)
+        # As in Kotekan, one block per frequency of the span
+        blocks = span
 
         @show Tbarmin Tbarmax Fbar_in_min Fbar_in_max
         @show Ttildemin Ttildemax Fbar_out_min Fbar_out_max
-        @show num_threads num_warps num_blocks
+        @show num_threads num_warps blocks
 
         # The kernel writes only complete downsampled time samples
         time_range = Tbarmin:(Tbarmin + Tds * (Ttildemax - Ttildemin) - 1)
@@ -2191,11 +2203,13 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
             W_memory .= [Float16x2(c2t(Wvalue)...) for i in eachindex(W_memory)]
 
             dish = rand(0:(D - 1))
-            freq = rand(Fbar_in_min:(Fbar_in_max - 1))
+            block = rand(0:(blocks - 1))
+            freq_in = Fbar_in_min + block
+            freq_out = Fbar_out_min + block
             polr = rand(0:(P - 1))
             time = rand(time_range)
-            @show dish freq polr time
-            Eidx = dish ÷ 4 + idiv(D, 4) * polr + idiv(D, 4) * P * freq + idiv(D, 4) * P * Fbar_in * time
+            @show dish freq_in freq_out polr time
+            Eidx = dish ÷ 4 + idiv(D, 4) * polr + idiv(D, 4) * P * freq_in + idiv(D, 4) * P * Fbar_in * time
             Fvalue = 7.5f0 * uniform_in_disk()
             Evalue = round(Int, real(Fvalue)) + im * round(Int, imag(Fvalue))
             Evalue8 = zero(SVector{8,Int8})
@@ -2208,7 +2222,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
             dstime = time ÷ Tds
             @show dstime
             for beamq in 0:(2 * N - 1), beamp in 0:(2 * M - 1)
-                Iidx = beamp ÷ 2 + M * beamq + M * 2 * N * freq + M * 2 * N * Fbar_out * dstime
+                Iidx = beamp ÷ 2 + M * beamq + M * 2 * N * freq_out + M * 2 * N * Fbar_out * dstime
                 dishm, dishn = dish_grid[dish + 1]
                 # Eqn. (4)
                 Ẽvalue = cispi((2 * dishm * beamp / Float32(2 * M) + 2 * dishn * beamq / Float32(2 * N)) % 2.0f0) * Wvalue * Evalue
@@ -2235,12 +2249,26 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
                 Smn_memory[d] = Int16x2(dish_grid[d]...)
             end
 
-            freq = rand(Fbar_in_min:(Fbar_in_max - 1))
+            # Block `block` beamforms input frequency `freq_in` with the weights `W[block]`, and
+            # writes output frequency `freq_out`
+            block = rand(0:(blocks - 1))
+            freq_in = Fbar_in_min + block
+            freq_out = Fbar_out_min + block
             time = rand(time_range)
-            @show freq time
+            @show block freq_in freq_out time
 
             # Eqn. (4): the phase of dish (m, n) in beam (p, q)
             beam_phase = (m, n, p, q) -> cispi((2 * m * p / Float32(2 * M) + 2 * n * q / Float32(2 * N)) % 2.0f0)
+
+            # The other frequencies of the span get different weights, and the frequencies past the
+            # span NaN (as in setFRB1Phase), so that weights from any other frequency are noticed
+            fill!(W_memory, Float16x2(NaN, NaN))
+            for f in 0:(blocks - 1), polr in 0:(P - 1)
+                Wother = Float16x2(c2t(uniform_in_disk())...)
+                for n in 0:(N - 1), m in 0:(M - 1)
+                    W_memory[m + M * n + M * N * polr + M * N * P * f + 1] = Wother
+                end
+            end
 
             Wvalues = zeros(ComplexF32, M, N, P)
             Evalues = zeros(Complex{Int}, D, P)
@@ -2254,9 +2282,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
                     Wvalue = Wgain * beam_phase(m, n, Δp, Δq)
                     Wvalue = Complex{Float32}(Float16(real(Wvalue)), Float16(imag(Wvalue)))
                     Wvalues[m + 1, n + 1, polr + 1] = Wvalue
-                    for f in 0:(Fbar_W - 1)
-                        W_memory[m + M * n + M * N * polr + M * N * P * f + 1] = Float16x2(c2t(Wvalue)...)
-                    end
+                    W_memory[m + M * n + M * N * polr + M * N * P * block + 1] = Float16x2(c2t(Wvalue)...)
                 end
 
                 for dish in 0:(D - 1)
@@ -2264,7 +2290,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
                     Fvalue = 7.0f0 * conj(beam_phase(dishm, dishn, p0, q0))
                     Evalue = round(Int, real(Fvalue)) + im * round(Int, imag(Fvalue))
                     Evalues[dish + 1, polr + 1] = Evalue
-                    Eidx = dish ÷ 4 + idiv(D, 4) * polr + idiv(D, 4) * P * freq + idiv(D, 4) * P * Fbar_in * time
+                    Eidx = dish ÷ 4 + idiv(D, 4) * polr + idiv(D, 4) * P * freq_in + idiv(D, 4) * P * Fbar_in * time
                     Evalue8 = convert(NTuple{8,Int8}, swap_offset(E_memory[Eidx + 1]))
                     Evalue8 = setindex(Evalue8, real(Evalue), 2 * (dish % 4) + 0 + 1)
                     Evalue8 = setindex(Evalue8, imag(Evalue), 2 * (dish % 4) + 1 + 1)
@@ -2275,7 +2301,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
             dstime = time ÷ Tds
             @show dstime
             for beamq in 0:(2 * N - 1), beamp in 0:(2 * M - 1)
-                Iidx = beamp ÷ 2 + M * beamq + M * 2 * N * freq + M * 2 * N * Fbar_out * dstime
+                Iidx = beamp ÷ 2 + M * beamq + M * 2 * N * freq_out + M * 2 * N * Fbar_out * dstime
                 Ivalue = 0.0f0
                 for polr in 0:(P - 1)
                     Ẽvalue = zero(ComplexF32)
@@ -2316,7 +2342,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
             I_cuda,
             info_cuda;
             threads=(num_threads, num_warps),
-            blocks=num_blocks,
+            blocks=blocks,
             shmem=shmem_bytes,
         )
         synchronize()
@@ -2339,7 +2365,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
                         I_cuda,
                         info_cuda;
                         threads=(num_threads, num_warps),
-                        blocks=num_blocks,
+                        blocks=blocks,
                         shmem=shmem_bytes,
                     )
                 end
@@ -2348,7 +2374,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
             # All times in μsec
             runtime = stats.time / nruns * 1.0e+6
             num_frequencies_scaled = F₀
-            runtime_scaled = runtime / Fbar_in * num_frequencies_scaled
+            runtime_scaled = runtime / blocks * num_frequencies_scaled
             dataframe_length = T * sampling_time_μsec
             fraction = runtime_scaled / dataframe_length
             round1(x) = round(x; digits=1)
@@ -2371,7 +2397,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
                 blocks_per_sm: $num_blocks_per_sm
               call-parameters:
                 threads: [$num_threads, $num_warps]
-                blocks: [$num_blocks]
+                blocks: [$blocks]
                 shmem_bytes: $shmem_bytes
               result-μsec:
                 runtime: $(round1(runtime))
@@ -2387,7 +2413,8 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
         # @show count(isnan, (@view I_memory[1:(M * 2 * N * Fbar_out * Ttildemax)]))
         # @assert all(!isnan, (@view I_memory[1:(M * 2 * N * Fbar_out * Ttildemax)]))
         info_memory = Array(info_cuda)
-        @assert all(==(0), info_memory)
+        # Only the launched blocks write their status
+        @assert all(==(0), @view info_memory[1:(num_threads * num_warps * blocks)])
 
         if run_selftest
             println("Checking results...")
