@@ -519,9 +519,9 @@ inline bool iceBoardShuffle::advance_frames(uint64_t new_seq, bool first_time) {
     get_chord_metadata(lost_samples_buf, lost_samples_frame_id)->set_fpga_seq_num(new_seq);
     get_chord_metadata(lost_samples_buf, lost_samples_frame_id)->set_time_downsampling_fpga(1);
     get_chord_metadata(lost_samples_buf, lost_samples_frame_id)
-        ->set_freq_upchan_factor(std::vector<int>(1 /* nfreq */, 1));
+        ->set_freq_upchan_factor(std::vector<int>(4 /* nfreq */, 1));
     get_chord_metadata(lost_samples_buf, lost_samples_frame_id)
-        ->set_freq_upchan_index(std::vector<int>(1 /* nfreq */, 0));
+        ->set_freq_upchan_index(std::vector<int>(4 /* nfreq */, 0));
     // TODO: are these required for the lost_samples buffer? or is having them
     // in the corresponding data buffer sufficient?
     get_chord_metadata(lost_samples_buf, lost_samples_frame_id)->set_first_packet_recv_time(now);
