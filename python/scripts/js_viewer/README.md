@@ -25,7 +25,7 @@ pipelines with mostly server-side changes.
 ## Running
 
 Usually the viewer is launched as a kotekan child via the `SpawnProcess` stage,
-already wired into the airspy configs:
+already wired into the airspy configs (build kotekan with `-DWITH_SPAWN_PROCESS=ON`):
 
 ```yaml
 spawn_pyviewer:
