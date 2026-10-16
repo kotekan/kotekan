@@ -239,6 +239,10 @@ n2k_counts_triangle_size: n2k_counts_blocksize * n2k_counts_blocksize * n2k_coun
 # The largest upchannelization factor used in this run. All upchannelizers delay their
 # output so that it is aligned in time with that of the largest factor.
 max_upchannelization_factor: 16
+# The L1 receiver requires the FRB output to begin at a multiple of 3*samples_per_data_set FPGA
+# samples. The upchannelizers round their output delay up to a multiple of this, so the dpdk
+# alignment must be a multiple of it as well.
+upchan_output_alignment: 3 * samples_per_data_set
 
 # UpchannelizationSchedule (used by setUpchanGain) expects these in the root level of the config tree.
 upchan_factors: [16]
