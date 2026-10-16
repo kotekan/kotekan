@@ -84,8 +84,13 @@ with `θ_M = M (n·σ_M) ν/c` and `σ_M` the grid spacing along M (likewise for
 - For every coarse channel, the FRB1 peak must be within one beam of `(2θ_M, 2θ_N)`.
 - On failure, the check reports whether p or q matches the mirror `−2θ` instead.
 
-**FRB2.** The FRB2 beam whose configured position equals the source must hold the peak in every
-channel that carries the tone. This applies to the `frb2` variant. **Tolerance: exact beam index.**
+**FRB2.** For the `frb2` variant, the FRB2 beam whose configured position equals the source
+must hold the maximum power in every channel that carries the tone.
+
+- The dish spacing is many wavelengths, so grating lobes can give other beams exactly the same
+  power. Such ties are allowed.
+- **Tolerance:** the source beam must have ≥ 99.5% of the peak power, which allows for float16
+  rounding.
 
 **N2** (variant `n2`). A noise-free tone has spectral kurtosis 0 and is rightly flagged as RFI,
 so this variant uses a weaker tone (`A` = 2) in complex Gaussian noise of 2.8 LSB per
@@ -115,13 +120,15 @@ All variants start at FPGA sample `2^33 + 7·T`.
 
 ## Result (pathfinder, cx67, Release)
 
-**Passing:**
+**All four variants pass**, with the FRB beamformer fix of kotekan/kotekan#1779:
 
-- input, BB and all upchannelizers in every variant;
-- upchannelizer phase within 0.3° on average, amplitude within 10%;
-- N2 with `V_ab = E_a conj(E_b)` within 0.00° (99th percentile 3.4°), amplitude 0.96.
+- **Input, BB and all upchannelizers:** upchannelizer phase within 0.3° on average, amplitude
+  within 10%.
+- **FRB1:** peak at the predicted (p, q) in all 384 channels.
+- **FRB2:** the source beam holds the peak in all 384 channels with signal, 41 of them tied with
+  grating lobes.
+- **N2:** `V_ab = E_a conj(E_b)` within 0.00° (99th percentile 3.4°), amplitude 0.96.
 
-**Failing (FRB1 and FRB2):** FRB1's beam index along M (grid x) is mirrored, `p ≈ −2θ_M`, while
-`q ≈ 2θ_N` is correct. This holds in all three source positions. FRB2 inherits the mirror: a
-source on FRB2 beam (12, 5) peaks in beam (3, 5). The generator, BB and N2 all agree on the sign
-of x. So FRB1's M-direction FFT disagrees with the beam model that the FRB2 weights use.
+Without that fix, T2 found FRB1's beam index along M (grid x) mirrored, `p ≈ −2θ_M`, while
+`q ≈ 2θ_N` was correct. FRB2 inherited the mirror: a source on FRB2 beam (12, 5) peaked in beam
+(3, 5). The cause was the sign of the second (M) FFT in `julia/kernels/frb.jl`.

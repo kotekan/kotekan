@@ -260,7 +260,9 @@ def check(out_dir, var, config):
     )
 
     # FRB2 beams [Ttildehi256, R, Fbar, Ttildelo256]: for the `frb2` variant, the source beam
-    # must hold the peak in every fine channel that carries the tone
+    # must hold the maximum in every fine channel that carries the tone. Grating lobes (the dish
+    # spacing is many wavelengths) can give other beams the same power; such ties are allowed
+    # within the float16 resolution.
     frb2 = read_output(out_dir, "frb2_beams")
     audit(
         frb2,
@@ -269,20 +271,27 @@ def check(out_dir, var, config):
     )
     power = used_channels(frb2, 2).astype(np.float64).sum(axis=(0, 3))  # [R, Fbar]
     strong = power.max(axis=0) >= 0.1 * power.max()
-    peaks = power.argmax(axis=0)[strong]
-    if var["sources"][0]["direction"] == grid_beam_direction(
-        config, "frb2", *FRB2_BEAM
-    ):
+    if direction == grid_beam_direction(config, "frb2", *FRB2_BEAM):
         expected_beam = FRB2_BEAM[0] + value(config, "frb2_num_beams_x") * FRB2_BEAM[1]
-        bad = peaks != expected_beam
-        require(
-            not bad.any(),
-            f"frb2_beams: peak in beams {np.unique(peaks[bad]).tolist()}, expected {expected_beam}, in {bad.sum()} of {len(peaks)} channels",
-        )
+        share = power[expected_beam, strong] / power[:, strong].max(axis=0)
+        bad = share < 0.995
+        if bad.any():
+            peaks = power[:, strong].argmax(axis=0)[bad]
+            require(
+                False,
+                f"frb2_beams: beam {expected_beam} has only {share[bad].min():.3f} of the peak "
+                f"power (peak in beams {np.unique(peaks).tolist()}) in {bad.sum()} of "
+                f"{strong.sum()} channels",
+            )
+        ties = (power[:, strong] >= 0.995 * power[:, strong].max(axis=0)).sum(
+            axis=0
+        ) > 1
         results.append(
-            f"frb2_beams: peak in beam {expected_beam} in all {len(peaks)} channels with signal"
+            f"frb2_beams: beam {expected_beam} holds the peak in all {strong.sum()} channels "
+            f"with signal ({ties.sum()} ties with grating lobes)"
         )
     else:
+        peaks = power.argmax(axis=0)[strong]
         results.append(
             f"frb2_beams: peaks in beams {np.unique(peaks).tolist()} (not checked)"
         )
