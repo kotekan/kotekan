@@ -24,6 +24,10 @@ log_level: info
 # The largest upchannelization factor used in this run. All upchannelizers delay their
 # output so that it is aligned in time with that of the largest factor.
 max_upchannelization_factor: 16
+# The L1 receiver requires the FRB output to begin at a multiple of 3*samples_per_data_set FPGA
+# samples. The upchannelizers round their output delay up to a multiple of this, so the dpdk
+# alignment must be a multiple of it as well.
+upchan_output_alignment: 3 * samples_per_data_set
 
 # Test configuration parameters
 {% set using_dpdk = True %}
@@ -216,7 +220,8 @@ dpdk:
   mbuf_cache_size: 128
   # Set to true when using a switch to replicate packets
   using_switch: true
-  alignment: samples_per_data_set
+  # align to same granurality as 2018 CHIME since since backends rely on this
+  alignment: 3*samples_per_data_set
   alignment_startup_delay: 20.0
   lcore_start_delay: 1.0
   # List of PCIe devices we don't want to attach too

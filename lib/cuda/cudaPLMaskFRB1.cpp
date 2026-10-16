@@ -1,17 +1,17 @@
 #include "cudaPLMaskFRB1.hpp" // for launch_frb1_pl_mask
 
-#include "Config.hpp"                // for Config
-#include "DataType.hpp"              // for uint1x8_t
-#include "NDArray.hpp"               // for NDArray
-#include "NDArrayRingBuffer.hpp"     // for NDArrayRingBuffer, extent_t, read_descriptor_t
-#include "bufferContainer.hpp"       // for bufferContainer
-#include "chordMetadata.hpp"         // for chordMetadata
-#include "cudaCommand.hpp"           // for cudaCommand, cudaCommandState, REGISTER_CUDA_COMMAND...
-#include "cudaDeviceInterface.hpp"   // for cudaDeviceInterface
-#include "div.hpp"                   // for div_ceil, div_noremainder
-#include "gpuCommand.hpp"            // for gpuCommandType
-#include "kotekanLogging.hpp"        // for DEBUG, FATAL_ERROR
-#include "upchannelizeReference.hpp" // for upchan_default_num_taps
+#include "Config.hpp"                   // for Config
+#include "DataType.hpp"                 // for uint1x8_t
+#include "NDArray.hpp"                  // for NDArray
+#include "NDArrayRingBuffer.hpp"        // for NDArrayRingBuffer, extent_t, read_descriptor_t
+#include "UpchannelizationSchedule.hpp" // for upchan_output_offset
+#include "bufferContainer.hpp"          // for bufferContainer
+#include "chordMetadata.hpp"            // for chordMetadata
+#include "cudaCommand.hpp"         // for cudaCommand, cudaCommandState, REGISTER_CUDA_COMMAND...
+#include "cudaDeviceInterface.hpp" // for cudaDeviceInterface
+#include "div.hpp"                 // for div_ceil, div_noremainder
+#include "gpuCommand.hpp"          // for gpuCommandType
+#include "kotekanLogging.hpp"      // for DEBUG, FATAL_ERROR
 
 #include "fmt.hpp" // for compile_string_to_view
 
@@ -52,9 +52,9 @@ public:
  * `Td` input samples `Tbar` [Td * Ttilde, Td * (Ttilde + 1)) over all dishes and polarizations, so
  * it is valid only if all of them are valid -- a logical AND. The input is the expanded PL mask
  * (for U=1) or the PL mask upchannelized by `cudaPLMaskUpchannelizer` (for U>1), which have the
- * same layout. For U=1 the first `(M-1) * max_upchannelization_factor / 2` input samples are
- * skipped, as the U=1 FRB1 beamformer does. As for the FRB1 output `I`, several of these commands
- * (one per upchannelization factor) write disjoint frequency ranges of a shared output ring buffer.
+ * same layout. For U=1 the first `upchan_output_offset` input samples are skipped, as the U=1
+ * FRB1 beamformer does. As for the FRB1 output `I`, several of these commands (one per
+ * upchannelization factor) write disjoint frequency ranges of a shared output ring buffer.
  *
  * The output holds one byte per output sample and output frequency: 1 if the sample is valid and
  * 0 if it depends on a lost packet. Input frequency `f` is written to the `U` output frequencies
@@ -88,6 +88,8 @@ public:
  * @conf  max_upchannelization_factor  Int.  Only for U=1: the largest upchannelization factor
  *                                           used in this run, which determines the skipped input
  *                                           samples.
+ * @conf  upchan_output_alignment      Int.  Optional, only for U=1. Round the skipped input
+ *                                           samples up to a multiple of this.
  * @conf  Fmin                         Int.  First input frequency to process. For U=1 the input
  *                                           is the expanded PL mask of all coarse frequencies, so
  *                                           this selects the U=1 channels; for U>1 the
@@ -117,9 +119,6 @@ public:
     void finalize_frame() override;
 
 private:
-    // Number of PFB taps
-    static constexpr int cuda_number_of_taps = kotekan::upchan_default_num_taps;
-
     // Parameters
     const int buffer_depth;
     const int num_times;
@@ -128,7 +127,6 @@ private:
     const int num_dishes;
     const int upchannelization_factor;
     const int downsampling_factor;
-    const int max_upchannelization_factor;
     // Number of input samples we skip at startup (see the U=1 FRB1 beamformer)
     const std::ptrdiff_t T_skip;
     const int Fmin;
@@ -178,12 +176,7 @@ cudaPLMaskFRB1::cudaPLMaskFRB1(kotekan::Config& config, const std::string& uniqu
     num_dishes(config.get<int>(unique_name, "num_dishes")),
     upchannelization_factor(config.get<int>(unique_name, "upchannelization_factor")),
     downsampling_factor(config.get<int>(unique_name, "downsampling_factor")),
-    max_upchannelization_factor(upchannelization_factor == 1
-                                    ? config.get<int>(unique_name, "max_upchannelization_factor")
-                                    : 0),
-    T_skip(upchannelization_factor == 1
-               ? (cuda_number_of_taps - 1) * std::ptrdiff_t(max_upchannelization_factor) / 2
-               : 0),
+    T_skip(upchannelization_factor == 1 ? upchan_output_offset(config, unique_name) : 0),
     Fmin(config.get<int>(unique_name, "Fmin")), Fmax(config.get<int>(unique_name, "Fmax")),
     Fbar_out_min(config.get<int>(unique_name, "Fbar_out_min")),
     Fbar_out_max(config.get<int>(unique_name, "Fbar_out_max")),
@@ -219,12 +212,6 @@ cudaPLMaskFRB1::cudaPLMaskFRB1(kotekan::Config& config, const std::string& uniqu
         FATAL_ERROR("upchannelization_factor ({:d}) and downsampling_factor ({:d}) must be "
                     "positive",
                     upchannelization_factor, downsampling_factor);
-    if (upchannelization_factor == 1
-        && !(max_upchannelization_factor >= 1
-             && (cuda_number_of_taps - 1) * max_upchannelization_factor % 2 == 0))
-        FATAL_ERROR("max_upchannelization_factor={:d} must be positive, and "
-                    "(taps-1)*max_upchannelization_factor must be even (taps={:d})",
-                    max_upchannelization_factor, cuda_number_of_taps);
     if (!(0 <= Fmin && Fmin <= Fmax && Fmax <= num_frequencies))
         FATAL_ERROR("Invalid channel range: require 0 <= Fmin ({:d}) <= Fmax ({:d}) <= "
                     "num_frequencies ({:d})",
@@ -246,10 +233,6 @@ cudaPLMaskFRB1::cudaPLMaskFRB1(kotekan::Config& config, const std::string& uniqu
         FATAL_ERROR("The input ring buffer holds {:d} rows of 64 samples; a quarter of that "
                     "is too small for one output sample of {:d} samples",
                     in_ringbuf, downsampling_factor);
-    if (!(T_skip / 64 <= in_ringbuf / 4))
-        FATAL_ERROR("The input ring buffer holds {:d} rows of 64 samples; a quarter of that "
-                    "is too small to skip {:d} samples",
-                    in_ringbuf, T_skip);
 
     pl_mask.register_consumer();
     frb1_pl_mask.register_producer();
