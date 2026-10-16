@@ -59,7 +59,12 @@ public:
         const std::string pilot_profiles_path =
             config.get<std::string>(unique_name, "pilot_profiles_path");
         const std::string weights_path = config.get<std::string>(unique_name, "weights_path");
-        load_bundle(pilot_profiles_path, weights_path);
+        const auto channel_namespace = config.get_default<std::string>(
+            unique_name, "receiver_channel_id_namespace", "chord_freq_id");
+        if (channel_namespace != "chord_freq_id" && channel_namespace != "chime_freq_id")
+            throw std::runtime_error(
+                "cudaPilotProxyDetector: unsupported receiver channel namespace");
+        load_bundle(pilot_profiles_path, weights_path, channel_namespace);
 
         // Create the handles here, before the pipeline runs: FStat_Create zeroes its scratch
         // with a plain cudaMemset, which waits for all work on the device. Channels bind at the
@@ -78,7 +83,7 @@ public:
         mask_i32_scratch = static_cast<int*>(
             device.get_gpu_memory(unique_name + "/mask_i32_scratch", sizeof(int)));
         for (auto& profile : bundle_profiles) {
-            if (profile.chord_channel_id < 0 || !profile.fine_calibrated)
+            if (profile.receiver_channel_id < 0 || !profile.fine_calibrated)
                 continue;
             profile.fstat_handle = FStat_Create(d_packed, detector_rows);
             if (!profile.fstat_handle)
@@ -98,13 +103,14 @@ public:
     /// One pilot channel row of pilot_profiles.json (runtime bundle).
     struct PilotChannelProfile {
         int physical_channel = -1;
-        int chord_channel_id = -1;
+        int receiver_channel_id = -1;
         double pilot_frequency_hz = 0.0;
         std::ptrdiff_t weight_offset_bytes = 0;
         std::ptrdiff_t weight_nbytes = 0;
         // fine_calibration (kernel core 2.3.0 mask epilogue); usable only
         // when status == "calibrated".
         bool fine_calibrated = false;
+        bool archive_review_only = false;
         int anchor_bin = 0;
         int designated_half_width = 0;
         int cfar_rank = 0;
@@ -164,7 +170,8 @@ private:
         return value.get<T>();
     }
 
-    void load_bundle(const std::string& pilot_profiles_path, const std::string& weights_path) {
+    void load_bundle(const std::string& pilot_profiles_path, const std::string& weights_path,
+                     const std::string& channel_namespace) {
         std::ifstream profiles_file(pilot_profiles_path);
         if (!profiles_file)
             throw std::runtime_error(
@@ -180,6 +187,16 @@ private:
             || pilot_profiles.at("profiles").empty())
             throw std::runtime_error(
                 "cudaPilotProxyDetector: pilot_profiles must be a non-empty array");
+
+        // Legacy CHORD bundles contain only chord_channel_id. Other namespaces require
+        // explicit bundle and row identities so an equal integer cannot bind the wrong sky bin.
+        const bool explicit_namespace = pilot_profiles.contains("receiver_channel_id_namespace");
+        if ((!explicit_namespace && channel_namespace != "chord_freq_id")
+            || (explicit_namespace
+                && pilot_profiles.at("receiver_channel_id_namespace") != channel_namespace))
+            throw std::runtime_error("cudaPilotProxyDetector: receiver channel namespace mismatch");
+        const char* alias =
+            channel_namespace == "chord_freq_id" ? "chord_channel_id" : "chime_channel_id";
 
         std::ifstream weights_file(weights_path, std::ios::binary);
         if (!weights_file)
@@ -271,7 +288,7 @@ private:
                         bundle_dir.string()));
 #endif
 
-        // CHORD's exported weight templates require per-window time reversal.
+        // Apply the receiver bundle's per-window time reversal contract.
         const auto& preprocessing = pilot_profiles.at("input_preprocessing");
         time_reverse_windows =
             preprocessing.at("time_reverse_detector_windows_before_kernel").get<bool>();
@@ -284,9 +301,9 @@ private:
         int fine_bins = 0;
         FStat_GetFineSpecs(nullptr, nullptr, &fine_bins);
         std::set<int> physical_channels;
-        std::set<int> chord_channel_ids;
+        std::set<int> receiver_channel_ids;
         std::ptrdiff_t expected_weight_offset = 0;
-        bool has_chord_channel_id = false;
+        bool has_receiver_channel_id = false;
 
         for (const auto& row : pilot_profiles.at("profiles")) {
             PilotChannelProfile profile;
@@ -312,17 +329,36 @@ private:
                 throw std::runtime_error(
                     fmt::format(fmt("cudaPilotProxyDetector: duplicate physical channel {:d}"),
                                 profile.physical_channel));
-            // Match the chordMetadata coarse_freq namespace; skip rows without an ID.
-            if (row.contains("chord_channel_id") && !row.at("chord_channel_id").is_null()) {
-                profile.chord_channel_id = read_integer<int>(row, "chord_channel_id");
-                if (profile.chord_channel_id < 0)
+            if (!explicit_namespace
+                && (row.contains("receiver_channel_id_namespace")
+                    || row.contains("receiver_channel_id")))
+                throw std::runtime_error(
+                    "cudaPilotProxyDetector: missing bundle receiver namespace");
+            if (explicit_namespace
+                && (!row.contains("receiver_channel_id_namespace")
+                    || row.at("receiver_channel_id_namespace") != channel_namespace
+                    || !row.contains("receiver_channel_id")))
+                throw std::runtime_error("cudaPilotProxyDetector: receiver row namespace mismatch");
+            const char* id_field = explicit_namespace ? "receiver_channel_id" : alias;
+            if (row.contains(alias) && !row.at(alias).is_null()) {
+                const int alias_id = read_integer<int>(row, alias);
+                if (alias_id < 0)
                     throw std::runtime_error(
-                        "cudaPilotProxyDetector: chord_channel_id is negative");
-                if (!chord_channel_ids.insert(profile.chord_channel_id).second)
+                        fmt::format(fmt("cudaPilotProxyDetector: {:s} is negative"), alias));
+            }
+            if (explicit_namespace && row.contains(alias) && row.at(alias) != row.at(id_field))
+                throw std::runtime_error(fmt::format(
+                    fmt("cudaPilotProxyDetector: {:s} disagrees with receiver_channel_id"), alias));
+            if (row.contains(id_field) && !row.at(id_field).is_null()) {
+                profile.receiver_channel_id = read_integer<int>(row, id_field);
+                if (profile.receiver_channel_id < 0)
                     throw std::runtime_error(
-                        fmt::format(fmt("cudaPilotProxyDetector: duplicate chord_channel_id {:d}"),
-                                    profile.chord_channel_id));
-                has_chord_channel_id = true;
+                        "cudaPilotProxyDetector: receiver_channel_id is negative");
+                if (!receiver_channel_ids.insert(profile.receiver_channel_id).second)
+                    throw std::runtime_error(
+                        fmt::format(fmt("cudaPilotProxyDetector: duplicate {:s} {:d}"), alias,
+                                    profile.receiver_channel_id));
+                has_receiver_channel_id = true;
             }
             require(row, {"pilot_frequency_hz", "weight_bank_offset_bytes", "weight_bank_nbytes"});
             profile.pilot_frequency_hz = row.at("pilot_frequency_hz").get<double>();
@@ -364,6 +400,15 @@ private:
             const auto& calibration = row.at("fine_calibration");
             require(calibration, {"status"});
             const std::string calibration_status = calibration.at("status").get<std::string>();
+            if (calibration.contains("provenance") && calibration.at("provenance").is_object()) {
+                const auto& provenance = calibration.at("provenance");
+                if (provenance.contains("threshold_selection")) {
+                    const auto& selection = provenance.at("threshold_selection");
+                    profile.archive_review_only =
+                        selection.is_object()
+                        && selection.value("qualification", "") == "archive_review_only";
+                }
+            }
             if (calibration.value("decision_version", "") != "fine_decision_v1")
                 throw std::runtime_error(fmt::format(
                     fmt("cudaPilotProxyDetector: unsupported fine decision version for physical "
@@ -444,16 +489,16 @@ private:
                 fmt("cudaPilotProxyDetector: profile table accounts for {:d} weight bytes but "
                     "weights.bin contains {:d}"),
                 std::int64_t(expected_weight_offset), std::uint64_t(weight_bank.size())));
-        if (!has_chord_channel_id)
+        if (!has_receiver_channel_id)
             throw std::runtime_error(
-                "cudaPilotProxyDetector: bundle carries no chord_channel_id values");
+                "cudaPilotProxyDetector: bundle carries no receiver channel IDs");
     }
 };
 
 /**
  * @class cudaPilotProxyDetector
  * @brief cudaCommand running the PilotProxy ATSC DTV pilot-tone F-statistic
- * detector (vendored in external/pilotproxy) on CHORD voltage data.
+ * detector (vendored in external/pilotproxy) on packed receiver voltage data.
  *
  * @author Dylan Gormley
  *
@@ -464,8 +509,8 @@ private:
  *
  * Each detector block is packed into stream-major rows. Packing removes the
  * offset-binary encoding and reverses each window when the bundle requests it.
- * The block length comes from the compiled core: 128 windows of 64 samples per
- * stream, or 8192 samples, on CHORD.
+ * The block length comes from the compiled core: 128 windows of 64 or 128 samples per
+ * stream: 8192 samples on CHORD, or 16384 on CHIME.
  * Each bound pilot channel uses the fine CFAR mask and must have a calibrated
  * profile; otherwise the stage stops at the first frame. Leave an uncalibrated
  * channel out of the bundle, or list it in permanent_mask_freq_ids.
@@ -510,7 +555,7 @@ private:
  *
  * @conf buffer_depth               Int. GPU frames used for pipelining.
  * @conf num_times                  Int. Voltage samples per upstream GPU
- *                                  frame (ring advance unit; 8192 for CHORD).
+ *                                  frame (ring advance unit; 8192 for CHORD, 16384 for CHIME).
  * @conf num_frequencies            Int. Local coarse frequencies (F).
  * @conf num_polarizations          Int. Polarizations (2).
  * @conf num_dishes                 Int. Dishes (D).
@@ -533,6 +578,8 @@ private:
  *                                  detector_contract.json must be next to it; the
  *                                  digests are checked at load.
  * @conf weights_path               String. Runtime bundle weights.bin.
+ * @conf receiver_channel_id_namespace String. coarse_freq namespace: chord_freq_id (default)
+ *                                  or chime_freq_id. Must match the bundle.
  */
 class cudaPilotProxyDetector : public cudaCommand {
 public:
@@ -705,12 +752,16 @@ void cudaPilotProxyDetector::bind_first_frame(
             continue;
         }
         for (const auto& profile : state.bundle_profiles) {
-            if (profile.chord_channel_id < 0) {
-                // Counted once below; a bundle without chord ids cannot bind.
+            if (profile.receiver_channel_id < 0) {
+                // Counted once below; a bundle without receiver IDs cannot bind.
                 continue;
             }
-            if (profile.chord_channel_id != coarse_freq[f])
+            if (profile.receiver_channel_id != coarse_freq[f])
                 continue;
+            if (profile.archive_review_only)
+                FATAL_ERROR("PilotProxy: receiver ID {:d} has archive-review-only thresholds; "
+                            "active detector evaluation requires separately qualified thresholds",
+                            coarse_freq[f]);
             if (!profile.fine_calibrated)
                 FATAL_ERROR("PilotProxy: physical channel {:d} is bound on this node but its "
                             "fine calibration is not deployable; remove it from the bundle or "
@@ -721,16 +772,16 @@ void cudaPilotProxyDetector::bind_first_frame(
             channel.profile = &profile;
             state.bound_channels.push_back(channel);
             INFO("PilotProxy: bound ATSC physical channel {:d} (pilot {:.6f} MHz, "
-                 "chord_channel_id {:d}) to local frequency index {:d}",
+                 "receiver_channel_id {:d}) to local frequency index {:d}",
                  profile.physical_channel, profile.pilot_frequency_hz * 1e-6,
-                 profile.chord_channel_id, f);
+                 profile.receiver_channel_id, f);
         }
     }
     for (const auto& profile : state.bundle_profiles)
-        if (profile.chord_channel_id < 0)
+        if (profile.receiver_channel_id < 0)
             ++num_without_id;
     if (num_without_id > 0)
-        INFO("PilotProxy: {:d} bundle profile(s) carry no chord_channel_id and cannot bind on "
+        INFO("PilotProxy: {:d} bundle profile(s) carry no receiver_channel_id and cannot bind on "
              "this receiver; re-export the bundle from a receiver profile that declares "
              "metadata.channel_id_map",
              num_without_id);

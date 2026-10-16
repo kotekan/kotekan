@@ -147,14 +147,16 @@ def detector_rows_from_voltage(
     *,
     num_freq=NUM_FREQ,
     num_dishes=NUM_DISHES,
+    window_samples=K,
 ):
     """[T, F, P, D] offset-binary bytes -> (re, im) int16 arrays of shape
     [rows, K] in the kernel's row-major stream-major order."""
-    arr = block_bytes.reshape(BLOCK_SAMPLES, num_freq, NUM_POL, num_dishes)
+    block_samples = 128 * window_samples
+    arr = block_bytes.reshape(block_samples, num_freq, NUM_POL, num_dishes)
     channel = arr[:, freq_index, :, :]  # [T, P, D]
     # streams [S, T] with s = p * D + d, then rows [S * W, K]
-    streams = channel.transpose(1, 2, 0).reshape(NUM_POL * num_dishes, BLOCK_SAMPLES)
-    rows = streams.reshape(-1, BLOCK_SAMPLES // K, K).reshape(-1, K)
+    streams = channel.transpose(1, 2, 0).reshape(NUM_POL * num_dishes, block_samples)
+    rows = streams.reshape(-1, 128, window_samples).reshape(-1, window_samples)
     if time_reverse_windows:
         rows = rows[:, ::-1]  # adapter flip assumed by the weight templates
     real = ((rows.astype(np.int16) >> 4) & 0xF) - 8  # offset-binary decode
@@ -164,7 +166,7 @@ def detector_rows_from_voltage(
 
 def expected_row_sums(real, imag, weights_packed):
     """Exact complex projections [terms, rows, 2], computed on the CPU."""
-    w = np.frombuffer(weights_packed, dtype=np.uint8).reshape(3, K)
+    w = np.frombuffer(weights_packed, dtype=np.uint8).reshape(3, real.shape[1])
     w_real = sign_extend_nibble_twos(w >> 4)
     w_imag = sign_extend_nibble_twos(w)
     projections = []
@@ -257,7 +259,10 @@ def expected_products(
     from pilot_proxy.fine_decision import fine_mask_decision
     from pilot_proxy.fxfft import fine_power_fx
 
-    profiles = {row.get("chord_channel_id"): row for row in bundle["profiles"]}
+    profiles = {
+        row.get("receiver_channel_id", row.get("chord_channel_id")): row
+        for row in bundle["profiles"]
+    }
     reverse = bundle["input_preprocessing"][
         "time_reverse_detector_windows_before_kernel"
     ]
@@ -270,7 +275,12 @@ def expected_products(
         offset = profile["weight_bank_offset_bytes"]
         weights = weight_bank[offset : offset + profile["weight_bank_nbytes"]]
         real, imag = detector_rows_from_voltage(
-            block_bytes, index, reverse, num_freq=len(freq_ids), num_dishes=num_dishes
+            block_bytes,
+            index,
+            reverse,
+            num_freq=len(freq_ids),
+            num_dishes=num_dishes,
+            window_samples=profile["weight_bank_nbytes"] // 3,
         )
         projections = expected_row_sums(real, imag, weights)
         fine = fine_power_fx(projections, num_streams=NUM_POL * num_dishes)
@@ -330,7 +340,7 @@ def main():
     profiles_by_id = {
         row["chord_channel_id"]: row
         for row in pilot_profiles["profiles"]
-        if row.get("chord_channel_id") is not None
+        if row.get("receiver_channel_id", row.get("chord_channel_id")) is not None
     }
     if not profiles_by_id:
         print("FAIL: bundle carries no chord_channel_id entries")

@@ -1,0 +1,99 @@
+{#-
+  Optional CHIME detector diagnostics; does not apply masks.
+  PilotProxy DTV detector on the CHIME upgrade X-engine, detect only.
+  Build with -DPILOTPROXY_DETECTOR_WINDOW_SAMPLES=128.
+  Include explicitly from a validated CHIME configuration. Disabled unless included.
+  Receiver profiles must use chime_freq_id and qualified thresholds; archive-review-only
+  candidates are refused. Validate actual stream allocation and metadata before use.
+-#}
+{% set dtv_runtime_bundle_dir = dtv_runtime_bundle_dir|default("data/pilotproxy_bundle") %}
+{% set dtv_output_dir = dtv_output_dir|default("/scratch/dtv") %}
+
+# One frame per 16384-sample block: mask byte, coarse powers (target, lower,
+# upper) and fine rank support for each of the 16 local frequencies.
+host_dtv_mask_buffer:
+    kotekan_buffer: ndarray
+    num_frames: host_buffer_depth
+    value_type: int8
+    extents: [num_freq_gpu_buf]
+    quantity_name: "dtv_mask"
+    dimnames: ["F"]
+    dimscalings: [1]
+    metadata_pool: main_pool
+
+host_dtv_powers_buffer:
+    kotekan_buffer: ndarray
+    num_frames: host_buffer_depth
+    value_type: uint64
+    extents: [num_freq_gpu_buf, 3]
+    quantity_name: "dtv_powers"
+    dimnames: ["F", "W"]
+    dimscalings: [1, 1]
+    metadata_pool: main_pool
+
+host_dtv_fine_support_buffer:
+    kotekan_buffer: ndarray
+    num_frames: host_buffer_depth
+    value_type: int32
+    extents: [num_freq_gpu_buf, 2]
+    quantity_name: "dtv_fine_support"
+    dimnames: ["F", "S"]
+    dimscalings: [1, 1]
+    metadata_pool: main_pool
+
+run_dtv_detector:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        # This config has no root buffer_depth, num_times or frame_arrival_period:
+        # set them here, as every other cudaProcess in it does.
+        buffer_depth: gpu_buffer_depth
+        frame_arrival_period: network_frame_arrival_period
+        num_times: samples_per_data_set
+        # Nothing in chime_upgrade_n2.j2 sets cuda_stream, so 0, 1 and 2 are taken
+        # by the defaults and 3 and 4 are free.
+        num_cuda_streams: 5
+        in_buffers:
+            host_xposed_voltage_ringbuffer: host_xposed_voltage_ringbuffer
+        out_buffers:
+            host_dtv_mask: host_dtv_mask_buffer
+            host_dtv_powers: host_dtv_powers_buffer
+            host_dtv_fine_support: host_dtv_fine_support_buffer
+        commands:
+        - name: cudaPilotProxyDetector
+          cuda_stream: 3
+          num_frequencies: num_freq_gpu_buf
+          voltage_name: xposed_voltage
+          receiver_channel_id_namespace: chime_freq_id
+          dtv_mask_name: dtv_mask
+          dtv_powers_name: dtv_powers
+          dtv_fine_support_name: dtv_fine_support
+          pilot_profiles_path: {{ dtv_runtime_bundle_dir }}/pilot_profiles.json
+          weights_path: {{ dtv_runtime_bundle_dir }}/weights.bin
+        - name: cudaSyncOutput
+          cuda_stream: 4
+        - name: cudaOutputData
+          cuda_stream: 4
+          gpu_mem: dtv_mask_buffer
+          out_buf: host_dtv_mask
+        - name: cudaOutputData
+          cuda_stream: 4
+          gpu_mem: dtv_powers_buffer
+          out_buf: host_dtv_powers
+        - name: cudaOutputData
+          cuda_stream: 4
+          gpu_mem: dtv_fine_support_buffer
+          out_buf: host_dtv_fine_support
+
+# Diagnostic outputs only; no visibility or weight consumer is routed through them.
+write_dtv:
+{% for product in ["mask", "powers", "fine_support"] %}
+    {{ product }}:
+        kotekan_stage: rawFileWrite
+        in_buf: host_dtv_{{ product }}_buffer
+        base_dir: {{ dtv_output_dir }}
+        file_name: dtv_{{ product }}
+        file_ext: raw
+        num_frames_per_file: 1024
+        allow_ndarray: true
+{% endfor %}
