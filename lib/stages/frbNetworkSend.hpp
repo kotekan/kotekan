@@ -44,7 +44,7 @@
  *      @buffer_metadata chordMetadata
  *
  *
- * @conf   udp_frb_packet_size  Int (default 4264). packet size including header
+ * @conf   udp_frb_packet_size  Int (default 4272). packet size including header
  * @conf   udp_frb_port_number  Int (default 1313). UDP destination port of the FRB streams. The
  *                              source port is assigned by the OS.
  * @conf   number_of_subnets    Int (default 4). Number of subnets or VLANS used for transmission of

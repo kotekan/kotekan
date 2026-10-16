@@ -342,6 +342,7 @@ void frbNetworkSend::main_thread() {
                             if (e_stream
                                 == local_beam_offset / 4
                                        + link) { // RH: not sure what the `/4` means.
+                                DestIpSocket& dst = stream_dest.at(link);
                                 if (dst.active
                                     && (_ping_dead_threshold == std::chrono::seconds::zero()
                                         || dst.live)) {
@@ -439,7 +440,6 @@ void frbNetworkSend::main_thread() {
                                                                + header.data_nbytes)
                                            <= in_buf->frame_size);
 
-                                    DestIpSocket& dst = stream_dest.at(link);
                                     struct iovec msg_iov[2] = {
                                         {.iov_base = header_buf.data(), .iov_len = header_buf.size()},
                                         {.iov_base = &beams_buffer[frb_packet_num * header.data_nbytes],
@@ -457,6 +457,9 @@ void frbNetworkSend::main_thread() {
                                     ssize_t expected_send_len = 0;
                                     for (size_t i = 0; i < hdr.msg_iovlen; ++i)
                                         expected_send_len += hdr.msg_iov[i].iov_len;
+                                    if(expected_send_len != udp_frb_packet_size)
+                                        FATAL_ERROR("Unexpected UDP packet size {:d} in config file, expected {:d}",
+                                                    udp_frb_packet_size, expected_send_len);
                                     const ssize_t send_len =
                                         sendmsg(src_sockets[dst.sending_socket].socket_fd, &hdr, 0);
                                     if (send_len != expected_send_len) {
