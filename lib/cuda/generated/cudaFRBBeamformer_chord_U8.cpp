@@ -10,6 +10,7 @@
 #include "NDArrayBuffer.hpp"
 #include "NDArrayRingBuffer.hpp"
 #include "Telescope.hpp"
+#include "UpchannelizationSchedule.hpp"
 #include "bufferContainer.hpp"
 #include "chordMetadata.hpp"
 #include "cudaCommand.hpp"
@@ -18,6 +19,7 @@
 #include "div.hpp"
 #include "frbDishLayout.hpp"
 #include "ringbuffer.hpp"
+#include "upchannelizeReference.hpp"
 
 #include <algorithm>
 #include <array>
@@ -135,12 +137,9 @@ private:
     const int Fbar_out_min, Fbar_out_max;
 
     // The upchannelizers skip input samples at startup so that all their outputs begin at input
-    // sample `(M-1) * max_upchannelization_factor / 2` (see `upchan_template.cxx`). Without
-    // upchannelization (U=1) we read the input voltages directly and skip the same number of
-    // samples ourselves, so that all producers of the shared output buffer `I` are aligned.
-    // Only needed for U=1.
-    const int max_upchannelization_factor;
-    // Number of input samples we skip at startup
+    // sample `upchan_output_offset` (see `upchan_template.cxx`). Without upchannelization (U=1)
+    // we read the input voltages directly and skip the same number of samples ourselves, so that
+    // all producers of the shared output buffer `I` are aligned. Only needed for U=1.
     const std::ptrdiff_t Tbar_skip;
 
     // Kernel arguments:
@@ -435,13 +434,7 @@ cudaFRBBeamformer_chord_U8::cudaFRBBeamformer_chord_U8(Config& config,
     Fbar_in_max(config.get<int>(unique_name, "Fbar_in_max")),
     Fbar_out_min(config.get<int>(unique_name, "Fbar_out_min")),
     Fbar_out_max(config.get<int>(unique_name, "Fbar_out_max")),
-    max_upchannelization_factor(cuda_upchannelization_factor == 1
-                                    ? config.get<int>(unique_name, "max_upchannelization_factor")
-                                    : 0),
-    Tbar_skip(cuda_upchannelization_factor == 1
-                  ? (cuda_upchan_number_of_taps - 1) * std::ptrdiff_t(max_upchannelization_factor)
-                        / 2
-                  : 0),
+    Tbar_skip(cuda_upchannelization_factor == 1 ? upchan_output_offset(config, unique_name) : 0),
 
     poison_buffers(config.get_default<bool>(unique_name, "poison_buffers", false)),
 
@@ -467,13 +460,8 @@ cudaFRBBeamformer_chord_U8::cudaFRBBeamformer_chord_U8(Config& config,
     host_info_buffer(info_length),
 
     did_init_host_S_buffer(false), did_set_metadata(false) {
-    if (cuda_upchannelization_factor == 1
-        && !(max_upchannelization_factor >= 1
-             && (cuda_upchan_number_of_taps - 1) * max_upchannelization_factor % 2 == 0))
-        FATAL_ERROR(
-            "Kernel FRBBeamformer_chord_U8: max_upchannelization_factor={:d} must be positive, "
-            "and (taps-1)*max_upchannelization_factor must be even (taps={:d})",
-            max_upchannelization_factor, int(cuda_upchan_number_of_taps));
+    // `upchan_output_offset` is calculated with the default number of taps
+    static_assert(cuda_upchan_number_of_taps == kotekan::upchan_default_num_taps);
 
     // Register host memory
     CHECK_CUDA_ERROR(cudaHostRegister(host_S_buffer.data(),
@@ -791,7 +779,8 @@ cudaEvent_t cudaFRBBeamformer_chord_U8::execute(cudaPipelineState& /*pipestate*/
                 FATAL_ERROR(
                     "Another producer of buffer I starts at fpga_seq_num={:d}, but kernel "
                     "FRBBeamformer_chord_U8 starts at {:d}. (Are all upchannelizers and the U=1 "
-                    "FRB beamformer using the same max_upchannelization_factor?)",
+                    "FRB beamformer using the same max_upchannelization_factor and "
+                    "upchan_output_alignment?)",
                     I_meta->has_fpga_seq_num() ? I_meta->get_fpga_seq_num() : -1, I_fpga_seq_num);
         } else if (I_has_metadata && I_meta->has_fpga_seq_num()) {
             FATAL_ERROR("Another producer of buffer I starts at fpga_seq_num={:d}, but the input "
