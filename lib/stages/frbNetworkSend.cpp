@@ -249,8 +249,11 @@ void frbNetworkSend::main_thread() {
     uint64_t initial_nsec = t0.tv_sec * 1'000'000'000UL + t0.tv_nsec;
 
     const uint64_t initial_fpga_count = metadata->get_fpga_seq_num();
-    if(initial_fpga_count % (samples_per_packet * packets_per_stream * time_downsampling_fpga) != 0) {
-        ERROR("initial fpga couunt {} is not aligned with a 2018 CHIME frame size ({}). This will break the L1 receiver code", initial_fpga_count, samples_per_packet * packets_per_stream * time_downsampling_fpga);
+    if (initial_fpga_count % (samples_per_packet * packets_per_stream * time_downsampling_fpga)
+        != 0) {
+        ERROR("initial fpga couunt {} is not aligned with a 2018 CHIME frame size ({}). This will "
+              "break the L1 receiver code",
+              initial_fpga_count, samples_per_packet * packets_per_stream * time_downsampling_fpga);
     }
     uint64_t last_fpga_count = initial_fpga_count;
 
@@ -367,7 +370,7 @@ void frbNetworkSend::main_thread() {
                                         .fpga_count =
                                             metadata->get_fpga_seq_num()
                                             + ttilde16_low16_by_packets_per_stream
-                                                * packets_per_stream * _timesamples_per_frb_packet
+                                                  * packets_per_stream * _timesamples_per_frb_packet
                                                   * static_cast<uint64_t>(time_downsampling_fpga)
                                             + frame * _timesamples_per_frb_packet
                                                   * static_cast<uint64_t>(time_downsampling_fpga),
@@ -425,7 +428,9 @@ void frbNetworkSend::main_thread() {
 
                                     // end of packet still a valid address (or
                                     // just beyond)?
-                                    assert(static_cast<size_t>(frb_packet_num * header.data_nbytes + header.data_nbytes) <= in_buf->frame_size);
+                                    assert(static_cast<size_t>(frb_packet_num * header.data_nbytes
+                                                               + header.data_nbytes)
+                                           <= in_buf->frame_size);
 
                                     struct iovec msg_iov[2] = {
                                         {.iov_base = header_buf.data(),
