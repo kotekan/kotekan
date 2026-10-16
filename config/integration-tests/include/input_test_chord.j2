@@ -1,0 +1,42 @@
+# -*-yaml-*-
+
+# CHORD and CHORD pathfinder integration test input
+#
+# Jinja variables:
+#     input_kind    inventVoltage input kind (default: random)
+#     box_begin, box_end
+#                   for input_kind `box`: FPGA samples with a constant voltage
+#     pl_box_begin, pl_box_end
+#                   lost FPGA samples (default: none)
+#     bf_mode, bf_manual_bad_feeds
+#                   inventBFMask mode (default: all_good)
+
+{% set input_kind = input_kind | default('random') %}
+
+################################################################################
+
+# Stages
+
+generate_voltage:
+    kotekan_stage: inventVoltage
+    voltage: host_voltage_buffer
+    input_kind: {{ input_kind }}
+{% if input_kind == 'box' %}
+    box_begin: {{ box_begin }}
+    box_end: {{ box_end }}
+    reuse_frames: false
+{% else %}
+    reuse_frames: true
+{% endif %}
+
+generate_pl_mask:
+    kotekan_stage: inventPLMask
+    pl_mask: host_pl_mask_buffer
+    box_begin: {{ pl_box_begin | default(0) }}
+    box_end: {{ pl_box_end | default(0) }}
+
+generate_bf_mask:
+    kotekan_stage: inventBFMask
+    bf_mask: host_bf_mask_buffer
+    mode: {{ bf_mode | default('all_good') }}
+    manual_bad_feeds: {{ bf_manual_bad_feeds | default([]) }}
