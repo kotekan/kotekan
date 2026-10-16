@@ -72,6 +72,7 @@ constexpr double deg2rad = M_PI / 180.0;
  *                          frames.
  * @conf max_upchannelization_factor  int. The largest upchannelization factor of the run; it
  *                          determines the upchannelizers' output offset.
+ * @conf upchan_output_alignment  int. Optional. Rounds the output offset up to a multiple of this.
  * @conf beams      List of FixedBBBeam.  For `fixed_mode` = "manual". Beams to produce.
  * @conf num_x      uint32. For `fixed_mode` = "grid" or "grid_degrees". Number of beams in grid X
  *                          direction (~East/West)
