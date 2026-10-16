@@ -209,6 +209,10 @@ private:
     // the telescope object to handle conversion to site time
     const Telescope& tel;
 
+    // threads used to check aliveness of receivers
+    std::thread send_ping_thread;
+    std::thread receive_ping_thread;
+
     /// initialize sockets used to send data to FRB nodes
     int initialize_source_sockets();
 
