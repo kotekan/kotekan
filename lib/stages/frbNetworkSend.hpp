@@ -179,11 +179,11 @@ private:
     int num_frequencies;
 
     // hard-coded size constraints (due ot packet layout expected by receiver)
-    static const int _nfreq_coarse = 4;
-    static const int _factor_upchan_out = 16;
-    static const int _timesamples_per_frb_packet = 16;
-    static const int _nbeams = 4;          // number of beams per FRB network packets
-    static const int _total_nbeams = 1024; // number of beams formed by beamformer
+    static constexpr int _nfreq_coarse = 4;
+    static constexpr int _factor_upchan_out = 16;
+    static constexpr int _timesamples_per_frb_packet = 16;
+    static constexpr int _nbeams = 4;          // number of beams per FRB network packets
+    static constexpr int _total_nbeams = 1024; // number of beams formed by beamformer
 
     // Beam kotekan::Configuration Mode
     bool column_mode;
