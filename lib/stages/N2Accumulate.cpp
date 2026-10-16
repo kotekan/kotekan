@@ -821,7 +821,17 @@ bool N2Accumulate::receive_rfi_first_stage_enabled(nlohmann::json& update) {
         WARN("Failed to read update to {:s}: {:s}", _rfi_first_stage_config_path, e.what());
         return false;
     }
-    const int64_t seq = _tel.to_seq(time_ns);
+    // Same rule as cudaRFISKtilde: 0 means from startup, a time before the stream start is
+    // refused (it would underflow in to_seq) and true is returned so kotekan keeps running.
+    int64_t seq = 0;
+    if (time_ns != 0) {
+        if (time_ns < _tel.to_time_ns(0)) {
+            WARN("Got invalid start time: {:d} - keeping first-stage excision recorded as {:s}",
+                 time_ns, _rfi_first_stage_enabled ? "on" : "off");
+            return true;
+        }
+        seq = _tel.to_seq(time_ns);
+    }
     INFO("Recording first-stage RFI excision {:s} from seq {:d}", enabled ? "on" : "off", seq);
     std::lock_guard<std::mutex> lock(_rfi_first_stage_mutex);
     _next_rfi_first_stage_enabled = enabled;
