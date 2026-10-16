@@ -1,0 +1,206 @@
+# -*-yaml-*-
+
+# CHORD and CHORD pathfinder integration test output
+#
+# Jinja variables:
+#     outputs       list of output names to write (see `write_data` below)
+#     write_frames  dict: number of frames to write per output name (default: default_write_frames)
+#     default_write_frames
+#
+# Each writer stops after its number of frames; kotekan exits once all writers are done. A
+# writer that stops would block its buffer's producer if it were the last consumer, so every
+# writer has a drain (`skip_writing`) that keeps consuming.
+
+{% set outputs = outputs | default([]) %}
+{% set write_frames = write_frames | default({}) %}
+{% set default_write_frames = default_write_frames | default(8) %}
+{% set upchan_factors = [2, 4, 8, 16, 32, 64] %}
+
+################################################################################
+
+# Buffers
+
+# Host copies of GPU data. Buffers without a consumer are recycled immediately.
+
+host_frb2_beams_buffer:
+    kotekan_buffer: ndarray
+    num_frames: buffer_depth
+    value_type: float16
+    extents: [1, frb2_num_beams, upchan_all_max_output_channel - upchan_all_min_output_channel, frb_num_output_times]
+    quantity_name: "I2"
+    dimnames: ["Ttildehi256", "R", "Fbar", "Ttildelo256"]
+    dimscalings: [frb_downsampling_factor * 256, 1, 1, frb_downsampling_factor]
+    metadata_pool: main_pool
+
+# The packet loss mask of the FRB output, one byte (1 = valid) per sample and frequency
+host_frb_pl_mask_buffer:
+    kotekan_buffer: ndarray
+    num_frames: buffer_depth
+    value_type: uint8
+    extents: [frb_num_output_times, upchan_all_max_num_output_channels]
+    quantity_name: "pl_mask_I"
+    dimnames: ["Ttilde", "Fbar"]
+    dimscalings: [frb_downsampling_factor, 1]
+    metadata_pool: main_pool
+
+{% if 'pl_expanded_mask' in outputs %}
+host_pl_expanded_mask_buffer:
+    kotekan_buffer: ndarray
+    num_frames: buffer_depth
+    value_type: uint1x8
+    extents: [num_times / 64, num_frequencies, num_polarizations, num_dishes / 8, 64 / 8]
+    quantity_name: "pl_mask_exp"
+    dimnames: ["Thi64", "F", "P", "D8", "Tlo64"]
+    dimscalings: [64, 1, 1, 8, 8]
+    metadata_pool: main_pool
+{% endif %}
+
+{% if 'rfi_S012' in outputs %}
+host_rfi_S012_buffer:
+    kotekan_buffer: ndarray
+    num_frames: buffer_depth
+    value_type: uint64
+    extents: [rfi_num_times, num_frequencies, 3, num_polarizations, num_dishes]
+    quantity_name: "S012"
+    dimnames: ["Trfi", "F", "S", "P", "D"]
+    dimscalings: [rfi_downsampling_factor, 1, 1, 1, 1]
+    metadata_pool: main_pool
+{% endif %}
+
+{% if 'rfi_S012bar' in outputs %}
+host_rfi_S012bar_buffer:
+    kotekan_buffer: ndarray
+    num_frames: buffer_depth
+    value_type: uint64
+    extents: [rfi_num_times_bar, num_frequencies, 3, num_polarizations, num_dishes]
+    quantity_name: "S012bar"
+    dimnames: ["Trfibar", "F", "S", "P", "D"]
+    dimscalings: [rfi_downsampling_factor * rfi_second_downsampling_factor, 1, 1, 1, 1]
+    metadata_pool: main_pool
+{% endif %}
+
+{% if 'rfi_S012tilde' in outputs %}
+host_rfi_S012tilde_buffer:
+    kotekan_buffer: ndarray
+    num_frames: buffer_depth
+    value_type: uint64
+    extents: [rfi_num_times, num_frequencies, 3]
+    quantity_name: "S012tilde"
+    dimnames: ["Trfi", "F", "S"]
+    dimscalings: [rfi_downsampling_factor, 1, 1]
+    metadata_pool: main_pool
+{% endif %}
+
+{% if 'frb1_beams' in outputs %}
+host_frb1_beams_buffer:
+    kotekan_buffer: ndarray
+    num_frames: buffer_depth
+    value_type: float16
+    extents: [frb_num_output_times, upchan_all_max_num_output_channels, frb1_num_beams_Q, frb1_num_beams_P]
+    quantity_name: "I"
+    dimnames: ["Ttilde", "Fbar", "beamQ", "beamP"]
+    dimscalings: [frb_downsampling_factor, 1, 1, 1]
+    metadata_pool: main_pool
+{% endif %}
+
+{% for U in upchan_factors %}
+{% if ('upchan_U%d_expanded_pl_mask' % U) in outputs %}
+host_upchan_U{{ U }}_expanded_pl_mask_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: (64 / 8) * (num_dishes / 8) * num_polarizations * upchan_U{{ U }}_max_num_channels * (num_times / 64 / {{ U }})
+    metadata_pool: main_pool
+{% endif %}
+{% if ('upchan_U%d_voltage' % U) in outputs %}
+host_upchan_U{{ U }}_voltage_buffer:
+    kotekan_buffer: ndarray
+    num_frames: buffer_depth
+    value_type: int4x2_swapped_withoffset
+    extents: [num_times / {{ U }}, upchan_U{{ U }}_max_num_channels * {{ U }}, num_polarizations, num_dishes]
+    quantity_name: "Ebar"
+    dimnames: ["Tbar", "Fbar", "P", "D"]
+    dimscalings: [{{ U }}, 1, 1, 1]
+    metadata_pool: main_pool
+{% endif %}
+{% endfor %}
+
+################################################################################
+
+# Stages
+
+{% macro recv(name, ringbuffer, gpu_mem, buffer, output_size) %}
+run_recv_{{ name }}:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            {{ ringbuffer }}: {{ ringbuffer }}
+        out_buffers:
+            {{ buffer }}: {{ buffer }}
+        commands:
+        - name: cudaCopyFromRingbuffer
+          host_signal: {{ ringbuffer }}
+          gpu_mem_input: {{ gpu_mem }}
+          output_size: {{ output_size }}
+          ring_buffer_size: buffer_depth * output_size
+          out_buf: {{ buffer }}
+{% endmacro %}
+
+{% if 'pl_expanded_mask' in outputs %}
+{{ recv('pl_expanded_mask', 'host_pl_expanded_mask_ringbuffer', 'pl_expanded_mask_buffer', 'host_pl_expanded_mask_buffer',
+        '(64 / 8) * (num_dishes / 8) * num_polarizations * num_frequencies * (num_times / 64)') }}
+{% endif %}
+{% if 'rfi_S012' in outputs %}
+{{ recv('rfi_S012', 'host_rfi_S012_ringbuffer', 'rfi_S012_buffer', 'host_rfi_S012_buffer',
+        'sizeof_uint64 * num_dishes * num_polarizations * 3 * num_frequencies * rfi_num_times') }}
+{% endif %}
+{% if 'rfi_S012tilde' in outputs %}
+{{ recv('rfi_S012tilde', 'host_rfi_S012tilde_ringbuffer', 'rfi_S012tilde_buffer', 'host_rfi_S012tilde_buffer',
+        'sizeof_uint64 * 3 * num_frequencies * rfi_num_times') }}
+{% endif %}
+{% if 'rfi_S012bar' in outputs %}
+{{ recv('rfi_S012bar', 'host_rfi_S012bar_ringbuffer', 'rfi_S012bar_buffer', 'host_rfi_S012bar_buffer',
+        'sizeof_uint64 * num_dishes * num_polarizations * 3 * num_frequencies * rfi_num_times_bar') }}
+{% endif %}
+{% if 'frb1_beams' in outputs %}
+{{ recv('frb1_beams', 'host_frb1_beams_ringbuffer', 'frb1_beams_buffer', 'host_frb1_beams_buffer',
+        'sizeof_float16 * frb1_num_beams_P * frb1_num_beams_Q * upchan_all_max_num_output_channels * frb_num_output_times') }}
+{% endif %}
+{% for U in upchan_factors %}
+{% if ('upchan_U%d_expanded_pl_mask' % U) in outputs %}
+{{ recv('upchan_U%d_expanded_pl_mask' % U, 'host_upchan_U%d_expanded_pl_mask_ringbuffer' % U,
+        'upchan_U%d_expanded_pl_mask_buffer' % U, 'host_upchan_U%d_expanded_pl_mask_buffer' % U,
+        '(64 / 8) * (num_dishes / 8) * num_polarizations * upchan_U%d_max_num_channels * (num_times / 64 / %d)' % (U, U)) }}
+{% endif %}
+{% if ('upchan_U%d_voltage' % U) in outputs %}
+{{ recv('upchan_U%d_voltage' % U, 'host_upchan_U%d_voltage_ringbuffer' % U,
+        'upchan_U%d_voltage_buffer' % U, 'host_upchan_U%d_voltage_buffer' % U,
+        'num_dishes * num_polarizations * (upchan_U%d_max_num_channels * %d) * (num_times / %d)' % (U, U, U)) }}
+{% endif %}
+{% endfor %}
+
+# Output
+
+# Buffers that are not time-major, or whose time axis has extent 1, cannot use a single file.
+{% set multi_file = ['n2_vis', 'bb_beam_positions', 'bb_beam_ids', 'bb_shift', 'bb_beams',
+                     'frb2_beam_positions', 'frb2_beam_ids', 'frb2_beams', 'frb3_beams',
+                     'frb3_beams_offsetscale'] %}
+
+write_data:
+    create_single_file: true
+{% for name in outputs %}
+    write_{{ name }}:
+        kotekan_stage: hdf5FileWrite
+        in_buf: host_{{ name }}_buffer
+        file_name: {{ name }}
+        max_frames: {{ write_frames.get(name, default_write_frames) }}
+{% if name in multi_file or name.startswith('upchan_U') and name.endswith('_gain') %}
+        create_single_file: false
+{% endif %}
+    drain_{{ name }}:
+        kotekan_stage: hdf5FileWrite
+        in_buf: host_{{ name }}_buffer
+        file_name: drain_{{ name }}
+        skip_writing: true
+        create_single_file: false
+{% endfor %}
