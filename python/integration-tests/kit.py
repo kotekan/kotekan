@@ -161,3 +161,83 @@ def power_centroid(labels, power):
     total = power.sum()
     require(total > 0, "no signal power")
     return float((labels * power).sum() / total), labels[power > 0]
+
+
+C0 = 299792458.0  # speed of light [m/s]
+
+
+def large_seq(config):
+    """A large start FPGA sequence number. N2Accumulate needs frames to start at multiples of
+    the frame length; 7 frames past 2**33 aligns it with no lifetime or integration."""
+    return 2 ** 33 + 7 * value(config, "num_times")
+
+
+def value(config, key):
+    """A top-level config value; kotekan arithmetic expressions such as `5.0 / 4` that refer
+    to other top-level values are evaluated."""
+    v = config[key]
+    if not isinstance(v, str):
+        return v
+
+    class Names(dict):
+        def __missing__(self, name):
+            return value(config, name)
+
+    return eval(v, {"__builtins__": {}}, Names())
+
+
+def dish_positions(config):
+    """Dish positions [D, 3] in the grid frame, and which dishes exist, from
+    `telescope.dish_inputs`."""
+    tel = config["telescope"]
+    num_dishes = value(config, "num_dishes")
+    dx = float(tel["dish_separation_x_m"])
+    dy = float(tel["dish_separation_y_m"])
+    pos = np.zeros((num_dishes, 3))
+    exists = np.zeros(num_dishes, dtype=bool)
+    for dish in tel["dish_inputs"]:
+        d = dish["dish_idx"]
+        disp = dish["feed_pos_disp_m"]
+        pos[d] = [
+            dx * dish["grid_x_idx"] + disp[0],
+            dy * dish["grid_y_idx"] + disp[1],
+            disp[2],
+        ]
+        exists[d] = True
+    return pos, exists
+
+
+def channel_width(config):
+    return value(config, "adc_frequency") / value(config, "num_samples_per_frame")
+
+
+def direction_vector(direction):
+    nx, ny = direction
+    return np.array([nx, ny, np.sqrt(1 - nx ** 2 - ny ** 2)])
+
+
+def geometric_phases(config, direction, frequencies):
+    """exp(-2πi ν n·r_d / c) for frequencies [F] (Hz) and all dishes: [F, D]. Missing dishes
+    get 0. This is the convention of lib/testing/testSkySignal.hpp."""
+    pos, exists = dish_positions(config)
+    delay = pos @ direction_vector(direction) / C0
+    return np.exp(-2j * np.pi * np.outer(frequencies, delay)) * exists
+
+
+def grid_beam_direction(config, prefix, bx, by):
+    """The position of beam (bx, by) of a `grid_degrees` beam grid (setBBBeams, setFRBBeams)
+    with `<prefix>_num_beams_x`, `<prefix>_beam_separation_x` etc."""
+    angles = []
+    for b, axis in [(bx, "x"), (by, "y")]:
+        num = value(config, f"{prefix}_num_beams_{axis}")
+        sep = value(config, f"{prefix}_beam_separation_{axis}")
+        angles.append(np.radians(-sep * (num - 1) / 2 + sep * b))
+    return [float(np.sin(a)) for a in angles]
+
+
+def upchan_window(num_taps, U):
+    """The sinc-Hanning PFB window of the upchannelizer, without the 1/U factor
+    (julia/kernels/upchan.jl, `Wkernel`)."""
+    s = np.arange(num_taps * U)
+    x = (2 * s - (num_taps * U - 1)) / (2 * num_taps * U)
+    return np.cos(np.pi * x) ** 2 * np.sinc(num_taps * x)
