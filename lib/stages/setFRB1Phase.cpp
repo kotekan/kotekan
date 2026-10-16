@@ -3,11 +3,13 @@
 #include "NDArray.hpp"
 #include "Stage.hpp"                    // for Stage
 #include "StageFactory.hpp"             // for REGISTER_KOTEKAN_STAGE
+#include "Telescope.hpp"                // for Telescope, grid_idx_2d_t
 #include "UpchannelizationSchedule.hpp" // for upchan_output_offset
 #include "buffer.hpp"                   // for Buffer
 #include "bufferContainer.hpp"          // for bufferContainer
 #include "chordMetadata.hpp"            // for chordMetadata, get_chord_metadata
 #include "frb1IntensityBound.hpp"       // for frb1_intensity_bound, frb1_intensity_limit
+#include "frbDishLayout.hpp"            // for frb_dish_index_at_location
 #include "kotekanLogging.hpp"           // for DEBUG, FATAL_ERROR, INFO
 
 #include "fmt.hpp" // for compile_string_to_view, format
@@ -23,6 +25,7 @@
 #include <memory>     // for allocator, __shared_ptr_access, shared_ptr
 #include <optional>   // for optional
 #include <string>     // for basic_string, string
+#include <utility>    // for swap
 #include <vector>     // for vector
 
 /**
@@ -40,11 +43,14 @@
  * The frame has a leading length-1 time axis `TW` whose `dimscaling` is the lifetime; that is how
  * the GPU ring buffer learns how many FPGA samples one set of weights covers.
  *
- * The weights do not vary yet: every frame has the same content. Making them time dependent is
- * now a change to this stage alone.
+ * The weights are constant except for the bad feed mask: weight frame `k` is made from mask frame
+ * `k`, so the mask must have the same lifetime. The weight of a dish grid cell is zero if the
+ * feed the FRB1 kernel places there (see `frb_dish_index_at_location`) is bad. This includes
+ * feeds outside the main array, which the kernel places on otherwise empty cells.
  *
  * @par Buffers
  * @buffer frb1_phase      The weights, [TW=1][Fbar][P][dishN][dishM][C], float16
+ * @buffer bf_mask         The bad feed mask, [Tbf=1][P][D], int8, 1 = good
  * @buffer metadata_source A voltage buffer, or a list of them. Only the first frame of each is
  *                         read, for its `fpga_seq_num`; then this stage stops consuming it.
  *
@@ -62,6 +68,7 @@ class setFRB1Phase : public kotekan::Stage {
     const int num_dishes_M = frb1_swap_MN ? num_dishes_y : num_dishes_x;
     const int num_dishes_N = frb1_swap_MN ? num_dishes_x : num_dishes_y;
     const int num_polarizations = config.get<int>(unique_name, "num_polarizations");
+    const int num_dishes = config.get<int>(unique_name, "num_dishes");
 
     const std::vector<int> frequency_channels =
         config.get<std::vector<int>>(unique_name, "frequency_channels");
@@ -82,6 +89,7 @@ class setFRB1Phase : public kotekan::Stage {
     const std::int64_t output_offset = upchan_output_offset(config, unique_name);
 
     Buffer* const frb1_phase_buffer;
+    Buffer* const bf_mask_buffer;
     const std::vector<Buffer*> metadata_sources;
 
 public:
@@ -91,7 +99,7 @@ public:
               [](const kotekan::Stage& stage) {
                   return const_cast<kotekan::Stage&>(stage).main_thread();
               }),
-        frb1_phase_buffer(get_buffer("frb1_phase")),
+        frb1_phase_buffer(get_buffer("frb1_phase")), bf_mask_buffer(get_buffer("bf_mask")),
         metadata_sources(get_buffer_or_array("metadata_source"))
     //
     {
@@ -99,6 +107,7 @@ public:
         assert(upchan_max_channel >= upchan_min_channel);
         assert(upchan_num_channels <= upchan_max_num_channels);
         assert(frb1_phase_buffer);
+        assert(bf_mask_buffer);
         // `time_downsampling_fpga` is an `int`
         if (frb1_phase_lifetime_in_samples <= 0
             || frb1_phase_lifetime_in_samples > std::numeric_limits<int>::max())
@@ -108,6 +117,7 @@ public:
             FATAL_ERROR("metadata_source must name at least one buffer");
 
         frb1_phase_buffer->register_producer(unique_name);
+        bf_mask_buffer->register_consumer(unique_name);
         for (Buffer* const metadata_source : metadata_sources)
             metadata_source->register_consumer(unique_name);
 
@@ -119,6 +129,11 @@ public:
              num_dishes_M, num_components},
             {"TW", "Fbar", "P", "dishN", "dishM", "C"},
             {frb1_phase_lifetime_in_samples, 1, 1, 1, 1, 1}));
+
+        // Mask frame `k` is applied to weight frame `k`, so the mask must have our lifetime
+        bf_mask_buffer->require_frame_desc(kotekan::NDArray<std::int8_t, 3>::describe(
+            "bf_mask", {1, num_polarizations, num_dishes}, {"Tbf", "P", "D"},
+            {frb1_phase_lifetime_in_samples, 1, 1}));
     }
 
     virtual ~setFRB1Phase() {}
@@ -189,6 +204,18 @@ public:
                     std::sqrt(bound / kotekan::frb1_intensity_limit));
         }
 
+        // The feed at each dish grid cell, placed as the FRB1 kernels place them. The grid
+        // indices are (M, N), swapped from the telescope's (x, y) if necessary. Padding dishes
+        // (index >= num_dishes) have no feed and are not masked.
+        const Telescope& tel = Telescope::instance();
+        std::vector<grid_idx_2d_t> grid_indices =
+            tel.get_main_array_grid_indices(num_dishes, tel.fiducial_element_order());
+        if (frb1_swap_MN)
+            for (grid_idx_2d_t& grid_idx : grid_indices)
+                std::swap(grid_idx.at(0), grid_idx.at(1));
+        const std::vector<int> dish_index_at_loc =
+            kotekan::frb_dish_index_at_location(grid_indices, num_dishes_M, num_dishes_N);
+
         const std::shared_ptr<const kotekan::GenericNDArray> frame_desc =
             frb1_phase_buffer->get_frame_desc<kotekan::GenericNDArray>();
 
@@ -196,6 +223,14 @@ public:
         // increasing so that the weights form one continuous stream.
         for (std::int64_t frame_index = 0; !stop_thread; ++frame_index) {
             const int frame_id = frame_index % frb1_phase_buffer->num_frames;
+            const int bf_mask_frame_id = frame_index % bf_mask_buffer->num_frames;
+
+            DEBUG("[{:s}/{:d}] Waiting for buffer...", bf_mask_buffer->buffer_name, frame_index);
+            const std::int8_t* const bf_mask_frame =
+                static_cast<const std::int8_t*>(static_cast<const void*>(
+                    bf_mask_buffer->wait_for_full_frame(unique_name, bf_mask_frame_id)));
+            if (!bf_mask_frame)
+                return;
 
             // Wait for buffer. Blocking here paces production to the consumers.
             DEBUG("[{:s}/{:d}] Waiting for buffer...", frb1_phase_buffer->buffer_name, frame_index);
@@ -219,6 +254,25 @@ public:
 
             // Set buffer
             std::copy(weights.begin(), weights.end(), frb1_phase_frame);
+            // Bad feeds do not contribute
+            for (int polr = 0; polr < num_polarizations; ++polr) {
+                for (int dish_N = 0; dish_N < num_dishes_N; ++dish_N) {
+                    for (int dish_M = 0; dish_M < num_dishes_M; ++dish_M) {
+                        const int dish = dish_index_at_loc.at(dish_M + num_dishes_M * dish_N);
+                        if (dish >= num_dishes || bf_mask_frame[dish + num_dishes * polr])
+                            continue;
+                        for (int freq = 0; freq < upchan_num_channels * upchan_factor; ++freq) {
+                            const std::ptrdiff_t idx = str_dish_M * dish_M + str_dish_N * dish_N
+                                                       + str_polr * polr + str_freq * freq;
+                            frb1_phase_frame[idx] = float16_t(0);
+                        }
+                    }
+                }
+            }
+
+            DEBUG("[{:s}/{:d}] Marking buffer as empty...", bf_mask_buffer->buffer_name,
+                  frame_index);
+            bf_mask_buffer->mark_frame_empty(unique_name, bf_mask_frame_id);
 
             // Mark buffer as full
             DEBUG("[{:s}/{:d}] Marking buffer as full...", frb1_phase_buffer->buffer_name,

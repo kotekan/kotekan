@@ -18,7 +18,8 @@ bb_scale: 12
 
 # The phase matrix is valid for this many input samples. It must be a multiple of num_times,
 # the number of input samples the beamformer processes per kernel invocation.
-bb_phase_lifetime_in_samples: 25 * num_times # 1 second
+# calcBBPhase applies bad feed mask frame k to phase frame k.
+bb_phase_lifetime_in_samples: bf_mask_lifetime_in_samples
 
 ################################################################################
 
@@ -103,6 +104,7 @@ run_set_bb_beams:
 run_calc_bb_phase:
     kotekan_stage: calcBBPhase
     bb_beam_positions: host_bb_beam_positions_buffer
+    bf_mask: host_bf_mask_buffer
     bb_phase: host_bb_phase_buffer
     bb_shift: host_bb_shift_buffer
 

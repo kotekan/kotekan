@@ -67,6 +67,8 @@ frb1_num_beams_P: 2 * num_dishes_x
 frb1_num_beams_Q: 2 * num_dishes_y
 frb1_num_output_channels: 4096
 frb1_phase_lifetime_in_samples: 24 * num_times
+# setFRB1Phase applies bad feed mask frame k to weight frame k.
+bf_mask_lifetime_in_samples: frb1_phase_lifetime_in_samples
 
 frequency_channels: [{% for f in range(384) %}{{ 1536 + 16 * f }}{{ ", " if not loop.last }}{% endfor %}]
 
@@ -171,6 +173,17 @@ host_upchan_U{{ U }}_expanded_pl_mask_buffer:
     metadata_pool: main_pool
 {% endfor %}
 
+# All feeds are good
+host_bf_mask_buffer:
+    kotekan_buffer: ndarray
+    num_frames: buffer_depth
+    value_type: int8
+    extents: [1, num_polarizations, num_dishes]
+    quantity_name: "bf_mask"
+    dimnames: ["Tbf", "P", "D"]
+    dimscalings: [bf_mask_lifetime_in_samples, 1, 1]
+    metadata_pool: main_pool
+
 {% for U in frb_factors %}
 host_frb1_U{{ U }}_phase_buffer:
     kotekan_buffer: ndarray
@@ -220,6 +233,10 @@ generate_voltage:
 generate_pl_mask:
     kotekan_stage: inventPLMask
     pl_mask: host_pl_mask_buffer
+
+generate_bf_mask:
+    kotekan_stage: inventBFMask
+    bf_mask: host_bf_mask_buffer
 
 run_send_voltage:
     gpu_0:
@@ -355,6 +372,7 @@ run_set_frb1_U{{ U }}_phase:
     upchan_max_channel: {{ channels[U][1] }}
     upchan_max_num_channels: {{ max_num_channels[U] }}
     frb1_phase: host_frb1_U{{ U }}_phase_buffer
+    bf_mask: host_bf_mask_buffer
     metadata_source: host_voltage_buffer
 
 run_send_frb1_U{{ U }}_phase:

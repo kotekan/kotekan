@@ -32,7 +32,8 @@ frb_chunk_size: 256
 # The FRB1 beamforming weights are valid for this many input samples (about one second). The
 # U = 16 FRB1 kernel processes multiples of 16 * (384 / 16) = 384 input samples, so this must be a
 # multiple of 384.
-frb1_phase_lifetime_in_samples: 24 * num_times
+# setFRB1Phase applies bad feed mask frame k to weight frame k.
+frb1_phase_lifetime_in_samples: bf_mask_lifetime_in_samples
 
 ################################################################################
 
@@ -136,6 +137,7 @@ run_set_frb1_U16_phase:
     upchan_max_channel: upchan_U16_max_channel
     upchan_max_num_channels: upchan_U16_max_num_channels
     frb1_phase: host_frb1_U16_phase_buffer
+    bf_mask: host_bf_mask_buffer
     # The weight stream starts at the sequence number of the first voltage frame
     metadata_source:
 {% for id in range(16) %}   # num_frequencies = 16
