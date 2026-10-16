@@ -56,7 +56,6 @@
  * @conf   packets_per_stream   Int (default 8). Number of packets for each stream within each frame
  * @conf   L1_node_ips          Array of Strings. List of IPs to send to. (?)
  * @conf   beam_offset          Int (default 0). Offset the beam_id going to L1 Process
- * @conf   column_mode          bool (default false) Send beams in a single CHIME cylinder.
  * @conf   ping_interval        Uint32 (default 6 min) Time in seconds between sending a ping to
  * check destination is live
  * @conf   quick_ping_interval  Uint32 (default 5 sec) Time in seconds for sending pings when a live
@@ -180,9 +179,6 @@ private:
     static constexpr int _timesamples_per_frb_packet = 16;
     static constexpr int _nbeams = 4;          // number of beams per FRB network packets
     static constexpr int _total_nbeams = 1024; // number of beams formed by beamformer
-
-    // Beam kotekan::Configuration Mode
-    bool column_mode;
 
     /// Interval between checks of a node's liveliness
     const std::chrono::seconds _ping_interval;
