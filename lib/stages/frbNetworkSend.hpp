@@ -36,7 +36,7 @@
  *
  * @par Buffers
  * @buffer in_buf The kotkean buffer to hold the data to be transmitted to L1 nodes
- *      @buffer_format Array of uint8 quantized by cudaQuantize8Chime
+ *      @buffer_format Array of uint8 quantized by cudaQuantize8
  *      @buffer_metadata chordMetadata
  * @buffer offsetscale_buf The kotkean buffer to hold the offset and scale
  *      values for the data blocks to be transmitted to L1 nodes
