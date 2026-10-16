@@ -145,9 +145,11 @@ upchannelizer output start ``T*``, ``coarse_freq`` / ``freq_upchan_factor`` /
        within 0.5% of the peak (grating-lobe ties)
    * - T3 Quantization
      - Noise (σ = 2.8 LSB) plus a weak tone.
-     - upchan, BB, FRB3 vs FRB2
-     - int4 rms, zero and saturated fractions. FRB3 dequantized vs FRB2.
-     - Fail if rms < 0.5 or > 3.5 LSB or > 5% saturated; FRB3 ≤ half a step
+     - upchan (all U), BB, FRB2, FRB3 with offset and scale, FRB PL mask
+     - int4 rms, zero, saturated and -8 fractions against a Gaussian noise model. FRB3
+       dequantized vs FRB2; -8 exactly where the PL mask is invalid.
+     - Fail if rms < 0.5 or > 3.5 LSB, > 5% saturated, or any -8; FRB3 ≤ half a step plus
+       float16 rounding
    * - T4 Overflow
      - Full-scale coherent input; full-scale tone from a beam direction.
      - all
@@ -222,9 +224,16 @@ Findings
 * ``N2Accumulate`` requires correlation frames to start at multiples of the frame length. The
   tests assume that the receivers guarantee this.
 
-Expected finding: the upchannelizer scales its PFB window by 1/U and all configs use
-``upchan_gain`` 1, so for noise input the int4 output rms is about 0.89 σ/√U. T3 is likely to
-flag this at large U.
+* **The upchannelizer is under-loaded at large U** (T3, pathfinder). ``julia/kernels/upchan.jl``
+  scales the PFB window by 1/U, and all configs set ``upchan_gain`` to 1, so noise has the rms
+  0.892 σ/√U before rounding. For σ = 2.8 LSB the int4 rms falls from 1.84 LSB for U = 2 to
+  0.34 LSB (89% zeros) for U = 64. T3 fails for U = 64; U = 32 (0.52 LSB) is just above the limit. A gain
+  of about 1.12 √U would keep the rms near σ.
+* **The pathfinder BB beams are under-loaded by two bits** (T3). ``bb_scale`` is 12, while the
+  formula ``log2(sqrt(num_dishes)) + 7`` in the comment above it gives 10 for 64 dishes. At
+  σ = 2.8 the BB rms is 0.75 LSB with 53% zeros; this passes the 0.5 LSB limit.
+* FRB3 encodes FRB2 within half a step plus float16 rounding, and its rms is 2.5 LSB by
+  construction (T3).
 
 Data volume and run time
 ========================
