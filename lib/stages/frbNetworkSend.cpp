@@ -162,16 +162,17 @@ void frbNetworkSend::main_thread() {
 
     // config.update_value(unique_name, "beam_offset", beam_offset);
 
-    int frame_id = 0;
-    uint8_t* beams_buffer = (uint8_t*)in_buf->wait_for_full_frame(unique_name, frame_id);
+    int in_frame_id = 0;
+    uint8_t* beams_buffer = (uint8_t*)in_buf->wait_for_full_frame(unique_name, in_frame_id);
     if (beams_buffer == nullptr)
         return;
+    int offsetscale_frame_id = 0;
     float16_t* offsetscale_buffer =
-        (float16_t*)offsetscale_buf->wait_for_full_frame(unique_name, frame_id);
+        (float16_t*)offsetscale_buf->wait_for_full_frame(unique_name, offsetscale_frame_id);
     if (offsetscale_buffer == nullptr)
         return;
 
-    auto metadata = get_chord_metadata(in_buf, frame_id);
+    auto metadata = get_chord_metadata(in_buf, in_frame_id);
     auto in_coarse_freq = metadata->get_coarse_freq();
     const auto beams_frame_desc = in_buf->get_frame_desc<kotekan::GenericNDArray>();
     const auto offsetscale_frame_desc = offsetscale_buf->get_frame_desc<kotekan::GenericNDArray>();
@@ -262,19 +263,20 @@ void frbNetworkSend::main_thread() {
 
         // reading the next frame and comparing the fpga clock with the monotonic clock.
         if (count != 0) {
-            beams_buffer = (uint8_t*)in_buf->wait_for_full_frame(unique_name, frame_id);
+            beams_buffer = (uint8_t*)in_buf->wait_for_full_frame(unique_name, in_frame_id);
             if (beams_buffer == nullptr)
                 break;
             offsetscale_buffer =
-                (float16_t*)offsetscale_buf->wait_for_full_frame(unique_name, frame_id);
+                (float16_t*)offsetscale_buf->wait_for_full_frame(unique_name, offsetscale_frame_id);
             if (offsetscale_buffer == nullptr)
                 break;
 
-            metadata = get_chord_metadata(in_buf, frame_id);
+            metadata = get_chord_metadata(in_buf, in_frame_id);
             in_coarse_freq = metadata->get_coarse_freq();
 
             // sanity checks on input data
-            const auto offsetscale_metadata = get_chord_metadata(offsetscale_buf, frame_id);
+            const auto offsetscale_metadata =
+                get_chord_metadata(offsetscale_buf, offsetscale_frame_id);
             if (metadata->get_fpga_seq_num() != offsetscale_metadata->get_fpga_seq_num()) {
                 FATAL_ERROR(
                     "beam ({:s}) and offsetscale buffers ({:s}) are not in sync ({:d} != {:d})",
@@ -495,9 +497,10 @@ void frbNetworkSend::main_thread() {
         }
         (void)total_data_processed, assert(total_data_processed == in_buf->frame_size);
 
-        in_buf->mark_frame_empty(unique_name, frame_id);
-        offsetscale_buf->mark_frame_empty(unique_name, frame_id);
-        frame_id = (frame_id + 1) % in_buf->num_frames;
+        in_buf->mark_frame_empty(unique_name, in_frame_id);
+        offsetscale_buf->mark_frame_empty(unique_name, offsetscale_frame_id);
+        in_frame_id = (in_frame_id + 1) % in_buf->num_frames;
+        offsetscale_frame_id = (offsetscale_frame_id + 1) % offsetscale_buf->num_frames;
         count++;
     }
     ping_cv.notify_all();
