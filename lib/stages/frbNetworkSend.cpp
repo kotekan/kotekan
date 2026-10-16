@@ -356,8 +356,9 @@ void frbNetworkSend::main_thread() {
                                     const int ttilde16_low16 =
                                         ttilde16_low16_by_packets_per_stream * packets_per_stream
                                         + frame;
-                                    const int frb_packet_num = r4 * num_frequencies / _nfreq_coarse * 16
-                                                               + fbar64 * 16 + ttilde16_low16;
+                                    const int frb_packet_num =
+                                        r4 * num_frequencies / _nfreq_coarse * 16 + fbar64 * 16
+                                        + ttilde16_low16;
 
                                     // TODO: this is mostly constant and could be mostly
                                     // moved outside of this inner loop
@@ -383,8 +384,8 @@ void frbNetworkSend::main_thread() {
                                             tel.to_time_ns(0)), // a constant over the run
                                         .fpga_count =
                                             metadata->get_fpga_seq_num()
-                                            + ttilde16_low16_by_packets_per_stream * packets_per_stream
-                                                  * _timesamples_per_frb_packet
+                                            + ttilde16_low16_by_packets_per_stream
+                                                  * packets_per_stream * _timesamples_per_frb_packet
                                                   * static_cast<uint64_t>(time_downsampling_fpga)
                                             + frame * _timesamples_per_frb_packet
                                                   * static_cast<uint64_t>(time_downsampling_fpga),
@@ -397,7 +398,8 @@ void frbNetworkSend::main_thread() {
                                     // beam id convention 0->255, 1000->1255, 2000->2255, 3000->3255
                                     for (int b = 0; b < _nbeams; ++b) {
                                         const int beam_id = e_stream * _nbeams + b;
-                                        beam_ids[b] = (beam_id) % 256 + (int((beam_id) / 256) * 1000);
+                                        beam_ids[b] =
+                                            (beam_id) % 256 + (int((beam_id) / 256) * 1000);
                                     }
 
                                     uint16_t* coarse_freq_ids =
@@ -429,10 +431,10 @@ void frbNetworkSend::main_thread() {
                                             assert(idx_in < offsetscale_buf->frame_size
                                                                 / sizeof(*offsetscale_buffer) / 2);
 
-                                            offset[idx_out] =
-                                                static_cast<float>(offsetscale_buffer[2 * idx_in + 0]);
-                                            scale[idx_out] =
-                                                static_cast<float>(offsetscale_buffer[2 * idx_in + 1]);
+                                            offset[idx_out] = static_cast<float>(
+                                                offsetscale_buffer[2 * idx_in + 0]);
+                                            scale[idx_out] = static_cast<float>(
+                                                offsetscale_buffer[2 * idx_in + 1]);
                                         }
                                     }
 
@@ -446,8 +448,10 @@ void frbNetworkSend::main_thread() {
                                            <= in_buf->frame_size);
 
                                     struct iovec msg_iov[2] = {
-                                        {.iov_base = header_buf.data(), .iov_len = header_buf.size()},
-                                        {.iov_base = &beams_buffer[frb_packet_num * header.data_nbytes],
+                                        {.iov_base = header_buf.data(),
+                                         .iov_len = header_buf.size()},
+                                        {.iov_base =
+                                             &beams_buffer[frb_packet_num * header.data_nbytes],
                                          .iov_len = static_cast<size_t>(header.data_nbytes)},
                                     };
                                     struct msghdr hdr = {.msg_name = (void*)&dst.addr,
@@ -462,8 +466,9 @@ void frbNetworkSend::main_thread() {
                                     ssize_t expected_send_len = 0;
                                     for (size_t i = 0; i < hdr.msg_iovlen; ++i)
                                         expected_send_len += hdr.msg_iov[i].iov_len;
-                                    if(expected_send_len != udp_frb_packet_size)
-                                        FATAL_ERROR("Unexpected UDP packet size {:d} in config file, expected {:d}",
+                                    if (expected_send_len != udp_frb_packet_size)
+                                        FATAL_ERROR("Unexpected UDP packet size {:d} in config "
+                                                    "file, expected {:d}",
                                                     udp_frb_packet_size, expected_send_len);
                                     const ssize_t send_len =
                                         sendmsg(src_sockets[dst.sending_socket].socket_fd, &hdr, 0);
