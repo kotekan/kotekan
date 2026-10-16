@@ -1,0 +1,56 @@
+# -*-yaml-*-
+
+# CHORD and CHORD pathfinder integration test input
+#
+# Jinja variables:
+#     first_fpga_seq_num
+#                   FPGA sequence number of the first sample (default: 0), used by all generators
+#     input_kind    inventVoltage input kind (default: random)
+#     box_begin, box_end
+#                   for input_kind `box`: FPGA samples with a constant voltage
+#     sources, noise_rms, seed, noise_period_frames, active_inputs
+#                   for input_kind `sky`, see lib/testing/testSkySignal.hpp
+#     pl_box_begin, pl_box_end
+#                   lost FPGA samples (default: none)
+#     bf_mode, bf_manual_bad_feeds
+#                   inventBFMask mode (default: all_good)
+
+{% set input_kind = input_kind | default('random') %}
+
+first_fpga_seq_num: {{ first_fpga_seq_num | default(0) }}
+
+################################################################################
+
+# Stages
+
+generate_voltage:
+    kotekan_stage: inventVoltage
+    voltage: host_voltage_buffer
+    input_kind: {{ input_kind }}
+{% if input_kind == 'box' %}
+    box_begin: {{ box_begin }}
+    box_end: {{ box_end }}
+    reuse_frames: false
+{% elif input_kind == 'sky' %}
+    sources: {{ sources | default([]) | tojson }}
+    noise_rms: {{ noise_rms | default(0) }}
+    seed: {{ seed | default(1) }}
+    noise_period_frames: {{ noise_period_frames | default(4) }}
+{% if active_inputs is defined %}
+    active_inputs: {{ active_inputs | tojson }}
+{% endif %}
+{% else %}
+    reuse_frames: true
+{% endif %}
+
+generate_pl_mask:
+    kotekan_stage: inventPLMask
+    pl_mask: host_pl_mask_buffer
+    box_begin: {{ pl_box_begin | default(0) }}
+    box_end: {{ pl_box_end | default(0) }}
+
+generate_bf_mask:
+    kotekan_stage: inventBFMask
+    bf_mask: host_bf_mask_buffer
+    mode: {{ bf_mode | default('all_good') }}
+    manual_bad_feeds: {{ bf_manual_bad_feeds | default([]) }}
