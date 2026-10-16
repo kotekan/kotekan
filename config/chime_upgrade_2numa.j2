@@ -524,7 +524,7 @@ numa_{{ numa }}:
     host_bf_mask_buffer{{ numa_sfx }}:
         kotekan_buffer: ndarray
         num_frames: host_buffer_depth
-        value_type: uint8
+        value_type: int8
         extents: [1, num_polarizations, num_dishes]
         quantity_name: "bf_mask"
         dimnames: ["Tbf", "P", "D"]
@@ -1216,6 +1216,20 @@ numa_{{ numa }}:
         ring_buffer_size: frb2_weights_ring_depth * sizeof_float16 * upchan_U16_max_num_output_channels * frb2_num_beams * frb1_num_beams_Q * frb1_num_beams_P
         metadata_pool: main_pool{{ numa_sfx }}
 
+    # Packet loss masks
+
+    host_upchan_U16_expanded_pl_mask_ringbuffer{{ numa_sfx }}:
+        kotekan_buffer: ring
+        ring_buffer_size: gpu_buffer_depth * (64 / 8) * (num_dishes / 8) * num_polarizations * upchan_U16_max_num_channels * (samples_per_data_set / 64 / 16)
+        metadata_pool: main_pool{{ numa_sfx }}
+
+    # The packet loss mask of the FRB1 beams, one byte (1 = valid) per sample and frequency
+    host_frb1_pl_mask_ringbuffer{{ numa_sfx }}:
+        kotekan_buffer: ring
+        num_frames: gpu_buffer_depth
+        ring_buffer_size: gpu_buffer_depth * upchan_U16_max_num_output_channels * frb_num_output_times
+        metadata_pool: main_pool{{ numa_sfx }}
+
     # (Intermediate) Beams
 
     host_frb1_beams_ringbuffer{{ numa_sfx }}:
@@ -1270,6 +1284,25 @@ numa_{{ numa }}:
 {%- for id in range(num_freq_gpu_buf) %}
             - host_voltage_buffer{{ numa_sfx }}_{{ id }}
 {%- endfor %}
+
+    run_upchan_pl_U16:
+       kotekan_stage: cudaProcess
+       buffer_depth: gpu_buffer_depth
+       frame_arrival_period: network_frame_arrival_period
+       num_times: samples_per_data_set
+       in_buffers:
+           host_pl_expanded_mask_ringbuffer: host_pl_expanded_mask_ringbuffer{{ numa_sfx }}
+       out_buffers:
+           host_upchan_U16_expanded_pl_mask_ringbuffer: host_upchan_U16_expanded_pl_mask_ringbuffer{{ numa_sfx }}
+       commands:
+       - name: cudaPLMaskUpchannelizer
+         expanded_pl_mask_name: pl_expanded_mask
+         upchannelized_expanded_pl_mask_name: upchan_U16_expanded_pl_mask
+         num_frequencies: num_freq_gpu_buf
+         upchannelization_factor: 16
+         num_frequencies_out: upchan_U16_max_num_channels
+         Fmin: upchan_U16_min_channel
+         Fmax: upchan_U16_max_channel
 
     run_upchan_U16:
         kotekan_stage: cudaProcess
@@ -1363,6 +1396,33 @@ numa_{{ numa }}:
           frb_phase_name: frb1_U16_phase
           frb_beamgrid_name: frb1_beams
 
+    # The packet loss mask of the FRB1 beams. An FRB1 output sample is valid only if all input
+    # samples it depends on are valid.
+    run_frb1_pl_U16:
+        gpu_0:
+            kotekan_stage: cudaProcess
+            gpu_id: 0
+            buffer_depth: gpu_buffer_depth
+            frame_arrival_period: network_frame_arrival_period
+            num_times: samples_per_data_set
+            in_buffers:
+                host_upchan_U16_expanded_pl_mask_ringbuffer: host_upchan_U16_expanded_pl_mask_ringbuffer{{ numa_sfx }}
+            out_buffers:
+                host_frb1_pl_mask_ringbuffer: host_frb1_pl_mask_ringbuffer{{ numa_sfx }}
+            commands:
+            - name: cudaPLMaskFRB1
+              pl_mask_name: upchan_U16_expanded_pl_mask
+              frb1_pl_mask_name: frb1_pl_mask
+              num_frequencies: upchan_U16_max_num_channels
+              upchannelization_factor: 16
+              downsampling_factor: frb_downsampling_factor / 16
+              Fmin: 0
+              Fmax: upchan_U16_max_channel - upchan_U16_min_channel
+              Fbar_out_min: upchan_U16_min_output_channel
+              Fbar_out_max: upchan_U16_max_output_channel
+              num_output_frequencies: upchan_U16_max_num_output_channels
+              num_output_times: buffer_depth * frb_num_output_times
+
     # FRB 2 and 3
 
     # One frame of beams per weights lifetime, starting at the first voltage frame's sequence
@@ -1453,6 +1513,7 @@ numa_{{ numa }}:
         num_times: samples_per_data_set
         in_buffers:
             host_frb1_beams_ringbuffer: host_frb1_beams_ringbuffer{{ numa_sfx }}
+            host_frb1_pl_mask_ringbuffer: host_frb1_pl_mask_ringbuffer{{ numa_sfx }}
             host_frb2_weights_ringbuffer: host_frb2_weights_ringbuffer{{ numa_sfx }}
         out_buffers:
             host_frb3_beams_buffer: host_frb3_beams_buffer{{ numa_sfx }}
@@ -1468,6 +1529,7 @@ numa_{{ numa }}:
           #frb1_num_beams_Q: frb1_num_beams_Q
           # frb2_num_beams: frb2_num_beams
           frb2_num_times: frb_num_output_times
+          in_signal: host_frb1_beams_ringbuffer{{ numa_sfx }}
           frb1_beams_name: frb1_beams
           frb2_weights_name: frb2_weights
           frb2_beams_name: frb2_beams
@@ -1479,6 +1541,9 @@ numa_{{ numa }}:
           gpu_mem_input: frb2_beams
           gpu_mem_output: frb3_beams
           gpu_mem_offsetscale: frb3_beams_offsetscale
+          frb1_max_num_frequencies: upchan_U16_max_num_output_channels
+          frb1_max_num_times: buffer_depth * frb_num_output_times
+          gpu_mem_pl_mask: frb1_pl_mask
         - name: cudaSyncOutput
         - name: cudaOutputData
           gpu_mem: frb3_beams_buffer
