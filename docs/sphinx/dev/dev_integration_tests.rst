@@ -58,6 +58,10 @@ Layout
    ``run.py`` runs kotekan and the check for one test; ``kit.py`` holds the shared HDF5 reading,
    decoding and models; ``check_<test>.py`` is one check per test.
 
+``docs/integration-tests/``
+   One Markdown description per test (``T<n>-<name>.md``): the errors the test catches, and the
+   mechanism and formulae it relies on.
+
 Differences from ``config/fengine``:
 
 * ``poison_buffers`` is left at its default (``false``). Only the buffers a test checks are
@@ -104,8 +108,9 @@ Inputs are generated on the fly; nothing is read from disk.
 * ``inventBFMask`` produces bad feed schedules: random bad feeds that change every few frames, and
   for CHORD and the pathfinder an array that is only partly filled, starting from the south;
   missing dishes are marked bad.
-* All generators take ``first_fpga_seq_num``. Tests start at a large value that is not aligned to
-  a frame or lifetime boundary (default ``2**33 + 12345``).
+* All generators take ``first_fpga_seq_num``. Tests start at a large value,
+  ``2**33 + 7 * num_times``: frame-aligned, as ``N2Accumulate`` requires, but aligned to no
+  lifetime or integration boundary.
 * Voltages of lost packets and bad feeds can be poisoned with the int4 no-data value ``-8-8i``.
 
 Level 1 tests
@@ -130,12 +135,13 @@ upchannelizer output start ``T*``, ``coarse_freq`` / ``freq_upchan_factor`` /
      - Signal edges at the predicted ``fpga_seq_num`` in every output.
      - BB exact; upchan ±U/4; FRB ±1 sample; N2 by integration
    * - T2 Phases
-     - Point-source tone from three directions, no noise.
+     - Point-source tone from three directions, no noise; for N2 a weaker tone in Gaussian
+       noise (a pure tone is flagged as RFI), fringe stopping off.
      - N2, upchan, BB, FRB1, FRB2
      - Visibility phases match geometry (sign, conjugation). The tone is in the predicted fine
        channel with the predicted phase for each U. CHIME: U=16 and U=128 agree. Beams peak in
        the right place.
-     - N2 2°; upchan 5°; peak index exact; beam pattern 10%
+     - N2 2°; upchan 2° mean, 15° 99th percentile; peak index exact
    * - T3 Quantization
      - Noise (σ = 2.8 LSB) plus a weak tone.
      - upchan, BB, FRB3 vs FRB2
@@ -204,6 +210,16 @@ These features are missing in kotekan. Add the tests once they exist.
   and BB data.
 * **Time-varying gains.** The upchannelizer gain is ``do_once``, and the CHORD configs have no
   per-dish gains. Future test: T5 with gains that change every few frames.
+
+Findings
+========
+
+* **FRB1 is mirrored along M (grid x)** (T2, pathfinder): the FRB1 beam index along M peaks at
+  ``-2θ_M mod 2M`` instead of ``2θ_M``, while N (grid y) is correct. The FRB2 weights assume
+  ``2θ_M``, so FRB2 beams are mirrored in x as well. The test input, BB and N2 agree with each
+  other on the sign of x.
+* ``N2Accumulate`` requires correlation frames to start at multiples of the frame length. The
+  tests assume that the receivers guarantee this.
 
 Expected finding: the upchannelizer scales its PFB window by 1/U and all configs use
 ``upchan_gain`` 1, so for noise input the int4 output rms is about 0.89 σ/√U. T3 is likely to

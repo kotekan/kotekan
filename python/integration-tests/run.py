@@ -64,6 +64,9 @@ def main():
         "--tel", required=True, choices=["pathfinder", "chord", "chime"]
     )
     parser.add_argument("--test", required=True)
+    parser.add_argument(
+        "--variant", action="append", help="run only this variant (repeatable)"
+    )
     parser.add_argument("--kotekan", required=True, help="the kotekan binary")
     parser.add_argument(
         "--cwd", default=REPO, help="working directory for kotekan (default: the repo)"
@@ -82,9 +85,21 @@ def main():
     args = parser.parse_args()
 
     test = importlib.import_module(f"check_{args.test}")
-    out_dir = os.path.join(os.path.abspath(args.out), f"{args.tel}_{args.test}")
+    variants = args.variant or test.VARIANTS
+    failed = 0
+    for variant in variants:
+        failed += not run_variant(args, test, variant)
+    return 1 if failed else 0
+
+
+def run_variant(args, test, variant):
+    """Run and check one variant of a test; return whether it passed."""
+    label = f"{args.tel} {args.test} {variant}"
+    out_dir = os.path.join(
+        os.path.abspath(args.out), f"{args.tel}_{args.test}_{variant}"
+    )
     config = render_config(args.tel, {})
-    var = test.variables(args.tel, config)
+    var = test.variables(args.tel, config, variant)
     var["out_dir"] = out_dir
     config = render_config(args.tel, var)
 
@@ -96,19 +111,19 @@ def main():
         code, seconds = run_kotekan(args, var, log_path)
         print(f"kotekan exited with {code} after {seconds:.0f} s (log: {log_path})")
         if code != 0:
-            print(f"FAIL {args.tel} {args.test}: kotekan exit code {code}")
-            return 1
+            print(f"FAIL {label}: kotekan exit code {code}")
+            return False
 
     try:
         for line in test.check(out_dir, var, config):
             print("  " + line)
     except CheckFailed as error:
-        print(f"FAIL {args.tel} {args.test}: {error}")
-        return 1
-    print(f"PASS {args.tel} {args.test}")
+        print(f"FAIL {label}: {error}")
+        return False
+    print(f"PASS {label}")
     if not args.keep:
         shutil.rmtree(out_dir)
-    return 0
+    return True
 
 
 if __name__ == "__main__":

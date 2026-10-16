@@ -177,7 +177,7 @@ run_N2_accumulate:
     num_freq_per_n2k_frame: num_frequencies
     packet_loss_is_scalar: true
     variance_mode: EvenOddPosDef
-    do_fringestop: True
+    do_fringestop: {{ do_fringestop | default(True) }}
     num_workers: 4
     in_buf: host_n2k_correlation_buffer
     in_counts_buf: host_n2k_counts_buffer
