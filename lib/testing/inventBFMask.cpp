@@ -33,6 +33,10 @@ class inventBFMask : public kotekan::Stage {
     const int num_polarizations = config.get<int>(unique_name, "num_polarizations");
     const std::int64_t bf_mask_lifetime_in_samples =
         config.get<std::int64_t>(unique_name, "bf_mask_lifetime_in_samples");
+    // FPGA sequence number of the first sample; must agree between the voltage and mask
+    // generators
+    const std::int64_t first_fpga_seq_num =
+        config.get_default<std::int64_t>(unique_name, "first_fpga_seq_num", 0);
     const std::string mode = config.get_default<std::string>(unique_name, "mode", "all_good");
     const std::vector<int> manual_bad_feeds =
         config.get_default<std::vector<int>>(unique_name, "manual_bad_feeds", {});
@@ -94,7 +98,8 @@ public:
             buffer->allocate_new_metadata_object(frame_id);
             const auto& meta = get_chord_metadata(buffer->get_metadata(frame_id));
             meta->set_from_frame_desc(buffer->get_frame_desc<kotekan::GenericNDArray>());
-            meta->set_fpga_seq_num(frame_index * bf_mask_lifetime_in_samples);
+            meta->set_fpga_seq_num(first_fpga_seq_num
+                                   + std::int64_t(frame_index) * bf_mask_lifetime_in_samples);
             meta->set_time_downsampling_fpga(bf_mask_lifetime_in_samples);
 
             // Fill buffer

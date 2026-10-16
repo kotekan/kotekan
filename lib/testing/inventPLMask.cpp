@@ -38,6 +38,11 @@ class inventPLMask : public kotekan::Stage {
     const std::vector<int> frequency_channels =
         config.get<std::vector<int>>(unique_name, "frequency_channels");
 
+    // FPGA sequence number of the first sample; must agree between the voltage and mask
+    // generators
+    const std::int64_t first_fpga_seq_num =
+        config.get_default<std::int64_t>(unique_name, "first_fpga_seq_num", 0);
+
     // Packets are lost in the FPGA samples [box_begin, box_end), and nowhere else
     const std::int64_t box_begin = config.get_default<std::int64_t>(unique_name, "box_begin", 0);
     const std::int64_t box_end = config.get_default<std::int64_t>(unique_name, "box_end", 0);
@@ -89,7 +94,7 @@ public:
             buffer->allocate_new_metadata_object(frame_id);
             const auto& meta = get_chord_metadata(buffer->get_metadata(frame_id));
             meta->set_from_frame_desc(buffer->get_frame_desc<kotekan::GenericNDArray>());
-            meta->set_fpga_seq_num(frame_index * num_times);
+            meta->set_fpga_seq_num(first_fpga_seq_num + std::int64_t(frame_index) * num_times);
             meta->set_time_downsampling_fpga(2 * 64);
 
             // Set frequency information. As in `testLostSamplesToPLMask`, this lists every
@@ -121,7 +126,8 @@ public:
                             const std::ptrdiff_t idx =
                                 str4 * idx4 + str3 * idx3 + str2 * idx2 + str1 * idx1 + str0 * idx0;
                             assert(idx >= 0 && idx < std::ptrdiff_t(buffer->frame_size));
-                            const std::int64_t seq = std::int64_t(frame_index) * num_times + time;
+                            const std::int64_t seq =
+                                first_fpga_seq_num + std::int64_t(frame_index) * num_times + time;
                             const bool lost = seq >= box_begin && seq < box_end;
                             frame[idx] = lost ? 0x00 : 0xff;
                         }
