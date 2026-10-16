@@ -10,6 +10,7 @@
 #include "kotekanLogging.hpp"    // for DEBUG, FATAL_ERROR, INFO
 #include "metadata.hpp"          // for metadataObject
 #include "prometheusMetrics.hpp" // for Metrics, Gauge
+#include "testSkySignal.hpp"     // for testSkySignal
 #include "visUtil.hpp"           // for current_time
 
 #include <algorithm>  // for copy, fill_n
@@ -52,6 +53,10 @@ class inventVoltage : public kotekan::Stage {
     const std::int64_t box_end =
         input_kind == "box" ? config.get<std::int64_t>(unique_name, "box_end") : 0;
     const bool reuse_frames = config.get_default<bool>(unique_name, "reuse_frames", false);
+    // FPGA sequence number of the first sample; must agree between the voltage and mask
+    // generators
+    const std::int64_t first_fpga_seq_num =
+        config.get_default<std::int64_t>(unique_name, "first_fpga_seq_num", 0);
 
     const std::vector<int> frequency_channels =
         config.get<std::vector<int>>(unique_name, "frequency_channels");
@@ -60,6 +65,11 @@ class inventVoltage : public kotekan::Stage {
     const int out_frame_every = config.get_default<int>(unique_name, "out_frame_every", 10);
 
     Buffer* const buffer;
+
+    // For `input_kind: sky`: the signal model, and a pool of precomputed frames holding the
+    // periodic part of the signal (sources without a time window, and noise)
+    std::unique_ptr<testSkySignal> sky;
+    std::vector<std::vector<kotekan::int4x2_swapped_withoffset_t>> sky_pool;
 
 public:
     inventVoltage(kotekan::Config& config, const std::string& unique_name,
@@ -77,6 +87,10 @@ public:
             kotekan::NDArray<kotekan::int4x2_swapped_withoffset_t, 4>::describe(
                 "E", {num_times, num_frequencies, num_polarizations, num_dishes},
                 {"T", "F", "P", "D"}, {1, 1, 1, 1}));
+
+        if (input_kind == "sky")
+            sky = std::make_unique<testSkySignal>(
+                config, unique_name, num_times, frequency_channels, num_polarizations, num_dishes);
     }
 
     virtual ~inventVoltage() {}
@@ -139,7 +153,7 @@ public:
 
             buffer->allocate_new_metadata_object(frame_id);
             const auto& meta = get_chord_metadata(buffer->get_metadata(frame_id));
-            meta->set_fpga_seq_num(frame_index * num_times);
+            meta->set_fpga_seq_num(first_fpga_seq_num + std::int64_t(frame_index) * num_times);
             meta->set_from_frame_desc(buffer->get_frame_desc<kotekan::GenericNDArray>());
             meta->set_time_downsampling_fpga(1);
 
@@ -153,7 +167,10 @@ public:
 
             // Fill buffer
             DEBUG("[{:s}/{:d}] Filling buffer...", buffer->buffer_name, frame_index);
-            if (!reuse_frames || frame_index < buffer->num_frames) {
+            if (input_kind == "sky") {
+                fill_sky(frame, first_fpga_seq_num + std::int64_t(frame_index) * num_times,
+                         frame_index);
+            } else if (!reuse_frames || frame_index < buffer->num_frames) {
                 if (input_kind == "random") {
                     const std::ptrdiff_t str3 = 1;
                     const std::ptrdiff_t str2 = str3 * num_dishes;
@@ -195,7 +212,8 @@ public:
                 } else if (input_kind == "box") {
                     const std::ptrdiff_t time_stride =
                         std::ptrdiff_t(num_frequencies) * num_polarizations * num_dishes;
-                    const std::int64_t frame_begin = std::int64_t(frame_index) * num_times;
+                    const std::int64_t frame_begin =
+                        first_fpga_seq_num + std::int64_t(frame_index) * num_times;
                     for (int time = 0; time < num_times; ++time) {
                         const std::int64_t seq = frame_begin + time;
                         const std::int8_t real = seq >= box_begin && seq < box_end ? 4 : 0;
@@ -211,6 +229,33 @@ public:
             // Mark buffer as full
             DEBUG("[{:s}/{:d}] Marking buffer as full...", buffer->buffer_name, frame_index);
             buffer->mark_frame_full(unique_name, frame_id);
+        }
+    }
+
+private:
+    void fill_sky(kotekan::int4x2_swapped_withoffset_t* const frame, const std::int64_t frame_seq,
+                  const int frame_index) {
+        const std::size_t frame_elements = buffer->frame_size;
+        if (sky_pool.empty()) {
+            const int num_pool_frames =
+                config.get_default<int>(unique_name, "noise_period_frames", 4);
+            INFO("Precomputing {:d} sky frames...", num_pool_frames);
+            sky_pool.resize(num_pool_frames);
+            for (int n = 0; n < num_pool_frames; ++n) {
+                sky_pool[n].resize(frame_elements);
+                sky->fill(sky_pool[n].data(), first_fpga_seq_num + std::int64_t(n) * num_times, 0,
+                          num_times, true);
+            }
+        }
+        std::memcpy(frame, sky_pool[frame_index % sky_pool.size()].data(), frame_elements);
+        // Recompute the samples covered by a source's time window
+        for (const auto& src : sky->get_sources()) {
+            if (!src.windowed)
+                continue;
+            const std::int64_t begin = std::max(src.window_begin, frame_seq);
+            const std::int64_t end = std::min(src.window_end, frame_seq + num_times);
+            if (begin < end)
+                sky->fill(frame, frame_seq, int(begin - frame_seq), int(end - frame_seq), false);
         }
     }
 };
