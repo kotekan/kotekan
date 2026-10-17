@@ -117,6 +117,7 @@ applied=true` with `miss` not moving on all 11 live instances; the elem-ref ALER
 open:** nothing detects this — an instance whose prompt sits at the floor on every PRN while its tap sees normal power
 is "present" to the broker and the viewer (for #192: a per-instance dark detector that compares the tap's power with the
 despread's); cx27's GPU-1 comb must be read from its tap when its port returns, before that GPU is trusted.
+**✅ 10-17 14:05Z, confirmed on sky:** cx19 cycled first (canary): `gnss1` chan_norm applied/miss 0, FLEET-INST at fleet level on every band (E5b 803×, L2C 190×, from 1–2×); then cx42/cx43/cx51 + aggregator + broker (14:01:30Z, 0 CHAIN DIED): all 11 live instances match their taps, `fleet 11/12`, elem-ref ALERT clear, R 1.0/1.0 on every band. Commit af12c4220. Stays open for the detector and cx27's GPU-1 comb.
 
 ### #184 — four finished A/B arms stay in the broker because retiring them moves the replay digests (2026-10-13)
 **What [tree]:** the removal pass retired every finished A/B except the ones whose live arm changes the `broker_equiv`
@@ -265,6 +266,7 @@ chains, P3 and the node model are separate.
 - **Check:** `gnss_broker.test_jointstep`; on the sky, `grep 'JOINT-CLK' broker.log | grep 'REFUSED (step'` through the
   next transit of a 1176.45-MHz emitter, and no `FADR BREAK ... dark` on every chain after a JOINT-CLK adoption.
   Digests unchanged (no replay carries a refused adoption).
+**10-17 12:56Z fleet re-establishment (first live step since the fix):** 12:56:56 bounds-REFUSED (sigma 1.18, n 4); 12:57:26 the level 152.385 REFUSED (step −0.62 chips from the last adopted, held 0 of 30 s) on all seven chains; 12:57:56 ADOPTED once it held (delta +0.77 vs legacy), then the joint walked back to the legacy level within 3 min in sub-0.3 steps. No fleet-wide prompt loss after the adoption (B2a/B3I/E6/L5 per-instance powers steady through 12:58; one E5b PRN dipped). The guard delays a real level by one line and lets it through: as designed.
 
 ### #175 — after a transit's null crossing every E6 tracker is re-seeded ~0.45 chips off its peak and rails there for an hour (2026-10-11)
 **What [live 22:34–23:35Z]:** E06 passed 0.24° from boresight at 22:27Z (E6 prompt 3.5 million × the floor). As it
@@ -302,6 +304,7 @@ per-PRN 60-s history (a detector beside D3, fed from the fleet row's disc, the r
 an actuator that releases the C++ loop's standing trim or re-seeds the PRN; not a presence verdict. The `PRESENCE
 +displaced` line is rate-limited to one per 120 s, so the log under-reports admissions. **Check live:** `grep 'PRESENCE
 -displaced' broker.log` through the next E06/E31 transit; the dim E6 PRNs' DLL disc should not rail after the null.
+**10-17 12:47–13:17Z:** 69 `PRESENCE -displaced` refusals, every one a chain event — `same offset` and `BROWNOUT open` at the 12:48 canary-alone start and at the 13:16 E6 brownout; none on a healthy chain.
 
 ### #171 — the ALERT files reach no one (2026-10-09)
 **What [tree]:** `chain_health_cron.sh` (cf06, */15) and `elem_ref_cron.sh` (gnss, */5) write ALERT files that
@@ -424,6 +427,7 @@ metric that needs no legacy clock, e.g. the gal_e5a − gal_e5b `code_resid_m` d
 the `JOINT-CLK | gps_l5 dead-reckon clock | BORESIGHT TRANSIT` lines of each rotated log through
 `fixtures/obs/joint_latch_detect.py`, per file and concatenated in order (its >1 h backward-jump rule assigns days;
 verify the rollover count against the rotation dates). Helpers and the per-day table: `~/gnss/builds/readynow/work152/`.
+**10-17:** `joint_latch_detect.py` over the 12:47–13:17Z log: 21 scored minutes, no latch (healthy d p50 −0.01, p99 +0.89 chips, the establishment transient inside). Continue the week.
 
 ### #155 — dTEC arcs die in transits of 1176-MHz emitters: the fleet ADR holds the arc while the victim band's residual is dark (2026-09-29)
 **⚡ 10-12 status (four nights 10-08 19:00Z to 10-12 00:40Z, `out/transit_arcs_1012`, events_1012.txt; closure per day
@@ -577,6 +581,7 @@ golden that records those flags; `check` verifies every golden of a transcript (
 no-op — 0 REJECTED, 0 FLUSHED, max fit-to-clock deviation 0.14 chips/s — so the golden pins the no-op; the branch is
 reached (tol 1e-6 / flush 1: 18 rejections, 54 flushes). Not covered: `--fit-gap-s 1200` and `--cp-rate-model-primary 1`
 (the transcript records 3600 and the variant appends only the four knobs).
+**10-17 12:48–12:50Z:** 15 `cp-fit history FLUSHED` on gps_l5 (PRNs 10 and 23, the fleet re-establishment) and 15 `history at flush` lines — exactly one per flush. The dump works; the garbage's origin is still to be read from those histories.
 
 ### #120 — the stack's boot path: the VM's units are untested across a reboot, and cf06's cube leg has no unit
 **[live 10-11]** The broker, gather, aggregator, eight obs writers, viewer and rail run on the gnss VM as user units
@@ -675,6 +680,7 @@ veto pooled over constellations (`sky.py closest_to_boresight`, the nightly cube
 warning per process). **KV 10-14: as is — GLONASS enters the pooled railing veto and the transit sky at the next broker restart;** the chain
 is to be built out next time on sky. The #56 1202 MHz feature can now be tested against real GLONASS positions from the
 archive.
+**10-17 14:01Z LIVE** (first broker restart since 10-13): the propagator ran at startup (one `GLONASS record propagated beyond 15 min of its epoch` UserWarning: the daily BRDC's newest R records are ~2 h old, expected), 0 CHAIN DIED. Offline sanity on BRDC 2026-290 at 14:08Z: all 25 R satellites at 19,087–19,181 km altitude, ECEF speed 3.15–3.59 km/s (right for a 64.8° orbit seen in ECEF), 8 above 10° at DRAO. The railing veto/transit sky name only the nearest satellite (G32 today), so the GLONASS slots are exercised but invisible in the log this week.
 
 ## Open — the fix is in the NODE BINARY (queue for the next cycle)
 
@@ -709,6 +715,7 @@ are unchanged. The code phase is unchanged, so seeds and locks carry across. **C
 paired in time against the others: PRNs 6/18/25 up ~10 dB in `cn0_inc`, PRNs 10/28/2 flat; then the fleet, and re-solve
 the per-satellite G (it should collapse to DRAO's spread). Element models, thresholds and the #154 reference see only a
 higher SNR. recv1's ConfigTracker restarts once on the binary change (#165).
+**10-17 14:01–14:13Z aggregator (fixed binary, after #194):** 8 PRNs searched, medians G32 16222 (4° off the nominal boresight), G1 749, G27 730, G28 279, G8 138, G10 121, G24 104, G23 48; none of the worst-loss PRNs (6/18/25/17) are up and the tipped dishes make per-PRN levels incomparable across days, so the aggregator half rests on the 10-12 canary result. The per-satellite G re-solve waits for the realignment.
 
 ### #179 — the search covers only half the L2C main lobe (2026-10-12)
 **What [tree]:** `gnssBandPlan::half_bandwidth_hz` returns `chip_rate_hz` for BPSK, which for time-multiplexed L2C CM is
@@ -724,6 +731,7 @@ the half-bandwidth and the covering count — on a 200 kHz grid centred on L2 th
 span L1 C/A gets; the new cases fail against the unfixed function (7, 511.5 kHz). Nothing deployed changes until the
 aggregator runs the next binary; then its L2C channel set roughly doubles and the check is the L2C `search_snr` on the
 same satellites before/after (and the per-subband channel budget, if any L2C config is tight).
+**10-17:** no live arm: the deployed aggregator searches L5 only (`gps_search`, no L2C stage; the node L2C chains take one channel per instance from the generator), so the channel-count/`search_snr` check cannot run on sky. Closes on `test_gnss_band_plan` (7 → 11 channels) alone.
 
 ### #180 — Galileo E1/E6 memory codes index the table before range-checking the PRN (2026-10-12)
 **What [tree]:** `generate_e1b/e1c/e6b/e6c_code` evaluate `*_HEX[prn - 1]` before `decode()` throws for PRN outside
@@ -775,6 +783,7 @@ counters must not move while the cron re-takes.
 (8° at 23:11Z, closest 3.3° at 23:29Z): `form_frozen` true on all 16 assemblers and no model for 32 min; at 23:47:48Z
 (bore 8.1°) every assembler formed from 10–17 shadows, pinned to the fleet reference, sim 0.85–0.98, reseeds 0, fleet
 R 1.00/1.00 on every band. Open: the re-seed half, judged at the next F-engine gain change (`fleet_ref.reseeds` stays 0).
+**10-17 14:01–14:11Z (restart judge):** every instance `form_frozen: true` with G32 4.3→3.1° off the NOMINAL boresight; cx42, cx51 and cx43's E5b restarted into the cone and hold no shared model (PRNs ride their own learners; tracking at fleet level); the instances that were warm kept theirs. `fleet_ref.reseeds` [0, 0] everywhere through the F-engine gain change (the cron re-took the reference at 13:15/13:30 instead) — the re-seed half passes. ⚠️ This week the dishes are tipped (no boresight), so the 8° formation cone, the D3 transit veto and the dr-clock transit freeze all key on a pointing nobody has: a `--boresight none` broker switch is the fix for the week (proposed to KV).
 
 ### #168 — our 32-element code assumes the n/2 pol split (2026-10-10)
 **What [tree, from the rows-C/D survey]:** the shared model splits pols at h = n/2 (`GnssGpuRecordAssemble.cpp`, the
@@ -880,6 +889,7 @@ eight bands by 02:10Z (committed as `config/elem_shared_ref_20261010.json`, 2bad
 it. A node restarted after a re-take and before the commit runs up to 30 min on the stale file (`ACT_EVERY_S` in elem_shared_ref.py).
 **Still open:** the no-restart re-base check above, and the file is re-taken by the cron, not by the re-base itself.
 The alerting TODO is #171.
+**10-17 14:05Z** (4 min after the broker restart, 10 warm halves per band): R = 1.00/1.00 on all seven bands + 1.00/0.998 L5, no instance > 30° off, reseeds 0. ✓ within 10 min.
 
 ### #131 — the gather dies when a telemetry client flaps
 **[live]** 2026-09-14 20:57:45: the cf06 gather (`build_nodpdk`, 09-09) exited with no FATAL, no
@@ -1221,6 +1231,7 @@ binary (0011cf3b1), the #164 lockout and recv1 restart at 00:57–01:15Z, the F-
 **Next:** re-count at the next quiet hour; if the expiries and the trickle persist, A/B one node on 04122d179.
 Also one corrupt-sequence packet on cx27 at 10-10 20:18:45Z from raw source ID 6, which is not an A, B or RFI board
 (formerly #174; one event, noted because #1750 stops kotekan on a capture fault).
+**10-17 recount (cx27/cx44, 75 min from the 12:56Z start, crs-control as the controller):** FPGA-controller read failures 0, socket errors 0 (both were chive); `trim EXPIRED` 55/84 and `NIC dropped … rx ring was full` 394/207 — higher than 10-11's 42/134 per 110 min, but the window holds two broker restarts, four node cycles and the #194 dark instances. Recount at a quiet hour before reading anything into it.
 
 ### #163 — E6 peak sharpness fell 3.65 → 2.4 at the 10-07 F-engine restart while every other chain's rose (2026-10-08)
 Broker DLL q (2P/(E+L)) on strong satellites: gal_e6 3.5–4.5 for three weeks, 2.3–2.5 from the first post-restart data
