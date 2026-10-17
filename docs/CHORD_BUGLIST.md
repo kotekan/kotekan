@@ -92,6 +92,25 @@ the aggregator and gather. #184–#187 below are what the removal left for later
 
 ## Open — the fix is in the BROKER or a script (ships today, no node cycle)
 
+### #196 — the tipped-dish week: what is switched off, and the checklist for the realignment (2026-10-17)
+**What:** the dishes are tipped in semi-random directions until next week's realignment, so the broker runs
+`--boresight none` (`cc2b33651`, armed in `config/gnss_chains_chord.yaml` `common:` by `55ca9a036`, live since 14:45Z):
+the D3 transit veto, the dead-reckon clock's transit freeze and the assemblers' model-formation freeze are OFF. The
+fleet element reference in use (`config/elem_shared_ref_20261017.json`, `df37629bb`) was taken at 13:30Z with the dishes
+tipped and 7 of 11 instances healthy. `config/pointings.yaml` p1_scattered_20261017 has no boresight, so the nightly beam
+map refuses and the array epoch is still p0.
+**At the realignment, in order:** (1) delete the `boresight: none` line and restart the broker (T+60 s CHAIN DIED check);
+(2) a fresh `elem_shared_ref.py snapshot` with all 11 instances once their models are warm, copy into `config/`, point the
+manifest's `elem-shared-ref`, regenerate (a node restarted after a cron re-take and before the commit runs up to 30 min on
+the stale file, `ACT_EVERY_S`); (3) a new array epoch and a boresight in `pointings.yaml` before any beam map or the
+64-element step (#168; rows C/D now deliver); (4) read cx27's GPU-1 comb from its tap when its port is back and fix
+`gpu_offsets_mod16` if it moved (#194's leftover); (5) the judges that need a pointed, quiet sky: #154's no-restart re-base
+check (R ≥ 0.95 in every band within ~10 min after an F-engine re-base with no node restart — never yet run as stated),
+#177's per-satellite aggregator L5 search SNR and the per-satellite G re-solve (expect DRAO's 0.64 dB spread), #184's fresh
+replays, #155's transit recount, #191's timing steps, #176's standing `REFUSED (step` watch through a 1176-MHz transit.
+**Check:** `grep -c 'BORESIGHT TRANSIT' broker.log` non-zero again after (1); R ≥ 0.95 at the next cron pass after (2);
+the beam map builds after (3).
+
 ### #195 — a PRN whose disc sits at the clamp for minutes has no way back to its peak (2026-10-17, split from #175)
 **What:** the #175 refusal stops a chain-wide displaced admission, but a PRN that is already railed stays railed: a railed
 disc is leak-bounded (`gnssFleetDll::dll_tau` clamps at ±1, at most ±0.25 chips of trim) and the model holds the displaced
@@ -736,7 +755,7 @@ reading PRNs from slot 0 only; the TLE path posting az 0; gal_e6 shrinking the s
 offline like the ready-now set, goldens re-blessed with each mover named, judged on sky at the return; T3 KV decisions
 (above). Then file-disjoint groups, fix + test + adversarial review per group, two lanes of one agent; the cf06/cf05
 checks as stage 8. Cost about one and a half stage-8 families (~15M subagent tokens), 5–6 h.
-**10-17 additions to the run's list:** (a) the viewer's rail panel should cover `live_element_ranges` only (the full-crate rows C–H rail 5–12% under the flat gains and are not ours); (b) a per-instance DARK detector: an instance whose prompt power sits at the floor on every PRN while its tap sees normal per-channel power is a config/wiring fault (#194), yet `FLEET-INST` counts it present and the viewer shows locks — compare the tap's power with the despread's per instance and name the instance; (c) L2C has nothing for the shared-reference machinery to hold (one channel per instance): exclude it or derive its reference from L5's (#154, 10-17); (d) `gps_distributed_broker.py:1140` loop variable `sys` shadows the import (pyflakes).
+**10-17 additions to the run's list:** (a) the viewer's rail panel should cover `live_element_ranges` only (the full-crate rows C–H rail 5–12% under the flat gains and are not ours); (b) a per-instance DARK detector: an instance whose prompt power sits at the floor on every PRN while its tap sees normal per-channel power is a config/wiring fault (#194), yet `FLEET-INST` counts it present and the viewer shows locks — compare the tap's power with the despread's per instance and name the instance; (c) L2C has nothing for the shared-reference machinery to hold (one channel per instance): exclude it or derive its reference from L5's (#154, 10-17); (d) `gps_distributed_broker.py:1140` loop variable `sys` shadows the import (pyflakes); (e) still G/E/C-only after #129: the BRDC supply's hourly coverage target (`_HOURLY_TARGET`), `gen_fleet`'s `SYS_OF`, the cube's `CHAIN_SYS`, and GLONASS propagation past ±15 min of a record is unvalidated (`predict_all`'s 4-h default lets it happen with one warning per process; the live broker does it every day with a 2-h-old BRDC); (f) the B3I chain's PRN list 19–42 excludes C56–C58, assigned per SINEX and carried by BRDC.
 
 ### #157 — `test_buffer_peek` fails its `peeks_won > 0` check under ThreadSanitizer (flaky under slowdown; found 2026-09-30)
 - **What:** under TSan's slowdown the worker thread wins every iteration, so `BOOST_CHECK(peeks_won > 0)`
@@ -842,6 +861,7 @@ Catalogue work is tracked as #129.
 ⚠️ Limits: OpenSky serves live only without credentials, so the archived bins cannot be
 attributed to specific flights; Celestrak is unreachable from cf06; and GEO is geometrically
 impossible at el 81° from 49°N, which rules out the whole geostationary belt.
+**10-17:** #129 is closed — GLONASS positions exist now (`gnss_ephemeris.sat_pos_clk` for R records), so the 1202 MHz half is testable against real positions from the archive. Not run yet.
 
 ### #94 — the shared-parameter estimators: 1 of 6 sites done
 S2 (the prior gauge) is built, armed, and its falsifier now passes on sky (closed file). The
