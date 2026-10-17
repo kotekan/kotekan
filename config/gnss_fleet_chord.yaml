@@ -56,6 +56,9 @@ common:
     # spread components and write (I-QQ^H)V(I-QQ^H) into the copy N2Accumulate reads, only in
     # the given freq_ids ("exempt" = rfi-excision-exempt-freq-ids above). Station 7 (B04X) is
     # left out of the stations: it saturates. cx19 overrides n2-project to "off" (see nodes).
+    # The E and L lanes as rotations of the prompt, one chip walk per hop (#189): every comb
+    # chain, L2C excepted by the generator. Canary cx51 10-17 17:33Z, fleet from the remap cycle.
+    epl-from-prompt: true
     n2-project: live
     n2-project-live-freq-ids: exempt
     n2-project-stations: "0-6,8-15,56-79,120-127"
@@ -242,4 +245,4 @@ nodes:
     cx42: {search-port-base: 11044}
     cx43: {search-port-base: 11046}
     cx44: {search-port-base: 11048}
-    cx51: {search-port-base: 11050, epl-from-prompt: true}
+    cx51: {search-port-base: 11050}
