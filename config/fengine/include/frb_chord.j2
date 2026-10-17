@@ -32,7 +32,8 @@ frb_chunk_size: 256
 # The FRB1 beamforming weights are valid for this many input samples (about one second). The
 # FRB1 kernel for upchannelization factor U processes multiples of U * lcm(48, 192 / U) input
 # samples, so this must be a multiple of 3072 (for U = 1, ..., 64).
-frb1_phase_lifetime_in_samples: 24 * num_times
+# setFRB1Phase applies bad feed mask frame k to weight frame k.
+frb1_phase_lifetime_in_samples: bf_mask_lifetime_in_samples
 
 ################################################################################
 
@@ -138,6 +139,7 @@ run_set_frb1_U{{ U }}_phase:
     upchan_max_channel: upchan_U{{ U }}_max_channel
     upchan_max_num_channels: upchan_U{{ U }}_max_num_channels
     frb1_phase: host_frb1_U{{ U }}_phase_buffer
+    bf_mask: host_bf_mask_buffer
     # The weight stream starts at the sequence number of the first voltage frame
     metadata_source: host_voltage_buffer
 

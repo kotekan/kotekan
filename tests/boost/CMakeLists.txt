@@ -199,6 +199,10 @@ add_executable(test_frb1IntensityBound test_frb1IntensityBound.cpp)
 target_include_directories(test_frb1IntensityBound PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages)
 target_link_libraries(test_frb1IntensityBound kotekan_metadata libexternal)
 
+# test_frbDishLayout - where the FRB1 kernels place the dishes on their grid (header-only helper)
+add_executable(test_frbDishLayout test_frbDishLayout.cpp)
+target_link_libraries(test_frbDishLayout PRIVATE kotekan_utils)
+
 add_executable(test_Metadata test_Metadata.cpp)
 target_link_libraries(test_Metadata kotekan_metadata)
 
