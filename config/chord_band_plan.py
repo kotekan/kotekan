@@ -115,14 +115,15 @@ def signal_table(header=None):
 
 
 def node_channels(cfg, node):
-    """Every freq_id the node holds, as (freq_id, centre_hz, width_hz)."""
+    """Every freq_id the node holds, as (freq_id, centre_hz, width_hz): the union of its GPUs'
+    stride-16 combs (gpu_offsets_mod16), which need not be one stride-8 comb."""
     sb = cfg["science_band"]
     width = cfg["fengine"]["channel_width_hz"]
-    off = cfg["nodes"][node]["comb_offset_mod8"]
+    offs = set(cfg["nodes"][node]["gpu_offsets_mod16"])
     return [
         (fid, fid * width, width)
         for fid in range(sb["min_freq_id"], sb["max_freq_id"] + 1)
-        if fid % 8 == off
+        if fid % 16 in offs
     ]
 
 

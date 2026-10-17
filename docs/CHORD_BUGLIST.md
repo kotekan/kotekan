@@ -92,6 +92,32 @@ the aggregator and gather. #184–#187 below are what the removal left for later
 
 ## Open — the fix is in the BROKER or a script (ships today, no node cycle)
 
+### #194 — the F-engine return rewired four nodes' second combs: the GPU-1 chains on cx19/cx42/cx43/cx51 despread the wrong channels (2026-10-17)
+**What [live since the 12:47–12:56Z restarts, found 13:30Z]:** the broker's per-instance prompt power (`FLEET-INST`) read
+~1× (the noise floor) on cx19.1 and cx51.1 and ~1/7 of the fleet on cx42.1 and cx43.1, on every band, while their taps
+(`gnss1_srch_tap/rf_stats`, labelled from the frame metadata) showed normal per-channel and per-element power. The tap's
+freq_ids and the generated `channel_ids` disagree by +2 (cx19.1), −1 (cx42.1), +1 (cx43.1) and −2 (cx51.1) channels:
+the F-engine now delivers comb 14 (mod 16) to cx19's second port, 12 to cx42's, 15 to cx43's and 13 to cx51's — a
+4-cycle of those nodes' GPU-1 combs; GPU 0 everywhere and cx44.1 are unchanged, cx27.1 unknown (port down).
+`config/chord_gnss_node.yaml`'s `gpu_offsets_mod16` (a wiring table: "copy a rewiring here by hand") still said
+12/13/14/15, so the generator built those GPUs' chains, tiles, telemetry packs and the aggregator's inputs for the wrong
+channels: each replica sits 195 kHz per step off its data (the ±1 instances keep a sliver of overlap, the ±2 none).
+Seen first as symptoms: `chan_norm applied=false` with one `miss` per record on those instances (the ChanPower table is
+keyed by the tap's real freq_ids), their element models "not the fleet's shape" in the elem-ref cron's ALERT, and
+`fleet 11/12` counting them present. On 10-12 the same four instances read ~200× like the rest.
+**Fix [tree]:** the four table entries read from the taps; `chord_band_plan.node_channels` derives a node's channel set
+from the union of its GPU combs instead of `comb_offset_mod8` (which assumed GPU1 = GPU0 + 8 and would have made the
+generator refuse the new combs); the L2C placement note. Regenerated into a preview: only the `gnss1_*` blocks of the
+four nodes and `chord_gnss_agg6_cuda.yaml` (inputs 1 and 5 change channel count, `gps_search.channel_ids` and
+`agg_merge.in_channels` follow) move; gather and cubearch do not; stock parity holds on all four. **Ships (KV):**
+`scripts/gnss/gen_fleet.py config/gnss_fleet_chord.yaml` plus the agg6 recipe, `node_up.sh <node> restart` on cx19 cx42
+cx43 cx51, the aggregator, then the broker (which has not restarted since 10-13 either).
+**Check:** after the restarts every instance's `FLEET-INST` power inside the fleet's spread on each band; `chan_norm
+applied=true` with `miss` not moving on all 11 live instances; the elem-ref ALERT clears for those instances. **Still
+open:** nothing detects this — an instance whose prompt sits at the floor on every PRN while its tap sees normal power
+is "present" to the broker and the viewer (for #192: a per-instance dark detector that compares the tap's power with the
+despread's); cx27's GPU-1 comb must be read from its tap when its port returns, before that GPU is trusted.
+
 ### #184 — four finished A/B arms stay in the broker because retiring them moves the replay digests (2026-10-13)
 **What [tree]:** the removal pass retired every finished A/B except the ones whose live arm changes the `broker_equiv`
 digest of the seven recorded replays: `--n2-combiners` (the path-B population), `--seed-bias-source` ema/slow with

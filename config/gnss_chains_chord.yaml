@@ -568,8 +568,8 @@ chains:
         fleet-trim-readback: 1
     # Enumerated, not gnss{0..1} on every node: the chain exists only on a GPU that holds an L2C
     # channel, and the pattern would 404 on the rest. freq_id % 16 picks the GPU
-    # (gpu_offsets_mod16 in config/chord_gnss_node.yaml): 6284 cx19/1, 6285 cx42/1, 6286
-    # cx43/1, 6287 cx51/1, 6288 cx27/0. 6283 is on cx47, outside this fleet, and cx44 holds
+    # (gpu_offsets_mod16 in config/chord_gnss_node.yaml): 6286 cx19/1, 6284 cx42/1, 6287
+    # cx43/1, 6285 cx51/1, 6288 cx27/0. 6283 is on cx47, outside this fleet, and cx44 holds
     # none. Re-derive the list if the comb offsets change.
         trackers: "http://cx19:12048/gnss1_l2c_inject,http://cx27:12048/gnss0_l2c_inject,http://cx42:12048/gnss1_l2c_inject,http://cx43:12048/gnss1_l2c_inject,http://cx51:12048/gnss1_l2c_inject"
         combiner: gnss1_l2c_n2combine # a bare name on rest-url (cx19), whose L2C GPU is 1

@@ -66,17 +66,23 @@ science_band:
     max_freq_id: 7679           # 1499.805 MHz
 
 nodes:
-    # A node holds every science-band freq_id == comb_offset_mod8 (mod 8), 768 channels, split
-    # across its GPUs as two stride-16 combs (gpu_offsets_mod16, GPU0 first); the eight tile the
-    # band. Site wiring facts that no stage checks against the frames: copy a rewiring here by
-    # hand. cx47 and cx52 run production only and are listed for their combs.
-    cx19: {comb_offset_mod8: 4, gpu_offsets_mod16: [4, 12]}
+    # A node holds two stride-16 combs of science-band freq_ids, one per GPU (gpu_offsets_mod16,
+    # GPU0 first), 768 channels; the sixteen combs tile the band. The second comb is not always
+    # the first + 8: which comb reaches which NIC port is a site wiring fact that no stage
+    # checks against the frames, so copy a rewiring here by hand from each GPU's tap
+    # (gnss<g>_srch_tap/rf_stats freq_ids, labelled from the frame metadata). A wrong entry
+    # leaves that GPU's chains despreading channels 195 kHz per step off their replicas: ~1/7
+    # power at one step, nothing at two. comb_offset_mod8 is the GPU0 comb's residue mod 8,
+    # chord_band_plan.py's report order only. cx47 and cx52 run production only and are listed
+    # for their combs; cx27's GPU1 comb is as wired before 2026-10-17 (its port was down at
+    # the F-engine return) and needs reading when the port is back.
+    cx19: {comb_offset_mod8: 4, gpu_offsets_mod16: [4, 14]}
     cx27: {comb_offset_mod8: 0, gpu_offsets_mod16: [0, 8]}
-    cx42: {comb_offset_mod8: 5, gpu_offsets_mod16: [5, 13]}
-    cx43: {comb_offset_mod8: 6, gpu_offsets_mod16: [6, 14]}
+    cx42: {comb_offset_mod8: 5, gpu_offsets_mod16: [5, 12]}
+    cx43: {comb_offset_mod8: 6, gpu_offsets_mod16: [6, 15]}
     cx44: {comb_offset_mod8: 2, gpu_offsets_mod16: [2, 10]}
     cx47: {comb_offset_mod8: 3, gpu_offsets_mod16: [3, 11]}
-    cx51: {comb_offset_mod8: 7, gpu_offsets_mod16: [7, 15]}
+    cx51: {comb_offset_mod8: 7, gpu_offsets_mod16: [7, 13]}
     cx52: {comb_offset_mod8: 1, gpu_offsets_mod16: [1, 9]}
 
     # chord_band_plan.py's default report order. cx19 and cx27 (offsets 4, 0) first: together
