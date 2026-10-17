@@ -722,6 +722,21 @@ def main():
                 _pm.signal_incapable_prns("GPS_L5_Q_NH") == {22, 7},
                 "... and the GLONASS rows did not leak into the GPS answer",
             )
+            _cap = _pm.registry_capable("glo_l3oc")
+            check(
+                _cap is not None and 1 not in _cap and {4, 6, 9, 11, 19} <= _cap,
+                "registry_capable: the chain NAME resolves (glo_l3oc -> GLO), the GLO-M "
+                "slot is out, K and M+ in (got %s)"
+                % (sorted(_cap)[:6] if _cap else _cap),
+            )
+            check(
+                _pm.registry_capable("GLO_L2OF") is None,
+                "registry_capable: a signal every satellite carries proves nothing -> None",
+            )
+            check(
+                _pm.ensure_registry() is not None and _pm.ensure_registry() < 60.0,
+                "ensure_registry: a fresh copy is left alone and its age returned",
+            )
             # A re-used PRN must resolve to today's satellite: an expired assignment (SVN
             # G099 flew G01 until 1995) must not count.
             open(_f, "a").write(

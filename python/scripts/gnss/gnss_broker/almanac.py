@@ -17,6 +17,38 @@ import statistics
 from gnss_broker.transport import _now, _post, _log, _log_rl
 from gnss_broker.sky import brdc_predict, nearest_boresight
 from gnss_broker import timebase
+from gnss_broker import prnmap
+
+
+def _refresh_capable(ctx):
+    """Re-read the signal-capability set from the cached IGS registry every
+    prnmap.CAPABLE_REFRESH_S. The set is otherwise fixed at startup, and a slot that changes
+    hands (GLONASS re-slots a few times a year) would stay seeded, or unseeded, until a
+    restart. No fetch here: ensure_registry() runs at process start, outside the cycle."""
+    if ctx.capable_t is None or _now() - ctx.capable_t < prnmap.CAPABLE_REFRESH_S:
+        return
+    ctx.capable_t = _now()
+    try:
+        new = prnmap.registry_capable(ctx.args.signal_capability)
+    except Exception as e:
+        _log(
+            "signal-capability %s: registry re-read FAILED (%s); keeping the set"
+            % (ctx.args.signal_capability, e)
+        )
+        return
+    if new is None or new == ctx.capable:
+        return
+    old = ctx.capable or set()
+    _log(
+        "signal-capability %s: registry changed, now %d capable PRN(s): +%s -%s"
+        % (
+            ctx.args.signal_capability,
+            len(new),
+            sorted(new - old) or "none",
+            sorted(old - new) or "none",
+        )
+    )
+    ctx.capable = new
 
 
 def stage_almanac_predict(ctx):
@@ -32,6 +64,7 @@ def stage_almanac_predict(ctx):
     a confidently wrong narrow window is worse than no hint at all."""
     if ctx.args.almanac:
         try:
+            _refresh_capable(ctx)
             t_pred = ctx.alm_now()
             if ctx.brdc_alm is not None:
                 raw = brdc_predict(

@@ -473,34 +473,41 @@ def main(argv=None, rx=None, publisher=None):
         else (19 if args.dr_constellation == "C" else 1)
     )
 
-    # Signal-capability PRN gate (--signal-capability), evaluated once at startup. The IGS
-    # satellite-metadata SINEX (SVN -> block -> PRN with its validity window, cached in
-    # ~/.cache/kotekan_gps/) decides GPS and BeiDou (prnmap.signal_incapable_prns); the
-    # Celestrak TLE block names are the fallback for GPS and for GLONASS (the K marker), which
-    # the registry does not model. Both fail open: only proof of incapability excludes a
-    # satellite, and an empty or failed lookup leaves the gate disabled (None) rather than
-    # darkening the chain.
+    # Signal-capability PRN gate (--signal-capability), evaluated at startup and re-read from
+    # the registry every prnmap.CAPABLE_REFRESH_S (almanac.py): slots change hands, GLONASS's
+    # a few times a year. The IGS satellite-metadata SINEX (SVN -> block -> PRN with its
+    # validity window, cached in ~/.cache/kotekan_gps/, refreshed past prnmap.REGISTRY_MAX_AGE_S
+    # here, before the loop) decides GPS, BeiDou and GLONASS (prnmap.signal_incapable_prns);
+    # the Celestrak TLE block names are the fallback for GPS and for GLONASS, where they see
+    # only the K marker, not the GLO-M+ satellites that also carry the CDMA signals. Both fail
+    # open: only proof of incapability excludes a satellite, and an empty or failed lookup
+    # leaves the gate disabled (None) rather than darkening the chain.
     _capable = None
+    _capable_t = None
     # --constellation is unset unless given or implied by --signal; resolve the system the
     # same way chain_id, _pub_desc and alm_sys do.
     _cap_sys = args.constellation or args.dr_constellation
     if args.signal_capability and _cap_sys in ("G", "R", "C"):
+        _capable_t = _now()
         try:
             from gnss_broker import prnmap as _pm
 
+            _pm.ensure_registry()
             _incap = _pm.signal_incapable_prns(args.signal_capability)
         except Exception:
             _incap = set()
         if _incap:
             _capable = set(range(1, 64)) - _incap
+            _reg_age = _pm.registry_age_s()
             _log(
-                "signal-capability %s: %d PRN(s) excluded by the IGS registry (%s) -- "
-                "seeds + hints restricted to block-capable satellites (and with the "
-                "search's require_hint, an unhinted PRN is never scanned)"
+                "signal-capability %s: %d PRN(s) excluded by the IGS registry (%s; copy "
+                "%s old) -- seeds + hints restricted to block-capable satellites (and with "
+                "the search's require_hint, an unhinted PRN is never scanned)"
                 % (
                     args.signal_capability,
                     len(_incap),
                     ", ".join(str(p) for p in sorted(_incap)),
+                    "%.1f d" % (_reg_age / 86400.0) if _reg_age is not None else "?",
                 )
             )
     if _capable is None and args.signal_capability and _cap_sys in ("G", "R"):
@@ -1265,6 +1272,7 @@ def main(argv=None, rx=None, publisher=None):
         est_next=_est_next,
         sig_of=sig_of,
         capable=_capable,
+        capable_t=_capable_t,
         alm_now=_alm_now,
         cb=_cb,
         almanac_sats=almanac_sats,

@@ -73,10 +73,14 @@ def _igs_prn_by_catnum():
     snx = os.path.join(cache, "igs_satellite_metadata.snx")
     if not os.path.exists(snx) or time.time() - os.path.getmtime(snx) > 30 * 86400:
         try:
+            # Beside the file, then renamed in: a concurrent reader (the broker's prnmap)
+            # never sees a partial copy.
+            tmp = snx + ".tmp.%d" % os.getpid()
             urllib.request.urlretrieve(
                 "https://files.igs.org/pub/station/general/igs_satellite_metadata.snx",
-                snx,
+                tmp,
             )
+            os.replace(tmp, snx)
         except Exception as e:
             if not os.path.exists(snx):
                 print(

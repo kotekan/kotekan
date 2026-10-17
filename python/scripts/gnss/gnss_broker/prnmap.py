@@ -215,6 +215,70 @@ def _resync_split(ctx, st, eps, now):
 _IGS_SNX = os.path.join(
     os.path.expanduser("~"), ".cache", "kotekan_gps", "igs_satellite_metadata.snx"
 )
+_IGS_SNX_URL = "https://files.igs.org/pub/station/general/igs_satellite_metadata.snx"
+# Re-fetch the registry past this age. GLONASS re-slots satellites a few times a year and the
+# capability of a slot follows the satellite flying it, so a month-old copy can seed a slot
+# that no longer carries the signal, or never seed one that now does. Every reader that
+# starts a process (the broker, the viewer, gen_fleet --check-prns) calls ensure_registry()
+# first; the broker then re-reads the file on CAPABLE_REFRESH_S without fetching, so a
+# download never sits inside the cycle.
+REGISTRY_MAX_AGE_S = 7 * 86400.0
+CAPABLE_REFRESH_S = 6 * 3600.0
+
+
+def ensure_registry(max_age_s=REGISTRY_MAX_AGE_S, timeout_s=20.0):
+    """Fetch the IGS metadata SINEX when the cached copy is missing or older than max_age_s.
+
+    Written beside the cache and renamed into place, so a reader never sees a partial file;
+    a failed fetch keeps the old copy (fail open, as every registry reader does). Returns the
+    file's age in seconds, or None when there is no copy."""
+    try:
+        age = time.time() - os.path.getmtime(_IGS_SNX)
+    except OSError:
+        age = None
+    if age is not None and age < max_age_s:
+        return age
+    try:
+        import urllib.request
+
+        os.makedirs(os.path.dirname(_IGS_SNX), exist_ok=True)
+        tmp = _IGS_SNX + ".tmp.%d" % os.getpid()
+        with urllib.request.urlopen(_IGS_SNX_URL, timeout=timeout_s) as r, open(
+            tmp, "wb"
+        ) as f:
+            f.write(r.read())
+        os.replace(tmp, _IGS_SNX)
+        return 0.0
+    except Exception as e:
+        try:
+            os.unlink(tmp)
+        except Exception:
+            pass
+        _log(
+            "IGS satellite registry refresh FAILED (%s); %s"
+            % (
+                e,
+                "keeping the %.0f-day-old copy" % (age / 86400.0) if age else "no copy",
+            )
+        )
+        return age
+
+
+def registry_age_s():
+    """Seconds since the cached registry was fetched; None without a copy."""
+    try:
+        return time.time() - os.path.getmtime(_IGS_SNX)
+    except OSError:
+        return None
+
+
+def registry_capable(signal):
+    """PRNs the registry allows for `signal`, or None when it proves nothing (unreadable, or a
+    signal every satellite carries): the capability set the broker filters seeds and hints on,
+    recomputed on CAPABLE_REFRESH_S from the cached file."""
+    incap = signal_incapable_prns(signal)
+    return set(range(1, 64)) - incap if incap else None
+
 
 # Which IGS metadata block strings carry each civil signal. Block names come from the SINEX
 # SATELLITE/IDENTIFIER column ("GPS-IIA", "GPS-IIR-A", "GPS-IIR-M", "GPS-IIF", "GPS-IIIA").

@@ -849,6 +849,7 @@ def _gps_signal_capability():
         )
         from gnss_broker import prnmap
 
+        prnmap.ensure_registry()
         blocks = prnmap.gps_prn_blocks()
         if not blocks:
             log_.warning(
@@ -1039,6 +1040,7 @@ class GpsSkyResource(resource.Resource):
         union = set()
         try:
             import gps_beamtrack as bt
+            from gnss_broker import prnmap
 
             for sigid in self.glonass_sigids:
                 # FDMA signals use glonass_fdma_trackable(), not signal_capable_prns: when the
@@ -1048,6 +1050,13 @@ class GpsSkyResource(resource.Resource):
                 # slot to the union.
                 if "OF" in sigid.upper():
                     union |= bt.glonass_fdma_trackable()  # known-k, empty on failure
+                    continue
+                # CDMA: the IGS registry, the source the broker filters on (the K generations
+                # and GLO-M+); the Celestrak K marker only when the registry proves nothing,
+                # and it cannot see the M+ satellites.
+                cap = prnmap.registry_capable(sigid)
+                if cap is not None:
+                    union |= cap
                 else:
                     union |= set(
                         bt.signal_capable_prns(sigid, bt.GLONASS_TLE_URL)

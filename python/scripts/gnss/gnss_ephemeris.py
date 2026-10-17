@@ -44,6 +44,12 @@ A_E_PZ90 = 6378136.0
 J2_PZ90 = 1082.62575e-6
 GLONASS_STEP_S = 60.0  # RK4 step; the ICD's recommended maximum
 GLONASS_INTENDED_S = 900.0  # a record is meant for +-15 min about its epoch tb
+# The clock-grade window for an R record. The state-vector propagation, judged against the
+# next record (docs/CHORD_MULTIBAND.md section 6), errs 18 m line-of-sight median (0.6 chip at
+# 10.23 Mcps, p90 1.5 chips) at 2 h and 117 m at 4 h, where the Keplerian systems hold for
+# the default 4 h; 2.5 h keeps a seed inside the spectrum fit's capture while leaving the
+# hourly merge's 35-95 min record age nearly an hour of slack.
+GLONASS_MAX_AGE_S = 9000.0
 F_REL = -4.442807633e-10  # relativistic clock coefficient (s/sqrt(m))
 
 
@@ -554,7 +560,8 @@ def predict_all(
     sky.transit_sky, the beam cube) widen it so a stale or offline-cached ephemeris still yields
     az/el through a network gap; Keplerian propagation stays sub-degree and within a few km for
     many hours past toe. Dead reckoning, which needs the clock, keeps the default; toe_age_s is
-    per satellite so a consumer can still gate on freshness.
+    per satellite so a consumer can still gate on freshness. GLONASS records are state vectors
+    integrated from tb, so a window at or under the default is cut to GLONASS_MAX_AGE_S for R.
 
     `signal` (with `dcb`) refers sat_clk_s to that signal's code (group_delay_s; tgd_s is the
     correction applied). signal=None leaves the broadcast clock as it is.
@@ -566,7 +573,15 @@ def predict_all(
     rx = _ecef_of_llh(lat, lon, alt)
     out = {}
     for key, recs in eph.items():
-        e = best_eph(recs, t, max_age)
+        # A clock-grade window (the default or tighter) is cut to GLONASS_MAX_AGE_S for R;
+        # geometry callers that widened it keep their window.
+        e = best_eph(
+            recs,
+            t,
+            min(max_age, GLONASS_MAX_AGE_S)
+            if key[0] == "R" and max_age <= 14400.0
+            else max_age,
+        )
         if e is None:
             continue
         if health_gate and e.get("health", 0) not in (0, 0.0) and key[0] != "C":

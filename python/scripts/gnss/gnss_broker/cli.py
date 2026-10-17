@@ -1832,10 +1832,11 @@ def build_parser(description):
         "names (gps_beamtrack.signal_capable_prns); on fetch failure or empty "
         "result the filter is DISABLED with a warning (phantoms return, but the "
         "chain lives -- better than killing L1C during a network outage). "
-        "GPS and GLONASS: for R the block marker is the Celestrak 'K' suffix on "
-        "the Uragan number, and GLO_L3OC_* -> K satellites only (the CDMA "
-        "signals are GLONASS-K's; the FDMA L1OF/L2OF are on every satellite, so "
-        "they get no filter).",
+        "GLONASS: the IGS registry's block types decide (GLO_L3OC_* / L2OC -> the "
+        "K generations and the modernised GLO-M+; the FDMA L1OF/L2OF are on every "
+        "satellite, so they get no filter), re-read every 6 h. The Celestrak "
+        "fallback sees only the 'K' suffix on the Uragan number, so with the "
+        "registry unreadable it also drops the M+ satellites.",
     )
     ap.add_argument(
         "--dr-min-prn",

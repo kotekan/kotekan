@@ -60,6 +60,7 @@ class ChainContext(object):
         "fe_axis",
         "fe_off",
         "capable",
+        "capable_t",
         "alm_now",
         "trackers",
         "joint_consume",

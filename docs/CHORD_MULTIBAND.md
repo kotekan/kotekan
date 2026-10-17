@@ -213,6 +213,9 @@ here so the next constellation (L2OC, or the FDMA L2OF) knows where to look.
   19, 20, 21, 22, 23, 24 carry it, 14 of the 28 assigned. The manifest's list is those 14.
   The Celestrak fallback (`gps_beamtrack._glonass_block_filter`) sees only the K marker, so
   with the registry unreadable it would drop the six M+ slots: a degradation, not a fault.
+  Because slots change hands, `prnmap.ensure_registry()` re-fetches the SINEX past 7 days
+  at every process start (broker, viewer, `gen_fleet --check-prns`) and the broker re-reads
+  the capability set from the file every 6 h (`almanac._refresh_capable`, logged on change).
 - **The PRN.** The L3OC code index is taken to be the orbital slot, the number BRDC uses.
   The ICD does not promise it, so the sky verifies it: a slot whose code index differed would
   be seeded on its orbit and never present.
@@ -235,9 +238,10 @@ here so the next constellation (L2OC, or the FDMA L2OF) knows where to look.
   The hourly BRDC merge (records at :15 and :45, published ~20 min after the hour) keeps
   the newest record 35-95 min old, inside the spectrum fit's capture and at the DLL's
   (+-0.4 chip) edge at the stale end. The daily file never covers today for R (closed days
-  only), so with the hourly supply down this chain drifts out within a few hours where G/E/C
-  hold for the 4 h window; `_HOURLY_TARGET` now counts R (16 slots) so a merge thin in
-  GLONASS is retried like one thin in BeiDou.
+  only), so with the hourly supply down this chain loses its satellites after 2.5 h
+  (`gnss_ephemeris.GLONASS_MAX_AGE_S`: a clock-grade `predict_all` window is cut to that for
+  R, where G/E/C hold for 4 h) rather than seeding them chips off; `_HOURLY_TARGET` now
+  counts R (16 slots) so a merge thin in GLONASS is retried like one thin in BeiDou.
 - **The excision.** The lobe, 1191.8-1212.3 MHz, adds freq_ids 6102-6127 below E5b's; the
   dual correlator applies the SK mask to the synthetic lanes, so those channels had to join
   the exemption (`rfi-excision-exempt-freq-ids`), and with it the N2 projection's range.
@@ -248,4 +252,5 @@ The chain carries bds_b2b's broker key set (model-primary, clock adopted across 
 carrier loop); a GLONASS ray is observed on one carrier only, so it adds no tau_band equation
 and is judged on lock and presence. The obs writer is `gnss-obs@glo_l3oc` (the stack target
 lists it); the cube, TEC and transit-arc tables know the chain; the viewer's stream-health
-rows name the lower E5b shoulder L3 now that it is flown.
+rows name the lower E5b shoulder L3 now that it is flown, and its GLONASS sky layer takes
+the registry's capability set rather than the Celestrak K marker.

@@ -79,6 +79,7 @@ CHAINS = [
     "bds_b2a",
     "bds_b2b",
     "bds_b3i",
+    "glo_l3oc",
 ]
 SYS_OF = {c: gtc.SYSOF[c.split("_")[0]] for c in CHAINS}
 CN0_MIN, MIN_ARC_S, MAX_GAP_S, STEP_M, MAX_NOISE = 25.0, 300.0, 30.0, 0.05, 0.5
@@ -1136,7 +1137,10 @@ def main():
         )
         lk_async = pool.map_async(
             lock_job,
-            [(c, days, t_lo, t_hi, keep, args.pad_s) for c in ("gal_e5b", "bds_b2b")],
+            [
+                (c, days, t_lo, t_hi, keep, args.pad_s)
+                for c in ("gal_e5b", "bds_b2b", "glo_l3oc")
+            ],
         )
         cl_async = pool.apply_async(
             closure_job, ((days, t_lo, t_hi, keep, args.pad_s),)

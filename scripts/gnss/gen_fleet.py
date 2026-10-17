@@ -141,7 +141,9 @@ def check_prns(man, rise_deg=RISE_DEG, hours=24.0, step_min=10.0):
 
     sys.path.insert(0, os.path.join(K, "python", "scripts", "gnss"))
     from gnss_ephemeris import fetch_brdc, parse_rinex_nav, predict_all
-    from gnss_broker.prnmap import signal_incapable_prns
+    from gnss_broker.prnmap import ensure_registry, signal_incapable_prns
+
+    ensure_registry()
 
     lists = {}
     for ent in man.get("common", {}).get("extra-signal") or []:
