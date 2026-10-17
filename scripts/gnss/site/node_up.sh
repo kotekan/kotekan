@@ -23,7 +23,7 @@
 #         GNSS_LOG  log file          (default /tmp/gnss_node.log)
 #         GNSS_ENV  extra environment for kotekan, "VAR=value [VAR=value ...]" (this start only)
 #         GNSS_EOP_MIN_H       hours of baked EOP table required ahead of now (default 12)
-#         GNSS_SKIP_PREFLIGHT  1 skips the EOP-table and chive checks
+#         GNSS_SKIP_PREFLIGHT  1 skips the EOP-table and F-engine controller checks
 #
 # Needs an interactive sudo on the target, so it uses `ssh -t` and prompts per node (`status`
 # needs neither).
@@ -113,17 +113,23 @@ PYEOP
             echo "  (GNSS_SKIP_PREFLIGHT=1 overrides, deliberately.)" >&2
             exit 1
         fi
-        # chive must answer first. ConfigTracker fetches chive:54321 /config and
-        # /get-frame0-time at startup and fails fatally once its retries run out;
+        # The F-engine controller must answer first: the one this config names
+        # (fpga_controller), crs-control since the 10-17 wiring. ConfigTracker fetches its
+        # /config and /get-frame0-time at startup and fails fatally once its retries run out;
         # CHORDTelescope reads frame0 from /get-frame0-time once, at startup. A node started
-        # while the F-engine controller is down dies; one started while chive still publishes
-        # the epoch from before an F-engine re-base latches the old axis and timestamps the sky
-        # in the past. chive can take many seconds to answer, hence the 20 s timeout.
-        if ! curl -sf -m 20 http://chive:54321/get-frame0-time 2>/dev/null | grep -q frame0_nano; then
-            echo "FAILED: chive:54321/get-frame0-time does not answer with frame0_nano." >&2
+        # while the controller is down dies; one started while it still publishes the epoch
+        # from before an F-engine re-base latches the old axis and timestamps the sky in the
+        # past. It can take many seconds to answer, hence the 20 s timeout.
+        _fc=$(python3 -c 'import sys, yaml
+L = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
+c = (yaml.load(open(sys.argv[1]), Loader=L) or {}).get("fpga_controller") or {}
+print("%s:%s%s" % (c["host"], c["port"], c.get("timing_endpoint", "/get-frame0-time")))' \
+            "$CFG" 2>/dev/null) || _fc="crs-control:54321/get-frame0-time"
+        if ! curl -sf -m 20 "http://$_fc" 2>/dev/null | grep -q frame0_nano; then
+            echo "FAILED: $_fc does not answer with frame0_nano." >&2
             echo "  The F-engine controller is down or restarting. A node started now either dies" >&2
             echo "  (ConfigTracker) or latches the wrong epoch (ICETelescope). Wait until" >&2
-            echo "    curl -s http://chive:54321/get-frame0-time" >&2
+            echo "    curl -s http://$_fc" >&2
             echo "  returns a start_ctime you believe, then retry. (GNSS_SKIP_PREFLIGHT=1 overrides.)" >&2
             exit 1
         fi
@@ -188,8 +194,8 @@ PYEOP
 # and is harmless when there is nothing to clear, hence the `|| true`.
 # The unit restarts itself on failure. An F-engine reconfigure (FPGAMonitor exits when the
 # controller no longer matches the config and frame0 the node started with) or a crash ends a
-# healthy node; Restart=on-failure brings it back after RestartSec, re-reading chive on the way
-# up, so it converges on a new epoch by itself. While chive is down it keeps failing and
+# healthy node; Restart=on-failure brings it back after RestartSec, re-reading the F-engine controller on the way
+# up, so it converges on a new epoch by itself. While the controller is down it keeps failing and
 # retrying; StartLimitIntervalSec=0 means systemd never gives up. A clean exit (/kill,
 # `systemctl stop`) stays down.
 # The log is appended, not truncated, so the fatal that caused a restart survives it; each
@@ -223,10 +229,11 @@ REMOTE_UP="mkdir -p /tmp/gnss && sudo systemctl reset-failed gnss-node 2>/dev/nu
         '$BIN' --config '$CFG' --bind-address 0.0.0.0:12048"
 
 # ---------------------------------------------------------------------------------------
-# Start, verify, retry: whether a start succeeds depends on chive. ConfigTracker's fetch from
-# chive:54321 is fatal once its retries run out, and chive's single-threaded REST server can
-# stall for many seconds while it reads the boards, so some nodes of a fleet restart fail while
-# others start. The failure looks per-node but is a timeout.
+# Start, verify, retry: whether a start succeeds depends on the F-engine controller
+# (fpga_controller in the config). ConfigTracker's fetch from it is fatal once its retries run
+# out, and its single-threaded REST server can stall for many seconds while it reads the boards,
+# so some nodes of a fleet restart fail while others start. The failure looks per-node but is a
+# timeout.
 #
 # The retry runs inside the one ssh session: sudo's credential cache is per-TTY, so retrying
 # from here would cost a password per attempt.

@@ -2624,40 +2624,6 @@ def main():
             base = json.load(fh) if args.base.endswith(".json") else yaml.safe_load(fh)
     out = copy.deepcopy(base)
 
-    # Name the quantity each RFI ring copy produces. cudaCopyFromRingbuffer builds its output
-    # buffer's ndarray descriptor from the ring's slot-0 metadata, which on a fresh pipeline can
-    # be a pool object recycled from another quantity, still carrying its dimension names.
-    # Publishing that conflicts with the buffer's descriptor, ensure_frame_desc() fails fatally
-    # and the node shuts down. A size check cannot catch it (dim[0] is forced from frame_size),
-    # so with expect_quantity_name set the copy defers until the metadata names this quantity.
-    # Names from the producing kernels' array declarations (cudaRFISKtilde, cudaRFISKbar).
-    _RING_QUANTITY = {
-        "rfi_skbar_buffer": "SKbar",
-        "rfi_sktilde_buffer": "SKtilde",
-        "rfi_RFImask_buffer": "RFImask",
-    }
-    _stamped = 0
-    for _st in out.values():
-        if not isinstance(_st, dict):
-            continue
-        for _leg in _st.values():
-            if not isinstance(_leg, dict):
-                continue
-            for _cmd in _leg.get("commands") or []:
-                if (
-                    isinstance(_cmd, dict)
-                    and _cmd.get("name") == "cudaCopyFromRingbuffer"
-                    and _cmd.get("gpu_mem_input") in _RING_QUANTITY
-                    and "expect_quantity_name" not in _cmd
-                ):
-                    _cmd["expect_quantity_name"] = _RING_QUANTITY[_cmd["gpu_mem_input"]]
-                    _stamped += 1
-    # stderr: without --out, stdout is the config.
-    if _stamped:
-        sys.stderr.write(
-            f"  hardened {_stamped} ring copies with expect_quantity_name\n"
-        )
-
     # --frame0-nano: start without chive's timing service. CHORDTelescope needs a GPS time at
     # startup, which makes chive:54321 a startup dependency of every node (running nodes do not
     # need it). Every running node serves the array-wide frame 0 at telescope/time0_ns:

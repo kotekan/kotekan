@@ -53,11 +53,6 @@ DECLARED = [
         "10 -> 30 s, same reason; startup only",
     ),
     (
-        "run_recv_rfi_*.gpu_*.commands.*.expect_quantity_name",
-        "+",
-        "ring-copy descriptor guard (our cudaCopyFromRingbuffer; startup FATALs 08-31)",
-    ),
-    (
         "run_rfi_sktilde.gpu_*.commands.*.rfi_first_stage_excision_exempt_freq_ids",
         "+",
         "GNSS lobes exempt from first-stage excision (our cudaRFISKtilde key, default off): their "

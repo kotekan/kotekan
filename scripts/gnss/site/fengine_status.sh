@@ -9,7 +9,7 @@
 #
 #   1. Is data flowing? Poll kotekan_dpdk_distributor_packets_total twice and require it to
 #      move. Link-up is not data, and neither is a large total; only a rising total is.
-#   2. Is chive up? The timing service is a startup-only dependency, so it can be down while
+#   2. Is the F-engine controller (crs-control) up? The timing service is a startup-only dependency, so it can be down while
 #      everything runs, and up while nothing does. It is a separate question.
 #   3. Has frame 0 moved? Nodes cache time0 at startup. If the F-engine restarted or changed
 #      mode, frame 0 is re-established and every cached copy (including configs generated with
@@ -22,7 +22,7 @@ NODES=${*:-"cx19 cx27 cx42 cx43 cx44 cx51"}
 # silent F-engine.
 PORT=${GNSS_PORT:-12048}
 GAP=${GAP:-20}
-CHIVE=${CHIVE:-10.222.0.54:54321}
+CHIVE=${CHIVE:-crs-control:54321}  # the F-engine controller (fpga_controller)
 
 # The packet count, or the literal "?" when the endpoint could not be polled at all, so the
 # caller can say so instead of folding "could not ask" into "the answer is none".
@@ -37,7 +37,7 @@ t0()   { timeout 12 curl -sS -m 8 "http://$1:$PORT/telescope/time0_ns" 2>/dev/nu
 
 echo "== $(date -u '+%Y-%m-%d %H:%M:%S UTC')  /  $(TZ=America/Vancouver date '+%H:%M %Z') at the telescope"
 
-printf "\n-- chive %s: " "$CHIVE"
+printf "\n-- F-engine controller %s: " "$CHIVE"
 if timeout 8 curl -sS -m 6 "http://$CHIVE/get-frame0-time" >/dev/null 2>&1; then
     echo "UP"
     echo "   $(timeout 8 curl -sS -m 6 "http://$CHIVE/get-frame0-time" 2>/dev/null | head -c 200)"
@@ -75,7 +75,7 @@ else
     echo "VERDICT: data flowing on $flowing/$total node(s)$([ "$unpolled" -gt 0 ] && echo \", $unpolled UNREACHABLE\")."
     echo "  NOW CHECK FRAME 0 before trusting any science number: the frame0_ns column above is"
     echo "  what each node cached AT ITS OWN STARTUP. If the F-engine restarted during the"
-    echo "  outage, a node started BEFORE it is carrying a stale epoch. Prefer chive; else read"
+    echo "  outage, a node started BEFORE it is carrying a stale epoch. Prefer the controller; else read"
     echo "  time0 from a node started SINCE data resumed, and regenerate any --frame0-nano"
     echo "  config whose baked value no longer matches."
 fi
