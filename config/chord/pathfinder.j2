@@ -538,8 +538,8 @@ dpdk:
     # Slots 0-7 are pol 0 and 8-15 pol 1 of dish groups 0-7. Dish boards send pol 0 from
     # even and pol 1 from odd source_ids; the RFI-antenna boards were cabled the other way
     # round (source_id 15 -> slot 7, 14 -> slot 15). Those two boards (crate slots 15, 16)
-    # now carry row H, which is not connected (Oct 2026), and both are in
-    # missing_source_ids, so their order is moot; verify it when row H is cabled.
+    # now carry row H (Oct 2026); whether row H kept that reversed order or follows the
+    # other rows (pol 0 from the odd crate slot) is unverified: check H's X/Y on a transit.
     crs_board_remap: [0, 2, 4, 6, 8, 10, 12, 15, 1, 3, 5, 7, 9, 11, 13, 14]
     # The number of stream IDs expected per worker
     num_expected_stream_ids: 4
@@ -611,13 +611,13 @@ dpdk:
 #   13    11    12    Et24   E05-F08 pol 1       listed: link down -> flag E05-F08 pol 1
 #    6    12    13    Et14   G01-G08 pol 0       listed: link down -> flag G01-G08 pol 0
 #   14    13    14    Et18   G01-G08 pol 1       link flapping; the loss mask covers it
-#    7    15    16    Et22   H01-H08 pol 0       listed: row H not connected -> flag
-#   15    14    15    Et20   H01-H08 pol 1       listed: row H not connected -> flag
+#    7    15    16    Et22   H01-H08 pol 0       good (pol order of this pair unverified)
+#   15    14    15    Et20   H01-H08 pol 1       good (pol order of this pair unverified)
 #
-# Only the slots whose board sends nothing, or has no dishes, are listed; every other
-# board's loss is accounted, so its dropouts are masked.  Every dish is ArrayDish, so a
-# listed board's inputs are flagged by hand (choco's bffs manual grid -> bad_inputs).
-missing_source_ids: [4, 6, 7, 12, 13, 15]
+# Only the slots whose board sends nothing are listed; every other board's loss is
+# accounted, so its dropouts are masked.  Every dish is ArrayDish, so a listed board's
+# inputs are flagged by hand (choco's bffs manual grid -> bad_inputs).
+missing_source_ids: [4, 6, 12, 13]
 
 # Combine packet receipt bitmaps and generate packet-loss masks
 {% for n in numa_halves %}
