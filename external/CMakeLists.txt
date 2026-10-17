@@ -16,11 +16,15 @@ if(CUDAToolkit_FOUND)
     target_link_libraries(libexternal INTERFACE ksgpu)
     add_subdirectory(n2k)
     target_link_libraries(libexternal INTERFACE n2k)
+    # PilotProxy DTV pilot-tone detector core (vendored; used by lib/cuda/cudaPilotProxyDetector and
+    # testPilotProxyDetector).
+    add_subdirectory(pilotproxy)
+    target_link_libraries(libexternal INTERFACE pilotproxy)
 
-    # Treat vendored ksgpu/n2k headers as system headers for consumers, so their pre-existing
-    # diagnostics (e.g. -Wclass-conversion in ksgpu/Array.hpp) don't fail kotekan's -Werror build.
-    # Their own sources still see -Wall.
-    foreach(tgt ksgpu n2k)
+    # Treat vendored ksgpu/n2k/pilotproxy headers as system headers for consumers, so their
+    # pre-existing diagnostics (e.g. -Wclass-conversion in ksgpu/Array.hpp) don't fail kotekan's
+    # -Werror build. Their own sources still see -Wall.
+    foreach(tgt ksgpu n2k pilotproxy)
         get_target_property(inc ${tgt} INTERFACE_INCLUDE_DIRECTORIES)
         if(inc)
             set_property(
