@@ -269,7 +269,8 @@ iceBoardShuffle::iceBoardShuffle(kotekan::Config& config, const std::string& uni
     std::vector<std::string> buffer_names =
         config.get<std::vector<std::string>>(unique_name, "out_bufs");
     if (shuffle_size != buffer_names.size()) {
-        throw std::runtime_error("Expecting 4 buffers, got " + std::to_string(port));
+        throw std::runtime_error("Expecting " + std::to_string(shuffle_size) + " buffers, got "
+                                 + std::to_string(port));
     }
     for (uint32_t i = 0; i < shuffle_size; ++i) {
         out_bufs[i] = buffer_container.get_buffer(buffer_names[i]);
@@ -519,9 +520,9 @@ inline bool iceBoardShuffle::advance_frames(uint64_t new_seq, bool first_time) {
     get_chord_metadata(lost_samples_buf, lost_samples_frame_id)->set_fpga_seq_num(new_seq);
     get_chord_metadata(lost_samples_buf, lost_samples_frame_id)->set_time_downsampling_fpga(1);
     get_chord_metadata(lost_samples_buf, lost_samples_frame_id)
-        ->set_freq_upchan_factor(std::vector<int>(1 /* nfreq */, 1));
+        ->set_freq_upchan_factor(std::vector<int>(shuffle_size /* nfreq */, 1));
     get_chord_metadata(lost_samples_buf, lost_samples_frame_id)
-        ->set_freq_upchan_index(std::vector<int>(1 /* nfreq */, 0));
+        ->set_freq_upchan_index(std::vector<int>(shuffle_size /* nfreq */, 0));
     // TODO: are these required for the lost_samples buffer? or is having them
     // in the corresponding data buffer sufficient?
     get_chord_metadata(lost_samples_buf, lost_samples_frame_id)->set_first_packet_recv_time(now);
@@ -533,8 +534,8 @@ inline bool iceBoardShuffle::advance_frames(uint64_t new_seq, bool first_time) {
     // because of the final stage shuffle, but that dimension is collapsed.
     ice_stream_id_t tmp_stream_id = port_stream_id;
 
-    std::vector<int> coarse_freq(4);
-    for (int i = 0; i < 4; i++) {
+    std::vector<int> coarse_freq(shuffle_size);
+    for (uint32_t i = 0; i < shuffle_size; i++) {
         tmp_stream_id.unused = i;
         tmp_stream_id.crate_id = tmp_stream_id.crate_id % 2;
         coarse_freq[i] = tel.to_freq_id(ice_encode_stream_id(tmp_stream_id));
