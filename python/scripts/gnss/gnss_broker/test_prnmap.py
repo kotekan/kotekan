@@ -688,6 +688,40 @@ def main():
                 "Galileo: not modelled, so nothing excluded -- a filter that pretended "
                 "otherwise would be a second way for a constellation to go dark",
             )
+            # GLONASS: L3OC rides the K generations and the modernised M+; a plain GLO-M
+            # satellite is FDMA-only. The generations are interspersed across the slots, so
+            # the block, not a PRN floor, must decide.
+            open(_f, "a").write(
+                "+SATELLITE/IDENTIFIER\n"
+                " R730 2007-065B  32395 GLO-M           x\n"
+                " R755 2014-075A  40315 GLO-M+          x\n"
+                " R705 2011-009A  37372 GLO-K1          x\n"
+                " R706 2023-002A  55260 GLO-K1B         x\n"
+                " R707 2022-156A  54377 GLO-K1+         x\n"
+                " R711 2023-173A  57517 GLO-K2          x\n"
+                "-SATELLITE/IDENTIFIER\n"
+                "+SATELLITE/PRN\n"
+                " R730 2008:001:00000 0000:000:00000 R01\n"
+                " R755 2015:001:00000 0000:000:00000 R04\n"
+                " R705 2011:100:00000 0000:000:00000 R09\n"
+                " R706 2023:100:00000 0000:000:00000 R11\n"
+                " R707 2022:300:00000 0000:000:00000 R19\n"
+                " R711 2023:300:00000 0000:000:00000 R06\n"
+                "-SATELLITE/PRN\n"
+            )
+            check(
+                _pm.signal_incapable_prns("GLO_L3OC_P_NH") == {1},
+                "GLONASS L3OC: only the plain GLO-M slot excluded; K1/K1B/K1+/K2 and M+ "
+                "kept (got %s)" % sorted(_pm.signal_incapable_prns("GLO_L3OC_P_NH")),
+            )
+            check(
+                _pm.signal_incapable_prns("GLO_L2OF") == set(),
+                "GLONASS L2OF: FDMA is on every satellite, nothing excluded",
+            )
+            check(
+                _pm.signal_incapable_prns("GPS_L5_Q_NH") == {22, 7},
+                "... and the GLONASS rows did not leak into the GPS answer",
+            )
             # A re-used PRN must resolve to today's satellite: an expired assignment (SVN
             # G099 flew G01 until 1995) must not count.
             open(_f, "a").write(

@@ -1817,7 +1817,7 @@ def build_parser(description):
     ap.add_argument(
         "--dr-constellation",
         default="G",
-        choices=("G", "E", "C"),
+        choices=("G", "E", "C", "R"),
         help="RINEX constellation letter for this broker's band",
     )
     ap.add_argument(

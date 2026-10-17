@@ -50,8 +50,9 @@ FREQ = {
     "bds_b2a": 1176.45e6,
     "bds_b2b": 1207.14e6,
     "bds_b3i": 1268.52e6,
+    "glo_l3oc": 1202.025e6,
 }
-SYSOF = {"gps": "G", "gal": "E", "bds": "C"}
+SYSOF = {"gps": "G", "gal": "E", "bds": "C", "glo": "R"}
 # Default pairs: the widest frequency lever each constellation has, so the m/TECU factor is
 # large and the phase noise divides down. E5a x E6 = 0.0447 m/TECU, B2a x B3I 0.0407,
 # L5 x L2C 0.0237. Pooling all three is what fills the sky for a movie; each pair carries its

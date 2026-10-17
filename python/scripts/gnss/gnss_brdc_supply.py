@@ -136,9 +136,10 @@ _HOURLY_STATIONS = [
 # PRN floor (min_prn in gnss_broker/signals.py, alm_min_prn in gps_distributed_broker.py):
 # BDS-2 satellites do not broadcast B1C/B2a/B2b, and counting them makes a thin BDS-3 sky look
 # healthy.
-# The targets sit below a full constellation (G ~32, E ~28, BDS-3 ~24 reachable): they mean
-# "this merge is not starved", not "complete".
-_HOURLY_TARGET = {"G": (1, 20), "E": (1, 18), "C": (19, 20)}
+# The targets sit below a full constellation (G ~32, E ~28, BDS-3 ~24 reachable, R ~25 with
+# records): they mean "this merge is not starved", not "complete". R counts every slot, since
+# the capability gate (which GLONASS generations carry L3OC) is the broker's, not the supply's.
+_HOURLY_TARGET = {"G": (1, 20), "E": (1, 18), "C": (19, 20), "R": (1, 16)}
 # Station files _hourly_target_met requires. The walk's exit test passes it
 # max(fetched, _HOURLY_MIN_STATIONS), so this does not bind there.
 _HOURLY_MIN_STATIONS = (
@@ -410,7 +411,7 @@ def _fetch_station_hourly(when, cache_dir, token):
     store, header = _store_load(cache_dir, when)
     n_start = len(store)
     fetched = 0
-    seen = {"G": set(), "E": set(), "C": set()}
+    seen = {k2: set() for k2 in _HOURLY_TARGET}
     for (sysc, prn, toc) in store:
         if sysc in seen and prn >= _HOURLY_TARGET[sysc][0]:
             t = _toc_of((sysc, prn, toc))
@@ -479,7 +480,7 @@ def _fetch_station_hourly(when, cache_dir, token):
     # ---- one file: the whole rolling window, not just this call's fetches -----------------
     if not (header and store):
         return None
-    got = "/".join("%s%d" % (k2, len(seen[k2])) for k2 in "GEC")
+    got = "/".join("%s%d" % (k2, len(seen[k2])) for k2 in _HOURLY_TARGET)
     thin = [k2 for k2, v in _HOURLY_TARGET.items() if len(seen[k2]) < v[1]]
     hours = sorted({hh for _, hh in done})
     # Oldest first, then by key: a deterministic order (test_brdc_golden hashes the file) that
@@ -513,7 +514,7 @@ def _fetch_station_hourly(when, cache_dir, token):
                 ",".join("%02d" % x for x in hours),
                 got,
                 "+".join(thin),
-                "/".join("%s%d" % (k2, _HOURLY_TARGET[k2][1]) for k2 in "GEC"),
+                "/".join("%s%d" % (k2, _HOURLY_TARGET[k2][1]) for k2 in _HOURLY_TARGET),
                 "+".join(thin),
                 _HOURLY_THIN_TTL_S,
             )

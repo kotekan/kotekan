@@ -25,7 +25,7 @@ systemctl --user restart gnss-<unit>.service   # to pick up a changed unit
 The service logs go to `/var/tmp/gnss-logs/` and are rotated by `../logrotate.conf` from the gnss
 crontab.
 
-`gnss-obs@.service` is templated on the chain name; `gnss-stack.target` pulls in the eight
+`gnss-obs@.service` is templated on the chain name; `gnss-stack.target` pulls in the nine
 instances the chain manifest lists. Keep that list and
 `config/gnss_chains_chord.yaml` in step — the manifest is the armed authority, this is a mirror.
 

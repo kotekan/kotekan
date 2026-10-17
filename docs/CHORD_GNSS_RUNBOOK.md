@@ -27,15 +27,15 @@ Without `--user` systemd looks for system units, finds nothing, and says so conf
 | broker | **gnss** | `gnss-broker` | 1.43 cores |
 | gather | **gnss** | `gnss-gather` | 0.84 |
 | aggregator (GPU) | **gnss** | `gnss-aggregator` | 0.76 + 34% of an L40S |
-| obs writers ×8 | **gnss** | `gnss-obs@<chain>` | 0.15 total (~1% each; 20-90% each means the per-row ephemeris cost is back) |
+| obs writers ×9 | **gnss** | `gnss-obs@<chain>` | 0.15 total (~1% each; 20-90% each means the per-row ephemeris cost is back) |
 | live viewer :8080 | **gnss** | `gnss-viewer` | 0.02 |
 | — | | | **3.19 of 6 cores (53%)** |
 | cube archiver | cf06 | `cubearch_up.sh` | writes 32.5 GB/h to NFS |
 | cube compactor | cf06 | `cubecompact_loop.sh` | periodic heavy analysis |
 | static cube viewer :8877 | cf06 | `beamview_up.sh` | serves the exported cube |
 
-**The eight chains** are `gps_l5`, `gps_l2c`, `gal_e5a`, `gal_e5b`, `gal_e6`, `bds_b2a`,
-`bds_b2b`, `bds_b3i`.
+**The nine chains** are `gps_l5`, `gps_l2c`, `gal_e5a`, `gal_e5b`, `gal_e6`, `bds_b2a`,
+`bds_b2b`, `bds_b3i` and, since 2026-10-17, `glo_l3oc` (docs/CHORD_MULTIBAND.md section 6).
 
 ### Scheduled jobs
 

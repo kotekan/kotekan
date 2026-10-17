@@ -334,6 +334,7 @@ function drawColorbar(lo, hi) {
 // better-sampled beam but two beams with different offsets added together.
 const BAND = {
   gps_l5: '1176', gal_e5a: '1176', bds_b2a: '1176',
+  glo_l3oc: '1202',
   gal_e5b: '1207', bds_b2b: '1207',
   gps_l2c: '1227', bds_b3i: '1268', gal_e6: '1278',
 };

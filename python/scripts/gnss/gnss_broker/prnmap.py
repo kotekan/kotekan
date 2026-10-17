@@ -243,6 +243,15 @@ def _block_carries(signal, block):
         if "B1C" in s or "B2A" in s or "B2B" in s:
             return b.startswith("BDS-3")
         return True
+    if s.startswith("GLO"):
+        # The CDMA signals (L3OC, L2OC, L1OC) are on GLONASS-K (GLO-K1, GLO-K1B, GLO-K1+,
+        # GLO-K2) and on the modernised GLO-M+; the plain GLO-M satellites broadcast only the
+        # FDMA L1OF/L2OF, which every satellite carries. The generations are interspersed
+        # across the slots (10-17: 14 of the 28 assigned slots carry L3OC), so no PRN floor
+        # can express it.
+        if "OC" in s:
+            return b.startswith("GLO-K") or b == "GLO-M+"
+        return True
     return True  # a signal we do not model: exclude nothing
 
 
@@ -260,12 +269,21 @@ def signal_incapable_prns(signal):
     real satellite wrongly excluded can never be tracked and nothing says why, which is worse
     than a dead slot. Same polarity as gnss_brdc_supply._rec_is_fresh.
 
-    GPS and BeiDou are modelled (for BeiDou, the BDS-3-only B1C/B2a/B2b against the BDS-2
-    blocks); every other constellation returns an empty set. Galileo needs no model: every
-    Galileo satellite carries the signals the chains track.
+    GPS, BeiDou and GLONASS are modelled (for BeiDou, the BDS-3-only B1C/B2a/B2b against the
+    BDS-2 blocks; for GLONASS, the CDMA L3OC/L2OC against the plain GLO-M blocks); every other
+    constellation returns an empty set. Galileo needs no model: every Galileo satellite carries
+    the signals the chains track.
     """
     s = (signal or "").upper()
-    sysc = "G" if s.startswith("GPS") else "C" if s.startswith("BDS") else None
+    sysc = (
+        "G"
+        if s.startswith("GPS")
+        else "C"
+        if s.startswith("BDS")
+        else "R"
+        if s.startswith("GLO")
+        else None
+    )
     if sysc is None:
         return set()
     return {p for p, b in prn_blocks(sysc).items() if not _block_carries(signal, b)}
@@ -284,8 +302,9 @@ def gps_prn_blocks():
 
 
 def prn_blocks(sysc):
-    """{prn -> block} for every currently assigned PRN of constellation `sysc` ("G", "C"), from
-    the IGS metadata SINEX.
+    """{prn -> block} for every currently assigned PRN of constellation `sysc` ("G", "C", "R"),
+    from the IGS metadata SINEX. For R the PRN is the orbital slot, the number BRDC and the
+    L3OC code index both use.
 
     The registry half of signal_incapable_prns, exposed so the viewer marks not-transmitted
     cells from the same source the broker filters on. SVN -> block comes from

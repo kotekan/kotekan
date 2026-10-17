@@ -118,14 +118,15 @@ def flags_from(mapping):
 # The two findings are not equally bad, and the exit code says so:
 #   EXCLUDED (active, capable, rises here, no slot)  -> a satellite missing from the list: fails.
 #   DEAD     (slot, no active satellite)             -> wasted capacity: warns.
-SYS_OF = {"GPS": "G", "GAL": "E", "BDS": "C"}
+SYS_OF = {"GPS": "G", "GAL": "E", "BDS": "C", "GLO": "R"}
 LAT, LON, ALT = 49.32075144444, -119.62081125, 545.0
 # Capability, not just activity: BeiDou B2a/B2b are BDS-3 signals the BDS-2 satellites do not
 # broadcast, and L2C/L5 are carried only by the newer GPS blocks, so leaving those satellites
 # out of a list is correct and must not be reported. The rule is the IGS registry's block types
 # (prnmap.signal_incapable_prns), the source the broker filters on; a PRN floor is no proxy,
-# since BeiDou re-uses low PRNs for BDS-3 satellites. A list that mirrors a sibling's (B3I
-# follows B2a/B2b so tau_band sees the same rays) is judged by the sibling's capability.
+# since BeiDou re-uses low PRNs for BDS-3 satellites and GLONASS's L3OC-capable generations are
+# interspersed across the slots. A list that mirrors a sibling's (B3I follows B2a/B2b so
+# tau_band sees the same rays) is judged by the sibling's capability.
 MIRRORS = {"BDS_B3I_NH": "BDS_B2A_P_CS"}
 # Degrees: only a satellite whose peak elevation here exceeds this counts as excluded; one that
 # merely grazes the horizon has no claim on a boot slot. The manifest's BeiDou lists are cut at

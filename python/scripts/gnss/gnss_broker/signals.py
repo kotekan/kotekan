@@ -97,7 +97,11 @@ _CHAINS = {
     # B3I is broadcast by BDS-2 and BDS-3 alike, so no min_prn and no capability gate; the
     # broker's BeiDou fallback floor (PRN >= 19) still applies.
     "bds_b3i": ("BDS_B3I", "BDS_B3I_NH", None),
-    "glo_l3oc": ("GLO_L3OC_P", None, None),
+    # L3OC is GLONASS's CDMA signal, on the K generations and the modernised M+ only (the plain
+    # GLO-M satellites, half the constellation, broadcast FDMA alone). The IGS registry's block
+    # types decide (prnmap.signal_incapable_prns); no PRN floor can, since the generations are
+    # interspersed across the slots. The chains yaml arms --signal-capability on the chain.
+    "glo_l3oc": ("GLO_L3OC_P", "GLO_L3OC_P_NH", None),
 }
 
 

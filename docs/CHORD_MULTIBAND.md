@@ -2,11 +2,11 @@
 
 **Status: done.** The 2026-08-06 plan (task #23: constellation first -- GAL_E5A_Q and
 BDS_B2A_P on the GPS L5 comb -- then second bands) has landed: `config/gnss_chains_chord.yaml`
-runs eight chains, gps_l5, gal_e5a, bds_b2a, gal_e5b, bds_b2b, bds_b3i, gal_e6 and gps_l2c,
-all on path B. What stays here is the design that still applies: the comb geometry (§2-3), the
-baked per-PRN secondaries the `_CS` chains run (§4), and why those chains cannot blind-acquire
-(§5). The phased plan, the defects found building Phase 0 and the cost notes are at
-`be7d46e8e:docs/CHORD_MULTIBAND.md` §6-8.
+runs nine chains, gps_l5, gal_e5a, bds_b2a, gal_e5b, bds_b2b, bds_b3i, gal_e6, gps_l2c and,
+since 2026-10-17, glo_l3oc (§6), all on path B. What stays here is the design that still
+applies: the comb geometry (§2-3), the baked per-PRN secondaries the `_CS` chains run (§4),
+and why those chains cannot blind-acquire (§5). The phased plan, the defects found building
+Phase 0 and the cost notes are at `be7d46e8e:docs/CHORD_MULTIBAND.md` §6-8.
 
 ---
 
@@ -193,3 +193,59 @@ sign within every record and the overlay was wiped downstream by the combiner
 (`secondary_overlay: E5A_CS100`). That is the record==period coincidence again: it silently
 made the acquisition, the record and the wipe all correct at once, and CHORD's 10.49-period
 record breaks all three together.
+
+## 6. GLONASS L3OC: the fourth constellation (2026-10-17)
+
+The chain is `glo_l3oc`: GLONASS L3OC-p, the dataless pilot of GLONASS's CDMA signal at
+1202.025 MHz, 10230 chips at 10.23 Mcps with the shared NH10 secondary, so the B2b/B3I
+geometry one lobe down from E5b. Everything it needed was in the tree bar five things, listed
+here so the next constellation (L2OC, or the FDMA L2OF) knows where to look.
+
+- **The tracker code.** `GLO_L3OC_P` carries `secondary_length 10`, but the bank's overlay
+  ladder is for the search; the trackers despread a tiled code (§4). `GLO_L3OC_P_NH` is the
+  pilot with NH10 tiled in, 102300 chips / 10 ms, built in `gnssChannelizedReplica.cpp` as
+  `GPS_L5_Q_NH` and `BDS_B3I_NH` are. Without it a 10.5 ms record sums NH10, which is +2 of
+  10: -14 dB. The broker pairs the two (`gnss_broker/signals.py`).
+- **Capability.** L3OC rides the K generations (GLO-K1, K1B, K1+, K2) and the modernised
+  GLO-M+; the plain GLO-M half of the constellation is FDMA-only. The IGS registry's block
+  types decide (`prnmap.signal_incapable_prns`, now modelling R beside G and C); no PRN floor
+  can, since the generations are interspersed: on 2026-10-17, slots 4, 5, 6, 8, 9, 11, 12, 16,
+  19, 20, 21, 22, 23, 24 carry it, 14 of the 28 assigned. The manifest's list is those 14.
+  The Celestrak fallback (`gps_beamtrack._glonass_block_filter`) sees only the K marker, so
+  with the registry unreadable it would drop the six M+ slots: a degradation, not a fault.
+- **The PRN.** The L3OC code index is taken to be the orbital slot, the number BRDC uses.
+  The ICD does not promise it, so the sky verifies it: a slot whose code index differed would
+  be seeded on its orbit and never present.
+- **The time scales.** The chain adopts gps_l5's clock, in GPS time; the GLONASS code epoch
+  is UTC(SU)+3h, 18 s behind and 3 h ahead, both whole multiples of the 10 ms code. Only the
+  sub-microsecond GLONASS-GPS system offset survives, a chain-wide bias inside the spectrum
+  fit's capture (+-1/(channel spacing) = +-1.6 chips). The orbit model is the ICD's integrated
+  state vector (`gnss_ephemeris.glonass_state`, RK4 with J2 and the record's lunisolar term),
+  meant for +-15 min about tb. Validated against the next record on the cached days 289-290
+  (571 records, 25 satellites; the next record's own few metres included):
+
+  | record age | line-of-sight error, median / p90 |
+  |---|---|
+  | 30 min | 1.2 m / 2.4 m |
+  | 1 h | 4.6 m / 9.3 m |
+  | 2 h | 18 m / 43 m (0.6 / 1.5 chips) |
+  | 3 h | 46 m / 114 m |
+  | 4 h | 117 m / 273 m |
+
+  The hourly BRDC merge (records at :15 and :45, published ~20 min after the hour) keeps
+  the newest record 35-95 min old, inside the spectrum fit's capture and at the DLL's
+  (+-0.4 chip) edge at the stale end. The daily file never covers today for R (closed days
+  only), so with the hourly supply down this chain drifts out within a few hours where G/E/C
+  hold for the 4 h window; `_HOURLY_TARGET` now counts R (16 slots) so a merge thin in
+  GLONASS is retried like one thin in BeiDou.
+- **The excision.** The lobe, 1191.8-1212.3 MHz, adds freq_ids 6102-6127 below E5b's; the
+  dual correlator applies the SK mask to the synthetic lanes, so those channels had to join
+  the exemption (`rfi-excision-exempt-freq-ids`), and with it the N2 projection's range.
+
+Per GPU the chain despreads 6-7 channels, 4-5 of them E5b's, at 2 lanes per slot in a 64-lane
+range at base 128 beside gal_e5b and bds_b2b (the dual axis stays at 384 with 192 used).
+The chain carries bds_b2b's broker key set (model-primary, clock adopted across bands, no
+carrier loop); a GLONASS ray is observed on one carrier only, so it adds no tau_band equation
+and is judged on lock and presence. The obs writer is `gnss-obs@glo_l3oc` (the stack target
+lists it); the cube, TEC and transit-arc tables know the chain; the viewer's stream-health
+rows name the lower E5b shoulder L3 now that it is flown.

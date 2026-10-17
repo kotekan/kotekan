@@ -131,6 +131,17 @@ std::vector<int8_t> signal_code(const std::string& name, int prn) {
         auto a = glonass::generate_l3ocp_code(prn);
         return std::vector<int8_t>(a.begin(), a.end());
     }
+    if (name == "GLO_L3OC_P_NH") {
+        // L3OC-p tiled by the shared NH10, as GPS_L5_Q_NH and BDS_B3I_NH above: a code phase in
+        // this 102300-chip space is primary cp + 10230 * (period index mod 10).
+        auto a = glonass::generate_l3ocp_code(prn);
+        std::vector<int8_t> tiled;
+        tiled.reserve((size_t)glonass::L3OC_CODE_LENGTH * glonass::L3OC_NH_LENGTH);
+        for (int k = 0; k < glonass::L3OC_NH_LENGTH; ++k)
+            for (int i = 0; i < glonass::L3OC_CODE_LENGTH; ++i)
+                tiled.push_back((int8_t)(a[(size_t)i] * glonass::L3OC_NH10[(size_t)k]));
+        return tiled;
+    }
     if (name == "GLO_L3OC_D") {
         auto a = glonass::generate_l3ocd_code(prn);
         return std::vector<int8_t>(a.begin(), a.end());
@@ -250,6 +261,8 @@ ChannelizedReplicaBank::ChannelizedReplicaBank(const SignalDescriptor& sig, doub
             _secondary.assign(beidou::B3I_NH20.begin(), beidou::B3I_NH20.end());
         else if (name == "BDS_B1I") // same D1 NH20 one band up
             _secondary.assign(beidou::B1I_NH20.begin(), beidou::B1I_NH20.end());
+        else if (name == "GLO_L3OC_P") // shared NH10 on the pilot (10 ms); tiled in GLO_L3OC_P_NH
+            _secondary.assign(glonass::L3OC_NH10.begin(), glonass::L3OC_NH10.end());
         _secondary_length = (int)_secondary.size();
     }
 

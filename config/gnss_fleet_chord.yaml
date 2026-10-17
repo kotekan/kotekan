@@ -37,11 +37,15 @@ suffix: _multi
 common:
     # Channels exempt from first-stage (SK) RFI excision, absolute freq_id ranges
     # (freq_id = MHz / 0.1953125): the GNSS main lobes, one chip rate either side of each
-    # carrier (10.23 MHz; E6-C's 5.115 MHz at the top), at 1176.45 (L5/E5a/B2a), 1207.14
-    # through 1227.60 (E5b/B2b and L2, contiguous) and 1268.52..1278.75 (B3I, E6). The stock
+    # carrier (10.23 MHz; E6-C's 5.115 MHz at the top), at 1176.45 (L5/E5a/B2a), 1202.025
+    # through 1227.60 (GLONASS L3OC, E5b/B2b and L2, contiguous: L3OC's lobe 1191.8-1212.3 MHz
+    # adds 6102-6127 below E5b's, since 2026-10-17) and 1268.52..1278.75 (B3I, E6). The stock
     # SK flagger excises these lobes most of the time, their N2 feeds the satellite projection
     # below, and they are lost to cosmology anyway. SK statistics are still computed there.
-    rfi-excision-exempt-freq-ids: "5971-6076,6128-6338,6442-6573"
+    # The exemption is what the GNSS branch needs, not only cosmology's loss: the dual
+    # correlator applies the SK mask to the synthetic lanes too, so an excised channel
+    # despreads to zero.
+    rfi-excision-exempt-freq-ids: "5971-6076,6102-6338,6442-6573"
     # Bright-satellite projection in each record assembler: off | shadow | live. live projects
     # the transiting satellite's element direction out of the other slots' record rows in
     # place, from the node's own rows (own slot, sibling chain, probe stack); nodes exchange
@@ -228,6 +232,19 @@ common:
         # fleet runs, while CL's 767250 chips / 1.5 s need their own bring-up. Seeded from the
         # broker's model, like B3I and E6.
         - GPS_L2C_CM:1,3,4,5,6,7,8,9,10,11,12,13,14,15,17,18,20,21,23,24,25,26,27,28,29,30,31,32
+
+        # 1202.025 MHz: GLONASS L3OC-p, the dataless pilot of GLONASS's CDMA signal, with the
+        # shared NH10 tiled into a 10 ms code (GLO_L3OC_P_NH). The PRN is the L3OC code index,
+        # taken to be the orbital slot (the number BRDC uses; the sky verifies it: a slot whose
+        # code index differed would be seeded on its orbit and never present). The lobe,
+        # 1191.8-1212.3 MHz, overlaps E5b/B2b's and adds its own channels below theirs
+        # (rfi-excision-exempt-freq-ids above), 6-7 per GPU. PRNs: the L3OC-capable slots per
+        # the IGS registry's block types (GLO-K1/K1B/K1+/K2 and the modernised GLO-M+; the 14
+        # plain GLO-M slots broadcast FDMA alone and are left out, as gen_fleet.py --check-prns
+        # judges). No blind search (the search runs on GPS L5 only); seeded from the broker's
+        # orbit model, which for GLONASS is the ICD's integrated state vector: validated 10-17
+        # against the next record, 5 m line-of-sight at 1 h and 18 m (0.6 chip) at 2 h median.
+        - GLO_L3OC_P_NH:4,5,6,8,9,11,12,16,19,20,21,22,23,24
 
 nodes:
     # search-port-base: the aggregator listens for feed i (node-major, GPU-minor, in its

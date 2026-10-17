@@ -182,7 +182,7 @@ def main():
     ap.add_argument(
         "--sys",
         default="G",
-        choices=("G", "E", "C"),
+        choices=("G", "E", "C", "R"),
         help="RINEX constellation letter (selects the BRDC records)",
     )
     ap.add_argument(

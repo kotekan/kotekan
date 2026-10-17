@@ -254,10 +254,11 @@ chains:
         drop-stats: true
     # The stream-health panel's rows, as chain names (carriers from gnssSignal.hpp); each
     # monitored channel is labelled with the nearest declared carrier. List every band the
-    # receiver flies: the eight chains share L5 1176.45, E5b 1207.14, L2 1227.60, B3 1268.52
-    # and E6 1278.75 MHz. Matching the full band table instead would name bands CHORD does not
-    # fly (E5b's lower shoulder is nearer GLONASS L3OC); unset, the rows read "lobe N".
-        rf-bands: "gps_l5,gal_e5a,bds_b2a,gal_e5b,bds_b2b,gps_l2c,bds_b3i,gal_e6"
+    # receiver flies: the nine chains share L5 1176.45, L3 1202.025, E5b 1207.14, L2 1227.60,
+    # B3 1268.52 and E6 1278.75 MHz. Matching the full band table instead would name bands
+    # CHORD does not fly (G2, B1I); unset, the rows read "lobe N". With glo_l3oc declared the
+    # channels below 1204.6 MHz, E5b's lower shoulder, are named L3: they are its lobe now.
+        rf-bands: "gps_l5,gal_e5a,bds_b2a,glo_l3oc,gal_e5b,bds_b2b,gps_l2c,bds_b3i,gal_e6"
     # The record assemblers whose /get_spectrum (per-channel prompt sums before the
     # cross-channel combine) feed the fleet phase-slope delay fit (SPEC-FIT). Its tau updates
     # the per-satellite path-bias filter (b_sat) that dead-reckon seeds add to the clock.
@@ -493,6 +494,39 @@ chains:
         combiner: gnss0_b2b_n2combine
         spectrum-endpoints: "http://cx19:12048/gnss{0..1}_b2b_n2assemble,http://cx27:12048/gnss{0..1}_b2b_n2assemble,http://cx42:12048/gnss{0..1}_b2b_n2assemble,http://cx43:12048/gnss{0..1}_b2b_n2assemble,http://cx44:12048/gnss{0..1}_b2b_n2assemble,http://cx51:12048/gnss{0..1}_b2b_n2assemble"
         dll-combiners: &b2b_cmb "http://cx19:12048/gnss{0..1}_b2b_n2combine,http://cx27:12048/gnss{0..1}_b2b_n2combine,http://cx42:12048/gnss{0..1}_b2b_n2combine,http://cx43:12048/gnss{0..1}_b2b_n2combine,http://cx44:12048/gnss{0..1}_b2b_n2combine,http://cx51:12048/gnss{0..1}_b2b_n2combine"
+
+  # -- 1202.025 MHz: glo_l3oc --
+  # GLONASS L3OC-p, the dataless pilot of GLONASS's CDMA signal (10230 chips at 10.23 Mcps with
+  # the shared NH10, the B2b/B3I geometry), on the GLONASS-K generations and the modernised
+  # M+ only. A fourth constellation at a carrier of its own: a GLONASS ray observed here alone
+  # cannot separate tau_band from b_sat, so judge this chain on lock and presence. Like bds_b2b
+  # it is model-primary with no detectors (the search runs on GPS L5 only) and carries bds_b2b's
+  # key set; dataless, so coherent integration is the full 10 ms code with no nav-bit wipe.
+  # The clock it adopts is GPS time; the GLONASS code epoch is UTC(SU)+3h, 18 s and 3 h behind
+  # and ahead, both whole multiples of the 10 ms code, so only the sub-microsecond GLONASS-GPS
+  # system offset remains, a chain-wide bias inside the spectrum fit's capture. The orbit model
+  # is the ICD's integrated state vector, meant for +-15 min about a record's tb: against the
+  # next record it errs 5 m line-of-sight at 1 h and 18 m (0.6 chip; p90 1.5 chips) at 2 h, so
+  # the hourly BRDC merge's 35-95 min record age sits inside the spectrum fit's +-1.6 chips.
+  # The daily file never covers today for R, so with the hourly supply down this chain drifts.
+    glo_l3oc:
+        signal: glo_l3oc
+    # The IGS registry's block types decide which slots carry L3OC (K1/K1B/K1+/K2 and M+; the
+    # plain GLO-M half of the constellation is FDMA-only): the PRNs it excludes are neither
+    # predicted nor seeded, and the PRN map refuses them a slot. The startup line
+    # "signal-capability glo_l3oc: N PRN(s) excluded by the IGS registry (...)" lists them.
+        signal-capability: glo_l3oc
+        presence-admit-displaced: true
+        seed-phase-transport: true
+        dr-clock-adopt: true
+        joint-consume: clk,rate
+        fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
+        fleet-trim-bandwidth: 2.5
+        fleet-trim-readback: 1
+        trackers: "http://cx19:12048/gnss{0..1}_l3oc_inject,http://cx27:12048/gnss{0..1}_l3oc_inject,http://cx42:12048/gnss{0..1}_l3oc_inject,http://cx43:12048/gnss{0..1}_l3oc_inject,http://cx44:12048/gnss{0..1}_l3oc_inject,http://cx51:12048/gnss{0..1}_l3oc_inject"
+        combiner: gnss0_l3oc_n2combine
+        spectrum-endpoints: "http://cx19:12048/gnss{0..1}_l3oc_n2assemble,http://cx27:12048/gnss{0..1}_l3oc_n2assemble,http://cx42:12048/gnss{0..1}_l3oc_n2assemble,http://cx43:12048/gnss{0..1}_l3oc_n2assemble,http://cx44:12048/gnss{0..1}_l3oc_n2assemble,http://cx51:12048/gnss{0..1}_l3oc_n2assemble"
+        dll-combiners: "http://cx19:12048/gnss{0..1}_l3oc_n2combine,http://cx27:12048/gnss{0..1}_l3oc_n2combine,http://cx42:12048/gnss{0..1}_l3oc_n2combine,http://cx43:12048/gnss{0..1}_l3oc_n2combine,http://cx44:12048/gnss{0..1}_l3oc_n2combine,http://cx51:12048/gnss{0..1}_l3oc_n2combine"
 
   # -- 1268.52 and 1278.75 MHz, the third band: bds_b3i and gal_e6 --
   # The same rays at a third carrier, a third equation for tau_band. Neither chain has a search
