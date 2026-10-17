@@ -408,6 +408,11 @@ def _bcnav1_brdc_xcheck(brdc_alm, sys, prn, bcnav1_eph, log):
 # reads -27.3 and does not give this.
 BORESIGHT_AZ_DEG = 180.0
 BORESIGHT_EL_DEG = 81.41
+# False while the dishes are not pointed (--boresight none): nearest_boresight() then reports
+# no satellite near boresight, which turns off everything keyed on it -- the D3 transit veto,
+# the dead-reckon clock's transit freeze and the "_bore" post that freezes the assemblers'
+# model formation -- since a cone around a direction nobody points at is only in the way.
+BORESIGHT_KNOWN = True
 
 
 def _unit(el_deg, az_deg):
@@ -431,6 +436,8 @@ def nearest_boresight(pd, el0=BORESIGHT_EL_DEG, az0=BORESIGHT_AZ_DEG):
     the nibbles, so a per-constellation answer would clear the chain carrying the bright
     satellite and leave the others contaminated while looking like clean controls.
     """
+    if not BORESIGHT_KNOWN:
+        return None
     best = None
     for key, v in (pd or {}).items():
         try:

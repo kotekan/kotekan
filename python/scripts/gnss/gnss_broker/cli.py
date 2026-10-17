@@ -696,6 +696,15 @@ def build_parser(description):
         "unreachable at startup).",
     )
     ap.add_argument(
+        "--boresight",
+        default="nominal",
+        choices=("nominal", "none"),
+        help="where the dishes point. nominal (default) = CHORD's fixed boresight (az 180, "
+        "el 81.41), which the D3 transit veto, the dead-reckon clock's transit freeze and the "
+        "assemblers' model-formation freeze key on. none = the dishes are not pointed (tipped "
+        "for site work): no satellite is ever near boresight, so all three stay off.",
+    )
+    ap.add_argument(
         "--constellation",
         default=None,
         choices=("G", "E", "C", "R"),

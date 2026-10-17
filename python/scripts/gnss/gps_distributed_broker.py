@@ -71,6 +71,7 @@ from gnss_broker.transport import (  # noqa: E402
     install_dns_cache,
     record_cycle,
 )
+from gnss_broker import sky as _sky  # noqa: E402
 from gnss_broker import telem as _telem  # noqa: E402
 from gnss_broker.fits import (  # noqa: E402
     tracker_phase_at,
@@ -139,6 +140,9 @@ def main(argv=None, rx=None, publisher=None):
     # like flags; no command line can change them.
     for _k, _v in _FROZEN.items():
         setattr(args, _k, _v)
+    # Module state, since every consumer of the boresight (D3's veto, the dead-reckon transit
+    # freeze, the "_bore" post) asks sky.nearest_boresight and the chains share the process.
+    _sky.BORESIGHT_KNOWN = args.boresight != "none"
 
     # ── The loops' per-satellite state ────────────────────────────────────────────────
     # One owner object per loop (see gnss_broker/loopstate.py), constructed first because
