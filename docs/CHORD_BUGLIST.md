@@ -1204,6 +1204,7 @@ satellite moves its own seed) and the node-side consensus cut the ±1 class, but
 reconnects on a new binary the receiver FATALs on the mismatch, so every binary rollout costs recv1 a restart and
 about a minute of N² gap — and every recv1 restart is a #164 exposure.
 **Fix (chord):** compare the fields that describe the stream, not the build. Ours: none.
+**10-17, twice, from recv1's journal (KV):** 12:48:24Z `ConfigTracker: conflicting upstream content present for host: 10.222.1.19, port: 12048` (cx19, the canary on the new binary) → `/buffer_recv_bad_feed_mask: bufferRecv worker thread caught FatalError … shutting down` → `Main process exited, status=1` at 12:49:23, up again 12:49:33; 12:56:17Z the same for 10.222.1.27 (cx27, with the other five) → `code=dumped, status=6/ABRT` at 12:57:23, up 12:57:33 and stable since (every later cycle was the same binary). Each costs recv1 about a minute of N² plus the restart's #164 exposure; the second death was an abort with a core, not a clean exit.
 
 ### #164 — recv1 locks itself out through the bad-feed mask after a restart (2026-10-10)
 **What [live 10-10 15:46Z, ~4.5 h lost; 10-11 00:57Z, cleared 01:15Z]:** right after a recv1 restart the newest subset
