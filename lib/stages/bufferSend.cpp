@@ -295,9 +295,18 @@ void bufferSend::connect_to_server() {
                  "to retry...",
                  server_ip, server_port, strerror(errno), errno, reconnect_time);
             close(socket_fd);
-            // TODO Add a Stage level "breakable sleep" so this doesn't
-            // lock up the shutdown process for upto reconnect_time seconds.
-            sleep(reconnect_time);
+            // A breakable wait, not sleep(): the stop would otherwise wait out the whole
+            // interval with every sender asleep. A fleet cycle takes the receivers down on
+            // its first node, so each later node's stop waited the full reconnect_time (30 s
+            // on CHORD's telemetry and beam-cube senders) before it could join this thread.
+            // Stage::stop only sets stop_thread, so the wait is sliced at one second and
+            // re-tests it; nothing notifies the condition variable on stop.
+            {
+                std::unique_lock<std::mutex> connection_lock(connection_state_mutex);
+                for (uint32_t waited = 0; waited < reconnect_time && !stop_thread; ++waited)
+                    connection_state_cv.wait_for(connection_lock, std::chrono::seconds(1),
+                                                 [&]() { return (bool)stop_thread; });
+            }
             continue;
         }
 
