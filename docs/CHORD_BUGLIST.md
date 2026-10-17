@@ -92,6 +92,32 @@ the aggregator and gather. #184–#187 below are what the removal left for later
 
 ## Open — the fix is in the BROKER or a script (ships today, no node cycle)
 
+### #199 — the cf06 cube leg is not recording: the compactor dies in flush, the archiver is restarted by SIGTERM, the senders sit reset (2026-10-17)
+**What:** found while judging the glo_l3oc roll-out, 22:5xZ. (a) `gnss_cube_compact.py` dies on every pass since the
+17:51:46Z pass (the first after the stage-1 canary cycle; the log opened 13:07:53Z): `flush` -> `np.asarray(self.win["freq_id_lo"])`
+"inhomogeneous shape (121,)", i.e. one (pointing, sender, day) file accumulated windows whose bin count differs, which
+the "geometry changed mid-day" guard at line ~215 did not catch; 5 tracebacks over 37 passes, the loop then "stopped on
+SIGTERM" 6 times. (b) Every pre-10-17 raw file reads "size 91094400 -> 91101600 since it was compacted ... SKIPPED"
+from the first pass on (8 bytes per frame: a frame-format change the index predates, or the archiver appending). (c) The
+archiver has 33 starts in `/tmp/gnss_cubearch.log`, the last ones "Got SIGINT or SIGTERM" (22:52:49Z, 22:59:50Z, ...
+every ~7 min, NRestarts 0 and Result success, so an external restart, not a crash; whose?). Each restart resets the
+nodes' cube senders mid-header ("Connection reset by peer, failed to send header"), and between restarts they log
+"Connection refused"; at 22:54-22:59Z cf06 had 0 established connections on :11070 and at one look no listener at all.
+Not the roll-out's doing: (a) and (b) predate it, and the l3oc senders behave as the others. **Judge:** `ss -tan state
+established | grep -c 11070` on cf06 ~90 (11 instances x 9 chains), raw files growing continuously, a compactor pass
+without a traceback. **Fix:** find the restarter first (KV?), then make `flush` refuse the mixed-geometry file with the
+sender's name instead of dying, then the size check. The viewer's beam cube is dark until then.
+
+### #198 — reopened: the fleet cycle still ran at ~30 s per node with the bufferSend fix in the binary (2026-10-17)
+**What:** KV cycled the five nodes onto `b4ab492da` (which carries `d624d7784`, confirmed by `--version` and the
+source) at ~22:40Z and saw the 30 s per node again, with recv1 (restarted 22:48:34Z) and the cube archiver (#199) down
+during the cycle. The closed row's judge is therefore not met and its diagnosis incomplete: the sliced wait is in
+place and `kotekanMode` stops every stage before joining any, so the senders' reconnect wait is not where the time
+goes. Unmeasured: whether the 30 s is the stop (SIGTERM -> exit) or the start (`node_up.sh` waits for 12048 to
+answer, which comes after ConfigTracker and the GPU set-up; nothing in `node_up.sh` sleeps). **Next cycle:** time
+`ssh <node> sudo systemctl stop gnss-node` and `node_up.sh <node>` separately on one node, and read
+`/tmp/gnss_node.log.1`'s tail (the previous run's shutdown) for the last stage to go.
+
 ### #196 — the tipped-dish week: what is switched off, and the checklist for the realignment (2026-10-17)
 **What:** the dishes are tipped in semi-random directions until next week's realignment, so the broker runs
 `--boresight none` (`cc2b33651`, armed in `config/gnss_chains_chord.yaml` `common:` by `55ca9a036`, live since 14:45Z):

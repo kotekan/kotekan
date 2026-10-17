@@ -308,13 +308,15 @@ def _block_carries(signal, block):
             return b.startswith("BDS-3")
         return True
     if s.startswith("GLO"):
-        # The CDMA signals (L3OC, L2OC, L1OC) are on GLONASS-K (GLO-K1, GLO-K1B, GLO-K1+,
-        # GLO-K2) and on the modernised GLO-M+; the plain GLO-M satellites broadcast only the
-        # FDMA L1OF/L2OF, which every satellite carries. The generations are interspersed
-        # across the slots (10-17: 14 of the 28 assigned slots carry L3OC), so no PRN floor
-        # can express it.
-        if "OC" in s:
+        # L3OC is on GLONASS-K (GLO-K1, GLO-K1B, GLO-K1+, GLO-K2) and on the modernised
+        # GLO-M+; the other CDMA signals (L2OC, L1OC) on the K generations alone; the plain
+        # GLO-M satellites broadcast only the FDMA L1OF/L2OF, which every satellite carries.
+        # The generations are interspersed across the slots (10-17: 14 of the 28 assigned
+        # slots carry L3OC), so no PRN floor can express it.
+        if "L3OC" in s:
             return b.startswith("GLO-K") or b == "GLO-M+"
+        if "OC" in s:
+            return b.startswith("GLO-K")
         return True
     return True  # a signal we do not model: exclude nothing
 

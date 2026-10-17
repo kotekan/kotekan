@@ -254,3 +254,42 @@ and is judged on lock and presence. The obs writer is `gnss-obs@glo_l3oc` (the s
 lists it); the cube, TEC and transit-arc tables know the chain; the viewer's stream-health
 rows name the lower E5b shoulder L3 now that it is flown, and its GLONASS sky layer takes
 the registry's capability set rather than the Celestrak K marker.
+
+**First sky (10-17 22:25Z broker restart, fleet on `b4ab492da` from 22:50Z):** R08, R11 and R19
+present fleet-wide within minutes, q 3.6-3.8 on 11/12 instances, prompt C/N0 38-54 dB-Hz,
+discriminators within +-0.3 chip of the siblings; the other eight chains unchanged (every node
+within +-0.17 of the fleet median in q). So the code index is the slot for those three. Watch:
+R09 (GLO-K1B) stayed absent at 13-14 deg while R19 was present at 19 deg and R12 (M+) at
+5 deg; R20 has no broadcast record today. GPU 55-66 % per card against stage 2's 54-59 %.
+
+### 6.1 What the other GLONASS bands would take
+
+- **L1 (1602 MHz FDMA L1OF, 1600.995 MHz L1OC): nothing to do.** The science band ends at
+  1499.8 MHz (freq_id 7679).
+- **L2OC-p (1248.06 MHz, CDMA):** the descriptor exists (`GLO_L2OC_P`, L3OC-p's base code
+  expanded to a 40920-chip, 20 ms BOC(1,1) stream at 2.046 Mcps with the shared 50-chip OC2
+  secondary, 1 s). K generations only (`prnmap` now says so; M+ carries L3OC alone), so 8
+  slots today, and L2OC on the K1 variants is to be verified by presence. A 10.5 ms record
+  sits inside one 20 ms period, so the OC2 sign is constant per record: cheaper than a
+  2 046 000-chip tiled code is a shared `secondary_overlay` entry (`gnssOverlay.cpp`, the
+  `L3OC_BC5` pattern) wiped per period, with the broker's overlay length 50 and epoch 1 s,
+  which the F-engine axis resolves. Band 1246.0-1250.1 MHz = freq_ids 6380-6401, one or two
+  channels per GPU, the L2C geometry (the fleet loop sums instances; `dll_spacing_chips`
+  needs an entry for the one-channel case), and those ids join the excision exemption.
+  Value: a second GLONASS carrier, so tau_band and TEC for the K satellites.
+- **L2OF (1246.0 + k x 0.4375 MHz, k = -7..+6, FDMA, every satellite):** the only way to
+  the 14 GLO-M slots, 586 m chips (511 kcps, the L2C scale). Four pieces. (1) Per-PRN
+  carrier: the chain's covering set is the union over k, 1242.9-1248.6 MHz = freq_ids
+  6364-6392 (about two per GPU), and each PRN's k x 0.4375 MHz rides the Doppler the broker
+  commands (the published Doppler is the command; the waveform kernel rotates to any
+  frequency), with k from `gnss_ephemeris.glonass_freq_channels()` and the capability gate
+  "has a k" (`gps_beamtrack.glonass_fdma_trackable`). The chips-per-Hz aiding ratio must use
+  each PRN's own carrier. (2) The data: 50 bps Manchester, +-/-+ halves of 10 ms, so a
+  10.5 ms record straddles a sign flip half the time (deep periodic fades); tile a 20-chip
+  overlay (ten +1, ten -1) into a 10220-chip, 20 ms code (`GLO_L2OF_MC`, the `BDS_B3I_NH`
+  pattern), which leaves the 50 bps sign constant per record, as B3I's D1 is. The bit
+  epoch is GLONASS time, so the clock mod 20 ms comes from gps_l5's NH joint fit as for L2C.
+  (3) The code is one m-sequence for every satellite: separation is the 437.5 kHz carrier
+  spacing against the 1 kHz line spectrum of a 1 ms code, as every GLONASS receiver does it.
+  (4) Exemption 6364-6392 and a chains block with the L2C keys. Medium effort; the
+  constellation count is the prize, TEC only against L3OC for the 14 K/M+ slots.

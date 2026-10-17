@@ -84,6 +84,9 @@ Measured per-record cost = (chains) x (one 0.18 ms wave each, at fp16 Phi and 80
    56/56 % against a four-lane sibling's 59/59 %; fleet-wide from 20:03Z, 54-59 % on every GPU
    with data. The lane headroom is the other half of it: a
    ninth chain (GLONASS L3OC on the E5b comb) fits the axis with no wider dual.
+   On sky 10-17 22:50Z with that ninth chain (glo_l3oc: 14 PRNs x 2 lanes, 6-7 channels per
+   GPU, base 128, the dual still 192 of 384): 55-66 % per card (cx19 55/65, cx42 62/58, cx43
+   58/50, cx44 64/64, cx51 66/65), about five points for the chain.
 2. **Fewer chips (`despread_max_chips`, centred).** Loss is exactly the dropped window energy:
    212 chips 0 dB, 105 -0.018, 80 -0.045 (production), 60 -0.27, 40 -1.1, 20 -3.4. Cross-PRN
    leakage does not depend on it (set by the comb's channel count: -32 dB on 6 channels, -38 on

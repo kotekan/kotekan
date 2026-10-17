@@ -719,6 +719,11 @@ def main():
                 "GLONASS L2OF: FDMA is on every satellite, nothing excluded",
             )
             check(
+                _pm.signal_incapable_prns("GLO_L2OC_P") == {1, 4},
+                "GLONASS L2OC: the K generations alone -- GLO-M+ carries L3OC, not L2OC "
+                "(got %s)" % sorted(_pm.signal_incapable_prns("GLO_L2OC_P")),
+            )
+            check(
                 _pm.signal_incapable_prns("GPS_L5_Q_NH") == {22, 7},
                 "... and the GLONASS rows did not leak into the GPS answer",
             )
