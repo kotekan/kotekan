@@ -158,7 +158,9 @@ void from_json(const nlohmann::json& j, N2Metadata& m) {
     m.n_pl_fpga_ticks = j.at("n_pl_fpga_ticks");
     // Older JSON may omit dataset_id.
     m.dataset_id = j.value("dataset_id", dset_id_t::null);
-    m.n_rfi_first_stage_enabled_fpga_ticks = j.at("n_rfi_first_stage_enabled_fpga_ticks");
+    // Older JSON may omit this too.
+    m.n_rfi_first_stage_enabled_fpga_ticks =
+        j.value("n_rfi_first_stage_enabled_fpga_ticks", uint64_t(0));
 
     m.abs_time_idx = j.at("abs_time_idx");
     m.freq_id = j.at("freq_id"); // this is an int in chordMetadata, maybe change later

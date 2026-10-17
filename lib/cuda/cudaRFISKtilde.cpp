@@ -479,6 +479,7 @@ inline void cudaRFISKtilde::pre_execute_update_enabled(int64_t seq_num) {
         excision_enabled = next_excision_enabled;
         // Set the `next` valid time to the distant future so we don't copy again.
         next_enabled_valid_at_seq = std::numeric_limits<int64_t>::max();
+        // WARN, not INFO, so the transition shows at the production log level
         if (get_instance_num() == 0)
             WARN("First-stage RFI excision {:s} from seq {:d}", excision_enabled ? "on" : "off",
                  seq_num);

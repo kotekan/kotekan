@@ -826,8 +826,8 @@ bool N2Accumulate::receive_rfi_first_stage_enabled(nlohmann::json& update) {
     int64_t seq = 0;
     if (time_ns != 0) {
         if (time_ns < _tel.to_time_ns(0)) {
-            WARN("Got invalid start time: {:d} - keeping first-stage excision recorded as {:s}",
-                 time_ns, _rfi_first_stage_enabled ? "on" : "off");
+            WARN("Got invalid start time: {:d} - keeping the current first-stage excision state",
+                 time_ns);
             return true;
         }
         seq = _tel.to_seq(time_ns);

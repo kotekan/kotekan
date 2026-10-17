@@ -184,8 +184,12 @@ void from_json(const nlohmann::json& j, N2VarianceMode& m);
  *                                          to. Used to record, per output frame, how many FPGA
  *                                          ticks first-stage excision was enabled for; a switch
  *                                          applies from the first input frame starting at or
- *                                          after its valid time, as on the GPU. Without this
- *                                          key the count is the whole frame.
+ *                                          after its valid time, as on the GPU. The two agree
+ *                                          because the n2k kernel emits one output frame per
+ *                                          voltage frame; a kernel frame spanning several
+ *                                          voltage frames would put them up to one voltage
+ *                                          frame apart. Without this key the count is the
+ *                                          whole frame.
  */
 class N2Accumulate : public kotekan::Stage {
 public:
