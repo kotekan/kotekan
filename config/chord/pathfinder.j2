@@ -603,19 +603,19 @@ dpdk:
 #    2     4     5    Et13   C01-D04 pol 0       good
 #   10     5     6    Et15   C01-D04 pol 1       good (0.01% loss)
 #    3     6     7    Et16   C05-D08 pol 0       0.05% loss, kept
-#   11     7     8    Et17   C05-D08 pol 1       listed: link drops, 0.15% loss
+#   11     7     8    Et17   C05-D08 pol 1       0.15% loss and brief link drops, kept:
+#                                                 the loss mask covers the gaps
 #    4     8     9    Et19   E01-F04 pol 0       listed: link down
 #   12     9    10    Et21   E01-F04 pol 1       listed: link down
-#    5    10    11    Et23   E05-F08 pol 0       good
+#    5    10    11    Et23   E05-F08 pol 0       good, but E05-F08 are Missing (pol 1 down)
 #   13    11    12    Et24   E05-F08 pol 1       listed: link down
 #    6    12    13    Et14   G01-H04 pol 0       listed: link down
 #   14    13    14    Et18   G01-H04 pol 1       listed: link flapping
 #    7    15    16    Et22   G05-H08 pol 0       listed: row G/H out of service
 #   15    14    15    Et20   G05-H08 pol 1       listed: row G/H out of service
 #
-# Slots 11 and 13 have dishes that stay ArrayDish (their pol 0 board is fine): mask the
-# pol 1 inputs of C05-D08 and E05-F08 via /updatable_config/bad_inputs.
-missing_source_ids: [4, 6, 7, 11, 12, 13, 14, 15]
+# A board that mostly delivers stays unlisted: listed, its dropouts would pass as received.
+missing_source_ids: [4, 6, 7, 12, 13, 14, 15]
 
 # Combine packet receipt bitmaps and generate packet-loss masks
 {% for n in numa_halves %}
