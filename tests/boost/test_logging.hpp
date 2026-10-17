@@ -13,6 +13,8 @@
 
 namespace kotekan_test_logging {
 
+// Not async-signal-safe: meant for the SIGTERM that exit_kotekan raises on the failing thread,
+// which holds no lock at that point.
 inline void fatal_signal_handler(int sig) {
     const std::string msg = kotekan::kotekanLogging::get_error_message();
     if (!msg.empty())
