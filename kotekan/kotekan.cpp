@@ -2,7 +2,7 @@
 #include "StageFactory.hpp"       // for StageFactoryRegistry, StageMaker
 #include "backtrace.hpp"          // for request_backtraces
 #include "basebandApiManager.hpp" // for basebandApiManager
-#include "errors.h"               // for ReturnCode, get_error_message, __enable_syslog, exit_k...
+#include "errors.h"               // for ReturnCode, __enable_syslog, exit_kotekan, get_exit_...
 #include "kotekanLogging.hpp"     // for logLevel, ERROR_NON_OO, INFO_NON_OO, FATAL_ERROR_NON_OO
 #include "kotekanMode.hpp"        // for kotekanMode
 #include "kotekanTrackers.hpp"    // for KotekanTrackers
@@ -1011,7 +1011,7 @@ int main(int argc, char** argv) {
                 INFO_NON_OO("Attempting to stop and join kotekan_stages...");
                 kotekan_mode->stop_stages();
                 kotekan_mode->join();
-                if (string(get_error_message()) != "not set") {
+                if (kotekanLogging::get_error_message() != "not set") {
                     KotekanTrackers::instance().dump_trackers();
                 }
                 delete kotekan_mode;
@@ -1025,8 +1025,9 @@ int main(int argc, char** argv) {
     INFO_NON_OO("kotekan shutdown with status: {:s}", get_exit_code_string(exit_code));
 
     // Print error message if there is one.
-    if (string(get_error_message()) != "not set") {
-        INFO_NON_OO("Fatal error message was: {:s}", get_error_message());
+    const string error_message = kotekanLogging::get_error_message();
+    if (error_message != "not set") {
+        INFO_NON_OO("Fatal error message was: {:s}", error_message);
     }
 
     closelog();

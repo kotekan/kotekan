@@ -2,18 +2,20 @@
 #define KOTEKAN_TEST_LOGGING_HPP
 
 #include "errors.h"
+#include "kotekanLogging.hpp"
 
 #include <cerrno>
 #include <csignal>
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
+#include <string>
 
 namespace kotekan_test_logging {
 
 inline void fatal_signal_handler(int sig) {
-    const char* msg = get_error_message();
-    if (msg && msg[0] != '\0')
+    const std::string msg = kotekan::kotekanLogging::get_error_message();
+    if (!msg.empty())
         std::cerr << "\n[kotekan] Fatal error: " << msg << std::endl;
     std::_Exit(128 + sig);
 }
