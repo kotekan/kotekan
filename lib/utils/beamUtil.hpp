@@ -3,6 +3,7 @@
 
 #include "json.hpp" // for nlohmann::json
 
+#include <cstdint> // for uint32_t
 #include <iostream>
 
 /**
@@ -76,6 +77,12 @@ std::string format_as(const TrackingBBBeam& b);
 std::ostream& operator<<(std::ostream& os, const FRBBeam& b);
 std::ostream& operator<<(std::ostream& os, const FixedBBBeam& b);
 std::ostream& operator<<(std::ostream& os, const TrackingBBBeam& b);
+
+/**
+ * Point `i` of `n` points spaced uniformly over [lo, hi], for grids of beams. A single point sits
+ * at the midpoint.
+ **/
+double grid_point(double lo, double hi, uint32_t n, uint32_t i);
 
 /**
  * Serialize beams into JSON
