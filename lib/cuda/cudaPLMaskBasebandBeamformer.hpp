@@ -1,8 +1,8 @@
 // Packet-loss (PL) mask for the baseband beamformer outputs.
 //
-// Every dish contributes to every baseband beam, so a beam sample at (time, frequency,
-// polarization) is valid only if all dishes are valid there: the logical AND of the expanded PL
-// mask over its dish axis. The result is the same for all beams.
+// A beam sample at (time, frequency, polarization) is treated as valid only if all dishes are valid
+// there: the logical AND of the expanded PL mask over its dish axis. The result is the same for all
+// beams. This is conservative for dishes with zero phase (e.g. bad feeds).
 
 #ifndef CUDA_PL_MASK_BASEBAND_BEAMFORMER_HPP
 #define CUDA_PL_MASK_BASEBAND_BEAMFORMER_HPP

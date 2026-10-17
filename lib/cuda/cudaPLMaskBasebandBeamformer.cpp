@@ -32,10 +32,12 @@ using kotekan::div_noremainder;
  *
  * @author Erik Schnetter
  *
- * Every dish contributes to every baseband beam, so a beam sample is valid only if all dishes are
- * valid at its time, frequency and polarization: the logical AND of the expanded PL mask over its
- * dish axis. The result is the same for all beams. The baseband beamformer does not change the
- * time axis, so this mask has the time axis of the expanded PL mask.
+ * Every dish with a nonzero phase contributes to every baseband beam. This mask treats a beam
+ * sample as valid only if all dishes are valid at its time, frequency and polarization: the logical
+ * AND of the expanded PL mask over its dish axis. The result is the same for all beams. It is
+ * conservative: a lost packet from a dish with zero phase (e.g. a bad feed) still marks the sample
+ * as lost. The baseband beamformer does not change the time axis, so this mask has the time axis
+ * of the expanded PL mask.
  *
  * The polarization axis is that of the expanded PL mask. For CHIME, the voltage transpose may move
  * inputs between polarizations, so this is exact only if packet loss is the same for both
@@ -141,7 +143,8 @@ cudaPLMaskBasebandBeamformer::~cudaPLMaskBasebandBeamformer() {}
 
 int cudaPLMaskBasebandBeamformer::wait_on_precondition() {
     DEBUG("Waiting for pl_expanded_mask input ringbuffer data for frame {:d}...", gpu_frame_id);
-    const std::ptrdiff_t read_max = pl_expanded_mask.get_ndarray().extent(0) / 4;
+    // Read at most one frame
+    const std::ptrdiff_t read_max = pl_expanded_mask.get_ndarray().extent(0) / buffer_depth;
     std::ptrdiff_t read = -1;
     const int in_errcode =
         pl_expanded_mask.wait_and_claim_readable([&](const std::ptrdiff_t available) {
