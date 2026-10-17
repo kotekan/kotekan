@@ -167,8 +167,14 @@ cx52 A/B gnss_waveform 6.40 -> 3.24 ms per frame per GPU (docs/CHORD_GPU_BUDGET.
 **10-17:** rebased clean onto dbc5af521 (`cdec5ae30`) and fast-forwarded into kv/chord-gnss; the kernel test re-run on
 cf05 (cx52 carries production again, never run it there): L1 PASS, `GPS_L2C_CM 10` failed two near-null E/L rows
 identically on the base 188b6e800 build (#197, the test's metric, fixed `04fdb52d5`). Manifest `dbe5c5083` arms cx51
-alone (14 comb-chain track commands; `gen_fleet --check` shows nothing else); node binary fleet-04fdb52d5. Wire test
-pending (below).
+alone (14 comb-chain track commands; `gen_fleet --check` shows nothing else); node binary fleet-04fdb52d5.
+**Wire test 17:33Z, cx51: PASS.** Against cx43 on the same sky at T+6 and T+10 min, per-instance q (2p/(e+l) from
+the combiners' E/P/L powers) within +-0.08 on every band and GPU and the discriminator 0.04-0.08 rms apart, the
+same as the two pre-cycle controls; 120 s of L5/E5a telemetry on cx51's own frames: kE/kL = -/+1.000 k0, residual
+-33..-39 dB, DLL tau from the rotated prompt 0.003 chips rms from the true one; GPU utilisation 71/67 -> 60/62 %
+with cx43 unchanged at 70/67; fleet readback (trim arming, sources) unchanged; L2C q 1.07 unchanged. Judge files:
+~/gnss/builds/judge1017/epl/. Side effect: recv1 hit #165 again (17:35:29Z). Remaining: the manifest's common flag
+at the next fleet cycle (the crs_board_remap regen, 9d51f68a7).
 **Wire test:** one node first (cx51), `--epl-from-prompt` in its manifest entry at a node cycle after the broker has
 re-anchored; judge against a sibling node, same sky same time: the lobe DLL's readback decay and `q`, the trim-quality
 and `present` gates, per-channel E/P/L in the telemetry (E_c/P_c must read exp(-i k0 df) as on 10-12), arc survival
@@ -922,6 +928,8 @@ reconnects on a new binary the receiver FATALs on the mismatch, so every binary 
 about a minute of N² gap — and every recv1 restart is a #164 exposure.
 **Fix (chord):** compare the fields that describe the stream, not the build. Ours: none.
 **10-17, twice, from recv1's journal (KV):** 12:48:24Z `ConfigTracker: conflicting upstream content present for host: 10.222.1.19, port: 12048` (cx19, the canary on the new binary) → `/buffer_recv_bad_feed_mask: bufferRecv worker thread caught FatalError … shutting down` → `Main process exited, status=1` at 12:49:23, up again 12:49:33; 12:56:17Z the same for 10.222.1.27 (cx27, with the other five) → `code=dumped, status=6/ABRT` at 12:57:23, up 12:57:33 and stable since (every later cycle was the same binary). Each costs recv1 about a minute of N² plus the restart's #164 exposure; the second death was an abort with a core, not a clean exit.
+
+**10-17 third recurrence:** 17:35:29Z, two minutes after cx51's #189 canary cycle (NRestarts 5).
 
 ### #164 — recv1 locks itself out through the bad-feed mask after a restart (2026-10-10)
 **What [live 10-10 15:46Z, ~4.5 h lost; 10-11 00:57Z, cleared 01:15Z]:** right after a recv1 restart the newest subset
