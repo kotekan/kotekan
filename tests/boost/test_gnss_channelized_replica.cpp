@@ -1,12 +1,12 @@
 #define BOOST_TEST_MODULE "test_gnss_channelized_replica"
 
 #include "beidouB2aCode.hpp"           // for b2ap_secondary (baked-CS reference)
+#include "dspPfbPrototype.hpp"         // for Window
 #include "galileoE5aCode.hpp"          // for e5aq_secondary (baked-CS reference)
 #include "gnssChannelizedDespread.hpp" // for channelized_despread
 #include "gnssChannelizedReplica.hpp"  // for ChannelizedReplicaBank
 #include "gnssSignal.hpp"              // for signal_by_name
 #include "gpsL5Code.hpp"               // for L5_NH20 (overlay reference)
-#include "pfbPrototype.hpp"            // for Window
 
 #include <algorithm>
 #include <boost/test/included/unit_test.hpp>

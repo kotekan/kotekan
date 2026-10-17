@@ -91,6 +91,17 @@ host_frb2_beams_buffer:
     dimscalings: [frb_downsampling_factor * 256, 1, 1, frb_downsampling_factor]
     metadata_pool: main_pool
 
+# The packet loss mask of the FRB output, one byte (1 = valid) per sample and frequency
+host_frb_pl_mask_buffer:
+    kotekan_buffer: ndarray
+    num_frames: buffer_depth
+    value_type: uint8
+    extents: [frb_num_output_times, upchan_all_max_num_output_channels]
+    quantity_name: "pl_mask_I"
+    dimnames: ["Ttilde", "Fbar"]
+    dimscalings: [frb_downsampling_factor, 1]
+    metadata_pool: main_pool
+
 host_upchan_U32_expanded_pl_mask_buffer:
     kotekan_buffer: standard
     num_frames: buffer_depth
@@ -388,6 +399,10 @@ write_data:
         file_name: frb2_beams
         max_frames: 3
         create_single_file: false  # dim 0 has extent 1; single file needs a gap-free stream
+    write_frb_pl_mask:
+        kotekan_stage: hdf5FileWrite
+        in_buf: host_frb_pl_mask_buffer
+        file_name: frb_pl_mask
 #TODO     write_frb3_beams:
 #TODO         kotekan_stage: hdf5FileWrite
 #TODO         in_buf: host_frb3_beams_buffer

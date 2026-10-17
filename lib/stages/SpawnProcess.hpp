@@ -27,10 +27,14 @@
  * upstream pipeline never blocks -- and keeps draining even if the spawn
  * failed, since @c in_buf may be multi-consumer.
  *
+ * The child runs in its own process group, since @c sh forks the command rather
+ * than exec-replacing itself whenever the exec line needs expansion, and only
+ * signalling the group reaches the command in that case.
+ *
  * At shutdown the stage supervises the child to completion: it reaps it if it
- * already exited, otherwise sends @c SIGINT, waits ~5s, then escalates to
- * @c SIGKILL and blocks until reaped, so no zombie or runaway child survives
- * teardown. The destructor repeats this as an idempotent backstop.
+ * already exited, otherwise sends @c SIGINT to that group, waits ~5s, then
+ * escalates to @c SIGKILL and blocks until reaped, so no zombie or runaway child
+ * survives teardown. The destructor repeats this as an idempotent backstop.
  *
  * The buffer consumption side-effect is what keeps the stage alive while the
  * child runs; @c SpawnProcess does no actual processing of the frames it sees.
@@ -40,7 +44,10 @@
  *     @buffer_format any (frames are not inspected)
  *     @buffer_metadata none
  *
- * @conf   exec   String (default ""). Shell command to run.
+ * @conf   exec   String (default ""). Shell command to run. It cannot read the
+ *                controlling terminal: the child is in its own process group, so
+ *                a command that reads stdin from a terminal stops with
+ *                @c SIGTTIN rather than running.
  *
  * @author Keith Vanderlinde
  */

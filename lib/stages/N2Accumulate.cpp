@@ -15,6 +15,7 @@
 #include "buffer.hpp"            // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "chordMetadata.hpp"     // for chordMetadata, get_chord_metadata
+#include "configUpdater.hpp"     // for configUpdater
 #include "dataset.hpp"           // for dset_id_t
 #include "div.hpp"               // for div_ceil, num_triangle_blocks
 #include "kotekanLogging.hpp"    // for FATAL_ERROR, DEBUG, FATAL_ERROR_NON_OO, INFO
@@ -30,9 +31,12 @@
 #include <assert.h>   // for assert
 #include <cmath>      // for isfinite
 #include <complex>    // for complex, operator*, conj, operator-, norm
+#include <exception>  // for exception
 #include <functional> // for bind, function, placeholders
+#include <limits>     // for numeric_limits
 #include <math.h>     // for floor
 #include <memory>     // for shared_ptr, __shared_ptr_access, dynamic_pointer_cast
+#include <mutex>      // for mutex, lock_guard
 #include <ostream>    // for ostream, basic_ostream
 #include <utility>    // for pair, swap
 #ifdef WITH_OMP
@@ -76,9 +80,17 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     _num_elements(_num_polarizations * _num_dishes),
     _num_workers(config.get_default<int>(unique_name, "num_workers", 1)),
     _do_fringestop(config.get_default<bool>(unique_name, "do_fringestop", false)),
+    _fringestop_config_path(
+        config.get_default<std::string>(unique_name, "fringestop_updatable_config", "")),
+    _next_do_fringestop(_do_fringestop),
+    _next_fringestop_valid_at_seq(std::numeric_limits<int64_t>::max()),
     _variance_mode(config.get<N2VarianceMode>(unique_name, "variance_mode")),
     _debug_accum_mode(config.get_default<bool>(unique_name, "debug_accum_mode", false)),
     _profile_info(config.get_default<bool>(unique_name, "profile_info", false)),
+    _rfi_first_stage_config_path(config.get_default<std::string>(
+        unique_name, "rfi_first_stage_enabled_updatable_config", "")),
+    _rfi_first_stage_enabled(true), _next_rfi_first_stage_enabled(true),
+    _next_rfi_first_stage_valid_at_seq(std::numeric_limits<int64_t>::max()),
     _tel(Telescope::instance()), _input_order(config.get_default<ElementOrder>(
                                      unique_name, "input_order", _tel.fiducial_element_order())),
     _output_order(config.get_default<ElementOrder>(unique_name, "output_order",
@@ -91,6 +103,7 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
         return reorder;
     }()),
     _feed_positions_m(_tel.get_feed_positions_m(_num_elements, _input_order)),
+    _fringestop_mask(_tel.get_fringestop_mask(_num_elements, _input_order)),
     n_valid_gauge(Metrics::instance().add_gauge("kotekan_N2accumulate_frac_valid_fpga_ticks",
                                                 unique_name, {"freq_id"})),
     n_pl_gauge(Metrics::instance().add_gauge("kotekan_N2accumulate_frac_flagged_fpga_ticks_pl",
@@ -122,6 +135,14 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     in_rfiframemask_buf = get_buffer("in_rfiframemask_buf");
     in_rfiframemask_buf->register_consumer(unique_name);
 
+    if (!_fringestop_config_path.empty()) {
+        using namespace std::placeholders;
+        INFO("Subscribing {:s} to updatable config.", _fringestop_config_path);
+        kotekan::configUpdater::instance().subscribe(
+            _fringestop_config_path,
+            std::bind(&N2Accumulate::receive_fringestop_enabled, this, _1));
+    }
+
     // Optional bad feed mask (1 == good), folded into the output frames'
     // per-element flags. Consumed 1:1 with the correlation frames.
     in_bad_feed_mask_buf = config.exists(unique_name, "in_bad_feed_mask_buf")
@@ -132,6 +153,10 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
 
     // Sanity checks on initialization
     {
+        if (_do_fringestop && !_tel.phase_center_is_set())
+            FATAL_ERROR("do_fringestop is set but the telescope phase center (dish_coelev_deg) is "
+                        "not.");
+
         // number of frequencies in incoming frames from n2k
         if (_num_freq_per_n2k_frame <= 0)
             FATAL_ERROR("num_freq_per_n2k_frame is not positive: {:d}", _num_freq_per_n2k_frame);
@@ -227,7 +252,13 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     _accum_bad_feed_mask = std::vector<uint8_t>(_num_elements, 1u);
 
     _vis_samples_in_out_frame = 0;
+    _n_rfi_first_stage_enabled_ticks = 0;
     _accum_fpga_start_tick = -1;
+
+    if (!_rfi_first_stage_config_path.empty())
+        kotekan::configUpdater::instance().subscribe(
+            _rfi_first_stage_config_path,
+            std::bind(&N2Accumulate::receive_rfi_first_stage_enabled, this, _1));
     _accum_bin_idx = -1;
 
     // Ensure incoming buffer shapes and type are correct
@@ -587,6 +618,16 @@ void N2Accumulate::main_thread() {
 
         const auto& coarse_freq = frame_metadata->get_coarse_freq();
 
+        // Apply a pending first-stage excision switch from the first frame starting at or
+        // after its valid seq, the rule cudaRFISKtilde applies.
+        {
+            std::lock_guard<std::mutex> lock(_rfi_first_stage_mutex);
+            if (seq0 >= _next_rfi_first_stage_valid_at_seq) {
+                _rfi_first_stage_enabled = _next_rfi_first_stage_enabled;
+                _next_rfi_first_stage_valid_at_seq = std::numeric_limits<int64_t>::max();
+            }
+        }
+
         // Accumulate each visibility sample in the in_frame
         // t_outer
         for (int64_t t = 0; t < _n_integrations_per_n2k_frame; ++t) {
@@ -613,9 +654,11 @@ void N2Accumulate::main_thread() {
                     // Away we go!
                     assert(t_abs % 2 == 0);
                     _vis_samples_in_out_frame = 0;
+                    _n_rfi_first_stage_enabled_ticks = 0;
                     _accum_fpga_start_tick = seq;
                     _accum_bin_idx = bin_idx;
                     target_eop = get_accum_bin_EOP(bin_idx);
+                    update_fringestop(seq);
 
                     state = AccumState::ACCUMULATING;
                     DEBUG("MODE: Setting accum_fpga_start_tick: {0:d}", _accum_fpga_start_tick);
@@ -632,6 +675,9 @@ void N2Accumulate::main_thread() {
 
             DEBUG("Accumulating new visibility sample ({:d} of {:d} in frame).", t,
                   _n_integrations_per_n2k_frame);
+
+            if (_rfi_first_stage_enabled)
+                _n_rfi_first_stage_enabled_ticks += _n_fpga_samples_per_n2k_correlation;
 
             uint64_t corr_offset_t = t * corr_stride_t;
             uint64_t counts_offset_t = t * counts_stride_t;
@@ -732,11 +778,13 @@ void N2Accumulate::main_thread() {
                     fold_bad_feed_mask_into_accum(bad_feed_mask);
 
                 _vis_samples_in_out_frame = 0;
+                _n_rfi_first_stage_enabled_ticks = 0;
                 std::fill(_vis_input_frames_skipped_rfi.begin(),
                           _vis_input_frames_skipped_rfi.end(), 0);
                 _accum_fpga_start_tick = seq + _n_fpga_samples_per_n2k_correlation;
                 _accum_bin_idx = next_bin_idx;
                 target_eop = get_accum_bin_EOP(next_bin_idx);
+                update_fringestop(_accum_fpga_start_tick);
             }
 
 #ifdef WITH_OMP
@@ -782,6 +830,34 @@ void N2Accumulate::main_thread() {
     }
 }
 
+bool N2Accumulate::receive_rfi_first_stage_enabled(nlohmann::json& update) {
+    bool enabled;
+    int64_t time_ns;
+    try {
+        enabled = update.at("enabled").get<bool>();
+        time_ns = update.at("valid_at_time_ns").get<int64_t>();
+    } catch (const std::exception& e) {
+        WARN("Failed to read update to {:s}: {:s}", _rfi_first_stage_config_path, e.what());
+        return false;
+    }
+    // Same rule as cudaRFISKtilde: 0 means from startup, a time before the stream start is
+    // refused (it would underflow in to_seq) and true is returned so kotekan keeps running.
+    int64_t seq = 0;
+    if (time_ns != 0) {
+        if (time_ns < _tel.to_time_ns(0)) {
+            WARN("Got invalid start time: {:d} - keeping the current first-stage excision state",
+                 time_ns);
+            return true;
+        }
+        seq = _tel.to_seq(time_ns);
+    }
+    INFO("Recording first-stage RFI excision {:s} from seq {:d}", enabled ? "on" : "off", seq);
+    std::lock_guard<std::mutex> lock(_rfi_first_stage_mutex);
+    _next_rfi_first_stage_enabled = enabled;
+    _next_rfi_first_stage_valid_at_seq = seq;
+    return true;
+}
+
 void N2Accumulate::fold_bad_feed_mask_into_accum(const uint8_t* bad_feed_mask) {
     for (int64_t el = 0; el < _num_elements; ++el)
         if (!bad_feed_mask[el])
@@ -799,6 +875,34 @@ int64_t N2Accumulate::calculate_ERA_bin_idx_from_time(const timespec& t_inst) {
     int64_t ERA_idx = static_cast<int64_t>(floor((ERA_deg / 360.0) * _num_bins_per_rotation));
 
     return _num_bins_per_rotation * nrot + ERA_idx;
+}
+
+bool N2Accumulate::receive_fringestop_enabled(nlohmann::json& json) {
+    bool enabled;
+    int64_t time_ns;
+    try {
+        enabled = json.at("enabled").get<bool>();
+        time_ns = json.at("valid_at_time_ns").get<int64_t>();
+    } catch (std::exception& e) {
+        WARN("N2Accumulate failed to read update to {:s}: {:s}", _fringestop_config_path, e.what());
+        return false;
+    }
+    // Times before the telescope's time zero would underflow to_seq; they apply at once.
+    int64_t seq = time_ns <= _tel.to_time_ns(0) ? 0 : int64_t(_tel.to_seq(time_ns));
+    INFO("{:s} fringestopping from the first bin starting at or after t_inst {:d} ns (seq {:d})",
+         enabled ? "Enabling" : "Disabling", time_ns, seq);
+    std::lock_guard<std::mutex> lock(_fringestop_mutex);
+    _next_do_fringestop = enabled;
+    _next_fringestop_valid_at_seq = seq;
+    return true;
+}
+
+void N2Accumulate::update_fringestop(int64_t bin_start_seq) {
+    std::lock_guard<std::mutex> lock(_fringestop_mutex);
+    if (bin_start_seq >= _next_fringestop_valid_at_seq) {
+        _do_fringestop = _next_do_fringestop;
+        _next_fringestop_valid_at_seq = std::numeric_limits<int64_t>::max();
+    }
 }
 
 int64_t N2Accumulate::get_accum_abs_bin_idx(uint64_t seq) {
@@ -929,9 +1033,9 @@ void N2Accumulate::accum_corr_and_var(int32_t* vis_f, float* var_f, const int32_
         // Physical frequency for this f
         // Compute the fringestopping phases for this frequency
         _tel.fill_fringestop_phases_1d(freq_MHz, eop_t1, target_eop, _feed_positions_m,
-                                       fringe_phase_t1);
+                                       _fringestop_mask, fringe_phase_t1);
         _tel.fill_fringestop_phases_1d(freq_MHz, eop_t0, target_eop, _feed_positions_m,
-                                       fringe_phase_t0);
+                                       _fringestop_mask, fringe_phase_t0);
         for (int64_t e = 0; e < _num_elements; e++) {
             if (fringe_phase_t1[e] == _sentinel_phase)
                 FATAL_ERROR("fringe_phase_t1[%d] was never_set", e);
@@ -1159,8 +1263,10 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& in_rfiframema
         meta->n_rfi_only_fpga_ticks =
             ticks_in_accum - _n_valid_fpga_samples_in_vis.at(f) - _n_pl_samples_in_vis.at(f);
         meta->n_pl_fpga_ticks = _n_pl_samples_in_vis.at(f);
+        meta->n_rfi_first_stage_enabled_fpga_ticks = _n_rfi_first_stage_enabled_ticks;
 
         meta->rfi_frame_excision_enabled = rfi_frame_excision_enabled;
+        meta->fringestop_enabled = _do_fringestop;
         meta->rfi_frame_excision_num = num_thresholds;
         meta->rfi_frame_excision_threshold = rfi_threshold;
         meta->rfi_frame_excision_fraction = rfi_fraction;

@@ -2,7 +2,7 @@
 
 julia_version = "1.12.7"
 manifest_format = "2.0"
-project_hash = "24ec91ae5d49e288fcb9b3fab428ba99ce9de48e"
+project_hash = "cce54c40deed7a546065e9cea24de42426c430bb"
 
 [[deps.AbstractFFTs]]
 deps = ["LinearAlgebra"]
@@ -96,9 +96,9 @@ version = "5.11.2"
 
 [[deps.CUDASIMDTypes]]
 deps = ["BFloat16s", "CUDA", "LLVM", "Random"]
-git-tree-sha1 = "71fb4cf7ab09814fed8ef9347c25c124cdbb9a54"
+git-tree-sha1 = "141ff8dfc6ca8693c19ed708ddbb7e93bdaaac7f"
 uuid = "ba1ee33b-8807-41fd-9812-6d5f2ce04139"
-version = "1.13.0"
+version = "1.13.1"
 
 [[deps.CUDA_Compiler_jll]]
 deps = ["Artifacts", "CUDA_Driver_jll", "CUDA_Runtime_jll", "JLLWrappers", "LazyArtifacts", "Libdl", "TOML"]

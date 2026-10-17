@@ -1,4 +1,4 @@
-#include "pfbPrototype.hpp"
+#include "dspPfbPrototype.hpp"
 
 #include <cmath>     // for sin, cos, M_PI, sqrt
 #include <stdexcept> // for invalid_argument

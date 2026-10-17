@@ -45,12 +45,12 @@
 // @author Keith Vanderlinde
 // ============================================================================================
 #include "GnssCudaDespread.hpp"
+#include "dspPfbPrototype.hpp"
 #include "gnssChannelizedAcquire.hpp"
 #include "gnssChannelizedDespread.hpp"
 #include "gnssChannelizedReplica.hpp"
 #include "gnssSeedTransport.hpp"
 #include "gnssSignal.hpp"
-#include "pfbPrototype.hpp"
 
 #include <algorithm>
 #include <chrono>

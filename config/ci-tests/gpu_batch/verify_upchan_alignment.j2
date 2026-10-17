@@ -4,8 +4,9 @@
 #
 # verify_upchan_alignment.j2
 #
-# Check that the upchannelizers, the FRB1 beamformers and the PL mask upchannelizers place a
-# signal at the FPGA sequence numbers their metadata claim, for several upchannelization factors.
+# Check that the upchannelizers, the FRB1 beamformers, the PL mask upchannelizers and the FRB1 PL
+# masks place a signal at the FPGA sequence numbers their metadata claim, for several
+# upchannelization factors.
 #
 # The voltages are zero except for a constant signal in the FPGA samples [box_begin, box_end),
 # and packets are lost in the same samples. The signal flows through
@@ -13,6 +14,8 @@
 #   voltages -> FRB1 U=1                     -> I (shared FRB1 beams)
 #   voltages -> upchannelizer U -> FRB1 U    -> I
 #   PL mask  -> PL mask upchannelizer U
+#   PL mask                                  -> FRB1 PL mask U=1    -> FRB1 PL mask (shared)
+#   PL mask  -> PL mask upchannelizer U      -> FRB1 PL mask U      -> FRB1 PL mask
 #
 # and testUpchanAlignment checks every output against where the signal must land, computed on the
 # CPU from box_begin and box_end. With max_upchannelization_factor=64 all outputs begin at FPGA
@@ -193,6 +196,17 @@ host_frb1_beams_buffer:
     kotekan_buffer: standard
     num_frames: buffer_depth
     frame_size: sizeof_float16 * frb1_num_beams_P * frb1_num_beams_Q * frb1_num_output_channels * 32
+    metadata_pool: main_pool
+
+host_frb1_pl_mask_ringbuffer:
+    kotekan_buffer: ring
+    ring_buffer_size: buffer_depth * frb1_num_output_channels * frb_num_output_times
+    metadata_pool: main_pool
+# Host copy for the check, 32 output samples per frame
+host_frb1_pl_mask_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: frb1_num_output_channels * 32
     metadata_pool: main_pool
 
 ################################################################################
@@ -389,6 +403,58 @@ run_frb1_U{{ U }}:
           Fbar_out_max: {{ out_channels[U][1] }}
 {% endfor %}
 
+{% for U in frb_factors %}
+run_frb1_pl_U{{ U }}:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+{% if U == 1 %}
+            host_pl_expanded_mask_ringbuffer: host_pl_expanded_mask_ringbuffer
+{% else %}
+            host_upchan_U{{ U }}_expanded_pl_mask_ringbuffer: host_upchan_U{{ U }}_expanded_pl_mask_ringbuffer
+{% endif %}
+        out_buffers:
+            host_frb1_pl_mask_ringbuffer: host_frb1_pl_mask_ringbuffer
+        commands:
+        - name: cudaPLMaskFRB1
+{# As for the FRB1 beamformers: U=1 selects its channels from all coarse channels, while for U>1
+   the PL mask upchannelizer has already selected them #}
+{% if U == 1 %}
+          pl_mask_name: pl_expanded_mask
+          Fmin: {{ channels[U][0] }}
+          Fmax: {{ channels[U][1] }}
+{% else %}
+          pl_mask_name: upchan_U{{ U }}_expanded_pl_mask
+          num_frequencies: {{ max_num_channels[U] }}
+          Fmin: 0
+          Fmax: {{ channels[U][1] - channels[U][0] }}
+{% endif %}
+          frb1_pl_mask_name: frb1_pl_mask
+          upchannelization_factor: {{ U }}
+          downsampling_factor: frb_downsampling_factor / {{ U }}
+          Fbar_out_min: {{ out_channels[U][0] }}
+          Fbar_out_max: {{ out_channels[U][1] }}
+          num_output_frequencies: frb1_num_output_channels
+          num_output_times: buffer_depth * frb_num_output_times
+{% endfor %}
+
+run_recv_frb1_pl_mask:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_frb1_pl_mask_ringbuffer: host_frb1_pl_mask_ringbuffer
+        out_buffers:
+            host_frb1_pl_mask_buffer: host_frb1_pl_mask_buffer
+        commands:
+        - name: cudaCopyFromRingbuffer
+          host_signal: host_frb1_pl_mask_ringbuffer
+          gpu_mem_input: frb1_pl_mask_buffer
+          output_size: frb1_num_output_channels * 32
+          ring_buffer_size: buffer_depth * frb1_num_output_channels * frb_num_output_times
+          out_buf: host_frb1_pl_mask_buffer
+
 run_recv_frb1_beams:
     gpu_0:
         kotekan_stage: cudaProcess
@@ -408,6 +474,7 @@ run_recv_frb1_beams:
 check_alignment:
     kotekan_stage: testUpchanAlignment
     frb1_beams: host_frb1_beams_buffer
+    frb1_pl_mask: host_frb1_pl_mask_buffer
     upchan_factors: {{ upchan_factors }}
     upchan_voltage: [{% for U in upchan_factors %}host_upchan_U{{ U }}_voltage_buffer{{ ", " if not loop.last }}{% endfor %}]
     upchan_pl_mask: [{% for U in upchan_factors %}host_upchan_U{{ U }}_expanded_pl_mask_buffer{{ ", " if not loop.last }}{% endfor %}]

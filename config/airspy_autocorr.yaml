@@ -100,6 +100,7 @@ spectrum_output:
         destination_protocol: TCP
         in_buf: post_corr_buf
 
+    # SpawnProcess is built only with -DWITH_SPAWN_PROCESS=ON.
     # SpawnProcess invokes the exec line through /bin/sh -c, so $VIEWER_PYTHON
     # expands to whichever python (with twisted+autobahn installed) the user
     # picks. Set it to the venv that has the viewer requirements, e.g.

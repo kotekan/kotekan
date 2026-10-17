@@ -16,6 +16,9 @@ link_libraries(kotekan_core_headers)
 add_executable(test_truncate test_truncate.cpp)
 target_link_libraries(test_truncate PRIVATE kotekan_libs kotekan_utils)
 
+add_executable(test_pfb_prototype test_pfb_prototype.cpp)
+target_link_libraries(test_pfb_prototype PRIVATE kotekan_libs kotekan_utils)
+
 add_executable(test_synchronized_queue test_synchronized_queue.cpp)
 target_link_libraries(test_synchronized_queue PRIVATE pthread kotekan_libs kotekan_utils)
 
@@ -54,11 +57,6 @@ target_include_directories(test_gnss_shared_pin PRIVATE ../../lib/stages ../../l
 add_executable(test_gnss_chan_power test_gnss_chan_power.cpp)
 target_include_directories(test_gnss_chan_power PRIVATE ../../lib/stages ../../lib/stages/gnss)
 
-# Pure PFB core (prototype design + polyphase fold): no FFTW; the test uses a reference DFT to check
-# channel isolation against a straight-FFT channelizer.
-add_executable(test_pfb_prototype test_pfb_prototype.cpp ../../lib/stages/pfbPrototype.cpp)
-target_include_directories(test_pfb_prototype PRIVATE ../../lib/stages ../../lib/stages/gnss)
-
 # Channelized despread: sim signal -> PFB analysis (reference DFT) -> per-channel correlate-and-sum,
 # checked against the full-band matched filter. No FFTW.
 add_executable(
@@ -66,7 +64,7 @@ add_executable(
     test_gnss_channelized_despread.cpp
     ../../lib/stages/gnss/gnssChannelizedDespread.cpp
     ../../lib/stages/gnss/gnssSimSignal.cpp
-    ../../lib/stages/pfbPrototype.cpp
+    ../../lib/stages/dspPfbPrototype.cpp
     ../../lib/stages/gnss/gpsCACode.cpp)
 target_include_directories(test_gnss_channelized_despread PRIVATE ../../lib/stages
                                                                   ../../lib/stages/gnss)
@@ -81,7 +79,7 @@ if(FFTW_FOUND)
         test_gnss_channelized_acquire
         test_gnss_channelized_acquire.cpp
         ../../lib/stages/gnss/gnssChannelizedAcquire.cpp
-        ../../lib/stages/pfbPrototype.cpp
+        ../../lib/stages/dspPfbPrototype.cpp
         ../../lib/stages/gnss/gpsCACode.cpp
         # The L2C cases drive the real ChannelizedReplicaBank (time-multiplexed combined code),
         # so they exercise the production replica and acquire path.
@@ -119,7 +117,7 @@ if(FFTW_FOUND)
         ../../lib/stages/gnss/gnssChannelizedReplica.cpp
         ../../lib/stages/gnss/gnssChannelizedDespread.cpp
         ../../lib/stages/gnss/gnssBandPlan.cpp
-        ../../lib/stages/pfbPrototype.cpp
+        ../../lib/stages/dspPfbPrototype.cpp
         ../../lib/stages/gnss/gpsCACode.cpp
         ../../lib/stages/gnss/gpsL1CCode.cpp
         ../../lib/stages/gnss/gpsL2CCode.cpp
@@ -225,6 +223,10 @@ target_link_libraries(test_fmt PRIVATE kotekan_libs kotekan_utils)
 # test_restclient needs fmt
 add_executable(test_restclient test_restclient.cpp)
 target_link_libraries(test_restclient PRIVATE libexternal kotekan_libs kotekan_utils kotekan_core)
+
+add_executable(test_restserver_bind test_restserver_bind.cpp)
+target_link_libraries(test_restserver_bind PRIVATE libexternal kotekan_libs kotekan_utils
+                                                   kotekan_core)
 
 # test_bip_buffer needs fmt
 add_executable(test_bip_buffer test_bip_buffer.cpp)

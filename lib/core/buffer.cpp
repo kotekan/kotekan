@@ -256,7 +256,20 @@ std::vector<std::string> GenericBuffer::dot_label_lines(const kotekan::GraphOpti
     std::string type_line = buffer_type;
     if (metadata_pool)
         type_line += fmt::format(fmt(" · {:s}"), metadata_pool->type_name);
-    return {buffer_name, type_line};
+    std::vector<std::string> lines = {buffer_name, type_line};
+
+    // The array layout, when the buffer has one. This is the shape the data
+    // actually has at run time, so nothing here has to be inferred from the
+    // config or from the kernel sources.
+    auto array = get_frame_desc<kotekan::GenericNDArray>();
+    if (array) {
+        std::vector<std::string> dimnames;
+        for (const kotekan::Symbol& dimname : array->get_dimnames())
+            dimnames.push_back(dimname ? dimname.get_string() : std::string());
+        lines.push_back(kotekan::array_layout_line(type_to_string(array->get_value_datatype()),
+                                                   array->get_extents(), dimnames));
+    }
+    return lines;
 }
 
 Buffer::Buffer(int num_frames, size_t len, std::shared_ptr<metadataPool> pool,
@@ -265,10 +278,9 @@ Buffer::Buffer(int num_frames, size_t len, std::shared_ptr<metadataPool> pool,
                bool zero_new_frames, uint8_t zero_value) :
     GenericBuffer(_buffer_name, _buffer_type, pool, num_frames), frame_size(len),
     // By default don't zero buffers at the end of their use.
-    _zero_frames(false), frames(num_frames, nullptr), frames_desc(nullptr),
-    is_full(num_frames, false), peek_in_progress(num_frames, 0),
-    peek_deferred_empty(num_frames, false), last_arrival_time(0), use_hugepages(_use_hugepages),
-    mlock_frames(_mlock_frames), numa_node(_numa_node) {
+    _zero_frames(false), frames(num_frames, nullptr), is_full(num_frames, false),
+    peek_in_progress(num_frames, 0), peek_deferred_empty(num_frames, false), last_arrival_time(0),
+    use_hugepages(_use_hugepages), mlock_frames(_mlock_frames), numa_node(_numa_node) {
     assert(num_frames > 0);
 
     // Get the CPU affinity for the zeroing threads from the config
@@ -602,18 +614,6 @@ void Buffer::json_description(nlohmann::json& buf_json) {
 
 std::vector<std::string> Buffer::dot_label_lines(const kotekan::GraphOptions& options) {
     std::vector<std::string> lines = GenericBuffer::dot_label_lines(options);
-
-    // The array layout, when the buffer was declared with one. This is the shape
-    // the data actually has at run time, so nothing here has to be inferred from
-    // the config or from the kernel sources.
-    auto array = get_frame_desc<kotekan::GenericNDArray>();
-    if (array) {
-        std::vector<std::string> dimnames;
-        for (const kotekan::Symbol& dimname : array->get_dimnames())
-            dimnames.push_back(dimname ? dimname.get_string() : std::string());
-        lines.push_back(kotekan::array_layout_line(type_to_string(array->get_value_datatype()),
-                                                   array->get_extents(), dimnames));
-    }
 
     lines.push_back(fmt::format(fmt("{:s} ×{:d} frames = {:s}"), kotekan::human_bytes(frame_size),
                                 num_frames, kotekan::human_bytes(frame_size * (size_t)num_frames)));

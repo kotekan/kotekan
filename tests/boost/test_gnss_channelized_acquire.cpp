@@ -1,11 +1,11 @@
 #define BOOST_TEST_MODULE "test_gnss_channelized_acquire"
 
+#include "dspPfbPrototype.hpp"         // for pfb_prototype
 #include "gnssChannelizedAcquire.hpp"  // for channelized_accumulate, channelized_peak
 #include "gnssChannelizedDespread.hpp" // for channelized_despread (cp refine, as the stage does)
 #include "gnssChannelizedReplica.hpp"  // for ChannelizedReplicaBank (real production replica)
 #include "gnssSignal.hpp"              // for signal_by_name, SignalDescriptor
 #include "gpsCACode.hpp"               // for generate_ca_code
-#include "pfbPrototype.hpp"            // for pfb_prototype
 
 #include <boost/test/included/unit_test.hpp>
 #include <cmath>

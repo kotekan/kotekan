@@ -3,10 +3,10 @@
 #include "GnssChanMetadata.hpp"  // for get_gnss_chan_metadata, metadata_is_gnss_chan
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
 #include "clockProfile.hpp"      // for GPSDO_ACCURACY_PPM, clock_doppler_half_range_hz
+#include "dspPfbPrototype.hpp"   // for window_from_string
 #include "gnssSeedTransport.hpp" // for detection_phase
 #include "gnssSignal.hpp"        // for SignalDescriptor, signal_by_name
 #include "kotekanLogging.hpp"    // for INFO, FATAL_ERROR
-#include "pfbPrototype.hpp"      // for window_from_string
 #ifdef GNSS_CUDA
 #include "GnssCudaAcquire.hpp"  // for GnssCudaAcquire
 #include "GnssCudaDespread.hpp" // for GnssCudaDespread

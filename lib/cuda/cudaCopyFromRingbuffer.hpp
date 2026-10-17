@@ -9,9 +9,9 @@
 #include "driver_types.h"          // for cudaEvent_t
 #include "ringbuffer.hpp"          // for RingBuffer
 
+#include <cstdint>  // for uint64_t
 #include <stddef.h> // for size_t
 #include <stdint.h> // for int64_t
-#include <cstdint> // for uint64_t
 #include <string>   // for string, basic_string
 #include <vector>   // for vector
 
@@ -56,16 +56,11 @@ private:
     size_t input_cursor;
     int64_t initial_fpga_seq_num; // fpga_seq_num of first frame, used for consistency checking
 
-    /// GPU side memory name for the time-stream input
-    /// If set, the quantity name the ring's metadata MUST carry before we publish an
-    /// ndarray descriptor from it. Guards against a metadata_pool object recycled from
-    /// another quantity -- see the note in execute(). Empty = accept any name.
-    std::string _expect_quantity;
-
-    /// Rate-limits the "deferred the descriptor" warning so a persistent problem still
-    /// shows without a per-frame flood.
+    /// Frames whose metadata check was deferred because the ring's slot-0 metadata did not yet
+    /// name the ring's quantity (see execute()); rate-limits that warning.
     std::uint64_t _desc_deferred = 0;
 
+    /// GPU side memory name for the time-stream input
     std::string _gpu_mem_input;
     /// GPU side memory name for the time-stream output
     std::string _gpu_mem_output;

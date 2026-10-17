@@ -108,7 +108,10 @@ Binding and Addresses
 *********************
 The REST server binds on a specific address and port when started:
 
-- Use ``restServer::start(bind_address, port)`` to select the interface and port.
+- Use ``restServer::start(bind_address, port)`` to select the interface and port, or pass a
+  vector of addresses to serve several interfaces on one port. On the command line this is
+  ``--bind-address ip[,ip...]:port``, for example ``127.0.0.1,10.1.2.3:12048`` to answer on
+  localhost and one management interface only.
 - The helper ``restServer::isValidAddress()`` performs a syntactic validation of the
   address string before attempting to bind.
 

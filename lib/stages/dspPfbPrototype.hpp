@@ -17,8 +17,8 @@
  * reference DFT.
  */
 
-#ifndef PFB_PROTOTYPE_HPP
-#define PFB_PROTOTYPE_HPP
+#ifndef DSP_PFB_PROTOTYPE_HPP
+#define DSP_PFB_PROTOTYPE_HPP
 
 #include <complex> // for complex
 #include <cstring> // for memmove
@@ -91,4 +91,4 @@ inline void pfb_fold(const T* hist, const float* proto, int num_chan, int num_ta
 
 } // namespace dsp
 
-#endif // PFB_PROTOTYPE_HPP
+#endif // DSP_PFB_PROTOTYPE_HPP

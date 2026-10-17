@@ -7,8 +7,8 @@
 #ifndef GNSS_CHANNELIZED_REPLICA_HPP
 #define GNSS_CHANNELIZED_REPLICA_HPP
 
-#include "gnssSignal.hpp"   // for SignalDescriptor
-#include "pfbPrototype.hpp" // for Window
+#include "dspPfbPrototype.hpp" // for Window
+#include "gnssSignal.hpp"      // for SignalDescriptor
 
 #include <complex>    // for complex
 #include <cstdint>    // for int8_t

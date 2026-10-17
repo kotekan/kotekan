@@ -25,8 +25,8 @@
 
 /**
  * @class testUpchanAlignment
- * @brief Check that the upchannelizers, the FRB1 beamformers and the PL mask upchannelizers
- *        place a signal at the FPGA sequence numbers their metadata claim.
+ * @brief Check that the upchannelizers, the FRB1 beamformers, the PL mask upchannelizers and the
+ *        FRB1 PL masks place a signal at the FPGA sequence numbers their metadata claim.
  *
  * The voltages hold a constant signal in the FPGA samples [box_begin, box_end) and are zero
  * elsewhere, and packets are lost in the same samples (see `inventVoltage` and `inventPLMask`).
@@ -40,9 +40,13 @@
  *   samples overlap the box, and the power-weighted centre equals the box centre.
  * - Upchannelized PL masks: the masked output samples are exactly those whose window overlaps
  *   the box, and the coarse frequencies are those of the upchannelized voltages.
+ * - FRB1 PL mask, for each upchannelization factor U in the shared output buffer: the masked
+ *   output samples are exactly those whose input samples (including the upchannelizer windows)
+ *   overlap the box, and the samples and frequencies are those of the FRB1 beams.
  *
  * @par Buffers
  * @buffer frb1_beams      The FRB1 beams I, [Ttilde][Fbar][beamQ][beamP], float16
+ * @buffer frb1_pl_mask    The FRB1 PL mask, [Ttilde][Fbar], uint8 (1 = valid)
  * @buffer upchan_voltage  List of upchannelized voltages, [Tbar][Fbar][P][D], int4+4
  * @buffer upchan_pl_mask  List of upchannelized PL masks, [Thi64][F][P][D8][Tlo64], uint1
  *
@@ -67,21 +71,23 @@ class testUpchanAlignment : public kotekan::Stage {
     // smearing of the upchannelizer window and of the FRB1 downsampling.
     static constexpr std::int64_t margin = 1024;
 
-    enum class kind_t { frb1_beams, upchan_voltage, upchan_pl_mask };
+    enum class kind_t { frb1_beams, frb1_pl_mask, upchan_voltage, upchan_pl_mask };
     struct stream_t {
         Buffer* buffer;
         kind_t kind;
-        int upchan_factor;   // 0 for frb1_beams
+        int upchan_factor;   // 0 for frb1_beams and frb1_pl_mask
         int frame_index = 0; // next frame to read
         std::int64_t end_seq_num = -1;
         bool done = false;
         // Output sample label (fpga_seq_num) -> power (or 1 for masked PL samples). For the
-        // FRB1 beams, keyed first by upchannelization factor.
+        // FRB1 beams and the FRB1 PL mask, keyed first by upchannelization factor.
         std::map<int, std::map<std::int64_t, double>> power;
         // FPGA samples per output sample
         int tds = 0;
-        // Coarse frequency of each output frequency, from the first frame
+        // Coarse frequency and upchannelization factor of each output frequency, from the first
+        // frame
         std::vector<int> coarse_freq;
+        std::vector<int> freq_upchan_factor;
 
         stream_t(Buffer* const buffer, const kind_t kind, const int upchan_factor) :
             buffer(buffer), kind(kind), upchan_factor(upchan_factor) {}
@@ -103,6 +109,7 @@ public:
                         "buffer per entry of upchan_factors ({:d} entries)",
                         voltages.size(), pl_masks.size(), upchan_factors.size());
         streams.emplace_back(get_buffer("frb1_beams"), kind_t::frb1_beams, 0);
+        streams.emplace_back(get_buffer("frb1_pl_mask"), kind_t::frb1_pl_mask, 0);
         for (std::size_t n = 0; n < upchan_factors.size(); ++n) {
             streams.emplace_back(voltages.at(n), kind_t::upchan_voltage, upchan_factors.at(n));
             streams.emplace_back(pl_masks.at(n), kind_t::upchan_pl_mask, upchan_factors.at(n));
@@ -132,6 +139,8 @@ public:
         for (const stream_t& stream : streams) {
             if (stream.kind == kind_t::frb1_beams)
                 check_frb1_beams(stream);
+            else if (stream.kind == kind_t::frb1_pl_mask)
+                check_frb1_pl_mask(stream, find_stream(kind_t::frb1_beams, 0));
             else if (stream.kind == kind_t::upchan_voltage)
                 check_upchan_voltage(stream);
             else
@@ -156,6 +165,16 @@ private:
         return seq - (M - 1) * U / 2 < box_end && seq + (M + 1) * U / 2 > box_begin;
     }
 
+    // Whether the input samples of the FRB1 output sample labelled `seq` overlap the box. For U>1
+    // these are the windows of the upchannelized samples [seq, seq + tds) (see
+    // `window_overlaps_box`).
+    bool frb1_window_overlaps_box(const std::int64_t seq, const std::int64_t tds,
+                                  const int U) const {
+        if (U == 1)
+            return overlaps_box(seq, tds);
+        return seq - (M - 1) * U / 2 < box_end && seq + tds + (M - 1) * U / 2 > box_begin;
+    }
+
     bool in_range(const std::int64_t seq) const {
         return seq >= box_begin - margin && seq < box_end + margin;
     }
@@ -168,8 +187,10 @@ private:
         if (!frame)
             return false;
         const std::shared_ptr<const chordMetadata> meta = get_chord_metadata(buffer, frame_id);
-        if (stream.frame_index == 0)
+        if (stream.frame_index == 0) {
             stream.coarse_freq = meta->get_coarse_freq();
+            stream.freq_upchan_factor = meta->get_freq_upchan_factor();
+        }
         const std::int64_t seq0 = meta->get_fpga_seq_num();
         const int ntimes = meta->dim[0];
         const std::ptrdiff_t time_stride = buffer->frame_size / ntimes;
@@ -198,6 +219,36 @@ private:
                     for (std::ptrdiff_t b = 0; b < freq_stride / std::ptrdiff_t(sizeof *beams); ++b)
                         power += double(beams[b]);
                     stream.power[U][seq] += power;
+                }
+            }
+        } else if (stream.kind == kind_t::frb1_pl_mask) {
+            // [Ttilde][Fbar], one byte per sample, 1 = valid
+            stream.tds = meta->get_time_downsampling_fpga();
+            const int nfreqs = meta->dim[1];
+            const std::vector<int> freq_upchan_factor = meta->get_freq_upchan_factor();
+            for (int t = 0; t < ntimes; ++t) {
+                const std::int64_t seq = seq0 + std::int64_t(t) * stream.tds;
+                if (!in_range(seq))
+                    continue;
+                std::map<int, int> num_freqs, num_masked;
+                for (int f = 0; f < int(freq_upchan_factor.size()) && f < nfreqs; ++f) {
+                    const int U = freq_upchan_factor.at(f);
+                    if (U <= 0)
+                        continue; // not written
+                    const std::uint8_t valid = frame[t * time_stride + f];
+                    if (!(valid == 0 || valid == 1))
+                        FATAL_ERROR("Buffer {:s}: at fpga_seq_num={:d}, frequency {:d} has the "
+                                    "value {:d}; expected 0 or 1",
+                                    buffer->buffer_name, seq, f, int(valid));
+                    ++num_freqs[U];
+                    num_masked[U] += valid == 0;
+                }
+                for (const auto& [U, n] : num_freqs) {
+                    if (num_masked[U] != 0 && num_masked[U] != n)
+                        FATAL_ERROR("Buffer {:s}: at fpga_seq_num={:d}, {:d} of the {:d} "
+                                    "frequencies with U={:d} are masked; expected none or all",
+                                    buffer->buffer_name, seq, num_masked[U], n, U);
+                    stream.power[U][seq] = num_masked[U] != 0;
                 }
             }
         } else if (stream.kind == kind_t::upchan_voltage) {
@@ -293,6 +344,51 @@ private:
             if (found != expected)
                 FATAL_ERROR("FRB1 beams, U={:d}: the signal is in the samples starting at "
                             "fpga_seq_num [{:s}], expected [{:s}]",
+                            U, to_string(found), to_string(expected));
+        }
+    }
+
+    void check_frb1_pl_mask(const stream_t& stream, const stream_t& beams) const {
+        // The mask describes the same frequencies as the beams
+        for (std::size_t f = 0; f < stream.freq_upchan_factor.size(); ++f) {
+            const int U = stream.freq_upchan_factor.at(f);
+            if (U <= 0)
+                continue; // not written
+            if (!(f < beams.freq_upchan_factor.size() && beams.freq_upchan_factor.at(f) == U
+                  && beams.coarse_freq.at(f) == stream.coarse_freq.at(f)))
+                FATAL_ERROR("FRB1 PL mask: frequency {:d} has coarse frequency {:d} and U={:d}, "
+                            "unlike the FRB1 beams",
+                            f, stream.coarse_freq.at(f), U);
+        }
+        if (stream.tds != beams.tds)
+            FATAL_ERROR("FRB1 PL mask: time_downsampling_fpga={:d}, but the FRB1 beams have {:d}",
+                        stream.tds, beams.tds);
+        if (stream.power.size() != beams.power.size())
+            FATAL_ERROR("FRB1 PL mask: holds {:d} upchannelization factors, but the FRB1 beams "
+                        "hold {:d}",
+                        stream.power.size(), beams.power.size());
+        for (const auto& [U, masked] : stream.power) {
+            // The mask labels the same samples as the beams
+            std::set<std::int64_t> seqs, beam_seqs;
+            for (const auto& [seq, m] : masked)
+                seqs.insert(seq);
+            for (const auto& [seq, p] : beams.power.at(U))
+                beam_seqs.insert(seq);
+            if (seqs != beam_seqs)
+                FATAL_ERROR("FRB1 PL mask, U={:d}: samples [{:s}], but the FRB1 beams have "
+                            "[{:s}]",
+                            U, to_string(seqs), to_string(beam_seqs));
+            const std::set<std::int64_t> found =
+                select_seqs(masked, [](std::int64_t, double m) { return m != 0; });
+            const std::set<std::int64_t> expected =
+                select_seqs(masked, [&](std::int64_t seq, double) {
+                    return frb1_window_overlaps_box(seq, stream.tds, U);
+                });
+            INFO("FRB1 PL mask, U={:d}: masked samples [{:s}], expected [{:s}]", U,
+                 to_string(found), to_string(expected));
+            if (found != expected)
+                FATAL_ERROR("FRB1 PL mask, U={:d}: masked samples start at fpga_seq_num [{:s}], "
+                            "expected [{:s}]",
                             U, to_string(found), to_string(expected));
         }
     }

@@ -1,9 +1,9 @@
 #define BOOST_TEST_MODULE "test_gnss_channelized_despread"
 
+#include "dspPfbPrototype.hpp"         // for pfb_prototype, pfb_push, pfb_fold
 #include "gnssChannelizedDespread.hpp" // for channelized_despread, coherent_sum
 #include "gnssSimSignal.hpp"           // for sim_bpsk_baseband
 #include "gpsCACode.hpp"               // for generate_ca_code
-#include "pfbPrototype.hpp"            // for pfb_prototype, pfb_push, pfb_fold
 
 #include <boost/test/included/unit_test.hpp>
 #include <cmath>

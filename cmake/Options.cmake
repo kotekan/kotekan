@@ -111,3 +111,5 @@ ktk_tristate_option(
 ktk_tristate_option(WITH_BOOST_TESTS "Compile boost C++ unit tests" OFF)
 ktk_tristate_option(WITH_NVTX "Compile NVTX ranges for Nsight Systems profiling (CUDA builds only)"
                     OFF)
+ktk_tristate_option(WITH_SPAWN_PROCESS
+                    "Build the SpawnProcess stage (runs a shell command from the config)" OFF)

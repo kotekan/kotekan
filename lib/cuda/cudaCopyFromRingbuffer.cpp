@@ -1,7 +1,6 @@
 #include "cudaCopyFromRingbuffer.hpp"
 
 #include "NDArray.hpp"        // for GenericNDArray
-#include "Symbol.hpp"         // for Symbol
 #include "chordMetadata.hpp"  // for chordMetadata
 #include "cudaUtils.hpp"      // for CHECK_CUDA_ERROR
 #include "cuda_runtime_api.h" // for cudaHostGetFlags, cudaMemcpyAsync, cudaHostRegister, cudaH...
@@ -18,6 +17,7 @@
 #include <stdint.h>    // for uint8_t
 #include <sys/types.h> // for uint
 #include <tuple>       // for tuple, make_tuple
+#include <vector>      // for vector
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -33,7 +33,6 @@ cudaCopyFromRingbuffer::cudaCopyFromRingbuffer(Config& config, const std::string
     _output_size = config.get<size_t>(unique_name, "output_size");
     _ring_buffer_size = config.get<size_t>(unique_name, "ring_buffer_size");
     _gpu_mem_input = config.get<std::string>(unique_name, "gpu_mem_input");
-    _expect_quantity = config.get_default<std::string>(unique_name, "expect_quantity_name", "");
     _gpu_mem_output = config.get_default<std::string>(unique_name, "gpu_mem_output", "");
     if (_gpu_mem_output.size() == 0) {
         // We're reading from GPU ringbuffer to host memory
@@ -113,6 +112,17 @@ cudaEvent_t cudaCopyFromRingbuffer::execute(cudaPipelineState& pipestate,
 
     void* rb_memory = device.get_gpu_memory(_gpu_mem_input, _ring_buffer_size);
 
+    // The ring's descriptor covers the whole ring. One index of its slowest dimension takes
+    // `granularity` bytes, and the output holds `out_extent0` of them.
+    const auto ring_desc = signal_buffer->require_frame_desc<kotekan::GenericNDArray>();
+    const std::ptrdiff_t granularity =
+        std::ptrdiff_t(ring_desc->get_byte_size()) / ring_desc->get_extent(0);
+    if (std::ptrdiff_t(_output_size) % granularity != 0)
+        FATAL_ERROR("{:s}: output_size {:d} is not a multiple of {:d} bytes, the size of one "
+                    "index of the slowest dimension of ring buffer {:s}",
+                    unique_name, _output_size, granularity, signal_buffer->buffer_name);
+    const std::ptrdiff_t out_extent0 = std::ptrdiff_t(_output_size) / granularity;
+
     auto in_meta = std::dynamic_pointer_cast<chordMetadata>(signal_buffer->get_metadata(0));
     assert(in_meta);
     // Copy metadata (because we modify it)
@@ -122,7 +132,7 @@ cudaEvent_t cudaCopyFromRingbuffer::execute(cudaPipelineState& pipestate,
     // Read only `out_meta`, the locked snapshot: `get_metadata(0)` is the live slot-0 object
     // its producer fills in place, and a torn read of `time_downsampling_fpga` is scaled by
     // the absolute byte count below.
-    assert(input_cursor % out_meta->sample_bytes() == 0);
+    assert(input_cursor % granularity == 0);
     if (initial_fpga_seq_num == -1) { // first time
         // Instance 0 handles frame 0 of the buffer depth, so it starts at the ring's origin
         if (instance_num == 0 && input_cursor != 0)
@@ -134,10 +144,9 @@ cudaEvent_t cudaCopyFromRingbuffer::execute(cudaPipelineState& pipestate,
     }
     out_meta->set_fpga_seq_num(initial_fpga_seq_num
                                + out_meta->get_time_downsampling_fpga()
-                                     * (input_cursor / out_meta->sample_bytes()));
+                                     * (input_cursor / granularity));
     assert(out_meta->dims > 0);
-    assert(out_buffer->frame_size % out_meta->sample_bytes() == 0);
-    out_meta->dim[0] = out_buffer->frame_size / out_meta->sample_bytes();
+    out_meta->dim[0] = out_extent0;
 
     size_t start = input_cursor % _ring_buffer_size;
     size_t ncopy = _output_size;
@@ -161,89 +170,34 @@ cudaEvent_t cudaCopyFromRingbuffer::execute(cudaPipelineState& pipestate,
                                           cuda_stream_id, nullptr, nullptr, nullptr);
 
         out_buffer->set_metadata(out_id, out_meta);
-        /* new style array description */
-        // difficult to move to constructor since it depends on frame_desc in the
-        // signal_buffer which may not be set at contructor time
-        std::vector<std::ptrdiff_t> extents(out_meta->dim, out_meta->dim + out_meta->dims);
-        std::vector<kotekan::Symbol> dimnames;
-        for (int d = 0; d < out_meta->dims; ++d)
-            dimnames.push_back(out_meta->get_dimension_name(d));
-        std::vector<std::ptrdiff_t> dimscalings(out_meta->dim_scaling,
-                                                out_meta->dim_scaling + out_meta->dims);
-        // ⚠️ THE RING'S SLOT-0 METADATA IS NOT VALID UNTIL ITS PRODUCER HAS STAMPED IT
-        // (2026-08-31). We publish the output buffer's ndarray descriptor from
-        // signal_buffer->get_metadata(0), and on a freshly started pipeline that object can
-        // still be (a) untouched -- dims 0, so byte size 0 -- or (b) a metadata_pool object
-        // recycled from ANOTHER quantity, still carrying its dim names. Both reach
-        // ensure_frame_desc(), which FATALs, and the controlled shutdown that follows takes
-        // the DPDK workers and the whole node with it. One restart on 2026-08-31 cost cx19
-        // ("dimname mismatch: SK != S", case b) and cx44 ("frame description size (0)",
-        // case a). The `assert(out_meta->dims > 0)` above is compiled out in Release, so
-        // nothing caught either one.
-        //
-        // ⚠️ A SIZE CHECK ALONE CANNOT CATCH (b): dim[0] is forced from frame_size a few
-        // lines up, so a foreign descriptor always has the RIGHT byte size and differs only
-        // in its labels. Hence the quantity-name gate.
-        //
-        // So publish only what we can show is ours. Deferring costs nothing -- the
-        // descriptor is pure metadata and the frame DATA is copied either way -- and a later
-        // frame publishes it once the producer has stamped slot 0. It stays loud: a
-        // descriptor that NEVER becomes publishable is a real bug and must not hide.
-        bool desc_ok = out_meta->dims > 0;
-        std::string why;
-        if (!desc_ok)
-            why = "metadata has no dimensions yet";
-        const std::string qname = out_meta->get_name();
-        if (desc_ok && qname.empty()) {
-            desc_ok = false;
-            why = "metadata carries no quantity name yet";
-        }
-        for (size_t d = 0; desc_ok && d < dimnames.size(); ++d)
-            if (!dimnames[d].valid()) {
-                desc_ok = false;
-                why = fmt::format("dimension {:d} has no name yet", d);
-            }
-        if (desc_ok && !_expect_quantity.empty() && qname != _expect_quantity) {
-            desc_ok = false;
-            why = fmt::format("ring metadata is '{:s}', not the '{:s}' this copy produces "
-                              "-- a recycled pool object, not our producer's",
-                              qname, _expect_quantity);
-        }
-
-        // ⚠️ AND CHECK THE DESCRIPTOR WE ACTUALLY BUILT, not just the metadata fields it came
-        // from. `dims > 0` is NOT enough: an uninitialised pool object can carry dims == 3
-        // with ZERO extents, whose byte size is 0, and that walks straight into
-        // ensure_frame_desc()'s first FATAL ("frame description size (0) does not match
-        // frame_size"). That is precisely how cx19 died AGAIN on the 17:01 restart, with the
-        // first version of this guard already in the binary. Build it, measure it, then
-        // decide.
-        std::shared_ptr<const kotekan::FrameDesc> cand;
-        if (desc_ok) {
-            cand = kotekan::GenericNDArray::describe(out_meta->type, qname, extents, dimnames,
-                                                     dimscalings);
-            if (!cand || cand->get_byte_size() != (size_t)out_buffer->frame_size) {
-                desc_ok = false;
-                why = fmt::format("descriptor byte size {:d} != frame_size {:d}",
-                                  cand ? cand->get_byte_size() : 0,
-                                  (size_t)out_buffer->frame_size);
-            }
-        }
-
-        if (desc_ok) {
-            out_buffer->ensure_frame_desc(cand);
-            /* test that things are consistent */
+        // The output frame has the ring's layout, with `out_extent0` in the slowest dimension
+        std::vector<std::ptrdiff_t> extents = ring_desc->get_extents();
+        extents.at(0) = out_extent0;
+        out_buffer->ensure_frame_desc(kotekan::GenericNDArray::describe(
+            ring_desc->get_value_datatype(), ring_desc->get_quantity_name(), extents,
+            ring_desc->get_dimnames(), ring_desc->get_dimscalings()));
+        // The metadata is a copy of the ring's slot-0 object, which its producer may not have
+        // stamped yet on a fresh pipeline: no dimensions, or a pool object recycled from another
+        // quantity. check_frame_desc() is fatal on a mismatch, so check only metadata that names
+        // the ring's quantity. Until then the data still copies, and the deferral is logged at
+        // powers of two so a descriptor that never matches stays visible.
+        const kotekan::Symbol ring_quantity = ring_desc->get_quantity_name();
+        if (out_meta->dims > 0 && ring_quantity.valid()
+            && out_meta->get_name() == ring_quantity.get_string()) {
             out_meta->check_frame_desc(out_buffer->get_frame_desc<kotekan::GenericNDArray>());
             if (_desc_deferred) {
-                INFO("cudaCopyFromRingbuffer[{:s}]: published the '{:s}' descriptor for {:s} "
-                     "after deferring {:d} frame(s)",
-                     unique_name, qname, out_buffer->buffer_name, _desc_deferred);
+                INFO("cudaCopyFromRingbuffer[{:s}]: checked the '{:s}' metadata of {:s} after "
+                     "deferring {:d} frame(s)",
+                     unique_name, out_meta->get_name(), out_buffer->buffer_name, _desc_deferred);
                 _desc_deferred = 0;
             }
         } else if (++_desc_deferred, (_desc_deferred & (_desc_deferred - 1)) == 0) {
-            // Powers of two only: loud at first, then quiet, but never silent.
-            WARN("cudaCopyFromRingbuffer[{:s}]: NOT publishing an ndarray descriptor for "
-                 "{:s} ({:s}); deferred {:d} frame(s) so far. The data still copies.",
-                 unique_name, out_buffer->buffer_name, why, _desc_deferred);
+            WARN("cudaCopyFromRingbuffer[{:s}]: ring metadata for {:s} is not yet '{:s}' (dims "
+                 "{:d}, name '{:s}'); deferred the consistency check {:d} frame(s) so far. The "
+                 "data still copies.",
+                 unique_name, out_buffer->buffer_name,
+                 ring_quantity.valid() ? ring_quantity.get_string() : std::string("?"),
+                 out_meta->dims, out_meta->get_name(), _desc_deferred);
         }
 
     } else {

@@ -20,7 +20,6 @@ add_library(
     monitorBuffer.cpp
     networkInputPowerStream.cpp
     parseReorderDefault.cpp
-    pyPlotN2.cpp
     rawFileRead.cpp
     rawFileWrite.cpp
     waitingForMaxFrames.cpp
@@ -70,7 +69,7 @@ add_library(
     # The fleet code loop runs in the gather instance beside GnssTelemGather (the only place
     # with the whole fleet at frame rate), so it is in the same no-FFTW block.
     gnss/GnssFleetTrim.cpp
-    SpawnProcess.cpp
+    $<$<STREQUAL:${WITH_SPAWN_PROCESS},ON>:SpawnProcess.cpp>
     freqSplit.cpp
     FreqSubset.cpp
     prodSubset.cpp
@@ -169,7 +168,7 @@ if(FFTW_FOUND)
     target_sources(
         kotekan_stages
         PRIVATE fftwEngine.cpp
-                pfbPrototype.cpp
+                dspPfbPrototype.cpp
                 gnss/gnssBandPlan.cpp
                 gnss/gnssChannelizedAcquire.cpp
                 gnss/gnssChannelizedReplica.cpp

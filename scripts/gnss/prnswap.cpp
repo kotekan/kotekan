@@ -19,9 +19,9 @@
 //
 // @author Keith Vanderlinde
 #include "GnssCudaDespread.hpp"
+#include "dspPfbPrototype.hpp"
 #include "gnssChannelizedReplica.hpp"
 #include "gnssSignal.hpp"
-#include "pfbPrototype.hpp"
 
 #include <cmath>
 #include <complex>

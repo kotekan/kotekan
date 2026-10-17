@@ -94,15 +94,19 @@ static int sane_lrint(const float x) {
 // Quantize a "chunk". This is a CPU implementation that is
 // straightforward and thus "obviously correct". If the GPU version
 // produces a different result, then the GPU version is wrong.
-void cpu_quantize8_chunk(const __half* __restrict__ const input, __half* __restrict__ const outputf,
+void cpu_quantize8_chunk(const __half* __restrict__ const input,
+                         const std::uint8_t* __restrict__ const pl_mask, const int pl_mask_stride,
+                         __half* __restrict__ const outputf,
                          std::uint8_t* __restrict__ const outputi) {
     using std::isfinite, std::isnan, std::max, std::min;
 
-    // Find the minimum and maximum of all input values. Calculate
-    // everything as `float` for convenience.
+    // Find the minimum and maximum of all valid input values, skipping samples that the packet
+    // loss mask marks as invalid. Calculate everything as `float` for convenience.
     float minval = +1.0f / 0.0f, maxval = -1.0f / 0.0f;
     for (int freq = 0; freq < out_nfreqs_chunk; ++freq) {
         for (int time = 0; time < out_ntimes_chunk; ++time) {
+            if (!pl_mask[time * pl_mask_stride + freq])
+                continue;
             const int in_ind = time + in_ntimes * freq;
             const float x = __half2float(input[in_ind]);
             minval = sane_fmin(minval, x);
@@ -112,7 +116,8 @@ void cpu_quantize8_chunk(const __half* __restrict__ const input, __half* __restr
     // Calculate offset and scale.
     // There are 254 possible uint8 values since we don't use 0 or 255 for regular values.
     // Values are reconstructed as `offset + scale * n`, with `uint8 n`.
-    // NaN in the input is represented as `n = 0`.
+    // NaN in the input, and samples the packet loss mask marks as invalid, are represented as
+    // `n = 0`.
     constexpr int outi_min = 1;
     constexpr int outi_max = 254;
     constexpr float outf_min = outi_min - 0.5f;
@@ -151,12 +156,13 @@ void cpu_quantize8_chunk(const __half* __restrict__ const input, __half* __restr
             const int out_ind = time + out_ntimes_chunk * freq;
             // Get value
             const float x = __half2float(input[in_ind]);
-            // Scale
-            const float y = scale == 0 ? float(outi_min + outi_max) / 2.0f : (x - offset) / scale;
+            // Scale. (A zero scale maps all values to `outi_min`, as on the GPU.)
+            const float y = scale == 0 ? 0.0f : (x - offset) / scale;
             // Round
             const int j = sane_lrint(y);
-            // Clamp; use 0 for nan
-            const int k = isnan(x) ? 0 : max(outi_min, min(outi_max, j));
+            // Clamp; use 0 for nan and for invalid samples
+            const bool valid = pl_mask[time * pl_mask_stride + freq];
+            const int k = !valid || isnan(x) ? 0 : max(outi_min, min(outi_max, j));
             // Store
             outputi[out_ind] = k;
         }
@@ -165,7 +171,8 @@ void cpu_quantize8_chunk(const __half* __restrict__ const input, __half* __restr
 
 // Quantize a set of "chunk"s. This is an efficient GPU implementation.
 __global__ void gpu_quantize8_chunks(const __half* __restrict__ const input,
-                                     __half* __restrict__ const outputf,
+                                     const std::uint8_t* __restrict__ const pl_mask,
+                                     const int pl_mask_stride, __half* __restrict__ const outputf,
                                      std::uint8_t* __restrict__ const outputi) {
     using std::isfinite;
 
@@ -226,6 +233,14 @@ __global__ void gpu_quantize8_chunks(const __half* __restrict__ const input,
     const int in_time_chunk = 8 * (threadIdx.x % 2); // 0 or 8
     const int in_freq_chunk = threadIdx.x / 2;       // 0..15
 
+    // The packet loss mask is the same for all beams. Load this thread's 8 values once; masked
+    // samples are skipped when finding the minimum and maximum, and are encoded as 0.
+    bool valid[8];
+    for (int i = 0; i < 8; ++i)
+        valid[i] = pl_mask[time(in_time_chunk + i, time_outer) * pl_mask_stride
+                           + freq(in_freq_chunk, freq_packet, freq_outer)];
+    constexpr float inf = 1.0f / 0.0f;
+
     // We store offset and scale only after finishing the loop over all chunks. Each thread stores
     // one offset/scale pair.
     __half2 outf;
@@ -243,8 +258,8 @@ __global__ void gpu_quantize8_chunks(const __half* __restrict__ const input,
         const half2x4 xs01234567 = load_half2x4(input + input_offset_01234567);
         const __half2 x01 = xs01234567.x;
         const __half2 x23 = xs01234567.y;
-        const __half2 x45 = xs01234567.w;
-        const __half2 x67 = xs01234567.z;
+        const __half2 x45 = xs01234567.z;
+        const __half2 x67 = xs01234567.w;
 
         const float x0 = __half2float(__low2half(x01));
         const float x1 = __half2float(__high2half(x01));
@@ -255,10 +270,19 @@ __global__ void gpu_quantize8_chunks(const __half* __restrict__ const input,
         const float x6 = __half2float(__low2half(x67));
         const float x7 = __half2float(__high2half(x67));
 
-        float minval = sane_fmin(sane_fmin(sane_fmin(x0, x1), sane_fmin(x2, x3)),
-                                 sane_fmin(sane_fmin(x4, x5), sane_fmin(x6, x7)));
-        float maxval = sane_fmax(sane_fmax(sane_fmax(x0, x1), sane_fmax(x2, x3)),
-                                 sane_fmax(sane_fmax(x4, x5), sane_fmax(x6, x7)));
+        const float m0 = valid[0] ? x0 : +inf, M0 = valid[0] ? x0 : -inf;
+        const float m1 = valid[1] ? x1 : +inf, M1 = valid[1] ? x1 : -inf;
+        const float m2 = valid[2] ? x2 : +inf, M2 = valid[2] ? x2 : -inf;
+        const float m3 = valid[3] ? x3 : +inf, M3 = valid[3] ? x3 : -inf;
+        const float m4 = valid[4] ? x4 : +inf, M4 = valid[4] ? x4 : -inf;
+        const float m5 = valid[5] ? x5 : +inf, M5 = valid[5] ? x5 : -inf;
+        const float m6 = valid[6] ? x6 : +inf, M6 = valid[6] ? x6 : -inf;
+        const float m7 = valid[7] ? x7 : +inf, M7 = valid[7] ? x7 : -inf;
+
+        float minval = sane_fmin(sane_fmin(sane_fmin(m0, m1), sane_fmin(m2, m3)),
+                                 sane_fmin(sane_fmin(m4, m5), sane_fmin(m6, m7)));
+        float maxval = sane_fmax(sane_fmax(sane_fmax(M0, M1), sane_fmax(M2, M3)),
+                                 sane_fmax(sane_fmax(M4, M5), sane_fmax(M6, M7)));
 
         minval = sane_fmin(minval, __shfl_sync(0xffffffff, minval, thread ^ 0x01));
         maxval = sane_fmax(maxval, __shfl_sync(0xffffffff, maxval, thread ^ 0x01));
@@ -326,23 +350,23 @@ __global__ void gpu_quantize8_chunks(const __half* __restrict__ const input,
 
         const __half2 y01 =
             __hmax2_nan(minh, __hmin2_nan(maxh, __hfma2(x01, inv_scaleh2, inv_offseth2)));
-        const int i0 = half2int(__low2half(y01));
-        const int i1 = half2int(__high2half(y01));
+        const int i0 = valid[0] ? half2int(__low2half(y01)) : 0;
+        const int i1 = valid[1] ? half2int(__high2half(y01)) : 0;
 
         const __half2 y23 =
             __hmax2_nan(minh, __hmin2_nan(maxh, __hfma2(x23, inv_scaleh2, inv_offseth2)));
-        const int i2 = half2int(__low2half(y23));
-        const int i3 = half2int(__high2half(y23));
+        const int i2 = valid[2] ? half2int(__low2half(y23)) : 0;
+        const int i3 = valid[3] ? half2int(__high2half(y23)) : 0;
 
         const __half2 y45 =
             __hmax2_nan(minh, __hmin2_nan(maxh, __hfma2(x45, inv_scaleh2, inv_offseth2)));
-        const int i4 = half2int(__low2half(y45));
-        const int i5 = half2int(__high2half(y45));
+        const int i4 = valid[4] ? half2int(__low2half(y45)) : 0;
+        const int i5 = valid[5] ? half2int(__high2half(y45)) : 0;
 
         const __half2 y67 =
             __hmax2_nan(minh, __hmin2_nan(maxh, __hfma2(x67, inv_scaleh2, inv_offseth2)));
-        const int i6 = half2int(__low2half(y67));
-        const int i7 = half2int(__high2half(y67));
+        const int i6 = valid[6] ? half2int(__low2half(y67)) : 0;
+        const int i7 = valid[7] ? half2int(__high2half(y67)) : 0;
 
         const std::uint64_t outi = (std::uint64_t(i0) << 0x00) | (std::uint64_t(i1) << 0x08)
                                    | (std::uint64_t(i2) << 0x10) | (std::uint64_t(i3) << 0x18)
@@ -364,9 +388,12 @@ __global__ void gpu_quantize8_chunks(const __half* __restrict__ const input,
 
 // Drivers (externally visible)
 
-void cpu_quantize8(const __half* __restrict__ const input, __half* __restrict__ const outputf,
-                   std::uint8_t* __restrict__ const outputi) {
+void cpu_quantize8(const __half* __restrict__ const input,
+                   const std::uint8_t* __restrict__ const pl_mask, const int pl_mask_stride,
+                   __half* __restrict__ const outputf, std::uint8_t* __restrict__ const outputi) {
     assert(input);
+    assert(pl_mask);
+    assert(pl_mask_stride >= in_nfreqs);
     assert(outputf);
     assert(outputi);
 
@@ -407,7 +434,10 @@ void cpu_quantize8(const __half* __restrict__ const input, __half* __restrict__ 
                                                        * (freq_outer
                                                           + out_nfreqs_outer * beam_outer))));
 
-                        cpu_quantize8_chunk(input + input_offset, outputf + outputf_offset,
+                        const int pl_mask_offset = time * pl_mask_stride + freq;
+
+                        cpu_quantize8_chunk(input + input_offset, pl_mask + pl_mask_offset,
+                                            pl_mask_stride, outputf + outputf_offset,
                                             outputi + outputi_offset);
                     }
                 }
@@ -416,9 +446,13 @@ void cpu_quantize8(const __half* __restrict__ const input, __half* __restrict__ 
     }
 }
 
-void gpu_quantize8(const __half* __restrict__ const input, __half* __restrict__ const outputf,
-                   std::uint8_t* __restrict__ const outputi, cudaStream_t stream) {
+void gpu_quantize8(const __half* __restrict__ const input,
+                   const std::uint8_t* __restrict__ const pl_mask, const int pl_mask_stride,
+                   __half* __restrict__ const outputf, std::uint8_t* __restrict__ const outputi,
+                   cudaStream_t stream) {
     assert(input);
+    assert(pl_mask);
+    assert(pl_mask_stride >= in_nfreqs);
     assert(outputf);
     assert(outputi);
 
@@ -432,5 +466,6 @@ void gpu_quantize8(const __half* __restrict__ const input, __half* __restrict__ 
     nblocks.z = out_nbeams_packet * out_nbeams_outer / nchunks;
     const int shmem_nbytes = 0;
 
-    gpu_quantize8_chunks<<<nblocks, nthreads, shmem_nbytes, stream>>>(input, outputf, outputi);
+    gpu_quantize8_chunks<<<nblocks, nthreads, shmem_nbytes, stream>>>(
+        input, pl_mask, pl_mask_stride, outputf, outputi);
 }
