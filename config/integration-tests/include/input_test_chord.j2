@@ -14,6 +14,8 @@
 #                   lost FPGA samples (default: none)
 #     bf_mode, bf_manual_bad_feeds
 #                   inventBFMask mode (default: all_good)
+#     bf_mask_lifetime_frames
+#                   bad feed mask lifetime for RFI, BB and FRB1, in frames (default: 24)
 
 {% set input_kind = input_kind | default('random') %}
 
@@ -50,7 +52,13 @@ generate_pl_mask:
     box_end: {{ pl_box_end | default(0) }}
 
 generate_bf_mask:
-    kotekan_stage: inventBFMask
-    bf_mask: host_bf_mask_buffer
     mode: {{ bf_mode | default('all_good') }}
     manual_bad_feeds: {{ bf_manual_bad_feeds | default([]) }}
+    for_beamformers:
+        kotekan_stage: inventBFMask
+        bf_mask: host_bf_mask_buffer
+    # The same mask for N2Accumulate, one frame per correlation frame
+    for_n2:
+        kotekan_stage: inventBFMask
+        bf_mask: host_n2_bf_mask_buffer
+        bf_mask_lifetime_in_samples: n2k_samples_per_data_set

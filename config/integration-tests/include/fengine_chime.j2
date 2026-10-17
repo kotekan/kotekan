@@ -88,14 +88,7 @@ frequency_channels: [
 
 num_times: 16384                # frame length is 16384 * 2.56 us = 41.94304 ms
 
-# One bad feed mask frame per correlation frame, which N2Accumulate requires (as in
-# config/chord/pathfinder.j2). N2Accumulate holds each mask frame until its correlation
-# frame is accumulated, so the depth bounds the GPU's lead over it.
-bf_mask_lifetime_in_samples: num_times
-bf_mask_buffer_depth: 12 * buffer_depth
-bf_mask_pool:
-    kotekan_metadata_pool: chordMetadata
-    num_metadata_objects: bf_mask_buffer_depth + 4 * buffer_depth
+bf_mask_lifetime_in_samples: {{ bf_mask_lifetime_frames | default(24) }} * num_times
 
 ################################################################################
 
@@ -103,14 +96,13 @@ bf_mask_pool:
 
 host_bf_mask_buffer:
     kotekan_buffer: ndarray
-    peek_hold: true
-    num_frames: bf_mask_buffer_depth
+    num_frames: buffer_depth
     value_type: int8
     extents: [1, num_polarizations, num_dishes]
     quantity_name: "bf_mask"
     dimnames: ["Tbf", "P", "D"]
     dimscalings: [bf_mask_lifetime_in_samples, 1, 1]
-    metadata_pool: bf_mask_pool
+    metadata_pool: main_pool
 host_bf_mask_ringbuffer:
     kotekan_buffer: ring
     ring_buffer_size: buffer_depth * num_dishes * num_polarizations * 1

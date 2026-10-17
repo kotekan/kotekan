@@ -1,8 +1,10 @@
 """T1 timing: a time-limited signal must appear at the predicted FPGA sequence numbers in every
 output.
 
-Input: a constant voltage (real part 4, every dish, frequency and polarization) in the FPGA
-samples [box_begin, box_end), zero elsewhere. The box starts mid-frame.
+Input: a constant voltage 1 + 0i (a tone at the centre of every coarse channel, from zenith) on
+every dish and polarization in the FPGA samples [box_begin, box_end), zero elsewhere. The box
+starts mid-frame. The amplitude is small enough that no output saturates with the production
+gains.
 
 Variants: `seq0` starts all generators at FPGA sequence number 0, `seqlarge` at a large value
 that is frame-aligned but aligned to no lifetime or integration boundary.
@@ -39,7 +41,15 @@ def variables(tel, config, variant):
     write_frames["frb2_beams"] = 1
     return {
         "first_fpga_seq_num": seq0,
-        "input_kind": "box",
+        "input_kind": "sky",
+        "sources": [
+            {
+                "amplitude": 1,
+                "direction": [0, 0],
+                "tone_cycles_per_frame": 0,
+                "window": [box_begin, box_begin + 3000],
+            }
+        ],
         "box_begin": box_begin,
         "box_end": box_begin + 3000,
         "outputs": outputs,
