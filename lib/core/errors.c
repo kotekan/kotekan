@@ -3,13 +3,11 @@
 #include <pthread.h> // for pthread_mutex_t, pthread_mutex_lock, pthread_mutex_unlock
 #include <signal.h>  // for raise, SIGTERM
 #include <stdarg.h>  // for va_end, va_list, va_start
-#include <string.h>  // for memcpy
 
 // Default values for log levels.
 int _global_log_level = 3;
 int __enable_syslog = 1;
 enum ReturnCode __status_code = CLEAN_EXIT;
-char __err_msg[MAX_LOG_MSG_LEN] = "not set";
 
 static pthread_mutex_t status_mutex = PTHREAD_MUTEX_INITIALIZER;
 
@@ -43,15 +41,6 @@ enum ReturnCode get_exit_code() {
     enum ReturnCode code = __status_code;
     pthread_mutex_unlock(&status_mutex);
     return code;
-}
-// A copy taken under the lock, not the shared buffer: another thread (a FATAL_ERROR on a DPDK
-// lcore during shutdown) may be rewriting __err_msg while the caller reads it.
-char* get_error_message() {
-    static _Thread_local char copy[MAX_LOG_MSG_LEN];
-    pthread_mutex_lock(&status_mutex);
-    memcpy(copy, __err_msg, MAX_LOG_MSG_LEN);
-    pthread_mutex_unlock(&status_mutex);
-    return copy;
 }
 
 // Return log level as string
@@ -93,14 +82,4 @@ char* get_exit_code_string(enum ReturnCode code) {
         default:
             return "INVALID_CODE";
     }
-}
-
-// Stores the error message
-void set_error_message_f(const char* format, ...) {
-    va_list args;
-    va_start(args, format);
-    pthread_mutex_lock(&status_mutex);
-    (void)vsnprintf(__err_msg, MAX_LOG_MSG_LEN, format, args);
-    pthread_mutex_unlock(&status_mutex);
-    va_end(args);
 }

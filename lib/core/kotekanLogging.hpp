@@ -243,6 +243,9 @@ public:
     template<typename... Args>
     static void set_error_message(const fmt::basic_string_view<char> format, const Args&... args);
 
+    /// The last message stored by set_error_message, or "not set"
+    static std::string get_error_message();
+
 protected:
     int _member_log_level;
     std::string __log_prefix;
