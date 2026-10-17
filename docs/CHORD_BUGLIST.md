@@ -891,6 +891,7 @@ it. A node restarted after a re-take and before the commit runs up to 30 min on 
 **Still open:** the no-restart re-base check above, and the file is re-taken by the cron, not by the re-base itself.
 The alerting TODO is #171.
 **10-17 14:05Z** (4 min after the broker restart, 10 warm halves per band): R = 1.00/1.00 on all seven bands + 1.00/0.998 L5, no instance > 30° off, reseeds 0. ✓ within 10 min.
+**10-17 14:50–14:56Z, after `--boresight none` let six instances form:** the fresh E6/B2b/B3I/E5a/E5b/L5 models slewed onto the reference within one cron interval (14:50 sim 0.83–0.97 with E6 pol-0 +40° and B2b pol-0 −30° global offsets; 14:55 R 1.0/1.0, no instance off). **L2C is the exception and a standing one:** its three freshly formed single-channel models (cx42.1, cx43.1, cx51.1) sit at sim 0.02–0.29 against the 13:30 reference with offsets that wander between passes (−65 → +154 → −32°), R 0.52/0.65, and the cron sees no two-thirds consensus to re-take from; L2C tracking is unaffected (all five instances 78–168× at align 0.99). The shared-reference machinery has nothing to hold on L2C (one 195-kHz channel per instance): exclude L2C from it, or form its reference from the same elements' L5 model with the cable-delay phase scaled by Δf (for #192's list).
 
 ### #131 — the gather dies when a telemetry client flaps
 **[live]** 2026-09-14 20:57:45: the cf06 gather (`build_nodpdk`, 09-09) exited with no FATAL, no
