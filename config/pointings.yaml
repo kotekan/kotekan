@@ -14,6 +14,11 @@
 # starts 2026-09-05 15:xx UTC, so only the current epoch matters to it today.
     - id: p0_dec40p73
       from: 2026-07-01T00:00:00Z
-      to:
+      to: 2026-10-12T17:05:00Z
       boresight_dec_deg: 40.73
       note: first CHORD GNSS pointing; 09-02 beam maps (peak 6.3/6.6 deg off boresight) were taken here
+    - id: p1_scattered_20261017
+      from: 2026-10-17T01:52:37Z
+      to:
+      boresight_dec_deg:
+      note: dishes tipped in semi-random directions during the 10-12..10-17 F-engine outage; no common boresight, so no beam maps from this epoch; ends at the realignment
