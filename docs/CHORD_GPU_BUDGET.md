@@ -72,7 +72,8 @@ Measured per-record cost = (chains) x (one 0.18 ms wave each, at fp16 Phi and 80
    ~4.6 ms per frame per GPU. The remaining half of the launch is the per-hop fixed cost
    (carrier phasor, the fp64 code phase, the Phi prologue), not the gather.
    On sky 10-17 (#189 wire test, cx51 alone armed): nvidia-smi utilisation 71/67 -> 60/62 % on
-   cx51's two GPUs with cx43 unchanged at 70/67, tracking indistinguishable from the sibling.
+   cx51's two GPUs with cx43 unchanged at 70/67, tracking indistinguishable from the sibling;
+   fleet-wide from 18:36Z: 58-64 % on every GPU with data (#189 closed).
    Stage 2, dropping the E/L lanes (2 per slot, E/L rows rotated in GnssN2RecordAssemble) would
    take ~0.5 ms of pack and ~0.2 of the dual; it touches the lane contract at three sites and the
    generator, and is not started.

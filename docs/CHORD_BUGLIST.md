@@ -158,29 +158,6 @@ REST replies carry `addressable` (GnssGpuRecordAssemble) and `pow_fft_len` (Gnss
 `d505f3943`; (a) waits for that binary too: stop emitting, then drop the reads. Check after each step: `gen_fleet
 --check` and `--check-config` on all nine configs.
 
-### #189 — `epl_from_prompt` (E/L lanes as the rotated prompt): wire test at the F-engine's return (2026-10-13)
-**What [tree, branch kv/epl-from-prompt, worktree ~/gnss/elp-wt, 5bd27ec7f on 961c4d9c9]:** the waveform kernel walks
-the prompt once and writes the E and L lanes as the prompt rotated by +-2 pi (f_c - f_car) ds/chip_rate per channel,
-behind the config key `epl_from_prompt` (generator `--epl-from-prompt`, every chain but L2C). Offline: identity and
-DLL verified on the 10-12 telemetry capture, `cuda_gnss_despread_test` keeps P/P_HEAD bit-exact and pins the sign,
-cx52 A/B gnss_waveform 6.40 -> 3.24 ms per frame per GPU (docs/CHORD_GPU_BUDGET.md, fixtures/gpu_budget/README.md).
-**10-17:** rebased clean onto dbc5af521 (`cdec5ae30`) and fast-forwarded into kv/chord-gnss; the kernel test re-run on
-cf05 (cx52 carries production again, never run it there): L1 PASS, `GPS_L2C_CM 10` failed two near-null E/L rows
-identically on the base 188b6e800 build (#197, the test's metric, fixed `04fdb52d5`). Manifest `dbe5c5083` arms cx51
-alone (14 comb-chain track commands; `gen_fleet --check` shows nothing else); node binary fleet-04fdb52d5.
-**Wire test 17:33Z, cx51: PASS.** Against cx43 on the same sky at T+6 and T+10 min, per-instance q (2p/(e+l) from
-the combiners' E/P/L powers) within +-0.08 on every band and GPU and the discriminator 0.04-0.08 rms apart, the
-same as the two pre-cycle controls; 120 s of L5/E5a telemetry on cx51's own frames: kE/kL = -/+1.000 k0, residual
--33..-39 dB, DLL tau from the rotated prompt 0.003 chips rms from the true one; GPU utilisation 71/67 -> 60/62 %
-with cx43 unchanged at 70/67; fleet readback (trim arming, sources) unchanged; L2C q 1.07 unchanged. Judge files:
-~/gnss/builds/judge1017/epl/. Side effect: recv1 hit #165 again (17:35:29Z). Remaining: the manifest's common flag
-at the next fleet cycle (the crs_board_remap regen, 9d51f68a7).
-**Wire test:** one node first (cx51), `--epl-from-prompt` in its manifest entry at a node cycle after the broker has
-re-anchored; judge against a sibling node, same sky same time: the lobe DLL's readback decay and `q`, the trim-quality
-and `present` gates, per-channel E/P/L in the telemetry (E_c/P_c must read exp(-i k0 df) as on 10-12), arc survival
-through one transit. Then the manifest's common flags. L2C stays on three trials by construction (one channel per
-instance, its rotated discriminator is identically zero).
-
 ### #190 — project ALL KNOWN satellites out of the science N^2 from the lane directions, not the N^2's own eigenvectors (2026-10-13, KV: "swap over once we get back on sky")
 **What [tree]:** GnssN2Project takes its subspace from the science N^2 block's own top-k eigenvectors, gated at
 lambda0 >= 3x mean auto (per-element INR ~ -12 dB over 48 live elements), frac0 >= 0.4, PR >= 6, k <= 3, EMA 0.5 s.
@@ -766,6 +743,11 @@ offline like the ready-now set, goldens re-blessed with each mover named, judged
 (above). Then file-disjoint groups, fix + test + adversarial review per group, two lanes of one agent; the cf06/cf05
 checks as stage 8. Cost about one and a half stage-8 families (~15M subagent tokens), 5–6 h.
 **10-17 additions to the run's list:** (a) the viewer's rail panel should cover `live_element_ranges` only (the full-crate rows C–H rail 5–12% under the flat gains and are not ours); (b) a per-instance DARK detector: an instance whose prompt power sits at the floor on every PRN while its tap sees normal per-channel power is a config/wiring fault (#194), yet `FLEET-INST` counts it present and the viewer shows locks — compare the tap's power with the despread's per instance and name the instance; (c) L2C has nothing for the shared-reference machinery to hold (one channel per instance): exclude it or derive its reference from L5's (#154, 10-17); (d) `gps_distributed_broker.py:1140` loop variable `sys` shadows the import (pyflakes); (e) still G/E/C-only after #129: the BRDC supply's hourly coverage target (`_HOURLY_TARGET`), `gen_fleet`'s `SYS_OF`, the cube's `CHAIN_SYS`, and GLONASS propagation past ±15 min of a record is unvalidated (`predict_all`'s 4-h default lets it happen with one warning per process; the live broker does it every day with a 2-h-old BRDC); (f) the B3I chain's PRN list 19–42 excludes C56–C58, assigned per SINEX and carried by BRDC.
+
+(g) cx19 drops packets at the distributor ring in bursts (645 `rx ring was full` warnings in its 13:48-18:32Z run,
+up to 478k per poll; ~100-1000/s steady after the 18:33Z cycle, the NIC counter flat, the other five at 0-20/s):
+pre-existing, not the 10-17 change; measure its lcore load and the recv1 reconnect bursts before blaming the
+search or the control path.
 
 ### #157 — `test_buffer_peek` fails its `peeks_won > 0` check under ThreadSanitizer (flaky under slowdown; found 2026-09-30)
 - **What:** under TSan's slowdown the worker thread wins every iteration, so `BOOST_CHECK(peeks_won > 0)`
