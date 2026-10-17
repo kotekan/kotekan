@@ -65,9 +65,12 @@ Fmin: 0
 Fmax: upchan_max_num_channels
 
 # The largest upchannelization factor of the run. Choosing it larger than `upchan_factor`
-# makes both chains skip (num_taps-1) * (64-16) / 2 = 72 input samples at startup, so that
-# this test checks that they skip the same samples and label their output the same way.
+# makes both chains skip input samples at startup, so that this test checks that they skip
+# the same samples and label their output the same way. `upchan_output_alignment` rounds the
+# output start (num_taps-1) * 64 / 2 = 96 up to 12288, so both chains skip 12288 - 24 = 12264
+# samples, more than the quarter of the input ring that the ring buffer claims at a time.
 max_upchannelization_factor: 64
+upchan_output_alignment: 12288
 
 # `buffer_depth` is the number of in-flight cudaProcess command instances. Every host
 # buffer a cudaProcess touches must have at least that many frames: cudaCopyToRingbuffer

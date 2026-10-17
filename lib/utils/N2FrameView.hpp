@@ -83,9 +83,13 @@ public:
     uint64_t& n_rfi_only_fpga_ticks;
     /// The number of lost samples due to Packet Loss (PL)
     uint64_t& n_pl_fpga_ticks;
+    /// FPGA ticks during which first-stage (GPU) RFI excision was enabled
+    uint64_t& n_rfi_first_stage_enabled_fpga_ticks;
 
     /// Whether second stage RFI excision was applied to this frame
     bool& rfi_frame_excision_enabled;
+    /// Whether the visibilities in this frame were fringestopped
+    bool& fringestop_enabled;
     /// The number of active RFI excision thresholds.
     int32_t& rfi_frame_excision_num;
     /// The SK thresholds (in sigma) for RFI excision

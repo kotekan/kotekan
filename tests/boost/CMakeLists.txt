@@ -16,6 +16,9 @@ link_libraries(kotekan_core_headers)
 add_executable(test_truncate test_truncate.cpp)
 target_link_libraries(test_truncate PRIVATE kotekan_libs kotekan_utils)
 
+add_executable(test_pfb_prototype test_pfb_prototype.cpp)
+target_link_libraries(test_pfb_prototype PRIVATE kotekan_libs kotekan_utils)
+
 add_executable(test_synchronized_queue test_synchronized_queue.cpp)
 target_link_libraries(test_synchronized_queue PRIVATE pthread kotekan_libs kotekan_utils)
 
@@ -96,6 +99,10 @@ target_link_libraries(test_fmt PRIVATE kotekan_libs kotekan_utils)
 # test_restclient needs fmt
 add_executable(test_restclient test_restclient.cpp)
 target_link_libraries(test_restclient PRIVATE libexternal kotekan_libs kotekan_utils kotekan_core)
+
+add_executable(test_restserver_bind test_restserver_bind.cpp)
+target_link_libraries(test_restserver_bind PRIVATE libexternal kotekan_libs kotekan_utils
+                                                   kotekan_core)
 
 # test_bip_buffer needs fmt
 add_executable(test_bip_buffer test_bip_buffer.cpp)

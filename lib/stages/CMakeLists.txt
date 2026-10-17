@@ -20,7 +20,6 @@ add_library(
     monitorBuffer.cpp
     networkInputPowerStream.cpp
     parseReorderDefault.cpp
-    pyPlotN2.cpp
     rawFileRead.cpp
     rawFileWrite.cpp
     waitingForMaxFrames.cpp
@@ -44,7 +43,7 @@ add_library(
     simpleAutocorr.cpp
     SampleAutocorr.cpp
     SimpleCrosscorr.cpp
-    SpawnProcess.cpp
+    $<$<STREQUAL:${WITH_SPAWN_PROCESS},ON>:SpawnProcess.cpp>
     freqSplit.cpp
     FreqSubset.cpp
     prodSubset.cpp

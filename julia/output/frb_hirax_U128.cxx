@@ -10,6 +10,7 @@
 #include "NDArrayBuffer.hpp"
 #include "NDArrayRingBuffer.hpp"
 #include "Telescope.hpp"
+#include "UpchannelizationSchedule.hpp"
 #include "bufferContainer.hpp"
 #include "chordMetadata.hpp"
 #include "cudaCommand.hpp"
@@ -17,6 +18,7 @@
 #include "cudaUtils.hpp"
 #include "div.hpp"
 #include "ringbuffer.hpp"
+#include "upchannelizeReference.hpp"
 
 #include <algorithm>
 #include <array>
@@ -134,12 +136,9 @@ private:
     const int Fbar_out_min, Fbar_out_max;
 
     // The upchannelizers skip input samples at startup so that all their outputs begin at input
-    // sample `(M-1) * max_upchannelization_factor / 2` (see `upchan_template.cxx`). Without
-    // upchannelization (U=1) we read the input voltages directly and skip the same number of
-    // samples ourselves, so that all producers of the shared output buffer `I` are aligned.
-    // Only needed for U=1.
-    const int max_upchannelization_factor;
-    // Number of input samples we skip at startup
+    // sample `upchan_output_offset` (see `upchan_template.cxx`). Without upchannelization (U=1)
+    // we read the input voltages directly and skip the same number of samples ourselves, so that
+    // all producers of the shared output buffer `I` are aligned. Only needed for U=1.
     const std::ptrdiff_t Tbar_skip;
 
     // Kernel arguments:
@@ -434,13 +433,7 @@ cudaFRBBeamformer_hirax_U128::cudaFRBBeamformer_hirax_U128(Config& config,
     Fbar_in_max(config.get<int>(unique_name, "Fbar_in_max")),
     Fbar_out_min(config.get<int>(unique_name, "Fbar_out_min")),
     Fbar_out_max(config.get<int>(unique_name, "Fbar_out_max")),
-    max_upchannelization_factor(cuda_upchannelization_factor == 1
-                                    ? config.get<int>(unique_name, "max_upchannelization_factor")
-                                    : 0),
-    Tbar_skip(cuda_upchannelization_factor == 1
-                  ? (cuda_upchan_number_of_taps - 1) * std::ptrdiff_t(max_upchannelization_factor)
-                        / 2
-                  : 0),
+    Tbar_skip(cuda_upchannelization_factor == 1 ? upchan_output_offset(config, unique_name) : 0),
 
     poison_buffers(config.get_default<bool>(unique_name, "poison_buffers", false)),
 
@@ -466,13 +459,8 @@ cudaFRBBeamformer_hirax_U128::cudaFRBBeamformer_hirax_U128(Config& config,
     host_info_buffer(info_length),
 
     did_init_host_S_buffer(false), did_set_metadata(false) {
-    if (cuda_upchannelization_factor == 1
-        && !(max_upchannelization_factor >= 1
-             && (cuda_upchan_number_of_taps - 1) * max_upchannelization_factor % 2 == 0))
-        FATAL_ERROR(
-            "Kernel FRBBeamformer_hirax_U128: max_upchannelization_factor={:d} must be positive, "
-            "and (taps-1)*max_upchannelization_factor must be even (taps={:d})",
-            max_upchannelization_factor, int(cuda_upchan_number_of_taps));
+    // `upchan_output_offset` is calculated with the default number of taps
+    static_assert(cuda_upchan_number_of_taps == kotekan::upchan_default_num_taps);
 
     // Register host memory
     CHECK_CUDA_ERROR(cudaHostRegister(host_S_buffer.data(),
@@ -667,88 +655,8 @@ cudaEvent_t cudaFRBBeamformer_hirax_U128::execute(cudaPipelineState& /*pipestate
         // They must serialize setting their part of the metadata.
         std::lock_guard<std::mutex> lock(frb_I_lock);
 
-        if (args::W == args::Ebar && cuda_upchannelization_factor == 1) {
-            // Replace "Ebar" with "E" etc. because we don't run the upchannelizer for U=1
-            // W_buffer.check_metadata();
-            const std::string quantity = "E";
-            const std::array<std::string, 4> dimname = {"T", "F", "P", "D"};
-            const std::shared_ptr<const chordMetadata> metadata = Ebar_buffer.get_metadata();
-            // A mismatch here means the kernel would index the buffer with a layout
-            // the producer did not use, silently producing wrong results, so these
-            // checks must hold in release builds as well.
-            if (!(metadata->get_name() == quantity))
-                FATAL_ERROR("buffer name: {:s}, quantity: {:s}, metadata name: {:s}",
-                            Ebar_buffer.get_buffer_name(), quantity, metadata->get_name());
-            const auto& ndarray = Ebar_buffer.get_ndarray();
-            if (!(metadata->type == ndarray.value_datatype))
-                FATAL_ERROR("buffer name: {:s}, metadata type: {:s}, ndarray type: {:s}",
-                            Ebar_buffer.get_buffer_name(), kotekan::type_to_string(metadata->type),
-                            kotekan::type_to_string(ndarray.value_datatype));
-            if (!(metadata->dims == int(ndarray.rank)))
-                FATAL_ERROR("buffer name: {:s}, metadata rank: {:d}, ndarray rank: {:d}",
-                            Ebar_buffer.get_buffer_name(), metadata->dims, int(ndarray.rank));
-            for (std::size_t d = 0; d < ndarray.rank; ++d) {
-                if (!(metadata->get_dimension_name(d) == dimname[d]))
-                    FATAL_ERROR("buffer name: {:s}, dimension: {:d}: metadata dimension name: "
-                                "{:s}, expected: {:s}",
-                                Ebar_buffer.get_buffer_name(), d, metadata->get_dimension_name(d),
-                                dimname[d]);
-                // The ring buffer direction is special
-                if (d > 0 && !(metadata->dim[d] == int(ndarray.extent(d))))
-                    FATAL_ERROR("buffer name: {:s}, dimension: {:d}: metadata extent: {:d}, "
-                                "ndarray extent: {:d}",
-                                Ebar_buffer.get_buffer_name(), d, metadata->dim[d],
-                                int(ndarray.extent(d)));
-                if (!(metadata->stride[d] == ndarray.stride(d)))
-                    FATAL_ERROR("buffer name: {:s}, dimension: {:d}: metadata stride: {:d}, "
-                                "ndarray stride: {:d}",
-                                Ebar_buffer.get_buffer_name(), d, metadata->stride[d],
-                                ndarray.stride(d));
-            }
-        } else {
-            W_buffer.check_metadata();
-        }
-        if (args::Ebar == args::Ebar && cuda_upchannelization_factor == 1) {
-            // Replace "Ebar" with "E" etc. because we don't run the upchannelizer for U=1
-            // Ebar_buffer.check_metadata();
-            const std::string quantity = "E";
-            const std::array<std::string, 4> dimname = {"T", "F", "P", "D"};
-            const std::shared_ptr<const chordMetadata> metadata = Ebar_buffer.get_metadata();
-            // A mismatch here means the kernel would index the buffer with a layout
-            // the producer did not use, silently producing wrong results, so these
-            // checks must hold in release builds as well.
-            if (!(metadata->get_name() == quantity))
-                FATAL_ERROR("buffer name: {:s}, quantity: {:s}, metadata name: {:s}",
-                            Ebar_buffer.get_buffer_name(), quantity, metadata->get_name());
-            const auto& ndarray = Ebar_buffer.get_ndarray();
-            if (!(metadata->type == ndarray.value_datatype))
-                FATAL_ERROR("buffer name: {:s}, metadata type: {:s}, ndarray type: {:s}",
-                            Ebar_buffer.get_buffer_name(), kotekan::type_to_string(metadata->type),
-                            kotekan::type_to_string(ndarray.value_datatype));
-            if (!(metadata->dims == int(ndarray.rank)))
-                FATAL_ERROR("buffer name: {:s}, metadata rank: {:d}, ndarray rank: {:d}",
-                            Ebar_buffer.get_buffer_name(), metadata->dims, int(ndarray.rank));
-            for (std::size_t d = 0; d < ndarray.rank; ++d) {
-                if (!(metadata->get_dimension_name(d) == dimname[d]))
-                    FATAL_ERROR("buffer name: {:s}, dimension: {:d}: metadata dimension name: "
-                                "{:s}, expected: {:s}",
-                                Ebar_buffer.get_buffer_name(), d, metadata->get_dimension_name(d),
-                                dimname[d]);
-                // The ring buffer direction is special
-                if (d > 0 && !(metadata->dim[d] == int(ndarray.extent(d))))
-                    FATAL_ERROR("buffer name: {:s}, dimension: {:d}: metadata extent: {:d}, "
-                                "ndarray extent: {:d}",
-                                Ebar_buffer.get_buffer_name(), d, metadata->dim[d],
-                                int(ndarray.extent(d)));
-                if (!(metadata->stride[d] == ndarray.stride(d)))
-                    FATAL_ERROR("buffer name: {:s}, dimension: {:d}: metadata stride: {:d}, "
-                                "ndarray stride: {:d}",
-                                Ebar_buffer.get_buffer_name(), d, metadata->stride[d],
-                                ndarray.stride(d));
-            }
-        } else {
-            Ebar_buffer.check_metadata();
-        }
+        W_buffer.check_metadata();
+        Ebar_buffer.check_metadata();
         if (args::I != args::I)
             I_buffer.set_metadata(Ebar_buffer.get_metadata());
 
@@ -872,7 +780,8 @@ cudaEvent_t cudaFRBBeamformer_hirax_U128::execute(cudaPipelineState& /*pipestate
                 FATAL_ERROR(
                     "Another producer of buffer I starts at fpga_seq_num={:d}, but kernel "
                     "FRBBeamformer_hirax_U128 starts at {:d}. (Are all upchannelizers and the U=1 "
-                    "FRB beamformer using the same max_upchannelization_factor?)",
+                    "FRB beamformer using the same max_upchannelization_factor and "
+                    "upchan_output_alignment?)",
                     I_meta->has_fpga_seq_num() ? I_meta->get_fpga_seq_num() : -1, I_fpga_seq_num);
         } else if (I_has_metadata && I_meta->has_fpga_seq_num()) {
             FATAL_ERROR("Another producer of buffer I starts at fpga_seq_num={:d}, but the input "

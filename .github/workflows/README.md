@@ -8,3 +8,4 @@
 - `schedule.yaml`: Daily cron entry point (runs from the default branch) that dispatches `scheduled_tasks.yaml` and `iwyu.yaml`
 - `scheduled_tasks.yaml`: Tasks dispatched by the scheduler on the default branch (`develop`)
 - `test_kotekan_build.yaml`: Reusable workflow that builds kotekan and runs post-build commands
+- `viewer_tests.yaml`: Runs the debug viewer unit tests

@@ -88,6 +88,10 @@ Build & Tooling
 - ``WITH_TESTS`` (``OFF``): Build and link the helper stages in ``lib/testing`` into the kotekan binary.
 - ``WITH_BOOST_TESTS`` (``OFF``): Build the Boost.Test unit tests under ``tests/boost`` (requires
   ``pytest-cpp``).
+- ``WITH_SPAWN_PROCESS`` (``OFF``): Build the ``SpawnProcess`` stage, which runs the shell command
+  given in its config block. The REST ``/start`` endpoint accepts any config, so a kotekan built
+  with it runs arbitrary commands for anyone who can reach its port. Needed by the airspy
+  configs, which use it to launch the viewer.
 
 
 Common Paths and Overrides
