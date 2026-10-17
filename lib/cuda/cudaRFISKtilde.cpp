@@ -13,7 +13,6 @@
 #include "gpuCommand.hpp"          // for gpuCommandType
 #include "kotekanLogging.hpp"      // for DEBUG, INFO
 #include "n2k/rfi_kernels.hpp"     // for SkKernel
-#include "restServer.hpp"
 
 #include <algorithm>          // for min
 #include <cstddef>            // for ptrdiff_t
@@ -28,12 +27,46 @@
 #include <string>             // for basic_string, string
 #include <sys/types.h>        // for uint, ulong
 
-using kotekan::connectionInstance;
 using kotekan::div_noremainder;
-using kotekan::restServer;
 using kotekan::round_down;
 using kotekan::round_up;
 
+/**
+ * @class cudaRFISKtilde
+ * @brief Compute the feed-averaged SK statistics and the first-stage RFI mask.
+ *
+ * The SK kernel reads the S012 statistics and the bad feed mask, writes SKtilde (SK, bias and
+ * sigma averaged over the good feeds) for second-stage excision (RfiFrameMask), and writes the
+ * bit-packed RFI mask the correlator excises with. When first-stage excision is disabled the
+ * kernel skips the mask and an all-good mask is written instead; SKtilde is computed either way.
+ *
+ * @par Ring buffers
+ * @buffer bf_mask_name       int8 [Tbf, P, D] bad feed mask, 1 == good
+ * @buffer rfi_S012_name      uint64 [Trfi, F, S, P, D] S012 statistics
+ * @buffer rfi_SKtilde_name   float [Trfi, F, SK] feed-averaged SK, output
+ * @buffer rfi_RFImask_name   uint1x8 [T8hi128, F, T8lo128] RFI mask, output
+ *
+ * @conf buffer_depth                     int
+ * @conf num_times                        int     Voltage samples per frame
+ * @conf num_frequencies                  int
+ * @conf num_polarizations                int
+ * @conf num_dishes                       int
+ * @conf bf_mask_lifetime_in_samples      int64   Voltage samples covered by one bad feed mask
+ * @conf rfi_downsampling_factor          int     Voltage samples per S012 element
+ * @conf rfi_num_times                    int     S012 elements per frame
+ * @conf rfi_sk_rfimask_sigmas            double  SK threshold for the mask, in sigma
+ * @conf rfi_single_feed_min_good_frac    double
+ * @conf rfi_feed_averaged_min_good_frac  double
+ * @conf rfi_mu_min                       double
+ * @conf rfi_mu_max                       double
+ * @conf poison_buffers                   bool    Default false
+ * @conf excision_enabled                 bool    Default true. Initial first-stage excision
+ *      state when no updatable config block is given.
+ * @conf enabled_updatable_config         string  Optional path to an updatable config block
+ *      with fields `enabled` (bool) and `valid_at_time_ns` (int64), switching first-stage
+ *      excision on or off from the first frame starting at or after that instrument time.
+ *      A time of 0 means from startup. N2Accumulate applies the same rule to record the switch.
+ */
 class cudaRFISKtilde : public cudaCommand {
 public:
     cudaRFISKtilde(kotekan::Config& config, const std::string& unique_name,
@@ -46,11 +79,10 @@ public:
                         const std::vector<cudaEvent_t>& pre_events) override;
     void finalize_frame() override;
 
-protected:
-    /// Updates the mask enabled/disabled status
+private:
+    /// Queue an update from the `enabled_updatable_config` block
     bool receive_excision_enabled(nlohmann::json& json);
 
-private:
     // Some terminology:
 
     //    Quantity    Definition
@@ -90,14 +122,13 @@ private:
     // If false, the SK kernel skips the RFI mask computation and an all-good mask is
     // produced instead, so no samples are excised in the correlator. The SKtilde
     // statistics are still computed for second-stage excision (RfiFrameMask).
+    // Each command instance keeps its own copy, fed from the same updatable config block;
+    // `next_*` hold a pending update.
     const std::string enabled_config_path;
     bool excision_enabled;
-    bool next_excision_enabled;
-    // Handles dynamic enable/disable of RFI mask computation.
     std::mutex apply_mask_toggle_mutex;
-    int64_t enabled_valid_at_seq;
-    int64_t next_enabled_valid_at_seq;
-    int64_t start_time_ns;
+    bool next_excision_enabled = true;
+    int64_t next_enabled_valid_at_seq = std::numeric_limits<int64_t>::max();
 
     const std::int64_t rfi_samples_per_bf_sample;
 
@@ -209,29 +240,13 @@ cudaRFISKtilde::cudaRFISKtilde(kotekan::Config& config, const std::string& uniqu
     rfi_SKtilde.register_producer();
     rfi_RFImask.register_producer();
 
-    start_time_ns = Telescope::instance().to_time_ns(0);
-
-    if (!enabled_config_path.empty()) {
-        INFO("Subscribing {:s} to updatable config", enabled_config_path);
+    if (!enabled_config_path.empty())
         kotekan::configUpdater::instance().subscribe(
             enabled_config_path,
             std::bind(&cudaRFISKtilde::receive_excision_enabled, this, std::placeholders::_1));
-    } else {
-        DEBUG("Updatable config endpoint to toggle enable status not set. "
-              "Using config option {}",
-              excision_enabled);
-        next_excision_enabled = excision_enabled;
-        next_enabled_valid_at_seq = 0;
-        enabled_valid_at_seq = 0;
-    }
-
-    if (!excision_enabled && get_instance_num() == 0) {
+    else if (!excision_enabled && get_instance_num() == 0)
         INFO("First-stage RFI excision disabled: producing an all-good RFI mask. "
-             "SK statistics are still computed. ");
-        if (!enabled_config_path.empty())
-            INFO("RFI excision status can be updated with the {:s} updatable config",
-                 enabled_config_path);
-    }
+             "SK statistics are still computed.");
 
     set_command_type(gpuCommandType::KERNEL);
 }
@@ -263,7 +278,8 @@ int cudaRFISKtilde::wait_on_precondition() {
             round_up(rfi_S012_begin + 1, rfi_num_times) - rfi_S012_begin);
 
     if (rfi_S012_read_max <= 0)
-        FATAL_ERROR("Computed a negative max `rfi_S012` elements to read: {:d}", rfi_S012_read_max);
+        FATAL_ERROR("Computed a non-positive max `rfi_S012` elements to read: {:d}",
+                    rfi_S012_read_max);
 
     std::ptrdiff_t rfi_S012_read = -1;
     const int rfi_S012_errcode =
@@ -279,7 +295,7 @@ int cudaRFISKtilde::wait_on_precondition() {
           gpu_frame_id, rfi_S012_read);
 
     if (rfi_S012.get_read_valid().begin() != rfi_S012_begin)
-        FATAL_ERROR("rfi_S012 `rad_valid` does not match the expected start ({:d} != {:d})",
+        FATAL_ERROR("rfi_S012 `read_valid` does not match the expected start ({:d} != {:d})",
                     rfi_S012.get_read_valid().begin(), rfi_S012_begin);
 
     if (rfi_S012.get_read_valid().end() > bf_mask_lifetime_end)
@@ -460,11 +476,13 @@ inline void cudaRFISKtilde::pre_execute_update_enabled(int64_t seq_num) {
 
     // Update the `enabled` flag if we're in its valid region
     if (seq_num >= next_enabled_valid_at_seq) {
-        // Copy the `next` values to the active ones.
         excision_enabled = next_excision_enabled;
-        enabled_valid_at_seq = next_enabled_valid_at_seq;
         // Set the `next` valid time to the distant future so we don't copy again.
         next_enabled_valid_at_seq = std::numeric_limits<int64_t>::max();
+        // WARN, not INFO, so the transition shows at the production log level
+        if (get_instance_num() == 0)
+            WARN("First-stage RFI excision {:s} from seq {:d}", excision_enabled ? "on" : "off",
+                 seq_num);
     }
 }
 
@@ -478,34 +496,29 @@ bool cudaRFISKtilde::receive_excision_enabled(nlohmann::json& json) {
         new_enabled = json.at("enabled").get<bool>();
         new_time_ns = json.at("valid_at_time_ns").get<int64_t>();
     } catch (std::exception& e) {
-        WARN("RfiFrameMask failed to read update to {:s}: {:s}", enabled_config_path, e.what());
+        WARN("Failed to read update to {:s}: {:s}", enabled_config_path, e.what());
         return false;
     }
 
-    int64_t seq_num;
-    if (new_time_ns == 0) {
-        // special case - assume this means we _always_ want to enable
-        seq_num = 0;
-    } else if (new_time_ns >= start_time_ns) {
-        // required to avoid an overflow in `to_seq` due
-        // to usigned math (`to_seq` subtracts two ints but
-        // returns uint)
+    // 0 means from startup. A time before the stream start would underflow in `to_seq`
+    // (unsigned subtraction); refuse it. Return true: a false return stops kotekan.
+    int64_t seq_num = 0;
+    if (new_time_ns != 0) {
+        if (new_time_ns < Telescope::instance().to_time_ns(0)) {
+            WARN("Got invalid start time: {:d} - maintaining current state (excision enabled={})",
+                 new_time_ns, excision_enabled);
+            return true;
+        }
         seq_num = Telescope::instance().to_seq(new_time_ns);
-    } else {
-        WARN("Got invalid start time: {:d} - maintaining current state (excision enabled={})",
-             new_time_ns, excision_enabled);
-        // need to return `true` or else kotekan will abort
-        return true;
     }
 
     std::string time_str =
         fmt::format("t_inst = {:d} s + {:d} ns (seq {:d})", new_time_ns / 1'000'000'000,
                     new_time_ns % 1'000'000'000, seq_num);
 
-    if (new_enabled)
-        INFO("Enabling RFI Frame Excision at: {:s}", time_str);
-    else
-        INFO("Disabling RFI Frame Excision at: {:s}", time_str);
+    if (get_instance_num() == 0)
+        INFO("{:s} first-stage RFI excision at: {:s}", new_enabled ? "Enabling" : "Disabling",
+             time_str);
 
     // Update the values. Must acquire the lock, and only touch the "next" values.
     {

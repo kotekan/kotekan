@@ -415,8 +415,10 @@ bool RfiFrameMask::receive_rfi_excision_enabled(nlohmann::json& json) {
     } else if (new_time_ns >= _start_time_ns) {
         seq_num = Telescope::instance().to_seq(new_time_ns);
     } else {
-        WARN("Got invalid start time: {:d}", new_time_ns);
-        return false;
+        WARN("Got invalid start time: {:d} - maintaining current state (excision enabled={})",
+             new_time_ns, _enabled);
+        // need to return `true` or else kotekan will abort
+        return true;
     }
 
     std::string time_str =
