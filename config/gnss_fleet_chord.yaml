@@ -242,4 +242,4 @@ nodes:
     cx42: {search-port-base: 11044}
     cx43: {search-port-base: 11046}
     cx44: {search-port-base: 11048}
-    cx51: {search-port-base: 11050}
+    cx51: {search-port-base: 11050, epl-from-prompt: true}
