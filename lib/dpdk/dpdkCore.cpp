@@ -374,7 +374,7 @@ void dpdkCore::dpdk_init(vector<int> lcore_cpu_map, uint32_t main_lcore_cpu) {
 void dpdkCore::main_thread() {
 
     // Start the packet receiving lcores (basically pthreads)
-    rte_eal_mp_remote_launch(dpdkCore::lcore_rx, (void*)this, SKIP_MAIN);
+    rte_eal_mp_remote_launch(dpdkCore::lcore_main, (void*)this, SKIP_MAIN);
 
     while (!stop_thread) {
         sleep(1);
@@ -543,6 +543,16 @@ int32_t dpdkCore::port_init(uint8_t port, uint32_t lcore_id) {
     rte_eth_promiscuous_enable(port);
 
     return 0;
+}
+
+int dpdkCore::lcore_main(void* args) {
+    try {
+        return lcore_rx(args);
+    } catch (const FatalError& e) {
+        ERROR_NON_OO("DPDK lcore caught FatalError: {:s}, attempting controlled shutdown.",
+                     e.what());
+        return -1;
+    }
 }
 
 int dpdkCore::lcore_rx(void* args) {
