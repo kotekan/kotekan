@@ -1046,6 +1046,7 @@ reading PRNs from slot 0 only; the TLE path posting az 0; gal_e6 shrinking the s
 offline like the ready-now set, goldens re-blessed with each mover named, judged on sky at the return; T3 KV decisions
 (above). Then file-disjoint groups, fix + test + adversarial review per group, two lanes of one agent; the cf06/cf05
 checks as stage 8. Cost about one and a half stage-8 families (~15M subagent tokens), 5–6 h.
+**10-17 additions to the run's list:** (a) the viewer's rail panel should cover `live_element_ranges` only (the full-crate rows C–H rail 5–12% under the flat gains and are not ours); (b) a per-instance DARK detector: an instance whose prompt power sits at the floor on every PRN while its tap sees normal per-channel power is a config/wiring fault (#194), yet `FLEET-INST` counts it present and the viewer shows locks — compare the tap's power with the despread's per instance and name the instance; (c) L2C has nothing for the shared-reference machinery to hold (one channel per instance): exclude it or derive its reference from L5's (#154, 10-17); (d) `gps_distributed_broker.py:1140` loop variable `sys` shadows the import (pyflakes).
 
 ### #157 — `test_buffer_peek` fails its `peeks_won > 0` check under ThreadSanitizer (flaky under slowdown; found 2026-09-30)
 - **What:** under TSan's slowdown the worker thread wins every iteration, so `BOOST_CHECK(peeks_won > 0)`
