@@ -55,6 +55,18 @@ host_pl_expanded_mask_buffer:
     metadata_pool: main_pool
 {% endif %}
 
+{% if 'bb_pl_mask' in outputs %}
+host_bb_pl_mask_buffer:
+    kotekan_buffer: ndarray
+    num_frames: buffer_depth
+    value_type: uint1x8
+    extents: [num_times / 64, num_frequencies, num_polarizations, 64 / 8]
+    quantity_name: "bb_pl_mask"
+    dimnames: ["Thi64", "F", "P", "Tlo64"]
+    dimscalings: [64, 1, 1, 8]
+    metadata_pool: main_pool
+{% endif %}
+
 {% if 'rfi_S012' in outputs %}
 host_rfi_S012_buffer:
     kotekan_buffer: ndarray
@@ -149,6 +161,10 @@ run_recv_{{ name }}:
 {% if 'pl_expanded_mask' in outputs %}
 {{ recv('pl_expanded_mask', 'host_pl_expanded_mask_ringbuffer', 'pl_expanded_mask_buffer', 'host_pl_expanded_mask_buffer',
         '(64 / 8) * (num_dishes / 8) * num_polarizations * num_frequencies * (num_times / 64)') }}
+{% endif %}
+{% if 'bb_pl_mask' in outputs %}
+{{ recv('bb_pl_mask', 'host_bb_pl_mask_ringbuffer', 'bb_pl_mask_buffer', 'host_bb_pl_mask_buffer',
+        '(64 / 8) * num_polarizations * num_frequencies * (num_times / 64)') }}
 {% endif %}
 {% if 'rfi_S012' in outputs %}
 {{ recv('rfi_S012', 'host_rfi_S012_ringbuffer', 'rfi_S012_buffer', 'host_rfi_S012_buffer',
