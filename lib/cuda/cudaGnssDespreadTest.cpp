@@ -267,11 +267,22 @@ int main(int argc, char** argv) {
             continue;
         }
         const size_t crow = (size_t)(3 * (b / 4) + t) * n_chan; // CPU rows are [job][E/P/L]
+        // The correlation is compared as the vector of per-channel values, not their sum: an
+        // E or L row's channel sum can be a near-null (L2C CM over its covering set, twice the
+        // CM rate since the time-multiplexed rule: |sum| is 0.2% of the prompt's), where the
+        // GPU's float tables against the CPU's double replica read 1e-5 of each term as 1e-2
+        // of the sum. The vector norm has no cancellation and the same ULP floor.
+        double d2 = 0.0, c2 = 0.0;
         for (int c = 0; c < n_chan; ++c) {
-            cc += cpu_corr[crow + c];
+            const std::complex<double> g(g_corr[(size_t)b * n_chan + c].x,
+                                         g_corr[(size_t)b * n_chan + c].y);
+            const std::complex<double> r = cpu_corr[crow + c];
+            d2 += std::norm(g - r);
+            c2 += std::norm(r);
+            cc += r;
             ce += cpu_energy[crow + c];
         }
-        const double rc = std::abs(gc - cc) / std::max(1e-30, std::abs(cc));
+        const double rc = std::sqrt(d2 / std::max(1e-60, c2));
         const double re = std::fabs(ge - ce) / std::max(1e-30, ce);
         max_rel = std::max({max_rel, rc, re});
         const bool ok = rc < TOL && re < TOL;
