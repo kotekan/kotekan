@@ -607,15 +607,18 @@ dpdk:
 #                                                 the loss mask covers the gaps
 #    4     8     9    Et19   E01-F04 pol 0       listed: link down
 #   12     9    10    Et21   E01-F04 pol 1       listed: link down
-#    5    10    11    Et23   E05-F08 pol 0       good, but E05-F08 are Missing (pol 1 down)
+#    5    10    11    Et23   E05-F08 pol 0       listed: delivers, but E05-F08 are Missing
+#                                                 (pol 1 down), so its loss is not accounted
 #   13    11    12    Et24   E05-F08 pol 1       listed: link down
 #    6    12    13    Et14   G01-H04 pol 0       listed: link down
 #   14    13    14    Et18   G01-H04 pol 1       listed: link flapping
 #    7    15    16    Et22   G05-H08 pol 0       listed: row G/H out of service
 #   15    14    15    Et20   G05-H08 pol 1       listed: row G/H out of service
 #
-# A board that mostly delivers stays unlisted: listed, its dropouts would pass as received.
-missing_source_ids: [4, 6, 7, 12, 13, 14, 15]
+# A group's two boards are unlisted only when both deliver and its dishes are ArrayDish;
+# then every dropout is masked.  A listed slot's dropouts pass as received, which only
+# matters for a dish that is in use.
+missing_source_ids: [4, 5, 6, 7, 12, 13, 14, 15]
 
 # Combine packet receipt bitmaps and generate packet-loss masks
 {% for n in numa_halves %}
