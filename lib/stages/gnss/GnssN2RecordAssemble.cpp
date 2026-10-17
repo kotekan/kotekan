@@ -30,6 +30,8 @@ GnssN2RecordAssemble::GnssN2RecordAssemble(Config& config, const std::string& un
 
     _num_elements = config.get<int>(unique_name, "num_elements");
     _num_synth = config.get_default<int>(unique_name, "num_synth", 128);
+    _lanes_per_slot =
+        config.get_default<int>(unique_name, "lanes_per_slot", gnss_gpu::LANES_FULL);
     _n_live = config.get<int>(unique_name, "n_live_elements");
     _n_gnss_chan = config.get<int>(unique_name, "n_gnss_channels");
     _n_prn = config.get<int>(unique_name, "n_prn");
@@ -50,9 +52,16 @@ GnssN2RecordAssemble::GnssN2RecordAssemble(Config& config, const std::string& un
                     "tiles carry the mixed block only");
     _n_tile = (_nt16 - _na16) * _nlive16;
 
-    if (4 * _n_prn > _num_synth)
-        FATAL_ERROR("GnssN2RecordAssemble: 4*n_prn ({:d}) exceeds num_synth ({:d})", 4 * _n_prn,
-                    _num_synth);
+    if (_lanes_per_slot != gnss_gpu::LANES_FULL && _lanes_per_slot != gnss_gpu::LANES_PROMPT)
+        FATAL_ERROR("GnssN2RecordAssemble: lanes_per_slot {:d} must be {:d} or {:d}",
+                    _lanes_per_slot, gnss_gpu::LANES_FULL, gnss_gpu::LANES_PROMPT);
+    if (_lanes_per_slot == gnss_gpu::LANES_PROMPT && _n_gnss_chan > gnss_gpu::MAX_ROT_CHAN)
+        FATAL_ERROR("GnssN2RecordAssemble: {:d} channels exceed the {:d} PrnCtl::rot carries; "
+                    "lanes_per_slot {:d} needs every E/L lane packed",
+                    _n_gnss_chan, gnss_gpu::MAX_ROT_CHAN, _lanes_per_slot);
+    if (_lanes_per_slot * _n_prn > _num_synth)
+        FATAL_ERROR("GnssN2RecordAssemble: {:d}*n_prn ({:d}) exceeds num_synth ({:d})",
+                    _lanes_per_slot, _lanes_per_slot * _n_prn, _num_synth);
 
     const size_t need = gnss_gpu::frame_bytes(_n_prn, _n_gnss_chan, gnss_gpu::ROWS_PLAIN, _n_live);
     if ((size_t)_out_buf->frame_size < need)
@@ -70,8 +79,9 @@ GnssN2RecordAssemble::GnssN2RecordAssemble(Config& config, const std::string& un
                     (size_t)_tiles_buf->frame_size, tiles_need, _n_hops_frame / _hops_per_record,
                     _n_gnss_chan, _n_tile);
 
-    INFO("GnssN2RecordAssemble: {:d} PRN x {:d} chan x {:d} elem; {:d} mixed tiles per channel",
-         _n_prn, _n_gnss_chan, _n_live, _n_tile);
+    INFO("GnssN2RecordAssemble: {:d} PRN x {:d} chan x {:d} elem; {:d} mixed tiles per channel, "
+         "{:d} lanes per slot",
+         _n_prn, _n_gnss_chan, _n_live, _n_tile, _lanes_per_slot);
 }
 
 void GnssN2RecordAssemble::main_thread() {
@@ -98,6 +108,12 @@ void GnssN2RecordAssemble::main_thread() {
 
         const int n_rec = ihdr->n_rec;
         const int n_chan = ihdr->n_chan;
+        // The producer's lane count is in the frame; a mismatch would read P's tile as E's.
+        if (gnss_gpu::lanes_per_slot_of(ihdr->lanes_per_slot) != _lanes_per_slot)
+            FATAL_ERROR("GnssN2RecordAssemble: the control block says {:d} lanes per slot, this "
+                        "stage is configured for {:d} -- cudaGnssInject and this stage must "
+                        "carry the same lanes_per_slot",
+                        gnss_gpu::lanes_per_slot_of(ihdr->lanes_per_slot), _lanes_per_slot);
 
         std::memset(out, 0, _out_buf->frame_size);
         auto* ohdr = (gnss_gpu::FrameHdr*)out;
@@ -133,10 +149,38 @@ void GnssN2RecordAssemble::main_thread() {
                 oc = in0;
                 oc.job0 = n_out_jobs * gnss_gpu::ROWS_PLAIN;
 
-                for (int t = 0; t < gnss_gpu::ROWS_PLAIN; ++t) {
-                    const int lane = 4 * p + t;
-                    const int gi = _num_elements + lane, ihi = gi >> 4, ilo = gi & 15;
+                // Rows in lane order, P first: under LANES_PROMPT the E and L rows are formed
+                // from the finished P row, so it must be in the frame before they are written.
+                static constexpr int ROW_ORDER[gnss_gpu::ROWS_PLAIN] = {
+                    gnss_gpu::ROW_P, gnss_gpu::ROW_PH, gnss_gpu::ROW_E, gnss_gpu::ROW_L};
+                for (int ti = 0; ti < gnss_gpu::ROWS_PLAIN; ++ti) {
+                    const int t = ROW_ORDER[ti];
+                    const int lr = gnss_gpu::lane_of_row(_lanes_per_slot, t);
                     const size_t orow = (size_t)(oc.job0 + t);
+                    if (lr < 0) {
+                        // No lane for this trial: the prompt row rotated per channel by the
+                        // kernel's rotation, corr_E = corr_P e^{-i rot}, corr_L = corr_P
+                        // e^{+i rot} (PrnCtl::rot and the sign convention there), with the
+                        // kernel's own E/L energy rows, which equal the prompt's on this path.
+                        const size_t prow = (size_t)(oc.job0 + gnss_gpu::ROW_P);
+                        const double sgn = (t == gnss_gpu::ROW_E) ? -1.0 : 1.0;
+                        for (int c = 0; c < n_chan && c < _n_gnss_chan; ++c) {
+                            oenergy[orow * n_chan + c] =
+                                ienergy[(size_t)(in0.job0 + t) * n_chan + c];
+                            const double cr = std::cos(sgn * (double)in0.rot[c]);
+                            const double ci = std::sin(sgn * (double)in0.rot[c]);
+                            for (int e = 0; e < _n_live; ++e) {
+                                const size_t pi = ((prow * n_chan + c) * (size_t)_n_live + e) * 2;
+                                const size_t oi = ((orow * n_chan + c) * (size_t)_n_live + e) * 2;
+                                const double re = ocorr[pi], im = ocorr[pi + 1];
+                                ocorr[oi + 0] = re * cr - im * ci;
+                                ocorr[oi + 1] = re * ci + im * cr;
+                            }
+                        }
+                        continue;
+                    }
+                    const int lane = _lanes_per_slot * p + lr;
+                    const int gi = _num_elements + lane, ihi = gi >> 4, ilo = gi & 15;
 
                     for (int c = 0; c < n_chan && c < _n_gnss_chan; ++c) {
                         // The gathered tiles are compacted: tile k of channel c lives at

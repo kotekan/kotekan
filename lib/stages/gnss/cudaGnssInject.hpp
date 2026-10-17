@@ -36,9 +36,10 @@
  * cudaGnssChordTrackState::snapshot_trims, through GnssCudaDespread::build_jobs like every
  * other Spec-taking despread.
  *
- * Lanes: lane = synth_lane_base + 4*prn_slot + row (E/P/L/P_HEAD), fixed per slot as
+ * Lanes: lane = synth_lane_base + lanes_per_slot*prn_slot + k, k the lane's trial in slot
+ * order (E/P/L/P_HEAD with four lanes per slot, P/P_HEAD with two), fixed per slot as
  * satellites rise and set; slots without a seed are written as 0x88, so their tiles read
- * exactly 0. Requires 4*n_prn <= num_synth. The pack quantizes each lane and channel with its
+ * exactly 0. Requires lanes_per_slot*n_prn <= num_synth. The pack quantizes each lane and channel with its
  * own scale (see launch_pack44), which the consumer, GnssN2RecordAssemble, undoes using the
  * replica energies in the control block.
  *
@@ -49,7 +50,12 @@
  * @conf As the ring consumers (buffer_depth, num_times, num_elements, num_local_freq,
  *       voltage_name), plus the @ref cudaGnssChordTrackState keys (set `n_elements: 1`; it is
  *       unused here), and:
- * @conf  num_synth            Int. Lanes this chain writes (4 per PRN slot).
+ * @conf  num_synth            Int. Lanes this chain writes (lanes_per_slot per PRN slot).
+ * @conf  lanes_per_slot       Int, default 4. Synth lanes per PRN slot: 4 packs E, P, L and
+ *                             P_HEAD; 2 packs P and P_HEAD and carries the kernel's per-channel
+ *                             rotation in PrnCtl::rot, from which GnssN2RecordAssemble forms the
+ *                             E and L rows. 2 needs epl_from_prompt and at most
+ *                             gnss_gpu::MAX_ROT_CHAN covering channels.
  * @conf  synth_lane_base      Int. First lane of this chain in the synth array, a multiple of
  *                             16 (tile rows).
  * @conf  synth_lane_pitch     Int. Width of the synth array's lane axis (the correlator's
@@ -82,7 +88,8 @@ private:
     const std::int32_t _num_times;
     const std::int32_t _num_elements; // voltage ring station axis (for the ring declaration)
     const std::int32_t _num_local_freq;
-    const std::int32_t _num_synth; ///< lanes this chain writes (4 per PRN slot)
+    const std::int32_t _num_synth;      ///< lanes this chain writes (lanes_per_slot per slot)
+    const std::int32_t _lanes_per_slot; ///< gnss_gpu::LANES_FULL or LANES_PROMPT
     const std::string _voltage_name;
     const std::string _gnss_synth_name;
     std::vector<std::int32_t> _gnss_local_channels;

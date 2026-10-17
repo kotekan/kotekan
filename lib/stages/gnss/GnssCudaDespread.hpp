@@ -121,6 +121,13 @@ public:
     /// (gnss::REC_PHI_DDOP).
     double last_phi_ddop(int p) const;
 
+    /// The per-channel rotation the last @ref enqueue_waveform handed the kernel for PRN slot
+    /// @p p under @ref set_epl_from_prompt (the E trial's rotation, radians, one per channel in
+    /// the bank's channel order), read back from what was uploaded. nullptr unless
+    /// set_epl_from_prompt is on and the slot has built a job. Valid until the slot's next
+    /// job.
+    const float* last_rot(int p) const;
+
     /// Build the per-PRN jobs for @c specs and upload them to @c d_jobs_slot on @c stream. Every
     /// enqueue_* call that takes Specs builds its jobs here, so their replicas cannot differ.
     void build_jobs(const std::vector<Spec>& specs, void* d_jobs_slot,

@@ -108,9 +108,12 @@ cudaError_t launch_correlate_nm(const unsigned char* data, const float* chan_sca
  * @brief Path B: quantize @ref launch_waveform's replicas into synthetic 4+4b N^2 stations.
  *
  * Writes one record's rows of the synthetic input array (cudaCorrelatorDual's @c gnss_synth),
- * [hop][channel][lane] with lane = 4*prn_slot + trial (E/P/L/P_HEAD; the head lane is the
- * prompt, zeroed from hop m_head on). Inactive slots, uncovered channels and the gated head
- * region get 0x88 (0+0j). Values clamp to [-7,7]: -8 corrupts the N^2 (n2k's negate_4bit).
+ * [hop][channel][lane] with lane = lanes_per_slot*prn_slot + k. With four lanes per slot k is
+ * the trial E/P/L/P_HEAD; with two it is P/P_HEAD, the E and L rows being formed on the host
+ * from the prompt and the rotation the waveform kernel applied (gnss_gpu::lane_of_row,
+ * PrnCtl::rot). The head lane is the prompt, zeroed from hop m_head on. Inactive slots,
+ * uncovered channels and the gated head region get 0x88 (0+0j). Values clamp to [-7,7]: -8
+ * corrupts the N^2 (n2k's negate_4bit).
  * The scale is 7/(3*rms) per (lane, channel), rms = sqrt(energy row / n_hops), except that the
  * P_HEAD lane divides by the job's m_head. The path-B consumer (GnssN2RecordAssemble)
  * recomputes the scale from the energy rows over hops_per_record and divides it out; for the
@@ -128,19 +131,22 @@ cudaError_t launch_correlate_nm(const unsigned char* data, const float* chan_sca
  *                   E/P/L scales are constant over a frame.
  * @param jobs       [n_job] device jobs (m_head, chan_mask)
  * @param slot2spec  [n_slot] device: job index of each PRN slot this record, -1 = inactive
+ * @param lanes_per_slot 4 (E/P/L/P_HEAD) or 2 (P/P_HEAD); anything else is refused
  * @param chan_map   [n_chan] device: position of each covering channel on the synth array's
  *                   channel axis
  * @param frame_chan_stride length of the synth array's channel axis
- * @param n_lanes    lanes this chain writes (4 per slot); all are written, inactive slots as 0x88
+ * @param n_lanes    lanes this chain writes (lanes_per_slot per slot); all are written,
+ *                   inactive slots as 0x88
  * @param lane_base  first lane of this chain on the synth array's lane axis (a multiple of 16,
  *                   one tile row), so several chains can share one array
  * @param lane_pitch length of the synth array's lane axis
  * @param synth      base of this record's rows: [n_hops][frame_chan_stride][lane_pitch] bytes
  */
 cudaError_t launch_pack44(const float2* wave, const double* energy, const DespreadJob* jobs,
-                          const int* slot2spec, int n_slot, int n_chan, int n_hops,
-                          const int* chan_map, int frame_chan_stride, int n_lanes, int lane_base,
-                          int lane_pitch, unsigned char* synth, cudaStream_t stream);
+                          const int* slot2spec, int n_slot, int lanes_per_slot, int n_chan,
+                          int n_hops, const int* chan_map, int frame_chan_stride, int n_lanes,
+                          int lane_base, int lane_pitch, unsigned char* synth,
+                          cudaStream_t stream);
 
 } // namespace gnss_cuda
 

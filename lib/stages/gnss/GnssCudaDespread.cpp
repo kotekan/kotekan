@@ -99,6 +99,8 @@ struct GnssCudaDespread::Impl {
     /// as zero.
     std::vector<double> last_ang0;     ///< DespreadJob::ang0, radians
     std::vector<double> last_phi_ddop; ///< doppler_now - the Doppler this PRN's Phi was built at
+    std::vector<float> last_rot;       ///< [n_prn][n_chan] the rot each slot's last job got
+    std::vector<uint8_t> last_rot_ok;  ///< [n_prn] 1 once the slot has built a rotated job
     std::vector<int> all_chans;
     int Lf = 0;
 
@@ -164,6 +166,8 @@ struct GnssCudaDespread::Impl {
         // 2*pi*frac(f*n0/fs).
         last_ang0.assign((size_t)np, std::numeric_limits<double>::quiet_NaN());
         last_phi_ddop.assign((size_t)np, std::numeric_limits<double>::quiet_NaN());
+        last_rot.assign((size_t)np * n_chan, 0.0f);
+        last_rot_ok.assign((size_t)np, 0);
         stage.resize((size_t)nc * nh);
         h_jobs.resize(maxs);
         h_corr.resize(maxb * nc);
@@ -393,7 +397,9 @@ struct GnssCudaDespread::Impl {
                 for (int ci = 0; ci < n_chan; ++ci) {
                     const double f_c = (double)all_chans[(size_t)ci] * fs / bank.fft_len();
                     h_rot[i * (size_t)n_chan + ci] = (float)(2.0 * M_PI * (f_c - f_car) * delay_s);
+                    last_rot[(size_t)sp.p * n_chan + ci] = h_rot[i * (size_t)n_chan + ci];
                 }
+                last_rot_ok[(size_t)sp.p] = 1;
             }
         }
         ck(cudaMemcpyAsync(d_jobs_slot, h_jobs.data(),
@@ -449,6 +455,13 @@ bool GnssCudaDespread::set_prn(int p, int prn, void* stream) {
     im.last_phi_ddop[(size_t)p] = std::numeric_limits<double>::quiet_NaN();
     im.slot_prn[(size_t)p] = prn;
     return true;
+}
+
+const float* GnssCudaDespread::last_rot(int p) const {
+    if (!_impl->epl_rot || p < 0 || (size_t)p >= _impl->last_rot_ok.size()
+        || !_impl->last_rot_ok[(size_t)p])
+        return nullptr;
+    return _impl->last_rot.data() + (size_t)p * _impl->n_chan;
 }
 
 double GnssCudaDespread::last_ang0(int p) const {

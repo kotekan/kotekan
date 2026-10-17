@@ -50,10 +50,29 @@ struct FrameHdr {
     int32_t n_rows_spec; ///< output rows per active PRN per record: ROWS_PLAIN or ROWS_PEEL
                          ///< (rows 4/5 the peel residual prompt and its head segment,
                          ///< gnssRecord.hpp slots 20-23). The reader takes 0 as ROWS_PLAIN.
-    int32_t _pad0;
+    /// Synth lanes the pack wrote per PRN slot: LANES_FULL (E, P, L, P_HEAD) or LANES_PROMPT
+    /// (P, P_HEAD; the E and L rows are the prompt rotated by PrnCtl::rot, which the
+    /// assembler applies). A frame from before this field carries 0; lanes_per_slot_of reads
+    /// that as LANES_FULL. The epl frame GnssN2RecordAssemble emits always has ROWS_PLAIN rows
+    /// per PRN whatever the lane count, so nothing downstream of it reads this.
+    int32_t lanes_per_slot;
     int64_t _pad1;
 };
 static_assert(sizeof(FrameHdr) == 48, "FrameHdr must stay 16-byte aligned");
+
+/// Synth lanes per PRN slot (FrameHdr::lanes_per_slot, cudaGnssInject's lanes_per_slot).
+constexpr int LANES_FULL = 4;   ///< E, P, L, P_HEAD, each a packed replica lane
+constexpr int LANES_PROMPT = 2; ///< P, P_HEAD; E and L rotated from P on the host
+/// Covering channels PrnCtl::rot can carry; a chain with more refuses LANES_PROMPT.
+constexpr int MAX_ROT_CHAN = 8;
+constexpr int lanes_per_slot_of(int32_t v) {
+    return v == 0 ? LANES_FULL : (int)v;
+}
+/// Lane of trial @p t (ROW_E .. ROW_PH) within a slot's lane group, or -1 when that trial has no
+/// lane (E and L under LANES_PROMPT).
+constexpr int lane_of_row(int lanes_per_slot, int t) {
+    return lanes_per_slot == LANES_FULL ? t : (t == 1 ? 0 : (t == 3 ? 1 : -1));
+}
 
 /// Output rows per active PRN per record, with and without the peel.
 constexpr int ROWS_PLAIN = 4; ///< E, P, L, P_HEAD
@@ -76,8 +95,7 @@ struct PrnCtl {
                         ///< assembler folds into the NCO. cudaGnssInject writes 1 and 3.
     /// The PRN in this slot for this record, stamped for every slot, running or not. Carrying
     /// it in the frame leaves one slot -> PRN map, the producer's, so a live slot swap
-    /// (docs/CHORD_LIVE_PRN_RECONFIG.md) cannot mislabel records. uint16 fills the padding,
-    /// keeping sizeof(PrnCtl) at 80.
+    /// (docs/CHORD_LIVE_PRN_RECONFIG.md) cannot mislabel records. uint16 fills the padding.
     uint16_t prn;
     int32_t job0;       ///< first of this PRN's rows (E, P, L, P_HEAD); meaningless if !run
     float fcar_report;  ///< record slot 1 (physical-signed reported Doppler)
@@ -113,10 +131,18 @@ struct PrnCtl {
     /// 2.4e-7 Hz, ~0.07 cycles (0.4 rad) after a few days. f_offset is constant, so the
     /// producer differences the applied Doppler and trim (~1e3 Hz, ulp 2e-13) instead.
     double dcyc;
+    /// The rotation the waveform kernel applied to its E trial on each covering channel this
+    /// record, radians: 2 pi (f_c - f_car) ds / chip_rate with f_car the carrier the kernel
+    /// applied (Doppler and trim included) and ds the E/L spacing (GnssCudaDespread's
+    /// epl_from_prompt path; cudaGnssInject copies what the despread handed the kernel). With
+    /// the replica conjugated in the pack, the record rows are corr_E = corr_P e^{-i rot} and
+    /// corr_L = corr_P e^{+i rot}, which GnssN2RecordAssemble forms under LANES_PROMPT. All
+    /// zero when the chain packs LANES_FULL. Indexed by covering channel, local order.
+    float rot[MAX_ROT_CHAN];
 };
 /// The literal is deliberate: adding a field must change it, and config/gnss_record_layout.py
 /// parses it to size the generated buffers. The layout needs a multiple of 16.
-static_assert(sizeof(PrnCtl) == 80, "PrnCtl must stay 16-byte aligned");
+static_assert(sizeof(PrnCtl) == 112, "PrnCtl must stay 16-byte aligned");
 static_assert(sizeof(PrnCtl) % 16 == 0, "PrnCtl must stay 16-byte aligned");
 
 /// Maximum output rows (corr/energy) per frame: @c rows_spec per PRN per record.

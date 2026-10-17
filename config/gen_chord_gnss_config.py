@@ -67,6 +67,26 @@ NODE_FILE = os.path.join(CONF, "chord_gnss_node.yaml")
 # 20 ms period of the NH20-tiled codes, so a record straddles at most one code-period boundary
 # (where the P_HEAD row splits it).
 HOPS_PER_RECORD = 2048
+# PRN slots per chain on the synth axis: a chain's lane range is SYNTH_SLOTS * lanes_per_slot.
+SYNTH_SLOTS = 32
+# The one n2k_dual instantiation (external/n2k_dual: 128 antenna + 384 synthetic stations at
+# 384 channels): the shared synth axis is this wide whatever the chains use of it.
+DUAL_SYNTH_LANES = 384
+# Chains sharing a channel are placed on disjoint lane ranges at this step: whole tile rows
+# (16 lanes), the narrower chain width (two lanes per slot), so a 64-lane and a 128-lane chain
+# tile the axis without gaps a tile row could not address.
+LANE_STEP = 64
+
+
+def lanes_per_slot_for(args, track_signal):
+    """Synth lanes per PRN slot a chain packs (gnssGpuChain.hpp LANES_FULL / LANES_PROMPT).
+
+    With --epl-from-prompt every comb chain packs two (P and P_HEAD): its E and L rows are the
+    prompt rotated per channel on the host from the rotation the kernel carries in PrnCtl::rot.
+    L2C keeps four: its one channel per instance has no cross-channel phase to rotate, so it
+    keeps the three-trial walk and packs every trial.
+    """
+    return 2 if (args.epl_from_prompt and track_signal != "GPS_L2C_CM") else 4
 # Frames per GNSS chain buffer.
 BUFFER_DEPTH = 4
 # The primary chain's PRN slots (each extra chain carries its own list).
@@ -356,7 +376,7 @@ def parse_extra_signals(cfg, args, node, primary_chans):
             raise SystemExit(
                 f"--extra-signal {name}: PRNs are required, e.g. {name}:1,2,3. Constellations "
                 "have different PRN ranges and the count IS the path-B lane budget "
-                "(4 lanes/PRN of 128), so it is not something to default silently."
+                f"({SYNTH_SLOTS} slots per chain), so it is not something to default silently."
             )
         prns = [int(p) for p in prn_s.split(",") if p.strip()]
         s = table[name]
@@ -540,7 +560,9 @@ def gnss_chain_vars(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=None):
     n_prn = len(prns)
     ordv = chain["ord"] if chain else 0
     n_live = live_element_count(arr)
-    num_synth = 128
+    track_signal = chain["tracker"] if chain else sig.get("tracker", sig["primary"])
+    lanes_per_slot = lanes_per_slot_for(args, track_signal)
+    num_synth = lanes_per_slot * SYNTH_SLOTS
 
     # --- frame sizes (ctl/epl: gnssGpuChain.hpp frame_bytes, ROWS_PLAIN = 4) ------------------
     n_rec_per_frame = max(1, int(spds) // HOPS_PER_RECORD)
@@ -589,6 +611,7 @@ def gnss_chain_vars(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=None):
             "send": cores[(gpu + 6) % nc],
             "sink": cores[(gpu + 7) % nc],
         },
+        "lanes": {"per_slot": lanes_per_slot, "num_synth": num_synth},
         "sizes": {
             "tiles": tiles_frame_bytes,
             "ctl": ctl_bytes,
@@ -895,8 +918,10 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
     track_signal = chain["tracker"] if chain else sig.get("tracker", sig["primary"])
     n_live = live_element_count(arr)
 
-    # Tile count per channel: see n2_tiles_per_chan (one contract, three sites).
-    num_synth = 128
+    # Tile count per channel: see n2_tiles_per_chan (one contract, three sites). The lane
+    # range is the chain's slots times its lanes per slot (lanes_per_slot_for).
+    lanes_per_slot = lanes_per_slot_for(args, track_signal)
+    num_synth = lanes_per_slot * SYNTH_SLOTS
     # A frame is samples_per_data_set hops (spds, from the base config, which production owns),
     # split into records of HOPS_PER_RECORD hops.
     n_rec_per_frame = max(1, int(spds) // HOPS_PER_RECORD)
@@ -906,13 +931,11 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
         n_rec_per_frame * n_chan * n2_tiles_per_chan(n_live, num_synth) * 512 * 4
     )
 
-    if 4 * n_prn > num_synth:
+    if lanes_per_slot * n_prn > num_synth:
         raise SystemExit(
-            f"--n2-dual{tag}: 4*{n_prn} PRNs exceeds {num_synth} synthetic "
-            f"lanes (4 lanes per PRN slot). The lane budget is PER CHAIN here "
-            f"(each signal has its own synth ring), so this one signal is too "
-            f"wide; across signals the binding limit is GPU memory, 1.61 GB per "
-            f"ring. Shrink this chain's PRN list, or raise NSB to 256."
+            f"--n2-dual{tag}: {lanes_per_slot}*{n_prn} PRNs exceeds {num_synth} synthetic "
+            f"lanes ({lanes_per_slot} lanes per PRN slot, {SYNTH_SLOTS} slots per chain). "
+            f"Shrink this chain's PRN list."
         )
 
     ring = f"host_voltage_ringbuffer_{gpu}"
@@ -965,6 +988,7 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
                     # instead; without it every mixed tile reads noise. The stage refuses false.
                     "conjugate": True,
                     "num_synth": num_synth,
+                    "lanes_per_slot": lanes_per_slot,
                     # Local frame indices of the comb (the tap's chan_ids), never freq_ids.
                     "gnss_local_channels": chan_idx,
                     # The state class, cudaGnssChordTrackState: seeds, trims and slot
@@ -1083,6 +1107,7 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
             "out_buf": epl_buf,
             "num_elements": 128,
             "num_synth": num_synth,
+            "lanes_per_slot": lanes_per_slot,
             "n_live_elements": n_live,
             "n_gnss_channels": n_chan,
             "n_prn": n_prn,
@@ -1319,18 +1344,25 @@ def merge_n2dual_gpu(blocks, cfg, args, node, gpu, chains, spds):
     GPU takes the live N^2 once, every captured chain's mixed rows and, with --vis-capture-bb,
     the replica block across those chains, gated in step with their ctl blocks.
 
-    Lanes: chains that share a channel get disjoint 128-lane ranges; chains on disjoint
-    channels reuse a range, since their replicas never meet in a product. The ranges are whole
-    multiples of 128, so a chain's slot arithmetic (4 lanes per slot from its range start) and
-    its 8 tile rows are those of a chain on its own.
+    Lanes: chains that share a channel get disjoint lane ranges, each the chain's own width
+    (its injector's num_synth: SYNTH_SLOTS slots times two or four lanes per slot); chains on
+    disjoint channels reuse a range, since their replicas never meet in a product. Ranges
+    start on LANE_STEP boundaries, whole tile rows, so a chain's slot arithmetic from its
+    range start and its tile rows are those of a chain on its own. The axis is the n2k_dual
+    instantiation's width (DUAL_SYNTH_LANES) whatever the chains use of it; unused lanes stay
+    0x88 and cost the correlator nothing but the launch they share.
     """
     sig = cfg["signals"]
     rt = cfg["runtime"]
-    lanes = 128
     pres = []
     for c in chains:
         ch = c["chain"]
         tag = ch["tag"] if ch else ""
+        inj0 = next(
+            cmd
+            for cmd in blocks[f"gnss{gpu}{tag}_n2dual"]["commands"]
+            if cmd["name"] == "cudaGnssInject"
+        )
         pres.append(
             dict(
                 pre=f"gnss{gpu}{tag}_",
@@ -1339,6 +1371,7 @@ def merge_n2dual_gpu(blocks, cfg, args, node, gpu, chains, spds):
                 name=broker_chain_name(ch["signal"] if ch else sig["primary"]),
                 chan_idx=[int(x) for x in c["chan_idx"]],
                 chan=set(int(x) for x in c["chan_idx"]),
+                lanes=int(inj0["num_synth"]),
                 viscap=vis_capture_chain(args, ch, sig),
             )
         )
@@ -1347,14 +1380,21 @@ def merge_n2dual_gpu(blocks, cfg, args, node, gpu, chains, spds):
         base = 0
         while any(
             q["chan"] & p["chan"]
-            and q["base"] < base + lanes
-            and base < q["base"] + lanes
+            and q["base"] < base + p["lanes"]
+            and base < q["base"] + q["lanes"]
             for q in pres
             if "base" in q
         ):
-            base += lanes
+            base += LANE_STEP
         p["base"] = base
-    num_synth = max(p["base"] for p in pres) + lanes
+    used = max(p["base"] + p["lanes"] for p in pres)
+    if used > DUAL_SYNTH_LANES:
+        raise SystemExit(
+            f"gnss{gpu}: the path-B chains need {used} synth lanes, the dual correlator "
+            f"has {DUAL_SYNTH_LANES} (external/n2k_dual's one instantiation). Fewer chains "
+            f"sharing a channel on this GPU, fewer PRN slots, or a wider instantiation."
+        )
+    num_synth = DUAL_SYNTH_LANES
 
     procs = {p["pre"]: blocks.pop(f"{p['pre']}n2dual") for p in pres}
     primary = procs[f"gnss{gpu}_"]
@@ -1412,7 +1452,7 @@ def merge_n2dual_gpu(blocks, cfg, args, node, gpu, chains, spds):
         corr[f"gather_{p['name']}_tiles_name"] = f"{p['pre']}tiles"
         corr[f"gather_{p['name']}_channels"] = p["chan_idx"]
         corr[f"gather_{p['name']}_lane_base"] = p["base"]
-        corr[f"gather_{p['name']}_lanes"] = lanes
+        corr[f"gather_{p['name']}_lanes"] = p["lanes"]
 
     # The capture: one gather over the captured chains' channels and lane rows, with the live
     # N^2 and, with --vis-capture-bb, the replica block across those chains; one gate holds
@@ -1422,7 +1462,7 @@ def merge_n2dual_gpu(blocks, cfg, args, node, gpu, chains, spds):
     if captured:
         cap_chans = sorted(set().union(*[p["chan"] for p in captured]))
         base = min(p["base"] for p in captured)
-        cap_lanes = max(p["base"] for p in captured) + lanes - base
+        cap_lanes = max(p["base"] + p["lanes"] for p in captured) - base
         bb = bool(args.vis_capture_bb)
         names.append("cap")
         corr.update(
@@ -2357,7 +2397,7 @@ def main():
         help="add a SECOND tracker chain for another signal, e.g. "
         "--extra-signal GAL_E5A_Q_CS:1,2,3. Repeatable. PRNs are REQUIRED "
         "(constellations have different PRN ranges, and the count is the "
-        "path-B lane budget -- 4 lanes per PRN). A chain whose covering "
+        f"path-B lane budget -- {SYNTH_SLOTS} slots per chain). A chain whose covering "
         "channels match the primary's SHARES its voltage tap (E5a/B2a are on "
         "L5's carrier, so this is the free case); a different carrier gets its "
         "own tap. Buffer/endpoint names are suffixed with a tag derived from "
@@ -2418,8 +2458,10 @@ def main():
         "--epl-from-prompt",
         action="store_true",
         help="cudaGnssChordTrack epl_from_prompt: synthesise the prompt replica only and "
-        "take the E/L lanes as its per-channel rotations (one chip walk per hop instead of "
-        "three, ~2/3 of the synthesis cost). Comb chains only; L2C keeps its three trials.",
+        "take the E/L rows as its per-channel rotations (one chip walk per hop instead of "
+        "three, ~2/3 of the synthesis cost), and pack two synth lanes per PRN slot (P, "
+        "P_HEAD) instead of four, GnssN2RecordAssemble rotating P into the E and L rows "
+        "(lanes_per_slot). Comb chains only; L2C keeps its three trials and four lanes.",
     )
     ap.add_argument(
         "--n2-project",

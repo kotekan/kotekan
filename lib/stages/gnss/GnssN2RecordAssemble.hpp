@@ -47,8 +47,17 @@
  * mixed tile equals the despread's sum_t conj(D) conj(R) directly, not its
  * conjugate; the wrong orientation reads as noise at every code phase.
  *
+ * Lanes. The injector packs lanes_per_slot lanes per PRN slot (FrameHdr::lanes_per_slot,
+ * checked against this stage's key every frame): four carry the E, P, L and P_HEAD replicas
+ * and map 1:1 onto the record rows; two carry P and P_HEAD, and the E and L rows are the P row
+ * rotated per channel by the kernel's own rotation (PrnCtl::rot): corr_E = corr_P e^{-i rot},
+ * corr_L = corr_P e^{+i rot}, with the kernel's E and L energies (equal to P's on that path).
+ * The epl frame has ROWS_PLAIN rows per PRN either way.
+ *
  * @conf  num_elements   Int. Antenna stations in the correlator (128 on the pathfinder).
  * @conf  num_synth      Int. Synthetic stations. Default 128.
+ * @conf  lanes_per_slot Int, default 4. Synth lanes per PRN slot the injector packs (see
+ *                       Lanes); must match cudaGnssInject's.
  * @conf  n_live_elements Int. Live antennas the tiles cover.
  * @conf  n_gnss_channels Int. Comb channels gathered.
  * @conf  gnss_gather_aa  Bool, default false; true is refused (the tiles carry no AA block).
@@ -67,6 +76,7 @@ private:
     Buffer* _out_buf;
 
     int _num_elements, _num_synth, _n_live, _n_gnss_chan, _n_prn;
+    int _lanes_per_slot; ///< gnss_gpu::LANES_FULL or LANES_PROMPT (see the class note)
     int _hops_per_record, _n_hops_frame;
 
     /// Tile geometry, recomputed from config exactly as cudaCorrelatorDual does.

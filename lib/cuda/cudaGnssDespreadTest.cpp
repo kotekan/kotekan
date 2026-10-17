@@ -479,6 +479,68 @@ int main(int argc, char** argv) {
                        "energy = P %.3e, E/L residual %.3e (opposite rotation %.3e) %s\n",
                        pmax, emaxr, r_same, r_flip, rot_ok ? "OK" : "FAIL");
                 split_ok = split_ok && rot_ok;
+
+                // --- The pack's lane contract: two lanes per slot (P, P_HEAD) must hold the
+                // bytes the four-lane layout holds at its P and P_HEAD lanes, head gate and
+                // scale included (job 0 gates the head at hop 40, job 1 has none); lanes the
+                // chain does not own are untouched. Written at lane_base 16, a chain sharing
+                // the axis with another. ---
+                {
+                    const int n_slot = n_spec, pitch = 48;
+                    std::vector<int> h_s2s(n_slot), h_cmap(n_chan);
+                    for (int s = 0; s < n_slot; ++s)
+                        h_s2s[s] = s;
+                    for (int c = 0; c < n_chan; ++c)
+                        h_cmap[c] = c;
+                    int *d_s2s = nullptr, *d_cmap = nullptr;
+                    unsigned char *d_s4 = nullptr, *d_s2 = nullptr;
+                    const size_t sbytes = (size_t)n_hops * n_chan * pitch;
+                    CK(cudaMalloc(&d_s2s, h_s2s.size() * sizeof(int)));
+                    CK(cudaMalloc(&d_cmap, h_cmap.size() * sizeof(int)));
+                    CK(cudaMalloc(&d_s4, sbytes));
+                    CK(cudaMalloc(&d_s2, sbytes));
+                    CK(cudaMemcpy(d_s2s, h_s2s.data(), h_s2s.size() * sizeof(int),
+                                  cudaMemcpyHostToDevice));
+                    CK(cudaMemcpy(d_cmap, h_cmap.data(), h_cmap.size() * sizeof(int),
+                                  cudaMemcpyHostToDevice));
+                    CK(cudaMemset(d_s4, 0, sbytes));
+                    CK(cudaMemset(d_s2, 0, sbytes));
+                    CK(gnss_cuda::launch_pack44(d_wave, d_nenergy, d_jobs, d_s2s, n_slot, 4,
+                                                n_chan, n_hops, d_cmap, n_chan, 4 * n_slot, 0,
+                                                pitch, d_s4, 0));
+                    CK(gnss_cuda::launch_pack44(d_wave, d_nenergy, d_jobs, d_s2s, n_slot, 2,
+                                                n_chan, n_hops, d_cmap, n_chan, 2 * n_slot, 16,
+                                                pitch, d_s2, 0));
+                    CK(cudaDeviceSynchronize());
+                    std::vector<unsigned char> h4(sbytes), h2(sbytes);
+                    CK(cudaMemcpy(h4.data(), d_s4, sbytes, cudaMemcpyDeviceToHost));
+                    CK(cudaMemcpy(h2.data(), d_s2, sbytes, cudaMemcpyDeviceToHost));
+                    long bad = 0, live = 0, stray = 0;
+                    for (int m = 0; m < n_hops; ++m)
+                        for (int c = 0; c < n_chan; ++c) {
+                            const unsigned char* a4 = h4.data() + ((size_t)m * n_chan + c) * pitch;
+                            const unsigned char* a2 = h2.data() + ((size_t)m * n_chan + c) * pitch;
+                            for (int s = 0; s < n_slot; ++s) {
+                                bad += (a2[16 + 2 * s] != a4[4 * s + 1]);     // P
+                                bad += (a2[16 + 2 * s + 1] != a4[4 * s + 3]); // P_HEAD
+                                live += (a4[4 * s + 1] != 0x88) + (a4[4 * s + 3] != 0x88);
+                            }
+                            for (int l = 0; l < pitch; ++l)
+                                if ((l < 16 || l >= 16 + 2 * n_slot) && a2[l] != 0)
+                                    ++stray;
+                        }
+                    const bool pack_ok = bad == 0 && live > 0 && stray == 0;
+                    printf("pack lanes: two per slot = the four-lane P/P_HEAD bytes, %ld "
+                           "mismatches over %ld cells (%ld live), %ld bytes outside the "
+                           "chain's lanes %s\n",
+                           bad, (long)n_hops * n_chan * n_slot * 2, live, stray,
+                           pack_ok ? "OK" : "FAIL");
+                    split_ok = split_ok && pack_ok;
+                    CK(cudaFree(d_s2s));
+                    CK(cudaFree(d_cmap));
+                    CK(cudaFree(d_s4));
+                    CK(cudaFree(d_s2));
+                }
                 CK(cudaFree(d_rot));
             }
 

@@ -22,7 +22,8 @@ TILES FRAME: int32 [n_rec][n_chan][n_tile][16][16][2] (re, im), n_tile per chann
   BB     : lower triangle over the synth rows, tile n_mixed + n_aa + k1*(k1+1)/2 + k2
            (gather_cap_bb, set by the generator's --vis-capture-bb: the replica x replica
            block that completes the (N+M)^2)
-Synth lane L = lane_base + 4*slot + row (row 0 E, 1 P, 2 L, 3 P_HEAD; lane_base 0 for a
+Synth lane L = lane_base + lanes*slot + k (FrameHdr lanes_per_slot: four lanes k = E, P, L,
+P_HEAD; two lanes k = P, P_HEAD with E/L rotated from P; lane_base 0 for a
 one-chain capture) sits at gi = 128 + L: ihi = gi>>4, ilo = gi&15. Element e (0..n_live-1, in
 live-column order) is at jhi = e>>4, jlo = e&15.
 V_mixed[lane, e] = sum synth * conj(antenna)  (cudaCorrelatorDual: synth on the row side).
@@ -56,7 +57,7 @@ HDR = np.dtype(
         ("seq0", "<i8"),
         ("utc0", "<f8"),
         ("n_rows_spec", "<i4"),
-        ("_pad0", "<i4"),
+        ("lanes_per_slot", "<i4"),  # 0 (before 2026-10-17) reads as 4
         ("_pad1", "<i8"),
     ]
 )
@@ -76,15 +77,31 @@ PRNCTL = np.dtype(
         ("phi_ddop", "<f8"),
         ("fcar", "<f8"),
         ("dcyc", "<f8"),
+        # The kernel's E-trial rotation per covering channel (2026-10-17, PrnCtl::rot): under
+        # two lanes per slot the E/L rows are P rotated by -/+ it (see decode).
+        ("rot", "<f4", (8,)),
     ]
 )
-assert HDR.itemsize == 48 and PRNCTL.itemsize == 80
+assert HDR.itemsize == 48 and PRNCTL.itemsize == 112
 MAX_REC = 16
 ROWS = 4
 
 
+def lanes_per_slot_of(h):
+    """Synth lanes per PRN slot a frame's injector packed: 4 (E/P/L/P_HEAD) or 2 (P/P_HEAD);
+    a header from before the field (0) is 4. Captures before 2026-10-17 carried an 80-byte
+    PrnCtl; this reader takes the 112-byte one only."""
+    v = int(h["lanes_per_slot"])
+    return 4 if v == 0 else v
+
+
 def ctl_frame_bytes(n_prn, n_chan):
-    return 48 + 8 * MAX_REC + 80 * MAX_REC * n_prn + 8 * ROWS * n_prn * MAX_REC * n_chan
+    return (
+        48
+        + 8 * MAX_REC
+        + PRNCTL.itemsize * MAX_REC * n_prn
+        + 8 * ROWS * n_prn * MAX_REC * n_chan
+    )
 
 
 def raw_frames(paths, frame_bytes=None):
@@ -122,7 +139,7 @@ def decode_ctl(buf):
         buf,
         "<f8",
         ROWS * n_prn * MAX_REC * n_chan,
-        48 + 8 * MAX_REC + 80 * MAX_REC * n_prn,
+        48 + 8 * MAX_REC + PRNCTL.itemsize * MAX_REC * n_prn,
     ).reshape(-1, n_chan)
     return h, win, ctl, energy
 
@@ -255,15 +272,21 @@ def decode(frames, n_live, hops, has_aa, has_bb=False, num_synth=128, lane_base=
     slots, whose lanes start at lane_base on the frame's synth axis,
     vis_aa[R, n_chan, n_live, n_live] c8 (Hermitian-completed) or None,
     vis_bb[R, n_chan, num_synth, num_synth] c8 (Hermitian-completed, the whole synth axis;
-    this ctl's slot p, row r is lane lane_base + 4p + r) or None."""
+    this ctl's slot p, row r is lane lane_base + lanes*p + k, lanes the frame's lanes per
+    slot and k the row's lane: E/P/L/P_HEAD with four, P/P_HEAD with two) or None.
+
+    With two lanes per slot the mixed E and L rows are the P row rotated by -/+ the ctl's
+    rot per channel (raw tile units: the pack scale of E and L equals P's on that path)."""
     _, n_mixed, n_aa, nlive16 = tile_counts(n_live, has_aa, has_bb, num_synth)
     h0 = frames[0][0]
     n_prn, n_chan = int(h0["n_prn"]), int(h0["n_chan"])
-    # mixed: lane L=lane_base+4p+row at gi=128+L -> tile (ihi-8)*nlive16 + jhi, cell [ilo, jlo]
+    lanes = lanes_per_slot_of(h0)
+    # mixed: lane L=lane_base+lanes*p+k at gi=128+L -> tile (ihi-8)*nlive16 + jhi, cell
+    # [ilo, jlo]; with two lanes the E/L rows (k none) read the P lane and are rotated below.
     p_ = np.arange(n_prn)[:, None, None]
-    row_ = np.arange(ROWS)[None, :, None]
     e_ = np.arange(n_live)[None, None, :]
-    gi = 128 + lane_base + 4 * p_ + row_
+    k_of_row = np.array([0, 1, 2, 3] if lanes == 4 else [0, 0, 0, 1])[None, :, None]
+    gi = 128 + lane_base + lanes * p_ + k_of_row
     k_m = ((gi >> 4) - 8) * nlive16 + (e_ >> 4)
     ilo_m, jlo_m = (
         np.broadcast_to(gi & 15, k_m.shape),
@@ -316,7 +339,15 @@ def decode(frames, n_live, hops, has_aa, has_bb=False, num_synth=128, lane_base=
                     s_arr[r, p, row] = np.where(rms > 0, 7.0 / (3.0 * rms), 0.0)
         out["energy"].append(e_arr)
         out["scale"].append(s_arr)
-        out["vis_mixed"].append(t[:, :, k_m, ilo_m, jlo_m])
+        vm = t[:, :, k_m, ilo_m, jlo_m]  # [rec, chan, prn, row, elem]
+        if lanes == 2:
+            # rows 0/2 hold the P lane: rotate them by -/+ rot[rec, prn, chan]
+            rot = ctl["rot"][:nr, :, :n_chan].astype(np.float32)  # [rec, prn, chan]
+            ph = np.exp(-1j * rot).transpose(0, 2, 1)[..., None]  # [rec, chan, prn, 1]
+            vm = vm.copy()
+            vm[:, :, :, 0, :] = vm[:, :, :, 1, :] * ph
+            vm[:, :, :, 2, :] = vm[:, :, :, 1, :] * np.conj(ph)
+        out["vis_mixed"].append(vm)
         if n_aa:
             aa = np.zeros((nr, n_chan, n_live, n_live), np.complex64)
             v = t[:, :, k_a, ilo_a, jlo_a]

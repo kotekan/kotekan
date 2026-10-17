@@ -13,6 +13,12 @@ is locked and happy. Written for the wider team's (N+M)² request.
 | full cadence — 40 ms? 10 ms? | **10.49 ms is available now**: each 41.94 ms frame holds `n_rec = 4` sub-integrations of 2048 hops (hop = 5.12 µs). A 2.62 ms cadence would be a chain-wide `hops_per_record` change (tracker records, broker, everything) — not part of this. |
 | ~100 L5 subbands | the fleet despreads **79 absolute channels** (6–7 per GPU instance × 12 instances; `freq_MHz = freq_id × 0.1953125`). Only those channels are correlated in freq-map mode; nothing outside the comb exists to capture. |
 | N | the **32 live elements** (ids 0–15, 64–79 = `array.live_element_ranges`), so N² is 32×32 per channel per record. The remaining 96 element slots carry nothing. |
+> **2026-10-17:** `PrnCtl` is 112 bytes (it carries the kernel's per-channel E rotation, `rot`), and
+> comb chains pack **two** synth lanes per PRN slot (P, P_HEAD; `FrameHdr.lanes_per_slot`), the E
+> and L rows being P rotated by that angle on the host (L2C keeps four). `viscap_read.py` reads the
+> lane count from the frame header and synthesises the E/L rows of a two-lane capture; the slot and
+> byte counts below describe the four-lane captures of October 6-12.
+
 | M | 128 synth lanes = 32 PRN slots × 4 rows (E, P, L, P_HEAD) per chain (B2a: 24 slots, 96 lanes used). Which slot holds which PRN, its NCO frequency and seed phase, is in the ctl block record by record. The running slots are every capable satellite above the horizon that has a slot plus the broker's 3 noise probes (`mask-deg: 0`, `noise-probes: 3`). Since 2026-10-06 the manifest captures all three 1176 MHz chains (`vis-capture: gps_l5,gal_e5a,bds_b2a`); the extra chains' files carry the chain tag (`<node>_gnss<g>_e5a_vistiles_...`). |
 
 ## Data layout on disk

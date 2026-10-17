@@ -27,6 +27,7 @@ cudaGnssInject::cudaGnssInject(Config& config, const std::string& unique_name,
     _num_elements(config.get<int>(unique_name, "num_elements")),
     _num_local_freq(config.get<int>(unique_name, "num_local_freq")),
     _num_synth(config.get<int>(unique_name, "num_synth")),
+    _lanes_per_slot(config.get_default<int>(unique_name, "lanes_per_slot", gnss_gpu::LANES_FULL)),
     _voltage_name(config.get<std::string>(unique_name, "voltage_name")),
     _gnss_synth_name(config.get<std::string>(unique_name, "gnss_synth_name")),
     _gnss_local_channels(config.get<std::vector<std::int32_t>>(unique_name, "gnss_local_channels")),
@@ -40,10 +41,23 @@ cudaGnssInject::cudaGnssInject(Config& config, const std::string& unique_name,
             std::array<std::ptrdiff_t, 4>{1, 1, 1, 1}, *this) {
     cudaGnssChordTrackState& S = *st();
 
-    if (4 * S.n_prn > _num_synth)
-        FATAL_ERROR("cudaGnssInject: 4*n_prn ({:d}) exceeds num_synth ({:d}) -- lanes are "
-                    "4/PRN slot (E/P/L/P_HEAD), shrink the PRN list or widen the synth axis.",
-                    4 * S.n_prn, _num_synth);
+    if (_lanes_per_slot != gnss_gpu::LANES_FULL && _lanes_per_slot != gnss_gpu::LANES_PROMPT)
+        FATAL_ERROR("cudaGnssInject: lanes_per_slot {:d} must be {:d} (E/P/L/P_HEAD lanes) or "
+                    "{:d} (P/P_HEAD lanes, E and L rotated from the prompt on the host)",
+                    _lanes_per_slot, gnss_gpu::LANES_FULL, gnss_gpu::LANES_PROMPT);
+    if (_lanes_per_slot == gnss_gpu::LANES_PROMPT && !S.epl_from_prompt)
+        FATAL_ERROR("cudaGnssInject: lanes_per_slot {:d} needs epl_from_prompt: the E and L rows "
+                    "are the prompt rotated by what the kernel applied, which only that path "
+                    "computes",
+                    _lanes_per_slot);
+    if (_lanes_per_slot == gnss_gpu::LANES_PROMPT && S.n_chan > gnss_gpu::MAX_ROT_CHAN)
+        FATAL_ERROR("cudaGnssInject: {:d} covering channels exceed the {:d} PrnCtl::rot carries; "
+                    "this chain must pack {:d} lanes per slot",
+                    S.n_chan, gnss_gpu::MAX_ROT_CHAN, gnss_gpu::LANES_FULL);
+    if (_lanes_per_slot * S.n_prn > _num_synth)
+        FATAL_ERROR("cudaGnssInject: {:d}*n_prn ({:d}) exceeds num_synth ({:d}) -- shrink the "
+                    "PRN list or widen the synth axis.",
+                    _lanes_per_slot, _lanes_per_slot * S.n_prn, _num_synth);
     if ((int)_gnss_local_channels.size() != S.n_chan)
         FATAL_ERROR("cudaGnssInject: gnss_local_channels has {:d} entries but n_channels is "
                     "{:d} -- one LOCAL frame index per covering channel, in local order.",
@@ -91,10 +105,10 @@ cudaGnssInject::cudaGnssInject(Config& config, const std::string& unique_name,
     _ctl_stage.resize(_ctl_bytes);
 
     set_command_type(gpuCommandType::KERNEL);
-    INFO("cudaGnssInject: {:d} PRN slots x 4 lanes into '{:s}' [{:d}][{:d}][{:d}] at lanes "
+    INFO("cudaGnssInject: {:d} PRN slots x {:d} lanes into '{:s}' [{:d}][{:d}][{:d}] at lanes "
          "[{:d}, {:d}), {:d} records/frame, channels {:d}",
-         S.n_prn, _gnss_synth_name, _num_times, _synth_n_chan, _synth_lane_pitch, _synth_lane_base,
-         _synth_lane_base + _num_synth, n_rec, S.n_chan);
+         S.n_prn, _lanes_per_slot, _gnss_synth_name, _num_times, _synth_n_chan, _synth_lane_pitch,
+         _synth_lane_base, _synth_lane_base + _num_synth, n_rec, S.n_chan);
 }
 
 cudaGnssChordTrackState* cudaGnssInject::st() {
@@ -194,6 +208,7 @@ cudaEvent_t cudaGnssInject::execute(cudaPipelineState& pipestate, const std::vec
     hdr->n_prn = S.n_prn;
     hdr->n_chan = S.n_chan;
     hdr->n_rows_spec = gnss_gpu::ROWS_PLAIN;
+    hdr->lanes_per_slot = _lanes_per_slot;
     hdr->seq0 = hop0_frame * (long long)S.fft_len;
     hdr->utc0 = S.frame0_utc;
 
@@ -309,6 +324,12 @@ cudaEvent_t cudaGnssInject::execute(cudaPipelineState& pipestate, const std::vec
                 gnss_gpu::PrnCtl& cc = pctl[(size_t)r * S.n_prn + sp2.p];
                 cc.ang0 = S.despread->last_ang0(sp2.p);
                 cc.phi_ddop = S.despread->last_phi_ddop(sp2.p);
+                // The rotation the kernel applied to its E trial this record, for the
+                // assembler to form the E and L rows under LANES_PROMPT (PrnCtl::rot). The
+                // stage is zeroed per frame, so a chain without the rotated path leaves 0.
+                if (const float* rot = S.despread->last_rot(sp2.p))
+                    for (int c = 0; c < S.n_chan && c < gnss_gpu::MAX_ROT_CHAN; ++c)
+                        cc.rot[c] = rot[c];
             }
             // The consumer needs the true replica energy to undo the pack's per-lane scale: the
             // quantizer holds every lane near a constant M^2, so V/M^2 alone would weight the
@@ -330,9 +351,9 @@ cudaEvent_t cudaGnssInject::execute(cudaPipelineState& pipestate, const std::vec
         unsigned char* d_synth_rec =
             d_synth + (size_t)r * S.hops_per_record * _synth_n_chan * _synth_lane_pitch;
         CHECK_CUDA_ERROR(gnss_cuda::launch_pack44(
-            d_wave, d_energy0, d_jobs_r, d_slot2spec + (size_t)r * S.n_prn, S.n_prn, S.n_chan,
-            S.hops_per_record, d_chan_map, _synth_n_chan, _num_synth, _synth_lane_base,
-            _synth_lane_pitch, d_synth_rec, stream));
+            d_wave, d_energy0, d_jobs_r, d_slot2spec + (size_t)r * S.n_prn, S.n_prn,
+            _lanes_per_slot, S.n_chan, S.hops_per_record, d_chan_map, _synth_n_chan, _num_synth,
+            _synth_lane_base, _synth_lane_pitch, d_synth_rec, stream));
     }
 
     hdr->n_jobs = n_jobs_frame * gnss_gpu::ROWS_PLAIN;
