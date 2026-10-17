@@ -81,7 +81,8 @@ Measured per-record cost = (chains) x (one 0.18 ms wave each, at fp16 Phi and 80
    fall from 384 to 192 (it still runs its one 128+384 instantiation). Canary cx51 19:47Z:
    tracking indistinguishable from the fleet (q within -0.10..0 of the median, discriminator
    0.02-0.07 rms apart), the telemetry E/L rows the rotated P to -99..-107 dB, nvidia-smi
-   56/56 % against a four-lane sibling's 59/59 %. The lane headroom is the other half of it: a
+   56/56 % against a four-lane sibling's 59/59 %; fleet-wide from 20:03Z, 54-59 % on every GPU
+   with data. The lane headroom is the other half of it: a
    ninth chain (GLONASS L3OC on the E5b comb) fits the axis with no wider dual.
 2. **Fewer chips (`despread_max_chips`, centred).** Loss is exactly the dropped window energy:
    212 chips 0 dB, 105 -0.018, 80 -0.045 (production), 60 -0.27, 40 -1.1, 20 -3.4. Cross-PRN

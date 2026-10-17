@@ -913,6 +913,8 @@ about a minute of N² gap — and every recv1 restart is a #164 exposure.
 
 **10-17 third recurrence:** 17:35:29Z, two minutes after cx51's #189 canary cycle (NRestarts 5).
 
+**10-17 evening:** two more, at the stage-2 canary (19:49:45Z) and the fleet cycle (20:03:06Z); NRestarts 8.
+
 ### #164 — recv1 locks itself out through the bad-feed mask after a restart (2026-10-10)
 **What [live 10-10 15:46Z, ~4.5 h lost; 10-11 00:57Z, cleared 01:15Z]:** right after a recv1 restart the newest subset
 file holds no valid rows; bffs's power-outlier test sees `n_measured 0`, flags all 32 inputs, the bad list grows to
