@@ -16,6 +16,9 @@ link_libraries(kotekan_core_headers)
 add_executable(test_truncate test_truncate.cpp)
 target_link_libraries(test_truncate PRIVATE kotekan_libs kotekan_utils)
 
+add_executable(test_pfb_prototype test_pfb_prototype.cpp)
+target_link_libraries(test_pfb_prototype PRIVATE kotekan_libs kotekan_utils)
+
 add_executable(test_synchronized_queue test_synchronized_queue.cpp)
 target_link_libraries(test_synchronized_queue PRIVATE pthread kotekan_libs kotekan_utils)
 
