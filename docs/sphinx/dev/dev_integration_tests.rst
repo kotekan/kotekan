@@ -68,10 +68,11 @@ Differences from ``config/fengine``:
   copied to the host and written.
 * Inputs come from test generators instead of ``hdf5FileReadSingleFile``.
 * ``N2Accumulate`` reads the bad feed mask (``in_bad_feed_mask_buf``), as in
-  ``config/chord/pathfinder.j2``. This requires one mask frame per correlation frame, so
-  ``bf_mask_lifetime_in_samples`` is ``num_times``. A ``bufferBadInputs`` stage is available for
-  the REST test.
-* Lifetimes of slowly varying inputs are jinja variables; production values are the defaults.
+  ``config/chord/pathfinder.j2``. It needs one mask frame per correlation frame, while BB and FRB1
+  need the mask lifetime to equal their phase lifetimes, so it gets its own one-frame mask stream
+  with the same content (see Findings).
+* The bad feed mask lifetime (``bf_mask_lifetime_frames``, default 24), ``do_fringestop`` and the
+  test outputs are jinja variables; production values are the defaults.
 
 Running
 =======
@@ -159,7 +160,7 @@ upchannelizer output start ``T*``, ``coarse_freq`` / ``freq_upchan_factor`` /
    * - T5 Gains
      - Noise plus tone; reference and scaled runs.
      - upchan, BB, FRB1
-     - Per-fine-channel ``upchan_gain``, ``bb_scale`` and ``frb1_input_scale`` act as configured.
+     - Per-fine-channel ``upchan_gain``, ``bb_gain`` and ``frb1_input_scale`` act as configured.
      - 3% (int4), 1% (FRB1)
    * - T6 Dish locations
      - One-hot dishes; two-hot pairs; half-filled array.
@@ -203,37 +204,44 @@ Missing features (known gaps)
 
 These features are missing in kotekan. Add the tests once they exist.
 
-* **Bad feed mask in BB and FRB.** ``calcBBPhase``, ``setFRB1Phase`` and the FRB2 weights ignore
-  the bad feed mask; only the RFI SK kernels and ``N2Accumulate`` use it. Future test: T9 with BB,
-  FRB1 and FRB2 outputs, which must not change when bad feeds are poisoned.
 * **Changing beam pointings at runtime.** ``setBBBeams`` and ``setFRBBeams`` serve only GET
   ``/<stage>/beams``. Future test: re-point the beams every few frames and check that the peak
   moves exactly at the lifetime boundary.
-* **BB packet-loss mask.** Not on develop yet (draft PR #1766). Future test: T8 with the BB mask
-  and BB data.
 * **Time-varying gains.** The upchannelizer gain is ``do_once``, and the CHORD configs have no
   per-dish gains. Future test: T5 with gains that change every few frames.
+
+Two features that were missing when this plan was written are now on develop, and their tests
+belong in T8 and T9:
+
+* **Bad feed mask in BB and FRB1** (#1778): ``calcBBPhase`` and ``setFRB1Phase`` zero the phases
+  and weights of bad feeds. T9 adds BB and FRB1 outputs, which must not change when bad feeds
+  are poisoned.
+* **BB packet-loss mask** (#1766): T8 adds the BB mask (the AND over dishes of the expanded
+  mask) and BB data.
 
 Findings
 ========
 
-* **FRB1 was mirrored along M (grid x)** (T2, pathfinder). The FRB1 beam index along M peaked
-  at ``-2θ_M mod 2M`` instead of ``2θ_M``, while N (grid y) was correct. The FRB2 weights assume
-  ``2θ_M``, so FRB2 beams were mirrored in x as well. The second FFT in ``julia/kernels/frb.jl``
-  had the wrong sign; kotekan/kotekan#1779 fixes it, and these tests are based on that fix.
+* **FRB1 was mirrored along M (grid x)** (T2). The FRB1 beam index along M peaked at
+  ``-2θ_M mod 2M`` instead of ``2θ_M``, while N (grid y) was correct, and FRB2 inherited the
+  mirror. The second FFT in ``julia/kernels/frb.jl`` had the wrong sign; fixed in #1779.
+* **The upchannelizer and pathfinder BB outputs were under-loaded** (T3). The upchannelizer
+  window is scaled by 1/U and all configs used ``upchan_gain`` 1, so for 2.8 LSB input noise the
+  int4 rms fell to 0.34 LSB (89% zeros) at U = 64. The pathfinder ``bb_scale`` was 12 instead of
+  10, giving a BB rms of 0.75 LSB. #1784 sets ``upchan_gain`` to 0.8 √U (2 LSB output noise) and
+  replaces ``bb_scale`` by ``bb_gain = 1/√D``.
+* **A grid of one beam had NaN positions**, found while fixing the loading: ``setBBBeams`` and
+  ``setFRBBeams`` divided by ``num_x - 1``, so every CHIME BB beam (``bb_num_beams_x: 1``) was
+  zero. Fixed in #1785.
+* **The bad feed mask lifetime has conflicting requirements.** ``N2Accumulate`` needs one mask
+  frame per correlation frame (8192 samples). Since #1778, BB and FRB1 need the mask lifetime to
+  equal their phase lifetimes, a multiple of the FRB processing quantum (192 U samples, 12288
+  for U = 64). No single stream satisfies both. The test configs use two mask streams with the
+  same content; a production config that feeds the mask to ``N2Accumulate`` and to BB/FRB1 (as
+  ``config/chord/pathfinder.j2`` would) needs the same.
 * ``N2Accumulate`` requires correlation frames to start at multiples of the frame length. The
   tests assume that the receivers guarantee this.
-
-* **The upchannelizer is under-loaded at large U** (T3, pathfinder). ``julia/kernels/upchan.jl``
-  scales the PFB window by 1/U, and all configs set ``upchan_gain`` to 1, so noise has the rms
-  0.892 σ/√U before rounding. For σ = 2.8 LSB the int4 rms falls from 1.84 LSB for U = 2 to
-  0.34 LSB (89% zeros) for U = 64. T3 fails for U = 64; U = 32 (0.52 LSB) is just above the limit. A gain
-  of about 1.12 √U would keep the rms near σ.
-* **The pathfinder BB beams are under-loaded by two bits** (T3). ``bb_scale`` is 12, while the
-  formula ``log2(sqrt(num_dishes)) + 7`` in the comment above it gives 10 for 64 dishes. At
-  σ = 2.8 the BB rms is 0.75 LSB with 53% zeros; this passes the 0.5 LSB limit.
-* FRB3 encodes FRB2 within half a step plus float16 rounding, and its rms is 2.5 LSB by
-  construction (T3).
+* FRB3 encodes FRB2 within half a step plus float16 rounding (T3).
 
 Data volume and run time
 ========================

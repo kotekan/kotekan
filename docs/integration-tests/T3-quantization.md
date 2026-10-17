@@ -7,7 +7,7 @@ mostly saturated. FRB3 must encode FRB2 within half a quantization step.
 ## Errors this test catches
 
 - **Wrong normalization**: a missing or extra factor of U or √U in the upchannelizer, a wrong
-  window normalization, a wrong `upchan_gain`, `bb_scale` or BB shift. The output is then
+  window normalization, a wrong `upchan_gain` or `bb_gain`, or a wrong BB shift. The output is then
   almost all zeros or clipped at ±7.
 - **Wrong int4 encoding**: offset-encoded versus two's complement, swapped nibbles. This shows
   up as -8 values, heavy saturation or a wrong rms.
@@ -35,20 +35,20 @@ noise with some `s` before rounding. The rounded input has rms σ_in = 2.785.
     Ē_u = (G/U) Σ_{s=0}^{MU−1} W(s) e^{−2πi (u − (U−1)/2) s/U} E(w + s).
 
 For independent input noise, the output noise is `s_U = G σ_in sqrt(Σ_s W(s)²) / U`. For the
-M = 4 tap sinc-Hanning window this is `0.892 G σ_in / √U`. All configs use G = 1:
+M = 4 tap sinc-Hanning window, this is `0.892 G σ_in / √U`.
 
-| U  | s_U  | model rms | model zeros |
-|----|------|-----------|-------------|
-| 2  | 1.76 | 1.78      | 22%         |
-| 4  | 1.24 | 1.28      | 31%         |
-| 8  | 0.88 | 0.92      | 43%         |
-| 16 | 0.62 | 0.68      | 58%         |
-| 32 | 0.44 | 0.51      | 75%         |
-| 64 | 0.31 | 0.33      | 89%         |
+- The window's 1/U keeps a tone at a fine-channel centre at unit gain, so noise shrinks with U
+  unless G compensates.
+- The production gain is `G = 0.8 √U`, which gives `s_U = 0.714 σ_in = 1.99` for every U: a
+  model rms of 2.01 with 20% zeros.
+- With G = 1 instead, `s_U` would fall from 1.76 at U = 2 to 0.31 at U = 64, which is 89% zeros.
 
-**Baseband beams.** The beams are `J_b = Σ_d A_bd E_d / 2^s`, with |A_bd| = 127.5 and
-s = `bb_scale` = 12. With D = 64 dishes, `s_B = σ_in √D · 127.5 / 2^12 = 0.249 σ_in = 0.69`,
-which gives a model rms of 0.75.
+**Baseband beams.** The beams are `J_b = bb_gain · Σ_d exp(iφ_bd) E_d`. `calcBBPhase` realizes
+this as a shift `s` and a phase amplitude `|A| = 127.5 a`, with `bb_gain = 2^7 a / 2^s`.
+
+- With `bb_gain = 1/√D`, the noise is `s_B = σ_in · 127.5/128 = 2.77`: a model rms of 2.76,
+  with 1.9% saturated.
+- The old `bb_scale` of 12 gave `s_B = 0.249 σ_in` for D = 64.
 
 **FRB3.** `cudaQuantize4` splits each beam and fine channel into chunks of 256 FRB2 samples.
 Each chunk gets its own offset and scale, both stored as float16:
@@ -112,30 +112,24 @@ output re-checked with `--check-only`:
 
 ## Result (pathfinder, cx67, Release)
 
-**FAIL**, because U = 64 is under-loaded. The model rms is for noise only. The tone adds about
-3% to the rms; without the tone's fine channels, the measured rms is within 0.5% of the model.
+**PASS**, with the production gains of #1784 (`upchan_gain` = 0.8·√U, `bb_gain` = 1/√D). The
+model rms is for noise only; the tone adds about 3%.
 
 | output | rms  | model | zeros | ±7    | -8 |
 |--------|------|-------|-------|-------|----|
-| U=2    | 1.84 | 1.78  | 21.4% | 0.01% | 0  |
-| U=4    | 1.31 | 1.28  | 30.4% | 0     | 0  |
-| U=8    | 0.96 | 0.92  | 41.8% | 0     | 0  |
-| U=16   | 0.70 | 0.68  | 57.1% | 0     | 0  |
-| U=32   | 0.52 | 0.51  | 73.6% | 0     | 0  |
-| U=64   | 0.34 | 0.33  | 88.5% | 0     | 0  |
-| BB     | 0.78 | 0.75  | 51.6% | 0     | 0  |
-| FRB3   | 2.48 | 2.51  | 15.7% | 1.27% | 0  |
+| U=2    | 2.08 | 2.01  | 19.0% | 0.09% | 0  |
+| U=4    | 2.06 | 2.01  | 19.3% | 0.13% | 0  |
+| U=8    | 2.08 | 2.01  | 19.2% | 0.17% | 0  |
+| U=16   | 2.05 | 2.01  | 19.5% | 0.15% | 0  |
+| U=32   | 2.06 | 2.01  | 19.6% | 0.24% | 0  |
+| U=64   | 2.07 | 2.01  | 19.7% | 0.41% | 0  |
+| BB     | 2.86 | 2.76  | 13.9% | 2.61% | 0  |
+| FRB3   | 2.48 | 2.51  | 15.7% | 1.26% | 0  |
 
-- **Upchannelizer:** `julia/kernels/upchan.jl` scales the window by 1/U, and every config uses
-  `upchan_gain` 1. The noise rms therefore falls as 1/√U: U = 64 is below the limit, and
-  U = 32 is just above it. A gain of about 1.12 √U would keep the rms near σ_in.
-- **Baseband beams:** they pass, but are under-loaded by two bits. The BB beams away from the
-  source have rms 0.75; the beam nearest the source has 0.99.
-  - The formula `log2(√D) + 7` in the `bb_scale` comment gives 10 for the pathfinder's
-    64 dishes, but the config uses 12.
-  - With `bb_scale` 10 the rms would be about σ_in.
-- **FRB3:** it encodes FRB2 within `|q − (x − offset)/scale| ≤ 0.570` below saturation. That
-  uses at most 43% of ε, and all 226.6 M samples pass. The +7 values make up 1.20% and the −7
-  values 0.07%. There is no -8, and no chunk has scale 0.
+- **FRB3:** it encodes FRB2 within `|q − (x − offset)/scale| ≤ 0.567` below saturation. All
+  226.6 M samples are valid and pass. There is no -8, and no chunk has scale 0.
+- **Before #1784**, with `upchan_gain` 1 and `bb_scale` 12, T3 failed. The upchannelizer rms
+  fell as 0.892·σ/√U, from 1.84 LSB at U = 2 to 0.34 LSB (89% zeros) at U = 64. The BB rms was
+  0.75 LSB.
 
-Kotekan ran for 19 s and the check for 10 s. The output is 755 MB on disk (FRB2 340 MB).
+Kotekan runs for about 17 s and the check for 10 s. The output is 755 MB on disk.

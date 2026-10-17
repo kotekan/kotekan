@@ -138,10 +138,11 @@ def check(out_dir, var, config):
         hist = histogram(used_channels(ebar, 1), offset=True)
         results.append(int4_line(name, hist, sigma, failures))
 
-    # BB beams [Thi, B, F, P, T]: J = Σ_d A_d E_d / 2^s with |A_d| = 127.5
+    # BB beams [Thi, B, F, P, T]
     bb = read_output(out_dir, "bb_beams")
     audit(bb, first_seq=SEQ0, frequency_channels=channels)
-    sigma = sigma_in * math.sqrt(num_dishes) * 127.5 / 2 ** value(config, "bb_scale")
+    # J = bb_gain · Σ_d exp(iφ_d) E_d, with |A| = 127.5 a for 2^7 a (calcBBPhase)
+    sigma = sigma_in * math.sqrt(num_dishes) * value(config, "bb_gain") * 127.5 / 128
     results.append(
         int4_line("bb_beams", histogram(bb.data, offset=True), sigma, failures)
     )

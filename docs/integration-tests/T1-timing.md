@@ -27,14 +27,16 @@ FPGA sequence numbers that kotekan's timestamp convention predicts.
 
 ## Input
 
-A "box": every dish, polarization and coarse channel carries the constant voltage `4 + 0i` for
-FPGA samples `t ∈ [b0, b1)`, and zero elsewhere. `b0 = t0 + 3·T + 1000`, with T the frame length
-(8192 samples) and t0 the first sample. It therefore starts in the middle of the fourth frame,
-at a sample that is not a multiple of 16, 64 or any downsampling factor. The box is 3000
-samples long.
+A "box": every dish, polarization and coarse channel carries the constant voltage `1 + 0i` for
+FPGA samples `t ∈ [b0, b1)`, and zero elsewhere. This is a tone at the centre of each coarse
+channel, from zenith, so every beamformer sees it.
 
-A constant voltage is a source at zenith at the centre of each coarse channel, so every
-beamformer sees it.
+- `b0 = t0 + 3·T + 1000`, with `T` the frame length (8192 samples) and `t0` the first sample. The
+  box therefore starts in the middle of the fourth frame, at a sample that is not a multiple of
+  16, 64 or any downsampling factor.
+- The box is 3000 samples long.
+- The amplitude is small enough that no output saturates with the production gains. Saturation
+  would flatten the box and could move the upchannelized power centroid.
 
 ## Timestamp convention
 
@@ -106,16 +108,9 @@ fail. It does, at the first exact comparison.
 
 ## Result (pathfinder, cx67, Release)
 
-Both variants pass.
+Both variants pass:
 
-| output | centroid offset from the box centre |
-|---|---|
-| BB | edges exact |
-| upchannelizer, U = 2 | 0 samples |
-| upchannelizer, U = 4 | +0.4 samples |
-| upchannelizer, U = 8 | +1 sample |
-| upchannelizer, U = 16 | +2 samples |
-| upchannelizer, U = 32 | −4 samples |
-| upchannelizer, U = 64 | −4 samples |
-| FRB1 | 0 |
-| FRB2 | −0.4 |
+- **BB:** signal edges exact.
+- **All upchannelizers:** power centroids within ±U/4.
+- **FRB1:** centroid 0.5 samples from the box centre.
+- **FRB2:** centroid 0.3 samples from the box centre.
