@@ -164,7 +164,11 @@ the prompt once and writes the E and L lanes as the prompt rotated by +-2 pi (f_
 behind the config key `epl_from_prompt` (generator `--epl-from-prompt`, every chain but L2C). Offline: identity and
 DLL verified on the 10-12 telemetry capture, `cuda_gnss_despread_test` keeps P/P_HEAD bit-exact and pins the sign,
 cx52 A/B gnss_waveform 6.40 -> 3.24 ms per frame per GPU (docs/CHORD_GPU_BUDGET.md, fixtures/gpu_budget/README.md).
-Not merged (after the 10-13 14:10 ET session rollover, KV), not pushed, not armed.
+**10-17:** rebased clean onto dbc5af521 (`cdec5ae30`) and fast-forwarded into kv/chord-gnss; the kernel test re-run on
+cf05 (cx52 carries production again, never run it there): L1 PASS, `GPS_L2C_CM 10` failed two near-null E/L rows
+identically on the base 188b6e800 build (#197, the test's metric, fixed `04fdb52d5`). Manifest `dbe5c5083` arms cx51
+alone (14 comb-chain track commands; `gen_fleet --check` shows nothing else); node binary fleet-04fdb52d5. Wire test
+pending (below).
 **Wire test:** one node first (cx51), `--epl-from-prompt` in its manifest entry at a node cycle after the broker has
 re-anchored; judge against a sibling node, same sky same time: the lobe DLL's readback decay and `q`, the trim-quality
 and `present` gates, per-channel E/P/L in the telemetry (E_c/P_c must read exp(-i k0 df) as on 10-12), arc survival
