@@ -74,9 +74,15 @@ Measured per-record cost = (chains) x (one 0.18 ms wave each, at fp16 Phi and 80
    On sky 10-17 (#189 wire test, cx51 alone armed): nvidia-smi utilisation 71/67 -> 60/62 % on
    cx51's two GPUs with cx43 unchanged at 70/67, tracking indistinguishable from the sibling;
    fleet-wide from 18:36Z: 58-64 % on every GPU with data (#189 closed).
-   Stage 2, dropping the E/L lanes (2 per slot, E/L rows rotated in GnssN2RecordAssemble) would
-   take ~0.5 ms of pack and ~0.2 of the dual; it touches the lane contract at three sites and the
-   generator, and is not started.
+   Stage 2 (`b309a150a`, 10-17): with `epl_from_prompt` the comb chains pack two lanes per PRN
+   slot (P, P_HEAD; `lanes_per_slot`) and GnssN2RecordAssemble forms the E and L rows from P and
+   the kernel's rotation carried in PrnCtl::rot, so the pack writes half the lanes, each chain's
+   gather carries half the tiles (917504 -> 458752 bytes per frame) and the dual's used lanes
+   fall from 384 to 192 (it still runs its one 128+384 instantiation). Canary cx51 19:47Z:
+   tracking indistinguishable from the fleet (q within -0.10..0 of the median, discriminator
+   0.02-0.07 rms apart), the telemetry E/L rows the rotated P to -99..-107 dB, nvidia-smi
+   56/56 % against a four-lane sibling's 59/59 %. The lane headroom is the other half of it: a
+   ninth chain (GLONASS L3OC on the E5b comb) fits the axis with no wider dual.
 2. **Fewer chips (`despread_max_chips`, centred).** Loss is exactly the dropped window energy:
    212 chips 0 dB, 105 -0.018, 80 -0.045 (production), 60 -0.27, 40 -1.1, 20 -3.4. Cross-PRN
    leakage does not depend on it (set by the comb's channel count: -32 dB on 6 channels, -38 on
