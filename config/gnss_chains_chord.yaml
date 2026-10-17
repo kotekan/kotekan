@@ -21,6 +21,10 @@ common:
     rest-url: http://cx19:12048    # a gnss node: base for bare stage names and time0-endpoint
     time0-endpoint: telescope/time0_ns
     hops-per-sec: 195312.5         # F-engine record geometry, not a signal property
+  # The dishes are tipped for site work (2026-10-17 until the realignment): there is no
+  # boresight, so the D3 transit veto, the dead-reckon transit freeze and the assemblers'
+  # model-formation freeze stay off. Delete this line and restart the broker at the realignment.
+    boresight: none
   # Every ~30 s each chain posts its constellation's az/el (with rates) to its record
   # assemblers' /set_sat_geometry for the per-element steering. The generator arms steering on
   # every assembler; one without it replies {"steering":"off"}.
