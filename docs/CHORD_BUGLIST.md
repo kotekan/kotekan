@@ -118,6 +118,38 @@ survive, so a round 10 ms (an axis) is likelier than a record (a label). **Next:
 above every hour (it is 10 ms to +-2), then compare the search feed's `sample_seq` with the same node's record hops
 for one frame, and `utc0_sample0` against the hop axis (the F-engine `time0_ns` convention: frame start or end).
 **Fix [broker or aggregator]:** whichever axis is wrong; the harness then gets a `--dop` sweep in its gate.
+**21:00Z, NARROWED TO THE SEARCH STAGE (e2e.cf05, built 10-18 from the tree against builds/fleet-954af6047):** with
+PRODUCTION parameters (`--s-stride 1 --s-nchan 79 --refine-step 103 --fine-step 128 --refine-span 512 --refine-hops
+391 --cuda-refine`) the cp0 leg error is a clean line in Doppler: +0.389, +0.197, +0.102, +0.087, -0.010, -0.103,
+-0.214 chip at -2000..+2000 Hz = **-1.5e-4 chip/Hz = a 17 ms lever on cp0, the quantity the broker's clock solve,
+joint feed and SEARCH-MONITOR use**, while cp_at_ref (the tracker's seed) stays flat (+0.03..+0.11) and the CUDA
+refine equals the CPU one bit-for-bit. With the harness's DEFAULT parameters (27-channel stride-4 comb, fine refine
+step) the roles swap: cp0 flat, cp_at_ref -23 ms. The two phases come from ONE refined peak through
+`detection_phase`, so the lever is in how that peak's epoch is referenced versus the refine window/grid
+(`refine_span`/`refine_step`/the comb), not in the broker's Python (ruled out: trkresid uses the same
+`cp_predicted(v, hop/hps)` and is clean; the VM's NTP is at 40 us). Single-parameter toggles at +-2 kHz on the
+default comb (which aliases by 13 chips at |dop| >= 1 kHz, so only the sub-chip rows count): comb79 alone cp0
++0.744/+0.035; refine-step 103 alone +0.151/-0.247; span 512 alone +0.145/-0.564 -- each moves it. **Next
+(cf05, harness only, no sky):** print the acquire's coarse peak and the refine window's first/last hop against
+truth in e2e, read `detection_phase` (lib/stages/gnss/gnssSeedTransport.*) and `refine_peak`'s reference epoch, find
+the interval the Doppler advance is applied over for cp0 vs cp_at_ref, fix it in the stage, gate with a `--dop`
+sweep at production parameters. Then a broker restart (the aggregator binary carries the stage: a rebuild + KV
+cycle of gnss-aggregator) and re-fit b_sat vs Doppler live (must go to 0 +- 2 ms).
+
+### #208 — wall time sits in the radiometric path: the ephemeris is evaluated at `now_w` and labelled `t_eph_age = now_w - utc0_sample0` (2026-10-18, design, KV: nothing radiometric may depend on wall time)
+**What [tree]:** deadreckon.py:2224-2292 runs `predict_all` at the wall clock `now_w` and stamps the rows'
+capture-age epoch as `now_w - utc0_sample0`; `cp_predicted` then propagates range at `range_rate` from that wall-derived
+epoch to hop-axis epochs (`ref_hop / hops_per_sec` for detections, `rec_hop / hops_per_sec` for records). The comment
+there already knows the two are different clocks. `--dr-fengine-axis` (on, common:) moves "now" onto the hop axis
+for the seeds but not this epoch. Every wall error (NTP offset, the VM's clock) enters as range_rate x error per
+satellite; the VM's chrony reads 40 us today (RMS 0.3 ms), so no number moves now, but the rule stands: any time
+used radiometrically derives from frame 0 (`time0_ns`) and a sequence number. Also wall-stamped: `det_fresh` (a
+freshness gate, not radiometric) and the joint-feed warm-up (bookkeeping). **Fix [broker]:** evaluate the ephemeris
+at the hop-derived now (the fe-axis newest hop / hops_per_sec, converted to GPST through `time0_ns` + leap) and set
+`t_eph_age` to that hop time; keep wall time only for elapsed-time bookkeeping. A few lines in stage_dead_reckon +
+the selftest that pins "no wall time in cp_predicted's inputs" (grep-based, like test_gauge_churn). Needs a broker
+restart.
+
 
 ### #206 — viewer: L2OC's dark probes grey out satellites that L3OC holds, and the not-transmitted table is GPS-only (2026-10-18)
 **What [live 13:05Z]:** glo_l2oc runs with `--probe-dark`, so its three noise probes are GLONASS-M satellites above the
