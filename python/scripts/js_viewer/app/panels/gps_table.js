@@ -299,11 +299,16 @@ export class GpsTablePanel {
             const v = M.fmt(m);
             if (m && m.noise_probe) {
                 // Always the word, never the metric's own markup: a probe's q ~1 in red is the
-                // floor doing its job, not a satellite failing. The value rides the hover.
-                const plain = v != null ? String(v).replace(/<[^>]*>/g, "") : null;
-                return `<td title="noise probe on this signal`
-                    + (plain != null ? ` (${M.label} ${plain})` : "")
-                    + `: the chain's floor reference, not a measurement of the satellite"`
+                // floor doing its job, not a satellite failing. The value rides the hover, read
+                // from the metric's field: a formatter's markup carries its own quotes and
+                // ">" characters (q's hover says ">=2.2"), so stripping tags from it is not safe
+                // inside an attribute.
+                const raw = M.field ? m[M.field] : null;
+                const plain = typeof raw === "number" ? raw.toFixed(2)
+                            : (raw != null ? String(raw) : null);
+                const tip = `noise probe on this signal${plain != null ? ` (${M.label} ${plain})` : ""}`
+                    + `: the chain's floor reference, not a measurement of the satellite`;
+                return `<td title="${tip.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;")}"`
                     + ` style="padding:1px 5px;text-align:right;color:#b0b6bd;${extra || ""}">`
                     + `probe</td>`;
             }
