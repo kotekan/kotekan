@@ -162,7 +162,8 @@ def main():
         "--nodes",
         nargs="*",
         default=None,
-        help="nodes to combine (default: report each, then cumulative)",
+        help="nodes to combine, in order: each row adds the next node to those above "
+        "it (default: nodes.bringup_order from the node file)",
     )
     args = ap.parse_args()
 
@@ -229,7 +230,7 @@ def main():
     print(
         "ambiguity outside the main lobe. Compare against a BRDC model delay uncertainty"
     )
-    print("of roughly 10-40 ns -- every configuration above clears it by >=16x.")
+    print("of roughly 10-40 ns.")
 
 
 if __name__ == "__main__":

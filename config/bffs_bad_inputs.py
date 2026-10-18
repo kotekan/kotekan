@@ -84,9 +84,16 @@ def main():
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     ap.add_argument(
-        "--state", default=STATE, help="bffs state.json (host:/path or local)"
+        "--state",
+        default=STATE,
+        help="bffs's state.json, host:/path (read over ssh) or local (default %(default)s)",
     )
-    ap.add_argument("--conf", default=CONF, help="bffs.yaml, for sync_delay")
+    ap.add_argument(
+        "--conf",
+        default=CONF,
+        help="bffs's config, for choco.sync_delay; host:/path or local "
+        "(default %(default)s)",
+    )
     ap.add_argument("--out", default=None, help="write the body here instead of stdout")
     a = ap.parse_args()
     body, _ = fetch(a.state, a.conf)
