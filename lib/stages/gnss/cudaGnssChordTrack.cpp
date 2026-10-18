@@ -65,7 +65,7 @@ cudaGnssChordTrackState::cudaGnssChordTrackState(Config& config, const std::stri
         // an F-engine restart after that shows up only here. The config still wins, since
         // setting it is deliberate, but the conflict is logged.
         WARN("cudaGnssChordTrack: frame0_utc CONFLICT -- config {:.9f}, telescope {:.9f} "
-             "({:.3f} days apart). USING THE CONFIG because an explicit value is an "
+             "({:.3f} days apart). Using the config because an explicit value is an "
              "operator decision, but this almost always means the F-engine restarted and "
              "the config was not regenerated. Every record from this node is stamped "
              "{:.3f} days off, and nothing downstream can see it. Clear frame0_utc from "
@@ -224,7 +224,7 @@ void cudaGnssChordTrackState::set_prns_callback(kotekan::connectionInstance& con
     if (err.empty() && (int)want.size() != n_prn)
         err = "prns has " + std::to_string(want.size()) + " entries but this chain has "
               + std::to_string(n_prn)
-              + " slots. THE SLOT COUNT IS NOT LIVE: it sizes every buffer, GPU allocation and "
+              + " slots. The slot count is not live: it sizes every buffer, GPU allocation and "
                 "wire frame in the pipeline, so a resize is a fleet-wide re-plumb and a node "
                 "restart, not a swap. Send exactly one PRN per slot.";
     if (err.empty())

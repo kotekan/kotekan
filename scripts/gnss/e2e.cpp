@@ -157,49 +157,63 @@ static void usage() {
         "       offline, print the error in chips at each hand-off.\n\n"
         "  --prn N            PRN to inject and search for (default 3)\n"
         "  --signal NAME      tracker (baked) signal: GPS_L5_Q_NH (default), GAL_E5A_Q_CS,\n"
-        "                     BDS_B2A_P_CS. The _CS signals have NO blind search: --skip-search\n"
-        "  --cp204 X          INJECTED truth: generator argument, chips mod the tracker code\n"
-        "                     (204600 for L5_Q_NH; 1023000 for the _CS signals)\n"
-        "  --dop F            INJECTED truth Doppler, Hz\n"
-        "  --hop0 H           snapshot start hop (default ~6.8 days of uptime, as on sky)\n"
+        "                     BDS_B2A_P_CS. The _CS signals have no blind search and need\n"
+        "                     --skip-search\n"
+        "  --cp204 X          injected truth: generator argument, chips mod the tracker code\n"
+        "                     (204600 for GPS_L5_Q_NH; 1023000 for GAL_E5A_Q_CS, BDS_B2A_P_CS)\n"
+        "  --dop F            injected truth Doppler, Hz (default 1893.4)\n"
+        "  --hop0 H           snapshot start hop (default 114436200145, ~6.8 days of uptime)\n"
         "  --age-s S          seed age at the first tracker record (default 27)\n"
         "  --nrec N           tracker records to test (default 4)\n"
         "  --rec-gap-s S      spacing between tested records (default 10)\n"
         "  --dop-half F       Doppler search half-range about truth (default 1000; 0 = exact)\n"
         "  --dop-step F       Doppler grid step (default 31.25)\n"
-        "  --windows N        acquire_windows (default 1 -- see 16-vs-20 in the state doc)\n"
-        "  --refine-windows N replica-periods the REFINE integrates (default 1 = 16 ms)\n"
+        "  --windows N        acquire_windows: replica periods the acquire sums (default 1)\n"
+        "  --refine-windows N replica periods the refine integrates (default 1 = 16 ms at L5)\n"
         "  --fine-step N      acquire_fine_step (default 32)\n"
-        "  --threads N        acquire threads (default 6)\n"
+        "  --threads N        CPU acquire and refine threads (default 6)\n"
         "  --refine-span N    refine +-samples (default fft_len)  --refine-step N (default 303)\n"
-        "  --refine-hops N    refine integration length, hops (default = the full record)\n"
-        "  --seed-dop-err F   Hz of Doppler error given ONLY to the seed (the live residual)\n"
+        "  --refine-hops N    refine integration length, hops (default 0 = the whole refine\n"
+        "                     window)\n"
+        "  --seed-dop-err F   Hz of Doppler error given only to the seed (default 0)\n"
+        "  --seed-cp-err X    chips added to the seed's code phase only; +k x the primary code\n"
+        "                     length is an overlay-period error on a _CS/_NH signal\n"
         "  --seed-cp-rate X   code_phase_rate handed to the tracker, chips/hop\n"
-        "  --seed-dop-rate F  doppler_rate_hz_s handed to the tracker (default -0.36893, a\n"
-        "                     REAL fleet rate; 0 removes the re-pin lever and makes this\n"
-        "                     harness blind to the (delta f)*t_abs family -- see #52)\n"
-        "  --dll-spacing D    Early/Late tap offset from prompt, COMPONENT chips (default 0.5,\n"
-        "                     the node default). With --trim sweeps this measures q on the\n"
-        "                     peak and the discriminator slope for a spacing choice.\n"
-        "  --s-stride N       search comb stride (default 4 = 2 nodes; 1 = the 8-node agg)\n"
-        "  --t-stride N       TRACKER comb stride (default 16 = one GPU's comb; 1 = contiguous)\n"
+        "  --seed-dop-rate F  doppler_rate_hz_s handed to the tracker (default -0.36893, a real\n"
+        "                     satellite's rate). 0 holds the commanded Doppler constant across\n"
+        "                     records, which hides the (delta f)*t_abs family of phase errors\n"
+        "  --dll-spacing D    Early/Late tap offset from prompt, component chips (default 0.5).\n"
+        "                     To match a live chain, pass its dll_spacing, which comes from\n"
+        "                     dll_spacing_chips() in config/gen_chord_gnss_config.py. With --trim\n"
+        "                     sweeps this measures q on the peak and the discriminator slope for\n"
+        "                     a spacing choice.\n"
+        "  --s-stride N       search comb stride (default 4; 1 = contiguous)\n"
+        "  --t-stride N       tracker comb stride (default 16 = one GPU's comb; 1 = contiguous)\n"
         "  --t-nchan N        tracker channel count (default 7)\n"
         "  --t-chan0 N        tracker comb first channel (default 5972)\n"
-        "  --f-offset HZ      CARRIER, and the band under test. Recentres both combs on it\n"
-        "                     unless --t-chan0/--s-chan0 pin them. Without this the harness\n"
-        "                     is band-blind: it builds sky AND replica at 1176.45e6, so it is\n"
-        "                     self-consistent at any carrier\n"
-        "                     (be7d46e8e:docs/gnss_gpu_search.md 11.24).\n"
-        "  --s-nchan N        search channel count (default 27; 106 for the 8-node agg)\n"
+        "  --f-offset HZ      carrier, and so the band under test (default 1176.45e6, L5).\n"
+        "                     Recentres both combs on it unless --t-chan0/--s-chan0 pin them.\n"
+        "                     Sky and replica are both built at this carrier, so the harness is\n"
+        "                     self-consistent at any carrier and sees a band-dependent fault\n"
+        "                     only when this is the band under test.\n"
+        "  --s-nchan N        search channel count (default 27)\n"
         "  --s-chan0 N        search comb first channel (default 5972)\n"
         "  --noise R          add complex Gaussian noise, std = R x signal rms (0 = noiseless)\n"
         "  --trials N         repeat the search on N noise realizations, print the spread\n"
         "  --nseed N          RNG seed (default 12345), so a noisy run is reproducible\n"
-        "  --quantize         quantize the synthetic sky to 4+4b (default: noiseless float)\n"
+        "  --quantize         quantize the synthetic sky to 4+4b (default: float)\n"
         "  --skip-search      seed straight from truth -- isolates the tracker/despread leg\n"
-        "  --trim X           commanded DLL trim, chips (task #51). With --skip-search this\n"
-        "                     IS a known code error: the sign test for the actuator.\n"
-        "  --code-doppler-sign S   (default +1)\n");
+        "  --max-chips N      truncate the search replica's PFB chip gather to N chips\n"
+        "                     (default 0 = full span); the injected sky keeps the full span\n"
+        "  --chips-centered   with --max-chips, centre the window on the prototype peak\n"
+        "  --cuda-refine      also run the GPU refine and print its difference from the CPU one\n"
+        "  --trim X           commanded DLL trim, chips, passed to propagate_seed as\n"
+        "                     cudaGnssInject passes the fleet controller's. With --skip-search\n"
+        "                     it adds a known code error of known sign to the open-loop error:\n"
+        "                     the sign test for the actuator (trim_sign_gate.py sweeps it).\n"
+        "  --code-doppler-sign S   code-Doppler feed-forward sign: +1 (default) means an\n"
+        "                     approaching satellite's code runs fast, like its carrier; 0\n"
+        "                     disables it\n");
 }
 
 static bool arg_eq(const char* a, const char* b) {
@@ -477,7 +491,7 @@ int main(int argc, char** argv) {
     printf("  argument lever d(arg)/d(dop) here = %.1f chips/Hz\n",
            tbank.window_advance_chips(W0, 1.0) - tbank.window_advance_chips(W0, 0.0));
     printf("  search: %d chan stride %d | tracker: %d chan stride %d | data %s\n", o.s_nchan,
-           o.s_stride, o.t_nchan, o.t_stride, o.quantize ? "4+4b QUANTIZED" : "float (noiseless)");
+           o.s_stride, o.t_nchan, o.t_stride, o.quantize ? "4+4b quantized" : "float");
     printf("================================================================================\n\n");
 
     // The true physical phase at any window, from the injected argument (constant for all
@@ -717,9 +731,9 @@ int main(int argc, char** argv) {
             printf("    acquire snr   mean %.1f\n", msnr / n);
             printf("    within-period error: mean %+.3f  rms %.3f  worst %.3f chips\n", s1 / n,
                    std::sqrt(s2 / n), worst);
-            printf("    grating lobe spacing %.2f chips -> WRONG LOBE in %d/%d (%.0f%%)\n", lobe,
+            printf("    grating lobe spacing %.2f chips -> wrong lobe in %d/%d (%.0f%%)\n", lobe,
                    wrong, (int)n, 100.0 * wrong / n);
-            printf("    wrong PERIOD in %d/%d\n", badper, (int)n);
+            printf("    wrong period in %d/%d\n", badper, (int)n);
         }
         printf("\n");
     } else {
@@ -917,18 +931,21 @@ int main(int argc, char** argv) {
                    med_step, o.rec_gap_s, 2048.0 / 195312.5);
         else
             printf("    per-record phase residual about a linear ramp: %.4f rad rms\n", sig_res);
-        printf("    LIVE reads sigma_phi ~0.745 rad, flat across a 9x amp_snr range.\n");
+        printf("    LIVE: compare with the sky's deep-fold sigma_phi; a floor that stays flat as "
+               "amp_snr changes is not noise.\n");
         printf(
             "    %s\n",
             med_step > 1.5 ? ">>> cannot tell: the per-record step aliases the unwrap (see above)"
             : sig_res > 0.2
-                ? ">>> the floor REPRODUCES with no noise -- it is in our arithmetic OR in the\n"
+                ? ">>> the floor reproduces -- at --noise 0 it is in our arithmetic or in the\n"
                   "        seed model extrapolated over this record spacing. Re-run with\n"
                   "        --rec-gap-s 0.0104858 (the live cadence, which is what the deep fold\n"
                   "        actually integrates) to separate the two: arithmetic survives that,\n"
                   "        a multi-second extrapolation residual does not."
-                : ">>> noiseless chain is phase-clean; the live floor comes from something this "
-                  "harness does not model (overlay/nav wipe, straddle, multi-channel, or the sky)");
+                : ">>> the chain is phase-clean at these settings (--seed-dop-rate 0\n"
+                  "        hides the (delta f)*t_abs family); a sky floor above this comes from\n"
+                  "        something this harness does not model (overlay/nav wipe, straddle,\n"
+                  "        multi-channel, or the sky)");
 
         // ---- [4a] the per-record phase step series ----
         // A smooth model mismatch (a quadratic phase) gives nearly constant steps, so a small
@@ -972,7 +989,7 @@ int main(int argc, char** argv) {
     else if (worst < L)
         printf("   -- within-period error, DLL-recoverable if < ~1 chip\n");
     else
-        printf("   -- OFF BY %+.0f OVERLAY PERIODS (%.3f within-period)\n", std::round(worst / L),
+        printf("   -- OFF BY %+.0f overlay periods (%.3f within-period)\n", std::round(worst / L),
                wrap(worst, L));
     printf("================================================================================\n");
     return 0;

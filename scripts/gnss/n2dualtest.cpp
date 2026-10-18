@@ -310,8 +310,8 @@ int main(int argc, char** argv) {
     //       than computed.
     {
         CmpStats st;
-        cmp_tiles(st, "shipmask", hvam.data(), NS, hvd.data(), NS, tiles_aa_mixed);
-        fails += report("[5b] class-mask AA|MIXED (SHIPPED) vs full, bitwise", st);
+        cmp_tiles(st, "aamixmask", hvam.data(), NS, hvd.data(), NS, tiles_aa_mixed);
+        fails += report("[5b] class-mask AA|MIXED vs full, bitwise", st);
     }
     {
         long untouched = 0, touched = 0;
@@ -330,7 +330,7 @@ int main(int argc, char** argv) {
         CmpStats st;
         st.checked = untouched + touched;
         st.bad = touched;
-        fails += report("[5c] BB region left UNCOMPUTED under the shipped mask", st);
+        fails += report("[5c] BB region left uncomputed under mask AA|MIXED", st);
     }
 
     // [6] Frequency map: a launch over a subset of channels must reproduce the full launch's

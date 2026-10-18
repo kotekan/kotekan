@@ -296,7 +296,7 @@ void GnssTelemGather::sweep_stale() {
     // Logged outside the lock, once per transition rather than once per sweep.
     for (const auto& k : went)
         WARN("GnssTelemGather[{:s}]: {:s} has sent nothing for {:.1f} s -- excluding it from the "
-             "alignment verdict. NOTHING BLOCKS ON IT: this stage has no barrier, so the rest of "
+             "alignment verdict. Nothing blocks on it: this stage has no barrier, so the rest of "
              "the fleet is unaffected and it rejoins on its own. If it does not, that instance's "
              "chain has stopped upstream of the record buffer.",
              unique_name, k, _stale_after_s);

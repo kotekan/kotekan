@@ -165,7 +165,7 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
                 f_mhz.push_back(id * 0.1953125);
             _steer = gnss::ElemSteer(std::move(pos), std::move(f_mhz), (int)_prns.size(), st_sign,
                                      st_hold);
-            INFO("GnssGpuRecordAssemble[{:s}]: #102 element steering READY ({:d} elements, "
+            INFO("GnssGpuRecordAssemble[{:s}]: element steering READY ({:d} elements, "
                  "{:d} channels, sign {:+.0f}) -- awaiting /set_sat_geometry posts",
                  unique_name, _n_elements, (int)_st_fids.size(), st_sign);
         }
@@ -392,17 +392,17 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
             return;
         }
         if (_cube_out_buf->metadata_pool == nullptr)
-            WARN("GnssGpuRecordAssemble[{:s}]: cube_buf {:s} has NO metadata_pool. Frames "
-                 "will carry no metadata; a bufferSend on this buffer DROPS them (it cannot "
+            WARN("GnssGpuRecordAssemble[{:s}]: cube_buf {:s} has no metadata_pool. Frames "
+                 "will carry no metadata; a bufferSend on this buffer drops them (it cannot "
                  "send a frame without one) and a bufferRecv far side expects the pool's "
-                 "type. Give it metadata_pool: gnss_pool (#110).",
+                 "type. Give it metadata_pool: gnss_pool.",
                  unique_name, cbuf);
         INFO("GnssGpuRecordAssemble[{:s}]: beam-cube PUSH leg on -> {:s} ({:d} B/frame, "
              "~{:.2f} MB/s at this window length); backpressure DROPS and the loss is "
              "counted into the next frame",
              unique_name, cbuf, need, need / ((double)_cube_win_samples / _sample_rate) / 1e6);
         INFO("GnssGpuRecordAssemble[{:s}]: BEAM CUBE on -- {:d} PRN x {:d} channel(s) x {:d} "
-             "element(s); COHERENT + incoherent, "
+             "element(s); coherent + incoherent, "
              "windows of {:d} samples ({:.5f} s), ring depth {:d}; "
              "{:d} cell(s), {:.1f} MB",
              unique_name, n, nc, _n_elements, (long long)_cube_win_samples,
@@ -1413,9 +1413,9 @@ void GnssGpuRecordAssemble::spectrum_callback(kotekan::connectionInstance& conn)
     // and the caller must skip ahead; `not_yet` is normal (instances lag each other by a few
     // records) and the caller re-asks.
     if (_spec_freq_ids.empty()) {
-        conn.send_error("per-channel spectrum export is OFF: this stage's config has no "
-                        "'channel_ids' (regenerate the node config with a "
-                        "gen_chord_gnss_config.py that wires it -- task #32)",
+        conn.send_error("per-channel spectrum export is off: this stage's config has no "
+                        "'channel_ids' (regenerate the node config with "
+                        "config/gen_chord_gnss_config.py)",
                         kotekan::HTTP_RESPONSE::BAD_REQUEST);
         return;
     }

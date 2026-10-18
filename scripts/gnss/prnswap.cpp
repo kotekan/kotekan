@@ -70,7 +70,7 @@ int main() {
 
     check(bank.set_prn(0, PRN_C), "set_prn accepts a valid PRN");
     check(bank.full_code(0) == ref.full_code(0),
-          "the swapped slot's code table is BYTE-IDENTICAL to one built that way");
+          "the swapped slot's code table is byte-identical to one built that way");
     check(bank.full_code(1) == ref.full_code(1), "... and the untouched slot is untouched");
     check(bank.prns() == std::vector<int>({PRN_C, PRN_B}), "the bank's map follows the swap");
     check(bank.set_prn(0, PRN_C), "a no-op swap succeeds and costs nothing");
