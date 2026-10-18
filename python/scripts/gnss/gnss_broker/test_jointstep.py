@@ -113,7 +113,7 @@ def _sod(ts):
 
 class _FakeJoint(object):
     def __init__(self, clk, sigma, n):
-        self.clk, self._sigma = clk, sigma
+        self.clk, self._sigma, self.L, self.clk_rate = clk, sigma, REF_LEN, 0.0
         self._idx = {("G", i): i for i in range(n)}
 
     def sigma(self, key=None):
@@ -125,7 +125,6 @@ class _Chain(object):
 
     def __init__(self):
         rx = Receiver(log=lambda m: None)
-        rx.joint_declare_unit("gps_l5", REF_RATE, REF_LEN)
         self.ctx = types.SimpleNamespace(
             args=types.SimpleNamespace(
                 joint_min_sats=4,
@@ -133,6 +132,9 @@ class _Chain(object):
                 joint_clk_max_sigma=0.5,
                 joint_clk_max_step_chips=STEP,
                 joint_clk_step_hold_s=HOLD,
+                # The step guard is judged on the legacy clock here; the coast a refusal
+                # rides is test_jointclk's.
+                joint_clk_coast_max_s=0.0,
                 chip_rate_hz=REF_RATE,
             ),
             rx=rx,
@@ -150,6 +152,7 @@ class _Chain(object):
         c.t0, c.drp.clk_now = t, legacy
         js = _FakeJoint(joint, sigma, n)
         c.joint_state = lambda _rx, _b, _a: js
+        c.rx._joint["__receiver__"] = js  # the unit's source (Receiver.joint_unit)
         lines = []
         orig = deadreckon._log_rl
         deadreckon._log_rl = lambda key, msg, every_s=10.0: lines.append(msg)

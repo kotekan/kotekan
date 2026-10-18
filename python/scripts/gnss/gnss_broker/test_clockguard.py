@@ -496,7 +496,7 @@ def test_crossband_bound_is_a_time():
 
 class _FakeJoint(object):
     def __init__(self, clk, sigma=0.05, n=14):
-        self.clk, self._sigma = clk, sigma
+        self.clk, self._sigma, self.L, self.clk_rate = clk, sigma, L5_LEN, 0.0
         self._idx = {("G", i): i for i in range(n)}
 
     def sigma(self, key=None):
@@ -513,7 +513,9 @@ def _jclk(c, t, joint):
         0.5,
     )
     c.args.joint_clk_max_step_chips, c.args.joint_clk_step_hold_s = 0.3, 30.0
+    c.args.joint_clk_coast_max_s = 0.0  # the coast is test_jointclk's
     c.joint_state = lambda _rx, _b, _a: joint
+    c.rx._joint["__receiver__"] = joint  # the unit's source (Receiver.joint_unit)
     dr.dr_joint_clk(c)
     return c.drp.clk_now
 
@@ -526,7 +528,6 @@ def test_escape_suppressed_by_joint_adoption():
         ("gal_e5b", L5_RATE, L5_LEN, "1207.14MHz"),
     ):
         rx = Receiver(log=lambda m: None)
-        rx.joint_declare_unit("gps_l5", L5_RATE, L5_LEN)
         c = _consumer(rx, name, rate, ln, band)
         _donor(rx, 100.0, TRUE_CLK)
         _adopt(c, 100.5)

@@ -32,6 +32,13 @@ import threading
 
 from .transport import _log
 
+# The joint state's one unit: reference chips, 10.23-Mcps chips (gps_l5's, the first feeder's).
+# The state stores bare numbers, so every feeder converts its code phases in by
+# JOINT_REF_RATE_HZ / its chip rate (deadreckon.dr_joint_shadow) and every consumer converts
+# out through joint_unit() and joint_clk_delta. A chain at 10.23 Mcps has a ratio of exactly
+# 1.0, so its numbers pass through bit for bit.
+JOINT_REF_RATE_HZ = 10.23e6
+
 
 class _Shared(object):
     """One contributed quantity: who said it, what, how well, and when."""
@@ -58,41 +65,45 @@ class Receiver(object):
         # known mod extra["epoch_s"], e.g. the NH joint
         # fit's clock mod 20 ms): what extends a
         # short-window donor clock.
-        self._joint = {}  # "__receiver__" -> the one JointReceiverState
-        self._joint_unit = {}  # chain -> (chip_rate_hz, code_len) of the code
-        # phases it feeds into the receiver-wide joint state
+        self._joint = {}  # "__receiver__" -> the one JointReceiverState, in
+        # reference chips (JOINT_REF_RATE_HZ) whatever its feeders' chip rates
 
     # -- the joint receiver state -----------------------------------------------------------
-    def joint_receiver(self, band, code_len, **kw):
+    def joint_receiver(self, band, code_len, chip_rate_hz, **kw):
         """One joint state for the whole receiver, shared by every chain.
 
         Created on first use, so a process that never runs the joint solve never builds it
         (its constructor imports numpy).
 
-        The modulus is why this takes code_len. A shared state has one wrap, and a
-        measurement from a chain with a shorter code is known only mod that code, so the
-        state must wrap at the shortest period any caller passes, or it would treat an
-        aliased value as a real excursion. A shorter code_len shortens the modulus in place;
-        joint_ambiguous() reports a clock that has grown close to the wrap. code_len is
-        compared as given, in the caller's own chips.
+        The modulus is why this takes code_len and chip_rate_hz. A shared state has one
+        wrap, and a measurement from a chain with a shorter code is known only mod that
+        code, so the state must wrap at the shortest period any caller passes, or it would
+        treat an aliased value as a real excursion. The state is in reference chips
+        (JOINT_REF_RATE_HZ), so the caller's code_len is converted before it is compared:
+        E6's 5115 chips at 5.115 Mcps and gps_l5's 10230 at 10.23 Mcps are the same 1-ms
+        period, 10230 reference chips, and L2C-CM's 10230 at 0.5115 Mcps are 20 ms, 204600,
+        which never shortens a state the 1-ms codes hold at 10230. A shorter period shortens
+        the modulus in place; joint_ambiguous() reports a clock that has grown close to the
+        wrap. Any clk0 in kw must already be in reference chips (the feeder converts).
 
         Same argument as the clock adoption's modulus rule: reducing to a shorter period is
         well defined, lengthening is not.
         """
         from .state_filter import JointReceiverState
 
+        L_ref = float(code_len) * (JOINT_REF_RATE_HZ / float(chip_rate_hz))
         with self._lock:
             cur = self._joint.get("__receiver__")
             if cur is None:
                 kw = dict(kw)
-                kw["code_len"] = float(code_len)
+                kw["code_len"] = L_ref
                 self._joint["__receiver__"] = JointReceiverState(**kw)
-            elif float(code_len) < cur.L:
+            elif L_ref < cur.L:
                 # Shorten in place, never rebuild: a rebuild would discard every converged
                 # row the moment another chain joined. Reducing a modulus loses no
                 # information (JointReceiverState.shorten_modulus): same rows, same
                 # covariance, clk re-wrapped.
-                cur.shorten_modulus(float(code_len))
+                cur.shorten_modulus(L_ref)
             return self._joint["__receiver__"]
 
     def joint_ambiguous(self):
@@ -103,25 +114,14 @@ class Receiver(object):
             st = self._joint.get("__receiver__")
             return bool(st is not None and abs(st.clk) > 0.4 * st.L)
 
-    def joint_declare_unit(self, chain, chip_rate_hz, code_len):
-        """A chain that feeds code phases into the joint state declares the chips they are in.
-
-        The state stores bare numbers: its clk, biases and sigma are in the chips of whoever
-        fed it, known mod that feeder's code. Nothing inside the filter records which chips
-        those are, so a consumer at another chip rate cannot convert without being told, and
-        the unit must come from the feeders, not from the consumer's assumption. Declared on
-        every feed cycle, before the feed, so a state fit to consume always has a declaration
-        behind it."""
-        with self._lock:
-            self._joint_unit[chain] = (float(chip_rate_hz), float(code_len))
-
     def joint_unit(self):
-        """(chip_rate_hz, code_len) of the joint state's code phases, or None when no feeder
-        has declared one or the feeders disagree. One state holds one unit: mixed-rate feeds
-        cannot be converted by any single factor, so a consumer must refuse them."""
+        """(chip_rate_hz, code_len) of the joint state's code phases: (JOINT_REF_RATE_HZ, its
+        modulus in reference chips) whenever the state exists, None only when it does not.
+        One state holds one unit by construction (every feeder converts in), so a consumer
+        at any chip rate converts out through this and joint_clk_delta."""
         with self._lock:
-            units = set(self._joint_unit.values())
-            return units.pop() if len(units) == 1 else None
+            st = self._joint.get("__receiver__")
+            return None if st is None else (JOINT_REF_RATE_HZ, float(st.L))
 
     # -- time anchor --------------------------------------------------------------------
     def time_anchor(self, fetch, chain):

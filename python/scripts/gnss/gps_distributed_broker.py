@@ -559,6 +559,10 @@ def main(argv=None, rx=None, publisher=None):
     # with coast age measures the b_sat random walk (the state's q_b).
     p2c = {"key": None, "t0": 0.0, "samples": [], "history": [], "n0": 0}
 
+    # The joint state is in reference chips (Receiver.JOINT_REF_RATE_HZ); the P2C lines report
+    # in this chain's, like the coast samples they sit beside.
+    _jk = receiver.JOINT_REF_RATE_HZ / float(args.chip_rate_hz)
+
     def _p2c_pick(js):
         """The most-established satellite not tested in the last few rotations."""
         cand = [
@@ -594,8 +598,9 @@ def main(argv=None, rx=None, publisher=None):
                     len(s),
                     s[-1][0],
                     txt,
-                    js.bias(key) if key in js._idx else float("nan"),
-                    js.sigma(key) if key in js._idx else float("nan"),
+                    # The state is in reference chips; the samples above are in ours.
+                    (js.bias(key) / _jk) if key in js._idx else float("nan"),
+                    (js.sigma(key) / _jk) if key in js._idx else float("nan"),
                 )
             )
             p2c["history"].append(
@@ -635,8 +640,8 @@ def main(argv=None, rx=None, publisher=None):
                     % (
                         _p2c_name(k),
                         p2c["n0"],
-                        js.bias(k),
-                        js.sigma(k),
+                        js.bias(k) / _jk,  # reference chips -> ours
+                        js.sigma(k) / _jk,
                         args.joint_p2c_hold_s,
                     )
                 )
@@ -658,7 +663,7 @@ def main(argv=None, rx=None, publisher=None):
         writes) if it is fit to be consumed, else None. Never raises: a consumer must fall
         back to its own estimator, not take the broker down."""
         try:
-            js = rx_.joint_receiver(band, CODE_LEN, gauge_mode="prior")
+            js = rx_.joint_receiver(band, CODE_LEN, a.chip_rate_hz, gauge_mode="prior")
             if len(js._idx) < a.joint_min_sats:
                 return None
             # A deaf state rejects every update, so it cannot correct itself while predict()
@@ -1848,7 +1853,9 @@ def main(argv=None, rx=None, publisher=None):
         ):
             rr_kcoh_fed["last"] = _kco
             try:
-                _jrk = rx.joint_receiver(band_id, CODE_LEN, gauge_mode="prior")
+                _jrk = rx.joint_receiver(
+                    band_id, CODE_LEN, args.chip_rate_hz, gauge_mode="prior"
+                )
                 _nk = 0
                 _krows = []
                 for _p, _kv in sorted(_kco.items()):
@@ -1942,17 +1949,10 @@ def main(argv=None, rx=None, publisher=None):
         # fallback and is logged beside it.
         if "rate" in joint_consume:
             _jr = _joint_state(rx, band_id, args)
-            # clk_rate is in the joint state's feeders' chips per second (Receiver.joint_unit),
+            # clk_rate is in the joint state's reference chips per second (Receiver.joint_unit),
             # not this chain's: dividing by our own chip rate would scale the fractional rate by
-            # the chip-rate ratio (20x on L2C, 2x on E6). With no single unit it is not consumed.
+            # the chip-rate ratio (20x on L2C, 2x on E6).
             _ju = rx.joint_unit() if _jr is not None else None
-            if _jr is not None and _ju is None:
-                _log_rl(
-                    "jointrate-unit",
-                    "code-rate clock NOT taken from the JOINT state: its "
-                    "chip rate is undeclared or mixed across its feeders",
-                    every_s=60.0,
-                )
             _ppm = (_jr.clk_rate / _ju[0] * 1e6) if _ju is not None else None
             # Plausibility bound: never hand the instrument a physically impossible rate because
             # an estimator produced it. CHORD's reference is GPS-disciplined, so a rate beyond
@@ -2015,7 +2015,9 @@ def main(argv=None, rx=None, publisher=None):
                 )
             else:
                 try:
-                    _j = rx.joint_receiver(band_id, CODE_LEN, gauge_mode="prior")
+                    _j = rx.joint_receiver(
+                        band_id, CODE_LEN, args.chip_rate_hz, gauge_mode="prior"
+                    )
                     # No receiver-wide term solved yet -> nothing to command. The sigma
                     # gate below then handles per-sat convergence one row at a time.
                     _ctx.jrc = _j if _j.f_carrier_sigma() != float("inf") else None
