@@ -292,16 +292,21 @@ export class GpsTablePanel {
         // Empty cells: "·" = this satellite's block does not broadcast this signal (nothing to
         // detect); "—" = it does, or that is unknown, and there is no value; "probe" = the
         // chain seeded this satellite as a noise reference on this signal (a dark probe,
-        // --probe-dark: it cannot broadcast the signal), and a probe cell with a value is
-        // greyed; blank = this constellation has no signal in that band slot (the pad to the
-        // widest constellation).
+        // --probe-dark: it cannot broadcast the signal), under every metric, with the value
+        // in the hover; blank = this constellation has no signal in that band slot (the pad
+        // to the widest constellation).
         const mcell = (m, sg, prn, extra) => {
             const v = M.fmt(m);
-            if (m && m.noise_probe)
-                return `<td title="noise probe on this signal: the chain's floor reference, `
-                    + `not a measurement of the satellite" style="padding:1px 5px;`
-                    + `text-align:right;color:#b0b6bd;${extra || ""}">`
-                    + `${v != null ? v : "probe"}</td>`;
+            if (m && m.noise_probe) {
+                // Always the word, never the metric's own markup: a probe's q ~1 in red is the
+                // floor doing its job, not a satellite failing. The value rides the hover.
+                const plain = v != null ? String(v).replace(/<[^>]*>/g, "") : null;
+                return `<td title="noise probe on this signal`
+                    + (plain != null ? ` (${M.label} ${plain})` : "")
+                    + `: the chain's floor reference, not a measurement of the satellite"`
+                    + ` style="padding:1px 5px;text-align:right;color:#b0b6bd;${extra || ""}">`
+                    + `probe</td>`;
+            }
             if (v != null)
                 return `<td style="padding:1px 5px;text-align:right;${extra || ""}">${v}</td>`;
             const nx = sg && not_transmitted(sg.key, prn, sg.sys || sg.tag);

@@ -117,7 +117,8 @@ livebeam_server `_gps_signal_capability()` builds the lists per constellation fr
 `_prns` as {sys: [...]}, and `not_transmitted(key, prn, sys)` looks the PRN up in its own constellation. Checked: the
 builder on the live inventory lists L2OC = the K slots only and L3OC = K + M+, B2a/B2b = BDS-3 only; test_lock_metrics.py
 (dukpy, three new cases) OK. **Judge after `systemctl --user restart gnss-viewer`:** R4/R5/R12 rows filled, their L2OC
-cell "probe"; R6's L3OC cell "—", not "·"; "N locked" counts them.
+cell "probe" under every metric (the first cut passed the q/sig/hold/duty formatters' own red markup through,
+KV 10-18 14:30Z); R6's L3OC cell "—", not "·"; "N locked" counts them.
 
 ### #205 — GLONASS, the first night: what the two OC chains showed, kept as watch items (2026-10-18)
 **What [overnight 02:43-12:30Z, judged from broker.log, the obs rows and chain_health]:** (a) **R9 never acquires on
