@@ -110,8 +110,14 @@ R9 (K1B, never acquired on L2OC, #205 a) and R11 print the same when up. GAL_* a
 too (harmless beyond PRN 32). **Fix [viewer, script-side]:**
 keep `noise_probe` per signal (`sig_by[key]`), judge `active` over the non-probe signals, render a probe cell as
 "probe" in grey; build the capability per constellation (the server already has `_glonass_capable_set()` via
-`prnmap.registry_capable(sigid)`; BeiDou from prnmap's BDS-3 set) and key `_prns` by constellation. Test:
-js_viewer/test_lock_metrics.py (dukpy) gets a case with a probe on one signal and a lock on another.
+`prnmap.registry_capable(sigid)`; BeiDou from prnmap's BDS-3 set) and key `_prns` by constellation. **Fix shipped 10-18 (viewer code; the restart is KV's):** gps_feed.js keeps `noise_probe` per signal,
+counts probe signals per row and calls a row a probe only when every signal reporting it is one; the row summary (sig,
+C/N0, q) skips probe signals; gps_table.js renders a probe cell as "probe" (greyed value when the metric has one);
+livebeam_server `_gps_signal_capability()` builds the lists per constellation from `prnmap.prn_blocks(sys)` and ships
+`_prns` as {sys: [...]}, and `not_transmitted(key, prn, sys)` looks the PRN up in its own constellation. Checked: the
+builder on the live inventory lists L2OC = the K slots only and L3OC = K + M+, B2a/B2b = BDS-3 only; test_lock_metrics.py
+(dukpy, three new cases) OK. **Judge after `systemctl --user restart gnss-viewer`:** R4/R5/R12 rows filled, their L2OC
+cell "probe"; R6's L3OC cell "—", not "·"; "N locked" counts them.
 
 ### #205 — GLONASS, the first night: what the two OC chains showed, kept as watch items (2026-10-18)
 **What [overnight 02:43-12:30Z, judged from broker.log, the obs rows and chain_health]:** (a) **R9 never acquires on

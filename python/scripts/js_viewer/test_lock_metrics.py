@@ -7,8 +7,9 @@ With nothing on the wire a chain can still serve sig in the thousands, far past 
 bar, and the incoherent C/N0 has a pole at u -> a. A lock rule keyed on sig, or an unguarded
 C/N0, then draws a full constellation of locked satellites at implausible C/N0 on a dead
 band. This checks that the lock rule judges on q against the published floor (sig decides
-only where a chain publishes no q), that a noise probe never reads locked, and that the
-C/N0 refuses rather than diverges.
+only where a chain publishes no q), that a noise probe never reads locked, that a dark probe
+on one signal does not grey a satellite another signal holds (#206), and that the C/N0
+refuses rather than diverges.
 
 It parses the real file. The lock rule and signal_metrics() are extracted from
 app/panels/gps_feed.js by brace matching and executed with dukpy, so this cannot drift from
@@ -345,6 +346,37 @@ def main():
         "locked signal's q",
     )
     check(r[8]["active"], "a row with no q on any signal still falls back to sig")
+
+    # ---- dark probes (glo_l2oc --probe-dark, 10-18): an overhead satellite seeded as the
+    # noise reference on a signal it cannot broadcast, while another chain tracks it (#206) --
+    print("\ndark probes: a probe on one signal does not grey a satellite another signal holds")
+    dark_a = dict(prn=4, fleet_q=0.9, fleet_q_floor=1.1, sig=-0.2, noise_probe=True)
+    dark_b = dict(
+        prn=4, fleet_q=5.9, fleet_q_floor=1.1, sig=3000.0, cn0_prompt_db=36.0,
+        cn0_prompt_duty=1.0,
+    )
+    both_a = dict(prn=5, fleet_q=0.9, fleet_q_floor=1.1, sig=-0.2, noise_probe=True)
+    both_b = dict(prn=5, fleet_q=1.0, fleet_q_floor=1.1, sig=0.5, noise_probe=True)
+    r = {
+        x["prn"]: x
+        for x in run_merged(
+            js,
+            {"a": {"status": [dark_a, both_a, probe]}, "b": {"status": [dark_b, both_b]}},
+        )
+    }
+    check(
+        r[4]["active"] and r[4]["q"] == 5.9,
+        "a dark probe on one signal, locked at q 5.9 on another, reads LOCKED on that q "
+        "(R4: L2OC probe, L3OC lock)",
+    )
+    check(
+        not r[5]["active"],
+        "a satellite that is a probe on every signal reporting it stays UNLOCKED",
+    )
+    check(
+        not r[11]["active"],
+        "a probe on its only signal stays UNLOCKED (the below-horizon kind)",
+    )
 
     # ---- the live rows -------------------------------------------------------------------
     print("\nlive rows from the publisher at %s" % host)

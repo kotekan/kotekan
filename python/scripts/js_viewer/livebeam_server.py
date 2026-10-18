@@ -827,18 +827,24 @@ def discover_broker_chains(host, port, timeout=3.0):
 
 
 def _gps_signal_capability():
-    """{sigid: [GPS PRNs whose block broadcasts it]} for every signal in UNIFIED_SIGNALS that
-    has a sigid, plus "_prns": every GPS PRN the registry knows.
+    """{sigid: [PRNs whose satellite block broadcasts it]} for every signal in UNIFIED_SIGNALS
+    that has a sigid, plus "_prns": {constellation letter: every PRN the registry knows there}.
 
     Lets the table distinguish "this satellite does not transmit that signal" from "it does and
     we are not seeing it": a Block IIR satellite carries none of L1C, L2C and L5, so blanks
-    there are correct, while the same blanks on a Block III satellite are a fault.
+    there are correct, while the same blanks on a Block III satellite are a fault; likewise a
+    GLONASS-M+ satellite blank on L2OC (K generations only) against a K1B blank there.
 
-    The source is the IGS metadata SINEX via gnss_broker.prnmap, the registry the broker's
-    --signal-capability filters on, and prnmap.block_carries owns which block first carried
-    each civil signal, so viewer and broker cannot disagree. SVN -> PRN assignments carry a
-    validity window, so a re-used PRN resolves to the satellite flying it today. Celestrak TLE
-    titles are not used: they carry identity errors, BeiDou worst.
+    The source is the IGS metadata SINEX via gnss_broker.prnmap, per constellation
+    (prnmap.prn_blocks), the registry the broker's --signal-capability filters on, and
+    prnmap.block_carries owns which block carries each signal (L3OC on GLO-K and GLO-M+, L2OC on
+    GLO-K only, B2a/B2b on BDS-3 only), so viewer and broker cannot disagree. SVN -> PRN
+    assignments carry a validity window, so a re-used PRN resolves to the satellite flying it
+    today. Celestrak TLE titles are not used: they carry identity errors, BeiDou worst. A
+    constellation the registry does not list gets no "_prns" entry and no lists, and the client
+    then shows its blanks as "no detection". Until 10-18 every signal was listed against the
+    GPS block map, so the GLONASS and BeiDou lists came out empty and every blank cell there
+    read "not broadcast" (#206).
 
     Returns {} on any failure, and the client then marks nothing as not transmitted: never
     claim a satellite is incapable when that could not be checked.
@@ -850,10 +856,15 @@ def _gps_signal_capability():
         from gnss_broker import prnmap
 
         prnmap.ensure_registry()
-        blocks = prnmap.gps_prn_blocks()
-        if not blocks:
+        # One block map per constellation the inventory names (sys is backfilled by main()).
+        blocks = {}
+        for s in UNIFIED_SIGNALS:
+            sysc = s.get("sys") or _SYS_TAG.get((s.get("sigid") or "")[:3])
+            if sysc and sysc not in blocks:
+                blocks[sysc] = prnmap.prn_blocks(sysc)
+        if not any(blocks.values()):
             log_.warning(
-                "GPS block map unavailable: the IGS registry "
+                "block map unavailable: the IGS registry "
                 "(~/.cache/kotekan_gps/igs_satellite_metadata.snx) is missing or "
                 "unparseable; not-transmitted marking is off (fail open)."
             )
@@ -861,14 +872,16 @@ def _gps_signal_capability():
         caps = {}
         for s in UNIFIED_SIGNALS:
             sid = s.get("sigid")
-            if not sid:
-                continue  # no sigid: no list, so the client shows "no detection"
+            sysc = s.get("sys") or _SYS_TAG.get((sid or "")[:3])
+            if not sid or not blocks.get(sysc):
+                continue  # no sigid, or no registry for it: the client shows "no detection"
             caps[sid] = sorted(
-                p for p, b in blocks.items() if prnmap.block_carries(sid, b)
+                p for p, b in blocks[sysc].items() if prnmap.block_carries(sid, b)
             )
-        # The PRNs the registry knows, so the client can tell "this block does not carry the
-        # signal" from "this PRN is not in the registry" (unknown, shown as no detection).
-        caps["_prns"] = sorted(blocks)
+        # The PRNs the registry knows per constellation, so the client can tell "this block
+        # does not carry the signal" from "this PRN is not in the registry" (unknown, shown as
+        # no detection).
+        caps["_prns"] = {c: sorted(b) for c, b in blocks.items() if b}
         return caps
     except Exception as e:
         log_.warning(
@@ -928,7 +941,8 @@ class WsPortResource(resource.Resource):
             reply["chains"] = self.chains
             reply["unified"] = True
             reply["signals"] = self.signals
-            reply["capability"] = self.capability  # {sigid: [transmitting PRNs]}
+            # {sigid: [transmitting PRNs], "_prns": {sys: [registered PRNs]}}
+            reply["capability"] = self.capability
         return json.dumps(reply).encode("utf-8")
 
 

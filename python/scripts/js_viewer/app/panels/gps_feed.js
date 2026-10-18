@@ -43,15 +43,16 @@ export function configure_chains(defs) {
 // delivered. The feed keys satellites by constellation+PRN across bands and hangs each signal's
 // metrics off r.sig_by[combiner]; the table renders one column per signal.
 export let SIGNALS = null;
-// Signal key -> Set of GPS PRNs whose satellite block broadcasts it (the server's
+// Signal key -> Set of PRNs whose satellite block broadcasts it (the server's
 // _gps_signal_capability, from the IGS registry). Lets the table separate "this satellite does
 // not transmit that signal" from "it does and we are not seeing it": a Block IIR satellite
 // blank across L1C/L2C/L5 is correct, the same blanks on a Block III satellite are a fault.
 // null -> every cell is treated as capable: never claim a satellite is incapable on
 // information that could not be obtained.
 export let CAPABILITY = null;
-/// Every GPS PRN the registry knows (the server's caps._prns). A PRN outside this set is
-/// unknown -- see not_transmitted().
+/// Constellation letter -> Set of the PRNs the registry knows there (the server's caps._prns).
+/// A PRN outside its constellation's set, or a constellation with no set, is unknown -- see
+/// not_transmitted(). An older server sends one GPS list; it is taken as "G".
 export let CAPABILITY_PRNS = null;
 export function configure_signals(sigs, caps) {
     if (!Array.isArray(sigs) || !sigs.length) { SIGNALS = null; return; }
@@ -65,19 +66,28 @@ export function configure_signals(sigs, caps) {
                 by_key[s.key] = new Set(caps[s.sigid]);
         if (Object.keys(by_key).length) {
             CAPABILITY = by_key;
-            CAPABILITY_PRNS = new Set(caps._prns);
+            CAPABILITY_PRNS = {};
+            const pr = caps._prns;
+            if (Array.isArray(pr)) CAPABILITY_PRNS.G = new Set(pr);
+            else if (pr && typeof pr === "object")
+                for (const c of Object.keys(pr))
+                    if (Array.isArray(pr[c])) CAPABILITY_PRNS[c] = new Set(pr[c]);
         }
     }
     if (_active_feed) _active_feed._reconfigure();
 }
-/// true when `prn` is known not to transmit the signal `key`; false when capable or unknown.
+/// true when `prn` of constellation `sys` is known not to transmit the signal `key`; false
+/// when capable or unknown.
 ///
-/// A PRN absent from CAPABILITY_PRNS is unknown and falls through as capable, so missing
-/// registry data renders as "no detection" rather than as a claim that the satellite does not
-/// transmit.
-export function not_transmitted(key, prn) {
+/// A PRN absent from its constellation's CAPABILITY_PRNS set, or a constellation the registry
+/// does not cover, is unknown and falls through as capable, so missing registry data renders
+/// as "no detection" rather than as a claim that the satellite does not transmit. (Until
+/// 10-18 the server built every signal's list from the GPS block map, so GLONASS and BeiDou
+/// lists came empty and every blank cell there read "not broadcast", #206.)
+export function not_transmitted(key, prn, sys) {
     if (!(CAPABILITY && CAPABILITY[key])) return false;
-    if (CAPABILITY_PRNS && !CAPABILITY_PRNS.has(prn)) return false;   // absent => unknown
+    const known = CAPABILITY_PRNS && CAPABILITY_PRNS[sys || "G"];
+    if (!known || !known.has(prn)) return false;   // no registry here, or absent => unknown
     return !CAPABILITY[key].has(prn);
 }
 
@@ -336,6 +346,7 @@ export class GpsFeed {
                 id, tag, prn, az: null, el: null, snr: null, detected: false,
                 amp: 0, sig: 0, cn0: null,
                 q: null, q_floor: null, noise_probe: false,
+                n_status: 0, n_probe: 0,   // status rows seen / of them flagged noise_probe
                 sig_by: {},     // combiner-key -> signal_metrics()
             });
             return sats.get(id);
@@ -376,18 +387,25 @@ export class GpsFeed {
                     const prev = r.sig_by[sg.key];
                     if (prev && prev.snr != null) m.snr = prev.snr;
                     r.sig_by[sg.key] = m;
-                    // Row summary = the best signal (sky colour, sort, the sig lock rule).
+                    r.n_status += 1;
+                    // A noise probe is that chain's floor reference, not a measurement of the
+                    // satellite, so it contributes nothing to the row summary. With
+                    // --probe-dark (glo_l2oc, 10-18) a probe is an overhead satellite that
+                    // cannot broadcast this one signal while another chain tracks it, so the
+                    // flag stays with the signal (the cell says "probe") and the row is judged
+                    // on the others. Until 10-18 one probe flag greyed the whole row (#206).
+                    if (m.noise_probe) { r.n_probe += 1; continue; }
+                    // Row summary = the best non-probe signal (sky colour, sort, the sig lock
+                    // rule).
                     if ((m.sig || 0) > (r.sig || 0)) {
                         r.sig = m.sig; r.amp = m.amp;
                     }
                     if (m.cn0 != null && (r.cn0 == null || m.cn0 > r.cn0)) r.cn0 = m.cn0;
                     // The lock rule's inputs: the signal with the highest q, judged against its
-                    // own floor. A satellite that is a noise probe on any signal is below the
-                    // horizon on all of them.
+                    // own floor.
                     if (m.q != null && (r.q == null || m.q > r.q)) {
                         r.q = m.q; r.q_floor = m.q_floor;
                     }
-                    if (m.noise_probe) r.noise_probe = true;
                 }
             // Beam summary per (satellite, signal), attached to the same sig_by entry the
             // status built, so a beam cell and its C/N0 cell describe the same signal. A
@@ -406,6 +424,10 @@ export class GpsFeed {
             }
         }
         const list = [...sats.values()];
+        // A probe row is a probe on every signal that reported it: the below-horizon probes
+        // of a chain without --probe-dark, which no chain tracks. A dark probe on one signal
+        // beside a track on another keeps its row.
+        for (const r of list) r.noise_probe = r.n_status > 0 && r.n_probe === r.n_status;
         // "Locked" (r.active) means the code loop is on the peak, judged on q, not that
         // something was significant: sig rides the deep and known-rate folds, which re-search
         // rate and phase and certify whatever they land on, noise included, so a dead band can
@@ -413,7 +435,7 @@ export class GpsFeed {
         //
         // A row carrying q is active when q >= Q_LOCK and q is above q_floor * Q_FLOOR_MARGIN.
         // Marginal rows (above the floor, under Q_LOCK; amber in the table) render idle, the
-        // conservative direction. A noise probe is never active. A row without q falls back to
+        // conservative direction. A probe row is never active. A row without q falls back to
         // sig >= SNR_LOCK, or to detection / |A| where no row reports sig.
         const have_sig = list.some(r => r.sig > 0);
         for (const r of list) {
