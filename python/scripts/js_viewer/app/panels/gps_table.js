@@ -46,7 +46,7 @@ const METRICS = {
                if (eta != null && n && eta < 0.25 * n)
                    return `<span style="opacity:.55" title="coherence efficiency ${eta.toFixed(0)}`
                         + `/${n} records -- the fold barely cohered (stale or wrong residual`
-                        + ` rate, or a phase discontinuity), so this is a LOWER BOUND">${v}</span>`;
+                        + ` rate, or a phase discontinuity), so this is a lower bound">${v}</span>`;
                return v;
            }},
     // The per-element complex gain, summarised (gps_feed.beam_summary).

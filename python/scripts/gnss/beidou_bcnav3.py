@@ -442,8 +442,7 @@ if __name__ == "__main__":
     print(
         "\n%s"
         % (
-            "B-CNAV3 NB-LDPC + frame + ephemeris codec SELF-CONSISTENT (type-10 orbit "
-            "LIVE-VERIFIED vs BRDC 0.015-0.079 m)"
+            "B-CNAV3 NB-LDPC + frame + ephemeris codec SELF-CONSISTENT"
             if not fails
             else "SELF-TEST FAILURES: %d" % fails
         )

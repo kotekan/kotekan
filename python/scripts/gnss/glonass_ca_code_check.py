@@ -160,14 +160,14 @@ def main():
         side.add(sum(c[i] * c[(i + s) % N] for i in range(N)))
     if side != {-1}:
         print(
-            "autocorrelation: sidelobes take values %s, expected EXACTLY {-1} at all %d "
+            "autocorrelation: sidelobes take values %s, expected exactly {-1} at all %d "
             "non-zero shifts -- not a maximal-length sequence"
             % (sorted(side)[:6], N - 1)
         )
         ok = False
     else:
         print(
-            "autocorrelation: all %d non-zero shifts are EXACTLY -1 (ideal m-sequence, "
+            "autocorrelation: all %d non-zero shifts are exactly -1 (ideal m-sequence, "
             "-54.2 dB)" % (N - 1)
         )
 

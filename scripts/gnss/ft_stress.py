@@ -226,15 +226,15 @@ def main():
         action="append",
         default=[],
         choices=["receiver", "joint", "notes"],
-        help="run only these lanes (repeatable)",
+        help="run only this lane; repeat for several (default: all three)",
     )
     ap.add_argument(
         "--selftest",
         action="store_true",
-        help="put the PRE-FIX unlocked drain_notes back and require the NOTES "
-        "lane to FAIL. A race detector that has never been seen detecting "
-        "is indistinguishable from a no-op, and this one is fast enough "
-        "and green enough to be exactly that by accident.",
+        help="install an unlocked read-then-rebind drain_notes and require the NOTES "
+        "lane to fail: a race detector that has never been seen detecting "
+        "is indistinguishable from a no-op. Only the free-threaded interpreter "
+        "can show the race; under the GIL the selftest reports inconclusive.",
     )
     a = ap.parse_args()
 
@@ -266,7 +266,7 @@ def main():
             # the race cannot show here. The selftest means something only free-threaded.
             print(
                 "SELFTEST INCONCLUSIVE UNDER THE GIL -- expected. The GIL hides this "
-                "defect; that is WHY the audit had to be an audit. Re-run free-threaded."
+                "defect. Re-run free-threaded."
             )
             return 0
         print(

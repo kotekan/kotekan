@@ -439,12 +439,5 @@ if __name__ == "__main__":
     )
 
     bad_any = fails or ok4 is False or crc24q(bad) == c or p5 or p6
-    print(
-        "\n%s"
-        % (
-            "ALL SELF-CONSISTENT (ICD-correctness pends live E1B symbols)"
-            if not bad_any
-            else "SELF-TEST FAILURES"
-        )
-    )
+    print("\n%s" % ("ALL SELF-CONSISTENT" if not bad_any else "SELF-TEST FAILURES"))
     sys.exit(1 if bad_any else 0)

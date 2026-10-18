@@ -40,7 +40,7 @@ def fleet(present_q):
 
 # ---- QSeries: a satellite sick enough to leave the sample ---------------------------------
 def test_the_e4_case():
-    print("the E4 case (2026-08-25): a satellite sick enough to leave the sample")
+    print("QSeries: a satellite sick enough to leave the sample")
 
     # Two satellites over a 100-cycle window. PRN 4 is healthy for the first 15 cycles, then
     # goes absent for the remaining 85 -- its sick interval. PRN 9 is healthy throughout.
@@ -56,7 +56,7 @@ def test_the_e4_case():
     n, npres, mean, sd, frac = q.summary(4)
     check(
         n == 100,
-        "the window keeps ALL 100 cycles for PRN 4, not just the 15 it reported",
+        "the window keeps all 100 cycles for PRN 4, not just the 15 it reported",
     )
     check(npres == 15, "only 15 of them are present samples")
     check(abs(frac - 0.15) < 1e-9, "present_frac is 15%% -- the honest headline")
@@ -119,7 +119,7 @@ def test_window_and_line():
     check(line is not None and line.startswith("QPOP gal_e5b"), "the line is emitted")
     check(
         line.index("2:") < line.index("1:"),
-        "WORST FIRST: the absent satellite leads, because a PRN-ordered line buries it",
+        "worst first: the absent satellite leads, because a PRN-ordered line buries it",
     )
 
     check(
@@ -144,7 +144,7 @@ def test_no_side_effects():
 
 # ---- BrownoutDetector ---------------------------------------------------------------------
 def test_brownout():
-    print("D1: the brownout episode (the 2026-08-25 23:00 shape)")
+    print("D1: the brownout episode")
 
     d = BrownoutDetector(window_s=600.0, frac=0.6, min_base=4, min_len_s=60.0)
     msgs = []
@@ -189,7 +189,7 @@ def test_brownout():
 
 # ---- SawtoothDetector: the handover sawtooth ----------------------------------------------
 def test_sawtooth():
-    print("D3: the handover sawtooth (#92's P2 population)")
+    print("D3: the handover sawtooth")
 
     d = SawtoothDetector(ramp_chips=0.5, wipe_frac=0.5)
     msgs = []
@@ -221,8 +221,8 @@ def test_sawtooth():
         d3.note(i * 10.0, 9, i * 0.05)
     check(
         d3.note(300.0, 9, 0.0, browned_out=True) is None,
-        "during a brownout nothing is reported -- superposing the two is what made E3 "
-        "look heterogeneous",
+        "during a brownout nothing is reported -- that wipe is D1's event, not a "
+        "handover",
     )
 
     # A wipe during a railing transit belongs to the transit; counting it would mix geometry
@@ -241,7 +241,7 @@ def test_sawtooth():
         d5.note(i * 10.0, 5, (i - 31) * 0.05)
     check(
         d5.note(610.0, 5, 0.02, in_transit=False) is not None,
-        "a NEW ramp wiping after the transit clears IS reported -- suppression must not "
+        "a new ramp wiping after the transit clears is reported -- suppression must not "
         "leave the detector deaf",
     )
 
@@ -254,7 +254,7 @@ def test_sawtooth():
 
 
 def test_sawtooth_v2():
-    print("D3 v2: startup hold-off, the weak-sat qualifier, and the two wipe classes")
+    print("D3: startup hold-off, the weak-sat qualifier, and the two wipe classes")
 
     def ramped(**kw):
         d = SawtoothDetector(ramp_chips=0.5, wipe_frac=0.5, **kw)
@@ -274,7 +274,7 @@ def test_sawtooth_v2():
         d.note(400.0 + i * 10.0, 7, i * 0.05)
     check(
         d.note(700.0, 7, 0.02, uptime_s=1800.0) is not None,
-        "the SAME satellite fires later -- suppression must not stamp the cooldown",
+        "the same satellite fires later -- suppression must not stamp the cooldown",
     )
 
     # A trim ramping on a satellite that was absent, or present at q ~1.3, the whole time is
@@ -292,7 +292,7 @@ def test_sawtooth_v2():
     d4 = ramped()
     check(
         d4.note(300.0, 7, 0.02, present_frac=0.9, q_mean=3.0) is not None,
-        "a healthy locked satellite's wipe IS reported",
+        "a healthy locked satellite's wipe is reported",
     )
 
     # Two classes: a wipe within rebase_window_s of a birth step is a REBASE-WIPE (the seed
@@ -338,7 +338,7 @@ if __name__ == "__main__":
     check(msg is not None, "a ramp longer than the window still reports a wipe")
     check(
         msg is not None and ">=" in msg and "CENSORED" in msg,
-        "... and its span is marked as a LOWER BOUND, not a measured duration:\n"
+        "... and its span is marked as a lower bound, not a measured duration:\n"
         "           %s" % (msg or "")[:150],
     )
 

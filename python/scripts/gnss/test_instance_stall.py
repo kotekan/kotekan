@@ -78,7 +78,8 @@ def main():
             % ((hi - 600_000_000.0) / 1e6)
         )
         print(
-            "    -> --fe-axis-stale-s watches that maximum and is correctly silent here;"
+            "    -> fe_axis_stale_s watches one hop (the --combiner's), which climbs "
+            "like this one, so it is silent here;"
         )
         print("       the per-instance axis is the one it cannot resolve.")
 
@@ -134,9 +135,7 @@ def main():
         for f in fails:
             print("FAIL: %s" % f)
         return 1
-    print(
-        "GATE GOOD: 6 arms, including the fleet-max blind spot and the global control"
-    )
+    print("GATE GOOD: 6 arms, including the one-hop blind spot and the global control")
     return 0
 
 

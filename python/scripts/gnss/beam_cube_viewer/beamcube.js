@@ -76,7 +76,7 @@ async function loadDay(day) {
   if (S.cache.has(day)) return S.cache.get(day);
   const man = await (await fetch(`cube_${day}.json`)).json();
   if (!man.chains.every(c => c.bin))
-    throw new Error(`cube_${day}.json predates the per-chain export (no "bin" per chain). ` +
+    throw new Error(`cube_${day}.json lists a chain without a "bin" file. ` +
       `Re-run gnss_beam_cube.py export.`);
   for (const c of man.chains) c.loaded = false;
   S.cache.set(day, man);
@@ -449,7 +449,7 @@ function syncLabels() {
   const nOn = enabledList().length;
   const nMask = S.elOn ? S.elOn.size : S.nelem;
   const polTxt = S.polSel === 'both' ? '' : ` · pol ${S.polSel} only (slot, not feed plane`
-                 + ` — they agree only after the 2026-09-14 rewire)`;
+                 + ` — they differ on three dishes in the first array epoch)`;
   document.getElementById('elinfo').textContent =
     elOn
       ? (DARK.includes(one) ? `element ${one} is DARK (broken LNA) — expect an empty map` : '')
@@ -635,9 +635,9 @@ async function boot() {
   // config/chord_array_epochs.json three dishes carried slot 0 on plane B, so a per-pol average
   // over a day of that epoch mixes planes. index.json records each day's array_epoch; the page
   // does not check it.
-  const POL_TITLE = 'pol = the SLOT (element = pol*16 + dish), not the feed plane. '
-                  + 'Before the 2026-09-14 19:08Z rewire, A06/A07/B07 sat on the other plane '
-                  + 'in slot 0, so a per-pol average over an earlier day mixes both planes.';
+  const POL_TITLE = 'pol = the slot (element = pol*16 + dish), not the feed plane. '
+                  + 'In the first array epoch (config/chord_array_epochs.json), A06/A07/B07 have '
+                  + 'the other plane in slot 0: a per-pol average over that epoch mixes planes.';
   const setPol = v => {
     S.polSel = v;
     try { localStorage.setItem('beamcube.polSel', JSON.stringify(v)); } catch (e) {}

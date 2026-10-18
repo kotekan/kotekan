@@ -236,7 +236,7 @@ def main():
     allc = {k: tuple(v) for k, v in codes.items()}
     if len(set(allc.values())) != 2 * N_PRN:
         print(
-            "codes: NOT distinct across data+pilot (%d unique of %d)"
+            "codes: not distinct across data+pilot (%d unique of %d)"
             % (len(set(allc.values())), 2 * N_PRN)
         )
         ok = False

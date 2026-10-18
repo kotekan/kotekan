@@ -822,8 +822,8 @@ def _fetch_brdc_now(when=None, cache_dir=CACHE):
         _log_hourly(
             "BRDC daily unavailable (%s) -- continuing on the station-hourly merge "
             "alone. Expected while BKG is down and CDDIS has not yet closed the day; "
-            "the hourly IS the current-day source in that regime. The sky is thinner "
-            "than a daily+hourly union, NOT absent." % _e
+            "the hourly is the current-day source in that regime. The sky is thinner "
+            "than a daily+hourly union, not absent." % _e
         )
     tok = _earthdata_token()
     doy = when.timetuple().tm_yday
@@ -840,7 +840,7 @@ def _fetch_brdc_now(when=None, cache_dir=CACHE):
     if not srcs:
         # The daily and the hourly both failed: fatal, and the message names both.
         raise RuntimeError(
-            "no BRDC source at all: the daily is unreachable/uncached AND the "
+            "no BRDC source at all: the daily is unreachable/uncached and the "
             "station-hourly merge returned nothing. Check BKG/CDDIS/GSSC "
             "reachability and %s" % cache_dir
         )

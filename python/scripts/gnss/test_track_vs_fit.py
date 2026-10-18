@@ -140,7 +140,7 @@ class TestSeedPhaseTransport(unittest.TestCase):
 
         v = seed_phase_at_ref(0.0, 1894.984, CHIP, HPS, CARR, SGN, MOD, 8192)
         self.assertAlmostEqual(
-            v, 52.3713, delta=1e-3, msg="the measured e2e offset was 52.3713 chips"
+            v, 52.3713, delta=1e-3, msg="expected the one-hop offset, 52.3713 chips"
         )
 
     def test_omitting_fft_len_costs_one_sample(self):
@@ -239,8 +239,7 @@ class TestTrackerPhaseAt(unittest.TestCase):
             ((got - shipped + MOD / 2) % MOD) - MOD / 2,
             0.0,
             delta=1e-3,
-            msg="the audit followed cp0 where the tracker follows "
-            "the phase -- this is exactly #43",
+            msg="the audit followed cp0 where the tracker follows the phase",
         )
         self.assertGreater(
             abs(((got - (4321.0 + shipped - 9999.0) + MOD / 2) % MOD) - MOD / 2),

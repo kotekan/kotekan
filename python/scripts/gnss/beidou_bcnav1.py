@@ -297,7 +297,7 @@ if __name__ == "__main__":
     print(
         "\n%s"
         % (
-            "B-CNAV1 codec SELF-CONSISTENT (live CRC + dpos pend deploy)"
+            "B-CNAV1 codec SELF-CONSISTENT"
             if not fails
             else "SELF-TEST FAILURES: %d" % fails
         )

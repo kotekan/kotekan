@@ -1083,6 +1083,17 @@ cf06 `~/gnss/builds/commentpass/{verify_s8.sh,verify_s8_tools.sh}` base vs edit 
 selftest, the seven goldens, the tool tests, pyflakes); `check_js.sh` on the gnss VM (cf06 has no node); `gen_equiv.sh`
 comparing config bodies (headers differ by design under 9d); 9c: the cf05 CUDA + CPU builds, boost, `--check-config`.
 Then ask KV to merge; after it, KV regenerates the configs (9d) and restarts the Python services when convenient.
+**10-18 DONE, NOT MERGED.** Branch `kv/string-pass-s9` (worktree `~/gnss/strings9-wt`): five string commits on
+kv/chord-gnss 96a341e7b (broker; generator + emitted headers; C++ log text; tools, scripts, site, viewer; the strings of
+the #191 step 0c/1 commits, re-verified against the joint-clock coast and the search monitor) plus one docs/comments commit
+(this entry, #192's list, CHORD_VIS_CAPTURE.md steps 2-4, three `_FROZEN` unit comments, the cube viewer's pol comment).
+627 literals in 104 files; prove_s9 OK against kv/chord-gnss on all of them. Verified base vs edit on the rebased tree:
+cf06 broker tests, selftest, pyflakes, tool tests identical and all seven goldens EQUIVALENT (8 digests, identical);
+`--help` for 38 scripts; check_js 29/29; the viewer tests; generated config bodies identical (headers changed by
+design); cf05 CUDA + CPU builds (WERROR), 57/57 boost, `--check-config` 9/9, the five C++ tools compile. Tools and
+results: `~/gnss/builds/stage9/` (prove_s9.py, s9lib.py, protected.json, allow9.json, s9_results.json). `test_context`
+fails one check at 96a341e7b itself (base and edit alike). The merge goes to whichever session holds kv/chord-gnss;
+after it, regenerate the fleet and the three instance configs (every header changes) and close this entry.
 
 ### #192 — comment pass, stage 10: the repair run for the ~200 small bugs the stage-8 reviewers confirmed (2026-10-15, PLANNED after stage 9)
 **What [tree]:** reading every comment against its code in stage 8 (#188) surfaced 199 findings that an adversarial
@@ -1124,6 +1135,22 @@ checks as stage 8. Cost about one and a half stage-8 families (~15M subagent tok
 up to 478k per poll; ~100-1000/s steady after the 18:33Z cycle, the NIC counter flat, the other five at 0-20/s):
 pre-existing, not the 10-17 change; measure its lcore load and the recv1 reconnect bursts before blaming the
 search or the control path.
+
+**10-18 additions from stage 9 (#193):** the stage-9 reviewers confirmed 27 more code bugs while checking strings against
+code: `~/gnss/builds/stage9/s9_bugs_real.txt` (one line each, with the reviewer's note; raw results
+`s9_results.json`, `s9_delta_results.json` beside it). Five were text-only and are fixed on kv/string-pass-s9; the
+rest join this run. Among them: `--frame0-nano` exits against a reachable fleet (the frame-0 check reads the node file
+before the override); a stale DCB product logs a fall-back to broadcast group delays but keeps the stale table; the
+gather header's REGENERATE recipe is sliced every 92 characters, mid-flag, and keeps `--out`; deadreckon's tripwire
+divides by 29.3 m/chip on every chain; `gnss_beam_cube build --source elem` reports a health mask it never applies;
+`node_wedge_probe.sh`'s remote `pgrep -f` matches its own shell. Live and for the #191 owner rather than this run:
+`--detectors-monitor` also turns off dr_seed's slewed refresh (`_slew` tests `not ctx.detectors`), so gal_e5a's locked
+satellites get the plain hold -- consistent with E33 walking to the 3.0 trim clamp 18:26-18:30Z; the monitored chain
+never learns the nh hint (dr_solve_healthy is False with no offsets); its publisher reports has_search.
+On (g): cf06 replayed all seven goldens EQUIVALENT at 19:30Z and 20:13Z 10-18, on e116f8b7b and on 96a341e7b, so check
+whether the red/nondeterministic replays are specific to the VM (its BRDC store or registry) before re-blessing.
+**How to run it (KV 10-18):** one subagent at a time -- two parallel lanes hit the session cap twice in stage 8 and once
+in stage 9.
 
 ### #157 — `test_buffer_peek` fails its `peeks_won > 0` check under ThreadSanitizer (flaky under slowdown; found 2026-09-30)
 - **What:** under TSan's slowdown the worker thread wins every iteration, so `BOOST_CHECK(peeks_won > 0)`

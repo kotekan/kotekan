@@ -60,8 +60,7 @@ def parse_header(buf):
         raise SystemExit(
             f"cube frame version {ver}: versions before {CUBE_VERSION_MIN} did not carry the "
             f"maxima, so their frame length is not derivable from the frame. Read them with the "
-            f"generator flags that produced them, or (better) re-record -- v1 was never written "
-            f"outside a bench."
+            f"generator flags that produced them, or re-record."
         )
     if ver not in CUBE_HEADER_BYTES:
         raise SystemExit(
@@ -226,7 +225,7 @@ def cmd_ls(args):
     # The two kinds of loss are different faults, so they are never added together.
     print(
         f"holes in the window index : {grand_holes}   "
-        f"(missing frames NOT claimed by any sender)"
+        f"(missing frames not claimed by any sender)"
     )
     print(
         f"sender-side drops         : {grand_drop}   "
@@ -238,7 +237,7 @@ def cmd_ls(args):
             "or the archiver. Look there, not at the nodes."
         )
     if grand_drop and not grand_holes:
-        print("⇒ the senders dropped and SAID SO; nothing was lost in transport.")
+        print("⇒ the senders dropped and said so; nothing was lost in transport.")
 
 
 def cmd_head(args):
@@ -303,7 +302,9 @@ def main():
     p = sub.add_parser("ls", help="completeness per sender")
     p.add_argument("path", nargs="+")
     p.set_defaults(fn=cmd_ls)
-    p = sub.add_parser("head", help="one frame in full")
+    p = sub.add_parser(
+        "head", help="the first --n frames: header and a slice of the arrays"
+    )
     p.add_argument("file")
     p.add_argument("--n", type=int, default=1)
     p.set_defaults(fn=cmd_head)

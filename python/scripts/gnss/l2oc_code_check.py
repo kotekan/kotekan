@@ -243,7 +243,7 @@ def main():
         ref = l3._code(1, True, l3._dc1())  # L3OC-p PRN 1
         if ref != base1:
             print(
-                "reuse: the L2OC base does NOT match l3oc_code_check's L3OC-p PRN 1 -- the "
+                "reuse: the L2OC base does not match l3oc_code_check's L3OC-p PRN 1 -- the "
                 "'same sequence' claim is wrong"
             )
             ok = False
@@ -259,7 +259,7 @@ def main():
 
     # ---- distinctness ---------------------------------------------------------------------
     if len({tuple(c) for c in codes.values()}) != N_PRN:
-        print("distinctness: codes NOT distinct across PRN")
+        print("distinctness: codes not distinct across PRN")
         ok = False
     else:
         print("distinctness: all %d codes distinct" % N_PRN)

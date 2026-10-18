@@ -60,16 +60,26 @@ def main():
     )
     ap.add_argument("--to-h5", required=True)
     ap.add_argument(
-        "--files", default=None, help="file index range lo:hi (default: all)"
+        "--files",
+        default=None,
+        help="file index range lo:hi, hi exclusive (default: all)",
     )
     ap.add_argument(
-        "--chunk", type=int, default=2, help="files per pass (default 2 = ~48 frames)"
+        "--chunk",
+        type=int,
+        default=2,
+        help="files decoded per pass, which bounds memory (default %(default)s; a file "
+        "holds the generator's --vis-capture-frames-per-file frames)",
     )
     ap.add_argument(
-        "--p-only", action="store_true", help="one lane per slot: the prompt"
+        "--p-only",
+        action="store_true",
+        help="keep one lane per slot, the prompt, dropping E, L and P_HEAD",
     )
     ap.add_argument(
-        "--raw", action="store_true", help="keep tile units (no quantizer scale)"
+        "--raw",
+        action="store_true",
+        help="keep tile units: do not divide lanes by their 4-bit quantizer scale",
     )
     a = ap.parse_args()
     tags = a.tags.split(",")

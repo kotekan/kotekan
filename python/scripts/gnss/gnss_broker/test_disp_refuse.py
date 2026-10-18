@@ -105,14 +105,12 @@ def test_rule():
     refused, why = displaced_chain_event(NULL_CROSSING, False)
     check(
         sorted(a[0] for a in refused) == [4, 5, 16, 23, 31] and why == "same offset",
-        "22:34:52Z: all five PRNs at +0.41..+0.47 are refused as one offset",
+        "all five PRNs at +0.41..+0.47 are refused as one offset",
     )
     refused, why = displaced_chain_event(E4_ALONE, False)
-    check(not refused, "23:24:35Z: E4 alone at +0.589 is admitted")
+    check(not refused, "E4 alone at +0.589 is admitted")
     refused, why = displaced_chain_event(TWO_SAME, False)
-    check(
-        not refused, "22:41:02Z: two PRNs at one offset are under the bar and admitted"
-    )
+    check(not refused, "two PRNs at one offset are under the bar and admitted")
     refused, why = displaced_chain_event(E4_ALONE, True)
     check(
         refused == E4_ALONE and why == "BROWNOUT open",
@@ -181,7 +179,7 @@ def test_gate():
     out, lines = verdict(fleet(**{"4": row(*DISPLACED)}), admit())
     check(
         out[4]["present"] is True and out[4]["present_gate"] == "q+p:probes+disp",
-        "one displaced row alone is admitted as before",
+        "one displaced row alone is admitted",
     )
     check([k for k, _ in lines] == ["presence-disp"], "and logged as an admission")
 

@@ -129,8 +129,8 @@ def main():
     run_cycle(ctx, 1000.0)
     check(
         len([u for u, _ in POSTS if "node" in u]) == 2,
-        "a satellite up at 83 deg takes a below-horizon incumbent's slot IMMEDIATELY, on "
-        "both nodes -- no hold timer, because a slot below the horizon is idle NOW",
+        "a satellite up at 83 deg takes a below-horizon incumbent's slot at once, on "
+        "both nodes -- a slot below the horizon is idle",
     )
     check(
         len([u for u, _ in POSTS if "search" in u]) == 1,
@@ -157,7 +157,7 @@ def main():
     )
     check(
         not any(9 in pl["prns"] for _u, pl in POSTS),
-        "... while a NEW satellite at the same +2 deg is not admitted: the band has two "
+        "... while a new satellite at the same +2 deg is not admitted: the band has two "
         "edges or it is not hysteresis",
     )
 
@@ -170,7 +170,7 @@ def main():
     run_cycle(ctx, 1000.0)
     check(
         any(36 in pl["prns"] for _u, pl in POSTS),
-        "a slot holding a PRN with NO ephemeris is reclaimed on sight",
+        "a slot holding a PRN with no ephemeris is reclaimed on sight",
     )
 
     # ---- a free slot goes to anyone, including a low satellite -------------------------
@@ -182,7 +182,7 @@ def main():
     run_cycle(ctx, 1000.0)
     check(
         any(36 in pl["prns"] for _u, pl in POSTS),
-        "a FREE slot IS filled by a 4 deg satellite -- nothing to re-acquire, and it is a "
+        "a free slot is filled by a 4 deg satellite -- nothing to re-acquire, and it is a "
         "probe today and a tracked satellite tomorrow",
     )
 
@@ -194,7 +194,7 @@ def main():
     run_cycle(ctx, 1000.0 + 100000.0)
     check(
         not POSTS,
-        "a 4 deg satellite does NOT evict anyone (the up-now bar still governs swaps)",
+        "a 4 deg satellite does not evict anyone (the up-now bar still governs swaps)",
     )
 
     # ---- the probe supply is never evicted ---------------------------------------------
@@ -213,7 +213,7 @@ def main():
     run_cycle(ctx, 1000.0 + 100000.0)
     check(
         not POSTS,
-        "with noise_probes=3 and exactly 3 deep-below-horizon slots, NONE is evicted even "
+        "with noise_probes=3 and exactly 3 deep-below-horizon slots, none is evicted even "
         "for an 83 deg satellite -- the probe supply is not spare capacity",
     )
     deep4 = dict(deep)
@@ -225,7 +225,7 @@ def main():
     run_cycle(ctx2, 1000.0 + 100000.0)
     check(
         any("36" in str(pl) for _u, pl in POSTS),
-        "... but with only 2 needed, the shallowest deep slot IS free to be traded",
+        "... but with only 2 needed, the shallowest deep slot is free to be traded",
     )
 
     # ---- dark probes (--probe-dark) -----------------------------------------------------
@@ -431,7 +431,7 @@ def main():
     check(
         not POSTS,
         "an empty prediction evicts nobody (a BRDC outage is not a constellation "
-        "outage -- the 2026-08-19 stale-EOP lesson)",
+        "outage)",
     )
 
     # ---- many slots, one post, one deadline -------------------------------------------
@@ -445,11 +445,11 @@ def main():
     check(
         _node_posts
         and all(30 in pl["prns"] and 36 in pl["prns"] for _u, pl in _node_posts),
-        "BOTH waiting satellites land in the SAME post -- not one per interval",
+        "both waiting satellites land in the same post -- not one per interval",
     )
     check(
         _node_posts and len({pl.get("at_hop") for _u, pl in _node_posts}) == 1,
-        "... on ONE deadline, so both slots move on the same frame fleet-wide",
+        "... on one deadline, so both slots move on the same frame fleet-wide",
     )
     n_first = len(POSTS)
     run_cycle(ctx, 1000.0 + 1.0)
@@ -487,7 +487,7 @@ def main():
     run_cycle(ctx, 1000.0)
     check(
         any("PRN MAP" in m and "APPLY" in m for m in LOGS),
-        "an armed chain with NOTHING to propose still says so (the heartbeat)",
+        "an armed chain with nothing to propose still says so (the heartbeat)",
     )
     check(not POSTS, "... and still posts nothing")
     n_beats = len([m for m in LOGS if "APPLY" in m])
@@ -523,7 +523,7 @@ def main():
     prnmap.stage_prn_membership(ctx2)
     check(
         ctx2.prnmap.consensus is None,
-        "a HALF-SWEPT fleet publishes None -- consumers fail open, never on a partial map",
+        "a half-swept fleet publishes None -- consumers fail open, never on a partial map",
     )
 
     ctx2.prnmap.maps = {"http://node1": [1, 2, 3], "http://node2": [1, 2, 9]}  # split
@@ -541,7 +541,7 @@ def main():
     # A map posted for "now" lands on whatever frame each node is building, so the combiner
     # folds a window whose instances disagree about which satellite slot p holds. Every row is
     # well-formed on its own, so nothing downstream can catch it.
-    print("scheduled swaps: every node crosses on the SAME frame")
+    print("scheduled swaps: every node crosses on the same frame")
     POSTS[:] = []
     _c = Ctx([1, 2, 3], {1: +40.0, 2: -50.0, 3: -60.0, 9: +30.0}, prn_reconfig="apply",)
     # The axis sample is 3 s old (left by an earlier cycle; the broker stamps this cycle's
@@ -560,14 +560,14 @@ def main():
     _seqs = {b["at_hop"] for _, b in _tracker_posts}
     check(
         len(_seqs) == 1,
-        "and it is the SAME hop on every node -- that is the whole point (%s)" % _seqs,
+        "and it is the same hop on every node -- that is the whole point (%s)" % _seqs,
     )
     _want = 1_000_000_000 + int(
         round((3.0 + _c.args.prn_reconfig_lead_s) * _c.args.hops_per_sec)
     )
     check(
         _seqs == {_want},
-        "the deadline is HOPS: axis + (age + lead) x hops_per_sec, NOT samples "
+        "the deadline is in hops: axis + (age + lead) x hops_per_sec, not samples "
         "(%d, got %s)" % (_want, _seqs),
     )
     # Without the age term the deadline would be 1 s in the past (lead 2 s, age 3 s), met by
@@ -596,7 +596,7 @@ def main():
     check(any("FABRICATED deadline" in m for m in LOGS), "... and says so out loud")
     check(
         _follow_posts and all("at_hop" not in b for _, b in _follow_posts),
-        "the SEARCH gets the map but NOT the deadline -- it has no frame boundary to test "
+        "the SEARCH gets the map but not the deadline -- it has no frame boundary to test "
         "one against, and a deadline it cannot honour would wedge its map",
     )
 
@@ -609,7 +609,7 @@ def main():
     _c2.fe_hop_now = None
     run_cycle(_c2, 2000.0)
     _tp = [(u, b) for u, b in POSTS if "search" not in u]
-    check(bool(_tp), "with NO axis the swap is still posted (fail-open)")
+    check(bool(_tp), "with no axis the swap is still posted (fail-open)")
     check(
         all("at_hop" not in b for _, b in _tp),
         "... and carries no deadline rather than a fabricated one",
@@ -655,7 +655,7 @@ def main():
     _p6 = [b for u, b in POSTS if "search" not in u]
     check(
         _p6 and 9 in _p6[0]["prns"],
-        "... and a satellite at +3 deg -- refused by the old 10 deg mask -- gets a slot",
+        "... and a satellite at +3 deg gets a slot",
     )
 
     # ---- the deadline clock is alive --------------------------------------------------
@@ -729,7 +729,7 @@ def main():
             )
             check(
                 _pm.signal_incapable_prns("GPS_L1C_P") == {22, 7, 1},
-                "L1C: Block III ONLY -- IIF is excluded too, so the predicate is really "
+                "L1C: Block III only -- IIF is excluded too, so the predicate is really "
                 "reading the block rather than passing anything modern",
             )
             check(
@@ -804,12 +804,12 @@ def main():
             )
             check(
                 _pm.signal_incapable_prns("GPS_L5_Q_NH") == {22, 7},
-                "an EXPIRED PRN assignment is ignored -- current validity only",
+                "an expired PRN assignment is ignored -- current validity only",
             )
             _pm._IGS_SNX = _os.path.join(_d, "missing")
             check(
                 _pm.signal_incapable_prns("GPS_L5_Q_NH") == set(),
-                "a MISSING registry excludes NOTHING -- wrongly dropping a real satellite "
+                "a missing registry excludes nothing -- wrongly dropping a real satellite "
                 "is far worse than keeping a dead slot, and nothing would say why",
             )
     finally:

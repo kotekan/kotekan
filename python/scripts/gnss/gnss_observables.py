@@ -183,12 +183,15 @@ def main():
         "--sys",
         default="G",
         choices=("G", "E", "C", "R"),
-        help="RINEX constellation letter (selects the BRDC records)",
+        help="RINEX constellation letter of the chain's satellites: selects their BRDC "
+        "records for the geometry and is written as each row's sys",
     )
     ap.add_argument(
         "--band",
         required=True,
-        help="signal name (gnssSignal.hpp): identifies the observable's frequency",
+        help="the chain's band name (e.g. gps_l5, gal_e6): written as each row's band, "
+        "which readers group rows by, and used in log labels; the frequency itself is "
+        "--carrier-hz",
     )
     ap.add_argument("--carrier-hz", type=float, required=True)
     ap.add_argument("--chip-rate-hz", type=float, required=True)
@@ -199,12 +202,10 @@ def main():
     ap.add_argument(
         "--out",
         required=True,
-        help="obs-log path. %%Y%%m%%d etc are strftime-expanded PER ROW, against "
-        "that row's own epoch, so the file rolls at UTC midnight without a "
-        "restart and every row lands under the day it was measured. (Until "
-        "2026-09-10 the expansion happened once at launch: a logger begun on "
-        "the 5th wrote the 5th's filename for four days and the days between "
-        "had no file at all.)",
+        help="JSONL obs-log path, appended to. strftime fields (%%Y%%m%%d ...) are "
+        "expanded per row against that row's own epoch in UTC, so the file rolls at "
+        "UTC midnight without a restart and every row lands in the file of the day "
+        "it was measured.",
     )
     # The anchor: the F-engine's sample-0 epoch, served exactly (nanoseconds, identical on
     # every node) at /telescope/time0_ns.
@@ -212,7 +213,9 @@ def main():
         "--frame0-url",
         required=True,
         help="node REST base (e.g. http://cx43:12048) serving /telescope/time0_ns, "
-        "the UTC of F-engine sample 0: the absolute-time anchor of every row.",
+        "the UTC of F-engine sample 0: the absolute-time anchor of every row. "
+        "Waited for at startup and re-read every 60 s; a changed value exits 3 so "
+        "the supervisor restarts the writer on the new epoch.",
     )
     args = ap.parse_args()
 
@@ -314,7 +317,7 @@ def main():
                     _t0 = json.loads(_r.read().decode()).get("time0_ns")
                 if _t0 and abs(float(_t0) * 1e-9 - frame0) > 1e-6:
                     print(
-                        "gnss_observables: *** F-ENGINE SAMPLE-0 EPOCH MOVED %.9f -> %.9f "
+                        "gnss_observables: F-engine sample-0 epoch moved %.9f -> %.9f "
                         "(%+.3f h). Every further row would be stamped on the old epoch; "
                         "exiting 3 for the supervisor to restart this writer on the new one."
                         % (
@@ -369,7 +372,8 @@ def main():
                 eph_t = now
                 if stale_geom:
                     print(
-                        "BRDC geometry was stale for %s; re-fetched" % args.sys,
+                        "BRDC geometry was stale for %s; reloaded the nav cache"
+                        % args.sys,
                         file=sys.stderr,
                     )
             except Exception as e:

@@ -481,7 +481,7 @@ if __name__ == "__main__":
     print(
         "\n%s"
         % (
-            "NB-LDPC + frame + ephemeris codec SELF-CONSISTENT (live CRC + dpos pend deploy)"
+            "NB-LDPC + frame + ephemeris codec SELF-CONSISTENT"
             if not fails
             else "SELF-TEST FAILURES: %d" % fails
         )

@@ -116,7 +116,7 @@ def test_zero_disables():
     ph, d = q.det(7, 5000.0 - CODE_LEN, +1)
     check(
         not d and abs(ph - (5000.0 - CODE_LEN)) < 1e-9,
-        "N=0 is the pre-#97 behaviour: the flip goes straight to the seed",
+        "N=0 disables the debounce: the flip goes straight to the seed",
     )
 
 

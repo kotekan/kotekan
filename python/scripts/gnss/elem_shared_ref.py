@@ -241,7 +241,7 @@ def snapshot(a):
         bands[band] = entry
         n_elem = len(entry["ref"])
     out = {
-        "what": "fleet reference of the shared element model's phase pin (#154): per band, "
+        "what": "fleet reference of the shared element model's phase pin: per band, "
         "pol-0 half then pol-1 half, each half unit-norm",
         "epoch": epoch,
         "n_elements": n_elem,
@@ -548,7 +548,7 @@ def watch(a):
                             o[0],
                             o[1],
                             (now - t0) / 60.0,
-                            fr.get("mode", "n/a (binary without #154)"),
+                            fr.get("mode", "n/a (binary has no fleet_ref)"),
                             "; its shape is not the fleet's" if o[1] < MIN_SIM else "",
                         )
                     )

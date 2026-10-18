@@ -69,7 +69,7 @@ def main():
         fails.append("band-selective power blended: %s" % [l["power"] for l in lob])
     else:
         print(
-            "ok  +16 dB on lobe 0 only -> 40.0 vs 1.0, kept apart (the 08-18 signature)"
+            "ok  +16 dB on lobe 0 only -> 40.0 vs 1.0, kept apart (a band-selective source)"
         )
 
     # 3. Clip is maxed, not meaned. One railing channel among seven quiet ones is the
@@ -196,9 +196,7 @@ def main():
         for f in fails:
             print("FAIL: %s" % f)
         return 1
-    print(
-        "GATE GOOD: 10 arms on the real deployed channel layouts (2-band and 8-chain)"
-    )
+    print("GATE GOOD: 10 arms on the generated channel layouts (2-band and 8-chain)")
     return 0
 
 

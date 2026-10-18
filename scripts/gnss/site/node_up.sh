@@ -30,7 +30,7 @@
 set -u
 K=/home/kvand/gnss/kotekan
 BIN=${GNSS_BIN:-/home/kvand/gnss/kotekan/build/kotekan/kotekan}
-N=${1:?usage: node_up.sh <node> [up|down|status]}
+N=${1:?usage: node_up.sh <node> [up|down|restart|status]}
 ACT=${2:-up}
 # GNSS_CFG / GNSS_LOG run a node on a one-off config (profiling, a test) without editing
 # anything:
@@ -80,7 +80,7 @@ preflight() {
         echo "    python3 $K/scripts/gnss/gen_fleet.py $K/config/gnss_fleet_chord.yaml \\" >&2
         echo "            --node $N --print-path" >&2
         echo "  Either $N is not in the manifest, or gen_fleet.py failed." >&2
-        echo "  To run a one-off config DELIBERATELY, set GNSS_CFG=<absolute path>." >&2
+        echo "  To run a one-off config deliberately, set GNSS_CFG=<absolute path>." >&2
         exit 1
     fi
     if [ ! -r "$CFG" ]; then
@@ -106,7 +106,7 @@ PYEOP
         _min_h=${GNSS_EOP_MIN_H:-12}
         if [ "$_eop_h" = nan ] || [ "$(python3 -c "print(int(float('$_eop_h') < $_min_h))")" = 1 ]; then
             echo "FAILED: the baked EOP table in $CFG has ${_eop_h} h of headroom (< ${_min_h} h)." >&2
-            echo "  Regenerate all six and gate them, then start:" >&2
+            echo "  Regenerate the fleet's configs and gate them, then start:" >&2
             echo "    python3 $K/scripts/gnss/gen_fleet.py $K/config/gnss_fleet_chord.yaml" >&2
             echo "    python3 $K/scripts/gnss/gen_fleet.py $K/config/gnss_fleet_chord.yaml --check" >&2
             echo "  and push the live table once the nodes answer:  $K/scripts/gnss/site/eop_push.sh" >&2
@@ -128,7 +128,7 @@ print("%s:%s%s" % (c["host"], c["port"], c.get("timing_endpoint", "/get-frame0-t
         if ! curl -sf -m 20 "http://$_fc" 2>/dev/null | grep -q frame0_nano; then
             echo "FAILED: $_fc does not answer with frame0_nano." >&2
             echo "  The F-engine controller is down or restarting. A node started now either dies" >&2
-            echo "  (ConfigTracker) or latches the wrong epoch (ICETelescope). Wait until" >&2
+            echo "  (ConfigTracker) or latches the wrong epoch (CHORDTelescope). Wait until" >&2
             echo "    curl -s http://$_fc" >&2
             echo "  returns a start_ctime you believe, then retry. (GNSS_SKIP_PREFLIGHT=1 overrides.)" >&2
             exit 1
@@ -140,11 +140,11 @@ print("%s:%s%s" % (c["host"], c["port"], c.get("timing_endpoint", "/get-frame0-t
     # oracle, and refusing a restart on one would do more harm than the stale binary.
     _LIB=$(dirname "$BIN")/../lib/stages/libkotekan_stages.a
     if [ -f "$_LIB" ] && [ "$_LIB" -nt "$BIN" ]; then
-        echo "⚠️  $BIN is OLDER than $(basename "$_LIB") -- it was not relinked." >&2
+        echo "warning: $BIN is older than $(basename "$_LIB") -- it was not relinked." >&2
         echo "    binary  $(date -r "$BIN" '+%F %T')" >&2
         echo "    library $(date -r "$_LIB" '+%F %T')" >&2
         echo "    'ninja lib/stages/all' does not relink kotekan. Run 'ninja kotekan'." >&2
-        echo "    Starting anyway -- but this node will run the OLD code." >&2
+        echo "    Starting anyway -- but this node will run the stale binary." >&2
     fi
     # Also warn when the binary is older than the newest GNSS source, which the check above
     # cannot see: /home/kvand is NFS-shared and there are two build trees (`build/`, the
@@ -153,12 +153,12 @@ print("%s:%s%s" % (c["host"], c["port"], c.get("timing_endpoint", "/get-frame0-t
     _NEWEST_SRC=$(find /home/kvand/gnss/kotekan/lib/stages/gnss -name '*.cpp' -o -name '*.hpp' \
                   2>/dev/null | xargs -r ls -t 2>/dev/null | head -1)
     if [ -n "$_NEWEST_SRC" ] && [ "$_NEWEST_SRC" -nt "$BIN" ]; then
-        echo "⚠️  $BIN is OLDER than $(basename "$_NEWEST_SRC") -- this BUILD TREE was never rebuilt." >&2
+        echo "warning: $BIN is older than $(basename "$_NEWEST_SRC") -- this build tree is out of date." >&2
         echo "    binary  $(date -r "$BIN" '+%F %T')" >&2
         echo "    source  $(date -r "$_NEWEST_SRC" '+%F %T')  ($_NEWEST_SRC)" >&2
-        echo "    Two build trees exist (build/ = nodes, build_nodpdk/ = cf06); rebuild THIS one:" >&2
+        echo "    Two build trees exist (build/ = nodes, build_nodpdk/ = cf06); rebuild this one:" >&2
         echo "    cd $(dirname "$BIN")/.. && ninja kotekan" >&2
-        echo "    Starting anyway -- but this node will run the OLD code." >&2
+        echo "    Starting anyway -- but this node will run the stale binary." >&2
     fi
     # Provenance: if this config is the one the fleet manifest owns for the node, warn when it
     # no longer matches; a node started from a config nobody can regenerate has no explanation
@@ -174,11 +174,11 @@ print("%s:%s%s" % (c["host"], c["port"], c.get("timing_endpoint", "/get-frame0-t
             OUT=$(python3 "$K/scripts/gnss/gen_fleet.py" "$MAN" --node "$N" --check 2>&1)
             RC=$?
             if [ "$RC" -eq 1 ]; then
-                echo "⚠️  $CFG no longer matches config/gnss_fleet_chord.yaml." >&2
+                echo "warning: $CFG no longer matches config/gnss_fleet_chord.yaml." >&2
                 echo "$OUT" | sed 's/^/    /' >&2
                 echo "    Starting it anyway (regenerate: scripts/gnss/gen_fleet.py $MAN)" >&2
             elif [ "$RC" -ne 0 ]; then
-                echo "note: could not VERIFY $CFG against the manifest (checker exited $RC)." >&2
+                echo "note: could not verify $CFG against the manifest (checker exited $RC)." >&2
                 echo "      This says nothing about the config -- the check itself failed:" >&2
                 echo "$OUT" | tail -3 | sed 's/^/      /' >&2
             fi
@@ -269,7 +269,7 @@ case "$ACT" in
     ;;
   down)
     ssh -t "$N" "sudo systemctl stop gnss-node"
-    echo "note: the unit is transient -- it is now GONE. Use '$0 $N' to bring it back."
+    echo "note: the unit is transient -- it is now gone. Use '$0 $N' to bring it back."
     ;;
   up)
     preflight

@@ -90,7 +90,7 @@ def dr_clock_solve(ctx):
         ctx.dr_state["clk_transit_since"] = ctx.drp.now_w
         _log(
             "dead-reckon: receiver clock FROZEN for a boresight transit (%s%d at %.1f deg < "
-            "--dr-clock-transit-freeze-deg %.1f) -- holding %.2f chips at zero rate and "
+            "dr_clock_transit_freeze_deg %.1f) -- holding %.2f chips at zero rate and "
             "contributing it every cycle; no solve is applied, no drift is differenced and "
             "the MAD re-bootstrap clock is stopped until it clears"
             % (
@@ -227,7 +227,7 @@ def dr_clock_quality(ctx):
             _log(
                 "dead-reckon: time base frozen %.0f s (hop %.0f) -- receiver clock solve "
                 "and drift EMA HELD; raw_prev dropped so nothing is differenced across the "
-                "gap (--dr-clock-freeze-s %.1f)"
+                "gap (dr_clock_freeze_s %.1f)"
                 % (ctx.drp.now_w - _fe[1], _fe[0], _freeze_s)
             )
         ctx.dr_state["clk_frozen"] = True
@@ -465,7 +465,7 @@ def _dr_clock_step_gate(ctx):
         _log_rl(
             "clkthin",
             "dead-reckon: receiver clock HELD at %.2f chips -- %d sat(s) in the solve "
-            "(< --dr-update-min-sats %d): a thin median follows its members' biases, not "
+            "(< dr_update_min_sats %d): a thin median follows its members' biases, not "
             "the clock" % (ctx.dr_state["clk"], _n, _nmin),
             every_s=60.0,
         )
@@ -770,8 +770,8 @@ def dr_clock_adopt_rx(ctx):
             ):
                 _log(
                     "dead-reckon: clock BOOTSTRAP %.2f chips (donor %.2f @ %.3f Mcps, "
-                    "ours %.3f) from in-process chain '%s' (CROSS-BAND -- carries "
-                    "tau_band; the DLL residual IS that measurement)%s"
+                    "ours %.3f) from in-process chain '%s' (cross-band -- carries "
+                    "tau_band; the DLL residual is that measurement)%s"
                     % (
                         _v,
                         float(ctx.drp.rx_sib.value),
@@ -841,7 +841,7 @@ def dr_clock_adopt_rx(ctx):
                 "clkadopt-refuse",
                 "dead-reckon: sibling clock from '%s' is %+.2f chips from the "
                 "local solve -- adoption REFUSED (--dr-clock-adopt-max-chips "
-                "%.1f; #104: a poisoned sibling must not overwrite a healthy "
+                "%.1f; a poisoned sibling must not overwrite a healthy "
                 "chain; holding %.2f chips at zero rate, adopts again once the "
                 "local clock is 300 s stale with no JOINT-CLK adoption)"
                 % (ctx.drp.rx_sib.src, _adopt_step, _adopt_bound, ctx.dr_state["clk"]),
@@ -861,8 +861,7 @@ def dr_clock_adopt_rx(ctx):
             ):
                 _log(
                     "dead-reckon: clock ADOPTED %.2f chips from in-process chain "
-                    "'%s' (same band %s, no file transport)"
-                    % (_sib_v, ctx.drp.rx_sib.src, ctx.band_id)
+                    "'%s' (same band %s)" % (_sib_v, ctx.drp.rx_sib.src, ctx.band_id)
                 )
             if (
                 _adopt_decl
@@ -900,7 +899,7 @@ def dr_clock_adopt_rx(ctx):
         _log_rl(
             "clkadopt-len",
             "dead-reckon: chain '%s' publishes a clock mod %.0f chips but "
-            "this chain's code is %.0f -- NOT adoptable across code lengths"
+            "this chain's code is %.0f -- not adoptable across code lengths"
             % (
                 ctx.drp.rx_sib.src,
                 ctx.drp.rx_sib.extra.get("code_length") or -1,
@@ -1020,7 +1019,7 @@ def dr_joint_shadow(ctx):
                     )
             if ctx.drp.now_w >= ctx.dr_state.get("joint_log_next", 0.0):
                 ctx.dr_state["joint_log_next"] = ctx.drp.now_w + 30.0
-                _amb = "  ⚠AMBIGUOUS(clk near wrap)" if ctx.rx.joint_ambiguous() else ""
+                _amb = "  AMBIGUOUS(clk near wrap)" if ctx.rx.joint_ambiguous() else ""
                 _log("JOINT[shadow] " + _js.summary(ctx.drp.t_now_abs) + _amb)
         except Exception as e:  # shadow must never take the broker down
             _log_rl(
@@ -1132,7 +1131,7 @@ def dr_joint_clk(ctx):
                 "(%+.3f joint chips over %.0f s at clk_rate %+.4f joint chips/s)"
                 % (
                     ctx.drp.clk_now,
-                    "absent or deaf"
+                    "absent, deaf or under joint_min_sats"
                     if _jrC is None
                     else "%d sats < %d" % (len(_jrC._idx), ctx.args.joint_min_sats),
                     _c0[1],
@@ -1760,7 +1759,7 @@ def _dr_reload(ctx, first, with_dcb=True):
                     )
                 if _why:
                     _log(
-                        "⚠️ DCB: %s. Falling back to the BROADCAST group delay "
+                        "DCB: %s. Falling back to the broadcast group delay "
                         "per satellite -- the per-sat bias spread is gone, and "
                         "for BeiDou B2a there is no broadcast term at all. %s"
                         % (
@@ -1782,7 +1781,7 @@ def _dr_reload(ctx, first, with_dcb=True):
                             _n,
                             ""
                             if _texp is None or _texp > 14.0
-                            else "; ⚠️ TOKEN EXPIRES IN %.1f DAYS" % _texp,
+                            else "; token expires in %.1f days" % _texp,
                         )
                     )
             except Exception as _de:
@@ -1990,9 +1989,9 @@ def stage_dead_reckon(ctx):
             elif not ctx.dr_state.get("clk_wait_warned"):
                 ctx.dr_state["clk_wait_warned"] = True
                 _log(
-                    "dead-reckon: ⚠️ seeding on the %.2f-chip PRIME after waiting %.0f s "
-                    "-- no clock measurement arrived. Expected on a DETECTOR-LESS chain "
-                    "with no sibling to adopt from; on a chain that HAS detectors it "
+                    "dead-reckon: seeding on the %.2f-chip PRIME after waiting %.0f s "
+                    "-- no clock measurement arrived. Expected on a detector-less chain "
+                    "with no sibling to adopt from; on a chain that has detectors it "
                     "means the solve is not running, and every seed below is anchored on "
                     "a guess."
                     % (
@@ -2111,14 +2110,14 @@ def stage_dead_reckon(ctx):
                 ):
                     _log(
                         "*** WALL-vs-F-ENGINE OFFSET JUMPED %+.3f s (%.3f -> %.3f, "
-                        "bar %.3f s). TWO CAUSES, and this line cannot tell them "
-                        "apart: (a) cf06's wall clock stepped -- the F-engine axis is "
+                        "bar %.3f s). Two causes, and this line cannot tell them "
+                        "apart: (a) this host's wall clock stepped -- the F-engine axis is "
                         "GPS-disciplined, so every model-evaluated seed on every chain "
-                        "just moved with it, ~%.0f chips at 800 m/s of range rate, "
-                        "fleet-common; (b) the telemetry lag jumped -- the observable "
-                        "F-engine 'now' is the newest pow_hop and trails the sky by "
-                        "the gather/serve latency (-99.6 ms median, 59 ms IQR "
-                        "measured), so anything near that scale is lag, not the clock. "
+                        "just moved with it, ~%.0f chips at 10.23 Mcps and 800 m/s of "
+                        "range rate, fleet-common; (b) the telemetry lag jumped -- the "
+                        "observable F-engine 'now' is the newest pow_hop and trails the "
+                        "sky by the gather/serve latency (~100 ms, tens of ms of jitter), "
+                        "so anything near that scale is lag, not the clock. "
                         "Discriminate with chronyc tracking. Nothing here corrects "
                         "either -- this exists so the next hour is attributable."
                         % (
@@ -2186,7 +2185,7 @@ def stage_dead_reckon(ctx):
             ):
                 _log(
                     "dead-reckon: clock drift %+.4f chips/s last MEASURED %.0f s ago -- "
-                    "EXPIRED (--dr-drift-max-age-s %.0f); back to the (l-a) model %+.4f "
+                    "EXPIRED (dr_drift_max_age_s %.0f); back to the (l-a) model %+.4f "
                     "until a fresh pair of solves"
                     % (
                         ctx.dr_state["drift"],
@@ -2395,7 +2394,7 @@ def stage_dead_reckon(ctx):
                         "clock solve: EXCLUDED %s -- offset jumped %s chips since "
                         "the last cycle (bound %.0f). d_i = clk + b_i, both "
                         "stable; the detection-Doppler embed cancels exactly in "
-                        "cp_loc (2026-08-11), so a jump is a real discontinuity "
+                        "cp_loc, so a jump is a real discontinuity "
                         "in what the search reported, the model, or the drift "
                         "normalization -- see WHAT MOVED"
                         % (
@@ -2412,7 +2411,7 @@ def stage_dead_reckon(ctx):
                     _log_rl(
                         "offjumpkeep",
                         "clock solve: %d PRN(s) jumped but excluding them leaves "
-                        "%d < --dr-min-sats %d -- keeping all; if this persists the "
+                        "%d < dr_min_sats %d -- keeping all; if this persists the "
                         "CLOCK moved, not one track"
                         % (len(_drop), len(_keep), ctx.args.dr_min_sats),
                         every_s=60.0,

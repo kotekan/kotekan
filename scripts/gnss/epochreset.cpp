@@ -123,7 +123,7 @@ uint64_t updates_of(FleetDll& d) {
 } // namespace
 
 int main() {
-    printf("A1 epoch-reset regression (gnss::FleetDll, shipped wire format)\n");
+    printf("epoch-reset check (gnss::FleetDll, shipped wire format)\n");
 
     // ---- Case 1: frame0 moves and the stream restarts small. ----
     {
@@ -140,7 +140,7 @@ int main() {
             push(d, w, 1000 + w, -0.20);
 
         const uint64_t after = updates_of(d);
-        check(after > before, "post-reset frames FOLD (the wedge is gone)");
+        check(after > before, "post-reset frames fold");
         check(disc_of(d) * d_before < 0.0,
               "the served discriminator FOLLOWED the new epoch (sign flipped)");
         const auto& c = d.chains().at("gal_e5a");

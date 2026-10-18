@@ -176,9 +176,7 @@ class _Chain(object):
 
 
 def test_c33_outlier_refused():
-    print(
-        "C33 12:58:17Z: the 0.806-chip one-off is refused, the -0.07 that follows adopted"
-    )
+    print("C33: the 0.806-chip one-off is refused, the -0.07 that follows adopted")
     out = _Chain().run(C33)
     verdicts = [v for _, _, v in out]
     want = ["ADOPTED"] * 2 + ["BOUNDS"] * 4 + ["STEP"] + ["ADOPTED"] * 4 + ["STEP"]
@@ -220,7 +218,7 @@ def test_c33_outlier_refused():
 
 
 def test_c13_run_followed():
-    print("C13 12:00Z: a +0.56 -> +0.98 -> +0.58 run over 8 min is followed")
+    print("C13: a +0.56 -> +0.98 -> +0.58 run over 8 min is followed")
     out = _Chain().run(C13)
     refused = [ts for ts, _, v in out if v != "ADOPTED"]
     check(
@@ -251,7 +249,7 @@ def test_c13_run_followed():
 
 
 def test_level_followed_after_hold():
-    print("07:50Z: a 1-chip level that holds 90 s is adopted 30 s late, both ways")
+    print("a 1-chip level that holds 90 s is adopted 30 s late, both ways")
     out = _Chain().run(EXC)
     verdicts = [v for _, _, v in out]
     want = ["ADOPTED", "STEP", "ADOPTED", "ADOPTED", "STEP", "ADOPTED", "ADOPTED"]

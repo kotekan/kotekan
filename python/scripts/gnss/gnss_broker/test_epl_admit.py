@@ -73,7 +73,7 @@ def test_blind_evidence():
     deep fold (deep_snr against deep_margin x deep_floor), which re-searches code phase and so
     sees the satellite wherever the tap sits; prompt power above the probe bar is accepted too.
     """
-    print("admit-displaced: the evidence must be OFFSET-BLIND")
+    print("admit-displaced: the evidence must be offset-blind")
 
     # Displaced and dim: prompt 2.4x the probe median, under the 3x probe bar, but the deep
     # fold sees it at deep_snr 55 against a floor of 2.67.
@@ -83,7 +83,7 @@ def test_blind_evidence():
     v = out[20]
     check(
         v["present"] is True,
-        "a DIM but strongly-DETECTED displaced row is admitted (prompt 2.65x would refuse "
+        "a dim but strongly detected displaced row is admitted (prompt 2.4x would refuse "
         "it; deep_snr 55 vs floor 2.67 does not)",
     )
     check(
@@ -97,7 +97,7 @@ def test_blind_evidence():
     out2 = verdict(fleet(**{"20": no_deep}), ADMIT)
     check(
         out2[20]["present"] is False,
-        "the SAME dim row with no deep row is still refused -- the bar moved to a different "
+        "the same dim row with no deep row is still refused -- the bar moved to a different "
         "quantity, it did not go away",
     )
 
@@ -108,8 +108,8 @@ def test_blind_evidence():
     out3 = verdict(fleet(**{"21": noise}), ADMIT)
     check(
         out3[21]["present"] is False,
-        "a CENTRED NOISE row is refused even with a loud deep detection -- the pedestal "
-        "test still does that work (the 2026-08-14 trimming-on-noise case)",
+        "a centred noise row is refused even with a loud deep detection -- the pedestal "
+        "test still does that work (the trimming-on-noise case)",
     )
 
     # Beyond the DLL's pull-in range: refused; that one needs the search, not the loop.
@@ -118,7 +118,7 @@ def test_blind_evidence():
     out4 = verdict(fleet(**{"22": far}), ADMIT)
     check(
         out4[22]["present"] is False and abs(out4[22]["off_chips"]) > 0.6,
-        "a row BEYOND the pull-in range is refused even though it is bright AND loudly "
+        "a row beyond the pull-in range is refused even though it is bright and loudly "
         "detected -- a detection is not a reason to arm a loop with no gradient to follow",
     )
 
@@ -146,7 +146,7 @@ def main():
     off, ped = epl_decompose(1.16, -0.70)
     check(
         abs(off - 0.337) < 0.01 and abs(ped - 0.119) < 0.01,
-        "E3's collapse row (q 1.16, disc -0.70) decodes to +0.34 chips late, pedestal 0.12",
+        "the collapse row (q 1.16, disc -0.70) decodes to +0.34 chips late, pedestal 0.12",
     )
     off, ped = epl_decompose(1.0, 0.0)
     check(
@@ -165,15 +165,14 @@ def main():
     e3 = row(1.16, -0.70, 20.0)  # the collapse row: displaced 0.34 chips, bright
     out = verdict(fleet() | {3: dict(e3)}, None)
     check(
-        not out[3]["present"],
-        "flag OFF: the E3 row fails presence (this is the latch, reproduced)",
+        not out[3]["present"], "flag OFF: the collapse row fails presence (the latch)",
     )
 
     # ---- 2. admission on: the collapse row is admitted, and labelled --------------------
     out = verdict(fleet() | {3: dict(e3)}, ADMIT)
     check(
         out[3]["present"] and out[3]["present_gate"] == "q+p:probes+disp",
-        "flag ON: the E3 row is admitted, gate = 'q+p:probes+disp'",
+        "flag ON: the collapse row is admitted, gate = 'q+p:probes+disp'",
     )
     check(
         abs(out[3]["off_chips"] - 0.337) < 0.01 and out[3]["pedestal"] < 0.3,
@@ -258,7 +257,7 @@ def main():
     )
     check(
         not any(v["present"] for v in b.values()),
-        "... and NOBODY is admitted (no presence -> no arming -> no trimming)",
+        "... and nobody is admitted (no presence -> no arming -> no trimming)",
     )
     check(b[7]["n_probe_q"] == 2, "... and the row records how many probes there were")
     # A refusal must still emit a well-formed row: consumers format q_floor with %.2f, so with
@@ -273,8 +272,8 @@ def main():
     apply_presence(d, k_sigma=3.0, q_fallback=2.2, probe_prns={90, 91})
     check(
         all(isinstance(v["q_floor"], float) for v in d.values()),
-        "an UNANCHORED row still carries a NUMERIC q_floor (%r) -- the None that killed a "
-        "chain" % d[7]["q_floor"],
+        "an UNANCHORED row still carries a numeric q_floor (%r), never None"
+        % d[7]["q_floor"],
     )
     try:
         "%.2f %.2f" % (d[7]["q_floor"], d[7]["p_floor"] or 0.0)
@@ -309,8 +308,7 @@ def main():
             "apply_presence contains no peer-population floor: %s" % banned[:34],
         )
     check(
-        "peers:" not in src,
-        "... and no row can be labelled p_floor_src='peers:N' any more",
+        "peers:" not in src, "... and no row can be labelled p_floor_src='peers:N'",
     )
 
     test_blind_evidence()

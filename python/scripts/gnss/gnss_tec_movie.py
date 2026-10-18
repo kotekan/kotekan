@@ -264,47 +264,55 @@ def main():
     ap.add_argument("series")
     ap.add_argument("--outdir", default="/tmp/tec_movie")
     ap.add_argument(
-        "--frame-s", type=float, default=120.0, help="one frame per this many s"
+        "--frame-s",
+        type=float,
+        default=120.0,
+        help="frame spacing (s): frames are centred this far apart over the series",
     )
     ap.add_argument(
         "--window-s",
         type=float,
         default=300.0,
-        help="frame uses measurements within +-window/2",
+        help="a frame uses each satellite's median over its measurements within "
+        "+-window/2 (s) of the frame centre",
     )
     ap.add_argument(
         "--highpass-s",
         type=float,
         default=1200.0,
-        help="per-arc running-mean removal (0 = off; raw arc-relative levels)",
+        help="without --ionex: width (s) of the running mean removed from each arc "
+        "(0 = off, raw arc-relative levels)",
     )
     ap.add_argument(
         "--mask-deg",
         type=float,
         default=18.0,
-        help="blank map cells farther than this from any measurement",
+        help="RBF mode: blank map cells farther than this (deg on the dome) from every "
+        "satellite in the frame; not used with --voronoi",
     )
     ap.add_argument("--el-mask", type=float, default=10.0)
     ap.add_argument(
         "--vmax",
         type=float,
         default=0.0,
-        help="color scale (TECU); 0 = auto (95th pct of |values| AFTER gating)",
+        help="without --ionex: colour scale half-range (TECU, symmetric about 0); "
+        "0 = auto, the 95th percentile of |values| after the --max-abs gate. With "
+        "--ionex the scale runs from 0 to 1.15x the 98th percentile.",
     )
     ap.add_argument(
         "--max-abs",
         type=float,
         default=30.0,
-        help="drop measurements with |dTEC| above this before interpolating "
-        "(instrument-junk gate: one wild arc otherwise fabricates a "
-        "sky-wide gradient; 0 = off)",
+        help="drop measurements with |dTEC| above this (TECU) before interpolating; "
+        "with --ionex the gate is on the residual to the GIM's slant TEC. One wild "
+        "arc otherwise fabricates a sky-wide gradient. 0 = off.",
     )
     ap.add_argument(
         "--ionex",
         default=None,
-        help="'auto' (fetch rapid GIM, predicted fallback, per covered UTC day) "
-        "or a local IONEX file: level arcs to the GIM -> ABSOLUTE vertical-"
-        "equivalent TEC",
+        help="'auto' (fetch each covered UTC day's rapid GIM, CODE's predictions as "
+        "the fallback) or a local IONEX file: level each arc onto the GIM and show "
+        "absolute vertical-equivalent TEC",
     )
     ap.add_argument("--lat", type=float, default=43.968697)
     ap.add_argument("--lon", type=float, default=-79.252106)
@@ -314,47 +322,49 @@ def main():
         "--max-hold-s",
         type=float,
         default=0.0,
-        help="bridge per-sat dropouts: if a sat has no measurement in the frame "
-        "window but its samples bracket the frame time by <= this gap, linearly "
-        "interpolate its position+TEC to the frame (0=off). Kills the flicker "
-        "from tracks briefly dropping/re-acquiring; only sensible in --ionex "
-        "absolute mode, where arcs share one GIM level so bridging is continuous. "
-        "NOTE the window already bridges gaps <= window_s, so use hold > window_s.",
+        help="bridge per-satellite dropouts: when a satellite has no measurement in "
+        "the frame window but its samples bracket the frame centre with a gap <= this "
+        "(s), interpolate its sky position and TEC linearly to the frame (0 = off). "
+        "Removes the flicker of tracks that drop and re-acquire. Only sensible with "
+        "--ionex, where arcs share one GIM level so the bridge is continuous. The "
+        "window already bridges gaps <= --window-s, so set this above it.",
     )
     ap.add_argument(
         "--smooth-frames",
         type=int,
         default=1,
-        help="temporal smoothing: display a trailing nanmean of the last N rendered "
-        "fields (1=off). Damps the frame-to-frame RBF jump when a sat "
-        "appears/disappears -- the dominant flicker once dropouts are bridged. "
-        "Safe for absolute VTEC (slowly varying); N=3 ~ 3 min at frame_s=60.",
+        help="temporal smoothing: display the per-pixel nanmean of the last N rendered "
+        "fields (1 = off). Damps the frame-to-frame jump when a satellite appears or "
+        "disappears, the dominant flicker once dropouts are bridged. Suits absolute "
+        "VTEC, which varies slowly; N=3 spans ~3 min at --frame-s 60.",
     )
     ap.add_argument(
         "--incl",
         type=float,
         default=58.0,
-        help="inclination bound (deg) setting the polar cutout. 58 is MEASURED, "
-        "not nominal: inverting the geometry on a night of real sky gives max "
-        "sub-satellite |lat| = GPS 55.6, BeiDou 56.5, GALILEO 57.2 -- Galileo "
-        "has drifted above its nominal 56 -- so 56 excluded 3%% of real Galileo "
-        "samples. 58 keeps ~1 deg of margin over the worst observed.",
+        help="inclination bound (deg, default %(default)s) that sets the polar "
+        "cutout of the accessible sky (the --voronoi tiling and the printed "
+        "accessible-sky fraction). "
+        "Above the nominal 55-56 deg because Galileo's sub-satellite latitude reaches "
+        "above its nominal 56; a bound that excludes real samples is wrong, so check "
+        "that observed samples stay inside when changing it.",
     )
     ap.add_argument(
         "--orbit-km",
         type=float,
         default=23222.0,
-        help="orbit ALTITUDE (km) for the elevation->earth-angle conversion; "
-        "Galileo 23222 (the outermost MEO tracked, and the one that sets the "
-        "bound), GPS 20200, BeiDou MEO 21528",
+        help="orbit altitude above the surface (km, not the orbit radius) for the "
+        "accessible sky's elevation -> Earth-centred angle conversion; Galileo 23222 "
+        "(the outermost MEO tracked, and the one that sets the bound), GPS 20200, "
+        "BeiDou MEO 21528",
     )
     ap.add_argument(
         "--voronoi",
         action="store_true",
-        help="render nearest-satellite (Voronoi) cells over the covered sky (convex "
-        "hull of the sat points) instead of RBF discs. Each pixel takes its "
-        "nearest sat's TEC -> the whole covered dome is tiled; with "
-        "--smooth-frames the moving cell boundaries blend into gradients.",
+        help="render nearest-satellite (Voronoi) cells instead of RBF discs: every "
+        "pixel of the accessible sky (--incl, --orbit-km, --el-mask) takes its nearest "
+        "satellite's TEC, so the whole reachable dome is tiled and --mask-deg is not "
+        "used. With --smooth-frames the moving cell boundaries blend into gradients.",
     )
     args = ap.parse_args()
 

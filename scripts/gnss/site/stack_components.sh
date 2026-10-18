@@ -164,7 +164,7 @@ gnss_component() {
                    "${CUBE_RAW:-$root/raw}" "$root" "${CUBE_COMPACT_PERIOD:-300}")
         ;;
     *)
-        echo "stack_components: unknown component '$name' (have: $(gnss_components))" >&2
+        echo "stack_components: unknown component '$name' (have: $(gnss_components) cubearch cubecompact)" >&2
         return 1 ;;
     esac
 }

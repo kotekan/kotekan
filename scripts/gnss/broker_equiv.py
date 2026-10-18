@@ -203,7 +203,7 @@ def _header_argv(path):
                 if r.get("k") == "argv":
                     return r["v"]
                 break
-    sys.exit("%s has no argv header -- recorded by a pre-M0 broker?" % path)
+    sys.exit("%s has no argv header -- not written by --transcript-write?" % path)
 
 
 def _census(path):
@@ -279,18 +279,18 @@ def _check(transcript, gold):
     brdc_note = ""
     if prov and "brdc " in prov and ("brdc %s" % now_brdc) not in prov:
         brdc_note = (
-            "\n\n⚠️  THE EPHEMERIS MOVED, NOT NECESSARILY THE CODE. This golden was "
-            "blessed against\n    BRDC %s; the cache now hashes %s. The broadcast "
-            "ephemeris is fetched\n    outside the transcript and refreshes several "
-            "times a day, and a MODEL-PRIMARY chain\n    (E5a/B2a) seeds every satellite "
-            "from it -- a changed toe moves a seed's cp0 with no\n    code change at "
-            "all. Check that before concluding anything about the diff."
+            "\n\nTHE EPHEMERIS MOVED, not necessarily the code. This golden was "
+            "blessed against\n    BRDC %s; the replay's BRDC snapshot hashes %s. The "
+            "broadcast ephemeris is a\n    replay input outside the transcript, and a "
+            "model-primary chain (E5a/B2a) seeds\n    every satellite from it -- a changed "
+            "toe moves a seed's cp0 with no code change\n    at all. Check that before "
+            "concluding anything about the diff."
             % (prov.split("brdc ")[-1].split()[0], now_brdc)
         )
     sys.exit(
         "DIGEST MOVED  %s\n  golden %s%s\n  now    %s\nThe POST stream changed: the "
         "refactor is not behaviour-preserving.\nIf the change is intended, "
-        "`bless` FROM A CLEAN TREE and commit the .digest with the code.%s"
+        "`bless` from a clean tree and commit the .digest with the code.%s"
         % (
             os.path.basename(gold),
             want,
@@ -313,13 +313,14 @@ def main():
         "rest",
         nargs=argparse.REMAINDER,
         help="for `record`: the broker flags to run under, after a bare --; for "
-        "`digest`/`bless`: flags appended to the transcript's own",
+        "`digest` and `bless --variant`: flags appended to the transcript's own",
     )
     ap.add_argument(
         "--variant",
-        help="for `bless`, given BEFORE the transcript (what follows it is the replay's "
-        "argv): write `<transcript>.<variant>.digest`, recording the flags "
-        "after -- in it; for `check`: verify only that golden",
+        help="name of a variant golden; give it before the transcript (everything after "
+        "the transcript is `rest`). For `bless`: write scripts/gnss/fixtures/"
+        "<transcript name>.<variant>.digest, recording the flags after -- in it; "
+        "for `check`: verify only that golden",
     )
     a = ap.parse_args()
     extra = [x for x in a.rest if x != "--"]
@@ -346,7 +347,7 @@ def main():
     if a.action == "bless":
         if bool(a.variant) != bool(extra):
             sys.exit(
-                "a variant golden is the transcript's flags PLUS the ones after --: "
+                "a variant golden is the transcript's flags plus the ones after --: "
                 "broker_equiv.py bless --variant <name> f.jsonl -- <flags>"
             )
         d, _ = replay(a.transcript, extra=extra)
@@ -363,10 +364,9 @@ def main():
         print("blessed %s = %s (%s)" % (os.path.basename(gold), d, prov))
         if dirty:
             print(
-                "⚠️  BLESSED FROM A DIRTY TREE. This digest describes uncommitted broker\n"
-                "    code, so nothing in git reproduces it. Commit the broker change and\n"
-                "    re-bless, or the gate guards a phantom (that is exactly how the E5a\n"
-                "    golden was born).",
+                "BLESSED FROM A DIRTY TREE. This digest describes uncommitted broker\n"
+                "    or harness code, so nothing in git reproduces it. Commit the change\n"
+                "    and re-bless.",
                 file=sys.stderr,
             )
         return
@@ -382,9 +382,9 @@ def main():
         n = _census(a.transcript)
         if n["post"] == 0:
             sys.exit(
-                "transcript contains ZERO posts -- it exercises nothing. Capture one "
-                "against a chain that is actually seeding (see 31896a862:docs/CHORD_BROKER_REFACTOR.md "
-                "3.2: a frozen chain replays perfectly and tests nothing)."
+                "transcript contains zero posts -- it exercises nothing. Capture one "
+                "against a chain that is actually seeding: a frozen chain replays perfectly "
+                "and tests nothing."
             )
         d1, _ = replay(a.transcript)
         d2, _ = replay(a.transcript)
@@ -431,7 +431,7 @@ def main():
         ]
         if skipped:
             print(
-                "coverage NOTE    this fixture does NOT reach: %s" % ", ".join(skipped)
+                "coverage NOTE    this fixture does not reach: %s" % ", ".join(skipped)
             )
         print("\nGATE GOOD.")
         return

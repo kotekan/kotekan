@@ -134,7 +134,7 @@ cube-format change: `scripts/gnss/cube_e2e.py --binary <nodpdk binary>` on cf06.
 ## 8. The map builder (P5): `gnss_beam_cube.py build --source l0`
 
 The healpix builder reads the archive directly — L0 or, ~10× faster and identical in result,
-`rung12/` (each 12-window block is one sample). `--archive` is a POINTING directory
+`rung12/` (each 12-window block is one sample). `--archive` is a pointing directory
 (`.../rung12/p0_dec40p73`); it refuses to mix two. Per (sender file, 5-min, bin, element) it
 takes the **median over all slots** as the pedestal F (11 of 12 slots are noise at any moment,
 and the cube frame carries no probe flag), then accumulates `(P − F)/F` — **pedestal units** —

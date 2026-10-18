@@ -410,7 +410,7 @@ def parse_extra_signals(cfg, args, node, primary_chans):
         if not prn_s.strip():
             raise SystemExit(
                 f"--extra-signal {name}: PRNs are required, e.g. {name}:1,2,3. Constellations "
-                "have different PRN ranges and the count IS the path-B lane budget "
+                "have different PRN ranges and the list fills the chain's PRN slots "
                 f"({SYNTH_SLOTS} slots per chain), so it is not something to default silently."
             )
         prns = [int(p) for p in prn_s.split(",") if p.strip()]
@@ -484,8 +484,9 @@ def parse_extra_signals(cfg, args, node, primary_chans):
             only_a = sorted(set(a["prns"]) - set(b["prns"]))
             only_b = sorted(set(b["prns"]) - set(a["prns"]))
             raise SystemExit(
-                "--extra-signal %s / %s are the two SIDEBANDS of one AltBOC transmission from "
-                "the same satellite, so their PRN lists must be identical.\n"
+                "--extra-signal %s / %s are the two sidebands of one transmission from the "
+                "same satellite (Galileo E5 AltBOC, BeiDou B2 ACE-BOC), so their PRN lists "
+                "must be identical.\n"
                 "  only on %s: %s\n  only on %s: %s\n"
                 "A PRN seeded on one sideband and not the other cannot contribute to tau_band, "
                 "and a sideband seeded with satellites its partner is not tracking cannot be "
@@ -968,9 +969,9 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
 
     if lanes_per_slot * n_prn > num_synth:
         raise SystemExit(
-            f"--n2-dual{tag}: {lanes_per_slot}*{n_prn} PRNs exceeds {num_synth} synthetic "
-            f"lanes ({lanes_per_slot} lanes per PRN slot, {SYNTH_SLOTS} slots per chain). "
-            f"Shrink this chain's PRN list."
+            f"chain tag '{tag}': {lanes_per_slot}*{n_prn} lanes for its PRNs exceed its "
+            f"{num_synth} synthetic lanes ({lanes_per_slot} lanes per PRN slot, "
+            f"{SYNTH_SLOTS} slots per chain). Shrink this chain's PRN list."
         )
 
     ring = f"host_voltage_ringbuffer_{gpu}"
@@ -1342,7 +1343,7 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
     if n_prn > CUBE_MAX_PRN:
         raise SystemExit(
             f"chain {pre.strip('_')}: {n_prn} PRN slots but CUBE_MAX_PRN "
-            f"{CUBE_MAX_PRN}; raise it on EVERY sender and the archiver."
+            f"{CUBE_MAX_PRN}; raise it (every sender and the archiver change together)."
         )
     blocks.update(
         {
@@ -1431,7 +1432,7 @@ def merge_n2dual_gpu(blocks, cfg, args, node, gpu, chains, spds):
     used = max(p["base"] + p["lanes"] for p in pres)
     if used > DUAL_SYNTH_LANES:
         raise SystemExit(
-            f"gnss{gpu}: the path-B chains need {used} synth lanes, the dual correlator "
+            f"gnss{gpu}: the GPU's chains need {used} synth lanes, the dual correlator "
             f"has {DUAL_SYNTH_LANES} (external/n2k_dual's one instantiation). Fewer chains "
             f"sharing a channel on this GPU, fewer PRN slots, or a wider instantiation."
         )
@@ -1594,7 +1595,7 @@ def merge_n2dual_gpu(blocks, cfg, args, node, gpu, chains, spds):
     blocks[f"gnss{gpu}_n2dual"] = merged
     blocks.update(cap_blocks)
     print(
-        f"  gpu{gpu}: {len(pres)} path-B chains in one pass, {len(union)} channels, "
+        f"  gpu{gpu}: {len(pres)} chains in one dual-correlator pass, {len(union)} channels, "
         f"{num_synth} synth lanes"
         + (f", capture over {len(captured)} chain(s)" if captured else ""),
         file=sys.stderr,
@@ -2317,9 +2318,9 @@ def main():
     ap.add_argument(
         "--base",
         required=True,
-        help="production config: a .j2 template, rendered STOCK exactly as kotekan "
-        "renders it (config/chord/pathfinder.j2 -- what the manifest uses), or "
-        "a JSON/yaml config",
+        help="the production config the GNSS branch is injected into: a .j2 template, "
+        "rendered as kotekan renders it, with no template variables (the fleet uses "
+        "config/chord/pathfinder.j2), or a .json or yaml config",
     )
     ap.add_argument("--node", required=True)
     ap.add_argument("--out", default=None)
@@ -2327,72 +2328,58 @@ def main():
         "--rest-port",
         type=int,
         default=None,
-        help="default: runtime.rest_port from the node table (NOT 12048)",
+        help="REST port of the generated instance. Default: runtime.rest_port from "
+        "config/chord_gnss_node.yaml for a node config, runtime.aggregator_rest_port for "
+        "--aggregator-instance, runtime.rest_port + 2 for --gather-instance and + 3 for "
+        "--cube-archive-instance (those two refuse 12048). The generator queries running "
+        "nodes (EOP table, bad inputs, frame 0) on an explicit --rest-port too, and on "
+        "runtime.rest_port otherwise.",
     )
     ap.add_argument(
         "--n2-send-legs",
         choices=("both", "full", "subset"),
         default="both",
-        help="WHICH --n2-send legs to build (default both). Legs not selected are "
-        "DELETED from the config, not merely left unaddressed -- a bufferSend "
-        "is a buffer CONSUMER whether or not its socket connects, and that is "
-        "the whole point of this flag.\n"
-        "\n"
-        "⚠️ THE TWO LEGS CARRY DIFFERENT RISK, learned the hard way on "
-        "2026-08-18 when arming both core-dumped all six nodes in a minute:\n"
-        "  full   = n2_buffer, the ACCUMULATED VISIBILITIES. n2_buffer already "
-        "has a consumer (n2_subset), so it is flowing today and a second "
-        "consumer changes nothing upstream. This is the genuine last-hop-only "
-        "change, and it is the N^2 data.\n"
-        "  subset = n2_eigen_buffer, the EIGEN products. That buffer has NO "
-        "consumer, so eigencalc (EigenN2Iter) has been blocked at "
-        "wait_for_empty_frame for the life of this instrument. Arming this leg "
-        "makes it run for the first time -- and it throws immediately: "
-        "'Invalid assignment to diagonal matrix element' from blaze's "
-        "HermitianMatrix, i.e. a visibility DIAGONAL (an autocorrelation) "
-        "arrived with a non-zero imaginary part. Stock data, stock stages, our "
-        "config merely uncovered it. Keep this off until it is fixed upstream.",
+        help="which --n2-send N^2 legs to keep (default %(default)s): full = "
+        "buffer_send_n2_full (n2_buffer, the accumulated visibilities); subset = "
+        "buffer_send_n2_subset (n2_eigen_buffer, the eigen products); both, as on a "
+        "stock node. A leg not selected is deleted from the config, not left "
+        "unaddressed: a bufferSend consumes its buffer whether or not its socket "
+        "connects. n2_buffer has another consumer (n2_subset), so the full leg changes "
+        "nothing upstream. The subset leg is n2_eigen_buffer's only consumer, so it is "
+        "what lets eigencalc (EigenN2Iter) run; a frame eigencalc cannot decompose (an "
+        "autocorrelation with an imaginary part, say) goes out with zero-filled "
+        "eigenpairs and is counted in kotekan_eigenN2iter_num_failed_eigencalc. The "
+        "bad-feed mask legs follow --n2-send, whichever legs this keeps.",
     )
     ap.add_argument(
         "--rf-stats-period-s",
         type=float,
         default=10.0,
-        help="Seconds between RF-monitor passes (default 10). The pass reads the "
-        "frame IN PLACE -- it does not copy it -- so this bounds a ~1 ms cost, "
-        "not a 402 MB memcpy.",
+        help="seconds between RF-monitor passes on each GPU's search tap "
+        "(band_power_period_s, default %(default)s): clip fraction and band power per "
+        "channel over every chain's covering channels on that GPU, served at "
+        "<tap>/rf_stats. A pass reads a decimated slice of the frame in place rather "
+        "than copying the frame, so a short period is cheap.",
     )
     ap.add_argument(
         "--n2-send",
         action="store_true",
-        help="SHIP THE N^2 VISIBILITIES to the standard downstream consumer, i.e. "
-        "run stock-equivalent on the science pipeline. Keeps the four "
-        "buffer_send_n2_* legs from the captured base (n2_eigen_buffer -> "
-        "--n2-send-port-subset, n2_buffer -> --n2-send-port-full, both GPUs) "
-        "and STAMPS the endpoint explicitly rather than inheriting whatever "
-        "the capture happened to hold -- a silently inherited destination is "
-        "not a destination you can grep for before a deploy.\n"
-        "\n"
-        "MEASURED 2026-08-18: our nodes already COMPUTE these products. The "
-        "run_n2k command list is byte-identical to config/chord/pathfinder.j2's, "
-        "host_correlation_buffer has the identical shape/dtype, and "
-        "n2_accumulate carries identical parameters (238 subints/bin, "
-        "bin_in_ERA over 8640, CHORDBeamformer, EvenOddPosDef, no fringestop) "
-        "-- the products just had no consumer and were dropped on the floor. "
-        "This flag is the last hop, not a new pipeline.\n"
-        "\n"
-        "COST: 7.7 MB/s per node (full 128-element FullUpperTri + the 32-element "
-        "eigen subset), 0.37 Gbps fleet-wide. drop_frames stays true, so a slow "
-        "or absent receiver degrades instead of backpressuring the GPU chain.\n"
-        "\n"
-        "⚠️ IT WRITES INTO SHARED SCIENCE STORAGE -- the default "
-        "endpoint is the same host and ports choco's production nodes use, so "
-        "our frames land beside theirs. Flip it on deliberately.",
+        help="ship the N^2 visibilities to the standard downstream receiver, as a stock "
+        "node does. Keeps the base's buffer_send_n2_* legs (n2_buffer to "
+        "--n2-send-port-full, n2_eigen_buffer to --n2-send-port-subset, both GPUs; "
+        "--n2-send-legs picks which) and its bad-feed mask legs (--n2-send-port-mask), "
+        "and stamps --n2-send-ip and the ports into each leg rather than inheriting the "
+        "base's, so the destination can be read in the generated file. Without this "
+        "flag every bufferSend leg of the base is dropped. drop_frames defaults to true, "
+        "so a slow or absent receiver loses frames instead of backpressuring the GPU "
+        "chain. The default endpoint is the receiver the stock nodes send to, so the "
+        "frames land in shared science storage beside theirs: turn it on deliberately.",
     )
     ap.add_argument(
         "--n2-send-ip",
         default="10.222.0.51",
-        help="destination host for --n2-send (default: the standard CHORD N^2 "
-        "receiver, matching config/chord/pathfinder.j2)",
+        help="destination host of the --n2-send legs, N^2 and bad-feed mask (default: "
+        "the standard CHORD N^2 receiver, as in config/chord/pathfinder.j2)",
     )
     ap.add_argument(
         "--n2-send-port-full",
@@ -2419,12 +2406,12 @@ def main():
         const="gps_l5",
         default=None,
         metavar="CHAINS",
-        help="arm the (N+M)^2 visibility capture on these broker chains (comma "
+        help="build the (N+M)^2 visibility capture for these broker chains (comma "
         "list; bare flag = gps_l5). Each GPU's correlator adds one capture gather "
         "(the live antennas' N^2 plus the captured chains' mixed rows), and a "
-        "REST-gated FrameWindowGate feeds it with those chains' ctl frames to "
-        "rawFileWrites under <record_dir>/viscap. Nothing is written until "
-        "scripts/gnss/viscap.py arms a window.",
+        "REST-armed FrameWindowGate passes it, with those chains' ctl frames, to "
+        "rawFileWrites under <record_dir>/viscap (--record-dir). Nothing is written "
+        "until scripts/gnss/viscap.py arms a window. See docs/CHORD_VIS_CAPTURE.md.",
     )
     ap.add_argument(
         "--vis-capture-bb",
@@ -2455,62 +2442,65 @@ def main():
         type=int,
         default=None,
         metavar="NS",
-        help="start WITHOUT chive: supply the F-engine frame-0 time (int64 ns) "
-        "instead of querying chive:54321, and drop config_tracker (same "
-        "service). Get the value from a node that is CURRENTLY PROCESSING "
-        "DATA: curl -s http://cx27:12048/telescope/time0_ns . require_gps "
-        "stays TRUE, so a missing/bad value still FATALs rather than silently "
-        "falling back to host wall clock. "
-        "*** VALID ONLY WHILE THE F-ENGINE KEEPS COUNTING. *** frame 0 is "
-        "re-established by an F-engine restart or firmware/mode change, and "
-        "every node CACHES it at startup -- so a value read from a running "
-        "node proves only what the F-engine was doing when THAT node started, "
-        "not what it is doing now. Re-read it after any F-engine restart. "
-        "Using a stale one fails SILENTLY: records carry the wrong epoch, the "
-        "seeds predict the wrong code phase, and every PRN despreads noise "
-        "while looking like a clock or geometry bug.",
+        help="start without chive: take the F-engine's frame-0 time (int64 ns) from this "
+        "value instead of querying chive:54321, use it as the records' frame0_utc too, "
+        "and drop config_tracker, which fetches from the same service. A running node "
+        "serves the value: curl -s http://cx27:12048/telescope/time0_ns. require_gps "
+        "stays true, so a missing value still fails at startup rather than falling back "
+        "to the host clock. The value holds only while the F-engine keeps counting from "
+        "the same frame 0: an F-engine restart or firmware or mode change starts a new "
+        "one, and each node reads it once at startup, so a running node shows what the "
+        "F-engine was doing when that node started. Re-read it after any F-engine "
+        "restart. A stale value fails silently: records carry the wrong epoch, the "
+        "seeds predict the wrong code phase, and every PRN despreads noise while "
+        "looking like a clock or geometry fault.",
     )
     ap.add_argument(
         "--extra-signal",
         action="append",
         default=[],
         metavar="NAME:PRNS",
-        help="add a SECOND tracker chain for another signal, e.g. "
-        "--extra-signal GAL_E5A_Q_CS:1,2,3. Repeatable. PRNs are REQUIRED "
-        "(constellations have different PRN ranges, and the count is the "
-        f"path-B lane budget -- {SYNTH_SLOTS} slots per chain). A chain whose covering "
-        "channels match the primary's SHARES its voltage tap (E5a/B2a are on "
-        "L5's carrier, so this is the free case); a different carrier gets its "
-        "own tap. Buffer/endpoint names are suffixed with a tag derived from "
-        "the signal name. See docs/CHORD_MULTIBAND.md.",
+        help="add a tracker chain for another signal (NAME from gnssSignal.hpp), e.g. "
+        "--extra-signal GAL_E5A_Q_CS:1,2,3. Repeatable. PRNs are required "
+        "(constellations number their PRNs differently, and a chain has "
+        f"{SYNTH_SLOTS} PRN slots). A chain whose covering "
+        "channels match the primary's shares its voltage tap (E5a and B2a are on "
+        "L5's carrier); a different carrier gets its own tap. Buffer and endpoint "
+        "names carry a tag derived from the signal name. Sideband partners given "
+        "together (E5a and E5b, B2a and B2b) must list the same PRNs. See "
+        "docs/CHORD_MULTIBAND.md.",
     )
     ap.add_argument(
         "--elem-positions-file",
         default="",
-        help="#102: a refined-positions JSON (cube order, epoch_key, positions_enu) "
-        "applied on top of the array-epoch positions (config/chord_array_epochs.json "
-        "via gnss_arraymap); refused unless its epoch_key is the epoch valid now",
+        help="element positions for steering, in place of the array epoch's "
+        "(config/chord_array_epochs.json via gnss_arraymap): a JSON with epoch_key, "
+        "cube_order and positions_enu. Refused unless its epoch_key is the epoch valid "
+        "at generation and its cube_order is the config's live elements",
     )
     ap.add_argument(
         "--elem-steer-sign",
         type=float,
         default=1.0,
-        help="#102 steering phase sign -- a MEASURED convention (see "
-        "gnssElemSteer.hpp); calibrated live: e5a vs its band-sibling",
+        help="sign (+1 or -1) of the element steering phase. It depends on the "
+        "F-engine's FFT and conjugation conventions, so it is calibrated from data "
+        "(see gnssElemSteer.hpp)",
     )
     ap.add_argument(
         "--reference-element",
         type=int,
         default=0,
-        help="antenna whose correlation fills the record HEADER -- the broker's DLL "
-        "and carrier loop reference, and the phase anchor of the calibrated "
-        "element sum",
+        help="the reference element, as an index into the live elements: its correlation "
+        "fills the record header until a PRN's element-sum cal is warm, and after that it "
+        "is the phase anchor of the calibrated element sum. The header is what the "
+        "broker's DLL and carrier loops track. Also a live switch "
+        "(POST <assemble>/set_reference_element)",
     )
     ap.add_argument(
         "--elem-sum-shared",
         action=argparse.BooleanOptionalAction,
         default=False,
-        help="SHARED instrument model in the assembler: one per-element gain per "
+        help="shared instrument model in the assembler: one per-element gain per "
         "polarisation learned as a slow consensus of every satellite's cal, "
         "plus one inter-pol coefficient per satellite; per-PRN weights are "
         "held to it (elem_sum_adapt false), so a boresight transit cannot "
@@ -2520,7 +2510,7 @@ def main():
         "--elem-proj-mode",
         default="off",
         choices=("off", "shadow", "live"),
-        help="bright-satellite projection in the assembler (PROJECTION_PLAN.md): "
+        help="bright-satellite projection in the assembler (gnssProjSubspace.hpp): "
         "shadow = projected shadow learner + capture diagnostics only; live = "
         "the rows are projected in place. Emitted only when not off; the "
         "assembler also takes it live over POST /set_elem_proj.",
@@ -2540,24 +2530,26 @@ def main():
         action="store_true",
         help="cudaGnssChordTrack epl_from_prompt: synthesise the prompt replica only and "
         "take the E/L rows as its per-channel rotations (one chip walk per hop instead of "
-        "three, ~2/3 of the synthesis cost), and pack two synth lanes per PRN slot (P, "
-        "P_HEAD) instead of four, GnssN2RecordAssemble rotating P into the E and L rows "
-        "(lanes_per_slot). Comb chains only; L2C and L2OC (EPL_WALK_SIGNALS) keep their three "
-        "trials and four lanes.",
+        "three), and pack two synth lanes per PRN slot (P, P_HEAD) instead of four, "
+        "GnssN2RecordAssemble rotating P into the E and L rows (lanes_per_slot). Comb "
+        "chains only; L2C and L2OC (EPL_WALK_SIGNALS) keep their three trials and four "
+        "lanes.",
     )
     ap.add_argument(
         "--n2-project",
         choices=["off", "live"],
         default="off",
-        help="GnssN2Project on the science N2 (phase 3a): live = solve each "
-        "channel's dominant subspace per frame and N2Accumulate reads the projected "
-        "copy (gnss_n2_proj_buffer{,_1}).",
+        help="GnssN2Project on the science N2: live = per frame and channel, project the "
+        "dominant spatially coherent components (the transiting satellites) out of the "
+        "--n2-project-stations block, and N2Accumulate reads the projected copy "
+        "(gnss_n2_proj_buffer{,_1}). Needs --n2-project-live-freq-ids.",
     )
     ap.add_argument(
         "--n2-project-stations",
         type=str,
         default="0-15,56-79,120-127",
-        help="live correlator station ranges the projection works on",
+        help="live correlator inputs (stations) the projection works on, comma-separated "
+        "ranges (lo-hi) or single indices (default %(default)s)",
     )
     ap.add_argument(
         "--n2-project-live-freq-ids",
@@ -2582,140 +2574,146 @@ def main():
         help="shared-model transit freeze: no learning while the broker's nearest-to-"
         "boresight separation is inside this many degrees (assembler default 6). "
         "Emitted only when given, with --elem-sum-shared. The assembler also refuses to "
-        "FORM a first model inside a wider cone (8 deg) and re-seeds a half the fleet "
+        "form a first model inside a wider cone (8 deg) and re-seeds a half the fleet "
         "reference stops describing while its sibling pol still does (after 600 s, at "
-        "sibling similarity 0.8); those are fixed in the stage, not config keys (#170).",
+        "sibling similarity 0.8); those are fixed in the stage, not config keys.",
     )
     ap.add_argument(
         "--elem-shared-ref",
         default="",
-        help="#154: the fleet reference snapshot (elem_shared_ref.py snapshot), one "
-        "vector per band, for the shared model's phase pin",
+        help="the fleet reference snapshot for the shared model's phase pin "
+        "(python/scripts/gnss/elem_shared_ref.py snapshot), one vector per band. "
+        "Refused unless taken against the epoch of the element positions",
     )
     ap.add_argument(
         "--elem-shared-ref-mode",
         default="off",
         choices=("off", "live"),
-        help="off: no reference keys (byte-identical); live: each assembler pins "
-        "to the reference, slewed when warm. Also a live switch (POST "
-        "<assemble>/set_elem_sum_shared_ref)",
+        help="off: no reference keys emitted; live: each assembler pins its shared "
+        "model to --elem-shared-ref, slewed when warm. Needs --elem-sum-shared. Also "
+        "a live switch (POST <assemble>/set_elem_sum_shared_ref)",
     )
     ap.add_argument(
         "--search-host",
         default="127.0.0.1",
-        help="where the search instance listens. Localhost today; changing this is "
-        "the ONLY edit needed to move the search to another machine.",
+        help="host of the search aggregator (--aggregator-instance) that each GPU's "
+        "search tap sends to, on --search-port-base + gpu. The default points a node "
+        "at itself. Moving the aggregator means changing this and restarting the "
+        "nodes.",
     )
     ap.add_argument(
         "--aggregator-instance",
         nargs="+",
         metavar="NODE",
         default=None,
-        help="emit ONE standalone search instance over the UNION of these nodes'\
- combs (e.g. --aggregator-instance cx19 cx27). Feeds listen on search_port_base + i in\
- node-major, GPU-minor order -- the same ports the node configs already target. No\
- DPDK/GPU/hugepages; runs as an ordinary user.",
+        help="emit one standalone search instance over the union of these nodes'\
+ combs (e.g. --aggregator-instance cx19 cx27). Feed i listens on search_port_base + i in\
+ node-major, GPU-minor order, the ports the node configs send to. No DPDK or hugepages,\
+ and no GPU unless --cuda-acquire; runs as an ordinary user.",
     )
     # -- The frame-synced tracker -> broker telemetry transport -------------------------------
     ap.add_argument(
         "--telem-host",
         default=None,
-        help="TASK #59: the gather instance every node sends its per-record "
-        "telemetry to (bufferSend -> bufferRecv). Required for a node config. "
-        "The gather is normally the broker host.",
+        help="host of the gather instance (--gather-instance) every node sends its per-record "
+        "telemetry to (bufferSend -> bufferRecv). Required for a node config. The "
+        "gather serves the broker on 127.0.0.1, so it runs on the broker's host.",
     )
     # -- The beam cube: the continuous per-(subband x element) recording ----------------------
     ap.add_argument(
         "--cube-host",
         default=None,
-        help="the beam-cube archiver every node pushes its completed windows to "
-        "(bufferSend -> bufferRecv). Required for a node config. Normally cf06 "
-        "(10.222.3.6), which also runs the search aggregator and the telemetry "
-        "gather -- but the archiver is a SEPARATE instance from both, because "
-        "a restart of either must never interrupt the record.",
+        help="host of the beam-cube archiver (--cube-archive-instance) every node pushes its "
+        "completed windows to (bufferSend -> bufferRecv). Required for a node config. "
+        "The archiver is its own instance, separate from the telemetry gather and the "
+        "search aggregator, so that restarting either does not interrupt the record.",
     )
     ap.add_argument(
         "--cube-archive-instance",
         action="store_true",
-        help="emit the standalone beam-cube ARCHIVER instance: one bufferRecv for "
+        help="emit the standalone beam-cube archiver instance: one bufferRecv for "
         "the whole fleet's cube frames and a rawFileWrite that lands them on "
-        "bulk storage. No DPDK, no GPU, no hugepages. SEPARATE from the "
-        "gather and the aggregator on purpose -- a gather restart wipes every "
-        "standing trim and the aggregator is restarted often, and neither "
-        "should be able to punch a hole in a record.",
+        "bulk storage. No DPDK, no GPU, no hugepages. Separate from the "
+        "gather and the aggregator, so that restarting either does not leave a "
+        "hole in the record.",
     )
     ap.add_argument(
         "--gather-instance",
         action="store_true",
-        help="TASK #59: emit the standalone GATHER instance -- one bufferRecv for "
-        "the whole fleet's telemetry plus GnssTelemGather, which hands the "
-        "frames to the PYTHON broker over a local socket. No DPDK, no GPU, no "
-        "hugepages; runs as an ordinary user beside the search aggregator on "
-        "cf06. It collates NOTHING: the frames carry an absolute window index, "
+        help="emit the standalone gather instance: one bufferRecv for the whole fleet's "
+        "telemetry, GnssTelemGather, which hands the frames to the Python broker over a "
+        "local socket, and GnssFleetTrim, the fast code loop (docs/CHORD_FAST_TRIM.md). "
+        "No DPDK, no GPU, no hugepages; runs as an ordinary user on the broker's host. "
+        "GnssTelemGather collates nothing: the frames carry an absolute window index, "
         "so grouping is an exact integer match the broker does itself.",
     )
     ap.add_argument(
         "--aggregator-cores",
         help="logical CPUs the aggregator instance may use, comma-separated "
-        "(--aggregator-instance). Same trap as --gather-cores: the default "
-        "comes from the base config's runtime.cpu_affinity, which is the "
-        "SEARCH HOST's core map, and kotekan's Stage reads cpu_affinity with a "
-        "required get -- so a core that does not exist is an EINVAL per stage, "
-        "not a no-op. A single-socket host wants all of its cpus listed.",
+        "(--aggregator-instance). Default: runtime.cpu_affinity from "
+        "config/chord_gnss_node.yaml, a CHORD node's core map. As with --gather-cores, "
+        "kotekan's Stage reads cpu_affinity with a required get, so a core the host "
+        "lacks fails the pin with EINVAL on each stage. A single-socket host wants all "
+        "of its cpus listed.",
     )
     ap.add_argument(
         "--gather-cores",
         help="logical CPUs the gather instance may use, comma-separated "
-        "(--gather-instance). Default: the base config's runtime.cpu_affinity, "
-        "which is the SEARCH HOST's core map -- wrong the moment the gather "
-        "runs anywhere else. kotekan's Stage reads cpu_affinity with a REQUIRED "
-        "get, so the key cannot simply be dropped; a core that does not exist "
-        "fails the pin with EINVAL, six ERROR lines per start, and falls back "
-        "to unpinned. The list is consumed exactly as the built-in one is -- "
-        "first four for the buffer, then [4] and [5] modulo its length -- so a "
-        "single-socket host wants all of its cpus listed, e.g. 0,1,2,3,4,5.",
+        "(--gather-instance). Default: runtime.cpu_affinity from "
+        "config/chord_gnss_node.yaml, a CHORD node's core map, which another host may "
+        "lack. kotekan's Stage reads cpu_affinity with a required get, so the key "
+        "cannot simply be dropped; a core that does not exist fails the pin with "
+        "EINVAL (logged as ERROR lines) and the stage runs unpinned. The list is "
+        "used as the built-in one is (the first four for bufferRecv, then [4] and [5] "
+        "modulo its length for GnssTelemGather and GnssFleetTrim), so a single-socket "
+        "host wants all of its cpus listed, e.g. 0,1,2,3,4,5.",
     )
     ap.add_argument(
         "--fleet-trim-windows",
         type=int,
         default=4,
-        help="windows GnssFleetTrim averages into one discriminator. 4 windows = "
-        "16 records = 168 ms.",
+        help="windows GnssFleetTrim averages into one discriminator (default "
+        "%(default)s). A window is 4 records, so 4 windows = 16 records = 168 ms.",
     )
     ap.add_argument(
         "--record-dir",
         default=None,
-        help="override runtime.record_dir from the node file. Needed on any node "
-        "without /data: rawFileWrite takes base_dir from the config, so pointing "
-        "the LOGS elsewhere does not move the RECORDS, and the stage fails on a "
-        "directory that is not there.",
+        help="base directory of the --vis-capture writers, which write under "
+        "<DIR>/viscap and create it if needed. Default: runtime.record_dir from "
+        "config/chord_gnss_node.yaml.",
     )
     ap.add_argument(
         "--search-port-base",
         type=int,
         default=11040,
-        help="bufferRecv port for GPU 0; GPU 1 uses base+1",
+        help="search-feed port base (default %(default)s). A node's GPU 0 search tap "
+        "sends to --search-host on this port and GPU 1 on base+1; --aggregator-instance "
+        "listens for feed i (node-major, GPU-minor) on base+i, so the node bases must "
+        "be 2 apart, in the order --aggregator-instance lists the nodes.",
     )
     ap.add_argument(
         "--aggregator-extra-search",
         action="append",
         metavar="SIGNAL[:PRNS]",
         default=None,
-        help="emit another GnssChannelizedSearch in the aggregator instance for SIGNAL (a "
-        "gnssSignal.hpp primary that shares the primary's carrier, e.g. GAL_E5A_Q) on the "
-        "same merged comb; PRNS defaults to the constellation's broadcast range (Galileo "
-        "1-36). The stage is named <tag>_search (e5a_search), the URL a broker chain's "
-        "`detectors:` points at. #191 step 1: an E5a search beside the L5 one.",
+        help="with --aggregator-instance, add a GnssChannelizedSearch for SIGNAL beside the "
+        "primary's, on the same merged comb and cores. SIGNAL is a gnssSignal.hpp "
+        "descriptor name whose carrier is the primary's (e.g. GAL_E5A_Q beside GPS L5). "
+        "Repeatable. PRNS is a comma list; without it the search scans the constellation's "
+        "broadcast PRN range by name prefix (GPS 1-32, GAL 1-36, BDS 19-63, GLO 1-24), and "
+        "any other prefix needs PRNS. The stage is named <tag>_search (GAL_E5A_Q -> "
+        "e5a_search), the endpoint a broker chain's --detectors names; like every search "
+        "it scans only the PRNs a broker hints (that chain's --narrow-search).",
     )
     ap.add_argument(
         "--cuda-acquire",
         action="store_true",
-        help="run the acquisition surface on the GPU (docs/gnss_gpu_search.md). "
-        "Blind dims measured 8.3 ms against 1.15 s of CPU, the surface never "
-        "leaves the device, and the peak agrees with the CPU path to rel 6e-8. "
-        "ALSO sets doppler_step to the bin-aligned 62.5 Hz -- the engine "
-        "declines a half-bin grid and falls back to the CPU. Requires a CUDA "
-        "build; falls back with a WARN otherwise.",
+        help="run the aggregator's acquisition surface on the GPU "
+        "(--aggregator-instance; docs/gnss_gpu_search.md). The surface never leaves "
+        "the device. The engine needs a Doppler grid on the transform's bin lattice "
+        "(the generated doppler_step, 62.5 Hz, is one) and declines any other, which "
+        "then runs on the CPU with a WARN. Requires a CUDA build; falls back to the CPU "
+        "with a WARN otherwise.",
     )
     args = ap.parse_args()
 
@@ -2734,7 +2732,7 @@ def main():
     live_t0 = live_frame0_utc(cfg, args) if pinned else None
     if not pinned:
         print(
-            "  epoch     frame0_utc NOT emitted -- the stages take it from the telescope's "
+            "  epoch     frame0_utc not emitted -- the stages take it from the telescope's "
             "live GPS time0 (week-rollover corrected). Nothing to keep in step.",
             file=sys.stderr,
         )
@@ -2746,17 +2744,17 @@ def main():
                 f"{live_t0:.9f} ({abs(have - live_t0) / 86400.0:.2f} days apart).\n"
                 f"The F-engine has been restarted since that value was written. Records would "
                 f"carry the wrong epoch and nothing downstream would say so.\n"
-                f"Fix it:  sed -i 's/^  frame0_utc: .*/  frame0_utc: {live_t0:.9f}/' "
+                f"Fix it:  sed -i 's/^    frame0_utc: .*/    frame0_utc: {live_t0:.9f}/' "
                 f"{NODE_FILE}\n"
-                f"(or pass --frame0-nano to override both this and the telescope block.)\n"
-                f"BETTER: DELETE frame0_utc from {NODE_FILE} entirely -- the stages now "
-                f"read the live telescope epoch and this whole class of staleness goes away."
+                f"Better: delete frame0_utc from {NODE_FILE}; the stages then take the epoch "
+                f"from the telescope's live GPS time0, and no config value can go stale."
             )
     elif not args.frame0_nano:
         # stderr: without --out, stdout is the config (see live_frame0_utc).
         print(
-            "  WARNING   no running node answered telescope/time0_ns -- frame0_utc "
-            f"{float(cfg['fengine'].get('frame0_utc', 0.0)):.6f} is UNVERIFIED. If the "
+            "  WARNING   the running nodes gave no single telescope/time0_ns (none answered, "
+            "or they disagree) -- frame0_utc "
+            f"{float(cfg['fengine'].get('frame0_utc', 0.0)):.6f} is unverified. If the "
             "F-engine has restarted since it was written, every record stamp is wrong.",
             file=sys.stderr,
         )
@@ -2840,7 +2838,14 @@ def main():
             f"# nodes {' '.join(args.aggregator_instance)}  signal {sig['primary']}  "
             f"rest port {port}\n"
             f"# union comb: {len(union_ids)} channels {min(union_ids)}..{max(union_ids)}\n"
-            "# ONE search over the gathered union, aligned on the global sample counter.\n"
+            "# The off-node acquisition search: one search of the signal above, plus one\n"
+            "# per --aggregator-extra-search, over the union of these nodes' combs, aligned\n"
+            "# on the F-engine's global sample counter. Feed i (node-major, GPU-minor, in\n"
+            "# the order above) listens on --search-port-base + i, so the order must match\n"
+            "# each node's search-port-base in config/gnss_fleet_chord.yaml.\n"
+            "# Regenerate with --aggregator-instance, these nodes in this order and the same\n"
+            "# --aggregator-extra-search flags (scripts/gnss/site/stack_components.sh has\n"
+            "# the command).\n"
             + yaml.safe_dump(out, default_flow_style=False, sort_keys=True)
         )
         if args.out:
@@ -2875,15 +2880,17 @@ def main():
         text = (
             "# GENERATED by config/gen_chord_gnss_config.py --cube-archive-instance -- DO "
             "NOT HAND-EDIT.\n"
-            "# THE BEAM-CUBE ARCHIVER: every sender's completed ~1 s (subband x element)\n"
+            "# The beam-cube archiver: every sender's completed ~1 s (subband x element)\n"
             f"# windows, landed raw under {CUBE_ARCHIVE_DIR}.\n"
             f"# wire frame {nbytes} B = {CUBE_MAX_PRN} PRN x {CUBE_MAX_BINS} bin "
             f"x {n_elem} elem; listen {CUBE_PORT}; rest {port}\n"
             f"# {CUBE_ARCHIVE_FRAMES_PER_FILE} frames/file = {per_file / 1e6:.1f} MB\n"
-            "# ⚠️ cube_max_prn, cube_max_bins and the live element count must match EVERY\n"
-            "#    sender: together they set frame_size, and bufferRecv closes any\n"
-            "#    connection that disagrees -- it delivers no data rather than bad data,\n"
-            "#    which is safe but says nothing about which end is wrong.\n"
+            "# The generator's CUBE_MAX_PRN and CUBE_MAX_BINS and the live element count set\n"
+            "# frame_size here and on every sender, and bufferRecv closes any connection whose\n"
+            "# frame size differs: no data rather than bad data, and nothing says which end is\n"
+            "# wrong. When any of them changes, regenerate this file and every node config\n"
+            "# together and restart both ends (scripts/gnss/site/cubearch_up.sh has the\n"
+            "# command for this file).\n"
             + yaml.safe_dump(out, default_flow_style=False, sort_keys=True)
         )
         if args.out:
@@ -2923,16 +2930,17 @@ def main():
             "# GENERATED by config/gen_chord_gnss_config.py --gather-instance -- DO NOT "
             "HAND-EDIT.\n"
             "# REGENERATE WITH:\n" + _wrapped + "\n"
-            f"# TASK #59: the fleet's per-record telemetry, gathered on ONE port and handed\n"
-            f"# to the PYTHON broker on {GATHER_SERVE_HOST}:{GATHER_SERVE_PORT}.\n"
+            f"# The fleet's per-record telemetry, gathered on one port and served\n"
+            f"# to the Python broker on {GATHER_SERVE_HOST}:{GATHER_SERVE_PORT}.\n"
             f"# buffer frame {nbytes} B = {TELEM_RECORDS_PER_FRAME} records x "
             f"{telem_rows_max()} PRN rows x {telem_max_chan()} comb columns"
-            f" -- THE WIDEST SENDER, not what any one ships; listen {TELEM_PORT}; "
+            f" -- the widest sender, not what any one ships; listen {TELEM_PORT}; "
             f"rest {port}\n"
-            "# ⚠️ SENDERS SHIP THEIR OWN SHAPES -- their chain's PRN rows, their instance's\n"
-            "#    comb columns -- and this buffer only has to HOLD the widest. bufferRecv\n"
-            "#    closes any connection whose frame EXCEEDS its buffer, so raising a\n"
-            "#    chain's rows means regenerating this file in the same commit.\n"
+            "# Senders ship their own shapes (their chain's PRN rows, their instance's comb\n"
+            "# columns), and this buffer only has to hold the widest: bufferRecv closes any\n"
+            "# connection whose frame exceeds it. Raising TELEM_RECORDS_PER_FRAME, a chain's\n"
+            "# rows (_TELEM_ROWS) or gnss::TELEM_MAX_CHAN means regenerating this file with\n"
+            "# the node configs and restarting the gather before the nodes.\n"
             + yaml.safe_dump(out, default_flow_style=False, sort_keys=True)
         )
         if args.out:
@@ -3000,18 +3008,20 @@ def main():
         )
         if _cov < 0:
             print(
-                "  WARNING   the FRESHEST table any node serves already ENDS IN THE PAST. "
-                "Every node is extrapolating, ours and production's alike -- this is not a "
-                "GNSS problem and regenerating will not fix it. Someone must refresh the "
-                "fleet's EOP.",
+                "  WARNING   the EOP table above already ends in the past. The "
+                "stock telescope block sets fatal_eop_out_of_range, so a node asked for a time "
+                "past the table's last entry shuts down, ours and production's alike -- this "
+                "is not a GNSS problem and regenerating will not fix it. Someone must refresh "
+                "the fleet's EOP.",
                 file=sys.stderr,
             )
     else:
         print(
-            "  WARNING   no node served telescope/eop_table -- keeping the BASE's earth "
-            "rotation table, which is frozen at the capture date and is almost certainly "
-            "stale. Records will carry a wrong dUT1 and any collator that checks frame "
-            "metadata will reject them.",
+            "  WARNING   neither choco nor any node served an EOP table -- keeping the base's "
+            "earth rotation table, which is empty in the stock template and frozen at the "
+            "capture date in a captured base. A node with fatal_eop_out_of_range set (the "
+            "stock telescope block sets it) shuts down on such a table; without it, records "
+            "carry a wrong dUT1 and any collator that checks frame metadata will reject them.",
             file=sys.stderr,
         )
 
@@ -3034,9 +3044,10 @@ def main():
         )
     else:
         print(
-            "  WARNING   no source served the bad-input list -- keeping the template's, so "
-            "every input reads GOOD until bffs next CHANGES the list. gen_fleet refuses to "
-            "write a config in this state.",
+            "  WARNING   no source served the bad-input list -- keeping the base's (the stock "
+            "template's flags no feed), so every input reads good until "
+            "scripts/gnss/site/bad_inputs_cron.py pushes bffs's list to the running node. "
+            "gen_fleet refuses to write a config in this state.",
             file=sys.stderr,
         )
 
@@ -3327,10 +3338,10 @@ def main():
             "# GENERATED by config/gen_chord_gnss_config.py -- DO NOT HAND-EDIT.",
             f"# node {args.node}  base {os.path.basename(args.base)}  signal {sig['primary']}",
             f"# covering channels {len(chans)}: freq_id {chans[0]}..{chans[-1]}",
-            f"# rest port {port} (our nodes replace production's kotekan on these six)",
+            f"# rest port {port} (production's by default: our kotekan runs in place of theirs)",
             f"# outputs disabled: {sorted(dropped)[:4]}{' ...' if len(dropped) > 4 else ''}",
             f"# base sha256 {base_sha} ({base_hashed})",
-            "# REGENERATE WITH (this is the whole recipe -- flags included):",
+            "# REGENERATE WITH (every flag but --out; add it, or let gen_fleet write the file):",
         ]
         + [
             "#   " + ln
@@ -3368,13 +3379,13 @@ def main():
         + ", ".join(f"gpu{g}:{len(v)}" for g, v in sorted(per_gpu.items())),
         file=sys.stderr,
     )
-    print(f"  record_floats {record_floats} (26 header + n_elem*12)", file=sys.stderr)
+    print(f"  record_floats {record_floats} (RECORD_FLOATS + n_elem*ELEM_FLOATS)", file=sys.stderr)
     print(f"  rest port     {port}", file=sys.stderr)
     print(f"  dropped       {len(dropped)} production blocks", file=sys.stderr)
     if n2_send_kept:
         # The one flag that puts our frames into shared science storage, so the destination
         # is printed at generation time.
-        print("  N2 SEND ARMED  " + "; ".join(n2_send_kept), file=sys.stderr)
+        print("  N2 send armed " + "; ".join(n2_send_kept), file=sys.stderr)
 
     # Extra chains share each GPU's fixed core pool (runtime.cpu_affinity_gpu<N>), so a
     # multi-chain node oversubscribes it; the per-chain rotation only keeps different chains'
@@ -3404,7 +3415,7 @@ def main():
             file=sys.stderr,
         )
         print(
-            "  NB extra chains are DEAD-RECKON seeded: no search feed is emitted for them "
+            "  NB extra chains are dead-reckon seeded: no search feed is emitted for them "
             "(docs/CHORD_MULTIBAND.md section 5)",
             file=sys.stderr,
         )

@@ -216,32 +216,34 @@ def main():
     r = {x["prn"]: x for x in run_js(js, edge)}
     check(
         not r[3]["active"],
-        "q 1.9 (under Q_LOCK) is NOT locked -- half-locked is not locked",
+        "q 1.9 (under Q_LOCK) is not locked -- half-locked is not locked",
     )
-    check(not r[4]["active"], "q 1.05 against a 1.10 floor is NOT locked")
+    check(not r[4]["active"], "q 1.05 against a 1.10 floor is not locked")
     check(
         not r[5]["active"],
-        "q 2.4 clears the fixed bar but sits ON a raised floor (2.3) -- still not locked, "
+        "q 2.4 clears the fixed bar but sits on a raised floor (2.3) -- still not locked, "
         "because the published floor beats a hardcoded number",
     )
 
     # ---- sig cannot override q; it decides only where no q is published -----------------
-    print("\nsig cannot manufacture a lock any more")
+    print("\nsig cannot manufacture a lock")
     r = {
         x["prn"]: x
         for x in run_js(
             js, [{"prn": 6, "fleet_q": 1.0, "fleet_q_floor": 1.1, "sig": 10000.0}]
         )
     }
-    check(not r[6]["active"], "sig 10,000 with q 1.0 reads UNLOCKED (the 08-26 case)")
+    check(
+        not r[6]["active"],
+        "sig 10,000 with q 1.0 reads UNLOCKED (a dead band can serve sig this high)",
+    )
     r = {x["prn"]: x for x in run_js(js, [{"prn": 7, "sig": 10000.0}])}
     check(
-        r[7]["active"],
-        "but a chain that publishes NO q still falls back to sig (old broker unchanged)",
+        r[7]["active"], "but a chain that publishes no q still falls back to sig",
     )
 
     # ---- the C/N0 pole -------------------------------------------------------------------
-    print("\nthe pre-#57 incoherent C/N0 and its pole at u -> a")
+    print("\nthe fallback incoherent C/N0 and its pole at u -> a")
     pole = [
         # A broker that declined: duty present, no cn0_prompt_db -> a gap, never a fallback.
         {
@@ -275,12 +277,15 @@ def main():
     r = {x["prn"]: x for x in run_js(js, pole)}
     check(
         r[8]["cn0"] is None,
-        "a #57 broker that DECLINED renders a gap, not the old estimator's answer",
+        "a declined C/N0 (duty, no cn0_prompt_db) renders a gap, not the fallback estimate",
     )
-    check(r[9]["cn0"] is None, "an old broker at u/a = 0.999996 is refused (the pole)")
+    check(
+        r[9]["cn0"] is None,
+        "a row with neither C/N0 key at u/a = 0.999996 is refused (the pole)",
+    )
     check(
         r[10]["cn0"] is not None and 20.0 < r[10]["cn0"] < 45.0,
-        "an old broker on real signal still renders a sane value (%.1f dB-Hz)"
+        "a row with neither C/N0 key, on real signal, renders a sane value (%.1f dB-Hz)"
         % (r[10]["cn0"] or 0),
     )
 
@@ -316,7 +321,7 @@ def main():
         "a noise_probe row cannot read locked even at q 3.5 -- it is the floor by "
         "construction, and publish.py flags it so no consumer plots it as a satellite",
     )
-    check(r[12]["active"], "the identical NON-probe row does read locked (the control)")
+    check(r[12]["active"], "the identical non-probe row does read locked (the control)")
 
     # ---- the same rules through _merge(), the rows the panel renders ---------------------
     print("\nthrough _merge() -- the rows the panel actually renders")

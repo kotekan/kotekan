@@ -56,12 +56,18 @@ def main():
     )
     ap.add_argument("--exe", default=os.path.join(HERE, "e2e"))
     ap.add_argument(
-        "--span", type=float, default=0.40, help="sweep half-width about the null"
+        "--span",
+        type=float,
+        default=0.40,
+        help="sweep half-width about the null, in chips of commanded trim "
+        "(default %(default)s)",
     )
     ap.add_argument("--step", type=float, default=0.10)
     ap.add_argument("-v", "--verbose", action="store_true")
     ap.add_argument(
-        "extra", nargs="*", help="extra e2e flags (e.g. --signal GAL_E5A_Q_CS)"
+        "extra",
+        nargs="*",
+        help="extra e2e flags, after a bare -- (e.g. -- --signal GAL_E5A_Q_CS)",
     )
     a = ap.parse_args()
     if not os.path.exists(a.exe):

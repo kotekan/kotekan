@@ -353,10 +353,10 @@ class JointReceiverState:
         if (not self.deaf) and self.rej_since_upd >= self.deaf_after:
             self.deaf = True
             self._note(
-                "DEAF: %d consecutive rejections with NOTHING accepted (clk %+.1f "
+                "DEAF: %d consecutive rejections with nothing accepted (clk %+.1f "
                 "chips, rate %+.4f chips/s, sigma %.3f, n=%d). The state is refusing "
                 "every measurement, so it cannot correct itself, and predict() keeps "
-                "integrating the rate. NOT FIT TO CONSUME until it accepts again%s"
+                "integrating the rate. Not fit to consume until it accepts again%s"
                 % (
                     self.rej_since_upd,
                     float(self.x[0]),
@@ -684,7 +684,7 @@ class JointReceiverState:
                         # noise, a tracking failure rather than a state failure. Say so.
                         self._note(
                             "REJECT-RUN %s: %d consecutive, spread %.1f chips "
-                            "(> escape_spread %.1f) -- incoherent, NOT believed; "
+                            "(> escape_spread %.1f) -- incoherent, not believed; "
                             "this sat is feeding noise"
                             % (
                                 self._key_str(key),
@@ -711,8 +711,8 @@ class JointReceiverState:
                             "ESCAPE REFUSED %s: %d rejections agreeing to %.2f chips "
                             "but implying a %+.1f chip step (bound %.0f on a %.0f-chip "
                             "code) and only %d/%d satellites agree -- one satellite's "
-                            "self-consistency is not evidence about the CLOCK. The "
-                            "STATE may still be wrong; corroboration, or a warm start, "
+                            "self-consistency is not evidence about the clock. The "
+                            "state may still be wrong; corroboration, or a warm start, "
                             "is the way out -- not a jump on one sat's word"
                             % (
                                 self._key_str(key),
@@ -818,7 +818,7 @@ class JointReceiverState:
             # The biases are spread wider than gauge_max_b about the median. Pin on all of
             # them rather than leave the common mode floating, and say so.
             self._note(
-                "GAUGE: only %d inlier(s) of %d about median %+.2f -- pinning on ALL"
+                "GAUGE: only %d inlier(s) of %d about median %+.2f -- pinning on all"
                 % (len(use), len(idx), med)
             )
             use = idx
@@ -879,8 +879,8 @@ class JointReceiverState:
             self.P[1, 1] += _was ** 2
             self.P[0, 1] = self.P[1, 0] = 0.0
             self._note(
-                "RATE CLAMPED %+.3f -> %+.1f chips/s (bound %.1f = 0.1 ppm, "
-                "2500x the GPSDO truth): a common-mode step is an OFFSET, never a "
+                "RATE CLAMPED %+.3f -> %+.1f chips/s (bound %.1f, 0.1 ppm at 10.23 Mcps, "
+                "2500x the GPSDO drift): a common-mode step is an offset, never a "
                 "frequency -- the state was diverging"
                 % (_was, float(self.x[1]), self.rate_max)
             )
@@ -985,7 +985,7 @@ class JointReceiverState:
                 self._rr_reject_run[key] = 0
                 self._note(
                     "rrate ESCAPE %s: %d consistent rejections -- re-opening the "
-                    "row WITHOUT adopting (x held)"
+                    "row without adopting (x held)"
                     % (self._key_str(key), self.rr_escape_runs)
                 )
             else:

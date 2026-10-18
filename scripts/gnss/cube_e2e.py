@@ -265,9 +265,16 @@ def main():
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    ap.add_argument("--binary", help="kotekan binary (default: the tree for this host)")
     ap.add_argument(
-        "--keep", action="store_true", help="keep the scratch dir and the log"
+        "--binary",
+        help="kotekan binary (default: build/kotekan/kotekan on a cx node, "
+        "build_nodpdk/kotekan/kotekan elsewhere, else whichever exists)",
+    )
+    ap.add_argument(
+        "--keep",
+        action="store_true",
+        help="keep the scratch dir (synthetic GPU frames, config, archive, kotekan.log) "
+        "after a pass; a failure always keeps it",
     )
     ap.add_argument("--timeout", type=float, default=20.0)
     a = ap.parse_args()

@@ -505,12 +505,12 @@ int main(int argc, char** argv) {
                                   cudaMemcpyHostToDevice));
                     CK(cudaMemset(d_s4, 0, sbytes));
                     CK(cudaMemset(d_s2, 0, sbytes));
-                    CK(gnss_cuda::launch_pack44(d_wave, d_nenergy, d_jobs, d_s2s, n_slot, 4,
-                                                n_chan, n_hops, d_cmap, n_chan, 4 * n_slot, 0,
-                                                pitch, d_s4, 0));
-                    CK(gnss_cuda::launch_pack44(d_wave, d_nenergy, d_jobs, d_s2s, n_slot, 2,
-                                                n_chan, n_hops, d_cmap, n_chan, 2 * n_slot, 16,
-                                                pitch, d_s2, 0));
+                    CK(gnss_cuda::launch_pack44(d_wave, d_nenergy, d_jobs, d_s2s, n_slot, 4, n_chan,
+                                                n_hops, d_cmap, n_chan, 4 * n_slot, 0, pitch, d_s4,
+                                                0));
+                    CK(gnss_cuda::launch_pack44(d_wave, d_nenergy, d_jobs, d_s2s, n_slot, 2, n_chan,
+                                                n_hops, d_cmap, n_chan, 2 * n_slot, 16, pitch, d_s2,
+                                                0));
                     CK(cudaDeviceSynchronize());
                     std::vector<unsigned char> h4(sbytes), h2(sbytes);
                     CK(cudaMemcpy(h4.data(), d_s4, sbytes, cudaMemcpyDeviceToHost));
@@ -579,7 +579,7 @@ int main(int argc, char** argv) {
                 ms_cor /= NIT;
                 printf(
                     "KERNEL SPLIT (%d spec x %d chan x %d elem x %d hops):\n"
-                    "   synthesis  (waveform)     %8.4f ms  %5.1f%%   <- N^2 CANNOT absorb this\n"
+                    "   synthesis  (waveform)     %8.4f ms  %5.1f%%   <- N^2 cannot absorb this\n"
                     "   correlation(nm, %2d elem) %8.4f ms  %5.1f%%   <- this is the N^2 "
                     "candidate\n",
                     n_spec, n_chan, n_elem, p.n_hops, ms_syn, 100.0 * ms_syn / (ms_syn + ms_cor),

@@ -136,7 +136,7 @@ def main():
             ]
             check(
                 not bad,
-                "DEFAULTS holds factories, not values (5 chains share one process)"
+                "DEFAULTS holds factories, not values (all chains share one process)"
                 + ("" if not bad else " -- LITERAL: " + ", ".join(map(str, bad))),
             )
 

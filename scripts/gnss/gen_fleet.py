@@ -272,8 +272,10 @@ def main():
     ap.add_argument(
         "--check",
         action="store_true",
-        help="regenerate into memory and compare against the files on disk; "
-        "write nothing, exit non-zero on any difference",
+        help="regenerate each node into memory, compare it byte for byte with the file on "
+        "disk (the live EOP table and bad-input list aside) and check the file against "
+        "the stock render (stock_parity.py); write nothing. Exit 1 if any node differs, "
+        "2 if the generator cannot run",
     )
     ap.add_argument(
         "--node",
@@ -290,24 +292,25 @@ def main():
         "--preview-dir",
         default=None,
         metavar="DIR",
-        help="write the configs under DIR instead of the tree: a "
-        "regen to look at, never one the nodes can start on",
+        help="write the configs under DIR instead of config/generated/, to look at a "
+        "regeneration without touching the files the nodes start from",
     )
     ap.add_argument(
         "--print-path",
         action="store_true",
-        help="print the config path this manifest owns for each node and exit. "
-        "Lets a caller ask 'is THIS file one you own?' exactly, rather than "
-        "guessing from the node name -- the suffix lives in the manifest.",
+        help="print the config path this manifest owns for each node and exit, so a "
+        "caller (node_up.sh) can tell exactly whether a file is one the manifest owns "
+        "rather than guess from the node name: the suffix lives in the manifest.",
     )
     ap.add_argument(
         "--check-prns",
         action="store_true",
-        help="check the manifest's PRN lists against LIVE BRDC and a 24 h "
-        "visibility sweep: reports dead slots (warn) and active, visible, "
-        "unslotted satellites (fail). NOT part of --check, which is offline "
-        "and byte-deterministic by design; this one needs the network and "
-        "its answer legitimately changes as the constellation does.",
+        help="check the manifest's extra-signal PRN lists against live BRDC and a 24 h "
+        "visibility sweep, and exit: reports dead slots (no active satellite; warn), "
+        "dark slots on a probe-dark chain (noted), and active, capable satellites that "
+        "rise above 10 deg here without a slot (fail, exit 1). Not part of --check, "
+        "which is offline and deterministic; this one needs the network, and its "
+        "answer changes as the constellation does.",
     )
     a = ap.parse_args()
 
@@ -463,7 +466,7 @@ def main():
                 "changed underneath. All three are things to decide, not to ignore."
                 % (len(bad), len(nodes), ", ".join(bad))
             )
-        print("\nALL %d NODE CONFIGS MATCH THE MANIFEST." % len(nodes))
+        print("\nALL %d node configs match the manifest." % len(nodes))
     else:
         print("\nwrote %d config(s):\n  %s" % (len(written), "\n  ".join(written)))
         print(

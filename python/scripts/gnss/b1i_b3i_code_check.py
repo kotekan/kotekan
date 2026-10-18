@@ -259,7 +259,7 @@ def main():
     ):
         codes = [fn(p) for p in range(1, N_PRN + 1)]
         if len({tuple(c) for c in codes}) != N_PRN:
-            print("%s: codes NOT distinct" % name)
+            print("%s: codes not distinct" % name)
             ok = False
         bal = [sum(c) for c in codes]
         if max(abs(b) for b in bal) > bal_lim:

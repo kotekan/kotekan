@@ -564,8 +564,8 @@ def prn_gain_table(args, chain, paths, day_unix, geom, dth=5.0, dphi=90.0, iters
     # whatever the truth, so a small answer is trusted only when the cells are populated.
     med_occ = int(np.median(occ)) if len(occ) else 0
     if med_occ < 3:
-        print("  ⚠️ %s: median %d PRN per cell -- the (gain, beam) fit is UNDER-DETERMINED and "
-              "will return ~0 whatever the truth is. Coarsen dth/dphi before believing this."
+        print("  WARNING: %s: median %d PRN per cell -- the (gain, beam) fit is under-determined "
+              "and will return ~0 whatever the truth is. Coarsen dth/dphi before believing this."
               % (chain, med_occ), file=sys.stderr)
     return out
 
@@ -596,7 +596,7 @@ def build_day_h5(args, chain, paths, day_unix, geom, prn_gain=None):
         if pointing is None:
             pointing = pt
         elif pt != pointing:
-            sys.exit("%s: pointing %s in a build of %s -- one master is ONE pointing"
+            sys.exit("%s: pointing %s in a build of %s -- one master is one pointing"
                      % (path, pt, pointing))
         R, S, E = P.shape
         sub_idx = [sub_of[f] for f in fid_by_path[path]]
@@ -812,7 +812,7 @@ def cmd_export(args):
         nside0 = int(meta["nside"])
         nside = args.nside or nside0
         if nside > nside0:
-            sys.exit("--nside %d is FINER than the master's %d: a cube cannot be "
+            sys.exit("--nside %d is finer than the master's %d: a cube cannot be "
                      "up-sampled, rebuild instead" % (nside, nside0))
         shift = 0
         while (nside0 >> shift) > nside:
@@ -920,7 +920,7 @@ def pix_centres(pix, nside):
         import healpy as hp
     except ImportError:
         sys.exit("export needs healpy for pixel centres: run it with "
-                 "/home/kvand/gnss/venv/bin/python (NOT venv-ft). The build subcommand does "
+                 "/home/kvand/gnss/venv/bin/python (not venv-ft). The build subcommand does "
                  "not need it.")
     theta, phi = hp.pix2ang(int(nside), np.asarray(pix, np.int64), nest=False)
     return np.degrees(phi) % 360.0, 90.0 - np.degrees(theta)
@@ -1010,27 +1010,33 @@ def main():
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     b = sub.add_parser("build", help="archives -> master cube per day")
-    b.add_argument("--days", nargs="+", required=True, help="YYYYMMDD")
-    b.add_argument("--chains", nargs="*", help="default: every chain with an archive")
+    b.add_argument("--days", nargs="+", required=True, help="UTC days to build, YYYYMMDD")
+    b.add_argument("--chains", nargs="*",
+                   help="chains to build (default: every chain with an archive for the day)")
     b.add_argument("--source", choices=["elem", "l0"], default="elem")
     b.add_argument("--archive", default=None,
-                   help="elem: fixtures/obs; l0: a POINTING dir of the cube archive, e.g. "
-                        "/mnt/cs00/data/kvand/gnss_cube/l0/p0_dec40p73 (or rung12/...)")
+                   help="input directory. elem: the element archive (default "
+                        "/home/kvand/gnss/fixtures/obs); l0: one pointing's directory of the "
+                        "cube archive (default /mnt/cs00/data/kvand/gnss_cube/l0/p0_dec40p73), "
+                        "or the same pointing under rung12/ or rung60/")
     b.add_argument("--outdir", default="/home/kvand/gnss/fixtures/beamcube")
     b.add_argument("--nside", type=int, default=64)
     b.add_argument("--veto-deg", type=float, default=5.0,
-                   help="cross-chain railing veto; 0 disables (and keeps the main lobe, "
-                        "contaminated -- quote it as a lower bound if you do)")
+                   help="cross-chain railing veto: drop every minute in which a satellite "
+                        "of any constellation is within this many degrees of boresight, for "
+                        "every chain. 0 disables it and keeps the main lobe, contaminated by "
+                        "the railing -- quote its level as a lower bound")
     b.add_argument("--mask-deg", type=float, default=0.0)
     b.add_argument("--health-mask", default="auto",
-                   help="chain-health mask from gnss_chain_health.py; 'auto' = %s/mask_<day>.json, "
+                   help="chain-health mask from gnss_chain_health.py, whose masked time bins are "
+                        "dropped per chain (--source l0 only); 'auto' = %s/mask_<day>.json, "
                         "'' = none" % HEALTH_DIR)
     b.add_argument("--no-range-norm", action="store_true")
     b.add_argument("--prn-norm", action="store_true",
                    help="divide out each satellite's own level (EIRP + its antenna "
-                        "pattern), solved jointly with a coarse beam by median polish. "
-                        "Measured spread without it: 13-16 dB peak-to-peak between "
-                        "satellites, which is what paints arcs along the bright ones.")
+                        "pattern), solved jointly with a coarse beam by median polish "
+                        "(--source l0 only). Without it each satellite paints its track at "
+                        "its own level, and the map grows arcs along the bright ones.")
     b.add_argument("--unbiased", action="store_true",
                    help="l0: keep below-pedestal samples (signed debias) instead of dropping them")
     b.set_defaults(func=cmd_build)
@@ -1038,12 +1044,15 @@ def main():
     e = sub.add_parser("export", help="master cubes -> browser cubes + index.json")
     e.add_argument("masters", nargs="+")
     e.add_argument("--outdir", default="/home/kvand/gnss/fixtures/beamcube/web")
-    e.add_argument("--nside", type=int, default=16, help="0 = keep the master's")
+    e.add_argument("--nside", type=int, default=16,
+                   help="nside of the browser cubes (default %(default)s), at most the "
+                        "master's; 0 = keep the master's")
     e.add_argument("--subbands", type=int, default=0,
                    help="group the channel axis into N bins (0 = every channel, the default -- "
                         "the axis is absolute freq_id and a sum across it is the reader's call)")
     e.add_argument("--offset-ref", default="gps_l5",
-                   help="chain whose main-lobe level defines 0 dB for the per-chain offsets")
+                   help="chain whose level in --offset-annulus defines 0 dB for the per-chain "
+                        "offsets (the first chain if it is absent)")
     e.add_argument("--offset-annulus", type=float, nargs=2, default=(2.0, 12.0),
                    metavar=("LO", "HI"), help="off-boresight degrees where the offsets are measured")
     e.set_defaults(func=cmd_export)

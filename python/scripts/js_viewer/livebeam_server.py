@@ -1495,51 +1495,64 @@ def main():
         "--lat",
         type=float,
         default=None,
-        help="Observer latitude (deg) for sky positions.",
+        help="Site latitude (deg, WGS84) for the sky positions and the a-priori of the "
+        "PVT self-survey. Give the site the broker and the obs writers use: the obs "
+        "logs' code residuals are relative to it. Without --lat and --lon there are no "
+        "sky positions and no survey; the table still lists the locked satellites.",
     )
     gg.add_argument(
         "--lon",
         type=float,
         default=None,
-        help="Observer longitude (deg) for sky positions.",
+        help="Site longitude (deg east, WGS84); see --lat.",
     )
     gg.add_argument(
-        "--alt", type=float, default=0.0, help="Observer altitude (m); default 0.",
+        "--alt",
+        type=float,
+        default=0.0,
+        help="Site height (m above the WGS84 ellipsoid) for the sky positions and the "
+        "PVT a-priori (default %(default)s).",
     )
     gg.add_argument(
         "--gps-mask-deg",
         type=float,
         default=5.0,
-        help="Elevation mask (deg) for the sky plot (default 5).",
+        help="Elevation mask (deg, default %(default)s) for the sky positions computed "
+        "from TLE: GLONASS, and every constellation when the broker's /get_sky cannot "
+        "answer. Positions from /get_sky are not masked.",
     )
     gg.add_argument(
         "--decode-health-dir",
         default=os.path.join(
             os.path.expanduser("~"), ".cache", "kotekan_gps", "decode_health"
         ),
-        help="dir the brokers write nav-decode health JSON to (matches run_live's "
-        "DECODE_DIR); served merged at /decode_health for the viewer panel",
+        help="directory of the brokers' nav-decode health JSON files (each broker's "
+        "--decode-health-file; only *.json is read), served merged at /decode_health "
+        "for the viewer panel; a file older than 120 s is dropped. Default: %(default)s",
     )
     gg.add_argument(
         "--pvt-obs-globs",
         default="",
         help="comma-separated globs of obs-log jsonl (code_resid_m + az/el) the PVT "
-        "self-survey reads; served under /decode_health's pvt field. Unset = no survey.",
+        "self-survey reads; served under /decode_health's pvt field. Needs --lat and "
+        "--lon. Unset = no survey.",
     )
     gg.add_argument(
         "--unified",
         action="store_true",
-        help="UNIFIED viewer: one page, one row per satellite, every signal it "
-        "carries shown side by side. /wsport carries the signal inventory the "
-        "broker at --kotekan-rest-port reports (/get_chains).",
+        help="Unified table: one row per satellite, every signal it carries shown "
+        "side by side. /wsport carries the signal inventory the broker at "
+        "--kotekan-host (0.0.0.0 = this host) and --kotekan-rest-port reports on "
+        "/get_chains, read once at startup. The GPS panel polls only those signals, so "
+        "without --unified its table is empty. Also serves the GPS panel's endpoints; "
+        "the page shows the GPS panel only with --no-power-stream.",
     )
     gg.add_argument(
         "--no-power-stream",
         action="store_true",
         help="Run GPS-only: don't wait for / serve a kotekan power "
-        "stream (no waterfall). The lean live config uses this so the "
-        "GPS panel works without a full-rate diagnostic PFB. Implies "
-        "the GPS panel.",
+        "stream (no waterfall), so the GPS panel works without a "
+        "full-rate diagnostic PFB. Implies the GPS panel.",
     )
     args = ap.parse_args()
     # The GPS panel (/gps_sky, /decode_health) runs on a GPS-only or unified page.
@@ -1562,7 +1575,7 @@ def main():
             global UNIFIED_SIGNALS
             UNIFIED_SIGNALS = _bchains
             log_.info(
-                "signal table: %d row(s) from the BROKER -- %s",
+                "signal table: %d row(s) from the broker -- %s",
                 len(_bchains),
                 ", ".join("%s/%s" % (r.get("band"), r.get("col")) for r in _bchains),
             )

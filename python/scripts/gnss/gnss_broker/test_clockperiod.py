@@ -150,20 +150,20 @@ def test_l2c_whole_period_is_visible():
     clk, line = _consume(L2C_RATE, L2C_LEN, 7.509 + 5115.0, record_s=rec + 0.4e-3)
     check(
         "ADOPTED" in line,
-        "record 0.4 ms off the joint: the period check abstains (ADOPTED as before)",
+        "record 0.4 ms off the joint: the period check abstains (ADOPTED within the ms)",
     )
     # A stale record (older than 600 s) does not judge.
     clk, line = _consume(
         L2C_RATE, L2C_LEN, 7.509 + 5115.0, record_s=rec, record_age_s=900.0
     )
-    check("ADOPTED" in line, "record 900 s old: not consulted (ADOPTED as before)")
+    check("ADOPTED" in line, "record 900 s old: not consulted (ADOPTED within the ms)")
 
 
 def test_without_record_and_short_codes_unchanged():
     clk, line = _consume(L2C_RATE, L2C_LEN, 7.509 + 5115.0, record_s=None)
     check(
         "ADOPTED" in line and abs(clk - (7.51 + 5115.0)) < 1e-9,
-        "L2C +10 ms with NO record: the old behaviour (adopted within the ms)",
+        "L2C +10 ms with no record: adopted within the ms",
     )
     clk, line = _consume(
         E6_RATE, E6_LEN, 75.3, record_s=JOINT / REF_RATE, chain="gal_e6"

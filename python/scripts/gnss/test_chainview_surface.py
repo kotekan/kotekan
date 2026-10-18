@@ -69,7 +69,7 @@ def main():
         for m in missing:
             print(
                 "FAIL: broker calls publisher.%s(), FleetPublisher has it, "
-                "_ChainView does NOT -> AttributeError at runtime, per chain." % m
+                "_ChainView does not -> AttributeError at runtime, per chain." % m
             )
         return 1
     if unknown:

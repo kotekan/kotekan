@@ -106,7 +106,7 @@ def test_min_prns_falsifier():
         _nh_joint_vote(ctx, prn, true_ph(ctx, prn, 1000), 1000, 120.0, ctx.drp.now_w)
     check(
         _nh_joint_consensus(ctx, ctx.drp.now_w) is None,
-        "two sats CANNOT resolve (min_prns)",
+        "two sats cannot resolve (min_prns)",
     )
 
 
@@ -125,7 +125,7 @@ def test_split_votes_do_not_resolve():
         )
     check(
         _nh_joint_consensus(ctx, ctx.drp.now_w) is None,
-        "a 50/50 split does NOT resolve (weight fraction)",
+        "a 50/50 split does not resolve (weight fraction)",
     )
 
 

@@ -110,7 +110,7 @@ check("brdc: built once per key", len(_built) == 1, "%d builds" % len(_built))
 # exactly what it would without the shared Receiver; the transcript gate relies on this.
 rx.contribute_code_bias("gps_l5", "1176.45MHz", -12.5e-6, 6, 1000.0)
 check(
-    "clock: a chain does not consume its OWN estimate",
+    "clock: a chain does not consume its own estimate",
     rx.code_bias("1176.45MHz", exclude="gps_l5", t_now=1000.0) is None,
 )
 _s = rx.code_bias("1176.45MHz", exclude="gal_e5a", t_now=1000.0)
@@ -134,7 +134,7 @@ check(
     rx.code_bias("1176.45MHz", exclude="gal_e5a", t_now=1000.0) is not None,
 )
 check(
-    "code bias: NOT visible across a retune",
+    "code bias: not visible across a retune",
     rx.code_bias("1207.14MHz", exclude="gal_e5a", t_now=1000.0) is None,
 )
 
@@ -166,7 +166,7 @@ for key, want in (
         s.long_code_epoch_s,
     )
     check(
-        "signal %s matches its launch script" % key,
+        "signal %s matches its ICD parameters" % key,
         all(abs(a - b) <= 1e-9 * max(1.0, abs(b)) for a, b in zip(got, want)),
         "%s vs %s" % (got, want),
     )
@@ -314,7 +314,7 @@ for _ in range(600):  # ~20 min at 2 s
     _t += 2.0
     _bf.update(3, 0.081 + _rnd.gauss(0, 0.35), 12, _t)  # an E5a-scale bias and noise
 check(
-    "SatBiasFilter converges to the P1-measured bias",
+    "SatBiasFilter converges to a constant bias through noise",
     abs(_bf.get(3, _t) - 0.081) < 0.03,
     "%.4f vs +0.081" % _bf.get(3, _t),
 )
@@ -386,7 +386,7 @@ _med_b0 = (
 check(
     "JointReceiverState gauge holds MEDIAN(b) at zero",
     abs(_med_b0) < 0.05,
-    "median b %+.4f (mean %+.4f is NOT pinned since 2026-08-23)"
+    "median b %+.4f (mean %+.4f, not pinned)"
     % (_med_b0, sum(_js.bias(k) for k in _TB) / len(_TB)),
 )
 
@@ -447,7 +447,7 @@ _t = _run(_jc, 151.0, _TB, 0.0, 400)
 _t = _run(_jc, 151.0, _TB, _t, 300, rate=0.01, skip={("E", 5)})  # clock walks 6 chips
 _truth_5 = _run.clk + _TB[("E", 5)]
 check(
-    "a satellite with NO measurements coasts on the shared clock",
+    "a satellite with no measurements coasts on the shared clock",
     abs(_jc.predicted(("E", 5)) - _truth_5) < 0.5,
     "coast error %.3f chips after 600 s dark, clock moved %.1f"
     % (_jc.predicted(("E", 5)) - _truth_5, _run.clk - 151.0),
@@ -473,9 +473,9 @@ check(
     "%.5f vs 0.01000 chips/s" % _mr,
 )
 check(
-    "clk_rate is quieter than the l-a EMA it replaces",
+    "clk_rate is quieter than the l-a EMA",
     _sr < 0.0015,
-    "sd %.5f chips/s (l-a EMA scatter was 0.07)" % _sr,
+    "sd %.5f chips/s (bound 0.0015)" % _sr,
 )
 
 # Robustness. Unlike the circular median of the legacy clock, the solve is not
@@ -499,14 +499,14 @@ for _ in range(30):
     _t2 += 2.0
     _jr2.cycle([(k, 151.0 + b + _rnd.gauss(0, 0.3), 0.3) for k, b in _TB.items()], _t2)
 check(
-    "ONE garbage detection cannot move the clock (birth window)",
+    "one garbage detection cannot move the clock (birth window)",
     abs(_jr2.clk - _clk_ok) < 1.0 and ("G", 99) not in _jr2._idx,
     "clk %+.2f -> %+.2f, born=%s" % (_clk_ok, _jr2.clk, ("G", 99) in _jr2._idx),
 )
 check(
-    "ONE garbage detection cannot move clk_rate",
+    "one garbage detection cannot move clk_rate",
     abs(_jr2.clk_rate - _rate_ok) < 0.002,
-    "rate %+.5f -> %+.5f chips/s (incident reached +0.76)" % (_rate_ok, _jr2.clk_rate),
+    "rate %+.5f -> %+.5f chips/s (bound 0.002)" % (_rate_ok, _jr2.clk_rate),
 )
 # An established satellite's outlier is the innovation gate's job.
 _rej0 = _jr2.rejected
@@ -591,7 +591,7 @@ def _churn_step(mode):
 _pe, _psl, _pw, _pr = _churn_step("prior")
 _me, _msl, _mw, _mr2 = _churn_step("median")
 check(
-    "PRIOR gauge: NO at-event clk step when a satellite drops",
+    "PRIOR gauge: no at-event clk step when a satellite drops",
     _pe is not None and _pe < 0.10,
     "clk moved %.3f chips within 5 cycles of the drop" % (_pe or -1),
 )
@@ -606,7 +606,7 @@ check(
     "settled dclk: prior %.3f (soft-mean ~0.25) vs median %.3f (~1.25)" % (_psl, _msl),
 )
 check(
-    "... and clk+b_i (what every consumer reads) is invariant under BOTH",
+    "... and clk+b_i (what every consumer reads) is invariant under both",
     max(_pw, _mw) < 0.35,
     "worst survivor drift: prior %.3f, median %.3f chips" % (_pw, _mw),
 )
@@ -641,10 +641,10 @@ for _ in range(600):
     )
 _med_b = sorted(float(_jh.x[_jh._idx[_k5]]) for _k5 in _TB)[len(_TB) // 2]
 check(
-    "PRIOR gauge: a displaced comb IS healing -- the gauge never goes dead",
+    "PRIOR gauge: a displaced comb is healing -- the gauge never goes dead",
     _med_b < 96.0,
     "median b %.1f after 20 min: no progress from +97 means the pull "
-    "switched off, the exact 2026-08-10 failure" % _med_b,
+    "switched off" % _med_b,
 )
 check(
     "... and clk+b_i stays correct THROUGHOUT the episode (sum-reading consumers ride it)",
@@ -692,8 +692,7 @@ _dmax = max(abs(a - b) for a, b in zip(_tw, _tc))
 check(
     "PRIOR gauge: a +97-chip wild bias adds ~nothing beyond silencing alone",
     _dmax < 0.25,
-    "worst trajectory divergence %.3f chips over 20 min (hard-clamp "
-    "version: 2.27 and growing)" % _dmax,
+    "worst trajectory divergence %.3f chips over 20 min (bound 0.25)" % _dmax,
 )
 
 # The gate must not deadlock. A genuine step (clock event, re-anchor) is rejected by a
@@ -741,7 +740,7 @@ check(
     _rx.code_bias("1176.45MHz", exclude="gal_e5a", t_now=1000.0).value == 1.5e-6,
 )
 check(
-    "a band with NO contributor gets nothing from the band-scoped lookup",
+    "a band with no contributor gets nothing from the band-scoped lookup",
     _rx.code_bias("1207.14MHz", exclude="gal_e5b", t_now=1000.0) is None,
 )
 _any = _rx.code_bias_any_band(exclude="gal_e5b", t_now=1000.0)
@@ -777,7 +776,7 @@ check(
     < 1e-9,
 )
 check(
-    "same-rate clock adoption is the identity (the pre-2026-08-31 behaviour, preserved)",
+    "same-rate clock adoption is the identity",
     abs(receiver.Receiver.clock_chips_convert(150.2, 10.23e6, 10.23e6, 10230) - 150.2)
     < 1e-9,
 )
@@ -836,7 +835,7 @@ _j3 = _rx3.joint_receiver(
 _j3.cycle([(k, 150.2 + b + _rnd.gauss(0, 0.3), 0.3) for k, b in _TB.items()], 2.0)
 _clk3 = _j3.clk
 check(
-    "joint_receiver converts a second constellation's period to reference chips",
+    "joint_receiver converts another chip rate's code period to reference chips",
     _rx3.joint_receiver("1278.75MHz", 5115.0, 5.115e6, gauge_mode="prior") is _j3
     and _rx3.joint_receiver("1227.60MHz", 10230.0, 0.5115e6, gauge_mode="prior") is _j3
     and _j3.L == 10230.0
@@ -857,7 +856,7 @@ from gnss_broker.fits import cp_rate_from_code_bias  # noqa: E402
 
 _r_e5b = cp_rate_from_code_bias(1.5e-6, 195312.5, 10.23e6)
 check(
-    "the borrowed rate is nonzero, i.e. the seed now carries a rate at all",
+    "the borrowed rate is nonzero, i.e. the seed carries a rate at all",
     abs(_r_e5b) > 0.0,
     "%.6g chips/hop" % _r_e5b,
 )

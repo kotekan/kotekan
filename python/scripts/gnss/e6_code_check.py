@@ -93,13 +93,13 @@ def main():
             continue
         codes = [_decode(x, n) for x in tab]
         if len({tuple(c) for c in codes}) != N_PRN:
-            print("%s: codes NOT distinct" % name)
+            print("%s: codes not distinct" % name)
             ok = False
         if n == CHIPS:
             bal = {sum(c) for c in codes}
             if bal != {1}:
                 print(
-                    "%s: balance %s, expected {1} -- PADDING CONVENTION WRONG"
+                    "%s: balance %s, expected {1} -- padding convention wrong"
                     % (name, bal)
                 )
                 ok = False

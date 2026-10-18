@@ -135,7 +135,7 @@ def test_live_numbers_convert():
     )
     check(
         abs(_old_delta(150.442, 7.513, L2C_LEN) - 142.929) < 1e-9,
-        "the unconverted comparison reproduces the live L2C refusal (+142.929)",
+        "the unconverted comparison reads L2C +142.929, past the bound",
     )
 
 
@@ -157,7 +157,7 @@ def test_consumer_adopts_l2c_and_e6():
     clk, line = _consume(L2C_RATE, L2C_LEN, 7.545, 151.111)
     check(
         abs(clk - 7.55555) < 1e-9 and "ADOPTED" in line,
-        "first post-restart L2C adoption from the live log: 7.545 -> 7.5556 (+0.011 CM)",
+        "L2C legacy 7.545 / joint 151.111 ref: adopted at 7.5556 (+0.011 CM)",
     )
 
 
@@ -316,7 +316,7 @@ def test_ten_mcps_unchanged():
         want_clk = (leg + old) % REF_LEN if ok else leg
         check(
             line == want and _bits(clk) == _bits(want_clk),
-            "10.23 Mcps live case legacy %.3f joint %.3f: same line, same clock"
+            "10.23 Mcps consumer at legacy %.3f joint %.3f: same line, same clock"
             % (leg, jc),
         )
 
@@ -435,7 +435,7 @@ def test_one_unit():
         joint_state=lambda *a: js_small,
     )
     deadreckon.dr_joint_clk(ctx)
-    check(ctx.drp.clk_now == 7.0, "a state below --joint-min-sats is not consumed")
+    check(ctx.drp.clk_now == 7.0, "a state below joint_min_sats is not consumed")
 
 
 def test_coast_on_refusal():
@@ -533,7 +533,7 @@ def test_coast_on_refusal():
     )
     # A state not fit to consume (thin: 3 sats under joint_min_sats 4) coasts on the same
     # stamps inside the same window and bound, and says why in its own line.
-    for n, why in ((3, "3 sats < 4"), (None, "absent or deaf")):
+    for n, why in ((3, "3 sats < 4"), (None, "absent, deaf or under joint_min_sats")):
         js = _FakeJoint(160.2, 0.047, n=n or 1, clk_rate=0.5)
         rx = Receiver(log=lambda m: None)
         rx._joint["__receiver__"] = js
@@ -682,7 +682,7 @@ def test_seed_offset_per_prn():
     check(
         abs(_old_delta(150.310, 7.529, L2C_LEN) - 142.781) < 1e-9
         and abs(_old_delta(150.850, 75.148, E6_LEN) - 75.702) < 1e-9,
-        "the unconverted comparison reproduces both live REFUSED lines (+142.781, +75.702)",
+        "the unconverted comparison would leave both REFUSED (+142.781, +75.702)",
     )
 
 

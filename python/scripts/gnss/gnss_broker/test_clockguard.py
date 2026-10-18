@@ -173,7 +173,7 @@ def test_cold_start_unchanged():
     got = _cycle(c, 102.0, [TRUE_CLK + 0.3, TRUE_CLK - 0.4], sky=_sky(0.2))
     check(
         got and abs(c.dr_state["clk"] - (TRUE_CLK + 0.3)) < 1e-9,
-        "first solve of --dr-min-sats 2 SNAPS 150 chips from the prime (never step-limited, "
+        "first solve of dr_min_sats (2) snaps 150 chips from the prime (never step-limited, "
         "min-sats not raised, transit ignored)",
     )
     check(
@@ -193,7 +193,7 @@ def test_cold_start_unchanged():
     check(
         abs(c.dr_state["clk"] - exp) < 1e-12
         and c.dr_state.get("clk_confirmed") is True,
-        "first in-bound 5-sat update: EMA exactly as before, clock now CONFIRMED",
+        "first in-bound 5-sat update: the plain EMA step; the clock is confirmed",
     )
     # cycle 4: confirmed + satellite at boresight -> the freeze engages
     n = len(LOGS)
@@ -213,7 +213,7 @@ def test_unconfirmed_bootstrap_not_frozen_but_repinned():
     _cycle(c, 100.0, [TRUE_CLK + 3000.0, TRUE_CLK + 3040.0], sky=_sky(1.0))
     check(
         abs(_wrap(c.dr_state["clk"] - TRUE_CLK - 3040.0)) < 1e-9,
-        "bootstrap on two agreeing noise detections (the pre-#142 draw, unchanged)",
+        "bootstrap on two agreeing noise detections (a bootstrap is never step-limited)",
     )
     # the real sky, thin (2-3 sats): an unconfirmed clock re-pins on solves of dr_min_sats
     n = len(LOGS)
@@ -243,11 +243,11 @@ def test_two_sat_corrupted_step_rejected():
     )
     check(
         _logged("HELD at", n) and "repin" not in c.dr_state,
-        "...held as a THIN solve (< --dr-update-min-sats 4); builds no re-pin candidate",
+        "...held as a thin solve (< dr_update_min_sats, 4); builds no re-pin candidate",
     )
     check(
         c.dr_state["clk_t"] == t + 2.0 and abs(_clk_now(c) - held) < 1e-12,
-        "...ZERO-RATE hold: clk_t moved to now, dr_seed's clk_now is the held value",
+        "...zero-rate hold: clk_t moved to now, dr_seed's clk_now is the held value",
     )
     # the same with four satellites agreeing (a 4-sat corrupted solve): refused as a step
     n = len(LOGS)
@@ -342,7 +342,7 @@ def test_transit_freeze():
         contributed += bool(_cycle(c, tt, offs, sky=_sky(2.0 + (k % 3))))
     check(
         c.dr_state["clk"] == held and contributed == 1200,
-        "1200 cycles (40 min): clock unchanged, contributed on EVERY cycle",
+        "1200 cycles (40 min): clock unchanged, contributed on every cycle",
     )
     check(
         len(_logged("receiver clock FROZEN", n)) == 1 and not _logged("FORCING", n),
@@ -428,7 +428,7 @@ def _adopt(c, t):
 
 def test_crossband_bound_is_a_time():
     print(
-        "cross-band bootstrap: the #104 bound as a TIME at 10.23 / 5.115 / 0.5115 Mcps"
+        "cross-band bootstrap: --dr-clock-adopt-max-chips as a time at 10.23 / 5.115 / 0.5115 Mcps"
     )
     _capture()
     for name, rate, ln in (
@@ -521,7 +521,9 @@ def _jclk(c, t, joint):
 
 
 def test_escape_suppressed_by_joint_adoption():
-    print("#104's escape: suppressed while JOINT-CLK adopts, back 300 s after it stops")
+    print(
+        "the 300 s staleness escape: suppressed while JOINT-CLK adopts, back 300 s after it stops"
+    )
     _capture()
     for name, rate, ln, band in (
         ("gal_e5a", L5_RATE, L5_LEN, "1176.45MHz"),
@@ -574,7 +576,7 @@ def test_escape_suppressed_by_joint_adoption():
 
 
 def test_samesband_refusal_holds_zero_rate():
-    print("#104 same-band refusal: hold at zero rate, not the refused donor's drift")
+    print("same-band refusal: hold at zero rate, not the refused donor's drift")
     _capture()
     rx = Receiver(log=lambda m: None)
     c = _consumer(rx, "gal_e5a", L5_RATE, L5_LEN, "1176.45MHz")

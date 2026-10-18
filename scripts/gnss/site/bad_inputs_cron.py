@@ -139,7 +139,7 @@ def main():
         body = bffs_bad_inputs.update_body(state, conf)
     except Exception as e:
         log(
-            "== %s bad_inputs_cron: NO LIST (%s: %s); nothing pushed"
+            "== %s bad_inputs_cron: no bad-input list (%s: %s); nothing pushed"
             % (now, type(e).__name__, e)
         )
         return 1

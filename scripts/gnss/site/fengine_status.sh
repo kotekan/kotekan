@@ -50,7 +50,7 @@ for n in $NODES; do P1[$n]=$(pkts "$n"); done
 sleep "$GAP"
 
 echo
-printf "%-6s %18s %18s  %-9s %s\n" node "CRS pkts t0" "t0+${GAP}s" flowing "frame0_ns (cached at ITS startup)"
+printf "%-6s %18s %18s  %-9s %s\n" node "CRS pkts t0" "t0+${GAP}s" flowing "frame0_ns (cached at its startup)"
 flowing=0; total=0; unpolled=0
 for n in $NODES; do
     a=${P1[$n]:-}; b=$(pkts "$n"); z=$(t0 "$n")
@@ -66,16 +66,16 @@ done
 
 echo
 if [ "$unpolled" -eq "$total" ] && [ "$total" -gt 0 ]; then
-    echo "VERDICT: COULD NOT POLL ANY NODE on :$PORT -- this says NOTHING about the F-engine."
+    echo "VERDICT: could not poll any node on :$PORT -- this says nothing about the F-engine."
     echo "  Check the port (nodes bind :12048; GNSS_PORT overrides) before reading anything into it."
 elif [ "$flowing" -eq 0 ]; then
     echo "VERDICT: NO DATA anywhere ($total polled, $unpolled unreachable). The F-engine is not delivering."
     echo "  Frozen status endpoints will still serve plausible deep_snr/lock values -- ignore them."
 else
     echo "VERDICT: data flowing on $flowing/$total node(s)$([ "$unpolled" -gt 0 ] && echo \", $unpolled UNREACHABLE\")."
-    echo "  NOW CHECK FRAME 0 before trusting any science number: the frame0_ns column above is"
-    echo "  what each node cached AT ITS OWN STARTUP. If the F-engine restarted during the"
-    echo "  outage, a node started BEFORE it is carrying a stale epoch. Prefer the controller; else read"
-    echo "  time0 from a node started SINCE data resumed, and regenerate any --frame0-nano"
+    echo "  Now check frame 0 before trusting any science number: the frame0_ns column above is"
+    echo "  what each node cached at its own startup. If the F-engine restarted during the"
+    echo "  outage, a node started before it is carrying a stale epoch. Prefer the controller; else read"
+    echo "  time0 from a node started since data resumed, and regenerate any --frame0-nano"
     echo "  config whose baked value no longer matches."
 fi

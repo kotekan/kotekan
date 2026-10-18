@@ -114,14 +114,14 @@ def test_predict_scope():
     # BeiDou's first prediction, 8 satellites. Against GPS's peak this would be a collapse;
     # against its own (none yet) it is simply the sky.
     c = _predict(state, ge, "C", 19, range(19, 27))
-    check(len(c) == 8, "BeiDou's first prediction returns ITS OWN 8 satellites")
+    check(len(c) == 8, "BeiDou's first prediction returns its own 8 satellites")
     check(
         all(p >= 19 for p in c),
-        "and NOT ONE PRN below its min_prn -- the constellation identity survives",
+        "and not one PRN below its min_prn -- the constellation identity survives",
     )
     check(
         not any(p < 19 for p in c),
-        "specifically: no PRN 1/2/5/14, the GPS and Galileo probes seen leaking on sky",
+        "specifically: no PRN below 19, where GPS and Galileo PRNs would leak in",
     )
 
     # The two peaks are independent.
@@ -129,7 +129,7 @@ def test_predict_scope():
     check(
         sc.get(("G", 1), {}).get("peak_n") == 24
         and sc.get(("C", 19), {}).get("peak_n") == 8,
-        "each constellation carries its OWN peak (G 24, C 8), not one shared max",
+        "each constellation carries its own peak (G 24, C 8), not one shared max",
     )
 
     # A real BeiDou collapse: 24 satellites, then 8.
@@ -159,7 +159,7 @@ def test_bridge_speaks():
     from gnss_broker import sky
 
     print(
-        "brdc_predict: a bridged sky says so EVERY time it is served, not once per 600 s"
+        "brdc_predict: a bridged sky says so every time it is served, not once per 600 s"
     )
     ge = _FakeEphMod()
     state = {"mod": ge, "eph": {"x": 1}, "eph_t": sky._now()}
@@ -181,7 +181,7 @@ def test_bridge_speaks():
         )
         check(
             all("BRIDGING" in m for m in bridged),
-            "and it says BRIDGING -- the old line named the refetch, not the frozen sky",
+            "and it says BRIDGING -- it names the frozen sky, not the refetch",
         )
         check(
             all("STALE" in m for m in bridged),
@@ -290,12 +290,12 @@ def test_hourly_coverage():
         body = gzip.open(p, "rt").read()
         check(
             "C19" in body,
-            "the merge reaches a station that actually carries BDS-3 (len(bodies)>=4 "
-            "stopped one station short of it, every hour, for as long as it existed)",
+            "the merge reaches a station that actually carries BDS-3 (a stop at "
+            "len(bodies)>=4 ends one station short of it)",
         )
         check(
             asked[:5] == ["NOBDS1", "NOBDS2", "NOBDS3", "NOBDS4", "WIDEAA"],
-            "four BDS-2-only stations do NOT end the merge -- they answered, they did not "
+            "four BDS-2-only stations do not end the merge -- they answered, they did not "
             "cover",
         )
         # The exit test governs how far back to walk, not whether to fetch at all. The two
@@ -312,7 +312,7 @@ def test_hourly_coverage():
         )
         check(
             len(_hours) <= 2,
-            "coverage being met stops the walk going FURTHER BACK -- at most the two newest "
+            "coverage being met stops the walk going further back -- at most the two newest "
             "hours were touched (%s)" % sorted(_hours),
         )
 
@@ -360,8 +360,7 @@ def test_station_diversity():
     print("the station list: geography is the point")
     tail = [s[-3:] for s in sup._HOURLY_STATIONS]
     check(
-        len(set(tail)) >= 4,
-        "at least four countries in the list (it was CAN,CAN,CAN,CAN,USA,BEL)",
+        len(set(tail)) >= 4, "at least four countries in the list",
     )
     head = [s[-3:] for s in sup._HOURLY_STATIONS[:4]]
     check(
@@ -396,7 +395,7 @@ def test_brdc_sources():
             # CDDIS for BKG's BRDC00WRD product can only 404.
             check(
                 "BRDC00WRD" not in cd,
-                "kind %s: it does NOT ask CDDIS for BKG's BRDC00WRD product" % kind,
+                "kind %s: it does not ask CDDIS for BKG's BRDC00WRD product" % kind,
             )
             check(
                 "/2026/239/26p/" in cd,
@@ -411,7 +410,7 @@ def test_brdc_sources():
         r_url = sup._brdc_sources("R", 2026, 239)[1][0]
         check(
             s_url != r_url,
-            "S and R map to DIFFERENT CDDIS products (BRDM00DLR vs BRDC00IGS), not one file",
+            "S and R map to different CDDIS products (BRDM00DLR vs BRDC00IGS), not one file",
         )
     finally:
         sup._earthdata_token = saved
@@ -437,15 +436,15 @@ def test_404_is_not_a_dead_host():
                 "https://cddis.nasa.gov/archive/gnss/data/daily/2026/238/"
                 "26p/y.rnx.gz"
             ),
-            "a 404 on one path leaves every OTHER path on that host reachable",
+            "a 404 on one path leaves every other path on that host reachable",
         )
 
         sup._src_dead.clear()
         sup._src_failed(url, exc=urllib.error.URLError("timed out"))
         check(
             sup._src_skip(url),
-            "a TIMEOUT still blacklists the host -- that is the case the "
-            "negative cache exists for (BKG, twice now)",
+            "a timeout still blacklists the host -- that is the case the "
+            "negative cache exists for",
         )
 
         sup._src_dead.clear()
@@ -521,7 +520,7 @@ def test_hourly_mirrors():
     no_tok = sup._hourly_sources("BRUX00BEL", when, None)
     check(
         len(no_tok) >= 1,
-        "with NO token there is still a source -- the sky does not depend on a credential",
+        "with no token there is still a source -- the sky does not depend on a credential",
     )
     check(
         all(not h for _, h in no_tok), "and that source needs no authentication at all"
@@ -532,7 +531,7 @@ def test_hourly_mirrors():
     )
     check(
         all("2026/239/11/" in u for u, _ in with_tok + no_tok),
-        "and for the SAME hour -- mirrors are tried per station, so the freshest hour any "
+        "and for the same hour -- mirrors are tried per station, so the freshest hour any "
         "of them has is the hour we get",
     )
 
@@ -574,13 +573,13 @@ def test_hourly_coverage_beats_recency():
     thin_c = {"G": set(range(1, 26)), "E": set(range(1, 23)), "C": set(range(19, 31))}
     check(
         len(thin_c["C"]) == 12 and not _hourly_target_met(thin_c, 8),
-        "the live 18:17 merge (G25/E22/C12) is NOT done -- 8 stations answered and BeiDou "
-        "is still short, which is exactly the state that shipped",
+        "a G25/E22/C12 merge is not done -- 8 stations answered and BeiDou "
+        "is still short",
     )
 
     check(
         _HOURLY_THIN_TTL_S < _HOURLY_TTL_S,
-        "a BELOW-TARGET merge is cached for less time than a full one (%.0f s vs %.0f s) -- "
+        "a below-target merge is cached for less time than a full one (%.0f s vs %.0f s) -- "
         "the missing stations are usually there minutes later"
         % (_HOURLY_THIN_TTL_S, _HOURLY_TTL_S),
     )
@@ -588,9 +587,8 @@ def test_hourly_coverage_beats_recency():
     with tempfile.TemporaryDirectory() as d:
         check(
             _hourly_cov_read(d)[0] is True,
-            "⚠️ NO COVERAGE RECORD COUNTS AS THIN -- a file we cannot judge must be "
-            "re-merged, not assumed complete; assuming complete is how the thin merge "
-            "survived its full 30 minutes",
+            "no coverage record counts as thin -- a file we cannot judge must be "
+            "re-merged, not assumed complete",
         )
         _hourly_cov_write(d, False, "G29/E29/C21")
         thin, got = _hourly_cov_read(d)
@@ -601,8 +599,8 @@ def test_hourly_coverage_beats_recency():
         _hourly_cov_write(d, True, "G25/E22/C12")
         check(
             _hourly_cov_read(d)[0] is True,
-            "and a thin one records that too, so the CACHE GATE can tell them apart -- a "
-            "gate that cannot is the bug restated",
+            "and a thin one records that too, so the cache gate can tell them apart -- a "
+            "gate that cannot keeps a thin merge as long as a full one",
         )
         # A foreign write must not be inherited. The cache is shared by every process that
         # imports gnss_brdc_supply, and a long-running one holds whatever version of the code
@@ -641,7 +639,7 @@ def test_coverage_counts_only_usable_records():
     check(_rec_is_fresh(mk(timedelta(minutes=30)), now), "a 30 min old record counts")
     check(
         not _rec_is_fresh(mk(timedelta(hours=5)), now),
-        "a 5 h old record does NOT -- it is already past predict_all's 4 h window",
+        "a 5 h old record does not -- it is already past predict_all's 4 h window",
     )
     # The cut is the validity window; a tighter one is a bug, not caution. BDS-3 updates
     # hourly on the hour and IGS hourlies publish ~15-25 min late, so BeiDou's freshest record
@@ -654,7 +652,7 @@ def test_coverage_counts_only_usable_records():
     )
     check(
         abs(_HOURLY_KEEP_S - 14400.0) < 1.0,
-        "the count window IS the validity window (%.0f s)" % _HOURLY_KEEP_S,
+        "the count window is the validity window (%.0f s)" % _HOURLY_KEEP_S,
     )
     # A record dated ahead of now is normal (GPS/Galileo centre toe in the fit interval).
     check(
@@ -706,8 +704,8 @@ def test_cached_brdc_never_writes():
         )
         check(
             "BRDC00WRD_R_20262100000_01D_MN.rnx.gz" not in got,
-            "a 40-day-old daily is NOT -- it cannot carry a record inside the 4 h toe "
-            "window, and parsing the whole directory was 59 files of wasted work",
+            "a 40-day-old daily is not -- it cannot carry a record inside the 4 h toe "
+            "window",
         )
         check(got and got[0] == "hourly_MN.rnx.gz", "freshest first")
     check(

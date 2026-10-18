@@ -361,7 +361,7 @@ def cmd_compact(args):
     epochs = load_pointings(args.pointings)
     if not epochs:
         print(
-            f"⚠️ no pointing epochs in {args.pointings}; files go under l0/unknown/",
+            f"no pointing epochs in {args.pointings}; files go under l0/unknown/",
             file=sys.stderr,
         )
     manifest = load_manifest(args.out)
@@ -386,8 +386,9 @@ def cmd_compact(args):
             # follows an earlier --include-open on it. --redo does not bypass this check, and a
             # refused file whose size changed (nothing of it in L0) is skipped here too.
             print(
-                f"⚠️ {key}: size {prev['size']} -> {st.st_size} since it was compacted "
-                f"(--include-open earlier?). SKIPPED; rebuild the day with --redo.",
+                f"{key}: size {prev['size']} -> {st.st_size} since it was compacted "
+                f"(--include-open earlier?). SKIPPED; to fold it again, delete its day's L0, "
+                f"remove that day's raw files from l0/manifest.json and run compact again.",
                 file=sys.stderr,
             )
             continue
@@ -622,7 +623,7 @@ def cmd_ls(args):
         )
         if uniq != len(idx):
             print(
-                f"   ⚠️ {len(idx) - uniq} DUPLICATE window(s) -- a raw file folded twice?"
+                f"   {len(idx) - uniq} DUPLICATE window(s) -- a raw file folded twice?"
             )
         tot["holes"] += holes
         tot["sdrop"] += sdrop
@@ -872,25 +873,36 @@ def main():
         "--mtime-tol",
         type=float,
         default=60.0,
-        help="max |utc(last window) - file mtime| before the epoch is refused "
-        "(measured 09-05: mtime - last window = +1.2 .. +2.6 s)",
+        help="max |utc(last window) - file mtime|, in seconds, before the file's "
+        "epoch is refused (rawFileWrite closes a file within seconds of its last window)",
     )
     p.add_argument(
-        "--include-open", action="store_true", help="also fold the newest (open) file"
+        "--include-open",
+        action="store_true",
+        help="also fold the newest (still open) file; once it grows, later passes skip "
+        "it, so its later frames are never folded",
     )
-    p.add_argument("--batch", type=int, default=12, help="raw files per HDF5 flush")
+    p.add_argument(
+        "--batch",
+        type=int,
+        default=12,
+        help="raw files per HDF5 flush and manifest save",
+    )
     p.add_argument(
         "--redo",
         action="store_true",
-        help="ignore the manifest (DUPLICATES rows in "
-        "existing L0 files -- delete the day's L0 first)",
+        help="fold every raw file under --raw again (all days), refused ones included. "
+        "Rows already in L0 are duplicated, so first delete the L0 of every day those files "
+        "cover. A file whose size changed since it was folded is still skipped",
     )
     p.add_argument("--pointings", default=DEFAULT_POINTINGS)
     p.set_defaults(fn=cmd_compact)
     p = sub.add_parser("ls", help="completeness of L0 files")
     p.add_argument("paths", nargs="+")
     p.add_argument(
-        "--gaps", action="store_true", help="list every hole with its attribution"
+        "--gaps",
+        action="store_true",
+        help="list every hole with its attribution (default: only the downstream ones)",
     )
     p.add_argument("--rel", help="print paths relative to this dir")
     p.set_defaults(fn=cmd_ls)
@@ -901,7 +913,8 @@ def main():
     p.add_argument(
         "--l0-root",
         default="/mnt/cs00/data/kvand/gnss_cube",
-        help="root whose l0/ prefix is replaced by rung<n>/ in the output path",
+        help="root of the input L0 tree: a file's path under <root>/l0/ is kept under "
+        "<out>/rung<n>/ ('' = the file name only)",
     )
     p.set_defaults(fn=cmd_rung)
     p = sub.add_parser("verify", help="raw <-> L0 bit-for-bit round trip")

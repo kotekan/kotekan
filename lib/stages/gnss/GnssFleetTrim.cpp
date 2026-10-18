@@ -195,7 +195,7 @@ GnssFleetTrim::GnssFleetTrim(Config& config, const std::string& unique_name,
     for (int i = 0; i < nthr; ++i)
         _post_threads.emplace_back(&GnssFleetTrim::post_loop, this, i);
     INFO("GnssFleetTrim[{:s}]: {:d} poster thread(s), blocking sends, posting on every window "
-         "close. NOTHING IS TRIMMED until the broker POSTs /set_policy with targets.",
+         "close. Nothing is trimmed until the broker posts /set_policy with targets.",
          unique_name, nthr);
 }
 

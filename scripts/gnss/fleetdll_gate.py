@@ -655,21 +655,38 @@ def main():
     )
     ap.add_argument("--exe", default=os.path.join(_HERE, "fleetdll"))
     ap.add_argument(
-        "--n-win", type=int, default=4, help="windows averaged (broker default 4)"
+        "--n-win",
+        type=int,
+        default=4,
+        help="windows each arm averages (default %(default)s): GnssFleetTrim's n_win "
+        "for the C++ arm, the broker's --telem-windows for the Python arm",
     )
     ap.add_argument("--min-instances", type=int, default=2)
-    ap.add_argument("--windows", type=int, default=12, help="windows in the fixture")
+    ap.add_argument(
+        "--windows",
+        type=int,
+        default=12,
+        help="windows in the fixture (default %(default)s)",
+    )
     ap.add_argument(
         "--self-test",
         action="store_true",
-        help="ALSO perturb the fixture and require the comparison to fail",
+        help="also perturb one channel and require both arms to agree with each other "
+        "and differ from the clean answer, then move one sender's REC_PHI0 and require "
+        "the lobe power to move",
     )
-    ap.add_argument("--keep", help="directory to leave the fixture and both answers in")
+    ap.add_argument(
+        "--keep",
+        help="directory to write the fixture streams, both arms' answers and the trim "
+        "stores to, and leave them in (default: a temp dir, removed after a pass)",
+    )
     ap.add_argument(
         "--no-build",
         action="store_true",
-        help="do NOT rebuild the C++ tool first (for bisecting a binary you built "
-        "on purpose; the default builds, see the note below)",
+        help="skip the default rebuild (site/build_tool.sh fleetdll) and run --exe as "
+        "it is, e.g. to bisect a binary you built on purpose. The rebuild is the default "
+        "because a binary on an older wire format reads as a disagreement, not as a "
+        "stale binary",
     )
     args = ap.parse_args()
 
@@ -798,7 +815,7 @@ def main():
         return 1
     if compare(py, c3):
         print(
-            "FAIL -- a late frame CHANGED the C++ answer. It must be dropped, not folded: "
+            "FAIL -- a late frame changed the C++ answer. It must be dropped, not folded: "
             "folding it makes the aggregate depend on arrival order."
         )
         return 1
@@ -821,7 +838,7 @@ def main():
     closed = {c: v["windows_closed"] for c, v in cpp["chains"].items()}
     if n_dup != closed:
         print(
-            "FAIL -- one freq_id is carried by two senders in EVERY window, so dup_chan must "
+            "FAIL -- one freq_id is carried by two senders in every window, so dup_chan must "
             "equal windows_closed: dup %s vs closed %s" % (n_dup, closed)
         )
         return 1
@@ -954,7 +971,7 @@ def main():
     c_deep = cpp_arm(args.exe, path, args.n_win, args.min_instances, taps_win=deep)
     if compare(py, c_deep):
         print(
-            "FAIL -- deepening taps_win CHANGED the discriminator. aggregate() must keep "
+            "FAIL -- deepening taps_win changed the discriminator. aggregate() must keep "
             "walking only the newest n_win of the ring."
         )
         return 1
@@ -1081,7 +1098,7 @@ def main():
     first_warm = {p: v[0][2] for p, v in warm.items() if v}
     if not first_warm or first_cold == first_warm:
         print(
-            "FAIL -- the restored run's FIRST trim equals the cold run's. The store was "
+            "FAIL -- the restored run's first trim equals the cold run's. The store was "
             "loaded and had no effect, which is persistence that measures as working."
         )
         return 1
@@ -1091,7 +1108,7 @@ def main():
     c_noarm = cpp_arm(args.exe, path, args.n_win, args.min_instances, trim_in=store)
     if c_noarm.get("trim_adopted", 0) != 0:
         print(
-            "FAIL -- adopted %d stored trim(s) with NOTHING armed. A restored trim is a "
+            "FAIL -- adopted %d stored trim(s) with nothing armed. A restored trim is a "
             "proposal; arming is the acceptance." % c_noarm.get("trim_adopted")
         )
         return 1
@@ -1113,7 +1130,7 @@ def main():
         )
         return 1
     print(
-        "TRIM-STORE PASS -- %d trim(s) across %d chain(s) persist and are adopted AT ARMING "
+        "TRIM-STORE PASS -- %d trim(s) across %d chain(s) persist and are adopted at arming "
         "(max |trim| %.3f chips), refused unarmed (0 adopted) and refused beyond the clamp "
         "(0 adopted)."
         % (n_stored, len(snap), max(abs(v) for c in snap.values() for v in c.values()))
@@ -1162,7 +1179,7 @@ def main():
         return 1
     if hi_m.get("skipped", 0) != cen_a.get(str(hi_prn), {}).get("skipped", 0):
         print(
-            "FAIL -- abs floor %.3g touched PRN %d (p %.3g), which sits ABOVE it."
+            "FAIL -- abs floor %.3g touched PRN %d (p %.3g), which sits above it."
             % (floor_mid, hi_prn, p_of[hi_prn])
         )
         return 1
@@ -1170,7 +1187,7 @@ def main():
         "series", {}
     ).get("gps_l5", {}).get(str(hi_prn)):
         print(
-            "FAIL -- the above-floor PRN %d's trim SERIES moved under the abs floor. The "
+            "FAIL -- the above-floor PRN %d's trim series moved under the abs floor. The "
             "flag must change only who is gated, never the arithmetic." % hi_prn
         )
         return 1
@@ -1185,20 +1202,20 @@ def main():
     stepped = {p: cen_n.get(str(p), {}).get("steps", 0) for p in ARM}
     if any(v for v in stepped.values()):
         print(
-            "FAIL -- with NO absolute floor the loop must refuse (leak-only, steps 0) and "
+            "FAIL -- with no absolute floor the loop must refuse (leak-only, steps 0) and "
             "instead it stepped: %s. A missing noise reference is not a licence to gate on "
             "nothing." % stepped
         )
         return 1
     if not all(cen_n.get(str(p), {}).get("skipped", 0) > 0 for p in ARM):
         print(
-            "FAIL -- refusal must LEAK every armed PRN, not silently drop them: %s"
+            "FAIL -- refusal must leak every armed PRN, not silently drop them: %s"
             % cen_n
         )
         return 1
     print(
         "ABS-FLOOR PASS -- floor %.3g: PRN %d (below) fully leak-only, PRN %d (above) "
-        "byte-identical; floor 0 REFUSES every armed PRN (steps 0, all leak-only)."
+        "byte-identical; floor 0 refuses every armed PRN (steps 0, all leak-only)."
         % (floor_mid, lo_prn, hi_prn)
     )
 
@@ -1263,7 +1280,7 @@ def main():
         if not moved:
             print(
                 "SELF-TEST FAIL: a 1%% perturbation of one channel (window %d, the newest "
-                "closed one) changed NOTHING -- the comparison, the fixture, or the fold is "
+                "closed one) changed nothing -- the comparison, the fixture, or the fold is "
                 "not doing what it claims." % (args.windows - 2)
             )
             return 1
@@ -1297,7 +1314,7 @@ def main():
         moved = compare(py, c4)
         if not moved:
             print(
-                "SELF-TEST FAIL: moving one sender's REC_PHI0 by 1 rad changed NOTHING. The "
+                "SELF-TEST FAIL: moving one sender's REC_PHI0 by 1 rad changed nothing. The "
                 "senders are being added as powers, not as rotated complex sums."
             )
             return 1
