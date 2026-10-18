@@ -1713,13 +1713,20 @@ def _dr_reload(ctx, first, with_dcb=True):
         "eph": None,
         "dcb": None,
         "has_dcb": False,
+        "iono": None,
         "error": None,
         "t0": time.time(),
     }
     try:
-        res["eph"] = ctx.dr_eph_mod.parse_rinex_nav(
-            ctx.dr_eph_mod.fetch_brdc(block=first)
-        )
+        _paths = ctx.dr_eph_mod.fetch_brdc(block=first)
+        res["eph"] = ctx.dr_eph_mod.parse_rinex_nav(_paths)
+        # Klobuchar coefficients from the nav headers (GPSA/GPSB), when a cached file carries
+        # them; the merged daily product often does not. None means --iono klobuchar runs
+        # with no model, logged by _dr_apply_reload.
+        if getattr(ctx.args, "iono", "none") == "klobuchar":
+            import gnss_atmos as _atm
+
+            res["iono"] = _atm.iono_params(_paths)
         # Measured code biases (DCB), on their own slower cadence (_DR_DCB_REFRESH_S): a daily
         # product with ~5 days of latency, biases stable over weeks. Optional: with no token or no
         # network dcb is None and group_delay_s uses the broadcast term.
@@ -1811,6 +1818,15 @@ def _dr_apply_reload(ctx, res):
     if res["has_dcb"]:
         ctx.dr_state["dcb"] = res["dcb"]
         ctx.dr_state["dcb_t"] = ctx.drp.now_w
+    if getattr(ctx.args, "iono", "none") == "klobuchar":
+        ctx.dr_state["iono"] = res.get("iono")
+        if not res.get("iono"):
+            _log_rl(
+                "iono-none",
+                "dead-reckon: --iono klobuchar but no GPSA/GPSB in the cached nav headers; "
+                "no ionosphere in the model until a file carries them",
+                every_s=3600.0,
+            )
     _log(
         "dead-reckon: BRDC loaded (%d sats) -- %.1f s of fetch+parse, off the pass"
         % (len(res["eph"]), time.time() - res["t0"])
@@ -2188,6 +2204,16 @@ def stage_dead_reckon(ctx):
             # The hop-axis epoch (#208): every model below is evaluated at _ep_w and labelled
             # _ep_age; nothing here reads the wall clock.
             _ep_age, _ep_w = dr_eph_epoch(ctx)
+            # The atmosphere (0b): Saastamoinen from the site by default; Klobuchar at this
+            # chain's carrier only with --iono klobuchar and coefficients in the nav headers.
+            # The decoded fallback below has neither (cp_predicted reads 0.0).
+            _tropo = getattr(ctx.args, "tropo", "saastamoinen") == "saastamoinen"
+            _iono = (
+                (ctx.dr_state["iono"][0], ctx.dr_state["iono"][1], ctx.args.carrier_hz)
+                if getattr(ctx.args, "iono", "none") == "klobuchar"
+                and ctx.dr_state.get("iono")
+                else None
+            )
             try:
                 # Three epochs, _ep_w and _ep_w +- 2 s: the centred range-rate difference is the
                 # Doppler rate dr_seed ships (the TLE almanac's rate is not used here).
@@ -2239,6 +2265,8 @@ def stage_dead_reckon(ctx):
                         mask_deg=-90.0,
                         signal=ctx.args.signal,
                         dcb=ctx.dr_state.get("dcb"),
+                        tropo=_tropo,
+                        iono=_iono,
                     )
                     # Centred pair, +-2 s about the epoch: a forward difference over [t, t+4] would
                     # estimate the rate at now+2 and hand it to the seed as the rate at now, and the
@@ -2252,6 +2280,8 @@ def stage_dead_reckon(ctx):
                         mask_deg=-90.0,
                         signal=ctx.args.signal,
                         dcb=ctx.dr_state.get("dcb"),
+                        tropo=_tropo,
+                        iono=_iono,
                     )
                     pd0 = ctx.dr_eph_mod.predict_all(
                         ctx.dr_state["eph"],
@@ -2262,6 +2292,8 @@ def stage_dead_reckon(ctx):
                         mask_deg=-90.0,
                         signal=ctx.args.signal,
                         dcb=ctx.dr_state.get("dcb"),
+                        tropo=_tropo,
+                        iono=_iono,
                     )
             except Exception as e:
                 ctx.drp.pd, ctx.drp.pd2, pd0 = {}, {}, {}

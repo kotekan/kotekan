@@ -275,6 +275,23 @@ Offline now, on the obs archive and the replays (no sky needed):
       and the direction fit's dU goes to 0 +- 2 m; gps_l5's b_sat p10/p90 inside +-0.2 chips on
       the 10-12 replay. The transcript digests move: re-bless with this step's commit, on the
       fresh replays #184 waits for.
+      **Troposphere done 2026-10-19 (gnss_atmos, `--tropo saastamoinen` default; predict_all
+      carries tropo_m / iono_m as separate delays, cp_predicted adds them, the obs rows publish
+      tropo_m).** Validated offline on 10-18's five L5-band chains before it shipped: the
+      clock-removed code residual's low-elevation plunge (-8.0 / -1.8 / 0.0 m in the 0-10 /
+      10-20 / 20-30 deg bins) flattens to +0.18 / +0.17 / +0.15 m with the model added, on
+      every chain. **Ionosphere: plumbed, off.** Klobuchar with the only cached coefficient set
+      (2026-08-27) doubles the remaining tilt (rms 2.28 -> 3.00 m), the daily BRDC product and
+      our hourly merge carry no GPSA/GPSB, and the residual shows no ionosphere-shaped term at
+      L5 beyond the troposphere; `--iono klobuchar` takes the header coefficients when a cached
+      file has them. **Re-survey measured, not yet applied (KV):** with the troposphere in,
+      the residual is a pure sin(el) term; a fixed-effects fit (per-10-s clock, three ENU
+      columns, 80-120 k rows per chain) gives model - true = (+2.9 N, 0.0 E, +7.2 U) m, the
+      five chains within +-0.4 m (gps_l5 +2.92/+0.19/+7.10, gal_e5a +2.85/-0.10/+7.25, gal_e5b
+      +2.78/-0.02/+6.84, bds_b2a +2.65/+0.13/+7.41, bds_b3i +3.11/+0.14/+7.60), robust rms
+      1.4-1.7 m. Lands as a change of `lat`/`alt` in config/gnss_chains_chord.yaml (2.9 m
+      south, 7.2 m down) plus the node-config regen and a broker restart; the gate (dU -> 0
+      +- 2 m, code_resid vs elevation flat) is then read from the next day's obs.
   0c. **The state (done 2026-10-18, a3bfeabfc).** One unit with conversion at the feed; the
       coast-on-refusal consumer; selftest cases for each (a second constellation joining, a
       refusal coasting, a mass birth). Gate: selftest and `broker_equiv` green, fakefleet runs.

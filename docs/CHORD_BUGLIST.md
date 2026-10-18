@@ -627,6 +627,22 @@ test, selftest, and the onsky_l5_holds replay (no "feed skipped", the rrate feed
 gate could not judge it: the replay is NON-DETERMINISTIC (two replays of the unchanged 5a1522f3f tree disagree,
 `broker_equiv.py selftest` says so; three trees gave three digests under one golden) = #192 (g), open. LIVE after the
 next broker restart.
+**10-19 00:30Z STEP 0b (CHORD_JOINT_TRACKING.md 6.3) -- troposphere shipped, ionosphere plumbed and off, the
+re-survey measured:** gnss_atmos.py (Saastamoinen zenith delays from a standard atmosphere at the site height, Chao
+mapping; Klobuchar at the chain's carrier; RINEX IONOSPHERIC CORR parse); predict_all carries tropo_m / iono_m as
+separate delays (0.0 off), cp_predicted adds them (every model-evaluated code phase: seeds, offsets, trkresid), the
+obs rows publish tropo_m. Offline gate on 10-18 (code_resid_m, receiver clock removed per 10-s epoch, five chains): the
+low-elevation plunge (-8.0/-1.8/0.0 m at 0-10/10-20/20-30 deg) flattens to +0.18/+0.17/+0.15 m with Saastamoinen
+added -- right sign, size and shape. What is left is a clean -8.4 m x sin(el) term; the fixed-effects ENU fit gives
+model - true = (+2.9 N, 0.0 E, +7.2 U) m on all five chains within +-0.4 m: the model station sits 7.2 m too high and
+2.9 m too far north (the plan's "-18 m sin(el)" of 10-14). Klobuchar with the only cached coefficient set (08-27)
+over-corrects (tilt -8.4 -> -16.9 m/sin, rms 2.28 -> 3.00): no ionosphere-shaped term beyond the troposphere shows at
+L5 in the 10-18 data, and the daily BRDC product + our hourly merge carry no GPSA/GPSB, so --iono stays none (the
+coefficients are read when a cached header has them). Lands at the next broker restart (--tropo saastamoinen default);
+the expected live effect: b_sat spread and the SEARCH-MONITOR per-PRN values lose their elevation term, the joint clock
+shifts by the fed set's mean tropo (~2.5 m), code_resid_m in the obs flattens vs elevation. The re-survey is KV's
+config change (lat -2.9 m = -0.0000261 deg, alt 545 -> 537.8 m) + node-config regen + broker restart; its gate is dU ->
+0 +- 2 m on the next day's obs. Scratch: resid_vs_el.py, resurvey.py (session 20bfd671).
 
 ### #171 — the ALERT files reach no one (2026-10-09)
 **What [tree]:** `chain_health_cron.sh` (cf06, */15) and `elem_ref_cron.sh` (gnss, */5) write ALERT files that

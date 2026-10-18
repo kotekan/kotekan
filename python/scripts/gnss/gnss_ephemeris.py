@@ -22,6 +22,8 @@ Usage:
 """
 import gzip
 import math
+
+import gnss_atmos
 import warnings
 from datetime import datetime, timezone
 
@@ -551,10 +553,17 @@ def predict_all(
     signal=None,
     dcb=None,
     health_gate=True,
+    tropo=False,
+    iono=None,
 ):
     """Per visible satellite: az/el, geometric range (m) with the Earth-rotation (Sagnac)
     correction, range rate (m/s) and satellite clock (s). The receiver clock is not included:
     solving it from measured minus predicted is the time bootstrap.
+
+    Atmosphere, as separate one-way delays (m) to add to range_m, so a consumer that wants
+    geometry only keeps it: `tropo=True` fills tropo_m with the Saastamoinen slant delay from
+    the site (gnss_atmos); `iono=(alpha, beta, f_hz)` fills iono_m with the Klobuchar delay at
+    carrier f_hz. Both are 0.0 when off.
 
     max_age (s) is the toe validity window (default 4 h). Geometry-only callers (gnss_observables,
     sky.transit_sky, the beam cube) widen it so a stale or offline-cached ephemeris still yields
@@ -615,5 +624,13 @@ def predict_all(
             sat_clk_s=clk + _gd,
             tgd_s=_gd,
             toe_age_s=t - e["toe_gpst"],
+            tropo_m=gnss_atmos.tropo_delay_m(el, lat, alt) if tropo else 0.0,
+            iono_m=(
+                gnss_atmos.klobuchar_delay_m(
+                    iono[0], iono[1], lat, lon, el, az, t % 604800.0, iono[2]
+                )
+                if iono
+                else 0.0
+            ),
         )
     return out

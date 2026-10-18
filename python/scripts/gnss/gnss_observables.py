@@ -434,6 +434,7 @@ def main():
                             datetime.fromtimestamp(t_epoch, tz=timezone.utc),
                             mask_deg=-90.0,
                             max_age=EPH_GEOM_WINDOW_S,
+                            tropo=True,
                         ).get((args.sys, prn))
                     except Exception:
                         v = None
@@ -638,6 +639,8 @@ def main():
                             "range_rate_mps": round(v["range_rate_mps"], 4),
                             "sat_clk_s": v["sat_clk_s"],
                             "eph_age_s": round(v["toe_age_s"], 1),
+                            # one-way delays, not subtracted from anything here
+                            "tropo_m": round(v.get("tropo_m", 0.0), 3),
                         }
                     )
                 write_row(t_epoch, row)

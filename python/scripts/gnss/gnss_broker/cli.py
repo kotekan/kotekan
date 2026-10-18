@@ -1071,6 +1071,23 @@ def build_parser(description):
         "broadcast term.",
     )
     ap.add_argument(
+        "--tropo",
+        choices=("saastamoinen", "none"),
+        default="saastamoinen",
+        help="tropospheric delay in the dead-reckon range model: Saastamoinen zenith "
+        "delays from a standard atmosphere at the site height, Chao mapping (gnss_atmos), "
+        "or none. Applies to every model-evaluated code phase (seeds, clock offsets, the "
+        "tracker residual).",
+    )
+    ap.add_argument(
+        "--iono",
+        choices=("none", "klobuchar"),
+        default="none",
+        help="ionospheric delay in the dead-reckon range model: none (default), or the "
+        "Klobuchar model at this chain's carrier with the GPSA/GPSB coefficients from the "
+        "cached nav headers (no model, logged hourly, while no cached file carries them).",
+    )
+    ap.add_argument(
         "--joint-consume",
         default="",
         help="comma list of joint receiver-state consumers to switch on; empty "
