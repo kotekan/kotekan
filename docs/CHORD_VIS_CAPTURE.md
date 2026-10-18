@@ -125,12 +125,12 @@ read, do not change.
 The gate is inert until armed. Nothing is written by a restart alone.
 
 1. Confirm the tracker is locked and happy (viewer; `q`, not `sig`).
-2. `scripts/gnss/viscap.py status --tags ,_e5a,_b2a` — every gate answers (36 with the three
-   chains), `last_seq` advancing on all, `seq_per_frame` identical (134217728 samples = 8192
-   hops). Without `--tags` the tool addresses the primary (gps_l5) gates only.
-3. `scripts/gnss/viscap.py arm --tags ,_e5a,_b2a --start-in 30 --duration 300` — frame-aligns
-   one absolute window and POSTs it to every gate; prints the window in seq and wall time.
-4. `scripts/gnss/viscap.py watch --tags ,_e5a,_b2a` — `passed` climbs ~24/s per gate,
+2. `scripts/gnss/viscap.py status` — every gate answers (12: one per GPU on each of the six
+   nodes, each gating every captured chain), `last_seq` advancing on all, `seq_per_frame`
+   identical (134217728 samples = 8192 hops).
+3. `scripts/gnss/viscap.py arm --start-in 30 --duration 300` — frame-aligns one absolute window
+   and POSTs it to every gate; prints the window in seq and wall time.
+4. `scripts/gnss/viscap.py watch` — `passed` climbs ~24/s per gate,
    `window_dropped` stays 0. Judge in the first minute; do not soak. `viscap.py disarm` aborts
    everywhere.
 5. After `end_seq` the gates disarm themselves. Files: `ls -la /tmp/gnss/viscap/` on each node

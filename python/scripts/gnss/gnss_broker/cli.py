@@ -238,15 +238,15 @@ _FROZEN = dict(
     instance_stall_s=90.0,
     # 'clk' consumer (--joint-consume): refuse the joint clock if it disagrees with the legacy
     # median by more than this. The median churns by +-1-2 chips, so 5 keeps the plausible envelope
-    # while refusing a wrap alias or a diverged filter. In the joint state's chips (its feeders',
-    # 10.23 Mcps) on every chain, so 5 = 489 ns everywhere; a chain at another chip rate converts
-    # before comparing (deadreckon.dr_joint_clk).
+    # while refusing a wrap alias or a diverged filter. In reference chips
+    # (receiver.JOINT_REF_RATE_HZ, 10.23 Mcps) on every chain, so 5 = 489 ns everywhere; a chain at
+    # another chip rate converts before comparing (deadreckon.dr_joint_clk).
     joint_clk_max_chips=5.0,
-    # 'clk' consumer: refuse a joint clock whose 1-sigma exceeds this (joint-state chips). P grows
+    # 'clk' consumer: refuse a joint clock whose 1-sigma exceeds this (reference chips). P grows
     # while the state is unfed, so this one gate covers both estimator health and staleness; a
     # healthy state reads under 0.1.
     joint_clk_max_sigma=0.5,
-    # 'clk' consumer step guard: a joint clock more than joint_clk_max_step_chips (joint-state
+    # 'clk' consumer step guard: a joint clock more than joint_clk_max_step_chips (reference
     # chips) from the one this chain last adopted is refused until it has held the new level, to the
     # same tolerance, for joint_clk_step_hold_s. A transit that blinds the feeder band walks the
     # joint clock for under a minute, inside the bounds above. The receiver clock moves under
@@ -491,8 +491,8 @@ _FROZEN = dict(
     joint_min_snr=60.0,
     # 'slew' consumer (--joint-consume): refuse the joint slew target if it disagrees with the
     # legacy target (clock EMA + SatBiasFilter) by more than this. Both describe the same receiver
-    # and b_sat runs +-3-6 chips, so a larger gap means one estimator is broken. In the joint
-    # state's chips (5 = 489 ns at 10.23 Mcps), the same time on every chain, like
+    # and b_sat runs +-3-6 chips, so a larger gap means one estimator is broken. In reference
+    # chips (5 = 489 ns at 10.23 Mcps), the same time on every chain, like
     # joint_clk_max_chips.
     joint_slew_max_chips=5.0,
     # Treat a satellite as locked for the dead-reckon slew/re-birth decision when its fleet
