@@ -133,7 +133,8 @@ def gather(masters, freqs, chain_offsets=None):
             )
         if m["units"] != masters[0]["units"] or m["pointing"] != masters[0]["pointing"]:
             sys.exit(
-                "master %s is %s/%s, first is %s/%s -- NEVER sum two currencies"
+                "master %s is %s/%s, first is %s/%s -- masters in different units "
+                "or pointings cannot be summed"
                 % (
                     m["path"],
                     m["units"],
@@ -256,7 +257,8 @@ def elem_gains(N, S, mode, min_n, fit_mask, quiet=False):
                 if not quiet:
                     print(
                         "  WARNING: dominant mode has %d non-positive element amplitude(s); "
-                        "falling back to svd-log for those" % int((a <= 0).sum())
+                        "those elements get no gain and are left out (--elem-norm svd-log "
+                        "fits a gain for every live element)" % int((a <= 0).sum())
                     )
                 a = np.where(a > 0, a, np.nan)
             gl = np.ones(E)
@@ -1004,19 +1006,28 @@ def main():
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     def common(p):
-        p.add_argument("masters", nargs="+", help="cube_<day>_nside<N>.npz")
+        p.add_argument(
+            "masters",
+            nargs="+",
+            help="master cubes from gnss_beam_cube.py build (cube_<day>_nside<N>.npz), "
+            "summed; all must share nside, units and pointing",
+        )
         p.add_argument(
             "--chains",
             nargs="*",
             default=["bds_b2a", "gal_e5a", "gps_l5"],
-            help="default: the three 1176 MHz chains",
+            help="chains to load (default: the three 1176 MHz chains; --chains with no "
+            "names loads every chain in the masters)",
         )
         p.add_argument(
             "--freqs",
             default="all",
-            help="ABSOLUTE freq_ids: 5988 | 5980-6000 | 5988,6000 | all",
+            help="absolute freq_ids, not per-chain bin indices: "
+            "5988 | 5980-6000 | 5988,6000 | all",
         )
-        p.add_argument("--elements", default="all", help="0 | 0,3 | 0-7 | all")
+        p.add_argument(
+            "--elements", default="all", help="element ids: 0 | 0,3 | 0-7 | all"
+        )
         p.add_argument(
             "--elem-norm", default="svd", choices=["svd", "svd-log", "peak", "none"]
         )
@@ -1024,17 +1035,23 @@ def main():
             "--fit-radius",
             type=float,
             default=30.0,
-            help="pixels within this angle of boresight fit the element gains",
+            help="pixels within this many degrees of boresight fit the per-element "
+            "gains (--elem-norm)",
         )
         p.add_argument(
-            "--min-n", type=int, default=8, help="samples a pixel needs to be shown"
+            "--min-n",
+            type=int,
+            default=8,
+            help="samples a pixel needs to be shown (the g^2-weighted count under "
+            "--elem-weight ivar) and to enter the gain and chain-offset fits",
         )
         p.add_argument(
             "--annulus",
             type=float,
             nargs=2,
             default=(2.0, 12.0),
-            help="where the cross-chain offset is measured",
+            help="off-boresight annulus LO HI, in degrees, where each chain's offset "
+            "onto --offset-ref is measured (unless --no-chain-align)",
         )
         p.add_argument("--offset-ref", default="gps_l5")
         p.add_argument("--no-chain-align", action="store_true")
@@ -1042,34 +1059,36 @@ def main():
             "--elem-weight",
             default="ivar",
             choices=["ivar", "n"],
-            help="how elements combine: inverse-variance (default) or sample count",
+            help="how elements combine: ivar weights each gain-corrected element by "
+            "g^2 (inverse variance, the default), n by its sample count",
         )
         p.add_argument(
             "--smooth",
             type=float,
             default=0.0,
             metavar="FWHM_DEG",
-            help="widen the bin: smooth the accumulators, then divide "
-            "(0 = raw pixels). At nside 128 the sky is sampled along "
-            "satellite TRACKS, so a map is track-limited long before "
-            "it is resolution-limited",
+            help="widen the bin: smooth the accumulators with a Gaussian of this "
+            "FWHM in degrees, then divide (0 = raw pixels). At nside 128 the sky "
+            "is sampled along satellite tracks, so a map is track-limited long "
+            "before it is resolution-limited",
         )
         p.add_argument(
             "--min-occ",
             type=float,
             default=0.5,
             help="with --smooth: fraction of the kernel's weight that must come from "
-            "pixels holding real samples (0 = the old, leaky behaviour)",
+            "pixels holding real samples; 0 keeps every pixel, including empty "
+            "ones the kernel fills from their neighbours",
         )
         p.add_argument(
             "--label",
             default=None,
-            help="name the element selection in the title, e.g. a feed plane",
+            help="name the element selection in the map title, e.g. a feed plane",
         )
         p.add_argument("--peak-norm", action="store_true")
         p.add_argument("--out", required=True)
 
-    m = sub.add_parser("map", help="sky map around boresight")
+    m = sub.add_parser("map", help="sky map around boresight or another --centre")
     common(m)
     m.add_argument("--radius", type=float, default=25.0)
     m.add_argument("--size", type=int, default=900, help="image pixels per side")
@@ -1077,11 +1096,15 @@ def main():
     m.add_argument(
         "--centre",
         default="boresight",
-        help="boresight | zenith | AZ,EL -- with --radius 90 and zenith this is the "
-        "whole visible hemisphere, horizon at the rim",
+        help="boresight | zenith | AZ,EL in degrees -- with --radius 90 and zenith "
+        "this is the whole visible hemisphere, horizon at the rim",
     )
     m.add_argument(
-        "--dr", type=float, default=35.0, help="colour range below the 99.9th pct"
+        "--dr",
+        type=float,
+        default=35.0,
+        help="colour range in dB below the 99.9th percentile of the image(s); "
+        "ignored when --vmin is set",
     )
     m.add_argument("--vmin", type=float, default=None)
     m.add_argument("--vmax", type=float, default=None)
@@ -1090,7 +1113,8 @@ def main():
         "--sweep",
         default=None,
         choices=["freq", "elem"],
-        help="one frame per channel/element, shared colour scale (for video)",
+        help="one PNG per channel or element, named --out with _f<freq_id> or _e<NNN> "
+        "before the extension, on a shared colour scale (for video)",
     )
     m.set_defaults(fn=cmd_map)
 
@@ -1100,7 +1124,7 @@ def main():
     r.add_argument("--radius", type=float, default=40.0)
     r.add_argument("--bin-deg", type=float, default=0.5)
     r.add_argument(
-        "--band", action="store_true", help="shade the 16/84 percentile spread"
+        "--band", action="store_true", help="shade each curve's 16/84 percentile spread"
     )
     r.add_argument("--no-airy", action="store_true")
     r.add_argument("--dish", type=float, default=DISH_M)
@@ -1110,7 +1134,8 @@ def main():
         nargs=2,
         default=None,
         metavar=("LO", "HI"),
-        help="level each curve by its own median in this annulus, to compare SHAPES",
+        help="level each curve by its own median between LO and HI degrees off "
+        "boresight, to compare shapes",
     )
     r.add_argument(
         "--residual",
@@ -1129,7 +1154,8 @@ def main():
         nargs=2,
         default=(5.0, 30.0),
         metavar=("LO", "HI"),
-        help="angles over which element-to-element agreement is scored",
+        help="off-boresight angles LO HI, in degrees, over which element-to-element "
+        "agreement is scored",
     )
     g.set_defaults(fn=cmd_gains)
 

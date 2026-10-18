@@ -212,7 +212,7 @@ class TestMassBirth(unittest.TestCase):
         f = self._incident()
         self.assertFalse(
             any("ESCAPE REFUSED" in n or "RATE CLAMPED" in n for n in self.notes),
-            "the incident refused an escape or clamped the rate",
+            "the +9-chip step with six births refused an escape or clamped the rate",
         )
         total = f.n_updates + f.rejected
         self.assertLess(

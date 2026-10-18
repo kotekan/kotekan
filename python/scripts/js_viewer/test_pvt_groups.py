@@ -57,7 +57,9 @@ class T(unittest.TestCase):
                 "chain %s lost its own clock group; got %s" % (band, sorted(groups)),
             )
         self.assertNotIn(
-            "G-L1", groups, "L5 data labelled L1 -- the case-sensitive substring bug"
+            "G-L1",
+            groups,
+            "L5 data labelled L1 -- a group named from a substring of the chain name",
         )
 
     def test_l2c_does_not_share_a_clock_with_l5(self):

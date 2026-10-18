@@ -61,8 +61,8 @@ export class AirspyStatsPanel {
                                       border-top:1px solid #f0f0f0;">
                 <div style="flex:0 0 11em;padding:.15em .5em;color:#8a8f98;">—</div>
                 <div style="padding:.15em .5em;color:#8a8f98;font-size:.9em;">${why}
-                  — these cells are NOT a measurement of zero (rf-stats is off, or the
-                  broker has no get_rf)</div></div>`;
+                  — these cells are NOT a measurement of zero (the taps' rf_stats is off or
+                  unreachable)</div></div>`;
         }
         // Group every instance's lobes by band; fall back to lobe index for any that carry
         // no band, so a fleet with both kinds renders them side by side rather than merging
@@ -123,11 +123,11 @@ export class AirspyStatsPanel {
                   + `${rng.mhz0}-${rng.mhz1} MHz (freq_id ${rng.freq_id0}-${rng.freq_id1}, `
                   + `local comb ch ${rng.chan0}-${rng.chan1}) on the first reporting instance; `
                   + "nodes hold different channel subsets, so the local range differs per "
-                  + "instance while the BAND does not. Channels are assigned to the nearest "
+                  + "instance while the band does not. Channels are assigned to the nearest "
                   + "declared carrier (broker --rf-bands)."
                 : `local comb channels ${rng.chan0}-${rng.chan1}. UNNAMED: this instance's `
-                  + "tap served no freq_ids, so the band is unknown -- an older node binary, "
-                  + "or --rf-bands not declared. Rows keyed by lobe index are NOT comparable "
+                  + "band is unknown -- its tap served no freq_ids (no chord-metadata frame yet), "
+                  + "or broker --rf-bands is not declared. Rows keyed by lobe index do not line up "
                   + "across instances once the fleet runs more than two bands.";
             rows += `<div style="display:flex;align-items:center;
                                  border-top:1px solid #f0f0f0;">
@@ -139,12 +139,12 @@ export class AirspyStatsPanel {
                        + "Above ~1% the quantiser is losing signal, not just headroom, and "
                        + "every C/N0 below it is understated for a reason that is not the sky.")
                 + cell(med != null ? med.toPrecision(3) : "—", "#5a6472",
-                       "median |x|^2 across reporting instances, this band. Compare BANDS: a "
+                       "median |x|^2 across reporting instances, this band. Compare bands: a "
                        + "source that lifts one and not the other is band-selective and "
-                       + "external, which is the 2026-08-18 signature.")
+                       + "external.")
                 + cell(`${have.length}/${inst.length}`,
                        have.length === inst.length ? "#3fb26f" : "#8a8f98",
-                       "instances reporting this band. PARTIAL IS OFTEN CORRECT: a narrow "
+                       "instances reporting this band. Partial is often correct: a narrow "
                        + "band lands on only a few instances by design (gps_l2c's mainlobe is "
                        + "6 freq_ids and 5 land on distinct instances). Not reporting: "
                        + (missing.length ? missing.map(short).join(", ") : "none")
@@ -156,11 +156,11 @@ export class AirspyStatsPanel {
         }
         if (mixed)
             rows += `<div style="padding:.15em .5em;font-size:.8em;color:#e8a13c;">
-                ⚠️ ${unnamed} instance(s) serve no band identity — their rows are keyed by
+                ${unnamed} instance(s) serve no band identity — their rows are keyed by
                 lobe index and are not comparable with the named rows above</div>`;
         else if (legacyMixed)
             rows += `<div style="padding:.15em .5em;font-size:.8em;color:#e8a13c;">
-                ⚠️ instances disagree on lobe count — rows may compare different bands</div>`;
+                instances disagree on lobe count — rows may compare different bands</div>`;
 
         // RFI (spectral kurtosis): the same get_rf instances, folded in by broker --rfi-stats.
         const skOn = on.filter(([, v]) => v && v.sk);
@@ -195,7 +195,7 @@ export class AirspyStatsPanel {
             const dc = (v) => v > 0 ? "#e8a13c" : "#3fb26f";
             rows += `<div style="display:flex;align-items:center;border-top:1px solid #f0f0f0;">
                 <div style="flex:0 0 11em;font-weight:600;color:#5a6472;padding:.15em .5em;white-space:nowrap;"
-                     title="cumulative dropped-frame counters since instance start — watch the RATE across ticks, not the absolute. Worst instance shown per class.">drops &nbsp;srch/telem/nic</div>`
+                     title="cumulative dropped-frame counters since instance start — watch the rate across ticks, not the absolute. Worst instance shown per class.">drops &nbsp;srch/telem/nic</div>`
                 + cell(su >= 0 ? su.toLocaleString() : "—", dc(su), "worst instance: search-send frames dropped (send buffer full)")
                 + cell(tu >= 0 ? tu.toLocaleString() : "—", dc(tu), "worst instance: telemetry-send frames dropped")
                 + cell(mu >= 0 ? mu.toLocaleString() : "—", dc(mu), "worst instance: NIC rx-missed packets (dpdk)")

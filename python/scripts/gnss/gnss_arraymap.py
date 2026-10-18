@@ -661,7 +661,10 @@ def main(argv=None):
     s = sub.add_parser("element")
     s.add_argument("index", type=int)
     s.add_argument(
-        "--cube", action="store_true", help="index the 32-wide beam-cube axis"
+        "--cube",
+        action="store_true",
+        help="index is a beam-cube index (0..31, mapped through the epoch's cube_order), "
+        "not a correlator element index (0..127)",
     )
     s.add_argument("--at", default=None)
     s.set_defaults(fn=cmd_element)
@@ -670,7 +673,11 @@ def main(argv=None):
     s.add_argument("t2")
     s.set_defaults(fn=cmd_diff)
     s = sub.add_parser("masters")
-    s.add_argument("masters", nargs="+", help="cube_<day>_nside<N>.npz")
+    s.add_argument(
+        "masters",
+        nargs="+",
+        help="beam-cube master files (cube_<day>_nside<N>.npz); only their meta blob is read",
+    )
     s.set_defaults(fn=cmd_masters)
     sub.add_parser("check").set_defaults(fn=cmd_check)
     a = p.parse_args(argv)

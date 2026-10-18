@@ -58,7 +58,7 @@ def power_table(nodes):
 def print_power(tbl):
     if not tbl:
         print(
-            "no nodes answered -- is element_power registered? (needs the 2026-08-07 build)"
+            "no nodes answered gnss0_srch_tap/element_power -- are they up on a GNSS config?"
         )
         return
     ne = max(len(v) for v in tbl.values())
@@ -77,7 +77,7 @@ def print_power(tbl):
         "\n  median %.2f. DARK = no signal path. 'hot?' = >4x median, which is as consistent"
     )
     print(
-        "  with an oscillating amp as with a good feed -- POWER CANNOT TELL THEM APART."
+        "  with an oscillating amp as with a good feed -- power cannot tell them apart."
     )
 
 
@@ -103,7 +103,12 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--nodes", nargs="*", default=NODES)
     ap.add_argument(
-        "--set", type=int, default=None, help="point every search tap at this element"
+        "--set",
+        type=int,
+        default=None,
+        help="re-point the search taps (gnss0_srch_tap, gnss1_srch_tap) of every --nodes "
+        "node at this element (absolute index in the input frame) at runtime; a node "
+        "restart restores the config's element_offset",
     )
     a = ap.parse_args()
 

@@ -196,7 +196,7 @@ class TestGauge(unittest.TestCase):
             len(old_use),
             0,
             "the zero-centred inlier rule would not have emptied here, so this "
-            "state does not reproduce the incident",
+            "state does not reproduce the empty inlier set",
         )
 
         mean_before = sum(js.bias(k) for k in biases) / len(biases)

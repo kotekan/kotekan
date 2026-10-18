@@ -155,46 +155,51 @@ def main():
     ap.add_argument(
         "--day",
         default=None,
-        help="YYYYMMDD, or a comma list of consecutive days (default: today UTC). A run "
-        "spans the midnight file roll; listing both days joins it at the grid hop, "
-        "which is continuous across the roll.",
+        help="observables day YYYYMMDD, or a comma list of days (default: today UTC). "
+        "Rows are keyed by grid hop, which is continuous across the midnight file roll, "
+        "so listing both days joins an arc across it. Rows older than --since-h are "
+        "still dropped, so raise it to reach back into an earlier day.",
     )
     ap.add_argument(
         "--pair",
         action="append",
         default=[],
-        help="A_BAND:B_BAND, repeatable (default: %s)" % ", ".join(DEFAULT_PAIRS),
+        help="band pair A_BAND:B_BAND by chain name (e.g. gal_e5a:gal_e6), repeatable; "
+        "each band's <obs-dir>/<band>_<day>.jsonl must exist. Any --pair replaces the "
+        "default list (%s)" % ", ".join(DEFAULT_PAIRS),
     )
     ap.add_argument("--since-h", type=float, default=6.0)
     ap.add_argument(
         "--cn0-min",
         type=float,
         default=25.0,
-        help="coherent C/N0 gate, BOTH bands; a dead PRN's ADR is a noise walk "
-        "that reads as tens of TECU",
+        help="minimum cn0_kcoh_dbhz (dB-Hz) for a row to be used, applied to each band: "
+        "a dead PRN's fleet ADR is a noise walk that reads as tens of TECU",
     )
     ap.add_argument("--min-arc-s", type=float, default=300.0)
     ap.add_argument(
         "--max-gap-s",
         type=float,
         default=30.0,
-        help="a hole longer than this ends a joint arc even if fadr_arc held",
+        help="a hole in the two bands' common grid hops longer than this (s) ends a "
+        "joint arc even if both bands' fadr_arc held",
     )
     ap.add_argument(
         "--step-m",
         type=float,
         default=0.05,
-        help="a 1-s change of the geometry-free combination beyond this is not sky "
-        "(the 1-s noise is ~3 mm, the ionosphere moves ~1 mm/s at most): the arc "
-        "is split there. 0 disables.",
+        help="split an arc where the geometry-free combination changes by more than "
+        "this (m) between grid hops less than three grid periods (~3 s) apart: the "
+        "1-s noise is ~3 mm and the ionosphere moves ~1 mm/s at most, so such a "
+        "change is a jump in one band, not sky. 0 disables.",
     )
     ap.add_argument(
         "--max-noise-tecu",
         type=float,
         default=0.5,
-        help="drop an arc whose 1-s measurement noise exceeds this: a replica parked "
-        "on noise still exports a fleet ADR, and it reads as tens of TECU of "
-        "'ionosphere'. 0 disables.",
+        help="drop an arc whose 1-s measurement noise (TECU, rms about a 31-point running "
+        "mean) exceeds this: a replica parked on noise still exports a fleet ADR, and "
+        "it reads as tens of TECU of 'ionosphere'. 0 disables.",
     )
     ap.add_argument("--out", default="/tmp/tec_chord")
     ap.add_argument("--no-plot", action="store_true")

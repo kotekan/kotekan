@@ -212,16 +212,30 @@ def main():
     ap.add_argument("--duration", type=float, default=600.0)
     ap.add_argument("--flaps-per-min", type=float, default=20.0)
     ap.add_argument(
-        "--clients", type=int, default=1, help="flapping clients, staggered"
+        "--clients",
+        type=int,
+        default=1,
+        help="flapping clients, their starts spread evenly over one flap period",
     )
-    ap.add_argument("--read", action="store_true", help="clients drain the stream")
-    ap.add_argument("--no-sender", action="store_true", help="no frames flow")
+    ap.add_argument(
+        "--read",
+        action="store_true",
+        help="clients drain the serve stream while connected instead of reading nothing",
+    )
+    ap.add_argument(
+        "--no-sender",
+        action="store_true",
+        help="send no frames, so only the gather's reaper can notice a closed client",
+    )
     ap.add_argument("--port-offset", type=int, default=1000)
     ap.add_argument(
         "--workdir", default="/var/tmp/%s-telem-flap" % os.environ.get("USER", "x")
     )
     ap.add_argument(
-        "--env", action="append", default=[], help="VAR=VALUE for the gather"
+        "--env",
+        action="append",
+        default=[],
+        help="set VAR=VALUE in the gather's environment (repeatable)",
     )
     a = ap.parse_args()
 

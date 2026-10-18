@@ -272,7 +272,7 @@ def main():
         )
     else:
         print(
-            "ok  +16 dB on lobe 0 only -> 40.0 vs 1.00, one row each (the 08-18 look)"
+            "ok  +16 dB on lobe 0 only -> 40.0 vs 1.00, one row each (a band-selective source)"
         )
 
     # 6. No RF document renders nothing: an airspy-only page must not grow an empty strip.

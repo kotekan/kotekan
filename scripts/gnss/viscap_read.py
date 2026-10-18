@@ -414,9 +414,17 @@ def main():
     ap.add_argument("dir")
     ap.add_argument("--node", required=True)
     ap.add_argument("--gpu", type=int, required=True)
-    ap.add_argument("--tag", default="", help="chain tag, e.g. _e5a (default: primary)")
     ap.add_argument(
-        "--config", required=True, help="the generated node config (channel_ids)"
+        "--tag",
+        default="",
+        help="tag of the captured chain, e.g. _e5a: selects its cudaGnssInject "
+        "(gnss<gpu><tag>_n2ctl) and its visctl series (default: the primary chain)",
+    )
+    ap.add_argument(
+        "--config",
+        required=True,
+        help="the generated node config the capture ran with (channel_ids, "
+        "hops_per_record, the correlator's gather keys)",
     )
     ap.add_argument(
         "--node-yaml",
@@ -441,12 +449,14 @@ def main():
     n_bb = bb_tiles(has_bb, num_synth)
     if not has_aa:
         print(
-            "NOTE: this instance was not built with gnss_gather_aa -- no AA (N^2) block",
+            "NOTE: this instance was not built with gather_cap_aa or gnss_gather_aa -- "
+            "no AA (N^2) block",
             file=sys.stderr,
         )
     if not has_bb:
         print(
-            "NOTE: this instance was not built with gnss_gather_bb -- no BB (M^2) block",
+            "NOTE: this instance was not built with gather_cap_bb or gnss_gather_bb -- "
+            "no BB (M^2) block",
             file=sys.stderr,
         )
     frames = read_pair(

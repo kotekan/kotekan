@@ -40,7 +40,7 @@ mapfile -t POINTINGS < <(
     done)
 if [ "${#POINTINGS[@]}" -eq 0 ]; then
     say "no rung12 for $DAY under $ROOT/rung12 -- the compactor cuts rungs after 00:20 UTC for"
-    say "the day BEFORE; today exists at L0 only (and reading it live needs a cp snapshot)."
+    say "the day before; today exists at L0 only (and reading it live needs a cp snapshot)."
     exit 2
 elif [ "${#POINTINGS[@]}" -gt 1 ]; then
     say "REFUSING: $DAY spans ${#POINTINGS[@]} pointings (${POINTINGS[*]}); one master is one"

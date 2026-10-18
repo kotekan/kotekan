@@ -285,10 +285,7 @@ def check_cs100():
         st = bits(b[prn - 1])
         got = (_z.crc32(st.encode()) & 0xFFFFFFFF, st.count("1"))
         say("PRN %2d fingerprint" % prn, got == (crc, pop), "0x%08x pop=%d" % got)
-    print(
-        "  sky-confirmed overlays (deep>20 at coh>0.90, 2026-08-09 soak): %s"
-        % SKY_CONFIRMED
-    )
+    print("  sky-confirmed overlays (deep>20 at coh>0.90): %s" % SKY_CONFIRMED)
     print(
         "  -> %d/50 PRNs proven ON SKY; the rest are regression-gated only."
         % len(SKY_CONFIRMED)

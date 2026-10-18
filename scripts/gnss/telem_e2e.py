@@ -255,7 +255,10 @@ def main():
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     ap.add_argument(
-        "--keep", action="store_true", help="keep the scratch dir and the log"
+        "--keep",
+        action="store_true",
+        help="keep the scratch dir (config, record files, kotekan.log) after a pass; "
+        "a failure always keeps it",
     )
     ap.add_argument("--timeout", type=float, default=25.0)
     a = ap.parse_args()
@@ -468,7 +471,7 @@ def main():
         # The one expected exception is the window whose record this script deliberately drops
         # ([3]); everything else must agree exactly, with no tolerance.
         print(
-            "aligned  %d/%d shared windows have IDENTICAL hop sets across instances "
+            "aligned  %d/%d shared windows have identical hop sets across instances "
             "(1 exception expected: the dropped record)" % (agreed, shared)
         )
         if shared and agreed < shared - 1:

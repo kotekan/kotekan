@@ -1000,12 +1000,22 @@ def figures(period, pw, pair_res, out, pad):
 # ------------------------------------------------------------------------------------- main
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--t-lo", required=True, help="UTC, YYYY-MM-DDTHH:MM:SS")
-    ap.add_argument("--t-hi", default=None, help="default: now - 5 min")
+    ap.add_argument(
+        "--t-lo",
+        required=True,
+        help="start of the census span, UTC YYYY-MM-DDTHH:MM:SS",
+    )
+    ap.add_argument(
+        "--t-hi",
+        default=None,
+        help="end of the census span, UTC YYYY-MM-DDTHH:MM:SS (default: now - 5 min)",
+    )
     ap.add_argument(
         "--split",
         required=True,
-        help="the change under test goes live here: windows before it are the control",
+        help="UTC YYYY-MM-DDTHH:MM:SS at which the change under test went live: "
+        "windows ending before it are 'before', windows starting more than 15 min "
+        "after it are 'after', and windows in between are dropped",
     )
     ap.add_argument("--events", default=None)
     ap.add_argument("--bore-deg", type=float, default=5.0)
@@ -1014,7 +1024,9 @@ def main():
         "--jump-tecu",
         type=float,
         default=1.5,
-        help="a quarter of an E5a cycle in E5a x E6 is 1.43 TECU",
+        help="TEC level jump (TECU) across a window above which a held arc is SLIPPED "
+        "rather than BRIDGEABLE, and the limit for the Galileo closure's jump. A "
+        "quarter of an E5a cycle in E5a x E6 is 1.42 TECU.",
     )
     ap.add_argument("--broker-lines", default=None)
     ap.add_argument("--out", required=True)
@@ -1123,7 +1135,7 @@ def main():
             )
         )
     if args.broker_lines:
-        print("broker #142 freeze windows (FROZEN .. CLEAR, gps_l5):")
+        print("broker transit freeze windows (FROZEN .. CLEAR, gps_l5):")
         for line in open(args.broker_lines):
             if "FROZEN for a boresight" in line or "transit CLEAR" in line:
                 print(

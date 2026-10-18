@@ -101,7 +101,7 @@ def main():
     )
     print(
         "NEXT: run gnss_broker/test_brdc_golden.py --print-digest and paste the value into "
-        "the GOLDEN constant in that file (it lives in the TEST, under review, not in the "
+        "the GOLDEN constant in that file (it lives in the test, under review, not in the "
         "manifest -- a golden regenerated alongside its fixture can never go red)."
     )
     return 0

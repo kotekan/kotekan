@@ -261,12 +261,5 @@ if __name__ == "__main__":
     )
 
     bad = fails or p2 or p4
-    print(
-        "\n%s"
-        % (
-            "ALL SELF-CONSISTENT (ICD-correctness pends live E5a symbols + the code table)"
-            if not bad
-            else "SELF-TEST FAILURES"
-        )
-    )
+    print("\n%s" % ("ALL SELF-CONSISTENT" if not bad else "SELF-TEST FAILURES"))
     sys.exit(1 if bad else 0)

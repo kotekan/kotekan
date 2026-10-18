@@ -199,27 +199,34 @@ def main():
         "--tags",
         default=None,
         metavar="TAGS",
-        help="chain tags whose gates to address, comma list with '' for the primary, "
-        "e.g. ',_e5a,_b2a' -> gnss<g>{,_e5a,_b2a}_viscap_gate on both GPUs. "
-        "Overrides --gates.",
+        help="chain tags, comma list: address gnss<g><tag>_viscap_gate on both GPUs "
+        "for each tag ('' = gnss<g>_viscap_gate); overrides --gates. The generator "
+        "builds one gate per GPU (tag ''), which gates every captured chain, so the "
+        "default --gates already covers them all.",
     )
     ap.add_argument(
         "--start-in",
         type=float,
         default=30.0,
         metavar="S",
-        help="arm: open the window this many seconds from now (default 30)",
+        help="arm: open the window this many seconds from now, frame-aligned "
+        "(default %(default)s; ignored with --start-seq)",
     )
     ap.add_argument(
         "--duration",
         type=float,
         default=300.0,
         metavar="S",
-        help="arm: window length in seconds (default 300)",
+        help="arm: window length, seconds (default %(default)s; ignored with --end-seq)",
     )
     ap.add_argument("--start-seq", type=int, default=None)
     ap.add_argument("--end-seq", type=int, default=None)
-    ap.add_argument("--every", type=float, default=5.0, help="watch: poll period (s)")
+    ap.add_argument(
+        "--every",
+        type=float,
+        default=5.0,
+        help="watch: poll period, seconds (default %(default)s)",
+    )
     a = ap.parse_args()
     nodes = [n for n in a.nodes.split(",") if n]
     gates = [g for g in a.gates.split(",") if g]

@@ -154,10 +154,18 @@ def main():
         default=os.path.join(HERE, "..", "..", "config", "gnss_chains_chord.yaml"),
     )
     ap.add_argument(
-        "--node-yaml", default=None, help="default <dir>/configs/chord_gnss_node.yaml"
+        "--node-yaml",
+        default=None,
+        help="node manifest whose array.live_element_ranges selects the elements in "
+        "elements.csv (default: <dir>/configs/chord_gnss_node.yaml)",
     )
     ap.add_argument("--brdc-cache", default=os.path.expanduser("~/.cache/kotekan_gps"))
-    ap.add_argument("--step", type=float, default=10.0, help="sat_azel cadence, s")
+    ap.add_argument(
+        "--step",
+        type=float,
+        default=10.0,
+        help="sat_azel.csv time step, seconds (default %(default)s)",
+    )
     a = ap.parse_args()
     out = os.path.join(a.dir, "metadata")
     os.makedirs(out, exist_ok=True)
@@ -340,15 +348,15 @@ def main():
         "array_origin_lat_deg": float(tel["origin_itrs_lat_deg"]),
         "array_origin_lon_deg": float(tel["origin_itrs_lon_deg"]),
         "array_origin_note": "frame the dish grid offsets in elements.csv are defined against "
-        "(node telescope block); ~155 m from the receiver point (+132 E, "
-        "+82 N of the dishes)",
+        "(node telescope block); a different point from receiver_lat_deg/"
+        "receiver_lon_deg",
         "dish_separation_x_m": dx,
         "dish_separation_y_m": dy,
         "dish_coelev_deg": tel.get("dish_coelev_deg"),
         "grid_x_axis": tel.get("grid_x_axis"),
         "grid_y_axis": tel.get("grid_y_axis"),
         "boresight_az_el_deg": list(BORE_AZ_EL),
-        "boresight_note": "the 2026-10-02 input-averaged fit; sat_azel.csv sep_deg is from it",
+        "boresight_note": "from the input-averaged beam fit; sat_azel.csv sep_deg is from it",
     }
     json.dump(station, open(os.path.join(out, "station.json"), "w"), indent=1)
 

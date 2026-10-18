@@ -45,7 +45,7 @@ DECLARED = [
     (
         "config_tracker.upstream_fetch_retries",
         "~",
-        "startup FPGA-config fetch budget 2 -> 5: chive measured p90 6.5 s, max 16.2 s (08-08)",
+        "startup FPGA-config fetch budget 2 -> 5: chive can take over 10 s to answer at startup",
     ),
     (
         "config_tracker.upstream_fetch_timeout_seconds",
@@ -56,12 +56,12 @@ DECLARED = [
         "run_rfi_sktilde.gpu_*.commands.*.rfi_first_stage_excision_exempt_freq_ids",
         "+",
         "GNSS lobes exempt from first-stage excision (our cudaRFISKtilde key, default off): their "
-        "N2 feeds the satellite projection and is lost to cosmology anyway (KV, 10-02)",
+        "N2 feeds the satellite projection and is lost to cosmology anyway",
     ),
     (
         "n2_accumulate.accum_*.in_buf",
         "~",
-        "live GNSS N2 projection (phase 3a): N2Accumulate reads the projected copy "
+        "live GNSS N2 projection: N2Accumulate reads the projected copy "
         "gnss_n2_proj_buffer{,_1} written by gnss_n2_project",
     ),
 ]
@@ -174,16 +174,23 @@ def main():
     ap.add_argument(
         "--stock",
         default=TEMPLATE,
-        help="reference: a .j2 (rendered stock), .json/.yaml, or http URL "
-        "(default: config/chord/pathfinder.j2)",
+        help="reference: a .j2 template (rendered stock, as kotekan renders it), a .json or "
+        "yaml file, or the http:// URL of a /config endpoint (default: "
+        "config/chord/pathfinder.j2; ignored with --live)",
     )
     ap.add_argument(
         "--live",
         metavar="HOST",
-        help="reference = HOST's live /config on 12048 (a STOCK node, e.g. cx47); "
-        "the runtime-pushed values must then match too",
+        help="use HOST's live /config on port 12048 as the reference instead of --stock. "
+        "HOST must run a stock node; the values choco pushes at runtime (EOP table, "
+        "bad inputs) must then match too",
     )
-    ap.add_argument("-q", "--quiet", action="store_true", help="print only failures")
+    ap.add_argument(
+        "-q",
+        "--quiet",
+        action="store_true",
+        help="print only undeclared differences (and the summary line if any)",
+    )
     a = ap.parse_args()
 
     ref_src = "http://%s:12048/config" % a.live if a.live else a.stock

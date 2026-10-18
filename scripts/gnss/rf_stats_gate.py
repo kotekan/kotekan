@@ -129,7 +129,7 @@ def main():
 
     fails = []
     print(
-        "#8 RF-STATS GATE  (%d hops x %d chan x %d elem, stride 1, exhaustive)"
+        "RF-STATS GATE  (%d hops x %d chan x %d elem, stride 1, exhaustive)"
         % (NHOP, NCHAN, NELEM)
     )
     print("byte  re  im | power   expect | clip_lo  expect | clip_hi  expect | verdict")

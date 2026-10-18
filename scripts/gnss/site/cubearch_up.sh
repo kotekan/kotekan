@@ -64,7 +64,7 @@ fi
 rm -f "$DIR/.wtest"
 AVAIL=$(df -BG --output=avail "$DIR" 2>/dev/null | tail -1 | tr -dc '0-9')
 if [ -n "$AVAIL" ] && [ "$AVAIL" -lt 500 ]; then
-    echo "  ⚠️ only ${AVAIL} GB free on $DIR -- this leg writes ~780 GB/day RAW." >&2
+    echo "  warning: only ${AVAIL} GB free on $DIR -- this leg writes ~780 GB/day raw." >&2
 fi
 
 # The fleet's cube frame_size must match this buffer's. bufferRecv closes a connection whose
@@ -75,13 +75,13 @@ for f in "$K"/config/generated/chord_gnss_cx*_multi.yaml; do
     [ -f "$f" ] || continue
     NF=$(grep -m1 -oP '^\s+frame_size:\s*\K[0-9]+' <(grep -A6 "cube_buf:" "$f") 2>/dev/null)
     if [ -n "$NF" ] && [ "$NF" != "$FRAME" ]; then
-        echo "  ⚠️ $(basename "$f") sends ${NF} B, this archiver holds ${FRAME} B" >&2
+        echo "  $(basename "$f") sends ${NF} B, this archiver holds ${FRAME} B" >&2
         MISMATCH=1
     fi
 done
 if [ "$MISMATCH" = 1 ]; then
     echo "FAILED: sender/receiver frame_size disagree. bufferRecv would accept every" >&2
-    echo "connection and deliver NOTHING. Regenerate both from the same tree:" >&2
+    echo "connection and deliver nothing. Regenerate both from one tree: the archiver with config/gen_chord_gnss_config.py --cube-archive-instance, the nodes with" >&2
     echo "  python3 $K/scripts/gnss/gen_fleet.py $K/config/gnss_fleet_chord.yaml" >&2
     exit 1
 fi

@@ -33,7 +33,7 @@ NODES="${*:-$NODES_DEFAULT}"
 probe_one() {
     local n=$1
     ssh "$n" 'PID=$(pgrep -f "build/kotekan" | head -1)
-if [ -z "$PID" ]; then echo "  NO KOTEKAN PROCESS"; exit 0; fi
+if [ -z "$PID" ]; then echo "  no kotekan process"; exit 0; fi
 # --- dpdk workers: the discriminator. A sleeping poll-mode worker is the whole finding.
 bad=0
 for t in /proc/$PID/task/*; do
@@ -46,7 +46,7 @@ for t in /proc/$PID/task/*; do
 done
 # --- ring drops per port: the consequence, in packets thrown away
 curl -s --max-time 5 http://localhost:12048/metrics 2>/dev/null \
- | awk -F"[{}]" "/ring_full_dropped/ && !/^#/ {split(\$2,a,\"port=\"); gsub(/[^0-9]/,\"\",a[2]); n=\$3+0; printf \"  port %s ring-drop %.0f%s\n\", a[2], n, (n>0 ? \"   <-- STARVING ITS PIPELINE\" : \"\")}"
+ | awk -F"[{}]" "/ring_full_dropped/ && !/^#/ {split(\$2,a,\"port=\"); gsub(/[^0-9]/,\"\",a[2]); n=\$3+0; printf \"  port %s ring-drop %.0f%s\n\", a[2], n, (n>0 ? \"   <-- starving its pipeline\" : \"\")}"
 # --- GPU state: proves the device is idle rather than hung
 nvidia-smi --query-gpu=index,utilization.gpu,temperature.gpu --format=csv,noheader 2>/dev/null \
  | awk "{printf \"  gpu%s util %s temp %s\n\", \$1, \$2\$3, \$4}"
@@ -67,13 +67,13 @@ if [ "$BT" = "1" ]; then
     n=$(echo $NODES | awk '{print $1}')
     echo
     echo "=== $n thread backtraces (needs sudo on the node) ==="
-    echo "    Naming the stage that stopped consuming is the ONE thing the counters above"
+    echo "    Naming the stage that stopped consuming is the one thing the counters above"
     echo "    cannot do: they prove back-pressure, not its origin. Run:"
     echo
     echo "      ssh $n 'sudo gdb -p \$(pgrep -f build/kotekan | head -1) --batch \\"
     echo "         -ex \"set pagination off\" -ex \"thread apply all bt 12\"' > /tmp/kotekan_bt_$n.txt"
     echo
     echo "    Then look for the dpdk-worker3/4 frames and any stage sitting in"
-    echo "    wait_for_empty_frame (blocked on a FULL OUTPUT = the back-pressure origin)"
+    echo "    wait_for_empty_frame (blocked on a full output = the back-pressure origin)"
     echo "    versus wait_for_full_frame (merely starved = a victim, not the cause)."
 fi

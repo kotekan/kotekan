@@ -1,5 +1,5 @@
 [Unit]
-Description=CHORD GNSS infrastructure stack (broker, gather, observables writers)
+Description=CHORD GNSS infrastructure stack (gather, broker, aggregator, viewer, rail recorder, observables writers)
 Documentation=file:///home/kvand/gnss/kotekan/docs/CHORD_GNSS_RUNBOOK.md
 # On this host only, and every unit says so. The user-unit copies live in the NFS-shared home
 # (~/.config/systemd/user), so cf06 and the cx nodes see them too, and any login there starts

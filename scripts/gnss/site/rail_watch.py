@@ -145,14 +145,16 @@ if __name__ == "__main__":
     ap.add_argument(
         "--out",
         default=REC_OUT,
-        help="strftime path; default %s" % REC_OUT.replace("%", "%%"),
+        help="JSONL output path, expanded with strftime in UTC on every poll, so the default "
+        "starts a new file each UTC day; default %s" % REC_OUT.replace("%", "%%"),
     )
     ap.add_argument(
         "--poll",
         type=float,
         default=0.5,
-        help="record: seconds between polls; half the node's pass period, so no "
-        "pass is skipped",
+        help="seconds between rf_stats polls (default %(default)s); keep it at most half the "
+        "nodes' band_power_period_s (the generator's --rf-stats-period-s) so that every "
+        "pass is read",
     )
     ap.add_argument("--endpoints", default="")
     ap.add_argument("--timeout", type=float, default=6.0)

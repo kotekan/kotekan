@@ -52,7 +52,7 @@ fi
 if [ "$ARCHIVE" = 1 ]; then
     mkdir -p "$LOGDIR"
     T=$(date -u +%Y%m%d_%H%M%S)
-    echo "archiving live stack logs to $LOGDIR (skipping any untouched for ${STALE_H}h)..."
+    echo "archiving this host's /tmp/gnss_*.log to $LOGDIR (skipping any untouched for ${STALE_H}h)..."
     pids=""
     for f in /tmp/gnss_*.log; do
         [ -s "$f" ] || continue
@@ -90,7 +90,7 @@ while IFS='|' read -r name pat; do
         echo "  $name did not exit on TERM after 10 s (pids $left) -- sending KILL" >&2
         pkill -KILL -f "$pat" 2>/dev/null
         sleep 1
-        [ -n "$(pgrep -f "$pat")" ] && { echo "  $name STILL RUNNING" >&2; rc=1; }
+        [ -n "$(pgrep -f "$pat")" ] && { echo "  $name still running after KILL" >&2; rc=1; }
         printf '%-16s killed (was %s)\n' "$name" "$found"
     else
         printf '%-16s stopped (was %s)\n' "$name" "$found"

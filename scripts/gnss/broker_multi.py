@@ -91,7 +91,7 @@ def run_chain(name, argv, rx, alive, pub=None):
     except SystemExit as e:
         # argparse's ap.error() lands here. In a thread it would otherwise be invisible.
         transport._log(
-            "*** CHAIN REFUSED TO START: %s. Its signal is DARK; the others "
+            "*** CHAIN REFUSED TO START: %s. Its signal is dark; the others "
             "keep running." % e
         )
     except Exception as e:
@@ -108,7 +108,9 @@ def main():
     )
     ap.add_argument("config")
     ap.add_argument(
-        "--list", action="store_true", help="print the resolved flags and exit"
+        "--list",
+        action="store_true",
+        help="print each chain's resolved broker flags (extra args included) and exit",
     )
     a, extra = ap.parse_known_args()
 
