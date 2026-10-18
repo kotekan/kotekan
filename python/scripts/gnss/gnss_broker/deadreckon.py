@@ -35,7 +35,7 @@ import os
 import time
 from datetime import datetime, timezone
 
-from gnss_broker.transport import _now, _log, _log_rl
+from gnss_broker.transport import _now, _log, _log_rl, axis_now
 from gnss_broker.clockhealth import dr_solve_healthy
 from gnss_broker.seed import Seed
 from gnss_broker.fits import (
@@ -2056,23 +2056,12 @@ def stage_dead_reckon(ctx):
         )
         if ctx.dr_state["eph"] or _use_decoded:
             ctx.drp.tag = ctx.args.dr_constellation
-            ctx.drp.t_now_abs = ctx.drp.now_w - ctx.utc0_sample0
-            # --dr-fengine-axis: "now" from the F-engine hop counter rather than wall minus the
-            # anchor, so NTP's absolute offset never enters and wall time contributes only elapsed
-            # seconds. Every label stamped here (h1, the birth ref_hop) and every phase evaluated
-            # then lives on the axis the tracker runs. The static difference from the wall axis is
-            # common-mode and lands in the solved receiver clock.
-            if ctx.args.dr_fengine_axis and ctx.fe_axis[0] is not None:
-                # The filtered offset (fe_off) when there is one: the raw newest hop re-samples the
-                # pipeline lag every poll, and that jitter would land in every re-birth as lag x
-                # range rate.
-                if ctx.fe_off[0] is not None:
-                    ctx.drp.t_now_abs = ctx.fe_off[0] + ctx.drp.now_w
-                else:
-                    _feh, _few = ctx.fe_axis[0]
-                    ctx.drp.t_now_abs = _feh / ctx.args.hops_per_sec + (
-                        ctx.drp.now_w - _few
-                    )
+            # "Now" on the hop axis (transport.axis_now): every label stamped here (h1, the birth
+            # ref_hop), every model epoch (dr_eph_epoch) and every age lives on the axis the
+            # tracker runs. The static difference from the wall axis is common-mode and lands in
+            # the solved receiver clock; the filtered offset keeps the pipeline lag's jitter out
+            # of every re-birth (lag x range rate).
+            ctx.drp.t_now_abs = axis_now(ctx)
             # The forecast epoch (--dr-forecast-lead-s). A seed is a forecast with a label (ref_hop,
             # phase, Doppler, rate), defined entirely on the hop axis, so it is built for the whole
             # hop H nearest t_now_abs + lead rather than for "now". The pipeline lag then never

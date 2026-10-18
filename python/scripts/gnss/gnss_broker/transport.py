@@ -14,7 +14,7 @@ import threading
 import time
 import urllib.error
 import urllib.parse
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 # ---------------------------------------------------------------------------------------
@@ -494,6 +494,37 @@ _TR = _Transcript()
 def _now():
     """The frozen cycle clock. See the _Transcript note: one cycle, one instant."""
     return _TR.now()
+
+
+def axis_now(ctx):
+    """"Now" as a capture age (s since sample 0) on the F-engine hop axis: the time every seed
+    label (ref_hop), model epoch and detection age is referred to, so no absolute wall-clock
+    reading reaches a radiometric number (#208). Under --dr-fengine-axis it is the hop counter
+    interpolated by wall ELAPSED seconds only: the filtered hop-minus-wall offset (fe_off) plus
+    this cycle's frozen clock, or the raw newest hop plus the seconds since it was polled while
+    the filter has no sample yet. Without the flag, or before the first telemetry, it is the
+    frozen clock minus utc0_sample0, the only form there is then; the two agree to NTP plus the
+    telemetry lag. None until utc0_sample0 (the F-engine's time of sample 0) is known."""
+    if not getattr(ctx, "utc0_sample0", 0.0):
+        return None
+    now_w = _now()
+    fe_axis = getattr(ctx, "fe_axis", [None])[0]
+    if getattr(ctx.args, "dr_fengine_axis", False) and fe_axis is not None:
+        fe_off = getattr(ctx, "fe_off", [None])[0]
+        if fe_off is not None:
+            return fe_off + now_w
+        _feh, _few = fe_axis
+        return _feh / ctx.args.hops_per_sec + (now_w - _few)
+    return now_w - ctx.utc0_sample0  # 208-allow: no axis yet
+
+
+def axis_now_utc(ctx):
+    """axis_now placed on UTC through utc0_sample0, as an aware datetime; None without an
+    axis."""
+    t = axis_now(ctx)
+    if t is None:
+        return None
+    return datetime.fromtimestamp(ctx.utc0_sample0 + t, tz=timezone.utc)
 
 
 def _get(url, timeout=5.0):

@@ -14,7 +14,7 @@ a stale bias must widen the search rather than narrow it.
 
 import statistics
 
-from gnss_broker.transport import _now, _post, _log, _log_rl
+from gnss_broker.transport import _now, _post, _log, _log_rl, axis_now_utc
 from gnss_broker.sky import brdc_predict, nearest_boresight
 from gnss_broker import timebase
 from gnss_broker import prnmap
@@ -66,7 +66,11 @@ def stage_almanac_predict(ctx):
         try:
             _refresh_capable(ctx)
             raw_dark = {}
-            t_pred = ctx.alm_now()
+            # The epoch: the hop-axis now (#208). It is also what the time-base detector below
+            # needs: a stale sample-0 epoch from the nodes moves this prediction, never the
+            # measured Doppler, and that spread is its tell. The wall clock serves only before
+            # the F-engine anchor is known, when there is no other time.
+            t_pred = axis_now_utc(ctx) or ctx.alm_now()
             if ctx.brdc_alm is not None:
                 raw = brdc_predict(
                     ctx.brdc_alm,
@@ -83,7 +87,9 @@ def stage_almanac_predict(ctx):
                     # Under --probe-dark the excluded satellites are kept aside as probe
                     # candidates: signal-free on this signal at any elevation.
                     if getattr(ctx.args, "probe_dark", False):
-                        raw_dark = {p: v for p, v in raw.items() if p not in ctx.capable}
+                        raw_dark = {
+                            p: v for p, v in raw.items() if p not in ctx.capable
+                        }
                     raw = {p: v for p, v in raw.items() if p in ctx.capable}
             else:
                 from gps_beamtrack import predict_dopplers

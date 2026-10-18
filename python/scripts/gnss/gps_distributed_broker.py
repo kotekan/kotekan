@@ -244,8 +244,10 @@ def main(argv=None, rx=None, publisher=None):
     _TR.tick()
 
     def _alm_now():
-        """The time the almanac evaluates at: the wall clock (the transcript's, in a replay)."""
-        return datetime.fromtimestamp(_now(), tz=timezone.utc)
+        """The wall clock at setup (the transcript's, in a replay): the BRDC store's day key,
+        and the almanac's epoch only before the F-engine anchor is known
+        (transport.axis_now_utc takes over from the first telemetry)."""
+        return datetime.fromtimestamp(_now(), tz=timezone.utc)  # 208-allow: setup
 
     # ---- Receiver scope -----------------------------------------------------------------
     # What every chain on this telescope shares: the F-engine time anchor, the BRDC store and

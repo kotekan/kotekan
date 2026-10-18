@@ -39,16 +39,48 @@ check("cycle clock frozen in LIVE mode", _a == _b, "%.6f vs %.6f" % (_a, _b))
 transport._TR.tick()
 check("tick() advances it", transport._now() > _a)
 
-# -- #208: the ephemeris epoch is the hop axis, never a wall-clock reading --------------------
-# dr_eph_epoch must place the model at utc0_sample0 + t_now_abs and label it t_now_abs, and a
-# wall-clock step must not move it. The source grep sees only the literal spelling
-# fromtimestamp(ctx.drp.now_w in deadreckon.py, where every model now goes through this one
-# function; the wall-time uses left elsewhere are #208's open list.
-import inspect as _insp  # noqa: E402
+# -- #208: radiometric time is the hop axis, never a wall-clock reading ----------------------
+# transport.axis_now is the one "now" every label, model epoch and age is referred to;
+# dr_eph_epoch must place the model at utc0_sample0 + t_now_abs and label it t_now_abs; a
+# wall-clock step must move neither. The source grep over the package keeps a wall-minus-anchor
+# or a model-at-wall-time from coming back; the two sanctioned wall uses (the no-axis fallback
+# inside axis_now, the setup day key) carry a `208-allow` marker on their line.
+import glob as _glob  # noqa: E402
 import re as _re  # noqa: E402
 import types as _types  # noqa: E402
 
 from gnss_broker import deadreckon as _dr  # noqa: E402
+
+_ac = _types.SimpleNamespace(
+    utc0_sample0=1.7e9,
+    args=_types.SimpleNamespace(dr_fengine_axis=True, hops_per_sec=195312.5),
+    fe_axis=[None],
+    fe_off=[None],
+)
+_wn = transport._now()
+check(
+    "axis_now: no telemetry yet -> frozen clock minus the anchor",
+    abs(transport.axis_now(_ac) - (_wn - 1.7e9)) < 1e-6,
+)
+_ac.fe_axis[0] = (
+    1000.0 * 195312.5,
+    _wn - 0.25,
+)  # newest hop 1000 s in, polled 0.25 s ago
+check(
+    "axis_now: raw newest hop + elapsed", abs(transport.axis_now(_ac) - 1000.25) < 1e-6
+)
+_ac.fe_off[0] = 1000.1 - _wn  # the filtered hop-minus-wall offset
+check(
+    "axis_now: filtered offset + frozen clock",
+    abs(transport.axis_now(_ac) - 1000.1) < 1e-6,
+)
+_ac.args.dr_fengine_axis = False
+check(
+    "axis_now: without the flag = frozen clock minus the anchor",
+    abs(transport.axis_now(_ac) - (_wn - 1.7e9)) < 1e-6,
+)
+_ac.utc0_sample0 = 0.0
+check("axis_now: None without the anchor", transport.axis_now(_ac) is None)
 
 _ec = _types.SimpleNamespace(
     utc0_sample0=1.7e9, drp=_types.SimpleNamespace(t_now_abs=1234.5, now_w=9.9e9)
@@ -61,11 +93,25 @@ check(
 )
 _ec.drp.now_w += 86400.0
 check("eph epoch ignores a wall-clock step", _dr.dr_eph_epoch(_ec) == (_eage, _ew))
-_wall = _re.findall(r"fromtimestamp\(\s*ctx\.drp\.now_w", _insp.getsource(_dr))
+_wall_rx = _re.compile(
+    r"fromtimestamp\(\s*(_now\(\)|time\.time\(\)|ctx\.t0|ctx\.drp\.now_w|now_w)\b"
+    r"|(ctx\.drp\.now_w|ctx\.t0|_now\(\)|time\.time\(\)|now_w)\s*-\s*ctx\.utc0_sample0"
+)
+_here = os.path.dirname(os.path.abspath(__file__))
+_wall = []
+for _f in sorted(_glob.glob(os.path.join(_here, "*.py"))) + [
+    os.path.join(os.path.dirname(_here), "gps_distributed_broker.py")
+]:
+    _b = os.path.basename(_f)
+    if _b.startswith("test_") or _b == "selftest.py":
+        continue
+    for _i, _l in enumerate(open(_f), 1):
+        if _wall_rx.search(_l) and "208-allow" not in _l:
+            _wall.append("%s:%d" % (_b, _i))
 check(
-    "deadreckon evaluates no model at wall time",
+    "no model at wall time, no wall-minus-anchor age, outside the two allowed lines",
     not _wall,
-    "%d fromtimestamp(ctx.drp.now_w) call(s)" % len(_wall),
+    " ".join(_wall[:6]),
 )
 
 _other = {}

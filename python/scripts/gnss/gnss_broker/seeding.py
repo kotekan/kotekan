@@ -29,7 +29,7 @@ import math
 import statistics
 
 from gnss_broker.sky import C_LIGHT
-from gnss_broker.transport import _log, _log_rl
+from gnss_broker.transport import _log, _log_rl, axis_now
 from gnss_broker.clockhealth import dr_solve_healthy
 from gnss_broker.seed import Seed
 from gnss_broker.fits import (
@@ -236,17 +236,17 @@ def stage_coast_drop(ctx):
             # exactly at now for any age. Storing the now-value beside the old ref_hop would add
             # rate*age on top, running the applied Doppler at ~2x the true rate until the next
             # detection re-anchors ref_hop. For the same reason the code-phase retag compares the
-            # old and new Doppler both at now, so a standing rate cancels. With no sample-0 anchor
-            # (utc0_sample0 unset) age is 0.
+            # old and new Doppler both at now, so a standing rate cancels. "Now" is the hop-axis
+            # now (transport.axis_now), the axis ref_hop is on; with no sample-0 anchor
+            # (utc0_sample0 unset) there is no axis and the age is 0.
             _rate_new = ctx.pred[prn][1]
             # The rate the tracker propagates with: none without the key, so nothing to undo.
             _rate_eff = _rate_new if "doppler_rate_hz_s" in ctx.seeds[prn] else 0.0
+            _ax = axis_now(ctx)
             _age = 0.0
-            if ctx.utc0_sample0:
+            if _ax is not None:
                 _age = max(
-                    0.0,
-                    (ctx.drp.now_w - ctx.utc0_sample0)
-                    - ctx.seeds[prn].get("ref_hop", 0) / ctx.args.hops_per_sec,
+                    0.0, _ax - ctx.seeds[prn].get("ref_hop", 0) / ctx.args.hops_per_sec,
                 )
             new_dop = (
                 ctx.pred[prn][0] + ctx.cb.seed
@@ -261,8 +261,8 @@ def stage_coast_drop(ctx):
                 # phase at now; without a sample-0 anchor (utc0_sample0 unset) it works at the
                 # seed's ref_hop epoch instead, a partial correction.
                 _t_retag = (
-                    (ctx.drp.now_w - ctx.utc0_sample0)
-                    if ctx.utc0_sample0
+                    _ax
+                    if _ax is not None
                     else ctx.seeds[prn].get("ref_hop", 0) / ctx.args.hops_per_sec
                 )
                 ctx.seeds[prn].put(

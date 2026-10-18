@@ -12,7 +12,7 @@ so the error sustains itself. See `clockbias.py`.
 @author Keith Vanderlinde
 """
 
-from gnss_broker.transport import _post, _log, _log_rl
+from gnss_broker.transport import _post, _log, _log_rl, axis_now
 from gnss_broker.clockhealth import dr_solve_healthy
 
 
@@ -135,15 +135,17 @@ def stage_narrow_search(ctx):
                         _mode + _rot[len(_rot) // 2]
                     ) % ctx.args.nh_overlay_len
                 # (c) Hint every visible satellite, detected or not, referenced to this
-                # cycle's hop so the search propagates it over seconds rather than a minute.
-                if ctx.nho.offset[0] is not None:
-                    _rh_now = int(
-                        round((ctx.t0 - ctx.utc0_sample0) * ctx.args.hops_per_sec)
-                    )
+                # cycle's hop (the hop-axis now, transport.axis_now, and its UTC for the
+                # predicted alignment) so the search propagates it over seconds rather than a
+                # minute.
+                _ax = axis_now(ctx)
+                if ctx.nho.offset[0] is not None and _ax is not None:
+                    _rh_now = int(round(_ax * ctx.args.hops_per_sec))
+                    _t_now = ctx.utc0_sample0 + _ax
                     nh_hints = [
                         dict(
                             prn=int(_p),
-                            nh=(_pred_nh(_p, ctx.t0) - ctx.nho.offset[0])
+                            nh=(_pred_nh(_p, _t_now) - ctx.nho.offset[0])
                             % ctx.args.nh_overlay_len,
                             ref_hop=_rh_now,
                         )

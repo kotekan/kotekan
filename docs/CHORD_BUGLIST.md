@@ -193,7 +193,7 @@ spanning ~300 Hz) is not interpretable: the post-restart settling aliases into a
 ms); re-fit over full passes (hours) before reading it. **#207 is closed on the stage and the live invariant; the
 pooled-slope re-fit is the remaining read-back (0b territory).**
 
-### #208 — wall time sits in the radiometric path: the ephemeris is evaluated at `now_w` and labelled `t_eph_age = now_w - utc0_sample0` (2026-10-18, design, KV: nothing radiometric may depend on wall time; dead-reckon epoch moved to the hop axis 10-18 23:05Z; three wall-time uses remain)
+### #208 — wall time sits in the radiometric path: the ephemeris is evaluated at `now_w` and labelled `t_eph_age = now_w - utc0_sample0` (2026-10-18, design, KV: nothing radiometric may depend on wall time; FIXED 10-18 23:45Z: every radiometric "now" is the hop axis (transport.axis_now); lands at the next broker restart)
 **What [tree]:** deadreckon.py:2224-2292 runs `predict_all` at the wall clock `now_w` and stamps the rows'
 capture-age epoch as `now_w - utc0_sample0`; `cp_predicted` then propagates range at `range_rate` from that wall-derived
 epoch to hop-axis epochs (`ref_hop / hops_per_sec` for detections, `rec_hop / hops_per_sec` for records). The comment
@@ -227,6 +227,24 @@ search hints and coasted-seed Doppler); (2) seeding.py builds a detection age an
 `now_w - utc0_sample0` against hop labels; (3) searchhint.py builds a hint ref_hop from `ctx.t0 - utc0_sample0`.
 Each wants the hop-axis now (ctx.drp.t_now_abs) in place of the wall difference; one pass, one broker restart.
 The WALL-vs-F-ENGINE tripwire's text now says what a wall step does (nothing to the models; those three paths).
+**23:45Z THE REMAINDER, DONE (one pass):** `transport.axis_now(ctx)` is the one "now" every stage refers to: the
+F-engine hop counter interpolated by wall ELAPSED seconds (the filtered fe_off plus the frozen cycle clock; the raw newest
+hop plus the seconds since its poll while the filter has no sample; the frozen clock minus utc0_sample0 only before the
+first telemetry or without --dr-fengine-axis), None until utc0_sample0 is known. Consumers: (a) dead-reckon's t_now_abs
+(the block that used to compute this inline, now the only definition); (b) the ALMANAC epoch (`axis_now_utc(ctx)`, the
+wall clock only before the anchor is known) -- which is also what the TIME-BASE DETECTOR (gnss_broker/timebase.py) needs:
+it compares the search's measured Doppler with ctx.pred to catch a stale sample-0 epoch from the nodes, and a wall-evaluated
+almanac never moved with that epoch, so the detector could not fire on the fault it was written for; now a stale
+utc0_sample0 moves the prediction and not the measurement, the spread it looks for. (Consequence to know: in that fault
+the search hints go off with the epoch as well, so the detector's verdict is the operator's signal, not a tracking
+degradation to be diagnosed cold.) (c) seeding.py's coast age and cp0 retag (hop-axis now minus ref_hop, the axis ref_hop
+is on); (d) searchhint.py's nh-hint ref_hop and the UTC its predicted alignment is evaluated at. `_alm_now()` keeps the
+wall clock for the BRDC store's day key at setup (a `208-allow` line). Selftest: five axis_now cases (no telemetry, raw
+hop + elapsed, filtered offset + frozen clock, flag off, no anchor), the dr_eph_epoch pair, and a package-wide source grep
+(model-at-wall-time and wall-minus-anchor patterns over gnss_broker/*.py + gps_distributed_broker.py, test files
+excluded, the two allowed lines marked). All 27 gnss_broker test modules pass. **Lands at the next broker restart** (KV,
+when convenient; the 22:53Z restart is settling). Expected visible change: none beyond the telemetry lag (~0.1 s) x the
+Doppler rate (~0.04 Hz) on hints and coasted seeds.
 
 ### #206 — viewer: L2OC's dark probes grey out satellites that L3OC holds, and the not-transmitted table is GPS-only (2026-10-18)
 **What [live 13:05Z]:** glo_l2oc runs with `--probe-dark`, so its three noise probes are GLONASS-M satellites above the
