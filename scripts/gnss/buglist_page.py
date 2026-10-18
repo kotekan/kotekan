@@ -151,6 +151,41 @@ def slug(s):
     return re.sub(r"[^a-z0-9]+", "-", s.lower()).strip("-")[:48]
 
 
+_TAIL = re.compile(r"\s*\(([^()]*)\)\s*$")
+_DATE = re.compile(r"\b(20\d\d-\d\d-\d\d)\b")
+_FIXW = re.compile(r"\*\*Fix \[([^\]]+)\]")
+_LABEL = re.compile(r"^\*\*[^*]+\*\*\s*")
+
+
+def split_title(title):
+    """'...title (2026-10-18, CONFIRMED ...)' -> (title, date, status). The trailing
+    parenthetical carries the date and, after it, whatever status the author put there."""
+    m = _TAIL.search(title)
+    if not m:
+        return title, "", ""
+    inner = m.group(1)
+    d = _DATE.search(inner)
+    date = d.group(1) if d else ""
+    status = inner
+    if d:
+        status = (inner[:d.start()] + inner[d.end():]).strip(" ,;")
+    return title[:m.start()].rstrip(), date, status
+
+
+def gist(lines, limit=210):
+    """The first sentence of the body with the lead label (**What [live]:**) dropped, plain text."""
+    text = " ".join(l.strip() for l in lines if l.strip() and not l.strip().startswith("|")
+                    and not l.strip().startswith("-") and not l.strip().startswith("```"))
+    text = _LABEL.sub("", text)
+    text = re.sub(r"\*\*|`", "", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    m = re.search(r"[.;]\s+(?=[A-Z(*])", text[:limit + 80])
+    cut = text[:m.start() + 1] if m and m.start() < limit + 60 else text[:limit]
+    if len(cut) < len(text) and not cut.endswith("."):
+        cut = cut.rstrip(" ,;:") + "\u2026"
+    return cut
+
+
 def render_sections(sections, ids, kind):
     out = []
     for sec in sections:
@@ -159,15 +194,31 @@ def render_sections(sections, ids, kind):
         out.append('<section class="sec" id="%s"><h2>%s%s</h2>' % (
             sid, inline(sec["title"], ids),
             (' <span class="count" data-sec="%s">%d</span>' % (sid, cnt)) if cnt else ""))
-        if any(s.strip() for s in sec["intro"]):
-            out.append('<div class="intro">%s</div>' % blocks(sec["intro"], ids))
+        if any(st.strip() for st in sec["intro"]):
+            intro = blocks(sec["intro"], ids)
+            if cnt:
+                out.append('<details class="intro"><summary>About this lane</summary>%s</details>' % intro)
+            else:
+                out.append('<div class="intro">%s</div>' % intro)
         for e in sec["entries"]:
             body = blocks(e["lines"], ids)
             text = html.escape(re.sub(r"\s+", " ", "%s %s %s" % (e["label"], e["title"], " ".join(e["lines"]))).lower(), True)
             chip = ('<a class="chip" href="#%s">%s</a>' % (e["anchor"], html.escape(e["label"]))) if e["label"] else ""
-            out.append('<article class="entry %s" id="%s" data-sec="%s" data-text="%s">'
-                       '<header>%s<h3>%s</h3></header>%s</article>'
-                       % (kind, e["anchor"], sid, text, chip, inline(e["title"], ids), body))
+            title, date, status = split_title(e["title"])
+            fw = _FIXW.search(" ".join(e["lines"]))
+            tags = []
+            if date:
+                tags.append('<span class="tag date">%s</span>' % date)
+            if status:
+                tags.append('<span class="tag st">%s</span>' % html.escape(status))
+            if fw:
+                tags.append('<span class="tag fix">fix: %s</span>' % html.escape(fw.group(1)))
+            g = gist(e["lines"])
+            out.append('<details class="entry %s" id="%s" data-sec="%s" data-text="%s">'
+                       '<summary><span class="row">%s<span class="ttl">%s</span><span class="tags">%s</span></span>'
+                       '<span class="gist">%s</span></summary><div class="body">%s</div></details>'
+                       % (kind, e["anchor"], sid, text, chip, inline(title, ids), "".join(tags),
+                          html.escape(g, False), body))
         out.append("</section>")
     return "\n".join(out)
 
@@ -213,13 +264,29 @@ main{max-width:78ch;min-width:0}
 h2{font-size:1.25rem;margin:2.2rem 0 .6rem;font-weight:600;text-wrap:balance;border-bottom:1px solid var(--line);padding-bottom:.3rem}
 h2 .count{font-size:.8rem;color:var(--ink2);font-weight:500;margin-left:.4em;font-variant-numeric:tabular-nums}
 .intro{color:var(--ink);font-size:.95rem}
-.entry{padding:.9rem 0 .4rem;border-top:1px solid var(--line)}
-.entry header{display:flex;gap:.6rem;align-items:baseline;flex-wrap:wrap}
-.entry h3{font-size:1rem;margin:0;font-weight:600;text-wrap:balance}
+.entry{border-top:1px solid var(--line)}
+.entry>summary{list-style:none;cursor:pointer;padding:.45rem 0 .45rem 1.1rem;position:relative}
+.entry>summary::-webkit-details-marker{display:none}
+.entry>summary::before{content:"";position:absolute;left:.1rem;top:.95rem;border:4px solid transparent;border-left:5px solid var(--ink2);transition:transform .12s}
+.entry[open]>summary::before{transform:rotate(90deg)}
+.entry>summary:focus-visible{outline:2px solid var(--acc);outline-offset:2px;border-radius:3px}
+.row{display:flex;gap:.5rem .6rem;align-items:baseline;flex-wrap:wrap}
+.ttl{font-weight:600;font-size:.97rem}
+.tags{display:inline-flex;gap:.35rem;flex-wrap:wrap}
+.tag{font-size:.72rem;color:var(--ink2);background:var(--chip);padding:.02em .45em;border-radius:3px;white-space:nowrap}
+.tag.date{font-family:"IBM Plex Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums}
+.tag.fix{color:var(--acc)}
+.gist{display:block;color:var(--ink2);font-size:.86rem;line-height:1.4;margin-top:.15rem}
+.entry[open] .gist{display:none}
+.entry .body{padding:0 0 .8rem 1.1rem}
+details.intro{font-size:.9rem;margin:.3rem 0 .6rem} details.intro>summary{cursor:pointer;color:var(--ink2)}
+details.about{margin:.6rem 0 1rem;font-size:.95rem} details.about>summary{cursor:pointer;font-weight:600}
+.top button{font:inherit;font-size:.8rem;padding:.25em .6em;border:1px solid var(--line);border-radius:4px;background:var(--chip);color:var(--ink);cursor:pointer}
+.top button:hover{border-color:var(--acc)}
 .chip{display:inline-block;background:var(--acc);color:var(--acc-ink);text-decoration:none;font-size:.78rem;padding:.05em .5em;
  border-radius:3px;font-weight:600;letter-spacing:.02em}
 .entry.closed .chip{background:var(--closed);color:#fff}
-.entry p{margin:.5rem 0}
+.entry .body p{margin:.5rem 0}
 .entry.hide,.sec.hide{display:none}
 .tbl{overflow-x:auto;margin:.6rem 0}
 table{border-collapse:collapse;font-size:.88rem;font-variant-numeric:tabular-nums}
@@ -231,7 +298,7 @@ details.closedbox{margin-top:3rem;border-top:2px solid var(--closed);padding-top
 details.closedbox summary{cursor:pointer;font-weight:600;font-size:1.1rem;padding:.4rem 0}
 details.closedbox summary .n{color:var(--ink2);font-weight:500;font-size:.85rem}
 .foot{color:var(--ink2);font-size:.8rem;margin-top:3rem;border-top:1px solid var(--line);padding-top:.6rem}
-:target{scroll-margin-top:4.2rem} .entry:target{background:var(--mark);border-radius:4px;padding-inline:.5rem}
+:target{scroll-margin-top:4.6rem} .entry:target{background:var(--mark);border-radius:4px}
 @media (max-width:760px){.wrap{grid-template-columns:1fr}nav.side{position:static;max-height:none;display:flex;flex-wrap:wrap;gap:.2em .8em}
  nav.side .grp{width:100%} nav.side a{border-left:0;padding-left:0}}
 @media (prefers-reduced-motion:no-preference){html{scroll-behavior:smooth}}
@@ -261,7 +328,14 @@ JS = """
     hits.textContent=terms.length?(shown+' of '+entries.length+' entries match'):(entries.length+' entries');
     if(terms.length){ var d=document.querySelector('details.closedbox'); if(d && (per[Object.keys(per).find(function(k){return k.indexOf('closed-')===0;})]||0)) d.open=true; }
   }
-  q.addEventListener('input',apply); apply();
+  function openHash(){ var id=(location.hash||'').slice(1); if(!id) return; var el=document.getElementById(id);
+    if(el && el.tagName==='DETAILS'){ el.open=true; var box=el.closest('details.closedbox'); if(box) box.open=true; } }
+  window.addEventListener('hashchange',openHash); openHash();
+  document.getElementById('xall').addEventListener('click',function(){ entries.forEach(function(e){ if(!e.classList.contains('hide')) e.open=true; }); });
+  document.getElementById('call').addEventListener('click',function(){ entries.forEach(function(e){ e.open=false; }); });
+  q.addEventListener('input',function(){ apply(); var vis=entries.filter(function(e){return !e.classList.contains('hide');});
+    if(q.value.trim() && vis.length<=4) vis.forEach(function(e){ e.open=true; }); });
+  apply();
 })();
 """
 
@@ -308,13 +382,16 @@ def main():
     page.append('<div class="top"><h1>CHORD GNSS open items</h1>'
                 '<span class="stamp">docs/CHORD_BUGLIST.md at <span class="mono">%s</span>, rendered %s &middot; %d open, %d closed</span>'
                 '<input id="flt" type="search" placeholder="filter: id, word, chain&hellip;" aria-label="filter entries">'
-                '<span class="hits" id="hits"></span></div>' % (stamp, when, n_open, n_closed))
+                '<span class="hits" id="hits"></span>'
+                '<button id="xall" type="button">expand all</button><button id="call" type="button">collapse all</button></div>'
+                % (stamp, when, n_open, n_closed))
     page.append('<div class="wrap"><nav class="side">%s</nav><main>' % "".join(nav))
-    page.append('<div class="intro">%s</div>' % blocks(o_pre, ids))
+    page.append('<details class="about"><summary>About this list: how to read the marks, the axis it is sorted on, '
+                'the instrument as configured</summary>%s</details>' % blocks(o_pre, ids))
     page.append(render_sections(o_secs, ids, "open"))
     page.append('<details class="closedbox"><summary>%s <span class="n">%d entries, from CHORD_BUGLIST_CLOSED.md</span></summary>'
                 % (html.escape(c_title), n_closed))
-    page.append('<div class="intro">%s</div>' % blocks(c_pre, ids))
+    page.append('<details class="about"><summary>About the closed ledger</summary>%s</details>' % blocks(c_pre, ids))
     page.append(render_sections(c_secs, ids, "closed"))
     page.append("</details>")
     page.append('<div class="foot">Generated by scripts/gnss/buglist_page.py from the two markdown files; the files are the '
