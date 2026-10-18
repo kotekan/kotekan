@@ -76,10 +76,4 @@ void from_json(const nlohmann::json& j, TrackingBBBeam& b) {
     b.ra_cirs_deg = j.at("ra_cirs_deg");
     b.dec_cirs_deg = j.at("dec_cirs_deg");
 }
-
-double grid_point(const double lo, const double hi, const uint32_t n, const uint32_t i) {
-    if (n == 1)
-        return (lo + hi) / 2;
-    return (lo * (n - i - 1) + hi * i) / (n - 1);
-}
 }

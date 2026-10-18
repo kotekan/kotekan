@@ -1,7 +1,7 @@
 #include "Config.hpp"          // for Config
 #include "N2Util.hpp"          // for frameID
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
-#include "beamUtil.hpp"        // for FixedBBBeam, TrackingBBBeam, grid_point
+#include "beamUtil.hpp"        // for FixedBBBeam, TrackingBBBeam
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "chordMetadata.hpp"   // for chordMetadata, metadata_is_chord, CHORD_META_MAX_DIM, CHO...
@@ -11,7 +11,6 @@
 #include <vector>
 
 using Beams::FixedBBBeam;
-using Beams::grid_point;
 using Beams::TrackingBBBeam;
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -199,8 +198,11 @@ std::vector<FixedBBBeam> setBBBeams::build_grid_beams() const {
         for (uint32_t bx = 0; bx < num_x; bx++) {
             const uint32_t b = bx + num_x * by;
 
-            double x = grid_point(x_min, x_max, num_x, bx);
-            double y = grid_point(y_min, y_max, num_y, by);
+            // A single beam along an axis sits at the midpoint
+            double x = num_x == 1 ? (x_min + x_max) / 2
+                                  : (x_min * (num_x - bx - 1) + x_max * bx) / (num_x - 1);
+            double y = num_y == 1 ? (y_min + y_max) / 2
+                                  : (y_min * (num_y - by - 1) + y_max * by) / (num_y - 1);
             grid_beams.at(b) = {.id = b, .x_dir_grid = x, .y_dir_grid = y};
         }
     }
@@ -216,8 +218,11 @@ std::vector<FixedBBBeam> setBBBeams::build_grid_deg_beams() const {
         for (uint32_t bx = 0; bx < num_x; bx++) {
             const uint32_t b = bx + num_x * by;
 
-            double x = grid_point(x_min, x_max, num_x, bx);
-            double y = grid_point(y_min, y_max, num_y, by);
+            // A single beam along an axis sits at the midpoint
+            double x = num_x == 1 ? (x_min + x_max) / 2
+                                  : (x_min * (num_x - bx - 1) + x_max * bx) / (num_x - 1);
+            double y = num_y == 1 ? (y_min + y_max) / 2
+                                  : (y_min * (num_y - by - 1) + y_max * by) / (num_y - 1);
             grid_beams.at(b) = {
                 .id = b, .x_dir_grid = sin(x * deg2rad), .y_dir_grid = sin(y * deg2rad)};
         }
