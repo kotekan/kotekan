@@ -1,11 +1,13 @@
 """The joint-clock consumer ("joint-consume: clk"): one unit before any comparison.
 
-The joint state holds the receiver clock in its feeders' chips (10.23 Mcps: the chains with
-detections, gps_l5); every consumer compares it with its own clock in its own chips. These
-checks pin the conversion with live-sized numbers (joint 150.2 reference chips = 14.7 us =
-7.51 L2C-CM chips = 75.1 E6 chips), the bounds' unit (reference chips on every chain), the
-window a longer code keeps, and that on 10.23-Mcps chains the conversion is bit for bit the
-plain wrapped difference.
+The joint state holds the receiver clock in reference chips (10.23 Mcps, gps_l5's,
+receiver.JOINT_REF_RATE_HZ) whatever chain fed it: every feeder converts in and every
+consumer compares it with its own clock in its own chips. These checks pin the conversion
+with live-sized numbers (joint 150.2 reference chips = 14.7 us = 7.51 L2C-CM chips = 75.1
+E6 chips), the bounds' unit (reference chips on every chain), the window a longer code
+keeps, that on 10.23-Mcps chains the conversion is bit for bit the plain wrapped difference,
+that a feed at any chip rate lands in the same state, and the coast a refused joint clock
+rides (clk + clk_rate dt, never the legacy median).
 
     python3 -m gnss_broker.test_jointclk
 
@@ -21,7 +23,7 @@ import types
 
 from gnss_broker import deadreckon
 from gnss_broker.fits import cp_rate_from_code_bias
-from gnss_broker.receiver import Receiver
+from gnss_broker.receiver import JOINT_REF_RATE_HZ, Receiver
 
 BROKER = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -38,7 +40,7 @@ def check(ok, what):
         _fails.append(what)
 
 
-REF_RATE, REF_LEN = 10.23e6, 10230.0  # the feeders' chips (gps_l5)
+REF_RATE, REF_LEN = JOINT_REF_RATE_HZ, 10230.0  # reference chips (gps_l5's)
 L2C_RATE, L2C_LEN = 0.5115e6, 10230.0  # CM: 10230 chips / 20 ms
 E6_RATE, E6_LEN = 5.115e6, 5115.0  # E6-C: 5115 chips / 1 ms
 MAX_CHIPS, MAX_SIGMA = 5.0, 0.5  # joint_clk_max_chips / joint_clk_max_sigma
@@ -55,10 +57,13 @@ def _old_delta(joint, legacy, code_len):
 
 
 class _FakeJoint(object):
-    """The three things the consumer reads from the joint state."""
+    """What the consumer reads from the joint state: clk, clk_rate and sigma in reference
+    chips, the modulus L, and the satellite index."""
 
-    def __init__(self, clk, sigma, n=14):
+    def __init__(self, clk, sigma, n=14, clk_rate=0.0, L=REF_LEN):
         self.clk = clk
+        self.clk_rate = clk_rate
+        self.L = L
         self._sigma = sigma
         self._idx = {("G", i): i for i in range(n)}
 
@@ -72,19 +77,25 @@ def _consume(
     legacy,
     joint_clk,
     sigma=0.047,
-    units=(("gps_l5", REF_RATE, REF_LEN),),
+    clk_rate=0.0,
+    dr_state=None,
+    coast_max_s=300.0,
+    t0=100.0,
 ):
-    """Drive the real consumer once; returns (clk_now after, logged line)."""
+    """Drive the real consumer once; returns (clk_now after, logged line). dr_state, when
+    given, is the chain's and is mutated as the consumer would (jclk_* stamps)."""
     rx = Receiver(log=lambda m: None)
-    for chain, r, ln in units:
-        rx.joint_declare_unit(chain, r, ln)
-    js = _FakeJoint(joint_clk, sigma)
+    js = _FakeJoint(joint_clk, sigma, clk_rate=clk_rate)
+    # The receiver's state is the unit's source (Receiver.joint_unit reads its L), so the
+    # double stands where joint_receiver() would have put the real one.
+    rx._joint["__receiver__"] = js
     args = types.SimpleNamespace(
         joint_min_sats=4,
         joint_clk_max_chips=MAX_CHIPS,
         joint_clk_max_sigma=MAX_SIGMA,
         joint_clk_max_step_chips=0.3,
         joint_clk_step_hold_s=30.0,
+        joint_clk_coast_max_s=coast_max_s,
         chip_rate_hz=rate,
     )
     ctx = types.SimpleNamespace(
@@ -92,8 +103,8 @@ def _consume(
         rx=rx,
         band_id="test",
         code_len=code_len,
-        t0=100.0,
-        dr_state={},
+        t0=t0,
+        dr_state={} if dr_state is None else dr_state,
         drp=types.SimpleNamespace(clk_now=legacy),
         joint_state=lambda _rx, _b, _a: js,
     )
@@ -310,30 +321,101 @@ def test_ten_mcps_unchanged():
         )
 
 
-def test_unit_declaration():
+_TB = {("G", 3): +2.9, ("G", 5): -3.4, ("G", 14): +0.8, ("G", 21): -1.7, ("G", 30): 1.1}
+
+
+def _feed(js, rate, clk_ref, n=40, t0=0.0):
+    """Feed a fleet at the true clock clk_ref (reference chips) through a chain at this chip
+    rate, converting in as dr_joint_shadow does (offsets and sigma times k)."""
+    k = JOINT_REF_RATE_HZ / rate
+    t = t0
+    for _ in range(n):
+        t += 2.0
+        js.cycle([(key, (clk_ref + b) / k * k, 0.3 * k) for key, b in _TB.items()], t)
+    return t
+
+
+def joint_feed_site(path=DEADRECKON):
+    """The measurement tuples dr_joint_shadow hands _js.cycle and the MINNOV / P2C residual
+    expressions: every offset must go in times _k and every residual come out over _k."""
+    with open(path) as f:
+        tree = ast.parse(f.read(), path)
+    fn = [
+        n
+        for n in ast.walk(tree)
+        if isinstance(n, ast.FunctionDef) and n.name == "dr_joint_shadow"
+    ]
+    fed, resid = [], []
+    for n in ast.walk(fn[0]) if fn else ():
+        if (
+            isinstance(n, ast.Call)
+            and ast.unparse(n.func).endswith(".cycle")
+            and isinstance(n.args[0], ast.ListComp)
+        ):
+            fed.append(ast.unparse(n.args[0].elt))
+        if isinstance(n, ast.Assign) and ast.unparse(n.targets[0]) in ("_mi", "_r"):
+            resid.append(ast.unparse(n.value))
+    return fed, resid
+
+
+def test_one_unit():
+    # (a) the same receiver clock through an L2C-CM feeder and a 10.23-Mcps feeder of the
+    # same 20-ms period: one state, read the same in reference chips.
+    rx_ref, rx_l2c = Receiver(log=lambda m: None), Receiver(log=lambda m: None)
+    js_ref = rx_ref.joint_receiver(
+        "l5", 204600.0, REF_RATE, gauge_mode="prior", clk0=150.0
+    )
+    js_l2c = rx_l2c.joint_receiver(
+        "l2c", L2C_LEN, L2C_RATE, gauge_mode="prior", clk0=7.5 * 20.0
+    )
+    check(
+        js_l2c.L == 204600.0 and js_ref.L == js_l2c.L,
+        "L2C-CM 10230 chips at 0.5115 Mcps is a 204600-reference-chip modulus (%g)"
+        % js_l2c.L,
+    )
+    _feed(js_ref, REF_RATE, 150.2)
+    _feed(js_l2c, L2C_RATE, 150.2)
+    check(
+        abs(js_ref.clk - js_l2c.clk) < 1e-6 and abs(js_l2c.clk - 150.2) < 0.3,
+        "an L2C-rate feed reads the same clk in reference chips (%.4f vs %.4f)"
+        % (js_l2c.clk, js_ref.clk),
+    )
+    check(
+        rx_l2c.joint_unit() == (REF_RATE, 204600.0),
+        "joint_unit() is the reference rate and the modulus in reference chips",
+    )
+    check(Receiver(log=lambda m: None).joint_unit() is None, "...None with no state")
+    # (b) a second constellation joining at another chip rate neither lengthens the modulus
+    # nor changes clk; a 1-ms code at E6's rate is the same 10230-chip modulus.
     rx = Receiver(log=lambda m: None)
-    check(rx.joint_unit() is None, "no feeder declared: no unit")
-    rx.joint_declare_unit("gps_l5", REF_RATE, 10230)
-    rx.joint_declare_unit("gal_e5a", REF_RATE, 10230.0)
+    js = rx.joint_receiver("l5", REF_LEN, REF_RATE, gauge_mode="prior", clk0=150.0)
+    t = _feed(js, REF_RATE, 150.2)
+    clk0, L0 = _bits(js.clk), js.L
+    js2 = rx.joint_receiver("l2c", L2C_LEN, L2C_RATE, gauge_mode="prior", clk0=0.0)
+    js3 = rx.joint_receiver("e6", E6_LEN, E6_RATE, gauge_mode="prior", clk0=0.0)
     check(
-        rx.joint_unit() == (REF_RATE, REF_LEN), "two 10.23-Mcps feeders agree: one unit"
+        js2 is js and js3 is js and js.L == L0 == REF_LEN and _bits(js.clk) == clk0,
+        "L2C (20 ms) and E6 (1 ms) joining leave the 10230-chip modulus and clk untouched",
     )
-    rx.joint_declare_unit("gps_l2c", L2C_RATE, L2C_LEN)
-    check(rx.joint_unit() is None, "a feeder at another chip rate: MIXED, no unit")
-    clk, line = _consume(L2C_RATE, L2C_LEN, 7.51, 150.2, units=())
+    _feed(js, E6_RATE, 150.2, t0=t)
     check(
-        clk == 7.51 and "REFUSED" in line and "undeclared or mixed" in line,
-        "consumer with no declared unit: REFUSED, clock untouched",
+        abs(js.clk - 150.2) < 0.3,
+        "...and E6 measurements converted in keep clk at the receiver's %.3f" % js.clk,
     )
-    clk, line = _consume(
-        REF_RATE,
-        REF_LEN,
-        150.1,
-        150.2,
-        units=(("gps_l5", REF_RATE, REF_LEN), ("x", L2C_RATE, L2C_LEN)),
+    js4 = rx.joint_receiver("x", 2557.5, E6_RATE, gauge_mode="prior")
+    check(js4.L == 5115.0, "a shorter period (0.5 ms at E6's rate) shortens it to 5115")
+    # (c) the feed site converts in and reads back out.
+    fed, resid = joint_feed_site()
+    check(
+        fed == ["((ctx.drp.tag, p), d * _k, ctx.args.joint_sigma * _k)"]
+        and len(resid) == 2
+        and all(r.endswith(") / _k") and "* _k - _js.predicted(" in r for r in resid),
+        "dr_joint_shadow feeds d*k, sigma*k and reads MINNOV / P2C back over k (%s %s)"
+        % (fed, resid),
     )
-    check(clk == 150.1 and "REFUSED" in line, "consumer with mixed feeders: REFUSED")
     js_small = _FakeJoint(150.2, 0.047, n=3)
+    rx_small = Receiver(log=lambda m: None)
+    rx_small._joint["__receiver__"] = js_small
     ctx = types.SimpleNamespace(
         args=types.SimpleNamespace(
             joint_min_sats=4,
@@ -341,9 +423,10 @@ def test_unit_declaration():
             joint_clk_max_sigma=MAX_SIGMA,
             joint_clk_max_step_chips=0.3,
             joint_clk_step_hold_s=30.0,
+            joint_clk_coast_max_s=300.0,
             chip_rate_hz=L2C_RATE,
         ),
-        rx=Receiver(log=lambda m: None),
+        rx=rx_small,
         band_id="t",
         code_len=L2C_LEN,
         t0=100.0,
@@ -353,6 +436,142 @@ def test_unit_declaration():
     )
     deadreckon.dr_joint_clk(ctx)
     check(ctx.drp.clk_now == 7.0, "a state below --joint-min-sats is not consumed")
+
+
+def test_coast_on_refusal():
+    """A refused joint clock coasts on the last adopted one at the rate stamped at that
+    adoption inside --joint-clk-coast-max-s, never on the legacy clock and never on the
+    state's current rate; the stamps do not move; the extrapolation is bounded."""
+    # L2C: adopted 150.2 ref at t=60 with the rate +0.001 ref chips/s stamped, joint now
+    # 160.2 (bounds refusal) and its live rate a wild +0.5: 40 s later the coast is 150.24
+    # ref = 7.512 CM on the STAMPED rate, not the legacy 7.60 and not 150.2 + 20.
+    ds = {"jclk_last": 150.2, "jclk_last_t": 60.0, "jclk_t": 60.0, "jclk_last_rate": 0.001}
+    clk, line = _consume(L2C_RATE, L2C_LEN, 7.60, 160.2, clk_rate=0.5, dr_state=ds)
+    check(
+        abs(clk - 7.512) < 1e-9 and "-> COAST (refused: bounds" in line,
+        "L2C bounds refusal 40 s after adoption: COAST to 7.512 CM (%s)" % line,
+    )
+    check(
+        "+0.040 joint chips over 40 s at clk_rate +0.0010 joint chips/s" in line,
+        "...the line carries the extrapolation and the rate in joint chips",
+    )
+    check(
+        ds == {"jclk_last": 150.2, "jclk_last_t": 60.0, "jclk_t": 60.0, "jclk_last_rate": 0.001},
+        "...and no stamp moved: jclk_t, jclk_last, jclk_last_t and jclk_last_rate as adopted",
+    )
+    # 10.23 Mcps, the step guard's refusal: the joint moved 0.9 from the last adopted level.
+    ds = {"jclk_last": 150.2, "jclk_last_t": 90.0, "jclk_t": 90.0, "jclk_last_rate": -0.0004}
+    clk, line = _consume(
+        REF_RATE, REF_LEN, 150.238, 151.1, clk_rate=-0.0004, dr_state=ds
+    )
+    check(
+        abs(clk - (150.2 - 0.004)) < 1e-9 and "COAST (refused: step +0.900" in line,
+        "10.23 Mcps step refusal 10 s after adoption: COAST to 150.196 (%s)" % line,
+    )
+    check(
+        ds["jclk_cand"] == (151.1, 100.0), "...the step guard's candidate still armed"
+    )
+    # E6: the coast is in joint chips, converted like an adoption (150.24 ref = 75.12 E6).
+    ds = {"jclk_last": 150.2, "jclk_last_t": 60.0, "jclk_t": 60.0, "jclk_last_rate": 0.001}
+    clk, line = _consume(E6_RATE, E6_LEN, 75.3, 160.2, clk_rate=0.001, dr_state=ds)
+    check(abs(clk - 75.12) < 1e-9 and "COAST" in line, "E6: COAST to 75.120 E6 chips")
+    # The bound: a stamped rate of 0.05 ref chips/s over 200 s is 10 chips of extrapolation,
+    # twice what an adoption may move the seeds; the coast is declined and says so.
+    ds = {"jclk_last": 150.2, "jclk_last_t": -100.0, "jclk_t": -100.0, "jclk_last_rate": 0.05}
+    clk, line = _consume(L2C_RATE, L2C_LEN, 7.60, 160.2, clk_rate=0.0, dr_state=ds)
+    check(
+        clk == 7.60
+        and "-> REFUSED (bounds 5.0 chips / 0.50 sigma; coast declined: +10.0 joint chips "
+        "of extrapolation over 200 s is past the 5.0-chip bound)" in line,
+        "10 chips of extrapolation: the coast is declined, legacy clock (%s)" % line[-90:],
+    )
+    # An adoption without the rate stamp (a dr_state from before 10-18): no coast.
+    ds = {"jclk_last": 150.2, "jclk_last_t": 60.0, "jclk_t": 60.0}
+    clk, line = _consume(L2C_RATE, L2C_LEN, 7.60, 160.2, clk_rate=0.001, dr_state=ds)
+    check(clk == 7.60 and "-> REFUSED (bounds" in line, "no stamped rate: REFUSED")
+    # Past the window: REFUSED on the legacy clock, exactly as before.
+    ds = {"jclk_last": 150.2, "jclk_last_t": 100.0 - 300.1, "jclk_t": 100.0 - 300.1,
+          "jclk_last_rate": 0.001}
+    clk, line = _consume(L2C_RATE, L2C_LEN, 7.60, 160.2, clk_rate=0.001, dr_state=ds)
+    check(
+        clk == 7.60 and line.endswith("-> REFUSED (bounds 5.0 chips / 0.50 sigma)"),
+        "300.1 s after the adoption: REFUSED, legacy clock (%s)" % line,
+    )
+    # No adoption behind it: REFUSED.
+    clk, line = _consume(L2C_RATE, L2C_LEN, 7.60, 160.2, clk_rate=0.001)
+    check(clk == 7.60 and "-> REFUSED (bounds" in line, "no prior adoption: REFUSED")
+    # --joint-clk-coast-max-s 0: nothing coasts.
+    ds = {"jclk_last": 150.2, "jclk_last_t": 60.0, "jclk_t": 60.0, "jclk_last_rate": 0.001}
+    clk, line = _consume(
+        L2C_RATE, L2C_LEN, 7.60, 160.2, clk_rate=0.001, dr_state=ds, coast_max_s=0.0
+    )
+    check(clk == 7.60 and "-> REFUSED (bounds" in line, "coast window 0: REFUSED")
+    # An adoption stamps all four; a coast then ages against jclk_last_t, not jclk_t, and
+    # runs on the stamped rate (+0.002) while the state's has gone to +0.5.
+    ds = {}
+    clk, line = _consume(
+        REF_RATE, REF_LEN, 150.238, 150.435, clk_rate=0.002, dr_state=ds, t0=100.0
+    )
+    check(
+        "ADOPTED" in line
+        and ds["jclk_t"] == 100.0
+        and ds["jclk_last_t"] == 100.0
+        and ds["jclk_last"] == 150.435
+        and ds["jclk_last_rate"] == 0.002,
+        "an adoption stamps jclk_t, jclk_last, jclk_last_t and jclk_last_rate",
+    )
+    clk, line = _consume(
+        REF_RATE, REF_LEN, 150.238, 170.0, clk_rate=0.5, dr_state=ds, t0=399.0
+    )
+    check(
+        abs(clk - (150.435 + 0.002 * 299.0)) < 1e-9
+        and "COAST" in line
+        and "at clk_rate +0.0020" in line
+        and ds["jclk_t"] == 100.0,
+        "299 s on: COAST = adopted level + stamped rate x 299 s, jclk_t still 100 "
+        "(the freshness ages); the state's +0.5 is not used",
+    )
+    # A state not fit to consume (thin: 3 sats under joint_min_sats 4) coasts on the same
+    # stamps inside the same window and bound, and says why in its own line.
+    for n, why in ((3, "3 sats < 4"), (None, "absent or deaf")):
+        js = _FakeJoint(160.2, 0.047, n=n or 1, clk_rate=0.5)
+        rx = Receiver(log=lambda m: None)
+        rx._joint["__receiver__"] = js
+        ds = {"jclk_last": 150.2, "jclk_last_t": 60.0, "jclk_t": 60.0,
+              "jclk_last_rate": 0.001}
+        ctx = types.SimpleNamespace(
+            args=types.SimpleNamespace(
+                joint_min_sats=4,
+                joint_clk_max_chips=MAX_CHIPS,
+                joint_clk_max_sigma=MAX_SIGMA,
+                joint_clk_max_step_chips=0.3,
+                joint_clk_step_hold_s=30.0,
+                joint_clk_coast_max_s=300.0,
+                chip_rate_hz=L2C_RATE,
+            ),
+            rx=rx,
+            band_id="test",
+            code_len=L2C_LEN,
+            t0=100.0,
+            dr_state=ds,
+            drp=types.SimpleNamespace(clk_now=7.60),
+            joint_state=(lambda _r, _b, _a: js) if n else (lambda _r, _b, _a: None),
+        )
+        lines = []
+        _orig = deadreckon._log_rl
+        deadreckon._log_rl = lambda key, msg, every_s=10.0: lines.append(msg)
+        try:
+            deadreckon.dr_joint_clk(ctx)
+        finally:
+            deadreckon._log_rl = _orig
+        check(
+            abs(ctx.drp.clk_now - 7.512) < 1e-9
+            and len(lines) == 1
+            and ("joint state not fit to consume (%s) -> COAST" % why) in lines[0]
+            and ds["jclk_t"] == 60.0,
+            "a state %s coasts to 7.512 CM on the stamps, nothing restamped (%s)"
+            % (why, lines[0][:80] if lines else "no line"),
+        )
 
 
 def rate_consumer_divisors(path=BROKER):
@@ -475,7 +694,8 @@ def main():
         test_sigma_bound_is_reference_chips,
         test_windows,
         test_ten_mcps_unchanged,
-        test_unit_declaration,
+        test_one_unit,
+        test_coast_on_refusal,
         test_rate_consumer_unit,
         test_seed_offset_per_prn,
     ):

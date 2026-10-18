@@ -1027,6 +1027,18 @@ def build_parser(description):
         "consumed, so the A/B exists before the switch.",
     )
     ap.add_argument(
+        "--joint-clk-coast-max-s",
+        type=float,
+        default=300.0,
+        help="'clk' consumer: a joint clock the bounds, the step guard or the "
+        "clock-period check refuse is COASTED, not dropped, when this chain "
+        "adopted it within the last N s: the seeds ride the last adopted joint "
+        "clock carried forward at the joint state's clk_rate (deadreckon."
+        "dr_joint_clk), never the legacy median. The coast ages (no stamp is "
+        "refreshed), so past N s a refusal is a plain REFUSED on the legacy "
+        "clock and the cross-band bootstrap can re-arm. 0 disables the coast.",
+    )
+    ap.add_argument(
         "--rrate-state",
         action="store_true",
         help="P3 step 2 (task #33): FEED the receiver-wide joint state's "

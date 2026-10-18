@@ -17,7 +17,7 @@ E = [("gal_e5a", 20 + i) for i in range(9)]
 bias = {k: (i - 2) * 2.0 for i, k in enumerate(G)}
 bias.update({k: (i - 4) * 1.5 for i, k in enumerate(E)})
 
-st = rx.joint_receiver("1176.45MHz", L_GPS)
+st = rx.joint_receiver("1176.45MHz", L_GPS, 10.23e6)
 t = 0.0
 for c in range(60):
     t += 2.0
@@ -30,7 +30,7 @@ L_before = st.L
 obs_before = {k: st.predicted(k) for k in G}
 
 # A shorter-code chain joins the receiver
-st2 = rx.joint_receiver("1176.45MHz", L_E5A)
+st2 = rx.joint_receiver("1176.45MHz", L_E5A, 10.23e6)
 n_after = len(st2._idx)
 clk_after = st2.clk
 

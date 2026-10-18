@@ -27,7 +27,7 @@ def check(ok, what):
         _fails.append(what)
 
 
-REF_RATE, REF_LEN = 10.23e6, 10230.0  # the feeders' chips (gps_l5): 1 ms window
+REF_RATE, REF_LEN = 10.23e6, 10230.0  # reference chips (gps_l5's): 1 ms window
 L2C_RATE, L2C_LEN = 0.5115e6, 10230.0  # CM: 10230 chips / 20 ms
 E6_RATE, E6_LEN = 5.115e6, 5115.0  # E6-C: 5115 chips / 1 ms
 JOINT = 150.2  # reference chips = 14.682 us = 7.51 CM chips
@@ -36,7 +36,7 @@ T0 = 1000.0
 
 class _FakeJoint(object):
     def __init__(self, clk, sigma=0.047, n=14):
-        self.clk, self._sigma = clk, sigma
+        self.clk, self._sigma, self.L, self.clk_rate = clk, sigma, REF_LEN, 0.0
         self._idx = {("G", i): i for i in range(n)}
 
     def sigma(self, key=None):
@@ -46,7 +46,8 @@ class _FakeJoint(object):
 def _consume(rate, code_len, legacy, record_s=None, record_age_s=10.0, chain="gps_l2c"):
     """Drive dr_joint_clk once; returns (clk_now after, the JOINT-CLK line)."""
     rx = Receiver(log=lambda m: None)
-    rx.joint_declare_unit("gps_l5", REF_RATE, REF_LEN)
+    js = _FakeJoint(JOINT)
+    rx._joint["__receiver__"] = js  # the unit's source (Receiver.joint_unit)
     if record_s is not None:
         rx.contribute_clock_mod_epoch(
             "gps_l5", record_s, 0.02, 6, T0 - record_age_s, healthy=True
@@ -58,6 +59,7 @@ def _consume(rate, code_len, legacy, record_s=None, record_age_s=10.0, chain="gp
             joint_clk_max_sigma=0.5,
             joint_clk_max_step_chips=0.3,
             joint_clk_step_hold_s=30.0,
+            joint_clk_coast_max_s=0.0,  # the coast is test_jointclk's
             chip_rate_hz=rate,
         ),
         rx=rx,
@@ -67,7 +69,7 @@ def _consume(rate, code_len, legacy, record_s=None, record_age_s=10.0, chain="gp
         dr_state={},
         code_len=code_len,
         drp=types.SimpleNamespace(clk_now=legacy),
-        joint_state=lambda _rx, _b, _a: _FakeJoint(JOINT),
+        joint_state=lambda _rx, _b, _a: js,
     )
     lines = []
     _orig = deadreckon._log_rl

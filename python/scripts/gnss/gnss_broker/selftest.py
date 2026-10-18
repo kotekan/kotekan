@@ -798,6 +798,32 @@ check(
     )
     == 10.23e6,
 )
+# The joint state has one unit, reference chips (receiver.JOINT_REF_RATE_HZ), so a chain's
+# code period is converted before it can shorten the modulus: E6's 5115 chips at 5.115 Mcps
+# are gps_l5's 1 ms, and a 20-ms L2C-CM code joining never lengthens it.
+_rx3 = receiver.Receiver()
+_j3 = _rx3.joint_receiver(
+    "1176.45MHz", 10230.0, 10.23e6, gauge_mode="prior", clk0=150.0
+)
+_j3.cycle([(k, 150.2 + b + _rnd.gauss(0, 0.3), 0.3) for k, b in _TB.items()], 2.0)
+_clk3 = _j3.clk
+check(
+    "joint_receiver converts a second constellation's period to reference chips",
+    _rx3.joint_receiver("1278.75MHz", 5115.0, 5.115e6, gauge_mode="prior") is _j3
+    and _rx3.joint_receiver("1227.60MHz", 10230.0, 0.5115e6, gauge_mode="prior") is _j3
+    and _j3.L == 10230.0
+    and _j3.clk == _clk3,
+    "L %g clk %.3f after E6 and L2C-CM joined" % (_j3.L, _j3.clk),
+)
+check(
+    "joint_unit() is the reference rate and the modulus; None with no state",
+    _rx3.joint_unit() == (receiver.JOINT_REF_RATE_HZ, 10230.0)
+    and receiver.Receiver().joint_unit() is None,
+)
+check(
+    "...and a 0.5-ms period at E6's rate shortens it to 5115",
+    _rx3.joint_receiver("x", 2557.5, 5.115e6, gauge_mode="prior").L == 5115.0,
+)
 # And the consumer's arithmetic: a fractional-frequency bias -> chips/hop, chip-rate scaled.
 from gnss_broker.fits import cp_rate_from_code_bias  # noqa: E402
 

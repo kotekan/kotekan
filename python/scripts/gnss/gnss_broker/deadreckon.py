@@ -45,6 +45,7 @@ from gnss_broker.fits import (
     seed_phase_at_ref,
     split_erratic_offsets,
 )
+from gnss_broker.receiver import JOINT_REF_RATE_HZ
 from gnss_broker.sky import nearest_boresight, transit_sky
 from gnss_broker.trkresid import wrap
 
@@ -915,9 +916,16 @@ def dr_joint_shadow(ctx):
     It touches no seed and not dr_state's clock: the joint state reaches the seeds only
     through the joint consumers (dr_joint_clk in dr_seed, and the rate and slew consumers).
     It also records each established satellite's MINNOV for the model-primacy gate. Runs
-    when any joint consumer is configured (args.joint_shadow) and this chain has offsets."""
+    when any joint consumer is configured (args.joint_shadow) and this chain has offsets.
+
+    The state is in reference chips (receiver.JOINT_REF_RATE_HZ, 10.23 Mcps) whatever this
+    chain's chip rate: the offsets, their sigma and the warm-start clock go in multiplied by
+    _k = reference rate / ours, and the residuals read back against the state (MINNOV, P2C)
+    come out divided by it, so the histories and log lines stay in this chain's chips. At
+    10.23 Mcps _k is exactly 1.0 and nothing changes bit for bit."""
     if ctx.args.joint_shadow and ctx.drp.offs:
         try:
+            _k = JOINT_REF_RATE_HZ / ctx.args.chip_rate_hz
             # One state for the whole receiver, warm-started from this chain's clock: born at
             # 0 against a true clock of ~151 chips, every measurement would land beyond
             # escape_max_step and be refused. clk0 is read only at creation, so it cannot
@@ -925,12 +933,10 @@ def dr_joint_shadow(ctx):
             _js = ctx.rx.joint_receiver(
                 ctx.band_id,
                 ctx.code_len,
-                clk0=float(ctx.dr_state.get("clk") or 0.0),
+                ctx.args.chip_rate_hz,
+                clk0=float(ctx.dr_state.get("clk") or 0.0) * _k,
                 gauge_mode="prior",
             )
-            # The offsets fed below are in this chain's chips, mod its code; a consumer at
-            # another chip rate converts through this declaration.
-            ctx.rx.joint_declare_unit(ctx.chain_id, ctx.args.chip_rate_hz, ctx.code_len)
             # Only detections at or above joint_min_snr feed the state: below it a detection's
             # code phase is noise (~2000-chip residuals), which a median shrugs off and the
             # filter cannot.
@@ -960,7 +966,8 @@ def dr_joint_shadow(ctx):
                 # the satellite without this detection. A birth row's prediction is its own
                 # first measurement, hence established rows only. INNOV judges the commanded
                 # seed, MINNOV the model; fleetdll publishes its p95, which the model-primacy
-                # flip gate (instruments.instr_model_primacy) reads.
+                # flip gate (instruments.instr_model_primacy) reads. Wrapped in the state's
+                # reference chips, stored in ours.
                 for _p3, _d3 in ctx.drp.offs:
                     _k3 = (ctx.drp.tag, _p3)
                     if (
@@ -968,13 +975,13 @@ def dr_joint_shadow(ctx):
                         and _k3 in _js._idx
                         and _js._n.get(_k3, 0) >= ctx.args.joint_mask_after
                     ):
-                        _mi = _js.wrap(_d3 - _js.predicted(_k3))
+                        _mi = _js.wrap(_d3 * _k - _js.predicted(_k3)) / _k
                         _mh = ctx.minnov_hist.setdefault(_p3, [])
                         _mh.append((ctx.t0, _mi))
                         del _mh[:-120]
                 _js.cycle(
                     [
-                        ((ctx.drp.tag, p), d, ctx.args.joint_sigma)
+                        ((ctx.drp.tag, p), d * _k, ctx.args.joint_sigma * _k)
                         for p, d in ctx.drp.offs
                         if _snr.get(p, 0.0) >= ctx.args.joint_min_snr
                         and ctx.track_ok(p)
@@ -988,7 +995,9 @@ def dr_joint_shadow(ctx):
             ctx.p2c_tick(_js, ctx.drp.t_now_abs)
             for _p, _d in ctx.drp.offs:
                 if ctx.p2c_hold(_js, (ctx.drp.tag, _p)):
-                    _r = _js.wrap(_d - _js.predicted((ctx.drp.tag, _p)))
+                    # The residual, bias and sigma are read back in this chain's chips (the
+                    # samples the P2C END summary averages are stated in them).
+                    _r = _js.wrap(_d * _k - _js.predicted((ctx.drp.tag, _p))) / _k
                     if ctx.p2c["key"] == (ctx.drp.tag, _p):
                         ctx.p2c["samples"].append(
                             (ctx.drp.t_now_abs - ctx.p2c["t0"], _r)
@@ -996,14 +1005,16 @@ def dr_joint_shadow(ctx):
                     _log_rl(
                         "p2c-%d" % _p,
                         "P2C %s PRN %d MASKED %.0fs: coast residual %+.3f chips "
-                        "(b %+.3f, sigma %.3f) -- flat = the state carries it"
+                        "(b %+.3f, sigma %.3f; %.4f-Mcps chips) -- flat = the state "
+                        "carries it"
                         % (
                             ctx.band_id,
                             _p,
                             _js.age((ctx.drp.tag, _p), ctx.drp.t_now_abs) or 0.0,
                             _r,
-                            _js.bias((ctx.drp.tag, _p)),
-                            _js.sigma((ctx.drp.tag, _p)),
+                            _js.bias((ctx.drp.tag, _p)) / _k,
+                            _js.sigma((ctx.drp.tag, _p)) / _k,
+                            ctx.args.chip_rate_hz / 1e6,
                         ),
                         every_s=30.0,
                     )
@@ -1017,15 +1028,43 @@ def dr_joint_shadow(ctx):
             )
 
 
+def _joint_coast(ctx, ds, jrate, jlen):
+    """The coast (dr_joint_clk's docstring): (delta in our chips, extrapolation, age, rate)
+    from the stamps of the last adoption, or None when there is nothing to coast on: no
+    adoption behind us, the window (--joint-clk-coast-max-s) closed or 0, or an
+    extrapolation past joint_clk_max_chips, the bound an adoption itself may not exceed.
+
+    The rate is the one stamped at adoption (jclk_last_rate), never the state's current one:
+    the refusal that calls for a coast is the moment the state's rate is least trusted (a
+    thin set walks it), and an unbounded live rate over 300 s could move the seeds by 6x
+    the adoption bound. The level is built in joint chips, then converted and wrapped
+    exactly as an adoption is (Receiver.joint_clk_delta)."""
+    if not (ctx.args.joint_clk_coast_max_s > 0.0):
+        return None
+    last, t_last, rate = ds.get("jclk_last"), ds.get("jclk_last_t"), ds.get("jclk_last_rate")
+    if last is None or t_last is None or rate is None:
+        return None
+    age = ctx.t0 - t_last
+    if not (0.0 <= age <= ctx.args.joint_clk_coast_max_s):
+        return None
+    ext = rate * age
+    if abs(ext) > ctx.args.joint_clk_max_chips:
+        return None
+    delta = ctx.rx.joint_clk_delta(
+        (last + ext) % jlen, jrate, jlen, ctx.drp.clk_now, ctx.args.chip_rate_hz, ctx.code_len
+    )[0]
+    return delta, ext, age, rate
+
+
 def dr_joint_clk(ctx):
     """The `joint-consume: clk` consumer: move this cycle's clk_now onto the joint clock, or
     leave it.
 
-    The joint state is in its feeders' chips (declared through Receiver.joint_declare_unit),
-    this chain's clock in its own; the two are one receiver time, so the joint is converted
-    into our chips and the delta wrapped in the window both are defined in
-    (Receiver.joint_clk_delta). Applied as that wrapped delta, so our clock keeps saying
-    which period of a longer code we are in.
+    The joint state is in reference chips (receiver.JOINT_REF_RATE_HZ, read back through
+    Receiver.joint_unit), this chain's clock in its own; the two are one receiver time, so
+    the joint is converted into our chips and the delta wrapped in the window both are
+    defined in (Receiver.joint_clk_delta). Applied as that wrapped delta, so our clock keeps
+    saying which period of a longer code we are in.
 
     Both bounds are in the joint's chips: joint_clk_max_chips and joint_clk_max_sigma mean the
     same time on every chain (5 chips = 489 ns at 10.23 Mcps), because what they guard (a
@@ -1041,10 +1080,25 @@ def dr_joint_clk(ctx):
     a satellite is fed in both bands, and a band that feeds nothing has no row (tau 0).
 
     Stateless for the clock: clk_now moves for this cycle only and dr_state["clk"] is
-    untouched, so a refused joint falls back to the legacy clock on the next cycle. It
-    records when it adopted (dr_state["jclk_t"], the freshness _dr_clock_local_fresh reads)
-    and, for the step guard, the joint clock it last adopted (dr_state["jclk_last"], joint
-    chips) and the pending new level with the time it was first seen (dr_state["jclk_cand"]).
+    untouched. It records when it adopted (dr_state["jclk_t"], the freshness
+    _dr_clock_local_fresh reads) and, for the step guard and the coast, the joint clock it
+    last adopted with the time it adopted it (dr_state["jclk_last"], joint chips, and
+    dr_state["jclk_last_t"]) and the pending new level with the time it was first seen
+    (dr_state["jclk_cand"]).
+
+    A refused joint coasts on clk + clk_rate dt, never on the median (docs 6.2): when this
+    chain adopted before and the adoption is younger than joint_clk_coast_max_s, clk_now
+    goes onto jclk_last + jclk_last_rate (t0 - jclk_last_t), the rate stamped at that
+    adoption (not the state's current one, which a thin set walks), bounded so the
+    extrapolation never exceeds joint_clk_max_chips (_joint_coast); the rate in joint
+    chips per second, applied as the same wrapped delta an adoption is. The legacy median
+    churns by +-1-2 chips with its membership, and a refusal (a transit thinning the
+    feeders, a sigma excursion, a level the step guard has not yet seen hold) is the moment
+    the seeds would otherwise step back onto that churn. A coast never refreshes jclk_t,
+    jclk_last or jclk_last_t, so it ages: past the window the refusal is a plain REFUSED on
+    the legacy clock, the local clock goes stale and the cross-band bootstrap re-arms. A
+    refusal with no adoption behind it is a REFUSED as well, and joint_clk_coast_max_s 0
+    disables the coast.
 
     The step guard: a transit that blinds the feeder band thins the joint's satellite set and
     walks its clock for under a minute, inside the bounds. A joint clock more than
@@ -1057,6 +1111,28 @@ def dr_joint_clk(ctx):
     is a discontinuity, followed one hold late."""
     _jrC = ctx.joint_state(ctx.rx, ctx.band_id, ctx.args)
     if _jrC is None or len(_jrC._idx) < ctx.args.joint_min_sats:
+        # Not fit to consume: thin, deaf, or absent. A transit that thins the feeders below
+        # joint_min_sats is the case the coast exists for, so coast here too, on the stamps
+        # of the last adoption, inside the same window and bound.
+        _unit0 = ctx.rx.joint_unit()
+        _c0 = _joint_coast(ctx, ctx.dr_state, _unit0[0], _unit0[1]) if _unit0 else None
+        if _c0 is not None:
+            _log_rl(
+                "jclk",
+                "JOINT-CLK: legacy %.3f chips, joint state not fit to consume (%s) -> COAST "
+                "(%+.3f joint chips over %.0f s at clk_rate %+.4f joint chips/s)"
+                % (
+                    ctx.drp.clk_now,
+                    "absent or deaf"
+                    if _jrC is None
+                    else "%d sats < %d" % (len(_jrC._idx), ctx.args.joint_min_sats),
+                    _c0[1],
+                    _c0[2],
+                    _c0[3],
+                ),
+                every_s=30.0,
+            )
+            ctx.drp.clk_now = (ctx.drp.clk_now + _c0[0]) % ctx.code_len
         return
     # sigma <= 0 is degenerate (a state claiming perfect knowledge), not excellent: refuse it
     # explicitly. The state_filter P floor keeps sigma above 0, but this gate does not rely
@@ -1066,14 +1142,7 @@ def dr_joint_clk(ctx):
         _jsigC = float("inf")
     _unit = ctx.rx.joint_unit()
     if _unit is None:
-        _log_rl(
-            "jclk",
-            "JOINT-CLK: legacy %.3f chips -> REFUSED (the joint state's chip rate is "
-            "undeclared or mixed across its feeders; no single conversion exists)"
-            % ctx.drp.clk_now,
-            every_s=30.0,
-        )
-        return
+        return  # the receiver holds no joint state (ctx.joint_state handed us a stray one)
     _jrate, _jlen = _unit
     _r = ctx.args.chip_rate_hz / _jrate
     _jdC, _jdJ = ctx.rx.joint_clk_delta(
@@ -1140,8 +1209,43 @@ def dr_joint_clk(ctx):
                 _jokC = False
     if _jstep is None:
         _ds.pop("jclk_cand", None)
+    # The coast (see the docstring): a refusal with an adoption behind it, inside the
+    # window, moves clk_now onto the last adopted joint clock carried forward at the joint's
+    # rate. Built in joint chips, then converted and wrapped exactly as an adoption is.
+    _jcoast = _joint_coast(ctx, _ds, _jrate, _jlen) if not _jokC else None
+    # A coast the bound declined is named in the refusal: the stamps were there and the
+    # window open, and the extrapolation alone put the seeds past what an adoption may.
+    _jdecl = ""
+    if not _jokC and _jcoast is None and _ds.get("jclk_last_rate") is not None:
+        _jage0 = ctx.t0 - (_ds.get("jclk_last_t") or ctx.t0)
+        if 0.0 <= _jage0 <= ctx.args.joint_clk_coast_max_s:
+            _jext0 = _ds["jclk_last_rate"] * _jage0
+            if abs(_jext0) > ctx.args.joint_clk_max_chips:
+                _jdecl = (
+                    "; coast declined: %+.1f joint chips of extrapolation over %.0f s is "
+                    "past the %.1f-chip bound" % (_jext0, _jage0, ctx.args.joint_clk_max_chips)
+                )
+    if _jokC:
+        _why = None
+    elif _jperiod_ms is not None:
+        _why = (
+            "the clock-mod-%.0f-ms record from '%s' puts the joint %+.3f ms from the "
+            "legacy clock: a whole-period error the %.0f-ms delta cannot see"
+            % (_jperiod_ms[2], _jperiod_ms[1], _jperiod_ms[0], _jwin_s * 1e3)
+        )
+    elif _jstep is not None:
+        _why = (
+            "step %+.3f chips from the last adopted joint clock; the new level has held "
+            "%.0f of %.0f s" % (_jstep[0], _jstep[1], ctx.args.joint_clk_step_hold_s)
+        )
+    else:
+        _why = "bounds %.1f chips / %.2f sigma" % (
+            ctx.args.joint_clk_max_chips,
+            ctx.args.joint_clk_max_sigma,
+        )
     # Fields before the bracket are in our chips; the bracket (other chip rates only) gives
-    # the joint-chip numbers the bounds are tested in.
+    # the joint-chip numbers the bounds are tested in. A COAST's extrapolation and rate are
+    # in joint chips too.
     _log_rl(
         "jclk",
         "JOINT-CLK: legacy %.3f joint %.3f chips (delta %+.3f,"
@@ -1158,16 +1262,10 @@ def dr_joint_clk(ctx):
             " bounds' unit]" % (_r, _jrC.clk, _jdJ, _jsigC, _jrate / 1e6),
             "ADOPTED"
             if _jokC
-            else "REFUSED (the clock-mod-%.0f-ms record from '%s' puts the joint %+.3f ms "
-            "from the legacy clock: a whole-period error the %.0f-ms delta cannot see)"
-            % (_jperiod_ms[2], _jperiod_ms[1], _jperiod_ms[0], _jwin_s * 1e3)
-            if _jperiod_ms is not None
-            else "REFUSED (step %+.3f chips from the last adopted joint clock; the new "
-            "level has held %.0f of %.0f s)"
-            % (_jstep[0], _jstep[1], ctx.args.joint_clk_step_hold_s)
-            if _jstep is not None
-            else "REFUSED (bounds %.1f chips / %.2f sigma)"
-            % (ctx.args.joint_clk_max_chips, ctx.args.joint_clk_max_sigma),
+            else "COAST (refused: %s; %+.3f joint chips over %.0f s at clk_rate %+.4f "
+            "joint chips/s)" % (_why, _jcoast[1], _jcoast[2], _jcoast[3])
+            if _jcoast is not None
+            else "REFUSED (%s%s)" % (_why, _jdecl),
         ),
         every_s=30.0,
     )
@@ -1175,6 +1273,11 @@ def dr_joint_clk(ctx):
         ctx.drp.clk_now = (ctx.drp.clk_now + _jdC) % ctx.code_len
         _ds["jclk_t"] = ctx.t0
         _ds["jclk_last"] = _jlvl
+        _ds["jclk_last_t"] = ctx.t0
+        _ds["jclk_last_rate"] = _jrC.clk_rate  # the rate a coast runs on (_joint_coast)
+    elif _jcoast is not None:
+        # No stamp moves on a coast: it must age out, so the bootstrap can re-arm.
+        ctx.drp.clk_now = (ctx.drp.clk_now + _jcoast[0]) % ctx.code_len
 
 
 def dr_seed(ctx):
@@ -1217,7 +1320,7 @@ def dr_seed(ctx):
         # The loop skips detected satellites (model-primary ones aside) and the joint state holds
         # only detected ones, so a comparison inside the loop would see almost none.
         _jr3 = ctx.joint_state(ctx.rx, ctx.band_id, ctx.args)
-        # The joint is in its feeders' chips (Receiver.joint_unit): at another chip rate the
+        # The joint is in reference chips (Receiver.joint_unit): at another chip rate the
         # comparison is made in ours, through the clock consumer's conversion and window.
         _u3 = ctx.rx.joint_unit() if _jr3 is not None else None
         if _u3 is not None and ctx.drp.now_w >= ctx.dr_state.get("jslew_log_next", 0.0):
@@ -1383,8 +1486,8 @@ def dr_seed(ctx):
             _leg_off = ctx.drp.clk_now + ctx.bsat.get(prn, ctx.drp.now_w)
             _off = _leg_off
             _jr3 = ctx.joint_state(ctx.rx, ctx.band_id, ctx.args)
-            # The joint is in its feeders' chips (Receiver.joint_unit); with no single unit there is
-            # nothing to compare, as in dr_joint_clk.
+            # The joint is in reference chips (Receiver.joint_unit), converted into ours below as
+            # in dr_joint_clk.
             _u3 = ctx.rx.joint_unit() if _jr3 is not None else None
             _joff = (
                 _jr3.predicted((ctx.drp.tag, prn))
@@ -2208,7 +2311,7 @@ def stage_dead_reckon(ctx):
             if ctx.args.rrate_state or ctx.args.joint_shadow:
                 try:
                     _jsn = ctx.rx.joint_receiver(
-                        ctx.band_id, ctx.code_len, gauge_mode="prior"
+                        ctx.band_id, ctx.code_len, ctx.args.chip_rate_hz, gauge_mode="prior"
                     )
                     for _n in _jsn.drain_notes():
                         _log_rl(

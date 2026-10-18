@@ -184,6 +184,15 @@ def test_prior_gauge_is_what_runs():
                 "%s:%d joint_receiver(... gauge_mode=%r)"
                 % (os.path.basename(path), node.lineno, modes),
             )
+            # band, code_len, chip_rate_hz: the live callers sit inside try/except blocks
+            # that turn a TypeError from a missed signature change into a rate-limited log
+            # line (10-18 review of the one-unit change caught three), so the arity is
+            # pinned here, where it fails loudly.
+            check(
+                len(node.args) >= 3,
+                "%s:%d joint_receiver() passes band, code_len and chip_rate_hz (%d positional)"
+                % (os.path.basename(path), node.lineno, len(node.args)),
+            )
     check(n >= 5, "%d joint_receiver() calls found" % n)
 
 
