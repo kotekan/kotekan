@@ -207,10 +207,11 @@ the receiver clock):
 2. **The offsets are per signal, in our timing, not in the model and not physical.** With the
    atmosphere removed per row they hold in every elevation bin and from 10-03 on every day
    (Galileo +11..+14 m, B2b/B3I -6..-9, B2a +6..+11, L2C -5..-9; Galileo was +8 on 09-25).
-   Our own range model, run at two Septentrio IGS stations (DRAO, Brewster) on their
-   pseudoranges, puts Galileo E5a within 1.8 m of GPS L5 at both, E6 within 2 m, L2C within
-   2 m, and B2a 1.9 m above B3I on the same satellites: the ephemeris, clock and group-delay
-   model is clean to ~2 m. The zero-mean CAS DCB product does drop each constellation's mean
+   Our own range model, run at six Septentrio IGS stations (DRAO, BREW, CHWK, HOLB, NANO,
+   WILL) on their pseudoranges, puts Galileo E5a +1.6..+1.8 m above GPS L5 at all six, E6
+   +1.5..+2.8, L2C -1.7..-2.2 at five (BREW +1.0), and at the five that track BeiDou B2a
+   +6.8..+7.6 and B3I +4.6..+7.0 (table in fixtures/jointstate/README.md): the ephemeris,
+   clock and group-delay model is clean to ~2 m. The zero-mean CAS DCB product does drop each constellation's mean
    group delay, but that is 2.2 m on GPS L5 and 1.3 m on Galileo. The shipped seed-to-despread
    leg places GPS_L5_Q_NH, GAL_E5A_Q_CS and BDS_B2A_P_CS identically to 0.001 chips. Chains on
    one band share their channels, the bank tiles NH and CS codes by one code path, and nothing in
@@ -263,7 +264,7 @@ A consumer that refuses the joint clock coasts on clk + clk_rate dt, never on th
 Offline now, on the obs archive and the replays (no sky needed):
 
   0a. **Group-delay audit (done 10-14 as far as it goes offline, fixtures/jointstate/README.md).**
-      The model is validated against two IGS stations; the +12 m steps are ours and need the
+      The model is validated against six IGS stations; the +12 m steps are ours and need the
       sky (step 1). Still to add in the model: the L2C, E6 and B2b terms and the constellation
       mean under CAS. Gate: the station comparison reads within 1 m on every signal with a
       reference.

@@ -326,8 +326,9 @@ chain but fed by gps_l5 alone (#125), so b_sat exists for GPS only and the other
 residual lives in the gather's trims. The trims and the obs `code_resid_m` show no per-band receiver delay (E5a/E5b/E6
 agree to 0.2 m on the same satellites; `tau_band` dropped) but per-SIGNAL offsets that are OURS: with the atmosphere
 removed per row they hold in every elevation bin and every day since 10-03 (Galileo +11..+14 m vs gps_l5, B2b/B3I
--6..-9, B2a +6..+11, L2C -5..-9); our own range model run at two Septentrio IGS stations (DRAO, Brewster) on their
-pseudoranges puts Galileo within 1.8 m of GPS L5, L2C within 2 m and B2a 1.9 m above B3I; the shipped
+-6..-9, B2a +6..+11, L2C -5..-9); our own range model run at six Septentrio IGS stations (DRAO, BREW, CHWK, HOLB, NANO, WILL) on
+their pseudoranges puts Galileo E5a +1.6..+1.8 m above GPS L5 at all six, L2C -1.7..-2.2 at five (BREW +1.0), B2a
++6.8..+7.6 and B3I +4.6..+7.0 at the five that track BeiDou (fixtures/jointstate/README.md); the shipped
 seed-to-despread leg places L5_Q_NH, E5A_Q_CS and B2A_P_CS identically to 0.001 chips; chains on one band share their
 channels and nothing in the tracking path branches on constellation or data-vs-pilot. Three steps of ~+12 m (40 ns)
 remain: Galileo E5a over GPS L5 at one frequency on identical channels, L5 over L2C, B2a over B3I. Not tiling (B2a
