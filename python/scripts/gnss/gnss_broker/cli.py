@@ -617,6 +617,16 @@ def build_parser(description):
         "already says.",
     )
     ap.add_argument(
+        "--detectors-monitor",
+        action="store_true",
+        help="poll --detectors for the record only: the per-satellite offsets and their "
+        "circular median are logged (SEARCH-MONITOR) against the joint clock, and nothing "
+        "else sees the detections (no seeds, holds, escape, deep gate, clock solve or joint "
+        "feed); Doppler and nh hints are still posted so the search runs. The chain stays "
+        "model-primary. #191 step 1: a search on a chain's primary beside its tracker, to "
+        "say whether the signal or the tracker path owns the chain's standing offset.",
+    )
+    ap.add_argument(
         "--trackers",
         required=True,
         help="tracker endpoints to seed (e.g. track_{00..49} or "

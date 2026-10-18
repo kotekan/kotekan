@@ -99,6 +99,14 @@ def lanes_per_slot_for(args, track_signal):
 BUFFER_DEPTH = 4
 # The primary chain's PRN slots (each extra chain carries its own list).
 PRIMARY_PRNS = list(range(1, 33))
+# PRN slots an extra search (--aggregator-extra-search) scans when the spec names none, by
+# the signal name's constellation prefix: the broadcast PRN ranges, not a lane budget.
+EXTRA_SEARCH_PRNS = {
+    "GPS": list(range(1, 33)),
+    "GAL": list(range(1, 37)),
+    "BDS": list(range(19, 64)),
+    "GLO": list(range(1, 25)),
+}
 # Combiner integration length, records.
 INTEGRATION_LENGTH = 100
 # /get_spectrum accumulation window, in records. Windows are quantised on the F-engine sample
@@ -1610,16 +1618,20 @@ def _comb_g(chan_ids, fft_len):
     return gcd(g, fft_len) if g else fft_len
 
 
-def search_stage(cfg, args, in_buf, chan_ids, core):
-    """The aggregator's GnssChannelizedSearch block."""
+def search_stage(cfg, args, in_buf, chan_ids, core, signal=None, prns=None):
+    """The aggregator's GnssChannelizedSearch block.
+
+    `signal` and `prns` default to the primary and its slots; an extra search
+    (--aggregator-extra-search) names another signal on the same comb, so every other key,
+    the carrier included, stays the primary's."""
     sig = cfg["signals"]
     fe = cfg["fengine"]
     n_chan = len(chan_ids)
     return {
         "kotekan_stage": "GnssChannelizedSearch",
         "in_buf": in_buf,
-        "signal": sig["primary"],
-        "prns": PRIMARY_PRNS,
+        "signal": signal or sig["primary"],
+        "prns": list(prns) if prns else PRIMARY_PRNS,
         "sample_rate": float(fe["sampling_rate_MHz"]) * 1e6,
         # The sky carrier, not an IF: covering_bins() places the signal at f_offset, so 0.0
         # puts it at DC, where no covering channel overlaps this subband.
@@ -1841,6 +1853,42 @@ def build_aggregator_instance(cfg, nodes, args, port):
     nth = max(1, int(ACQUIRE_THREADS))
     out["gps_search"]["acquire_threads"] = nth
     out["gps_search"]["cpu_affinity"] = list(cores[-max(nth, 6) :])
+    # --aggregator-extra-search: more searches on the same merged comb, one stage each, named
+    # <tag>_search (signal_tag) so a broker chain's `detectors:` can point at it. The signal
+    # must share the primary's carrier: the comb is the primary's covering set, and a signal
+    # elsewhere in the band would be searched on channels that do not carry it. The #191
+    # step 1 experiment is GAL_E5A_Q beside GPS_L5_Q, one frequency, identical channels.
+    table = signal_table() if args.aggregator_extra_search else {}
+    for spec in args.aggregator_extra_search or []:
+        name, _, prn_s = spec.partition(":")
+        if name not in table:
+            raise SystemExit(
+                f"--aggregator-extra-search {name}: unknown signal (not in gnssSignal.hpp)"
+            )
+        if abs(float(table[name]["carrier_hz"]) - float(cfg["signals"]["carrier_hz"])) > 1.0:
+            raise SystemExit(
+                f"--aggregator-extra-search {name}: its carrier ({table[name]['carrier_hz']} Hz)"
+                f" is not the primary's ({cfg['signals']['carrier_hz']} Hz); the merged comb"
+                " covers the primary's band only"
+            )
+        prns = (
+            [int(p) for p in prn_s.split(",") if p.strip()]
+            if prn_s.strip()
+            else EXTRA_SEARCH_PRNS.get(name[:3])
+        )
+        if not prns:
+            raise SystemExit(
+                f"--aggregator-extra-search {name}: give the PRNs, e.g. {name}:1,2,3"
+            )
+        key = signal_tag(name).lstrip("_") + "_search"
+        if key in out:
+            raise SystemExit(f"--aggregator-extra-search {name}: stage '{key}' already exists")
+        out[key] = search_stage(
+            cfg, args, "agg_merged_buf", union_ids, cores[4 % len(cores)], signal=name,
+            prns=prns,
+        )
+        out[key]["acquire_threads"] = nth
+        out[key]["cpu_affinity"] = list(cores[-max(nth, 6) :])
     return out, feeds, union_ids
 
 
@@ -2647,6 +2695,17 @@ def main():
         type=int,
         default=11040,
         help="bufferRecv port for GPU 0; GPU 1 uses base+1",
+    )
+    ap.add_argument(
+        "--aggregator-extra-search",
+        action="append",
+        metavar="SIGNAL[:PRNS]",
+        default=None,
+        help="emit another GnssChannelizedSearch in the aggregator instance for SIGNAL (a "
+        "gnssSignal.hpp primary that shares the primary's carrier, e.g. GAL_E5A_Q) on the "
+        "same merged comb; PRNS defaults to the constellation's broadcast range (Galileo "
+        "1-36). The stage is named <tag>_search (e5a_search), the URL a broker chain's "
+        "`detectors:` points at. #191 step 1: an E5a search beside the L5 one.",
     )
     ap.add_argument(
         "--cuda-acquire",

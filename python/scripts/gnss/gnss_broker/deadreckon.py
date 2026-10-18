@@ -1705,6 +1705,109 @@ def _dr_apply_reload(ctx, res):
     )
 
 
+def _det_offset(ctx, prn, det):
+    """One detection -> (d_i, cp_loc, t_i): the receiver-clock offset the solve takes the
+    circular median of, the physical code phase it was built from, and the detection's time.
+
+    The search's sample-0 back-reference subtracts both the nominal code advance and the
+    code-Doppler drift; add both back. Without the nominal term, detections from different
+    scans scatter by their ref_hop's place in the code period. The solve uses this
+    reconstruction, not the detection's cp_at_ref: that is referenced at the hop's last sample
+    and carries the replica anchor's Doppler term, so using it would import the search's
+    fft_len and anchor geometry. The (cp0, dop) pair is published together and its Doppler
+    embed cancels exactly here. The offset is normalized to t_now_abs at the drift."""
+    _snr, dop, cp, ref_hop, _nh, _cpl, _car = det
+    v = ctx.drp.pd[(ctx.drp.tag, prn)]
+    t_i = ref_hop / ctx.args.hops_per_sec
+    cp_loc = (
+        cp
+        + t_i
+        * ctx.args.chip_rate_hz
+        * (1.0 + ctx.args.code_doppler_sign * dop / ctx.args.carrier_hz)
+    ) % ctx.code_len
+    d_i = (
+        cp_loc - ctx.cp_predicted(v, t_i) + ctx.drp.drift * (ctx.drp.t_now_abs - t_i)
+    ) % ctx.code_len
+    return d_i, cp_loc, t_i
+
+
+def circular_median(offs, code_len):
+    """(median, MAD) of per-satellite offsets on a circle of code_len chips: rotate to the
+    first, take the median, rotate back. dr_clock_solve's own arithmetic, for a caller that
+    wants the number without the solve's state."""
+    ref = offs[0][1]
+    cen = sorted(((d - ref + code_len / 2.0) % code_len) - code_len / 2.0 for _, d in offs)
+    med = cen[len(cen) // 2]
+    mad = sorted(abs(c - med) for c in cen)[len(cen) // 2]
+    return (med + ref) % code_len, mad
+
+
+def search_monitor(ctx, offs):
+    """--detectors-monitor: the withheld detections' clock against the joint clock, in this
+    chain's chips. Logs SEARCH-MONITOR every 10 s and a 5-minute median every 60 s.
+
+    The question (#191 step 1): a chain whose tracker holds a standing trim against the model
+    + the receiver clock (gal_e5a +0.4 chip) either tracks a signal that really sits there,
+    or places its replica wrongly. A search on the same primary sees the signal and not the
+    tracker: search - joint ~ the trim says the signal is where the tracker found it (the
+    code table or the sky owns the offset); ~0 says the tracker path owns it."""
+    if not offs:
+        return
+    med, mad = circular_median(offs, ctx.code_len)
+    name = getattr(ctx, "chain_id", None) or ctx.band_id
+    m_per_chip = 299792458.0 / ctx.args.chip_rate_hz
+    _jr = ctx.joint_state(ctx.rx, ctx.band_id, ctx.args)
+    _u = ctx.rx.joint_unit() if _jr is not None else None
+    if _u is None:
+        _log_rl(
+            "smon",
+            "SEARCH-MONITOR %s: search clock %.3f chips (n %d, MAD %.2f); no joint clock "
+            "to compare with" % (name, med, len(offs), mad),
+            every_s=10.0,
+        )
+        return
+    # joint_clk_delta is the correction that moves OUR clock onto the joint's (joint - ours),
+    # in our chips, wrapped in the window both are defined in; the search's clock minus the
+    # joint's is its negative, and the joint placed in our window is med + that correction.
+    _dj = ctx.rx.joint_clk_delta(
+        _jr.clk, _u[0], _u[1], med, ctx.args.chip_rate_hz, ctx.code_len
+    )[0]
+    delta = -_dj
+    _jo = (med + _dj) % ctx.code_len
+    per = " ".join(
+        "%d:%+.2f"
+        % (p, ((d - _jo + ctx.code_len / 2.0) % ctx.code_len) - ctx.code_len / 2.0)
+        for p, d in offs
+    )
+    hist = ctx.dr_state.setdefault("smon_hist", [])
+    hist.append((ctx.drp.now_w, delta))
+    while hist and ctx.drp.now_w - hist[0][0] > 300.0:
+        hist.pop(0)
+    _log_rl(
+        "smon",
+        "SEARCH-MONITOR %s: search clock %.3f chips (n %d, MAD %.2f) vs joint %.3f -> "
+        "search - joint %+.3f chips = %+.1f m | per PRN vs joint: %s"
+        % (name, med, len(offs), mad, _jo, delta, delta * m_per_chip, per),
+        every_s=10.0,
+    )
+    if len(hist) >= 3 and ctx.drp.now_w >= ctx.dr_state.get("smon_sum_next", 0.0):
+        ctx.dr_state["smon_sum_next"] = ctx.drp.now_w + 60.0
+        vals = sorted(v for _, v in hist)
+        mv = vals[len(vals) // 2]
+        _log(
+            "SEARCH-MONITOR %s 5-min: search - joint median %+.3f chips (%+.1f m) over %d "
+            "cycles, p10/p90 %+.3f/%+.3f"
+            % (
+                name,
+                mv,
+                mv * m_per_chip,
+                len(vals),
+                vals[len(vals) // 10],
+                vals[(9 * len(vals)) // 10],
+            )
+        )
+
+
 def stage_dead_reckon(ctx):
     """Dead-reckoned seeding: refresh the ephemeris, predict every satellite, build this chain's
     per-satellite code offsets, then run dr_joint_shadow, dr_clock_solve, dr_clock_quality,
@@ -2095,39 +2198,29 @@ def stage_dead_reckon(ctx):
             # normalization, not the sky.
             det_age = {}
             off_inputs = {}
-            for prn, (snr, dop, cp, ref_hop, _nh, _cpl, _car) in sorted(
-                ctx.best.items()
-            ):
-                v = ctx.drp.pd.get((ctx.drp.tag, prn))
-                if v is None:
+            for prn, det in sorted(ctx.best.items()):
+                if ctx.drp.pd.get((ctx.drp.tag, prn)) is None:
                     continue
-                t_i = ref_hop / ctx.args.hops_per_sec
+                d_i, cp_loc, t_i = _det_offset(ctx, prn, det)
                 det_age[prn] = ctx.drp.t_now_abs - t_i
-                # The search's sample-0 back-reference subtracts both the nominal code advance and
-                # the code-Doppler drift; add both back. Without the nominal term, detections from
-                # different scans scatter by their ref_hop's place in the code period.
-                #
-                # The solve uses this reconstruction, not the detection's cp_at_ref: that is
-                # referenced at the hop's last sample and carries the replica anchor's Doppler term,
-                # so using it would import the search's fft_len and anchor geometry. The (cp0, dop)
-                # pair is published together and its Doppler embed cancels exactly here.
-                cp_loc = (
-                    cp
-                    + t_i
-                    * ctx.args.chip_rate_hz
-                    * (1.0 + ctx.args.code_doppler_sign * dop / ctx.args.carrier_hz)
-                ) % ctx.code_len
-                d_i = (
-                    cp_loc
-                    - ctx.cp_predicted(v, t_i)
-                    + ctx.drp.drift * (ctx.drp.t_now_abs - t_i)
-                ) % ctx.code_len
                 ctx.drp.offs.append((prn, d_i))
                 # WHAT MOVED records cp_loc, not raw cp: the search's cp0 embeds
                 # -t_abs*chip_rate*sign*dop/carrier, so raw cp swings by thousands of chips with the
                 # detection Doppler's pass-to-pass jitter, while the embed cancels exactly in
                 # cp_loc.
-                off_inputs[prn] = (cp_loc, t_i, dop)
+                off_inputs[prn] = (cp_loc, t_i, det[1])
+            # --detectors-monitor: the withheld detections, measured the same way and compared
+            # with the joint clock (search_monitor). They reach no solve and no seed.
+            _mon = getattr(ctx, "monitor_best", None) or {}
+            if _mon:
+                search_monitor(
+                    ctx,
+                    [
+                        (p, _det_offset(ctx, p, d)[0])
+                        for p, d in sorted(_mon.items())
+                        if ctx.drp.pd.get((ctx.drp.tag, p)) is not None
+                    ],
+                )
             # Erratic-track guard (split_erratic_offsets): d_i = clk + b_i, both stable, so a real
             # satellite's offset moves far less than dr_max_off_jump_chips between cycles, while a
             # noise or cross-correlation track jumps by thousands of chips and drags the median.

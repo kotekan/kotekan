@@ -316,8 +316,16 @@ chains:
     # phase, so this relies on dr-fengine-axis (common:) keeping NTP drift out of the seed epoch.
         seed-phase-transport: true
         signal: gal_e5a
+    # #191 step 1 (10-18): the aggregator's E5a search (`--aggregator-extra-search GAL_E5A_Q`,
+    # stage e5a_search on the merged L5/E5a comb) is read for the record only: SEARCH-MONITOR
+    # logs the search's clock against the joint clock and nothing seeds, holds, escapes or
+    # feeds from it; Doppler and nh hints are still posted so the search runs. The aggregator
+    # must carry the stage before the broker points here. Delete both keys to end it.
+        detectors: http://localhost:12050/e5a_search
+        detectors-monitor: true
     # This chain cannot solve a receiver clock, so it adopts the one gps_l5 solves, through the
-    # shared in-process Receiver (same band). A chain with detections ignores the flag.
+    # shared in-process Receiver (same band). A chain with detections ignores the flag (under
+    # --detectors-monitor the detections never become offsets, so it adopts as before).
         dr-clock-adopt: true
     # The fast code loop, as gps_l5 (same clock and 10.23 Mcps chip rate, so the same
     # bandwidth). It acts only on PRNs that passed presence, and with no search to bring a PRN

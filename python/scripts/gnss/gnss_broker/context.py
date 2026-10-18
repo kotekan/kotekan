@@ -135,6 +135,9 @@ class ChainContext(object):
         # `ctx.have_sig`, where it could not declare `nonlocal have_sig`.
         "t0",
         "best",
+        # {prn: best-detection tuple} withheld under --detectors-monitor: measured by
+        # stage_dead_reckon's search_monitor and seen by nothing else (`best` is then empty).
+        "monitor_best",
         "status",
         "pred",
         # {prn: pred-shaped row} for the satellites --signal-capability excluded from `pred`

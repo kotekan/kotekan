@@ -1354,15 +1354,23 @@ def main(argv=None, rx=None, publisher=None):
                         float(d.get("code_phase_long_chips", -1.0)),
                         float(d.get("code_phase_at_ref_chips", -1.0)),
                     )
+        # --detectors-monitor: the detections are kept for the record (stage_dead_reckon's
+        # search_monitor) and withheld from every consumer that would act on them. `best` is
+        # the dict begin_cycle handed the context, so it is emptied in place.
+        _ctx.monitor_best = {}
+        if args.detectors_monitor and best:
+            _ctx.monitor_best = dict(best)
+            best.clear()
         # Record each PRN's reported nh alignment and the hop it was measured at; the nh hint
         # (--nh-hint, searchhint.py) learns the receiver's alignment offset from them. Gated on
         # acquire_snr like the detection itself: a marginal detection's nh is a coin flip, and a
-        # wrong offset narrows the scan away from the truth until the hint expires.
-        for _p, _b in best.items():
+        # wrong offset narrows the scan away from the truth until the hint expires. A monitored
+        # detection teaches the hint too: that narrows the search, it acts on nothing.
+        for _p, _b in list(best.items()) + list(_ctx.monitor_best.items()):
             if _b[4] >= 0 and _b[3] > 0:
                 _nho.seen[_p] = (_b[4], _b[3])
         for _p in list(_nho.seen):
-            if _p not in seeds and _p not in best:
+            if _p not in seeds and _p not in best and _p not in _ctx.monitor_best:
                 del _nho.seen[_p]  # neither seeded nor detected: forget it
 
         for _p, _b in best.items():
