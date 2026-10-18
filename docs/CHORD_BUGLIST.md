@@ -92,6 +92,33 @@ the aggregator and gather. #184–#187 below are what the removal left for later
 
 ## Open — the fix is in the BROKER or a script (ships today, no node cycle)
 
+### #207 — the detection path carries a per-satellite code error proportional to Doppler: a ~10 ms epoch lever between the search's label and the model (2026-10-18, live, measured three ways)
+**What [live 10-18, gps_l5 + gal_e5a]:** the broker's search-derived offsets (`_det_offset`: the detection's sample-0
+argument re-advanced to `ref_hop`, minus `cp_predicted` at that hop) feed the clock solve, the joint state's b_sat and
+the SEARCH-MONITOR. Within one satellite's pass they move linearly with its Doppler: GPS b_sat vs the tracker Doppler,
+per PRN over the day, slopes -4e-5..-1.8e-4 chip/Hz with r down to -0.87 (G03 over -2.4..+2.5 kHz), pooled over 11
+PRNs and 3,293 points **-8.6e-5 chip/Hz = a +9.9 ms lever** (d(cp)/d(dop) = chip_rate/f x dt); SEARCH-MONITOR gal_e5a
+per PRN -9.6e-5 (r -0.83, +11 ms); GPS b_sat per PRN -1.2e-4 (+13.7 ms). The tracker path has NO such term: today's
+obs `code_resid_m` vs `range_rate_mps` with per-satellite intercepts gives -1.8/+1.2/+1.8/+0.5 ms on gal_e5a/bds_b2a/
+bds_b3i/gal_e5b. So a range-rate x ~10 ms error (+-8 m at +-2 kHz) sits in every search-derived measurement and in
+nothing the loop converges on; the audit's "b_sat swings to -1.2 chips at rise" (10-12) is partly this, and the joint
+clock's median is biased by the fed set's mean range rate x 10 ms. **Where it is not:** the shipped harness run at
+nonzero Doppler (scripts/gnss/e2e, rebuilt 10-18 on cf05 against builds/fleet-954af6047; its default `--dop 0`, the
+only setting it had ever been read at, cannot see a lever, and its 27-channel stride-4 search comb aliases by 4096
+samples = 13.09 chips at |dop| >= 1 kHz, so judge it at +-500..700 Hz) puts the cp0 path within the refine's +-0.07
+chip of truth at the labelled snapshot start at every Doppler (new CP0 LEG ERROR line), while `cp_at_ref`, the
+transported seed, carries a ~-23 ms lever (+0.081 at +500, -0.171 at -500, -0.247 at -1000 Hz) that the tracker loop
+absorbs; on live detections the two differ by one hop (52.4 chips) plus a 16.0 ms lever. **Where it must be:** between
+the detection's label and the model's epoch on the aggregator path: `_snap_start_hop` is the first frame's
+`sample_seq / fft_len` (GnssChannelizedSearch.cpp:891), `t_i = ref_hop / hops_per_sec`, and `cp_predicted` propagates
+range from `t_eph_age` (wall axis) to `t_i` (hop axis); a ~10 ms disagreement between those axes, or a one-record
+(10.49 ms) offset in the search feed's `sample_seq` against the nodes' records, gives exactly this. The 0.486 ms
+residue of a one-record error would land a 4,972-chip constant in the clock, which the model-primary chains would not
+survive, so a round 10 ms (an axis) is likelier than a record (a label). **Next:** pin the live number with the fit
+above every hour (it is 10 ms to +-2), then compare the search feed's `sample_seq` with the same node's record hops
+for one frame, and `utc0_sample0` against the hop axis (the F-engine `time0_ns` convention: frame start or end).
+**Fix [broker or aggregator]:** whichever axis is wrong; the harness then gets a `--dop` sweep in its gate.
+
 ### #206 — viewer: L2OC's dark probes grey out satellites that L3OC holds, and the not-transmitted table is GPS-only (2026-10-18)
 **What [live 13:05Z]:** glo_l2oc runs with `--probe-dark`, so its three noise probes are GLONASS-M satellites above the
 horizon (R4, R5, R12 at el 62/62/9 deg) that cannot broadcast L2OC and that glo_l3oc holds (q 5.9/5.6/3.4 at 13:05Z). The viewer
@@ -441,6 +468,9 @@ settling, which no static convention does. Open. **Candidates left:** an extra-s
 one node (one node regen + cycle; the same +0.45 says Galileo-wide, 0 says the Q pilot's code/secondary); and the
 only receiver-independent test, a short voltage capture of the L5/E5a lobe correlated outside the bank (no capture
 path exists in the tree; the replay has no voltages). The ICD-generator bench test is withdrawn: (iii) answers it.
+**Later the same evening:** the per-PRN scatter in the search's Galileo numbers is #207 (a Doppler lever on every
+search-derived offset), not noise and not DCBs; with it removed the Galileo constant is **+0.43 chip at zero Doppler
+(+12.6 m)**, and it stands in both the search and the converged tracker.
  Test: gnss_broker/test_searchmonitor.py. **To run (KV):** add the flag to the
 stack's aggregator regen (the invocation in scripts/gnss/site/stack_components.sh), restart gnss-aggregator, then
 gnss-broker; read `SEARCH-MONITOR gal_e5a` in broker.log. **Read:** search - joint ~ +0.4 chip (+12 m, the standing

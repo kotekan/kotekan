@@ -653,6 +653,18 @@ int main(int argc, char** argv) {
 
             const double ph_true = truth_phase_at(W0);
             const double e_ref = wrap(dp.cp_at_ref - ph_true, LL);
+            // The broker's clock solve, joint feed and search monitor re-advance cp0 (the
+            // sample-0 argument) to the snapshot start at the code-Doppler rate (deadreckon
+            // _det_offset); phase_from_arg is that arithmetic. Printed beside e_ref because
+            // the two reported phases disagreed on live detections by a 16 ms Doppler lever
+            // (10-18) and the harness had only ever been read at --dop 0, where a lever is
+            // invisible.
+            const double ph_cp0 = sbank.phase_from_arg(dp.cp0, W0, det_dop);
+            const double e_cp0 = wrap(ph_cp0 - std::fmod(ph_true, (double)sbank.code_length()),
+                                      (double)sbank.code_length());
+            printf("    cp0 re-advanced to the snapshot start: %.3f  (truth mod L %.3f)  "
+                   ">>> CP0 LEG ERROR: %+.3f chips\n",
+                   ph_cp0, std::fmod(ph_true, (double)sbank.code_length()), e_cp0);
 
             // Period diagnostics. The coarse lag spans a full replica period (16 primary periods
             // at L5), but `code_phase_chips` is that lag mod one period. The overlay is 20
