@@ -27,7 +27,6 @@
 #include <numeric>    // for iota
 #include <optional>   // for optional
 #include <string>     // for basic_string, string
-#include <utility>    // for declval
 #include <vector>     // for vector
 
 /**
@@ -85,10 +84,6 @@ class setFRB1Phase : public kotekan::Stage {
     // The FRB1 kernels normalize the weights themselves, so this should be about 1
     const float frb1_input_scale = config.get_default<double>(unique_name, "frb1_input_scale", 1);
 
-    // The type of `time_downsampling_fpga` in the metadata
-    using time_downsampling_t =
-        decltype(std::declval<const chordMetadata&>().get_time_downsampling_fpga());
-
     // Each set of weights is valid for this many FPGA samples. It is the cadence at which this
     // stage produces frames, and the `dimscaling` of the weights' leading time axis.
     const std::int64_t frb1_phase_lifetime_in_samples =
@@ -117,7 +112,7 @@ public:
         assert(frb1_phase_buffer);
         assert(bf_mask_buffer);
         if (frb1_phase_lifetime_in_samples <= 0
-            || frb1_phase_lifetime_in_samples > std::numeric_limits<time_downsampling_t>::max())
+            || frb1_phase_lifetime_in_samples > std::numeric_limits<int>::max())
             FATAL_ERROR("frb1_phase_lifetime_in_samples {:d} must be positive and fit into "
                         "time_downsampling_fpga",
                         frb1_phase_lifetime_in_samples);
@@ -262,8 +257,7 @@ public:
             frb1_phase_meta->set_from_frame_desc(frame_desc);
             frb1_phase_meta->set_fpga_seq_num(*seq0 + output_offset
                                               + frame_index * frb1_phase_lifetime_in_samples);
-            frb1_phase_meta->set_time_downsampling_fpga(
-                time_downsampling_t(frb1_phase_lifetime_in_samples));
+            frb1_phase_meta->set_time_downsampling_fpga(int(frb1_phase_lifetime_in_samples));
             frb1_phase_meta->set_coarse_freq(coarse_freq);
             frb1_phase_meta->set_freq_upchan_factor(freq_upchan_factor);
             frb1_phase_meta->set_freq_upchan_index(freq_upchan_index);

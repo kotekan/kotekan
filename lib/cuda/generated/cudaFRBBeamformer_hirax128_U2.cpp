@@ -112,12 +112,6 @@ private:
         std::lcm(std::ptrdiff_t(cuda_granularity_number_of_timesamples),
                  std::ptrdiff_t(cuda_downsampling_factor));
 
-    // The input ring buffer holds this many frames, and one read covers at most one frame. The
-    // configs size every ring buffer as `buffer_depth` frames, and `TW` in `frb.jl` is the depth
-    // of the slowly varying inputs' ring. A mismatch fails at startup: `get_gpu_memory` rejects
-    // a ring whose byte length differs from what `cudaCopyToRingbuffer` allocated.
-    static constexpr std::ptrdiff_t ring_buffer_frames = 4;
-
     // Kernel input and output sizes
     std::int64_t num_consumed_elements(std::int64_t num_available_elements) const;
     std::int64_t num_produced_elements(std::int64_t num_available_elements) const;
@@ -487,8 +481,7 @@ cudaFRBBeamformer_hirax128_U2::cudaFRBBeamformer_hirax128_U2(Config& config,
     // Every invocation processes a multiple of `Tbar_quantum` samples, so at least that many
     // have to fit into one read, or the kernel would never make progress.
     {
-        const std::ptrdiff_t Tbar_read_max =
-            Ebar_buffer.get_ndarray().extent(0) / ring_buffer_frames;
+        const std::ptrdiff_t Tbar_read_max = Ebar_buffer.get_ndarray().extent(0) / 4;
         if (Tbar_quantum > Tbar_read_max)
             FATAL_ERROR("Kernel FRBBeamformer_hirax128_U2 processes multiples of {:d} time samples "
                         "(the least common multiple of its granularity {:d} and its downsampling "
@@ -552,7 +545,7 @@ int cudaFRBBeamformer_hirax128_U2::wait_on_precondition() {
     }
 
     const std::ptrdiff_t Tbar_ringbuf = Ebar_buffer.get_ndarray().extent(0);
-    const std::ptrdiff_t Tbar_read_max = Tbar_ringbuf / ring_buffer_frames;
+    const std::ptrdiff_t Tbar_read_max = Tbar_ringbuf / 4;
 
     // Skip `Tbar_skip` input samples once, at startup (see `Tbar_skip`)
     {
