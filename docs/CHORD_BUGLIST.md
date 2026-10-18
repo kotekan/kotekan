@@ -403,8 +403,9 @@ alignments are scanned blind, since gal_e5a posts no nh hint); the broker's `--d
 its detectors for the record only: `stage_dead_reckon` builds the offsets exactly as the solve does and
 `search_monitor` logs SEARCH-MONITOR (search clock minus joint clock in the chain's chips, per PRN, and a 5-min
 median) while `best` is emptied before any seed, hold, escape, deep gate, clock solve or joint feed sees it;
-gal_e5a carries `detectors: http://localhost:12050/e5a_search` + `detectors-monitor: true`
-(config/gnss_chains_chord.yaml). Test: gnss_broker/test_searchmonitor.py. **To run (KV):** add the flag to the
+gal_e5a carries `detectors: http://localhost:12050/e5a_search` + `detectors-monitor: true` + `narrow-search: true`
+(config/gnss_chains_chord.yaml; the first run without narrow-search left e5a_search with "0/36 PRNs hinted" for ten
+minutes: the hints are the only thing the search scans). Test: gnss_broker/test_searchmonitor.py. **To run (KV):** add the flag to the
 stack's aggregator regen (the invocation in scripts/gnss/site/stack_components.sh), restart gnss-aggregator, then
 gnss-broker; read `SEARCH-MONITOR gal_e5a` in broker.log. **Read:** search - joint ~ +0.4 chip (+12 m, the standing
 trim) says the signal sits where the tracker found it (the code table or the sky); ~0 says the tracker path.

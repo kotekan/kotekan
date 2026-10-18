@@ -323,6 +323,10 @@ chains:
     # must carry the stage before the broker points here. Delete both keys to end it.
         detectors: http://localhost:12050/e5a_search
         detectors-monitor: true
+    # The search scans only hinted PRNs (require_hint), and hints go out only under
+    # --narrow-search, which this chain never carried (model-primary, no search): without it
+    # e5a_search reports "0/36 PRNs hinted" and the monitor never prints (10-18 18:30Z).
+        narrow-search: true
     # This chain cannot solve a receiver clock, so it adopts the one gps_l5 solves, through the
     # shared in-process Receiver (same band). A chain with detections ignores the flag (under
     # --detectors-monitor the detections never become offsets, so it adopts as before).
