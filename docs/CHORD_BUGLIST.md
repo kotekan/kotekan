@@ -92,7 +92,7 @@ the aggregator and gather. #184–#187 below are what the removal left for later
 
 ## Open — the fix is in the BROKER or a script (ships today, no node cycle)
 
-### #207 — every search-derived code phase carried range_rate x 16 ms: `detection_phase` left the replica anchor's code-Doppler advance on `cp0` and `cp_long` (2026-10-18, live, measured three ways; ROOT CAUSE FOUND + FIXED 10-18 21:30Z, deploy = aggregator cycle)
+### #207 — every search-derived code phase carried range_rate x 16 ms: `detection_phase` left the replica anchor's code-Doppler advance on `cp0` and `cp_long` (2026-10-18, live, measured three ways; ROOT CAUSE FOUND + FIXED 10-18 21:30Z, DEPLOYED 22:53Z, live gate passed)
 **What [live 10-18, gps_l5 + gal_e5a]:** the broker's search-derived offsets (`_det_offset`: the detection's sample-0
 argument re-advanced to `ref_hop`, minus `cp_predicted` at that hop) feed the clock solve, the joint state's b_sat and
 the SEARCH-MONITOR. Within one satellite's pass they move linearly with its Doppler: GPS b_sat vs the tracker Doppler,
@@ -178,6 +178,13 @@ independent live gate is a search-vs-tracker clock per PRN against Doppler (SEAR
 or the GPS search clock minus trkresid), whose slope must move from ~-1.39e-4 chip/Hz to ~0. The pre-fix b_sat
 slopes (-8.6e-5..-1.2e-4) were 0.6-0.9 of the prediction, so a residual of ~-3e-5 chip/Hz after the cycle is the
 pre-existing elevation/iono degeneracy (0b), not a failed fix.
+**22:53Z DEPLOYED (KV):** builds/agg-daee06222 staged into build_nodpdk (md5 72d3a36c4b2b; rollback
+`kotekan.prev_4514061a6_20261018`), gnss-aggregator then gnss-broker restarted at 22:53:02Z; 0 CHAIN DIED, cross-band
+bootstrap at T+15 s. **Live gate PASSED at 22:54Z:** resid = cp_at_ref - cp0 re-advanced = +0.0001 chip on all six
+GPS detections over -2834..+2236 Hz (the old stage would have read -0.394..+0.311), i.e. the lever is gone from the
+stage. The gather still runs the previous inode (00d51e99b6e4) until its own restart. Independent live read-back
+(search-vs-tracker per PRN vs Doppler, SEARCH-MONITOR gal_e5a, the b_sat fit) follows once the joint state has
+re-established.
 
 ### #208 — wall time sits in the radiometric path: the ephemeris is evaluated at `now_w` and labelled `t_eph_age = now_w - utc0_sample0` (2026-10-18, design, KV: nothing radiometric may depend on wall time)
 **What [tree]:** deadreckon.py:2224-2292 runs `predict_all` at the wall clock `now_w` and stamps the rows'
