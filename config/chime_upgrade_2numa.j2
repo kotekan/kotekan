@@ -178,6 +178,11 @@ updatable_config:
       thresholds: []
       valid_at_time_ns: 0
 
+frb:
+  update_beam_offset:
+    kotekan_update_endpoint: "json"
+    beam_offset: 0
+
 dataset_manager:
   use_dataset_broker: {{ not disable_output }}
   # Runs on the receiver; needs to be updated when production receiver nodes
@@ -1280,7 +1285,7 @@ numa_{{ numa }}:
                            0.89386546, 0.95477358, 0.98662733, 0.99942558,
                            0.99988676, 0.98905127, 0.95874124, 0.90094667,
                            0.81113021, 0.6999944, 0.59367968, 0.52614263] %}
-        upchan_gain: [{% for i in range(16) %}{{ 4.0 / (upchan_bandpass[15 - i] ** 0.5) }}{{ ", " if not loop.last }}{% endfor %}]
+        upchan_gain: [{% for i in range(16) %}{{ 1.0 / (upchan_bandpass[15 - i] ** 0.5) }}{{ ", " if not loop.last }}{% endfor %}]
         upchan_gain_buffer: host_upchan_U16_gain_buffer{{ numa_sfx }}
         # The frequencies of this domain (in GPU buffer order) are taken from
         # the metadata of the first frame of each of these buffers.
@@ -1353,9 +1358,7 @@ numa_{{ numa }}:
         upchan_factor: factor_upchan_out
         frb1_swap_MN: true
         conjugate_gains: true
-        # empirically, 1/512 made CYG_A have an intermediate intesity2 of 37000;
-        # the 4 compensates the factor in upchan_gain
-        scaling_factor: 1.0 / (4 * 512)
+        scaling_factor: 1.0
         gain_buffers:
           - host_frb1_phase_buffer{{ numa_sfx }}
         # This reads the mask on the host side, as a flat array of num_elements
@@ -1548,11 +1551,13 @@ numa_{{ numa }}:
         # The L1 nodes are on the VLANs 10.6.0.0/16 to 10.9.0.0/16; this node
         # needs an address on each of them.
         number_of_subnets: 4
+        beam_offset: 0
         # This node's addresses on the L1 VLANs, in VLAN order. Without this list
         # they are derived from the CHIME GPU node name (cnXgY), which this node
         # does not follow.
         local_ips: [10.6.200.10, 10.7.200.10, 10.8.200.10, 10.9.200.10]
         ping_dead_threshold: 30
+        updatable_config: /frb/update_beam_offset
         # From the legacy CHIME config
         L1_node_ips:
             # Rack 1
