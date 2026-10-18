@@ -426,6 +426,21 @@ Side watch: E33 (the deep-gated PRN, setting, cn0 48-61 dB-Hz) walked +0.45 -> +
 18:26-18:30Z and oscillates +0.8..+2.1 since while the search holds it at +0.84: a loose loop on a strong signal at
 el 15-22 deg, the #201 class on a BPSK chain. The experiment stays live (costs: e5a_search on the aggregator GPU,
 nothing on the broker's seeds).
+**What the same evening excluded [10-18 18:50-19:30Z]:** (i) in-band dispersion: per-channel prompt phases
+from the aligned spectra (`fleet_spectrum_aligned`, 72 channels / 11 instances) on locked PRNs give the same delay
+from the lower and upper halves of the comb to +-4 ns for Galileo AND GPS, linear-fit residuals 0.01-0.03 rad, the
+same spectral envelope; (ii) the DCB path: `gnss_dcb.signal_bias_s` is algebraically the ICD's -gamma x BGD
+(datum - b_x = gamma d15/(gamma-1)), the live broker loads CAS day 287, and the per-PRN Galileo offsets do not track
+the C1C-C5Q DSBs (E10 -0.1 ns and E29 +2.3 ns read the same +0.6 chip); (iii) the bank: `code_chip` is one
+floor(chip_phase) mapping for every signal (BOC in the expanded table), so a fractional-chip per-signal offset cannot
+be a code-table convention; (iv) beamformer/ElemCal/projection: the search tap is single-element and unprojected and
+reads the same +0.45 as the fleet tracker; (v) the model: the station test's per-satellite Galileo residuals are
++0.5..+2.8 m under the same `predict_all(signal=, dcb=)`. In TIME the Galileo signals agree (E5a +40 ns, E5b +42 ns,
+E6 +35 ns at half the chip rate), and the audit's day series grew +7.7 -> +10.3 -> +12.3 m over 09-25..10-03 before
+settling, which no static convention does. Open. **Candidates left:** an extra-signal GAL_E5A_I chain beside E5A_Q on
+one node (one node regen + cycle; the same +0.45 says Galileo-wide, 0 says the Q pilot's code/secondary); and the
+only receiver-independent test, a short voltage capture of the L5/E5a lobe correlated outside the bank (no capture
+path exists in the tree; the replay has no voltages). The ICD-generator bench test is withdrawn: (iii) answers it.
  Test: gnss_broker/test_searchmonitor.py. **To run (KV):** add the flag to the
 stack's aggregator regen (the invocation in scripts/gnss/site/stack_components.sh), restart gnss-aggregator, then
 gnss-broker; read `SEARCH-MONITOR gal_e5a` in broker.log. **Read:** search - joint ~ +0.4 chip (+12 m, the standing
