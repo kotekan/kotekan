@@ -275,9 +275,16 @@ Offline now, on the obs archive and the replays (no sky needed):
       and the direction fit's dU goes to 0 +- 2 m; gps_l5's b_sat p10/p90 inside +-0.2 chips on
       the 10-12 replay. The transcript digests move: re-bless with this step's commit, on the
       fresh replays #184 waits for.
-  0c. **The state.** One unit with conversion at the feed; the coast-on-refusal consumer;
-      selftest cases for each (a second constellation joining, a refusal coasting, a mass
-      birth). Gate: selftest and `broker_equiv` green, fakefleet runs.
+  0c. **The state (done 2026-10-18, a3bfeabfc).** One unit with conversion at the feed; the
+      coast-on-refusal consumer; selftest cases for each (a second constellation joining, a
+      refusal coasting, a mass birth). Gate: selftest and `broker_equiv` green, fakefleet runs.
+      As built: reference chips (10.23 Mcps) on the state, `Receiver.joint_receiver(band,
+      code_len, chip_rate_hz)` converting the modulus, feeders converting in and consumers out
+      through `joint_unit()`; the coast runs on the rate stamped at the adoption, not the
+      state's live rate, is bounded by joint_clk_max_chips, covers the thin/deaf state too,
+      and moves no stamp. The `broker_equiv` gate could not judge this step: the replay is
+      non-deterministic on the unchanged tree (#192 g), so the suites above are the gate
+      until that is fixed. Lands at the next broker restart.
 
 At the F-engine's return, one step per restart:
 

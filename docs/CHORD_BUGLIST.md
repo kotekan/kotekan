@@ -407,8 +407,22 @@ gal_e5a carries `detectors: http://localhost:12050/e5a_search` + `detectors-moni
 (config/gnss_chains_chord.yaml). Test: gnss_broker/test_searchmonitor.py. **To run (KV):** add the flag to the
 stack's aggregator regen (the invocation in scripts/gnss/site/stack_components.sh), restart gnss-aggregator, then
 gnss-broker; read `SEARCH-MONITOR gal_e5a` in broker.log. **Read:** search - joint ~ +0.4 chip (+12 m, the standing
-trim) says the signal sits where the tracker found it (the code table or the sky); ~0 says the tracker path. Step 0c
-(one unit + coast) is in work the same day.
+trim) says the signal sits where the tracker found it (the code table or the sky); ~0 says the tracker path.
+**Step 0c DONE 10-18 (a3bfeabfc, merged 123e2acc6):** the joint state holds ONE unit, 10.23-Mcps reference chips:
+`Receiver.joint_receiver(band, code_len, chip_rate_hz)` converts the modulus, dr_joint_shadow converts its offsets,
+sigma and warm start in (MINNOV/P2C read back out), every consumer converts through `joint_unit()` = (reference rate,
+L); the per-feeder declaration and the mixed-unit refusals are gone (a second constellation at another chip rate joins
+without lengthening the modulus or moving the clock: selftest, test_one_unit). COAST: a refused joint clock (bounds,
+step guard, period check) or a state not fit to consume (thin, deaf, absent) puts clk_now on the last adopted level
+carried at the rate STAMPED at that adoption, never the median and never the state's live rate, inside
+`--joint-clk-coast-max-s` (300 s; 0 off) and bounded by joint_clk_max_chips; no stamp moves on a coast (the freshness
+ages, the bootstrap re-arms). This is the #203 mechanism closed. Review caught three callers of the new signature
+left behind inside try/except (the rrate feeds, the joint-notes drain: a TypeError per cycle logged once per 300 s);
+test_gauge_churn now pins the arity. Gates: test_jointclk/gauge_churn/clockperiod/jointstep/clockguard, the migrate
+test, selftest, and the onsky_l5_holds replay (no "feed skipped", the rrate feeds run) all green. The broker_equiv
+gate could not judge it: the replay is NON-DETERMINISTIC (two replays of the unchanged 5a1522f3f tree disagree,
+`broker_equiv.py selftest` says so; three trees gave three digests under one golden) = #192 (g), open. LIVE after the
+next broker restart.
 
 ### #171 — the ALERT files reach no one (2026-10-09)
 **What [tree]:** `chain_health_cron.sh` (cf06, */15) and `elem_ref_cron.sh` (gnss, */5) write ALERT files that
