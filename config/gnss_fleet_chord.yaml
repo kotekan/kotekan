@@ -40,7 +40,7 @@ common:
     # carrier (10.23 MHz; E6-C's 5.115 MHz at the top), at 1176.45 (L5/E5a/B2a), 1202.025
     # through 1227.60 (GLONASS L3OC, E5b/B2b and L2, contiguous: L3OC's lobe 1191.8-1212.3 MHz
     # adds 6102-6127 below E5b's, since 2026-10-17), 1248.06 (GLONASS L2OC, 2.046 MHz either
-    # side: 6380-6401, which also holds most of the FDMA L2OF comb) and 1268.52..1278.75 (B3I,
+    # side: 6380-6401, which also holds the L2OF comb's upper half) and 1268.52..1278.75 (B3I,
     # E6). The stock SK flagger excises these lobes most of the time, their N2 feeds the
     # satellite projection below, and they are lost to cosmology anyway. SK statistics are
     # still computed there.

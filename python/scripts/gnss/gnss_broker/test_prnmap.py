@@ -238,6 +238,19 @@ def main():
         "probe_order: the dark PRNs first in PRN order, then the deepest below -15 deg; a "
         "satellite above -15 deg is never a probe",
     )
+    check(
+        prnmap.probe_order({}, {1: (), 2: (), 4: (), 5: (), 12: ()}, held=[12, 5, 4, 8])
+        == [4, 5, 12, 1, 2],
+        "probe_order: the dark PRNs the nodes hold come first, so a plain GLO-M slot the map "
+        "lacks never displaces a held M+ probe",
+    )
+    _wm2, _ = prnmap.desired_map([8, 9, 4, 5, 12], {8: 40.0, 9: 30.0}, 3, 10.0, 0.0,
+                                 dark=[1, 2, 3, 4, 5, 12])
+    check(
+        _wm2 == [8, 9, 4, 5, 12],
+        "desired_map: with every GLO-M and M+ slot dark, the held M+ probes stay and nothing "
+        "is swapped (got %s)" % _wm2,
+    )
     # Every slot is wanted once the dark probes count: a rising satellite finds no slot rather
     # than taking a dark probe's.
     _wm, _un = prnmap.desired_map([8, 9, 4, 5], {8: 40.0, 9: 30.0, 11: 50.0}, 2, 10.0, 0.0,

@@ -574,17 +574,22 @@ def stage_prn_membership(ctx):
     return
 
 
-def probe_order(el, dark=()):
-    """Noise-probe candidates, best first: the `dark` PRNs in PRN order, then every PRN of
-    `el` ({prn: elevation deg}) below -15 deg, deepest first.
+def probe_order(el, dark=(), held=()):
+    """Noise-probe candidates, best first: the `dark` PRNs (those in `held` first, each group
+    in PRN order), then every PRN of `el` ({prn: elevation deg}) below -15 deg, deepest first.
 
     Dark PRNs (--probe-dark) have ephemeris but cannot broadcast this signal, so they are
-    signal-free at any elevation and never set; PRN order keeps the choice stable from cycle
-    to cycle. The broker's selector and desired_map both order probes by this, so the map
-    holds the probes the selector picks. Callers take the first --noise-probes.
+    signal-free at any elevation and never set. Every such satellite qualifies (on glo_l2oc the
+    plain GLO-M slots as well as the M+ ones), so the ones the nodes already hold come first:
+    the map then has nothing to swap. PRN order keeps the choice stable from cycle to cycle.
+    The broker's selector (held = the nodes' map) and desired_map (held = the current map)
+    both order probes by this, so the map holds the probes the selector picks. Callers take
+    the first --noise-probes.
     """
+    held = set(held or ())
     deep = sorted((p for p, e in el.items() if e < -15.0), key=lambda p: el[p])
-    return list(dict.fromkeys(sorted(dark) + deep))
+    dark = sorted(dark, key=lambda p: (p not in held, p))
+    return list(dict.fromkeys(dark + deep))
 
 
 def desired_map(cur, el, n_probe, admit_deg, evict_deg, dark=()):
@@ -611,7 +616,7 @@ def desired_map(cur, el, n_probe, admit_deg, evict_deg, dark=()):
         (p for p, e in el.items() if e >= admit_deg or (p in held and e >= evict_deg)),
         key=lambda p: -el[p],
     )
-    probes = probe_order(el, dark)[:n_probe]
+    probes = probe_order(el, dark, held)[:n_probe]
     want = list(dict.fromkeys(up + probes))  # ordered, de-duplicated: up wins ties
     place = [p for p in want if p not in held]
     # Reusable slots, worst first: PRNs with no prediction at all (no ephemeris, or dropped

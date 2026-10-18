@@ -628,7 +628,7 @@ chains:
   # detectors, like the chains above.
   # The lobe, 1246.0-1250.1 MHz (freq_ids 6380-6401), gives every GPU one or two channels; the
   # power sits at +-0.8 MHz with a null at the carrier, and the six nodes hold 17 of the 22
-  # channels (~60% of the power; 6385, 6387, 6393 and 6395 are on cx47 and cx52). The fleet
+  # channels (~60% of the power; 6385, 6387, 6393, 6395 and 6401 are on cx47 and cx52). The fleet
   # loop sums the instances coherently, as on L2C, so sensitivity is fleet-wide.
     glo_l2oc:
         signal: glo_l2oc
@@ -646,22 +646,29 @@ chains:
     # record under an hour old the clock stays primed.
         dr-clock-adopt: true
         seed-phase-transport: true
-    # E/L tap offset from prompt, in 2.046 Mcps chips. On the fleet's 17-channel BOC sum the
-    # S-curve is monotonic to +-0.3 chip and reverses at +-0.79, outside which the BOC side peaks
-    # (+-1.05) are stable false locks; at 0.33 the trim law's assumed slope matches the real one.
-    # Must match the node taps (config/gen_chord_gnss_config.py dll_spacing_chips); when changing
-    # both, cycle the nodes before the broker. Re-derive if the node set changes.
-        dll-spacing: 0.33
+    # E/L tap offset from prompt, in 2.046 Mcps chips. On the fleet's 17-channel BOC sum, at 0.4,
+    # q on peak is 4.4 (the lock bars' 2.2 reads as on a BPSK chain at 0.5), the S-curve is
+    # linear to +-0.23 chip and keeps its sign to +-0.91, outside which the BOC side peaks
+    # (+-1.05) are stable false locks. Must match the node taps (config/gen_chord_gnss_config.py
+    # dll_spacing_chips); when changing both, cycle the nodes before the broker. Re-derive if the
+    # node set changes.
+        dll-spacing: 0.4
         presence-admit-displaced: true
         joint-consume: clk,rate
         fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
-        fleet-trim-bandwidth: 2.5
+    # The S-curve's slope at 0.4 is 1.8x what the trim law assumes (it scales a triangle's), so
+    # 1.4 here is the other chains' 2.5 in closed-loop terms. At 2.5 this chain's loop would run
+    # at ~4.5/s, past the round-trip stability bound (cli.py --fleet-trim-bandwidth).
+        fleet-trim-bandwidth: 1.4
         fleet-trim-readback: 1
     # Every GPU holds a channel of the lobe, so the {0..1} pattern serves. The combiner is
     # cx19 GPU 0 (6388, ~6% of the power); its GPU 1 holds the near-empty lobe edges.
         trackers: "http://cx19:12048/gnss{0..1}_l2oc_inject,http://cx27:12048/gnss{0..1}_l2oc_inject,http://cx42:12048/gnss{0..1}_l2oc_inject,http://cx43:12048/gnss{0..1}_l2oc_inject,http://cx44:12048/gnss{0..1}_l2oc_inject,http://cx51:12048/gnss{0..1}_l2oc_inject"
         combiner: gnss0_l2oc_n2combine
-    # Only instances with two channels (16 ids apart) inform the fit, and its free phase per
-    # instance leaves tau ambiguous by 0.65 chip; log-only on this chain, as on L2C.
-        spectrum-endpoints: "http://cx19:12048/gnss{0..1}_l2oc_n2assemble,http://cx27:12048/gnss{0..1}_l2oc_n2assemble,http://cx42:12048/gnss{0..1}_l2oc_n2assemble,http://cx43:12048/gnss{0..1}_l2oc_n2assemble,http://cx44:12048/gnss{0..1}_l2oc_n2assemble,http://cx51:12048/gnss{0..1}_l2oc_n2assemble"
+    # No phase-slope fit (null overrides common's gps_l5 endpoints, which would otherwise be
+    # inherited): only the five two-channel instances (16 ids apart) would inform it, its free
+    # phase per instance leaves tau ambiguous by 0.65 chip, and its taus would feed b_sat as soon
+    # as a sixth such instance exists (SatBiasFilter min_inst 6), past the DLL's +-0.9-chip
+    # capture. L2C's fit returns nothing (one channel per instance).
+        spectrum-endpoints: null
         dll-combiners: "http://cx19:12048/gnss{0..1}_l2oc_n2combine,http://cx27:12048/gnss{0..1}_l2oc_n2combine,http://cx42:12048/gnss{0..1}_l2oc_n2combine,http://cx43:12048/gnss{0..1}_l2oc_n2combine,http://cx44:12048/gnss{0..1}_l2oc_n2combine,http://cx51:12048/gnss{0..1}_l2oc_n2combine"

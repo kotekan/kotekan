@@ -1697,7 +1697,9 @@ def main(argv=None, rx=None, publisher=None):
         if args.noise_probes > 0 and args.almanac and _ctx.pred:
             _dark = (_ctx.pred_dark or {}) if args.probe_dark else {}
             _cands = prnmap.probe_order(
-                {p: v[2] for p, v in _ctx.pred.items()}, _dark
+                {p: v[2] for p, v in _ctx.pred.items()},
+                _dark,
+                held=_prnmap.consensus or (),
             )
             # --probe-require-slot: a probe the nodes hold no slot for is seeded but never
             # reports, which can leave presence short of the >= 3 probes its q floor needs.
@@ -1808,12 +1810,19 @@ def main(argv=None, rx=None, publisher=None):
             # Feed only cohering sats (coherence_s > 0 or coh_frac >= 0.3, the fine feed's
             # test). Strong but decohered sats carry real multi-Hz carrier residuals that swing
             # poll to poll from seed and f_ref churn, not orbit error, and the rrate model is a
-            # slow per-sat drift.
+            # slow per-sat drift. Never a dark probe (--probe-dark: a probe with no prediction on
+            # this chain): it is a satellite another chain tracks, and its noise would feed that
+            # satellite's receiver-wide row. Below-horizon probes still pass (docs/CHORD_BUGLIST.md
+            # #192 (h)).
+            _dark_probes = {p for p in _ctx.probe_set if p not in _ctx.pred}
             _rf.resid2 = {
                 _p: _rv
                 for _p, _rv in _rf.resid2.items()
-                if ((_ctx.status.get(_p) or {}).get("coherence_s") or 0.0) > 0.0
-                or ((_ctx.status.get(_p) or {}).get("coh_frac") or 0.0) >= 0.3
+                if _p not in _dark_probes
+                and (
+                    ((_ctx.status.get(_p) or {}).get("coherence_s") or 0.0) > 0.0
+                    or ((_ctx.status.get(_p) or {}).get("coh_frac") or 0.0) >= 0.3
+                )
             }
         # KCOH rate feed (--rrate-kcoh-feed): the KCOH fold's remaining rate into the rrate
         # rows. Runs before the coarse feed so a fresh acceptance here deweights this cycle's

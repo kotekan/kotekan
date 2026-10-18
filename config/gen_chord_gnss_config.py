@@ -82,7 +82,7 @@ LANE_STEP = 64
 # of these chains holds one or two channels of the lobe, so the rotated E and L are the prompt
 # times a phase (|E| = |L|, the instance's discriminator reads 0), and a pair 16 ids apart
 # (3.125 MHz) repeats every 0.32 us. GLONASS L2OC adds a second reason: across one 195 kHz
-# channel its 0.33-chip taps rotate 0.2 rad, where the rotation was validated at 0.06.
+# channel its 0.4-chip taps rotate 0.24 rad, where the rotation was validated at 0.06.
 EPL_WALK_SIGNALS = ("GPS_L2C_CM", "GLO_L2OC_P_OC")
 
 
@@ -266,17 +266,20 @@ def dll_spacing_chips(name):
     GLONASS L2OC is BOC(1,1) under a data/pilot TDM: its autocorrelation in 2.046 Mcps chips
     crosses zero at +-0.67 and bottoms at -0.5 at +-1, and its spectrum has a null at the
     carrier. Each instance holds one or two of the lobe's 22 channels; the six nodes hold 17
-    of them (~60% of the power). On that 17-channel sum the S-curve is monotonic to +-0.3 chip
-    at 0.33 spacing and reverses at +-0.79, outside which the BOC side peaks (+-1.05 chips)
-    are stable false locks. 0.33 is also where the trim law's assumed slope (dll_tau scales a
-    triangle's) matches the real one; 0.5 would put the taps by the zero and quadruple the
-    loop gain. Re-derive if the node set changes.
+    of them (~60% of the power). On that 17-channel sum, at 0.4 spacing, q on peak is 4.4 (a
+    BPSK chain's is 4 at 0.5, so the fixed 2.2 lock bars read alike), the S-curve is linear to
+    +-0.23 chip and keeps its sign to +-0.91, outside which the BOC side peaks (+-1.05 chips)
+    are stable false locks. Its slope is 1.8x what the trim law assumes (dll_tau scales a
+    triangle's), so the chain runs the fast loop at fleet-trim-bandwidth 1.4 rather than 2.5:
+    the same closed loop as the other chains. 0.33 would match the law but cap q at 2.5, under
+    the lock bars; 0.5 would put the taps by the zero (q 15, slope 4.2x). Re-derive if the
+    node set changes.
 
     Must match the broker chain's dll-spacing (config/gnss_chains_chord.yaml): the C++ fleet
     loop takes its law's spacing from the arming payload while the taps come from here, so
     cycle the nodes before the broker and the taps lead the law.
     """
-    return {"GPS_L2C_CM": 0.4, "GLO_L2OC_P_OC": 0.33}.get(name, 0.5)
+    return {"GPS_L2C_CM": 0.4, "GLO_L2OC_P_OC": 0.4}.get(name, 0.5)
 
 
 # Record slot 2's modulus per tracker code (GnssGpuRecordAssemble record_cp_mod_chips): the

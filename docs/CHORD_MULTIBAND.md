@@ -305,8 +305,8 @@ the band set five things apart from L3OC.
   period boundary, and OC2 flips at 24 of its 50 boundaries. The combiner's overlay wipe cannot
   help either: it steps one overlay chip per record and needs a nav-bit wipe behind it, both
   airspy-era shapes (records were 1 ms periods). `GLO_L2OC_P_OC` therefore tiles OC2 into one
-  2,046,000-chip, 1 s code (the `GLO_L3OC_P_NH` pattern, 2 MB per PRN on the GPU, 16 MB for
-  the eight slots, under gal_e5a's 32). The ICD starts each OC2 period on a GLONASS second
+  2,046,000-chip, 1 s code (the `GLO_L3OC_P_NH` pattern, 2 MB per slot on the GPU, 28.6 MB
+  for the fourteen the manifest holds with the dark probes, under gal_e5a's 32.7). The ICD starts each OC2 period on a GLONASS second
   mark. GLONASS time is UTC(SU)+3 h and GPS time UTC+18 s, both whole seconds, so the GPS
   second carries the overlay epoch and the broker places the 1 s segment from absolute time
   (good to the +-10 ms this needs), exactly as it places gal_e5a's 100 ms segment. The clock is
@@ -318,19 +318,31 @@ the band set five things apart from L3OC.
   0.004 chip.
 - **One or two channels per GPU.** The lobe, 1246.0-1250.1 MHz, is freq_ids 6380-6401, so
   every GPU holds one channel or two 16 apart, and the six nodes hold 17 of the 22 (6385,
-  6387, 6393 and 6395 are on cx47 and cx52), about 60% of the power. cx44 holds the two
+  6387, 6393, 6395 and 6401 are on cx47 and cx52), about 60% of the power. cx44 holds the two
   brightest (6386, 6394); cx43 GPU 0 holds the carrier null. So the chain keeps the E/P/L
   walk and four lanes per slot, as L2C does (`EPL_WALK_SIGNALS` in the generator): a rotated
   E and L on one channel are the prompt times a phase, and across a 195 kHz channel the taps
-  would rotate 0.2 rad where the rotation was validated at 0.06. The fleet loop sums the
+  would rotate 0.24 rad where the rotation was validated at 0.06. The fleet loop sums the
   instances coherently through the gather.
-- **The DLL spacing is 0.33 chip.** On the fleet's 17-channel sum the S-curve is monotonic to
-  +-0.3 chip and reverses at +-0.79; beyond it the BOC side peaks (+-1.05) are stable false
-  locks, so a seed must land within about +-0.75 chip (110 m). At 0.33 the trim law's assumed
-  slope matches the real one; the default 0.5 would sit by the zero and quadruple the gain.
+- **The DLL spacing is 0.4 chip, at fleet-trim-bandwidth 1.4.** On the fleet's 17-channel sum:
+
+  | spacing | q on peak | slope vs the trim law | linear to | sign kept to |
+  |---|---|---|---|---|
+  | 0.33 | 2.55 | 1.06 | +-0.30 | +-0.79 |
+  | 0.40 | 4.37 | 1.81 | +-0.23 | +-0.91 |
+  | 0.50 | 15.0 | 4.24 | +-0.13 | +-1.09 |
+
+  q's ceiling decides it: the lock bars (dead-reckon's `lock_q`, the viewer's `Q_LOCK`, the
+  q-stall bar) are a fixed 2.2, which a BPSK chain at 0.5 clears with a ceiling of 4, and
+  0.33 would cap L2OC at 2.55, so a satellite held on peak would read unlocked unless bright.
+  At 0.4 the slope is 1.81x what the trim law assumes (it scales a triangle's), so the chain
+  runs the fast loop at 1.4 rather than the chains' 2.5, the same closed loop; at 2.5 it
+  would run ~4.5/s, past the round-trip stability bound. Beyond +-0.91 the BOC side peaks
+  (+-1.05) are stable false locks, so a seed must land within about +-0.9 chip (130 m).
   Node (`dll_spacing_chips`) and broker (`dll-spacing`) match; re-derive if the node set
-  changes. The spectrum fit sees only the five two-channel instances, ambiguous by 0.65 chip,
-  and stays log-only, as on L2C.
+  changes. No phase-slope fit: only the five two-channel instances would inform it, ambiguous
+  by 0.65 chip, and its taus would feed b_sat once a sixth such instance existed, so the
+  chain sets `spectrum-endpoints` to null (it would otherwise inherit gps_l5's).
 
 - **The noise probes are dark satellites.** Presence needs 3 probes. Slots 20 and 22 have no
   broadcast record, so six K satellites are live, and in a 24 h sweep (days 289-291) fewer
@@ -339,11 +351,16 @@ the band set five things apart from L3OC.
   the signal is signal-free at any elevation, so `--probe-dark` (on glo_l2oc only) takes the
   probes first from the capability-excluded satellites that have ephemeris, in PRN order:
   the six M+ slots (4, 5, 12, 16, 21, 24), which the manifest lists beside the eight K slots
-  (14 in all, `gen_fleet --check-prns` names them "dark"). `prnmap.probe_order` orders
-  probes for both the selector and the PRN map, so the map holds the probes the selector
-  picks. Without the registry the chain falls back to the below-horizon rule.
+  (14 in all, `gen_fleet --check-prns` names them "dark" on a chain that sets probe-dark).
+  The plain GLO-M slots are dark too, so `prnmap.probe_order` puts the dark slots the nodes
+  hold first, and orders probes for both the selector and the PRN map: the map holds the
+  probes the selector picks and swaps nothing. A dark probe is a satellite glo_l3oc tracks,
+  so dark probes are kept out of the receiver-wide range-rate rows (the coarse feed skips
+  them; the KCOH feed skips every probe; #192 (h) asks the same for below-horizon probes). Without the registry the chain falls back to the
+  below-horizon rule.
 
-The lobe joins the excision exemption (6380-6401, which also holds most of the FDMA L2OF comb)
+The lobe joins the excision exemption (6380-6401, which also holds the upper half of the FDMA
+L2OF comb, k = 0..+6; an L2OF chain would add 6364-6379)
 and with it the N2 projection's range. Lanes: base 0, 4 x 32, alone on its channels. Cost: one
 more synthesis launch per record per GPU, ~0.6 ms per frame.
 

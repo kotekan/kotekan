@@ -118,7 +118,8 @@ def flags_from(mapping):
 # The two findings are not equally bad, and the exit code says so:
 #   EXCLUDED (active, capable, rises here, no slot)  -> a satellite missing from the list: fails.
 #   DEAD     (slot, no active satellite)             -> wasted capacity: warns.
-#   DARK     (slot, active, cannot broadcast it)     -> a noise probe (--probe-dark): noted.
+#   DARK     (slot, active, cannot broadcast it)     -> a noise probe on a chain that sets
+#                                                       probe-dark: noted; elsewhere DEAD.
 SYS_OF = {"GPS": "G", "GAL": "E", "BDS": "C", "GLO": "R"}
 LAT, LON, ALT = 49.32075144444, -119.62081125, 545.0
 # Capability, not just activity: BeiDou B2a/B2b are BDS-3 signals the BDS-2 satellites do not
@@ -154,6 +155,19 @@ def check_prns(man, rise_deg=RISE_DEG, hours=24.0, step_min=10.0):
         print("no extra-signal PRN lists in the manifest -- nothing to check")
         return 0
 
+    # Chains whose broker block sets probe-dark (config/gnss_chains_chord.yaml): only there is a
+    # slot for a satellite that cannot broadcast the signal a noise probe rather than waste.
+    # Keyed like the broker's chains: GLO_L2OC_P_OC -> glo_l2oc.
+    try:
+        _chains = yaml.safe_load(
+            open(os.path.join(K, "config", "gnss_chains_chord.yaml"))
+        ).get("chains", {})
+    except (OSError, yaml.YAMLError, AttributeError):
+        _chains = {}
+    probe_dark = {
+        c for c, spec in _chains.items() if (spec or {}).get("probe-dark") is True
+    }
+
     eph = parse_rinex_nav(fetch_brdc(datetime.now(timezone.utc)))
     # Peak elevation over the sweep: a satellite that never rises here has no claim on a slot,
     # however active it is.
@@ -184,8 +198,14 @@ def check_prns(man, rise_deg=RISE_DEG, hours=24.0, step_min=10.0):
         active = {p for (s, p) in peak if s == sysid and p not in incap}
         rises = {p for p in active if peak[(sysid, p)] > rise_deg}
         # A slot for an active satellite that cannot broadcast the signal: signal-free at any
-        # elevation, the chain's noise probe under --probe-dark (glo_l2oc's GLO-M+ slots).
-        dark = sorted(p for p in cfg - active if (sysid, p) in peak and p in incap)
+        # elevation, the chain's noise probe under --probe-dark (glo_l2oc's GLO-M+ slots). On a
+        # chain without it the broker never seeds such a slot, so it stays DEAD.
+        chain = "_".join(name.split("_")[:2]).lower()
+        dark = (
+            sorted(p for p in cfg - active if (sysid, p) in peak and p in incap)
+            if chain in probe_dark
+            else []
+        )
         dead = sorted(cfg - active - set(dark))
         excluded = sorted((active & rises) - cfg)
         if not active:
