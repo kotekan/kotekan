@@ -14,7 +14,7 @@ a stale bias must widen the search rather than narrow it.
 
 import statistics
 
-from gnss_broker.transport import _now, _post, _log, _log_rl, axis_now_utc
+from gnss_broker.transport import _now, _post, _log, _log_rl, axis_now_utc, now_utc_s
 from gnss_broker.sky import brdc_predict, nearest_boresight
 from gnss_broker import timebase
 from gnss_broker import prnmap
@@ -204,7 +204,7 @@ def stage_almanac_predict(ctx):
             ctx.best[p][1] - ctx.pred[p][0]
             for p in ctx.best
             if p in ctx.pred
-            and ctx.t0 - ctx.det_fresh.get(p, (None, 0.0))[1]
+            and now_utc_s(ctx) - ctx.det_fresh.get(p, (None, 0.0))[1]
             < ctx.args.bias_det_fresh_s
             and ctx.best[p][0] >= ctx.args.bias_min_snr
         ]

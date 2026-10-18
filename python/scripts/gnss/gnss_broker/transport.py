@@ -504,7 +504,12 @@ def axis_now(ctx):
     this cycle's frozen clock, or the raw newest hop plus the seconds since it was polled while
     the filter has no sample yet. Without the flag, or before the first telemetry, it is the
     frozen clock minus utc0_sample0, the only form there is then; the two agree to NTP plus the
-    telemetry lag. None until utc0_sample0 (the F-engine's time of sample 0) is known."""
+    telemetry lag. None until utc0_sample0 (the F-engine's time of sample 0) is known.
+
+    The axis is the one the latest telemetry ingest left: the almanac and search-hint stages
+    run before this cycle's ingest, so they see the previous cycle's filter state advanced by
+    the frozen clock (ms in steady state, a snap's worth for one cycle after an offset snap);
+    the dead-reckon stage runs after it."""
     if not getattr(ctx, "utc0_sample0", 0.0):
         return None
     now_w = _now()
@@ -516,6 +521,15 @@ def axis_now(ctx):
         _feh, _few = fe_axis
         return _feh / ctx.args.hops_per_sec + (now_w - _few)
     return now_w - ctx.utc0_sample0  # 208-allow: no axis yet
+
+
+def now_utc_s(ctx):
+    """The hop-axis now as UTC seconds (utc0_sample0 + axis_now): what a stamp built as
+    utc0_sample0 + ref_hop / hops_per_sec is compared with, so an age is a difference of two
+    hop-axis times and a stale or stepped anchor cancels. The frozen clock without an anchor,
+    matching such a stamp's own fallback."""
+    t = axis_now(ctx)
+    return _now() if t is None else ctx.utc0_sample0 + t
 
 
 def axis_now_utc(ctx):

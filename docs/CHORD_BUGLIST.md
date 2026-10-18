@@ -232,19 +232,27 @@ F-engine hop counter interpolated by wall ELAPSED seconds (the filtered fe_off p
 hop plus the seconds since its poll while the filter has no sample; the frozen clock minus utc0_sample0 only before the
 first telemetry or without --dr-fengine-axis), None until utc0_sample0 is known. Consumers: (a) dead-reckon's t_now_abs
 (the block that used to compute this inline, now the only definition); (b) the ALMANAC epoch (`axis_now_utc(ctx)`, the
-wall clock only before the anchor is known) -- which is also what the TIME-BASE DETECTOR (gnss_broker/timebase.py) needs:
-it compares the search's measured Doppler with ctx.pred to catch a stale sample-0 epoch from the nodes, and a wall-evaluated
-almanac never moved with that epoch, so the detector could not fire on the fault it was written for; now a stale
-utc0_sample0 moves the prediction and not the measurement, the spread it looks for. (Consequence to know: in that fault
-the search hints go off with the epoch as well, so the detector's verdict is the operator's signal, not a tracking
-degradation to be diagnosed cold.) (c) seeding.py's coast age and cp0 retag (hop-axis now minus ref_hop, the axis ref_hop
+wall clock only before the anchor is known). The TIME-BASE DETECTOR (gnss_broker/timebase.py) compares the search's
+measured Doppler with ctx.pred to catch a stale sample-0 epoch from the nodes; a wall-evaluated almanac never moved with
+that epoch, AND (skeptic wf_12d15128) its freshness gate compared the wall clock with stamps built as utc0_sample0 +
+ref_hop/hps, so under a past-stale epoch every detection read hours old and the detector starved either way. Both now on
+the hop axis (`transport.now_utc_s` in timebase.observe and the almanac's bias solve): a stale anchor cancels in the age,
+the prediction moves with the epoch and the measurement does not, which is the spread it looks for; the bias then reads
+stale, so searchhint keeps the wide +-3000 Hz margins (~2 h of epoch error) and the search keeps acquiring while
+geometry is withheld. (c) seeding.py's coast age and cp0 retag (hop-axis now minus ref_hop, the axis ref_hop
 is on); (d) searchhint.py's nh-hint ref_hop and the UTC its predicted alignment is evaluated at. `_alm_now()` keeps the
 wall clock for the BRDC store's day key at setup (a `208-allow` line). Selftest: five axis_now cases (no telemetry, raw
 hop + elapsed, filtered offset + frozen clock, flag off, no anchor), the dr_eph_epoch pair, and a package-wide source grep
 (model-at-wall-time and wall-minus-anchor patterns over gnss_broker/*.py + gps_distributed_broker.py, test files
 excluded, the two allowed lines marked). All 27 gnss_broker test modules pass. **Lands at the next broker restart** (KV,
-when convenient; the 22:53Z restart is settling). Expected visible change: none beyond the telemetry lag (~0.1 s) x the
-Doppler rate (~0.04 Hz) on hints and coasted seeds.
+when convenient; the 22:53Z restart is settling). Expected visible change (the skeptic's accounting): the coasted seed's
+age and retag used `ctx.drp.now_w`, which only stage_dead_reckon sets, AFTER stage_coast_drop and only every 2 s, so the
+old "now" there was 0.25-2 s stale (and None before the first dead-reckon pass); the hop-axis now corrects the stored
+coasted Doppler by up to ~2 s x rate (~0.8 Hz). Hints and the almanac move by the telemetry lag x rate (~0.04 Hz). Also:
+the almanac and hint stages run before the cycle's telemetry ingest, so they see the previous cycle's axis advanced by the
+frozen clock (ms; a snap's worth for one cycle after an offset snap); the transcript digests (broker_equiv) move with this
+change (coast retag, nh-hint ref_hop) and are to be re-blessed when #192 (g) makes them deterministic; the selftest's
+first grep could not match the call spellings it named (a `\b` after `)`) -- fixed and self-checked.
 
 ### #206 — viewer: L2OC's dark probes grey out satellites that L3OC holds, and the not-transmitted table is GPS-only (2026-10-18)
 **What [live 13:05Z]:** glo_l2oc runs with `--probe-dark`, so its three noise probes are GLONASS-M satellites above the

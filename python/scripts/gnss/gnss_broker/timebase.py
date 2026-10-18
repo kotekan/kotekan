@@ -26,6 +26,8 @@ withhold geometry while it stands; observe() logs at most once a minute.
 """
 import math
 
+from gnss_broker.transport import now_utc_s
+
 
 class Verdict(object):
     __slots__ = ("suspect", "dt_s", "since_t")
@@ -138,7 +140,14 @@ def observe(ctx, log_rl):
         q = ctx.pred.get(p)
         if q is None or b[0] < ctx.args.bias_min_snr:
             continue
-        if ctx.t0 - ctx.det_fresh.get(p, (None, 0.0))[1] >= ctx.args.bias_det_fresh_s:
+        # Age on the hop axis (now_utc_s against the stamp's utc0_sample0 + ref_hop): under
+        # the stale-epoch fault this detector exists for, every stamp is hours old against
+        # the wall clock and a wall-clock gate would starve it of the very detections that
+        # carry the tell.
+        if (
+            now_utc_s(ctx) - ctx.det_fresh.get(p, (None, 0.0))[1]
+            >= ctx.args.bias_det_fresh_s
+        ):
             continue
         pairs[p] = (b[1] - q[0], q[1])
     msg = DETECTOR.note(ctx.t0, pairs, chain=getattr(ctx, "chain_id", None))

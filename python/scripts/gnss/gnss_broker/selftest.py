@@ -79,8 +79,13 @@ check(
     "axis_now: without the flag = frozen clock minus the anchor",
     abs(transport.axis_now(_ac) - (_wn - 1.7e9)) < 1e-6,
 )
+check(
+    "now_utc_s = utc0_sample0 + axis_now",
+    abs(transport.now_utc_s(_ac) - (1.7e9 + transport.axis_now(_ac))) < 1e-6,
+)
 _ac.utc0_sample0 = 0.0
 check("axis_now: None without the anchor", transport.axis_now(_ac) is None)
+check("now_utc_s: the frozen clock without the anchor", transport.now_utc_s(_ac) == _wn)
 
 _ec = _types.SimpleNamespace(
     utc0_sample0=1.7e9, drp=_types.SimpleNamespace(t_now_abs=1234.5, now_w=9.9e9)
@@ -94,8 +99,22 @@ check(
 _ec.drp.now_w += 86400.0
 check("eph epoch ignores a wall-clock step", _dr.dr_eph_epoch(_ec) == (_eage, _ew))
 _wall_rx = _re.compile(
-    r"fromtimestamp\(\s*(_now\(\)|time\.time\(\)|ctx\.t0|ctx\.drp\.now_w|now_w)\b"
+    r"fromtimestamp\(\s*(_now\(\)|time\.time\(\)|ctx\.t0|ctx\.drp\.now_w|now_w)(?!\w)"
     r"|(ctx\.drp\.now_w|ctx\.t0|_now\(\)|time\.time\(\)|now_w)\s*-\s*ctx\.utc0_sample0"
+)
+# The gate must be able to fail: each spelling it names must match (a `\b` after a `)` once
+# made the call forms unmatchable).
+_probe = [
+    "datetime.fromtimestamp(_now(), tz=timezone.utc)",
+    "datetime.fromtimestamp(time.time())",
+    "datetime.fromtimestamp(ctx.t0, tz=timezone.utc)",
+    "x = ctx.drp.now_w - ctx.utc0_sample0",
+    "x = (ctx.t0 - ctx.utc0_sample0) * hps",
+]
+check(
+    "the wall-time grep matches every spelling it names",
+    all(_wall_rx.search(_q) for _q in _probe),
+    " ".join(_q for _q in _probe if not _wall_rx.search(_q)),
 )
 _here = os.path.dirname(os.path.abspath(__file__))
 _wall = []
