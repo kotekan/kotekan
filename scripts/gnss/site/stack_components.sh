@@ -103,7 +103,10 @@ gnss_component() {
         #   config/gen_chord_gnss_config.py --base config/base/live_config_20260730.json \
         #       --node cx19 --aggregator-instance cx19 cx27 cx42 cx43 cx44 cx51 \
         #       --rest-port 12050 --cuda-acquire --aggregator-cores 0,1,2,3,4,5 \
+        #       --aggregator-extra-search GAL_E5A_Q \
         #       --out config/generated/chord_gnss_agg6_cuda.yaml
+        # --aggregator-extra-search GAL_E5A_Q (since 10-18, #191 step 1): a second search,
+        # e5a_search, that gal_e5a reads under detectors-monitor; drop it when that ends.
         GNSS_EXEC=("$GNSS_BIN" --config
                    "${GNSS_AGG_CFG:-$GNSS_K/config/generated/chord_gnss_agg6_cuda.yaml}"
                    --bind-address "0.0.0.0:12050")
