@@ -92,6 +92,83 @@ the aggregator and gather. #184–#187 below are what the removal left for later
 
 ## Open — the fix is in the BROKER or a script (ships today, no node cycle)
 
+### #205 — GLONASS, the first night: what the two OC chains showed, kept as watch items (2026-10-18)
+**What [overnight 02:43-12:30Z, judged from broker.log, the obs rows and chain_health]:** (a) **R9 never acquires on
+either band**: armed on glo_l2oc 07:56-11:21Z up to 26.3 deg (2,590 rows above 20 deg) and never present; glo_l3oc the
+same (2,578 rows). Not L2OC-specific, but both bands share our slot-to-code mapping and the beam, so "satellite side" is
+not shown (the 10-17 L3OC WATCH: code index != slot?). It left glo_l2oc at 0 present 08:00-08:59Z, and chain_health
+(cf06) flagged glo_l2oc 08:35-09:20Z (present 0 %, rayleigh 93 %; runs 09:00-10:15 exited 1); that episode is the sky
+(R9 the only capable satellite above el_min), new only because the chain is. (b) **R11 on L2OC**: 4 present rows all
+night (12:03Z, ~10 deg, 25-26 dB-Hz) against 2,327 on L3OC at the same elevations; never above 14.6 deg. (c) **q on peak
+above the 4.37 model** (CHORD_MULTIBAND 6.2): R23 L2OC n=6974, p50 6.19, p90 9.32, max 17.92 (03:38:55Z), above 4.37 in
+95.7 %; the same R23 on L3OC p50 3.39; R6 4.70, R8 4.52, R19 3.85, R20 3.27. Mostly R23 (K1B); re-derive the spacing
+from live taps before touching it. (d) **Arcs**: R23 02:44-06:57Z (one 6-min loss 03:16:54-03:22:52Z at 52-55 deg: L2OC q
+6.0 -> 1.65 in 2 min, PROMPT-CN0 "no PRN above the noise", L3OC lost it only 38 s), R6 03:48-05:36 (<= 10 deg), R8
+05:33-07:59 (<= 20 deg), R19 from 09:00Z, R20 11:11-11:29Z (obs rows el 0.0: no BRDC); R22 (no BRDC) 32 present rows
+03:53-04:20Z at q ~1.1 while L3OC held it at 3.67. (e) Dark probes R4/R5/R12 never present (0 of 16,263 rows each),
+noise median 0.80-1.24. (f) q STALL fires every 5 min on glo_l2oc 07-12Z and glo_l3oc 04:40-11:20Z: few K satellites up.
+(g) **elem_ref_cron watches 8 bands, not glo_l3oc/glo_l2oc.** **Next:** (a) first: check R9's code/slot and BRDC record
+against the ICD; (g) add the two bands to the watch.
+
+### #204 — fleet-wide window starvation: five storms overnight, the 00:23 rotation stalls the broker, and the runbook's check is gone (2026-10-18)
+**What:** five clusters of FADR BREAK on 8-10 chains within ~2 s, all `silent0` gap 255-263 on every PRN: 03:07:44,
+03:08:20, 03:09:16, 03:26:18, 03:57:30Z; none after 03:58Z (10-17 13-24Z ran 5-85 such clusters per hour, and 00:23-02:4xZ
+today 1-24 per 10 min, so better, not new). In 3 of the 5 every chain first logged "COMB-DLL: no windows yet" /
+"PROMPT-CN0: no estimate (no windows)" for ~11-16 s while TELEM kept counting frames (gaps 0, ~715 windows per 30 s) and
+the broker log had no gap over 0.8 s: the loss is inside the broker (the ~10.7 s window ring) or between TELEM and the
+chains, cause not found. **The runbook's check (section 4) cannot be run:** the gather exports no
+`kotekan_buffer_recv_dropped_frame_total{stage_name="/telem_recv"}` (kotekan omits a counter until it first counts; it
+has never fired since 10-13 21:08:57Z), so a gather overflow is not what these were. **The 00:23Z logrotate stalls the
+broker:** copytruncate + gzip of ~1.9 GB (broker 750 MB + aggregator 1.0 GB at the time) made broker passes overrun the
+2-s interval 138 times in 00:23-00:25Z (49/52/32 a minute, worst 3.42 s, against <= 6 a minute otherwise). Tonight's
+pair is projected at ~2.1 GB aggregator + ~1.55 GB broker (aggregator ~87 MB/h of per-pass /gps_search lines since the
+F-engine return; not new: 10-12 was 1.10 GB). Also 11:20-11:28Z: 69 overruns with user CPU at 66-67 %, cause unknown,
+and the nodes logged a burst of "trim EXPIRED" then. **Fix [script]:** rotate under `nice -n 19 ionice -c3` and
+`compresscmd` at low priority (or delaycompress), or cut the aggregator's per-pass INFO lines (NHPROF + per-PRN result,
+~160 lines/s) to DEBUG; re-add a drop counter the runbook can read (export 0 at start); then find what empties the
+broker's window ring for 11-16 s.
+
+### #203 — the follower chains' clocks run off when gps_l5's solve is not established, until a cross-band re-bootstrap (2026-10-18)
+**What [overnight]:** gps_l5's search clock solve was "not established" in stretches (03:10-03:50, 04:30-05:00,
+05:40-06:20, 09:3x, 11:00-11:30Z, and still at 12:0x-12:1x): REFUSED 42 times overnight (11 on 10-17), scatter MAD up to
+4879 chips (06:12:49Z), the cross-band donor WITHHELD from the others. The WITHHELD stretches are not new (10-17: 5-124
+lines/h). **New tonight:** while the donor was withheld, JOINT-CLK adoption kept pulling the followers' legacy clock back
+2.4-4.5 chips every 30 s; at 04:53:03Z it was refused for the first time (delta +5.1, bound 5.0), and DRCLK on glo_l3oc,
+bds_b2b, bds_b3i and gal_e5b ran 151.26 -> 143.70 (04:54:57) -> 141.81 -> 137.03 (04:56:27Z) (gal_e6 and glo_l2oc by the
+same time in their own chips): ~14 chips (~1.4 us) off for ~2 min, until all four re-bootstrapped cross-band from gps_l5 at
+04:56:51Z (150.99 chips). Again 06:12-06:14Z (REFUSED at +7.1, +11.1; DRCLK 141.92 ~30 s; recovered 06:14:28Z with no
+BOOTSTRAP line). On 10-17 no JOINT-CLK refusal exceeded the bound. No visible tracking damage (no FADR break 04:54-04:57Z,
+bds_b2b presence held). **Fix [broker]:** belongs with #200's clock work: a follower whose donor is withheld should hold
+its last good clock, not walk; and why the gps_l5 solve scatters to thousands of chips while 5-7 satellites are present.
+
+### #202 — the viewer re-reads every observables day file since September every 15 s (2026-10-18)
+**What:** `stack_components.sh:120` gives the viewer `--pvt-obs-globs "$GNSS_OBS_OUT/[gb]*_20[0-9]{6}.jsonl"`, which
+matches all 281 day files (37 days), not today's 10. For each file on every PVT recompute (`pvt_ttl_s` 15 s, polled all
+night by an open tab: 17,235 /decode_health requests since 00:23Z) `livebeam_server.py:1222-1229` seeks to size - 4 MB and
+reads to EOF: ~1.1 GB per pass. Since its 02:43Z start the viewer read rchar 2.63 TB (75 MB/s), 657 GB from storage
+(18.8 MB/s), the most of any process on the VM; NFS read calls 351-962/s against 23-249 on 10-11; the viewer sits in D
+state (folio_wait_bit_common) in 7 of 10 samples. It grows by 10 files a day. **Context, the load:** VM load 8-9 (sar)
+since the F-engine return 10-17 ~13Z, not the L2OC restart (10-11, 8 chains: ~5); idle 18-22 %; broker ~2.5 cores, gather
+1.17, aggregator 0.62; nothing starving (broker passes 0.78-0.93 s of 2.0 s); MemAvailable ~2.0 GB drifting -20 MB/h,
+no swap. **Fix [script]:** glob today's (and yesterday's, across 00:00Z) files only, or cache per file by (size, mtime).
+Judge: viewer rchar rate and NFS read calls/s drop by an order of magnitude; load average.
+
+### #201 — L2OC: R19 locked on a BOC side peak at +1 chip after a one-minute loss, and nothing brings it back (2026-10-18, HYPOTHESIS, live)
+**What [live since 11:50Z]:** glo_l2oc R19 (K1, high elevation) held q 4.4-4.7, disc +0.18, standing-trim readback
+-0.43 (11:45Z). At 11:48:50-11:50:00Z q decayed 4.6 -> 1.2 with the disc steady, an L2OC-only loss: glo_l3oc held R19 at
+q 3.3-3.7 through it. At 11:50:25Z the disc flipped to -0.24 and q came back to only ~3.3; the readback jumped +1.0 chip in
+30 s (-0.500 at 11:49:35 -> -0.226 -> +0.506 at 11:50:35Z) and has sat at +0.57..+0.70 since (12:30Z), while glo_l3oc's
+R19 readback stayed -1.0..-1.5 throughout (no step). Since then L2OC R19 runs q 2.2-3.3 (one 4.5 at 12:30), disc pinned
+-0.25..-0.28, against L3OC's disc +0.21..+0.30 on the same satellite; FLEET xcoh for PRN 19 fell 0.85 -> 0.03-0.07.
+CHORD_MULTIBAND 6.2: "Beyond +-0.91 the BOC side peaks (+-1.05) are stable false locks", and a side peak's amplitude is
+half the main peak's, so q ~ 1 + (4.5-1)/2 ~ 2.8 matches. An earlier step: SAWTOOTH bare-wipe at 11:31:11Z, standing trim
+-1.25 -> -0.53 in one cycle (L3OC unmoved). R23 lost L2OC the same way 03:16:54-03:22:52Z and came back on peak (q 6+).
+**Not yet shown:** that the lock is on the side peak (check the node E/P/L taps for R19 at +-1 chip, or re-seed R19 on
+L2OC and see q return to ~4.5 with the readback ~1 chip lower). Also unexplained: what loses L2OC for a minute while L3OC
+holds (OC2 placement after a seed step? the 1-s overlay?). **Fix [broker]:** a side-peak (bump-jump) check: after any
+loss, or while a PRN's L2OC q sits well below its L3OC q, compare the correlation at +-1 chip and step to the larger;
+and after a loss, re-seed from the model rather than keep the trim the loss walked. Applies to any BOC chain we add.
+
 ### #200 — the whole broker hangs on one node: cx19 is the time anchor and the bare endpoints (2026-10-18)
 **What [live, 10-18 02:25-02:41Z]:** cx19's node was stopped cleanly at 02:25:52Z, and the broker restarted at
 02:27:33Z without it. `common: rest-url: http://cx19:12048` makes cx19 the source of `time0-endpoint` (the F-engine
@@ -134,6 +211,14 @@ Not the roll-out's doing: (a) and (b) predate it, and the l3oc senders behave as
 established | grep -c 11070` on cf06 ~90 (11 instances x 9 chains), raw files growing continuously, a compactor pass
 without a traceback. **Fix:** find the restarter first (KV?), then make `flush` refuse the mixed-geometry file with the
 sender's name instead of dying, then the size check. The viewer's beam cube is dark until then.
+**(c) answered 10-18: the restarter is the login session.** cf06 has `Linger=no` for kvand (`loginctl show-user kvand
+-p Linger`; /var/lib/systemd/linger/ empty; the gnss VM has Linger=yes). `gnss-cube.target` is enabled through the
+SHARED home's default.target.wants (since 10-17 13:07, ConditionHost=cf06), so the user manager on cf06 starts the
+archiver and compactor when someone logs in and stops them (SIGTERM) when the last session ends: seen 10-18 12:09:04Z,
+when a checker's ssh started the user manager, archiver and compactor in the same second, and the nodes logged "Broken
+pipe" when it logged out 12:11-12:12Z. Overnight every node's cube senders logged "Connection refused" to
+10.222.3.6:11070 every 30 s (11.7k-22.3k each). cf06 did not reboot (up since 10-15 03:04Z). **Fix:** `sudo loginctl
+enable-linger kvand` on cf06 (KV), then judge as above; (a) and (b) remain.
 
 ### #198 — reopened: the fleet cycle still ran at ~30 s per node with the bufferSend fix in the binary (2026-10-17)
 **What:** KV cycled the five nodes onto `b4ab492da` (which carries `d624d7784`, confirmed by `--version` and the
