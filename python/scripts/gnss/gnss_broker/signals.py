@@ -102,6 +102,10 @@ _CHAINS = {
     # types decide (prnmap.signal_incapable_prns); no PRN floor can, since the generations are
     # interspersed across the slots. The chains yaml arms --signal-capability on the chain.
     "glo_l3oc": ("GLO_L3OC_P", "GLO_L3OC_P_NH", None),
+    # L2OC is on the K generations alone (M+ carries L3OC only), so the same registry gate cuts
+    # it to fewer slots. The tracker code bakes the 1 s OC2 into the 20 ms primary; the clock is
+    # kept mod 20 ms, as gps_l2c's is, and the 1 s segment is placed from absolute time.
+    "glo_l2oc": ("GLO_L2OC_P", "GLO_L2OC_P_OC", None),
 }
 
 

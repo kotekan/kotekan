@@ -2,8 +2,8 @@
 
 **Status: done.** The 2026-08-06 plan (task #23: constellation first -- GAL_E5A_Q and
 BDS_B2A_P on the GPS L5 comb -- then second bands) has landed: `config/gnss_chains_chord.yaml`
-runs nine chains, gps_l5, gal_e5a, bds_b2a, gal_e5b, bds_b2b, bds_b3i, gal_e6, gps_l2c and,
-since 2026-10-17, glo_l3oc (§6), all on path B. What stays here is the design that still
+runs ten chains, gps_l5, gal_e5a, bds_b2a, gal_e5b, bds_b2b, bds_b3i, gal_e6, gps_l2c, glo_l3oc
+(since 2026-10-17, §6) and glo_l2oc (since 2026-10-18, §6.2), all on path B. What stays here is the design that still
 applies: the comb geometry (§2-3), the baked per-PRN secondaries the `_CS` chains run (§4),
 and why those chains cannot blind-acquire (§5). The phased plan, the defects found building
 Phase 0 and the cost notes are at `be7d46e8e:docs/CHORD_MULTIBAND.md` §6-8.
@@ -266,17 +266,7 @@ R09 (GLO-K1B) stayed absent at 13-14 deg while R19 was present at 19 deg and R12
 
 - **L1 (1602 MHz FDMA L1OF, 1600.995 MHz L1OC): nothing to do.** The science band ends at
   1499.8 MHz (freq_id 7679).
-- **L2OC-p (1248.06 MHz, CDMA):** the descriptor exists (`GLO_L2OC_P`, L3OC-p's base code
-  expanded to a 40920-chip, 20 ms BOC(1,1) stream at 2.046 Mcps with the shared 50-chip OC2
-  secondary, 1 s). K generations only (`prnmap` now says so; M+ carries L3OC alone), so 8
-  slots today, and L2OC on the K1 variants is to be verified by presence. A 10.5 ms record
-  sits inside one 20 ms period, so the OC2 sign is constant per record: cheaper than a
-  2 046 000-chip tiled code is a shared `secondary_overlay` entry (`gnssOverlay.cpp`, the
-  `L3OC_BC5` pattern) wiped per period, with the broker's overlay length 50 and epoch 1 s,
-  which the F-engine axis resolves. Band 1246.0-1250.1 MHz = freq_ids 6380-6401, one or two
-  channels per GPU, the L2C geometry (the fleet loop sums instances; `dll_spacing_chips`
-  needs an entry for the one-channel case), and those ids join the excision exemption.
-  Value: a second GLONASS carrier, so tau_band and TEC for the K satellites.
+- **L2OC-p (1248.06 MHz, CDMA):** built 2026-10-18 as glo_l2oc, §6.2.
 - **L2OF (1246.0 + k x 0.4375 MHz, k = -7..+6, FDMA, every satellite):** the only way to
   the 14 GLO-M slots, 586 m chips (511 kcps, the L2C scale). Four pieces. (1) Per-PRN
   carrier: the chain's covering set is the union over k, 1242.9-1248.6 MHz = freq_ids
@@ -293,3 +283,72 @@ R09 (GLO-K1B) stayed absent at 13-14 deg while R19 was present at 19 deg and R12
   spacing against the 1 kHz line spectrum of a 1 ms code, as every GLONASS receiver does it.
   (4) Exemption 6364-6392 and a chains block with the L2C keys. Medium effort; the
   constellation count is the prize, TEC only against L3OC for the 14 K/M+ slots.
+
+### 6.2 GLONASS L2OC: the second GLONASS carrier (2026-10-18)
+
+The chain is `glo_l2oc`: GLONASS L2OC-p at 1248.06 MHz, broadcast by the K generations only
+(GLO-K1B, K1+, K2: slots 6, 8, 9, 11, 19, 20, 22, 23 on 2026-10-18; the six M+ slots carry
+L3OC alone, which `prnmap` already said). With glo_l3oc it gives the K satellites a carrier
+pair, so tau_band and TEC (0.0202 m/TECU; `gnss_tec_chord.py --pair glo_l3oc:glo_l2oc`, out
+of the defaults until both chains' observables cover the days asked for). The modulation and
+the band set five things apart from L3OC.
+
+- **The signal.** L2OC-p's base code is L3OC-p's, clocked at 511.5 kcps with each chip
+  expanded to [0, 0, +c, -c]: the data component's TDM slots, then a BOC(1,1) half-cycle pair.
+  The code table carries the expansion, so `GLO_L2OC_P` is plain BPSK at 2.046 Mcps, 40920
+  chips per 20 ms, half of them zero, and the chain's chips are 2.046 Mcps chips (146.5 m).
+  Its autocorrelation crosses zero at +-0.67 chip and bottoms at -0.5 at +-1, and its spectrum
+  has two lobes at +-0.8 MHz with a null at the carrier.
+- **OC2 is baked into the code.** The pilot carries a shared 50-chip overlay, one chip per
+  20 ms period, 1 s. Earlier text here said a 10.5 ms record sits inside one 20 ms period, so
+  a per-period wipe would do: it does not. Records are hop-aligned, so about 52% straddle a
+  period boundary, and OC2 flips at 24 of its 50 boundaries. The combiner's overlay wipe cannot
+  help either: it steps one overlay chip per record and needs a nav-bit wipe behind it, both
+  airspy-era shapes (records were 1 ms periods). `GLO_L2OC_P_OC` therefore tiles OC2 into one
+  2,046,000-chip, 1 s code (the `GLO_L3OC_P_NH` pattern, 2 MB per PRN on the GPU, 16 MB for
+  the eight slots, under gal_e5a's 32). The ICD starts each OC2 period on a GLONASS second
+  mark. GLONASS time is UTC(SU)+3 h and GPS time UTC+18 s, both whole seconds, so the GPS
+  second carries the overlay epoch and the broker places the 1 s segment from absolute time
+  (good to the +-10 ms this needs), exactly as it places gal_e5a's 100 ms segment. The clock is
+  still kept mod the 20 ms primary, from gps_l5's NH joint fit, as gps_l2c's is.
+- **Record slot 2.** A float32 over 2,046,000 chips has a 0.125-chip ulp, a fixed bias per
+  seed rather than noise (18 m). Every reader of slot 2 wraps it mod the 40920-chip primary
+  (`trkresid.phys_chips`), so the assembler now reduces it there first
+  (`record_cp_mod_chips`, set by the generator for this tracker code alone) and keeps
+  0.004 chip.
+- **One or two channels per GPU.** The lobe, 1246.0-1250.1 MHz, is freq_ids 6380-6401, so
+  every GPU holds one channel or two 16 apart, and the six nodes hold 17 of the 22 (6385,
+  6387, 6393 and 6395 are on cx47 and cx52), about 60% of the power. cx44 holds the two
+  brightest (6386, 6394); cx43 GPU 0 holds the carrier null. So the chain keeps the E/P/L
+  walk and four lanes per slot, as L2C does (`EPL_WALK_SIGNALS` in the generator): a rotated
+  E and L on one channel are the prompt times a phase, and across a 195 kHz channel the taps
+  would rotate 0.2 rad where the rotation was validated at 0.06. The fleet loop sums the
+  instances coherently through the gather.
+- **The DLL spacing is 0.33 chip.** On the fleet's 17-channel sum the S-curve is monotonic to
+  +-0.3 chip and reverses at +-0.79; beyond it the BOC side peaks (+-1.05) are stable false
+  locks, so a seed must land within about +-0.75 chip (110 m). At 0.33 the trim law's assumed
+  slope matches the real one; the default 0.5 would sit by the zero and quadruple the gain.
+  Node (`dll_spacing_chips`) and broker (`dll-spacing`) match; re-derive if the node set
+  changes. The spectrum fit sees only the five two-channel instances, ambiguous by 0.65 chip,
+  and stays log-only, as on L2C.
+
+- **The noise probes are dark satellites.** Presence needs 3 probes. Slots 20 and 22 have no
+  broadcast record, so six K satellites are live, and in a 24 h sweep (days 289-291) fewer
+  than 3 of them sit below -15 deg 35% of the time; when four are up, at most two can be
+  below the horizon. The chain would read UNANCHORED then. A satellite that cannot broadcast
+  the signal is signal-free at any elevation, so `--probe-dark` (on glo_l2oc only) takes the
+  probes first from the capability-excluded satellites that have ephemeris, in PRN order:
+  the six M+ slots (4, 5, 12, 16, 21, 24), which the manifest lists beside the eight K slots
+  (14 in all, `gen_fleet --check-prns` names them "dark"). `prnmap.probe_order` orders
+  probes for both the selector and the PRN map, so the map holds the probes the selector
+  picks. Without the registry the chain falls back to the below-horizon rule.
+
+The lobe joins the excision exemption (6380-6401, which also holds most of the FDMA L2OF comb)
+and with it the N2 projection's range. Lanes: base 0, 4 x 32, alone on its channels. Cost: one
+more synthesis launch per record per GPU, ~0.6 ms per frame.
+
+To verify on the sky: presence of the K1B slots on L2OC (they are the bulk of the list), the
+code index = slot as for L3OC, the 1248.06 MHz carrier (an airspy-era note doubted it against
+1248.0; 60 kHz is outside the +-5 kHz Doppler window, so a wrong carrier reads as absent
+everywhere), and the OC2 epoch: a wrong one leaves q and the prompt normal but the deep,
+KCOH and coherence numbers low, since only the sign sequence across periods would be wrong.

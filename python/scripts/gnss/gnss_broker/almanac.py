@@ -65,6 +65,7 @@ def stage_almanac_predict(ctx):
     if ctx.args.almanac:
         try:
             _refresh_capable(ctx)
+            raw_dark = {}
             t_pred = ctx.alm_now()
             if ctx.brdc_alm is not None:
                 raw = brdc_predict(
@@ -79,6 +80,10 @@ def stage_almanac_predict(ctx):
                 )
                 if ctx.capable is not None:
                     # Capability by block type; the alm_min_prn floor above is the fallback.
+                    # Under --probe-dark the excluded satellites are kept aside as probe
+                    # candidates: signal-free on this signal at any elevation.
+                    if getattr(ctx.args, "probe_dark", False):
+                        raw_dark = {p: v for p, v in raw.items() if p not in ctx.capable}
                     raw = {p: v for p, v in raw.items() if p in ctx.capable}
             else:
                 from gps_beamtrack import predict_dopplers
@@ -97,18 +102,18 @@ def stage_almanac_predict(ctx):
             # predictions (searchhint's NH hint, seeding's NH-joint votes). Elements 4 on
             # (satellite clock, az, rates, epoch) are BRDC-only: the TLE path gets 0.0 for the
             # clock and az, and no rates.
-            ctx.pred = {
-                p: (
+            def _row(v):
+                return (
                     ctx.args.doppler_sign * v[0],
                     ctx.args.doppler_sign * v[1],
                     v[2],
                     v[3],
                     (v[4] if len(v) > 4 else 0.0),
                     (v[5] if len(v) > 5 else 0.0),
-                )
-                + tuple(v[6:9])
-                for p, v in raw.items()
-            }
+                ) + tuple(v[6:9])
+
+            ctx.pred = {p: _row(v) for p, v in raw.items()}
+            ctx.pred_dark = {p: _row(v) for p, v in raw_dark.items()}
             # Geometry feed (--post-sat-geometry): every ~30 s, post each satellite's az/el to
             # the record assemblers' /set_sat_geometry for the element steering
             # (elem_positions_enu in the node config). With the rates and epoch (pred elements

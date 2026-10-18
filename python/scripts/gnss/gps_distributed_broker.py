@@ -1387,6 +1387,7 @@ def main(argv=None, rx=None, publisher=None):
 
         # 2. Orbit-predicted Doppler and visibility (almanac.stage_almanac_predict)
         _ctx.pred = {}  # prn -> (doppler_hz, rate_hz_s, elev_deg, ...) [sign-applied]
+        _ctx.pred_dark = {}  # the same rows for capability-excluded satellites (--probe-dark)
         # Stale-bias rescue (bias_stale_s): a solved bias unmeasured that long widens the search
         # margins until re-solved. If it latched away from truth, the narrow hints it centres
         # would prevent the measurements that fix it. The held value still centres the wide
@@ -1689,11 +1690,14 @@ def main(argv=None, rx=None, publisher=None):
         # tracks one. Probes are exempt from coast/drop and never command a carrier; they fail
         # every lock gate on their own. Doppler and code phase are arbitrary for noise; the
         # predicted Doppler keeps the despread configuration representative.
+        # --probe-dark puts the dark satellites (with ephemeris, but excluded by
+        # --signal-capability: signal-free at any elevation) ahead of the deepest; prnmap's
+        # desired_map orders its probe slots by the same prnmap.probe_order.
         _ctx.probe_set = set()
         if args.noise_probes > 0 and args.almanac and _ctx.pred:
-            _cands = sorted(
-                (p for p, v in _ctx.pred.items() if v[2] < -15.0),
-                key=lambda p: _ctx.pred[p][2],
+            _dark = (_ctx.pred_dark or {}) if args.probe_dark else {}
+            _cands = prnmap.probe_order(
+                {p: v[2] for p, v in _ctx.pred.items()}, _dark
             )
             # --probe-require-slot: a probe the nodes hold no slot for is seeded but never
             # reports, which can leave presence short of the >= 3 probes its q floor needs.
@@ -1723,18 +1727,22 @@ def main(argv=None, rx=None, publisher=None):
             deep_low = _cands[: args.noise_probes]
             _ctx.probe_set = set(deep_low)
             for p in deep_low:
+                _pp = _ctx.pred[p] if p in _ctx.pred else _dark[p]
                 if p not in seeds:
-                    _log("noise probe PRN %d seeded (elev %.0f)" % (p, _ctx.pred[p][2]))
+                    _log(
+                        "noise probe PRN %d seeded (elev %.0f%s)"
+                        % (p, _pp[2], "" if p in _ctx.pred else ", dark: not on this signal")
+                    )
                 seeds[p] = Seed.born(
                     "probe",
                     epoch=0,
-                    doppler_hz=_ctx.pred[p][0] + _cb.value,
+                    doppler_hz=_pp[0] + _cb.value,
                     code_phase_chips=0.0,
                     code_phase_rate=cp_rate_from_code_bias(
                         _cb.code_ema or 0.0, args.hops_per_sec, args.chip_rate_hz,
                     ),
                     ref_hop=0,
-                    doppler_rate_hz_s=_ctx.pred[p][1],
+                    doppler_rate_hz_s=_pp[1],
                 )
         seeding.stage_coast_drop(_ctx)
 

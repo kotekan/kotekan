@@ -48,7 +48,7 @@ struct SignalDescriptor {
 };
 
 // ---- Known descriptors ----
-// Descriptors suffixed _NH or _CS have the secondary code tiled into the code table: the code
+// Descriptors suffixed _NH, _CS or _OC have the secondary code tiled into the code table: the code
 // period becomes the overlay period, secondary_length is 0, and a code phase includes the
 // overlay phase. Trackers use them because a CHORD record (2048 hops, 10.49 ms) spans several
 // primary periods, which add coherently only with the overlay signs applied; a record then
@@ -656,15 +656,38 @@ inline constexpr SignalDescriptor GLO_L2OC_P = {
     /*tdm_phase=*/0,
 };
 
+/// GLONASS L2OC-p with the shared OC2 baked into the code: one 2,046,000-chip, 1 s code (50
+/// periods of GLO_L2OC_P, each times its OC2 chip), built in gnssChannelizedReplica.cpp as
+/// GLO_L3OC_P_NH is. A CHORD record (10.49 ms) straddles a 20 ms period boundary about half the
+/// time and 24 of OC2's 50 boundaries flip sign, so the bare code loses up to the whole record
+/// there and decorrelates from record to record; no combiner wipe can serve a record that is not
+/// a code period. The ICD starts each OC2 period on a GLONASS second mark, which falls on a GPS
+/// second (both scales are whole seconds from UTC), so the broker places the 1 s segment from
+/// absolute time. The tracker code of the glo_l2oc chain; the broker pairs it with GLO_L2OC_P
+/// (gnss_broker/signals.py).
+inline constexpr SignalDescriptor GLO_L2OC_P_OC = {
+    "GLO_L2OC_P_OC",
+    1248.06e6,
+    2.046e6,
+    2046000,
+    1.0,
+    Modulation::BPSK,
+    0,
+    0,
+    /*secondary_length=*/0,
+    /*time_multiplexed=*/false,
+    /*tdm_phase=*/0,
+};
+
 /// Look up a descriptor by its @c name (the config string); nullptr if unknown.
 inline const SignalDescriptor* signal_by_name(const std::string& name) {
     for (const SignalDescriptor* s :
-         {&GPS_L1CA,     &GPS_L1C_P,  &GPS_L2C_CM,   &GPS_L2C_CL,   &GPS_L5_I,     &GPS_L5_Q,
-          &GPS_L5_Q_NH,  &GAL_E1C,    &GAL_E1B,      &BDS_B1C_P,    &BDS_B1C_D,    &GAL_E5A_Q,
-          &GAL_E5A_Q_CS, &GAL_E5A_I,  &GAL_E5B_Q_CS, &BDS_B2A_P,    &BDS_B2A_P_CS, &BDS_B2A_D,
-          &BDS_B2B_I,    &GAL_E5B_Q,  &GAL_E5B_I,    &GPS_L1C_D,    &GAL_E6_C,     &GAL_E6_B,
-          &BDS_B1I,      &BDS_B3I,    &BDS_B3I_NH,   &BDS_B2I,      &GLO_L3OC_P,   &GLO_L3OC_D,
-          &GLO_L2OF,     &GLO_L2OC_P, &GAL_E6_C_CS,  &GLO_L3OC_P_NH})
+         {&GPS_L1CA,     &GPS_L1C_P,  &GPS_L2C_CM,   &GPS_L2C_CL,    &GPS_L5_I,     &GPS_L5_Q,
+          &GPS_L5_Q_NH,  &GAL_E1C,    &GAL_E1B,      &BDS_B1C_P,     &BDS_B1C_D,    &GAL_E5A_Q,
+          &GAL_E5A_Q_CS, &GAL_E5A_I,  &GAL_E5B_Q_CS, &BDS_B2A_P,     &BDS_B2A_P_CS, &BDS_B2A_D,
+          &BDS_B2B_I,    &GAL_E5B_Q,  &GAL_E5B_I,    &GPS_L1C_D,     &GAL_E6_C,     &GAL_E6_B,
+          &BDS_B1I,      &BDS_B3I,    &BDS_B3I_NH,   &BDS_B2I,       &GLO_L3OC_P,   &GLO_L3OC_D,
+          &GLO_L2OF,     &GLO_L2OC_P, &GAL_E6_C_CS,  &GLO_L3OC_P_NH, &GLO_L2OC_P_OC})
         if (name == s->name)
             return s;
     return nullptr;

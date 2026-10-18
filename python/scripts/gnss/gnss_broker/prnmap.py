@@ -2,9 +2,9 @@
 
 The nodes boot on the PRN lists in config/gnss_fleet_chord.yaml, while the broker sees the
 constellation through live BRDC every cycle. This stage reconciles the two: the slots hold
-the satellites that are up, plus the --noise-probes deepest below -15 deg, the rule the probe
-selector picks noise probes by (a probe the nodes hold no slot for is seeded but never
-reports).
+the satellites that are up, plus --noise-probes probes in probe_order (the dark satellites under
+--probe-dark, then the deepest below -15 deg), the rule the probe selector picks noise probes by
+(a probe the nodes hold no slot for is seeded but never reports).
 
 The slot count is fixed; only membership moves. n_prn sizes every buffer, GPU allocation and
 wire frame in the pipeline, so changing it is a fleet-wide re-plumb and a node restart.
@@ -480,6 +480,13 @@ def stage_prn_membership(ctx):
             )
     if not el:
         return  # no prediction this cycle: say nothing rather than evict the whole map
+    # --probe-dark: satellites with ephemeris that cannot broadcast this signal, kept as noise
+    # probes (probe_order). Not in `el`, so without this they would read as dead slots.
+    dark = (
+        sorted(getattr(ctx, "pred_dark", None) or {})
+        if getattr(a, "probe_dark", False)
+        else []
+    )
 
     held = set(cur)
 
@@ -496,7 +503,7 @@ def stage_prn_membership(ctx):
     tag = log_tag() or a.signal
     if now - st.beat_t >= a.prn_reconfig_heartbeat_s:
         st.beat_t = now
-        n_dead = sum(1 for p in held if p not in el)
+        n_dead = sum(1 for p in held if p not in el and p not in dark)
         n_down = sum(1 for p in held if p in el and el[p] < a.prn_reconfig_evict_deg)
         _log(
             "PRN MAP %s: %s, %d slots, %d nodes agree | %d dead, %d below %.0f deg, "
@@ -534,7 +541,7 @@ def stage_prn_membership(ctx):
         )
         return
     want_map, unplaced = desired_map(
-        cur, el, n_probe, a.prn_reconfig_admit_deg, a.prn_reconfig_evict_deg
+        cur, el, n_probe, a.prn_reconfig_admit_deg, a.prn_reconfig_evict_deg, dark=dark
     )
     moved = [i for i in range(len(cur)) if want_map[i] != cur[i]]
     if unplaced:
@@ -567,11 +574,25 @@ def stage_prn_membership(ctx):
     return
 
 
-def desired_map(cur, el, n_probe, admit_deg, evict_deg):
+def probe_order(el, dark=()):
+    """Noise-probe candidates, best first: the `dark` PRNs in PRN order, then every PRN of
+    `el` ({prn: elevation deg}) below -15 deg, deepest first.
+
+    Dark PRNs (--probe-dark) have ephemeris but cannot broadcast this signal, so they are
+    signal-free at any elevation and never set; PRN order keeps the choice stable from cycle
+    to cycle. The broker's selector and desired_map both order probes by this, so the map
+    holds the probes the selector picks. Callers take the first --noise-probes.
+    """
+    deep = sorted((p for p, e in el.items() if e < -15.0), key=lambda p: el[p])
+    return list(dict.fromkeys(sorted(dark) + deep))
+
+
+def desired_map(cur, el, n_probe, admit_deg, evict_deg, dark=()):
     """The map the chain should hold: every satellite worth tracking, plus the noise probes.
 
     Wanted: every satellite up (admitted at >= `admit_deg`, a held one kept until it falls
-    below `evict_deg`), then the `n_probe` deepest below -15 deg as noise probes.
+    below `evict_deg`), then `n_probe` noise probes in probe_order: the `dark` PRNs
+    (--probe-dark; not in `el`), then the deepest below -15 deg.
 
     Returns (want_map, unplaced). `want_map` is `cur` with as much of the wanted set placed as
     there are slots; `unplaced` is whoever did not fit, best first, which the caller must
@@ -590,9 +611,7 @@ def desired_map(cur, el, n_probe, admit_deg, evict_deg):
         (p for p, e in el.items() if e >= admit_deg or (p in held and e >= evict_deg)),
         key=lambda p: -el[p],
     )
-    probes = sorted((p for p, e in el.items() if e < -15.0), key=lambda p: el[p])[
-        :n_probe
-    ]
+    probes = probe_order(el, dark)[:n_probe]
     want = list(dict.fromkeys(up + probes))  # ordered, de-duplicated: up wins ties
     place = [p for p in want if p not in held]
     # Reusable slots, worst first: PRNs with no prediction at all (no ephemeris, or dropped

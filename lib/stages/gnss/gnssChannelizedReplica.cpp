@@ -127,6 +127,10 @@ std::vector<int8_t> signal_code(const std::string& name, int prn) {
     }
     if (name == "GLO_L2OC_P")
         return glonass::generate_l2ocp_code(prn); // already a vector (zeros = TDM'd data slots)
+    // L2OC-p with the shared OC2 baked in: 50 periods of 40920 chips, 1 s (a code phase in this
+    // space is primary cp + 40920 * (period index mod 50)).
+    if (name == "GLO_L2OC_P_OC")
+        return bake_secondary(glonass::generate_l2ocp_code(prn), glonass::L2OC_OC2);
     if (name == "GLO_L3OC_P") {
         auto a = glonass::generate_l3ocp_code(prn);
         return std::vector<int8_t>(a.begin(), a.end());

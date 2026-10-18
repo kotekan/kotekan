@@ -36,6 +36,9 @@
  *                with chan_export
  * @conf prns     initial slot -> PRN map; its length must equal the frame's n_prn
  * @conf sample_rate  rate of the wstart sample counter, Hz
+ * @conf record_cp_mod_chips  Float (default 0 = off). Reduce record slot 2 (the code-phase
+ *                argument, float32) mod this many chips: the primary code length on a chain
+ *                whose baked code is long enough to cost float32 precision (GLO_L2OC_P_OC).
  */
 class GnssGpuRecordAssemble : public kotekan::Stage {
 public:
@@ -50,6 +53,8 @@ private:
     /// which is authoritative after a live swap.
     std::vector<int> _prns;
     double _sample_rate;
+    /// Slot 2's modulus (chips), 0 = unreduced; see record_cp_mod_chips.
+    double _rec_cp_mod_chips = 0.0;
 
     /// Element axis (>= 1).
     int _n_elements = 0;

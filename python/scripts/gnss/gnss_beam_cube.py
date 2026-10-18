@@ -75,14 +75,14 @@ GEOM_BIN_S = 60.0         # BRDC evaluated once per minute, at its midpoint; no 
 # Chain -> constellation letter, for the BRDC lookup. Declared, not inferred from the
 # frequency: constellations share carriers.
 CHAIN_SYS = {"gps_l5": "G", "gps_l2c": "G", "gal_e5a": "E", "gal_e5b": "E", "gal_e6": "E",
-             "bds_b2a": "C", "bds_b2b": "C", "bds_b3i": "C", "glo_l3oc": "R"}
+             "bds_b2a": "C", "bds_b2b": "C", "bds_b3i": "C", "glo_l3oc": "R", "glo_l2oc": "R"}
 
 # Cube-archive sender ("cx19_gnss0_b2b_n2assemble") -> chain. The band token is the stage's
 # infix; the GPS L5 stage carries none. Declared, like CHAIN_SYS: a sender with an unlisted
 # infix maps to no chain, and find_inputs does not read its files.
 SENDER_BAND_CHAIN = {"": "gps_l5", "l2c": "gps_l2c", "e5a": "gal_e5a", "e5b": "gal_e5b",
                      "e6": "gal_e6", "b2a": "bds_b2a", "b2b": "bds_b2b", "b3i": "bds_b3i",
-                     "l3oc": "glo_l3oc"}
+                     "l3oc": "glo_l3oc", "l2oc": "glo_l2oc"}
 
 
 def sender_chain(sender):

@@ -254,11 +254,11 @@ chains:
         drop-stats: true
     # The stream-health panel's rows, as chain names (carriers from gnssSignal.hpp); each
     # monitored channel is labelled with the nearest declared carrier. List every band the
-    # receiver flies: the nine chains share L5 1176.45, L3 1202.025, E5b 1207.14, L2 1227.60,
-    # B3 1268.52 and E6 1278.75 MHz. Matching the full band table instead would name bands
-    # CHORD does not fly (G2, B1I); unset, the rows read "lobe N". With glo_l3oc declared the
+    # receiver flies: the ten chains share L5 1176.45, L3 1202.025, E5b 1207.14, L2 1227.60,
+    # G2 1248.06, B3 1268.52 and E6 1278.75 MHz. Matching the full band table instead would name
+    # a band CHORD does not fly (B1I); unset, the rows read "lobe N". With glo_l3oc declared the
     # channels below 1204.6 MHz, E5b's lower shoulder, are named L3: they are its lobe now.
-        rf-bands: "gps_l5,gal_e5a,bds_b2a,glo_l3oc,gal_e5b,bds_b2b,gps_l2c,bds_b3i,gal_e6"
+        rf-bands: "gps_l5,gal_e5a,bds_b2a,glo_l3oc,gal_e5b,bds_b2b,gps_l2c,glo_l2oc,bds_b3i,gal_e6"
     # The record assemblers whose /get_spectrum (per-channel prompt sums before the
     # cross-channel combine) feed the fleet phase-slope delay fit (SPEC-FIT). Its tau updates
     # the per-satellite path-bias filter (b_sat) that dead-reckon seeds add to the clock.
@@ -613,3 +613,55 @@ chains:
         combiner: gnss1_l2c_n2combine # a bare name on rest-url (cx19), whose L2C GPU is 1
         spectrum-endpoints: "http://cx19:12048/gnss1_l2c_n2assemble,http://cx27:12048/gnss0_l2c_n2assemble,http://cx42:12048/gnss1_l2c_n2assemble,http://cx43:12048/gnss1_l2c_n2assemble,http://cx51:12048/gnss1_l2c_n2assemble"
         dll-combiners: "http://cx19:12048/gnss1_l2c_n2combine,http://cx27:12048/gnss0_l2c_n2combine,http://cx42:12048/gnss1_l2c_n2combine,http://cx43:12048/gnss1_l2c_n2combine,http://cx51:12048/gnss1_l2c_n2combine"
+
+  # -- 1248.06 MHz: glo_l2oc --
+  # GLONASS L2OC-p, the CDMA pilot on L2, broadcast by the K generations only (GLO-K1B, K1+, K2;
+  # the M+ slots carry L3OC alone): a second GLONASS carrier, so tau_band and TEC for the K
+  # satellites against glo_l3oc. BOC(1,1) under a data/pilot TDM, carried in the code table at
+  # 2.046 Mcps (half its chips zero), so code phases here are 2.046 Mcps chips (146.5 m). The
+  # tracker code bakes the shared 50-chip OC2 into one 1 s code (GLO_L2OC_P_OC): a 10.49 ms record
+  # straddles a 20 ms period about half the time and OC2 flips at 24 of its 50 boundaries, so
+  # with the bare code a record could cancel and successive records decorrelate. The ICD starts
+  # each OC2 period on a second mark; GLONASS and GPS seconds coincide (both are whole seconds
+  # from UTC), so the broker places the segment from absolute time, which must be good to
+  # +-10 ms. The clock is kept mod the 20 ms primary, as gps_l2c's is. Model-primary with no
+  # detectors, like the chains above.
+  # The lobe, 1246.0-1250.1 MHz (freq_ids 6380-6401), gives every GPU one or two channels; the
+  # power sits at +-0.8 MHz with a null at the carrier, and the six nodes hold 17 of the 22
+  # channels (~60% of the power; 6385, 6387, 6393 and 6395 are on cx47 and cx52). The fleet
+  # loop sums the instances coherently, as on L2C, so sensitivity is fleet-wide.
+    glo_l2oc:
+        signal: glo_l2oc
+    # The K generations only, from the registry's block types (prnmap: L3OC rides K and M+, the
+    # other OC signals K alone). The startup line "signal-capability glo_l2oc: N PRN(s)
+    # excluded by the IGS registry (...)" lists the slots it drops.
+        signal-capability: glo_l2oc
+    # The noise probes are DARK satellites: the six GLO-M+ slots, with ephemeris but no L2OC,
+    # signal-free at any elevation (the manifest gives them slots). Six live K satellites
+    # leave fewer than the 3 probes presence needs below -15 deg about a third of the day,
+    # when the chain would read UNANCHORED; the M+ slots never set.
+        probe-dark: true
+    # gps_l5's clock is known only mod 1 ms, shorter than the 20 ms primary, so the adoption
+    # also takes the clock mod 20 ms from gps_l5's NH joint fit, as gps_l2c does; without a
+    # record under an hour old the clock stays primed.
+        dr-clock-adopt: true
+        seed-phase-transport: true
+    # E/L tap offset from prompt, in 2.046 Mcps chips. On the fleet's 17-channel BOC sum the
+    # S-curve is monotonic to +-0.3 chip and reverses at +-0.79, outside which the BOC side peaks
+    # (+-1.05) are stable false locks; at 0.33 the trim law's assumed slope matches the real one.
+    # Must match the node taps (config/gen_chord_gnss_config.py dll_spacing_chips); when changing
+    # both, cycle the nodes before the broker. Re-derive if the node set changes.
+        dll-spacing: 0.33
+        presence-admit-displaced: true
+        joint-consume: clk,rate
+        fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
+        fleet-trim-bandwidth: 2.5
+        fleet-trim-readback: 1
+    # Every GPU holds a channel of the lobe, so the {0..1} pattern serves. The combiner is
+    # cx19 GPU 0 (6388, ~6% of the power); its GPU 1 holds the near-empty lobe edges.
+        trackers: "http://cx19:12048/gnss{0..1}_l2oc_inject,http://cx27:12048/gnss{0..1}_l2oc_inject,http://cx42:12048/gnss{0..1}_l2oc_inject,http://cx43:12048/gnss{0..1}_l2oc_inject,http://cx44:12048/gnss{0..1}_l2oc_inject,http://cx51:12048/gnss{0..1}_l2oc_inject"
+        combiner: gnss0_l2oc_n2combine
+    # Only instances with two channels (16 ids apart) inform the fit, and its free phase per
+    # instance leaves tau ambiguous by 0.65 chip; log-only on this chain, as on L2C.
+        spectrum-endpoints: "http://cx19:12048/gnss{0..1}_l2oc_n2assemble,http://cx27:12048/gnss{0..1}_l2oc_n2assemble,http://cx42:12048/gnss{0..1}_l2oc_n2assemble,http://cx43:12048/gnss{0..1}_l2oc_n2assemble,http://cx44:12048/gnss{0..1}_l2oc_n2assemble,http://cx51:12048/gnss{0..1}_l2oc_n2assemble"
+        dll-combiners: "http://cx19:12048/gnss{0..1}_l2oc_n2combine,http://cx27:12048/gnss{0..1}_l2oc_n2combine,http://cx42:12048/gnss{0..1}_l2oc_n2combine,http://cx43:12048/gnss{0..1}_l2oc_n2combine,http://cx44:12048/gnss{0..1}_l2oc_n2combine,http://cx51:12048/gnss{0..1}_l2oc_n2combine"

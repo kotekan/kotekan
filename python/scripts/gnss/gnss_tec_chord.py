@@ -51,12 +51,15 @@ FREQ = {
     "bds_b2b": 1207.14e6,
     "bds_b3i": 1268.52e6,
     "glo_l3oc": 1202.025e6,
+    "glo_l2oc": 1248.06e6,
 }
 SYSOF = {"gps": "G", "gal": "E", "bds": "C", "glo": "R"}
 # Default pairs: the widest frequency lever each constellation has, so the m/TECU factor is
 # large and the phase noise divides down. E5a x E6 = 0.0447 m/TECU, B2a x B3I 0.0407,
 # L5 x L2C 0.0237. Pooling all three is what fills the sky for a movie; each pair carries its
-# own receiver constant, which the per-arc mean removes.
+# own receiver constant, which the per-arc mean removes. GLONASS's pair is L3OC x L2OC
+# (0.0202, the K slots only): pass --pair glo_l3oc:glo_l2oc. It joins the defaults once both
+# chains' observables cover the days asked for, since a missing band file is fatal here.
 DEFAULT_PAIRS = ["gal_e5a:gal_e6", "bds_b2a:bds_b3i", "gps_l5:gps_l2c"]
 
 

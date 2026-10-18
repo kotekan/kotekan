@@ -851,6 +851,20 @@ def build_parser(description):
         "from --prn-reconfig apply's /get_prns sweep; with --prn-reconfig off "
         "there is no map and the selector stays unfiltered.",
     )
+    # A satellite with ephemeris that the registry says cannot broadcast this signal
+    # (--signal-capability) is signal-free at any elevation: a noise probe that never sets.
+    ap.add_argument(
+        "--probe-dark",
+        action="store_true",
+        help="take noise probes first from the DARK satellites: predicted by BRDC but "
+        "excluded by --signal-capability, so they carry nothing on this signal at any "
+        "elevation (GLONASS M+ on L2OC). In PRN order, ahead of the deepest below -15 "
+        "deg. For a chain with too few capable satellites to keep the >= 3 probes the "
+        "presence gate needs below the horizon: glo_l2oc's six live K satellites leave "
+        "fewer than 3 below -15 deg about a third of the day, and the chain would read "
+        "UNANCHORED then. The nodes must hold slots for the dark PRNs (the manifest's "
+        "list); the PRN map keeps them as probes. Needs --signal-capability.",
+    )
     ap.add_argument(
         "--prn-reconfig",
         choices=["off", "apply"],

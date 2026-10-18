@@ -78,15 +78,23 @@ DUAL_SYNTH_LANES = 384
 LANE_STEP = 64
 
 
+# Tracker codes that keep the three-trial E/P/L walk under --epl-from-prompt. Each instance
+# of these chains holds one or two channels of the lobe, so the rotated E and L are the prompt
+# times a phase (|E| = |L|, the instance's discriminator reads 0), and a pair 16 ids apart
+# (3.125 MHz) repeats every 0.32 us. GLONASS L2OC adds a second reason: across one 195 kHz
+# channel its 0.33-chip taps rotate 0.2 rad, where the rotation was validated at 0.06.
+EPL_WALK_SIGNALS = ("GPS_L2C_CM", "GLO_L2OC_P_OC")
+
+
 def lanes_per_slot_for(args, track_signal):
     """Synth lanes per PRN slot a chain packs (gnssGpuChain.hpp LANES_FULL / LANES_PROMPT).
 
     With --epl-from-prompt every comb chain packs two (P and P_HEAD): its E and L rows are the
     prompt rotated per channel on the host from the rotation the kernel carries in PrnCtl::rot.
-    L2C keeps four: its one channel per instance has no cross-channel phase to rotate, so it
-    keeps the three-trial walk and packs every trial.
+    The EPL_WALK_SIGNALS chains (L2C, L2OC) keep four: one or two channels per instance carry
+    no cross-channel phase to rotate, so they keep the three-trial walk and pack every trial.
     """
-    return 2 if (args.epl_from_prompt and track_signal != "GPS_L2C_CM") else 4
+    return 2 if (args.epl_from_prompt and track_signal not in EPL_WALK_SIGNALS) else 4
 # Frames per GNSS chain buffer.
 BUFFER_DEPTH = 4
 # The primary chain's PRN slots (each extra chain carries its own list).
@@ -255,11 +263,27 @@ def dll_spacing_chips(name):
     that combined width, where the discriminator is monotonic (q on peak is then ~6; a q far
     higher means the taps have landed in a null, not that the lock improved).
 
+    GLONASS L2OC is BOC(1,1) under a data/pilot TDM: its autocorrelation in 2.046 Mcps chips
+    crosses zero at +-0.67 and bottoms at -0.5 at +-1, and its spectrum has a null at the
+    carrier. Each instance holds one or two of the lobe's 22 channels; the six nodes hold 17
+    of them (~60% of the power). On that 17-channel sum the S-curve is monotonic to +-0.3 chip
+    at 0.33 spacing and reverses at +-0.79, outside which the BOC side peaks (+-1.05 chips)
+    are stable false locks. 0.33 is also where the trim law's assumed slope (dll_tau scales a
+    triangle's) matches the real one; 0.5 would put the taps by the zero and quadruple the
+    loop gain. Re-derive if the node set changes.
+
     Must match the broker chain's dll-spacing (config/gnss_chains_chord.yaml): the C++ fleet
     loop takes its law's spacing from the arming payload while the taps come from here, so
     cycle the nodes before the broker and the taps lead the law.
     """
-    return {"GPS_L2C_CM": 0.4}.get(name, 0.5)
+    return {"GPS_L2C_CM": 0.4, "GLO_L2OC_P_OC": 0.33}.get(name, 0.5)
+
+
+# Record slot 2's modulus per tracker code (GnssGpuRecordAssemble record_cp_mod_chips): the
+# primary code length, for a baked code long enough that a float32 phase over it loses
+# precision. GLO_L2OC_P_OC is 2,046,000 chips (a 0.125-chip ulp); its primary is 40920. The
+# broker wraps slot 2 mod the primary anyway (gnss_broker/trkresid.py), so nothing is lost.
+RECORD_CP_MOD_CHIPS = {"GLO_L2OC_P_OC": 40920}
 
 
 # PRN rows per chain on the telemetry wire; every other chain gets _TELEM_ROWS_DEFAULT. See
@@ -1002,11 +1026,12 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
                     # dll_spacing_chips. Must match the broker chain's dll-spacing.
                     "dll_spacing": dll_spacing_chips(track_signal),
                     # The E/L lanes as rotations of the prompt, one chip walk per hop: every
-                    # comb chain; not L2C, whose one channel per instance carries no
-                    # cross-channel phase (its per-instance discriminator would read 0).
+                    # comb chain; not L2C or L2OC (EPL_WALK_SIGNALS), whose one or two
+                    # channels per instance carry no cross-channel phase (the per-instance
+                    # discriminator would read 0).
                     **(
                         {"epl_from_prompt": True}
-                        if args.epl_from_prompt and track_signal != "GPS_L2C_CM"
+                        if args.epl_from_prompt and track_signal not in EPL_WALK_SIGNALS
                         else {}
                     ),
                     "f_offset_hz": carrier_hz,
@@ -1121,6 +1146,11 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
             "out_buf": n2rec_buf,
             "prns": prns,
             "n_elements": n_live,
+            **(
+                {"record_cp_mod_chips": float(RECORD_CP_MOD_CHIPS[track_signal])}
+                if track_signal in RECORD_CP_MOD_CHIPS
+                else {}
+            ),
             # The global freq_ids the injector despreads, in local order. They label each
             # channel's sky frequency for /get_spectrum, the comb export and steering: a delay
             # is a phase ramp across frequency, which the cross-channel sum destroys.
@@ -2461,7 +2491,8 @@ def main():
         "take the E/L rows as its per-channel rotations (one chip walk per hop instead of "
         "three, ~2/3 of the synthesis cost), and pack two synth lanes per PRN slot (P, "
         "P_HEAD) instead of four, GnssN2RecordAssemble rotating P into the E and L rows "
-        "(lanes_per_slot). Comb chains only; L2C keeps its three trials and four lanes.",
+        "(lanes_per_slot). Comb chains only; L2C and L2OC (EPL_WALK_SIGNALS) keep their three "
+        "trials and four lanes.",
     )
     ap.add_argument(
         "--n2-project",

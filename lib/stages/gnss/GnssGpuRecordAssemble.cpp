@@ -34,6 +34,17 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
     out_buf->register_producer(unique_name);
     _prns = config.get<std::vector<int>>(unique_name, "prns");
     _sample_rate = config.get<double>(unique_name, "sample_rate");
+    // Slot 2 is a float32. A code phase over a 2,046,000-chip baked code (GLONASS L2OC with OC2)
+    // has a 0.125-chip ulp there, a standing bias rather than noise, since the argument moves
+    // only with the seed and the trim. Every reader wraps slot 2 mod the primary code
+    // (trkresid.phys_chips), so the generator sets this to the primary length on such a chain
+    // and the record keeps the phase at 0.004 chip. 0 leaves slot 2 as it was.
+    _rec_cp_mod_chips = config.get_default<double>(unique_name, "record_cp_mod_chips", 0.0);
+    if (_rec_cp_mod_chips < 0.0) {
+        FATAL_ERROR("GnssGpuRecordAssemble: record_cp_mod_chips {:g} must be >= 0",
+                    _rec_cp_mod_chips);
+        return;
+    }
     // Element axis: n_elements per-antenna blocks follow every PRN record (gnssRecord.hpp), and
     // the correlation array is [rows][n_chan][n_elem].
     _n_elements = config.get<int>(unique_name, "n_elements");
@@ -196,10 +207,10 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
         _proj_group = unique_name.substr(0, unique_name.find('_'));
         // The constellation, from the generator's band tokens in the stage name.
         auto has = [&](const char* t) { return unique_name.find(t) != std::string::npos; };
-        _proj_sys = (has("_e5a") || has("_e5b") || has("_e6") || has("_e1"))    ? 'E'
-                    : (has("_b2a") || has("_b2b") || has("_b3i") || has("_b1")) ? 'C'
-                    : (has("_l1of") || has("_l2of") || has("_l3oc"))            ? 'R'
-                                                                                : 'G';
+        _proj_sys = (has("_e5a") || has("_e5b") || has("_e6") || has("_e1"))         ? 'E'
+                    : (has("_b2a") || has("_b2b") || has("_b3i") || has("_b1"))      ? 'C'
+                    : (has("_l1of") || has("_l2of") || has("_l2oc") || has("_l3oc")) ? 'R'
+                                                                                     : 'G';
         _proj_ready = _elem_sum && !fids.empty();
         if (_proj_ready) {
             _proj_fids = fids;
@@ -914,7 +925,15 @@ void GnssGpuRecordAssemble::main_thread() {
                     }
                 }
                 rec[1] = c.fcar_report;
-                rec[2] = (float)c.cp_seed;
+                {
+                    double cp = c.cp_seed;
+                    if (_rec_cp_mod_chips > 0.0) {
+                        cp = std::fmod(cp, _rec_cp_mod_chips);
+                        if (cp < 0.0)
+                            cp += _rec_cp_mod_chips;
+                    }
+                    rec[2] = (float)cp;
+                }
                 rec[6] = c.n_owned;
                 rec[gnss::REC_E_RE] = (float)g3[0].real();
                 rec[gnss::REC_E_IM] = (float)g3[0].imag();

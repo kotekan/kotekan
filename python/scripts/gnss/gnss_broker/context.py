@@ -137,6 +137,10 @@ class ChainContext(object):
         "best",
         "status",
         "pred",
+        # {prn: pred-shaped row} for the satellites --signal-capability excluded from `pred`
+        # (with ephemeris, but unable to broadcast this signal); filled only under --probe-dark,
+        # for the probe selector and the PRN map.
+        "pred_dark",
         "up",
         "probe_set",
         "utc0_sample0",

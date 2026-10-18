@@ -29,6 +29,7 @@ PER_CYCLE = {
     "status",
     "pred",
     "up",
+    "pred_dark",
     "probe_set",
     "utc0_sample0",
     "coast_polls",

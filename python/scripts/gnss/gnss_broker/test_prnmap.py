@@ -228,6 +228,46 @@ def main():
         "... but with only 2 needed, the shallowest deep slot IS free to be traded",
     )
 
+    # ---- dark probes (--probe-dark) -----------------------------------------------------
+    # A satellite with ephemeris that cannot broadcast the signal (glo_l2oc: the GLO-M+ slots)
+    # is signal-free at any elevation. probe_order puts those first, in PRN order, then the
+    # deepest below -15 deg; the selector and desired_map share it.
+    check(
+        prnmap.probe_order({1: -20.0, 2: -40.0, 3: 10.0, 7: -16.0}, {12: (), 5: ()})
+        == [5, 12, 2, 1, 7],
+        "probe_order: the dark PRNs first in PRN order, then the deepest below -15 deg; a "
+        "satellite above -15 deg is never a probe",
+    )
+    # Every slot is wanted once the dark probes count: a rising satellite finds no slot rather
+    # than taking a dark probe's.
+    _wm, _un = prnmap.desired_map([8, 9, 4, 5], {8: 40.0, 9: 30.0, 11: 50.0}, 2, 10.0, 0.0,
+                                  dark=[4, 5, 12])
+    check(
+        _wm == [8, 9, 4, 5] and _un == [11],
+        "desired_map: dark probes 4 and 5 keep their slots; the rising PRN 11 is reported "
+        "unplaced (got %s, unplaced %s)" % (_wm, _un),
+    )
+    _wm0, _un0 = prnmap.desired_map([8, 9, 4, 5], {8: 40.0, 9: 30.0, 11: 50.0}, 2, 10.0, 0.0)
+    check(
+        11 in _wm0 and not _un0,
+        "... and without --probe-dark the same slots read as dead and are reused (got %s)"
+        % _wm0,
+    )
+    _wm1, _ = prnmap.desired_map([8, 9, 3, 6], {8: 40.0, 9: 30.0}, 2, 10.0, 0.0, dark=[4, 5])
+    check(
+        sorted(_wm1) == [4, 5, 8, 9],
+        "desired_map: dark probes the nodes do not hold take the dead slots (got %s)" % _wm1,
+    )
+    # Through the stage: the map holds the dark probes and posts nothing.
+    POSTS[:] = []
+    ctx = Ctx([8, 9, 4, 5], {8: 40.0, 9: 30.0, 11: 50.0}, noise_probes=2, probe_dark=True)
+    ctx.pred_dark = {4: (0.0, 0.0, 35.0, 0.0, 0.0), 5: (0.0, 0.0, -50.0, 0.0, 0.0)}
+    run_cycle(ctx, 1000.0)
+    check(
+        not POSTS,
+        "stage: with --probe-dark the dark probes' slots are not handed to a rising satellite",
+    )
+
     # ---- an unwanted satellite does not displace another -------------------------------
     # Every slot holds a real satellite and one more has none, all below the horizon and none
     # a probe. The leftover-slot fill must not hand an unwanted occupant's slot to the

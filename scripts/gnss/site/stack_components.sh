@@ -42,11 +42,12 @@ GNSS_FRAME0_URL=${GNSS_FRAME0_URL:-http://cx43:12048}
 GNSS_OBS_OUT=${GNSS_OBS_OUT:-$GNSS_ROOT/fixtures/obs}
 GNSS_SITE_LL=${GNSS_SITE_LL:-"--lat 49.32001414 --lon -119.62262691 --alt 545"}
 
-# ── the nine chains and their RF constants ─────────────────────────────────────────────────
+# ── the ten chains and their RF constants ─────────────────────────────────────────────────
 # Not free parameters: carrier, chip rate and code length must match the SignalDef the broker
 # runs, which it logs at startup ("signal gps_l5: SignalDef(...)"); if a chain's signal
 # changes, take the numbers from that line. L2C's chips are CM chips at 0.5115 Mcps (the
-# CM/CL multiplex), 586 m each, not 29 m.
+# CM/CL multiplex), 586 m each, not 29 m. L2OC's are 2.046 Mcps chips (the BOC/TDM expansion
+# is in the code table), 146.5 m each; code_len is the 20 ms primary, not the 1 s baked code.
 #   chain  sys carrier_hz   chip_rate_hz  code_len
 GNSS_CHAIN_RF="
 gps_l5  G 1176450000 10230000 10230
@@ -58,6 +59,7 @@ bds_b3i C 1268520000 10230000 10230
 gal_e6  E 1278750000  5115000  5115
 gps_l2c G 1227600000   511500 10230
 glo_l3oc R 1202025000 10230000 10230
+glo_l2oc R 1248060000  2046000 40920
 "
 
 gnss_chains() { echo "$GNSS_CHAIN_RF" | awk 'NF {print $1}'; }

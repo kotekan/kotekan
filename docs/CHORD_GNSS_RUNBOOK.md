@@ -34,8 +34,9 @@ Without `--user` systemd looks for system units, finds nothing, and says so conf
 | cube compactor | cf06 | `cubecompact_loop.sh` | periodic heavy analysis |
 | static cube viewer :8877 | cf06 | `beamview_up.sh` | serves the exported cube |
 
-**The nine chains** are `gps_l5`, `gps_l2c`, `gal_e5a`, `gal_e5b`, `gal_e6`, `bds_b2a`,
-`bds_b2b`, `bds_b3i` and, since 2026-10-17, `glo_l3oc` (docs/CHORD_MULTIBAND.md section 6).
+**The ten chains** are `gps_l5`, `gps_l2c`, `gal_e5a`, `gal_e5b`, `gal_e6`, `bds_b2a`,
+`bds_b2b`, `bds_b3i`, `glo_l3oc` (since 2026-10-17) and `glo_l2oc` (since 2026-10-18;
+docs/CHORD_MULTIBAND.md section 6).
 
 ### Scheduled jobs
 

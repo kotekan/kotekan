@@ -118,6 +118,7 @@ def flags_from(mapping):
 # The two findings are not equally bad, and the exit code says so:
 #   EXCLUDED (active, capable, rises here, no slot)  -> a satellite missing from the list: fails.
 #   DEAD     (slot, no active satellite)             -> wasted capacity: warns.
+#   DARK     (slot, active, cannot broadcast it)     -> a noise probe (--probe-dark): noted.
 SYS_OF = {"GPS": "G", "GAL": "E", "BDS": "C", "GLO": "R"}
 LAT, LON, ALT = 49.32075144444, -119.62081125, 545.0
 # Capability, not just activity: BeiDou B2a/B2b are BDS-3 signals the BDS-2 satellites do not
@@ -182,7 +183,10 @@ def check_prns(man, rise_deg=RISE_DEG, hours=24.0, step_min=10.0):
         incap = signal_incapable_prns(MIRRORS.get(name, name))
         active = {p for (s, p) in peak if s == sysid and p not in incap}
         rises = {p for p in active if peak[(sysid, p)] > rise_deg}
-        dead = sorted(cfg - active)
+        # A slot for an active satellite that cannot broadcast the signal: signal-free at any
+        # elevation, the chain's noise probe under --probe-dark (glo_l2oc's GLO-M+ slots).
+        dark = sorted(p for p in cfg - active if (sysid, p) in peak and p in incap)
+        dead = sorted(cfg - active - set(dark))
         excluded = sorted((active & rises) - cfg)
         if not active:
             # An empty sky excludes nothing, so without this a stale or missing ephemeris
@@ -206,6 +210,11 @@ def check_prns(man, rise_deg=RISE_DEG, hours=24.0, step_min=10.0):
                 else "",
             )
         )
+        if dark:
+            print(
+                "      note  %d dark slot(s) (active, cannot broadcast this signal: noise "
+                "probes under --probe-dark): %s" % (len(dark), dark)
+            )
         if dead:
             print(
                 "      WARN  %d dead slot(s) (configured, no active satellite): %s"
