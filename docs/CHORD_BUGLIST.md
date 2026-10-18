@@ -186,7 +186,7 @@ stage. The gather still runs the previous inode (00d51e99b6e4) until its own res
 (search-vs-tracker per PRN vs Doppler, SEARCH-MONITOR gal_e5a, the b_sat fit) follows once the joint state has
 re-established.
 
-### #208 — wall time sits in the radiometric path: the ephemeris is evaluated at `now_w` and labelled `t_eph_age = now_w - utc0_sample0` (2026-10-18, design, KV: nothing radiometric may depend on wall time)
+### #208 — wall time sits in the radiometric path: the ephemeris is evaluated at `now_w` and labelled `t_eph_age = now_w - utc0_sample0` (2026-10-18, design, KV: nothing radiometric may depend on wall time; FIXED 10-18 23:05Z, lands at the next broker restart)
 **What [tree]:** deadreckon.py:2224-2292 runs `predict_all` at the wall clock `now_w` and stamps the rows'
 capture-age epoch as `now_w - utc0_sample0`; `cp_predicted` then propagates range at `range_rate` from that wall-derived
 epoch to hop-axis epochs (`ref_hop / hops_per_sec` for detections, `rec_hop / hops_per_sec` for records). The comment
@@ -199,7 +199,21 @@ at the hop-derived now (the fe-axis newest hop / hops_per_sec, converted to GPST
 `t_eph_age` to that hop time; keep wall time only for elapsed-time bookkeeping. A few lines in stage_dead_reckon +
 the selftest that pins "no wall time in cp_predicted's inputs" (grep-based, like test_gauge_churn). Needs a broker
 restart.
-
+**23:05Z FIXED (KV: "fix outright now"):** `dr_eph_epoch(ctx)` in gnss_broker/deadreckon.py returns the epoch as
+(t_eph_age, UTC seconds) = (t_now_abs, utc0_sample0 + t_now_abs): the hop-axis now of the cycle (under
+`dr-fengine-axis: 1`, live on every chain, t_now_abs is the F-engine hop counter interpolated by wall ELAPSED seconds
+only) placed on UTC through utc0_sample0, the F-engine's own time of sample 0. All seven model evaluations in the
+dead-reckon block (predict_all x3, predict_from_decoders x3, transit_sky) and `decoded_entries` now take that epoch,
+and `t_eph_age` is its label, so the evaluation and the label share one t and the gather/serve lag the hop axis trails
+the sky by cancels in cp_predicted's range_rate carry (the old form evaluated at now_w and labelled now_w -
+utc0_sample0: self-consistent only to NTP, and a different clock from every hop-axis label by exactly the lag).
+Without the axis flag the two forms coincide. Selftest (gnss_broker/selftest.py, 3 checks): the epoch equals
+utc0_sample0 + t_now_abs and is labelled t_now_abs; a 1-day wall-clock step does not move it; a source grep finds no
+`fromtimestamp(ctx.drp.now_w` left in deadreckon.py. test_drift_freeze/axis_freeze/clockguard/timebase/dr_reload/
+seed_bias pass. **Lands at the next broker restart** (KV; no hurry: the 22:53Z restart for #207 is settling, and this
+changes the seed epoch by the ~100 ms telemetry lag x range rate, up to ~0.3 chip, so expect a one-time seed re-base
+per satellite). Residual wall-time uses in the broker are elapsed-time ages, gates and monitors (drift x (now_w -
+clk_t), coast ages, log cadences), not radiometric epochs; the WALL-vs-F-ENGINE tripwire stays as a host-clock alarm.
 
 ### #206 — viewer: L2OC's dark probes grey out satellites that L3OC holds, and the not-transmitted table is GPS-only (2026-10-18)
 **What [live 13:05Z]:** glo_l2oc runs with `--probe-dark`, so its three noise probes are GLONASS-M satellites above the

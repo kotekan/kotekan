@@ -866,8 +866,8 @@ def main(argv=None, rx=None, publisher=None):
         """Physical code phase (chips) of the predicted signal at capture age
         t_abs, excluding the receiver clock. The range is carried linearly
         (range_rate) from the epoch the ephemeris was evaluated at
-        (_drp.t_eph_age), never from t_now_abs, which under --dr-fengine-axis
-        is a different clock. The neglected range acceleration a (up to
+        (_drp.t_eph_age, the hop-axis now of that cycle: deadreckon.dr_eph_epoch),
+        never from a wall-clock reading. The neglected range acceleration a (up to
         ~0.2 m/s^2) adds 0.5*a*(t_abs - t_eph_age)^2 of range: at the peak,
         about 1 m for a detection 3 s old and 360 m for one 60 s old. All mod
         arithmetic is on small numbers (t0m is the sample-0 GPST pre-reduced
@@ -1400,7 +1400,9 @@ def main(argv=None, rx=None, publisher=None):
 
         # 2. Orbit-predicted Doppler and visibility (almanac.stage_almanac_predict)
         _ctx.pred = {}  # prn -> (doppler_hz, rate_hz_s, elev_deg, ...) [sign-applied]
-        _ctx.pred_dark = {}  # the same rows for capability-excluded satellites (--probe-dark)
+        _ctx.pred_dark = (
+            {}
+        )  # the same rows for capability-excluded satellites (--probe-dark)
         # Stale-bias rescue (bias_stale_s): a solved bias unmeasured that long widens the search
         # margins until re-solved. If it latched away from truth, the narrow hints it centres
         # would prevent the measurements that fix it. The held value still centres the wide
@@ -1746,7 +1748,11 @@ def main(argv=None, rx=None, publisher=None):
                 if p not in seeds:
                     _log(
                         "noise probe PRN %d seeded (elev %.0f%s)"
-                        % (p, _pp[2], "" if p in _ctx.pred else ", dark: not on this signal")
+                        % (
+                            p,
+                            _pp[2],
+                            "" if p in _ctx.pred else ", dark: not on this signal",
+                        )
                     )
                 seeds[p] = Seed.born(
                     "probe",

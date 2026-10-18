@@ -39,6 +39,34 @@ check("cycle clock frozen in LIVE mode", _a == _b, "%.6f vs %.6f" % (_a, _b))
 transport._TR.tick()
 check("tick() advances it", transport._now() > _a)
 
+# -- #208: the ephemeris epoch is the hop axis, never a wall-clock reading --------------------
+# dr_eph_epoch must place the model at utc0_sample0 + t_now_abs and label it t_now_abs, and a
+# wall-clock step must not move it. The source grep keeps the next wall-time evaluation out of
+# deadreckon.py (every model there goes through this one function).
+import inspect as _insp  # noqa: E402
+import re as _re  # noqa: E402
+import types as _types  # noqa: E402
+
+from gnss_broker import deadreckon as _dr  # noqa: E402
+
+_ec = _types.SimpleNamespace(
+    utc0_sample0=1.7e9, drp=_types.SimpleNamespace(t_now_abs=1234.5, now_w=9.9e9)
+)
+_eage, _ew = _dr.dr_eph_epoch(_ec)
+check(
+    "eph epoch = hop axis (t_now_abs), labelled as such",
+    _eage == 1234.5 and abs(_ew - (1.7e9 + 1234.5)) < 1e-6,
+    "age %.3f utc %.3f" % (_eage, _ew),
+)
+_ec.drp.now_w += 86400.0
+check("eph epoch ignores a wall-clock step", _dr.dr_eph_epoch(_ec) == (_eage, _ew))
+_wall = _re.findall(r"fromtimestamp\(\s*ctx\.drp\.now_w", _insp.getsource(_dr))
+check(
+    "deadreckon evaluates no model at wall time",
+    not _wall,
+    "%d fromtimestamp(ctx.drp.now_w) call(s)" % len(_wall),
+)
+
 _other = {}
 
 

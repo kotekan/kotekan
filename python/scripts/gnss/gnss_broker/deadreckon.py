@@ -1297,9 +1297,9 @@ def dr_seed(ctx):
     stage_dead_reckon withholds seeding on the prime (drp.hold).
 
     Every term must name its epoch. The phase and its ref_hop label are built at the forecast epoch
-    t_fc_abs, while the ephemeris was evaluated at wall time and cp_predicted propagates range from
-    that epoch (t_eph_age); mixing the F-engine axis with wall time puts a per-satellite error of
-    range rate x lag into the seed.
+    t_fc_abs, the ephemeris at the hop-axis now of the cycle (t_eph_age, dr_eph_epoch), and
+    cp_predicted propagates range from that epoch; mixing the F-engine axis with wall time puts a
+    per-satellite error of range rate x lag into the seed.
 
     A re-birth re-bases the seed while the C++ fleet trim still carries chips accumulated against
     the old seed, so the tap moves and the trim rebuilds; birth_steps lets D3 attribute the
@@ -1818,6 +1818,20 @@ def _dr_apply_reload(ctx, res):
     )
 
 
+def dr_eph_epoch(ctx):
+    """The epoch the ephemeris is evaluated at, as (t_eph_age, UTC seconds): the hop-axis "now"
+    (drp.t_now_abs, which under --dr-fengine-axis is the F-engine hop counter interpolated by
+    wall ELAPSED seconds only) placed on UTC through utc0_sample0, the F-engine's own time of
+    sample 0. No wall-clock reading enters a radiometric number (#208). cp_predicted carries the
+    range from this epoch to a measurement's own hop with range_rate, and the label and the
+    evaluation share one t, so the gather/serve lag the hop axis trails the sky by cancels; the
+    wall-based form this replaced evaluated at now_w and labelled now_w - utc0_sample0, which
+    under --dr-fengine-axis is a different clock from every label by exactly that lag. Without
+    --dr-fengine-axis t_now_abs is now_w - utc0_sample0 and the two forms agree."""
+    t_age = ctx.drp.t_now_abs
+    return t_age, ctx.utc0_sample0 + t_age
+
+
 def _det_offset(ctx, prn, det):
     """One detection -> (d_i, cp_loc, t_i): the receiver-clock offset the solve takes the
     circular median of, the physical code phase it was built from, and the detection's time.
@@ -2079,16 +2093,12 @@ def stage_dead_reckon(ctx):
                     )
                 )
                 ctx.drp.t_fc_abs = _fch / ctx.args.hops_per_sec
-            # The orbit is evaluated at wall time (predict_all / predict_from_decoders at now_w),
-            # never on the F-engine axis. It is the one consumer here that needs absolute UTC to be
-            # true rather than self-consistent, but the observable F-engine "now" is the newest
-            # telemetry pow_hop, which trails the sky by the gather/serve latency (~100 ms, tens of
-            # ms of jitter). On that axis the orbit epoch would trade ~1.5 ms of NTP error for
-            # ~100 ms of lag: chips of seed error at L5, scaling with range rate. The axis suits
-            # labels (a label and its phase share a t and the tracker propagates from the label, so
-            # the staleness cancels), not an epoch, where the staleness is the error. Below, the two
-            # axes are compared as a tripwire (log only): a wall-clock step would move every model
-            # seed on every chain at once.
+            # The orbit is evaluated on the same axis (dr_eph_epoch: predict_all at utc0_sample0 +
+            # t_now_abs, labelled t_eph_age = t_now_abs). The hop axis is GPS-true through
+            # utc0_sample0 and trails the sky only by the gather/serve lag, which is a label and
+            # cancels because cp_predicted propagates from the label. Below, the two axes are
+            # compared as a tripwire (log only): a wall-clock step changes nothing radiometric now,
+            # but it is still the first sign of a host clock problem.
             if ctx.fe_axis[0] is not None and ctx.utc0_sample0:
                 # Unpacked here: the axis block above runs only under --dr-fengine-axis, and this
                 # tripwire runs either way.
@@ -2193,26 +2203,29 @@ def stage_dead_reckon(ctx):
             ctx.drp.drift = ctx.dr_state.get("drift")
             if ctx.drp.drift is None:
                 ctx.drp.drift = ctx.args.chip_rate_hz * ctx.drp.la
+            # The hop-axis epoch (#208): every model below is evaluated at _ep_w and labelled
+            # _ep_age; nothing here reads the wall clock.
+            _ep_age, _ep_w = dr_eph_epoch(ctx)
             try:
-                # Three epochs, now_w and now_w +- 2 s: the centred range-rate difference is the
+                # Three epochs, _ep_w and _ep_w +- 2 s: the centred range-rate difference is the
                 # Doppler rate dr_seed ships (the TLE almanac's rate is not used here).
                 if _use_decoded:
-                    _ents = ctx.decoded_entries(ctx.drp.now_w)
+                    _ents = ctx.decoded_entries(_ep_w)
                     ctx.drp.pd = ctx.decfb.predict_from_decoders(
                         _ents,
                         ctx.args.lat,
                         ctx.args.lon,
                         ctx.args.alt,
-                        datetime.fromtimestamp(ctx.drp.now_w, tz=timezone.utc),
+                        datetime.fromtimestamp(_ep_w, tz=timezone.utc),
                         mask_deg=-90.0,
                     )
-                    # Centred pair, +-2 s about now_w, as in the BRDC branch.
+                    # Centred pair, +-2 s about the epoch, as in the BRDC branch.
                     ctx.drp.pd2 = ctx.decfb.predict_from_decoders(
                         _ents,
                         ctx.args.lat,
                         ctx.args.lon,
                         ctx.args.alt,
-                        datetime.fromtimestamp(ctx.drp.now_w + 2.0, tz=timezone.utc),
+                        datetime.fromtimestamp(_ep_w + 2.0, tz=timezone.utc),
                         mask_deg=-90.0,
                     )
                     pd0 = ctx.decfb.predict_from_decoders(
@@ -2220,7 +2233,7 @@ def stage_dead_reckon(ctx):
                         ctx.args.lat,
                         ctx.args.lon,
                         ctx.args.alt,
-                        datetime.fromtimestamp(ctx.drp.now_w - 2.0, tz=timezone.utc),
+                        datetime.fromtimestamp(_ep_w - 2.0, tz=timezone.utc),
                         mask_deg=-90.0,
                     )
                     if _now() - ctx.decfb_log_t[0] > 60.0:
@@ -2240,12 +2253,12 @@ def stage_dead_reckon(ctx):
                         ctx.args.lat,
                         ctx.args.lon,
                         ctx.args.alt,
-                        datetime.fromtimestamp(ctx.drp.now_w, tz=timezone.utc),
+                        datetime.fromtimestamp(_ep_w, tz=timezone.utc),
                         mask_deg=-90.0,
                         signal=ctx.args.signal,
                         dcb=ctx.dr_state.get("dcb"),
                     )
-                    # Centred pair, +-2 s about now_w: a forward difference over [now, now+4] would
+                    # Centred pair, +-2 s about the epoch: a forward difference over [t, t+4] would
                     # estimate the rate at now+2 and hand it to the seed as the rate at now, and the
                     # centred form has the smaller truncation error.
                     ctx.drp.pd2 = ctx.dr_eph_mod.predict_all(
@@ -2253,7 +2266,7 @@ def stage_dead_reckon(ctx):
                         ctx.args.lat,
                         ctx.args.lon,
                         ctx.args.alt,
-                        datetime.fromtimestamp(ctx.drp.now_w + 2.0, tz=timezone.utc),
+                        datetime.fromtimestamp(_ep_w + 2.0, tz=timezone.utc),
                         mask_deg=-90.0,
                         signal=ctx.args.signal,
                         dcb=ctx.dr_state.get("dcb"),
@@ -2263,7 +2276,7 @@ def stage_dead_reckon(ctx):
                         ctx.args.lat,
                         ctx.args.lon,
                         ctx.args.alt,
-                        datetime.fromtimestamp(ctx.drp.now_w - 2.0, tz=timezone.utc),
+                        datetime.fromtimestamp(_ep_w - 2.0, tz=timezone.utc),
                         mask_deg=-90.0,
                         signal=ctx.args.signal,
                         dcb=ctx.dr_state.get("dcb"),
@@ -2282,7 +2295,7 @@ def stage_dead_reckon(ctx):
                         ctx.args.lat,
                         ctx.args.lon,
                         ctx.args.alt,
-                        datetime.fromtimestamp(ctx.drp.now_w, tz=timezone.utc),
+                        datetime.fromtimestamp(_ep_w, tz=timezone.utc),
                     )
                     ctx.dr_state["transit_pd"] = ctx.drp.transit_pd
             except Exception as e:
@@ -2297,13 +2310,11 @@ def stage_dead_reckon(ctx):
                 ctx.dr_state["pd"], ctx.dr_state["pd2"] = ctx.drp.pd, ctx.drp.pd2
                 ctx.dr_state["pd0"] = pd0
 
-            # The ephemeris's own epoch, in capture age: predict_all ran at now_w (wall), so its
-            # rows hold at now_w - utc0_sample0. That is t_now_abs on the wall axis, but under
-            # --dr-fengine-axis t_now_abs trails wall by the residual telemetry lag. cp_predicted
-            # propagates range from this epoch: propagating from t_now_abs would misplace each
-            # satellite by range_rate x lag, a per-satellite error proportional to Doppler of which
-            # the clock solve absorbs only the common part.
-            ctx.drp.t_eph_age = ctx.drp.now_w - ctx.utc0_sample0
+            # The ephemeris's own epoch, in capture age: the hop-axis now the models above were
+            # evaluated at (dr_eph_epoch). cp_predicted propagates range from here, so the label
+            # and the evaluation must be one t: a wall label on a hop-axis evaluation (or the
+            # reverse, as before #208) misplaces each satellite by range_rate x the axes' offset.
+            ctx.drp.t_eph_age = _ep_age
 
             # Receiver-clock offsets and integrity residuals: the physical code phase at each
             # detection's hop (the sample-0 back-reference undone), minus the model, normalized to
