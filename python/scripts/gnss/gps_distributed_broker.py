@@ -714,7 +714,9 @@ def main(argv=None, rx=None, publisher=None):
                         % (
                             dr_state["clk"],
                             dr_state["clk"] / args.chip_rate_hz * 1e6,
-                            "REPLACED outright by the first multi-sat solve"
+                            "REPLACED outright by the first multi-sat solve; under "
+                            "--detectors-monitor none runs, and it stands until "
+                            "--dr-clock-adopt replaces it"
                             if detectors
                             else "no detectors: this value stands until another chain "
                             "contributes one (--dr-clock-adopt: same band first, else a "

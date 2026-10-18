@@ -533,7 +533,7 @@ def test_coast_on_refusal():
     )
     # A state not fit to consume (thin: 3 sats under joint_min_sats 4) coasts on the same
     # stamps inside the same window and bound, and says why in its own line.
-    for n, why in ((3, "3 sats < 4"), (None, "absent or deaf")):
+    for n, why in ((3, "3 sats < 4"), (None, "absent, deaf or under joint_min_sats")):
         js = _FakeJoint(160.2, 0.047, n=n or 1, clk_rate=0.5)
         rx = Receiver(log=lambda m: None)
         rx._joint["__receiver__"] = js

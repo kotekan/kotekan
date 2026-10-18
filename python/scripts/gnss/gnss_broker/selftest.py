@@ -807,7 +807,7 @@ _j3 = _rx3.joint_receiver(
 _j3.cycle([(k, 150.2 + b + _rnd.gauss(0, 0.3), 0.3) for k, b in _TB.items()], 2.0)
 _clk3 = _j3.clk
 check(
-    "joint_receiver converts a second constellation's period to reference chips",
+    "joint_receiver converts another chip rate's code period to reference chips",
     _rx3.joint_receiver("1278.75MHz", 5115.0, 5.115e6, gauge_mode="prior") is _j3
     and _rx3.joint_receiver("1227.60MHz", 10230.0, 0.5115e6, gauge_mode="prior") is _j3
     and _j3.L == 10230.0

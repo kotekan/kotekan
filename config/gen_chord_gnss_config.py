@@ -2696,11 +2696,14 @@ def main():
         action="append",
         metavar="SIGNAL[:PRNS]",
         default=None,
-        help="emit another GnssChannelizedSearch in the aggregator instance for SIGNAL (a "
-        "gnssSignal.hpp primary that shares the primary's carrier, e.g. GAL_E5A_Q) on the "
-        "same merged comb; PRNS defaults to the constellation's broadcast range (Galileo "
-        "1-36). The stage is named <tag>_search (e5a_search), the URL a broker chain's "
-        "`detectors:` points at. #191 step 1: an E5a search beside the L5 one.",
+        help="with --aggregator-instance, add a GnssChannelizedSearch for SIGNAL beside the "
+        "primary's, on the same merged comb and cores. SIGNAL is a gnssSignal.hpp "
+        "descriptor name whose carrier is the primary's (e.g. GAL_E5A_Q beside GPS L5). "
+        "Repeatable. PRNS is a comma list; without it the search scans the constellation's "
+        "broadcast PRN range by name prefix (GPS 1-32, GAL 1-36, BDS 19-63, GLO 1-24), and "
+        "any other prefix needs PRNS. The stage is named <tag>_search (GAL_E5A_Q -> "
+        "e5a_search), the endpoint a broker chain's --detectors names; like every search "
+        "it scans only the PRNs a broker hints (that chain's --narrow-search).",
     )
     ap.add_argument(
         "--cuda-acquire",
@@ -2835,12 +2838,14 @@ def main():
             f"# nodes {' '.join(args.aggregator_instance)}  signal {sig['primary']}  "
             f"rest port {port}\n"
             f"# union comb: {len(union_ids)} channels {min(union_ids)}..{max(union_ids)}\n"
-            "# The off-node acquisition search: one search over the union of these nodes'\n"
-            "# combs, aligned on the F-engine's global sample counter. Feed i (node-major,\n"
-            "# GPU-minor, in the order above) listens on --search-port-base + i, so the order\n"
-            "# must match each node's search-port-base in config/gnss_fleet_chord.yaml.\n"
-            "# Regenerate with --aggregator-instance and these nodes in this order\n"
-            "# (scripts/gnss/site/stack_components.sh has the command).\n"
+            "# The off-node acquisition search: one search of the signal above, plus one\n"
+            "# per --aggregator-extra-search, over the union of these nodes' combs, aligned\n"
+            "# on the F-engine's global sample counter. Feed i (node-major, GPU-minor, in\n"
+            "# the order above) listens on --search-port-base + i, so the order must match\n"
+            "# each node's search-port-base in config/gnss_fleet_chord.yaml.\n"
+            "# Regenerate with --aggregator-instance, these nodes in this order and the same\n"
+            "# --aggregator-extra-search flags (scripts/gnss/site/stack_components.sh has\n"
+            "# the command).\n"
             + yaml.safe_dump(out, default_flow_style=False, sort_keys=True)
         )
         if args.out:

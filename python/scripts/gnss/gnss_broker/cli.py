@@ -611,7 +611,8 @@ def build_parser(description):
         help="detection endpoints: a comma list of search or aggregator stage names "
         "(resolved on --rest-url), absolute URLs and {a..b} ranges, e.g. aggregate or "
         "search_{00..49}. Each cycle the broker GETs /get_detections from every one "
-        "and keeps the best-SNR detection per PRN; the --narrow-search and --nh-hint "
+        "and keeps the best-SNR detection per PRN (under --detectors-monitor only for "
+        "the SEARCH-MONITOR log); the --narrow-search and --nh-hint "
         "hints and the --prn-reconfig map are posted to them. Empty = no search: with "
         "--almanac --dead-reckon every visible satellite is seeded from the BRDC "
         "model, on a receiver clock adopted from another chain (--dr-clock-adopt) or "
@@ -620,12 +621,22 @@ def build_parser(description):
     ap.add_argument(
         "--detectors-monitor",
         action="store_true",
-        help="poll --detectors for the record only: the per-satellite offsets and their "
-        "circular median are logged (SEARCH-MONITOR) against the joint clock, and nothing "
-        "else sees the detections (no seeds, holds, escape, deep gate, clock solve or joint "
-        "feed); Doppler and nh hints are still posted so the search runs. The chain stays "
-        "model-primary. #191 step 1: a search on a chain's primary beside its tracker, to "
-        "say whether the signal or the tracker path owns the chain's standing offset.",
+        help="poll --detectors for the record only. Each detection that passes "
+        "--acquire-snr becomes a receiver-clock offset as in the clock solve, and the "
+        "offsets and their circular median are logged against the joint clock "
+        "(SEARCH-MONITOR, every 10 s, with a 5-minute median every 60 s); then the "
+        "detections are withheld, so no seed, hold, escape, deep gate, clock or "
+        "clock-frequency-bias solve, or joint feed sees them. With --narrow-search the "
+        "Doppler hints are still posted, and the search scans only hinted PRNs; with no "
+        "bias solve the hints keep the --search-margin-wide-hz margin. Their nh "
+        "alignments reach --nh-hint, but it learns only while this chain's own solve is "
+        "established or unjudged, so nothing once the chain holds a clock and a drift "
+        "(an adopted clock carries its donor's drift). Seeding "
+        "runs as on a chain without --detectors, except that a locked satellite keeps a "
+        "search-fed chain's plain hold instead of the slewed refresh. Needs "
+        "--dead-reckon. For a search on this chain's own signal beside its tracker: "
+        "it tells whether a standing code offset is in the signal or in the tracker "
+        "path.",
     )
     ap.add_argument(
         "--trackers",
@@ -769,9 +780,9 @@ def build_parser(description):
         "--narrow-search",
         action="store_true",
         help="each cycle, post every up, capable PRN's predicted Doppler plus the "
-        "solved clock-frequency bias to the detectors' /set_doppler_hints, so the "
-        "search scans the hint +- a margin instead of its blind grid, which makes "
-        "acquisition far cheaper. The margin is --search-margin-hz once the bias is "
+        "solved clock-frequency bias to the detectors' /set_doppler_hints. The search "
+        "scans only PRNs with a fresh hint, each over the hint +- a margin, so a search "
+        "no chain hints scans nothing. The margin is --search-margin-hz once the bias is "
         "solved and fresh, --search-margin-wide-hz before that and while it is stale. "
         "Needs --almanac.",
     )
@@ -793,7 +804,8 @@ def build_parser(description):
         "--dr-clock-adopt",
         action="store_true",
         help="on a cycle with no code-phase offsets of its own to solve the receiver "
-        "clock from (no detections), adopt the clock another chain in this process "
+        "clock from (no detections, or only the ones --detectors-monitor withholds), "
+        "adopt the clock another chain in this process "
         "contributes to the shared Receiver: a same-band chain's first, else any "
         "band's as a bootstrap, converted as a time through the two chip rates. "
         "Without it such a chain holds the --dr-clock-chips prime for the whole run. "
@@ -1066,11 +1078,15 @@ def build_parser(description):
         "(docs/CHORD_JOINT_TRACKING.md): its detections' dead-reckon integrity "
         "residuals feed one [clk, clk_rate, b_sat[i]] state shared by every chain of "
         "the receiver. Each consumer refuses a state with fewer than joint_min_sats "
-        "satellites and then keeps its own estimate (the joint_* bounds are constants "
-        "in cli.py _FROZEN). Names: 'clk' (each cycle, move the dead-reckon clock onto "
-        "the joint clock as a wrapped delta; refused beyond joint_clk_max_chips or "
-        "joint_clk_max_sigma, and a step beyond joint_clk_max_step_chips waits until "
-        "it has held for joint_clk_step_hold_s; logged as JOINT-CLK); 'rate' (seed the "
+        "satellites and then keeps its own estimate, except that 'clk' may coast (the "
+        "joint_* bounds are constants in cli.py _FROZEN, their chips 10.23-Mcps "
+        "reference chips on every chain). Names: 'clk' (each dead-reckon pass, move the "
+        "dead-reckon clock onto the joint clock as a wrapped delta; refused beyond "
+        "joint_clk_max_chips or joint_clk_max_sigma, on a whole-period disagreement "
+        "with another chain's clock-mod-epoch record, and while a step beyond "
+        "joint_clk_max_step_chips has held for less than joint_clk_step_hold_s; a "
+        "refusal within --joint-clk-coast-max-s of the last adoption coasts on that "
+        "adoption; logged as JOINT-CLK); 'rate' (seed the "
         "code-rate clock from clk_rate instead of the l-a EMA, refused beyond "
         "joint_max_rate_ppm); 'slew' (dead-reckon seed offsets take the joint clk + "
         "b_sat instead of the clock plus SatBiasFilter, refused per satellite beyond "
@@ -1080,13 +1096,19 @@ def build_parser(description):
         "--joint-clk-coast-max-s",
         type=float,
         default=300.0,
-        help="'clk' consumer: a joint clock the bounds, the step guard or the "
-        "clock-period check refuse is COASTED, not dropped, when this chain "
-        "adopted it within the last N s: the seeds ride the last adopted joint "
-        "clock carried forward at the joint state's clk_rate (deadreckon."
-        "dr_joint_clk), never the legacy median. The coast ages (no stamp is "
-        "refreshed), so past N s a refusal is a plain REFUSED on the legacy "
-        "clock and the cross-band bootstrap can re-arm. 0 disables the coast.",
+        help="'clk' consumer (--joint-consume): seconds after this chain's last "
+        "joint-clock adoption during which a refused joint clock is coasted on instead "
+        "of falling back to the dead-reckon (legacy) clock. "
+        "The refusal may come from the bounds, the step guard or the clock-period "
+        "check, or from a state unfit to consume (fewer than joint_min_sats "
+        "satellites, or deaf). The coast puts the clock on the last adopted joint clock carried "
+        "forward at the clk_rate stamped at that adoption (deadreckon."
+        "dr_joint_clk), and is declined "
+        "when that extrapolation exceeds joint_clk_max_chips; logged as JOINT-CLK "
+        "... COAST. A coast restamps nothing, so it ages: past the window a refusal "
+        "is a plain REFUSED on the legacy clock, the local clock goes stale and the "
+        "cross-band bootstrap can re-arm. 0 disables the coast. Default "
+        "%(default)s.",
     )
     ap.add_argument(
         "--rrate-state",
@@ -1581,8 +1603,9 @@ def build_parser(description):
         "chain without a search seeds nothing until a prime or an adopted clock "
         "(--dr-clock-adopt) gives it one. With a GPS-disciplined F-engine the offset "
         "is known a priori (0 plus a fixed instrumental and cable delay), so 0.0 is "
-        "the starting value. A prime is a seed, not a measurement: a chain with "
-        "detections replaces it outright with its first multi-satellite solve; one "
+        "the starting value. A prime is a seed, not a measurement: a chain whose "
+        "detections reach the solve (not under --detectors-monitor) replaces it "
+        "outright with its first multi-satellite solve; one "
         "without keeps it until it adopts a sibling chain's clock, or for the whole "
         "run without --dr-clock-adopt. Dead-reckon seeding waits up to "
         "dr_clock_wait_s (cli.py _FROZEN) for that replacement. Unset (default) = no "

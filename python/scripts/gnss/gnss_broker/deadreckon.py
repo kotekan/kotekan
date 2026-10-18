@@ -1122,7 +1122,7 @@ def dr_joint_clk(ctx):
                 "(%+.3f joint chips over %.0f s at clk_rate %+.4f joint chips/s)"
                 % (
                     ctx.drp.clk_now,
-                    "absent or deaf"
+                    "absent, deaf or under joint_min_sats"
                     if _jrC is None
                     else "%d sats < %d" % (len(_jrC._idx), ctx.args.joint_min_sats),
                     _c0[1],
