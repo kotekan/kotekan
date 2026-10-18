@@ -405,7 +405,28 @@ its detectors for the record only: `stage_dead_reckon` builds the offsets exactl
 median) while `best` is emptied before any seed, hold, escape, deep gate, clock solve or joint feed sees it;
 gal_e5a carries `detectors: http://localhost:12050/e5a_search` + `detectors-monitor: true` + `narrow-search: true`
 (config/gnss_chains_chord.yaml; the first run without narrow-search left e5a_search with "0/36 PRNs hinted" for ten
-minutes: the hints are the only thing the search scans). Test: gnss_broker/test_searchmonitor.py. **To run (KV):** add the flag to the
+minutes: the hints are the only thing the search scans).
+**Step 1(a) RESULT, 10-18 18:37-18:50Z [live]:** the E5a search (11 Galileo PRNs, snr 20-600) measured against the
+model and the GPS-fed joint clock: **search - joint = +0.49 chip median (+14.3 m) over 91 cycles, p10/p90 +0.37/+0.64**
+(5-min medians +0.45/+0.46/+0.49), while gal_e5a's standing trims read +0.36 median (10-12: +0.39, obs +11.8 m).
+Search = tracker: the Galileo signal arrives ~0.45 chip (40 ns) later than our model + our E5a replica place it, and
+the tracker merely follows. **The tracker path is exonerated**; the offset is in the signal as our comb and code
+tables see it against the model. Per PRN the search is noisy (MAD 0.15-0.33 chip; E04 +0.07, E10 +0.62, E12 +0.73,
+E29 +0.69) and tracks the trims only loosely, so the chain median is the number. Caveats: (i) GPS L5 is the DATUM
+(the joint clock is its search), so "+12 m on Galileo" and "-12 m on GPS L5 with Galileo right" are the same
+observation; B2a at +0.3 m against the station reference argues for Galileo being the odd one, B3I (-12.6) and L2C
+(-6.8) say every signal needs its own check. (ii) The station test (six IGS receivers, our model) clears the
+ephemeris/clock/group-delay model to ~2 m, so what is left is the replica bank's placement of each signal's code
+against the sky, a convention shared by the search and the tracker (both build from the bank) and invisible to the
+e2e harness (its sky is the same bank). **Next:** a bench test with an INDEPENDENT reference: generate E5a-Q, L5-Q,
+B2a-P and B3I from the ICD code definitions outside the bank (chip-0 at the code epoch, plain BPSK at the sample rate),
+run them through the e2e harness and read where the bank's prompt sits per signal; 0.45 chip on E5a and 0 on L5 names
+the bank, equal placements name the model's time datum (then (c): a model-seeded L5 beside the search-anchored one).
+Side watch: E33 (the deep-gated PRN, setting, cn0 48-61 dB-Hz) walked +0.45 -> +1.15 -> the 3.0 clamp at
+18:26-18:30Z and oscillates +0.8..+2.1 since while the search holds it at +0.84: a loose loop on a strong signal at
+el 15-22 deg, the #201 class on a BPSK chain. The experiment stays live (costs: e5a_search on the aggregator GPU,
+nothing on the broker's seeds).
+ Test: gnss_broker/test_searchmonitor.py. **To run (KV):** add the flag to the
 stack's aggregator regen (the invocation in scripts/gnss/site/stack_components.sh), restart gnss-aggregator, then
 gnss-broker; read `SEARCH-MONITOR gal_e5a` in broker.log. **Read:** search - joint ~ +0.4 chip (+12 m, the standing
 trim) says the signal sits where the tracker found it (the code table or the sky); ~0 says the tracker path.
