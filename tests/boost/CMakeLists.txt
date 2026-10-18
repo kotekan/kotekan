@@ -86,6 +86,7 @@ if(FFTW_FOUND)
         ../../lib/stages/gnss/gnssChannelizedReplica.cpp
         ../../lib/stages/gnss/gnssBandPlan.cpp
         ../../lib/stages/gnss/gnssChannelizedDespread.cpp
+        ../../lib/stages/gnss/gnssSeedTransport.cpp # detection_phase (CPU only without GNSS_CUDA)
         ../../lib/stages/gnss/gpsL2CCode.cpp
         ../../lib/stages/gnss/gpsL5Code.cpp
         ../../lib/stages/gnss/gpsL1CCode.cpp # replica signal_code() dispatches GPS_L1C_P

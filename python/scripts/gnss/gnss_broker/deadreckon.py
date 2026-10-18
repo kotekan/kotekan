@@ -1041,7 +1041,11 @@ def _joint_coast(ctx, ds, jrate, jlen):
     exactly as an adoption is (Receiver.joint_clk_delta)."""
     if not (ctx.args.joint_clk_coast_max_s > 0.0):
         return None
-    last, t_last, rate = ds.get("jclk_last"), ds.get("jclk_last_t"), ds.get("jclk_last_rate")
+    last, t_last, rate = (
+        ds.get("jclk_last"),
+        ds.get("jclk_last_t"),
+        ds.get("jclk_last_rate"),
+    )
     if last is None or t_last is None or rate is None:
         return None
     age = ctx.t0 - t_last
@@ -1051,7 +1055,12 @@ def _joint_coast(ctx, ds, jrate, jlen):
     if abs(ext) > ctx.args.joint_clk_max_chips:
         return None
     delta = ctx.rx.joint_clk_delta(
-        (last + ext) % jlen, jrate, jlen, ctx.drp.clk_now, ctx.args.chip_rate_hz, ctx.code_len
+        (last + ext) % jlen,
+        jrate,
+        jlen,
+        ctx.drp.clk_now,
+        ctx.args.chip_rate_hz,
+        ctx.code_len,
     )[0]
     return delta, ext, age, rate
 
@@ -1223,7 +1232,8 @@ def dr_joint_clk(ctx):
             if abs(_jext0) > ctx.args.joint_clk_max_chips:
                 _jdecl = (
                     "; coast declined: %+.1f joint chips of extrapolation over %.0f s is "
-                    "past the %.1f-chip bound" % (_jext0, _jage0, ctx.args.joint_clk_max_chips)
+                    "past the %.1f-chip bound"
+                    % (_jext0, _jage0, ctx.args.joint_clk_max_chips)
                 )
     if _jokC:
         _why = None
@@ -1815,10 +1825,12 @@ def _det_offset(ctx, prn, det):
     The search's sample-0 back-reference subtracts both the nominal code advance and the
     code-Doppler drift; add both back. Without the nominal term, detections from different
     scans scatter by their ref_hop's place in the code period. The solve uses this
-    reconstruction, not the detection's cp_at_ref: that is referenced at the hop's last sample
-    and carries the replica anchor's Doppler term, so using it would import the search's
-    fft_len and anchor geometry. The (cp0, dop) pair is published together and its Doppler
-    embed cancels exactly here. The offset is normalized to t_now_abs at the drift."""
+    reconstruction, not the detection's cp_at_ref: that is referenced at the hop's LAST
+    sample, so using it would import the search's fft_len. The (cp0, dop) pair is published
+    together and its Doppler embed cancels exactly here -- provided the search removed its
+    replica anchor's advance from cp0; until 2026-10-18 it did not (gnss::detection_phase,
+    #207), and every offset here carried range_rate x 16 ms. The offset is normalized to
+    t_now_abs at the drift."""
     _snr, dop, cp, ref_hop, _nh, _cpl, _car = det
     v = ctx.drp.pd[(ctx.drp.tag, prn)]
     t_i = ref_hop / ctx.args.hops_per_sec
@@ -1839,7 +1851,9 @@ def circular_median(offs, code_len):
     first, take the median, rotate back. dr_clock_solve's own arithmetic, for a caller that
     wants the number without the solve's state."""
     ref = offs[0][1]
-    cen = sorted(((d - ref + code_len / 2.0) % code_len) - code_len / 2.0 for _, d in offs)
+    cen = sorted(
+        ((d - ref + code_len / 2.0) % code_len) - code_len / 2.0 for _, d in offs
+    )
     med = cen[len(cen) // 2]
     mad = sorted(abs(c - med) for c in cen)[len(cen) // 2]
     return (med + ref) % code_len, mad
@@ -2404,7 +2418,10 @@ def stage_dead_reckon(ctx):
             if ctx.args.rrate_state or ctx.args.joint_shadow:
                 try:
                     _jsn = ctx.rx.joint_receiver(
-                        ctx.band_id, ctx.code_len, ctx.args.chip_rate_hz, gauge_mode="prior"
+                        ctx.band_id,
+                        ctx.code_len,
+                        ctx.args.chip_rate_hz,
+                        gauge_mode="prior",
                     )
                     for _n in _jsn.drain_notes():
                         _log_rl(

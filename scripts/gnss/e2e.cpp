@@ -41,6 +41,14 @@
 //
 // Build:  scripts/gnss/site/build_tool.sh e2e
 // Run:    scripts/gnss/e2e --help
+// Gate:   a --dop SWEEP at the production search parameters, never --dop 0 alone (a Doppler
+//         lever is invisible there; #207 sat behind a --dop 0 reading for months):
+//           for d in -2000 -1000 0 1000 2000; do scripts/gnss/e2e --prn 3 --dop $d \
+//             --s-stride 1 --s-nchan 79 --refine-step 103 --fine-step 128 --refine-span 512 \
+//             --refine-hops 391 --cuda-refine | grep LEG; done
+//         Every LEG ERROR line must stay within the refine step (0.33 chip at step 103) and at
+//         zero periods across the sweep. The default comb (27 channels, stride 4) aliases by
+//         4096 samples at |dop| >= 1 kHz, so a default-parameter run is judged at |dop| <= 700.
 //
 // @author Keith Vanderlinde
 // ============================================================================================
@@ -654,17 +662,39 @@ int main(int argc, char** argv) {
             const double ph_true = truth_phase_at(W0);
             const double e_ref = wrap(dp.cp_at_ref - ph_true, LL);
             // The broker's clock solve, joint feed and search monitor re-advance cp0 (the
-            // sample-0 argument) to the snapshot start at the code-Doppler rate (deadreckon
-            // _det_offset); phase_from_arg is that arithmetic. Printed beside e_ref because
-            // the two reported phases disagreed on live detections by a 16 ms Doppler lever
-            // (10-18) and the harness had only ever been read at --dop 0, where a lever is
-            // invisible.
+            // sample-0 argument) to the snapshot at the code-Doppler rate (deadreckon
+            // _det_offset); phase_from_arg is that arithmetic, at the hop's last sample as
+            // ph_true is. Printed beside e_ref because the two reported phases disagreed on
+            // live detections by a 16 ms Doppler lever (#207, 10-18): detection_phase left
+            // the replica anchor's code-Doppler advance (one replica period, 16 ms of code)
+            // on cp0, and the harness had only ever been read at --dop 0, where a lever is
+            // invisible. Always sweep --dop.
             const double ph_cp0 = sbank.phase_from_arg(dp.cp0, W0, det_dop);
             const double e_cp0 = wrap(ph_cp0 - std::fmod(ph_true, (double)sbank.code_length()),
                                       (double)sbank.code_length());
-            printf("    cp0 re-advanced to the snapshot start: %.3f  (truth mod L %.3f)  "
+            printf("    cp0 re-advanced to the snapshot: %.3f  (truth mod L %.3f)  "
                    ">>> CP0 LEG ERROR: %+.3f chips\n",
                    ph_cp0, std::fmod(ph_true, (double)sbank.code_length()), e_cp0);
+            // cp_long, the same argument at the long length (what the broker's nh_lift seed
+            // carries), re-advanced the same way but mod n_nh*L, so the period is checked too.
+            // The anchor's nominal advance, 16 periods at CHORD, is 0 mod L but 16 mod 20:
+            // before #207 this leg was 4 periods off while the mod-L legs looked fine.
+            if (dp.cp_long >= 0.0) {
+                const double cps_dd =
+                    sbank.chip_rate_hz() / o.sample_rate
+                    * (1.0 + sbank.code_doppler_sign * det_dop / sbank.carrier_hz());
+                const long double a_l = (long double)(W0 + FFT - 1) * (long double)cps_dd;
+                const long double LLl = (long double)LL;
+                double ph_long = (double)std::fmod(
+                    (long double)dp.cp_long + (a_l - std::floor(a_l / LLl) * LLl), LLl);
+                if (ph_long < 0.0)
+                    ph_long += LL;
+                const double e_long = wrap(ph_long - ph_true, LL);
+                printf(
+                    "    cp_long re-advanced to the snapshot: %.3f  (truth %.3f)  "
+                    ">>> CP_LONG LEG ERROR: %+.3f chips   (= %+.0f periods %+.3f within-period)\n",
+                    ph_long, ph_true, e_long, std::round(e_long / L), wrap(e_long, L));
+            }
 
             // Period diagnostics. The coarse lag spans a full replica period (16 primary periods
             // at L5), but `code_phase_chips` is that lag mod one period. The overlay is 20

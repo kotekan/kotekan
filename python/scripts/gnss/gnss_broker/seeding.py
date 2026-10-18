@@ -852,8 +852,8 @@ def stage_detections_to_seeds(ctx):
             (ctx.dls.readback.get(prn) or {}).get("trim_chips", 0.0)
         )
         # The detection's physical phase at its epoch, rebuilt from the (cp0, dop) pair the search
-        # published together, so no translation enters. (cp_at_ref is in the C++ last-sample
-        # convention and carries the anchor Doppler term.)
+        # published together, so no translation enters. (cp_at_ref is the same phase in the C++
+        # last-sample convention, one hop less a sample later.)
         _cpe_recon = (
             cp
             + (ref_hop / ctx.args.hops_per_sec)

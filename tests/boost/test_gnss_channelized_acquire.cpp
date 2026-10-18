@@ -4,6 +4,7 @@
 #include "gnssChannelizedAcquire.hpp"  // for channelized_accumulate, channelized_peak
 #include "gnssChannelizedDespread.hpp" // for channelized_despread (cp refine, as the stage does)
 #include "gnssChannelizedReplica.hpp"  // for ChannelizedReplicaBank (real production replica)
+#include "gnssSeedTransport.hpp"       // for detection_phase
 #include "gnssSignal.hpp"              // for signal_by_name, SignalDescriptor
 #include "gpsCACode.hpp"               // for generate_ca_code
 
@@ -580,6 +581,112 @@ BOOST_AUTO_TEST_CASE(l5_single_window_acquire_recovers) {
     BOOST_TEST_MESSAGE("L5 refined cp=" << best_cp << " (true " << true_cp << "), err " << cp_err
                                         << " chips");
     BOOST_CHECK_LT(cp_err, 1.0); // sub-chip after the refine
+}
+
+// gnss::detection_phase against the generator convention, at a snapshot far from the replica
+// anchor and at Doppler. best_cp is the argument of a replica generated at `anchor` that
+// matches the data at the snapshot start S_snap, and every generator forms
+// C(n) = arg + n*cps*(1 + s*dop/f) over the ABSOLUTE sample index, so data generated with
+// argument arg0 give
+//     best_cp = arg0 + (S_snap - anchor)*cps_d   (mod L).
+// The anchor's share of that advance is one replica period: its nominal part is 0 mod L and
+// drops out of cp0, its code-Doppler part is not, and neither is 0 mod n_nh*L. Removing the
+// advance over S_snap alone left the anchor's Doppler share on cp0 and cp_long, a Doppler
+// lever of one replica period (16 ms at CHORD) on every search-derived clock offset (#207),
+// and cp_long 16 of 20 periods off. The acquire tests above generate their data AT the anchor,
+// where none of this shows, so this one generates them 3.2 days away.
+BOOST_AUTO_TEST_CASE(detection_phase_removes_the_anchor_at_every_doppler) {
+    const gnss::SignalDescriptor* sig = gnss::signal_by_name("GPS_L5_Q");
+    BOOST_REQUIRE(sig != nullptr);
+    constexpr double FS = 20.0e6;
+    constexpr double FOFF = 5.0e6;
+    constexpr int N = 10;
+    gnss::ChannelizedReplicaBank bank(*sig, FS, FOFF, N, 4, dsp::Window::Hamming, {1});
+    const int fft_len = 2 * N;
+    const int Mp = bank.repl_period_hops();
+    const long long anchor = (long long)Mp * fft_len;
+    const double L = (double)sig->code_length;
+    const int n_nh = 20;
+    const double LL = L * n_nh;
+    const double cps = sig->chip_rate_hz / FS;
+    // 3.2 days in at 1e6 hops/s, off any replica-period boundary.
+    const long long snap_hop = 276480000000LL + 123457LL;
+    const long long S_snap = snap_hop * fft_len;
+    BOOST_REQUIRE_NE(snap_hop % Mp, 0);
+    const double arg0 = 137.0;
+    // The argument of a replica at the anchor that matches data generated with arg0 at S_snap,
+    // in long double as the generators and window_advance_chips do it (the product is ~3e12
+    // chips, where a double is good to ~5e-4 chips).
+    auto best_cp_for = [&](double dop) {
+        const double cps_d = cps * (1.0 + bank.code_doppler_sign * dop / sig->carrier_hz);
+        const long double adv = (long double)(S_snap - anchor) * (long double)cps_d;
+        long double r = (long double)arg0 + adv;
+        r -= std::floor(r / (long double)L) * (long double)L;
+        return (double)r;
+    };
+    auto wrapL = [](double x, double m) {
+        double r = std::fmod(x, m);
+        if (r > 0.5 * m)
+            r -= m;
+        if (r <= -0.5 * m)
+            r += m;
+        return r;
+    };
+
+    // (1) The convention itself, by despreading: a replica at the anchor with that argument
+    // matches data generated at S_snap, and one a chip either side does not. This pins the
+    // nominal advance (3e12 chips here) to a chip; the anchor's Doppler share is L*dop/f =
+    // 0.013 chip in this bank and below what a despread can place, so the Doppler half of the
+    // convention rests on (2)-(4) below and on the harness at CHORD geometry
+    // (scripts/gnss/e2e.cpp, 16 periods per anchor, a --dop sweep).
+    {
+        const double dop = 1500.0;
+        const double pred = best_cp_for(dop);
+        const auto data = bank.channels(0, S_snap, arg0, dop, Mp);
+        const auto repl0 = bank.channels(0, anchor, 0.0, 0.0, Mp);
+        const auto cov = energy_covering_n(repl0, N);
+        BOOST_REQUIRE(!cov.empty());
+        auto power_at = [&](double cp) {
+            const auto repl = bank.channels(0, anchor, cp, dop, Mp);
+            std::vector<std::vector<cf>> d, r;
+            for (int c : cov) {
+                d.push_back(data[c]);
+                r.push_back(repl[c]);
+            }
+            return std::norm(gnss::channelized_despread(d, r).amplitude);
+        };
+        const double p0 = power_at(pred);
+        const double pm = power_at(pred - 1.0);
+        const double pp = power_at(pred + 1.0);
+        BOOST_TEST_MESSAGE("anchor-replica match: P(pred)=" << p0 << " P(-1 chip)=" << pm
+                                                            << " P(+1 chip)=" << pp);
+        BOOST_CHECK_GT(p0, 4.0 * pm);
+        BOOST_CHECK_GT(p0, 4.0 * pp);
+    }
+
+    // (2) cp0 gives the argument back at every Doppler, (3) cp_long agrees with it mod L and
+    // (4) cp_at_ref mod L is cp0 re-advanced to the hop's last sample (phase_from_arg), the
+    // identity gnss_broker/fits.py seed_phase_at_ref relies on. The lift (best_nh, peak_tau)
+    // is a multiple of L and drops out of all three; its period count is the harness's
+    // SEARCH/CP_LONG LEG period check, not this test's.
+    for (double dop : {-4000.0, 0.0, 4000.0}) {
+        const double best_cp = best_cp_for(dop);
+        const gnss::DetectionPhase dp =
+            gnss::detection_phase(bank, best_cp, /*best_nh*/ 7, n_nh, dop, snap_hop, anchor, FS,
+                                  /*peak_tau_samples*/ 0);
+        BOOST_TEST_MESSAGE("dop " << dop << ": best_cp " << best_cp << " -> cp0 " << dp.cp0
+                                  << " cp_long " << dp.cp_long << " cp_at_ref " << dp.cp_at_ref);
+        BOOST_CHECK_SMALL(wrapL(dp.cp0 - arg0, L), 1e-5);
+        BOOST_REQUIRE_GE(dp.cp_long, 0.0);
+        BOOST_REQUIRE_GE(dp.cp_at_ref, 0.0);
+        BOOST_CHECK_LT(dp.cp_long, LL);
+        BOOST_CHECK_SMALL(wrapL(dp.cp_long - dp.cp0, L), 1e-5);
+        const double ph_cp0 = bank.phase_from_arg(dp.cp0, S_snap, dop);
+        BOOST_CHECK_SMALL(wrapL(dp.cp_at_ref - ph_cp0, L), 1e-4);
+    }
+    // And the lever itself: cp0 must not move with Doppler by the anchor's advance. The toy
+    // bank's anchor is one code period, so the old defect would be L*dop/f = 0.035 chips at
+    // +-4 kHz; the tolerance above is 3500x tighter.
 }
 
 // Doppler-hinted search: the broker sends the physical predicted Doppler, and

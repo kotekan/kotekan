@@ -96,17 +96,21 @@ double refine_peak_cuda(std::vector<CudaRefineGroup>& groups, const ChannelizedR
 /// kinds of consumer.
 struct DetectionPhase {
     /// Argument referred back to absolute sample 0, mod the primary length L (published as
-    /// `code_phase_chips`). It carries a d/d(doppler) lever of ~5095 chips/Hz at 6.8 days of
-    /// uptime and cannot express the overlay period. The broker still reads it; a tracker
-    /// should be seeded from @c cp_at_ref.
+    /// `code_phase_chips`): the argument the data would have been generated with at the
+    /// detection's Doppler, so re-advancing it to any sample at that Doppler gives the
+    /// physical phase there (the broker's _det_offset). As an argument it carries a
+    /// d/d(doppler) lever of ~5095 chips/Hz at 6.8 days of uptime, which cancels only when
+    /// it is re-advanced with the Doppler it was published with, and it cannot express the
+    /// overlay period. A tracker should be seeded from @c cp_at_ref.
     double cp0 = 0.0;
     /// The same argument mod n_nh*L, so it carries the overlay period. -1 when the signal has
     /// no overlay (n_nh <= 1 or best_nh < 0).
     double cp_long = -1.0;
-    /// Physical code phase at the snapshot's first hop (ref_hop), mod n_nh*L. This is the one
-    /// to transport: it is referred to the anchor, a fixed Mp*fft_len samples, rather than to
+    /// Physical code phase at the last sample of the snapshot's first hop (ref_hop), mod
+    /// n_nh*L. This is the one to transport: it is referred to its own epoch rather than to
     /// sample 0, so its Doppler sensitivity is ~1e-4 chips/Hz. -1 when the signal has no
-    /// overlay, as for @c cp_long.
+    /// overlay, as for @c cp_long. At every Doppler, cp_at_ref mod L equals cp0 re-advanced
+    /// to the same sample (ChannelizedReplicaBank::phase_from_arg).
     double cp_at_ref = -1.0;
 };
 
@@ -116,7 +120,10 @@ struct DetectionPhase {
 ///                  overlay carried as @c best_nh. The long-code reductions are done here at
 ///                  n_nh*L, because the bank's own conversions reduce mod L and lose the period.
 /// @param best_cp   the refined peak: the argument of a replica generated at @c anchor that
-///                  matches the data at the snapshot.
+///                  matches the data at the snapshot. The replica's advance from sample 0 to
+///                  @c anchor is part of that argument, so every reported argument removes
+///                  the advance over snap_start_hop*fft_len - anchor, never over the snapshot
+///                  start alone (the anchor's code-Doppler share was #207).
 /// @param best_nh   the overlay alignment the acquire measured (the winning nh_phase), or < 0
 ///                  if the signal has no overlay.
 /// @param n_nh      number of overlay alignments searched (20 for L5 Q5, 1 for none).

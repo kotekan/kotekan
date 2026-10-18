@@ -156,18 +156,42 @@ DetectionPhase detection_phase(const ChannelizedReplicaBank& bank, double best_c
     const int Mp = bank.repl_period_hops();
     const double cps = bank.chip_rate_hz() / sample_rate;
     const double L = (double)bank.code_length();
+    const double dop_frac = bank.code_doppler_sign * dop / bank.carrier_hz();
+    // Chips per sample at this Doppler: the same double every generator computes
+    // (ChannelizedReplicaBank::channels, hoprate_stream_into, window_advance_chips), in the
+    // same order. One ulp of difference, times a sample index of ~2e15, is ~1e-3 chips.
+    const double cps_d = cps * (1.0 + dop_frac);
+    // x mod m in long double, the result in [0, m).
+    const auto reduce = [](long double x, long double m) {
+        long double r = x - std::floor(x / m) * m;
+        if (r < 0.0L)
+            r += m;
+        return r;
+    };
 
-    // best_cp is the code phase at the snapshot's start (S_snap = snap_start_hop * fft_len).
-    // Refer it to absolute sample 0: cp0 = best_cp - S_snap*chip_per_sample (mod L). The hop
-    // offset is reduced modulo the replica period first (one period advances 0 mod L) to keep
-    // precision.
-    const double off = std::fmod((double)(snap_start_hop % Mp) * (double)fft_len * cps, L);
-    // Code-Doppler advance over the full snapshot start (not Mp-periodic, so not reduced),
-    // matching the code-Doppler feed-forward in ChannelizedReplicaBank.
-    const double drift = std::fmod((double)snap_start_hop * (double)fft_len * cps
-                                       * (bank.code_doppler_sign * dop / bank.carrier_hz()),
-                                   L);
-    out.cp0 = std::fmod(best_cp - off - drift, L);
+    // best_cp is the argument of a replica generated at `anchor` that matches the data at the
+    // snapshot start S_snap = snap_start_hop * fft_len. Every generator forms
+    //     C(n) = arg + n * cps_d
+    // over the ABSOLUTE sample index n, so the replica's j-th sample carries
+    // best_cp + (anchor + j) * cps_d and the data's carries arg0 + (S_snap + j) * cps_d, arg0
+    // being the data's own argument (its phase referred to absolute sample 0). Matching them:
+    //     arg0 = best_cp - (S_snap - anchor) * cps_d        (mod L)
+    // The advance to remove runs over S_snap - anchor, not S_snap. The anchor's share is one
+    // replica period, Mp * fft_len samples: its nominal part, 16 L at CHORD, is 0 mod L and
+    // drops out of cp0, but its code-Doppler part, 16 L * dop_frac (16 ms of code times the
+    // code Doppler), does not, and neither part is 0 mod n_nh * L. Until 2026-10-18 the
+    // advance was taken over S_snap alone, which left exactly that on every cp0 and cp_long:
+    // a Doppler lever of one replica period, 16 ms at CHORD, on the broker's clock solve,
+    // joint feed and search monitor (#207), and cp_long one period (16 of 20) off.
+    //
+    // The product is in long double, as in window_advance_chips: s_rel is exact in a 64-bit
+    // mantissa and the reduced result is good to ~3e-7 chips, where a double gives ~0.5
+    // chips at 2e15 samples. (An earlier form reduced snap_start_hop modulo Mp first, which
+    // assumes Mp * fft_len * cps is exactly 16 L in floating point; it is not, and the
+    // rounding, times ~4e7 periods, is ~1e-3 chips.)
+    const long long s_rel = snap_start_hop * (long long)fft_len - anchor;
+    const long double adv = (long double)s_rel * (long double)cps_d;
+    out.cp0 = std::fmod(best_cp - (double)reduce(adv, (long double)L), L);
     if (out.cp0 < 0.0)
         out.cp0 += L;
 
@@ -175,14 +199,9 @@ DetectionPhase detection_phase(const ChannelizedReplicaBank& bank, double best_c
         return out;
 
     // Long-code phase, mod n_nh*L: the phase a tracker despreading the overlaid code needs. A
-    // phase known only mod L leaves the overlay period unknown. Two reductions differ from the
-    // primary-code ones above:
-    //   * best_cp is lifted into the long code by the alignment the acquire measured, plus the
-    //     whole primary periods inside the correlation lag;
-    //   * the `% Mp` shortcut is valid only mod L. One replica period is Mp*fft_len*cps = 16 L
-    //     at CHORD, 0 mod L but not 0 mod 20 L, so the long form needs the full absolute
-    //     advance. That product reaches ~7e12 chips and must stay good to a chip; long double
-    //     keeps a margin over double's ~1e-3-chip ulp there.
+    // phase known only mod L leaves the overlay period unknown, so best_cp is lifted into the
+    // long code by the alignment the acquire measured, plus the whole primary periods inside
+    // the correlation lag, and the same advance as above is removed at the long length.
     //
     // The lag spans one replica period (16 primary periods at CHORD), but best_cp is reduced
     // mod one period, so its whole-period count is taken from peak_tau_samples. The overlay is
@@ -205,12 +224,7 @@ DetectionPhase detection_phase(const ChannelizedReplicaBank& bank, double best_c
     const double lift = ((double)best_nh + (double)lag_periods) * L;
 
     const long double LL = (long double)L * (long double)n_nh;
-    const long double adv = (long double)snap_start_hop * (long double)fft_len * (long double)cps;
-    const long double off_l = adv - std::floor(adv / LL) * LL;
-    const double drift_l = std::fmod((double)snap_start_hop * (double)fft_len * cps
-                                         * (bank.code_doppler_sign * dop / bank.carrier_hz()),
-                                     (double)LL);
-    double cpl = std::fmod(best_cp + lift - (double)off_l - drift_l, (double)LL);
+    double cpl = std::fmod(best_cp + lift - (double)reduce(adv, LL), (double)LL);
     if (cpl < 0.0)
         cpl += (double)LL;
     out.cp_long = cpl;
@@ -224,15 +238,13 @@ DetectionPhase detection_phase(const ChannelizedReplicaBank& bank, double best_c
     // The epoch is the hop's last sample (anchor + fft_len - 1), the reference every phase on
     // the C++ side shares (ChannelizedReplicaBank::window_advance_chips, phase_from_arg,
     // arg_from_phase, propagate_seed and the e2e harness), so cp_at_ref is comparable with the
-    // tracker's own propagation. cp0 above is referred back from the hop's first sample, so a
-    // phase rebuilt from cp0 at ref_hop sits (fft_len-1)*cps below cp_at_ref by construction;
-    // consumers that mix the two fields convert (gnss_broker/fits.py seed_phase_at_ref).
-    const long double n_anc = (long double)anchor + (long double)fft_len - 1.0L;
-    const long double cps_d =
-        (long double)cps * (1.0L + (long double)(bank.code_doppler_sign * dop / bank.carrier_hz()));
-    const long double a_adv = n_anc * cps_d;
-    double phr =
-        std::fmod(best_cp + lift + (double)(a_adv - std::floor(a_adv / LL) * LL), (double)LL);
+    // tracker's own propagation, and cp_at_ref mod L == phase_from_arg(cp0, S_snap, dop) at
+    // every Doppler (tests/boost/test_gnss_channelized_acquire.cpp pins this). cp0 above is
+    // referred back from the hop's first sample, so a phase rebuilt from cp0 at the first
+    // sample of ref_hop sits (fft_len-1)*cps below cp_at_ref by construction; consumers that
+    // mix the two fields convert (gnss_broker/fits.py seed_phase_at_ref).
+    const long double a_adv = (long double)(anchor + (long long)fft_len - 1) * (long double)cps_d;
+    double phr = std::fmod(best_cp + lift + (double)reduce(a_adv, LL), (double)LL);
     if (phr < 0.0)
         phr += (double)LL;
     out.cp_at_ref = phr;

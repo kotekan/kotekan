@@ -92,7 +92,7 @@ the aggregator and gather. #184–#187 below are what the removal left for later
 
 ## Open — the fix is in the BROKER or a script (ships today, no node cycle)
 
-### #207 — the detection path carries a per-satellite code error proportional to Doppler: a ~10 ms epoch lever between the search's label and the model (2026-10-18, live, measured three ways)
+### #207 — every search-derived code phase carried range_rate x 16 ms: `detection_phase` left the replica anchor's code-Doppler advance on `cp0` and `cp_long` (2026-10-18, live, measured three ways; ROOT CAUSE FOUND + FIXED 10-18 21:30Z, deploy = aggregator cycle)
 **What [live 10-18, gps_l5 + gal_e5a]:** the broker's search-derived offsets (`_det_offset`: the detection's sample-0
 argument re-advanced to `ref_hop`, minus `cp_predicted` at that hop) feed the clock solve, the joint state's b_sat and
 the SEARCH-MONITOR. Within one satellite's pass they move linearly with its Doppler: GPS b_sat vs the tracker Doppler,
@@ -135,6 +135,49 @@ truth in e2e, read `detection_phase` (lib/stages/gnss/gnssSeedTransport.*) and `
 the interval the Doppler advance is applied over for cp0 vs cp_at_ref, fix it in the stage, gate with a `--dop`
 sweep at production parameters. Then a broker restart (the aggregator binary carries the stage: a rebuild + KV
 cycle of gnss-aggregator) and re-fit b_sat vs Doppler live (must go to 0 +- 2 ms).
+**21:30Z ROOT CAUSE (by reading, then three gates).** The refined peak `best_cp` is the argument of a replica
+generated at the search's fixed `anchor` (= Mp*fft_len samples, one replica period = 16 L = 16 ms of code at CHORD)
+that matches the data at the snapshot start S_snap. Every generator forms C(n) = arg + n*cps*(1 + s*dop/f) over the
+ABSOLUTE sample index, so matching the two gives arg0 = best_cp - (S_snap - anchor)*cps_d. `detection_phase`
+(lib/stages/gnss/gnssSeedTransport.cpp) removed the advance over S_snap alone: the anchor's nominal share, 16 L, is 0
+mod L and hid the omission from `cp0`, but its code-Doppler share, 16 L * s*dop/f, is not -- a Doppler lever of
+exactly one replica period, 16 ms, on `cp0`; and 16 L is not 0 mod 20 L, so `cp_long` was also 16 (= -4 mod 20)
+periods off at every Doppler (latent: the tracker prefers the `cp_at_ref` phase, which adds the anchor's advance
+back and was always right -- the roles are the reverse of what `_det_offset`'s docstring claimed). Predicted slope
+16 L / f = 1.392e-4 chip/Hz; the 10-18 harness sweep measured -1.5e-4 through a 0.33-chip refine step, and the live
+"cp_loc - cp_at_ref = one hop + 16 ms" was the same term. Why it was never seen: the acquire tests and the
+harness's only-ever `--dop 0` all have the data AT the anchor or at zero Doppler, where both shares vanish.
+**Fix [committed 10-18]:** one advance over `S_snap - anchor` in long double (as `window_advance_chips`, with the
+generators' own double `cps_d`; the old `% Mp` shortcut also assumed Mp*fft_len*cps is exactly 16 L in floating
+point, ~1e-3 chip at 4e7 periods), reduced mod L for `cp0` and mod n_nh*L for `cp_long`; `cp_at_ref` unchanged.
+**Gates:** (1) tests/boost `detection_phase_removes_the_anchor_at_every_doppler` (data 3.2 days from the anchor;
+the anchor-replica convention checked by despread; cp0 == arg0 to 1e-5 at +-4 kHz; cp_at_ref mod L == cp0
+re-advanced); (2) the harness, now with a CP_LONG LEG line: OLD library at production parameters cp0 +0.087/-0.214
+chip at 0/+2000 Hz and cp_long +4 periods at both; NEW library at -2000, -1000, -500, 0, +500, +1000, +2000 Hz: CP0 LEG +0.112, +0.060, +0.034, +0.088, +0.059, +0.034, +0.062 chip (flat, the refine's 0.33-chip step), CP_LONG and SEARCH LEG identical to cp0 at every point with 0 periods, CUDA refine = CPU to the bit; (3) LIVE, on the running
+aggregator before the fix (scratch script polling /gps_search/get_detections): resid = cp_at_ref - cp0 re-advanced
+equals 1.3913e-4 chip/Hz x dop on all 5 GPS detections to 4 decimals = a 16.00 ms lever, no noise -- after the cycle
+it must read 0.0000 on every PRN. The per-PRN b_sat-vs-Doppler re-fit (pooled +9.3 ms over 18:40-21:10Z) is NOT a
+clean gate: within a pass Doppler and time are degenerate and unmodelled tropo/iono (0b) is elevation-dependent, so
+per-PRN slopes come out mixed-sign (G4 +16.6, G9 +15.6, G6 -15.0 ms); read it only as "the pooled slope moved by
+~-1.4e-4 chip/Hz". **Consequences to re-read after the cycle:** SEARCH-MONITOR gal_e5a (its per-PRN scatter, MAD
+0.15-0.33, was this lever: the +0.49 chip Galileo median (#191) was taken over 11 PRNs with mixed Dopplers and may
+move); the joint clock's bias by the fed set's mean range rate x 16 ms; the PVT self-survey, which fed the search's
+code phase (#99 era) and so carried Doppler-correlated pseudorange errors -> 0b's re-survey. **Deploy:** the stage
+lives in the aggregator binary (build_nodpdk/kotekan/kotekan, shared with the gather and cf06's cube archiver):
+builds/agg-<sha> on cf05 with the gather recipe, staged by builds/stage_agg_<sha>.sh (ldd + three check-configs +
+hard-linked rollback) immediately before KV's `systemctl --user restart gnss-aggregator`; the gather keeps its
+mapped inode until its own next restart, which will then run this build too. **Restart the broker right after
+the aggregator** (skeptic review, 21:35Z): its per-PRN histories (cp-rate fit window, innovation and SEARCH-MONITOR
+5-min medians, the joint state's b_i) would otherwise mix pre- and post-fix detections, which step by 1.39e-4
+chip/Hz x dop (0.56 chip at 4 kHz) and by 4 periods in cp_long at the cycle; the 100-chip jump guard does not
+refuse that, and the cp-rate fit would read it as a slope for one window. Behaviour change to know: the seeding
+fallbacks that strip `cp_at_ref` (hold_freeze with no at_ref, dr_seed_phys/tracker_phase_at's argument branch) were
+seeding 4 overlay periods off from `cp_long` and are right after the cycle. **Reading the live result:** the
+`resid == 0` poll proves the new stage is running (both fields come from one best_cp by construction); the
+independent live gate is a search-vs-tracker clock per PRN against Doppler (SEARCH-MONITOR gal_e5a per-PRN values,
+or the GPS search clock minus trkresid), whose slope must move from ~-1.39e-4 chip/Hz to ~0. The pre-fix b_sat
+slopes (-8.6e-5..-1.2e-4) were 0.6-0.9 of the prediction, so a residual of ~-3e-5 chip/Hz after the cycle is the
+pre-existing elevation/iono degeneracy (0b), not a failed fix.
 
 ### #208 — wall time sits in the radiometric path: the ephemeris is evaluated at `now_w` and labelled `t_eph_age = now_w - utc0_sample0` (2026-10-18, design, KV: nothing radiometric may depend on wall time)
 **What [tree]:** deadreckon.py:2224-2292 runs `predict_all` at the wall clock `now_w` and stamps the rows'
