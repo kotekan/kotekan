@@ -114,10 +114,10 @@ def test_frozen_axis_holds_the_solve():
     c.drp.raw_clk = 139.0
     drift_before, clk_before = c.dr_state["drift"], c.dr_state["clk"]
     dr.dr_clock_quality(c)
-    check(c.dr_state["drift"] == drift_before, "frozen axis: drift EMA NOT updated")
+    check(c.dr_state["drift"] == drift_before, "frozen axis: drift EMA not updated")
     check(
         c.dr_state["clk"] == clk_before,
-        "frozen axis: clock NOT stepped toward the stale solve",
+        "frozen axis: clock not stepped toward the stale solve",
     )
     check("raw_prev" not in c.dr_state, "frozen axis: raw_prev dropped")
     check(c.dr_state.get("clk_frozen") is True, "frozen axis: state marked frozen")
@@ -170,10 +170,10 @@ def test_drift_expires():
 
     src = inspect.getsource(dr)
     check(
-        "dr_drift_max_age_s" in src and "EXPIRED (--dr-drift-max-age-s" in src,
+        "dr_drift_max_age_s" in src and "EXPIRED (dr_drift_max_age_s" in src,
         "expiry rule present at the propagation site",
     )
-    i = src.index("EXPIRED (--dr-drift-max-age-s")
+    i = src.index("EXPIRED (dr_drift_max_age_s")
     j = src.index('ctx.drp.drift = ctx.dr_state.get("drift")', i)
     check(
         'ctx.dr_state["drift"] = None' in src[i:j],

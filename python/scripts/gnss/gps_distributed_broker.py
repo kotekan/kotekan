@@ -325,11 +325,11 @@ def main(argv=None, rx=None, publisher=None):
     _dg_auto_last = [set()]  # last logged auto set, so the line prints on change only
     if _deep_gate:
         _log(
-            "DLL DEEP GATE (#49) active on %s at %.1fx deep_floor -- these PRNs are trimmed "
-            "on DETECTION (deep_snr) instead of on prompt power, which is on-peak-biased and "
+            "DLL DEEP GATE active on %s at %.1fx deep_floor -- these PRNs are trimmed "
+            "on detection (deep_snr) instead of on prompt power, which is on-peak-biased and "
             "latches an off-peak satellite out of its own correction"
             % (
-                "ALL PRNs"
+                "all PRNs"
                 if _deep_gate is True
                 else "PRN " + ",".join(str(p) for p in sorted(_deep_gate)),
                 args.dll_deep_gate_margin,
@@ -709,16 +709,16 @@ def main(argv=None, rx=None, publisher=None):
                     # Seeding waits up to dr_clock_wait_s for that replacement.
                     dr_state["clk_primed"] = True
                     _log(
-                        "dead-reckon: receiver clock PRIMED %.2f chips = %.3f us (no search "
-                        "stage; %s)"
+                        "dead-reckon: receiver clock PRIMED %.2f chips = %.3f us "
+                        "(--dr-clock-chips; %s)"
                         % (
                             dr_state["clk"],
                             dr_state["clk"] / args.chip_rate_hz * 1e6,
                             "REPLACED outright by the first multi-sat solve"
                             if detectors
-                            else "NO detectors: this value stands until a same-band chain "
-                            "contributes one (--dr-clock-adopt), and is FIXED for the run "
-                            "without that",
+                            else "no detectors: this value stands until another chain "
+                            "contributes one (--dr-clock-adopt: same band first, else a "
+                            "cross-band bootstrap), and is fixed for the run without that",
                         )
                     )
                 _log(
@@ -1191,7 +1191,7 @@ def main(argv=None, rx=None, publisher=None):
     # 25 Hz for E1C's 4 ms, 10 Hz for B1C's 10 ms.
     args.hold_max_dop_hz = 0.1 * args.chip_rate_hz / CODE_LEN
     _log(
-        "hold-max-dop-hz auto: %.1f Hz (0.1 cycle per %.0f ms record)"
+        "hold_max_dop_hz (derived): %.1f Hz (0.1 cycle per %.0f ms record)"
         % (args.hold_max_dop_hz, 1e3 * CODE_LEN / args.chip_rate_hz)
     )
     # Safety net, not a fence: clamp how far the seed Doppler may move in one cycle. A real MEO
@@ -1200,7 +1200,8 @@ def main(argv=None, rx=None, publisher=None):
     # the old Doppler, and the seed Doppler would never update.
     args.dop_max_rate_hz = max(5.0, 3.0 * args.hold_max_dop_hz)
     _log(
-        "dop-max-rate-hz (safety net, one cycle): %.1f Hz -- fires only on a bad model"
+        "dop_max_rate_hz (derived safety net, one cycle): %.1f Hz -- fires only on a "
+        "bad model"
         % args.dop_max_rate_hz
     )
     # Reset the cp-fit history across a detection gap longer than fit_gap_s (a re-acquisition).
@@ -1414,7 +1415,7 @@ def main(argv=None, rx=None, publisher=None):
             _log_rl(
                 "clkstale",
                 "CLOCK BIAS STALE: no multi-sat measurement for %.0f s (holding %+.0f Hz "
-                "%s) -- margins WIDE until re-solved"
+                "%s) -- margins wide until re-solved"
                 % (
                     t0 - _cb.meas_t,
                     _cb.value,
@@ -1471,8 +1472,8 @@ def main(argv=None, rx=None, publisher=None):
                     _anchor_chk[1] += 1
                     _log(
                         "*** TIME ANCHOR CHANGED (%d/%d): frame0 was %.9f, endpoint now reports "
-                        "%.9f (%+.3f days). The F-engine has been restarted. EVERY SEED THIS "
-                        "BROKER SENDS IS WRONG BY THAT AMOUNT."
+                        "%.9f (%+.3f days). The F-engine has been restarted. Every seed this "
+                        "broker sends is wrong by that amount."
                         % (
                             _anchor_chk[1],
                             _ANCHOR_STRIKES,
@@ -1623,7 +1624,7 @@ def main(argv=None, rx=None, publisher=None):
                         "%.0f s (hop %.0f, combiner %s). t_now_abs is built from this, so "
                         "the receiver clock, every det_age and every model-evaluated seed "
                         "on this chain are now standing still while the sky is not. This "
-                        "is an INSTANCE stall upstream, not a tracking fault -- check that "
+                        "is an instance stall upstream, not a tracking fault -- check that "
                         "combiner's pow_hop and its node's capture window."
                         % (_now() - _fh_prev[1], _fh, combiner),
                         every_s=60.0,
@@ -2010,7 +2011,7 @@ def main(argv=None, rx=None, publisher=None):
                 _log_rl(
                     "jrr-nofull",
                     "rrate-command HELD: no row carries deep_rate_full_* this poll "
-                    "-- shadow only",
+                    "-- no new commands; standing ones return to 0",
                     every_s=120.0,
                 )
             else:
@@ -2185,7 +2186,7 @@ def main(argv=None, rx=None, publisher=None):
             _log_rl(
                 "epochskew",
                 "EPOCH-SKEW %d/%d seed(s) ship an at-epoch field recorded against "
-                "a different ref_hop (#80 measured; by field: %s): %s"
+                "a different ref_hop (by field: %s): %s"
                 % (
                     _skewN,
                     len(seeds),

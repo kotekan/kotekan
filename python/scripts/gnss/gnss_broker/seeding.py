@@ -181,7 +181,8 @@ def _nh_joint_consensus(ctx, now):
                     "nhjoint-unhealthy",
                     "NH-JOINT: clock-mod-epoch record NOT published -- this chain's search "
                     "solve is not established (fewer than 2 fresh integrity residuals inside "
-                    "a chip, or one outside); consumers keep the last published one",
+                    "a chip, or one beyond 5 chips); consumers keep the last published "
+                    "one",
                     every_s=300.0,
                 )
     return ctx.cpt.nh_common
@@ -566,7 +567,7 @@ def stage_detections_to_seeds(ctx):
                         "cprate-rej-%d" % prn,
                         "PRN %d cp-rate REJECTED: fit %+.3f chips/s vs pooled clock "
                         "%+.3f (dev %+.3f > --cp-rate-model-tol %.3f) -- position kept, "
-                        "clock rate seeded"
+                        "rate seeded per --cp-rate-model-primary"
                         % (
                             prn,
                             rate * ctx.args.hops_per_sec,
@@ -738,7 +739,7 @@ def stage_detections_to_seeds(ctx):
                                 "phcont-%d" % prn,
                                 "PRN %d period continuity %s: %+d periods "
                                 "(snr %.0f, gap %.0f s, residual %+.1f chips) "
-                                "-- NOT applied" % (prn, sev, m, snr, gap_s, resid),
+                                "-- not applied" % (prn, sev, m, snr, gap_s, resid),
                                 every_s=60.0,
                             )
                         if m and ctx.args.nh_period_debounce > 0:
@@ -934,8 +935,8 @@ def stage_detections_to_seeds(ctx):
                 _log_rl(
                     "cperr-%d" % prn,
                     "CP_ERR PRN %d: %+.2f chips at det hop %d (at-epoch: "
-                    "search cp_at_ref vs held propagation; trim %+.2f "
-                    "= py %+.2f + cpp %+.2f, hold_age %.0f s)"
+                    "search cp0/dop phase, not cp_at_ref, vs held propagation plus trim; "
+                    "trim %+.2f = py %+.2f + cpp %+.2f, hold_age %.0f s)"
                     % (
                         prn,
                         cp_err,
@@ -1096,8 +1097,8 @@ def stage_detections_to_seeds(ctx):
                     ctx.cpt.dop_clamped.add(prn)
                     _log(
                         "DOP-CLAMP PRN %d: model wanted %+.1f Hz in one cycle (max %.1f)"
-                        " -- clamping. A real MEO moves <1 Hz/cycle: SUSPECT THE MODEL."
-                        % (prn, ddop, ctx.args.dop_max_rate_hz)
+                        " -- clamping. A real MEO moves under ~1 Hz/s, so the model is "
+                        "SUSPECT." % (prn, ddop, ctx.args.dop_max_rate_hz)
                     )
                 ddop = math.copysign(ctx.args.dop_max_rate_hz, ddop)
                 seed.put("dop_clamp", doppler_hz=prev["doppler_hz"] + ddop)
@@ -1171,7 +1172,7 @@ def stage_detections_to_seeds(ctx):
                     ctx.cpt.translated.add(prn)
                     _log(
                         "TRANSLATE PRN %d: dop %+.0f -> %+.0f (%+.2f Hz) -> cp0 shifted "
-                        "%+.2f chips; SAME physical code phase, anchor KEPT"
+                        "%+.2f chips; same physical code phase, anchor kept"
                         % (
                             prn,
                             prev["doppler_hz"],

@@ -165,10 +165,10 @@ def instr_rf_stats(ctx):
                 if _clip > 0.01:
                     _log_rl(
                         "rfclip",
-                        "⚠️ RF CLIPPING: %.2f%% of nibbles at a rail. Above ~1%% "
+                        "RF CLIPPING: %.2f%% of nibbles at a rail. Above ~1%% "
                         "the 4+4b quantiser is losing signal, not just headroom, "
                         "and every C/N0 and coherence below this point is "
-                        "understated for a reason that is NOT the sky. Check "
+                        "understated for a reason that is not the sky. Check "
                         "which lobe (get_rf) before blaming a chain." % (100.0 * _clip),
                         every_s=120.0,
                     )
@@ -242,7 +242,7 @@ def instr_tap_walk(ctx):
                     len(_shared),
                     _dd[len(_dd) // 2] if _dd else 0.0,
                     max((abs(x) for x in _dd), default=0.0),
-                    "" if _shared else "  (NO OVERLAP -- check the chain key)",
+                    "" if _shared else "  (no overlap -- check the chain key)",
                     _xc or "-",
                 ),
                 every_s=30.0,
@@ -366,7 +366,7 @@ def instr_element_poll(ctx):
                     len(_pe),
                     len(_etab),
                     (
-                        "  ⚠️ STALE (excluded): "
+                        "  STALE (excluded): "
                         + ", ".join(
                             "%s %s" % (t, "%.0f s behind" % l if l else "no hop")
                             for t, l in _stale
@@ -499,7 +499,7 @@ def instr_model_primacy(ctx):
             ctx.mp_last_det[_p] = _now()
             _log(
                 "MODEL-PRIMACY ENTER PRN %d: minnov p95 %.2f (n>=%d) -- seed is "
-                "now the MODEL's (dr slew, clk+b_sat); detections feed the "
+                "now the model's (dr slew, clk+b_sat); detections feed the "
                 "filter and the referee only. Controls (eligible, unflipped): %s"
                 % (
                     _p,

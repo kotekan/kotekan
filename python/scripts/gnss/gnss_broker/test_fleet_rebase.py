@@ -51,7 +51,7 @@ def test_live_instances():
         {"a": H_NEW, "b": H_NEW - 4096, "c": H_OLD - 2, "d": H_OLD - 3}, hist, NOW
     )
     check(
-        "re-base, broker still on the OLD anchor: the pre-outage instances are frozen",
+        "re-base, broker still on the old anchor: the pre-outage instances are frozen",
         ex == {"c": "frozen", "d": "frozen"},
         str(ex),
     )

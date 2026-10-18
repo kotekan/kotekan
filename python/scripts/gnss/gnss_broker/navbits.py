@@ -376,7 +376,7 @@ def stage_nav_bits(ctx):
                 else:
                     # Not synced: the contiguous run, the total history, and what sync needs.
                     _log(
-                        "navbit PRN %d: NO SYNC (contig run %d/%d, hist %d)"
+                        "navbit PRN %d: no sync (contig run %d/%d, hist %d)"
                         % (_p, h["run"], h["need"], h["hist"])
                     )
                 ctx.dh_obs("GPS_L1_LNAV", _p, h, e, eph_s)
@@ -408,7 +408,7 @@ def stage_nav_bits(ctx):
                     )
                 else:
                     _log(
-                        "cnav PRN %d: NO DECODE (%d emits accumulated, g2=%s)"
+                        "cnav PRN %d: no decode (%d emits accumulated, g2=%s)"
                         % (_p, h["emits"], h["g2"])
                     )
                 ctx.dh_obs(ctx.nav.cnav_sig, _p, h, e, eph_s)

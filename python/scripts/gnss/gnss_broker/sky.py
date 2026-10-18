@@ -157,7 +157,8 @@ def brdc_predict(state, lat, lon, alt_m, sysc, min_prn, t_utc, f_carrier_hz):
                 "brdc-bridge",
                 "brdc almanac: PREDICTION COLLAPSE (%d of peak %d %s sats%s in the eph "
                 "window) -> BRIDGING on a sky frozen %.0f s ago (%d sats); early refresh "
-                "forced. Elevations are STALE -- probes, drops and hints all ride this."
+                "forced at most once per 600 s. Elevations are STALE -- probes, drops and "
+                "hints all ride this."
                 % (
                     len(out),
                     peak,

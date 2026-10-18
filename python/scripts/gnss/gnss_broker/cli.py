@@ -601,20 +601,21 @@ def build_parser(description):
     ap.add_argument(
         "--rest-url",
         default="http://localhost:12048",
-        help="default kotekan REST base for bare stage names",
+        help="kotekan REST base URL that bare stage names in the endpoint lists "
+        "(--detectors, --trackers, --combiner, ...) and --time0-endpoint resolve "
+        "against",
     )
     ap.add_argument(
         "--detectors",
         default="",
-        help="detection endpoints: aggregator/search stage names, absolute "
-        "URLs, or {a..b} ranges (e.g. aggregate  or  search_{00..49}). "
-        "OPTIONAL: leave empty to run PURELY MODEL-PRIMARY, seeding every "
-        "visible satellite from the BRDC model with no acquisition search at "
-        "all (--almanac --dead-reckon). That is the CHORD configuration -- the "
-        "chain there has no search stage, because the station position is known "
-        "to millimetres and the model already lands inside the DLL capture "
-        "range, so a blind search would only re-derive what the ephemeris "
-        "already says.",
+        help="detection endpoints: a comma list of search or aggregator stage names "
+        "(resolved on --rest-url), absolute URLs and {a..b} ranges, e.g. aggregate or "
+        "search_{00..49}. Each cycle the broker GETs /get_detections from every one "
+        "and keeps the best-SNR detection per PRN; the --narrow-search and --nh-hint "
+        "hints and the --prn-reconfig map are posted to them. Empty = no search: with "
+        "--almanac --dead-reckon every visible satellite is seeded from the BRDC "
+        "model, on a receiver clock adopted from another chain (--dr-clock-adopt) or "
+        "primed (--dr-clock-chips).",
     )
     ap.add_argument(
         "--detectors-monitor",
@@ -629,216 +630,258 @@ def build_parser(description):
     ap.add_argument(
         "--trackers",
         required=True,
-        help="tracker endpoints to seed (e.g. track_{00..49} or "
-        "http://nodeA:12048/track_{0..24},http://nodeB:12048/track_{0..24})",
+        help="tracker endpoints, in --detectors' list syntax, e.g. track_{00..49} or "
+        "http://nodeA:12048/track_{0..24},http://nodeB:12048/track_{0..24}. Each cycle "
+        "the seed set is POSTed to every one's /set_seeds, so all subbands despread "
+        "the same code phase and Doppler. The C++ fleet loop's trims "
+        "(--fleet-trim-url) and the --prn-reconfig map go to them too.",
     )
     ap.add_argument(
         "--combiner",
         default="combiner",
-        help="combiner endpoint for full-band |A| status (name or URL)",
+        help="combiner endpoint (name or URL) whose /get_status is this chain's "
+        "per-PRN status: the amplitudes and lock metrics behind the coast, drop and "
+        "hold decisions, the nav bits, and the newest F-engine hop the time base is "
+        "built from. --dll-combiners adds the rest of the fleet for the code loop.",
     )
     ap.add_argument(
         "--interval",
         type=float,
         default=0.25,
-        help="control-loop period, s (keep below ~0.5 s drift time)",
+        help="control-loop period, s: each cycle polls the detectors and the combiner, "
+        "runs the loops and posts the seeds, then sleeps for the rest of the period. "
+        "Weights applied per update (--code-bias-alpha, --dll-gain, bsat_gain) update "
+        "at most once a cycle, so their time constants grow with it.",
     )
     ap.add_argument(
         "--acquire-snr",
         type=float,
         default=12.0,
-        help="min detection SNR to (re)seed a PRN",
+        help="minimum search SNR for a detection to be used at all; weaker detections "
+        "are ignored (no seed, no fit, no clock or nh-offset sample). Hold admission "
+        "and the hold escape also need a detection at twice this.",
     )
     ap.add_argument(
         "--noise-probes",
         type=int,
         default=0,
-        help="keep this many deepest-below-horizon PRNs seeded as NOISE PROBES: "
-        "the combiner then emits genuine signal-free records for the beam "
-        "map's pedestal calibration (an almanac-gated broker otherwise never "
-        "tracks one and the pedestal falls back to a signal percentile). "
-        "Probes fail every lock gate naturally; ~2 is plenty.",
+        help="keep this many signal-free PRNs seeded as noise probes: the --probe-dark "
+        "satellites first, then the deepest below -15 deg elevation. Their combiner "
+        "rows are the noise reference for the presence gate (its q floor needs >= 3 "
+        "probes reporting and its prompt-power floor >= 2; with fewer, the chain reads "
+        "UNANCHORED and no satellite is present) and for the beam map's pedestal. "
+        "Probes are never coasted, dropped or carrier-commanded. Needs --almanac. 0 = "
+        "none.",
     )
     ap.add_argument(
         "--post-sat-geometry",
         type=int,
         default=0,
-        help="#102: post each satellite's az/el to the record assemblers' "
-        "/set_sat_geometry every ~30 s (endpoint derived from "
-        "--dll-combiners), feeding the per-element steering. 0 = off.",
+        help="nonzero: every ~30 s, post this constellation's above-horizon "
+        "satellites' az/el (with rates and epoch on the BRDC path) to each record "
+        "assembler's /set_sat_geometry for the per-element steering, together with the "
+        "nearest-to-boresight separation for the assemblers' model-formation freeze. "
+        "The assemblers are the --dll-combiners with n2combine replaced by n2assemble. "
+        "Needs --almanac. 0 = off.",
     )
     ap.add_argument(
         "--fit-flush-on-reject",
         type=int,
         default=0,
-        help="#100: after this many CONSECUTIVE cp-rate rejections for a PRN, "
-        "FLUSH its cp-fit history. A rejected fit also poisons the seed's "
-        "POSITION (the fit evaluated at ref_hop: slope error x history span "
-        "= thousands of chips), and the poison self-sustains -- off-peak "
-        "command, weak detections, re-poisoned history -- for as long as "
-        "the history remembers (~8 min at fit-hist-len 256; G9 2026-08-28 "
-        "22:36-23:00). Flushed, the sat rides the birth path while a clean "
-        "fit rebuilds (~30 s). 0 disables (pre-#100 behaviour).",
+        help="after this many consecutive cp-rate rejections for a PRN "
+        "(--cp-rate-model-tol), drop its cp-fit history. The seed's position is the "
+        "same fit evaluated at ref_hop, so a wrap-blown slope also displaces the "
+        "command (slope error x history span), and the poisoned history keeps "
+        "re-poisoning it for as long as it lasts (--fit-hist-len). Flushed, the "
+        "satellite is seeded from its detections while a clean fit rebuilds. 0 "
+        "disables.",
     )
-    ap.add_argument("--lat", type=float, help="receiver latitude (enables gating)")
-    ap.add_argument("--lon", type=float, help="receiver longitude")
-    ap.add_argument("--alt", type=float, default=0.0, help="receiver altitude, m")
-    ap.add_argument("--mask-deg", type=float, default=5.0, help="elevation mask, deg")
+    ap.add_argument(
+        "--lat",
+        type=float,
+        help="receiver latitude, deg; --almanac needs --lat and --lon",
+    )
+    ap.add_argument("--lon", type=float, help="receiver longitude, deg (east positive)")
+    ap.add_argument(
+        "--alt",
+        type=float,
+        default=0.0,
+        help="receiver height above the WGS84 ellipsoid, m",
+    )
+    ap.add_argument(
+        "--mask-deg",
+        type=float,
+        default=5.0,
+        help="elevation mask, deg: a satellite below it is not up, so it is not seeded "
+        "(noise probes aside), hinted or dead-reckoned",
+    )
     ap.add_argument(
         "--almanac",
         action="store_true",
-        help="orbit-predict each PRN's Doppler (needs --lat/--lon + skyfield): "
-        "seed trackers with the precise predicted Doppler (geometry + a common "
-        "clock-freq bias solved from the measured sats) instead of the coarse "
-        "search grid, and gate to visible sats. Code phase still from the search.",
+        help="predict each satellite's Doppler, Doppler rate and elevation from orbits "
+        "(--almanac-source) every cycle. Seeds carry the predicted Doppler, plus the "
+        "clock-frequency bias --seed-bias-source picks, rather than the search's grid "
+        "value (see --seed-doppler), coasted seeds follow the forecast, and only "
+        "visible satellites are seeded and hinted. Needs --lat/--lon. Code phase still "
+        "comes from the search unless --dead-reckon.",
     )
     ap.add_argument(
         "--almanac-source",
         default="brdc",
         choices=("brdc", "tle"),
-        help="orbit source for the almanac assist. brdc (default) = the IGS "
-        "broadcast-ephemeris file (gnss_ephemeris): PRN-INDEXED (immune to the "
-        "celestrak name->PRN label rot that mislabels BeiDou IGSOs -- C31/C38/"
-        "C39 ranges were 16-20k km off on 2026-07-17, corrupting nh hints by "
-        "5-7 overlay chips and hiding C38's true 84-deg pass), ~m orbits vs "
-        "TLE's ~km, includes the sat clock, and needs no skyfield. tle = the "
-        "legacy celestrak path (also the automatic fallback when BRDC is "
-        "unreachable at startup).",
+        help="orbit source for --almanac. brdc (default): the IGS broadcast-ephemeris "
+        "file (gnss_ephemeris), indexed by PRN, with metre-level orbits and the "
+        "satellite clock, and no skyfield needed. tle: Celestrak's GPS TLEs (gps-ops, "
+        "so GPS only) through skyfield, with km-level orbits and PRNs taken from "
+        "satellite names, which can be mislabelled. tle is also the fallback when BRDC "
+        "is unavailable at startup.",
     )
     ap.add_argument(
         "--boresight",
         default="nominal",
         choices=("nominal", "none"),
-        help="where the dishes point. nominal (default) = CHORD's fixed boresight (az 180, "
-        "el 81.41), which the D3 transit veto, the dead-reckon clock's transit freeze and the "
-        "assemblers' model-formation freeze key on. none = the dishes are not pointed (tipped "
-        "for site work): no satellite is ever near boresight, so all three stay off.",
+        help="where the dishes point. nominal (default) = CHORD's fixed boresight (az "
+        "180, el 81.41), which the D3 sawtooth detector's transit veto, the "
+        "dead-reckon clock's transit freeze and the assemblers' model-formation freeze "
+        "key on. none = the dishes are not pointed (tipped for site work): no "
+        "satellite is ever near boresight, so all three stay off. The setting is "
+        "process-wide, so every chain of one broker_multi.py process must agree.",
     )
     ap.add_argument(
         "--constellation",
         default=None,
         choices=("G", "E", "C", "R"),
-        help="constellation letter for the BRDC almanac (which file covers ALL "
-        "systems, unlike the per-group TLE URLs). Default: --dr-constellation. "
-        "C keeps the BDS-3 satellites per the IGS registry's block types "
-        "(--signal-capability; PRN >= 19 is only the fallback): the BDS-2 "
-        "birds transmit B1I at 1561 MHz, outside our band.",
+        help="constellation the almanac predicts: G, E, C or R (one multi-system BRDC "
+        "file covers all of them). Unset: --dr-constellation; --signal sets it. For C, "
+        "the IGS registry's block types (--signal-capability) decide which satellites "
+        "carry the signal; without a registry decision, PRNs below 19 (BDS-2) are left "
+        "out.",
     )
     ap.add_argument(
-        "--carrier-hz", type=float, default=1575.42e6, help="carrier for Doppler pred"
+        "--carrier-hz",
+        type=float,
+        default=1575.42e6,
+        help="carrier frequency, Hz, for the predicted Doppler and every "
+        "carrier-to-code conversion, and the band key (to 10 kHz) --dr-clock-adopt "
+        "matches a same-band donor on. Default 1575.42e6 (GPS L1); --signal sets it.",
     )
     ap.add_argument(
         "--narrow-search",
         action="store_true",
-        help="push per-PRN predicted Doppler to the detectors' /set_doppler_hints so the "
-        "search scans only doppler +- margin (almanac-narrowed acquisition) instead "
-        "of its blind grid; needs --almanac. Far cheaper + more sensitive.",
+        help="each cycle, post every up, capable PRN's predicted Doppler plus the "
+        "solved clock-frequency bias to the detectors' /set_doppler_hints, so the "
+        "search scans the hint +- a margin instead of its blind grid, which makes "
+        "acquisition far cheaper. The margin is --search-margin-hz once the bias is "
+        "solved and fresh, --search-margin-wide-hz before that and while it is stale. "
+        "Needs --almanac.",
     )
     ap.add_argument(
         "--search-margin-hz",
         type=float,
         default=500.0,
-        help="narrow search half-window once the clock-freq bias is solved (Hz)",
+        help="Doppler hint half-window, Hz, once the clock-frequency bias is solved "
+        "and fresh (--narrow-search)",
     )
     ap.add_argument(
         "--search-margin-wide-hz",
         type=float,
         default=3000.0,
-        help="wider search half-window BEFORE the bias is solved (covers the unknown "
-        "TCXO offset; shrinks to --search-margin-hz once a few sats pin the clock)",
+        help="Doppler hint half-window, Hz, before the clock-frequency bias is solved "
+        "and while it is stale; it must cover the receiver's unknown oscillator offset",
     )
     ap.add_argument(
         "--dr-clock-adopt",
         action="store_true",
-        help="ADOPT the receiver clock from a co-hosted sibling chain (through "
-        "the shared Receiver: the same band first, else across bands as a "
-        "bootstrap) instead of holding the primed --dr-clock-chips constant "
-        "forever.\n"
-        "\n"
-        "WHY: a chain with --detectors EMPTY cannot solve its own clock. The "
-        "bootstrap takes a median of measured code-phase residuals from "
-        "/get_detections, so with no detector `offs` is always empty, the EMA "
-        "never runs, and the primed constant stands for the WHOLE RUN -- which "
-        "the --dr-clock-chips help already says in as many words. That is "
-        "every multi-constellation chain (E5a/B2a have no blind acquisition at "
-        "all), so today the number is read out of the GPS broker's log by a "
-        "human and pasted in, and it is wrong after any F-engine restart. "
-        "A chain WITH detections ignores this flag; it solves its own.",
+        help="on a cycle with no code-phase offsets of its own to solve the receiver "
+        "clock from (no detections), adopt the clock another chain in this process "
+        "contributes to the shared Receiver: a same-band chain's first, else any "
+        "band's as a bootstrap, converted as a time through the two chip rates. "
+        "Without it such a chain holds the --dr-clock-chips prime for the whole run. "
+        "Steps are bounded by --dr-clock-adopt-max-chips. A donor whose code period is "
+        "shorter than this chain's also needs a clock-mod-epoch record, which "
+        "--nh-joint on a sibling chain contributes.",
     )
     ap.add_argument(
         "--decode-health-file",
         default=None,
-        help="publish this broker's NAV-DECODE health as JSON (atomically "
-        "replaced) for the viewer + the eventual decoded-eph BRDC fallback: "
-        "per (signal, PRN) whether SYNCED, whether a full ephemeris was "
-        "EXTRACTED, the BRDC-agreement residual dpos_m, and decode freshness. "
-        "WRITE-ONLY; the viewer reads the directory "
-        "and merges. Off when unset.",
+        help="write this chain's nav-decode health to this path as JSON (atomically "
+        "replaced): per (signal, PRN), whether it is synced, whether a full ephemeris "
+        "was extracted, the BRDC-agreement residual dpos_m, and how fresh the decode "
+        "is. The file's basename (without extension) names the chain. The broker only "
+        "writes it; the viewer server reads the directory and merges the files. Unset "
+        "= off.",
     )
     ap.add_argument(
         "--seed-bias-source",
         choices=("ema", "zero"),
         default="ema",
-        help="which clock-freq bias the SEED consumers ride (#105). 'ema' = the "
-        "hint EMA, the old shared-number behaviour; it commands the +-10 Hz "
-        "quantization wander of the solve into every replica's code rate "
-        "(measured: the wander integrates ~1 chip off-peak fleet-wide every "
-        "~5 min = the #105 q-crash bursts). 'zero' = seeds ride exactly 0 Hz "
-        "whatever the solve says, and never snap; the search hints keep the "
-        "solved bias. "
-        "For an LO locked to the site reference, where the true offset is ~0 "
-        "and the solve is estimator noise: with the carrier loop open, the "
-        "seeded bias IS every satellite's residual carrier. The first-seed "
-        "guard does not wait for a solve under 'zero' (no seed carries one). "
-        "Noise probes, which have no signal to stay coherent with, keep the "
-        "hint bias.",
+        help="which clock-frequency bias the seeds' Doppler carries. 'ema' (default): "
+        "the solved EMA that also centres the search hints. 'zero': 0 Hz whatever the "
+        "solve says, never snapping to a new solve; the hints keep the solved bias. "
+        "Use 'zero' when the LO is locked to the site reference: the true offset is "
+        "then ~0 and the solve (a median of a few grid-quantised detections, wandering "
+        "by Hz) is estimator noise, which with the carrier loop open becomes every "
+        "satellite's residual carrier and, through the code rate, walks the despread "
+        "off peak. Noise probes keep the hint bias.",
     )
     ap.add_argument(
         "--code-length",
         type=float,
         default=1023.0,
-        help="spreading-code length (chips) for cp0 unwrap/fit (L1 C/A = 1023)",
+        help="primary code length, chips: the period code phases are unwrapped and the "
+        "receiver clock is kept in, and with --chip-rate-hz the record period. Default "
+        "1023 (GPS L1 C/A); --signal sets it.",
     )
     ap.add_argument(
         "--hops-per-sec",
         type=float,
         default=125000.0,
-        help="F-engine hops/s (Fs/fft_len) -- cp slope chips/s log + the code clock-bias estimate",
+        help="F-engine hops per second (sample rate / FFT length): converts every hop "
+        "count (ref_hop, pow_hop, fit spans) to seconds. A property of the F-engine; "
+        "--signal does not set it.",
     )
     ap.add_argument(
         "--chip-rate-hz",
         type=float,
         default=1.023e6,
-        help="spreading chip rate (L1 C/A 1.023e6) -- for the code-rate clock-bias estimate",
+        help="primary chip rate, chips/s: converts code phase to time (the receiver "
+        "clock, code rates, the record period). Default 1.023e6 (GPS L1 C/A); --signal "
+        "sets it.",
     )
     ap.add_argument(
         "--code-bias-alpha",
         type=float,
         default=0.05,
-        help="EMA weight for the receiver code-rate clock offset (l-a); slow -> tracks TCXO/OCXO drift",
+        help="EMA weight per update of the receiver code-rate clock offset (l-a), the "
+        "median of the satellites' fitted code rates, which is seeded to every unheld "
+        "satellite as its code-phase rate (unless --joint-consume rate supplies it) "
+        "and shared with the process's chains that fit none. Small, so it averages "
+        "out fit noise and follows oscillator drift.",
     )
     ap.add_argument(
         "--code-bias-min-sats",
         type=int,
         default=2,
-        help="fitted sats needed before the pooled code-rate clock offset is trusted + seeded to weak sats",
+        help="fitted satellites a cycle needs before their median (l-a) updates the "
+        "code-rate clock offset",
     )
     ap.add_argument(
         "--presence-admit-displaced",
         action="store_true",
-        help="THE E3 FIX, presence half: a row that FAILS the q bar is re-admitted "
-        "when the (E/P, L/P) decomposition says its q deficit is a CODE OFFSET "
-        "rather than weakness -- bright (same probe-anchored p bar), pedestal "
-        "<= --presence-disp-pedestal-max, |offset| <= --presence-disp-off-max. "
-        "q ~ 1 is degenerate (off-peak OR weak) and the bar reads it as weak, "
-        "so the displaced-but-strong satellite -- the one the DLL exists to "
-        "rescue, and whose offset SUPPRESSES q so the fault latches (E3's 12 "
-        "min outage; the bar shuts at ~0.17 chips) -- is exactly the one it "
-        "throws away. ⚠️ Only ever active under the probe-anchored q+p gate: "
-        "without probes the p bar is a peer competition and this would admit "
-        "peers' noise. Rows it admits carry present_gate = "
-        "'q+p:probes+disp' (bright) or 'q+deep:probes+disp' (seen only by "
-        "the offset-blind detector).",
+        help="admit to fleet presence a row that fails the q or prompt-power bar when "
+        "the (E/P, L/P) decomposition (fleet.epl_decompose) reads its deficit as a "
+        "code offset rather than weakness (the fit assumes taps at +-0.5 chips on a "
+        "triangular correlation, whatever --dll-spacing is). q and prompt power both "
+        "fall with the offset the DLL exists to remove, so without this a displaced "
+        "satellite is never armed for its own correction. The row also needs evidence "
+        "that the satellite is there (prompt power over the probe floor, or deep_snr "
+        ">= presence_disp_deep_margin x deep_floor from the combiner's offset-blind "
+        "deep fold), a fitted pedestal <= presence_disp_pedestal_max and |offset| <= "
+        "presence_disp_off_max (constants in cli.py _FROZEN). Displacements over 0.1 "
+        "chip are refused while the chain is browned out, or when 3 or more PRNs share "
+        "one offset (within 0.1 chip) in a cycle: a chain event. Acts only under the "
+        "probe-anchored floors. Admitted rows carry present_gate 'q+p:probes+disp' or "
+        "'q+deep:probes+disp'.",
     )
     # ---- Live PRN membership (gnss_broker/prnmap.py, docs/CHORD_LIVE_PRN_RECONFIG.md) ----
     # Keeps the nodes' slot->PRN maps in step with the BRDC sky (--prn-reconfig), and can limit
@@ -846,195 +889,192 @@ def build_parser(description):
     ap.add_argument(
         "--probe-require-slot",
         action="store_true",
-        help="only pick noise probes the NODES ACTUALLY HOLD A SLOT FOR, by asking "
-        "them (/get_prns). The selector takes the deepest below-horizon PRNs "
-        "from the almanac and never checked the trackers could represent "
-        "them, so it kept choosing satellites that get seeded, logged as "
-        "seeded, and NEVER report. Measured 2026-08-27: BeiDou probed PRN 2 "
-        "against a 19-42 slot list, leaving 2 live probes -- below the >= 3 "
-        "the q+p presence gate needs -- so presence fell back to the PEER "
-        "COMPETITION and about HALF the population passed by construction "
-        "(q floor 4.72, above the q ~ 4 ceiling a real satellite can reach). "
-        "⚠️ Not the rejected discovery filter: this ASKS, so there is no "
-        "sidereal-day bootstrap. ⚠️ Fails OPEN -- no unanimous map yet, or a "
-        "split fleet, leaves the selector exactly as it was. ⚠️ The map comes "
-        "from --prn-reconfig apply's /get_prns sweep; with --prn-reconfig off "
-        "there is no map and the selector stays unfiltered.",
+        help="pick noise probes only from PRNs the nodes hold a slot for, from the "
+        "unanimous map that --prn-reconfig apply reads back (/get_prns): a probe "
+        "without a slot is seeded but never reports, which can leave the presence gate "
+        "short of the 3 probes its q floor needs. Fails open: with --prn-reconfig off, "
+        "before a full sweep, or while the nodes disagree, the probes are not "
+        "filtered.",
     )
     # A satellite with ephemeris that the registry says cannot broadcast this signal
     # (--signal-capability) is signal-free at any elevation: a noise probe that never sets.
     ap.add_argument(
         "--probe-dark",
         action="store_true",
-        help="take noise probes first from the DARK satellites: predicted by BRDC but "
-        "excluded by --signal-capability, so they carry nothing on this signal at any "
-        "elevation (GLONASS M+ on L2OC). In PRN order, ahead of the deepest below -15 "
-        "deg. For a chain with too few capable satellites to keep the >= 3 probes the "
-        "presence gate needs below the horizon: glo_l2oc's six live K satellites leave "
-        "fewer than 3 below -15 deg about a third of the day, and the chain would read "
-        "UNANCHORED then. The nodes must hold slots for the dark PRNs (the manifest's "
-        "list); the PRN map keeps them as probes. Needs --signal-capability.",
+        help="take noise probes first from the dark satellites: those with ephemeris "
+        "that --signal-capability excludes, which carry nothing on this signal at any "
+        "elevation (on L2OC, the GLONASS M and M+ satellites). They come in PRN order, "
+        "any the nodes already hold first, ahead of the deepest below -15 deg. Use it "
+        "on a chain with too few capable satellites to keep the 3 probes the presence "
+        "gate needs below -15 deg. The nodes must hold slots for the dark PRNs; the PRN "
+        "map keeps them as probes. Needs --signal-capability.",
     )
     ap.add_argument(
         "--prn-reconfig",
         choices=["off", "apply"],
         default="off",
-        help="keep the nodes' slot->PRN map in step with live BRDC. off (default) "
-        "= this stage does nothing (the replay fixtures' argv predates the "
-        "flag, so it must stay the default). apply = GET each node's map and "
-        "POST /set_prns. "
-        "⚠️ A SWAP COSTS A FULL RE-ACQUISITION on that slot (the node resets "
-        "code table, Phi cache, carrier NCO, seed, trim, power averages and "
-        "element cal COLD -- correctly, since none of it describes the new "
-        "satellite), so every threshold below exists to make swaps RARE.",
+        help="keep the nodes' slot->PRN map in step with live BRDC "
+        "(gnss_broker/prnmap.py, docs/CHORD_LIVE_PRN_RECONFIG.md). off (default): the "
+        "stage does nothing. apply: read each tracker's map back (/get_prns) and, when "
+        "the wanted map (every satellite up, then the noise probes) differs, POST it "
+        "whole to every tracker's /set_prns on one F-engine hop deadline, and without "
+        "one to the detectors. A moved slot re-acquires cold (the node resets its code "
+        "table, Phi cache, carrier NCO, seed, trim, power averages and element cal), "
+        "so --prn-reconfig-interval-s and the admit/evict hysteresis damp the changes.",
     )
     ap.add_argument(
         "--prn-reconfig-interval-s",
         type=float,
         default=900.0,
-        help="minimum seconds between swaps, fleet-wide. ONE slot moves per "
-        "interval: re-acquisitions are the cost, and a mechanism that can "
-        "churn several at once is the #92 disease one level up.",
+        help="minimum seconds between map posts. One post moves every slot that needs "
+        "it, on one deadline; each moved slot re-acquires cold, so this paces the "
+        "re-acquisitions. It also paces re-posting the map to a node that restarted "
+        "onto its config list.",
     )
     ap.add_argument(
         "--prn-reconfig-admit-deg",
         type=float,
         default=10.0,
-        help="a satellite with no slot must be ABOVE this to claim one. Not "
-        "'rises eventually': the swap is only worth paying for a satellite we "
-        "can use immediately, and one that is up now is up again tomorrow.",
+        help="elevation, deg, at or above which a satellite without a slot is wanted "
+        "and may take the slot of an unwanted satellite, judged on its current "
+        "elevation rather than a forecast rise; below it, an unslotted satellite that "
+        "is not a noise probe gets only a dead slot (one whose PRN has no prediction). "
+        "Must be above --prn-reconfig-evict-deg: the gap is the hysteresis that keeps "
+        "a satellite at the threshold from flapping in and out of a slot (with no gap "
+        "the map is left alone and the fault logged).",
     )
     ap.add_argument(
         "--prn-reconfig-evict-deg",
         type=float,
         default=0.0,
-        help="a slot's incumbent counts as DOWN below this elevation.",
+        help="a slot's satellite keeps it until its elevation falls below this, deg; "
+        "the slot can then go to a satellite that wants one",
     )
     ap.add_argument(
         "--fit-gap-s",
         type=float,
         default=16.0,
-        help="reset the cp-fit history across a detection gap longer than this "
-        "(seconds of capture time; converted via --hops-per-sec)",
+        help="reset a PRN's code-phase and Doppler fit histories across a gap between "
+        "its detections longer than this, s (on the F-engine hop axis, via "
+        "--hops-per-sec): the detection after it is a re-acquisition. The cp fit "
+        "unwraps to the nearest code period, so a gap over which the clock drifts half "
+        "a period puts the fit on the wrong branch.",
     )
     ap.add_argument(
         "--carrier-max-hz",
         type=float,
         default=40.0,
-        help="clamp on the commanded carrier trim (Hz)",
+        help="clamp, Hz, on the carrier command --rrate-command posts "
+        "(carrier_trim_hz); <= 0 = no clamp",
     )
     ap.add_argument(
         "--dll-gain",
         type=float,
         default=0.25,
-        help="code delay-lock-loop gain (0 = off): each poll, nudge a persistent "
-        "per-PRN cp TRIM by gain * tau_est from the combiner's E/L discriminator. "
-        "The trim rides on top of the search-fit cp, converging to the fit's "
-        "grid-quantization bias -- sub-chip code tracking with no per-record "
-        "decisions (R1, 3c2e98f43:docs/gnss_architecture_audit.md).",
+        help="gain per update of the broker's code delay-lock loop (one update per new "
+        "discriminator window, at most one per cycle). A locked PRN's code-phase "
+        "trim, a leaky integral of gain x tau_est from the E/L discriminator (clamped "
+        "to +-3 chips), is added to its seed's code phase at POST time; a PRN the C++ "
+        "fleet loop has armed (--fleet-trim-url) is left to that loop. 0 turns off the "
+        "whole fleet DLL stage: presence, the C++ loop's arming and every measurement "
+        "taken off its poll (fleet_coherent, the --spectrum-endpoints fit, the C/N0 "
+        "estimators, the RF and element polls, model primacy).",
     )
     ap.add_argument(
         "--nh-hint",
         action="store_true",
-        help="hint the search's secondary-code alignment from the EPHEMERIS, so the "
-        "acquire scans nh_hint_span alignments instead of all 20 (~92%% of a "
-        "pass). nh at transmit is round((gpst - range/c + clk_sv)/period) mod "
-        "overlay_len, leaving ONE global constant, the receiver clock reference, which "
-        "any detection measures and every satellite shares. Works for sats "
-        "NEVER detected, which is where a full 20-way scan hurts most. "
-        "Requires --almanac and the capture time anchor.",
+        help="hint each PRN's NH overlay alignment to the search, so it scans "
+        "nh_hint_span (a search stage setting) alignments either side of the hint "
+        "instead of all of them. The alignment at transmit follows from the ephemeris, "
+        "round((gpst - range/c + clk_sv)/period) mod overlay_len, up to one constant "
+        "every satellite shares (the receiver clock's offset), which each new "
+        "detection measures; so a satellite never detected is hinted too. The offset "
+        "expires when its samples go stale. Needs --narrow-search (the hints are "
+        "posted with its Doppler hints), --almanac and the capture time anchor "
+        "(--time0-endpoint, read under --dead-reckon).",
     )
     ap.add_argument(
         "--joint-p2c-rotate",
         action="store_true",
-        help="P2c, SELF-DRIVING. Withhold the best-established satellite from the "
-        "joint solve, coast it for --joint-p2c-hold-s, log the "
-        "residual-vs-age curve, release, and rotate to one not tested "
-        "recently. Hand-picking one PRN is a sample of ONE satellite at "
-        "ONE geometry: on a transit "
-        "instrument the first two runs disagreed outright (flat -0.19+-0.44 "
-        "chips over 848 s, then -2.70 over 900 s on the same satellite) and "
-        "a third produced nothing because the named PRN had set. What this "
-        "accumulates instead is a DISTRIBUTION over satellites and "
-        "elevations -- and the residual's growth with age IS the b_sat "
-        "random walk, so it MEASURES q_b (currently the guessed 0.013).",
+        help="rotating coast test of the joint receiver state: withhold the "
+        "best-established satellite (>= joint_mask_after accepted updates) from the "
+        "joint solve for joint_p2c_hold_s, log its residual against coast age (P2C "
+        "lines), release it, and move to one not tested in the last joint_p2c_skip "
+        "rotations (constants in cli.py _FROZEN). The residual's growth with age "
+        "measures the b_sat random walk (the state's q_b); rotating samples many "
+        "satellites and elevations, where one hand-picked PRN is one geometry and may "
+        "set mid-test. The withheld satellite stays seeded. Runs where the joint solve "
+        "does (--joint-consume) and the chain has detections.",
     )
     ap.add_argument(
         "--publish-port",
         type=int,
         default=0,
-        help="serve the FLEET-MERGED per-PRN state on this port (0 = off): "
-        "GET /get_status returns rows in GnssCoherentCombiner's schema, so "
-        "the viewer consumes them unchanged, but built from ALL "
-        "--dll-combiners instead of one instance's 6.7%% of the L5 lobe. The "
-        "browser cannot merge 14 origins across 8 hosts itself, and the "
-        "broker is already the shared-knowledge node (pooled l-a, clock-freq "
-        "bias, fused LO, cross-band assist) -- this is the same kind of "
-        "object. Coherent statistics are best-of-instance, not merged, and "
-        "say so via coh_src; see FleetPublisher.",
+        help="serve the fleet-merged per-PRN state over REST on this port (0 = off; "
+        "FleetPublisher in gnss_broker/publish.py). GET /get_status returns rows in "
+        "GnssCoherentCombiner's schema, so the viewer reads them unchanged, built from "
+        "every --dll-combiners instance rather than one instance's share of the band; "
+        "/get_detections, /get_chains, /get_elements, /get_sky and /get_rf are served "
+        "too. Under broker_multi.py the first --publish-port serves every chain: "
+        "select one with /<chain>/get_status or ?chain=<id>. coh_src names where a "
+        "row's coherent statistics came from: fleet_coherent, a quadrature of "
+        "instances, or the best single instance.",
     )
     ap.add_argument(
         "--spectrum-stale-margin",
         type=int,
         default=0,
-        help="#84 THE SPEC-WINDOW PIN: exclude instances whose newest available "
-        "window trails the fleet's newest by more than this many windows "
-        "BEFORE choosing the common index (which is min over the rest). "
-        "0 = off (the replay gate's requirement): plain min(hi), which "
-        "hands the index to the slowest member forever -- measured "
-        "2026-08-17 as SPEC-WINDOW pinned at 605351 on all five chains by "
-        "cx19's bench-state n2assemble (frozen buffer, bit-identical "
-        "amp/energy every poll), 11/12 healthy instances dropped, and "
-        "spec_tau a noise fit over the one dead instance. Healthy "
-        "inter-instance lag is a few records (#46); ~8 is a generous "
-        "margin. Excluded instances are named in the dropped list.",
+        help="before choosing the common spectrum window for --spectrum-endpoints (the "
+        "newest one every instance has finished, a min over instances), drop instances "
+        "whose newest window trails the fleet's newest by more than this many windows; "
+        "they are listed as dropped. 0 = off: a plain min, where one frozen instance "
+        "pins the common window and the fit runs on it alone. Healthy instances lag "
+        "one another by a few windows.",
     )
     ap.add_argument(
         "--spectrum-endpoints",
         default="",
-        help="FLEET PHASE-SLOPE DELAY FIT (task #32, docs/CHORD_JOINT_TRACKING.md "
-        "P1): comma-separated GnssGpuRecordAssemble endpoints ({a..b} ranges "
-        "expanded) whose /get_spectrum -- the per-channel prompt sums BEFORE "
-        "the cross-channel combine -- feed the joint (tau, phi_i) fit. A "
-        "delay is a phase ramp across frequency; the fleet's UNION of combs "
-        "is what suppresses the 3.27-chip grating lobes a single instance's "
-        "stride-16 comb cannot resolve. MEASUREMENT ONLY today: logged as "
-        "SPEC-FIT, feeding no loop. Empty = off, and every recorded transcript replays "
-        "byte-identically (replay is strict-ordered; this flag not being in "
-        "an old transcript's argv is what keeps the new GETs out of replay).",
+        help="record-assembler endpoints (GnssGpuRecordAssemble; comma list, {a..b} "
+        "ranges, bare names on --rest-url) for the fleet phase-slope delay fit. Their "
+        "/get_spectrum serves the per-channel prompt sums before the cross-channel "
+        "combine. A delay is a phase ramp across frequency, so one aligned window from "
+        "every instance is fitted for a delay tau per PRN with a free phase per "
+        "instance (logged as SPEC-FIT); the fleet's union of channels resolves the "
+        "grating lobes a single instance's sparse comb cannot. For a PRN at or above "
+        "lock_snr, tau updates the per-satellite path bias b_sat (SatBiasFilter) that "
+        "dead-reckon seeds add to the receiver clock. Empty = off. "
+        "docs/CHORD_JOINT_TRACKING.md describes the measurement.",
     )
     ap.add_argument(
         "--dcb-bias",
         action="store_true",
-        help="use the MGEX (CAS) measured differential code biases in place of "
-        "the broadcast TGD/BGD, per satellite, where the product covers the "
-        "signal. THE POINT IS BeiDou B2a, whose broadcast term (TGD_B2ap) is "
-        "a B-CNAV2 parameter that RINEX 3 does not carry at all -- so without "
-        "this it gets NO group-delay correction. ⚠️ The product is ZERO-MEAN "
-        "PER CONSTELLATION by construction, so it supplies the per-satellite "
-        "spread and can never explain a constellation-common offset; measured "
-        "2026-08-23 the BeiDou spread is -0.006..+0.121 chips against a "
-        "+0.74..+1.3 chip common trim. Needs an Earthdata token "
-        "(~/.cache/kotekan_gps/.earthdata_token); without "
-        "one it logs and falls back to the broadcast term.",
+        help="use the CAS (MGEX) measured differential code biases in place of the "
+        "broadcast TGD/BGD, per satellite, where the product covers the signal. For "
+        "BeiDou B2a they are the only group-delay correction: its broadcast term "
+        "(TGD_B2ap) is a B-CNAV2 parameter that RINEX 3 does not carry. The product is "
+        "zero-mean per constellation, so it corrects the per-satellite spread and "
+        "never a constellation-common offset. Applies to the dead-reckon model "
+        "(--dead-reckon). Needs an Earthdata token "
+        "(~/.cache/kotekan_gps/.earthdata_token); without one it logs and uses the "
+        "broadcast term.",
     )
     ap.add_argument(
         "--joint-consume",
         default="",
-        help="P2b: comma-separated JOINT-state consumers to switch LIVE, one "
-        "name per commit so each is A/B-able on its own. Any name runs the "
-        "JOINT receiver-state solve (task #33, docs/CHORD_JOINT_TRACKING.md "
-        "section 3a) -- one [clk, clk_rate, b_sat[i]] estimated together from "
-        "the dead-reckon integrity residuals, receiver-scope so all three "
-        "constellations feed ONE clock; empty (default) runs none. Names: "
-        "'rate' (seeded code-rate clock from "
-        "clk_rate instead of the l-a EMA -- which measured ~80x biased, "
-        "see the call site); 'slew' (the dead-reckon SLEW TARGET's "
-        "clock+bias offset from clk + b_sat instead of the clock EMA plus "
-        "the SatBiasFilter -- the half of the state P2c validates, and the "
-        "half that survived the 2026-08-10 gauge collapse); later 'clock'. "
-        "The shadow comparison for each is logged whether or not it is "
-        "consumed, so the A/B exists before the switch.",
+        help="comma list of joint receiver-state consumers to switch on; empty "
+        "(default) runs none. Any name also runs the joint solve on this chain "
+        "(docs/CHORD_JOINT_TRACKING.md): its detections' dead-reckon integrity "
+        "residuals feed one [clk, clk_rate, b_sat[i]] state shared by every chain of "
+        "the receiver. Each consumer refuses a state with fewer than joint_min_sats "
+        "satellites and then keeps its own estimate (the joint_* bounds are constants "
+        "in cli.py _FROZEN). Names: 'clk' (each cycle, move the dead-reckon clock onto "
+        "the joint clock as a wrapped delta; refused beyond joint_clk_max_chips or "
+        "joint_clk_max_sigma, and a step beyond joint_clk_max_step_chips waits until "
+        "it has held for joint_clk_step_hold_s; logged as JOINT-CLK); 'rate' (seed the "
+        "code-rate clock from clk_rate instead of the l-a EMA, refused beyond "
+        "joint_max_rate_ppm); 'slew' (dead-reckon seed offsets take the joint clk + "
+        "b_sat instead of the clock plus SatBiasFilter, refused per satellite beyond "
+        "joint_slew_max_chips; the SEED-OFFSET lines compare the two).",
     )
     ap.add_argument(
         "--joint-clk-coast-max-s",
@@ -1051,996 +1091,883 @@ def build_parser(description):
     ap.add_argument(
         "--rrate-state",
         action="store_true",
-        help="P3 step 2 (task #33): FEED the receiver-wide joint state's "
-        "per-satellite ORBITAL range-rate rows (m/s, band-shared) from "
-        "this chain's deep_rate_hz residuals -- the validated carrier "
-        "measurement (q-gated, continuity-gated, slew-gated by "
-        "rate_residuals; NEVER carrier_hz_resid, which is documented "
-        "signal-free at CHORD SNR). Measurement-only: cannot change a "
-        "seed or a POST. This is the shadow phase, and the JRR log line "
-        "is where sky validation happens. Per-CHAIN key on purpose: "
-        "E5a+E5b feeding lands both bands on ONE row per Galileo sat, "
-        "which is the cross-band combination the state exists for.",
+        help="feed the receiver's joint rrate state from this chain: one row per "
+        "satellite holding its orbit model's range-rate error (m/s), shared by every "
+        "band and chain of the process, plus the receiver-wide carrier frequency "
+        "offset f_carrier. The measurement is the combiner's uncapped deep-fold rate "
+        "residual (deep_rate_full_hz) after rate_residuals' gates (peak q, clip about "
+        "the median, continuity), from cohering satellites only (coherence_s > 0 or "
+        "coh_frac >= 0.3) and never from a --probe-dark probe. Logged as the JRR "
+        "line, with the fine-vs-coarse JRRP line beside it. "
+        "Measurement only: seeds act on the rows only under --rrate-command, which "
+        "implies this flag. --rrate-kcoh-feed and --rrate-phase-feed add feeds and "
+        "need it.",
     )
     ap.add_argument(
         "--rrate-command",
         action="store_true",
-        help="P3 step 3 (task #33): the seed's carrier command comes from the "
-        "joint state's carrier_correction_hz() -- receiver-wide f_carrier "
-        "plus this sat's orbital rrate, scaled to THIS band -- posted as "
-        "carrier_trim_hz, REPLACING the trim-loop value rather than "
-        "adding to it. One command per (satellite, band) is the point: "
-        "#52's root was two controllers on one state. Turning this on is "
-        "what closes the carrier loop. Implies --rrate-state. Per-CHAIN "
-        "key so half the fleet can run each arm and be compared IN ONE "
-        "POLL (the sky churns faster than a restart A/B can resolve). "
-        "Posts via carrier_trim_hz (NCO derotation, phase-continuous in "
-        "the tracker) and never touches doppler_hz: seed continuity "
-        "beats freshness, measured (deep_snr 221->17 on a 10 s re-pin).",
+        help="close the carrier loop: each seed carries carrier_trim_hz, the joint "
+        "state's carrier_correction_hz() (the receiver-wide f_carrier plus this "
+        "satellite's range-rate term, scaled to this band's --carrier-hz), which the "
+        "tracker applies as a phase-continuous NCO offset; doppler_hz is left alone. "
+        "A satellite is commanded only while its row's sigma is <= "
+        "rrate_cmd_max_sigma and it passes --rrate-cmd-min-sig; the command is "
+        "clamped to --carrier-max-hz and moves at most rrate_cmd_slew_hz per poll "
+        "(rrate_cmd_max_sigma and rrate_cmd_slew_hz are constants in cli.py _FROZEN). "
+        "A satellite that leaves the commanded set slews its command back to 0. In a "
+        "poll where no status row carries deep_rate_full_*, or before f_carrier is "
+        "solved, nothing is commanded and standing commands slew toward 0. Noise "
+        "probes are never commanded. Implies --rrate-state. Logged as JRR-CMD.",
     )
     ap.add_argument(
         "--rrate-feed-applied",
         type=int,
         default=1,
-        help="ARM-13 (the E25 lesson, 2026-08-20): how the rrate feeds "
-        "reference the standing carrier command. 1 (default) = add the "
-        "posted command back to the measured residual -- CORRECT for the "
-        "command-AWARE plant (pre-08-14 trackers, whose records carried "
-        "the actuation, so measured = remaining and y = remaining + "
-        "applied). 0 = the command-BLIND plant: since the 08-14 tracker "
-        "cycle the assembler folds the applied ctrim out of every record "
-        "(e2e [4e] MEASURED commanded == control), so the fold/record "
-        "observables already read the FULL standing residual and the "
-        "add-back DOUBLE-COUNTS: the row integrates its own actuation "
-        "and every sat with a real residual ramps at exactly slew rate "
-        "(E25: sig 12776, resid pinned +5..+15 while its command walked "
-        "1 -> 10). Set 0 on any chain whose trackers run the folded "
-        "assembler -- i.e., every CHORD chain today. The fine PHASE feed "
-        "is untouched either way: its reference handles the command "
-        "explicitly (command-HELD gate + measured applied trim).",
+        help="how the coarse (deep-fold) and KCOH rate feeds reference the standing "
+        "carrier command. 1 (default): add the command posted last poll back to each "
+        "measured rate, for records that carry the actuation, whose rate is what "
+        "remains after the command. 0: add nothing, for a record assembler that folds "
+        "the applied trim out of every record, so the rates already read the whole "
+        "residual; adding the command back there makes each row integrate its own "
+        "actuation and ramp at the slew rate. The fine feed (--rrate-phase-feed) "
+        "takes its own reference either way.",
     )
     ap.add_argument(
         "--rrate-cmd-min-sig",
         type=float,
         default=0.0,
-        help="ARM-12 GUARD (the E4 lesson, 2026-08-20): a row may COMMAND only "
-        "when its satellite's own kcoh detection significance meets this "
-        "bar this cycle. The sigma gate cannot catch a CONFIDENT estimate "
-        "of noise -- E4 (kcoh sig 10-36, raw rate swinging +-13 Hz) was "
-        "served sigma 0.03-0.30, passed rrate-cmd-max-sigma, and chased "
-        "its own actuation +2 -> +15.5 Hz in 12 min at exactly slew rate, "
-        "while every sig-thousands sat held +-1 Hz commands. Sigma "
-        "describes the FIT; this bar demands the SIGNAL. ~100 cleanly "
-        "separates the two populations. 0 = off (default). A sat that "
-        "loses this bar (or any command gate) now SLEWS its standing "
-        "command back to 0 instead of stepping -- see the release-slew "
-        "below the command site.",
+        help="a satellite may be commanded (--rrate-command) only while its latest "
+        "KCOH significance (the known-rate fold's sig) is at least this; a satellite "
+        "with no KCOH row is below it. The row-sigma gate (rrate_cmd_max_sigma) "
+        "judges the fit, and a confident fit to a marginal satellite's noise can pass "
+        "it; this bar asks for the signal itself. A satellite that fails it slews its "
+        "standing command back to 0. 0 (default) = off.",
     )
     ap.add_argument(
         "--rrate-phase-feed",
         action="store_true",
-        help="#33 PLL fine stage: feed the joint state's rrate rows from the "
-        "ADR's residual half (res_cycles per adr_records -- ~5 mHz over "
-        "a 20 s span) on sats that pass the fine gates: coarse loop "
-        "converged (|coarse resid| < 0.3 Hz), command HELD over the span "
-        "(the fine value's reference is only exact under a constant "
-        "command), same arc, counter advanced. The coarse deep_rate_full "
-        "feed stays as acquisition. SIGN IS CALIBRATED, NOT ASSUMED: "
-        "requires --rrate-phase-sign nonzero, which is set from the "
-        "JRRP shadow line's live fine-vs-coarse comparison -- closing a "
-        "loop on an uncalibrated observable is how this day started.",
+        help="also feed the rrate rows from the fine ADR phase rate: the combiner's "
+        "res_cycles differenced over a span (the last poll, or --rrate-phase-span-s), "
+        "whose noise floor is far below the deep-fold rate's. A satellite feeds only "
+        "when adr_fine_rate's structural gates pass (same arc, record counter "
+        "advanced and consistent with wall time), the command moved <= 0.6 Hz over "
+        "the span, it is cohering (coherence_s > 0 or coh_frac >= 0.3) and |rate| < "
+        "20 Hz. The reference added back is the trim the tracker applied over the "
+        "span (trim_cycles) when the combiner serves it, else the posted command's "
+        "span mean, with sigma (rrate_phase_sigma, cli.py _FROZEN) widened by the "
+        "command's motion. An accepted value deweights that satellite's coarse "
+        "measurements (--rrate-coarse-deweight). Needs --rrate-state and a nonzero "
+        "--rrate-phase-sign.",
     )
     ap.add_argument(
         "--rrate-phase-sign",
         type=float,
         default=0.0,
-        help="sign (+1/-1) mapping the combiner's internal (r2c-flipped) "
-        "res_cycles rate onto the deep_rate_full_hz convention. 0 = "
-        "uncalibrated: the JRRP shadow comparison still logs, the fine "
-        "feed stays off regardless of --rrate-phase-feed.",
+        help="sign (+1 or -1) that maps the combiner's res_cycles rate (its internal, "
+        "r2c-flipped convention) onto the deep_rate_full_hz convention for the fine "
+        "feed; it signs the applied-trim reference too. Calibrate it per chain on sky "
+        "from the JRRP line's fine|coarse response to a commanded carrier step. 0 "
+        "(default) = uncalibrated: the JRRP line still logs, and the fine feed stays "
+        "off whatever --rrate-phase-feed says.",
     )
     ap.add_argument(
         "--rrate-phase-span-s",
         type=float,
         default=0.0,
-        help="GAP-1 long baseline (2026-08-25): difference res_cycles against "
-        "the newest snapshot at least this many seconds old, instead of "
-        "last poll's. 0 = per-poll (legacy). MEASURED (gap1_tau_scaling.py "
-        "08-24, two instances): per-sat sigma_rate 1.12 Hz at 2 s -> 0.31 "
-        "at 16 s -> 0.18 at 32 s, converging 1/tau -- the error "
-        "telescopes, so the long difference realizes what per-poll "
-        "feeding cannot (the filter cannot know consecutive fine values "
-        "share endpoints, so N per-poll feeds buy only 1/sqrt(N); this "
-        "buys 1/span from the same data). The span-mean lags a drifting "
-        "rate by span/2; that staleness is priced into sigma (drift class "
-        "0.02 Hz/s), NOT into the measurement epoch -- the filter only "
-        "predicts forward. 16-32 is the measured sweet spot (~0.35 Hz "
-        "effective vs the 0.5 quietness bar); 60+ hands the gain back to "
-        "staleness. Applies to the SHADOW (JRRP) and, where "
-        "--rrate-phase-feed is armed, the feed -- same computed value.",
+        help="difference res_cycles for the fine rate against the newest snapshot at "
+        "least this many seconds old, instead of the last poll's. The phase error "
+        "sits at the two endpoints, so the rate noise falls as 1/span, while the span "
+        "mean lags a drifting rate by span/2; the feed's sigma carries both terms, "
+        "and the measurement stays stamped at now. In span mode a satellite feeds at "
+        "most once per span, so fed values share no data; the JRRP line logs the span "
+        "value every poll. On sky the combined error is smallest at 16-32 s; much "
+        "longer spans lose to the lag. 0 (default) = the last poll's snapshot.",
     )
     ap.add_argument(
         "--rf-stats-endpoints",
         default="",
-        help="Comma/brace list of VOLTAGE TAP endpoints to poll for RF-path "
-        "health (#8), e.g. http://cx19:12048/gnss{0..1}_srch_tap. Empty = "
-        "OFF. Serves clip fraction and per-band power at the publisher's "
-        "get_rf.\n"
-        "\n"
-        "⚠️ ARM THIS ON ONE CHAIN ONLY. The voltage tap is per GPU and "
-        "serves every signal on it, so the RF path is a property of the "
-        "RECEIVER, not of a chain -- arming it in `common:` would poll the "
-        "same twelve endpoints five times a cycle for five identical "
-        "answers, and print the alarm five times.\n"
-        "\n"
-        "The node side is default-off too (config band_power_chans): an "
-        "unarmed instance reports enabled=false, which is recorded as OFF "
-        "and never published as zeros -- a dark panel must read 'not armed', "
-        "not 'no RFI'.",
+        help="comma list ({a..b} ranges, bare names on --rest-url) of voltage-tap "
+        "endpoints, e.g. http://cx19:12048/gnss{0..1}_srch_tap, polled every "
+        "rf_stats_poll_s (cli.py _FROZEN) for RF-path health: clip fraction and power "
+        "per band, served on the publisher's /get_rf (--publish-port) for the "
+        "viewer's stream-health panel, and logged as RF PATH; with no publisher "
+        "nothing is polled. Empty = off. Set it on one chain only: the tap is per "
+        "GPU and watches every chain's channels, so "
+        "its readings are the receiver's, and arming it on several chains polls the "
+        "same endpoints and logs each alarm once per chain. A tap whose node config "
+        "has no band_power_chans reports enabled=false and is published as off, never "
+        "as zeros.",
     )
     ap.add_argument(
         "--rfi-stats",
         action="store_true",
-        help="Also poll each rf-stats instance's spectral-kurtosis RFI metrics "
-        "(rfi_sk_metrics/sk_metrics_{gpu}) and fold an SK summary into get_rf. "
-        "Default off; rides the SAME endpoints as --rf-stats-endpoints (the SK "
-        "url is derived per instance), so no second endpoint list.",
+        help="also fetch each --rf-stats-endpoints instance's spectral-kurtosis RFI "
+        "metrics (rfi_sk_metrics/sk_metrics_{gpu}, derived from the tap URL) and add "
+        "an SK summary to its get_rf entry. Off by default.",
     )
     ap.add_argument(
         "--rf-bands",
         default="",
-        help="Comma list of CHAIN NAMES whose RF bands the receiver actually "
-        "flies, e.g. gps_l5,gal_e5b,gps_l2c,bds_b3i,gal_e6. Names the rows "
-        "of the Stream health panel: each monitored channel is labelled with "
-        "the nearest DECLARED carrier, and the carriers come from "
-        "gnssSignal.hpp so no frequency is typed twice.\n"
-        "\n"
-        "⚠️ WITHOUT THIS THE PANEL FALLS BACK TO UNNAMED 'lobe N' ROWS, ON "
-        "PURPOSE. The obvious shortcut -- label each channel with whatever "
-        "carrier in the band table is nearest -- INVENTS BANDS: measured "
-        "2026-09-02, cx19/gnss1's channels 287-288 (1199.2/1202.3 MHz) came "
-        "back as GLONASS 'L3', which CHORD does not fly, because E5b's lower "
-        "shoulder is nearer L3OC's carrier than E5b's own. Declaring the set "
-        "removes the ambiguity instead of hiding it.\n"
-        "\n"
-        "⚠️ Rides the SAME arming as --rf-stats-endpoints -- one chain only. "
-        "The list is the FLEET's bands, not this chain's: the tap is per GPU "
-        "and monitors the union of every chain on it.",
+        help="comma list of chain (signal) names declaring the RF bands the receiver "
+        "flies, e.g. gps_l5,gal_e5b,gps_l2c,bds_b3i,gal_e6; the carriers come from "
+        "gnssSignal.hpp. The stream-health panel labels each channel the "
+        "--rf-stats-endpoints taps monitor with the nearest declared carrier. "
+        "Matching the whole band table instead would name bands CHORD does not fly, "
+        "so with this unset the rows read 'lobe N'. List the fleet's bands, not only "
+        "this chain's: the tap is per GPU and monitors the union of every chain on "
+        "it. Set it on the chain that sets --rf-stats-endpoints. Unknown names are "
+        "skipped.",
     )
     ap.add_argument(
         "--drop-stats",
         action="store_true",
-        help="Also poll each rf-stats instance's node /metrics for drop counters "
-        "(gnss{gpu} srch/telem buffer-send drops, node dpdk rx-missed and "
-        "ring-full) and fold them into get_rf. Default off. One /metrics fetch "
-        "per HOST per poll, shared across its two GPU instances.",
+        help="also read each --rf-stats-endpoints host's /metrics (once per host per "
+        "poll, shared by its GPU instances) for drop counters: the gnss{gpu} search "
+        "and telemetry buffer-send drops and the node's DPDK rx-missed and ring-full "
+        "drops, added to each instance's get_rf entry. Off by default.",
     )
     ap.add_argument(
         "--rrate-coarse-deweight",
         type=float,
         default=8.0,
-        help="THE FLL->PLL HANDOFF. While a satellite holds a fresh fine lock "
-        "(see --rrate-fine-hold-s), its COARSE measurements enter at "
-        "sigma x this factor. Both feeds keep running -- the coarse one "
-        "is what re-acquires after a cycle slip or a re-seed -- but a "
-        "60 mHz observable must not out-vote a 16 mHz one at equal "
-        "weight, which is exactly what pinned phi0 at 0.4-1.1 rad while "
-        "the fine feed fired once a minute. 8x sigma = 64x variance, so "
-        "one fine sample outweighs ~64 coarse ones; the row is then "
-        "governed by phase and merely SUPERVISED by frequency. 1.0 "
-        "disables the handoff (both feeds at face value).",
+        help="the FLL-to-PLL handoff: while a satellite has an accepted fine "
+        "(--rrate-phase-feed) or KCOH (--rrate-kcoh-feed) measurement within "
+        "rrate_fine_hold_s (cli.py _FROZEN), its coarse deep-fold rate measurements "
+        "enter the rrate row at this multiple of their sigma. They are deweighted, "
+        "never dropped: the coarse feed re-acquires the row after a cycle slip or a "
+        "re-seed. The default 8 (64x the variance) makes each coarse measurement count "
+        "1/64 as much, so the row follows the phase and the coarse rate only "
+        "supervises it. <= 1 = no handoff, both feeds at face value.",
     )
     ap.add_argument(
         "--dr-fengine-axis",
         type=int,
         default=0,
-        help="#83 THE AXIS FIX: derive the dead-reckon time base from the "
-        "F-ENGINE hop counter (newest telemetry pow_hop + wall-ELAPSED "
-        "since its fetch) instead of wall-minus-anchor. MEASURED basis "
-        "(2026-08-17): the nodes' hop->utc mapping is PPS-true to 3 us "
-        "(implied utc0 spread 0.000 ms across 32 sats), while the "
-        "broker's wall axis carries ~1.45 ms of absolute NTP error "
-        "(chrony root dispersion 1.5 ms) DRIFTING at ~1 us/min. The "
-        "static part hides in the solved receiver clock (common-mode) "
-        "and only bites at axis crossings -- the flip's 14865-chip slew "
-        "target = 1.4531 ms exactly, the INNOV giants on dr seeds -- but "
-        "the DRIFT is the 2(b) phase-transport walk (~0.6 chips/min = "
-        "1 us/min x 10.23 Mcps): under cp0 transport the back-reference "
-        "round trip cancels it, under phase transport nothing does, and "
-        "on chains whose clock is ADOPTED (no detections) nothing "
-        "re-solves it away. With this axis, wall time enters only as a "
-        "sub-cycle DIFFERENCE (NTP slew x seconds = ns). Default OFF for "
-        "the replay gate; arming it moves every dr seed's epoch, so "
-        "fixtures that exercise dr paths re-bless.",
+        help="nonzero: build the dead-reckon time base (t_now_abs) from the F-engine "
+        "hop counter instead of wall time minus the frame-0 anchor: the newest "
+        "pow_hop in --combiner's status, kept as a (hop time - wall) offset filtered "
+        "against the pipeline lag's jitter, plus the wall clock. The nodes' hop->UTC "
+        "mapping is PPS-disciplined, while the broker's wall clock carries NTP error "
+        "that drifts (1 us is ~10 L5 chips); on this axis wall time enters only as "
+        "elapsed seconds. The static part of that error is common-mode and lands in "
+        "the solved receiver clock, but the drift is not re-solved on a chain whose "
+        "clock is adopted, and nothing cancels it in a --seed-phase-transport phase. "
+        "The orbit is still evaluated at wall time. Changing it moves every "
+        "dead-reckon seed's epoch, so replay goldens that cover dead-reckon paths "
+        "change. 0 (default) = wall minus anchor.",
     )
     ap.add_argument(
         "--dr-forecast-lead-s",
         type=float,
         default=0.0,
-        help="#46/A1 THE FORECAST EPOCH. Build dead-reckon seeds for the hop "
-        "H = (newest telemetry pow_hop) + this many seconds, instead of for "
-        '"now". 0 = off (the replay gate\'s requirement, and exactly the '
-        "historical behaviour). A seed is a forecast WITH A LABEL "
-        "(ref_hop, phase, doppler, rate) and is defined entirely on the hop "
-        'axis, so it never needed a notion of "now" -- asking for one is '
-        "what dragged the wall clock, NTP and the telemetry lag into the "
-        "seed path, and it is why an ephemeris-epoch substitution measured "
-        "65x WORSE (reverted 2db3eec1f) and re-admitting dr-owned seeds to "
-        "INNOV was falsified in 20 minutes (09a8dc52e). Forecasting to a "
-        "CHOSEN hop removes the "
-        "question: the measured ~217 ms lag (105 ms window quantisation + "
-        "~100 ms pipeline, 59 ms IQR, occasional 1 s excursions) no longer "
-        "enters the arithmetic and only sets how large this lead must be. "
-        "Pick it to exceed transport + install with margin -- 1-2 s is "
-        "ample against a 0.2-0.3 s lag -- but not so large that the "
-        "linear range-rate propagation in cp_predicted degrades (range "
-        "acceleration ~0.2 m/s^2 gives ~0.4 m = 0.013 chips at 2 s).",
+        help="build dead-reckon seeds for the whole hop nearest now + this many "
+        "seconds, rather than for now. A seed is a forecast labelled with its ref_hop "
+        "(phase, Doppler and rate at that hop), so the telemetry lag then only sets "
+        "how large the lead must be instead of entering the arithmetic. The lead must "
+        "exceed transport plus install, or a seed arrives after the epoch it "
+        "describes; 1-2 s clears the few hundred ms of lag with margin. Longer leads "
+        "cost accuracy: cp_predicted carries the range linearly, and a range "
+        "acceleration of ~0.2 m/s^2 gives ~0.4 m (0.013 L5 chips) at 2 s. Ages, rrate "
+        "updates and the joint cycle stay at now. Needs the F-engine axis sample from "
+        "--combiner's status. 0 (default) = seeds for now.",
     )
     ap.add_argument(
         "--model-primacy-max",
         type=int,
         default=0,
-        help="#83 P3-3b, THE FLIP: at most this many PRNs run MODEL-PRIMARY on "
-        "a search-backed chain -- their seeds come from the dr-slew path "
-        "(BRDC + joint clk + b_sat, the 'slew' consumer), their "
-        "detections feed ONLY the filter, the innovations and the "
-        "referee, never the seed. Admission is per-PRN on the MEASURED "
-        "model innovation (see --model-primacy-p95); the best-p95 "
-        "eligible PRNs are flipped and the remaining eligible ones are "
-        "the in-poll controls. 0 = off (the default, and the replay "
-        "gate's requirement). MEASURED BASIS for the flip (2026-08-17 "
-        "12:08): MINNOV p95 1.4-1.9 chips vs INNOV p95 2.2-2.5 on the "
-        "SAME established satellites -- the model forecasts the sky "
-        "BETTER than the search-anchored seed, whose every re-anchor "
-        "injects the search's own 1-2 chip per-fix scatter; and the "
-        "rotating coast test carried a withheld sat at -0.13/-0.19/-0.31 "
-        "chips banded over 600 s.",
+        help="on a chain with a search, let up to this many PRNs run model-primary: "
+        "their seeds come from the dead-reckon slew (the model plus the receiver "
+        "clock and path bias; the joint ones under --joint-consume slew), and their "
+        "detections only feed the joint filter and the MINNOV referee, never "
+        "re-anchoring, holding or escaping the seed. MINNOV is a detection's code "
+        "phase against the joint state's prediction made without it. A PRN is "
+        "eligible when its 10-min MINNOV p95 is below model_primacy_p95 over at least "
+        "model_primacy_min_n samples; the lowest-p95 PRNs fill the cap and the rest "
+        "are logged as controls. A flipped PRN goes back to the search when its p95 "
+        "exceeds model_primacy_exit_p95 or its referee starves (no MINNOV in the "
+        "10-min window, or no detection for model_primacy_starve_s; constants in "
+        "cli.py _FROZEN). Probes, untrusted PRNs and PRNs within 300 s of an exit are "
+        "not eligible. Logged as MODEL-PRIMACY ENTER/EXIT. Needs --dead-reckon and the "
+        "joint solve (--joint-consume). 0 (default) = off.",
     )
     ap.add_argument(
         "--rrate-kcoh-feed",
         type=int,
         default=0,
-        help="#83 Phase 3 step 1: feed the joint rrate state the KCOH fold's "
-        "remaining rate (rate_hz + rate_resid_hz, task #57) -- a "
-        "PHASE-PROGRESSION estimator (segment-phasor lag products over "
-        "the fleet-summed prompt), which is the different KIND the "
-        "coarse feed's own post-mortem asked for: deep_rate is a "
-        "spectral argmax with a flat structure function (~5.6 Hz of "
-        "pure noise) and fcoh's spectral fit failed for sharing its "
-        "peak selection. This one is probe-calibrated and alive on "
-        "satellites a single tracker cannot hold -- the DR chains' "
-        "first credible carrier-rate measurement. Referenced like the "
-        "coarse feed: REC_P is already derotated by the applied "
-        "command, so remaining + applied re-references y to the BASE "
-        "seed. While a satellite has a fresh kcoh acceptance its "
-        "coarse measurements are deweighted exactly like the fine "
-        "hold. Default OFF for the replay gate (recorded argv rules); "
-        "armed in the yaml globals.",
+        help="nonzero: also feed the rrate rows the KCOH fold's remaining carrier "
+        "rate (rate_hz + rate_resid_hz), a phase-progression estimate (lag products "
+        "of each instance's prompt segments, summed over the fleet) that does not "
+        "share the deep fold's spectral peak search. A satellite feeds when its KCOH "
+        "sig is >= rrate_kcoh_min_sig (cli.py _FROZEN), with >= 8 lag pairs and "
+        "|rate| < 20 Hz; probes never feed, and each KCOH estimate feeds once. The "
+        "command is referenced as --rrate-feed-applied says. An accepted value "
+        "deweights the satellite's coarse measurements like a fine one "
+        "(--rrate-coarse-deweight). Logged as JRR-KCOH. Needs --rrate-state; KCOH "
+        "itself needs --telem-gather and noise probes. 0 (default) = off.",
     )
     ap.add_argument(
         "--seed-phase-transport",
         action="store_true",
-        help="#45 step 6: dead-reckon/slew seeds carry code_phase_at_ref_chips "
-        "(the PHASE at ref_hop) in addition to the sample-0 argument. "
-        "propagate_seed prefers the phase, which has no t_abs lever, so a "
-        "producer that edits the Doppler without re-projecting cp0 can no "
-        "longer walk the despread (~1700 chips/Hz). The search-fed path has "
-        "shipped a phase all along; this closes the model-primary gap. "
-        "MEASURED before enabling (scripts/gnss/e2e_phase_transport.py at "
-        "31896a862, real "
-        "propagate_seed + GPU): arg 0.788 chips, phase+ 0.785, and the "
-        "UNCONVERTED phase 51.999 -- the broker references a hop's first "
-        "sample and the C++ side its last, so the conversion is what makes "
-        "this safe. OFF by default until it has flown.",
+        help="dead-reckon births, re-pins and slews also carry "
+        "code_phase_at_ref_chips, the code phase at ref_hop, beside the sample-0 "
+        "argument code_phase_chips. The tracker's propagate_seed prefers the phase: "
+        "the argument is referred to sample 0 through the Doppler, so a producer that "
+        "edits the Doppler without re-projecting it moves the despread by t_abs x "
+        "f_chip / f_carrier chips per Hz (~1700 at L5 after 2.3 days of F-engine "
+        "uptime), while a phase at its own epoch has no such lever. The broker "
+        "references a hop at its first sample and the tracker at its last, so the "
+        "phase is converted by one hop (fits.seed_phase_at_ref) before it ships. "
+        "Search-fed seeds on an overlaid code carry the phase either way.",
     )
     ap.add_argument(
         "--dll-combiners",
         default="",
-        help="FLEET-COMBINED DLL (docs/CHORD_GNSS_SHARED_DLL.md): comma-separated "
-        "combiner endpoints ({a..b} ranges expanded) whose RAW Early/Prompt/"
-        "Late powers are SUMMED before the discriminator is formed, closing "
-        "ONE code loop at full signal bandwidth. On CHORD the F-engine comb "
-        "spreads L5 across every node, so a single instance correlates 7 x "
-        "195.3 kHz of a 20.46 MHz lobe -- 6.7%%, -11.8 dB -- and no instance "
-        "can do better; that gap, not sensitivity or the quality gate, is why "
-        "the code lock is episodic. The combine is legitimate because the "
-        "discriminator is NON-COHERENT: (E-L)/(E+L) is built from POWERS, "
-        "which add with no phase alignment and no sample sync, only the same "
-        "window (pow_hop, exact). Empty = today's behaviour, --combiner alone. "
-        "REQUIRES trim_gain 0 on the trackers: E/L are measured relative to "
-        "the phase each instance despread at, so independent local trims make "
-        "the sum SMEAR instead of sharpen (design section 5).",
+        help="comma list of combiner endpoints ({a..b} ranges, bare names on "
+        "--rest-url), one per instance, for the fleet code loop "
+        "(docs/CHORD_GNSS_SHARED_DLL.md). An instance correlates only the channels "
+        "its GPU holds, a small fraction of the band, so the broker sums the "
+        "instances' raw Early/Prompt/Late powers per PRN over a common window "
+        "(pow_hop within dll_hop_window_s of the newest; this and dll_min_instances "
+        "are constants in cli.py _FROZEN) and forms one discriminator (E-L)/(E+L) "
+        "from the sums. The discriminator is non-coherent, so the sum needs no phase "
+        "alignment between instances, only the same window; it does need every "
+        "instance despread at the same commanded phase, which one code loop (this "
+        "broker's or the C++ fast loop's) provides. Presence (q and prompt power "
+        "against the noise probes' floor) is judged on the sums. The list also feeds "
+        "fleet_coherent and --element-poll, and names the record assemblers "
+        "(n2combine -> n2assemble) that --post-sat-geometry posts to. A PRN seen by "
+        "fewer than dll_min_instances instances, or an empty list, falls back to "
+        "--combiner's own discriminator, gated on lock_snr.",
     )
     ap.add_argument(
         "--dll-spacing",
         type=float,
         default=0.5,
         metavar="CHIPS",
-        help="the tracker's Early/Late tap offset from Prompt, in the signal's own "
-        "(component) chips. MUST MATCH the node's dll_spacing for this chain "
-        "(config/gen_chord_gnss_config.py dll_spacing_chips): the taps live on "
-        "the node, but the trim law tau = -disc/4 * (D/0.5) here and the C++ "
-        "fleet loop's copy (armed from this value) assume it -- a mismatch is a "
-        "pure gain error. Set by the CORRELATION WIDTH, not the chip: on a "
-        "chip-narrow correlation (L5/E5/B2: a 7-channel comb) 0.5 sits on the "
-        "slope; GPS L2C despreads ONE 195 kHz channel, whose |sinc|^2 nulls at "
-        "2.6 CM chips, so at 0.5 E and L sit 90%% up the peak and q = 2P/(E+L) "
-        "is pegged at 1.11 for a perfect lock (harness, 2026-09-02) -- every "
-        "q-gated instrument read the first L2C locks as dead. L2C runs 2.0: q "
-        "6.7 on peak, slope 1.10/chip, monotonic to +-2 chips.",
+        help="Early/Late tap offset from Prompt, in the signal's own (component) "
+        "chips. The taps are on the node; this value enters the trim law here (tau = "
+        "-disc/4 x (spacing/0.5)) and the C++ fast loop's copy, posted with its "
+        "policy, so it must match the node's dll_spacing for this chain "
+        "(config/gen_chord_gnss_config.py dll_spacing_chips): a mismatch is a pure "
+        "gain error. When changing both, cycle the nodes before the broker. The "
+        "offset is set by the width of the correlation the loop closes on, not by the "
+        "chip: E and L must sit inside its first null, where the discriminator is "
+        "monotonic, or the loop false-locks off peak. 0.5 (the default) suits the "
+        "chip-narrow correlation of a chain whose instances each despread a "
+        "multi-channel comb; GPS L2C (a fleet sum of single-channel instances) and "
+        "GLONASS L2OC (BOC side peaks) run the narrower offsets dll_spacing_chips "
+        "gives them and says why.",
     )
     ap.add_argument(
         "--dll-deep-gate",
         default="",
-        help="fleet DLL (task #49): PRNs whose trim PRESENCE is gated on "
-        "deep_snr >= margin x deep_floor instead of on summed prompt power. "
-        "Comma-separated PRNs, or 'all'. DEFAULT OFF. The prompt gate is "
-        "ON-PEAK-BIASED and therefore a LATCH: prompt power is suppressed "
-        "precisely when the tap is off-peak, so an off-peak satellite fails "
-        "the gate and is never trimmed back. Measured 2026-08-12: 26 of 36 "
-        "well-detected satellites (72%%) were excluded, and the excluded ones "
-        "carried the LARGER discriminators. deep_snr is immune because the "
-        "deep fold re-searches rate and phase, so it detects the satellite "
-        "wherever the tap sits. Opt in ONE PRN AT A TIME: enabling the whole "
-        "fleet at once makes 72%% of it newly trimmable against a slew cap "
-        "already railing 67-100%% of the time, which trades the latch for an "
-        "oscillation and makes the A/B uninterpretable.",
+        help="PRNs whose fleet presence, which arms their code trims, is judged on "
+        "detection rather than on q and summed prompt power: such a PRN is present "
+        "when its strongest instance's deep_snr >= dll_deep_gate_margin x that "
+        "instance's deep_floor (cli.py _FROZEN), overriding the q/prompt and "
+        "displaced verdicts; a row with no floor keeps the q/prompt verdict. PRNs "
+        "separated by commas or spaces, or 'all'; empty "
+        "(default) = none. Prompt power falls when the tap is off peak, so a "
+        "prompt-gated satellite that drifts off the peak is never trimmed back; the "
+        "deep fold re-searches rate and phase and sees the satellite wherever the tap "
+        "sits. Opt in per PRN: deep_snr can fire on noise, and this gate has no "
+        "pedestal or offset test. --dll-deep-gate-from-search adds the PRNs the "
+        "search detects strongly.",
     )
     ap.add_argument(
         "--dll-deep-gate-from-search",
         type=float,
         default=0.0,
         metavar="SNR",
-        help="task #79: AUTO-GENERATE the --dll-deep-gate set from the SEARCH. Any "
-        "PRN the search detects at snr >= this, within "
-        "--dll-deep-gate-search-hold-s, joins the deep-gated set for that "
-        "window (unioned with any hand-listed PRNs). 0 = off. "
-        "WHY THE SEARCH AND NOT A TAP STATISTIC: presence decides whether a "
-        "satellite may be CORRECTED, and every tap-derived statistic tried so "
-        "far answers it with a number that is itself suppressed when the tap "
-        "is off-peak -- q first, then prompt power, both on-peak-biased, both "
-        "latching an off-peak satellite out of its own correction (see the "
-        "--dll-deep-gate note: the same defect fixed twice with the same "
-        "class of statistic). The search is the one estimator that is "
-        "INDEPENDENT OF WHERE THE TAP SITS: it re-derives code phase over the "
-        "full period every pass, so it detects the satellite wherever the "
-        "tracker happens to be looking. It is also preferable to deep_snr, "
-        "which fires on noise (a below-horizon PRN has been measured at 11.2x "
-        "its own floor, uncorrelated with search SNR) -- the deep fold "
-        "re-searches rate AND phase, so its detection statistic keeps a "
-        "maximum over nuisance parameters that a pure-noise cell can win. "
-        "The bar is in the search's own snr units, where the acquire "
-        "threshold is 30 and the pure-noise ceiling ~17.",
+        help="add every PRN the search detected at snr >= SNR within the last "
+        "--dll-deep-gate-search-hold-s to the --dll-deep-gate set, alongside any "
+        "hand-listed PRNs; 0 (default) = off. The search re-derives code phase over "
+        "the full code on every pass, so its detection does not depend on where the "
+        "tap sits, and unlike deep_snr it does not fire on noise: a strong detection "
+        "vouches for the satellite as hand-listing the PRN does. With --almanac, only "
+        "detections of satellites above --mask-deg "
+        "count, so a spurious below-horizon detection cannot arm a correction. SNR is "
+        "in the search's snr units: set it well above --acquire-snr and the "
+        "pure-noise ceiling the search logs each pass. The set is logged (a DEEP GATE "
+        "line) when it changes.",
     )
     ap.add_argument(
         "--dll-deep-gate-search-hold-s",
         type=float,
         default=90.0,
-        help="task #79: how long a search detection keeps a PRN in the "
-        "auto-generated deep-gate set (default 90 s). Must exceed the search "
-        "REVISIT (90-270 s at CHORD's cadence is the observed range, and a "
-        "PRN is not re-detected every cycle), or presence flaps on and off "
-        "with the search's luck and the trim is armed and disarmed under a "
-        "satellite that never changed. This is a HOLD, not a staleness "
-        "budget: it answers 'is this satellite up and detectable', which does "
-        "not stop being true between passes.",
+        help="seconds a search detection keeps its PRN in the "
+        "--dll-deep-gate-from-search set (default %(default)s). Make it longer than "
+        "the gap between the search's detections of one satellite (a PRN is not "
+        "re-detected every cycle): a shorter hold flaps the PRN in and out of the "
+        "deep gate with the search's revisits, and its presence and trim with it, "
+        "under a satellite that never changed. It is a hold, not a staleness bound: "
+        "it answers whether the satellite is up and detectable, which stays true "
+        "between passes.",
     )
     # -- The frame-synced telemetry gather (gnss_broker/telem.py) ------------------------------
     ap.add_argument(
         "--telem-gather",
         default="",
-        help="TASK #59: read per-record telemetry from the GATHER instance at "
-        "host:port (default port 11061) instead of inferring alignment from "
-        "~60 REST polls per cycle. Every frame carries its chain, its instance "
-        "and an ABSOLUTE window index on the F-engine sample clock, so "
-        "grouping instances is an exact integer match rather than a guess "
-        "about arrival order. Empty = off; the REST path is untouched either "
-        "way, and ONE reader thread serves every chain in this process.\n"
-        "Connecting alone changes NOTHING -- it only fills the store. See "
-        "--telem-coherent for the first consumer.",
+        help="host:port of the frame-synced telemetry gather, read by "
+        "gnss_broker/telem.py; a bare host takes port 11061 (GATHER_SERVE_PORT in "
+        "config/gen_chord_gnss_config.py). Empty (default) = off. Every frame carries "
+        "its chain, its instance and an absolute window index on the F-engine sample "
+        "clock, so instances are grouped by exact integer match rather than by when a "
+        "REST reply arrived. One reader thread serves every chain in the process. "
+        "Connected, it feeds the TELEM alignment line, the fleet ADRs, the tracker "
+        "code residuals and, with noise probes, the KCOH and prompt C/N0 estimators. "
+        "By itself it replaces no REST poll: --telem-dll and --telem-coherent move "
+        "the code loop and fleet_coherent onto it.",
     )
     ap.add_argument(
         "--telem-coherent",
         action="store_true",
-        help="feed fleet_coherent from --telem-gather instead of from "
-        "/get_records. THE SAME ESTIMATOR, a different transport: that is "
-        "what makes the comparison a measurement. ⚠️ Run it on ONE CHAIN at a "
-        "time, with the others left on REST as a same-poll control -- a "
-        "before/after across restarts cannot resolve it, because the sky "
-        "churns faster (2026-08-13: deep_snr max swung 52-197 in four "
-        "minutes). No effect unless --telem-gather is set and the gather is "
-        "reachable; if it is not, this silently falls back to the REST poll "
-        "rather than publishing nothing.",
+        help="fleet_coherent reads this chain's records from the --telem-gather "
+        "stream instead of polling each --dll-combiners instance's /get_records: the "
+        "same estimator on a different transport, and the poll is skipped. Gathered "
+        "records are addressed by absolute window index, so every instance "
+        "contributes the same windows, where a polled set is whatever accumulated "
+        "since each GET. Needs --telem-gather; reads --telem-windows windows. A cycle "
+        "in which the gather has no windows for this chain polls /get_records as "
+        "without the flag, and logs that it did.",
     )
     ap.add_argument(
         "--telem-windows",
         type=int,
         default=8,
-        help="windows of telemetry fed to fleet_coherent (4 records each at the "
-        "default packing, so 8 windows = 32 records ~ 0.34 s)",
+        help="telemetry windows read by the gathered-stream consumers: "
+        "fleet_coherent under --telem-coherent, the comb DLL (--telem-dll), and the "
+        "prompt C/N0 and KCOH estimators. A window is 4 records, so the default 8 is "
+        "32 records, ~0.34 s. Under --comb-taps-cpp the comb DLL and the prompt C/N0 "
+        "take the gather's depth instead (FLEET_TRIM_TAPS_WINDOWS in "
+        "config/gen_chord_gnss_config.py), which must equal this.",
     )
     ap.add_argument(
         "--element-poll",
         action="store_true",
-        help="TASK #57 step 2: poll the --dll-combiners' /get_elements each cycle "
-        "and serve the per-element complex-gain table (amplitude AND phase "
-        "per antenna, per instance -- the beam/peel coefficients) via the "
-        "publisher's /get_elements. Off by default and gated on its own flag "
-        "for the same reason --spectrum-endpoints is: replay is strict-"
-        "ordered, and old transcripts do not carry these GETs. Instances "
-        "predating the endpoint (nodes not yet restarted) are skipped and "
-        "counted, never fatal.",
+        help="poll each --dll-combiners instance's /get_elements every "
+        "element_poll_every_s (cli.py _FROZEN; every cycle under transcript replay) "
+        "and serve the per-element complex-gain table (amplitude and phase per "
+        "antenna, per instance) on the publisher's /get_elements. Off by default, as "
+        "for --spectrum-endpoints, because replay is strict-ordered: a transcript "
+        "recorded without these GETs cannot replay with them. An instance that does "
+        "not answer (down, or a node without the endpoint) is skipped and counted, "
+        "never fatal; one whose snapshot lags the fleet is excluded and named on the "
+        "ELEM-GAIN line.",
     )
     ap.add_argument(
         "--element-archive-dir",
         default="",
-        help="append the RAW per-element gain parts (u, p2, q per antenna) to "
-        "<dir>/elem_<chain>_<YYYYMMDD>.jsonl -- present satellites and the "
-        "noise probes only. Raw parts on purpose: the beam map and peel "
-        "solves are offline consumers and a combined number cannot be "
-        "un-combined. Empty = no archive.",
+        help="append the raw per-element gain parts (u, p2, q per antenna) of present "
+        "satellites and noise probes to <dir>/elem_<chain>_<YYYYMMDD>.jsonl (UTC "
+        "date) every element_archive_every_s (cli.py _FROZEN). Raw parts because the "
+        "beam map and peel solves are offline consumers, and a combined number cannot "
+        "be un-combined. Needs --element-poll. Empty (default) = no archive.",
     )
     ap.add_argument(
         "--telem-dll",
         action="store_true",
-        help="TASK #63: close the CODE loop on the discriminator formed in this "
-        "broker from the un-summed comb (gnss_broker/combdll.py) instead of on "
-        "the powers the trackers formed by summing across each instance's "
-        "channels. The arithmetic is the combiner's own -- coherent across an "
-        "instance's channels, then powers added across instances -- moved to "
-        "where the whole band is visible; what it removes is the tracker-side "
-        "sum that destroys the frequency axis on the way.\n"
-        "MEASURED BEFORE SHIPPING (scripts/gnss/comb_dll_ab.py at 31896a862, "
-        "gps_l5, 20 "
-        "cycles, 240 paired PRNs): disc agrees to +0.0015 +- 0.0223 against "
-        "the POLLED arm's own cycle-to-cycle control of +-0.0472, q to +0.008 "
-        "+- 0.044 against 0.090, prompt power to +0.13 dB, and presence "
-        "disagreed on 10 of 240 with McNemar chi2 0.10 -- symmetric, i.e. "
-        "churn rather than bias.\n"
-        "⚠️ The polled endpoints are STILL read while this is set: the deep "
-        "statistics (deep_snr / deep_floor / coherence_s) come from the "
-        "combiner's fold and are handed to the comb rows for #49's deep gate "
-        "and the publisher. The trackers' summed slots stop being DELETABLE "
-        "only once that fold also runs here. Falls back to the polled "
-        "discriminator, per cycle, whenever the gather has no windows for "
-        "this chain -- so a gather that dies costs a log line, not the loop.",
+        help="close the code loop on the comb discriminator formed here from the "
+        "gathered per-channel Early/Prompt/Late (gnss_broker/combdll.py) instead of "
+        "the polled one built from the combiners' per-instance powers. The comb is "
+        "coherent over every channel of the lobe, every instance's channels first "
+        "rotated onto a common phase reference, where the polled discriminator adds "
+        "powers across instances. Needs --telem-gather; averages --telem-windows windows, and "
+        "--comb-taps-cpp moves the reduction into the gather. The combiners are still "
+        "polled: deep_snr, deep_floor, coherence_s and the quadrature fallback come "
+        "from their deep fold and are carried across to the comb rows for the deep "
+        "gate and the publisher. A cycle with no gathered windows for this chain, or "
+        "a failed reduction, keeps the polled discriminator; the COMB-DLL line "
+        "compares the two.",
     )
     ap.add_argument(
         "--comb-taps-cpp",
         type=int,
         default=0,
         choices=(0, 2),
-        help="TAKE THE COMB DLL's per-PRN lobe / per-channel taps from the gather's "
-        "C++ reduction (<fleet-trim-url>/get_taps) instead of rebuilding them "
-        "in Python from the gathered frames. "
-        "0 = off; 2 = ARMED (use the C++ arm).\n"
-        "\n"
-        "WHY. combdll.lobe_taps walks every (window, instance, record, "
-        "PRN, channel) of the stream -- ~140k channel-tuples per chain per "
-        "cycle, ~700k across the fleet, each allocating Python complex "
-        "objects, ~18%% of chain CPU by live profile. This process is pinned "
-        "at 100%% of ONE core by the GIL and its CYCLE TIME IS the sum of the "
-        "five chains' Python CPU (measured 12.09 s cycle against 12.77 s of "
-        "CPU per cycle-set), so that 18%% is ~2 s of every cycle. The frames "
-        "are already in C++ on the gather host; the reduction is ~6k numbers. "
-        "The equivalence is gated offline on identical bytes "
-        "(scripts/gnss/fleetdll_gate.py: e/p/l/n_chan to 1e-9, n_rec and hop "
-        "exact, per PRN and per channel).",
+        help="2: take the comb DLL's per-PRN taps (--telem-dll) and the prompt C/N0's "
+        "per-record series from the gather's C++ reduction (<fleet-trim-url>/get_taps "
+        "and /get_rec_taps) instead of walking the gathered frames in Python; 0 "
+        "(default) = the Python walk. Needs --fleet-trim-url. The walk allocates "
+        "Python objects for every (window, instance, record, PRN, channel) of the "
+        "stream, a large share of a chain's CPU, while the gather already holds the "
+        "frames and the reduction is a few numbers per PRN. The arithmetic is the "
+        "same: scripts/gnss/fleetdll_gate.py requires the two arms to agree on "
+        "identical bytes (e/p/l/n_chan to 1e-9, n_rec and hop exact, per PRN and per "
+        "channel). The depth is the gather's (FLEET_TRIM_TAPS_WINDOWS in "
+        "config/gen_chord_gnss_config.py), which must equal --telem-windows. With it "
+        "the prompt C/N0 runs every cycle rather than every estimator_every_s (cli.py "
+        "_FROZEN). A failed GET costs that cycle's comb DLL (the polled discriminator "
+        "stands) and prompt C/N0.",
     )
     ap.add_argument(
         "--fleet-trim-url",
         default="",
-        help="TASK #51 F3: base URL of the C++ fleet loop's stage, e.g. "
-        "http://cf06:12051/fleet_trim. Each cycle the broker POSTs "
-        "<url>/set_policy with the armed PRN set, the loop constants and the "
-        "tracker endpoints; the C++ side then runs the discriminator, the "
-        "integrator and the actuation at ~23.8 Hz instead of this process's "
-        "~3.1. POLICY STAYS HERE -- presence, the floors, the deep gate and "
-        "the arming verdict are all computed above and only their RESULT "
-        "crosses.",
+        help="base URL of the C++ fast code loop (GnssFleetTrim in the telemetry "
+        "gather), e.g. http://127.0.0.1:12051/fleet_trim; empty (default) = off, and "
+        "the broker's own integrator trims every PRN. Each cycle the broker POSTs "
+        "<url>/set_policy with the armed PRNs (present within fleet_trim_hold_s), the "
+        "loop constants (--fleet-trim-bandwidth, fleet_trim_leak_per_s, "
+        "--dll-spacing), the probe-anchored prompt-power floor and the trackers' "
+        "/set_trim targets. The loop then forms the comb discriminator and posts each "
+        "armed PRN's trim once per telemetry window (~23.8/s) instead of once per "
+        "broker cycle, and the broker's integrator stands down for those PRNs. The "
+        "policy stays in the broker: presence, the floors, the deep gate and the "
+        "arming decision cross only as their result (fleet_trim_hold_s and "
+        "fleet_trim_leak_per_s are constants in cli.py _FROZEN). Also the base for "
+        "--comb-taps-cpp and --fleet-trim-readback.",
     )
     ap.add_argument(
         "--fleet-trim-bandwidth",
         type=float,
         default=1.4,
-        help="closed-loop bandwidth (1/s) published to the C++ fleet loop as "
-        "gain_per_s. ⚠️ NOT a per-update gain: the controller divides by the "
-        "update rate it measures. The stability bound is bandwidth x "
-        "round-trip < ~0.5, and the loop's measurement round trip is "
-        "~0.3-0.5 s (4-window disc average + actuation + record + fold), so "
-        "~1.4 is near the ceiling. The per-update 0.25 that was stable at the "
-        "Python arm's 3.1 Hz (bandwidth 0.78) was a LIMIT CYCLE at 23.84 Hz "
-        "(bandwidth 6): measured on sky 2026-08-15, trim swinging +-1 chip at "
-        "5-10 s period, q reaching 3.3 and being thrown off the peak. Slew "
-        "authority = bandwidth x 0.25 chips = 0.35 chips/s here, ~3x the "
-        "0.121 chips/s drift and above the ~0.31 chips/s peak slew of the "
-        "+-1-chip/20 s clock breathing.",
+        help="closed-loop bandwidth, 1/s, posted to the C++ fleet loop "
+        "(--fleet-trim-url) as gain_per_s. Not a per-update gain: the loop divides it "
+        "by the update rate it measures (~23.8/s). The loop is stable while bandwidth "
+        "x measurement round trip (discriminator average, actuation, record, fold) "
+        "stays below ~0.5; with the gather's default 4-window average the round trip "
+        "is ~0.3-0.5 s, so the default 1.4 sits near that bound, and a shorter "
+        "average (config/gen_chord_gnss_config.py --fleet-trim-windows) allows more. "
+        "The slew authority, bandwidth x spacing/2 chips/s (0.35 at the defaults), "
+        "must exceed how fast the code moves under the tap: the receiver clock's "
+        "drift plus its +-1-chip breathing. With fleet_trim_leak_per_s (cli.py "
+        "_FROZEN) it also bounds the standing trim at (spacing/2) x bandwidth / leak "
+        "chips.",
     )
     ap.add_argument(
         "--fleet-trim-readback",
         type=int,
         default=0,
-        help="TASK #76: after posting /set_policy, GET <fleet-trim-url>/get_dll "
-        "and read back the controller's STANDING PER-PRN TRIMS (chips). The "
-        "broker commanded these corrections and was blind to them: the "
-        "escape referee and the innovation (task #83 2(d)) judge the seed as "
-        "if untrimmed while up to 3 chips of command stand at the trackers. "
-        "⚠️ Default OFF for the replay gate's sake, not by preference: the "
-        "harness re-invokes a fixture with the RECORDED argv, and a "
-        "recording made before this flag existed has no get_dll entries in "
-        "its get stream -- an unconditional GET would diverge every pre-#76 "
-        "fixture at the first cycle. Arm it in the chain yaml next to "
-        "fleet-trim-url; a new recording then carries it natively.",
+        help="nonzero: after each /set_policy POST, GET <fleet-trim-url>/get_dll and "
+        "keep the C++ loop's standing per-PRN trims (chips). The tracker despreads at "
+        "seed + standing trim; without the readback the innovation (INNOV) and the "
+        "hold-escape referee (its CP_ERR line) judge the seed without that trim, the "
+        "published rows' dll_trim_cpp reads 0 and the handover-sawtooth detector has "
+        "nothing to watch. A failed read clears the trims "
+        "rather than holding stale ones. Logged as FLEET-TRIM READBACK. 0 (default) = "
+        "off, for transcript replay: a replay must make the GETs its recording made, "
+        "and a recording made without the flag has no get_dll entries.",
     )
     ap.add_argument(
         "--n2-combiners",
         default="",
-        help="CROSS-NODE COHERENT COMBINE FOR PATH B: comma-separated *_n2combine "
-        "endpoints ({a..b} ranges expanded), run through the SAME "
-        "fleet_coherent as --dll-combiners but kept as a separate population "
-        "so the two paths stay independently measurable. Empty = off.\n"
-        "\n"
-        "This is not an optimisation, it is how path B works at scale. A node "
-        "holds every 8th science channel and each GPU a stride-16 comb, so one "
-        "instance sees 7 of the 105 channels under the L5 lobe -- and on a "
-        "NARROW signal (L2C, E5b) at full CHORD a node may hold ONE channel. "
-        "The fleet combine is then the measurement, not an improvement to it.\n"
-        "\n"
-        "THE ESTIMATOR IS PARTITION-INVARIANT, which is the useful property "
-        "here and was verified rather than assumed. Holding the total aperture "
-        "fixed at 12 bands and 128 records and splitting it 2x6, 4x3, 6x2 and "
-        "12x1 through this same function gives fleet deep_snr 81.9/80.9/81.6/"
-        "82.0 at a fleet per-record SNR of 10.4, and 26.2/26.4/26.3/26.6 at "
-        "3.5. Node count does not enter. The reason is that the leave-one-out "
-        "reference is the sum of the OTHER instances: K instances of B/K bands "
-        "give it (K-1)/K of the total aperture, so slicing finer makes the "
-        "reference slightly BETTER, while costing K-1 alignment constants "
-        "instead of one. Those cancel. So a narrow signal spread one channel "
-        "per node over many nodes combines exactly as well as the same channels "
-        "gathered on a few -- which is what makes L2C and E5b viable at full "
-        "CHORD.\n"
-        "\n"
-        "WHAT DOES BITE is the FLEET TOTAL per-record SNR, a bands x elements "
-        "question with no node term in it. Down to ~1.7 the partitions are "
-        "still indistinguishable (11.4/11.8/11.8/11.6); at 0.87 the finest "
-        "split finally loses ground (4.3 -> 2.9), and that is already inside "
-        "the floor's shadow. Drive it with more bands or more elements "
-        "(gnssElemCal / elem_sum), not with a different node layout.\n"
-        "\n"
-        "NB the `align` figure in the log falls with instance count at fixed "
-        "total (0.917 at 2x6 down to 0.611 at 12x1, same total SNR) because "
-        "each alignment is estimated from one instance's data. It is a "
-        "per-instance diagnostic, NOT a health metric for the combine -- "
-        "deep_snr over those same four partitions is flat to 2%%.",
+        help="a second population of combiner endpoints (comma list, {a..b} ranges, "
+        "bare names on --rest-url), run through the same fleet_coherent as "
+        "--dll-combiners and logged beside it as B on the FLEET-COH line. Kept "
+        "separate so the two can be compared: both despread the same antenna "
+        "voltages, so their noise is not independent and a merged sum would not gain "
+        "what it appears to. Measurement only: it publishes nothing and feeds no "
+        "loop. Empty (default) = off.",
     )
     ap.add_argument(
         "--time0-endpoint",
         default=None,
-        help="CHORD: REST path (relative to --rest-url, e.g. telescope/time0_ns) "
-        "serving the F-engine's GPS-disciplined absolute time of frame 0: the "
-        "capture anchor dead reckoning needs. Frame 0 is "
-        "disciplined to GPS via IRIG-B/PPS, so the anchor is a fact rather than "
-        "an estimate.",
+        help="REST path, relative to --rest-url (e.g. telescope/time0_ns), whose "
+        "time0_ns is the absolute time of the F-engine's frame 0. Frame 0 is "
+        "disciplined to GPS via IRIG-B/PPS, so this anchor, which every hop-to-UTC "
+        "conversion uses (dead reckoning, the NH hint and joint fit), is a fact "
+        "rather than an estimate. Read under --dead-reckon, once per process for all "
+        "its chains, and latched; re-read every 60 s, and a value that changes on 3 "
+        "consecutive re-reads (an F-engine restart) stops the broker so that its "
+        "supervisor restarts it on the new epoch. Unset (default) = no anchor.",
     )
     ap.add_argument(
         "--dr-clock-chips",
         type=float,
         default=None,
-        help="CHORD: prime the dead-reckon receiver clock (chips) instead of "
-        "bootstrapping it from measured code phases. THIS IS WHAT LETS A NODE "
-        "WITH NO SEARCH STAGE COLD-START. The bootstrap needs --dr-min-sats "
-        "satellites already tracking to take a median of their residuals, but "
-        "nothing can track until it is seeded -- on the airspy node the search "
-        "stage breaks that circle. With a GPS-disciplined F-engine the offset "
-        "is known a priori (0 plus a fixed instrumental/cable delay), so pass "
-        "0.0 to start and calibrate the constant later from the measured "
-        "integrity residual, which the broker logs every cycle. THE PRIME IS "
-        "A SEED, NOT A MEASUREMENT: a chain with detectors REPLACES it with "
-        "its first multi-sat solve rather than EMA-ing toward one, so a wrong "
-        "prime costs one cycle rather than ~20.",
+        help="prime the dead-reckon receiver clock with this offset (chips, reduced "
+        "modulo the code length) instead of waiting for a solve. A solve is a median "
+        "of the code-phase residuals of dr_min_sats or more detected satellites, so a "
+        "chain without a search seeds nothing until a prime or an adopted clock "
+        "(--dr-clock-adopt) gives it one. With a GPS-disciplined F-engine the offset "
+        "is known a priori (0 plus a fixed instrumental and cable delay), so 0.0 is "
+        "the starting value. A prime is a seed, not a measurement: a chain with "
+        "detections replaces it outright with its first multi-satellite solve; one "
+        "without keeps it until it adopts a sibling chain's clock, or for the whole "
+        "run without --dr-clock-adopt. Dead-reckon seeding waits up to "
+        "dr_clock_wait_s (cli.py _FROZEN) for that replacement. Unset (default) = no "
+        "prime.",
     )
     ap.add_argument(
         "--dr-doppler-ignores-integrity",
         action="store_true",
-        help="keep the BRDC (dead-reckon) Doppler for a satellite that is "
-        "MODEL-UNTRUSTED because of its CODE-PHASE integrity residual. A "
-        "stale ephemeris still demotes the Doppler -- that reason is real "
-        "for both quantities -- but an integrity residual is not: "
-        "--dr-max-integrity-chips defaults to 1.0 chip (~30 m), which is "
-        "ordinary iono plus b_sat, and it says nothing about the RANGE RATE "
-        "from the same orbit. Demoting the Doppler for it switches the seed "
-        "between two BRDC evaluations (dr and pred) every time a satellite "
-        "flips trust, and the seed is the replica's carrier phase. MEASURED "
-        "2026-08-10: gps_l5 -- the only chain with detectors, so the only "
-        "one where this fires at all -- carries 0.478 Hz of commanded-"
-        "Doppler jitter against 0.002-0.006 Hz on the four model-primary "
-        "chains, and over the 1.0486 s deep fold 0.478 Hz is 0.50 cycles of "
-        "phase ramp: |sinc| = 0.64, swinging emit to emit. Its deep fold "
-        "inflates sample-to-sample scatter by +5.55 dB where the others "
-        "manage +0.36..+0.77 (be7d46e8e:docs/CHORD_JOINT_TRACKING.md 3d). "
-        "NOTE this addresses the DEMOTION-linked part; a ~0.29 Hz GPS-wide floor "
-        "remains and is NOT explained by trust flips.",
+        help="keep the BRDC (dead-reckon) Doppler in the seed of a detected satellite "
+        "whose model is untrusted only because of its code-phase integrity residual "
+        "(beyond dr_max_integrity_chips in cli.py _FROZEN, 1 chip or ~30 m at 10.23 "
+        "Mcps: ordinary iono plus b_sat). That residual is a code-phase statement and "
+        "says nothing about the range rate from the same orbit. A stale ephemeris "
+        "still demotes the Doppler, since it is doubtful for range and range rate "
+        "alike. Without the flag every trust flip switches the seed Doppler between "
+        "two BRDC evaluations (dr and pred), and the seed Doppler is the replica's "
+        "carrier, so the switching jitters the carrier phase across the deep fold. "
+        "Integrity residuals need detections, so it acts only on a chain with a "
+        "search.",
     )
     ap.add_argument(
         "--seed-doppler",
         default="auto",
         choices=("auto", "det"),
-        help="which Doppler the SEED carries. 'auto' (default, unchanged) prefers "
-        "the almanac/DR model + solved clock bias, which is smooth and owns "
-        "the undetected sats. 'det' uses the search's MEASURED Doppler "
-        "instead. Pick 'det' when the model is not trustworthy to well under "
-        "a Hz at the seed's age: cp0 is an ARGUMENT, so a seed's phase moves "
-        "chip_rate/carrier chips per second per Hz of Doppler error (0.0087 "
-        "chips/Hz/s) for as long as the tracker extrapolates it. Measured on "
-        "CHORD 2026-08-01: model-vs-measured +231 Hz with a 244 Hz spread, "
-        "against a measured Doppler good to ~3 Hz (proven by the residual "
-        "code rate of a real lock) -- at a 456 s anchor that is 340 chips of "
-        "seed error versus 12. 'det' also makes cp_to_seed_currency a no-op, "
-        "since cp0 was fit at exactly that Doppler.",
+        help="which Doppler a detected satellite's seed carries. 'auto' (default): "
+        "the model's plus the clock-frequency bias --seed-bias-source picks (the "
+        "dead-reckon BRDC Doppler under --dead-reckon while the satellite's model is "
+        "trusted, see --dr-doppler-ignores-integrity, else the --almanac prediction), "
+        "or the search's for a satellite with no model; smooth, and the same model "
+        "that seeds the undetected satellites. 'det': the search's measured Doppler, "
+        "over the model. "
+        "Use 'det' when the model is not good to well under a Hz over a seed's age: "
+        "the tracker extrapolates the seed's code phase at the code rate its Doppler "
+        "implies, so each Hz of error walks it chip_rate/carrier chips per second "
+        "(0.0087 at L5) for as long as the seed stands. 'det' also makes "
+        "cp_to_seed_currency a no-op, since cp0 was fit at exactly that Doppler.",
     )
     ap.add_argument(
         "--long-code-segments",
         type=int,
         default=75,
-        help="number of primary periods in the overlaid/long code the TRACKERS "
-        "despread (L2C CL = 75 x 10230; GPS L5 Q5 with NH20 baked in = 20 x "
-        "10230). The time-assist below picks which one, so this must match the "
-        "tracker's `signal`, not the search's.",
+        help="primary code periods in the long (overlaid) code the trackers despread: "
+        "75 for L2C CL (75 x 10230 chips, the default), 20 for GPS L5 Q5 with its "
+        "NH20 overlay. The dead-reckon model, the search's long-code phase and the NH "
+        "overlay checks and joint fit work modulo this many periods, so it must match "
+        "the trackers' "
+        "signal, not the search's: a seed reduced to one primary period of a "
+        "20-period code is right 1 time in 20. --signal sets it from "
+        "lib/stages/gnss/gnssSignal.hpp; an explicit value that disagrees is an "
+        "error.",
     )
     ap.add_argument(
         "--long-code-epoch-s",
         type=float,
         default=1.5,
-        help="the long code's GPS-time-locked repeat period, seconds (L2C CL 1.5; "
-        "L5 NH20 0.02). The assist needs unix-time mod EPOCH == GPS-time mod "
-        "EPOCH, which holds when GPS-UTC (whole seconds) and the GPS epoch "
-        "offset (315964800) are both multiples of it -- true for 1.5 and for "
-        "0.02. Absolute-time accuracy needed is ~EPOCH/2.",
+        help="the long code's repeat period, s, locked to GPS time: 1.5 for L2C CL "
+        "(the default), 0.02 for L5 with NH20. The NH joint fit (--nh-joint) predicts "
+        "each satellite's phase as its GPS transmit time modulo this period, and the "
+        "receiver clock it resolves, known modulo this period, is what lets a chain "
+        "whose code period is longer than a donor's adopt that donor's clock "
+        "(--dr-clock-adopt). --signal sets it from lib/stages/gnss/gnssSignal.hpp; an "
+        "explicit value that disagrees is an error.",
     )
     ap.add_argument(
         "--bias-min-snr",
         type=float,
         default=0.0,
-        help="detections below this SNR do not enter the clock-freq bias median. "
-        "The bias is common-mode, so its uncertainty is (per-sat Doppler "
-        "error)/sqrt(N) -- one noise satellite is costly when N is small. "
-        "Ungated on CHORD the raw estimate scatters 10.5 Hz; the acquire's "
-        "own error predicts 0.8 Hz at N=2. 0 (default) keeps every point.",
+        help="detections below this search SNR stay out of the clock-frequency bias "
+        "median and the time-base check. The bias is common mode, so its error is "
+        "(per-satellite Doppler error)/sqrt(N): with few satellites, one whose Doppler "
+        "is noise moves it far. 0 (default) keeps every detection.",
     )
     ap.add_argument(
         "--fit-min-snr",
         type=float,
         default=0.0,
-        help="detections below this SNR do not enter the cp-rate fit history. The "
-        "fit resolves a ~0.0148 chips/s residual; a near-threshold detection's "
-        "phase is noise, so one bad point destroys the slope rather than "
-        "degrading it. 0 (default) keeps every point -- right for the "
-        "prototype, whose detections sit well above threshold and whose "
-        "revisit is seconds. CHORD wants ~60 alongside --fit-gap-s 900.",
+        help="detections below this search SNR stay out of the cp-fit history "
+        "(--fit-hist-len), whose slope fit seeds a detected satellite's code phase and "
+        "rate. The fit resolves a slope of ~0.01 chips/s and a near-threshold "
+        "detection's phase is noise, so one such point sets the slope rather than "
+        "degrading it. 0 (default) keeps every detection, which suits a search whose "
+        "detections sit well above threshold.",
     )
     ap.add_argument(
         "--fit-hist-len",
         type=int,
         default=8,
-        help="detection snapshots kept for the cp/dop slope fits. The default 8 "
-        "predates CHORD's search cadence: at 8 detections/s, 8 points span "
-        "~1 s, so fit_maturity_span_s (30 s) is UNSATISFIABLE and "
-        "fit_trusted -- which gates BOTH hold admission and the escape "
-        "referee -- is structurally false on every strong satellite "
-        "(measured 2026-08-28: fit_trusted=False with len_h=8, snr 946; "
-        "only weak, sparsely-detected sats could ever mature, which is "
-        "why G18 got held while G20/21 never did). 256 at 8 Hz spans "
-        "~32 s: the maturity floor passes, and the slope error improves "
-        "as sigma/(T*sqrt(N)) on both fits.",
+        help="detection snapshots kept per PRN for the cp-rate and Doppler-rate fits. "
+        "A snapshot is added only for a new detection (a new ref_hop), so at most one "
+        "per cycle, and a gap longer than --fit-gap-s clears the history. A cp fit is "
+        "trusted (hold admission and the hold escape) only once >= 6 points span "
+        "fit_maturity_span_s (cli.py _FROZEN), so the history must cover that span: N "
+        "snapshots of a satellite detected every cycle span (N-1) x --interval, and "
+        "the default 8 falls short at any --interval below fit_maturity_span_s/7. A "
+        "longer history also shrinks the slope error, as sigma/(T*sqrt(N)) for N "
+        "points spanning T.",
     )
     ap.add_argument(
         "--hold-on-present",
         type=int,
         default=0,
-        help="qualify a satellite for the cp_held seed freeze after this many "
-        "consecutive FLEET-PRESENT cycles (the population-honest presence "
-        "that admits trims), alongside the amp_snr path. The hold machinery "
-        "is the #96/#97 closure architecture -- frozen (anchor, rate, at-ref "
-        "phase) tuple, DLL owns the residual, CP_ERR at-epoch referee, "
-        "3-miss release -- but its amp_snr>=hold-snr entry rides the "
-        "coherent arc, which flickers with the deep fold (#58): measured "
-        "2026-08-28, 5 HOLD entries in a day while locked q-3.8 satellites "
-        "took per-detection seed REPLACEs (and their +-1-period flips) "
-        "un-held. fit_trusted is still required (the 2026-07-19 zombie-"
-        "cohort lesson: a birth anchor must mature before it earns "
-        "protection). A present-qualified sat also SUSTAINS on presence: "
-        "the 3-miss counter only advances when the sig path fails AND the "
-        "fleet gate reads absent. 0 (default) disables.",
+        help="also admit a satellite to the hold (the cp_held seed freeze: anchor, "
+        "rate and at-ref phase frozen, the DLL owns the residual) after this many "
+        "consecutive fleet-present cycles, the presence the fleet DLL admits trims on. "
+        "The other entry, the lock metric (amp_snr, or deep_snr once the combiner "
+        "certifies the deep fold) at or above hold_snr (cli.py _FROZEN), flickers with "
+        "the deep fold and can leave a locked satellite unheld. A mature cp fit "
+        "(fit_trusted) is still required. While set, presence also sustains a hold: a "
+        "held satellite's 3-miss release count advances only on a cycle where both its "
+        "lock metric and its fleet presence fail. 0 (default) = off.",
     )
     ap.add_argument(
         "--nh-period-debounce",
         type=int,
         default=0,
-        help="require a CHANGED measured overlay period to be confirmed by this "
-        "many consecutive detections (same offset) before it may rewrite "
-        "the seed; until then the seed carries the measured fine phase "
-        "with the standing period, and ph_hist is not updated. #97: the "
-        "search's measured period toggles +-1 on strong satellites "
-        "(snr 284-413, fine phase right to ~0.5 chip), and each "
-        "single-detection flip stepped every node's seed a whole code "
-        "period -- SEEDAUDIT +-10230-chip step-back pairs, q cratering "
-        "1-2 polls, per-sat step rate ranking exactly with q churn. Not "
-        "the 2026-08-02 override this check replaced: nothing is stored "
-        "from our own correction, and a real change passes in ~2N s. "
-        "0 (default) disables.",
+        help="a changed overlay period, as the search measures it, must repeat on this "
+        "many consecutive detections (the same offset) before it rewrites the seed; "
+        "until then the seed carries the measured fine phase with the standing period, "
+        "and the period-continuity history (ph_hist) is not updated. The measured "
+        "period can toggle by one on a strong satellite whose fine phase is right, and "
+        "each single-detection flip would step every node's seed by a whole code "
+        "period; a real change passes after this many detections. Under --nh-joint "
+        "apply, a resolved consensus overrides it. 0 (default) = off.",
     )
     ap.add_argument(
         "--nh-joint",
         type=str,
         default="off",
         choices=["off", "apply"],
-        help="the JOINT overlay fit: the NH label is not N independent per-sat "
-        "20-way guesses -- the overlay is synchronous at the transmitters, "
-        "so at the receiver the labels differ only by the known geometric "
-        "delay plus ONE common unknown, the receiver clock mod the overlay "
-        "epoch. Every detection with a phase at its own epoch VOTES for that "
-        "common offset (continuous, chips mod the epoch -- an integer vote "
-        "splits at segment boundaries); the consensus is a circular weighted "
-        "median. 'apply' DERIVES the overlay segment from the "
-        "consensus for detections below --period-check-snr (whose measured "
-        "label is noise: G1's ran uniform over 0..19, stepping the seed a "
-        "whole code period every ~4 min, 2026-08-31); strong detections keep "
-        "their verified measured label, with a disagreement alarm as the "
-        "referee. Requires the "
-        "almanac (tau and the broadcast sat clock feed the prediction). "
-        "Default off.",
+        help="the joint NH overlay fit. The overlay is synchronous at the "
+        "transmitters, so the satellites' received overlay alignments differ only by "
+        "their predicted transmit times plus one common unknown, the receiver clock "
+        "modulo the overlay epoch (--long-code-epoch-s). Each detection at snr >= "
+        "nh_joint_min_snr votes for that offset with its phase at its own epoch, in "
+        "continuous chips (an integer segment vote would split at segment boundaries); "
+        "the consensus is a circular weighted median, resolved once nh_joint_min_prns "
+        "votes agree (constants in cli.py _FROZEN). 'apply': with a resolved "
+        "consensus, every detection takes its overlay segment from the prediction plus "
+        "the consensus and keeps only its measured fine phase, overriding "
+        "--nh-period-debounce; every moved segment is logged, a strong detection's as "
+        "a warning that the consensus or the prediction may be wrong. While "
+        "this chain's search solve is established, the resolved offset is also "
+        "published as its clock-mod-epoch record, which --dr-clock-adopt needs on a "
+        "chain whose code period is longer than this one's. Needs --almanac and the "
+        "capture time anchor (--time0-endpoint, read under --dead-reckon). Default "
+        "off.",
     )
     ap.add_argument(
         "--cp-rate-model-primary",
         type=int,
         default=0,
-        help="#103: seed the pooled-clock MODEL code rate for EVERY cp-rate fit "
-        "(the fit's rate becomes monitor-only; its position is kept). The "
-        "measured case: gps_l5's fitted rates carry ~0.006-0.03 chips/s "
-        "per-sat errors that saturate the fleet trim's 1.25-chip ceiling "
-        "in minutes and drive the escape/rebirth churn (5,773 births/"
-        "night), while model rates run ~100x cleaner post-#99. 0 = off "
-        "(the fitted rate seeds whenever the tol guard accepts it).",
+        help="nonzero: every cp fit seeds the pooled code-rate clock offset (l-a, "
+        "--code-bias-alpha) as its code rate instead of its own slope. The fit's "
+        "position is still seeded, and its slope still feeds the l-a pool and the "
+        "--cp-rate-model-tol check. The residual code rate is the receiver clock, "
+        "common to every satellite (propagate_seed carries each satellite's own "
+        "geometry), so a per-satellite slope adds only fit error. Until the pool has "
+        "an estimate the fitted rate is seeded. 0 (default) = the fitted rate is "
+        "seeded.",
     )
     ap.add_argument(
         "--cp-rate-model-tol",
         type=float,
         default=0.0,
-        help="reject a FITTED code rate that departs from the POOLED l-a clock by "
-        "more than this (chips/s) and seed the clock's rate instead, keeping "
-        "the fit's POSITION. The residual code rate is common-mode -- "
-        "propagate_seed feeds each satellite's own geometry forward, so what "
-        "the seed carries is the receiver clock, one number for the whole "
-        "chain (sat clock drift, af1 ~1e-12 s/s, is three orders below it). "
-        "fit_cp_rate is unbounded and its cp history is nearest-wrap "
-        "unwrapped, so one mis-wrap injects a code period into the slope: "
-        "measured 2026-08-28 on gps_l5, p90 2.16 / p99 177 / max 994 chips/s. "
-        "Only a chain with a --detectors endpoint reaches this fit at all "
-        "(17304 fits that day vs 4 on gal_e5a): all five chains run "
-        "dead-reckon, but the other four have no detector AND carry "
-        "--dr-clock-adopt, so their rate is one shared adopted clock. gps_l5 "
-        "is the clock master the others adopt from, so it cannot adopt and "
-        "its rate is whatever this fit last returned. Bounds the "
-        "DEVIATION, never the magnitude: the clock is ~0.047 chips/s "
-        "calibrated but ~3.45 uncalibrated, and an absolute ceiling would "
-        "reject the feed-forward the trim cannot live without. Stratified on "
-        "pre-fit p/noise (a fading sat makes a noisy fit AND drops out), at "
-        "matched strength 5-15 the 40 s dropout rate was 0.4%% after a clean "
-        "fit and 21.4%% after one this would reject. 0.5 is mid-plateau: "
-        "0.3-1.0 all reject 2.3%% of fits and catch 34.3%% of gps_l5 dropouts. "
-        "0 (default) disables the cross-check.",
+        help="log as REJECTED, and count toward --fit-flush-on-reject, a fitted code "
+        "rate that departs from the pooled code-rate clock offset (l-a) by more than "
+        "this, chips/s. A rejection does not change what is seeded: the fit's position "
+        "always, and its rate unless --cp-rate-model-primary seeds the clock's. The cp "
+        "fit unwraps to the nearest code period, so one mis-wrap puts a whole period "
+        "into the slope, and since the residual code rate is the receiver clock, "
+        "common to every satellite, a fit far from the pool is wrong. It bounds the "
+        "deviation, not the magnitude: an uncalibrated clock runs at several chips/s, "
+        "and an absolute ceiling would reject the feed-forward the trim needs. Only a "
+        "chain with --detectors fits code rates, and there is no check until the pool "
+        "has an estimate. 0 (default) = off.",
     )
     ap.add_argument(
         "--nh-overlay-len",
         type=int,
         default=1800,
-        help="secondary-overlay length in chips (B1C pilot 1800; E5a/B2a CS100 = 100)",
+        help="length of the secondary (overlay) code in its own chips, one per primary "
+        "code period: the modulus of the --nh-hint alignment. 1800 (default) for the "
+        "B1C pilot, 100 for the E5a-Q CS100 and the B2a pilot, 20 for L5-Q NH20. "
+        "--signal sets it.",
     )
     ap.add_argument(
         "--dead-reckon",
         action="store_true",
-        help="seed CODE PHASE from broadcast ephemeris (BRDC) for every visible "
-        "sat the search hasn't detected: predict the absolute transmit-time "
-        "code phase, add the receiver clock solved each cycle from the "
-        "detected sats (measured-vs-predicted circular median, "
-        "~100 ns), and express it in "
-        "the seed's Doppler currency. The search demotes to bootstrap "
-        "(clock solve), fallback (a detection re-anchors via the normal "
-        "seed loop) and integrity check (per-sat residuals logged); "
-        "dead-reckoning only has to land within the DLL capture range "
-        "(~0.4 chips; validated 0.10 chip rms 2026-07-13). Needs --almanac.",
+        help="seed code phase from the broadcast ephemeris (BRDC) for every visible "
+        "satellite the search has not detected: predict its transmit-time code phase, "
+        "add the receiver clock, and express it in the seed's Doppler currency. The "
+        "clock is solved every dr_refresh_s (cli.py _FROZEN) from the detected "
+        "satellites (the circular median of measured minus predicted code phase), else "
+        "adopted from another chain (--dr-clock-adopt) or primed (--dr-clock-chips). A "
+        "search, where there is one, solves the clock, re-anchors the satellites it "
+        "detects through the normal seed path, and checks the model (per-satellite "
+        "integrity residuals); the prediction only has to land inside the DLL's "
+        "capture range (~0.4 chips). Needs --almanac and --time0-endpoint.",
     )
     ap.add_argument(
         "--dr-constellation",
         default="G",
         choices=("G", "E", "C", "R"),
-        help="RINEX constellation letter for this broker's band",
+        help="this chain's constellation as a RINEX letter: the system the dead-reckon "
+        "model predicts, the key of its satellites in the receiver-wide joint state, "
+        "and the almanac's when --constellation is unset. C also makes --dr-min-prn "
+        "default to 19. Default G; --signal sets it.",
     )
     ap.add_argument(
         "--signal-capability",
         default=None,
-        help="restrict ALL seeds + hints to GPS PRNs whose satellite block actually "
-        "broadcasts this signal (GPS_L1C_P -> Block III; GPS_L5_Q -> IIF+; "
-        "GPS_L2C_CM -> IIR-M+). The GENERAL form of --dr-min-prn: that numeric "
-        "cutoff only works for BDS-2's contiguous low PRNs; GPS III sats are "
-        "interspersed among IIF/IIR (4/11/14/18/20/21/23/28) so no cutoff can "
-        "express 'L1C only'. Read ONCE at startup from the live Celestrak block "
-        "names (gps_beamtrack.signal_capable_prns); on fetch failure or empty "
-        "result the filter is DISABLED with a warning (phantoms return, but the "
-        "chain lives -- better than killing L1C during a network outage). "
-        "GLONASS: the IGS registry's block types decide (GLO_L3OC_* / L2OC -> the "
-        "K generations and the modernised GLO-M+; the FDMA L1OF/L2OF are on every "
-        "satellite, so they get no filter), re-read every 6 h. The Celestrak "
-        "fallback sees only the 'K' suffix on the Uragan number, so with the "
-        "registry unreadable it also drops the M+ satellites.",
+        help="seed, hint and dead-reckon only the satellites whose block broadcasts "
+        "this signal. The value is a chain name or signal token (gps_l5, GPS_L1C_P, "
+        "glo_l3oc), matched case-insensitively by constellation prefix and signal: GPS "
+        "L5 is on IIF and later, L2C on IIR-M and later, L1C on III only; GLONASS L3OC "
+        "on the K generations and GLO-M+, L2OC on the K generations only; BeiDou B1C, "
+        "B2a and B2b on BDS-3 only. The IGS satellite-metadata registry's block types "
+        "decide (prnmap.signal_incapable_prns), read at startup and re-read every 6 h. "
+        "For GPS and GLONASS, Celestrak's TLE block names "
+        "(gps_beamtrack.signal_capable_prns) are the fallback when the registry "
+        "excludes nothing; they mark GLONASS-K but not GLO-M+, so the fallback also "
+        "drops the M+ satellites. Both fail open: with no decision from either source "
+        "the gate stays off (on a BeiDou chain the --dr-min-prn floor stands in). No PRN floor can express this for GPS, whose "
+        "Block III satellites are interspersed among older ones. --signal sets it for "
+        "B1C, B2a and B2b. Unset = off.",
     )
     ap.add_argument(
         "--dr-min-prn",
         type=int,
         default=None,
-        help="dead-reckon only PRNs >= this: a SIGNAL-CAPABILITY gate, not a "
-        "visibility one. Default 19 for BeiDou (B1C/B2a are BDS-3 ONLY; the "
-        "BDS-2 birds broadcast B1I at 1561 MHz, which is not even inside our "
-        "band), 1 otherwise -- and only the FALLBACK: when the IGS registry "
-        "is readable, --signal-capability decides by block type and the floor "
-        "is lowered to 1, because IGS re-used C11-C14 for BDS-3 MEOs (#150). "
-        "The search cannot make this mistake "
-        "-- it never detects a satellite that isn't transmitting -- but "
-        "DEAD RECKONING CAN: it seeds from the model, and the model is happy "
-        "to predict a code phase for a signal that does not exist. The "
-        "tracker then despreads noise at that phase and the cross-correlation "
-        "against real B1C satellites reports 20-60 sigma. Measured 2026-07-14: "
-        "C11/C12/C13 produced 11309 phantom rows (5.5%% of all BeiDou map "
-        "points) at a plausible-looking 25-30 dB-Hz. A model that can invent "
-        "a satellite needs a capability gate the search never needed.",
+        help="dead-reckon only PRNs >= this: a signal-capability floor, not a "
+        "visibility gate. Unset: 19 when --dr-constellation is C (B1C, B2a and B2b are "
+        "BDS-3 signals, and the PRNs below 19 are mostly BDS-2), else 1. It is the "
+        "fallback: when --signal-capability's registry gate is in force on a BeiDou "
+        "chain the floor is 1 whatever this says, since some PRNs below 19 (C11-C14) "
+        "fly BDS-3 satellites. The search never detects a satellite that is not "
+        "transmitting, but the model predicts a code phase for any satellite with an "
+        "ephemeris; the tracker then despreads noise there, and cross-correlation with "
+        "the real satellites can make it look like a plausible satellite. --signal "
+        "sets 19 for B1C, B2a and B2b.",
     )
     ap.add_argument(
         "--dr-clock-adopt-max-chips",
         type=float,
         default=0.0,
-        help="#104: refuse a SIBLING clock adoption whose step from the local "
-        "solve exceeds this many chips while the local clock is fresh "
-        "(< 300 s). The 2026-08-30 outage: gps_l5's churn ran its clock "
-        "solve to 292 chips and the unbounded adoption path relayed it "
-        "to every chain in ~2 s -- while JOINT-CLK's 5-chip bound "
-        "refused the identical values throughout. 5.0 matches that "
-        "precedent. 0 = unbounded (pre-#104). #142: it bounds the "
-        "CROSS-BAND bootstrap too, as a TIME -- this many of the DONOR's "
-        "chips (5 = 489 ns at 10.23 Mcps), converted into each consumer's "
-        "chips (2.5 at E6, 0.25 L2C-CM). 'Fresh' is 300 s since the last "
-        "adoption OR the last JOINT-CLK adoption, and a refusal holds the "
-        "local clock at zero rate instead of extrapolating it.",
+        help="bound, in chips, on adopting another chain's receiver clock "
+        "(--dr-clock-adopt): while the local clock is fresh (taken from a donor, or "
+        "confirmed by a JOINT-CLK adoption, within the last 300 s), a donor clock "
+        "further than this from it is refused and the local clock is held at zero rate "
+        "instead of extrapolated. Once the local clock is 300 s stale the donor is "
+        "adopted anyway. A primed clock (--dr-clock-chips) is not defended, and a step "
+        "the donor declares (a new clock epoch from its own bootstrap, re-roll or "
+        "re-pin) is adopted at any size. A cross-band bootstrap is bounded as a time: "
+        "this many of the donor's chips (5 = 489 ns at 10.23 Mcps), converted into "
+        "this chain's (2.5 at E6, 0.25 at L2C-CM). 5 matches the JOINT-CLK bound "
+        "(joint_clk_max_chips, cli.py _FROZEN). 0 (default) = unbounded.",
     )
     ap.add_argument(
         "--nav-bits",
         type=int,
         default=1,
-        help="decode the broadcast navigation message from the combiner's "
-        "nav_obs export (bit_export: true) and cross-check the decoded "
-        "ephemeris against BRDC. Self-gating: chains whose combiner exports "
-        "no nav_obs are untouched. 0 = off.",
+        help="nonzero: decode the broadcast navigation message from the nav_obs the "
+        "combiner exports (bit_export: true in its config) with the --nav-decoder "
+        "decoder, and cross-check each decoded ephemeris against BRDC when the BRDC "
+        "almanac is loaded (--almanac, --almanac-source brdc). The auxiliary "
+        "combiners (--cnav-combiner and the rest) are polled only while this is on. "
+        "Self-gating: a chain whose combiner exports no nav_obs is untouched. 0 = off.",
     )
     ap.add_argument(
         "--nav-decoder",
         default="lnav",
         choices=("lnav", "cnav", "bcnav3"),
-        help="which decoder consumes nav_obs. lnav (default): the LNAV "
-        "decode-and-predict (GPS L1CA, the periodic-subframe future-bit source). "
-        "bcnav3: the BeiDou B2b B-CNAV3 decoder (GF(64) NB-LDPC(162,81) + CRC-24Q, "
-        "the B2b PRIMARY chain's own nav; pure decode + BRDC xcheck, no bit-pred). "
-        "cnav: the CNAV decoder (GPS L2C-CM / L5-I) -- FEC+CRC-24Q, NOT a "
-        "future-bit source (the type schedule is not fixed); it decodes live "
-        "ephemeris/messages and shadow-serves the signs of DECODED spans. Set "
-        "cnav on the L2C broker so its nav_obs (CNAV symbols) go to the right "
-        "decoder instead of churning the LNAV frame-sync forever.",
+        help="which decoder takes the nav_obs of this chain's own --combiner. lnav "
+        "(default): GPS L1 C/A LNAV; it also scores each newly decoded subframe "
+        "against its prediction from the earlier ones (logged as predict-mismatch). "
+        "cnav: GPS CNAV (L2C-CM, L5-I), FEC + CRC-24Q, decoded for the ephemeris "
+        "(message types 10 and 11); a chain whose combiner exports CNAV symbols needs "
+        "it, since the LNAV frame sync never finds a preamble in them. bcnav3: BeiDou "
+        "B2b B-CNAV3 (GF(64) NB-LDPC(162,81) + CRC-24Q), the B2b chain's own message. "
+        "Each decoded ephemeris is cross-checked against BRDC. The auxiliary "
+        "combiners' symbols go to their own decoders whatever this says.",
     )
     ap.add_argument(
         "--cnav-combiner",
         default=None,
-        help="AUXILIARY combiner polled purely for CNAV nav_obs, in ADDITION to "
-        "--combiner (S4). Exists because a band's CNAV can live on a chain "
-        "that is not this broker's own: at L5 the broker's combiner is the "
-        "Q PILOT (whose nav_obs are deterministic overlay predictions, which "
-        "belong to the LNAV/pilot path), while the CNAV symbols come from the "
-        "derived L5-I DATA sibling. Pointing --nav-decoder at the main "
-        "combiner cannot express that split. Symbols from here go to the CNAV "
-        "decoder regardless of --nav-decoder, and are cross-checked against "
-        "BRDC on the usual 60 s health cadence -- giving a SECOND, independent "
-        "decode of the same message set L2C already decodes, so an ephemeris "
-        "can be verified three ways (L2C vs L5 vs BRDC).",
+        help="auxiliary combiner (name or URL) polled only for its CNAV nav_obs, in "
+        "addition to --combiner, for a band whose CNAV symbols are on a chain other "
+        "than this broker's own: at L5 the broker's own combiner is the Q pilot, whose "
+        "nav_obs are deterministic overlay signs, while the CNAV symbols come from the "
+        "derived L5-I data sibling. Its symbols go to the CNAV decoder whatever "
+        "--nav-decoder says, and the decoded ephemeris is cross-checked against BRDC "
+        "on the 60 s health cadence: an independent decode of the message set L2C also "
+        "carries. Needs --nav-bits. Unset = off.",
     )
     ap.add_argument(
         "--inav-combiner",
         default=None,
-        help="AUXILIARY combiner polled for Galileo E1B I/NAV nav_obs (S5 "
-        "D-component #1), the exact analogue of --cnav-combiner: the GAL "
-        "broker's own --combiner is the E1C PILOT (deterministic overlay "
-        "signs), while the I/NAV DATA symbols come off the derived E1B "
-        "sibling chain. Symbols from here go to the InavPredictor and the "
-        "decoded ephemeris is cross-checked against BRDC on the 60 s health "
-        "cadence -- an independent E1B decode validating the Galileo "
-        "ephemeris (and the codec's ICD conventions) against the almanac.",
+        help="auxiliary combiner (name or URL) polled for Galileo I/NAV nav_obs, as "
+        "--cnav-combiner is for CNAV: the Galileo broker's own --combiner is a pilot "
+        "(E1C or E5b-Q), whose nav_obs are deterministic overlay signs, while the "
+        "I/NAV data symbols come from the derived data sibling chain (E1B or E5b-I; a "
+        "combiner name containing 'e5b' labels the decode health GAL_E5BI_INAV, else "
+        "GAL_E1B_INAV). "
+        "Symbols go to the I/NAV decoder (InavPredictor), and the decoded ephemeris is "
+        "cross-checked against BRDC on the 60 s health cadence. Needs --nav-bits. "
+        "Unset = off.",
     )
     ap.add_argument(
         "--fnav-combiner",
         default=None,
-        help="AUXILIARY combiner polled for Galileo E5a-I F/NAV nav_obs (S5 "
-        "D-component #2), the --inav-combiner analogue on the L5 band: the "
-        "GAL/E5a broker's own --combiner is the E5a-Q PILOT (deterministic "
-        "CS100 overlay signs), while the F/NAV DATA symbols come off the "
-        "derived E5a-I sibling chain (CS20 secondary + navwipe). Symbols go "
-        "to the FnavPredictor and the decoded ephemeris is cross-checked "
-        "against BRDC on the 60 s health cadence -- an independent E5a decode "
-        "validating the Galileo ephemeris (and galileo_fnav's ICD "
-        "conventions) against the almanac, beside E1B's I/NAV decode.",
+        help="auxiliary combiner (name or URL) polled for Galileo E5a-I F/NAV nav_obs, "
+        "as --inav-combiner is for I/NAV: the E5a broker's own --combiner is the E5a-Q "
+        "pilot (deterministic CS100 overlay signs), while the F/NAV data symbols come "
+        "from the derived E5a-I sibling chain (CS20 secondary + nav wipe). Symbols go "
+        "to the F/NAV decoder (FnavPredictor), and the decoded ephemeris is "
+        "cross-checked against BRDC on the 60 s health cadence. Needs --nav-bits. "
+        "Unset = off.",
     )
     ap.add_argument(
         "--bcnav2-combiner",
         default=None,
-        help="AUXILIARY combiner polled for BeiDou B2a B-CNAV2 nav_obs (S5 "
-        "D-component #3, the FIRST non-binary FEC), the --fnav-combiner "
-        "analogue on the BDS broker: the BDS broker's own --combiner is the "
-        "B2a-P PILOT (deterministic Weil overlay signs), while the B-CNAV2 "
-        "DATA symbols come off the derived B2a-D sibling chain (CS5 secondary "
-        "+ navwipe). Symbols go to the Bcnav2Predictor (GF(64) NB-LDPC codec) "
-        "and the decoded ephemeris is cross-checked against BRDC on the 60 s "
-        "health cadence -- an independent BDS-3 decode validating the "
-        "ephemeris (and the LDPC + CNAV-eph conventions) against the almanac.",
+        help="auxiliary combiner (name or URL) polled for BeiDou B2a B-CNAV2 nav_obs: "
+        "the B2a broker's own --combiner is the B2a-P pilot (deterministic Weil "
+        "overlay signs), while the B-CNAV2 data symbols come from the derived B2a-D "
+        "sibling chain (CS5 secondary + nav wipe). Symbols go to the B-CNAV2 decoder "
+        "(Bcnav2Predictor, a GF(64) NB-LDPC codec), and the decoded ephemeris is "
+        "cross-checked against BRDC on the 60 s health cadence. Needs --nav-bits. "
+        "Unset = off.",
     )
     ap.add_argument(
         "--bcnav1-combiner",
         default=None,
-        help="AUXILIARY combiner polled for BeiDou B1C B-CNAV1 nav_obs (S5 "
-        "D-component #4, the LAST), the --bcnav2-combiner analogue on the L1 "
-        "BDS broker: the broker's own --combiner is the B1C-P PILOT, while the "
-        "B-CNAV1 DATA symbols come off the derived B1C-D sibling. Symbols go to "
-        "the Bcnav1Predictor (reusing the GF(64) NB-LDPC codec, different H "
-        "matrices for SF2/SF3) and the decoded ephemeris is cross-checked "
-        "against BRDC -- completing the civil D-component set (GPS+GAL+BDS).",
+        help="auxiliary combiner (name or URL) polled for BeiDou B1C B-CNAV1 nav_obs: "
+        "the B1C broker's own --combiner is the B1C-P pilot, while the B-CNAV1 data "
+        "symbols come from the derived B1C-D sibling. Symbols go to the B-CNAV1 "
+        "decoder (Bcnav1Predictor: the GF(64) NB-LDPC codec shared with B-CNAV2, with "
+        "its own H matrix; the ephemeris is in subframe 2), and the decoded ephemeris "
+        "is cross-checked against BRDC on the 60 s health cadence. Needs --nav-bits. "
+        "Unset = off.",
     )
     ap.add_argument(
         "--cnav2-combiner",
         default=None,
-        help="AUXILIARY combiner polled for GPS L1C-D CNAV-2 nav_obs, the "
-        "--bcnav1-combiner analogue on the L1C broker: the broker's own --combiner "
-        "is the L1C-P PILOT (deterministic L1CO overlay signs), while the CNAV-2 "
-        "DATA symbols come off the derived L1C-D sibling. Symbols go to the "
-        "Cnav2Predictor (binary-LDPC systematic extract + CRC-24Q, 18 s frame) and "
-        "the decoded ephemeris is cross-checked against BRDC -- the 4th GPS-family "
-        "decode (LNAV / CNAV / CNAV-2).",
+        help="auxiliary combiner (name or URL) polled for GPS L1C-D CNAV-2 nav_obs: "
+        "the L1C broker's own --combiner is the L1C-P pilot (deterministic L1CO "
+        "overlay signs), while the CNAV-2 data symbols come from the derived L1C-D "
+        "sibling. Symbols go to the CNAV-2 decoder (Cnav2Predictor: systematic LDPC "
+        "extract + CRC-24Q, 18 s frame), whose health (CRC-passing frames, TOI) is "
+        "logged on the 60 s cadence. It extracts no ephemeris, so there is no BRDC "
+        "cross-check. Needs --nav-bits. Unset = off.",
     )
     # -- Named signals (gnss_broker/signals.py) -------------------------------------------
     ap.add_argument(
         "--signal",
         default=None,
         metavar="KEY",
-        help="name the chain instead of retyping its twelve constants: "
-        "`--signal gps_l5` sets carrier/chip rate/code length/long-code "
-        "segments+epoch/overlay length/constellation from "
-        "lib/stages/gnss/gnssSignal.hpp, which is what the trackers' "
-        "replica bank is actually built from. Every one of those flags "
-        "fails SILENTLY when mistyped (a wrong overlay length puts the "
-        "seed in a random one of N periods and errors nowhere), which is "
-        "why naming beats typing. An explicit flag that DISAGREES with "
-        "the named signal is a hard error, never a silent override. "
-        "`--signal help` lists them.",
+        help="name this chain's signal (e.g. gps_l5) instead of typing its constants: "
+        "it sets --carrier-hz, --chip-rate-hz, --code-length, --long-code-segments, "
+        "--long-code-epoch-s, --nh-overlay-len, --constellation and --dr-constellation "
+        "from lib/stages/gnss/gnssSignal.hpp, the descriptors the trackers' replica "
+        "bank is built from, and for the BDS-3-only signals (B1C, B2a, B2b) "
+        "--dr-min-prn 19 and --signal-capability. These constants fail silently when "
+        "mistyped (a wrong overlay length seeds a random one of the overlay periods), "
+        "so an explicit flag that disagrees with the named signal is an error. The "
+        "name is also the chain's id on the publisher and in the shared Receiver. "
+        "`--signal help` lists the known signals.",
     )
     # -- Record and replay for the broker_equiv.py gate (_Transcript, gnss_broker/transport.py) --
     ap.add_argument(
         "--transcript-write",
         default=None,
         metavar="FILE",
-        help="record every clock read, GET and POST to FILE (JSONL) while running "
-        "normally. Cheap and side-effect-free: safe to leave on in production "
-        "for the minute it takes to capture a golden run.",
+        help="record every clock read, GET and POST to FILE (JSONL, with this run's "
+        "flags in the header) while running normally, for scripts/gnss/broker_equiv.py "
+        "to replay. Recording changes nothing the broker does, so it is safe on a "
+        "production run for the minute a capture takes.",
     )
     ap.add_argument(
         "--transcript-read",
         default=None,
         metavar="FILE",
-        help="replay a recorded transcript instead of talking to the fleet, then "
-        "exit when it is exhausted. No network, no sleeps, deterministic "
-        "clock. The POST stream this produces is the equivalence gate -- see "
-        "scripts/gnss/broker_equiv.py.",
+        help="replay a transcript recorded with --transcript-write (FILE; .gz is read "
+        "directly) instead of talking to the fleet, then exit when it runs out, "
+        "printing the digest of the POST stream. No network and no sleeps; the clock "
+        "is the recording's. scripts/gnss/broker_equiv.py runs it under the "
+        "recording's flags and compares the digest with its blessed goldens.",
     )
     return ap

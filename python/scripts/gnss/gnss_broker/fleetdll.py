@@ -52,7 +52,7 @@ def stage_fleet_dll(ctx):
                 ctx.dllp.deep_gate_eff = set(ctx.deep_gate or ()) | _fresh_dg
                 if _fresh_dg != ctx.dg_auto_last[0]:
                     _log(
-                        "DEEP GATE (auto, #79): search-admitted PRN %s at snr >= %.0f "
+                        "DEEP GATE (auto): search-admitted PRN %s at snr >= %.0f "
                         "(hold %.0f s)%s"
                         % (
                             ",".join(str(p) for p in sorted(_fresh_dg)),
@@ -115,12 +115,12 @@ def stage_fleet_dll(ctx):
         if _fl0 is not None and _fl0.get("present_gate") == "UNANCHORED":
             _log_rl(
                 "unanchored",
-                "⚠️ PRESENCE UNANCHORED: only %d probe(s) reporting (need 3). NOBODY is "
-                "admitted and nothing is trimmed -- deliberately, because the alternative "
-                "is a floor built from the SATELLITES, which passes about half of them by "
-                "construction. Fix the PROBE SUPPLY: check that the selected probe PRNs "
-                "have slots on the nodes (--probe-require-slot), not this gate."
-                % _fl0.get("n_probe_q", 0),
+                "PRESENCE UNANCHORED: only %d probe(s) reporting (need 3, and 2 of them "
+                "with prompt power). Nobody is admitted and nothing is trimmed -- deliberately, "
+                "because the alternative is a floor built from the satellites, which passes "
+                "about half of them by construction. Fix the probe supply: check that the "
+                "selected probe PRNs have slots on the nodes (--probe-require-slot), not "
+                "this gate." % _fl0.get("n_probe_q", 0),
                 every_s=60.0,
             )
         # The comb arm (--telem-dll): the same discriminator rebuilt from the per-channel
@@ -547,8 +547,8 @@ def stage_fleet_dll(ctx):
         # rejected a fit cannot act on it.
         if ctx.cp_rate_rejected:
             _log(
-                "cp-rate: %d fit(s) REJECTED against the pooled clock (kept the clock "
-                "rate, kept the fitted position): %s"
+                "cp-rate: %d fit(s) REJECTED against the pooled clock (rate seeded per "
+                "--cp-rate-model-primary, kept the fitted position): %s"
                 % (
                     len(ctx.cp_rate_rejected),
                     ", ".join(
@@ -565,7 +565,7 @@ def stage_fleet_dll(ctx):
         if _absent:
             # No carrier extrapolation and no quadratic code term for these satellites.
             _log(
-                "dop-rate: %d seeded PRN(s) have NO doppler rate at all: %s"
+                "dop-rate: %d seeded PRN(s) have no doppler rate at all: %s"
                 % (len(_absent), _absent[:8])
             )
         if ctx.dop_rate_fitted:
@@ -673,12 +673,12 @@ def stage_fleet_dll(ctx):
             if _stalled:
                 _log_rl(
                     "inststall",
-                    "⚠️ INSTANCE STALLED: %d of %d serving but NOT ADVANCING -- %s. "
+                    "INSTANCE STALLED: %d of %d serving but not advancing -- %s. "
                     "These answer 200 with plausible rows; their pow_hop has not "
-                    "moved (healthy is ~5.9M hops/30 s). The usual cause is a frozen "
-                    "DPDK capture window dropping the whole stream, which no amount "
-                    "of waiting clears -- check the node log for RESYNC lines, then "
-                    "restart that node. Bandwidth is degraded fleet-wide until then."
+                    "moved (healthy is ~5.9M hops/30 s) while at least half the "
+                    "fleet advanced, so the fault is on those nodes -- check the node log, "
+                    "then restart that node. Bandwidth is degraded fleet-wide until "
+                    "then."
                     % (
                         len(_stalled),
                         len(_ih),
@@ -725,12 +725,12 @@ def stage_fleet_dll(ctx):
                 if _qv is not None:
                     _log_rl(
                         "qstall",
-                        "⚠️ q STALL: duty %.2f over the last %.0f s vs %.2f best "
+                        "q STALL: duty %.2f over the last %.0f s vs %.2f best "
                         "this session (%.0f%% of it, bar q>=%.1f, %d sat(s)). "
                         "This chain has been degraded, not absent -- the usual "
-                        "cause is railed C++ trim state, which a BROKER restart "
-                        "does NOT clear (#87). Judge against the same time of day, "
-                        "then a NODE restart."
+                        "cause is railed C++ trim state, which a broker restart "
+                        "does not clear. Judge against the same time of day, "
+                        "then a node restart."
                         % (
                             _qv[0],
                             ctx.args.q_stall_window,

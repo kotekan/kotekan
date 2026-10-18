@@ -239,15 +239,15 @@ def stage_almanac_predict(ctx):
                     if _n_cal < ctx.args.clock_bias_cal_min_sats:
                         _log(
                             "CLOCK BIAS: re-solve %+.1f Hz on only %d sat(s) (need %d) -- "
-                            "%s. A starved re-solve is noise (sd ~13 Hz at this count), and "
+                            "%s. A starved re-solve is noise, and "
                             "a wrong reference poisons every later comparison."
                             % (
                                 raw_bias,
                                 _n_cal,
                                 ctx.args.clock_bias_cal_min_sats,
-                                ("HELD the calibration at %+.1f" % ctx.cb.cal)
+                                ("held the calibration at %+.1f" % ctx.cb.cal)
                                 if ctx.cb.cal is not None
-                                else "NO calibration set yet -- the drift alarm stays silent "
+                                else "no calibration set yet -- the drift alarm stays silent "
                                 "until there is a reference worth comparing against",
                             )
                         )
@@ -259,7 +259,7 @@ def stage_almanac_predict(ctx):
                         ):
                             _log(
                                 "CLOCK BIAS RECALIBRATED %+.1f -> %+.1f Hz on %d sats -- "
-                                "hardware news (GPSDO re-settled?); new warm-start reference"
+                                "hardware news (GPSDO re-settled?); new drift-alarm reference"
                                 % (ctx.cb.cal, raw_bias, _n_cal)
                             )
                         ctx.cb.cal = raw_bias
@@ -283,7 +283,7 @@ def stage_almanac_predict(ctx):
                     _log_rl(
                         "clkalarm",
                         "CLOCK DRIFT ALARM: carrier bias %+.1f Hz vs calibration %+.1f "
-                        "(|d| > %.0f Hz, %d sats) -- GPSDO unlock / thermal event? INVESTIGATE"
+                        "(|d| > %.0f Hz, %d sats) -- GPSDO unlock / thermal event? Investigate"
                         % (ctx.cb.ema, ctx.cb.cal, _abar, len(resid)),
                         every_s=ctx.args.clock_bias_alarm_every_s,
                     )

@@ -285,4 +285,4 @@ def stage_rate_feed_fine(ctx):
                     every_s=60.0,
                 )
         except Exception as e:
-            _log_rl("jrrp-err", "phase-step feed skipped: %s" % e, every_s=300.0)
+            _log_rl("jrrp-err", "fine rate feed skipped: %s" % e, every_s=300.0)

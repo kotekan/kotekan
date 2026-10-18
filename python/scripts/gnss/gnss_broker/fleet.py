@@ -1368,9 +1368,9 @@ def fleet_spectrum_aligned(endpoints, prns=None, log=None, stale_margin=0):
     if len(w0s) > 1 or len(w1s) > 1:
         if log:
             log(
-                "⚠️ fleet spectrum: window %d has DIFFERENT sample spans across instances "
+                "fleet spectrum: window %d has different sample spans across instances "
                 "(wstart0 %s, wstart1 %s) -- the quantisation is broken, check that every node "
-                "config has the SAME spectrum_window_samples"
+                "config has the same spectrum_window_samples"
                 % (idx, sorted(w0s), sorted(w1s))
             )
         return (

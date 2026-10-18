@@ -90,7 +90,7 @@ def main():
     # An hour of total freeze at a 2 s cycle against a 30 s bar.
     s = series(10, 1800)
     fired = axis_stale_reference(s, 30.0)
-    check(len(fired) > 0, "FIXED: the freeze is reported")
+    check(len(fired) > 0, "the freeze is reported")
     freeze_began = 1000.0 + 10 * CYCLE
     check(
         fired and (fired[0] - freeze_began) <= 34.0,
@@ -122,7 +122,7 @@ def main():
     fired2 = axis_stale_reference(s2, 30.0)
     check(
         fired2 and max(fired2) <= t_end,
-        "after recovery the clock restarts: a 10 s freeze that follows is NOT reported",
+        "after recovery the clock restarts: a 10 s freeze that follows is not reported",
     )
 
     # ---- 5. the partition: the per-instance guard is silent here by design ---------------
@@ -136,7 +136,7 @@ def main():
     )
     check(
         stalled == [],
-        "with ALL 12 frozen, instance_stall_verdict accuses nobody -- correct, and exactly "
+        "with all 12 frozen, instance_stall_verdict accuses nobody -- correct, and exactly "
         "why the global guard must work: it is the only cover for this case",
     )
     one = dict(prev)
@@ -145,7 +145,7 @@ def main():
     _new, stalled = instance_stall_verdict(one, cur, 1000.0 + 600.0, 90.0)
     check(
         [u for u, _h, _d in stalled] == [urls[0]],
-        "... and it DOES catch one-of-twelve, which the global guard cannot see",
+        "... and it does catch one-of-twelve, which the global guard cannot see",
     )
 
     # ---- 6. every help string must survive format_help() -------------------------------
@@ -164,7 +164,7 @@ def main():
         print("      format_help raised: %r" % (e,))
     check(
         ok,
-        "every --flag's help survives format_help() (a bare %% is a format specifier)",
+        "every --flag's help survives format_help() (a percent sign in help is written %%)",
     )
 
     print("\n%s (%d check(s) failed)" % ("FAIL" if _fails else "PASS", len(_fails)))

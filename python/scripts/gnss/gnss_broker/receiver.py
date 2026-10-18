@@ -152,8 +152,8 @@ class Receiver(object):
                 # their fetches. Neither is trustworthy; say which is in use and by whom.
                 self._log(
                     "*** TIME ANCHOR DISAGREEMENT: %s has %.9f, %s fetched %.9f "
-                    "(%+.3f days). The F-engine restarted mid-startup. Restart the "
-                    "nodes AND this broker."
+                    "(%+.3f days). The F-engine restarted mid-startup. Restart this "
+                    "broker, then the nodes once it has re-anchored."
                     % (
                         self._anchor_src,
                         self._anchor,

@@ -52,7 +52,7 @@ def poll_elements(endpoints):
         except Exception as e:
             _log_rl(
                 "elemgain-%s" % url,
-                "ELEM-GAIN: %s unreachable (%s) -- a node predating /get_elements, "
+                "ELEM-GAIN: %s unreachable (%s) -- a node without /get_elements, "
                 "or down" % (url, e),
                 every_s=600.0,
             )
