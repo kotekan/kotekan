@@ -850,10 +850,9 @@ def main(argv=None, rx=None, publisher=None):
             # The wall instant this dead-reckon pass propagates to, read by every sub-stage:
             # _now(), the cycle's frozen clock (the same instant as t0).
             self.now_w = None
-            # Capture age (s since sample 0) at which the ephemeris was evaluated, on the wall
-            # axis: now_w - utc0_sample0. cp_predicted propagates range from this, never from
-            # t_now_abs: under --dr-fengine-axis those are different clocks, and mixing them
-            # misplaces each satellite by range rate x telemetry lag.
+            # Capture age (s since sample 0) at which the ephemeris was evaluated: the cycle's
+            # t_now_abs (deadreckon.dr_eph_epoch, #208). cp_predicted propagates range from
+            # this label; the label and the evaluation must be one t.
             self.t_eph_age = None
             # Axis-derived absolute capture time (s since sample 0), produced by the dead-reckon
             # stage and read by the rate feeds, the joint shadow and the tracker residuals.
@@ -1144,16 +1143,15 @@ def main(argv=None, rx=None, publisher=None):
     )
     _dec_reg = [r for r in _dec_reg if r]
 
-    def _decoded_entries(now_w):
+    def _decoded_entries(t_utc):
         """Build decoded_eph entries (sys, prn, signal, eph, sv_pos, toe_gpst) from whichever
         decoders exist. toe_gpst is the eph's time-of-week field placed within half a week of
-        _drp.now_w. Never raises: a bad decoder or eph is skipped."""
+        t_utc, the epoch the caller evaluates at (deadreckon.dr_eph_epoch). Never raises: a
+        bad decoder or eph is skipped."""
         ents = []
         if not _decfb:
             return ents
-        gpst_now = _decfb.gpst_of_utc(
-            datetime.fromtimestamp(_drp.now_w, tz=timezone.utc)
-        )
+        gpst_now = _decfb.gpst_of_utc(datetime.fromtimestamp(t_utc, tz=timezone.utc))
         wk = int(gpst_now // 604800)
         for signal, sys, svp, toef, getter in _dec_reg:
             try:
@@ -1203,8 +1201,7 @@ def main(argv=None, rx=None, publisher=None):
     args.dop_max_rate_hz = max(5.0, 3.0 * args.hold_max_dop_hz)
     _log(
         "dop_max_rate_hz (derived safety net, one cycle): %.1f Hz -- fires only on a "
-        "bad model"
-        % args.dop_max_rate_hz
+        "bad model" % args.dop_max_rate_hz
     )
     # Reset the cp-fit history across a detection gap longer than fit_gap_s (a re-acquisition).
     # Set in time, not hops: a fixed hop count would scale with the band's hop rate.

@@ -26,6 +26,7 @@ BROKER = os.path.join(os.path.dirname(HERE), "gps_distributed_broker.py")
 PER_CYCLE = {
     "t0",
     "best",
+    "monitor_best",
     "status",
     "pred",
     "up",

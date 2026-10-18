@@ -2111,22 +2111,16 @@ def stage_dead_reckon(ctx):
                     _log(
                         "*** WALL-vs-F-ENGINE OFFSET JUMPED %+.3f s (%.3f -> %.3f, "
                         "bar %.3f s). Two causes, and this line cannot tell them "
-                        "apart: (a) this host's wall clock stepped -- the F-engine axis is "
-                        "GPS-disciplined, so every model-evaluated seed on every chain "
-                        "just moved with it, ~%.0f chips at 10.23 Mcps and 800 m/s of "
-                        "range rate, fleet-common; (b) the telemetry lag jumped -- the "
+                        "apart: (a) this host's wall clock stepped -- the models and "
+                        "their labels live on the F-engine axis, so no seed moves, but "
+                        "the almanac epoch, detection ages and search-hint labels still "
+                        "read the wall clock; (b) the telemetry lag jumped -- the "
                         "observable F-engine 'now' is the newest pow_hop and trails the "
                         "sky by the gather/serve latency (~100 ms, tens of ms of jitter), "
                         "so anything near that scale is lag, not the clock. "
                         "Discriminate with chronyc tracking. Nothing here corrects "
                         "either -- this exists so the next hour is attributable."
-                        % (
-                            _dax - _dprev,
-                            _dprev,
-                            _dax,
-                            ctx.args.clock_step_guard_s,
-                            abs(_dax - _dprev) * 800.0 / 29.3,
-                        )
+                        % (_dax - _dprev, _dprev, _dax, ctx.args.clock_step_guard_s,)
                     )
                 ctx.dr_state["ax_off"] = _dax
             ctx.drp.la = ctx.cb.code_ema

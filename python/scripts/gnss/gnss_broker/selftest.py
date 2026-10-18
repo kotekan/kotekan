@@ -41,8 +41,9 @@ check("tick() advances it", transport._now() > _a)
 
 # -- #208: the ephemeris epoch is the hop axis, never a wall-clock reading --------------------
 # dr_eph_epoch must place the model at utc0_sample0 + t_now_abs and label it t_now_abs, and a
-# wall-clock step must not move it. The source grep keeps the next wall-time evaluation out of
-# deadreckon.py (every model there goes through this one function).
+# wall-clock step must not move it. The source grep sees only the literal spelling
+# fromtimestamp(ctx.drp.now_w in deadreckon.py, where every model now goes through this one
+# function; the wall-time uses left elsewhere are #208's open list.
 import inspect as _insp  # noqa: E402
 import re as _re  # noqa: E402
 import types as _types  # noqa: E402
