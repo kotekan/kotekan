@@ -92,6 +92,33 @@ the aggregator and gather. #184–#187 below are what the removal left for later
 
 ## Open — the fix is in the BROKER or a script (ships today, no node cycle)
 
+### #200 — the whole broker hangs on one node: cx19 is the time anchor and the bare endpoints (2026-10-18)
+**What [live, 10-18 02:25-02:41Z]:** cx19's node was stopped cleanly at 02:25:52Z, and the broker restarted at
+02:27:33Z without it. `common: rest-url: http://cx19:12048` makes cx19 the source of `time0-endpoint` (the F-engine
+frame-0 anchor) and the host of every bare `combiner:` name, so every model-primary chain logged "time anchor
+unavailable" every cycle and seeded only its three probes. Only gps_l5, the blind search, tracked. When cx19 came back at
+02:39:24Z, each model-primary chain gave up waiting and seeded on the 0.00-chip PRIME ("seeding on the 0.00-chip PRIME
+after waiting 710 s"), about 151 L5 chips off the true clock (TRKRES b3i +39.6 chips), and gps_l5 had still logged no
+"receiver clock BOOTSTRAP" two minutes later, so nothing could adopt a clock phase. The fix was a broker restart with
+every node up (the 10-01 rule).
+**The failure mode, end to end:** a broker that starts without the anchor never measures a clock, even after the anchor
+returns. gps_l5's dead-reckon primes the clock at 0.00 chips "REPLACED outright by the first multi-sat solve", but that
+solve never ran in the 16 min the process lived (no "receiver clock BOOTSTRAP" line, though gps_l5's search kept 5-7
+satellites present throughout). The model-primary chains wait up to ~710 s for a clock to adopt, then seed on the
+prime, and from then on the whole fleet tracks nothing but L5 while every node, the gather and the telemetry look
+healthy. Cycling the nodes does not help: it brings the anchor back, not the clock. **Signature, one minute:** `grep
+DRCLK` in the broker log reads `clk_now 0.000 chips` on every chain; "seeding on the 0.00-chip PRIME after waiting N s"
+once per model-primary chain; no "receiver clock BOOTSTRAP" since the last "starting N chain(s)"; TRKRES tens of chips.
+**Remedy, confirmed 10-18:** `systemctl --user restart gnss-broker.service` with every node answering. Restarted
+02:43:22Z: BOOTSTRAP 151.95 chips (6 sats) at 02:43:25.7Z, 0 CHAIN DIED, and at 02:46Z gal_e5a/e5b/e6 11 present,
+bds_b2a/b2b/b3i 8, gps_l2c 9, glo_l3oc 5, glo_l2oc 1 (its first satellite).
+**Fix [broker + config]:** (a) the anchor from any node: `time0-endpoint` tried across the trackers' hosts, first answer
+wins, and the anchors compared (they must agree to the ns); (b) no bare names: each chain's `combiner` as a full URL with
+a fallback list, or chosen at run time from the instances that answer; (c) a broker that starts without the anchor must
+bootstrap gps_l5's clock once it arrives, as at a clean start (today it never did), and the model-primary chains must
+wait for that clock rather than seed on the prime after a fixed wait. Check: stop one node's kotekan (cx19 included),
+restart the broker, and every chain seeds on a measured clock within a few minutes.
+
 ### #199 — the cf06 cube leg is not recording: the compactor dies in flush, the archiver is restarted by SIGTERM, the senders sit reset (2026-10-17)
 **What:** found while judging the glo_l3oc roll-out, 22:5xZ. (a) `gnss_cube_compact.py` dies on every pass since the
 17:51:46Z pass (the first after the stage-1 canary cycle; the log opened 13:07:53Z): `flush` -> `np.asarray(self.win["freq_id_lo"])`

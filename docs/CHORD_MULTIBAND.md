@@ -364,6 +364,13 @@ L2OF comb, k = 0..+6; an L2OF chain would add 6364-6379)
 and with it the N2 projection's range. Lanes: base 0, 4 x 32, alone on its channels. Cost: one
 more synthesis launch per record per GPU, ~0.6 ms per frame.
 
+**First sky (fleet on `954af6047` from 02:40Z 10-18, broker 02:43Z):** R23 (GLO-K1B) present at 34 deg, fleet q 6.4,
+deep SNR 296, prompt C/N0 52 dB-Hz, disc 0.09: K1B broadcasts L2OC, the code index is the slot, the 1248.06 MHz carrier
+is right, and a deep SNR that high says the OC2 epoch is right too. The dark probes R04, R05 and R12 read q 0.97-1.06.
+q on peak runs above the 4.4 modelled for 0.4 spacing, so the model's channel weights understate the fleet sum's width;
+re-derive from the live taps before moving the spacing. Watch: R11 (K1B) absent at 13.5 deg while setting, though
+present on L3OC. GPU 52-66 % per active card.
+
 To verify on the sky: presence of the K1B slots on L2OC (they are the bulk of the list), the
 code index = slot as for L3OC, the 1248.06 MHz carrier (an airspy-era note doubted it against
 1248.0; 60 kHz is outside the +-5 kHz Doppler window, so a wrong carrier reads as absent
