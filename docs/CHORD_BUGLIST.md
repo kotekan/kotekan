@@ -184,7 +184,14 @@ bootstrap at T+15 s. **Live gate PASSED at 22:54Z:** resid = cp_at_ref - cp0 re-
 GPS detections over -2834..+2236 Hz (the old stage would have read -0.394..+0.311), i.e. the lever is gone from the
 stage. The gather still runs the previous inode (00d51e99b6e4) until its own restart. Independent live read-back
 (search-vs-tracker per PRN vs Doppler, SEARCH-MONITOR gal_e5a, the b_sat fit) follows once the joint state has
-re-established.
+re-established. **23:11Z (T+18 min):** invariant still 0.0000 on 7 PRNs (-2911..+2236 Hz); joint state re-converged
+(n=7, clk 151.83 +- 0.08 chip, 0 CHAIN DIED); SEARCH-MONITOR gal_e5a per-PRN scatter tightened to MAD 0.07-0.16 chip
+(pre-fix 0.15-0.33: that scatter WAS the lever), 5-min median +0.577 chip (+16.9 m, p10/p90 +0.45/+0.69) against +0.49
+pre-fix -- the datum (GPS L5 search clock) and each Galileo PRN moved by 1.39e-4 x their own Doppler, so the #191
+constant now reads +0.58 chip with the lever gone. The b_sat-vs-Doppler fit over 22:56-23:11Z (196 points, each PRN
+spanning ~300 Hz) is not interpretable: the post-restart settling aliases into a within-pass slope (per-PRN +242..-36
+ms); re-fit over full passes (hours) before reading it. **#207 is closed on the stage and the live invariant; the
+pooled-slope re-fit is the remaining read-back (0b territory).**
 
 ### #208 — wall time sits in the radiometric path: the ephemeris is evaluated at `now_w` and labelled `t_eph_age = now_w - utc0_sample0` (2026-10-18, design, KV: nothing radiometric may depend on wall time; dead-reckon epoch moved to the hop axis 10-18 23:05Z; three wall-time uses remain)
 **What [tree]:** deadreckon.py:2224-2292 runs `predict_all` at the wall clock `now_w` and stamps the rows'
@@ -570,7 +577,9 @@ settling, which no static convention does. Open. **Candidates left:** an extra-s
 one node (one node regen + cycle; the same +0.45 says Galileo-wide, 0 says the Q pilot's code/secondary); and the
 only receiver-independent test, a short voltage capture of the L5/E5a lobe correlated outside the bank (no capture
 path exists in the tree; the replay has no voltages). The ICD-generator bench test is withdrawn: (iii) answers it.
-**Later the same evening:** the per-PRN scatter in the search's Galileo numbers is #207 (a Doppler lever on every
+**23:11Z, after the #207 cycle:** SEARCH-MONITOR gal_e5a reads search - joint = +0.577 chip (+16.9 m) 5-min median,
+p10/p90 +0.45/+0.69, per-PRN MAD 0.07-0.16 (the lever's scatter gone); the Galileo constant stands, now +0.58 chip.
+**Later the same evening (before the fix):** the per-PRN scatter in the search's Galileo numbers is #207 (a Doppler lever on every
 search-derived offset), not noise and not DCBs; with it removed the Galileo constant is **+0.43 chip at zero Doppler
 (+12.6 m)**, and it stands in both the search and the converged tracker.
  Test: gnss_broker/test_searchmonitor.py. **To run (KV):** add the flag to the
