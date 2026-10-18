@@ -92,6 +92,27 @@ the aggregator and gather. #184–#187 below are what the removal left for later
 
 ## Open — the fix is in the BROKER or a script (ships today, no node cycle)
 
+### #206 — viewer: L2OC's dark probes grey out satellites that L3OC holds, and the not-transmitted table is GPS-only (2026-10-18)
+**What [live 13:05Z]:** glo_l2oc runs with `--probe-dark`, so its three noise probes are GLONASS-M satellites above the
+horizon (R4, R5, R12 at el 62/62/9 deg) that cannot broadcast L2OC and that glo_l3oc holds (q 5.9/5.6/3.4 at 13:05Z). The viewer
+merges the chains' rows per satellite, and app/panels/gps_feed.js:390 promotes any one signal's `noise_probe` to the row
+("a satellite that is a noise probe on any signal is below the horizon on all of them": true until 10-18, false now),
+then :420 forces the row inactive: R4/R5/R12 render as unlocked (grey row, hollow ring, not in "N locked") in the table and
+the sky while their L3OC cell shows a green q. That is 3 of the 7 GLONASS rows reading unlocked, each of them locked
+on L3OC, beside an L2OC column with 4 blanks (those three plus R21) for a chain that holds 3 of its 3 capable
+satellites: the "half of L2OC unlocked" on the viewer. Second: livebeam_server.py `_gps_signal_capability()` builds
+the not-transmitted table from the IGS GPS block registry only, so GLO_L2OC_P, GLO_L3OC_P, BDS_B2A_P and BDS_B2B_I
+ship as EMPTY lists with `_prns` = 1..32; gps_feed.js `not_transmitted()` then returns true for every blank
+GLONASS/BeiDou cell with PRN <= 32 (under the C/N0 metric; the q metric prints the number), so the table prints "·"
+(not broadcast) where it should print "—" (no detection). In the 13:05Z snapshot the masked cell is R6's L3OC: a K2 that
+does transmit L3OC, whose L3OC loop sits off-peak (q 0.03, early tap 32x the prompt) and prints "·" as if incapable;
+R9 (K1B, never acquired on L2OC, #205 a) and R11 print the same when up. GAL_* and BDS_B3I ship the GPS 1..32 list
+too (harmless beyond PRN 32). **Fix [viewer, script-side]:**
+keep `noise_probe` per signal (`sig_by[key]`), judge `active` over the non-probe signals, render a probe cell as
+"probe" in grey; build the capability per constellation (the server already has `_glonass_capable_set()` via
+`prnmap.registry_capable(sigid)`; BeiDou from prnmap's BDS-3 set) and key `_prns` by constellation. Test:
+js_viewer/test_lock_metrics.py (dukpy) gets a case with a probe on one signal and a lock on another.
+
 ### #205 — GLONASS, the first night: what the two OC chains showed, kept as watch items (2026-10-18)
 **What [overnight 02:43-12:30Z, judged from broker.log, the obs rows and chain_health]:** (a) **R9 never acquires on
 either band**: armed on glo_l2oc 07:56-11:21Z up to 26.3 deg (2,590 rows above 20 deg) and never present; glo_l3oc the
@@ -153,22 +174,41 @@ since the F-engine return 10-17 ~13Z, not the L2OC restart (10-11, 8 chains: ~5)
 no swap. **Fix [script]:** glob today's (and yesterday's, across 00:00Z) files only, or cache per file by (size, mtime).
 Judge: viewer rchar rate and NFS read calls/s drop by an order of magnitude; load average.
 
-### #201 — L2OC: R19 locked on a BOC side peak at +1 chip after a one-minute loss, and nothing brings it back (2026-10-18, HYPOTHESIS, live)
-**What [live since 11:50Z]:** glo_l2oc R19 (K1, high elevation) held q 4.4-4.7, disc +0.18, standing-trim readback
--0.43 (11:45Z). At 11:48:50-11:50:00Z q decayed 4.6 -> 1.2 with the disc steady, an L2OC-only loss: glo_l3oc held R19 at
-q 3.3-3.7 through it. At 11:50:25Z the disc flipped to -0.24 and q came back to only ~3.3; the readback jumped +1.0 chip in
-30 s (-0.500 at 11:49:35 -> -0.226 -> +0.506 at 11:50:35Z) and has sat at +0.57..+0.70 since (12:30Z), while glo_l3oc's
-R19 readback stayed -1.0..-1.5 throughout (no step). Since then L2OC R19 runs q 2.2-3.3 (one 4.5 at 12:30), disc pinned
--0.25..-0.28, against L3OC's disc +0.21..+0.30 on the same satellite; FLEET xcoh for PRN 19 fell 0.85 -> 0.03-0.07.
-CHORD_MULTIBAND 6.2: "Beyond +-0.91 the BOC side peaks (+-1.05) are stable false locks", and a side peak's amplitude is
-half the main peak's, so q ~ 1 + (4.5-1)/2 ~ 2.8 matches. An earlier step: SAWTOOTH bare-wipe at 11:31:11Z, standing trim
--1.25 -> -0.53 in one cycle (L3OC unmoved). R23 lost L2OC the same way 03:16:54-03:22:52Z and came back on peak (q 6+).
-**Not yet shown:** that the lock is on the side peak (check the node E/P/L taps for R19 at +-1 chip, or re-seed R19 on
-L2OC and see q return to ~4.5 with the readback ~1 chip lower). Also unexplained: what loses L2OC for a minute while L3OC
-holds (OC2 placement after a seed step? the 1-s overlay?). **Fix [broker]:** a side-peak (bump-jump) check: after any
-loss, or while a PRN's L2OC q sits well below its L3OC q, compare the correlation at +-1 chip and step to the larger;
-and after a loss, re-seed from the model rather than keep the trim the loss walked. Applies to any BOC chain we add.
-
+### #201 — L2OC: the fleet loop parks one chip off the model and stays there, and nothing in the chain can tell (2026-10-18, CONFIRMED from the obs rows: four episodes in 11 h, one live)
+**What [10-18 09:00-13:20Z, glo_l2oc obs rows + broker.log; skeptic-checked]:** four times today a glo_l2oc track
+settled one L2OC chip (146.5 m) away from where it had been, inside the satellite's own arc, and stayed there with every
+row flagged present and locked, while glo_l3oc's residual for the same satellite moved < 13 m: (a) R19 at -1 chip
+11:09:40-11:31:06Z: `code_resid_m` 4253 m against 4412 before (-154 m, -1.05 chip) and 4381 after; the entry was a 3-min
+walk (11:06:40-11:09:40Z, trim -0.23 -> -1.28, from q 4.1-4.5 with no presence loss); ended by the D3 SAWTOOTH bare-wipe
+at 11:31:11Z (readback -1.42 -> -0.35), i.e. the model re-seed put it back; 657 of 658 rows present+locked. (b) R19 at
++1 chip 11:50:35-12:57:35Z: 4524.6 m against 4381/4386 (+150 m, +1.02 chip); the entry walk (11:49:48-11:50:35Z) crossed
+a 16-s presence loss during which the trim moved 0.39 chip; all 1,930 plateau rows present+locked; ended 12:57:35-41Z
+by an uncommanded walk-back (-148 m, trim +0.60 -> -0.37; no broker step logged). (c) R06 13:01:29-35Z: +148 m in 6 s
+(trim -0.24 -> +0.78) eight minutes after a birth seed on a 2.3-h-old BRDC (`eph_age_s` 8130, so the seed's own error
+is of order a chip); which side the main peak is on is NOT shown. (d) R20 13:04-13:06Z, LIVE: after a 20-s q loss
+(1.5-1.8) the readback walked -0.38 -> +0.73 in two minutes; since then q 2.0-2.3 on the lock bar and every row
+present+locked (239 by 13:21Z); no residual for R20 (no BRDC). Plus R19 10:39-10:46Z: -84 m (-0.57 chip) through a real
+10-12 dB fade (q 6 -> 1.4-2.0), 140 displaced rows flagged locked. R19 spent ~87 of its ~250 locked minutes today a
+chip off. **Reading:** the displacement is one chip to +-0.05 both ways, so the natural lock point is the BOC side peak
+at +-1.05 chip (CHORD_MULTIBAND 6.2), but that is an inference: no served statistic confirms it. The prompt C/N0 is
+blind to code error (instruments.py: "never judge lock on it") and read 52.25 dB-Hz on the -1 plateau, equal to the
+main peak; q was unchanged in (a) and ~45% lower in (b); `sig` unchanged; the standing `dll_disc` is -trim/2.3 on
+every plateau (leak balance), so its sign says where the trim stands, not which peak. The only witnesses are the
+one-chip residual step inside an arc and the L2OC-vs-L3OC disagreement. Mechanism: the fast loop's only gate is prompt
+power against the probe floor (CHORD_FAST_TRIM 11.2, "NOT on q"), which a chip-off prompt passes untouched on this
+comb, so the integrator servoes whatever zero it is in and the leak holds it (the railed bound is 1.25 chips,
+gnssFleetDll.hpp:98, past 1.05). What kicks a settled loop off its zero is open: (a) walked from the arc's best q with
+no loss; three of the four R19 transitions sit 1-13 s after an ELEM-GAIN post (120-s cadence). **Why nothing caught
+it:** the designed BOC safeguard is the search-vs-track referee (seeding.py:841; cli.py `hold_max_cp_err` 0.4 chip,
+"stable false equilibria ... that a hold would otherwise servo forever"), and glo_l2oc has no search stage (`search:
+None`), so the referee never runs on the one BOC chain we have. The obs writer, chain_health, the viewer and the PVT
+self-survey all took the rows as locked. **Fix [broker]:** give the chain a referee: (1) cross-band: the same
+satellite's glo_l3oc track is in-process; when |resid_L2OC - resid_L3OC| exceeds ~0.4 chip (60 m) for a few cycles,
+re-seed L2OC's trim from L3OC's (or wipe to the model, which cured (a)); (2) at birth on a BOC chain, test the seed at
+cp and cp +-1 chip for a few seconds and keep the strongest fleet q; (3) hold the integrator while the chain calls the
+PRN not present (removes part of the (b) walk, not (a) or (c)); (4) publish `prompt_lock=false` while the referee
+disagrees, so consumers see a gap instead of a 150-m bias. **Next:** the tap check (E/P/L at +-1 chip) to name the
+peak. Applies to every BOC chain added later.
 ### #200 — the whole broker hangs on one node: cx19 is the time anchor and the bare endpoints (2026-10-18)
 **What [live, 10-18 02:25-02:41Z]:** cx19's node was stopped cleanly at 02:25:52Z, and the broker restarted at
 02:27:33Z without it. `common: rest-url: http://cx19:12048` makes cx19 the source of `time0-endpoint` (the F-engine
