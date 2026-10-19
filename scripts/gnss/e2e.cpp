@@ -82,7 +82,7 @@ struct Opt {
     int prn = 3;
     /// Injected truth: generator argument, mod the tracker code length (204600 at the default).
     double cp204 = 137456.75;
-    double dop = 1893.4;             ///< injected truth Doppler, Hz, constant over the run
+    double dop = 1893.4;             ///< injected truth Doppler at the snapshot, Hz
     long long hop0 = 114436200145LL; ///< snapshot start hop (~6.8 days of F-engine uptime)
     double age_s = 27.0;             ///< seed age at the first tracker record
     int nrec = 4;                    ///< tracker records to propagate through
@@ -112,10 +112,10 @@ struct Opt {
     int hops_per_record = 2048;
     double dll_spacing = 0.5;
     /// Commanded DLL trim, chips, passed to propagate_seed as cudaGnssInject passes the fleet
-    /// controller's value. With an exact seed (--skip-search --seed-dop-rate 0) a nonzero trim
-    /// is a known code error of known sign, so this is the sign test for the actuator: the
-    /// loop's correction tau = -disc/4 (dll_tau at 0.5-chip spacing) must point back toward
-    /// zero. A sign error here makes the loop diverge.
+    /// controller's value. With an exact seed (--skip-search) a nonzero trim is a known code
+    /// error of known sign, so this is the sign test for the actuator: the loop's correction
+    /// tau = -disc/4 (dll_tau at 0.5-chip spacing) must point back toward zero. A sign error
+    /// here makes the loop diverge.
     double trim_chips = 0.0;
 
     // Shared geometry
@@ -136,15 +136,14 @@ struct Opt {
                                ///< secondary-phase error on a _CS/_NH signal: it shows what a
                                ///< wrong overlay period looks like downstream.
     double seed_cp_rate = 0.0; ///< chips/hop residual handed to the tracker
-    /// Hz/s handed to the tracker. Only the seed carries it: the synthetic sky's Doppler stays
-    /// at --dop, so a non-zero rate is also a seed error, rate*dt in Doppler and, through
-    /// propagate_seed's quadratic term, 0.5*(chip_rate/f_offset)*rate*dt^2 in code phase
-    /// (~1.2 chips at L5 for the default at the 27 s age, ~5 chips by record 3). The default
-    /// is a real satellite's rate rather than zero because with zero the commanded Doppler is
-    /// the same in every record, and the per-record phase step (delta f)*t_abs that a changing
-    /// Doppler causes at days of uptime cannot arise. That family of defects is a small number
-    /// times a huge absolute argument: hop0 supplies the argument and this the small number.
-    /// --seed-dop-rate 0 removes it.
+    /// Hz/s, the sky's Doppler rate, handed to the tracker as the seed's rate too, so unlike the
+    /// perturbations above it is exact. The sky's Doppler ramps from --dop at the snapshot, and
+    /// its code and carrier phases are the ramp's integrals, continuous across records. The
+    /// default is a real satellite's rate rather than zero because with zero the commanded
+    /// Doppler is the same in every record, and the per-record phase step (delta f)*t_abs that
+    /// a changing Doppler causes at days of uptime cannot arise. That family of defects is a
+    /// small number times a huge absolute argument: hop0 supplies the argument and this the
+    /// small number. --seed-dop-rate 0 removes it.
     double seed_dop_rate = -0.36893;
     int quantize = 0;            ///< 1 = 4+4b like the F-engine, 0 = float
     int skip_search = 0;         ///< 1 = seed straight from truth (isolates the tracker leg)
@@ -170,7 +169,8 @@ static void usage() {
         "                     --skip-search\n"
         "  --cp204 X          injected truth: generator argument, chips mod the tracker code\n"
         "                     (204600 for GPS_L5_Q_NH; 1023000 for GAL_E5A_Q_CS, BDS_B2A_P_CS)\n"
-        "  --dop F            injected truth Doppler, Hz (default 1893.4)\n"
+        "  --dop F            injected truth Doppler at the snapshot, Hz (default 1893.4); the\n"
+        "                     sky ramps from it at --seed-dop-rate\n"
         "  --hop0 H           snapshot start hop (default 114436200145, ~6.8 days of uptime)\n"
         "  --age-s S          seed age at the first tracker record (default 27)\n"
         "  --nrec N           tracker records to test (default 4)\n"
@@ -188,8 +188,9 @@ static void usage() {
         "  --seed-cp-err X    chips added to the seed's code phase only; +k x the primary code\n"
         "                     length is an overlay-period error on a _CS/_NH signal\n"
         "  --seed-cp-rate X   code_phase_rate handed to the tracker, chips/hop\n"
-        "  --seed-dop-rate F  doppler_rate_hz_s handed to the tracker (default -0.36893, a real\n"
-        "                     satellite's rate). 0 holds the commanded Doppler constant across\n"
+        "  --seed-dop-rate F  the sky's Doppler rate, Hz/s, also handed to the tracker as its\n"
+        "                     doppler_rate_hz_s (default -0.36893, a real satellite's rate), so\n"
+        "                     the seed's rate is exact. 0 holds the Doppler constant across\n"
         "                     records, which hides the (delta f)*t_abs family of phase errors\n"
         "  --dll-spacing D    Early/Late tap offset from prompt, component chips (default 0.5).\n"
         "                     To match a live chain, pass its dll_spacing, which comes from\n"
@@ -489,8 +490,9 @@ int main(int argc, char** argv) {
 
     printf("================================================================================\n");
     printf("INJECTED TRUTH   %s (search %s)   PRN %d\n", tname.c_str(), sname.c_str(), o.prn);
-    printf("  cp %.4f mod %.0f  (primary %.4f, overlay period %d)   dop %+.4f Hz\n", o.cp204, LL,
-           std::fmod(o.cp204, L), (int)(o.cp204 / L), o.dop);
+    printf("  cp %.4f mod %.0f  (primary %.4f, overlay period %d)   dop %+.4f Hz, ramp %+.5f "
+           "Hz/s\n",
+           o.cp204, LL, std::fmod(o.cp204, L), (int)(o.cp204 / L), o.dop, o.seed_dop_rate);
     printf("  snapshot hop %lld (sample %lld, %.2f days of uptime)\n", o.hop0, W0,
            (double)W0 / o.sample_rate / 86400.0);
     printf("  geometry: record %d hops = %.4f code periods | replica period %d hops = %.0f "
@@ -503,13 +505,23 @@ int main(int argc, char** argv) {
            o.s_stride, o.t_nchan, o.t_stride, o.quantize ? "4+4b quantized" : "float");
     printf("================================================================================\n\n");
 
-    // The true physical phase at any window, from the injected argument (constant for all
-    // time), in wire units: component chips, as cp_at_ref reports and seeds carry in
-    // code_phase_at_ref_chips. phase_from_arg returns combined chips (comb_mult x component),
-    // hence the division; without it the harness agrees with propagate_seed on a TDM signal
-    // (L2C, comb_mult 2) while the sky does not.
+    // The true physical phase at any window, in wire units: component chips, as cp_at_ref
+    // reports and seeds carry in code_phase_at_ref_chips. It is the phase of the injected
+    // argument (constant for all time) at the snapshot's Doppler, plus the Doppler ramp's
+    // integral over tau, the time since the snapshot: the generator's code rate is
+    // eff_chip_rate * (1 + code_doppler_sign * dop / carrier), so a ramp adds
+    // 0.5 * eff_chip_rate * code_doppler_sign * rate / carrier * tau^2. Both terms are in
+    // combined chips (comb_mult x component), hence the division; without it the harness
+    // agrees with propagate_seed on a TDM signal (L2C, comb_mult 2) while the sky does not.
+    const double LLc = (double)tbank.eff_code_length();
     auto truth_phase_at = [&](long long wstart) {
-        return tbank.phase_from_arg(o.cp204, wstart, o.dop) / (double)tbank.comb_mult();
+        const double tau = (double)(wstart - W0) / o.sample_rate;
+        const double ramp = 0.5 * tbank.eff_chip_rate() * tbank.code_doppler_sign * o.seed_dop_rate
+                            / tbank.carrier_hz() * tau * tau;
+        double ph = std::fmod(tbank.phase_from_arg(o.cp204, wstart, o.dop) + ramp, LLc);
+        if (ph < 0.0)
+            ph += LLc;
+        return ph / (double)tbank.comb_mult();
     };
 
     // -----------------------------------------------------------------------------------------
@@ -525,6 +537,7 @@ int main(int argc, char** argv) {
         const int nwin = std::max(std::max(1, o.acquire_windows), std::max(1, o.refine_windows));
         printf("[1] SEARCH -- synthesizing %d x %d hops (%.1f ms) on %d channels...\n", nwin, Mp,
                1e3 * nwin * Mp * hop_s, o.s_nchan);
+        // The snapshot starts the Doppler ramp, which moves the Doppler by mHz over these hops.
         const auto clean =
             tbank.channels_hoprate(0, W0, o.cp204, o.dop, nwin * Mp, s_chans, {}, -1);
         double sig2 = 0.0;
@@ -836,7 +849,32 @@ int main(int argc, char** argv) {
         // (component) units.
         const double err = wrap(pr.phase_now / (double)tbank.comb_mult() - truth_phase_at(W), LL);
 
-        auto rec = tbank.channels_hoprate(0, W, o.cp204, o.dop, o.hops_per_record, t_chans, {}, -1);
+        // The sky in this record: its Doppler on the ramp, and the generator argument that puts
+        // its code at the true phase. The generator holds one Doppler over a record (~4 mHz of
+        // ramp at the default rate) and forms the carrier phase from absolute samples,
+        // 2*pi*f_rec*t_abs, f_rec being its double sum carrier_offset + Doppler. The ramp's
+        // continuous carrier phase, 2*pi*(f_snap*t_abs + 0.5*rate*tau^2) from the snapshot's
+        // sum f_snap, is theta = 2*pi*((f_snap - f_rec)*t_abs + 0.5*rate*tau^2) more at the
+        // record's reference sample. Both sums are rounded as the generator rounds them: the
+        // rounding, ~1e-7 Hz, is ~0.07 cycle at 6.8 days and changes with the Doppler. The
+        // channels carry the carrier's e^{-i wc n} image (the r2c fold conjugates; the other
+        // image is in the PFB stopband), so the record is turned by e^{-i theta}.
+        const double tau = (double)(W - W0) / o.sample_rate;
+        const double sky_dop = o.dop + o.seed_dop_rate * tau;
+        const double sky_cp =
+            tbank.arg_from_phase(truth_phase_at(W) * (double)tbank.comb_mult(), W, sky_dop);
+        auto rec =
+            tbank.channels_hoprate(0, W, sky_cp, sky_dop, o.hops_per_record, t_chans, {}, -1);
+        const double f_snap = tbank.carrier_offset(0) + o.dop;
+        const double f_rec = tbank.carrier_offset(0) + sky_dop;
+        const long double t_abs = (long double)(W + FFT - 1) / (long double)o.sample_rate;
+        const long double cyc =
+            ((long double)f_snap - (long double)f_rec) * t_abs
+            + 0.5L * (long double)o.seed_dop_rate * (long double)tau * (long double)tau;
+        const cf turn = std::polar(1.0f, (float)(-2.0 * M_PI * (double)(cyc - std::floor(cyc))));
+        for (auto& ch : rec)
+            for (cf& v : ch)
+                v *= turn;
         // --noise applies to every tracker record too, from its own RNG stream, so the tracker
         // and deep-fold legs see the same SNR regime as the search.
         if (o.noise > 0.0) {
@@ -864,7 +902,7 @@ int main(int argc, char** argv) {
         // Job 0 = the tracker's commanded phase; job 1 = perfect knowledge, the normalizer.
         const std::vector<GnssCudaDespread::Spec> jobs{
             {0, pr.cp, o.dll_spacing, pr.doppler_hz, t_cov},
-            {1, o.cp204, o.dll_spacing, o.dop, t_cov}};
+            {1, sky_cp, o.dll_spacing, sky_dop, t_cov}};
         const auto res = ds.despread_batch(jobs);
         const double P = std::norm(res[0][1].correlation);
         const double E = std::norm(res[0][0].correlation);
@@ -881,10 +919,17 @@ int main(int argc, char** argv) {
     // ---- the deep fold, with the combiner's own coherent_sum ----
     // coherent_sum takes its noise from the records' component orthogonal to the sum, so a
     // per-record phase error sigma_phi caps its snr near sqrt(N)/sigma_phi whatever the signal
-    // strength. With no noise and an exact seed (--skip-search --seed-dop-rate 0), any sigma_phi
-    // left is in the arithmetic, not on the sky.
+    // strength. With no noise, an exact seed (--skip-search) and a constant Doppler
+    // (--seed-dop-rate 0), any sigma_phi left is in the arithmetic, not on the sky.
     if (prompts.size() >= 4) {
         const int N = (int)prompts.size();
+        // The mean per-record step. With a changing Doppler at days of uptime it is the
+        // (delta f)*t_abs step and can be any size, so the phases are unwrapped about it: an
+        // unwrap aliases only where a step strays from the mean by more than pi.
+        std::complex<double> step_sum(0.0, 0.0);
+        for (int i = 1; i < N; ++i)
+            step_sum += prompts[i] * std::conj(prompts[i - 1]);
+        const double mstep = std::arg(step_sum);
         // Derotate first, as the combiner's rate search does: a fold of raw prompts measures the
         // phase ramp from a Doppler error, not the residual about it.
         std::vector<std::complex<double>> der = prompts;
@@ -894,12 +939,12 @@ int main(int argc, char** argv) {
             for (size_t i = 0; i < prompts.size(); ++i) {
                 const double q = std::arg(prompts[i]);
                 if (i) {
-                    double d = q - pv;
+                    double d = q - pv - mstep;
                     while (d > M_PI)
                         d -= 2 * M_PI;
                     while (d < -M_PI)
                         d += 2 * M_PI;
-                    acc += d;
+                    acc += d + mstep;
                 }
                 pv = q;
                 p0[i] = acc;
@@ -923,12 +968,12 @@ int main(int argc, char** argv) {
         for (size_t i = 0; i < prompts.size(); ++i) { // unwrapped phase
             const double a = std::arg(prompts[i]);
             if (i) {
-                double d = a - prev;
+                double d = a - prev - mstep;
                 while (d > M_PI)
                     d -= 2 * M_PI;
                 while (d < -M_PI)
                     d += 2 * M_PI;
-                pu += d;
+                pu += d + mstep;
             }
             prev = a;
             ph[i] = pu;
@@ -952,15 +997,16 @@ int main(int argc, char** argv) {
         printf("    coherent snr %.2f   amplitude %.6g\n", cs.snr, cs.amplitude);
         printf("    implied sigma_phi = sqrt(N)/snr = %.4f rad\n",
                cs.snr > 0 ? std::sqrt((double)N) / cs.snr : 0.0);
-        // The unwrap assumes the phase step between records is under pi. With a real Doppler
-        // rate at days of uptime it often is not; the unwrap then aliases and sig_res saturates
-        // near the uniform-phase value whatever the arithmetic does, so a large median step is
-        // reported as unresolved instead of as a number.
+        // The unwrap assumes each step is within pi of the mean step. Records seconds apart
+        // break that: a Doppler rate changes the step by rate*gap^2 cycles per record. The
+        // unwrap then aliases and sig_res saturates near the uniform-phase value whatever the
+        // arithmetic does, so a large median deviation is reported as unresolved instead of as
+        // a number.
         double med_step;
         {
             std::vector<double> st;
             for (int i = 1; i < N; ++i) {
-                double d = std::arg(prompts[i]) - std::arg(prompts[i - 1]);
+                double d = std::arg(prompts[i]) - std::arg(prompts[i - 1]) - mstep;
                 while (d > M_PI)
                     d -= 2 * M_PI;
                 while (d < -M_PI)
@@ -971,8 +1017,8 @@ int main(int argc, char** argv) {
             med_step = st.empty() ? 0.0 : st[st.size() / 2];
         }
         if (med_step > 1.5)
-            printf("    per-record phase residual: UNRESOLVED -- median |dphi| = %.2f rad, the "
-                   "unwrap has aliased\n      (records are %.4g s apart; use --rec-gap-s "
+            printf("    per-record phase residual: UNRESOLVED -- median |dphi - mean| = %.2f rad, "
+                   "the unwrap has aliased\n      (records are %.4g s apart; use --rec-gap-s "
                    "%.6f, the live record cadence, to measure this)\n",
                    med_step, o.rec_gap_s, 2048.0 / 195312.5);
         else
@@ -984,10 +1030,10 @@ int main(int argc, char** argv) {
             med_step > 1.5 ? ">>> cannot tell: the per-record step aliases the unwrap (see above)"
             : sig_res > 0.2
                 ? ">>> the floor reproduces -- at --noise 0 it is in our arithmetic or in the\n"
-                  "        seed model extrapolated over this record spacing. Re-run with\n"
+                  "        Doppler ramp's quadratic phase over this record spacing. Re-run with\n"
                   "        --rec-gap-s 0.0104858 (the live cadence, which is what the deep fold\n"
                   "        actually integrates) to separate the two: arithmetic survives that,\n"
-                  "        a multi-second extrapolation residual does not."
+                  "        a multi-second quadratic does not."
                 : ">>> the chain is phase-clean at these settings (--seed-dop-rate 0\n"
                   "        hides the (delta f)*t_abs family); a sky floor above this comes from\n"
                   "        something this harness does not model (overlay/nav wipe, straddle,\n"

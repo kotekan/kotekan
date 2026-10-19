@@ -189,9 +189,10 @@ separate. Code first, and only once the code loop has a duty number.
 
 `scripts/gnss/trim_sign_gate.py` verifies the loop's sign end to end: a commanded trim on a
 perfect-truth synthetic sky IS a known code error, so `sign(tau) == -sign(err)` across the
-pull-in region is measured rather than argued. Locate the null first -- e2e's default seed
-carries a real age, so a sweep about trim zero can sit wholly outside the +-0.5-chip region
-where the discriminator has any gradient.
+pull-in region is measured rather than argued. Locate the null first -- e2e's default seed is
+exact, but a seed perturbation (--seed-cp-err, --seed-dop-err) moves the open-loop error, so a
+sweep about trim zero can sit wholly outside the +-0.5-chip region where the discriminator has
+any gradient.
 
 ## 11. Three controller choices arming day forced (measured 2026-08-15)
 
