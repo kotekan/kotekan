@@ -409,8 +409,9 @@ def group_delay_s(e, signal, dcb=None):
     the satellite's clock by the BGD difference.
 
     Returns 0.0 for a signal not handled below (GPS L2C and Galileo E6 among them) and when the
-    term is unavailable rather than guessing, notably BeiDou B2a, whose TGD_B2ap is in B-CNAV2
-    and absent from RINEX 3 (which carries only TGD1 B1I/B3I and TGD2 B2I/B3I).
+    term is unavailable rather than guessing, notably BeiDou B2a and B1C, whose TGD_B2ap and
+    TGD_B1Cp are in B-CNAV2 and B-CNAV1 and absent from RINEX 3 (which carries only TGD1
+    B1I/B3I and TGD2 B2I/B3I).
     """
     if not signal:
         return 0.0
@@ -474,10 +475,11 @@ def group_delay_s(e, signal, dcb=None):
     if sysc == "C":
         # The D1/D2 clock is B3I-referenced. B2b shares B2I's carrier (1207.14 MHz), so TGD2
         # applies to it; B2a (1176.45 MHz) needs TGD_B2ap, which RINEX 3 does not carry, so it
-        # gets 0 rather than a borrowed TGD2.
+        # gets 0 rather than a borrowed TGD2. TGD1 is B1I's term; B1C needs TGD_B1Cp from
+        # B-CNAV1, also absent from RINEX 3, so B1C gets 0 for the same reason.
         if "b2b" in sig:
             return -tgd2
-        if "b1" in sig:
+        if "b1i" in sig:
             return -tgd
         return 0.0
     return 0.0
@@ -612,7 +614,15 @@ def predict_all(
             tau = rng / C_LIGHT
         if el < mask_deg:
             continue
-        rr = sum((p - r) * v for p, r, v in zip(pos_rx, rx, vel)) / rng
+        # vel is in the transmit-epoch frame, like pos: rotate it by the same angle so the
+        # range rate is taken in the reception frame. The light-time rate (tau changes by
+        # rr/c per second) is left out, a few mm/s at most.
+        vel_rx = (
+            vel[0] * math.cos(th) + vel[1] * math.sin(th),
+            -vel[0] * math.sin(th) + vel[1] * math.cos(th),
+            vel[2],
+        )
+        rr = sum((p - r) * v for p, r, v in zip(pos_rx, rx, vel_rx)) / rng
         # Refer the broadcast clock to `signal` (group_delay_s). Only dead reckoning passes
         # one; signal=None leaves the clock as broadcast.
         _gd = group_delay_s(e, signal, dcb)

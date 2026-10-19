@@ -14,9 +14,18 @@ Why each check exists:
     TGD_B2ap lives in B-CNAV2 and RINEX 3 does not carry it. Borrowing TGD2 (a different
     band) would be a plausible-looking wrong answer, which is worse than none.
 """
+import builtins
+import gzip
+import io
 import os
+import shutil
 import sys
+import tempfile
+import threading
 import unittest
+import urllib.error
+from datetime import datetime, timedelta, timezone
+from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from gnss_ephemeris import group_delay_s, GAMMA_L1L5, GAMMA_E1E5A, GAMMA_E1E5B
@@ -119,6 +128,14 @@ class TestBeiDou(unittest.TestCase):
             group_delay_s(_c(tgd2=-4.3 * NS), "bds_b2b"), +4.3 * NS, places=15
         )
 
+    def test_tgd1_is_b1i_only(self):
+        """TGD1 is B1I's term. B1C needs TGD_B1Cp from B-CNAV1, which RINEX 3 does not
+        carry, so it gets 0 like B2a rather than B1I's term."""
+        self.assertEqual(group_delay_s(_c(tgd1=-10 * NS), "bds_b1c"), 0.0)
+        self.assertAlmostEqual(
+            group_delay_s(_c(tgd1=-10 * NS), "bds_b1i"), +10 * NS, places=15
+        )
+
 
 class TestNegativeControls(unittest.TestCase):
     def test_no_signal_is_exactly_zero(self):
@@ -176,6 +193,16 @@ class TestDcbSource(unittest.TestCase):
             0.0,
             "broadcast path must still be zero for B2a",
         )
+
+    def test_gps_l5_takes_an_exact_zero_dsb(self):
+        """A DSB of exactly 0.0 is a measurement, not a missing pair: with no C5Q to fall
+        back on, it must still give the L5 correction."""
+        tab = {
+            ("G", 1): {("C1C", "C5X"): 0.0, ("C1C", "C1W"): 1e-9, ("C1W", "C2W"): 2e-9}
+        }
+        v = self.m.signal_bias_s(tab, "G", 1, "gps_l5")
+        self.assertIsNotNone(v)
+        self.assertAlmostEqual(v, -1e-9 + 2e-9 / (self.m.GAMMA_L1L2 - 1.0), places=18)
 
     def test_dcb_overrides_the_broadcast_term(self):
         e = dict(sys="C", prn=26, tgd=0.0, iodc=-4.3 * NS, l2_codes=0)
@@ -276,6 +303,99 @@ class TestDcbStaleness(unittest.TestCase):
             self.m._token = real
         self.assertEqual(st["reason"], "no-token")
         self.assertIsNone(st["path"])
+
+
+class TestDcbFetch(unittest.TestCase):
+    """What fetch_dcb puts in the cache, with the network faked: only the gzip product may be
+    cached or served, and concurrent fetches of the same day must not share a temp file."""
+
+    WHEN = datetime(2026, 9, 10, tzinfo=timezone.utc)
+
+    def setUp(self):
+        import gnss_dcb
+
+        self.m = gnss_dcb
+        self.dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.dir, True)
+        p = mock.patch.object(gnss_dcb, "_token", lambda: "x")
+        p.start()
+        self.addCleanup(p.stop)
+
+    def _name(self, back):
+        d = self.WHEN - timedelta(days=back)
+        return "CAS0OPSRAP_%04d%03d0000_01D_01D_DCB.BIA.gz" % (
+            d.year,
+            d.timetuple().tm_yday,
+        )
+
+    def _fetch(self, urlopen, st):
+        with mock.patch("urllib.request.urlopen", urlopen):
+            return self.m.fetch_dcb(
+                when=self.WHEN, cache_dir=self.dir, max_back_days=3, status=st
+            )
+
+    def test_a_non_gzip_200_is_not_cached(self):
+        """A login or error page answered with 200 must not land under the product's name."""
+        st = {}
+        page = b"<html>" + b" " * 2000 + b"</html>"
+        self.assertIsNone(self._fetch(lambda req, timeout: io.BytesIO(page), st))
+        self.assertEqual(os.listdir(self.dir), [])
+        self.assertEqual(st["reason"], "not-gzip")
+
+    def test_a_cached_non_gzip_file_is_dropped_not_served(self):
+        with open(os.path.join(self.dir, self._name(1)), "wb") as f:
+            f.write(b"<html>" + b" " * 2000)
+        good = os.path.join(self.dir, self._name(2))
+        with open(good, "wb") as f:
+            f.write(gzip.compress(os.urandom(2000)))
+
+        def not_found(req, timeout):
+            raise urllib.error.HTTPError(req.full_url, 404, "Not Found", {}, None)
+
+        st = {}
+        self.assertEqual(self._fetch(not_found, st), good)
+        self.assertFalse(os.path.exists(os.path.join(self.dir, self._name(1))))
+        self.assertEqual(st["reason"], "ok")
+
+    def test_concurrent_fetches_write_through_distinct_temp_files(self):
+        """Two reload threads fetching the same day must not write one temp file: the second
+        open truncates the file the first is about to publish."""
+        payload = gzip.compress(os.urandom(2000))
+        both_fetched = threading.Barrier(2, timeout=10)
+
+        def urlopen(req, timeout):
+            if not req.full_url.endswith(self._name(1)):
+                raise urllib.error.HTTPError(req.full_url, 404, "Not Found", {}, None)
+            both_fetched.wait()  # both threads are past the cache check for day 1
+            return io.BytesIO(payload)
+
+        written = []
+        real_open = builtins.open
+
+        def recording_open(path, mode="r", *a, **kw):
+            if "w" in mode and str(path).startswith(self.dir):
+                written.append(str(path))
+            return real_open(path, mode, *a, **kw)
+
+        def fetch():
+            self.m.fetch_dcb(when=self.WHEN, cache_dir=self.dir, max_back_days=3)
+
+        # Patched once, here: a patch entered per thread would be undone by the first thread
+        # to finish while the other still runs.
+        with mock.patch("urllib.request.urlopen", urlopen), mock.patch(
+            "builtins.open", recording_open
+        ):
+            th = [threading.Thread(target=fetch) for _ in range(2)]
+            for t in th:
+                t.start()
+            for t in th:
+                t.join()
+        local = os.path.join(self.dir, self._name(1))
+        self.assertEqual(len(written), 2)
+        self.assertNotEqual(written[0], written[1], "the fetches shared a temp file")
+        self.assertNotIn(local, written)
+        with open(local, "rb") as f:
+            self.assertEqual(f.read(), payload)
 
 
 if __name__ == "__main__":

@@ -33,6 +33,8 @@ import urllib.error
 import urllib.request
 from datetime import datetime, timezone, timedelta
 
+from gnss_brdc_supply import _atomic_write_bytes
+
 CACHE = os.path.join(os.path.expanduser("~"), ".cache", "kotekan_gps")
 
 F_L1 = F_E1 = 1575.42e6
@@ -97,6 +99,14 @@ def product_age_days(path, when=None):
     return ((when or datetime.now(timezone.utc)) - d).total_seconds() / 86400.0
 
 
+def _is_gzip(path):
+    try:
+        with open(path, "rb") as f:
+            return f.read(2) == b"\x1f\x8b"
+    except OSError:
+        return False
+
+
 def fetch_dcb(when=None, cache_dir=CACHE, max_back_days=14, status=None):
     """Newest available CAS daily bias file, cached locally. None if unreachable.
 
@@ -107,8 +117,8 @@ def fetch_dcb(when=None, cache_dir=CACHE, max_back_days=14, status=None):
     for in the local cache before the network, so once the credential stops working this
     keeps returning the newest file on disk, growing staler, and returns None only after the
     window passes. Pass a `status` dict to see which happened: it is filled with `reason`
-    (ok / no-token / auth-rejected / unreachable), `path`, `age_days` (of the product, not
-    the file), `served_from_cache`, `http` (the last HTTP error status) and
+    (ok / no-token / auth-rejected / not-gzip / unreachable), `path`, `age_days` (of the
+    product, not the file), `served_from_cache`, `http` (the last HTTP error status) and
     `token_expiry_days`. Callers should warn on age, not only on absence.
     """
     st = status if status is not None else {}
@@ -133,13 +143,20 @@ def fetch_dcb(when=None, cache_dir=CACHE, max_back_days=14, status=None):
         name = "CAS0OPSRAP_%04d%03d0000_01D_01D_DCB.BIA.gz" % (d.year, doy)
         local = os.path.join(cache_dir, name)
         if os.path.exists(local) and os.path.getsize(local) > 1000:
-            st.update(
-                reason="ok",
-                path=local,
-                served_from_cache=True,
-                age_days=product_age_days(local, when),
-            )
-            return local
+            if _is_gzip(local):
+                st.update(
+                    reason="ok",
+                    path=local,
+                    served_from_cache=True,
+                    age_days=product_age_days(local, when),
+                )
+                return local
+            # Not the product (an error or login page saved under its name): drop it and
+            # fetch the day again rather than serve it on every reload.
+            try:
+                os.unlink(local)
+            except OSError:
+                pass
         url = "https://cddis.nasa.gov/archive/gnss/products/bias/%04d/%s" % (
             d.year,
             name,
@@ -152,10 +169,12 @@ def fetch_dcb(when=None, cache_dir=CACHE, max_back_days=14, status=None):
                 raw = r.read()
             if len(raw) < 1000:
                 continue
-            tmp = local + ".tmp"
-            with open(tmp, "wb") as f:
-                f.write(raw)
-            os.replace(tmp, local)  # atomic; the fixed temp name assumes one writer
+            if raw[:2] != b"\x1f\x8b":
+                # A 200 that is not gzip (a login or error page) is not the product.
+                st["reason"] = "not-gzip"
+                continue
+            # Per-writer temp name: per-chain reload threads can fetch the same day at once.
+            _atomic_write_bytes(local, raw)
             st.update(
                 reason="ok",
                 path=local,
@@ -233,7 +252,9 @@ def signal_bias_s(dcb, sysc, prn, signal, gal_inav=False):
     sig = str(signal or "").lower()
     if sysc == "G" and "l5" in sig:
         # datum = L1P/L2P IF (C1W/C2W). Reach C5X (or C5Q) via C1C, the pivot CAS publishes.
-        d_1c_5x = _dsb(tab, "C1C", "C5X") or _dsb(tab, "C1C", "C5Q")
+        d_1c_5x = _dsb(tab, "C1C", "C5X")
+        if d_1c_5x is None:
+            d_1c_5x = _dsb(tab, "C1C", "C5Q")
         d_1c_1w = _dsb(tab, "C1C", "C1W")
         d_1w_2w = _dsb(tab, "C1W", "C2W")
         if d_1c_5x is None or d_1c_1w is None or d_1w_2w is None:

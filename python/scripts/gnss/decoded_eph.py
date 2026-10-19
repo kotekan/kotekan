@@ -16,12 +16,13 @@ light-time/Sagnac/az-el/range-rate block as `predict_all`.
 Scope:
   * Position -> az/el/range: the decoder's propagator.
   * Velocity -> range rate/Doppler: central difference of position (the propagators return no
-    velocity); ~mm/s, sub-0.1 Hz at L1, ample for search Doppler hints.
-  * sat_clk_s: the decoder's clock polynomial where CLOCK_FIELDS lists one (Galileo I/NAV and
-    F/NAV, GPS LNAV), else None; no relativistic or group-delay term. Geometry and Doppler do
-    not need it; only absolute code-phase seeding does, and a tracking satellite's DLL holds
-    code phase regardless. So the fallback keeps acquisition, hints and the sky alive; cold
-    code seeding degrades where the clock is absent.
+    velocity), rotated into the reception frame with the position; a few mm/s (the light-time
+    rate is left out, as in predict_all), ample for search Doppler hints.
+  * sat_clk_s: the decoder's clock polynomial plus the relativistic term (as sat_pos_clk)
+    where CLOCK_FIELDS lists one (Galileo I/NAV and F/NAV, GPS LNAV), else None; no
+    group-delay term. Geometry and Doppler do not need it; only absolute code-phase seeding
+    does, and a tracking satellite's DLL holds code phase regardless. So the fallback keeps
+    acquisition, hints and the sky alive; cold code seeding degrades where the clock is absent.
 
 Only the broker's own satellites are covered (its decoders), which is the set it predicts.
 Every entry is guarded separately so one bad ephemeris cannot take out the rest, and the caller
@@ -30,33 +31,58 @@ wraps the whole call so the fallback cannot worsen an outage.
 
 import math
 
-from gnss_ephemeris import BDT_GPST, C_LIGHT, OMEGA_E, _azel, _ecef_of_llh, gpst_of_utc
+from gnss_ephemeris import (
+    BDT_GPST,
+    C_LIGHT,
+    F_REL,
+    MU,
+    OMEGA_E,
+    _azel,
+    _ecef_of_llh,
+    gpst_of_utc,
+)
 
-# Clock reference / coefficient field names per decoder family. The decoded eph dicts differ in
-# casing (Galileo af0/t0c); constellations whose decoder does not surface clock are absent here
-# and get sat_clk_s = None.
+# Clock coefficient, clock reference and ephemeris reference (toe, for the relativistic term's
+# Kepler solve) field names per decoder family. The decoded eph dicts differ in casing (Galileo
+# af0/t0c/t0e); constellations whose decoder does not surface clock are absent here and get
+# sat_clk_s = None.
 CLOCK_FIELDS = {
-    "GAL_E1B_INAV": ("af0", "af1", "af2", "t0c"),
-    "GAL_E5AI_FNAV": ("af0", "af1", "af2", "t0c"),
+    "GAL_E1B_INAV": ("af0", "af1", "af2", "t0c", "t0e"),
+    "GAL_E5AI_FNAV": ("af0", "af1", "af2", "t0c", "t0e"),
     # GPS LNAV carries its clock in subframe 1 (af0/af1/af2 about toc), so unlike CNAV the L1
     # fallback can seed absolute code phase, not just geometry and Doppler.
-    "GPS_L1_LNAV": ("af0", "af1", "af2", "toc"),
+    "GPS_L1_LNAV": ("af0", "af1", "af2", "toc", "toe"),
 }
+# Kepler fields the relativistic term reads; every decoder in CLOCK_FIELDS names them alike.
+KEPLER_FIELDS = ("M0", "dn", "sqrtA", "e")
 
 
-def _sat_clock(eph, signal, t_sow):
-    """Broadcast SV clock bias (s): af0 + af1*dt + af2*dt^2 about t0c, dt week-wrapped. None when
-    the decoder does not carry clock terms for this signal."""
-    fields = CLOCK_FIELDS.get(signal)
-    if not fields or not all(k in eph for k in fields):
-        return None
-    a0, a1, a2, toc = (eph[fields[0]], eph[fields[1]], eph[fields[2]], eph[fields[3]])
-    dt = t_sow - toc
+def _week_wrap(dt):
     if dt > 302400:
         dt -= 604800
     elif dt < -302400:
         dt += 604800
-    return a0 + a1 * dt + a2 * dt * dt
+    return dt
+
+
+def _sat_clock(eph, sys, signal, t_sow):
+    """Broadcast SV clock bias (s): af0 + af1*dt + af2*dt^2 about t0c plus the relativistic
+    term F*e*sqrtA*sin(E), as sat_pos_clk computes them; dt and tk are week-wrapped. None when
+    the decoder does not carry clock terms for this signal."""
+    fields = CLOCK_FIELDS.get(signal)
+    if not fields or not all(k in eph for k in fields + KEPLER_FIELDS):
+        return None
+    a0, a1, a2, toc, toe = (eph[k] for k in fields)
+    dt = _week_wrap(t_sow - toc)
+    tk = _week_wrap(t_sow - toe)
+    a = eph["sqrtA"] ** 2
+    n = math.sqrt(MU[sys] / a ** 3) + eph["dn"]
+    m = eph["M0"] + n * tk
+    ek = m
+    for _ in range(12):
+        ek = m + eph["e"] * math.sin(ek)
+    rel = F_REL * eph["e"] * eph["sqrtA"] * math.sin(ek)
+    return a0 + a1 * dt + a2 * dt * dt + rel
 
 
 def predict_one(sv_pos, eph, sys, signal, rx, lat, lon, t_sow, toe_age_s, dt=0.5):
@@ -79,18 +105,24 @@ def predict_one(sv_pos, eph, sys, signal, rx, lat, lon, t_sow, toe_age_s, dt=0.5
             pos_rx = (px, py, pos[2])
             az, el, rng = _azel(rx, pos_rx, lat, lon)
             tau = rng / C_LIGHT
-        # velocity by central difference of the un-rotated position, the frame predict_all's
-        # `vel` lives in, so range rate matches it to the finite-difference error
+        # velocity by central difference of the un-rotated position, then rotated into the
+        # reception frame by the position's angle (== predict_all), so range rate matches
+        # predict_all's to the finite-difference error
         pa = sv_pos(eph, t_sow - tau + dt)
         pb = sv_pos(eph, t_sow - tau - dt)
         vel = [(a - b) / (2.0 * dt) for a, b in zip(pa, pb)]
-        rr = sum((p - r) * v for p, r, v in zip(pos_rx, rx, vel)) / rng
+        vel_rx = (
+            vel[0] * math.cos(th) + vel[1] * math.sin(th),
+            -vel[0] * math.sin(th) + vel[1] * math.cos(th),
+            vel[2],
+        )
+        rr = sum((p - r) * v for p, r, v in zip(pos_rx, rx, vel_rx)) / rng
         return dict(
             az=az,
             el=el,
             range_m=rng,
             range_rate_mps=rr,
-            sat_clk_s=_sat_clock(eph, signal, t_sow - tau),
+            sat_clk_s=_sat_clock(eph, sys, signal, t_sow - tau),
             toe_age_s=toe_age_s,
         )
     except Exception:
