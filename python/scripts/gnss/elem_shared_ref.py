@@ -2,11 +2,15 @@
 """The fleet reference of the shared element model's phase pin.
 
   snapshot OUT.json   Poll every n2assemble's /get_elem_cal and form, per band and pol, the
-                      consensus of the warm, unfrozen models (instances more than EXCLUDE_DEG
-                      off it, or whose shape it does not describe, are left out and listed).
-                      The vector is phased so the included instances' offsets average zero, and
-                      written with the array epoch the configs were generated for. The generator
-                      copies each band's entry into that band's assemblers (--elem-shared-ref).
+                      consensus of the warm, unfrozen models in shape: each is rotated onto it
+                      in global phase (an instance with no reference holds an arbitrary one),
+                      and a model the consensus of the others does not describe is left out and
+                      listed. The vector is phased so the largest group of instances within
+                      EXCLUDE_DEG of one of them keeps its phase (a pinned band does not move);
+                      instances further off are listed, and are slewed onto it when it is
+                      posted. It is written with the array epoch the configs were generated
+                      for. The generator copies each band's entry into that band's assemblers
+                      (--elem-shared-ref).
   post FILE           POST every band's reference to its instances (--mode).
   status [FILE]       Per instance and pol: offset and shape similarity against FILE (works on any
                       binary), plus the node's own fleet_ref block where the binary has one.
@@ -45,7 +49,7 @@ K = os.path.normpath(
 )
 GEN = os.path.join(K, "config", "generated", "chord_gnss_%s_multi.yaml")
 PORT = 12048
-EXCLUDE_DEG = 30.0  # snapshot leaves out instances this far off the consensus
+EXCLUDE_DEG = 30.0  # snapshot: the largest group this close in offset sets its phase
 MIN_SIM = 0.5  # shape similarity below which a reference does not describe a model
 ALERT_DEG = 45.0  # watch: an instance this far off the reference starts an episode
 MIN_RUN_S = 900.0  # an episode (or a stale reference) counts once it lasts this long
@@ -145,9 +149,12 @@ def offsets(ref, vs):
 
 def band_consensus(res, band, exclude_deg, min_sim):
     """One band's reference entry from a poll: per pol, the consensus of the warm, unfrozen
-    models, leaving out those more than exclude_deg off it or whose shape it does not describe.
-    Raises ValueError when fewer than four agree."""
-    per_pol, entry = [], {"R": [], "n": [], "excluded": [], "sim_median": []}
+    models, leaving out those whose shape the consensus of the others does not describe. Models
+    are compared in shape only (rotated onto the consensus in global phase), since an instance
+    that holds no reference has pinned an arbitrary global phase. The reference's own phase is
+    that of the largest group of models within exclude_deg of one of them, so instances that
+    already agree on a phase keep it. Raises ValueError when fewer than four agree in shape."""
+    per_pol, entry = [], {"R": [], "n": [], "excluded": [], "off": [], "sim_median": []}
     for pol in (0, 1):
         vs = {}
         for (node, stage), d in res.items():
@@ -164,27 +171,28 @@ def band_consensus(res, band, exclude_deg, min_sim):
             )
         keep = dict(vs)
         for _ in range(3):
-            ref = consensus(keep)
-            off = offsets(ref, vs)
-            z = np.mean([np.exp(1j * np.radians(off[k][0])) for k in keep])
-            rel = {
-                k: (float(np.degrees(np.angle(np.exp(1j * np.radians(o)) / z))), s)
-                for k, (o, s) in off.items()
-            }
-            keep = {
-                k: vs[k]
-                for k, (o, s) in rel.items()
-                if abs(o) <= exclude_deg and s >= min_sim
-            }
+            # Each model is judged against the consensus of the others: in a consensus of a few
+            # instances that includes it, a model with no shape scores above min_sim.
+            nxt = {}
+            for k, v in vs.items():
+                ref = consensus({j: u for j, u in keep.items() if j != k})
+                if abs(np.vdot(ref, v)) >= min_sim:
+                    nxt[k] = v
+            keep = nxt
             if len(keep) < 4:
                 raise ValueError(
-                    "band %s pol %d: %d instances within %.0f deg of the consensus"
-                    % (band, pol, len(keep), exclude_deg)
+                    "band %s pol %d: %d instances with similarity >= %.2f to the consensus"
+                    % (band, pol, len(keep), min_sim)
                 )
         ref = consensus(keep)
-        off = offsets(ref, keep)
-        z = np.mean([np.exp(1j * np.radians(o)) for o, _ in off.values()])
-        ref = ref * z / abs(z)  # included instances' offsets now average zero
+        ph = [np.exp(1j * np.radians(o)) for o, _ in offsets(ref, keep).values()]
+        group = []
+        for q in ph:
+            near = [p for p in ph if abs(np.angle(p / q)) <= np.radians(exclude_deg)]
+            if len(near) > len(group):
+                group = near
+        z = np.mean(group)
+        ref = ref * z / abs(z)  # that group's offsets now average zero
         fin = offsets(ref, vs)
         entry["R"].append(
             round(
@@ -201,6 +209,13 @@ def band_consensus(res, band, exclude_deg, min_sim):
                 k: [round(o, 1), round(s, 3)]
                 for k, (o, s) in fin.items()
                 if k not in keep
+            }
+        )
+        entry["off"].append(
+            {
+                k: [round(o, 1), round(s, 3)]
+                for k, (o, s) in fin.items()
+                if k in keep and abs(o) > exclude_deg
             }
         )
         per_pol.append(ref)
@@ -228,7 +243,7 @@ def snapshot(a):
             sys.exit(str(e))
         for pol in (0, 1):
             print(
-                "%-4s pol%d  R %.3f  n %2d  sim med %.3f  excluded %s"
+                "%-4s pol%d  R %.3f  n %2d  sim med %.3f  excluded %s  off %s"
                 % (
                     band,
                     pol,
@@ -236,6 +251,7 @@ def snapshot(a):
                     entry["n"][pol],
                     entry["sim_median"][pol],
                     entry["excluded"][pol] or "-",
+                    entry["off"][pol] or "-",
                 )
             )
         bands[band] = entry
