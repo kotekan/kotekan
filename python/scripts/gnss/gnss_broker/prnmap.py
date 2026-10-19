@@ -212,7 +212,11 @@ def _resync_split(ctx, st, eps, now):
 # ---------------------------------------------------------------------------------------
 # Signal capability: which satellites can carry this chain's signal at all
 # ---------------------------------------------------------------------------------------
-_IGS_SNX = os.path.join(
+# GNSS_IGS_SNX pins the registry to one file, read as it is and never re-fetched. A chain
+# with a capability gate seeds only the satellites the registry calls capable, so
+# broker_equiv points a replay at its transcript's snapshot. Live brokers never set it.
+_IGS_PINNED = bool(os.environ.get("GNSS_IGS_SNX"))
+_IGS_SNX = os.environ.get("GNSS_IGS_SNX") or os.path.join(
     os.path.expanduser("~"), ".cache", "kotekan_gps", "igs_satellite_metadata.snx"
 )
 _IGS_SNX_URL = "https://files.igs.org/pub/station/general/igs_satellite_metadata.snx"
@@ -230,13 +234,14 @@ def ensure_registry(max_age_s=REGISTRY_MAX_AGE_S, timeout_s=20.0):
     """Fetch the IGS metadata SINEX when the cached copy is missing or older than max_age_s.
 
     Written beside the cache and renamed into place, so a reader never sees a partial file;
-    a failed fetch keeps the old copy (fail open, as every registry reader does). Returns the
-    file's age in seconds, or None when there is no copy."""
+    a failed fetch keeps the old copy (fail open, as every registry reader does). A pinned
+    registry (GNSS_IGS_SNX) is left as it is, whatever its age. Returns the file's age in
+    seconds, or None when there is no copy."""
     try:
         age = time.time() - os.path.getmtime(_IGS_SNX)
     except OSError:
         age = None
-    if age is not None and age < max_age_s:
+    if _IGS_PINNED or (age is not None and age < max_age_s):
         return age
     try:
         import urllib.request

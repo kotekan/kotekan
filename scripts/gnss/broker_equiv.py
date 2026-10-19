@@ -57,6 +57,12 @@ PY = os.environ.get("GNSS_PY", "/home/kvand/gnss/venv/bin/python")
 # git). A golden records its fingerprint, so a `check` whose digest moved says whether the pin
 # changed too.
 BRDC_PIN = os.environ.get("GNSS_BRDC_PIN", "/home/kvand/gnss/fixtures/brdc_pin")
+# The --telem-gather a replay runs under when the recording named one. A transcript does not
+# hold the telemetry stream, so a replay that reached a live gather (one listens at the
+# recorded 127.0.0.1:11061 on the gnss VM) would fold live frames into the run. Only root can
+# listen below port 1024 and nothing here serves port 1, so the client exists, as in the
+# recording, and every connect is refused.
+DARK_GATHER = "127.0.0.1:1"
 
 
 def _pin_for(transcript):
@@ -124,9 +130,10 @@ def _tree_state():
     """(sha, dirty) of the tree that a digest is being blessed from.
 
     A digest is a claim about code. Recording which commit makes a stale golden diagnosable.
-    Uncommitted changes to the broker, gnss_broker/ or this harness are flagged dirty, because
-    a bless from uncommitted work cannot be reproduced; other modules the broker imports are
-    not checked.
+    Uncommitted changes to the broker and the modules beside it that it imports
+    (python/scripts/gnss/*.py, gnss_broker/) or to this harness are flagged dirty, because a
+    bless from uncommitted work cannot be reproduced. The glob also covers tools there that
+    the broker does not import, which errs towards dirty.
     """
 
     def _git(*a):
@@ -145,7 +152,7 @@ def _tree_state():
             "status",
             "--porcelain",
             "--",
-            BROKER,
+            ":(glob)python/scripts/gnss/*.py",
             os.path.abspath(__file__),
             os.path.join(K, "python", "scripts", "gnss", "gnss_broker"),
         )
@@ -230,14 +237,27 @@ def replay(path, env=None, extra=()):
         argv = _strip(argv, flag, nargs)
     # `extra` goes after the transcript's flags: argparse keeps the last value, so a
     # golden's flags override the recording's.
-    cmd = [PY, "-u", BROKER] + argv + list(extra)
+    argv = argv + list(extra)
+    # A run recorded with a gather replays against DARK_GATHER, never the recorded endpoint.
+    gather = _last_value(argv, "--telem-gather")
+    argv = _strip(argv, "--telem-gather")
+    cmd = [PY, "-u", BROKER] + argv
     cmd += ["--transcript-read", path, "--publish-port", "0"]
+    if gather:
+        cmd += ["--telem-gather", DARK_GATHER]
     e = dict(os.environ)
     # Pin the sky. The ephemeris is a replay input as much as the transcript, and the live
     # cache refreshes several times a day (and rolls with the UTC day-of-year). Replays read
-    # exactly the nav files in the pinned snapshot, so the digest is a function of
-    # (code, transcript) and nothing else.
+    # exactly the nav files in the pinned snapshot, so the ephemeris cannot move a digest
+    # while the code and the transcript stay put.
     e["GNSS_BRDC_DIR"] = pin or BRDC_PIN
+    # The IGS satellite registry is an input too wherever a capability gate is armed
+    # (--signal-capability, which a BDS-3-only signal implies): it decides which satellites
+    # are seeded, and the live cache is re-fetched weekly. A `<transcript>.igs.snx` snapshot
+    # pins it; without one the replay reads the live cache.
+    igs = path + ".igs.snx"
+    if os.path.isfile(igs):
+        e["GNSS_IGS_SNX"] = igs
     e.update(env or {})
     p = subprocess.run(cmd, capture_output=True, text=True, env=e, cwd=K)
     out = p.stdout.strip().splitlines()
@@ -260,6 +280,17 @@ def _strip(argv, flag, nargs=1):
             continue
         keep.append(a)
     return keep
+
+
+def _last_value(argv, flag):
+    """The value argparse would give a one-value `flag` (the last one), None if absent."""
+    val = None
+    for i, a in enumerate(argv):
+        if a == flag and i + 1 < len(argv):
+            val = argv[i + 1]
+        elif a.startswith(flag + "="):
+            val = a[len(flag) + 1 :]
+    return val
 
 
 def _check(transcript, gold):
@@ -313,7 +344,7 @@ def main():
         "rest",
         nargs=argparse.REMAINDER,
         help="for `record`: the broker flags to run under, after a bare --; for "
-        "`digest` and `bless --variant`: flags appended to the transcript's own",
+        "`digest`, `selftest` and `bless --variant`: flags appended to the transcript's own",
     )
     ap.add_argument(
         "--variant",
@@ -386,15 +417,23 @@ def main():
                 "against a chain that is actually seeding: a frozen chain replays perfectly "
                 "and tests nothing."
             )
-        d1, _ = replay(a.transcript)
-        d2, _ = replay(a.transcript)
+        d1, _ = replay(a.transcript, extra=extra)
+        d2, _ = replay(a.transcript, extra=extra)
         if d1 != d2:
             sys.exit(
                 "NOT DETERMINISTIC: two replays of the same transcript disagree\n"
                 "  %s\n  %s\nSomething outside the transcript is leaking in (a clock, "
                 "an unseeded RNG, a set iteration)." % (d1, d2)
             )
-        print("determinism OK   %s  (%d cycles, %d posts)" % (d1, n["now"], n["post"]))
+        print(
+            "determinism OK   %s  (%d cycles, %d posts)%s"
+            % (
+                d1,
+                n["now"],
+                n["post"],
+                "  [argv %s]" % shlex.join(extra) if extra else "",
+            )
+        )
         # The gate must be able to fail. Scale each knob by 1 + 1e-6, far below anything
         # physical (0.25 -> 0.25000025), and require the digest to move.
         #
@@ -415,7 +454,9 @@ def main():
             "bias_alpha",
         ):
             d3, _ = replay(
-                a.transcript, env={"GNSS_BROKER_EQUIV_PERTURB": "%s:1e-6" % knob}
+                a.transcript,
+                env={"GNSS_BROKER_EQUIV_PERTURB": "%s:1e-6" % knob},
+                extra=extra,
             )
             if d3 != d1:
                 moved.append(knob)

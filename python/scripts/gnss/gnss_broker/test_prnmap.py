@@ -806,6 +806,51 @@ def main():
                 _pm.signal_incapable_prns("GPS_L5_Q_NH") == {22, 7},
                 "an expired PRN assignment is ignored -- current validity only",
             )
+            # A replay pins the registry to its transcript's snapshot (GNSS_IGS_SNX). The
+            # broker must read that file and never fetch over it, however old it is: a fetch
+            # would replace the snapshot with today's registry.
+            import importlib.util as _ilu
+            import urllib.request as _ur
+
+            _pin = _os.path.join(_d, "pinned.snx")
+            open(_pin, "w").write(open(_f).read())
+            _os.utime(_pin, (0, 0))
+            _env = _os.environ.get("GNSS_IGS_SNX")
+            _os.environ["GNSS_IGS_SNX"] = _pin
+            try:
+                _spec = _ilu.spec_from_file_location("prnmap_pinned", _pm.__file__)
+                _pp = _ilu.module_from_spec(_spec)
+                _spec.loader.exec_module(_pp)
+            finally:
+                if _env is None:
+                    del _os.environ["GNSS_IGS_SNX"]
+                else:
+                    _os.environ["GNSS_IGS_SNX"] = _env
+            _fetches = []
+
+            def _no_fetch(*a, **kw):
+                _fetches.append(a)
+                raise IOError("no network in a test")
+
+            _urlopen = _ur.urlopen
+            _ur.urlopen = _no_fetch
+            try:
+                _age = _pp.ensure_registry()
+            finally:
+                _ur.urlopen = _urlopen
+            check(
+                _pp._IGS_SNX == _pin
+                and not _fetches
+                and _age is not None
+                and _age > _pp.REGISTRY_MAX_AGE_S,
+                "a pinned registry (GNSS_IGS_SNX) is read as it is: an old one is not "
+                "fetched over (fetches %d, age %s)" % (len(_fetches), _age),
+            )
+            check(
+                _pp.signal_incapable_prns("GPS_L5_Q_NH") == {22, 7},
+                "... and the capability gate reads that file (got %s)"
+                % sorted(_pp.signal_incapable_prns("GPS_L5_Q_NH")),
+            )
             _pm._IGS_SNX = _os.path.join(_d, "missing")
             check(
                 _pm.signal_incapable_prns("GPS_L5_Q_NH") == set(),
