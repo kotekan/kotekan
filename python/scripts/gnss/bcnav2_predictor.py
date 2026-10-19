@@ -34,13 +34,16 @@ class _PrnState:
         self.frames = {}  # mestype -> (frame_bits[288], sow, t_decoded)
         self.n_frames = 0  # frames decoded (find_frames yields only CRC-OK frames)
         self.n_crc = 0  # frames with valid CRC
+        # frame start slots already counted: every decode rescans the cached emits, so a frame
+        # is counted only the first time it is found
+        self.seen = set()
+        self.last_decode = 0.0
 
 
 class Bcnav2Predictor:
     def __init__(self):
         self._p = {}
         self._min_gap = 1.0
-        self._last_decode = 0.0
 
     # ----------------------------------------------------------------- ingest
     def ingest(self, prn, obs):
@@ -79,10 +82,14 @@ class Bcnav2Predictor:
         if len(st.emits) > EMIT_MAX:
             for s in sorted(st.emits)[:-EMIT_MAX]:
                 st.emits.pop(s, None)
+            lo = min(st.emits)
+            st.seen = {s for s in st.seen if s >= lo}
+        # Per-PRN decode throttle (see inav_predictor.ingest): a shared gate starves every PRN but
+        # the first in the broker's row order.
         now = time.time()
-        if self._min_gap and now - self._last_decode < self._min_gap:
+        if self._min_gap and now - st.last_decode < self._min_gap:
             return
-        self._last_decode = now
+        st.last_decode = now
         self._decode(prn, st)
 
     # ----------------------------------------------------------------- decode
@@ -109,14 +116,20 @@ class Bcnav2Predictor:
         return runs
 
     def _decode(self, prn, st):
-        for _run0, signs in self._runs(st):
+        for run0, signs in self._runs(st):
             if len(signs) < FRAME:
                 continue
             # find_frames does preamble sync (both polarities) + NB-LDPC + CRC internally
-            for _i, _pol, bits, _fprn, mt, sow in B.find_frames(signs.astype(float)):
-                st.n_frames += 1
-                st.n_crc += 1
+            for i, _pol, bits, fprn, mt, sow in B.find_frames(signs.astype(float)):
+                # the frame names its own PRN: a CRC-valid frame from another satellite (a
+                # mislabelled chain or a cross-correlation lock) must not be stored under this one
+                if fprn != prn:
+                    continue
                 st.frames[mt] = (bits, sow, time.time())
+                if run0 + i not in st.seen:
+                    st.seen.add(run0 + i)
+                    st.n_frames += 1
+                    st.n_crc += 1
 
     # ----------------------------------------------------------------- serve
     def ephemeris(self, prn):
@@ -154,6 +167,7 @@ def _selftest():
     # plant a known ephemeris across types 10/11
     frames = {10: [0] * B.FRAME_BITS, 11: [0] * B.FRAME_BITS}
     for mt in (10, 11):
+        frames[mt][0:6] = [(prn >> (5 - k)) & 1 for k in range(6)]
         frames[mt][6:12] = [(mt >> (5 - k)) & 1 for k in range(6)]
     for name, (mt, start, length, signed, scale) in B.BCNV2_EPH_FIELDS.items():
         code = (hash(name) % ((1 << (length - 1)) - 1 if length > 1 else 1)) + 1

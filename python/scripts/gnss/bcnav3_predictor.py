@@ -37,6 +37,9 @@ class _PrnState:
         self.last_obs = None
         self.frames = {}  # mestype -> (frame_bits[486], sow, t_decoded)
         self.n_frames = 0  # frames decoded (preamble+LDPC found + CRC ok)
+        # frame start slots already counted: every decode rescans the cached emits, so a frame
+        # is counted only the first time it is found
+        self.seen = set()
         self.last_sow = None
         self.last_decode = 0.0
 
@@ -92,10 +95,11 @@ class Bcnav3Predictor:
         if len(st.emits) > EMIT_MAX:
             for s in sorted(st.emits)[:-EMIT_MAX]:
                 st.emits.pop(s, None)
-        # Per-PRN decode throttle (not the shared self._last_decode bcnav2 uses): the broker ingests
-        # every PRN each poll, so a single shared gate lets only the first PRN in dict order decode
-        # -- if that one is weak, no frames ever land while strong sats go undecoded. Per-PRN gating
-        # decodes each satellite once per _min_gap.
+            lo = min(st.emits)
+            st.seen = {s for s in st.seen if s >= lo}
+        # Per-PRN decode throttle: the broker ingests every PRN each poll, so a single shared gate
+        # lets only the first PRN in dict order decode -- if that one is weak, no frames ever land
+        # while strong sats go undecoded. Per-PRN gating decodes each satellite once per _min_gap.
         now = time.time()
         if self._min_gap and now - st.last_decode < self._min_gap:
             return
@@ -126,13 +130,15 @@ class Bcnav3Predictor:
         return runs
 
     def _decode(self, prn, st):
-        for _run0, signs in self._runs(st):
+        for run0, signs in self._runs(st):
             if len(signs) < FRAME:
                 continue
-            for _i, _pol, bits, mt, sow in B.find_frames(signs.astype(float), prn):
-                st.n_frames += 1
+            for i, _pol, bits, mt, sow in B.find_frames(signs.astype(float), prn):
                 st.last_sow = sow
                 st.frames[mt] = (bits, sow, time.time())
+                if run0 + i not in st.seen:
+                    st.seen.add(run0 + i)
+                    st.n_frames += 1
 
     # ----------------------------------------------------------------- serve
     def ephemeris(self, prn):

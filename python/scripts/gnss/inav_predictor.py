@@ -43,15 +43,17 @@ class _PrnState:
         self.words = {}  # word_type -> (iodnav, word_bits[128], t_decoded)
         self.n_pages = 0  # page parts decoded (sync-valid)
         self.n_words = 0  # words assembled with valid CRC
+        # start slots already counted: every decode rescans the cached emits, so a page part or
+        # word is counted only the first time it is found
+        self.seen_pages = set()
+        self.seen_words = set()
+        self.last_decode = 0.0
 
 
 class InavPredictor:
     def __init__(self):
         self._p = {}
-        self._min_gap = (
-            1.0  # s between decode attempts across all PRNs (0 = off, self-test)
-        )
-        self._last_decode = 0.0
+        self._min_gap = 1.0  # s between decode attempts per PRN (0 = off, self-test)
 
     # ----------------------------------------------------------------- ingest
     def ingest(self, prn, obs):
@@ -105,12 +107,16 @@ class InavPredictor:
         if len(st.emits) > EMIT_MAX:
             for s in sorted(st.emits)[:-EMIT_MAX]:
                 st.emits.pop(s, None)
-        # decode gate: at most one decode per _min_gap, shared by all PRNs (no round-robin,
-        # unlike CNAV)
+            lo = min(st.emits)
+            st.seen_pages = {s for s in st.seen_pages if s >= lo}
+            st.seen_words = {s for s in st.seen_words if s >= lo}
+        # Per-PRN decode throttle: the broker ingests every PRN each poll, so a single shared gate
+        # would let only the first PRN in row order decode and starve the rest. Per-PRN gating
+        # decodes each satellite once per _min_gap.
         now = time.time()
-        if self._min_gap and now - self._last_decode < self._min_gap:
+        if self._min_gap and now - st.last_decode < self._min_gap:
             return
-        self._last_decode = now
+        st.last_decode = now
         self._decode(prn, st)
 
     # ----------------------------------------------------------------- decode
@@ -161,7 +167,9 @@ class InavPredictor:
                             break
                 if got is not None:
                     parts[run0 + i] = got
-                    st.n_pages += 1
+                    if run0 + i not in st.seen_pages:
+                        st.seen_pages.add(run0 + i)
+                        st.n_pages += 1
                 # Do not jump on a bare sync: a false sync (10 symbols matching 0101100000
                 # by chance, ~1/1024 in FEC data) would jump past the real page parts and
                 # derail alignment. The CRC at the word level (below) is the true filter, so
@@ -186,7 +194,9 @@ class InavPredictor:
                     continue
                 iod = G._uint(word[6:16])
                 st.words[wt] = (iod, word, time.time())
-                st.n_words += 1
+                if s not in st.seen_words:
+                    st.seen_words.add(s)
+                    st.n_words += 1
 
     # ----------------------------------------------------------------- serve
     def ephemeris(self, prn):

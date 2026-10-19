@@ -187,12 +187,15 @@ ODD_CRC_AT = 82  # crc-24 occupies odd[82:106]
 
 def assemble_word(even_bits, odd_bits):
     """(even 114, odd 114) -> (word_128 bits, crc_ok, word_type) or None if the
-    even/odd flags are wrong. CRC gates whether the word is trustworthy."""
+    even/odd flags are wrong or the page is an alert page (page type 1, whose layout
+    is not a nominal word). CRC gates whether the word is trustworthy."""
     e = [int(b) & 1 for b in even_bits]
     o = [int(b) & 1 for b in odd_bits]
     if len(e) != PAGE_PART_BITS or len(o) != PAGE_PART_BITS:
         return None
     if e[0] != 0 or o[0] != 1:  # even part flag 0, odd part flag 1
+        return None
+    if e[1] != 0 or o[1] != 0:  # page type: 0 nominal, 1 alert
         return None
     word = e[2 : 2 + EVEN_DATA] + o[2 : 2 + ODD_DATA]
     crc_calc = crc24q(e[0:PAGE_PART_BITS] + o[0:ODD_CRC_AT])
@@ -318,6 +321,7 @@ def sv_position_inav(eph, t):
 # --------------------------------------------------------------------------
 if __name__ == "__main__":
     import sys
+    import zlib
 
     rng = np.random.default_rng(0)
     fails = 0
@@ -401,11 +405,11 @@ if __name__ == "__main__":
         words[wt][0:6] = [(wt >> (5 - i)) & 1 for i in range(6)]  # word type
         words[wt][6:16] = [0] * 10  # IODnav = 0 (consistent)
     for name, (wt, start, length, signed, scale) in INAV_EPH_FIELDS.items():
+        # a nonzero per-field code that fits in `length` bits (overlaps are checked below);
+        # crc32, since str hash() is salted per process and every run must pack the same codes
         code = (
-            5 if not (start + length <= WORD_BITS) else (1 << (length - 1)) - 1
-        )  # unused: reassigned below
-        # a nonzero per-field code that fits in `length` bits (overlaps are checked below)
-        code = (hash(name) % ((1 << (length - 1)) - 1 if length > 1 else 1)) + 1
+            zlib.crc32(name.encode()) % ((1 << (length - 1)) - 1 if length > 1 else 1)
+        ) + 1
         for k in range(length):
             words[wt][start + k] = (code >> (length - 1 - k)) & 1
         truth[name] = _field(words[wt], start, length, signed, scale)

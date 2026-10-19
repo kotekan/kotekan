@@ -32,13 +32,16 @@ class _PrnState:
         self.sf2 = None  # (sf2_bits[600], t_decoded)
         self.n_frames = 0
         self.n_crc = 0
+        # frame start slots already counted: every decode rescans the cached emits, so a frame
+        # is counted only the first time it is found
+        self.seen = set()
+        self.last_decode = 0.0
 
 
 class Bcnav1Predictor:
     def __init__(self):
         self._p = {}
         self._min_gap = 1.0
-        self._last_decode = 0.0
 
     # ----------------------------------------------------------------- ingest
     def ingest(self, prn, obs):
@@ -77,10 +80,14 @@ class Bcnav1Predictor:
         if len(st.emits) > EMIT_MAX:
             for s in sorted(st.emits)[:-EMIT_MAX]:
                 st.emits.pop(s, None)
+            lo = min(st.emits)
+            st.seen = {s for s in st.seen if s >= lo}
+        # Per-PRN decode throttle (see inav_predictor.ingest): a shared gate starves every PRN but
+        # the first in the broker's row order.
         now = time.time()
-        if self._min_gap and now - self._last_decode < self._min_gap:
+        if self._min_gap and now - st.last_decode < self._min_gap:
             return
-        self._last_decode = now
+        st.last_decode = now
         self._decode(prn, st)
 
     # ----------------------------------------------------------------- decode
@@ -107,13 +114,15 @@ class Bcnav1Predictor:
         return runs
 
     def _decode(self, prn, st):
-        for _run0, signs in self._runs(st):
+        for run0, signs in self._runs(st):
             if len(signs) < FRAME:
                 continue
-            for _i, _pol, _soh, sf2 in B.find_frames(prn, signs.astype(float)):
-                st.n_frames += 1
-                st.n_crc += 1
+            for i, _pol, _soh, sf2 in B.find_frames(prn, signs.astype(float)):
                 st.sf2 = (sf2, time.time())
+                if run0 + i not in st.seen:
+                    st.seen.add(run0 + i)
+                    st.n_frames += 1
+                    st.n_crc += 1
 
     # ----------------------------------------------------------------- serve
     def ephemeris(self, prn):

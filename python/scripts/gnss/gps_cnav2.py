@@ -99,9 +99,10 @@ def _crc_ok(bits):
 
 def decode_frame(syms1852, toi=None, rev=None):
     """1852 hard symbols -> (toi, SF2_bits[600], SF3_bits[274]) if both CRCs pass, else None.
-    Systematic LDPC extract (error-free-codeword assumption); CRC-24Q is the filter."""
+    Systematic LDPC extract (error-free-codeword assumption); CRC-24Q is the filter. Without
+    both toi and rev, the frame is synced here."""
     s = np.asarray(syms1852, dtype=np.int8)
-    if toi is None:
+    if toi is None or rev is None:
         toi, rev = sync_cnv2(s)
         if toi is None:
             return None

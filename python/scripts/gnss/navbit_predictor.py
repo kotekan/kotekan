@@ -304,9 +304,15 @@ class LnavPredictor:
         for (idx, tow, sfid) in hits:
             if idx + SF_BITS > len(bits01):
                 continue
-            data, ok, tow2, sfid2, _, _ = decode_subframe(
-                bits01, idx, int(bits01[idx - 2]), int(bits01[idx - 1])
-            )
+            # Each try rescans the whole window, so decode and score a subframe only once:
+            # st.sync holds the newest decoded subframe's start slot.
+            if st.sync is not None and slot0 + idx <= st.sync[0]:
+                continue
+            # D29*/D30* before the run's first bit are unknown: take 0, as frame_sync does (the
+            # ICD trim ends every subframe in 00); a negative index would read the run's end.
+            d29 = int(bits01[idx - 2]) if idx >= 2 else 0
+            d30 = int(bits01[idx - 1]) if idx >= 1 else 0
+            data, ok, tow2, sfid2, _, _ = decode_subframe(bits01, idx, d29, d30)
             if not ok or tow2 != tow or sfid2 != sfid:
                 continue
             # Prediction health: if we could have predicted this subframe, score it.

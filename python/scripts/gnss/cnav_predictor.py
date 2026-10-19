@@ -272,10 +272,11 @@ class CnavPredictor:
             else:
                 runs.append([s])
         best = max(runs, key=lambda r: (len(r), r[-1]))
-        # Cold PRN (no emit of the run resolved yet): a small window and a full 2^k brute over
-        # every sign pattern, bounded by 2^COLD_EMITS. Warm PRN: the freshest WIN_EMITS,
-        # resolved emits fixed from st.pol, only the free ones searched.
-        cold = not any(s in st.pol for s in best)
+        # Cold (no emit of the freshest WIN_EMITS resolved yet): a small window and a full 2^k
+        # brute over every sign pattern, bounded by 2^COLD_EMITS. A warm search without a
+        # resolved emit in its window would never try the global sign. Warm: the freshest
+        # WIN_EMITS, resolved emits fixed from st.pol, only the free ones searched.
+        cold = not any(s in st.pol for s in best[-WIN_EMITS:])
         chain = best[-(COLD_EMITS if cold else WIN_EMITS) :]
         if len(chain) < 3:
             return

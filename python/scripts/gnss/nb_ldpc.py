@@ -201,10 +201,11 @@ _EDGE_CACHE = {}
 
 
 def _edges(H_idx, H_ele, n_check, n_var):
-    key = id(H_idx)
-    c = _EDGE_CACHE.get(key)
-    if c is not None:
-        return c
+    # Keyed by identity; holding both matrices in the entry keeps their ids from being reused.
+    key = (id(H_idx), id(H_ele))
+    hit = _EDGE_CACHE.get(key)
+    if hit is not None:
+        return hit[2]
     ie, je, he = [], [], []
     for i in range(len(H_idx)):
         for j in range(len(H_idx[i])):
@@ -218,7 +219,7 @@ def _edges(H_idx, H_ele, n_check, n_var):
         check_edges[ie[e]].append(e)
         var_edges[je[e]].append(e)
     c = (ie, je, he, ne, check_edges, var_edges)
-    _EDGE_CACHE[key] = c
+    _EDGE_CACHE[key] = (H_idx, H_ele, c)
     return c
 
 
@@ -303,6 +304,10 @@ def decode(H_idx, H_ele, m, n, syms):
             for e in var_edges[vn]:
                 Lp = Lp + C2V[e]
             code[vn] = int(np.argmin(Lp))
+    # the last iteration's update has not been checked yet
+    if _check_parity(GM, ie, je, he, m, code):
+        dec = gf2bin(code)
+        return dec[: m * N_GF], int(np.count_nonzero(dec ^ s))
     return gf2bin(code)[: m * N_GF], -1
 
 

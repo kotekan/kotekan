@@ -277,8 +277,8 @@ def sv_position_bcnav2(eph, t):
         # GEO: rotate by -5 deg about X, then by BDS_OMEGA_E*tk about Z (BDS ICD)
         phi_z = BDS_OMEGA_E * tk
         sx, cx = math.sin(math.radians(-5.0)), math.cos(math.radians(-5.0))
-        y1 = cx * yg - sx * zg
-        z1 = sx * yg + cx * zg
+        y1 = cx * yg + sx * zg
+        z1 = -sx * yg + cx * zg
         x = math.cos(phi_z) * xg + math.sin(phi_z) * y1
         y = -math.sin(phi_z) * xg + math.cos(phi_z) * y1
         z = z1

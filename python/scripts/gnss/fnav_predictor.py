@@ -36,15 +36,17 @@ class _PrnState:
         self.pages = {}  # page_type -> (iodnav, content_bits[238], t_decoded)
         self.n_pages = 0  # pages decoded (sync-valid)
         self.n_crc = 0  # pages assembled with valid CRC
+        # start slots already counted: every decode rescans the cached emits, so a page is
+        # counted only the first time it is found
+        self.seen_pages = set()
+        self.seen_crc = set()
+        self.last_decode = 0.0
 
 
 class FnavPredictor:
     def __init__(self):
         self._p = {}
-        self._min_gap = (
-            1.0  # s between decode attempts across all PRNs (0 = off, self-test)
-        )
-        self._last_decode = 0.0
+        self._min_gap = 1.0  # s between decode attempts per PRN (0 = off, self-test)
 
     # ----------------------------------------------------------------- ingest
     def ingest(self, prn, obs):
@@ -83,10 +85,15 @@ class FnavPredictor:
         if len(st.emits) > EMIT_MAX:
             for s in sorted(st.emits)[:-EMIT_MAX]:
                 st.emits.pop(s, None)
+            lo = min(st.emits)
+            st.seen_pages = {s for s in st.seen_pages if s >= lo}
+            st.seen_crc = {s for s in st.seen_crc if s >= lo}
+        # Per-PRN decode throttle (see inav_predictor.ingest): a shared gate starves every PRN but
+        # the first in the broker's row order.
         now = time.time()
-        if self._min_gap and now - self._last_decode < self._min_gap:
+        if self._min_gap and now - st.last_decode < self._min_gap:
             return
-        self._last_decode = now
+        st.last_decode = now
         self._decode(prn, st)
 
     # ----------------------------------------------------------------- decode
@@ -131,12 +138,16 @@ class FnavPredictor:
                     if np.array_equal(hard, np.array(G.SYNC, dtype=np.int8)):
                         bits, ok = G.decode_page(seg, want_sync=True)
                         if ok and bits is not None:
-                            st.n_pages += 1
+                            if run0 + i not in st.seen_pages:
+                                st.seen_pages.add(run0 + i)
+                                st.n_pages += 1
                             crc_ok, pt = G.check_page(bits)
                             if crc_ok and pt is not None:
                                 iod = G._uint(bits[6:16])
                                 st.pages[pt] = (iod, bits, time.time())
-                                st.n_crc += 1
+                                if run0 + i not in st.seen_crc:
+                                    st.seen_crc.add(run0 + i)
+                                    st.n_crc += 1
                             break
                 i += 1
 
