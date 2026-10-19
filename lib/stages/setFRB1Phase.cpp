@@ -22,7 +22,6 @@
 #include <cstddef>    // for ptrdiff_t
 #include <cstdint>    // for int64_t
 #include <functional> // for function
-#include <limits>     // for numeric_limits
 #include <memory>     // for allocator, __shared_ptr_access, shared_ptr
 #include <numeric>    // for iota
 #include <optional>   // for optional
@@ -111,11 +110,6 @@ public:
         assert(upchan_num_channels <= upchan_max_num_channels);
         assert(frb1_phase_buffer);
         assert(bf_mask_buffer);
-        if (frb1_phase_lifetime_in_samples <= 0
-            || frb1_phase_lifetime_in_samples > std::numeric_limits<int>::max())
-            FATAL_ERROR("frb1_phase_lifetime_in_samples {:d} must be positive and fit into "
-                        "time_downsampling_fpga",
-                        frb1_phase_lifetime_in_samples);
         if (metadata_sources.empty())
             FATAL_ERROR("metadata_source must name at least one buffer");
 
@@ -257,7 +251,7 @@ public:
             frb1_phase_meta->set_from_frame_desc(frame_desc);
             frb1_phase_meta->set_fpga_seq_num(*seq0 + output_offset
                                               + frame_index * frb1_phase_lifetime_in_samples);
-            frb1_phase_meta->set_time_downsampling_fpga(int(frb1_phase_lifetime_in_samples));
+            frb1_phase_meta->set_time_downsampling_fpga(frb1_phase_lifetime_in_samples);
             frb1_phase_meta->set_coarse_freq(coarse_freq);
             frb1_phase_meta->set_freq_upchan_factor(freq_upchan_factor);
             frb1_phase_meta->set_freq_upchan_index(freq_upchan_index);

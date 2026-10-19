@@ -229,7 +229,8 @@ public:
                     const auto time_downsampling_fpga_shape =
                         time_downsampling_fpga->GetDimensionsSize();
                     assert(time_downsampling_fpga_shape.empty());
-                    meta->set_time_downsampling_fpga(time_downsampling_fpga->ReadAsInt());
+                    // Cannot read int64_t directly yet...
+                    meta->set_time_downsampling_fpga(time_downsampling_fpga->ReadAsDouble());
                     assert(meta->get_time_downsampling_fpga() > 0);
                 }
             }
