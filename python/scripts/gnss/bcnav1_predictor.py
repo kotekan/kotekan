@@ -18,6 +18,7 @@ import time
 import numpy as np
 
 import beidou_bcnav1 as B
+from navobs_align import emit_offset
 
 SYM_S = B.SYM_S  # 0.010
 FRAME = B.FRAME_SYMS  # 1800 symbols per frame (18 s)
@@ -76,6 +77,9 @@ class Bcnav1Predictor:
             arr[s - slot0] = v
         if (arr == 0).any():
             return
+        # a symbol edge near half a slot can round this emit one slot off the history it
+        # overlaps; line it up with that history
+        slot0 += emit_offset(slot0, arr, st.emits.items())
         st.emits[slot0] = arr
         if len(st.emits) > EMIT_MAX:
             for s in sorted(st.emits)[:-EMIT_MAX]:

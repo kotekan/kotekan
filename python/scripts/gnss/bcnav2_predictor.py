@@ -7,9 +7,10 @@ CNAV-style ephemeris); this is the per-PRN state machine around it.
 
 Structurally like F/NAV -- a B-CNAV2 frame is a single self-contained 600-symbol unit (24
 preamble + 576 LDPC) with its own CRC, no cross-frame pairing at the symbol level. The
-ephemeris spans message types 10 (eph-I) and 11 (eph-II), paired by freshness alone (both
-cached within FRAME_TTL_S; BDS eph ~hourly, type 11 has no IODE), where F/NAV checks IODnav
-across its page types.
+ephemeris spans message types 10 (eph-I) and 11 (eph-II). F/NAV checks IODnav across its page
+types, but type 11 has no IODE, so the two are paired by freshness (both cached within
+FRAME_TTL_S; BDS eph ~hourly) and by order: when type 10's IODE changes, the cached type 11 is
+dropped and only a type 11 that follows the new type 10 in the stream pairs with it.
 
 nav_obs: {utc_ref, rec_dt, br, phase, bits=[[idx,+-1],...]}. For B2a-data the combiner emits one
 symbol per 5 ms (navwipe_bit_records 5 over 1 ms records -> br=5, rec_dt=0.001, br*rec_dt=0.005).
@@ -20,23 +21,28 @@ import time
 import numpy as np
 
 import beidou_bcnav2 as B
+from navobs_align import emit_offset
 
 SYM_S = B.SYM_S  # 0.005
 FRAME = B.FRAME_SYMS  # 600 symbols per frame
 EMIT_MAX = 96  # bound the stitched emit cache per PRN (frame is 600 syms = 3 s)
 FRAME_TTL_S = 3600.0  # a cached frame older than this is stale (ephemeris ~ hourly)
+IODE_BITS = slice(B._IODE_10[0], B._IODE_10[0] + B._IODE_10[1])  # type 10's IODE bits
 
 
 class _PrnState:
     def __init__(self):
         self.emits = {}  # slot0 -> np.array(+-1) one per distinct nav_obs emit
         self.last_obs = None
-        self.frames = {}  # mestype -> (frame_bits[288], sow, t_decoded)
+        self.frames = {}  # mestype -> (frame_bits[288], sow, t_decoded, start slot)
         self.n_frames = 0  # frames decoded (find_frames yields only CRC-OK frames)
         self.n_crc = 0  # frames with valid CRC
         # frame start slots already counted: every decode rescans the cached emits, so a frame
         # is counted only the first time it is found
         self.seen = set()
+        # start slot of the type 10 whose IODE differs from the one before it: a type 11 found
+        # earlier in the stream may belong to the old issue
+        self.issue_at = None
         self.last_decode = 0.0
 
 
@@ -78,6 +84,9 @@ class Bcnav2Predictor:
             arr[s - slot0] = v
         if (arr == 0).any():
             return
+        # a symbol edge near half a slot can round this emit one slot off the history it
+        # overlaps; line it up with that history
+        slot0 += emit_offset(slot0, arr, st.emits.items())
         st.emits[slot0] = arr
         if len(st.emits) > EMIT_MAX:
             for s in sorted(st.emits)[:-EMIT_MAX]:
@@ -125,11 +134,26 @@ class Bcnav2Predictor:
                 # mislabelled chain or a cross-correlation lock) must not be stored under this one
                 if fprn != prn:
                     continue
-                st.frames[mt] = (bits, sow, time.time())
-                if run0 + i not in st.seen:
-                    st.seen.add(run0 + i)
+                at = run0 + i
+                if at not in st.seen:
+                    st.seen.add(at)
                     st.n_frames += 1
                     st.n_crc += 1
+                old = st.frames.get(mt)
+                if old is not None and at < old[3]:
+                    continue  # a rescan finds frames older than the cached one again
+                if (
+                    mt == 10
+                    and old is not None
+                    and bits[IODE_BITS] != old[0][IODE_BITS]
+                ):
+                    # an ephemeris update: the cached type 11 carries no IODE and may belong to
+                    # the old issue, so drop it and wait for one that follows this frame
+                    st.frames.pop(11, None)
+                    st.issue_at = at
+                if mt == 11 and st.issue_at is not None and at < st.issue_at:
+                    continue
+                st.frames[mt] = (bits, sow, time.time(), at)
 
     # ----------------------------------------------------------------- serve
     def ephemeris(self, prn):

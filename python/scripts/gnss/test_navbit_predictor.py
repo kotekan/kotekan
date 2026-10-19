@@ -6,6 +6,8 @@
     score counts each subframe's bits once.
   * A subframe that starts on the run's first bit decodes with D29*=D30*=0, as frame_sync
     synced it, whatever the run's last bits are.
+  * Slots at a bit edge: when the bit edge sits near half a slot on the UTC grid, an emit whose
+    start-time estimate moved across that point still writes the history's slots.
 """
 import os
 import sys
@@ -104,6 +106,37 @@ class TestRunStartsOnSubframe(unittest.TestCase):
         pred._try_sync(PRN, st)
         self.assertIn(1, st.sf_data)
         self.assertEqual(st.n_decoded, 3)
+
+
+class TestSlotAtBitEdge(unittest.TestCase):
+    UTC0 = 1.7e9  # an absolute UTC origin, as the combiner stamps utc_ref
+
+    def _feed_edge(self, pm, slip):
+        """100-bit emits every 50 bits; bit k starts 0.05 bit past half a slot on the UTC
+        grid, except in emit `slip`, which reads its start time 0.1 bit early."""
+        pred = N.LnavPredictor()
+        for j, a in enumerate(range(0, len(pm) - 100 + 1, 50)):
+            frac = 0.45 if j == slip else 0.55
+            obs = {
+                "utc_ref": self.UTC0 + (a + frac) * N.BIT_S,
+                "rec_dt": 0.001,
+                "phase": 0,
+                "br": 20,
+                "bits": [[i, int(pm[a + i])] for i in range(100)],
+            }
+            pred.ingest(PRN, obs)
+        return pred
+
+    def test_slipped_emit_lands_on_the_history(self):
+        frames, _ = _stream(2)
+        pm = 1 - 2 * frames.astype(int)
+        pred = self._feed_edge(pm, slip=20)
+        origin = int(round(self.UTC0 / N.BIT_S)) + 1
+        want = {origin + k: int(v) for k, v in enumerate(pm)}
+        self.assertEqual(pred._p[PRN].hist, want)
+        clean = self._feed_edge(pm, slip=None).health(PRN)["decoded_sf"]
+        self.assertGreater(clean, 0)
+        self.assertEqual(pred.health(PRN)["decoded_sf"], clean)
 
 
 if __name__ == "__main__":

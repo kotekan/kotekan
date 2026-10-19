@@ -50,6 +50,7 @@ from galileo_inav import (
     conv_encode,
     viterbi_decode,
 )  # noqa: E402  (the shared CNAV FEC)
+from navobs_align import emit_offset  # noqa: E402
 
 SYM_S = 0.020  # L2C-CM record = 20 ms = one CNAV symbol (50 sps)
 MSG_SYMS = C.MSG_BITS * 2  # 600 symbols per 300-bit message (12 s)
@@ -198,6 +199,10 @@ class CnavPredictor:
             arr == 0
         ).any():  # a gap inside the emit breaks the convolutional stream: drop it
             return
+        # a symbol edge near half a slot can round this emit one slot off the history it
+        # overlaps; line it up with that history
+        d = emit_offset(slot0, arr, st.emits.items())
+        slot0, hi = slot0 + d, hi + d
         st.emits[slot0] = arr
         if len(st.emits) > EMIT_MAX:
             for s in sorted(st.emits)[:-EMIT_MAX]:

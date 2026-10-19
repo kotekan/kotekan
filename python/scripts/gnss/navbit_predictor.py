@@ -47,6 +47,7 @@ from gps_nav_decode import (
     set_how_tow,
     trim_word,
 )  # noqa: E402
+from navobs_align import emit_offset  # noqa: E402
 
 
 def encode_subframe_trimmed(data_words):
@@ -220,6 +221,7 @@ class LnavPredictor:
             if k % 2:
                 st.pol = -st.pol
         st.theta = theta
+        m = {}
         for bi, sg in pairs:
             bi = int(bi)
             sg = int(sg)
@@ -227,7 +229,16 @@ class LnavPredictor:
                 continue
             utc_bit = utc_ref + (bi * br - phase) * rec_dt
             slot = int(round(utc_bit / st.bit_s))
-            st.hist[slot] = sg * st.pol
+            m[slot] = sg * st.pol
+        if m:
+            # A bit edge near half a slot can round this emit one slot off the history it
+            # overlaps; line it up with that history.
+            lo, hi = min(m), max(m)
+            new = np.array([m.get(s, 0) for s in range(lo, hi + 1)], dtype=np.int8)
+            old = [st.hist.get(s, 0) for s in range(lo - 1, hi + 2)]
+            d = emit_offset(lo, new, [(lo - 1, np.array(old, dtype=np.int8))])
+            for s, v in m.items():
+                st.hist[s + d] = v
         # Bound the history to the newest HIST_MAX_SLOTS slots: the cut point is a subtraction
         # from max(), with no sort.
         if len(st.hist) > HIST_MAX_SLOTS:

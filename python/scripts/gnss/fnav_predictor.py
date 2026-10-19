@@ -22,6 +22,7 @@ import time
 import numpy as np
 
 import galileo_fnav as G
+from navobs_align import emit_offset
 
 SYM_S = G.SYM_S  # 0.020
 PAGE = G.PAGE_SYMS  # 500 symbols per page
@@ -81,6 +82,9 @@ class FnavPredictor:
             arr[s - slot0] = v
         if (arr == 0).any():  # a gap breaks page contiguity: drop the emit
             return
+        # a symbol edge near half a slot can round this emit one slot off the history it
+        # overlaps; line it up with that history
+        slot0 += emit_offset(slot0, arr, st.emits.items())
         st.emits[slot0] = arr
         if len(st.emits) > EMIT_MAX:
             for s in sorted(st.emits)[:-EMIT_MAX]:
