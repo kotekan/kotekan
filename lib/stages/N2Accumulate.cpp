@@ -494,7 +494,7 @@ void N2Accumulate::main_thread() {
             }
         }
         const auto frame_coarse_freq = frame_metadata->get_coarse_freq();
-        const int frame_time_downsampling = frame_metadata->get_time_downsampling_fpga();
+        const int64_t frame_time_downsampling = frame_metadata->get_time_downsampling_fpga();
         if (frame_coarse_freq.size() != static_cast<size_t>(_num_freq_per_n2k_frame)) {
             FATAL_ERROR("N2Accumulate coarse-frequency length mismatch: got {:d}, expected {:d}",
                         frame_coarse_freq.size(), _num_freq_per_n2k_frame);

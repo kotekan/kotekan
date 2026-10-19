@@ -88,7 +88,7 @@ class testUpchanAlignment : public kotekan::Stage {
         // FRB1 beams and the FRB1 PL mask, keyed first by upchannelization factor.
         std::map<int, std::map<std::int64_t, double>> power;
         // FPGA samples per output sample
-        int tds = 0;
+        std::int64_t tds = 0;
         // Coarse frequency and upchannelization factor of each output frequency, from the first
         // frame
         std::vector<int> coarse_freq;
