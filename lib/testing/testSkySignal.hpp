@@ -28,7 +28,8 @@
  * `first_fpga_seq_num`, `T` is `num_times`, `ν_f = (channel + k/T) Δν` is the tone frequency,
  * and `r_d` is the dish position, computed from `telescope.dish_inputs` (not via `Telescope`).
  * This is the convention of RadioTelescopeFEngine.jl, for which the `calcBBPhase` beam with
- * position `n_b` peaks at `n = n_b`. Dishes not listed in `dish_inputs` receive nothing.
+ * position `n_b` peaks at `n = n_b`. Dishes not listed in `dish_inputs`, or listed with
+ * `type: Missing`, receive nothing.
  *
  * Noise is complex Gaussian with standard deviation `noise_rms` per component,
  * independent per sample and input, and repeats every `noise_period_frames` frames. Values are
@@ -36,13 +37,14 @@
  *
  * @conf sources              List of objects, each with `amplitude` (LSB), `direction`
  *                            ([n_x, n_y]), `tone_cycles_per_frame` (integer), optional `phase`
- *                            (radians, default 0), optional `pol` ([w_0, w_1], default [1, 1])
- *                            and optional `window` ([begin, end), FPGA samples; default: always
- *                            on)
+ *                            (radians, default 0), optional `pol` ([w_0, w_1], default [1, 1]),
+ *                            optional `window` ([begin, end), FPGA samples; default: always
+ *                            on) and optional `active_inputs` (as below; default: all inputs)
  * @conf noise_rms            Float. Default 0.
  * @conf seed                 Int. Noise seed. Default 1.
  * @conf noise_period_frames  Int. Default 4.
  * @conf active_inputs        List of [dish, polarization]. If set, all other inputs are zero.
+ *                            A source's own `active_inputs` further restricts that source.
  * @conf first_fpga_seq_num   Int. Default 0.
  */
 class testSkySignal {
@@ -55,6 +57,7 @@ public:
         float pol[2];
         bool windowed;
         std::int64_t window_begin, window_end;
+        std::vector<bool> active; // [P][D]; empty: all inputs
     };
 
     testSkySignal(const kotekan::Config& config, const std::string& unique_name,
@@ -83,23 +86,19 @@ public:
             src.windowed = s.contains("window");
             src.window_begin = src.windowed ? s.at("window").at(0).get<std::int64_t>() : 0;
             src.window_end = src.windowed ? s.at("window").at(1).get<std::int64_t>() : 0;
+            if (s.contains("active_inputs"))
+                src.active = input_set(s.at("active_inputs"), num_polarizations, num_dishes);
             if (src.n_x * src.n_x + src.n_y * src.n_y > 1)
                 FATAL_ERROR_NON_OO("testSkySignal: source direction is not on the unit sphere");
             sources.push_back(src);
         }
 
         // Which inputs carry signal
-        std::vector<bool> active(std::size_t(num_polarizations) * num_dishes, true);
-        if (config.exists(unique_name, "active_inputs")) {
-            std::fill(active.begin(), active.end(), false);
-            for (const auto& dp :
-                 config.get<std::vector<std::vector<int>>>(unique_name, "active_inputs")) {
-                if (dp.size() != 2 || dp[0] < 0 || dp[0] >= num_dishes || dp[1] < 0
-                    || dp[1] >= num_polarizations)
-                    FATAL_ERROR_NON_OO("testSkySignal: bad entry in `active_inputs`");
-                active.at(dp[1] * num_dishes + dp[0]) = true;
-            }
-        }
+        const std::vector<bool> active =
+            config.exists(unique_name, "active_inputs")
+                ? input_set(config.get<nlohmann::json>(unique_name, "active_inputs"),
+                            num_polarizations, num_dishes)
+                : std::vector<bool>(std::size_t(num_polarizations) * num_dishes, true);
 
         // Dish positions in the grid frame
         const double dx = config.get<double>("/telescope", "dish_separation_x_m");
@@ -110,6 +109,8 @@ public:
             const int d = dish.at("dish_idx").get<int>();
             if (d < 0 || d >= num_dishes)
                 FATAL_ERROR_NON_OO("testSkySignal: dish_idx {:d} out of range", d);
+            if (dish.at("type").get<std::string>() == "Missing")
+                continue;
             const auto& disp = dish.at("feed_pos_disp_m");
             exists.at(d) = true;
             pos_x.at(d) = dx * dish.at("grid_x_idx").get<int>() + disp.at(0).get<double>();
@@ -140,7 +141,8 @@ public:
                 for (int p = 0; p < num_polarizations; ++p) {
                     for (int d = 0; d < num_dishes; ++d) {
                         const std::ptrdiff_t e = (f * num_polarizations + p) * num_dishes + d;
-                        const bool on = exists[d] && active[p * num_dishes + d];
+                        const bool on = exists[d] && active[p * num_dishes + d]
+                                        && (src.active.empty() || src.active[p * num_dishes + d]);
                         const double delay =
                             (src.n_x * pos_x[d] + src.n_y * pos_y[d] + n_z * pos_z[d]) / c0;
                         geometry[s * num_elements + e] =
@@ -195,6 +197,19 @@ public:
     }
 
 private:
+    // The inputs listed in `list`, a list of [dish, polarization], as flags [P][D]
+    static std::vector<bool> input_set(const nlohmann::json& list, const int num_polarizations,
+                                       const int num_dishes) {
+        std::vector<bool> set(std::size_t(num_polarizations) * num_dishes, false);
+        for (const auto& dp : list.get<std::vector<std::vector<int>>>()) {
+            if (dp.size() != 2 || dp[0] < 0 || dp[0] >= num_dishes || dp[1] < 0
+                || dp[1] >= num_polarizations)
+                FATAL_ERROR_NON_OO("testSkySignal: bad entry in `active_inputs`");
+            set.at(dp[1] * num_dishes + dp[0]) = true;
+        }
+        return set;
+    }
+
     static std::uint64_t splitmix64(std::uint64_t x) {
         x += 0x9e3779b97f4a7c15ULL;
         x = (x ^ (x >> 30)) * 0xbf58476d1ce4e5b9ULL;

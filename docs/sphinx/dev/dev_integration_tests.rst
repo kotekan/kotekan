@@ -77,6 +77,8 @@ Differences from ``config/fengine``:
   ``rfi_excision_enabled``, the gains ``upchan_gains`` (a dict from U to the U fine-channel
   gains), ``bb_gain`` and ``frb1_input_scale``, and the test outputs are jinja variables;
   production values are the defaults.
+* ``half_filled`` (default ``false``) marks the northern half of the pathfinder dishes (32 to
+  63; north is +y) as ``Missing``.
 
 Running
 =======
@@ -107,7 +109,8 @@ Inputs are generated on the fly; nothing is read from disk.
   an integer number of cycles per frame, so frames repeat; the generator copies frames from a
   precomputed pool and changes only the time-limited parts. Dish positions are computed from the
   config's ``telescope.dish_inputs``, not from ``Telescope``, so that a positioning bug does not
-  cancel between generator and beamformer.
+  cancel between generator and beamformer. Missing dishes receive nothing. Each source can be
+  restricted to a list of inputs.
 * ``inventPLMask`` produces random packet loss at a given rate (deterministic, reproducible in
   Python) and loss boxes for edge cases.
 * ``inventBFMask`` produces bad feed schedules: random bad feeds that change every few frames, and
@@ -174,11 +177,14 @@ upchannelizer output start ``T*``, ``coarse_freq`` / ``freq_upchan_factor`` /
        with the gain; the FRB1 intensity by 4 times the upchannelized power ratio.
      - 3% (int4), 1% (FRB1)
    * - T6 Dish locations
-     - One-hot dishes; two-hot pairs; half-filled array.
-     - N2, BB, FRB1, FRB2
-     - The right N2 product is non-zero; BB phase per dish matches its position; FRB1 fringes
-       match the dish separation; beams peak in the right place.
-     - exact; BB phase 5°
+     - Eight one-hot inputs, each with a tone in its own window; six pairs with a zenith tone
+       each; T2's ``frb2`` input on a half-filled array. No noise and RFI excision off except
+       for the half-filled array.
+     - N2 (with dish attributes), BB, FRB1; for the half-filled array as T2
+     - Only the one-hot autocorrelations are non-zero; BB phase per dish matches its position;
+       FRB1 fringes match the pair's grid separation; the half-filled array passes T2 with
+       predictions from the present dishes.
+     - N2 exact; BB phase 5°; FRB1 peak bins exact, fringe 0.01
    * - T7 Beam pointings
      - Point-source tone on different configured beams; short lifetimes.
      - BB, FRB2, beam positions and ids
@@ -265,6 +271,13 @@ Findings
 * ``upchan_gain`` (per fine channel), ``bb_gain`` and ``frb1_input_scale`` act as documented
   (T5). The measured ratios agree with the predictions within 0.2%. Int4 rounding biases a raw
   rms ratio by up to 3.7% at the 0.9 LSB of the reference run, so the check corrects for it.
+* Every subsystem places the dishes as configured (T6): only the predicted N2 products are
+  non-zero, the BB phase of every dish matches its position within 2.2°, FRB1 shows the fringes
+  of the dish separations, and a half-filled array passes T2.
+* **Fringe-stopped N2 visibilities are truncated** (T6). ``N2Accumulate`` adds the
+  fringe-stopped complex float values into its ``int32`` accumulator
+  (``lib/stages/N2Accumulate.cpp:989``), which truncates towards zero and loses up to one count
+  per component and sub-integration. T6 sees autocorrelations one count low.
 * ``setUpchanGain`` checks the number of gains (one per fine channel) only with ``assert``
   (seen while writing T5, not tested), which a Release build drops: extra gains are ignored,
   and too few throw ``std::out_of_range``.
