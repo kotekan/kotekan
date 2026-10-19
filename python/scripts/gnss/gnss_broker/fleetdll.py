@@ -146,9 +146,9 @@ def stage_fleet_dll(ctx):
             {
                 "pedestal_max": ctx.args.presence_disp_pedestal_max,
                 "off_max_chips": ctx.args.presence_disp_off_max,
-                # the offset-blind evidence bar (fleet.apply_presence): a detector
-                # that re-searches code phase, so it does not inherit the
-                # displacement it is being asked to judge
+                # the deep-fold evidence bar (fleet.apply_presence): the fold's
+                # ~10x integration gain keeps a satellite a fraction of a chip
+                # off-peak detectable where prompt power fails
                 "deep_margin": ctx.args.presence_disp_deep_margin,
                 # no displaced admission while the chain is browned out. D1 is fed
                 # after the poll below, so this is the previous cycle's verdict.

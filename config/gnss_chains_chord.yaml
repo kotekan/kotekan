@@ -10,6 +10,8 @@
 #
 # Production runs this as gnss-broker.service. gnss-stack.target (scripts/gnss/site/systemd/)
 # starts one gnss-obs@<chain> writer per chain and must list the same chains as this file.
+# Adding a chain: regenerate and restart the nodes first, so its stages exist, then restart the
+# broker; a broker pointed at stages that do not exist yet fails its polls and posts.
 #
 # The per-signal constants are not here: `signal: gps_l5` resolves carrier, chip rate, code
 # length, long-code segments and epoch, and overlay length from lib/stages/gnss/gnssSignal.hpp,
@@ -215,11 +217,13 @@ chains:
     # assemblers that post-sat-geometry posts to.
         trackers: "http://cx19:12048/gnss{0..1}_inject,http://cx27:12048/gnss{0..1}_inject,http://cx42:12048/gnss{0..1}_inject,http://cx43:12048/gnss{0..1}_inject,http://cx44:12048/gnss{0..1}_inject,http://cx51:12048/gnss{0..1}_inject"
         combiner: gnss0_n2combine
-        dll-combiners: &l5_cmb "http://cx19:12048/gnss{0..1}_n2combine,http://cx27:12048/gnss{0..1}_n2combine,http://cx42:12048/gnss{0..1}_n2combine,http://cx43:12048/gnss{0..1}_n2combine,http://cx44:12048/gnss{0..1}_n2combine,http://cx51:12048/gnss{0..1}_n2combine"
+        dll-combiners: "http://cx19:12048/gnss{0..1}_n2combine,http://cx27:12048/gnss{0..1}_n2combine,http://cx42:12048/gnss{0..1}_n2combine,http://cx43:12048/gnss{0..1}_n2combine,http://cx44:12048/gnss{0..1}_n2combine,http://cx51:12048/gnss{0..1}_n2combine"
     # Trim presence for these PRNs is judged on detection (deep_snr >= 3 x deep_floor) rather
     # than on summed prompt power. Prompt power falls when the tap is off-peak, so a
-    # prompt-gated satellite that drifts off the peak is never trimmed back; the deep fold
-    # re-searches rate and phase and sees the satellite wherever the tap sits.
+    # prompt-gated satellite that drifts off the peak is never trimmed back. The deep fold
+    # integrates the same prompt coherently (carrier rate and phase searched, code not), so its
+    # ~10x integration gain keeps detecting a satellite the tap has drifted a fraction of a chip
+    # off, where prompt power already fails; beyond ~1 chip it is blind too.
         dll-deep-gate: "4 9 27"
     # Also deep-gate any PRN the search detects at snr >= 100, for dll-deep-gate-search-hold-s
     # (90 s) after the detection. The search re-derives code phase over the full period, so
@@ -237,7 +241,7 @@ chains:
     # update rate. Slew authority 2.5 x 0.25 chips (|tau| bound at 0.5 spacing) = 0.62 chips/s
     # covers the ~0.43 chips/s the tap must follow (the clock's +-1-chip, ~18 s breathing plus
     # drift). Stable while bandwidth x measurement delay < ~0.5, which needs the gather's
-    # n_win 2 (gen_chord_gnss_config.py --fleet-trim-windows 2; the default is 4).
+    # n_win 2 (gen_chord_gnss_config.py --fleet-trim-windows, default 2).
         fleet-trim-bandwidth: 2.5
     # Read the loop's standing per-PRN trims back (/get_dll) after each policy post, so the
     # innovation, the CP_ERR hold referee and the published rows see seed + trim, not the seed
@@ -343,10 +347,10 @@ chains:
         fleet-trim-readback: 1
     # -- the carrier loop (rrate-command below) --
     # A row may command only while its satellite's KCOH significance this cycle is >= 100; no
-    # KCOH row means no command. The row-sigma gate (rrate-cmd-max-sigma) describes the fit, and
+    # KCOH row means no command. The row-sigma gate (rrate_cmd_max_sigma) describes the fit, and
     # a confident row on a marginal satellite (KCOH sig in the tens) can pass it; well-tracked
     # satellites read in the thousands. A satellite that loses any command gate slews its
-    # command back to 0 at rrate-cmd-slew-hz.
+    # command back to 0 at rrate_cmd_slew_hz. Both are cli.py constants, not chain keys.
         rrate-cmd-min-sig: 100
     # Clamp on the command (default 40 Hz). True residuals are a few Hz, so 10 Hz bounds a row
     # that chases noise without limiting a real correction.
@@ -366,8 +370,8 @@ chains:
     # Close the carrier loop: post each satellite's carrier_trim_hz from the joint state's
     # carrier_correction_hz (receiver f_carrier plus the satellite's range-rate model error,
     # scaled to this band). Implies rrate-state. A command needs the row sigma <=
-    # rrate-cmd-max-sigma (0.5 m/s), the gates above and deep_rate_full_* in this poll; each
-    # step is bounded by rrate-cmd-slew-hz, and probes never command. Poll-to-poll command churn
+    # rrate_cmd_max_sigma (0.5 m/s), the gates above and deep_rate_full_* in this poll; each
+    # step is bounded by rrate_cmd_slew_hz, and probes never command. Poll-to-poll command churn
     # follows the row noise: judge the loop by per-satellite q scatter against an uncommanded
     # chain in the same poll.
         rrate-command: true
@@ -377,8 +381,9 @@ chains:
     # regression can read the sign backward. 0 keeps the fine feed off; JRRP logs either way.
         rrate-phase-sign: 1.0
     # 1.0 keeps coarse rate measurements at full weight; the default 8 inflates their sigma 8x
-    # while a fine or KCOH update is fresh (rrate-fine-hold-s). Between sparse fine samples a row
-    # deweighted that far stops following the carrier drift, and the command wanders with it.
+    # while a fine or KCOH update is fresh (rrate_fine_hold_s, a cli.py constant). Between sparse
+    # fine samples a row deweighted that far stops following the carrier drift, and the command
+    # wanders with it.
         rrate-coarse-deweight: 1.0
         trackers: "http://cx19:12048/gnss{0..1}_e5a_inject,http://cx27:12048/gnss{0..1}_e5a_inject,http://cx42:12048/gnss{0..1}_e5a_inject,http://cx43:12048/gnss{0..1}_e5a_inject,http://cx44:12048/gnss{0..1}_e5a_inject,http://cx51:12048/gnss{0..1}_e5a_inject"
         combiner: gnss0_e5a_n2combine
@@ -390,7 +395,7 @@ chains:
     # the unthrottled per-poll value.
         rrate-phase-span-s: 16
         spectrum-endpoints: "http://cx19:12048/gnss{0..1}_e5a_n2assemble,http://cx27:12048/gnss{0..1}_e5a_n2assemble,http://cx42:12048/gnss{0..1}_e5a_n2assemble,http://cx43:12048/gnss{0..1}_e5a_n2assemble,http://cx44:12048/gnss{0..1}_e5a_n2assemble,http://cx51:12048/gnss{0..1}_e5a_n2assemble"
-        dll-combiners: &e5a_cmb "http://cx19:12048/gnss{0..1}_e5a_n2combine,http://cx27:12048/gnss{0..1}_e5a_n2combine,http://cx42:12048/gnss{0..1}_e5a_n2combine,http://cx43:12048/gnss{0..1}_e5a_n2combine,http://cx44:12048/gnss{0..1}_e5a_n2combine,http://cx51:12048/gnss{0..1}_e5a_n2combine"
+        dll-combiners: "http://cx19:12048/gnss{0..1}_e5a_n2combine,http://cx27:12048/gnss{0..1}_e5a_n2combine,http://cx42:12048/gnss{0..1}_e5a_n2combine,http://cx43:12048/gnss{0..1}_e5a_n2combine,http://cx44:12048/gnss{0..1}_e5a_n2combine,http://cx51:12048/gnss{0..1}_e5a_n2combine"
     # clk: each cycle, move the adopted clock's level onto the joint filter's clock, as a
     # wrapped delta. The adopted clock is gps_l5's circular median over its detected
     # satellites, which steps whenever that set changes; the filter solves the clock jointly
@@ -406,7 +411,7 @@ chains:
     # E33's trim presence is judged on the deep fold alone (deep_snr >= 3 x deep_floor), as on
     # gps_l5, and while the combiner reports a floor that verdict overrides the q, prompt and
     # displaced gates for it. Not widened: deep_snr can fire on noise, and this gate has no
-    # pedestal or offset test; presence-admit-displaced gives every PRN the same offset-blind
+    # pedestal or offset test; presence-admit-displaced gives every PRN the same deep-fold
     # evidence with both tests.
         dll-deep-gate: "33"
     # q and prompt power both fall with the code offset the DLL exists to remove, so without
@@ -414,8 +419,10 @@ chains:
     # is admitted when the (E/P, L/P) fit reads the deficit as an offset rather than weakness
     # (pedestal <= 0.3 of the peak, |offset| <= 0.6 chips, inside the DLL's pull-in) and the
     # satellite is evidently there: prompt power over the probe floor, or deep_snr >=
-    # 3 x deep_floor from the combiner's deep fold, which re-searches code phase and so needs
-    # no search. Needs the probe-anchored floors. A displacement over 0.1 chip is refused while
+    # 3 x deep_floor from the combiner's deep fold (a coherent fold of the same prompt with a
+    # carrier rate and phase search, not a code search: its ~10x integration gain keeps a
+    # satellite inside the DLL's pull-in detectable where prompt power fails). Needs the
+    # probe-anchored floors. A displacement over 0.1 chip is refused while
     # the chain is browned out, or when 3 or more PRNs share it in one cycle: that is a chain
     # event, not N detections. Admissions log "PRESENCE +displaced" and carry present_gate
     # '...+disp'. An admitted row is armed for the fast loop, which steps it only in windows
@@ -450,7 +457,7 @@ chains:
         trackers: "http://cx19:12048/gnss{0..1}_b2a_inject,http://cx27:12048/gnss{0..1}_b2a_inject,http://cx42:12048/gnss{0..1}_b2a_inject,http://cx43:12048/gnss{0..1}_b2a_inject,http://cx44:12048/gnss{0..1}_b2a_inject,http://cx51:12048/gnss{0..1}_b2a_inject"
         combiner: gnss0_b2a_n2combine
         spectrum-endpoints: "http://cx19:12048/gnss{0..1}_b2a_n2assemble,http://cx27:12048/gnss{0..1}_b2a_n2assemble,http://cx42:12048/gnss{0..1}_b2a_n2assemble,http://cx43:12048/gnss{0..1}_b2a_n2assemble,http://cx44:12048/gnss{0..1}_b2a_n2assemble,http://cx51:12048/gnss{0..1}_b2a_n2assemble"
-        dll-combiners: &b2a_cmb "http://cx19:12048/gnss{0..1}_b2a_n2combine,http://cx27:12048/gnss{0..1}_b2a_n2combine,http://cx42:12048/gnss{0..1}_b2a_n2combine,http://cx43:12048/gnss{0..1}_b2a_n2combine,http://cx44:12048/gnss{0..1}_b2a_n2combine,http://cx51:12048/gnss{0..1}_b2a_n2combine"
+        dll-combiners: "http://cx19:12048/gnss{0..1}_b2a_n2combine,http://cx27:12048/gnss{0..1}_b2a_n2combine,http://cx42:12048/gnss{0..1}_b2a_n2combine,http://cx43:12048/gnss{0..1}_b2a_n2combine,http://cx44:12048/gnss{0..1}_b2a_n2combine,http://cx51:12048/gnss{0..1}_b2a_n2combine"
 
   # -- 1207.14 MHz, the second band: gal_e5b and bds_b2b --
   # Galileo E5b-Q, the E5b pilot. Like E5a-Q it carries a per-PRN CS100 secondary, so it is
@@ -485,7 +492,7 @@ chains:
         combiner: gnss0_e5b_n2combine
         rrate-phase-span-s: 16
         spectrum-endpoints: "http://cx19:12048/gnss{0..1}_e5b_n2assemble,http://cx27:12048/gnss{0..1}_e5b_n2assemble,http://cx42:12048/gnss{0..1}_e5b_n2assemble,http://cx43:12048/gnss{0..1}_e5b_n2assemble,http://cx44:12048/gnss{0..1}_e5b_n2assemble,http://cx51:12048/gnss{0..1}_e5b_n2assemble"
-        dll-combiners: &e5b_cmb "http://cx19:12048/gnss{0..1}_e5b_n2combine,http://cx27:12048/gnss{0..1}_e5b_n2combine,http://cx42:12048/gnss{0..1}_e5b_n2combine,http://cx43:12048/gnss{0..1}_e5b_n2combine,http://cx44:12048/gnss{0..1}_e5b_n2combine,http://cx51:12048/gnss{0..1}_e5b_n2combine"
+        dll-combiners: "http://cx19:12048/gnss{0..1}_e5b_n2combine,http://cx27:12048/gnss{0..1}_e5b_n2combine,http://cx42:12048/gnss{0..1}_e5b_n2combine,http://cx43:12048/gnss{0..1}_e5b_n2combine,http://cx44:12048/gnss{0..1}_e5b_n2combine,http://cx51:12048/gnss{0..1}_e5b_n2combine"
 
   # BeiDou B2b-I, the PPP-B2b data component: no pilot and no secondary code (B-CNAV3 at
   # 1000 sps, one symbol per 1 ms code period). Coherent integration past 1 ms needs a nav-bit
@@ -508,7 +515,7 @@ chains:
         trackers: "http://cx19:12048/gnss{0..1}_b2b_inject,http://cx27:12048/gnss{0..1}_b2b_inject,http://cx42:12048/gnss{0..1}_b2b_inject,http://cx43:12048/gnss{0..1}_b2b_inject,http://cx44:12048/gnss{0..1}_b2b_inject,http://cx51:12048/gnss{0..1}_b2b_inject"
         combiner: gnss0_b2b_n2combine
         spectrum-endpoints: "http://cx19:12048/gnss{0..1}_b2b_n2assemble,http://cx27:12048/gnss{0..1}_b2b_n2assemble,http://cx42:12048/gnss{0..1}_b2b_n2assemble,http://cx43:12048/gnss{0..1}_b2b_n2assemble,http://cx44:12048/gnss{0..1}_b2b_n2assemble,http://cx51:12048/gnss{0..1}_b2b_n2assemble"
-        dll-combiners: &b2b_cmb "http://cx19:12048/gnss{0..1}_b2b_n2combine,http://cx27:12048/gnss{0..1}_b2b_n2combine,http://cx42:12048/gnss{0..1}_b2b_n2combine,http://cx43:12048/gnss{0..1}_b2b_n2combine,http://cx44:12048/gnss{0..1}_b2b_n2combine,http://cx51:12048/gnss{0..1}_b2b_n2combine"
+        dll-combiners: "http://cx19:12048/gnss{0..1}_b2b_n2combine,http://cx27:12048/gnss{0..1}_b2b_n2combine,http://cx42:12048/gnss{0..1}_b2b_n2combine,http://cx43:12048/gnss{0..1}_b2b_n2combine,http://cx44:12048/gnss{0..1}_b2b_n2combine,http://cx51:12048/gnss{0..1}_b2b_n2combine"
 
   # -- 1202.025 MHz: glo_l3oc --
   # GLONASS L3OC-p, the dataless pilot of GLONASS's CDMA signal (10230 chips at 10.23 Mcps with
@@ -523,7 +530,10 @@ chains:
   # is the ICD's integrated state vector, meant for +-15 min about a record's tb: against the
   # next record it errs 5 m line-of-sight at 1 h and 18 m (0.6 chip; p90 1.5 chips) at 2 h, so
   # the hourly BRDC merge's 35-95 min record age sits inside the spectrum fit's +-1.6 chips.
-  # The daily file never covers today for R, so with the hourly supply down this chain drifts.
+  # With the hourly supply down, R rests on BKG's current-day daily, ~25 min behind and
+  # re-fetched every 2 h, so satellites can drop out at the 2.5 h R ephemeris cap for minutes
+  # before each refresh. With BKG down as well no daily covers today (CDDIS publishes closed days
+  # only), and the chain loses its satellites 2.5 h after the last hourly record.
     glo_l3oc:
         signal: glo_l3oc
     # The IGS registry's block types decide which slots carry L3OC (K1/K1B/K1+/K2 and M+; the

@@ -69,10 +69,10 @@ const METRICS = {
            fmt: m => m && m.hold ? m.hold.toFixed(1) : null},
     // q: the code-loop quality, the fleet discriminator's prompt-vs-shoulder ratio. It says
     // whether the code loop is on the peak, which every power metric in this table is blind to
-    // (the deep fold re-searches, so sig and C/N0 can look healthy while the prompt tap sits on
-    // noise). Coloured against the broker's measured floor: >= 2.2 solid lock, <= 1.15 x floor
-    // off-peak, marginal between (gps_feed's Q_LOCK and Q_FLOOR_MARGIN). The hover carries the
-    // floor and the contributing instance count.
+    // (the deep fold's integration gain and rate search let sig and C/N0 look healthy while the
+    // prompt tap sits on noise). Coloured against the broker's measured floor: >= 2.2 solid
+    // lock, <= 1.15 x floor off-peak, marginal between (gps_feed's Q_LOCK and Q_FLOOR_MARGIN).
+    // The hover carries the floor and the contributing instance count.
     q:    {label: "q", field: "q", unit: "",
            fmt: m => {
                if (!m || m.q == null) return null;

@@ -65,15 +65,16 @@ def coh(deep_snr, deep_floor):
 
 
 def test_blind_evidence():
-    """The admission's evidence must not be an on-peak statistic.
+    """The admission's evidence must not be prompt power alone.
 
     The gate exists to rescue a satellite whose taps are off the peak, and prompt power is
     suppressed by exactly that offset, so a prompt-power bar refuses the satellites it is
     meant to rescue; every tap ratio has the same bias. The evidence is the combiner's
-    deep fold (deep_snr against deep_margin x deep_floor), which re-searches code phase and so
-    sees the satellite wherever the tap sits; prompt power above the probe bar is accepted too.
+    deep fold (deep_snr against deep_margin x deep_floor), a coherent fold of the same prompt
+    whose ~10x integration gain keeps a satellite a fraction of a chip off-peak detectable;
+    prompt power above the probe bar is accepted too.
     """
-    print("admit-displaced: the evidence must be offset-blind")
+    print("admit-displaced: the evidence must not be prompt power alone")
 
     # Displaced and dim: prompt 2.4x the probe median, under the 3x probe bar, but the deep
     # fold sees it at deep_snr 55 against a floor of 2.67.
@@ -88,7 +89,7 @@ def test_blind_evidence():
     )
     check(
         v["present_gate"] == "q+deep:probes+disp",
-        "and the admission is ATTRIBUTABLE to the blind detector, not to prompt power",
+        "and the admission is ATTRIBUTABLE to the deep fold, not to prompt power",
     )
 
     # The same row with no deep evidence must still be refused; otherwise the gate has only

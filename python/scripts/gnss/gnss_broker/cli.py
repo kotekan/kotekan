@@ -522,11 +522,12 @@ _FROZEN = dict(
     # clock mod the epoch is a run constant (the F-engine axis is drift-free), so a consensus is
     # only replaced by a newer resolution.
     nh_joint_window_s=600.0,
-    # --presence-admit-displaced: the offset-blind evidence bar, as a multiple of the combiner's
-    # deep_floor. The evidence must not be an on-peak statistic, since prompt power is suppressed by
-    # exactly the offset being rescued; deep_snr re-searches code phase, so it sees the satellite
-    # wherever the tap sits. Prompt power over the probe floor is accepted as an alternative; the
-    # pedestal and offset tests are what refuse a centred noise realisation.
+    # --presence-admit-displaced: the deep-fold evidence bar, as a multiple of the combiner's
+    # deep_floor. Prompt power is suppressed by exactly the offset being rescued. deep_snr falls
+    # with it too (a coherent fold of the same prompt, carrier rate and phase searched, code not),
+    # but its ~10x integration gain keeps detecting a satellite a fraction of a chip off-peak;
+    # beyond ~1 chip it is blind too. Prompt power over the probe floor is accepted as an
+    # alternative; the pedestal and offset tests are what refuse a centred noise realisation.
     presence_disp_deep_margin=3.0,
     # --presence-admit-displaced: max |fitted offset|, chips (fleet.epl_decompose). The fit assumes
     # taps at +-0.5 chips on a triangular correlation, where the far tap leaves the triangle at
@@ -922,8 +923,9 @@ def build_parser(description):
         "fall with the offset the DLL exists to remove, so without this a displaced "
         "satellite is never armed for its own correction. The row also needs evidence "
         "that the satellite is there (prompt power over the probe floor, or deep_snr "
-        ">= presence_disp_deep_margin x deep_floor from the combiner's offset-blind "
-        "deep fold), a fitted pedestal <= presence_disp_pedestal_max and |offset| <= "
+        ">= presence_disp_deep_margin x deep_floor from the combiner's deep fold, "
+        "whose integration gain keeps a satellite a fraction of a chip off-peak "
+        "detectable), a fitted pedestal <= presence_disp_pedestal_max and |offset| <= "
         "presence_disp_off_max (constants in cli.py _FROZEN). Displacements over 0.1 "
         "chip are refused while the chain is browned out, or when 3 or more PRNs share "
         "one offset (within 0.1 chip) in a cycle: a chain event. Acts only under the "
@@ -1443,11 +1445,12 @@ def build_parser(description):
         "displaced verdicts; a row with no floor keeps the q/prompt verdict. PRNs "
         "separated by commas or spaces, or 'all'; empty "
         "(default) = none. Prompt power falls when the tap is off peak, so a "
-        "prompt-gated satellite that drifts off the peak is never trimmed back; the "
-        "deep fold re-searches rate and phase and sees the satellite wherever the tap "
-        "sits. Opt in per PRN: deep_snr can fire on noise, and this gate has no "
-        "pedestal or offset test. --dll-deep-gate-from-search adds the PRNs the "
-        "search detects strongly.",
+        "prompt-gated satellite that drifts off the peak is never trimmed back. The "
+        "deep fold is a coherent fold of the same prompt (carrier rate and phase "
+        "searched, code not), whose ~10x integration gain keeps detecting a satellite "
+        "a fraction of a chip off-peak; beyond ~1 chip it is blind too. Opt in per "
+        "PRN: deep_snr can fire on noise, and this gate has no pedestal or offset test. "
+        "--dll-deep-gate-from-search adds the PRNs the search detects strongly.",
     )
     ap.add_argument(
         "--dll-deep-gate-from-search",

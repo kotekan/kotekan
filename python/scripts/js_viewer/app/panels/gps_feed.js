@@ -113,8 +113,10 @@ export function signal_metrics(s, t_rec) {
     m.hold = s.prompt_hold != null ? s.prompt_hold : null;
     // q: the fleet discriminator's quality ratio (prompt vs shoulders), the statistic the DLL
     // gates on. It says whether the code loop is on the correlation peak, which no power
-    // metric can. Judge lock on q, never on sig/deep/C/N0: those ride the deep fold, which
-    // re-searches rate and phase and will certify a satellite whose prompt tap is on noise.
+    // metric can. Judge lock on q, never on sig/deep/C/N0: those ride the deep fold, a coherent
+    // fold of the same prompt (rate and phase searched, code not) whose ~10x integration gain
+    // reads a satellite whose prompt tap has slid off the peak, and whose rate search fires on
+    // noise.
     // q_floor is the broker's presence bar on q, measured from the noise probes each cycle
     // (fleet.apply_presence; its q_fallback when fewer than 3 probes report); q_inst counts
     // the contributing instances.

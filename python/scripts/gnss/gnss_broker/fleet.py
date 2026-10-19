@@ -446,8 +446,8 @@ def epl_decompose(q, disc, spacing=0.5):
 
     The fit does not certify the row. Two observables, two parameters: the solve is near-exact
     for any input including pure noise (a probe at the floor returns a confident large offset).
-    Only evidence of signal admits a row (apply_presence: the offset-blind deep detection or
-    prompt power), never this fit. E == P == L returns (0.0, inf), the no-information answer.
+    Only evidence of signal admits a row (apply_presence: the deep fold's detection or prompt
+    power), never this fit. E == P == L returns (0.0, inf), the no-information answer.
     """
     if q <= 0.0:
         return 0.0, float("inf")
@@ -499,7 +499,7 @@ def displaced_chain_event(admitted, browned_out, same_chips=0.1, n_same=3, n_row
     (#211, 2026-10-19).
 
     A row within `same_chips` of its peak is not displaced and has nothing to attribute to the
-    chain: the offset-blind fold admits dim on-peak satellites at off ~0 in numbers, and
+    chain: the deep fold admits dim on-peak satellites at off ~0 in numbers, and
     re-seeding those is harmless, so they are never refused.
     """
     displaced = [a for a in admitted if abs(a[1]) > same_chips]
@@ -541,7 +541,8 @@ def apply_presence(
     # value and spread move with the number of contributing instances and with the EMA length,
     # so any constant bar suits one fleet size only. Both q and prompt power are on-peak
     # statistics, so on their own they refuse a satellite whose tap has slid off the peak; the
-    # displaced admission and the deep gate below are the offset-blind routes in.
+    # displaced admission (the E/P/L fit reads the deficit as an offset) and the deep gate (the
+    # deep fold's larger integration gain) below are the routes in.
     # _floor: median and MAD-sigma of a population, and the bar max(median + k*sigma,
     # median + lo_margin); None with fewer than 8 values.
     def _floor(vals, k, lo_margin):
@@ -629,10 +630,12 @@ def apply_presence(
         # a displaced row has a low pedestal (its power went to a neighbouring tap, not to
         # noise), a weak row a large one. A row that failed the bars is re-admitted when
         #   * there is evidence it is really there: deep_snr >= deep_margin x deep_floor from
-        #     the combiner's offset-blind fold (it re-searches rate and phase, so it sees the
-        #     satellite wherever the tap sits; deep_floor is the combiner's own rectification
-        #     level), or p_pow >= p_floor. Prompt power is accepted but not required, since
-        #     the offset being rescued suppresses it; and
+        #     the combiner's deep fold (a coherent fold of the same prompt, carrier rate and
+        #     phase searched, code not: its ~10x integration gain keeps detecting a satellite a
+        #     fraction of a chip off-peak, where prompt power already fails, and beyond ~1 chip
+        #     it is blind too; deep_floor is the combiner's own rectification level), or
+        #     p_pow >= p_floor. Prompt power is accepted but not required, since the offset
+        #     being rescued suppresses it; and
         #   * pedestal <= pedestal_max and |offset| <= off_max_chips, which refuse a centred
         #     noise realisation (large pedestal) and a satellite beyond the DLL's pull-in
         #     (large offset; that one needs the search, not the loop).
@@ -664,9 +667,11 @@ def apply_presence(
     # detected, or True for all). Prompt power is suppressed when the tap is off-peak, so a
     # prompt-gated satellite that drifts off the peak fails the gate, is never trimmed, and
     # stays off-peak: the loop cannot pull in from the shoulder. Another tap ratio would not fix
-    # that; every tap statistic is on-peak-biased. The deep fold re-searches rate and
-    # phase, so deep_snr detects the satellite wherever the tap sits (the same property
-    # makes it wrong for a C/N0). For a PRN in the set with a combiner floor, present =
+    # that; every tap statistic is on-peak-biased. The deep fold is too, a coherent fold of
+    # the same prompt (carrier rate and phase searched, code not), but its ~10x integration
+    # gain keeps deep_snr detecting a satellite the tap has drifted a fraction of a chip off,
+    # where prompt power already fails; beyond ~1 chip it is blind too (the same gain makes
+    # it wrong for a C/N0). For a PRN in the set with a combiner floor, present =
     # deep_snr >= deep_gate_margin x deep_floor, overriding the q/prompt and displaced
     # verdicts. Opt-in per PRN because deep_snr can fire on noise and this gate has no
     # pedestal or offset test.
@@ -731,7 +736,7 @@ def apply_presence(
             "presence-disp",
             "PRESENCE +displaced: %s -- admitted by the displaced gate, which the q/prompt "
             "gate had refused. (off = tap offset in chips, ped = noise pedestal; 'p' means "
-            "prompt power carried it, 'deep' means the offset-blind fold did.)"
+            "prompt power carried it, 'deep' means the deep fold did.)"
             % "; ".join(
                 "PRN %s off %+.3f ped %.3f p/floor %.1f via %s"
                 % (p2, o, pe, r, "p" if b else "deep")

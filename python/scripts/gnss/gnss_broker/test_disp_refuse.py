@@ -93,7 +93,7 @@ NULL_CROSSING = [
 E4_ALONE = [(4, +0.589, 0.059, 8.7, True)]
 # gal_e6: two at one offset (E6 -0.251, E4 -0.273), under the chain bar of three.
 TWO_SAME = [(6, -0.251, 0.066, 28.1, True), (4, -0.273, 0.038, 14.6, True)]
-# bds_b2a: dim satellites the offset-blind fold admits on their peak, as in most cycles. Not
+# bds_b2a: dim satellites the deep fold admits on their peak, as in most cycles. Not
 # displaced, so there is no chain event in them; refusing these would empty the chain.
 ON_PEAK = [
     (22, -0.002, 0.218, 0.7, False),

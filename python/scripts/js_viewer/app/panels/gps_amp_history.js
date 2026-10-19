@@ -43,8 +43,9 @@ const MODES = {
     beam_ph:  {label: "beam φ",  axis: "element phase spread (deg RMS)", unit: "°",
                fmt: ".0f", zero: true},
     // q: the fleet discriminator's prompt-vs-shoulder ratio, "is the code loop on the peak".
-    // Judge lock here, not on sig or C/N0: the deep fold re-searches and will certify a
-    // satellite whose prompt tap is on noise. 2.2 is the lock bar (gps_feed's Q_LOCK).
+    // Judge lock here, not on sig or C/N0: the deep fold's integration gain and rate search
+    // will certify a satellite whose prompt tap is off the peak or on noise. 2.2 is the lock
+    // bar (gps_feed's Q_LOCK).
     q:       {label: "q",        axis: "code-loop quality (fleet discriminator)", unit: "",
               fmt: ".2f", zero: true},
     sig:     {label: "sig",      axis: "significance (σ)", unit: "σ", fmt: ".1f", zero: true},

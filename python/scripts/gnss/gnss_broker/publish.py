@@ -619,8 +619,9 @@ class FleetPublisher:
                 row["kcoh_t_coh_s"] = _kc.get("t_coh_s")
             #
             # Prompt lock. The deep-fold numbers (deep_snr, cn0_coh_db) are blind to code error:
-            # the fold re-searches rate and phase and re-finds the satellite wherever the prompt
-            # tap sits, so a row can serve a strong cn0_coh_db while E/P/L sit on noise. A zero
+            # the fold integrates the prompt coherently (rate and phase searched, code not), and
+            # its ~10x integration gain still reads a satellite whose prompt tap has slid off the
+            # peak, so a row can serve a strong cn0_coh_db while E/P/L sit on noise. A zero
             # discriminator means on-peak or blind (E ~= L ~= noise gives zero), so it is no
             # evidence of health either. Two witnesses of different kinds:
             #   s4_raw -- the prompt intensity's fractional variation (best instance's row).

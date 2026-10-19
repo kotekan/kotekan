@@ -228,7 +228,8 @@ common:
         # component chip rate either side) is 6 freq_ids, fewer than the comb stride of 8, so only
         # some instances hold a channel of it: the generator skips the chain on a GPU with none,
         # and the broker's fleet combine sums the instances that report, given at least
-        # --dll-min-instances (2) for the DLL and --coh-min-instances (3) for the coherent sum.
+        # dll_min_instances (2) for the DLL and coh_min_instances (3) for the coherent sum
+        # (constants in cli.py _FROZEN).
         # PRNs: the L2C-capable satellites in the IGS registry (IIR-M and later; G02, G16, G19
         # and G22 excluded). CM, not CL: CM's 10230 chips / 20 ms fit the record geometry the
         # fleet runs, while CL's 767250 chips / 1.5 s need their own bring-up. Seeded from the
@@ -263,8 +264,8 @@ common:
         - GLO_L2OC_P_OC:4,5,6,8,9,11,12,16,19,20,21,22,23,24
 
 nodes:
-    # search-port-base: the aggregator listens for feed i (node-major, GPU-minor, in its
-    # --aggregator-instance order) on its own base (11040) + i, so a node's base is
+    # search-port-base: the aggregator listens for the k-th node's GPU g feed (k from 0 in its
+    # --aggregator-instance order) on its own base (11040) + 2k + g, so a node's base is
     # 11040 + 2 x its position in that list, with GPU 1 on base + 1. Any other value makes the
     # aggregator read one node's comb as another's.
     #

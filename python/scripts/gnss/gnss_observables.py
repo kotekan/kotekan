@@ -592,10 +592,10 @@ def main():
                         r, r.get("deep_snr"), r.get("coherence_s")
                     ),
                     # Is the prompt tap on the signal? cn0_coh_dbhz is blind to code error:
-                    # deep_snr comes from the deep fold, which re-searches and re-finds the
-                    # satellite wherever the tap was commanded. Carried per row so offline does
-                    # not average a blind window into a health number. prompt_lock False means
-                    # cn0_coh_dbhz is a deep-fold significance, not a C/N0.
+                    # deep_snr comes from the deep fold, whose ~10x integration gain on the
+                    # prompt still reads a satellite the tap has slid off. Carried per row so
+                    # offline does not average a blind window into a health number. prompt_lock
+                    # False means cn0_coh_dbhz is a deep-fold significance, not a C/N0.
                     "prompt_lock": r.get("prompt_lock"),
                     "prompt_rayleigh": r.get("prompt_rayleigh"),
                     "fleet_present": r.get("fleet_present"),
