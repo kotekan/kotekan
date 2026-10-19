@@ -39,6 +39,7 @@ from gnss_broker.fits import (
     fit_dop_rate,
     tracker_phase_at,
     cp_rate_from_code_bias,
+    append_windowed,
 )
 
 
@@ -905,11 +906,9 @@ def stage_detections_to_seeds(ctx):
                 (_cpe_recon + _hop_off_det - _fc - _trim_eff + ctx.code_len / 2.0)
                 % ctx.code_len
             ) - ctx.code_len / 2.0
-            _ih = ctx.innov_hist.setdefault(prn, [])
-            _ih.append((ctx.t0, _inv))
-            # Keeps the newest 120 samples; the publish block cuts the 10-minute statistic by time
-            # from these, so above one sample per 5 s the cap, not 10 minutes, sets the window.
-            del _ih[:-120]
+            # Pruned by age at the publish block's 10-minute window (fits.append_windowed), so the
+            # statistic it cuts from these covers the whole window.
+            append_windowed(ctx.innov_hist.setdefault(prn, []), ctx.t0, _inv)
         # Model-primary PRNs (mp_flipped) stop here. The detection has done all it may: the
         # deep-gate stamp above, and the joint feed and MINNOV in the dead-reckon stage (the PRN is
         # dead-reckon-owned, so INNOV is skipped). The seed stays the model's, slewed by the

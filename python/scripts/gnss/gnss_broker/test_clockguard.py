@@ -681,6 +681,102 @@ def test_declared_repin_reaches_consumers():
     )
 
 
+def _self_solved(rx, t0=100.0):
+    """gal_e5a after solving its own clock (a bootstrap and an in-bound update at TRUE_CLK, so
+    not primed), now without detections and adopting: a measured clock to defend."""
+    c = _l5()
+    c.rx = rx
+    c.chain_id = "gal_e5a"
+    c.args.dr_clock_adopt, c.args.dr_clock_adopt_max_chips = True, 5.0
+    t = _established(c, t0)
+    c.drp.offs, c.drp.rx_sib = [], None
+    return c, t
+
+
+def _same_band_donor(rx, chain, t, clk, epoch=None):
+    rx.contribute_dr_clock(
+        chain,
+        "1176.45MHz",
+        clk % L5_LEN,
+        0.0,
+        t,
+        L5_LEN,
+        chip_rate_hz=L5_RATE,
+        epoch=epoch,
+    )
+
+
+def test_refusals_do_not_keep_a_solved_clock_fresh():
+    print(
+        "a self-solved chain that never adopted: refusals do not refresh it, the 300 s escape comes"
+    )
+    _capture()
+    rx = Receiver(log=lambda m: None)
+    c, t_meas = _self_solved(rx)
+    held = c.dr_state["clk"]
+    t, adopted_at = t_meas + 1.0, None
+    while t < t_meas + 700.0:
+        _same_band_donor(rx, "gps_l5", t, TRUE_CLK + 20.0)
+        _adopt(c, t + 0.5)
+        if c.dr_state["clk"] != held:
+            adopted_at = t + 0.5
+            break
+        t += 2.0
+    age = None if adopted_at is None else adopted_at - t_meas
+    check(
+        age is None or age > 300.0,
+        "a +20-chip undeclared donor is refused while the solve is under 300 s old",
+    )
+    check(
+        age is not None
+        and age < 302.0
+        and abs(c.dr_state["clk"] - TRUE_CLK - 20.0) < 1e-9,
+        "and adopted once it is 300 s stale, refusals notwithstanding (adopted %s s after "
+        "the solve)" % (None if age is None else "%.1f" % age),
+    )
+
+
+def test_declared_only_from_the_adopted_donor():
+    print("a clock epoch is declared only by the donor it was adopted from")
+    _capture()
+    rx = Receiver(log=lambda m: None)
+    c, t_meas = _self_solved(rx)
+    held = c.dr_state["clk"]
+    _same_band_donor(rx, "gps_l5", t_meas + 1.0, TRUE_CLK + 20.0, epoch=1)
+    _adopt(c, t_meas + 1.5)
+    check(
+        c.dr_state["clk"] == held,
+        "first adoption, donor gps_l5 at +20 with epoch 1: REFUSED (the epoch is not ours)",
+    )
+    t = t_meas + 3.0
+    while t < t_meas + 400.0 and c.dr_state["clk"] == held:
+        _same_band_donor(rx, "gps_l5", t, TRUE_CLK + 20.0, epoch=1)
+        _adopt(c, t + 0.5)
+        t += 2.0
+    check(
+        abs(c.dr_state["clk"] - (TRUE_CLK + 20.0)) < 1e-9
+        and c.dr_state.get("clk_src") == "gps_l5"
+        and c.dr_state.get("clk_src_epoch") == 1,
+        "adopted by the 300 s escape, remembering donor gps_l5 and its epoch 1",
+    )
+    n = len(LOGS)
+    _same_band_donor(rx, "gps_l5", t, TRUE_CLK + 40.0, epoch=2)
+    _adopt(c, t + 0.5)
+    check(
+        abs(c.dr_state["clk"] - (TRUE_CLK + 40.0)) < 1e-9
+        and _logged("ADOPTED: a DECLARED snap", n),
+        "gps_l5 epoch 2 at +20 more: adopted at once as a declared snap",
+    )
+    # the donor changes: gps_l5 stops publishing and another same-band chain takes its place
+    rx._dr.pop(("1176.45MHz", "gps_l5"))
+    _same_band_donor(rx, "bds_b2a", t + 2.0, TRUE_CLK + 60.0, epoch=1)
+    _adopt(c, t + 2.5)
+    check(
+        abs(c.dr_state["clk"] - (TRUE_CLK + 40.0)) < 1e-9,
+        "a new donor bds_b2a at +20 with its own epoch 1: REFUSED",
+    )
+
+
 def test_held_value_is_valid_now():
     print(
         "a HELD donor value is taken at the consumer's own now (no (l-a) extrapolation)"
@@ -731,6 +827,8 @@ if __name__ == "__main__":
     test_escape_suppressed_by_joint_adoption()
     test_samesband_refusal_holds_zero_rate()
     test_declared_repin_reaches_consumers()
+    test_refusals_do_not_keep_a_solved_clock_fresh()
+    test_declared_only_from_the_adopted_donor()
     test_held_value_is_valid_now()
     if _fails:
         print("FAILED: %d" % len(_fails))

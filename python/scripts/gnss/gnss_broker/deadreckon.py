@@ -39,11 +39,12 @@ from gnss_broker.transport import _now, _log, _log_rl, axis_now
 from gnss_broker.clockhealth import dr_solve_healthy
 from gnss_broker.seed import Seed
 from gnss_broker.fits import (
-    dr_seed_phys,
+    held_phase,
     dr_cp0,
     cp_rate_from_code_bias,
     seed_phase_at_ref,
     split_erratic_offsets,
+    append_windowed,
 )
 from gnss_broker.receiver import JOINT_REF_RATE_HZ
 from gnss_broker.sky import nearest_boresight, transit_sky
@@ -326,6 +327,7 @@ def dr_clock_quality(ctx):
             ctx.dr_state["clk"] = (clk + ctx.args.dr_clock_alpha * step) % ctx.code_len
             ctx.dr_state["clk_confirmed"] = True
         ctx.dr_state["clk_t"] = ctx.drp.now_w
+        ctx.dr_state["clk_meas_t"] = ctx.drp.now_w
         # Contribute to the shared Receiver: clk and drift are the receiver's, the rest of
         # dr_state this chain's, and a co-hosted chain without offsets adopts from there.
         # Carried with its code length and chip rate, because chips are modular and a unit: a
@@ -505,6 +507,7 @@ def _dr_clock_step_gate(ctx):
         _conf = bool(ctx.dr_state.get("clk_confirmed"))
         ctx.dr_state["clk"] = ctx.drp.raw_clk
         ctx.dr_state["clk_t"] = ctx.drp.now_w
+        ctx.dr_state["clk_meas_t"] = ctx.drp.now_w
         ctx.dr_state["clk_confirmed"] = True
         ctx.dr_state.pop("raw_prev", None)
         ctx.dr_state.pop("repin", None)
@@ -554,9 +557,10 @@ def _dr_clock_local_fresh(ctx):
 
     The age runs from the newer of two stamps:
       clk_src_t  the donor's stamp on the clock last taken from it (same-band adoption or
-                 cross-band bootstrap); clk_t before the first. A refusal holds the clock at
-                 zero rate (clk_t moves to now) but never refreshes clk_src_t, so once a chain
-                 has adopted, refusing cannot keep it fresh forever.
+                 cross-band bootstrap); before the first, clk_meas_t, when this chain's own
+                 solve last wrote the clock. A refusal holds the clock at zero rate (clk_t
+                 moves to now) but touches neither, so refusing cannot keep a chain fresh
+                 forever, whether or not it has adopted before.
       jclk_t     when JOINT-CLK last adopted the joint clock on top of it. A chain the joint
                  is vouching for (healthy by its own gates, and within their bound of this
                  very clock) is not stale and must not escape onto a stepped donor; when the
@@ -565,17 +569,24 @@ def _dr_clock_local_fresh(ctx):
 
     A step the donor declared (a new clock_epoch: a bootstrap, re-roll or re-pin of its own
     solve) is not refused at all: the callers adopt it at any size (_dr_clock_declared)."""
-    _src = ctx.dr_state.get("clk_src_t", ctx.dr_state.get("clk_t"))
+    _src = ctx.dr_state.get("clk_src_t", ctx.dr_state.get("clk_meas_t"))
     _ts = [_t for _t in (_src, ctx.dr_state.get("jclk_t")) if _t is not None]
     return bool(_ts) and ctx.t0 - max(_ts) < 300.0
 
 
 def _dr_clock_declared(ctx):
-    """True when the donor's contribution carries a clock_epoch this chain has not adopted yet:
-    the donor snapped its clock on purpose (bootstrap, re-roll, re-pin) since our last
-    adoption. False when the donor publishes no epoch, so every step is bounded."""
-    _e = ctx.drp.rx_sib.extra.get("epoch") if ctx.drp.rx_sib is not None else None
-    return _e is not None and _e != ctx.dr_state.get("clk_src_epoch")
+    """True when the donor this chain last adopted from now carries a clock_epoch we have not
+    adopted yet: it snapped its clock on purpose (bootstrap, re-roll, re-pin) since our last
+    adoption. Epochs are per-chain counters, so a different donor's epoch says nothing about
+    our clock: a donor change, or a first adoption, is bounded like any step. False when the
+    donor publishes no epoch, so every step is bounded."""
+    _sib = ctx.drp.rx_sib
+    _e = _sib.extra.get("epoch") if _sib is not None else None
+    return (
+        _e is not None
+        and _sib.src == ctx.dr_state.get("clk_src")
+        and _e != ctx.dr_state.get("clk_src_epoch")
+    )
 
 
 def dr_clock_adopt_rx(ctx):
@@ -807,6 +818,7 @@ def dr_clock_adopt_rx(ctx):
                 ctx.t0 if ctx.drp.rx_sib.extra.get("held") else ctx.drp.rx_sib.t
             )
             ctx.dr_state["clk_src_t"] = ctx.drp.rx_sib.t
+            ctx.dr_state["clk_src"] = ctx.drp.rx_sib.src
             ctx.dr_state["clk_src_epoch"] = ctx.drp.rx_sib.extra.get("epoch")
             ctx.dr_state.pop("clk_primed", None)
     elif (
@@ -884,6 +896,7 @@ def dr_clock_adopt_rx(ctx):
                 ctx.t0 if ctx.drp.rx_sib.extra.get("held") else ctx.drp.rx_sib.t
             )  # a held donor value is valid now
             ctx.dr_state["clk_src_t"] = ctx.drp.rx_sib.t
+            ctx.dr_state["clk_src"] = ctx.drp.rx_sib.src
             ctx.dr_state["clk_src_epoch"] = ctx.drp.rx_sib.extra.get("epoch")
             # An adopted clock is a measurement (the donor's), so the prime is spent: if this
             # chain gains detections it refines from here rather than snapping.
@@ -925,10 +938,10 @@ def dr_joint_shadow(ctx):
     if ctx.args.joint_shadow and ctx.drp.offs:
         try:
             _k = JOINT_REF_RATE_HZ / ctx.args.chip_rate_hz
-            # One state for the whole receiver, warm-started from this chain's clock: born at
-            # 0 against a true clock of ~151 chips, every measurement would land beyond
-            # escape_max_step and be refused. clk0 is read only at creation, so it cannot
-            # fight the running filter.
+            # One state for the whole receiver. clk0 is read only when this call creates it, so
+            # it cannot fight the running filter; the notes drain in stage_dead_reckon runs first
+            # and creates it without one, so the state is born at 0 and its cold prior
+            # (sigma_clk0, 200 chips) takes the ~151-chip clock in its first updates.
             _js = ctx.rx.joint_receiver(
                 ctx.band_id,
                 ctx.code_len,
@@ -975,9 +988,9 @@ def dr_joint_shadow(ctx):
                         and _js._n.get(_k3, 0) >= ctx.args.joint_mask_after
                     ):
                         _mi = _js.wrap(_d3 * _k - _js.predicted(_k3)) / _k
-                        _mh = ctx.minnov_hist.setdefault(_p3, [])
-                        _mh.append((ctx.t0, _mi))
-                        del _mh[:-120]
+                        append_windowed(
+                            ctx.minnov_hist.setdefault(_p3, []), ctx.t0, _mi
+                        )
                 _js.cycle(
                     [
                         ((ctx.drp.tag, p), d * _k, ctx.args.joint_sigma * _k)
@@ -1341,8 +1354,9 @@ def dr_seed(ctx):
         # The loop skips detected satellites (model-primary ones aside) and the joint state holds
         # only detected ones, so a comparison inside the loop would see almost none.
         _jr3 = ctx.joint_state(ctx.rx, ctx.band_id, ctx.args)
-        # The joint is in reference chips (Receiver.joint_unit): at another chip rate the
-        # comparison is made in ours, through the clock consumer's conversion and window.
+        # The joint is in reference chips (Receiver.joint_unit): the comparison is made in ours,
+        # through the clock consumer's conversion and window, the only one both offsets are
+        # defined in; at drp.mod a clock on the other side of a code wrap reads a whole period.
         _u3 = ctx.rx.joint_unit() if _jr3 is not None else None
         if _u3 is not None and ctx.drp.now_w >= ctx.dr_state.get("jslew_log_next", 0.0):
             ctx.dr_state["jslew_log_next"] = ctx.drp.now_w + 30.0
@@ -1353,14 +1367,9 @@ def dr_seed(ctx):
                     continue
                 _lo = ctx.drp.clk_now + ctx.bsat.get(_p, ctx.drp.now_w)
                 _jo = _jr3.predicted((_ct, _p))
-                if _r3 == 1.0:
-                    _dd = (
-                        (_jo - _lo + ctx.drp.mod / 2.0) % ctx.drp.mod
-                    ) - ctx.drp.mod / 2.0
-                else:
-                    _dd = ctx.rx.joint_clk_delta(
-                        _jo, _u3[0], _u3[1], _lo, ctx.args.chip_rate_hz, ctx.code_len
-                    )[0]
+                _dd = ctx.rx.joint_clk_delta(
+                    _jo, _u3[0], _u3[1], _lo, ctx.args.chip_rate_hz, ctx.code_len
+                )[0]
                 _cmp.append((_p, _dd, (_jr3.sigma((_ct, _p)) or 0.0) * _r3))
             if _cmp:
                 _cmp.sort(key=lambda x: -abs(x[1]))
@@ -1462,17 +1471,17 @@ def dr_seed(ctx):
             dop_seed = (
                 ctx.args.doppler_sign * dop_geo + ctx.cb.seed
             )  # the seed-side bias, not the hint EMA
-            # One epoch, the Doppler included: dop_geo is the model at now_w, but the seed is
-            # labelled at the forecast hop (--dr-forecast-lead-s ahead), and the tracker propagates
-            # the Doppler from ref_hop at doppler_rate, so an unforecast Doppler runs the replica
-            # lead x drate off the sky for the whole seed. It is forecast to the label once drate is
-            # known (below).
+            # One epoch, the Doppler included: dop_geo is the model at the cycle's hop-axis epoch
+            # (dr_eph_epoch), but the seed is labelled at the forecast hop (--dr-forecast-lead-s
+            # ahead), and the tracker propagates the Doppler from ref_hop at doppler_rate, so an
+            # unforecast Doppler runs the replica lead x drate off the sky for the whole seed. It
+            # is forecast to the label once drate is known (below).
             #
             # drate is the centred difference of range rate between pd0 and pd2, 2 s either side of
-            # now_w (a 4 s span); when pd0 lacks the satellite, the forward difference over the 2 s
-            # from now_w to pd2. Each divisor must match its span: a halved drate leaks into the
-            # seed as a ramp, and drate has one sign on every satellite (Doppler falls through a
-            # pass), so the ramps add up to what looks like a constellation-common drift.
+            # that epoch (a 4 s span); when pd0 lacks the satellite, the forward difference over
+            # the 2 s from it to pd2. Each divisor must match its span: a halved drate leaks into
+            # the seed as a ramp, and drate has one sign on every satellite (Doppler falls through
+            # a pass), so the ramps add up to what looks like a constellation-common drift.
             drate = 0.0
             v0 = (ctx.dr_state.get("pd0") or {}).get((ctag, prn))
             if v2 is not None and v0 is not None:
@@ -1566,9 +1575,11 @@ def dr_seed(ctx):
                 * (1.0 + ctx.args.code_doppler_sign * dop_seed / ctx.args.carrier_hz)
             ) % ctx.drp.mod
             if _slew:
-                # _held: where the tracker's propagation puts this seed at hop h1 (dr_seed_phys, the
-                # exact inverse of the seed currency plus the tracker's extrapolation; the selftest
-                # checks the round trip). _model is the sum cp0 uses, before back-referencing.
+                # _held: where the tracker's propagation puts this seed at hop h1 (held_phase: its
+                # code_phase_at_ref_chips when it carries one, as propagate_seed prefers, else
+                # dr_seed_phys, the exact inverse of the seed currency plus the tracker's
+                # extrapolation; the selftest checks the round trip). _model is the sum cp0 uses,
+                # before back-referencing.
                 #
                 # Both at t_h = h1/hps, the rounded hop's time, never the unrounded t_fc_abs: the
                 # code advances ~52.4 chips per hop at 10.23 Mcps, so the sub-hop rounding alone
@@ -1578,7 +1589,7 @@ def dr_seed(ctx):
                 # difference of two epochs has no such cancellation.
                 h1 = int(round(ctx.drp.t_fc_abs * ctx.args.hops_per_sec))
                 t_h = h1 / ctx.args.hops_per_sec
-                _held = dr_seed_phys(
+                _held = held_phase(
                     ctx.seeds[prn],
                     h1,
                     ctx.args.hops_per_sec,
@@ -1781,12 +1792,18 @@ def _dr_reload(ctx, first, with_dcb=True):
                         "it" % (_age, ctx.args.dcb_max_age_days)
                     )
                 if _why:
+                    # An old product is warn-only (dcb_max_age_days): its table is installed.
                     _log(
-                        "DCB: %s. Falling back to the broadcast group delay "
-                        "per satellite -- the per-sat bias spread is gone, and "
-                        "for BeiDou B2a there is no broadcast term at all. %s"
+                        "DCB: %s. %s %s"
                         % (
                             _why,
+                            "The cached measured biases stay in use (warn-only) until "
+                            "fetch_dcb stops serving them; then the broadcast term takes "
+                            "over."
+                            if _t
+                            else "Falling back to the broadcast group delay per satellite "
+                            "-- the per-sat bias spread is gone, and for BeiDou B2a there "
+                            "is no broadcast term at all.",
                             "Token expires in %.1f days." % _texp
                             if _texp is not None
                             else "Token expiry unknown (not a JWT).",
@@ -1825,7 +1842,15 @@ def _dr_apply_reload(ctx, res):
     evicted unfolded, which breaks the fleet-ADR arcs. Nothing here re-seeds: dr_seed reads the new
     model the same way it read the old one."""
     if res["error"]:
-        _log("dead-reckon: BRDC unavailable (%s); retry in 10 min" % res["error"])
+        _log(
+            "dead-reckon: BRDC unavailable (%s); %s"
+            % (
+                res["error"],
+                "no ephemeris yet, retrying every pass"
+                if ctx.dr_state.get("eph") is None
+                else "retry in 10 min",
+            )
+        )
         ctx.dr_state["eph_t"] = ctx.drp.now_w - _DR_EPH_REFRESH_S + 600.0
         return
     ctx.dr_state["eph"] = res["eph"]
@@ -1880,10 +1905,10 @@ def _det_offset(ctx, prn, det):
     scans scatter by their ref_hop's place in the code period. The solve uses this
     reconstruction, not the detection's cp_at_ref: that is referenced at the hop's LAST
     sample, so using it would import the search's fft_len. The (cp0, dop) pair is published
-    together and its Doppler embed cancels exactly here -- provided the search removed its
-    replica anchor's advance from cp0; until 2026-10-18 it did not (gnss::detection_phase,
-    #207), and every offset here carried range_rate x 16 ms. The offset is normalized to
-    t_now_abs at the drift."""
+    together and its Doppler embed cancels exactly here -- provided the search removes its
+    replica anchor's advance from cp0 (gnss::detection_phase); an advance left in cp0 puts
+    range_rate x 16 ms into every offset. The offset is normalized to t_now_abs at the
+    drift."""
     _snr, dop, cp, ref_hop, _nh, _cpl, _car = det
     v = ctx.drp.pd[(ctx.drp.tag, prn)]
     t_i = ref_hop / ctx.args.hops_per_sec
@@ -1976,6 +2001,21 @@ def search_monitor(ctx, offs):
                 vals[(9 * len(vals)) // 10],
             )
         )
+
+
+def untrusted_doppler_label(args, prn, why, pred):
+    """The seed Doppler source for a satellite demoted to dr_untrusted for `why`, as the
+    MODEL-UNTRUSTED line names it. Mirrors seeding.stage_detections_to_seeds: the search's
+    under --seed-doppler det; the BRDC model's, kept, for a demotion other than a stale
+    ephemeris under --dr-doppler-ignores-integrity; else the almanac predictor's when it holds
+    the PRN; else the detection's grid Doppler."""
+    if args.seed_doppler == "det":
+        return "falls back dr -> det (--seed-doppler det)"
+    if args.dr_doppler_ignores_integrity and not str(why).startswith("ephemeris"):
+        return "stays dr (BRDC kept, --dr-doppler-ignores-integrity)"
+    if args.almanac and prn in pred:
+        return "falls back dr -> pred (almanac)"
+    return "falls back dr -> DET(grid)"
 
 
 def stage_dead_reckon(ctx):
@@ -2188,7 +2228,7 @@ def stage_dead_reckon(ctx):
                             else "CROSS-BAND, rate only;",
                             _sh_band
                             if _sh_band == ctx.band_id
-                            else "phase stays per-band",
+                            else "no phase adopted here",
                         ),
                         every_s=300.0,
                     )
@@ -2392,8 +2432,8 @@ def stage_dead_reckon(ctx):
             # t_now_abs at the drift. dr_clock_solve takes their circular median.
             ctx.drp.offs = []
             # Detection age per satellite, logged beside each integrity residual. A detection
-            # latches for up to the 1276 s per-PRN revisit and the normalization ages it by drift x
-            # age, so drift error grows with age: residuals that grow with age measure the
+            # latches until the search next scans that PRN, and the normalization ages it by drift
+            # x age, so drift error grows with age: residuals that grow with age measure the
             # normalization, not the sky.
             det_age = {}
             off_inputs = {}
@@ -2554,19 +2594,13 @@ def stage_dead_reckon(ctx):
                         ctx.dr_bad.get(prn_i, 0) >= 3
                     ) and prn_i not in ctx.dr_untrusted:
                         ctx.dr_untrusted[prn_i] = why
-                        # The log names the Doppler the seed loop (seeding.py) falls back to: the
-                        # almanac predictor's, or the search's under --seed-doppler det. Under
-                        # --dr-doppler-ignores-integrity an integrity demotion keeps the BRDC
-                        # Doppler instead, which this line does not reflect (seeding.py logs it).
                         _log(
                             "MODEL-UNTRUSTED PRN %d (%s, 3 consecutive) -> Doppler source "
-                            "falls back dr -> %s for this sat"
+                            "%s for this sat"
                             % (
                                 prn_i,
                                 why,
-                                "pred (almanac)"
-                                if ctx.args.seed_doppler != "det"
-                                else "det",
+                                untrusted_doppler_label(ctx.args, prn_i, why, ctx.pred),
                             )
                         )
                     elif ctx.dr_bad.get(prn_i, 0) == 0 and prn_i in ctx.dr_untrusted:

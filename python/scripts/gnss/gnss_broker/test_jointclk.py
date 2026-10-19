@@ -686,6 +686,64 @@ def test_seed_offset_per_prn():
     )
 
 
+class _PredJoint(_FakeJoint):
+    """A joint state that also predicts each satellite's offset (clk + b_i), as the SEED-OFFSET
+    summary reads it."""
+
+    def __init__(self, pred, sigma=0.05):
+        _FakeJoint.__init__(self, 150.2, sigma, n=0)
+        self._pred = dict(pred)
+        self._idx = {k: i for i, k in enumerate(self._pred)}
+
+    def predicted(self, key):
+        return self._pred[key]
+
+
+def _seed_offset_summary(joint_pred, legacy_clk, rate=REF_RATE, code_len=REF_LEN):
+    """Drive dr_seed once with an empty model sky, so only the clock and the 30-s SEED-OFFSET
+    summary run; returns the summary line. The seed modulus is L5's 20 code periods."""
+    rx = Receiver(log=lambda m: None)
+    js = _PredJoint({("G", p): v for p, v in joint_pred.items()})
+    rx._joint["__receiver__"] = js
+    ctx = types.SimpleNamespace(
+        args=types.SimpleNamespace(chip_rate_hz=rate, mask_deg=5.0),
+        rx=rx,
+        band_id="test",
+        code_len=code_len,
+        dr_state={"clk": legacy_clk, "clk_t": 100.0, "seeded": set()},
+        drp=types.SimpleNamespace(
+            drift=0.0, now_w=100.0, la=0.0, tag="G", mod=20 * code_len, pd={}
+        ),
+        joint_consume=(),
+        joint_state=lambda _rx, _b, _a: js,
+        bsat=types.SimpleNamespace(get=lambda p, t: 0.0),
+        dr_min_prn=0,
+        capable=None,
+    )
+    lines = []
+    _orig = deadreckon._log, deadreckon._log_rl
+    deadreckon._log = lambda msg: lines.append(msg)
+    deadreckon._log_rl = lambda key, msg, every_s=10.0: lines.append(msg)
+    try:
+        deadreckon.dr_seed(ctx)
+    finally:
+        deadreckon._log, deadreckon._log_rl = _orig
+    return ([m for m in lines if m.startswith("SEED-OFFSET")] or [""])[0]
+
+
+def test_seed_offset_summary_wrap():
+    """The SEED-OFFSET summary wraps joint-minus-legacy in the window both are defined in,
+    not at the seed modulus: a legacy clock just past a code wrap and a joint offset just
+    before it are 0.2 chips apart, not a whole code period."""
+    line = _seed_offset_summary({3: 10229.9, 5: 10230.0 - 0.05}, 0.1)
+    check(
+        "median +0.200 chips" in line and "PRN3 -0.20" in line,
+        "10.23 Mcps, legacy 0.1 vs joint 10229.9 across the wrap: -0.20 (%s)" % line,
+    )
+    line = _seed_offset_summary({3: 151.0}, 150.2)
+    check("PRN3 +0.80" in line, "...and +0.80 away from the wrap (%s)" % line)
+
+
 def main():
     for fn in (
         test_live_numbers_convert,
@@ -698,6 +756,7 @@ def main():
         test_coast_on_refusal,
         test_rate_consumer_unit,
         test_seed_offset_per_prn,
+        test_seed_offset_summary_wrap,
     ):
         print(fn.__name__)
         fn()

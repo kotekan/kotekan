@@ -2,8 +2,8 @@
 and the stall verdicts.
 
 Functions of their arguments, with no globals and no I/O of their own (rate_residuals logs through
-an optional callback; rate_residuals and split_erratic_offsets update caller-owned state passed
-in), so each is testable in isolation.
+an optional callback; rate_residuals, split_erratic_offsets and append_windowed update
+caller-owned state passed in), so each is testable in isolation.
 """
 from gnss_broker import signals
 
@@ -313,8 +313,8 @@ def dr_seed_phys(seed, h1, hops_per_sec, chip_hz, carrier_hz, code_doppler_sign,
     undone at the seed's Doppler (the mapping is defined by the Doppler the seed carries, not the
     one the sky has), the residual clock slope, and the dop_rate quadratic. It models the cp0
     argument only; for a seed carrying code_phase_at_ref_chips, which propagate_seed prefers,
-    tracker_phase_at is the model. Used by the slewed refresh to measure how far the live model
-    has walked from what a held seed is despreading at."""
+    tracker_phase_at is the model, and held_phase picks between the two for the slewed refresh,
+    which measures how far the live model has walked from what a held seed is despreading at."""
     t1 = h1 / hops_per_sec
     dt = (h1 - seed["ref_hop"]) / hops_per_sec
     return (
@@ -433,6 +433,36 @@ def tracker_phase_at(
         * (seed.get("doppler_rate_hz_s", 0.0) or 0.0)
         * dt
         * dt
+    ) % mod
+
+
+def held_phase(
+    seed, h1, hops_per_sec, chip_hz, carrier_hz, code_doppler_sign, mod, fft_len=None
+):
+    """The phase the tracker runs at hop h1 for this seed, in the broker's first-sample
+    convention (dr_seed_phys's): tracker_phase_at less the hop offset seed_phase_at_ref adds.
+
+    It is dr_seed_phys for a seed with no code_phase_at_ref_chips. For one that carries it, it
+    follows that phase, which propagate_seed prefers: a search-fed seed's phase (from
+    cp_at_ref) and its cp0 (from cp_long) need not agree, and a slew anchored on the cp0 phase
+    would step the despread by their difference. `fft_len` as for seed_phase_at_ref; it must be
+    the convention the phase was shipped in."""
+    ph_ref = seed.get("code_phase_at_ref_chips", -1.0)
+    if ph_ref is None or ph_ref < 0.0:
+        return dr_seed_phys(
+            seed, h1, hops_per_sec, chip_hz, carrier_hz, code_doppler_sign, mod
+        )
+    per_hop = (
+        chip_hz
+        / hops_per_sec
+        * (1.0 + code_doppler_sign * seed["doppler_hz"] / carrier_hz)
+    )
+    hop_off = per_hop * (1.0 - 1.0 / fft_len) if fft_len else per_hop
+    return (
+        tracker_phase_at(
+            seed, h1, hops_per_sec, chip_hz, carrier_hz, code_doppler_sign, mod, fft_len
+        )
+        - hop_off
     ) % mod
 
 
@@ -621,3 +651,19 @@ def split_erratic_offsets(offs, hist, now_w, bound_chips, max_age_s, code_len):
                 continue
         keep.append((prn, d))
     return keep, drop
+
+
+def append_windowed(hist, t, v, window_s=600.0, cap=1000):
+    """Append (t, v) to a time-ordered history, then prune it in place by age and by count.
+
+    The readers cut a window_s statistic from these histories (fleetdll's 10-minute INNOV and
+    MINNOV p95), so the history must hold every sample of that window: a count cap alone sets
+    the window instead as soon as samples arrive faster than cap per window_s. Entries more than
+    window_s older than t are dropped, matching the reader's `now - t <= window_s` cut; `cap` is
+    a memory backstop, above the window's sample count at one sample per broker pass."""
+    hist.append((t, v))
+    n = 0
+    while n < len(hist) and t - hist[n][0] > window_s:
+        n += 1
+    del hist[:n]
+    del hist[:-cap]

@@ -280,8 +280,8 @@ _FROZEN = dict(
     # Drop nh-offset samples older than this, and stop hinting when fewer than nh_hint_min_samples
     # remain. The hint must be able to expire: it narrows the search to +-nh_hint_span (a search
     # stage setting) of the 20 overlay phases, so a wrong offset points the scan away from the
-    # signal and no detection can arrive to correct it. 600 s is about half the 1276 s per-PRN
-    # revisit, so a healthy fleet always has fresh samples and only a starved one widens.
+    # signal and no detection can arrive to correct it. 600 s spans several per-PRN revisits, so a
+    # healthy fleet always has fresh samples and only a starved one widens.
     nh_hint_max_age_s=600.0,
     # Detections below this SNR enter the period-continuity history only as a PRN's first entry, and
     # their period disagreements log as 'weak det' rather than SOURCE PERIOD DISAGREES; the
@@ -485,7 +485,7 @@ _FROZEN = dict(
     joint_min_coh_frac=0.3,
     # Minimum tracker significance (deep_snr, floor-cleared: coherence_s > 0) for a residual to
     # enter the joint solve. joint_min_snr gates on the search SNR carried in `best`, which latches
-    # for up to the 1276 s per-PRN revisit, so a satellite that has left the beam keeps its last
+    # until the search next scans that PRN, so a satellite that has left the beam keeps its last
     # good SNR while its tracker output is noise. Noise rows sit at deep_snr 2-3 / coh_frac ~0.2 and
     # signal at 24+ / 0.9+; 10 is in the gap.
     joint_min_deep_snr=10.0,

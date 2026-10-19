@@ -92,6 +92,43 @@ class TestReloadCadence(unittest.TestCase):
         self.assertEqual(c.dr_state["dcb_t"], t_dcb)
         self.assertEqual(c.dr_state["eph_t"], c.drp.now_w)
 
+    def _dcb_lines(self, table, st):
+        """One first load with gnss_dcb serving `table` and the status `st`: (res, the DCB:
+        lines)."""
+
+        def fetch(status=None):
+            status.update(st)
+            return "/nonexistent/dcb.bsx"
+
+        sys.modules["gnss_dcb"].fetch_dcb = fetch
+        sys.modules["gnss_dcb"].parse_dcb = lambda p: table
+        logs = []
+        dr._log = logs.append
+        c = _ctx()
+        c.args = _Args()
+        c.args.dcb_max_age_days = 10.0
+        res = dr._dr_reload(c, first=True)
+        dr._dr_apply_reload(c, res)
+        self.assertIs(c.dr_state["dcb"], res["dcb"])
+        return res, [m for m in logs if m.startswith("DCB:")]
+
+    def test_stale_dcb_stays_in_use_and_says_so(self):
+        """A product past dcb_max_age_days is warn-only: its table is installed, so the warning
+        must not announce the broadcast fall-back."""
+        table = {("C", 19): 1.5e-9}
+        res, lines = self._dcb_lines(table, {"age_days": 12.0})
+        self.assertIs(res["dcb"], table)
+        self.assertEqual(len(lines), 1)
+        self.assertIn("12.0 days old (bar 10.0)", lines[0])
+        self.assertNotIn("Falling back", lines[0])
+        self.assertIn("stay in use", lines[0])
+
+    def test_absent_dcb_falls_back(self):
+        res, lines = self._dcb_lines(None, {"reason": "no-token"})
+        self.assertIsNone(res["dcb"])
+        self.assertEqual(len(lines), 1)
+        self.assertIn("Falling back to the broadcast group delay", lines[0])
+
     def test_failed_reload_retries_in_ten_minutes(self):
         c = _ctx()
         dr._dr_apply_reload(
