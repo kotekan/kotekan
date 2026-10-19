@@ -556,7 +556,9 @@ int cudaFRBBeamformer_hirax_U64::wait_on_precondition() {
 
     // Where will our read begin? Ask the ringbuffer. We must not use our own `read_valid` for
     // this: every instance of this command shares one ringbuffer read head, so our own position
-    // lags it by whatever the other instances have claimed since our previous frame.
+    // lags it by whatever the other instances have claimed since our previous frame. Peeking
+    // and then claiming is safe because gpuProcess runs `wait_on_precondition` for all its
+    // instances on its one main thread, so no other instance claims in between.
     const std::ptrdiff_t Tbar_begin = Ebar_buffer.peek_read_head();
     if (Tbar_begin < 0)
         return -1; // shutting down

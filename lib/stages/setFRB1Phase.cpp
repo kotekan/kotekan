@@ -111,10 +111,10 @@ public:
         assert(upchan_num_channels <= upchan_max_num_channels);
         assert(frb1_phase_buffer);
         assert(bf_mask_buffer);
-        // `time_downsampling_fpga` is an `int`
         if (frb1_phase_lifetime_in_samples <= 0
             || frb1_phase_lifetime_in_samples > std::numeric_limits<int>::max())
-            FATAL_ERROR("frb1_phase_lifetime_in_samples {:d} must be positive and fit into an int",
+            FATAL_ERROR("frb1_phase_lifetime_in_samples {:d} must be positive and fit into "
+                        "time_downsampling_fpga",
                         frb1_phase_lifetime_in_samples);
         if (metadata_sources.empty())
             FATAL_ERROR("metadata_source must name at least one buffer");
@@ -308,6 +308,11 @@ private:
                             "weight sequence numbers",
                             metadata_source->buffer_name);
             const std::int64_t source_seq0 = meta->get_fpga_seq_num();
+            // `output_offset` counts FPGA samples; see `upchan_output_offset`
+            if (!meta->has_time_downsampling_fpga() || meta->get_time_downsampling_fpga() != 1)
+                FATAL_ERROR("metadata_source {:s} must hold voltages with time_downsampling_fpga "
+                            "1, where the FRB1 output offset is defined",
+                            metadata_source->buffer_name);
             if (seq0 && source_seq0 != *seq0)
                 FATAL_ERROR("The metadata sources disagree on the first FPGA sequence number: "
                             "{:s} starts at {:d}, {:s} at {:d}",
