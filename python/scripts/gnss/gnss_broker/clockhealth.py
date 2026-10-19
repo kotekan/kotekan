@@ -4,9 +4,10 @@ The dead-reckon clock stage keeps, per detected satellite, the integrity residua
 search's code phase against the model with the solved clock removed
 (`dr_state["integ"][prn] = (chips, t)`). A solve is established when at least two fresh
 residuals sit inside a chip and none sits far off: one satellite is unfalsifiable, two is the
-minimum that can disagree. A chain with nothing to solve (no detections, or a collapsed sky
-with no predictions) is not established, and neither is one locked on noise, whose residuals
-scatter over the code.
+minimum that can disagree. Once a chain has a clock and drift, one with nothing fresh to solve
+(no detections, or a collapsed sky with no predictions) is not established, and neither is one
+locked on noise, whose residuals scatter over the code. A chain that has never solved makes no
+claim.
 
 While a chain's solve is not established, no chain in another band bootstraps its clock from
 it (deadreckon's cross-band bootstrap), its NH search hint learns no overlay offset
@@ -32,4 +33,4 @@ def dr_solve_healthy(
     integ = dr_state.get("integ") or {}
     resid = [abs(v[0]) for v in integ.values() if now - v[1] <= max_age_s]
     inside = sum(1 for r in resid if r <= max_chips)
-    return inside >= min_sats and max(resid) <= max_any_chips
+    return inside >= min_sats and max(resid, default=0.0) <= max_any_chips

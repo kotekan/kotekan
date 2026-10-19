@@ -564,7 +564,8 @@ def set_log_tag(tag):
 
 
 def log_tag():
-    """This thread's chain name ("gps_l5") on a broker_multi chain thread; "" when unset.
+    """This thread's chain name ("gps_l5") on a broker_multi chain thread; "driver" on
+    broker_multi's main thread, which runs no chain; "" when unset.
 
     broker_multi runs every chain in one process as a thread and tags it with the chain key
     from its chains yaml (config/gnss_chains_chord.yaml), so this is the chain identity, and

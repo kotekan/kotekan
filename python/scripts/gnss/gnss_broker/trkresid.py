@@ -28,6 +28,8 @@ multiply and removes the question. Only the Doppler term (1e6-1e7 chips) is a fl
 import math
 from fractions import Fraction
 
+from gnss_broker.transport import _log_rl
+
 
 def phys_chips(cp_arg, dop_hz, hop, hps, chip_rate_hz, carrier_hz, code_len, sgn=1.0):
     """Physical code phase (chips, mod code_len) of a record's replica at its first sample.
@@ -164,7 +166,13 @@ def tracker_residuals(ctx, n_win=2):
             recs = telem_records(
                 ctx.telem_client, ctx.telem_chain, fleet.keys(), n_win=n_win
             )
-        except Exception:
+        except Exception as e:
+            _log_rl(
+                "trkresid-telem",
+                "tracker residual: telemetry records failed (%s); one-record coh_row "
+                "fallback" % e,
+                every_s=300.0,
+            )
             recs = {}
     for prn, v in fleet.items():
         if prn in recs:

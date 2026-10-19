@@ -30,8 +30,9 @@ class _Obj(object):
         self.__dict__.update(kw)
 
 
-def run(present=(1, 8, 10), hold=None, fleet=None):
-    """Drive the stage once; return (policy dict the gather would receive, ctx)."""
+def run(present=(1, 8, 10), hold=None, fleet=None, t0=None):
+    """Drive the stage once at cycle clock t0 (default: now); return (policy dict the gather
+    would receive, ctx)."""
     sent = {}
 
     def fake_post(url, doc, timeout=None):
@@ -68,6 +69,7 @@ def run(present=(1, 8, 10), hold=None, fleet=None):
             ),
             telem_chain="gps_l5",
             trackers=["http://cx19:12048/gnss0_inject"],
+            t0=time.time() if t0 is None else t0,
         )
         trimarm.stage_fleet_trim_arming(ctx)
     finally:
@@ -96,10 +98,27 @@ def main():
     # 2. Presence with a hold: a PRN absent this cycle stays armed inside the hold and is
     #    released once it has been absent longer than fleet_trim_hold_s.
     now = time.time()
-    pol, _ = run(present=(1,), hold={8: now - 10.0, 10: now - 100.0})
+    pol, _ = run(present=(1,), hold={8: now - 10.0, 10: now - 100.0}, t0=now)
     check(
         sorted(pol.get("armed") or []) == [1, 8],
         "absent 10 s: still armed; absent 100 s (> 30 s hold): released",
+    )
+
+    # 2b. The hold runs on the cycle clock, not the wall clock: with the wall clock stopped
+    #     (a replay running fast) and away from the cycle clock, PRN 8 absent for 100 s of
+    #     cycle time is released. The stamp and the age must both be on the cycle clock.
+    real_time = time.time
+    time.time = lambda: 9000.0
+    try:
+        pol, ctx = run(present=(1, 8), t0=5000.0)
+        armed_then = sorted(pol.get("armed") or [])
+        pol, _ = run(present=(1,), hold=ctx.dls.hold, t0=5100.0)
+    finally:
+        time.time = real_time
+    check(
+        armed_then == [1, 8] and sorted(pol.get("armed") or []) == [1],
+        "absent 100 s of cycle time, 0 s of wall time: released (armed %r -> %r)"
+        % (armed_then, sorted(pol.get("armed") or [])),
     )
 
     # 3. Only a probe-anchored floor ships. A peer-bar floor would rebuild the competition

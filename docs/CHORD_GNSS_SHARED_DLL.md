@@ -138,8 +138,9 @@ The clock offset is **3.45 chips/s** (0.337 ppm, measured). It is fed forward by
 alone would face **11 chips per loop** — far outside pull-in, unrecoverable, and it would look
 like the DLL diverging rather than the feed-forward failing.
 
-So: **gate the shared trim on a live rate fit.** If `code_phase_rate` is stale or absent for a
-PRN, hold the trim rather than integrate. This is the same discipline as `--carrier-min-sig`.
+So: **gate the shared trim on a live rate fit.** If `code_phase_rate` is absent or zero for a
+PRN, hold the trim rather than integrate, on the single-combiner fallback as on the fleet path.
+This is the same discipline as `--carrier-min-sig`.
 
 ## 8. Expected gain: a lower bar, not a higher `q`
 

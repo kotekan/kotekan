@@ -7,8 +7,9 @@ across cycles on `ctx.nav`: one that is rebuilt has forgotten the subframes it h
 and can never complete an ephemeris.
 
 Idle on CHORD: --nav-bits defaults on but self-gates on nav_obs, which no CHORD combiner
-exports (bit_export), and no aux combiner is configured. No test reaches this stage, so a
-change here is unverified until one of those is set.
+exports (bit_export), and no aux combiner is configured. Only the health lines are tested
+(test_navbits.py, with fake decoders), so a change to the decode path is unverified until a
+combiner exports nav_obs or an aux combiner is configured.
 
 The cross-check is the point, not the decode: a decoded ephemeris nobody compares with
 broadcast is a second authority that can drift from the first without either side erroring.
@@ -37,7 +38,7 @@ def stage_nav_bits(ctx):
     them and kept across cycles. nav_obs from this broker's own combiner go to the decoder
     --nav-decoder names; each aux combiner's go to its own decoder.
 
-    Idle on CHORD (see the module docstring); no test reaches it."""
+    Idle on CHORD (see the module docstring)."""
     if ctx.args.nav_bits:
         for _p, _r in ctx.status.items():
             if "nav_obs" not in _r:
@@ -385,8 +386,8 @@ def stage_nav_bits(ctx):
         # propagated to the same instant (the CNAV toe) and the ECEF position residual is
         # reported. Two independent encodings of one orbit, so a small residual validates the
         # whole decode chain. Kepler propagation only, cheap enough for the 60 s cadence.
-        if ctx.nav.cnav is not None and _now() - ctx.nav.log_t > 60.0:
-            ctx.nav.log_t = _now()
+        if ctx.nav.cnav is not None and _now() - ctx.nav.cnav_log_t[0] > 60.0:
+            ctx.nav.cnav_log_t[0] = _now()
             for _p in sorted(ctx.nav.cnav._p):
                 h = ctx.nav.cnav.health(_p)
                 if not h:

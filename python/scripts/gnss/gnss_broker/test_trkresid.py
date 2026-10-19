@@ -29,6 +29,16 @@ def arg_for(phase, dop, hop=HOP):
     return float((Fraction(phase) - ramp) % L)
 
 
+class _Obj(object):
+    def __init__(self, **kw):
+        self.__dict__.update(kw)
+
+
+class _BrokenTelem(object):
+    def windows(self, chain, lag=1):
+        raise RuntimeError("telem row shape changed")
+
+
 class TestLift(unittest.TestCase):
     def test_inverts_the_argument_exactly(self):
         for dop in (0.0, -2182.937744140625, 1734.5):
@@ -171,6 +181,52 @@ class TestResidual(unittest.TestCase):
             recs, self.pd, "G", self.model, self.clk, 0.01, t_now, HPS, CHIP, CARR, L
         )[1]
         self.assertAlmostEqual(b["chips"] - a["chips"], 0.02, places=3)
+
+    def test_failed_telemetry_is_logged_and_falls_back(self):
+        """A telemetry read that raises is logged (rate-limited) and the stage falls back to
+        the fleet's one-record coherent row."""
+        hop, arg, dop = self.records(1, 1, quantize=False)[0]
+        ctx = _Obj(
+            dr_state={"pd": self.pd, "clk": self.clk, "drift": 0.0},
+            drp=_Obj(t_now_abs=hop / float(HPS), tag="G", now_w=1000.0),
+            cp_predicted=self.model,
+            probe_set=set(),
+            dllp=_Obj(
+                fleet={
+                    1: {
+                        "present": True,
+                        "coh_row": {
+                            "code_phase_chips": arg,
+                            "doppler_hz": dop,
+                            "pow_hop": hop,
+                        },
+                    }
+                }
+            ),
+            telem_client=_BrokenTelem(),
+            telem_chain="gps_l5",
+            args=_Obj(
+                hops_per_sec=HPS,
+                chip_rate_hz=CHIP,
+                carrier_hz=CARR,
+                code_doppler_sign=1.0,
+            ),
+            code_len=L,
+        )
+        lines = []
+        saved = getattr(tr, "_log_rl", None)
+        tr._log_rl = lambda key, msg, every_s=10.0: lines.append((key, msg))
+        try:
+            res = tr.tracker_residuals(ctx)
+        finally:
+            if saved is None:
+                del tr._log_rl
+            else:
+                tr._log_rl = saved
+        self.assertEqual([k for k, _m in lines], ["trkresid-telem"], lines)
+        self.assertIn("telem row shape changed", lines[0][1])
+        self.assertEqual(res[1]["n"], 1)
+        self.assertLess(abs(res[1]["chips"] - 0.17), 2e-3)
 
 
 if __name__ == "__main__":

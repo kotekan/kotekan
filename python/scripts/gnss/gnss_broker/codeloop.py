@@ -3,11 +3,11 @@
 The DLL control loop is the only part of the fleet delay-lock stage that actuates; everything
 else hung off that poll is instrumentation (see `instruments.py`).
 
-On the fleet path, a seed with no code_phase_rate (absent or zero) means hold, not integrate.
-The uncalibrated receiver clock runs ~3.45 chips/s, ~11 chips per loop round trip, and the
-seed's code_phase_rate feeds that forward. Without it the trim would face the whole 11 chips, far
-outside the +-0.5 chip pull-in, and the failure would read as the DLL diverging rather than as
-the feed-forward being absent.
+On both paths, fleet and single combiner, a seed with no code_phase_rate (absent or zero) means
+hold, not integrate. The uncalibrated receiver clock runs ~3.45 chips/s, ~11 chips per loop
+round trip, and the seed's code_phase_rate feeds that forward. Without it the trim would face the
+whole 11 chips, far outside the +-0.5 chip pull-in, and the failure would read as the DLL
+diverging rather than as the feed-forward being absent.
 
 The `DLL:` line built here lists only the satellites that passed this cycle's gates, so a
 statistic computed over it measures survivors: a satellite whose q craters leaves the sample.
@@ -29,6 +29,16 @@ def stage_dll_control(ctx):
     for prn in list(ctx.seeds):
         rec = ctx.status.get(prn, {})
         fl = ctx.dllp.fleet.get(prn)
+        # Rate gate (docs/CHORD_GNSS_SHARED_DLL.md section 7): the trim absorbs only the
+        # residual left by the seed's code_phase_rate feed-forward, so with an absent or zero
+        # rate it holds on either path (see the module docstring).
+        if not float(ctx.seeds[prn].get("code_phase_rate", 0.0) or 0.0):
+            _log_rl(
+                "dll-norate-%d" % prn,
+                "%sDLL PRN %d: no live code_phase_rate, holding trim"
+                % ("fleet " if fl is not None else "", prn),
+            )
+            continue
         if fl is not None:
             # Fleet path: gate on `present` (fleet.apply_presence: q and prompt power against
             # floors measured each cycle from the noise probes, plus the deep-gate and displaced
@@ -36,16 +46,6 @@ def stage_dll_control(ctx):
             # distribution instead of raising q, so a fixed bar suits one fleet size only.
             # sig_of(rec) is one instance's view of a fraction of the band and would veto
             # exactly the satellites the fleet sum exists for.
-            #
-            # Rate gate (docs/CHORD_GNSS_SHARED_DLL.md section 7): the trim absorbs only the
-            # residual left by the seed's code_phase_rate feed-forward, so with an absent or zero
-            # rate it holds (see the module docstring).
-            if not float(ctx.seeds[prn].get("code_phase_rate", 0.0) or 0.0):
-                _log_rl(
-                    "dll-norate-%d" % prn,
-                    "fleet DLL PRN %d: no live code_phase_rate, holding trim" % prn,
-                )
-                continue
             if not fl["present"]:
                 continue
             # One integration per new window: an exact integer test on the window's hop, where

@@ -29,8 +29,9 @@ class NhOverlay(object):
         # prn -> the ref_hop last folded into off_hist: an unchanged detection is not counted
         # again, so nh_hint_min_samples counts evidence rather than uptime
         self.last_rh = {}
-        # Pooled over PRNs: (t, (predicted - reported nh) mod nh_overlay_len). The offset is one
-        # receiver-clock constant; the timestamp lets a sample expire (nh_hint_max_age_s).
+        # Pooled over PRNs: (t, (predicted - reported nh) mod nh_overlay_len), t the detection's
+        # ref_hop as UTC s on the hop axis. The offset is one receiver-clock constant; the
+        # timestamp lets a sample expire (nh_hint_max_age_s).
         self.off_hist = []
         # [offset in overlay chips]: the circular median of the fresh samples, None while
         # fewer than nh_hint_min_samples are fresh
@@ -72,7 +73,7 @@ class DllLoopState(object):
         # prn -> the gather's /get_dll row (trim_chips, armed). The tracker despreads at
         # seed + trim_chips; cleared when a read fails, so missing means unknown.
         self.readback = {}
-        self.hold = {}  # prn -> wall time last present (the arming hold)
+        self.hold = {}  # prn -> cycle clock (ctx.t0) last present (the arming hold)
         self.armed_last = set()  # the armed set last sent to the gather
         # arming POSTs made / failed, and the last POST or readback error (the FLEET-TRIM line)
         self.stat = {"posts": 0, "fail": 0, "last_err": ""}
@@ -206,7 +207,7 @@ class NavDecoders(object):
 
     Idle on CHORD: --nav-bits defaults on but self-gates on nav_obs, which no CHORD combiner
     exports (bit_export), and no aux combiner (--cnav-combiner and the rest) is configured.
-    No test reaches the nav-bits stage either.
+    Only test_navbits.py reaches the nav-bits stage, with fake decoders.
     """
 
     __slots__ = (
@@ -219,6 +220,7 @@ class NavDecoders(object):
         "bcnav2",
         "bcnav3",
         "log_t",
+        "cnav_log_t",
         "inav_log_t",
         "fnav_log_t",
         "bcnav1_log_t",
@@ -243,9 +245,9 @@ class NavDecoders(object):
         self.bcnav1 = None  # BeiDou B-CNAV1
         self.bcnav2 = None  # BeiDou B-CNAV2
         self.bcnav3 = None  # BeiDou B-CNAV3
-        self.log_t = 0.0  # last summary-line time (rate limit)
+        self.log_t = 0.0  # last LNAV health-line time (rate limit)
         # One-cell lists [t]: each decoder's 60 s health-line stamp, written as x_log_t[0].
-        # log_t above is shared by the LNAV and CNAV health lines.
+        self.cnav_log_t = [0.0]
         self.inav_log_t = [0.0]
         self.fnav_log_t = [0.0]
         self.bcnav1_log_t = [0.0]

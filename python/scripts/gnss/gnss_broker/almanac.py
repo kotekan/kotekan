@@ -120,22 +120,27 @@ def stage_almanac_predict(ctx):
 
             ctx.pred = {p: _row(v) for p, v in raw.items()}
             ctx.pred_dark = {p: _row(v) for p, v in raw_dark.items()}
+            # Whether the rows carry an azimuth: the raw row's length, since _row pads element
+            # 5 with 0.0 and every pred tuple is long enough to look as if it did.
+            _has_az = len(next(iter(raw.values()), ())) > 5
             # Geometry feed (--post-sat-geometry): every ~30 s, post each satellite's az/el to
             # the record assemblers' /set_sat_geometry for the element steering
             # (elem_positions_enu in the node config). With the rates and epoch (pred elements
             # 6-8, BRDC path) the post is [az, el, az_rate, el_rate, t_utc] and the assemblers
             # follow the track between posts; without them it is a bare [az, el] snapshot,
             # which they hold. The endpoints are --dll-combiners with n2combine -> n2assemble.
-            # An assembler without steering acknowledges the post and drops it.
+            # An assembler without steering acknowledges the post and drops it. TLE rows carry
+            # no azimuth, so nothing is posted rather than every satellite at due north.
             if (
-                getattr(ctx.args, "post_sat_geometry", 0)
+                _has_az
+                and getattr(ctx.args, "post_sat_geometry", 0)
                 and ctx.dll_combiners
                 and ctx.t0 - ctx.geom_post_t[0] >= 30.0
             ):
                 ctx.geom_post_t[0] = ctx.t0
                 _body = {}
                 for _p2, _v2 in ctx.pred.items():
-                    if len(_v2) > 5 and _v2[2] > 0.0:  # above horizon; az is element 5
+                    if _v2[2] > 0.0:  # above horizon; az is element 5
                         _body[str(_p2)] = (
                             [
                                 float(_v2[5]),
@@ -184,7 +189,7 @@ def stage_almanac_predict(ctx):
             # own. Receiver-wide: each chain contributes its own constellation and the
             # publisher unions them. TLE rows carry no azimuth (element 5 defaults to 0.0), so
             # they are withheld rather than drawn due north.
-            if ctx.publisher is not None and len(next(iter(raw.values()), ())) > 5:
+            if ctx.publisher is not None and _has_az:
                 ctx.publisher.set_sky(
                     ctx.alm_sys, {p: (v[2], v[5]) for p, v in ctx.pred.items()}, _now()
                 )

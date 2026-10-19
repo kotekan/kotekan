@@ -16,8 +16,6 @@ offset.
 @author Keith Vanderlinde
 """
 
-import time
-
 from gnss_broker.transport import _get, _post, _log_rl, log_tag
 
 
@@ -34,13 +32,15 @@ def stage_fleet_trim_arming(ctx):
         _now_present = [
             _p for _p in (ctx.dllp.fleet or {}) if ctx.dllp.fleet[_p].get("present")
         ]
+        # Stamped and aged on the frozen cycle clock, so a replay arms the same set at any
+        # replay speed.
         for _p in _now_present:
-            ctx.dls.hold[_p] = time.time()
+            ctx.dls.hold[_p] = ctx.t0
         # Armed: present within the last fleet_trim_hold_s (cli.py).
         _armed = sorted(
             _p
             for _p, _t in ctx.dls.hold.items()
-            if time.time() - _t < ctx.args.fleet_trim_hold_s
+            if ctx.t0 - _t < ctx.args.fleet_trim_hold_s
         )
         # What next cycle's Python integrator stands down against; recorded before the POST
         # (see the docstring).

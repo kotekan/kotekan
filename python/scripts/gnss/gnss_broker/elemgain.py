@@ -109,7 +109,8 @@ def gain_table(per_inst, probe_prns, min_keff=8.0):
 
     Rows with keff below min_keff are skipped. sig is present only where the probes provided a
     per-(instance, element) noise anchor; a table with amp/ph but no sig claims no
-    significance.
+    significance. An element without a positive anchor reads None in sig, so sig[e] stays
+    aligned with amp[e] and ph[e].
 
     Feed this the output of drop_stale(), not a raw poll (see there).
     """
@@ -139,15 +140,18 @@ def gain_table(per_inst, probe_prns, min_keff=8.0):
                 q = v["q"][e] if e < len(v["q"]) else 0.0
                 amp.append(abs(u) / q if q > 0.0 else 0.0)
                 ph.append(cmath.phase(u))
-                if fl is not None and e < len(fl) and fl[e] > 0.0:
-                    sig.append(abs(u) / fl[e])
+                sig.append(
+                    abs(u) / fl[e]
+                    if fl is not None and e < len(fl) and fl[e] > 0.0
+                    else None
+                )
             row = out.setdefault(prn, {"probe": prn in probe_prns, "inst": {}})
             ir = {
                 "keff": round(v["keff"], 1),
                 "amp": [float("%.4g" % x) for x in amp],
                 "ph": [round(x, 4) for x in ph],
             }
-            if sig:
-                ir["sig"] = [float("%.3g" % x) for x in sig]
+            if any(x is not None for x in sig):
+                ir["sig"] = [None if x is None else float("%.3g" % x) for x in sig]
             row["inst"][tag] = ir
     return out

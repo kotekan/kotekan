@@ -12,7 +12,7 @@ so the error sustains itself. See `clockbias.py`.
 @author Keith Vanderlinde
 """
 
-from gnss_broker.transport import _post, _log, _log_rl, axis_now
+from gnss_broker.transport import _post, _log, _log_rl, axis_now, now_utc_s
 from gnss_broker.clockhealth import dr_solve_healthy
 
 
@@ -71,7 +71,10 @@ def stage_narrow_search(ctx):
                 # Samples age out after nh_hint_max_age_s, and with fewer than
                 # nh_hint_min_samples fresh the offset is dropped (below). Without that
                 # expiry a wrong offset sustains itself: the search, narrowed onto the wrong
-                # overlay phase, detects nothing that could correct it.
+                # overlay phase, detects nothing that could correct it. A sample is stamped
+                # with its detection's time on the hop axis, not when it was learned, so a
+                # detection held back while the solve was not established ages from when it
+                # was made.
                 #
                 # Nothing is learned while the clock solve is not established
                 # (dr_solve_healthy False): detections it does not vouch for (noise, a
@@ -94,13 +97,14 @@ def stage_narrow_search(ctx):
                     ctx.nho.last_rh[_p] = _rh
                     _t = ctx.utc0_sample0 + _rh / ctx.args.hops_per_sec
                     ctx.nho.off_hist.append(
-                        (ctx.t0, (_pred_nh(_p, _t) - _nh) % ctx.args.nh_overlay_len)
+                        (_t, (_pred_nh(_p, _t) - _nh) % ctx.args.nh_overlay_len)
                     )
                 del ctx.nho.off_hist[:-64]
+                _now_s = now_utc_s(ctx)
                 _fresh = [
                     o
                     for (_ts, o) in ctx.nho.off_hist
-                    if ctx.t0 - _ts <= ctx.args.nh_hint_max_age_s
+                    if _now_s - _ts <= ctx.args.nh_hint_max_age_s
                 ]
                 if (
                     len(_fresh) < ctx.args.nh_hint_min_samples

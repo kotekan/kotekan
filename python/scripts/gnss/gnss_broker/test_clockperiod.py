@@ -121,6 +121,14 @@ def test_health_rule():
         dr_solve_healthy(empty, now) is False,
         "judged, nothing fresh inside a chip: not established",
     )
+    try:
+        r = dr_solve_healthy(empty, now, min_sats=0)
+    except ValueError as e:
+        r = e
+    check(
+        isinstance(r, bool),
+        "min_sats=0 with nothing fresh: a verdict, not a raise (got %r)" % (r,),
+    )
 
 
 def test_l2c_whole_period_is_visible():
