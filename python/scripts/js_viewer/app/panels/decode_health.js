@@ -16,15 +16,13 @@ const CONSTS = [
     {tag: "E", name: "Galileo"},
     {tag: "C", name: "BeiDou"},
 ];
-// Column-group key -> display name, mirrored in app/panels/gps_table.js and livebeam_server.py's
-// BAND_ORDER (rename all three together). A band with no entry renders as its raw key, as
-// decode_health.py's L1/L2/L5 (SIGNAL_BAND) do.
-const BAND_LABEL = {high: "High", mid: "Mid", low: "Low"};
 // Friendly signal names keyed on the decode_health signal id.
 const SIG_NAME = {
-    GPS_L1_LNAV: "L1 C/A · LNAV", GPS_L2C_CNAV: "L2C · CNAV", GPS_L5_CNAV: "L5-I · CNAV",
-    GAL_E1B_INAV: "E1-B · I/NAV", GAL_E5AI_FNAV: "E5a-I · F/NAV",
+    GPS_L1_LNAV: "L1 C/A · LNAV", GPS_L1CD_CNAV2: "L1C-D · CNAV-2", GPS_L2C_CNAV: "L2C · CNAV",
+    GPS_L5_CNAV: "L5-I · CNAV",
+    GAL_E1B_INAV: "E1-B · I/NAV", GAL_E5AI_FNAV: "E5a-I · F/NAV", GAL_E5BI_INAV: "E5b-I · I/NAV",
     BDS_B1C_BCNAV1: "B1C-D · B-CNAV1", BDS_B2A_BCNAV2: "B2a-D · B-CNAV2",
+    BDS_B2B_BCNAV3: "B2b-I · B-CNAV3",
 };
 
 function dot(color, title) {
@@ -123,7 +121,7 @@ export class DecodeHealthPanel {
                             + `in >300 s (set / false lock)">(+${ns})</span>` : "");
                 html += `<tr style="border-bottom:1px solid #222">`
                       + `<td style="padding:2px 6px">${SIG_NAME[sig] || sig}</td>`
-                      + `<td>${BAND_LABEL[s.band] || s.band}</td>`
+                      + `<td>${s.band}</td>`
                       + `<td>${s.n_sync}/${s.n_sats}</td>`
                       + `<td>${fmt(s.n_eph, "", 0)}</td>`
                       + `<td>${dp}</td>`

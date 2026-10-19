@@ -1,4 +1,4 @@
-"""On-node nav-decode health export: the data behind the viewer's decode-health panel.
+"""Broker nav-decode health export: the data behind the viewer's decode-health panel.
 
 Every broker that decodes a nav message (--decode-health-file) publishes, per (signal, PRN),
 what it already computes on the 60 s health cadence -- whether the satellite is synced, whether
@@ -20,15 +20,20 @@ SCHEMA = 1
 
 # The constellation and frequency band each decoded signal sits on, so the viewer groups them
 # without re-deriving it. Keyed by the `signal` string the broker observes under; a signal not
-# listed is exported with the writer's sys and band "?".
+# listed is exported with the writer's sys and band "?". The band is the viewer's frequency
+# group named by its GPS signal: L1 at or above 1.40 GHz, L2 from 1.22 GHz, L5 below that,
+# which takes the whole E5/B2 complex (E5a, E5b, B2a, B2b).
 SIGNAL_BAND = {
     "GPS_L1_LNAV": ("G", "L1"),
+    "GPS_L1CD_CNAV2": ("G", "L1"),
     "GPS_L2C_CNAV": ("G", "L2"),
     "GPS_L5_CNAV": ("G", "L5"),
     "GAL_E1B_INAV": ("E", "L1"),
     "GAL_E5AI_FNAV": ("E", "L5"),
+    "GAL_E5BI_INAV": ("E", "L5"),
     "BDS_B1C_BCNAV1": ("C", "L1"),
     "BDS_B2A_BCNAV2": ("C", "L5"),
+    "BDS_B2B_BCNAV3": ("C", "L5"),
 }
 
 
@@ -57,7 +62,7 @@ class DecodeHealthWriter:
         self.stale_sat_s = float(stale_sat_s)
         self.dead_decode_s = float(dead_decode_s)
         self._last = 0.0
-        # _sats persists across flushes (a failed export clears it): observe() runs on the 60 s
+        # _sats persists across flushes, failed ones included: observe() runs on the 60 s
         # health cadence but flush() every broker cycle. A sat not re-observed for stale_sat_s
         # is dropped (set, or its decoder gone).
         self._sats = {}  # (signal, prn) -> field dict (current state)
@@ -140,7 +145,6 @@ class DecodeHealthWriter:
             self._fails += 1
             if self._fails & (self._fails - 1) == 0:  # powers of two only
                 self._log("decode-health export failed (%d): %s" % (self._fails, e))
-            self._sats = {}
             return False
 
 

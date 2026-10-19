@@ -80,7 +80,7 @@ const METRICS = {
                const fl = m.q_floor, n = m.q_inst;
                const tip = `code-loop quality; floor ${fl != null ? fl.toFixed(2) : "?"}`
                          + `${n != null ? `, ${n} instances` : ""}`
-                         + ` -- >=2.2 solid, near the floor means the prompt tap is OFF-PEAK`;
+                         + ` -- >=2.2 solid, near the floor means the prompt tap is off-peak`;
                const col = m.q >= 2.2 ? "#7fd67f"
                          : (fl != null && m.q <= fl * 1.15) ? "#e06666" : "#e0c060";
                return `<span style="color:${col}" title="${tip}">${v}</span>`;
@@ -95,8 +95,8 @@ const METRICS = {
 // (L1/E1/B1), mid 1.22-1.40 GHz (L2C, GLONASS L2, B3I, E6), low below that (the E5/B2 complex,
 // GLONASS L3OC). The signals in each group differ per constellation, so each constellation is
 // its own section below the shared header. Column-group key -> display name, and the
-// left-to-right order; the keys are mirrored in app/panels/decode_health.js and
-// livebeam_server.py's BAND_ORDER, so rename all three together.
+// left-to-right order; the keys are mirrored in livebeam_server.py's BAND_ORDER, so rename
+// both together.
 const BAND_LABEL = {high: "High", mid: "Mid", low: "Low"};
 const BAND_ORDER = ["high", "mid", "low"];
 // Nominal boresight, for the Offset column: the dishes point at dec +40.73 through the local

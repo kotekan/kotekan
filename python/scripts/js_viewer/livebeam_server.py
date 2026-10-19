@@ -722,8 +722,8 @@ UNIFIED_SIGNALS = []
 # Signal-id prefix -> constellation letter; main() backfills each row's "sys" with it.
 _SYS_TAG = {"GPS": "G", "GAL": "E", "BDS": "C", "GLO": "R"}
 
-# The three column groups. The page shows them as High/Mid/Low (BAND_LABEL in
-# app/panels/gps_table.js and app/panels/decode_health.js).
+# The three column groups, which the page shows as High/Mid/Low. The keys are mirrored in
+# app/panels/gps_table.js's BAND_LABEL and BAND_ORDER, so rename them together.
 BAND_ORDER = ["high", "mid", "low"]
 
 
@@ -765,6 +765,14 @@ def _band_of(carrier_hz):
     return "low"
 
 
+def _connect_host(host):
+    """The address to connect to for `host`: a bind-all address (0.0.0.0, '', ::) is not a
+    destination, so it becomes the loopback."""
+    if host in ("0.0.0.0", "", "::"):
+        return "127.0.0.1"
+    return host
+
+
 def discover_broker_chains(host, port, timeout=3.0):
     """Ask the broker publisher which chains it is running (GET /get_chains).
 
@@ -781,8 +789,7 @@ def discover_broker_chains(host, port, timeout=3.0):
     import json as _json
     import urllib.request as _u
 
-    if host in ("0.0.0.0", "", "::"):
-        host = "127.0.0.1"
+    host = _connect_host(host)
     try:
         with _u.urlopen("http://%s:%d/get_chains" % (host, port), timeout=timeout) as r:
             raw = _json.load(r)
@@ -842,9 +849,7 @@ def _gps_signal_capability():
     assignments carry a validity window, so a re-used PRN resolves to the satellite flying it
     today. Celestrak TLE titles are not used: they carry identity errors, BeiDou worst. A
     constellation the registry does not list gets no "_prns" entry and no lists, and the client
-    then shows its blanks as "no detection". Until 10-18 every signal was listed against the
-    GPS block map, so the GLONASS and BeiDou lists came out empty and every blank cell there
-    read "not broadcast" (#206).
+    then shows its blanks as "no detection".
 
     Returns {} on any failure, and the client then marks nothing as not transmitted: never
     claim a satellite is incapable when that could not be checked.
@@ -982,7 +987,8 @@ class GpsSkyResource(resource.Resource):
         # Empty -> no filter (show every GLONASS satellite).
         self.glonass_sigids = list(glonass_sigids or [])
         self._cache = {"ok": False, "sats": []}  # last good (or empty) result
-        self._sats = None  # {tag: {prn: EarthSatellite}}, loaded once (TLE path)
+        self._sats = {}  # {tag: {prn: EarthSatellite}} (TLE path)
+        self._sats_t = {}  # tag -> monotonic s of the last TLE load attempt
         # No broadcast ephemeris is parsed or fetched here: the broker serves the sky
         # (_brdc_skypos).
         # GLONASS slots any running R signal can track (None = no filter), and the monotonic
@@ -1032,26 +1038,34 @@ class GpsSkyResource(resource.Resource):
             # Broker sky unavailable: every constellation comes from TLE.
             return {"ok": True, "sats": self._tle_skypos(want)}
         if tle_want:
-            sats = sats + self._tle_skypos(tle_want)
+            try:
+                sats = sats + self._tle_skypos(tle_want)
+            except Exception as e:
+                log_.warning(
+                    "gps_sky: %s TLE sky failed (%s); serving the broker sky alone",
+                    ",".join(tle_want),
+                    e,
+                )
         return {"ok": True, "sats": sats}
 
     def _glonass_capable_set(self):
         """Cached (1 h) set of GLONASS slots trackable by any running GLONASS signal: the union
         of each running R signal's capability. It must be a union, not one signal's set,
         because the R sky layer draws every GLONASS signal on one marker per satellite: L3OC is
-        GLONASS-K only while L2OF is on every satellite, so filtering to L3OC alone would hide
-        satellites that L2OF tracks.
+        on the K generations and GLO-M+ while L2OF is on every satellite, so filtering to L3OC
+        alone would hide satellites that L2OF tracks.
 
         The union follows self.glonass_sigids (the GLONASS signals in the broker's chain
-        inventory at startup): L3OC alone -> K slots only; L2OF present -> every slot with a
-        known frequency channel k. None => no filter (no GLONASS signals, or the lookups came
-        back empty or raised)."""
+        inventory at startup): L3OC alone -> the K and M+ slots; L2OF present -> every slot
+        with a known frequency channel k. None => no filter (no GLONASS signals, or any one
+        signal's lookup came back empty or raised: a union missing one signal's set would hide
+        the satellites only that signal tracks)."""
         if (
             self._glo_capable_t is not None
             and (time.monotonic() - self._glo_capable_t) < 3600.0
         ):
             return self._glo_capable
-        union = set()
+        union, failed = set(), False
         try:
             import gps_beamtrack as bt
             from gnss_broker import prnmap
@@ -1063,28 +1077,30 @@ class GpsSkyResource(resource.Resource):
                 # failure and the K-marker lookup raises, so a failed lookup never adds every
                 # slot to the union.
                 if "OF" in sigid.upper():
-                    union |= bt.glonass_fdma_trackable()  # known-k, empty on failure
+                    fdma = bt.glonass_fdma_trackable()  # known-k, empty on failure
+                    failed = failed or not fdma
+                    union |= fdma
                     continue
                 # CDMA: the IGS registry, the source the broker filters on (the K generations
                 # and GLO-M+); the Celestrak K marker only when the registry proves nothing,
                 # and it cannot see the M+ satellites.
                 cap = prnmap.registry_capable(sigid)
-                if cap is not None:
-                    union |= cap
-                else:
-                    union |= set(
+                if cap is None:
+                    cap = set(
                         bt.signal_capable_prns(sigid, bt.GLONASS_TLE_URL)
                     )  # K set
+                    failed = failed or not cap
+                union |= cap
         except Exception as e:
             log_.warning(
                 "gps_sky: GLONASS capability set unavailable (%s); showing all GLONASS "
                 "under R",
                 e,
             )
-            union = set()
-        # Empty => the lookup failed (or no GLONASS signals): stand the filter down and show all,
-        # never hide a real satellite behind a failed capability check.
-        self._glo_capable = union or None
+            failed = True
+        # A failed lookup, or no GLONASS signals: stand the filter down and show all, never
+        # hide a real satellite behind a failed capability check.
+        self._glo_capable = None if failed else (union or None)
         self._glo_capable_t = time.monotonic()
         return self._glo_capable
 
@@ -1111,7 +1127,7 @@ class GpsSkyResource(resource.Resource):
         if not host or not port:
             return None
         try:
-            url = "http://%s:%d/get_sky" % (host, port)
+            url = "http://%s:%d/get_sky" % (_connect_host(host), port)
             with urllib.request.urlopen(url, timeout=3.0) as r:
                 rows = json.loads(r.read().decode("utf-8", "replace"))
         except Exception as e:
@@ -1151,19 +1167,32 @@ class GpsSkyResource(resource.Resource):
                 )
         return sats or None
 
+    # A TLE group that failed to load (or loaded empty) is retried after _TLE_RETRY_S. A loaded
+    # group is reloaded after _TLE_RELOAD_S, and load_gps_satellites re-downloads a cache file
+    # older than that, keeping the old copy if the download fails.
+    _TLE_RETRY_S = 600.0
+    _TLE_RELOAD_S = 86400.0
+
     def _tle_skypos(self, want=None):
         """Sky positions from Celestrak TLE + skyfield propagation, for the tags in `want`
         (default: all configured). The whole-sky fallback when the broker's sky is unavailable,
-        and the only source for GLONASS. The TLEs are loaded once per process."""
+        and the only source for GLONASS. Every group is loaded on the first call and kept
+        fresh per _TLE_RETRY_S / _TLE_RELOAD_S."""
         from gps_beamtrack import DEFAULT_TLE_URL, load_gps_satellites, predict_skypos
 
-        if self._sats is None:
-            self._sats = {}
-            for tag, url in self.CONSTELLATIONS:
-                try:
-                    self._sats[tag] = load_gps_satellites(url or DEFAULT_TLE_URL)
-                except Exception as e:
-                    log_.warning("gps_sky: %s TLEs unavailable: %s", tag, e)
+        now = time.monotonic()
+        for tag, url in self.CONSTELLATIONS:
+            t = self._sats_t.get(tag)
+            hold = self._TLE_RELOAD_S if self._sats.get(tag) else self._TLE_RETRY_S
+            if t is not None and now - t < hold:
+                continue
+            self._sats_t[tag] = now
+            try:
+                self._sats[tag] = load_gps_satellites(
+                    url or DEFAULT_TLE_URL, max_age_s=self._TLE_RELOAD_S
+                )
+            except Exception as e:
+                log_.warning("gps_sky: %s TLEs unavailable: %s", tag, e)
         cap_R = self._glonass_capable_set()
         sats = []
         for tag, by_prn in self._sats.items():
@@ -1236,6 +1265,10 @@ def _pvt_measurements(globs, max_age_s, t_now, smooth_s=90.0):
     for pat in globs:
         for path in _glob.glob(pat):
             try:
+                # A file last written before the window holds no row inside it: the glob
+                # matches every past day's log, and each tail-read costs up to 4 MB.
+                if os.path.getmtime(path) < t_floor:
+                    continue
                 size = os.path.getsize(path)
                 with open(path) as f:
                     # tail: the smoothing window of every satellite on this chain. Rows are
@@ -1326,7 +1359,7 @@ def _pvt_measurements(globs, max_age_s, t_now, smooth_s=90.0):
 
 
 class DecodeHealthResource(resource.Resource):
-    """``GET /decode_health`` -> merged on-node nav-decode health (from the brokers' JSON files)
+    """``GET /decode_health`` -> merged nav-decode health from the brokers' JSON files
     plus a PVT self-survey computed from the obs-log code residuals (:mod:`gnss_pvt`). Stale
     broker files / obs rows are dropped, so a decoder or the position solve going dark shows up
     as the row/section disappearing, not a frozen last value. PVT is cached (recomputed every
@@ -1636,8 +1669,8 @@ def main():
         _scripts = os.path.dirname(static_dir)
         sys.path.insert(0, _scripts)
         sys.path.insert(0, os.path.join(_scripts, "gnss"))
-        # GLONASS sky filter is the union of the running R signals' capabilities (L3OC = K
-        # only, L2OF = all known-k), so a satellite trackable by any of them shows. Derived from
+        # GLONASS sky filter is the union of the running R signals' capabilities (L3OC = K and
+        # M+, L2OF = all known-k), so a satellite trackable by any of them shows. Derived from
         # the same discovered inventory the table uses, so a band swap needs no viewer edit.
         _glo_sigids = sorted(
             {

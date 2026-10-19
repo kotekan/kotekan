@@ -63,7 +63,8 @@ def _igs_prn_by_catnum():
     metadata SINEX (files.igs.org/pub/station/general/igs_satellite_metadata.snx), the
     multi-GNSS SVN/COSPAR/SatCat/PRN registry. TLE names that carry no PRN (GLONASS, BeiDou
     'BEIDOU-3 M23') resolve through it: the TLE carries the catalog number, the SINEX maps it
-    to the PRN assignment that has not ended (open, or ending in the future). Re-downloaded
+    to the PRN assignment in force today (started, and open or ending in the future), so a
+    pre-announced future assignment does not displace the current one. Re-downloaded
     beside the TLEs when older than 30 days (a stale copy is kept if the download fails); empty
     dict, with one warning, if there is no copy at all."""
     import re, time, urllib.request
@@ -104,8 +105,8 @@ def _igs_prn_by_catnum():
         if section == "SATELLITE/IDENTIFIER" and len(f) >= 3 and f[2].isdigit():
             svn_cat[f[0]] = int(f[2])
         elif section == "SATELLITE/PRN" and len(f) >= 4:
-            svn, t_to, prn = f[0], f[2], f[3]
-            current = (t_to == "0000:000:00000") or (t_to >= now)
+            svn, t_from, t_to, prn = f[0], f[1], f[2], f[3]
+            current = t_from <= now and (t_to == "0000:000:00000" or t_to >= now)
             if current and re.fullmatch(r"[A-Z]\d{2}", prn):
                 svn_prn[svn] = prn
     out = {}
@@ -116,7 +117,7 @@ def _igs_prn_by_catnum():
     return out
 
 
-def load_gps_satellites(tle_source):
+def load_gps_satellites(tle_source, max_age_s=None):
     """Return {prn: EarthSatellite} from a Celestrak TLE file or URL.
 
     The PRN comes from the name where it carries one: GPS '... (PRN NN)', BeiDou '... (Cnn)',
@@ -126,8 +127,9 @@ def load_gps_satellites(tle_source):
 
     A URL is downloaded into ~/.cache/kotekan_gps rather than the working directory, where
     skyfield's default loader would write 'gp.php'. The file is shared across scripts and
-    reused for as long as it exists: nothing here re-downloads it. Local paths load in place."""
-    import re
+    reused for as long as it exists, unless max_age_s is given: a copy older than that is
+    re-downloaded, and kept if the download fails. Local paths load in place."""
+    import re, time
     from skyfield.api import Loader, load
 
     if isinstance(tle_source, str) and tle_source.startswith(("http://", "https://")):
@@ -138,7 +140,24 @@ def load_gps_satellites(tle_source):
         # group would reuse whichever one was fetched first.
         m = re.search(r"GROUP=([A-Za-z0-9_-]+)", tle_source)
         fname = "tle_%s.txt" % (m.group(1) if m else "default")
-        sats = Loader(cache, verbose=False).tle_file(tle_source, filename=fname)
+        loader = Loader(cache, verbose=False)
+        path = os.path.join(cache, fname)
+        sats = None
+        if (
+            max_age_s is not None
+            and os.path.exists(path)
+            and time.time() - os.path.getmtime(path) > max_age_s
+        ):
+            try:
+                sats = loader.tle_file(tle_source, filename=fname, reload=True)
+            except Exception as e:
+                print(
+                    "[gps_beamtrack] TLE refresh failed (%s); using the cached %s"
+                    % (e, fname),
+                    file=sys.stderr,
+                )
+        if sats is None:
+            sats = loader.tle_file(tle_source, filename=fname)
     else:
         sats = load.tle_file(tle_source)
     by_prn = {}
