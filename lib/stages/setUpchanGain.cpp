@@ -7,7 +7,7 @@
 #include "buffer.hpp"                   // for Buffer
 #include "bufferContainer.hpp"          // for bufferContainer
 #include "chordMetadata.hpp"            // for chordMetadata, get_chord_metadata
-#include "kotekanLogging.hpp"           // for DEBUG
+#include "kotekanLogging.hpp"           // for DEBUG, FATAL_ERROR
 
 #include "fmt.hpp" // for compile_string_to_view, format
 
@@ -42,13 +42,19 @@ public:
         metadata_sources(get_buffer_or_array("metadata_source"))
     //
     {
-        // We use the same gain for all channels
-        assert(std::ptrdiff_t(upchan_gain.size()) == upchan_factor);
+        // One gain per fine channel, shared by all coarse channels
+        if (std::ptrdiff_t(upchan_gain.size()) != upchan_factor)
+            FATAL_ERROR("{:s}: upchan_gain has {:d} entries, but upchan_factor is {:d}",
+                        unique_name, upchan_gain.size(), upchan_factor);
         assert(upchan_gain_buffer);
 
         // Check buffer size
-        assert(upchan_gain_buffer->frame_size
-               == sizeof(float16_t) * upchan_max_num_channels * upchan_factor);
+        if (upchan_gain_buffer->frame_size
+            != sizeof(float16_t) * upchan_max_num_channels * upchan_factor)
+            FATAL_ERROR("{:s}: upchan_gain_buffer {:s} has frame_size {:d}, expected {:d}",
+                        unique_name, upchan_gain_buffer->buffer_name,
+                        upchan_gain_buffer->frame_size,
+                        sizeof(float16_t) * upchan_max_num_channels * upchan_factor);
 
         upchan_gain_buffer->register_producer(unique_name);
         for (Buffer* const metadata_source : metadata_sources)
