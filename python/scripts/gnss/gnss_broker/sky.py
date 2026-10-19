@@ -49,7 +49,7 @@ def brdc_predict(state, lat, lon, alt_m, sysc, min_prn, t_utc, f_carrier_hz):
     # the sky is thinning rather than setting, and the survivors are predicted from ever-older
     # records, a growing model error the fast loop absorbs into a deeper and deeper trim.
     #
-    # This is cheap. fetch_brdc keeps its own caches (2 h for the daily, 30 min for the
+    # This is cheap. fetch_brdc keeps its own caches (1 h for the daily, 30 min for the
     # station-hourly merge) and refreshes them on a daemon thread, so a call costs a parse,
     # not a fetch. The gate only decides how soon a newer file is noticed.
     #
@@ -173,7 +173,7 @@ def _eph_refresh(state, ge, now, t_utc):
     """Re-parse the shared BRDC store, for brdc_predict under the store's lock. A failure keeps
     the current set and holds the next attempt off for _SKY_RETRY_S; with no set yet it raises.
     """
-    # Current-day BRDC files grow; fetch_brdc re-fetches a daily older than 2 h. Pass
+    # Current-day BRDC files grow; fetch_brdc re-fetches a daily older than 1 h. Pass
     # t_utc so a replay gets the day-matched file: today's file cannot predict another
     # epoch (best_eph's 4 h window).
     try:

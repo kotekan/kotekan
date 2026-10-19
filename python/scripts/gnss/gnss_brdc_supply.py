@@ -140,11 +140,6 @@ _HOURLY_STATIONS = [
 # records): they mean "this merge is not starved", not "complete". R counts every slot, since
 # the capability gate (which GLONASS generations carry L3OC) is the broker's, not the supply's.
 _HOURLY_TARGET = {"G": (1, 20), "E": (1, 18), "C": (19, 20), "R": (1, 16)}
-# Station files _hourly_target_met requires. The walk's exit test passes it
-# max(fetched, _HOURLY_MIN_STATIONS), so this does not bind there.
-_HOURLY_MIN_STATIONS = (
-    2  # one file, however wide, may be a truncated hourly that looks like a thin sky
-)
 # Successful station-file fetches per walk, across all hours: the walk unions hours until the
 # target is met, so a per-hour cap would let one thin hour spend the allowance and still come
 # back short.
@@ -240,10 +235,8 @@ def _rec_is_fresh(line, when):
         return True
 
 
-def _hourly_target_met(seen, fetched):
-    return fetched >= _HOURLY_MIN_STATIONS and all(
-        len(seen[k2]) >= v[1] for k2, v in _HOURLY_TARGET.items()
-    )
+def _hourly_target_met(seen):
+    return all(len(seen[k2]) >= v[1] for k2, v in _HOURLY_TARGET.items())
 
 
 # This module is a library and owns no logger. A host installs its own through LOG_HOOK (the
@@ -433,12 +426,12 @@ def _fetch_station_hourly(when, cache_dir, token):
         # The exit test decides how far back to walk, not whether to fetch: the two newest
         # hours are always attempted, older ones only to top up coverage. Stopping as soon as
         # the store met its target would stop it refreshing, and it would coast to expiry.
-        if dh >= 2 and _hourly_target_met(seen, max(fetched, _HOURLY_MIN_STATIONS)):
+        if dh >= 2 and _hourly_target_met(seen):
             break
         for st in _HOURLY_STATIONS:
             if fetched >= _HOURLY_MAX_FETCH:
                 break
-            if dh >= 2 and _hourly_target_met(seen, max(fetched, _HOURLY_MIN_STATIONS)):
+            if dh >= 2 and _hourly_target_met(seen):
                 break
             if (st, h.hour) in done:
                 continue
@@ -564,15 +557,24 @@ def _fetch_station_hourly(when, cache_dir, token):
     return local
 
 
+# A current-day daily is reused for this long, then re-fetched: the file grows through the day.
+# Without the station-hourly merge GLONASS rests on BKG's current-day daily, which carries R
+# ~25 min behind, and gnss_ephemeris cuts an R record at GLONASS_MAX_AGE_S (2.5 h). This TTL,
+# plus that lag, plus up to two 15-min sky refreshes (one to notice the age, one to read the
+# new file) stays under the cap. A previous-day daily is final; _fetch_brdc_merged reuses it
+# at any age.
+_DAILY_TTL_S = 3600.0
+
+
 def _try_refresh_daily(kind, year, doy, cache_dir, tok):
     """Best-effort fetch of one daily-BRDC variant (S or R) for the per-PRN merge. Reuses a
-    cache younger than 2 h, else downloads through _brdc_sources. Returns the cached path or
-    None; never raises. Fetching each variant on its own lets a fresh one reach the merge when
-    _fetch_brdc_merged returned a frozen one (one variant can stop updating mid-day while the
-    other does not)."""
+    cache younger than _DAILY_TTL_S, else downloads through _brdc_sources. Returns the cached
+    path or None; never raises. Fetching each variant on its own lets a fresh one reach the
+    merge when _fetch_brdc_merged returned a frozen one (one variant can stop updating mid-day
+    while the other does not)."""
     name = "BRDC00WRD_%s_%04d%03d0000_01D_MN.rnx.gz" % (kind, year, doy)
     local = os.path.join(cache_dir, name)
-    if os.path.exists(local) and time.time() - os.path.getmtime(local) < 7200:
+    if os.path.exists(local) and time.time() - os.path.getmtime(local) < _DAILY_TTL_S:
         return local
     for url, headers in _brdc_sources(kind, year, doy):
         if _src_skip(url):
@@ -891,11 +893,11 @@ def _fetch_brdc_merged(when=None, cache_dir=CACHE):
             )
             for kind in ("S", "R")
         ]
-        # 1) a fresh current-day cache (< 2 h) or any cached previous-day file (final) is
-        #    usable as-is, no network needed.
+        # 1) a fresh current-day cache (< _DAILY_TTL_S) or any cached previous-day file (final)
+        #    is usable as-is, no network needed.
         for _kind, local in locals_:
             if os.path.exists(local) and (
-                back == 1 or time.time() - os.path.getmtime(local) < 7200
+                back == 1 or time.time() - os.path.getmtime(local) < _DAILY_TTL_S
             ):
                 return local
         # 2) (re-)download this day (current-day files grow through the day, so refresh a stale

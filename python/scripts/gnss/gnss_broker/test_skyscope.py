@@ -746,7 +746,6 @@ def test_hourly_coverage_beats_recency():
         _hourly_cov_read,
         _hourly_cov_write,
         _HOURLY_TARGET,
-        _HOURLY_MIN_STATIONS,
         _HOURLY_TTL_S,
         _HOURLY_THIN_TTL_S,
     )
@@ -755,22 +754,16 @@ def test_hourly_coverage_beats_recency():
 
     full = {k: set(range(v[0], v[0] + v[1])) for k, v in _HOURLY_TARGET.items()}
     check(
-        _hourly_target_met(full, _HOURLY_MIN_STATIONS),
+        _hourly_target_met(full),
         "a merge meeting every constellation's target is DONE",
-    )
-    check(
-        not _hourly_target_met(full, _HOURLY_MIN_STATIONS - 1),
-        "... but never on fewer than %d station file(s), however wide -- one truncated "
-        "hourly is indistinguishable from a thin sky" % _HOURLY_MIN_STATIONS,
     )
 
     # GPS and Galileo at target, BeiDou short (12 BDS-3 against 20): not done, however many
     # stations answered.
     thin_c = {"G": set(range(1, 26)), "E": set(range(1, 23)), "C": set(range(19, 31))}
     check(
-        len(thin_c["C"]) == 12 and not _hourly_target_met(thin_c, 8),
-        "a G25/E22/C12 merge is not done -- 8 stations answered and BeiDou "
-        "is still short",
+        len(thin_c["C"]) == 12 and not _hourly_target_met(thin_c),
+        "a G25/E22/C12 merge is not done -- BeiDou is still short",
     )
 
     check(
@@ -945,6 +938,86 @@ def test_refresh_cadence_matches_the_product():
     )
 
 
+def test_current_day_daily_ttl():
+    """The current-day daily is re-fetched once it is an hour old.
+
+    With the station-hourly merge down, GLONASS rests on BKG's current-day daily, which
+    carries R ~25 min behind, and an R record is cut at GLONASS_MAX_AGE_S (2.5 h). The file's
+    age before a re-fetch, plus that lag, plus one sky refresh to notice the age and one to
+    read the new file, must stay under the cap, or R satellites drop out before each re-fetch.
+    """
+    import urllib.request
+    import gnss_brdc_supply as sup
+    from datetime import datetime, timezone
+    from gnss_broker import sky
+    from gnss_ephemeris import GLONASS_MAX_AGE_S
+
+    print("\nthe current-day daily is re-fetched hourly (GLONASS's fallback supply)")
+    body = gzip.compress(b"a fresh daily")
+    dials = []
+
+    class _Resp(object):
+        def read(self):
+            return body
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    def fake_urlopen(req, **kw):
+        dials.append(req.full_url)
+        return _Resp()
+
+    now = datetime.now(timezone.utc)
+    doy = now.timetuple().tm_yday
+    name = "BRDC00WRD_S_%04d%03d0000_01D_MN.rnx.gz" % (now.year, doy)
+
+    def via_variant(d):
+        return sup._try_refresh_daily("S", now.year, doy, d, None)
+
+    def via_merged(d):
+        return sup._fetch_brdc_merged(now, d)
+
+    saved = (dict(sup._src_dead), sup._earthdata_token, urllib.request.urlopen)
+    try:
+        sup._earthdata_token = lambda: None
+        urllib.request.urlopen = fake_urlopen
+        sup._src_dead.clear()
+        for age_min, want in ((50, False), (70, True)):
+            for who, call in (
+                ("_try_refresh_daily", via_variant),
+                ("_fetch_brdc_merged", via_merged),
+            ):
+                with tempfile.TemporaryDirectory() as d:
+                    p = os.path.join(d, name)
+                    with open(p, "wb") as f:
+                        f.write(gzip.compress(b"an old daily"))
+                    t = time.time() - age_min * 60.0
+                    os.utime(p, (t, t))
+                    del dials[:]
+                    got = call(d)
+                    with open(p, "rb") as f:
+                        now_body = f.read()
+                    check(
+                        got == p and bool(dials) == want and (now_body == body) == want,
+                        "%s: a %d min old current-day daily is %s"
+                        % (who, age_min, "re-fetched" if want else "reused, no dial"),
+                    )
+    finally:
+        sup._src_dead.clear()
+        sup._src_dead.update(saved[0])
+        sup._earthdata_token, urllib.request.urlopen = saved[1], saved[2]
+
+    lag = 25 * 60.0
+    check(
+        sup._DAILY_TTL_S + lag + 2 * sky._SKY_REFRESH_S <= GLONASS_MAX_AGE_S,
+        "TTL %.0f s + BKG's ~%.0f s R lag + two %.0f s sky refreshes fits the %.0f s R cap"
+        % (sup._DAILY_TTL_S, lag, sky._SKY_REFRESH_S, GLONASS_MAX_AGE_S),
+    )
+
+
 def test_fetch_brdc_off_the_loop():
     """fetch_brdc hands the control loop the cached files and refreshes on a thread.
 
@@ -1059,6 +1132,7 @@ def main():
     test_coverage_counts_only_usable_records()
     test_cached_brdc_never_writes()
     test_refresh_cadence_matches_the_product()
+    test_current_day_daily_ttl()
     test_fetch_brdc_off_the_loop()
     print("\n%s (%d check(s) failed)" % ("FAIL" if _fails else "PASS", len(_fails)))
     return 1 if _fails else 0
