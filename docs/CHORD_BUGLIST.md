@@ -216,6 +216,29 @@ observables are unusable for the fits (the SEARCH-MONITOR itself is fine: it rea
 verdict is the SEEDAUDIT STEP / SAWTOOTH rate on gal_e5a and the obs excursions over the following half hour (overnight
 ~600 excursions/h; gal_e5b ~0).
 
+### #211 — restart ORDER: a broker restart within minutes of an aggregator restart bootstraps on a cold search, and every model-primary chain is thrown onto grating lobes for half an hour (2026-10-19 12:17-12:50Z, measured, self-healing)
+**What:** gnss-aggregator restarted 12:17:26Z, gnss-gather 12:18:03Z, gnss-broker 12:18:53Z (the post-merge regen cycle).
+From 12:24-12:28Z every satellite on the model-primary chains without a search (gal_e5a, gal_e5b, bds_b2a, bds_b3i;
+gps_l5 and gps_l2c unaffected) jumped by hundreds of metres in the tracker code residual (up to -1,545 m) and then
+walked back toward 0 at exactly ONE GRATING LOBE (95 m = 0.32 us = 3.27 chips, the tracker comb's 3.125 MHz channel
+spacing) per ~2 min, the trim-clamp sawtooth pulling each tap home lobe by lobe; most PRNs were back by 12:46-12:48Z,
+the rest a lobe away by 12:50Z. Presence counts never dropped (served C/N0 and q are blind to a lobe). The 00:56Z
+restart (broker alone, on a search warm for 2 h) shows none of this. **Chain of events (broker log):** the restarted
+aggregator's search had no overlay labels or hints (9,207 LABEL CONSENSUS / nh-hint lines in its first minutes); at
+12:19 gps_l5 took its seeds from those detections -- "PRN 24 overlay segment DERIVED from consensus: +5 period(s) off
+the weak measurement", "period DEBOUNCED", "SEEDAUDIT STEP PRN 24: -2633.99 chips [cp0=nh_lift]", G18 +-390..-4,908
+chips over the next minutes -- so the joint state re-established on 2-3 satellites with sigma +-1.0 chip (12:22:56Z,
+152.107 vs 151.75 a minute later); the consuming chains adopted it and at 12:23:11-12:23:12 every PRN on gal_e5b and
+bds_b2a was slewed ("dead-reckon SLEW PRN N: model-held +1.35 chips, step +0.050 (cap 0.05)"); the fleet DLL trims rose
+from +0.4 to the +3.0 clamp by 12:24 (visible in the obs dll_trim_cpp), the wipes dropped the taps onto far lobes, and
+the walk back began. The gather restart (trims HELD then adopted, standing +0.3..+0.4 chips) was not the trigger: the
+trims only moved once the slews began. **Rule:** the aggregator is the one instance never to cycle beside the broker;
+when it must be cycled, wait until its LABEL CONSENSUS / relabel lines have quieted (>= 10 min) before any broker
+restart, and never restart the broker on a search younger than that. Candidates for a code-side guard: the broker
+refuses dr_birth/nh_lift seeds while the search reports relabels, or the joint state's first estimates (n < 4 or sigma
+> 0.5 chip) are not adoptable (the 0c coast already bounds adoption by joint_clk_max_chips; a sigma gate would have
+held this one). Related: #106 (the establishment transient), #201 (the BOC side peaks: the same lobe blindness).
+
 ### #210 — glo_l3oc's code residual carries a GLONASS-only range-model term: +44 m up-like, +8 m north, +5 m east against the GPS/Galileo/BeiDou chains (2026-10-19, the 0b night gate)
 **What:** the night re-survey fit (gnss_resurvey.py --hours 6-13) on 10-19 with the model live reads glo_l3oc model -
 true = +44.1 U / +8.2 N / +5.2 E (rms 3.5 m, 5,382 of 6,521 rows) while gps_l5, gal_e5b, bds_b2a and bds_b3i read
