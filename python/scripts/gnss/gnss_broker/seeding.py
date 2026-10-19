@@ -405,15 +405,24 @@ def stage_detections_to_seeds(ctx):
         # with its source; a step of almost exactly one search-grid Doppler step points at a grid or
         # quantization slip upstream.
         _prev_sd = ctx.seeds.get(prn, {}).get("doppler_hz")
-        if _prev_sd is None and ctx.args.almanac and not ctx.cb.available:
-            # No first seed until this chain's clock-frequency bias is solved (cb.available: a bias
-            # EMA from its own multi-satellite solve). Under --seed-bias-source ema a first seed
-            # sent earlier carries the receiver's whole frequency offset, and a strong satellite can
-            # lock and enter the hold freeze in that wrong currency within seconds. The guard stays
-            # in every mode: cb.available is false on a chain's first cycle, which runs before the
-            # dead-reckon stage stamps drp.now_w, and a first seed then would raise in
-            # _nh_joint_consensus (test_seed_bias.py pins this). Detections do not need seeds, and
-            # the bias solves from the same detections.
+        # Under --seed-bias-source ema, no first seed until this chain's clock-frequency bias is
+        # solved (cb.available: a bias EMA from its own multi-satellite solve): a first seed sent
+        # earlier carries the receiver's whole frequency offset, and a strong satellite can lock
+        # and enter the hold freeze in that wrong currency within seconds. Detections do not need
+        # seeds, and the bias solves from the same detections. Under 'zero' no seed carries the
+        # solve, so waiting for it would only withhold every first seed on a chain that never
+        # sees bias_min_sats fresh detections. The wait there is for drp.now_w: on a chain's
+        # first cycle this stage runs before the dead-reckon stage stamps it, and a first seed
+        # then would raise in _nh_joint_consensus.
+        if (
+            _prev_sd is None
+            and ctx.args.almanac
+            and (
+                ctx.drp.now_w is None
+                if ctx.args.seed_bias_source == "zero"
+                else not ctx.cb.available
+            )
+        ):
             continue
         if _prev_sd is None:
             # First seed: log it in full; the step tripwire has no previous value to compare.

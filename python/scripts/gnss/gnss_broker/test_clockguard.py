@@ -18,7 +18,8 @@ cycles after a restart, and that is where a guard is most likely to deadlock or 
   COPY      dr_clock_adopt_rx (cross-band bootstrap + same-band adoption) and dr_joint_clk:
             the cross-band bootstrap is bounded by --dr-clock-adopt-max-chips as a time; a
             refusal holds at zero rate; the 300 s escape is suppressed while JOINT-CLK adopts,
-            and returns 300 s after it stops.
+            and returns 300 s after it stops; neither path takes a donor whose solve is not
+            established.
 
 @author Keith Vanderlinde
 """
@@ -607,6 +608,59 @@ def test_samesband_refusal_holds_zero_rate():
     )
 
 
+def test_samesband_unhealthy_donor_withheld():
+    print(
+        "same-band adoption: a donor whose solve is not established is withheld, unknown adopts"
+    )
+    _capture()
+    rx = Receiver(log=lambda m: None)
+    c = _consumer(rx, "gal_e5a", L5_RATE, L5_LEN, "1176.45MHz")
+    rx.contribute_dr_clock(
+        "gps_l5",
+        "1176.45MHz",
+        TRUE_CLK,
+        0.0,
+        100.0,
+        L5_LEN,
+        chip_rate_hz=L5_RATE,
+        healthy=False,
+    )
+    n = len(LOGS)
+    _adopt(c, 100.5)
+    check(
+        c.dr_state["clk"] == 0.0
+        and c.dr_state.get("clk_primed")
+        and _logged("sibling clock from 'gps_l5' WITHHELD", n),
+        "primed consumer, unhealthy donor: WITHHELD, the prime stays",
+    )
+    rx2 = Receiver(log=lambda m: None)
+    s, t_meas = _self_solved(rx2)
+    held = s.dr_state["clk"]
+    rx2.contribute_dr_clock(
+        "gps_l5",
+        "1176.45MHz",
+        TRUE_CLK + 20.0,
+        0.0,
+        t_meas + 400.0,
+        L5_LEN,
+        chip_rate_hz=L5_RATE,
+        healthy=False,
+    )
+    _adopt(s, t_meas + 400.5)
+    check(
+        s.dr_state["clk"] == held,
+        "self-solved clock 400 s stale, unhealthy donor at +20: the escape does not take it",
+    )
+    rx.contribute_dr_clock(
+        "gps_l5", "1176.45MHz", TRUE_CLK, 0.0, 101.0, L5_LEN, chip_rate_hz=L5_RATE
+    )
+    _adopt(c, 101.5)
+    check(
+        abs(c.dr_state["clk"] - TRUE_CLK) < 1e-9 and not c.dr_state.get("clk_primed"),
+        "a donor that makes no claim (healthy None) is adopted",
+    )
+
+
 def test_declared_repin_reaches_consumers():
     print(
         "a DECLARED snap (bootstrap / re-pin) reaches the copy paths at once; an undeclared step does not"
@@ -826,6 +880,7 @@ if __name__ == "__main__":
     test_crossband_bound_is_a_time()
     test_escape_suppressed_by_joint_adoption()
     test_samesband_refusal_holds_zero_rate()
+    test_samesband_unhealthy_donor_withheld()
     test_declared_repin_reaches_consumers()
     test_refusals_do_not_keep_a_solved_clock_fresh()
     test_declared_only_from_the_adopted_donor()

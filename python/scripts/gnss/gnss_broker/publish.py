@@ -363,8 +363,9 @@ class FleetPublisher:
                     ),
                     # The tracker's code residual (trkresid): the replica placement the closed
                     # fleet DLL holds, lifted from the records' slot 1/2 pair, minus the model,
-                    # minus the solved clock. The same quantity as dr_integ_chips but from the
-                    # stage that resolves ~1e-2 chips, and present on chains with no detectors.
+                    # minus the clock the seeds ride (clk_now). The quantity dr_integ_chips forms
+                    # against the solved clock, but from the stage that resolves ~1e-2 chips,
+                    # and present on chains with no detectors.
                     # `_s` is the currency-free form (seconds): a consumer converting chips to
                     # metres must know which chips (L2C's are CM chips), and seconds do not ask.
                     "trk_resid_s": (_trk.get(prn) or {}).get("s"),

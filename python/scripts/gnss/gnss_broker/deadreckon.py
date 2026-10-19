@@ -592,7 +592,8 @@ def _dr_clock_declared(ctx):
 def dr_clock_adopt_rx(ctx):
     """ADOPT: take a co-hosted chain's receiver clock when this chain has no offsets to solve
     its own: the same band first, else across bands as a bootstrap, both bounded by
-    --dr-clock-adopt-max-chips. Leaves ctx.drp.rx_sib as the donor it looked at (None if
+    --dr-clock-adopt-max-chips and neither from a donor whose search solve is not established
+    (extra["healthy"] False). Leaves ctx.drp.rx_sib as the donor it looked at (None if
     none). Runs after dr_clock_quality."""
     # Only a chain with no offsets this cycle adopts, so --dr-clock-adopt on a chain with
     # detections never overrides its own solve. The donor's clock comes from the shared
@@ -825,11 +826,13 @@ def dr_clock_adopt_rx(ctx):
         ctx.drp.rx_sib is not None
         and ctx.drp.rx_sib.extra.get("code_length") == ctx.code_len
     ):
-        # Same band: refuse a donor step beyond --dr-clock-adopt-max-chips (0 = unbounded)
-        # while the local clock is fresh (_dr_clock_local_fresh). Once the local clock is
-        # 300 s stale the step is adopted anyway: a questionable clock beats a dead one, and
-        # 300 s of refusals turns a donor's bad solve into a slow, logged leak instead of an
-        # instant copy onto every chain.
+        # Same band: refuse a donor whose solve is not established (healthy False; None, no
+        # claim, adopts) at any staleness, as the cross-band bootstrap does. Refuse a donor
+        # step beyond --dr-clock-adopt-max-chips (0 = unbounded) while the local clock is
+        # fresh (_dr_clock_local_fresh). Once the local clock is 300 s stale the step is
+        # adopted anyway: a questionable clock beats a dead one, and 300 s of refusals turns
+        # a donor's bad solve into a slow, logged leak instead of an instant copy onto every
+        # chain.
         _sib_v = float(ctx.drp.rx_sib.value) % ctx.code_len
         _adopt_step = None
         if ctx.dr_state.get("clk") is not None:
@@ -841,7 +844,16 @@ def dr_clock_adopt_rx(ctx):
         # A primed clock is a placeholder, not a measurement to defend: refusing a donor's
         # real clock against it would leave this chain seedless.
         _adopt_decl = _dr_clock_declared(ctx)
-        if (
+        if ctx.drp.rx_sib.extra.get("healthy") is False:
+            # a donor whose own search solve is not established may have solved on noise; the
+            # same code makes its clock no less wrong
+            _log_rl(
+                "clkadopt-unhealthy",
+                "dead-reckon: sibling clock from '%s' WITHHELD -- its search solve is not "
+                "established; the clock stays as it is" % ctx.drp.rx_sib.src,
+                every_s=60.0,
+            )
+        elif (
             _adopt_bound > 0.0
             and _adopt_step is not None
             and _local_fresh

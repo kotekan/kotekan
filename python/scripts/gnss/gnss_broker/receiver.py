@@ -107,9 +107,10 @@ class Receiver(object):
             return self._joint["__receiver__"]
 
     def joint_ambiguous(self):
-        """True when |clk| exceeds 0.4 of the state's wrap, close enough that a measurement
-        from the shortest-code chain could be aliased. A consumer should not believe clk
-        while this holds; the JOINT[shadow] log line marks it AMBIGUOUS."""
+        """True when |clk| exceeds 0.4 of the state's wrap. Only the JOINT[shadow] log line
+        reads it, to mark the line AMBIGUOUS. Nothing gates on it: the state's innovations
+        and every consumer of the clock (joint_clk_delta, the dead-reckon gates) take it
+        modulo a window, where a clock near the wrap is as good as any other."""
         with self._lock:
             st = self._joint.get("__receiver__")
             return bool(st is not None and abs(st.clk) > 0.4 * st.L)
