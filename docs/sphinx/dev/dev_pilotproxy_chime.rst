@@ -39,7 +39,7 @@ it never changes the source bundle.
 
 Run ``tests/test_pilotproxy_integration.py`` with
 ``-k 'receiver_geometry or receiver_namespace or archive_review'`` for either
-compiled geometry. These tests compare masks, coarse powers, and fine support
+compiled geometry. These tests compare masks, frame powers, and fine support
 with integer CPU references, including window reversal, blocks crossing input
 frames, ring reuse, namespace refusal, and candidate refusal. The original
 CHORD integration suite remains applicable to the default 64-sample build.

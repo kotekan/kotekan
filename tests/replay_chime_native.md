@@ -4,7 +4,7 @@
 It reads native HDF5 `baseband` bytes (`uint8[time,input]`, offset-binary 4+4-bit
 samples), preserves every input stream, and trims partial frames to the absolute
 FPGA origin. It runs `rawFileRead` through the normal CUDA detector stage and
-compares the mask, three coarse powers, rank support, frequency identity, shape,
+compares the mask, three frame powers, rank support, frequency identity, shape,
 and FPGA timing against independent CPU integer calculations.
 
 The source bundle must be an archive-review-only candidate. The harness verifies

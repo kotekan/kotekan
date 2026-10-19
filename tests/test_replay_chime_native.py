@@ -1,14 +1,17 @@
 """Small CPU-only contracts for the native replay harness."""
 
 import copy
+import importlib.util
 import unittest
 
 import numpy as np
 
+import verify_pilotproxy_pipeline as reference
 from replay_chime_native import (
     FRAME_SAMPLES as N,
     aligned_offsets,
     base_config,
+    cpu_products,
     numerical_fixture,
     paired_selection,
     proxy_excess,
@@ -104,6 +107,35 @@ class ReplayContractTest(unittest.TestCase):
         profile["target_norm_sq"] = 129
         with self.assertRaises(ValueError):
             validate_weight_norms(profile, weights)
+
+    @unittest.skipUnless(
+        importlib.util.find_spec("pilot_proxy"), "needs the pilot_proxy package"
+    )
+    def test_reference_frame_powers_are_fine_sums(self):
+        rng = np.random.default_rng(1)
+        block = rng.integers(0, 256, size=(N, 4), dtype=np.uint8)
+        weights = rng.integers(0, 256, size=384, dtype=np.uint8).tobytes()
+        bundle = {
+            "profiles": [{"weight_bank_offset_bytes": 0, "weight_bank_nbytes": 384}]
+        }
+        reference.synthetic_calibration(bundle)
+        candidate = {
+            "input_preprocessing": {
+                "time_reverse_detector_windows_before_kernel": False
+            }
+        }
+        powers, fine, _, _ = cpu_products(
+            block, bundle["profiles"][0], candidate, weights
+        )
+        self.assertEqual(powers.dtype, np.uint64)
+        self.assertEqual(fine.shape, (3, 256))
+        # Parseval over the zero-padded 256-point transform, from the row sums
+        # alone: the fine-bin sums agree up to the fixed-point rounding.
+        real, imag = reference.detector_rows_from_voltage(
+            block.reshape(-1), 0, False, num_freq=1, num_dishes=2, window_samples=128
+        )
+        z = reference.expected_row_sums(real, imag, weights).astype(np.int64)
+        np.testing.assert_allclose(powers, 256 * (z ** 2).sum(axis=(1, 2)), rtol=1e-4)
 
 
 if __name__ == "__main__":

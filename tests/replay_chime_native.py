@@ -32,7 +32,7 @@ import verify_pilotproxy_pipeline as reference
 
 FRAME_SAMPLES = 16384
 SAMPLE_SECONDS = 2.56e-6
-SCHEMA = "kotekan-native-offline-replay-v1"
+SCHEMA = "kotekan-native-offline-replay-v2"
 
 
 class MetadataPrefix(ctypes.LittleEndianStructure):
@@ -429,8 +429,9 @@ def cpu_products(block, profile, candidate, weight_bank):
     offset = profile["weight_bank_offset_bytes"]
     weights = weight_bank[offset : offset + profile["weight_bank_nbytes"]]
     projections = reference.expected_row_sums(real, imag, weights)
-    powers = (projections * projections).sum(axis=(1, 2), dtype=np.uint64)
     fine = fine_power_fx(projections, num_streams=streams)
+    # Frame powers are the sums of each term's 256 fine powers, as the stage emits.
+    powers = fine.sum(axis=1, dtype=np.uint64)
     calibration = profile["fine_calibration"]
     geometry = {
         "anchor_bin": calibration["anchor_bin"],
@@ -650,7 +651,7 @@ def replay(args):
                     "signed_excess": proxy_excess(powers, profile),
                 }
                 np.savez_compressed(
-                    frame_products, coarse_power_u64=powers, fine_power_u64=fine
+                    frame_products, frame_power_u64=powers, fine_power_u64=fine
                 )
                 row["products_sha256"] = sha256(frame_products)
                 write_json(frame_record, row)
@@ -693,7 +694,7 @@ def replay(args):
         with np.load(args.output / f"frame-{index:04d}.npz") as expected:
             np.testing.assert_array_equal(
                 outputs["dtv_powers"][index].payload.view("<u8"),
-                expected["coarse_power_u64"],
+                expected["frame_power_u64"],
             )
         np.testing.assert_array_equal(outputs["dtv_mask"][index].payload, [row["mask"]])
         np.testing.assert_array_equal(
@@ -727,7 +728,7 @@ def replay(args):
         "stage_words_compared": 6 * len(rows),
         "stage_products_compared": [
             "mask",
-            "three coarse powers",
+            "three frame powers",
             "rank_valid",
             "n_bulk",
             "frame identities and periods",
