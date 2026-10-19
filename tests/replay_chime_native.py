@@ -613,6 +613,17 @@ def replay(args):
     fixture_name = "offline-numerical-fixture.json"
     write_json(work / fixture_name, fixture)
     shutil.copyfile(source_weights, work / "weights.bin")
+    # The stage checks the files it loads against the bundle's sha256sums.txt.
+    for name in ("detector_contract.json", "weights.manifest.json"):
+        shutil.copyfile(args.candidate / name, work / name)
+    sums = {
+        name: sha256(work / name)
+        for name in ("detector_contract.json", "weights.bin", "weights.manifest.json")
+    }
+    sums["pilot_profiles.json"] = sha256(work / fixture_name)
+    (work / "sha256sums.txt").write_text(
+        "".join(f"{digest}  {name}\n" for name, digest in sorted(sums.items()))
+    )
     config = base_config(streams, freq_id, len(offsets), fixture_name)
     metadata = make_metadata(args.binary, config, streams, freq_id, work, args.timeout)
     rows = []
