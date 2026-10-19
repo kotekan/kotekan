@@ -298,6 +298,10 @@ public:
                 start_new_file = false;
             }
         }
+        // somehow we've gotten here without creating a file handler
+        if (the_current_file_pointer == nullptr)
+            FATAL_ERROR("Something went wrong creating the file");
+
         auto& file = *the_current_file_pointer;
 
         if (create_single_file || (frames_per_file > 1)) {
@@ -357,6 +361,8 @@ public:
                         start_new_file = true;
                         // flush the last file, then start a new one
                         file.flush();
+                        // ensure that this file goes out of scope and closes
+                        the_current_file_pointer.reset();
                         return write_chord(frame, meta, frame_desc, frame_counter);
                     }
                 }
@@ -502,6 +508,9 @@ public:
         if (create_single_file || (frames_per_file > 1 && !start_new_file)) {
             // dataset.flush();
             file.flush();
+        } else {
+            // explicitly close the file
+            the_current_file_pointer.reset();
         }
     }
 
