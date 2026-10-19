@@ -22,6 +22,7 @@ Three groups of test here, and the first is the one that matters:
 """
 import json
 import os
+import re
 import struct
 import subprocess
 import sys
@@ -323,6 +324,24 @@ class TestWindowRing(unittest.TestCase):
         self._feed(c, _make_frame(inst="cx19.0", win=14, seq=4))
         self.assertEqual(c.gaps, 2)
 
+    def test_a_header_with_no_records_or_rows_is_refused(self):
+        # gnss::telem_shape_ok's bounds. With n_rec or n_prn zero the payload is empty, so the
+        # length check alone passes a bare header and the frame would open an empty window.
+        # The record limit is read from gnssTelem.hpp, not from the constant under test.
+        with open(os.path.join(K, "lib", "stages", "gnss", "gnssTelem.hpp")) as fh:
+            m = re.search(r"constexpr\s+int\s+TELEM_MAX_REC\s*=\s*(\d+)\s*;", fh.read())
+        max_rec = int(m.group(1))
+        for kw in ({"n_rec": 0}, {"n_prn": 0}, {"n_rec": max_rec + 1}):
+            c = self._client()
+            c._parse_and_store(_make_frame(**kw), 0.0)
+            self.assertEqual(c.bad, 1, kw)
+            self.assertEqual(c.chains(), [], kw)
+        for kw in ({}, {"n_rec": max_rec}):
+            c = self._client()
+            c._parse_and_store(_make_frame(**kw), 0.0)
+            self.assertEqual((c.bad, c.chains()), (0, ["gps_l5"]), kw)
+        self.assertEqual(telem._MAX_REC, max_rec)
+
     def test_chains_do_not_mix(self):
         c = self._client()
         self._feed(c, _make_frame(chain="gps_l5", inst="cx19.0", win=10))
@@ -505,6 +524,33 @@ class TestCoherentSource(unittest.TestCase):
         a, b = set(got["cx19.0"][1]), set(got["cx42.0"][1])
         self.assertEqual(len(a), 3)
         self.assertTrue(a < b)  # a strict subset: the survivors kept their own hops
+
+    def test_a_frame_without_slot_0_keeps_its_records(self):
+        # GnssTelemPack writes rows only into the slots that arrived, so a window whose slot-0
+        # record was lost ships slot 0 as zeros, PRN included. The other three records are
+        # still there and must still be read.
+        zero0 = {(0, p, telem.REC_PRN): 0.0 for p in range(4)}
+        zero0.update({(0, p, telem.REC_P_ENERGY): 0.0 for p in range(4)})
+        raw = _make_frame(inst="cx19.0", win=10, present=0b1110, rows=zero0)
+        f = telem.TelemFrame(telem._HDR.unpack_from(raw, 0), raw, 0.0)
+        self.assertEqual(f.prns(), [1, 2, 3, 4])
+        self.assertIsNotNone(f.row(1, 2))
+        self.assertIsNone(f.row(0, 2))
+        self.assertEqual(len(f.comb_epl(3, 2)), 5)
+        # only the last slot filled: the map comes from it; no slot filled: no PRNs
+        zero012 = {(r, p, telem.REC_PRN): 0.0 for r in range(3) for p in range(4)}
+        raw3 = _make_frame(inst="cx19.0", win=10, present=0b1000, rows=zero012)
+        f3 = telem.TelemFrame(telem._HDR.unpack_from(raw3, 0), raw3, 0.0)
+        self.assertEqual(f3.prns(), [1, 2, 3, 4])
+        self.assertIsNotNone(f3.row(3, 4))
+        raw_none = _make_frame(inst="cx19.0", win=10, present=0, rows=zero012)
+        f_none = telem.TelemFrame(telem._HDR.unpack_from(raw_none, 0), raw_none, 0.0)
+        self.assertEqual(f_none.prns(), [])
+        c = self._client()
+        self._feed(c, raw)
+        self._feed(c, _make_frame(inst="cx19.0", win=11))
+        got, _ = c.coherent_source("gps_l5", prns=[2])
+        self.assertEqual(sorted(got["cx19.0"][2]), [f.hop(r) for r in (1, 2, 3)])
 
 
 class TestStaleness(unittest.TestCase):

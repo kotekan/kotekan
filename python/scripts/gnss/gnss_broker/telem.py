@@ -38,6 +38,7 @@ _VERSION = 8
 _HDR = struct.Struct("<IHHHHHHIIQQqdIHH16s16s8H")
 _HDR_BYTES = 112
 _MAX_CHAN = 8
+_MAX_REC = 8  # gnssTelem.hpp TELEM_MAX_REC: record slots a frame may carry
 _CHAN_FLOATS = 9
 CHAN_RE, CHAN_IM, CHAN_ENERGY = 0, 1, 2  # prompt
 CHAN_E_RE, CHAN_E_IM, CHAN_E_ENERGY = 3, 4, 5  # early
@@ -168,15 +169,18 @@ class TelemFrame(object):
     def _index(self):
         if self._idx is None:
             idx = {}
-            # Each row's PRN (REC_PRN) is read from record slot 0: GnssTelemPack fixes the row
-            # map for the whole window and leaves unused rows zero, so a frame without record
-            # slot 0 reads as carrying no PRNs. The map is read from the data rather than from a
+            # Each row's PRN (REC_PRN) is read from the first filled record slot. GnssTelemPack
+            # fixes the row map for the whole window, writes rows only into the slots whose
+            # record arrived and leaves the rest zero, so every filled slot carries the same map
+            # and slot 0 may carry none. The map is read from the data rather than from a
             # configured PRN list the broker would have to keep in step.
-            for p in range(self.n_prn):
-                off = _HDR_BYTES + p * self.row_total * 4
-                prn = int(struct.unpack_from("<f", self._buf, off)[0] + 0.5)
-                if prn > 0:
-                    idx[prn] = p
+            r0 = next((r for r in range(self.n_rec) if self.has_record(r)), None)
+            if r0 is not None:
+                for p in range(self.n_prn):
+                    off = _HDR_BYTES + ((r0 * self.n_prn) + p) * self.row_total * 4
+                    prn = int(struct.unpack_from("<f", self._buf, off)[0] + 0.5)
+                    if prn > 0:
+                        idx[prn] = p
             self._idx = idx
         return self._idx
 
@@ -278,9 +282,10 @@ class TelemClient(object):
         self.host = host
         self.port = port
         self.depth = int(depth)
-        # An F-engine re-base moves the window counter far backwards. These mirror the
-        # thresholds of gnss::FleetDll (gnssFleetDll.hpp, run by GnssFleetTrim on the gather) so
-        # the gather and the broker re-anchor on the same event; see _store_frame.
+        # An F-engine re-base moves the window counter far backwards. The margin and strike
+        # count are gnss::FleetDll's (gnssFleetDll.hpp, run by GnssFleetTrim on the gather), but
+        # the counting is not, so the broker re-anchors a few windows after the gather; see
+        # _store_frame.
         self.epoch_margin = int(epoch_margin)
         self.epoch_strikes = int(epoch_strikes)
         self.epoch_resets = 0
@@ -543,10 +548,14 @@ class TelemClient(object):
         # different widths (their own comb columns) and different row counts (their chain's),
         # so the stride cannot be assumed, and a stride that disagrees with the bytes on the
         # wire reads plausible numbers off the wrong rows. n_rec, n_prn, n_chan, max_chan,
-        # row_total are hdr[2], [3], [5], [14], [15].
+        # row_total are hdr[2], [3], [5], [14], [15]. The bounds are gnss::telem_shape_ok's: a
+        # header with no records or no rows matches a bare 112 bytes and would open a window.
         length = len(buf)
         if (
-            hdr[14] > _MAX_CHAN
+            hdr[2] == 0
+            or hdr[2] > _MAX_REC
+            or hdr[3] == 0
+            or hdr[14] > _MAX_CHAN
             or hdr[5] > hdr[14]
             or hdr[15] != _ROW_FLOATS + hdr[14] * _CHAN_FLOATS
             or _HDR_BYTES + hdr[2] * hdr[3] * hdr[15] * 4 != length
@@ -584,15 +593,18 @@ class TelemClient(object):
                 # are independent processes, so out-of-order window opens are normal, which is
                 # why the ring is re-sorted rather than assumed monotone.
                 newest = next(reversed(ring)) if ring else None
-                # An epoch reset is a large, persistent backwards jump: the gather's rule
-                # (gnssFleetDll.hpp), mirrored so both ends re-anchor on the same event. A
-                # laggard is a few windows behind while its peers are not; a frame0 move lands
-                # the whole stream far below everything held and keeps it there. Without the
-                # reset, post-re-base windows are sorted to the front of a full ring and evicted
-                # first, so every frame after an F-engine restart is discarded while frames and
-                # gaps look healthy. One corrupt header cannot trigger it: epoch_strikes
-                # consecutive window-opening frames must be far behind, and one that is not
-                # clears the run. Until the run completes the frame is stored like any other.
+                # An epoch reset is a large, persistent backwards jump. A laggard is a few
+                # windows behind while its peers are not; a frame0 move lands the whole stream
+                # far below everything held and keeps it there. Without the reset, post-re-base
+                # windows are sorted to the front of a full ring and evicted first, so every
+                # frame after an F-engine restart is discarded while frames and gaps look
+                # healthy. One corrupt header cannot trigger it: epoch_strikes consecutive
+                # window-opening frames must be far behind, and one that is not clears the run.
+                # Until the run completes the frame is stored like any other. The margin and
+                # strike count are the gather's (gnssFleetDll.hpp) but the counting is not: the
+                # gather counts every far-behind frame and clears the run only on an in-order
+                # one, so a re-base re-anchors the gather after epoch_strikes frames and the
+                # broker after epoch_strikes windows.
                 if newest is not None and newest - f.win > self.epoch_margin:
                     self.far_behind += 1
                     self._backwards[f.chain] = self._backwards.get(f.chain, 0) + 1

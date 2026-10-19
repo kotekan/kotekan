@@ -96,6 +96,7 @@ from gnss_broker.telem import (
 HPS = Fraction(390625, 2)  # F-engine hops per second (3.2e9 / 16384), exact
 GRID_HOPS = 96 * 2048  # ~1.0066 s: a record hop common to every chain (see SatAdr.grid)
 GRID_KEEP = 4  # grid snapshots retained per satellite (see SatAdr.grid)
+EPOCH_MARGIN_WIN = 64  # windows: TelemClient's epoch_margin (see FleetAdr.fold_windows)
 
 
 class SatAdr(object):
@@ -116,6 +117,7 @@ class SatAdr(object):
         "grid",
         "dark",
         "dark_silent",
+        "noenergy",
         "lvl",
         "n_silent",
         "silent",
@@ -157,6 +159,9 @@ class SatAdr(object):
         self.grid = []
         self.dark = 0  # consecutive records with too few usable instances since the last good fold
         self.dark_silent = 0  # of those, records that silence (not absence) made dark
+        # records since the last good fold whose telemetry arrived with no prompt energy on any
+        # instance (counted in FleetAdr.fold_windows: they never reach the fold)
+        self.noenergy = 0
         self.lvl = {}  # inst -> [level dB, records learned] of its prompt power |S_i|
         self.n_silent = 0  # instances in the last record when it was silent
         self.silent = (
@@ -315,6 +320,7 @@ def fold_record(
                 st.inst_x[i] = res
         st.dark = 0
         st.dark_silent = 0
+        st.noenergy = 0
         dres = res - st.res
         st.adr += dcmd - dres
         st.res += dres
@@ -329,7 +335,7 @@ def fold_record(
             # instances (dark, silent ones counted apart) and the instances' last-seen hops,
             # which say whether the telemetry stopped or the trackers did. A record with no
             # prompt energy on any instance never reaches the fold (records_of_frame leaves it
-            # out), so it shows as gap, not dark.
+            # out): it is in the gap, and counted apart as noenergy when its telemetry arrived.
             _gap = (hop - prev) / float(hpr) if prev is not None else float("nan")
             _seen = sorted(st.inst_prev.get(i, (None,))[0] or 0 for i in per_inst)
             st.last_break = {
@@ -338,12 +344,14 @@ def fold_record(
                 "gap_rec": _gap,
                 "dark_rec": st.dark,
                 "silent_rec": st.dark_silent,
+                "noenergy_rec": st.noenergy,
                 "n_usable": len(usable),
                 "n_vouch": len(vouch),
                 "inst_lag_rec": [(hop - h) / float(hpr) for h in _seen[-3:]],
             }
         st.dark = 0
         st.dark_silent = 0
+        st.noenergy = 0
         st.arc += 1
         st.hop0 = hop
         st.adr = st.trim = st.res = 0.0
@@ -418,11 +426,25 @@ class FleetAdr(object):
     def fold_windows(self, client, chain, prns, now, lag=1):
         """Fold every window newer than the last one folded. Returns the number of windows."""
         want = set(int(p) for p in prns)
-        wins = [
-            w
-            for w in client.windows(chain, lag=lag)
-            if self.last_win is None or w > self.last_win
-        ]
+        ws = client.windows(chain, lag=lag)
+        # An F-engine re-base restarts the window counter and the client re-anchors its ring on
+        # the new epoch, so the newest window held drops far below the last one folded and no
+        # window would pass the filter below until the counter climbed back. Every arc ends
+        # there and the fold starts over, as after a broker restart.
+        if (
+            self.last_win is not None
+            and ws
+            and ws[-1] < self.last_win - EPOCH_MARGIN_WIN
+        ):
+            if self.log is not None:
+                self.log(
+                    "FADR EPOCH RESET %s: newest window %d is far below the last folded %d "
+                    "(an F-engine re-base) -- %d arc(s) ended, folding restarts"
+                    % (chain, ws[-1], self.last_win, len(self.sats))
+                )
+            self.last_win = None
+            self.sats.clear()
+        wins = [w for w in ws if self.last_win is None or w > self.last_win]
         for st in self.sats.values():
             st.proj = [0.0, 0, 0, 0]
         # windows the ring already dropped leave a hop gap: the arcs break honestly on it
@@ -430,10 +452,20 @@ class FleetAdr(object):
             frames = client.frame_set(chain, w)
             by_hop = {}  # hop -> prn -> inst -> the records_of_frame tuple
             for inst, f in frames.items():
+                for r in range(f.n_rec):
+                    if f.has_record(r):
+                        by_hop.setdefault(f.hop(r), {})
                 for prn, recs in records_of_frame(f, want).items():
                     for r, v in recs.items():
                         by_hop.setdefault(f.hop(r), {}).setdefault(prn, {})[inst] = v
             for hop in sorted(by_hop):
+                # Telemetry for this hop arrived without a record of the satellite carrying
+                # prompt energy: its rows had none, or GnssTelemPack shipped no row for it (a
+                # PRN not despread at the window's first record). The break line counts these
+                # apart from the gap, which also covers records that never arrived.
+                for prn, st in self.sats.items():
+                    if prn in want and prn not in by_hop[hop] and st.hop is not None:
+                        st.noenergy += 1
                 for prn, per_inst in by_hop[hop].items():
                     st = self.sats.get(prn)
                     if st is None:
@@ -473,20 +505,22 @@ class FleetAdr(object):
             for p, b in sorted(broke):
                 b["logged"] = True
                 parts.append(
-                    "%d:gap%.0f/dark%d/silent%d/usable%d/vouch%d/lag%s"
+                    "%d:gap%.0f/dark%d/silent%d/noenergy%d/usable%d/vouch%d/lag%s"
                     % (
                         p,
                         b["gap_rec"],
                         b["dark_rec"],
                         b.get("silent_rec", 0),
+                        b.get("noenergy_rec", 0),
                         b["n_usable"],
                         b["n_vouch"],
                         ",".join("%.0f" % x for x in b["inst_lag_rec"]),
                     )
                 )
             self.log(
-                "FADR BREAK %s: %d arc(s) ended -- prn:gap(records)/dark(records without "
-                "energy)/silent(of those, the prompts had lost the signal)/usable/vouchers/"
+                "FADR BREAK %s: %d arc(s) ended -- prn:gap(records)/dark(records with too few "
+                "usable instances)/silent(of those, the prompts had lost the signal)/noenergy("
+                "records that arrived with no prompt energy)/usable/vouchers/"
                 "instance-lag(records) %s" % (chain, len(broke), " ".join(parts))
             )
         return len(wins)

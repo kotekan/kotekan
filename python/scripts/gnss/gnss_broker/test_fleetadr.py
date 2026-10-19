@@ -461,6 +461,87 @@ class TestFrames(unittest.TestCase):
         self.assertEqual(pub[1]["proj_k"], 2)
         self.assertEqual(pub[1]["proj_src"], 6)
 
+    @staticmethod
+    def _frames(sky, wins, n_rec=4, row=None):
+        """{win: {inst: TelemFrame}} for two senders carrying PRN 1 in row 0. row(win, r) may
+        return extra {slot: value} for that record."""
+        import sys
+        import os
+
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        import test_telem
+        from gnss_broker import telem
+
+        frames = {}
+        for win in wins:
+            for i, inst in enumerate(("cx19.0", "cx20.0")):
+                rows = {}
+                for r in range(n_rec):
+                    hop = (win * n_rec + r) * HPR
+                    ang = -2 * math.pi * sky.phi_res(hop) - sky.phi0[i]
+                    A = sky.amp[i] * cmath.exp(1j * ang)
+                    rows[(r, 0, telem.REC_P_RE)] = 2.0 * A.real
+                    rows[(r, 0, telem.REC_P_IM)] = 2.0 * A.imag
+                    rows[(r, 0, telem.REC_DOPPLER)] = sky.dop_cmd
+                    rows[(r, 0, telem.REC_TRIM_INC)] = 0.0
+                    rows[(r, 0, telem.REC_PROJ_COST)] = -1.0
+                    for slot, v in (row(win, r) if row else {}).items():
+                        rows[(r, 0, slot)] = v
+                raw = test_telem._make_frame(
+                    inst=inst,
+                    win=win,
+                    n_rec=n_rec,
+                    n_prn=1,
+                    hops_per_record=HPR,
+                    rows=rows,
+                )
+                frames.setdefault(win, {})[inst] = telem.TelemFrame(
+                    telem._HDR.unpack_from(raw, 0), raw, 0.0
+                )
+        return frames
+
+    def test_an_epoch_reset_restarts_the_fold(self):
+        """An F-engine re-base restarts the window counter. The windows of the new epoch are all
+        below the last one folded, and must still be folded: a new arc, not a dark chain."""
+        sky = Sky(n_inst=2)
+        lines = []
+        fl = fa.FleetAdr(hpr=HPR, log=lines.append)
+        old = FakeClient(self._frames(sky, range(100, 112)))
+        self.assertEqual(fl.fold_windows(old, "gps_l5", {1}, now=1000.0), 11)
+        self.assertEqual(fl.fold_windows(old, "gps_l5", {1}, now=1001.0), 0)
+        new = FakeClient(self._frames(sky, range(0, 12)))
+        self.assertEqual(fl.fold_windows(new, "gps_l5", {1}, now=1002.0), 11)
+        st = fl.sats[1]
+        self.assertEqual((st.arc, st.hop0, st.n), (1, 0, 11 * 4))
+        self.assertLess(abs(st.adr - dop_only(sky, st.hop, st.hop0)), 1e-3)
+        self.assertEqual(len(lines), 1)
+        self.assertTrue(lines[0].startswith("FADR EPOCH RESET gps_l5:"), lines)
+
+    def test_a_break_counts_records_that_arrived_without_energy(self):
+        """Records that arrived with no prompt energy (a zero row, or no row shipped) never reach
+        the fold. The break counts them apart from the gap, so a stretch the trackers did not
+        despread reads differently from telemetry that never came: window 130 has zero rows,
+        131 is missing, 132 ships no row for the PRN."""
+        from gnss_broker import telem
+
+        def row(win, r):
+            if win == 130:
+                return {telem.REC_P_ENERGY: 0.0}
+            if win == 132:
+                return {telem.REC_PRN: 2.0}
+            return {}
+
+        sky = Sky(n_inst=2)
+        frames = self._frames(sky, [w for w in range(100, 138) if w != 131], row=row)
+        lines = []
+        fl = fa.FleetAdr(hpr=HPR, log=lines.append)
+        fl.fold_windows(FakeClient(frames), "gps_l5", {1}, now=1000.0)
+        b = fl.sats[1].last_break
+        self.assertEqual(b["hop"], 133 * 4 * HPR)
+        self.assertEqual((b["gap_rec"], b["dark_rec"], b["noenergy_rec"]), (13, 0, 8))
+        self.assertEqual(len(lines), 1)
+        self.assertIn(" 1:gap13/dark0/silent0/noenergy8/", lines[0])
+
 
 if __name__ == "__main__":
     unittest.main()
