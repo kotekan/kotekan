@@ -39,7 +39,9 @@ def main():
     ap.add_argument("notebook")
     ap.add_argument("--cwd", default=None)
     a = ap.parse_args()
-    nb = json.load(open(a.notebook))
+    # Absolute before the chdir: the outputs are written back to the notebook that was read.
+    nb_path = os.path.abspath(a.notebook)
+    nb = json.load(open(nb_path))
     if a.cwd:
         os.chdir(a.cwd)
     import matplotlib
@@ -115,8 +117,8 @@ def main():
             )
         plt.close("all")
         cell["outputs"] = outs
-    json.dump(nb, open(a.notebook, "w"), indent=1)
-    print("%s: %d code cells, %s" % (a.notebook, count, "FAILED" if failed else "ok"))
+    json.dump(nb, open(nb_path, "w"), indent=1)
+    print("%s: %d code cells, %s" % (nb_path, count, "FAILED" if failed else "ok"))
     sys.exit(1 if failed else 0)
 
 

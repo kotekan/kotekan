@@ -98,5 +98,8 @@ while IFS='|' read -r name pat; do
 done <<< "$COMPONENTS"
 
 echo
-echo "remaining cube-leg processes: $(pgrep -fc '[h]ttp.server 8877|[c]ubecompact_loop|[k]otekan .*chord_gnss_cubearch' 2>/dev/null || echo 0)"
+# pgrep -c prints its count even when it is 0 (and exits 1 then); an `|| echo 0` would print a
+# second 0.
+n=$(pgrep -fc '[h]ttp.server 8877|[c]ubecompact_loop|[k]otekan .*chord_gnss_cubearch' 2>/dev/null)
+echo "remaining cube-leg processes: ${n:-0}"
 exit $rc

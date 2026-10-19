@@ -71,7 +71,7 @@ done
 # One preflight and one systemd-run line, so the two actions cannot start a node differently.
 preflight() {
     # Fail loudly on a missing config or binary. The systemd-run below is guarded by
-    # `test -r '$CFG' && ...`; a failing test creates no unit, `systemctl status` then says
+    # `test -r '$CFG'`; a failing test creates no unit, `systemctl status` then says
     # "could not be found", and the remote side can report only "config unreadable". Checking
     # here names the bad path. These are local checks of the NFS-shared tree the node reads.
     if [ -z "$CFG" ]; then
@@ -191,7 +191,9 @@ print("%s:%s%s" % (c["host"], c["port"], c.get("timing_endpoint", "/get-frame0-t
 # The mkdir makes /tmp/gnss, the configs' record_dir, on node-local disk (not the NFS home).
 # A stopped or failed transient unit can stay loaded, and systemd-run then refuses the name
 # ("Unit gnss-node.service was already loaded or has a fragment file"); reset-failed clears it
-# and is harmless when there is nothing to clear, hence the `|| true`.
+# and is harmless when there is nothing to clear, hence the `|| true`. An unreadable config ends
+# the session (exit 2); a failing systemd-run is left to the retry loop below, whose next attempt
+# stops and resets the unit first.
 # The unit restarts itself on failure. An F-engine reconfigure (FPGAMonitor exits when the
 # controller no longer matches the config and frame0 the node started with) or a crash ends a
 # healthy node; Restart=on-failure brings it back after RestartSec, re-reading the F-engine controller on the way
@@ -219,7 +221,8 @@ REMOTE_UP="mkdir -p /tmp/gnss && sudo systemctl reset-failed gnss-node 2>/dev/nu
       { [ -d $(dirname $NR_CONF) ] && ! grep -qxF '$NR_LINE' $NR_CONF 2>/dev/null \
         && echo '$NR_LINE' | sudo tee $NR_CONF >/dev/null; true; }; \
       { [ -f '$LOG' ] && sudo mv -f '$LOG' '$LOG.1'; true; }; \
-      test -r '$CFG' && sudo systemd-run --unit=gnss-node \
+      test -r '$CFG' || { echo \"node_up: config unreadable\"; exit 2; }; \
+      sudo systemd-run --unit=gnss-node \
         --working-directory=$K \
         --property=Restart=on-failure --property=RestartSec=20 \
         --property=StartLimitIntervalSec=0 \
@@ -245,7 +248,7 @@ REMOTE_UP="mkdir -p /tmp/gnss && sudo systemctl reset-failed gnss-node 2>/dev/nu
 # that wait continues while systemd restarts it.
 REMOTE_START_VERIFY="for attempt in 1 2 3; do \
       sudo systemctl stop gnss-node 2>/dev/null || true; sleep 1; \
-      $REMOTE_UP || { echo \"node_up: config unreadable\"; exit 2; }; \
+      $REMOTE_UP || { echo \"node_up: systemd-run failed on attempt \$attempt -- retrying\"; continue; }; \
       ok=0; \
       for i in \$(seq 1 100); do \
         if curl -sf -m 2 -o /dev/null http://localhost:12048/telescope/time0_ns 2>/dev/null; \

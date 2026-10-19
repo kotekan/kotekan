@@ -8,15 +8,19 @@
 #      yesterday's L0 files (a rung rebuilds the whole day, so it waits for the day to close),
 #      then beamcube_daily.sh publishes the day's beam map.
 #
-# gnss-cubecompact.service (gnss-cube.target) runs the same loop at boot, through
-# run_component.sh; once that target is enabled on cf06, use it instead of this launcher.
+# On cf06 the loop is gnss-cubecompact.service (gnss-cube.target, enabled there), through
+# run_component.sh; restart it with `systemctl --user restart gnss-cubecompact.service`. Run
+# this launcher only with that unit stopped, for a test root (CUBE_ROOT) too: its pkill matches
+# every compactor loop on the host, so beside the unit it ends the unit's loop, which exits
+# cleanly and so is not restarted, and leaves an unmanaged loop in its place.
 #
 # Runs on cf06 only: the raw tree is on /mnt/cs00, and the nodes are production trackers.
 #
 # usage:  ssh cf06 '/home/kvand/gnss/kotekan/scripts/gnss/site/cubecompact_up.sh'
 #         CUBE_ROOT=/mnt/cs00/data/kvand/gnss_cube_test ... (a test run)
+#         GNSS_K=<checkout>                                  (loop and tool from another tree)
 set -u
-K=/home/kvand/gnss/kotekan
+K=${GNSS_K:-/home/kvand/gnss/kotekan}
 PY=${GNSS_PY:-/home/kvand/gnss/venv/bin/python}     # needs h5py: venv, not venv-ft
 ROOT=${CUBE_ROOT:-/mnt/cs00/data/kvand/gnss_cube}
 RAW=${CUBE_RAW:-$ROOT/raw}
@@ -44,6 +48,18 @@ pkill -f "[c]ubecompact_loop.sh" 2>/dev/null || true
 # before it exits (its TERM trap), so a gnss_cube_compact.py can still be running (a compact
 # pass takes tens of seconds, the rung and publish pass minutes). Two compactors on one L0 tree
 # corrupt it; give up after 15 min.
+# The loop itself first: between the steps of its pass no compactor runs, so the wait below
+# alone could end there and start a second loop beside the rest of the old pass.
+for _i in $(seq 1 180); do
+    pgrep -f "[c]ubecompact_loop.sh" >/dev/null || break
+    [ "$_i" = 1 ] && echo "waiting for the old compactor loop to finish its pass..."
+    sleep 5
+done
+if pgrep -f "[c]ubecompact_loop.sh" >/dev/null; then
+    echo "REFUSING: the old cubecompact_loop.sh is still running after 15 min. Two compactors on" >&2
+    echo "one L0 tree corrupt it -- find out what that pass is doing before starting another." >&2
+    exit 1
+fi
 for _i in $(seq 1 180); do
     pgrep -f "[g]nss_cube_compact.py" >/dev/null || break
     [ "$_i" = 1 ] && echo "waiting for the in-flight compact pass to finish..."

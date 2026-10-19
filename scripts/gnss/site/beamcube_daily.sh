@@ -55,22 +55,35 @@ if [ -s "$MASTER" ] && [ -z "${BEAMCUBE_FORCE:-}" ]; then
 else
     # The chain-health mask first. The cube carries no tracking flags, so it folds the records
     # of a chain that sat on noise; the observables writers flag them. gnss_chain_health.py
-    # turns those flags into per-chain 5-min bins and the build vetoes them (its --health-mask
-    # auto reads fixtures/obs/health/mask_<day>.json, this file at the default $OBS). A failed
-    # mask run must not stop the build: exit 1 there means "episodes found", which is the point.
+    # turns those flags into per-chain 5-min bins and the build vetoes them. The build is given
+    # this mask by path: its --health-mask auto reads only fixtures/obs/health, so a GNSS_OBS_OUT
+    # elsewhere would build unmasked. A failed mask run must not stop the build. Exit 1 there
+    # means "episodes found", which is the point, but a crash exits 1 too, so only a mask this
+    # run wrote counts as masked.
     # An existing mask is kept (BEAMCUBE_REMASK=1 to regenerate): a mask built by hand, for a
     # day whose writers carried a wrong time base, must not be replaced by one built from the
     # raw observables.
     OBS=${GNSS_OBS_OUT:-/home/kvand/gnss/fixtures/obs}
+    MASK=$OBS/health/mask_$DAY.json
     shopt -s nullglob; OBSFILES=("$OBS"/*_"$DAY".jsonl); shopt -u nullglob
-    if [ -s "$OBS/health/mask_$DAY.json" ] && [ -z "${BEAMCUBE_REMASK:-}" ]; then
-        say "chain-health: keeping existing $OBS/health/mask_$DAY.json"
+    if [ -s "$MASK" ] && [ -z "${BEAMCUBE_REMASK:-}" ]; then
+        say "chain-health: keeping existing $MASK"
     elif [ "${#OBSFILES[@]}" -gt 0 ]; then
+        was=$(stat -c %y "$MASK" 2>/dev/null)
         nice -n 19 "$PY" -u $K/python/scripts/gnss/gnss_chain_health.py "${OBSFILES[@]}" \
-            --out "$OBS/health/mask_$DAY.json" || say "chain-health: EPISODES on $DAY (masked)"
+            --out "$MASK"
+        rc=$?
+        if [ "$rc" -le 1 ] && [ -s "$MASK" ] && [ "$(stat -c %y "$MASK")" != "$was" ]; then
+            [ "$rc" = 1 ] && say "chain-health: EPISODES on $DAY (masked)"
+        elif [ -s "$MASK" ]; then
+            say "chain-health FAILED rc=$rc on $DAY; building with the mask already there"
+        else
+            say "chain-health FAILED rc=$rc on $DAY; building without a mask"
+        fi
     else
         say "chain-health: no observables for $DAY under $OBS -- building without a mask"
     fi
+    [ -s "$MASK" ] || MASK=""
     say "build $DAY nside $NSIDE from ${POINTINGS[0]}"
     # Build into a staging dir: a half-written master that the export then reads is worse than
     # no master, and the build writes its .npz in place.
@@ -78,7 +91,7 @@ else
     mkdir -p "$STAGE" || exit 1
     trap 'rm -rf "$STAGE"' EXIT
     if ! nice -n 19 "$PY" -u "$TOOL" build --source l0 --archive "$ARCHIVE" \
-            --days "$DAY" --nside "$NSIDE" --outdir "$STAGE"; then
+            --days "$DAY" --nside "$NSIDE" --health-mask "$MASK" --outdir "$STAGE"; then
         say "BUILD FAILED for $DAY -- viewer left as it was"
         exit 4
     fi

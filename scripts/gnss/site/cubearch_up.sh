@@ -16,9 +16,13 @@
 # can never stall a tracker.
 #
 # A reboot stops an archiver started by hand. cf06 takes unattended kernel reboots at ~03:03,
-# and a gap that starts then is this, not the instrument. The boot unit is gnss-cubearch.service
-# (gnss-cube.target, scripts/gnss/site/systemd), whose ExecStartPre is this script's --check;
-# once that target is enabled on cf06, use it instead of this launcher.
+# and a gap that starts then is this, not the instrument. On cf06 the archiver is
+# gnss-cubearch.service (gnss-cube.target, enabled there; scripts/gnss/site/systemd), whose
+# ExecStartPre is this script's --check; restart it with
+# `systemctl --user restart gnss-cubearch.service`. Launch by hand only with that unit stopped,
+# for a test config too: the kill -9 below matches any kotekan on a *cubearch* config, the
+# unit's included, systemd reads that as the unit's archiver failing, and the unit restarts it
+# 30 s later beside the one started here.
 #
 # Run the DPDK-free binary (NFS holds two build trees), poll for the port instead of sleeping,
 # and check the log for a FatalError rather than trusting that a process exists.

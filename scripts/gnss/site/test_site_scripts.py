@@ -1,0 +1,417 @@
+#!/usr/bin/env python3
+"""The site shell scripts' own checks, each run against stubs in a throwaway directory.
+
+    python3 scripts/gnss/site/test_site_scripts.py
+
+Nothing here reaches a node, a unit or a process outside the test: ssh, sudo, systemctl, curl,
+scp and the like are stubs on PATH, and pgrep/pkill are wrapped to match only processes in the
+test's own session (pgrep -s 0), so a pattern can never touch the live stack on this host.
+"""
+import os
+import shutil
+import signal
+import stat
+import subprocess
+import sys
+import tempfile
+import time
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+
+_fails = []
+
+
+def check(ok, what):
+    print("  [%s] %s" % ("PASS" if ok else "FAIL", what))
+    if not ok:
+        _fails.append(what)
+
+
+def stub(d, name, body):
+    """An executable shell script `name` in directory d."""
+    os.makedirs(d, exist_ok=True)
+    path = os.path.join(d, name)
+    with open(path, "w") as fh:
+        fh.write("#!/bin/bash\n" + body)
+    os.chmod(path, os.stat(path).st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+    return path
+
+
+def session_pgrep(bindir):
+    """pgrep and pkill restricted to the caller's session: the test runs every script in a
+    session of its own, so a pattern matches only the test's processes."""
+    for tool in ("pgrep", "pkill"):
+        stub(bindir, tool, 'exec /usr/bin/%s -s 0 "$@"\n' % tool)
+
+
+def run(cmd, env, timeout=120, cwd=None):
+    """Run cmd in a new session with env added to this environment; (rc, stdout+stderr).
+    On a timeout the session's process group is killed, so nothing it started outlives it."""
+    e = dict(os.environ)
+    e.update(env)
+    p = subprocess.Popen(
+        cmd,
+        env=e,
+        cwd=cwd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        start_new_session=True,
+    )
+    try:
+        out, _ = p.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        os.killpg(p.pid, signal.SIGKILL)
+        out, _ = p.communicate()
+        out += "\n(timed out after %d s)" % timeout
+    return p.returncode, out
+
+
+def test_contract_gate_env_is_whole_record():
+    d = tempfile.mkdtemp(prefix="site_gate_")
+    try:
+        shutil.copy(os.path.join(HERE, "stack_contract_gate.sh"), d)
+        stub(
+            d,
+            "run_component.sh",
+            r"printf 'argv\tsleep\nargv\t30\nenv\tOPENBLAS_NUM_THREADS=1\n'" + "\n",
+        )
+        bindir = os.path.join(d, "bin")
+        stub(bindir, "systemctl", 'echo "$GATE_TEST_PID"\n')
+        path = bindir + ":" + os.environ["PATH"]
+        for have, want_ok in (("16", False), ("1", True)):
+            env = {k: v for k, v in os.environ.items() if k != "OPENBLAS_NUM_THREADS"}
+            env["OPENBLAS_NUM_THREADS"] = have
+            p = subprocess.Popen(["sleep", "30"], env=env)
+            try:
+                rc, out = run(
+                    ["bash", os.path.join(d, "stack_contract_gate.sh"), "broker"],
+                    {"PATH": path, "GATE_TEST_PID": str(p.pid)},
+                )
+            finally:
+                p.kill()
+                p.wait()
+            if want_ok:
+                check(
+                    rc == 0 and " ok " in out,
+                    "OPENBLAS_NUM_THREADS=1 satisfies the contract (rc %d)" % rc,
+                )
+            else:
+                check(
+                    rc != 0 and "ENV MISSING: OPENBLAS_NUM_THREADS=1" in out,
+                    "OPENBLAS_NUM_THREADS=16 does not satisfy OPENBLAS_NUM_THREADS=1 (rc %d: %s)"
+                    % (rc, out.strip().splitlines()[0] if out.strip() else ""),
+                )
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+SSH_STUB = r"""# ssh [opts] host 'remote command' -> the remote command, run here
+while [ $# -gt 1 ]; do case "$1" in -o) shift 2 ;; -*) shift ;; *) break ;; esac; done
+shift
+exec bash -c "$*"
+"""
+
+
+def node_up_stubs(d):
+    """ssh runs the remote string here; sudo runs only what node_up needs, and systemd-run
+    fails; systemctl and curl fail; mkdir and sleep do nothing."""
+    bindir = os.path.join(d, "bin")
+    stub(bindir, "ssh", SSH_STUB)
+    stub(
+        bindir,
+        "sudo",
+        'case "$1" in\n'
+        '  systemd-run) echo "$*" >> "$SUDO_LOG"; exit 1 ;;\n'
+        "  tee) cat > /dev/null ;;\n"
+        '  systemctl|mv) exec "$@" ;;\n'
+        "  *) exit 1 ;;\n"
+        "esac\n",
+    )
+    stub(bindir, "systemctl", "exit 1\n")
+    stub(bindir, "curl", "exit 7\n")
+    stub(bindir, "mkdir", "exit 0\n")
+    stub(bindir, "sleep", "exit 0\n")
+    return bindir + ":" + os.environ["PATH"]
+
+
+def test_node_up_systemd_run_failure_retries():
+    d = tempfile.mkdtemp(prefix="site_node_up_")
+    try:
+        path = node_up_stubs(d)
+        cfg = os.path.join(d, "node.yaml")
+        open(cfg, "w").write("x: 1\n")
+        sudo_log = os.path.join(d, "sudo.log")
+        env = {
+            "PATH": path,
+            "GNSS_SKIP_PREFLIGHT": "1",
+            "GNSS_CFG": cfg,
+            "GNSS_BIN": "/bin/true",
+            "GNSS_LOG": os.path.join(d, "node.log"),
+            "SUDO_LOG": sudo_log,
+        }
+        rc, out = run(["bash", os.path.join(HERE, "node_up.sh"), "cxtest", "up"], env)
+        starts = (
+            open(sudo_log).read().count("systemd-run")
+            if os.path.exists(sudo_log)
+            else 0
+        )
+        check(
+            "config unreadable" not in out,
+            "a systemd-run failure on a readable config is not reported as 'config unreadable'",
+        )
+        check(
+            starts == 3, "it is retried: three systemd-run attempts (saw %d)" % starts
+        )
+        check(
+            rc == 1 and "FAILED after 3 attempts" in out,
+            "and ends as a failed start after three (rc %d)" % rc,
+        )
+        # The node's log path and the config are one file here, so the remote side moves the
+        # config away (to $LOG.1) before its readability test: that test must stay fatal.
+        open(cfg, "w").write("x: 1\n")
+        open(sudo_log, "w").close()
+        env["GNSS_LOG"] = cfg
+        rc, out = run(["bash", os.path.join(HERE, "node_up.sh"), "cxtest", "up"], env)
+        check(
+            rc == 2 and "config unreadable" in out and open(sudo_log).read() == "",
+            "an unreadable config on the node still exits 2 before any systemd-run (rc %d)"
+            % rc,
+        )
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def test_stack_down_summary_is_one_count():
+    d = tempfile.mkdtemp(prefix="site_stack_down_")
+    try:
+        bindir = os.path.join(d, "bin")
+        session_pgrep(bindir)
+        rc, out = run(
+            ["bash", os.path.join(HERE, "stack_down.sh"), "--no-archive"],
+            {"PATH": bindir + ":" + os.environ["PATH"]},
+        )
+        tail = out.rstrip("\n").split("\n")[-2:]
+        check(
+            rc == 0 and tail[-1] == "remaining cube-leg processes: 0" and tail[0] == "",
+            "with nothing running the summary is one line ending in a single 0 (got %r)"
+            % tail,
+        )
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def test_wedge_probe_finds_kotekan_by_name():
+    d = tempfile.mkdtemp(prefix="site_wedge_")
+    try:
+        bindir = os.path.join(d, "bin")
+        session_pgrep(bindir)
+        stub(bindir, "ssh", SSH_STUB)
+        stub(bindir, "curl", "exit 7\n")
+        stub(bindir, "nvidia-smi", "exit 1\n")
+        env = {"PATH": bindir + ":" + os.environ["PATH"]}
+        probe = os.path.join(HERE, "node_wedge_probe.sh")
+        rc, out = run(["bash", probe, "cxtest"], env)
+        check(
+            "no kotekan process" in out,
+            "with no kotekan running the probe says so, rather than probing its own shell",
+        )
+        # Binaries staged outside build/ (GNSS_BIN=builds/<name>/kotekan/kotekan) and beside
+        # the default one (kotekan.next_<tag>), each run in the probe's session so the wrapped
+        # pgrep can see it. The driver waits for the fake's exec (its process name) before the
+        # probe looks.
+        for rel in ("builds/x/kotekan/kotekan", "build/kotekan/kotekan.next_test"):
+            fake = os.path.join(d, rel)
+            os.makedirs(os.path.dirname(fake))
+            shutil.copy("/bin/sleep", fake)
+            pidf = os.path.join(d, "fake.pid")
+            rc, out = run(
+                [
+                    "bash",
+                    "-c",
+                    '"$1" 30 & echo $! > "$2"; for _ in $(seq 50); do '
+                    'grep -q "^kotekan" /proc/$!/comm 2>/dev/null && break; sleep 0.1; done; '
+                    'bash "$3" cxtest; kill $!',
+                    "driver",
+                    fake,
+                    pidf,
+                    probe,
+                ],
+                env,
+            )
+            pid = open(pidf).read().strip()
+            check(
+                ("kotekan pid %s\n" % pid) in out and "no kotekan process" not in out,
+                "a kotekan staged as %s is the process probed (pid %s; got %r)"
+                % (rel, pid, out.strip().splitlines()[1:2]),
+            )
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def test_cubecompact_up_waits_for_the_old_loop():
+    d = tempfile.mkdtemp(prefix="site_cubecompact_")
+    try:
+        bindir = os.path.join(d, "bin")
+        session_pgrep(bindir)
+        # setsid keeps the new loop in the test's session, and starts nothing outside the test
+        # tree (a launcher that ignored GNSS_K would start the installed loop).
+        stub(
+            bindir,
+            "setsid",
+            'case "$1" in "$CC_TEST_DIR"/*) exec "$@" ;; esac\necho "setsid stub: refusing $1"\nexit 1\n',
+        )
+        k = os.path.join(d, "k")
+        # The new loop: records when it started, then idles.
+        stub(
+            os.path.join(k, "scripts", "gnss", "site"),
+            "cubecompact_loop.sh",
+            'date +%s.%N > "$CC_TEST_DIR/new_start"\necho $$ > "$CC_TEST_DIR/new_pid"\n'
+            "while :; do sleep 1; done\n",
+        )
+        # The old loop: on TERM it finishes a pass (lingers 6 s) before it exits, as the real
+        # loop does, with no compactor running meanwhile. It says when its trap is set.
+        old = stub(
+            os.path.join(d, "old"),
+            "cubecompact_loop.sh",
+            "trap 'sleep 6; date +%s.%N > \"$CC_TEST_DIR/old_exit\"; exit 0' TERM\n"
+            'touch "$CC_TEST_DIR/old_ready"\n'
+            "while :; do sleep 0.2; done\n",
+        )
+        py = stub(bindir, "fakepy", "exit 0\n")
+        os.makedirs(os.path.join(d, "root", "raw"))
+        env = {
+            "PATH": bindir + ":" + os.environ["PATH"],
+            "GNSS_K": k,
+            "GNSS_PY": py,
+            "CUBE_ROOT": os.path.join(d, "root"),
+            "CUBE_HOST_NAME": os.uname().nodename.split(".")[0],
+            "CUBE_COMPACT_LOG": os.path.join(d, "compact.log"),
+            "CC_TEST_DIR": d,
+            "CC_OLD": old,
+            "CC_UP": os.path.join(HERE, "cubecompact_up.sh"),
+        }
+        # Paths travel in the environment: a driver whose command line named the old loop
+        # would itself match the launcher's pkill pattern.
+        rc, out = run(
+            [
+                "bash",
+                "-c",
+                '"$CC_OLD" & echo $! > "$CC_TEST_DIR/old_pid"; for _ in $(seq 100); do '
+                '[ -e "$CC_TEST_DIR/old_ready" ] && break; sleep 0.1; done; exec bash "$CC_UP"',
+            ],
+            env,
+        )
+        t_old = os.path.join(d, "old_exit")
+        t_new = os.path.join(d, "new_start")
+        if not (os.path.exists(t_old) and os.path.exists(t_new)):
+            check(False, "both loops ran (rc %d): %s" % (rc, out.strip()[-300:]))
+            return
+        old_exit = float(open(t_old).read())
+        new_start = float(open(t_new).read())
+        check(
+            new_start > old_exit,
+            "the new loop starts after the old one has exited (new - old = %+.1f s)"
+            % (new_start - old_exit),
+        )
+        check(rc == 0, "and the launcher reports it up (rc %d)" % rc)
+    finally:
+        # Only a process still running a script under d: a pid that has exited may be reused.
+        for name in ("old_pid", "new_pid"):
+            try:
+                pid = int(open(os.path.join(d, name)).read())
+                if d in open("/proc/%d/cmdline" % pid).read():
+                    os.kill(pid, signal.SIGKILL)
+            except (OSError, ValueError):
+                pass
+        shutil.rmtree(d, ignore_errors=True)
+
+
+GEN_FLEET_STUB = r"""import os, sys
+K = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if "--print-path" in sys.argv:
+    print(os.path.join(K, "config", "generated", "chord_gnss_cx19_other.yaml"))
+    sys.exit(0)
+with open(os.path.join(K, "gen_fleet.calls"), "a") as fh:
+    fh.write(" ".join(sys.argv[2:]) + "\n")
+"""
+
+
+def test_eop_cron_reads_the_configs_the_manifest_owns():
+    d = tempfile.mkdtemp(prefix="site_eop_")
+    try:
+        k = os.path.join(d, "k")
+        os.makedirs(os.path.join(k, "scripts", "gnss", "site"))
+        os.makedirs(os.path.join(k, "config", "generated"))
+        shutil.copy(
+            os.path.join(HERE, "eop_cron.sh"),
+            os.path.join(k, "scripts", "gnss", "site"),
+        )
+        with open(os.path.join(k, "scripts", "gnss", "gen_fleet.py"), "w") as fh:
+            fh.write(GEN_FLEET_STUB)
+        open(os.path.join(k, "config", "gnss_fleet_chord.yaml"), "w").write(
+            "suffix: _other\n"
+        )
+        now_ns = int(time.time()) * 10 ** 9
+        disk_end, file_end = now_ns + 86400 * 10 ** 9, now_ns + 3 * 86400 * 10 ** 9
+        # A manifest suffix other than _multi: the config's name carries it.
+        with open(
+            os.path.join(k, "config", "generated", "chord_gnss_cx19_other.yaml"), "w"
+        ) as fh:
+            fh.write(
+                "earth_rotation_data:\n  earth_orientation_parameter_table:\n"
+                "  - t_inst_ns: %d\n" % disk_end
+            )
+        state = os.path.join(d, "eop-state.json")
+        with open(state, "w") as fh:
+            fh.write(
+                '{"earth_orientation_parameter_table": [{"t_inst_ns": %d}]}\n'
+                % file_end
+            )
+        bindir = os.path.join(d, "bin")
+        stub(bindir, "scp", "exit 1\n")
+        stub(bindir, "curl", "exit 7\n")
+        log = os.path.join(d, "eop.log")
+        rc, out = run(
+            ["bash", os.path.join(k, "scripts", "gnss", "site", "eop_cron.sh")],
+            {
+                "PATH": bindir + ":" + os.environ["PATH"],
+                "GNSS_NODES": "cxtest",
+                "EOP_LOG": log,
+                "EOP_STATE": state,
+            },
+        )
+        text = open(log).read() if os.path.exists(log) else out
+        calls = os.path.join(k, "gen_fleet.calls")
+        calls = open(calls).read().splitlines() if os.path.exists(calls) else []
+        check(
+            ("on-disk configs regenerated: table end %d -> %d" % (disk_end, file_end))
+            in text,
+            "a config whose table ends before the staged one is found under the manifest's suffix "
+            "and regenerated (%r)" % text.strip().splitlines()[-1:],
+        )
+        check(
+            calls == ["--check", ""],
+            "after a --check, then a write (gen_fleet calls %r)" % calls,
+        )
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def main():
+    tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
+    for t in tests:
+        print(t.__name__)
+        try:
+            t()
+        except Exception as e:
+            check(False, "%s raised %s: %s" % (t.__name__, type(e).__name__, e))
+    if _fails:
+        print("\n%d FAILED" % len(_fails))
+        return 1
+    print("\nall passed")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

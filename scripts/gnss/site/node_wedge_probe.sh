@@ -30,10 +30,15 @@ BT=0
 if [ "${1:-}" = "--bt" ]; then BT=1; shift; fi
 NODES="${*:-$NODES_DEFAULT}"
 
+# kotekan is found by process name, the oldest if more than one. "^kotekan" also matches a
+# binary staged beside it (GNSS_BIN=.../kotekan.next_<tag>). A command-line pattern misses a
+# binary staged outside build/, and matches the `bash -c` that ssh runs this probe in, whose
+# command line carries the pattern.
 probe_one() {
     local n=$1
-    ssh "$n" 'PID=$(pgrep -f "build/kotekan" | head -1)
+    ssh "$n" 'PID=$(pgrep -o "^kotekan")
 if [ -z "$PID" ]; then echo "  no kotekan process"; exit 0; fi
+echo "  kotekan pid $PID"
 # --- dpdk workers: the discriminator. A sleeping poll-mode worker is the whole finding.
 bad=0
 for t in /proc/$PID/task/*; do
@@ -70,7 +75,7 @@ if [ "$BT" = "1" ]; then
     echo "    Naming the stage that stopped consuming is the one thing the counters above"
     echo "    cannot do: they prove back-pressure, not its origin. Run:"
     echo
-    echo "      ssh $n 'sudo gdb -p \$(pgrep -f build/kotekan | head -1) --batch \\"
+    echo "      ssh $n 'sudo gdb -p \$(pgrep -o ^kotekan) --batch \\"
     echo "         -ex \"set pagination off\" -ex \"thread apply all bt 12\"' > /tmp/kotekan_bt_$n.txt"
     echo
     echo "    Then look for the dpdk-worker3/4 frames and any stage sitting in"

@@ -90,24 +90,30 @@ def stage():
     have = open(STAGE_META).read().strip() if os.path.exists(STAGE_META) else ""
     if meta == have and os.path.exists(STAGE) and os.path.exists(STAGE_CONF):
         return None
-    for src, dst in (
-        (bffs_bad_inputs.STATE, STAGE),
-        (bffs_bad_inputs.CONF, STAGE_CONF),
-    ):
-        subprocess.run(
-            [
-                "scp",
-                "-q",
-                "-o",
-                "BatchMode=yes",
-                "-o",
-                "ConnectTimeout=10",
-                src,
-                dst + ".new",
-            ],
-            timeout=60,
-            check=True,
-        )
+    pairs = ((bffs_bad_inputs.STATE, STAGE), (bffs_bad_inputs.CONF, STAGE_CONF))
+    # Both copies land before either replaces its staged file, so the staged pair is always one
+    # fetch. A failed copy keeps the staged pair and the old meta, so the next run fetches again.
+    try:
+        for src, dst in pairs:
+            subprocess.run(
+                [
+                    "scp",
+                    "-q",
+                    "-o",
+                    "BatchMode=yes",
+                    "-o",
+                    "ConnectTimeout=10",
+                    src,
+                    dst + ".new",
+                ],
+                timeout=60,
+                check=True,
+            )
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError) as e:
+        if os.path.exists(STAGE) and os.path.exists(STAGE_CONF):
+            return "scp failed (%s); using the staged list" % type(e).__name__
+        raise
+    for _, dst in pairs:
         os.replace(dst + ".new", dst)
     with open(STAGE_META, "w") as fh:
         fh.write(meta + "\n")

@@ -30,7 +30,9 @@ check() {
     local miss=""
     while IFS= read -r kv; do
         [ -z "$kv" ] && continue
-        grep -qzF "$kv" "/proc/$pid/environ" 2>/dev/null || miss="$miss $kv"
+        # -x: the whole NUL-separated record. A substring match would let VAR=16 satisfy VAR=1,
+        # and XVAR=1 satisfy VAR=1.
+        grep -qzxF "$kv" "/proc/$pid/environ" 2>/dev/null || miss="$miss $kv"
     done <<< "$want_env"
     if [ -n "$miss" ]; then
         printf '  %-22s ENV MISSING:%s\n' "$name" "$miss"

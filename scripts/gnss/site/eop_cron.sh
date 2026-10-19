@@ -20,12 +20,13 @@
 #      that has ended.
 #
 #   crontab:  17 * * * *  /home/kvand/gnss/kotekan/scripts/gnss/site/eop_cron.sh
-#   env:      GNSS_NODES (default the six), EOP_LOG (default /var/tmp/gnss-logs/eop_cron.log)
+#   env:      GNSS_NODES (default the six), EOP_LOG (default /var/tmp/gnss-logs/eop_cron.log),
+#             EOP_STATE (the staged table, default /var/tmp/gnss-logs/eop-state.json)
 set -u
 K=$(cd "$(dirname "$0")/../../.." && pwd)
 NODES=${GNSS_NODES:-"cx19 cx27 cx42 cx43 cx44 cx51"}
 LOG=${EOP_LOG:-/var/tmp/gnss-logs/eop_cron.log}
-F=/var/tmp/gnss-logs/eop-state.json
+F=${EOP_STATE:-/var/tmp/gnss-logs/eop-state.json}
 exec >>"$LOG" 2>&1
 echo "== $(date -u +%FT%TZ) eop_cron"
 
@@ -80,10 +81,12 @@ fi
 # The on-disk configs too: a relaunch starts from the file, and a node started on a table that
 # has ended shuts down. Regenerate them only when they still match the manifest apart from live
 # data (gen_fleet --check leaves the EOP table and the bad inputs out of the comparison), so a
-# hand-edited or half-edited manifest is never written under a node.
+# hand-edited or half-edited manifest is never written under a node. The files are the ones
+# the manifest owns (gen_fleet.py --print-path): their names carry its suffix.
 PY=/home/kvand/gnss/venv/bin/python
 MAN="$K/config/gnss_fleet_chord.yaml"
-DISK_END=$("$PY" - "$K"/config/generated/chord_gnss_cx*_multi.yaml <<'PYE'
+mapfile -t OWNED < <("$PY" "$K/scripts/gnss/gen_fleet.py" "$MAN" --print-path 2>/dev/null)
+DISK_END=$("$PY" - "${OWNED[@]}" <<'PYE'
 import sys, yaml
 ends = []
 for p in sys.argv[1:]:
@@ -104,6 +107,8 @@ if [ -n "$DISK_END" ] && [ "$DISK_END" -lt "$FILE_END" ]; then
     else
         echo "  on-disk configs differ from the manifest beyond live data; NOT regenerated (table end $DISK_END)"
     fi
+elif [ -z "$DISK_END" ]; then
+    echo "  on-disk configs: no table end readable in the manifest's ${#OWNED[@]} config(s); NOT checked"
 else
-    echo "  on-disk configs current (table end ${DISK_END:-unknown})"
+    echo "  on-disk configs current (table end $DISK_END)"
 fi
