@@ -475,7 +475,7 @@ def epl_decompose(q, disc, spacing=0.5):
     return best[1], best[2]
 
 
-def displaced_chain_event(admitted, browned_out, same_chips=0.1, n_same=3):
+def displaced_chain_event(admitted, browned_out, same_chips=0.1, n_same=3, n_rows=None):
     """The displaced admissions of one cycle that are a chain event, with the reason.
 
     `admitted` is [(prn, off_chips, ...)], what the displaced gate would admit this cycle.
@@ -485,7 +485,12 @@ def displaced_chain_event(admitted, browned_out, same_chips=0.1, n_same=3):
     its peak, where the leak-bounded DLL then holds it). Likewise, while the chain is browned
     out a displacement reports the chain's lost power, not a satellite that moved. Either way
     the admission is refused and the q/prompt verdict stands; `n_same` PRNs within
-    `same_chips` of one another is the chain bar.
+    `same_chips` of one another is the chain bar, and with `n_rows` (the satellites the chain
+    sees this cycle: present on their peaks, plus the displaced candidates) the group must
+    also be at least half of them: a chain event moves the chain, so most of its satellites. Three of thirteen parked on the same grating lobe (3.27 chips, the
+    tracker comb's spacing) with the trim at its clamp are three satellites that each need the
+    re-pin the trim cannot make, and refusing them every cycle held them there for an hour
+    (#211, 2026-10-19).
 
     A row within `same_chips` of its peak is not displaced and has nothing to attribute to the
     chain: the offset-blind fold admits dim on-peak satellites at off ~0 in numbers, and
@@ -501,7 +506,7 @@ def displaced_chain_event(admitted, browned_out, same_chips=0.1, n_same=3):
         for a in displaced
         if sum(1 for b in displaced if abs(b[1] - a[1]) <= same_chips) >= n_same
     ]
-    if same:
+    if same and (n_rows is None or 2 * len(same) >= n_rows):
         return same, "same offset"
     return [], None
 
@@ -673,8 +678,19 @@ def apply_presence(
                 v["present"] = ds >= deep_gate_margin * fl
                 v["present_gate"] = "deep"
                 v["deep_gate_snr"], v["deep_gate_floor"] = ds, fl
+    # The chain's satellites this cycle: present on their peaks (not through the displaced
+    # gate, not a probe) plus the displaced candidates themselves.
+    _seen = sum(
+        1
+        for _p, _v in out.items()
+        if _v.get("present")
+        and not str(_v.get("present_gate", "")).endswith("+disp")
+        and not (probe_prns and _p in probe_prns)
+    )
     _refused, _why = displaced_chain_event(
-        _admitted, admit_displaced is not None and admit_displaced.get("browned_out")
+        _admitted,
+        admit_displaced is not None and admit_displaced.get("browned_out"),
+        n_rows=_seen + len(_admitted),
     )
     if _refused:
         # Revert only rows the displaced gate still owns: the deep gate above may have

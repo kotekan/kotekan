@@ -122,6 +122,24 @@ def test_rule():
     check(
         not refused, "nor are they refused during a brownout: nothing to re-seed wrong"
     )
+    # With the row count: a chain event is a majority of the chain. Five of nine (the null
+    # crossing beside four dim on-peak rows) is; three of thirteen parked on one grating lobe
+    # is three satellites to re-pin (#211).
+    refused, why = displaced_chain_event(NULL_CROSSING, False, n_rows=5)
+    check(len(refused) == 5, "five of five at one offset are a chain event")
+    refused, why = displaced_chain_event(NULL_CROSSING, False, n_rows=9)
+    check(len(refused) == 5, "five of nine at one offset are a chain event")
+    LOBE = [
+        (5, +2.91, 0.05, 12.0, True),
+        (9, +2.88, 0.04, 9.0, True),
+        (15, +2.93, 0.05, 11.0, True),
+    ]
+    refused, why = displaced_chain_event(LOBE, False, n_rows=13)
+    check(not refused, "three of thirteen on one grating lobe are admitted (re-pinned)")
+    refused, why = displaced_chain_event(LOBE, False)
+    check(len(refused) == 3, "without a row count the three-PRN bar stands")
+    refused, why = displaced_chain_event(LOBE, True, n_rows=13)
+    check(len(refused) == 3 and why == "BROWNOUT open", "a brownout still refuses them")
     refused, why = displaced_chain_event(ON_PEAK + NULL_CROSSING, False)
     check(
         sorted(a[0] for a in refused) == [4, 5, 16, 23, 31],
