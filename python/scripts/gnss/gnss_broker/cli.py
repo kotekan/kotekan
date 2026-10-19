@@ -1880,7 +1880,8 @@ def build_parser(description):
         help="this chain's constellation as a RINEX letter: the system the dead-reckon "
         "model predicts, the key of its satellites in the receiver-wide joint state, "
         "and the almanac's when --constellation is unset. C also makes --dr-min-prn "
-        "default to 19. Default G; --signal sets it.",
+        "default to 19 unless --signal names B3I (signals.prn_floor). Default G; "
+        "--signal sets it.",
     )
     ap.add_argument(
         "--signal-capability",
@@ -1905,8 +1906,10 @@ def build_parser(description):
         type=int,
         default=None,
         help="dead-reckon only PRNs >= this: a signal-capability floor, not a "
-        "visibility gate. Unset: 19 when --dr-constellation is C (B1C, B2a and B2b are "
-        "BDS-3 signals, and the PRNs below 19 are mostly BDS-2), else 1. It is the "
+        "visibility gate. Unset: the almanac's floor (signals.prn_floor), 19 when "
+        "--dr-constellation is C (B1C, B2a and B2b are BDS-3 signals, and the PRNs "
+        "below 19 are mostly BDS-2), except under --signal bds_b3i (B3I is on BDS-2 "
+        "and BDS-3 alike), else 1. It is the "
         "fallback: when --signal-capability's registry gate is in force on a BeiDou "
         "chain the floor is 1 whatever this says, since some PRNs below 19 (C11-C14) "
         "fly BDS-3 satellites. The search never detects a satellite that is not "

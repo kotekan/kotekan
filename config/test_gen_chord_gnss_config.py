@@ -8,10 +8,12 @@ Hermetic: the instance branches run before any EOP or bad-input probe, an unpinn
 nothing, and every probe that does run here goes to a stubbed urllib.request.urlopen.
 """
 import argparse
+import ast
 import contextlib
 import io
 import json
 import os
+import re
 import shlex
 import subprocess
 import sys
@@ -386,6 +388,55 @@ def test_load_summary():
         s.endswith("(pool of 20)"), "load summary sizes the per-GPU pools (got %r)" % s
     )
     check(s.startswith("core 10: 2 stages"), "load summary leads with the busiest core")
+
+
+def production_cores():
+    """Every logical cpu production's template pins (pathfinder.j2): the numa_halves entries,
+    the DPDK lcores and the instance's root cpu_affinity, and the DPDK lcores' HT siblings."""
+    src = open(os.path.join(HERE, "chord", "pathfinder.j2")).read()
+    halves = ast.literal_eval(
+        re.search(r"\{% set numa_halves = (\[.*?\]) %\}", src, re.S).group(1)
+    )
+    cores = set()
+    for h in halves:
+        for k, v in h.items():
+            if k.endswith("_cpu"):
+                cores.add(v)
+            elif k.endswith("_cpus"):
+                cores.update(v)
+    lcores = [
+        int(c)
+        for c in re.search(r"lcore_cpu_map: \[([0-9, ]+)\]", src).group(1).split(",")
+    ]
+    cores.update(lcores)
+    cores.add(int(re.search(r"main_lcore_cpu: (\d+)", src).group(1)))
+    root = re.search(r"^cpu_affinity: \[([0-9, ]+)\]", src, re.M).group(1)
+    cores.update(int(c) for c in root.split(","))
+    return cores, {c + 32 for c in lcores}
+
+
+def test_core_pools_clear_production():
+    """The GNSS pools and the node's REST cores never share a logical cpu with production, and
+    each GPU pool sits on its GPU's NUMA node with a length coprime to dual_core's stride."""
+    prod, dpdk_sib = production_cores()
+    rt = node_cfg()["runtime"]
+    numa = {
+        0: set(range(0, 16)) | set(range(32, 48)),
+        1: set(range(16, 32)) | set(range(48, 64)),
+    }
+    for gpu in (0, 1):
+        pool = rt["cpu_affinity_gpu%d" % gpu]
+        check(not set(pool) - numa[gpu], "GPU%d pool is on NUMA node %d" % (gpu, gpu))
+        check(
+            len(pool) % 3 != 0,
+            "GPU%d pool length %d is coprime to 3" % (gpu, len(pool)),
+        )
+    for key in ("cpu_affinity_gpu0", "cpu_affinity_gpu1", "cpu_affinity"):
+        clash = sorted(set(rt[key]) & (prod | dpdk_sib))
+        check(
+            not clash,
+            "%s clears production's cores (shared: %s)" % (key, clash or "none"),
+        )
 
 
 def main():

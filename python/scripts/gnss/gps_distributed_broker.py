@@ -395,7 +395,8 @@ def main(argv=None, rx=None, publisher=None):
     almanac_sats = None  # TLE mode: {prn: EarthSatellite}
     brdc_alm = None  # BRDC mode: {"mod", "eph", "eph_t"} for brdc_predict
     alm_sys = args.constellation or args.dr_constellation
-    alm_min_prn = 19 if alm_sys == "C" else 1  # BeiDou fallback floor (see below)
+    # The signal-capability PRN floor (dr_min_prn below says why).
+    alm_min_prn = signals.prn_floor(alm_sys, args.signal)
     if args.almanac:
         if not gating:
             _log("--almanac needs --lat/--lon; disabling")
@@ -471,15 +472,15 @@ def main(argv=None, rx=None, publisher=None):
     # Bound unconditionally: the import below runs only with --dead-reckon, and any reference
     # to the name on a search-only chain would otherwise raise UnboundLocalError.
     dr_eph_mod = None
-    # Signal-capability floor for the dead-reckon seeder (--dr-min-prn; 19 on BeiDou by
-    # default). B1C, B2a and B2b are BDS-3 only: a BDS-2 satellite carries none of them yet
-    # passes every visibility, ephemeris and health gate, so only capability excludes it. The
-    # floor is the fallback; when --signal-capability reads the IGS registry, the registry
-    # decides (below).
+    # Signal-capability floor for the dead-reckon seeder (--dr-min-prn; by default the
+    # signal's, signals.prn_floor: 19 for B1C, B2a and B2b, 1 for B3I). B1C, B2a and B2b are
+    # BDS-3 only: a BDS-2 satellite carries none of them yet passes every visibility, ephemeris
+    # and health gate, so only capability excludes it. The floor is the fallback; when
+    # --signal-capability reads the IGS registry, the registry decides (below).
     dr_min_prn = (
         args.dr_min_prn
         if args.dr_min_prn is not None
-        else (19 if args.dr_constellation == "C" else 1)
+        else signals.prn_floor(args.dr_constellation, args.signal)
     )
 
     # Signal-capability PRN gate (--signal-capability), evaluated at startup and re-read from
