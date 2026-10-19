@@ -14,9 +14,6 @@ legitimately differ. The point of the fixture is that the *input* is frozen.
 | `broker_onsky_l5.jsonl.gz.digest` | live GPS L5, 2026-08-08 18:05 UTC | the real thing: 56 cycles, 1213 gets, **934 posts across 17 endpoints** including `set_doppler_hints` / `set_nh_hint`, the almanac predictor, the dead-reckon seeder and the code-bias pool. Moved by `carrier_hz`, `hops_per_sec`, `code_bias_alpha`, `bias_alpha` |
 | `broker_onsky_e5a.jsonl.gz.digest` | live Galileo E5a, 2026-08-08 18:2x UTC | model-primary: 41 cycles, **468 posts**, no detections at all — the dead-reckon seeder. Moved by `carrier_hz`, `hops_per_sec` (no detections, so no DLL and no code-bias pool) |
 | `broker_onsky_l5_holds.jsonl.gz.digest` | live GPS L5, 2026-08-16 23:15 UTC | 30 cycles, 434 posts, with `--telem-dll`. Moved by `carrier_hz`, `hops_per_sec`, `dll_gain`, `code_bias_alpha`, `bias_alpha`. Also has the `cprate` variant golden (below) |
-| `broker_onsky_e5a_20260826.jsonl.gz.digest` | live Galileo E5a, 2026-08-26 00:33 UTC | model-primary, 113 cycles, 1474 posts (below) |
-| `broker_onsky_l5_20260826.jsonl.gz.digest` | live GPS L5, 2026-08-26 01:1x UTC | search-fed, 164 cycles, 2444 posts (below) |
-| `broker_onsky_b2a_20260826.jsonl.gz.digest` | live BeiDou B2a, 2026-08-26 01:2x UTC | model-primary, 172 cycles, 2210 posts (below) |
 
 **The on-sky transcripts themselves are not in the repo**: a minute of real fleet is
 ~1.3 MB per cycle (the combiner status responses dominate). Only the **digests** are
@@ -51,9 +48,9 @@ runs the cp-rate guard that no recording runs on its own.
   (`--signal-capability`, which a BDS-3-only signal such as `bds_b2a` implies). A
   `<transcript>.igs.snx` sidecar pins it (`GNSS_IGS_SNX`, never re-fetched); without one a
   replay reads `~/.cache/kotekan_gps/igs_satellite_metadata.snx`, which the live broker
-  re-fetches weekly. `broker_onsky_b2a_20260826` depends on it.
-* The CAS DCB product (`--dcb-bias`) is read from `~/.cache/kotekan_gps` and is not pinned.
-  The three 2026-08-26 fixtures carry the flag, but their replays never reach the fetch.
+  re-fetches weekly.
+* The CAS DCB product (`--dcb-bias`) is read from `~/.cache/kotekan_gps` and is not pinned;
+  no current fixture's replay reaches the fetch.
 
 `bless` stamps the commit it ran at, says when the tree was dirty and records the BRDC pin's
 fingerprint, and `check` prints them back:
@@ -116,18 +113,7 @@ Look for all four, not just "it ran":
 The fake fleet's detections are not physically consistent, so the adopted clock wanders
 between cycles. That is the fixture, not the mechanism — do not read convergence into it.
 
-## broker_onsky_e5a_20260826 (2026-08-26 00:33 UTC)
-
-* chain `gal_e5a`, model-primary, the most exposed case (every seed comes from the model),
-  with `rrate-phase-span-s 16`, `rrate-command true` and `joint-consume clk,rate`. The
-  recording also carries `fleet-trim-rebase-adjust 1`, which replay drops
-  (`broker_equiv.py` RETIRED_FLAGS).
-* 113 cycles, 1474 posts, 4628 gets. Moved by `carrier_hz`, `dll_gain`; it does not reach
-  `code_bias_alpha` or `bias_alpha`.
-* Carries its own ephemeris in `broker_onsky_e5a_20260826.jsonl.gz.brdc/` (DOY 237+238
-  + hourly). `broker_equiv._pin_for` prefers a `<transcript>.brdc/` sidecar over the shared
-  pin, because the shared pin covers only the days of the fixtures without one (DOY 219-228),
-  and adding a day to it would move the fingerprint of every one of them at once.
+## Capturing an on-sky fixture
 
 Capture recipe, one chain per run (`_TR` is a module singleton, so a second `open_write`
 clobbers the first): archive the broker log, add `transcript-write: <path>` to one chain in
@@ -135,17 +121,12 @@ the yaml, restart, wait ~3 min, remove the flag, restart, gzip, snapshot the nav
 `.brdc/` sidecar (and, for a chain with a capability gate, the IGS registry into a
 `.igs.snx` one), then `bless` from a clean tree and `selftest` before trusting it.
 
-## broker_onsky_l5_20260826 + broker_onsky_b2a_20260826 (2026-08-26 01:1x-01:2x UTC)
-
-Both carry their own `.brdc/` sidecar (DOY 237+238 daily + hourly, snapshotted at capture
-time).
-
-* **`broker_onsky_l5_20260826`**: the search-fed chain, 164 cycles, 2444 posts. Moved by
-  `carrier_hz`, `hops_per_sec`, `dll_gain`, `bias_alpha`.
-* **`broker_onsky_b2a_20260826`**: the BeiDou chain, 172 cycles, 2210 posts. Moved by
-  `carrier_hz`, `dll_gain`. `--signal bds_b2a` arms the capability gate, so its digest also
-  depends on the IGS registry, which a `.igs.snx` sidecar pins.
+A recording replays only while the broker asks for what it recorded in the same order. When the
+start-up sequence changes (a recording made before the broker asked for the time anchor first
+diverges from the first cycle and never runs dead reckoning), the recording is retired, not
+re-blessed: `selftest` and the divergence count in a replay's stderr (`TRANSCRIPT DIVERGENCE`)
+show it.
 
 Coverage across the fixtures: `code_bias_alpha` is reached only by `broker_onsky_l5` and
-`broker_onsky_l5_holds`, and `dll_gain` by every fixture except `broker_onsky_l5` and
-`broker_onsky_e5a`, so keep every fixture in a broker_equiv check.
+`broker_onsky_l5_holds`, and `dll_gain` only by `broker_fake_l5` and `broker_onsky_l5_holds`, so
+keep every fixture in a broker_equiv check.
