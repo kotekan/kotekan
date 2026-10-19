@@ -824,7 +824,7 @@ def _shadow_ctx(rx, warmup_s=0.0, clk=0.0):
         code_len=REF_LEN,
         rx=rx,
         dr_state={"clk": clk, "joint_log_next": 1e18},
-        broker_t0=0.0,
+        uptime_s=0.0,
         minnov_hist={},
         track_ok=lambda p: True,
         p2c_hold=lambda js, key: False,
