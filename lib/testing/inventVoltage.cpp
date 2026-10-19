@@ -10,7 +10,7 @@
 #include "kotekanLogging.hpp"    // for DEBUG, FATAL_ERROR, INFO
 #include "metadata.hpp"          // for metadataObject
 #include "prometheusMetrics.hpp" // for Metrics, Gauge
-#include "testSkySignal.hpp"     // for testSkySignal
+#include "testSkySignal.hpp"     // for testPacketLoss, testSkySignal
 #include "visUtil.hpp"           // for current_time
 
 #include <algorithm>  // for copy, fill_n
@@ -53,6 +53,11 @@ class inventVoltage : public kotekan::Stage {
     const std::int64_t box_end =
         input_kind == "box" ? config.get<std::int64_t>(unique_name, "box_end") : 0;
     const bool reuse_frames = config.get_default<bool>(unique_name, "reuse_frames", false);
+    // The voltage of lost samples (see `testPacketLoss`, the pattern of `inventPLMask`): `keep`
+    // the signal, `zero` (0+0i, as the receivers write), or `nodata` (-8-8i)
+    const std::string lost_voltage =
+        config.get_default<std::string>(unique_name, "lost_voltage", "keep");
+    const testPacketLoss loss{config, unique_name};
     // FPGA sequence number of the first sample; must agree between the voltage and mask
     // generators
     const std::int64_t first_fpga_seq_num =
@@ -91,6 +96,10 @@ public:
         if (input_kind == "sky")
             sky = std::make_unique<testSkySignal>(
                 config, unique_name, num_times, frequency_channels, num_polarizations, num_dishes);
+        if (!(lost_voltage == "keep" || lost_voltage == "zero" || lost_voltage == "nodata"))
+            FATAL_ERROR("Unknown value for `lost_voltage`: \"{:s}\"", lost_voltage);
+        if (lost_voltage != "keep" && reuse_frames)
+            FATAL_ERROR("`lost_voltage` requires `reuse_frames: false`");
     }
 
     virtual ~inventVoltage() {}
@@ -226,6 +235,9 @@ public:
                 }
             }
 
+            if (lost_voltage != "keep")
+                overwrite_lost(frame, first_fpga_seq_num + std::int64_t(frame_index) * num_times);
+
             // Mark buffer as full
             DEBUG("[{:s}/{:d}] Marking buffer as full...", buffer->buffer_name, frame_index);
             buffer->mark_frame_full(unique_name, frame_id);
@@ -233,6 +245,23 @@ public:
     }
 
 private:
+    // Overwrite the lost samples in a [T, F, P, D] frame whose first sample is `frame_seq`
+    void overwrite_lost(kotekan::int4x2_swapped_withoffset_t* const frame,
+                        const std::int64_t frame_seq) const {
+        // The arguments are (imaginary, real)
+        const kotekan::int4x2_swapped_withoffset_t value =
+            lost_voltage == "zero" ? kotekan::int4x2_swapped_withoffset_t(0, 0)
+                                   : kotekan::int4x2_swapped_withoffset_t(-8, -8);
+        const std::ptrdiff_t freq_stride = std::ptrdiff_t(num_polarizations) * num_dishes;
+        const std::ptrdiff_t time_stride = num_frequencies * freq_stride;
+        for (int time = 0; time < num_times; time += 2)
+            for (int freq = 0; freq < num_frequencies; freq += 4)
+                if (loss.lost(frame_seq + time, freq))
+                    for (int t = time; t < time + 2; ++t)
+                        std::fill_n(frame + t * time_stride + freq * freq_stride, 4 * freq_stride,
+                                    value);
+    }
+
     void fill_sky(kotekan::int4x2_swapped_withoffset_t* const frame, const std::int64_t frame_seq,
                   const int frame_index) {
         const std::size_t frame_elements = buffer->frame_size;

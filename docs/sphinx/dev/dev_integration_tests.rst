@@ -116,14 +116,18 @@ Inputs are generated on the fly; nothing is read from disk.
   cancel between generator and beamformer. Missing dishes receive nothing. Each source can be
   restricted to a list of inputs.
 * ``inventPLMask`` produces random packet loss at a given rate (deterministic, reproducible in
-  Python) and loss boxes for edge cases.
+  Python) and loss boxes for edge cases, at the 2-sample resolution of the PL mask
+  (``testPacketLoss`` in ``lib/testing/testSkySignal.hpp``; jinja variables ``loss_rate``,
+  ``loss_seed`` and ``loss_boxes``).
 * ``inventBFMask`` produces bad feed schedules: random bad feeds that change every few frames, and
   for CHORD and the pathfinder an array that is only partly filled, starting from the south;
   missing dishes are marked bad.
 * All generators take ``first_fpga_seq_num``. Tests start at a large value,
   ``2**33 + 7 * num_times``: frame-aligned, as ``N2Accumulate`` requires, but aligned to no
   lifetime or integration boundary.
-* Voltages of lost packets and bad feeds can be poisoned with the int4 no-data value ``-8-8i``.
+* ``inventVoltage`` can overwrite the voltages of lost packets with 0+0i, as the receivers do,
+  or poison them with the int4 no-data value ``-8-8i`` (jinja variable ``lost_voltage``). T9 is
+  to poison bad feeds likewise.
 
 Level 1 tests
 =============
@@ -200,11 +204,15 @@ upchannelizer output start ``T*``, ``coarse_freq`` / ``freq_upchan_factor`` /
        boundaries.
      - positions, ids, BB peak exact; FRB2 as T2; windows 6σ (σ ≈ 0.1%)
    * - T8 Packet loss
-     - Noise plus tone; loss rates 0.01% and 1%, plus loss boxes at frame and ``T*`` edges; lost
-       voltages poisoned; a reference run without loss.
-     - PL masks (expanded, upchan, FRB), FRB3, N2 counts and visibilities
-     - Masks equal the propagated injected loss; valid data equal the reference run.
-     - masks and valid data exact; FRB3 one step; N2 1e-6
+     - T2's weak tone in noise; random loss at 0.01% (lost voltages 0+0i) and at 1% (-8-8i),
+       plus loss boxes at frame, FRB frame and ``T*`` edges and single sample pairs; a reference
+       run without loss.
+     - PL masks (input, expanded, upchan for all U, BB, FRB), upchan (all U), BB, FRB1, FRB2,
+       FRB3, N2 counts and visibilities
+     - Masks equal the propagated injected loss; valid data equal the reference run bit for
+       bit; FRB3 is -8 exactly where invalid; N2 counts the lost samples, and V n_valid equals
+       the reference minus the lost samples.
+     - masks and valid data exact; FRB3 one step; N2 1e-6 (float32)
    * - T9 Bad feed mask
      - Random bad feeds changing every 3 frames; half-filled array; bad feeds poisoned; a
        reference run without poison.
@@ -235,14 +243,13 @@ These features are missing in kotekan. Add the tests once they exist.
 * **Time-varying gains.** The upchannelizer gain is ``do_once``, and the CHORD configs have no
   per-dish gains. Future test: T5 with gains that change every few frames.
 
-Two features that were missing when this plan was written are now on develop, and their tests
-belong in T8 and T9:
+Two features that were missing when this plan was written are now on develop:
 
 * **Bad feed mask in BB and FRB1** (#1778): ``calcBBPhase`` and ``setFRB1Phase`` zero the phases
   and weights of bad feeds. T9 adds BB and FRB1 outputs, which must not change when bad feeds
   are poisoned.
-* **BB packet-loss mask** (#1766): T8 adds the BB mask (the AND over dishes of the expanded
-  mask) and BB data.
+* **BB packet-loss mask** (#1766): T8 checks the BB mask (the AND over dishes of the expanded
+  mask), and that valid BB samples equal those of a run without loss.
 
 Findings
 ========
@@ -295,6 +302,16 @@ Findings
   ``FixedBBBeam`` (``lib/stages/setFRBBeams.cpp:78-90``); the key is ``mode`` and the type
   ``FRBBeam``. ``num_beams`` is described as "fixed + tracking" (line 71), but there are no
   tracking FRB beams.
+* Every PL mask is the exact propagation of the injected loss (T8), at the 2-sample resolution
+  of the mask, including the ``T*`` skip and frame and FRB frame boundaries. Valid
+  upchannelized, BB, FRB1 and FRB2 samples are bit-identical with and without loss, FRB3 is -8
+  exactly where the FRB mask is invalid, and N2 counts the lost samples and normalizes by the
+  valid ones to float32 precision (5e-8).
+* **N2 and the RFI statistics need lost samples to be 0+0i** (T8). ``cudaCorrelator`` and the
+  S1/S2 kernel read only the voltages (``external/n2k/include/n2k/rfi_kernels.hpp:142``); the
+  PL mask enters only the counts and S0. ``TransposeBasebandArray`` writes 0+0i for lost
+  blocks (``lib/stages/TransposeBasebandArray.cpp:370``). With -8-8i there instead, RFI
+  excision flagged 1.3 M samples of an integration and the visibilities were off by up to 19%.
 * ``setUpchanGain`` checks the number of gains (one per fine channel) only with ``assert``
   (seen while writing T5, not tested), which a Release build drops: extra gains are ignored,
   and too few throw ``std::out_of_range``.

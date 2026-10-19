@@ -12,6 +12,11 @@
 #                   for input_kind `sky`, see lib/testing/testSkySignal.hpp
 #     pl_box_begin, pl_box_end
 #                   lost FPGA samples (default: none)
+#     loss_rate, loss_seed, loss_boxes
+#                   random packet loss and lost FPGA sample ranges (default: none), see
+#                   testPacketLoss in lib/testing/testSkySignal.hpp
+#     lost_voltage  the voltage of the samples lost by loss_rate and loss_boxes: keep, zero or
+#                   nodata (-8-8i) (default: keep)
 #     bf_mode, bf_manual_bad_feeds
 #                   inventBFMask mode (default: all_good)
 #     bf_mask_lifetime_frames
@@ -21,6 +26,11 @@
 
 first_fpga_seq_num: {{ first_fpga_seq_num | default(0) }}
 
+# Packet loss, the same for the PL mask and the voltages
+loss_rate: {{ loss_rate | default(0) }}
+loss_seed: {{ loss_seed | default(1) }}
+loss_boxes: {{ loss_boxes | default([]) | tojson }}
+
 ################################################################################
 
 # Stages
@@ -29,6 +39,7 @@ generate_voltage:
     kotekan_stage: inventVoltage
     voltage: host_voltage_buffer
     input_kind: {{ input_kind }}
+    lost_voltage: {{ lost_voltage | default('keep') }}
 {% if input_kind == 'box' %}
     box_begin: {{ box_begin }}
     box_end: {{ box_end }}
