@@ -264,6 +264,38 @@ tau_c, no leap seconds) in the light-time / Sagnac path, or the L3OC code bias. 
 10^4 km is ~2 ppm of range -- an orbit integration error of that size over hours is plausible. **Next:** per-satellite
 residual vs ephemeris age on glo_l3oc; compare the integrated position with a precise orbit for one satellite.
 
+**10-19 20:45Z RESOLVED: A SATELLITE-SIDE TERM, NOT THE RANGE MODEL (tools + outputs in fixtures/jointstate, README "10-19 #210"; one
+skeptic agent re-derived the sign convention and every number).** (1) The propagation is not it: with the receiver clock taken from
+gps_l5 in the same 10-s epochs (glo_l3_obs_vs_gpsclock.py on obs_extract_npz.py output), the glo_l3oc tracker residual moves by a
+median 0.7 m (p90 3-9 m) when a new GLONASS record replaces one 163-222 min old (40 switches/day), and a satellite's per-record
+medians agree to 1-3 m across records up to 222 min old (R19 -35.0/-34.7/-35.7, R06 -43.8/-41.1). That excludes any age-dependent
+term, and it is an order of magnitude below docs/CHORD_MULTIBAND.md section 6's propagation table (18 m median at 2 h): that table
+needs re-checking. (2) The residual equals the standing DLL trim by construction (cp_phys = model + clk + trim), so like the served
+C/N0 it is lobe-blind; the offsets are per SATELLITE and stable across records and days, in our sign (a delay reads NEGATIVE):
+R06 -41/-41 m (10-18/10-19), R19 -33/-32, R20 -40 (10-18; the 10-19 fragment, 142 rows at el 14, is unusable), R23 -30 (both days,
+outside one excursion), R08 +35..+53 (10-18 18:00-20:40Z) hopping -91 m at the 20:41Z broker restart to -41..-68 and -45 on 10-19
+14:50-17:00Z; against +2..+13 on R04/R05/R12/R16/R21/R24 (GLO-M+) and R11/R22 (K1B of 2020/2022). (3) The receiver-independent test
+(glo_l3_station.py = drao_resid.py on IGS stations' C3Q pseudoranges with OUR model and the FDMA broadcast clock, 2026-10-12
+04-12Z, minus each station's GPS-L5 clock; pseudorange sign, a delay POSITIVE): CHWK / WILL / BREW read R19 +30.1/+29.9/+34.3 m,
+R20 +31.2/+31.1/+34.7, R06 -146.5/-147.1/-142.0, R04 -6.4/-6.4/-2.0, R05 -8.6/-9.0/-2.7, R11 -11.2/-11.7/-7.1, R12 -12.6/-11.0,
+R16 -11.3/-11.7/-5.5, R21 -8.1/-8.1/-2.2, R22 -17.4/-17.0, R24 -8.0/-8.0/-1.5. CHWK and WILL agree to <= 1.6 m and BREW sits a
+common +4..+6 m higher (its own receiver bias, 598 epochs); the CAS DCB products (days 282, 288) carry no GLONASS C3 bias, and
+group_delay_s/signal_bias_s apply none for R. So the L3OC signals arrive ~30 m LATE on R19/R20 and ~146 m EARLY on R06 relative to
+the FDMA clock the RINEX R records carry. Our chain closes on them: R19 +32 vs +30 at the stations (2 m), R20 +40 vs +31 (9 m),
+and R06 at +41 = -146 + 2 x 95.9 m: parked two grating lobes of the 3.125-MHz comb (c/3.125 MHz = 95.93 m = 3.273 chips, #211)
+from its true peak, which presence and C/N0 cannot see; it also visited the other lobe (+46..+35 our sign) after the 12:19Z
+restart and came back at the 14:12Z one. R23's -90 m hop at 02:01Z on 10-19 (from +60..+64 since its 00:30Z rise) came through
+a displaced-presence admission, not a restart. The five offset satellites are the two K2s (R06 = R804, R08 = R803, in slot since
+2026-09-25) and the three newest K-series birds (R19 = R807 K1+, R20 = R808 and R23 = R813 K1B, launched 2025-09 and 2026-08);
+the older K1Bs R805/R806 sit at the M+ level. The "+44 m up-like" of this entry was the geometry-weighted projection of these
+per-satellite constants through the re-survey's ENU fit; on the full 10-19 night the same fit reads dU +21.35, dN -6.18, dE +5.15
+with a robust rms of 15.85 m (scratch glo_job.log), i.e. no station-like term at all. **Fix:** a per-satellite L3OC bias in the
+model (gnss_ephemeris.group_delay_s for ('R', glo_l3oc) from a table keyed by SVN, values from glo_l3_station.py on a few
+station-days as the per-satellite part relative to the GLONASS median: R19 +39, R20 +40, R06 -138 m, the rest within +-4 except
+R22 -9 on 24/33 low-elevation epochs), so the seed lands inside the DLL's pull-in and the trims go to zero; our own trims are then
+the monitor. The CDMA L3 nav message is assumed (ICD) to carry its own clock/ISC; we decode neither. Until the table is in,
+glo_l3oc must not feed the joint state (its b_sat would carry 1-5 chip constants and whatever lobe a satellite is parked on).
+
 ### #208 — wall time sits in the radiometric path: the ephemeris is evaluated at `now_w` and labelled `t_eph_age = now_w - utc0_sample0` (2026-10-18, design, KV: nothing radiometric may depend on wall time; FIXED 10-18 23:45Z: every radiometric "now" is the hop axis (transport.axis_now); lands at the next broker restart)
 **What [tree]:** deadreckon.py:2224-2292 runs `predict_all` at the wall clock `now_w` and stamps the rows'
 capture-age epoch as `now_w - utc0_sample0`; `cp_predicted` then propagates range at `range_rate` from that wall-derived
