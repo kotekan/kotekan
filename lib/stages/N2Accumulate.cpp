@@ -237,12 +237,12 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     _vis_samples_in_out_frame = 0;
     _n_rfi_first_stage_enabled_ticks = 0;
     _accum_fpga_start_tick = -1;
+    _accum_bin_idx = -1;
 
     if (!_rfi_first_stage_config_path.empty())
         kotekan::configUpdater::instance().subscribe(
             _rfi_first_stage_config_path,
             std::bind(&N2Accumulate::receive_rfi_first_stage_enabled, this, _1));
-    _accum_bin_idx = -1;
 
     // Ensure incoming buffer shapes and type are correct
     in_buf->require_frame_desc(kotekan::GenericNDArray::describe(
