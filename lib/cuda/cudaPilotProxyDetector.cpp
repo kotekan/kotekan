@@ -26,15 +26,23 @@
 #include <cstdint>            // for uint64_t, int8_t, uint8_t
 #include <cuda_runtime_api.h> // for cudaMemsetAsync, cudaMemcpyAsync
 #include <driver_types.h>     // for cudaEvent_t, cudaStream_t
+#include <filesystem>         // for path
 #include <fstream>            // for ifstream
 #include <functional>         // for function
+#include <initializer_list>   // for initializer_list
 #include <iterator>           // for istreambuf_iterator
 #include <limits>             // for numeric_limits
+#include <map>                // for map
 #include <memory>             // for shared_ptr, static_pointer_cast
 #include <set>                // for set
+#include <sstream>            // for istringstream
 #include <stdexcept>          // for runtime_error
 #include <string>             // for string, stoull
 #include <vector>             // for vector
+
+#ifdef WITH_SSL
+#include <openssl/evp.h> // for EVP_Digest, EVP_sha256
+#endif
 
 using nlohmann::json;
 
@@ -182,6 +190,87 @@ private:
         if (weight_bank.empty())
             throw std::runtime_error("cudaPilotProxyDetector: weights.bin is empty");
 
+        // Check the digests as PilotProxy's bundle validator does: sha256sums.txt must list the
+        // four bundle files with their SHA-256, and weights_sha256 in pilot_profiles.json and
+        // weights.manifest.json must match the loaded weights.
+        const auto bundle_dir = std::filesystem::path(pilot_profiles_path).parent_path();
+#ifdef WITH_SSL
+        const auto sha256 = [](const void* data, std::size_t size) {
+            unsigned char digest[EVP_MAX_MD_SIZE];
+            unsigned int length = 0;
+            EVP_Digest(data, size, digest, &length, EVP_sha256(), nullptr);
+            std::string hex;
+            for (unsigned int i = 0; i < length; ++i)
+                hex += fmt::format(fmt("{:02x}"), digest[i]);
+            return hex;
+        };
+        const std::string sums_path = (bundle_dir / "sha256sums.txt").string();
+        std::ifstream sums_file(sums_path);
+        if (!sums_file)
+            throw std::runtime_error(
+                fmt::format(fmt("cudaPilotProxyDetector: cannot open {:s}"), sums_path));
+        std::map<std::string, std::string> listed;
+        for (std::string line; std::getline(sums_file, line);) {
+            std::istringstream fields(line);
+            std::string digest, name;
+            if (!(fields >> digest))
+                continue;
+            std::getline(fields >> std::ws, name);
+            name.erase(name.find_last_not_of(" \t\r") + 1);
+            if (name.empty())
+                throw std::runtime_error(fmt::format(
+                    fmt("cudaPilotProxyDetector: invalid line in {:s}: {:s}"), sums_path, line));
+            listed[name] = digest;
+        }
+        const std::string weights_digest = sha256(weight_bank.data(), weight_bank.size());
+        for (const std::string name : {"detector_contract.json", "pilot_profiles.json",
+                                       "weights.bin", "weights.manifest.json"}) {
+            if (!listed.count(name))
+                throw std::runtime_error(fmt::format(
+                    fmt("cudaPilotProxyDetector: {:s} is missing from {:s}"), name, sums_path));
+            // The two files the stage loads are checked at their configured paths.
+            std::string path = (bundle_dir / name).string(), actual = weights_digest;
+            if (name == "pilot_profiles.json")
+                path = pilot_profiles_path;
+            if (name == "weights.bin")
+                path = weights_path;
+            else {
+                std::ifstream file(path, std::ios::binary);
+                if (!file)
+                    throw std::runtime_error(fmt::format(
+                        fmt("cudaPilotProxyDetector: {:s} lists {:s}, which cannot be read"),
+                        sums_path, path));
+                const std::string bytes(std::istreambuf_iterator<char>(file), {});
+                actual = sha256(bytes.data(), bytes.size());
+            }
+            if (actual != listed[name])
+                throw std::runtime_error(
+                    fmt::format(fmt("cudaPilotProxyDetector: sha256 mismatch for {:s}: the file "
+                                    "has {:s}, sha256sums.txt lists {:s}"),
+                                path, actual, listed[name]));
+        }
+        const auto check_weights_sha256 = [&](const json& payload, const char* name) {
+            const json stated = payload.value("weights_sha256", json());
+            if (stated != json(weights_digest))
+                throw std::runtime_error(
+                    fmt::format(fmt("cudaPilotProxyDetector: weights_sha256 in {:s} is {:s}, but "
+                                    "{:s} has {:s}"),
+                                name, stated.dump(), weights_path, weights_digest));
+        };
+        check_weights_sha256(pilot_profiles, "pilot_profiles.json");
+        const std::string manifest_path = (bundle_dir / "weights.manifest.json").string();
+        const json manifest = json::parse(std::ifstream(manifest_path), nullptr, false);
+        if (!manifest.is_object())
+            throw std::runtime_error(
+                fmt::format(fmt("cudaPilotProxyDetector: cannot parse {:s}"), manifest_path));
+        check_weights_sha256(manifest, "weights.manifest.json");
+#else
+        throw std::runtime_error(
+            fmt::format(fmt("cudaPilotProxyDetector: Kotekan was built without OpenSSL, so the "
+                            "runtime bundle in {:s} cannot be checked"),
+                        bundle_dir.string()));
+#endif
+
         // CHORD's exported weight templates require per-window time reversal.
         const auto& preprocessing = pilot_profiles.at("input_preprocessing");
         time_reverse_windows =
@@ -201,6 +290,19 @@ private:
 
         for (const auto& row : pilot_profiles.at("profiles")) {
             PilotChannelProfile profile;
+            const auto require = [&](const json& object,
+                                     std::initializer_list<const char*> fields) {
+                for (const char* field : fields)
+                    if (!object.contains(field))
+                        throw std::runtime_error(
+                            fmt::format(fmt("cudaPilotProxyDetector: pilot_profiles entry for "
+                                            "physical channel {:d} has no {:s}"),
+                                        profile.physical_channel, field));
+            };
+            if (!row.contains("physical_channel"))
+                throw std::runtime_error(fmt::format(
+                    fmt("cudaPilotProxyDetector: pilot_profiles row {:d} has no physical_channel"),
+                    bundle_profiles.size()));
             profile.physical_channel = read_integer<int>(row, "physical_channel");
             if (profile.physical_channel < 14 || profile.physical_channel > 36)
                 throw std::runtime_error(fmt::format(
@@ -222,6 +324,7 @@ private:
                                     profile.chord_channel_id));
                 has_chord_channel_id = true;
             }
+            require(row, {"pilot_frequency_hz", "weight_bank_offset_bytes", "weight_bank_nbytes"});
             profile.pilot_frequency_hz = row.at("pilot_frequency_hz").get<double>();
             if (!std::isfinite(profile.pilot_frequency_hz) || profile.pilot_frequency_hz <= 0.0)
                 throw std::runtime_error(
@@ -259,6 +362,7 @@ private:
                         "channel {:d}"),
                     profile.physical_channel));
             const auto& calibration = row.at("fine_calibration");
+            require(calibration, {"status"});
             const std::string calibration_status = calibration.at("status").get<std::string>();
             if (calibration.value("decision_version", "") != "fine_decision_v1")
                 throw std::runtime_error(fmt::format(
@@ -276,6 +380,8 @@ private:
                         "cudaPilotProxyDetector: bundle requests calibrated fine masks but the "
                         "compiled detector core does not support them");
                 profile.fine_calibrated = true;
+                require(calibration, {"anchor_bin", "designated_half_width", "cfar_rank",
+                                      "cfar_multiplier_q16", "bulk_mask_words_hex"});
                 profile.anchor_bin = read_integer<int>(calibration, "anchor_bin");
                 profile.designated_half_width =
                     read_integer<int>(calibration, "designated_half_width");
@@ -422,7 +528,10 @@ private:
  * @conf permanent_mask_freq_ids    List of unique receiver coarse_freq IDs for
  *                                  the reject-all limit. These bypass detector
  *                                  evaluation; DtvRfiMask applies their mask.
- * @conf pilot_profiles_path        String. Runtime bundle pilot_profiles.json.
+ * @conf pilot_profiles_path        String. Runtime bundle pilot_profiles.json. The
+ *                                  bundle's sha256sums.txt, weights.manifest.json and
+ *                                  detector_contract.json must be next to it; the
+ *                                  digests are checked at load.
  * @conf weights_path               String. Runtime bundle weights.bin.
  */
 class cudaPilotProxyDetector : public cudaCommand {

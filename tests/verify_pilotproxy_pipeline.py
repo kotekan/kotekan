@@ -13,7 +13,8 @@ Usage:
     python3 tests/verify_pilotproxy_pipeline.py \
         --dump-dir fake_data/pilotproxy_verify --bundle-dir fake_data/pilotproxy_bundle
 
---calibrate writes a synthetic fine calibration into the bundle for this test.
+--calibrate writes a synthetic fine calibration into the bundle for this test
+and restamps the bundle digests that the stage checks at load.
 Otherwise returns 0 when all expected captures and detector products agree,
 1 otherwise.
 """
@@ -21,6 +22,7 @@ Otherwise returns 0 when all expected captures and detector products agree,
 import argparse
 from dataclasses import dataclass
 import glob
+import hashlib
 import json
 import os
 import struct
@@ -200,6 +202,50 @@ def synthetic_calibration(bundle):
         }
 
 
+BUNDLE_FILES = (
+    "detector_contract.json",
+    "pilot_profiles.json",
+    "weights.bin",
+    "weights.manifest.json",
+)
+
+
+def file_sha256(path):
+    with open(path, "rb") as f:
+        return hashlib.sha256(f.read()).hexdigest()
+
+
+def write_sha256sums(bundle_dir):
+    """Rewrite sha256sums.txt for the bundle files that exist."""
+    lines = [
+        f"{file_sha256(os.path.join(bundle_dir, name))}  {name}"
+        for name in BUNDLE_FILES
+        if os.path.exists(os.path.join(bundle_dir, name))
+    ]
+    with open(os.path.join(bundle_dir, "sha256sums.txt"), "w") as f:
+        f.write("\n".join(lines) + "\n")
+
+
+def seal_bundle(bundle_dir, pilot_profiles):
+    """Write pilot_profiles.json and restamp the digests the stage checks at load.
+
+    weights_sha256 in pilot_profiles.json and weights.manifest.json is set to
+    the digest of weights.bin, then sha256sums.txt is rewritten.
+    """
+    weights = os.path.join(bundle_dir, "weights.bin")
+    digest = file_sha256(weights) if os.path.exists(weights) else ""
+    pilot_profiles["weights_sha256"] = digest
+    with open(os.path.join(bundle_dir, "pilot_profiles.json"), "w") as f:
+        json.dump(pilot_profiles, f, indent=2)
+    manifest_path = os.path.join(bundle_dir, "weights.manifest.json")
+    with open(manifest_path) as f:
+        manifest = json.load(f)
+    manifest["weights_sha256"] = digest
+    with open(manifest_path, "w") as f:
+        json.dump(manifest, f, indent=2)
+    write_sha256sums(bundle_dir)
+
+
 def expected_products(
     block_bytes, freq_ids, bundle, weight_bank, *, num_dishes=NUM_DISHES
 ):
@@ -267,8 +313,7 @@ def main():
         pilot_profiles = json.load(f)
     if args.calibrate:
         synthetic_calibration(pilot_profiles)
-        with open(profiles_path, "w") as f:
-            json.dump(pilot_profiles, f, indent=2)
+        seal_bundle(args.bundle_dir, pilot_profiles)
         print(f"wrote synthetic fine calibration to {profiles_path}")
         return 0
     with open(os.path.join(args.bundle_dir, "weights.bin"), "rb") as f:

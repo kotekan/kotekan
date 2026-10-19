@@ -120,10 +120,9 @@ class Pipeline:
     def calibrate(self):
         reference.synthetic_calibration(self.bundle)
 
-    def run(self, timeout=60):
-        (self.directory / "bundle/pilot_profiles.json").write_text(
-            json.dumps(self.bundle)
-        )
+    def run(self, timeout=60, seal=True):
+        if seal:
+            reference.seal_bundle(self.directory / "bundle", self.bundle)
         (self.directory / "pipeline.yaml").write_text(yaml.safe_dump(self.config))
         start = time.monotonic()
         with (self.directory / "pipeline.log").open("w") as log:
@@ -227,18 +226,21 @@ def pipeline(tmp_path, runtime):
 
 def test_independent_detectors_share_gpu(pipeline):
     pipeline.calibrate()
+    other_dir = pipeline.directory / "other"
+    shutil.copytree(pipeline.directory / "bundle", other_dir)
     other_bundle = copy.deepcopy(pipeline.bundle)
     other_bundle["profiles"] = other_bundle["profiles"][:1]
-    other_weights = (pipeline.directory / "bundle/weights.bin").read_bytes()[
+    other_weights = (other_dir / "weights.bin").read_bytes()[
         : other_bundle["profiles"][0]["weight_bank_nbytes"]
     ]
-    (pipeline.directory / "other_profiles.json").write_text(json.dumps(other_bundle))
-    (pipeline.directory / "other_weights.bin").write_bytes(other_weights)
+    (other_dir / "weights.bin").write_bytes(other_weights)
+    reference.seal_bundle(other_dir, other_bundle)
     config = pipeline.config
     other = copy.deepcopy(config["run_dtv_detector"])
     command = other["gpu_0"]["commands"][0]
     command.update(
-        pilot_profiles_path="other_profiles.json", weights_path="other_weights.bin"
+        pilot_profiles_path="other/pilot_profiles.json",
+        weights_path="other/weights.bin",
     )
     for product in ("mask", "powers"):
         name = f"dtv_{product}"
@@ -485,6 +487,87 @@ def test_rejects_invalid_bundle(pipeline, field, value, diagnostic):
     node[int(parts[-1]) if isinstance(node, list) else parts[-1]] = value
     code, output = pipeline.run()
     assert code != 0, "invalid bundle was accepted"
+    assert diagnostic in output, output[-12000:]
+    assert not list((pipeline.directory / "out").glob("dtv_*.raw"))
+
+
+def test_exported_bundle_loads_unchanged(pipeline):
+    # The bundle as exported, with no pilot on the node, passes the digest checks.
+    pipeline.config["gen_voltage"]["manual_freq_ids"] = [1600, 4000, 1601, 4001]
+    code, output = pipeline.run(seal=False)
+    assert code == 0, output[-12000:]
+    assert "detector DISABLED" in output, output[-12000:]
+    pipeline.verify()
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        "flipped_weight_byte",
+        "pilot_profiles.json",
+        "weights.manifest.json",
+        "dropped_listed_file",
+        "manifest_not_json",
+        "weights_outside_bundle",
+        "missing_pilot_frequency",
+    ],
+)
+def test_rejects_unverified_bundle(pipeline, case):
+    pipeline.calibrate()
+    bundle = pipeline.directory / "bundle"
+    row = pipeline.bundle["profiles"][0]
+    if case == "missing_pilot_frequency":
+        del row["pilot_frequency_hz"]
+    reference.seal_bundle(bundle, pipeline.bundle)
+    if case == "flipped_weight_byte":
+        listed = reference.file_sha256(bundle / "weights.bin")
+        weights = bytearray((bundle / "weights.bin").read_bytes())
+        weights[len(weights) // 2] ^= 1
+        (bundle / "weights.bin").write_bytes(weights)
+        diagnostic = (
+            f"sha256 mismatch for {bundle.name}/weights.bin: the file has "
+            f"{reference.file_sha256(bundle / 'weights.bin')}, sha256sums.txt lists {listed}"
+        )
+    elif case.endswith(".json"):
+        payload = json.loads((bundle / case).read_text())
+        payload["weights_sha256"] = "0" * 64
+        (bundle / case).write_text(json.dumps(payload))
+        reference.write_sha256sums(bundle)
+        diagnostic = (
+            f"weights_sha256 in {case} is \"{'0' * 64}\", but {bundle.name}/weights.bin has "
+            f"{reference.file_sha256(bundle / 'weights.bin')}"
+        )
+    elif case == "dropped_listed_file":
+        (bundle / "detector_contract.json").unlink()
+        diagnostic = f"lists {bundle.name}/detector_contract.json, which cannot be read"
+    elif case == "manifest_not_json":
+        (bundle / "weights.manifest.json").write_text("{not json")
+        reference.write_sha256sums(bundle)
+        diagnostic = f"cannot parse {bundle.name}/weights.manifest.json"
+    elif case == "weights_outside_bundle":
+        # Both weights_sha256 name a weights_path outside the bundle directory.
+        weights = bytearray((bundle / "weights.bin").read_bytes())
+        weights[len(weights) // 2] ^= 1
+        (pipeline.directory / "weights.bin").write_bytes(weights)
+        outside = reference.file_sha256(pipeline.directory / "weights.bin")
+        for name in ("pilot_profiles.json", "weights.manifest.json"):
+            payload = json.loads((bundle / name).read_text())
+            payload["weights_sha256"] = outside
+            (bundle / name).write_text(json.dumps(payload))
+        reference.write_sha256sums(bundle)
+        command = pipeline.config["run_dtv_detector"]["gpu_0"]["commands"][0]
+        command["weights_path"] = "weights.bin"
+        diagnostic = (
+            f"sha256 mismatch for weights.bin: the file has {outside}, sha256sums.txt "
+            f"lists {reference.file_sha256(bundle / 'weights.bin')}"
+        )
+    else:
+        diagnostic = (
+            f"pilot_profiles entry for physical channel {row['physical_channel']} "
+            "has no pilot_frequency_hz"
+        )
+    code, output = pipeline.run(seal=False)
+    assert code != 0, f"{case} was accepted"
     assert diagnostic in output, output[-12000:]
     assert not list((pipeline.directory / "out").glob("dtv_*.raw"))
 

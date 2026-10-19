@@ -58,12 +58,19 @@ health or calibration quality.
 Runtime bundle
 ==============
 
-``dtv_runtime_bundle_dir`` names a directory holding ``pilot_profiles.json``
-and ``weights.bin``, exported with the PilotProxy Python tools, which are not
+``dtv_runtime_bundle_dir`` names a directory holding ``pilot_profiles.json``,
+``weights.bin``, ``weights.manifest.json``, ``detector_contract.json`` and
+``sha256sums.txt``, exported with the PilotProxy Python tools, which are not
 part of Kotekan. Each profile gives the ATSC channel, the receiver
 ``coarse_freq`` ID it binds to (``chord_channel_id``), its weights, and its
 fine calibration, whose status is ``pending_campaign`` (not calibrated) or
 ``calibrated``.
+
+At startup the stage checks the bundle's digests as the PilotProxy validator
+does: ``sha256sums.txt`` must list the other four files with their SHA-256,
+and ``weights_sha256`` in ``pilot_profiles.json`` and
+``weights.manifest.json`` must match ``weights.bin``. This needs Kotekan built
+with OpenSSL.
 
 The stage checks the bundle's structure at startup, but not the quality of the
 calibration. Each node running the stage loads the bundle and creates its
@@ -142,7 +149,8 @@ What stops the run
 
 These stop the whole Kotekan instance, the correlator included:
 
-* a malformed bundle or configuration, at startup;
+* a bundle that fails its digest checks, a malformed bundle or a malformed
+  configuration, at startup;
 * at the first frame: missing or miscounted ``coarse_freq`` metadata, a listed
   receiver ID that is not on the node, or a bound channel that is not
   calibrated;

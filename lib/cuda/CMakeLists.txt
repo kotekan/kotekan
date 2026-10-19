@@ -149,6 +149,11 @@ target_link_libraries(
     PRIVATE libexternal kotekan_libs -lstdc++
     INTERFACE ${CUDA_LIBRARIES} cublas cuda nvrtc nvptxcompiler_static)
 
+# cudaPilotProxyDetector checks its runtime bundle with OpenSSL's SHA-256 (found in lib/core).
+if(OPENSSL_CRYPTO_LIBRARY)
+    target_link_libraries(kotekan_cuda PRIVATE ${OPENSSL_CRYPTO_LIBRARY})
+endif()
+
 set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --forward-unknown-to-host-compiler")
 
 target_include_directories(kotekan_cuda INTERFACE ${CUDAToolkit_INCLUDE_DIRS})
