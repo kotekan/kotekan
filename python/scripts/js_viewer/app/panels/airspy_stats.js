@@ -1,6 +1,6 @@
-// Stream-health strip: the F-engine front end -- per-band rail and power, spectral kurtosis
-// and drop counters from the broker's get_rf, which the shared GpsFeed already fetches
-// (~1.5 s), so this panel adds no load.
+// Stream-health strip: the F-engine front end -- dark instances, per-band rail and power,
+// spectral kurtosis and drop counters from the broker's get_rf, which the shared GpsFeed
+// already fetches (~1.5 s), so this panel adds no load.
 //
 // Color language: green = healthy, amber = attention, red = data being lost.
 
@@ -99,6 +99,33 @@ export class AirspyStatsPanel {
         const legacyCounts = new Set(on.map(([, v]) => (v.lobes || []).length));
         const legacyMixed = unnamed === on.length && legacyCounts.size > 1;
         let rows = "";
+        // Dark instances (broker DARK-INST, get_rf `dark`, per chain): at the floor on every
+        // PRN their peers detect while their tap is fed, i.e. replicas on the wrong channels.
+        // Such an instance still counts in every fleet sum and shows locks, so this row is
+        // where it reads as a fault. No row from a broker that does not run the check.
+        const darkChains = Object.entries(g.dark || {});
+        if (darkChains.length) {
+            const dark = new Map();  // tap url -> the chains that find it dark
+            for (const [chain, d] of darkChains)
+                for (const u of Object.keys((d && d.instances) || {})) {
+                    if (!dark.has(u)) dark.set(u, []);
+                    dark.get(u).push(chain);
+                }
+            const col = dark.size ? "#d64550" : "#3fb26f";
+            const list = [...dark].map(([u, cs]) => `${short(u)} (${cs.join(", ")})`);
+            const darkTip = "an instance whose deep snr sits at the floor on every PRN its "
+                + "peers detect while its tap sees normal per-channel power: a channel map or "
+                + "comb wiring fault (compare the tap's freq_ids with the chain's channel_ids)";
+            rows += `<div style="display:flex;align-items:center;
+                                 border-top:1px solid #f0f0f0;">
+                <div style="flex:0 0 11em;font-weight:600;color:#5a6472;padding:.15em .5em;
+                            white-space:nowrap;" title="${darkTip}">dark instances</div>`
+                + cell(String(dark.size), col,
+                       `instances dark on at least one chain; ${darkChains.length} chain(s) `
+                       + "checked. Each still counts in every fleet sum.")
+                + `<div style="padding:.15em .5em;font-size:.85em;color:${col};">
+                     ${list.length ? list.join("; ") : "none"}</div></div>`;
+        }
         for (const grp of ordered) {
             const have = grp.have;
             if (!have.length) continue;

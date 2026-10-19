@@ -4,7 +4,8 @@ fleet_dll sums every instance's raw Early/Prompt/Late powers into one code discr
 (docs/CHORD_GNSS_SHARED_DLL.md), and apply_presence decides which PRNs it may trim.
 fleet_coherent removes the common per-record phase across instances for the deep statistics and
 the record-stream carrier rate. fleet_spectrum_aligned and fit_spectrum_delay fit a code delay
-from the per-channel prompts, and poll_rf_stats collects receiver-wide stream health.
+from the per-channel prompts, and poll_rf_stats collects receiver-wide stream health, which
+dark_instances compares with each instance's despread.
 
 The combines are per chain (each signal has its own combiners). No function here keeps state
 between calls: fleet_dll's hop_hist, the one thing carried across cycles, is owned by the caller.
@@ -196,6 +197,88 @@ def poll_rf_stats(
                 if d:
                     summ["drops"] = d
         out[url] = summ
+    return out
+
+
+def inst_key(u):
+    """node/gpu ("cx19/1") of an instance, from a node URL (http://cx19:12048/gnss1_srch_tap,
+    .../gnss1_e5b_n2combine) or a telemetry tag (cx19.1), so a GPU's tap and its combiners
+    match. None for anything else."""
+    m = re.search(r"//(\w+):\d+/gnss(\d)_", u) or re.match(r"(\w+)\.(\d)$", u)
+    return "%s/%s" % m.groups() if m else None
+
+
+def dark_instances(
+    fcoh, rf, floor_margin=3.0, peer_frac=0.1, min_prns=2, tap_frac=0.25
+):
+    """Instances that despread nothing while their tap is fed: a channel map or comb wiring
+    fault. -> {tap url: {node, gpu, n_prn, snr_max, floor, peer_med_min, tap_power,
+    tap_power_fleet}}.
+
+    `fcoh` is one chain's fleet_coherent result and `rf` the get_rf instances (poll_rf_stats).
+    A PRN counts for instance u when the median of its peers' per_inst clears floor_margin x the
+    null floor, so only satellites the other instances detect on their own enter the verdict. u
+    is at the floor on such a PRN when its per_inst is below the floor and below peer_frac of
+    that median. u is dark when it is at the floor on every PRN that counts, at least min_prns
+    of them, and its tap is fed: state on, with a mean per-channel power (over its lobes) at
+    least tap_frac of the fleet median. A dead input darkens the tap too and is the tap's to
+    report.
+
+    The peer bar keeps a weak instance out: strong satellites raise the null floor above an
+    instance that sees a few times less than its peers, while a dark instance reads the coherent
+    sum's noise scale, ~1, under both bars.
+    """
+    taps = {}  # node/gpu -> (tap url, mean per-channel power)
+    for url, v in (rf or {}).items():
+        k = inst_key(url)
+        ls = (v.get("lobes") or []) if v.get("state") == "on" else []
+        n = sum(l.get("n_chan") or 0 for l in ls)
+        if k and n:
+            taps[k] = (url, sum(l["power"] * (l.get("n_chan") or 0) for l in ls) / n)
+    pw = sorted(p for _, p in taps.values() if p > 0.0)
+    if not pw:
+        return {}
+    fleet_pw = pw[len(pw) // 2]
+    seen = {}  # instance -> its counted PRNs' summary
+    for prn, v in sorted((fcoh or {}).items()):
+        pi = v.get("per_inst") or {}
+        floor = float(v.get("floor") or 0.0)
+        for u, s in sorted(pi.items()):
+            peers = sorted(x for w, x in pi.items() if w != u)
+            if not peers:
+                continue
+            m = peers[len(peers) // 2]
+            if m < floor_margin * floor:
+                continue
+            c = seen.setdefault(
+                u,
+                {"n": 0, "snr_max": 0.0, "peer_med_min": m, "floor": 0.0, "dark": True},
+            )
+            c["n"] += 1
+            c["snr_max"] = max(c["snr_max"], s)
+            c["peer_med_min"] = min(c["peer_med_min"], m)
+            c["floor"] = max(c["floor"], floor)
+            if not (s < floor and s < peer_frac * m):
+                c["dark"] = False
+    out = {}
+    for u, c in sorted(seen.items()):
+        k = inst_key(u)
+        if not c["dark"] or c["n"] < min_prns or k not in taps:
+            continue
+        url, p = taps[k]
+        if p < tap_frac * fleet_pw:
+            continue
+        node, gpu = k.split("/")
+        out[url] = {
+            "node": node,
+            "gpu": int(gpu),
+            "n_prn": c["n"],
+            "snr_max": c["snr_max"],
+            "floor": c["floor"],
+            "peer_med_min": c["peer_med_min"],
+            "tap_power": p,
+            "tap_power_fleet": fleet_pw,
+        }
     return out
 
 

@@ -20,12 +20,21 @@ import json
 import os
 import time
 
-from gnss_broker.transport import _TR, _now, _get, _log, _log_rl, parse_endpoints
+from gnss_broker.transport import (
+    _TR,
+    _now,
+    _get,
+    _log,
+    _log_rl,
+    log_tag,
+    parse_endpoints,
+)
 from gnss_broker import combdll
 from gnss_broker import elemgain
 from gnss_broker.fits import rf_lobes
 from gnss_broker import signals
 from gnss_broker.fleet import (
+    dark_instances,
     fleet_spectrum_aligned,
     fit_spectrum_delay,
     poll_rf_stats,
@@ -183,6 +192,46 @@ def instr_rf_stats(ctx):
                         "which lobe (get_rf) before blaming a chain." % (100.0 * _clip),
                         every_s=120.0,
                     )
+
+
+def instr_dark_inst(ctx):
+    """DARK-INST: an instance at the floor on every PRN its peers detect while its tap is fed
+    (fleet.dark_instances), logged per chain and published on get_rf beside the taps.
+
+    Its trap: such an instance serves its rows on time, so FLEET-INST, the fleet count and the
+    viewer's locks all list it as present, and only its own tap tells replicas pointed at the
+    wrong channels from a dead input. The taps are the ones the chain that sets
+    --rf-stats-endpoints published (instr_rf_stats), read back from the shared publisher, so a
+    broker without a publisher has no verdict. Measurement only: the instance stays in every
+    fleet sum."""
+    if ctx.publisher is None:
+        return
+    _dark = dark_instances(
+        ctx.dllp.fcoh,
+        ctx.publisher.rf_instances(),
+        floor_margin=ctx.args.coh_floor_margin,
+    )
+    ctx.publisher.set_dark(_dark, ctx.t0)
+    for _url, _d in sorted(_dark.items()):
+        _log_rl(
+            "dark-inst-%s" % _url,
+            "DARK-INST: node %s gpu %d chain %s despreads nothing: deep snr at most %.1f "
+            "(floor %.1f) on all %d PRN(s) its peers detect (their median at least %.0f), "
+            "while its tap's per-channel power is %.2f of the fleet median. A channel map or "
+            "comb wiring fault: compare the tap's freq_ids with the chain's channel_ids. It "
+            "still counts in every fleet sum."
+            % (
+                _d["node"],
+                _d["gpu"],
+                log_tag() or ctx.args.signal,
+                _d["snr_max"],
+                _d["floor"],
+                _d["n_prn"],
+                _d["peer_med_min"],
+                _d["tap_power"] / _d["tap_power_fleet"],
+            ),
+            every_s=120.0,
+        )
 
 
 def instr_tap_walk(ctx):
