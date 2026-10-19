@@ -372,6 +372,49 @@ def gps_prn_blocks():
     return prn_blocks("G")
 
 
+# The last parse of the registry: (key, svn_block, svn_prn). stage_prn_membership asks on
+# every cycle of every armed chain and the answer moves at most daily, so the file is re-read
+# only when its identity (path, inode, size, mtime) or today's date changes: a fetch's rename
+# or any rewrite is seen on the next call, and so is an assignment starting or ending.
+_parsed = (None, None, None)
+
+
+def _read_registry():
+    """(svn -> block, svn -> PRN in force today) from the registry, as prn_blocks describes.
+    Raises on a failed read, which is not kept, so the next call tries the file again."""
+    global _parsed
+    now = time.strftime("%Y:%j:00000", time.gmtime())
+    st = os.stat(_IGS_SNX)
+    key = (_IGS_SNX, st.st_ino, st.st_size, st.st_mtime_ns, now)
+    last = _parsed
+    if last[0] == key:
+        return last[1], last[2]
+    svn_block, svn_prn = {}, {}
+    section = None
+    for line in open(_IGS_SNX, errors="replace"):
+        if line.startswith("+SATELLITE/"):
+            section = line.strip().lstrip("+")
+            continue
+        if line.startswith("-SATELLITE/"):
+            section = None
+            continue
+        if line.startswith("*") or not line.strip():
+            continue
+        f = line.split()
+        if section == "SATELLITE/IDENTIFIER" and len(f) >= 4:
+            svn_block[f[0]] = f[3]
+        elif section == "SATELLITE/PRN" and len(f) >= 4:
+            svn, t_from, t_to, prn = f[0], f[1], f[2], f[3]
+            if (
+                t_from <= now
+                and (t_to == "0000:000:00000" or t_to > now)
+                and re.fullmatch(r"[A-Z]\d{2}", prn)
+            ):
+                svn_prn[svn] = prn
+    _parsed = (key, svn_block, svn_prn)
+    return svn_block, svn_prn
+
+
 def prn_blocks(sysc):
     """{prn -> block} for every currently assigned PRN of constellation `sysc` ("G", "C", "R"),
     from the IGS metadata SINEX. For R the PRN is the orbital slot, the number BRDC and the
@@ -379,31 +422,13 @@ def prn_blocks(sysc):
 
     The registry half of signal_incapable_prns, exposed so the viewer marks not-transmitted
     cells from the same source the broker filters on. SVN -> block comes from
-    SATELLITE/IDENTIFIER and SVN -> PRN from SATELLITE/PRN, keeping an assignment only while
-    its Valid_To is open or not yet past today (Valid_From is not checked), so a re-used PRN
-    resolves to the satellite flying it now. {} on any failure (fail open)."""
+    SATELLITE/IDENTIFIER and SVN -> PRN from SATELLITE/PRN, keeping an assignment only when
+    today 00:00 UT lies in [Valid_From, Valid_To), Valid_To possibly open. A re-used PRN thus
+    resolves to the one satellite flying it at that instant: an assignment announced for a
+    later date does not displace it, and at a hand-over, where the registry ends one window
+    as the next begins, only one of the two counts. {} on any failure (fail open)."""
     try:
-        svn_block, svn_prn = {}, {}
-        section = None
-        now = time.strftime("%Y:%j:00000", time.gmtime())
-        for line in open(_IGS_SNX, errors="replace"):
-            if line.startswith("+SATELLITE/"):
-                section = line.strip().lstrip("+")
-                continue
-            if line.startswith("-SATELLITE/"):
-                section = None
-                continue
-            if line.startswith("*") or not line.strip():
-                continue
-            f = line.split()
-            if section == "SATELLITE/IDENTIFIER" and len(f) >= 4:
-                svn_block[f[0]] = f[3]
-            elif section == "SATELLITE/PRN" and len(f) >= 4:
-                svn, t_to, prn = f[0], f[2], f[3]
-                if (t_to == "0000:000:00000" or t_to >= now) and re.fullmatch(
-                    r"[A-Z]\d{2}", prn
-                ):
-                    svn_prn[svn] = prn
+        svn_block, svn_prn = _read_registry()
     except Exception:
         return {}
     out = {}

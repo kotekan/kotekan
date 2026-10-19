@@ -597,7 +597,7 @@ def main():
     check(
         _follow_posts and all("at_hop" not in b for _, b in _follow_posts),
         "the SEARCH gets the map but not the deadline -- it has no frame boundary to test "
-        "one against, and a deadline it cannot honour would wedge its map",
+        "one against and ignores at_hop",
     )
 
     # No axis: post anyway, unscheduled. An unsynchronised swap is worse than a synchronised
@@ -699,7 +699,7 @@ def main():
     # Block IIR / IIR-M satellites predate L5: in an L5 slot each is a wasted slot and a
     # noise row in the presence population.
     print("\nsignal capability: from the IGS metadata SINEX, not Celestrak")
-    import tempfile as _tf, os as _os
+    import tempfile as _tf, os as _os, time as _time, types as _types
     from gnss_broker import prnmap as _pm
 
     _saved = _pm._IGS_SNX
@@ -796,8 +796,13 @@ def main():
                 "ensure_registry: a fresh copy is left alone and its age returned",
             )
             # A re-used PRN must resolve to today's satellite: an expired assignment (SVN
-            # G099 flew G01 until 1995) must not count.
+            # G099 flew G01 until 1995) must not count. G099 has a block and comes later in
+            # file order than G01's current satellite, so were it counted it would take
+            # PRN 1, and an IIR-A on PRN 1 cannot carry L5.
             open(_f, "a").write(
+                "+SATELLITE/IDENTIFIER\n"
+                " G099 1989-044A  19802 GPS-IIR-A       x\n"
+                "-SATELLITE/IDENTIFIER\n"
                 "+SATELLITE/PRN\n"
                 " G099 1990:001:00000 1995:001:00000 G01\n"
                 "-SATELLITE/PRN\n"
@@ -806,6 +811,85 @@ def main():
                 _pm.signal_incapable_prns("GPS_L5_Q_NH") == {22, 7},
                 "an expired PRN assignment is ignored -- current validity only",
             )
+            # An assignment announced for a later date (G098 takes G01 in 2099) is not current
+            # yet and must not displace the satellite flying G01 today.
+            open(_f, "a").write(
+                "+SATELLITE/IDENTIFIER\n"
+                " G098 2099-001A  99998 GPS-IIR-A       x\n"
+                "-SATELLITE/IDENTIFIER\n"
+                "+SATELLITE/PRN\n"
+                " G098 2099:001:00000 0000:000:00000 G01\n"
+                "-SATELLITE/PRN\n"
+            )
+            check(
+                _pm.signal_incapable_prns("GPS_L5_Q_NH") == {22, 7},
+                "an assignment that has not started yet is ignored (got %s)"
+                % sorted(_pm.signal_incapable_prns("GPS_L5_Q_NH")),
+            )
+            # A hand-over at 00:00 UT today: the registry ends the outgoing window (G097) as the
+            # incoming one (G096, held until 2099) begins. G096 is listed first, so were both
+            # counted the outgoing IIR-A would take PRN 9; were G096 not counted, PRN 9 would
+            # have no satellite.
+            _today = _time.strftime("%Y:%j:00000", _time.gmtime())
+            open(_f, "a").write(
+                "+SATELLITE/IDENTIFIER\n"
+                " G096 2099-002A  99996 GPS-IIF         x\n"
+                " G097 1999-055A  99997 GPS-IIR-A       x\n"
+                "-SATELLITE/IDENTIFIER\n"
+                "+SATELLITE/PRN\n"
+                " G096 %s 2099:001:00000 G09\n"
+                " G097 2000:001:00000 %s G09\n"
+                "-SATELLITE/PRN\n" % (_today, _today)
+            )
+            _g9 = _pm.prn_blocks("G").get(9)
+            check(
+                _pm.signal_incapable_prns("GPS_L5_Q_NH") == {22, 7}
+                and _g9 == "GPS-IIF",
+                "a PRN handed over at 00:00 UT today is the incoming satellite's alone "
+                "(got %s, PRN 9 %s)"
+                % (sorted(_pm.signal_incapable_prns("GPS_L5_Q_NH")), _g9),
+            )
+            # The stage asks every cycle, so the registry is parsed once and reused while the
+            # file and the date stand still; a rewritten file or a new day is read afresh.
+            _opens = []
+
+            def _counting_open(*a, **kw):
+                _opens.append(a[0])
+                return open(*a, **kw)
+
+            def _in_2099(fmt, t=None):
+                return "2099:001:00000"
+
+            _mt = _os.stat(_f).st_mtime_ns
+            _pm_time = _pm.time
+            _pm.open = _counting_open
+            try:
+                _os.utime(_f, ns=(_mt + 1_000_000_000,) * 2)
+                _l5 = [_pm.signal_incapable_prns("GPS_L5_Q_NH") for _ in range(2)]
+                _glo = _pm.prn_blocks("R")
+                check(
+                    len(_opens) == 1 and _l5 == [{22, 7}] * 2 and len(_glo) == 6,
+                    "the registry is read once for repeated asks, any constellation "
+                    "(opens %d)" % len(_opens),
+                )
+                _os.utime(_f, ns=(_mt + 2_000_000_000,) * 2)
+                _l5 = _pm.signal_incapable_prns("GPS_L5_Q_NH")
+                check(
+                    len(_opens) == 2 and _l5 == {22, 7},
+                    "... and read again once the file changes (opens %d)" % len(_opens),
+                )
+                _pm.time = _types.SimpleNamespace(
+                    gmtime=_time.gmtime, strftime=_in_2099
+                )
+                _l5 = _pm.signal_incapable_prns("GPS_L5_Q_NH")
+                check(
+                    len(_opens) == 3 and _l5 == {22, 7, 1},
+                    "... and on a new day, when G098's assignment from 2099:001 is in force "
+                    "(got %s, opens %d)" % (sorted(_l5), len(_opens)),
+                )
+            finally:
+                del _pm.open
+                _pm.time = _pm_time
             # A replay pins the registry to its transcript's snapshot (GNSS_IGS_SNX). The
             # broker must read that file and never fetch over it, however old it is: a fetch
             # would replace the snapshot with today's registry.
