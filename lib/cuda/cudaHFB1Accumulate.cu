@@ -31,6 +31,15 @@ namespace {
         *reinterpret_cast<int4*>(p) = reinterpret_cast<const int4&>(v);
     }
 
+    __device__ inline float2 add_half2(const float2 a, const __half2 b) {
+        const float2 c = __half22float2(b);
+        return make_float2(a.x + c.x, a.y + c.y);
+    }
+
+    __device__ inline __half2 scale_to_half2(const float2 a, const float scale) {
+        return __floats2half2_rn(a.x * scale, a.y * scale);
+    }
+
 } // namespace
 
 __global__ void accumulate_hfb1(__half* __restrict__ const accumulator,
@@ -42,24 +51,26 @@ __global__ void accumulate_hfb1(__half* __restrict__ const accumulator,
   const int frequency = blockIdx.x;
   const int pq = 8 * threadIdx.x;
 
-  half2x4 accum;
-  accum.x = accum.y = accum.z = accum.w = __float2half2_rn(0.0f);
+  // Sum in float: the sum of num_times samples can exceed the float16 range even when their
+  // average does not.
+  float2 sum_x = make_float2(0.0f, 0.0f), sum_y = sum_x, sum_z = sum_x, sum_w = sum_x;
   for (int time = 0; time < num_times; ++time) {
     const std::ptrdiff_t input_offset = pq + P*Q * frequency + P*Q * num_frequencies * time;
     // load 8 __half values per thread from input + offset (single 128-bit load) and add them
     const half2x4 in = load_half2x4(input + input_offset);
-    accum.x = __hadd2(accum.x, in.x);
-    accum.y = __hadd2(accum.y, in.y);
-    accum.z = __hadd2(accum.z, in.z);
-    accum.w = __hadd2(accum.w, in.w);
+    sum_x = add_half2(sum_x, in.x);
+    sum_y = add_half2(sum_y, in.y);
+    sum_z = add_half2(sum_z, in.z);
+    sum_w = add_half2(sum_w, in.w);
   }
 
-  // Divide by num_times (time average): multiply once by the broadcast reciprocal.
-  const __half2 scale = __half2half2(__float2half(1.0f / num_times));
-  accum.x = __hmul2(accum.x, scale);
-  accum.y = __hmul2(accum.y, scale);
-  accum.z = __hmul2(accum.z, scale);
-  accum.w = __hmul2(accum.w, scale);
+  // Divide by num_times (time average)
+  const float scale = 1.0f / num_times;
+  half2x4 accum;
+  accum.x = scale_to_half2(sum_x, scale);
+  accum.y = scale_to_half2(sum_y, scale);
+  accum.z = scale_to_half2(sum_z, scale);
+  accum.w = scale_to_half2(sum_w, scale);
 
   const std::ptrdiff_t accumulator_offset = pq + P*Q * frequency;
   // store 8 __half values per thread to accumulator + offset (single 128-bit store)
