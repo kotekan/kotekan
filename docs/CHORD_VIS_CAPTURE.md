@@ -65,11 +65,12 @@ flag per record), the quantizer scale divided out, blocks the capture did not ga
 `--tags ,_e5a,_b2a` joins several chains' ctl series, `--p-only` keeps the prompt lane per slot.
 
 Sidecar metadata: `scripts/gnss/viscap_metadata.py <capture dir>` writes `<dir>/metadata/`
-— `timing.json` (clock geometry, both windows in seq and UTC), `channels.csv` ((node, gpu) →
-absolute freq_ids), `elements.csv` (element → dish/pol/grid position), `station.json`
-(receiver point and array-origin frame), `sat_azel.csv` (az/el/range-rate of every satellite
-at 10 s cadence from the broker's ephemeris code) and the BRDC files used. It reads only the
-config snapshot in `<dir>/configs/` and the ctl files, so it can be rerun on any capture.
+— `timing.json` (clock geometry, both windows in seq and UTC), `channels.csv` ((node, gpu,
+chain) → absolute freq_ids; chain `cap` is the capvistiles channel axis), `elements.csv`
+(element → dish/pol/grid position), `station.json` (receiver point and array-origin frame),
+`sat_azel.csv` (az/el/range-rate of every satellite at 10 s cadence from the broker's
+ephemeris code) and the BRDC files used. It reads only the config snapshot in `<dir>/configs/`
+and the ctl files, so it can be rerun on any capture.
 
 Tutorial: `scripts/gnss/viscap_tutorial.ipynb` — framing by hand, ctl header/PRN table,
 time, tiles decode, N² and N×M plots, metadata join. Ships with outputs; re-execute with
@@ -155,7 +156,7 @@ The generator folds every path-B chain on a GPU into one `gnss<g>_n2dual` proces
 E5a 128, B2a 256 on 1176 MHz; E5b 0, B2b 128; B3I 0, E6 128; L2C 0), one `cudaCorrelatorDual`
 (`num_synth` 384, `gnss_synth_compact`) correlates the (N+M)² over the union of the combs, and a
 gather per chain (`gnss_gathers`) hands each assembler the frame it always had. The capture is
-then ONE gather per GPU, `gnss<g>_captiles`: for the captured chains' channels (the 1176 comb),
+then ONE gather per GPU, `gnss<g>_captiles`: for the union of the captured chains' channels (the 1176 comb),
 every synth row they occupy (384 lanes), the AA block once and, with `--vis-capture-bb`, the BB
 triangle over all of them -- including the replica × replica blocks BETWEEN chains. Per record
 and channel that is 48 mixed + 3 AA + 300 BB = 351 tiles (20.1 MB per frame per GPU).
@@ -163,7 +164,7 @@ and channel that is 48 mixed + 3 AA + 300 BB = 351 tiles (20.1 MB per frame per 
 On disk: `<node>_gnss<g>_capvistiles_NNNNNNN.raw` plus one ctl series per captured chain with
 the usual names (`<node>_gnss<g>_visctl`, `..._e5a_visctl`, `..._b2a_visctl`), gated in lockstep
 by one `gnss<g>_viscap_gate` (`viscap.py --gates gnss0_viscap_gate,gnss1_viscap_gate`, the
-default). `viscap_read.py --tag <chain>` decodes the capture frame against that chain's ctl:
+default). `viscap_read.py --tag <chain>` decodes that chain's channels of the capture frame against its ctl:
 lane = 384-lane index, this chain's slots at `lane_base + 4·slot + row`; `vis_bb` is the full
 384 × 384 block, `vis_aa` the N² once. Gates: `n2dualtest` [7]-[9] (compact addressing, the
 512-station launch, each chain's rows bitwise equal to a one-chain launch) and the cf06 smoke

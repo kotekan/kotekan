@@ -21,8 +21,9 @@ N + L axis (L the lanes kept), K = (N+L)(N+L+1)/2; axis_kind[N+L] ('E' element /
 axis_id[N+L] (element id or lane index); lane_chain[L], lane_slot[L], lane_row[L] (0 E, 1 P,
 2 L, 3 P_HEAD); per record lane_prn[R, L], lane_run[R, L]; winstart[R] (absolute ADC sample);
 freq_id[C], element_id[N]. Processed --chunk files at a time, so a whole capture streams
-through. C and freq_id come from the first --tags chain, so every captured chain must cover
-the same channels.
+through. C and freq_id are the --tags chains' channels, which must be the same for every chain
+listed: a merged capture's tiles carry the union of the captured chains' channels, but each
+chain decodes only its own (viscap_read), so chains on different channels are refused.
 """
 import argparse
 import os
@@ -83,6 +84,14 @@ def main():
     )
     a = ap.parse_args()
     tags = a.tags.split(",")
+    chans = {
+        t or "primary": vr.config_axes(a.config, a.gpu, t, a.node_yaml)[0] for t in tags
+    }
+    if len({tuple(c) for c in chans.values()}) > 1:
+        sys.exit(
+            "the --tags chains cover different channels (%s): run once per channel set"
+            % chans
+        )
     import h5py
 
     # the lane geometry from the first chain's view of the frame

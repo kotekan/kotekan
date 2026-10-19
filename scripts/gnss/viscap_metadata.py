@@ -15,8 +15,10 @@ Produces <dir>/metadata/:
                   convention: dish = e % num_dishes, pol = e // num_dishes. Plus the array
                   epoch covering the capture start and the element's beam-cube index in it
                   (gnss_arraymap; both empty when no epoch is recorded for that time).
-  channels.csv    (node, gpu) -> chan_index, absolute freq_id and freq_MHz, from the first
-                  cudaGnssInject (the primary chain's) in each gnss<gpu>_n2dual block.
+  channels.csv    (node, gpu, chain) -> chan_index, absolute freq_id and freq_MHz: every
+                  cudaGnssInject's channels in its own order (its visctl series' channel
+                  axis) and, as chain 'cap', the capture gather's (the capvistiles channel
+                  axis: the union of the captured chains' channels).
   slots.csv       (node, gpu, chain) -> the PRN in each correlator slot, its signal and the
                   chain's synth lane base, from every cudaGnssInject in the node configs.
   gps_l5_capability.csv  GPS PRN -> block, and whether that block carries L5 (IGS SINEX).
@@ -111,37 +113,44 @@ def sep_deg(az, el):
 
 
 def predict_all_health_agnostic(E, lat, lon, alt, t_utc, max_age):
-    """eph.predict_all's light-time/Sagnac loop without its health gate (which drops every
-    non-BeiDou record with health != 0) and without the clock terms: {(sys, prn): dict}, the
-    record's health word included."""
+    """eph.predict_all without its health gate (which drops every non-BeiDou record with
+    health != 0) and without its elevation mask: {(sys, prn): dict}, each satellite's health
+    word added from the record predict_all chose (best_eph's nearest toe)."""
+    pred = eph.predict_all(
+        E, lat, lon, alt, t_utc, mask_deg=-90.0, max_age=max_age, health_gate=False
+    )
     t = eph.gpst_of_utc(t_utc)
-    rx = eph._ecef_of_llh(lat, lon, alt)
-    out = {}
-    for key, recs in E.items():
-        e = eph.best_eph(recs, t, max_age)
-        if e is None:
+    for key, v in pred.items():
+        v["health"] = eph.best_eph(E[key], t, max_age).get("health", 0)
+    return pred
+
+
+def channel_rows(node, cfg):
+    """channels.csv rows [node, gpu, chain, chan_index, freq_id, freq_MHz] of one node config:
+    every cudaGnssInject's channels in its own order (the channel axis of its visctl series),
+    then, where the correlator has the capture gather, chain 'cap' with the capvistiles channel
+    axis (gather_cap_channels: local channel indices, the union of the captured chains', each
+    named by the freq_id an injector pairs it with in gnss_local_channels)."""
+    rows = []
+    for name, blk in cfg.items():
+        m = re.fullmatch(r"gnss(\d)(?:_\w+)?_n2dual", name)
+        if not m or not isinstance(blk, dict):
             continue
-        tau = 0.075
-        for _ in range(2):
-            pos, vel, _clk = eph.sat_pos_clk(e, t - tau)
-            th = eph.OMEGA_E[e["sys"]] * tau
-            pos_rx = (
-                pos[0] * math.cos(th) + pos[1] * math.sin(th),
-                -pos[0] * math.sin(th) + pos[1] * math.cos(th),
-                pos[2],
-            )
-            az, el, rng = eph._azel(rx, pos_rx, lat, lon)
-            tau = rng / eph.C_LIGHT
-        rr = sum((p - r) * v for p, r, v in zip(pos_rx, rx, vel)) / rng
-        out[key] = dict(
-            az=az,
-            el=el,
-            range_m=rng,
-            range_rate_mps=rr,
-            toe_age_s=t - e["toe_gpst"],
-            health=e.get("health", 0),
-        )
-    return out
+        gpu = int(m.group(1))
+        fid_of, cap = {}, []
+        for c in blk.get("commands", []):
+            if c.get("name") == "cudaGnssInject":
+                chain = "_".join(c["signal"].split("_")[:2]).lower()
+                fids = [int(f) for f in c["channel_ids"]]
+                rows += [[node, gpu, chain, i, f] for i, f in enumerate(fids)]
+                fid_of.update(zip(c.get("gnss_local_channels", []), fids))
+            elif c.get("name") == "cudaCorrelatorDual" and "cap" in c.get(
+                "gnss_gathers", []
+            ):
+                # cudaCorrelatorDual's default for a gather's channels is the whole comb
+                cap = c.get("gather_cap_channels", c.get("gnss_local_channels", []))
+        rows += [[node, gpu, "cap", i, fid_of[ch]] for i, ch in enumerate(cap)]
+    return [r + ["%.7f" % (r[4] * 0.1953125)] for r in rows]
 
 
 def main():
@@ -277,27 +286,16 @@ def main():
 
     # ---- channels and PRN slots per instance. One cudaGnssInject per chain: in its own
     #      gnss<g>_<tag>_n2dual block, or all of a GPU's chains in gnss<g>_n2dual (merged).
-    #      channels.csv reads only the first injector of gnss<g>_n2dual.
     with open(os.path.join(out, "channels.csv"), "w", newline="") as fc, open(
         os.path.join(out, "slots.csv"), "w", newline=""
     ) as fs:
         wc, ws = csv.writer(fc), csv.writer(fs)
-        wc.writerow(["node", "gpu", "chan_index", "freq_id", "freq_MHz"])
+        wc.writerow(["node", "gpu", "chain", "chan_index", "freq_id", "freq_MHz"])
         ws.writerow(["node", "gpu", "chain", "slot", "prn", "signal", "lane_base"])
         for g in gen:
             node = os.path.basename(g).split("_")[2]
             cfg = yaml.safe_load(open(g))
-            for gpu in (0, 1):
-                dual = cfg.get("gnss%d_n2dual" % gpu)
-                if not dual:
-                    continue
-                inj = next(
-                    c for c in dual["commands"] if c.get("name") == "cudaGnssInject"
-                )
-                for i, fid in enumerate(inj["channel_ids"]):
-                    wc.writerow(
-                        [node, gpu, i, int(fid), "%.7f" % (int(fid) * 0.1953125)]
-                    )
+            wc.writerows(channel_rows(node, cfg))
             for name, blk in cfg.items():
                 m = re.fullmatch(r"gnss(\d)(?:_\w+)?_n2dual", name)
                 if not m or not isinstance(blk, dict):

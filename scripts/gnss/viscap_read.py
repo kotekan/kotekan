@@ -10,7 +10,7 @@ tiles file says its shape -- the ctl file does (FrameHdr.n_rec/n_chan/n_prn) plu
 element count, which is why the two are read together.
 
 CTL FRAME (lib/stages/gnss/gnssGpuChain.hpp): FrameHdr(48) | winstart int64[16] |
-PrnCtl(80)[16 rec][n_prn] | energy f64[4*n_prn*16 jobs][n_chan]. seq0 is the absolute
+PrnCtl(112)[16 rec][n_prn] | energy f64[4*n_prn*16 jobs][n_chan]. seq0 is the absolute
 F-engine ADC sample (3.2 GS/s; one hop = 16384 samples, one frame = 8192 hops = 134217728
 samples) of the frame's first hop; utc0 the UTC of sample 0; winstart[r] the absolute sample of
 sub-integration r (2048 hops = 33554432 samples apart). energy[(job0+t)*n_chan + c] is the
@@ -37,8 +37,9 @@ lane's rms over the record's m_head hops, so for that lane this s is not the pac
 Absolute channel ids and the live element ids are not in the frames: channel_ids come from the
 chain's cudaGnssInject block in --config and array.live_element_ranges from --node-yaml
 (default config/chord_gnss_node.yaml), so every axis written to the h5 is absolute (freq_id,
-element). A merged capture's tiles carry the capture gather's channels (gather_cap_channels);
-the reader assumes they are this chain's channel_ids.
+element). A merged capture's tiles carry the capture gather's channels (gather_cap_channels,
+the union of the captured chains'); the reader picks this chain's channels from them by
+position, so every decoded channel axis is the chain's channel_ids.
 """
 import argparse
 import glob
@@ -186,10 +187,12 @@ def config_axes(config_path, gpu, tag, node_yaml):
 
 
 def config_lanes(config_path, gpu, tag, gather="cap"):
-    """The capture's replica side: {has_aa, has_bb, num_synth, lane_base, merged} from the
-    correlator block. One chain per correlator: its own keys. Several chains in one pass
+    """The capture's replica side: {has_aa, has_bb, num_synth, lane_base, merged, n_tile_chan,
+    chan_pos} from the correlator block. One chain per correlator: its own keys, and the tiles
+    carry the chain's channels (n_tile_chan and chan_pos None). Several chains in one pass
     (gnss_gathers): the named gather's keys -- the capture gather 'cap' spans the captured
-    chains' lanes."""
+    chains' lanes and channels; its tiles carry n_tile_chan channels, and chan_pos is the
+    position among them of each of this chain's channels, in the chain's order."""
     import yaml
 
     cfg = yaml.safe_load(open(config_path))
@@ -205,12 +208,27 @@ def config_lanes(config_path, gpu, tag, gather="cap"):
             if c.get("name") == "cudaGnssInject"
             and c.get("gnss_ctl_name") == "gnss%d%s_n2ctl" % (gpu, tag)
         )
+        # The gather's tiles carry its channels (local channel indices) in this order, by
+        # default every comb channel as in cudaCorrelatorDual; the chain's ctl and channel_ids
+        # follow its injector's gnss_local_channels.
+        tile_chans = [
+            int(c)
+            for c in corr.get(pre + "channels", corr.get("gnss_local_channels", []))
+        ]
+        own = [int(c) for c in inj["gnss_local_channels"]]
+        if not set(own) <= set(tile_chans):
+            sys.exit(
+                "gnss%d%s: local channels %s are not all in gather '%s' (%s)"
+                % (gpu, tag, own, gather, tile_chans)
+            )
         return dict(
             has_aa=bool(corr.get(pre + "aa")),
             has_bb=bool(corr.get(pre + "bb")),
             num_synth=int(corr.get(pre + "lanes", corr.get("num_synth", 128))),
             lane_base=int(inj.get("synth_lane_base", 0)) - cap_base,
             merged=True,
+            n_tile_chan=len(tile_chans),
+            chan_pos=[tile_chans.index(c) for c in own],
         )
     # One chain per correlator with gnss_gather_aa/bb on it: cudaCorrelatorDual refuses that
     # config (it requires gnss_gathers), so only archives captured in that layout read this way.
@@ -220,6 +238,8 @@ def config_lanes(config_path, gpu, tag, gather="cap"):
         num_synth=int(corr.get("num_synth", 128)),
         lane_base=0,
         merged=False,
+        n_tile_chan=None,
+        chan_pos=None,
     )
 
 
@@ -237,8 +257,18 @@ def bb_tiles(has_bb, num_synth=128):
     return nsb16 * (nsb16 + 1) // 2 if has_bb else 0
 
 
-def read_pair(ctl_paths, tile_paths, n_tile, n_chan_expect=None, max_frames=0):
-    """Read matching ctl/tiles frames -> list of (hdr, winstart, ctl, energy, tiles int32)."""
+def read_pair(
+    ctl_paths,
+    tile_paths,
+    n_tile,
+    n_chan_expect=None,
+    max_frames=0,
+    n_tile_chan=None,
+    chan_pos=None,
+):
+    """Read matching ctl/tiles frames -> list of (hdr, winstart, ctl, energy, tiles int32).
+    The tiles carry the ctl's channels, or, for a merged capture, n_tile_chan channels of
+    which chan_pos picks the ctl's, in its order (config_lanes)."""
     tile_it = None
     frames = []
     for i, (_, cbuf) in enumerate(raw_frames(ctl_paths)):
@@ -246,8 +276,9 @@ def read_pair(ctl_paths, tile_paths, n_tile, n_chan_expect=None, max_frames=0):
         n_rec, n_chan = int(h["n_rec"]), int(h["n_chan"])
         if n_chan_expect is not None and n_chan != n_chan_expect:
             sys.exit("ctl says %d channels, config says %d" % (n_chan, n_chan_expect))
+        n_tc = n_chan if n_tile_chan is None else n_tile_chan
         if tile_it is None:
-            tile_it = raw_frames(tile_paths, n_rec * n_chan * n_tile * 16 * 16 * 2 * 4)
+            tile_it = raw_frames(tile_paths, n_rec * n_tc * n_tile * 16 * 16 * 2 * 4)
         try:
             _, tbuf = next(tile_it)
         except StopIteration:
@@ -255,7 +286,9 @@ def read_pair(ctl_paths, tile_paths, n_tile, n_chan_expect=None, max_frames=0):
                 "tiles series ended before ctl series (frame %d)" % i, file=sys.stderr
             )
             break
-        tiles = np.frombuffer(tbuf, "<i4").reshape(n_rec, n_chan, n_tile, 16, 16, 2)
+        tiles = np.frombuffer(tbuf, "<i4").reshape(n_rec, n_tc, n_tile, 16, 16, 2)
+        if chan_pos is not None:
+            tiles = tiles[:, chan_pos]
         frames.append((h, win[:n_rec].copy(), ctl[:n_rec].copy(), energy, tiles))
         if max_frames and len(frames) >= max_frames:
             break
@@ -381,7 +414,15 @@ def load(d, node, gpu, config, node_yaml, tag="", files=None, max_frames=0):
     )
     if files is not None:
         ctl_paths, tile_paths = ctl_paths[files], tile_paths[files]
-    frames = read_pair(ctl_paths, tile_paths, n_tile, len(freq_ids), max_frames)
+    frames = read_pair(
+        ctl_paths,
+        tile_paths,
+        n_tile,
+        len(freq_ids),
+        max_frames,
+        lanes["n_tile_chan"],
+        lanes["chan_pos"],
+    )
     axes = dict(
         freq_id=np.array(freq_ids, np.int32),
         element_id=np.array(elems, np.int32),
@@ -469,6 +510,8 @@ def main():
         n_tile,
         len(freq_ids),
         a.max_frames,
+        lanes["n_tile_chan"],
+        lanes["chan_pos"],
     )
 
     h0, hN = frames[0][0], frames[-1][0]
