@@ -212,9 +212,11 @@ E33 walking to the 3.0 trim clamp"); it sat in #192's list. **Not** the 22:53Z (
 `ctx.detectors` and `ctx.args.detectors_monitor` together (a helper); then a broker restart. Until then gal_e5a's code
 observables are unusable for the fits (the SEARCH-MONITOR itself is fine: it reads the search, not the tracker).
 
-**12:19Z LANDED:** gnss-broker restarted 12:18:53Z on 06be1fdd8 (seeds_are_model_owned); 0 CHAIN DIED, no tracebacks. The
-verdict is the SEEDAUDIT STEP / SAWTOOTH rate on gal_e5a and the obs excursions over the following half hour (overnight
-~600 excursions/h; gal_e5b ~0).
+**12:19Z LANDED, 13:20Z VERIFIED:** gnss-broker restarted 12:18:53Z on 06be1fdd8 (seeds_are_model_owned). In the quiet
+window 12:50-13:20Z gal_e5a logged SEEDAUDIT STEP 0, SAWTOOTH 0, slew 179 against gal_e5b's 0 / 0 / 180 (overnight under the
+defect: 147 / 312 per night, 0 slews); after the 13:26:44Z restart (the #211 referee fix) its rows read 0 excursions in
+427 with every PRN at 0 +- 1 m and trims 0.3-0.4. **FIXED.** (The 12:18Z restart itself left three E5a satellites parked
+on a grating lobe for an hour; that is #211, not this.)
 
 ### #211 — restart ORDER: a broker restart within minutes of an aggregator restart bootstraps on a cold search, and every model-primary chain is thrown onto grating lobes for half an hour (2026-10-19 12:17-12:50Z, measured, self-healing)
 **What:** gnss-aggregator restarted 12:17:26Z, gnss-gather 12:18:03Z, gnss-broker 12:18:53Z (the post-merge regen cycle).
@@ -238,6 +240,18 @@ restart, and never restart the broker on a search younger than that. Candidates 
 refuses dr_birth/nh_lift seeds while the search reports relabels, or the joint state's first estimates (n < 4 or sigma
 > 0.5 chip) are not adoptable (the 0c coast already bounds adoption by joint_clk_max_chips; a sigma gate would have
 held this one). Related: #106 (the establishment transient), #201 (the BOC side peaks: the same lobe blindness).
+**13:20-13:50Z OUTCOME:** gal_e5b, bds_b2a, bds_b3i walked home by ~12:50Z. gal_e5a did not: E5/E9/E15 parked at +85 m
+(one lobe) with the trim railed at exactly +3.000 and E34/E36 at -95 m with -2.6/-2.7 -- the clamp (3.0 chips) is
+smaller than the lobe (3.27), so the trim alone cannot make the last step, and the wipe that does it was refused by the
+displaced-presence referee: "PRESENCE -displaced: same offset -- 3 PRN(s) at off +2.9 REFUSED, a chain event rather
+than N detections" (31 refusals; E5b's PRNs reached the last lobe one at a time and were admitted). The referee's
+chain bar was any three satellites within 0.1 chip; three of thirteen parked on one lobe beside eight on their peaks
+is not a chain event. **Fix bfe3d4802:** `displaced_chain_event` needs the same-offset group to be at least half of
+the satellites the chain sees (present on their peaks plus the displaced candidates; a null crossing still
+qualifies, the three-PRN bar stands without a count); test_disp_refuse gains the cases. Broker restarted ALONE
+13:26:44Z on a warm search (the gps_l5 overlay-period lines had fallen to 0 per 10 min): at T+20 the five PRNs read
+0 +- 1 m with trims 0.3-0.4, every model-primary chain 0 excursions, no lobe walk (the rule above honoured), 0 CHAIN
+DIED. Open: a code-side guard for the cold-search restart itself (the joint state's n/sigma gate or a relabel holdoff).
 
 ### #210 — glo_l3oc's code residual carries a GLONASS-only range-model term: +44 m up-like, +8 m north, +5 m east against the GPS/Galileo/BeiDou chains (2026-10-19, the 0b night gate)
 **What:** the night re-survey fit (gnss_resurvey.py --hours 6-13) on 10-19 with the model live reads glo_l3oc model -
