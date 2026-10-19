@@ -44,8 +44,8 @@ JSON; needs numpy and matplotlib):
   python gnss_transit_arcs.py --t-lo YYYY-MM-DDTHH:MM:SS --split YYYY-MM-DDTHH:MM:SS \
       --out OUT_PREFIX [--t-hi ...] [--events FILE] [--broker-lines FILE]
 --events: one "YYYY-MM-DDTHH:MM:SS label" per line (restarts, aborts): drawn on the plots and kept
-out of the control windows. --broker-lines: the broker's FROZEN/CLEAR lines, printed beside the
-ephemeris windows as a cross-check.
+out of the control windows. --broker-lines: a broker log; gps_l5's FROZEN/CLEAR lines are printed
+beside the ephemeris windows as a cross-check.
 """
 import argparse
 import calendar
@@ -698,7 +698,7 @@ def dt64(t):
     return (np.asarray(t, dtype=np.float64) * 1e3).astype("datetime64[ms]")
 
 
-def figures(period, pw, pair_res, out, pad):
+def figures(period, pw, pair_res, out, pad, bore_deg):
     import matplotlib
 
     matplotlib.use("Agg")
@@ -820,7 +820,12 @@ def figures(period, pw, pair_res, out, pad):
             label="dTEC product arc (gnss_tec_chord rules)",
         ),
         Line2D(
-            [], [], color="#fdb863", lw=7, alpha=0.6, label="transit, < 5° of boresight"
+            [],
+            [],
+            color="#fdb863",
+            lw=7,
+            alpha=0.6,
+            label="transit, < %g° of boresight" % bore_deg,
         ),
     ]
     hand += [
@@ -998,6 +1003,22 @@ def figures(period, pw, pair_res, out, pad):
 
 
 # ------------------------------------------------------------------------------------- main
+def broker_freeze_lines(lines, chain):
+    """One chain's transit FROZEN/CLEAR lines from a broker log, as (time, message) pairs.
+
+    Every chain logs its own freeze, tagged '[broker <chain> HH:MM:SS.mmm]' by broker_multi, so
+    the tag is matched. A single-chain broker's lines carry no tag ('[broker HH:MM:SS.mmm]') and
+    are kept: that log is one chain's."""
+    out = []
+    for line in lines:
+        if "FROZEN for a boresight" in line or "transit CLEAR" in line:
+            head = line.split("] ")[0].split()
+            if len(head) >= 2 and head[-2] not in ("[broker", chain):
+                continue
+            out.append((head[-1], line.split("dead-reckon: ")[-1][:70]))
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument(
@@ -1054,8 +1075,9 @@ def main():
             time.time() - t0,
         )
     )
-    # usable: 12 min of context each side inside the data, not straddling the split; every
-    # window the ephemeris found is listed, a dropped one with the reason, so none leaves silently
+    # usable: --pad-s plus 12 min of context each side inside the data, not straddling the split;
+    # every window the ephemeris found is listed, a dropped one with the reason, so none leaves
+    # silently
     keep, dropped = [], []
     for w in wins:
         why = []
@@ -1136,13 +1158,9 @@ def main():
         )
     if args.broker_lines:
         print("broker transit freeze windows (FROZEN .. CLEAR, gps_l5):")
-        for line in open(args.broker_lines):
-            if "FROZEN for a boresight" in line or "transit CLEAR" in line:
-                print(
-                    "   ",
-                    line.split("] ")[0].split()[-1],
-                    line.split("dead-reckon: ")[-1][:70],
-                )
+        with open(args.broker_lines) as fh:
+            for when, msg in broker_freeze_lines(fh, "gps_l5"):
+                print("   ", when, msg)
     with Pool(len(PAIRS) + 3) as pool:
         pr_async = pool.map_async(
             pair_job,
@@ -1368,7 +1386,7 @@ def main():
         pw = [
             (i, w) for i, w in enumerate(keep) if w["period"] == q and not w.get("ctrl")
         ]
-        files += figures(q, pw, pair_res, args.out, args.pad_s)
+        files += figures(q, pw, pair_res, args.out, args.pad_s, args.bore_deg)
     print("\nwrote %s_census.json and %s" % (args.out, " ".join(files)))
     print("total %.0f s" % (time.time() - t0))
 

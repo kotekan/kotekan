@@ -31,6 +31,8 @@ import sys
 
 import numpy as np
 
+from gnss_beam_cube import LAT, LON  # the station (same directory)
+
 
 def load_series(path):
     z = np.load(path, allow_pickle=True)
@@ -173,7 +175,9 @@ def parse_ionex(path):
                             for k in range(0, len(lines[i]), 5)
                             if lines[i][k : k + 5].strip()
                         ]
-                    grid_rows[lat] = np.array(vals[:n_lon], float) * (10.0 ** exp)
+                    row = np.array(vals[:n_lon], float)
+                    row[row == 9999] = np.nan  # IONEX: value not available
+                    grid_rows[lat] = row * (10.0 ** exp)
                     if lons is None:
                         lons = lo1 + dlo * np.arange(n_lon)
                 i += 1
@@ -259,7 +263,7 @@ def ionex_at(eps, lats, lons, maps, t, la, lo):
     return out
 
 
-def main():
+def build_parser():
     ap = argparse.ArgumentParser()
     ap.add_argument("series")
     ap.add_argument("--outdir", default="/tmp/tec_movie")
@@ -314,8 +318,8 @@ def main():
         "the fallback) or a local IONEX file: level each arc onto the GIM and show "
         "absolute vertical-equivalent TEC",
     )
-    ap.add_argument("--lat", type=float, default=43.968697)
-    ap.add_argument("--lon", type=float, default=-79.252106)
+    ap.add_argument("--lat", type=float, default=LAT)
+    ap.add_argument("--lon", type=float, default=LON)
     ap.add_argument("--video", default="tec_sky.mp4")
     ap.add_argument("--fps", type=int, default=10)
     ap.add_argument(
@@ -366,7 +370,11 @@ def main():
         "satellite's TEC, so the whole reachable dome is tiled and --mask-deg is not "
         "used. With --smooth-frames the moving cell boundaries blend into gradients.",
     )
-    args = ap.parse_args()
+    return ap
+
+
+def main():
+    args = build_parser().parse_args()
 
     d = load_series(args.series)
     ok = np.isfinite(d["az"]) & np.isfinite(d["el"]) & (d["el"] > args.el_mask)
@@ -379,6 +387,16 @@ def main():
         eps, lats, lons, maps, hgt = load_ionex_days(args.ionex, d["t"])
         ipla, iplo, M = ipp(d["az"], d["el"], args.lat, args.lon, hgt)
         vpred = ionex_at(eps, lats, lons, maps, d["t"], ipla, iplo)
+        # A pierce point next to a cell the GIM leaves out has no prediction: drop it, so
+        # each arc is leveled on the points that have one.
+        g = np.isfinite(vpred)
+        if not g.all():
+            print(
+                f"IONEX: {(~g).sum()} pierce points on unavailable GIM cells, dropped"
+            )
+            for k in d:
+                d[k] = d[k][g]
+            vpred, M = vpred[g], M[g]
         spred = vpred * M
         key = np.char.add(
             np.char.add(d["sys"].astype(str), d["prn"].astype(str)),

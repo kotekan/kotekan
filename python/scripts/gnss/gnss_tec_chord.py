@@ -234,13 +234,16 @@ def main():
         )
 
     rows, summary = [], []
+    # One arc counter across the pairs: two pairs of one constellation give the same (sys,
+    # prn), and gnss_tec_movie keys each arc on (sys, prn, arc).
+    nseg = 0
     for a, b in pairs:
         fa, fb = FREQ[a], FREQ[b]
         la, lb = C / fa, C / fb
         mpt = K * (1.0 / fa ** 2 - 1.0 / fb ** 2)  # metres of gf per TECU
         sysid = SYSOF[a.split("_")[0]]
         A, B = data[a], data[b]
-        nseg = 0
+        nseg0 = nseg
         boundaries, short = collections.Counter(), collections.Counter()
         for prn in sorted(set(A) & set(B)):
             segs, why = joint_arcs(A, B, prn, max_gap_hops)
@@ -326,7 +329,7 @@ def main():
                 nseg += 1
         print(
             "%-9s x %-9s %.4f m/TECU  %3d joint arc(s) >= %.0f s"
-            % (a, b, mpt, nseg, args.min_arc_s)
+            % (a, b, mpt, nseg - nseg0, args.min_arc_s)
         )
         print(
             "          kept arcs begin at: %s | pieces too short (< %.0f s or 30 hops) begin at: %s"

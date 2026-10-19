@@ -12,8 +12,9 @@ episodes, so a map build can veto them and a monitor can flag them.
 
 Records are binned BIN_S (300 s) and counted above EL_MIN (15 deg). A bin is unhealthy when it
 holds at least 20 records and its fleet_present fraction is < MIN_PRESENT (0.3); an episode is
->= --min-run seconds of consecutive unhealthy bins. Each file is binned on its own, keyed by its
-records' band. Exit status 1 if any episode is found (so a cron can alert on it).
+>= --min-run seconds of consecutive unhealthy bins. Bins are per chain (the records' band) over
+every file given, so a chain's day file and the day before's join into one series across
+midnight. Exit status 1 if any episode is found (so a cron can alert on it).
 
 --tail-bytes N   read only the last N bytes of each file (the live check every 15 min must
                  not re-read a day's several GB over NFS; ~40 MB is about an hour of records).
@@ -76,6 +77,8 @@ def main():
     mask = {}
     bad = 0
     alerts = []
+    accs = {}  # chain -> {bin: [n, present, lock, rayleigh]} over all of its files
+    names = collections.defaultdict(list)
     for f in a.files:
         acc = collections.defaultdict(lambda: [0, 0, 0, 0])
         chain = None
@@ -99,6 +102,11 @@ def main():
                 c[3] += bool(d.get("prompt_rayleigh"))
         if not acc:
             continue
+        names[chain].append(os.path.basename(f))
+        into = accs.setdefault(chain, collections.defaultdict(lambda: [0, 0, 0, 0]))
+        for b, c in acc.items():
+            into[b] = [x + y for x, y in zip(into[b], c)]
+    for chain, acc in accs.items():
         bins = sorted(acc)
         rows = []
         for b in bins:
@@ -150,7 +158,7 @@ def main():
         okf = sum(r["n"] for r in rows if r["ok"]) / max(sum(r["n"] for r in rows), 1)
         print(
             "%-8s %s: %d bins, %.0f%% of records in healthy bins"
-            % (chain, os.path.basename(f), len(rows), 100 * okf)
+            % (chain, " ".join(names[chain]), len(rows), 100 * okf)
         )
     if a.out:
         os.makedirs(os.path.dirname(os.path.abspath(a.out)), exist_ok=True)
