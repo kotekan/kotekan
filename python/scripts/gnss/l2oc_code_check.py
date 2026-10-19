@@ -134,6 +134,9 @@ def _parse_oc2():
 
 
 def _cpp_codes():
+    """Compile the module with a throwaway main() and read back every code. Returns
+    {prn: [chips]}, None if no compiler is available, or a string saying why the compile or
+    the dump failed (a build break fails the check rather than skipping it)."""
     cxx = next(
         (
             c
@@ -169,11 +172,11 @@ int main() {
             text=True,
         )
         if r.returncode != 0:
-            print(
-                "   (C++ compile failed, skipping bit-exact check)\n%s" % r.stderr[:800]
-            )
-            return None
-        out = subprocess.run([exe], capture_output=True, text=True).stdout
+            return "compile failed\n%s" % r.stderr[:800]
+        r = subprocess.run([exe], capture_output=True, text=True)
+        if r.returncode != 0:
+            return "dump exited %d\n%s" % (r.returncode, r.stderr[:800])
+        out = r.stdout
     codes = {}
     for line in out.splitlines():
         prn, chips = line.split()
@@ -282,6 +285,9 @@ def main():
     cpp = _cpp_codes()
     if cpp is None:
         print("bit-exact: no compiler, SKIPPED")
+    elif isinstance(cpp, str):
+        print("bit-exact: C++ %s" % cpp)
+        ok = False
     else:
         bad = [p for p in codes if cpp.get(p) != codes[p]]
         if bad:

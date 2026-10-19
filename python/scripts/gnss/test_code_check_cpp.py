@@ -1,0 +1,130 @@
+#!/usr/bin/env python3
+"""Tests for the ranging-code checks that compile the C++: a broken C++ module fails them.
+
+    /home/kvand/gnss/venv-ft/bin/python test_code_check_cpp.py
+
+Each check is pointed at a temporary copy of its C++ source, either with one table entry
+changed (the copy compiles, and its codes differ from the python mirror) or with a syntax error
+(the copy does not compile). Both must make main() exit non-zero; only a missing compiler may
+skip the bit-exact comparison. Needs a C++ compiler on PATH.
+"""
+import contextlib
+import io
+import os
+import shutil
+import sys
+import tempfile
+import unittest
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)
+import b2b_code_check  # noqa: E402
+import e5b_code_check  # noqa: E402
+import glonass_ca_code_check  # noqa: E402
+import l1cd_code_check  # noqa: E402
+import l2oc_code_check  # noqa: E402
+import l3oc_code_check  # noqa: E402
+
+LIB = os.path.normpath(os.path.join(HERE, "..", "..", "..", "lib", "stages", "gnss"))
+
+# (module, C++ source, the getter main() calls, a table entry and the typo that replaces it).
+# Each typo is in PRN 2, which no fingerprint covers, so only the C++ comparison can catch it.
+CHECKS = (
+    (
+        b2b_code_check,
+        "beidouB2bCode.cpp",
+        "_cpp_codes",
+        "0b1000000100101, 0b1000000110100",
+        "0b1000000100101, 0b1000000110101",
+    ),
+    (
+        e5b_code_check,
+        "galileoE5bCode.cpp",
+        "_cpp_codes",
+        "0x025C, 0x390D",
+        "0x025C, 0x390C",
+    ),
+    (l1cd_code_check, "gpsL1CCode.cpp", "_cpp_codes", "{5097, 5110", "{5097, 5111"),
+    (l3oc_code_check, "glonassL3OCCode.cpp", "_cpp_codes", None, None),
+    (l2oc_code_check, "glonassL2OCCode.cpp", "_cpp_codes", None, None),
+    (glonass_ca_code_check, "glonassCACode.cpp", "cpp_code", None, None),
+)
+
+
+def run_main(mod):
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        try:
+            rc = mod.main()
+        except SystemExit as e:
+            rc = e.code
+    return rc, out.getvalue()
+
+
+@unittest.skipIf(
+    not any(shutil.which(c) for c in ("g++-12", "g++", "clang++")), "no C++ compiler"
+)
+class TestCodeCheckCpp(unittest.TestCase):
+    def setUp(self):
+        self.td = tempfile.TemporaryDirectory()
+        self.saved = [
+            (m, g, getattr(m, g, None), getattr(m, "CPP", None))
+            for m, _, g, _, _ in CHECKS
+        ]
+
+    def tearDown(self):
+        for mod, getter, fn, cpp in self.saved:
+            setattr(mod, getter, fn)
+            mod.CPP = cpp
+        self.td.cleanup()
+
+    def broken_copy(self, mod, name, old=None, new=None):
+        """Point mod at a copy of its C++ with `old` replaced by `new`, or, with no `old`,
+        with a line appended that does not compile."""
+        with open(os.path.join(LIB, name)) as f:
+            src = f.read()
+        if old is None:
+            src += "\nthis is not C++;\n"
+        else:
+            self.assertEqual(src.count(old), 1, "%s: %r is not unique" % (name, old))
+            src = src.replace(old, new)
+        path = os.path.join(self.td.name, name)
+        with open(path, "w") as f:
+            f.write(src)
+        mod.CPP = path
+
+    def test_shipped_cpp_passes(self):
+        for mod, *_ in CHECKS:
+            with self.subTest(mod.__name__):
+                rc, out = run_main(mod)
+                self.assertEqual(rc, 0, out)
+
+    def test_table_typo_fails(self):
+        for mod, name, _, old, new in CHECKS:
+            if old is None:
+                continue
+            with self.subTest(mod.__name__):
+                self.broken_copy(mod, name, old, new)
+                rc, out = run_main(mod)
+                self.assertNotEqual(rc, 0, out)
+                self.assertIn("DIFFER from the mirror", out)
+
+    def test_compile_failure_fails(self):
+        for mod, name, *_ in CHECKS:
+            with self.subTest(mod.__name__):
+                self.broken_copy(mod, name)
+                rc, out = run_main(mod)
+                self.assertNotEqual(rc, 0, out)
+                self.assertIn("compile failed", out)
+
+    def test_no_compiler_skips(self):
+        for mod, _, getter, *_ in CHECKS:
+            with self.subTest(mod.__name__):
+                setattr(mod, getter, lambda: None)
+                rc, out = run_main(mod)
+                self.assertEqual(rc, 0, out)
+                self.assertIn("SKIPPED", out)
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)

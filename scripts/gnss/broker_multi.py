@@ -102,6 +102,26 @@ def run_chain(name, argv, rx, alive, pub=None):
         alive.discard(name)
 
 
+def _slack_interval(chains, extra):
+    """The slack column's interval: the --interval every chain that sets one agrees on, else
+    None, since a wrong denominator is worse than none. A chain runs argv + extra and the
+    broker's parser keeps the last --interval, so the last one there is the chain's."""
+    ivs = set()
+    for _, argv in chains:
+        args, iv = argv + extra, None
+        for i, a in enumerate(args):
+            if a == "--interval" and i + 1 < len(args):
+                iv = args[i + 1]
+            elif a.startswith("--interval="):
+                iv = a.split("=", 1)[1]
+        if iv is not None:
+            try:
+                ivs.add(float(iv))
+            except ValueError:
+                pass
+    return ivs.pop() if len(ivs) == 1 else None
+
+
 def main():
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -164,17 +184,7 @@ def main():
     # so it logs the process-wide numbers. Every 60 s, not every cycle: each report is about
     # ten lines and what it measures moves on the scale of minutes. Both reports reset on read,
     # so each block covers the interval since the last.
-    #
-    # The slack column's interval: taken from the chains' --interval only when every chain
-    # that sets one agrees, since a wrong denominator is worse than none.
-    ivs = set()
-    for _, argv in chains:
-        if "--interval" in argv:
-            try:
-                ivs.add(float(argv[argv.index("--interval") + 1]))
-            except (ValueError, IndexError):
-                pass
-    interval = ivs.pop() if len(ivs) == 1 else None
+    interval = _slack_interval(chains, extra)
     last, t_http = None, time.time()
     try:
         while any(t.is_alive() for t in threads):

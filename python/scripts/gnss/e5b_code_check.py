@@ -3,18 +3,30 @@
 
 Mirrors lib/stages/gnss/galileoE5bCode.cpp exactly (same shared 14-stage Fibonacci lfsr14,
 all-ones X1, per-PRN X2 start tables, and the pre-resolved X1/X2 taps) and asserts the mirror
-against PocketSDR-verified fingerprints, so it runs without PocketSDR present. The primary-code
-constants are a copy kept in step with the C++ by hand; the CS100 secondary tables are parsed
-from the C++ by name. If PocketSDR's sdr_code is importable (on PYTHONPATH), it also
-cross-checks bit-exact against gen_code('E5BI'/'E5BQ', prn) for all 50 PRNs.
+against PocketSDR-verified fingerprints, so it runs without PocketSDR present. If a C++ compiler
+is available, the module is compiled with a throwaway main() and all 100 of its primary codes
+must equal the mirror chip for chip, so a typo in a C++ table or tap fails here; a compile
+failure fails too. The CS100 secondary tables are parsed from the C++ by name. If PocketSDR's
+sdr_code is importable (on PYTHONPATH), it also cross-checks bit-exact against
+gen_code('E5BI'/'E5BQ', prn) for all 50 PRNs.
 
 E5b shares 1207.14 MHz with BeiDou B2b. As with the E5a and B2b tables, the codes are an ICD
 transcription (via PocketSDR, T. Takasu) asserted here; live acquisition is the final proof.
 
     python3 e5b_code_check.py     # exits non-zero on any mismatch
 """
+import os
+import shutil
+import subprocess
 import sys
+import tempfile
 import zlib
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+CPP_DIR = os.path.normpath(
+    os.path.join(HERE, "..", "..", "..", "lib", "stages", "gnss")
+)
+CPP = os.path.join(CPP_DIR, "galileoE5bCode.cpp")
 
 CODE_LENGTH = 10230
 
@@ -164,18 +176,60 @@ def _gen(prn, tap, start):
 
 
 def generate_e5bi_code(prn):
-    """E5b-I (data) primary code (PRN 1..50) as a list of +-1 chips -- mirrors galileoE5bCode.cpp."""
+    """E5b-I (data) primary code, PRN 1..50, as +-1 chips; mirrors galileoE5bCode.cpp."""
     return _gen(prn, E5BI_X2_TAP, E5BI_X2_START)
 
 
 def generate_e5bq_code(prn):
-    """E5b-Q (pilot) primary code (PRN 1..50) as a list of +-1 chips -- mirrors galileoE5bCode.cpp."""
+    """E5b-Q (pilot) primary code, PRN 1..50, as +-1 chips; mirrors galileoE5bCode.cpp."""
     return _gen(prn, E5BQ_X2_TAP, E5BQ_X2_START)
 
 
 def _fp(code):
     bits = "".join("1" if x > 0 else "0" for x in code)
     return (zlib.crc32(bits.encode()) & 0xFFFFFFFF, sum(1 for x in code if x > 0))
+
+
+def _cpp_codes():
+    """Compile the module with a throwaway main() and read back every primary code. Returns
+    {(component, prn): [chips]}, None if no compiler is available, or a string saying why the
+    compile or the dump failed."""
+    cxx = next((c for c in ("g++-12", "g++", "clang++") if shutil.which(c)), None)
+    if cxx is None:
+        return None
+    main = r"""
+#include "galileoE5bCode.hpp"
+#include <cstdio>
+int main() {
+    for (int prn = 1; prn <= 50; ++prn) {
+        std::printf("E5bI %d ", prn);
+        for (int8_t v : galileo::generate_e5bi_code(prn)) std::putchar(v > 0 ? '1' : '0');
+        std::printf("\nE5bQ %d ", prn);
+        for (int8_t v : galileo::generate_e5bq_code(prn)) std::putchar(v > 0 ? '1' : '0');
+        std::putchar('\n');
+    }
+    return 0;
+}
+"""
+    with tempfile.TemporaryDirectory() as td:
+        src, exe = os.path.join(td, "d.cpp"), os.path.join(td, "d")
+        with open(src, "w") as f:
+            f.write(main)
+        r = subprocess.run(
+            [cxx, "-std=c++17", "-O1", "-I", CPP_DIR, src, CPP, "-o", exe],
+            capture_output=True,
+            text=True,
+        )
+        if r.returncode != 0:
+            return "compile failed\n%s" % r.stderr[:800]
+        r = subprocess.run([exe], capture_output=True, text=True)
+        if r.returncode != 0:
+            return "dump exited %d\n%s" % (r.returncode, r.stderr[:800])
+    codes = {}
+    for line in r.stdout.splitlines():
+        comp, prn, bits = line.split()
+        codes[(comp, int(prn))] = [1 if b == "1" else -1 for b in bits]
+    return codes
 
 
 # -- E5b-Q CS100 secondary -----------------------------------------------------------------
@@ -328,6 +382,27 @@ def main():
                 checked = True
             if checked and (prn in table or not (prn % 10)):
                 print(line)
+    cpp = _cpp_codes()
+    if cpp is None:
+        print("C++: no compiler, bit-exact check SKIPPED")
+    elif isinstance(cpp, str):
+        print("C++: %s" % cpp)
+        fails += 1
+    else:
+        bad = [
+            (comp, prn)
+            for comp, gen in (
+                ("E5bI", generate_e5bi_code),
+                ("E5bQ", generate_e5bq_code),
+            )
+            for prn in range(1, 51)
+            if cpp.get((comp, prn)) != gen(prn)
+        ]
+        fails += len(bad)
+        print(
+            "C++: %s"
+            % ("%s DIFFER from the mirror" % bad if bad else "all 100 BIT-EXACT")
+        )
     fails += check_cs100()
     print("\n%s" % ("ALL OK" if fails == 0 else "FAIL (%d mismatches)" % fails))
     sys.exit(1 if fails else 0)

@@ -205,7 +205,7 @@ def gather_stats(rest_port):
 
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--kotekan", required=True)
     ap.add_argument("--config", required=True)
     ap.add_argument("--capture", required=True)

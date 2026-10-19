@@ -92,21 +92,42 @@ CHAN_IDS = [5972 + 16 * k for k in range(N_CHAN)]
 def _mark(inst, wstart, prn, slot):
     """The value written into row slot `slot`: it encodes its own address.
 
-    instance index x 4e6 + record x 1000 + PRN x 10 + slot, reproducible on the far side, so
-    "did this row come from where the header says it did?" is a direct comparison. Distinct
-    across instances and records; within one record PRN x 10 + slot can repeat, since comb
-    slots run to 404 (PRN 3 slot 100 equals PRN 10 slot 30).
+    instance index x 4e6 + record x 2000 + PRN index x 500 + slot, reproducible on the far
+    side, so "did this row come from where the header says it did?" is a direct comparison.
+    The PRN term is its index in PRNS with a stride above the largest slot (comb slots run to
+    404), so no two addresses the fixture writes share a mark; main() checks that before it
+    runs (duplicate_marks).
 
     The value must stay below 2^24 so it survives the float32 record slot exactly (above that
-    the ulp is 2 and correct rows fail the comparison). The instance term must be a fixed
-    index, never hash(): PYTHONHASHSEED is randomised per process, so a hash-derived mark
-    would make the result depend on the run.
+    the ulp is 2 and correct rows fail the comparison); the largest here is about 8.2e6. The
+    instance term must be a fixed index, never hash(): PYTHONHASHSEED is randomised per
+    process, so a hash-derived mark would make the result depend on the run.
     """
     ih = [i for i, (n, _) in enumerate(INSTANCES) if n == inst][0]
     rec = wstart // (HOPS_PER_RECORD * FFT_LEN)
-    return float(
-        ih * 4000000 + rec * 1000 + prn * 10 + slot
-    )  # < 2^24, exact in float32
+    return float(ih * 4000000 + rec * 2000 + PRNS.index(prn) * 500 + slot)
+
+
+def duplicate_marks():
+    """Pairs of addresses the fixture writes the same mark at, over every row and comb slot
+    write_record_files fills: a mis-addressing between such a pair would pass. Empty when
+    every mark is distinct."""
+    slots = list(range(telem._ROW_FLOATS)) + [
+        k + ch for k in (100, 200, 300, 400) for ch in range(N_CHAN)
+    ]
+    seen, dup = {}, []
+    for inst, start in INSTANCES:
+        for w in range(start, start + N_WINDOWS):
+            for r in range(REC_PER_FRAME):
+                wstart = (w * REC_PER_FRAME + r) * HOPS_PER_RECORD * FFT_LEN
+                for prn in PRNS:
+                    for s in slots:
+                        addr = (inst, wstart, prn, s)
+                        m = _mark(*addr)
+                        if m in seen:
+                            dup.append((seen[m], addr))
+                        seen[m] = addr
+    return dup
 
 
 def write_record_files(dirpath, inst, start_win, drop=()):
@@ -262,6 +283,13 @@ def main():
     )
     ap.add_argument("--timeout", type=float, default=25.0)
     a = ap.parse_args()
+
+    dup = duplicate_marks()
+    if dup:
+        raise SystemExit(
+            "%d fixture marks are written at two addresses, e.g. %s and %s: a "
+            "mis-addressing between them would pass" % ((len(dup),) + dup[0])
+        )
 
     d = tempfile.mkdtemp(prefix="telem_e2e-")
     # cx51.1 drops record slot 2 of absolute window 8 (its sixth window). See [3].

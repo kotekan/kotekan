@@ -7,11 +7,12 @@ run over a racy broker still returns a plausible number.
 
 Three lanes, each an invariant that a lock protects and nothing else does:
 
-  RECEIVER    N chain threads contribute and read clocks and biases at once. The lane reads
-              `chain` and `n_sats` off each value read back and flags a pair that disagrees
-              (every code-bias writer passes n_sats = its chain index + 1). The getters return
-              _Shared, which carries these as `src` and `weight`, so both reads are None and
-              the lane fails only if a thread raises.
+  RECEIVER    N chain threads contribute and read clocks and biases at once. Each value read
+              back must be whole: a code bias carries its writing thread in its value, and its
+              src and weight (n_sats, the chain's index + 1) must name that thread's chain; a
+              dead-reckon clock must carry weight 1, the 10230-chip code length and chips
+              inside it. `--selftest` installs a code-bias writer that stores a wrong n_sats
+              and requires this lane to fail.
 
   JOINT       N threads drive one JointReceiverState, as the broker's chains do
               (Receiver.joint_receiver shares one state across the receiver). Membership
@@ -84,9 +85,10 @@ def _run(fns, name):
 def lane_receiver(iters, nthread):
     """Contribute and consume against one Receiver from every chain at once."""
     rx = rx_mod.Receiver(log=lambda *a, **k: None)
-    # Every code-bias write passes n_sats = the chain's index + 1, so a value whose owner and
-    # satellite count disagree would be torn. _Shared names them src and weight, so the
-    # getattr reads below return None and this check never fires.
+    # Every code-bias write passes n_sats = the chain's index + 1 and a value of
+    # (k * nthread + i) * 1e-9, so the value names the writing thread i and a read whose src
+    # or weight (n_sats) names another chain is torn. dr_clock values are checked per store:
+    # their weight is always 1, so the code-bias rule would misfire on them.
     bad = []
 
     def worker(i):
@@ -95,27 +97,40 @@ def lane_receiver(iters, nthread):
         rng = random.Random(1000 + i)
         for k in range(iters):
             t = 1_000_000.0 + k * 0.1
-            hz = float(i * 1000 + k)
+            hz = float(k * nthread + i)
             rx.contribute_code_bias(chain, "1176.45", hz * 1e-9, n, t)
             rx.contribute_dr_clock(
                 chain, "1176.45", float(k % 10230), 0.001, t, 10230.0
             )
             for got in (
                 rx.code_bias("1176.45", t_now=t),
-                rx.dr_clock("1176.45", t_now=t),
                 rx.code_bias_any_band(t_now=t),
+            ):
+                if got is None:
+                    continue
+                writer = CHAINS[round(got.value * 1e9) % nthread % len(CHAINS)]
+                if got.src != writer or got.weight != CHAINS.index(writer) + 1:
+                    bad.append(
+                        "torn code bias: written by %s, src %r, n_sats %r (its own is %d)"
+                        % (writer, got.src, got.weight, CHAINS.index(writer) + 1)
+                    )
+            for got in (
+                rx.dr_clock("1176.45", t_now=t),
                 rx.dr_clock_any_band(t_now=t),
             ):
                 if got is None:
                     continue
-                owner = getattr(got, "chain", None)
-                nsat = getattr(got, "n_sats", None)
-                if owner in CHAINS and nsat is not None:
-                    if nsat != CHAINS.index(owner) + 1:
-                        bad.append(
-                            "torn: owner %s carries n_sats %r (its own is %d)"
-                            % (owner, nsat, CHAINS.index(owner) + 1)
-                        )
+                cl = got.extra.get("code_length")
+                if (
+                    got.src not in CHAINS
+                    or got.weight != 1
+                    or cl != 10230.0
+                    or not 0 <= got.value < 10230
+                ):
+                    bad.append(
+                        "torn dr clock: src %r, weight %r, code_length %r, chips %r"
+                        % (got.src, got.weight, cl, got.value)
+                    )
             if rng.random() < 0.05:
                 rx.summary()
 
@@ -231,16 +246,36 @@ def main():
     ap.add_argument(
         "--selftest",
         action="store_true",
-        help="install an unlocked read-then-rebind drain_notes and require the NOTES "
-        "lane to fail: a race detector that has never been seen detecting "
-        "is indistinguishable from a no-op. Only the free-threaded interpreter "
-        "can show the race; under the GIL the selftest reports inconclusive.",
+        help="install a code-bias writer that stores a wrong n_sats and require the "
+        "RECEIVER lane to fail, then an unlocked read-then-rebind drain_notes and "
+        "require the NOTES lane to fail: a race detector that has never been seen "
+        "detecting is indistinguishable from a no-op. Only the free-threaded "
+        "interpreter can show the NOTES race; under the GIL that part reports "
+        "inconclusive.",
     )
     a = ap.parse_args()
 
     gil = getattr(sys, "_is_gil_enabled", lambda: True)()
 
     if a.selftest:
+        # A code-bias writer that stores a wrong n_sats. Not a race, so the RECEIVER lane
+        # must flag it on either interpreter.
+        contribute = rx_mod.Receiver.contribute_code_bias
+
+        def wrong_n_sats(self, chain, band, la, n_sats, t):
+            contribute(self, chain, band, la, n_sats + 1, t)
+
+        rx_mod.Receiver.contribute_code_bias = wrong_n_sats
+        _err, bad, _inc = lane_receiver(a.iters, a.threads)
+        rx_mod.Receiver.contribute_code_bias = contribute
+        if not bad:
+            print(
+                "SELFTEST FAIL -- the RECEIVER lane passed a code bias carrying a wrong "
+                "n_sats, so a pass from it means nothing"
+            )
+            return 1
+        print("SELFTEST: wrong n_sats detected by the RECEIVER lane: %s" % bad[0])
+
         # drain_notes without its lock: read-then-rebind, so two chains draining at once can
         # take the same list.
         def unlocked_drain(self):

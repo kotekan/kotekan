@@ -35,7 +35,9 @@ sys.path.insert(
 import gnss_brdc_supply as sup  # noqa: E402
 
 # Enough stations to exercise the coverage exit test (some carry no BeiDou at all) without
-# making the fixture heavy. Two hours: the walk always attempts the two newest.
+# making the fixture heavy. Two hours, dh 1 and 2: the walk always tries the current hour
+# (never published at capture time, so absent here) and the one before, and older hours only
+# when coverage falls short.
 N_STATIONS = 6
 N_HOURS = 2
 

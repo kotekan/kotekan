@@ -77,6 +77,10 @@ def parse_cpp():
 
 
 def cpp_code():
+    """Compile the module with a throwaway main() and read back the code and two carrier
+    frequencies. Returns (chips, freqs), None if no compiler is available, or a string saying
+    why the compile or the dump failed (a build break fails the check rather than skipping
+    it)."""
     cxx = next(
         (
             c
@@ -110,11 +114,11 @@ int main() {
             text=True,
         )
         if r.returncode != 0:
-            print(
-                "   (C++ compile failed, skipping bit-exact check)\n%s" % r.stderr[:800]
-            )
-            return None
-        out = subprocess.run([exe], capture_output=True, text=True).stdout.split("\n")
+            return "compile failed\n%s" % r.stderr[:800]
+        r = subprocess.run([exe], capture_output=True, text=True)
+        if r.returncode != 0:
+            return "dump exited %d\n%s" % (r.returncode, r.stderr[:800])
+        out = r.stdout.split("\n")
     return (
         [1 if b == "1" else -1 for b in out[0].strip()],
         tuple(float(x) for x in out[1].split()),
@@ -207,6 +211,9 @@ def main():
     r = cpp_code()
     if r is None:
         print("bit-exact: no compiler, SKIPPED")
+    elif isinstance(r, str):
+        print("bit-exact: C++ %s" % r)
+        ok = False
     else:
         cc, freqs = r
         if cc != c:

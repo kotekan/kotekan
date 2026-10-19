@@ -34,7 +34,7 @@ The last arm is the control. With `band_power_chans` empty the feature must repo
 enabled=false and passes=0: the default really is off, and the other arms measure something
 this one cannot. A gate whose every arm passes regardless of the axis under test is not a gate.
 """
-import argparse, json, os, subprocess, sys, tempfile, time, urllib.request
+import argparse, json, os, re, subprocess, sys, tempfile, time, urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))  # scripts/gnss -> scripts -> repo root
@@ -62,17 +62,29 @@ def expect(v):
     }
 
 
-def run_once(kotekan, port, value, chans, timeout_s=25.0):
-    """Start kotekan on a config with this byte value, poll /rf_stats, return it."""
+def render_cfg(value, chans):
+    """The fixture yaml with testDataGen's constu8 byte set to `value` and the tap's
+    band_power_chans set to `chans`. Raises unless each rewrite matches exactly once: one that
+    matched nothing would run every arm on the fixture's own byte."""
     with open(CFG) as f:
         cfg = f.read()
-    cfg = cfg.replace(
-        "  type: constu8\n  value: 0\n", "  type: constu8\n  value: %d\n" % value
+    cfg, n_value = re.subn(
+        r"(type: constu8\n\s*value: )\d+", lambda m: m.group(1) + str(value), cfg
     )
-    cfg = cfg.replace(
-        "  band_power_chans: [0, 1, 2]\n",
-        "  band_power_chans: %s\n" % json.dumps(chans),
+    cfg, n_chans = re.subn(
+        r"(band_power_chans: )\[[^\]]*\]", lambda m: m.group(1) + json.dumps(chans), cfg
     )
+    if n_value != 1 or n_chans != 1:
+        raise RuntimeError(
+            "%s: the constu8 value matched %d times and band_power_chans %d, not once each"
+            % (CFG, n_value, n_chans)
+        )
+    return cfg
+
+
+def run_once(kotekan, port, value, chans, timeout_s=25.0):
+    """Start kotekan on a config with this byte value, poll /rf_stats, return it."""
+    cfg = render_cfg(value, chans)
     with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as tf:
         tf.write(cfg)
         path = tf.name

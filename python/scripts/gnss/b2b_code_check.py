@@ -3,17 +3,28 @@
 
 Mirrors lib/stages/gnss/beidouB2bCode.cpp (same 13-stage Fibonacci LFSRs, taps and per-PRN G2
 start table) and asserts the mirror against PocketSDR-verified fingerprints, so it runs without
-PocketSDR present. The C++ is not read or compiled: the two copies of the table are kept in step
-by hand. If PocketSDR's sdr_code is importable (on PYTHONPATH), the fingerprinted PRNs are also
-cross-checked bit-exact against gen_code('B2BI', prn).
+PocketSDR present. If a C++ compiler is available, the module is compiled with a throwaway main()
+and all 63 of its codes must equal the mirror chip for chip, so a typo in the C++ table fails
+here; a compile failure fails too. If PocketSDR's sdr_code is importable (on PYTHONPATH), the
+fingerprinted PRNs are also cross-checked bit-exact against gen_code('B2BI', prn).
 
 As with the B2a and B1C tables, the code is an ICD transcription (via PocketSDR, T. Takasu)
 asserted here; live acquisition is the final proof.
 
     python3 b2b_code_check.py     # exits non-zero on any mismatch
 """
+import os
+import shutil
+import subprocess
 import sys
+import tempfile
 import zlib
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+CPP_DIR = os.path.normpath(
+    os.path.join(HERE, "..", "..", "..", "lib", "stages", "gnss")
+)
+CPP = os.path.join(CPP_DIR, "beidouB2bCode.cpp")
 
 CODE_LENGTH = 10230
 
@@ -125,6 +136,46 @@ def _fp(code):
     return (zlib.crc32(bits.encode()) & 0xFFFFFFFF, sum(1 for x in code if x > 0))
 
 
+def _cpp_codes():
+    """Compile the module with a throwaway main() and read back every code. Returns
+    {prn: [chips]}, None if no compiler is available, or a string saying why the compile or
+    the dump failed."""
+    cxx = next((c for c in ("g++-12", "g++", "clang++") if shutil.which(c)), None)
+    if cxx is None:
+        return None
+    main = r"""
+#include "beidouB2bCode.hpp"
+#include <cstdio>
+int main() {
+    for (int prn = 1; prn <= 63; ++prn) {
+        std::printf("%d ", prn);
+        for (int8_t v : beidou::generate_b2bi_code(prn)) std::putchar(v > 0 ? '1' : '0');
+        std::putchar('\n');
+    }
+    return 0;
+}
+"""
+    with tempfile.TemporaryDirectory() as td:
+        src, exe = os.path.join(td, "d.cpp"), os.path.join(td, "d")
+        with open(src, "w") as f:
+            f.write(main)
+        r = subprocess.run(
+            [cxx, "-std=c++17", "-O1", "-I", CPP_DIR, src, CPP, "-o", exe],
+            capture_output=True,
+            text=True,
+        )
+        if r.returncode != 0:
+            return "compile failed\n%s" % r.stderr[:800]
+        r = subprocess.run([exe], capture_output=True, text=True)
+        if r.returncode != 0:
+            return "dump exited %d\n%s" % (r.returncode, r.stderr[:800])
+    codes = {}
+    for line in r.stdout.splitlines():
+        prn, bits = line.split()
+        codes[int(prn)] = [1 if b == "1" else -1 for b in bits]
+    return codes
+
+
 def main():
     fails = 0
     try:
@@ -152,6 +203,19 @@ def main():
                 fails += 0 if bx else 1
                 line += "  | PocketSDR: %s" % ("BIT-EXACT" if bx else "MISMATCH")
             print(line)
+    cpp = _cpp_codes()
+    if cpp is None:
+        print("C++: no compiler, bit-exact check SKIPPED")
+    elif isinstance(cpp, str):
+        print("C++: %s" % cpp)
+        fails += 1
+    else:
+        bad = [p for p in range(1, 64) if cpp.get(p) != generate_b2bi_code(p)]
+        fails += len(bad)
+        print(
+            "C++: %s"
+            % ("PRNs %s DIFFER from the mirror" % bad if bad else "all 63 BIT-EXACT")
+        )
     print("\n%s" % ("ALL OK" if fails == 0 else "FAIL (%d mismatches)" % fails))
     sys.exit(1 if fails else 0)
 

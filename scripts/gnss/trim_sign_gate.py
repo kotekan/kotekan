@@ -14,7 +14,9 @@ known sign, and the question is whether the loop's response points back.
     tau = -clamp(disc)/4 * (spacing/0.5)          (gnss::dll_tau / combdll.dll_tau)
     trim <- (1-leak)*trim + gain*tau              (dll_integrate)
 
-Negative feedback requires sign(tau) == -sign(err) for every point inside the pull-in region.
+Negative feedback requires sign(slope*tau) == -sign(err) for every point inside the pull-in
+region, where slope = d err / d trim: e2e reports err in component chips and the trim is added
+in combined chips, so the slope is 1/comb_mult, and its sign is the actuator's.
 
     ./trim_sign_gate.py            # sweep, verdict
     ./trim_sign_gate.py -v         # and print the table
@@ -22,7 +24,7 @@ Negative feedback requires sign(tau) == -sign(err) for every point inside the pu
 The null is not at trim 0: e2e's default seed has a nonzero age and Doppler rate, so the
 open-loop error is over a chip. A sweep about trim 0 would sit outside the +-0.5-chip pull-in
 region, where the E/L discriminator is railed and has no gradient, so the null is located first
-and the sweep is centred on it.
+(from two probes, which also measure the slope) and the sweep is centred on it.
 """
 import argparse
 import os
@@ -31,6 +33,7 @@ import subprocess
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+PROBE = 0.10  # chips of trim between the two slope probes
 ROW = re.compile(r"^\s+0\s+\S+\s+\S+\s+(\S+)\s+\S+\s+\|\s+(\S+)\s+(\S+)\s+(\S+)")
 
 
@@ -75,10 +78,19 @@ def main():
 
     # Locate the null rather than assume it. err is linear in the commanded trim:
     # propagate_seed adds the trim in combined chips and e2e divides err by comb_mult, so the
-    # slope is 1/comb_mult and null = -err0 is exact only for comb_mult 1.
+    # slope is +-1/comb_mult. Anything else means the probe did not measure the actuator.
     err0, _q0, _d0 = run(a.exe, 0.0, a.extra)
-    null = -err0
+    err1, _q1, _d1 = run(a.exe, PROBE, a.extra)
+    per_trim = (err1 - err0) / PROBE
+    k = round(1.0 / per_trim) if abs(per_trim) > 1e-3 else 0
+    if k == 0 or abs(abs(per_trim * k) - 1.0) > 0.05:
+        raise SystemExit(
+            "err moved %+.4f chips for a %.2f-chip trim: slope %+.4f is not +-1/comb_mult "
+            "-- refusing to sweep" % (err1 - err0, PROBE, per_trim)
+        )
+    null = -err0 / per_trim
     print("open-loop error %+.4f chips -> null at trim %+.4f" % (err0, null))
+    print("err moves %+.4f chips per chip of trim (1/%d)" % (per_trim, abs(k)))
 
     rows = []
     n = int(round(a.span / a.step))
@@ -101,7 +113,8 @@ def main():
     for t, e, q, d in inside:
         if abs(e) < 0.02:
             continue  # at the null both signs are ~0
-        tau = -d / 4.0
+        # tau in err units: how far a unit-gain trim step moves err
+        tau = -d / 4.0 * per_trim
         if tau * e >= 0.0:
             bad.append(
                 "trim %+.3f: err %+.4f and tau %+.4f have the SAME sign -- POSITIVE "
@@ -109,14 +122,14 @@ def main():
             )
     # disc must actually cross zero, and q must peak at the null: a discriminator that is
     # merely one-signed would pass a sign test while carrying no information.
-    if not (
+    if inside and not (
         min(d for _t, _e, _q, d in inside) < 0.0 < max(d for _t, _e, _q, d in inside)
     ):
         bad.append(
             "disc never changes sign across the null -- it is not a discriminator here"
         )
     qn = max(rows, key=lambda r: r[2])
-    if abs(qn[1]) > a.step:
+    if abs(qn[1]) > a.step * abs(per_trim):
         bad.append(
             "q peaks at err %+.4f, not at the null -- the prompt tap and the "
             "discriminator disagree about where the peak is" % qn[1]
@@ -127,7 +140,7 @@ def main():
         for b in bad:
             print("  " + b)
         return 1
-    slope = [(-d / 4.0) / e for _t, e, _q, d in inside if abs(e) > 0.05]
+    slope = [(-d / 4.0 * per_trim) / e for _t, e, _q, d in inside if abs(e) > 0.05]
     print(
         "\nPASS -- negative feedback confirmed over %d samples in the pull-in region."
         % len(inside)

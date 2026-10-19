@@ -1,12 +1,11 @@
 ---
-##  #8 RF-STATS GATE -- the fixture GnssChordVoltageTap's clip/band-power pass is judged on.
+##  RF-stats gate: the fixture GnssChordVoltageTap's clip/band-power pass is judged on.
 #
 #  Driven by scripts/gnss/rf_stats_gate.py, which rewrites `value` and polls /rf_stats.
 #
-#  WHY A RUNNING PIPELINE AND NOT A UNIT TEST OF THE FORMULA. #71's carrier-NCO gate passed at
-#  9e-16 rad against a hand-written model of the truth and the shipped code was still wrong,
-#  because the gate never exercised the CONTRACT the code had with its caller. So this fixture
-#  runs the REAL stage, fed by the REAL buffer machinery, and reads the REAL REST endpoint --
+#  Why a running pipeline and not a unit test of the formula: a gate can match a hand-written
+#  model of the truth while the shipped code is wrong where it meets its caller. So this fixture
+#  runs the real stage, fed by the real buffer machinery, and reads the real REST endpoint --
 #  the same path the fleet serves. A gate on an expression is not a gate on a stage.
 #
 #  Tiny on purpose (256 hops x 8 chan x 16 elem = 32 kB/frame): the arithmetic under test is
@@ -18,7 +17,7 @@ samples_per_data_set: 256
 num_local_freq: 8
 num_elements: 16
 
-# The FAKE telescope: this fixture needs a time base to exist, not to be CHORD's. Using the
+# The fake telescope: this fixture needs a time base to exist, not to be CHORD's. Using the
 # real CHORDTelescope block would drag in 64 dish_inputs and a pointing model to test an
 # arithmetic loop, and would couple the gate to survey data that has nothing to do with it.
 telescope:
@@ -28,7 +27,7 @@ telescope:
 rest_server:
     cpu_affinity: [0]
 
-# TWO POOLS, as in production: the voltage buffer carries chordMetadata (which is what
+# Two pools, as in production: the voltage buffer carries chordMetadata (which is what
 # testDataGen stamps and what the tap reads fpga_seq_num from), the tap's output carries
 # GnssChanMetadata. Giving the voltage buffer the GNSS pool segfaults testDataGen -- it
 # writes chordMetadata fields onto whatever object it is handed.
@@ -56,7 +55,7 @@ gen:
     kotekan_stage: testDataGen
     cpu_affinity: [0]
     out_buf: volt_buf
-  # constu8 writes `value` into EVERY byte, so each 4+4b sample is exactly
+  # constu8 writes `value` into every byte, so each 4+4b sample is exactly
   # re = (value >> 4) - 8, im = (value & 0x0F) - 8 -- a known power and a known rail state.
     type: constu8
     value: 0
@@ -75,9 +74,10 @@ tap:
     frame_chan_stride: 8
     frame_elem_stride: 16
     samples_per_data_set: 256
-  # ARMED, and exhaustively: period 0 = every frame, stride 1 = every hop. The fixture wants an
-  # EXACT answer, not a sampled one, so that a mismatch is a bug and never a decimation artifact.
-  # Production runs period 10 / stride 32; that difference is a cost knob, not a code path.
+  # Armed, and exhaustively: period 0 = every frame, stride 1 = every hop. The fixture wants an
+  # exact answer, not a sampled one, so that a mismatch is a bug and never a decimation artifact.
+  # Production samples every 32nd hop on --rf-stats-period-s (1 s on the fleet, 10 s by
+  # default); a cost knob, not a code path.
     band_power_chans: [0, 1, 2]
     band_power_period_s: 0.0
     band_power_hop_stride: 1
