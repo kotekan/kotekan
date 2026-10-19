@@ -20,7 +20,7 @@ frb2_beam_separation_y: 5.0 / 16
 # frb_num_output_times * frb_downsampling_factor, the number of input samples the FRB2 beamformer
 # processes per kernel invocation. The weights matrices are large and are recalculated on the GPU, so
 # keep this long: about a minute here, and possibly much longer (e.g. 24 h) in production.
-frb2_weights_lifetime_in_samples: 240 * frb_num_output_times * frb_downsampling_factor # 60.3979776 s
+frb2_weights_lifetime_in_samples: {{ frb2_weights_lifetime_in_samples | default('240 * frb_num_output_times * frb_downsampling_factor') }} # default: 60.3979776 s
 # Number of weights matrices in the GPU ring buffer. Each takes
 # 2 * (upchan_all_max_output_channel - upchan_all_min_output_channel) * frb2_num_beams * frb1_num_beams_Q * frb1_num_beams_P
 # bytes.
@@ -260,14 +260,20 @@ run_set_frb2_beams:
     out_pos_buf: host_frb2_beam_positions_buffer
     out_id_buf: host_frb2_beam_ids_buffer
     time_downsampling_fpga: frb2_weights_lifetime_in_samples
-    mode: grid_degrees
     num_beams: frb2_num_beams
+{% if frb2_beam_layout is defined %}
+{% for key, val in frb2_beam_layout.items() %}
+    {{ key }}: {{ val | tojson }}
+{% endfor %}
+{% else %}
+    mode: grid_degrees
     num_x: frb2_num_beams_x
     num_y: frb2_num_beams_y
     x_min: -frb2_beam_separation_x * (frb2_num_beams_x - 1) / 2.0
     x_max: frb2_beam_separation_x * (frb2_num_beams_x - 1) / 2.0
     y_min: -frb2_beam_separation_y * (frb2_num_beams_y - 1) / 2.0
     y_max: frb2_beam_separation_y * (frb2_num_beams_y - 1) / 2.0
+{% endif %}
 
 # Calculate the weights on the GPU, one matrix per positions frame. This runs once per
 # frb2_weights_lifetime_in_samples, so a single command instance suffices. The frequencies come

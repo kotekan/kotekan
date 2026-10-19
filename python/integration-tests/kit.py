@@ -173,10 +173,10 @@ def large_seq(config):
     return 2 ** 33 + 7 * value(config, "num_times")
 
 
-def value(config, key):
-    """A top-level config value; kotekan arithmetic expressions such as `5.0 / 4` that refer
-    to other top-level values are evaluated."""
-    v = config[key]
+def value(config, key, block=None):
+    """A top-level config value, or one in the top-level `block`; kotekan arithmetic expressions
+    such as `5.0 / 4` that refer to other top-level values are evaluated."""
+    v = (config if block is None else config[block])[key]
     if not isinstance(v, str):
         return v
 
@@ -236,6 +236,88 @@ def grid_beam_direction(config, prefix, bx, by):
         sep = value(config, f"{prefix}_beam_separation_{axis}")
         angles.append(np.radians(-sep * (num - 1) / 2 + sep * b))
     return [float(np.sin(a)) for a in angles]
+
+
+def grid_point(lo, hi, n, i):
+    """Point `i` of `n` points spaced uniformly over [lo, hi], as `Beams::grid_point` computes it
+    (lib/utils/beamUtil.cpp); a single point sits at the midpoint."""
+    if n == 1:
+        return (lo + hi) / 2
+    return (lo * (n - i - 1) + hi * i) / (n - 1)
+
+
+def bb_peak_line(bb_data, positions, config, phases, nu, amplitude):
+    """Baseband beams `bb_data` [Thi, B, F, P, T] (int4 bytes) of a tone of `amplitude` with geometric phases `phases`
+    [F, D] at frequencies `nu` [F], beams at `positions` [B, 2]. J = bb_gain Σ_d exp(iφ_bd) E_d,
+    so the predicted tone power in beam b is (A bb_gain |Σ_d exp(2πi ν (n_b - n)·r_d / c)|)^2 on
+    top of a noise floor that is the same for all beams. Where the prediction is unambiguous,
+    the measured power must peak in the predicted beam."""
+    power = (np.abs(decode_int4x2(bb_data)) ** 2).mean(axis=(0, 3, 4))  # [B, F]
+    gain = value(config, "bb_gain") * 127.5 / 128
+    predicted = np.stack(
+        [
+            (
+                amplitude
+                * gain
+                * np.abs(
+                    (phases * geometric_phases(config, pos, nu).conj()).sum(axis=1)
+                )
+            )
+            ** 2
+            for pos in positions
+        ]
+    )  # [B, F]
+    ranked = np.sort(predicted, axis=0)
+    clear = (ranked[-1] >= 1.25 * ranked[-2]) & (ranked[-1] - ranked[-2] >= 1)
+    require(clear.any(), "bb_beams: no frequency with an unambiguous predicted peak")
+    wrong = clear & (power.argmax(axis=0) != predicted.argmax(axis=0))
+    require(
+        not wrong.any(),
+        f"bb_beams: peak in beam {power.argmax(axis=0)[wrong][:8].tolist()} instead of "
+        f"{predicted.argmax(axis=0)[wrong][:8].tolist()} for {wrong.sum()} of {clear.sum()} frequencies",
+    )
+    beams = np.unique(predicted.argmax(axis=0)[clear]).tolist()
+    return (
+        f"bb_beams: peak in the predicted beam for all {clear.sum()} unambiguous frequencies "
+        f"(beams {beams})"
+    )
+
+
+def frb2_tone_power(frb2):
+    """The tone power [R, coarse] of FRB2 beams [Ttildehi256, R, Fbar, Ttildelo256]: in each
+    coarse channel, the fine channel with the largest power, minus the noise floor (the median
+    over beams)."""
+    power = used_channels(frb2, 2).sum(axis=(0, 3), dtype=np.float64)  # [R, Fbar]
+    coarse = np.atleast_1d(frb2.attr("coarse_freq"))
+    slots = np.array(
+        [
+            np.nonzero(coarse == chan)[0][power[:, coarse == chan].max(axis=0).argmax()]
+            for chan in np.unique(coarse)
+        ]
+    )
+    return power[:, slots] - np.median(power[:, slots], axis=0)
+
+
+def frb2_peak_line(frb2, expected_beam):
+    """The source beam must hold the maximum tone power in each coarse channel. Grating lobes
+    (the dish spacing is many wavelengths) can give other beams the same tone power; such ties
+    are allowed within 2%."""
+    tone = frb2_tone_power(frb2)
+    share = tone[expected_beam] / tone.max(axis=0)
+    bad = share < 0.98
+    if bad.any():
+        peaks = tone.argmax(axis=0)[bad]
+        require(
+            False,
+            f"frb2_beams: beam {expected_beam} has only {share[bad].min():.3f} of the peak "
+            f"tone power (peak in beams {np.unique(peaks).tolist()}) in {bad.sum()} of "
+            f"{tone.shape[1]} channels",
+        )
+    ties = (tone >= 0.98 * tone.max(axis=0)).sum(axis=0) > 1
+    return (
+        f"frb2_beams: beam {expected_beam} holds the peak in all {tone.shape[1]} channels "
+        f"({ties.sum()} ties with grating lobes)"
+    )
 
 
 def upchan_window(num_taps, U):
