@@ -13,7 +13,7 @@ bb_beam_separation_y: 5.0 / 8   # 5 degrees
 # The baseband beams are formed as "incoherent sum" over dishes, which
 # scales noise by sqrt(num_dishes). This gain undoes that:
 #     1 / sqrt(num_dishes)
-bb_gain: 0.0441942
+bb_gain: {{ bb_gain | default(0.0441942) }}
 
 # The phase matrix is valid for this many input samples. It must be a multiple of num_times,
 # the number of input samples the beamformer processes per kernel invocation.

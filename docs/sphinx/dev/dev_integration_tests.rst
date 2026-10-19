@@ -56,7 +56,9 @@ Layout
 
 ``python/integration-tests/``
    ``run.py`` runs kotekan and the check for one test; ``kit.py`` holds the shared HDF5 reading,
-   decoding and models; ``check_<test>.py`` is one check per test.
+   decoding and models; ``check_<test>.py`` is one check per test. A check either has
+   ``VARIANTS``, each run and checked on its own, or ``RUNS``, which are all run before one
+   check compares them (T5).
 
 ``docs/integration-tests/``
    One Markdown description per test (``T<n>-<name>.md``): the errors the test catches, and the
@@ -72,8 +74,9 @@ Differences from ``config/fengine``:
   need the mask lifetime to equal their phase lifetimes, so it gets its own one-frame mask stream
   with the same content (see Findings).
 * The bad feed mask lifetime (``bf_mask_lifetime_frames``, default 24), ``do_fringestop``,
-  ``rfi_excision_enabled`` and the test outputs are jinja variables; production values are the
-  defaults.
+  ``rfi_excision_enabled``, the gains ``upchan_gains`` (a dict from U to the U fine-channel
+  gains), ``bb_gain`` and ``frb1_input_scale``, and the test outputs are jinja variables;
+  production values are the defaults.
 
 Running
 =======
@@ -162,9 +165,13 @@ upchannelizer output start ``T*``, ``coarse_freq`` / ``freq_upchan_factor`` /
        FRB1 is below its bound for int4 input.
      - correlator and BB exact; upchan 0.02 LSB around rounding thresholds; FRB1 1%
    * - T5 Gains
-     - Noise plus tone; reference and scaled runs.
-     - upchan, BB, FRB1
-     - Per-fine-channel ``upchan_gain``, ``bb_gain`` and ``frb1_input_scale`` act as configured.
+     - Noise (σ = 1.2 LSB) plus a weak tone; a reference run with the production gains and a
+       scaled run: a distinct factor in [1, 2) per fine channel, ``bb_gain`` and
+       ``frb1_input_scale`` doubled.
+     - upchan (all U), BB, FRB1
+     - Per-fine-channel ``upchan_gain``, ``bb_gain`` and ``frb1_input_scale`` act as configured:
+       the unrounded noise σ, inferred from the int4 rms with the rounded-Gaussian model, scales
+       with the gain; the FRB1 intensity by 4 times the upchannelized power ratio.
      - 3% (int4), 1% (FRB1)
    * - T6 Dish locations
      - One-hot dishes; two-hot pairs; half-filled array.
@@ -255,6 +262,12 @@ Findings
 * A constant-power test signal is flagged entirely by first-stage RFI excision (SK = 0), so
   the correlator sums nothing; T4 switches excision off. FRB3 chunks of zero variance store
   scale 0 and q = 0, without NaN (T4).
+* ``upchan_gain`` (per fine channel), ``bb_gain`` and ``frb1_input_scale`` act as documented
+  (T5). The measured ratios agree with the predictions within 0.2%. Int4 rounding biases a raw
+  rms ratio by up to 3.7% at the 0.9 LSB of the reference run, so the check corrects for it.
+* ``setUpchanGain`` checks the number of gains (one per fine channel) only with ``assert``
+  (seen while writing T5, not tested), which a Release build drops: extra gains are ignored,
+  and too few throw ``std::out_of_range``.
 
 Data volume and run time
 ========================
