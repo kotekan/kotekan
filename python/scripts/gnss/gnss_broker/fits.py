@@ -113,7 +113,7 @@ def rate_residuals(
     usable satellites, so both:
 
       1. A hard gate on the search's own peak/median (q_field >= min_q): signal reads ~18-22 and
-         noise ~3-6, so the bar is a property of the measurement, not of SNR.
+         noise ~3-6 on deep_rate_q, so the bar is a property of the measurement, not of SNR.
       2. A clip about the median across PRNs (clip_hz), then the amp_snr-weighted consensus.
          The median comes first because a wrong-bin outlier is arbitrarily far and would drag
          any mean; weighting then lets the strongest satellites dominate what survives.
@@ -151,10 +151,16 @@ def rate_residuals(
             # The gap is measured in emits, not records: successive observations are one
             # combiner emit apart (~2 s), a cadence the broker does not configure. So the unit
             # is derived from the stream: emits share one pow_hop across all PRNs, and unit_hop
-            # holds the smallest step seen, so a PRN whose first pair straddles a gap
+            # holds the smallest positive step seen, so a PRN whose first pair straddles a gap
             # self-corrects once a contiguous pair arrives. Without unit_hop the unit is
             # rec_hops.
             step = h - ph
+            if step < 0:
+                # The hop counter went back (an F-engine re-base restarts it): a re-anchor like
+                # a gap. It must not reach unit_hop, where a negative unit would make every
+                # later step read as a gap.
+                gapped.append(int(prn))
+                continue
             if unit_hop:
                 unit_hop[0] = min(unit_hop[0], step) if unit_hop[0] else step
             u = (unit_hop[0] if unit_hop and unit_hop[0] else float(rec_hops)) or 1.0
@@ -314,8 +320,12 @@ def dr_seed_phys(seed, h1, hops_per_sec, chip_hz, carrier_hz, code_doppler_sign,
     return (
         seed["code_phase_chips"]
         + t1 * chip_hz * (1.0 + code_doppler_sign * seed["doppler_hz"] / carrier_hz)
-        + seed.get("code_phase_rate", 0.0) * (h1 - seed["ref_hop"])
-        + 0.5 * (chip_hz / carrier_hz) * seed.get("doppler_rate_hz_s", 0.0) * dt * dt
+        + (seed.get("code_phase_rate", 0.0) or 0.0) * (h1 - seed["ref_hop"])
+        + 0.5
+        * (chip_hz / carrier_hz)
+        * (seed.get("doppler_rate_hz_s", 0.0) or 0.0)
+        * dt
+        * dt
     ) % mod
 
 
@@ -417,7 +427,7 @@ def tracker_phase_at(
     dt = dh / hops_per_sec
     return (
         ph_ref
-        + (per_hop + seed.get("code_phase_rate", 0.0) or 0.0) * dh
+        + (per_hop + (seed.get("code_phase_rate", 0.0) or 0.0)) * dh
         + 0.5
         * (chip_hz / carrier_hz)
         * (seed.get("doppler_rate_hz_s", 0.0) or 0.0)

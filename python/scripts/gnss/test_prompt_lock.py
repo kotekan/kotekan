@@ -42,6 +42,17 @@ class TestObservablesUsesPublishedCn0(unittest.TestCase):
             got, 20 * math.log10(39.26) - 10 * math.log10(1.0486), places=6
         )
 
+    def test_a_published_none_is_not_recomputed(self):
+        """publish.py always writes cn0_coh_db and sets it None when the best instance has no
+        deep_snr or coherent span; the row's fleet/quad deep_snr must not fill that in."""
+        row = {
+            "cn0_coh_db": None,
+            "deep_snr": 39.26,
+            "coherence_s": 1.0486,
+            "coh_src": "quad:12",
+        }
+        self.assertIsNone(cn0_dbhz(row, row["deep_snr"], row["coherence_s"]))
+
     def test_no_coherence_yields_none(self):
         self.assertIsNone(cn0_dbhz({}, 39.26, 0.0))
 

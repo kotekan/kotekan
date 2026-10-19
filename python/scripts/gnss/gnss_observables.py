@@ -76,8 +76,8 @@ def _get(url, timeout=3.0):
 
 
 def cn0_dbhz(row, deep_snr, coherence_s):
-    """Coherent C/N0 (dB-Hz): the broker's `cn0_coh_db`, else (absent or None)
-    20log10(deep_snr) - 10log10(T) from the row.
+    """Coherent C/N0 (dB-Hz): the broker's `cn0_coh_db` whenever the row carries the key, None
+    included; only a row without it (an older broker) gets 20log10(deep_snr) - 10log10(T).
 
     The fallback is not the same estimator. The row's deep_snr is overridden in publish.py by
     the fleet-coherent value or the quadrature fallback (coh_src fleet:N / quad:N), so it mixes
@@ -87,12 +87,27 @@ def cn0_dbhz(row, deep_snr, coherence_s):
 
     Coherence is still required: a floored deep is rectification noise. Whether the prompt was
     on the signal at all is a separate question this number cannot answer; see prompt_lock."""
-    pub = row.get("cn0_coh_db")
-    if pub is not None:
-        return pub
+    if "cn0_coh_db" in row:
+        return row["cn0_coh_db"]
     if deep_snr and deep_snr > 0 and coherence_s and coherence_s > 0:
         return 20.0 * math.log10(deep_snr) - 10.0 * math.log10(coherence_s)
     return None
+
+
+def code_resid(r, chip_rate_hz):
+    """(code_resid_m, src, clk_in) for a broker row: the tracker's range-form residual
+    (trk_range_s, receiver clock left in) while it is at most INTEG_MAX_AGE_S old, else the
+    search's (dr_integ_chips, clock removed) under the same age bar, else (None, None, False).
+    clk_in is True only for the tracker's form."""
+    ts = r.get("trk_range_s")
+    ta = r.get("trk_resid_age_s")
+    if ts is not None and (ta is None or ta <= INTEG_MAX_AGE_S):
+        return float(ts) * C_LIGHT, "trk", True
+    ic = r.get("dr_integ_chips")
+    ia = r.get("dr_integ_age_s")
+    if ic is not None and (ia is None or ia <= INTEG_MAX_AGE_S):
+        return float(ic) * C_LIGHT / chip_rate_hz, "dr_integ", False
+    return None, None, False
 
 
 def cn0_inc_dbhz(amp, unbiased, t_rec):
@@ -471,17 +486,9 @@ def main():
                     # its own currency (CM chips on L2C). The range form (trk_range_s, receiver
                     # clock left in) is used so that code minus the carrier residual below,
                     # which carries the same clock, is clock-free.
-                    _ts = r.get("trk_range_s")
-                    _clk_in = _ts is not None
-                    _ta = r.get("trk_resid_age_s")
-                    _ic = r.get("dr_integ_chips")
-                    _ia = r.get("dr_integ_age_s")
-                    if _ts is not None and (_ta is None or _ta <= INTEG_MAX_AGE_S):
-                        code_resid_m = float(_ts) * C_LIGHT
-                        code_resid_src = "trk"
-                    elif _ic is not None and (_ia is None or _ia <= INTEG_MAX_AGE_S):
-                        code_resid_m = float(_ic) * C_LIGHT / args.chip_rate_hz
-                        code_resid_src = "dr_integ"
+                    code_resid_m, code_resid_src, _clk_in = code_resid(
+                        r, args.chip_rate_hz
+                    )
                     carr_resid_m = -adr * lam - v["range_m"]
                     carr_resid_src = "adr"
                     # The fleet ADR at its own hop (gnss_broker/fleetadr). adr_cycles above is
@@ -535,7 +542,7 @@ def main():
                     "adr_records": nrec,
                     "code_resid_m": code_resid_m,  # model-removed code range (CMC input)
                     "code_resid_src": code_resid_src,  # trk | dr_integ
-                    "code_resid_clk": _clk_in,  # True when trk_range_s was served (range form)
+                    "code_resid_clk": _clk_in,  # True for trk (range form, clock left in)
                     # the tracker residual's own scatter and support (metres, records)
                     "code_resid_sd_m": (
                         (r.get("trk_resid_sd_chips") or 0.0)
@@ -613,9 +620,10 @@ def main():
                     # previous cycle's record-stream rate (or zero) with a one-parameter
                     # residual-rate fit the probes share. kcoh_sig is its significance over the
                     # probes' identical fold; kcoh_eta the coherence efficiency (n_rec = fully
-                    # coherent, ~1 = no coherent gain). On strong satellites cn0_kcoh and
-                    # cn0_prompt must agree; their per-row difference is the standing
-                    # cross-check.
+                    # coherent, ~1 = no coherent gain, mostly None on noise). cn0_kcoh is a
+                    # power mean over instances, so on strong satellites it reads below
+                    # cn0_prompt by up to 10log10(n_inst); their per-row difference, that loss
+                    # plus any decoherence, is the standing cross-check.
                     "cn0_kcoh_dbhz": r.get("cn0_kcoh_db"),
                     "cn0_kcoh_sky_dbhz": r.get("cn0_kcoh_sky_db"),
                     "kcoh_sig": r.get("kcoh_sig"),

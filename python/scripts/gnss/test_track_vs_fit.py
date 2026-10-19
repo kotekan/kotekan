@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Pinning tests for the broker's seed-phase transport in gnss_broker/fits.py:
-retag_seed_doppler, seed_phase_at_ref and tracker_phase_at.
+retag_seed_doppler, seed_phase_at_ref and tracker_phase_at, and for the coast re-tag that
+uses them (gnss_broker/seeding.py, stage_coast_drop).
 
 Run: python3 test_track_vs_fit.py
 """
@@ -49,62 +50,80 @@ class TestRetagSeedDoppler(unittest.TestCase):
     # dop_applied(t) = doppler_hz + dop_rate*(t - ref_hop), so doppler_hz must be the Doppler
     # at ref_hop. A current forecast stored against an older ref_hop gets dop_rate*age added
     # on top, and the applied Doppler runs at ~2x the true rate until the next detection
-    # re-anchors ref_hop. The broker's coast re-tag (seeding.py) stores the forecast
-    # back-propagated to ref_hop. These tests model propagate_seed with _applied and call no
-    # broker code.
+    # re-anchors ref_hop. The broker's coast re-tag (seeding.stage_coast_drop) stores the
+    # forecast back-propagated to ref_hop; these tests run it on a minimal context.
 
-    @staticmethod
-    def _applied(stored_dop, rate, age):
-        """What gnss::propagate_seed computes at `age` seconds past ref_hop."""
-        return stored_dop + rate * age
+    PRN, CP0, DOP0, RATE, AGE = 11, 4321.0, 245.0, -0.35, 200.0
+
+    def _coast(self, forecast):
+        """One stage_coast_drop pass over a seed anchored AGE s before now that was not
+        re-detected; returns the seed."""
+        from types import SimpleNamespace
+
+        from gnss_broker import seeding
+        from gnss_broker.seed import Seed
+        from gnss_broker.transport import _TR
+
+        utc0 = 1.7e9
+        seed = Seed.born(
+            "test",
+            epoch=H0,
+            code_phase_chips=self.CP0,
+            doppler_hz=self.DOP0,
+            ref_hop=H0,
+            doppler_rate_hz_s=self.RATE,
+        )
+        ctx = SimpleNamespace(
+            seeds={self.PRN: seed},
+            probe_set=set(),
+            up=None,
+            dr_state=None,
+            best={},
+            pred={self.PRN: (forecast, self.RATE)},
+            cb=SimpleNamespace(seed=0.0),
+            utc0_sample0=utc0,
+            code_len=L,
+            status={},
+            have_sig=False,
+            hold=SimpleNamespace(prev={}, low_hits={}, miss={}),
+            coast_polls=100,
+            args=SimpleNamespace(
+                almanac=True,
+                dr_fengine_axis=False,
+                hops_per_sec=HPS,
+                chip_rate_hz=CHIP,
+                carrier_hz=CARR,
+                code_doppler_sign=SGN,
+                drop_amplitude=1.0,
+                lock_prompt_hold=1.0,
+                coast_budget=60.0,
+            ),
+        )
+        # the cycle's frozen clock (transport.axis_now reads it): now is AGE past ref_hop
+        _TR._t.v = utc0 + T0 + self.AGE
+        try:
+            seeding.stage_coast_drop(ctx)
+        finally:
+            _TR._t.v = None
+        return ctx.seeds[self.PRN]
 
     def test_stored_doppler_is_back_propagated_to_ref_hop(self):
-        """For any age, the tracker must end up applying the forecast's current value."""
-        rate, forecast_now = -0.35, 245.0
-        for age in (0.0, 10.0, 200.0, 600.0, 3600.0):
-            stored = forecast_now - rate * age  # back-propagated to ref_hop
-            self.assertAlmostEqual(
-                self._applied(stored, rate, age),
-                forecast_now,
-                places=9,
-                msg="age %.0f s: the tracker must apply the forecast" % age,
-            )
-
-    def test_the_doppler_epoch_tripwire(self):
-        """Storing the current value against a stale ref_hop makes the applied Doppler wrong
-        by exactly dop_rate*age, and the applied rate twice the true one."""
-        rate, forecast_now, age = -0.35, 245.0, 200.0
-        bad = self._applied(forecast_now, rate, age)  # stored at now: wrong
+        """The tracker must end up applying the forecast's current value at now."""
+        forecast = self.DOP0 + self.RATE * self.AGE + 1.5  # news: 1.5 Hz off the seed
+        seed = self._coast(forecast)
         self.assertAlmostEqual(
-            bad - forecast_now,
-            rate * age,
-            places=9,
-            msg="the doppler-epoch error law changed -- investigate",
+            seed["doppler_hz"], forecast - self.RATE * self.AGE, places=9
         )
-        self.assertGreater(abs(bad - forecast_now), 60.0)
-        # and the second-order tell: the applied Doppler advances at 2x the true rate,
-        # because a fresh forecast is written every poll while age keeps growing.
-        d1 = self._applied(forecast_now + rate * 1.0, rate, age + 1.0)
-        self.assertAlmostEqual((d1 - bad) / 1.0, 2.0 * rate, places=6)
+        self.assertEqual(seed["ref_hop"], H0)
 
-    def test_the_doppler_epoch_also_biases_the_cp_retag(self):
-        """Comparing a ref_hop-epoch old_dop with a current-epoch new_dop inflates the ddop
-        handed to retag_seed_doppler by dop_rate*age, so the code phase is kicked too; the
-        comparison must use the old effective Doppler at now."""
-        rate, age = -0.35, 200.0
-        # No news: the forecast at now is exactly what the stored seed propagates to
-        # (forward from ref_hop, hence the plus), so a correct comparison must see ddop = 0.
-        stored_at_ref = 245.0
-        forecast_now = stored_at_ref + rate * age
-        ddop_wrong = forecast_now - stored_at_ref  # old_dop at its ref_hop epoch
-        ddop_right = forecast_now - (stored_at_ref + rate * age)  # like for like
-        self.assertAlmostEqual(ddop_right, 0.0, places=9)  # nothing actually changed
-        self.assertAlmostEqual(abs(ddop_wrong), abs(rate) * age, places=9)
-        # that phantom ddop translates cp by t_now * (f_chip/f_car) * ddop chips
-        kick = T0 * CHIP / CARR * abs(ddop_wrong)
-        self.assertGreater(
-            kick, 1.0, "a phantom re-tag of >1 chip is not a rounding error"
-        )
+    def test_a_no_news_forecast_moves_nothing(self):
+        """A forecast equal to what the seed already propagates to at now is no change: the
+        re-tag compares the old Doppler at now, so a standing rate cancels and neither the
+        code phase nor the stored Doppler moves. Compared at ref_hop instead, the phantom
+        dop_rate*age (70 Hz) would kick cp0 by t_now*(f_chip/f_car)*70, ~10^5 chips."""
+        seed = self._coast(self.DOP0 + self.RATE * self.AGE)
+        self.assertEqual(seed["code_phase_chips"], self.CP0)
+        self.assertEqual(seed["doppler_hz"], self.DOP0)
 
     def test_the_anchor_epoch_tripwire(self):
         """Translating at a 600-s-stale anchor steps the phase now by
@@ -259,6 +278,32 @@ class TestTrackerPhaseAt(unittest.TestCase):
         self.assertAlmostEqual(
             ((b - a - want + MOD / 2) % MOD) - MOD / 2, 0.0, delta=1e-2
         )
+
+    def test_unset_rates_read_as_zero(self):
+        """A seed may carry code_phase_rate or doppler_rate_hz_s as None; both reference
+        branches must treat that as 0, as for an absent key."""
+        from gnss_broker.fits import tracker_phase_at, seed_phase_at_ref
+
+        h = H0
+        h1 = H0 + int(10.0 * HPS)
+        phase = seed_phase_at_ref(4321.0, self.DOP, CHIP, HPS, CARR, SGN, MOD, self.FFT)
+        for kw in ({}, {"code_phase_at_ref_chips": phase}):
+            want = tracker_phase_at(
+                self._seed(4321.0, h, **kw), h1, HPS, CHIP, CARR, SGN, MOD, self.FFT
+            )
+            got = tracker_phase_at(
+                self._seed(
+                    4321.0, h, code_phase_rate=None, doppler_rate_hz_s=None, **kw
+                ),
+                h1,
+                HPS,
+                CHIP,
+                CARR,
+                SGN,
+                MOD,
+                self.FFT,
+            )
+            self.assertEqual(got, want)
 
     def test_a_pair_inconsistent_seed_is_not_a_step(self):
         """The audit's purpose: a seed whose cp0 is stale but whose phase is correct is not

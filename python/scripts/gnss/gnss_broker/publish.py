@@ -598,14 +598,16 @@ class FleetPublisher:
                 row["noise_probe"] = bool(_pc.get("probe"))
             # The known-rate coherent C/N0 (combdll.coh_cn0): the ~1 s fold centred on the
             # previous cycle's record-stream rate (or zero), plus a one-parameter residual-rate
-            # fit the probes ride identically so their floor absorbs its gain. Same currency as
-            # cn0_prompt_db by construction, so on a strong stationary satellite the two must
-            # agree: serving both makes that a standing cross-check. kcoh_sig is the fold power
-            # over the probes' identically folded floor (the detection number for deep-sidelobe
-            # satellites below the per-record gate); kcoh_eta is the coherence efficiency
-            # (n_rec when fully coherent, ~1 on noise): a wrong rate or a phase discontinuity
-            # shows up there rather than as a silently low C/N0. cn0_kcoh_sky_db is the same
-            # fold on the sky-corrected prompt.
+            # fit the probes ride identically so their floor absorbs its gain. It is a power
+            # mean over instances, so on a strong satellite it reads below cn0_prompt_db by up
+            # to 10log10(n_inst); their per-row difference, that loss plus any decoherence, is
+            # a standing cross-check. kcoh_sig is the fold power over the probes' identically
+            # folded floor (the detection number for deep-sidelobe satellites below the
+            # per-record gate); kcoh_eta is the coherence efficiency (n_rec when fully
+            # coherent, ~1 with no coherent gain, mostly None on noise, where a debiased power
+            # is often not positive): a wrong rate or a phase discontinuity shows up there
+            # rather than as a silently low C/N0. cn0_kcoh_sky_db is the same fold on the
+            # sky-corrected prompt.
             _kc = kcoh.get(prn)
             if _kc:
                 row["cn0_kcoh_db"] = _kc.get("cn0_db")

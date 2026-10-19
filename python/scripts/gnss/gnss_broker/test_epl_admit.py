@@ -211,7 +211,7 @@ def main():
     out = verdict(fleet() | {8: row(q8, d8, 20.0)}, ADMIT)
     check(
         not out[8]["present"],
-        "0.8 chips out (q %.2f disc %+.2f): refused -- beyond --presence-disp-off-max"
+        "0.8 chips out (q %.2f disc %+.2f): refused -- beyond presence_disp_off_max"
         % (q8, d8),
     )
 

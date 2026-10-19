@@ -152,9 +152,10 @@ def stage_rate_feed_fine(ctx):
                         "res_cycles": _pv[0][2],
                     }
                     _snap["trim_cycles"] = _pv[0][3]
-                    # wall_dt arms adr_fine_rate's accumulator-identity gate: the row is
-                    # best-of-instance and the serving instance can change, and a
-                    # difference across two instances' accumulators can pass the arc gate.
+                    # wall_dt arms adr_fine_rate's accumulator-identity gate: the row comes
+                    # from one combiner, whose accumulator can still be reset (restart,
+                    # re-anchor), and a difference across two accumulators can pass the arc
+                    # gate.
                     _wdt = ctx.t0 - _pv[2]
                     _fr = adr_fine_rate(_rec, _snap, _rec_dt, wall_dt=_wdt)
                     if _fr is not None:
@@ -264,10 +265,13 @@ def stage_rate_feed_fine(ctx):
                 if ctx.args.rrate_phase_span_s > 0.0:
                     _ring.append(ctx.rf.adr_prev[_p])
             # A satellite that has left the seed set re-acquires on the coarse feed when it
-            # returns, so its fine lock is dropped rather than left to deweight the
-            # measurements that must pull it back in.
-            for _dead in [k for k in ctx.rf.fine_t if k not in ctx.seeds]:
+            # returns, so its fine and KCOH locks are dropped rather than left to deweight
+            # the measurements that must pull it back in.
+            for _dead in [
+                k for k in set(ctx.rf.fine_t) | set(ctx.rf.kcoh_t) if k not in ctx.seeds
+            ]:
                 ctx.rf.fine_t.pop(_dead, None)
+                ctx.rf.kcoh_t.pop(_dead, None)
                 ctx.rf.adr_prev.pop(_dead, None)
                 ctx.rf.adr_ring.pop(_dead, None)
             if _jpp:

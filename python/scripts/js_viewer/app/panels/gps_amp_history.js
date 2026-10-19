@@ -49,7 +49,8 @@ const MODES = {
               fmt: ".2f", zero: true},
     sig:     {label: "sig",      axis: "significance (σ)", unit: "σ", fmt: ".1f", zero: true},
     coh_s:   {label: "coh",      axis: "coherent window (s)", unit: " s", fmt: ".3f", zero: true},
-    dop:     {label: "dop",      axis: "tracked Doppler (Hz)", unit: " Hz", fmt: ".1f"},
+    dop:     {label: "dop",      axis: "commanded Doppler, the broker's seed (Hz)", unit: " Hz",
+              fmt: ".1f"},
     snr:     {label: "snr",      axis: "search significance (σ)", unit: "σ", fmt: ".1f", zero: true},
 };
 const MODE_ORDER = ["cn0", "cn0_kcoh", "q", "beam_amp", "beam_ph", "sig", "coh_s", "dop",
@@ -129,7 +130,7 @@ export class GpsAmpHistoryPanel {
 
     _blank() {
         return {t: [], cn0: [], cn0_kcoh: [], q: [], beam_amp: [], beam_ph: [], sig: [],
-                coh_s: [], dop: [], snr: []};
+                coh_s: [], dop: [], snr: [], cn0_raw: [], kcoh_raw: []};
     }
 
     // Append one per-signal metrics sample to a history series, with dedup + ring trim.
@@ -137,21 +138,29 @@ export class GpsAmpHistoryPanel {
         if (!this.hist.has(key)) this.hist.set(key, this._blank());
         const h = this.hist.get(key);
         const n = h.t.length;
-        if (n && h.sig[n - 1] === src.sig && h.coh_s[n - 1] === src.coh_s
-            && h.dop[n - 1] === src.dop && h.snr[n - 1] === snr) return;
+        const q = src.q != null ? src.q : null;
+        const beam_amp = src.beam_amp != null ? src.beam_amp : null;
+        const beam_ph = src.beam_ph != null ? src.beam_ph : null;
+        // cn0_raw/kcoh_raw keep the served C/N0 values; cn0/cn0_kcoh hold the qualified ones.
+        const cn0_repeats = n > 0 && h.cn0_raw[n - 1] === src.cn0
+            && h.kcoh_raw[n - 1] === src.cn0_kcoh;
+        if (cn0_repeats && h.sig[n - 1] === src.sig && h.coh_s[n - 1] === src.coh_s
+            && h.dop[n - 1] === src.dop && h.snr[n - 1] === snr && h.q[n - 1] === q
+            && h.beam_amp[n - 1] === beam_amp && h.beam_ph[n - 1] === beam_ph) return;
         // Do not replot an estimate that has not been recomputed. The broker reruns its C/N0
         // estimators every estimator_every_s (the prompt C/N0 every cycle on a chain that reads
         // the gather's reduced taps) and serves the last values in between, so successive polls
         // repeat one estimate. Identical floats from a floating-point estimator mean the same
         // computation, so a sample whose non-null cn0 and whose cn0_kcoh both repeat the last
-        // stored values is dropped, for every observable, and the C/N0 traces show one point
-        // per estimate.
-        if (n && h.cn0[n - 1] === src.cn0 && h.cn0_kcoh[n - 1] === src.cn0_kcoh
-            && src.cn0 != null) return;
+        // served values keeps every other observable but gets a gap in both C/N0 traces, which
+        // then show one point per estimate.
+        const cn0_stale = cn0_repeats && src.cn0 != null;
         h.t.push(now);
+        h.cn0_raw.push(src.cn0);
+        h.kcoh_raw.push(src.cn0_kcoh);
         // Qualified like the coherent trace below: a null cn0_duty (the fallback estimator) has
         // no duty to judge and passes; a noise probe or a duty below CN0_MIN_DUTY is a gap.
-        h.cn0.push((src.cn0 != null && !src.noise_probe
+        h.cn0.push((!cn0_stale && src.cn0 != null && !src.noise_probe
                     && (src.cn0_duty == null || src.cn0_duty >= CN0_MIN_DUTY))
                    ? src.cn0 : null);
         h.sig.push(src.sig);
@@ -159,11 +168,12 @@ export class GpsAmpHistoryPanel {
         // the records did not add coherently and the value is the noise floor, not a C/N0.
         // The table greys the same case; a history plot has no room for a qualifier, so it is
         // a gap.
-        h.cn0_kcoh.push((src.cn0_kcoh != null && src.kcoh_eta != null && src.kcoh_n
-                         && src.kcoh_eta >= 0.25 * src.kcoh_n) ? src.cn0_kcoh : null);
-        h.q.push(src.q != null ? src.q : null);
-        h.beam_amp.push(src.beam_amp != null ? src.beam_amp : null);
-        h.beam_ph.push(src.beam_ph != null ? src.beam_ph : null);
+        h.cn0_kcoh.push((!cn0_stale && src.cn0_kcoh != null && src.kcoh_eta != null
+                         && src.kcoh_n && src.kcoh_eta >= 0.25 * src.kcoh_n)
+                        ? src.cn0_kcoh : null);
+        h.q.push(q);
+        h.beam_amp.push(beam_amp);
+        h.beam_ph.push(beam_ph);
         h.coh_s.push(src.coh_s); h.dop.push(src.dop); h.snr.push(snr);
         if (h.t.length > MAX_PTS) for (const k of Object.keys(h)) h[k].shift();
         // Mark dirty when this series belongs to the selected satellite. Keys are

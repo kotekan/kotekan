@@ -32,11 +32,13 @@ _FROZEN = dict(
     carrier_rate_clip_hz=25.0,
     # A rate sample more than this many emit periods (x1.5 jitter margin) after the PRN's previous
     # one is a tracker re-anchor, not a measurement: the PRN is re-baselined and the sample skipped.
-    # The emit period is derived from the stream, as the smallest pow_hop step seen.
+    # The emit period is derived from the stream, as the smallest positive pow_hop step seen; a step
+    # back (an F-engine re-base restarts the counter) is a re-anchor too.
     carrier_rate_max_gap=2.0,
-    # A rate residual that moved more than this (Hz) since the PRN's previous sample is the
-    # tracker's f_ref fence re-anchoring mid-track, which no window gap marks: re-baseline and skip.
-    # Contiguous emits step under 1 Hz and a fence re-anchor by several Hz, so 3 Hz separates them.
+    # A rate residual that moved more than this (Hz) since the PRN's previous sample is an f_ref
+    # re-pin (the tracker's f_ref follows the seed's Doppler), which no window gap marks:
+    # re-baseline and skip. Contiguous emits step under 1 Hz and a re-pin by several Hz, so 3 Hz
+    # separates them.
     carrier_rate_max_step=3.0,
     # Served C/N0 (combdll.prompt_cn0): a PRN is served only when its mean debiased prompt power
     # over every gathered record is this many standard errors above zero (sig_inc). Under the null a
@@ -63,10 +65,11 @@ _FROZEN = dict(
     # Fleet coherent: instances that must see a PRN before it is combined; below this the PRN keeps
     # its single-instance coherent numbers.
     coh_min_instances=3,
-    # When the network BRDC fetch fails, keep the dead-reckon predict alive on this broker's own
-    # decoded ephemeris (decoded_eph.py, which reuses each decoder's BRDC-validated propagator).
-    # Geometry and Doppler are exact; the precise satellite clock is complete for Galileo, best
-    # effort elsewhere. 0 lets the predict go dark.
+    # While no BRDC ephemeris is loaded (none fetched, cached or parseable), keep the dead-reckon
+    # predict alive on this broker's own decoded ephemeris (decoded_eph.py, which reuses each
+    # decoder's BRDC-validated propagator). sat_clk_s is the broadcast polynomial plus the
+    # relativistic term for Galileo I/NAV and F/NAV and GPS LNAV, with no group-delay term, and None
+    # elsewhere. 0 lets the predict go dark.
     decoded_eph_fallback=1,
     # Fleet DLL: an instance's measurement joins the sum only if its window is within this many
     # seconds of the newest instance's (converted once to an integer hop count). Instances free-run,
@@ -189,8 +192,9 @@ _FROZEN = dict(
     # 0 freezes b while the fit and its publishing keep running.
     bsat_gain=0.02,
     # Hard gate on the combiner's rate-search peak/median (deep_rate_full_q) before a rate residual
-    # is believed: signal reads ~18-22, noise ~3-6. A weak satellite does not merely scatter, it
-    # lands on the wrong spectral bin, tens of Hz out.
+    # is believed: signal ~18-22, noise ~3-6, measured on the capped search's deep_rate_q; the
+    # uncapped deep_rate_full_q this gate reads has not been re-measured. A weak satellite does not
+    # merely scatter, it lands on the wrong spectral bin, tens of Hz out.
     carrier_rate_min_q=10.0,
     # Fleet DLL deep gate (--dll-deep-gate): a PRN in the set is present when deep_snr >= this x
     # deep_floor. The floor is the combiner's own rectification level, so this is a detection
@@ -353,12 +357,12 @@ _FROZEN = dict(
     # 0 disables the guard.
     clock_bias_cal_min_sats=5,
     # Log when the offset between this host's wall clock and the GPS-disciplined F-engine axis jumps
-    # by more than this (s). Log only, never a control input. The orbit model is evaluated at wall
-    # time, so a wall step moves every model seed on every chain at once. The observable F-engine
-    # 'now' is the newest telemetry pow_hop, which trails the sky by the gather/serve latency
-    # (~100 ms, tens of ms of jitter), so this sees only steps well above that. The same lag is why
-    # orbit evaluation stays on wall time: the axis would trade ~1.5 ms of NTP error for ~100 ms of
-    # pipeline lag.
+    # by more than this (s). Log only, never a control input. The orbit model is evaluated on the
+    # dead-reckon time base (deadreckon.dr_eph_epoch), which under --dr-fengine-axis is the
+    # F-engine axis, so a wall step then moves no model seed; the jump is the first sign of a host
+    # clock problem. The observable F-engine 'now' is the newest telemetry pow_hop, which trails
+    # the sky by the gather/serve latency (~100 ms, tens of ms of jitter), so this sees only steps
+    # well above that.
     clock_step_guard_s=0.5,
     # Must match the search stage's code_doppler_sign: the sign of the Doppler-dependent cp0
     # back-reference the search applies. Every cp0/phase conversion here uses it
@@ -1292,9 +1296,9 @@ def build_parser(description):
         "elapsed seconds. The static part of that error is common-mode and lands in "
         "the solved receiver clock, but the drift is not re-solved on a chain whose "
         "clock is adopted, and nothing cancels it in a --seed-phase-transport phase. "
-        "The orbit is still evaluated at wall time. Changing it moves every "
-        "dead-reckon seed's epoch, so replay goldens that cover dead-reckon paths "
-        "change. 0 (default) = wall minus anchor.",
+        "The orbit is evaluated on the same time base (deadreckon.dr_eph_epoch). "
+        "Changing it moves every dead-reckon seed's epoch, so replay goldens that "
+        "cover dead-reckon paths change. 0 (default) = wall minus anchor.",
     )
     ap.add_argument(
         "--dr-forecast-lead-s",
@@ -1482,6 +1486,7 @@ def build_parser(description):
         "take the gather's depth instead (FLEET_TRIM_TAPS_WINDOWS in "
         "config/gen_chord_gnss_config.py), which must equal this.",
     )
+    # -- Per-element gains (gnss_broker/elemgain.py) -------------------------------------------
     ap.add_argument(
         "--element-poll",
         action="store_true",
@@ -1504,6 +1509,7 @@ def build_parser(description):
         "beam map and peel solves are offline consumers, and a combined number cannot "
         "be un-combined. Needs --element-poll. Empty (default) = no archive.",
     )
+    # -- The comb DLL and the fleet (gnss_broker/combdll.py, fleetdll.py, fleet.py) ------------
     ap.add_argument(
         "--telem-dll",
         action="store_true",
@@ -1599,6 +1605,7 @@ def build_parser(description):
         "what it appears to. Measurement only: it publishes nothing and feeds no "
         "loop. Empty (default) = off.",
     )
+    # -- Seeds: dead reckoning, fits and the long code (gnss_broker/deadreckon.py, seeding.py) --
     ap.add_argument(
         "--time0-endpoint",
         default=None,
@@ -1881,6 +1888,7 @@ def build_parser(description):
         "this chain's (2.5 at E6, 0.25 at L2C-CM). 5 matches the JOINT-CLK bound "
         "(joint_clk_max_chips, cli.py _FROZEN). 0 (default) = unbounded.",
     )
+    # -- Navigation message decode (gnss_broker/navbits.py) ------------------------------------
     ap.add_argument(
         "--nav-bits",
         type=int,
