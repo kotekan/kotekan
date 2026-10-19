@@ -34,8 +34,8 @@
  *
  * Wire rows are compacted: only PRNs despread in the first record of the window to arrive get a
  * row, so @c max_prn is the number of live PRNs a window can carry, not the slot count. Readers
- * take each row's PRN from record slot 0 and apply it to every slot, so they find no PRNs in a
- * window whose slot 0 is missing.
+ * take each row's PRN from the first filled record slot and apply it to every slot: only the
+ * slots whose record arrived carry rows.
  *
  * @par buffers
  * @buffer in_buf  tracker record frames (one per record; GnssChanMetadata::sample_seq = wstart)

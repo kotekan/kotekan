@@ -57,6 +57,16 @@ target_include_directories(test_gnss_shared_pin PRIVATE ../../lib/stages ../../l
 add_executable(test_gnss_chan_power test_gnss_chan_power.cpp)
 target_include_directories(test_gnss_chan_power PRIVATE ../../lib/stages ../../lib/stages/gnss)
 
+# The gather's fleet code discriminator (gnss::FleetDll): header-only, fed hand-built wire frames.
+add_executable(test_gnss_fleet_dll test_gnss_fleet_dll.cpp)
+target_include_directories(test_gnss_fleet_dll PRIVATE ../../lib/stages ../../lib/stages/gnss)
+
+# The GnssFleetTrim stage driven over its REST endpoints, with no frames flowing.
+add_executable(test_gnss_fleet_trim test_gnss_fleet_trim.cpp)
+target_link_libraries(test_gnss_fleet_trim PRIVATE libexternal kotekan_stages kotekan_libs
+                                                   kotekan_utils kotekan_core kotekan_metadata)
+target_include_directories(test_gnss_fleet_trim PRIVATE ../../lib/stages ../../lib/stages/gnss)
+
 # Channelized despread: sim signal -> PFB analysis (reference DFT) -> per-channel correlate-and-sum,
 # checked against the full-band matched filter. No FFTW.
 add_executable(

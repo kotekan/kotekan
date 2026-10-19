@@ -14,8 +14,9 @@ survive (a single-chain check cannot fail against either implementation); leg 2 
 and checks the other is untouched and the re-posted one is replaced, not merged. Leg 3 checks
 the other direction: a chain that stops posting must leave the stored policy after
 policy_ttl_s while a chain that keeps posting survives, and policy_expired must show that the
-expiry fired. It reads policy_armed_requested only; FleetDll keeps an expired chain's last
-armed set (GnssFleetTrim::rearm).
+expiry fired. The expired chain must also be disarmed in FleetDll (`policy`, FleetDll's armed
+set, empty) and its post targets dropped, or its last armed set would keep being integrated
+and posted.
 
 Runs the real binary against a real config on offset ports with no data flowing:
 `policy_armed_requested` is read straight off the stored policy, so it is legible with the
@@ -173,6 +174,17 @@ def main():
             fails.append(
                 "LEG 3: gps_l5 kept posting and must survive, got %s -- the expiry "
                 "swept a live chain." % req.get("gps_l5")
+            )
+        dll_armed = st.get("policy", {}).get("gal_e5a", {}).get("armed")
+        if dll_armed != []:
+            fails.append(
+                "LEG 3: gal_e5a expired but FleetDll still arms %s -- its trims keep "
+                "integrating on the last policy." % dll_armed
+            )
+        if st.get("post_targets", 0) != 1:
+            fails.append(
+                "LEG 3: expected 1 post target (gps_l5's) after gal_e5a expired, got %s -- "
+                "the silent chain's trims are still posted." % st.get("post_targets")
             )
         if not st.get("policy_expired"):
             fails.append(

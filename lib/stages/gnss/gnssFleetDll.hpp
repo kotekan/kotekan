@@ -260,16 +260,20 @@ public:
         // compile-time width would read a narrow sender's rows at the wrong offsets.
         const int row_floats = h->n_row_total;
 
-        // The PRN map is read from the data, from record slot 0's rows, as the Python client
-        // does. GnssTelemPack compacts the rows to the PRNs despread in the window, so the row
-        // order is not the configured PRN order, and fixes the map for the whole window, so
-        // slot 0's map holds for every slot. Unused rows read PRN 0. A frame whose slot 0 was
-        // not filled reads all zeros here and folds nothing.
+        // The PRN map is read from the data, from the first filled record slot's rows, as the
+        // Python client does. GnssTelemPack compacts the rows to the PRNs despread in the
+        // window, so the row order is not the configured PRN order. It fixes the map for the
+        // whole window and writes rows only into the slots whose record arrived, so every
+        // filled slot carries the same map and an unfilled one reads all zeros. Unused rows
+        // read PRN 0. A frame with no filled slot maps no row and folds nothing.
         constexpr int MAX_ROWS = 256; // PRN-map ceiling; telem_max_prn is per chain and smaller
         int prn_of_row[MAX_ROWS];
-        const int n_row_map = std::min(n_prn, MAX_ROWS);
+        int r0 = 0;
+        while (r0 < (int)h->n_rec && !(h->present & (1u << r0)))
+            ++r0;
+        const int n_row_map = r0 < (int)h->n_rec ? std::min(n_prn, MAX_ROWS) : 0;
         for (int p = 0; p < n_row_map; ++p) {
-            const float v = rows[telem_row_offset(0, p, n_prn, row_floats) + REC_PRN];
+            const float v = rows[telem_row_offset(r0, p, n_prn, row_floats) + REC_PRN];
             prn_of_row[p] = (v > 0.0f) ? (int)(v + 0.5f) : 0;
         }
 

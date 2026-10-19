@@ -58,8 +58,8 @@
  *                             0 follows n_win. Set it to the broker's `--telem-windows`.
  * @conf trim_state_file       String, required. Trim store path, saved every 2 s.
  * @conf trim_state_max_age_s  Double, default 300. A trim store older than this is refused.
- * @conf policy_ttl_s          Double, default 60, at least 5. A chain's policy is dropped after
- *                             this long without a /set_policy for it.
+ * @conf policy_ttl_s          Double, default 60, at least 5. A chain is disarmed and its post
+ *                             targets dropped after this long without a /set_policy for it.
  * @conf post_every_n_windows  Int, default 1, and 1 is the only value accepted: a chain's
  *                             trims are posted on every close of its window.
  * @conf post_threads          Int, default 4. Poster threads.
@@ -162,6 +162,7 @@ private:
     /// Poster stride: thread i serves targets i, i + n, ... Set before any poster starts;
     /// post_loop must not use _post_threads.size(), which grows while the first posters run.
     int _n_post_threads = 1;
+    /// rearm() takes it while holding _mtx, so _mtx is never taken while this is held.
     std::mutex _pend_mtx;
     std::condition_variable _pend_cv;
     std::map<std::string, nlohmann::json> _pending; ///< chain -> payload, from the last post_trims
@@ -189,10 +190,10 @@ private:
     // Each broker chain thread posts only its own chain, so policies and targets are replaced
     // per chain: a chain's entry is replaced wholesale on every post, so a PRN it stops naming
     // is disarmed, and chains absent from the post are untouched. _policy_seen and
-    // policy_ttl_s drop the policy of a chain that stops posting.
+    // policy_ttl_s disarm a chain that stops posting and drop its targets.
     std::map<std::string, PolicyReq> _policy;
     std::map<std::string, double> _policy_seen; ///< chain -> wall time of its last /set_policy
-    double _policy_ttl_s = 60.0;                ///< drop a chain's policy after this silence
+    double _policy_ttl_s = 60.0;                ///< disarm a chain after this silence
     double _first_close_t = 0.0; ///< wall time of the first window close, for the rate
     uint64_t _first_close_n = 0;
     double _close_hz = 0.0; ///< window closes/s per chain, averaged since the first close

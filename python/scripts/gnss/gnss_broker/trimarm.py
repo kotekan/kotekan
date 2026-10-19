@@ -29,7 +29,8 @@ def stage_fleet_trim_arming(ctx):
     dls.armed_last is recorded before the POST: it is what next cycle's Python integrator
     stands down against. If the POST fails, the controller keeps actuating the last armed set
     it received: until a POST succeeds, a PRN armed after that set is driven by neither arm
-    and one released after it by both."""
+    and one released after it by both. After policy_ttl_s without a POST the controller
+    disarms the chain, and the PRNs in dls.armed_last are driven by neither arm."""
     if ctx.args.fleet_trim_url:
         _now_present = [
             _p for _p in (ctx.dllp.fleet or {}) if ctx.dllp.fleet[_p].get("present")
@@ -102,8 +103,9 @@ def stage_fleet_trim_arming(ctx):
             ctx.dls.stat["posts"] += 1
         except Exception as _e:
             # Never take the cycle down for the fast loop. The controller keeps actuating the
-            # last armed set it received; the trackers drop its trims (trim_ttl_s) only when
-            # it stops posting them.
+            # last armed set it received until its policy_ttl_s passes without a post, then
+            # disarms the chain and stops posting its trims; the trackers drop the trims they
+            # hold after trim_ttl_s.
             ctx.dls.stat["fail"] += 1
             ctx.dls.stat["last_err"] = str(_e)
         _log_rl(

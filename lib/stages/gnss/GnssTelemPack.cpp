@@ -219,8 +219,8 @@ void GnssTelemPack::main_thread() {
         // Row compaction, built once per window from its first record. A PRN gets a wire row
         // if it has replica energy, i.e. was despread; the record buffer has a slot for every
         // configured PRN whether or not it ran. The map is fixed for the window because readers
-        // take each row's PRN from record slot 0 and apply it to every slot, so a PRN that
-        // starts being despread mid-window gets a row from the next window.
+        // take each row's PRN from the first filled record slot and apply it to every slot, so
+        // a PRN that starts being despread mid-window gets a row from the next window.
         if (!_map_built) {
             int next = 0;
             for (int p = 0; p < _n_prn; ++p) {
