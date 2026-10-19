@@ -68,6 +68,21 @@ class _FakeEphMod(object):
         return {"x": 1}
 
 
+class _CountingEphMod(_FakeEphMod):
+    """_FakeEphMod that counts parse attempts and fails them while `fail` is set."""
+
+    def __init__(self):
+        _FakeEphMod.__init__(self)
+        self.parses = 0
+        self.fail = False
+
+    def parse_rinex_nav(self, path):
+        self.parses += 1
+        if self.fail:
+            raise IOError("stub parse failure")
+        return {"x": 1}
+
+
 def _sats(sysc, prns, el=10.0):
     return {
         (sysc, p): dict(
@@ -192,6 +207,146 @@ def test_bridge_speaks():
         check(any("RECOVERED" in m for m in said), "recovery is announced too")
     finally:
         sky._log_rl, sky._log = orig_rl, orig_log
+
+
+def test_failed_refresh_backs_off():
+    from gnss_broker import sky
+
+    print("brdc_predict: a failed refresh is retried in 10 min, not on the next pass")
+    ge = _CountingEphMod()
+    t = [1.0e6]
+    saved = (sky._now, sky._log, sky._log_rl)
+    sky._now = lambda: t[0]
+    sky._log = lambda msg: None
+    sky._log_rl = lambda key, msg, every_s=10.0: None
+    try:
+        # The last good parse was 1000 s ago, past the 900 s gate, and the refresh fails.
+        state = {"mod": ge, "eph": {"x": 1}, "eph_t": t[0] - 1000.0}
+        ge.fail = True
+        _predict(state, ge, "G", 1, range(1, 25))
+        t[0] += 2.0
+        g = _predict(state, ge, "G", 1, range(1, 25))
+        check(
+            ge.parses == 1,
+            "two passes 2 s apart make one attempt, not one each (%d)" % ge.parses,
+        )
+        check(len(g) == 24, "and the pass predicts on the set in hand")
+        t[0] += 588.0
+        _predict(state, ge, "G", 1, range(1, 25))
+        check(ge.parses == 1, "590 s after the failure it still waits (%d)" % ge.parses)
+        t[0] += 12.0
+        ge.fail = False
+        _predict(state, ge, "G", 1, range(1, 25))
+        check(ge.parses == 2, "602 s after it, it tries again (%d)" % ge.parses)
+        check(state["eph_t"] == t[0], "and the good parse restarts the gate")
+
+        # A bridged BeiDou scope re-parses on the 60 s gate, and the collapse forces eph_t
+        # back; neither may cut the back-off short.
+        ge = _CountingEphMod()
+        ge.fail = True
+        lg = {19: (0.0,) * 9}
+        state = {
+            "mod": ge,
+            "eph": {"x": 1},
+            "eph_t": t[0] - 1000.0,
+            "scope": {("C", 19): {"peak_n": 24, "last_good": lg, "bridge_since": t[0]}},
+        }
+        _predict(state, ge, "C", 19, range(19, 27))
+        t[0] += 61.0
+        _predict(state, ge, "C", 19, range(19, 27))
+        check(
+            ge.parses == 1,
+            "on the bridge's 60 s gate a failed refresh still waits (%d)" % ge.parses,
+        )
+    finally:
+        sky._now, sky._log, sky._log_rl = saved
+
+
+def test_bridge_rereads_soon():
+    from gnss_broker import sky
+
+    print("brdc_predict: a bridged constellation re-parses within a minute")
+    ge = _CountingEphMod()
+    t = [1.0e6]
+    saved = (sky._now, sky._log, sky._log_rl)
+    sky._now = lambda: t[0]
+    sky._log = lambda msg: None
+    sky._log_rl = lambda key, msg, every_s=10.0: None
+    try:
+        state = {"mod": ge, "eph": {"x": 1}, "eph_t": t[0]}
+        _predict(state, ge, "C", 19, range(19, 43))  # 24 BDS-3 set the peak
+        t[0] += 2.0
+        _predict(state, ge, "C", 19, range(19, 27))  # 8: collapse, bridge
+        t[0] += 2.0
+        _predict(state, ge, "C", 19, range(19, 27))
+        check(
+            ge.parses == 1,
+            "the collapse forces a re-parse on the next pass (%d)" % ge.parses,
+        )
+        # That re-parse read the cached files; fetch_brdc only started the download, and
+        # what it lands must be read while the bridge lasts.
+        t[0] += 61.0
+        _predict(state, ge, "C", 19, range(19, 27))
+        check(
+            ge.parses == 2,
+            "61 s later, still on the bridge, it re-parses again (%d)" % ge.parses,
+        )
+        t[0] += 61.0
+        _predict(state, ge, "G", 1, range(1, 31))
+        check(
+            ge.parses == 2,
+            "a constellation off the bridge keeps the 900 s gate (%d)" % ge.parses,
+        )
+        _predict(state, ge, "C", 19, range(19, 43))  # recovered
+        n = ge.parses
+        t[0] += 61.0
+        _predict(state, ge, "C", 19, range(19, 43))
+        check(
+            ge.parses == n,
+            "and once BeiDou recovers it is back on the 900 s gate (%d)" % ge.parses,
+        )
+    finally:
+        sky._now, sky._log, sky._log_rl = saved
+
+
+def test_one_refresh_per_store():
+    import threading
+    from gnss_broker import sky
+
+    print("brdc_predict: chains sharing the store do not parse the same files together")
+    entered, release = threading.Event(), threading.Event()
+
+    class _SlowEphMod(_CountingEphMod):
+        def parse_rinex_nav(self, path):
+            self.parses += 1
+            if self.parses == 1:
+                entered.set()
+                release.wait(3.0)
+            return {"x": 1}
+
+    ge = _SlowEphMod()
+    saved = sky._log
+    sky._log = lambda msg: None
+    state = {"mod": ge, "eph": {"x": 1}, "eph_t": sky._now() - 1000.0}
+    th = threading.Thread(target=_predict, args=(state, ge, "G", 1, range(1, 31)))
+    th.start()
+    try:
+        check(entered.wait(3.0), "the first chain is inside its parse")
+        t0 = time.monotonic()
+        c = _predict(state, ge, "C", 19, range(19, 43))
+        waited = time.monotonic() - t0
+        check(
+            ge.parses == 1,
+            "a second chain arriving meanwhile does not parse too (%d)" % ge.parses,
+        )
+        check(len(c) == 24, "it predicts on the set in hand instead")
+        check(
+            waited < 1.0, "without waiting for the first one's parse (%.2f s)" % waited
+        )
+    finally:
+        release.set()
+        th.join(3.0)
+        sky._log = saved
 
 
 # ---------------------------------------------------------------------------------------
@@ -497,6 +652,47 @@ def test_404_is_not_a_dead_host():
         sup._src_dead.update(saved)
 
 
+def test_skipped_sources_keep_their_marks():
+    import urllib.error
+    import urllib.request
+    import gnss_brdc_supply as sup
+
+    print("_try_refresh_daily: sources that are all cooling down are not dialled")
+    dials = []
+
+    def fake_urlopen(req, **kw):
+        dials.append(req.full_url)
+        raise urllib.error.URLError("timed out")
+
+    saved = (dict(sup._src_dead), sup._earthdata_token, urllib.request.urlopen)
+    try:
+        # No Earthdata token: BKG is the only daily source. _fetch_brdc_merged has just marked
+        # it dead, and the hour walk's GSSC mark is still cooling down.
+        sup._earthdata_token = lambda: None
+        urllib.request.urlopen = fake_urlopen
+        sup._src_dead.clear()
+        bkg = sup._brdc_sources("S", 2026, 239)[0][0]
+        gssc = "ftp://gssc.esa.int/gnss/data/hourly/2026/239/12/x.rnx.gz"
+        sup._src_failed(bkg, exc=urllib.error.URLError("timed out"))
+        sup._src_failed(gssc, exc=urllib.error.URLError("timed out"))
+        with tempfile.TemporaryDirectory() as d:
+            for kind in ("S", "R"):
+                sup._try_refresh_daily(kind, 2026, 239, d, None)
+        check(
+            not dials,
+            "neither variant dials the dead BKG host again (%d dial(s))" % len(dials),
+        )
+        check(sup._src_skip(bkg), "and BKG's mark is still there")
+        check(
+            sup._src_skip(gssc),
+            "and the hourly host's mark survives for the walk that runs next",
+        )
+    finally:
+        sup._src_dead.clear()
+        sup._src_dead.update(saved[0])
+        sup._earthdata_token, urllib.request.urlopen = saved[1], saved[2]
+
+
 def test_hourly_mirrors():
     import datetime
     import gnss_brdc_supply as sup
@@ -721,27 +917,21 @@ def test_refresh_cadence_matches_the_product():
     satellites drop out of the prediction one at a time, while the survivors are predicted
     from ever-older records whose model error grows into the trim.
     """
-    import re
+    from gnss_broker import sky
 
     print("\nthe sky is refreshed as often as its source updates")
-    src = open(
-        os.path.join(os.path.dirname(os.path.abspath(__file__)), "sky.py")
-    ).read()
-    m = re.search(r'now - state\["eph_t"\] > ([0-9.]+):', src)
-    check(m is not None, "the refresh gate is a fixed interval")
-    if m:
-        iv = float(m.group(1))
-        check(
-            iv <= 3600.0,
-            "and it is at most the station-hourly update period (%.0f s <= 3600) -- asking "
-            "less often than the product changes guarantees a stale sky between refreshes"
-            % iv,
-        )
-        check(
-            iv >= 300.0,
-            "...but not so often it re-parses for nothing (%.0f s >= 300; fetch_brdc's own "
-            "caches make the call cheap, not free)" % iv,
-        )
+    iv = sky._SKY_REFRESH_S
+    check(
+        iv <= 3600.0,
+        "the refresh gate is at most the station-hourly update period (%.0f s <= 3600) -- "
+        "asking less often than the product changes guarantees a stale sky between refreshes"
+        % iv,
+    )
+    check(
+        iv >= 300.0,
+        "...but not so often it re-parses for nothing (%.0f s >= 300; fetch_brdc's own "
+        "caches make the call cheap, not free)" % iv,
+    )
     # The 4 h validity window is what makes the cadence matter -- if it ever widens, this
     # test's premise changes and someone should notice here.
     from gnss_ephemeris import predict_all
@@ -856,10 +1046,14 @@ def main():
         sys.path.insert(0, here)
     test_predict_scope()
     test_bridge_speaks()
+    test_failed_refresh_backs_off()
+    test_bridge_rereads_soon()
+    test_one_refresh_per_store()
     test_hourly_coverage()
     test_station_diversity()
     test_brdc_sources()
     test_404_is_not_a_dead_host()
+    test_skipped_sources_keep_their_marks()
     test_hourly_mirrors()
     test_hourly_coverage_beats_recency()
     test_coverage_counts_only_usable_records()

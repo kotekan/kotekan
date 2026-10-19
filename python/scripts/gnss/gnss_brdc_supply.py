@@ -574,11 +574,9 @@ def _try_refresh_daily(kind, year, doy, cache_dir, tok):
     local = os.path.join(cache_dir, name)
     if os.path.exists(local) and time.time() - os.path.getmtime(local) < 7200:
         return local
-    tried = 0
     for url, headers in _brdc_sources(kind, year, doy):
         if _src_skip(url):
             continue  # known dead, still cooling down -- do not pay for it
-        tried += 1
         try:
             req = urllib.request.Request(url, headers=headers)
             with urllib.request.urlopen(req, timeout=30) as r:
@@ -592,10 +590,6 @@ def _try_refresh_daily(kind, year, doy, cache_dir, tok):
         except Exception as e:
             _src_failed(url, exc=e)
             continue
-    # Every source was skipped, so every one is cooling down: clear all the marks so the next
-    # call retries at once instead of waiting out the cooldown.
-    if tried == 0:
-        _src_dead.clear()
     return local if os.path.exists(local) else None
 
 
@@ -603,8 +597,8 @@ def _try_refresh_daily(kind, year, doy, cache_dir, tok):
 # A dead mirror is paid for once, not on every fetch. The sources are tried in order and an
 # unreachable host blocks each attempt for the full timeout (30 s per daily, 20 s per station
 # file) before the next mirror is tried. A host that fails is skipped for _SRC_COOLDOWN_S.
-# Being wrong is bounded: a recovered host is retried after the cooldown, and the merge is
-# per-PRN freshest-wins, so a later merge repairs anything a skipped mirror would have supplied.
+# Being wrong is bounded: a recovered host is retried after the cooldown, and the merge is a
+# per-PRN union, so a later merge repairs anything a skipped mirror would have supplied.
 _SRC_COOLDOWN_S = 300.0
 _src_dead = {}  # scheme://host -> time.time() when it may be retried
 
@@ -810,9 +804,9 @@ def fetch_brdc(when=None, cache_dir=CACHE, block=False):
 
 def _fetch_brdc_now(when=None, cache_dir=CACHE):
     """Synchronous: fetch, then return the ordered list of BRDC nav-source files, best-first.
-    parse_rinex_nav merges them per PRN (union of records, freshest toe per PRN wins), so one
-    frozen product cannot starve a PRN another source carries fresh. Every source contributes;
-    callers do parse_rinex_nav(fetch_brdc(...)).
+    parse_rinex_nav merges them per PRN (the union of records, deduplicated by toe; best_eph
+    takes the toe nearest the epoch), so one frozen product cannot starve a PRN another source
+    carries fresh. Every source contributes; callers do parse_rinex_nav(fetch_brdc(...)).
 
     GNSS_BRDC_DIR pins the sky: when set, return exactly the nav files in that directory (no
     cache, no network, no date logic), and raise if it holds none. That makes broker_equiv's
@@ -853,8 +847,8 @@ def _fetch_brdc_now(when=None, cache_dir=CACHE):
     tok = _earthdata_token()
     doy = when.timetuple().tm_yday
     # Both daily variants (S first), then the station-hourly merge, each best-effort and
-    # cache-gated: a failure only leaves that source out. A stale variant is harmless; its
-    # older toes lose the per-PRN freshest-toe selection.
+    # cache-gated: a failure only leaves that source out. A stale variant is harmless: it only
+    # adds older toes that best_eph does not pick.
     for kind in ("S", "R"):
         p = _try_refresh_daily(kind, when.year, doy, cache_dir, tok)
         if p and p not in srcs:

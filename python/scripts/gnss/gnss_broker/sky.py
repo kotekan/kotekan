@@ -6,11 +6,18 @@ in the process the same dict), so one parse serves every constellation.
 """
 import math
 import re
+import threading
 from datetime import timedelta
 
 from .transport import _log, _log_rl, _now
 
 C_LIGHT = 299792458.0  # m/s
+
+# brdc_predict's re-parse gate on the shared BRDC store, the shorter gate of a constellation on
+# the collapse bridge, and the wait after a failed refresh before the next attempt.
+_SKY_REFRESH_S = 900.0
+_SKY_BRIDGE_REFRESH_S = 60.0
+_SKY_RETRY_S = 600.0
 
 
 def brdc_predict(state, lat, lon, alt_m, sysc, min_prn, t_utc, f_carrier_hz):
@@ -34,7 +41,8 @@ def brdc_predict(state, lat, lon, alt_m, sysc, min_prn, t_utc, f_carrier_hz):
     if getattr(_supply, "LOG_HOOK", "unset") is None:
         _supply.LOG_HOOK = _log
     now = _now()
-    # Re-parse every 900 s, as often as the product updates. The sky is served by the
+    sc = state.setdefault("scope", {}).setdefault((sysc, min_prn), {})
+    # Re-parse every _SKY_REFRESH_S, as often as the product updates. The sky is served by the
     # station-hourly merge, which updates every hour, and a broadcast record is valid for 4 h
     # from its toe. With a slower gate the toes age between refreshes: satellites drop out of
     # the prediction one at a time as they cross the window, with nothing in the log to say
@@ -44,46 +52,27 @@ def brdc_predict(state, lat, lon, alt_m, sysc, min_prn, t_utc, f_carrier_hz):
     # This is cheap. fetch_brdc keeps its own caches (2 h for the daily, 30 min for the
     # station-hourly merge) and refreshes them on a daemon thread, so a call costs a parse,
     # not a fetch. The gate only decides how soon a newer file is noticed.
-    if state["eph"] is None or now - state["eph_t"] > 900.0:
-        # Current-day BRDC files grow; fetch_brdc re-fetches a daily older than 2 h. Pass
-        # t_utc so a replay gets the day-matched file: today's file cannot predict another
-        # epoch (best_eph's 4 h window).
+    #
+    # A constellation on the collapse bridge (below) re-parses every _SKY_BRIDGE_REFRESH_S:
+    # the collapse guard's early re-parse reads the cached files and fetch_brdc only starts
+    # the download, so the files it lands are picked up at the next look.
+    gate = _SKY_BRIDGE_REFRESH_S if "bridge_since" in sc else _SKY_REFRESH_S
+    # One chain refreshes the shared store at a time; the others predict on the set in hand
+    # rather than parse the same files again. Only a store with no set yet waits for the lock.
+    lock = state.setdefault("lock", threading.Lock())
+    if lock.acquire(blocking=state["eph"] is None):
         try:
-            _old_eph = state["eph"]
-            # block only while there is no sky at all; with one in hand the fetch must not
-            # stall the pass (gnss_brdc_supply: the refresh runs on a thread).
-            state["eph"] = ge.parse_rinex_nav(
-                ge.fetch_brdc(t_utc, block=_old_eph is None)
-            )
-            state["eph_t"] = now
-            _n = len(state["eph"])
-            # Log only when the count changed: a line every 15 min regardless would bury a
-            # real thinning.
-            if _n != state.get("eph_n"):
-                _log(
-                    "brdc almanac: ephemeris refreshed (%d sats%s)"
-                    % (
-                        _n,
-                        ""
-                        if state.get("eph_n") is None
-                        else ", was %d" % state["eph_n"],
-                    )
-                )
-            state["eph_n"] = _n
-        except Exception as e:
-            state["eph_t"] = (
-                now - 7200.0 + 600.0
-            )  # coast on the old set; 6600 s is past the 900 s gate, so the next call retries
-            if state["eph"] is None:
-                raise
-            _log(
-                "brdc almanac: refresh failed (%s); coasting on the previous set "
-                "(sats thin out as toe ages past 4 h)" % e
-            )
+            if state["eph"] is None or (
+                now - state["eph_t"] > gate and now >= state.get("eph_retry_t", 0.0)
+            ):
+                _eph_refresh(state, ge, now, t_utc)
+        finally:
+            lock.release()
+    eph = state["eph"]
     dt = 4.0
-    pa = ge.predict_all(state["eph"], lat, lon, alt_m, t_utc, mask_deg=-90.0)
+    pa = ge.predict_all(eph, lat, lon, alt_m, t_utc, mask_deg=-90.0)
     pb = ge.predict_all(
-        state["eph"], lat, lon, alt_m, t_utc + timedelta(seconds=dt), mask_deg=-90.0
+        eph, lat, lon, alt_m, t_utc + timedelta(seconds=dt), mask_deg=-90.0
     )
     C = C_LIGHT
     out = {}
@@ -126,9 +115,10 @@ def brdc_predict(state, lat, lon, alt_m, sysc, min_prn, t_utc, f_carrier_hz):
     # Prediction-collapse guard. The daily BRDC's C/E nav records can lag the GPS ones by hours,
     # so a whole constellation's newest toe can leave best_eph's window at one instant: every
     # satellite of it drops in one cycle and the hint-gated search goes dark. If the predicted
-    # count falls below half its running peak, force an early refresh and bridge with the last
+    # count falls below half its running peak, force an early re-parse and bridge with the last
     # good prediction: a coasted el is drop-gate-grade for hours, and a stale Doppler hint
-    # degrades the search no worse than no hint at all.
+    # degrades the search no worse than no hint at all. The re-parse reads the cached files and
+    # starts a background download, which the bridge's short gate (above) picks up.
     #
     # The bookkeeping is per scope; the store is not. `state` is the shared BRDC store
     # (Receiver.brdc hands every chain the same dict), but peak_n and last_good describe one
@@ -136,17 +126,16 @@ def brdc_predict(state, lat, lon, alt_m, sysc, min_prn, t_utc, f_carrier_hz):
     # holding BeiDou (fewer satellites in its eph window than GPS) below half of it for good,
     # and last_good would bridge one constellation with another's satellites. Scope is
     # (sysc, min_prn) because min_prn is part of what defines this chain's population.
-    sc = state.setdefault("scope", {}).setdefault((sysc, min_prn), {})
     peak = sc.get("peak_n", 0)
     if len(out) >= peak:
         sc["peak_n"] = peak = len(out)
     if peak >= 4 and len(out) < 0.5 * peak:
-        # The refresh is a shared side effect with a shared 600 s cooldown: eph_t governs the
-        # one store, so the constellations must not each force their own. The announcement is
-        # per scope.
+        # The early re-parse is a shared side effect with a shared 600 s cooldown: eph_t
+        # governs the one store, so the constellations must not each force their own. The
+        # announcement is per scope.
         if now - state.get("collapse_refetch_t", 0.0) > 600.0:
             state["collapse_refetch_t"] = now
-            state["eph_t"] = now - 7201.0  # re-parse on the next call
+            state["eph_t"] = now - _SKY_REFRESH_S - 1.0  # re-parse on the next call
         lg = sc.get("last_good")
         if lg:
             # A bridged sky is stale and says so every time it is served: the drop gate, the
@@ -178,6 +167,44 @@ def brdc_predict(state, lat, lon, alt_m, sysc, min_prn, t_utc, f_carrier_hz):
             )
         sc["last_good"] = out
     return out
+
+
+def _eph_refresh(state, ge, now, t_utc):
+    """Re-parse the shared BRDC store, for brdc_predict under the store's lock. A failure keeps
+    the current set and holds the next attempt off for _SKY_RETRY_S; with no set yet it raises.
+    """
+    # Current-day BRDC files grow; fetch_brdc re-fetches a daily older than 2 h. Pass
+    # t_utc so a replay gets the day-matched file: today's file cannot predict another
+    # epoch (best_eph's 4 h window).
+    try:
+        _old_eph = state["eph"]
+        # block only while there is no sky at all; with one in hand the fetch must not
+        # stall the pass (gnss_brdc_supply: the refresh runs on a thread).
+        state["eph"] = ge.parse_rinex_nav(ge.fetch_brdc(t_utc, block=_old_eph is None))
+        state["eph_t"] = now
+        _n = len(state["eph"])
+        # Log only when the count changed: a line every 15 min regardless would bury a
+        # real thinning.
+        if _n != state.get("eph_n"):
+            _log(
+                "brdc almanac: ephemeris refreshed (%d sats%s)"
+                % (
+                    _n,
+                    "" if state.get("eph_n") is None else ", was %d" % state["eph_n"],
+                )
+            )
+        state["eph_n"] = _n
+    except Exception as e:
+        # Coast on the old set and retry in _SKY_RETRY_S, not on the next pass: the store is
+        # shared, and a failure that persists would otherwise re-parse on every chain's every
+        # pass.
+        state["eph_retry_t"] = now + _SKY_RETRY_S
+        if state["eph"] is None:
+            raise
+        _log(
+            "brdc almanac: refresh failed (%s); coasting on the previous set "
+            "(sats thin out as toe ages past 4 h)" % e
+        )
 
 
 def _dh_dpos(xc):

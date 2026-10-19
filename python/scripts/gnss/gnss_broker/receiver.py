@@ -171,8 +171,8 @@ class Receiver(object):
         The parse is multi-system (entries keyed (sys, prn), each consumer filtering at
         predict time), so one store serves GPS, Galileo and BeiDou together. `build` runs
         outside the lock, so two chains that miss together may both build; the first stored
-        wins and both get it. The returned dict is shared and is mutated by
-        sky.brdc_predict without this lock.
+        wins and both get it. The returned dict is shared; sky.brdc_predict re-parses it under
+        the store's own "lock" entry, not this lock.
         """
         with self._lock:
             if key in self._brdc:
