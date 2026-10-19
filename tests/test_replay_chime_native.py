@@ -12,6 +12,7 @@ from replay_chime_native import (
     aligned_offsets,
     base_config,
     cpu_products,
+    deployed_word,
     numerical_fixture,
     paired_selection,
     proxy_excess,
@@ -29,6 +30,24 @@ class ReplayContractTest(unittest.TestCase):
         self.assertEqual(aligned_offsets(1, N - 1, 8), [])
         with self.assertRaises(ValueError):
             aligned_offsets(-1, N, 1)
+
+    def test_undeployed_channel_is_refused(self):
+        decisions = {
+            "channels": [
+                {"channel": 14, "outcome": "useful", "deployed_word": 97883},
+                {
+                    "channel": 18,
+                    "outcome": "not useful",
+                    "reason": "out of time",
+                    "deployed_word": None,
+                },
+            ]
+        }
+        self.assertEqual(deployed_word(decisions, 14), 97883)
+        with self.assertRaisesRegex(ValueError, "channel 18 has no deployed word"):
+            deployed_word(decisions, 18)
+        with self.assertRaises(ValueError):
+            deployed_word(decisions, 19)
 
     def test_pair_phase_not_adjacent_storage_rows(self):
         complete, keep = paired_selection([N, 2 * N, 3 * N, 4 * N], [True] * 4)

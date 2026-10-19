@@ -11,7 +11,9 @@ The source bundle must be an archive-review-only candidate. The harness verifies
 its file digests and creates a temporary numerical test fixture with the same
 selected profile, weights, geometry, and literal word from the decisions file.
 The fixture explicitly records that it is not physically calibrated or authorized
-for activation. The source bundle is never modified. The generated graph has
+for activation. The source bundle is never modified. A channel that the decisions
+file does not deploy has no word; the harness refuses it, since its frames are
+masked and no detector word exists to replay. The generated graph has
 only file input, the detector, and file outputs; it has no mask consumer or live
 input. Keep candidate files and native-data receipts in an appropriately private
 location, not in this repository.

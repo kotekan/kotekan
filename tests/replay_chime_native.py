@@ -143,6 +143,22 @@ def paired_selection(sequences, keep):
     return complete, paired_keep
 
 
+def deployed_word(decisions, channel):
+    """Return the channel's deployed word; a channel without one is never replayed."""
+    rows = [row for row in decisions["channels"] if row["channel"] == channel]
+    if len(rows) != 1:
+        raise ValueError(
+            f"the decisions must hold exactly one row for channel {channel}"
+        )
+    if rows[0].get("deployed_word") is None:
+        raise ValueError(
+            f"channel {channel} has no deployed word ({rows[0].get('outcome')}: "
+            f"{rows[0].get('reason')}); its frames are masked, "
+            "so there is no detector word to replay"
+        )
+    return int(rows[0]["deployed_word"])
+
+
 def numerical_fixture(candidate, freq_id, word):
     """Copy one bound profile into an explicitly unqualified numerical fixture."""
     fixture = copy.deepcopy(candidate)
@@ -555,10 +571,7 @@ def replay(args):
         if len(matches) != 1:
             raise ValueError("exactly one candidate receiver profile is required")
         channel = int(matches[0]["physical_channel"])
-        decision_row = next(
-            row for row in decisions["channels"] if row["channel"] == channel
-        )
-        word = int(decision_row["deployed_word"])
+        word = deployed_word(decisions, channel)
         fixture, profile = numerical_fixture(candidate, freq_id, word)
         if profile["weight_bank_nbytes"] != 384:
             raise ValueError("replay requires K=128")
