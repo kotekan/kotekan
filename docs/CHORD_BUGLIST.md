@@ -195,7 +195,7 @@ pooled-slope re-fit is the remaining read-back (0b territory).** **10-19 10:47Z 
 7,076 points, 18 PRNs, with 0b live): pooled slope +2.3e-5 chip/Hz = -2.7 ms, from -8.1e-5 (+9.3 ms) before; the
 change is +1.0e-4 of the predicted +1.4e-4, the rest the within-pass degeneracy (per-PRN -11..+1 ms). CLOSED.**
 
-### #209 — `--detectors-monitor` (the E5a search experiment) silently disables the slewed seed refresh: every locked gal_e5a satellite is re-born every ~8 min with a trim wipe, and the obs rows carry 100-1000 m excursions since 2026-10-18 18:37Z (2026-10-19, overnight check)
+### #209 — `--detectors-monitor` (the E5a search experiment) silently disables the slewed seed refresh: every locked gal_e5a satellite is re-born every ~8 min with a trim wipe, and the obs rows carry 100-1000 m excursions since 2026-10-18 18:37Z (2026-10-19, overnight check; FIXED 2672b773b, LIVE since the 12:18:53Z broker restart)
 **What:** gal_e5a's `code_resid_m` rows have >20 m excursions on most PRNs since hour 18 of 10-18 (308 of 3,995 rows in
 that hour, 8 the hour before, ~600/h all night; 10-18's night had 3 in 14,826), with the per-PRN medians still fine (+-1 m)
 but p10/p90 of -100..+200 m (E2 -384/+192, E11 p90 +3,310). The night re-survey fit on gal_e5a reads rms 7 m with half
@@ -211,6 +211,10 @@ E33 walking to the 3.0 trim clamp"); it sat in #192's list. **Not** the 22:53Z (
 **Fix:** every seeding decision that asks "does this chain have detectors" must ask "do its detections seed" --
 `ctx.detectors` and `ctx.args.detectors_monitor` together (a helper); then a broker restart. Until then gal_e5a's code
 observables are unusable for the fits (the SEARCH-MONITOR itself is fine: it reads the search, not the tracker).
+
+**12:19Z LANDED:** gnss-broker restarted 12:18:53Z on 06be1fdd8 (seeds_are_model_owned); 0 CHAIN DIED, no tracebacks. The
+verdict is the SEEDAUDIT STEP / SAWTOOTH rate on gal_e5a and the obs excursions over the following half hour (overnight
+~600 excursions/h; gal_e5b ~0).
 
 ### #210 — glo_l3oc's code residual carries a GLONASS-only range-model term: +44 m up-like, +8 m north, +5 m east against the GPS/Galileo/BeiDou chains (2026-10-19, the 0b night gate)
 **What:** the night re-survey fit (gnss_resurvey.py --hours 6-13) on 10-19 with the model live reads glo_l3oc model -
@@ -1208,6 +1212,16 @@ design); cf05 CUDA + CPU builds (WERROR), 57/57 boost, `--check-config` 9/9, the
 results: `~/gnss/builds/stage9/` (prove_s9.py, s9lib.py, protected.json, allow9.json, s9_results.json). `test_context`
 fails one check at 96a341e7b itself (base and edit alike). The merge goes to whichever session holds kv/chord-gnss;
 after it, regenerate the fleet and the three instance configs (every header changes) and close this entry.
+**10-19 12:17Z post-merge steps done:** the six node configs regenerated from the manifest (gen_fleet.py, --check ALL 6
+match: the stage-9 headers + the staged choco EOP table 10-17..10-22), the aggregator and gather configs regenerated
+(bodies byte-identical, headers only) and the two instances restarted on them: gnss-aggregator 12:17:26Z, gnss-gather
+12:18:03Z -- the gather's first restart since 10-13 21:08, now on the staged build_nodpdk binary (72d3a36c4b2b, the
+#207 build) instead of its 10-13 inode. The EOP cron's "on-disk configs differ from the manifest beyond live data; NOT
+regenerated" (since 01:17Z, three runs) was this header change; with the regen it is back to pushing and regenerating.
+The cube archiver's config (cf06) was not regenerated: its header carries no recipe (it is in cubearch_up.sh) and the
+cf06 leg is not touched from here. No node cycle is needed for any of this: the live nodes' EOP tables are pushed hourly
+by the cron, the on-disk configs are now what a relaunch should start from, and nothing in the node binaries changed.
+
 
 ### #192 — comment pass, stage 10: the repair run for the ~200 small bugs the stage-8 reviewers confirmed (2026-10-15, PLANNED after stage 9)
 **What [tree]:** reading every comment against its code in stage 8 (#188) surfaced 199 findings that an adversarial
