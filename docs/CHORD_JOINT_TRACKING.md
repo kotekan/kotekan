@@ -283,24 +283,33 @@ Offline now, on the obs archive and the replays (no sky needed):
       to +0.18 / +0.17 / +0.15 m with Saastamoinen added. Ionosphere: what is left is a sin(el)
       term that is SUN-LOCKED (night fits of the station offset +12 m, day +2..5 m: the daytime
       L5 ionosphere, a 1/sin-shaped delay, aliases into an apparent height error like the
-      troposphere did); with Klobuchar added (even the 7-week-old 08-27 coefficients, the only
-      cached set) the day/night split collapses (gps_l5 +17.96 night vs +18.05 day, gal_e5a
-      +17.5/+18.2, bds_b3i +18.1/+20.5 m) and the night rms improves, so the model is on by
-      default. The coefficients ride the hourly station headers: the merge now splices the
-      IONOSPHERIC CORR lines from the first station that carries them (the golden re-blessed,
-      three header lines), and gnss_atmos.iono_params caches the last set seen
-      (~/.cache/kotekan_gps/iono_corr.json) for days when no station does, its age logged.
+      troposphere did). With Klobuchar added on the broadcast set of 10-17 (GPSA 1.9558e-08 0
+      -1.1921e-07 0, GPSB 1.2288e5 -1.6384e4 -2.6214e5 1.9661e5) the night fits read +17.7 /
+      +17.4 / +18.0 m (gps_l5 / gal_e5a / bds_b3i) and the day fits +14.1 / +14.3 / +16.5 m:
+      three quarters of the day/night split closed, the rest Klobuchar's own ~50 % rms error
+      (the 08-27 set closed it fully; the sets differ that much). A GIM later. The coefficients
+      ride the daily nav header on most days (the 10-18 daily and our hourly merge lacked them:
+      the merge kept the first station's header); the merge now re-splices the IONOSPHERIC
+      CORR lines from the first station that carries them on every merge (test_brdc_golden
+      re-blessed, three header lines), and gnss_atmos.iono_params caches the last set seen
+      (~/.cache/kotekan_gps/iono_corr.json; the broker writes it, the obs writers read it; a
+      pinned replay never touches it), its age logged past 14 days.
       **Re-survey measured, not yet applied (KV):** with both delays in, the station offset
-      (scripts/gnss/gnss_resurvey.py, per-10-s clock fixed effects, three ENU columns) is
-      model - true = (+18.0 U, +3.3 N, 0.0 E) m on the night rows of all three bands fitted,
-      and +18.1 / +18.2 / +20.5 U by day. The 18 m up is the geoid: 545 m is an orthometric
-      (sea-level) height and _ecef_of_llh takes an ellipsoidal one; the EGM2008 undulation at
-      the site is -16.55 m, so the ellipsoidal height is 528.4 m and the model has stood 16.5 m
-      too high (the residual +1.5 m is within the troposphere's zenith uncertainty). Lands as
-      `alt: 528.4` and `lat: 49.3199845` (3.3 m south) in config/gnss_chains_chord.yaml common,
-      plus the node-config regen and a broker restart; the gate is
-      `gnss_resurvey.py --hours 6-13 --klobuchar <set>` on the next day's obs reading dU, dN
-      within +-2 m of 0.
+      (scripts/gnss/gnss_resurvey.py, per-10-s clock fixed effects, three ENU columns, night
+      rows 06-13 UTC) is model - true = (+17.4..+18.0 U, +3.2..+3.9 N, 0.0 E) m on gps_l5,
+      gal_e5a and bds_b3i, and the same on 10-12 before the dishes were tipped (+18.3 / +17.5
+      U, +3.5 N), so it is a standing position error. The 18 m up is the geoid: 545 m is an
+      orthometric (sea-level) height and _ecef_of_llh takes an ellipsoidal one; the EGM2008
+      undulation at the site is -16.55 m (EGM96 grid -16.29), so the ellipsoidal height is
+      528.4 m and the model has stood 16.5 m too high since #99. The residual +1.5 m is of the
+      size of Klobuchar's night error at L5 (0.29 m per TECU) or of the hand-typed 545's own
+      precision, not of the troposphere's (0.1-0.3 m); by day dN reads +4.5..+5.3 m against
+      +3.2..+3.9 at night, so ~1-2 m of local-time term survives in N. Lands as `alt: 528.4`
+      and `lat: 49.3199845` (3.3 m south) in config/gnss_chains_chord.yaml common, plus the
+      node-config regen and a broker restart; the gate is `gnss_resurvey.py --hours 6-13
+      --klobuchar <the day's GPSA,GPSB>` on the next night's obs reading dU, dN within +-2 m of
+      0 (the offline script cannot preview it: --alt/--lat feed only the atmosphere, the rows'
+      residuals were formed live at 545 m).
   0c. **The state (done 2026-10-18, a3bfeabfc).** One unit with conversion at the feed; the
       coast-on-refusal consumer; selftest cases for each (a second constellation joining, a
       refusal coasting, a mass birth). Gate: selftest and `broker_equiv` green, fakefleet runs.

@@ -1726,7 +1726,11 @@ def _dr_reload(ctx, first, with_dcb=True):
         if getattr(ctx.args, "iono", "none") == "klobuchar":
             import gnss_atmos as _atm
 
-            res["iono"] = _atm.iono_params(_paths)  # {"alpha","beta","src","age_days"}
+            # {"alpha","beta","src","age_days"}; a pinned replay (GNSS_BRDC_DIR) must not read
+            # or refresh the live cache, so its only source is the pinned files.
+            res["iono"] = _atm.iono_params(
+                _paths, cache_dir="" if os.environ.get("GNSS_BRDC_DIR") else None
+            )
         # Measured code biases (DCB), on their own slower cadence (_DR_DCB_REFRESH_S): a daily
         # product with ~5 days of latency, biases stable over weeks. Optional: with no token or no
         # network dcb is None and group_delay_s uses the broadcast term.
@@ -2256,16 +2260,35 @@ def stage_dead_reckon(ctx):
                         datetime.fromtimestamp(_ep_w - 2.0, tz=timezone.utc),
                         mask_deg=-90.0,
                     )
-                    # The decoded path has no atmosphere of its own: fill tropo_m from each
-                    # row's elevation so the fallback and the BRDC model agree.
-                    if _tropo:
+                    # The decoded path has no atmosphere of its own: fill tropo_m and iono_m
+                    # from each row's geometry so the fallback and the BRDC model agree.
+                    if _tropo or _iono:
                         import gnss_atmos as _atm
 
-                        for _rows in (ctx.drp.pd, ctx.drp.pd2, pd0):
+                        _tow = ctx.dr_eph_mod.gpst_of_utc(
+                            datetime.fromtimestamp(_ep_w, tz=timezone.utc)
+                        )
+                        for _rows, _dt in (
+                            (ctx.drp.pd, 0.0),
+                            (ctx.drp.pd2, 2.0),
+                            (pd0, -2.0),
+                        ):
                             for _v in _rows.values():
-                                _v["tropo_m"] = _atm.tropo_delay_m(
-                                    _v["el"], ctx.args.lat, ctx.args.alt
-                                )
+                                if _tropo:
+                                    _v["tropo_m"] = _atm.tropo_delay_m(
+                                        _v["el"], ctx.args.lat, ctx.args.alt
+                                    )
+                                if _iono:
+                                    _v["iono_m"] = _atm.klobuchar_delay_m(
+                                        _iono[0],
+                                        _iono[1],
+                                        ctx.args.lat,
+                                        ctx.args.lon,
+                                        _v["el"],
+                                        _v["az"],
+                                        (_tow + _dt) % 604800.0,
+                                        _iono[2],
+                                    )
                     if _now() - ctx.decfb_log_t[0] > 60.0:
                         ctx.decfb_log_t[0] = _now()
                         _log(

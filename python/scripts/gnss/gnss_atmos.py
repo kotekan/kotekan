@@ -106,15 +106,17 @@ def parse_iono_corr(lines):
     return out
 
 
-def iono_params(paths, cache_dir=None):
+def iono_params(paths, cache_dir=None, write=True):
     """Klobuchar coefficients for the model: {"alpha", "beta", "src", "age_days"} from the first
     of `paths` (nav files, .gz or plain, best first) whose header carries GPSA/GPSB, which also
     refreshes `cache_dir`/iono_corr.json; else the cached set with its age (the coefficients
     change over weeks, so a stale set beats none); else None. cache_dir defaults to the BRDC
-    cache; "" disables the cache."""
+    cache; "" disables the cache. write=False reads the cache without refreshing it: the broker
+    is the nav cache's one writer, the observables writers read."""
     import gzip
     import json
     import os
+    import threading
     import time
 
     if cache_dir is None:
@@ -147,9 +149,11 @@ def iono_params(paths, cache_dir=None):
                 "src": os.path.basename(str(path)),
                 "age_days": 0.0,
             }
-            if cpath:
+            if cpath and write:
                 try:
-                    tmp = cpath + ".tmp"
+                    # a temp name unique per process and thread: the dead-reckon reloads run
+                    # on one thread per chain, and a shared temp file would publish a torn one
+                    tmp = "%s.tmp.%d.%d" % (cpath, os.getpid(), threading.get_ident())
                     with open(tmp, "w") as f:
                         json.dump(dict(out, t=time.time()), f)
                     os.replace(tmp, cpath)

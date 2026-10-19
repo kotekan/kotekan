@@ -144,6 +144,15 @@ check(
     A.iono_params([_without], cache_dir="") is None,
 )
 
+_td2 = tempfile.mkdtemp()
+r3 = A.iono_params([_with], cache_dir=_td2, write=False)
+check(
+    "iono_params: write=False reads the file and leaves the cache alone",
+    bool(r3)
+    and r3["alpha"] == alpha
+    and not os.path.exists(os.path.join(_td2, "iono_corr.json")),
+)
+
 # predict_all carries the delays as separate fields, off by default, on request.
 import glob  # noqa: E402
 from datetime import datetime, timezone  # noqa: E402

@@ -372,7 +372,7 @@ def main():
                     )
                 eph = parse_rinex_nav(srcs)
                 # Klobuchar coefficients beside the ephemeris (gnss_atmos): the row's iono_m
-                _iono = gnss_atmos.iono_params(srcs)
+                _iono = gnss_atmos.iono_params(srcs, write=False)
                 eph_t = now
                 if stale_geom:
                     print(

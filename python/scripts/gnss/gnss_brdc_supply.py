@@ -409,7 +409,16 @@ def _fetch_station_hourly(when, cache_dir, token):
     # Records are keyed (sys, prn, toc), so re-fetching an hour is idempotent and a record
     # carried by two stations is stored once.
     store, header = _store_load(cache_dir, when)
+    # The IONOSPHERIC CORR lines are re-spliced on every merge from the first station of this
+    # call that carries them, falling back to the set the stored header already had, so the
+    # merged set follows the broadcast instead of freezing at the first one ever seen.
     iono_lines = None
+    stored_iono = None
+    if header:
+        stored_iono = [ln for ln in header.splitlines(True) if "IONOSPHERIC CORR" in ln]
+        header = "".join(
+            ln for ln in header.splitlines(True) if "IONOSPHERIC CORR" not in ln
+        )
     n_start = len(store)
     fetched = 0
     seen = {k2: set() for k2 in _HOURLY_TARGET}
@@ -464,10 +473,13 @@ def _fetch_station_hourly(when, cache_dir, token):
                 continue
             eoh = txt.find("\n", k) + 1
             if header is None:
-                header = txt[:eoh]
+                header = "".join(
+                    ln
+                    for ln in txt[:eoh].splitlines(True)
+                    if "IONOSPHERIC CORR" not in ln
+                )
             # The Klobuchar coefficients (IONOSPHERIC CORR) ride the header of the stations
-            # that carry them; keep the first set seen so the merged header has one whichever
-            # station came first.
+            # that carry them; the first set seen this call goes into the merged header.
             if iono_lines is None and "IONOSPHERIC CORR" in txt[:eoh]:
                 iono_lines = [
                     ln for ln in txt[:eoh].splitlines(True) if "IONOSPHERIC CORR" in ln
@@ -540,10 +552,11 @@ def _fetch_station_hourly(when, cache_dir, token):
                 age,
             )
         )
-    if iono_lines and "IONOSPHERIC CORR" not in header:
+    _il = iono_lines or stored_iono
+    if _il:
         k = header.find("END OF HEADER")
         k = header.rfind("\n", 0, k) + 1 if k > 0 else len(header)
-        header = header[:k] + "".join(iono_lines) + header[k:]
+        header = header[:k] + "".join(_il) + header[k:]
     _atomic_write_bytes(
         local, gzip.compress((header + "".join(bodies)).encode("ascii", "replace"))
     )
