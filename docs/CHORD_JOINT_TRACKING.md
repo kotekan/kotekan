@@ -294,7 +294,7 @@ Offline now, on the obs archive and the replays (no sky needed):
       re-blessed, three header lines), and gnss_atmos.iono_params caches the last set seen
       (~/.cache/kotekan_gps/iono_corr.json; the broker writes it, the obs writers read it; a
       pinned replay never touches it), its age logged past 14 days.
-      **Re-survey measured, not yet applied (KV):** with both delays in, the station offset
+      **Re-survey measured and APPLIED 2026-10-19 00:56Z (e5c42b7ec; gate = the next night's obs):** with both delays in, the station offset
       (scripts/gnss/gnss_resurvey.py, per-10-s clock fixed effects, three ENU columns, night
       rows 06-13 UTC) is model - true = (+17.4..+18.0 U, +3.2..+3.9 N, 0.0 E) m on gps_l5,
       gal_e5a and bds_b3i, and the same on 10-12 before the dishes were tipped (+18.3 / +17.5

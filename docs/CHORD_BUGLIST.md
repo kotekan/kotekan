@@ -206,7 +206,7 @@ at the hop-derived now (the fe-axis newest hop / hops_per_sec, converted to GPST
 `t_eph_age` to that hop time; keep wall time only for elapsed-time bookkeeping. A few lines in stage_dead_reckon +
 the selftest that pins "no wall time in cp_predicted's inputs" (grep-based, like test_gauge_churn). Needs a broker
 restart.
-**23:05Z THE DEAD-RECKON EPOCH IS ON THE HOP AXIS (9f9808c7c + the merge follow-up):** `dr_eph_epoch(ctx)` in
+**10-18 23:01Z THE DEAD-RECKON EPOCH IS ON THE HOP AXIS (9f9808c7c + the merge follow-up):** `dr_eph_epoch(ctx)` in
 gnss_broker/deadreckon.py returns (t_eph_age, UTC seconds) = (t_now_abs, utc0_sample0 + t_now_abs): under
 `dr-fengine-axis: 1` (every chain) t_now_abs is the F-engine hop counter interpolated by wall ELAPSED seconds only, placed
 on UTC through utc0_sample0, the F-engine's own time of sample 0. All seven model evaluations in the dead-reckon block
@@ -227,7 +227,7 @@ search hints and coasted-seed Doppler); (2) seeding.py builds a detection age an
 `now_w - utc0_sample0` against hop labels; (3) searchhint.py builds a hint ref_hop from `ctx.t0 - utc0_sample0`.
 Each wants the hop-axis now (ctx.drp.t_now_abs) in place of the wall difference; one pass, one broker restart.
 The WALL-vs-F-ENGINE tripwire's text now says what a wall step does (nothing to the models; those three paths).
-**23:45Z THE REMAINDER, DONE (one pass):** `transport.axis_now(ctx)` is the one "now" every stage refers to: the
+**10-18 23:25Z THE REMAINDER, DONE (one pass):** `transport.axis_now(ctx)` is the one "now" every stage refers to: the
 F-engine hop counter interpolated by wall ELAPSED seconds (the filtered fe_off plus the frozen cycle clock; the raw newest
 hop plus the seconds since its poll while the filter has no sample; the frozen clock minus utc0_sample0 only before the
 first telemetry or without --dr-fengine-axis), None until utc0_sample0 is known. Consumers: (a) dead-reckon's t_now_abs
@@ -627,8 +627,8 @@ test, selftest, and the onsky_l5_holds replay (no "feed skipped", the rrate feed
 gate could not judge it: the replay is NON-DETERMINISTIC (two replays of the unchanged 5a1522f3f tree disagree,
 `broker_equiv.py selftest` says so; three trees gave three digests under one golden) = #192 (g), open. LIVE after the
 next broker restart.
-**10-19 02:30Z STEP 0b (CHORD_JOINT_TRACKING.md 6.3) -- troposphere AND ionosphere shipped, the re-survey measured
-and explained:** gnss_atmos.py (Saastamoinen zenith delays from a standard atmosphere at the site height, Chao
+**10-19 00:4xZ (commits 23:47Z..00:50Z) STEP 0b (CHORD_JOINT_TRACKING.md 6.3) -- troposphere AND ionosphere shipped, the re-survey
+measured and explained:** gnss_atmos.py (Saastamoinen zenith delays from a standard atmosphere at the site height, Chao
 mapping; Klobuchar at the chain's carrier; RINEX IONOSPHERIC CORR parse + a coefficient cache); predict_all carries
 tropo_m / iono_m as separate delays (0.0 off), cp_predicted adds them (every model-evaluated code phase: seeds,
 offsets, trkresid, and the decoded fallback), the obs rows publish both; `--tropo saastamoinen` and `--iono klobuchar`
@@ -658,6 +658,18 @@ Expected live effect of the atmosphere at the next broker restart: b_sat spread 
 lose their elevation and local-time terms, the joint clock shifts by the fed set's mean delay (~5 m by day),
 code_resid_m in the obs flattens vs elevation; the broker_equiv digests move. Tools: scripts/gnss/gnss_resid_vs_el.py
 [--atmos tropo|both] [--hours], scripts/gnss/gnss_resurvey.py [--hours] [--klobuchar GPSA,GPSB] [--f-hz].
+**10-19 00:56:47Z DEPLOYED (KV's go):** config e5c42b7ec (`alt: 528.4`, `lat: 49.3199845` in the chains yaml common and in
+the stack's GNSS_SITE_LL; the node configs do not take the position, no regen), gnss-broker restarted 00:56:47Z (#208 +
+0b + the position land together), the ten obs writers and the viewer restarted 00:58Z for the position. T+15 min: all
+fifteen units active, NRestarts 0 everywhere, 0 CHAIN DIED, no tracebacks; BRDC loaded on every chain in 14 s; the
+Klobuchar set came from the freshly merged hourly (the splice working: alpha 2.5146e-08 ..., newer than the 10-17
+daily's); gps_l5 clock 151.91 chips, JOINT re-established (n=5, +-0.10 chip); SEARCH-MONITOR gal_e5a 5-min +0.474 chip
+(+13.9 m, p10/p90 +0.37/+0.56) against +0.58..+0.60 just before (#191's constant moved ~3 m with the atmosphere and
+position); obs rows carry tropo_m (3.19 m at el 44) and iono_m (12.0 m at L5, 18:12 local); the #207 invariant still 0;
+viewer 200. **GATE (tomorrow):** `scripts/gnss/gnss_resurvey.py --hours 6-13 --klobuchar <the day's GPSA,GPSB from
+~/.cache/kotekan_gps/iono_corr.json> /home/kvand/gnss/fixtures/obs 20261019 gps_l5 gal_e5a bds_b3i` must read dU, dN
+within +-2 m of 0 (expect dU ~ +1.5 if the residual is real), and `gnss_resid_vs_el.py --atmos both --hours 6-13 ...`
+flat; then 0b closes.
 
 ### #171 — the ALERT files reach no one (2026-10-09)
 **What [tree]:** `chain_health_cron.sh` (cf06, */15) and `elem_ref_cron.sh` (gnss, */5) write ALERT files that
