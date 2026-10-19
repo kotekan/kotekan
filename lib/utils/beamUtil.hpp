@@ -48,7 +48,7 @@ namespace Beams {
 struct FRBBeam {
     uint64_t id;       /// Beam ID
     double x_dir_grid; /// x component of beam pointing vector in GRID frame
-    double y_dir_grid; /// x component of beam pointing vector in GRID frame
+    double y_dir_grid; /// y component of beam pointing vector in GRID frame
 };
 
 struct FixedBBBeam {
