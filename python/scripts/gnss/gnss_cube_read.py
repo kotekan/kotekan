@@ -204,7 +204,7 @@ def cmd_ls(args):
         f"{'sender':<34} {'gpu':>3} {'windows':>8} {'span':>9} {'holes':>7} "
         f"{'dropped':>8} {'shape':>14}"
     )
-    grand_holes = grand_drop = 0
+    grand_holes = grand_drop = grand_unclaimed = 0
     for (chain, gpu), s in sorted(senders.items()):
         idx = np.array(sorted(set(s["idx"])))
         span = int(idx[-1] - idx[0] + 1) if len(idx) else 0
@@ -212,6 +212,9 @@ def cmd_ls(args):
         drop = s["dropped1"] - s["dropped0"]
         grand_holes += holes
         grand_drop += drop
+        # A window the sender dropped is a hole in its index too; the rest no sender claims. A
+        # counter that fell (the sender restarted, so it counts from 0 again) claims nothing.
+        grand_unclaimed += max(0, holes - max(drop, 0))
         shape = f"{s['n_prn']}x{s['n_bin']}x{s['n_elem']}"
         print(
             f"{chain:<34} {gpu:>3} {len(idx):>8} {span:>9} {holes:>7} {drop:>8} {shape:>14}"
@@ -222,21 +225,23 @@ def cmd_ls(args):
         else 0
     )
     print(f"\nwindow {secs:.5f} s")
-    # The two kinds of loss are different faults, so they are never added together.
-    print(
-        f"holes in the window index : {grand_holes}   "
-        f"(missing frames not claimed by any sender)"
-    )
+    # The holes split into the two kinds of loss, which are different faults: the windows the
+    # senders dropped, and the rest, which no sender claims.
+    print(f"holes in the window index : {grand_holes}")
     print(
         f"sender-side drops         : {grand_drop}   "
         f"(assembler output buffer full -- the tracker outran the archive)"
     )
-    if grand_holes and not grand_drop:
+    print(
+        f"unclaimed (downstream)    : {grand_unclaimed}   "
+        f"(missing frames not claimed by any sender)"
+    )
+    if grand_unclaimed and not grand_drop:
         print(
             "⇒ every hole is DOWNSTREAM of the sender: bufferSend drop_frames, the network, "
             "or the archiver. Look there, not at the nodes."
         )
-    if grand_drop and not grand_holes:
+    if grand_drop and not grand_unclaimed:
         print("⇒ the senders dropped and said so; nothing was lost in transport.")
 
 

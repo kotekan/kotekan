@@ -21,13 +21,14 @@
 Run on cf06 with /home/kvand/gnss/venv/bin/python (venv-ft has no h5py) and absolute paths,
 never on a node: the raw tree is on /mnt/cs00, and the nodes are production trackers.
 
-The time axis. A frame carries utc0 (UTC of F-engine sample 0); the last frame's utc0 dates
-every frame of its raw file, gated against the file's mtime: rawFileWrite closes a file within
-seconds of its last frame, so |utc(last window) - mtime| > --mtime-tol seconds means the epoch
-does not describe the file (or the F-engine restarted since), and the file is refused rather
-than misdated. A file whose frames carry no utc0 (v2) is refused. A refusal is recorded in
-the manifest; the file is read again only if its mtime changes or --redo is given, and never
-if its size changed (see cmd_compact).
+The time axis. A frame carries utc0 (UTC of F-engine sample 0); the one utc0 every frame of a
+raw file carries dates them all, gated against the file's mtime: rawFileWrite closes a file
+within seconds of its last frame, so |utc(last window) - mtime| > --mtime-tol seconds means the
+epoch does not describe the file (or the F-engine restarted since), and the file is refused
+rather than misdated. A file whose frames carry no utc0 (v2), or more than one (an F-engine
+re-base inside the file), is refused. A refusal is recorded in the manifest; the file is read
+again only if its size or mtime changes or --redo is given. A folded file whose size changed is
+skipped unless --redo is given (see cmd_compact).
 
 Nothing here is a dB, and nothing is a mean. L0 copies the frame's linear sums with their term
 counts (`w`), so cells still add; a rung is a sum of sums. The one derived quantity, the rung's
@@ -380,11 +381,18 @@ def cmd_compact(args):
             if prev.get("mtime") == st.st_mtime:
                 reskipped += 1
                 continue
-        if prev and prev["size"] != st.st_size:
+        if (
+            prev
+            and prev["size"] != st.st_size
+            and not args.redo
+            and not prev.get("refused")
+            and prev.get("note") != "empty"
+        ):
             # Grew since it was folded: rows already in L0 cannot be removed, and folding the
             # whole file again would duplicate them. Only the newest file is open, so this
-            # follows an earlier --include-open on it. --redo does not bypass this check, and a
-            # refused file whose size changed (nothing of it in L0) is skipped here too.
+            # follows an earlier --include-open on it. --redo folds it again (its help requires
+            # the L0 to be deleted first); a refused or empty file has nothing in L0 and is
+            # retried.
             print(
                 f"{key}: size {prev['size']} -> {st.st_size} since it was compacted "
                 f"(--include-open earlier?). SKIPPED; to fold it again, delete its day's L0, "
@@ -432,6 +440,24 @@ def cmd_compact(args):
                 mtime=st.st_mtime,
                 frames=len(frames),
                 refused="no utc0 in frames",
+                done=iso(time.time()),
+            )
+            stats["refused"] += 1
+            continue
+        # utc0 changes only at an F-engine re-base, and senders cross one at different times,
+        # so no single epoch dates every frame of a file that holds two.
+        n_utc0 = len(set(per_frame_utc0))
+        if n_utc0 > 1:
+            print(
+                f"✗ {key}: frames carry {n_utc0} distinct utc0 (an F-engine re-base inside the "
+                f"file) -- REFUSED",
+                file=sys.stderr,
+            )
+            manifest[key] = dict(
+                size=st.st_size,
+                mtime=st.st_mtime,
+                frames=len(frames),
+                refused=f"frames carry {n_utc0} distinct utc0 (re-base inside the file)",
                 done=iso(time.time()),
             )
             stats["refused"] += 1
@@ -510,6 +536,12 @@ def cmd_compact(args):
             if len(days) > 1:
                 for k in [k for k in open_files if k[2] != days[-1]]:
                     open_files.pop(k).close()
+    # A todo list that ends on an empty or refused file `continue`s past the batch block, so
+    # the rows folded since the last flush are written here, before the manifest marks their
+    # files done.
+    if batch_sources:
+        stats["rows"] += sum(len(lf.rows["idx"]) for lf in open_files.values())
+        flush_all()
     for lf in open_files.values():
         lf.close()
     # Save unconditionally: a refused or empty file `continue`s past the batch block above, so
@@ -734,7 +766,10 @@ def cmd_rung(args):
             os.makedirs(os.path.dirname(dst), exist_ok=True)
             if os.path.exists(dst):
                 os.remove(dst)
-            with h5py.File(dst, "w") as g:
+            # Written under a temporary name and renamed when complete: cubecompact_loop.sh
+            # counts the rung files that exist, so a cut killed mid-file must leave none.
+            tmp = dst + ".tmp"
+            with h5py.File(tmp, "w") as g:
                 for k, v in a.items():
                     g.attrs[k] = v
                 g.attrs["format"] = f"gnss_cube_rung"
@@ -747,7 +782,8 @@ def cmd_rung(args):
                 g.attrs["freq_id_hi"] = f["win/freq_id_hi"][0]
                 g.attrs["created"] = iso(time.time())
                 g.attrs["units"] = (
-                    "SUMS over the block's windows of the L0 sums (float64); cohpow = "
+                    "SUMS over the block's windows of the L0 sums (accumulated in float64, "
+                    "stored float32; cohref complex64); cohpow = "
                     "SUM |coh|^2 per window; cohref = SUM coh[e]*conj(coh[ref_elem]) "
                     "-- the per-element relative response, blind to the per-window "
                     "phase reference; n_win = windows with this (slot, prn) present"
@@ -764,6 +800,7 @@ def cmd_rung(args):
                     if k == "cohref":
                         v = v.astype(np.complex64)
                     r.create_dataset(k, data=v)
+            os.replace(tmp, dst)
             split = int(np.sum(np.unique(uk[:, :2], axis=0, return_counts=True)[1] > 1))
             print(
                 f"{dst}: {m} rows from {len(idx)} L0 rows, {len(ub)} blocks, ref_elem {ref}, "
@@ -785,6 +822,11 @@ def cmd_verify(args):
     per_frame_utc0 = [h["utc0"] for h, _ in frames if h.get("utc0")]
     if not per_frame_utc0:
         raise SystemExit("v2 frames carry no utc0")
+    n_utc0 = len(set(per_frame_utc0))
+    if n_utc0 > 1:
+        raise SystemExit(
+            f"frames carry {n_utc0} distinct utc0 (re-base inside the file): compact refuses it"
+        )
     utc0 = float(per_frame_utc0[-1])
     cells = [
         (fi, p)
@@ -893,7 +935,7 @@ def main():
         action="store_true",
         help="fold every raw file under --raw again (all days), refused ones included. "
         "Rows already in L0 are duplicated, so first delete the L0 of every day those files "
-        "cover. A file whose size changed since it was folded is still skipped",
+        "cover",
     )
     p.add_argument("--pointings", default=DEFAULT_POINTINGS)
     p.set_defaults(fn=cmd_compact)

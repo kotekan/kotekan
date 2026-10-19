@@ -24,14 +24,16 @@ while [ "$stopping" = 0 ]; do
         if [ -n "$files" ]; then
             # last_rung_day lives in memory, so after a restart the files decide whether a
             # day's rungs are done (a re-cut rewrites the whole day). Skip only on one rung12
-            # file per L0 file; a lower count (a cut interrupted between files) re-cuts,
-            # because a partial rung becomes a partial map.
+            # and one rung60 file per L0 file; a lower count (a cut interrupted between files,
+            # or before rung60) re-cuts, because a partial rung becomes a partial map. The tool
+            # renames each rung file into place once written, so a file that exists is whole.
             n_l0=$(echo "$files" | wc -l)
             n_r12=$(ls "$ROOT"/rung12/*/*/"$yday".h5 2>/dev/null | wc -l)
-            if [ "$n_r12" -eq "$n_l0" ]; then
+            n_r60=$(ls "$ROOT"/rung60/*/*/"$yday".h5 2>/dev/null | wc -l)
+            if [ "$n_r12" -eq "$n_l0" ] && [ "$n_r60" -eq "$n_l0" ]; then
                 echo "== $(date -u +%FT%TZ) rungs for $yday already complete ($n_r12/$n_l0)"
             else
-                echo "== $(date -u +%FT%TZ) rungs for $yday ($n_r12/$n_l0 present)"
+                echo "== $(date -u +%FT%TZ) rungs for $yday ($n_r12/$n_l0 present, rung60 $n_r60)"
                 for n in 12 60; do
                     # shellcheck disable=SC2086
                     "$PY" -u "$TOOL" rung --n $n --out "$ROOT" --l0-root "$ROOT" $files 2>&1

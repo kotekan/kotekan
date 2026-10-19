@@ -19,7 +19,8 @@ What it checks, each against a way the leg can fail silently:
       frames, node dead. kotekan must still be alive after the whole replay has been sent.
 
   [1] EVERY WINDOW ARRIVES, IN ORDER, WITH NO DROPS. Window indices consecutive, sender
-      dropped_windows 0, and the last window (never closed: no later one opens) not emitted.
+      dropped_windows 0, and the last window (never closed: no later one opens) not emitted,
+      checked again after kotekan has stopped.
 
   [2] SILENCE IS SILENCE. A slot the producer never ran must carry prn = 0 and all-zero rows,
       never a row of zeros labelled with a PRN, which downstream reads as "no power here".
@@ -436,7 +437,23 @@ def main():
                             )
                         if got[0] == -777.0 * REC_PER_WIN:
                             fails.append("%s: a NON-PROMPT row reached the cube" % tag)
-        return finish(fails, d, log, a.keep, proc)
+
+        # -- [1] again, after shutdown ---------------------------------------------------------
+        # The last window must not be emitted when kotekan stops and its sinks flush either, and
+        # a late emit lands after every read above, so the archive is read once more.
+        if proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+        late = [h["idx"] for h, _ in read_archive(out_dir) if h["idx"] >= want_windows]
+        if late:
+            fails.append(
+                "window(s) %s archived after the replay: the last window is never closed, "
+                "so it must never be emitted" % late
+            )
+        return finish(fails, d, log, a.keep)
     finally:
         if proc.poll() is None:
             proc.terminate()
@@ -459,13 +476,7 @@ def read_archive(out_dir):
     return frames
 
 
-def finish(fails, d, log, keep, proc):
-    if proc.poll() is None:
-        proc.terminate()
-        try:
-            proc.wait(5)
-        except subprocess.TimeoutExpired:
-            proc.kill()
+def finish(fails, d, log, keep):
     if fails:
         print("\nFAIL (%d):" % len(fails))
         for f in fails[:40]:

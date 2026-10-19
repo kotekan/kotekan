@@ -1,16 +1,14 @@
 """gnss_beam_cube.py's pixelisation, against healpy.
 
-⚠️ WHY THIS TEST EXISTS AND WHY IT IS NOT OPTIONAL. gnss_beam_cube.py inlines ang2pix (RING)
-and the RING/NEST pair so the builder runs in venv-ft rather than needing the healpy venv.
-That is a reasonable trade only while the arithmetic is verified against the real thing: a
-wrong pixelisation does not fail, it puts the beam somewhere else on the sky, and the result
-still looks like a beam.
+Why this test exists and why it is not optional. gnss_beam_cube.py inlines ang2pix (RING) and
+the RING/NEST pair so the --source elem build runs in venv-ft (--source l0 needs h5py from
+venv) without healpy. That is a reasonable trade only while the arithmetic is verified against
+the real thing: a wrong pixelisation does not fail, it puts the beam somewhere else on the
+sky, and the result still looks like a beam.
 
-It has already earned its keep once. The first hand-written ring2nest was wrong for 100% of
-pixels at every nside (nest2ring, written from the same reference, was exact) -- which made
-the export's downgrade wrong for 80% of pixels and would have quietly scrambled every
-multi-resolution cube. It is now the exact inverse permutation of the verified nest2ring,
-which cannot be wrong in a way nest2ring is not.
+ring2nest is the exact inverse permutation of nest2ring, so it cannot be wrong in a way
+nest2ring is not; both are checked against healpy here. The export's downgrade goes through
+NEST, so a wrong pair would quietly scramble every multi-resolution cube.
 
 Needs healpy: /home/kvand/gnss/venv/bin/python, NOT venv-ft. Skipped without it, and a skip
 here is a real loss of coverage, not a pass.
@@ -136,10 +134,9 @@ def test_azel_convention_is_the_local_horizon_frame():
     Deliberately local, not celestial -- the beam is bolted to the dish, so a celestial
     pixelisation would smear a stationary pattern across the sky as earth turns.
 
-    ⚠️ THERE IS NO SINGLE ZENITH PIXEL, and this test asserted that there was. In HEALPix the
-    pole is a pixel CORNER where four pixels meet, so the four cardinal azimuths at el 90 land
-    in pixels 0, 1, 2 and 3 -- which is what healpy does too, verified here rather than
-    assumed. Anything that wants "the value at zenith" must average the top ring, never index
+    There is no single zenith pixel. In HEALPix the pole is a pixel corner where four pixels
+    meet, so the four cardinal azimuths at el 90 land in pixels 0, 1, 2 and 3, as they do in
+    healpy. Anything that wants "the value at zenith" must average the top ring, never index
     one pixel; a viewer that picks pixel 0 is reading one quadrant and calling it the centre.
     """
     az = np.array([0.0, 90.0, 180.0, 270.0])

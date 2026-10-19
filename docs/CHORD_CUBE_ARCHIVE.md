@@ -79,8 +79,10 @@ h5py) **on cf06** with absolute paths — the nodes are production trackers.
 rawFileWrite closes a file within seconds of its last frame — measured `mtime − utc(last
 window)` = +1.2 … +2.6 s on 09-05. So `|utc(last window) − mtime| > 60 s` means the epoch does
 not describe this file: a stale frame `utc0`, or the F-engine restarted since (new frame0). The
-compactor refuses the file rather than dating it wrong; an L0 day file also refuses a second
-`utc0` (two epochs in one day = an F-engine restart; keep them apart deliberately).
+compactor refuses the file rather than dating it wrong. It also refuses a raw file whose frames
+carry more than one `utc0` (an F-engine re-base inside the file: the gate sees only the last
+window, and no one epoch dates every frame). An L0 day file accepts a second `utc0`: each
+window is dated from its own raw file's epoch, and the `utc0_set` attr lists every epoch seen.
 
 time0 for the 2026-09-05 archive: **1788541059.000002870** s (frame0_nano 1169225859000002870
 + GPS-week rollover; identical on all six nodes, exposed at `/telescope/time0_ns`).
