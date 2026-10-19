@@ -22,6 +22,22 @@
 #include <vector>     // for vector
 
 
+/**
+ * @class calcBBPhase
+ * @brief Produce the baseband beamforming phases `A` and shift `s`.
+ *
+ * One phase matrix is produced per beam position frame and per bad feed mask frame; frame `k` of
+ * each stream covers the same FPGA samples, so the three must have the same lifetime. Phases of
+ * bad feeds are zero.
+ *
+ * @par Buffers
+ * @buffer bb_beam_positions The beam positions, [B][X/Y], float32
+ * @buffer bf_mask           The bad feed mask, [Tbf=1][P][D], int8, 1 = good
+ * @buffer bb_phase          The phases, [Tbb=1][F][P][B][D][C], int8
+ * @buffer bb_shift          The shift, [F][P][B], int32; written once
+ *
+ * @conf bb_phase_lifetime_in_samples Int. How many FPGA samples one phase matrix covers.
+ */
 class calcBBPhase : public kotekan::Stage {
     // Telescope setup
     const int num_components = config.get<int>(unique_name, "num_components");
@@ -53,6 +69,7 @@ class calcBBPhase : public kotekan::Stage {
 
     // Buffers
     Buffer* const bb_beam_positions_buffer;
+    Buffer* const bf_mask_buffer;
     Buffer* const A_buffer;
     Buffer* const s_buffer;
 
@@ -63,19 +80,27 @@ public:
               [](const kotekan::Stage& stage) {
                   return const_cast<kotekan::Stage&>(stage).main_thread();
               }),
-        bb_beam_positions_buffer(get_buffer("bb_beam_positions")), A_buffer(get_buffer("bb_phase")),
+        bb_beam_positions_buffer(get_buffer("bb_beam_positions")),
+        bf_mask_buffer(get_buffer("bf_mask")), A_buffer(get_buffer("bb_phase")),
         s_buffer(get_buffer("bb_shift"))
     //
     {
         assert(bb_beam_positions_buffer);
+        assert(bf_mask_buffer);
         assert(A_buffer);
         assert(s_buffer);
         bb_beam_positions_buffer->register_consumer(unique_name);
+        bf_mask_buffer->register_consumer(unique_name);
         A_buffer->register_producer(unique_name);
         s_buffer->register_producer(unique_name);
 
         bb_beam_positions_buffer->require_frame_desc(kotekan::NDArray<float, 2>::describe(
             "bb_beam_positions", {bb_num_beams, 2}, {"B", "X/Y"}, {1, 1}));
+
+        // Mask frame `k` is applied to phase frame `k`, so the mask must have our lifetime
+        bf_mask_buffer->require_frame_desc(kotekan::NDArray<std::int8_t, 3>::describe(
+            "bf_mask", {1, num_polarizations, num_dishes}, {"Tbf", "P", "D"},
+            {bb_phase_lifetime_in_samples, 1, 1}));
 
         // The leading axis has length 1 and carries the lifetime as its `dimscaling`; that is how
         // the GPU ring buffer learns how many FPGA samples one phase matrix covers. Same shape as
@@ -122,6 +147,7 @@ public:
         for (std::int64_t frame_index = 0; !stop_thread; ++frame_index) {
             const int bb_beam_positions_frame_id =
                 frame_index % bb_beam_positions_buffer->num_frames;
+            const int bf_mask_frame_id = frame_index % bf_mask_buffer->num_frames;
             const int A_frame_id = frame_index % A_buffer->num_frames;
 
             // Wait for buffers. Blocking here paces production to the consumers.
@@ -131,6 +157,13 @@ public:
                 static_cast<const void*>(bb_beam_positions_buffer->wait_for_full_frame(
                     unique_name, bb_beam_positions_frame_id)));
             if (!bb_beam_positions_frame)
+                return;
+
+            DEBUG("[{:s}/{:d}] Waiting for buffer...", bf_mask_buffer->buffer_name, frame_index);
+            const std::int8_t* const bf_mask_frame =
+                static_cast<const std::int8_t*>(static_cast<const void*>(
+                    bf_mask_buffer->wait_for_full_frame(unique_name, bf_mask_frame_id)));
+            if (!bf_mask_frame)
                 return;
 
             DEBUG("[{:s}/{:d}] Waiting for buffer...", A_buffer->buffer_name, frame_index);
@@ -202,7 +235,9 @@ public:
                                 assert(idx >= 0
                                        && idx < std::ptrdiff_t(A_buffer->frame_size
                                                                / sizeof *A_frame));
-                                A_frame[idx] = iA;
+                                // Bad feeds do not contribute
+                                A_frame[idx] =
+                                    bf_mask_frame[element] ? iA : std::complex<std::int8_t>(0, 0);
                             }
                         }
                     }
@@ -256,6 +291,10 @@ public:
             DEBUG("[{:s}/{:d}] Marking buffer as empty...", bb_beam_positions_buffer->buffer_name,
                   frame_index);
             bb_beam_positions_buffer->mark_frame_empty(unique_name, bb_beam_positions_frame_id);
+
+            DEBUG("[{:s}/{:d}] Marking buffer as empty...", bf_mask_buffer->buffer_name,
+                  frame_index);
+            bf_mask_buffer->mark_frame_empty(unique_name, bf_mask_frame_id);
 
             DEBUG("[{:s}/{:d}] Marking buffer as full...", A_buffer->buffer_name, frame_index);
             A_buffer->mark_frame_full(unique_name, A_frame_id);

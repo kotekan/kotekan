@@ -3,7 +3,7 @@
 # Do not modify this file, your changes will be lost.
 
 @fastmath @inbounds(
-    begin #= /home/eschnett/src/kotekan/julia/kernels/frb.jl:2023 =#
+    begin #= /home/eschnett/src/kotekan/julia/kernels/frb.jl:2035 =#
         info = 1
         info_memory[(IndexSpaces.add(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32), 1), 32), 1), 1), 32), 1), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx()::Int32, 0, 16), 1), 16), 1), 1), 16), 32), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx()::Int32, 0, 64), 1), 64), 1), 1), 64), 512)) + 0) + 0x01] =
             info
@@ -37,7 +37,7 @@
             thread = IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32)
             c = thread % (4i32)
             v = thread ÷ (4i32)
-            Γ¹ = cispi((((c * v) % (8i32)) / 4.0f0) % 2.0f0)
+            Γ¹ = cispi(1.0f0 * ((((c * v) % (8i32)) / 4.0f0) % 2.0f0))
             (+(Γ¹.re), -(Γ¹.im), +(Γ¹.im), +(Γ¹.re))
         end
         Γ¹_re = Float16x2(Γ¹_re_im, Γ¹_re_re)
@@ -51,12 +51,12 @@
             d1 = ((thread ÷ spectators) % 2) * (2i32) + 1i32
             v = thread ÷ (4i32)
             Γ²_d0 = if d0 < 4
-                cispi((((d0 * v) % 32) / 16.0f0) % 2.0f0)
+                cispi(1.0f0 * ((((d0 * v) % 32) / 16.0f0) % 2.0f0))
             else
                 Complex(0.0f0)
             end
             Γ²_d1 = if d1 < 4
-                cispi((((d1 * v) % 32) / 16.0f0) % 2.0f0)
+                cispi(1.0f0 * ((((d1 * v) % 32) / 16.0f0) % 2.0f0))
             else
                 Complex(0.0f0)
             end
@@ -72,12 +72,12 @@
             d1 = (thread % (2i32)) * (2i32) + 1i32
             u = (thread ÷ (4i32)) % (4i32)
             Γ³_d0 = if d0 < 4 && u < 4
-                cispi((((d0 * u) % 4) / 2.0f0) % 2.0f0)
+                cispi(1.0f0 * ((((d0 * u) % 4) / 2.0f0) % 2.0f0))
             else
                 Complex(0.0f0)
             end
             Γ³_d1 = if d1 < 4 && u < 4
-                cispi((((d1 * u) % 4) / 2.0f0) % 2.0f0)
+                cispi(1.0f0 * ((((d1 * u) % 4) / 2.0f0) % 2.0f0))
             else
                 Complex(0.0f0)
             end
@@ -96,7 +96,7 @@
             thread = IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32)
             c = thread % (4i32)
             v = thread ÷ (4i32)
-            Γ¹ = cispi((((c * v) % (8i32)) / 4.0f0) % 2.0f0)
+            Γ¹ = cispi(-1.0f0 * ((((c * v) % (8i32)) / 4.0f0) % 2.0f0))
             (+(Γ¹.re), -(Γ¹.im), +(Γ¹.im), +(Γ¹.re))
         end
         Γ¹_re = Float16x2(Γ¹_re_im, Γ¹_re_re)
@@ -110,12 +110,12 @@
             d1 = ((thread ÷ spectators) % 2) * (2i32) + 1i32
             v = thread ÷ (4i32)
             Γ²_d0 = if d0 < 4
-                cispi((((d0 * v) % 32) / 16.0f0) % 2.0f0)
+                cispi(-1.0f0 * ((((d0 * v) % 32) / 16.0f0) % 2.0f0))
             else
                 Complex(0.0f0)
             end
             Γ²_d1 = if d1 < 4
-                cispi((((d1 * v) % 32) / 16.0f0) % 2.0f0)
+                cispi(-1.0f0 * ((((d1 * v) % 32) / 16.0f0) % 2.0f0))
             else
                 Complex(0.0f0)
             end
@@ -131,12 +131,12 @@
             d1 = (thread % (2i32)) * (2i32) + 1i32
             u = (thread ÷ (4i32)) % (4i32)
             Γ³_d0 = if d0 < 4 && u < 4
-                cispi((((d0 * u) % 4) / 2.0f0) % 2.0f0)
+                cispi(-1.0f0 * ((((d0 * u) % 4) / 2.0f0) % 2.0f0))
             else
                 Complex(0.0f0)
             end
             Γ³_d1 = if d1 < 4 && u < 4
-                cispi((((d1 * u) % 4) / 2.0f0) % 2.0f0)
+                cispi(-1.0f0 * ((((d1 * u) % 4) / 2.0f0) % 2.0f0))
             else
                 Complex(0.0f0)
             end
@@ -163,7 +163,7 @@
             if !(0i32 ≤ Sm < 16 && 0i32 ≤ Sn < 16)
                 CUDA.@cuprintf "thread=%d warp=%d block=%d Sm=%d Sn=%d\n" Cint((threadIdx()).x - 1) Cint((threadIdx()).y - 1) Cint(
                     (blockIdx()).x - 1
-                ) Cint(Sm) Cint(Sn)                    #= /home/eschnett/src/kotekan/julia/kernels/frb.jl:1789 =#
+                ) Cint(Sm) Cint(Sn)                    #= /home/eschnett/src/kotekan/julia/kernels/frb.jl:1800 =#
                 info = 4
                 info_memory[(IndexSpaces.add(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32), 1), 32), 1), 1), 32), 1), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx()::Int32, 0, 16), 1), 16), 1), 1), 16), 32), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx()::Int32, 0, 64), 1), 64), 1), 1), 64), 512)) + 0) + 0x01] =
                     info
@@ -180,8 +180,8 @@
         end
             W_polr0 = W_memory[IndexSpaces.add(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.add(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32), 4), 2), 1), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32), 16), 2), 2)), 1), 4), 16), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(0::Int32, 1), 2), 1), 1), 2), 256), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx()::Int32, 0, 64), 1), 64), 1), 1), 64), 512), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32), 1), 4), 1), 1), 4), 64), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.add(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx()::Int32, 0, 16), 1), 8), 2), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32), 8), 2), 1)), 1), 16), 1)) + 0x01]
             W_polr1 = W_memory[IndexSpaces.add(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.add(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32), 4), 2), 1), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32), 16), 2), 2)), 1), 4), 16), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(1::Int32, 1), 2), 1), 1), 2), 256), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx()::Int32, 0, 64), 1), 64), 1), 1), 64), 512), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32), 1), 4), 1), 1), 4), 64), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.add(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx()::Int32, 0, 16), 1), 8), 2), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32), 8), 2), 1)), 1), 16), 1)) + 0x01]
-            W_polr0 = Float16x2(0.03125f0, 0.03125f0) * W_polr0
-            W_polr1 = Float16x2(0.03125f0, 0.03125f0) * W_polr1
+            W_polr0 = reverse(Float16x2(0.03125f0, 0.03125f0) * W_polr0)
+            W_polr1 = reverse(Float16x2(0.03125f0, 0.03125f0) * W_polr1)
         end
         I = zero(Float16x2)
         dstime = 0
@@ -1074,17 +1074,21 @@
                         if t_inner_lo == 24
                             Freg2′_time6 = Freg2_time30
                         end
-                        (E′_polr0_time0, E′_polr1_time0, E′_polr0_time32, E′_polr1_time32) = convert_swapped_withoffset(
-                            NTuple{4,Float16x2}, Freg2′_time0
+                        Freg2″_time0 = Int4x8(Freg2′_time0.val ⊻ 0x88888888)
+                        Freg2″_time2 = Int4x8(Freg2′_time2.val ⊻ 0x88888888)
+                        Freg2″_time4 = Int4x8(Freg2′_time4.val ⊻ 0x88888888)
+                        Freg2″_time6 = Int4x8(Freg2′_time6.val ⊻ 0x88888888)
+                        (E′_polr0_time0, E′_polr1_time0, E′_polr0_time32, E′_polr1_time32) = convert(
+                            NTuple{4,Float16x2}, Freg2″_time0
                         )
-                        (E′_polr0_time2, E′_polr1_time2, E′_polr0_time34, E′_polr1_time34) = convert_swapped_withoffset(
-                            NTuple{4,Float16x2}, Freg2′_time2
+                        (E′_polr0_time2, E′_polr1_time2, E′_polr0_time34, E′_polr1_time34) = convert(
+                            NTuple{4,Float16x2}, Freg2″_time2
                         )
-                        (E′_polr0_time4, E′_polr1_time4, E′_polr0_time36, E′_polr1_time36) = convert_swapped_withoffset(
-                            NTuple{4,Float16x2}, Freg2′_time4
+                        (E′_polr0_time4, E′_polr1_time4, E′_polr0_time36, E′_polr1_time36) = convert(
+                            NTuple{4,Float16x2}, Freg2″_time4
                         )
-                        (E′_polr0_time6, E′_polr1_time6, E′_polr0_time38, E′_polr1_time38) = convert_swapped_withoffset(
-                            NTuple{4,Float16x2}, Freg2′_time6
+                        (E′_polr0_time6, E′_polr1_time6, E′_polr0_time38, E′_polr1_time38) = convert(
+                            NTuple{4,Float16x2}, Freg2″_time6
                         )
                         E_polr0_time0 = E′_polr0_time0
                         E_polr1_time0 = E′_polr1_time0
@@ -1094,14 +1098,14 @@
                         E_polr1_time4 = E′_polr1_time4
                         E_polr0_time6 = E′_polr0_time6
                         E_polr1_time6 = E′_polr1_time6
-                        WE_polr0_time0 = complex_mul(W_polr0, E_polr0_time0)
-                        WE_polr1_time0 = complex_mul(W_polr1, E_polr1_time0)
-                        WE_polr0_time2 = complex_mul(W_polr0, E_polr0_time2)
-                        WE_polr1_time2 = complex_mul(W_polr1, E_polr1_time2)
-                        WE_polr0_time4 = complex_mul(W_polr0, E_polr0_time4)
-                        WE_polr1_time4 = complex_mul(W_polr1, E_polr1_time4)
-                        WE_polr0_time6 = complex_mul(W_polr0, E_polr0_time6)
-                        WE_polr1_time6 = complex_mul(W_polr1, E_polr1_time6)
+                        WE_polr0_time0 = swapped_complex_mul(W_polr0, E_polr0_time0)
+                        WE_polr1_time0 = swapped_complex_mul(W_polr1, E_polr1_time0)
+                        WE_polr0_time2 = swapped_complex_mul(W_polr0, E_polr0_time2)
+                        WE_polr1_time2 = swapped_complex_mul(W_polr1, E_polr1_time2)
+                        WE_polr0_time4 = swapped_complex_mul(W_polr0, E_polr0_time4)
+                        WE_polr1_time4 = swapped_complex_mul(W_polr1, E_polr1_time4)
+                        WE_polr0_time6 = swapped_complex_mul(W_polr0, E_polr0_time6)
+                        WE_polr1_time6 = swapped_complex_mul(W_polr1, E_polr1_time6)
                         X_polr0_time0 = WE_polr0_time0
                         X_polr1_time0 = WE_polr1_time0
                         X_polr0_time2 = WE_polr0_time2
@@ -2984,17 +2988,21 @@
                         if t_inner_lo == 24
                             Freg2′_time6 = Freg2_time30
                         end
-                        (E′_polr0_time0, E′_polr1_time0, E′_polr0_time32, E′_polr1_time32) = convert_swapped_withoffset(
-                            NTuple{4,Float16x2}, Freg2′_time0
+                        Freg2″_time0 = Int4x8(Freg2′_time0.val ⊻ 0x88888888)
+                        Freg2″_time2 = Int4x8(Freg2′_time2.val ⊻ 0x88888888)
+                        Freg2″_time4 = Int4x8(Freg2′_time4.val ⊻ 0x88888888)
+                        Freg2″_time6 = Int4x8(Freg2′_time6.val ⊻ 0x88888888)
+                        (E′_polr0_time0, E′_polr1_time0, E′_polr0_time32, E′_polr1_time32) = convert(
+                            NTuple{4,Float16x2}, Freg2″_time0
                         )
-                        (E′_polr0_time2, E′_polr1_time2, E′_polr0_time34, E′_polr1_time34) = convert_swapped_withoffset(
-                            NTuple{4,Float16x2}, Freg2′_time2
+                        (E′_polr0_time2, E′_polr1_time2, E′_polr0_time34, E′_polr1_time34) = convert(
+                            NTuple{4,Float16x2}, Freg2″_time2
                         )
-                        (E′_polr0_time4, E′_polr1_time4, E′_polr0_time36, E′_polr1_time36) = convert_swapped_withoffset(
-                            NTuple{4,Float16x2}, Freg2′_time4
+                        (E′_polr0_time4, E′_polr1_time4, E′_polr0_time36, E′_polr1_time36) = convert(
+                            NTuple{4,Float16x2}, Freg2″_time4
                         )
-                        (E′_polr0_time6, E′_polr1_time6, E′_polr0_time38, E′_polr1_time38) = convert_swapped_withoffset(
-                            NTuple{4,Float16x2}, Freg2′_time6
+                        (E′_polr0_time6, E′_polr1_time6, E′_polr0_time38, E′_polr1_time38) = convert(
+                            NTuple{4,Float16x2}, Freg2″_time6
                         )
                         E_polr0_time0 = E′_polr0_time32
                         E_polr1_time0 = E′_polr1_time32
@@ -3004,14 +3012,14 @@
                         E_polr1_time4 = E′_polr1_time36
                         E_polr0_time6 = E′_polr0_time38
                         E_polr1_time6 = E′_polr1_time38
-                        WE_polr0_time0 = complex_mul(W_polr0, E_polr0_time0)
-                        WE_polr1_time0 = complex_mul(W_polr1, E_polr1_time0)
-                        WE_polr0_time2 = complex_mul(W_polr0, E_polr0_time2)
-                        WE_polr1_time2 = complex_mul(W_polr1, E_polr1_time2)
-                        WE_polr0_time4 = complex_mul(W_polr0, E_polr0_time4)
-                        WE_polr1_time4 = complex_mul(W_polr1, E_polr1_time4)
-                        WE_polr0_time6 = complex_mul(W_polr0, E_polr0_time6)
-                        WE_polr1_time6 = complex_mul(W_polr1, E_polr1_time6)
+                        WE_polr0_time0 = swapped_complex_mul(W_polr0, E_polr0_time0)
+                        WE_polr1_time0 = swapped_complex_mul(W_polr1, E_polr1_time0)
+                        WE_polr0_time2 = swapped_complex_mul(W_polr0, E_polr0_time2)
+                        WE_polr1_time2 = swapped_complex_mul(W_polr1, E_polr1_time2)
+                        WE_polr0_time4 = swapped_complex_mul(W_polr0, E_polr0_time4)
+                        WE_polr1_time4 = swapped_complex_mul(W_polr1, E_polr1_time4)
+                        WE_polr0_time6 = swapped_complex_mul(W_polr0, E_polr0_time6)
+                        WE_polr1_time6 = swapped_complex_mul(W_polr1, E_polr1_time6)
                         X_polr0_time0 = WE_polr0_time0
                         X_polr1_time0 = WE_polr1_time0
                         X_polr0_time2 = WE_polr0_time2
