@@ -8,7 +8,9 @@ the broker's q_stall_window, q_stall_frac and q_stall_min_best.
 Run: python3 -m unittest test_q_stall
 """
 import unittest
+from types import SimpleNamespace
 
+from gnss_broker import fleetdll
 from gnss_broker.fits import q_stall_verdict
 
 W, FRAC, MINBEST = 600.0, 0.6, 0.25
@@ -59,6 +61,34 @@ class TestQStall(unittest.TestCase):
     def test_waits_for_a_full_window(self):
         _, fired = run([0.9, 0.1])  # 2 samples: no verdict either way
         self.assertEqual(fired, [])
+
+
+class TestQStallNotice(unittest.TestCase):
+    """fleetdll.q_stall_notice, the guard as the stage runs it."""
+
+    def _ctx(self, dr_state):
+        return SimpleNamespace(
+            args=SimpleNamespace(
+                q_stall_bar=1.5,
+                q_stall_window=W,
+                q_stall_frac=FRAC,
+                q_stall_min_best=MINBEST,
+                q_stall_notice_s=600.0,
+            ),
+            dllp=SimpleNamespace(fleet={1: {"q": 2.0}, 2: {"q": 1.0}}),
+            dr_state=dr_state,
+            t0=1000.0,
+        )
+
+    def test_without_dead_reckoning_it_does_not_raise(self):
+        # dr_state is None when dead reckoning is off or failed to initialise; the stage
+        # runs outside any per-cycle try, so a raise here kills the chain
+        fleetdll.q_stall_notice(self._ctx(None))
+
+    def test_records_the_duty_in_dr_state(self):
+        ctx = self._ctx({})
+        fleetdll.q_stall_notice(ctx)
+        self.assertEqual(ctx.dr_state["q_hist"], [(1000.0, 0.5)])
 
 
 if __name__ == "__main__":

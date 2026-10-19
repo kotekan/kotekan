@@ -445,7 +445,9 @@ def rf_lobes(chans, power, clip_lo, clip_hi, freq_ids=None, carriers=None):
 
     Power is meaned and clip is maxed: power is a level, so the band average is the summary,
     while clip is damage, and one railing channel averaged across a dozen quiet neighbours
-    would hide exactly the narrowband case this exists to catch.
+    would hide exactly the narrowband case this exists to catch. `clip` is the worst single
+    channel's clip_lo + clip_hi; `clip_lo` and `clip_hi` are each maxed on their own and may
+    come from different channels, so their sum can overstate any one channel up to twofold.
     """
     n = min(len(chans), len(power), len(clip_lo), len(clip_hi))
     if n == 0:
@@ -475,6 +477,7 @@ def rf_lobes(chans, power, clip_lo, clip_hi, freq_ids=None, carriers=None):
             return
         lo = max(range(len(run)), key=lambda k: clip_lo[run[k]])
         hi = max(range(len(run)), key=lambda k: clip_hi[run[k]])
+        both = max(range(len(run)), key=lambda k: clip_lo[run[k]] + clip_hi[run[k]])
         rec = {
             "lobe": len(out),
             "chan0": chans[run[0]],
@@ -486,6 +489,8 @@ def rf_lobes(chans, power, clip_lo, clip_hi, freq_ids=None, carriers=None):
             "clip_lo_chan": chans[run[lo]],
             "clip_hi": clip_hi[run[hi]],
             "clip_hi_chan": chans[run[hi]],
+            "clip": clip_lo[run[both]] + clip_hi[run[both]],
+            "clip_chan": chans[run[both]],
         }
         if fids:
             rec["band"] = band[run[0]]
@@ -520,9 +525,9 @@ def instance_stall_verdict(prev, cur, now, min_stall_s, min_frac_advancing=0.5):
     check is per instance.
 
     It keys on the hop counter, never on reachability, because a wedged instance still answers:
-    with its capture window frozen and its whole stream dropped, it serves plausible,
-    well-formed rows. An instance missing from `cur` is unreachable, a different fault already
-    visible as n_src falling; it is dropped from the state here, never accused.
+    with its stream stalled (a starved ring, for one), it serves plausible, well-formed rows.
+    An instance missing from `cur` is unreachable, a different fault already visible as n_src
+    falling; it is dropped from the state here, never accused.
 
     `min_frac_advancing` is the control clause: if most of the fleet is also standing still,
     the cause is global (a paused F-engine, a clock step, a replay), not a per-instance stall,

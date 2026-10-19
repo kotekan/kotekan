@@ -345,5 +345,72 @@ class TestPhaseSensitivity(unittest.TestCase):
             self.assertAlmostEqual(d["chan"][fid][1], 1.0, places=6)
 
 
+class TestRestDepth(unittest.TestCase):
+    """D. The C++ arm's replies carry the gather's depth (taps_win); a reply at another depth
+    than the broker's telem-windows is refused, never averaged in as if it were the same span."""
+
+    TAPS_ROW = {
+        "e": 0.5,
+        "p": 1.0,
+        "l": 0.25,
+        "n_chan": 3,
+        "n_rec": 128,
+        "n_inst": 2,
+        "hop": 7,
+        "xcoh": 0.9,
+        "n_xcoh": 4,
+    }
+
+    def _get(self, reply):
+        return lambda url, timeout=5.0: reply
+
+    def test_taps_at_another_depth_are_refused(self):
+        reply = {"gps_l5": {"3": dict(self.TAPS_ROW)}, "taps_win": 16}
+        with self.assertRaisesRegex(ValueError, "taps depth 16 != telem-windows 32"):
+            combdll.taps_from_rest(
+                self._get(reply), "http://x/ft", "gps_l5", want_win=32
+            )
+
+    def test_taps_at_the_broker_depth_pass_unchanged(self):
+        reply = {"gps_l5": {"3": dict(self.TAPS_ROW)}, "taps_win": 32}
+        out = combdll.taps_from_rest(
+            self._get(reply), "http://x/ft", "gps_l5", want_win=32
+        )
+        self.assertEqual(sorted(out), [3])
+        self.assertEqual(out[3]["n_rec"], 128)
+        self.assertAlmostEqual(out[3]["p"], 1.0)
+
+    def test_rec_taps_at_another_depth_are_refused(self):
+        reply = {
+            "gps_l5": [[100, 0, 3, 2, 3, 0.5, 1.0, 0.25]],
+            "hops_per_record": {"gps_l5": 2048},
+            "taps_win": 16,
+        }
+        with self.assertRaisesRegex(
+            ValueError, "rec-taps depth 16 != telem-windows 32"
+        ):
+            combdll.recs_from_rest(
+                self._get(reply), "http://x/ft", "gps_l5", want_win=32
+            )
+        reply["taps_win"] = 32
+        recs, hpr = combdll.recs_from_rest(
+            self._get(reply), "http://x/ft", "gps_l5", want_win=32
+        )
+        self.assertEqual(sorted(recs), [(100, 0)])
+        self.assertEqual(hpr, 2048)
+
+    def test_a_failed_get_is_no_data_not_a_depth_error(self):
+        out = combdll.taps_from_rest(
+            self._get(None), "http://x/ft", "gps_l5", want_win=32
+        )
+        self.assertEqual(out, {})
+        self.assertEqual(
+            combdll.recs_from_rest(
+                self._get(None), "http://x/ft", "gps_l5", want_win=32
+            ),
+            ({}, 0),
+        )
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

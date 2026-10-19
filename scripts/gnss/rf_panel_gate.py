@@ -78,10 +78,13 @@ def inst(lobes, state="on"):
     return {"state": state, "lobes": lobes}
 
 
-def lobe(i, c0, c1, lo=0.0, hi=0.0, pw=1.0, band=None, mhz=None, f0=None, f1=None):
+def lobe(
+    i, c0, c1, lo=0.0, hi=0.0, pw=1.0, band=None, mhz=None, f0=None, f1=None, clip=None
+):
     """One lobe as the broker's fits.rf_lobes emits it. `band`/`carrier_mhz` present = a node
     that serves freq_ids and a broker with --rf-bands declared; absent = the unnamed shape of
-    a node that serves no freq_ids, which the panel must still render."""
+    a node that serves no freq_ids, which the panel must still render. Both rails sit on c0
+    unless `clip` (the worst single channel's lo + hi) says they are on different channels."""
     d = {
         "lobe": i,
         "chan0": c0,
@@ -93,6 +96,8 @@ def lobe(i, c0, c1, lo=0.0, hi=0.0, pw=1.0, band=None, mhz=None, f0=None, f1=Non
         "clip_lo_chan": c0,
         "clip_hi": hi,
         "clip_hi_chan": c0,
+        "clip": lo + hi if clip is None else clip,
+        "clip_chan": c0,
     }
     if band is not None:
         f0 = f0 if f0 is not None else 1548 + 16 * c0
@@ -258,6 +263,25 @@ def main():
     else:
         print("ok  20% rail on 1 of 12 -> RED and cx43 named (max, not mean)")
 
+    # 4b. The rail is one channel's: a low rail on one channel and a high rail on another,
+    #     0.8% each, are each under the 1% red bar. Summing the separate maxima would read
+    #     1.6% and go red; a broker that serves no `clip` still gets that sum.
+    two = {
+        "http://cx19:12048/gnss0_srch_tap": inst(
+            [lobe(0, 277, 283, lo=0.008, hi=0.008, clip=0.008), lobe(1, 287, 293)]
+        )
+    }
+    h = make({"t": 1.0, "instances": two})
+    old = json.loads(json.dumps(two))
+    del old["http://cx19:12048/gnss0_srch_tap"]["lobes"][0]["clip"]
+    h_old = make({"t": 1.0, "instances": old})
+    if RED in h or AMBER not in h or "0.80%" not in h:
+        fails.append("rails on two channels summed: %s" % re.findall(r">[\d.]+%<", h))
+    elif RED not in h_old:
+        fails.append("a lobe without `clip` did not fall back to the sum")
+    else:
+        print("ok  0.8% low + 0.8% high on two channels -> 0.80% amber, not 1.6% red")
+
     # 5. Band-selective power must show as a difference between the two rows: that is what
     #    identifies a band-selective external source.
     sel = {
@@ -407,7 +431,7 @@ def main():
         for f in fails:
             print("FAIL: %s" % f)
         return 1
-    print("GATE GOOD: 13 arms, run in QuickJS against the real panel source")
+    print("GATE GOOD: 14 arms, run in QuickJS against the real panel source")
     return 0
 
 

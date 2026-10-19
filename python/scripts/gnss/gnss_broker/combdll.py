@@ -48,6 +48,25 @@ import math
 from .fleet import apply_presence
 from .telem import REC_PHI0, REC_PROJ_COST
 
+#: The clip on an exponential probe population, in multiples of its median: records above it
+#: are dropped from the clipped mean. It must clear the tail: at 8x the median the clip drops
+#: ~2.6% of an exponential's mean and reads the floor ~2% low; at 20x the tail above it is
+#: ~1e-5 of the mean.
+PROBE_CLIP_X = 20.0
+
+
+def _floor(vals, clip_x):
+    """Clipped mean (at `clip_x` times the median) of a probe population; a median is biased
+    low. None for fewer than two values or a non-positive median."""
+    if len(vals) < 2:
+        return None
+    s = sorted(vals)
+    med = s[len(s) // 2]
+    if med <= 0.0:
+        return None
+    kept = [x for x in s if x <= clip_x * med]
+    return sum(kept) / len(kept)
+
 
 def dll_tau(disc, spacing):
     """The code discriminator -> delay estimate, chips.
@@ -309,7 +328,20 @@ def lobe_records(client, chain, wins, prns=None):
 COH_KEYS = ("coh_row", "coh_src", "coh_quad")
 
 
-def taps_from_rest(get, url, chain, prns=None, timeout=5.0):
+def _check_taps_win(d, want_win, what):
+    """Refuse a gather reply whose `taps_win` is not this broker's window depth.
+
+    The gather's depth is FLEET_TRIM_TAPS_WINDOWS (config/gen_chord_gnss_config.py) and the
+    Python arm's is telem-windows; nothing else ties the two at runtime, so a reply at another
+    depth would silently average a different span than the arm it replaces. An empty reply (a
+    failed GET) is left to the caller's own no-data path."""
+    if want_win and d and int(d.get("taps_win") or 0) != int(want_win):
+        raise ValueError(
+            "%s depth %s != telem-windows %d" % (what, d.get("taps_win"), int(want_win))
+        )
+
+
+def taps_from_rest(get, url, chain, prns=None, timeout=5.0, want_win=None):
     """`lobe_taps`' per-PRN object (without the per-channel table), fetched from the gather's
     C++ reduction (<url>/get_taps) instead of rebuilt.
 
@@ -325,8 +357,12 @@ def taps_from_rest(get, url, chain, prns=None, timeout=5.0):
 
     `get` is the caller's HTTP getter (transport._get), passed in so this module keeps its
     no-transport-import property and so a recording transcribes the fetch like any other.
+
+    `want_win`, when given, is the broker's window depth; a reply served at another depth
+    raises ValueError (_check_taps_win), so the caller keeps the polled discriminator.
     """
     d = get("%s/get_taps" % url.rstrip("/"), timeout=timeout) or {}
+    _check_taps_win(d, want_win, "taps")
     want = None if prns is None else set(int(p) for p in prns)
     out = {}
     for prn, v in (d.get(chain) or {}).items():
@@ -390,9 +426,10 @@ def fleet_dll_comb(
     if taps_src is not None:
         # The C++ arm. No window selection here: the depth is the gather's `taps_win`
         # (FLEET_TRIM_TAPS_WINDOWS in config/gen_chord_gnss_config.py), which must match this
-        # broker's telem-windows; fleetdll_gate.py's split-ring leg checks that the served taps
-        # take that depth rather than the fast loop's. The completeness gate is applied in the
-        # C++ (its own min_instances), identically.
+        # broker's telem-windows (taps_from_rest's want_win refuses a reply that does not);
+        # fleetdll_gate.py's split-ring leg checks that the served taps take that depth rather
+        # than the fast loop's. The completeness gate is applied in the C++ (its own
+        # min_instances), identically.
         per_prn = taps_src(chain, prns)
         if not per_prn:
             return {}
@@ -445,7 +482,7 @@ def fleet_dll_comb(
     )
 
 
-def recs_from_rest(get, url, chain, prns=None, timeout=5.0):
+def recs_from_rest(get, url, chain, prns=None, timeout=5.0, want_win=None):
     """`prompt_cn0`'s per-record series, fetched from the gather's C++ reduction
     (<url>/get_rec_taps).
 
@@ -455,9 +492,10 @@ def recs_from_rest(get, url, chain, prns=None, timeout=5.0):
     e/p/l to 1e-9 and n_inst/n_chan exactly, per (window, slot, PRN). That gate is the only
     check on this call; a broker_equiv replay never reaches it (taps_from_rest). Without this
     call prompt_cn0 walks the gathered frames a second time, after the comb DLL has walked them
-    for its own reduction.
+    for its own reduction. `want_win` as in taps_from_rest.
     """
     d = get("%s/get_rec_taps" % url.rstrip("/"), timeout=timeout) or {}
+    _check_taps_win(d, want_win, "rec-taps")
     want = None if prns is None else set(int(p) for p in prns)
     recs = {}
     for row in d.get(chain) or []:
@@ -615,14 +653,13 @@ def prompt_cn0(
     # The debias needs the mean, not the median: E[|P|^2] = |s|^2 + sigma^2 with sigma^2 the
     # noise power's expectation, and the per-record noise power is exponential (one complex
     # dof in the lobe currency), whose median is ln 2 of its mean. The median is only the
-    # clip reference: records above 20x it are dropped, which bounds what one contaminated
-    # probe record can do to the anchor. The clip must clear the tail: at 8x the median it
-    # would drop ~2.6% of the mean and read +0.1 dB on every served satellite; at 20x the tail
-    # above it is ~1e-5 of the mean.
+    # clip reference: records above PROBE_CLIP_X times it are dropped, which bounds what one
+    # contaminated probe record can do to the anchor. The clip must clear the tail: at 8x the
+    # median it would drop ~2.6% of the mean and read +0.1 dB on every served satellite.
     _med = probe_p[len(probe_p) // 2]
     if _med <= 0.0:
         return {}
-    _kept = [x for x in probe_p if x <= 20.0 * _med]
+    _kept = [x for x in probe_p if x <= PROBE_CLIP_X * _med]
     sigma2 = sum(_kept) / len(_kept)
     if sigma2 <= 0.0:
         return {}
@@ -943,17 +980,6 @@ def coh_cn0(
     def _mean(v):
         return sum(v) / len(v) if v else None
 
-    def _floor(vals):
-        """Clipped mean (at 8x the median) of the probe population; a median is biased low."""
-        if len(vals) < 2:
-            return None
-        s = sorted(vals)
-        med = s[len(s) // 2]
-        if med <= 0.0:
-            return None
-        kept = [x for x in s if x <= 8.0 * med]
-        return sum(kept) / len(kept)
-
     # ---- The fold floor: sigma^2/n from the per-record anchor, not from the folds -------
     # White noise folds down as exactly sigma^2/n, and sigma^2 is measured by the probes'
     # per-record incoherent power: thousands of draws. The probes' folded powers are only
@@ -962,19 +988,27 @@ def coh_cn0(
     # assumed: `floor_white` is the directly measured probe fold floor over sigma^2/n, ~1
     # when the noise is white record to record; a sustained excess means correlated noise
     # (RFI), and the C/N0 must not be believed at face value.
+    # The two populations take different clips. The anchor's are per-instance means over n
+    # records, far narrower than an exponential, so 8x the median never cuts noise and only
+    # bounds a contaminated probe instance. The folded powers are single exponential draws,
+    # whose tail an 8x clip would cut, reading floor_white low (PROBE_CLIP_X).
     probe_raw = [x for p in probe_prns for x in acc.get(p, {}).get("raw", ())]
     probe_sky = [x for p in probe_prns for x in acc.get(p, {}).get("sky", ())]
-    s2_inc = _floor([x for p in probe_prns for x in acc.get(p, {}).get("inc", ())])
+    s2_inc = _floor([x for p in probe_prns for x in acc.get(p, {}).get("inc", ())], 8.0)
     s2_inc_sky = _floor(
-        [x for p in probe_prns for x in acc.get(p, {}).get("inc_sky", ())]
+        [x for p in probe_prns for x in acc.get(p, {}).get("inc_sky", ())], 8.0
     )
     if s2_inc is None or s2_inc <= 0.0:
         return {}  # no anchor, no estimate -- never a peer fallback
     probe_n = [x for p in probe_prns for x in acc.get(p, {}).get("n", ())]
     n_pr = _mean(probe_n) or 0.0
-    fw_raw = _floor(probe_raw) / (s2_inc / n_pr) if probe_raw and n_pr > 0 else None
+    fw_raw = (
+        _floor(probe_raw, PROBE_CLIP_X) / (s2_inc / n_pr)
+        if probe_raw and n_pr > 0
+        else None
+    )
     fw_sky = (
-        _floor(probe_sky) / (s2_inc_sky / n_pr)
+        _floor(probe_sky, PROBE_CLIP_X) / (s2_inc_sky / n_pr)
         if probe_sky and s2_inc_sky and n_pr > 0
         else None
     )

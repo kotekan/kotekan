@@ -105,7 +105,9 @@ export class AirspyStatsPanel {
             let worstU = null, worstC = -1;
             let pw = [];
             for (const [u, l] of have) {
-                const c = (l.clip_lo || 0) + (l.clip_hi || 0);
+                // `clip` is one channel's lo + hi; the sum of the separate maxima, which
+                // may come from two channels, stands in for a broker that does not serve it.
+                const c = l.clip != null ? l.clip : (l.clip_lo || 0) + (l.clip_hi || 0);
                 if (c > worstC) { worstC = c; worstU = u; }
                 pw.push(l.power || 0);
             }

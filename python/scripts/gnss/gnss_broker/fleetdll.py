@@ -26,6 +26,105 @@ from gnss_broker import trkresid
 from gnss_broker import fleetadr
 
 
+def deep_gate_auto(ctx):
+    """The effective deep-gate set, into `ctx.dllp.deep_gate_eff`: the hand-listed PRNs
+    (--dll-deep-gate) plus those the search detected at snr >= --dll-deep-gate-from-search
+    within --dll-deep-gate-search-hold-s. 'all' (True) already covers every PRN.
+
+    The DEEP GATE (auto) line prints when the search-admitted set changes, emptying included,
+    so a set that empties and comes back is logged again."""
+    ctx.dllp.deep_gate_eff = ctx.deep_gate
+    if ctx.args.dll_deep_gate_from_search > 0.0 and ctx.deep_gate is not True:
+        _fresh_dg = {
+            p
+            for p, _ts in ctx.dls.deep_gate_seen.items()
+            if ctx.t0 - _ts <= ctx.args.dll_deep_gate_search_hold_s
+        }
+        if _fresh_dg:
+            ctx.dllp.deep_gate_eff = set(ctx.deep_gate or ()) | _fresh_dg
+            if _fresh_dg != ctx.dg_auto_last[0]:
+                _log(
+                    "DEEP GATE (auto): search-admitted PRN %s at snr >= %.0f "
+                    "(hold %.0f s)%s"
+                    % (
+                        ",".join(str(p) for p in sorted(_fresh_dg)),
+                        ctx.args.dll_deep_gate_from_search,
+                        ctx.args.dll_deep_gate_search_hold_s,
+                        ""
+                        if not ctx.deep_gate
+                        else " + hand-listed %s"
+                        % ",".join(str(p) for p in sorted(ctx.deep_gate)),
+                    )
+                )
+                ctx.dg_auto_last[0] = set(_fresh_dg)
+        elif ctx.dg_auto_last[0]:
+            _log(
+                "DEEP GATE (auto): search-admitted set empty, no PRN at snr >= %.0f "
+                "within the %.0f s hold"
+                % (
+                    ctx.args.dll_deep_gate_from_search,
+                    ctx.args.dll_deep_gate_search_hold_s,
+                )
+            )
+            ctx.dg_auto_last[0] = set()
+
+
+def q_stall_notice(ctx):
+    """The q stall guard: a notice when this chain's q duty falls well below the best it has
+    reached in this process (fits.q_stall_verdict).
+
+    Its history lives in dr_state, so without dead reckoning (dr_state None) it does not run;
+    the instance-stall check's SKIPPED line says why."""
+    # This chain's q duty (fraction of judged satellites at q >= q_stall_bar) over a
+    # trailing window, against the best duty it has reached in this process. Without it a
+    # chain can sit in a degraded steady state for hours, visible only to a same-time-of-day
+    # comparison. Self-referential because chains differ ~4x in duty by construction: a
+    # fleet-common bar would cry wolf on bds_b2b or never fire on gps_l5. The baseline only
+    # rises, so a chain that degrades cannot redefine normal downward.
+    #
+    # A notice, not a control: it changes and gates nothing. Acting on a statistic this
+    # noisy would be a new failure mode, and the recovery (a node restart, which clears the
+    # C++ trim state a broker restart cannot) is not the broker's to perform.
+    if ctx.dllp.fleet and ctx.dr_state is not None:
+        _qs = [v["q"] for v in ctx.dllp.fleet.values() if v.get("q") is not None]
+        if _qs:
+            _duty = sum(1 for q in _qs if q >= ctx.args.q_stall_bar) / float(len(_qs))
+            _qh = ctx.dr_state.setdefault("q_hist", [])
+            _qh.append((ctx.t0, _duty))
+            del _qh[: max(0, len(_qh) - 4000)]
+            # The decision is a pure function (fits.q_stall_verdict) so a constructed
+            # collapse can test it (test_q_stall.py): the on-sky replay fixtures never see
+            # the duty fall, so a replay cannot tell "did not fire" from "cannot fire".
+            _qb, _qv = q_stall_verdict(
+                _qh,
+                ctx.t0,
+                ctx.args.q_stall_window,
+                ctx.args.q_stall_frac,
+                ctx.args.q_stall_min_best,
+                ctx.dr_state.get("q_duty_best"),
+            )
+            ctx.dr_state["q_duty_best"] = _qb
+            if _qv is not None:
+                _log_rl(
+                    "qstall",
+                    "q STALL: duty %.2f over the last %.0f s vs %.2f best "
+                    "this session (%.0f%% of it, bar q>=%.1f, %d sat(s)). "
+                    "This chain has been degraded, not absent -- the usual "
+                    "cause is railed C++ trim state, which a broker restart "
+                    "does not clear. Judge against the same time of day, "
+                    "then a node restart."
+                    % (
+                        _qv[0],
+                        ctx.args.q_stall_window,
+                        _qv[1],
+                        100.0 * _qv[2],
+                        ctx.args.q_stall_bar,
+                        len(_qs),
+                    ),
+                    every_s=ctx.args.q_stall_notice_s,
+                )
+
+
 def stage_fleet_dll(ctx):
     """3c: the fleet delay-lock loop -- the instrument suite, then the control loop.
 
@@ -38,33 +137,7 @@ def stage_fleet_dll(ctx):
         # instance that reports the same window, then form one discriminator. Ratios do not
         # sum -- (SUM E - SUM L)/(SUM E + SUM L) is not any function of the per-instance
         # dll_disc values -- which is why the combiner publishes e_pow/l_pow/p_pow.
-        # The effective deep-gate set is the hand-listed PRNs (--dll-deep-gate) plus those the
-        # search detected at snr >= --dll-deep-gate-from-search within
-        # --dll-deep-gate-search-hold-s. 'all' (True) already covers every PRN.
-        ctx.dllp.deep_gate_eff = ctx.deep_gate
-        if ctx.args.dll_deep_gate_from_search > 0.0 and ctx.deep_gate is not True:
-            _fresh_dg = {
-                p
-                for p, _ts in ctx.dls.deep_gate_seen.items()
-                if ctx.t0 - _ts <= ctx.args.dll_deep_gate_search_hold_s
-            }
-            if _fresh_dg:
-                ctx.dllp.deep_gate_eff = set(ctx.deep_gate or ()) | _fresh_dg
-                if _fresh_dg != ctx.dg_auto_last[0]:
-                    _log(
-                        "DEEP GATE (auto): search-admitted PRN %s at snr >= %.0f "
-                        "(hold %.0f s)%s"
-                        % (
-                            ",".join(str(p) for p in sorted(_fresh_dg)),
-                            ctx.args.dll_deep_gate_from_search,
-                            ctx.args.dll_deep_gate_search_hold_s,
-                            ""
-                            if not ctx.deep_gate
-                            else " + hand-listed %s"
-                            % ",".join(str(p) for p in sorted(ctx.deep_gate)),
-                        )
-                    )
-                    ctx.dg_auto_last[0] = set(_fresh_dg)
+        deep_gate_auto(ctx)
         ctx.dllp.inst_hops = {}
         # Displaced admission (--presence-admit-displaced): the thresholds are bundled once so
         # the polled arm (fleet_dll) and the comb arm (instr_tap_walk) judge with the same
@@ -450,7 +523,10 @@ def stage_fleet_dll(ctx):
                     for _p, _r in ctx.dls.readback.items()
                 },
                 integ=(ctx.dr_state or {}).get("integ"),
-                integ_now=getattr(ctx.dllp, "now_w", None),
+                # Both ages' stamps are ctx.drp.now_w, the frozen clock of the cycle whose
+                # dead-reckon pass set them; against this cycle's, a pass that did not run
+                # shows as a growing age.
+                integ_now=ctx.t0,
                 trk=ctx.dllp.trk,
                 fadr=ctx.dllp.fadr,
             )
@@ -482,9 +558,10 @@ def stage_fleet_dll(ctx):
 
         # ── The boresight-transit veto (D3) ───────────────────────────────────────────────
         # Pooled over every constellation: ctx.transit_pd is the geometry-only sky
-        # (sky.transit_sky, health gate off, since an unhealthy satellite still rails), and the
-        # quantiser is shared, so a per-chain answer would be worse than none: it would clear
-        # the chain carrying the bright satellite and leave the rest looking like clean controls.
+        # (sky.transit_sky, health gate off, since an unhealthy satellite still rails; the
+        # strict sky dr_pd until the first dead-reckon predict), and the quantiser is shared, so
+        # a per-chain answer would be worse than none: it would clear the chain carrying the
+        # bright satellite and leave the rest looking like clean controls.
         _near = (
             nearest_boresight(ctx.transit_pd)
             if ctx.args.detector_transit_veto_deg > 0.0
@@ -641,9 +718,9 @@ def stage_fleet_dll(ctx):
                     every_s=30.0,
                 )
         # ── Instance liveness ─────────────────────────────────────────────────────────────
-        # A wedged instance (capture window frozen, its whole stream dropped) still answers
-        # every poll with plausible, well-formed rows, so this keys on the hop counter, never
-        # on reachability: healthy advances ~5.9M hops per 30 s, wedged exactly 0.
+        # A wedged instance (its stream stalled, e.g. a starved ring) still answers every poll
+        # with plausible, well-formed rows, so this keys on the hop counter, never on
+        # reachability: healthy advances ~5.9M hops per 30 s, wedged exactly 0.
         # fe_axis_stale_s cannot see it: it watches only the --combiner instance's hop. The
         # verdict is fits.instance_stall_verdict (test_instance_stall.py), which stays silent
         # when most of the fleet is also standing still (a global cause: a paused F-engine, a
@@ -655,12 +732,21 @@ def stage_fleet_dll(ctx):
         # presence verdicts and axis checks are still valid. Say so, so a chain without dead
         # reckoning is not mistaken for one whose instances are healthy.
         if ctx.dllp.inst_hops and ctx.dr_state is None:
+            if ctx.args.dead_reckon and ctx.args.almanac:
+                _why = (
+                    "so dead reckoning never initialised on this chain (look for "
+                    "'dead-reckon unavailable' at startup); the q stall guard is skipped "
+                    "too. The chain is running DEGRADED -- seeds are not being "
+                    "dead-reckoned -- which is a bigger problem than the skipped checks."
+                )
+            else:
+                _why = (
+                    "because dead reckoning is off on this chain (--dead-reckon and "
+                    "--almanac are not both set); the q stall guard is skipped too."
+                )
             _log_rl(
                 "inststall-nodr",
-                "instance-stall check SKIPPED: dr_state is None, so dead reckoning never "
-                "initialised on this chain (look for 'dead-reckon unavailable' at "
-                "startup). The chain is running DEGRADED -- seeds are not being "
-                "dead-reckoned -- which is a bigger problem than the skipped check.",
+                "instance-stall check SKIPPED: dr_state is None, " + _why,
                 every_s=120.0,
             )
         elif ctx.dllp.inst_hops:
@@ -692,56 +778,7 @@ def stage_fleet_dll(ctx):
                 )
 
         # ── The q stall guard ─────────────────────────────────────────────────────────────
-        # This chain's q duty (fraction of judged satellites at q >= q_stall_bar) over a
-        # trailing window, against the best duty it has reached in this process. Without it a
-        # chain can sit in a degraded steady state for hours, visible only to a same-time-of-day
-        # comparison. Self-referential because chains differ ~4x in duty by construction: a
-        # fleet-common bar would cry wolf on bds_b2b or never fire on gps_l5. The baseline only
-        # rises, so a chain that degrades cannot redefine normal downward.
-        #
-        # A notice, not a control: it changes and gates nothing. Acting on a statistic this
-        # noisy would be a new failure mode, and the recovery (a node restart, which clears the
-        # C++ trim state a broker restart cannot) is not the broker's to perform.
-        if ctx.dllp.fleet:
-            _qs = [v["q"] for v in ctx.dllp.fleet.values() if v.get("q") is not None]
-            if _qs:
-                _duty = sum(1 for q in _qs if q >= ctx.args.q_stall_bar) / float(
-                    len(_qs)
-                )
-                _qh = ctx.dr_state.setdefault("q_hist", [])
-                _qh.append((ctx.t0, _duty))
-                del _qh[: max(0, len(_qh) - 4000)]
-                # The decision is a pure function (fits.q_stall_verdict) so a constructed
-                # collapse can test it (test_q_stall.py): the on-sky replay fixtures never see
-                # the duty fall, so a replay cannot tell "did not fire" from "cannot fire".
-                _qb, _qv = q_stall_verdict(
-                    _qh,
-                    ctx.t0,
-                    ctx.args.q_stall_window,
-                    ctx.args.q_stall_frac,
-                    ctx.args.q_stall_min_best,
-                    ctx.dr_state.get("q_duty_best"),
-                )
-                ctx.dr_state["q_duty_best"] = _qb
-                if _qv is not None:
-                    _log_rl(
-                        "qstall",
-                        "q STALL: duty %.2f over the last %.0f s vs %.2f best "
-                        "this session (%.0f%% of it, bar q>=%.1f, %d sat(s)). "
-                        "This chain has been degraded, not absent -- the usual "
-                        "cause is railed C++ trim state, which a broker restart "
-                        "does not clear. Judge against the same time of day, "
-                        "then a node restart."
-                        % (
-                            _qv[0],
-                            ctx.args.q_stall_window,
-                            _qv[1],
-                            100.0 * _qv[2],
-                            ctx.args.q_stall_bar,
-                            len(_qs),
-                        ),
-                        every_s=ctx.args.q_stall_notice_s,
-                    )
+        q_stall_notice(ctx)
         for k in list(ctx.dls.trim):
             if k not in ctx.seeds:
                 del ctx.dls.trim[k]

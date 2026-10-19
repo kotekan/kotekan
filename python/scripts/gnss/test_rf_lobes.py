@@ -100,6 +100,24 @@ def main():
     else:
         print("ok  low rail in lobe 0, high rail in lobe 1 -> reported separately")
 
+    # 4b. `clip` is one channel's lo + hi. The separate maxima may come from two channels, and
+    #     their sum would report a rail no single channel reaches; the larger of the two
+    #     would miss a channel railing both ways.
+    lo, hi = [0.0] * 14, [0.0] * 14
+    lo[1], hi[2] = 0.01, 0.01  # 278 low rail only, 279 high rail only
+    lo[5], hi[5] = 0.006, 0.006  # 282 both, 0.012 together: the worst channel
+    lob = rf_lobes(CX19_G0, [1.0] * 14, lo, hi)
+    c = lob[0].get("clip")
+    if c is None or abs(c - 0.012) > 1e-12 or lob[0].get("clip_chan") != 282:
+        fails.append(
+            "clip must be the worst single channel (0.012 on 282), got %s on %s; "
+            "clip_lo + clip_hi = %.3f" % (c, lob[0].get("clip_chan"), lo[1] + hi[2])
+        )
+    else:
+        print(
+            "ok  lo 0.01 on 278, hi 0.01 on 279, both 0.006 on 282 -> clip 0.012 on 282"
+        )
+
     # 5. Unsorted input must not invent lobes: the tap serves whatever order it walks.
     import random
 
@@ -196,7 +214,7 @@ def main():
         for f in fails:
             print("FAIL: %s" % f)
         return 1
-    print("GATE GOOD: 10 arms on the generated channel layouts (2-band and 8-chain)")
+    print("GATE GOOD: 11 arms on the generated channel layouts (2-band and 8-chain)")
     return 0
 
 

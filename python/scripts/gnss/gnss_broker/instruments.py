@@ -139,11 +139,7 @@ def instr_rf_stats(ctx):
             _on = [v for v in _rf.values() if v.get("state") == "on"]
             if _on:
                 _clip = max(
-                    (
-                        max((l["clip_lo"] + l["clip_hi"]) for l in v["lobes"])
-                        for v in _on
-                        if v.get("lobes")
-                    ),
+                    (max(l["clip"] for l in v["lobes"]) for v in _on if v.get("lobes")),
                     default=0.0,
                 )
                 _log_rl(
@@ -189,7 +185,11 @@ def instr_tap_walk(ctx):
         _tsrc_cpp = None
         if ctx.args.comb_taps_cpp >= 2 and ctx.args.fleet_trim_url:
             _tsrc_cpp = lambda _ch, _pr: combdll.taps_from_rest(
-                _get, ctx.args.fleet_trim_url, _ch, prns=_pr
+                _get,
+                ctx.args.fleet_trim_url,
+                _ch,
+                prns=_pr,
+                want_win=(ctx.args.telem_dll_windows or ctx.args.telem_windows),
             )
         try:
             _cf = combdll.fleet_dll_comb(
@@ -276,7 +276,13 @@ def instr_prompt_cn0(ctx):
                 recs_src=(
                     (
                         lambda _ch, _pr: combdll.recs_from_rest(
-                            _get, ctx.args.fleet_trim_url, _ch, prns=_pr
+                            _get,
+                            ctx.args.fleet_trim_url,
+                            _ch,
+                            prns=_pr,
+                            want_win=(
+                                ctx.args.telem_dll_windows or ctx.args.telem_windows
+                            ),
                         )
                     )
                     if (ctx.args.comb_taps_cpp >= 2 and ctx.args.fleet_trim_url)
@@ -453,9 +459,9 @@ def instr_model_primacy(ctx):
                 # same reason, or they would be left seedless. Log the disagreement.
                 _log_rl(
                     "mp-legacy-%d" % _p,
-                    "MODEL-PRIMACY NOTE PRN %d: legacy integrity flags the "
-                    "EMA model (%s) -- overridden while flipped; MINNOV "
-                    "referees this sat" % (_p, ctx.dr_untrusted[_p]),
+                    "MODEL-PRIMACY NOTE PRN %d: the dead-reckon integrity check "
+                    "flags the solved-clock model (%s) -- overridden while flipped; "
+                    "MINNOV referees this sat" % (_p, ctx.dr_untrusted[_p]),
                     every_s=300.0,
                 )
             if _pv is not None and _pv[0] > ctx.args.model_primacy_exit_p95:
