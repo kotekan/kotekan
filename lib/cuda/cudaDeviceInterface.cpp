@@ -261,12 +261,6 @@ void cudaDeviceInterface::build_ptx(const std::string& kernel_filename,
     size_t program_size;
     FILE* fp;
     char* program_buffer;
-    nvPTXCompileResult nv_res;
-    CUresult cu_res;
-    nvPTXCompilerHandle compiler = nullptr;
-    size_t elf_size;
-    char* elf;
-    CUmodule module;
 
     for (auto& kernel_name : kernel_names)
         if (runtime_kernels.count(kernel_name_prefix + kernel_name))
@@ -290,8 +284,24 @@ void cudaDeviceInterface::build_ptx(const std::string& kernel_filename,
         FATAL_ERROR("Error reading the file: {:s}", kernel_filename);
     fclose(fp);
 
+    build_ptx(std::string(program_buffer, program_size), kernel_filename, kernel_names, opts,
+              kernel_name_prefix);
+}
+
+void cudaDeviceInterface::build_ptx(const std::string& kernel_code,
+                                    const std::string& kernel_filename,
+                                    const std::vector<std::string>& kernel_names,
+                                    const std::vector<std::string>& opts,
+                                    const std::string& kernel_name_prefix) {
+    nvPTXCompileResult nv_res;
+    CUresult cu_res;
+    nvPTXCompilerHandle compiler = nullptr;
+    size_t elf_size;
+    char* elf;
+    CUmodule module;
+
     // Create the compiler
-    nv_res = nvPTXCompilerCreate(&compiler, program_size, program_buffer);
+    nv_res = nvPTXCompilerCreate(&compiler, kernel_code.size(), kernel_code.data());
     if (nv_res != NVPTXCOMPILE_SUCCESS) {
         // TODO Report ENUM names.
         FATAL_ERROR("Could not create PTX compiler, error code: {:d}", (int)nv_res);
