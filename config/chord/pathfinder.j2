@@ -611,13 +611,13 @@ dpdk:
 #   13    11    12    Et24   E05-F08 pol 1       listed: link down -> flag E05-F08 pol 1
 #    6    12    13    Et14   G01-G08 pol 0       listed: link down -> flag G01-G08 pol 0
 #   14    13    14    Et18   G01-G08 pol 1       link flapping; the loss mask covers it
-#    7    14    15    Et20   H01-H08 pol 0       good
-#   15    15    16    Et22   H01-H08 pol 1       good
+#    7    14    15    Et20   H01-H08 pol 0       listed: silent since Oct 19 -> flag H01-H08 pol 0
+#   15    15    16    Et22   H01-H08 pol 1       listed: silent since Oct 19 -> flag H01-H08 pol 1
 #
 # Only the slots whose board sends nothing are listed; every other board's loss is
 # accounted, so its dropouts are masked.  Every dish is ArrayDish, so a listed board's
 # inputs are flagged by hand (choco's bffs manual grid -> bad_inputs).
-missing_source_ids: [4, 6, 12, 13]
+missing_source_ids: [4, 6, 7, 12, 13, 15]
 
 # Combine packet receipt bitmaps and generate packet-loss masks
 {% for n in numa_halves %}
