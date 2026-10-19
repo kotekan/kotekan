@@ -11,6 +11,7 @@
 #include "kotekanLogging.hpp"    // for DEBUG, FATAL_ERROR, INFO
 #include "metadata.hpp"          // for metadataObject
 #include "prometheusMetrics.hpp" // for Metrics, Gauge
+#include "testSkySignal.hpp"     // for testPacketLoss
 #include "visUtil.hpp"           // for current_time
 
 #include <algorithm>  // for copy
@@ -29,6 +30,17 @@
 
 using kotekan::div_noremainder;
 
+/**
+ * @brief Generate a packet loss (PL) mask for tests.
+ *
+ * The FPGA samples [box_begin, box_end) are lost, and those that `testPacketLoss` describes
+ * (random packet loss and loss boxes, the pattern whose voltages `inventVoltage` can overwrite).
+ * Lost samples are masked for all dishes and polarizations.
+ *
+ * @conf first_fpga_seq_num  Int. FPGA sequence number of the first sample. Default 0.
+ * @conf box_begin, box_end  Int. FPGA samples, multiples of 2. Default: no loss.
+ * @conf loss_boxes, loss_rate, loss_seed  See `testPacketLoss`.
+ */
 class inventPLMask : public kotekan::Stage {
     const int num_dishes = config.get<int>(unique_name, "num_dishes");
     const int num_polarizations = config.get<int>(unique_name, "num_polarizations");
@@ -43,9 +55,10 @@ class inventPLMask : public kotekan::Stage {
     const std::int64_t first_fpga_seq_num =
         config.get_default<std::int64_t>(unique_name, "first_fpga_seq_num", 0);
 
-    // Packets are lost in the FPGA samples [box_begin, box_end), and nowhere else
+    // The FPGA samples [box_begin, box_end) are lost, and those that `loss` says
     const std::int64_t box_begin = config.get_default<std::int64_t>(unique_name, "box_begin", 0);
     const std::int64_t box_end = config.get_default<std::int64_t>(unique_name, "box_end", 0);
+    const testPacketLoss loss{config, unique_name};
 
     Buffer* const buffer;
 
@@ -63,10 +76,9 @@ public:
             FATAL_ERROR("inventPLMask: frequency_channels has {:d} entries, expected "
                         "num_frequencies={:d}",
                         frequency_channels.size(), num_frequencies);
-        // Each byte of the mask covers 16 FPGA samples
-        if (!(box_begin % 16 == 0 && box_end % 16 == 0))
-            FATAL_ERROR("box_begin={:d} and box_end={:d} must be multiples of 16", box_begin,
-                        box_end);
+        // Each bit of the mask covers 2 FPGA samples
+        if (!(box_begin % 2 == 0 && box_end % 2 == 0))
+            FATAL_ERROR("box_begin={:d} and box_end={:d} must be even", box_begin, box_end);
     }
 
     virtual ~inventPLMask() {}
@@ -114,8 +126,18 @@ public:
             const std::ptrdiff_t str2 = str3 * div_noremainder(num_dishes, 8);
             const std::ptrdiff_t str1 = str2 * num_polarizations;
             const std::ptrdiff_t str0 = str1 * div_noremainder(num_frequencies, 4);
+            // Each byte holds 8 bits, the first sample pair in the least significant bit
             for (int time = 0; time < num_times; time += 16) {
                 for (int freq = 0; freq < num_frequencies; freq += 4) {
+                    std::uint8_t valid = 0;
+                    for (int bit = 0; bit < 8; ++bit) {
+                        const std::int64_t seq = first_fpga_seq_num
+                                                 + std::int64_t(frame_index) * num_times + time
+                                                 + 2 * bit;
+                        const bool lost =
+                            (seq >= box_begin && seq < box_end) || loss.lost(seq, freq);
+                        valid |= std::uint8_t(!lost) << bit;
+                    }
                     for (int polr = 0; polr < num_polarizations; ++polr) {
                         for (int dish = 0; dish < num_dishes; dish += 8) {
                             const int idx4 = time / 2 % 64 / 8;
@@ -126,10 +148,7 @@ public:
                             const std::ptrdiff_t idx =
                                 str4 * idx4 + str3 * idx3 + str2 * idx2 + str1 * idx1 + str0 * idx0;
                             assert(idx >= 0 && idx < std::ptrdiff_t(buffer->frame_size));
-                            const std::int64_t seq =
-                                first_fpga_seq_num + std::int64_t(frame_index) * num_times + time;
-                            const bool lost = seq >= box_begin && seq < box_end;
-                            frame[idx] = lost ? 0x00 : 0xff;
+                            frame[idx] = valid;
                         }
                     }
                 }

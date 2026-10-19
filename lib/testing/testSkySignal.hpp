@@ -8,13 +8,71 @@
 #include "json.hpp" // for json, basic_json<>::object_t, basic_json<>::value_type
 
 #include <algorithm> // for clamp
-#include <cmath>     // for log, lrintf, sqrt, M_PI
+#include <cmath>     // for ldexp, log, lrintf, sqrt, M_PI
 #include <complex>   // for complex, polar
 #include <cstddef>   // for ptrdiff_t, size_t
 #include <cstdint>   // for int64_t, uint64_t
 #include <string>    // for string
 #include <utility>   // for pair
 #include <vector>    // for vector
+
+/// A 64-bit hash (the splitmix64 finalizer), for reproducible test patterns
+inline std::uint64_t splitmix64(std::uint64_t x) {
+    x += 0x9e3779b97f4a7c15ULL;
+    x = (x ^ (x >> 30)) * 0xbf58476d1ce4e5b9ULL;
+    x = (x ^ (x >> 27)) * 0x94d049bb133111ebULL;
+    return x ^ (x >> 31);
+}
+
+/**
+ * @brief Simulated packet loss, shared by the test generators `inventPLMask` and `inventVoltage`.
+ *
+ * Random loss drops whole packets. A packet holds 16 FPGA samples of 4 consecutive frequencies, for
+ * all dishes and polarizations; the packet of FPGA sample `seq` and local frequency index `f` is
+ * `(p, q) = (seq / 16, f / 4)`. It is lost with probability `loss_rate`:
+ *
+ *     splitmix64(((p << 16) | q) ^ splitmix64(loss_seed)) < loss_rate * 2^64
+ *
+ * In addition, all samples in `loss_boxes` are lost. Boxes may begin and end at any even sample,
+ * the resolution of the packet loss mask. python/integration-tests/check_packetloss.py reproduces
+ * this.
+ *
+ * @conf loss_boxes  List of [begin, end), FPGA samples, multiples of 2. Default: none.
+ * @conf loss_rate   Float, in [0, 1). Default 0.
+ * @conf loss_seed   Int. Default 1.
+ */
+class testPacketLoss {
+public:
+    testPacketLoss(const kotekan::Config& config, const std::string& unique_name) :
+        boxes(config.get_default<std::vector<std::pair<std::int64_t, std::int64_t>>>(
+            unique_name, "loss_boxes", {})),
+        loss_rate(config.get_default<double>(unique_name, "loss_rate", 0)),
+        threshold(std::uint64_t(std::ldexp(loss_rate, 64))),
+        seed_hash(splitmix64(config.get_default<std::uint64_t>(unique_name, "loss_seed", 1))) {
+        if (!(loss_rate >= 0 && loss_rate < 1))
+            FATAL_ERROR_NON_OO("testPacketLoss: loss_rate={:g} must be in [0, 1)", loss_rate);
+        for (const auto& [begin, end] : boxes)
+            if (begin % 2 != 0 || end % 2 != 0)
+                FATAL_ERROR_NON_OO("testPacketLoss: loss box [{:d}, {:d}) must begin and end at "
+                                   "even FPGA samples",
+                                   begin, end);
+    }
+
+    /// Whether FPGA sample `seq` (>= 0) of local frequency index `freq` is lost
+    bool lost(const std::int64_t seq, const int freq) const {
+        for (const auto& [begin, end] : boxes)
+            if (seq >= begin && seq < end)
+                return true;
+        const std::uint64_t key = (std::uint64_t(seq / 16) << 16) | std::uint64_t(freq / 4);
+        return splitmix64(key ^ seed_hash) < threshold;
+    }
+
+private:
+    const std::vector<std::pair<std::int64_t, std::int64_t>> boxes;
+    const double loss_rate;
+    const std::uint64_t threshold; // loss_rate * 2^64
+    const std::uint64_t seed_hash;
+};
 
 /**
  * @brief Point-source tones plus noise as channelized F-engine voltages, for test generators.
@@ -208,13 +266,6 @@ private:
             set.at(dp[1] * num_dishes + dp[0]) = true;
         }
         return set;
-    }
-
-    static std::uint64_t splitmix64(std::uint64_t x) {
-        x += 0x9e3779b97f4a7c15ULL;
-        x = (x ^ (x >> 30)) * 0xbf58476d1ce4e5b9ULL;
-        x = (x ^ (x >> 27)) * 0x94d049bb133111ebULL;
-        return x ^ (x >> 31);
     }
 
     // Gaussian noise with standard deviation `noise_rms` per component (Box-Muller). The
