@@ -19,10 +19,10 @@
 /**
  * @brief Point-source tones plus noise as channelized F-engine voltages, for test generators.
  *
- * A source with amplitude `A`, direction `n = (n_x, n_y)` in the telescope grid frame (the
- * convention of the `setBBBeams` beam positions) and `k` tone cycles per frame contributes
+ * A source with amplitude `A`, phase `φ`, direction `n = (n_x, n_y)` in the telescope grid frame
+ * (the convention of the `setBBBeams` beam positions) and `k` tone cycles per frame contributes
  *
- *     E[d,p](f,t) = A w_p exp(2πi k (t - t0) / T) exp(-2πi ν_f n·r_d / c)
+ *     E[d,p](f,t) = A w_p exp(iφ) exp(2πi k (t - t0) / T) exp(-2πi ν_f n·r_d / c)
  *
  * to dish `d`, polarization `p`, coarse channel `f` and FPGA sample `t`. Here `t0` is
  * `first_fpga_seq_num`, `T` is `num_times`, `ν_f = (channel + k/T) Δν` is the tone frequency,
@@ -35,9 +35,10 @@
  * rounded and clamped to [-7, +7]; -8 is reserved as the no-data value.
  *
  * @conf sources              List of objects, each with `amplitude` (LSB), `direction`
- *                            ([n_x, n_y]), `tone_cycles_per_frame` (integer), optional `pol`
- *                            ([w_0, w_1], default [1, 1]) and optional `window` ([begin, end),
- *                            FPGA samples; default: always on)
+ *                            ([n_x, n_y]), `tone_cycles_per_frame` (integer), optional `phase`
+ *                            (radians, default 0), optional `pol` ([w_0, w_1], default [1, 1])
+ *                            and optional `window` ([begin, end), FPGA samples; default: always
+ *                            on)
  * @conf noise_rms            Float. Default 0.
  * @conf seed                 Int. Noise seed. Default 1.
  * @conf noise_period_frames  Int. Default 4.
@@ -48,6 +49,7 @@ class testSkySignal {
 public:
     struct Source {
         float amplitude;
+        double phase;
         double n_x, n_y;
         int tone_cycles_per_frame;
         float pol[2];
@@ -73,6 +75,7 @@ public:
              config.get_default<nlohmann::json>(unique_name, "sources", nlohmann::json::array())) {
             Source src;
             src.amplitude = s.at("amplitude").get<float>();
+            src.phase = s.contains("phase") ? s.at("phase").get<double>() : 0.0;
             src.n_x = s.at("direction").at(0).get<double>();
             src.n_y = s.at("direction").at(1).get<double>();
             src.tone_cycles_per_frame = s.at("tone_cycles_per_frame").get<int>();
@@ -143,7 +146,7 @@ public:
                             (src.n_x * pos_x[d] + src.n_y * pos_y[d] + n_z * pos_z[d]) / c0;
                         geometry[s * num_elements + e] =
                             on ? std::complex<float>(std::polar(double(src.amplitude * src.pol[p]),
-                                                                -2 * M_PI * nu * delay))
+                                                                src.phase - 2 * M_PI * nu * delay))
                                : 0.0f;
                     }
                 }
