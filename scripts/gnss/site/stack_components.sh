@@ -92,6 +92,11 @@ gnss_component() {
         ;;
 
     gather)
+        # The config is generated and untracked. Regenerate it with
+        #   config/gen_chord_gnss_config.py --base config/base/live_config_20260730.json \
+        #       --node cx19 --gather-instance --rest-port 12051 --fleet-trim-windows 2 \
+        #       --gather-cores 0,1,2,3,4,5 --out config/generated/chord_gnss_gather.yaml
+        # fleet-trim-bandwidth in config/gnss_chains_chord.yaml assumes --fleet-trim-windows 2.
         GNSS_EXEC=("$GNSS_BIN" --config
                    "${GNSS_GATHER_CFG:-$GNSS_K/config/generated/chord_gnss_gather.yaml}"
                    --bind-address "0.0.0.0:${GNSS_GATHER_REST:-12051}")

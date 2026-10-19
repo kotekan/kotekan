@@ -12,7 +12,8 @@ reproduced from a committed file; a node's config is regenerated, never hand-edi
 compares the result byte for byte with the file on disk (the live EOP and bad-input values
 aside) and checks the file against the stock render (stock_parity.py), so a hand-edit, a
 changed base or a generator whose output moved all fail. It prints a diff per mismatching node
-and exits 1 if any node differs, 2 if the generator cannot run.
+and exits 1 if any node differs, 2 if nothing could be compared (a missing base, a generator
+that cannot run, a crash here).
 
 `--check-prns` is a separate, network-dependent check of the manifest's PRN lists against live
 BRDC.
@@ -23,6 +24,7 @@ import os
 import shlex
 import subprocess
 import sys
+import traceback
 
 import yaml
 
@@ -89,6 +91,19 @@ def _live_inputs_missing(text):
             "bad_inputs is the template's default (bffs and the stock nodes unreachable)"
         )
     return "; ".join(why) or None
+
+
+def _relay_notes(node, stderr):
+    """Echo the generator's SKIPPED and WARNING lines for one node to stderr, each once. The
+    generator writes its summary there and gen_fleet keeps it quiet on success, but a chain
+    skipped on a node (no covering channel) or a warning is not something a fleet regeneration
+    may hide."""
+    seen = set()
+    for line in stderr.splitlines():
+        line = line.strip()
+        if ("SKIPPED" in line or "WARNING" in line) and line not in seen:
+            seen.add(line)
+            sys.stderr.write("%s: %s\n" % (node, line))
 
 
 def flags_from(mapping):
@@ -275,7 +290,7 @@ def main():
         help="regenerate each node into memory, compare it byte for byte with the file on "
         "disk (the live EOP table and bad-input list aside) and check the file against "
         "the stock render (stock_parity.py); write nothing. Exit 1 if any node differs, "
-        "2 if the generator cannot run",
+        "2 if nothing could be compared",
     )
     ap.add_argument(
         "--node",
@@ -331,10 +346,12 @@ def main():
     base = man["base"]
     base = base if os.path.isabs(base) else os.path.join(K, "config", base)
     if not os.path.exists(base):
-        sys.exit(
+        # Exit 2: nothing was compared (see the generator failure below).
+        sys.stderr.write(
             "base config %s does not exist. It is a real INPUT -- the generator injects\n"
-            "into it -- so it must be committed, not re-captured ad hoc." % base
+            "into it -- so it must be committed, not re-captured ad hoc.\n" % base
         )
+        raise SystemExit(2)
     suffix = man.get("suffix", "")
     common = flags_from(man.get("common") or {})
     # Every config, written or checked, is diffed against the stock render (stock_parity.py);
@@ -384,6 +401,7 @@ def main():
                 "generator failed for %s (exit %d)\n" % (node, p.returncode)
             )
             raise SystemExit(2)
+        _relay_notes(node, p.stderr)
         text = p.stdout
 
         if not a.check:
@@ -475,4 +493,10 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    # Exit 1 means a config differs from the manifest (node_up.sh's preflight reads it that
+    # way), so a crash here, which has compared nothing, exits 2.
+    try:
+        sys.exit(main())
+    except Exception:
+        traceback.print_exc()
+        sys.exit(2)

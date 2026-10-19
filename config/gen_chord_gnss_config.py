@@ -58,6 +58,8 @@ from gnss_record_layout import (
 )
 
 NODE_FILE = os.path.join(CONF, "chord_gnss_node.yaml")
+# The broker's chains file, read only by check_telem_windows.
+CHAINS_FILE = os.path.join(CONF, "gnss_chains_chord.yaml")
 
 # ── Fixed settings ───────────────────────────────────────────────────────────────────────────
 # Several are wire or alignment contracts that every sender and receiver must agree on: change
@@ -162,8 +164,9 @@ GATHER_SERVE_PORT = 11061
 # a store older than the max age (s) is refused, because a trim corrects the broker's model and
 # after a long outage that model is not the one about to be republished. The /get_taps depth
 # must match the broker's telem-windows (32, config/gnss_chains_chord.yaml), not the loop's own
-# --fleet-trim-windows, which is far too short for the policy cycle's statistics. Instances
-# required before a discriminator forms.
+# --fleet-trim-windows, which is far too short for the policy cycle's statistics; the
+# combiners' record_export is the same depth in records, and check_telem_windows refuses to
+# generate when the chains file disagrees. Instances required before a discriminator forms.
 FLEET_TRIM_STATE_FILE = "/tmp/gnss_fleet_trim.json"
 FLEET_TRIM_STATE_MAX_AGE_S = 300.0
 FLEET_TRIM_TAPS_WINDOWS = 32
@@ -437,8 +440,8 @@ def parse_extra_signals(cfg, args, node, primary_chans):
             # covering set is six freq_ids, fewer than the 8-id comb stride, so some nodes own
             # none of them. That is not an error: the fleet loop combines over the instances
             # that report, and a PRN an instance never despreads is skipped by the combine. Any
-            # chain is skipped with a note on stderr rather than an error; gen_fleet prints a
-            # generator's stderr only when it fails, so a fleet regeneration hides the note.
+            # chain is skipped with a note on stderr rather than an error; gen_fleet relays it
+            # with the node's name.
             sys.stderr.write(
                 f"  note: {name} has no covering channel on {node} "
                 f"(carrier {s['carrier_hz']/1e6:.2f} MHz, mainlobe "
@@ -676,6 +679,22 @@ def gnss_cores(rt, gpu):
     the same cores; two cudaProcess stages must never share a logical cpu.
     """
     return rt["cpu_affinity_gpu%d" % gpu]
+
+
+def load_summary(out, cfg, gpus):
+    """The three busiest cores among the config's gnss* stages, and the size of the pool they
+    are drawn from: the union of these GPUs' runtime.cpu_affinity_gpu<N>."""
+    load = {}
+    for k, v in out.items():
+        if k.startswith("gnss") and isinstance(v, dict) and "cpu_affinity" in v:
+            for c in v["cpu_affinity"]:
+                load.setdefault(c, []).append(v.get("kotekan_stage", "?"))
+    busiest = sorted(load.items(), key=lambda kv: -len(kv[1]))[:3]
+    pool = {c for g in gpus for c in gnss_cores(cfg["runtime"], g)}
+    return (
+        ", ".join(f"core {c}: {len(v)} stages" for c, v in busiest)
+        + f"  (pool of {len(pool)})"
+    )
 
 
 def dual_core(rt, gpu, ordv):
@@ -1239,7 +1258,10 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
             # are set to the only values the stage accepts.
             "sky_deep": True,
             "fft_len": cfg["fengine"]["fft_length"],
-            "record_export": 128,
+            # The broker's telem-windows (config/gnss_chains_chord.yaml) in records, so the
+            # polled and gathered feeds integrate the same length; check_telem_windows holds it
+            # to FLEET_TRIM_TAPS_WINDOWS.
+            "record_export": FLEET_TRIM_TAPS_WINDOWS * TELEM_RECORDS_PER_FRAME,
             "cpu_affinity": [V["cores"]["combine"]],
         },
         f"{pre}n2sink": {"kotekan_stage": "dropAllFrames", "in_buf": f"{pre}n2cmb_buf"},
@@ -1704,7 +1726,7 @@ def search_stage(cfg, args, in_buf, chan_ids, core, signal=None, prns=None):
     }
 
 
-def build_aggregator_instance(cfg, nodes, args, port):
+def build_aggregator_instance(cfg, nodes, args, port, spds=8192):
     """One acquisition search over the union of several nodes' combs. One node GPU's feed holds
     ~7 of the ~106 L5 covering channels (-11.8 dB), which no amount of local integration
     recovers; the union of the feeds is denser by construction. The feeds arrive over
@@ -1712,9 +1734,13 @@ def build_aggregator_instance(cfg, nodes, args, port):
     global sample counter (equal sample_seq is simultaneity, so the union search is coherent
     across nodes), and one GnssChannelizedSearch runs on the merged comb.
 
-    Port layout: feed i (node-major, GPU-minor) listens on search_port_base + i. Each node's
-    config sends to its own --search-port-base + gpu, so the nodes' bases must be 2 apart in
-    the order given here (config/gnss_fleet_chord.yaml).
+    Port layout: node k's GPU g feed listens on search_port_base + 2k + g. Each node's config
+    sends to its own --search-port-base + gpu, so the nodes' bases must be 2 apart in the order
+    given here (config/gnss_fleet_chord.yaml). A GPU with no covering channel has no feed and
+    leaves its port unused rather than shifting the later nodes'.
+
+    `spds` is the base's samples_per_data_set, which sizes the senders' frames; bufferRecv
+    closes a feed whose frame size differs.
     """
     sig = cfg["signals"]
     rt = cfg["runtime"]
@@ -1730,7 +1756,7 @@ def build_aggregator_instance(cfg, nodes, args, port):
     out = {
         "type": "config",
         "log_level": "info",
-        "samples_per_data_set": 8192,
+        "samples_per_data_set": spds,
         "sizeof_float32": 4,
         "cpu_affinity": cores,
         "rest_server": {"port": port, "cpu_affinity": cores, "enable_cors": True},
@@ -1748,11 +1774,11 @@ def build_aggregator_instance(cfg, nodes, args, port):
         },
     }
 
-    # One feed per (node, gpu), node-major to match the port assignment. The merge
-    # concatenates columns in feed order, so union_ids is built in that order; the search
-    # takes it as channel_ids and never assumes sortedness.
+    # One feed per (node, gpu), node-major, each with its listen port. The merge concatenates
+    # columns in feed order, so union_ids is built in that order; the search takes it as
+    # channel_ids and never assumes sortedness.
     feeds = []
-    for node in nodes:
+    for k, node in enumerate(nodes):
         nchans = covering_channels(
             node_channels(cfg, node),
             float(sig["carrier_hz"]),
@@ -1766,12 +1792,12 @@ def build_aggregator_instance(cfg, nodes, args, port):
             gpu, idx = gpu_of_channel(cfg, node, fid)
             pg.setdefault(gpu, []).append(fid)
         for gpu in sorted(pg):
-            feeds.append((node, gpu, pg[gpu]))
+            feeds.append((node, gpu, pg[gpu], args.search_port_base + 2 * k + gpu))
 
     union_ids = []
     in_buf_names = []
     in_channels = []
-    for i, (node, gpu, fids) in enumerate(feeds):
+    for i, (node, gpu, fids, listen_port) in enumerate(feeds):
         n_chan = len(fids)
         pre = f"agg{i}_"
         union_ids.extend(fids)
@@ -1794,7 +1820,7 @@ def build_aggregator_instance(cfg, nodes, args, port):
                 f"{pre}recv": {
                     "kotekan_stage": "bufferRecv",
                     "buf": f"{pre}in_buf",
-                    "listen_port": args.search_port_base + i,
+                    "listen_port": listen_port,
                     "num_threads": 1,
                     "drop_frames": True,
                     # Must match the sender: see srch_send in build_search_leg.
@@ -1809,9 +1835,10 @@ def build_aggregator_instance(cfg, nodes, args, port):
                     "n_elements": 1,
                     "element": 0,
                     # The F-engine's channelized output is conjugated relative to the nominal
-                    # decode (indistinguishable from a nibble swap, and invisible to the
-                    # |.|^2-only X-engine); without this the despread matches no satellite. The
-                    # stage refuses false. See GnssChordDequantize.cpp.
+                    # decode (indistinguishable from a nibble swap: the two differ by a constant
+                    # phase, which cancels in every x_i x_j* product); without this the despread
+                    # matches no satellite. The stage refuses false. See
+                    # GnssChordDequantize.cpp.
                     "conjugate": True,
                     "cpu_affinity": [cores[(i + 2) % len(cores)]],
                 },
@@ -2112,8 +2139,6 @@ def build_gather_instance(cfg, args, port):
     }
     return out
 
-    return out
-
 
 def render_stock_template(path):
     """A kotekan .j2 config rendered as kotekan renders it (kotekan/kotekan.cpp): jinja2 with a
@@ -2159,14 +2184,29 @@ def choco_bad_inputs(timeout=20.0):
         return None
 
 
-def live_bad_inputs(cfg, args, timeout=5.0):
+def node_names(cfg):
+    """The hosts in the node table. nodes: also holds bringup_order, a list, which is not one."""
+    return [k for k, v in cfg["nodes"].items() if isinstance(v, dict)]
+
+
+def node_rest_port(cfg, args):
+    """The port to ask our running nodes on: --rest-port for a node config, which gives the node
+    that port; runtime.rest_port for an off-node instance, whose --rest-port is its own."""
+    instance = args.aggregator_instance or args.gather_instance or args.cube_archive_instance
+    if args.rest_port is not None and not instance:
+        return args.rest_port
+    return cfg["runtime"]["rest_port"]
+
+
+def live_bad_inputs(cfg, timeout=5.0):
     """The bad-input block a running stock node (runtime.eop_reference_nodes) holds, as
     (block, host), or None. The fallback when bffs's state cannot be read: choco keeps those
     nodes current. A block still at the template's initial_flags is skipped.
     """
     import urllib.request
 
-    port = args.rest_port if args.rest_port is not None else cfg["runtime"]["rest_port"]
+    # Stock nodes run production's kotekan, on production's port whatever --rest-port says.
+    port = cfg["runtime"]["rest_port"]
     for host in cfg["runtime"].get("eop_reference_nodes", []):
         try:
             with urllib.request.urlopen(
@@ -2232,16 +2272,14 @@ def live_eop_table(cfg, args, timeout=3.0):
     """
     import urllib.request
 
-    port = args.rest_port if args.rest_port is not None else cfg["runtime"]["rest_port"]
     # Our nodes and the stock reference nodes; the freshest table wins. After a long outage of
-    # our own, the stock nodes are the ones still being refreshed.
-    hosts = list(cfg["nodes"]) + [
-        h
-        for h in cfg["runtime"].get("eop_reference_nodes", [])
-        if h not in cfg["nodes"]
-    ]
+    # our own, the stock nodes are the ones still being refreshed. They run production's
+    # kotekan, so they are asked on production's port.
+    refs = cfg["runtime"].get("eop_reference_nodes", [])
+    hosts = node_names(cfg) + [h for h in refs if h not in cfg["nodes"]]
     best = None
     for host in hosts:
+        port = cfg["runtime"]["rest_port"] if host in refs else node_rest_port(cfg, args)
         try:
             url = f"http://{host}:{port}/telescope/eop_table"
             with urllib.request.urlopen(url, timeout=timeout) as r:
@@ -2276,10 +2314,12 @@ def live_frame0_utc(cfg, args, timeout=3.0):
     """
     import urllib.request
 
-    # The nodes' REST port, which carries the telescope endpoints.
-    port = args.rest_port if args.rest_port is not None else cfg["runtime"]["rest_port"]
+    # The nodes' REST port, which carries the telescope endpoints; production's on the stock
+    # reference nodes.
+    refs = cfg["runtime"].get("eop_reference_nodes", [])
     seen = {}
-    for node in cfg["nodes"]:
+    for node in node_names(cfg):
+        port = cfg["runtime"]["rest_port"] if node in refs else node_rest_port(cfg, args)
         try:
             url = f"http://{node}:{port}/telescope/time0_ns"
             with urllib.request.urlopen(url, timeout=timeout) as r:
@@ -2311,6 +2351,131 @@ def live_frame0_utc(cfg, args, timeout=3.0):
     return next(iter(seen)) * 1e-9
 
 
+def check_frame0(cfg, args, live_t0):
+    """Check the record epoch this config pins against the frame 0 the running fleet serves.
+
+    cudaGnssChordTrackState takes frame0_utc (the UTC of the F-engine's absolute sample 0;
+    records are stamped frame0_utc + wstart/rate) from Telescope::to_time_ns(0) unless the config
+    carries one, so by default none is emitted and nothing can go stale. A pinned value
+    (--frame0-nano, else the node file's fengine.frame0_utc) goes stale silently at the next
+    F-engine restart, since every cross-record estimator works in differences. `live_t0` is
+    live_frame0_utc's answer (None when no single value came back): a pin that disagrees with
+    it is an error, and a node-file pin it cannot confirm is a warning.
+    """
+    if args.frame0_nano:
+        have = args.frame0_nano * 1e-9
+    elif cfg["fengine"].get("frame0_utc"):
+        have = float(cfg["fengine"]["frame0_utc"])
+    else:
+        print(
+            "  epoch     frame0_utc not emitted -- the stages take it from the telescope's "
+            "live GPS time0 (week-rollover corrected). Nothing to keep in step.",
+            file=sys.stderr,
+        )
+        return
+    if live_t0 is None:
+        if not args.frame0_nano:
+            # stderr: without --out, stdout is the config (see live_frame0_utc).
+            print(
+                "  WARNING   the running nodes gave no single telescope/time0_ns (none "
+                f"answered, or they disagree) -- frame0_utc {have:.6f} is unverified. If the "
+                "F-engine has restarted since it was written, every record stamp is wrong.",
+                file=sys.stderr,
+            )
+        return
+    if abs(have - live_t0) <= 1e-3:
+        return
+    gap = (
+        f"{have:.9f} but the running fleet serves {live_t0:.9f} "
+        f"({abs(have - live_t0) / 86400.0:.2f} days apart).\n"
+    )
+    if args.frame0_nano:
+        raise SystemExit(
+            f"--frame0-nano gives frame0_utc {gap}"
+            "Re-read telescope/time0_ns from a node started since the last F-engine restart "
+            "(curl -s http://cx27:12048/telescope/time0_ns). Records would carry the wrong "
+            "epoch and nothing downstream would say so."
+        )
+    raise SystemExit(
+        f"frame0_utc in {NODE_FILE} is {gap}"
+        f"The F-engine has been restarted since that value was written. Records would "
+        f"carry the wrong epoch and nothing downstream would say so.\n"
+        f"Fix it:  sed -i 's/^    frame0_utc: .*/    frame0_utc: {live_t0:.9f}/' "
+        f"{NODE_FILE}\n"
+        f"Better: delete frame0_utc from {NODE_FILE}; the stages then take the epoch "
+        f"from the telescope's live GPS time0, and no config value can go stale."
+    )
+
+
+def _rel(p):
+    """A path inside the repo relative to it, so a recorded recipe holds on any checkout."""
+    root = os.path.dirname(CONF)
+    ap_ = os.path.abspath(p)
+    return os.path.relpath(ap_, root) if ap_.startswith(root + os.sep) else p
+
+
+def recipe_lines(argv):
+    """The header comment lines that regenerate a config: the generator and its `argv`, less
+    --out, wrapped without breaking a token so the recipe pastes back whole.
+
+    --out is left out: it says where the file was written, not how it was built, and gen_fleet
+    regenerates to stdout and compares byte for byte, so a recorded --out would never match.
+    Add --out when pasting the recipe, or let gen_fleet write the file.
+    """
+    sink_flags = ("--out",)
+    keep = []
+    i = 0
+    while i < len(argv):
+        if argv[i] in sink_flags:
+            i += 2
+            continue
+        if any(argv[i].startswith(f + "=") for f in sink_flags):
+            i += 1
+            continue
+        keep.append(argv[i])
+        i += 1
+    return [
+        "#   " + ln
+        for ln in textwrap.wrap(
+            "config/gen_chord_gnss_config.py " + " ".join(shlex.quote(_rel(a)) for a in keep),
+            width=92,
+            subsequent_indent="    ",
+            break_on_hyphens=False,
+            # A long --extra-signal PRN list must stay whole: the recipe is meant to be pasted.
+            break_long_words=False,
+        )
+    ]
+
+
+def check_telem_windows(path=CHAINS_FILE):
+    """Refuse to generate when the broker's telem-windows (`common:` or any chain's override in
+    the chains file) differs from FLEET_TRIM_TAPS_WINDOWS. The broker averages telem-windows
+    gathered windows, the gather's /get_taps serves taps_win and the combiners export
+    record_export records; a mismatch integrates different lengths on each path with no error.
+    """
+    with open(path) as fh:
+        chains = yaml.safe_load(fh)
+    have = {"common": (chains.get("common") or {}).get("telem-windows")}
+    for name, spec in (chains.get("chains") or {}).items():
+        if isinstance(spec, dict) and "telem-windows" in spec:
+            have[name] = spec["telem-windows"]
+    bad = {k: v for k, v in have.items() if v != FLEET_TRIM_TAPS_WINDOWS}
+    if bad:
+        raise SystemExit(
+            "telem-windows in %s (%s) must equal FLEET_TRIM_TAPS_WINDOWS (%d, the gather's "
+            "taps_win) and the combiners' record_export (%d records = %d windows of %d) in "
+            "config/gen_chord_gnss_config.py: change all three together."
+            % (
+                path,
+                ", ".join("%s: %s" % kv for kv in bad.items()),
+                FLEET_TRIM_TAPS_WINDOWS,
+                FLEET_TRIM_TAPS_WINDOWS * TELEM_RECORDS_PER_FRAME,
+                FLEET_TRIM_TAPS_WINDOWS,
+                TELEM_RECORDS_PER_FRAME,
+            )
+        )
+
+
 def main():
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -2330,10 +2495,11 @@ def main():
         default=None,
         help="REST port of the generated instance. Default: runtime.rest_port from "
         "config/chord_gnss_node.yaml for a node config, runtime.aggregator_rest_port for "
-        "--aggregator-instance, runtime.rest_port + 2 for --gather-instance and + 3 for "
-        "--cube-archive-instance (those two refuse 12048). The generator queries running "
-        "nodes (EOP table, bad inputs, frame 0) on an explicit --rest-port too, and on "
-        "runtime.rest_port otherwise.",
+        "--aggregator-instance, runtime.aggregator_rest_port + 1 for --gather-instance and "
+        "+ 2 for --cube-archive-instance (those two refuse runtime.rest_port and "
+        "runtime.aggregator_rest_port). The generator queries our running nodes (EOP table, "
+        "frame 0) on this port for a node config and on runtime.rest_port for an off-node "
+        "instance; the stock reference nodes always on runtime.rest_port.",
     )
     ap.add_argument(
         "--n2-send-legs",
@@ -2607,9 +2773,9 @@ def main():
         metavar="NODE",
         default=None,
         help="emit one standalone search instance over the union of these nodes'\
- combs (e.g. --aggregator-instance cx19 cx27). Feed i listens on search_port_base + i in\
- node-major, GPU-minor order, the ports the node configs send to. No DPDK or hugepages,\
- and no GPU unless --cuda-acquire; runs as an ordinary user.",
+ combs (e.g. --aggregator-instance cx19 cx27). Node k's GPU g feed (k from 0 in this\
+ list) listens on search_port_base + 2k + g, the port that node's config sends to. No DPDK\
+ or hugepages, and no GPU unless --cuda-acquire; runs as an ordinary user.",
     )
     # -- The frame-synced tracker -> broker telemetry transport -------------------------------
     ap.add_argument(
@@ -2671,9 +2837,13 @@ def main():
     ap.add_argument(
         "--fleet-trim-windows",
         type=int,
-        default=4,
+        default=2,
         help="windows GnssFleetTrim averages into one discriminator (default "
-        "%(default)s). A window is 4 records, so 4 windows = 16 records = 168 ms.",
+        "%(default)s). A window is 4 records, so 2 windows = 8 records = 84 ms. The "
+        "broker's fleet-trim-bandwidth (config/gnss_chains_chord.yaml) is stable only "
+        "while bandwidth x the loop's round trip, which this average is part of, stays "
+        "under ~0.5: its 2.5 assumes 2 windows, and a longer average needs a lower "
+        "bandwidth.",
     )
     ap.add_argument(
         "--record-dir",
@@ -2688,8 +2858,8 @@ def main():
         default=11040,
         help="search-feed port base (default %(default)s). A node's GPU 0 search tap "
         "sends to --search-host on this port and GPU 1 on base+1; --aggregator-instance "
-        "listens for feed i (node-major, GPU-minor) on base+i, so the node bases must "
-        "be 2 apart, in the order --aggregator-instance lists the nodes.",
+        "listens for node k's GPU g (k from 0) on base+2k+g, so the node bases must be "
+        "2 apart, in the order --aggregator-instance lists the nodes.",
     )
     ap.add_argument(
         "--aggregator-extra-search",
@@ -2719,45 +2889,13 @@ def main():
 
     with open(NODE_FILE) as fh:
         cfg = yaml.safe_load(fh)
-    if args.node not in cfg["nodes"]:
+    if args.node not in node_names(cfg):
         raise SystemExit(f"unknown node {args.node}")
+    check_telem_windows()
 
-    # Record epoch. cudaGnssChordTrackState takes frame0_utc (the UTC of the F-engine's absolute
-    # sample 0; records are stamped frame0_utc + wstart/rate) from Telescope::to_time_ns(0)
-    # unless the config carries one, so by default none is emitted and nothing can go stale. A
-    # pinned value (the node file's fengine.frame0_utc, or --frame0-nano) goes stale silently at
-    # the next F-engine restart, since every cross-record estimator works in differences; only
-    # then is the running fleet probed, and a node-file value that disagrees with it is an error.
+    # Record epoch (see check_frame0). Only a pinned epoch probes the running fleet.
     pinned = bool(cfg["fengine"].get("frame0_utc")) or bool(args.frame0_nano)
-    live_t0 = live_frame0_utc(cfg, args) if pinned else None
-    if not pinned:
-        print(
-            "  epoch     frame0_utc not emitted -- the stages take it from the telescope's "
-            "live GPS time0 (week-rollover corrected). Nothing to keep in step.",
-            file=sys.stderr,
-        )
-    if live_t0 is not None:
-        have = float(cfg["fengine"].get("frame0_utc", 0.0))
-        if abs(have - live_t0) > 1e-3:
-            raise SystemExit(
-                f"frame0_utc in {NODE_FILE} is {have:.9f} but the running fleet serves "
-                f"{live_t0:.9f} ({abs(have - live_t0) / 86400.0:.2f} days apart).\n"
-                f"The F-engine has been restarted since that value was written. Records would "
-                f"carry the wrong epoch and nothing downstream would say so.\n"
-                f"Fix it:  sed -i 's/^    frame0_utc: .*/    frame0_utc: {live_t0:.9f}/' "
-                f"{NODE_FILE}\n"
-                f"Better: delete frame0_utc from {NODE_FILE}; the stages then take the epoch "
-                f"from the telescope's live GPS time0, and no config value can go stale."
-            )
-    elif not args.frame0_nano:
-        # stderr: without --out, stdout is the config (see live_frame0_utc).
-        print(
-            "  WARNING   the running nodes gave no single telescope/time0_ns (none answered, "
-            "or they disagree) -- frame0_utc "
-            f"{float(cfg['fengine'].get('frame0_utc', 0.0)):.6f} is unverified. If the "
-            "F-engine has restarted since it was written, every record stamp is wrong.",
-            file=sys.stderr,
-        )
+    check_frame0(cfg, args, live_frame0_utc(cfg, args) if pinned else None)
 
     # --frame0-nano sets the record epoch as well as the telescope's startup GPS time (below):
     # cudaGnssChordTrackState prefers a configured frame0_utc over the telescope's, so setting
@@ -2830,7 +2968,7 @@ def main():
             else cfg["runtime"]["aggregator_rest_port"]
         )
         out, feeds, union_ids = build_aggregator_instance(
-            cfg, args.aggregator_instance, args, port
+            cfg, args.aggregator_instance, args, port, out.get("samples_per_data_set", 8192)
         )
         text = (
             "# GENERATED by config/gen_chord_gnss_config.py --aggregator-instance -- DO NOT "
@@ -2840,9 +2978,9 @@ def main():
             f"# union comb: {len(union_ids)} channels {min(union_ids)}..{max(union_ids)}\n"
             "# The off-node acquisition search: one search of the signal above, plus one\n"
             "# per --aggregator-extra-search, over the union of these nodes' combs, aligned\n"
-            "# on the F-engine's global sample counter. Feed i (node-major, GPU-minor, in\n"
-            "# the order above) listens on --search-port-base + i, so the order must match\n"
-            "# each node's search-port-base in config/gnss_fleet_chord.yaml.\n"
+            "# on the F-engine's global sample counter. Node k above (from 0) has its GPU g\n"
+            "# feed on --search-port-base + 2k + g, so the order must match each node's\n"
+            "# search-port-base in config/gnss_fleet_chord.yaml.\n"
             "# Regenerate with --aggregator-instance, these nodes in this order and the same\n"
             "# --aggregator-extra-search flags (scripts/gnss/site/stack_components.sh has\n"
             "# the command).\n"
@@ -2855,24 +2993,32 @@ def main():
         else:
             sys.stdout.write(text)
         print(f"  AGGREGATOR instance over {args.aggregator_instance}", file=sys.stderr)
-        for i, (node, gpu, fids) in enumerate(feeds):
+        for i, (node, gpu, fids, listen_port) in enumerate(feeds):
             print(
-                f"  feed {i}: {node} gpu{gpu} {len(fids)} ch  <- port "
-                f"{args.search_port_base + i}",
+                f"  feed {i}: {node} gpu{gpu} {len(fids)} ch  <- port {listen_port}",
                 file=sys.stderr,
             )
         print(f"  union    {len(union_ids)} channels", file=sys.stderr)
         print(f"  rest     {port}", file=sys.stderr)
         return
 
+    # The gather and the archiver default to the ports the site runs them on (stack_components.sh
+    # binds the gather at 12051, cubearch_up.sh passes 12052), clear of the aggregator's.
+    refused = {
+        cfg["runtime"]["rest_port"]: "the nodes' REST port",
+        cfg["runtime"]["aggregator_rest_port"]: "the aggregator's",
+    }
+
     if args.cube_archive_instance:
         port = (
             args.rest_port
             if args.rest_port is not None
-            else cfg["runtime"]["rest_port"] + 3
+            else cfg["runtime"]["aggregator_rest_port"] + 2
         )
-        if port == 12048:
-            raise SystemExit("refusing port 12048 (choco owns it)")
+        if port in refused:
+            raise SystemExit(
+                f"refusing port {port} ({refused[port]}; an off-node instance takes its own)"
+            )
         out = build_cube_archive_instance(cfg, args, port)
         n_elem = live_element_count(cfg["array"])
         nbytes = cube_frame_bytes(CUBE_MAX_PRN, CUBE_MAX_BINS, n_elem)
@@ -2910,26 +3056,23 @@ def main():
         port = (
             args.rest_port
             if args.rest_port is not None
-            else cfg["runtime"]["rest_port"] + 2
+            else cfg["runtime"]["aggregator_rest_port"] + 1
         )
-        if port == 12048:
-            raise SystemExit("refusing port 12048 (choco owns it)")
+        if port in refused:
+            raise SystemExit(
+                f"refusing port {port} ({refused[port]}; an off-node instance takes its own)"
+            )
         out = build_gather_instance(cfg, args, port)
         nbytes = telem_frame_bytes(
             TELEM_RECORDS_PER_FRAME, telem_rows_max(), telem_max_chan(),
         )
-        _cmd = "config/gen_chord_gnss_config.py " + " ".join(
-            shlex.quote(a) for a in sys.argv[1:]
-        )
-        _wrapped = "\n".join(
-            "#       " + _cmd[i : i + 92] for i in range(0, len(_cmd), 92)
-        )
-        # Record the exact arguments, as the node configs do, so the file says how to
-        # regenerate it.
+        # The recipe, as the node configs record it, so the file says how to regenerate it.
         text = (
             "# GENERATED by config/gen_chord_gnss_config.py --gather-instance -- DO NOT "
             "HAND-EDIT.\n"
-            "# REGENERATE WITH:\n" + _wrapped + "\n"
+            "# REGENERATE WITH (every flag but --out; add it):\n"
+            + "\n".join(recipe_lines(sys.argv[1:]))
+            + "\n"
             f"# The fleet's per-record telemetry, gathered on one port and served\n"
             f"# to the Python broker on {GATHER_SERVE_HOST}:{GATHER_SERVE_PORT}.\n"
             f"# buffer frame {nbytes} B = {TELEM_RECORDS_PER_FRAME} records x "
@@ -2957,8 +3100,6 @@ def main():
         )
         print(f"  frame    {nbytes} B", file=sys.stderr)
         print(f"  rest     {port}", file=sys.stderr)
-        return
-
         return
 
     # A node config always ships its telemetry to the gather and its beam cube to the archiver.
@@ -3033,7 +3174,7 @@ def main():
     # table above.
     _bi = choco_bad_inputs()
     if _bi is None:
-        _bi = live_bad_inputs(cfg, args)
+        _bi = live_bad_inputs(cfg)
     if _bi is not None:
         _blk, _src = _bi
         out.setdefault("updatable_config", {})["bad_inputs"] = _blk
@@ -3304,29 +3445,6 @@ def main():
     except Exception:
         base_sha = "unreadable"
 
-    # Paths inside the repo are recorded relative to it, so the recipe holds on any checkout.
-    def _rel(p):
-        ap_ = os.path.abspath(p)
-        return os.path.relpath(ap_, K_ROOT) if ap_.startswith(K_ROOT + os.sep) else p
-
-    K_ROOT = os.path.dirname(CONF)
-    # --out is left out of the recipe: it says where the file was written, not how it was
-    # built, and gen_fleet regenerates to stdout and compares byte for byte, so a recorded --out
-    # would never match. Add --out when pasting the recipe, or let gen_fleet write the file.
-    _SINK_FLAGS = ("--out",)
-    _argv = list(sys.argv[1:])
-    _keep = []
-    _i = 0
-    while _i < len(_argv):
-        if _argv[_i] in _SINK_FLAGS:
-            _i += 2
-            continue
-        if any(_argv[_i].startswith(f + "=") for f in _SINK_FLAGS):
-            _i += 1
-            continue
-        _keep.append(_argv[_i])
-        _i += 1
-    argv_line = " ".join(shlex.quote(_rel(a)) for a in _keep)
     base_disp = _rel(args.base)
     base_hashed = (
         os.path.join(os.path.dirname(base_disp), "*.j2")
@@ -3343,17 +3461,7 @@ def main():
             f"# base sha256 {base_sha} ({base_hashed})",
             "# REGENERATE WITH (every flag but --out; add it, or let gen_fleet write the file):",
         ]
-        + [
-            "#   " + ln
-            for ln in textwrap.wrap(
-                "config/gen_chord_gnss_config.py " + argv_line,
-                width=92,
-                subsequent_indent="    ",
-                break_on_hyphens=False,
-                # A long --extra-signal PRN list must stay whole: the recipe is meant to be pasted.
-                break_long_words=False,
-            )
-        ]
+        + recipe_lines(sys.argv[1:])
         + [
             "# Prefer `scripts/gnss/gen_fleet.py config/gnss_fleet_chord.yaml`, which holds the",
             "# whole fleet's flags in one versioned file and can --check them against these.",
@@ -3392,12 +3500,6 @@ def main():
     # copies of the same heavy stage off one core. Print the busiest cores and the taps so the
     # cost shows at generation time.
     if extra_chains:
-        load = {}
-        for k, v in out.items():
-            if k.startswith("gnss") and isinstance(v, dict) and "cpu_affinity" in v:
-                for c in v["cpu_affinity"]:
-                    load.setdefault(c, []).append(v.get("kotekan_stage", "?"))
-        busiest = sorted(load.items(), key=lambda kv: -len(kv[1]))[:3]
         for ch in extra_chains:
             n_here = sum(
                 1 for g in per_gpu if gpu_pairs_for(cfg, args.node, g, ch["chans"])
@@ -3408,12 +3510,7 @@ def main():
                 f"tap {'SHARED with the primary' if ch['shares_tap'] else 'OWN (new carrier)'}",
                 file=sys.stderr,
             )
-        print(
-            "  cpu load      "
-            + ", ".join(f"core {c}: {len(v)} stages" for c, v in busiest)
-            + f"  (pool of {len(cfg['runtime']['cpu_affinity'])})",
-            file=sys.stderr,
-        )
+        print("  cpu load      " + load_summary(out, cfg, per_gpu), file=sys.stderr)
         print(
             "  NB extra chains are dead-reckon seeded: no search feed is emitted for them "
             "(docs/CHORD_MULTIBAND.md section 5)",
