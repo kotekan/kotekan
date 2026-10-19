@@ -59,7 +59,7 @@ def test_the_e4_case():
         "the window keeps all 100 cycles for PRN 4, not just the 15 it reported",
     )
     check(npres == 15, "only 15 of them are present samples")
-    check(abs(frac - 0.15) < 1e-9, "present_frac is 15%% -- the honest headline")
+    check(abs(frac - 0.15) < 1e-9, "present_frac is 15% -- the honest headline")
     check(
         abs(mean - 3.0) < 1e-9 and sd < 1e-9,
         "and its q over those samples looks PERFECT (3.00 +- 0.00) -- which is the trap: "
@@ -72,9 +72,7 @@ def test_the_e4_case():
         abs(sd - sd9) < 1e-9,
         "on q-SD alone the sick satellite is INDISTINGUISHABLE from the healthy one",
     )
-    check(
-        frac < frac9, "presence fraction is what separates them -- 15%% against 100%%"
-    )
+    check(frac < frac9, "presence fraction is what separates them -- 15% against 100%")
 
 
 def test_states():
@@ -125,6 +123,24 @@ def test_window_and_line():
     check(
         QSeries().line("x") is None,
         "an empty series emits nothing rather than a bare header",
+    )
+
+    # A satellite that set: kept at 0% while its seeded samples are in the window, then gone,
+    # so long-set satellites cannot push live absent ones off the capped line.
+    q = QSeries(window_s=50.0)
+    for i in range(10):
+        q.note_cycle(i * 10.0, {1, 9}, fleet({1: 2.0, 9: 2.0}))
+    for i in range(10, 13):
+        q.note_cycle(i * 10.0, {1}, fleet({1: 2.0}))
+    check(9 in q.hist, "a PRN dropped inside the window is still in the series")
+    for i in range(13, 30):
+        q.note_cycle(i * 10.0, {1}, fleet({1: 2.0}))
+    line = q.line("gal_e5b")
+    shown = [p.split(":")[0] for p in line.split(": ", 1)[1].split() if "%" in p]
+    check(
+        9 not in q.hist and "9" not in shown,
+        "a PRN dropped for longer than the window leaves the series and the line: %s"
+        % shown,
     )
 
 
@@ -312,6 +328,32 @@ def test_sawtooth_v2():
     )
 
 
+def test_sawtooth_cycle_clock():
+    print("D3: the startup hold-off counts on the cycle clock")
+
+    # A replay: the cycle clock is the recorded time, far from the replay's own wall clock.
+    # uptime() counts from the first cycle it is given, armed trim or not.
+    t0 = 1.7e9
+    d = SawtoothDetector(ramp_chips=0.5, wipe_frac=0.5, startup_hold_s=900.0)
+    msgs = []
+    for i in range(31):  # a ramp, then a wipe 300 s after the first cycle
+        t = t0 + i * 10.0
+        trim = i * 0.05 if i < 30 else 0.02
+        msgs.append(d.note(t, 7, trim, uptime_s=d.uptime(t)))
+    check(not any(msgs), "a wipe 300 s into the run is inside the hold-off: silent")
+    for i in range(31, 70):  # cycles with no armed trim still count
+        d.uptime(t0 + i * 10.0)
+    for i in range(70, 101):  # a new ramp, wiped 1000 s into the run
+        t = t0 + i * 10.0
+        trim = (i - 70) * 0.05 if i < 100 else 0.02
+        msgs.append(d.note(t, 7, trim, uptime_s=d.uptime(t)))
+    check(
+        msgs[-1] is not None and "SAWTOOTH PRN 7" in msgs[-1],
+        "a wipe 1000 s into the recorded run is reported",
+    )
+    check(d.uptime(t0 + 1000.0) == 1000.0, "uptime counts from the first cycle")
+
+
 if __name__ == "__main__":
     print("D0, D1, D3 -- population, brownout, sawtooth\n")
     for fn in (
@@ -322,6 +364,7 @@ if __name__ == "__main__":
         test_brownout,
         test_sawtooth,
         test_sawtooth_v2,
+        test_sawtooth_cycle_clock,
     ):
         fn()
     # ---- the span is reported as censored when it fills the window -------------------

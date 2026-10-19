@@ -44,8 +44,9 @@ class QSeries(object):
 
         `seeded` is the set of PRNs the broker is currently seeding; `fleet` is the per-PRN
         aggregate (None when the DLL did not run this cycle, which records every seeded PRN
-        ABSENT). A PRN in `hist` but no longer in `seeded` gets a DROPPED sample every cycle;
-        that keeps its history non-empty, so it stays in the series at 0% present.
+        ABSENT). A PRN in `hist` but no longer in `seeded` gets a DROPPED sample every cycle,
+        so it stays in the series at 0% present until its last seeded sample leaves the
+        window; then it is removed, so satellites long gone do not crowd the QPOP line.
         """
         rows = fleet or {}
         for prn in set(seeded) | set(self.hist):
@@ -61,7 +62,11 @@ class QSeries(object):
             h.append((t, q, state))
             while h and t - h[0][0] > self.window_s:
                 h.pop(0)
-        for prn in [p for p, h in self.hist.items() if not h]:
+        for prn in [
+            p
+            for p, h in self.hist.items()
+            if p not in seeded and all(s == DROPPED for _, _, s in h)
+        ]:
             self.hist.pop(prn, None)
 
     def summary(self, prn):
@@ -227,8 +232,8 @@ class SawtoothDetector(object):
         self.window_s = float(window_s)
         self.wipe_frac = float(wipe_frac)
         self.cooldown_s = float(cooldown_s)
-        # No report within startup_hold_s of broker start: seeds churn while the clock
-        # converges, and those wipes are not handover events.
+        # No report within startup_hold_s of the first cycle (uptime()): seeds churn while the
+        # clock converges, and those wipes are not handover events.
         self.startup_hold_s = float(startup_hold_s)
         # A wipe within this many seconds after a birth step for the same PRN (ctx.birth_steps,
         # stamped at a dead-reckon re-birth) is a REBASE-WIPE: the seed re-based under the
@@ -238,6 +243,19 @@ class SawtoothDetector(object):
         self.rebase_window_s = float(rebase_window_s)
         self.hist = {}  # prn -> [(t, trim)]
         self.reported = {}  # prn -> t of last report
+        self.t_start = None  # the first cycle's t, for uptime()
+
+    def uptime(self, t):
+        """Seconds since the first call, on the clock that feeds note().
+
+        That is the broker's cycle clock, the recorded time under --transcript-read, so the
+        startup hold-off counts the run being replayed. The broker's wall-clock start cannot
+        serve: against a recorded t it reads hugely negative and holds every report off.
+        Call it every cycle, so the count starts on the first cycle even when no trim is armed.
+        """
+        if self.t_start is None:
+            self.t_start = t
+        return t - self.t_start
 
     def note(
         self,
@@ -310,7 +328,7 @@ class SawtoothDetector(object):
                     peak,
                     ">=" if censored else "",
                     span,
-                    ", CENSORED at my %.0f s window -- a LOWER BOUND, not a period"
+                    ", CENSORED at the %.0f s window -- a LOWER BOUND, not a period"
                     % self.window_s
                     if censored
                     else "",

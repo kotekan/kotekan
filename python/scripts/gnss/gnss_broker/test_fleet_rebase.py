@@ -136,9 +136,51 @@ def test_fleet_dll_end_to_end():
         fleet._get = real_get
 
 
+def test_coherent_row_inside_window():
+    # With no hop history nothing is judged frozen, so "lag" is not excluded, but its row is
+    # older than hop_window: the sum leaves it out, and so must the coherent row and the
+    # quadrature.
+    win = int(2 * RATE)
+    polls = {
+        "live": [row(3, H_NEW, 10.0)],
+        "lag": [row(3, H_NEW - win - 4096, 50.0)],
+    }
+    real_get = fleet._get
+    fleet._get = lambda url, timeout=5.0: polls[url.rsplit("/", 1)[0]]
+    try:
+        out = fleet_dll(
+            list(polls),
+            hop_window=win,
+            min_instances=1,
+            k_sigma=3.0,
+            q_fallback=2.2,
+            hop_hist={},
+            now=NOW,
+        )
+        r3 = out.get(3, {})
+        check(
+            "the sum holds the live instance only",
+            r3.get("n_src") == 1,
+            str(r3.get("n_src")),
+        )
+        check(
+            "the coherent row comes from inside the window",
+            r3.get("coh_src") == "live",
+            str(r3.get("coh_src")),
+        )
+        check(
+            "the quadrature counts no instance outside the window",
+            r3.get("coh_quad") is None,
+            str(r3.get("coh_quad")),
+        )
+    finally:
+        fleet._get = real_get
+
+
 if __name__ == "__main__":
     test_live_instances()
     test_fleet_dll_end_to_end()
+    test_coherent_row_inside_window()
     if _fails:
         print("FAILED: %d" % len(_fails))
         sys.exit(1)

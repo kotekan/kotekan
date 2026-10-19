@@ -60,14 +60,19 @@ def fleet(**extra):
     return out
 
 
-def verdict(out, adm):
+def verdict(out, adm, **kw):
     """apply_presence, with the rate-limited log captured."""
     lines = []
     keep = _fleet._log_rl
     _fleet._log_rl = lambda key, msg, every_s=10.0: lines.append((key, msg))
     try:
         apply_presence(
-            out, k_sigma=3.0, q_fallback=2.2, probe_prns=PROBES, admit_displaced=adm
+            out,
+            k_sigma=3.0,
+            q_fallback=2.2,
+            probe_prns=PROBES,
+            admit_displaced=adm,
+            **kw
         )
     finally:
         _fleet._log_rl = keep
@@ -225,9 +230,93 @@ def test_gate():
     )
 
 
+class CountingRow(dict):
+    """A coh_row that counts how often the deep gate reads its deep_snr."""
+
+    def __init__(self, *a, **kw):
+        super().__init__(*a, **kw)
+        self.reads = 0
+
+    def get(self, key, default=None):
+        if key == "deep_snr":
+            self.reads += 1
+        return super().get(key, default)
+
+
+def test_deep_gate():
+    print("apply_presence: the deep gate runs once, after every row, and owns its rows")
+    # Three bright rows at one offset; the deep gate re-judges PRN 16 on a passing deep fold.
+    deep = row(*DISPLACED)
+    deep["coh_row"] = {"deep_snr": 50.0, "deep_floor": 5.0}
+    out, lines = verdict(
+        fleet(**{"4": row(*DISPLACED), "5": row(*DISPLACED), "16": deep}),
+        admit(),
+        deep_gate_prns={16},
+    )
+    check(
+        out[16]["present"] is True and out[16]["present_gate"] == "deep",
+        "the deep-gated row carries the deep verdict",
+    )
+    check(
+        all(
+            out[p]["present"] is False and out[p]["present_gate"] == "q+p:probes"
+            for p in (4, 5)
+        ),
+        "its offset still counts toward the chain bar, so the other two are refused: %s"
+        % [(p, out[p]["present"], out[p]["present_gate"]) for p in (4, 5)],
+    )
+    check(
+        [k for k, _ in lines] == ["presence-disp-refused-same offset"],
+        "one refusal line, no admission line: %s" % [k for k, _ in lines],
+    )
+
+    # Two bright rows at one offset, under the bar; the deep fold judges PRN 16 absent.
+    deep = row(*DISPLACED)
+    deep["coh_row"] = {"deep_snr": 10.0, "deep_floor": 5.0}
+    out, lines = verdict(
+        fleet(**{"4": row(*DISPLACED), "16": deep}), admit(), deep_gate_prns={16},
+    )
+    check(
+        (out[16]["present"], out[16]["present_gate"]) == (False, "deep")
+        and (out[4]["present"], out[4]["present_gate"]) == (True, "q+p:probes+disp"),
+        "PRN 16 is absent on the deep verdict, PRN 4 a displaced admission",
+    )
+    check(
+        [k for k, _ in lines] == ["presence-disp"]
+        and "PRN 4 " in lines[0][1]
+        and "PRN 16 " not in lines[0][1],
+        "the admission line names PRN 4 and not the deep-gated PRN 16: %s"
+        % [m for _, m in lines],
+    )
+
+    # One pass: each row in the set is read once, whatever the number of rows.
+    pass_ = row(1.00, +0.02, 1.0)
+    pass_["coh_row"] = CountingRow(deep_snr=50.0, deep_floor=5.0)
+    fail = row(1.00, +0.02, 1.0)
+    fail["coh_row"] = CountingRow(deep_snr=10.0, deep_floor=5.0)
+    other = row(1.00, +0.02, 1.0)
+    other["coh_row"] = CountingRow(deep_snr=50.0, deep_floor=5.0)
+    out, lines = verdict(
+        fleet(**{"4": pass_, "5": fail, "16": other}), None, deep_gate_prns={4, 5}
+    )
+    reads = [out[p]["coh_row"].reads for p in (4, 5, 16)]
+    check(
+        reads == [1, 1, 0],
+        "deep_snr read once per row in the set, never outside it (%d rows): %s"
+        % (len(out), reads),
+    )
+    check(
+        (out[4]["present"], out[4]["present_gate"]) == (True, "deep")
+        and (out[5]["present"], out[5]["present_gate"]) == (False, "deep")
+        and (out[16]["present"], out[16]["present_gate"]) == (False, "q+p:probes"),
+        "verdicts: 50 >= 3 x 5 present, 10 < 3 x 5 absent, PRN 16 keeps q/prompt",
+    )
+
+
 def main():
     test_rule()
     test_gate()
+    test_deep_gate()
     print("\n%s (%d check(s) failed)" % ("FAIL" if _fails else "PASS", len(_fails)))
     return 1 if _fails else 0
 

@@ -507,6 +507,7 @@ def stage_fleet_dll(ctx):
             )
 
         # ── D3: the handover sawtooth ─────────────────────────────────────────────────
+        _uptime = ctx.saw.uptime(ctx.t0)  # the startup hold-off, on the cycle clock
         for _sp, _sr in (ctx.dls.readback or {}).items():
             if not isinstance(_sr, dict) or _sr.get("trim_chips") is None:
                 continue
@@ -520,7 +521,7 @@ def stage_fleet_dll(ctx):
                 _sp,
                 float(_sr["trim_chips"]),
                 browned_out=ctx.brown.active(),
-                uptime_s=ctx.t0 - ctx.broker_t0,
+                uptime_s=_uptime,
                 rebase_age_s=(ctx.t0 - _sbt) if _sbt is not None else None,
                 present_frac=_sq[4] if _sq else None,
                 q_mean=_sq[2] if _sq else None,

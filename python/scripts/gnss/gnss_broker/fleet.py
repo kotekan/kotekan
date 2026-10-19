@@ -283,15 +283,9 @@ def fleet_dll(
     """
     if not endpoints:
         return {}
-    # prn -> list of (hop, e, p, l, n_chan). Unreachable instances are skipped, not fatal:
-    # a node down for maintenance must cost sensitivity, never the loop.
+    # prn -> list of (hop, e, p, l, n_chan, row, url). Unreachable instances are skipped, not
+    # fatal: a node down for maintenance must cost sensitivity, never the loop.
     rows = {}
-    best_coh = (
-        {}
-    )  # prn -> ((deep_snr, amp_snr), row, url): strongest instance's coherent view
-    coh_cleared = (
-        {}
-    )  # prn -> floor-cleared per-instance deep_snrs, for the quadrature fallback
     polled = {}
     for url in endpoints:
         try:
@@ -342,30 +336,16 @@ def fleet_dll(
             if url in excluded:
                 continue
             rows.setdefault(prn, []).append(
-                (hop, e, float(r.get("p_pow", 0.0)), l, float(r.get("n_chan", 0.0)))
+                (
+                    hop,
+                    e,
+                    float(r.get("p_pow", 0.0)),
+                    l,
+                    float(r.get("n_chan", 0.0)),
+                    r,
+                    url,
+                )
             )
-            # Best-of for the coherent statistics. deep_amplitude, deep_snr and coherence_s come
-            # from each instance's own deep integration and cannot be merged here: this combine
-            # sums powers, which is what makes it phase-blind and cheap. So carry the strongest
-            # instance's coherent row rather than a fleet number that would need cross-node
-            # phase alignment. Ranked on (deep_snr, amp_snr), so a chain that never certifies a
-            # deep still reports its best view.
-            key = (float(r.get("deep_snr", 0.0)), float(r.get("amp_snr", 0.0)))
-            if prn not in best_coh or key > best_coh[prn][0]:
-                best_coh[prn] = (key, r, url)
-            # Quadrature fallback input. sqrt(sum snr_i^2) over the floor-cleared instances is
-            # the significance of their incoherent power sum; the publisher serves it as
-            # deep_snr when fleet_coherent has no floor-cleared result for the PRN, so the series
-            # stays near the fleet level instead of dropping to the best single instance each
-            # time the fleet gate flickers. It buys continuity, not a quieter estimate.
-            # The floor-cleared gate is load-bearing: a floored deep reads ~7 on pure noise, so
-            # an ungated quadrature over 12 instances would read sqrt(12)*7 ~ 24 and manufacture
-            # a detection. coherence_s > 0 is the rule the broker's sig_of() applies.
-            if (
-                float(r.get("coherence_s", 0.0) or 0.0) > 0.0
-                and float(r.get("deep_snr", 0.0)) > 0.0
-            ):
-                coh_cleared.setdefault(prn, []).append(float(r["deep_snr"]))
     out = {}
     for prn, rs in rows.items():
         # Instances free-run, so their windows do not end on the same hop: take the newest
@@ -382,14 +362,40 @@ def fleet_dll(
         L = sum(r[3] for r in use)
         if E + L <= 0.0:
             continue
-        bc = best_coh.get(prn)
-        _cl = coh_cleared.get(prn) or []
+        # Best-of for the coherent statistics, over the same windowed rows as the powers: a
+        # row outside hop_window is as stale for the deep as for the sum. deep_amplitude,
+        # deep_snr and coherence_s come from each instance's own deep integration and cannot
+        # be merged here: this combine sums powers, which is what makes it phase-blind and
+        # cheap. So carry the strongest instance's coherent row rather than a fleet number
+        # that would need cross-node phase alignment. Ranked on (deep_snr, amp_snr), so a
+        # chain that never certifies a deep still reports its best view.
+        bc = None  # ((deep_snr, amp_snr), row, url)
+        _cl = []  # floor-cleared per-instance deep_snrs, for the quadrature fallback
+        for _u in use:
+            r = _u[5]
+            key = (float(r.get("deep_snr", 0.0)), float(r.get("amp_snr", 0.0)))
+            if bc is None or key > bc[0]:
+                bc = (key, r, _u[6])
+            # Quadrature fallback input. sqrt(sum snr_i^2) over the floor-cleared instances
+            # is the significance of their incoherent power sum; the publisher serves it as
+            # deep_snr when fleet_coherent has no floor-cleared result for the PRN, so the
+            # series stays near the fleet level instead of dropping to the best single
+            # instance each time the fleet gate flickers. It buys continuity, not a quieter
+            # estimate. The floor-cleared gate is load-bearing: a floored deep reads ~7 on
+            # pure noise, so an ungated quadrature over 12 instances would read sqrt(12)*7 ~ 24
+            # and manufacture a detection. coherence_s > 0 is the rule the broker's sig_of()
+            # applies.
+            if (
+                float(r.get("coherence_s", 0.0) or 0.0) > 0.0
+                and float(r.get("deep_snr", 0.0)) > 0.0
+            ):
+                _cl.append(float(r["deep_snr"]))
         out[prn] = {
             "disc": (E - L) / (E + L),
             # the strongest instance's coherent row and which instance (url) it came from
             "coh_row": bc[1] if bc else None,
             "coh_src": bc[2] if bc else None,
-            # quadrature over floor-cleared instances (see coh_cleared above); None when
+            # quadrature over floor-cleared instances (see _cl above); None when
             # fewer than 2 cleared, and the publisher then keeps the single-instance value
             "coh_quad": (sum(x * x for x in _cl) ** 0.5, len(_cl))
             if len(_cl) >= 2
@@ -654,30 +660,32 @@ def apply_presence(
                     )
                     _admitted.append((_prn, _off, _ped, v["p_pow"] / p_floor, _bright))
 
-        # Deep gate (deep_gate_prns: the --dll-deep-gate PRNs plus those the search recently
-        # detected, or True for all). Prompt power is suppressed when the tap is off-peak, so a
-        # prompt-gated satellite that drifts off the peak fails the gate, is never trimmed, and
-        # stays off-peak: the loop cannot pull in from the shoulder. Another tap ratio would not fix
-        # that; every tap statistic is on-peak-biased. The deep fold re-searches rate and
-        # phase, so deep_snr detects the satellite wherever the tap sits (the same property
-        # makes it wrong for a C/N0). For a PRN in the set with a combiner floor, present =
-        # deep_snr >= deep_gate_margin x deep_floor, overriding the q/prompt and displaced
-        # verdicts. Opt-in per PRN because deep_snr can fire on noise and this gate has no
-        # pedestal or offset test.
-        if deep_gate_prns:
-            for prn, v in out.items():
-                if deep_gate_prns is not True and prn not in deep_gate_prns:
-                    continue
-                c = v.get("coh_row") or {}
-                ds = float(c.get("deep_snr", 0.0) or 0.0)
-                fl = float(c.get("deep_floor", 0.0) or 0.0)
-                # Needs a real floor: with none there is no bar, and defaulting to present
-                # would trim on noise. The q/prompt verdict stands instead.
-                if fl <= 0.0 or ds <= 0.0:
-                    continue
-                v["present"] = ds >= deep_gate_margin * fl
-                v["present_gate"] = "deep"
-                v["deep_gate_snr"], v["deep_gate_floor"] = ds, fl
+    # Deep gate (deep_gate_prns: the --dll-deep-gate PRNs plus those the search recently
+    # detected, or True for all). Prompt power is suppressed when the tap is off-peak, so a
+    # prompt-gated satellite that drifts off the peak fails the gate, is never trimmed, and
+    # stays off-peak: the loop cannot pull in from the shoulder. Another tap ratio would not fix
+    # that; every tap statistic is on-peak-biased. The deep fold re-searches rate and
+    # phase, so deep_snr detects the satellite wherever the tap sits (the same property
+    # makes it wrong for a C/N0). For a PRN in the set with a combiner floor, present =
+    # deep_snr >= deep_gate_margin x deep_floor, overriding the q/prompt and displaced
+    # verdicts. Opt-in per PRN because deep_snr can fire on noise and this gate has no
+    # pedestal or offset test.
+    if deep_gate_prns:
+        for prn, v in out.items():
+            if deep_gate_prns is not True and prn not in deep_gate_prns:
+                continue
+            c = v.get("coh_row") or {}
+            ds = float(c.get("deep_snr", 0.0) or 0.0)
+            fl = float(c.get("deep_floor", 0.0) or 0.0)
+            # Needs a real floor: with none there is no bar, and defaulting to present
+            # would trim on noise. The q/prompt verdict stands instead.
+            if fl <= 0.0 or ds <= 0.0:
+                continue
+            v["present"] = ds >= deep_gate_margin * fl
+            v["present_gate"] = "deep"
+            v["deep_gate_snr"], v["deep_gate_floor"] = ds, fl
+    # The chain bar counts every row the displaced gate admitted, including a PRN the deep gate
+    # has re-judged since: its offset is evidence of a chain event like any other row's.
     # The chain's satellites this cycle: present on their peaks (not through the displaced
     # gate, not a probe) plus the displaced candidates themselves.
     _seen = sum(
@@ -699,7 +707,6 @@ def apply_presence(
             if out[_prn]["present_gate"].endswith("+disp"):
                 out[_prn]["present"] = False
                 out[_prn]["present_gate"] = "q+p:probes"
-        _admitted = [a for a in _admitted if a not in _refused]
         _offs = sorted(a[1] for a in _refused)
         # One line per cycle, not per PRN: the refusal is the statement that this was one
         # event. Keyed by reason so a brownout's repeat does not hide a same-offset event.
@@ -716,6 +723,9 @@ def apply_presence(
             ),
             every_s=30.0,
         )
+    # The admission line names only the rows the displaced gate still owns, which leaves out
+    # the refused ones and those the deep gate re-judged.
+    _admitted = [a for a in _admitted if out[a[0]]["present_gate"].endswith("+disp")]
     if _admitted:
         _log_rl(
             "presence-disp",
@@ -793,8 +803,10 @@ def _fit_record_rate(hops, tot, hop_rate_hz):
     O(N*M) where this is O(N log N).
 
     Returns (rate_hz, rate_sigma_hz), or (None, None) without hop_rate_hz or when the series is
-    too short, not on one lattice, or has an empty band. The sigma is half the split-half
-    disagreement.
+    too short, not on one lattice, or has an empty band. The sigma is a single-sample estimate
+    of the full-arc rate error from the split-half disagreement: a frequency estimate's error
+    scales as span^-1.5, so each half's is 2^1.5 the full arc's and the difference of the two
+    halves has 4x its spread. The sigma is therefore a quarter of the disagreement.
     """
     n = len(hops)
     if n < 2 or not hop_rate_hz:
@@ -840,12 +852,12 @@ def _fit_record_rate(hops, tot, hop_rate_hz):
                 _f += 0.5 * (_a - _c) / _d * (_g[1] - _g[0])
         return _f
 
-    # Split-half sigma: fit each half independently on the same grid; the sigma is half their
-    # disagreement.
+    # Split-half sigma: fit each half independently on the same grid; the sigma is a quarter
+    # of their disagreement, the full-arc equivalent (see the docstring).
     _m = n // 2
     return (
         _peak(0, _L, True),
-        abs(_peak(0, _idx[_m - 1] + 1, False) - _peak(_idx[_m], _L, False)) / 2.0,
+        abs(_peak(0, _idx[_m - 1] + 1, False) - _peak(_idx[_m], _L, False)) / 4.0,
     )
 
 
