@@ -11,21 +11,24 @@
  * component plus the signal at 1/5 of antenna 0's amplitude.
  *
  * Frame: [n_hops=2048][F=8][E=128], CHORD's native layout, which is the dual correlator's
- * e_in_a as is. Synthetic input: lane 4*i+t is spec i's E/P/L/P_HEAD replica, quantized on
- * the host at 7/peak per lane; P_HEAD is P gated to hops [0, m_head) and zero (0x88) after;
- * unused lanes and channels are 0x88. cudaGnssInject packs with launch_pack44 instead, at
- * 7/(3 rms) per lane and channel, so the loss figures this tool prints are its own packer's.
+ * e_in_a as is. Synthetic input: lane 4*i+t is spec i's E/P/L/P_HEAD replica, packed by
+ * launch_pack44 as cudaGnssInject packs it: 7/(3 rms) per lane and channel, clamped to +-7,
+ * the replica conjugated, so the frame carries conj(sky), as CHORD's F-engine output does. P_HEAD
+ * is P gated to hops [0, m_head) and zero (0x88) after; unused lanes and channels are 0x88. The
+ * scale is divided back out, so the loss figures are the production packer's. --host-pack
+ * quantizes on the host instead, at 7/peak per lane, for comparison.
  *
  * The conjugation orientation of the mixed tiles relative to path A is detected from the data
  * and printed, since a consumer of the tiles has to match it.
  *
- * Usage: n2dualxval [seed [--conj]]. Output: per row type (E/P/L/PH) relative error, amplitude
- * loss in dB and phase rms, plus the M^2 replica cross-terms against a CPU float reference.
- * Exits 1 on a CUDA error, an ambiguous orientation or a NaN; the loss figures are printed for
- * judgment.
+ * Usage: n2dualxval [seed [--conj] [--host-pack]]. Output: per row type (E/P/L/PH) relative
+ * error, amplitude loss in dB and phase rms, plus the M^2 replica cross-terms against a CPU
+ * float reference. Exits 1 on a CUDA error, an ambiguous orientation or a NaN; the loss
+ * figures are printed for judgment.
  */
 
 #include "GnssCudaDespread.hpp"
+#include "cudaGnssChordDespread.hpp"
 #include "cudaGnssDespreadKernel.hpp"
 #include "gnssChannelizedReplica.hpp"
 #include "gnssSignal.hpp"
@@ -65,8 +68,14 @@ int main(int argc, char** argv) {
     const unsigned seed = argc > 1 ? (unsigned)atoi(argv[1]) : 4242u;
     // --conj: simulate the CHORD F-engine conjugation (the frame carries conj(sky)) and exercise
     // both sides' compensation, path A's DespreadParams::conj_data and path B's conjugated
-    // replica in the pack. Without it only the unconjugated case is tested.
-    const bool CONJ = (argc > 2 && std::string(argv[2]) == "--conj");
+    // replica in the pack. launch_pack44 always conjugates the replica, so only --host-pack can
+    // test the unconjugated case, and does unless --conj is given.
+    bool host_pack = false, conj = false;
+    for (int a = 2; a < argc; a++) {
+        host_pack = host_pack || std::string(argv[a]) == "--host-pack";
+        conj = conj || std::string(argv[a]) == "--conj";
+    }
+    const bool HOST_PACK = host_pack, CONJ = conj || !host_pack;
     std::mt19937 rng(seed);
     std::normal_distribution<float> gauss(0.0f, 1.0f);
     std::uniform_real_distribution<double> uni(0.0, 1.0);
@@ -147,6 +156,8 @@ int main(int argc, char** argv) {
     };
 
     printf("n2dualxval: %d specs x %d chan x %d hops, seed %u\n", N_SPEC, n_chan, N_HOPS, seed);
+    printf("  path B packed by %s, frame %s\n",
+           HOST_PACK ? "the host at 7/peak per lane" : "launch_pack44", CONJ ? "conj(sky)" : "sky");
     for (int i = 0; i < N_SPEC; i++)
         printf("  spec %d: PRN slot %d dop %+.0f Hz cp %.3f m_head %d n_chips %d\n", i, specs[i].p,
                specs[i].doppler_hz, specs[i].cp_seed, jobs[i].m_head, jobs[i].n_chips);
@@ -197,8 +208,9 @@ int main(int argc, char** argv) {
     };
 
     // ---- pack the synthetic lanes: quantize wave -> 4+4b, lane 4i+t ------------------------
+    // lane_scale is [lane][channel], the factor the pack applied, divided out below.
     std::vector<uint8_t> h_synth((size_t)N_HOPS * NFRAME * NSB, 0x88);
-    std::vector<double> lane_scale((size_t)4 * N_SPEC, 1.0);
+    std::vector<double> lane_scale((size_t)4 * N_SPEC * n_chan, 1.0);
     for (int i = 0; i < N_SPEC; i++)
         for (int t = 0; t < 4; t++) {
             const int wrow = (t == 3) ? 1 : t; // P_HEAD packs the prompt, gated below
@@ -209,7 +221,8 @@ int main(int argc, char** argv) {
                     peak = std::max({peak, std::abs(w.real()), std::abs(w.imag())});
                 }
             const double s = (peak > 0.0f) ? 7.0 / peak : 1.0;
-            lane_scale[(size_t)4 * i + t] = s;
+            for (int c = 0; c < n_chan; c++)
+                lane_scale[((size_t)4 * i + t) * n_chan + c] = s;
             const int mlim = (t == 3) ? jobs[i].m_head : N_HOPS;
             for (int c = 0; c < n_chan; c++)
                 for (int m = 0; m < mlim; m++) {
@@ -226,6 +239,35 @@ int main(int argc, char** argv) {
     unsigned char* d_synth;
     CK(cudaMalloc(&d_synth, h_synth.size()));
     CK(cudaMemcpy(d_synth, h_synth.data(), h_synth.size(), cudaMemcpyHostToDevice));
+
+    // Unless --host-pack, launch_pack44 repacks d_synth as cudaGnssInject does, and its scale
+    // replaces the host's: computed in the kernel's float arithmetic, rms over n_hops, or over
+    // m_head for the P_HEAD lane.
+    if (!HOST_PACK) {
+        std::vector<double> energy(energy_n);
+        CK(cudaMemcpy(energy.data(), d_energy, energy_n * sizeof(double), cudaMemcpyDeviceToHost));
+        for (int i = 0; i < N_SPEC; i++)
+            for (int t = 0; t < 4; t++)
+                for (int c = 0; c < n_chan; c++) {
+                    const int nh = (t == 3) ? (jobs[i].m_head > 0 ? jobs[i].m_head : 1) : N_HOPS;
+                    const size_t k = (size_t)(4 * i + t) * n_chan + c;
+                    const float rms = sqrtf((float)(energy[k] / nh));
+                    lane_scale[k] = (rms > 0.0f) ? 7.0f / (3.0f * rms) : 1.0;
+                }
+        std::vector<int> slot2spec(N_SPEC);
+        for (int i = 0; i < N_SPEC; i++)
+            slot2spec[i] = i;
+        int *d_slot2spec, *d_chan_map;
+        CK(cudaMalloc(&d_slot2spec, N_SPEC * sizeof(int)));
+        CK(cudaMalloc(&d_chan_map, n_chan * sizeof(int)));
+        CK(cudaMemcpy(d_slot2spec, slot2spec.data(), N_SPEC * sizeof(int), cudaMemcpyHostToDevice));
+        CK(cudaMemcpy(d_chan_map, h_chan_idx.data(), n_chan * sizeof(int), cudaMemcpyHostToDevice));
+        CK(cudaMemset(d_synth, 0x88, h_synth.size())); // the spare channel and the unused lanes
+        CK(gnss_cuda::launch_pack44(d_wave, d_energy, d_jobs, d_slot2spec, N_SPEC, 4, n_chan,
+                                    N_HOPS, d_chan_map, NFRAME, 4 * N_SPEC, 0, NSB, d_synth, 0));
+        CK(cudaDeviceSynchronize());
+    }
+    auto sc = [&](int lane, int c) { return lane_scale[(size_t)lane * n_chan + c]; };
 
     // ---- path B: dual correlator, mixed tiles ----------------------------------------------
     const int NS = NSA + NSB;
@@ -258,7 +300,7 @@ int main(int argc, char** argv) {
     // Decide on the strong clean entry (spec 0, P row, antenna 0), then validate globally.
     {
         cd A = ca(0, 1, 3, 0); // mid channel
-        cd V = vb(1, 3, 0) / lane_scale[1];
+        cd V = vb(1, 3, 0) / sc(1, 3);
         double e_plain = std::abs(V - A), e_conj = std::abs(std::conj(V) - A);
         printf("\norientation: |V/s - A| %.3g  |conj(V)/s - A| %.3g  -> path A == %s\n", e_plain,
                e_conj, e_conj < e_plain ? "conj(V_BA)/s" : "V_BA/s");
@@ -267,8 +309,8 @@ int main(int argc, char** argv) {
             return 1;
         }
     }
-    const bool use_conj = std::abs(std::conj(vb(1, 3, 0) / lane_scale[1]) - ca(0, 1, 3, 0))
-                          < std::abs(vb(1, 3, 0) / lane_scale[1] - ca(0, 1, 3, 0));
+    const bool use_conj = std::abs(std::conj(vb(1, 3, 0) / sc(1, 3)) - ca(0, 1, 3, 0))
+                          < std::abs(vb(1, 3, 0) / sc(1, 3) - ca(0, 1, 3, 0));
 
     // ---- compare, per row-type -------------------------------------------------------------
     const char* row_name[4] = {"E ", "P ", "L ", "PH"};
@@ -287,7 +329,7 @@ int main(int argc, char** argv) {
             for (int c = 0; c < n_chan; c++)
                 for (int e = 0; e < N_ELEM; e++) {
                     cd A = ca(i, t, c, e);
-                    cd V = vb(4 * i + t, c, e) / lane_scale[(size_t)4 * i + t];
+                    cd V = vb(4 * i + t, c, e) / sc(4 * i + t, c);
                     cd B = use_conj ? std::conj(V) : V;
                     if (std::isnan(std::abs(B)) || std::isnan(std::abs(A)))
                         structural_fail = 1;
@@ -314,7 +356,7 @@ int main(int argc, char** argv) {
     // ---- the clean channel: pure quantization loss -----------------------------------------
     {
         cd A = ca(0, 1, 3, 0);
-        cd V = vb(1, 3, 0) / lane_scale[1];
+        cd V = vb(1, 3, 0) / sc(1, 3);
         cd B = use_conj ? std::conj(V) : V;
         printf("\nclean antenna 0 (no noise), spec 0 P mid-channel:\n"
                "  A = %+.6g%+.6gi   B = %+.6g%+.6gi   |B|/|A| = %.6f (%+.4f dB)  dphase %.3f "
@@ -334,8 +376,7 @@ int main(int argc, char** argv) {
             int ihi = gi >> 4, ilo = gi & 15, jhi = gj >> 4, jlo = gj & 15;
             size_t o = (size_t)c * ntiles(NS) * 512 + 512 * ((size_t)ihi * (ihi + 1) / 2 + jhi)
                        + 32 * ilo + 2 * jlo;
-            cd V = cd(vis[o], vis[o + 1])
-                   / (lane_scale[(size_t)4 * i + ta] * lane_scale[(size_t)4 * i + tb]);
+            cd V = cd(vis[o], vis[o + 1]) / (sc(4 * i + ta, c) * sc(4 * i + tb, c));
             // The tiles hold the packed replica, which is conj(R) when the F-engine
             // conjugation is compensated, so the reference is conjugated too; otherwise a
             // convention mismatch reads as a large relative error.

@@ -13,12 +13,14 @@
  *   [5c] leaves the BB region unwritten
  *   [6]  a freq_map launch == the full run's tiles for the mapped channels
  *   [7]  compact B input == the padded freq_map launch
+ *   [7b] mask MIXED|BB with a freq_map and compact B == [6] on the mixed and BB tiles, and
+ *   [7c] leaves the AA region unwritten
  *   [8]  dual(128+384), three chains' lanes in one launch, == CPU reference over 512 stations
  *   [9]  each chain's rows of that launch == dual(128+128) over its lanes alone
  *
  * cudaCorrelatorDual launches with mask MIXED|BB (plus AA when a gather asks for it), a
- * freq_map and compact B. [5] checks the mask without a freq_map, and [6] and [7] check the
- * freq_map and compact B with every block on; no case runs all three together.
+ * freq_map and compact B. [5] checks the mask without a freq_map, [6] and [7] check the
+ * freq_map and compact B with every block on, and [7b] runs all three together.
  *
  * All outputs are int32, so every comparison is exact. Only defined entries are compared:
  * stored tiles (ihi >= jhi) and, within them, global i >= j; the kernel writes deterministic
@@ -410,6 +412,48 @@ int main(int argc, char** argv) {
                     }
             }
             fails += report("[7] compact B [T][4][NSB] vs padded freq_map, bitwise", sc);
+
+            // [7b] and [7c], cudaCorrelatorDual's combination: mask MIXED|BB, the freq_map and
+            // compact B in one launch. Its mixed and BB tiles must be bitwise [6]'s, and its
+            // AA region must keep the 0xa5 fill.
+            n2k_dual::DualCorrelatorParams pp(
+                NSA, NSB, NF, n2k_dual::BLOCK_MASK_MIXED | n2k_dual::BLOCK_MASK_BB, fmap, true);
+            n2k_dual::DualCorrelator dprod(pp);
+            int* vp = nullptr;
+            CK(cudaMalloc(&vp, nvis_f * 4));
+            CK(cudaMemset(vp, 0xa5, nvis_f * 4));
+            dprod.launch(vp, da, dbc, drm, NT_OUTER, NT_INNER, nullptr, true);
+            std::vector<int> hvp(nvis_f);
+            CK(cudaMemcpy(hvp.data(), vp, nvis_f * 4, cudaMemcpyDeviceToHost));
+            CmpStats sp, saa;
+            for (size_t k = 0; k < (size_t)NT_OUTER * fmap.size(); k++) {
+                const int* got = hvp.data() + k * fstride;
+                const int* want = hvf.data() + k * fstride;
+                for (int ihi = 0; ihi < NS / 16; ihi++)
+                    for (int jhi = 0; jhi <= ihi; jhi++) {
+                        size_t to = 512 * ((size_t)ihi * (ihi + 1) / 2 + jhi);
+                        if (tiles_aa(ihi, jhi)) {
+                            for (int c2 = 0; c2 < 512; c2++) {
+                                saa.checked++;
+                                if (got[to + c2] != (int)0xa5a5a5a5)
+                                    saa.bad++;
+                            }
+                            continue;
+                        }
+                        for (int ilo = 0; ilo < 16; ilo++)
+                            for (int jlo = 0; jlo < 16; jlo++) {
+                                if (16 * ihi + ilo < 16 * jhi + jlo)
+                                    continue;
+                                size_t o = to + 32 * ilo + 2 * jlo;
+                                sp.checked += 2;
+                                for (int c2 = 0; c2 < 2; c2++)
+                                    if (got[o + c2] != want[o + c2])
+                                        sp.bad++;
+                            }
+                    }
+            }
+            fails += report("[7b] MIXED|BB + freq_map + compact B vs [6], bitwise", sp);
+            fails += report("[7c] AA region left uncomputed under [7b]", saa);
         }
     }
 

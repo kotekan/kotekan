@@ -38,11 +38,47 @@
 #include <string>
 #include <vector>
 
+namespace {
+
+/// The integrator series, per chain and PRN: (last_win, disc applied, trim) rows.
+using Series = std::map<std::string, std::map<int, std::vector<std::array<double, 3>>>>;
+
+/// What the previous sample saw of one PRN's TrimState. The never-seen sentinel must not be a
+/// legal window index: with 0, a fixture starting at window 0 would lose the loop's first step.
+struct Seen {
+    uint64_t win = UINT64_MAX;
+    uint64_t n_steps = 0;
+};
+
+/// Append one row per PRN whose trim was updated since the last call, from its first step on.
+/// integrate() sets last_win on every update, so no update is counted twice, as a frame-count
+/// heuristic could do. A leak-only update advances last_win but neither n_steps nor last_disc,
+/// so its row carries the disc it applied, 0. Updates are seen only between calls: when one
+/// call follows several window closes, only the last is sampled.
+void sample_series(const gnss::FleetDll& dll, std::map<std::string, std::map<int, Seen>>& seen,
+                   Series& series) {
+    for (const auto& cv : dll.chains())
+        for (const auto& tv : cv.second.trim) {
+            const gnss::FleetDll::TrimState& t = tv.second;
+            Seen& prev = seen[cv.first][tv.first];
+            if (t.n_steps > 0 && t.last_win != prev.win) {
+                const double disc = (t.n_steps != prev.n_steps) ? t.last_disc : 0.0;
+                prev.win = t.last_win;
+                prev.n_steps = t.n_steps;
+                series[cv.first][tv.first].push_back({(double)t.last_win, disc, t.trim});
+            }
+        }
+}
+
+} // namespace
+
 int main(int argc, char** argv) {
     if (argc < 2) {
         std::fprintf(stderr,
-                     "usage: %s <frames.bin> [--n-win N] [--min-instances N] "
-                     "[--taps-win N] [--trim-in F] [--no-flush]\n",
+                     "usage: %s <frames.bin> [--n-win N] [--min-instances N] [--taps-win N] "
+                     "[--trim-in FILE]\n"
+                     "        [--no-flush] [--arm PRN,PRN,...] [--gain G] [--leak L] "
+                     "[--clamp C] [--spacing S] [--p-floor-abs P]\n",
                      argv[0]);
         return 2;
     }
@@ -114,15 +150,13 @@ int main(int argc, char** argv) {
     std::vector<uint8_t> buf;
     uint64_t n_frames = 0, n_bad = 0, n_late = 0;
 
-    // The integrator series: (last_win, last_disc, trim) per PRN at every update from its
-    // first step on, so the gate can drive the Python integrator with the same disc sequence and
-    // compare trims. The disc is compared per window separately, so the trims test the
-    // recurrence alone. A leak-only update also advances last_win, and its entry carries the
-    // last stepped disc, so the series replays exactly only while no armed window is skipped.
-    // The harness arms from --arm because it has no policy cycle; live, the broker posts the
-    // armed set (docs/CHORD_FAST_TRIM.md section 4).
-    std::map<std::string, std::map<int, std::vector<std::array<double, 3>>>> series;
-    std::map<std::string, std::map<int, uint64_t>> seen_win;
+    // The integrator series: (last_win, disc, trim) per PRN at every update from its first step
+    // on, so the gate can drive the Python integrator with the same disc sequence and compare
+    // trims. The disc is compared per window separately, so the trims test the recurrence
+    // alone. The harness arms from --arm because it has no policy cycle; live, the broker posts
+    // the armed set (docs/CHORD_FAST_TRIM.md section 4).
+    Series series;
+    std::map<std::string, std::map<int, Seen>> seen;
     while (true) {
         uint32_t len = 0;
         if (!f.read((char*)&len, sizeof(len)))
@@ -162,24 +196,12 @@ int main(int argc, char** argv) {
                             n_adopted++;
             }
         }
-        // Sample on each change of last_win, which integrate() sets on every update, so no
-        // update is counted twice, as a frame-count heuristic could do. When one fold closes
-        // several windows only the last is sampled, and the end-of-file flush is not sampled.
-        for (const auto& cv : dll.chains())
-            for (const auto& tv : cv.second.trim) {
-                // The never-seen sentinel must not be a legal window index: with 0, a fixture
-                // starting at window 0 would lose the loop's first step.
-                auto ins = seen_win[cv.first].emplace(tv.first, UINT64_MAX);
-                uint64_t& prev = ins.first->second;
-                if (tv.second.n_steps > 0 && tv.second.last_win != prev) {
-                    prev = tv.second.last_win;
-                    series[cv.first][tv.first].push_back(
-                        {(double)tv.second.last_win, tv.second.last_disc, tv.second.trim});
-                }
-            }
+        sample_series(dll, seen, series);
     }
-    if (do_flush)
+    if (do_flush) {
         dll.flush();
+        sample_series(dll, seen, series);
+    }
 
     nlohmann::json out;
     out["frames"] = n_frames;

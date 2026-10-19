@@ -80,7 +80,8 @@ using cf = std::complex<float>;
 // ---------------------------------------------------------------------------------------------
 struct Opt {
     int prn = 3;
-    double cp204 = 137456.75;        ///< injected truth: generator argument, mod 204600
+    /// Injected truth: generator argument, mod the tracker code length (204600 at the default).
+    double cp204 = 137456.75;
     double dop = 1893.4;             ///< injected truth Doppler, Hz, constant over the run
     long long hop0 = 114436200145LL; ///< snapshot start hop (~6.8 days of F-engine uptime)
     double age_s = 27.0;             ///< seed age at the first tracker record
@@ -624,9 +625,10 @@ int main(int argc, char** argv) {
 #ifdef GNSS_CUDA
             // The GPU refine (refine_peak_cuda) runs the same scan as refine_peak on the same
             // data, so the two should agree to float precision, except that it takes no nh_phase:
-            // a search bank with a per-period overlay (GPS_L5_Q) is scanned overlay-blind there,
-            // so a MISMATCH on such a bank is not by itself a GPU fault. Both run and the delta
-            // is printed.
+            // a search bank with a per-period overlay (GPS_L5_Q) is scanned overlay-blind there.
+            // On such a bank it is judged against refine_peak run overlay-blind too (nh_phase
+            // -1), so OK/MISMATCH is about the GPU path alone, and the nh-aware CPU answer is
+            // printed on the next line.
             if (o.cuda_refine) {
                 const int rh = (o.refine_hops > 0 && o.refine_hops < rhops) ? o.refine_hops : rhops;
                 const size_t nc = d.size();
@@ -661,10 +663,20 @@ int main(int argc, char** argv) {
                     rgroups, sbank, 0, win.data(), (int)nc, anchor, a.code_phase_chips, det_dop,
                     o.sample_rate, o.refine_span, o.refine_step);
                 const double t_g = tnow() - t_g0;
+                const bool blind = sbank.secondary_length() > 0;
+                const double cpu_cp =
+                    blind ? gnss::refine_peak(sbank, 0, d, s_chans, a.code_phase_chips, -1, det_dop,
+                                              anchor, rh, o.sample_rate, o.refine_span,
+                                              o.refine_step, o.threads)
+                          : best_cp;
                 printf("    CUDA refine: cp %.6f  CPU %.6f  delta %+.3e chips  |  %.3f s vs %.3f s "
                        "= %.1fx  %s\n",
-                       gcp, best_cp, gcp - best_cp, t_g, T_ref, T_ref / t_g,
-                       std::fabs(gcp - best_cp) < 1e-6 ? "OK" : "MISMATCH");
+                       gcp, cpu_cp, gcp - cpu_cp, t_g, T_ref, T_ref / t_g,
+                       std::fabs(gcp - cpu_cp) < 1e-6 ? "OK" : "MISMATCH");
+                if (blind)
+                    printf("    (both overlay-blind; the nh-aware CPU refine, nh %d, has cp %.6f, "
+                           "delta %+.3e chips)\n",
+                           best_nh, best_cp, gcp - best_cp);
             }
 #endif
             // ---- the stage's reporting arithmetic ----
@@ -720,10 +732,14 @@ int main(int argc, char** argv) {
             const int tau_per = ((int)std::floor(tau_chips / L)) % n_nh;
             const int true_per = (int)std::floor(ph_true / L);
             const int got_per = (int)std::floor(dp.cp_at_ref / L);
+            // The period error mod n_nh, centred on zero.
+            int per_err = ((got_per - true_per) % n_nh + n_nh) % n_nh;
+            if (per_err > n_nh / 2)
+                per_err -= n_nh;
             printf("    tau %ld samp = %.2f chips = %d periods + %.2f | nh %d | period true %d "
                    "got %d (err %+d)\n",
                    a.peak_tau_samples, tau_chips, tau_per, std::fmod(tau_chips, L), best_nh,
-                   true_per, got_per, ((got_per - true_per + 30) % n_nh) - 10);
+                   true_per, got_per, per_err);
             printf("    snr %.1f   dop %+.4f (err %+.4f Hz)   nh %d   coarse %.2f refine %+.2f\n",
                    snr, det_dop, det_dop - o.dop, best_nh, a.code_phase_chips,
                    best_cp - a.code_phase_chips);

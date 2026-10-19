@@ -495,17 +495,19 @@ def compare_recs(py, cpp):
 
 
 def cpp_arm(
-    exe, path, n_win, min_instances, arm=None, pol=None, taps_win=None, trim_in=None
+    exe,
+    path,
+    n_win,
+    min_instances,
+    arm=None,
+    pol=None,
+    taps_win=None,
+    trim_in=None,
+    flush=False,
 ):
-    cmd = [
-        exe,
-        path,
-        "--n-win",
-        str(n_win),
-        "--min-instances",
-        str(min_instances),
-        "--no-flush",
-    ]
+    cmd = [exe, path, "--n-win", str(n_win), "--min-instances", str(min_instances)]
+    if not flush:
+        cmd.append("--no-flush")
     if taps_win:
         cmd += ["--taps-win", str(taps_win)]
     if trim_in:
@@ -714,6 +716,23 @@ def main():
 
     tmp = args.keep or tempfile.mkdtemp(prefix="fleetdll_gate-")
     os.makedirs(tmp, exist_ok=True)
+    rc = 1
+    try:
+        rc = run_gate(args, tmp)
+    finally:
+        # A run that fails, or that the C++ arm aborts, keeps its fixture and says where.
+        if rc == 0 and not args.keep:
+            for f in os.listdir(tmp):
+                os.remove(os.path.join(tmp, f))
+            os.rmdir(tmp)
+        else:
+            print("kept in %s" % tmp)
+    return rc
+
+
+def run_gate(args, tmp):
+    """Every leg, on fixtures written to `tmp`: 0 on a pass, 1 on a FAIL, 3 on a FIXTURE
+    PROBLEM."""
     path = os.path.join(tmp, "frames.bin")
 
     frames = build_fixture(args.windows)
@@ -998,8 +1017,9 @@ def main():
     #   (a) the C++ disc at every window close matches Python's on the same window set;
     #   (b) Python's dll_integrate, driven by that disc series, reproduces the C++ trim series.
     # (b) alone would be circular without (a); (a) extends the discriminator leg above from
-    # the last window to every window. Both run at GATE_NOBODY: the series also records
-    # leak-only updates with the last stepped disc, which (b) would replay as steps.
+    # the last window to every window. Both run at GATE_NOBODY, where every armed window steps,
+    # so every row has a discriminator to compare; the SKIP-RECURRENCE leg below covers the
+    # leak-only rows.
     ARM = list(
         SIGNAL_PRNS
     )  # see SIGNAL_PRNS: the near-noise PRNs are never armed, only the real signals
@@ -1219,6 +1239,63 @@ def main():
         % (floor_mid, lo_prn, hi_prn)
     )
 
+    # ---- The recurrence across skipped windows -----------------------------------------
+    # A floor at the strongest armed PRN's last power splits that PRN's windows: those below
+    # it are leak-only and the rest step. A leak-only row must carry the disc it applied (0),
+    # or Python's dll_integrate replays it as a step on the last disc and the trims part.
+    # The end-of-file flush is on, so the window it closes must be in the series as well: each
+    # PRN's last row is its final trim.
+    floor_part = p_of[hi_prn]
+    c_part = cpp_arm(
+        args.exe,
+        path,
+        args.n_win,
+        args.min_instances,
+        arm=ARM,
+        pol=dict(DEFAULT_POLICY, p_floor_abs=floor_part),
+        flush=True,
+    )
+    cen_p = c_part.get("census", {}).get("gps_l5", {}).get(str(hi_prn), {})
+    rows_p = c_part.get("series", {}).get("gps_l5", {}).get(str(hi_prn), [])
+    if not (cen_p.get("steps", 0) > 0 and len(rows_p) > cen_p["steps"]):
+        print(
+            "FAIL -- floor %.6g should skip some of PRN %d's windows after its first step "
+            "and step the rest; census %s, %d series rows"
+            % (floor_part, hi_prn, cen_p, len(rows_p))
+        )
+        return 1
+    bad_p = []
+    n_part = 0
+    for prn_s, rows in sorted(c_part.get("series", {}).get("gps_l5", {}).items()):
+        trim = 0.0
+        for win, disc, cpp_trim in rows:
+            trim = combdll.dll_integrate(trim, disc, **LOOP_POLICY)
+            if abs(trim - cpp_trim) > 1e-12 * max(1.0, abs(trim)):
+                bad_p.append(
+                    "PRN %s win %d trim: py %.12g vs cpp %.12g"
+                    % (prn_s, int(win), trim, cpp_trim)
+                )
+            n_part += 1
+        final = c_part["census"]["gps_l5"][prn_s]["trim"]
+        if rows and rows[-1][2] != final:
+            bad_p.append(
+                "PRN %s: the series ends at trim %.12g, the integrator at %.12g (an update, "
+                "such as the flush's, was not sampled)" % (prn_s, rows[-1][2], final)
+            )
+    if bad_p:
+        print(
+            "FAIL -- integrator across skipped windows: %d disagreement(s):"
+            % len(bad_p)
+        )
+        for m in bad_p[:20]:
+            print("  %s" % m)
+        return 1
+    print(
+        "SKIP-RECURRENCE PASS -- floor %.6g: PRN %d stepped %d and skipped %d window(s); "
+        "%d integrator updates, leak-only and flushed ones included, agree to 1e-12."
+        % (floor_part, hi_prn, cen_p["steps"], cen_p.get("skipped", 0), n_part)
+    )
+
     if args.self_test:
         # The gate must be able to fail. Nudge one channel's early tap in one record
         # (x1.01 + 1.0) and require the comparison to notice; if it does not, the comparison
@@ -1279,9 +1356,9 @@ def main():
         moved = compare(py, cpp_arm(args.exe, p2, args.n_win, args.min_instances))
         if not moved:
             print(
-                "SELF-TEST FAIL: a 1%% perturbation of one channel (window %d, the newest "
-                "closed one) changed nothing -- the comparison, the fixture, or the fold is "
-                "not doing what it claims." % (args.windows - 2)
+                "SELF-TEST FAIL: an x1.01 + 1.0 perturbation of one channel (window %d, the "
+                "newest closed one) changed nothing -- the comparison, the fixture, or the fold "
+                "is not doing what it claims." % (args.windows - 2)
             )
             return 1
         print(
@@ -1322,12 +1399,6 @@ def main():
             "PHI0 SELF-TEST PASS -- one sender's reference moved 1 rad, both arms agree and "
             "the lobe power moved (%d field(s))." % len(moved)
         )
-    if not args.keep:
-        for f in os.listdir(tmp):
-            os.remove(os.path.join(tmp, f))
-        os.rmdir(tmp)
-    else:
-        print("kept in %s" % tmp)
     return 0
 
 

@@ -158,7 +158,7 @@ int main() {
         for (int i = 0; i < 30; ++i)
             push(d, 5000, 9000 + i, 0.20); // 39 windows behind newest, repeatedly
         const auto& c = d.chains().at("gal_e5a");
-        check(c.n_epoch_reset == 0, "a 40-window laggard does NOT re-anchor");
+        check(c.n_epoch_reset == 0, "a 39-window laggard does NOT re-anchor");
         check(c.newest == newest_before, "the high-water mark is unmoved by the laggard");
         check(c.n_late >= 30, "laggard frames are counted LATE");
     }
@@ -174,6 +174,12 @@ int main() {
               "a single far-back frame does NOT re-anchor");
         for (uint64_t w = 5040; w < 5050; ++w) // stream carries on normally
             push(d, w, w, 0.20);
+        // Seven more wild frames: with the first, eight far-back frames (FleetDll's
+        // _epoch_strikes) re-anchor unless the in-order frames between them cleared the run.
+        for (uint64_t s = 0; s < 7; ++s) {
+            auto g = make_frame("cx19.0", 3, 10000 + s, 0.20);
+            d.fold(g.data(), g.size());
+        }
         check(d.chains().at("gal_e5a").n_epoch_reset == 0,
               "and an in-order frame clears the strike run");
     }
@@ -183,16 +189,20 @@ int main() {
     {
         FleetDll d(4, 2);
         TrimPolicy p;
+        p.p_floor_abs = 1e-30; // below every power here; 0 would make every window leak-only
         d.set_armed("gal_e5a", {PRN}, p);
         for (uint64_t w = 5000; w < 5020; ++w)
             push(d, w, w, 0.20);
         const double trim_before = d.chains().at("gal_e5a").trim.at(PRN).trim;
         check(trim_before != 0.0, "a trim accumulated before the reset");
-        for (uint64_t w = 0; w < 12; ++w)
+        // Stop at the re-anchor. No window has closed since, so the trim must still be exactly
+        // the standing one; once the new epoch's windows close they step a fresh trim away
+        // from zero too, and a wiped trim would no longer show.
+        for (uint64_t w = 0; w < 12 && d.chains().at("gal_e5a").n_epoch_reset == 0; ++w)
             push(d, w, 1000 + w, 0.20);
         const auto& c = d.chains().at("gal_e5a");
         check(c.n_epoch_reset == 1, "the reset fired");
-        check(c.trim.count(PRN) == 1 && c.trim.at(PRN).trim != 0.0,
+        check(c.trim.count(PRN) == 1 && c.trim.at(PRN).trim == trim_before,
               "the standing trim SURVIVED the epoch reset");
         check(c.armed.count(PRN) == 1, "arming survived the epoch reset");
     }
