@@ -136,7 +136,9 @@ export class AirspyStatsPanel {
                 <div style="flex:0 0 11em;font-weight:600;color:#5a6472;padding:.15em .5em;
                             white-space:nowrap;" title="${lblTip}">${label}</div>`
                 + cell((worstC * 100).toPrecision(2) + "%", cCol,
-                       "WORST instance's fraction of 4+4b nibbles at a rail, this band. "
+                       "WORST instance's fraction of 4+4b nibbles at a rail, this band, over "
+                       + "every element in the tap, including full-crate inputs that are not "
+                       + "the array's (the live-elements row covers only the array's). "
                        + "Max not mean: one railing channel on one instance is a real fault. "
                        + "Above ~1% the quantiser is losing signal, not just headroom, and "
                        + "every C/N0 below it is understated for a reason that is not the sky.")
@@ -163,6 +165,49 @@ export class AirspyStatsPanel {
         else if (legacyMixed)
             rows += `<div style="padding:.15em .5em;font-size:.8em;color:#e8a13c;">
                 instances disagree on lobe count — rows may compare different bands</div>`;
+
+        // The band rows count every element in the tap, full-crate inputs that are not the
+        // array's included. This row is the rail over the array's own elements
+        // (array.live_element_ranges), from the broker's elem_clip_live: one figure over all
+        // monitored channels, since the tap serves per-element clip only across bands. Worst
+        // instance by its mean; the worst single live element rides beside it so one railing
+        // input is not averaged away.
+        const liveOn = on.filter(([, v]) => v && v.elem_clip_live != null);
+        if (liveOn.length) {
+            let worstU = null, worstC = -1, maxU = null, maxC = -1, maxE = null;
+            for (const [u, v] of liveOn) {
+                if (v.elem_clip_live > worstC) { worstC = v.elem_clip_live; worstU = u; }
+                if (v.elem_clip_live_max > maxC) {
+                    maxC = v.elem_clip_live_max; maxU = u; maxE = v.elem_clip_live_worst;
+                }
+            }
+            const col = c => c > 0.01 ? "#d64550" : c > 0.001 ? "#e8a13c" : "#3fb26f";
+            const liveTip = "the array's own elements (array.live_element_ranges), all "
+                + "monitored channels together. The band rows above also count full-crate "
+                + "inputs that are not the array's, so they can read high while these are "
+                + "clean. No per-band split: the tap serves per-element clip only across bands.";
+            rows += `<div style="display:flex;align-items:center;
+                                 border-top:1px solid #f0f0f0;">
+                <div style="flex:0 0 11em;font-weight:600;color:#5a6472;padding:.15em .5em;
+                            white-space:nowrap;" title="${liveTip}">live elements · all bands</div>`
+                + cell((worstC * 100).toPrecision(2) + "%", col(worstC),
+                       "WORST instance's fraction of 4+4b nibbles at a rail, averaged over "
+                       + "the array's live elements (dark inputs, at zero power, left out) "
+                       + "and every monitored channel.")
+                + cell((maxC * 100).toPrecision(2) + "%", col(maxC),
+                       `worst single live element: element ${maxE} on `
+                       + `${maxU ? short(maxU) : "?"}. One railing input is a fault the `
+                       + "mean beside it would hide.")
+                + cell(`${liveOn.length}/${inst.length}`,
+                       liveOn.length === inst.length ? "#3fb26f" : "#8a8f98",
+                       "instances reporting a live-element rail (a broker that cannot read "
+                       + "array.live_element_ranges, or a tap serving fewer elements, reports "
+                       + "none)")
+                + `<div style="flex:0 0 9em;padding:.15em .5em;font-size:.85em;
+                               color:#8a8f98;white-space:nowrap;overflow:hidden;"
+                        title="${worstU || ""}">${worstU ? short(worstU) : "—"}</div>`
+                + "</div>";
+        }
 
         // RFI (spectral kurtosis): the same get_rf instances, folded in by broker --rfi-stats.
         const skOn = on.filter(([, v]) => v && v.sk);

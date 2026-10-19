@@ -97,7 +97,9 @@ def parse_drops(metrics_text, gpu):
     return out
 
 
-def poll_rf_stats(endpoints, lobes_fn, fetch_sk=False, fetch_drops=False):
+def poll_rf_stats(
+    endpoints, lobes_fn, fetch_sk=False, fetch_drops=False, live_elems=None
+):
     """GET <tap>/rf_stats from each endpoint -> {url: per-instance stream health}: power and
     clip lobes, plus spectral-kurtosis RFI (fetch_sk) and drop counters (fetch_drops). All of it
     is per-instance, receiver-wide health, not per satellite, so it goes to the publisher's
@@ -106,6 +108,13 @@ def poll_rf_stats(endpoints, lobes_fn, fetch_sk=False, fetch_drops=False):
     Each tap serves clip fraction and power per monitored channel and per absolute element; this
     reduces them to what a viewer renders and a log carries, and leaves the per-element arrays
     on the node.
+
+    The per-channel clip and the all-element figures cover every element in the tap, including
+    full-crate inputs that are not the array's (n_live_elem counts every powered slot).
+    live_elems (absolute element indices, array.live_element_ranges) restricts the
+    elem_clip_live figures to the array's own elements, over all monitored channels together,
+    leaving out any that read exactly zero power (a dark input). They are None when live_elems
+    is not given, names an element the tap does not serve, or names only dark ones.
 
     An instance whose monitor is not armed reports enabled=false. That is recorded as state
     "off", never published as zeros, so a dark panel reads as "not armed" rather than "no RFI";
@@ -142,6 +151,11 @@ def poll_rf_stats(endpoints, lobes_fn, fetch_sk=False, fetch_drops=False):
             p for p in ep if p > 0.0
         ]  # unpopulated element slots read exactly 0, so a
         # median that included them would read 0 and hide the signal
+        live = []
+        if live_elems and ec and min(live_elems) >= 0 and max(live_elems) < len(ec):
+            # A slot that reads exactly zero power is a dark input with no samples to rail,
+            # so it is left out rather than averaged in as a clean element.
+            live = [e for e in live_elems if e >= len(ep) or ep[e] > 0.0]
         summ = {
             "state": "on",
             # freq_ids: absolute channel identity from the frame's chord metadata, parallel to
@@ -158,6 +172,9 @@ def poll_rf_stats(endpoints, lobes_fn, fetch_sk=False, fetch_drops=False):
             "elem_clip_worst": (
                 max(range(len(ec)), key=lambda i: ec[i]) if ec else None
             ),
+            "elem_clip_live": (sum(ec[e] for e in live) / len(live) if live else None),
+            "elem_clip_live_max": max(ec[e] for e in live) if live else None,
+            "elem_clip_live_worst": max(live, key=lambda e: ec[e]) if live else None,
             "elem_power_med": (sorted(ep_live)[len(ep_live) // 2] if ep_live else None),
             "n_live_elem": len(ep_live) if ep else None,
             "passes": r.get("passes"),

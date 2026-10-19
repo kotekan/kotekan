@@ -168,21 +168,22 @@ def read_all(dirpath, max_age_s=120.0, t_now=None):
         {"signals": {sig: {"sys","band","n_sats","n_sync","n_eph","worst_dpos_m",
                            "median_dpos_m","newest_decode_s","oldest_decode_s","n_stale",
                            "sats":[row,...]}},
-         "chains": [{"chain","t_age_s"}...]}    (chains is empty unless t_now is given)
+         "chains": [{"chain","t_age_s"}...],    (chains is empty unless t_now is given)
+         "n_files": int}
 
     With t_now given, a file older than max_age_s (broker died / no fresh publish) is dropped,
-    not served -- the viewer then shows the signal going dark on a decode outage.
+    not served -- the viewer then shows the signal going dark on a decode outage. n_files
+    counts the broker files present, fresh or not, so the viewer can tell "no broker writes
+    decode health" (0) from "every writer has gone stale".
     """
     import statistics
 
     out_sig, chains = {}, []
     try:
-        names = sorted(os.listdir(dirpath))
+        names = sorted(n for n in os.listdir(dirpath) if n.endswith(".json"))
     except Exception:
-        return {"signals": {}, "chains": []}
+        return {"signals": {}, "chains": [], "n_files": 0}
     for n in names:
-        if not n.endswith(".json"):
-            continue
         rec = _read_one(os.path.join(dirpath, n), max_age_s, t_now)
         if rec is None:
             continue
@@ -216,4 +217,4 @@ def read_all(dirpath, max_age_s=120.0, t_now=None):
         g["newest_decode_s"] = min(last) if last else None
         g["oldest_decode_s"] = max(last) if last else None
         g["n_stale"] = sum(1 for x in last if x > 300)
-    return {"signals": out_sig, "chains": chains}
+    return {"signals": out_sig, "chains": chains, "n_files": len(names)}

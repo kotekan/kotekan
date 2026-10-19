@@ -12,6 +12,10 @@ Two fixtures, both generated channel layouts:
              is one contiguous run holding two bands. Splitting those needs the absolute
              freq_id the tap serves plus the declared band set (--rf-bands); with either
              missing, the grouping must degrade to unnamed rows rather than guess.
+
+The last three arms cover the rail over the array's live elements (array.live_element_ranges):
+fleet.poll_rf_stats restricts the tap's elem_clip to them, instr_rf_stats reads them from the
+node yaml, and the viewer's stream-health panel (rendered under node) shows the row.
 """
 import os
 import sys
@@ -209,13 +213,185 @@ def main():
     else:
         print("ok  node without freq_ids -> legacy grouping unchanged, unnamed")
 
+    fails += live_element_arms()
+
     print("-" * 70)
     if fails:
         for f in fails:
             print("FAIL: %s" % f)
         return 1
-    print("GATE GOOD: 11 arms on the generated channel layouts (2-band and 8-chain)")
+    print(
+        "GATE GOOD: 14 arms on the generated channel layouts (2-band and 8-chain) "
+        "and the live-element rail"
+    )
     return 0
+
+
+# A 128-element tap: the full-crate inputs outside the array rail at 8%, the array's own at
+# 0.37%, except element 70 at 2%.
+LIVE = list(range(0, 16)) + list(range(64, 80))
+EC128 = [0.0037 if e in LIVE else 0.08 for e in range(128)]
+EC128[70] = 0.02
+LIVE_MEAN = (31 * 0.0037 + 0.02) / 32
+
+
+# The array's dark inputs (broken LNAs) read zero power and so zero clip.
+DARK = [4, 5, 12, 13]
+EC128_DARK = [0.0 if e in DARK else c for e, c in enumerate(EC128)]
+LIVE_MEAN_DARK = (27 * 0.0037 + 0.02) / 28
+
+
+def _tap(ec, dark=()):
+    n = len(CX19_G0)
+    return {
+        "enabled": True,
+        "chans": CX19_G0,
+        "power": [1.0] * n,
+        "clip_lo": [0.0] * n,
+        "clip_hi": [0.0] * n,
+        "elem_clip": ec,
+        "elem_power": [0.0 if e in dark else 1.0 for e in range(len(ec))],
+    }
+
+
+def live_element_arms():
+    """The rail over the array's live elements: poll_rf_stats restricts elem_clip to them,
+    instr_rf_stats takes them from the node yaml, and the viewer renders the row."""
+    import json
+    import shutil
+    import subprocess
+    import tempfile
+    import types
+    from unittest import mock
+
+    import gnss_arraymap
+    from gnss_broker import fleet, instruments
+
+    fails = []
+    url = "http://cx19:12048/gnss0_srch_tap"
+
+    # 11. The live-element figures cover the array's elements only, leave out dark inputs
+    #     (zero power) rather than count them as clean, and refuse a tap that does not serve
+    #     every one of them rather than average a subset.
+    with mock.patch.object(fleet, "_get", return_value=_tap(EC128)):
+        v = fleet.poll_rf_stats([url], rf_lobes, live_elems=LIVE)[url]
+        bare = fleet.poll_rf_stats([url], rf_lobes)[url]
+    with mock.patch.object(fleet, "_get", return_value=_tap(EC128_DARK, DARK)):
+        dark = fleet.poll_rf_stats([url], rf_lobes, live_elems=LIVE)[url]
+    with mock.patch.object(fleet, "_get", return_value=_tap(EC128[:64])):
+        short = fleet.poll_rf_stats([url], rf_lobes, live_elems=LIVE)[url]
+    if v.get("elem_clip_live") is None or abs(v["elem_clip_live"] - LIVE_MEAN) > 1e-12:
+        fails.append(
+            "live-element rail %s, want %.5f (the array's elements only)"
+            % (v.get("elem_clip_live"), LIVE_MEAN)
+        )
+    elif (v["elem_clip_live_max"], v["elem_clip_live_worst"]) != (0.02, 70):
+        fails.append(
+            "worst live element %s at %s, want 70 at 0.02"
+            % (v["elem_clip_live_worst"], v["elem_clip_live_max"])
+        )
+    elif v["elem_clip_max"] != 0.08:
+        fails.append("all-element max moved: %s" % v["elem_clip_max"])
+    elif bare["elem_clip_live"] is not None or short["elem_clip_live"] is not None:
+        fails.append(
+            "live-element rail without a live set (%s) or from a 64-element tap (%s)"
+            % (bare["elem_clip_live"], short["elem_clip_live"])
+        )
+    elif dark["elem_clip_live"] is None or (
+        abs(dark["elem_clip_live"] - LIVE_MEAN_DARK) > 1e-12
+    ):
+        fails.append(
+            "live-element rail with 4 dark inputs %s, want %.5f (the 28 powered only)"
+            % (dark["elem_clip_live"], LIVE_MEAN_DARK)
+        )
+    else:
+        print(
+            "ok  rows outside the array at 8%%, the array at 0.37%% -> live rail %.2f%%, "
+            "worst element 70; dark inputs left out; none without a live set or past "
+            "the tap" % (100 * LIVE_MEAN)
+        )
+
+    # 12. The broker's poll takes the live set from the node yaml and logs the figure.
+    want = gnss_arraymap._live_ranges(gnss_arraymap.NODE_CONFIG)
+    ec = [0.0] * 128
+    for e in want or []:
+        ec[e] = 0.001 * (1 + e % 3)
+    pub = types.SimpleNamespace(rf=None)
+    pub.set_rf = lambda rf, t: setattr(pub, "rf", rf)
+    ctx = types.SimpleNamespace(
+        args=types.SimpleNamespace(
+            rf_stats_endpoints=url,
+            rf_stats_poll_s=30.0,
+            rf_bands="",
+            rfi_stats=False,
+            drop_stats=False,
+        ),
+        publisher=pub,
+        base="http://localhost:12048",
+        t0=1000.0,
+        rf_last=[0.0],
+    )
+    logs = []
+    with mock.patch.object(fleet, "_get", return_value=_tap(ec)), mock.patch.object(
+        instruments, "_log_rl", side_effect=lambda k, m, every_s=0: logs.append(m)
+    ):
+        instruments.instr_rf_stats(ctx)
+    got = ((pub.rf or {}).get(url) or {}).get("elem_clip_live")
+    exp = sum(ec[e] for e in want) / len(want) if want else None
+    if not want:
+        fails.append("no live_element_ranges in %s" % gnss_arraymap.NODE_CONFIG)
+    elif got is None or abs(got - exp) > 1e-12:
+        fails.append("instr_rf_stats published live rail %s, want %s" % (got, exp))
+    elif not any("live-element rail %.4f" % exp in m for m in logs):
+        fails.append("RF PATH does not carry the live-element rail: %s" % logs)
+    else:
+        print(
+            "ok  instr_rf_stats: %d live elements from the node yaml -> live rail "
+            "%.4f published and logged" % (len(want), exp)
+        )
+
+    # 13. The viewer's stream-health panel renders the live-element row (run under node).
+    if not shutil.which("node"):
+        print("skip  viewer live-element row: no node")
+        return fails
+    panel = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "..",
+        "js_viewer",
+        "app",
+        "panels",
+        "airspy_stats.js",
+    )
+    d = tempfile.mkdtemp()
+    try:
+        shutil.copy(panel, os.path.join(d, "panel.mjs"))
+        with open(os.path.join(d, "run.mjs"), "w") as f:
+            f.write(
+                'import {AirspyStatsPanel} from "./panel.mjs";\n'
+                "const p = Object.create(AirspyStatsPanel.prototype);\n"
+                "p._gnss = JSON.parse(process.argv[2]);\n"
+                "console.log(p._gnss_block());\n"
+            )
+        rf = {"instances": {url: v, "http://cx27:12048/gnss0_srch_tap": bare}}
+        r = subprocess.run(
+            ["node", os.path.join(d, "run.mjs"), json.dumps(rf)],
+            capture_output=True,
+            text=True,
+        )
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+    html = r.stdout
+    if r.returncode:
+        fails.append("panel render failed: %s" % r.stderr.strip())
+    elif "live elements" not in html:
+        fails.append("the stream-health panel has no live-element row")
+    elif "%.2g%%" % (100 * LIVE_MEAN) not in html or "element 70 on cx19" not in html:
+        fails.append("live-element row lacks the mean or the worst element")
+    elif ">1/2<" not in html:
+        fails.append("live-element row miscounts the reporting instances")
+    else:
+        print("ok  viewer: live-element row, mean, worst element 70, 1/2 reporting")
+    return fails
 
 
 if __name__ == "__main__":

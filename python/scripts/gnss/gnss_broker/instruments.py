@@ -129,11 +129,18 @@ def instr_rf_stats(ctx):
             _carr = signals.carriers_for_chains(
                 [c for c in (ctx.args.rf_bands or "").split(",") if c.strip()]
             )
+            # The array's own elements (array.live_element_ranges in the node yaml), read each
+            # poll: the tap measures every input in the crate, the array's and the rest.
+            # Unreadable leaves the live-element figures None, never the all-element ones in
+            # their place.
+            import gnss_arraymap
+
             _rf = poll_rf_stats(
                 _rf_ep,
                 lambda ch, pw, lo, hi, fids=None: rf_lobes(ch, pw, lo, hi, fids, _carr),
                 fetch_sk=ctx.args.rfi_stats,
                 fetch_drops=ctx.args.drop_stats,
+                live_elems=gnss_arraymap._live_ranges(gnss_arraymap.NODE_CONFIG),
             )
             ctx.publisher.set_rf(_rf, ctx.t0)
             _on = [v for v in _rf.values() if v.get("state") == "on"]
@@ -142,16 +149,24 @@ def instr_rf_stats(ctx):
                     (max(l["clip"] for l in v["lobes"]) for v in _on if v.get("lobes")),
                     default=0.0,
                 )
+                # The worst instance's mean rail over the array's own elements, all bands.
+                _live_clip = [
+                    v["elem_clip_live"]
+                    for v in _on
+                    if v.get("elem_clip_live") is not None
+                ]
                 _log_rl(
                     "rfstats",
                     "RF PATH: %d/%d instance(s) armed, worst clip %.4f of "
-                    "nibbles, %d lobe(s)/instance, pass cost %.2f ms"
+                    "nibbles, %d lobe(s)/instance, pass cost %.2f ms, "
+                    "live-element rail %s"
                     % (
                         len(_on),
                         len(_rf_ep),
                         _clip,
                         max((len(v.get("lobes") or []) for v in _on), default=0),
                         max((v.get("cost_ms") or 0.0) for v in _on),
+                        ("%.4f" % max(_live_clip)) if _live_clip else "unknown",
                     ),
                     every_s=300.0,
                 )
