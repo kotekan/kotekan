@@ -148,6 +148,8 @@ run_rfi_SKtilde:
           rfi_S012_name: rfi_S012
           rfi_SKtilde_name: rfi_SKtilde
           rfi_RFImask_name: rfi_RFImask
+          # A test signal of constant power has SK 0 and would be flagged entirely
+          excision_enabled: {{ rfi_excision_enabled | default(True) }}
 
 run_rfi_SKbar:
     gpu_0:

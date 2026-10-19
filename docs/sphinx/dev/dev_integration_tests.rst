@@ -71,8 +71,9 @@ Differences from ``config/fengine``:
   ``config/chord/pathfinder.j2``. It needs one mask frame per correlation frame, while BB and FRB1
   need the mask lifetime to equal their phase lifetimes, so it gets its own one-frame mask stream
   with the same content (see Findings).
-* The bad feed mask lifetime (``bf_mask_lifetime_frames``, default 24), ``do_fringestop`` and the
-  test outputs are jinja variables; production values are the defaults.
+* The bad feed mask lifetime (``bf_mask_lifetime_frames``, default 24), ``do_fringestop``,
+  ``rfi_excision_enabled`` and the test outputs are jinja variables; production values are the
+  defaults.
 
 Running
 =======
@@ -152,11 +153,14 @@ upchannelizer output start ``T*``, ``coarse_freq`` / ``freq_upchan_factor`` /
      - Fail if rms < 0.5 or > 3.5 LSB, > 5% saturated, or any -8; FRB3 ≤ half a step plus
        float16 rounding
    * - T4 Overflow
-     - Full-scale coherent input; full-scale tone from a beam direction.
-     - all
-     - No NaN or Inf; N2 equals the exact integer prediction; saturation without sign flips;
-       FRB1 below its bound.
-     - exact
+     - 7 + 7i on every input; an amplitude-7 tone from a BB beam. No noise, RFI excision off
+       (a constant-power signal has SK 0).
+     - correlator (``n2k_correlation``), upchan (all U), BB with phases and shifts, FRB1, FRB2,
+       FRB3 with offset and scale
+     - No NaN or Inf, no -8. The correlator equals Σ E_i conj(E_j); BB equals the integer
+       beamformer; upchan saturates with the predicted sign and equals the rounded prediction;
+       FRB1 is below its bound for int4 input.
+     - correlator and BB exact; upchan 0.02 LSB around rounding thresholds; FRB1 1%
    * - T5 Gains
      - Noise plus tone; reference and scaled runs.
      - upchan, BB, FRB1
@@ -242,6 +246,15 @@ Findings
 * ``N2Accumulate`` requires correlation frames to start at multiples of the frame length. The
   tests assume that the receivers guarantee this.
 * FRB3 encodes FRB2 within half a step plus float16 rounding (T3).
+* **FRB1 at U = 1 overestimates a constant intensity by 0.64%** (T4). The kernel accumulates
+  Tds = 192 float16 terms per output; full-scale input gives 2104 instead of the exact bound
+  2090.7. This is within the 1% allowance of ``frb1_intensity_limit``. At U ≥ 16 (12 or fewer
+  terms) the saturated input gives 2090.
+* The correlator, the upchannelizer and BB saturate exactly as predicted at full scale (T4). The
+  correlator output stays far from the int32 limit (802816 for 8192 samples).
+* A constant-power test signal is flagged entirely by first-stage RFI excision (SK = 0), so
+  the correlator sums nothing; T4 switches excision off. FRB3 chunks of zero variance store
+  scale 0 and q = 0, without NaN (T4).
 
 Data volume and run time
 ========================
