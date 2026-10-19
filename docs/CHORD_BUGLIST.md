@@ -1187,135 +1187,58 @@ the ephemeris epoch.
 
 ## Open — bench or offline, no deployment at all
 
-### #193 — string pass (comment pass, stage 9): help text, log text and emitted headers still narrate their history (2026-10-15, PLANNED for the Monday week-limit rollover, or Sunday if credits remain)
-**What [tree]:** stage 8 (#188) left every string literal alone, because strings are code. They carry the same history
-the comments did. Inventory at `6c0ac9b93` (`~/gnss/builds/stage9/inventory.py`, json beside it): **166 literals with
-hard markers** (dates, `#NNN`, task refs, emoji, commit hashes, "used to") — cli.py help 49, other help 9, broker
-log/print 20, tool log/print 9, other strings 48 (mostly the generator's emitted config headers), shell echo 8, viewer JS
-14, C++ log 8 — plus ~236 multi-word ALL-CAPS phrases, many of them log TAGS that must stay. The stage-8 agents also listed
-~250 strings (`string_cruft` in `~/gnss/builds/commentpass/findings_s8_{configs,broker,rest}.json`) that are stale
-without any marker (e.g. `--prn-reconfig-interval-s` help still says one slot moves per interval; `--fit-min-snr` says
-"CHORD wants ~60" against a live 30; `--rest-port` help says "NOT 12048" for a 12048 default). 417 argparse flags in all
-(cli.py 108, the generator 42, 32 other scripts 267).
+### #192 — comment pass, stage 10: the repair run is done; KV's decisions, the golden re-bless and three dead fixtures remain (2026-10-15; run 2026-10-18/19, NOT MERGED)
+**Done, branch `kv/repair-s10`** (24 commits on kv/chord-gnss 2afecde50, `git merge-tree` clean): every input
+(the 199 stage-8 findings, 253 unscreened reviewer residuals, the 27 stage-9 bugs, (a)–(h) and the "for KV" list
+below, 21 found on the way) re-read against the code first: 273 still present, the rest fixed since, text stage 9
+had fixed, duplicates or not bugs. 236 fixed in 24 groups, each by one fix agent then one adversarial reviewer (one
+agent at a time), every behaviour fix with a test shown to fail on the base; review reverted 2 and deferred 1, which
+join the decisions. What changes:
+- **Replays:** `broker_equiv` runs every replay with a closed `--telem-gather` port, so a replay on the gnss VM no
+  longer folds the production gather's live frames — the cause of (g)'s red and nondeterministic VM goldens (cf06,
+  with nothing on 11061, was always right). `GNSS_IGS_SNX` pins prnmap's registry from a `<transcript>.igs.snx`
+  sidecar; `_tree_state` covers the broker's sibling modules; `selftest` passes the flags after `--`.
+- **Broker live path, goldens moved and not re-blessed:** the predicted range rate is rotated into the reception
+  frame (all six on-sky goldens, ≤ 0.05 Hz at L5); rate-0 seeds hold on the single-combiner path (fake_l5 and the
+  three 08-26 ones); trim arming runs on the cycle clock (e5a_20260826). Golden-neutral on today's fixtures: the
+  MINNOV/INNOV windows are 10 min by age (they were 120 samples, ~4 min); a declared clock snap must come from the
+  adopted donor and refusals no longer keep a never-adopted clock fresh; the slew starts from the phase the tracker
+  runs; fleetadr, fits and ratefeed survive a backward re-base and the F-engine axis stays monotone through one;
+  a re-served detection counts once; the coarse rate feed drops below-horizon noise probes ((h)); stale rrate rows age out; telem reads frames
+  without slot 0; the BRDC store parses once per refresh and backs off a failed one; `--joint-consume` refuses an
+  unknown token; the deep gate runs once per pass, not per row.
+- **Offline:** the generator (gather recipe wrapped whole, aggregator feed `base + 2k + g`, the `--frame0-nano` check
+  after the override, default gather/cube ports 12051/12052, `bringup_order` not a host, `--fleet-trim-windows`
+  default 2), gen_fleet (`--check` exit 2 on its own failures), the site scripts (exact env gate, node_up retries,
+  wedge probe by process name, eop_cron reads the manifest's paths, cube launchers), the code checks and gates that
+  could not fail, the cube compactor, the nav decoders, the viewer (TLE retry, decode-health bands, the broker sky
+  kept on a TLE failure), the beam tools.
 
-**Scope, in tiers:**
-- **9a, help text = documentation.** Every `help=` / `description=` / `epilog=` / `usage=` string, reviewed in full for
-  accuracy like the stage-8 docstrings (each flag's default and consumer checked), history out.
-- **9b, operator messages.** Log/print/raise/SystemExit text, shell echo/usage, viewer UI strings: only literals that
-  carry history or are wrong (the inventory + the `string_cruft` lists), plus ALL-CAPS emphasis that is not a tag.
-- **9c, C++ log text** in lib/stages/gnss (8 literals): rides the next node binary; needs the cf05 build checks.
-- **9d, the generator's emitted config headers** (gather, cube archiver, node headers). This changes every generated
-  config's header, so after the merge KV regenerates (gen_fleet manifest + the three instance recipes; auto mode blocks
-  it) or `node_up.sh` warns "no longer matches" and `gen_fleet --check` is red. Harmless while the nodes are down.
+**Verified**, base against branch: cf06 broker suite + selftest + 52 tool and viewer tests pass, pyflakes one
+warning better, black unchanged; generated config bodies identical (the aggregator and gather headers change:
+regenerate those two after the merge); cf05 CUDA + CPU builds (WERROR), 57/57 boost, `--check-config` 9/9, the five
+C++ tools; check_js 29/29. Per-item reasoning, tests and verdicts: `~/gnss/builds/stage10/` (`triage.json`,
+`run{A,B,C}_results.json`).
 
-**Never change (the protected list, built deterministically before any agent runs):** a log message's leading tag
-(CHAIN DIED, REFUSED (step, PRESENCE ±displaced, JOINT-CLK, COMB-DLL, SEED-OFFSET, JRRP, MODEL-UNTRUSTED, REBASE-WIPE,
-BARE-WIPE, DEEP GATE, FADR BREAK, LABEL CONSENSUS, CLOCK BIAS ...); any fragment quoted in docs/*.md (41 quotes in the
-buglist, closed list, runbook, joint-tracking doc), in the memory files, in the site scripts' grep/awk patterns, in the
-14 tests that match log or note text (test_brdc_golden, test_clockguard, test_disp_refuse, test_epl_admit,
-test_fleetadr, test_jointclk, test_jointstep, test_skyscope, test_timebase, test_trimarm, test_arraymap,
-test_obs_day_roll, test_rrate_state, test_state_filter); format specifiers (`%s %d %(name)s {} {:d}`) in count and
-order; key=value field names; units. argparse help is %-formatted: a literal `%` must stay `%%`.
+**What is left:**
+1. Re-bless the goldens after the merge, from a clean tree, naming the movers above. broker_onsky_l5, l5_holds and
+   e5a were already off their blessed digests at the base (step 0b's range model).
+2. `broker_onsky_{e5a,l5,b2a}_20260826` no longer replay: 1300–3400 transcript divergences each (the broker asks for
+   `/telescope/time0_ns` first; the 08-26 captures did not), the time anchor never resolves and dead reckoning never
+   runs. Their digests are deterministic and test almost nothing. Re-capture (fixtures/README.md) and retire them.
+3. KV's decisions, ~40, each with options and a recommendation: `~/gnss/builds/stage10/KV_DECISIONS.md` — config
+   and sky (joint-p2c-rotate, the B3I floor and C56–58, bds_b2a `rrate-feed-applied`, core pools, the shared
+   reference for L2C/L2OC/L3OC, the GLONASS daily TTL ...), broker behaviour, group delay (−TGD for L5, a DCB path
+   for L2C), replays, and the node C++ below. It includes, for #208's owner, the joint-feed warmup timed on wall time
+   (a replay under 240 s never runs the joint feed; longer ones switch it on at a load-dependent cycle).
+4. Node C++ for the next cycle: the gather's fleet DLL reads the PRN map from record slot 0 only (the Python reader
+   now takes the first filled slot); GnssFleetTrim's policy TTL does not disarm a silent chain; the GPU search
+   refine takes no `nh_phase`.
 
-**Proof, per edit (prove_s9.py, written first, tested against deliberate bad edits as prove_s8 was):** Python — the AST
-is identical after blanking only the allowed constants (help/description/epilog/usage values; the message argument of
-log/print/raise/SystemExit calls; the generator's header strings), the format-spec signature of every changed literal
-is unchanged, every protected fragment in an old literal is still in the new one, pyflakes and CI's black as stage 8;
-shell — bash's re-serialisation identical outside the echo/printf lines, `bash -n`; JS — acorn tokens identical except
-string tokens; C++ — tokens identical with string literals masked, placeholders unchanged, CI's clang-format. The broker
-replay digest hashes the POST stream only (`broker_equiv.py`), so log text cannot move a golden: all seven must stay
-equivalent.
-
-**Method:** as stage 8 — branch `kv/string-pass-s9` off `kv/chord-gnss`, worktree `~/gnss/strings9-wt`; two sequential
-lanes (2 agents at a time), rewrite → adversarial review per group, one consistency pass; brief = STYLE_S8.md plus a
-string section. ~13 groups: cli.py help ×2 sections; generator help + emitted headers; broker messages ×3; tools help +
-messages ×3; scripts + site ×2; viewer JS + server; C++ log text. ~27 agents, about one stage-8 family of cost
-(~8–10M subagent tokens), 3–4 h. On a session limit: freeze the journal results, relaunch a reduced script, tell
-cut-off groups their files are partial (never `resumeFromRunId` across parallel lanes).
-
-**Verify:** prove_s9 over every file; `--help` for every argparse script in both trees (exit 0, no traceback);
-cf06 `~/gnss/builds/commentpass/{verify_s8.sh,verify_s8_tools.sh}` base vs edit (broker tests incl. the 14 above,
-selftest, the seven goldens, the tool tests, pyflakes); `check_js.sh` on the gnss VM (cf06 has no node); `gen_equiv.sh`
-comparing config bodies (headers differ by design under 9d); 9c: the cf05 CUDA + CPU builds, boost, `--check-config`.
-Then ask KV to merge; after it, KV regenerates the configs (9d) and restarts the Python services when convenient.
-**10-18 DONE, NOT MERGED.** Branch `kv/string-pass-s9` (worktree `~/gnss/strings9-wt`): five string commits on
-kv/chord-gnss 96a341e7b (broker; generator + emitted headers; C++ log text; tools, scripts, site, viewer; the strings of
-the #191 step 0c/1 commits, re-verified against the joint-clock coast and the search monitor) plus one docs/comments commit
-(this entry, #192's list, CHORD_VIS_CAPTURE.md steps 2-4, three `_FROZEN` unit comments, the cube viewer's pol comment).
-627 literals in 104 files; prove_s9 OK against kv/chord-gnss on all of them. Verified base vs edit on the rebased tree:
-cf06 broker tests, selftest, pyflakes, tool tests identical and all seven goldens EQUIVALENT (8 digests, identical);
-`--help` for 38 scripts; check_js 29/29; the viewer tests; generated config bodies identical (headers changed by
-design); cf05 CUDA + CPU builds (WERROR), 57/57 boost, `--check-config` 9/9, the five C++ tools compile. Tools and
-results: `~/gnss/builds/stage9/` (prove_s9.py, s9lib.py, protected.json, allow9.json, s9_results.json). `test_context`
-fails one check at 96a341e7b itself (base and edit alike). The merge goes to whichever session holds kv/chord-gnss;
-after it, regenerate the fleet and the three instance configs (every header changes) and close this entry.
-**10-19 12:17Z post-merge steps done:** the six node configs regenerated from the manifest (gen_fleet.py, --check ALL 6
-match: the stage-9 headers + the staged choco EOP table 10-17..10-22), the aggregator and gather configs regenerated
-(bodies byte-identical, headers only) and the two instances restarted on them: gnss-aggregator 12:17:26Z, gnss-gather
-12:18:03Z -- the gather's first restart since 10-13 21:08, now on the staged build_nodpdk binary (72d3a36c4b2b, the
-#207 build) instead of its 10-13 inode. The EOP cron's "on-disk configs differ from the manifest beyond live data; NOT
-regenerated" (since 01:17Z, three runs) was this header change; with the regen it is back to pushing and regenerating.
-The cube archiver's config (cf06) was not regenerated: its header carries no recipe (it is in cubearch_up.sh) and the
-cf06 leg is not touched from here. No node cycle is needed for any of this: the live nodes' EOP tables are pushed hourly
-by the cron, the on-disk configs are now what a relaunch should start from, and nothing in the node binaries changed.
-
-
-### #192 — comment pass, stage 10: the repair run for the ~200 small bugs the stage-8 reviewers confirmed (2026-10-15, PLANNED after stage 9)
-**What [tree]:** reading every comment against its code in stage 8 (#188) surfaced 199 findings that an adversarial
-reviewer judged real (184) or unsure (15): configs + generator 25, broker 74, tools/scripts/site/viewer 100. Raw lists
-with file, line, mechanism and the reviewer's note: `~/gnss/builds/commentpass/findings_s8_{configs,broker,rest}.json`,
-digests `s8_{broker,rest}_summary.txt` (the config family's list is in the memory note for #188). At least 20 are
-repeats of the same fault, so ~175 unique. Rough split: ~30 log or text only (fold into #193), ~40 latent, 14 tests or
-gates that cannot fail, ~13 config/generator choices, the rest small behaviour bugs, most in offline tools and the
-viewer, a minority on the broker's live path. The `cruft_candidates` lists in the same files are a second dead-code
-round's input.
-
-**Fixed ahead of the run (10-15):** the viewer's lock rule — `gps_feed.js` `_merge` never copied `q`, `q_floor` or
-`noise_probe` onto the row, so the q lock of `caaedbca1` never ran, the feed panel locked on `sig` and a noise probe
-could show locked; `test_lock_metrics.py` now also runs its rows through `_merge` (3 checks failed before the fix).
-And `stack_components.sh` hard-coded `_2026` in the viewer's `--pvt-obs-globs` (the PVT panel would have found no obs
-file from 2027-01-01); the glob now takes any 8-digit date and matches the same 262 files. Live: the panel at the next
-browser reload, the glob at the next gnss-viewer restart (stack_contract_gate flags the viewer's argv until then).
-
-**For KV, not the run:** `bds_b2a` sets `rrate-command` with `rrate-feed-applied` at its default 1 (gal_e5a/e5b set 0;
-the flag's help says 1 double-counts on the folded assembler); `config/chord_band_plan.py`'s `half_bandwidth_hz` missed
-#179's change, so node L2C chains still cover ±511.5 kHz (changing it changes node channel sets: sky-judged); the GNSS
-GPU0 merged cudaProcess is pinned to core 4, production's `frame_service_cpu` (19/24/31 overlap half 1); the B3I PRN
-list seeds C06–08/C11–14 under the broker's floor of 19; `joint-p2c-rotate` withholds the best satellite from the
-live-consumed joint solve.
-
-**Plan for stage 10 (after stage 9, #193, so the agents read clean text):** step 0, one agent: dedupe, re-verify the "unsure"
-ones, and tier the list — T1 offline-fixable with an offline test (tools, viewer, scripts, the gates that cannot fail:
-the L3OC/L2OC/GLONASS code checks exit 0 when their C++ fails to compile, three tool tests cannot fail, ft_stress's
-torn-read check cannot fire, `broker_equiv`'s dirty-tree check ignores modules the broker imports); T2 broker live path
-(re-base hazards in `fleetadr.last_win` and `fits.unit_hop` — latent while the broker exits on a re-base; the q-stall
-guard's `dr_state` None → CHAIN DIED; the 120-sample innov/minnov caps that make the "10-min" p95 ~4 min; `telem._index`
-reading PRNs from slot 0 only; the TLE path posting az 0; gal_e6 shrinking the shared joint modulus to 5115) — fixed
-offline like the ready-now set, goldens re-blessed with each mover named, judged on sky at the return; T3 KV decisions
-(above). Then file-disjoint groups, fix + test + adversarial review per group, two lanes of one agent; the cf06/cf05
-checks as stage 8. Cost about one and a half stage-8 families (~15M subagent tokens), 5–6 h.
-**10-17 additions to the run's list:** (a) the viewer's rail panel should cover `live_element_ranges` only (the full-crate rows C–H rail 5–12% under the flat gains and are not ours); (b) a per-instance DARK detector: an instance whose prompt power sits at the floor on every PRN while its tap sees normal per-channel power is a config/wiring fault (#194), yet `FLEET-INST` counts it present and the viewer shows locks — compare the tap's power with the despread's per instance and name the instance; (c) L2C has nothing for the shared-reference machinery to hold (one channel per instance): exclude it or derive its reference from L5's (#154, 10-17); glo_l2oc (10-18) is the same case, one or two channels per instance, and has no pin in the shared-reference file either; (d) `gps_distributed_broker.py:1140` loop variable `sys` shadows the import (pyflakes); (e) ~~still G/E/C-only after #129: the BRDC supply's hourly coverage target (`_HOURLY_TARGET`), `gen_fleet`'s `SYS_OF`, the cube's `CHAIN_SYS`, and GLONASS propagation past ±15 min of a record is unvalidated~~ — done with the glo_l3oc roll-out 10-17 (docs/CHORD_MULTIBAND.md §6: all three tables carry R; propagation validated against the next record, 4.6 m line-of-sight median at 1 h, 18 m at 2 h, 117 m at 4 h); the review of that commit added the registry refresh + 6-h capability re-read, the 2.5-h R ephemeris cap (`GLONASS_MAX_AGE_S`), the transit-arc table and the viewer's registry-based GLONASS filter; what remains of (e): the daily file never covers today for R, so with the hourly supply down the chain goes dark after 2.5 h; (f) the B3I chain's PRN list 19–42 excludes C56–C58, assigned per SINEX and carried by BRDC. (g) 10-18: four of the six on-sky replay goldens are red without a code change: `broker_onsky_{l5_holds,l5_20260826,e5a_20260826,b2a_20260826}` replay to new digests (`0acfa2733cd5`, `621f54637e84`, `a78a963b04c7`, `cacaf230f995`) at HEAD, at 1e83eef62 and at their own blessing commit 8a392bd66 alike, while `broker_onsky_{l5,e5a}` (08-08) and `broker_fake_l5` stay EQUIVALENT. So an input the replay does not pin has moved since 10-13 (the BRDC pin's fingerprint has not): candidates are the IGS registry (refreshed 10-17 22:08; prnmap reads it for G and C whatever the flags) and the MGEX DCB product. Worse, after 00:00Z 10-18 `l5_holds` stopped being deterministic: seven runs gave seven digests, clean HEAD among them, while it gave `0acfa2733cd5` five times before midnight; so the replay also reads something dated today (the BRDC store or its background refresh are the first suspects). Pin every input beside `brdc_pin`, check two runs agree, then re-bless from a clean tree. (h) 10-18: noise probes feed the receiver-wide range-rate rows. The coarse rate feed (`gps_distributed_broker.py`, the `resid2` coherence filter) admits a probe whose noise passes coherence_s > 0 or coh_frac >= 0.3, while the KCOH feed skips probes by name; `broker_onsky_l5_holds` shows it happens (excluding all probes moves its digest). glo_l2oc's dark probes are excluded, since they are satellites glo_l3oc tracks; deciding the below-horizon ones is a behaviour change on every chain.
-
-(g) cx19 drops packets at the distributor ring in bursts (645 `rx ring was full` warnings in its 13:48-18:32Z run,
+Not part of the run, kept from the 10-17 notes: (g) cx19 drops packets at the distributor ring in bursts (645 `rx ring was full` warnings in its 13:48-18:32Z run,
 up to 478k per poll; ~100-1000/s steady after the 18:33Z cycle, the NIC counter flat, the other five at 0-20/s):
 pre-existing, not the 10-17 change; measure its lcore load and the recv1 reconnect bursts before blaming the
 search or the control path.
-
-**10-18 additions from stage 9 (#193):** the stage-9 reviewers confirmed 27 more code bugs while checking strings against
-code: `~/gnss/builds/stage9/s9_bugs_real.txt` (one line each, with the reviewer's note; raw results
-`s9_results.json`, `s9_delta_results.json` beside it). Five were text-only and are fixed on kv/string-pass-s9; the
-rest join this run. Among them: `--frame0-nano` exits against a reachable fleet (the frame-0 check reads the node file
-before the override); a stale DCB product logs a fall-back to broadcast group delays but keeps the stale table; the
-gather header's REGENERATE recipe is sliced every 92 characters, mid-flag, and keeps `--out`; deadreckon's tripwire
-divides by 29.3 m/chip on every chain; `gnss_beam_cube build --source elem` reports a health mask it never applies;
-`node_wedge_probe.sh`'s remote `pgrep -f` matches its own shell. Live and for the #191 owner rather than this run:
-`--detectors-monitor` also turns off dr_seed's slewed refresh (`_slew` tests `not ctx.detectors`), so gal_e5a's locked
-satellites get the plain hold -- consistent with E33 walking to the 3.0 trim clamp 18:26-18:30Z; the monitored chain
-never learns the nh hint (dr_solve_healthy is False with no offsets); its publisher reports has_search.
-On (g): cf06 replayed all seven goldens EQUIVALENT at 19:30Z and 20:13Z 10-18, on e116f8b7b and on 96a341e7b, so check
-whether the red/nondeterministic replays are specific to the VM (its BRDC store or registry) before re-blessing.
-**How to run it (KV 10-18):** one subagent at a time -- two parallel lanes hit the session cap twice in stage 8 and once
-in stage 9.
 
 ### #157 — `test_buffer_peek` fails its `peeks_won > 0` check under ThreadSanitizer (flaky under slowdown; found 2026-09-30)
 - **What:** under TSan's slowdown the worker thread wins every iteration, so `BOOST_CHECK(peeks_won > 0)`
