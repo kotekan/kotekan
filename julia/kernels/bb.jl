@@ -1638,7 +1638,9 @@ if CUDA.functional()
     # Output kernel
     open("output/bb_$setup.ptx", "w") do fh
         redirect_stdout(fh) do
+            println("R\"===(")
             @device_code_ptx main(; compile_only=true)
+            println(")===\"")
         end
     end
     # This call needs to happen after generating PTX code since it

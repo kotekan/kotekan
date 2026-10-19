@@ -2796,7 +2796,9 @@ if CUDA.functional()
     main(; output_kernel=true)
     open("output/frb_$(setup)_U$(U).ptx", "w") do fh
         redirect_stdout(fh) do
+            println("R\"===(")
             @device_code_ptx main(; compile_only=true, silent=true)
+            println(")===\"")
         end
     end
     fix_ptx_kernel()
