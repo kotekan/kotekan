@@ -99,18 +99,37 @@ class TestCrossBandIsOneRow(unittest.TestCase):
         # the two differ by exactly the carrier ratio, which is why the state is held in m/s
         self.assertAlmostEqual(got_b / got_a, F_E5B / F_E5A, places=6)
 
-    def test_same_carrier_different_constellation_pools(self):
-        """On CHORD, GPS L5, E5a and B2a all sit at 1176.45 MHz, and every constellation
-        feeds the one receiver-wide f_carrier. Two feeds at that carrier (on the same keys
-        here, so the same rows) must still recover it."""
+    def test_two_feeds_on_the_same_rows_recover_f_carrier(self):
+        """On CHORD, GPS L5, E5a and B2a all sit at 1176.45 MHz. Two feeds at that carrier
+        on the same keys, so the same rows, must still recover f_carrier."""
         s = JointReceiverState(code_len=10230.0)
         truth = {11: -2.0, 21: 2.0}
         run(s, truth, fcar=0.7, bands=(F_E5A, F_B2A))
         self.assertAlmostEqual(s.f_carrier(), 0.7, delta=0.05)
 
+    def test_constellations_on_one_carrier_share_f_carrier(self):
+        """The broker keys rows (constellation, prn), so a Galileo satellite on E5a and a
+        BeiDou satellite on B2a are distinct rows, even under the same PRN number, and both
+        see the one receiver-wide f_carrier. The truths average to zero over all four rows, as
+        the gauge pins, but not within a constellation, so an f_carrier pooled per
+        constellation lands elsewhere."""
+        s = JointReceiverState(code_len=10230.0)
+        gal = {("E", 11): -3.0, ("E", 21): -1.0}
+        bds = {("C", 11): 1.0, ("C", 21): 3.0}
+        for k in range(400):
+            for key, rr in gal.items():
+                s.update_rrate(key, y_of(rr, 0.7, F_E5A), 100.0 + k, F_E5A)
+            for key, rr in bds.items():
+                s.update_rrate(key, y_of(rr, 0.7, F_B2A), 100.0 + k, F_B2A)
+            s.gauge_rrate()
+        self.assertEqual(len(s._rr_idx), 4)
+        self.assertAlmostEqual(s.f_carrier(), 0.7, delta=0.05)
+        for key, rr in {**gal, **bds}.items():
+            self.assertAlmostEqual(s.rrate(key), rr, delta=0.05)
 
-class TestTheBugsFoundWhileBuilding(unittest.TestCase):
-    def test_a_stiff_gauge_is_NOT_what_froze_it(self):
+
+class TestRrateBirthAndEscape(unittest.TestCase):
+    def test_gauge_stiffness_does_not_freeze_the_rows(self):
         """The rrate rows converge at gauge sigmas 0.02, 0.5 and 2.0: with a correct birth and
         escape, gauge stiffness does not freeze the filter. The default rr_gauge_sigma (0.5)
         is moderate by choice."""
@@ -147,6 +166,38 @@ class TestTheBugsFoundWhileBuilding(unittest.TestCase):
             "a displaced, over-confident row never recovered (rrate %.2f)"
             % s.rrate(11),
         )
+
+
+class TestStaleRowsAgeOut(unittest.TestCase):
+    def test_a_set_satellite_leaves_the_gauge(self):
+        """A satellite with no carrier measurement in max_age_s loses its rrate row, so
+        gauge_rrate pins the mean over the satellites still reporting. Kept, the stale row
+        holds the share of the pin it had when it set, and f_carrier and the live rows stay
+        offset by it."""
+        s = JointReceiverState(code_len=10230.0)
+        live = {1: -2.0, 2: 2.0}
+        # Satellite 3 reports first, so its row sits before the live rows and the drop has
+        # to renumber them.
+        run(s, {3: 6.0, **live}, fcar=0.5, n=200)
+        # Satellite 3 sets at t = 299 and cycle() expires its row max_age_s later; the pin
+        # then relaxes to the two live rows at the rr_gauge_sigma pace (~1000 s to 0.05 Hz).
+        for k in range(int(s.max_age_s) + 1500):
+            t = 300.0 + k
+            for prn, rr in live.items():
+                s.update_rrate(prn, y_of(rr, 0.5, F_E5A), t, F_E5A)
+            s.gauge_rrate()
+            s.cycle([], t)
+        self.assertNotIn(3, s._rr_idx, "a set satellite kept its rrate row")
+        self.assertEqual(s.rrate_sigma(3), float("inf"))
+        # clk, clk_rate, f_carrier and the two live rows: the stale row left x and P
+        self.assertEqual(s.x.size, 5)
+        self.assertEqual(s.P.shape, (5, 5))
+        self.assertAlmostEqual(s.f_carrier(), 0.5, delta=0.05)
+        for prn, rr in live.items():
+            self.assertAlmostEqual(s.rrate(prn), rr, delta=0.05)
+            self.assertAlmostEqual(
+                s.carrier_correction_hz(prn, F_E5A), y_of(rr, 0.5, F_E5A), delta=0.05
+            )
 
 
 class TestClosedLoopReference(unittest.TestCase):
@@ -222,7 +273,7 @@ class TestClosedLoopLag(unittest.TestCase):
         for prn, e in err.items():
             self.assertLess(e, 0.8, "PRN %d standing error %.2f Hz" % (prn, e))
 
-    def test_the_adopt_escape_was_the_amplifier(self):
+    def test_the_escape_does_not_amplify_the_free_loop(self):
         """The rrate escape re-opens P without adopting the rejected measurements. An escape
         that adopted them would snap the row to lag-misreferenced noise every rr_escape_runs
         rejections and amplify the walk. Without that amplifier the free loop converges to the
@@ -234,7 +285,7 @@ class TestClosedLoopLag(unittest.TestCase):
         self.assertLess(
             free,
             0.8,
-            "free loop diverged (%.2f Hz): the escape is amplifying again" % free,
+            "free loop diverged (%.2f Hz): the escape amplifies the walk" % free,
         )
 
 

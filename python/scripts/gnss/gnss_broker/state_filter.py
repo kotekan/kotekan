@@ -222,6 +222,7 @@ class JointReceiverState:
         # The rejected measurements themselves: the escape requires the run to agree with
         # itself, not merely to be long.
         self._rej_hist = {}  # key -> recent rejected measurements y (rolling)
+        self._rej_t = {}  # key -> time of its newest rejection
         self.escape_spread = float(escape_spread)
         # An escape may believe a run that agrees, but not one that is physically
         # impossible. Same separation as the clock solve's MAD bound: real per-sat offsets
@@ -235,6 +236,11 @@ class JointReceiverState:
         # clock is the one term independent satellites share, so agreement across them is
         # a clock event. The evidence is counted in satellites, never in samples.
         self.escape_min_sats = int(escape_min_sats)
+        # A run votes for another satellite's escape only while it is current. A run is kept
+        # until that satellite's next accepted update or its age-out, so a satellite that
+        # stopped reporting would otherwise vote with an old y. 20 s is two full runs at the
+        # broker's 2 s cycle, so a corroborator that misses a cycle still votes.
+        self.escape_vote_age_s = 20.0
         self.rate_max = float(
             rate_max
         )  # chips/s; 1.0 = 0.1 ppm = 2500x the GPSDO truth
@@ -300,7 +306,7 @@ class JointReceiverState:
         self.sigma_rr0 = float(sigma_rr0)
         self.q_rr = float(q_rr)  # m/s per sqrt(s); orbit error, so slow
         # Moderate by choice: stiffer and looser gauges converge too (test_rrate_state.py,
-        # test_a_stiff_gauge_is_NOT_what_froze_it).
+        # test_gauge_stiffness_does_not_freeze_the_rows).
         self.rr_gauge_sigma = float(rr_gauge_sigma)
         self._rr_idx = {}  # key -> row in x
         self._rr_t_seen = {}  # key -> last carrier measurement time
@@ -381,27 +387,18 @@ class JointReceiverState:
         out, self.notes = self.notes, []
         return out
 
-    def _drop(self, keys):
-        """Remove stale sats. Their rows leave the state entirely: a sat with no accepted
-        measurement in max_age_s must not keep voting in the gauge, which would drag the
-        clock toward a bias nothing refreshes. Only b_sat rows are dropped; rrate rows stay."""
-        if not keys:
-            return
+    def _remove_rows(self, rows):
+        """Delete these rows from x and P and renumber every row index that survives."""
         np = self._np
-        rows = sorted(self._idx[k] for k in keys)
-        keep = [i for i in range(self.x.size) if i not in set(rows)]
+        gone = set(rows)
+        keep = [i for i in range(self.x.size) if i not in gone]
         self.x = self.x[keep]
         self.P = self.P[np.ix_(keep, keep)]
-        for k in keys:
-            del self._idx[k], self._t_seen[k], self._n[k]
-            self._rej_run.pop(k, None)
-            self._rej_hist.pop(k, None)
-        # Reindex from the surviving row order: the f_carrier and rrate rows share the space
-        # past clk_rate, so a renumber from a fixed base would alias them onto satellites.
+        # Reindex from the surviving row order: the b_sat, f_carrier and rrate rows share the
+        # space past clk_rate, so a renumber from a fixed base would alias them onto each
+        # other.
         remap = {old_row: new_row for new_row, old_row in enumerate(keep)}
         self._idx = {k: remap[i] for k, i in self._idx.items() if i in remap}
-        # f_carrier and the rrate rows take the same remap, or they would point at another
-        # row after the drop.
         if self._fcar_idx is not None:
             self._fcar_idx = remap.get(self._fcar_idx)
         self._rr_idx = {
@@ -410,7 +407,34 @@ class JointReceiverState:
         self._rr_t_seen = {
             k: v for k, v in self._rr_t_seen.items() if k in self._rr_idx
         }
+
+    def _drop(self, keys):
+        """Remove stale sats. Their rows leave the state entirely: a sat with no accepted
+        measurement in max_age_s must not keep voting in the gauge, which would drag the
+        clock toward a bias nothing refreshes. These are the b_sat rows; _drop_rr ages out
+        the rrate rows."""
+        if not keys:
+            return
+        rows = [self._idx[k] for k in keys]
+        for k in keys:
+            del self._idx[k], self._t_seen[k], self._n[k]
+            self._rej_run.pop(k, None)
+            self._rej_hist.pop(k, None)
+            self._rej_t.pop(k, None)
+        self._remove_rows(rows)
         self._membership_changed()
+
+    def _drop_rr(self, keys):
+        """Remove stale rrate rows, for the same reason as _drop: a satellite with no carrier
+        measurement in max_age_s must not keep voting in gauge_rrate's pin with a value
+        nothing refreshes. Its rrate_sigma then reads inf, so it is not commanded until its
+        next carrier measurement births the row again."""
+        if not keys:
+            return
+        rows = [self._rr_idx[k] for k in keys]
+        for k in keys:
+            self._rr_reject_run.pop(k, None)
+        self._remove_rows(rows)
 
     def _membership_changed(self):
         """Handle the gauge step a satellite joining or leaving can cause.
@@ -433,9 +457,11 @@ class JointReceiverState:
 
             delta = median(b over the new membership);  b_i -= delta;  clk += delta
 
-        clk + b_i, the only observable a consumer reads, is unchanged for every satellite,
-        and the gauge has nothing left to pin. P is carried through the same linear map
-        (P -> A P A^T); no uncertainty is injected because none was created."""
+        clk + b_i, the only observable a consumer reads, is unchanged for every satellite.
+        The median is over every row, which is the median gauge() pins only while every bias
+        lies within gauge_max_b of it; otherwise gauge() still pins a small residual. P is
+        carried through the same linear map (P -> A P A^T); no uncertainty is injected
+        because none was created."""
         if self.gauge_mode == "prior":
             # Nothing to relabel; only the slow equilibrium moves (by ~b_gone/N, paced by
             # gauge_prior_sigma), and that relaxation is gauge motion, not clock motion.
@@ -449,8 +475,9 @@ class JointReceiverState:
         idx = list(self._idx.values())
         if not idx:
             return
-        # The median, as gauge() pins: shifting by any other statistic would leave a residual
-        # step for the next gauge() to grind out through gauge_sigma.
+        # The median over every row. While every bias is an inlier it is the median gauge()
+        # pins, so the next gauge() has no step to grind out through gauge_sigma; with an
+        # outlier excluded there, gauge() still pins a small residual.
         _ordered = sorted(idx, key=lambda i: float(self.x[i]))
         _n = len(_ordered)
         _sel = (
@@ -669,6 +696,7 @@ class JointReceiverState:
                 # repeated measurements give innovations that drift apart.
                 hist = self._rej_hist.setdefault(key, [])
                 hist.append(y_chips)
+                self._rej_t[key] = t_now
                 if len(hist) > self.reject_escape:
                     del hist[: -self.reject_escape]
                 self._rej_run[key] = self._rej_run.get(key, 0) + 1
@@ -678,7 +706,7 @@ class JointReceiverState:
                     # +-L/2 is not read as maximally scattered
                     spread = max(abs(self.wrap(v - hist[0])) for v in hist)
                 if spread is None or spread > self.escape_spread:
-                    self._reject("incoherent-run")
+                    self._reject("gate" if spread is None else "incoherent-run")
                     if spread is not None:
                         # A full run that disagrees with itself: this satellite is feeding
                         # noise, a tracking failure rather than a state failure. Say so.
@@ -704,7 +732,7 @@ class JointReceiverState:
                     # included) with their own coherent runs implying the same step. Each
                     # implied step is recomputed against the current state, so all are
                     # referred to one epoch.
-                    _corr = self._corroborators(key, innov)
+                    _corr = self._corroborators(key, innov, t_now)
                     if _corr + 1 < self.escape_min_sats:
                         self._reject("escape-refused")
                         self._note(
@@ -747,6 +775,7 @@ class JointReceiverState:
                 self.P[i, i] += 25.0
                 self.P[0, 1] = self.P[1, 0] = 0.0
         self._rej_hist.pop(key, None)
+        self._rej_t.pop(key, None)
         self._rej_run.pop(key, None)
         z = self._scalar_update(H, innov, sigma_chips ** 2)
         self._t_seen[key] = t_now
@@ -834,20 +863,23 @@ class JointReceiverState:
             H[_ordered[_n // 2]] = 0.5
         self._scalar_update(H, -float(H @ self.x), self.gauge_sigma ** 2)
 
-    def _corroborators(self, key, innov):
+    def _corroborators(self, key, innov, t_now):
         """How many other satellites have a coherent rejection run implying the same step
         as `innov` now.
 
         Independent satellites share one term, the receiver clock, so agreement across them
         is evidence about the clock, while one satellite agreeing with itself shows only that
-        its measurement repeats. A run votes only if it holds reject_escape samples and
-        passes the same escape_spread test as the caller; its implied step is its newest
-        measurement against the current prediction.
+        its measurement repeats. A run votes only if it holds reject_escape samples, its
+        newest rejection is within escape_vote_age_s, and it passes the same escape_spread
+        test as the caller; its implied step is its newest measurement against the current
+        prediction.
         """
         n = 0
         for k2, h2 in self._rej_hist.items():
             if k2 == key or len(h2) < self.reject_escape:
                 continue
+            if t_now - self._rej_t.get(k2, -math.inf) > self.escape_vote_age_s:
+                continue  # that sat stopped reporting; its old y is not current evidence
             if max(abs(self.wrap(v - h2[0])) for v in h2) > self.escape_spread:
                 continue  # that sat is feeding noise; it gets no vote
             innov2 = self.wrap(h2[-1] - self.predicted(k2))
@@ -885,6 +917,9 @@ class JointReceiverState:
                 % (_was, float(self.x[1]), self.rate_max)
             )
         self._drop([k for k, t in self._t_seen.items() if (t_now - t) > self.max_age_s])
+        self._drop_rr(
+            [k for k, t in self._rr_t_seen.items() if (t_now - t) > self.max_age_s]
+        )
         return n_ok
 
     # -- carrier rows and readout ------------------------------------------------
@@ -984,7 +1019,7 @@ class JointReceiverState:
                 self.P[i_, i_] = self.sigma_rr0 ** 2
                 self._rr_reject_run[key] = 0
                 self._note(
-                    "rrate ESCAPE %s: %d consistent rejections -- re-opening the "
+                    "rrate ESCAPE %s: %d consecutive rejections -- re-opening the "
                     "row without adopting (x held)"
                     % (self._key_str(key), self.rr_escape_runs)
                 )
@@ -1007,8 +1042,8 @@ class JointReceiverState:
     @_locked
     def gauge_rrate(self):
         """Pin mean(rrate) = 0 over the rrate rows within max(10 sigma_rr0, 1 m/s) of their
-        median (all rows if fewer than two qualify). Rows are never aged out, so a satellite
-        that has set keeps its vote.
+        median (all rows if fewer than two qualify). cycle() ages out a row with no carrier
+        measurement in max_age_s, so a satellite that has set loses its vote.
 
         Without this, f_carrier and the rrate rows share an unobservable common mode:
         shifting the receiver-wide term and every orbit by equivalent amounts leaves every

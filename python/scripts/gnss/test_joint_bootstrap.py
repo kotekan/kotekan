@@ -185,6 +185,34 @@ class TestCorroboratedEscape(unittest.TestCase):
             30.0,
         )
 
+    def test_a_satellite_that_went_quiet_does_not_corroborate(self):
+        """A rejection run outlives its satellite's last report (it is cleared on the next
+        accept or at the age-out), so only a current run may vote. Here G10 builds a
+        coherent run implying +400 chips, then stops reporting for 600 s; G20 later builds
+        a run implying the same step. G10's old run is not evidence about the clock now."""
+        js = self._settled(escape_min_sats=2)
+        clk_before = js.clk
+        rest = [(("G", p), TRUE_CLK % L, 0.3) for p in (20, 23, 27)]
+        t = 100.0
+        for c in range(8):
+            js.cycle([(("G", 10), (TRUE_CLK + 400.0) % L, 0.3)] + rest, t)
+            t += 2.0
+        while t < 700.0:  # G10 is silent
+            js.cycle(rest, t)
+            t += 2.0
+        js.drain_notes()
+        jump = [(("G", 20), (TRUE_CLK + 400.0) % L, 0.3)] + rest[1:]
+        for c in range(8):
+            js.cycle(jump, t)
+            t += 2.0
+        notes = js.drain_notes()
+        self.assertFalse(
+            any("ESCAPE CORROBORATED" in n for n in notes),
+            "a satellite silent for 600 s corroborated a step",
+        )
+        self.assertTrue(any("ESCAPE REFUSED G20" in n for n in notes))
+        self.assertAlmostEqual(js.clk, clk_before, delta=5.0)
+
     def test_corroboration_is_counted_in_satellites_not_samples(self):
         """One satellite reporting 100 times is one satellite."""
         js = self._settled()

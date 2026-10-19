@@ -260,7 +260,7 @@ class TestTrackerPhaseAt(unittest.TestCase):
             ((b - a - want + MOD / 2) % MOD) - MOD / 2, 0.0, delta=1e-2
         )
 
-    def test_a_pair_inconsistent_seed_no_longer_reads_as_a_step(self):
+    def test_a_pair_inconsistent_seed_is_not_a_step(self):
         """The audit's purpose: a seed whose cp0 is stale but whose phase is correct is not
         a discontinuity for the tracker, and must not be reported as one."""
         from gnss_broker.fits import tracker_phase_at, seed_phase_at_ref

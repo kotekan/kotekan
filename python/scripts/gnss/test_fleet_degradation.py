@@ -168,7 +168,7 @@ class TestFleetDegradation(unittest.TestCase):
             r[23]["n_src"], 8, "a mostly-overlapping instance was discarded"
         )
 
-    def test_the_old_unanimous_rule_would_have_failed(self):
+    def test_a_frozen_instance_empties_the_all_instance_intersection(self):
         """The intersection over all contributors is empty for a fleet with one frozen
         instance, so any code that requires it returns nothing; this pins that the fixture
         reproduces that case."""
