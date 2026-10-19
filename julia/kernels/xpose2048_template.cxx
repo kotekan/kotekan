@@ -281,7 +281,10 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
             "--gpu-name={{{cuda_arch}}}",
             "--verbose",
         };
-        device.build_ptx("lib/cuda/generated/{{{kernel_name}}}.ptx", {kernel_symbol}, opts, "{{{kernel_name}}}_");
+        const char * const kernel_code =
+        #include "{{{kernel_name}}}.ptx"
+        ;
+        device.build_ptx(kernel_code, "lib/cuda/generated/{{{kernel_name}}}.ptx", {kernel_symbol}, opts, "{{{kernel_name}}}_");
     }
 }
 
