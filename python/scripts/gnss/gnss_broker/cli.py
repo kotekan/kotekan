@@ -157,7 +157,8 @@ _FROZEN = dict(
     # walking model crosses this in minutes.
     model_primacy_exit_p95=3.0,
     # Enter gate: MINNOV samples needed in the 10-min window before its p95 is judged; a p95 needs
-    # a population before it means anything.
+    # a population before it means anything. One sample per new detection (dr_joint_shadow), so
+    # a satellite the search re-detects at least every 20 s reaches it.
     model_primacy_min_n=30,
     # Enter gate: a PRN may flip to model-primary (--model-primacy-max) when its 10-min MINNOV p95
     # is below this (chips) over at least model_primacy_min_n samples. Healthy established
@@ -465,12 +466,14 @@ _FROZEN = dict(
     # advanced for this many seconds; 0 disables. Log only: dr_clock_freeze_s holds the clock solve
     # meanwhile. A frozen time base is an upstream instance stall, not a tracking fault.
     fe_axis_stale_s=30.0,
-    # Accepted joint-state updates a satellite needs before it counts as established: before the P2c
-    # rotation (--joint-p2c-rotate) may withhold it, and before its MINNOV is recorded. Withholding
-    # a satellite never born into the state tests nothing. A search-anchored satellite is fed only
-    # on a detection above joint_min_snr, so the count accrues slowly; 50 is enough to establish a
-    # bias (sigma_b0 10 against a 0.3-chip measurement converges in tens of updates).
-    joint_mask_after=50,
+    # Accepted joint-state updates a satellite needs before it counts as established: before its
+    # MINNOV is recorded, and before the P2c rotation (--joint-p2c-rotate) may withhold it, since
+    # withholding a satellite never born into the state tests nothing. A satellite is fed once
+    # per new detection (dr_joint_shadow), so this counts independent detections. Set for MINNOV:
+    # a row's own clk + b_i is the mean of its detections, sigma joint_sigma / sqrt(n), 0.1 chip
+    # at 10, which widens MINNOV's scatter by 5% over a detection's own; the q_b walk holds an
+    # old row at 0.08-0.13 chip (a detection every 3-15 s), so more detections buy little.
+    joint_mask_after=10,
     # The joint 'rate' consumer (--joint-consume) refuses a |clk_rate| beyond this (ppm) and keeps
     # the l-a EMA. CHORD's reference is GPS-disciplined (code-rate offset ~4e-5 ppm), so 0.01 is
     # ~250x headroom and still refuses a runaway such as -0.028 ppm.

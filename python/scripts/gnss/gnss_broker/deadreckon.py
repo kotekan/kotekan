@@ -922,6 +922,23 @@ def dr_clock_adopt_rx(ctx):
         )
 
 
+def new_detections(ctx, seen):
+    """The PRNs in ctx.best whose detection the consumer keeping `seen` ({prn: ref_hop}) has
+    not taken yet; `seen` is brought up to this cycle's ref_hops.
+
+    The search's REST table serves a detection until its next scan of that PRN, so a ref_hop
+    already taken is the same measurement again. A consumer that counts or weights its inputs
+    takes each detection once, on the first pass that sees its ref_hop (the same test as
+    det_fresh and the seed loop's new_det). Each consumer keeps its own `seen`, so one taking
+    a detection hides it from no other."""
+    new = set()
+    for p, det in ctx.best.items():
+        if seen.get(p) != det[3]:
+            seen[p] = det[3]
+            new.add(p)
+    return new
+
+
 def dr_joint_shadow(ctx):
     """Feed this chain's per-satellite offsets to the receiver-wide joint state.
 
@@ -929,25 +946,21 @@ def dr_joint_shadow(ctx):
     through the joint consumers (dr_joint_clk in dr_seed, and the rate and slew consumers).
     It also records each established satellite's MINNOV for the model-primacy gate. Runs
     when any joint consumer is configured (args.joint_shadow) and this chain has offsets.
+    Each detection feeds the state and MINNOV once (new_detections).
 
     The state is in reference chips (receiver.JOINT_REF_RATE_HZ, 10.23 Mcps) whatever this
-    chain's chip rate: the offsets, their sigma and the warm-start clock go in multiplied by
-    _k = reference rate / ours, and the residuals read back against the state (MINNOV, P2C)
-    come out divided by it, so the histories and log lines stay in this chain's chips. At
-    10.23 Mcps _k is exactly 1.0 and nothing changes bit for bit."""
+    chain's chip rate: the offsets and their sigma go in multiplied by _k = reference rate /
+    ours, and the residuals read back against the state (MINNOV, P2C) come out divided by it,
+    so the histories and log lines stay in this chain's chips. At 10.23 Mcps _k is exactly
+    1.0 and nothing changes bit for bit."""
     if ctx.args.joint_shadow and ctx.drp.offs:
         try:
             _k = JOINT_REF_RATE_HZ / ctx.args.chip_rate_hz
-            # One state for the whole receiver. clk0 is read only when this call creates it, so
-            # it cannot fight the running filter; the notes drain in stage_dead_reckon runs first
-            # and creates it without one, so the state is born at 0 and its cold prior
+            # One state for the whole receiver, created by whichever caller runs first (the
+            # notes drain in stage_dead_reckon, before this) and born at clk 0: its cold prior
             # (sigma_clk0, 200 chips) takes the ~151-chip clock in its first updates.
             _js = ctx.rx.joint_receiver(
-                ctx.band_id,
-                ctx.code_len,
-                ctx.args.chip_rate_hz,
-                clk0=float(ctx.dr_state.get("clk") or 0.0) * _k,
-                gauge_mode="prior",
+                ctx.band_id, ctx.code_len, ctx.args.chip_rate_hz, gauge_mode="prior",
             )
             # Only detections at or above joint_min_snr feed the state: below it a detection's
             # code phase is noise (~2000-chip residuals), which a median shrugs off and the
@@ -974,6 +987,10 @@ def dr_joint_shadow(ctx):
                     every_s=60.0,
                 )
             else:
+                # Only a detection this pass is the first to see goes in, so the state's
+                # accepted counts (_n), the escape's rejection runs and the MINNOV population
+                # count independent detections, not passes over one the search re-serves.
+                _new = new_detections(ctx, ctx.dr_state.setdefault("joint_fed", {}))
                 # MINNOV, the model innovation: for each established satellite (at least
                 # joint_mask_after accepted updates), wrap(d - predicted) against the state
                 # before this cycle's update, i.e. whether the joint state could have placed
@@ -985,7 +1002,8 @@ def dr_joint_shadow(ctx):
                 for _p3, _d3 in ctx.drp.offs:
                     _k3 = (ctx.drp.tag, _p3)
                     if (
-                        _snr.get(_p3, 0.0) >= ctx.args.joint_min_snr
+                        _p3 in _new
+                        and _snr.get(_p3, 0.0) >= ctx.args.joint_min_snr
                         and _k3 in _js._idx
                         and _js._n.get(_k3, 0) >= ctx.args.joint_mask_after
                     ):
@@ -997,7 +1015,8 @@ def dr_joint_shadow(ctx):
                     [
                         ((ctx.drp.tag, p), d * _k, ctx.args.joint_sigma * _k)
                         for p, d in ctx.drp.offs
-                        if _snr.get(p, 0.0) >= ctx.args.joint_min_snr
+                        if p in _new
+                        and _snr.get(p, 0.0) >= ctx.args.joint_min_snr
                         and ctx.track_ok(p)
                         and not ctx.p2c_hold(_js, (ctx.drp.tag, p))
                     ],

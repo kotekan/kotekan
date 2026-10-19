@@ -7,7 +7,9 @@ with live-sized numbers (joint 150.2 reference chips = 14.7 us = 7.51 L2C-CM chi
 E6 chips), the bounds' unit (reference chips on every chain), the window a longer code
 keeps, that on 10.23-Mcps chains the conversion is bit for bit the plain wrapped difference,
 that a feed at any chip rate lands in the same state, and the coast a refused joint clock
-rides (clk + clk_rate dt, never the legacy median).
+rides (clk + clk_rate dt, never the legacy median). Also the feed itself: dr_joint_shadow
+hands the state each detection once, however long the search re-serves it, and the state is
+born at clk 0 whoever creates it.
 
     python3 -m gnss_broker.test_jointclk
 
@@ -801,6 +803,202 @@ def test_consume_names():
     )
 
 
+_FEED = {3: +0.6, 5: -0.4, 14: +0.2, 21: -0.9, 30: +0.5}  # b_sat per fed PRN, chips
+TRUE_CLK = 150.2  # reference chips
+
+
+def _shadow_ctx(rx, warmup_s=0.0, clk=0.0):
+    """A 10.23-Mcps chain dr_joint_shadow runs on: every detection above joint_min_snr and
+    tracked, no P2C hold, the JOINT[shadow] summary line off. warmup_s 1e18 keeps the feed
+    withheld (the broker started just now)."""
+    return types.SimpleNamespace(
+        args=types.SimpleNamespace(
+            joint_shadow=True,
+            chip_rate_hz=REF_RATE,
+            joint_feed_warmup_s=warmup_s,
+            joint_min_snr=10.0,
+            joint_mask_after=10,
+            joint_sigma=0.3,
+        ),
+        band_id="1176.45MHz",
+        code_len=REF_LEN,
+        rx=rx,
+        dr_state={"clk": clk, "joint_log_next": 1e18},
+        broker_t0=0.0,
+        minnov_hist={},
+        track_ok=lambda p: True,
+        p2c_hold=lambda js, key: False,
+        p2c_tick=lambda js, t: None,
+    )
+
+
+def _shadow_pass(ctx, t, offs):
+    """One broker pass. offs is the search's table as this pass sees it, {prn: (ref_hop,
+    offset in chips)}: a PRN it re-detected carries a new ref_hop, one it re-serves the old."""
+    ctx.t0 = t
+    ctx.best = {p: (100.0, 0.0, 0.0, h) for p, (h, _) in offs.items()}
+    ctx.drp = types.SimpleNamespace(
+        offs=[(p, d) for p, (_, d) in sorted(offs.items())],
+        tag="G",
+        t_now_abs=t,
+        now_w=t,
+    )
+    deadreckon.dr_joint_shadow(ctx)
+
+
+def test_feed_once_per_detection():
+    """dr_joint_shadow feeds the joint state each detection once. The search re-serves a
+    detection, with its ref_hop, until its next pass; fed at every pass, one detection would
+    count as many in _n (joint_mask_after's count), and a re-served outlier would fill the
+    escape's rejection run with copies of itself, which agree perfectly."""
+    logs = []
+    _orig = deadreckon._log_rl
+    deadreckon._log_rl = lambda key, msg, every_s=10.0: logs.append(msg)
+    try:
+        rx = Receiver(log=lambda m: None)
+        ctx = _shadow_ctx(rx)
+        t, h = 1000.0, 0
+        for _ in range(40):  # every PRN re-detected at every pass
+            t, h = t + 2.0, h + 1000
+            _shadow_pass(ctx, t, {p: (h, TRUE_CLK + b) for p, b in _FEED.items()})
+        js = rx.joint_receiver("1176.45MHz", REF_LEN, REF_RATE, gauge_mode="prior")
+        n0 = sorted(js._n.values())
+        err = abs(js.predicted(("G", 3)) - (TRUE_CLK + _FEED[3]))
+        check(
+            n0 == [40] * len(_FEED) and err < 0.3,
+            "a new detection at each of 40 passes: 40 updates per PRN (%s), PRN 3's "
+            "clk + b within %.3f chips of the truth" % (n0, err),
+        )
+        h3 = h + 1  # PRN 3's last detection, re-served for 10 passes
+        for _ in range(10):
+            t, h = t + 2.0, h + 1000
+            offs = {p: (h, TRUE_CLK + b) for p, b in _FEED.items()}
+            offs[3] = (h3, TRUE_CLK + _FEED[3])
+            _shadow_pass(ctx, t, offs)
+        check(
+            js._n[("G", 3)] == 41 and js._n[("G", 5)] == 50,
+            "one detection re-served for 10 passes counts once (n %d, 41), a PRN "
+            "re-detected at each pass ten times (n %d, 50)"
+            % (js._n[("G", 3)], js._n[("G", 5)]),
+        )
+        del logs[:]
+        rej0, h5 = js.rejected, h + 1
+        for _ in range(10):  # PRN 5 detected 30 chips off, re-served for 10 passes
+            t, h = t + 2.0, h + 1000
+            offs = {p: (h, TRUE_CLK + b) for p, b in _FEED.items()}
+            offs[5] = (h5, TRUE_CLK + _FEED[5] + 30.0)
+            _shadow_pass(ctx, t, offs)
+        esc = [m for m in logs if "ESCAPE" in m]
+        check(
+            js.rejected - rej0 == 1 and not esc,
+            "a 30-chip outlier re-served for 10 passes is one rejection and no escape "
+            "(%d rejection(s); %s)" % (js.rejected - rej0, esc),
+        )
+    finally:
+        deadreckon._log_rl = _orig
+
+
+def _joint_receiver_calls(path):
+    """(line, keyword names) of every joint_receiver(...) call in `path`."""
+    with open(path) as f:
+        tree = ast.parse(f.read(), path)
+    return [
+        (n.lineno, [k.arg for k in n.keywords])
+        for n in ast.walk(tree)
+        if isinstance(n, ast.Call) and ast.unparse(n.func).endswith("joint_receiver")
+    ]
+
+
+def _drain_before_shadow(path=DEADRECKON):
+    """The test of the If statement right before `dr_joint_shadow(ctx)` in
+    stage_dead_reckon, when that If calls joint_receiver(), else None."""
+    with open(path) as f:
+        tree = ast.parse(f.read(), path)
+    fn = [
+        n
+        for n in ast.walk(tree)
+        if isinstance(n, ast.FunctionDef) and n.name == "stage_dead_reckon"
+    ]
+    for n in ast.walk(fn[0]) if fn else ():
+        for body in (getattr(n, "body", None), getattr(n, "orelse", None)):
+            if not isinstance(body, list):
+                continue
+            for i, st in enumerate(body):
+                if (
+                    i > 0
+                    and isinstance(st, ast.Expr)
+                    and ast.unparse(st.value) == "dr_joint_shadow(ctx)"
+                    and isinstance(body[i - 1], ast.If)
+                    and _joint_receiver_in(body[i - 1])
+                ):
+                    return ast.unparse(body[i - 1].test)
+    return None
+
+
+def _joint_receiver_in(node):
+    return any(
+        isinstance(c, ast.Call) and ast.unparse(c.func).endswith("joint_receiver")
+        for c in ast.walk(node)
+    )
+
+
+def test_state_born_at_zero():
+    """The receiver-wide joint state is created by whichever caller runs first, and no broker
+    caller passes clk0, so it is born at clk 0. On the live path stage_dead_reckon's notes
+    drain creates it, right before dr_joint_shadow and under a superset of its condition, so
+    the shadow never warm-started it: with no clk0 of its own the live path is unchanged."""
+    pkg = os.path.dirname(DEADRECKON)
+    srcs = [BROKER] + sorted(
+        os.path.join(pkg, f)
+        for f in os.listdir(pkg)
+        if f.endswith(".py") and not f.startswith("test_") and f != "selftest.py"
+    )
+    warm = [
+        "%s:%d" % (os.path.basename(p), ln)
+        for p in srcs
+        for ln, kws in _joint_receiver_calls(p)
+        if "clk0" in kws
+    ]
+    check(not warm, "no broker joint_receiver() call passes clk0 (%s)" % warm)
+    drain = _drain_before_shadow()
+    with open(DEADRECKON) as f:
+        tree = ast.parse(f.read(), DEADRECKON)
+    fn = [
+        n
+        for n in ast.walk(tree)
+        if isinstance(n, ast.FunctionDef) and n.name == "dr_joint_shadow"
+    ][0]
+    cond = ast.unparse([st for st in fn.body if isinstance(st, ast.If)][0].test)
+    check(
+        drain == "ctx.args.rrate_state or ctx.args.joint_shadow"
+        and cond == "ctx.args.joint_shadow and ctx.drp.offs",
+        "the notes drain creates the state right before dr_joint_shadow, under a "
+        "superset of its condition (%r / %r)" % (drain, cond),
+    )
+    _orig = deadreckon._log_rl
+    deadreckon._log_rl = lambda key, msg, every_s=10.0: None
+    try:
+        # As on the live path: drained first, then the shadow, inside its warmup so it
+        # feeds nothing, on a chain whose dead-reckon clock reads 151.7 chips.
+        rx = Receiver(log=lambda m: None)
+        rx.joint_receiver("1176.45MHz", REF_LEN, REF_RATE, gauge_mode="prior")
+        _shadow_pass(_shadow_ctx(rx, warmup_s=1e18, clk=151.7), 1000.0, {3: (1, 151.7)})
+        js = rx._joint.get("__receiver__")
+        check(
+            js.clk == 0.0, "drained first, then the shadow: born at clk %r (0)" % js.clk
+        )
+        rx = Receiver(log=lambda m: None)
+        _shadow_pass(_shadow_ctx(rx, warmup_s=1e18, clk=151.7), 1000.0, {3: (1, 151.7)})
+        js = rx._joint.get("__receiver__")
+        check(
+            js is not None and js.clk == 0.0,
+            "the shadow creating it itself: born at clk %r (0), no warm start"
+            % (js.clk if js is not None else None),
+        )
+    finally:
+        deadreckon._log_rl = _orig
+
+
 def main():
     for fn in (
         test_consume_names,
@@ -815,6 +1013,8 @@ def main():
         test_rate_consumer_unit,
         test_seed_offset_per_prn,
         test_seed_offset_summary_wrap,
+        test_feed_once_per_detection,
+        test_state_born_at_zero,
     ):
         print(fn.__name__)
         fn()

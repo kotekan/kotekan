@@ -84,7 +84,7 @@ class Receiver(object):
         period, 10230 reference chips, and L2C-CM's 10230 at 0.5115 Mcps are 20 ms, 204600,
         which never shortens a state the 1-ms codes hold at 10230. A shorter period shortens
         the modulus in place; joint_ambiguous() reports a clock that has grown close to the
-        wrap. Any clk0 in kw must already be in reference chips (the feeder converts).
+        wrap. Any clk0 in kw must already be in reference chips.
 
         Same argument as the clock adoption's modulus rule: reducing to a shorter period is
         well defined, lengthening is not.

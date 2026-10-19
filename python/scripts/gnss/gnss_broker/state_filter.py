@@ -315,9 +315,8 @@ class JointReceiverState:
         self.n_rrate = 0
         self.rrate_rejected = 0
         self.x = np.zeros(2)  # [clk chips, clk_rate chips/s]
-        # Warm start: clk0 seeds clk when the state is created; the prior sigma is still
-        # sigma_clk0. dr_joint_shadow passes its dead-reckon clock, but any earlier
-        # joint_receiver() call creates the state without one.
+        # clk0 seeds clk when the state is created; the prior sigma is still sigma_clk0. The
+        # broker passes none: its state is born at 0 and the cold prior takes the clock.
         self.x[0] = float(clk0)
         self.P = np.diag([sigma_clk0 ** 2, sigma_rate0 ** 2])
         self._idx = {}  # key -> row in x
