@@ -16,8 +16,8 @@ light-time/Sagnac/az-el/range-rate block as `predict_all`.
 Scope:
   * Position -> az/el/range: the decoder's propagator.
   * Velocity -> range rate/Doppler: central difference of position (the propagators return no
-    velocity), rotated into the reception frame with the position; a few mm/s (the light-time
-    rate is left out, as in predict_all), ample for search Doppler hints.
+    velocity), rotated into the reception frame with the position, plus the light-time rate,
+    as in predict_all.
   * sat_clk_s: the decoder's clock polynomial plus the relativistic term (as sat_pos_clk)
     where CLOCK_FIELDS lists one (Galileo I/NAV and F/NAV, GPS LNAV), else None; no
     group-delay term. Geometry and Doppler do not need it; only absolute code-phase seeding
@@ -129,7 +129,10 @@ def predict_one(sv_pos, eph, sys, signal, rx, lat, lon, t_sow, toe_age_s, dt=0.5
             -vel[0] * math.sin(th) + vel[1] * math.cos(th),
             vel[2],
         )
-        rr = sum((p - r) * v for p, r, v in zip(pos_rx, rx, vel_rx)) / rng
+        # plus the light-time rate, in predict_all's closed form
+        a = sum((p - r) * v for p, r, v in zip(pos_rx, rx, vel_rx)) / rng
+        b = (px * rx[1] - py * rx[0]) / rng
+        rr = a / (1.0 + (a - om_e * b) / C_LIGHT)
         return dict(
             az=az,
             el=el,

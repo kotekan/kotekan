@@ -379,9 +379,10 @@ def sat_pos_clk(e, t_gpst):
 # -- Broadcast group delay ----------------------------------------------------------------
 # Carrier frequencies (Hz) and the gamma = (f_ref/f_signal)^2 scalings the ICDs use.
 F_E1 = F_L1 = 1575.42e6
+F_L2 = 1227.60e6
 F_E5A = F_L5 = 1176.45e6
 F_E5B = 1207.14e6
-GAMMA_L1L5 = (F_L1 / F_L5) ** 2  # 1.79329
+GAMMA_L1L2 = (F_L1 / F_L2) ** 2  # 1.64694
 GAMMA_E1E5A = (F_E1 / F_E5A) ** 2  # 1.79329
 GAMMA_E1E5B = (F_E1 / F_E5B) ** 2  # 1.70325
 
@@ -408,18 +409,18 @@ def group_delay_s(e, signal, dcb=None):
     ICD identity t_E1 = t_IF_a - BGD_a = t_IF_b - BGD_b, so a record-type change does not step
     the satellite's clock by the BGD difference.
 
-    Returns 0.0 for a signal not handled below (GPS L2C and Galileo E6 among them) and when the
-    term is unavailable rather than guessing, notably BeiDou B2a and B1C, whose TGD_B2ap and
-    TGD_B1Cp are in B-CNAV2 and B-CNAV1 and absent from RINEX 3 (which carries only TGD1
-    B1I/B3I and TGD2 B2I/B3I).
+    Returns 0.0 for a signal not handled below (Galileo E6 among them) and when the term is
+    unavailable rather than guessing, notably BeiDou B2a and B1C, whose TGD_B2ap and TGD_B1Cp
+    are in B-CNAV2 and B-CNAV1 and absent from RINEX 3 (which carries only TGD1 B1I/B3I and
+    TGD2 B2I/B3I).
     """
     if not signal:
         return 0.0
     sig = str(signal).lower()
     sysc = e.get("sys")
-    # Measured DCBs (gnss_dcb.signal_bias_s) take precedence when loaded. They cover GPS L5,
-    # Galileo E5a/E5b and BeiDou B2a/B2b (B2a's broadcast term is not in RINEX 3 at all) and
-    # return None otherwise, so a missing pair falls through to the broadcast term for that
+    # Measured DCBs (gnss_dcb.signal_bias_s) take precedence when loaded. They cover GPS L5 and
+    # L2C, Galileo E5a/E5b and BeiDou B2a/B2b (B2a's broadcast term is not in RINEX 3 at all)
+    # and return None otherwise, so a missing pair falls through to the broadcast term for that
     # satellite alone. The product is zero-mean per constellation, so it carries the
     # per-satellite spread and no constellation-common level; only the broadcast term has one.
     if dcb:
@@ -441,11 +442,17 @@ def group_delay_s(e, signal, dcb=None):
     tgd = float(e.get("tgd") or 0.0)  # G: TGD | E: BGD(E1,E5a) | C: TGD1(B1I,B3I)
     tgd2 = float(e.get("iodc") or 0.0)  # E: BGD(E1,E5b) | C: TGD2(B2I,B3I) | G: IODC
     if sysc == "G":
-        # L5: TGD scaled to L5 as 1/f^2 (gamma_15 * TGD). IS-GPS-705's term is -TGD + ISC_L5I5
-        # (the form the DCB path computes), but ISC_L5I5 is CNAV-only and not in RINEX 3; the
-        # scaling matches it only if the satellite's group delays go as 1/f^2.
+        # L5: IS-GPS-705's term is -TGD + ISC_L5I5 (the form the DCB path computes). ISC_L5I5
+        # is CNAV-only and not in RINEX 3, so it is taken as 0. Scaling TGD as 1/f^2
+        # (gamma_15 * TGD) would assume ISC_L5I5 = (1 - gamma_15) * TGD, which the ICD does not.
         if "l5" in sig:
-            return -GAMMA_L1L5 * tgd
+            return -tgd
+        # L2C: IS-GPS-200's term is -TGD + ISC_L2C, and ISC_L2C is CNAV-only too. TGD is
+        # defined on L1P/L2P, so -gamma_12 * TGD is the L2P term exactly, and L2C on the same
+        # carrier differs from it only by its code bias against P(Y). Per satellite it fits the
+        # CAS product's L2C biases to about 1 ns rms, where -TGD leaves about 5 ns.
+        if "l2c" in sig:
+            return -GAMMA_L1L2 * tgd
         if "l1" in sig:
             return -tgd
         return 0.0
@@ -615,14 +622,19 @@ def predict_all(
         if el < mask_deg:
             continue
         # vel is in the transmit-epoch frame, like pos: rotate it by the same angle so the
-        # range rate is taken in the reception frame. The light-time rate (tau changes by
-        # rr/c per second) is left out, a few mm/s at most.
+        # range rate is taken in the reception frame.
         vel_rx = (
             vel[0] * math.cos(th) + vel[1] * math.sin(th),
             -vel[0] * math.sin(th) + vel[1] * math.cos(th),
             vel[2],
         )
-        rr = sum((p - r) * v for p, r, v in zip(pos_rx, rx, vel_rx)) / rng
+        # The light time tau = rng/c changes by rr/c per second, which moves the transmit epoch
+        # (scaling vel_rx by 1 - rr/c) and the Sagnac angle (d(pos_rx)/d(th) = (py, -px, 0)).
+        # With a = u.vel_rx and b = u.(py, -px, 0) for the unit line of sight u,
+        # rr = a*(1 - rr/c) + omega*b*rr/c, solved for rr. The terms are up to a few mm/s.
+        a = sum((p - r) * v for p, r, v in zip(pos_rx, rx, vel_rx)) / rng
+        b = (px * rx[1] - py * rx[0]) / rng
+        rr = a / (1.0 + (a - OMEGA_E[e["sys"]] * b) / C_LIGHT)
         # Refer the broadcast clock to `signal` (group_delay_s). Only dead reckoning passes
         # one; signal=None leaves the clock as broadcast.
         _gd = group_delay_s(e, signal, dcb)
