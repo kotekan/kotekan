@@ -61,7 +61,6 @@ public:
                   const int num_times, const std::vector<int>& frequency_channels,
                   const int num_polarizations, const int num_dishes) :
         num_times(num_times), num_frequencies(frequency_channels.size()),
-        num_polarizations(num_polarizations), num_dishes(num_dishes),
         num_elements(std::ptrdiff_t(num_frequencies) * num_polarizations * num_dishes),
         first_fpga_seq_num(config.get_default<std::int64_t>(unique_name, "first_fpga_seq_num", 0)),
         noise_rms(config.get_default<float>(unique_name, "noise_rms", 0)),
@@ -219,8 +218,6 @@ private:
 
     const int num_times;
     const std::ptrdiff_t num_frequencies;
-    const int num_polarizations;
-    const int num_dishes;
     const std::ptrdiff_t num_elements;
     const std::int64_t first_fpga_seq_num;
     const float noise_rms;
