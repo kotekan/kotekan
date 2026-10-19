@@ -10,8 +10,9 @@ on, and the process looks alive. A broker replay fixture vouches only for what i
 call behind a flag no fixture arms (--rf-stats-endpoints, say) is never reached. This test
 asks a different question -- does the proxy cover the surface? -- and needs no fixture.
 
-It collects calls on a bare `publisher` name in gps_distributed_broker.py only; calls made
-through ctx.publisher in the gnss_broker modules are not seen.
+It collects calls on a bare `publisher` name or on `<expr>.publisher` (ctx.publisher) in
+gps_distributed_broker.py and the non-test gnss_broker modules. It fails when that finds no
+call besides register(), since a scan that sees nothing would vouch for nothing.
 """
 import ast
 import os
@@ -20,6 +21,23 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 PUB = os.path.join(HERE, "gnss_broker", "publish.py")
 BROKER = os.path.join(HERE, "gps_distributed_broker.py")
+MODULES = os.path.join(HERE, "gnss_broker")
+
+
+def broker_sources():
+    """gps_distributed_broker.py and every non-test module of the gnss_broker package."""
+    return [BROKER] + [
+        os.path.join(MODULES, f)
+        for f in sorted(os.listdir(MODULES))
+        if f.endswith(".py") and not f.startswith("test_")
+    ]
+
+
+def is_publisher(node):
+    """A bare `publisher` name, or `<expr>.publisher` (ctx.publisher)."""
+    return (isinstance(node, ast.Name) and node.id == "publisher") or (
+        isinstance(node, ast.Attribute) and node.attr == "publisher"
+    )
 
 
 def main():
@@ -40,17 +58,16 @@ def main():
         if isinstance(n, ast.FunctionDef) and not n.name.startswith("_")
     }
 
-    # The calls on a bare `publisher` name in gps_distributed_broker.py.
-    src = open(BROKER).read()
+    # The calls on the publisher handle, in the broker and its modules.
     called = set()
-    for node in ast.walk(ast.parse(src)):
-        if (
-            isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Attribute)
-            and isinstance(node.func.value, ast.Name)
-            and node.func.value.id == "publisher"
-        ):
-            called.add(node.func.attr)
+    for path in broker_sources():
+        for node in ast.walk(ast.parse(open(path).read())):
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and is_publisher(node.func.value)
+            ):
+                called.add(node.func.attr)
 
     print("FleetPublisher public methods : %s" % ", ".join(sorted(pub_m)))
     print("_ChainView proxies            : %s" % ", ".join(sorted(view_m)))
@@ -61,24 +78,17 @@ def main():
     # not appear on the view. Anything else the broker calls that the view lacks is an
     # AttributeError waiting for the chain that arms it.
     FACTORY = {"register"}
-    missing = sorted(
-        m for m in called if m in pub_m and m not in view_m and m not in FACTORY
-    )
-    unknown = sorted(m for m in called if m not in pub_m and m not in view_m)
+    if not called - FACTORY:
+        print("FAIL: no publisher call besides register() found; the scan sees nothing")
+        return 1
+    missing = sorted(m for m in called if m not in view_m and m not in FACTORY)
     if missing:
         for m in missing:
             print(
-                "FAIL: broker calls publisher.%s(), FleetPublisher has it, "
-                "_ChainView does not -> AttributeError at runtime, per chain." % m
+                "FAIL: broker calls publisher.%s(), _ChainView does not have it "
+                "-> AttributeError at runtime, per chain." % m
             )
         return 1
-    if unknown:
-        # Not fatal: could be a builtin or a differently-named handle. Say so rather than
-        # failing on something this crude cannot resolve.
-        print(
-            "note: %s called but not found on either class -- check by hand"
-            % ", ".join(unknown)
-        )
     print(
         "GATE GOOD: every publisher method the broker calls is reachable through the view"
     )

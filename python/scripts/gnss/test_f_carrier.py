@@ -72,18 +72,14 @@ class TestFCarrier(unittest.TestCase):
             msg="f_carrier aliased onto another row after the prune",
         )
 
-    def test_code_path_is_untouched_when_no_carrier_is_fed(self):
-        """A chain that never feeds a carrier gets no carrier row."""
-        a = fresh()
-        a.cycle([(("G", 1), 10.0, 0.3), (("G", 2), 11.0, 0.3)], 0.0)
-        a.cycle([(("G", 1), 10.2, 0.3), (("G", 2), 11.1, 0.3)], 10.0)
-        b = fresh()
-        b.cycle([(("G", 1), 10.0, 0.3), (("G", 2), 11.0, 0.3)], 0.0)
-        b.cycle([(("G", 1), 10.2, 0.3), (("G", 2), 11.1, 0.3)], 10.0)
-        self.assertEqual(a.x.size, b.x.size)
-        self.assertIsNone(a._fcar_idx)
-        for i in range(a.x.size):
-            self.assertAlmostEqual(a.x[i], b.x[i], places=12)
+    def test_no_carrier_row_without_a_carrier_feed(self):
+        """A chain that never feeds a carrier gets no carrier row: the state keeps the
+        code-only layout of clk, clk_rate and one b_sat per satellite."""
+        f = fresh()
+        f.cycle([(("G", 1), 10.0, 0.3), (("G", 2), 11.0, 0.3)], 0.0)
+        f.cycle([(("G", 1), 10.2, 0.3), (("G", 2), 11.1, 0.3)], 10.0)
+        self.assertIsNone(f._fcar_idx)
+        self.assertEqual(f.x.size, 2 + 2, "a code-only feed grew a row it never fed")
 
 
 if __name__ == "__main__":

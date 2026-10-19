@@ -6,8 +6,9 @@ relabelled from a substring of its name (an L5 row read as "G-L1").
 """
 import json, os, sys, tempfile, time, unittest
 
-sys.path.insert(0, "/home/kvand/gnss/kotekan/python/scripts/js_viewer")
-sys.path.insert(0, "/home/kvand/gnss/kotekan/python/scripts/gnss")
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)
+sys.path.insert(0, os.path.join(HERE, "..", "gnss"))
 import livebeam_server as lb
 
 BANDS = [
@@ -61,6 +62,10 @@ class T(unittest.TestCase):
             groups,
             "L5 data labelled L1 -- a group named from a substring of the chain name",
         )
+
+    def test_imports_the_server_beside_this_file(self):
+        """The test exercises the tree it lives in, not another checkout."""
+        self.assertEqual(os.path.dirname(os.path.abspath(lb.__file__)), HERE)
 
     def test_l2c_does_not_share_a_clock_with_l5(self):
         m = lb._pvt_measurements([os.path.join(self.d, "*.jsonl")], 300.0, time.time())

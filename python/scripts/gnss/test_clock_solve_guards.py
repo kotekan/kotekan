@@ -10,11 +10,13 @@ Run: python3 test_clock_solve_guards.py
 """
 import os
 import sys
+import types
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from gnss_broker.fits import split_erratic_offsets  # noqa: E402
+from gnss_broker.deadreckon import _det_offset  # noqa: E402
+from gnss_broker.fits import dr_cp0, split_erratic_offsets  # noqa: E402
 
 CODE_LEN = 10230.0
 BOUND = 100.0
@@ -79,7 +81,7 @@ class TestErraticGuard(unittest.TestCase):
         for i, (k, d) in enumerate(zip(kept, dropped)):
             for prn in HEALTHY:
                 self.assertIn(prn, k, "PRN %d wrongly dropped on cycle %d" % (prn, i))
-            self.assertNotIn(prn, d)
+                self.assertNotIn(prn, d)
 
     def test_one_bad_track_does_not_by_itself_break_the_median(self):
         """Calibration: a circular median absorbs a minority.
@@ -200,28 +202,45 @@ class TestDopplerEmbedCancellation(unittest.TestCase):
     same dop, same ref_hop, so raw d_i never carries it.
 
     A guard that subtracts the lever reintroduces it: (d - lev) steps ~1700 chips per Hz of
-    Doppler re-estimate, every satellite trips every cycle, and the caller's min-sats floor
+    Doppler re-estimate, so the 100-chip bound is ~0.06 Hz of Doppler while pass-to-pass
+    steps are tens of Hz. Every satellite trips every cycle, and the caller's min-sats floor
     keeps them all, so the guard never acts.
     """
 
     T_I = 195032.0  # s since sample 0 (~2.26 days)
     CHIP = 10.23e6
     CARR = 1176.45e6
-    LEV = T_I * CHIP / CARR  # ~1696 chips per Hz
+    HPS = 195312.5  # F-engine hops per second
 
     def test_the_embed_cancels_in_cp_loc(self):
-        """Build cp0 the way the search does, reconstruct cp_loc the way the broker does,
-        step the Doppler estimate by an ordinary pass-to-pass jitter: cp_loc must not
-        move."""
+        """Build cp0 the way the search does (fits.dr_cp0), reconstruct cp_loc the way the
+        broker does (deadreckon._det_offset), step the Doppler estimate by an ordinary
+        pass-to-pass jitter: cp_loc must not move."""
         best_cp = 4321.0  # physical phase at the snapshot start
+        ref_hop = round(self.T_I * self.HPS)
+        t_i = ref_hop / self.HPS
+        ctx = types.SimpleNamespace(
+            args=types.SimpleNamespace(
+                hops_per_sec=self.HPS,
+                chip_rate_hz=self.CHIP,
+                carrier_hz=self.CARR,
+                code_doppler_sign=1.0,
+            ),
+            drp=types.SimpleNamespace(
+                pd={("gps_l5", 5): None}, tag="gps_l5", drift=0.0, t_now_abs=t_i
+            ),
+            code_len=CODE_LEN,
+            cp_predicted=lambda v, t: best_cp,
+        )
         for dop in (1000.0, 1061.0, 875.5, 1125.0):  # +-60-125 Hz pass jitter
-            t_i = self.T_I
-            cp0 = (best_cp - t_i * self.CHIP * (1.0 + dop / self.CARR)) % CODE_LEN
-            cp_loc = (cp0 + t_i * self.CHIP * (1.0 + dop / self.CARR)) % CODE_LEN
+            cp0 = dr_cp0(best_cp, t_i, dop, self.CHIP, self.CARR, 1.0, CODE_LEN)
+            d_i, cp_loc, _ = _det_offset(ctx, 5, (20.0, dop, cp0, ref_hop, 0, 0, 0))
             err = ((cp_loc - best_cp + CODE_LEN / 2) % CODE_LEN) - CODE_LEN / 2
             self.assertLess(
                 abs(err), 1e-3, "the embed failed to cancel at dop %.1f" % dop
             )
+            d_err = ((d_i + CODE_LEN / 2) % CODE_LEN) - CODE_LEN / 2
+            self.assertLess(abs(d_err), 1e-3, "d_i moved at dop %.1f" % dop)
 
     def test_an_ordinary_doppler_step_does_not_eject(self):
         """A 1.5 Hz Doppler re-estimate leaves d_i untouched (the embed cancels), so the
@@ -235,21 +254,6 @@ class TestDopplerEmbedCancellation(unittest.TestCase):
         )
         self.assertEqual(drop, [])
         self.assertEqual([p for p, _ in keep], [5])
-
-    def test_the_lever_guard_would_have_flagged_everyone(self):
-        """What a lever-subtracting guard does: subtracting a per-cycle lever from a
-        lever-free d_i steps the tested quantity by ~1696 chips/Hz of ddop, over the
-        100-chip bound for any ddop > 0.059 Hz, while pass-to-pass ddop is tens of Hz."""
-        ddop = 1.5  # an unremarkable step
-        stepped = abs(self.LEV * ddop)  # what (d - lev) moved by
-        self.assertGreater(
-            stepped, 20.0 * BOUND, "1.5 Hz should overwhelm the bound 20x over"
-        )
-        self.assertLess(
-            100.0 / self.LEV,
-            0.06,
-            "the bound in Doppler units was ~0.059 Hz -- unmeetable",
-        )
 
     def test_a_real_code_jump_is_still_caught(self):
         """A jump of thousands of chips, like the noise track's, is still dropped."""

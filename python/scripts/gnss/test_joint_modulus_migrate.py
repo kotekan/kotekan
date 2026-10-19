@@ -2,7 +2,7 @@
 # A shorter-code chain joining the receiver must add rows, not rebuild the joint state:
 # Receiver.joint_receiver shortens the modulus in place, so converged GPS rows and their
 # predicted observables survive gal_e5a joining. Control: a rebuild there prints FAIL.
-# Run: python3 test_joint_modulus_migrate.py -- prints PASS/FAIL; exit status is 0 either way.
+# Run: python3 test_joint_modulus_migrate.py -- prints PASS/FAIL and exits 1 on FAIL.
 import os, sys, random
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -70,3 +70,4 @@ print(
     if ok
     else "FAIL",
 )
+sys.exit(0 if ok else 1)

@@ -133,13 +133,18 @@ class TestPublishedHistory(unittest.TestCase):
 
     def test_history_never_crosses_an_arc(self):
         """A break resets the accumulator, so an older arc's phase must not pair forward."""
-        st = _run(F.SatAdr(), 3)
-        arc_before = st.arc
-        st.arc += 1  # simulate a break
+        fa = F.FleetAdr()
+        st = _run(fa.sats.setdefault(7, F.SatAdr()), 3)
+        arc_before, last_before = st.arc, st.grid[-1][0]
+        # A 96-record gap breaks the arc (max_gap_rec=3); the old arc's snapshots stay in
+        # st.grid until GRID_KEEP newer ones push them out, so publish() must filter them.
         _run(st, 1, first_rec=4 * RECS_PER_GRID)
-        current = [g for g in st.grid if g[2] == st.arc]
+        self.assertGreater(st.arc, arc_before, "the gap must break the arc")
+        self.assertTrue(any(g[2] == arc_before for g in st.grid))
+        row = fa.publish(1176.45e6, now=st.t)[7]
+        self.assertTrue(row["g_hist"], "the new arc's grid hops must publish")
         self.assertTrue(
-            all(g[2] != arc_before for g in current),
+            all(e[0] > last_before for e in row["g_hist"]),
             "snapshots from the previous arc must not be published as current",
         )
 

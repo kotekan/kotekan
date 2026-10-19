@@ -20,21 +20,25 @@ It checks both directions. A test that only checks "noise reads unlocked" passes
 on a viewer that never reports a lock at all, so the healthy synthetic rows below are what
 make the negative result mean something.
 
-The live section fetches each chain's get_status by running curl on cf06 over ssh, so
-publisher_host:port must be reachable from cf06. It prints counts and asserts nothing.
+The live section reads the chain list from the publisher's /get_chains and each chain's rows
+from /<chain>/get_status over HTTP from the host this runs on, so publisher_host:port (default
+127.0.0.1:12060, the broker's publisher on the gnss VM) must be reachable from here. It prints
+counts and asserts nothing. The fetch path itself is checked against a canned publisher on a
+loopback port.
 
 @author Keith Vanderlinde
 """
+import http.server
 import json
 import re
-import subprocess
 import sys
+import threading
+import urllib.request
 
 import dukpy
 
 HERE = __file__.rsplit("/", 1)[0]
 FEED = HERE + "/app/panels/gps_feed.js"
-CHAINS = ("gps_l5", "gal_e5a", "gal_e5b", "bds_b2a", "bds_b2b")
 
 _fails = []
 
@@ -143,22 +147,49 @@ def run_merged(js, units):
     return dukpy.evaljs(js + "\nrun_merged(dukpy['units']);", units=units)
 
 
-def fetch(host, chain):
+def get_json(host, path):
+    """GET http://<host>/<path> as JSON; None when the publisher cannot be read."""
     try:
-        raw = subprocess.run(
-            [
-                "ssh",
-                "cf06",
-                "curl -s --max-time 5 http://%s/%s/get_status" % (host, chain),
-            ],
-            capture_output=True,
-            timeout=25,
-        ).stdout
-        d = json.loads(raw)
-        return d if isinstance(d, list) else []
+        with urllib.request.urlopen("http://%s/%s" % (host, path), timeout=5) as r:
+            return json.load(r)
     except Exception as e:
-        print("   (%s unreachable: %s)" % (chain, e))
-        return []
+        print("   (%s unreachable: %s)" % (path, e))
+        return None
+
+
+def chains(host):
+    """The chain ids the publisher is running, from its /get_chains discovery list."""
+    d = get_json(host, "get_chains")
+    return [c["chain"] for c in d if c.get("chain")] if isinstance(d, list) else []
+
+
+def fetch(host, chain):
+    d = get_json(host, "%s/get_status" % chain)
+    return d if isinstance(d, list) else []
+
+
+def canned_publisher(routes):
+    """A throwaway HTTP server on a free loopback port answering GET <path> with routes[path]
+    as JSON (404 for any other path). The caller shuts it down."""
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            if self.path not in routes:
+                self.send_error(404)
+                return
+            body = json.dumps(routes[self.path]).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *a):
+            pass
+
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    return srv
 
 
 def main():
@@ -383,11 +414,34 @@ def main():
         "a probe on its only signal stays UNLOCKED (the below-horizon kind)",
     )
 
+    # ---- the fetch path, against a canned publisher --------------------------------------
+    print("\nfetch: the chains from /get_chains, the rows from /<chain>/get_status")
+    srv = canned_publisher(
+        {
+            "/get_chains": [{"chain": "gps_l5"}, {"chain": "glo_l2oc"}],
+            "/gps_l5/get_status": healthy,
+            "/glo_l2oc/get_status": [probe],
+        }
+    )
+    try:
+        canned = "127.0.0.1:%d" % srv.server_address[1]
+        check(
+            chains(canned) == ["gps_l5", "glo_l2oc"],
+            "the live section reads every chain the publisher lists",
+        )
+        check(
+            fetch(canned, "gps_l5") == healthy and fetch(canned, "glo_l2oc") == [probe],
+            "a chain's rows are its /<chain>/get_status, read from the host given",
+        )
+    finally:
+        srv.shutdown()
+        srv.server_close()
+
     # ---- the live rows -------------------------------------------------------------------
     print("\nlive rows from the publisher at %s" % host)
     tot = locked = withc = 0
     worst = None
-    for ch in CHAINS:
+    for ch in chains(host):
         rows = fetch(host, ch)
         if not rows:
             continue

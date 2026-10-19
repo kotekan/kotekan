@@ -234,7 +234,7 @@ class TestMassBirth(unittest.TestCase):
             "rate %+.2f chips/s carried through a cycle unclamped" % f.clk_rate,
         )
         self.assertTrue(
-            any("RATE" in n.upper() for n in f.notes),
+            any(n.startswith("RATE CLAMPED") for n in f.notes),
             "a clamped rate must be announced",
         )
 
