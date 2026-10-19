@@ -91,36 +91,26 @@ Masters built before this existed carry no stamp. `assert_compatible` places tho
 | `gnss_beam_cube.py build` | ✅ refuses unplaceable/straddling days, stamps the master |
 | `gnss_beam_cube.py export` | ✅ carries the stamp into the per-day manifest |
 | `gnss_arraymap.py masters` | ✅ standalone preflight for any set of masters |
-| `gnss_beam_static.py` | ⚠️ **not wired** — patch below |
+| `gnss_beam_static.py` | ✅ `prepare()` refuses masters of two epochs (`assert_compatible`) and prints its notes |
+| `beam_cube_viewer/beamcube.js` | ✅ skips a day whose `array_epoch_key` differs from the first selected day's (`sameCurrency`) |
 
-`gnss_beam_static.py` already refuses to co-add masters of differing `pointing` or `units`
-(`prepare()`), which is the same shape of guard; it just does not know about epochs yet. It is
-being edited in another session, so the two-line change is written here rather than applied:
-
-```python
-# at the imports
-import gnss_arraymap                                    # noqa: E402
-
-# in prepare(), beside the existing units/pointing check
-epoch, notes = gnss_arraymap.assert_compatible(masters)  # raises Refused on a mixed sum
-for n in notes:
-    print("  note: %s" % n)
-```
-
-`load_master` already keeps `path` and `day`, and passes the whole meta through, so nothing else
-needs to move. With that in, a `map` summing across a recabling fails loudly instead of
-producing a plausible picture of two arrays at once.
+A `map` summing across a recabling fails loudly instead of producing a plausible picture of two
+arrays at once. The key is compared exactly, so a master stamped before an in-place correction of
+the table is refused (static) or skipped (viewer) until it is rebuilt.
 
 ## 7. Pointing
 
 `pointings` carries the boresight each named pointing implies. Today there is one,
 `p0_dec40p73` → az 180.0, el 81.41 (dec +40.73, dishes 8.59° south of zenith).
 
-⚠️ `BORE_AZ, BORE_EL` in `gnss_beam_cube.py` are still module-level constants for that one
-pointing, and `gnss_beam_static.py` imports them from there. **Until they are read from the
-epoch, a master built at a new pointing would be mapped around the wrong boresight** — the
-epoch guard stops the two being *summed*, but not a single new-pointing master being drawn
-wrong. That is the next change to make, and it wants doing before the next re-point, not after.
+The build takes the boresight from the day's epoch for the railing veto and the per-PRN gain
+cells, and records it in the master (`bore_az_deg`, `bore_el_deg`). The export centres the lobe
+annulus on it and writes it into the manifest, where the viewer reads it for the boresight marker;
+`gnss_beam_static.py` takes it from the epoch `assert_compatible` resolves. `BORE_AZ, BORE_EL` in
+`gnss_beam_cube.py` remain as the `p0_dec40p73` value: the fallback for masters built without the
+fields, and the default for a caller that passes no boresight.
+The static map's axis labels and compass assume an az-180 boresight; a pointing north of zenith
+(az 0) needs them revisited.
 `telescope.dish_coelev_deg` reads −27.3 and does **not** give the boresight; do not reach for it.
 
 ## 8. When something changes on site

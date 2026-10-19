@@ -134,9 +134,9 @@ function collapse() {
     const man = S.cache.get(S.days[d]);
     if (!man) continue;
     // Never sum two currencies. An elem-archive day is in raw power, a cube day is in
-    // pedestal units ((P-F)/F), and a repoint is a different beam altogether. A day whose
-    // units or pointing differ from the first selected day is skipped, and syncLabels says so.
-    // The array epoch is not compared.
+    // pedestal units ((P-F)/F), a repoint is a different beam altogether, and two array
+    // epochs are two different arrays. A day whose units, pointing or array_epoch_key differ
+    // from the first selected day is skipped, and syncLabels says so.
     if (!sameCurrency(man, ref)) continue;
     for (const c of man.chains) {
       if (!S.sel.has(c.chain) || !c.loaded) continue;
@@ -200,7 +200,8 @@ function chainsAt(fid) {
 }
 
 const sameCurrency = (a, b) =>
-  (a.units || 'power') === (b.units || 'power') && (a.pointing || null) === (b.pointing || null);
+  (a.units || 'power') === (b.units || 'power') && (a.pointing || null) === (b.pointing || null) &&
+  (a.array_epoch_key || null) === (b.array_epoch_key || null);
 
 const dayRange = () => {
   const a = +document.getElementById('d0').value, b = +document.getElementById('d1').value;
@@ -258,7 +259,7 @@ function draw() {
   }
   g.putImageData(img, 0, 0);
 
-  if (S.grid) drawGrid(g);
+  if (S.grid) drawGrid(g, man);
   drawColorbar(lo, hi);
 
   const [a, b] = dayRange();
@@ -276,7 +277,7 @@ function draw() {
     `range ${dr} dB`;
 }
 
-function drawGrid(g) {
+function drawGrid(g, man) {
   g.save();
   g.strokeStyle = 'rgba(230,233,239,.22)';
   g.fillStyle = 'rgba(139,149,166,.9)';
@@ -300,9 +301,11 @@ function drawGrid(g) {
     const r = a * Math.PI / 180;
     g.fillText(lab, CX + (R + 13) * Math.sin(r) - 4, CY - (R + 13) * Math.cos(r) + 4);
   }
-  // Boresight: az 180, el 81.41 (docs/CHORD_BEAM_MAPS.md §5). The map should peak here; it
-  // is drawn as a prediction to check the measurement against, never fitted to it.
-  const brr = R * (90 - 81.41) / 90, ba = Math.PI;
+  // Boresight: the build's array epoch, from the manifest; az 180, el 81.41 for an export
+  // without it (docs/CHORD_BEAM_MAPS.md §5). The map should peak here; it is drawn as a
+  // prediction to check the measurement against, never fitted to it.
+  const brr = R * (90 - (man.bore_el_deg ?? 81.41)) / 90;
+  const ba = (man.bore_az_deg ?? 180) * Math.PI / 180;
   const bx = CX + brr * Math.sin(ba), by = CY - brr * Math.cos(ba);
   g.strokeStyle = '#4fd0c7'; g.lineWidth = 1.4;
   g.beginPath(); g.arc(bx, by, 7, 0, 2 * Math.PI); g.stroke();
@@ -429,7 +432,7 @@ function syncLabels() {
   document.getElementById('dayinfo').textContent =
     `${b - a + 1} of ${S.days.length} day(s) loaded`
     + (ref ? ` · ${ref.units || 'power'} units · pointing ${ref.pointing || 'unknown'}` : '')
-    + (skipped ? ` · ${skipped} day(s) SKIPPED: different units or pointing than ${S.days[a]}` : '');
+    + (skipped ? ` · ${skipped} day(s) SKIPPED: different units, pointing or array epoch than ${S.days[a]}` : '');
   const subOn = !document.getElementById('subsum').checked;
   const elOn = !document.getElementById('elsum').checked;
   document.getElementById('sub').disabled = !subOn;
@@ -633,8 +636,8 @@ async function boot() {
   // dish, so a pol is exactly a half: 0..15 and 16..31.
   // Pol is the slot, not the feed plane. In the first array epoch in
   // config/chord_array_epochs.json three dishes carried slot 0 on plane B, so a per-pol average
-  // over a day of that epoch mixes planes. index.json records each day's array_epoch; the page
-  // does not check it.
+  // over a day of that epoch mixes planes. sameCurrency keeps days of different array epochs
+  // out of one sum, but within that epoch the pol view still mixes planes.
   const POL_TITLE = 'pol = the slot (element = pol*16 + dish), not the feed plane. '
                   + 'In the first array epoch (config/chord_array_epochs.json), A06/A07/B07 have '
                   + 'the other plane in slot 0: a per-pol average over that epoch mixes planes.';

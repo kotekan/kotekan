@@ -66,7 +66,9 @@ R_REF = 20.2e6            # m: the dB zero for range normalisation (semi-synchro
 import gnss_arraymap                                  # noqa: E402  (same directory)
 import gnss_chain_health                              # noqa: E402  (same directory)
 
-BORE_AZ, BORE_EL = 180.0, 81.41   # docs/CHORD_BEAM_MAPS.md §5; not telescope.dish_coelev_deg
+# The p0_dec40p73 boresight (docs/CHORD_BEAM_MAPS.md §5; not telescope.dish_coelev_deg), for a
+# master built without bore_az_deg/bore_el_deg. The build takes the boresight from the epoch.
+BORE_AZ, BORE_EL = 180.0, 81.41
 MIN_ELEMS = 8             # a sample with fewer live elements says nothing about the beam
 FLOOR_BIN_S = 300.0       # pedestal bin: per (instance, subband, element, 5 min)
 HEALTH_DIR = "/home/kvand/gnss/fixtures/obs/health"   # gnss_chain_health.py masks, per day
@@ -159,10 +161,11 @@ def angsep_deg(az1, el1, az2, el2):
 class Geometry:
     """BRDC positions on a 1-minute grid, plus the cross-chain railing veto for that minute."""
 
-    def __init__(self, day_unix, veto_deg):
+    def __init__(self, day_unix, veto_deg, bore=(BORE_AZ, BORE_EL)):
         self.eph = parse_rinex_nav(fetch_brdc(
             datetime.fromtimestamp(day_unix + 43200, tz=timezone.utc)))
         self.veto_deg = veto_deg
+        self.bore = bore     # (az, el) deg, the array epoch's boresight
         self._pos = {}       # (sys, prn, minute) -> (el, az, range_m) or None
         self._all = {}       # minute -> {(sys, prn): v}
         self._veto = {}      # minute -> (vetoed, closest_deg, closest_name)
@@ -199,7 +202,7 @@ class Geometry:
             for (sy, prn), v in self._minute(m).items():
                 if v is None or v.get("el") is None or v["el"] < 0.0:
                     continue
-                d = float(angsep_deg(v["az"], v["el"], BORE_AZ, BORE_EL))
+                d = float(angsep_deg(v["az"], v["el"], *self.bore))
                 if d < best:
                     best, name = d, "%s%d" % (sy, prn)
             self._veto[m] = (best < self.veto_deg, best, name)
@@ -501,6 +504,8 @@ def prn_gain_table(args, chain, paths, day_unix, geom, dth=5.0, dphi=90.0, iters
                 el[j], az[j], rng[j] = g
         vet_r, el_r, az_r, rng_r = vet[inv], el[inv], az[inv], rng[inv]
         ok = inday & ~vet_r & ~np.isnan(el_r) & (el_r > args.mask_deg)
+        # The chain-health mask, as in build_day_h5: a masked bin is noise, not a level.
+        ok &= ~gnss_chain_health.unhealthy(getattr(args, "_health", {}), chain, t)
         if not ok.any():
             continue
         rscale = np.ones(int(ok.sum())) if args.no_range_norm else (rng_r[ok] / R_REF) ** 2
@@ -512,8 +517,8 @@ def prn_gain_table(args, chain, paths, day_unix, geom, dth=5.0, dphi=90.0, iters
             row = np.nanmean(pw, axis=(1, 2))        # pool subbands+elements: one level per row
         # theta (off boresight) and phi (position angle about it), the beam's own coordinates.
         aa, ee = az_r[ok], el_r[ok]
-        th = angsep_deg(aa, ee, BORE_AZ, BORE_EL)
-        ca, ce = math.radians(BORE_AZ), math.radians(BORE_EL)
+        th = angsep_deg(aa, ee, *geom.bore)
+        ca, ce = math.radians(geom.bore[0]), math.radians(geom.bore[1])
         u = np.stack([np.cos(np.radians(ee)) * np.sin(np.radians(aa)),
                       np.cos(np.radians(ee)) * np.cos(np.radians(aa)),
                       np.sin(np.radians(ee))], -1)
@@ -727,13 +732,19 @@ def cmd_build(args):
             print("%s: no %s archives found in %s" % (daystr, args.source, args.archive))
             continue
         print("%s: %d chain(s)" % (daystr, len(present)))
-        geom = Geometry(day_unix, args.veto_deg)
+        bore = (epoch.pointing.bore_az_deg, epoch.pointing.bore_el_deg)
+        geom = Geometry(day_unix, args.veto_deg, bore)
         out = {"nside": args.nside, "day": daystr, "source": args.source,
                "veto_deg": args.veto_deg, "range_norm": not args.no_range_norm,
                "array_epoch": epoch.name, "array_epoch_key": epoch.key(),
+               "bore_az_deg": bore[0], "bore_el_deg": bore[1],
                "chains": []}
         print("  array epoch %s%s" % (epoch.key(), "" if epoch.verified else "  (UNVERIFIED)"))
-        hm = args.health_mask
+        # Only build_day_h5 applies the chain-health mask, so an elem build neither loads nor
+        # records one: a mask in the meta would claim a veto that did not happen.
+        hm = args.health_mask if args.source == "l0" else None
+        if args.source != "l0" and args.health_mask not in ("auto", ""):
+            print("  health mask %s: not applied (--source elem)" % args.health_mask)
         if hm == "auto":
             hm = os.path.join(HEALTH_DIR, "mask_%s.json" % daystr)
         args._health = gnss_chain_health.load_mask(hm) if hm else {}
@@ -814,6 +825,7 @@ def cmd_export(args):
         if nside > nside0:
             sys.exit("--nside %d is finer than the master's %d: a cube cannot be "
                      "up-sampled, rebuild instead" % (nside, nside0))
+        bore = (meta.get("bore_az_deg", BORE_AZ), meta.get("bore_el_deg", BORE_EL))
         shift = 0
         while (nside0 >> shift) > nside:
             shift += 1
@@ -839,7 +851,8 @@ def cmd_export(args):
             chains.append({"chain": c["chain"], "sys": c["sys"],
                            "n_sub": int(n.shape[0]), "n_elem": int(n.shape[1]),
                            "n_pix": int(len(pixu)), "freq_ids": sub_fid,
-                           "lobe_db": lobe_level_db(n, s1, az, el, args.offset_annulus)})
+                           "lobe_db": lobe_level_db(n, s1, az, el, args.offset_annulus,
+                                                    bore)})
             arrays.append((pixu.astype(np.int32),
                            np.stack([az, el], 1).astype(np.float32).ravel(),
                            n.astype(np.uint32), s1.astype(np.float32)))
@@ -869,6 +882,7 @@ def cmd_export(args):
                "pointing": meta.get("pointing"), "units": meta.get("units", "power"),
                "array_epoch": meta.get("array_epoch"),
                "array_epoch_key": meta.get("array_epoch_key"),
+               "bore_az_deg": bore[0], "bore_el_deg": bore[1],
                "veto_deg": meta["veto_deg"], "range_norm": meta["range_norm"],
                "offset_ref": ref["chain"], "offset_annulus_deg": list(args.offset_annulus),
                "chains": chains,
@@ -880,9 +894,10 @@ def cmd_export(args):
             json.dump(man, fh)
         # array_epoch goes in the index as well as the manifest: the page sums the days picked
         # from the index, and a sum across an epoch boundary co-adds two different arrays
-        # without any error. The page does not compare it (sameCurrency in beamcube.js checks
-        # units and pointing only). A null means a master built without the field, which is no
-        # promise of a single epoch.
+        # without any error. The page skips a day whose array_epoch_key differs from the first
+        # selected day's (sameCurrency in beamcube.js); the export does not refuse, since one
+        # index legitimately lists days of several epochs. A null means a master built without
+        # the field, which is no promise of a single epoch.
         index.append({"day": day, "bytes": total,
                       "array_epoch": meta.get("array_epoch"),
                       "array_epoch_key": meta.get("array_epoch_key"),
@@ -898,11 +913,12 @@ def cmd_export(args):
     print("index.json: %d day(s)" % len(index))
 
 
-def lobe_level_db(n, s1, az, el, annulus, min_n=8):
-    """Median per-pixel mean (all subbands, all elements) inside the off-boresight annulus, in
-    dB. None if fewer than 10 pixels qualify (a chain that never saw the lobe has no offset)."""
+def lobe_level_db(n, s1, az, el, annulus, bore, min_n=8):
+    """Median per-pixel mean (all subbands, all elements) inside the annulus about `bore`
+    (az, el), in dB. None if fewer than 10 pixels qualify (a chain that never saw the lobe has
+    no offset)."""
     nn, ss = n.sum((0, 1)), s1.sum((0, 1))
-    th = angsep_deg(az, el, BORE_AZ, BORE_EL)
+    th = angsep_deg(az, el, *bore)
     ok = (nn >= min_n) & (th >= annulus[0]) & (th <= annulus[1])
     if ok.sum() < 10:
         return None

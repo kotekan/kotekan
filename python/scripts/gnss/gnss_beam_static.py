@@ -45,15 +45,20 @@ import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+import gnss_arraymap  # noqa: E402
 from gnss_beam_cube import BORE_AZ, BORE_EL, angsep_deg  # noqa: E402
 
 C_LIGHT = 299792458.0
 DISH_M = 6.0
+# Compass letters in patch() coordinates for the az-180 centres: +x is toward increasing
+# azimuth, i.e. west, and +y is north. draw_map draws +x on the left, so E lands on the right.
+COMPASS = {"N": (0, 1), "E": (-1, 0), "S": (0, -1), "W": (1, 0)}
 
 
 # ── loading ────────────────────────────────────────────────────────────────────────────────
 def load_master(path, want_chains=None):
-    """One master .npz -> {"day", "nside", "units", "pointing", "chains": {name: {...}}}."""
+    """One master .npz -> {"day", "nside", "units", "pointing", "array_epoch_key",
+    "chains": {name: {...}}}."""
     z = np.load(path, allow_pickle=False)
     meta = json.loads(str(z["meta"]))
     out = {
@@ -62,6 +67,7 @@ def load_master(path, want_chains=None):
         "nside": int(meta["nside"]),
         "units": meta.get("units", "power"),
         "pointing": meta.get("pointing"),
+        "array_epoch_key": meta.get("array_epoch_key"),
         "chains": {},
     }
     for i, c in enumerate(meta["chains"]):
@@ -163,7 +169,7 @@ def gather(masters, freqs, chain_offsets=None):
     return N, S, nside, info
 
 
-def chain_offsets_from(masters, freqs, annulus, min_n, ref):
+def chain_offsets_from(masters, freqs, annulus, min_n, ref, bore=(BORE_AZ, BORE_EL)):
     """Per-chain dB offset onto `ref`, measured as the median level in the lobe annulus.
 
     The same alignment the exporter ships to the viewer, computed here over all the selected
@@ -181,7 +187,7 @@ def chain_offsets_from(masters, freqs, annulus, min_n, ref):
         )
         nn, ss = N.sum(0), S.sum(0)
         az, el = pix_azel(nside)
-        th = angsep_deg(az, el, BORE_AZ, BORE_EL)
+        th = angsep_deg(az, el, *bore)
         ok = (nn >= min_n) & (th >= annulus[0]) & (th <= annulus[1])
         lev[name] = (
             (10.0 * np.log10(np.median(ss[ok] / nn[ok]))) if ok.sum() >= 10 else None
@@ -242,7 +248,9 @@ def elem_gains(N, S, mode, min_n, fit_mask, quiet=False):
             u, s, _ = np.linalg.svd(M, full_matrices=False)
             share = float(s[0] ** 2 / (s ** 2).sum())
             rows = u[:, 0] * s[0] / np.sqrt(M.shape[1])
-            if rows.mean() < 0 or (rows * M.mean(1)).sum() < 0:
+            # The sign is the one that agrees with each row's own mean offset. rows.mean() says
+            # nothing: M is column-centred, so rows sum to zero up to rounding.
+            if (rows * M.mean(1)).sum() < 0:
                 rows = -rows
             gl = np.ones(E)
             gl[live] = 10.0 ** (rows / 10.0)
@@ -341,11 +349,12 @@ def uvec(az, el):
     return np.stack([np.cos(e) * np.sin(a), np.cos(e) * np.cos(a), np.sin(e)], -1)
 
 
-def centre_azel(spec):
-    """--centre: "boresight" | "zenith" | "AZ,EL". Zenith uses az 180, the boresight azimuth,
-    so a hemisphere plot has the same axes as a boresight patch (see patch())."""
+def centre_azel(spec, bore):
+    """--centre: "boresight" (`bore`, (az, el)) | "zenith" | "AZ,EL". Zenith uses az 180, the
+    boresight azimuth, so a hemisphere plot has the same axes as a boresight patch (see
+    patch())."""
     if spec in (None, "", "boresight"):
-        return BORE_AZ, BORE_EL
+        return tuple(bore)
     if spec == "zenith":
         return 180.0, 90.0
     a, e = spec.split(",")
@@ -436,7 +445,19 @@ def fig_setup():
     return plt
 
 
-def draw_map(img, ax_deg, title, sub, png, vmin, vmax, cbar_label, rings=(), sky=False):
+def draw_map(
+    img,
+    ax_deg,
+    title,
+    sub,
+    png,
+    vmin,
+    vmax,
+    cbar_label,
+    rings=(),
+    sky=False,
+    bore=(BORE_AZ, BORE_EL),
+):
     plt = fig_setup()
     d = os.path.dirname(os.path.abspath(png))
     if d:
@@ -486,19 +507,17 @@ def draw_map(img, ax_deg, title, sub, png, vmin, vmax, cbar_label, rings=(), sky
         )
     a.plot(0, 0, "+", color=gcol, ms=9, mew=1.0, alpha=0.8, zorder=3)
     if sky:
-        # Compass and the boresight, because a hemisphere has no other landmarks. Boresight is
-        # 8.59 deg south of zenith, so it is drawn, not assumed at the centre.
+        # Compass and the boresight, because a hemisphere has no other landmarks. The boresight
+        # is off zenith, so it is drawn where `bore` (az, el) puts it in patch()'s frame (+x
+        # toward increasing azimuth from az 180, +y north), not assumed at the centre.
         rr = ax_deg[-1]
+        bx = -(90.0 - bore[1]) * np.sin(np.radians(bore[0]))
+        by = (90.0 - bore[1]) * np.cos(np.radians(bore[0]))
         a.set_xlim(
             rr * 1.1, -rr * 1.1
         )  # room for the compass; the x axis is already inverted
         a.set_ylim(-rr * 1.1, rr * 1.1)
-        for lbl, (dx, dy) in (
-            ("N", (0, 1)),
-            ("E", (1, 0)),
-            ("S", (0, -1)),
-            ("W", (-1, 0)),
-        ):
+        for lbl, (dx, dy) in COMPASS.items():
             a.annotate(
                 lbl,
                 (dx * rr * 1.045, dy * rr * 1.045),
@@ -509,18 +528,11 @@ def draw_map(img, ax_deg, title, sub, png, vmin, vmax, cbar_label, rings=(), sky
                 weight="bold",
             )
         a.plot(
-            0,
-            -(90.0 - BORE_EL),
-            "o",
-            mfc="none",
-            mec="#39d0ff",
-            ms=13,
-            mew=1.6,
-            alpha=0.95,
+            bx, by, "o", mfc="none", mec="#39d0ff", ms=13, mew=1.6, alpha=0.95,
         )
         a.annotate(
             "boresight",
-            (0, -(90.0 - BORE_EL)),
+            (bx, by),
             color="#39d0ff",
             fontsize=7.5,
             ha="center",
@@ -528,10 +540,10 @@ def draw_map(img, ax_deg, title, sub, png, vmin, vmax, cbar_label, rings=(), sky
             xytext=(0, -9),
             textcoords="offset points",
         )
-        a.set_xlabel("east  ←   azimuth   →  west        [deg from zenith]")
+        a.set_xlabel("west  ←   azimuth   →  east        [deg from zenith]")
         a.set_ylabel("south   ←   →   north        [deg from zenith]")
     else:
-        a.set_xlabel("east offset from boresight  [deg]")
+        a.set_xlabel("west offset from boresight  [deg]")
         a.set_ylabel("north offset from boresight  [deg]")
     a.set_title(title, fontsize=10)
     a.text(
@@ -577,14 +589,23 @@ def prepare(args):
     masters = [m for m in masters if m["chains"]]
     if not masters:
         sys.exit("no master has any of the requested chain(s)")
+    # Masters of two array epochs are two different arrays, and their sum is still a plausible
+    # beam: refuse it.
+    try:
+        epoch, notes = gnss_arraymap.assert_compatible(masters)
+    except gnss_arraymap.Refused as exc:
+        sys.exit(str(exc))
+    for n in notes:
+        print("  note: %s" % n)
+    bore = (epoch.pointing.bore_az_deg, epoch.pointing.bore_el_deg)
     offs, lev = (None, {})
     if not args.no_chain_align:
         offs, lev = chain_offsets_from(
-            masters, freqs, args.annulus, args.min_n, args.offset_ref
+            masters, freqs, args.annulus, args.min_n, args.offset_ref, bore
         )
     N, S, nside, info = gather(masters, freqs, offs)
     az, el = pix_azel(nside)
-    th = angsep_deg(az, el, BORE_AZ, BORE_EL)
+    th = angsep_deg(az, el, *bore)
     fit = (th <= args.fit_radius) & (N.sum(0) > 0)
     g, live, share, npix_fit = elem_gains(N, S, args.elem_norm, args.min_n, fit)
     print(
@@ -641,6 +662,7 @@ def prepare(args):
         info=info,
         offsets=offs,
         levels=lev,
+        bore=bore,
     )
 
 
@@ -670,9 +692,11 @@ def cmd_map(args):
         sweep = [(None, parse_elems(args.elements, n_elem), d["freqs"])]
 
     outs = []
-    cen = centre_azel(args.centre)
-    sky = args.radius >= 45.0
-    if sky and args.rings == [5, 10, 20]:
+    cen = centre_azel(args.centre, d["bore"])
+    # Sky mode (rings as elevations, compass, boresight marker) holds only for a zenith centre;
+    # around boresight a ring is an offset at any radius.
+    sky = cen[1] >= 89.99
+    if sky and args.radius >= 45.0 and args.rings == [5, 10, 20]:
         args.rings = [30, 60, 90]  # elevation circles read better than 5/10/20 here
     vmin, vmax = args.vmin, args.vmax
     frames = []
@@ -747,6 +771,7 @@ def cmd_map(args):
                 "dB rel. peak" if args.peak_norm else "dB (pedestal units)",
                 rings=args.rings,
                 sky=sky,
+                bore=d["bore"],
             )
         )
         print("  -> %s" % png)
@@ -1010,7 +1035,7 @@ def main():
             "masters",
             nargs="+",
             help="master cubes from gnss_beam_cube.py build (cube_<day>_nside<N>.npz), "
-            "summed; all must share nside, units and pointing",
+            "summed; all must share nside, units, pointing and array epoch",
         )
         p.add_argument(
             "--chains",
