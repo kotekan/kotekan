@@ -12,7 +12,7 @@
 #include <algorithm>  // for clamp
 #include <array>      // for array
 #include <cassert>    // for assert
-#include <cmath>      // for isfinite, sin, lrint, sqrt, M_PI
+#include <cmath>      // for exp2, floor, isfinite, log2, lrint, sqrt, M_PI
 #include <complex>    // for complex, imag, polar, real
 #include <cstddef>    // for ptrdiff_t
 #include <cstdint>    // for int8_t, int32_t
@@ -22,6 +22,22 @@
 #include <vector>     // for vector
 
 
+/**
+ * @class calcBBPhase
+ * @brief Produce the baseband beamforming phases `A` and shift `s`.
+ *
+ * One phase matrix is produced per beam position frame and per bad feed mask frame; frame `k` of
+ * each stream covers the same FPGA samples, so the three must have the same lifetime. Phases of
+ * bad feeds are zero.
+ *
+ * @par Buffers
+ * @buffer bb_beam_positions The beam positions, [B][X/Y], float32
+ * @buffer bf_mask           The bad feed mask, [Tbf=1][P][D], int8, 1 = good
+ * @buffer bb_phase          The phases, [Tbb=1][F][P][B][D][C], int8
+ * @buffer bb_shift          The shift, [F][P][B], int32; written once
+ *
+ * @conf bb_phase_lifetime_in_samples Int. How many FPGA samples one phase matrix covers.
+ */
 class calcBBPhase : public kotekan::Stage {
     // Telescope setup
     const int num_components = config.get<int>(unique_name, "num_components");
@@ -36,7 +52,8 @@ class calcBBPhase : public kotekan::Stage {
 
     // Baseband beamformer setup
     const int bb_num_beams = config.get<int>(unique_name, "bb_num_beams");
-    const int bb_scale = config.get<int>(unique_name, "bb_scale");
+    // The beams are J = bb_gain · Σ_d exp(iφ_d) E_d.
+    const double bb_gain = config.get<double>(unique_name, "bb_gain");
 
     // Each phase matrix is valid for this many FPGA samples. It is the cadence at which this
     // stage produces frames, and the `dimscaling` of the phase matrix's leading time axis.
@@ -53,6 +70,7 @@ class calcBBPhase : public kotekan::Stage {
 
     // Buffers
     Buffer* const bb_beam_positions_buffer;
+    Buffer* const bf_mask_buffer;
     Buffer* const A_buffer;
     Buffer* const s_buffer;
 
@@ -63,19 +81,27 @@ public:
               [](const kotekan::Stage& stage) {
                   return const_cast<kotekan::Stage&>(stage).main_thread();
               }),
-        bb_beam_positions_buffer(get_buffer("bb_beam_positions")), A_buffer(get_buffer("bb_phase")),
+        bb_beam_positions_buffer(get_buffer("bb_beam_positions")),
+        bf_mask_buffer(get_buffer("bf_mask")), A_buffer(get_buffer("bb_phase")),
         s_buffer(get_buffer("bb_shift"))
     //
     {
         assert(bb_beam_positions_buffer);
+        assert(bf_mask_buffer);
         assert(A_buffer);
         assert(s_buffer);
         bb_beam_positions_buffer->register_consumer(unique_name);
+        bf_mask_buffer->register_consumer(unique_name);
         A_buffer->register_producer(unique_name);
         s_buffer->register_producer(unique_name);
 
         bb_beam_positions_buffer->require_frame_desc(kotekan::NDArray<float, 2>::describe(
             "bb_beam_positions", {bb_num_beams, 2}, {"B", "X/Y"}, {1, 1}));
+
+        // Mask frame `k` is applied to phase frame `k`, so the mask must have our lifetime
+        bf_mask_buffer->require_frame_desc(kotekan::NDArray<std::int8_t, 3>::describe(
+            "bf_mask", {1, num_polarizations, num_dishes}, {"Tbf", "P", "D"},
+            {bb_phase_lifetime_in_samples, 1, 1}));
 
         // The leading axis has length 1 and carries the lifetime as its `dimscaling`; that is how
         // the GPU ring buffer learns how many FPGA samples one phase matrix covers. Same shape as
@@ -102,6 +128,13 @@ public:
             telescope.get_feed_positions_m(num_elements, telescope.fiducial_element_order());
         assert(std::ptrdiff_t(feed_pos_m.size()) == num_elements);
 
+        // Split bb_gain into the beamformer's shift s and the phase amplitude |A| = 127.5 a with
+        // a in (1/2, 1], so that bb_gain = 2^7 a / 2^s. The beamformer requires s >= 1.
+        if (!(bb_gain > 0 && bb_gain <= 64))
+            FATAL_ERROR("bb_gain is {:g}, but must be in (0, 64]", bb_gain);
+        const int bb_shift = 7 + int(std::floor(-std::log2(bb_gain)));
+        const float bb_amplitude = 127.5f * float(bb_gain * std::exp2(bb_shift - 7));
+
         // Get frequencies
         std::vector<float> frequencies(num_frequencies); // [Hz]
         for (int freq = 0; freq < num_frequencies; ++freq) {
@@ -122,6 +155,7 @@ public:
         for (std::int64_t frame_index = 0; !stop_thread; ++frame_index) {
             const int bb_beam_positions_frame_id =
                 frame_index % bb_beam_positions_buffer->num_frames;
+            const int bf_mask_frame_id = frame_index % bf_mask_buffer->num_frames;
             const int A_frame_id = frame_index % A_buffer->num_frames;
 
             // Wait for buffers. Blocking here paces production to the consumers.
@@ -140,6 +174,13 @@ public:
                                 bb_beam_positions_buffer->buffer_name, bb_beam_positions_frame_id,
                                 beam, n_x, n_y);
             }
+
+            DEBUG("[{:s}/{:d}] Waiting for buffer...", bf_mask_buffer->buffer_name, frame_index);
+            const std::int8_t* const bf_mask_frame =
+                static_cast<const std::int8_t*>(static_cast<const void*>(
+                    bf_mask_buffer->wait_for_full_frame(unique_name, bf_mask_frame_id)));
+            if (!bf_mask_frame)
+                return;
 
             DEBUG("[{:s}/{:d}] Waiting for buffer...", A_buffer->buffer_name, frame_index);
             std::complex<std::int8_t>* const A_frame = static_cast<std::complex<std::int8_t>*>(
@@ -203,14 +244,16 @@ public:
                                     n_x * dish_x / c0 + n_y * dish_y / c0 + n_z * dish_z / c0;
                                 const float f = frequencies.at(freq);
                                 const float phi = 2 * float(M_PI) * f * deltat;
-                                const std::complex<float> A = polar(127.5f, phi);
+                                const std::complex<float> A = polar(bb_amplitude, phi);
                                 const std::complex<std::int8_t> iA(
                                     clamp(int(lrint(real(A))), -127, +127),
                                     clamp(int(lrint(imag(A))), -127, +127));
                                 assert(idx >= 0
                                        && idx < std::ptrdiff_t(A_buffer->frame_size
                                                                / sizeof *A_frame));
-                                A_frame[idx] = iA;
+                                // Bad feeds do not contribute
+                                A_frame[idx] =
+                                    bf_mask_frame[element] ? iA : std::complex<std::int8_t>(0, 0);
                             }
                         }
                     }
@@ -250,7 +293,7 @@ public:
                                 assert(idx >= 0
                                        && idx < std::ptrdiff_t(s_buffer->frame_size
                                                                / sizeof *s_frame));
-                                s_frame[idx] = bb_scale;
+                                s_frame[idx] = bb_shift;
                             }
                         }
                     }
@@ -264,6 +307,10 @@ public:
             DEBUG("[{:s}/{:d}] Marking buffer as empty...", bb_beam_positions_buffer->buffer_name,
                   frame_index);
             bb_beam_positions_buffer->mark_frame_empty(unique_name, bb_beam_positions_frame_id);
+
+            DEBUG("[{:s}/{:d}] Marking buffer as empty...", bf_mask_buffer->buffer_name,
+                  frame_index);
+            bf_mask_buffer->mark_frame_empty(unique_name, bf_mask_frame_id);
 
             DEBUG("[{:s}/{:d}] Marking buffer as full...", A_buffer->buffer_name, frame_index);
             A_buffer->mark_frame_full(unique_name, A_frame_id);

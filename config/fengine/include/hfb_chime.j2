@@ -31,7 +31,8 @@ hfb2_weights_ring_depth: 1
 # The HFB1 beamforming weights are valid for this many input samples (about one second). The
 # U = 128 HFB1 kernel processes multiples of 128 * 128 = 16384 input samples, so this must be a
 # multiple of 16384. The HFB1 stages see this as their frb1_phase_lifetime_in_samples.
-hfb1_phase_lifetime_in_samples: 24 * num_times
+# setFRB1Phase applies bad feed mask frame k to weight frame k.
+hfb1_phase_lifetime_in_samples: bf_mask_lifetime_in_samples
 
 ################################################################################
 
@@ -137,6 +138,7 @@ run_set_hfb1_U128_phase:
     upchan_max_channel: upchan_hfb_upchan_U128_max_channel
     upchan_max_num_channels: upchan_hfb_upchan_U128_max_num_channels
     frb1_phase: host_hfb1_U128_phase_buffer
+    bf_mask: host_bf_mask_buffer
     frb1_phase_lifetime_in_samples: hfb1_phase_lifetime_in_samples
     # The weight stream starts at the sequence number of the first voltage frame
     metadata_source:

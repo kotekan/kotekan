@@ -143,6 +143,9 @@ struct DishParams {
     /// Full dish info table (Missing + real dishes), used to build dish_positions.
     std::vector<dishInfo> dish_info_table;
 
+    /// The array dish at each grid location `x + dish_grid_size_x * y`, or -1 if there is none.
+    std::vector<dish_index_t> dish_idx_at_grid_loc;
+
     /**
      * @brief Build full dish parameters (including rotation matrices and positions)
      * from the config for this telescope.
@@ -466,6 +469,16 @@ public:
      * @brief get information about a specific dish.
      **/
     const dishInfo& get_dish_at_idx(int64_t idx) const;
+
+    /**
+     * @brief   Return the index of the array dish at a grid location, or -1 if there is none.
+     *
+     * Locations outside the grid have no dish. If `check_duplicate_dish_grid` is false and
+     * several array dishes share a location, the one listed last in `dish_inputs` is returned.
+     *
+     * @param   grid_idx    Grid indices (x, y)
+     **/
+    dish_index_t get_dish_idx_at_grid_indices(const grid_idx_2d_t& grid_idx) const;
 
     /**
      * @brief   Return the pointing vector (direction dish is pointing, the

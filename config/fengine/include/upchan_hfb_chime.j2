@@ -58,21 +58,16 @@ host_upchan_hfb_U128_voltage_ringbuffer:
 
 # Stages
 
+# upchan.jl scales its window by 1/U, so that a tone at a fine-channel centre keeps its
+# amplitude, while noise shrinks by 0.892/sqrt(U). A gain of 0.8 sqrt(U) takes F-engine noise
+# of 2.8 LSB to 2 LSB at the int4 output, leaving headroom for RFI. Such a tone is then
+# multiplied by 0.81 sqrt(U).
 run_set_upchan_hfb_U128_gain:
     kotekan_stage: setUpchanGain
     upchannelization_schedule_name: /upchan_hfb
     upchan_factor: 128
     upchan_max_num_channels: upchan_hfb_upchan_U128_max_num_channels
-    upchan_gain: [
-        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    ]
+    upchan_gain: [{{ ([(0.8 * 128 ** 0.5) | round(4)] * 128) | join(', ') }}]
     upchan_gain_buffer: host_upchan_hfb_U128_gain_buffer
     metadata_source:
 {% for id in range(16) %}   # num_frequencies = 16

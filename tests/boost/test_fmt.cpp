@@ -42,13 +42,15 @@ BOOST_AUTO_TEST_CASE(test_error_message_keeps_braces) {
     kotekan::kotekanLogging::set_error_message(fmt("Failed to deserialize from {:s}: {:s}"),
                                                std::string("10.0.0.1"),
                                                std::string("expected '[', '{', or a literal"));
-    BOOST_CHECK_EQUAL(std::string(get_error_message()),
+    BOOST_CHECK_EQUAL(kotekan::kotekanLogging::get_error_message(),
                       "Failed to deserialize from 10.0.0.1: expected '[', '{', or a literal");
 
     kotekan::kotekanLogging::set_error_message(fmt("must be an object (e.g. {{enabled: true}})"));
-    BOOST_CHECK_EQUAL(std::string(get_error_message()), "must be an object (e.g. {enabled: true})");
+    BOOST_CHECK_EQUAL(kotekan::kotekanLogging::get_error_message(),
+                      "must be an object (e.g. {enabled: true})");
 
     // A message longer than the buffer is cut, still NUL-terminated.
     kotekan::kotekanLogging::set_error_message(fmt("{:s}"), std::string(2 * MAX_LOG_MSG_LEN, 'x'));
-    BOOST_CHECK_EQUAL(std::string(get_error_message()), std::string(MAX_LOG_MSG_LEN - 1, 'x'));
+    BOOST_CHECK_EQUAL(kotekan::kotekanLogging::get_error_message(),
+                      std::string(MAX_LOG_MSG_LEN - 1, 'x'));
 }
