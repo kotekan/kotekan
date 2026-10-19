@@ -189,7 +189,7 @@ def value(config, key):
 
 def dish_positions(config):
     """Dish positions [D, 3] in the grid frame, and which dishes exist, from
-    `telescope.dish_inputs`."""
+    `telescope.dish_inputs`. Dishes listed with `type: Missing` do not exist."""
     tel = config["telescope"]
     num_dishes = value(config, "num_dishes")
     dx = float(tel["dish_separation_x_m"])
@@ -197,6 +197,8 @@ def dish_positions(config):
     pos = np.zeros((num_dishes, 3))
     exists = np.zeros(num_dishes, dtype=bool)
     for dish in tel["dish_inputs"]:
+        if dish["type"] == "Missing":
+            continue
         d = dish["dish_idx"]
         disp = dish["feed_pos_disp_m"]
         pos[d] = [
