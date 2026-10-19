@@ -110,6 +110,9 @@ public:
         assert(upchan_num_channels <= upchan_max_num_channels);
         assert(frb1_phase_buffer);
         assert(bf_mask_buffer);
+        if (frb1_phase_lifetime_in_samples <= 0)
+            FATAL_ERROR("frb1_phase_lifetime_in_samples {:d} must be positive",
+                        frb1_phase_lifetime_in_samples);
         if (metadata_sources.empty())
             FATAL_ERROR("metadata_source must name at least one buffer");
 
