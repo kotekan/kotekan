@@ -310,10 +310,16 @@ public:
                     if (fine_gpu != fine_cpu)
                         FATAL_ERROR("fine power mismatch (rev={:d},f={:d},pos={:d})", int(reverse),
                                     freq_index, pos);
-                    unsigned long long powers_cpu[NUM_TERMS] = {0, 0, 0};
+                    // The port above must match the vendored references,
+                    // which also give the expected frame powers.
+                    unsigned long long fine_ref[NUM_TERMS][FINE_BINS];
+                    fstat_ref_fine_powers_u64(row_sums_cpu.data(), int(num_streams), fine_ref);
                     for (int t = 0; t < NUM_TERMS; ++t)
                         for (int bin = 0; bin < FINE_BINS; ++bin)
-                            powers_cpu[t] += fine_cpu[std::size_t(t) * FINE_BINS + bin];
+                            if (fine_ref[t][bin] != fine_cpu[std::size_t(t) * FINE_BINS + bin])
+                                FATAL_ERROR("fine reference mismatch: term {:d} bin {:d}", t, bin);
+                    unsigned long long powers_cpu[NUM_TERMS];
+                    fstat_ref_powers_from_fine_u64(fine_ref, powers_cpu);
                     const auto check_powers = [&](const char* entry) {
                         unsigned long long powers_gpu[NUM_TERMS];
                         CHECK_CUDA_ERROR(cudaMemcpy(powers_gpu, d_powers, sizeof powers_gpu,
@@ -379,11 +385,13 @@ public:
                                         calibration.rank, calibration.mult_q16, mask_gpu_i32,
                                         ref.mask, ref.n_bulk, int(ref.valid));
                         const int legacy_mask = mask_gpu_i32;
+                        CHECK_CUDA_ERROR(cudaMemset(d_powers, 0, NUM_TERMS * sizeof(uint64_t)));
                         FStat_Compute_FusedFineMaskWithSupport_U64(
                             handle, weights.data(), calibration.anchor, calibration.half_width,
                             words.data(), calibration.rank, calibration.mult_q16, d_fine_powers,
-                            d_mask_i32, d_support, d_support + 1, nullptr, nullptr);
+                            d_mask_i32, d_support, d_support + 1, d_powers, nullptr);
                         CHECK_CUDA_ERROR(cudaDeviceSynchronize());
+                        check_powers("support");
                         std::array<int, 2> support;
                         CHECK_CUDA_ERROR(cudaMemcpy(support.data(), d_support, 2 * sizeof(int),
                                                     cudaMemcpyDeviceToHost));
