@@ -38,6 +38,7 @@ import urllib.request
 from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import gnss_atmos
 from gnss_ephemeris import parse_rinex_nav, predict_all, gpst_of_utc, C_LIGHT
 from gnss_brdc_supply import cached_brdc
 
@@ -254,6 +255,7 @@ def main():
     lam = C_LIGHT / args.carrier_hz  # carrier wavelength (m/cycle)
 
     eph, eph_t, eph_probe_t = None, 0.0, 0.0
+    _iono = None  # Klobuchar coefficients beside eph (gnss_atmos.iono_params)
     frame0_check_t, frame0_warn_t = time.time(), 0.0
     last = {}  # prn -> (adr_arc, adr_records) of the last row written (emit dedup)
     dropped, dropped_t = (
@@ -369,6 +371,8 @@ def main():
                         "nav cache empty -- the broker has not fetched yet"
                     )
                 eph = parse_rinex_nav(srcs)
+                # Klobuchar coefficients beside the ephemeris (gnss_atmos): the row's iono_m
+                _iono = gnss_atmos.iono_params(srcs)
                 eph_t = now
                 if stale_geom:
                     print(
@@ -435,6 +439,11 @@ def main():
                             mask_deg=-90.0,
                             max_age=EPH_GEOM_WINDOW_S,
                             tropo=True,
+                            iono=(
+                                (_iono["alpha"], _iono["beta"], args.carrier_hz)
+                                if _iono
+                                else None
+                            ),
                         ).get((args.sys, prn))
                     except Exception:
                         v = None
@@ -641,6 +650,7 @@ def main():
                             "eph_age_s": round(v["toe_age_s"], 1),
                             # one-way delays, not subtracted from anything here
                             "tropo_m": round(v.get("tropo_m", 0.0), 3),
+                            "iono_m": round(v.get("iono_m", 0.0), 3),
                         }
                     )
                 write_row(t_epoch, row)

@@ -275,23 +275,32 @@ Offline now, on the obs archive and the replays (no sky needed):
       and the direction fit's dU goes to 0 +- 2 m; gps_l5's b_sat p10/p90 inside +-0.2 chips on
       the 10-12 replay. The transcript digests move: re-bless with this step's commit, on the
       fresh replays #184 waits for.
-      **Troposphere done 2026-10-19 (gnss_atmos, `--tropo saastamoinen` default; predict_all
-      carries tropo_m / iono_m as separate delays, cp_predicted adds them, the obs rows publish
-      tropo_m).** Validated offline on 10-18's five L5-band chains before it shipped: the
-      clock-removed code residual's low-elevation plunge (-8.0 / -1.8 / 0.0 m in the 0-10 /
-      10-20 / 20-30 deg bins) flattens to +0.18 / +0.17 / +0.15 m with the model added, on
-      every chain. **Ionosphere: plumbed, off.** Klobuchar with the only cached coefficient set
-      (2026-08-27) doubles the remaining tilt (rms 2.28 -> 3.00 m), the daily BRDC product and
-      our hourly merge carry no GPSA/GPSB, and the residual shows no ionosphere-shaped term at
-      L5 beyond the troposphere; `--iono klobuchar` takes the header coefficients when a cached
-      file has them. **Re-survey measured, not yet applied (KV):** with the troposphere in,
-      the residual is a pure sin(el) term; a fixed-effects fit (per-10-s clock, three ENU
-      columns, 80-120 k rows per chain) gives model - true = (+2.9 N, 0.0 E, +7.2 U) m, the
-      five chains within +-0.4 m (gps_l5 +2.92/+0.19/+7.10, gal_e5a +2.85/-0.10/+7.25, gal_e5b
-      +2.78/-0.02/+6.84, bds_b2a +2.65/+0.13/+7.41, bds_b3i +3.11/+0.14/+7.60), robust rms
-      1.4-1.7 m. Lands as a change of `lat`/`alt` in config/gnss_chains_chord.yaml (2.9 m
-      south, 7.2 m down) plus the node-config regen and a broker restart; the gate (dU -> 0
-      +- 2 m, code_resid vs elevation flat) is then read from the next day's obs.
+      **Troposphere and ionosphere in the model, 2026-10-19 (gnss_atmos; `--tropo saastamoinen`
+      and `--iono klobuchar` are the defaults; predict_all carries tropo_m / iono_m as separate
+      delays, cp_predicted adds them, the obs rows publish both).** Validated offline on 10-18's
+      five L5-band chains before it shipped. Troposphere: the clock-removed code residual's
+      low-elevation plunge (-8.0 / -1.8 / 0.0 m in the 0-10 / 10-20 / 20-30 deg bins) flattens
+      to +0.18 / +0.17 / +0.15 m with Saastamoinen added. Ionosphere: what is left is a sin(el)
+      term that is SUN-LOCKED (night fits of the station offset +12 m, day +2..5 m: the daytime
+      L5 ionosphere, a 1/sin-shaped delay, aliases into an apparent height error like the
+      troposphere did); with Klobuchar added (even the 7-week-old 08-27 coefficients, the only
+      cached set) the day/night split collapses (gps_l5 +17.96 night vs +18.05 day, gal_e5a
+      +17.5/+18.2, bds_b3i +18.1/+20.5 m) and the night rms improves, so the model is on by
+      default. The coefficients ride the hourly station headers: the merge now splices the
+      IONOSPHERIC CORR lines from the first station that carries them (the golden re-blessed,
+      three header lines), and gnss_atmos.iono_params caches the last set seen
+      (~/.cache/kotekan_gps/iono_corr.json) for days when no station does, its age logged.
+      **Re-survey measured, not yet applied (KV):** with both delays in, the station offset
+      (scripts/gnss/gnss_resurvey.py, per-10-s clock fixed effects, three ENU columns) is
+      model - true = (+18.0 U, +3.3 N, 0.0 E) m on the night rows of all three bands fitted,
+      and +18.1 / +18.2 / +20.5 U by day. The 18 m up is the geoid: 545 m is an orthometric
+      (sea-level) height and _ecef_of_llh takes an ellipsoidal one; the EGM2008 undulation at
+      the site is -16.55 m, so the ellipsoidal height is 528.4 m and the model has stood 16.5 m
+      too high (the residual +1.5 m is within the troposphere's zenith uncertainty). Lands as
+      `alt: 528.4` and `lat: 49.3199845` (3.3 m south) in config/gnss_chains_chord.yaml common,
+      plus the node-config regen and a broker restart; the gate is
+      `gnss_resurvey.py --hours 6-13 --klobuchar <set>` on the next day's obs reading dU, dN
+      within +-2 m of 0.
   0c. **The state (done 2026-10-18, a3bfeabfc).** One unit with conversion at the feed; the
       coast-on-refusal consumer; selftest cases for each (a second constellation joining, a
       refusal coasting, a mass birth). Gate: selftest and `broker_equiv` green, fakefleet runs.

@@ -1726,7 +1726,7 @@ def _dr_reload(ctx, first, with_dcb=True):
         if getattr(ctx.args, "iono", "none") == "klobuchar":
             import gnss_atmos as _atm
 
-            res["iono"] = _atm.iono_params(_paths)
+            res["iono"] = _atm.iono_params(_paths)  # {"alpha","beta","src","age_days"}
         # Measured code biases (DCB), on their own slower cadence (_DR_DCB_REFRESH_S): a daily
         # product with ~5 days of latency, biases stable over weeks. Optional: with no token or no
         # network dcb is None and group_delay_s uses the broadcast term.
@@ -1820,11 +1820,19 @@ def _dr_apply_reload(ctx, res):
         ctx.dr_state["dcb_t"] = ctx.drp.now_w
     if getattr(ctx.args, "iono", "none") == "klobuchar":
         ctx.dr_state["iono"] = res.get("iono")
-        if not res.get("iono"):
+        _io = res.get("iono")
+        if not _io:
             _log_rl(
                 "iono-none",
-                "dead-reckon: --iono klobuchar but no GPSA/GPSB in the cached nav headers; "
-                "no ionosphere in the model until a file carries them",
+                "dead-reckon: --iono klobuchar but no GPSA/GPSB in the cached nav headers "
+                "and no cached set; no ionosphere in the model until a file carries them",
+                every_s=3600.0,
+            )
+        elif _io["age_days"] > 14.0:
+            _log_rl(
+                "iono-stale",
+                "dead-reckon: Klobuchar coefficients from %s, %.0f days old (no cached nav "
+                "header carries a newer set)" % (_io["src"], _io["age_days"]),
                 every_s=3600.0,
             )
     _log(
@@ -2209,7 +2217,11 @@ def stage_dead_reckon(ctx):
             # The decoded fallback below has neither (cp_predicted reads 0.0).
             _tropo = getattr(ctx.args, "tropo", "saastamoinen") == "saastamoinen"
             _iono = (
-                (ctx.dr_state["iono"][0], ctx.dr_state["iono"][1], ctx.args.carrier_hz)
+                (
+                    ctx.dr_state["iono"]["alpha"],
+                    ctx.dr_state["iono"]["beta"],
+                    ctx.args.carrier_hz,
+                )
                 if getattr(ctx.args, "iono", "none") == "klobuchar"
                 and ctx.dr_state.get("iono")
                 else None
@@ -2244,6 +2256,16 @@ def stage_dead_reckon(ctx):
                         datetime.fromtimestamp(_ep_w - 2.0, tz=timezone.utc),
                         mask_deg=-90.0,
                     )
+                    # The decoded path has no atmosphere of its own: fill tropo_m from each
+                    # row's elevation so the fallback and the BRDC model agree.
+                    if _tropo:
+                        import gnss_atmos as _atm
+
+                        for _rows in (ctx.drp.pd, ctx.drp.pd2, pd0):
+                            for _v in _rows.values():
+                                _v["tropo_m"] = _atm.tropo_delay_m(
+                                    _v["el"], ctx.args.lat, ctx.args.alt
+                                )
                     if _now() - ctx.decfb_log_t[0] > 60.0:
                         ctx.decfb_log_t[0] = _now()
                         _log(

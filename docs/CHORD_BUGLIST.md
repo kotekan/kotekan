@@ -627,22 +627,30 @@ test, selftest, and the onsky_l5_holds replay (no "feed skipped", the rrate feed
 gate could not judge it: the replay is NON-DETERMINISTIC (two replays of the unchanged 5a1522f3f tree disagree,
 `broker_equiv.py selftest` says so; three trees gave three digests under one golden) = #192 (g), open. LIVE after the
 next broker restart.
-**10-19 00:30Z STEP 0b (CHORD_JOINT_TRACKING.md 6.3) -- troposphere shipped, ionosphere plumbed and off, the
-re-survey measured:** gnss_atmos.py (Saastamoinen zenith delays from a standard atmosphere at the site height, Chao
-mapping; Klobuchar at the chain's carrier; RINEX IONOSPHERIC CORR parse); predict_all carries tropo_m / iono_m as
-separate delays (0.0 off), cp_predicted adds them (every model-evaluated code phase: seeds, offsets, trkresid), the
-obs rows publish tropo_m. Offline gate on 10-18 (code_resid_m, receiver clock removed per 10-s epoch, five chains): the
-low-elevation plunge (-8.0/-1.8/0.0 m at 0-10/10-20/20-30 deg) flattens to +0.18/+0.17/+0.15 m with Saastamoinen
-added -- right sign, size and shape. What is left is a clean -8.4 m x sin(el) term; the fixed-effects ENU fit gives
-model - true = (+2.9 N, 0.0 E, +7.2 U) m on all five chains within +-0.4 m: the model station sits 7.2 m too high and
-2.9 m too far north (the plan's "-18 m sin(el)" of 10-14). Klobuchar with the only cached coefficient set (08-27)
-over-corrects (tilt -8.4 -> -16.9 m/sin, rms 2.28 -> 3.00): no ionosphere-shaped term beyond the troposphere shows at
-L5 in the 10-18 data, and the daily BRDC product + our hourly merge carry no GPSA/GPSB, so --iono stays none (the
-coefficients are read when a cached header has them). Lands at the next broker restart (--tropo saastamoinen default);
-the expected live effect: b_sat spread and the SEARCH-MONITOR per-PRN values lose their elevation term, the joint clock
-shifts by the fed set's mean tropo (~2.5 m), code_resid_m in the obs flattens vs elevation. The re-survey is KV's
-config change (lat -2.9 m = -0.0000261 deg, alt 545 -> 537.8 m) + node-config regen + broker restart; its gate is dU ->
-0 +- 2 m on the next day's obs. Scratch: resid_vs_el.py, resurvey.py (session 20bfd671).
+**10-19 01:30Z STEP 0b (CHORD_JOINT_TRACKING.md 6.3) -- troposphere AND ionosphere shipped, the re-survey measured
+and explained:** gnss_atmos.py (Saastamoinen zenith delays from a standard atmosphere at the site height, Chao
+mapping; Klobuchar at the chain's carrier; RINEX IONOSPHERIC CORR parse + a coefficient cache); predict_all carries
+tropo_m / iono_m as separate delays (0.0 off), cp_predicted adds them (every model-evaluated code phase: seeds,
+offsets, trkresid, and the decoded fallback for tropo), the obs rows publish both; `--tropo saastamoinen` and `--iono
+klobuchar` are the defaults. Offline gate on 10-18 (code_resid_m, receiver clock removed per 10-s epoch, five chains):
+the low-elevation plunge (-8.0/-1.8/0.0 m at 0-10/10-20/20-30 deg) flattens to +0.18/+0.17/+0.15 m with
+Saastamoinen -- right sign, size and shape. The remaining sin(el) term is SUN-LOCKED (skeptic wf_83656700: night fits
+dU +12 m, day +2..5 m, ramping at sunrise/sunset): the daytime L5 ionosphere aliases into an apparent height error as
+the troposphere did, and my first reading ("no ionosphere-shaped term at L5") was wrong -- the Klobuchar "doubling" of
+the tilt was the unmasking of a half-cancelled constant. With Klobuchar added the day/night split collapses (gps_l5
++17.96 night / +18.05 day, gal_e5a +17.5/+18.2, bds_b3i +18.1/+20.5 m) and the night rms improves (0.74 -> 0.72 m), so
+it is ON by default. Supply: the daily BRDC product and our hourly merge carried no GPSA/GPSB because the merge kept the
+first station's header -- it now splices the IONOSPHERIC CORR lines from the first station that has them (on 10-18
+AL2H and IISC did, four others did not; test_brdc_golden re-blessed, three header lines), and the last set seen is
+cached with its age for days when none does. **The re-survey:** model - true = (+18.0 U, +3.3 N, 0.0 E) m on the night
+rows (mean-demeaned fixed effects; the first +7.2 m was a day/night average through a median demeaning that also
+biased it ~10 % low). The 18 m is the GEOID: 545 m is an orthometric height, _ecef_of_llh takes an ellipsoidal one,
+and EGM2008 gives N = -16.55 m at the site -> h = 528.4 m; the model has stood 16.5 m too high since #99. KV's config
+change: `alt: 528.4`, `lat: 49.3199845` (3.3 m south) + node-config regen + broker restart; gate = gnss_resurvey.py
+--hours 6-13 --klobuchar on the next day's obs within +-2 m of 0. Expected live effect of the atmosphere at the next
+broker restart: b_sat spread and the SEARCH-MONITOR per-PRN values lose their elevation and local-time terms, the
+joint clock shifts by the fed set's mean delay (~5 m by day), code_resid_m in the obs flattens vs elevation. Tools:
+scripts/gnss/gnss_resid_vs_el.py [--atmos tropo|both] [--hours], scripts/gnss/gnss_resurvey.py [--hours] [--klobuchar].
 
 ### #171 — the ALERT files reach no one (2026-10-09)
 **What [tree]:** `chain_health_cron.sh` (cf06, */15) and `elem_ref_cron.sh` (gnss, */5) write ALERT files that

@@ -1082,10 +1082,11 @@ def build_parser(description):
     ap.add_argument(
         "--iono",
         choices=("none", "klobuchar"),
-        default="none",
-        help="ionospheric delay in the dead-reckon range model: none (default), or the "
-        "Klobuchar model at this chain's carrier with the GPSA/GPSB coefficients from the "
-        "cached nav headers (no model, logged hourly, while no cached file carries them).",
+        default="klobuchar",
+        help="ionospheric delay in the dead-reckon range model: the Klobuchar model at "
+        "this chain's carrier with the GPSA/GPSB coefficients from the cached nav headers "
+        "(default; the last set seen is cached and used, with its age logged, while no "
+        "cached file carries them), or none.",
     )
     ap.add_argument(
         "--joint-consume",

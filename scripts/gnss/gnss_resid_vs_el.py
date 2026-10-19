@@ -44,6 +44,11 @@ ap.add_argument("--lat", type=float, default=SITE[0])
 ap.add_argument("--lon", type=float, default=SITE[1])
 ap.add_argument("--alt", type=float, default=SITE[2])
 ap.add_argument(
+    "--hours",
+    default="0-24",
+    help="UTC hour window HH-HH, e.g. 6-13 for night at the site",
+)
+ap.add_argument(
     "--iono",
     default="1.3970e-08,2.2352e-08,-5.9605e-08,-1.1921e-07,1.0854e05,1.1469e05,-1.3107e05,-1.9661e05",
     help="GPSA,GPSB (8 values) for --atmos both",
@@ -53,6 +58,7 @@ odir, day = a.obs_dir, a.day
 ATMOS = "" if a.atmos == "none" else a.atmos
 LAT, LON, ALT = a.lat, a.lon, a.alt
 _io = [float(x) for x in a.iono.split(",")]
+_h0, _h1 = (int(v) for v in a.hours.split("-"))
 ALPHA, BETA = _io[:4], _io[4:8]
 FREQ = {
     "gps_l5": 1176.45e6,
@@ -93,6 +99,8 @@ for band in a.bands:
             el = r.get("el")
             cr = r.get("code_resid_m")
             if el is None or cr is None or el < 5.0:
+                continue
+            if not (_h0 <= (r["t"] % 86400.0) / 3600.0 < _h1):
                 continue
             # cr = measured - model: an unmodelled delay makes it negative; add the model back
             rows.append(
@@ -135,11 +143,11 @@ for band in a.bands:
 
     el = np.radians(np.array([r[0] for r in rows]))
     y = np.array([r[1] for r in rows])
-    A = np.column_stack([np.ones_like(el), 1.0 / np.sin(el), np.sin(el)])
+    G = np.column_stack([np.ones_like(el), 1.0 / np.sin(el), np.sin(el)])
     m = np.ones(len(y), bool)
     for _ in range(3):
-        x, *_ = np.linalg.lstsq(A[m], y[m], rcond=None)
-        res = y - A @ x
+        x, *_ = np.linalg.lstsq(G[m], y[m], rcond=None)
+        res = y - G @ x
         s = np.std(res[m])
         m = np.abs(res) < 3 * s
     print(

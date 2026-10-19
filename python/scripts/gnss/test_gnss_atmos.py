@@ -9,8 +9,12 @@ import gnss_atmos as A  # noqa: E402
 FAIL = []
 
 
+N_CHECK = [0]
+
+
 def check(name, cond, detail=""):
     print("%-60s %s %s" % (name, "ok" if cond else "FAIL", detail))
+    N_CHECK[0] += 1
     if not cond:
         FAIL.append(name)
 
@@ -105,6 +109,41 @@ check(
 )
 check("first occurrence wins, nothing past END OF HEADER", ic["GPSA"][0] == 1.3970e-08)
 
+# iono_params: the first file with the lines wins and refreshes the cache; the cache serves,
+# with its age, when no file has them; nothing serves None.
+import gzip  # noqa: E402
+import json  # noqa: E402
+import tempfile  # noqa: E402
+
+_td = tempfile.mkdtemp()
+_with = os.path.join(_td, "a_MN.rnx.gz")
+_without = os.path.join(_td, "b_MN.rnx.gz")
+with gzip.open(_with, "wt") as f:
+    f.write("".join(hdr[:6]))
+with gzip.open(_without, "wt") as f:
+    f.write(hdr[0] + hdr[5])
+r1 = A.iono_params([_without, _with], cache_dir=_td)
+check(
+    "iono_params: first file with GPSA/GPSB wins",
+    r1 and r1["alpha"] == alpha and r1["src"] == "a_MN.rnx.gz",
+)
+check(
+    "iono_params: the cache was written",
+    os.path.exists(os.path.join(_td, "iono_corr.json")),
+)
+r2 = A.iono_params([_without], cache_dir=_td)
+check(
+    "iono_params: no file -> the cached set, aged",
+    r2
+    and r2["beta"] == beta
+    and r2["src"].startswith("cache:")
+    and r2["age_days"] < 1.0,
+)
+check(
+    "iono_params: nothing anywhere -> None",
+    A.iono_params([_without], cache_dir="") is None,
+)
+
 # predict_all carries the delays as separate fields, off by default, on request.
 import glob  # noqa: E402
 from datetime import datetime, timezone  # noqa: E402
@@ -170,4 +209,4 @@ if navs:
 if FAIL:
     print("FAILED (%d): %s" % (len(FAIL), ", ".join(FAIL)))
     sys.exit(1)
-print("ALL PASS (%d checks)" % (24 + 7))
+print("ALL PASS (%d checks)" % N_CHECK[0])

@@ -47,8 +47,31 @@ ap.add_argument("--alt", type=float, default=SITE[2])
 ap.add_argument(
     "--no-tropo", action="store_true", help="fit without the troposphere added back"
 )
+ap.add_argument(
+    "--hours",
+    default="0-24",
+    help="UTC hour window HH-HH (night at the site ~ 6-13, day ~ 15-23)",
+)
+ap.add_argument(
+    "--klobuchar",
+    default="",
+    help="GPSA,GPSB (8 values) to add the Klobuchar delay back as well; the carrier is --f-hz",
+)
+ap.add_argument("--f-hz", type=float, default=1176.45e6)
 a = ap.parse_args()
 LAT, LON, ALT = a.lat, a.lon, a.alt
+_h0, _h1 = (int(v) for v in a.hours.split("-"))
+_kl = [float(v) for v in a.klobuchar.split(",")] if a.klobuchar else None
+
+
+def _atmos(el, az, t):
+    d = 0.0 if a.no_tropo else ATM.tropo_delay_m(el, LAT, ALT)
+    if _kl:
+        tow = (t - 315964800.0 + 18.0) % 604800.0
+        d += ATM.klobuchar_delay_m(_kl[:4], _kl[4:8], LAT, LON, el, az, tow, a.f_hz)
+    return d
+
+
 odir, day = a.obs_dir, a.day
 for band in a.bands:
     rows = []
@@ -67,14 +90,10 @@ for band in a.bands:
             el, az, cr = r.get("el"), r.get("az"), r.get("code_resid_m")
             if el is None or az is None or cr is None or el < 7.0:
                 continue
+            if not (_h0 <= (r["t"] % 86400.0) / 3600.0 < _h1):
+                continue
             rows.append(
-                (
-                    int(r["t"] // 10),
-                    r["prn"],
-                    el,
-                    az,
-                    cr + (0.0 if a.no_tropo else ATM.tropo_delay_m(el, LAT, ALT)),
-                )
+                (int(r["t"] // 10), r["prn"], el, az, cr + _atmos(el, az, r["t"]))
             )
     # fixed effects: demean within epoch buckets with >= 4 PRNs
     by = {}
@@ -90,9 +109,11 @@ for band in a.bands:
         reg = np.column_stack(
             [np.sin(els), np.cos(els) * np.cos(azs), np.cos(els) * np.sin(azs)]
         )
-        # robust centre: median
-        ys = ys - np.median(ys)
-        reg = reg - np.median(reg, axis=0)
+        # fixed effects: the per-epoch MEAN of y and of each regressor (a median biases the
+        # slopes ~10-15 % toward zero: the median of a combination is not the combination of
+        # the medians); the clip below handles outliers
+        ys = ys - ys.mean()
+        reg = reg - reg.mean(axis=0)
         Y.append(ys)
         X.append(reg)
     if not Y:
@@ -108,6 +129,17 @@ for band in a.bands:
         m = np.abs(res) < 3 * s
     dU, dN, dE = -sol  # d = model - true
     print(
-        "%-8s rows %6d  model-true: dU %+6.2f m  dN %+6.2f m  dE %+6.2f m   (robust rms %.2f m, %d used)"
-        % (band, len(y), dU, dN, dE, s, m.sum())
+        "%-8s %5s UTC rows %6d  model-true: dU %+6.2f m  dN %+6.2f m  dE %+6.2f m"
+        "   (robust rms %.2f m, %d used)%s"
+        % (
+            band,
+            a.hours,
+            len(y),
+            dU,
+            dN,
+            dE,
+            s,
+            m.sum(),
+            "  [+Klobuchar]" if _kl else "",
+        )
     )

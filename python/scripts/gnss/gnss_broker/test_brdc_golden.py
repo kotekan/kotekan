@@ -40,7 +40,10 @@ FIXTURE = os.path.join(
 )
 
 # The merged file's decompressed SHA-256, for the pinned clock in the fixture manifest.
-GOLDEN = "35222025baf6ae15b3721f5019ab56c72a4e6c49a259c551db66f9b8daf8cfdd"
+# 2026-10-19: the merge splices the IONOSPHERIC CORR header lines (Klobuchar GPSA/GPSB, plus
+# the GAL set) from the first station that carries them when the first station's header has
+# none; on this fixture that adds three header lines and nothing else (diffed old vs new).
+GOLDEN = "f298a8db55b5d70b9e9a3f33f6e4b7a8aee7ef125da1c651f41206594bac3316"
 
 _fails = []
 

@@ -106,11 +106,23 @@ def parse_iono_corr(lines):
     return out
 
 
-def iono_params(paths):
-    """GPSA/GPSB from the first of `paths` (nav files, .gz or plain, best first) that carries
-    them, as (alpha, beta); None when none does."""
+def iono_params(paths, cache_dir=None):
+    """Klobuchar coefficients for the model: {"alpha", "beta", "src", "age_days"} from the first
+    of `paths` (nav files, .gz or plain, best first) whose header carries GPSA/GPSB, which also
+    refreshes `cache_dir`/iono_corr.json; else the cached set with its age (the coefficients
+    change over weeks, so a stale set beats none); else None. cache_dir defaults to the BRDC
+    cache; "" disables the cache."""
     import gzip
+    import json
+    import os
+    import time
 
+    if cache_dir is None:
+        try:
+            from gnss_brdc_supply import CACHE as cache_dir
+        except Exception:
+            cache_dir = ""
+    cpath = os.path.join(cache_dir, "iono_corr.json") if cache_dir else None
     for path in paths:
         try:
             op = gzip.open if str(path).endswith(".gz") else open
@@ -118,7 +130,7 @@ def iono_params(paths):
                 head = []
                 for line in f:
                     head.append(line)
-                    if "END OF HEADER" in line or len(head) > 200:
+                    if "END OF HEADER" in line or len(head) > 400:
                         break
         except Exception:
             continue
@@ -129,5 +141,31 @@ def iono_params(paths):
             and len(ic["GPSA"]) == 4
             and len(ic["GPSB"]) == 4
         ):
-            return ic["GPSA"], ic["GPSB"]
+            out = {
+                "alpha": ic["GPSA"],
+                "beta": ic["GPSB"],
+                "src": os.path.basename(str(path)),
+                "age_days": 0.0,
+            }
+            if cpath:
+                try:
+                    tmp = cpath + ".tmp"
+                    with open(tmp, "w") as f:
+                        json.dump(dict(out, t=time.time()), f)
+                    os.replace(tmp, cpath)
+                except Exception:
+                    pass
+            return out
+    if cpath and os.path.exists(cpath):
+        try:
+            with open(cpath) as f:
+                c = json.load(f)
+            return {
+                "alpha": c["alpha"],
+                "beta": c["beta"],
+                "src": "cache:" + c.get("src", "?"),
+                "age_days": (time.time() - c["t"]) / 86400.0,
+            }
+        except Exception:
+            return None
     return None
