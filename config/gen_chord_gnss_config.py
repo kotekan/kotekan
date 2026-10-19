@@ -745,8 +745,18 @@ def live_element_ranges(arr):
     The live set is not contiguous: the production dpdk config's crs_board_remap groups
     polarizations, so the four dish CRS boards land at output slots 0, 1, 8, 9 and the live
     elements are {0..15, 64..79}: `live_element_ranges: [[0, 15], [64, 79]]`.
+
+    The assembler's shared model splits the element axis at n/2 into pol 0 and pol 1, so the
+    ranges must be exactly one per pol, the same dishes in both: [lo, hi] and [lo + 64, hi + 64].
+    Anything else would put one pol's elements in the other's half with nothing to tell.
     """
-    return [(int(a), int(b)) for a, b in arr["live_element_ranges"]]
+    r = [(int(a), int(b)) for a, b in arr["live_element_ranges"]]
+    if len(r) != 2 or not (0 <= r[0][0] <= r[0][1] < 64) or r[1] != (r[0][0] + 64, r[0][1] + 64):
+        raise SystemExit(
+            f"live_element_ranges: {r} must be one range per pol over the same dishes, "
+            "[lo, hi] then [lo + 64, hi + 64] -- the shared model splits the elements at n/2"
+        )
+    return r
 
 
 def live_element_count(arr):

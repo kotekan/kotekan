@@ -102,17 +102,15 @@ common:
     rf-stats-period-s: 1.0
     # Element steering: each record assembler derotates its elements by the satellite geometry
     # the broker posts (gnss_chains_chord.yaml common: post-sat-geometry), using the positions
-    # of the array epoch valid at generation (config/chord_array_epochs.json) refined by
-    # elem-positions-file, and stamps the epoch key into the config. Once geometry is removed
+    # of the array epoch valid at generation (config/chord_array_epochs.json), optionally refined
+    # by elem-positions-file, and stamps the epoch key into the config. Once geometry is removed
     # every satellite sees the same per-element instrument, which the shared model below needs.
     # The phase sign depends on the F-engine's FFT and conjugation conventions, so it is
     # calibrated from data (gnssElemSteer.hpp); +1 is the measured value.
     elem-steer-sign: 1.0
-    # Refined positions on top of the array epoch, solved from steered per-element phases (the
-    # file's _comment has the solve). Cube order; pol-1 elements take their dish's pol-0
-    # position; unsolved dishes keep the epoch E/N. Refused unless its epoch_key is the epoch
-    # valid at generation.
-    elem-positions-file: config/elem_positions_refined_20260927.json
+    # No elem-positions-file: the 2026-10-20-rows-af96 epoch carries the refined A/B positions
+    # and nominal C-F ones itself. A refinement file is solved against one epoch key and refused
+    # for any other; add one here once C-F are re-solved (possolve.py) against this epoch.
     # Shared instrument model: the per-PRN self-cals learn but do not set the weights; the live
     # element weights are one per-element gain per polarisation (a 300 s consensus over every
     # satellite) plus one inter-pol coefficient per satellite, so a boresight transit cannot
@@ -127,15 +125,17 @@ common:
     elem-freeze-deg: 2
     # Fleet reference for the shared model's phase pin: one vector per band, a snapshot of the
     # fleet consensus (python/scripts/gnss/elem_shared_ref.py snapshot), refused unless taken
-    # against the epoch of elem-positions-file. Without it each instance pins to its own first
+    # against the epoch the positions came from. Without it each instance pins to its own first
     # model, and a poor one leaves that instance's global phase arbitrary against the others,
     # so its records cancel in the fleet sum. live = pin to it, in full for a first model and
     # slewed at 1 deg/s for a warm one. Live switch: elem_shared_ref.py post FILE --mode live.
     # scripts/gnss/site/elem_ref_cron.sh reads both keys from this file as text and compares
     # every instance with the reference; with ELEM_REF_ACT=1 it also re-posts the reference to
     # an instance that lost it or is pinned off it.
-    elem-shared-ref: config/elem_shared_ref_20261017.json
-    elem-shared-ref-mode: live
+    # No reference yet for the 96-element epoch: each instance pins to its own first model until
+    # a snapshot is taken against it (elem_shared_ref.py snapshot, once every instance is warm)
+    # and named here with elem-shared-ref-mode: live. Without the line the cron logs "no
+    # reference file" and does nothing.
     # The gnss VM, which runs the search aggregator, the telemetry gather and the broker.
     # 127.0.0.1, the generator default, would point every node at itself. Moving the aggregator
     # or the gather means changing search-host / telem-host and restarting the nodes.

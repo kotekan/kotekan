@@ -134,6 +134,9 @@ class Pointing(object):
         self.source = d.get("source", "")
 
     def __repr__(self):
+        # A pointing with no common boresight (dishes aimed apart) carries None in all three.
+        if self.bore_el_deg is None:
+            return "<Pointing %s, no common boresight>" % self.name
         return "<Pointing %s dec %+.2f, boresight az %.1f el %.2f>" % (
             self.name,
             self.dec_deg,

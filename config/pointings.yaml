@@ -19,6 +19,11 @@
       note: first CHORD GNSS pointing; 09-02 beam maps (peak 6.3/6.6 deg off boresight) were taken here
     - id: p1_scattered_20261017
       from: 2026-10-17T01:52:37Z
-      to:
+      to: 2026-10-20T00:22:00Z
       boresight_dec_deg:
       note: dishes tipped in semi-random directions during the 10-12..10-17 F-engine outage; no common boresight, so no beam maps from this epoch; ends at the realignment
+    - id: p2_ab_cyga_cf_tipped
+      from: 2026-10-20T00:22:00Z
+      to:
+      boresight_dec_deg:
+      note: rows A/B still on the Cyg A pointing (dec +40.73), rows C-F tipped further down (KV 2026-10-19); no common boresight, so no beam maps; starts with the 96-element live set (rows A-F, array epoch 2026-10-20-rows-af96), so a sender's day file never mixes element counts; ends at the realignment

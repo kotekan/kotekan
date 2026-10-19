@@ -91,10 +91,13 @@ nodes:
 
 array:
     # Element e -> dish = e % 64, pol = e / 64 ([P][D], CHORDBeamformer order). Production's
-    # crs_board_remap (config/chord/pathfinder.j2) puts dishes 0-15 (rows A, B) at elements 0-15
-    # (pol 0) and 64-79 (pol 1); the RFI antennas at 56-63 and 120-127 are left out. Ranges must
-    # be 16-aligned (live_tile_columns); the search taps the first element of the first range.
-    live_element_ranges: [[0, 15], [64, 79]]
+    # crs_board_remap (config/chord/pathfinder.j2) puts dish slot d (config/chord/telescope.j2:
+    # rows A-H, eight dishes each) at elements d (pol 0) and 64 + d (pol 1). Rows A-F are live:
+    # 0-47 and 64-111. Row G (48-55) delivers too but cannot join alone, since ranges must be
+    # 16-aligned (live_tile_columns) and 48-63 would bring row H, which is silent. The two ranges
+    # must be one pol each and equal in length: the shared model splits pols at n/2. The search
+    # taps the first element of the first range.
+    live_element_ranges: [[0, 47], [64, 111]]
     # The F-engine's per-bin, per-input digital gains (applied before requantization, served at
     # http://10.222.0.54:54321/get-current-gain-file) stay part of the end-to-end gain: nothing
     # here divides them out.

@@ -368,6 +368,22 @@ def test_node_names():
     check("bringup_order" not in names and "cx19" in names, "node_names: hosts only")
 
 
+def test_live_ranges_pol_mirror():
+    def refused(ranges):
+        try:
+            g.live_element_ranges({"live_element_ranges": ranges})
+        except SystemExit:
+            return True
+        return False
+
+    check(not refused([[0, 15], [64, 79]]), "32 elements, one range per pol: accepted")
+    check(not refused([[0, 47], [64, 111]]), "96 elements, one range per pol: accepted")
+    check(refused([[0, 31], [64, 79]]), "48 elements (unequal pol halves): refused")
+    check(refused([[0, 15], [16, 31]]), "two pol-0 ranges: refused")
+    check(refused([[0, 63]]), "a single range: refused")
+    check(refused([[0, 79], [64, 143]]), "a range past the pol boundary: refused")
+
+
 def test_load_summary():
     cfg = {
         "runtime": {
