@@ -40,7 +40,7 @@ GNSS_BIN=${GNSS_BIN:-$GNSS_K/build_nodpdk/kotekan/kotekan}
 GNSS_BROKER_URL=${GNSS_BROKER_URL:-http://127.0.0.1:12060}
 GNSS_FRAME0_URL=${GNSS_FRAME0_URL:-http://cx43:12048}
 GNSS_OBS_OUT=${GNSS_OBS_OUT:-$GNSS_ROOT/fixtures/obs}
-GNSS_SITE_LL=${GNSS_SITE_LL:-"--lat 49.32001414 --lon -119.62262691 --alt 545"}
+GNSS_SITE_LL=${GNSS_SITE_LL:-"--lat 49.3199845 --lon -119.62262691 --alt 528.4"}  # = config/gnss_chains_chord.yaml common (ellipsoidal alt)
 
 # ── the ten chains and their RF constants ─────────────────────────────────────────────────
 # Not free parameters: carrier, chip rate and code length must match the SignalDef the broker

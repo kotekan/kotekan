@@ -41,12 +41,15 @@ common:
   # carrier loop a seeded bias becomes every satellite's residual carrier. A no-op on chains
   # without detections, which never solve a bias.
     seed-bias-source: zero
-  # The dishes' effective phase centre, ~155 m (~5 L5 chips) from the array origin; alt is
-  # weakly observed. The node configs' origin_itrs_* stay at the array origin: that is the
-  # frame the element offsets are defined in. scripts/gnss/viscap_metadata.py reads these too.
-    lat: 49.32001414
+  # The dishes' effective phase centre, ~155 m (~5 L5 chips) from the array origin. The node
+  # configs' origin_itrs_* stay at the array origin: that is the frame the element offsets are
+  # defined in. scripts/gnss/viscap_metadata.py and the stack's GNSS_SITE_LL (obs writers,
+  # viewer) carry the same numbers. alt is the ELLIPSOIDAL height (what the ECEF conversion
+  # takes): 545 m above sea level less the EGM2008 geoid undulation at the site (-16.55 m); lat
+  # moved 3.3 m south on the 2026-10-18 night re-survey (step 0b, scripts/gnss/gnss_resurvey.py).
+    lat: 49.3199845
     lon: -119.62262691
-    alt: 545
+    alt: 528.4
     mask-deg: 0
     interval: 2
   # One publisher serves every chain (broker_multi.py takes the first publish-port); select a
