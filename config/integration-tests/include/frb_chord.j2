@@ -35,6 +35,9 @@ frb_chunk_size: 256
 # setFRB1Phase applies bad feed mask frame k to weight frame k.
 frb1_phase_lifetime_in_samples: bf_mask_lifetime_in_samples
 
+# The FRB1 weights W (setFRB1Phase). The kernels multiply W by 1/(2 sqrt(M N)) themselves.
+frb1_input_scale: {{ frb1_input_scale | default(1) }}
+
 ################################################################################
 
 # Buffers

@@ -6,6 +6,7 @@ samples with their FPGA sequence numbers.
 """
 
 import glob
+import math
 import os
 
 import h5py
@@ -241,3 +242,25 @@ def upchan_window(num_taps, U):
     s = np.arange(num_taps * U)
     x = (2 * s - (num_taps * U - 1)) / (2 * num_taps * U)
     return np.cos(np.pi * x) ** 2 * np.sinc(num_taps * x)
+
+
+def histogram(data, offset):
+    """Counts of the int4 values -8..7 (index value + 8) over both nibbles of the bytes `data`,
+    offset-encoded (int4x2_swapped_withoffset) or two's complement (int4x2)."""
+    counts = np.bincount(np.asarray(data, dtype=np.uint8).ravel(), minlength=256)
+    nibbles = [np.arange(256) >> 4, np.arange(256) & 0xF]
+    hist = np.zeros(16)
+    for nibble in nibbles:
+        code = nibble if offset else nibble ^ 8
+        hist += np.bincount(code, weights=counts, minlength=16)
+    return hist
+
+
+def rounded_gaussian(sigma):
+    """rms, fraction of zeros and fraction at ±7 of a Gaussian with standard deviation `sigma`,
+    rounded to the nearest integer and clamped to [-7, 7]."""
+    k = np.arange(-7, 8)
+    edges = np.concatenate([[-np.inf], k[:-1] + 0.5, [np.inf]])
+    cdf = np.array([0.5 * (1 + math.erf(x / (sigma * math.sqrt(2)))) for x in edges])
+    p = np.diff(cdf)
+    return math.sqrt((p * k ** 2).sum()), p[7], p[0] + p[-1]

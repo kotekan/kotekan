@@ -154,13 +154,15 @@ host_upchan_U{{ U }}_voltage_ringbuffer:
 # upchan.jl scales its window by 1/U, so that a tone at a fine-channel centre keeps its
 # amplitude, while noise shrinks by 0.892/sqrt(U). A gain of 0.8 sqrt(U) takes F-engine noise
 # of 2.8 LSB to 2 LSB at the int4 output, leaving headroom for RFI. Such a tone is then
-# multiplied by 0.81 sqrt(U).
+# multiplied by 0.81 sqrt(U). The jinja variable `upchan_gains` maps U (as a string) to the U
+# gains of the fine channels, replacing these.
+{% set upchan_gains = upchan_gains | default({}) %}
 {% for U in [2, 4, 8, 16, 32, 64] %}
 run_set_upchan_U{{ U }}_gain:
     kotekan_stage: setUpchanGain
     upchan_factor: {{ U }}
     upchan_max_num_channels: upchan_U{{ U }}_max_num_channels
-    upchan_gain: [{{ ([(0.8 * U ** 0.5) | round(4)] * U) | join(', ') }}]
+    upchan_gain: {{ upchan_gains.get(U | string, [(0.8 * U ** 0.5) | round(4)] * U) | tojson }}
     upchan_gain_buffer: host_upchan_U{{ U }}_gain_buffer
     metadata_source: host_voltage_buffer
 {% endfor %}
