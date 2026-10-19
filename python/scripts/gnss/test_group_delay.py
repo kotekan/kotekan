@@ -28,7 +28,18 @@ from datetime import datetime, timedelta, timezone
 from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from gnss_ephemeris import group_delay_s, GAMMA_L1L5, GAMMA_E1E5A, GAMMA_E1E5B
+from gnss_ephemeris import (  # noqa: E402
+    C_LIGHT,
+    GAMMA_E1E5A,
+    GAMMA_E1E5B,
+    GAMMA_L1L5,
+    GLO_L3_BIAS_M,
+    GLO_SLOT_SVN,
+    glonass_l3_bias_s,
+    glonass_svn,
+    gpst_of_utc,
+    group_delay_s,
+)
 
 NS = 1e-9
 
@@ -43,6 +54,11 @@ def _e(bgd_a=0.0, bgd_b=0.0, fnav=True):
 
 def _c(tgd1=0.0, tgd2=0.0):
     return dict(sys="C", tgd=tgd1, iodc=tgd2, l2_codes=0)
+
+
+def _r(slot, when="2026-10-19T00:00:00"):
+    """A GLONASS record for `slot` with its epoch tb at `when` (UTC ISO)."""
+    return dict(sys="R", prn=slot, toe_gpst=gpst_of_utc(datetime.fromisoformat(when).replace(tzinfo=timezone.utc)))
 
 
 class TestGPS(unittest.TestCase):
@@ -396,6 +412,64 @@ class TestDcbFetch(unittest.TestCase):
         self.assertNotIn(local, written)
         with open(local, "rb") as f:
             self.assertEqual(f.read(), payload)
+
+
+class TestGLONASSL3(unittest.TestCase):
+    """The L3OC per-satellite table (#210): a measured product, so the tests pin the sign, the
+    routing by slot and epoch, and the controls, not the numbers."""
+
+    def test_sign_late_code_negative_term(self):
+        """A satellite whose L3OC code arrives LATE (P - model positive, the K1 three) owes a
+        NEGATIVE clock term, an early one (the K2 pair) a positive term, of -value/c exactly:
+        R19 is SVN 807 in 2026."""
+        self.assertAlmostEqual(
+            group_delay_s(_r(19), "glo_l3oc"), -GLO_L3_BIAS_M[807] / C_LIGHT, places=15
+        )
+        self.assertLess(group_delay_s(_r(19), "glo_l3oc"), -100 * NS)
+        self.assertGreater(group_delay_s(_r(6), "glo_l3oc"), +400 * NS)
+
+    def test_magnitudes_are_lobe_sized(self):
+        """The point of the table: 1.3-4.7 chips at 10.23 Mcps, past the sparse comb's 95.9 m
+        lobe for the K2 pair. A value that drifted under 30 m would no longer be the term
+        that parks a tracker on a grating lobe, and one over 200 m is not what was measured."""
+        for svn, m in GLO_L3_BIAS_M.items():
+            self.assertTrue(30.0 < abs(m) < 200.0, (svn, m))
+        self.assertTrue(all(m < -100.0 for svn, m in GLO_L3_BIAS_M.items() if svn in (803, 804)))
+        self.assertTrue(all(m > 30.0 for svn, m in GLO_L3_BIAS_M.items() if svn in (807, 808, 813)))
+
+    def test_slot_reassignment_follows_the_satellite(self):
+        """SVN 803 moved from slot R26 to R08 on 2026-09-25 (IGS satellite metadata): before
+        that R08 is at the datum and R26 carries the term; after it the reverse. Keying by
+        slot alone would have put a K2 term on whatever flies in R08 next."""
+        before, after = "2026-09-01T00:00:00", "2026-10-01T00:00:00"
+        self.assertEqual(glonass_svn(8, gpst_of_utc(datetime.fromisoformat(before).replace(tzinfo=timezone.utc))), None)
+        self.assertEqual(glonass_svn(8, gpst_of_utc(datetime.fromisoformat(after).replace(tzinfo=timezone.utc))), 803)
+        self.assertEqual(group_delay_s(_r(8, before), "glo_l3oc"), 0.0)
+        self.assertAlmostEqual(group_delay_s(_r(26, before), "glo_l3oc"), -GLO_L3_BIAS_M[803] / C_LIGHT, places=15)
+        self.assertAlmostEqual(group_delay_s(_r(8, after), "glo_l3oc"), -GLO_L3_BIAS_M[803] / C_LIGHT, places=15)
+        self.assertEqual(group_delay_s(_r(26, after), "glo_l3oc"), 0.0)
+
+    def test_history_is_unambiguous(self):
+        """No slot maps to two SVNs at once, and every SVN with a bias has a slot entry: an
+        overlap or an orphan would be silent (the lookup returns the first match / 0.0)."""
+        for i, (s1, v1, a1, b1) in enumerate(GLO_SLOT_SVN):
+            for s2, v2, a2, b2 in GLO_SLOT_SVN[i + 1:]:
+                if s1 != s2:
+                    continue
+                lo, hi = max(a1, a2), min(b1 or "9999", b2 or "9999")
+                self.assertGreaterEqual(lo, hi, (s1, v1, v2))
+        self.assertEqual(set(GLO_L3_BIAS_M), {v for _, v, _, _ in GLO_SLOT_SVN})
+
+    def test_controls(self):
+        """Off the table (slot R04, GLO-M+) is 0.0; GLONASS L2OC is 0.0 (its clock is the FDMA
+        one it is referred to); signal=None is exactly 0.0; a loaded DCB table changes nothing
+        for GLONASS (CAS publishes no C3 lines) and GPS L5 is untouched by the R branch."""
+        self.assertEqual(group_delay_s(_r(4), "glo_l3oc"), 0.0)
+        self.assertEqual(glonass_l3_bias_s(4, _r(4)["toe_gpst"]), 0.0)
+        self.assertEqual(group_delay_s(_r(19), "glo_l2oc"), 0.0)
+        self.assertEqual(group_delay_s(_r(19), None), 0.0)
+        self.assertEqual(group_delay_s(_r(19), "glo_l3oc", dcb={("R", 19): {}}), group_delay_s(_r(19), "glo_l3oc"))
+        self.assertAlmostEqual(group_delay_s(_g(tgd=-8.38 * NS), "gps_l5"), -GAMMA_L1L5 * -8.38 * NS, places=15)
 
 
 if __name__ == "__main__":

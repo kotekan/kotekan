@@ -296,6 +296,30 @@ R22 -9 on 24/33 low-elevation epochs), so the seed lands inside the DLL's pull-i
 the monitor. The CDMA L3 nav message is assumed (ICD) to carry its own clock/ISC; we decode neither. Until the table is in,
 glo_l3oc must not feed the joint state (its b_sat would carry 1-5 chip constants and whatever lobe a satellite is parked on).
 
+
+**10-19 23:55Z FIXED IN CODE (needs a broker restart): per-satellite L3OC bias table, gnss_ephemeris.GLO_L3_BIAS_M +
+glonass_l3_bias_s, applied by group_delay_s for ('R', glo_l3oc), so it reaches cp_predicted through the dead-reckon
+predict_all(signal=...) and moves the seed and the trkresid model directly.** Six more station-days (CHWK + WILL full
+days 2026-10-09/15/18, fixtures/jointstate/glo_l3_station_*.txt; the three 10-12 ones stay the 04-12Z windows; DRAO00CAN
+logs no C3), each station-day referred to its median over the constellation (the common part is the receiver ISB, which
+our chain carries in the per-satellite trims since glo_l3oc is model-primary on the joint clock, no tau_band): R06 -138.2 m
+(8 station-days within 0.8 m), R08 -135.2 (6, within 1.5), R19 +41.0 (9, 35.8-42.7), R20 +43.1 (9, 36.2-43.9), R23 +41.9
+(6, 40.6-42.5); the other eight slots within +-3 m and left at the datum. Keyed by SVN with the IGS satellite-metadata
+slot history (R08 = SVN 803 only since 2026-09-25 06:30Z; before that 803 flew in R26): 803/804 = the K2 pair, 807/808/813
+the K1+/K1B three; SVN 809 entered R28 on 10-15 and is in no station-day yet (unmeasured -> 0.0). Term = -value/c (a
+LATE code owes a negative clock term), in the same order: R06 +461 ns, R08 +451, R19 -137, R20 -144, R23 -140 = +4.7,
++4.6, -1.4, -1.5, -1.4 chips at 10.23 Mcps (1.44 and 1.41 lobes of the 95.9 m comb for the K2 pair). Tests pin the
+sign, the slot/epoch routing, the history's consistency and the controls (test_group_delay.TestGLONASSL3; a skeptic
+agent re-derived the sign from cp_predicted, the GPS TGD branch and the DCB datum, mutation-tested the tests and
+re-converted every SNX epoch); all six goldens EQUIVALENT (no recording tracks GLONASS). Expected on sky after the
+restart: the glo_l3oc trims on R06/R08/R19/R20/R23 fall to the M+ level, and the dead-reckon seed for R06/R08 lands
+1.4 lobes from where it used to, so the one-lobe referee no longer meets three PRNs at one offset. OPEN: (a) the
+day-to-day of the K1 three (4-8 m = 13-27 ns, 10-12 and BREW low) is the FDMA clock's, not ours: re-measure monthly or
+when a slot changes (the IGS metadata's SATELLITE/PRN block); glo_l3_station.py now takes the live table back out of
+the R residual (r -= c*tgd_s, verified on CHWK 10-18 to the 0.1 m), so a re-measure stays the FDMA offset and not the
+remainder; (b) before glo_l3oc feeds the joint state (#191 step 2): the joint filter has no per-band tau, so the
+GLONASS-common ISB (-9 m at the stations) would land in the GLONASS b_sat rows, separated from clk only by the GPS
+majority: give the feed a per-constellation ISB term or feed GLONASS as geometry-only.
 ### #208 — wall time sits in the radiometric path: the ephemeris is evaluated at `now_w` and labelled `t_eph_age = now_w - utc0_sample0` (2026-10-18, design, KV: nothing radiometric may depend on wall time; FIXED 10-18 23:45Z: every radiometric "now" is the hop axis (transport.axis_now); lands at the next broker restart)
 **What [tree]:** deadreckon.py:2224-2292 runs `predict_all` at the wall clock `now_w` and stamps the rows'
 capture-age epoch as `now_w - utc0_sample0`; `cp_predicted` then propagates range at `range_rate` from that wall-derived

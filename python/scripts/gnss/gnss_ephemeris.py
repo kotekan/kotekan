@@ -52,6 +52,65 @@ GLONASS_INTENDED_S = 900.0  # a record is meant for +-15 min about its epoch tb
 # the default 4 h; 2.5 h keeps a seed inside the spectrum fit's capture while leaving the
 # hourly merge's 35-95 min record age nearly an hour of slack.
 GLONASS_MAX_AGE_S = 9000.0
+# GLONASS L3OC per-satellite timing against the FDMA broadcast clock (#210). The broadcast
+# clock (-tau_n) is fitted to the FDMA L1/L2 signals; some satellites transmit the CDMA L3OC
+# code with a large, stable offset from it: the two GLONASS-K2 (SVN 803, 804) ~135-138 m EARLY,
+# the three newest K1+/K1B (807, 808, 813) ~41-44 m LATE, the rest within +-3 m. Measured as
+# P - model on IGS stations' C3Q pseudoranges with this module's model and the FDMA clock, the
+# GPS-L5 station clock removed (fixtures/jointstate/glo_l3_station.py; CHWK and WILL full days
+# 2026-10-09/15/18, CHWK, WILL and BREW 2026-10-12 04-12Z), each station-day referred to its
+# median over the constellation: the constellation-common part is the receiver's inter-system
+# bias, which a chain's own clock or, for the model-primary glo_l3oc chain on the joint clock,
+# the per-satellite trims absorb; a common level moves nothing here. Station-days agree to 1 m
+# on the K2 pair and 4-8 m on the K1 three (10-12 and BREW read low: the FDMA clock's
+# day-to-day). CAS DCB publishes no GLONASS C3 lines, so this is the only
+# source. Metres of pseudorange residual, P - model; the clock term is -value / c. Keyed by
+# SVN because the slot assignments change (803 moved from slot R26 to R08 on 2026-09-25); the
+# slot history is igs_satellite_metadata.snx's SATELLITE/PRN block for these SVNs. A slot
+# with no entry is at the datum (0.0). 1.3-4.7 chips at 10.23 Mcps: without this term the
+# seed lands on a grating lobe of the sparse comb (95.9 m) and the tracker parks there.
+GLO_L3_BIAS_M = {803: -135.2, 804: -138.2, 807: +41.0, 808: +43.1, 813: +41.9}
+# (slot, SVN, valid from, valid to or None), UTC; the SNX's epochs. Re-measuring: the station
+# tool adds this term back for R, so its output stays the FDMA offset, not the remainder.
+GLO_SLOT_SVN = (
+    (26, 803, "2025-02-01T04:31", "2026-09-25T06:15"),
+    (8, 803, "2026-09-25T06:30", None),
+    (27, 804, "2025-03-02T00:00", "2025-12-24T05:22"),
+    (6, 804, "2025-12-24T05:22:30", None),
+    (19, 807, "2025-05-16T21:45", None),
+    (20, 808, "2025-10-16T01:00", None),
+    (23, 813, "2026-09-17T06:00", None),
+)
+
+
+def _gpst_of_iso(s):
+    return (datetime.fromisoformat(s).replace(tzinfo=timezone.utc) - GPS_EPOCH).total_seconds() + GPS_UTC_LEAP
+
+
+_GLO_SLOT_SVN_GPST = tuple(
+    (slot, svn, _gpst_of_iso(t0), None if t1 is None else _gpst_of_iso(t1))
+    for slot, svn, t0, t1 in GLO_SLOT_SVN
+)
+
+
+def glonass_svn(slot, t_gpst):
+    """The SVN in GLONASS `slot` at `t_gpst` per GLO_SLOT_SVN, or None when the history has no
+    entry (only the SVNs with an L3OC bias are listed)."""
+    for s, svn, t0, t1 in _GLO_SLOT_SVN_GPST:
+        if s == slot and t_gpst >= t0 and (t1 is None or t_gpst < t1):
+            return svn
+    return None
+
+
+def glonass_l3_bias_s(slot, t_gpst):
+    """Seconds to ADD to the FDMA broadcast clock so it refers to the L3OC code of the satellite
+    in `slot` at `t_gpst` (GLO_L3_BIAS_M, keyed by SVN through GLO_SLOT_SVN): a satellite whose
+    L3OC code arrives late (P - model positive) gets a negative term. 0.0 off the table."""
+    svn = glonass_svn(slot, t_gpst)
+    if svn is None:
+        return 0.0
+    return -GLO_L3_BIAS_M.get(svn, 0.0) / C_LIGHT
+
 F_REL = -4.442807633e-10  # relativistic clock coefficient (s/sqrt(m))
 
 
@@ -408,15 +467,23 @@ def group_delay_s(e, signal, dcb=None):
     ICD identity t_E1 = t_IF_a - BGD_a = t_IF_b - BGD_b, so a record-type change does not step
     the satellite's clock by the BGD difference.
 
-    Returns 0.0 for a signal not handled below (GPS L2C and Galileo E6 among them) and when the
-    term is unavailable rather than guessing, notably BeiDou B2a and B1C, whose TGD_B2ap and
-    TGD_B1Cp are in B-CNAV2 and B-CNAV1 and absent from RINEX 3 (which carries only TGD1
-    B1I/B3I and TGD2 B2I/B3I).
+    Returns 0.0 for a signal not handled below (GPS L2C, Galileo E6 and GLONASS L2OC among
+    them) and when the term is unavailable rather than guessing, notably BeiDou B2a and B1C,
+    whose TGD_B2ap and TGD_B1Cp are in B-CNAV2 and B-CNAV1 and absent from RINEX 3 (which
+    carries only TGD1 B1I/B3I and TGD2 B2I/B3I).
+
+    GLONASS L3OC has no broadcast term and no DCB line; its per-satellite offset from the FDMA
+    clock is this module's own measured table (glonass_l3_bias_s, #210), looked up by the slot
+    and the record's epoch, so a slot reassignment changes the term with the satellite.
     """
     if not signal:
         return 0.0
     sig = str(signal).lower()
     sysc = e.get("sys")
+    if sysc == "R":
+        if "l3" in sig:
+            return glonass_l3_bias_s(int(e.get("prn") or 0), float(e.get("toe_gpst") or 0.0))
+        return 0.0
     # Measured DCBs (gnss_dcb.signal_bias_s) take precedence when loaded. They cover GPS L5,
     # Galileo E5a/E5b and BeiDou B2a/B2b (B2a's broadcast term is not in RINEX 3 at all) and
     # return None otherwise, so a missing pair falls through to the broadcast term for that
