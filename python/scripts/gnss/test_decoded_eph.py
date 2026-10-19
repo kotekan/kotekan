@@ -14,6 +14,7 @@ What each check guards:
 The records are G05 (LNAV) and E14's F/NAV record from BRDC00WRD_R day 292, renamed into the
 decoders' fields and propagated with the decoders' own sv_position functions.
 """
+import ast
 import os
 import sys
 import unittest
@@ -118,6 +119,47 @@ class TestDecodedClock(unittest.TestCase):
     def test_eccentric_galileo_fnav_clock_matches_the_brdc_path(self):
         """E14 is the strong case: its relativistic term swings by ~800 ns over an orbit."""
         self._check(*e14())
+
+
+class TestToeFold(unittest.TestCase):
+    """toe_gpst_near: the GPST reference the toe-age gate measures from. A BeiDou t_oe is BDT
+    seconds of week, 14 s behind GPST."""
+
+    WK = 2440 * 604800.0  # a GPST week start
+
+    def test_beidou_toe_is_bdt(self):
+        got = decoded_eph.toe_gpst_near("C", 345600.0, self.WK + 345700.0)
+        self.assertEqual(got - self.WK, 345614.0)
+
+    def test_gps_and_galileo_toes_are_gpst(self):
+        for gsys in ("G", "E"):
+            got = decoded_eph.toe_gpst_near(gsys, 345600.0, self.WK + 345700.0)
+            self.assertEqual(got - self.WK, 345600.0)
+
+    def test_nearest_week(self):
+        # a toe late in the week, read just after the rollover, is last week's
+        got = decoded_eph.toe_gpst_near("G", 604000.0, self.WK + 100.0)
+        self.assertEqual(got, self.WK - 800.0)
+        # a BDT toe 10 s before the BDT rollover is 4 s into the next GPST week
+        got = decoded_eph.toe_gpst_near("C", 604790.0, self.WK + 604700.0)
+        self.assertEqual(got, self.WK + 604804.0)
+
+    def test_the_broker_folds_through_it(self):
+        """gps_distributed_broker's _decoded_entries builds toe_gpst with toe_gpst_near and
+        keeps no fold of its own."""
+        path = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "gps_distributed_broker.py"
+        )
+        with open(path) as f:
+            tree = ast.parse(f.read(), path)
+        fn = [
+            n
+            for n in ast.walk(tree)
+            if isinstance(n, ast.FunctionDef) and n.name == "_decoded_entries"
+        ][0]
+        src = ast.unparse(fn)
+        self.assertIn("_decfb.toe_gpst_near(", src)
+        self.assertNotIn("302400", src)
 
 
 if __name__ == "__main__":

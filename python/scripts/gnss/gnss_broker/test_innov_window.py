@@ -3,11 +3,12 @@
     /home/kvand/gnss/venv-ft/bin/python -m gnss_broker.test_innov_window     (from python/scripts/gnss)
 
 fleetdll cuts innov_p95_10m / minnov_p95_10m (the model-primacy gate's statistic) from
-ctx.innov_hist and ctx.minnov_hist by time, 600 s back from now. The writers append one sample
-per broker pass (~2 s), so the histories must be pruned by age at 600 s, not by count: a
+ctx.innov_hist and ctx.minnov_hist by time, 600 s back from now. The writers append up to one
+sample per broker pass (~2 s), so the histories must be pruned by age at 600 s, not by count: a
 120-sample cap holds only ~240 s and the "10-minute" p95 is a 4-minute one. Checked on the
 helper both writers share (fits.append_windowed), on dr_joint_shadow's MINNOV append driven
-for 700 s, and on the INNOV write site in seeding.stage_detections_to_seeds.
+for 700 s, and on the INNOV write site in seeding.stage_detections_to_seeds, which appends a
+detection the search re-serves only once (driven through test_escape_dedup's context).
 
 @author Keith Vanderlinde
 """
@@ -160,8 +161,31 @@ def test_innov_site():
     check(not caps, "INNOV keeps no count cap of its own (%s)" % caps)
 
 
+def test_innov_once_per_detection():
+    """The search re-serves a detection, with its ref_hop, until its next pass; the INNOV
+    history takes it once, so innov_n_10m counts detections and the p95 is theirs."""
+    from gnss_broker import test_escape_dedup as td
+
+    ctx = td.held_ctx()
+    td.run(ctx, td.PRN, [td.H0 + td.STEP] * 10, td._off)
+    n = len(ctx.innov_hist.get(td.PRN, []))
+    check(n == 1, "one detection served for 10 cycles: %d INNOV sample(s) (1)" % n)
+    ctx = td.held_ctx()
+    td.run(ctx, td.PRN, [td.H0 + k * td.STEP for k in range(1, 9)], td._off)
+    h = ctx.innov_hist.get(td.PRN, [])
+    check(
+        len(h) == 8 and all(abs(v - td.OFF) < 1e-6 for _, v in h),
+        "8 detections: 8 samples, each the detection's +2 chips (%d)" % len(h),
+    )
+
+
 def main():
-    for fn in (test_helper, test_minnov_append, test_innov_site):
+    for fn in (
+        test_helper,
+        test_minnov_append,
+        test_innov_site,
+        test_innov_once_per_detection,
+    ):
         print(fn.__name__)
         fn()
     print("\n%s (%d failure(s))" % ("FAIL" if _fails else "ALL PASS", len(_fails)))

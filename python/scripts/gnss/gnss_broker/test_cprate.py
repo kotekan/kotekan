@@ -100,12 +100,56 @@ def test_guard_is_on_deviation_not_magnitude():
     )
 
 
+def test_flush_cycle_seeds_the_detection():
+    """--fit-flush-on-reject 3: on the cycle the third rejected fit flushes the history, the
+    fit is the flushed history's, so neither its position and rate nor its maturity may act.
+
+    Driven through seeding.stage_detections_to_seeds on test_escape_dedup's context: a PRN
+    whose detections drift 2 chips/s against a pooled clock at 0 (tol 0.5), with a hold-strength
+    amplitude, three earlier detections in the history and one per cycle after."""
+    from gnss_broker import test_escape_dedup as td
+
+    prn = 9
+    ctx = td.seeding_ctx(cp_rate_model_tol=0.5, fit_flush_on_reject=3)
+    ctx.cb.code_ema = 0.0
+    ctx.status[prn] = {"amp_snr": 20.0}
+
+    def cp_at(h):
+        return (td.CP0 + 2.0 * (h - td.H0) / td.HPS) % td.L
+
+    ctx.cpt.hist[prn] = [
+        (h, cp_at(h), td.DOP)
+        for h in (td.H0 - 3 * td.STEP, td.H0 - 2 * td.STEP, td.H0 - td.STEP)
+    ]
+    logs = td.run(ctx, prn, [td.H0, td.H0 + td.STEP, td.H0 + 2 * td.STEP], cp_at)
+    flushed = [
+        i + 1 for i, lines in enumerate(logs) if any("FLUSHED" in m for m in lines)
+    ]
+    check(
+        flushed == [3],
+        "the third rejected fit flushes the history (cycle %s)" % flushed,
+    )
+    seed = ctx.seeds.get(prn) or {}
+    owner = getattr(seed, "prov", {}).get("code_phase_chips", (None,))[0]
+    check(
+        owner != "cp_fit" and seed.get("code_phase_rate") == 0.0,
+        "on the flush cycle the detection's seed stands (cp0 by %r, rate %r)"
+        % (owner, seed.get("code_phase_rate")),
+    )
+    check(prn not in ctx.fitted, "...and the PRN is not reported fitted")
+    check(
+        prn not in ctx.cp_held and not any("HOLD PRN %d" % prn in m for m in logs[2]),
+        "...and the flushed fit's six points do not admit a hold",
+    )
+
+
 def main():
     for fn in (
         test_unbounded_fit_is_the_defect,
         test_clean_fit_is_admitted,
         test_blown_fit_is_rejected,
         test_guard_is_on_deviation_not_magnitude,
+        test_flush_cycle_seeds_the_detection,
     ):
         print(fn.__name__)
         fn()

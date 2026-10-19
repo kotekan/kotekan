@@ -20,6 +20,26 @@ from gnss_broker.transport import _log_rl
 from gnss_broker.fits import adr_fine_rate
 
 
+def coarse_feed_rows(resid2, status, probe_set):
+    """The coarse feed's satellites: the cohering ones (coherence_s > 0 or coh_frac >= 0.3,
+    the fine feed's test), and never a noise probe.
+
+    Strong but decohered satellites carry real multi-Hz carrier residuals that swing poll to
+    poll from seed and f_ref churn, not orbit error, and the rrate model is a slow per-satellite
+    drift. A probe is noise on this chain whether it is below the horizon or dark (a satellite
+    another chain tracks), and a probe's noise can pass the coherence test; its row is the
+    satellite's receiver-wide one, so the KCOH feed skips probes too."""
+    return {
+        p: rv
+        for p, rv in resid2.items()
+        if p not in probe_set
+        and (
+            ((status.get(p) or {}).get("coherence_s") or 0.0) > 0.0
+            or ((status.get(p) or {}).get("coh_frac") or 0.0) >= 0.3
+        )
+    }
+
+
 def stage_rate_feed_coarse(ctx):
     """Coarse rate feed: each cohering satellite's deep-rate residual into its rrate row.
         

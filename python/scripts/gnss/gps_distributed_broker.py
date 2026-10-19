@@ -77,6 +77,7 @@ from gnss_broker.fits import (  # noqa: E402
     tracker_phase_at,
     rate_residuals,
     cp_rate_from_code_bias,
+    merge_detections,
 )
 from gnss_broker.publish import FleetPublisher  # noqa: E402
 from gnss_broker.seed import Seed  # noqa: E402
@@ -84,6 +85,8 @@ from gnss_broker.cli import (
     build_parser,
     _FROZEN,
     SIGNAL_IMPLIED,
+    parse_joint_consume,
+    telem_gather_endpoint,
 )  # noqa: E402
 from gnss_broker.context import ChainContext  # noqa: E402  (the stage interface)
 from gnss_broker.clockbias import ClockBias  # noqa: E402  (the receiver LO bias)
@@ -102,7 +105,7 @@ from gnss_broker import trimarm  # noqa: E402  (C++ trim arming)
 from gnss_broker import prnmap  # noqa: E402  (live PRN membership)
 from gnss_broker import searchhint  # noqa: E402  (narrow the search)
 from gnss_broker import seeding  # noqa: E402  (detections -> seeds)
-from gnss_broker import navbits  # noqa: E402  (off in production)
+from gnss_broker import navbits  # noqa: E402  (idle: no combiner exports nav_obs)
 from gnss_broker import fleetdll  # noqa: E402  (the fleet DLL shell)
 from gnss_broker.detectors import (  # noqa: E402  (D0, D1, D3)
     QSeries,
@@ -152,7 +155,8 @@ def main(argv=None, rx=None, publisher=None):
     _hold = HoldState()  # why a sat is held rather than dropped
     _cpt = CpTracking()  # per-sat code-phase history
     _rf = RateFeedState()  # carrier-rate observables and the commanded reference
-    _nav = NavDecoders()  # broadcast nav-message decoders (off in production)
+    _nav = NavDecoders()  # broadcast nav-message decoders (idle on CHORD, where no
+    # combiner exports nav_obs)
     # Per-satellite q series that keeps the satellites that stopped reporting. Judge an arm on
     # it, never on the DLL line, which lists only the survivors (see gnss_broker/detectors.py).
     _qpop = QSeries()
@@ -265,7 +269,8 @@ def main(argv=None, rx=None, publisher=None):
     band_id = "%.2fMHz" % (args.carrier_hz / 1e6)
     # The joint solve (dr_joint_shadow) runs whenever a --joint-consume consumer is named;
     # without it the consumer would read a state nothing feeds.
-    args.joint_shadow = bool(args.joint_consume)
+    joint_consume = parse_joint_consume(args.joint_consume)
+    args.joint_shadow = bool(joint_consume)
     if args.rrate_command and not args.rrate_state:
         args.rrate_state = True  # same rule: the command gates on the row's sigma, and
         # only the feed can bring that below infinity
@@ -293,8 +298,10 @@ def main(argv=None, rx=None, publisher=None):
     # (telem.shared_client): the stream carries every chain on one connection and the store is
     # keyed by chain. `telem_chain` is this thread's chain key, the string the trackers stamp
     # on every frame, read from the log tag rather than re-derived from --signal (nothing
-    # enforces that the two agree).
-    _tg = _telem.parse_endpoint(args.telem_gather)
+    # enforces that the two agree). A replay reads no live gather (cli.DARK_GATHER).
+    _tg = _telem.parse_endpoint(
+        telem_gather_endpoint(args.telem_gather, args.transcript_read)
+    )
     telem_client = _telem.shared_client(*_tg) if _tg else None
     telem_chain = log_tag() or (args.signal or "")
     if telem_client is not None:
@@ -550,7 +557,6 @@ def main(argv=None, rx=None, publisher=None):
     # (--spectrum-endpoints) for PRNs at or above lock_snr; read by the dead-reckon model.
     # Without --spectrum-endpoints it never updates and get() returns exactly 0.0.
     bsat = SatBiasFilter(gain=args.bsat_gain)
-    joint_consume = {c.strip() for c in args.joint_consume.split(",") if c.strip()}
 
     # -- P2c rotation (--joint-p2c-rotate) -------------------------------------------------
     # Withhold the most-established satellite from the joint state, coast it for
@@ -1155,15 +1161,14 @@ def main(argv=None, rx=None, publisher=None):
 
     def _decoded_entries(t_utc):
         """Build decoded_eph entries (sys, prn, signal, eph, sv_pos, toe_gpst) from whichever
-        decoders exist. toe_gpst is the eph's time-of-week field placed within half a week of
-        t_utc, the epoch the caller evaluates at (deadreckon.dr_eph_epoch). Never raises: a
-        bad decoder or eph is skipped."""
+        decoders exist. toe_gpst is the eph's time-of-week field as GPST, placed within half a
+        week of t_utc (decoded_eph.toe_gpst_near), the epoch the caller evaluates at
+        (deadreckon.dr_eph_epoch). Never raises: a bad decoder or eph is skipped."""
         ents = []
         if not _decfb:
             return ents
         gpst_now = _decfb.gpst_of_utc(datetime.fromtimestamp(t_utc, tz=timezone.utc))
-        wk = int(gpst_now // 604800)
-        for signal, sys, svp, toef, getter in _dec_reg:
+        for signal, gsys, svp, toef, getter in _dec_reg:
             try:
                 dec = getter()
                 if dec is None:
@@ -1173,12 +1178,8 @@ def main(argv=None, rx=None, publisher=None):
                         e = dec.ephemeris(prn)
                         if e is None or toef not in e:
                             continue
-                        toe_gpst = wk * 604800 + e[toef]  # nearest-week fold
-                        if toe_gpst - gpst_now > 302400:
-                            toe_gpst -= 604800
-                        elif toe_gpst - gpst_now < -302400:
-                            toe_gpst += 604800
-                        ents.append((sys, prn, signal, e, svp, toe_gpst))
+                        toe_gpst = _decfb.toe_gpst_near(gsys, e[toef], gpst_now)
+                        ents.append((gsys, prn, signal, e, svp, toe_gpst))
                     except Exception:
                         continue
             except Exception:
@@ -1234,9 +1235,9 @@ def main(argv=None, rx=None, publisher=None):
     # tracker_phase_at reads), so each POST can be compared with the previous one in physical
     # units.
     seed_audit_prev = {}
-    # Broker start, for the joint feed warmup (joint_feed_warmup_s) and the sawtooth detector's
-    # startup hold-off. Wall clock on purpose: the warmup guards against establishment-phase
-    # measurements, and establishment runs on wall time whatever the transcript clock replays.
+    # Broker start, for the joint feed warmup (joint_feed_warmup_s). Wall clock on purpose: the
+    # warmup guards against establishment-phase measurements, and establishment runs on wall
+    # time whatever the transcript clock replays.
     broker_t0 = time.time()
 
     # ── The stage interface (gnss_broker/context.py) ──────────────────────────────────────
@@ -1347,11 +1348,11 @@ def main(argv=None, rx=None, publisher=None):
         # 1. collect best-SNR detection per PRN across all detection sources
         best = {}  # prn -> (snr, dop, cp, ref_hop, nh, cp_long, cp_at_ref)
         _ctx.begin_cycle(best=best)
+        _det_lists = []  # every detector's list this cycle, for the publisher
         for d_ep in detectors:
             try:
                 dets = _get("%s/get_detections" % d_ep)
-                if dets:
-                    last_dets[:] = dets  # published verbatim (see FleetPublisher)
+                _det_lists.append(dets)
             except Exception as e:
                 _log("get_detections %s failed: %s" % (d_ep, e))
                 continue
@@ -1369,6 +1370,9 @@ def main(argv=None, rx=None, publisher=None):
                         float(d.get("code_phase_long_chips", -1.0)),
                         float(d.get("code_phase_at_ref_chips", -1.0)),
                     )
+        _dets = merge_detections(_det_lists)
+        if _dets:
+            last_dets[:] = _dets  # published verbatim (see FleetPublisher)
         # --detectors-monitor: the detections are kept for the record (stage_dead_reckon's
         # search_monitor) and withheld from every consumer that would act on them. `best` is
         # the dict begin_cycle handed the context, so it is emptied in place.
@@ -1615,9 +1619,9 @@ def main(argv=None, rx=None, publisher=None):
             _ctx.fe_hop_t = _now() if _fh > 0.0 else None
             if _fh > 0.0:
                 # Frozen time base (fe_axis_stale_s): this hop comes from the one --combiner, and
-                # when its pow_hop stops advancing (a wedged capture window, an F-engine re-base)
-                # the measurements stop while the orbit model moves on with the wall clock.
-                # Log only: dr_clock_freeze_s holds the clock solve meanwhile.
+                # when its pow_hop stops advancing (a stalled instance, e.g. ring starvation, or
+                # an F-engine re-base) the measurements stop while the orbit model moves on with
+                # the wall clock. Log only: dr_clock_freeze_s holds the clock solve meanwhile.
                 # The stamp is the time the hop last advanced, not the time of this poll, or the
                 # age could never exceed one cycle. This guard covers the global case:
                 # fits.instance_stall_verdict (same stamp rule) refuses to accuse an instance
@@ -1632,20 +1636,22 @@ def main(argv=None, rx=None, publisher=None):
                     _log_rl(
                         "fe-stale",
                         "*** TIME BASE FROZEN: newest telemetry hop has not advanced in "
-                        "%.0f s (hop %.0f, combiner %s). t_now_abs is built from this, so "
-                        "the receiver clock, every det_age and every model-evaluated seed "
-                        "on this chain are now standing still while the sky is not. This "
-                        "is an instance stall upstream, not a tracking fault -- check that "
-                        "combiner's pow_hop and its node's capture window."
+                        "%.0f s (hop %.0f, combiner %s). The measurements on this chain "
+                        "have stopped while t_now_abs, the orbit models and the seeds keep "
+                        "advancing on wall time -- an instance stall upstream, not a "
+                        "tracking fault; check that combiner's pow_hop and its node's log."
                         % (_now() - _fh_prev[1], _fh, combiner),
                         every_s=60.0,
                     )
-                # advanced -> restamp; frozen -> keep the stamp so the staleness accrues
-                fe_axis[0] = (
-                    (_fh, _now())
-                    if (_fh_prev is None or _fh > _fh_prev[0])
-                    else (_fh, _fh_prev[1])
-                )
+                # Advanced -> restamp; frozen -> keep the stamp so the staleness accrues; fallen
+                # back (the newest row dropped out, or the ingestion bound picked an older one)
+                # -> keep the previous sample, and publish it with its own stamp so the PRN
+                # scheduler ages it rather than scheduling from the lower hop. The axis never
+                # runs backwards, so a backward re-base reads as frozen.
+                if _fh_prev is None or _fh > _fh_prev[0]:
+                    fe_axis[0] = (_fh, _now())
+                elif _fh < _fh_prev[0]:
+                    _ctx.fe_hop_now, _ctx.fe_hop_t = _fh_prev
                 # the filtered offset (see fe_off at its definition)
                 _ow = _now()
                 _oi = _fh / args.hops_per_sec - _ow
@@ -1836,23 +1842,10 @@ def main(argv=None, rx=None, publisher=None):
         else:
             _rf.resid2 = {}
         if args.rrate_state and _rf.resid2:
-            # Feed only cohering sats (coherence_s > 0 or coh_frac >= 0.3, the fine feed's
-            # test). Strong but decohered sats carry real multi-Hz carrier residuals that swing
-            # poll to poll from seed and f_ref churn, not orbit error, and the rrate model is a
-            # slow per-sat drift. Never a dark probe (--probe-dark: a probe with no prediction on
-            # this chain): it is a satellite another chain tracks, and its noise would feed that
-            # satellite's receiver-wide row. Below-horizon probes still pass (docs/CHORD_BUGLIST.md
-            # #192 (h)).
-            _dark_probes = {p for p in _ctx.probe_set if p not in _ctx.pred}
-            _rf.resid2 = {
-                _p: _rv
-                for _p, _rv in _rf.resid2.items()
-                if _p not in _dark_probes
-                and (
-                    ((_ctx.status.get(_p) or {}).get("coherence_s") or 0.0) > 0.0
-                    or ((_ctx.status.get(_p) or {}).get("coh_frac") or 0.0) >= 0.3
-                )
-            }
+            # Feed only cohering satellites, never a noise probe (ratefeed.coarse_feed_rows).
+            _rf.resid2 = ratefeed.coarse_feed_rows(
+                _rf.resid2, _ctx.status, _ctx.probe_set
+            )
         # KCOH rate feed (--rrate-kcoh-feed): the KCOH fold's remaining rate into the rrate
         # rows. Runs before the coarse feed so a fresh acceptance here deweights this cycle's
         # coarse measurements of the same satellite (--rrate-coarse-deweight). The estimate is

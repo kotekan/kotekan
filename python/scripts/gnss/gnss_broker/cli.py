@@ -1,6 +1,7 @@
-"""The broker's command-line surface: the argument parser and the frozen tuning constants.
+"""The broker's command-line surface: the argument parser, the frozen tuning constants, and
+the post-parse checks and resolutions of single flags (--joint-consume, --telem-gather).
 
-Neither depends on anything in the broker, so they live here rather than in
+None of them depends on anything in the broker, so they live here rather than in
 gps_distributed_broker.main().
 
 `--help` prints the broker's docstring, not this one: build_parser() takes its description
@@ -595,6 +596,36 @@ SIGNAL_IMPLIED = frozenset(
     )
 )
 assert not SIGNAL_IMPLIED & _FROZEN.keys(), SIGNAL_IMPLIED & _FROZEN.keys()
+
+# The --joint-consume names a consumer tests for (deadreckon.py, gps_distributed_broker.main).
+JOINT_CONSUMERS = ("clk", "rate", "slew")
+
+
+def parse_joint_consume(s):
+    """--joint-consume -> the set of consumer names; SystemExit on a name no consumer tests for.
+
+    Any name switches the joint solve on, so a mistyped one would run the solve and consume
+    nothing, silently."""
+    names = {c.strip() for c in (s or "").split(",") if c.strip()}
+    unknown = sorted(names - set(JOINT_CONSUMERS))
+    if unknown:
+        raise SystemExit(
+            "--joint-consume: unknown consumer(s) %s; the consumers are %s"
+            % (", ".join(map(repr, unknown)), ", ".join(JOINT_CONSUMERS))
+        )
+    return names
+
+
+# The --telem-gather a replay (--transcript-read) connects to. A transcript does not hold the
+# telemetry stream, so a replay that reached a live gather (one listens on the gnss VM) would
+# fold live frames into the run. Only root can listen below port 1024 and nothing serves port
+# 1, so the client exists, as in the recording, and every connect is refused.
+DARK_GATHER = "127.0.0.1:1"
+
+
+def telem_gather_endpoint(telem_gather, transcript_read):
+    """The --telem-gather this run connects to: DARK_GATHER when a replay names one."""
+    return DARK_GATHER if (telem_gather and transcript_read) else telem_gather
 
 
 def build_parser(description):

@@ -744,8 +744,66 @@ def test_seed_offset_summary_wrap():
     check("PRN3 +0.80" in line, "...and +0.80 away from the wrap (%s)" % line)
 
 
+def _consumer_names_tested(path):
+    """The string constants `'<name>' in [ctx.]joint_consume` tests for in `path`."""
+    with open(path) as f:
+        tree = ast.parse(f.read(), path)
+    return {
+        n.left.value
+        for n in ast.walk(tree)
+        if isinstance(n, ast.Compare)
+        and isinstance(n.left, ast.Constant)
+        and len(n.ops) == 1
+        and isinstance(n.ops[0], ast.In)
+        and ast.unparse(n.comparators[0]) in ("joint_consume", "ctx.joint_consume")
+    }
+
+
+def test_consume_names():
+    """--joint-consume refuses a name no consumer tests for: any name runs the joint solve,
+    so a typo ('clock', 'clk,rat') would run it and consume nothing."""
+    from gnss_broker import cli
+
+    parse = getattr(cli, "parse_joint_consume", None)
+    check(parse is not None, "cli.parse_joint_consume exists")
+    if parse is None:
+        return
+    check(parse("clk,rate") == {"clk", "rate"}, "'clk,rate' -> {clk, rate}")
+    check(parse(" rate , slew ") == {"rate", "slew"}, "' rate , slew ' -> {rate, slew}")
+    check(parse("") == set(), "'' -> no consumer")
+    for bad, name in (("clock", "'clock'"), ("clk,rat", "'rat'")):
+        try:
+            parse(bad)
+            msg = None
+        except SystemExit as e:
+            msg = str(e)
+        check(
+            msg is not None and name in msg,
+            "%r is refused at startup, naming %s (%s)" % (bad, name, msg),
+        )
+    tested = _consumer_names_tested(BROKER) | _consumer_names_tested(DEADRECKON)
+    check(
+        tested == set(cli.JOINT_CONSUMERS),
+        "the names the consumers test for are JOINT_CONSUMERS (%s vs %s)"
+        % (sorted(tested), sorted(cli.JOINT_CONSUMERS)),
+    )
+    with open(BROKER) as f:
+        tree = ast.parse(f.read(), BROKER)
+    sites = [
+        ast.unparse(n.value)
+        for n in ast.walk(tree)
+        if isinstance(n, ast.Assign)
+        and any(ast.unparse(t) == "joint_consume" for t in n.targets)
+    ]
+    check(
+        sites == ["parse_joint_consume(args.joint_consume)"],
+        "the broker builds joint_consume only through parse_joint_consume (%s)" % sites,
+    )
+
+
 def main():
     for fn in (
+        test_consume_names,
         test_live_numbers_convert,
         test_consumer_adopts_l2c_and_e6,
         test_step_refused_in_both_units,

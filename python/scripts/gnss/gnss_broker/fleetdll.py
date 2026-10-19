@@ -391,8 +391,9 @@ def stage_fleet_dll(ctx):
         # cadence change is live-only and needs a live measurement.
         instruments.instr_element_poll(ctx)
         # The served innovation: freshest value and 10-minute p95 per PRN. Cut by time here at
-        # read, not by count at write: a PRN detected once in ten minutes reports that one
-        # sample, one with no sample in ten minutes stops being served, and its history is
+        # read, not by count at write. The history holds one sample per detection, however many
+        # cycles the search re-serves it, so a PRN detected once in ten minutes reports that one
+        # sample; one with no sample in ten minutes stops being served, and its history is
         # dropped after twenty.
         ctx.dllp.innov_pub = {}
         for _p, _ih in list(ctx.innov_hist.items()):

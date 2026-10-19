@@ -255,12 +255,18 @@ def stage_coast_drop(ctx):
             _old_rate = ctx.seeds[prn].get("doppler_rate_hz_s", 0.0)
             # the Doppler the tracker is applying now
             old_dop = ctx.seeds[prn].get("doppler_hz", new_dop) + _old_rate * _age
-            if new_dop != old_dop:
+            _d_rate = _rate_eff - _old_rate
+            if new_dop != old_dop or _d_rate != 0.0:
                 # Re-express cp0 in the new Doppler's currency at every forecast update: cp0 means
                 # something only paired with its Doppler, and changing the Doppler alone walks the
                 # despread by t_abs*f_chip*ddop/f_carrier chips. retag_seed_doppler preserves the
                 # phase at now; without a sample-0 anchor (utc0_sample0 unset) it works at the
                 # seed's ref_hop epoch instead, a partial correction.
+                #
+                # cp0's partner is the stored Doppler, so ddop is the stored value's change: the
+                # change at now less d_rate*age when this write also changes the rate. The rate
+                # change moves the phase at now by its own quadratic term (tracker_phase_at), which
+                # cp0 absorbs too.
                 _t_retag = (
                     _ax
                     if _ax is not None
@@ -269,16 +275,24 @@ def stage_coast_drop(ctx):
                 ctx.seeds[prn].put(
                     "coast_retag",
                     epoch=ctx.seeds[prn].get("ref_hop"),
-                    code_phase_chips=retag_seed_doppler(
-                        ctx.seeds[prn].get("code_phase_chips", 0.0),
-                        old_dop,
-                        new_dop,
-                        _t_retag,
-                        ctx.args.chip_rate_hz,
-                        ctx.args.carrier_hz,
-                        ctx.args.code_doppler_sign,
-                        ctx.code_len,
-                    ),
+                    code_phase_chips=(
+                        retag_seed_doppler(
+                            ctx.seeds[prn].get("code_phase_chips", 0.0),
+                            old_dop,
+                            new_dop - _d_rate * _age,
+                            _t_retag,
+                            ctx.args.chip_rate_hz,
+                            ctx.args.carrier_hz,
+                            ctx.args.code_doppler_sign,
+                            ctx.code_len,
+                        )
+                        - 0.5
+                        * (ctx.args.chip_rate_hz / ctx.args.carrier_hz)
+                        * _d_rate
+                        * _age
+                        * _age
+                    )
+                    % ctx.code_len,
                     # stored at ref_hop, not at now (see above)
                     doppler_hz=new_dop - _rate_eff * _age,
                 )
@@ -436,7 +450,10 @@ def stage_detections_to_seeds(ctx):
         dh_ = ctx.cpt.dop_hist.get(prn, [])
         if dh_ and (ref_hop - dh_[-1][0]) > ctx.max_gap_hops:
             dh_ = []
-        if not dh_ or ref_hop != dh_[-1][0]:
+        # A re-served detection (the ref_hop of the last one) is not a new measurement, so the
+        # innovation history and the escape referee below take each detection once.
+        new_det = not dh_ or ref_hop != dh_[-1][0]
+        if new_det:
             dh_.append((ref_hop, dop))
             dh_ = dh_[-ctx.hist_len :]
         ctx.cpt.dop_hist[prn] = dh_
@@ -551,7 +568,7 @@ def stage_detections_to_seeds(ctx):
             # absolute ceiling would reject the feed-forward the trim needs. A rejection is logged
             # and counts toward --fit-flush-on-reject; it does not change the seeded rate, which is
             # the clock's only under --cp-rate-model-primary (below). The fit's position (cp_ref at
-            # h0) is seeded either way. 0 disables.
+            # h0) is seeded either way, except on the cycle that flushes the history. 0 disables.
             _seed_rate = rate
             _tol = getattr(ctx.args, "cp_rate_model_tol", 0.0)
             if _tol > 0.0 and ctx.cb.code_ema is not None:
@@ -616,6 +633,9 @@ def stage_detections_to_seeds(ctx):
                                 ),
                             )
                         )
+                        # The fit is the flushed history's, position included: from this cycle
+                        # the detection's own seed stands, and fit_trusted below is false.
+                        fit = None
                     else:
                         ctx.cpt.rej_streak[prn] = _n
                 else:
@@ -635,14 +655,15 @@ def stage_detections_to_seeds(ctx):
             # Substitute the command only, never the measurement: `rate` stays the fitted slope,
             # because code_clock_bias_sample() below contributes it to the very l-a pool `_model`
             # came from, and feeding the pool its own output would reinforce whatever it believes.
-            seed.put(
-                "cp_fit",
-                epoch=h0,
-                code_phase_rate=_seed_rate,
-                ref_hop=h0,
-                code_phase_chips=cp_ref,
-            )
-            ctx.fitted.add(prn)
+            if fit is not None:
+                seed.put(
+                    "cp_fit",
+                    epoch=h0,
+                    code_phase_rate=_seed_rate,
+                    ref_hop=h0,
+                    code_phase_chips=cp_ref,
+                )
+                ctx.fitted.add(prn)
             # This fit's (l-a) sample: its slope over f_chip. The slope is residual (the replica
             # feeds the geometric code Doppler forward), so no carrier term is subtracted.
             la = code_clock_bias_sample(
@@ -655,12 +676,13 @@ def stage_detections_to_seeds(ctx):
             # or above.
             if snr >= ctx.args.acquire_snr and abs(la) < ctx.args.code_bias_max * 1e-6:
                 ctx.la_samples.append(la)
-            _log_rl(
-                "cpfit-%d" % prn,
-                "PRN %d cp-fit: %.2f chips @ hop %d, slope %+.3f chips/s "
-                "(%d pts, l-a %+.3f ppm)"
-                % (prn, cp_ref, h0, rate * ctx.args.hops_per_sec, len(h), la * 1e6),
-            )
+            if fit is not None:
+                _log_rl(
+                    "cpfit-%d" % prn,
+                    "PRN %d cp-fit: %.2f chips @ hop %d, slope %+.3f chips/s "
+                    "(%d pts, l-a %+.3f ppm)"
+                    % (prn, cp_ref, h0, rate * ctx.args.hops_per_sec, len(h), la * 1e6),
+                )
         # Measured overlay alignment: the search reports the long-code phase. cp0 and the seed are
         # both arguments in the C = arg + n*cps convention, so matching the primary phase and the
         # overlay index gives
@@ -827,9 +849,9 @@ def stage_detections_to_seeds(ctx):
                 ph = ph % LLc
                 seed.put("nh_lift", epoch=ref_hop, code_phase_at_ref_chips=ph)
         # Hold on lock: once a PRN shows a real lock, freeze its seed tuple and let the DLL own the
-        # sub-chip residual. The search's per-fix cp is good to ~1-2 chips, so re-anchoring on every
-        # fit would inject that jitter into the despread; the fit is for capture, the frozen anchor
-        # plus the DLL for tracking.
+        # sub-chip residual. Re-anchoring on every fit would inject the per-fix cp scatter (and any
+        # wrong-lobe outlier) into the despread; the fit is for capture, the frozen anchor plus the
+        # DLL for tracking.
         #
         # (cp0, rate, ref_hop, Doppler) is the tracker's code currency: cp0 shifts by
         # t_abs*f_chip/f_carrier chips per Hz of Doppler change, so the currency must be piecewise
@@ -908,7 +930,8 @@ def stage_detections_to_seeds(ctx):
             ) - ctx.code_len / 2.0
             # Pruned by age at the publish block's 10-minute window (fits.append_windowed), so the
             # statistic it cuts from these covers the whole window.
-            append_windowed(ctx.innov_hist.setdefault(prn, []), ctx.t0, _inv)
+            if new_det:
+                append_windowed(ctx.innov_hist.setdefault(prn, []), ctx.t0, _inv)
         # Model-primary PRNs (mp_flipped) stop here. The detection has done all it may: the
         # deep-gate stamp above, and the joint feed and MINNOV in the dead-reckon stage (the PRN is
         # dead-reckon-owned, so INNOV is skipped). The seed stays the model's, slewed by the
@@ -949,9 +972,9 @@ def stage_detections_to_seeds(ctx):
                 )
             # Median gate: per-detection cp noise is 0.03-0.5 chips depending on the satellite
             # (multipath, BOC refine), so the 5-consecutive-sign rule alone lets a noisy satellite
-            # sustain a false accusation; the median of the last 9 cycles' values must also exceed
-            # the bar.
-            if cp_err is not None:
+            # sustain a false accusation; the median of the last 9 detections' values must also
+            # exceed the bar.
+            if cp_err is not None and new_det:
                 ctx.cpt.err_hist.setdefault(prn, []).append(cp_err)
                 del ctx.cpt.err_hist[prn][:-9]
         # Escape counting: only sign-consistent disagreements count. A real wrong-lobe park is
@@ -998,12 +1021,15 @@ def stage_detections_to_seeds(ctx):
             and not amp_veto
             and not integ_veto
         ):
-            n_prev = ctx.cpt.escape.get(prn, 0)
-            same_sign = (n_prev == 0) or (
-                cp_err * ctx.cpt.escape_sign.get(prn, 0.0) > 0
-            )
-            ctx.cpt.escape[prn] = n_prev + 1 if same_sign else 1
-            ctx.cpt.escape_sign[prn] = cp_err
+            # Counted once per detection, which the search re-serves until its next pass: the
+            # cycles of one detection are not consecutive agreeing measurements.
+            if new_det:
+                n_prev = ctx.cpt.escape.get(prn, 0)
+                same_sign = (n_prev == 0) or (
+                    cp_err * ctx.cpt.escape_sign.get(prn, 0.0) > 0
+                )
+                ctx.cpt.escape[prn] = n_prev + 1 if same_sign else 1
+                ctx.cpt.escape_sign[prn] = cp_err
         else:
             ctx.cpt.escape[prn] = 0
         # This monitor must stay a standalone statement above the escape `if`: placed between that

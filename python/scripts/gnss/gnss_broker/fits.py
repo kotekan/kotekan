@@ -667,3 +667,10 @@ def append_windowed(hist, t, v, window_s=600.0, cap=1000):
         n += 1
     del hist[:n]
     del hist[:-cap]
+
+
+def merge_detections(lists):
+    """One cycle's /get_detections lists, one per detector, as the list the publisher re-serves:
+    every detector's detections, in detector order. Empty when no detector reported any; the
+    caller then keeps serving the previous cycle's."""
+    return [d for dets in lists if dets for d in dets]

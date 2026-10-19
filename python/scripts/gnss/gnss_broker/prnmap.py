@@ -717,7 +717,8 @@ def _at_hop(ctx, a, now):
         # Advance the sample to the cycle clock by its age, then add the lead. The status
         # poll stamps fe_hop_t on the frozen cycle clock, so this cycle's sample has age 0
         # and prn_reconfig_lead_s must cover the in-cycle delay to the POST; a positive age
-        # means this cycle's status poll failed and the sample is left from an earlier one.
+        # means the sample is left from an earlier poll, because this cycle's poll failed or
+        # its newest hop fell below the axis's (the poll then publishes the kept sample).
         # A deadline already past is applied at each node's next frame, indistinguishable
         # from a met one.
         age = float(now) - float(ft)

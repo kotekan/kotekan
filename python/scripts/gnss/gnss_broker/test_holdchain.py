@@ -87,10 +87,12 @@ def test_monitor_is_not_a_chain_member():
 
 
 def test_err_hist_takes_one_sample_per_detection_and_never_none():
-    """Every append to the median gate's history is guarded by `cp_err is not None`.
+    """Every append to the median gate's history is guarded by `cp_err is not None` and by
+    `new_det`.
 
     The gate medians the last 9 samples: a second, unguarded append halves its window
-    and lets a None in, on which statistics.median raises.
+    and lets a None in, on which statistics.median raises; an append on every cycle fills it
+    with copies of one detection the search re-serves.
     """
     found = []
 
@@ -116,9 +118,15 @@ def test_err_hist_takes_one_sample_per_detection_and_never_none():
     V().visit(_seeding_tree())
     check(len(found) == 1, "exactly one err_hist append (found %d)" % len(found))
     for lineno, guards in found:
+        conjuncts = [c for g in guards for c in g.split(" and ")]
         check(
-            any(g == "cp_err is not None" for g in guards),
+            "cp_err is not None" in conjuncts,
             "err_hist append at line %d is inside `if cp_err is not None`" % lineno,
+        )
+        check(
+            "new_det" in conjuncts,
+            "err_hist append at line %d takes a new detection only (`new_det`)"
+            % lineno,
         )
 
 

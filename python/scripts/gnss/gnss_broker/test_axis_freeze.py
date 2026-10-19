@@ -16,7 +16,7 @@ of one cycle, never crosses the bar, and leaves a whole-fleet freeze unreported 
 per-instance guard correctly stays silent.
 
 The guard is modelled here, not imported: it lives inline in the broker's cycle loop and
-cannot be called. `axis_stale_reference` below transcribes its stamp rule, and test 0 asserts
+cannot be called. `axis_step` below transcribes its stamp rule, and test 0 asserts
 the transcription against the shipped source text so the two cannot drift silently.
 
 @author Keith Vanderlinde
@@ -35,11 +35,26 @@ def check(ok, what):
         _fails.append(what)
 
 
+def axis_step(fe_axis, hop, now):
+    """One status poll's update -> (fe_axis, fe_hop_now, fe_hop_t), the broker's rule.
+
+    Keep (hop, wall time the hop last advanced). A hop below the kept one leaves the axis as
+    it is and is published as the kept sample with its own stamp, so the PRN scheduler ages
+    it; otherwise the poll's hop is published, stamped now.
+    """
+    hop_now, hop_t = hop, now
+    if fe_axis is None or hop > fe_axis[0]:
+        fe_axis = (hop, now)
+    elif hop < fe_axis[0]:
+        hop_now, hop_t = fe_axis
+    return fe_axis, hop_now, hop_t
+
+
 def axis_stale_reference(hops_and_times, stale_s):
     """Feed [(newest_hop, wall)] in order; return the wall times at which it would warn.
 
-    The rule, from the broker: keep (hop, wall time the hop last advanced); warn when the hop
-    has not advanced and that stamp is older than stale_s.
+    The rule, from the broker: warn when the hop has not advanced past the kept one and the
+    kept stamp is older than stale_s.
     """
     fe_axis = None
     fired = []
@@ -54,7 +69,7 @@ def axis_stale_reference(hops_and_times, stale_s):
             and now - prev[1] > stale_s
         ):
             fired.append(now)
-        fe_axis = (hop, now) if (prev is None or hop > prev[0]) else (hop, prev[1])
+        fe_axis = axis_step(fe_axis, hop, now)[0]
     return fired
 
 
@@ -80,10 +95,14 @@ def main():
     src = open(
         os.path.join(os.path.dirname(__file__), "..", "gps_distributed_broker.py")
     ).read()
-    rule = "fe_axis[0] = ((_fh, _now()) if (_fh_prev is None or _fh > _fh_prev[0]) else (_fh, _fh_prev[1]))"
+    rule = (
+        "if _fh_prev is None or _fh > _fh_prev[0]: fe_axis[0] = (_fh, _now()) "
+        "elif _fh < _fh_prev[0]: _ctx.fe_hop_now, _ctx.fe_hop_t = _fh_prev"
+    )
     check(
         "".join(rule.split()) in "".join(src.split()),  # match code, not its formatting
-        "the broker still keeps the stamp of the last ADVANCE (not of this poll)",
+        "the broker keeps the stamp of the last ADVANCE (not of this poll), and a hop "
+        "below the kept one neither moves the axis nor is published",
     )
 
     # ---- 1. the rule fires, and promptly -------------------------------------------------
@@ -148,7 +167,26 @@ def main():
         "... and it does catch one-of-twelve, which the global guard cannot see",
     )
 
-    # ---- 6. every help string must survive format_help() -------------------------------
+    # ---- 6. a drop-back neither moves the axis nor pulls a swap deadline earlier ---------
+    # The newest row falls back 10 s (its satellite left the poll) at t0 + 2. The axis keeps
+    # (h0, t0), and the PRN scheduler, handed the kept sample, extrapolates it to t0 + 2.
+    from gnss_broker import prnmap
+    from types import SimpleNamespace as NS
+
+    h0, t0 = 36_373_000_000.0, 1000.0
+    a = NS(hops_per_sec=HPS, prn_reconfig_lead_s=5.0, prn_reconfig_axis_max_age_s=30.0)
+    ax, fh, ft = axis_step(None, h0, t0)
+    before = prnmap._at_hop(NS(fe_hop_now=fh, fe_hop_t=ft), a, t0)
+    ax, fh, ft = axis_step(ax, h0 - 10.0 * HPS, t0 + 2.0)
+    check(ax == (h0, t0), "a 10 s drop-back keeps the axis at (h0, t0): %r" % (ax,))
+    after = prnmap._at_hop(NS(fe_hop_now=fh, fe_hop_t=ft), a, t0 + 2.0)
+    check(
+        after is not None and after >= before,
+        "...and the deadline computed 2 s later is no earlier (%r vs %r hops, %.1f s)"
+        % (after, before, ((after or 0) - before) / HPS),
+    )
+
+    # ---- 7. every help string must survive format_help() -------------------------------
     # argparse interpolates help strings, so a literal "75% of windows" is a format specifier.
     # Python 3.14 (the broker's venv-ft) rejects it in add_argument, so the broker dies at
     # startup; older interpreters build the parser and fail only when help is formatted.

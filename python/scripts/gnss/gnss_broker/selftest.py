@@ -245,7 +245,7 @@ for key, want in (
 # zero, which is what makes the slew safe to run every pass.
 import random as _rnd
 
-from fits import dr_cp0, dr_seed_phys  # noqa: E402
+from gnss_broker.fits import dr_cp0, dr_seed_phys  # noqa: E402
 
 _rnd.seed(30)
 _CHIP, _FC, _S, _HPS, _MOD = 10.23e6, 1176.45e6, -1.0, 195312.5, 1023000.0

@@ -65,6 +65,19 @@ def _week_wrap(dt):
     return dt
 
 
+def toe_gpst_near(sys, toe_sow, gpst_now):
+    """A decoded ephemeris's reference time (seconds of week) as continuous GPST, in the week
+    that puts it within half a week of gpst_now: the `toe_gpst` of an entry. BeiDou's t_oe is
+    BDT seconds of week (BDT = GPST - 14 s); GPS and Galileo count from the GPST week."""
+    toe = toe_sow - BDT_GPST if sys == "C" else toe_sow
+    toe_gpst = int(gpst_now // 604800) * 604800 + toe
+    if toe_gpst - gpst_now > 302400:
+        toe_gpst -= 604800
+    elif toe_gpst - gpst_now < -302400:
+        toe_gpst += 604800
+    return toe_gpst
+
+
 def _sat_clock(eph, sys, signal, t_sow):
     """Broadcast SV clock bias (s): af0 + af1*dt + af2*dt^2 about t0c plus the relativistic
     term F*e*sqrtA*sin(E), as sat_pos_clk computes them; dt and tk are week-wrapped. None when
