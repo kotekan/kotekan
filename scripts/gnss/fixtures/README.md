@@ -13,7 +13,7 @@ legitimately differ. The point of the fixture is that the *input* is frozen.
 | `broker_fake_l5.jsonl` | `broker_fakefleet.py` | detections → seeding → cp currency → status → DLL → seed POST, 60 cycles / 59 posts, GPS L5 geometry. The seeding spine and the DLL only: no almanac/BRDC predictor, dead-reckon seeder or nav-bit path. Moved by `carrier_hz`, `hops_per_sec`, `dll_gain` |
 | `broker_onsky_l5.jsonl.gz.digest` | live GPS L5, 2026-08-08 18:05 UTC | the real thing: 56 cycles, 1213 gets, **934 posts across 17 endpoints** including `set_doppler_hints` / `set_nh_hint`, the almanac predictor, the dead-reckon seeder and the code-bias pool. Moved by `carrier_hz`, `hops_per_sec`, `code_bias_alpha`, `bias_alpha` |
 | `broker_onsky_e5a.jsonl.gz.digest` | live Galileo E5a, 2026-08-08 18:2x UTC | model-primary: 41 cycles, **468 posts**, no detections at all — the dead-reckon seeder. Moved by `carrier_hz`, `hops_per_sec` (no detections, so no DLL and no code-bias pool) |
-| `broker_onsky_l5_holds.jsonl.gz.digest` | live GPS L5, 2026-08-16 23:15 UTC | 30 cycles, 434 posts, with `--telem-dll`. Moved by `carrier_hz`, `hops_per_sec`, `dll_gain`, `code_bias_alpha`, `bias_alpha`. Also has the `cprate` variant golden (below) |
+| `broker_onsky_l5_holds.jsonl.gz.digest` | live GPS L5, 2026-08-16 23:15 UTC | 30 cycles, 434 posts, with `--telem-dll`. Moved by `carrier_hz`, `hops_per_sec`, `dll_gain`, `code_bias_alpha`, `bias_alpha`. Also has the `cprate` and `jwarm0` variant goldens (below) |
 
 **The on-sky transcripts themselves are not in the repo**: a minute of real fleet is
 ~1.3 MB per cycle (the combiner status responses dominate). Only the **digests** are
@@ -31,6 +31,13 @@ the digest; `check` verifies every golden of a transcript, each under its own fl
 `broker_onsky_l5_holds.jsonl.gz.cprate.digest` is one: the holds capture under
 `--fit-hist-len 256 --fit-min-snr 30 --cp-rate-model-tol 0.5 --fit-flush-on-reject 3`, which
 runs the cp-rate guard that no recording runs on its own.
+
+`broker_onsky_l5_holds.jsonl.gz.jwarm0.digest` is another: the holds capture under
+`--joint-feed-warmup-s 0`, which runs the joint code feed (`dr_joint_shadow`: the state updates,
+the JOINT-CLK adoption and the consumers the recording names) that no recording runs on its
+own. The warmup counts the cycle clock, so a replay counts the recorded run, and every recorded
+fixture is shorter than the 240-s default (12-210 s): without the variant the feed is outside
+the gate.
 
 **Inputs outside the transcript.** A transcript freezes the *fleet* conversation, and
 `broker_equiv.py` pins or cuts what the broker reads by other routes:

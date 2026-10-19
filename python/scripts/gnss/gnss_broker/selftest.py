@@ -132,6 +132,18 @@ check(
     not _wall,
     " ".join(_wall[:6]),
 )
+# B16/N01: the joint-feed warmup counts the cycle clock (ctx.uptime_s, seconds since the chain's
+# first cycle), never wall time since process start, so a replay counts the recorded run.
+_drsrc = open(os.path.join(_here, "deadreckon.py")).read()
+_ctxsrc = open(os.path.join(_here, "context.py")).read()
+_mainsrc = open(os.path.join(os.path.dirname(_here), "gps_distributed_broker.py")).read()
+check(
+    "joint-feed warmup on the cycle clock: ctx.uptime_s bound from t0 in the loop, no broker_t0 anywhere",
+    "ctx.uptime_s < ctx.args.joint_feed_warmup_s" in _drsrc
+    and "uptime_s=t0 - t_first" in _mainsrc
+    and not any("broker_t0" in _s for _s in (_drsrc, _ctxsrc, _mainsrc))
+    and '"uptime_s",' in _ctxsrc,
+)
 
 _other = {}
 

@@ -25,6 +25,7 @@ BROKER = os.path.join(os.path.dirname(HERE), "gps_distributed_broker.py")
 # Written by whichever stage computes them, once the cycle is under way; never passed in.
 PER_CYCLE = {
     "t0",
+    "uptime_s",
     "best",
     "monitor_best",
     "status",

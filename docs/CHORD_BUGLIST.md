@@ -325,6 +325,12 @@ frozen clock (ms; a snap's worth for one cycle after an offset snap); the transc
 change (coast retag, nh-hint ref_hop) and are to be re-blessed when #192 (g) makes them deterministic; the selftest's
 first grep could not match the call spellings it named (a `\b` after `)`) -- fixed and self-checked.
 
+**10-19 B16/N01 (stage-10 decision B16, triage finding N01, ~/gnss/builds/stage10; kv/b16-warmup):** the joint-feed warm-up is on the cycle clock too: `ctx.uptime_s` (seconds since the
+chain's first cycle, bound beside `t0`, the one owner of every start-up hold-off; `broker_t0` is gone from the context) and
+`--joint-feed-warmup-s` replaces the frozen constant, so a replay can exercise the feed: every recorded fixture is shorter
+than the 240-s warm-up (12-210 s), so no golden ran the feed on any clock; the `jwarm0` variant golden on the holds
+recording now does.
+
 ### #206 — viewer: L2OC's dark probes grey out satellites that L3OC holds, and the not-transmitted table is GPS-only (2026-10-18)
 **What [live 13:05Z]:** glo_l2oc runs with `--probe-dark`, so its three noise probes are GLONASS-M satellites above the
 horizon (R4, R5, R12 at el 62/62/9 deg) that cannot broadcast L2OC and that glo_l3oc holds (q 5.9/5.6/3.4 at 13:05Z). The viewer

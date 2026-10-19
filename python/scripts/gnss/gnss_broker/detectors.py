@@ -232,8 +232,9 @@ class SawtoothDetector(object):
         self.window_s = float(window_s)
         self.wipe_frac = float(wipe_frac)
         self.cooldown_s = float(cooldown_s)
-        # No report within startup_hold_s of the first cycle (uptime()): seeds churn while the
-        # clock converges, and those wipes are not handover events.
+        # No report within startup_hold_s of the first cycle (note()'s uptime_s, the broker's
+        # ctx.uptime_s on the cycle clock): seeds churn while the clock converges, and those
+        # wipes are not handover events.
         self.startup_hold_s = float(startup_hold_s)
         # A wipe within this many seconds after a birth step for the same PRN (ctx.birth_steps,
         # stamped at a dead-reckon re-birth) is a REBASE-WIPE: the seed re-based under the
@@ -243,19 +244,6 @@ class SawtoothDetector(object):
         self.rebase_window_s = float(rebase_window_s)
         self.hist = {}  # prn -> [(t, trim)]
         self.reported = {}  # prn -> t of last report
-        self.t_start = None  # the first cycle's t, for uptime()
-
-    def uptime(self, t):
-        """Seconds since the first call, on the clock that feeds note().
-
-        That is the broker's cycle clock, the recorded time under --transcript-read, so the
-        startup hold-off counts the run being replayed. The broker's wall-clock start cannot
-        serve: against a recorded t it reads hugely negative and holds every report off.
-        Call it every cycle, so the count starts on the first cycle even when no trim is armed.
-        """
-        if self.t_start is None:
-            self.t_start = t
-        return t - self.t_start
 
     def note(
         self,

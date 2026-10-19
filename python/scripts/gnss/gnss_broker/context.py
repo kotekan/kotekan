@@ -16,6 +16,9 @@ between the broker loop and its stages is named in one place: `__slots__`. It ha
 `t0` is the frozen cycle clock: wall time sampled once per pass (transport._Transcript.tick), so
 every gate, age and EMA in a pass evaluates at one instant rather than across the pass's own
 processing time. A stage that needs real elapsed time calls `time.time()` explicitly and says why.
+`uptime_s` is the elapsed cycle-clock time since the chain's first pass, bound beside `t0`: the
+one owner of every start-up hold-off, so a replay counts the recorded run, which the wall clock
+cannot.
 
 This is a reference holder, not a facade: no properties, no derived values, no logic. Anything
 computed belongs in the stage that computes it or on one of the owner objects (`dllp`, `drp`,
@@ -64,7 +67,6 @@ class ChainContext(object):
         "alm_now",
         "trackers",
         "joint_consume",
-        "broker_t0",
         "dr_eph_mod",
         "dr_min_prn",
         "hist_len",
@@ -134,6 +136,10 @@ class ChainContext(object):
         # Attributes rather than loop locals because a module-level stage can assign
         # `ctx.have_sig`, where it could not declare `nonlocal have_sig`.
         "t0",
+        # Seconds since this chain's first cycle on the cycle clock (t0 - the first t0), bound
+        # beside t0. Every start-up hold-off reads it (the joint-feed warmup, D3's startup
+        # hold), so a replay counts the recorded run and never this process's wall clock.
+        "uptime_s",
         "best",
         # {prn: best-detection tuple} withheld under --detectors-monitor: measured by
         # stage_dead_reckon's search_monitor and seen by nothing else (`best` is then empty).
@@ -183,8 +189,8 @@ class ChainContext(object):
                 make = self.DEFAULTS.get(k)
                 setattr(self, k, make() if make is not None else None)
 
-    def begin_cycle(self, t0=_UNSET, best=_UNSET):
-        """Refresh `t0` or `best`, called where the loop rebinds each.
+    def begin_cycle(self, t0=_UNSET, uptime_s=_UNSET, best=_UNSET):
+        """Refresh `t0`, `uptime_s` or `best`, called where the loop rebinds each.
 
         The sentinel, not None, marks an argument as absent, so None can be set: a "skip if
         None" default would leave the previous cycle's value in place.
@@ -197,5 +203,7 @@ class ChainContext(object):
         """
         if t0 is not _UNSET:
             self.t0 = t0
+        if uptime_s is not _UNSET:
+            self.uptime_s = uptime_s
         if best is not _UNSET:
             self.best = best

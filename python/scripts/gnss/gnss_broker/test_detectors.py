@@ -332,26 +332,25 @@ def test_sawtooth_cycle_clock():
     print("D3: the startup hold-off counts on the cycle clock")
 
     # A replay: the cycle clock is the recorded time, far from the replay's own wall clock.
-    # uptime() counts from the first cycle it is given, armed trim or not.
+    # uptime_s is the broker's ctx.uptime_s (seconds since the chain's first cycle, on that
+    # clock, context.py); the detector keeps no clock of its own.
     t0 = 1.7e9
     d = SawtoothDetector(ramp_chips=0.5, wipe_frac=0.5, startup_hold_s=900.0)
     msgs = []
     for i in range(31):  # a ramp, then a wipe 300 s after the first cycle
         t = t0 + i * 10.0
         trim = i * 0.05 if i < 30 else 0.02
-        msgs.append(d.note(t, 7, trim, uptime_s=d.uptime(t)))
+        msgs.append(d.note(t, 7, trim, uptime_s=t - t0))
     check(not any(msgs), "a wipe 300 s into the run is inside the hold-off: silent")
-    for i in range(31, 70):  # cycles with no armed trim still count
-        d.uptime(t0 + i * 10.0)
     for i in range(70, 101):  # a new ramp, wiped 1000 s into the run
         t = t0 + i * 10.0
         trim = (i - 70) * 0.05 if i < 100 else 0.02
-        msgs.append(d.note(t, 7, trim, uptime_s=d.uptime(t)))
+        msgs.append(d.note(t, 7, trim, uptime_s=t - t0))
     check(
         msgs[-1] is not None and "SAWTOOTH PRN 7" in msgs[-1],
         "a wipe 1000 s into the recorded run is reported",
     )
-    check(d.uptime(t0 + 1000.0) == 1000.0, "uptime counts from the first cycle")
+    check(not hasattr(d, "uptime"), "the detector keeps no clock of its own: uptime_s is the context's")
 
 
 if __name__ == "__main__":

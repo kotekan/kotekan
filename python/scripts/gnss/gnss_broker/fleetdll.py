@@ -585,7 +585,7 @@ def stage_fleet_dll(ctx):
             )
 
         # ── D3: the handover sawtooth ─────────────────────────────────────────────────
-        _uptime = ctx.saw.uptime(ctx.t0)  # the startup hold-off, on the cycle clock
+        _uptime = ctx.uptime_s  # the startup hold-off, on the cycle clock (context.py)
         for _sp, _sr in (ctx.dls.readback or {}).items():
             if not isinstance(_sr, dict) or _sr.get("trim_chips") is None:
                 continue

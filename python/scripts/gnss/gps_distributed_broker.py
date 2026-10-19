@@ -1235,10 +1235,6 @@ def main(argv=None, rx=None, publisher=None):
     # tracker_phase_at reads), so each POST can be compared with the previous one in physical
     # units.
     seed_audit_prev = {}
-    # Broker start, for the joint feed warmup (joint_feed_warmup_s). Wall clock on purpose: the
-    # warmup guards against establishment-phase measurements, and establishment runs on wall
-    # time whatever the transcript clock replays.
-    broker_t0 = time.time()
 
     # ── The stage interface (gnss_broker/context.py) ──────────────────────────────────────
     # Every name a stage reads from main() that is not its own state. Stable names are bound
@@ -1306,7 +1302,6 @@ def main(argv=None, rx=None, publisher=None):
         prnmap=_prnmap,
         trackers=trackers,
         joint_consume=joint_consume,
-        broker_t0=broker_t0,
         dr_eph_mod=dr_eph_mod,
         dr_min_prn=dr_min_prn,
         hist_len=HIST_LEN,
@@ -1338,12 +1333,16 @@ def main(argv=None, rx=None, publisher=None):
         mp_last_det=mp_last_det,
     )
 
+    # The first cycle's clock: ctx.uptime_s counts from it, on the cycle clock (context.py).
+    t_first = None
     while True:
         # Sample the frozen cycle clock once (transport._Transcript): every _now() in this pass
         # returns t0, so every gate, age and EMA evaluates at one instant rather than across
         # the pass's own processing time.
         t0 = _TR.tick()
-        _ctx.begin_cycle(t0=t0)
+        if t_first is None:
+            t_first = t0
+        _ctx.begin_cycle(t0=t0, uptime_s=t0 - t_first)
         t_wall = time.time()  # real clock, for the pass's busy time and the sleep
         # 1. collect best-SNR detection per PRN across all detection sources
         best = {}  # prn -> (snr, dop, cp, ref_hop, nh, cp_long, cp_at_ref)

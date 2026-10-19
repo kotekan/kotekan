@@ -108,7 +108,7 @@ def test_minnov_append():
     c.rx = NS(joint_receiver=lambda *a, **k: js, joint_ambiguous=lambda: False)
     c.dr_state = {"clk": 150.0, "joint_log_next": 1e18}
     c.best = {p: (30.0,) for p in prns}
-    c.broker_t0 = 0.0
+    c.uptime_s = 0.0
     c.minnov_hist = {}
     c.track_ok = lambda p: True
     c.p2c_hold = lambda js_, key: False
@@ -116,6 +116,7 @@ def test_minnov_append():
     t = 1000.0
     while t <= 1000.0 + RUN_S:
         c.t0 = t
+        c.uptime_s = t - 1000.0
         c.drp = NS(offs=[(p, 0.5) for p in prns], tag="L5", t_now_abs=t, now_w=t)
         dr.dr_joint_shadow(c)
         t += PASS_S
@@ -179,12 +180,83 @@ def test_innov_once_per_detection():
     )
 
 
+class _JSCount(_JS):
+    """_JS that counts the feed: how many cycle() calls carried a measurement."""
+
+    def __init__(self, keys):
+        _JS.__init__(self, keys)
+        self.fed = 0
+
+    def cycle(self, meas, t):
+        if meas:
+            self.fed += 1
+
+
+def test_warmup_cycle_clock():
+    """B16/N01: the joint-feed warmup counts ctx.uptime_s, the cycle clock, never wall time.
+
+    A replay: the recorded cycle clock sits far from this process's wall clock, and the run
+    is driven for 600 s of recorded time in a fraction of a second of wall time. The feed must
+    start exactly at joint_feed_warmup_s of recorded uptime.
+    """
+    logs = []
+    dr._log = lambda msg: logs.append(msg)
+    dr._log_rl = lambda key, msg, every_s=10.0: logs.append(msg)
+    prns = (3, 5)
+    js = _JSCount([("L5", p) for p in prns])
+    c = NS()
+    c.args = NS(
+        joint_shadow=True,
+        chip_rate_hz=10.23e6,
+        joint_feed_warmup_s=240.0,
+        joint_min_snr=10.0,
+        joint_mask_after=5,
+        joint_sigma=0.3,
+    )
+    c.band_id, c.code_len = "1176.45MHz", 10230.0
+    c.rx = NS(joint_receiver=lambda *a, **k: js, joint_ambiguous=lambda: False)
+    c.dr_state = {"clk": 150.0, "joint_log_next": 1e18}
+    c.best = {p: (30.0,) for p in prns}
+    c.minnov_hist = {}
+    c.track_ok = lambda p: True
+    c.p2c_hold = lambda js_, key: False
+    c.p2c_tick = lambda js_, t: None
+    t_first = 1.6e9  # a recorded clock, nowhere near time.time()
+    fed_at = []
+    t = t_first
+    while t <= t_first + 600.0:
+        c.t0 = t
+        c.uptime_s = t - t_first
+        c.drp = NS(offs=[(p, 0.5) for p in prns], tag="L5", t_now_abs=t, now_w=t)
+        before = js.fed
+        dr.dr_joint_shadow(c)
+        if js.fed > before:
+            fed_at.append(c.uptime_s)
+        t += PASS_S
+    check(
+        bool(fed_at) and min(fed_at) >= 240.0,
+        "nothing feeds the state before 240 s of cycle-clock uptime (first feed at %s)"
+        % (fed_at[:1] or "never"),
+    )
+    check(
+        bool(fed_at) and min(fed_at) < 240.0 + PASS_S,
+        "the feed starts at the warmup on the recorded clock, not on wall time (first at %s)"
+        % (fed_at[:1] or "never"),
+    )
+    check(
+        any("JFEED WARMUP" in m for m in logs),
+        "the warmup logs while it withholds",
+    )
+    check(not hasattr(c, "broker_t0"), "no broker_t0 on the context: the wall-clock stamp is gone")
+
+
 def main():
     for fn in (
         test_helper,
         test_minnov_append,
         test_innov_site,
         test_innov_once_per_detection,
+        test_warmup_cycle_clock,
     ):
         print(fn.__name__)
         fn()

@@ -956,17 +956,19 @@ def dr_joint_shadow(ctx):
             # The P2C coast (--joint-p2c-rotate) withholds one established satellite at a time
             # (p2c_hold) and logs its residual against the state's prediction (clk + b_i):
             # what the shared state gets wrong about a satellite it is no longer told about.
-            # No measurement feeds the state for joint_feed_warmup_s after broker start:
-            # establishment-phase offsets can be wrong yet self-consistent, and a birth has no
-            # innovation to gate on.
-            if time.time() - ctx.broker_t0 < ctx.args.joint_feed_warmup_s:
+            # No measurement feeds the state for joint_feed_warmup_s of cycle-clock time after
+            # the chain's first cycle (ctx.uptime_s): establishment-phase offsets can be wrong
+            # yet self-consistent, and a birth has no innovation to gate on. The cycle clock,
+            # never the wall clock, so a replay counts the recorded run (every recorded
+            # fixture is shorter than the warmup; the jwarm0 variant golden sets it to 0).
+            if ctx.uptime_s < ctx.args.joint_feed_warmup_s:
                 _log_rl(
                     "jwarm",
                     "JFEED WARMUP: withholding the joint feed "
                     "(%.0f s of %.0f remain) -- establishment-phase "
                     "measurements must not become birth geometry"
                     % (
-                        ctx.args.joint_feed_warmup_s - (time.time() - ctx.broker_t0),
+                        ctx.args.joint_feed_warmup_s - ctx.uptime_s,
                         ctx.args.joint_feed_warmup_s,
                     ),
                     every_s=60.0,

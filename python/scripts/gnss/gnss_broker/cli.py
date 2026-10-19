@@ -465,12 +465,6 @@ _FROZEN = dict(
     # advanced for this many seconds; 0 disables. Log only: dr_clock_freeze_s holds the clock solve
     # meanwhile. A frozen time base is an upstream instance stall, not a tracking fault.
     fe_axis_stale_s=30.0,
-    # Withhold every measurement from the joint state (and MINNOV) for this many seconds after
-    # broker start. Birth is the one path with no innovation to gate on, and establishment-phase
-    # measurements are the worst the feed sees: garbage born into the state is self-consistent, so
-    # no escape fires. Seeds and holds settle in ~3 min; 240 s is that plus margin. Only the feed
-    # waits; the state object is created at once.
-    joint_feed_warmup_s=240.0,
     # Accepted joint-state updates a satellite needs before it counts as established: before the P2c
     # rotation (--joint-p2c-rotate) may withhold it, and before its MINNOV is recorded. Withholding
     # a satellite never born into the state tests nothing. A search-anchored satellite is fed only
@@ -1146,6 +1140,21 @@ def build_parser(description):
         "joint_max_rate_ppm); 'slew' (dead-reckon seed offsets take the joint clk + "
         "b_sat instead of the clock plus SatBiasFilter, refused per satellite beyond "
         "joint_slew_max_chips; the SEED-OFFSET lines compare the two).",
+    )
+    ap.add_argument(
+        "--joint-feed-warmup-s",
+        type=float,
+        default=240.0,
+        help="withhold every measurement from the joint state (and MINNOV) for this many "
+        "seconds of cycle-clock time after this chain's first cycle (context.py "
+        "uptime_s). Birth is the one path with no innovation to gate on, and "
+        "establishment-phase measurements are the worst the feed sees: garbage born "
+        "into the state is self-consistent, so no escape fires. Seeds and holds settle "
+        "in ~3 min; 240 s is that plus margin. Only the feed waits; the state object is "
+        "created at once. On the cycle clock a replay counts the recorded run, and every "
+        "recorded fixture is shorter than the default, so the jwarm0 variant golden "
+        "(scripts/gnss/fixtures) replays the holds capture with 0 to pin the feed. "
+        "Default %(default)s.",
     )
     ap.add_argument(
         "--joint-clk-coast-max-s",
