@@ -9,10 +9,18 @@ Simpler to serve than B-CNAV2: the whole orbit is in SF2 (one subframe), so any 
 yields a full ephemeris -- no cross-frame type matching. The frame is 1800 symbols (18 s), and
 find_frames needs the PRN (the SF1 sync pattern is PRN-specific).
 
+Polarity. Each combiner emit resolves its +-1 ambiguity on its own, and a frame spans ~18 one-
+second emits, so the emits are chained as navbit_predictor chains LNAV: rot = e^{-i*theta0}
+follows the carrier, and an odd number of pi-steps in theta0 from the last emit flips this
+emit's sign relative to it. A run then splices in one sign, which find_frames resolves. One
+wrong link flips everything after it; the frame that straddles it fails its CRC, and a
+boundary-flip repair (_repair) finds the link.
+
 nav_obs: {utc_ref, rec_dt, br, phase, bits}. For B1C-data the combiner emits one symbol per
 10 ms B1C code period (navwipe_bit_records 1, rec_dt=0.010, br=1 -> br*rec_dt = 0.010 = SYM_S).
 """
 
+import math
 import time
 
 import numpy as np
@@ -26,16 +34,32 @@ EMIT_MAX = 96  # bound the stitched emit cache per PRN
 SF2_TTL_S = 3600.0  # a cached SF2 older than this is stale (ephemeris ~ hourly)
 
 
+def _sf2_crc_as_received(frame):
+    """Whether one frame (+-1, SF1 at its true polarity) carries an SF2 whose systematic bits,
+    the first 600 of the codeword, pass CRC as received."""
+    syms2, _syms3 = B._deinterleave((frame < 0).astype(np.uint8))
+    inverts = (B._INVERT[0],) if B._INVERT[0] is not None else (False, True)
+    return any(
+        B.check_crc(syms2[: B.SF2_BITS] ^ int(inv), B.SF2_CRC_AT, B.SF2_BITS)
+        for inv in inverts
+    )
+
+
 class _PrnState:
     def __init__(self):
         self.emits = {}
         self.last_obs = None
+        self.theta = None  # last emit's theta0 (rad, (-pi/2, pi/2])
+        self.pol = 1  # chained polarity applied to incoming emits
         self.sf2 = None  # (sf2_bits[600], t_decoded)
         self.n_frames = 0
         self.n_crc = 0
         # frame start slots already counted: every decode rescans the cached emits, so a frame
         # is counted only the first time it is found
         self.seen = set()
+        # frame start slots the repair has searched: a complete frame's stored symbols do not
+        # change, so each is searched once
+        self.tried = set()
         self.last_decode = 0.0
 
 
@@ -52,6 +76,7 @@ class Bcnav1Predictor:
             rec_dt = float(obs["rec_dt"])
             phase = int(obs["phase"])
             br = int(obs["br"])
+            rot = complex(float(obs.get("rot_re", 1.0)), float(obs.get("rot_im", 0.0)))
             pairs = obs["bits"]
         except (KeyError, TypeError, ValueError):
             return
@@ -61,6 +86,11 @@ class Bcnav1Predictor:
         if key == st.last_obs:
             return
         st.last_obs = key
+        # theta0 = -arg(rot), reduced mod pi: an odd pi-step from the last emit flips the chain
+        theta = -math.atan2(rot.imag, rot.real)
+        if st.theta is not None and round((theta - st.theta) / math.pi) % 2:
+            st.pol = -st.pol
+        st.theta = theta
         sym_s = br * rec_dt
         m = {}
         for bi, sg in pairs:
@@ -68,7 +98,7 @@ class Bcnav1Predictor:
             if sg not in (1, -1):
                 continue
             slot = int(round((utc_ref + (bi * br - phase) * rec_dt) / sym_s))
-            m[slot] = sg
+            m[slot] = sg * st.pol
         if len(m) < 2:
             return
         slot0, hi = min(m), max(m)
@@ -86,6 +116,7 @@ class Bcnav1Predictor:
                 st.emits.pop(s, None)
             lo = min(st.emits)
             st.seen = {s for s in st.seen if s >= lo}
+            st.tried = {s for s in st.tried if s >= lo}
         # Per-PRN decode throttle (see inav_predictor.ingest): a shared gate starves every PRN but
         # the first in the broker's row order.
         now = time.time()
@@ -96,11 +127,14 @@ class Bcnav1Predictor:
 
     # ----------------------------------------------------------------- decode
     def _runs(self, st):
+        """Contiguous runs of the cached emits: (start slot, signs, cuts), cuts holding
+        (index into signs, emit slot0) where each later emit's first new symbol lands."""
         if not st.emits:
             return []
         runs = []
         cur0 = None
         cur = None
+        cuts = []
         for s0 in sorted(st.emits):
             a = st.emits[s0]
             if cur is None:
@@ -110,23 +144,66 @@ class Bcnav1Predictor:
             if s0 <= end:
                 ov = end - s0
                 if ov < len(a):
+                    cuts.append((len(cur), s0))
                     cur = np.concatenate([cur, a[ov:]])
             else:
-                runs.append((cur0, cur))
-                cur0, cur = s0, a.copy()
-        runs.append((cur0, cur))
+                runs.append((cur0, cur, cuts))
+                cur0, cur, cuts = s0, a.copy(), []
+        runs.append((cur0, cur, cuts))
         return runs
 
     def _decode(self, prn, st):
-        for run0, signs in self._runs(st):
+        for run0, signs, cuts in self._runs(st):
             if len(signs) < FRAME:
                 continue
-            for i, _pol, _soh, sf2 in B.find_frames(prn, signs.astype(float)):
-                st.sf2 = (sf2, time.time())
-                if run0 + i not in st.seen:
-                    st.seen.add(run0 + i)
-                    st.n_frames += 1
-                    st.n_crc += 1
+            signs = signs.astype(float)
+            found = set()
+            for i, _pol, _soh, sf2 in B.find_frames(prn, signs):
+                found.add(i)
+                self._store(st, run0 + i, sf2)
+            self._repair(prn, st, run0, signs, cuts, found)
+
+    def _store(self, st, at, sf2):
+        st.sf2 = (sf2, time.time())
+        if at not in st.seen:
+            st.seen.add(at)
+            st.n_frames += 1
+            st.n_crc += 1
+
+    def _repair(self, prn, st, run0, signs, cuts, found):
+        """CRC-guided boundary-flip repair of the run's frames that find_frames did not decode.
+
+        A complete frame whose SF1 PRN sequence is in the run but whose SF2 fails may straddle
+        one wrong chain link: an emit whose sign came out flipped, and every later emit with
+        it. Flip the frame from each emit boundary inside it and take the first flip under
+        which SF2 passes its CRC as received, without LDPC iterations (an errored candidate
+        costs ~0.3 s of iterations; at deep-integration SNR the right flip is error-free).
+        That emit and every later one are negated in the cache, the chain with them, and the
+        repaired frame is decoded. signs is updated in place for the run's later frames.
+        """
+        sf1a = 1.0 - 2.0 * B._sf1a(prn)  # SF1's PRN sequence as received (bit 0 -> +1)
+        c = np.correlate(signs, sf1a, "valid")
+        for i in np.flatnonzero(np.abs(c) == len(sf1a)):
+            i = int(i)
+            if i + FRAME > len(signs) or i in found or run0 + i in st.tried:
+                continue
+            st.tried.add(run0 + i)
+            pol = 1.0 if c[i] > 0 else -1.0
+            for b, s0 in cuts:
+                if not i < b < i + FRAME:
+                    continue
+                w = pol * signs[i : i + FRAME]
+                w[b - i :] *= -1
+                if not _sf2_crc_as_received(w):
+                    continue
+                for s in st.emits:
+                    if s >= s0:
+                        st.emits[s] = -st.emits[s]
+                st.pol = -st.pol
+                signs[b:] *= -1
+                for _j, _pol, _soh, sf2 in B.find_frames(prn, signs[i : i + FRAME]):
+                    self._store(st, run0 + i, sf2)
+                break
 
     # ----------------------------------------------------------------- serve
     def ephemeris(self, prn):
@@ -179,29 +256,39 @@ def _selftest():
     B._INVERT[0] = None
     pred = Bcnav1Predictor()
     pred._min_gap = 0.0
-    # 1 s emits (100 syms) sharing one global carrier sign across the whole run, which
-    # find_frames resolves via its pol=+-1. A B-CNAV1 frame is 18 s / ~18 emits, so unlike the
-    # shorter signals it cannot re-sync per emit: it decodes only from a run whose emits share
-    # one sign.
-    sgn = 1 - 2 * rng.randint(0, 2)
+    # 1 s emits (100 syms) as the combiner makes them: the carrier phase phi drifts 0.4 rad
+    # per emit, each emit reports theta0 = phi reduced to [-pi/2, pi/2) as rot = e^{-i*theta0}
+    # and takes its signs against theta0, so its sign flips whenever phi crosses an odd
+    # multiple of pi/2. A frame spans ~18 emits and several flips, so it decodes only through
+    # the chain. A 2 rad phase step before emit 23 (inside the second frame) is a link the
+    # chain gets wrong; the boundary-flip repair must find it.
     ELEN = 100
     e = 0
+    phi = 2 * math.pi * rng.rand()
     while e + ELEN <= len(pm):
+        n = math.floor(phi / math.pi + 0.5)
+        theta0, sgn = phi - math.pi * n, 1 - 2 * (n % 2)
         obs = {
             "utc_ref": e * SYM_S,
             "rec_dt": 0.010,
             "phase": 0,
             "br": 1,
+            "rot_re": math.cos(theta0),
+            "rot_im": -math.sin(theta0),
             "bits": [[i, int(np.sign(pm[e + i]) * sgn)] for i in range(ELEN)],
         }
         pred.ingest(prn, obs)
         e += ELEN
+        phi += 2.0 if e == 23 * ELEN else 0.4
 
     h = pred.health(prn)
     print("health:", h)
     ok = True
     if not (h and h["words"] >= 1 and 2 in h["have"]):
         print("FAIL: SF2 not assembled")
+        ok = False
+    elif h["words"] != 2:
+        print("FAIL: %d of 2 frames decoded" % h["words"])
         ok = False
     eph = pred.ephemeris(prn)
     if eph is None:
