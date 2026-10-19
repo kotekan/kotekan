@@ -32,7 +32,7 @@ matching PilotProxy package, export the CHORD bundle and run the tests:
 
 The exported development bundle is for testing and is not calibrated.
 
-The integration tests compare every mask, coarse power and FPGA timestamp
+The integration tests compare every mask, frame power and FPGA timestamp
 against the CPU reference using synthetic calibration.
 
 For a sustained workload, enable the larger geometries after checking the
@@ -52,7 +52,7 @@ limits. Preserve the usual locked-buffer configuration.
 The two cases use 64 dishes with 384 frequencies and 512 dishes with 48
 frequencies, each with two polarizations. All 23 bound pilots are evaluated.
 The full-rate fine-support product is compared with the independent CPU
-reference at every block, along with masks, coarse powers, and FPGA timing;
+reference at every block, along with masks, frame powers, and FPGA timing;
 unbound frequencies must retain the ``[-1, -1]`` support sentinel.
 
 Each 2,048-frame case processes 768 GiB of voltage through a four-frame ring.

@@ -1,19 +1,23 @@
 # PilotProxy detector core
 
 The CUDA detector core is copied from `cuda/` in
-[djgormley/pilot-proxy](https://github.com/djgormley/pilot-proxy).
-`VENDOR.json` names the upstream revision and records each file's SHA-256 digest.
+[WVURAIL/pilotproxy-code](https://github.com/WVURAIL/pilotproxy-code), the
+code-only release of PilotProxy. `VENDOR.json` names the upstream revision and
+records each file's SHA-256 digest.
 
 The seven upstream files are:
 
 - `config.h`: window length and kernel settings.
 - `f_statistic.h` and `f_statistic.cu`: the C API and CUDA implementation.
 - `f_statistic_reference.h` and `f_statistic_reference.cpp`: CPU references for
-  packed dot products, row sums and coarse powers.
+  packed dot products, row sums, fine power spectra and the frame powers formed
+  from them.
 - `fxfft256_ref.c` and `fxfft_master_twiddle.h`: the fixed-point FFT reference.
   Define `FXFFT256_REF_NO_MAIN` to build the transform without its file harness.
+  `f_statistic_reference.cpp` compiles it with internal linkage, so a test may
+  include it again.
 
-Keep these files unchanged. Make detector changes in pilot-proxy, copy the new
+Keep these files unchanged. Make detector changes in PilotProxy, copy the new
 revision here, and update the pin and the file hashes. Check with:
 
 ```sh

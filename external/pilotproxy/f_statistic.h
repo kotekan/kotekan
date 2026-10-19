@@ -9,27 +9,30 @@
  * @code
  *     // Query compile-time parameters
  *     int detector_window_samples, num_weight_terms, bits, reference_offset_bins;
- *     int core_major, core_minor, core_patch;
+ *     int core_major, core_minor, core_patch, windows, pad, fine_bins;
  *     FStat_GetSpecs(
  *         &detector_window_samples,
  *         &num_weight_terms,
  *         &bits,
  *         &reference_offset_bins);
  *     FStat_GetVersion(&core_major, &core_minor, &core_patch);
+ *     FStat_GetFineSpecs(&windows, &pad, &fine_bins);   // 128 / 2 / 256
  *
  *     // Allocate GPU buffers for the detector-matrix view of one block
+ *     // (detector_rows_per_block must be a multiple of `windows`).
  *     InputType* d_input;  // row-major [detector_rows_per_block x detector_window_samples]
- *     float* d_output;     // Single F-statistic result
+ *     unsigned long long* d_fine;    // [num_weight_terms x fine_bins] fine powers S_r[f]
+ *     unsigned long long* d_powers;  // [num_weight_terms] frame powers P_r = sum_f S_r[f]
  *     cudaMalloc(
  *         &d_input,
  *         detector_rows_per_block * detector_window_samples * sizeof(InputType));
- *     cudaMalloc(&d_output, sizeof(float));
+ *     cudaMalloc(&d_fine, num_weight_terms * fine_bins * sizeof(unsigned long long));
+ *     cudaMalloc(&d_powers, num_weight_terms * sizeof(unsigned long long));
  *
- *     void* handle = FStat_Create(
- *         d_input, d_output, detector_rows_per_block);
- *     // For deployed NumDen/mask-only APIs, d_output may be NULL.
- *
- *     FStat_Compute_DiagnosticFloat(handle, host_weights);
+ *     void* handle = FStat_Create(d_input, detector_rows_per_block);
+ *     FStat_Compute_FusedFine_U64(handle, host_weights, d_fine, d_powers, NULL);
+ *     // The host forms F = 2 * P[0] / (P[1] + P[2]) from d_powers; the
+ *     // deployed mask bit comes from FStat_Compute_FusedFineMask_U64.
  *     FStat_Destroy(handle);
  * @endcode
  *
@@ -84,7 +87,10 @@
  * @section refbins Reference Bin Contract
  * The locked detector uses two total reference bins: one lower reference bin
  * and one upper reference bin. With three weight terms, the raw F-statistic is
- * F = 2 * P_target / (P_ref1 + P_ref2).
+ * F = 2 * P_target / (P_ref1 + P_ref2), where each P_r is the frame power of
+ * that term: the exact uint64 sum over the 256 fine bins of the frozen
+ * fxfft256 power spectrum S_r[f] (kernel core 3.0.0). The transform length
+ * cancels in the ratio.
  *
  * @section execution Execution Policy
  * Handles are device-affine. All device work for a handle (uploads, memsets,
@@ -164,7 +170,7 @@ void FStat_GetFeatures(
  *
  * @param[out] use_constant_weight_lanes Nonzero when DP4A weight lanes are stored in CUDA constant memory.
  * @param[out] use_shared_weight_lanes   Nonzero when DP4A weight lanes are preloaded into shared memory per block.
- * @param[out] grid_max_blocks           Maximum grid blocks used by the power-accumulation launch.
+ * @param[out] grid_max_blocks           Maximum grid blocks used by the staged row-sum launches.
  *
  * @note Any parameter can be NULL if not needed.
  */
@@ -193,101 +199,6 @@ void FStat_GetVersion(
  */
 const char* FStat_LastError(void);
 
-typedef struct FStatRational {
-    unsigned long long num;
-    unsigned long long den;
-} FStatRational;
-
-/**
- * @brief Convert deployed NumDen output to the raw F-statistic.
- *
- * The deployed API writes num=P_target and den=P_ref1+P_ref2 for two total
- * reference bins: one lower reference bin and one upper reference bin. The
- * full raw F-statistic is therefore F = 2*num/den, not num/den. If den is
- * zero, this helper returns 0.0 to match the kernel's conservative
- * zero-reference policy.
- */
-static inline double FStat_NumDenToRawF(
-    unsigned long long num,
-    unsigned long long den)
-{
-    if (den == 0ULL) {
-        return 0.0;
-    }
-    return (FSTAT_RAW_NUMDEN_SCALE * (double)num) / (double)den;
-}
-
-/**
- * @brief Convert deployed NumDen output to linear pilot excess, F - 1.
- *
- * If den is zero, this helper returns 0.0 to match the kernel's conservative
- * zero-reference policy. Use FStat_NumDenToPilotExcessChecked when host code
- * needs to distinguish an invalid reference floor from valid zero excess.
- */
-static inline double FStat_NumDenToPilotExcess(
-    unsigned long long num,
-    unsigned long long den)
-{
-    if (den == 0ULL) {
-        return 0.0;
-    }
-    return FStat_NumDenToRawF(num, den) - FSTAT_NO_PILOT_EXCESS_RAW_F;
-}
-
-/**
- * @brief Checked conversion from deployed NumDen output to linear pilot excess.
- *
- * Returns 1 on success and writes `out`. Returns 0 for a null output pointer or
- * a zero denominator; on failure with a non-null output pointer, writes 0.0.
- */
-static inline int FStat_NumDenToPilotExcessChecked(
-    unsigned long long num,
-    unsigned long long den,
-    double* out)
-{
-    if (out == 0) {
-        return 0;
-    }
-    if (den == 0ULL) {
-        *out = 0.0;
-        return 0;
-    }
-
-    *out = FStat_NumDenToRawF(num, den) - FSTAT_NO_PILOT_EXCESS_RAW_F;
-    return 1;
-}
-
-/**
- * @brief Checked full-threshold to half-threshold conversion.
- *
- * Returns 1 on success and writes `out`. Returns 0 for a null output pointer,
- * zero denominator, or unsigned-long-long overflow in 2 * full_den. On failure
- * with a non-null output pointer, writes {0, 0}.
- */
-static inline int FStat_MakeHalfThresholdFromFullChecked(
-    unsigned long long full_num,
-    unsigned long long full_den,
-    FStatRational* out)
-{
-    if (out == 0) {
-        return 0;
-    }
-    if (full_den == 0ULL) {
-        out->num = 0ULL;
-        out->den = 0ULL;
-        return 0;
-    }
-    if (full_den > (~0ULL / 2ULL)) {
-        out->num = 0ULL;
-        out->den = 0ULL;
-        return 0;
-    }
-
-    out->num = full_num;
-    out->den = 2ULL * full_den;
-    return 1;
-}
-
 /* ===========================================================================
  * LIFECYCLE FUNCTIONS
  * ===========================================================================*/
@@ -303,58 +214,43 @@ static inline int FStat_MakeHalfThresholdFromFullChecked(
  *
  * @param d_in  Device pointer to row-major input data
  *              [detector_rows_per_block x detector_window_samples], packed InputType
- * @param d_out Device pointer to output F-statistic (at least one float), or
- *              float-converted raw power terms (at least num_weight_terms
- *              floats) when using FStat_Compute_Powers. May be NULL when the
- *              handle is used exclusively with APIs that do not write
- *              floating-point diagnostic outputs, including:
- *                - FStat_Compute_NumDen_Mask_RationalHalf
- *                - FStat_Compute_NumDen_Mask_RationalHalf_WithOverflowCount
- *                - FStat_Compute_Powers_U64
  * @param detector_rows_per_block Rows in the detector-matrix view of one block.
  *
  * @return Opaque handle pointer, or NULL on failure.
  *
- * @note d_in must remain valid for the lifetime of the handle. d_out must
- *       remain valid for APIs that write floating outputs.
- * @note The handle owns internal scratch memory which is freed by FStat_Destroy.
+ * @note d_in must remain valid for the lifetime of the handle. Every output
+ *       buffer is passed to the compute entry that writes it (kernel core
+ *       3.0.0 removed the float output pointer of earlier cores).
+ * @note The handle owns the device weight storage, freed by FStat_Destroy.
  * @note The handle is bound to the CUDA device current at creation time.
  */
 void* FStat_Create(
     const InputType* d_in,
-    float* d_out,
     int detector_rows_per_block);
 
 /**
  * @brief Create a batched handle for detector-matrix views.
  *
- * Allocates internal GPU resources for computing F-statistics over multiple
- * independent input blocks in one launch. Each batch entry is treated as an
- * independent detector-matrix input.
+ * Allocates the per-handle GPU resources for processing multiple independent
+ * input blocks in one launch. Each batch entry is treated as an independent
+ * detector-matrix input.
  *
  * @param d_in   Device pointer to row-major input data
  *               [batch x detector_rows_per_block x detector_window_samples],
  *               packed InputType
- * @param d_out  Device pointer to output F-statistics [batch] (or
- *               [batch x num_weight_terms] when using FStat_Compute_Powers).
- *               May be NULL when the handle is used exclusively with APIs that
- *               do not write floating-point diagnostic outputs, including:
- *                 - FStat_Compute_NumDen_Mask_RationalHalf
- *                 - FStat_Compute_NumDen_Mask_RationalHalf_WithOverflowCount
- *                 - FStat_Compute_Powers_U64
  * @param detector_rows_per_block Rows in each detector-matrix view.
  * @param batch  Number of independent blocks in the batch (>= 1)
  *
  * @return Opaque handle pointer, or NULL on failure.
  *
- * @note d_in must remain valid for the lifetime of the handle. d_out must
- *       remain valid for APIs that write floating outputs.
- * @note The handle owns internal scratch memory which is freed by FStat_Destroy.
+ * @note d_in must remain valid for the lifetime of the handle. Every output
+ *       buffer is passed to the compute entry that writes it (kernel core
+ *       3.0.0 removed the float output pointer of earlier cores).
+ * @note The handle owns the device weight storage, freed by FStat_Destroy.
  * @note The handle is bound to the CUDA device current at creation time.
  */
 void* FStat_Create_Batch(
     const InputType* d_in,
-    float* d_out,
     int detector_rows_per_block,
     int batch);
 
@@ -387,122 +283,11 @@ void FStat_SetStream(void* handle, cudaStream_t stream);
  * ===========================================================================*/
 
 /**
- * @brief Compute diagnostic floating-point F-statistic for given weight vectors.
- *
- * Performs the following operations:
- *   1. Uploads/pre-packs weights for the compiled dot-product path
- *   2. Computes matched filter power for each weight vector in integer arithmetic
- *   3. Calculates F = 2 * P_target / (P_ref1 + P_ref2)
- *
- * The result is written to the d_out pointer specified at handle creation.
- * For batched handles, d_out must point to at least `batch` floats.
- * If P_ref1 + P_ref2 is zero, the diagnostic F-statistic output is 0.0f.
- *
- * @param handle Handle created by FStat_Create
- * @param w_in   Host pointer to packed weights [num_weight_terms x detector_window_samples] InputType
- *
- * @note This function is asynchronous. Call cudaDeviceSynchronize() if
- *       you need to read d_out immediately after.
- *
- * @note Weight layout:
- *       - first detector-window row  = target weights
- *       - second detector-window row = lower reference weights
- *       - third detector-window row  = upper reference weights
- */
-void FStat_Compute_DiagnosticFloat(void* handle, const InputType* w_in);
-
-/**
- * @brief Compute deployed fixed-point numerator, denominator, and mask.
- *
- * This is the production fixed-point detector product. It writes:
- *
- *   d_num_out[idx] = P_target
- *   d_den_out[idx] = P_ref1 + P_ref2
- *   d_mask_out[idx] =
- *       (P_target * threshold_half_den >
- *        threshold_half_num * (P_ref1 + P_ref2)) ? 1 : 0
- *
- * The comparison is evaluated only when P_ref1 + P_ref2 is nonzero. If
- * d_den_out[idx] is zero, reference power is invalid for the deployed
- * detector and d_mask_out[idx] is forced to 0 regardless of P_target.
- * The raw F-statistic corresponding to these outputs is
- * FStat_NumDenToRawF(d_num_out[idx], d_den_out[idx]) = 2*num/den.
- *
- * This API takes threshold_half = F_threshold / 2. It does not take the full
- * F-statistic threshold. For example, a full raw F threshold of 1027/1024 is
- * passed as threshold_half_num=1027, threshold_half_den=2048.
- * threshold_half_den must be nonzero.
- *
- * The handle's d_out pointer is not used and may be NULL. For batched handles,
- * each output pointer must address `batch` elements.
- */
-void FStat_Compute_NumDen_Mask_RationalHalf(
-    void* handle,
-    const InputType* w_in,
-    unsigned long long threshold_half_num,
-    unsigned long long threshold_half_den,
-    unsigned long long* d_num_out,
-    unsigned long long* d_den_out,
-    unsigned char* d_mask_out);
-
-/**
- * @brief Same as FStat_Compute_NumDen_Mask_RationalHalf, with overflow telemetry.
- *
- * d_rational_overflow_count must point to one device unsigned int. The API
- * clears it to zero at entry, then the rational comparison increments it for
- * each defensive uint64 saturation. Any nonzero value is a validation failure
- * for deployed thresholds.
- */
-void FStat_Compute_NumDen_Mask_RationalHalf_WithOverflowCount(
-    void* handle,
-    const InputType* w_in,
-    unsigned long long threshold_half_num,
-    unsigned long long threshold_half_den,
-    unsigned long long* d_num_out,
-    unsigned long long* d_den_out,
-    unsigned char* d_mask_out,
-    unsigned int* d_rational_overflow_count);
-
-/**
- * @brief Compute raw power terms for each weight vector.
- *
- * Performs the same integer accumulation as the deployed path, then converts the
- * per-weight power terms to float in d_out (length num_weight_terms).
- * For batched handles, d_out must point to `batch * num_weight_terms` floats.
- *
- * @param handle Handle created by FStat_Create
- * @param w_in   Host pointer to packed weights [num_weight_terms x detector_window_samples] InputType
- *
- * @note d_out must point to at least num_weight_terms floats when using this function.
- */
-void FStat_Compute_Powers(void* handle, const InputType* w_in);
-
-/**
- * @brief Compute exact raw uint64 power terms for each weight vector.
- *
- * Performs the same integer accumulation as the deployed path, then copies the
- * internal raw power terms to d_power_out without converting them to float.
- * For batched handles, d_power_out must point to
- * `batch * num_weight_terms` unsigned long long values on the device.
- *
- * @param handle      Handle created by FStat_Create
- * @param w_in        Host pointer to packed weights [num_weight_terms x detector_window_samples] InputType
- * @param d_power_out Device pointer receiving raw uint64 power terms.
- *
- * @note This API is intended for exact diagnostics and regression tests. The
- *       deployed detector product is the NumDen half-threshold API.
- */
-void FStat_Compute_Powers_U64(
-    void* handle,
-    const InputType* w_in,
-    unsigned long long* d_power_out);
-
-/**
  * @brief Emit exact complex per-row dot products (v2 time-coherent front end).
  *
- * Uploads weights exactly as FStat_Compute_Powers_U64 does, then writes the
- * exact int32 complex dot product of every detector row against every weight
- * term into caller-owned device memory:
+ * Uploads the weights (cached per handle), then writes the exact int32
+ * complex dot product of every detector row against every weight term into
+ * caller-owned device memory:
  *
  *   d_row_sums_out[((b * num_weight_terms + n) * detector_rows_per_block + m) * 2 + 0] = Re z
  *   d_row_sums_out[((b * num_weight_terms + n) * detector_rows_per_block + m) * 2 + 1] = Im z
@@ -517,11 +302,14 @@ void FStat_Compute_Powers_U64(
  *     int32 elements.
  *
  * Values are exact integers (bit-reproducible; |component| <= 14336 for the
- * locked 4-bit path). The int64 sum of |z|^2 over rows reproduces the
- * FStat_Compute_Powers_U64 output exactly (v1 marginal identity).
+ * locked 4-bit path). This buffer is the input of
+ * FStat_Compute_FinePowers_U64; the frame powers are the all-bin sums of
+ * that stage's output (kernel core 3.0.0).
  *
  * @param handle          Handle from FStat_Create / FStat_Create_Batch
- * @param w_in            Host weight pointer (same contract as v1 entries)
+ * @param w_in            Host weight pointer [num_weight_terms x
+ *                        detector_window_samples] packed InputType: target,
+ *                        lower reference, upper reference rows
  * @param d_row_sums_out  Device int32 output (layout above)
  */
 void FStat_Compute_RowSums_I32(
@@ -587,31 +375,37 @@ int FStat_Supports_FinePowers(void);
 
 /**
  * @brief Fused fine kernel (kernel core 2.2.0): one launch from packed
- *        samples to exact fine and coarse power sums.
+ *        samples to exact fine power sums, plus their frame powers.
  *
  * The fused form of the deployed datapath (docs/DESIGN_DECISIONS.md,
  * "one solid kernel"): each block computes one stream's 3 x 128 exact
- * int32 row sums in shared memory, accumulates the exact uint64 coarse
- * marginals from those same values --- making the bit-exact marginal
- * identity an internal property of the launch --- and applies the frozen
- * fxfft256 v1 transform in place with cooperative butterflies (identical
- * arithmetic and stage order to the reference; butterflies within a
- * stage write disjoint pairs, so the result is bit-identical for any
- * thread schedule).
+ * int32 row sums in shared memory and applies the frozen fxfft256 v1
+ * transform in place with cooperative butterflies (identical arithmetic
+ * and stage order to the reference; butterflies within a stage write
+ * disjoint pairs, so the result is bit-identical for any thread schedule).
+ * A second, stream-ordered launch then reduces the finalized fine sums to
+ * the frame powers (kernel core 3.0.0).
  *
- * Outputs (all zeroed by this call before accumulation):
- *   d_fine_power_out : [batch x num_weight_terms x 256] uint64 ---
- *                      identical layout and bits to
- *                      FStat_Compute_FinePowers_U64 over the row sums;
- *   d_power_out      : [batch x num_weight_terms] uint64 --- identical
- *                      to FStat_Compute_Powers_U64;
+ * Outputs:
+ *   d_fine_power_out : [batch x num_weight_terms x 256] uint64 (required;
+ *                      zeroed by this call) --- S_r[f], identical layout
+ *                      and bits to FStat_Compute_FinePowers_U64 over the
+ *                      row sums;
+ *   d_power_out      : [batch x num_weight_terms] uint64 (required) ---
+ *                      the frame powers P_r = sum over the 256 fine bins
+ *                      of d_fine_power_out[b][r][:], written after the
+ *                      fused launch; F = 2 P_0 / (P_1 + P_2). This is the
+ *                      definition of P_r, not a sum of |z|^2 over rows:
+ *                      the two agree only up to the fixed-point rounding
+ *                      of the frozen transform;
  *   d_row_sums_out   : optional debug tap (NULL in production); when
  *                      bound, identical layout and bits to
  *                      FStat_Compute_RowSums_I32. With the tap unbound,
  *                      row sums never touch global memory.
  *
  * Requires detector_rows_per_block to be a multiple of the frozen window
- * count (128). Acceptance: bit-equality with the composed path
+ * count (128). Acceptance: bit-equality with the composed path and
+ * d_power_out == the host sum over bins of d_fine_power_out
  * (tests/kernel/test_fused_fine_gpu.py). Policy-free: the fine
  * statistic, CFAR, and designated-set decision form downstream.
  */
@@ -660,10 +454,13 @@ int FStat_Supports_FusedFine(void);
  * --- it doubles as the completion counter) and d_fine_power_out
  * (required working accumulator, identical to
  * FStat_Compute_FusedFine_U64's; zeroed by this call). d_power_out and
- * d_row_sums_out are optional debug taps (NULL in production; when
- * bound they carry the exact coarse marginals and row sums as in the
- * 2.2.0 entry). Acceptance: mask bit-equality against the Python
- * reference over the same exact powers
+ * d_row_sums_out are optional taps (NULL in production): when bound,
+ * d_power_out receives the frame powers P_r = sum over the 256 fine bins
+ * of d_fine_power_out[b][r][:], reduced after the fused launch --- the
+ * same values FStat_Compute_FusedFine_U64 writes (kernel core 3.0.0) ---
+ * and d_row_sums_out the exact row sums as in the 2.2.0 entry. The
+ * decision never reads the frame powers. Acceptance: mask bit-equality
+ * against the Python reference over the same exact powers
  * (tests/kernel/test_fused_mask_gpu.py).
  */
 void FStat_Compute_FusedFineMask_U64(

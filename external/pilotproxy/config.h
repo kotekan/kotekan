@@ -9,10 +9,8 @@
 #pragma once
 
 #ifdef __cplusplus
-#include <cfloat>
 #include <cstdint>
 #else
-#include <float.h>
 #include <stdint.h>
 #endif
 
@@ -33,12 +31,13 @@
  * CFAR or designated-set decision in the library).
  *
  * 2.2.0: adds the fused fine kernel (FStat_Compute_FusedFine_U64): one
- * launch from packed samples to exact fine and coarse power sums,
+ * launch from packed samples to the exact fine power sums,
  * block-per-stream with shared-memory row sums (materialized to global
- * only through the optional debug tap) and the marginal identity
- * internal to the launch. Bit-identical to the composed
- * RowSums -> FinePowers path plus Powers_U64. Existing entry points are
- * unchanged; still policy-free.
+ * only through the optional debug tap). Bit-identical to the composed
+ * RowSums -> FinePowers path. Its d_power_out at this version carried a
+ * second power sum formed over detector rows; 3.0.0 (below) redefines
+ * that output and removes the row-domain branch. Existing entry points
+ * are unchanged; still policy-free.
  *
  * 2.3.0: adds the decision epilogue (FStat_Compute_FusedFineMask_U64):
  * the fused datapath plus a last-block epilogue forming the frozen fine
@@ -61,9 +60,40 @@
  * probe. Separate rank-valid and usable-bulk-count outputs identify invalid
  * fine support at full rate without changing the legacy mask or power outputs.
  * Rank support does not establish input health or physical calibration.
+ *
+ * 3.0.0: the frame powers P_r are DEFINED as the all-bin sums of the fine
+ * spectrum, P_r = sum_f S_r[f] (exact uint64; the transform length cancels
+ * in F = 2 P_0 / (P_1 + P_2)), and the separate branch that summed |z|^2
+ * over detector rows is removed rather than kept as legacy. Removed entry
+ * points: FStat_Compute_DiagnosticFloat, FStat_Compute_Powers,
+ * FStat_Compute_Powers_U64, FStat_Compute_NumDen_Mask_RationalHalf and its
+ * _WithOverflowCount variant, together with the FStatRational type, the
+ * FStat_NumDenToRawF / FStat_NumDenToPilotExcess(Checked) /
+ * FStat_MakeHalfThresholdFromFullChecked inline helpers, the float d_out
+ * parameter of FStat_Create and FStat_Create_Batch, and the host reference
+ * fstat_ref_powers_u64 (replaced by fstat_ref_fine_powers_u64 and
+ * fstat_ref_powers_from_fine_u64). Removed configuration macros, each of
+ * which served only the removed float and rational entries:
+ * FSTAT_RAW_NUMDEN_SCALE, FSTAT_NO_PILOT_EXCESS_RAW_F and
+ * FSTAT_DIVISION_EPSILON from this header (which therefore no longer
+ * includes <cfloat>), and FSTAT_OUTPUT_KERNEL_THREADS from f_statistic.cu.
+ * Changed meaning: the d_power_out of
+ * FStat_Compute_FusedFine_U64 (required) and of FStat_Compute_FusedFineMask_U64
+ * / FStat_Compute_FusedFineMaskWithSupport_U64 (optional) now receives
+ * P_r = sum over the 256 fine bins of d_fine_power_out[b][r][:], reduced on
+ * the handle's stream from the finalized fine sums after the fused launch
+ * (kernel_sum_fine_powers); it is no longer the sum of |z|^2 over rows, and
+ * the two agree only up to the fixed-point rounding of the frozen transform
+ * (about 1e-5 relative at deployed amplitudes, more for near-empty frames).
+ * Unchanged bit-for-bit: d_fine_power_out, d_row_sums_out, d_mask_out,
+ * d_rank_valid_out, d_n_bulk_out, FStat_Compute_RowSums_I32 and
+ * FStat_Compute_FinePowers_U64 (the decision epilogue never read P_r). The
+ * rational-half mask kernel is not re-pointed at the new P_r because
+ * P_0 * threshold_half_den no longer fits uint64; it goes with the branch.
+ * The major bump marks the output redefinition and the ABI removals.
  */
-#define FSTAT_CORE_VERSION_MAJOR 2
-#define FSTAT_CORE_VERSION_MINOR 5
+#define FSTAT_CORE_VERSION_MAJOR 3
+#define FSTAT_CORE_VERSION_MINOR 0
 #define FSTAT_CORE_VERSION_PATCH 0
 
 /* ===========================================================================
@@ -98,11 +128,12 @@
 #define FSTAT_LOWER_REFERENCE_WEIGHT_INDEX 1
 #define FSTAT_UPPER_REFERENCE_WEIGHT_INDEX 2
 
-/**
- * Two-reference raw F-statistic contract: F = 2*P_target/(P_ref1+P_ref2).
+/*
+ * Two-reference raw F-statistic contract: F = 2*P_target/(P_ref1+P_ref2),
+ * where each P_r is the frame power, the all-bin sum of that term's fine
+ * spectrum (kernel core 3.0.0). The library forms neither the ratio nor any
+ * float: hosts form F from the exact uint64 frame powers.
  */
-#define FSTAT_RAW_NUMDEN_SCALE 2.0
-#define FSTAT_NO_PILOT_EXCESS_RAW_F 1.0
 
 /**
  * fxfft256 v1 fine-reduction geometry (frozen). The window-axis transform
@@ -142,12 +173,13 @@
  * ===========================================================================*/
 
 /**
- * Use uint64 integer accumulation for per-weight power sums.
+ * Use uint64 integer accumulation for the fine and frame power sums.
  *
- * For the int4xint4 detector at any supported K, the worst-case full-block
- * power sum fits well below 64 bits.  The kernel stays fixed point through dot
- * product and power accumulation; floating point is introduced only when the
- * accumulated integer powers are divided for diagnostic float outputs.
+ * For the int4xint4 detector at any supported K, every fine bin S_r[f] and
+ * every frame power P_r = sum_f S_r[f] fits uint64 up to the 65536-stream
+ * capacity (closures asserted below). The kernel is fixed point end to end:
+ * dot products, the frozen transform, the fine sums and their reduction to
+ * frame powers are all exact integers; the library produces no float.
  */
 #define FSTAT_USE_UINT64_POWER_ACCUMULATION 1
 
@@ -243,9 +275,10 @@ typedef int8_t InputType;
  * complex-product component is bounded by 8*8 + 8*8 = 128 and a completed
  * K-tap dot-product component by 128*K.
  *
- * Note the conservatism is load-bearing at the boundary: the true weight
- * bound (7) gives 112*K and admits K = 256, while this bound gives 128*K
- * and rules it out by a single unit at the coarse |z|^2 assertion.
+ * The bound is conservative (the true weight bound 7 gives 112*K). Which
+ * window lengths are admitted is decided by the explicit guard-bit list
+ * above (the #error for an unsupported FSTAT_DETECTOR_WINDOW_SAMPLES) and
+ * by the fxfft and frame-power closures asserted below, not by this margin.
  */
 #define FSTAT_MAX_SAMPLE_COMPONENT 8
 #define FSTAT_MAX_PRODUCT_COMPONENT \
@@ -272,6 +305,9 @@ constexpr bool is_pow2(long long v) {
  * |a +- W*b| <= |a| + |W||b| with |W| <= 1 + 2^-15 after Q15 rounding, so a
  * stage maps the working norm M -> (1 + sqrt(2) + 2^-15) M + 1. sqrt(2) is
  * bounded from above by 1.41422 to keep the result conservative.
+ * growth_after() bounds M / M_0 for input norm M_0 and adds one M_0 per
+ * stage, which covers the + 1 for any M_0 >= 1; at eight stages from 2^20 it
+ * gives 2^30.94, looser than the 2^30.2 of the recursion itself.
  */
 constexpr double kButterflyGrowth = 1.0 + 1.41422 + (1.0 / 32768.0);
 constexpr double growth_after(int stages) {
@@ -282,6 +318,53 @@ constexpr int kFineStages = log2_exact(FSTAT_FINE_NUM_BINS);
 /** Post-transform bin magnitude, bounded by the triangle inequality. */
 constexpr double kMaxBinMagnitude =
     static_cast<double>(FSTAT_MAX_ROW_SUM_COMPONENT) * FSTAT_FINE_WINDOWS_PER_STREAM;
+
+/**
+ * Frame-power closure (kernel core 3.0.0). The frame power of one term is
+ * the all-bin sum of its fine spectrum, P_r = sum_f S_r[f], held in uint64.
+ * For the exact DFT X of one stream, Parseval over the zero-padded
+ * transform gives sum_f |X_f|^2 = ||X||^2 = L_F * sum_m |z_m|^2. The frozen
+ * fixed-point transform X~ obeys the 2-norm bound
+ *
+ *   ||X~|| <= (1 + d) ||X|| + c,   d <= 2.6e-4,   c <= 192,
+ *
+ * where d is the Q15 twiddle rounding (relative error at most
+ * sqrt(2) * 2^-15 per stage; stages 1 and 2 use the exact twiddles 1 and
+ * -i, so six stages round) and c is the round15 term (at most 0.5 per
+ * component per butterfly, 2-norm sqrt(128) per stage, propagated through
+ * the remaining stages' sqrt(2) growth). The additive term is why the
+ * RATIO P_r / (L_F * sum |z|^2) is not pinned near 1 at small amplitude
+ * (unit-amplitude rows depart from Parseval by tens of per cent); the
+ * bound on P_r itself is monotone in ||X||, so it is set by the maximum
+ * input norm, where the additive term is small: at ||X|| = 2^22 per stream
+ * (K = 128) the factor on the power is (1 + d + c / 2^22)^2 <= 1.00061, and
+ * at ||X|| = 2^21 (K = 64) it is <= 1.00070, both inside the 1.001 slack
+ * applied below. Summed over streams,
+ *
+ *   P_r <= L_F * 2 * R^2 * W * N_streams * 1.001
+ *
+ * with R = FSTAT_MAX_ROW_SUM_COMPONENT, W = FSTAT_FINE_WINDOWS_PER_STREAM
+ * and L_F = FSTAT_FINE_NUM_BINS. At K = 128 that is 2^60 * 1.001 for the
+ * 65536-stream capacity (about 4 bits of margin to 2^64) and 2^55 * 1.001
+ * at the 2048-stream CHIME frame (9 bits). The product is formed in
+ * saturating integer arithmetic so the assertion itself cannot overflow at
+ * compile time, and the 1.001 slack is applied as B + B/1000 without
+ * widening.
+ */
+constexpr unsigned long long kU64Max = 18446744073709551615ULL;
+constexpr unsigned long long mul_sat_u64(unsigned long long a, unsigned long long b) {
+    return (a != 0ULL && b > kU64Max / a) ? kU64Max : a * b;
+}
+constexpr unsigned long long kClosureStreams = 65536ULL;
+constexpr unsigned long long kRowSumComponent =
+    static_cast<unsigned long long>(FSTAT_MAX_ROW_SUM_COMPONENT);
+constexpr unsigned long long kFramePowerBound = mul_sat_u64(
+    mul_sat_u64(
+        mul_sat_u64(
+            static_cast<unsigned long long>(FSTAT_FINE_NUM_BINS),
+            mul_sat_u64(2ULL, mul_sat_u64(kRowSumComponent, kRowSumComponent))),
+        static_cast<unsigned long long>(FSTAT_FINE_WINDOWS_PER_STREAM)),
+    kClosureStreams);
 
 } // namespace fstat_geometry
 
@@ -316,11 +399,12 @@ static_assert(
     FSTAT_MAX_ROW_SUM_COMPONENT <= 2147483647LL,
     "Completed dot-product components must fit the int32 row-sum storage.");
 static_assert(
-    2.0 * static_cast<double>(FSTAT_MAX_ROW_SUM_COMPONENT)
-            * static_cast<double>(FSTAT_MAX_ROW_SUM_COMPONENT)
-        <= 2147483647.0,
-    "Coarse |z|^2 must fit int32; reduce detector_window_samples or widen the "
-    "squared-magnitude accumulator.");
+    fstat_geometry::kFramePowerBound < fstat_geometry::kU64Max
+        && fstat_geometry::kFramePowerBound
+               <= fstat_geometry::kU64Max - fstat_geometry::kFramePowerBound / 1000ULL,
+    "Frame power sum_f S_r[f] must fit uint64, with the 1.001 fixed-point "
+    "Parseval slack, for stream counts up to 65536; reduce "
+    "detector_window_samples or the stream capacity.");
 static_assert(
     static_cast<double>(FSTAT_MAX_ROW_SUM_COMPONENT)
             * fstat_geometry::growth_after(fstat_geometry::kFineStages)
@@ -334,15 +418,6 @@ static_assert(
         <= 18446744073709551615.0,
     "Feed-summed fine power must fit uint64 for stream counts up to 65536.");
 #endif
-
-/* ===========================================================================
- * NUMERICAL STABILITY
- * ===========================================================================*/
-
-/**
- * Minimum denominator for F-statistic division.
- */
-#define FSTAT_DIVISION_EPSILON FLT_MIN
 
 /* ===========================================================================
  * GPU EXECUTION PARAMETERS
@@ -371,10 +446,12 @@ static_assert(
 #define FSTAT_WARP_MASK 0xFFFFFFFF
 
 /**
- * Maximum grid dimension.  With a 128-tap detector window and 64-thread
- * DP4A blocks, 4096 blocks gives one block per 64 detector rows for a
- * reference-sized 262144-row block.  This improves occupancy over the older
- * 1024-block cap while keeping the per-block atomic output cost small.
+ * Maximum grid dimension of the staged row-sum launches.  With a 128-tap
+ * detector window and 64-thread DP4A blocks, 4096 blocks gives one block per
+ * 64 detector rows for a reference-sized 262144-row block.  It also sets the
+ * stream capacity of the handle-less fine stage
+ * (FSTAT_BLOCK_THREADS * FSTAT_GRID_MAX_BLOCKS streams).  The fused kernel
+ * launches one block per stream and is not capped by it.
  */
 #ifndef FSTAT_GRID_MAX_BLOCKS
 #define FSTAT_GRID_MAX_BLOCKS 4096

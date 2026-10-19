@@ -14,7 +14,7 @@
  *   in int32, exact under the rounding rule). Butterfly t = round15(W*b);
  *   round15(v) = floor((v + 16384) / 32768) via arithmetic shift.
  *   No stage scaling; inputs |re|,|im| <= 2^20 provably cannot overflow
- *   int32 (working values stay below 2^30.7).
+ *   int32 (working values stay below 2^30.2).
  *
  * Build (plain C, no CUDA needed):  cc -O2 -o fxfft256_ref fxfft256_ref.c
  * Harness protocol: ./fxfft256_ref in.bin out.bin

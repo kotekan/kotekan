@@ -25,8 +25,9 @@ Components
     For each bound frequency it packs one block from every input into 128
     windows of 64 samples and runs the detector core. Per local frequency and
     block it writes ``dtv_mask`` (``int8[F]``, 1 rejects the block),
-    ``dtv_powers`` (``uint64[F, 3]``, the target and the two reference coarse
-    powers) and, optionally, ``dtv_fine_support`` (``int32[F, 2]``, see below).
+    ``dtv_powers`` (``uint64[F, 3]``, the target and the two reference frame
+    powers, each the sum of that term's 256 fine powers) and, optionally,
+    ``dtv_fine_support`` (``int32[F, 2]``, see below).
     Frequencies without a pilot get zero masks and powers. The detector sums
     every input in the ring, including inputs the correlator flags as bad.
 

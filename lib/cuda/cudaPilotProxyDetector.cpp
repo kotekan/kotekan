@@ -72,7 +72,7 @@ public:
         for (auto& profile : bundle_profiles) {
             if (profile.chord_channel_id < 0 || !profile.fine_calibrated)
                 continue;
-            profile.fstat_handle = FStat_Create(d_packed, nullptr, detector_rows);
+            profile.fstat_handle = FStat_Create(d_packed, detector_rows);
             if (!profile.fstat_handle)
                 throw std::runtime_error(fmt::format(
                     fmt("cudaPilotProxyDetector: FStat_Create failed for physical channel {:d}: "
@@ -365,7 +365,8 @@ private:
  * channel out of the bundle, or list it in permanent_mask_freq_ids.
  *
  * dtv_mask contains one byte per frequency (1 = reject). dtv_powers contains
- * the target, lower-reference and upper-reference coarse powers as uint64.
+ * the target, lower-reference and upper-reference frame powers as uint64; each
+ * is the sum of that term's 256 fine powers.
  * The detector handles are created with the command; each bound handle is set to this
  * command's stream with FStat_SetStream at first-frame binding, so the packer, the detector
  * kernels and the mask fold are stream-ordered with the pipeline.
@@ -386,7 +387,7 @@ private:
  *   @gpu_mem_dim_name  [@c F]
  *   @gpu_mem_shape     [@c num_frequencies]
  *   @gpu_mem_metadata  @c chordMetadata
- * @gpu_mem Output DTV coarse powers
+ * @gpu_mem Output DTV frame powers
  *   @gpu_mem_buffer    @c standard
  *   @gpu_mem_quantity  @c dtv_powers
  *   @gpu_mem_type      @c uint64
@@ -719,7 +720,7 @@ cudaEvent_t cudaPilotProxyDetector::execute(cudaPipelineState& /*pipestate*/,
             reinterpret_cast<const InputType*>(state.weights_for(profile));
         unsigned long long* const channel_powers =
             reinterpret_cast<unsigned long long*>(powers_memory + 3 * channel.freq_index);
-        // Compute the fine CFAR decision and save coarse powers for validation.
+        // Compute the fine CFAR decision and save the frame powers for validation.
         if (support_memory) {
             // Rank support is not packet-loss or feed-health qualification.
             FStat_Compute_FusedFineMaskWithSupport_U64(

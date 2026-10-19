@@ -3,32 +3,38 @@
  * @brief GPU-accelerated F-statistic computation for narrowband signal detection.
  *
  * Implements an F-statistic detector built from per-row matched filters
- * (coherent within each K-sample row; row powers are combined incoherently
- * across rows and feeds), optimized for detecting
- * DTV pilot tones in wideband spectral data. Uses fixed-point arithmetic
- * through the dot-product and power-accumulation stages.
+ * (coherent within each K-sample row; row spectra are combined incoherently
+ * across input streams), optimized for detecting DTV pilot tones in wideband
+ * spectral data. Every stage from the packed samples to the power sums is
+ * fixed-point integer arithmetic.
  *
  * @section algorithm Algorithm Overview
  *
- * For each detector row and weight term:
- *   1. Compute complex dot product: z[row,term] = sum_k x[m,k] * conj(w[n,k])
- *   2. Accumulate power: P[term] = sum_row |z[row,term]|^2
+ * For each detector row m (one K-sample window of one input stream) and
+ * weight term r (0 target, 1 lower reference, 2 upper reference):
+ *   1. Complex dot product:  z_r[m] = sum_k x[m,k] * conj(w_r[k])   (exact int32)
+ *   2. Fine spectrum:        X_{s,r} = fxfft256(z_r[s, 0..127])     (frozen
+ *      fixed-point transform of each stream's 128 window sums, zero-padded
+ *      to 256 bins)
+ *   3. Fine powers:          S_r[f] = sum_s |X_{s,r}[f]|^2          (exact uint64)
+ *   4. Frame powers:         P_r = sum_f S_r[f]                      (exact uint64)
  *
  * The statistic is a target/reference power ratio:
  *
  *   F = 2 * P[target] / (P[ref1] + P[ref2])
  *
- * Thresholds are supplied by the external calibration/science-tolerance chain
- * and are applied as raw F-statistic thresholds.
+ * The frame powers are DEFINED as the all-bin sums of the fine spectrum
+ * (kernel core 3.0.0); the transform length cancels in F. The deployed
+ * decision (the fine designated-set CFAR epilogue) reads S_r[f] only.
  *
  * @section optimization Optimization Strategy
  *
  * - Integer arithmetic in the detector-window loop (avoids float conversion overhead)
- * - Warp shuffle reductions (no shared memory bank conflicts)
- * - Grid-stride loop over detector rows
+ * - Warp shuffle reductions in the staged row-sum kernels (no shared memory bank conflicts)
+ * - Grid-stride loop over detector rows (staged kernels); block-per-stream fused kernel
  * - Weight ROM stores natural matched-filter weights
  * - Packed weights uploaded once per call; optional DP4A path pre-packs lanes
- * - uint64 power accumulation over detector rows (float only at final division/output)
+ * - Exact uint64 fine-power accumulation; frame powers reduced from the fine sums
  *
  * @author Dylan
  * @date 2025
@@ -51,7 +57,6 @@
 #define FSTAT_WEIGHT_LANE_COUNT (FSTAT_NUM_WEIGHT_TERMS * FSTAT_DP4A_TAP_PAIRS)
 
 #define FSTAT_CUDA_MAX_THREADS_PER_BLOCK 1024
-#define FSTAT_OUTPUT_KERNEL_THREADS 256
 #define FSTAT_DP4A_LANE_BITS 8
 #define FSTAT_DP4A_LANE1_SHIFT FSTAT_DP4A_LANE_BITS
 #define FSTAT_DP4A_LANE2_SHIFT (2 * FSTAT_DP4A_LANE_BITS)
@@ -71,6 +76,9 @@ static_assert(
 static_assert(
     FSTAT_WARPS_PER_BLOCK <= FSTAT_WARP_SIZE,
     "Block reduction assumes at most 32 warps per block.");
+static_assert(
+    FSTAT_FINE_NUM_BINS <= FSTAT_CUDA_MAX_THREADS_PER_BLOCK,
+    "kernel_sum_fine_powers launches one thread per fine bin.");
 
 #if FSTAT_USE_DP4A
 static_assert(
@@ -355,352 +363,10 @@ void debug_check_dot_int16_bounds(
  * ===========================================================================*/
 
 /**
- * @brief Main power accumulation kernel.
- *
- * Computes power in each weight vector's matched filter output,
- * accumulated over all detector rows in one block.
- *
- * Algorithm per detector block:
- *   1. Grid-stride loop over detector rows
- *   2. Thread-stride loop over detector-window samples (complex dot product)
- *   3. Warp reduction -> shared memory -> block reduction
- *   4. Accumulate |dot_product|^2 into per-block uint64 accumulator
- *   5. Atomic add block results to global integer power scratch
- *
- * @param X            Row-major input samples [detector_rows_per_block x detector_window_samples],
- *                     packed complex, with X[m, k] = X[m * detector_window_samples + k]
- * @param Power_Terms  Output power per weight vector [num_weight_terms]
- * @param detector_rows_per_block  Number of detector rows in the matrix view
- */
-__global__ void
-kernel_accumulate_power(
-    const InputType* __restrict__ X,
-    const InputType* __restrict__ W,
-    const int*       __restrict__ W_Lanes,
-    unsigned long long* __restrict__ Power_Terms,
-    int detector_rows_per_block)
-{
-    #if FSTAT_USE_DP4A
-    (void)W;
-    #if FSTAT_USE_CONSTANT_WEIGHT_LANES
-    (void)W_Lanes;
-    #endif
-    #else
-    (void)W_Lanes;
-    #endif
-
-    // Shared memory for inter-warp reduction
-    __shared__ int2 warp_sums[FSTAT_NUM_WEIGHT_TERMS][FSTAT_WARPS_PER_BLOCK];
-    __shared__ unsigned long long block_power[FSTAT_NUM_WEIGHT_TERMS];
-
-    const int tid     = threadIdx.x;
-    const int warp_id = tid / FSTAT_WARP_SIZE;
-    const int lane_id = tid % FSTAT_WARP_SIZE;
-
-    if (tid < FSTAT_NUM_WEIGHT_TERMS) {
-        block_power[tid] = 0ULL;
-    }
-    __syncthreads();
-
-    #if FSTAT_USE_DP4A && FSTAT_USE_SHARED_WEIGHT_LANES && !FSTAT_USE_CONSTANT_WEIGHT_LANES
-    const int* weight_lanes = W_Lanes;
-    __shared__ int shared_weight_lanes[FSTAT_WEIGHT_LANE_COUNT];
-    for (int idx = tid; idx < FSTAT_WEIGHT_LANE_COUNT; idx += blockDim.x) {
-        shared_weight_lanes[idx] = W_Lanes[idx];
-    }
-    __syncthreads();
-    weight_lanes = shared_weight_lanes;
-    #elif FSTAT_USE_DP4A
-    const int* weight_lanes = W_Lanes;
-    #endif
-
-    // -------------------------------------------------------------------------
-    // Grid-stride loop over detector rows
-    // -------------------------------------------------------------------------
-    for (int m = blockIdx.x; m < detector_rows_per_block; m += gridDim.x) {
-
-        // Per-thread dot product accumulators
-        int2 dot[FSTAT_NUM_WEIGHT_TERMS];
-        #pragma unroll
-        for (int n = 0; n < FSTAT_NUM_WEIGHT_TERMS; ++n) {
-            dot[n] = make_int2(0, 0);
-        }
-
-        // ---------------------------------------------------------------------
-        // Thread-stride loop over frequency taps
-        // ---------------------------------------------------------------------
-        #if FSTAT_USE_DP4A
-        for (int pair = tid; pair < FSTAT_DP4A_TAP_PAIRS; pair += blockDim.x) {
-            const int k0 = 2 * pair;
-            const int k1 = k0 + 1;
-
-            int a_re;
-            int a_im;
-            unpack_two_complex_bytes_to_dp4a_lanes(
-                X[m * FSTAT_DETECTOR_WINDOW_SAMPLES + k0],
-                X[m * FSTAT_DETECTOR_WINDOW_SAMPLES + k1],
-                a_re,
-                a_im);
-
-            #pragma unroll
-            for (int n = 0; n < FSTAT_NUM_WEIGHT_TERMS; ++n) {
-                const int w_lane =
-                    load_weight_lane(weight_lanes, n * FSTAT_DP4A_TAP_PAIRS + pair);
-                dot[n].x = __dp4a(a_re, w_lane, dot[n].x);
-                dot[n].y = __dp4a(a_im, w_lane, dot[n].y);
-            }
-        }
-        #else
-        for (int k = tid; k < FSTAT_DETECTOR_WINDOW_SAMPLES; k += blockDim.x) {
-            short2 x_val = unpack_sample(X[m * FSTAT_DETECTOR_WINDOW_SAMPLES + k]);
-
-            #pragma unroll
-            for (int n = 0; n < FSTAT_NUM_WEIGHT_TERMS; ++n) {
-                short2 w_val = unpack_sample(W[n * FSTAT_DETECTOR_WINDOW_SAMPLES + k]);
-                dot[n] = complex_add(dot[n], complex_multiply(x_val, w_val));
-            }
-        }
-        #endif
-
-        // ---------------------------------------------------------------------
-        // Warp reduction
-        // ---------------------------------------------------------------------
-        #pragma unroll
-        for (int n = 0; n < FSTAT_NUM_WEIGHT_TERMS; ++n) {
-            dot[n] = warp_reduce_sum(dot[n]);
-        }
-
-        // Write warp results to shared memory
-        if (lane_id == 0) {
-            #pragma unroll
-            for (int n = 0; n < FSTAT_NUM_WEIGHT_TERMS; ++n) {
-                warp_sums[n][warp_id] = dot[n];
-            }
-        }
-        __syncthreads();
-
-        // ---------------------------------------------------------------------
-        // Block reduction (warp 0 only)
-        // ---------------------------------------------------------------------
-        if (warp_id == 0) {
-            // Load from shared memory
-            if (lane_id < FSTAT_WARPS_PER_BLOCK) {
-                #pragma unroll
-                for (int n = 0; n < FSTAT_NUM_WEIGHT_TERMS; ++n) {
-                    dot[n] = warp_sums[n][lane_id];
-                }
-            } else {
-                #pragma unroll
-                for (int n = 0; n < FSTAT_NUM_WEIGHT_TERMS; ++n) {
-                    dot[n] = make_int2(0, 0);
-                }
-            }
-
-            // Final warp reduction
-            #pragma unroll
-            for (int n = 0; n < FSTAT_NUM_WEIGHT_TERMS; ++n) {
-                dot[n] = warp_reduce_sum(dot[n]);
-            }
-
-            // Thread 0: compute magnitude squared and accumulate
-            if (tid == 0) {
-                #ifndef NDEBUG
-                debug_check_dot_int16_bounds(dot, m, -1);
-                #endif
-
-                #pragma unroll
-                for (int n = 0; n < FSTAT_NUM_WEIGHT_TERMS; ++n) {
-                    // Use 64-bit to prevent overflow in |z|^2 computation
-                    long long zr = static_cast<long long>(dot[n].x);
-                    long long zi = static_cast<long long>(dot[n].y);
-                    unsigned long long mag_sq =
-                        static_cast<unsigned long long>(zr * zr + zi * zi);
-
-                    block_power[n] += mag_sq;
-                }
-            }
-        }
-        __syncthreads();
-    }
-
-    // -------------------------------------------------------------------------
-    // Write block results to global memory
-    // -------------------------------------------------------------------------
-    if (tid == 0) {
-        #pragma unroll
-        for (int n = 0; n < FSTAT_NUM_WEIGHT_TERMS; ++n) {
-            atomicAdd(&Power_Terms[n], block_power[n]);
-        }
-    }
-}
-
-/**
- * @brief Batched power accumulation kernel.
- *
- * Processes `batch` independent row-major input blocks, each of shape
- * [detector_rows_per_block x detector_window_samples].
- * The batch index is mapped to blockIdx.y.
- *
- * @param X            Row-major input samples [batch x detector_rows_per_block x detector_window_samples],
- *                     packed complex
- * @param Power_Terms  Output power per weight vector [batch x num_weight_terms]
- * @param detector_rows_per_block  Number of detector rows in the matrix view per block
- * @param batch        Number of independent blocks
- */
-__global__ void
-kernel_accumulate_power_batched(
-    const InputType* __restrict__ X,
-    const InputType* __restrict__ W,
-    const int*       __restrict__ W_Lanes,
-    unsigned long long* __restrict__ Power_Terms,
-    int detector_rows_per_block,
-    int batch)
-{
-    #if FSTAT_USE_DP4A
-    (void)W;
-    #if FSTAT_USE_CONSTANT_WEIGHT_LANES
-    (void)W_Lanes;
-    #endif
-    #else
-    (void)W_Lanes;
-    #endif
-
-    const int b = blockIdx.y;
-    if (b >= batch) {
-        return;
-    }
-
-    const size_t batch_stride = static_cast<size_t>(detector_rows_per_block) * FSTAT_DETECTOR_WINDOW_SAMPLES;
-    const InputType* Xb = X + batch_stride * static_cast<size_t>(b);
-    unsigned long long* P = Power_Terms + (b * FSTAT_NUM_WEIGHT_TERMS);
-
-    // Shared memory for inter-warp reduction
-    __shared__ int2 warp_sums[FSTAT_NUM_WEIGHT_TERMS][FSTAT_WARPS_PER_BLOCK];
-    __shared__ unsigned long long block_power[FSTAT_NUM_WEIGHT_TERMS];
-
-    const int tid     = threadIdx.x;
-    const int warp_id = tid / FSTAT_WARP_SIZE;
-    const int lane_id = tid % FSTAT_WARP_SIZE;
-
-    if (tid < FSTAT_NUM_WEIGHT_TERMS) {
-        block_power[tid] = 0ULL;
-    }
-    __syncthreads();
-
-    #if FSTAT_USE_DP4A && FSTAT_USE_SHARED_WEIGHT_LANES && !FSTAT_USE_CONSTANT_WEIGHT_LANES
-    const int* weight_lanes = W_Lanes;
-    __shared__ int shared_weight_lanes[FSTAT_WEIGHT_LANE_COUNT];
-    for (int idx = tid; idx < FSTAT_WEIGHT_LANE_COUNT; idx += blockDim.x) {
-        shared_weight_lanes[idx] = W_Lanes[idx];
-    }
-    __syncthreads();
-    weight_lanes = shared_weight_lanes;
-    #elif FSTAT_USE_DP4A
-    const int* weight_lanes = W_Lanes;
-    #endif
-
-    for (int m = blockIdx.x; m < detector_rows_per_block; m += gridDim.x) {
-        int2 dot[FSTAT_NUM_WEIGHT_TERMS];
-        #pragma unroll
-        for (int n = 0; n < FSTAT_NUM_WEIGHT_TERMS; ++n) {
-            dot[n] = make_int2(0, 0);
-        }
-
-        #if FSTAT_USE_DP4A
-        for (int pair = tid; pair < FSTAT_DP4A_TAP_PAIRS; pair += blockDim.x) {
-            const int k0 = 2 * pair;
-            const int k1 = k0 + 1;
-
-            int a_re;
-            int a_im;
-            unpack_two_complex_bytes_to_dp4a_lanes(
-                Xb[m * FSTAT_DETECTOR_WINDOW_SAMPLES + k0],
-                Xb[m * FSTAT_DETECTOR_WINDOW_SAMPLES + k1],
-                a_re,
-                a_im);
-
-            #pragma unroll
-            for (int n = 0; n < FSTAT_NUM_WEIGHT_TERMS; ++n) {
-                const int w_lane =
-                    load_weight_lane(weight_lanes, n * FSTAT_DP4A_TAP_PAIRS + pair);
-                dot[n].x = __dp4a(a_re, w_lane, dot[n].x);
-                dot[n].y = __dp4a(a_im, w_lane, dot[n].y);
-            }
-        }
-        #else
-        for (int k = tid; k < FSTAT_DETECTOR_WINDOW_SAMPLES; k += blockDim.x) {
-            short2 x_val = unpack_sample(Xb[m * FSTAT_DETECTOR_WINDOW_SAMPLES + k]);
-
-            #pragma unroll
-            for (int n = 0; n < FSTAT_NUM_WEIGHT_TERMS; ++n) {
-                short2 w_val = unpack_sample(W[n * FSTAT_DETECTOR_WINDOW_SAMPLES + k]);
-                dot[n] = complex_add(dot[n], complex_multiply(x_val, w_val));
-            }
-        }
-        #endif
-
-        #pragma unroll
-        for (int n = 0; n < FSTAT_NUM_WEIGHT_TERMS; ++n) {
-            dot[n] = warp_reduce_sum(dot[n]);
-        }
-
-        if (lane_id == 0) {
-            #pragma unroll
-            for (int n = 0; n < FSTAT_NUM_WEIGHT_TERMS; ++n) {
-                warp_sums[n][warp_id] = dot[n];
-            }
-        }
-        __syncthreads();
-
-        if (warp_id == 0) {
-            if (lane_id < FSTAT_WARPS_PER_BLOCK) {
-                #pragma unroll
-                for (int n = 0; n < FSTAT_NUM_WEIGHT_TERMS; ++n) {
-                    dot[n] = warp_sums[n][lane_id];
-                }
-            } else {
-                #pragma unroll
-                for (int n = 0; n < FSTAT_NUM_WEIGHT_TERMS; ++n) {
-                    dot[n] = make_int2(0, 0);
-                }
-            }
-
-            #pragma unroll
-            for (int n = 0; n < FSTAT_NUM_WEIGHT_TERMS; ++n) {
-                dot[n] = warp_reduce_sum(dot[n]);
-            }
-
-            if (tid == 0) {
-                #ifndef NDEBUG
-                debug_check_dot_int16_bounds(dot, m, b);
-                #endif
-
-                #pragma unroll
-                for (int n = 0; n < FSTAT_NUM_WEIGHT_TERMS; ++n) {
-                    long long zr = static_cast<long long>(dot[n].x);
-                    long long zi = static_cast<long long>(dot[n].y);
-                    unsigned long long mag_sq =
-                        static_cast<unsigned long long>(zr * zr + zi * zi);
-                    block_power[n] += mag_sq;
-                }
-            }
-        }
-        __syncthreads();
-    }
-
-    if (tid == 0) {
-        #pragma unroll
-        for (int n = 0; n < FSTAT_NUM_WEIGHT_TERMS; ++n) {
-            atomicAdd(&P[n], block_power[n]);
-        }
-    }
-}
-
-/**
  * @brief Emit exact complex per-row dot products (v2 time-coherent front end).
  *
- * Identical dot-product and reduction structure to kernel_accumulate_power,
- * but instead of squaring and accumulating |z|^2, thread 0 of the reducing
+ * Grid-stride loop over detector rows, thread-stride loop over taps, warp
+ * reduction -> shared memory -> block reduction; thread 0 of the reducing
  * warp writes the exact int32 complex row sum for every weight term:
  *
  *   RowSums[(n * detector_rows_per_block + m) * 2 + 0] = Re z[n, m]
@@ -715,8 +381,9 @@ kernel_accumulate_power_batched(
  *
  * Values are exact integers (|component| <= detector_window_samples *
  * 2 * 7 * 8 = 14336 for the locked 4-bit path), so output is
- * bit-reproducible regardless of accumulation order. The all-bin marginal
- * sum over |z|^2 reproduces the v1 power terms exactly in int64.
+ * bit-reproducible regardless of accumulation order. This buffer is the
+ * input of the fine stage (FStat_Compute_FinePowers_U64); the frame powers
+ * P_r are the all-bin sums of that stage's output (kernel core 3.0.0).
  */
 __global__ void
 kernel_accumulate_row_sums(
@@ -990,194 +657,6 @@ kernel_accumulate_row_sums_batched(
     }
 }
 
-/**
- * @brief Compute F-statistic from accumulated powers.
- *
- * F = 2 x P[target] / (P[ref1] + P[ref2])
- *
- * @param P         Power terms [num_weight_terms] from accumulation kernel
- * @param F_Result  Output F-statistic (single value)
- */
-__global__ void
-kernel_compute_f_statistic(
-    const unsigned long long* __restrict__ P,
-    float*       __restrict__ F_Result)
-{
-    if (threadIdx.x == 0 && blockIdx.x == 0) {
-        double denominator =
-            static_cast<double>(P[FSTAT_LOWER_REFERENCE_WEIGHT_INDEX])
-            + static_cast<double>(P[FSTAT_UPPER_REFERENCE_WEIGHT_INDEX]);
-
-        if (denominator > 0.0) {
-            double numerator =
-                FSTAT_RAW_NUMDEN_SCALE
-                * static_cast<double>(P[FSTAT_TARGET_WEIGHT_INDEX]);
-            *F_Result = static_cast<float>(numerator / denominator);
-        } else {
-            *F_Result = 0.0f;  // Degenerate case: no reference power
-        }
-    }
-}
-
-/**
- * @brief Compute F-statistic for each batch entry.
- *
- * @param P         Power terms [batch x num_weight_terms] from accumulation kernel
- * @param F_Result  Output F-statistics [batch]
- * @param batch     Number of batch entries
- */
-__global__ void
-kernel_compute_f_statistic_batched(
-    const unsigned long long* __restrict__ P,
-    float*       __restrict__ F_Result,
-    int batch)
-{
-    int b = blockIdx.x * blockDim.x + threadIdx.x;
-    if (b >= batch) {
-        return;
-    }
-    const unsigned long long* Pb = P + (b * FSTAT_NUM_WEIGHT_TERMS);
-    double denominator =
-        static_cast<double>(Pb[FSTAT_LOWER_REFERENCE_WEIGHT_INDEX])
-        + static_cast<double>(Pb[FSTAT_UPPER_REFERENCE_WEIGHT_INDEX]);
-    if (denominator > 0.0) {
-        double numerator =
-            FSTAT_RAW_NUMDEN_SCALE
-            * static_cast<double>(Pb[FSTAT_TARGET_WEIGHT_INDEX]);
-        F_Result[b] = static_cast<float>(numerator / denominator);
-    } else {
-        F_Result[b] = 0.0f;
-    }
-}
-
-/**
- * @brief Convert integer power terms to a diagnostic float output buffer.
- */
-__global__ void
-kernel_convert_power_terms_to_float(
-    const unsigned long long* __restrict__ P,
-    float* __restrict__ Out,
-    int count)
-{
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx >= count) {
-        return;
-    }
-    Out[idx] = static_cast<float>(P[idx]);
-}
-
-/**
- * @brief Saturating uint64 multiply for defensive rational-threshold products.
- *
- * The locked detector's shelf thresholds and power ranges are expected to fit
- * without saturation. Saturation is defensive only; any debug-build saturation
- * report should be treated as a validation failure for deployed thresholds.
- */
-__device__ __forceinline__
-void record_rational_overflow(unsigned int* overflow_count)
-{
-    if (overflow_count != nullptr) {
-        atomicAdd(overflow_count, 1u);
-    }
-}
-
-__device__ __forceinline__
-unsigned long long saturating_mul_u64(
-    unsigned long long a,
-    unsigned long long b,
-    unsigned int* overflow_count)
-{
-    constexpr unsigned long long max_u64 = ~0ULL;
-    if (a != 0ULL && b > max_u64 / a) {
-        record_rational_overflow(overflow_count);
-        #ifndef NDEBUG
-        printf(
-            "FStat rational threshold multiply saturated: %llu * %llu\n",
-            a,
-            b);
-        #endif
-        return max_u64;
-    }
-    return a * b;
-}
-
-/**
- * @brief Saturating uint64 add for defensive reference-power sums.
- */
-__device__ __forceinline__
-unsigned long long saturating_add_u64(
-    unsigned long long a,
-    unsigned long long b,
-    unsigned int* overflow_count)
-{
-    constexpr unsigned long long max_u64 = ~0ULL;
-    if (b > max_u64 - a) {
-        record_rational_overflow(overflow_count);
-        #ifndef NDEBUG
-        printf(
-            "FStat rational threshold add saturated: %llu + %llu\n",
-            a,
-            b);
-        #endif
-        return max_u64;
-    }
-    return a + b;
-}
-
-/**
- * @brief Write P_target, P_ref1 + P_ref2, and half-threshold mask decisions.
- *
- * Applies, when P_ref1 + P_ref2 is nonzero:
- *
- *     P_target / (P_ref1 + P_ref2) >=
- *         threshold_half_num / threshold_half_den
- *
- * where threshold_half_num / threshold_half_den is one half of the full raw
- * F-statistic threshold. If P_ref1 + P_ref2 is zero, the reference power is
- * invalid for the deployed detector and the mask is forced to zero.
- */
-__global__ void
-kernel_write_num_den_mask_threshold_half_rational(
-    const unsigned long long* __restrict__ P,
-    unsigned long long* __restrict__ Num_Result,
-    unsigned long long* __restrict__ Den_Result,
-    unsigned char* __restrict__ Mask_Result,
-    unsigned long long threshold_half_num,
-    unsigned long long threshold_half_den,
-    int batch,
-    unsigned int* __restrict__ rational_overflow_count)
-{
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx >= batch) {
-        return;
-    }
-
-    const unsigned long long* Pb = P + (idx * FSTAT_NUM_WEIGHT_TERMS);
-    const unsigned long long denominator = saturating_add_u64(
-        Pb[FSTAT_LOWER_REFERENCE_WEIGHT_INDEX],
-        Pb[FSTAT_UPPER_REFERENCE_WEIGHT_INDEX],
-        rational_overflow_count);
-
-    Num_Result[idx] = Pb[FSTAT_TARGET_WEIGHT_INDEX];
-    Den_Result[idx] = denominator;
-
-    if (threshold_half_den == 0ULL || denominator == 0ULL) {
-        Mask_Result[idx] = 0u;
-        return;
-    }
-
-    const unsigned long long lhs = saturating_mul_u64(
-        Pb[FSTAT_TARGET_WEIGHT_INDEX],
-        threshold_half_den,
-        rational_overflow_count);
-    const unsigned long long rhs = saturating_mul_u64(
-        threshold_half_num,
-        denominator,
-        rational_overflow_count);
-    Mask_Result[idx] = (lhs > rhs) ? 1u : 0u;  /* strict: contract says positive excess */
-}
-
-
 /* ===========================================================================
  * FXFFT256 V1 FINE-REDUCTION STAGE (kernel core 2.1.0)
  * ===========================================================================
@@ -1388,22 +867,23 @@ int fstat_triple_greater(unsigned long long a, unsigned long long b,
 }
 
 /* ===========================================================================
- * FUSED FINE KERNEL (kernel cores 2.2.0 / 2.3.0)
+ * FUSED FINE KERNEL (kernel cores 2.2.0 / 2.3.0 / 3.0.0)
  * ===========================================================================
- * One launch from packed samples to exact fine and coarse power sums: the
- * fused form recorded in docs/DESIGN_DECISIONS.md ("one solid kernel").
- * Block-per-stream: each block computes its stream's 3 x 128 row sums into
- * shared memory (never materialized to global unless the debug tap is
- * bound), accumulates the exact coarse marginals from the same values ---
- * making the bit-exact marginal identity an internal property of the
- * launch --- and runs the frozen fxfft256 v1 transform in place, with
- * cooperative butterflies (identical arithmetic to fstat_fxfft256_device;
- * stage order preserved, butterflies within a stage write disjoint pairs,
- * so the produced bits are identical for any thread schedule).
+ * One launch from packed samples to exact fine power sums: the fused form
+ * recorded in docs/DESIGN_DECISIONS.md ("one solid kernel"). Block-per-stream:
+ * each block computes its stream's 3 x 128 row sums into shared memory
+ * (never materialized to global unless the debug tap is bound) and runs the
+ * frozen fxfft256 v1 transform in place, with cooperative butterflies
+ * (identical arithmetic to fstat_fxfft256_device; stage order preserved,
+ * butterflies within a stage write disjoint pairs, so the produced bits are
+ * identical for any thread schedule).
  *
  * Acceptance is bit-equality with the composed path
- * (RowSums_I32 -> FinePowers_U64, plus Powers_U64) --- enforced by
- * tests/kernel/test_fused_fine_gpu.py.
+ * (RowSums_I32 -> FinePowers_U64) --- enforced by
+ * tests/kernel/test_fused_fine_gpu.py. The frame powers P_r = sum_f S_r[f]
+ * are not formed in this kernel: the API entries launch
+ * kernel_sum_fine_powers over the finalized FinePowers right after it
+ * (kernel core 3.0.0), so every fused entry reports the same P_r.
  *
  * Kernel core 2.3.0 adds the decision epilogue (MaskOut != NULL): each
  * block's thread 0 increments a per-batch-entry completion counter (the
@@ -1417,8 +897,8 @@ int fstat_triple_greater(unsigned long long a, unsigned long long b,
  * 0). The epilogue is deterministic because it reads order-independent
  * exact integer sums and rank selection is by value. With
  * MaskOut == NULL the added path is not executed and the kernel is
- * bit-identical to core 2.2.0. PowerTerms may be NULL (2.3.0 entry)
- * to skip the coarse-marginal accumulation entirely.
+ * bit-identical to core 2.2.0. The epilogue reads FinePowers only; it
+ * never reads the frame powers.
  */
 
 __global__ void
@@ -1427,7 +907,6 @@ kernel_fused_fine(
     const InputType* __restrict__ W,
     const int*       __restrict__ W_Lanes,
     unsigned long long* __restrict__ FinePowers,
-    unsigned long long* __restrict__ PowerTerms,
     int*             __restrict__ RowSumsTap,
     int*             __restrict__ MaskOut,
     int*             __restrict__ RankValidOut,
@@ -1463,7 +942,6 @@ kernel_fused_fine(
 
     __shared__ int s_z[FSTAT_NUM_WEIGHT_TERMS][FSTAT_FINE_WINDOWS_PER_STREAM][2];
     __shared__ int s_fft[FSTAT_FINE_NUM_BINS][2];
-    __shared__ long long s_part[FSTAT_BLOCK_THREADS];
 
     #if FSTAT_USE_DP4A && FSTAT_USE_SHARED_WEIGHT_LANES && !FSTAT_USE_CONSTANT_WEIGHT_LANES
     const int* weight_lanes = W_Lanes;
@@ -1478,8 +956,7 @@ kernel_fused_fine(
     #endif
 
     /* Phase 1: row sums for this stream's windows (each thread owns whole
-     * windows; no cross-thread reduction), accumulating the exact per-thread
-     * marginal partial from the same registers.
+     * windows; no cross-thread reduction).
      *
      * The window axis is walked with a thread-stride loop, matching the tap
      * loop of the staged kernels and the RowSumsTap loop below. The previous
@@ -1488,14 +965,7 @@ kernel_fused_fine(
      * block size and computed nothing at all when it was smaller. Striding
      * removes both requirements and leaves the emitted bits unchanged: s_z is
      * indexed by window, so which thread produces a window does not affect
-     * shared-memory contents, and the marginal partials are reduced by integer
-     * addition, which is associative and commutative. */
-    long long part[FSTAT_NUM_WEIGHT_TERMS];
-    #pragma unroll
-    for (int n = 0; n < FSTAT_NUM_WEIGHT_TERMS; ++n) {
-        part[n] = 0LL;
-    }
-
+     * shared-memory contents. */
     const size_t batch_stride =
         static_cast<size_t>(detector_rows_per_block) * FSTAT_DETECTOR_WINDOW_SAMPLES;
     const InputType* Xb = X + batch_stride * static_cast<size_t>(b);
@@ -1542,31 +1012,12 @@ kernel_fused_fine(
         for (int n = 0; n < FSTAT_NUM_WEIGHT_TERMS; ++n) {
             s_z[n][w][0] = dot[n].x;
             s_z[n][w][1] = dot[n].y;
-            const long long zr = static_cast<long long>(dot[n].x);
-            const long long zi = static_cast<long long>(dot[n].y);
-            part[n] += zr * zr + zi * zi;
         }
     }
     __syncthreads();
 
-    /* Phase 2: exact coarse marginals (the identity is internal: same
-     * shared values the FFT consumes), plus the optional row-sum tap.
-     * PowerTerms == NULL (uniform across the block) skips the stage. */
-    if (PowerTerms != NULL) {
-        for (int n = 0; n < FSTAT_NUM_WEIGHT_TERMS; ++n) {
-            s_part[tid] = part[n];
-            __syncthreads();
-            if (tid == 0) {
-                long long acc = 0LL;
-                for (int i = 0; i < static_cast<int>(blockDim.x); ++i) {
-                    acc += s_part[i];
-                }
-                atomicAdd(&PowerTerms[static_cast<size_t>(b) * FSTAT_NUM_WEIGHT_TERMS + n],
-                          static_cast<unsigned long long>(acc));
-            }
-            __syncthreads();
-        }
-    }
+    /* Phase 2: optional row-sum debug tap (RowSumsTap == NULL, uniform
+     * across the block, skips it). */
     if (RowSumsTap != NULL) {
         int* Out = RowSumsTap
             + static_cast<size_t>(b) * FSTAT_NUM_WEIGHT_TERMS
@@ -1792,6 +1243,51 @@ kernel_fused_fine(
     #undef FSTAT_BULK_BIT
 }
 
+/**
+ * @brief Frame powers from the finalized fine spectra (kernel core 3.0.0).
+ *
+ * One block per (batch entry, term), indexed as idx = b * num_weight_terms
+ * + r: reduces the 256 finalized fine-power bins
+ * FinePowers[idx * 256 .. idx * 256 + 255] to
+ *
+ *   PowerTerms[idx] = P_r = sum_f S_r[f].
+ *
+ * Every addend is an exact uint64 and the sum fits uint64 up to the
+ * 65536-stream capacity (config.h frame-power closure), so the result is
+ * bit-reproducible for any reduction order. Launched on the handle's
+ * stream after kernel_fused_fine: stream order makes the fine sums
+ * complete and visible, so no fence or completion counter is needed, and
+ * the output is a plain store (no memset of PowerTerms is required).
+ * One thread per bin; the block width is FSTAT_FINE_NUM_BINS, a power of
+ * two (asserted in config.h), so the tree below is exact.
+ */
+__global__ void
+kernel_sum_fine_powers(
+    const unsigned long long* __restrict__ FinePowers,
+    unsigned long long* __restrict__ PowerTerms,
+    int count)
+{
+    __shared__ unsigned long long s_acc[FSTAT_FINE_NUM_BINS];
+    const int idx = blockIdx.x;
+    if (idx >= count) {
+        return;
+    }
+    const unsigned long long* src = FinePowers
+        + static_cast<size_t>(idx) * FSTAT_FINE_NUM_BINS;
+    const int tid = threadIdx.x;
+    s_acc[tid] = src[tid];
+    __syncthreads();
+    for (int stride = FSTAT_FINE_NUM_BINS / 2; stride > 0; stride >>= 1) {
+        if (tid < stride) {
+            s_acc[tid] += s_acc[tid + stride];
+        }
+        __syncthreads();
+    }
+    if (tid == 0) {
+        PowerTerms[idx] = s_acc[0];
+    }
+}
+
 /* ===========================================================================
  * INTERNAL DATA STRUCTURES
  * ===========================================================================*/
@@ -1803,8 +1299,6 @@ struct FStatHandle {
     int        detector_rows_per_block; ///< Rows in detector-matrix view
     int        batch;      ///< Batch size (number of independent blocks)
     const InputType* d_in; ///< Device input pointer (external)
-    float*     d_out;      ///< Device output pointer (external)
-    unsigned long long* d_power_scratch; ///< Internal integer power sums [num_weight_terms per block]
     InputType* d_weights;  ///< Scalar-path weights [num_weight_terms x detector_window_samples]
     int*       d_weight_lanes; ///< DP4A-path packed weight lanes [num_weight_terms x tap_pairs]
     bool       weights_cached; ///< Host cache validity for avoiding repeated uploads
@@ -1921,124 +1415,19 @@ static bool fstat_upload_weights(FStatHandle* h, const InputType* w_in)
     return true;
 }
 
-static bool fstat_accumulate(FStatHandle* h, const InputType* w_in)
-{
-    if (!fstat_upload_weights(h, w_in)) {
-        return false;
-    }
-
-    // Clear integer power scratch buffer
-    CUDA_CHECK_BOOL(cudaMemsetAsync(
-        h->d_power_scratch,
-        0,
-        h->batch * FSTAT_NUM_WEIGHT_TERMS * sizeof(unsigned long long),
-        h->stream));
-
-    // Compute grid dimensions
-    int grid_size = (h->detector_rows_per_block + FSTAT_BLOCK_THREADS - 1) / FSTAT_BLOCK_THREADS;
-    if (grid_size > FSTAT_GRID_MAX_BLOCKS) {
-        grid_size = FSTAT_GRID_MAX_BLOCKS;
-    }
-
-    if (h->batch <= 1) {
-        kernel_accumulate_power<<<grid_size, FSTAT_BLOCK_THREADS, 0, h->stream>>>(
-            h->d_in,
-            h->d_weights,
-            h->d_weight_lanes,
-            h->d_power_scratch,
-            h->detector_rows_per_block
-        );
-    } else {
-        dim3 grid(grid_size, h->batch, 1);
-        kernel_accumulate_power_batched<<<grid, FSTAT_BLOCK_THREADS, 0, h->stream>>>(
-            h->d_in,
-            h->d_weights,
-            h->d_weight_lanes,
-            h->d_power_scratch,
-            h->detector_rows_per_block,
-            h->batch
-        );
-    }
-    CUDA_CHECK_LAST_BOOL();
-    CUDA_CHECK_SYNC_BOOL(h->stream);
-    return true;
-}
-
-static bool fstat_write_f_statistic(FStatHandle* h)
-{
-    if (!h) {
-        record_api_error("handle is null.");
-        return false;
-    }
-    if (h->d_out == nullptr) {
-        record_api_error("output pointer is null for floating F-statistic output.");
-        return false;
-    }
-
-    if (h->batch <= 1) {
-        kernel_compute_f_statistic<<<1, 1, 0, h->stream>>>(
-            h->d_power_scratch, h->d_out
-        );
-    } else {
-        const int threads = FSTAT_OUTPUT_KERNEL_THREADS;
-        const int blocks = (h->batch + threads - 1) / threads;
-        kernel_compute_f_statistic_batched<<<blocks, threads, 0, h->stream>>>(
-            h->d_power_scratch, h->d_out, h->batch
-        );
-    }
-    CUDA_CHECK_LAST_BOOL();
-    CUDA_CHECK_SYNC_BOOL(h->stream);
-    return true;
-}
-
-static bool fstat_write_numden_mask_rational(
+/* Frame powers P_r = sum_f S_r[f] from the finalized fine sums, launched on
+ * the handle's stream right after the fused kernel (kernel core 3.0.0). Serves
+ * every fused entry so d_power_out means the same thing in each. */
+static bool fstat_reduce_frame_powers(
     FStatHandle* h,
-    unsigned long long threshold_half_num,
-    unsigned long long threshold_half_den,
-    unsigned long long* d_num_out,
-    unsigned long long* d_den_out,
-    unsigned char* d_mask_out,
-    unsigned int* d_rational_overflow_count)
+    const unsigned long long* d_fine_power_out,
+    unsigned long long* d_power_out)
 {
-    if (!h) {
-        record_api_error("handle is null.");
-        return false;
-    }
-    if (d_num_out == nullptr) {
-        record_api_error("numerator output pointer is null.");
-        return false;
-    }
-    if (d_den_out == nullptr) {
-        record_api_error("denominator output pointer is null.");
-        return false;
-    }
-    if (d_mask_out == nullptr) {
-        record_api_error("mask output pointer is null.");
-        return false;
-    }
-    if (threshold_half_den == 0ULL) {
-        record_api_error("threshold_half_den must be nonzero.");
-        return false;
-    }
-    if (d_rational_overflow_count != nullptr) {
-        CUDA_CHECK_BOOL(cudaMemsetAsync(
-            d_rational_overflow_count,
-            0,
-            sizeof(unsigned int),
-            h->stream));
-    }
-
-    const int threads = FSTAT_OUTPUT_KERNEL_THREADS;
-    const int blocks = (h->batch + threads - 1) / threads;
-    kernel_write_num_den_mask_threshold_half_rational<<<blocks, threads, 0, h->stream>>>(
-        h->d_power_scratch,
-        d_num_out,
-        d_den_out,
-        d_mask_out,
-        threshold_half_num,
-        threshold_half_den,
-        h->batch,
-        d_rational_overflow_count);
+    const int count = h->batch * FSTAT_NUM_WEIGHT_TERMS;
+    kernel_sum_fine_powers<<<count, FSTAT_FINE_NUM_BINS, 0, h->stream>>>(
+        d_fine_power_out,
+        d_power_out,
+        count);
     CUDA_CHECK_LAST_BOOL();
     CUDA_CHECK_SYNC_BOOL(h->stream);
     return true;
@@ -2047,8 +1436,7 @@ static bool fstat_write_numden_mask_rational(
 static FStatHandle* fstat_create(
     int detector_rows_per_block,
     int batch,
-    const InputType* d_in,
-    float* d_out)
+    const InputType* d_in)
 {
     if (detector_rows_per_block <= 0) {
         record_api_error("detector_rows_per_block must be positive.");
@@ -2085,36 +1473,17 @@ static FStatHandle* fstat_create(
     h->detector_rows_per_block = detector_rows_per_block;
     h->batch     = batch;
     h->d_in      = d_in;
-    h->d_out     = d_out;
-    h->d_power_scratch = nullptr;
     h->d_weights = nullptr;
     h->d_weight_lanes = nullptr;
     h->weights_cached = false;
     h->stream = 0;
 
-    if (!record_cuda_error(cudaMalloc(
-        &h->d_power_scratch,
-        batch * FSTAT_NUM_WEIGHT_TERMS * sizeof(unsigned long long)), __FILE__,
-    __LINE__)) {
-        delete h;
-        return nullptr;
-    }
-    if (!record_cuda_error(cudaMemset(
-        h->d_power_scratch,
-        0,
-        batch * FSTAT_NUM_WEIGHT_TERMS * sizeof(unsigned long long)), __FILE__,
-    __LINE__)) {
-        cudaFree(h->d_power_scratch);
-        delete h;
-        return nullptr;
-    }
     #if FSTAT_USE_DP4A && !FSTAT_USE_CONSTANT_WEIGHT_LANES
     if (!record_cuda_error(cudaMalloc(
             &h->d_weight_lanes,
             FSTAT_WEIGHT_LANE_COUNT * sizeof(int)),
             __FILE__,
             __LINE__)) {
-        cudaFree(h->d_power_scratch);
         delete h;
         return nullptr;
     }
@@ -2127,7 +1496,6 @@ static FStatHandle* fstat_create(
             FSTAT_WEIGHT_BYTES),
             __FILE__,
             __LINE__)) {
-        cudaFree(h->d_power_scratch);
         delete h;
         return nullptr;
     }
@@ -2213,11 +1581,10 @@ void FStat_GetVersion(int* major, int* minor, int* patch)
 
 void* FStat_Create(
     const InputType* d_in,
-    float* d_out,
     int detector_rows_per_block)
 {
     clear_last_error();
-    return static_cast<void*>(fstat_create(detector_rows_per_block, 1, d_in, d_out));
+    return static_cast<void*>(fstat_create(detector_rows_per_block, 1, d_in));
 }
 
 const char* FStat_LastError(void)
@@ -2227,12 +1594,11 @@ const char* FStat_LastError(void)
 
 void* FStat_Create_Batch(
     const InputType* d_in,
-    float* d_out,
     int detector_rows_per_block,
     int batch)
 {
     clear_last_error();
-    return static_cast<void*>(fstat_create(detector_rows_per_block, batch, d_in, d_out));
+    return static_cast<void*>(fstat_create(detector_rows_per_block, batch, d_in));
 }
 
 void FStat_Destroy(void* handle)
@@ -2243,10 +1609,6 @@ void FStat_Destroy(void* handle)
 
     bool ok = true;
 
-    if (h->d_power_scratch) {
-        ok &= record_cuda_error(cudaFree(h->d_power_scratch), __FILE__, __LINE__);
-        h->d_power_scratch = nullptr;
-    }
     if (h->d_weights) {
         ok &= record_cuda_error(cudaFree(h->d_weights), __FILE__, __LINE__);
         h->d_weights = nullptr;
@@ -2271,163 +1633,6 @@ void FStat_SetStream(void* handle, cudaStream_t stream)
     // Any cached weight upload was ordered on the previous stream; re-upload on the
     // new one before the next launch rather than assume the two are ordered.
     h->weights_cached = false;
-}
-
-void FStat_Compute_DiagnosticFloat(void* handle, const InputType* w_in)
-{
-    clear_last_error();
-    FStatHandle* h = static_cast<FStatHandle*>(handle);
-    if (!h) {
-        record_api_error("handle is null.");
-        return;
-    }
-
-    if (!fstat_accumulate(h, w_in)) return;
-    if (!fstat_write_f_statistic(h)) return;
-}
-
-void FStat_Compute_NumDen_Mask_RationalHalf(
-    void* handle,
-    const InputType* w_in,
-    unsigned long long threshold_half_num,
-    unsigned long long threshold_half_den,
-    unsigned long long* d_num_out,
-    unsigned long long* d_den_out,
-    unsigned char* d_mask_out)
-{
-    clear_last_error();
-    FStatHandle* h = static_cast<FStatHandle*>(handle);
-    if (!h) {
-        record_api_error("handle is null.");
-        return;
-    }
-    if (d_num_out == nullptr) {
-        record_api_error("numerator output pointer is null.");
-        return;
-    }
-    if (d_den_out == nullptr) {
-        record_api_error("denominator output pointer is null.");
-        return;
-    }
-    if (d_mask_out == nullptr) {
-        record_api_error("mask output pointer is null.");
-        return;
-    }
-    if (threshold_half_den == 0ULL) {
-        record_api_error("threshold_half_den must be nonzero.");
-        return;
-    }
-
-    if (!fstat_accumulate(h, w_in)) return;
-    if (!fstat_write_numden_mask_rational(
-        h,
-        threshold_half_num,
-        threshold_half_den,
-        d_num_out,
-        d_den_out,
-        d_mask_out,
-        nullptr)) return;
-}
-
-void FStat_Compute_NumDen_Mask_RationalHalf_WithOverflowCount(
-    void* handle,
-    const InputType* w_in,
-    unsigned long long threshold_half_num,
-    unsigned long long threshold_half_den,
-    unsigned long long* d_num_out,
-    unsigned long long* d_den_out,
-    unsigned char* d_mask_out,
-    unsigned int* d_rational_overflow_count)
-{
-    clear_last_error();
-    FStatHandle* h = static_cast<FStatHandle*>(handle);
-    if (!h) {
-        record_api_error("handle is null.");
-        return;
-    }
-    if (d_num_out == nullptr) {
-        record_api_error("numerator output pointer is null.");
-        return;
-    }
-    if (d_den_out == nullptr) {
-        record_api_error("denominator output pointer is null.");
-        return;
-    }
-    if (d_mask_out == nullptr) {
-        record_api_error("mask output pointer is null.");
-        return;
-    }
-    if (d_rational_overflow_count == nullptr) {
-        record_api_error("rational overflow-count pointer is null.");
-        return;
-    }
-    if (threshold_half_den == 0ULL) {
-        record_api_error("threshold_half_den must be nonzero.");
-        return;
-    }
-
-    if (!fstat_accumulate(h, w_in)) return;
-    if (!fstat_write_numden_mask_rational(
-        h,
-        threshold_half_num,
-        threshold_half_den,
-        d_num_out,
-        d_den_out,
-        d_mask_out,
-        d_rational_overflow_count)) return;
-}
-
-void FStat_Compute_Powers(void* handle, const InputType* w_in)
-{
-    clear_last_error();
-    FStatHandle* h = static_cast<FStatHandle*>(handle);
-    if (!h) {
-        record_api_error("handle is null.");
-        return;
-    }
-    if (h->d_out == nullptr) {
-        record_api_error("output pointer is null for float power output.");
-        return;
-    }
-
-    if (!fstat_accumulate(h, w_in)) return;
-
-    const int count = h->batch * FSTAT_NUM_WEIGHT_TERMS;
-    const int threads = FSTAT_OUTPUT_KERNEL_THREADS;
-    const int blocks = (count + threads - 1) / threads;
-    kernel_convert_power_terms_to_float<<<blocks, threads, 0, h->stream>>>(
-        h->d_power_scratch,
-        h->d_out,
-        count);
-    CUDA_CHECK_LAST();
-    CUDA_CHECK_SYNC(h->stream);
-}
-
-void FStat_Compute_Powers_U64(
-    void* handle,
-    const InputType* w_in,
-    unsigned long long* d_power_out)
-{
-    clear_last_error();
-    FStatHandle* h = static_cast<FStatHandle*>(handle);
-    if (!h) {
-        record_api_error("handle is null.");
-        return;
-    }
-    if (d_power_out == nullptr) {
-        record_api_error("uint64 power output pointer is null.");
-        return;
-    }
-
-    if (!fstat_accumulate(h, w_in)) return;
-
-    CUDA_CHECK(cudaMemcpyAsync(
-        d_power_out,
-        h->d_power_scratch,
-        h->batch * FSTAT_NUM_WEIGHT_TERMS * sizeof(unsigned long long),
-        cudaMemcpyDeviceToDevice,
-        h->stream));
-    CUDA_CHECK_SYNC(h->stream);
 }
 
 /**
@@ -2611,10 +1816,7 @@ void FStat_Compute_FusedFine_U64(
     const size_t fine_bytes = static_cast<size_t>(h->batch)
         * FSTAT_NUM_WEIGHT_TERMS * FSTAT_FINE_NUM_BINS
         * sizeof(unsigned long long);
-    const size_t power_bytes = static_cast<size_t>(h->batch)
-        * FSTAT_NUM_WEIGHT_TERMS * sizeof(unsigned long long);
     CUDA_CHECK(cudaMemsetAsync(d_fine_power_out, 0, fine_bytes, h->stream));
-    CUDA_CHECK(cudaMemsetAsync(d_power_out, 0, power_bytes, h->stream));
 
     dim3 grid(num_streams, h->batch, 1);
     kernel_fused_fine<<<grid, FSTAT_BLOCK_THREADS, 0, h->stream>>>(
@@ -2622,7 +1824,6 @@ void FStat_Compute_FusedFine_U64(
         h->d_weights,
         h->d_weight_lanes,
         d_fine_power_out,
-        d_power_out,
         d_row_sums_out,
         NULL,            /* no decision epilogue: core 2.2.0 behavior */
         NULL, NULL,      /* no rank-support diagnostics */
@@ -2631,6 +1832,8 @@ void FStat_Compute_FusedFine_U64(
         h->detector_rows_per_block,
         h->batch);
     CUDA_CHECK_LAST();
+    /* Frame powers P_r = sum_f S_r[f], stream-ordered after the fused launch. */
+    if (!fstat_reduce_frame_powers(h, d_fine_power_out, d_power_out)) return;
     CUDA_CHECK_SYNC(h->stream);
 }
 
@@ -2721,11 +1924,6 @@ static void fstat_compute_fused_fine_mask(
         CUDA_CHECK(cudaMemsetAsync(d_n_bulk_out, 0xff,
             static_cast<size_t>(h->batch) * sizeof(int), h->stream));
     }
-    if (d_power_out != nullptr) {
-        const size_t power_bytes = static_cast<size_t>(h->batch)
-            * FSTAT_NUM_WEIGHT_TERMS * sizeof(unsigned long long);
-        CUDA_CHECK(cudaMemsetAsync(d_power_out, 0, power_bytes, h->stream));
-    }
 
     dim3 grid(num_streams, h->batch, 1);
     kernel_fused_fine<<<grid, FSTAT_BLOCK_THREADS, 0, h->stream>>>(
@@ -2733,7 +1931,6 @@ static void fstat_compute_fused_fine_mask(
         h->d_weights,
         h->d_weight_lanes,
         d_fine_power_out,
-        d_power_out,
         d_row_sums_out,
         d_mask_out,
         d_rank_valid_out,
@@ -2750,6 +1947,10 @@ static void fstat_compute_fused_fine_mask(
         h->detector_rows_per_block,
         h->batch);
     CUDA_CHECK_LAST();
+    /* Optional frame-power tap: P_r = sum_f S_r[f] from the finalized sums. */
+    if (d_power_out != nullptr) {
+        if (!fstat_reduce_frame_powers(h, d_fine_power_out, d_power_out)) return;
+    }
     CUDA_CHECK_SYNC(h->stream);
 }
 

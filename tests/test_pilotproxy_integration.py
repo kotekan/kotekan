@@ -60,8 +60,8 @@ def expected_fine_products_with_support(block, freq_ids, bundle, weights, num_di
             block, index, reverse, num_freq=len(freq_ids), num_dishes=num_dishes
         )
         projections = reference.expected_row_sums(real, imag, bank)
-        powers[index] = (projections * projections).sum(axis=(1, 2), dtype=np.uint64)
         fine = fine_power_fx(projections, num_streams=2 * num_dishes)
+        powers[index] = fine.sum(axis=1, dtype=np.uint64)
         decision = fine_mask_decision(
             fine,
             anchor_bin=calibration["anchor_bin"],

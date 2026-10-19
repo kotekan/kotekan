@@ -1,5 +1,5 @@
 // Compare the GPU packer and PilotProxy kernels with CPU references:
-// packed samples, coarse powers, row sums, fine powers and the fine mask.
+// packed samples, row sums, fine powers, frame powers and the fine mask.
 // Fine powers use the vendored fixed-point FFT reference; fine decisions
 // use a C++ port of pilot-proxy's fine_decision.py with wide-integer comparisons.
 // Pipeline and metadata tests are in tests/test_pilotproxy_integration.py.
@@ -17,7 +17,8 @@
 #include "pilotproxy/f_statistic_reference.h" // for fstat_ref_* (vendored)
 
 // Frozen fxfft256 v1 reference transform (vendored, C source). Compiled into
-// this translation unit without its standalone file harness.
+// this translation unit without its standalone file harness; the vendored
+// reference library keeps its own copy internal.
 #define FXFFT256_REF_NO_MAIN
 #include "pilotproxy/fxfft256_ref.c"
 
@@ -253,7 +254,7 @@ public:
         CHECK_CUDA_ERROR(cudaMalloc(&d_support, 2 * sizeof(int)));
         CHECK_CUDA_ERROR(cudaMemcpy(d_ring, ring.data(), ring.size(), cudaMemcpyHostToDevice));
 
-        void* const handle = FStat_Create(d_packed, nullptr, int(detector_rows));
+        void* const handle = FStat_Create(d_packed, int(detector_rows));
         if (!handle)
             FATAL_ERROR("FStat_Create failed: {:s}", FStat_LastError());
 
@@ -284,20 +285,6 @@ public:
                                         int(reverse), freq_index, pos, i, packed_gpu[i],
                                         packed_cpu[i]);
 
-                    // --- Coarse powers: GPU vs vendored CPU reference.
-                    unsigned long long powers_gpu[NUM_TERMS];
-                    unsigned long long powers_cpu[NUM_TERMS];
-                    FStat_Compute_Powers_U64(handle, weights.data(), d_powers);
-                    CHECK_CUDA_ERROR(cudaDeviceSynchronize());
-                    CHECK_CUDA_ERROR(cudaMemcpy(powers_gpu, d_powers, sizeof powers_gpu,
-                                                cudaMemcpyDeviceToHost));
-                    fstat_ref_powers_u64(packed_cpu.data(), weights.data(), int(detector_rows),
-                                         powers_cpu);
-                    for (int t = 0; t < NUM_TERMS; ++t)
-                        if (powers_gpu[t] != powers_cpu[t])
-                            FATAL_ERROR("coarse power mismatch: term {:d}: gpu={:d} cpu={:d}", t,
-                                        powers_gpu[t], powers_cpu[t]);
-
                     // --- Row sums: GPU vs vendored CPU reference.
                     FStat_Compute_RowSums_I32(handle, weights.data(), d_row_sums);
                     CHECK_CUDA_ERROR(cudaDeviceSynchronize());
@@ -311,24 +298,33 @@ public:
                                     freq_index, pos);
 
                     // --- Fused fine powers: GPU vs fxfft256 v1 + exact feed
-                    // sums over the CPU row sums; coarse marginals must
-                    // reproduce Powers_U64 exactly (the marginal identity).
-                    unsigned long long fused_powers_gpu[NUM_TERMS];
+                    // sums over the CPU row sums. The frame powers are the
+                    // sums of each term's fine powers.
                     FStat_Compute_FusedFine_U64(handle, weights.data(), d_fine_powers, d_powers,
                                                 nullptr);
                     CHECK_CUDA_ERROR(cudaDeviceSynchronize());
                     CHECK_CUDA_ERROR(cudaMemcpy(fine_gpu.data(), d_fine_powers,
                                                 fine_gpu.size() * sizeof(uint64_t),
                                                 cudaMemcpyDeviceToHost));
-                    CHECK_CUDA_ERROR(cudaMemcpy(fused_powers_gpu, d_powers, sizeof fused_powers_gpu,
-                                                cudaMemcpyDeviceToHost));
                     cpu_fine_powers(row_sums_cpu, int(num_streams), windows, fine_cpu);
                     if (fine_gpu != fine_cpu)
                         FATAL_ERROR("fine power mismatch (rev={:d},f={:d},pos={:d})", int(reverse),
                                     freq_index, pos);
+                    unsigned long long powers_cpu[NUM_TERMS] = {0, 0, 0};
                     for (int t = 0; t < NUM_TERMS; ++t)
-                        if (fused_powers_gpu[t] != powers_cpu[t])
-                            FATAL_ERROR("fused coarse marginal mismatch: term {:d}", t);
+                        for (int bin = 0; bin < FINE_BINS; ++bin)
+                            powers_cpu[t] += fine_cpu[std::size_t(t) * FINE_BINS + bin];
+                    const auto check_powers = [&](const char* entry) {
+                        unsigned long long powers_gpu[NUM_TERMS];
+                        CHECK_CUDA_ERROR(cudaMemcpy(powers_gpu, d_powers, sizeof powers_gpu,
+                                                    cudaMemcpyDeviceToHost));
+                        for (int t = 0; t < NUM_TERMS; ++t)
+                            if (powers_gpu[t] != powers_cpu[t])
+                                FATAL_ERROR("{:s} frame power mismatch: term {:d}: gpu={:d} "
+                                            "cpu={:d}",
+                                            entry, t, powers_gpu[t], powers_cpu[t]);
+                    };
+                    check_powers("fused");
 
                     // --- Fine designated-set CFAR mask: GPU epilogue vs the
                     // fine decision v1 port, over several calibrations
@@ -364,11 +360,13 @@ public:
                             }
                         }
                         int mask_gpu_i32 = -1;
+                        CHECK_CUDA_ERROR(cudaMemset(d_powers, 0, NUM_TERMS * sizeof(uint64_t)));
                         FStat_Compute_FusedFineMask_U64(
                             handle, weights.data(), calibration.anchor, calibration.half_width,
                             words.data(), calibration.rank, calibration.mult_q16, d_fine_powers,
-                            d_mask_i32, nullptr, nullptr);
+                            d_mask_i32, d_powers, nullptr);
                         CHECK_CUDA_ERROR(cudaDeviceSynchronize());
+                        check_powers("mask");
                         CHECK_CUDA_ERROR(cudaMemcpy(&mask_gpu_i32, d_mask_i32, sizeof(int),
                                                     cudaMemcpyDeviceToHost));
                         const FineDecisionRef ref =

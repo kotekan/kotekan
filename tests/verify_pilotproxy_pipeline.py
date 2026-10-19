@@ -4,8 +4,8 @@
 The config in config/tests/verify_pilotproxy_pipeline.yaml defines the raw
 array layouts. Frame metadata supplies timing and frequency IDs. The runtime
 bundle supplies channel bindings, preprocessing, weights and fine calibration.
-Coarse powers use NumPy integer calculations; fine masks use the matching
-pilot-proxy reference package.
+Frame powers (the sums of the fine powers) and fine masks use the matching
+PilotProxy reference package.
 
 Usage:
     python3 tests/verify_pilotproxy_pipeline.py --calibrate \
@@ -203,7 +203,7 @@ def synthetic_calibration(bundle):
 def expected_products(
     block_bytes, freq_ids, bundle, weight_bank, *, num_dishes=NUM_DISHES
 ):
-    """Reference coarse powers and fine masks for a complete detector block.
+    """Reference frame powers and fine masks for a complete detector block.
 
     Fine decisions use PilotProxy's fixed-point Python FFT and integer CFAR
     reference. No GPU output is used to construct the expected products.
@@ -227,13 +227,13 @@ def expected_products(
             block_bytes, index, reverse, num_freq=len(freq_ids), num_dishes=num_dishes
         )
         projections = expected_row_sums(real, imag, weights)
-        powers[index] = (projections * projections).sum(axis=(1, 2), dtype=np.uint64)
+        fine = fine_power_fx(projections, num_streams=NUM_POL * num_dishes)
+        powers[index] = fine.sum(axis=1, dtype=np.uint64)
         calibration = profile["fine_calibration"]
         if calibration["status"] != "calibrated":
             raise ValueError(
                 f"physical channel {profile['physical_channel']} is not calibrated"
             )
-        fine = fine_power_fx(projections, num_streams=NUM_POL * num_dishes)
         masks[index] = fine_mask_decision(
             fine,
             anchor_bin=calibration["anchor_bin"],
