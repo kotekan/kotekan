@@ -79,6 +79,10 @@ Differences from ``config/fengine``:
   production values are the defaults.
 * ``half_filled`` (default ``false``) marks the northern half of the pathfinder dishes (32 to
   63; north is +y) as ``Missing``.
+* ``bb_beam_layout`` and ``frb2_beam_layout`` replace the keys of ``setBBBeams`` and
+  ``setFRBBeams`` that place the beams (``fixed_mode`` / ``mode`` and its keys; default: the
+  production grids), and ``frb2_weights_lifetime_in_samples`` the FRB2 weights lifetime
+  (default: 240 FRB2 frames, about 60 s).
 
 Running
 =======
@@ -186,11 +190,15 @@ upchannelizer output start ``T*``, ``coarse_freq`` / ``freq_upchan_factor`` /
        predictions from the present dishes.
      - N2 exact; BB phase 5°; FRB1 peak bins exact, fringe 0.01
    * - T7 Beam pointings
-     - Point-source tone on different configured beams; short lifetimes.
+     - T2's weak tone on a BB and an FRB2 beam at once, ``grid_degrees`` (BB a single column,
+       ``num_x`` 1) and ``manual`` (irregular positions, random 64-bit ids); lifetimes of 3
+       frames (BB, FRB1) and one FRB2 frame.
      - BB, FRB2, beam positions and ids
-     - The peak is in the beam configured at the source; positions and ids match the config;
-       no step at lifetime boundaries.
-     - exact
+     - Positions and ids equal the config, one frame per lifetime at ``seq0 + k L`` (FRB2:
+       ``seq0 + T* + k L``); the peak is in the beam configured at the source; every BB beam is
+       non-zero; the tone in the source beam is the same in every window across the lifetime
+       boundaries.
+     - positions, ids, BB peak exact; FRB2 as T2; windows 6σ (σ ≈ 0.1%)
    * - T8 Packet loss
      - Noise plus tone; loss rates 0.01% and 1%, plus loss boxes at frame and ``T*`` edges; lost
        voltages poisoned; a reference run without loss.
@@ -278,6 +286,15 @@ Findings
   fringe-stopped complex float values into its ``int32`` accumulator
   (``lib/stages/N2Accumulate.cpp:989``), which truncates towards zero and loses up to one count
   per component and sub-integration. T6 sees autocorrelations one count low.
+* ``setBBBeams`` and ``setFRBBeams`` place the beams as configured in ``grid_degrees`` and
+  ``manual`` mode, including a single-beam axis at its midpoint and 64-bit ids, and the BB and
+  FRB2 beams follow them (T7). With lifetimes of 3 frames (BB, FRB1) and one FRB2 frame, the
+  tone in the source beam changes by at most 0.44% at a boundary, within the noise. With static
+  pointings, a stale matrix from the previous lifetime would go unnoticed.
+* The ``setFRBBeams`` documentation names its mode key ``fixed_mode`` and the type of ``beams``
+  ``FixedBBBeam`` (``lib/stages/setFRBBeams.cpp:78-90``); the key is ``mode`` and the type
+  ``FRBBeam``. ``num_beams`` is described as "fixed + tracking" (line 71), but there are no
+  tracking FRB beams.
 * ``setUpchanGain`` checks the number of gains (one per fine channel) only with ``assert``
   (seen while writing T5, not tested), which a Release build drops: extra gains are ignored,
   and too few throw ``std::out_of_range``.

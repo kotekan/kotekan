@@ -21,10 +21,13 @@ import numpy as np
 
 from kit import (
     audit,
+    bb_peak_line,
     C0,
     channel_width,
     direction_vector,
     decode_int4x2,
+    frb2_peak_line,
+    frb2_tone_power,
     geometric_phases,
     grid_beam_direction,
     large_seq,
@@ -127,41 +130,12 @@ def check(out_dir, var, config):
         f"voltage: tone phase {mean:+.2f} deg (99%: {worst:.1f}), amplitude x{amp:.3f}"
     )
 
-    # Baseband beams [Thi, B, F, P, T], J = bb_gain Σ_d exp(iφ_bd) E_d. The predicted tone power
-    # in beam b is (A bb_gain |Σ_d exp(2πi ν (n_b - n)·r_d / c)|)^2 on top of a noise floor that
-    # is the same for all beams. Where the prediction is unambiguous, the measured power must
-    # peak in the predicted beam.
+    # Baseband beams [Thi, B, F, P, T]: the power must peak in the predicted beam
     bb = read_output(out_dir, "bb_beams")
     audit(bb, first_seq=SEQ0, frequency_channels=channels)
     num_beams = bb.data.shape[1]
     positions = read_output(out_dir, "bb_beam_positions").data[:num_beams]  # [B, 2]
-    power = (np.abs(decode_int4x2(bb.data)) ** 2).mean(axis=(0, 3, 4))  # [B, F]
-    gain = value(config, "bb_gain") * 127.5 / 128
-    predicted = np.stack(
-        [
-            (
-                AMPLITUDE
-                * gain
-                * np.abs(
-                    (phases * geometric_phases(config, pos, nu).conj()).sum(axis=1)
-                )
-            )
-            ** 2
-            for pos in positions
-        ]
-    )  # [B, F]
-    ranked = np.sort(predicted, axis=0)
-    clear = (ranked[-1] >= 1.25 * ranked[-2]) & (ranked[-1] - ranked[-2] >= 1)
-    require(clear.any(), "bb_beams: no frequency with an unambiguous predicted peak")
-    wrong = clear & (power.argmax(axis=0) != predicted.argmax(axis=0))
-    require(
-        not wrong.any(),
-        f"bb_beams: peak in beam {power.argmax(axis=0)[wrong][:8].tolist()} instead of "
-        f"{predicted.argmax(axis=0)[wrong][:8].tolist()} for {wrong.sum()} of {clear.sum()} frequencies",
-    )
-    results.append(
-        f"bb_beams: peak in the predicted beam for all {clear.sum()} unambiguous frequencies"
-    )
+    results.append(bb_peak_line(bb.data, positions, config, phases, nu, AMPLITUDE))
 
     # Upchannelized voltages [Tbar, Fbar, P, D]. For the tone,
     #     Ē_u(L) = G_u A R_u exp(2πi f_tone (w - t0)) phases,   w = L - (M-1) U / 2,
@@ -277,38 +251,14 @@ def check(out_dir, var, config):
     )
 
     # FRB2 beams [Ttildehi256, R, Fbar, Ttildelo256]: for the `frb2` variant, the source beam
-    # must hold the maximum tone power (above the noise floor, the median over beams) in each
-    # coarse channel. Grating lobes (the dish spacing is many wavelengths) can give other beams
-    # the same tone power; such ties are allowed within 2%.
+    # must hold the peak tone power
     frb2 = read_output(out_dir, "frb2_beams")
     audit(frb2, first_seq=SEQ0 + t_star)
-    power = used_channels(frb2, 2).astype(np.float64).sum(axis=(0, 3))  # [R, Fbar]
-    coarse = np.atleast_1d(frb2.attr("coarse_freq"))
-    slots = np.array(
-        [
-            np.nonzero(coarse == chan)[0][power[:, coarse == chan].max(axis=0).argmax()]
-            for chan in np.unique(coarse)
-        ]
-    )
-    tone = power[:, slots] - np.median(power[:, slots], axis=0)  # [R, coarse]
     if direction == grid_beam_direction(config, "frb2", *FRB2_BEAM):
         expected_beam = FRB2_BEAM[0] + value(config, "frb2_num_beams_x") * FRB2_BEAM[1]
-        share = tone[expected_beam] / tone.max(axis=0)
-        bad = share < 0.98
-        if bad.any():
-            peaks = tone.argmax(axis=0)[bad]
-            require(
-                False,
-                f"frb2_beams: beam {expected_beam} has only {share[bad].min():.3f} of the peak "
-                f"tone power (peak in beams {np.unique(peaks).tolist()}) in {bad.sum()} of "
-                f"{len(slots)} channels",
-            )
-        ties = (tone >= 0.98 * tone.max(axis=0)).sum(axis=0) > 1
-        results.append(
-            f"frb2_beams: beam {expected_beam} holds the peak in all {len(slots)} channels "
-            f"({ties.sum()} ties with grating lobes)"
-        )
+        results.append(frb2_peak_line(frb2, expected_beam))
     else:
+        tone = frb2_tone_power(frb2)
         results.append(
             f"frb2_beams: peaks in beams {np.unique(tone.argmax(axis=0)).tolist()} (not checked)"
         )
