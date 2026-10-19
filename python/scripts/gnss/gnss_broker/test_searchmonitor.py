@@ -96,6 +96,32 @@ def main():
         "within 60 s (%s)" % (s[0][:70] if s else "none"),
     )
 
+    # #209: a monitored search must not turn the slewed refresh off. The predicate dr_seed
+    # gates the slew on, in its four cases.
+    def _mctx(detectors, monitor, flipped=()):
+        return types.SimpleNamespace(
+            detectors=detectors,
+            args=types.SimpleNamespace(detectors_monitor=monitor),
+            mp_flipped=set(flipped),
+        )
+
+    check(
+        deadreckon.seeds_are_model_owned(_mctx([], False), 5),
+        "no detectors: the model owns the seed (slew)",
+    )
+    check(
+        not deadreckon.seeds_are_model_owned(_mctx(["http://x/s"], False), 5),
+        "a seeding search: a locked seed is left to the DLL",
+    )
+    check(
+        deadreckon.seeds_are_model_owned(_mctx(["http://x/s"], True), 5),
+        "a MONITORED search (#209): the model still owns the seed",
+    )
+    check(
+        deadreckon.seeds_are_model_owned(_mctx(["http://x/s"], False, (5,)), 5),
+        "a PRN flipped to this chain slews under a seeding search",
+    )
+
     print("\nFAILED (%d)" % len(_fails) if _fails else "\nOK")
     return 1 if _fails else 0
 
