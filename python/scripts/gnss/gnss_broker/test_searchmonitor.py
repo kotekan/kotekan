@@ -56,32 +56,45 @@ def main():
     med, mad = deadreckon.circular_median(
         [(1, 10229.9), (2, 0.1), (3, 10229.8), (4, 5000.0), (5, 10229.7)], REF_LEN
     )
-    check(abs(((med - 10229.9 + REF_LEN / 2) % REF_LEN) - REF_LEN / 2) < 0.05 and mad < 0.3,
-          "a cluster straddling the wrap medians inside it, the outlier does not drag it")
+    check(
+        abs(((med - 10229.9 + REF_LEN / 2) % REF_LEN) - REF_LEN / 2) < 0.05
+        and mad < 0.3,
+        "a cluster straddling the wrap medians inside it, the outlier does not drag it",
+    )
 
     print("\nsearch minus joint")
     lines = _run([(1, 150.0), (2, 150.3), (3, 149.8)], 150.6)
     l = [x for x in lines if x.startswith("SEARCH-MONITOR gal_e5a:")]
-    check(len(l) == 1 and "search - joint -0.600 chips = -17.6 m" in l[0],
-          "search 150.0 vs joint 150.6: -0.600 chips = -17.6 m (the sign is search - joint)")
-    check("1:-0.60" in l[0] and "2:-0.30" in l[0] and "3:-0.80" in l[0],
-          "per PRN against the joint clock")
+    check(
+        len(l) == 1 and "search - joint -0.600 chips = -17.6 m" in l[0],
+        "search 150.0 vs joint 150.6: -0.600 chips = -17.6 m (the sign is search - joint)",
+    )
+    check(
+        "1:-0.60" in l[0] and "2:-0.30" in l[0] and "3:-0.80" in l[0],
+        "per PRN against the joint clock",
+    )
     lines = _run([(1, 10229.9), (2, 10229.7), (3, 0.1)], 0.4)
     l = [x for x in lines if x.startswith("SEARCH-MONITOR gal_e5a:")]
-    check(len(l) == 1 and "search - joint -0.500 chips" in l[0],
-          "search 10229.9 vs joint 0.4 wraps to -0.500, not a whole code")
+    check(
+        len(l) == 1 and "search - joint -0.500 chips" in l[0],
+        "search 10229.9 vs joint 0.4 wraps to -0.500, not a whole code",
+    )
     lines = _run([(1, 150.0)], 150.6, joint=False)
-    check(any("no joint clock to compare with" in x for x in lines),
-          "without a joint clock the search's own clock is still reported")
+    check(
+        any("no joint clock to compare with" in x for x in lines),
+        "without a joint clock the search's own clock is still reported",
+    )
 
     print("\nthe 5-minute summary")
     st, lines = {}, []
     for i in range(4):
         lines += _run([(1, 150.0 + 0.01 * i)], 150.6, now=100.0 + 2.0 * i, state=st)
     s = [x for x in lines if "5-min" in x]
-    check(len(s) == 1 and "over 3 cycles" in s[0] and "median -0.5" in s[0],
-          "the 5-min median line appears once the history holds 3 cycles, then not again "
-          "within 60 s (%s)" % (s[0][:70] if s else "none"))
+    check(
+        len(s) == 1 and "over 3 cycles" in s[0] and "median -0.5" in s[0],
+        "the 5-min median line appears once the history holds 3 cycles, then not again "
+        "within 60 s (%s)" % (s[0][:70] if s else "none"),
+    )
 
     print("\nFAILED (%d)" % len(_fails) if _fails else "\nOK")
     return 1 if _fails else 0

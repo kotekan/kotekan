@@ -1289,6 +1289,18 @@ def dr_joint_clk(ctx):
         ctx.drp.clk_now = (ctx.drp.clk_now + _jcoast[0]) % ctx.code_len
 
 
+def seeds_are_model_owned(ctx, prn):
+    """Does the model own this PRN's seed, so a locked seed is slewed toward the model rather
+    than left to the DLL? True without detectors, under --detectors-monitor (the search is
+    read, never seeded from: #209), and for a PRN the map has flipped to this chain. A chain
+    whose search seeds leaves locked seeds to the DLL."""
+    return (
+        not ctx.detectors
+        or bool(getattr(ctx.args, "detectors_monitor", False))
+        or prn in ctx.mp_flipped
+    )
+
+
 def dr_seed(ctx):
     """Birth, re-pin or slew the seed of every visible satellite this chain dead-reckons, and drop
     model-owned seeds that have set or whose satellite lacks the signal. Computes ctx.drp.clk_now.
@@ -1423,7 +1435,7 @@ def dr_seed(ctx):
                 )
             _slew = (
                 prn in ctx.seeds
-                and (not ctx.detectors or prn in ctx.mp_flipped)
+                and seeds_are_model_owned(ctx, prn)
                 and prn in ctx.dr_state["seeded"]
                 and (ctx.sig_of(ctx.status.get(prn, {})) >= ctx.args.lock_snr or _held)
             )

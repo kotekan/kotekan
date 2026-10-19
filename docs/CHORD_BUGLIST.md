@@ -191,7 +191,37 @@ pre-fix -- the datum (GPS L5 search clock) and each Galileo PRN moved by 1.39e-4
 constant now reads +0.58 chip with the lever gone. The b_sat-vs-Doppler fit over 22:56-23:11Z (196 points, each PRN
 spanning ~300 Hz) is not interpretable: the post-restart settling aliases into a within-pass slope (per-PRN +242..-36
 ms); re-fit over full passes (hours) before reading it. **#207 is closed on the stage and the live invariant; the
-pooled-slope re-fit is the remaining read-back (0b territory).**
+pooled-slope re-fit is the remaining read-back (0b territory).** **10-19 10:47Z re-fit over the night (01:30-10:47Z,
+7,076 points, 18 PRNs, with 0b live): pooled slope +2.3e-5 chip/Hz = -2.7 ms, from -8.1e-5 (+9.3 ms) before; the
+change is +1.0e-4 of the predicted +1.4e-4, the rest the within-pass degeneracy (per-PRN -11..+1 ms). CLOSED.**
+
+### #209 — `--detectors-monitor` (the E5a search experiment) silently disables the slewed seed refresh: every locked gal_e5a satellite is re-born every ~8 min with a trim wipe, and the obs rows carry 100-1000 m excursions since 2026-10-18 18:37Z (2026-10-19, overnight check)
+**What:** gal_e5a's `code_resid_m` rows have >20 m excursions on most PRNs since hour 18 of 10-18 (308 of 3,995 rows in
+that hour, 8 the hour before, ~600/h all night; 10-18's night had 3 in 14,826), with the per-PRN medians still fine (+-1 m)
+but p10/p90 of -100..+200 m (E2 -384/+192, E11 p90 +3,310). The night re-survey fit on gal_e5a reads rms 7 m with half
+the rows clipped, while gal_e5b (no detectors) is clean (rms 0.75). Broker log since the 00:56Z restart: gal_e5a 147
+`SEEDAUDIT STEP PRN N: -7.7 chips (= -0.004 Hz x lever) ddop ... dt ~460-500 s [dop=dr_birth cp0=dr_birth ...]` + 312
+`SAWTOOTH ... BARE-WIPE` + 374 HOLD-BY-PROMPT, against 3 / 0 / 41 on gal_e5b. **Why (deadreckon.py dr_seed):**
+`_slew = prn in seeds and (not ctx.detectors or prn in mp_flipped) and ...` -- the slewed refresh of a locked
+dead-reckon seed is gated on "this chain has no detectors"; the monitor mode sets `ctx.detectors` (the e5a_search URL)
+although its detections never seed, so every locked PRN takes the plain-hold path and is re-born on the hold cadence,
+each re-birth re-basing the seed under a standing trim (the tap moves, the trim rebuilds = the sawtooth). The stage-9
+reviewer flagged it on 10-18 20:45Z ("--detectors-monitor also turns off dr_seed's slewed refresh ... consistent with
+E33 walking to the 3.0 trim clamp"); it sat in #192's list. **Not** the 22:53Z (#207) or 00:56Z (0b/position) restarts.
+**Fix:** every seeding decision that asks "does this chain have detectors" must ask "do its detections seed" --
+`ctx.detectors` and `ctx.args.detectors_monitor` together (a helper); then a broker restart. Until then gal_e5a's code
+observables are unusable for the fits (the SEARCH-MONITOR itself is fine: it reads the search, not the tracker).
+
+### #210 — glo_l3oc's code residual carries a GLONASS-only range-model term: +44 m up-like, +8 m north, +5 m east against the GPS/Galileo/BeiDou chains (2026-10-19, the 0b night gate)
+**What:** the night re-survey fit (gnss_resurvey.py --hours 6-13) on 10-19 with the model live reads glo_l3oc model -
+true = +44.1 U / +8.2 N / +5.2 E (rms 3.5 m, 5,382 of 6,521 rows) while gps_l5, gal_e5b, bds_b2a and bds_b3i read
++0.6..+1.2 U, +-0.4 N. On 10-18 (model without atmosphere, position 545) it read +59.3 / +12.0 / -3.6 with the
+atmosphere added back, against +18 / +3.3 for GPS: the GLONASS excess (~+41 U, +8 N) was there before the position
+change, so it is in the GLONASS range model, not the site. **Candidates:** the state-vector integration from tb (a
+position error that grows with age; GLONASS_MAX_AGE_S), the PZ-90.11 frame or the GLONASS time scale (UTC(SU) + 3 h,
+tau_c, no leap seconds) in the light-time / Sagnac path, or the L3OC code bias. A height-like error of 40 m at 2 x
+10^4 km is ~2 ppm of range -- an orbit integration error of that size over hours is plausible. **Next:** per-satellite
+residual vs ephemeris age on glo_l3oc; compare the integrated position with a precise orbit for one satellite.
 
 ### #208 — wall time sits in the radiometric path: the ephemeris is evaluated at `now_w` and labelled `t_eph_age = now_w - utc0_sample0` (2026-10-18, design, KV: nothing radiometric may depend on wall time; FIXED 10-18 23:45Z: every radiometric "now" is the hop axis (transport.axis_now); lands at the next broker restart)
 **What [tree]:** deadreckon.py:2224-2292 runs `predict_all` at the wall clock `now_w` and stamps the rows'

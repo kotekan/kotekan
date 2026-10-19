@@ -294,7 +294,16 @@ Offline now, on the obs archive and the replays (no sky needed):
       re-blessed, three header lines), and gnss_atmos.iono_params caches the last set seen
       (~/.cache/kotekan_gps/iono_corr.json; the broker writes it, the obs writers read it; a
       pinned replay never touches it), its age logged past 14 days.
-      **Re-survey measured and APPLIED 2026-10-19 00:56Z (e5c42b7ec; gate = the next night's obs):** with both delays in, the station offset
+      **GATE PASSED on the 2026-10-19 night (06-13 UTC, model and position live): model - true
+      dU / dN / dE = gps_l5 +1.02 / +0.34 / -0.28 m (rms 0.82), gal_e5b +1.22 / +0.09 / +0.04
+      (0.75), bds_b2a +1.09 / -0.09 / -0.31 (0.86), bds_b3i +0.58 / +0.40 / -0.15 (0.95), gps_l2c
+      +0.73 / -1.30 / +0.10 (4.8, the loose CM chain); gps_l5's residual sits at 0.00 m in every
+      elevation bin from 0 to 60 deg (1/sin term -0.06, sin term -0.76 m). Step 0b is done; the
+      ~+1 m up that remains is the ionosphere model's night floor or the hand-typed height.
+      gal_e5a is not in the gate: its rows carry a seed-step storm from the monitor-mode search
+      experiment (buglist #209), unrelated to the atmosphere. glo_l3oc shows its own +44 U /
+      +8 N / +5 E (buglist #210, a GLONASS range-model term, present on 10-18 too).**
+      **Re-survey measured and APPLIED 2026-10-19 00:56Z (e5c42b7ec):** with both delays in, the station offset
       (scripts/gnss/gnss_resurvey.py, per-10-s clock fixed effects, three ENU columns, night
       rows 06-13 UTC) is model - true = (+17.4..+18.0 U, +3.2..+3.9 N, 0.0 E) m on gps_l5,
       gal_e5a and bds_b3i, and the same on 10-12 before the dishes were tipped (+18.3 / +17.5
