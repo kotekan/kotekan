@@ -211,6 +211,7 @@ def instr_tap_walk(ctx):
                 # the arm that has them
                 coh_from=ctx.dllp.fleet,
                 admit_displaced=ctx.dllp.admit_disp,
+                dll_spacing=ctx.args.dll_spacing,
             )
         except Exception as e:
             _cf = None

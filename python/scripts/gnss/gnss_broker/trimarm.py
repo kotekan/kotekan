@@ -7,7 +7,9 @@ stage_fleet_trim_arming).
 
 Arming follows presence with a hold, not presence at an instant. A released PRN's trim leaks
 away, so a satellite flickering across the gate would be armed and released every cycle and
-lose the standing trim it built each time.
+lose the standing trim it built each time. A PRN present only on deep-fold evidence, with
+prompt power below the probe floor the fast loop gates its windows on, is not armed: the
+Python integrator trims it.
 
 The readback is the only place the real tap position is visible: the tracker despreads at
 seed + standing trim, so a judge of the seed that ignores the trim sees only part of the
@@ -32,15 +34,28 @@ def stage_fleet_trim_arming(ctx):
         _now_present = [
             _p for _p in (ctx.dllp.fleet or {}) if ctx.dllp.fleet[_p].get("present")
         ]
+        # Present on deep-fold evidence with prompt power below the probe floor (the deep
+        # gate, and the displaced admission's q+deep:probes+disp; fleet.apply_presence). The
+        # fast loop leaks every window whose prompt power is below p_floor_abs, the floor
+        # these rows already failed, and the Python integrator stands down for an armed PRN,
+        # so armed they would be stepped by neither. They are left out of the armed set, hold
+        # or not, and the per-cycle Python DLL trims them (codeloop.py).
+        _below_floor = set(
+            _p
+            for _p in _now_present
+            if ctx.dllp.fleet[_p].get("p_floor")
+            and ctx.dllp.fleet[_p].get("p_pow", 0.0) < ctx.dllp.fleet[_p]["p_floor"]
+        )
         # Stamped and aged on the frozen cycle clock, so a replay arms the same set at any
         # replay speed.
         for _p in _now_present:
-            ctx.dls.hold[_p] = ctx.t0
+            if _p not in _below_floor:
+                ctx.dls.hold[_p] = ctx.t0
         # Armed: present within the last fleet_trim_hold_s (cli.py).
         _armed = sorted(
             _p
             for _p, _t in ctx.dls.hold.items()
-            if ctx.t0 - _t < ctx.args.fleet_trim_hold_s
+            if ctx.t0 - _t < ctx.args.fleet_trim_hold_s and _p not in _below_floor
         )
         # What next cycle's Python integrator stands down against; recorded before the POST
         # (see the docstring).

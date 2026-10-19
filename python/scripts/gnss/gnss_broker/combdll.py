@@ -400,6 +400,7 @@ def fleet_dll_comb(
     coh_from=None,
     taps_src=None,
     admit_displaced=None,
+    dll_spacing=0.5,
 ):
     """fleet_dll's dict, from the comb. {prn: {disc, q, p_pow, hop, n_src, n_chan, ...}}.
 
@@ -422,6 +423,8 @@ def fleet_dll_comb(
     quadrature fallback reads coh_quad; without coh_quad the published deep_snr falls back to
     the single best instance's, several dB below the fleet value, and the served series steps
     whenever the fleet gate flickers.
+
+    `dll_spacing`: the chain's tap offset (--dll-spacing), for apply_presence.
     """
     if taps_src is not None:
         # The C++ arm. No window selection here: the depth is the gather's `taps_win`
@@ -479,6 +482,7 @@ def fleet_dll_comb(
         deep_gate_prns=deep_gate_prns,
         deep_gate_margin=deep_gate_margin,
         admit_displaced=admit_displaced,
+        dll_spacing=dll_spacing,
     )
 
 

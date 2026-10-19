@@ -247,6 +247,7 @@ def fleet_dll(
     anchor_utc=None,
     hops_per_sec=None,
     now=None,
+    dll_spacing=0.5,
 ):
     """Sum the fleet's raw Early/Prompt/Late powers per PRN -> one full-bandwidth discriminator.
 
@@ -272,7 +273,7 @@ def fleet_dll(
     inside the noise for one instance and clear it for eight.
 
     Instances that live_instances excludes still report their newest hop into src_hops but
-    contribute no rows.
+    contribute no rows. dll_spacing is the chain's tap offset, for apply_presence.
 
     Returns {prn: {disc, q, p_pow, hop, n_src, n_chan, coh_row, coh_src, coh_quad}}, plus the
     presence fields apply_presence adds (q_floor, q_med, q_sigma, p_floor, p_med, p_floor_src,
@@ -423,6 +424,7 @@ def fleet_dll(
         deep_gate_prns=deep_gate_prns,
         deep_gate_margin=deep_gate_margin,
         admit_displaced=admit_displaced,
+        dll_spacing=dll_spacing,
     )
 
 
@@ -525,6 +527,7 @@ def apply_presence(
     deep_gate_prns=None,
     deep_gate_margin=3.0,
     admit_displaced=None,
+    dll_spacing=0.5,
 ):
     """Floors, the presence verdict and the deep gate, in place, on a fleet_dll-shaped dict.
 
@@ -536,6 +539,10 @@ def apply_presence(
     tracked satellites, whose median on CHORD is a signal level. With fewer than 3 probes
     reporting q, or fewer than 2 reporting p_pow, every row is refused: present False,
     present_gate UNANCHORED.
+
+    dll_spacing is the chain's Early/Late tap offset from Prompt (--dll-spacing), the tap
+    geometry the displaced admission's epl_decompose fits. The fit's correlation is triangular
+    whatever the signal's.
     """
     # The presence bars are measured every cycle from the noise probes, never assumed: q's noise
     # value and spread move with the number of contributing instances and with the EMA length,
@@ -650,7 +657,7 @@ def apply_presence(
             )
             _bright = v["p_pow"] >= p_floor
             if _blind or _bright:
-                _off, _ped = epl_decompose(v["q"], v["disc"])
+                _off, _ped = epl_decompose(v["q"], v["disc"], dll_spacing)
                 v["off_chips"], v["pedestal"] = _off, _ped
                 if (
                     _ped <= admit_displaced["pedestal_max"]
@@ -691,13 +698,15 @@ def apply_presence(
             v["deep_gate_snr"], v["deep_gate_floor"] = ds, fl
     # The chain bar counts every row the displaced gate admitted, including a PRN the deep gate
     # has re-judged since: its offset is evidence of a chain event like any other row's.
-    # The chain's satellites this cycle: present on their peaks (not through the displaced
-    # gate, not a probe) plus the displaced candidates themselves.
+    # The chain's satellites this cycle: present on their peaks (not a displaced candidate, not
+    # a probe) plus the displaced candidates themselves, each once: a candidate the deep gate
+    # has re-judged present is counted among the candidates, not again as present.
+    _cand = set(a[0] for a in _admitted)
     _seen = sum(
         1
         for _p, _v in out.items()
         if _v.get("present")
-        and not str(_v.get("present_gate", "")).endswith("+disp")
+        and _p not in _cand
         and not (probe_prns and _p in probe_prns)
     )
     _refused, _why = displaced_chain_event(

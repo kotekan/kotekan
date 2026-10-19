@@ -270,6 +270,35 @@ def test_deep_gate():
         "one refusal line, no admission line: %s" % [k for k, _ in lines],
     )
 
+    # The chain's row count holds each satellite once. Three on-peak satellites (7, 12, 20)
+    # and the same three displaced rows, PRN 16 re-judged present by the deep gate: six
+    # satellites, three at one offset, a chain event. Counting PRN 16 both as present and
+    # as a candidate makes seven, and the three would no longer be half the chain.
+    deep = row(*DISPLACED)
+    deep["coh_row"] = {"deep_snr": 50.0, "deep_floor": 5.0}
+    out, lines = verdict(
+        fleet(
+            **{
+                "20": row(3.20, +0.02, 40.0),
+                "4": row(*DISPLACED),
+                "5": row(*DISPLACED),
+                "16": deep,
+            }
+        ),
+        admit(),
+        deep_gate_prns={16},
+    )
+    check(
+        all(
+            out[p]["present"] is False and out[p]["present_gate"] == "q+p:probes"
+            for p in (4, 5)
+        )
+        and (out[16]["present"], out[16]["present_gate"]) == (True, "deep")
+        and [k for k, _ in lines] == ["presence-disp-refused-same offset"],
+        "three of six at one offset are refused, the deep-gated PRN counted once: %s"
+        % [(p, out[p]["present"], out[p]["present_gate"]) for p in (4, 5, 16)],
+    )
+
     # Two bright rows at one offset, under the bar; the deep fold judges PRN 16 absent.
     deep = row(*DISPLACED)
     deep["coh_row"] = {"deep_snr": 10.0, "deep_floor": 5.0}

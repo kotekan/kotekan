@@ -425,7 +425,8 @@ chains:
     # the chain is browned out, or when 3 or more PRNs share it in one cycle: that is a chain
     # event, not N detections. Admissions log "PRESENCE +displaced" and carry present_gate
     # '...+disp'. An admitted row is armed for the fast loop, which steps it only in windows
-    # whose prompt power clears the same probe floor.
+    # whose prompt power clears the same probe floor; one admitted on the deep fold with prompt
+    # power below that floor is left to the per-cycle DLL instead.
         presence-admit-displaced: true
 
   # BeiDou B2a pilot: the same 1176.45 MHz channels, 10.23 Mcps primary and per-PRN 100 ms

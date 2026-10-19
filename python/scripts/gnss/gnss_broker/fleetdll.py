@@ -174,6 +174,8 @@ def stage_fleet_dll(ctx):
             # aggregate throws that per-instance axis away
             src_hops=ctx.dllp.inst_hops,
             admit_displaced=ctx.dllp.admit_disp,
+            # the displaced admission fits the offset at this chain's tap spacing
+            dll_spacing=ctx.args.dll_spacing,
             # judge each instance before its rows count: a pre-re-base row
             # (ahead of the anchor) or one that stopped advancing must not set
             # the fleet hop (fleet.live_instances)

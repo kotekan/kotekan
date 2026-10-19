@@ -130,6 +130,45 @@ def main():
     pol, _ = run(fleet={1: {"present": True, "p_floor_src": "peers", "p_floor": 0.02}})
     check(pol.get("p_floor_abs") == 0.0, "a peer-bar floor ships 0")
 
+    # 4. A row present on deep-fold evidence with prompt power below the probe floor is not
+    #    armed: the fast loop leaks every window below p_floor_abs, so the Python DLL keeps
+    #    it. That holds inside the hold too, and the row does not refresh its hold. A row on
+    #    the deep gate whose prompt power clears the floor is armed as before.
+    now = time.time()
+    rows = {
+        1: ("q+p:probes", 9.0),
+        4: ("q+deep:probes+disp", 1.0),
+        5: ("deep", 1.5),
+        6: ("deep", 4.0),
+    }
+    pol, ctx = run(
+        fleet={
+            p: {
+                "present": True,
+                "present_gate": g,
+                "p_pow": pw,
+                "p_floor_src": "probes:3",
+                "p_floor": 2.0,
+            }
+            for p, (g, pw) in rows.items()
+        },
+        hold={5: now - 5.0},
+        t0=now,
+    )
+    check(
+        sorted(pol.get("armed") or []) == [1, 6],
+        "deep-evidence rows below the floor (4, 5 held) are not armed; 1 and 6 are: %r"
+        % sorted(pol.get("armed") or []),
+    )
+    check(
+        ctx.dls.armed_last == {1, 6},
+        "armed_last leaves them to the Python DLL: %r" % sorted(ctx.dls.armed_last),
+    )
+    check(
+        4 not in ctx.dls.hold and ctx.dls.hold.get(5) == now - 5.0,
+        "and they do not refresh the hold",
+    )
+
     print("-" * 70)
     if _fails:
         for f in _fails:
