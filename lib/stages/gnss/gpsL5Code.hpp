@@ -27,14 +27,14 @@ constexpr int L5_NH10_LENGTH = 10; ///< I5 Neuman-Hofman overlay length
 constexpr int L5_NH20_LENGTH = 20; ///< Q5 Neuman-Hofman overlay length
 
 /**
- * I5 (data) primary code for @p prn (1..32), bipolar +1/-1.
- * @throws std::out_of_range if prn is outside 1..32.
+ * I5 (data) primary code for @p prn (1..210; 120..158 are the SBAS GEOs), bipolar +1/-1.
+ * @throws std::out_of_range if prn is outside 1..210.
  */
 std::array<int8_t, L5_CODE_LENGTH> generate_l5i_code(int prn);
 
 /**
- * Q5 (pilot) primary code for @p prn (1..32), bipolar +1/-1.
- * @throws std::out_of_range if prn is outside 1..32.
+ * Q5 (pilot) primary code for @p prn (1..210; 120..158 are the SBAS GEOs), bipolar +1/-1.
+ * @throws std::out_of_range if prn is outside 1..210.
  */
 std::array<int8_t, L5_CODE_LENGTH> generate_l5q_code(int prn);
 
