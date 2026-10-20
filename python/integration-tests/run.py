@@ -5,7 +5,9 @@ the written output. See docs/sphinx/dev/dev_integration_tests.rst.
 A test module defines either `VARIANTS`, each run and checked on its own, or `RUNS`, which are
 all run before one check compares them. A variant can also POST to kotekan's REST server while it
 runs: `posts(tel, config, variant)` returns a list of (delay, endpoint, payload), each posted
-`delay` seconds after the server answers.
+`delay` seconds after the server answers. If the module defines `MEMORY_INTERVAL`, kotekan's
+resident memory and GPU memory are sampled every `MEMORY_INTERVAL` seconds into
+`<out_dir>/memory.json` (see `sample_memory`).
 
 Example:
     run.py --tel pathfinder --test timing --kotekan build-release/kotekan/kotekan \\
@@ -19,6 +21,7 @@ import os
 import shutil
 import subprocess
 import sys
+import threading
 import time
 import urllib.request
 
@@ -65,7 +68,43 @@ def post_all(args, proc, posts):
             print(f"POST {endpoint} {json.dumps(payload)}: {response.status}")
 
 
-def run_kotekan(args, var, log_path, posts):
+def gpu_memory_mib(pid):
+    """The GPU memory (MiB) that nvidia-smi reports for process `pid`, or None."""
+    try:
+        lines = subprocess.run(
+            [
+                "nvidia-smi",
+                "--query-compute-apps=pid,used_memory",
+                "--format=csv,noheader,nounits",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        ).stdout.splitlines()
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    used = [int(m) for p, m in (line.split(",") for line in lines) if int(p) == pid]
+    return sum(used) if used else None
+
+
+def sample_memory(proc, interval, samples):
+    """Append [seconds since start, VmRSS (KiB), GPU memory (MiB) or None] for kotekan to
+    `samples` every `interval` seconds while it runs."""
+    t0 = time.time()
+    while proc.poll() is None:
+        try:
+            with open(f"/proc/{proc.pid}/status") as status:
+                rss = [
+                    int(line.split()[1]) for line in status if line.startswith("VmRSS:")
+                ]
+        except OSError:
+            break
+        if rss:
+            samples.append([time.time() - t0, rss[0], gpu_memory_mib(proc.pid)])
+        time.sleep(interval)
+
+
+def run_kotekan(args, var, log_path, posts, memory_interval=None):
     cmd = [
         os.path.abspath(args.kotekan),
         "--bind-address",
@@ -80,6 +119,13 @@ def run_kotekan(args, var, log_path, posts):
         with subprocess.Popen(
             cmd, cwd=args.cwd, stdout=log, stderr=subprocess.STDOUT
         ) as proc:
+            samples = []
+            if memory_interval:
+                threading.Thread(
+                    target=sample_memory,
+                    args=(proc, memory_interval, samples),
+                    daemon=True,
+                ).start()
             try:
                 post_all(args, proc, posts)
                 code = proc.wait(timeout=max(t0 + args.timeout - time.time(), 0))
@@ -89,7 +135,7 @@ def run_kotekan(args, var, log_path, posts):
             except OSError as error:
                 proc.kill()
                 code = f"POST failed ({error})"
-        return code, time.time() - t0
+        return code, time.time() - t0, samples
 
 
 def main():
@@ -139,7 +185,7 @@ def prepare(args, test, name):
     return out_dir, var, render_config(args.tel, var)
 
 
-def run(args, label, out_dir, var, posts=()):
+def run(args, label, out_dir, var, posts=(), memory_interval=None):
     """Run kotekan into `out_dir`, unless --check-only; return whether it succeeded."""
     if args.check_only:
         return True
@@ -147,8 +193,11 @@ def run(args, label, out_dir, var, posts=()):
         shutil.rmtree(out_dir)
     os.makedirs(out_dir)
     log_path = out_dir + ".log"
-    code, seconds = run_kotekan(args, var, log_path, posts)
+    code, seconds, samples = run_kotekan(args, var, log_path, posts, memory_interval)
     print(f"kotekan exited with {code} after {seconds:.0f} s (log: {log_path})")
+    if memory_interval:
+        with open(os.path.join(out_dir, "memory.json"), "w") as f:
+            json.dump(samples, f)
     if code != 0:
         print(f"FAIL {label}: kotekan exit code {code}")
         return False
@@ -176,7 +225,9 @@ def run_variant(args, test, variant):
     label = f"{args.tel} {args.test} {variant}"
     out_dir, var, config = prepare(args, test, variant)
     posts = test.posts(args.tel, config, variant) if hasattr(test, "posts") else []
-    if not run(args, label, out_dir, var, posts):
+    if not run(
+        args, label, out_dir, var, posts, getattr(test, "MEMORY_INTERVAL", None)
+    ):
         return False
     return report(args, label, test.check, (out_dir, var, config), [out_dir])
 
