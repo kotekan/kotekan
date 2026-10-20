@@ -1,4 +1,5 @@
-"""T5 gains: `upchan_gain` (per fine channel), `bb_gain` and `frb1_input_scale` must scale their
+"""T5 gains: `upchan_gain` (per fine channel), `bb_gain` and `frb1_input_scale` (CHIME: the FRB
+feed gains, which loadFeedGains takes from `default_gains` without gain files) must scale their
 outputs as configured.
 
 Two runs see the same input, complex Gaussian noise with `NOISE_RMS` LSB per component plus a
@@ -23,17 +24,18 @@ import numpy as np
 
 from kit import (
     audit,
+    find_stages,
+    has_bb,
     histogram,
     large_seq,
     read_output,
     require,
     rounded_gaussian,
+    upchan_t_star,
     used_channels,
     value,
 )
 
-UPCHAN_FACTORS = [2, 4, 8, 16, 32, 64]
-NUM_TAPS = 4
 RUNS = ["reference", "scaled"]
 NOISE_RMS = 1.2
 TONE_AMPLITUDE = 0.1
@@ -55,12 +57,23 @@ def upchan_scaling(U):
 
 
 def upchan_gain(config, U):
-    return np.array(config[f"run_set_upchan_U{U}_gain"]["upchan_gain"], dtype=float)
+    return np.array(
+        value(config, f"run_set_upchan_U{U}_gain")["upchan_gain"], dtype=float
+    )
+
+
+def frb1_scale(config):
+    """The scale of the FRB1 weights: `frb1_input_scale` (setFRB1Phase), or for CHIME the
+    magnitude of the default feed gain of loadFeedGains."""
+    gains = find_stages(config, "loadFeedGains")
+    if gains:
+        return abs(complex(*gains[0]["default_gains"]))
+    return value(config, "frb1_input_scale")
 
 
 def variables(tel, config, run):
-    outputs = [f"upchan_U{U}_voltage" for U in UPCHAN_FACTORS]
-    outputs += ["bb_beams", "frb1_beams"]
+    outputs = [f"upchan_U{U}_voltage" for U in config["upchan_factors"]]
+    outputs += ["bb_beams"] * has_bb(config) + ["frb1_beams"]
     var = {
         "first_fpga_seq_num": large_seq(config),
         "input_kind": "sky",
@@ -81,10 +94,15 @@ def variables(tel, config, run):
     if run == "scaled":
         var["upchan_gains"] = {
             str(U): (upchan_gain(config, U) * upchan_scaling(U)).tolist()
-            for U in UPCHAN_FACTORS
+            for U in config["upchan_factors"]
         }
-        var["bb_gain"] = BB_SCALING * value(config, "bb_gain")
-        var["frb1_input_scale"] = FRB1_SCALING * value(config, "frb1_input_scale")
+        if has_bb(config):
+            var["bb_gain"] = BB_SCALING * value(config, "bb_gain")
+        gains = find_stages(config, "loadFeedGains")
+        if gains:
+            var["frb_default_gains"] = [FRB1_SCALING * g for g in gains[0]["default_gains"]]
+        else:
+            var["frb1_input_scale"] = FRB1_SCALING * value(config, "frb1_input_scale")
     return var
 
 
@@ -135,7 +153,7 @@ def check(runs):
     ref_dir, ref_var, ref_config = runs["reference"]
     out_dir, var, config = runs["scaled"]
     SEQ0 = var["first_fpga_seq_num"]
-    T_STAR = (NUM_TAPS - 1) * value(config, "max_upchannelization_factor") // 2
+    T_STAR = upchan_t_star(config)
     channels = np.array(value(config, "frequency_channels"))
     results = []
     failures = []
@@ -143,7 +161,7 @@ def check(runs):
     # Upchannelized voltages [Tbar, Fbar, P, D]. Ē_u is linear in G_u before rounding, so the
     # unrounded σ scales with float16(G_u). The power Σ|Ē|² per fine channel is kept for FRB1.
     power_ratio = {1: np.ones(1)}
-    for U in UPCHAN_FACTORS:
+    for U in config["upchan_factors"]:
         name = f"upchan_U{U}_voltage"
         stats = []
         indices = []
@@ -188,28 +206,29 @@ def check(runs):
 
     # BB beams [Thi, B, F, P, T]. calcBBPhase realizes bb_gain as 2^7 a / 2^s with a in
     # (1/2, 1], so doubling bb_gain lowers s by one and keeps the phases A.
-    stats = []
-    for directory in [ref_dir, out_dir]:
-        bb = read_output(directory, "bb_beams")
-        audit(bb, first_seq=SEQ0, frequency_channels=channels)
-        stats.append(int4_stats(bb.data))
-    (ref_rms, _, ref_sat, ref_nodata), (rms, _, sat, nodata) = stats
-    require(ref_nodata == 0 and nodata == 0, "bb_beams: -8")
-    expected = value(config, "bb_gain") / value(ref_config, "bb_gain")
-    require(
-        expected == BB_SCALING, f"bb_beams: bb_gain ratio {expected} in the configs"
-    )
-    results.append(
-        deviation_line(
-            "bb_beams",
-            np.array([unrounded_sigma(rms) / unrounded_sigma(ref_rms) / expected - 1]),
-            INT4_TOLERANCE,
-            failures,
-            f"gain ratio {expected}, rms {ref_rms:.3f} (reference), {rms:.3f} (scaled), "
-            f"{ref_sat:.2%} and {sat:.2%} at ±7; the raw rms ratio deviates by "
-            f"{rms / ref_rms / expected - 1:+.4f}",
+    if "bb_beams" in var["outputs"]:
+        stats = []
+        for directory in [ref_dir, out_dir]:
+            bb = read_output(directory, "bb_beams")
+            audit(bb, first_seq=SEQ0, frequency_channels=channels)
+            stats.append(int4_stats(bb.data))
+        (ref_rms, _, ref_sat, ref_nodata), (rms, _, sat, nodata) = stats
+        require(ref_nodata == 0 and nodata == 0, "bb_beams: -8")
+        expected = value(config, "bb_gain") / value(ref_config, "bb_gain")
+        require(
+            expected == BB_SCALING, f"bb_beams: bb_gain ratio {expected} in the configs"
         )
-    )
+        results.append(
+            deviation_line(
+                "bb_beams",
+                np.array([unrounded_sigma(rms) / unrounded_sigma(ref_rms) / expected - 1]),
+                INT4_TOLERANCE,
+                failures,
+                f"gain ratio {expected}, rms {ref_rms:.3f} (reference), {rms:.3f} (scaled), "
+                f"{ref_sat:.2%} and {sat:.2%} at ±7; the raw rms ratio deviates by "
+                f"{rms / ref_rms / expected - 1:+.4f}",
+            )
+        )
 
     # FRB1 beams [Ttilde, Fbar, beamQ, beamP]. I = |input_gain · W · FFT(Ē)|², summed over the
     # beam grid, is W² Σ|Ē|² times a constant (Parseval), so the ratio per fine channel is
@@ -220,14 +239,12 @@ def check(runs):
         audit(frb1, first_seq=SEQ0 + T_STAR, frequency_channels=channels)
         data, factor, index = frequency_labels(frb1, 1)
         sums.append(data.sum(axis=(0, 2, 3), dtype=np.float64))
-    expected_scaling = value(config, "frb1_input_scale") / value(
-        ref_config, "frb1_input_scale"
-    )
+    expected_scaling = frb1_scale(config) / frb1_scale(ref_config)
     require(
-        expected_scaling == FRB1_SCALING,
-        f"frb1_beams: frb1_input_scale ratio {expected_scaling} in the configs",
+        abs(expected_scaling - FRB1_SCALING) < 1e-12,
+        f"frb1_beams: FRB1 weight ratio {expected_scaling} in the configs",
     )
-    for U in [1] + UPCHAN_FACTORS:
+    for U in [U for U in [1] + config["upchan_factors"] if np.any(factor == U)]:
         ratio = np.array(
             [
                 sums[1][(factor == U) & (index == u)].sum()

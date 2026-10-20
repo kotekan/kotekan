@@ -2,7 +2,8 @@
 
 # CHIME upchannelizer and FRB setup, copied from config/chime_upgrade_frb.j2 without the outputs and
 # the debugging dumps, and with frb1_swap_MN and the FRB1 weight layout fixed (see below). Jinja variables: upchan_gains ('16': the 16 fine-channel gains),
-# frb2_beam_layout (replaces `mode` and `beams` of setFRBBeams), frb2_weights_lifetime_in_samples;
+# frb2_beam_layout (replaces `mode` and `beams` of setFRBBeams), frb2_weights_lifetime_in_samples,
+# frb_default_gains (loadFeedGains; there are no gain files);
 # `frb_pl_mask` in `outputs` adds the host copy of the FRB packet loss mask.
 
 ################################################################################
@@ -348,7 +349,7 @@ FRB:
         beamformer_type: "frb"
         filename_template: "quick_gains_%04d_reordered.bin"
         num_local_freq: num_freq_gpu_buf
-        default_gains: [1.0, 1.0]
+        default_gains: {{ frb_default_gains | default([1.0, 1.0]) | tojson }}
         gain_buffers:
           - host_frb1_phase_buffer
         in_buf: host_rfi_RFImask_buffer
