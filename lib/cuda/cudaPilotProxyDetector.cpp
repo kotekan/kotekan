@@ -676,10 +676,11 @@ cudaPilotProxyDetector::cudaPilotProxyDetector(kotekan::Config& config,
     if (!permanent.is_array())
         FATAL_ERROR("permanent_mask_freq_ids must be an array of receiver frequency IDs");
     for (const auto& value : permanent) {
-        if (!value.is_number_integer() || value < 0 || value >= 12288)
-            FATAL_ERROR("permanent_mask_freq_ids must contain integer receiver IDs in [0,12288)");
+        if (!value.is_number_integer() || value < 0 || value >= CHORD_META_MAX_FREQ)
+            FATAL_ERROR("permanent_mask_freq_ids must contain integer receiver IDs in [0,{:d})",
+                        CHORD_META_MAX_FREQ);
         if (!permanent_mask_freq_ids.insert(value.get<int>()).second)
-            FATAL_ERROR("permanent_mask_freq_ids must contain unique receiver IDs in [0,12288)");
+            FATAL_ERROR("permanent_mask_freq_ids must contain unique receiver IDs");
     }
 
     // The packer wraps ring indices with a power-of-two bitmask, so the ring

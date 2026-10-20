@@ -42,9 +42,9 @@
  * @conf    num_local_freq  int  Frequencies per frame.
  * @conf    num_times       int  Samples per detector block; must be 8192 or 16384.
  * @conf    permanent_mask_freq_ids List of unique integer receiver coarse-frequency IDs
- *          in [0,12288) at the reject-all limit (default []).
+ *          in [0,CHORD_META_MAX_FREQ) at the reject-all limit (default []).
  * @conf    require_fine_freq_ids List of unique integer receiver coarse-frequency IDs
- *          in [0,12288) that must have an evaluated fine decision (default []).
+ *          in [0,CHORD_META_MAX_FREQ) that must have an evaluated fine decision (default []).
  *          Requires fine_support_buf when nonempty. Both lists must be disjoint and
  *          contain only IDs in the input frequency assignment.
  */
@@ -70,9 +70,10 @@ public:
             if (!ids.is_array())
                 FATAL_ERROR("DtvRfiMask {:s} must be an array", field);
             for (const auto& id : ids) {
-                if (!id.is_number_integer() || id < 0 || id >= 12288)
-                    FATAL_ERROR(
-                        "DtvRfiMask threshold IDs must be exact nonnegative integers below 12288");
+                if (!id.is_number_integer() || id < 0 || id >= CHORD_META_MAX_FREQ)
+                    FATAL_ERROR("DtvRfiMask threshold IDs must be exact nonnegative integers below "
+                                "{:d}",
+                                CHORD_META_MAX_FREQ);
                 result.push_back(id.get<int>());
             }
             if (std::set<int>(result.begin(), result.end()).size() != result.size())
