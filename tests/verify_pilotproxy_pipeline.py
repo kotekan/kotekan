@@ -43,7 +43,7 @@ NUM_INPUT_FRAMES = 8
 # Current chordMetadataFormat on the little-endian, 64-bit capture hosts.
 CHORD_METADATA_SIZE = 148888
 CHORD_METADATA_LIMITS = (10, 24, 24, 12288, 128, 8)
-CHORD_METADATA_PREFIX = struct.Struct("<7i4xqi")
+CHORD_METADATA_PREFIX = struct.Struct("<7i4xqq")
 
 
 @dataclass

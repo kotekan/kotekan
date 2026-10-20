@@ -109,7 +109,7 @@ public:
         N2::frameID support_id(support ? support : dtv);
         bool started = false;
         int64_t next_seq = 0;
-        int period = 0;
+        int64_t period = 0;
         std::vector<int> bound_freq;
         while (!stop_thread) {
             const auto* keep = rfi->wait_for_full_frame(unique_name, rfi_id);
@@ -132,7 +132,7 @@ public:
             const auto seq = rm->get_fpga_seq_num();
             const auto rp = rm->get_time_downsampling_fpga();
             const auto dp = dm->get_time_downsampling_fpga();
-            if (seq < 0 || dp <= 0 || rp <= 0 || rp % 1024 || int64_t(rp) * mask_rows != dp
+            if (seq < 0 || dp <= 0 || rp <= 0 || rp % 1024 || rp * mask_rows != dp
                 || seq != dm->get_fpga_seq_num())
                 FATAL_ERROR("DtvRfiMask time alignment mismatch");
             if (!rm->has_coarse_freq() || !dm->has_coarse_freq()

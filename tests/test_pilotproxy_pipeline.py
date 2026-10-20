@@ -62,7 +62,7 @@ def raw_frame(sequence=557056, downsampling=4):
     metadata = bytearray(148888)
     struct.pack_into("<7i", metadata, 0, 10, 24, 24, 12288, 128, 8, 17)
     struct.pack_into("<q", metadata, 32, sequence)
-    struct.pack_into("<i", metadata, 40, downsampling)
+    struct.pack_into("<q", metadata, 40, downsampling)
     return struct.pack("<I", len(metadata)) + metadata + b"abcd"
 
 
