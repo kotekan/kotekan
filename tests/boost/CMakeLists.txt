@@ -89,28 +89,14 @@ target_link_libraries(test_numa_policy PRIVATE libexternal kotekan_libs kotekan_
 
 # test_buffer_peek - non-consuming newest-full-frame peek behind the /buffer_frame endpoint
 add_executable(test_buffer_peek test_buffer_peek.cpp)
-if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-    target_link_libraries(
-        test_buffer_peek
-        PRIVATE pthread
-                libexternal
-                kotekan_libs
-                kotekan_utils
-                kotekan_core
-                -Wl,-all_load
-                kotekan_metadata)
-else()
-    target_link_libraries(
-        test_buffer_peek
-        PRIVATE pthread
-                libexternal
-                kotekan_libs
-                kotekan_utils
-                kotekan_core
-                -Wl,--whole-archive
-                kotekan_metadata
-                -Wl,--no-whole-archive)
-endif()
+target_link_libraries(
+    test_buffer_peek
+    PRIVATE pthread
+            libexternal
+            kotekan_libs
+            kotekan_utils
+            kotekan_core
+            "$<LINK_LIBRARY:WHOLE_ARCHIVE,kotekan_metadata>")
 
 # test_fmt
 add_executable(test_fmt test_fmt.cpp)
@@ -276,12 +262,7 @@ if(HDF5_FOUND AND HighFive_FOUND)
 endif()
 
 add_executable(test_Telescope test_Telescope.cpp)
-if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-    target_link_libraries(test_Telescope PRIVATE -Wl,-all_load kotekan_utils kotekan_testing)
-else()
-    target_link_libraries(test_Telescope PRIVATE -Wl,--whole-archive kotekan_utils kotekan_testing
-                                                 -Wl,--no-whole-archive)
-endif()
+target_link_libraries(test_Telescope PRIVATE "$<LINK_LIBRARY:WHOLE_ARCHIVE,kotekan_utils>" "$<LINK_LIBRARY:WHOLE_ARCHIVE,kotekan_testing>")
 
 add_executable(test_CHORDTelescope test_CHORDTelescope.cpp)
 target_link_libraries(test_CHORDTelescope PRIVATE kotekan_utils)
@@ -293,21 +274,13 @@ target_link_libraries(test_N2FrameDesc PRIVATE kotekan_metadata kotekan_utils li
 # test_NDArrayBufferConfig - config-driven NDArray frame descriptors and the `ndarray` buffer type
 # in bufferFactory
 add_executable(test_NDArrayBufferConfig test_NDArrayBufferConfig.cpp)
-if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-    target_link_libraries(
-        test_NDArrayBufferConfig PRIVATE libexternal kotekan_libs kotekan_utils kotekan_core
-                                         -Wl,-all_load kotekan_metadata)
-else()
-    target_link_libraries(
-        test_NDArrayBufferConfig
-        PRIVATE libexternal
-                kotekan_libs
-                kotekan_utils
-                kotekan_core
-                -Wl,--whole-archive
-                kotekan_metadata
-                -Wl,--no-whole-archive)
-endif()
+target_link_libraries(
+    test_NDArrayBufferConfig
+    PRIVATE libexternal
+            kotekan_libs
+            kotekan_utils
+            kotekan_core
+            "$<LINK_LIBRARY:WHOLE_ARCHIVE,kotekan_metadata>")
 
 # test_FrameDescSerialize - FrameDesc JSON serialization round-trip + adversarial input
 add_executable(test_FrameDescSerialize test_FrameDescSerialize.cpp)
@@ -316,82 +289,40 @@ target_link_libraries(test_FrameDescSerialize PRIVATE libexternal kotekan_libs k
 
 # test_N2Subset - tests for N2Subset stage
 add_executable(test_N2Subset test_N2Subset.cpp)
-if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-    target_link_libraries(
-        test_N2Subset
-        PRIVATE libexternal
-                kotekan_stages
-                kotekan_libs
-                kotekan_utils
-                kotekan_core
-                -Wl,-all_load
-                kotekan_metadata)
-else()
-    target_link_libraries(
-        test_N2Subset
-        PRIVATE libexternal
-                kotekan_stages
-                kotekan_libs
-                kotekan_utils
-                kotekan_core
-                -Wl,--whole-archive
-                kotekan_metadata
-                -Wl,--no-whole-archive)
-endif()
+target_link_libraries(
+    test_N2Subset
+    PRIVATE libexternal
+            kotekan_stages
+            kotekan_libs
+            kotekan_utils
+            kotekan_core
+            "$<LINK_LIBRARY:WHOLE_ARCHIVE,kotekan_metadata>")
 target_include_directories(test_N2Subset PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages
                                                  ${KOTEKAN_SOURCE_DIR}/lib/utils)
 
 # test_N2AutoSpectrum - tests for N2AutoSpectrum stage
 add_executable(test_N2AutoSpectrum test_N2AutoSpectrum.cpp)
-if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-    target_link_libraries(
-        test_N2AutoSpectrum
-        PRIVATE libexternal
-                kotekan_stages
-                kotekan_libs
-                kotekan_utils
-                kotekan_core
-                -Wl,-all_load
-                kotekan_metadata)
-else()
-    target_link_libraries(
-        test_N2AutoSpectrum
-        PRIVATE libexternal
-                kotekan_stages
-                kotekan_libs
-                kotekan_utils
-                kotekan_core
-                -Wl,--whole-archive
-                kotekan_metadata
-                -Wl,--no-whole-archive)
-endif()
+target_link_libraries(
+    test_N2AutoSpectrum
+    PRIVATE libexternal
+            kotekan_stages
+            kotekan_libs
+            kotekan_utils
+            kotekan_core
+            "$<LINK_LIBRARY:WHOLE_ARCHIVE,kotekan_metadata>"
 target_include_directories(test_N2AutoSpectrum PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages
                                                        ${KOTEKAN_SOURCE_DIR}/lib/utils)
 
 # test_TransposeBasebandArray - tests for TransposeBasebandArray stage
 add_executable(test_TransposeBasebandArray test_TransposeBasebandArray.cpp)
-if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-    target_link_libraries(
-        test_TransposeBasebandArray
-        PRIVATE libexternal
-                kotekan_stages
-                kotekan_libs
-                kotekan_utils
-                kotekan_core
-                -Wl,-all_load
-                kotekan_metadata)
-else()
-    target_link_libraries(
-        test_TransposeBasebandArray
-        PRIVATE libexternal
-                kotekan_stages
-                kotekan_libs
-                kotekan_utils
-                kotekan_core
-                -Wl,--whole-archive
-                kotekan_metadata
-                -Wl,--no-whole-archive)
-endif()
+target_link_libraries(
+    test_TransposeBasebandArray
+    PRIVATE libexternal
+            kotekan_stages
+            kotekan_libs
+            kotekan_utils
+            kotekan_core
+            "$<LINK_LIBRARY:WHOLE_ARCHIVE,kotekan_metadata>")
 target_include_directories(test_TransposeBasebandArray PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages
                                                                ${KOTEKAN_SOURCE_DIR}/lib/utils)
 
