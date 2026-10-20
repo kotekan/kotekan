@@ -13,7 +13,7 @@ rfi_second_downsampling_factor: 32
 
 rfi_sk_rfimask_sigmas: 5.0
 rfi_single_feed_min_good_frac: 0.8
-rfi_feed_averaged_min_good_frac: 0.8
+rfi_feed_averaged_min_good_frac: {{ rfi_feed_averaged_min_good_frac | default(0.8) }}
 rfi_mu_min: 2.0
 rfi_mu_max: 20.0
 
@@ -148,6 +148,8 @@ run_rfi_SKtilde:
           rfi_S012_name: rfi_S012
           rfi_SKtilde_name: rfi_SKtilde
           rfi_RFImask_name: rfi_RFImask
+          # A test signal of constant power has SK 0 and would be flagged entirely
+          excision_enabled: {{ rfi_excision_enabled | default(True) }}
 
 run_rfi_SKbar:
     gpu_0:
