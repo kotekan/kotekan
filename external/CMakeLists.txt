@@ -15,7 +15,7 @@ if(CUDAToolkit_FOUND)
     add_subdirectory(ksgpu)
     target_link_libraries(libexternal INTERFACE ksgpu)
     add_subdirectory(n2k)
-    target_link_libraries(libexternal INTERFACE n2k)
+    target_link_libraries(libexternal INTERFACE "$<LINK_LIBRARY:WHOLE_ARCHIVE,n2k>")
 
     # Treat vendored ksgpu/n2k headers as system headers for consumers, so their pre-existing
     # diagnostics (e.g. -Wclass-conversion in ksgpu/Array.hpp) don't fail kotekan's -Werror build.
