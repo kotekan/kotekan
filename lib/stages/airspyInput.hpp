@@ -72,7 +72,8 @@
  * @conf   airspy_file  String (default ""). Read from this file instead of a real device; for
  *                      offline testing. Ignored if @c serial is set.
  * @conf   adcstat_timeout_ms Int (default 250). How long a GET @c /adcstat waits for the next
- *                      frame before failing. Must exceed the time to fill one frame.
+ *                      frame before failing. Must be positive and exceed the time to fill
+ *                      one frame.
  *
  * @par Metrics
  * @metric kotekan_airspyinput_dropped_samples_total

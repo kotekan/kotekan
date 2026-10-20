@@ -70,6 +70,9 @@ airspyInput::airspyInput(Config& config, const std::string& unique_name,
     _airspy_sn = config.get_default<long>(unique_name, "serial", 0);
     _airspy_fn = config.get_default<std::string>(unique_name, "airspy_file", "");
     _adcstat_timeout_ms = config.get_default<int>(unique_name, "adcstat_timeout_ms", 250);
+    if (_adcstat_timeout_ms <= 0)
+        FATAL_ERROR("airspyInput: adcstat_timeout_ms must be positive, not {:d}",
+                    _adcstat_timeout_ms);
 }
 
 airspyInput::~airspyInput() {
@@ -233,7 +236,6 @@ void airspyInput::main_thread() {
     if (err != AIRSPY_SUCCESS) {
         FATAL_ERROR("airspy_start_rx() failed: {:s} ({:d})",
                     airspy_error_name((enum airspy_error)err), err);
-        return;
     }
 
     stream_watchdog();
@@ -251,7 +253,6 @@ void airspyInput::stream_watchdog() {
         // libairspy stops for good when a USB transfer fails.
         if (!airspy_is_streaming(a_device)) {
             FATAL_ERROR("libairspy stopped streaming, which it does when a USB transfer fails.");
-            return;
         }
 
         const uint64_t n_dropped = samples_dropped;

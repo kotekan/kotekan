@@ -19,7 +19,8 @@ log_level: info
 
 instrument_name: airspy
 
-# kotekan builds a telescope at startup; the airspy stages do not use it.
+# kotekan builds a telescope at startup; the airspy stages do not use it. ICETelescope is
+# here only because it is always built.
 telescope:
     name: ICETelescope
     num_polarizations: 1
