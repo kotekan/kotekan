@@ -1,0 +1,69 @@
+# -*-yaml-*-
+
+################################################################################
+#
+# CHIME X-engine integration test
+#
+# The pipeline is that of config/chime_upgrade_frb.j2 (see include/fengine_chime.j2 for the test
+# changes), with the test generators as input and the test outputs.
+#
+# Run through python/integration-tests/run.py, which passes the test's jinja variables
+# with `kotekan --variables`. See docs/sphinx/dev/dev_integration_tests.rst.
+#
+# Jinja variables:
+#     out_dir       directory for the written HDF5 files
+#     log_level     (default: info)
+#     rfi_excision_enabled
+#                   first-stage RFI excision (default: true)
+#     upchan_gains  dict from U (as a string, '16') to the U fine-channel gains (default: 1)
+#     half_filled   mark the northern half of every cylinder as Missing (default: false)
+#     frb2_beam_layout
+#                   the setFRBBeams keys that place the beams: `mode` and its keys (default: the
+#                   production beams)
+#     frb2_weights_lifetime_in_samples
+#                   (default: 240 FRB2 frames, about 60 s)
+#     rfi_feed_averaged_min_good_frac
+#                   (default: 0.8)
+#     do_fringestop N2 fringe stopping (default: off)
+#     and those listed in include/input_test_chord.j2 and include/output_test_chord.j2
+#
+################################################################################
+
+{% set num_polarizations = 2 %}
+{% set num_dishes = 1024 %}
+{% set num_elements = num_polarizations * num_dishes %}
+{% set num_freq_gpu_buf = 16 %}
+{% set num_global_freq = 1024 %}
+
+{% set ns = namespace(voltage=[], lost=[]) %}
+{% for id in range(num_freq_gpu_buf) %}
+{% set ns.voltage = ns.voltage + ['host_voltage_buffer_%d' % id] %}
+{% endfor %}
+{% for id in range(num_freq_gpu_buf // 4) %}
+{% set ns.lost = ns.lost + ['lost_samples_buffer_%d' % id] %}
+{% endfor %}
+{% set voltage_buffers = ns.voltage %}
+{% set lost_samples_buffers = ns.lost %}
+{% set n2_bf_mask = false %}
+{% set bad_inputs_defined = true %}
+{% set bf_mask_orders = ['CHIMECylinder', 'CHIMEBeamformer'] %}
+{% set upchan_factors = [16] %}
+{% set provided_outputs = ['frb1_beams', 'frb2_beams', 'frb_pl_mask', 'upchan_U16_voltage'] %}
+{% set output_buffers = {'n2_vis': 'vis_10s_buffer'} %}
+
+---
+log_level: {{ log_level | default('info') }}
+
+base_dir: {{ out_dir | default('/tmp/kotekan-integration-tests') }}
+prefix_hostname: false
+prefix_host_rank: false
+
+{% include "include/fengine_chime.j2" %}
+
+{% include "include/rfi_chime.j2" %}
+{% include "include/n2k_chime.j2" %}
+{% include "include/frb_chime.j2" %}
+
+{% include "include/input_test_chord.j2" %}
+{% include "include/output_test_chord.j2" %}
+...

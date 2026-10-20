@@ -153,8 +153,10 @@ private:
  *     E[d,p](f,t) = A w_p exp(iφ) exp(2πi k (t - t0) / T) exp(-2πi ν_f n·r_d / c)
  *
  * to dish `d`, polarization `p`, coarse channel `f` and FPGA sample `t`. Here `t0` is
- * `first_fpga_seq_num`, `T` is `num_times`, `ν_f = (channel + k/T) Δν` is the tone frequency,
- * and `r_d` is the dish position, computed from `telescope.dish_inputs` (not via `Telescope`).
+ * `first_fpga_seq_num`, `T` is `num_times`, `ν_f = ν_0 ± (channel + k/T) Δν` is the tone
+ * frequency, and `r_d` is the dish position, computed from `telescope.dish_inputs` (not via
+ * `Telescope`). As in `Telescope`, Nyquist zone `z` (`telescope.nyquist_zone`, default 1) has
+ * `ν_0 = floor(z/2) adc_frequency` and the sign `+` for odd and `-` for even zones.
  * This is the convention of RadioTelescopeFEngine.jl, for which the `calcBBPhase` beam with
  * position `n_b` peaks at `n = n_b`. Dishes not listed in `dish_inputs`, or listed with
  * `type: Missing`, receive nothing.
@@ -256,7 +258,10 @@ public:
 
         // Geometric phases, amplitudes and polarization weights per source and input
         const double c0 = 299792458.0; // [m/s]
-        const double channel_width = config.get<double>(unique_name, "adc_frequency")
+        const double adc_frequency = config.get<double>(unique_name, "adc_frequency");
+        const int nyquist_zone = config.get_default<int>("/telescope", "nyquist_zone", 1);
+        const double freq0 = (nyquist_zone / 2) * adc_frequency;
+        const double channel_width = (nyquist_zone % 2 ? 1 : -1) * adc_frequency
                                      / config.get<double>(unique_name, "num_samples_per_frame");
         geometry.resize(sources.size() * num_elements);
         for (std::size_t s = 0; s < sources.size(); ++s) {
@@ -264,8 +269,9 @@ public:
             const double n_z = std::sqrt(1 - src.n_x * src.n_x - src.n_y * src.n_y);
             for (std::ptrdiff_t f = 0; f < num_frequencies; ++f) {
                 const double nu =
-                    (frequency_channels[f] + double(src.tone_cycles_per_frame) / num_times)
-                    * channel_width;
+                    freq0
+                    + (frequency_channels[f] + double(src.tone_cycles_per_frame) / num_times)
+                          * channel_width;
                 for (int p = 0; p < num_polarizations; ++p) {
                     for (int d = 0; d < num_dishes; ++d) {
                         const std::ptrdiff_t e = (f * num_polarizations + p) * num_dishes + d;

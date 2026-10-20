@@ -1,6 +1,17 @@
 # -*-yaml-*-
 
-# CHORD and CHORD pathfinder integration test output
+# Integration test output
+#
+# Set by the telescope config (CHIME):
+#     upchan_factors
+#                   the upchannelization factors of the FRB chain (default: 2 to 64)
+#     voltage_buffers
+#                   with more than one (one per frequency), the output `voltage` is the transposed
+#                   voltage from the GPU, see include/input_test_chord.j2
+#     provided_outputs
+#                   outputs whose host buffers the telescope config already fills
+#     output_buffers
+#                   dict from output name to buffer name (default: host_<name>_buffer)
 #
 # Jinja variables:
 #     outputs       list of output names to write (see `write_data` below)
@@ -19,7 +30,10 @@
 {% set write_frames = write_frames | default({}) %}
 {% set default_write_frames = default_write_frames | default(8) %}
 {% set write_decimation = write_decimation | default({}) %}
-{% set upchan_factors = [2, 4, 8, 16, 32, 64] %}
+{% set upchan_factors = upchan_factors | default([2, 4, 8, 16, 32, 64]) %}
+{% set provided_outputs = provided_outputs | default([]) %}
+{% set output_buffers = output_buffers | default({}) %}
+{% set transposed_voltage = 'voltage' in outputs and voltage_buffers | default([0]) | length > 1 %}
 
 ################################################################################
 
@@ -27,6 +41,7 @@
 
 # Host copies of GPU data. Buffers without a consumer are recycled immediately.
 
+{% if 'frb2_beams' not in provided_outputs %}
 host_frb2_beams_buffer:
     kotekan_buffer: ndarray
     num_frames: buffer_depth
@@ -36,7 +51,9 @@ host_frb2_beams_buffer:
     dimnames: ["Ttildehi256", "R", "Fbar", "Ttildelo256"]
     dimscalings: [frb_downsampling_factor * 256, 1, 1, frb_downsampling_factor]
     metadata_pool: main_pool
+{% endif %}
 
+{% if 'frb_pl_mask' not in provided_outputs %}
 # The packet loss mask of the FRB output, one byte (1 = valid) per sample and frequency
 host_frb_pl_mask_buffer:
     kotekan_buffer: ndarray
@@ -47,6 +64,19 @@ host_frb_pl_mask_buffer:
     dimnames: ["Ttilde", "Fbar"]
     dimscalings: [frb_downsampling_factor, 1]
     metadata_pool: main_pool
+{% endif %}
+
+{% if transposed_voltage %}
+host_voltage_buffer:
+    kotekan_buffer: ndarray
+    num_frames: buffer_depth
+    value_type: int4x2_swapped_withoffset
+    extents: [num_times, num_frequencies, num_polarizations, num_dishes]
+    quantity_name: "E"
+    dimnames: ["T", "F", "P", "D"]
+    dimscalings: [1, 1, 1, 1]
+    metadata_pool: main_pool
+{% endif %}
 
 {% if 'pl_expanded_mask' in outputs %}
 host_pl_expanded_mask_buffer:
@@ -108,7 +138,7 @@ host_rfi_S012tilde_buffer:
     metadata_pool: main_pool
 {% endif %}
 
-{% if 'frb1_beams' in outputs %}
+{% if 'frb1_beams' in outputs and 'frb1_beams' not in provided_outputs %}
 host_frb1_beams_buffer:
     kotekan_buffer: ndarray
     num_frames: buffer_depth
@@ -128,7 +158,7 @@ host_upchan_U{{ U }}_expanded_pl_mask_buffer:
     frame_size: (64 / 8) * (num_dishes / 8) * num_polarizations * upchan_U{{ U }}_max_num_channels * (num_times / 64 / {{ U }})
     metadata_pool: main_pool
 {% endif %}
-{% if ('upchan_U%d_voltage' % U) in outputs %}
+{% if ('upchan_U%d_voltage' % U) in outputs and ('upchan_U%d_voltage' % U) not in provided_outputs %}
 host_upchan_U{{ U }}_voltage_buffer:
     kotekan_buffer: ndarray
     num_frames: buffer_depth
@@ -163,6 +193,10 @@ run_recv_{{ name }}:
           out_buf: {{ buffer }}
 {% endmacro %}
 
+{% if transposed_voltage %}
+{{ recv('voltage', 'host_xposed_voltage_ringbuffer', 'xposed_voltage_buffer', 'host_voltage_buffer',
+        'num_dishes * num_polarizations * num_frequencies * num_times') }}
+{% endif %}
 {% if 'pl_expanded_mask' in outputs %}
 {{ recv('pl_expanded_mask', 'host_pl_expanded_mask_ringbuffer', 'pl_expanded_mask_buffer', 'host_pl_expanded_mask_buffer',
         '(64 / 8) * (num_dishes / 8) * num_polarizations * num_frequencies * (num_times / 64)') }}
@@ -183,7 +217,7 @@ run_recv_{{ name }}:
 {{ recv('rfi_S012bar', 'host_rfi_S012bar_ringbuffer', 'rfi_S012bar_buffer', 'host_rfi_S012bar_buffer',
         'sizeof_uint64 * num_dishes * num_polarizations * 3 * num_frequencies * rfi_num_times_bar') }}
 {% endif %}
-{% if 'frb1_beams' in outputs %}
+{% if 'frb1_beams' in outputs and 'frb1_beams' not in provided_outputs %}
 {{ recv('frb1_beams', 'host_frb1_beams_ringbuffer', 'frb1_beams_buffer', 'host_frb1_beams_buffer',
         'sizeof_float16 * frb1_num_beams_P * frb1_num_beams_Q * upchan_all_max_num_output_channels * frb_num_output_times') }}
 {% endif %}
@@ -193,7 +227,7 @@ run_recv_{{ name }}:
         'upchan_U%d_expanded_pl_mask_buffer' % U, 'host_upchan_U%d_expanded_pl_mask_buffer' % U,
         '(64 / 8) * (num_dishes / 8) * num_polarizations * upchan_U%d_max_num_channels * (num_times / 64 / %d)' % (U, U)) }}
 {% endif %}
-{% if ('upchan_U%d_voltage' % U) in outputs %}
+{% if ('upchan_U%d_voltage' % U) in outputs and ('upchan_U%d_voltage' % U) not in provided_outputs %}
 {{ recv('upchan_U%d_voltage' % U, 'host_upchan_U%d_voltage_ringbuffer' % U,
         'upchan_U%d_voltage_buffer' % U, 'host_upchan_U%d_voltage_buffer' % U,
         'num_dishes * num_polarizations * (upchan_U%d_max_num_channels * %d) * (num_times / %d)' % (U, U, U)) }}
@@ -212,7 +246,7 @@ write_data:
 {% for name in outputs %}
     write_{{ name }}:
         kotekan_stage: hdf5FileWrite
-        in_buf: host_{{ name }}_buffer
+        in_buf: {{ output_buffers.get(name, 'host_%s_buffer' % name) }}
         file_name: {{ name }}
         max_frames: {{ write_frames.get(name, default_write_frames) }}
 {% if name in multi_file or name.startswith('upchan_U') and name.endswith('_gain')
@@ -225,7 +259,7 @@ write_data:
 {% endif %}
     drain_{{ name }}:
         kotekan_stage: hdf5FileWrite
-        in_buf: host_{{ name }}_buffer
+        in_buf: {{ output_buffers.get(name, 'host_%s_buffer' % name) }}
         file_name: drain_{{ name }}
         skip_writing: true
         create_single_file: false

@@ -13,29 +13,33 @@ that is frame-aligned but aligned to no lifetime or integration boundary.
 import numpy as np
 
 from kit import (
+    NUM_TAPS,
     audit,
     decode_int4x2,
     frame_seq_nums,
+    has_bb,
     large_seq,
     power_centroid,
     read_output,
     require,
+    upchan_t_star,
     used_channels,
+    value,
 )
 
-UPCHAN_FACTORS = [2, 4, 8, 16, 32, 64]
-NUM_TAPS = 4  # kotekan::upchan_default_num_taps
 VARIANTS = ["seq0", "seqlarge"]
 
 
 def variables(tel, config, variant):
     seq0 = large_seq(config) if variant == "seqlarge" else 0
-    num_times = config["num_times"]
-    frb_frame = config["frb_num_output_times"] * config["frb_downsampling_factor"]
+    num_times = value(config, "num_times")
+    frb_frame = value(config, "frb_num_output_times") * value(
+        config, "frb_downsampling_factor"
+    )
     num_frames = -(-frb_frame // num_times)
     box_begin = seq0 + 3 * num_times + 1000
-    outputs = ["voltage", "bb_beams", "frb1_beams", "frb2_beams"]
-    outputs += [f"upchan_U{U}_voltage" for U in UPCHAN_FACTORS]
+    outputs = ["voltage"] + ["bb_beams"] * has_bb(config) + ["frb1_beams", "frb2_beams"]
+    outputs += [f"upchan_U{U}_voltage" for U in config["upchan_factors"]]
     write_frames = {name: num_frames for name in outputs}
     write_frames["frb1_beams"] = 1
     write_frames["frb2_beams"] = 1
@@ -62,8 +66,8 @@ def check(out_dir, var, config):
     seq0 = var["first_fpga_seq_num"]
     centre = (box_begin + box_end - 1) / 2
     channels = config["frequency_channels"]
-    t_star = (NUM_TAPS - 1) * config["max_upchannelization_factor"] // 2
-    tds = config["frb_downsampling_factor"]
+    t_star = upchan_t_star(config)
+    tds = value(config, "frb_downsampling_factor")
     results = []
 
     # The input itself, to validate the generator and the labelling
@@ -80,22 +84,23 @@ def check(out_dir, var, config):
     results.append(f"voltage: signal in [{box_begin}, {box_end})")
 
     # Baseband beams: [Thi, B, F, P, T], per-frame files, one Thi per frame
-    bb = read_output(out_dir, "bb_beams")
-    audit(bb, first_seq=seq0, frequency_channels=channels)
-    seqs = frame_seq_nums(bb)
-    num_times = bb.data.shape[-1]
-    labels = (seqs[:, None] + np.arange(num_times)[None, :]).reshape(-1)
-    power = (np.abs(decode_int4x2(bb.data)) ** 2).sum(axis=(1, 2, 3)).reshape(-1)
-    nonzero = labels[power > 0]
-    require(
-        nonzero.min() == box_begin and nonzero.max() == box_end - 1,
-        f"bb_beams: signal in [{nonzero.min()}, {nonzero.max()}], expected [{box_begin}, {box_end - 1}]",
-    )
-    results.append(f"bb_beams: signal in [{nonzero.min()}, {nonzero.max()}]")
+    if "bb_beams" in var["outputs"]:
+        bb = read_output(out_dir, "bb_beams")
+        audit(bb, first_seq=seq0, frequency_channels=channels)
+        seqs = frame_seq_nums(bb)
+        num_times = bb.data.shape[-1]
+        labels = (seqs[:, None] + np.arange(num_times)[None, :]).reshape(-1)
+        power = (np.abs(decode_int4x2(bb.data)) ** 2).sum(axis=(1, 2, 3)).reshape(-1)
+        nonzero = labels[power > 0]
+        require(
+            nonzero.min() == box_begin and nonzero.max() == box_end - 1,
+            f"bb_beams: signal in [{nonzero.min()}, {nonzero.max()}], expected [{box_begin}, {box_end - 1}]",
+        )
+        results.append(f"bb_beams: signal in [{nonzero.min()}, {nonzero.max()}]")
 
     # Upchannelized voltages: [Tbar, Fbar, P, D]; a sample's label is the beginning of the
     # centred upchannelized sample, which covers U FPGA samples
-    for U in UPCHAN_FACTORS:
+    for U in config["upchan_factors"]:
         name = f"upchan_U{U}_voltage"
         ebar = read_output(out_dir, name)
         audit(

@@ -31,7 +31,7 @@ import check_phases
 from kit import (
     audit,
     bb_peak_line,
-    channel_width,
+    sky_frequency,
     decode_int4x2,
     frame_seq_nums,
     frb2_peak_line,
@@ -293,7 +293,7 @@ def check(out_dir, var, config):
     direction = source["direction"]
     f_tone = source["tone_cycles_per_frame"] / num_times
     amplitude = source["amplitude"]
-    nu = (channels + f_tone) * channel_width(config)
+    nu = sky_frequency(config, channels, f_tone)
     phases = geometric_phases(config, direction, nu)  # [F, D]
     results = []
 
