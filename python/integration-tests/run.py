@@ -4,8 +4,9 @@ the written output. See docs/sphinx/dev/dev_integration_tests.rst.
 
 A test module defines either `VARIANTS`, each run and checked on its own (or `variants(config)`,
 those that apply to a telescope), or `RUNS`, which are all run before one check compares them.
-A variant can also POST to kotekan's REST server while it runs: `posts(tel, config, variant)` returns a list of (delay, endpoint, payload), each posted
-`delay` seconds after the server answers. If the module defines `MEMORY_INTERVAL`, kotekan's
+A variant can also POST to kotekan's REST server while it runs: `posts(tel, config, variant)`
+returns a list of (delay, endpoint, payload), each posted `delay` seconds after the server
+answers. If the module defines `MEMORY_INTERVAL`, kotekan's
 resident memory and GPU memory are sampled every `MEMORY_INTERVAL` seconds into
 `<out_dir>/memory.json` (see `sample_memory`).
 
