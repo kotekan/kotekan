@@ -9,7 +9,8 @@
 #include "configUpdater.hpp"     // for configUpdater
 #include "kotekanLogging.hpp"    // for DEBUG, ERROR, FATAL_ERROR, INFO, WARN
 #include "prometheusMetrics.hpp" // for Metrics, Counter
-#include "visUtil.hpp"           // for current_time, double_to_ts, ts_to_double
+#include "timeUtil.hpp"          // for nanosec_i64_to_timespec, timespec_to_nanosec_i64
+#include "visUtil.hpp"           // for current_time, double_to_ts, ts_to_double, operator>
 
 #include <algorithm>  // for count, fill
 #include <exception>  // for exception
@@ -42,6 +43,14 @@ bufferBadInputs::bufferBadInputs(Config& config_, const std::string& unique_name
     num_polarizations = config.get<int>(unique_name, "num_polarizations");
     num_dishes = config.get<int>(unique_name, "num_dishes");
     bf_mask_lifetime_in_samples = config.get<int64_t>(unique_name, "bf_mask_lifetime_in_samples");
+    bf_mask_update_alignment_in_samples = config.get_default<int64_t>(
+        unique_name, "bf_mask_update_alignment_in_samples", bf_mask_lifetime_in_samples);
+    // A boundary inside a frame could not be honoured.
+    if (bf_mask_lifetime_in_samples <= 0 || bf_mask_update_alignment_in_samples <= 0
+        || bf_mask_update_alignment_in_samples % bf_mask_lifetime_in_samples != 0)
+        FATAL_ERROR("bf_mask_update_alignment_in_samples {:d} must be a positive multiple of "
+                    "bf_mask_lifetime_in_samples {:d}",
+                    bf_mask_update_alignment_in_samples, bf_mask_lifetime_in_samples);
 
     // The mask is written as a flat array whose element `output_idx` is
     // `polarization * num_dishes + dish`, so describing it as
@@ -79,6 +88,9 @@ bufferBadInputs::bufferBadInputs(Config& config_, const std::string& unique_name
     reorder.resize(num_elements);
 
     const Telescope& tel = Telescope::instance();
+    use_fpga_time = tel.gps_time_enabled();
+    if (!use_fpga_time)
+        WARN("No GPS time: applying bad input updates by the wall clock, not by FPGA time.");
 
     if (input_order == output_order) {
         // Identity; also covers orders the telescope cannot map, like the
@@ -132,9 +144,12 @@ bool bufferBadInputs::update_bad_inputs_callback(nlohmann::json& json) {
     const bool fatal_on_error = !initialised;
 
     std::vector<int> bad_inputs;
-    // A missing start_time keys the update to the present: apply immediately,
-    // superseding everything earlier.
-    timespec start_ts = double_to_ts(current_time());
+    // A missing start_time, or one at or before FPGA sample 0 (CHIME posts 0), keys the update to
+    // just after the last produced frame, so that it applies to the next one, superseding
+    // everything earlier.
+    bool has_start_time = false;
+    timespec start_ts = use_fpga_time ? nanosec_i64_to_timespec(last_ref_time_ns + 1)
+                                      : double_to_ts(current_time());
     std::string update_id;
 
     try {
@@ -149,7 +164,11 @@ bool bufferBadInputs::update_bad_inputs_callback(nlohmann::json& json) {
             if (json.at("start_time").get<double>() < 0)
                 throw std::invalid_argument("received negative start_time: "
                                             + json.at("start_time").dump());
-            start_ts = double_to_ts(json.at("start_time").get<double>());
+            const timespec requested_ts = double_to_ts(json.at("start_time").get<double>());
+            if (requested_ts > Telescope::instance().to_time(0)) {
+                start_ts = requested_ts;
+                has_start_time = true;
+            }
         }
         if (json.contains("update_id")) {
             if (!json.at("update_id").is_string())
@@ -191,10 +210,8 @@ bool bufferBadInputs::update_bad_inputs_callback(nlohmann::json& json) {
     for (int element : bad_inputs)
         mask[reorder[element]] = 0;
 
-    // The seq the update takes effect at -- via the telescope, so identical on every node --
-    // or -1 when it predates the run and constrains nothing. Logged for diagnostics only: which
-    // frame an update lands in is decided by the wall clock when that frame is produced, not by
-    // this value. The clamp also keeps to_seq()'s unsigned conversion from wrapping.
+    // The seq the update takes effect at, before rounding up to a boundary, or -1 when it
+    // predates the run. The clamp also keeps to_seq()'s unsigned conversion from wrapping.
     const Telescope& tel = Telescope::instance();
     const int64_t effective_seq = start_ts > tel.to_time(0) ? (int64_t)tel.to_seq(start_ts) : -1;
 
@@ -202,7 +219,7 @@ bool bufferBadInputs::update_bad_inputs_callback(nlohmann::json& json) {
          "for start time {:f} (seq {:d}).",
          update_id, bad_inputs.size(), ts_to_double(start_ts), effective_seq);
 
-    updates.insert(start_ts, {std::move(mask)});
+    updates.insert(start_ts, {std::move(mask), update_id, has_start_time});
 
     return true;
 }
@@ -242,6 +259,13 @@ void bufferBadInputs::main_thread() {
              first_fpga_seq_num, metadata_source->buffer_name);
     }
 
+    const Telescope& tel = Telescope::instance();
+    const int64_t frames_per_alignment =
+        bf_mask_update_alignment_in_samples / bf_mask_lifetime_in_samples;
+    // The update used for the previous frame, and the time it was looked up at.
+    std::shared_ptr<const badInputUpdate> prev_update;
+    timespec prev_ref_ts = {0, 0};
+
     // `frame_index` counts all frames produced, not just the current slot, because the FPGA
     // sequence number has to keep increasing.
     for (int64_t frame_index = 0; !stop_thread; ++frame_index) {
@@ -252,12 +276,30 @@ void bufferBadInputs::main_thread() {
         if (out_frame == nullptr)
             return;
 
-        // Sample the wall clock only now: the wait above can outlast a
-        // pending update.
-        const timespec ref_ts = double_to_ts(current_time());
+        const int64_t fpga_seq_num = first_fpga_seq_num + frame_index * bf_mask_lifetime_in_samples;
+        // The update in effect at the last boundary at or before this frame. Without GPS time,
+        // the update in effect now; sample the wall clock only after the wait above, which can
+        // outlast a pending update.
+        const int64_t boundary_seq =
+            first_fpga_seq_num
+            + frame_index / frames_per_alignment * bf_mask_update_alignment_in_samples;
+        const timespec ref_ts =
+            use_fpga_time ? tel.to_time(boundary_seq) : double_to_ts(current_time());
+        last_ref_time_ns = timespec_to_nanosec_i64(ref_ts);
+
+        const auto [start_ts, update] = updates.get_update(ref_ts);
+        // An update that the previous frame should already have used arrived too late for it.
+        if (update != prev_update && update != nullptr && update->has_start_time && frame_index > 0
+            && !(start_ts > prev_ref_ts)) {
+            WARN("Update '{:s}' is late: its start time {:f} precedes frames already produced; "
+                 "applying it from seq {:d}.",
+                 update->update_id, ts_to_double(start_ts), fpga_seq_num);
+            late_updates_counter.inc();
+        }
+        prev_update = update;
+        prev_ref_ts = ref_ts;
 
         // Compose the frame from the active update; the bare baseline until one applies.
-        const std::shared_ptr<const badInputUpdate> update = updates.get_update(ref_ts).second;
         for (size_t el = 0; el < num_elements; ++el)
             out_frame[el] = update != nullptr ? update->mask[el] : baseline_mask[el];
 
@@ -267,7 +309,7 @@ void bufferBadInputs::main_thread() {
         meta->set_from_frame_desc(frame_desc);
         // Each frame is one bad feed mask sample, and each sample is valid for
         // `bf_mask_lifetime_in_samples` FPGA samples.
-        meta->set_fpga_seq_num(first_fpga_seq_num + frame_index * bf_mask_lifetime_in_samples);
+        meta->set_fpga_seq_num(fpga_seq_num);
         meta->set_time_downsampling_fpga(bf_mask_lifetime_in_samples);
         if (!coarse_freq.empty())
             meta->set_coarse_freq(coarse_freq);
