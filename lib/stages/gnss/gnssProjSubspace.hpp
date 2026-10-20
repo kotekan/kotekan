@@ -402,9 +402,13 @@ private:
 
 /// One chain's published subspace for one channel.
 struct ProjEntry {
-    std::string owner;  ///< the publishing stage's unique_name (+ "/probe" for a probe stack)
-    int src = 0;        ///< 0 = the satellite's own row, 1 = probe-stack eigenvector
+    std::string owner;  ///< the publishing stage's unique_name (+ "/probe" for a probe stack,
+                        ///< + "/lane/<prn>" for a #190 lane direction)
+    int src = 0;        ///< 0 = the satellite's own row, 1 = probe-stack eigenvector, 2 = lane
+                        ///< direction (gnssLaneDirection.hpp: a tracked PRN's averaged prompt row)
     double t_pub = 0.0; ///< steady seconds of publication
+    double power = 0.0; ///< src 2: the row's EMA power (despread units; orders the lanes)
+    double coh = 0.0;   ///< src 2: LaneDirection::coherence, the direction's quality in [0, 1]
     int n = 0, k = 0;
     std::vector<std::complex<float>> q; ///< [k][n]
 };

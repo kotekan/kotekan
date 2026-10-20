@@ -195,6 +195,36 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
         _pol_c.assign((size_t)n, std::complex<double>(0.0, 0.0));
         _w_scratch.assign((size_t)_n_elements, std::complex<double>(0.0, 0.0));
     }
+    // #190 lane directions (see the header): off by default; the generator's
+    // --elem-dir-publish all turns it on with GnssN2Project's source lanes.
+    {
+        const std::string pub =
+            config.get_default<std::string>(unique_name, "elem_dir_publish", "off");
+        _lane_on = (pub == "all");
+        const double tau = config.get_default<double>(unique_name, "elem_dir_tau_s", 0.5);
+        _lane_every = std::max(1, config.get_default<int>(unique_name, "elem_dir_every", 4));
+        _lane_coh_min = config.get_default<double>(unique_name, "elem_dir_coh_min", 0.02);
+        _lane_fids = config.get_default<std::vector<int>>(unique_name, "channel_ids", {});
+        _lane_group = unique_name.substr(0, unique_name.find('_'));
+        const int np = (int)_prns.size();
+        _lane = gnss::LaneDirection(_n_elements, (int)_lane_fids.size(), np, tau);
+        _lane_scratch.assign((size_t)_n_elements, std::complex<double>(0.0, 0.0));
+        _lane_dir.assign((size_t)_n_elements, std::complex<double>(0.0, 0.0));
+        _lane_t_prev.assign((size_t)np, 0.0);
+        _lane_prn.assign((size_t)np, 0);
+        _lane_pub.assign((size_t)np, 0);
+        _lane_cnt.assign((size_t)np, 0);
+        _lane_owner.assign((size_t)np, std::string());
+        if (_lane_on && _lane_fids.empty()) {
+            WARN("elem_dir_publish all needs channel_ids: lane directions OFF");
+            _lane_on = false;
+        }
+        if (_lane_on)
+            INFO("lane directions: publishing every running non-probe slot's prompt-row "
+                 "direction per channel to the board group {:s}, tau {:.2f} s, every {:d} "
+                 "records, coherence >= {:.3f}",
+                 _lane_group, tau, _lane_every, _lane_coh_min);
+    }
     // Bright-satellite projection (see the header and gnssProjSubspace.hpp). Needs channel_ids
     // (the board is keyed on freq_id) and elem_sum (the shadow learners). Off by default;
     // /set_elem_proj changes the mode live.
@@ -764,6 +794,14 @@ void GnssGpuRecordAssemble::main_thread() {
                 rec[0] = (float)((c.prn > 0) ? (int)c.prn : _prns[p]);
                 *reinterpret_cast<double*>(rec + gnss::RECORD_UTC_SLOT) = utc;
                 if (!c.run) {
+                    if (_lane_on) {
+                        if (_lane_pub[p])
+                            gnss::ProjBoard::instance().retire(_lane_group, _lane_owner[p]);
+                        _lane_pub[p] = 0;
+                        _lane_prn[p] = 0;
+                        _lane_t_prev[p] = 0.0;
+                        _lane.reset(p);
+                    }
                     _a_prev_ok[p] = 0;
                     _elem_prev_ok[p] = 0;
                     _fcar_prev_ok[p] = 0;
@@ -819,9 +857,29 @@ void GnssGpuRecordAssemble::main_thread() {
                         }
                     }
                 }
+                // #190: this record's steered prompt row feeds the slot's lane direction
+                // (one EMA per channel); a PRN change on the slot resets it.
+                const int lane_prn = (c.prn > 0) ? (int)c.prn : _prns[p];
+                const bool lane_rec = _lane_on && steered && !_proj_isProbe[(size_t)p]
+                                      && (int)_lane_fids.size() == n_chan;
+                double lane_dt = 0.0;
+                if (lane_rec) {
+                    if (_lane_prn[p] != lane_prn) {
+                        if (_lane_pub[p])
+                            gnss::ProjBoard::instance().retire(_lane_group, _lane_owner[p]);
+                        _lane_pub[p] = 0;
+                        _lane.reset(p);
+                        _lane_prn[p] = lane_prn;
+                        _lane_owner[p] = unique_name + "/lane/" + std::to_string(lane_prn);
+                        _lane_t_prev[p] = 0.0;
+                    }
+                    lane_dt = _lane_t_prev[p] > 0.0 ? utc - _lane_t_prev[p] : 0.0;
+                    _lane_t_prev[p] = utc;
+                }
                 for (int t = 0; t < ROWS_PLAIN; ++t) {
                     const size_t row = (size_t)(c.job0 + t) * n_chan;
                     double e = 0.0;
+                    const bool lane_row = lane_rec && t == ROW_P;
                     for (int ch = 0; ch < n_chan; ++ch)
                         if ((c.chan_mask >> ch) & 1ULL) {
                             const double w = _chan_w[ch]; // 1 unless chan_noise_norm
@@ -835,10 +893,46 @@ void GnssGpuRecordAssemble::main_thread() {
                                 if (st)
                                     v *= std::complex<double>(st[el].real(), st[el].imag());
                                 _g_elem[(size_t)t * n_e + el] += w * v;
+                                if (lane_row)
+                                    _lane_scratch[(size_t)el] = v;
                             }
+                            if (lane_row)
+                                _lane.push(p, ch, _lane_scratch.data(), lane_dt);
                         }
                     g3[t] = _g_elem[(size_t)t * n_e + ref_e];
                     e3[t] = e;
+                }
+                // #190: publish the slot's lane directions once per elem_dir_every records,
+                // per covering channel whose EMA is warm and coherent, in the raw frame.
+                if (lane_rec && (++_lane_cnt[p] % _lane_every) == 0) {
+                    gnss::ProjBoard& board = gnss::ProjBoard::instance();
+                    const double now_s =
+                        std::chrono::duration<double>(
+                            std::chrono::steady_clock::now().time_since_epoch())
+                            .count();
+                    for (int ch = 0; ch < n_chan; ++ch) {
+                        if (!((c.chan_mask >> ch) & 1ULL) || !_lane.warm(p, ch))
+                            continue;
+                        const double coh = _lane.coherence(p, ch);
+                        if (coh < _lane_coh_min
+                            || !_lane.direction(p, ch, &_steer_buf[(size_t)ch * n_e],
+                                                _lane_dir.data()))
+                            continue;
+                        gnss::ProjEntry e;
+                        e.owner = _lane_owner[p];
+                        e.src = 2;
+                        e.t_pub = now_s;
+                        e.power = _lane.power(p, ch);
+                        e.coh = coh;
+                        e.n = n_e;
+                        e.k = 1;
+                        e.q.reserve((size_t)n_e);
+                        for (int el = 0; el < n_e; ++el)
+                            e.q.emplace_back((float)_lane_dir[(size_t)el].real(),
+                                             (float)_lane_dir[(size_t)el].imag());
+                        board.publish(_lane_group, _lane_fids[(size_t)ch], e);
+                        _lane_pub[p] = 1;
+                    }
                 }
                 // Shadow projection (see the header): the same prompt, projected per channel
                 // before steering and summing, into _g_proj for the projected learner and the

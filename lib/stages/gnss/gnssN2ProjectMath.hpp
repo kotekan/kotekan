@@ -78,7 +78,10 @@ inline void writeback(const Layout& L, int32_t* f, const std::vector<int>& st, c
 
 /// V <- (I - Q Q^H) V (I - Q Q^H) in place for Hermitian V, Q = k orthonormal columns given
 /// row-wise as q[j * n + i] (ProjSubspace's layout). With W = V Q, M = Q^H W and Q^H V = W^H
-/// (V Hermitian): V' = V - Q W^H - W Q^H + Q M Q^H. Cost ~(3k + k^2) n^2 complex multiply-adds.
+/// (V Hermitian): V' = V - Q W^H - W Q^H + Q M Q^H = V - Q W^H - (W - Q M) Q^H. Taking
+/// U = W - Q M first makes the update two rank-k products, ~4 k n^2 complex multiply-adds,
+/// linear in k (#190 projects a few dozen known directions per channel; the first version's
+/// Q M Q^H triple loop was k^2 n^2, 4 M operations per channel-frame at k = 20, n = 96).
 inline void project(int n, int k, const cd* q, cd* V, std::vector<cd>& W, std::vector<cd>& M) {
     if (k <= 0)
         return;
@@ -101,19 +104,30 @@ inline void project(int n, int k, const cd* q, cd* V, std::vector<cd>& W, std::v
                 s += std::conj(q[(size_t)a * n + i]) * W[(size_t)i * k + b];
             M[(size_t)a * k + b] = s;
         }
+    // U = W - Q M, [n][k], in a scratch that lives in M's vector after M is consumed row by row
+    // would alias; keep it simple: a second [n][k] block appended to W.
+    W.resize((size_t)2 * n * k, cd(0.0, 0.0));
+    cd* U = W.data() + (size_t)n * k;
     for (int i = 0; i < n; ++i)
-        for (int c = 0; c < n; ++c) {
-            cd s(0.0, 0.0);
-            for (int j = 0; j < k; ++j) {
-                const cd qij = q[(size_t)j * n + i], qcj = q[(size_t)j * n + c];
-                s -= qij * std::conj(W[(size_t)c * k + j]) + W[(size_t)i * k + j] * std::conj(qcj);
-                for (int l = 0; l < k; ++l)
-                    s += qij * M[(size_t)j * k + l] * std::conj(q[(size_t)l * n + c]);
-            }
-            V[(size_t)i * n + c] += s;
+        for (int j = 0; j < k; ++j) {
+            cd s = W[(size_t)i * k + j];
+            for (int l = 0; l < k; ++l)
+                s -= q[(size_t)l * n + i] * M[(size_t)l * k + j];
+            U[(size_t)i * k + j] = s;
         }
+    // V'_ic = V_ic - sum_j q_ji conj(W_cj) - sum_j U_ij conj(q_jc)
+    for (int i = 0; i < n; ++i) {
+        cd* Vi = V + (size_t)i * n;
+        const cd* Ui = U + (size_t)i * k;
+        for (int c = 0; c < n; ++c) {
+            const cd* Wc = W.data() + (size_t)c * k;
+            cd s(0.0, 0.0);
+            for (int j = 0; j < k; ++j)
+                s += q[(size_t)j * n + i] * std::conj(Wc[j]) + Ui[j] * std::conj(q[(size_t)j * n + c]);
+            Vi[c] -= s;
+        }
+    }
 }
-
 /// Mean of the diagonal (the live autos), the stage's power unit for its thresholds.
 inline double mean_auto(int n, const cd* V) {
     double s = 0.0;

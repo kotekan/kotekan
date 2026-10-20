@@ -53,6 +53,10 @@ target_include_directories(test_gnss_band_plan PRIVATE ../../lib/stages ../../li
 add_executable(test_gnss_shared_pin test_gnss_shared_pin.cpp)
 target_include_directories(test_gnss_shared_pin PRIVATE ../../lib/stages ../../lib/stages/gnss)
 
+# #190: a tracked satellite's direction from its own steered prompt row (EMA): header-only.
+add_executable(test_gnss_lane_direction test_gnss_lane_direction.cpp)
+target_include_directories(test_gnss_lane_direction PRIVATE ../../lib/stages ../../lib/stages/gnss)
+
 # Per-channel noise weights for the assembler's cross-channel sums: header-only.
 add_executable(test_gnss_chan_power test_gnss_chan_power.cpp)
 target_include_directories(test_gnss_chan_power PRIVATE ../../lib/stages ../../lib/stages/gnss)
