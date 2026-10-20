@@ -143,6 +143,21 @@ def offsets(ref, vs):
     }
 
 
+def densest_centre(off, keep, exclude_deg):
+    """Unit phasor at the mean offset of the largest group of `keep` lying within exclude_deg of
+    one of its members. Instances pinned in two groups put the plain mean between the groups,
+    where no instance is."""
+    ph = {k: np.radians(off[k][0]) for k in keep}
+    lim = np.radians(exclude_deg)
+    best = []
+    for c in sorted(keep):
+        near = [k for k in keep if abs(np.angle(np.exp(1j * (ph[k] - ph[c])))) <= lim]
+        if len(near) > len(best):
+            best = near
+    z = np.mean([np.exp(1j * ph[k]) for k in best])
+    return z / abs(z)
+
+
 def band_consensus(res, band, exclude_deg, min_sim):
     """One band's reference entry from a poll: per pol, the consensus of the warm, unfrozen
     models, leaving out those more than exclude_deg off it or whose shape it does not describe.
@@ -166,7 +181,7 @@ def band_consensus(res, band, exclude_deg, min_sim):
         for _ in range(3):
             ref = consensus(keep)
             off = offsets(ref, vs)
-            z = np.mean([np.exp(1j * np.radians(off[k][0])) for k in keep])
+            z = densest_centre(off, keep, exclude_deg)
             rel = {
                 k: (float(np.degrees(np.angle(np.exp(1j * np.radians(o)) / z))), s)
                 for k, (o, s) in off.items()
