@@ -232,7 +232,7 @@ _FROZEN = dict(
     # Leak (1/s) published to the C++ fleet loop. Sets both the noise mean-reversion time
     # (1/leak ~ 8 s) and the reachable-correction ceiling, trim_max = 0.25 x bandwidth / leak:
     # 2.9 chips at the --fleet-trim-bandwidth default of 1.4, 5.2 at the chains' 2.5, against the
-    # +-3-chip clamp trimarm posts.
+    # clamp trimarm posts (under half a grating lobe of the tracker comb, trimarm.trim_clamp).
     fleet_trim_leak_per_s=0.12,
     # Log when an instance serves rows whose newest pow_hop has not advanced for this many seconds
     # while most of the fleet advances; the hop comes from the fleet DLL poll, so this costs no

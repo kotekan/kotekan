@@ -17,7 +17,7 @@ Judge on a series that keeps every seeded satellite (ctx.qpop, the QPOP line).
 """
 
 from gnss_broker.transport import _log_rl
-from gnss_broker import combdll
+from gnss_broker import combdll, trimarm
 
 
 def stage_dll_control(ctx):
@@ -69,7 +69,8 @@ def stage_dll_control(ctx):
         # to the clamp; noise averages over ~1/leak updates. The leak also caps the correction:
         # steady state is trim = (gain/leak)*tau with |tau| <= 0.25*(spacing/0.5) chips
         # (combdll.dll_tau), so at 0.5-chip spacing, gain 0.25 and leak 0.05 nothing beyond
-        # 1.25 chips is reachable and the +-3.0 chip clamp never binds.
+        # 1.25 chips is reachable. The clamp is the fast loop's, under half a grating lobe of
+        # the tracker comb (trimarm.trim_clamp), and binds only below that: E6, 0.74 chips.
         #
         # The fleet path, where `present` already confirms signal, takes dll_leak_present; the
         # single-combiner path, which has no such gate, takes dll_leak. Both are frozen at 0.05
@@ -96,13 +97,16 @@ def stage_dll_control(ctx):
         # and the C++ loop corrects the residual. On release the C++ trim leaks away gradually
         # (the gather keeps posting the decaying value) while this integrator resumes from its
         # standing value, so what the C++ loop had corrected must be re-acquired here.
-        if prn not in ctx.dls.armed_last:
+        #
+        # Neither loop trims a PRN in dls.held_off (a slewing seed or a lobe release,
+        # trimarm.py): its discriminator is railed by the slew or points at a lobe.
+        if prn not in ctx.dls.armed_last and prn not in ctx.dls.held_off:
             ctx.dls.trim[prn] = combdll.dll_integrate(
                 ctx.dls.trim.get(prn, 0.0),
                 disc,
                 ctx.args.dll_gain,
                 leak,
-                3.0,
+                trimarm.trim_clamp(ctx.args.chip_rate_hz),
                 ctx.args.dll_spacing,
             )
         ctx.dllp.report.append(

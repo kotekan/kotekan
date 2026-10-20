@@ -62,6 +62,11 @@ class DllLoopState(object):
         "armed_last",
         "stat",
         "deep_gate_seen",
+        "held_off",
+        "readback_ok",
+        "lobe_since",
+        "lobe_release",
+        "lobe_done",
     )
 
     def __init__(self):
@@ -80,6 +85,14 @@ class DllLoopState(object):
         self.deep_gate_seen = (
             {}
         )  # prn -> t0 of the last search detection at snr >= --dll-deep-gate-from-search
+        # The PRNs neither loop trims this cycle: slewing seeds and lobe releases (trimarm.py).
+        self.held_off = set()
+        self.readback_ok = False  # did the last /get_dll read succeed (empty or not)
+        # prn -> t0: xcoh first below the lobe bar (while it stays), a release's start (while it
+        # lasts), the last release's end (the holdoff)
+        self.lobe_since = {}
+        self.lobe_release = {}
+        self.lobe_done = {}
 
 
 class HoldState(object):

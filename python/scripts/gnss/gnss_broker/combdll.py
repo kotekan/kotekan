@@ -466,6 +466,7 @@ def fleet_dll_comb(
             "n_chan": t["n_chan"],
             "n_rec": t["n_rec"],
             "xcoh": t.get("xcoh"),
+            "n_xcoh": t.get("n_xcoh", 0),
             "src": "comb",
         }
         # The deep statistics: carried across, never invented (module docstring).

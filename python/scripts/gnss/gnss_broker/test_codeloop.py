@@ -31,7 +31,7 @@ class _Obj(object):
         self.__dict__.update(kw)
 
 
-def run(seed):
+def run(seed, held_off=()):
     """One stage call on the single-combiner path (no fleet row) for PRN 5 with a 0.3-chip
     discriminator at SNR 100; returns (ctx, logged lines)."""
     lines = []
@@ -39,7 +39,9 @@ def run(seed):
         seeds={5: seed},
         status={5: {"dll_disc": 0.3}},
         dllp=_Obj(fleet={}, report=[]),
-        dls=_Obj(trim={}, last={}, last_hop={}, armed_last=set()),
+        dls=_Obj(
+            trim={}, last={}, last_hop={}, armed_last=set(), held_off=set(held_off)
+        ),
         sig_of=lambda rec: 100.0,
         args=_Obj(
             lock_snr=10.0,
@@ -47,6 +49,7 @@ def run(seed):
             dll_leak=0.05,
             dll_leak_present=0.05,
             dll_spacing=0.5,
+            chip_rate_hz=10.23e6,
         ),
         dll_combiners=[],
     )
@@ -81,6 +84,10 @@ def main():
         ctx.dls.trim.get(5, 0.0) != 0.0,
         "live rate: the 0.3-chip disc integrates (trim %r)" % ctx.dls.trim.get(5),
     )
+
+    # 4. A PRN held off (a slewing seed or a lobe release, trimarm.py) is not integrated.
+    ctx, lines = run({"code_phase_rate": 3.45}, held_off=(5,))
+    check(5 not in ctx.dls.trim, "held off: no trim integrated (got %r)" % ctx.dls.trim)
 
     print("-" * 70)
     if _fails:

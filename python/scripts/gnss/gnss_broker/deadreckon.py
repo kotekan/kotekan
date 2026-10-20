@@ -1652,6 +1652,10 @@ def dr_seed(ctx):
                         ),
                     )
                 ctx.dr_state["pin"][prn] = ctx.drp.now_w
+                # The gap left to close, on the cycle clock, for the trim loops' slew hold
+                # (trimarm.slewing counts only a recent entry: a PRN that leaves dead reckoning
+                # stops refreshing it).
+                ctx.dr_state.setdefault("slew_gap", {})[prn] = (ctx.t0, _dcp - _step)
                 _log_rl(
                     "drslew-%d" % prn,
                     "dead-reckon SLEW PRN %d: model-held %+.3f chips, "
@@ -1667,6 +1671,7 @@ def dr_seed(ctx):
                 )
             ctx.dls.trim.pop(prn, None)  # that trim was built against the old anchor
             ctx.dls.last.pop(prn, None)
+            ctx.dr_state.get("slew_gap", {}).pop(prn, None)  # born on the model: no gap
             _rh_birth = int(round(ctx.drp.t_fc_abs * ctx.args.hops_per_sec))
             _pv = ctx.seeds.get(prn)
             if _pv is not None and "ref_hop" in _pv:
