@@ -83,6 +83,17 @@ BOOST_AUTO_TEST_CASE(neuman_hofman_overlays) {
 
 BOOST_AUTO_TEST_CASE(invalid_prn_throws) {
     BOOST_CHECK_THROW(generate_l5i_code(0), std::out_of_range);
-    BOOST_CHECK_THROW(generate_l5i_code(33), std::out_of_range);
+    BOOST_CHECK_THROW(generate_l5i_code(211), std::out_of_range);
     BOOST_CHECK_THROW(generate_l5q_code(0), std::out_of_range);
+}
+
+BOOST_AUTO_TEST_CASE(sbas_prn_in_the_same_family) {
+    // WAAS PRN 131: a valid entry of the 1..210 table, distinct from the GPS codes.
+    auto i131 = generate_l5i_code(131);
+    auto q131 = generate_l5q_code(131);
+    BOOST_REQUIRE_EQUAL(i131.size(), (size_t)10230);
+    BOOST_CHECK(i131 != q131);
+    BOOST_CHECK(i131 != generate_l5i_code(1));
+    for (int8_t c : i131)
+        BOOST_CHECK(c == 1 || c == -1);
 }
