@@ -3,10 +3,10 @@
   "component": "pilotproxy-detector-core",
   "upstream_repo": "https://github.com/WVURAIL/pilotproxy-code",
   "upstream_subdir": "cuda",
-  "upstream_commit": "ac7e23ce615c95a10d8c5b51a6be10fffc8e68c0",
+  "upstream_commit": "2ed28a972afa035872cd0b61df18328905b4e4bf",
   "policy": "Files below are byte-identical copies of upstream. Re-vendoring is a pure copy + hash comparison; local edits are not permitted. Fix upstream first, then bump upstream_commit and refresh these digests.",
   "files": {
-    "config.h": "sha256:920967ddbb5984e6f9a78e10891431517ac494c6b63ab9a1d18db9fa93ffc1a1",
+    "config.h": "sha256:38e26620b6d0a32da09056374f1a36e3af017b402b09ab63194997d21ba2e592",
     "f_statistic.h": "sha256:0ed31b11890647bba99daef18ccfc02bcbeb844ba0c3d10a5c24ae2fca688307",
     "f_statistic.cu": "sha256:239119ce8b96cbd4cb60f2ee2836118bb3e8b622524e9ad40261c6d8d6a95d9e",
     "f_statistic_reference.h": "sha256:ffc8005d43d7efaa2a075ca41d105ca7b9856fe8d5b2f616329f37efb5cf2882",

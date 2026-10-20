@@ -2,10 +2,6 @@
 // per length, setting FSTAT_DETECTOR_WINDOW_SAMPLES and PILOTPROXY_NAMESPACE and renaming the
 // core's C functions, so that both builds link into one binary.
 
-#ifndef FSTAT_DETECTOR_WINDOW_SAMPLES
-#error "FSTAT_DETECTOR_WINDOW_SAMPLES must be set by the build"
-#endif
-
 #include "pilotproxy_core.hpp"
 
 // The core's standard headers, included here so that they stay outside the namespace.

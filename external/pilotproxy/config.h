@@ -19,78 +19,9 @@
  * ===========================================================================*/
 
 /*
- * 2.0.0: adds the v2 time-coherent front end (exact complex row-sum
- * emission via FStat_Compute_RowSums_I32). Existing v1 entry points are
- * unchanged; the ABI extension is additive. The major bump marks the
- * detector-statistic family change (fine-bin reduction downstream).
- *
- * 2.1.0: adds the on-device fine-reduction power stage
- * (FStat_Compute_FinePowers_U64): the frozen fxfft256 v1 fixed-point FFT
- * over the row-sum buffer plus exact uint64 feed sums. Existing entry
- * points are unchanged; the extension is additive and policy-free (no
- * CFAR or designated-set decision in the library).
- *
- * 2.2.0: adds the fused fine kernel (FStat_Compute_FusedFine_U64): one
- * launch from packed samples to the exact fine power sums,
- * block-per-stream with shared-memory row sums (materialized to global
- * only through the optional debug tap). Bit-identical to the composed
- * RowSums -> FinePowers path. Its d_power_out at this version carried a
- * second power sum formed over detector rows; 3.0.0 (below) redefines
- * that output and removes the row-domain branch. Existing entry points
- * are unchanged; still policy-free.
- *
- * 2.3.0: adds the decision epilogue (FStat_Compute_FusedFineMask_U64):
- * the fused datapath plus a last-block epilogue forming the frozen fine
- * decision v1 (rank-based null-bulk CFAR, designated-set compare, exact
- * 128/192-bit integer comparisons; bit-identical to
- * src/pilot_proxy/fine_decision.py) and emitting one mask bit per
- * aligned frame. Calibration inputs (anchor, width, bulk mask, rank,
- * Q16 multiplier) are runtime-bundle data passed as arguments --- the
- * library remains policy-free in the sense that it compiles in no
- * channel constants. Existing entry points are unchanged;
- * FStat_Compute_FusedFine_U64 output is bit-identical to 2.2.0.
- *
- * 2.4.0: adds FStat_SetStream. Every launch, memset and copy a handle
- * issues runs on the handle's CUDA stream (default 0, the legacy default
- * stream, so existing callers are unchanged). The handle-less
- * FStat_Compute_FinePowers_U64 stays on the default stream. Existing
- * entry points and their output are unchanged.
- *
- * 2.5.0: adds FStat_Compute_FusedFineMaskWithSupport_U64 and its capability
- * probe. Separate rank-valid and usable-bulk-count outputs identify invalid
- * fine support at full rate without changing the legacy mask or power outputs.
- * Rank support does not establish input health or physical calibration.
- *
- * 3.0.0: the frame powers P_r are DEFINED as the all-bin sums of the fine
- * spectrum, P_r = sum_f S_r[f] (exact uint64; the transform length cancels
- * in F = 2 P_0 / (P_1 + P_2)), and the separate branch that summed |z|^2
- * over detector rows is removed rather than kept as legacy. Removed entry
- * points: FStat_Compute_DiagnosticFloat, FStat_Compute_Powers,
- * FStat_Compute_Powers_U64, FStat_Compute_NumDen_Mask_RationalHalf and its
- * _WithOverflowCount variant, together with the FStatRational type, the
- * FStat_NumDenToRawF / FStat_NumDenToPilotExcess(Checked) /
- * FStat_MakeHalfThresholdFromFullChecked inline helpers, the float d_out
- * parameter of FStat_Create and FStat_Create_Batch, and the host reference
- * fstat_ref_powers_u64 (replaced by fstat_ref_fine_powers_u64 and
- * fstat_ref_powers_from_fine_u64). Removed configuration macros, each of
- * which served only the removed float and rational entries:
- * FSTAT_RAW_NUMDEN_SCALE, FSTAT_NO_PILOT_EXCESS_RAW_F and
- * FSTAT_DIVISION_EPSILON from this header (which therefore no longer
- * includes <cfloat>), and FSTAT_OUTPUT_KERNEL_THREADS from f_statistic.cu.
- * Changed meaning: the d_power_out of
- * FStat_Compute_FusedFine_U64 (required) and of FStat_Compute_FusedFineMask_U64
- * / FStat_Compute_FusedFineMaskWithSupport_U64 (optional) now receives
- * P_r = sum over the 256 fine bins of d_fine_power_out[b][r][:], reduced on
- * the handle's stream from the finalized fine sums after the fused launch
- * (kernel_sum_fine_powers); it is no longer the sum of |z|^2 over rows, and
- * the two agree only up to the fixed-point rounding of the frozen transform
- * (about 1e-5 relative at deployed amplitudes, more for near-empty frames).
- * Unchanged bit-for-bit: d_fine_power_out, d_row_sums_out, d_mask_out,
- * d_rank_valid_out, d_n_bulk_out, FStat_Compute_RowSums_I32 and
- * FStat_Compute_FinePowers_U64 (the decision epilogue never read P_r). The
- * rational-half mask kernel is not re-pointed at the new P_r because
- * P_0 * threshold_half_den no longer fits uint64; it goes with the branch.
- * The major bump marks the output redefinition and the ABI removals.
+ * Core version reported by FStat_GetVersion. The major number changes when an
+ * entry point is removed or an output changes meaning; the minor number when
+ * an entry point is added.
  */
 #define FSTAT_CORE_VERSION_MAJOR 3
 #define FSTAT_CORE_VERSION_MINOR 0
@@ -108,12 +39,13 @@
  * 390.625 kHz wide and use K = 128; CHORD channels are 195.3125 kHz wide
  * and use K = 64. The window count per detector block
  * (FSTAT_FINE_WINDOWS_PER_STREAM) is frozen at 128 for every receiver;
- * only the window length varies. Supported values are 64 and 128. The
+ * only the window length varies. Supported values are 64 and 128, and
+ * the build must define it; there is no default. The
  * guard-bit chain and the static assertions below enforce the fixed-point
  * closure for each.
  */
 #ifndef FSTAT_DETECTOR_WINDOW_SAMPLES
-#define FSTAT_DETECTOR_WINDOW_SAMPLES 128
+#error "Define FSTAT_DETECTOR_WINDOW_SAMPLES (64 or 128) when building the core."
 #endif
 
 /**
@@ -131,7 +63,7 @@
 /*
  * Two-reference raw F-statistic contract: F = 2*P_target/(P_ref1+P_ref2),
  * where each P_r is the frame power, the all-bin sum of that term's fine
- * spectrum (kernel core 3.0.0). The library forms neither the ratio nor any
+ * spectrum. The library forms neither the ratio nor any
  * float: hosts form F from the exact uint64 frame powers.
  */
 
@@ -320,7 +252,7 @@ constexpr double kMaxBinMagnitude =
     static_cast<double>(FSTAT_MAX_ROW_SUM_COMPONENT) * FSTAT_FINE_WINDOWS_PER_STREAM;
 
 /**
- * Frame-power closure (kernel core 3.0.0). The frame power of one term is
+ * Frame-power closure. The frame power of one term is
  * the all-bin sum of its fine spectrum, P_r = sum_f S_r[f], held in uint64.
  * For the exact DFT X of one stream, Parseval over the zero-padded
  * transform gives sum_f |X_f|^2 = ||X||^2 = L_F * sum_m |z_m|^2. The frozen
