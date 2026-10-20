@@ -198,7 +198,7 @@ def main():
     ap.add_argument(
         "--sys",
         default="G",
-        choices=("G", "E", "C", "R"),
+        choices=("G", "E", "C", "R", "S"),
         help="RINEX constellation letter of the chain's satellites: selects their BRDC "
         "records for the geometry and is written as each row's sys",
     )
