@@ -39,6 +39,7 @@ OMEGA_E = {
     "E": 7.2921151467e-5,
     "C": 7.292115e-5,
     "R": 7.292115e-5,
+    "S": 7.2921151467e-5,
 }
 # PZ-90.11 (GLONASS ICD): the oblateness term of the equations of motion. PZ-90.11 and ITRF
 # agree to centimetres, so no frame transform is applied to the result.
@@ -52,6 +53,7 @@ GLONASS_INTENDED_S = 900.0  # a record is meant for +-15 min about its epoch tb
 # the default 4 h; 2.5 h keeps a seed inside the spectrum fit's capture while leaving the
 # hourly merge's 35-95 min record age nearly an hour of slack.
 GLONASS_MAX_AGE_S = 9000.0
+SBAS_MAX_AGE_S = 7200.0  # a GEO's MT9 state vector (RINEX S record), minutes-cadence in the BRDC
 # GLONASS L3OC per-satellite timing against the FDMA broadcast clock (#210). The broadcast
 # clock (-tau_n) is fitted to the FDMA L1/L2 signals; some satellites transmit the CDMA L3OC
 # code with a large, stable offset from it: the two GLONASS-K2 (SVN 803, 804) ~135-138 m EARLY,
@@ -218,10 +220,10 @@ def _parse_rinex_nav_file(path):
     while i < len(lines):
         line = lines[i]
         sysc = line[0] if line else ""
-        if sysc not in "GECR":
+        if sysc not in "GECRS":
             i += 1
             continue
-        norb = 3 if sysc == "R" else 7
+        norb = 3 if sysc in "RS" else 7
         try:
             prn = int(line[1:3])
             yy, mo, dd, hh, mi, ss = (
@@ -247,6 +249,13 @@ def _parse_rinex_nav_file(path):
         toc_gpst = (toc - GPS_EPOCH).total_seconds()
         if sysc == "C":
             toc_gpst -= BDT_GPST  # BDT epoch -> GPST seconds-since-GPS-epoch
+        if sysc == "S":
+            # SBAS GEO: epoch in GPS time, orbit lines X/X'/X''/health, Y/Y'/Y''/URA, Z/Z'/Z''/IODN
+            # in km (RINEX 3.04 table A14); propagated as pos + vel t + acc t^2 / 2 (SBAS MT9).
+            e = _sbas_record(prn, af, orb, toc_gpst)
+            if e is not None:
+                out.setdefault((sysc, e["prn"]), []).append(e)  # keyed by the PRN (S31 -> 131)
+            continue
         if sysc == "R":
             e = _glonass_record(prn, af, orb, toc_gpst + GPS_UTC_LEAP)
             if e is not None:
@@ -305,6 +314,39 @@ def _parse_rinex_nav_file(path):
     for k in out:
         out[k].sort(key=lambda e: e["toe_gpst"])
     return out
+
+
+def _sbas_record(prn, af, orb, toe_gpst):
+    """SBAS S record -> eph dict: ECEF (WGS84) position, velocity and acceleration in metres at
+    the record epoch (GPS time), the clock aGf0 + aGf1 (t - toc). PRNs are the RINEX S number
+    + 100 (S31 = PRN 131, WAAS). A GEO's state is good for tens of minutes from its epoch;
+    SBAS_MAX_AGE_S bounds it."""
+    pos = (orb[0] * 1e3, orb[4] * 1e3, orb[8] * 1e3)
+    if math.sqrt(sum(p * p for p in pos)) < 1.0e7:  # sanity: reject empty/garbled records
+        return None
+    return dict(
+        sys="S",
+        prn=prn + 100,
+        af0=af[0],
+        af1=af[1],
+        frame_time=af[2],
+        pos=pos,
+        vel=(orb[1] * 1e3, orb[5] * 1e3, orb[9] * 1e3),
+        acc=(orb[2] * 1e3, orb[6] * 1e3, orb[10] * 1e3),
+        health=orb[3],
+        ura=orb[7],
+        iodn=orb[11],
+        toc_gpst=toe_gpst,
+        toe_gpst=toe_gpst,
+    )
+
+
+def sbas_state(e, t_gpst):
+    """ECEF position and velocity of an SBAS GEO at t_gpst from its MT9-style state vector."""
+    dt = t_gpst - e["toe_gpst"]
+    pos = tuple(e["pos"][i] + e["vel"][i] * dt + 0.5 * e["acc"][i] * dt * dt for i in range(3))
+    vel = tuple(e["vel"][i] + e["acc"][i] * dt for i in range(3))
+    return pos, vel
 
 
 def _glonass_record(prn, af, orb, tb_gpst):
@@ -385,6 +427,9 @@ def sat_pos_clk(e, t_gpst):
     """ICD propagation -> ECEF position (m), velocity (m/s), clock offset (s): Kepler for
     G/E/C, the integrated state vector for R.
     t_gpst = seconds since the GPS epoch (continuous, no week rollover)."""
+    if e["sys"] == "S":
+        pos, vel = sbas_state(e, t_gpst)
+        return pos, vel, e["af0"] + e["af1"] * (t_gpst - e["toc_gpst"])
     if e["sys"] == "R":
         pos, vel = glonass_state(e, t_gpst)
         # -tau_n + gamma_n * (t - tb); the ICD folds the relativistic term into tau_n.
@@ -560,6 +605,8 @@ def group_delay_s(e, signal, dcb=None):
 
 
 def _pos_only(e, t_gpst):
+    if e["sys"] == "S":
+        return sbas_state(e, t_gpst)[0]
     if e["sys"] == "R":
         return glonass_state(e, t_gpst)[0]
     mu = MU[e["sys"]]
@@ -665,6 +712,8 @@ def predict_all(
             t,
             min(max_age, GLONASS_MAX_AGE_S)
             if key[0] == "R" and max_age <= 14400.0
+            else min(max_age, SBAS_MAX_AGE_S)
+            if key[0] == "S" and max_age <= 14400.0
             else max_age,
         )
         if e is None:
