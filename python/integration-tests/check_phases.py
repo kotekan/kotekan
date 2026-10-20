@@ -33,6 +33,7 @@ from kit import (
     frb2_beam_positions,
     frb2_peak_line,
     frb2_tone_power,
+    frb1_swap_MN,
     geometric_phases,
     grid_beam_direction,
     has_bb,
@@ -259,8 +260,7 @@ def check(out_dir, var, config):
     tel = config["telescope"]
     n = direction_vector(direction)
     # M runs along grid x and N along y, unless the beamformer swaps them (CHIME)
-    swap = num_P != 2 * value(config, "num_dishes_x")
-    axis_M, axis_N = (1, 0) if swap else (0, 1)
+    axis_M, axis_N = (1, 0) if frb1_swap_MN(config) else (0, 1)
     sep_M, sep_N = [
         float(tel[f"dish_separation_{a}_m"]) for a in ("xy"[axis_M], "xy"[axis_N])
     ]

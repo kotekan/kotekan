@@ -240,6 +240,11 @@ def has_bb(config):
     return "host_bb_beams_buffer" in config
 
 
+def frb1_swap_MN(config):
+    """Whether FRB1 beam axis P (M) runs along grid y instead of x (CHIME)."""
+    return value(config, "frb1_num_beams_P") != 2 * value(config, "num_dishes_x")
+
+
 def find_stages(config, kotekan_stage):
     """The config blocks of every stage of type `kotekan_stage`, at any depth."""
     found = []
