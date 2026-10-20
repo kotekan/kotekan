@@ -325,12 +325,11 @@ Findings
   PL mask enters only the counts and S0. ``TransposeBasebandArray`` writes 0+0i for lost
   blocks (``lib/stages/TransposeBasebandArray.cpp:370``). With -8-8i there instead, RFI
   excision flagged 1.3 M samples of an integration and the visibilities were off by up to 19%.
-* **N2 flags include the masks of the frames before an integration** (T9). ``N2Accumulate``
-  folds the mask of every frame into the flags, including the frames it skips while waiting for
-  the first bin boundary (``lib/stages/N2Accumulate.cpp:476``, before the alignment check), and
-  after finishing a bin folds the mask of the frame that completed it into the next bin
-  (line 732; with one sub-integration per frame no sample of that frame remains). Inputs bad
-  only before a bin are therefore flagged in it: two and five extra inputs in T9.
+* **N2 flags included the masks of the frames before an integration** (T9). ``N2Accumulate``
+  folded the mask of every frame into the flags, including the frames it skips while waiting for
+  the first bin boundary, and after finishing a bin folded the mask of the frame that completed
+  it into the next bin. Inputs bad only before a bin were therefore flagged in it: two and five
+  extra inputs in T9. Fixed in #1790.
 * Every other subsystem excludes bad inputs exactly (T9): the BB phases and FRB1 weights are zero
   exactly for the bad inputs of their lifetime frame, BB beams and all FRB1/FRB2 samples whose
   window holds no unmasked poison are bit-identical with and without poison (the last FRB sample
