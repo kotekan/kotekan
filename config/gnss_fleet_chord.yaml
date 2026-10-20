@@ -285,6 +285,7 @@ nodes:
     # #190 canary, second attempt (the first, 10-20 12:16-12:27Z, relaunched every ~3 min: the
     # assembler slot was already at ~99% on the fleet binary at 96 elements, the elem
     # projection's n^2 work; the lane EMA tipped it): the assemblers spread over six slots,
-    # the stage on its default slot, 8 lanes per channel to start.
-    cx51: {search-port-base: 11050, n2-project-source: lanes+residual, n2-project-lanes-max: 8,
+    # the stage on its default slot; 8 lanes per channel first (12:53Z: stage 30% of its core,
+    # lanes on every band), then every tracked satellite (40).
+    cx51: {search-port-base: 11050, n2-project-source: lanes+residual, n2-project-lanes-max: 40,
            elem-dir-publish: all, assembler-core-slots: "2,1,3,4,8,9"}
