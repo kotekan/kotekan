@@ -120,6 +120,8 @@ def accum_setup(request):
                 "enabled": True,
                 "thresholds": np.array([[3.0, 0.1]], dtype=np.float32),
             },
+            # Switch first-stage excision off halfway through this input frame
+            "first_stage_off_frame": 23,
         },
         {
             "config": prod_config,
@@ -180,6 +182,24 @@ def setup(request, accum_setup):
         request.param["tel"]["eop_updatable_config"] = "/eop"
 
     config["telescope"] = request.param["tel"]
+
+    # prod_config and accum_setup are shared between params, so set or clear both
+    config.pop("rfi_first_stage_enabled", None)
+    accum_setup.pop("rfi_first_stage_enabled_updatable_config", None)
+    if "first_stage_off_frame" in request.param:
+        frame_len = config["samples_per_data_set"]
+        off_seq = (
+            config["first_frame_index"] + request.param["first_stage_off_frame"]
+        ) * frame_len + frame_len // 2
+        config["rfi_first_stage_enabled"] = {
+            "kotekan_update_endpoint": "json",
+            "enabled": False,
+            "valid_at_time_ns": tel.get_t_inst_ns(off_seq, request.param["tel"]),
+        }
+        accum_setup[
+            "rfi_first_stage_enabled_updatable_config"
+        ] = "/rfi_first_stage_enabled"
+        request.param["first_stage_off_seq"] = off_seq
 
     request.param["rng"] = np.random.default_rng(seed=_TEST_SEED)
 
@@ -1302,6 +1322,29 @@ def test_counts(accum_data, expected_accum, accum_list, setup):
         assert frame.metadata.n_rfi_only_fpga_ticks == accum_list[t]["seq_len"] - (
             exp_cnts[t, f] + exp_plcnts[t, f]
         )
+
+
+def test_first_stage_enabled(accum_data, accum_list, setup):
+
+    if setup["fail"]:
+        return
+
+    config = setup["config"]
+    frame_len = config["samples_per_data_set"]
+    sub_len = config["sub_integration_ntime"]
+    off_seq = setup.get("first_stage_off_seq")
+
+    for idx, frame in enumerate(accum_data):
+        accum = accum_list[idx // config["num_local_freq"]]
+        expected = accum["seq_len"]
+        if off_seq is not None:
+            # A switch applies from the first input frame starting at or after it
+            sub_seqs = (
+                config["first_frame_index"] * frame_len + sub_len * accum["sub_idx"]
+            )
+            frame_starts = sub_seqs - sub_seqs % frame_len
+            expected = sub_len * np.count_nonzero(frame_starts < off_seq)
+        assert frame.metadata.n_rfi_first_stage_enabled_fpga_ticks == expected
 
 
 def test_vis(accum_data, expected_accum, accum_list, setup):

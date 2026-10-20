@@ -338,6 +338,8 @@ void N2TimeDownsample::main_thread() {
             output_frame.n_rfi_fpga_ticks += frame.n_rfi_fpga_ticks;
             output_frame.n_rfi_only_fpga_ticks += frame.n_rfi_only_fpga_ticks;
             output_frame.n_pl_fpga_ticks += frame.n_pl_fpga_ticks;
+            output_frame.n_rfi_first_stage_enabled_fpga_ticks +=
+                frame.n_rfi_first_stage_enabled_fpga_ticks;
             output_frame.frame_length_fpga_ticks += frame.frame_length_fpga_ticks;
 
             // Move to next frame
