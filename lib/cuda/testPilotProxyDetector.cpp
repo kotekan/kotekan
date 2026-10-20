@@ -4,17 +4,16 @@
 // use a C++ port of pilot-proxy's fine_decision.py with wide-integer comparisons.
 // Pipeline and metadata tests are in tests/test_pilotproxy_integration.py.
 
-#include "Config.hpp"                         // for Config
-#include "Stage.hpp"                          // for Stage
-#include "StageFactory.hpp"                   // for REGISTER_KOTEKAN_STAGE
-#include "bufferContainer.hpp"                // for bufferContainer
-#include "cudaPilotProxyPacker.hpp"           // for launch_pilotproxy_pack, cpu_pilotproxy_pack
-#include "cudaUtils.hpp"                      // for CHECK_CUDA_ERROR
-#include "cuda_runtime.h"                     // for cudaMalloc, cudaMemcpy, ...
-#include "errors.h"                           // for TEST_PASSED
-#include "kotekanLogging.hpp"                 // for FATAL_ERROR, INFO
-#include "pilotproxy/f_statistic.h"           // for FStat_* (vendored)
-#include "pilotproxy/f_statistic_reference.h" // for fstat_ref_* (vendored)
+#include "Config.hpp"                     // for Config
+#include "Stage.hpp"                      // for Stage
+#include "StageFactory.hpp"               // for REGISTER_KOTEKAN_STAGE
+#include "bufferContainer.hpp"            // for bufferContainer
+#include "cudaPilotProxyPacker.hpp"       // for launch_pilotproxy_pack, cpu_pilotproxy_pack
+#include "cudaUtils.hpp"                  // for CHECK_CUDA_ERROR
+#include "cuda_runtime.h"                 // for cudaMalloc, cudaMemcpy, ...
+#include "errors.h"                       // for TEST_PASSED
+#include "kotekanLogging.hpp"             // for FATAL_ERROR, INFO
+#include "pilotproxy/pilotproxy_core.hpp" // for PilotProxyCore, pilotproxy_core
 
 // Frozen fxfft256 v1 reference transform (vendored, C source). Compiled into
 // this translation unit without its standalone file harness; the vendored
@@ -190,17 +189,28 @@ public:
     virtual ~testPilotProxyDetector() {}
 
     void main_thread() override {
+        for (const int window : {64, 128}) {
+            const int cases = check_core(*pilotproxy_core(window));
+            INFO("testPilotProxyDetector: all GPU-vs-CPU products matched over {:d} cases for "
+                 "{:d} samples per window.",
+                 cases, window);
+        }
+        TEST_PASSED();
+    }
+
+    // Returns the number of cases checked.
+    int check_core(const PilotProxyCore& core) {
         using std::ptrdiff_t;
         using std::uint64_t;
 
         std::mt19937_64 rng(0x9e3779b97f4a7c15ULL);
 
         int K = 0, terms = 0, bits = 0;
-        FStat_GetSpecs(&K, &terms, &bits, nullptr);
+        core.GetSpecs(&K, &terms, &bits, nullptr);
         if (terms != NUM_TERMS || bits != 4)
             FATAL_ERROR("unexpected compiled kernel contract: terms={:d} bits={:d}", terms, bits);
         int fine_windows = 0, fine_bins = 0;
-        FStat_GetFineSpecs(&fine_windows, nullptr, &fine_bins);
+        core.GetFineSpecs(&fine_windows, nullptr, &fine_bins);
         if (fine_bins != FINE_BINS)
             FATAL_ERROR("unexpected fine bins {:d}", fine_bins);
 
@@ -254,9 +264,9 @@ public:
         CHECK_CUDA_ERROR(cudaMalloc(&d_support, 2 * sizeof(int)));
         CHECK_CUDA_ERROR(cudaMemcpy(d_ring, ring.data(), ring.size(), cudaMemcpyHostToDevice));
 
-        void* const handle = FStat_Create(d_packed, int(detector_rows));
+        void* const handle = core.Create(d_packed, int(detector_rows));
         if (!handle)
-            FATAL_ERROR("FStat_Create failed: {:s}", FStat_LastError());
+            FATAL_ERROR("FStat_Create failed: {:s}", core.LastError());
 
         std::vector<std::int8_t> packed_gpu(packed_count), packed_cpu(packed_count);
         std::vector<std::int32_t> row_sums_gpu(std::size_t(NUM_TERMS) * detector_rows * 2);
@@ -286,13 +296,13 @@ public:
                                         packed_cpu[i]);
 
                     // --- Row sums: GPU vs vendored CPU reference.
-                    FStat_Compute_RowSums_I32(handle, weights.data(), d_row_sums);
+                    core.Compute_RowSums_I32(handle, weights.data(), d_row_sums);
                     CHECK_CUDA_ERROR(cudaDeviceSynchronize());
                     CHECK_CUDA_ERROR(cudaMemcpy(row_sums_gpu.data(), d_row_sums,
                                                 row_sums_gpu.size() * sizeof(std::int32_t),
                                                 cudaMemcpyDeviceToHost));
-                    fstat_ref_row_sums_i32(packed_cpu.data(), weights.data(), int(detector_rows),
-                                           row_sums_cpu.data());
+                    core.row_sums_i32(packed_cpu.data(), weights.data(), int(detector_rows),
+                                      row_sums_cpu.data());
                     if (row_sums_gpu != row_sums_cpu)
                         FATAL_ERROR("row-sum mismatch (rev={:d},f={:d},pos={:d})", int(reverse),
                                     freq_index, pos);
@@ -300,8 +310,8 @@ public:
                     // --- Fused fine powers: GPU vs fxfft256 v1 + exact feed
                     // sums over the CPU row sums. The frame powers are the
                     // sums of each term's fine powers.
-                    FStat_Compute_FusedFine_U64(handle, weights.data(), d_fine_powers, d_powers,
-                                                nullptr);
+                    core.Compute_FusedFine_U64(handle, weights.data(), d_fine_powers, d_powers,
+                                               nullptr);
                     CHECK_CUDA_ERROR(cudaDeviceSynchronize());
                     CHECK_CUDA_ERROR(cudaMemcpy(fine_gpu.data(), d_fine_powers,
                                                 fine_gpu.size() * sizeof(uint64_t),
@@ -313,13 +323,13 @@ public:
                     // The port above must match the vendored references,
                     // which also give the expected frame powers.
                     unsigned long long fine_ref[NUM_TERMS][FINE_BINS];
-                    fstat_ref_fine_powers_u64(row_sums_cpu.data(), int(num_streams), fine_ref);
+                    core.fine_powers_u64(row_sums_cpu.data(), int(num_streams), fine_ref);
                     for (int t = 0; t < NUM_TERMS; ++t)
                         for (int bin = 0; bin < FINE_BINS; ++bin)
                             if (fine_ref[t][bin] != fine_cpu[std::size_t(t) * FINE_BINS + bin])
                                 FATAL_ERROR("fine reference mismatch: term {:d} bin {:d}", t, bin);
                     unsigned long long powers_cpu[NUM_TERMS];
-                    fstat_ref_powers_from_fine_u64(fine_ref, powers_cpu);
+                    core.powers_from_fine_u64(fine_ref, powers_cpu);
                     const auto check_powers = [&](const char* entry) {
                         unsigned long long powers_gpu[NUM_TERMS];
                         CHECK_CUDA_ERROR(cudaMemcpy(powers_gpu, d_powers, sizeof powers_gpu,
@@ -367,7 +377,7 @@ public:
                         }
                         int mask_gpu_i32 = -1;
                         CHECK_CUDA_ERROR(cudaMemset(d_powers, 0, NUM_TERMS * sizeof(uint64_t)));
-                        FStat_Compute_FusedFineMask_U64(
+                        core.Compute_FusedFineMask_U64(
                             handle, weights.data(), calibration.anchor, calibration.half_width,
                             words.data(), calibration.rank, calibration.mult_q16, d_fine_powers,
                             d_mask_i32, d_powers, nullptr);
@@ -386,7 +396,7 @@ public:
                                         ref.mask, ref.n_bulk, int(ref.valid));
                         const int legacy_mask = mask_gpu_i32;
                         CHECK_CUDA_ERROR(cudaMemset(d_powers, 0, NUM_TERMS * sizeof(uint64_t)));
-                        FStat_Compute_FusedFineMaskWithSupport_U64(
+                        core.Compute_FusedFineMaskWithSupport_U64(
                             handle, weights.data(), calibration.anchor, calibration.half_width,
                             words.data(), calibration.rank, calibration.mult_q16, d_fine_powers,
                             d_mask_i32, d_support, d_support + 1, d_powers, nullptr);
@@ -410,7 +420,7 @@ public:
             }
         }
 
-        FStat_Destroy(handle);
+        core.Destroy(handle);
         CHECK_CUDA_ERROR(cudaFree(d_ring));
         CHECK_CUDA_ERROR(cudaFree(d_packed));
         CHECK_CUDA_ERROR(cudaFree(d_powers));
@@ -419,8 +429,7 @@ public:
         CHECK_CUDA_ERROR(cudaFree(d_mask_i32));
         CHECK_CUDA_ERROR(cudaFree(d_support));
 
-        INFO("testPilotProxyDetector: all GPU-vs-CPU products matched over {:d} cases.", cases);
-        TEST_PASSED();
+        return cases;
     }
 };
 

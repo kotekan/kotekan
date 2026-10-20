@@ -1,7 +1,6 @@
 {#-
   Optional CHIME detector diagnostics; does not apply masks.
   PilotProxy DTV detector on the CHIME upgrade X-engine, detect only.
-  Build with -DPILOTPROXY_DETECTOR_WINDOW_SAMPLES=128.
   Include explicitly from a validated CHIME configuration. Disabled unless included.
   Receiver profiles must use chime_freq_id and qualified thresholds; archive-review-only
   candidates are refused. Validate actual stream allocation and metadata before use.
@@ -65,6 +64,7 @@ run_dtv_detector:
           cuda_stream: 3
           num_frequencies: num_freq_gpu_buf
           voltage_name: xposed_voltage
+          detector_window_samples: 128
           receiver_channel_id_namespace: chime_freq_id
           dtv_mask_name: dtv_mask
           dtv_powers_name: dtv_powers

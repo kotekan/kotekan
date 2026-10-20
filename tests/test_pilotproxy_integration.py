@@ -123,7 +123,9 @@ class Pipeline:
         self.config["gen_voltage"]["wait"] = False
         self.generator = self.config["gen_voltage"]
         self.detector = self.config["run_dtv_detector"]["gpu_0"]["commands"][0]
-        self.block_samples = self.bundle["profiles"][0]["weight_bank_nbytes"] // 3 * 128
+        window_samples = self.bundle["profiles"][0]["weight_bank_nbytes"] // 3
+        self.detector["detector_window_samples"] = window_samples
+        self.block_samples = window_samples * 128
         self.config["num_times"] = self.block_samples
         self.generator["array_shape"][0] = self.block_samples
         namespace = self.bundle.get("receiver_channel_id_namespace", "chord_freq_id")

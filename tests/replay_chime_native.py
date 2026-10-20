@@ -264,6 +264,7 @@ def base_config(streams, freq_id, frames, fixture_name):
             "name": "cudaPilotProxyDetector",
             "cuda_stream": 3,
             "voltage_name": "voltage",
+            "detector_window_samples": 128,
             "dtv_mask_name": "dtv_mask",
             "dtv_powers_name": "dtv_powers",
             "dtv_fine_support_name": "dtv_fine_support",

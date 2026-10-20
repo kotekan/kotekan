@@ -2,9 +2,9 @@ CHIME detector validation
 =========================
 
 The CHIME detector uses 128 samples per window and 128 windows per block
-(16384 samples). Configure a separate build with
-``-DUSE_CUDA=ON -DPILOTPROXY_DETECTOR_WINDOW_SAMPLES=128``. The default remains
-64 samples per window for CHORD. A bundle must match the compiled window size.
+(16384 samples); CHORD uses 64. A CUDA build contains both. Set
+``detector_window_samples: 128`` on the detector. A bundle must match the
+configured window size.
 
 Set ``receiver_channel_id_namespace: chime_freq_id`` on the detector. The bundle
 must explicitly declare this namespace at its top level and in each profile,
@@ -39,16 +39,16 @@ it never changes the source bundle.
 
 Run ``tests/test_pilotproxy_integration.py`` with
 ``-k 'receiver_geometry or receiver_namespace or archive_review'`` for either
-compiled geometry. These tests compare masks, frame powers, and fine support
+geometry. These tests compare masks, frame powers, and fine support
 with integer CPU references, including window reversal, blocks crossing input
 frames, ring reuse, namespace refusal, and candidate refusal. The original
-CHORD integration suite remains applicable to the default 64-sample build.
+CHORD integration suite applies to 64-sample bundles.
 
 ``tests/test_dtv_rfi_mask.py::test_chime_mask_visibility_and_counts_across_ring_wrap``
 checks the 16384-sample adapter using synthetic decisions, packet loss, invalid
 rank support, and permanent masks. It compares GPU visibilities and counts and
 RFImask counts with the same accepted samples. This test is independent of the
-compiled detector window size.
+detector window size.
 
 ``tests/test_dtv_rfi_mask.py::test_chime_detector_mask_visibility_and_counts_across_ring_wrap``
 uses the actual K128 detector with synthetic calibration, supported finite-threshold

@@ -40,7 +40,14 @@ def check_offline(manifest: dict) -> list[str]:
             )
     listed = set(manifest["files"])
     # Local build files and vendor records are allowed alongside the upstream copies.
-    allowed_extra = {"README.md", "VENDOR.json", "CMakeLists.txt", "LICENSE"}
+    allowed_extra = {
+        "README.md",
+        "VENDOR.json",
+        "CMakeLists.txt",
+        "LICENSE",
+        "pilotproxy_core.cu",
+        "pilotproxy_core.hpp",
+    }
     for path in sorted(VENDOR_DIR.iterdir()):
         if (
             path.is_file()

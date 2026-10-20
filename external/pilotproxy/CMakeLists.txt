@@ -6,21 +6,46 @@ if(NOT CMAKE_CUDA_ARCHITECTURES)
     set(CMAKE_CUDA_ARCHITECTURES 86)
 endif()
 
-set(PILOTPROXY_DETECTOR_WINDOW_SAMPLES 64 CACHE STRING "PilotProxy samples per window (64 or 128)")
-set_property(CACHE PILOTPROXY_DETECTOR_WINDOW_SAMPLES PROPERTY STRINGS 64 128)
-if(NOT PILOTPROXY_DETECTOR_WINDOW_SAMPLES MATCHES "^(64|128)$")
-    message(FATAL_ERROR "PILOTPROXY_DETECTOR_WINDOW_SAMPLES must be 64 or 128")
-endif()
-
-add_library(
-    pilotproxy STATIC f_statistic.cu # CUDA kernel + extern "C" API (FStat_*)
-                      f_statistic_reference.cpp # bit-accurate CPU reference (fstat_ref_*)
-)
-
-# CHORD defaults to 64 samples/window; CHIME uses 128. Each block contains 128 windows. Consumers read this
-# private setting through FStat_GetSpecs(). Without NDEBUG the core synchronizes its stream after
-# every call, and kotekan's default Test build does not define it.
-target_compile_definitions(pilotproxy PRIVATE FSTAT_DETECTOR_WINDOW_SAMPLES=${PILOTPROXY_DETECTOR_WINDOW_SAMPLES} NDEBUG)
+# The core fixes its window length at compile time, so build it for 64 (CHORD) and 128 (CHIME)
+# samples per window; pilotproxy_core.hpp selects one at run time. Each build renames the core's C
+# functions so that both link into one library. Without NDEBUG the core synchronizes its stream
+# after every call, and kotekan's default Test build does not define it.
+set(PILOTPROXY_C_FUNCTIONS
+    FStat_GetSpecs
+    FStat_GetFeatures
+    FStat_GetOptimizationFeatures
+    FStat_GetVersion
+    FStat_LastError
+    FStat_Create
+    FStat_Create_Batch
+    FStat_Destroy
+    FStat_SetStream
+    FStat_Compute_RowSums_I32
+    FStat_Supports_RowSums
+    FStat_Compute_FinePowers_U64
+    FStat_Supports_FinePowers
+    FStat_Compute_FusedFine_U64
+    FStat_Supports_FusedFine
+    FStat_Compute_FusedFineMask_U64
+    FStat_Supports_FusedFineMask
+    FStat_Compute_FusedFineMaskWithSupport_U64
+    FStat_Supports_FusedFineMaskWithSupport
+    FStat_GetFineSpecs
+    fstat_ref_sign_extend_i4
+    fstat_ref_unpack_complex_i4
+    fstat_ref_complex_mul_conj
+    fstat_ref_row_sums_i32
+    fstat_ref_fine_powers_u64
+    fstat_ref_powers_from_fine_u64)
+foreach(window 64 128)
+    set(build pilotproxy_k${window})
+    list(TRANSFORM PILOTPROXY_C_FUNCTIONS REPLACE "^(.+)$" "\\1=${build}_\\1" OUTPUT_VARIABLE renames)
+    add_library(${build} OBJECT pilotproxy_core.cu)
+    target_compile_definitions(
+        ${build} PRIVATE FSTAT_DETECTOR_WINDOW_SAMPLES=${window} PILOTPROXY_NAMESPACE=${build}
+                         ${renames} NDEBUG)
+endforeach()
+add_library(pilotproxy STATIC $<TARGET_OBJECTS:pilotproxy_k64> $<TARGET_OBJECTS:pilotproxy_k128>)
 
 # Match the other vendored libraries' system-header treatment.
 target_include_directories(pilotproxy SYSTEM INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/..)
