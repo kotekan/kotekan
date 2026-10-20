@@ -394,7 +394,7 @@ public:
                                         calibration.anchor, calibration.half_width,
                                         calibration.rank, calibration.mult_q16, mask_gpu_i32,
                                         ref.mask, ref.n_bulk, int(ref.valid));
-                        const int legacy_mask = mask_gpu_i32;
+                        const int mask_without_support = mask_gpu_i32;
                         CHECK_CUDA_ERROR(cudaMemset(d_powers, 0, NUM_TERMS * sizeof(uint64_t)));
                         core.Compute_FusedFineMaskWithSupport_U64(
                             handle, weights.data(), calibration.anchor, calibration.half_width,
@@ -407,12 +407,12 @@ public:
                                                     cudaMemcpyDeviceToHost));
                         CHECK_CUDA_ERROR(cudaMemcpy(&mask_gpu_i32, d_mask_i32, sizeof(int),
                                                     cudaMemcpyDeviceToHost));
-                        if (mask_gpu_i32 != legacy_mask || support[0] != int(ref.valid)
+                        if (mask_gpu_i32 != mask_without_support || support[0] != int(ref.valid)
                             || support[1] != ref.n_bulk)
                             FATAL_ERROR("fine support mismatch: gpu=({:d},{:d}) cpu=({:d},{:d}) "
-                                        "mask={:d} legacy={:d}",
+                                        "mask={:d} without support={:d}",
                                         support[0], support[1], int(ref.valid), ref.n_bulk,
-                                        mask_gpu_i32, legacy_mask);
+                                        mask_gpu_i32, mask_without_support);
                     }
 
                     ++cases;

@@ -110,7 +110,7 @@ public:
         double pilot_frequency_hz = 0.0;
         std::ptrdiff_t weight_offset_bytes = 0;
         std::ptrdiff_t weight_nbytes = 0;
-        // fine_calibration (kernel core 2.3.0 mask epilogue); usable only
+        // fine_calibration for the mask epilogue; usable only
         // when status == "calibrated".
         bool fine_calibrated = false;
         bool archive_review_only = false;
@@ -615,7 +615,7 @@ private:
     const std::string voltage_name;
     const std::string dtv_mask_name;
     const std::string dtv_powers_name;
-    const std::string dtv_fine_support_name; // empty preserves the legacy output contract
+    const std::string dtv_fine_support_name; // empty: no fine-support output
 
     // Block geometry
     const int detector_window_samples;    // K
