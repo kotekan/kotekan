@@ -44,16 +44,18 @@ public:
     {
         // One gain per fine channel, shared by all coarse channels
         if (std::ptrdiff_t(upchan_gain.size()) != upchan_factor)
-            FATAL_ERROR("{:s}: upchan_gain has {:d} entries, but upchan_factor is {:d}",
-                        unique_name, upchan_gain.size(), upchan_factor);
+            FATAL_ERROR("upchan_gain has {:d} entries, but needs one per fine channel "
+                        "(upchan_factor = {:d})",
+                        upchan_gain.size(), upchan_factor);
         assert(upchan_gain_buffer);
 
         // Check buffer size
         if (upchan_gain_buffer->frame_size
             != sizeof(float16_t) * upchan_max_num_channels * upchan_factor)
-            FATAL_ERROR("{:s}: upchan_gain_buffer {:s} has frame_size {:d}, expected {:d}",
-                        unique_name, upchan_gain_buffer->buffer_name,
-                        upchan_gain_buffer->frame_size,
+            FATAL_ERROR("upchan_gain_buffer {:s} has frame_size {:d}, but needs sizeof(float16_t) "
+                        "* upchan_max_num_channels * upchan_factor = {:d} * {:d} * {:d} = {:d}",
+                        upchan_gain_buffer->buffer_name, upchan_gain_buffer->frame_size,
+                        sizeof(float16_t), upchan_max_num_channels, upchan_factor,
                         sizeof(float16_t) * upchan_max_num_channels * upchan_factor);
 
         upchan_gain_buffer->register_producer(unique_name);
