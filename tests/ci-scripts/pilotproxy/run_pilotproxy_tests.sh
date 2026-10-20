@@ -8,13 +8,14 @@ SRC="${GITHUB_WORKSPACE:-$(cd "$(dirname "$0")/../../.." && pwd)}"
 export PYTHONPATH="$SRC/python${PYTHONPATH:+:$PYTHONPATH}"
 WORK="$(mktemp -d "${RUNNER_TEMP:-/tmp}/pilotproxy.XXXXXXXX")"
 trap 'rm -rf -- "$WORK"' EXIT
-python3 -m venv "$WORK/venv"
+PYTHON="$(command -v python3)"
+"$PYTHON" -m venv --without-pip "$WORK/venv"
 export PATH="$WORK/venv/bin:$PATH"
 export PYTHONNOUSERSITE=1
 export PYTHONDONTWRITEBYTECODE=1
 export PIP_DISABLE_PIP_VERSION_CHECK=1
 export PIP_REQUIRE_VIRTUALENV=true
-python3 -m pip install --no-deps -r "$SRC/tests/ci-scripts/pilotproxy/requirements.txt"
+"$PYTHON" -m pip --python "$WORK/venv" install --no-deps -r "$SRC/tests/ci-scripts/pilotproxy/requirements.txt"
 python3 - "$SRC/external/pilotproxy" <<'PY'
 import hashlib
 import json
@@ -32,8 +33,8 @@ PP_COMMIT="$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["u
 PP_REPO="$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["upstream_repo"])' "$SRC/external/pilotproxy/VENDOR.json")"
 # The bundle exporter and the Python reference come from the pilot-proxy package
 # (upstream_repo in VENDOR.json); the detector core itself is vendored here.
-python3 -m pip install --no-deps --no-build-isolation "${PP_REPO}/archive/${PP_COMMIT}.tar.gz"
-python3 -m pip check
+"$PYTHON" -m pip --python "$WORK/venv" install --no-deps --no-build-isolation "${PP_REPO}/archive/${PP_COMMIT}.tar.gz"
+"$PYTHON" -m pip --python "$WORK/venv" check
 PP_CONFIGS="$(python3 -c 'from pilot_proxy.paths import CONFIGS_DIR; print(CONFIGS_DIR)')"
 for RECEIVER in chord chime; do
     pilot-proxy export-runtime-weight-bundle \

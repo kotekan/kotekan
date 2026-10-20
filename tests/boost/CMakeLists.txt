@@ -381,6 +381,6 @@ add_executable(test_upchannelizeReference test_upchannelizeReference.cpp
                                           ${KOTEKAN_SOURCE_DIR}/lib/cuda/upchannelizeReference.cpp)
 target_include_directories(test_upchannelizeReference PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/cuda)
 
-add_executable(test_DtvRfiMask test_DtvRfiMask.cpp
-                              ${KOTEKAN_SOURCE_DIR}/lib/stages/DtvRfiMask.cpp)
-target_link_libraries(test_DtvRfiMask PRIVATE kotekan_core kotekan_metadata kotekan_utils libexternal)
+add_executable(test_DtvRfiMask test_DtvRfiMask.cpp ${KOTEKAN_SOURCE_DIR}/lib/stages/DtvRfiMask.cpp)
+target_link_libraries(test_DtvRfiMask PRIVATE kotekan_core kotekan_metadata kotekan_utils
+                                              libexternal)
