@@ -218,6 +218,31 @@ defect: 147 / 312 per night, 0 slews); after the 13:26:44Z restart (the #211 ref
 427 with every PRN at 0 +- 1 m and trims 0.3-0.4. **FIXED.** (The 12:18Z restart itself left three E5a satellites parked
 on a grating lobe for an hour; that is #211, not this.)
 
+### #212 — 96 live elements (rows A-F) with the dishes pointed apart: what is open (2026-10-20)
+**What:** since 00:22Z the GNSS correlator runs rows A-F, `live_element_ranges [[0,47],[64,111]]`, array epoch
+`2026-10-20-rows-af96` (c1f8bdacd; fleet reference `config/elem_shared_ref_20261020.json`, bd3fa86c8). Row G cannot
+join alone (16-aligned ranges; 48-63 brings the silent row H). Census from the first snapshot: 75 good / 9 weak / 12
+dark elements (dark: B01 B02 D04 C08 F01 E07). **Open:** (a) C-F positions are the telescope.j2 grid fitted to the
+refined A/B ones (1.3 cm median on A/B); possolve against A01 aliases (beam phase of differently pointed dishes),
+against C06 it puts 17 of 27 C-F dishes within 2-4 cm of nominal (fixtures/elemsteer/out/pos1020_*). Re-solve after
+the realignment. (b) Pointing groups measured (fixtures/elemsteer/pointing_scan.py, pointing_peaks.py): A/B minus B04
+on Cyg A; C-F + B04 at the maintenance tip (~57-60 S); C05 D07 E01 E05 ~2 deg higher. The shared element model is
+one vector per band across all satellites, which is wrong while the rows point apart (b2a/b2b pol-0 shape split, per-
+PRN gain 0.5-2.2x vs 32 elements). (c) At 96 elements every chain's GnssGpuRecordAssemble on a GPU shares one core
+(33/57) and it saturated (99-100%), mostly the bright-satellite projection (n^2); elem-proj is off fleet-wide
+(5d32bfd57), cores ~60%. Durable: --assembler-core-slots (e390381e0) and an O(n) own-row direction. (d) The
+analysis tools that assumed 32 elements: snap_xinst and possolve are fixed (fixtures, outside git); judge2.py,
+viscap_elem_positions.py's pair loop and gnss_beam_static.py's missing array_epoch_key check are not.
+**Check:** at the realignment: new epoch + boresight, fresh shared-ref snapshot, possolve on a common pointing.
+
+### #213 — recv1 idle since ~05:15Z: N2 not archived, and the GNSS nodes stalled on the blocked send path (2026-10-20)
+**What:** the subset-vis archive's last file is 05:15Z; choco shows recv1 idle (every node in maintenance) and every
+node's buffer_send_n2_* / bad_feed_mask senders are refused from ~07:28Z. cx19, cx42, cx43 and cx51 stopped together
+at 05:19Z and 10:20-10:23Z ("8 frames past the start of the next active frame, kotekan stopping" after seconds of
+DPDK `wait_for_empty_frame ... will block`: a downstream consumer stopped freeing frames). cx27, cx44 and the stock
+cx47/cx52 rode through; none on 10-18/10-19. Reading (inference): recv1 stalled and the send path backed up, on nodes
+with no margin left on the assembler core (#212 c). **Fix:** site: bring recv1 back (KV/Jim). Check that the stops end.
+
 ### #211 — restart ORDER: a broker restart within minutes of an aggregator restart bootstraps on a cold search, and every model-primary chain is thrown onto grating lobes for half an hour (2026-10-19 12:17-12:50Z, measured, self-healing)
 **What:** gnss-aggregator restarted 12:17:26Z, gnss-gather 12:18:03Z, gnss-broker 12:18:53Z (the post-merge regen cycle).
 From 12:24-12:28Z every satellite on the model-primary chains without a search (gal_e5a, gal_e5b, bds_b2a, bds_b3i;
@@ -251,7 +276,12 @@ the satellites the chain sees (present on their peaks plus the displaced candida
 qualifies, the three-PRN bar stands without a count); test_disp_refuse gains the cases. Broker restarted ALONE
 13:26:44Z on a warm search (the gps_l5 overlay-period lines had fallen to 0 per 10 min): at T+20 the five PRNs read
 0 +- 1 m with trims 0.3-0.4, every model-primary chain 0 excursions, no lobe walk (the rule above honoured), 0 CHAIN
-DIED. Open: a code-side guard for the cold-search restart itself (the joint state's n/sigma gate or a relabel holdoff).
+DIED. Open: a code-side guard for the cold-search restart itself (the joint state's n/sigma gate or a relabel holdoff). **10-20:** the lobe referee
+(185c96248, live 01:32Z) bounds the trims (clamp under half a lobe, no trim during a slew, release on lost xcoh), but
+the first restart with it showed the root: before the joint feed, the fresh broker's dead-reckon model lacks each
+band's learned tau and slews trackers that are on their peaks (TRKRES ~0) by a chain-wide gap (B2B +19.25, L3OC +7.77,
+B3I +12..20, E5b -2.6 chips); chains were ~100 m off for ~5 min. No slew while the joint state is unestablished and the
+tracker is proven on peak is the missing gate.
 
 ### #210 — glo_l3oc's code residual carries a GLONASS-only range-model term: +44 m up-like, +8 m north, +5 m east against the GPS/Galileo/BeiDou chains (2026-10-19, the 0b night gate)
 **What:** the night re-survey fit (gnss_resurvey.py --hours 6-13) on 10-19 with the model live reads glo_l3oc model -
@@ -596,7 +626,7 @@ the beam map builds after (3).
 disc is leak-bounded (`gnssFleetDll::dll_tau` clamps at ±1, at most ±0.25 chips of trim) and the model holds the displaced
 position, so only a fresh displaced-presence admission pulls it back — E4 took 50 min on 10-11, E16 longer. The
 `PRESENCE +displaced` line is rate-limited to one per 120 s, so the log under-reports admissions.
-**Fix (not built):** a per-PRN 60-s history beside D3 (the fleet row's disc, the readback trim and `spec_fit[prn].tau`) and
+**10-20:** built as the lobe referee (185c96248, live 01:32Z): an armed PRN with xcoh < 0.3 for 30 s and |trim| >= 0.25 lobe has both trims released until erased, then restarts from the seed; LOBE RELEASE in the broker log. Close after a week without a hand disarm. **Original fix (superseded):** a per-PRN 60-s history beside D3 (the fleet row's disc, the readback trim and `spec_fit[prn].tau`) and
 an actuator — release the C++ loop's standing trim or re-seed the PRN from SPEC-FIT — not a presence verdict. Design choice
 first.
 **Check:** the dim E6 PRNs' DLL disc after a null crossing (needs pointed dishes); a disc at the clamp for > 60 s with
