@@ -53,7 +53,12 @@ common:
     # place, from the node's own rows (own slot, sibling chain, probe stack); nodes exchange
     # nothing. Also a live switch (POST <assemble>/set_elem_proj) that a restart loses; this
     # key is what survives.
-    elem-proj-mode: live
+    # off since 10-20 ~12:40Z (KV, live on every assembler via elem_proj_set.sh off): at 96
+    # elements its n^2 work (own-row trackers, probe stack, in-place row projection) was
+    # ~30 ms per frame per GPU and saturated the assembler slot (cores 33/57), and under the
+    # tipped mixed pointing its hard-coded boresight window names nothing. Re-enable with
+    # --assembler-core-slots spread and an O(n) direction tracker.
+    elem-proj-mode: "off"
     # Projection window, degrees from boresight (assembler default 4). Wider than
     # elem-freeze-deg, so the shared model keeps learning on projected rows between the two.
     elem-proj-deg: 6
