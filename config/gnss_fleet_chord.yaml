@@ -277,4 +277,7 @@ nodes:
     cx42: {search-port-base: 11044}
     cx43: {search-port-base: 11046}
     cx44: {search-port-base: 11048}
-    cx51: {search-port-base: 11050}
+    # #190 canary: the known-satellite projection from the tracked lanes, the eigen path on
+    # the residual; every assembler on the node publishes its slots' directions.
+    cx51: {search-port-base: 11050, n2-project-source: lanes+residual, n2-project-lanes-max: 40,
+           elem-dir-publish: all}
