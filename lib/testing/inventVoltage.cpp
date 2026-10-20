@@ -10,8 +10,10 @@
 #include "kotekanLogging.hpp"    // for DEBUG, FATAL_ERROR, INFO
 #include "metadata.hpp"          // for metadataObject
 #include "prometheusMetrics.hpp" // for Metrics, Gauge
-#include "testSkySignal.hpp"     // for testPacketLoss, testSkySignal
+#include "testSkySignal.hpp"     // for testBadFeeds, testPacketLoss, testSkySignal, splitmix64
 #include "visUtil.hpp"           // for current_time
+
+#include "json.hpp" // for json
 
 #include <algorithm>  // for copy, fill_n
 #include <array>      // for array
@@ -58,6 +60,12 @@ class inventVoltage : public kotekan::Stage {
     const std::string lost_voltage =
         config.get_default<std::string>(unique_name, "lost_voltage", "keep");
     const testPacketLoss loss{config, unique_name};
+    // The voltage of bad inputs (see `testBadFeeds`, the schedule of `inventBFMask`, and the
+    // dishes listed as Missing in `telescope.dish_inputs`, which `inventBFMask` mode `auto` marks
+    // bad): `keep` the signal, or `random` bytes
+    const std::string bad_voltage =
+        config.get_default<std::string>(unique_name, "bad_voltage", "keep");
+    const testBadFeeds bad_feeds{config, unique_name};
     // FPGA sequence number of the first sample; must agree between the voltage and mask
     // generators
     const std::int64_t first_fpga_seq_num =
@@ -75,6 +83,9 @@ class inventVoltage : public kotekan::Stage {
     // periodic part of the signal (sources without a time window, and noise)
     std::unique_ptr<testSkySignal> sky;
     std::vector<std::vector<kotekan::int4x2_swapped_withoffset_t>> sky_pool;
+
+    // For `bad_voltage: random`: the inputs [P][D] of Missing dishes
+    std::vector<int> missing_inputs;
 
 public:
     inventVoltage(kotekan::Config& config, const std::string& unique_name,
@@ -100,6 +111,15 @@ public:
             FATAL_ERROR("Unknown value for `lost_voltage`: \"{:s}\"", lost_voltage);
         if (lost_voltage != "keep" && reuse_frames)
             FATAL_ERROR("`lost_voltage` requires `reuse_frames: false`");
+        if (!(bad_voltage == "keep" || bad_voltage == "random"))
+            FATAL_ERROR("Unknown value for `bad_voltage`: \"{:s}\"", bad_voltage);
+        if (bad_voltage != "keep" && reuse_frames)
+            FATAL_ERROR("`bad_voltage` requires `reuse_frames: false`");
+        if (bad_voltage != "keep")
+            for (const auto& dish : config.get<nlohmann::json>("/telescope", "dish_inputs"))
+                if (dish.at("type").get<std::string>() == "Missing")
+                    for (int p = 0; p < num_polarizations; ++p)
+                        missing_inputs.push_back(p * num_dishes + dish.at("dish_idx").get<int>());
     }
 
     virtual ~inventVoltage() {}
@@ -235,6 +255,8 @@ public:
                 }
             }
 
+            if (bad_voltage != "keep")
+                overwrite_bad(frame, first_fpga_seq_num + std::int64_t(frame_index) * num_times);
             if (lost_voltage != "keep")
                 overwrite_lost(frame, first_fpga_seq_num + std::int64_t(frame_index) * num_times);
 
@@ -260,6 +282,27 @@ private:
                     for (int t = time; t < time + 2; ++t)
                         std::fill_n(frame + t * time_stride + freq * freq_stride, 4 * freq_stride,
                                     value);
+    }
+
+    // Overwrite the bad inputs in a [T, F, P, D] frame whose first sample is `frame_seq` with
+    // random bytes: every int4 pair, including -8 (no data), is equally likely
+    void overwrite_bad(kotekan::int4x2_swapped_withoffset_t* const frame,
+                       const std::int64_t frame_seq) const {
+        const std::ptrdiff_t num_inputs = std::ptrdiff_t(num_polarizations) * num_dishes;
+        const std::ptrdiff_t time_stride = num_frequencies * num_inputs;
+#pragma omp parallel for
+        for (int time = 0; time < num_times; ++time) {
+            std::vector<int> bad = bad_feeds.bad_inputs(frame_seq + time);
+            bad.insert(bad.end(), missing_inputs.begin(), missing_inputs.end());
+            for (int freq = 0; freq < num_frequencies; ++freq) {
+                for (const int input : bad) {
+                    const std::ptrdiff_t element = freq * num_inputs + input;
+                    const std::uint8_t byte =
+                        splitmix64(std::uint64_t(frame_seq + time) * time_stride + element) >> 56;
+                    std::memcpy(&frame[time * time_stride + element], &byte, 1);
+                }
+            }
+        }
     }
 
     void fill_sky(kotekan::int4x2_swapped_withoffset_t* const frame, const std::int64_t frame_seq,

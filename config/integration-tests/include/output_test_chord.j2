@@ -198,9 +198,9 @@ run_recv_{{ name }}:
 # Output
 
 # Buffers that are not time-major, or whose time axis has extent 1, cannot use a single file.
-{% set multi_file = ['n2_vis', 'bb_beam_positions', 'bb_beam_ids', 'bb_shift', 'bb_beams',
-                     'frb2_beam_positions', 'frb2_beam_ids', 'frb2_beams', 'frb3_beams',
-                     'frb3_beams_offsetscale'] %}
+{% set multi_file = ['n2_vis', 'bf_mask', 'n2_bf_mask', 'bb_beam_positions', 'bb_beam_ids',
+                     'bb_phase', 'bb_shift', 'bb_beams', 'frb2_beam_positions', 'frb2_beam_ids',
+                     'frb2_beams', 'frb3_beams', 'frb3_beams_offsetscale'] %}
 
 write_data:
     create_single_file: true
@@ -210,7 +210,8 @@ write_data:
         in_buf: host_{{ name }}_buffer
         file_name: {{ name }}
         max_frames: {{ write_frames.get(name, default_write_frames) }}
-{% if name in multi_file or name.startswith('upchan_U') and name.endswith('_gain') %}
+{% if name in multi_file or name.startswith('upchan_U') and name.endswith('_gain')
+      or name.startswith('frb1_U') and name.endswith('_phase') %}
         create_single_file: false
 {% endif %}
     drain_{{ name }}:

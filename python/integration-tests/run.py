@@ -3,7 +3,10 @@
 the written output. See docs/sphinx/dev/dev_integration_tests.rst.
 
 A test module defines either `VARIANTS`, each run and checked on its own, or `RUNS`, which are
-all run before one check compares them.
+all run before one check compares them. A variant can also POST to kotekan's REST server while it
+runs: `posts(tel, config, variant)` returns a list of (delay, endpoint, payload), each posted
+`delay` seconds after the server answers; a `start_time` in the payload is taken relative to the
+time of the POST.
 
 Example:
     run.py --tel pathfinder --test timing --kotekan build-release/kotekan/kotekan \\
@@ -18,6 +21,7 @@ import shutil
 import subprocess
 import sys
 import time
+import urllib.request
 
 import jinja2
 import yaml
@@ -35,7 +39,37 @@ def render_config(tel, var):
     return yaml.safe_load(env.get_template(f"{tel}.j2").render(var))
 
 
-def run_kotekan(args, var, log_path):
+def rest_url(args, endpoint):
+    return f"http://localhost:{args.port}/{endpoint.lstrip('/')}"
+
+
+def post_all(args, proc, posts):
+    """Wait for kotekan's REST server, then make the POSTs `posts` (see the module docstring)
+    while kotekan runs."""
+    while proc.poll() is None:
+        try:
+            urllib.request.urlopen(rest_url(args, "status"), timeout=1)
+            break
+        except OSError:
+            time.sleep(0.2)
+    t_up = time.time()
+    for delay, endpoint, payload in sorted(posts, key=lambda post: post[0]):
+        time.sleep(max(t_up + delay - time.time(), 0))
+        if proc.poll() is not None:
+            return
+        payload = dict(payload)
+        if "start_time" in payload:
+            payload["start_time"] += time.time()
+        request = urllib.request.Request(
+            rest_url(args, endpoint),
+            data=json.dumps(payload).encode(),
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(request, timeout=10) as response:
+            print(f"POST {endpoint} {json.dumps(payload)}: {response.status}")
+
+
+def run_kotekan(args, var, log_path, posts):
     cmd = [
         os.path.abspath(args.kotekan),
         "--bind-address",
@@ -47,17 +81,18 @@ def run_kotekan(args, var, log_path):
     ]
     with open(log_path, "w") as log:
         t0 = time.time()
-        try:
-            proc = subprocess.run(
-                cmd,
-                cwd=args.cwd,
-                stdout=log,
-                stderr=subprocess.STDOUT,
-                timeout=args.timeout,
-            )
-            code = proc.returncode
-        except subprocess.TimeoutExpired:
-            code = "timeout"
+        with subprocess.Popen(
+            cmd, cwd=args.cwd, stdout=log, stderr=subprocess.STDOUT
+        ) as proc:
+            try:
+                post_all(args, proc, posts)
+                code = proc.wait(timeout=max(t0 + args.timeout - time.time(), 0))
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                code = "timeout"
+            except OSError as error:
+                proc.kill()
+                code = f"POST failed ({error})"
         return code, time.time() - t0
 
 
@@ -108,7 +143,7 @@ def prepare(args, test, name):
     return out_dir, var, render_config(args.tel, var)
 
 
-def run(args, label, out_dir, var):
+def run(args, label, out_dir, var, posts=()):
     """Run kotekan into `out_dir`, unless --check-only; return whether it succeeded."""
     if args.check_only:
         return True
@@ -116,7 +151,7 @@ def run(args, label, out_dir, var):
         shutil.rmtree(out_dir)
     os.makedirs(out_dir)
     log_path = out_dir + ".log"
-    code, seconds = run_kotekan(args, var, log_path)
+    code, seconds = run_kotekan(args, var, log_path, posts)
     print(f"kotekan exited with {code} after {seconds:.0f} s (log: {log_path})")
     if code != 0:
         print(f"FAIL {label}: kotekan exit code {code}")
@@ -144,7 +179,8 @@ def run_variant(args, test, variant):
     """Run and check one variant of a test; return whether it passed."""
     label = f"{args.tel} {args.test} {variant}"
     out_dir, var, config = prepare(args, test, variant)
-    if not run(args, label, out_dir, var):
+    posts = test.posts(args.tel, config, variant) if hasattr(test, "posts") else []
+    if not run(args, label, out_dir, var, posts):
         return False
     return report(args, label, test.check, (out_dir, var, config), [out_dir])
 
