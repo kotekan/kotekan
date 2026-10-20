@@ -31,10 +31,11 @@
  * than exec-replacing itself whenever the exec line needs expansion, and only
  * signalling the group reaches the command in that case.
  *
- * At shutdown the stage supervises the child to completion: it reaps it if it
- * already exited, otherwise sends @c SIGINT to that group, waits ~5s, then
- * escalates to @c SIGKILL and blocks until reaped, so no zombie or runaway child
- * survives teardown. The destructor repeats this as an idempotent backstop.
+ * At shutdown the stage sends @c SIGINT to that group, waits up to ~5s for the
+ * child to exit, then sends @c SIGKILL to the group and reaps the child. The
+ * @c SIGKILL also stops anything the command started in the background, so no
+ * zombie or runaway child survives teardown. The destructor repeats this as an
+ * idempotent backstop.
  *
  * The buffer consumption side-effect is what keeps the stage alive while the
  * child runs; @c SpawnProcess does no actual processing of the frames it sees.

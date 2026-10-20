@@ -8,9 +8,9 @@
 
 #include <errno.h>    // for errno, ECHILD
 #include <functional> // for bind
-#include <signal.h>   // for kill, SIGINT, SIGKILL
+#include <signal.h>   // for kill, SIGINT, SIGKILL, siginfo_t
 #include <string.h>   // for strerror
-#include <sys/wait.h> // for waitpid, WNOHANG
+#include <sys/wait.h> // for waitpid, waitid, P_PID, WEXITED, WNOHANG, WNOWAIT
 #include <unistd.h>   // for fork, execv, close, _exit, sysconf, usleep, setpgid, getpgid
 
 using kotekan::bufferContainer;
@@ -112,6 +112,14 @@ void SpawnProcess::main_thread() {
     terminate_child();
 }
 
+// True once @p pid has exited. WNOWAIT leaves it unreaped: until it is reaped, neither its pid nor
+// the process group named after it can be reused, so signals sent to them cannot go astray.
+static bool child_exited(pid_t pid) {
+    siginfo_t info = {};
+    waitid(P_PID, pid, &info, WEXITED | WNOHANG | WNOWAIT);
+    return info.si_pid == pid;
+}
+
 void SpawnProcess::terminate_child() {
     if (child_pid <= 0)
         return;
@@ -120,11 +128,9 @@ void SpawnProcess::terminate_child() {
     pid_t pid = child_pid;
     child_pid = -1;
 
-    int status;
-    // Already exited on its own? Reap it without signalling. ECHILD means it was
-    // never ours / already reaped -- nothing to do either way.
-    pid_t r = waitpid(pid, &status, WNOHANG);
-    if (r == pid || (r == -1 && errno == ECHILD))
+    // ECHILD means it was never ours / already reaped, so its pid may already be reused.
+    siginfo_t info = {};
+    if (waitid(P_PID, pid, &info, WEXITED | WNOHANG | WNOWAIT) == -1 && errno == ECHILD)
         return;
 
     // Signal the child's whole process group, so a `sh -c` that forked rather than
@@ -137,16 +143,17 @@ void SpawnProcess::terminate_child() {
 
     // Ask politely, then wait up to ~5s for it to go.
     kill(target, SIGINT);
-    for (int i = 0; i < 50; i++) {
-        r = waitpid(pid, &status, WNOHANG);
-        if (r == pid || (r == -1 && errno == ECHILD))
-            return;
+    bool exited = child_exited(pid);
+    for (int i = 0; i < 50 && !exited; i++) {
         usleep(100000); // 100 ms
+        exited = child_exited(pid);
     }
+    if (!exited)
+        WARN("SpawnProcess: PID {:d} did not exit on SIGINT; sending SIGKILL", pid);
 
-    // Still alive: escalate and block until reaped so we never leak a zombie or
-    // leave a runaway child behind after teardown.
-    WARN("SpawnProcess: PID {:d} did not exit on SIGINT; sending SIGKILL", pid);
+    // SIGKILL whatever is left of the group, including anything the shell started in the
+    // background and did not wait for, then reap the child.
     kill(target, SIGKILL);
+    int status;
     waitpid(pid, &status, 0);
 }
