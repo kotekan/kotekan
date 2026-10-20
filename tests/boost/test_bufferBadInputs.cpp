@@ -145,6 +145,7 @@ BOOST_AUTO_TEST_CASE(test_switch_by_fpga_time) {
     const std::vector<int8_t> all_good = {1, 1, 1, 1};
     const std::vector<int8_t> mask1 = {1, 0, 1, 1};
     const std::vector<int8_t> mask2 = {1, 1, 0, 0};
+    const std::vector<int8_t> mask3 = {0, 1, 1, 1};
 
     // An update for a future sample between two boundaries applies from the next boundary in
     // both streams.
@@ -170,6 +171,19 @@ BOOST_AUTO_TEST_CASE(test_switch_by_fpga_time) {
         a.consume(seq0 + a.num_consumed * T < seq0 + 4400 ? mask1 : mask2);
     while (b.num_consumed < 18)
         b.consume(seq0 + b.num_consumed * alignment < seq0 + 4800 ? mask1 : mask2);
+
+    // A start time of 0, as CHIME posts, applies at each stream's next boundary not yet produced
+    // and is not late: a has produced up to seq0 + 5700, b up to seq0 + 6300.
+    a.wait_until_full();
+    b.wait_until_full();
+    for (bufferBadInputs* stage : {&stage_a, &stage_b}) {
+        json u3 = {{"bad_inputs", {0}}, {"start_time", 0.}, {"update_id", "u3"}};
+        BOOST_CHECK(stage->update_bad_inputs_callback(u3));
+    }
+    while (a.num_consumed < 64)
+        a.consume(seq0 + a.num_consumed * T < seq0 + 6000 ? mask2 : mask3);
+    while (b.num_consumed < 24)
+        b.consume(seq0 + b.num_consumed * alignment < seq0 + 6600 ? mask2 : mask3);
     BOOST_CHECK(metric_has("kotekan_bufferbadinputs_late_update_count{stage_name=\"/bad_a\"} 1"));
     BOOST_CHECK(metric_has("kotekan_bufferbadinputs_late_update_count{stage_name=\"/bad_b\"} 1"));
 
