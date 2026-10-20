@@ -30,6 +30,9 @@ BASE = "config/base/live_config_20260730.json"
 sys.path.insert(0, HERE)
 import gen_chord_gnss_config as g  # noqa: E402
 
+sys.path.append(os.path.join(ROOT, "python", "scripts", "gnss"))
+import kotekan_src  # noqa: E402
+
 _fails = []
 
 
@@ -409,7 +412,7 @@ def test_load_summary():
 def production_cores():
     """Every logical cpu production's template pins (pathfinder.j2): the numa_halves entries,
     the DPDK lcores and the instance's root cpu_affinity, and the DPDK lcores' HT siblings."""
-    src = open(os.path.join(HERE, "chord", "pathfinder.j2")).read()
+    src = open(kotekan_src.src("config", "chord", "pathfinder.j2")).read()
     halves = ast.literal_eval(
         re.search(r"\{% set numa_halves = (\[.*?\]) %\}", src, re.S).group(1)
     )
