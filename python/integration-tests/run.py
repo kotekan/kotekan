@@ -5,8 +5,7 @@ the written output. See docs/sphinx/dev/dev_integration_tests.rst.
 A test module defines either `VARIANTS`, each run and checked on its own, or `RUNS`, which are
 all run before one check compares them. A variant can also POST to kotekan's REST server while it
 runs: `posts(tel, config, variant)` returns a list of (delay, endpoint, payload), each posted
-`delay` seconds after the server answers; a `start_time` in the payload is taken relative to the
-time of the POST.
+`delay` seconds after the server answers.
 
 Example:
     run.py --tel pathfinder --test timing --kotekan build-release/kotekan/kotekan \\
@@ -57,9 +56,6 @@ def post_all(args, proc, posts):
         time.sleep(max(t_up + delay - time.time(), 0))
         if proc.poll() is not None:
             return
-        payload = dict(payload)
-        if "start_time" in payload:
-            payload["start_time"] += time.time()
         request = urllib.request.Request(
             rest_url(args, endpoint),
             data=json.dumps(payload).encode(),

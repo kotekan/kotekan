@@ -4,13 +4,14 @@ subsystem must follow the masks.
 
 Input: as T9 (check_badfeeds.py), but the masks come from two bufferBadInputs stages, one per
 lifetime (`LIFETIME_FRAMES` frames for RFI, BB and FRB1, one frame for N2Accumulate), as
-config/chord/pathfinder.j2 produces them. All inputs are good until `POST_DELAY` seconds after
-kotekan's REST server answers; then `BAD_INPUTS` are posted, with a start time one second after
-the POST. bufferBadInputs applies an update to the frames it produces once the wall clock has
-passed the start time, so where the change lands depends on how far each stage runs ahead.
+config/chord/pathfinder.j2 produces them. All inputs are good until `BAD_INPUTS` are posted, as
+soon as kotekan's REST server answers, with the FPGA time of sample `START_FRAMES` frames and one
+sample after the first as start time. bufferBadInputs applies an update by FPGA time at the next
+boundary of `LIFETIME_FRAMES` frames, so both streams must change at the same frame.
 
 Checks:
-- Each stream starts all good and changes exactly once, to `BAD_INPUTS`.
+- Each stream starts all good and changes exactly once, to `BAD_INPUTS`, at the first boundary at
+  or after the start time.
 - The two streams agree at every sample.
 - BB phases, FRB1 weights, S0tilde and the N2 flags follow the written masks (as in T9).
 
@@ -34,7 +35,8 @@ from check_dishes import n2_bin_start
 from kit import audit, frame_seq_nums, large_seq, read_output, require, value
 
 VARIANTS = ["rest"]
-POST_DELAY = 3
+POST_DELAY = 0
+START_FRAMES = 180
 BAD_INPUTS = [5, 17, 70, 100]
 MASK_FRAMES = 240
 N2_INTEGRATIONS = 9
@@ -43,9 +45,7 @@ N2_INTEGRATIONS = 9
 def variables(tel, config, variant):
     var = check_phases.variables(tel, config, "offgrid")
     T = value(config, "num_times")
-    var["first_fpga_seq_num"] = (
-        n2_bin_start(config, large_seq(config)) - check_badfeeds.N2_LEAD_FRAMES * T
-    )
+    var["first_fpga_seq_num"] = check_badfeeds_first_seq(config)
     var["bf_source"] = "rest"
     var["bf_mask_lifetime_frames"] = LIFETIME_FRAMES
     lifetimes = MASK_FRAMES // LIFETIME_FRAMES
@@ -63,8 +63,25 @@ def variables(tel, config, variant):
     return var
 
 
+def start_seq(config):
+    return (
+        check_badfeeds_first_seq(config) + START_FRAMES * value(config, "num_times") + 1
+    )
+
+
+def check_badfeeds_first_seq(config):
+    return n2_bin_start(
+        config, large_seq(config)
+    ) - check_badfeeds.N2_LEAD_FRAMES * value(config, "num_times")
+
+
 def posts(tel, config, variant):
-    payload = {"bad_inputs": BAD_INPUTS, "start_time": 1.0, "update_id": "T9r"}
+    # The UNIX time of FPGA sample start_seq, as the telescope computes it.
+    dt_ns = (
+        1e9 * value(config, "num_samples_per_frame") / value(config, "adc_frequency")
+    )
+    start_time = (config["gps_time"]["frame0_nano"] + start_seq(config) * dt_ns) / 1e9
+    payload = {"bad_inputs": BAD_INPUTS, "start_time": start_time, "update_id": "T9r"}
     return [(POST_DELAY, "/updatable_config/bad_inputs", payload)]
 
 
@@ -99,8 +116,10 @@ def check_stream(out_dir, name, lifetime, config, results, failures):
     after[BAD_INPUTS] = False
     changes = np.nonzero(np.any(stream.mask[1:] != stream.mask[:-1], axis=1))[0] + 1
     T = value(config, "num_times")
+    boundary = LIFETIME_FRAMES * T
+    expected = -(-(start_seq(config) - stream.seq0) // boundary) * boundary // lifetime
     wrong = (
-        len(changes) != 1
+        list(changes) != [expected]
         or not stream.mask[0].all()
         or np.any(stream.mask[changes[0]] != after)
     )
@@ -110,7 +129,8 @@ def check_stream(out_dir, name, lifetime, config, results, failures):
             name,
             wrong,
             f"{len(stream.seq)} frames of {lifetime} samples, changes at frames "
-            f"{[(int(stream.seq[c]) - stream.seq0) // T for c in changes]} after seq0 "
+            f"{[(int(stream.seq[c]) - stream.seq0) // T for c in changes]} after seq0, expected "
+            f"{expected * lifetime // T} "
             f"(of {(int(stream.seq[-1]) + lifetime - stream.seq0) // T} written)",
             failures,
         )

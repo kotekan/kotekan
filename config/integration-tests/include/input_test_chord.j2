@@ -95,6 +95,8 @@ set_bf_mask:
     num_elements: num_polarizations * num_dishes
     input_order: CHORDBeamformer
     output_order: CHORDBeamformer
+    # Both streams switch at the beamformer stream's frame boundaries
+    bf_mask_update_alignment_in_samples: {{ bf_mask_lifetime_frames | default(24) }} * num_times
     for_beamformers:
         kotekan_stage: bufferBadInputs
         updatable_config:

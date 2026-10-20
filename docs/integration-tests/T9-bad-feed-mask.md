@@ -89,12 +89,18 @@ between runs, and about 60 visibilities and weights of an integration change.
 ## T9r: POST to `/updatable_config/bad_inputs`
 
 Two `bufferBadInputs` stages produce the streams, as in config/chord/pathfinder.j2 (one per
-lifetime). All inputs are good until 3 s after the REST server answers; then inputs
-5, 17, 70, 100 are posted with a start time one second later. `bufferBadInputs` applies an
-update to the frames it produces once the wall clock passes the start time
-(lib/stages/bufferBadInputs.cpp:257), so the change lands where each stage's lead over its
-consumers puts it. The check requires one change per stream to the posted set, the two streams
-to agree at every sample, and A, W, `S0tilde` and the N2 flags to follow the written masks.
+lifetime). All inputs are good until inputs 5, 17, 70, 100 are posted, as soon as the REST server
+answers, with the FPGA time of sample `seq0 + 180 T + 1` as start time (`frame0_nano` of the
+config's fixed `gps_time` plus seq × 5.12 ns).
+
+Since #1793, `bufferBadInputs` applies an update by FPGA time, at the first boundary of
+`bf_mask_update_alignment_in_samples` at or after the start time. The test sets that to the
+beamformer lifetime (3 T) for both stages, so both streams must change at frame 183.
+
+The check requires:
+- each stream to change exactly once, to the posted set, at that frame;
+- the two streams to agree at every sample;
+- A, W, `S0tilde` and the N2 flags to follow the written masks.
 
 ## Runs
 
@@ -137,9 +143,13 @@ The extra flags were the inputs bad in the frames before each bin: N2Accumulate 
 of the frames skipped while waiting for the first bin, and the mask of the frame that completes a
 bin into the next bin. #1790 folds only the masks of accumulated samples.
 
-T9r: in three runs the beamformer stream changed at frames 54, 42 and 108 after `seq0` and the
-N2 stream at 65, 58 and 131, so they disagree for 11 to 23 frames (**FAIL**); A, W, S0tilde
-and the N2 flags followed their streams.
+T9r passes with #1793: both streams change at frame 183 after `seq0`, agree at all 240 frames,
+and no update is late.
+
+Before #1793, `bufferBadInputs` applied an update to the frames it produced once the wall clock
+passed the start time. Each stage runs ahead of its consumers by its own buffer depth, so in
+three runs the beamformer stream changed at frames 54, 42 and 108 and the N2 stream at 65, 58 and
+131.
 
 Kotekan runs for 38 to 57 s per run; the test takes 4.5 min and writes 2.3 to 2.5 GB per run.
 T9r runs for 26 s and writes 0.4 GB.
