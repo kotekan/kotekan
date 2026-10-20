@@ -276,6 +276,7 @@ def setup_pipeline(
             gpu["commands"].append(
                 dict(
                     name="cudaOutputData",
+                    cuda_stream=4,
                     gpu_mem="dtv_fine_support_buffer",
                     out_buf="host_dtv_fine_support",
                 )

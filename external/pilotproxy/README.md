@@ -18,11 +18,8 @@ The seven upstream files are:
   include it again.
 
 Keep these files unchanged. Make detector changes in PilotProxy, copy the new
-revision here, and update the pin and the file hashes. Check with:
-
-```sh
-python3 tools/check_vendored_pilotproxy.py --fetch
-```
+revision here, and update the pin and the file hashes. The PilotProxy CI script
+checks the local files against these hashes.
 
 The local CMake file builds the `pilotproxy` static library and links it through
 `libexternal`. `pilotproxy_core.cu` compiles the core twice, with

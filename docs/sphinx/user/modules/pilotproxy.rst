@@ -34,7 +34,7 @@ Components
 ``external/pilotproxy``
     The CUDA detector core, copied unchanged from the PilotProxy project.
     ``VENDOR.json`` pins the upstream revision and the hash of each file, and
-    ``tools/check_vendored_pilotproxy.py`` checks them. Changes to the core are
+    the PilotProxy CI script checks them. Changes to the core are
     made upstream and re-vendored, not edited here.
 
 ``DtvRfiMask`` (``lib/stages``)
@@ -128,8 +128,9 @@ still share the GPU's cores and memory bandwidth, at the same priority.
 
 The voltage ring orders the two stages: the detector reads a block only after
 the copy that wrote it has finished on the GPU, and the block is overwritten
-only after the detector's last copy of it has finished. In record-only mode n2k
-never waits for the detector. With ``dtv_apply_mask`` n2k reads each block's
+only after every reader has released it. In record-only mode n2k does not
+consume detector output, but a slow detector can hold the voltage ring and
+back-pressure its producer, delaying n2k. With ``dtv_apply_mask`` n2k reads each block's
 ``dtv_RFImask``, so it waits for that block's detector run, the host combine
 and the copy back (on stream 0, like the other copies to the GPU).
 

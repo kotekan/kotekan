@@ -23,7 +23,6 @@ import time
 import numpy as np
 import pytest
 
-from kotekan import runner
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -87,10 +86,11 @@ def expected_fine_products_with_support(block, freq_ids, bundle, weights, num_di
 def runtime():
     # The binary comes from the usual build tree (KOTEKAN_BUILD_DIRNAME) unless overridden;
     # the bundle is a separate input, so without it the CUDA tests skip.
-    binary = (
-        os.environ.get("PILOTPROXY_TEST_BINARY")
-        or runner.KotekanRunner.kotekan_binary()
-    )
+    binary = os.environ.get("PILOTPROXY_TEST_BINARY")
+    if not binary:
+        from kotekan import runner
+
+        binary = runner.KotekanRunner.kotekan_binary()
     bundle = os.environ.get("PILOTPROXY_TEST_BUNDLE")
     if not bundle:
         pytest.skip("set PILOTPROXY_TEST_BUNDLE for CUDA tests")

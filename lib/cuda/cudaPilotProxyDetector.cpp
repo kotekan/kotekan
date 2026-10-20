@@ -36,7 +36,6 @@
 #include <memory>             // for shared_ptr, static_pointer_cast
 #include <set>                // for set
 #include <sstream>            // for istringstream
-#include <stdexcept>          // for runtime_error
 #include <string>             // for string, stoull
 #include <vector>             // for vector
 
@@ -65,24 +64,22 @@ public:
         const auto channel_namespace = config.get_default<std::string>(
             unique_name, "receiver_channel_id_namespace", "chord_freq_id");
         if (channel_namespace != "chord_freq_id" && channel_namespace != "chime_freq_id")
-            throw std::runtime_error(
-                "cudaPilotProxyDetector: unsupported receiver channel namespace");
+            FATAL_ERROR("cudaPilotProxyDetector: unsupported receiver channel namespace");
         load_bundle(pilot_profiles_path, weights_path, channel_namespace);
 
-        // Create the handles here, before the pipeline runs: FStat_Create zeroes its scratch
-        // with a plain cudaMemset, which waits for all work on the device. Channels bind at the
-        // first frame. Each bound channel is packed into the one staging region and then
-        // detected, all on the command's stream, so the region and the scratch are reused in
-        // stream order.
-        int window = 0, fine_windows = 0;
-        core->GetSpecs(&window, nullptr, nullptr, nullptr);
-        core->GetFineSpecs(&fine_windows, nullptr, nullptr);
+        // Create handles before the pipeline runs: FStat_Create queries device properties
+        // and allocates device scratch. Channels bind at the first frame and reuse the
+        // staging region and scratch in command-stream order.
+        int window = 0, fine_windows = 0, weight_terms = 0, fine_bins = 0;
+        core->GetSpecs(&window, &weight_terms, nullptr, nullptr);
+        core->GetFineSpecs(&fine_windows, nullptr, &fine_bins);
         const int detector_rows = config.get<int>(unique_name, "num_polarizations")
                                   * config.get<int>(unique_name, "num_dishes") * fine_windows;
         d_packed = static_cast<std::int8_t*>(device.get_gpu_memory(
             unique_name + "/packed", std::size_t(detector_rows) * window * sizeof(std::int8_t)));
-        fine_power_scratch = static_cast<unsigned long long*>(device.get_gpu_memory(
-            unique_name + "/fine_power_scratch", 3 * 256 * sizeof(std::uint64_t)));
+        fine_power_scratch = static_cast<unsigned long long*>(
+            device.get_gpu_memory(unique_name + "/fine_power_scratch",
+                                  std::size_t(weight_terms) * fine_bins * sizeof(std::uint64_t)));
         mask_i32_scratch = static_cast<int*>(
             device.get_gpu_memory(unique_name + "/mask_i32_scratch", sizeof(int)));
         for (auto& profile : bundle_profiles) {
@@ -90,10 +87,10 @@ public:
                 continue;
             profile.fstat_handle = core->Create(d_packed, detector_rows);
             if (!profile.fstat_handle)
-                throw std::runtime_error(fmt::format(
-                    fmt("cudaPilotProxyDetector: FStat_Create failed for physical channel {:d}: "
-                        "{:s}"),
-                    profile.physical_channel, core->LastError()));
+                FATAL_ERROR("cudaPilotProxyDetector: FStat_Create failed "
+                            "for physical channel {:d}: "
+                            "{:s}",
+                            profile.physical_channel, core->LastError());
         }
     }
 
@@ -154,7 +151,7 @@ public:
 
 private:
     template<typename T>
-    static T read_integer(const json& object, const char* field) {
+    T read_integer(const json& object, const char* field) {
         const auto& value = object.at(field);
         bool valid = false;
         if (value.is_number_unsigned()) {
@@ -169,9 +166,8 @@ private:
                               <= static_cast<unsigned long long>(std::numeric_limits<T>::max());
         }
         if (!valid)
-            throw std::runtime_error(fmt::format(
-                fmt("cudaPilotProxyDetector: {:s} must be an integer in the supported range"),
-                field));
+            FATAL_ERROR("cudaPilotProxyDetector: {:s} must be an integer in the supported range",
+                        field);
         return value.get<T>();
     }
 
@@ -179,19 +175,17 @@ private:
                      const std::string& channel_namespace) {
         std::ifstream profiles_file(pilot_profiles_path);
         if (!profiles_file)
-            throw std::runtime_error(
-                fmt::format(fmt("cudaPilotProxyDetector: cannot open pilot_profiles_path {:s}"),
-                            pilot_profiles_path));
+            FATAL_ERROR("cudaPilotProxyDetector: cannot open pilot_profiles_path {:s}",
+                        pilot_profiles_path);
         json pilot_profiles;
         profiles_file >> pilot_profiles;
 
         if (pilot_profiles.value("schema_version", "") != "pilotproxy_runtime_pilot_profiles_v1")
-            throw std::runtime_error(
+            FATAL_ERROR(
                 "cudaPilotProxyDetector: unsupported or missing pilot_profiles schema_version");
         if (!pilot_profiles.contains("profiles") || !pilot_profiles.at("profiles").is_array()
             || pilot_profiles.at("profiles").empty())
-            throw std::runtime_error(
-                "cudaPilotProxyDetector: pilot_profiles must be a non-empty array");
+            FATAL_ERROR("cudaPilotProxyDetector: pilot_profiles must be a non-empty array");
 
         // Legacy CHORD bundles contain only chord_channel_id. Other namespaces require
         // explicit bundle and row identities so an equal integer cannot bind the wrong sky bin.
@@ -199,18 +193,17 @@ private:
         if ((!explicit_namespace && channel_namespace != "chord_freq_id")
             || (explicit_namespace
                 && pilot_profiles.at("receiver_channel_id_namespace") != channel_namespace))
-            throw std::runtime_error("cudaPilotProxyDetector: receiver channel namespace mismatch");
+            FATAL_ERROR("cudaPilotProxyDetector: receiver channel namespace mismatch");
         const char* alias =
             channel_namespace == "chord_freq_id" ? "chord_channel_id" : "chime_channel_id";
 
         std::ifstream weights_file(weights_path, std::ios::binary);
         if (!weights_file)
-            throw std::runtime_error(fmt::format(
-                fmt("cudaPilotProxyDetector: cannot open weights_path {:s}"), weights_path));
+            FATAL_ERROR("cudaPilotProxyDetector: cannot open weights_path {:s}", weights_path);
         weight_bank.assign(std::istreambuf_iterator<char>(weights_file),
                            std::istreambuf_iterator<char>());
         if (weight_bank.empty())
-            throw std::runtime_error("cudaPilotProxyDetector: weights.bin is empty");
+            FATAL_ERROR("cudaPilotProxyDetector: weights.bin is empty");
 
         // Check the digests as PilotProxy's bundle validator does: sha256sums.txt must list the
         // four bundle files with their SHA-256, and weights_sha256 in pilot_profiles.json and
@@ -229,8 +222,7 @@ private:
         const std::string sums_path = (bundle_dir / "sha256sums.txt").string();
         std::ifstream sums_file(sums_path);
         if (!sums_file)
-            throw std::runtime_error(
-                fmt::format(fmt("cudaPilotProxyDetector: cannot open {:s}"), sums_path));
+            FATAL_ERROR("cudaPilotProxyDetector: cannot open {:s}", sums_path);
         std::map<std::string, std::string> listed;
         for (std::string line; std::getline(sums_file, line);) {
             std::istringstream fields(line);
@@ -240,16 +232,14 @@ private:
             std::getline(fields >> std::ws, name);
             name.erase(name.find_last_not_of(" \t\r") + 1);
             if (name.empty())
-                throw std::runtime_error(fmt::format(
-                    fmt("cudaPilotProxyDetector: invalid line in {:s}: {:s}"), sums_path, line));
+                FATAL_ERROR("cudaPilotProxyDetector: invalid line in {:s}: {:s}", sums_path, line);
             listed[name] = digest;
         }
         const std::string weights_digest = sha256(weight_bank.data(), weight_bank.size());
         for (const std::string name : {"detector_contract.json", "pilot_profiles.json",
                                        "weights.bin", "weights.manifest.json"}) {
             if (!listed.count(name))
-                throw std::runtime_error(fmt::format(
-                    fmt("cudaPilotProxyDetector: {:s} is missing from {:s}"), name, sums_path));
+                FATAL_ERROR("cudaPilotProxyDetector: {:s} is missing from {:s}", name, sums_path);
             // The two files the stage loads are checked at their configured paths.
             std::string path = (bundle_dir / name).string(), actual = weights_digest;
             if (name == "pilot_profiles.json")
@@ -259,38 +249,33 @@ private:
             else {
                 std::ifstream file(path, std::ios::binary);
                 if (!file)
-                    throw std::runtime_error(fmt::format(
-                        fmt("cudaPilotProxyDetector: {:s} lists {:s}, which cannot be read"),
-                        sums_path, path));
+                    FATAL_ERROR("cudaPilotProxyDetector: {:s} lists {:s}, which cannot be read",
+                                sums_path, path);
                 const std::string bytes(std::istreambuf_iterator<char>(file), {});
                 actual = sha256(bytes.data(), bytes.size());
             }
             if (actual != listed[name])
-                throw std::runtime_error(
-                    fmt::format(fmt("cudaPilotProxyDetector: sha256 mismatch for {:s}: the file "
-                                    "has {:s}, sha256sums.txt lists {:s}"),
-                                path, actual, listed[name]));
+                FATAL_ERROR("cudaPilotProxyDetector: sha256 mismatch for {:s}: the file "
+                            "has {:s}, sha256sums.txt lists {:s}",
+                            path, actual, listed[name]);
         }
         const auto check_weights_sha256 = [&](const json& payload, const char* name) {
             const json stated = payload.value("weights_sha256", json());
             if (stated != json(weights_digest))
-                throw std::runtime_error(
-                    fmt::format(fmt("cudaPilotProxyDetector: weights_sha256 in {:s} is {:s}, but "
-                                    "{:s} has {:s}"),
-                                name, stated.dump(), weights_path, weights_digest));
+                FATAL_ERROR("cudaPilotProxyDetector: weights_sha256 in {:s} is {:s}, but "
+                            "{:s} has {:s}",
+                            name, stated.dump(), weights_path, weights_digest);
         };
         check_weights_sha256(pilot_profiles, "pilot_profiles.json");
         const std::string manifest_path = (bundle_dir / "weights.manifest.json").string();
         const json manifest = json::parse(std::ifstream(manifest_path), nullptr, false);
         if (!manifest.is_object())
-            throw std::runtime_error(
-                fmt::format(fmt("cudaPilotProxyDetector: cannot parse {:s}"), manifest_path));
+            FATAL_ERROR("cudaPilotProxyDetector: cannot parse {:s}", manifest_path);
         check_weights_sha256(manifest, "weights.manifest.json");
 #else
-        throw std::runtime_error(
-            fmt::format(fmt("cudaPilotProxyDetector: Kotekan was built without OpenSSL, so the "
-                            "runtime bundle in {:s} cannot be checked"),
-                        bundle_dir.string()));
+        FATAL_ERROR("cudaPilotProxyDetector: Kotekan was built without OpenSSL, so the "
+                    "runtime bundle in {:s} cannot be checked",
+                    bundle_dir.string());
 #endif
 
         // Apply the receiver bundle's per-window time reversal contract.
@@ -316,92 +301,84 @@ private:
                                      std::initializer_list<const char*> fields) {
                 for (const char* field : fields)
                     if (!object.contains(field))
-                        throw std::runtime_error(
-                            fmt::format(fmt("cudaPilotProxyDetector: pilot_profiles entry for "
-                                            "physical channel {:d} has no {:s}"),
-                                        profile.physical_channel, field));
+                        FATAL_ERROR("cudaPilotProxyDetector: pilot_profiles entry for "
+                                    "physical channel {:d} has no {:s}",
+                                    profile.physical_channel, field);
             };
             if (!row.contains("physical_channel"))
-                throw std::runtime_error(fmt::format(
-                    fmt("cudaPilotProxyDetector: pilot_profiles row {:d} has no physical_channel"),
-                    bundle_profiles.size()));
+                FATAL_ERROR("cudaPilotProxyDetector: pilot_profiles row "
+                            "{:d} has no physical_channel",
+                            bundle_profiles.size());
             profile.physical_channel = read_integer<int>(row, "physical_channel");
             if (profile.physical_channel < 14 || profile.physical_channel > 36)
-                throw std::runtime_error(fmt::format(
-                    fmt("cudaPilotProxyDetector: physical channel {:d} is outside ATSC 14-36"),
-                    profile.physical_channel));
+                FATAL_ERROR("cudaPilotProxyDetector: physical channel {:d} is outside ATSC 14-36",
+                            profile.physical_channel);
             if (!physical_channels.insert(profile.physical_channel).second)
-                throw std::runtime_error(
-                    fmt::format(fmt("cudaPilotProxyDetector: duplicate physical channel {:d}"),
-                                profile.physical_channel));
+                FATAL_ERROR("cudaPilotProxyDetector: duplicate physical channel {:d}",
+                            profile.physical_channel);
             if (!explicit_namespace
                 && (row.contains("receiver_channel_id_namespace")
                     || row.contains("receiver_channel_id")))
-                throw std::runtime_error(
-                    "cudaPilotProxyDetector: missing bundle receiver namespace");
+                FATAL_ERROR("cudaPilotProxyDetector: missing bundle receiver namespace");
             if (explicit_namespace
                 && (!row.contains("receiver_channel_id_namespace")
                     || row.at("receiver_channel_id_namespace") != channel_namespace
                     || !row.contains("receiver_channel_id")))
-                throw std::runtime_error("cudaPilotProxyDetector: receiver row namespace mismatch");
+                FATAL_ERROR("cudaPilotProxyDetector: receiver row namespace mismatch");
             const char* id_field = explicit_namespace ? "receiver_channel_id" : alias;
             if (row.contains(alias) && !row.at(alias).is_null()) {
                 const int alias_id = read_integer<int>(row, alias);
                 if (alias_id < 0)
-                    throw std::runtime_error(
-                        fmt::format(fmt("cudaPilotProxyDetector: {:s} is negative"), alias));
+                    FATAL_ERROR("cudaPilotProxyDetector: {:s} is negative", alias);
             }
             if (explicit_namespace && row.contains(alias) && row.at(alias) != row.at(id_field))
-                throw std::runtime_error(fmt::format(
-                    fmt("cudaPilotProxyDetector: {:s} disagrees with receiver_channel_id"), alias));
+                FATAL_ERROR("cudaPilotProxyDetector: {:s} disagrees with receiver_channel_id",
+                            alias);
             if (row.contains(id_field) && !row.at(id_field).is_null()) {
                 profile.receiver_channel_id = read_integer<int>(row, id_field);
                 if (profile.receiver_channel_id < 0)
-                    throw std::runtime_error(
-                        "cudaPilotProxyDetector: receiver_channel_id is negative");
+                    FATAL_ERROR("cudaPilotProxyDetector: receiver_channel_id is negative");
                 if (!receiver_channel_ids.insert(profile.receiver_channel_id).second)
-                    throw std::runtime_error(
-                        fmt::format(fmt("cudaPilotProxyDetector: duplicate {:s} {:d}"), alias,
-                                    profile.receiver_channel_id));
+                    FATAL_ERROR("cudaPilotProxyDetector: duplicate {:s} {:d}", alias,
+                                profile.receiver_channel_id);
                 has_receiver_channel_id = true;
             }
             require(row, {"pilot_frequency_hz", "weight_bank_offset_bytes", "weight_bank_nbytes"});
             profile.pilot_frequency_hz = row.at("pilot_frequency_hz").get<double>();
             if (!std::isfinite(profile.pilot_frequency_hz) || profile.pilot_frequency_hz <= 0.0)
-                throw std::runtime_error(
+                FATAL_ERROR(
                     "cudaPilotProxyDetector: pilot_frequency_hz must be finite and positive");
             profile.weight_offset_bytes =
                 read_integer<std::ptrdiff_t>(row, "weight_bank_offset_bytes");
             profile.weight_nbytes = read_integer<std::ptrdiff_t>(row, "weight_bank_nbytes");
             if (profile.weight_nbytes != profile_nbytes)
-                throw std::runtime_error(fmt::format(
-                    fmt("cudaPilotProxyDetector: weight_bank_nbytes {:d} does not match the "
-                        "compiled kernel contract {:d} for physical channel {:d}"),
-                    std::int64_t(profile.weight_nbytes), std::int64_t(profile_nbytes),
-                    profile.physical_channel));
+                FATAL_ERROR("cudaPilotProxyDetector: weight_bank_nbytes {:d} does not match the "
+                            "compiled kernel contract {:d} for physical channel {:d}",
+                            std::int64_t(profile.weight_nbytes), std::int64_t(profile_nbytes),
+                            profile.physical_channel);
             if (profile.weight_offset_bytes < 0
                 || profile.weight_offset_bytes > std::ptrdiff_t(weight_bank.size())
                 || profile.weight_nbytes
                        > std::ptrdiff_t(weight_bank.size()) - profile.weight_offset_bytes)
-                throw std::runtime_error(fmt::format(
-                    fmt("cudaPilotProxyDetector: weight bank range at offset {:d} with {:d} bytes "
-                        "exceeds "
-                        "weights.bin size {:d} for physical channel {:d}"),
-                    std::int64_t(profile.weight_offset_bytes), std::int64_t(profile.weight_nbytes),
-                    std::uint64_t(weight_bank.size()), profile.physical_channel));
+                FATAL_ERROR("cudaPilotProxyDetector: weight bank range at offset "
+                            "{:d} with {:d} bytes "
+                            "exceeds "
+                            "weights.bin size {:d} for physical channel {:d}",
+                            std::int64_t(profile.weight_offset_bytes),
+                            std::int64_t(profile.weight_nbytes), std::uint64_t(weight_bank.size()),
+                            profile.physical_channel);
             if (profile.weight_offset_bytes != expected_weight_offset)
-                throw std::runtime_error(fmt::format(
-                    fmt("cudaPilotProxyDetector: weight offset {:d} is not the expected contiguous "
-                        "offset {:d} for physical channel {:d}"),
-                    std::int64_t(profile.weight_offset_bytes), std::int64_t(expected_weight_offset),
-                    profile.physical_channel));
+                FATAL_ERROR("cudaPilotProxyDetector: weight offset {:d} is "
+                            "not the expected contiguous "
+                            "offset {:d} for physical channel {:d}",
+                            std::int64_t(profile.weight_offset_bytes),
+                            std::int64_t(expected_weight_offset), profile.physical_channel);
             expected_weight_offset += profile.weight_nbytes;
 
             if (!row.contains("fine_calibration") || !row.at("fine_calibration").is_object())
-                throw std::runtime_error(fmt::format(
-                    fmt("cudaPilotProxyDetector: missing fine_calibration object for physical "
-                        "channel {:d}"),
-                    profile.physical_channel));
+                FATAL_ERROR("cudaPilotProxyDetector: missing fine_calibration object for physical "
+                            "channel {:d}",
+                            profile.physical_channel);
             const auto& calibration = row.at("fine_calibration");
             require(calibration, {"status"});
             const std::string calibration_status = calibration.at("status").get<std::string>();
@@ -415,15 +392,15 @@ private:
                 }
             }
             if (calibration.value("decision_version", "") != "fine_decision_v1")
-                throw std::runtime_error(fmt::format(
-                    fmt("cudaPilotProxyDetector: unsupported fine decision version for physical "
-                        "channel {:d}"),
-                    profile.physical_channel));
+                FATAL_ERROR("cudaPilotProxyDetector: unsupported fine "
+                            "decision version for physical "
+                            "channel {:d}",
+                            profile.physical_channel);
             if (calibration_status != "pending_campaign" && calibration_status != "calibrated")
-                throw std::runtime_error(fmt::format(
-                    fmt("cudaPilotProxyDetector: unknown fine calibration status {:s} for physical "
-                        "channel {:d}"),
-                    calibration_status, profile.physical_channel));
+                FATAL_ERROR("cudaPilotProxyDetector: unknown fine "
+                            "calibration status {:s} for physical "
+                            "channel {:d}",
+                            calibration_status, profile.physical_channel);
             if (calibration_status == "calibrated") {
                 profile.fine_calibrated = true;
                 require(calibration, {"anchor_bin", "designated_half_width", "cfar_rank",
@@ -435,42 +412,37 @@ private:
                 profile.multiplier_q16 =
                     read_integer<unsigned long long>(calibration, "cfar_multiplier_q16");
                 if (profile.anchor_bin < 0 || profile.anchor_bin >= fine_bins)
-                    throw std::runtime_error(
-                        "cudaPilotProxyDetector: fine anchor_bin is out of range");
+                    FATAL_ERROR("cudaPilotProxyDetector: fine anchor_bin is out of range");
                 if (profile.designated_half_width < 0
                     || profile.designated_half_width >= fine_bins / 2)
-                    throw std::runtime_error(
+                    FATAL_ERROR(
                         "cudaPilotProxyDetector: fine designated_half_width is out of range");
                 if (profile.cfar_rank < 0 || profile.cfar_rank >= fine_bins)
-                    throw std::runtime_error(
-                        "cudaPilotProxyDetector: fine cfar_rank is out of range");
+                    FATAL_ERROR("cudaPilotProxyDetector: fine cfar_rank is out of range");
                 if (profile.multiplier_q16 == 0)
-                    throw std::runtime_error(
+                    FATAL_ERROR(
                         "cudaPilotProxyDetector: fine cfar_multiplier_q16 must be positive");
                 const auto& words_hex = calibration.at("bulk_mask_words_hex");
                 if (!words_hex.is_array() || words_hex.size() != 4)
-                    throw std::runtime_error(
-                        "cudaPilotProxyDetector: bulk_mask_words_hex must be 4 hex words");
+                    FATAL_ERROR("cudaPilotProxyDetector: bulk_mask_words_hex must be 4 hex words");
                 int bulk_population = 0;
                 for (int word = 0; word < 4; ++word) {
                     const std::string encoded = words_hex.at(word).get<std::string>();
                     if (encoded.size() < 3 || encoded.size() > 18 || encoded[0] != '0'
                         || (encoded[1] != 'x' && encoded[1] != 'X'))
-                        throw std::runtime_error(
+                        FATAL_ERROR(
                             "cudaPilotProxyDetector: bulk mask words must be uint64 hex strings");
                     for (std::size_t digit = 2; digit < encoded.size(); ++digit)
                         if (!std::isxdigit(static_cast<unsigned char>(encoded[digit])))
-                            throw std::runtime_error(
-                                "cudaPilotProxyDetector: invalid digit in bulk mask word");
+                            FATAL_ERROR("cudaPilotProxyDetector: invalid digit in bulk mask word");
                     std::size_t parsed = 0;
                     profile.bulk_mask_words[word] = std::stoull(encoded, &parsed, 16);
                     if (parsed != encoded.size())
-                        throw std::runtime_error(
-                            "cudaPilotProxyDetector: trailing data in bulk mask word");
+                        FATAL_ERROR("cudaPilotProxyDetector: trailing data in bulk mask word");
                     bulk_population += std::bitset<64>(profile.bulk_mask_words[word]).count();
                 }
                 if (profile.cfar_rank >= bulk_population)
-                    throw std::runtime_error(
+                    FATAL_ERROR(
                         "cudaPilotProxyDetector: fine cfar_rank exceeds the bulk population");
                 // Exclude the designated set and one independent bin (two fine bins)
                 // on each side of the anchor.
@@ -478,7 +450,7 @@ private:
                 for (int offset = -exclusion_half_width; offset <= exclusion_half_width; ++offset) {
                     const int bin = (profile.anchor_bin + offset + fine_bins) % fine_bins;
                     if ((profile.bulk_mask_words[bin >> 6] >> (bin & 63)) & 1ULL)
-                        throw std::runtime_error(
+                        FATAL_ERROR(
                             "cudaPilotProxyDetector: designated/guard fine bin is present in "
                             "the null-bulk mask");
                 }
@@ -486,13 +458,11 @@ private:
             bundle_profiles.push_back(profile);
         }
         if (expected_weight_offset != std::ptrdiff_t(weight_bank.size()))
-            throw std::runtime_error(fmt::format(
-                fmt("cudaPilotProxyDetector: profile table accounts for {:d} weight bytes but "
-                    "weights.bin contains {:d}"),
-                std::int64_t(expected_weight_offset), std::uint64_t(weight_bank.size())));
+            FATAL_ERROR("cudaPilotProxyDetector: profile table accounts for {:d} weight bytes but "
+                        "weights.bin contains {:d}",
+                        std::int64_t(expected_weight_offset), std::uint64_t(weight_bank.size()));
         if (!has_receiver_channel_id)
-            throw std::runtime_error(
-                "cudaPilotProxyDetector: bundle carries no receiver channel IDs");
+            FATAL_ERROR("cudaPilotProxyDetector: bundle carries no receiver channel IDs");
     }
 };
 
@@ -630,6 +600,12 @@ private:
 
 REGISTER_CUDA_COMMAND_WITH_STATE(cudaPilotProxyDetector, cudaPilotProxyDetectorState);
 
+static int query_window_samples(const PilotProxyCore& core) {
+    int window = 0;
+    core.GetSpecs(&window, nullptr, nullptr, nullptr);
+    return window;
+}
+
 static int query_fine_windows(const PilotProxyCore& core) {
     int fine_windows = 0;
     core.GetFineSpecs(&fine_windows, nullptr, nullptr);
@@ -657,7 +633,7 @@ cudaPilotProxyDetector::cudaPilotProxyDetector(kotekan::Config& config,
     dtv_fine_support_name(
         config.get_default<std::string>(unique_name, "dtv_fine_support_name", "")),
     // Block geometry
-    detector_window_samples(config.get<int>(unique_name, "detector_window_samples")),
+    detector_window_samples(query_window_samples(*detector_state->core)),
     samples_per_detector_frame(detector_window_samples * query_fine_windows(*detector_state->core)),
     // Buffers
     voltage(voltage_name, "E",

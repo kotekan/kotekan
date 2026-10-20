@@ -7,8 +7,17 @@ PilotProxy validation
 What the stage does and how it is configured on the telescope is in
 :ref:`pilotproxy`.
 
-Build Kotekan with ``USE_CUDA=ON`` and ``WITH_TESTS=ON``, and install its Python test
-dependencies. The CUDA device must support the vendored detector core.
+Build Kotekan with ``USE_CUDA=ON`` and ``WITH_TESTS=ON``. The CUDA device must
+support the vendored detector core. The CI harness creates a temporary virtual
+environment with pinned dependencies, exports both receiver bundles, and cleans
+up its generated files on exit:
+
+.. code-block:: sh
+
+    bash tests/ci-scripts/pilotproxy/run_pilotproxy_tests.sh "$PWD/build"
+
+For individual tests, use a separate Python environment with the dependencies
+in ``tests/ci-scripts/pilotproxy/requirements.txt``.
 The runtime bundle is a separate input. From the repository root, install the
 matching PilotProxy package, export the CHORD bundle and run the tests:
 
@@ -68,7 +77,16 @@ it includes synthetic seed generation, GPU work, and file output. Reused
 synthetic inputs and file-I/O stress do not establish production cadence,
 processing headroom, or telescope acceptance.
 
-The mask stage's own tests need the same two variables:
+The mask stage also has CPU-only Boost coverage, built with
+``WITH_BOOST_TESTS=ON`` and run in the CPU jobs:
+
+.. code-block:: sh
+
+    build/tests/boost/test_DtvRfiMask
+
+It checks both block sizes across buffer wrap, mask intersection, invalid fine
+support, permanent masks, metadata preservation and malformed inputs. The
+CUDA visibility and count integration tests use the two variables above:
 
 .. code-block:: sh
 
