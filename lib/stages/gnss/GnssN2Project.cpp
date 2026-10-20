@@ -148,9 +148,10 @@ int GnssN2Project::build_lanes(int f, int freq_id, const cd* V, double now_s, bo
     lanes.clear();
     cand.clear();
     // Copy the fresh, coherent lane entries out under the board's lock, mapped onto the
-    // stations axis; everything else happens on the copies.
+    // stations axis; everything else happens on the copies. The not-owner argument must
+    // be a name no publisher has: an empty one matches every owner's prefix and skips all.
     gnss::ProjBoard::instance().for_each(
-        board_group, freq_id, std::string(), now_s, lane_max_age_s, [&](const gnss::ProjEntry& e) {
+        board_group, freq_id, unique_name, now_s, lane_max_age_s, [&](const gnss::ProjEntry& e) {
             if (e.src != 2 || e.k < 1 || e.coh < lane_coh_min || (size_t)e.n != e2a.size()
                 || e.q.size() < (size_t)e.n)
                 return;
