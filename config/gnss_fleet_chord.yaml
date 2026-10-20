@@ -277,7 +277,8 @@ nodes:
     cx42: {search-port-base: 11044}
     cx43: {search-port-base: 11046}
     cx44: {search-port-base: 11048}
-    # #190 canary: the known-satellite projection from the tracked lanes, the eigen path on
-    # the residual; every assembler on the node publishes its slots' directions.
-    cx51: {search-port-base: 11050, n2-project-source: lanes+residual, n2-project-lanes-max: 40,
-           n2-project-core-index: 9, elem-dir-publish: all}
+    # #190 canary keys for cx51 (n2-project-source lanes+residual, n2-project-lanes-max 40,
+    # n2-project-core-index 9, elem-dir-publish all) were withdrawn 10-20 12:30Z: the node
+    # relaunched every ~3 min on DPDK rx-ring overflow (a fleet-wide stop seen on cx43/cx19
+    # at ~10x lower rate); re-add once the stall is understood.
+    cx51: {search-port-base: 11050}
