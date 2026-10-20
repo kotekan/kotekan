@@ -423,16 +423,31 @@ void GnssFleetTrim::rearm() {
     if (_late_seen_t == 0.0 || now - _late_seen_t > 1.0)
         _late_seen_t = now;
 
-    // Drop the policy of a chain that has not posted for policy_ttl_s (a dead broker chain
-    // thread). The sweep runs here, per frame, rather than in policy_callback so it also fires
-    // when nothing posts. It removes the chain from _policy only: FleetDll keeps the chain's
-    // last armed set and policy, and its targets stay in _targets.
+    // Disarm a chain that has not posted for policy_ttl_s (a dead broker chain thread): the
+    // presence verdicts and floors behind its arming are no longer refreshed. The sweep runs
+    // here, per frame, rather than in policy_callback so it also fires when nothing posts.
+    // FleetDll gets an empty armed set under the chain's last loop constants, so its trims leak
+    // to zero and are erased, and its targets leave _targets, so nothing more is posted for it.
     for (auto it = _policy_seen.begin(); it != _policy_seen.end();) {
         if (now - it->second > _policy_ttl_s) {
             WARN("GnssFleetTrim[{:s}]: chain '{:s}' has POSTed no policy for {:.0f}s -- "
-                 "DISARMED. Its broker chain thread is dead or cannot reach us; trims already "
-                 "at the trackers expire on their own TTL.",
+                 "DISARMED and its post targets dropped. Its broker chain thread is dead or "
+                 "cannot reach us; trims already at the trackers expire on their own TTL.",
                  unique_name, it->first, now - it->second);
+            const auto ci = _dll.chains().find(it->first);
+            if (ci != _dll.chains().end()) {
+                const gnss::TrimPolicy tp = ci->second.policy;
+                _dll.set_armed(it->first, {}, tp);
+            }
+            {
+                // Lock order: _mtx (held here), then _pend_mtx.
+                std::lock_guard<std::mutex> pk(_pend_mtx);
+                std::vector<Target> keep;
+                for (auto& t : _targets)
+                    if (t.chain != it->first)
+                        keep.push_back(std::move(t));
+                _targets = std::move(keep);
+            }
             _policy.erase(it->first);
             it = _policy_seen.erase(it);
             _policy_expired++;
@@ -832,7 +847,8 @@ void GnssFleetTrim::stats_callback(kotekan::connectionInstance& conn) {
     reply["close_hz_measured"] = _close_hz;
     reply["policy_posts"] = _policy_posts;
     // A rising policy_expired means a broker chain thread stopped posting. An expired chain is
-    // removed from policy_age_s and policy_armed_requested but stays in `policy`.
+    // removed from policy_age_s and policy_armed_requested, and stays in `policy` with nothing
+    // armed.
     reply["policy_expired"] = _policy_expired;
     reply["policy_ttl_s"] = _policy_ttl_s;
     {

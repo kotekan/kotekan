@@ -8,10 +8,12 @@ currency contract). gnss::propagate_seed puts the standing fleet trim inside tha
 
 is the tracker's code phase: the replica placement the closed DLL holds on the correlation
 peak. wrap(cp_phys - cp_model - clk) is then a code residual in this chain's chips with the
-receiver clock removed: the quantity the dead-reckon integrity residual forms from the search's
-detections (ctx.drp.offs), but measured by the stage that resolves ~1e-2 chips rather than the
-one that resolves ~0.5. It exists on every chain, detectors or not: a model-primary chain has
-no detections, but it has records.
+receiver clock removed, and the clock is the one the seeds ride (deadreckon's clk_now: the
+solved or adopted clock propagated to now and, on a joint-consume chain, the joint clock), so
+the residual measures where the seeds put the replica. The dead-reckon integrity residual forms
+the same quantity from the search's detections (ctx.drp.offs) against the solved clock, but
+from the stage that resolves ~0.5 chips rather than ~1e-2. It exists on every chain, detectors
+or not: a model-primary chain has no detections, but it has records.
 
 Why records are averaged. Slot 1 is float32, so its ulp at a few kHz is ~2-5e-4 Hz, and the
 lift above multiplies it by t_abs * f_chip / f_c, thousands of chips per Hz at any real
@@ -97,10 +99,10 @@ def residuals(
 
     records: {prn: [(hop, cp_arg, dop_hz)]}; pd: {(tag, prn): predict_all row}; cp_predicted(v,
     t_abs) the model's physical code phase excluding the receiver clock (deadreckon's); clk the
-    solved clock (chips), drift its rate (chips/s, may be None); t_now_abs the capture age the
-    clock is referenced to. Each record's offset is normalised to t_now_abs by the drift, as
-    the integrity residual is, then wrapped about the clock; the per-PRN value is the mean of
-    the wrapped records and `sd` their scatter (the float32 quantization, mostly).
+    receiver clock at t_now_abs (chips), drift its rate (chips/s, may be None); t_now_abs the
+    capture age the clock is referenced to. Each record's offset is normalised to t_now_abs by
+    the drift, as the integrity residual is, then wrapped about the clock; the per-PRN value is
+    the mean of the wrapped records and `sd` their scatter (the float32 quantization, mostly).
 
     Returns {prn: {"chips", "raw", "sd", "n", "hop"}}; a PRN with no model row or no records is
     absent, and so is every PRN while clk is None.
@@ -130,7 +132,7 @@ def residuals(
         sd = math.sqrt(sum((x - m) ** 2 for x in ds) / len(ds)) if len(ds) > 1 else 0.0
         r_clk = wrap(r0 + m, code_len)
         # `raw` keeps the receiver clock in (the code range residual, which a carrier residual
-        # also carries, so the two can be differenced); `chips` has the solved clock removed.
+        # also carries, so the two can be differenced); `chips` has the clock removed.
         out[prn] = {
             "chips": r_clk,
             "raw": wrap(r_clk + clk, code_len),
@@ -144,11 +146,21 @@ def residuals(
 def tracker_residuals(ctx, n_win=2):
     """The stage entry point: records from the telem client (falling back to the fleet's
     coherent row, one record with ~0.2 chips of quantization), model and clock from the
-    dead-reckon products. {} until a clock exists."""
+    dead-reckon products. {} until a clock exists.
+
+    The clock removed is ctx.drp.clk_now at ctx.drp.drift, the clock and rate dr_seed placed
+    the seeds with this pass, not dr_state's clock at its own stamp: they differ by the drift
+    since clk_t, and on a joint-consume chain by the joint clock's correction."""
     st = ctx.dr_state or {}
     pd = st.get("pd")
-    clk = st.get("clk")
-    if not pd or clk is None or ctx.drp.t_now_abs is None or ctx.cp_predicted is None:
+    clk = ctx.drp.clk_now
+    if (
+        not pd
+        or st.get("clk") is None
+        or clk is None
+        or ctx.drp.t_now_abs is None
+        or ctx.cp_predicted is None
+    ):
         return {}
     # Only satellites the fleet is on. A replica that is off its signal still has a code phase,
     # and the residual made from it is wrong with a small formal error (a replica parked on
@@ -193,7 +205,7 @@ def tracker_residuals(ctx, n_win=2):
         ctx.drp.tag,
         ctx.cp_predicted,
         clk,
-        st.get("drift"),
+        ctx.drp.drift,
         ctx.drp.t_now_abs,
         ctx.args.hops_per_sec,
         ctx.args.chip_rate_hz,

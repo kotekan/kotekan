@@ -142,6 +142,156 @@ def test_blind_evidence():
     )
 
 
+def taps(off, ped, spacing, p_pow=20.0):
+    """(E, P, L) of a triangular correlation with the taps `spacing` either side of Prompt,
+    the peak `off` chips late and a noise pedestal `ped`, scaled to prompt power p_pow."""
+    acf = lambda x: max(0.0, 1.0 - abs(x)) ** 2
+    e, p, l = acf(off + spacing) + ped, acf(off) + ped, acf(off - spacing) + ped
+    return e * p_pow / p, p_pow, l * p_pow / p
+
+
+def taps_row(e, p, l):
+    return row(2.0 * p / (e + l), (e - l) / (e + l), p)
+
+
+def test_spacing():
+    """The displaced admission fits at the chain's tap spacing (--dll-spacing).
+
+    gps_l2c and glo_l2oc run 0.4-chip taps. Read at 0.5, a row 0.30 chips late on a 0.25
+    pedestal fits pedestal 0.31 (refused as weak) and one 0.65 chips late fits 0.56 chips
+    (admitted inside the pull-in bar). Both arms (fleet_dll, fleet_dll_comb) and their callers
+    in the broker carry the spacing to apply_presence.
+    """
+    print("admit-displaced: the fit runs at the chain's dll_spacing")
+    import ast
+    import os
+    from gnss_broker import combdll
+    from gnss_broker import fleet as _fleet
+
+    near = taps(0.30, 0.25, 0.4)  # admitted at 0.4: inside both bars
+    far = taps(0.65, 0.05, 0.4)  # refused at 0.4: past presence_disp_off_max
+
+    def judged(v20, v21, what):
+        check(
+            v20["present"] is True
+            and v20["present_gate"] == "q+p:probes+disp"
+            and abs(v20["off_chips"] - 0.30) < 0.01
+            and abs(v20["pedestal"] - 0.25) < 0.01,
+            "%s: 0.30 chips late on a 0.25 pedestal fits as such and is admitted "
+            "(off %+.3f ped %.3f)"
+            % (what, v20.get("off_chips", 0), v20.get("pedestal", 0)),
+        )
+        check(
+            v21["present"] is False and abs(v21.get("off_chips", 0) - 0.65) < 0.01,
+            "%s: 0.65 chips late fits as such and is refused (off %+.3f)"
+            % (what, v21.get("off_chips", 0)),
+        )
+
+    out = fleet(**{"20": taps_row(*near), "21": taps_row(*far)})
+    try:
+        apply_presence(
+            out,
+            k_sigma=3.0,
+            q_fallback=2.2,
+            probe_prns=PROBES,
+            admit_displaced=ADMIT,
+            dll_spacing=0.4,
+        )
+        judged(out[20], out[21], "apply_presence at 0.4")
+    except TypeError as e:
+        check(False, "apply_presence takes dll_spacing: %s" % e)
+
+    # The comb arm, fed its taps directly: each row's (q, disc, p_pow) back to (E, P, L).
+    per_prn = {}
+    for p, v in fleet(**{"20": taps_row(*near), "21": taps_row(*far)}).items():
+        el = 2.0 * v["p_pow"] / v["q"]
+        per_prn[p] = {
+            "e": 0.5 * (1.0 + v["disc"]) * el,
+            "p": v["p_pow"],
+            "l": 0.5 * (1.0 - v["disc"]) * el,
+            "n_rec": 1,
+            "hop": 1000,
+            "n_inst": 4,
+            "n_chan": 28,
+        }
+    try:
+        out = combdll.fleet_dll_comb(
+            None,
+            "gps_l2c",
+            probe_prns=PROBES,
+            taps_src=lambda chain, prns: per_prn,
+            admit_displaced=ADMIT,
+            dll_spacing=0.4,
+        )
+        judged(out[20], out[21], "fleet_dll_comb at 0.4")
+    except TypeError as e:
+        check(False, "fleet_dll_comb takes dll_spacing: %s" % e)
+
+    # The polled arm, through its REST poll.
+    polled = [
+        {
+            "prn": p,
+            "pow_hop": 1000,
+            "e_pow": t["e"],
+            "p_pow": t["p"],
+            "l_pow": t["l"],
+            "n_chan": 7.0,
+        }
+        for p, t in per_prn.items()
+    ]
+    real_get = _fleet._get
+    _fleet._get = lambda url, timeout=5.0: polled
+    try:
+        out = _fleet.fleet_dll(
+            ["http://cx19:12048/gnss0"],
+            hop_window=4096,
+            min_instances=1,
+            k_sigma=3.0,
+            q_fallback=2.2,
+            probe_prns=PROBES,
+            admit_displaced=ADMIT,
+            hop_hist={},
+            now=0.0,
+            dll_spacing=0.4,
+        )
+        judged(out[20], out[21], "fleet_dll at 0.4")
+    except TypeError as e:
+        check(False, "fleet_dll takes dll_spacing: %s" % e)
+    finally:
+        _fleet._get = real_get
+
+    # Read at the 0.5 default, the same rows invert: the spacing is what decides them.
+    out = verdict(fleet(**{"20": taps_row(*near), "21": taps_row(*far)}), ADMIT)
+    check(
+        out[20]["present"] is False and out[21]["present"] is True,
+        "at the 0.5 default the near row is refused (ped %.3f) and the far one admitted "
+        "(off %+.3f)" % (out[20]["pedestal"], out[21]["off_chips"]),
+    )
+
+    # The broker's own calls of both arms pass the chain's --dll-spacing.
+    here = os.path.dirname(os.path.abspath(_fleet.__file__))
+    calls = []
+    for name in sorted(os.listdir(here)):
+        if not name.endswith(".py") or name.startswith("test_"):
+            continue
+        with open(os.path.join(here, name)) as fh:
+            tree = ast.parse(fh.read())
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            fn = node.func
+            fname = fn.attr if isinstance(fn, ast.Attribute) else getattr(fn, "id", "")
+            if fname not in ("fleet_dll", "fleet_dll_comb"):
+                continue
+            kw = {k.arg: ast.unparse(k.value) for k in node.keywords}
+            calls.append((name, fname, kw.get("dll_spacing")))
+    check(
+        len(calls) >= 2 and all(sp == "ctx.args.dll_spacing" for _, _, sp in calls),
+        "every broker call of fleet_dll / fleet_dll_comb passes dll_spacing="
+        "ctx.args.dll_spacing: %s" % calls,
+    )
+
+
 def main():
     # ---- 0. epl_decompose on the collapse row and on E = P = L --------------------------
     off, ped = epl_decompose(1.16, -0.70)
@@ -313,6 +463,7 @@ def main():
     )
 
     test_blind_evidence()
+    test_spacing()
     print("\n%s (%d check(s) failed)" % ("FAIL" if _fails else "PASS", len(_fails)))
     return 1 if _fails else 0
 

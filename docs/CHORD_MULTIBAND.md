@@ -237,13 +237,14 @@ here so the next constellation (L2OC, or the FDMA L2OF) knows where to look.
 
   The hourly BRDC merge (records at :15 and :45, published ~20 min after the hour) keeps
   the newest record 35-95 min old, inside the spectrum fit's capture and at the DLL's
-  (+-0.4 chip) edge at the stale end. With the hourly supply down, R rests on BKG's
-  current-day daily, which carries R ~25 min behind but is re-fetched only every 2 h, so a
-  record can reach ~2 h 40 min at use. Past 2.5 h (`gnss_ephemeris.GLONASS_MAX_AGE_S`: a
-  clock-grade `predict_all` window is cut to that for R, where G/E/C hold for 4 h) the chain
-  drops the satellite rather than seeding it chips off, so R satellites can blink out for
-  minutes before each refresh. With BKG down as well no daily covers today (CDDIS publishes
-  closed days only), and the chain loses its satellites 2.5 h after the last hourly record.
+  (+-0.4 chip) edge at the stale end. The hourly merge is the normal supply. With it down,
+  R rests on BKG's current-day daily, which carries R ~25 min behind and is re-fetched once
+  it is an hour old (`gnss_brdc_supply._DAILY_TTL_S`), so a record is under ~2 h old at use:
+  the hour, the lag, and up to two 15-min sky refreshes. Past 2.5 h
+  (`gnss_ephemeris.GLONASS_MAX_AGE_S`: a clock-grade `predict_all` window is cut to that for
+  R, where G/E/C hold for 4 h) the chain drops the satellite rather than seeding it chips
+  off. With BKG down as well no daily covers today (CDDIS publishes closed days only), and
+  the chain loses its satellites 2.5 h after the last hourly record.
   `_HOURLY_TARGET` now counts R (16 slots) so a merge thin in GLONASS is retried like one
   thin in BeiDou.
 - **The excision.** The lobe, 1191.8-1212.3 MHz, adds freq_ids 6102-6127 below E5b's; the

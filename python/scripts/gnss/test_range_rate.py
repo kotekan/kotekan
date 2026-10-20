@@ -8,9 +8,11 @@ The position is rotated from the transmit-epoch frame into the reception frame (
 rotation, omega*tau ~ 5 microradians), and the velocity must be rotated with it. Left in the
 transmit frame it errs by up to |v|*omega*tau ~ 2 cm/s on the line of sight.
 
-The difference of ranges also carries the light-time rate (tau changes by rr/c per second),
-which the prediction leaves out: up to ~2 mm/s at the edge of the sky, a few 0.1 mm/s at most
-where |rr| < 100 m/s. The comparison is made there, so a 1 mm/s tolerance tests the frame.
+The light time tau changes by rr/c per second, which moves the transmit epoch and the Sagnac
+angle with it. Left out, it errs by up to ~2.4 mm/s for this record, at the largest |rr|.
+Every geometry with the satellite up is compared. What is left (0.15 mm/s) is the reference's
+own noise: continuous GPST near 1.4e9 s resolves 0.24 microseconds, which moves the range by
+~0.1 mm between calls. The decoded twin, fed seconds of week, agrees to 1 micrometre/s.
 
 The record is one real GPS LNAV record, G05 from BRDC00WRD_R day 292 (toe 04:00 GPST).
 """
@@ -41,8 +43,7 @@ SITES = [
     (lat, lon) for lat in (-60, -30, 0, 30, 49.32, 70) for lon in range(-180, 180, 30)
 ]
 ALT = 500.0
-MAX_RR = 100.0  # m/s: where the light-time rate is well under the tolerance
-TOL = 1e-3  # m/s
+TOL = 3e-4  # m/s
 
 
 def parse(text):
@@ -62,8 +63,8 @@ def toe_utc(rec):
 
 def worst_rate_error(predict, t0):
     """Largest |range_rate_mps - d(range_m)/dt| over SITES and t0 +- 2 h, counting only epochs
-    with the satellite up and |rate| < MAX_RR. `predict(t_utc, lat, lon)` returns predict_all's
-    per-satellite dict, or None. Returns (worst, samples)."""
+    with the satellite up. `predict(t_utc, lat, lon)` returns predict_all's per-satellite dict,
+    or None. Returns (worst, samples)."""
     worst, n = 0.0, 0
     for lat, lon in SITES:
         for dt in range(-7200, 7201, 300):
@@ -75,8 +76,6 @@ def worst_rate_error(predict, t0):
                 predict(t + 0.5, lat, lon)["range_m"]
                 - predict(t - 0.5, lat, lon)["range_m"]
             )
-            if abs(fd) > MAX_RR:
-                continue
             worst = max(worst, abs(p["range_rate_mps"] - fd))
             n += 1
     return worst, n
@@ -91,7 +90,7 @@ class TestPredictAllRangeRate(unittest.TestCase):
             return ge.predict_all(eph, lat, lon, ALT, t, mask_deg=-90.0).get(key)
 
         worst, n = worst_rate_error(predict, toe_utc(eph[key][0]))
-        self.assertGreater(n, 50, "too few near-zero-rate samples to test")
+        self.assertGreater(n, 1000, "too few samples with the satellite up")
         self.assertLess(worst, TOL, "range rate off d(range)/dt by %.4f m/s" % worst)
 
 

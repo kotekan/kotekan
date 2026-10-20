@@ -5,15 +5,23 @@ an absolute-time symbol timeline and decode CRC-valid frames. gps_cnav2.py is th
 framesync + block deinterleave + systematic LDPC extract + CRC-24Q); it has no SF2 ephemeris field
 table, so there is no ephemeris to serve.
 
-Like B-CNAV1 the frame is 18 s (1800 symbols) -- long, so it decodes only from a run whose
-emits share one carrier sign (find_frames needs 1852 contiguous symbols = frame + the next
-frame's SF1). The L1C-D combiner emits one symbol per 10 ms (navwipe_bit_records 1 -> br=1,
-rec_dt=0.010); integration_length 100 gives each emit a 1 s window, longer than the broker's
---interval, so the windows of successive polls overlap and no symbol is lost between them.
-br=1 has no slot jitter; the stitcher still anchors slots to a per-PRN grid and salvages gappy
-emits, as inav_predictor does.
+Like B-CNAV1 the frame is 18 s (1800 symbols) -- long, and find_frames needs 1852 contiguous
+symbols of one sign (frame + the next frame's SF1). The L1C-D combiner emits one symbol per
+10 ms (navwipe_bit_records 1 -> br=1, rec_dt=0.010); integration_length 100 gives each emit a
+1 s window, longer than the broker's --interval, so the windows of successive polls overlap and
+no symbol is lost between them. Each emit stores only the symbols past the newest one held, and
+the cache is bounded in symbols (SYM_MAX), since a run of overlapping emits holds far fewer
+symbols than emits times their length. br=1 has no slot jitter; the stitcher still anchors slots
+to a per-PRN grid and salvages gappy emits, as inav_predictor does.
+
+Polarity. Each emit resolves its +-1 ambiguity on its own, so the emits are chained as
+navbit_predictor chains LNAV: rot = e^{-i*theta0} follows the carrier, and an odd number of
+pi-steps in theta0 from the last emit flips this emit's sign relative to it. One wrong link
+flips everything after it; the frame that straddles it fails, and a boundary-flip repair
+(_repair) finds the link.
 """
 
+import math
 import time
 
 import numpy as np
@@ -23,17 +31,24 @@ import gps_cnav2 as C2
 SYM_S = C2.SYM_S  # 0.010
 FRAME = C2.FRAME_SYMS  # 1800
 NEED = FRAME + C2.N_SF1  # 1852 (frame + next SF1) for a sync+decode
-EMIT_MAX = 48  # ~48 s of 1 s emits -> >2 frames of history, bounds the find scan
+# Symbols held per PRN: two frames with their next SF1s, so a frame stays whole in the cache for
+# about a frame time after its next SF1 arrives, and the find scan stays bounded.
+SYM_MAX = 2 * NEED
 
 
 class _PrnState:
     def __init__(self):
-        self.emits = {}  # slot0 -> np.array(0/1) one per distinct nav_obs emit
+        self.emits = {}  # slot0 -> np.array(0/1), the new symbols of one nav_obs emit
         self.grid0 = None
         self.last_obs = None
+        self.theta = None  # last emit's theta0 (rad, (-pi/2, pi/2])
+        self.pol = 1  # chained polarity applied to incoming emits
         self.sf2 = None  # (bits[600], t_decoded)
         self.toi = None
         self.n_frames = 0
+        # frame start slots the repair has searched: a complete frame's stored symbols do not
+        # change, so each is searched once
+        self.tried = set()
         self.last_decode = 0.0
 
 
@@ -50,6 +65,7 @@ class Cnav2Predictor:
             rec_dt = float(obs["rec_dt"])
             phase = int(obs["phase"])
             br = int(obs["br"])
+            rot = complex(float(obs.get("rot_re", 1.0)), float(obs.get("rot_im", 0.0)))
             pairs = obs["bits"]
         except (KeyError, TypeError, ValueError):
             return
@@ -59,18 +75,26 @@ class Cnav2Predictor:
         if key == st.last_obs:
             return
         st.last_obs = key
+        # theta0 = -arg(rot), reduced mod pi: an odd pi-step from the last emit flips the chain
+        theta = -math.atan2(rot.imag, rot.real)
+        if st.theta is not None and round((theta - st.theta) / math.pi) % 2:
+            st.pol = -st.pol
+        st.theta = theta
         sym_s = br * rec_dt
         t0 = utc_ref - phase * rec_dt
         if st.grid0 is None:
             st.grid0 = t0
         base = int(round((t0 - st.grid0) / sym_s))
-        # nav_obs signs are +-1; CNAV-2 symbols are 0/1 (SF1 patterns + LDPC), so map -1->1, +1->0.
+        held = max((s0 + len(a) for s0, a in st.emits.items()), default=None)
+        # nav_obs signs are +-1; CNAV-2 symbols are 0/1 (SF1 patterns + LDPC), so map -1->1, +1->0
+        # after the chain's polarity. Successive emits overlap: only the slots past the newest one
+        # held are stored, so each symbol is held once.
         m = {}
         for bi, sg in pairs:
             bi, sg = int(bi), int(sg)
-            if sg not in (1, -1):
+            if sg not in (1, -1) or (held is not None and base + bi < held):
                 continue
-            m[base + bi] = 0 if sg > 0 else 1
+            m[base + bi] = 0 if sg * st.pol > 0 else 1
         if len(m) < 2:
             return
         slots = sorted(m)
@@ -83,9 +107,12 @@ class Cnav2Predictor:
                         [m[s] for s in range(s0, s1 + 1)], dtype=np.int8
                     )
                 seg = i + 1
-        if len(st.emits) > EMIT_MAX:
-            for s in sorted(st.emits)[:-EMIT_MAX]:
-                st.emits.pop(s, None)
+        n = sum(len(a) for a in st.emits.values())
+        if n > SYM_MAX:
+            while n > SYM_MAX and len(st.emits) > 1:
+                n -= len(st.emits.pop(min(st.emits)))
+            lo = min(st.emits)
+            st.tried = {s for s in st.tried if s >= lo}
         now = time.time()
         if self._min_gap and now - st.last_decode < self._min_gap:
             return
@@ -94,11 +121,14 @@ class Cnav2Predictor:
 
     # ----------------------------------------------------------------- decode
     def _runs(self, st):
+        """Contiguous runs of the cached emits: (start slot, symbols, cuts), cuts holding
+        (index into symbols, emit slot0) where each later emit's first new symbol lands."""
         if not st.emits:
             return []
         runs = []
         cur0 = None
         cur = None
+        cuts = []
         for s0 in sorted(st.emits):
             a = st.emits[s0]
             if cur is None:
@@ -108,21 +138,60 @@ class Cnav2Predictor:
             if s0 <= end:
                 ov = end - s0
                 if ov < len(a):
+                    cuts.append((len(cur), s0))
                     cur = np.concatenate([cur, a[ov:]])
             else:
-                runs.append((cur0, cur))
-                cur0, cur = s0, a.copy()
-        runs.append((cur0, cur))
+                runs.append((cur0, cur, cuts))
+                cur0, cur, cuts = s0, a.copy(), []
+        runs.append((cur0, cur, cuts))
         return runs
 
     def _decode(self, prn, st):
-        for _run0, syms in self._runs(st):
+        for run0, syms, cuts in self._runs(st):
             if len(syms) < NEED:
                 continue
-            for _i, toi, sf2, _sf3 in C2.find_frames(syms):
-                st.n_frames += 1
-                st.toi = toi
-                st.sf2 = (sf2, time.time())
+            found = set()
+            for i, toi, sf2, _sf3 in C2.find_frames(syms):
+                found.add(i)
+                self._store(st, toi, sf2)
+            self._repair(st, run0, syms, cuts, found)
+
+    def _store(self, st, toi, sf2):
+        st.n_frames += 1
+        st.toi = toi
+        st.sf2 = (sf2, time.time())
+
+    def _repair(self, st, run0, syms, cuts, found):
+        """CRC-guided boundary-flip repair of the run's frames that find_frames did not decode.
+
+        A complete frame whose SF1 is in the run but which fails sync or CRC may straddle one
+        wrong chain link: an emit whose sign came out flipped, and every later emit with it.
+        Flip the frame and its next SF1 from each emit boundary inside them and take the first
+        flip under which find_frames decodes it. That emit and every later one are flipped in
+        the cache, the chain with them. syms is updated in place for the run's later frames.
+        """
+        lut = C2._sf1_lut()
+        for i in range(len(syms) - NEED + 1):
+            if i in found or run0 + i in st.tried:
+                continue
+            if syms[i : i + C2.N_SF1].tobytes() not in lut:
+                continue
+            st.tried.add(run0 + i)
+            for b, s0 in cuts:
+                if not i < b < i + NEED:
+                    continue
+                w = syms[i : i + NEED].copy()
+                w[b - i :] ^= 1
+                got = next(C2.find_frames(w), None)
+                if got is None:
+                    continue
+                for s in st.emits:
+                    if s >= s0:
+                        st.emits[s] = st.emits[s] ^ 1
+                st.pol = -st.pol
+                syms[b:] ^= 1
+                self._store(st, got[1], got[2])
+                break
 
     # ----------------------------------------------------------------- serve
     def health(self, prn):
@@ -140,7 +209,8 @@ class Cnav2Predictor:
 # ------------------------------------------------------------------- self-test
 def _selftest():
     """Build CNAV-2 frames (systematic SF2/SF3 + CRC + arbitrary parity, SF1, interleave), feed as
-    1 s emits of br=1 10 ms symbols, recover the SF2 + TOI through the full predictor."""
+    overlapping 1 s emits of br=1 10 ms symbols, recover the SF2 + TOI through the full
+    predictor."""
     import gps_cnav2 as C
     from galileo_inav import crc24q
 
@@ -170,22 +240,32 @@ def _selftest():
     f1, _, _ = build(101)
     stream = np.hstack([f0, f1]).astype(np.int8)  # 3600 symbols
 
+    # 1 s emits (100 symbols) every 25 symbols, as a 0.25 s broker poll reads the rolling
+    # combiner, made as the combiner makes them: the carrier phase phi drifts 0.1 rad per emit,
+    # each emit reports theta0 = phi reduced to [-pi/2, pi/2) as rot = e^{-i*theta0} and takes
+    # its signs against theta0, so its sign flips whenever phi crosses an odd multiple of pi/2.
+    # A 2 rad phase step at the emit starting on symbol 1000 is a link the chain gets wrong; the
+    # boundary-flip repair must find it.
     pred = Cnav2Predictor()
     pred._min_gap = 0.0
     e = 0
-    ELEN = 100
-    sgn = -1  # one polarity for the whole contiguous run;
-    # find_frames' both-polarity check resolves the global flip.
+    ELEN, STEP = 100, 25
+    phi = 2 * math.pi * rng.random()
     while e + ELEN <= len(stream):
+        n = math.floor(phi / math.pi + 0.5)
+        theta0, sgn = phi - math.pi * n, 1 - 2 * (n % 2)
         obs = {
             "utc_ref": e * SYM_S,
             "rec_dt": 0.010,
             "phase": 0,
             "br": 1,
+            "rot_re": math.cos(theta0),
+            "rot_im": -math.sin(theta0),
             "bits": [[i, int((1 - 2 * int(stream[e + i])) * sgn)] for i in range(ELEN)],
         }
         pred.ingest(prn, obs)
-        e += ELEN
+        e += STEP
+        phi += 2.0 if e == 1000 else 0.1
 
     h = pred.health(prn)
     print("health:", h)

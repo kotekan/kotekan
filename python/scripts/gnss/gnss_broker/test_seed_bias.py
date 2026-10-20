@@ -13,6 +13,7 @@ import ast
 import os
 import unittest
 
+from gnss_broker import seeding
 from gnss_broker.clockbias import ClockBias
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -137,20 +138,65 @@ class TestSeedBiasWiring(unittest.TestCase):
                 "%s reads cb.value: the hint bias would reach a seed" % name,
             )
 
-    def test_first_seed_guard_is_mode_independent(self):
-        """The guard withholds first seeds until a bias exists, in every seed-bias mode. Under
-        'zero' the seed does not need the bias, but the guard also keeps first seeds off a
-        chain's first cycle, which runs before the dead-reckon stage stamps drp.now_w: a first
-        seed then would raise in _nh_joint_consensus (None - None)."""
-        with open(os.path.join(HERE, "seeding.py")) as f:
-            tree = ast.parse(f.read())
-        tests = [
-            ast.unparse(n.test)
-            for n in ast.walk(tree)
-            if isinstance(n, ast.If) and "cb.available" in ast.unparse(n.test)
-        ]
-        self.assertEqual(len(tests), 1, tests)
-        self.assertNotIn("seed_bias_source", tests[0])
+
+class _FirstSeed(Exception):
+    pass
+
+
+class _NS(object):
+    def __init__(self, **kw):
+        self.__dict__.update(kw)
+
+
+class TestFirstSeedGuard(unittest.TestCase):
+    """stage_detections_to_seeds withholds a PRN's first seed under 'ema' until this chain's
+    bias is solved (cb.available), and under 'zero' only until the dead-reckon stage has
+    stamped drp.now_w (a first seed on a chain's first cycle would raise in
+    _nh_joint_consensus). Driven through the real stage: the first-seed log line is the
+    point past the guard, and the stub log stops the stage there."""
+
+    def first_seed(self, source, available, now_w):
+        ctx = _NS(
+            best={5: (80.0, -1200.0, 300.0, 1000, 0, -1.0, -1.0)},
+            dr_pd=None,
+            up=None,
+            pred={5: (-1201.0,)},
+            cb=_NS(seed=0.0, available=available),
+            dr_untrusted={},
+            seeds={},
+            drp=_NS(now_w=now_w),
+            args=_NS(
+                dr_constellation="G",
+                mask_deg=0.0,
+                dll_deep_gate_from_search=0.0,
+                almanac=True,
+                seed_doppler="pred",
+                seed_bias_source=source,
+            ),
+        )
+
+        def log(msg):
+            if "FIRST SEED" in msg:
+                raise _FirstSeed(msg)
+
+        saved = seeding._log
+        seeding._log = log
+        try:
+            seeding.stage_detections_to_seeds(ctx)
+        except _FirstSeed:
+            return True
+        finally:
+            seeding._log = saved
+        return False
+
+    def test_zero_waits_for_now_w_not_the_solve(self):
+        self.assertTrue(self.first_seed("zero", False, 100.0))
+        self.assertFalse(self.first_seed("zero", False, None))
+        self.assertFalse(self.first_seed("zero", True, None))
+
+    def test_ema_waits_for_the_solve(self):
+        self.assertFalse(self.first_seed("ema", False, 100.0))
+        self.assertTrue(self.first_seed("ema", True, 100.0))
 
 
 if __name__ == "__main__":

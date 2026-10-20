@@ -4,7 +4,9 @@
     python3 scripts/gnss/test_broker_multi.py
 
 Each chain runs its yaml flags plus the command line's extra args, and the broker keeps the
-last --interval, so the cycle report must divide by that one.
+last --interval, so the cycle report must divide by that one. The production chains yaml,
+resolved as broker_multi resolves it, must keep the carrier feeds off the command on every chain
+that closes the carrier loop.
 """
 import os
 import sys
@@ -38,9 +40,33 @@ def test_slack_interval():
     check(got is None, "no --interval anywhere gives None (got %r)" % got)
 
 
+def test_commanded_chains_feed_no_command():
+    """Every chain's record assembler folds the applied carrier trim out of its records (one
+    generator function builds them all), so a chain that commands the carrier
+    (--rrate-command) must not add the command back to its coarse and KCOH rates."""
+    from gnss_broker.cli import build_parser
+
+    ap = build_parser("test")
+    path = os.path.join(HERE, "..", "..", "config", "gnss_chains_chord.yaml")
+    n = 0
+    for name, argv in broker_multi.load(path):
+        a = ap.parse_args(argv)
+        if not a.rrate_command:
+            continue
+        n += 1
+        check(
+            a.rrate_feed_applied == 0,
+            "%s: rrate-command runs with rrate-feed-applied 0 (got %d)"
+            % (name, a.rrate_feed_applied),
+        )
+    check(n > 0, "the chains yaml has commanded chains (%d)" % n)
+
+
 def main():
     print("broker_multi.py slack interval checks")
     test_slack_interval()
+    print("commanded chains in config/gnss_chains_chord.yaml")
+    test_commanded_chains_feed_no_command()
     if _fails:
         print("FAILED (%d)" % len(_fails))
         return 1

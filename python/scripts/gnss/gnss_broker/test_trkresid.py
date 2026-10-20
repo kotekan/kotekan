@@ -188,7 +188,13 @@ class TestResidual(unittest.TestCase):
         hop, arg, dop = self.records(1, 1, quantize=False)[0]
         ctx = _Obj(
             dr_state={"pd": self.pd, "clk": self.clk, "drift": 0.0},
-            drp=_Obj(t_now_abs=hop / float(HPS), tag="G", now_w=1000.0),
+            drp=_Obj(
+                t_now_abs=hop / float(HPS),
+                tag="G",
+                now_w=1000.0,
+                clk_now=self.clk,
+                drift=0.0,
+            ),
             cp_predicted=self.model,
             probe_set=set(),
             dllp=_Obj(
@@ -227,6 +233,49 @@ class TestResidual(unittest.TestCase):
         self.assertIn("telem row shape changed", lines[0][1])
         self.assertEqual(res[1]["n"], 1)
         self.assertLess(abs(res[1]["chips"] - 0.17), 2e-3)
+
+    def test_stage_removes_the_seeds_clock(self):
+        """The stage removes clk_now at drp.drift, the clock the seeds ride, not dr_state's
+        clock at its stamp: here dr_state holds a clock 1 chip off (a joint-consume chain's
+        correction) with no drift of its own, the records are 2 s old, and the seeds' clock
+        moves at the 0.01 chips/s model drift, so the residual is the bias alone."""
+        hop, arg, dop = self.records(1, 1, quantize=False)[0]
+        ctx = _Obj(
+            dr_state={"pd": self.pd, "clk": self.clk - 1.0, "drift": None},
+            drp=_Obj(
+                t_now_abs=hop / float(HPS) + 2.0,
+                tag="G",
+                now_w=1000.0,
+                clk_now=self.clk + 0.02,
+                drift=0.01,
+            ),
+            cp_predicted=self.model,
+            probe_set=set(),
+            dllp=_Obj(
+                fleet={
+                    1: {
+                        "present": True,
+                        "coh_row": {
+                            "code_phase_chips": arg,
+                            "doppler_hz": dop,
+                            "pow_hop": hop,
+                        },
+                    }
+                }
+            ),
+            telem_client=None,
+            telem_chain=None,
+            args=_Obj(
+                hops_per_sec=HPS,
+                chip_rate_hz=CHIP,
+                carrier_hz=CARR,
+                code_doppler_sign=1.0,
+            ),
+            code_len=L,
+        )
+        res = tr.tracker_residuals(ctx)
+        self.assertLess(abs(res[1]["chips"] - 0.17), 2e-3, res[1])
+        self.assertLess(abs(res[1]["raw"] - (self.clk + 0.02 + 0.17)), 2e-3, res[1])
 
 
 if __name__ == "__main__":

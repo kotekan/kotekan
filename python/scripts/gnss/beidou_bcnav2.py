@@ -201,7 +201,8 @@ def find_frames(symbols):
 # BRDC cross-check. CNAV-style (B-CNAV1/2 shared): A = A_ref(SatType) + dA + Adot*tk;
 # n = n0 + dn0 + 0.5*dn0dot*tk. Angle fields are in semicircles; the scale folds in BDS_PI
 # (radians), as in the Galileo tables. Types 10 (ephemeris I) and 11 (ephemeris II); type 11
-# has no IODE, so bcnav2_predictor pairs them by freshness (BDS ephemeris is ~hourly).
+# has no IODE, so bcnav2_predictor pairs them by freshness (BDS ephemeris is ~hourly) and,
+# across a change of type 10's IODE, by order in the stream.
 BCNV2_EPH_FIELDS = {
     # Type 10 -- Ephemeris I
     "t_oe": (10, 61, 11, False, 300.0),

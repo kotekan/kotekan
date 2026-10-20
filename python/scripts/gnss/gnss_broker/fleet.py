@@ -4,7 +4,8 @@ fleet_dll sums every instance's raw Early/Prompt/Late powers into one code discr
 (docs/CHORD_GNSS_SHARED_DLL.md), and apply_presence decides which PRNs it may trim.
 fleet_coherent removes the common per-record phase across instances for the deep statistics and
 the record-stream carrier rate. fleet_spectrum_aligned and fit_spectrum_delay fit a code delay
-from the per-channel prompts, and poll_rf_stats collects receiver-wide stream health.
+from the per-channel prompts, and poll_rf_stats collects receiver-wide stream health, which
+dark_instances compares with each instance's despread.
 
 The combines are per chain (each signal has its own combiners). No function here keeps state
 between calls: fleet_dll's hop_hist, the one thing carried across cycles, is owned by the caller.
@@ -97,7 +98,9 @@ def parse_drops(metrics_text, gpu):
     return out
 
 
-def poll_rf_stats(endpoints, lobes_fn, fetch_sk=False, fetch_drops=False):
+def poll_rf_stats(
+    endpoints, lobes_fn, fetch_sk=False, fetch_drops=False, live_elems=None
+):
     """GET <tap>/rf_stats from each endpoint -> {url: per-instance stream health}: power and
     clip lobes, plus spectral-kurtosis RFI (fetch_sk) and drop counters (fetch_drops). All of it
     is per-instance, receiver-wide health, not per satellite, so it goes to the publisher's
@@ -106,6 +109,13 @@ def poll_rf_stats(endpoints, lobes_fn, fetch_sk=False, fetch_drops=False):
     Each tap serves clip fraction and power per monitored channel and per absolute element; this
     reduces them to what a viewer renders and a log carries, and leaves the per-element arrays
     on the node.
+
+    The per-channel clip and the all-element figures cover every element in the tap, including
+    full-crate inputs that are not the array's (n_live_elem counts every powered slot).
+    live_elems (absolute element indices, array.live_element_ranges) restricts the
+    elem_clip_live figures to the array's own elements, over all monitored channels together,
+    leaving out any that read exactly zero power (a dark input). They are None when live_elems
+    is not given, names an element the tap does not serve, or names only dark ones.
 
     An instance whose monitor is not armed reports enabled=false. That is recorded as state
     "off", never published as zeros, so a dark panel reads as "not armed" rather than "no RFI";
@@ -142,6 +152,11 @@ def poll_rf_stats(endpoints, lobes_fn, fetch_sk=False, fetch_drops=False):
             p for p in ep if p > 0.0
         ]  # unpopulated element slots read exactly 0, so a
         # median that included them would read 0 and hide the signal
+        live = []
+        if live_elems and ec and min(live_elems) >= 0 and max(live_elems) < len(ec):
+            # A slot that reads exactly zero power is a dark input with no samples to rail,
+            # so it is left out rather than averaged in as a clean element.
+            live = [e for e in live_elems if e >= len(ep) or ep[e] > 0.0]
         summ = {
             "state": "on",
             # freq_ids: absolute channel identity from the frame's chord metadata, parallel to
@@ -158,6 +173,9 @@ def poll_rf_stats(endpoints, lobes_fn, fetch_sk=False, fetch_drops=False):
             "elem_clip_worst": (
                 max(range(len(ec)), key=lambda i: ec[i]) if ec else None
             ),
+            "elem_clip_live": (sum(ec[e] for e in live) / len(live) if live else None),
+            "elem_clip_live_max": max(ec[e] for e in live) if live else None,
+            "elem_clip_live_worst": max(live, key=lambda e: ec[e]) if live else None,
             "elem_power_med": (sorted(ep_live)[len(ep_live) // 2] if ep_live else None),
             "n_live_elem": len(ep_live) if ep else None,
             "passes": r.get("passes"),
@@ -179,6 +197,88 @@ def poll_rf_stats(endpoints, lobes_fn, fetch_sk=False, fetch_drops=False):
                 if d:
                     summ["drops"] = d
         out[url] = summ
+    return out
+
+
+def inst_key(u):
+    """node/gpu ("cx19/1") of an instance, from a node URL (http://cx19:12048/gnss1_srch_tap,
+    .../gnss1_e5b_n2combine) or a telemetry tag (cx19.1), so a GPU's tap and its combiners
+    match. None for anything else."""
+    m = re.search(r"//(\w+):\d+/gnss(\d)_", u) or re.match(r"(\w+)\.(\d)$", u)
+    return "%s/%s" % m.groups() if m else None
+
+
+def dark_instances(
+    fcoh, rf, floor_margin=3.0, peer_frac=0.1, min_prns=2, tap_frac=0.25
+):
+    """Instances that despread nothing while their tap is fed: a channel map or comb wiring
+    fault. -> {tap url: {node, gpu, n_prn, snr_max, floor, peer_med_min, tap_power,
+    tap_power_fleet}}.
+
+    `fcoh` is one chain's fleet_coherent result and `rf` the get_rf instances (poll_rf_stats).
+    A PRN counts for instance u when the median of its peers' per_inst clears floor_margin x the
+    null floor, so only satellites the other instances detect on their own enter the verdict. u
+    is at the floor on such a PRN when its per_inst is below the floor and below peer_frac of
+    that median. u is dark when it is at the floor on every PRN that counts, at least min_prns
+    of them, and its tap is fed: state on, with a mean per-channel power (over its lobes) at
+    least tap_frac of the fleet median. A dead input darkens the tap too and is the tap's to
+    report.
+
+    The peer bar keeps a weak instance out: strong satellites raise the null floor above an
+    instance that sees a few times less than its peers, while a dark instance reads the coherent
+    sum's noise scale, ~1, under both bars.
+    """
+    taps = {}  # node/gpu -> (tap url, mean per-channel power)
+    for url, v in (rf or {}).items():
+        k = inst_key(url)
+        ls = (v.get("lobes") or []) if v.get("state") == "on" else []
+        n = sum(l.get("n_chan") or 0 for l in ls)
+        if k and n:
+            taps[k] = (url, sum(l["power"] * (l.get("n_chan") or 0) for l in ls) / n)
+    pw = sorted(p for _, p in taps.values() if p > 0.0)
+    if not pw:
+        return {}
+    fleet_pw = pw[len(pw) // 2]
+    seen = {}  # instance -> its counted PRNs' summary
+    for prn, v in sorted((fcoh or {}).items()):
+        pi = v.get("per_inst") or {}
+        floor = float(v.get("floor") or 0.0)
+        for u, s in sorted(pi.items()):
+            peers = sorted(x for w, x in pi.items() if w != u)
+            if not peers:
+                continue
+            m = peers[len(peers) // 2]
+            if m < floor_margin * floor:
+                continue
+            c = seen.setdefault(
+                u,
+                {"n": 0, "snr_max": 0.0, "peer_med_min": m, "floor": 0.0, "dark": True},
+            )
+            c["n"] += 1
+            c["snr_max"] = max(c["snr_max"], s)
+            c["peer_med_min"] = min(c["peer_med_min"], m)
+            c["floor"] = max(c["floor"], floor)
+            if not (s < floor and s < peer_frac * m):
+                c["dark"] = False
+    out = {}
+    for u, c in sorted(seen.items()):
+        k = inst_key(u)
+        if not c["dark"] or c["n"] < min_prns or k not in taps:
+            continue
+        url, p = taps[k]
+        if p < tap_frac * fleet_pw:
+            continue
+        node, gpu = k.split("/")
+        out[url] = {
+            "node": node,
+            "gpu": int(gpu),
+            "n_prn": c["n"],
+            "snr_max": c["snr_max"],
+            "floor": c["floor"],
+            "peer_med_min": c["peer_med_min"],
+            "tap_power": p,
+            "tap_power_fleet": fleet_pw,
+        }
     return out
 
 
@@ -247,6 +347,7 @@ def fleet_dll(
     anchor_utc=None,
     hops_per_sec=None,
     now=None,
+    dll_spacing=0.5,
 ):
     """Sum the fleet's raw Early/Prompt/Late powers per PRN -> one full-bandwidth discriminator.
 
@@ -272,7 +373,7 @@ def fleet_dll(
     inside the noise for one instance and clear it for eight.
 
     Instances that live_instances excludes still report their newest hop into src_hops but
-    contribute no rows.
+    contribute no rows. dll_spacing is the chain's tap offset, for apply_presence.
 
     Returns {prn: {disc, q, p_pow, hop, n_src, n_chan, coh_row, coh_src, coh_quad}}, plus the
     presence fields apply_presence adds (q_floor, q_med, q_sigma, p_floor, p_med, p_floor_src,
@@ -423,6 +524,7 @@ def fleet_dll(
         deep_gate_prns=deep_gate_prns,
         deep_gate_margin=deep_gate_margin,
         admit_displaced=admit_displaced,
+        dll_spacing=dll_spacing,
     )
 
 
@@ -525,6 +627,7 @@ def apply_presence(
     deep_gate_prns=None,
     deep_gate_margin=3.0,
     admit_displaced=None,
+    dll_spacing=0.5,
 ):
     """Floors, the presence verdict and the deep gate, in place, on a fleet_dll-shaped dict.
 
@@ -536,6 +639,10 @@ def apply_presence(
     tracked satellites, whose median on CHORD is a signal level. With fewer than 3 probes
     reporting q, or fewer than 2 reporting p_pow, every row is refused: present False,
     present_gate UNANCHORED.
+
+    dll_spacing is the chain's Early/Late tap offset from Prompt (--dll-spacing), the tap
+    geometry the displaced admission's epl_decompose fits. The fit's correlation is triangular
+    whatever the signal's.
     """
     # The presence bars are measured every cycle from the noise probes, never assumed: q's noise
     # value and spread move with the number of contributing instances and with the EMA length,
@@ -650,7 +757,7 @@ def apply_presence(
             )
             _bright = v["p_pow"] >= p_floor
             if _blind or _bright:
-                _off, _ped = epl_decompose(v["q"], v["disc"])
+                _off, _ped = epl_decompose(v["q"], v["disc"], dll_spacing)
                 v["off_chips"], v["pedestal"] = _off, _ped
                 if (
                     _ped <= admit_displaced["pedestal_max"]
@@ -691,13 +798,15 @@ def apply_presence(
             v["deep_gate_snr"], v["deep_gate_floor"] = ds, fl
     # The chain bar counts every row the displaced gate admitted, including a PRN the deep gate
     # has re-judged since: its offset is evidence of a chain event like any other row's.
-    # The chain's satellites this cycle: present on their peaks (not through the displaced
-    # gate, not a probe) plus the displaced candidates themselves.
+    # The chain's satellites this cycle: present on their peaks (not a displaced candidate, not
+    # a probe) plus the displaced candidates themselves, each once: a candidate the deep gate
+    # has re-judged present is counted among the candidates, not again as present.
+    _cand = set(a[0] for a in _admitted)
     _seen = sum(
         1
         for _p, _v in out.items()
         if _v.get("present")
-        and not str(_v.get("present_gate", "")).endswith("+disp")
+        and _p not in _cand
         and not (probe_prns and _p in probe_prns)
     )
     _refused, _why = displaced_chain_event(

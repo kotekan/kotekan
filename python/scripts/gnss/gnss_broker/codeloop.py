@@ -88,10 +88,11 @@ def stage_dll_control(ctx):
         # Python integrates the PRNs outside that set and stands down for each one the fast
         # loop takes, so while the POSTs succeed no PRN is trimmed by both and none falls
         # between them. With --fleet-trim-url set, trimarm arms every PRN present within the
-        # last fleet_trim_hold_s, so Python trims a PRN only on the cycle it turns present
-        # after a longer absence, or on the single-combiner path while it is not held armed.
-        # Standing down it still measures: the dedup state advances and the DLL line still
-        # reports the PRN.
+        # last fleet_trim_hold_s except one present on deep-fold evidence below the probe
+        # floor, so Python trims a PRN on the cycle it turns present after a longer absence,
+        # while it is present only on that deep evidence, or on the single-combiner path while
+        # it is not held armed. Standing down it still measures: the dedup state advances and
+        # the DLL line still reports the PRN.
         #
         # The standing trim is not popped at handover: it stays in the seed as a valid offset,
         # and the C++ loop corrects the residual. On release the C++ trim leaks away gradually

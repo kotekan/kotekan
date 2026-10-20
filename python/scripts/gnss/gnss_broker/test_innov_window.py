@@ -7,8 +7,10 @@ ctx.innov_hist and ctx.minnov_hist by time, 600 s back from now. The writers app
 sample per broker pass (~2 s), so the histories must be pruned by age at 600 s, not by count: a
 120-sample cap holds only ~240 s and the "10-minute" p95 is a 4-minute one. Checked on the
 helper both writers share (fits.append_windowed), on dr_joint_shadow's MINNOV append driven
-for 700 s, and on the INNOV write site in seeding.stage_detections_to_seeds, which appends a
-detection the search re-serves only once (driven through test_escape_dedup's context).
+for 700 s, and on the INNOV write site in seeding.stage_detections_to_seeds. Both writers take
+a detection the search re-serves (same ref_hop) only once, so the p95 is over detections: the
+INNOV site is driven through test_escape_dedup's context, the MINNOV one through
+dr_joint_shadow with the state's feed recorded beside it.
 
 @author Keith Vanderlinde
 """
@@ -75,6 +77,7 @@ class _JS(object):
     def __init__(self, keys):
         self._idx = {k: i for i, k in enumerate(keys)}
         self._n = {k: 99 for k in keys}
+        self.fed = []  # every measurement key handed to cycle()
 
     def wrap(self, d):
         return ((d + 5115.0) % 10230.0) - 5115.0
@@ -83,18 +86,17 @@ class _JS(object):
         return 0.0
 
     def cycle(self, meas, t):
-        pass
+        self.fed.extend(k for k, _, _ in meas)
 
     def drain_notes(self):
         return []
 
 
-def test_minnov_append():
-    logs = []
+def _shadow_ctx(js, prns, logs):
+    """A context dr_joint_shadow runs on: feed open (no warmup), every PRN above
+    joint_min_snr and tracked, no P2C hold."""
     dr._log = lambda msg: logs.append(msg)
     dr._log_rl = lambda key, msg, every_s=10.0: logs.append(msg)
-    prns = (3, 5)
-    js = _JS([("L5", p) for p in prns])
     c = NS()
     c.args = NS(
         joint_shadow=True,
@@ -107,18 +109,33 @@ def test_minnov_append():
     c.band_id, c.code_len = "1176.45MHz", 10230.0
     c.rx = NS(joint_receiver=lambda *a, **k: js, joint_ambiguous=lambda: False)
     c.dr_state = {"clk": 150.0, "joint_log_next": 1e18}
-    c.best = {p: (30.0,) for p in prns}
     c.uptime_s = 0.0
     c.minnov_hist = {}
     c.track_ok = lambda p: True
     c.p2c_hold = lambda js_, key: False
     c.p2c_tick = lambda js_, t: None
+    return c
+
+
+def _pass(c, prns, t, ref_hop):
+    """One broker pass: the search serves each PRN's detection made at ref_hop."""
+    c.t0 = t
+    c.uptime_s = t - 1000.0
+    c.best = {p: (30.0, 0.0, 0.0, ref_hop) for p in prns}
+    c.drp = NS(offs=[(p, 0.5) for p in prns], tag="L5", t_now_abs=t, now_w=t)
+    dr.dr_joint_shadow(c)
+
+
+def test_minnov_append():
+    """A search that re-detects every PRN at every pass: one MINNOV sample per pass, and the
+    10-minute window holds them all."""
+    logs = []
+    prns = (3, 5)
+    js = _JS([("L5", p) for p in prns])
+    c = _shadow_ctx(js, prns, logs)
     t = 1000.0
     while t <= 1000.0 + RUN_S:
-        c.t0 = t
-        c.uptime_s = t - 1000.0
-        c.drp = NS(offs=[(p, 0.5) for p in prns], tag="L5", t_now_abs=t, now_w=t)
-        dr.dr_joint_shadow(c)
+        _pass(c, prns, t, int(t * 1000))
         t += PASS_S
     check(not [m for m in logs if "disabled" in m], "dr_joint_shadow ran every pass")
     for p in prns:
@@ -128,6 +145,39 @@ def test_minnov_append():
             len(win) == 301,
             "PRN %d: MINNOV holds %d samples of the 600 s window (301)" % (p, len(win)),
         )
+
+
+def test_minnov_once_per_detection():
+    """The search re-serves a detection, with its ref_hop, until its next pass; dr_joint_shadow
+    feeds it to the joint state and records its MINNOV once, so minnov_n_10m and the state's
+    counts are over detections, not broker passes."""
+    logs = []
+    prns = (3, 5)
+    js = _JS([("L5", p) for p in prns])
+    c = _shadow_ctx(js, prns, logs)
+    for i in range(10):
+        _pass(c, prns, 1000.0 + i * PASS_S, 777)
+    for p in prns:
+        n = len(c.minnov_hist.get(p, []))
+        check(
+            n == 1,
+            "PRN %d: one detection served 10 passes: %d MINNOV sample(s) (1)" % (p, n),
+        )
+    check(
+        sorted(js.fed) == [("L5", 3), ("L5", 5)],
+        "...and the joint state was fed it once per PRN (%s)" % js.fed,
+    )
+    js = _JS([("L5", p) for p in prns])
+    c = _shadow_ctx(js, prns, logs)
+    for i in range(16):
+        _pass(c, prns, 1000.0 + i * PASS_S, 1000 + i // 2)
+    for p in prns:
+        n = len(c.minnov_hist.get(p, []))
+        check(
+            n == 8,
+            "PRN %d: 8 detections over 16 passes: %d MINNOV samples (8)" % (p, n),
+        )
+    check(len(js.fed) == 16, "...and 16 joint feeds, 8 per PRN (%d)" % len(js.fed))
 
 
 def test_innov_site():
@@ -227,6 +277,8 @@ def test_warmup_cycle_clock():
     while t <= t_first + 600.0:
         c.t0 = t
         c.uptime_s = t - t_first
+        # A fresh detection every pass (new ref_hop), so only the warmup can withhold the feed.
+        c.best = {p: (30.0, 0.0, 0.0, int(t * 1000)) for p in prns}
         c.drp = NS(offs=[(p, 0.5) for p in prns], tag="L5", t_now_abs=t, now_w=t)
         before = js.fed
         dr.dr_joint_shadow(c)
@@ -254,6 +306,7 @@ def main():
     for fn in (
         test_helper,
         test_minnov_append,
+        test_minnov_once_per_detection,
         test_innov_site,
         test_innov_once_per_detection,
         test_warmup_cycle_clock,

@@ -7,7 +7,9 @@ stage_fleet_trim_arming).
 
 Arming follows presence with a hold, not presence at an instant. A released PRN's trim leaks
 away, so a satellite flickering across the gate would be armed and released every cycle and
-lose the standing trim it built each time.
+lose the standing trim it built each time. A PRN present only on deep-fold evidence, with
+prompt power below the probe floor the fast loop gates its windows on, is not armed: the
+Python integrator trims it.
 
 The readback is the only place the real tap position is visible: the tracker despreads at
 seed + standing trim, so a judge of the seed that ignores the trim sees only part of the
@@ -143,18 +145,34 @@ def stage_fleet_trim_arming(ctx):
     dls.armed_last is recorded before the POST: it is what next cycle's Python integrator
     stands down against. If the POST fails, the controller keeps actuating the last armed set
     it received: until a POST succeeds, a PRN armed after that set is driven by neither arm
-    and one released after it by both.
+    and one released after it by both. After policy_ttl_s without a POST the controller
+    disarms the chain, and the PRNs in dls.armed_last are driven by neither arm.
 
     dls.held_off is the set neither loop trims this cycle (slewing seeds and lobe releases);
-    their Python trims are dropped here and codeloop.py does not integrate them."""
+    their Python trims are dropped here and codeloop.py does not integrate them. A PRN below
+    the probe floor is not armed either, but the Python DLL keeps integrating it unless it is
+    also held off (held off wins)."""
     if ctx.args.fleet_trim_url:
         _now_present = [
             _p for _p in (ctx.dllp.fleet or {}) if ctx.dllp.fleet[_p].get("present")
         ]
+        # Present on deep-fold evidence with prompt power below the probe floor (the deep
+        # gate, and the displaced admission's q+deep:probes+disp; fleet.apply_presence). The
+        # fast loop leaks every window whose prompt power is below p_floor_abs, the floor
+        # these rows already failed, and the Python integrator stands down for an armed PRN,
+        # so armed they would be stepped by neither. They are left out of the armed set, hold
+        # or not, and the per-cycle Python DLL trims them (codeloop.py).
+        _below_floor = set(
+            _p
+            for _p in _now_present
+            if ctx.dllp.fleet[_p].get("p_floor")
+            and ctx.dllp.fleet[_p].get("p_pow", 0.0) < ctx.dllp.fleet[_p]["p_floor"]
+        )
         # Stamped and aged on the frozen cycle clock, so a replay arms the same set at any
         # replay speed.
         for _p in _now_present:
-            ctx.dls.hold[_p] = ctx.t0
+            if _p not in _below_floor:
+                ctx.dls.hold[_p] = ctx.t0
         _slew = slewing(ctx)
         for _p, _g in sorted(_slew.items()):
             _log_rl(
@@ -166,11 +184,14 @@ def stage_fleet_trim_arming(ctx):
         ctx.dls.held_off = set(_slew) | lobe_referee(ctx, _slew)
         for _p in ctx.dls.held_off:
             ctx.dls.trim.pop(_p, None)
-        # Armed: present within the last fleet_trim_hold_s (cli.py), and not held off.
+        # Armed: present within the last fleet_trim_hold_s (cli.py), not held off and not
+        # below the floor (a floor row's hold may still be running from before it fell).
         _armed = sorted(
             _p
             for _p, _t in ctx.dls.hold.items()
-            if ctx.t0 - _t < ctx.args.fleet_trim_hold_s and _p not in ctx.dls.held_off
+            if ctx.t0 - _t < ctx.args.fleet_trim_hold_s
+            and _p not in ctx.dls.held_off
+            and _p not in _below_floor
         )
         # What next cycle's Python integrator stands down against; recorded before the POST
         # (see the docstring).
@@ -217,8 +238,9 @@ def stage_fleet_trim_arming(ctx):
             ctx.dls.stat["posts"] += 1
         except Exception as _e:
             # Never take the cycle down for the fast loop. The controller keeps actuating the
-            # last armed set it received; the trackers drop its trims (trim_ttl_s) only when
-            # it stops posting them.
+            # last armed set it received until its policy_ttl_s passes without a post, then
+            # disarms the chain and stops posting its trims; the trackers drop the trims they
+            # hold after trim_ttl_s.
             ctx.dls.stat["fail"] += 1
             ctx.dls.stat["last_err"] = str(_e)
         _log_rl(

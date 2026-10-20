@@ -20,12 +20,21 @@ import json
 import os
 import time
 
-from gnss_broker.transport import _TR, _now, _get, _log, _log_rl, parse_endpoints
+from gnss_broker.transport import (
+    _TR,
+    _now,
+    _get,
+    _log,
+    _log_rl,
+    log_tag,
+    parse_endpoints,
+)
 from gnss_broker import combdll
 from gnss_broker import elemgain
 from gnss_broker.fits import rf_lobes
 from gnss_broker import signals
 from gnss_broker.fleet import (
+    dark_instances,
     fleet_spectrum_aligned,
     fit_spectrum_delay,
     poll_rf_stats,
@@ -129,11 +138,18 @@ def instr_rf_stats(ctx):
             _carr = signals.carriers_for_chains(
                 [c for c in (ctx.args.rf_bands or "").split(",") if c.strip()]
             )
+            # The array's own elements (array.live_element_ranges in the node yaml), read each
+            # poll: the tap measures every input in the crate, the array's and the rest.
+            # Unreadable leaves the live-element figures None, never the all-element ones in
+            # their place.
+            import gnss_arraymap
+
             _rf = poll_rf_stats(
                 _rf_ep,
                 lambda ch, pw, lo, hi, fids=None: rf_lobes(ch, pw, lo, hi, fids, _carr),
                 fetch_sk=ctx.args.rfi_stats,
                 fetch_drops=ctx.args.drop_stats,
+                live_elems=gnss_arraymap._live_ranges(gnss_arraymap.NODE_CONFIG),
             )
             ctx.publisher.set_rf(_rf, ctx.t0)
             _on = [v for v in _rf.values() if v.get("state") == "on"]
@@ -142,16 +158,24 @@ def instr_rf_stats(ctx):
                     (max(l["clip"] for l in v["lobes"]) for v in _on if v.get("lobes")),
                     default=0.0,
                 )
+                # The worst instance's mean rail over the array's own elements, all bands.
+                _live_clip = [
+                    v["elem_clip_live"]
+                    for v in _on
+                    if v.get("elem_clip_live") is not None
+                ]
                 _log_rl(
                     "rfstats",
                     "RF PATH: %d/%d instance(s) armed, worst clip %.4f of "
-                    "nibbles, %d lobe(s)/instance, pass cost %.2f ms"
+                    "nibbles, %d lobe(s)/instance, pass cost %.2f ms, "
+                    "live-element rail %s"
                     % (
                         len(_on),
                         len(_rf_ep),
                         _clip,
                         max((len(v.get("lobes") or []) for v in _on), default=0),
                         max((v.get("cost_ms") or 0.0) for v in _on),
+                        ("%.4f" % max(_live_clip)) if _live_clip else "unknown",
                     ),
                     every_s=300.0,
                 )
@@ -168,6 +192,46 @@ def instr_rf_stats(ctx):
                         "which lobe (get_rf) before blaming a chain." % (100.0 * _clip),
                         every_s=120.0,
                     )
+
+
+def instr_dark_inst(ctx):
+    """DARK-INST: an instance at the floor on every PRN its peers detect while its tap is fed
+    (fleet.dark_instances), logged per chain and published on get_rf beside the taps.
+
+    Its trap: such an instance serves its rows on time, so FLEET-INST, the fleet count and the
+    viewer's locks all list it as present, and only its own tap tells replicas pointed at the
+    wrong channels from a dead input. The taps are the ones the chain that sets
+    --rf-stats-endpoints published (instr_rf_stats), read back from the shared publisher, so a
+    broker without a publisher has no verdict. Measurement only: the instance stays in every
+    fleet sum."""
+    if ctx.publisher is None:
+        return
+    _dark = dark_instances(
+        ctx.dllp.fcoh,
+        ctx.publisher.rf_instances(),
+        floor_margin=ctx.args.coh_floor_margin,
+    )
+    ctx.publisher.set_dark(_dark, ctx.t0)
+    for _url, _d in sorted(_dark.items()):
+        _log_rl(
+            "dark-inst-%s" % _url,
+            "DARK-INST: node %s gpu %d chain %s despreads nothing: deep snr at most %.1f "
+            "(floor %.1f) on all %d PRN(s) its peers detect (their median at least %.0f), "
+            "while its tap's per-channel power is %.2f of the fleet median. A channel map or "
+            "comb wiring fault: compare the tap's freq_ids with the chain's channel_ids. It "
+            "still counts in every fleet sum."
+            % (
+                _d["node"],
+                _d["gpu"],
+                log_tag() or ctx.args.signal,
+                _d["snr_max"],
+                _d["floor"],
+                _d["n_prn"],
+                _d["peer_med_min"],
+                _d["tap_power"] / _d["tap_power_fleet"],
+            ),
+            every_s=120.0,
+        )
 
 
 def instr_tap_walk(ctx):
@@ -211,6 +275,7 @@ def instr_tap_walk(ctx):
                 # the arm that has them
                 coh_from=ctx.dllp.fleet,
                 admit_displaced=ctx.dllp.admit_disp,
+                dll_spacing=ctx.args.dll_spacing,
             )
         except Exception as e:
             _cf = None

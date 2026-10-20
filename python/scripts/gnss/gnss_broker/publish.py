@@ -59,6 +59,7 @@ class FleetPublisher:
 
     def __init__(self, port, log):
         self._rf = {"t": None, "instances": {}}  # receiver-wide RF health (set_rf)
+        self._dark = {}  # chain -> {"t", "instances": {tap url: verdict}} (set_dark)
         # Receiver-wide sky, so the viewer draws what the broker believes instead of
         # re-deriving it. Keyed by constellation because each chain contributes its own and
         # they must not overwrite each other.
@@ -169,8 +170,9 @@ class FleetPublisher:
                                 )
                         body = json.dumps(_sky).encode()
                     elif p.endswith("get_rf"):
-                        # Receiver-wide, so the body ignores the chain selector.
-                        body = json.dumps(pub._rf).encode()
+                        # Receiver-wide, so the body ignores the chain selector. `dark` holds
+                        # each chain's dark instances, keyed by the tap URLs of `instances`.
+                        body = json.dumps(dict(pub._rf, dark=pub._dark)).encode()
                     elif p.endswith("get_status"):
                         body = json.dumps(pub._collect(ids, "rows")).encode()
                     else:
@@ -254,6 +256,20 @@ class FleetPublisher:
         """
         with self._lock:
             self._rf = {"t": t, "instances": rf}
+
+    def rf_instances(self):
+        """The newest set_rf instances (tap URL -> health), for each chain's dark check."""
+        with self._lock:
+            return dict(self._rf["instances"])
+
+    def set_dark(self, dark, t, chain=None):
+        """One chain's dark instances (fleet.dark_instances), served in get_rf under `dark`.
+
+        Per chain, because a channel map can be wrong for one chain and right for the others on
+        the same GPU; keyed by tap URL, so a reader joins each verdict to its tap's row.
+        """
+        with self._lock:
+            self._dark[chain] = {"t": t, "instances": dark}
 
     def set_sky(self, sysc, sats, t):
         """One constellation's az/el, from the chain that predicts it. Receiver-wide output.
@@ -363,8 +379,9 @@ class FleetPublisher:
                     ),
                     # The tracker's code residual (trkresid): the replica placement the closed
                     # fleet DLL holds, lifted from the records' slot 1/2 pair, minus the model,
-                    # minus the solved clock. The same quantity as dr_integ_chips but from the
-                    # stage that resolves ~1e-2 chips, and present on chains with no detectors.
+                    # minus the clock the seeds ride (clk_now). The quantity dr_integ_chips forms
+                    # against the solved clock, but from the stage that resolves ~1e-2 chips,
+                    # and present on chains with no detectors.
                     # `_s` is the currency-free form (seconds): a consumer converting chips to
                     # metres must know which chips (L2C's are CM chips), and seconds do not ask.
                     "trk_resid_s": (_trk.get(prn) or {}).get("s"),
@@ -684,6 +701,13 @@ class _ChainView(object):
         # at its first call, which kills that chain while the others run on.
         # python/scripts/gnss/test_chainview_surface.py checks this class's surface.
         return self._pub.set_rf(rf, t)
+
+    def rf_instances(self):
+        # Receiver-wide: every chain reads the taps the polling chain published.
+        return self._pub.rf_instances()
+
+    def set_dark(self, dark, t):
+        return self._pub.set_dark(dark, t, chain=self._chain)
 
     def set_sky(self, sysc, sats, t):
         # Per-chain call site, receiver-wide effect: the chain names its own constellation and

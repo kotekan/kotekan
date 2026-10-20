@@ -4,8 +4,8 @@ same broadcast records.
 
 What each check guards:
   * The range rate. predict_one must rotate the velocity into the reception frame with the
-    position, so range_rate_mps is d(range_m)/dt (test_range_rate holds predict_all to the
-    same bar, with the reasoning).
+    position and add the light-time rate, so range_rate_mps is d(range_m)/dt
+    (test_range_rate holds predict_all to the same bar, with the reasoning).
   * The clock. sat_clk_s must be the broadcast clock predict_all computes from the same record:
     the polynomial plus the relativistic term F*e*sqrtA*sin(E), up to ~12 ns for G05 (e 0.005)
     and ~400 ns for E14 (e 0.17). Without the term, cold code seeds during a BRDC outage are
@@ -93,7 +93,7 @@ class TestDecodedRangeRate(unittest.TestCase):
             return predict_decoded(ent, t, lat, lon)
 
         worst, n = worst_rate_error(predict, toe_utc(rec))
-        self.assertGreater(n, 50, "too few near-zero-rate samples to test")
+        self.assertGreater(n, 1000, "too few samples with the satellite up")
         self.assertLess(worst, TOL, "range rate off d(range)/dt by %.4f m/s" % worst)
 
 

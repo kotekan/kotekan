@@ -9,10 +9,10 @@ minimum that can disagree. Once a chain has a clock and drift, one with nothing 
 locked on noise, whose residuals scatter over the code. A chain that has never solved makes no
 claim.
 
-While a chain's solve is not established, no chain in another band bootstraps its clock from
-it (deadreckon's cross-band bootstrap), its NH search hint learns no overlay offset
+While a chain's solve is not established, no other chain takes its clock (deadreckon's
+cross-band bootstrap and same-band adoption), its NH search hint learns no overlay offset
 (searchhint), and its clock mod the overlay epoch is not published (seeding). A chain locked
-on noise would otherwise hand another band a clock whole code periods off, and the hint would
+on noise would otherwise hand another chain a clock whole code periods off, and the hint would
 learn the same wrong epoch.
 """
 

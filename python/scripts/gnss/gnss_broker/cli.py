@@ -157,7 +157,8 @@ _FROZEN = dict(
     # walking model crosses this in minutes.
     model_primacy_exit_p95=3.0,
     # Enter gate: MINNOV samples needed in the 10-min window before its p95 is judged; a p95 needs
-    # a population before it means anything.
+    # a population before it means anything. One sample per new detection (dr_joint_shadow), so
+    # a satellite the search re-detects at least every 20 s reaches it.
     model_primacy_min_n=30,
     # Enter gate: a PRN may flip to model-primary (--model-primacy-max) when its 10-min MINNOV p95
     # is below this (chips) over at least model_primacy_min_n samples. Healthy established
@@ -465,12 +466,14 @@ _FROZEN = dict(
     # advanced for this many seconds; 0 disables. Log only: dr_clock_freeze_s holds the clock solve
     # meanwhile. A frozen time base is an upstream instance stall, not a tracking fault.
     fe_axis_stale_s=30.0,
-    # Accepted joint-state updates a satellite needs before it counts as established: before the P2c
-    # rotation (--joint-p2c-rotate) may withhold it, and before its MINNOV is recorded. Withholding
-    # a satellite never born into the state tests nothing. A search-anchored satellite is fed only
-    # on a detection above joint_min_snr, so the count accrues slowly; 50 is enough to establish a
-    # bias (sigma_b0 10 against a 0.3-chip measurement converges in tens of updates).
-    joint_mask_after=50,
+    # Accepted joint-state updates a satellite needs before it counts as established: before its
+    # MINNOV is recorded, and before the P2c rotation (--joint-p2c-rotate) may withhold it, since
+    # withholding a satellite never born into the state tests nothing. A satellite is fed once
+    # per new detection (dr_joint_shadow), so this counts independent detections. Set for MINNOV:
+    # a row's own clk + b_i is the mean of its detections, sigma joint_sigma / sqrt(n), 0.1 chip
+    # at 10, which widens MINNOV's scatter by 5% over a detection's own; the q_b walk holds an
+    # old row at 0.08-0.13 chip (a detection every 3-15 s), so more detections buy little.
+    joint_mask_after=10,
     # The joint 'rate' consumer (--joint-consume) refuses a |clk_rate| beyond this (ppm) and keeps
     # the l-a EMA. CHORD's reference is GPS-disciplined (code-rate offset ~4e-5 ppm), so 0.01 is
     # ~250x headroom and still refuses a runaway such as -0.028 ppm.
@@ -523,10 +526,14 @@ _FROZEN = dict(
     # beyond ~1 chip it is blind too. Prompt power over the probe floor is accepted as an
     # alternative; the pedestal and offset tests are what refuse a centred noise realisation.
     presence_disp_deep_margin=3.0,
-    # --presence-admit-displaced: max |fitted offset|, chips (fleet.epl_decompose). The fit assumes
-    # taps at +-0.5 chips on a triangular correlation, where the far tap leaves the triangle at
-    # |offset| = 0.5; past that the discriminator rails and carries only its sign, and admission
-    # would arm a loop with no gradient to follow.
+    # --presence-admit-displaced: max |fitted offset|, chips (fleet.epl_decompose, with the taps
+    # --dll-spacing s either side of Prompt on a triangular correlation). The far tap leaves the
+    # triangle at |offset| = 1 - s (0.5 at s = 0.5); past that the discriminator rails and carries
+    # only its sign. At s = 0.5 the bar sits 0.1 chip past that point on purpose: a railed
+    # discriminator still steps the trim toward the peak at the full rate, and the leak bounds the
+    # reachable trim well beyond 0.6 (1.25 chips on the slow DLL at s = 0.5, combdll.dll_integrate;
+    # more on the fast loop), so a sign-only pull from 0.5-0.6 still converges, back inside 1 - s
+    # where the gradient returns.
     presence_disp_off_max=0.6,
     # --presence-admit-displaced: max fitted noise pedestal, relative to the peak.
     # Displaced-but-strong rows fit ~0.03-0.08; weak rows and probes fit ~1 or more (E = P = L fits
@@ -912,8 +919,8 @@ def build_parser(description):
         action="store_true",
         help="admit to fleet presence a row that fails the q or prompt-power bar when "
         "the (E/P, L/P) decomposition (fleet.epl_decompose) reads its deficit as a "
-        "code offset rather than weakness (the fit assumes taps at +-0.5 chips on a "
-        "triangular correlation, whatever --dll-spacing is). q and prompt power both "
+        "code offset rather than weakness (the fit puts the taps at +-(--dll-spacing) "
+        "on a triangle, whatever the signal's correlation). q and prompt power both "
         "fall with the offset the DLL exists to remove, so without this a displaced "
         "satellite is never armed for its own correction. The row also needs evidence "
         "that the satellite is there (prompt power over the probe floor, or deep_snr "
@@ -1432,10 +1439,11 @@ def build_parser(description):
         metavar="CHIPS",
         help="Early/Late tap offset from Prompt, in the signal's own (component) "
         "chips. The taps are on the node; this value enters the trim law here (tau = "
-        "-disc/4 x (spacing/0.5)) and the C++ fast loop's copy, posted with its "
-        "policy, so it must match the node's dll_spacing for this chain "
-        "(config/gen_chord_gnss_config.py dll_spacing_chips): a mismatch is a pure "
-        "gain error. When changing both, cycle the nodes before the broker. The "
+        "-disc/4 x (spacing/0.5)), the C++ fast loop's copy, posted with its policy, "
+        "and the --presence-admit-displaced fit, so it must match the node's "
+        "dll_spacing for this chain (config/gen_chord_gnss_config.py "
+        "dll_spacing_chips): in the loops a mismatch is a pure gain error, in the fit "
+        "a misread offset. When changing both, cycle the nodes before the broker. The "
         "offset is set by the width of the correlation the loop closes on, not by the "
         "chip: E and L must sit inside its first null, where the discriminator is "
         "monotonic, or the loop false-locks off peak. 0.5 (the default) suits the "
@@ -1595,7 +1603,9 @@ def build_parser(description):
         help="base URL of the C++ fast code loop (GnssFleetTrim in the telemetry "
         "gather), e.g. http://127.0.0.1:12051/fleet_trim; empty (default) = off, and "
         "the broker's own integrator trims every PRN. Each cycle the broker POSTs "
-        "<url>/set_policy with the armed PRNs (present within fleet_trim_hold_s), the "
+        "<url>/set_policy with the armed PRNs (present within fleet_trim_hold_s, "
+        "except one present on deep-fold evidence with prompt power below the "
+        "probe-anchored floor, which the broker's integrator keeps), the "
         "loop constants (--fleet-trim-bandwidth, fleet_trim_leak_per_s, "
         "--dll-spacing), the probe-anchored prompt-power floor and the trackers' "
         "/set_trim targets. The loop then forms the comb discriminator and posts each "
@@ -1880,7 +1890,8 @@ def build_parser(description):
         help="this chain's constellation as a RINEX letter: the system the dead-reckon "
         "model predicts, the key of its satellites in the receiver-wide joint state, "
         "and the almanac's when --constellation is unset. C also makes --dr-min-prn "
-        "default to 19. Default G; --signal sets it.",
+        "default to 19 unless --signal names B3I (signals.prn_floor). Default G; "
+        "--signal sets it.",
     )
     ap.add_argument(
         "--signal-capability",
@@ -1905,8 +1916,10 @@ def build_parser(description):
         type=int,
         default=None,
         help="dead-reckon only PRNs >= this: a signal-capability floor, not a "
-        "visibility gate. Unset: 19 when --dr-constellation is C (B1C, B2a and B2b are "
-        "BDS-3 signals, and the PRNs below 19 are mostly BDS-2), else 1. It is the "
+        "visibility gate. Unset: the almanac's floor (signals.prn_floor), 19 when "
+        "--dr-constellation is C (B1C, B2a and B2b are BDS-3 signals, and the PRNs "
+        "below 19 are mostly BDS-2), except under --signal bds_b3i (B3I is on BDS-2 "
+        "and BDS-3 alike), else 1. It is the "
         "fallback: when --signal-capability's registry gate is in force on a BeiDou "
         "chain the floor is 1 whatever this says, since some PRNs below 19 (C11-C14) "
         "fly BDS-3 satellites. The search never detects a satellite that is not "

@@ -8,11 +8,14 @@ nothing.
     (app/panels/decode_health.js) names exactly those ids.
   * A flush whose write fails keeps the satellites it holds: the next good flush publishes
     them, rather than an empty list until each one is observed again.
+  * read_all counts the broker files, fresh or not, and the viewer panel labels an empty
+    table "no producer" only when there are none (the panel is rendered under node).
 """
 import json
 import os
 import re
 import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -73,6 +76,68 @@ class TestFailedFlush(unittest.TestCase):
         with open(path) as f:
             rec = json.load(f)
         self.assertEqual([s["prn"] for s in rec["sats"]], [3, 7])
+
+
+class TestNoProducer(unittest.TestCase):
+    """read_all counts the broker files present, fresh or not, and the panel names an empty
+    table "no producer" only when there are none."""
+
+    def setUp(self):
+        self.d = tempfile.mkdtemp()
+
+    def tearDown(self):
+        shutil.rmtree(self.d, ignore_errors=True)
+
+    def _write(self, chain, t):
+        w = dh.DecodeHealthWriter(os.path.join(self.d, chain + ".json"), chain, sys="G")
+        w.observe("GPS_L5_CNAV", 3, t, count=1, synced=True)
+        self.assertTrue(w.flush(t, force=True))
+
+    def test_file_count(self):
+        missing = os.path.join(self.d, "absent")
+        self.assertEqual(dh.read_all(missing, t_now=1000.0)["n_files"], 0)
+        self.assertEqual(dh.read_all(self.d, t_now=1000.0)["n_files"], 0)
+        open(os.path.join(self.d, "gps_l5.json.tmp.12"), "w").close()  # a writer's tmp
+        self._write("gps_l5", 1000.0)
+        out = dh.read_all(self.d, max_age_s=120.0, t_now=1500.0)
+        self.assertEqual((out["n_files"], out["chains"], out["signals"]), (1, [], {}))
+        out = dh.read_all(self.d, max_age_s=120.0, t_now=1010.0)
+        self.assertEqual((out["n_files"], len(out["chains"])), (1, 1))
+
+    @unittest.skipUnless(shutil.which("node"), "needs node")
+    def test_panel_labels(self):
+        d = self.d
+        shutil.copy(PANEL, os.path.join(d, "panel.mjs"))
+        with open(os.path.join(d, "run.mjs"), "w") as f:
+            f.write(
+                'import {DecodeHealthPanel} from "./panel.mjs";\n'
+                "const p = Object.create(DecodeHealthPanel.prototype);\n"
+                'p.root = {innerHTML: ""};\n'
+                "p._render(JSON.parse(process.argv[2]));\n"
+                "console.log(p.root.innerHTML);\n"
+            )
+
+        def render(data):
+            r = subprocess.run(
+                ["node", os.path.join(d, "run.mjs"), json.dumps(data)],
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(r.returncode, 0, r.stderr)
+            return r.stdout
+
+        self.assertIn(
+            "no producer", render({"signals": {}, "chains": [], "n_files": 0})
+        )
+        stale = render({"signals": {}, "chains": [], "n_files": 2})
+        self.assertIn("2 broker files, none fresh", stale)
+        self.assertNotIn("no producer", stale)
+        fresh = {
+            "signals": {},
+            "chains": [{"chain": "gps_l5", "t_age_s": 3}],
+            "n_files": 1,
+        }
+        self.assertIn("no satellite decoded yet", render(fresh))
 
 
 if __name__ == "__main__":

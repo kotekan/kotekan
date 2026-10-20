@@ -84,7 +84,7 @@ class Receiver(object):
         period, 10230 reference chips, and L2C-CM's 10230 at 0.5115 Mcps are 20 ms, 204600,
         which never shortens a state the 1-ms codes hold at 10230. A shorter period shortens
         the modulus in place; joint_ambiguous() reports a clock that has grown close to the
-        wrap. Any clk0 in kw must already be in reference chips (the feeder converts).
+        wrap. Any clk0 in kw must already be in reference chips.
 
         Same argument as the clock adoption's modulus rule: reducing to a shorter period is
         well defined, lengthening is not.
@@ -107,9 +107,10 @@ class Receiver(object):
             return self._joint["__receiver__"]
 
     def joint_ambiguous(self):
-        """True when |clk| exceeds 0.4 of the state's wrap, close enough that a measurement
-        from the shortest-code chain could be aliased. A consumer should not believe clk
-        while this holds; the JOINT[shadow] log line marks it AMBIGUOUS."""
+        """True when |clk| exceeds 0.4 of the state's wrap. Only the JOINT[shadow] log line
+        reads it, to mark the line AMBIGUOUS. Nothing gates on it: the state's innovations
+        and every consumer of the clock (joint_clk_delta, the dead-reckon gates) take it
+        modulo a window, where a clock near the wrap is as good as any other."""
         with self._lock:
             st = self._joint.get("__receiver__")
             return bool(st is not None and abs(st.clk) > 0.4 * st.L)

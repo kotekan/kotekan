@@ -150,13 +150,52 @@ def main():
     pol, _ = run(fleet={1: {"present": True, "p_floor_src": "peers", "p_floor": 0.02}})
     check(pol.get("p_floor_abs") == 0.0, "a peer-bar floor ships 0")
 
-    # 4. The clamp stays under half the tracker comb's grating lobe (320 ns): 1.47 chips at
+    # 4. A row present on deep-fold evidence with prompt power below the probe floor is not
+    #    armed: the fast loop leaks every window below p_floor_abs, so the Python DLL keeps
+    #    it. That holds inside the hold too, and the row does not refresh its hold. A row on
+    #    the deep gate whose prompt power clears the floor is armed as before.
+    now = time.time()
+    rows = {
+        1: ("q+p:probes", 9.0),
+        4: ("q+deep:probes+disp", 1.0),
+        5: ("deep", 1.5),
+        6: ("deep", 4.0),
+    }
+    pol, ctx = run(
+        fleet={
+            p: {
+                "present": True,
+                "present_gate": g,
+                "p_pow": pw,
+                "p_floor_src": "probes:3",
+                "p_floor": 2.0,
+            }
+            for p, (g, pw) in rows.items()
+        },
+        hold={5: now - 5.0},
+        t0=now,
+    )
+    check(
+        sorted(pol.get("armed") or []) == [1, 6],
+        "deep-evidence rows below the floor (4, 5 held) are not armed; 1 and 6 are: %r"
+        % sorted(pol.get("armed") or []),
+    )
+    check(
+        ctx.dls.armed_last == {1, 6},
+        "armed_last leaves them to the Python DLL: %r" % sorted(ctx.dls.armed_last),
+    )
+    check(
+        4 not in ctx.dls.hold and ctx.dls.hold.get(5) == now - 5.0,
+        "and they do not refresh the hold",
+    )
+
+    # 5. The clamp stays under half the tracker comb's grating lobe (320 ns): 1.47 chips at
     #    10.23 Mcps, 0.74 at E6's 5.115. L2C's lobe (0.16 chip) lies inside its code's own peak,
     #    so the clamp keeps the full 3 chips.
     clamps = [run(chip_rate_hz=r)[0].get("clamp") for r in (10.23e6, 5.115e6, 511.5e3)]
     check(clamps == [1.473, 0.737, 3.0], "clamp by chip rate: %r" % clamps)
 
-    # 5. A slewing seed is not trimmed: PRN 8 is 12 chips from its model, PRN 10 is 0.3 (an
+    # 6. A slewing seed is not trimmed: PRN 8 is 12 chips from its model, PRN 10 is 0.3 (an
     #    ordinary step), PRN 1's 9-chip gap was stamped 100 s ago and has gone stale (it left
     #    dead reckoning). 8 is left out of the armed set and its Python trim is dropped.
     d = new_dls()
@@ -171,7 +210,7 @@ def main():
     )
     check(ctx.dls.trim == {10: 0.2}, "the held-off PRN's Python trim is dropped")
 
-    # 6. The lobe referee. PRN 4 reads xcoh 0.02 over 128 records with its fast trim at 3.0
+    # 7. The lobe referee. PRN 4 reads xcoh 0.02 over 128 records with its fast trim at 3.0
     #    (past a quarter lobe), PRN 7 is on its peak (0.97), PRN 9 reads low on 3 records only,
     #    PRN 5 reads low with a 0.3-chip trim: a low xcoh the trim did not make. 4 is released
     #    after 30 s, stays released while its trim reads 2.0, is re-armed once it reads ~0, and
@@ -214,14 +253,14 @@ def main():
         "holdoff: not released again until 120 s: %r" % held,
     )
 
-    # 7. A slewing PRN is not judged by the referee: its xcoh is low because of the slew.
+    # 8. A slewing PRN is not judged by the referee: its xcoh is low because of the slew.
     d = new_dls()
     d.readback = {4: {"trim_chips": 3.0}}
     for t in (2000.0, 2040.0):
         pol, ctx = run(fleet=fl, dls=d, t0=t, dr_state={"slew_gap": {4: (t, 5.0)}})
     check(4 not in ctx.dls.lobe_release, "slewing PRN 4: no lobe release")
 
-    # 8. The release ends on a read that succeeded and no longer lists the PRN (the gather
+    # 9. The release ends on a read that succeeded and no longer lists the PRN (the gather
     #    erases a decayed trim's row), never on a failed read.
     def release_then(rb_ok):
         d = new_dls()
@@ -275,6 +314,43 @@ def main():
         rows.get(4, {}).get("n_xcoh") == 128,
         "fleet_dll_comb row carries n_xcoh (got %r)" % rows.get(4, {}).get("n_xcoh"),
     )
+
+    # 10. Below the floor AND slewing: held off wins. PRN 4 reads prompt power 1.0 under a
+    #     probe floor of 2.0 and its seed is 12 chips from its model: not armed, in held_off,
+    #     its Python trim dropped, and its hold not stamped. PRN 1 (above the floor) is armed.
+    d = new_dls()
+    d.trim = {4: 0.7, 1: 0.1}
+    now = 7000.0
+    pol, ctx = run(
+        fleet={
+            1: {
+                "present": True,
+                "present_gate": "q+p:probes",
+                "p_pow": 9.0,
+                "p_floor_src": "probes:3",
+                "p_floor": 2.0,
+            },
+            4: {
+                "present": True,
+                "present_gate": "deep",
+                "p_pow": 1.0,
+                "p_floor_src": "probes:3",
+                "p_floor": 2.0,
+            },
+        },
+        dls=d,
+        dr_state={"slew_gap": {4: (now, 12.0)}},
+        t0=now,
+    )
+    check(
+        4 in ctx.dls.held_off
+        and 4 not in (pol.get("armed") or [])
+        and 1 in (pol.get("armed") or []),
+        "below floor and slewing: PRN 4 held off and not armed, PRN 1 armed (%r)"
+        % sorted(pol.get("armed") or []),
+    )
+    check(4 not in ctx.dls.trim and ctx.dls.trim.get(1) == 0.1, "PRN 4's Python trim is dropped")
+    check(4 not in ctx.dls.hold, "and the floor row does not stamp its hold")
 
     print("-" * 70)
     if _fails:

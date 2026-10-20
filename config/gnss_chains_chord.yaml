@@ -218,18 +218,17 @@ chains:
         trackers: "http://cx19:12048/gnss{0..1}_inject,http://cx27:12048/gnss{0..1}_inject,http://cx42:12048/gnss{0..1}_inject,http://cx43:12048/gnss{0..1}_inject,http://cx44:12048/gnss{0..1}_inject,http://cx51:12048/gnss{0..1}_inject"
         combiner: gnss0_n2combine
         dll-combiners: "http://cx19:12048/gnss{0..1}_n2combine,http://cx27:12048/gnss{0..1}_n2combine,http://cx42:12048/gnss{0..1}_n2combine,http://cx43:12048/gnss{0..1}_n2combine,http://cx44:12048/gnss{0..1}_n2combine,http://cx51:12048/gnss{0..1}_n2combine"
-    # Trim presence for these PRNs is judged on detection (deep_snr >= 3 x deep_floor) rather
-    # than on summed prompt power. Prompt power falls when the tap is off-peak, so a
-    # prompt-gated satellite that drifts off the peak is never trimmed back. The deep fold
-    # integrates the same prompt coherently (carrier rate and phase searched, code not), so its
-    # ~10x integration gain keeps detecting a satellite the tap has drifted a fraction of a chip
-    # off, where prompt power already fails; beyond ~1 chip it is blind too.
-        dll-deep-gate: "4 9 27"
-    # Also deep-gate any PRN the search detects at snr >= 100, for dll-deep-gate-search-hold-s
-    # (90 s) after the detection. The search re-derives code phase over the full period, so
-    # it does not depend on where the tap sits, and unlike deep_snr it does not fire on noise.
-    # 100 admits only strong detections, far above the acquire bar (30) and the pure-noise
-    # ceiling the search logs each pass.
+    # Trim presence for a PRN the search detects at snr >= 100 is judged on detection
+    # (deep_snr >= 3 x deep_floor) rather than on summed prompt power, for
+    # dll-deep-gate-search-hold-s (90 s) after the detection. Prompt power falls when the tap
+    # is off-peak, so a prompt-gated satellite that drifts off the peak is never trimmed back.
+    # The deep fold integrates the same prompt coherently (carrier rate and phase searched,
+    # code not), so its ~10x integration gain keeps detecting a satellite the tap has drifted a
+    # fraction of a chip off, where prompt power already fails; beyond ~1 chip it is blind too.
+    # deep_snr can fire on noise, so the search names the PRNs. It re-derives code phase over
+    # the full period, which makes it independent of where the tap sits, and 100 admits only
+    # strong detections, far above the acquire bar (30) and the pure-noise ceiling the search
+    # logs each pass. No PRN is deep-gated by hand (dll-deep-gate is unset).
         dll-deep-gate-from-search: 100
     # The C++ fast code loop (GnssFleetTrim in the gather on this host, port 12051) forms the
     # comb discriminator and posts each armed PRN's trim once per telemetry window (~23.8/s),
@@ -294,12 +293,12 @@ chains:
     # the path-bias filter (the SEED-OFFSET line's "legacy"), refused per satellite where the
     # two differ by more than 5 chips.
         joint-consume: rate,slew
-    # Rotating coast test: withhold the best-established satellite from the joint solve for
-    # 600 s, log its residual against age (P2C lines), then rotate to one not tested recently.
-    # The residual's growth measures how well the shared state carries a satellite it is not
-    # told about. The withheld satellite is still seeded, but the joint solve that joint-consume
-    # reads runs without it. The residual needs detections, so only this chain can run it.
-        joint-p2c-rotate: true
+    # The rotating coast test (withhold the best-established satellite from the joint solve for
+    # 600 s, log its residual against age as P2C lines, rotate) is off. The state carries a
+    # withheld satellite to within +-0.27 chip, and it holds only about seven satellites: taking
+    # the best of them out of the solve that every chain's joint-consume reads costs more than
+    # the coast curve shows. The residual needs detections, so only this chain can run it.
+        joint-p2c-rotate: false
     # Up to 32 PRNs (no cap in practice) run model-primary: the seed comes from the dead-reckon
     # slew (BRDC + joint clk + b_sat) and detections only feed the joint filter and the MINNOV
     # referee, since the model forecasts an established satellite better than a re-anchor on
@@ -426,7 +425,8 @@ chains:
     # the chain is browned out, or when 3 or more PRNs share it in one cycle: that is a chain
     # event, not N detections. Admissions log "PRESENCE +displaced" and carry present_gate
     # '...+disp'. An admitted row is armed for the fast loop, which steps it only in windows
-    # whose prompt power clears the same probe floor.
+    # whose prompt power clears the same probe floor; one admitted on the deep fold with prompt
+    # power below that floor is left to the per-cycle DLL instead.
         presence-admit-displaced: true
 
   # BeiDou B2a pilot: the same 1176.45 MHz channels, 10.23 Mcps primary and per-PRN 100 ms
@@ -444,13 +444,16 @@ chains:
         dr-clock-adopt: true
         joint-consume: clk,rate
     # The carrier loop as on gal_e5a without the fine feed (rrate-phase-feed and its keys), so
-    # this chain feeds the rows only from the KCOH fold and the coarse deep-fold rate. Two more
-    # keys stay at their defaults: rrate-coarse-deweight 8 deweights the coarse rate while a
-    # KCOH update is fresh, and rrate-feed-applied 1 makes both feeds add the standing command
-    # back to each measurement (gal_e5a sets 0; see its note).
+    # this chain feeds the rows only from the KCOH fold and the coarse deep-fold rate.
+    # rrate-coarse-deweight stays at its default 8, which deweights the coarse rate while a
+    # KCOH update is fresh.
         rrate-command: true
         rrate-cmd-min-sig: 100
         carrier-max-hz: 10.0
+    # The record assembler folds the applied carrier trim out of every record, so the deep-fold
+    # and KCOH rates already read the whole residual. Adding the command back (the default 1)
+    # would make each row integrate its own actuation and ramp at the slew rate.
+        rrate-feed-applied: 0
         fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
         fleet-trim-bandwidth: 2.5
         fleet-trim-readback: 1
@@ -501,8 +504,8 @@ chains:
   # not deep_snr.
   # Like bds_b2a it is model-primary with no detectors (the search runs on GPS L5 only), and
   # `signal` implies the BDS-3-only capability gate. Its keys are bds_b2a's without the carrier
-  # loop (rrate-command, rrate-cmd-min-sig, carrier-max-hz); like gal_e5b it adopts gps_l5's
-  # clock across bands.
+  # loop (rrate-command, rrate-cmd-min-sig, carrier-max-hz, rrate-feed-applied); like gal_e5b
+  # it adopts gps_l5's clock across bands.
     bds_b2b:
         presence-admit-displaced: true
         seed-phase-transport: true
@@ -559,8 +562,8 @@ chains:
   # BeiDou B3I is data-only. The trackers despread it with the shared NH20 tiled into a 20 ms
   # code (BDS_B3I_NH), which leaves the 50 bps D1 nav sign, constant over each period; coherent
   # integration past 20 ms needs the nav-bit wipe no chain runs. `signal: bds_b3i` implies no
-  # capability gate (BDS-2 broadcasts B3I too), so the broker's BeiDou fallback floor applies:
-  # it predicts, maps and seeds only PRNs >= 19.
+  # capability gate and no PRN floor (BDS-2 and BDS-3 both broadcast B3I), so the broker
+  # predicts, maps and seeds every BeiDou PRN, C06-C08 and C11-C14 among them.
     bds_b3i:
         signal: bds_b3i
         dr-clock-adopt: true

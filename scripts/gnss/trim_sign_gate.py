@@ -21,10 +21,11 @@ in combined chips, so the slope is 1/comb_mult, and its sign is the actuator's.
     ./trim_sign_gate.py            # sweep, verdict
     ./trim_sign_gate.py -v         # and print the table
 
-The null is not at trim 0: e2e's default seed has a nonzero age and Doppler rate, so the
-open-loop error is over a chip. A sweep about trim 0 would sit outside the +-0.5-chip pull-in
-region, where the E/L discriminator is railed and has no gradient, so the null is located first
-(from two probes, which also measure the slope) and the sweep is centred on it.
+The null is located, not assumed at trim 0. e2e's default seed is exact, but an extra flag that
+perturbs the seed (--seed-cp-err, --seed-dop-err) moves the open-loop error, and a sweep about
+trim 0 could then sit outside the +-0.5-chip pull-in region, where the E/L discriminator is
+railed and has no gradient. So the null is found first (from two probes, which also measure the
+slope) and the sweep is centred on it.
 """
 import argparse
 import os

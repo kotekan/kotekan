@@ -104,16 +104,16 @@ array:
 
 runtime:
     # One pool per GPU on that GPU's NUMA node (GPU0: cpus 0-15, 32-47; GPU1: 16-31, 48-63), ten
-    # cores, coprime to dual_core()'s stride of 3. Never a DPDK RX lcore (5-7, 21-23) or its HT
-    # sibling (37-39, 53-55), and never one logical cpu for two cudaProcess stages; HT siblings
-    # of production cores are fine. Production's numa_halves (pathfinder.j2) also uses 4 (half
-    # 0's frame_service_cpu) and 19, 24, 31 (half 1's other_cpus); pool[0] is the core of the
-    # GPU's merged cudaProcess (dual_core).
-    cpu_affinity_gpu0: [4, 32, 33, 34, 35, 36, 40, 41, 42, 43]
-    cpu_affinity_gpu1: [19, 24, 31, 57, 58, 59, 60, 61, 62, 63]
+    # cores, coprime to dual_core()'s stride of 3. Production (pathfinder.j2: numa_halves and
+    # the DPDK lcores) uses every core in 0-31, so the pools hold only HT siblings (32-63), which
+    # are fine; never a DPDK RX lcore's sibling (37-39, 53-55), and never one logical cpu for two
+    # cudaProcess stages. pool[0] is the core of the GPU's merged cudaProcess (dual_core).
+    cpu_affinity_gpu0: [44, 32, 33, 34, 35, 36, 40, 41, 42, 43]
+    cpu_affinity_gpu1: [48, 49, 50, 57, 58, 59, 60, 61, 62, 63]
     # Cores of the node's REST server and the cube archiver, and the default for the aggregator
-    # and gather (--aggregator-cores, --gather-cores).
-    cpu_affinity: [19, 24, 31, 57, 58, 59, 60, 61, 62, 63]
+    # and gather (--aggregator-cores, --gather-cores): GPU1's pool, clear of production's cores
+    # on the same rule.
+    cpu_affinity: [48, 49, 50, 57, 58, 59, 60, 61, 62, 63]
     # Production's port: our kotekan replaces production's on these nodes. choco skips them
     # (maintenance mode), so the site tools push /earth_rotation_data (eop_push.sh) and
     # /updatable_config/bad_inputs (bad_inputs_cron.py) to 12048, hard-coded. A node whose EOP

@@ -21,13 +21,16 @@ Why it is not a copy of the LNAV predictor:
     it searches g2 in {False, True} and locks it on the first CRC pass (a constant of the
     link).
 
-  * Per-emit polarity is not chainable. Each nav_obs emit is a squaring-estimated window
-    whose global sign is independent, and a single missed flip mid-run makes the
-    convolutional decode garbage. The decoder is sized for abutting ~4 s (~200-symbol)
-    emits: consecutive emits are then 4 s apart in carrier phase, so theta-chaining (what
-    LNAV uses) misses flips, and they share only one boundary slot, too thin to vote
-    reliably. So polarity is resolved by CRC: a search over the per-emit sign pattern in a
-    short window (a message spans ~3 emits).
+  * Per-emit polarity. Each nav_obs emit is a squaring-estimated window whose global sign
+    is independent, and a single missed flip mid-run makes the convolutional decode garbage.
+    The combiner's emits are rolling: each holds the whole deep window, and successive emits
+    share most of their symbols, which fix the new emit's sign relative to the history. Such
+    an emit is merged into the island it extends, and only its new symbols are stored. Emits
+    that share fewer than MIN_OVERLAP symbols stay islands of their own: abutting ~4 s
+    (~200-symbol) block emits share one boundary slot, too thin to vote, and are 4 s apart
+    in carrier phase, so theta-chaining (what LNAV uses) misses flips. The island signs are
+    resolved by CRC: a search over the per-island sign pattern in a window of WIN_SYMS
+    symbols. Windows and the cache are counted in symbols, not emits.
 
 Consumed by gnss_broker/navbits.py, under --nav-decoder cnav or on the aux chain named by
 --cnav-combiner (L5-I); navbits.py logs the decode health and the decoded ephemeris with its
@@ -50,20 +53,21 @@ from galileo_inav import (
     conv_encode,
     viterbi_decode,
 )  # noqa: E402  (the shared CNAV FEC)
+from navobs_align import MAX_MISMATCH, MIN_OVERLAP, emit_offset  # noqa: E402
 
 SYM_S = 0.020  # L2C-CM record = 20 ms = one CNAV symbol (50 sps)
 MSG_SYMS = C.MSG_BITS * 2  # 600 symbols per 300-bit message (12 s)
-WIN_EMITS = 7  # emits per warm decode window. A 300-bit message is 600 symbols, and the
-# K=7 Viterbi needs ~35 bits to converge at each end, so a usable decode
-# wants ~2 messages of contiguous symbols: ~6-7 emits of ~200 symbols
-# (~4 s) each. A shorter window often fails to place the preamble. With
-# abutting emits (one ~200-record window every 4 s), a decode that blocks
-# the poll loop past the 4 s emit period misses an emit and fragments the
-# run, which is why the decode is staggered and budget-capped below. The
-# window takes the longest contiguous run. Polarity within a run is
-# resolved by _try_decode (cold: rotated 2^k brute; warm: chained
-# candidate + 1/2-emit-flip repair).
-COLD_EMITS = 5  # window (emits) for a cold PRN's full 2^k brute (2^5=32 sign patterns).
+WIN_SYMS = 1400  # symbols per warm decode window. A 300-bit message is 600 symbols, and
+# the K=7 Viterbi needs ~35 bits to converge at each end, so a usable decode
+# wants ~2 messages of contiguous symbols. A shorter window often fails to
+# place the preamble. With abutting emits (one ~200-record window every
+# 4 s), a decode that blocks the poll loop past the 4 s emit period misses
+# an emit and fragments the run, which is why the decode is staggered and
+# budget-capped below. The window is the trailing WIN_SYMS symbols of the
+# longest contiguous run. Polarity within a run is resolved by _try_decode
+# (cold: rotated 2^k brute; warm: chained candidate + 1/2-island-flip
+# repair).
+COLD_EMITS = 5  # islands in a cold window: a full 2^k brute (2^5=32 sign patterns)
 VITERBI_BUDGET = (
     40  # hard cap on Viterbi calls per decode attempt. It covers a cold attempt
 )
@@ -84,11 +88,9 @@ COLD_BACKOFF_MAX = (
     300.0  # ...capped at 5 min. Locked PRNs are exempt (their incremental decode is
 )
 # a handful of Viterbis -- cheap -- so they stay responsive).
-EMIT_MAX = 48  # keep ~48 emits (~3 min) per PRN
+SYM_MAX = 9600  # keep ~3 min of L2C symbols per PRN
 DECODED_MAX = 80  # keep the last ~80 decoded messages (~16 min)
-TRY_EVERY_SYMS = (
-    200  # attempt a decode once per ~4 s of new symbols per PRN (one new emit)
-)
+TRY_EVERY_SYMS = 200  # attempt a decode once per ~4 s of new symbols per PRN
 
 
 def _crc_msgs(bits):
@@ -120,13 +122,13 @@ def _g2(x, on):
 
 class _PrnState:
     def __init__(self):
-        self.emits = {}  # slot0 -> np.array(+-1 signs), one per distinct nav_obs emit
+        self.emits = {}  # slot0 -> np.array(+-1 signs), one sign island per stored emit
         self.last_obs = None  # (utc_ref, phase, br) dedup
         self.try_slot = None
         self.phase = (
             None  # per-PRN locked pair_phase (pseudorange shifts the symbol grid)
         )
-        self.pol = {}  # slot0 -> resolved emit sign (+-1) in one consistent frame
+        self.pol = {}  # slot0 -> resolved island sign (+-1) in one consistent frame
         self.decoded = {}  # start_slot -> data bits[300] (0/1), CRC-verified
         self.eph10 = None
         self.eph11 = None
@@ -161,7 +163,8 @@ class CnavPredictor:
 
     # ---------------- ingest ----------------
     def ingest(self, prn, obs):
-        """Store one combiner nav_obs (hard +-1 symbols) as an absolute-slot polarity island."""
+        """Store one combiner nav_obs (hard +-1 symbols) on absolute slots: merged into the
+        newest polarity island when they share enough symbols, else an island of its own."""
         st = self._p.setdefault(prn, _PrnState())
         try:
             utc_ref = float(obs["utc_ref"])
@@ -198,10 +201,28 @@ class CnavPredictor:
             arr == 0
         ).any():  # a gap inside the emit breaks the convolutional stream: drop it
             return
-        st.emits[slot0] = arr
-        if len(st.emits) > EMIT_MAX:
-            for s in sorted(st.emits)[:-EMIT_MAX]:
-                st.emits.pop(s, None)
+        # a symbol edge near half a slot can round this emit one slot off the history it
+        # overlaps; line it up with that history
+        d = emit_offset(slot0, arr, st.emits.items())
+        slot0, hi = slot0 + d, hi + d
+        if not self._merge(st, slot0, arr):
+            st.emits[slot0] = arr
+        # Bound the cache to the newest SYM_MAX symbols: drop the oldest islands, and trim the
+        # head of the oldest one kept rather than drop it whole, since an island of merged
+        # rolling emits grows for as long as the track lasts. The trimmed island keeps its
+        # resolved sign.
+        n = sum(len(a) for a in st.emits.values())
+        while n > SYM_MAX:
+            s = min(st.emits)
+            a = st.emits.pop(s)
+            cut = n - SYM_MAX
+            if cut < len(a) and s + cut not in st.emits:
+                st.emits[s + cut] = a[cut:]
+                if s in st.pol:
+                    st.pol[s + cut] = st.pol.pop(s)
+                n -= cut
+            else:
+                n -= len(a)
         newest = hi
         # Stagger and round-robin across PRNs. The broker ingests every PRN back-to-back in one
         # poll loop; if every cold PRN ran a full decode in one cycle, the loop would stall for
@@ -248,22 +269,43 @@ class CnavPredictor:
                         else min(COLD_BACKOFF_BASE * 2 ** (over - 1), COLD_BACKOFF_MAX)
                     )
 
+    def _merge(self, st, slot0, arr):
+        """Fold an emit into the newest island when it starts inside it, shares at least
+        MIN_OVERLAP symbols with it and disagrees on at most MAX_MISMATCH of them at one
+        relative sign: the symbols past the island's end are appended at that sign. Returns
+        False when the emit stays an island of its own."""
+        if not st.emits:
+            return False
+        last = max(st.emits)
+        isl = st.emits[last]
+        n = min(last + len(isl), slot0 + len(arr)) - slot0  # shared slots
+        if slot0 < last or n < MIN_OVERLAP:
+            return False
+        a = arr[:n].astype(np.int64)
+        agree = int(np.dot(a, isl[slot0 - last : slot0 - last + n].astype(np.int64)))
+        if n - abs(agree) > 2 * MAX_MISMATCH * n:
+            return False
+        sign = 1 if agree >= 0 else -1
+        st.emits[last] = np.concatenate([isl, sign * arr[n:]])
+        return True
+
     # ---------------- decode ----------------
-    # Polarity is resolved by CRC, not chaining. Each nav_obs emit's global sign is independent and
-    # abutting emits share only one slot, too thin to chain reliably: one bad link in a 7-emit
-    # window ruins the decode. Instead, every attempt decodes the freshest emits of the longest
-    # contiguous run while searching only the per-emit signs still unknown (st.pol holds the
-    # rest); pair_phase (per-PRN, pseudorange-shifted) and g2 (a global link constant) lock on the
-    # first CRC. In steady state only the newest 1-2 emits are free -> 2-4 Viterbi passes; a cold
-    # PRN pays a 2^k over the window's k emits, which covers the global sign.
+    # Polarity across islands is resolved by CRC, not chaining. Each island's global sign is
+    # independent, and abutting islands share only one slot, too thin to chain reliably: one bad
+    # link in a window ruins the decode. Instead, every attempt decodes the trailing WIN_SYMS
+    # symbols of the longest contiguous run while searching only the island signs still unknown
+    # (st.pol holds the rest); pair_phase (per-PRN, pseudorange-shifted) and g2 (a global link
+    # constant) lock on the first CRC. In steady state only the newest 1-2 islands are free ->
+    # 2-4 Viterbi passes; a cold PRN pays a 2^k over the window's k islands, which covers the
+    # global sign.
     def _try_decode(self, prn, st):
         starts = sorted(st.emits)
-        if len(starts) < 3:
+        if not starts:
             return
-        # Group emits into maximal contiguous runs (each next emit abuts/overlaps the prior, i.e.
-        # starts no later than one slot past its end), then take the longest run, not simply the
-        # freshest: the newest emit is often isolated by a gap, and insisting on it collapses the
-        # window to one emit. Ties go to the fresher run.
+        # Group islands into maximal contiguous runs (each next island abuts/overlaps the prior,
+        # i.e. starts no later than one slot past its end), then take the longest run in symbols,
+        # not simply the freshest: the newest island is often isolated by a gap, and insisting on
+        # it collapses the window to one emit. Ties go to the fresher run.
         runs = [[starts[0]]]
         for s in starts[1:]:
             prev = runs[-1][-1]
@@ -271,34 +313,38 @@ class CnavPredictor:
                 runs[-1].append(s)
             else:
                 runs.append([s])
-        best = max(runs, key=lambda r: (len(r), r[-1]))
-        # Cold (no emit of the freshest WIN_EMITS resolved yet): a small window and a full 2^k
-        # brute over every sign pattern, bounded by 2^COLD_EMITS. A warm search without a
-        # resolved emit in its window would never try the global sign. Warm: the freshest
-        # WIN_EMITS, resolved emits fixed from st.pol, only the free ones searched.
-        cold = not any(s in st.pol for s in best[-WIN_EMITS:])
-        chain = best[-(COLD_EMITS if cold else WIN_EMITS) :]
-        if len(chain) < 3:
-            return
+        best = max(runs, key=lambda r: (r[-1] + len(st.emits[r[-1]]) - r[0], r[-1]))
+        # The window: the run's newest islands back to where they span WIN_SYMS symbols. Cold
+        # (none of them resolved yet): at most COLD_EMITS of those and a full 2^k brute over
+        # every sign pattern. A warm search without a resolved island in its window would never
+        # try the global sign. Warm: resolved islands fixed from st.pol, only the free ones
+        # searched.
+        end = best[-1] + len(st.emits[best[-1]])
+        w0 = len(best) - 1
+        while w0 > 0 and end - best[w0] < WIN_SYMS:
+            w0 -= 1
+        cold = not any(s in st.pol for s in best[w0:])
+        chain = best[max(w0, len(best) - COLD_EMITS) :] if cold else best[w0:]
+        lo = max(chain[0], end - WIN_SYMS)
         hist, owner = {}, {}
         for s in chain:
             arr = st.emits[s]
-            for i in range(len(arr)):
+            for i in range(max(0, lo - s), len(arr)):
                 hist[s + i] = int(arr[i])
                 owner[s + i] = s
         lo, hi = min(hist), max(hist)
         if lo % 2:  # even-anchor: the pair grid is absolute (utc)
             lo += 1
         if hi - lo + 1 < MSG_SYMS:
-            # Say so once per PRN. This window can never hold a message, and returning quietly
-            # is indistinguishable from "decoding, just not yet": the chain would report NO
-            # DECODE forever. It is reachable by configuration: the window is counted in emits
-            # (WIN_EMITS / COLD_EMITS) while what matters is the symbol span, so a combiner
-            # emitting shorter windows than L2C's 4 s starves it. The fix is on the producer
-            # (raise that chain's integration_length so one emit spans more symbols); raising
-            # the emit count is not available, because a cold bootstrap is 2^COLD_EMITS
-            # Viterbis.
-            if len(chain) >= (COLD_EMITS if cold else WIN_EMITS):
+            # Say so once per PRN when a cold window is cut to COLD_EMITS islands short of a
+            # message: it can never hold one, and returning quietly is indistinguishable from
+            # "decoding, just not yet": the chain would report NO DECODE forever. It is reachable
+            # by configuration: block emits shorter than L2C's 4 s do not overlap enough to
+            # merge, so a cold window of COLD_EMITS of them spans too few symbols. The fix is on
+            # the producer (raise that chain's integration_length so one emit spans more
+            # symbols); raising the island count is not available, because a cold bootstrap is
+            # 2^COLD_EMITS Viterbis.
+            if len(chain) < len(best) - w0:
                 self._warn_short = getattr(self, "_warn_short", set())
                 if prn not in self._warn_short:
                     self._warn_short.add(prn)
@@ -340,7 +386,7 @@ class CnavPredictor:
         acc = {}
         for k, s in enumerate(chain):
             arr = st.emits[s]
-            m = {s + i: int(arr[i]) for i in range(len(arr))}
+            m = {s + i: int(arr[i]) for i in range(max(0, lo - s), len(arr))}
             if s in st.pol:
                 sg = st.pol[s]
             elif acc:
@@ -471,7 +517,7 @@ def _selftest():
         np.int8
     )  # transmitted +-1 (module convention)
 
-    # Feed as abutting ~201-symbol emits (the geometry the window constants assume) with an
+    # Feed as abutting ~201-symbol block emits (each an island of its own) with an
     # independent random global sign each (the squaring estimate's arbitrary per-emit
     # polarity) -- the CRC search must resolve it.
     pred = CnavPredictor(log=print)

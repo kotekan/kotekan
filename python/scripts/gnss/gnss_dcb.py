@@ -241,8 +241,8 @@ def signal_bias_s(dcb, sysc, prn, signal, gal_inav=False):
     """Seconds to add to the broadcast clock for `signal`, from measured DCBs; None if the
     needed pairs are absent (the caller falls back to the broadcast TGD/BGD).
 
-    Covers GPS L5, Galileo E5a/E5b and BeiDou B2a/B2b; any other signal returns None. Every
-    case is (datum - our signal), the datum being the combination the broadcast clock is
+    Covers GPS L5 and L2C, Galileo E5a/E5b and BeiDou B2a/B2b; any other signal returns None.
+    Every case is (datum - our signal), the datum being the combination the broadcast clock is
     fitted to. With DSB(a,b) = b_a - b_b, the ionosphere-free identity behind GPS and Galileo:
         b_IF(1,2) - b_X = DSB(1,X) + DSB(1,2)/(gamma_12 - 1)
     """
@@ -261,6 +261,14 @@ def signal_bias_s(dcb, sysc, prn, signal, gal_inav=False):
             return None
         d_1w_5 = d_1c_5x - d_1c_1w  # b_C1W - b_C5X
         return d_1w_5 + d_1w_2w / (GAMMA_L1L2 - 1.0)
+    if sysc == "G" and "l2c" in sig:
+        # datum = L1P/L2P IF (C1W/C2W). L2C is C2L, reached from C2W:
+        #   b_IF(1W,2W) - b_C2L = gamma_12 * DSB(C1W,C2W) / (gamma_12 - 1) + DSB(C2W,C2L)
+        d_1w_2w = _dsb(tab, "C1W", "C2W")
+        d_2w_2l = _dsb(tab, "C2W", "C2L")
+        if d_1w_2w is None or d_2w_2l is None:
+            return None
+        return GAMMA_L1L2 * d_1w_2w / (GAMMA_L1L2 - 1.0) + d_2w_2l
     if sysc == "E":
         # The datum depends on the record type, which the caller knows: F/NAV clocks are
         # E1/E5a iono-free, I/NAV clocks E1/E5b. Both DSBs reach every combination exactly,

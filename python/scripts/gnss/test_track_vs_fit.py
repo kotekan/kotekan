@@ -422,6 +422,7 @@ class TestHeldPhase(unittest.TestCase):
         )
         ctx = NS(
             args=args,
+            t0=1000.0,  # the cycle clock: dr_seed stamps the slew gap on it (trimarm's hold)
             band_id="1176.45MHz",
             code_len=L,
             dr_min_prn=0,

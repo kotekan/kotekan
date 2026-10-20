@@ -32,7 +32,7 @@ from gnss_ephemeris import (  # noqa: E402
     C_LIGHT,
     GAMMA_E1E5A,
     GAMMA_E1E5B,
-    GAMMA_L1L5,
+    GAMMA_L1L2,
     GLO_L3_BIAS_M,
     GLO_SLOT_SVN,
     glonass_l3_bias_s,
@@ -62,16 +62,25 @@ def _r(slot, when="2026-10-19T00:00:00"):
 
 
 class TestGPS(unittest.TestCase):
-    def test_l5_scales_by_gamma_and_flips_sign(self):
-        """IS-GPS-705: an L5 user owes gamma_15 * TGD, subtracted from the clock. A typical
-        TGD of -8.38 ns gives a positive correction of ~+15 ns; a sign error moves the seeds
-        the wrong way by twice the term."""
+    def test_l5_is_the_icd_term_without_isc(self):
+        """IS-GPS-705: an L5 user's clock is dt_SV - TGD + ISC_L5I5. ISC_L5I5 is not in
+        RINEX 3, so without a DCB pair the term is -TGD, unscaled: a TGD of -8.38 ns gives
+        +8.38 ns. The 1/f^2 scaling (gamma_15 * TGD, +15.03 ns) is not the ICD's form, and a
+        sign error moves the seeds the wrong way by twice the term."""
         self.assertAlmostEqual(
-            group_delay_s(_g(tgd=-8.38 * NS), "gps_l5"),
-            +GAMMA_L1L5 * 8.38 * NS,
+            group_delay_s(_g(tgd=-8.38 * NS), "gps_l5"), +8.38 * NS, places=15
+        )
+
+    def test_l2c_is_the_l2p_term(self):
+        """TGD is defined on L1P/L2P, so the L2P term -gamma_12 * TGD is exact there, and L2C
+        shares L2P's carrier. A TGD of -8.38 ns gives +13.80 ns; -TGD would give +8.38 ns and
+        no term 0."""
+        self.assertAlmostEqual(
+            group_delay_s(_g(tgd=-8.38 * NS), "gps_l2c"),
+            +GAMMA_L1L2 * 8.38 * NS,
             places=15,
         )
-        self.assertAlmostEqual(GAMMA_L1L5, 1.79329, places=4)
+        self.assertAlmostEqual(GAMMA_L1L2, 1.64694, places=4)
 
     def test_l1_is_the_unscaled_term(self):
         self.assertAlmostEqual(
@@ -161,7 +170,6 @@ class TestNegativeControls(unittest.TestCase):
             self.assertEqual(group_delay_s(e, ""), 0.0)
 
     def test_unknown_signal_is_zero_not_a_guess(self):
-        self.assertEqual(group_delay_s(_g(tgd=-8.4 * NS), "gps_l2c"), 0.0)
         self.assertEqual(group_delay_s(_e(3 * NS), "gal_e6"), 0.0)
 
     def test_zero_tgd_is_zero_correction(self):
@@ -173,6 +181,7 @@ class TestNegativeControls(unittest.TestCase):
         blow straight past it."""
         for e, sig in (
             (_g(tgd=-45 * NS), "gps_l5"),
+            (_g(tgd=-45 * NS), "gps_l2c"),
             (_e(-16 * NS, 4 * NS), "gal_e5a"),
             (_e(-16 * NS, 4 * NS, fnav=False), "gal_e5b"),
             (_c(tgd2=47 * NS), "bds_b2b"),
@@ -219,6 +228,55 @@ class TestDcbSource(unittest.TestCase):
         v = self.m.signal_bias_s(tab, "G", 1, "gps_l5")
         self.assertIsNotNone(v)
         self.assertAlmostEqual(v, -1e-9 + 2e-9 / (self.m.GAMMA_L1L2 - 1.0), places=18)
+
+    def test_gps_l2c_reaches_c2l_through_c2w(self):
+        """The datum is L1P/L2P IF and L2C is C2L:
+        b_IF - b_C2L = gamma_12 * DSB(C1W,C2W) / (gamma_12 - 1) + DSB(C2W,C2L). Without the
+        C2W-C2L pair the satellite falls back to the broadcast -gamma_12 * TGD."""
+        g = self.m.GAMMA_L1L2
+        tab = {("G", 1): {("C1W", "C2W"): 2e-9, ("C2W", "C2L"): 1e-9}}
+        v = self.m.signal_bias_s(tab, "G", 1, "gps_l2c")
+        self.assertIsNotNone(v)
+        self.assertAlmostEqual(v, g * 2e-9 / (g - 1.0) + 1e-9, places=18)
+        e = dict(sys="G", prn=1, tgd=-8.38 * NS, iodc=0.0, l2_codes=0)
+        self.assertAlmostEqual(group_delay_s(e, "gps_l2c", tab), v, places=18)
+        part = {("G", 1): {("C1W", "C2W"): 2e-9}}
+        self.assertIsNone(self.m.signal_bias_s(part, "G", 1, "gps_l2c"))
+        self.assertAlmostEqual(
+            group_delay_s(e, "gps_l2c", part), +g * 8.38 * NS, places=18
+        )
+
+    def test_gps_l2c_broadcast_term_tracks_the_dcb_path(self):
+        """Sign and scale of both L2C paths against each other, on real numbers: DSB(C1W,C2W),
+        DSB(C2W,C2L) from CAS0OPSRAP_20262880000 and TGD from BRDC00WRD_S day 292, for ten
+        satellites. The DCB product is zero-mean and TGD is not, so the constellation mean is
+        removed before comparing. -gamma_12 * TGD fits to 1.1 ns rms; -TGD leaves 5.6 ns, no
+        term 13 ns and a flipped sign 26 ns."""
+        rows = {  # prn: (DSB(C1W,C2W), DSB(C2W,C2L), TGD), ns
+            1: (2.044, 0.508, -8.848),
+            3: (-4.869, -0.756, 1.397),
+            5: (3.647, -0.486, -10.245),
+            6: (-6.211, -1.218, 3.725),
+            8: (-6.956, -1.535, 4.657),
+            10: (-5.397, 1.354, 2.328),
+            12: (4.526, -0.604, -12.107),
+            25: (-7.364, -1.106, 5.588),
+            26: (-8.079, 0.589, 6.519),
+            31: (4.762, -0.371, -13.504),
+        }
+        dcb = {
+            ("G", p): {("C1W", "C2W"): a * NS, ("C2W", "C2L"): b * NS}
+            for p, (a, b, _) in rows.items()
+        }
+        diff = []
+        for p, (_, _, tgd) in rows.items():
+            e = dict(sys="G", prn=p, tgd=tgd * NS, iodc=0.0, l2_codes=0)
+            measured = group_delay_s(e, "gps_l2c", dcb)
+            self.assertNotEqual(measured, group_delay_s(e, "gps_l2c"))
+            diff.append(measured - group_delay_s(e, "gps_l2c"))
+        mean = sum(diff) / len(diff)
+        rms = (sum((d - mean) ** 2 for d in diff) / len(diff)) ** 0.5
+        self.assertLess(rms, 1.5 * NS, "L2C DCB and broadcast paths disagree")
 
     def test_dcb_overrides_the_broadcast_term(self):
         e = dict(sys="C", prn=26, tgd=0.0, iodc=-4.3 * NS, l2_codes=0)
@@ -469,7 +527,7 @@ class TestGLONASSL3(unittest.TestCase):
         self.assertEqual(group_delay_s(_r(19), "glo_l2oc"), 0.0)
         self.assertEqual(group_delay_s(_r(19), None), 0.0)
         self.assertEqual(group_delay_s(_r(19), "glo_l3oc", dcb={("R", 19): {}}), group_delay_s(_r(19), "glo_l3oc"))
-        self.assertAlmostEqual(group_delay_s(_g(tgd=-8.38 * NS), "gps_l5"), -GAMMA_L1L5 * -8.38 * NS, places=15)
+        self.assertAlmostEqual(group_delay_s(_g(tgd=-8.38 * NS), "gps_l5"), +8.38 * NS, places=15)  # C1: -TGD
 
 
 if __name__ == "__main__":

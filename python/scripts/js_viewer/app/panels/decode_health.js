@@ -53,6 +53,21 @@ function status(sig) {
     return {c: "#2ea043", t: "synced, fresh, BRDC-agreeing"};
 }
 
+// Why the table is empty. n_files (the server's count of broker files, fresh or not) separates
+// a viewer with no producer at all, the normal state while no chain sets --decode-health-file,
+// from writers that exist but have gone stale. A server that does not send n_files gets the
+// message that covers both.
+function emptyReason(data, chains) {
+    const nf = data ? data.n_files : undefined;
+    if (nf === 0)
+        return "no producer: no broker chain writes nav-decode health (--decode-health-file unset)";
+    if (nf > 0 && !chains.length)
+        return `no decoders reporting: ${nf} broker file${nf === 1 ? "" : "s"}, none fresh`;
+    if (chains.length)
+        return "no satellite decoded yet";
+    return "no decoders reporting (brokers not up, or --decode-health-file unset)";
+}
+
 function fmt(v, unit, dp) {
     if (v == null) return "<span style='color:#8a8f98'>–</span>";
     return `${v.toFixed(dp == null ? 0 : dp)}${unit || ""}`;
@@ -131,7 +146,7 @@ export class DecodeHealthPanel {
         }
         if (!any)
             html += `<tr><td colspan="7" style="padding:8px;color:#8a8f98">`
-                  + `no decoders reporting (brokers not up, or --decode-health-file unset)</td></tr>`;
+                  + `${emptyReason(data, chains)}</td></tr>`;
         html += `</tbody></table>`;
         html += `<div style="color:#8a8f98;padding:4px 6px;font-size:11px">`
               + `${chains.length} broker${chains.length === 1 ? "" : "s"} reporting`

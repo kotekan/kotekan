@@ -1,7 +1,7 @@
 """3c: the fleet delay-lock stage -- poll the discriminator, then run everything hung off it.
 
 This is the shell. It fills `ctx.dllp.fleet` (the cycle's central per-satellite state), calls
-the eight `instruments` diagnostics, then `codeloop.stage_dll_control`, the only part that
+the nine `instruments` diagnostics, then `codeloop.stage_dll_control`, the only part that
 actuates, and after it the D0/D1/D3 detectors and the stall checks.
 
 The q floor is measured from this cycle's noise probes, never a constant. Summing across
@@ -174,6 +174,8 @@ def stage_fleet_dll(ctx):
             # aggregate throws that per-instance axis away
             src_hops=ctx.dllp.inst_hops,
             admit_displaced=ctx.dllp.admit_disp,
+            # the displaced admission fits the offset at this chain's tap spacing
+            dll_spacing=ctx.args.dll_spacing,
             # judge each instance before its rows count: a pre-re-base row
             # (ahead of the anchor) or one that stopped advancing must not set
             # the fleet hop (fleet.live_instances)
@@ -375,6 +377,11 @@ def stage_fleet_dll(ctx):
         # (fits.rf_lobes), because a band-selective source is diagnosable only against a band
         # that was quiet in the same sample.
         instruments.instr_rf_stats(ctx)
+        # Dark instances (instr_dark_inst): this cycle's per-instance deep snr (fcoh) against
+        # each instance's tap. An instance that despreads nothing while its tap is fed is a
+        # channel map or wiring fault that the fleet counts still list as present. Logged and
+        # published; it changes no sum.
+        instruments.instr_dark_inst(ctx)
 
         # The per-element complex gain (instr_element_poll): amplitude and phase per antenna,
         # per instance, the beam/peel coefficients. Assembled from the combiners'

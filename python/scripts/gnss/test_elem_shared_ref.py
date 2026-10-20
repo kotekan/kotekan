@@ -1,8 +1,13 @@
-"""band_consensus on constructed fleets: one group, and two groups pinned apart.
+#!/usr/bin/env python3
+"""Tests for elem_shared_ref.band_consensus on synthetic polls.
 
-    python test_elem_shared_ref.py
+    /home/kvand/gnss/venv-ft/bin/python test_elem_shared_ref.py
+
+An instance whose band has no reference pins to its own first model, so its global phase is
+arbitrary while its shape is the fleet's. The consensus must form from such a band, phase-aligned,
+and still leave out a model whose shape it does not describe. On a band that is already pinned the
+reference keeps the pinned instances' phase, and an instance off that phase is listed, not dropped.
 """
-
 import os
 import sys
 import unittest
@@ -10,47 +15,146 @@ import unittest
 import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import elem_shared_ref as E  # noqa: E402
+import elem_shared_ref as esr  # noqa: E402
 
-N_HALF = 48
+N_HALF = 16  # elements per pol
+NODES = ("cx19", "cx27", "cx42", "cx43", "cx44", "cx51")
 
 
-def fleet(phases_deg, seed=1):
-    """{(node, stage): get_elem_cal reply} for b2b instances whose shared models share one shape,
-    each rotated by its own global phase (the pin), with a little noise."""
-    rng = np.random.default_rng(seed)
-    shape = rng.normal(size=N_HALF) + 1j * rng.normal(size=N_HALF)
+def true_shape(rng):
+    """One pol's element model: amplitudes 0.5-1.5, random phases, unit norm."""
+    v = rng.uniform(0.5, 1.5, N_HALF) * np.exp(1j * rng.uniform(-np.pi, np.pi, N_HALF))
+    return v / np.linalg.norm(v)
+
+
+def model(rng, shape, phase_deg, noise=0.03):
+    """An instance's half: the shape at a global phase, plus per-element noise."""
+    g = shape * np.exp(1j * np.radians(phase_deg))
+    return g + noise * (rng.standard_normal(N_HALF) + 1j * rng.standard_normal(N_HALF))
+
+
+def noise_model(rng):
+    """A model that learned nothing: unrelated to the fleet's shape."""
+    return rng.standard_normal(N_HALF) + 1j * rng.standard_normal(N_HALF)
+
+
+def poll(halves, band="l3oc"):
+    """A poll result: one warm, unfrozen assembler per (pol-0 half, pol-1 half)."""
     res = {}
-    for i, p in enumerate(phases_deg):
-        g = []
-        for _ in (0, 1):
-            v = shape * np.exp(1j * np.radians(p))
-            v = v + 0.05 * (rng.normal(size=N_HALF) + 1j * rng.normal(size=N_HALF))
-            g += [[float(x.real), float(x.imag)] for x in v]
-        res[("cx%02d" % i, "gnss0_b2b_n2assemble")] = {
+    for i, (h0, h1) in enumerate(halves):
+        stage = "gnss%d_%s_n2assemble" % (i % 2, band)
+        g = np.concatenate([h0, h1])
+        res[(NODES[i // 2], stage)] = {
             "shared_warm": True,
-            "g_shared": g,
+            "shared_frozen": False,
+            "g_shared": [[float(x.real), float(x.imag)] for x in g],
         }
     return res
 
 
-class TestBandConsensus(unittest.TestCase):
-    def test_one_group(self):
-        e = E.band_consensus(fleet([-5, 0, 3, 8, -2, 4]), "b2b", 30.0, 0.5)
-        self.assertEqual(e["n"], [6, 6])
-        self.assertEqual(e["excluded"], [{}, {}])
+def ref_halves(entry):
+    F = np.array([complex(a, b) for a, b in entry["ref"]])
+    return F[:N_HALF], F[N_HALF:]
 
-    def test_two_groups_keep_the_larger(self):
-        # The 2026-10-20 b2b pol-1 split, eleven instances: six near -34 deg and five near
-        # +42 deg. The plain mean lies between the groups, more than 30 deg from every instance.
-        phases = [-29, -31, -30, -35, -37, -39, 37, 35, 38, 40, 61]
-        e = E.band_consensus(fleet(phases), "b2b", 30.0, 0.5)
+
+def offset_deg(ref, g):
+    return float(np.degrees(np.angle(np.vdot(ref, g / np.linalg.norm(g)))))
+
+
+class TestBandConsensus(unittest.TestCase):
+    def setUp(self):
+        self.rng = np.random.default_rng(1017)
+        self.shape = (true_shape(self.rng), true_shape(self.rng))
+
+    def consensus(self, halves):
+        return esr.band_consensus(poll(halves), "l3oc", esr.EXCLUDE_DEG, esr.MIN_SIM)
+
+    def test_unpinned_band_forms_a_consensus(self):
+        # ten instances spread over the circle in global phase, as an unpinned band holds them
+        p0 = (0, 40, 75, 110, 150, 200, 240, 280, 310, 345)
+        p1 = (-170, -120, -60, -20, 10, 55, 95, 130, 165, 175)
+        halves = [
+            (model(self.rng, self.shape[0], a), model(self.rng, self.shape[1], b))
+            for a, b in zip(p0, p1)
+        ]
+        e = self.consensus(halves)
+        self.assertEqual(e["n"], [10, 10])
+        self.assertEqual(e["excluded"], [{}, {}])
+        for pol, f in enumerate(ref_halves(e)):
+            self.assertAlmostEqual(float(np.linalg.norm(f)), 1.0, places=5)
+            self.assertGreater(abs(np.vdot(self.shape[pol], f)), 0.99)
+            self.assertGreater(e["sim_median"][pol], 0.98)
+        # the instances are where they were: most of them are listed as off the reference
+        self.assertGreaterEqual(min(len(x) for x in e["off"]), 6)
+        self.assertLess(max(e["R"]), 0.5)
+
+    def test_a_model_of_another_shape_is_left_out(self):
+        halves = [
+            (model(self.rng, self.shape[0], a), model(self.rng, self.shape[1], -a))
+            for a in (0, 60, 130, 200, 260, 320)
+        ]
+        halves += [(noise_model(self.rng), noise_model(self.rng)) for _ in range(2)]
+        e = self.consensus(halves)
         self.assertEqual(e["n"], [6, 6])
-        self.assertEqual(
-            sorted(e["excluded"][0]), ["cx06/0", "cx07/0", "cx08/0", "cx09/0", "cx10/0"]
-        )
-        self.assertGreater(e["R"][0], 0.98)
+        for pol in (0, 1):
+            self.assertEqual(sorted(e["excluded"][pol]), ["cx43/0", "cx43/1"])
+            self.assertTrue(
+                all(s < esr.MIN_SIM for _, s in e["excluded"][pol].values()),
+                e["excluded"][pol],
+            )
+            self.assertGreater(abs(np.vdot(self.shape[pol], ref_halves(e)[pol])), 0.99)
+
+    def test_pinned_band_keeps_its_phase(self):
+        # eight instances pinned within a few degrees of 0, two with the fleet's shape far off
+        p = (-4, -2, -1, 0, 1, 2, 3, 4, 120, 100)
+        halves = [
+            (model(self.rng, self.shape[0], a), model(self.rng, self.shape[1], a))
+            for a in p
+        ]
+        e = self.consensus(halves)
+        self.assertEqual(e["n"], [10, 10])
+        self.assertEqual(e["excluded"], [{}, {}])
+        for pol, f in enumerate(ref_halves(e)):
+            pinned = [offset_deg(f, h[pol]) for h in halves[:8]]
+            self.assertLess(abs(np.mean(pinned)), 1.0, pinned)
+            self.assertLess(abs(offset_deg(f, self.shape[pol])), 2.0)
+            self.assertEqual(sorted(e["off"][pol]), ["cx44/0", "cx44/1"])
+            self.assertAlmostEqual(e["off"][pol]["cx44/0"][0], 120.0, delta=6.0)
+            self.assertAlmostEqual(e["off"][pol]["cx44/1"][0], 100.0, delta=6.0)
+
+    def test_fewer_than_four_shapes_is_no_consensus(self):
+        # three models of the fleet's shape, pinned together, and four with none: in a
+        # consensus that includes them the four score above MIN_SIM
+        halves = [
+            (model(self.rng, self.shape[0], 0), model(self.rng, self.shape[1], 0))
+            for _ in range(3)
+        ]
+        halves += [(noise_model(self.rng), noise_model(self.rng)) for _ in range(4)]
+        with self.assertRaises(ValueError):
+            self.consensus(halves)
+
+
+    def test_two_groups_take_the_phase_of_the_larger(self):
+        # The 2026-10-20 b2b pol-1 split, eleven instances of one shape: six near -34 deg,
+        # five near +38 deg (one at +61). Every instance keeps (same shape); the reference
+        # takes the larger group's phase; the minority is listed as off, not excluded.
+        p1 = (-29, -31, -30, -35, -37, -39, 37, 35, 38, 40, 61)
+        halves = [
+            (model(self.rng, self.shape[0], 0.0), model(self.rng, self.shape[1], p)) for p in p1
+        ]
+        e = self.consensus(halves)
+        self.assertEqual(e["n"], [11, 11])
+        self.assertEqual(e["excluded"], [{}, {}])
+        self.assertEqual(e["off"][0], {})
+        self.assertEqual(len(e["off"][1]), 5)
+        for o, _s in e["off"][1].values():
+            self.assertGreater(abs(o), esr.EXCLUDE_DEG)
+        # the reference's pol-1 phase is the majority group's mean: a model at that phase
+        # reads an offset of ~0
+        _r0, r1 = ref_halves(e)
+        maj = float(np.degrees(np.angle(np.mean([np.exp(1j * np.radians(p)) for p in p1[:6]]))))
+        self.assertLess(abs(offset_deg(r1, self.shape[1] * np.exp(1j * np.radians(maj)))), 2.0)
 
 
 if __name__ == "__main__":
-    unittest.main()
+    unittest.main(verbosity=2)

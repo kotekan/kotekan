@@ -94,8 +94,8 @@ _CHAINS = {
     "bds_b1c": ("BDS_B1C_P", None, 19),
     "bds_b2a": ("BDS_B2A_P", "BDS_B2A_P_CS", 19),
     "bds_b2b": ("BDS_B2B_I", None, 19),
-    # B3I is broadcast by BDS-2 and BDS-3 alike, so no min_prn and no capability gate; the
-    # broker's BeiDou fallback floor (PRN >= 19) still applies.
+    # B3I is broadcast by BDS-2 and BDS-3 alike, so no min_prn and no capability gate: every
+    # BeiDou PRN is predicted, mapped and seeded (prn_floor).
     "bds_b3i": ("BDS_B3I", "BDS_B3I_NH", None),
     # L3OC is GLONASS's CDMA signal, on the K generations and the modernised M+ only (the plain
     # GLO-M satellites, half the constellation, broadcast FDMA alone). The IGS registry's block
@@ -313,6 +313,19 @@ def _derive(descs, prim, lng):
 
 def get(key):
     return SignalDef(key)
+
+
+def prn_floor(sysc, key=None):
+    """The lowest PRN a chain predicts, maps and dead-reckons while no signal-capability set
+    decides: the broker's almanac floor, and its dead-reckon floor when --dr-min-prn is unset.
+
+    A named signal gives its own min_prn (19 for the BDS-3-only B1C, B2a and B2b), and one
+    without a min_prn has no floor: B3I is on BDS-2 and BDS-3 alike, and C06-C08 and C11-C14
+    carry it. A BeiDou chain that names no signal keeps 19, since its code may be a BDS-3-only
+    one; every other constellation starts at 1."""
+    if key:
+        return _CHAINS[key][2] or 1
+    return 19 if sysc == "C" else 1
 
 
 def describe():
