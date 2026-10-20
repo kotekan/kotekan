@@ -101,6 +101,10 @@
  * @conf lane_min_new_frac Double. Gram-Schmidt: a direction with less than this fraction of
  *                         its energy outside the basis so far is a duplicate (0.1).
  * @conf lane_conj         Bool. Conjugate the row into the N^2 frame (true).
+ *
+ * auto_raw_db / auto_proj_db per freq_id: the mean auto over the live block before and
+ * after projection, dB of correlator units, so a spectrum of what the projection removed
+ * can be drawn from the gauges (null_db is a ratio of coherent components, not of power).
  */
 class GnssN2Project : public kotekan::Stage {
 public:
@@ -153,6 +157,7 @@ private:
     gnss::ProjBasis lanes;   ///< the channel's lane basis, rebuilt every frame
     std::vector<int> lane_k; ///< per channel: lanes projected this frame
     std::vector<double> lane_rq_conj_db, lane_rq_raw_db; ///< per channel: top lane's q^H V q / mean auto
+    std::vector<double> auto_raw, auto_proj; ///< per channel: mean live auto before / after projection
     uint64_t lane_dup = 0, lane_used = 0;
     struct LaneCand {
         double power, coh;

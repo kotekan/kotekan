@@ -104,6 +104,8 @@ GnssN2Project::GnssN2Project(Config& config, const std::string& unique_name,
     lane_k.assign(num_local_freq, 0);
     lane_rq_conj_db.assign(num_local_freq, 0.0);
     lane_rq_raw_db.assign(num_local_freq, 0.0);
+    auto_raw.assign(num_local_freq, 0.0);
+    auto_proj.assign(num_local_freq, 0.0);
     if (use_lanes) {
         if (board_group.empty() || tracker_stations.empty())
             FATAL_ERROR("GnssN2Project: source {:s} needs board_group and tracker_stations", source);
@@ -247,6 +249,10 @@ void GnssN2Project::main_thread() {
                                                      unique_name, {"freq_id"});
     auto& g_lane_rqr = Metrics::instance().add_gauge("kotekan_gnss_n2project_lane_rq_raw_db",
                                                      unique_name, {"freq_id"});
+    auto& g_auto_raw = Metrics::instance().add_gauge("kotekan_gnss_n2project_auto_raw_db",
+                                                    unique_name, {"freq_id"});
+    auto& g_auto_proj = Metrics::instance().add_gauge("kotekan_gnss_n2project_auto_proj_db",
+                                                     unique_name, {"freq_id"});
     auto& g_lane_used =
         Metrics::instance().add_gauge("kotekan_gnss_n2project_lane_directions_used", unique_name);
     auto& g_lane_dup = Metrics::instance().add_gauge(
@@ -312,6 +318,7 @@ void GnssN2Project::main_thread() {
                 const int32_t* fin = in + (size_t)t * per_int + (size_t)f * per_freq;
                 gnss_n2proj::extract(layout, fin, stations, V.data());
                 mean_auto[f] = gnss_n2proj::mean_auto(n, V.data());
+                auto_raw[f] = mean_auto[f];
                 // #190: the known directions first, on the live channels (the only ones a
                 // chain publishes for); what follows sees the residual.
                 int kl = 0;
@@ -372,6 +379,7 @@ void GnssN2Project::main_thread() {
                                   q.begin() + (size_t)j * n);
                     gnss_n2proj::project(n, k, q.data(), V.data(), W, M);
                 }
+                auto_proj[f] = (k > 0 || kl > 0) ? gnss_n2proj::mean_auto(n, V.data()) : auto_raw[f];
                 if (k > 0 || kl > 0) {
                     nul.push_cov(f, V.data(), dt_int);
                     if (solve_now) {
@@ -420,6 +428,8 @@ void GnssN2Project::main_thread() {
                 g_frac.labels({fid}).set(frac0[f]);
                 g_null.labels({fid}).set(null_db[f]);
                 g_pr.labels({fid}).set(pr0[f]);
+                g_auto_raw.labels({fid}).set(auto_raw[f] > 0.0 ? 10.0 * std::log10(auto_raw[f]) : -120.0);
+                g_auto_proj.labels({fid}).set(auto_proj[f] > 0.0 ? 10.0 * std::log10(auto_proj[f]) : -120.0);
                 if (use_lanes && live_ch[f]) {
                     g_lane_k.labels({fid}).set(lane_k[f]);
                     g_lane_rqc.labels({fid}).set(lane_rq_conj_db[f]);
