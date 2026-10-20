@@ -14,6 +14,9 @@ Variants:
 - `manual`: both setters in `manual` mode, with beams at irregular positions and random 64-bit
   ids, in shuffled order. The source is off the production grids.
 
+CHIME has no BB beamformer, and its production FRB2 beams are `manual`: there `grid` keeps them and
+the source is T2's FRB2 source beam; `manual` jitters them.
+
 Checks: the written positions and ids equal the configured ones, one frame per lifetime with
 `fpga_seq_num` seq0 + k L (BB) and seq0 + T* + k L (FRB2); the BB power peaks in the predicted
 beam and the FRB2 source beam holds the peak (T2's criteria); every BB beam is non-zero; the tone
@@ -31,6 +34,9 @@ import check_phases
 from kit import (
     audit,
     bb_peak_line,
+    find_stages,
+    frb2_beam_positions,
+    has_bb,
     sky_frequency,
     decode_int4x2,
     frame_seq_nums,
@@ -40,6 +46,7 @@ from kit import (
     large_seq,
     read_output,
     require,
+    upchan_t_star,
     used_channels,
     value,
 )
@@ -71,10 +78,11 @@ def sin_deg(angle):
     return math.sin(angle * (math.pi / 180.0))
 
 
-def manual_layouts(num_bb, frb2_grid):
+def manual_layouts(num_bb, frb2_angles):
     """Beam lists for the `manual` variant: BB beams at random positions at least 0.4° apart,
-    FRB2 beams on the production grid jittered by up to 0.1° per axis; the source replaces the
-    nearest FRB2 beam. Both lists are shuffled and have random 64-bit ids."""
+    FRB2 beams at the production positions `frb2_angles` (degrees) jittered by up to 0.1° per
+    axis; the source replaces the nearest FRB2 beam. Both lists are shuffled and have random
+    64-bit ids."""
     rng = np.random.default_rng(MANUAL_SEED)
     source = np.array(MANUAL_SOURCE_DEGREES)
     bb = []
@@ -84,13 +92,7 @@ def manual_layouts(num_bb, frb2_grid):
             bb.append(angle)
     bb.insert(BB_MANUAL_SOURCE, source)
 
-    (nx, ny), (x_min, x_max, y_min, y_max) = frb2_grid
-    frb2 = [
-        np.array([grid_point(x_min, x_max, nx, bx), grid_point(y_min, y_max, ny, by)])
-        + rng.uniform(-0.1, 0.1, 2)
-        for by in range(ny)
-        for bx in range(nx)
-    ]
+    frb2 = [np.array(angle) + rng.uniform(-0.1, 0.1, 2) for angle in frb2_angles]
     del frb2[int(np.argmin([np.hypot(*(a - source)) for a in frb2]))]
     frb2 = [frb2[i] for i in rng.permutation(len(frb2))]
     frb2.insert(FRB2_MANUAL_SOURCE, source)
@@ -115,9 +117,27 @@ def frb2_grid(config):
     )
 
 
-def variables(tel, config, variant):
+def frb2_angles(config):
+    """The production FRB2 beam positions in degrees, beam by beam."""
+    if find_stages(config, "setFRBBeams")[0]["mode"] == "manual":
+        return [
+            [math.degrees(math.asin(c)) for c in pos] for pos in frb2_beam_positions(config)
+        ]
     (nx, ny), (x_min, x_max, y_min, y_max) = frb2_grid(config)
-    if variant == "grid":
+    return [
+        [grid_point(x_min, x_max, nx, bx), grid_point(y_min, y_max, ny, by)]
+        for by in range(ny)
+        for bx in range(nx)
+    ]
+
+
+def variables(tel, config, variant):
+    manual_frb2 = find_stages(config, "setFRBBeams")[0]["mode"] == "manual"
+    if variant == "grid" and manual_frb2:
+        direction = check_phases.source_direction(config, "frb2")
+        layouts = {}
+    elif variant == "grid":
+        (nx, ny), (x_min, x_max, y_min, y_max) = frb2_grid(config)
         x = grid_point(x_min, x_max, nx, FRB2_GRID_BEAM[0])
         y = grid_point(y_min, y_max, ny, FRB2_GRID_BEAM[1])
         # The column has the FRB2 y spacing and is centred on the source, so that grating lobes
@@ -145,19 +165,16 @@ def variables(tel, config, variant):
         direction = [sin_deg(x), sin_deg(y)]
         layouts = {"bb_beam_layout": bb_layout}
     else:
-        bb, frb2 = manual_layouts(value(config, "bb_num_beams"), frb2_grid(config))
+        num_bb = value(config, "bb_num_beams") if has_bb(config) else 0
+        bb, frb2 = manual_layouts(num_bb, frb2_angles(config))
         direction = [
-            bb[BB_MANUAL_SOURCE]["x_dir_grid"],
-            bb[BB_MANUAL_SOURCE]["y_dir_grid"],
+            frb2[FRB2_MANUAL_SOURCE]["x_dir_grid"],
+            frb2[FRB2_MANUAL_SOURCE]["y_dir_grid"],
         ]
-        layouts = {
-            "bb_beam_layout": {"fixed_mode": "manual", "fixed_beams": bb},
-            "frb2_beam_layout": {"mode": "manual", "beams": frb2},
-        }
-    outputs = [
-        "bb_beams",
-        "bb_beam_positions",
-        "bb_beam_ids",
+        layouts = {"frb2_beam_layout": {"mode": "manual", "beams": frb2}}
+        if has_bb(config):
+            layouts["bb_beam_layout"] = {"fixed_mode": "manual", "fixed_beams": bb}
+    outputs = ["bb_beams", "bb_beam_positions", "bb_beam_ids"] * has_bb(config) + [
         "frb2_beams",
         "frb2_beam_positions",
         "frb2_beam_ids",
@@ -191,11 +208,12 @@ def variables(tel, config, variant):
 
 
 def configured_beams(config, block, mode_key, beams_key):
-    """Positions [B, 2] (float32, as written) and ids [B] that the setter `block` is configured
-    with."""
-    mode = config[block][mode_key]
+    """Positions [B, 2] (float32, as written) and ids [B] that the setter `block` (a config block
+    or its name) is configured with."""
+    stage = config[block] if isinstance(block, str) else block
+    mode = stage[mode_key]
     if mode == "manual":
-        beams = config[block][beams_key]
+        beams = stage[beams_key]
         positions = [[b["x_dir_grid"], b["y_dir_grid"]] for b in beams]
         ids = [b["id"] for b in beams]
     else:
@@ -203,7 +221,7 @@ def configured_beams(config, block, mode_key, beams_key):
         nx, ny = value(config, "num_x", block), value(config, "num_y", block)
         x_min, x_max, y_min, y_max = [
             value(config, k, block) for k in ["x_min", "x_max", "y_min", "y_max"]
-        ]
+        ]  # grid_degrees only occurs at the top level
         positions = [
             [
                 sin_deg(grid_point(x_min, x_max, nx, bx)),
@@ -284,9 +302,7 @@ def continuity(name, windows, boundaries, unit):
 
 def check(out_dir, var, config):
     SEQ0 = var["first_fpga_seq_num"]
-    t_star = (
-        (check_phases.NUM_TAPS - 1) * value(config, "max_upchannelization_factor") // 2
-    )
+    t_star = upchan_t_star(config)
     num_times = value(config, "num_times")
     channels = np.array(value(config, "frequency_channels"))
     source = var["sources"][0]
@@ -298,15 +314,20 @@ def check(out_dir, var, config):
     results = []
 
     # Configured beams; the source must be one of them
-    bb_positions, bb_ids = configured_beams(
-        config, "run_set_bb_beams", "fixed_mode", "fixed_beams"
-    )
-    frb2_positions, frb2_ids = configured_beams(
-        config, "run_set_frb2_beams", "mode", "beams"
-    )
+    with_bb = "bb_beams" in var["outputs"]
     at_source = np.float32(direction)
-    bb_source = np.nonzero(np.all(bb_positions == at_source, axis=1))[0]
+    stage = find_stages(config, "setFRBBeams")[0]
+    frb2_positions, frb2_ids = configured_beams(
+        config, "run_set_frb2_beams" if "run_set_frb2_beams" in config else stage, "mode", "beams"
+    )
     frb2_source = np.nonzero(np.all(frb2_positions == at_source, axis=1))[0]
+    if with_bb:
+        bb_positions, bb_ids = configured_beams(
+            config, "run_set_bb_beams", "fixed_mode", "fixed_beams"
+        )
+        bb_source = np.nonzero(np.all(bb_positions == at_source, axis=1))[0]
+    else:
+        bb_source = np.zeros(1, dtype=int)
     require(
         len(bb_source) == 1 and len(frb2_source) == 1,
         f"source {direction} is BB beams {bb_source.tolist()} and FRB2 beams {frb2_source.tolist()}",
@@ -314,19 +335,21 @@ def check(out_dir, var, config):
     bb_source, frb2_source = int(bb_source[0]), int(frb2_source[0])
     results.append(
         f"source at ({math.degrees(math.asin(direction[0])):.5f}°, "
-        f"{math.degrees(math.asin(direction[1])):.5f}°): BB beam {bb_source} "
-        f"(id {bb_ids[bb_source]}), FRB2 beam {frb2_source} (id {frb2_ids[frb2_source]})"
+        f"{math.degrees(math.asin(direction[1])):.5f}°): "
+        + (f"BB beam {bb_source} (id {bb_ids[bb_source]}), " if with_bb else "")
+        + f"FRB2 beam {frb2_source} (id {frb2_ids[frb2_source]})"
     )
 
     # Written positions and ids, one frame per lifetime
-    bb_lifetime = value(config, "bb_phase_lifetime_in_samples")
     frb2_lifetime = value(config, "frb2_weights_lifetime_in_samples")
     frb1_lifetime = value(config, "frb1_phase_lifetime_in_samples")
-    results.append(
-        check_beam_stream(
-            out_dir, "bb", bb_positions, bb_ids, SEQ0, bb_lifetime, "seq0"
+    if with_bb:
+        bb_lifetime = value(config, "bb_phase_lifetime_in_samples")
+        results.append(
+            check_beam_stream(
+                out_dir, "bb", bb_positions, bb_ids, SEQ0, bb_lifetime, "seq0"
+            )
         )
-    )
     results.append(
         check_beam_stream(
             out_dir,
@@ -339,43 +362,44 @@ def check(out_dir, var, config):
         )
     )
 
-    # BB [Thi, B, F, P, T]: the power peaks in the predicted beam (T2), every beam is non-zero
-    bb = read_output(out_dir, "bb_beams")
-    audit(bb, first_seq=SEQ0, frequency_channels=channels)
-    require(
-        bb.data.shape[0] == BB_FRAMES, f"bb_beams: {bb.data.shape[0]} frames written"
-    )
-    results.append(
-        bb_peak_line(
-            bb.data[:2], bb_positions.astype(np.float64), config, phases, nu, amplitude
+    if with_bb:
+        # BB [Thi, B, F, P, T]: the power peaks in the predicted beam (T2), every beam is non-zero
+        bb = read_output(out_dir, "bb_beams")
+        audit(bb, first_seq=SEQ0, frequency_channels=channels)
+        require(
+            bb.data.shape[0] == BB_FRAMES, f"bb_beams: {bb.data.shape[0]} frames written"
         )
-    )
-    lut = np.abs(decode_int4x2(np.arange(256))) ** 2
-    rms = np.sqrt([lut[bb.data[:, b]].mean() for b in range(bb.data.shape[1])])  # [B]
-    require(
-        np.all(rms > 0), f"bb_beams: beams {np.nonzero(rms == 0)[0].tolist()} are zero",
-    )
-    results.append(
-        f"bb_beams: all {len(rms)} beams non-zero, rms {rms.min():.2f} to {rms.max():.2f} LSB"
-    )
+        results.append(
+            bb_peak_line(
+                bb.data[:2], bb_positions.astype(np.float64), config, phases, nu, amplitude
+            )
+        )
+        lut = np.abs(decode_int4x2(np.arange(256))) ** 2
+        rms = np.sqrt([lut[bb.data[:, b]].mean() for b in range(bb.data.shape[1])])  # [B]
+        require(
+            np.all(rms > 0), f"bb_beams: beams {np.nonzero(rms == 0)[0].tolist()} are zero",
+        )
+        results.append(
+            f"bb_beams: all {len(rms)} beams non-zero, rms {rms.min():.2f} to {rms.max():.2f} LSB"
+        )
 
-    # BB continuity: the coherent tone c_wfp = Σ_t J_src(t) exp(-2πi f_tone (t - seq0)) in windows
-    # of BB_WINDOW samples, projected on its mean over windows
-    seqs = frame_seq_nums(bb)
-    t = (seqs[:, None] + np.arange(num_times)[None, :] - SEQ0).reshape(-1)  # [Thi T]
-    src = decode_int4x2(bb.data[:, bb_source]).astype(np.complex64)  # [Thi, F, P, T]
-    src = np.moveaxis(src, -1, 1).reshape(-1, *src.shape[1:3])  # [Thi T, F, P]
-    tone = src * np.exp(-2j * np.pi * f_tone * t).astype(np.complex64)[:, None, None]
-    c = tone.reshape(-1, BB_WINDOW, *tone.shape[1:]).sum(axis=1)  # [W, F, P]
-    mean = c.mean(axis=0)
-    r = (c * mean.conj()).sum(axis=(1, 2)) / (np.abs(mean) ** 2).sum()
-    starts = t.reshape(-1, BB_WINDOW)[:, 0]
-    boundaries = [
-        int(k) for k in np.nonzero((starts % bb_lifetime == 0) & (starts > 0))[0]
-    ]
-    line = continuity("bb_beams continuity", r, boundaries, "coherent tone")
-    phase = np.degrees(np.angle(r)).max() - np.degrees(np.angle(r)).min()
-    results.append(f"{line}; phase range {phase:.3f}°")
+        # BB continuity: the coherent tone c_wfp = Σ_t J_src(t) exp(-2πi f_tone (t - seq0)) in windows
+        # of BB_WINDOW samples, projected on its mean over windows
+        seqs = frame_seq_nums(bb)
+        t = (seqs[:, None] + np.arange(num_times)[None, :] - SEQ0).reshape(-1)  # [Thi T]
+        src = decode_int4x2(bb.data[:, bb_source]).astype(np.complex64)  # [Thi, F, P, T]
+        src = np.moveaxis(src, -1, 1).reshape(-1, *src.shape[1:3])  # [Thi T, F, P]
+        tone = src * np.exp(-2j * np.pi * f_tone * t).astype(np.complex64)[:, None, None]
+        c = tone.reshape(-1, BB_WINDOW, *tone.shape[1:]).sum(axis=1)  # [W, F, P]
+        mean = c.mean(axis=0)
+        r = (c * mean.conj()).sum(axis=(1, 2)) / (np.abs(mean) ** 2).sum()
+        starts = t.reshape(-1, BB_WINDOW)[:, 0]
+        boundaries = [
+            int(k) for k in np.nonzero((starts % bb_lifetime == 0) & (starts > 0))[0]
+        ]
+        line = continuity("bb_beams continuity", r, boundaries, "coherent tone")
+        phase = np.degrees(np.angle(r)).max() - np.degrees(np.angle(r)).min()
+        results.append(f"{line}; phase range {phase:.3f}°")
 
     # FRB2 [Ttildehi256, R, Fbar, Ttildelo256]: the source beam holds the peak (T2)
     frb2 = read_output(out_dir, "frb2_beams")
