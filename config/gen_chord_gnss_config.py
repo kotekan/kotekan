@@ -598,6 +598,7 @@ def gnss_chain_vars(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=None):
     prns = chain["prns"] if chain else PRIMARY_PRNS
     n_prn = len(prns)
     ordv = chain["ord"] if chain else 0
+    _aslots = [int(x) for x in str(getattr(args, "assembler_core_slots", "2") or "2").split(",")]
     n_live = live_element_count(arr)
     track_signal = chain["tracker"] if chain else sig.get("tracker", sig["primary"])
     lanes_per_slot = lanes_per_slot_for(args, track_signal)
@@ -640,7 +641,10 @@ def gnss_chain_vars(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=None):
             # Distinct per chain within this GPU's pool: see dual_core().
             "dual": dual_core(rt, gpu, ordv),
             "tiles": cores[(gpu + 9 + 3 * ordv) % nc],
-            "assemble": cores[(gpu + 2) % nc],
+            # One slot for every chain by default (slot 2): at 96 elements the ten assemblers
+            # of a GPU fill that core (cx51 10-20: ~99%, 5-9% each) while the other slots
+            # idle at 10-15%, so --assembler-core-slots rotates them like the combiners.
+            "assemble": cores[(gpu + _aslots[ordv % len(_aslots)]) % nc],
             # The combiner is the heaviest host stage (its cost scales with PRN count), so it
             # rotates per chain like dual and tiles: stacked on one core, the chains' combiners
             # together approach a full core, and any backlog walks back through the shared
@@ -2740,6 +2744,16 @@ def main():
         "subspace (default); lanes = the tracked satellites' directions the chains publish "
         "(each PRN's averaged prompt row, gnssLaneDirection.hpp; needs --elem-dir-publish all); "
         "lanes+residual = lanes first, then the eigen path on what is left",
+    )
+    ap.add_argument(
+        "--assembler-core-slots",
+        type=str,
+        default="2",
+        help="pool slots (comma list, relative to the GPU like every chain core) the "
+        "chains' GnssGpuRecordAssemble stages rotate through by chain order; the default "
+        "keeps them all on slot 2. Avoid 0 (the cudaProcess), 5 (telemetry + "
+        "GnssN2Project), 6 (the senders) and 7 (the sink): '2,1,3,4,8,9' leaves at most "
+        "two assemblers per core",
     )
     ap.add_argument(
         "--n2-project-core-index",
