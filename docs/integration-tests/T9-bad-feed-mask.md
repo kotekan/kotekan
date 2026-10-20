@@ -118,7 +118,8 @@ Expectations only, re-checked with `--check-only` on kept output:
 
 ## Result (pathfinder, cx67, Release)
 
-**FAIL**, in the N2 flags only; everything else is exact.
+**PASS** with the N2Accumulate fix of #1790; every check is exact. Without that fix T9 failed in
+the N2 flags only (last row).
 
 | check | `full` | `half` |
 |---|---|---|
@@ -130,11 +131,11 @@ Expectations only, re-checked with `--check-only` on kept output:
 | FRB3 | ≤ 1.067 steps | ≤ 1.062 steps |
 | RFI | S0tilde = 256 × 123…125, S012tilde, SKtilde, RFI mask identical | 256 × 62…63 |
 | N2 good products | 5253 and 4753 per frequency identical | 1431 and 1176 |
-| N2 flags | extra: 33, 53 (bin 1); 3, 6, 31, 41, 98 (bin 2) | 3, 6, 31 (bin 2) |
+| N2 flags | the AND over each bin; before #1790 extra: 33, 53 (bin 1), 3, 6, 31, 41, 98 (bin 2) | before #1790 extra: 3, 6, 31 (bin 2) |
 
-The extra flags are the inputs bad in the frames before each bin: N2Accumulate folds the masks
-of the frames skipped while waiting for the first bin (lib/stages/N2Accumulate.cpp:476), and
-the mask of the frame that completes a bin into the next bin (line 732).
+The extra flags were the inputs bad in the frames before each bin: N2Accumulate folded the masks
+of the frames skipped while waiting for the first bin, and the mask of the frame that completes a
+bin into the next bin. #1790 folds only the masks of accumulated samples.
 
 T9r: in three runs the beamformer stream changed at frames 54, 42 and 108 after `seq0` and the
 N2 stream at 65, 58 and 131, so they disagree for 11 to 23 frames (**FAIL**); A, W, S0tilde
