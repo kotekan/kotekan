@@ -254,12 +254,12 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     _vis_samples_in_out_frame = 0;
     _n_rfi_first_stage_enabled_ticks = 0;
     _accum_fpga_start_tick = -1;
+    _accum_bin_idx = -1;
 
     if (!_rfi_first_stage_config_path.empty())
         kotekan::configUpdater::instance().subscribe(
             _rfi_first_stage_config_path,
             std::bind(&N2Accumulate::receive_rfi_first_stage_enabled, this, _1));
-    _accum_bin_idx = -1;
 
     // Ensure incoming buffer shapes and type are correct
     in_buf->require_frame_desc(kotekan::GenericNDArray::describe(
@@ -525,7 +525,7 @@ void N2Accumulate::main_thread() {
             }
         }
         const auto frame_coarse_freq = frame_metadata->get_coarse_freq();
-        const int frame_time_downsampling = frame_metadata->get_time_downsampling_fpga();
+        const int64_t frame_time_downsampling = frame_metadata->get_time_downsampling_fpga();
         if (frame_coarse_freq.size() != static_cast<size_t>(_num_freq_per_n2k_frame)) {
             FATAL_ERROR("N2Accumulate coarse-frequency length mismatch: got {:d}, expected {:d}",
                         frame_coarse_freq.size(), _num_freq_per_n2k_frame);
@@ -619,7 +619,8 @@ void N2Accumulate::main_thread() {
         const auto& coarse_freq = frame_metadata->get_coarse_freq();
 
         // Apply a pending first-stage excision switch from the first frame starting at or
-        // after its valid seq, the rule cudaRFISKtilde applies.
+        // after its valid seq, the rule cudaRFISKtilde applies. This matches the GPU while
+        // each n2k frame covers one voltage frame.
         {
             std::lock_guard<std::mutex> lock(_rfi_first_stage_mutex);
             if (seq0 >= _next_rfi_first_stage_valid_at_seq) {

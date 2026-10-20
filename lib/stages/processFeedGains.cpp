@@ -244,7 +244,7 @@ void processFeedGains::main_thread() {
         // This frame covers the same FPGA samples as the mask frame it was made from, shifted to
         // where the consumer's data begin
         meta->set_fpga_seq_num(mask_fpga_seq_num + fpga_seq_num_offset);
-        meta->set_time_downsampling_fpga(int(mask_lifetime));
+        meta->set_time_downsampling_fpga(mask_lifetime);
         // Set the frequency upchannelization metadata
         meta->set_freq_upchan_factor(freq_upchan_factor);
         meta->set_freq_upchan_index(freq_upchan_index);

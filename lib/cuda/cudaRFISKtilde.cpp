@@ -476,13 +476,13 @@ inline void cudaRFISKtilde::pre_execute_update_enabled(int64_t seq_num) {
 
     // Update the `enabled` flag if we're in its valid region
     if (seq_num >= next_enabled_valid_at_seq) {
+        // WARN, not INFO, so a transition shows at the production log level
+        if (next_excision_enabled != excision_enabled && get_instance_num() == 0)
+            WARN("First-stage RFI excision {:s} from seq {:d}",
+                 next_excision_enabled ? "on" : "off", seq_num);
         excision_enabled = next_excision_enabled;
         // Set the `next` valid time to the distant future so we don't copy again.
         next_enabled_valid_at_seq = std::numeric_limits<int64_t>::max();
-        // WARN, not INFO, so the transition shows at the production log level
-        if (get_instance_num() == 0)
-            WARN("First-stage RFI excision {:s} from seq {:d}", excision_enabled ? "on" : "off",
-                 seq_num);
     }
 }
 
@@ -505,8 +505,8 @@ bool cudaRFISKtilde::receive_excision_enabled(nlohmann::json& json) {
     int64_t seq_num = 0;
     if (new_time_ns != 0) {
         if (new_time_ns < Telescope::instance().to_time_ns(0)) {
-            WARN("Got invalid start time: {:d} - maintaining current state (excision enabled={})",
-                 new_time_ns, excision_enabled);
+            WARN("Got invalid start time: {:d} - keeping the current first-stage excision state",
+                 new_time_ns);
             return true;
         }
         seq_num = Telescope::instance().to_seq(new_time_ns);

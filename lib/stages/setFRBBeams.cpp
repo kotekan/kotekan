@@ -37,7 +37,9 @@ constexpr double deg2rad = M_PI / 180.0;
  *   - `"manual"`: Read beams from the `beams` config parameter, which is a list of
  *              FRBBeam objects.
  *   - `"grid"`: A rectangular grid of beams on the sky, uniform in vector components nx & ny.
- *              Requires `num_x`, `num_y`, `x_min`, `x_max`, `y_min`, `y_max` parameters.
+ *              Requires `num_x`, `num_y`, `x_min`, `x_max`, `y_min`, `y_max` parameters. With a
+ *              single beam along an axis, that beam sits midway between the minimum and maximum.
+ *              The beam at grid position (bx, by) has ID `bx + num_x * by`.
  *   - `"grid_degrees"`: As `grid`, but the grid is uniform in angle theta_x and theta_y from
  *              telescope zenith. `x_min`, etc are interpreted as angles in degrees.
  *              theta_x = arcsin(nx), theta_y = arcsin(ny).
@@ -45,7 +47,7 @@ constexpr double deg2rad = M_PI / 180.0;
  * The output beam position buffer contains the nx and ny components of each beam pointing
  * vector in the GRID frame (ie. direction cosines relative to the telescope).
  *
- * In the GRID frame, a pointing vector n has components n = (nx, ny, nz). n is normalizaed (|n| =
+ * In the GRID frame, a pointing vector n has components n = (nx, ny, nz). n is normalized (|n| =
  * 1), and the components nx, ny, nz are dimensionless. An upward-looking beam position will have nz
  * > 0, which can be computed from nz = sqrt(1 - nx^2 - ny^2).
  *
@@ -61,30 +63,32 @@ constexpr double deg2rad = M_PI / 180.0;
  * @buffer out_pos_buf      Output beam positions in the GRID frame.
  *      @buffer_format      NDArray float32 [num_beams, 2]
  *      @buffer_metadata    chordMetadata
- * @buffer out_id_buf       Output beam IDs in the GRID frame.
+ * @buffer out_id_buf       Output beam IDs.
  *      @buffer_format      NDArray uint64 [num_beams]
  *      @buffer_metadata    chordMetadata
  *
  * @conf mode       string. Mode to generate beams.
- * @conf num_beams  uint32. Total number of beams being produced (fixed + tracking). Must be
- *                          consistent with mode.
+ * @conf num_beams  uint32. Total number of beams being produced. Must equal the number of
+ *                          beams the mode produces (the length of `beams`, or num_x * num_y).
  * @conf time_downsampling_fpga   uint64. Number of fpga sequence number ticks between output
  *                          frames.
  * @conf max_upchannelization_factor  int. The largest upchannelization factor of the run; it
  *                          determines the upchannelizers' output offset.
  * @conf upchan_output_alignment  int. Optional. Rounds the output offset up to a multiple of this.
- * @conf beams      List of FixedBBBeam.  For `fixed_mode` = "manual". Beams to produce.
- * @conf num_x      uint32. For `fixed_mode` = "grid" or "grid_degrees". Number of beams in grid X
+ * @conf beams      List of FRBBeam. For `mode` = "manual". Beams to produce, each given as
+ *                          `{id: uint64, x_dir_grid: double, y_dir_grid: double}`, where
+ *                          x_dir_grid and y_dir_grid are nx and ny.
+ * @conf num_x      uint32. For `mode` = "grid" or "grid_degrees". Number of beams in grid X
  *                          direction (~East/West)
- * @conf num_y      uint32. For `fixed_mode` = "grid" or "grid_degrees". Number of beams in grid Y
+ * @conf num_y      uint32. For `mode` = "grid" or "grid_degrees". Number of beams in grid Y
  *                          direction (~North/South)
- * @conf x_min      double. For `fixed_mode` = "grid" or "grid_degrees". Minimum value of nx
+ * @conf x_min      double. For `mode` = "grid" or "grid_degrees". Minimum value of nx
  *                          ("grid", dimensionless) or theta_x ("grid_degrees", degrees)
- * @conf x_max      double. For `fixed_mode` = "grid" or "grid_degrees". Maximum value of nx
+ * @conf x_max      double. For `mode` = "grid" or "grid_degrees". Maximum value of nx
  *                          ("grid", dimensionless) or theta_x ("grid_degrees", degrees)
- * @conf y_min      double. For `fixed_mode` = "grid" or "grid_degrees". Minimum value of ny
+ * @conf y_min      double. For `mode` = "grid" or "grid_degrees". Minimum value of ny
  *                          ("grid", dimensionless) or theta_y ("grid_degrees", degrees)
- * @conf y_max      double. For `fixed_mode` = "grid" or "grid_degrees". Maximum value of ny
+ * @conf y_max      double. For `mode` = "grid" or "grid_degrees". Maximum value of ny
  *                          ("grid", dimensionless) or theta_y ("grid_degrees", degrees)
  *
  */
@@ -204,8 +208,11 @@ std::vector<FRBBeam> setFRBBeams::build_grid_beams() const {
         for (uint32_t bx = 0; bx < num_x; bx++) {
             const uint32_t b = bx + num_x * by;
 
-            double x = (x_min * (num_x - bx - 1) + x_max * bx) / (num_x - 1);
-            double y = (y_min * (num_y - by - 1) + y_max * by) / (num_y - 1);
+            // A single beam along an axis sits at the midpoint
+            double x = num_x == 1 ? (x_min + x_max) / 2
+                                  : (x_min * (num_x - bx - 1) + x_max * bx) / (num_x - 1);
+            double y = num_y == 1 ? (y_min + y_max) / 2
+                                  : (y_min * (num_y - by - 1) + y_max * by) / (num_y - 1);
             grid_beams.at(b) = {.id = b, .x_dir_grid = x, .y_dir_grid = y};
         }
     }
@@ -224,8 +231,11 @@ std::vector<FRBBeam> setFRBBeams::build_grid_deg_beams() const {
         for (uint32_t bx = 0; bx < num_x; bx++) {
             const uint32_t b = bx + num_x * by;
 
-            double x = (x_min * (num_x - bx - 1) + x_max * bx) / (num_x - 1);
-            double y = (y_min * (num_y - by - 1) + y_max * by) / (num_y - 1);
+            // A single beam along an axis sits at the midpoint
+            double x = num_x == 1 ? (x_min + x_max) / 2
+                                  : (x_min * (num_x - bx - 1) + x_max * bx) / (num_x - 1);
+            double y = num_y == 1 ? (y_min + y_max) / 2
+                                  : (y_min * (num_y - by - 1) + y_max * by) / (num_y - 1);
             grid_beams.at(b) = {
                 .id = b, .x_dir_grid = sin(x * deg2rad), .y_dir_grid = sin(y * deg2rad)};
         }

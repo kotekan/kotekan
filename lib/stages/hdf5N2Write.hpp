@@ -50,13 +50,13 @@
  *   grid_x_idx, grid_y_idx, feed_pos_disp_m, coelev_disp_deg, type, label), and
  *   /index_map/dish_positions_in_grid_coords per dish.
  * - Per-(f, p, t)/(f, t) datasets: /vis, /eval, /evec, /erms, /gain, /radiometer_chi2,
- * /frames_added; vis_weight, flags, frac_lost, and frac_rfi live at the root (CHORD) or under
- *   /flags/{vis_weight, flags, frac_lost, frac_rfi} when file_mode == CHIME.
+ * /frames_added, /frac_rfi_first_stage_enabled; vis_weight, flags, frac_lost, and frac_rfi live
+ *   at the root (CHORD) or under /flags/{vis_weight, flags, frac_lost, frac_rfi} when
+ *   file_mode == CHIME.
  * - Per-time metadata: /fpga_start_tick, /frame_length_fpga_ticks,
  *   /time_center_ut1_ns, /bin_ut1_ns, /bin_start_ERA_deg, /bin_end_ERA_deg,
  *   /bin_start_ERAL, /bin_end_ERAL, /rfi_frame_excision_enabled, /rfi_frame_excision_num,
- *   /rfi_frame_excision_threshold, /rfi_frame_excision_fraction,
- *   /frac_rfi_first_stage_enabled, /fringestop_enabled.
+ *   /rfi_frame_excision_threshold, /rfi_frame_excision_fraction, /fringestop_enabled.
  * - /config_json grows on flush with snapshots from configTracker.
  *
  * @par Chunking and compression
@@ -121,6 +121,8 @@ protected:
     std::vector<float> frac_pl;                // (f, t) ; uses n_pl_fpga_ticks
     std::vector<float> flags;                  // (f, i, t)
     std::vector<float> radiometer_chi2;        // (f, t, pp)
+    // (f, t) ; uses n_rfi_first_stage_enabled_fpga_ticks
+    std::vector<float> frac_rfi_first_stage_enabled;
 
     // t-dependent metadata
     std::vector<uint64_t> fpga_start_tick;           // (t)
@@ -142,8 +144,6 @@ protected:
     std::vector<int32_t> rfi_frame_excision_num;     // (t)
     std::vector<float> rfi_frame_excision_threshold; // (t, k)
     std::vector<float> rfi_frame_excision_fraction;  // (t, k)
-    std::vector<float>
-        frac_rfi_first_stage_enabled; // (t) ; uses n_rfi_first_stage_enabled_fpga_ticks
     std::vector<bool> fringestop_enabled;            // (t)
 
     // Tracking what (f, t) pairs have been added
