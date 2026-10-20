@@ -825,9 +825,14 @@ def elem_proj_keys(args):
     --elem-proj-mode is shadow or live, so a fleet without it is byte-identical. The mode is
     also a live switch (POST /set_elem_proj); this key makes it survive a restart."""
     mode = getattr(args, "elem_proj_mode", "off") or "off"
+    out = {}
+    # #190: the lane directions GnssN2Project reads (source lanes); off emits nothing. It
+    # does not need the bright-satellite projection on (the rows are then raw).
+    if getattr(args, "elem_dir_publish", "off") == "all":
+        out["elem_dir_publish"] = "all"
     if mode not in ("shadow", "live"):
-        return {}
-    out = {"elem_proj_mode": mode}
+        return out
+    out["elem_proj_mode"] = mode
     if getattr(args, "elem_proj_deg", None) is not None:
         out["elem_proj_deg"] = args.elem_proj_deg
     return out
@@ -2728,6 +2733,29 @@ def main():
         "ranges (lo-hi) or single indices (default %(default)s)",
     )
     ap.add_argument(
+        "--n2-project-source",
+        choices=["eigen", "lanes", "lanes+residual"],
+        default="eigen",
+        help="GnssN2Project's direction source (#190): eigen = the N2 block's own top-k "
+        "subspace (default); lanes = the tracked satellites' directions the chains publish "
+        "(each PRN's averaged prompt row, gnssLaneDirection.hpp; needs --elem-dir-publish all); "
+        "lanes+residual = lanes first, then the eigen path on what is left",
+    )
+    ap.add_argument(
+        "--n2-project-lanes-max",
+        type=int,
+        default=8,
+        help="lane directions projected per channel at most (each costs 1/n of the sky and "
+        "~4 n^2 operations per channel-frame; default %(default)s)",
+    )
+    ap.add_argument(
+        "--elem-dir-publish",
+        choices=["off", "all"],
+        default="off",
+        help="GnssGpuRecordAssemble: publish every running non-probe slot's averaged prompt-row "
+        "direction per channel on the ProjBoard for GnssN2Project (#190); default off",
+    )
+    ap.add_argument(
         "--n2-project-live-freq-ids",
         type=str,
         default=None,
@@ -3343,6 +3371,24 @@ def main():
                 "solve_every": int(N2_PROJECT_SOLVE_EVERY),
                 "metric_period_s": 1.0,
             }
+            if args.n2_project_source != "eigen":
+                # #190: the chains' directions. The board group is the assemblers' unique_name
+                # up to the first '_' ("/gnss<gpu>"); tracker_stations is the chains' element
+                # axis, station of element e = live_element_tiles[e >> 4] * 16 + (e & 15).
+                _tiles = live_tile_columns(arr)
+                _stage["source"] = args.n2_project_source
+                _stage["board_group"] = "/gnss%d" % _gpu
+                _stage["tracker_stations"] = [
+                    int(_t) * 16 + _i for _t in _tiles for _i in range(16)
+                ]
+                _stage["k_lanes_max"] = int(args.n2_project_lanes_max)
+                _missing = sorted(set(_stage["tracker_stations"]) - set(_st))
+                if _missing:
+                    sys.stderr.write(
+                        "  WARNING: %d tracker elements are outside --n2-project-stations "
+                        "(e.g. %s): a lane direction cannot null them\n"
+                        % (len(_missing), _missing[:6])
+                    )
             _lf = args.n2_project_live_freq_ids
             if _lf == "exempt":
                 _lf = args.rfi_excision_exempt_freq_ids
@@ -3364,8 +3410,8 @@ def main():
             )
             out["gnss_n2_project"]["proj_%d" % _gpu] = _stage
         sys.stderr.write(
-            "  GnssN2Project %s on both GPUs (%d stations, k_max %d)\n"
-            % (args.n2_project, len(_st), int(N2_PROJECT_K_MAX))
+            "  GnssN2Project %s on both GPUs (%d stations, k_max %d, source %s)\n"
+            % (args.n2_project, len(_st), int(N2_PROJECT_K_MAX), args.n2_project_source)
         )
 
     # --- metadata pool for the GNSS chain -----------------------------------------------------

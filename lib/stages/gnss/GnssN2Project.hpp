@@ -75,6 +75,30 @@
  * @conf solve_every      Int. Frames between solves per channel (4).
  * @conf metric_period_s  Double. Gauge update period (1.0).
  * @conf archive_period_s Double. Accepted; it has no effect.
+ *
+ * Known-satellite directions (#190). With source lanes or lanes+residual the stage first
+ * projects, per live channel, the directions the chains publish on the process-wide ProjBoard
+ * (src 2, gnssLaneDirection.hpp: each tracked PRN's averaged prompt row, in the tracker's
+ * element frame), mapped onto the stations axis through tracker_stations, conjugated
+ * (lane_conj: the N^2 is E_i conj(E_j) and a row is conj(E_e), so the N^2-frame direction is
+ * the row's conjugate; the two Rayleigh quotients lane_rq_{conj,raw}_db settle it on sky),
+ * ordered by row power, gated by coherence and Gram-Schmidt'd (a sibling chain's copy of the
+ * same emitter is dropped). lanes+residual then runs the data-driven path above on what is
+ * left, as the detector of unlisted emitters; lanes alone runs no eigen path. Each lane costs
+ * 1/n of the sky and ~4 n^2 operations per channel-frame, so k_lanes_max is a budget.
+ *
+ * @conf source            String. eigen (default: the data-driven subspace only), lanes, or
+ *                         lanes+residual.
+ * @conf board_group       String. The ProjBoard group of this GPU's chains, e.g. "/gnss0"
+ *                         (an assembler's unique_name up to its first '_'). Required with lanes.
+ * @conf tracker_stations  Int list. The chains' element axis: station of tracker element e
+ *                         (live_element_tiles[e >> 4] * 16 + (e & 15)). Required with lanes.
+ * @conf k_lanes_max       Int. Lane directions per channel at most (8).
+ * @conf lane_max_age_s    Double. A board entry older than this is ignored (1.0).
+ * @conf lane_coh_min      Double. Minimum LaneDirection coherence of a usable row (0.05).
+ * @conf lane_min_new_frac Double. Gram-Schmidt: a direction with less than this fraction of
+ *                         its energy outside the basis so far is a duplicate (0.1).
+ * @conf lane_conj         Bool. Conjugate the row into the N^2 frame (true).
  */
 class GnssN2Project : public kotekan::Stage {
 public:
@@ -112,6 +136,31 @@ private:
     std::vector<int> k_cur, on;
     std::vector<double> lam0_rel, frac0, null_db, mean_auto, pr0;
     std::vector<int> q_use; ///< per channel: the solved components the gates accepted, in order
+    // #190 lane directions
+    const std::string source;
+    const bool use_lanes;    ///< source != eigen
+    const bool use_residual; ///< the eigen path runs (eigen, or on the residual)
+    const std::string board_group;
+    std::vector<int> tracker_stations;
+    const int k_lanes_max;
+    const double lane_max_age_s;
+    const double lane_coh_min;
+    const double lane_min_new_frac;
+    const bool lane_conj;
+    std::vector<int> e2a;    ///< tracker element e -> index on the stations axis, -1 if absent
+    gnss::ProjBasis lanes;   ///< the channel's lane basis, rebuilt every frame
+    std::vector<int> lane_k; ///< per channel: lanes projected this frame
+    std::vector<double> lane_rq_conj_db, lane_rq_raw_db; ///< per channel: top lane's q^H V q / mean auto
+    uint64_t lane_dup = 0, lane_used = 0;
+    struct LaneCand {
+        double power, coh;
+        std::vector<cd> v; ///< on the stations axis, conjugated per lane_conj
+    };
+    std::vector<LaneCand> cand;
+    /// Read the board for local channel f, build `lanes` from the fresh, coherent entries in
+    /// power order; with @p diag also the two Rayleigh quotients of the strongest one against
+    /// the raw block V. Returns the basis size.
+    int build_lanes(int f, int freq_id, const cd* V, double now_s, bool diag);
 };
 
 #endif

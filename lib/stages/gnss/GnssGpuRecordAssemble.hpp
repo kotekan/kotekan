@@ -8,6 +8,7 @@
 #include "gnssElemCal.hpp"
 #include "gnssElemSteer.hpp"
 #include "gnssProjSubspace.hpp"
+#include "gnssLaneDirection.hpp" // for LaneDirection (#190)
 #include "gnssSharedPin.hpp" // for ReseedState
 #include "restServer.hpp"
 
@@ -344,6 +345,22 @@ private:
     std::string _proj_group;     ///< board key: the GPU instance ("gnss0")
     char _proj_sys = '?';        ///< constellation letter of this chain's PRNs
     std::vector<int> _proj_fids; ///< [n_chan] freq_id per channel (channel_ids)
+    // #190 lane directions: every running non-probe slot's averaged steered prompt row,
+    // published per channel on the ProjBoard (src 2) for GnssN2Project. Config
+    // elem_dir_publish off|all, elem_dir_tau_s (0.5), elem_dir_every records (4),
+    // elem_dir_coh_min (0.02). Owner "<unique_name>/lane/<prn>"; retired when the slot
+    // stops or changes PRN. Rows are taken after the in-place elem projection, so a
+    // victim's row carries no bright-source leakage.
+    bool _lane_on = false;
+    int _lane_every = 4;
+    double _lane_coh_min = 0.02;
+    std::string _lane_group;
+    std::vector<int> _lane_fids;
+    gnss::LaneDirection _lane;
+    std::vector<std::complex<double>> _lane_scratch, _lane_dir;
+    std::vector<double> _lane_t_prev; ///< [n_prn] utc of the last fed record, 0 = none
+    std::vector<int> _lane_prn, _lane_pub, _lane_cnt;
+    std::vector<std::string> _lane_owner;
     bool _proj_ready = false;
     uint8_t _proj_nchan_warned = 0;
     std::vector<std::unique_ptr<gnss::ProjSubspace>> _proj_own; ///< per slot, while it is a source
