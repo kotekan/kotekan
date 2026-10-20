@@ -144,8 +144,9 @@ bool bufferBadInputs::update_bad_inputs_callback(nlohmann::json& json) {
     const bool fatal_on_error = !initialised;
 
     std::vector<int> bad_inputs;
-    // A missing start_time keys the update to just after the last produced frame, so that it
-    // applies to the next one, superseding everything earlier.
+    // A missing start_time, or one at or before FPGA sample 0 (CHIME posts 0), keys the update to
+    // just after the last produced frame, so that it applies to the next one, superseding
+    // everything earlier.
     bool has_start_time = false;
     timespec start_ts = use_fpga_time ? nanosec_i64_to_timespec(last_ref_time_ns + 1)
                                       : double_to_ts(current_time());
@@ -163,8 +164,11 @@ bool bufferBadInputs::update_bad_inputs_callback(nlohmann::json& json) {
             if (json.at("start_time").get<double>() < 0)
                 throw std::invalid_argument("received negative start_time: "
                                             + json.at("start_time").dump());
-            start_ts = double_to_ts(json.at("start_time").get<double>());
-            has_start_time = true;
+            const timespec requested_ts = double_to_ts(json.at("start_time").get<double>());
+            if (requested_ts > Telescope::instance().to_time(0)) {
+                start_ts = requested_ts;
+                has_start_time = true;
+            }
         }
         if (json.contains("update_id")) {
             if (!json.at("update_id").is_string())

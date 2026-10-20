@@ -46,8 +46,9 @@
  * (through the telescope) of the last boundary at or before the frame.
  * Instances with the same alignment switch at the same sample if the
  * alignment is a multiple of each of their lifetimes and their first frames
- * are a multiple of the alignment apart.  An update without a start time
- * applies at the next boundary not yet produced.
+ * are a multiple of the alignment apart.  An update without a start time,
+ * or with one at or before FPGA sample 0, applies at the next boundary not
+ * yet produced.
  *
  * Mask frames are produced whenever the output buffer has room, so the stage
  * is paced by its consumers and runs ahead of them by its buffer depth.  An
@@ -113,7 +114,8 @@
  *                                      config block containing the following properties:
  *                                      "bad_inputs"  An array of bad inputs in cylinder order.
  *                                      "start_time"  Optional UNIX time the update takes
- *                                                    effect (default: at the next boundary).
+ *                                                    effect (default, or 0: at the next
+ *                                                    boundary).
  *                                      "update_id"   Optional string identifying the update,
  *                                                    used in this stage's log messages.
  * @conf   num_kept_updates  Int. Default 5.  Number of updates kept in the queue.
@@ -146,7 +148,8 @@ private:
         std::vector<uint8_t> mask;
         /// For log messages.
         std::string update_id;
-        /// False if the update was posted without a start time; it is then never late.
+        /// False if the update was posted without a start time, or with one at or before FPGA
+        /// sample 0; it is then never late.
         bool has_start_time;
     };
 
