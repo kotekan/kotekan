@@ -6,6 +6,10 @@
 #     outputs       list of output names to write (see `write_data` below)
 #     write_frames  dict: number of frames to write per output name (default: default_write_frames)
 #     default_write_frames
+#     write_decimation
+#                   dict: [X, Y] per output name, write only the first X of every Y frames
+#                   (hdf5FileWrite write_x_frames / per_y_frames; per-frame files only).
+#                   write_frames then counts all frames, written or not.
 #
 # Each writer stops after its number of frames; kotekan exits once all writers are done. A
 # writer that stops would block its buffer's producer if it were the last consumer, so every
@@ -14,6 +18,7 @@
 {% set outputs = outputs | default([]) %}
 {% set write_frames = write_frames | default({}) %}
 {% set default_write_frames = default_write_frames | default(8) %}
+{% set write_decimation = write_decimation | default({}) %}
 {% set upchan_factors = [2, 4, 8, 16, 32, 64] %}
 
 ################################################################################
@@ -213,6 +218,10 @@ write_data:
 {% if name in multi_file or name.startswith('upchan_U') and name.endswith('_gain')
       or name.startswith('frb1_U') and name.endswith('_phase') %}
         create_single_file: false
+{% endif %}
+{% if name in write_decimation %}
+        write_x_frames: {{ write_decimation[name][0] }}
+        per_y_frames: {{ write_decimation[name][1] }}
 {% endif %}
     drain_{{ name }}:
         kotekan_stage: hdf5FileWrite

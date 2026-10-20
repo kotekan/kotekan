@@ -83,6 +83,21 @@ def read_output(out_dir, name):
     return Output(name, data, frame_attrs[0], frame_attrs)
 
 
+def frame_files(out_dir, name):
+    """The per-frame files of output `name` by frame number, the number of the frame among all
+    frames the writer received (hdf5FileWrite names them `<name>.<frame>.h5`)."""
+    files = glob.glob(os.path.join(out_dir, name + ".[0-9]*.h5"))
+    return dict(sorted((int(f.rsplit(".", 2)[1]), f) for f in files))
+
+
+def read_frame(filename, name):
+    """One per-frame file of output `name`, as an `Output` of one frame."""
+    with h5py.File(filename, "r") as f:
+        dset = f[name]
+        attrs = _read_attrs(dset)
+        return Output(name, dset[()], attrs, [attrs])
+
+
 def used_channels(output, axis):
     """`output.data` restricted to the frequency slots listed in `coarse_freq`. Buffers are
     sized for the largest channel count; the remaining slots hold no data."""

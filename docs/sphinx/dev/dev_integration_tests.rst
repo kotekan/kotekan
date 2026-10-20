@@ -59,7 +59,8 @@ Layout
    decoding and models; ``check_<test>.py`` is one check per test. A check either has
    ``VARIANTS``, each run and checked on its own, or ``RUNS``, which are all run before one
    check compares them (T5). A variant may also POST to kotekan's REST server while it runs
-   (``posts``, T9r).
+   (``posts``, T9r). With ``MEMORY_INTERVAL``, ``run.py`` samples kotekan's resident and GPU
+   memory while it runs (T10).
 
 ``docs/integration-tests/``
    One Markdown description per test (``T<n>-<name>.md``): the errors the test catches, and the
@@ -89,6 +90,9 @@ Differences from ``config/fengine``:
   ``setFRBBeams`` that place the beams (``fixed_mode`` / ``mode`` and its keys; default: the
   production grids), and ``frb2_weights_lifetime_in_samples`` the FRB2 weights lifetime
   (default: 240 FRB2 frames, about 60 s).
+* ``write_decimation`` writes only the first X of every Y frames of an output
+  (``hdf5FileWrite`` ``write_x_frames`` / ``per_y_frames``); ``write_frames`` then counts all
+  frames, written or not.
 
 Running
 =======
@@ -238,10 +242,16 @@ upchannelizer output start ``T*``, ``coarse_freq`` / ``freq_upchan_factor`` /
        posted FPGA start time; A, W, S0tilde and the N2 flags follow.
      - exact
    * - T10 Long run
-     - Noise plus tone, 0.01% loss, changing bad feeds, short lifetimes, 10 minutes.
-     - N2, FRB PL mask, FRB2 (decimated)
-     - No stalls, contiguous ``fpga_seq_num``, all switches on time, loss rate as configured.
-     - exact; loss rate 3σ
+     - T2's weak tone on an FRB2 beam in noise; 0.01% loss (0+0i), 3 to 5 poisoned bad inputs
+       changing every 9 frames, lifetimes of 3 frames (BB, FRB1) and one FRB2 frame; 8640
+       frames (362 s simulated, 10 minutes on cx67).
+     - both mask streams, BB and FRB2 beam positions and ids, FRB PL mask, ``n2k_plcounts``, N2
+       (16 frequencies), FRB2 (decimated)
+     - Every writer gets all frames with contiguous ``fpga_seq_num``; every mask, beam and N2
+       switch on time; PL mask and N2 counts equal the injected loss, N2 flags the schedule;
+       loss rate as configured; no NaN or Inf; FRB2 peak in the source beam; resident memory
+       flat after warm-up.
+     - exact; loss rate 3σ; memory 32 MiB
 
 The pathfinder is tested first, then CHORD, then CHIME.
 
@@ -350,6 +360,15 @@ Findings
   telescope takes the system time at startup as its time origin
   (``lib/utils/CHORDTelescope.cpp:270``), and about 60 fringe-stopped visibilities and weights
   of an integration differed between two identical runs. The tests now fix the origin.
+* **The hdf5FileWrite decimation writes one frame too many** (T10). With ``write_x_frames`` X
+  and ``per_y_frames`` Y it writes the first X + 1 of every Y frames, not the first X as
+  documented: ``frame_counter % per_y_frames > write_x_frames``
+  (``lib/stages/hdf5FileWrite.cpp:708``) skips frames X + 1 to Y - 1 only. T10 expects the documented frames and fails on this.
+* Over 8640 frames (362 s simulated) everything stays exact (T10): 2880 BB/FRB1 lifetimes, 1439
+  FRB2 lifetimes, 959 bad feed changes and 359 N2 integrations switch on time, every writer gets
+  every frame, the FRB PL mask and the N2 counts follow the loss, and resident memory grows by
+  1.6 MiB after warm-up. ``hdf5FileWrite`` holds about one extra frame while it compresses it
+  (475 MiB for FRB2), and writing an FRB2 frame stalls the pipeline for about 5 s.
 * ``setUpchanGain`` checks the number of gains (one per fine channel) only with ``assert``
   (seen while writing T5, not tested), which a Release build drops: extra gains are ignored,
   and too few throw ``std::out_of_range``.
@@ -362,7 +381,11 @@ Data volume and run time
 * A test writes at most about 10 GiB (8 frames of upchannelized voltages and BB beams, a few N2
   integrations).
 * A run simulates 2 to 4 seconds and takes a few minutes; T1 to T9 take about 45 minutes per
-  telescope, T10 about 12 minutes.
+  telescope.
+* T10 simulates 8640 frames (362 s). Kotekan runs at about 15 frames/s on cx67 (0.64 times real
+  time), so this takes 10 minutes, and the check 5 minutes more. It writes 4.2 GB: only the
+  small outputs, 16 frequencies of N2, and FRB2 decimated to one frame in 359 (all of them would
+  be 14 GB of N2 and 470 GB of FRB2).
 
 Future ideas
 ============
