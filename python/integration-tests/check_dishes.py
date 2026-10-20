@@ -13,6 +13,10 @@ Variants:
 - `half`: the northern half of the dishes is Missing (and masked bad); T2's `frb2` variant
   (check_phases.py) must still pass, with predictions from the present dishes only.
 
+Grid cells beyond the grid (CHIME has 4 x 256) are wrapped around it. Without a
+BB beamformer (CHIME) the BB parts are left out. Feed positions are compared up to a common
+offset, which no output depends on (CHIMETelescope centres the array).
+
 `onehot` and `pairs` have no noise and first-stage RFI excision off, since a tone has spectral
 kurtosis 0.
 
@@ -29,6 +33,9 @@ import check_phases
 from kit import (
     audit,
     C0,
+    find_stages,
+    frb1_swap_MN,
+    has_bb,
     sky_frequency,
     decode_int4x2,
     direction_vector,
@@ -37,6 +44,7 @@ from kit import (
     large_seq,
     read_output,
     require,
+    upchan_t_star,
     used_channels,
     value,
 )
@@ -67,7 +75,6 @@ PAIR_AMPLITUDE = 5.2
 PAIR_UPCHAN_FACTORS = [16, 32, 64]
 PATTERN_TOLERANCE = 0.01
 
-UPCHAN_FACTORS = [2, 4, 8, 16, 32, 64]
 
 
 def grid_dishes(config):
@@ -76,6 +83,12 @@ def grid_dishes(config):
         (dish["grid_x_idx"], dish["grid_y_idx"]): dish["dish_idx"]
         for dish in config["telescope"]["dish_inputs"]
     }
+
+
+def grid_cell(config, cell):
+    """`cell` wrapped into the grid of `telescope.dish_inputs`."""
+    cells = grid_dishes(config)
+    return tuple(c % (max(xy[axis] for xy in cells) + 1) for axis, c in enumerate(cell))
 
 
 def onehot_inputs(config):
@@ -91,13 +104,13 @@ def onehot_inputs(config):
         (max(cells.values()), 0),
         (cells[(width - 1, top)], 1),
     ]
-    return corners + [(cells[cell], pol) for cell, pol in ONEHOT_INNER]
+    return corners + [(cells[grid_cell(config, cell)], pol) for cell, pol in ONEHOT_INNER]
 
 
 def pairs(config):
     """The dishes of the pairs `PAIR_CELLS`."""
     cells = grid_dishes(config)
-    return [(cells[a], cells[b]) for a, b in PAIR_CELLS]
+    return [(cells[grid_cell(config, a)], cells[grid_cell(config, b)]) for a, b in PAIR_CELLS]
 
 
 def pair_cycles(config, j):
@@ -107,9 +120,9 @@ def pair_cycles(config, j):
 
 def n2_bin_start(config, seq0):
     """The first N2 accumulation bin boundary at or after `seq0`."""
-    length = config["run_N2_accumulate"]["num_subintegrations_per_bin"] * value(
-        config, "n2k_samples_per_data_set"
-    )
+    length = find_stages(config, "N2Accumulate")[0][
+        "num_subintegrations_per_bin"
+    ] * value(config, "n2k_samples_per_data_set")
     return -(-seq0 // length) * length
 
 
@@ -140,15 +153,16 @@ def variables(tel, config, variant):
             }
             for (dish, pol), window in zip(onehot_inputs(config), windows)
         ]
-        var["bb_gain"] = ONEHOT_BB_GAIN
         var["do_fringestop"] = False
-        var["outputs"] = ["voltage", "bb_beams", "bb_beam_positions", "n2_vis"]
+        var["outputs"] = ["voltage", "n2_vis"]
         var["write_frames"] = {
             "voltage": num_frames,
-            "bb_beams": num_frames,
-            "bb_beam_positions": 1,
             "n2_vis": value(config, "num_frequencies"),
         }
+        if has_bb(config):
+            var["bb_gain"] = ONEHOT_BB_GAIN
+            var["outputs"][1:1] = ["bb_beams", "bb_beam_positions"]
+            var["write_frames"].update({"bb_beams": num_frames, "bb_beam_positions": 1})
     elif variant == "pairs":
         var["sources"] = [
             {
@@ -160,7 +174,7 @@ def variables(tel, config, variant):
             for j, pair in enumerate(pairs(config))
         ]
         # Unit gains keep the upchannelized tones unsaturated
-        var["upchan_gains"] = {str(U): [1.0] * U for U in UPCHAN_FACTORS}
+        var["upchan_gains"] = {str(U): [1.0] * U for U in config["upchan_factors"]}
         var["outputs"] = ["frb1_beams"]
         var["write_frames"] = {"frb1_beams": 1}
     else:
@@ -207,14 +221,18 @@ def check_dish_attrs(name, attrs, config):
         f"{name}: dish_grid_indices of dishes {bad[:8].tolist()} are "
         f"{written_grid[bad[:8]].tolist()}, expected {grid[bad[:8]].tolist()}",
     )
-    bad = np.nonzero(np.any(np.abs(written_pos - pos) > 1e-9, axis=1) & listed)[0]
+    offset = (written_pos - pos)[listed].mean(axis=0)
+    bad = np.nonzero(np.any(np.abs(written_pos - pos - offset) > 1e-9, axis=1) & listed)[0]
     require(
         not bad.size,
         f"{name}: feed_positions_m of dishes {bad[:8].tolist()} are "
-        f"{written_pos[bad[:8]].tolist()}, expected {pos[bad[:8]].tolist()}",
+        f"{written_pos[bad[:8]].tolist()}, expected {pos[bad[:8]].tolist()} + {offset.tolist()}",
     )
     missing = int((grid[:, 0] < 0).sum())
-    return f"{name}: dish_grid_indices and feed_positions_m match the config ({missing} dishes missing)"
+    return (
+        f"{name}: dish_grid_indices and feed_positions_m match the config ({missing} dishes "
+        f"missing, positions offset by {np.round(offset, 6).tolist()} m)"
+    )
 
 
 def check_onehot(out_dir, var, config):
@@ -307,6 +325,8 @@ def check_onehot(out_dir, var, config):
 
     # Baseband beams [Thi, B, F, P, T], J_b = bb_gain Σ_d A_bd E_d with
     # A_bd ∝ exp(2πi ν n_b·r_d / c), ν the coarse channel centre (calcBBPhase).
+    if "bb_beams" not in var["outputs"]:
+        return results
     bb = read_output(out_dir, "bb_beams")
     audit(bb, first_seq=SEQ0, frequency_channels=channels)
     seqs = frame_seq_nums(bb)
@@ -361,25 +381,24 @@ def fringe(config, pair, num_P, num_Q):
     """The FRB1 intensity (1 + cos π (p Δm/M + q Δn/N)) / 2 [Q, P] of a pair of dishes with
     equal signals, and a level that separates the peak bins from the others: the middle of the
     highest gap of at least 2 PATTERN_TOLERANCE between the values. (On a fine beam grid, e.g.
-    48 x 48 for CHORD, the values next to the peak are within the measurement error of it.)"""
+    48 x 48 for CHORD, the values next to the peak are within the measurement error of it.) The
+    level is None if there is no such gap (CHIME's 512 beams along the cylinders)."""
     grid, _, _ = config_dish_attrs(config)
-    if config.get("frb1_swap_MN", False):
+    if frb1_swap_MN(config):
         grid = grid[:, ::-1]
     dm, dn = grid[pair[0]] - grid[pair[1]]
     M, N = num_P // 2, num_Q // 2
     q, p = np.meshgrid(np.arange(num_Q), np.arange(num_P), indexing="ij")
     pattern = (1 + np.cos(np.pi * (p * dm / M + q * dn / N))) / 2
     levels = np.unique(pattern.round(9))[::-1]
-    gap = np.nonzero(levels[:-1] - levels[1:] >= 2 * PATTERN_TOLERANCE)[0][0]
-    threshold = (levels[gap] + levels[gap + 1]) / 2
+    gaps = np.nonzero(levels[:-1] - levels[1:] >= 2 * PATTERN_TOLERANCE)[0]
+    threshold = (levels[gaps[0]] + levels[gaps[0] + 1]) / 2 if gaps.size else None
     return pattern, threshold, (int(dm), int(dn))
 
 
 def check_pairs(out_dir, var, config):
     SEQ0 = var["first_fpga_seq_num"]
-    t_star = (
-        (check_phases.NUM_TAPS - 1) * value(config, "max_upchannelization_factor") // 2
-    )
+    t_star = upchan_t_star(config)
     num_times = value(config, "num_times")
     channels = np.array(value(config, "frequency_channels"))
     frb1 = read_output(out_dir, "frb1_beams")
@@ -396,21 +415,27 @@ def check_pairs(out_dir, var, config):
     for j, (pair, source) in enumerate(zip(dish_pairs, var["sources"])):
         pattern, threshold, sep = fringe(config, pair, num_P, num_Q)
         f_tone = source["tone_cycles_per_frame"] / num_times
-        peaks = pattern >= threshold
+        peaks = pattern >= threshold if threshold is not None else None
         worst = 0.0
         wrong_peaks = []
         checked = 0
-        for U in PAIR_UPCHAN_FACTORS:
+        factors = sorted(set(PAIR_UPCHAN_FACTORS) & set(config["upchan_factors"]))
+        for U in factors:
             u = int(np.floor(f_tone * U + (U - 1) / 2 + 0.5))
             for slot in np.nonzero((factor == U) & (index == u))[0]:
                 intensity = data[slot] / data[slot].max()
                 worst = max(worst, np.abs(intensity - pattern).max())
-                if not np.array_equal(intensity >= threshold, peaks):
+                if peaks is not None and not np.array_equal(intensity >= threshold, peaks):
                     wrong_peaks.append((int(coarse[slot]), U))
                 checked += 1
         line = (
-            f"frb1_beams pair {pair} (Δm, Δn) = {sep}: {checked} channels (U = "
-            f"{PAIR_UPCHAN_FACTORS}), {peaks.sum()} peak bins as predicted"
+            f"frb1_beams pair {pair} (Δm, Δn) = {sep}: {checked} channels (U = {factors}), "
+            + (
+                f"{peaks.sum()} peak bins as predicted"
+                if peaks is not None
+                else "no gap between the fringe levels to check the peak bins"
+            )
+            + 
             f"{'' if not wrong_peaks else ' except in ' + str(wrong_peaks[:4])}, "
             f"max |I / I_max - fringe| {worst:.4f}"
         )
@@ -436,11 +461,12 @@ def check_half(out_dir, var, config):
     require(
         np.all(voltage.data[..., ~exists] == 0x88), "voltage: Missing dishes non-zero"
     )
-    positions = read_output(out_dir, "bb_beam_positions")
     results = [
-        f"{exists.sum()} of {len(exists)} dishes present; Missing dishes carry no input",
-        check_dish_attrs("bb_beam_positions", positions.attrs, config),
+        f"{exists.sum()} of {len(exists)} dishes present; Missing dishes carry no input"
     ]
+    if "bb_beam_positions" in var["outputs"]:
+        positions = read_output(out_dir, "bb_beam_positions")
+        results.append(check_dish_attrs("bb_beam_positions", positions.attrs, config))
     return results + check_phases.check(out_dir, var, config)
 
 
