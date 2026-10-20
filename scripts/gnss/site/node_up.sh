@@ -18,7 +18,8 @@
 # than `down` then `up`: sudo's credential cache is per-TTY and `ssh -t` allocates a fresh one
 # each call, so separate down and up loops prompt for the password twice per node.
 #
-#   env:  GNSS_BIN  binary            (default $K/build/kotekan/kotekan)
+#   env:  GNSS_BIN  binary            (default $KOTEKAN_SRC/build/kotekan/kotekan)
+#         KOTEKAN_SRC  kotekan tree   (default this checkout)
 #         GNSS_CFG  config            (default: the config the fleet manifest owns for <node>)
 #         GNSS_LOG  log file          (default /tmp/gnss_node.log)
 #         GNSS_ENV  extra environment for kotekan, "VAR=value [VAR=value ...]" (this start only)
@@ -29,7 +30,8 @@
 # needs neither).
 set -u
 K=/home/kvand/gnss/kotekan
-BIN=${GNSS_BIN:-/home/kvand/gnss/kotekan/build/kotekan/kotekan}
+KOTEKAN_SRC=${KOTEKAN_SRC:-$K}   # the kotekan tree: build/ and lib/stages/gnss
+BIN=${GNSS_BIN:-$KOTEKAN_SRC/build/kotekan/kotekan}
 N=${1:?usage: node_up.sh <node> [up|down|restart|status]}
 ACT=${2:-up}
 # GNSS_CFG / GNSS_LOG run a node on a one-off config (profiling, a test) without editing
@@ -150,7 +152,7 @@ print("%s:%s%s" % (c["host"], c["port"], c.get("timing_endpoint", "/get-frame0-t
     # cannot see: /home/kvand is NFS-shared and there are two build trees (`build/`, the
     # nodes' DPDK build launched here, and `build_nodpdk/`, cf06's), so a change built in one
     # leaves the other's binary and library consistently old.
-    _NEWEST_SRC=$(find /home/kvand/gnss/kotekan/lib/stages/gnss -name '*.cpp' -o -name '*.hpp' \
+    _NEWEST_SRC=$(find "$KOTEKAN_SRC/lib/stages/gnss" -name '*.cpp' -o -name '*.hpp' \
                   2>/dev/null | xargs -r ls -t 2>/dev/null | head -1)
     if [ -n "$_NEWEST_SRC" ] && [ "$_NEWEST_SRC" -nt "$BIN" ]; then
         echo "warning: $BIN is older than $(basename "$_NEWEST_SRC") -- this build tree is out of date." >&2

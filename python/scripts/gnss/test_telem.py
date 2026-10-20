@@ -23,6 +23,7 @@ Three groups of test here, and the first is the one that matters:
 import json
 import os
 import re
+import shutil
 import struct
 import subprocess
 import sys
@@ -34,6 +35,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 K = os.path.abspath(os.path.join(HERE, "..", "..", ".."))
 sys.path.insert(0, HERE)
 
+import kotekan_src  # noqa: E402
 from gnss_broker import telem  # noqa: E402
 
 
@@ -119,13 +121,17 @@ class TestWireFormat(unittest.TestCase):
         cls.tmp = tempfile.mkdtemp(prefix="telemfmt-")
         src = os.path.join(K, "scripts", "gnss", "telemfmt.cpp")
         cls.bin = os.path.join(cls.tmp, "telemfmt")
+        # No compiler is an environment this cannot run in. A compiler that rejects the harness
+        # means it and the header disagree, which is what this class exists to catch: fail.
+        if shutil.which("c++") is None and not os.environ.get("GNSS_REQUIRE_CXX"):
+            raise unittest.SkipTest("no c++ compiler")
         p = subprocess.run(
             [
                 "c++",
                 "-std=c++17",
                 "-O1",
                 "-I",
-                os.path.join(K, "lib", "stages", "gnss"),
+                kotekan_src.gnss_cpp(),
                 "-o",
                 cls.bin,
                 src,
@@ -134,7 +140,10 @@ class TestWireFormat(unittest.TestCase):
             text=True,
         )
         if p.returncode != 0:
-            raise unittest.SkipTest("cannot compile telemfmt.cpp:\n%s" % p.stderr)
+            raise AssertionError(
+                "telemfmt.cpp does not compile against %s:\n%s"
+                % (kotekan_src.gnss_cpp(), p.stderr)
+            )
         cls.frame_path = os.path.join(cls.tmp, "frame.bin")
         r = subprocess.run(
             [cls.bin, cls.frame_path], capture_output=True, text=True, check=True
@@ -328,7 +337,7 @@ class TestWindowRing(unittest.TestCase):
         # gnss::telem_shape_ok's bounds. With n_rec or n_prn zero the payload is empty, so the
         # length check alone passes a bare header and the frame would open an empty window.
         # The record limit is read from gnssTelem.hpp, not from the constant under test.
-        with open(os.path.join(K, "lib", "stages", "gnss", "gnssTelem.hpp")) as fh:
+        with open(kotekan_src.gnss_cpp("gnssTelem.hpp")) as fh:
             m = re.search(r"constexpr\s+int\s+TELEM_MAX_REC\s*=\s*(\d+)\s*;", fh.read())
         max_rec = int(m.group(1))
         for kw in ({"n_rec": 0}, {"n_prn": 0}, {"n_rec": max_rec + 1}):

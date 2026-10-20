@@ -39,6 +39,8 @@ import argparse, json, os, re, subprocess, sys, tempfile, time, urllib.request
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))  # scripts/gnss -> scripts -> repo root
 CFG = os.path.join(ROOT, "config", "gates", "rf_stats_gate.yaml")
+sys.path.append(os.path.join(ROOT, "python", "scripts", "gnss"))
+import kotekan_src  # noqa: E402
 
 # (byte, label). Chosen to separate the two rails, which one number could not.
 CASES = [
@@ -129,9 +131,7 @@ def approx(a, b, tol=1e-9):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument(
-        "--kotekan", default=os.path.join(ROOT, "build", "kotekan", "kotekan")
-    )
+    ap.add_argument("--kotekan", default=kotekan_src.src("build", "kotekan", "kotekan"))
     ap.add_argument("--port", type=int, default=12099)
     args = ap.parse_args()
 

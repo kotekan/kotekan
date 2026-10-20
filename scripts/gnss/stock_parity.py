@@ -30,7 +30,10 @@ import yaml
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
-TEMPLATE = os.path.join(ROOT, "config", "chord", "pathfinder.j2")
+sys.path.append(os.path.join(ROOT, "python", "scripts", "gnss"))
+import kotekan_src  # noqa: E402
+
+TEMPLATE = kotekan_src.src("config", "chord", "pathfinder.j2")
 
 # (path pattern, kinds, why). Kinds: + added, - removed, ~ changed. Patterns are fnmatch over
 # the dotted path with list indices as plain components (commands[0] matches commands.*). Each

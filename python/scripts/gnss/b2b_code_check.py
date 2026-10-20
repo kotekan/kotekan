@@ -20,10 +20,10 @@ import sys
 import tempfile
 import zlib
 
+import kotekan_src
+
 HERE = os.path.dirname(os.path.abspath(__file__))
-CPP_DIR = os.path.normpath(
-    os.path.join(HERE, "..", "..", "..", "lib", "stages", "gnss")
-)
+CPP_DIR = kotekan_src.gnss_cpp()
 CPP = os.path.join(CPP_DIR, "beidouB2bCode.cpp")
 
 CODE_LENGTH = 10230

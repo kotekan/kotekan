@@ -29,13 +29,14 @@
 set -u
 
 GNSS_K=${GNSS_K:-/home/kvand/gnss/kotekan}
+KOTEKAN_SRC=${KOTEKAN_SRC:-$GNSS_K}   # the kotekan tree, for its build (python: kotekan_src.py)
 GNSS_ROOT=${GNSS_ROOT:-/home/kvand/gnss}
 GNSS_VENV=${GNSS_VENV:-$GNSS_ROOT/venv}            # 3.12, everything except the broker
 GNSS_VENV_FT=${GNSS_VENV_FT:-$GNSS_ROOT/venv-ft}   # 3.14t free-threaded, the broker only
 
 # The kotekan binary: the DPDK-free build. These components run on the gnss VM and cf06, never
 # on a cx node (the nodes run the DPDK build through node_up.sh).
-GNSS_BIN=${GNSS_BIN:-$GNSS_K/build_nodpdk/kotekan/kotekan}
+GNSS_BIN=${GNSS_BIN:-$KOTEKAN_SRC/build_nodpdk/kotekan/kotekan}
 
 GNSS_BROKER_URL=${GNSS_BROKER_URL:-http://127.0.0.1:12060}
 GNSS_FRAME0_URL=${GNSS_FRAME0_URL:-http://cx43:12048}

@@ -33,6 +33,8 @@ import stock_parity
 K = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 GEN = os.path.join(K, "config", "gen_chord_gnss_config.py")
 OUTDIR = os.path.join(K, "config", "generated")
+sys.path.append(os.path.join(K, "python", "scripts", "gnss"))
+import kotekan_src  # noqa: E402
 
 
 def _split_header(text):
@@ -344,7 +346,7 @@ def main():
         return
 
     base = man["base"]
-    base = base if os.path.isabs(base) else os.path.join(K, "config", base)
+    base = base if os.path.isabs(base) else kotekan_src.src("config", base)
     if not os.path.exists(base):
         # Exit 2: nothing was compared (see the generator failure below).
         sys.stderr.write(

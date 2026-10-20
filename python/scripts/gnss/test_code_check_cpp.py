@@ -18,6 +18,7 @@ import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
+import kotekan_src  # noqa: E402
 import b2b_code_check  # noqa: E402
 import e5b_code_check  # noqa: E402
 import glonass_ca_code_check  # noqa: E402
@@ -25,7 +26,7 @@ import l1cd_code_check  # noqa: E402
 import l2oc_code_check  # noqa: E402
 import l3oc_code_check  # noqa: E402
 
-LIB = os.path.normpath(os.path.join(HERE, "..", "..", "..", "lib", "stages", "gnss"))
+LIB = kotekan_src.gnss_cpp()
 
 # (module, C++ source, the getter main() calls, a table entry and the typo that replaces it).
 # Each typo is in PRN 2, which no fingerprint covers, so only the C++ comparison can catch it.

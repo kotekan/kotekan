@@ -9,7 +9,7 @@
 # with a plain $S/$N symlink, so two hosts building the same tool over NFS do not clobber each
 # other's binary; a clobbered binary shows up as a tool that suddenly segfaults.
 set -e
-K=/home/kvand/gnss/kotekan
+K=${KOTEKAN_SRC:-/home/kvand/gnss/kotekan}   # the kotekan tree: headers and build
 B=$K/${KBUILD:-build}
 S="$(cd "$(dirname "$0")/.." && pwd)"  # the tools live one level up
 N=$1

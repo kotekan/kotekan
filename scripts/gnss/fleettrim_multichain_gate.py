@@ -36,6 +36,9 @@ import urllib.error
 import urllib.request
 
 K = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.append(os.path.join(K, "python", "scripts", "gnss"))
+import kotekan_src  # noqa: E402
+
 REST, RECV, SERVE = 12451, 11460, 11461
 TTL = 6.0
 
@@ -73,7 +76,9 @@ def policy_for(chain, armed, targets=("http://127.0.0.1:9/set_trim",)):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--bin", default=os.path.join(K, "build_nodpdk/kotekan/kotekan"))
+    ap.add_argument(
+        "--bin", default=kotekan_src.src("build_nodpdk", "kotekan", "kotekan")
+    )
     ap.add_argument(
         "--config", default=os.path.join(K, "config/generated/chord_gnss_gather.yaml")
     )
