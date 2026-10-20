@@ -38,7 +38,8 @@ def amplitude(config):
         min(value(config, f"run_set_upchan_U{U}_gain")["upchan_gain"]) / (0.8 * U ** 0.5)
         for U in config["upchan_factors"]
     ]
-    return max(1, math.ceil(round(1 / min(gains), 6)))
+    # The configs round the gains to 4 digits
+    return max(1, math.ceil(1 / min(gains) - 0.01))
 
 
 def variables(tel, config, variant):

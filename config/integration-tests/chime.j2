@@ -52,7 +52,7 @@
 {% set bf_mask_orders = ['CHIMECylinder', 'CHIMEBeamformer'] %}
 {% set upchan_factors = [16] %}
 {% set provided_outputs = ['frb1_beams', 'frb2_beams', 'frb_pl_mask', 'upchan_U16_voltage'] %}
-{% set output_buffers = {'n2_vis': 'vis_10s_buffer'} %}
+{% set output_buffers = {'n2_vis': 'vis_10s_buffer', 'n2k_plcounts': 'host_n2k_PLcounts_buffer'} %}
 
 ---
 log_level: {{ log_level | default('info') }}
@@ -66,6 +66,10 @@ prefix_host_rank: false
 {% include "include/rfi_chime.j2" %}
 {% include "include/n2k_chime.j2" %}
 {% include "include/frb_chime.j2" %}
+
+# include/output_test_chord.j2 defines its buffers at the top level, where the values of the FRB
+# block are not visible
+upchan_U16_max_num_channels: 16
 
 {% include "include/input_test_chord.j2" %}
 {% include "include/output_test_chord.j2" %}
