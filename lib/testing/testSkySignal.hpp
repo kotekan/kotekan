@@ -7,7 +7,7 @@
 
 #include "json.hpp" // for json, basic_json<>::object_t, basic_json<>::value_type
 
-#include <algorithm> // for clamp
+#include <algorithm> // for clamp, find
 #include <cmath>     // for ldexp, log, lrintf, sqrt, M_PI
 #include <complex>   // for complex, polar
 #include <cstddef>   // for ptrdiff_t, size_t
@@ -72,6 +72,76 @@ private:
     const double loss_rate;
     const std::uint64_t threshold; // loss_rate * 2^64
     const std::uint64_t seed_hash;
+};
+
+/**
+ * @brief Simulated bad feeds, shared by the test generators `inventBFMask` and `inventVoltage`.
+ *
+ * Time is divided into periods of `bad_feed_change_in_samples` FPGA samples, starting at
+ * `first_fpga_seq_num`. In period `k` (>= 0), `n = min + h(k, 0) mod (max - min + 1)` inputs are
+ * bad, with `[min, max]` = `bad_feed_count`. They are the first `n` distinct values of
+ * `h(k, i) mod I` for i = 1, 2, ..., where `I` is the number of inputs, input `p * num_dishes + d`
+ * is polarization `p` of dish `d` (the order of the bad feed mask), and
+ *
+ *     h(k, i) = splitmix64(((k << 16) | i) ^ splitmix64(bad_feed_seed))
+ *
+ * There are no bad feeds before `first_fpga_seq_num`.
+ * python/integration-tests/check_badfeeds.py reproduces this.
+ *
+ * @conf bad_feed_change_in_samples Int. Default 0: no bad feeds.
+ * @conf bad_feed_count             [min, max], 0 <= min <= max <= I. Default [3, 5].
+ * @conf bad_feed_seed              Int. Default 1.
+ * @conf first_fpga_seq_num         Int. Default 0.
+ * @conf num_polarizations, num_dishes Int.
+ */
+class testBadFeeds {
+public:
+    testBadFeeds(const kotekan::Config& config, const std::string& unique_name) :
+        num_inputs(config.get<int>(unique_name, "num_polarizations")
+                   * config.get<int>(unique_name, "num_dishes")),
+        change(config.get_default<std::int64_t>(unique_name, "bad_feed_change_in_samples", 0)),
+        count(config.get_default<std::vector<int>>(unique_name, "bad_feed_count", {3, 5})),
+        seed_hash(splitmix64(config.get_default<std::uint64_t>(unique_name, "bad_feed_seed", 1))),
+        first_fpga_seq_num(config.get_default<std::int64_t>(unique_name, "first_fpga_seq_num", 0)) {
+        if (change < 0)
+            FATAL_ERROR_NON_OO("testBadFeeds: bad_feed_change_in_samples={:d} must not be negative",
+                               change);
+        if (!(count.size() == 2 && 0 <= count[0] && count[0] <= count[1] && count[1] <= num_inputs))
+            FATAL_ERROR_NON_OO("testBadFeeds: bad_feed_count must be [min, max] with 0 <= min <= "
+                               "max <= {:d}",
+                               num_inputs);
+    }
+
+    /// The length of a period in FPGA samples, or 0 if there are no bad feeds
+    std::int64_t get_change_in_samples() const {
+        return change;
+    }
+
+    /// The bad inputs at FPGA sample `seq`
+    std::vector<int> bad_inputs(const std::int64_t seq) const {
+        std::vector<int> bad;
+        if (change == 0 || seq < first_fpga_seq_num)
+            return bad;
+        const std::uint64_t k = (seq - first_fpga_seq_num) / change;
+        const int n = count[0] + int(hash(k, 0) % std::uint64_t(count[1] - count[0] + 1));
+        for (std::uint64_t i = 1; int(bad.size()) < n; ++i) {
+            const int input = int(hash(k, i) % std::uint64_t(num_inputs));
+            if (std::find(bad.begin(), bad.end(), input) == bad.end())
+                bad.push_back(input);
+        }
+        return bad;
+    }
+
+private:
+    std::uint64_t hash(const std::uint64_t k, const std::uint64_t i) const {
+        return splitmix64(((k << 16) | i) ^ seed_hash);
+    }
+
+    const int num_inputs;
+    const std::int64_t change;
+    const std::vector<int> count;
+    const std::uint64_t seed_hash;
+    const std::int64_t first_fpga_seq_num;
 };
 
 /**

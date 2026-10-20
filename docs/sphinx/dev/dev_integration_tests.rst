@@ -58,7 +58,8 @@ Layout
    ``run.py`` runs kotekan and the check for one test; ``kit.py`` holds the shared HDF5 reading,
    decoding and models; ``check_<test>.py`` is one check per test. A check either has
    ``VARIANTS``, each run and checked on its own, or ``RUNS``, which are all run before one
-   check compares them (T5).
+   check compares them (T5). A variant may also POST to kotekan's REST server while it runs
+   (``posts``, T9r).
 
 ``docs/integration-tests/``
    One Markdown description per test (``T<n>-<name>.md``): the errors the test catches, and the
@@ -79,6 +80,11 @@ Differences from ``config/fengine``:
   production values are the defaults.
 * ``half_filled`` (default ``false``) marks the northern half of the pathfinder dishes (32 to
   63; north is +y) as ``Missing``.
+* ``bf_source: rest`` (default ``invent``) produces the bad feed masks with ``bufferBadInputs``
+  from POSTs to ``/updatable_config/bad_inputs``, as ``config/chord/pathfinder.j2`` does.
+* ``rfi_feed_averaged_min_good_frac`` (default 0.8, as ``config/fengine``) is a jinja variable.
+* ``gps_time`` fixes the telescope time origin (jinja variable ``gps_frame0_nano``, default
+  2026-01-01), so that fringe stopping is the same in every run.
 * ``bb_beam_layout`` and ``frb2_beam_layout`` replace the keys of ``setBBBeams`` and
   ``setFRBBeams`` that place the beams (``fixed_mode`` / ``mode`` and its keys; default: the
   production grids), and ``frb2_weights_lifetime_in_samples`` the FRB2 weights lifetime
@@ -119,15 +125,16 @@ Inputs are generated on the fly; nothing is read from disk.
   Python) and loss boxes for edge cases, at the 2-sample resolution of the PL mask
   (``testPacketLoss`` in ``lib/testing/testSkySignal.hpp``; jinja variables ``loss_rate``,
   ``loss_seed`` and ``loss_boxes``).
-* ``inventBFMask`` produces bad feed schedules: random bad feeds that change every few frames, and
-  for CHORD and the pathfinder an array that is only partly filled, starting from the south;
-  missing dishes are marked bad.
+* ``inventBFMask`` produces bad feed schedules: random bad feeds that change every few frames
+  (``testBadFeeds``; jinja variables ``bf_change_frames``, ``bf_random_count`` and ``bf_seed``),
+  and with ``bf_mode: auto`` marks the Missing dishes of a partly filled array bad.
 * All generators take ``first_fpga_seq_num``. Tests start at a large value,
   ``2**33 + 7 * num_times``: frame-aligned, as ``N2Accumulate`` requires, but aligned to no
-  lifetime or integration boundary.
+  lifetime or integration boundary. T9 starts at ``2**33 + 5 * num_times``, three frames before
+  an N2 bin, so that the bins begin and end at mask changes.
 * ``inventVoltage`` can overwrite the voltages of lost packets with 0+0i, as the receivers do,
-  or poison them with the int4 no-data value ``-8-8i`` (jinja variable ``lost_voltage``). T9 is
-  to poison bad feeds likewise.
+  or poison them with the int4 no-data value ``-8-8i`` (jinja variable ``lost_voltage``), and
+  replace the voltages of bad feeds and Missing dishes by random bytes (``bad_voltage``).
 
 Level 1 tests
 =============
@@ -214,15 +221,21 @@ upchannelizer output start ``T*``, ``coarse_freq`` / ``freq_upchan_factor`` /
        the reference minus the lost samples.
      - masks and valid data exact; FRB3 one step; N2 1e-6 (float32)
    * - T9 Bad feed mask
-     - Random bad feeds changing every 3 frames; half-filled array; bad feeds poisoned; a
+     - T2's weak tone in noise; 3 to 5 random bad inputs changing every 3 frames, lifetime 3
+       frames; full and half-filled array; bad inputs and Missing dishes carry random bytes; a
        reference run without poison.
-     - RFI SK, N2
-     - Only good feeds enter; flags switch at the exact frame; good data equal the reference.
-     - exact
+     - both mask streams, BB phases, FRB1 weights, BB, FRB1, FRB2, FRB3, RFI S012/S012tilde/
+       SKtilde/mask, N2
+     - Masks equal the schedule; A and W are zero exactly for bad inputs; outputs equal the
+       reference except FRB samples whose window holds poison their weights do not mask; S0tilde
+       counts the good inputs; N2 flags are the AND over the bin, good products unchanged.
+     - exact; FRB3 one step
    * - T9r Bad feed REST
-     - Static mask, then a POST to ``/updatable_config/bad_inputs``.
-     - N2
-     - The mask changes at one boundary after the POST.
+     - As T9 without poison; masks from two ``bufferBadInputs``, all good until a POST to
+       ``/updatable_config/bad_inputs``.
+     - both mask streams, BB phases, FRB1 weights, S012tilde, N2
+     - Each stream changes once to the posted set, both at the same sample; A, W, S0tilde and
+       the N2 flags follow.
      - exact
    * - T10 Long run
      - Noise plus tone, 0.01% loss, changing bad feeds, short lifetimes, 10 minutes.
@@ -246,8 +259,8 @@ These features are missing in kotekan. Add the tests once they exist.
 Two features that were missing when this plan was written are now on develop:
 
 * **Bad feed mask in BB and FRB1** (#1778): ``calcBBPhase`` and ``setFRB1Phase`` zero the phases
-  and weights of bad feeds. T9 adds BB and FRB1 outputs, which must not change when bad feeds
-  are poisoned.
+  and weights of bad feeds. T9 checks that BB and FRB1 to FRB3 do not change when bad feeds are
+  poisoned.
 * **BB packet-loss mask** (#1766): T8 checks the BB mask (the AND over dishes of the expanded
   mask), and that valid BB samples equal those of a run without loss.
 
@@ -312,6 +325,31 @@ Findings
   PL mask enters only the counts and S0. ``TransposeBasebandArray`` writes 0+0i for lost
   blocks (``lib/stages/TransposeBasebandArray.cpp:370``). With -8-8i there instead, RFI
   excision flagged 1.3 M samples of an integration and the visibilities were off by up to 19%.
+* **N2 flags include the masks of the frames before an integration** (T9). ``N2Accumulate``
+  folds the mask of every frame into the flags, including the frames it skips while waiting for
+  the first bin boundary (``lib/stages/N2Accumulate.cpp:476``, before the alignment check), and
+  after finishing a bin folds the mask of the frame that completed it into the next bin
+  (line 732; with one sub-integration per frame no sample of that frame remains). Inputs bad
+  only before a bin are therefore flagged in it: two and five extra inputs in T9.
+* Every other subsystem excludes bad inputs exactly (T9): the BB phases and FRB1 weights are zero
+  exactly for the bad inputs of their lifetime frame, BB beams and all FRB1/FRB2 samples whose
+  window holds no unmasked poison are bit-identical with and without poison (the last FRB sample
+  of each weight frame straddles the mask change and is exposed), S012tilde sums only the good
+  inputs, and good N2 products are unchanged.
+* **Two ``bufferBadInputs`` stages switch at different samples** (T9r). Each applies a posted
+  update to the frames it produces after the start time (``lib/stages/bufferBadInputs.cpp:257``),
+  and each runs ahead of its consumers by its own buffer depth, so in three runs the one-frame
+  stream for ``N2Accumulate`` changed 11 to 23 frames after the beamformer stream. Together with
+  the lifetime conflict above, a production config has no way to give N2 and the beamformers
+  the same mask at the same sample.
+* **First-stage RFI excision flags everything when more than 20% of the inputs are masked**
+  (T9). The SK validity threshold ``rfi_feed_averaged_min_good_frac`` (0.8 in ``config/fengine``)
+  counts masked inputs as missing samples, so for the half-filled array SKtilde is invalid, the
+  RFI mask is all zero and every N2 sample is flagged. ``config/chord/pathfinder.j2`` uses 0.1.
+* **N2 fringe stopping depends on the start time** (T9). Without a ``gps_time`` block the
+  telescope takes the system time at startup as its time origin
+  (``lib/utils/CHORDTelescope.cpp:270``), and about 60 fringe-stopped visibilities and weights
+  of an integration differed between two identical runs. The tests now fix the origin.
 * ``setUpchanGain`` checks the number of gains (one per fine channel) only with ``assert``
   (seen while writing T5, not tested), which a Release build drops: extra gains are ignored,
   and too few throw ``std::out_of_range``.

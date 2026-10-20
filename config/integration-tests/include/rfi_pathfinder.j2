@@ -13,7 +13,7 @@ rfi_second_downsampling_factor: 32
 
 rfi_sk_rfimask_sigmas: 5.0
 rfi_single_feed_min_good_frac: 0.8
-rfi_feed_averaged_min_good_frac: 0.8
+rfi_feed_averaged_min_good_frac: {{ rfi_feed_averaged_min_good_frac | default(0.8) }}
 rfi_mu_min: 2.0
 rfi_mu_max: 20.0
 

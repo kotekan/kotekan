@@ -5,6 +5,10 @@
 # Jinja variables:
 #     first_fpga_seq_num
 #                   FPGA sequence number of the first sample (default: 0), used by all generators
+#     gps_frame0_nano
+#                   the UNIX time of FPGA sample 0 in ns (default: 2026-01-01T00:00:00Z); without
+#                   it the telescope takes the system time at startup, and fringe stopping
+#                   differs from run to run
 #     input_kind    inventVoltage input kind (default: random)
 #     box_begin, box_end
 #                   for input_kind `box`: FPGA samples with a constant voltage
@@ -17,19 +21,34 @@
 #                   testPacketLoss in lib/testing/testSkySignal.hpp
 #     lost_voltage  the voltage of the samples lost by loss_rate and loss_boxes: keep, zero or
 #                   nodata (-8-8i) (default: keep)
+#     bf_source     the bad feed masks: invent (inventBFMask) or rest (bufferBadInputs, from POSTs
+#                   to /updatable_config/bad_inputs) (default: invent)
 #     bf_mode, bf_manual_bad_feeds
 #                   inventBFMask mode (default: all_good)
 #     bf_mask_lifetime_frames
 #                   bad feed mask lifetime for RFI, BB and FRB1, in frames (default: 24)
+#     bf_change_frames, bf_random_count, bf_seed
+#                   random bad feeds on top of bf_mode, changing every bf_change_frames frames
+#                   (default: 0, none), see testBadFeeds in lib/testing/testSkySignal.hpp
+#     bad_voltage   the voltage of the bad feeds of bf_change_frames and of Missing dishes: keep or
+#                   random (default: keep)
 
 {% set input_kind = input_kind | default('random') %}
 
 first_fpga_seq_num: {{ first_fpga_seq_num | default(0) }}
 
+gps_time:
+    frame0_nano: {{ gps_frame0_nano | default(1767225600000000000) }}
+
 # Packet loss, the same for the PL mask and the voltages
 loss_rate: {{ loss_rate | default(0) }}
 loss_seed: {{ loss_seed | default(1) }}
 loss_boxes: {{ loss_boxes | default([]) | tojson }}
+
+# Bad feeds, the same for the bad feed masks and the voltages
+bad_feed_change_in_samples: {{ bf_change_frames | default(0) }} * num_times
+bad_feed_count: {{ bf_random_count | default([3, 5]) | tojson }}
+bad_feed_seed: {{ bf_seed | default(1) }}
 
 ################################################################################
 
@@ -40,6 +59,7 @@ generate_voltage:
     voltage: host_voltage_buffer
     input_kind: {{ input_kind }}
     lost_voltage: {{ lost_voltage | default('keep') }}
+    bad_voltage: {{ bad_voltage | default('keep') }}
 {% if input_kind == 'box' %}
     box_begin: {{ box_begin }}
     box_end: {{ box_end }}
@@ -62,6 +82,34 @@ generate_pl_mask:
     box_begin: {{ pl_box_begin | default(0) }}
     box_end: {{ pl_box_end | default(0) }}
 
+{% if bf_source | default('invent') == 'rest' %}
+# The bad feed masks from POSTs to /updatable_config/bad_inputs, as in config/chord/pathfinder.j2
+updatable_config:
+    bad_inputs:
+        kotekan_update_endpoint: json
+        bad_inputs: []
+        start_time: 0.
+        update_id: "initial"
+
+set_bf_mask:
+    num_elements: num_polarizations * num_dishes
+    input_order: CHORDBeamformer
+    output_order: CHORDBeamformer
+    for_beamformers:
+        kotekan_stage: bufferBadInputs
+        updatable_config:
+            bad_inputs: /updatable_config/bad_inputs
+        metadata_source: host_voltage_buffer
+        out_buf: host_bf_mask_buffer
+    # The same mask for N2Accumulate, one frame per correlation frame
+    for_n2:
+        kotekan_stage: bufferBadInputs
+        updatable_config:
+            bad_inputs: /updatable_config/bad_inputs
+        metadata_source: host_voltage_buffer
+        out_buf: host_n2_bf_mask_buffer
+        bf_mask_lifetime_in_samples: n2k_samples_per_data_set
+{% else %}
 generate_bf_mask:
     mode: {{ bf_mode | default('all_good') }}
     manual_bad_feeds: {{ bf_manual_bad_feeds | default([]) }}
@@ -73,3 +121,4 @@ generate_bf_mask:
         kotekan_stage: inventBFMask
         bf_mask: host_n2_bf_mask_buffer
         bf_mask_lifetime_in_samples: n2k_samples_per_data_set
+{% endif %}
