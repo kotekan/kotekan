@@ -196,8 +196,8 @@ public:
      * @brief Record that the current owner will use `name`, before it is allocated.
      *
      * A command that only takes its region in execute() (cudaInputData, cudaOutputData, the ring
-     * copies, cudaUpchannelize) calls this from its constructor, so the region is attributed --
-     * and a conflict refused -- at construction, where --dry-run can see it.
+     * copies) calls this from its constructor, so the region is attributed -- and a conflict
+     * refused -- at construction, where --dry-run can see it.
      */
     void register_gpu_memory_name(const std::string& name);
 

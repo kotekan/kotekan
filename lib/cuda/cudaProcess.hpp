@@ -51,6 +51,9 @@
  *                        still reads. Memory passed between stages through a ring buffer is
  *                        declared by the ring classes themselves: the host ring is signalled only
  *                        once the producing stage's frame has completed on the device.
+ * @conf require_async_engines Int, default 0 (no check). The number of async copy engines the
+ *                        GPU must report, or construction fails; for a config that relies on a
+ *                        host-to-device copy overlapping a device-to-host one.
  *
  * @author Keith Vanderlinde and Andre Renard
  */
