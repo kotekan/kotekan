@@ -38,10 +38,26 @@
  * and RFI antennas) are never valid inputs; they stay masked whatever the
  * posted list says.
  *
- * Updates queue by @c start_time and take effect once the wall clock reaches
- * it (a start time already in the past applies immediately).  Mask frames
- * are produced whenever the output buffer has room, so the stage is paced by
- * its consumers.
+ * Updates queue by @c start_time and apply by FPGA time, so that where one
+ * lands does not depend on how far the stage runs ahead of its consumers.
+ * They take effect only at boundaries every
+ * @c bf_mask_update_alignment_in_samples FPGA samples from the first frame: a
+ * frame uses the newest update whose start time is at or before the time
+ * (through the telescope) of the last boundary at or before the frame.
+ * Instances with the same alignment switch at the same sample if the
+ * alignment is a multiple of each of their lifetimes and their first frames
+ * are a multiple of the alignment apart.  An update without a start time
+ * applies at the next boundary not yet produced.
+ *
+ * Mask frames are produced whenever the output buffer has room, so the stage
+ * is paced by its consumers and runs ahead of them by its buffer depth.  An
+ * update whose start time precedes a frame already produced is late: it is
+ * counted, logged and applied from the next frame produced, which differs
+ * between instances.
+ *
+ * Without GPS time the frames have no known UNIX time; updates then apply by
+ * the wall clock when a frame is produced, and where they land depends on how
+ * far the stage runs ahead.
  *
  * Each frame is one bad feed mask sample, valid
  * for @c bf_mask_lifetime_in_samples FPGA samples, and its FPGA sequence
@@ -76,8 +92,9 @@
  *     @buffer_format int8
  *
  * @par Metrics
- * @metric kotekan_bufferbadinputs_late_update_count  Updates ignored because
- *     their start_time preceded an already-queued update.
+ * @metric kotekan_bufferbadinputs_late_update_count  Updates that missed their
+ *     start time: ignored because it preceded an already-queued update, or
+ *     applied late because it preceded a frame already produced.
  * @metric kotekan_bufferbadinputs_invalid_update_count  Updates ignored
  *     because they could not be parsed or held an out-of-range index.
  *
@@ -87,11 +104,16 @@
  * @conf   num_dishes                   Int.  Number of dishes.
  * @conf   bf_mask_lifetime_in_samples  Int.  Number of FPGA samples that one bad feed mask
  *                                      is valid for.
+ * @conf   bf_mask_update_alignment_in_samples  Int. Default bf_mask_lifetime_in_samples.
+ *                                      Updates take effect only every this many FPGA
+ *                                      samples from the first frame. A multiple of
+ *                                      bf_mask_lifetime_in_samples; give all instances fed by
+ *                                      the same updates a common multiple of their lifetimes.
  * @conf   updatable_config/bad_inputs  String.  String pointing to the location of the
  *                                      config block containing the following properties:
  *                                      "bad_inputs"  An array of bad inputs in cylinder order.
  *                                      "start_time"  Optional UNIX time the update takes
- *                                                    effect (default: immediately).
+ *                                                    effect (default: at the next boundary).
  *                                      "update_id"   Optional string identifying the update,
  *                                                    used in this stage's log messages.
  * @conf   num_kept_updates  Int. Default 5.  Number of updates kept in the queue.
@@ -122,6 +144,10 @@ private:
     struct badInputUpdate {
         /// The mask in output_order, 1 == good.
         std::vector<uint8_t> mask;
+        /// For log messages.
+        std::string update_id;
+        /// False if the update was posted without a start time; it is then never late.
+        bool has_start_time;
     };
 
     Buffer* out_buf;
@@ -134,6 +160,11 @@ private:
     int num_dishes;
     /// Number of FPGA samples that one bad feed mask is valid for
     int64_t bf_mask_lifetime_in_samples;
+    /// Updates take effect only every this many FPGA samples from the first frame
+    int64_t bf_mask_update_alignment_in_samples;
+
+    /// Apply updates by FPGA time; false without GPS time, see the class comment.
+    bool use_fpga_time;
 
     /// Mask before any posted flags: 0 for elements outside the telescope's
     /// main array (CHORD's Missing dishes and RFI antennas).
@@ -146,6 +177,10 @@ private:
     /// initial config block is being applied. A bad update is fatal then and
     /// merely counted afterwards.
     std::atomic<bool> initialised = false;
+
+    /// The time, in ns, at which the last produced frame looked up its update; an update
+    /// without a start time is queued just after it.
+    std::atomic<int64_t> last_ref_time_ns = 0;
 
     kotekan::prometheus::Counter& late_updates_counter;
     kotekan::prometheus::Counter& invalid_updates_counter;
