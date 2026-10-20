@@ -38,7 +38,10 @@ RUNS = ["reference", "scaled"]
 NOISE_RMS = 1.2
 TONE_AMPLITUDE = 0.1
 BB_SCALING = 2
-FRB1_SCALING = 2
+# Below 1: setFRB1Phase refuses weights whose worst-case FRB1 intensity could overflow float16
+# (lib/stages/frb1IntensityBound.hpp), and for CHORD that bound allows at most 1.5 times the
+# production frb1_input_scale
+FRB1_SCALING = 0.5
 INT4_TOLERANCE = 0.03
 FRB1_TOLERANCE = 0.01
 

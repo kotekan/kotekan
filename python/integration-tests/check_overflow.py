@@ -44,6 +44,9 @@ PERIOD = 128  # input period in samples (both variants)
 # The upchannelizer computes in float16; predictions within this margin of a rounding
 # threshold are not checked
 UPCHAN_MARGIN = 0.02
+# The BB kernel's intermediate shift σ by number of dishes: pathfinder, CHORD, CHIME
+# (shift-parameter-σ in julia/output/bb_<telescope>.yaml)
+BB_SIGMA = {64: 2, 512: 3, 1024: 4}
 # The float16 rounding allowance of lib/stages/frb1IntensityBound.hpp
 FRB1_TOLERANCE = 0.01
 
@@ -203,21 +206,31 @@ def check_upchan(out_dir, var, config, e, results, failures):
 
 
 def check_bb(out_dir, var, e, results, failures):
-    """J = clamp(shift(shift(Σ_d A_bd E_d, σ), s - σ), -7, 7) per component, with
-    shift(x, n) = (x + 2^(n-1)) >> n and σ = 2 for D = 64 (julia/kernels/bb.jl)."""
+    """J = clamp(shift(Σ_w shift(Σ_{d in w} A_bd E_d, σ), s - σ), -7, 7) per component, with
+    shift(x, n) = (x + 2^(n-1)) >> n and σ = `BB_SIGMA[D]` (julia/kernels/bb.jl). Each warp
+    sums a block w of 2^(σ+4) consecutive dishes, shifts its sum by σ and packs it to int16
+    (saturating); the blocks are added in int32."""
     SEQ0 = var["first_fpga_seq_num"]
     bb = read_output(out_dir, "bb_beams")  # [Thi, B, F, P, T]
     audit(bb, first_seq=SEQ0)
     phase = read_output(out_dir, "bb_phase")  # [Tbb, F, P, B, D, C]
     shift = read_output(out_dir, "bb_shift").data  # [F, P, B]
     a = phase.data[0, ..., 0].astype(float) + 1j * phase.data[0, ..., 1]
-    sigma = 2
+    sigma = BB_SIGMA[e.shape[3]]
     require(
         np.all(shift > sigma),
         f"bb_shift: values {np.unique(shift)} must exceed {sigma}",
     )
-    total = components(np.einsum("fpbd,tfpd->tfpb", a, e)).round().astype(np.int64)
-    ju = (total + (1 << (sigma - 1))) >> sigma
+    block = 1 << (sigma + 4)
+    num_blocks = e.shape[3] // block
+    partial = np.einsum(
+        "fpbwd,tfpwd->wtfpb",
+        a.reshape(*a.shape[:3], num_blocks, block),
+        e.reshape(*e.shape[:3], num_blocks, block),
+    )
+    partial = components(partial).round().astype(np.int64)  # [C, w, t, F, P, B]
+    partial = (partial + (1 << (sigma - 1))) >> sigma
+    ju = np.clip(partial, -32768, 32767).sum(axis=1)
     s = shift[None, None].astype(np.int64) - sigma
     unclamped = (ju + (1 << (s - 1))) >> s  # [C, t, F, P, B]
     predicted = np.clip(unclamped, -7, 7)
@@ -227,7 +240,8 @@ def check_bb(out_dir, var, e, results, failures):
     line = (
         f"bb_beams: {wrong.sum()} of {wrong.size} components differ from the integer "
         f"prediction; {np.count_nonzero(np.abs(unclamped) > 7) / unclamped.size:.1%} clamped "
-        f"(max |unclamped| {np.abs(unclamped).max()}), "
+        f"(max |unclamped| {np.abs(unclamped).max()}), max |int16 partial sum| "
+        f"{np.abs(partial).max()} over {num_blocks} blocks of {block} dishes, "
         f"{np.count_nonzero(np.abs(measured) == 7) / measured.size:.1%} at ±7, "
         f"{np.count_nonzero(measured == -8)} -8"
     )

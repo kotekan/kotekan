@@ -27,9 +27,12 @@ also checks a half-filled array.
 
 ## Variants
 
-**`onehot`.** Eight inputs (d, p) carry a tone in turn: (0, 0), (6, 1), (63, 0), (62, 1),
-(31, 0), (19, 1), (43, 1), (53, 0). These are the corners (0, 0), (6, 0), (6, 8), the single
-dish at (0, 9), and four inner cells. Each tone (amplitude 6.1, 13 cycles) lasts for its own
+**`onehot`.** Eight inputs (d, p) carry a tone in turn: the corners of the grid (the first and
+last dish of row 0, the last dish of the last complete row, and the last dish) and the inner
+cells (3, 4), (5, 2), (1, 6), (4, 7). For the pathfinder these are (0, 0), (6, 1), (63, 0),
+(62, 1), (31, 0), (19, 1), (43, 1), (53, 0), with the corners (0, 0), (6, 0), (6, 8) and the
+single dish at (0, 9). For CHORD the corners are dishes 0, 23, 503 and 511 (cell (7, 21)). Each
+tone (amplitude 6.1, 13 cycles) lasts for its own
 window of T/8 = 1024 samples, all in the first frame of the first complete N2 bin. At any
 time at most one input is non-zero. There is no noise, first-stage RFI excision is off (a tone
 has spectral kurtosis 0), and so is fringe stopping (see the result).
@@ -42,14 +45,15 @@ has spectral kurtosis 0), and so is fringe stopping (see the result).
   the coarse channel centre and `n_b` the written beam position. In the window of (d, p),
   `R_bf = Σ_t J_b conj(E_d) / Σ_t |E_d|²` estimates `bb_gain · exp(2πi ν_f n_b·r_d / c)`.
   The check computes this phase from the config independently, for 8 inputs × 16 beams ×
-  384 frequencies. The beams of the other polarization must be exactly 0.
+  384 frequencies (pathfinder). The beams of the other polarization must be exactly 0.
 - `bb_gain` is 0.6. Int4 rounding sets the error floor. With a gain of 1 or 1/2, a small
   rotation of a small lattice point rounds back onto the same point, and the phase can be off by
   5° to 10°. At 0.6, simulations of the integer beamformer give at most 2.2°, and |J| stays ≤ 4.
 
-**`pairs`.** Six pairs of dishes carry equal tones from the zenith; pair j uses
+**`pairs`.** Six pairs of grid cells carry equal tones from the zenith; pair j uses
 (j − 2.5)/8 + 1/128 cycles per sample, a U = 64 fine-channel centre. FRB1 places dish d in
-cell (m, n) = (x_d, y_d) of the M × N = 8 × 12 grid and forms 2M × 2N beams. Beam p peaks at
+cell (m, n) = (x_d, y_d) of the M × N grid (8 × 12 for the pathfinder, 24 × 24 for CHORD) and
+forms 2M × 2N beams. Beam p peaks at
 `p = 2θ_M` (T2), so it weights cell m by `exp(+iπ p m / M)`. For two equal signals,
 
     I(p, q) ∝ |e^{iπ(p m₁/M + q n₁/N)} + e^{iπ(p m₂/M + q n₂/N)}|² ∝ 1 + cos π(p Δm/M + q Δn/N).
@@ -57,22 +61,25 @@ cell (m, n) = (x_d, y_d) of the M × N = 8 × 12 grid and forms 2M × 2N beams. 
 The fringe has period 2M/Δm beams along p and 2N/Δn along q, and its orientation follows the
 sign of Δm·Δn. It peaks where `p Δm N + q Δn M ≡ 0 (mod 2MN)`.
 
-| pair (dishes) | (Δm, Δn) | peak bins |
-|---|---|---|
-| 23, 24 | (1, 0) | 24 |
-| 12, 19 | (0, 1) | 16 |
-| 35, 58 | (2, 3) | 48 |
-| 50, 31 | (2, −3) | 48 |
-| 14, 20 | (6, 0) | 48 |
-| 0, 63 | (0, 9) | 48 |
+| pair (cells) | dishes (pathfinder) | dishes (CHORD) | (Δm, Δn) | peak bins (pathfinder, CHORD) |
+|---|---|---|---|---|
+| (2, 3), (3, 3) | 23, 24 | 74, 75 | (1, 0) | 24, 240 |
+| (5, 1), (5, 2) | 12, 19 | 29, 53 | (0, 1) | 48, 240 |
+| (0, 5), (2, 8) | 35, 58 | 120, 194 | (2, 3) | 48, 240 |
+| (1, 7), (3, 4) | 50, 31 | 169, 99 | (2, −3) | 48, 240 |
+| (0, 2), (6, 2) | 14, 20 | 48, 54 | (6, 0) | 48, 288 |
+| (0, 0), (0, 9) | 0, 63 | 0, 216 | (0, 9) | 48, 144 |
 
 A zenith source makes the fringe independent of frequency. A one-axis mirror only flips the sign
 of one of Δm, Δn, so only the diagonal pairs detect it. The two diagonal pairs differ in that
 sign. In the fine channel of each pair's tone, the check compares `I / max I` with
-`(1 + cos)/2` over all 384 beams. The peak bins (above the level halfway between 1 and the next
-predicted value) must be exactly the predicted ones. The fine-channel gains are 1, so the
+`(1 + cos)/2` over all beams. The peak bins must be exactly the predicted ones: those above the
+middle of the highest gap of at least 0.02 between predicted values. On a fine beam grid the
+values next to the peak are close to it (0.9957 for CHORD's 48 × 48 beams), closer than the
+measurement error of 0.003, so the peak bins include them. The fine-channel gains are 1, so the
 upchannelized tones (about 5 LSB) do not saturate. The tones are 1/8 cycles per sample apart,
-so only U = 16, 32 and 64 resolve them: 86 coarse channels, which cover three FRB1 kernels.
+so only U = 16, 32 and 64 resolve them: 86 coarse channels for the pathfinder (11 for CHORD),
+which cover three FRB1 kernels.
 
 **`half`.** With `half_filled: true`, dishes 32 to 63 have `type: Missing`: row y = 4 from
 x = 4 on, and rows 5 to 9. This is the northern half of an array filled from the south.
@@ -121,3 +128,18 @@ bias, not rounding. The `onehot` variant therefore switches fringe stopping off.
 
 Kotekan runs for 14 s (`onehot`), 18 s (`pairs`) and 55 s (`half`); with the checks the test
 takes 2 minutes. The output is 25 MB, 64 MB and 1.5 GB on disk.
+
+## Result (CHORD, cx67, Release)
+
+**PASS**, all three variants.
+
+| variant | result |
+|---|---|
+| `onehot` N2 | in all 48 frequencies only the 8 autocorrelations are non-zero, equal to Σ\|E\|²/n within 2.5e−8; the other 524792 products are 0; grid indices and positions match |
+| `onehot` BB | phase residual ≤ 1.97° (99th percentile 1.52°) over 96 beams; \|R\| / bb_gain 0.961 to 1.051 |
+| `pairs` FRB1 | all 6 pairs, 11 channels each: peak bins exact, \|I/max − fringe\| ≤ 0.0034 |
+| `half` | BB peak in the predicted beam at all 33 unambiguous frequencies; upchannelizers within 0.0° (99th percentile ≤ 4.6°); FRB1 peak at (p, q) in all 48 channels; FRB2 source beam in all 48 channels (29 ties) |
+
+With the peak-bin threshold halfway between 1 and the next predicted value (0.9957), the two
+diagonal pairs failed in the four U = 32 channels, where the measured fringe deviates by up to
+0.003. Kotekan runs for 17 s, 20 s and 53 s; the test takes 2 minutes.

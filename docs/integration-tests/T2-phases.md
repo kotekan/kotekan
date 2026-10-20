@@ -42,8 +42,10 @@ and for every U the nearest fine channel and its mirror are distinct.
 
 **Choice of amplitude.** With the production gains, the upchannelizer multiplies a tone at a
 fine-channel centre by 0.81·√U (6.5 at U = 64), and BB forms `A·√D·bb_gain·√D = A·D/√D` on the
-source beam. `A = 0.75` keeps every output below saturation, and the noise dithers the int4
-rounding, so phases and amplitudes come out unbiased.
+source beam. `A = 0.75` keeps the upchannelizer outputs below saturation, and the noise dithers
+the int4 rounding, so phases and amplitudes come out unbiased. The BB source beam, `A·√D`, stays
+below 7 only for the pathfinder (6); it saturates for CHORD (17) and CHIME (24), which the BB peak
+check tolerates.
 
 **Coherent estimates.** All checks estimate them by averaging the output against the
 predicted tone over time. With about 256 (U = 64) to 8192 (U = 2) samples per average, the noise
@@ -114,7 +116,12 @@ noise floor, taken as the median over beams.
 
 **N2** (variant `n2`). A tone that dominates the noise has a spectral kurtosis well below 1
 and is rightly flagged as RFI; a noise-free tone has spectral kurtosis 0. This variant therefore
-uses a tone of `A` = 2 in the same noise, which passes the RFI flagging. The visibilities must satisfy
+uses a weaker tone in the same noise, which passes the RFI flagging. A tone in noise of rms
+`s` has `SK = 1 − (A²/(A² + 2s²))²`, and first-stage excision flags a block of M = 256 samples
+when the feed-averaged SK is more than 5 standard deviations, about `5 · 2/√(M N)` for N
+inputs, from 1. `A` puts SK 1.2 standard deviations inside that threshold: `A` = 2 for the
+pathfinder (N = 128) and 1.47 for CHORD (N = 1024). With `A` = 2 on CHORD, 95% of the samples
+were flagged. The visibilities must satisfy
 
     V_ab = ⟨E_a conj(E_b)⟩ = A² g_a conj(g_b) ,   for a ≠ b
 
@@ -134,7 +141,7 @@ Level 2.
 | `bb`       | BB beam (3, 1) of the 4 × 4 grid     | BB peak, upchannelizer     |
 | `frb2`     | FRB2 beam (12, 5) of the 16 × 16 grid | FRB1, FRB2                |
 | `offgrid`  | θ = (0.5°, 0.8°)                     | no symmetry to hide errors |
-| `n2`       | as `offgrid`, `A` = 2                | visibilities               |
+| `n2`       | as `offgrid`, `A` = 2 (pathfinder)   | visibilities               |
 
 All variants start at FPGA sample `2^33 + 7·T`.
 
@@ -154,3 +161,18 @@ All four variants pass, with the production gains of #1784 and the FRB beamforme
 **Before #1779**, T2 found FRB1's beam index along M (grid x) mirrored, `p ≈ −2θ_M`, while
 `q ≈ 2θ_N` was correct. FRB2 inherited the mirror: a source on FRB2 beam (12, 5) peaked in beam
 (3, 5). The cause was the sign of the second (M) FFT in `julia/kernels/frb.jl`.
+
+## Result (CHORD, cx67, Release)
+
+All four variants pass.
+
+| output | result |
+|---|---|
+| input | tone phase within 0.08° (99th percentile 12.5°), amplitude 0.99 |
+| BB | peak in the predicted beam at all 27–37 unambiguous frequencies |
+| upchannelizers, all U | predicted fine channel; phase within 0.0° (99th percentile ≤ 4.9°); amplitude 0.97–0.99 |
+| FRB1 | peak at the predicted (p, q) in all 48 channels |
+| FRB2 | source beam holds the peak in all 48 channels, 23 of them tied with grating lobes |
+| N2 | `V_ab = E_a conj(E_b)` within 0.00° (99th percentile 4.8°), amplitude 0.97, 99.5% of the samples valid (pathfinder: 3.3°, 71%) |
+
+Kotekan runs for 20 to 37 s per variant; the test takes about 10 minutes.
