@@ -2751,8 +2751,10 @@ def main():
         default="2",
         help="pool slots (comma list, relative to the GPU like every chain core) the "
         "chains' GnssGpuRecordAssemble stages rotate through by chain order; the default "
-        "keeps them all on slot 2. Avoid 0 (the cudaProcess), 5 (telemetry + "
-        "GnssN2Project), 6 (the senders) and 7 (the sink): '2,1,3,4,8,9' leaves at most "
+        "keeps them all on slot 2. The slot is taken modulo the pool after adding the GPU "
+        "index, like every chain core, and pool[0] is each GPU's cudaProcess core, so a slot "
+        "must stay clear of 0, 5 (telemetry + GnssN2Project), 6 (the senders) and 7 (the "
+        "sink) on BOTH GPUs: '2,1,3,4,8' does (9 is pool[0] on GPU 1) and leaves at most "
         "two assemblers per core",
     )
     ap.add_argument(
