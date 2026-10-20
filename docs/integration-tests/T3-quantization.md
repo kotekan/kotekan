@@ -133,3 +133,11 @@ model rms is for noise only; the tone adds about 3%.
   0.75 LSB.
 
 Kotekan runs for about 17 s and the check for 10 s. The output is 755 MB on disk.
+
+## Result (CHORD, cx67, Release)
+
+**PASS**, without changes to the check. The upchannelizers match the pathfinder to the digits
+shown (rms 2.05 to 2.08, 19.0% to 19.7% zeros). BB has rms 2.78 (model 2.76) with 2.05% at ±7,
+FRB3 rms 2.48 (model 2.51) with 1.28% at ±7. FRB3 encodes FRB2 within
+`|q − (x − offset)/scale| ≤ 0.676` below saturation; all 470.8 M samples are valid and pass.
+Kotekan runs for 27 s; the test takes 2.5 minutes.

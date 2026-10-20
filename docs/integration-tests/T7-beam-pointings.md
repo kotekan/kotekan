@@ -40,11 +40,13 @@ from one direction that is a configured BB beam and a configured FRB2 beam at th
 
 | variant | BB beams | FRB2 beams | source |
 |---|---|---|---|
-| `grid` | `grid_degrees`, 1 × 16: x in [0.90625°, 1.90625°] (midpoint 1.40625°), y as FRB2 | production 16 × 16 `grid_degrees`, 0.3125° spacing | BB beam 5 = FRB2 beam (12, 5) = (1.40625°, −0.78125°) |
+| `grid` | `grid_degrees`, 1 × 16: x in [0.90625°, 1.90625°] (midpoint 1.40625°), y in [−2.96875°, 1.71875°] (the FRB2 spacing, centred on the source) | production 16 × 16 `grid_degrees`, 0.3125° spacing | BB beam 7 = FRB2 beam (12, 5) = (1.40625°, −0.78125°) |
 | `manual` | 16 beams at random positions within ±2.5°, at least 0.4° apart | the production grid jittered by up to 0.1° per axis, shuffled | (0.5°, 0.8°), BB beam 11, FRB2 beam 173 |
 
-The single-beam axis has an asymmetric range, so a midpoint at 0 or at an end point fails. In
-`manual`, the source replaces the nearest jittered FRB2 beam.
+The single-beam axis has an asymmetric range, so a midpoint at 0 or at an end point fails. The
+BB column is centred on the source: on CHORD (96 beams 0.078° apart), a column that starts at
+the source has a grating lobe of the source on another BB beam at every frequency, and no BB
+peak is unambiguous. In `manual`, the source replaces the nearest jittered FRB2 beam.
 
 Lifetimes are short, so the matrices are recomputed often: `bf_mask_lifetime_frames` 3 gives a
 BB phase and FRB1 weights lifetime of L = 3 T = 24576 samples (the shortest that is a multiple of
