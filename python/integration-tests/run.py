@@ -3,8 +3,8 @@
 the written output. See docs/sphinx/dev/dev_integration_tests.rst.
 
 A test module defines either `VARIANTS`, each run and checked on its own (or `variants(config)`,
-those that apply to a telescope), or `RUNS`, which are all run before one check compares them. A variant can also POST to kotekan's REST server while it
-runs: `posts(tel, config, variant)` returns a list of (delay, endpoint, payload), each posted
+those that apply to a telescope), or `RUNS`, which are all run before one check compares them.
+A variant can also POST to kotekan's REST server while it runs: `posts(tel, config, variant)` returns a list of (delay, endpoint, payload), each posted
 `delay` seconds after the server answers. If the module defines `MEMORY_INTERVAL`, kotekan's
 resident memory and GPU memory are sampled every `MEMORY_INTERVAL` seconds into
 `<out_dir>/memory.json` (see `sample_memory`).
@@ -34,11 +34,16 @@ REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 CONFIG_DIR = os.path.join(REPO, "config", "integration-tests")
 
 
-def render_config(tel, var):
-    """Render the test config the way kotekan does and return the top-level values. Only
-    literal values are usable; kotekan evaluates arithmetic expressions itself."""
+def render_yaml(tel, var):
+    """The test config rendered the way kotekan renders it, as YAML text."""
     env = jinja2.Environment(loader=jinja2.FileSystemLoader(CONFIG_DIR))
-    return yaml.safe_load(env.get_template(f"{tel}.j2").render(var))
+    return env.get_template(f"{tel}.j2").render(var)
+
+
+def render_config(tel, var):
+    """Render the test config and return the top-level values. Only literal values are usable;
+    kotekan evaluates arithmetic expressions itself."""
+    return yaml.safe_load(render_yaml(tel, var))
 
 
 def rest_url(args, endpoint):
@@ -105,14 +110,17 @@ def sample_memory(proc, interval, samples):
 
 
 def run_kotekan(args, var, log_path, posts, memory_interval=None):
+    # kotekan gets the rendered config as a file: the variables can exceed the 128 KiB limit
+    # of a command line argument (T7's 4096 manual FRB2 beams for CHORD)
+    config_path = os.path.splitext(log_path)[0] + ".yaml"
+    with open(config_path, "w") as f:
+        f.write(render_yaml(args.tel, var))
     cmd = [
         os.path.abspath(args.kotekan),
         "--bind-address",
         f"localhost:{args.port}",
         "--config",
-        os.path.join(CONFIG_DIR, f"{args.tel}.j2"),
-        "--variables",
-        json.dumps(var),
+        config_path,
     ]
     with open(log_path, "w") as log:
         t0 = time.time()

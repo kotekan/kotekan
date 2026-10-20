@@ -8,8 +8,9 @@ and an FRB2 beam at the same time. The BB phase and FRB1 weights live for 3 fram
 
 Variants:
 - `grid`: both setters in `grid_degrees` mode. BB is a single column of beams (num_x = 1, as for
-  CHIME) whose x is the midpoint of an asymmetric range; FRB2 is the production grid. The source
-  is BB beam 5 and FRB2 beam (12, 5), which have the same position.
+  CHIME) whose x is the midpoint of an asymmetric range and whose y spacing is that of FRB2;
+  FRB2 is the production grid. The source is FRB2 beam (12, 5) and the BB beam in the middle of
+  the column, which have the same position.
 - `manual`: both setters in `manual` mode, with beams at irregular positions and random 64-bit
   ids, in shuffled order. The source is off the production grids.
 
@@ -49,9 +50,8 @@ BF_MASK_LIFETIME_FRAMES = 3
 # FRB1 lifetimes
 BB_FRAMES = 10
 FRB2_FRAMES = 3
-# The FRB2 grid beam that the `grid` source sits on, and the BB beam (x is the single column)
+# The FRB2 grid beam that the `grid` source sits on
 FRB2_GRID_BEAM = (12, 5)
-BB_GRID_BEAM = (0, 5)
 # Half the x range of the single BB column, in degrees: the midpoint is the FRB2 beam's x
 BB_COLUMN_HALF_WIDTH = 0.5
 # `manual`: source direction (degrees), and its index in the BB and FRB2 beam lists
@@ -120,18 +120,26 @@ def variables(tel, config, variant):
     if variant == "grid":
         x = grid_point(x_min, x_max, nx, FRB2_GRID_BEAM[0])
         y = grid_point(y_min, y_max, ny, FRB2_GRID_BEAM[1])
+        # The column has the FRB2 y spacing and is centred on the source, so that grating lobes
+        # are far from it at the low frequencies. The grids have dyadic spacings, so both
+        # setters compute y exactly.
+        num_y = value(config, "bb_num_beams")
+        bb_source = (num_y - 1) // 2
+        spacing = (y_max - y_min) / (ny - 1)
+        bb_y_min = y - bb_source * spacing
         bb_layout = {
             "fixed_mode": "grid_degrees",
             "num_x": 1,
-            "num_y": value(config, "bb_num_beams"),
+            "num_y": num_y,
             "x_min": x - BB_COLUMN_HALF_WIDTH,
             "x_max": x + BB_COLUMN_HALF_WIDTH,
-            "y_min": y_min,
-            "y_max": y_max,
+            "y_min": bb_y_min,
+            "y_max": bb_y_min + (num_y - 1) * spacing,
         }
         require(
             grid_point(bb_layout["x_min"], bb_layout["x_max"], 1, 0) == x
-            and grid_point(y_min, y_max, bb_layout["num_y"], BB_GRID_BEAM[1]) == y,
+            and grid_point(bb_layout["y_min"], bb_layout["y_max"], num_y, bb_source)
+            == y,
             "the BB grid beam is not at the FRB2 grid beam",
         )
         direction = [sin_deg(x), sin_deg(y)]

@@ -64,12 +64,16 @@ float64 prediction by at most 0.004 LSB, so the check uses a margin of 0.02 LSB:
 **BB.** The beamformer is integer arithmetic (`julia/kernels/bb.jl`). With the written phases
 `A` (int8) and shifts `s`,
 
-    J = clamp(shift(shift(Σ_d A_bd E_d, σ), s − σ), −7, 7),   shift(x, n) = (x + 2^(n−1)) >> n,
+    J = clamp(shift(Σ_w shift(Σ_{d∈w} A_bd E_d, σ), s − σ), −7, 7),
+    shift(x, n) = (x + 2^(n−1)) >> n,
 
-per component, with σ = 2 for D = 64. `bb_gain = 1/8` gives s = 10 and |A| = 127.5. The output
-must equal J exactly. On the source beam the unclamped value reaches 64 · 127.5 · 7 / 2^10 ≈ 56.
-The intermediate `shift(Σ, σ)` reaches 14649, inside the int16 range the kernel packs it
-into.
+per component. Each warp sums a block w of 2^(σ+4) consecutive dishes, shifts the sum by σ and
+packs it into int16; the blocks are then added in int32. σ = 2 for D = 64 (one block) and σ = 3
+for D = 512 (four blocks of 128). Shifting the whole sum once instead differs at rounding
+boundaries: 0.1% of the CHORD components were off by one. For the pathfinder, `bb_gain = 1/8`
+gives s = 10 and |A| = 127.5. The output must equal J exactly. On the source beam the unclamped
+value reaches 64 · 127.5 · 7 / 2^10 ≈ 56. The intermediate `shift(Σ, σ)` reaches 14649 (CHORD:
+13435 per block), inside the int16 range.
 
 **FRB1.** The kernel (`julia/kernels/frb.jl`) forms `Ẽ_p = input_gain Σ_d W_pd Ē_pd` times
 FFT phases of modulus 1, with `input_gain = 1/(2√(MN))`, and accumulates
@@ -129,3 +133,11 @@ change failed:
 
 Kotekan runs for 18 s (`full_scale`) and 33 s (`full_scale_tone`), the check for 16 s each.
 The output is 52 MB and 440 MB on disk.
+
+## Result (CHORD, cx67, Release)
+
+**PASS.** All 51.1 M correlator values are exact (max 802816 and 413184). The upchannelizers
+saturate as on the pathfinder, without errors. BB is exact (1.7% and 5.3% clamped, max 111 and
+159). The FRB1 maximum is 22272 (0.9987 × the bound 22300 for 512 dishes) and 17584; FRB2
+reaches 20496 and 16512; FRB3 has no -8. Kotekan runs for 24 s and 36 s; the test takes
+2.5 minutes.

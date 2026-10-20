@@ -4,17 +4,20 @@ Input: one tone from direction n, the same on every input apart from the geometr
 exp(-2πi ν n·r_d / c) (lib/testing/testSkySignal.hpp), in Gaussian noise of 2.8 LSB per
 component. The tone is at 19.5/64 cycles per sample in every coarse channel, moved to a
 fine-channel centre for the largest U (64; CHIME: U=16, 4.5/16), and away from the mirror channel
-for every U. Its amplitude (0.75 LSB) keeps the
-outputs below saturation with the production gains, which multiply a tone at a fine-channel
-centre by 0.81 sqrt(U); the noise dithers the int4 rounding. Phases and amplitudes are estimated
-coherently, by averaging over time against the predicted tone.
+for every U. Its amplitude (0.75 LSB) keeps the upchannelizer outputs below saturation with the
+production gains, which multiply a tone at a fine-channel centre by 0.81 sqrt(U); the noise
+dithers the int4 rounding. The BB source beam (0.75 sqrt(D)) saturates for D > 64, which the BB
+peak check tolerates. Phases and amplitudes are estimated coherently, by averaging over time
+against the predicted tone.
 
 Variants: the source is on a BB beam (`bb`, not for CHIME, which has no BB beamformer), on an
-FRB2 beam (`frb2`), or between beams (`offgrid`). The variant `n2` checks the visibilities with a stronger tone (amplitude 2); fringe
+FRB2 beam (`frb2`), or between beams (`offgrid`). The variant `n2` checks the visibilities with a
+stronger tone (`n2_amplitude`, 2 for the pathfinder) that still passes RFI excision; fringe
 stopping is off, since Earth rotation would add up to a few degrees over one integration.
 """
 
 import glob
+import math
 import os
 
 import h5py
@@ -36,6 +39,7 @@ from kit import (
     large_seq,
     read_output,
     require,
+    rounded_gaussian,
     sky_frequency,
     upchan_t_star,
     upchan_window,
@@ -48,6 +52,8 @@ AMPLITUDE = 0.75
 NOISE = 2.8
 BB_BEAM = (3, 1)
 FRB2_BEAM = (12, 5)
+# The N2 tone's spectral kurtosis lies this many standard deviations inside the RFI threshold
+N2_SK_MARGIN = 1.2
 
 
 def variants(config):
@@ -69,6 +75,23 @@ def source_direction(config, variant):
     return [float(np.sin(np.radians(0.5))), float(np.sin(np.radians(0.8)))]
 
 
+def n2_amplitude(config):
+    """The amplitude A of the N2 tone. A tone in noise of rms s has the spectral kurtosis
+    SK = 1 - (A² / (A² + 2 s²))². RFI excision flags a sample block if its feed-averaged SK
+    differs from 1 by more than `rfi_sk_rfimask_sigmas` times its standard deviation, about
+    2 / sqrt(M N) for M samples per block and N inputs. A puts SK `N2_SK_MARGIN` standard
+    deviations inside that threshold: A = 2 for the pathfinder (N = 128; 71% of the samples
+    pass) and 1.47 for CHORD (N = 1024; 99.5% pass)."""
+    sigmas = value(config, "rfi_sk_rfimask_sigmas") - N2_SK_MARGIN
+    num_inputs = 2 * value(config, "num_dishes")
+    deviation = (
+        sigmas * 2 / math.sqrt(value(config, "rfi_downsampling_factor") * num_inputs)
+    )
+    power = 2 * rounded_gaussian(NOISE)[0] ** 2
+    x = math.sqrt(deviation)  # A² / (A² + 2 s²)
+    return math.sqrt(power * x / (1 - x))
+
+
 def tone_cycles(config):
     """19.5/64 cycles per sample, moved down to the nearest fine-channel centre for the largest
     upchannelization factor."""
@@ -79,7 +102,7 @@ def tone_cycles(config):
 
 def variables(tel, config, variant):
     source = {
-        "amplitude": 2 if variant == "n2" else AMPLITUDE,
+        "amplitude": n2_amplitude(config) if variant == "n2" else AMPLITUDE,
         "direction": source_direction(config, variant),
         "tone_cycles_per_frame": tone_cycles(config),
     }
@@ -302,12 +325,16 @@ def check_n2(out_dir, var, config):
     results = []
     deltas = {"E_a conj(E_b)": [], "conj(E_a) E_b": []}
     ratios = []
+    valid = []
     for filename in files:
         with h5py.File(filename, "r") as f:
             if f.attrs["n_valid_fpga_ticks"] == 0:
                 continue
             vis = f["vis"][()]
             freq_id = int(f.attrs["freq_id"])
+            valid.append(
+                f.attrs["n_valid_fpga_ticks"] / f.attrs["frame_length_fpga_ticks"]
+            )
         vis = vis[:, 0] + 1j * vis[:, 1]
         nu = sky_frequency(config, freq_id, f_tone)
         g = geometric_phases(config, source["direction"], np.array([nu]))[0]
@@ -331,10 +358,12 @@ def check_n2(out_dir, var, config):
     require(
         abs(mean) <= 2 and worst <= 10,
         f"n2_vis: phase of V_ab vs E_a conj(E_b): mean {mean:.1f} deg, 99% {worst:.1f} deg "
-        f"(vs conj(E_a) E_b: mean {other_mean:.1f}, 99% {other_worst:.1f})",
+        f"(vs conj(E_a) E_b: mean {other_mean:.1f}, 99% {other_worst:.1f}); "
+        f"{np.mean(valid):.1%} of the samples valid",
     )
     require(0.9 <= ratio <= 1.1, f"n2_vis: |V_ab| is {ratio:.2f} times the tone power")
     results.append(
-        f"n2_vis: {len(ratios)} visibilities, V_ab = E_a conj(E_b) within {mean:+.2f} deg (99%: {worst:.1f}), |V_ab| x{ratio:.3f}"
+        f"n2_vis: {len(ratios)} visibilities, V_ab = E_a conj(E_b) within {mean:+.2f} deg (99%: {worst:.1f}), |V_ab| x{ratio:.3f}, "
+        f"A {amplitude:.3f}, {np.mean(valid):.1%} of the samples valid"
     )
     return results

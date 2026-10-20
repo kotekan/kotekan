@@ -11,8 +11,8 @@ and one with scaled gains, and the check compares their outputs.
 - **Gain applied wrongly**: ignored, applied twice, or as a power (G² or √G).
 - **BB gain split wrongly** into the shift `s` and the phase amplitude, e.g. `s` off by one.
 - **FRB1 weights**: `frb1_input_scale` not reaching W, or applied after squaring, so that the
-  intensity scales by 2 instead of 4. FRB1 reading another fine channel than the upchannelizer
-  wrote, since its ratio must follow that channel's gain.
+  intensity scales by 1/2 instead of 1/4. FRB1 reading another fine channel than the
+  upchannelizer wrote, since its ratio must follow that channel's gain.
 - **Config wiring**: a gain variable that does not reach its stage.
 
 ## Runs
@@ -21,11 +21,14 @@ Both runs start at FPGA sample `2^33 + 7·T` and use the same noise seed. The in
 Gaussian noise with σ = 1.2 LSB per component plus a weak tone (amplitude 0.1) from
 θ = (0.5°, 0.8°). One frame of each output is written.
 
-- **`reference`**: the production gains, `upchan_gain` = 0.8·√U, `bb_gain` = 1/√D = 1/8,
-  `frb1_input_scale` = 1.
+- **`reference`**: the production gains, `upchan_gain` = 0.8·√U, `bb_gain` = 1/√D (1/8 for
+  the pathfinder), `frb1_input_scale` = 1.
 - **`scaled`**: fine channel u gets `upchan_gain` × f_u with f_u = 1 + (k·u mod U)/U and
   k = max(U/2 − 1, 1). The factors are distinct, lie in [1, 2), and differ by at least 14%
-  between neighbouring channels. `bb_gain` and `frb1_input_scale` are doubled.
+  between neighbouring channels. `bb_gain` is doubled and `frb1_input_scale` halved.
+  `setFRB1Phase` refuses weights whose worst-case FRB1 intensity could overflow float16
+  (`lib/stages/frb1IntensityBound.hpp`), and for CHORD that bound allows at most 1.52 times the
+  production scale.
 
 σ = 1.2 is half the production level so that the doubled BB gain does not saturate. The
 rounded input has rms 1.23. The upchannelizer noise is then 0.88 before rounding in the
@@ -69,10 +72,10 @@ time. Summed over all beams, Parseval gives
 
     Σ_beams I = c · W² · Σ_{p, dishes, t} |Ē|²
 
-with a constant c. Per fine channel, the intensity ratio is therefore 4 × P_s/P_r, where P is
+with a constant c. Per fine channel, the intensity ratio is therefore P_s/(4 P_r), where P is
 the power Σ|Ē|² of the written int4 upchannelized voltages. Using the measured P makes
 rounding exact. For U = 1, FRB1 reads the coarse voltages, which are equal in both runs, so the
-ratio is 4. Scaling float16 values by 2 is exact.
+ratio is 1/4. Scaling float16 values by 1/2 is exact.
 
 The FRB1 frame covers 49152 samples, but the upchannelized frame only 8192. The power ratio
 depends on the time window only through the rounding noise; we estimate this at below
@@ -85,7 +88,7 @@ depends on the time window only through the rounding noise; we estimate this at 
   channel) or 41% (a factor √2). The raw rms ratio, without the rounding correction, deviates
   by up to 3.7% and would fail.
 - **FRB1, 1%.** The float16 accumulation in the kernel contributes about 0.2%. A linear W
-  would be off by 100%.
+  would be off by a factor 2.
 
 ## Mutation check
 
@@ -93,7 +96,7 @@ The check code alone was changed and the same output re-checked with `--check-on
 
 - **Gains expected on the neighbouring fine channel** (`np.roll` by one): the ratios deviate by
   −43% to +50%; all six upchannelizer outputs fail.
-- **FRB1 linear in W** (expected ratio 2 instead of 4): +100%; FRB1 fails for every U.
+- **FRB1 linear in W** (expected ratio 1/2 instead of 1/4): −50%; FRB1 fails for every U.
 - **No rounding correction** (raw rms ratio): the upchannelizer fails for U ≥ 4 (−3.3% to
   −3.7%). U = 2 (−2.5%) and BB (−2.35%) stay within 3%.
 
@@ -110,8 +113,8 @@ The check code alone was changed and the same output re-checked with `--check-on
 | U=32       | 1.000 to 1.967      | −0.0007 to +0.0004      |
 | U=64       | 1.000 to 1.985      | −0.0016 to +0.0012      |
 | BB         | 2                   | −6·10^−6 (σ̂ 1.232 → 2.464) |
-| FRB1 U=1   | 4                   | 0                       |
-| FRB1 U=2…64 | 4 × P_s/P_r, up to 14.6 | −0.0014 to +0.0016  |
+| FRB1 U=1   | 1/4                 | 0                       |
+| FRB1 U=2…64 | P_s/(4 P_r), up to 0.914 | −0.0014 to +0.0016 |
 
 - The scaled run has at most 0.02% of the upchannelized values at ±7 and no -8.
 - Without the rounding correction, the upchannelizer ratios would be 2.5% (U = 2) to 3.7%
@@ -119,3 +122,9 @@ The check code alone was changed and the same output re-checked with `--check-on
 
 Kotekan runs for 22 s per run and the check for about 10 s. The output is 1.7 GB on disk
 (0.85 GB per run, of which FRB1 is 0.5 GB).
+
+## Result (CHORD, cx67, Release)
+
+**PASS.** The upchannelizer ratios deviate by −0.0016 to +0.0023, BB by less than 10^−5 (rms
+1.264 → 2.468), FRB1 by −0.0014 to +0.0026 (0 at U = 1). Kotekan runs for 29 s and 22 s; the
+test takes about a minute.

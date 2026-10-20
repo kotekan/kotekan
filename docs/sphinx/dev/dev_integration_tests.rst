@@ -45,8 +45,10 @@ Layout
 ======
 
 ``config/integration-tests/``
-   Top-level configs ``pathfinder.j2``, ``chord.j2`` and ``chime.j2``. Jinja variables, passed
-   with ``kotekan --variables '<json>'``, select the test signal, schedules and outputs. The
+   Top-level configs ``pathfinder.j2``, ``chord.j2`` and ``chime.j2``. Jinja variables select
+   the test signal, schedules and outputs. ``run.py`` renders the config with them into
+   ``<out>/<tel>_<test>_<variant>.yaml``, next to the log, and passes that file to kotekan: a
+   command-line argument is limited to 128 KiB, which T7's manual CHORD beams exceed. The
    directory is self-contained: ``include/`` holds copies of the ``config/fengine`` includes,
    changed as described below, plus the test input and output includes.
 
@@ -188,12 +190,13 @@ upchannelizer output start ``T*``, ``coarse_freq`` / ``freq_upchan_factor`` /
      - correlator and BB exact; upchan 0.02 LSB around rounding thresholds; FRB1 1%
    * - T5 Gains
      - Noise (σ = 1.2 LSB) plus a weak tone; a reference run with the production gains and a
-       scaled run: a distinct factor in [1, 2) per fine channel, ``bb_gain`` and
-       ``frb1_input_scale`` doubled.
+       scaled run: a distinct factor in [1, 2) per fine channel, ``bb_gain`` doubled and
+       ``frb1_input_scale`` halved (``setFRB1Phase`` refuses more than 1.5 times the production
+       scale for CHORD).
      - upchan (all U), BB, FRB1
      - Per-fine-channel ``upchan_gain``, ``bb_gain`` and ``frb1_input_scale`` act as configured:
        the unrounded noise σ, inferred from the int4 rms with the rounded-Gaussian model, scales
-       with the gain; the FRB1 intensity by 4 times the upchannelized power ratio.
+       with the gain; the FRB1 intensity by 1/4 times the upchannelized power ratio.
      - 3% (int4), 1% (FRB1)
    * - T6 Dish locations
      - Eight one-hot inputs, each with a tone in its own window; six pairs with a zenith tone
@@ -253,7 +256,8 @@ upchannelizer output start ``T*``, ``coarse_freq`` / ``freq_upchan_factor`` /
        flat after warm-up.
      - exact; loss rate 3σ; memory 32 MiB
 
-The pathfinder is tested first, then CHORD, then CHIME.
+The pathfinder is tested first, then CHORD, then CHIME. All Level 1 tests pass on the pathfinder
+and on CHORD.
 
 Missing features (known gaps)
 =============================
@@ -368,6 +372,30 @@ Findings
   every frame, the FRB PL mask and the N2 counts follow the loss, and resident memory grows by
   1.6 MiB after warm-up. ``hdf5FileWrite`` holds about one extra frame while it compresses it
   (475 MiB for FRB2), and writing an FRB2 frame stalls the pipeline for about 5 s.
+* T1 to T10 pass on CHORD. Only array-size dependent parts of the checks changed: T2's N2 tone
+  amplitude, T4's BB model, T5's FRB1 scale, T6's dish choice and FRB1 peak threshold, and T7's
+  BB column (below).
+* A coherent tone of a given SNR is flagged by first-stage RFI excision more readily on larger
+  arrays: the feed-averaged SK threshold scales as 1/√N. With T2's N2 tone (A = 2 in 2.8 LSB
+  noise), 29% of the pathfinder samples and 95% of the CHORD samples were flagged. T2 now scales A
+  with N (1.47 for CHORD; 99.5% valid).
+* For D > 128 the BB kernel shifts the partial sum of each block of 2^(σ+4) dishes by σ before
+  adding the blocks (four blocks of 128 for CHORD, σ = 3; ``julia/kernels/bb.jl:997``). The
+  output then differs from a single shift of the whole sum at rounding boundaries. T4 models the
+  blocks and finds BB exact on CHORD; the largest int16 partial sum at full scale is 13435.
+* On CHORD, ``setFRB1Phase`` allows at most 1.52 times the production ``frb1_input_scale``. Its
+  bound weights all 24 × 24 FRB1 cells, including the 64 empty ones, so it is 27% above the real
+  worst case of 22300, which T4 reaches (22272).
+* On CHORD's 48 × 48 FRB1 beam grid the fringe value next to the peak is 0.9957, within the
+  measurement error; T6 puts the peak threshold in the first gap between predicted levels.
+* T7's single BB column had the pathfinder geometry. On CHORD (96 beams 0.078° apart), a column
+  that starts at the source has a grating lobe of the source on another BB beam at every
+  frequency, so no BB peak is unambiguous; the column is now centred on the source.
+* T2's tone (0.75 LSB) saturates the BB source beam for D > 64: 0.75 √512 ≈ 17 LSB for CHORD.
+  The BB peak checks tolerate this.
+* On CHORD a written FRB2 frame stalls the pipeline for about 10 s. With the FRB2 weights
+  recomputed every FRB frame and ``frb2_weights_ring_depth`` 1, T10 still runs at 16 frames/s;
+  resident memory is 13.4 GB and grows by 0.6 MiB, GPU memory 20 GB.
 * ``setUpchanGain`` checks the number of gains (one per fine channel) only with ``assert``
   (seen while writing T5, not tested), which a Release build drops: extra gains are ignored,
   and too few throw ``std::out_of_range``.
@@ -385,6 +413,8 @@ Data volume and run time
   time), so this takes 10 minutes, and the check 5 minutes more. It writes 4.2 GB: only the
   small outputs, 16 frequencies of N2, and FRB2 decimated to one frame in 359 (all of them would
   be 14 GB of N2 and 470 GB of FRB2).
+* On CHORD, T1 to T9 take about 35 minutes. T10 takes about 11 minutes and writes about 33 GB,
+  mostly N2 (16 of 48 frequencies, 5.2 MB per frequency and integration).
 
 Future ideas
 ============
