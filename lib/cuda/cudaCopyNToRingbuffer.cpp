@@ -195,7 +195,7 @@ cudaEvent_t cudaCopyNToRingbuffer::execute(cudaPipelineState& /*pipestate*/,
             freq_upchan_index.at(i) = meta_in->get_freq_upchan_index().at(0);
             // Check that the seq_num matches for all input buffers
             if (meta_ring->get_fpga_seq_num() != meta_in->get_fpga_seq_num())
-                FATAL_ERROR("Sequence numbers to not match for all input buffers: {:d} ({:s} ) != "
+                FATAL_ERROR("Sequence numbers do not match for all input buffers: {:d} ({:s} ) != "
                             "{:d} ({:s})",
                             meta_in0->get_fpga_seq_num(), in_buffers.at(0)->buffer_name,
                             meta_in->get_fpga_seq_num(), in_buffers.at(i)->buffer_name);
