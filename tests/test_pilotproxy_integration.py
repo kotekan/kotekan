@@ -695,6 +695,7 @@ def test_production_geometry_soak(pipeline, record_property, num_dishes, num_fre
     gpu["commands"].append(
         dict(
             name="cudaOutputData",
+            cuda_stream=4,
             gpu_mem="dtv_fine_support_buffer",
             out_buf="host_dtv_fine_support",
         )
