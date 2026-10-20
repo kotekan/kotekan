@@ -11,6 +11,10 @@ Runs, all with the same input:
   statistics rely on this; they do not read the PL mask for the voltages.
 - `dense`: random loss at `DENSE_RATE` plus the same boxes; lost voltages are -8-8i (no data).
 
+CHIME receives lost samples per group of 4 frequencies (lost_samples_buffer_<n>), from which
+zeroSamples zeroes the lost voltages, also in `dense`, and lostSamplesToPLMask makes the PL mask;
+it has no BB beamformer, and the FRB chain has no U = 1.
+
 The loss model is `testPacketLoss` (lib/testing/testSkySignal.hpp): random loss drops packets of
 16 FPGA samples of 4 frequencies for all inputs; boxes have the PL mask resolution of 2 samples.
 
@@ -37,17 +41,21 @@ import numpy as np
 
 import check_phases
 from kit import (
+    NUM_TAPS,
     audit,
     decode_int4x2,
+    find_stages,
     frame_seq_nums,
+    frb3_codes,
+    has_bb,
+    has_value,
     large_seq,
     read_output,
     require,
+    upchan_t_star,
     value,
 )
 
-UPCHAN_FACTORS = [2, 4, 8, 16, 32, 64]
-NUM_TAPS = 4
 RUNS = ["reference", "sparse", "dense"]
 SPARSE_RATE = 1e-4
 DENSE_RATE = 1e-2
@@ -57,14 +65,30 @@ MASK_FRAMES = 8
 DATA_FRAMES = 4
 FRB_MASK_FRAMES = 2
 FRB_FRAMES = 1
-# Frames covered by the loss prediction (the N2 integration ends before frame 26)
-PREDICTED_FRAMES = 32
+# Frames covered by the loss prediction beyond the end of the first N2 integration
+PREDICTED_MARGIN_FRAMES = 6
 # float32 rounding of the visibilities, relative to |Σ V n| of both runs
 N2_TOLERANCE = 1e-6
 
 
 def t_star(config):
-    return (NUM_TAPS - 1) * value(config, "max_upchannelization_factor") // 2
+    return upchan_t_star(config)
+
+
+def frb_factors(config):
+    """The upchannelization factors of the FRB chain, with U = 1 where it has one."""
+    return [U for U in [1] + config["upchan_factors"] if has_value(config, f"upchan_U{U}_min_channel")]
+
+
+def predicted_frames(config):
+    """The frames from seq0 to the end of the first N2 integration, and a margin."""
+    seq0 = large_seq(config)
+    T = value(config, "num_times")
+    length = find_stages(config, "N2Accumulate")[0]["num_subintegrations_per_bin"] * value(
+        config, "n2k_samples_per_data_set"
+    )
+    end = -(-seq0 // length) * length + length
+    return (end - seq0) // T + PREDICTED_MARGIN_FRAMES
 
 
 def frb_frame_length(config):
@@ -97,9 +121,10 @@ def variables(tel, config, run):
     del var["outputs"], var["write_frames"]
     var["noise_period_frames"] = 1
     var["do_fringestop"] = False
-    masks = ["pl_mask", "pl_expanded_mask", "bb_pl_mask"]
-    masks += [f"upchan_U{U}_expanded_pl_mask" for U in UPCHAN_FACTORS]
-    data = [f"upchan_U{U}_voltage" for U in UPCHAN_FACTORS] + ["bb_beams"]
+    masks = ["pl_mask", "pl_expanded_mask"] + ["bb_pl_mask"] * has_bb(config)
+    masks += [f"upchan_U{U}_expanded_pl_mask" for U in config["upchan_factors"]]
+    data = [f"upchan_U{U}_voltage" for U in config["upchan_factors"]]
+    data += ["bb_beams"] * has_bb(config)
     frb = ["frb1_beams", "frb2_beams", "frb3_beams", "frb3_beams_offsetscale"]
     write_frames = {name: MASK_FRAMES for name in masks}
     write_frames.update({name: DATA_FRAMES for name in data})
@@ -210,10 +235,9 @@ def frb_valid(loss, config, labels):
     [L - (M-1) U/2, L + 192 + (M-1) U/2) for U > 1, and on [L, L + 192) for U = 1."""
     tds = value(config, "frb_downsampling_factor")
     labels = np.asarray(labels)
-    valid = np.zeros(
-        (labels.shape[0], value(config, "upchan_all_max_output_channel")), dtype=bool
-    )
-    for U in [1] + UPCHAN_FACTORS:
+    num_out = max(value(config, f"upchan_U{U}_max_output_channel") for U in frb_factors(config))
+    valid = np.zeros((labels.shape[0], num_out), dtype=bool)
+    for U in frb_factors(config):
         fmin, fmax = upchan_channels(config, U)
         lo = value(config, f"upchan_U{U}_min_output_channel")
         hi = value(config, f"upchan_U{U}_max_output_channel")
@@ -246,14 +270,15 @@ def check_masks(out_dir, config, loss, results, failures):
     results.append(mask_line("pl_expanded_mask", bits(out.data), expected, failures))
 
     # BB PL mask [Thi64, F, P, Tlo64]: the AND over dishes of the expanded mask
-    out = read_output(out_dir, "bb_pl_mask")
-    audit(out, first_seq=seq0)
-    results.append(
-        mask_line("bb_pl_mask", bits(out.data), expected[:, :, :, 0], failures)
-    )
+    if has_bb(config):
+        out = read_output(out_dir, "bb_pl_mask")
+        audit(out, first_seq=seq0)
+        results.append(
+            mask_line("bb_pl_mask", bits(out.data), expected[:, :, :, 0], failures)
+        )
 
     # Upchannelized PL masks [Thi64, F, P, D8, Tlo64]: bit tbar has the label L = seq + U tbar
-    for U in UPCHAN_FACTORS:
+    for U in config["upchan_factors"]:
         name = f"upchan_U{U}_expanded_pl_mask"
         out = read_output(out_dir, name)
         audit(out, first_seq=seq0 + ts)
@@ -296,7 +321,7 @@ def check_data(out_dir, ref_dir, config, loss, results, failures):
     ts = t_star(config)
 
     # Upchannelized voltages [Tbar, Fbar, P, D], Fbar = U channel + u
-    for U in UPCHAN_FACTORS:
+    for U in config["upchan_factors"]:
         name = f"upchan_U{U}_voltage"
         out = read_output(out_dir, name)
         ref = read_output(ref_dir, name)
@@ -315,14 +340,15 @@ def check_data(out_dir, ref_dir, config, loss, results, failures):
         )
 
     # BB beams [Thi, B, F, P, T], one Thi per frame
-    out = read_output(out_dir, "bb_beams")
-    ref = read_output(ref_dir, "bb_beams")
-    audit(out, first_seq=seq0)
-    seq = frame_seq_nums(out)[:, None] + np.arange(out.data.shape[-1])[None, :]
-    valid = ~loss.lost(seq).transpose(0, 2, 1)  # [Thi, F, T]
-    results.append(
-        equal_line("bb_beams", out.data, ref.data, valid[:, None, :, None], failures)
-    )
+    if has_bb(config):
+        out = read_output(out_dir, "bb_beams")
+        ref = read_output(ref_dir, "bb_beams")
+        audit(out, first_seq=seq0)
+        seq = frame_seq_nums(out)[:, None] + np.arange(out.data.shape[-1])[None, :]
+        valid = ~loss.lost(seq).transpose(0, 2, 1)  # [Thi, F, T]
+        results.append(
+            equal_line("bb_beams", out.data, ref.data, valid[:, None, :, None], failures)
+        )
 
     # FRB1 beams [Ttilde, Fbar, beamQ, beamP], FRB2 beams [Ttildehi256, R, Fbar, Ttildelo256]
     out = read_output(out_dir, "frb1_beams")
@@ -361,28 +387,27 @@ def check_data(out_dir, ref_dir, config, loss, results, failures):
 
 
 def frb3_values(out_dir, num):
-    """FRB3 codes q [Ttildehi256, R, Fbar, Ttildelo256] (int4x2, two's complement, earlier
-    sample in the low nibble), and the dequantized values offset + scale q with their scales."""
-    frb3 = read_output(out_dir, "frb3_beams").data[:, :, :num]
-    offsetscale = read_output(out_dir, "frb3_beams_offsetscale").data[:, :, :num]
-    q = np.stack([frb3 & 0xF, frb3 >> 4], axis=-1).reshape(*frb3.shape[:3], -1)
-    q = ((q.astype(np.int8) ^ 8) - 8).astype(np.float64)
-    offset = offsetscale[..., 0:1].astype(np.float64)
-    scale = offsetscale[..., 1:2].astype(np.float64)
-    return q, offset + scale * q, scale, offset
+    """FRB3 codes q [Ttildehi256, R, Fbar, Ttildelo256], the dequantized values offset + scale q,
+    their scales and offsets, and the codes for no data and the lowest and highest values (see
+    kit.frb3_codes)."""
+    q, offset, scale, nodata, qmin, qmax = frb3_codes(out_dir, num)
+    return q, offset + scale * q, scale, offset, (nodata, qmin, qmax)
 
 
 def check_frb3(out_dir, ref_dir, frb2, valid, results, failures):
-    """Invalid samples are -8. Valid samples below saturation in both runs encode the same FRB2
-    value, so their dequantized values differ by at most half a step of each run plus the
-    float16 allowance of T3."""
+    """Invalid samples have the no-data code. Valid samples below saturation (4 bits) in both runs
+    encode the same FRB2 value, so their dequantized values differ by at most half a step of each
+    run plus the float16 allowance of T3."""
     num = frb2.shape[2]
-    q, xhat, scale, offset = frb3_values(out_dir, num)
-    q_ref, xhat_ref, scale_ref, offset_ref = frb3_values(ref_dir, num)
+    q, xhat, scale, offset, (nodata, qmin, qmax) = frb3_values(out_dir, num)
+    q_ref, xhat_ref, scale_ref, offset_ref, _ = frb3_values(ref_dir, num)
     x = frb2.astype(np.float64)
     valid = np.broadcast_to(valid[None, None], q.shape)
-    wrong_nodata = np.count_nonzero((q == -8) != ~valid)
-    use = valid & (np.abs(q) < 7) & (np.abs(q_ref) < 7)
+    wrong_nodata = np.count_nonzero((q == nodata) != ~valid)
+    if nodata == -8:
+        use = valid & (np.abs(q) < 7) & (np.abs(q_ref) < 7)
+    else:
+        use = valid
     allowance = 2.0 ** -9 * (2 * np.abs(x) + np.abs(offset) + np.abs(offset_ref))
     allowance = allowance + 2.0 ** -9 * (scale + scale_ref)
     excess = np.abs(xhat - xhat_ref) - (scale + scale_ref) / 2 - allowance
@@ -390,7 +415,7 @@ def check_frb3(out_dir, ref_dir, frb2, valid, results, failures):
     step = np.maximum(scale, scale_ref)
     worst = float((np.abs(xhat - xhat_ref) / np.where(step > 0, step, 1))[use].max())
     line = (
-        f"frb3_beams: {np.count_nonzero(q == -8)} values -8, {wrong_nodata} not matching the "
+        f"frb3_beams: {np.count_nonzero(q == nodata)} values {nodata}, {wrong_nodata} not matching the "
         f"mask; {num_beyond} of {np.count_nonzero(use)} valid unsaturated values beyond one "
         f"step of the reference (max {worst:.3f} steps)"
     )
@@ -523,7 +548,7 @@ def check_n2(out_dir, ref_dir, config, loss, results, failures):
 def check(runs):
     ref_dir, ref_var, config = runs["reference"]
     seq0 = ref_var["first_fpga_seq_num"]
-    num_samples = PREDICTED_FRAMES * value(config, "num_times")
+    num_samples = predicted_frames(config) * value(config, "num_times")
     num_freqs = value(config, "num_frequencies")
     results = []
     failures = []

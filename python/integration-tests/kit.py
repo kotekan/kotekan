@@ -245,6 +245,11 @@ def frb1_swap_MN(config):
     return value(config, "frb1_num_beams_P") != 2 * value(config, "num_dishes_x")
 
 
+def has_value(config, key):
+    """Whether `key` is a top-level value or one in a top-level block (see `value`)."""
+    return key in config or any(isinstance(v, dict) and key in v for v in config.values())
+
+
 def find_stages(config, kotekan_stage):
     """The config blocks of every stage of type `kotekan_stage`, at any depth."""
     found = []
