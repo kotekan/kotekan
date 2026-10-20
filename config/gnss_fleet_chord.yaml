@@ -277,8 +277,9 @@ nodes:
     cx42: {search-port-base: 11044}
     cx43: {search-port-base: 11046}
     cx44: {search-port-base: 11048}
-    # #190 canary keys for cx51 (n2-project-source lanes+residual, n2-project-lanes-max 40,
-    # n2-project-core-index 9, elem-dir-publish all) were withdrawn 10-20 12:30Z: the node
-    # relaunched every ~3 min on DPDK rx-ring overflow (a fleet-wide stop seen on cx43/cx19
-    # at ~10x lower rate); re-add once the stall is understood.
-    cx51: {search-port-base: 11050}
+    # #190 canary, second attempt (the first, 10-20 12:16-12:27Z, relaunched every ~3 min: the
+    # assembler slot was already at ~99% on the fleet binary at 96 elements, the elem
+    # projection's n^2 work; the lane EMA tipped it): the assemblers spread over six slots,
+    # the stage on its default slot, 8 lanes per channel to start.
+    cx51: {search-port-base: 11050, n2-project-source: lanes+residual, n2-project-lanes-max: 8,
+           elem-dir-publish: all, assembler-core-slots: "2,1,3,4,8,9"}
