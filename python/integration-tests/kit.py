@@ -411,6 +411,31 @@ def frb2_peak_line(frb2, expected_beam):
     )
 
 
+def frb3_codes(out_dir, num):
+    """FRB3 codes q, offsets and scales, each [Ttildehi256, R, Fbar, Ttildelo256] for the first
+    `num` frequencies, and the codes for no data and the lowest and highest values. A value is
+    encoded as offset + scale q.
+    - 4 bits (cudaQuantize4): int4x2, two's complement, the earlier sample in the low nibble;
+      no data -8, values -7 to 7; offset and scale per 256 samples [Ttilde256, R, Fbar, 2].
+    - 8 bits (cudaQuantize8, CHIME): [Ttilde256, R4, Fbar64, Ttilde16_lo16, Rlo4, Fbar16_lo4,
+      Fbarlo16, Ttildelo16]; no data 0, values 1 to 254; offset and scale per 16 frequencies and
+      16 samples [Ttilde256, R4, Fbar64, Ttilde16_lo16, Rlo4, Fbar16_lo4, 2]."""
+    frb3 = read_output(out_dir, "frb3_beams").data
+    offsetscale = read_output(out_dir, "frb3_beams_offsetscale").data
+    if frb3.ndim == 4:
+        frb3 = frb3[:, :, :num]
+        offsetscale = offsetscale[:, :, :num].astype(np.float64)
+        q = np.stack([frb3 & 0xF, frb3 >> 4], axis=-1).reshape(*frb3.shape[:3], -1)
+        q = ((q.astype(np.int8) ^ 8) - 8).astype(np.float64)
+        return q, offsetscale[..., 0:1], offsetscale[..., 1:2], -8, -7, 7
+    n = frb3.shape[0]
+    q = frb3.transpose(0, 1, 4, 2, 5, 6, 3, 7).reshape(n, -1, 256, 256)[:, :, :num]
+    offsetscale = offsetscale.transpose(0, 1, 4, 2, 5, 3, 6).reshape(n, -1, 16, 16, 2)
+    offsetscale = np.repeat(np.repeat(offsetscale, 16, axis=2), 16, axis=3)[:, :, :num]
+    offsetscale = offsetscale.astype(np.float64)
+    return q.astype(np.float64), offsetscale[..., 0], offsetscale[..., 1], 0, 1, 254
+
+
 def upchan_window(num_taps, U):
     """The sinc-Hanning PFB window of the upchannelizer, without the 1/U factor
     (julia/kernels/upchan.jl, `Wkernel`)."""
