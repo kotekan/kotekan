@@ -60,7 +60,9 @@ static int sane_lrint(const float x) {
 // Quantize a "chunk". This is a CPU implementation that is
 // straightforward and thus "obviously correct". If the GPU version
 // produces a different result, then the GPU version is wrong.
-void cpu_quantize4_chunk(const __half* __restrict__ const input, __half* __restrict__ const outputf,
+void cpu_quantize4_chunk(const __half* __restrict__ const input,
+                         const std::uint8_t* __restrict__ const pl_mask, const int pl_mask_stride,
+                         __half* __restrict__ const outputf,
                          kotekan::int4x2_t* __restrict__ const outputi, const float stddev_cutoff) {
     static_assert(chunk_size >= 0);
     // The chunk size must be even because we process 2 `half` values simultaneously to create 1
@@ -69,20 +71,27 @@ void cpu_quantize4_chunk(const __half* __restrict__ const input, __half* __restr
 
     using std::fmax, std::isfinite, std::isnan, std::max, std::min, std::sqrt;
 
-    // Find the sum and sum-squared of all input values. Calculate everything as `float` to
-    // avoid overflow.
+    // Find the sum and sum-squared of all valid input values, skipping samples that the packet
+    // loss mask marks as invalid. Calculate everything as `float` to avoid overflow.
+    int count = 0;
     float sum = 0, sum2 = 0;
     for (int i = 0; i < chunk_size; ++i) {
+        if (!pl_mask[i * pl_mask_stride])
+            continue;
         const float x = __half2float(input[i]);
+        ++count;
         sum += x;
         sum2 += x * x;
     }
-    // Calculate the mean and corrected standard deviation
-    const float mean = sum / chunk_size;
-    const float stddev = sqrt(fmax(0.0f, sum2 / chunk_size - mean * mean));
+    // Calculate the mean and corrected standard deviation. (Without valid values the mean is nan,
+    // and the offset and scale below become zero.)
+    const float mean = sum / count;
+    const float stddev = sqrt(fmax(0.0f, sum2 / count - mean * mean));
     // Calculate offset and scale.
     // There are 15 possible int4 values since we don't use 0.
     // Values are reconstructed as `offset + scale * n`, with `int4 n`.
+    // NaN in the input, and samples the packet loss mask marks as invalid, are represented as
+    // `n = -8`.
     constexpr int outi_min = -7;
     constexpr int outi_max = +7;
     constexpr float outf_min = outi_min - 0.5f;
@@ -127,9 +136,11 @@ void cpu_quantize4_chunk(const __half* __restrict__ const input, __half* __restr
         // Round
         const int j0 = sane_lrint(y0);
         const int j1 = sane_lrint(y1);
-        // Clamp; use -8 for nan
-        const int k0 = isnan(x0) ? -8 : max(outi_min, min(outi_max, j0));
-        const int k1 = isnan(x1) ? -8 : max(outi_min, min(outi_max, j1));
+        // Clamp; use -8 for nan and for invalid samples
+        const bool valid0 = pl_mask[(i + 0) * pl_mask_stride];
+        const bool valid1 = pl_mask[(i + 1) * pl_mask_stride];
+        const int k0 = !valid0 || isnan(x0) ? -8 : max(outi_min, min(outi_max, j0));
+        const int k1 = !valid1 || isnan(x1) ? -8 : max(outi_min, min(outi_max, j1));
         // Combine
         const kotekan::int4x2_t k01(k0, k1);
         // Store
@@ -138,15 +149,15 @@ void cpu_quantize4_chunk(const __half* __restrict__ const input, __half* __restr
 }
 
 // Quantize a set of "chunk"s. This is an efficient GPU implementation.
-__global__ void
-gpu_quantize4_chunks(const __half* __restrict__ const input0, __half* __restrict__ const outputf0,
-                     kotekan::int4x2_t* __restrict__ const outputi0, const int input_size1,
-                     const int input_size2, const int input_size3, const int input_stride2,
-                     const int input_stride3, const int outputf_size1, const int outputf_size2,
-                     const int outputf_size3, const int outputf_stride2, const int outputf_stride3,
-                     const int outputi_size1, const int outputi_size2, const int outputi_size3,
-                     const int outputi_stride2, const int outputi_stride3,
-                     const float stddev_cutoff) {
+__global__ void gpu_quantize4_chunks(
+    const __half* __restrict__ const input0, const std::uint8_t* __restrict__ const pl_mask,
+    const int pl_mask_stride, __half* __restrict__ const outputf0,
+    kotekan::int4x2_t* __restrict__ const outputi0, const int input_size1, const int input_size2,
+    const int input_size3, const int input_stride2, const int input_stride3,
+    const int outputf_size1, const int outputf_size2, const int outputf_size3,
+    const int outputf_stride2, const int outputf_stride3, const int outputi_size1,
+    const int outputi_size2, const int outputi_size3, const int outputi_stride2,
+    const int outputi_stride3, const float stddev_cutoff) {
     static_assert(chunk_size >= 0);
     static_assert(chunk_size % (8 * nthreads) == 0);
 
@@ -179,12 +190,28 @@ gpu_quantize4_chunks(const __half* __restrict__ const input0, __half* __restrict
     const int dim3 = blockIdx.z * nchunks;
 
     static_assert(nchunks == nthreads);
+    static_assert(chunk_size == 8 * nthreads);
+
+    // The packet loss mask is the same for all beams. Load this thread's 8 values once, and count
+    // the valid values in the chunk; masked samples are skipped when finding the mean and
+    // standard deviation, and are encoded as -8.
+    bool valid[8];
+    int count = 0;
+    for (int i = 0; i < 8; ++i) {
+        valid[i] = pl_mask[(dim1 + 8 * thread + i) * pl_mask_stride + dim2];
+        count += valid[i];
+    }
+    count += __shfl_sync(0xffffffff, count, thread ^ 0x01);
+    count += __shfl_sync(0xffffffff, count, thread ^ 0x02);
+    count += __shfl_sync(0xffffffff, count, thread ^ 0x04);
+    count += __shfl_sync(0xffffffff, count, thread ^ 0x08);
+    count += __shfl_sync(0xffffffff, count, thread ^ 0x10);
+
     // We store offset and scale only after finishing the loop over all chunks. Each thread stores
     // one offset/scale pair.
     __half2 outf;
     // Loop over all chunks in the frame
     for (int chunk = 0; chunk < nchunks; ++chunk) {
-        static_assert(chunk_size == 8 * nthreads);
 
         // Load all values in this chunk. We load all values at once in the beginning.
         const half2x4 xs = load_half2x4(&input(dim1 + 8 * thread, dim2, dim3 + chunk));
@@ -202,9 +229,19 @@ gpu_quantize4_chunks(const __half* __restrict__ const input0, __half* __restrict
         const float x6 = __half2float(__low2half(x67));
         const float x7 = __half2float(__high2half(x67));
 
-        float sum = ((x0 + x1) + (x2 + x3)) + ((x4 + x5) + (x6 + x7));
-        float sum2 = ((x0 * x0 + x1 * x1) + (x2 * x2 + x3 * x3))
-                     + ((x4 * x4 + x5 * x5) + (x6 * x6 + x7 * x7));
+        // Skip masked values (which might not be finite)
+        const float v0 = valid[0] ? x0 : 0.0f;
+        const float v1 = valid[1] ? x1 : 0.0f;
+        const float v2 = valid[2] ? x2 : 0.0f;
+        const float v3 = valid[3] ? x3 : 0.0f;
+        const float v4 = valid[4] ? x4 : 0.0f;
+        const float v5 = valid[5] ? x5 : 0.0f;
+        const float v6 = valid[6] ? x6 : 0.0f;
+        const float v7 = valid[7] ? x7 : 0.0f;
+
+        float sum = ((v0 + v1) + (v2 + v3)) + ((v4 + v5) + (v6 + v7));
+        float sum2 = ((v0 * v0 + v1 * v1) + (v2 * v2 + v3 * v3))
+                     + ((v4 * v4 + v5 * v5) + (v6 * v6 + v7 * v7));
 
         sum += __shfl_sync(0xffffffff, sum, thread ^ 0x01);
         sum2 += __shfl_sync(0xffffffff, sum2, thread ^ 0x01);
@@ -217,8 +254,9 @@ gpu_quantize4_chunks(const __half* __restrict__ const input0, __half* __restrict
         sum += __shfl_sync(0xffffffff, sum, thread ^ 0x10);
         sum2 += __shfl_sync(0xffffffff, sum2, thread ^ 0x10);
 
-        const float mean = sum / chunk_size;
-        const float stddev = sqrt(fmax(0.0f, sum2 / chunk_size - mean * mean));
+        // (Without valid values the mean is nan, and the offset and scale below become zero.)
+        const float mean = sum / count;
+        const float stddev = sqrt(fmax(0.0f, sum2 / count - mean * mean));
         constexpr int outi_min = -7;
         constexpr int outi_max = +7;
         constexpr float outf_min = outi_min - 0.5f;
@@ -277,23 +315,23 @@ gpu_quantize4_chunks(const __half* __restrict__ const input0, __half* __restrict
 
         const __half2 y01 =
             __hmax2_nan(minh, __hmin2_nan(maxh, __hfma2(x01, inv_scaleh2, inv_offseth2)));
-        const int i0 = half2int(__low2half(y01));
-        const int i1 = half2int(__high2half(y01));
+        const int i0 = valid[0] ? half2int(__low2half(y01)) : -8;
+        const int i1 = valid[1] ? half2int(__high2half(y01)) : -8;
 
         const __half2 y23 =
             __hmax2_nan(minh, __hmin2_nan(maxh, __hfma2(x23, inv_scaleh2, inv_offseth2)));
-        const int i2 = half2int(__low2half(y23));
-        const int i3 = half2int(__high2half(y23));
+        const int i2 = valid[2] ? half2int(__low2half(y23)) : -8;
+        const int i3 = valid[3] ? half2int(__high2half(y23)) : -8;
 
         const __half2 y45 =
             __hmax2_nan(minh, __hmin2_nan(maxh, __hfma2(x45, inv_scaleh2, inv_offseth2)));
-        const int i4 = half2int(__low2half(y45));
-        const int i5 = half2int(__high2half(y45));
+        const int i4 = valid[4] ? half2int(__low2half(y45)) : -8;
+        const int i5 = valid[5] ? half2int(__high2half(y45)) : -8;
 
         const __half2 y67 =
             __hmax2_nan(minh, __hmin2_nan(maxh, __hfma2(x67, inv_scaleh2, inv_offseth2)));
-        const int i6 = half2int(__low2half(y67));
-        const int i7 = half2int(__high2half(y67));
+        const int i6 = valid[6] ? half2int(__low2half(y67)) : -8;
+        const int i7 = valid[7] ? half2int(__high2half(y67)) : -8;
 
         const std::uint32_t outi =
             (std::uint32_t(i0 & 0x0f) << 0x00) | (std::uint32_t(i1 & 0x0f) << 0x04)
@@ -310,7 +348,9 @@ gpu_quantize4_chunks(const __half* __restrict__ const input0, __half* __restrict
 
 // Drivers (externally visible)
 
-void cpu_quantize4(const __half* __restrict__ const input, __half* __restrict__ const outputf,
+void cpu_quantize4(const __half* __restrict__ const input,
+                   const std::uint8_t* __restrict__ const pl_mask, const int pl_mask_stride,
+                   __half* __restrict__ const outputf,
                    kotekan::int4x2_t* __restrict__ const outputi, const int input_size1,
                    const int input_size2, const int input_size3, const int input_stride2,
                    const int input_stride3, const int outputf_size1, const int outputf_size2,
@@ -319,6 +359,7 @@ void cpu_quantize4(const __half* __restrict__ const input, __half* __restrict__ 
                    const int outputi_stride2, const int outputi_stride3,
                    const float stddev_cutoff) {
     assert(input);
+    assert(pl_mask);
     assert(outputf);
     assert(outputi);
 
@@ -337,6 +378,7 @@ void cpu_quantize4(const __half* __restrict__ const input, __half* __restrict__ 
     assert(outputi_size3 >= 0);
     assert(outputi_stride2 >= 0);
     assert(outputi_stride3 >= 0);
+    assert(pl_mask_stride >= input_size2);
     static_assert(chunk_size > 0);
 
     static_assert(chunk_size % 2 == 0);
@@ -361,14 +403,18 @@ void cpu_quantize4(const __half* __restrict__ const input, __half* __restrict__ 
                     outputf_dim1 + outputf_stride2 * dim2 + outputf_stride3 * dim3;
                 const int outputi_offset =
                     outputi_dim1 + outputi_stride2 * dim2 + outputi_stride3 * dim3;
-                cpu_quantize4_chunk(input + input_offset, outputf + outputf_offset,
-                                    outputi + outputi_offset, stddev_cutoff);
+                const int pl_mask_offset = input_dim1 * pl_mask_stride + dim2;
+                cpu_quantize4_chunk(input + input_offset, pl_mask + pl_mask_offset, pl_mask_stride,
+                                    outputf + outputf_offset, outputi + outputi_offset,
+                                    stddev_cutoff);
             }
         }
     }
 }
 
-void gpu_quantize4(const __half* __restrict__ const input, __half* __restrict__ const outputf,
+void gpu_quantize4(const __half* __restrict__ const input,
+                   const std::uint8_t* __restrict__ const pl_mask, const int pl_mask_stride,
+                   __half* __restrict__ const outputf,
                    kotekan::int4x2_t* __restrict__ const outputi, const int input_size1,
                    const int input_size2, const int input_size3, const int input_stride2,
                    const int input_stride3, const int outputf_size1, const int outputf_size2,
@@ -377,6 +423,7 @@ void gpu_quantize4(const __half* __restrict__ const input, __half* __restrict__ 
                    const int outputi_stride2, const int outputi_stride3, const float stddev_cutoff,
                    cudaStream_t stream) {
     assert(input);
+    assert(pl_mask);
     assert(outputf);
     assert(outputi);
 
@@ -395,6 +442,7 @@ void gpu_quantize4(const __half* __restrict__ const input, __half* __restrict__ 
     assert(outputi_size3 >= 0);
     assert(outputi_stride2 >= 0);
     assert(outputi_stride3 >= 0);
+    assert(pl_mask_stride >= input_size2);
     static_assert(chunk_size > 0);
     static_assert(nchunks > 0);
 
@@ -416,8 +464,8 @@ void gpu_quantize4(const __half* __restrict__ const input, __half* __restrict__ 
     nblocks.z = input_size3 / nchunks;
     const int shmem_nbytes = 0;
     gpu_quantize4_chunks<<<nblocks, nthreads, shmem_nbytes, stream>>>(
-        input, outputf, outputi, input_size1, input_size2, input_size3, input_stride2,
-        input_stride3, outputf_size1, outputf_size2, outputf_size3, outputf_stride2,
+        input, pl_mask, pl_mask_stride, outputf, outputi, input_size1, input_size2, input_size3,
+        input_stride2, input_stride3, outputf_size1, outputf_size2, outputf_size3, outputf_stride2,
         outputf_stride3, outputi_size1, outputi_size2, outputi_size3, outputi_stride2,
         outputi_stride3, stddev_cutoff);
 }

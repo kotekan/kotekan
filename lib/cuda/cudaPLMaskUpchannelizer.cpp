@@ -1,17 +1,18 @@
 #include "cudaPLMaskUpchannelizer.hpp" // for launch_upchannelize_pl_mask
 
-#include "Config.hpp"                // for Config
-#include "DataType.hpp"              // for uint1x8_t
-#include "NDArray.hpp"               // for NDArray
-#include "NDArrayRingBuffer.hpp"     // for NDArrayRingBuffer, extent_t, read_descriptor_t
-#include "bufferContainer.hpp"       // for bufferContainer
-#include "chordMetadata.hpp"         // for chordMetadata
-#include "cudaCommand.hpp"           // for cudaCommand, cudaPipelineState, REGISTER_CUDA_COMMAND
-#include "cudaDeviceInterface.hpp"   // for cudaDeviceInterface
-#include "div.hpp"                   // for div_ceil, div_noremainder, round_down
-#include "gpuCommand.hpp"            // for gpuCommandType
-#include "kotekanLogging.hpp"        // for DEBUG, FATAL_ERROR
-#include "upchannelizeReference.hpp" // for upchan_default_num_taps
+#include "Config.hpp"                   // for Config
+#include "DataType.hpp"                 // for uint1x8_t
+#include "NDArray.hpp"                  // for NDArray
+#include "NDArrayRingBuffer.hpp"        // for NDArrayRingBuffer, extent_t, read_descriptor_t
+#include "UpchannelizationSchedule.hpp" // for upchan_output_offset
+#include "bufferContainer.hpp"          // for bufferContainer
+#include "chordMetadata.hpp"            // for chordMetadata
+#include "cudaCommand.hpp"              // for cudaCommand, cudaPipelineState, REGISTER_CUDA_COMMAND
+#include "cudaDeviceInterface.hpp"      // for cudaDeviceInterface
+#include "div.hpp"                      // for div_ceil, div_noremainder, round_down
+#include "gpuCommand.hpp"               // for gpuCommandType
+#include "kotekanLogging.hpp"           // for DEBUG, FATAL_ERROR
+#include "upchannelizeReference.hpp"    // for upchan_default_num_taps
 
 #include "fmt.hpp" // for compile_string_to_view
 
@@ -73,6 +74,9 @@ using kotekan::round_down;
  *                                                   this run. As for the voltage upchannelizers,
  *                                                   the output begins at input sample
  *                                                   (M-1) * max_upchannelization_factor / 2.
+ * @conf  upchan_output_alignment              Int.  Optional. As for the voltage upchannelizers,
+ *                                                   the output start is rounded up to a multiple
+ *                                                   of this many FPGA samples.
  * @conf  Fmin                                 Int.  First input coarse channel to process.
  * @conf  Fmax                                 Int.  One past the last input coarse channel.
  * @conf  expanded_pl_mask_name                String.  Base name for the input pl_mask buffers.
@@ -146,7 +150,7 @@ cudaPLMaskUpchannelizer::cudaPLMaskUpchannelizer(kotekan::Config& config,
     num_dishes(config.get<int>(unique_name, "num_dishes")),
     upchannelization_factor(config.get<int>(unique_name, "upchannelization_factor")),
     max_upchannelization_factor(config.get<int>(unique_name, "max_upchannelization_factor")),
-    T_offset((cuda_number_of_taps - 1) * std::ptrdiff_t(max_upchannelization_factor) / 2),
+    T_offset(upchan_output_offset(config, unique_name)),
     T_skip(T_offset - (cuda_number_of_taps - 1) * std::ptrdiff_t(upchannelization_factor) / 2),
     skip_rows(T_skip / 64), bit_offset(int(T_skip % 64)),
     Fmin(config.get<int>(unique_name, "Fmin")), Fmax(config.get<int>(unique_name, "Fmax")),
@@ -209,7 +213,7 @@ cudaPLMaskUpchannelizer::~cudaPLMaskUpchannelizer() {}
 int cudaPLMaskUpchannelizer::wait_on_precondition() {
     // The kernel starts `bit_offset` bits into the first row and reads (M-1)*U input bits past the
     // data it consumes (the PFB forward stencil). In time_64 row units that is `overlap` extra rows
-    // that must be readable but are not advanced.
+    // that must be readable but are not advanced; the next invocation reads them again.
     const std::ptrdiff_t overlap = div_ceil(
         bit_offset + (cuda_number_of_taps - 1) * std::ptrdiff_t(upchannelization_factor), 64);
     const std::ptrdiff_t in_ringbuf = pl_expanded_mask.get_ndarray().extent(0);

@@ -2,6 +2,7 @@
 
 #include "Telescope.hpp"             // for Telescope, freq_id_t
 #include "chordMetadata.hpp"         // for chordMetadata, get_chord_metadata
+#include "div.hpp"                   // for round_up
 #include "upchannelizeReference.hpp" // for upchan_default_num_taps
 
 #include "fmt.hpp" // for compile_string_to_view
@@ -294,5 +295,16 @@ std::int64_t upchan_output_offset(kotekan::Config& config, const std::string& un
                            "(taps-1)*max_upchannelization_factor must be even (taps={:d})",
                            unique_name, max_upchannelization_factor,
                            kotekan::upchan_default_num_taps);
-    return std::int64_t(kotekan::upchan_default_num_taps - 1) * max_upchannelization_factor / 2;
+    const std::int64_t offset =
+        std::int64_t(kotekan::upchan_default_num_taps - 1) * max_upchannelization_factor / 2;
+    return kotekan::round_up(offset, upchan_output_alignment(config, unique_name));
+}
+
+std::int64_t upchan_output_alignment(kotekan::Config& config, const std::string& unique_name) {
+    const std::int64_t alignment =
+        config.get_default<std::int64_t>(unique_name, "upchan_output_alignment", 1);
+    if (!(alignment >= 1))
+        FATAL_ERROR_NON_OO("{:s}: upchan_output_alignment={:d} must be positive", unique_name,
+                           alignment);
+    return alignment;
 }

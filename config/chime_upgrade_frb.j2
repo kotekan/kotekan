@@ -24,6 +24,10 @@ log_level: info
 # The largest upchannelization factor used in this run. All upchannelizers delay their
 # output so that it is aligned in time with that of the largest factor.
 max_upchannelization_factor: 16
+# The L1 receiver requires the FRB output to begin at a multiple of 3*samples_per_data_set FPGA
+# samples. The upchannelizers round their output delay up to a multiple of this, so the dpdk
+# alignment must be a multiple of it as well.
+upchan_output_alignment: 3 * samples_per_data_set
 
 # Test configuration parameters
 {% set using_dpdk = True %}
@@ -115,7 +119,16 @@ updatable_config:
       # yamlfix:on
       start_time: 1535048997.
       update_id: "initial_flags"
-  # Updatable Config for second stage RFI excision.
+  # Updatable Config for RFI excision.
+  rfi_first_stage_enabled:
+      kotekan_update_endpoint: json
+      enabled: true
+      # 0 is a special case which indicates that the `enabled` state is valid since
+      # startup (i.e. sequence number 0). This should generally only be used as an
+      # initial startup value, or for debugging - external callers are expected to
+      # provide a real timestamp
+      valid_at_time_ns: 0
+
   rfi_second_stage_enabled:
       kotekan_update_endpoint: json
       enabled: true
@@ -216,7 +229,8 @@ dpdk:
   mbuf_cache_size: 128
   # Set to true when using a switch to replicate packets
   using_switch: true
-  alignment: samples_per_data_set
+  # align to same granurality as 2018 CHIME since since backends rely on this
+  alignment: 3*samples_per_data_set
   alignment_startup_delay: 20.0
   lcore_start_delay: 1.0
   # List of PCIe devices we don't want to attach too
@@ -755,6 +769,7 @@ host_rfi_SKtilde_buffer:
     value_type: float32
     # GPU producer cudaRFISKtilde rfi_SKtilde (leading extent = per-frame rfi_num_times);
     # also validated by RfiFrameMask in_buf as {Trfi, F, SK}.
+    dimnames: ["Trfi", "F", "S"]
     extents: [rfi_num_times, num_freq_gpu_buf, 3]
     metadata_pool: main_pool
 host_rfi_SKtilde_ringbuffer:
@@ -907,6 +922,7 @@ run_rfi_SKtilde:
           rfi_S012_name: rfi_S012
           rfi_SKtilde_name: rfi_SKtilde
           rfi_RFImask_name: rfi_RFImask
+          enabled_updatable_config: /updatable_config/rfi_first_stage_enabled
 
 run_rfi_SKbar:
     gpu_0:
@@ -1443,6 +1459,34 @@ FRB:
         ring_buffer_size: gpu_buffer_depth * sizeof_float16 * frb1_num_beams_P * frb1_num_beams_Q * upchan_U16_max_num_output_channels * frb_num_output_times
         metadata_pool: main_pool
 
+    # Packet loss masks
+
+    host_upchan_U16_expanded_pl_mask_ringbuffer:
+        kotekan_buffer: ring
+        ring_buffer_size: gpu_buffer_depth * (64 / 8) * (num_dishes / 8) * num_polarizations * upchan_U16_max_num_channels * (samples_per_data_set / 64 / 16)
+        metadata_pool: main_pool
+
+    # The packet loss mask of the FRB1 beams, one byte (1 = valid) per sample and frequency
+    host_frb1_pl_mask_ringbuffer:
+        kotekan_buffer: ring
+        num_frames: gpu_buffer_depth
+        ring_buffer_size: gpu_buffer_depth * upchan_U16_max_num_output_channels * frb_num_output_times
+        metadata_pool: main_pool
+
+{%- if do_once_and_dump %}
+    # Host copy of the packet loss mask, for debugging. The quantizer encodes invalid samples as 0,
+    # so the mask is not needed after quantization.
+    host_frb_pl_mask_buffer:
+        kotekan_buffer: ndarray
+        num_frames: host_buffer_depth
+        value_type: uint8
+        extents: [frb_num_output_times, upchan_U16_max_num_output_channels]
+        quantity_name: "pl_mask_I"
+        dimnames: ["Ttilde", "Fbar"]
+        dimscalings: [frb_downsampling_factor, 1]
+        metadata_pool: main_pool
+{%- endif %}
+
     host_frb2_beams_buffer:
         kotekan_buffer: ndarray
         num_frames: host_buffer_depth
@@ -1500,6 +1544,27 @@ FRB:
 {%- for id in range(num_freq_gpu_buf) %}
             - host_voltage_buffer_{{ id }}
 {%- endfor %}
+
+    run_upchan_pl_U16:
+        gpu_0:
+            kotekan_stage: cudaProcess
+            gpu_id: 0
+            buffer_depth: gpu_buffer_depth
+            frame_arrival_period: network_frame_arrival_period
+            num_times: samples_per_data_set
+            in_buffers:
+                host_pl_expanded_mask_ringbuffer: host_pl_expanded_mask_ringbuffer
+            out_buffers:
+                host_upchan_U16_expanded_pl_mask_ringbuffer: host_upchan_U16_expanded_pl_mask_ringbuffer
+            commands:
+            - name: cudaPLMaskUpchannelizer
+              expanded_pl_mask_name: pl_expanded_mask
+              upchannelized_expanded_pl_mask_name: upchan_U16_expanded_pl_mask
+              num_frequencies: num_freq_gpu_buf
+              upchannelization_factor: 16
+              num_frequencies_out: upchan_U16_max_num_channels
+              Fmin: upchan_U16_min_channel
+              Fmax: upchan_U16_max_channel
 
     run_upchan_U16:
 {%- if not using_dpdk %}
@@ -1659,6 +1724,33 @@ FRB:
               frb_phase_name: frb1_U16_phase
               frb_beamgrid_name: frb1_beams
 
+    # The packet loss mask of the FRB1 beams. An FRB1 output sample is valid only if all input
+    # samples it depends on are valid.
+    run_frb1_pl_U16:
+        gpu_0:
+            kotekan_stage: cudaProcess
+            gpu_id: 0
+            buffer_depth: gpu_buffer_depth
+            frame_arrival_period: network_frame_arrival_period
+            num_times: samples_per_data_set
+            in_buffers:
+                host_upchan_U16_expanded_pl_mask_ringbuffer: host_upchan_U16_expanded_pl_mask_ringbuffer
+            out_buffers:
+                host_frb1_pl_mask_ringbuffer: host_frb1_pl_mask_ringbuffer
+            commands:
+            - name: cudaPLMaskFRB1
+              pl_mask_name: upchan_U16_expanded_pl_mask
+              frb1_pl_mask_name: frb1_pl_mask
+              num_frequencies: upchan_U16_max_num_channels
+              upchannelization_factor: 16
+              downsampling_factor: frb_downsampling_factor / 16
+              Fmin: 0
+              Fmax: upchan_U16_max_channel - upchan_U16_min_channel
+              Fbar_out_min: upchan_U16_min_output_channel
+              Fbar_out_max: upchan_U16_max_output_channel
+              num_output_frequencies: upchan_U16_max_num_output_channels
+              num_output_times: buffer_depth * frb_num_output_times
+
     # FRB 2 and 3
 
     # One frame of beams per weights lifetime, starting at the first voltage frame's sequence
@@ -1799,8 +1891,12 @@ FRB:
             num_times: samples_per_data_set
             in_buffers:
                 host_frb1_beams_ringbuffer: host_frb1_beams_ringbuffer
+                host_frb1_pl_mask_ringbuffer: host_frb1_pl_mask_ringbuffer
                 host_frb2_weights_ringbuffer: host_frb2_weights_ringbuffer
             out_buffers:
+{%- if do_once_and_dump %}
+                host_frb_pl_mask_buffer: host_frb_pl_mask_buffer
+{%- endif %}
                 host_frb1_beams_buffer: host_frb1_beams_buffer
                 host_frb2_beams_buffer: host_frb2_beams_buffer
                 host_frb3_beams_buffer: host_frb3_beams_buffer
@@ -1828,7 +1924,18 @@ FRB:
               gpu_mem_input: frb2_beams
               gpu_mem_output: frb3_beams
               gpu_mem_offsetscale: frb3_beams_offsetscale
+              frb1_max_num_frequencies: upchan_U16_max_num_output_channels
+              frb1_max_num_times: buffer_depth * frb_num_output_times
+              gpu_mem_pl_mask: frb1_pl_mask
             - name: cudaSyncOutput
+{%- if do_once_and_dump %}
+            - name: cudaCopyFromRingbuffer
+              host_signal: host_frb1_pl_mask_ringbuffer
+              gpu_mem_input: frb1_pl_mask_buffer
+              output_size: upchan_U16_max_num_output_channels * frb_num_output_times
+              ring_buffer_size: gpu_buffer_depth * output_size
+              out_buf: host_frb_pl_mask_buffer
+{%- endif %}
             - name: cudaCopyFromRingbuffer
               # TODO: Don't do this in production
               host_signal: host_frb1_beams_ringbuffer
@@ -1870,6 +1977,12 @@ FRB:
             input_order: CHIMEBeamformer # this makes no sense, but is required
             in_buf: host_frb1_beams_buffer
             file_name: host_frb1_beams_buffer
+        pl_mask:
+            kotekan_stage: hdf5FileWrite
+            base_dir: frb_beams
+            input_order: CHIMEBeamformer # this makes no sense, but is required
+            in_buf: host_frb_pl_mask_buffer
+            file_name: host_frb_pl_mask_buffer
         beams2:
             kotekan_stage: hdf5FileWrite
             base_dir: frb_beams
@@ -1957,15 +2070,6 @@ write_frb:
     input_order: CHIMEBeamformer
 
 # enable to dump sk statistics data
-{% if False %}
-host_rfi_SKtilde_buffer:
-    kotekan_buffer: ndarray
-    num_frames: host_buffer_depth
-    frame_size: sizeof_float32 * 3 * num_freq_gpu_buf * rfi_num_times
-    type: float32
-    dimnames: ["Trfi", "F", "S"]
-    shape: [rfi_num_times, num_freq_gpu_buf, 3]
-    metadata_pool: main_pool
 host_rfi_SKtilde_buffer_post:
     kotekan_buffer: ndarray
     num_frames: host_buffer_depth
@@ -1974,47 +2078,23 @@ host_rfi_SKtilde_buffer_post:
     dimnames: ["Trfi", "F", "S"]
     shape: [rfi_num_times, num_freq_gpu_buf, 3]
     metadata_pool: main_pool
-host_rfi_SKtilde_ringbuffer:
-    kotekan_buffer: ring
-    num_frames: gpu_buffer_depth
-    ring_buffer_size: gpu_buffer_depth * sizeof_float32 * 3 * num_freq_gpu_buf * rfi_num_times
-    type: float32
-    dimnames: ["Trfi", "F", "S"]
-    shape: [gpu_buffer_depth * rfi_num_times, num_freq_gpu_buf, 3]
-    metadata_pool: main_pool
-run_recv_rfi_SKtilde:
-    gpu_0:
-        kotekan_stage: cudaProcess
-        buffer_depth: gpu_buffer_depth
-        frame_arrival_period: network_frame_arrival_period
-        num_times: samples_per_data_set
-        gpu_id: 0
-        in_buffers:
-            host_rfi_SKtilde_ringbuffer: host_rfi_SKtilde_ringbuffer
-        out_buffers:
-            host_rfi_SKtilde_buffer: host_rfi_SKtilde_buffer
-        commands:
-        - name: cudaCopyFromRingbuffer
-          host_signal: host_rfi_SKtilde_ringbuffer
-          gpu_mem_input: rfi_SKtilde_buffer
-          output_size: sizeof_float32 * 3 * num_freq_gpu_buf * rfi_num_times
-          ring_buffer_size: gpu_buffer_depth * output_size
-          out_buf: host_rfi_SKtilde_buffer
+
 switch_sk_out:
     kotekan_stage: bufferSwitch
     in_bufs:
       - enabled: host_rfi_SKtilde_buffer
     out_buf: host_rfi_SKtilde_buffer_post
     updatable_config: /updatable_config/enable_sk_out
-dump_rfi_SKtilde:
-   kotekan_stage: hdf5FileWrite
+
+write_rfi_SKtilde:
+    kotekan_stage: hdf5FileWrite
     log_level: warn
-   base_dir: rfi_sk_dump
-   in_buf: host_rfi_SKtilde_buffer_post
-   file_name: host_rfi_SKtilde_buffer
-   create_single_file: true
-   input_order: CHIMEBeamformer
-{% endif %}
+    base_dir: rfi_sk_dump
+    in_buf: host_rfi_SKtilde_buffer_post
+    file_name: host_rfi_SKtilde_buffer
+    create_single_file: false
+    frames_per_file: 3000 # just over 2 minutes(?)
+    input_order: CHIMEBeamformer
 
 ################################################################################
 # Additional configuration

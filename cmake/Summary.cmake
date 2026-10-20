@@ -275,6 +275,13 @@ else()
 endif()
 kfeature_row("Boost Tests" "${WITH_BOOST_TESTS}" "${BOOSTTEST_REASON}" OFF WITH_BOOST_TESTS)
 
+if("${WITH_SPAWN_PROCESS}" STREQUAL "ON")
+    set(SPAWN_REASON "enabled: the config can run shell commands")
+else()
+    set(SPAWN_REASON "disabled")
+endif()
+kfeature_row("SpawnProcess" "${WITH_SPAWN_PROCESS}" "${SPAWN_REASON}" OFF WITH_SPAWN_PROCESS)
+
 if("${NO_MEMLOCK}" STREQUAL "ON")
     set(NOMEMLOCK_REASON "enabled")
 else()

@@ -35,6 +35,8 @@
  * @conf frb1_phase_lifetime_in_samples Int. How many FPGA samples one output frame covers.
  * @conf max_upchannelization_factor    Int. The largest upchannelization factor of the run; it
  *                                      determines the upchannelizers' output offset.
+ * @conf upchan_output_alignment        Int. Optional. Rounds the output offset up to a multiple
+ *                                      of this.
  *
  * @author Liam Gray
  *

@@ -10,15 +10,15 @@ bb_num_beams: bb_num_beams_x * bb_num_beams_y
 bb_beam_separation_x: 90.0 / 4  # 90 degrees
 bb_beam_separation_y: 90.0 / 4  # 90 degrees
 
-# The baseband beams are formed as "incoherent sum" over dishes dishes
-# (sqrt(num_dishes)), and are multiplied by 127 (the scaling of the
-# phase matrix). Thus:
-#     log2(sqrt(num_dishes)) + 7
-bb_scale: 12
+# The baseband beams are formed as "incoherent sum" over dishes, which
+# scales noise by sqrt(num_dishes). This gain undoes that:
+#     1 / sqrt(num_dishes)
+bb_gain: 1 / 8
 
 # The phase matrix is valid for this many input samples. It must be a multiple of num_times,
 # the number of input samples the beamformer processes per kernel invocation.
-bb_phase_lifetime_in_samples: 20 * num_times # 1 second
+# calcBBPhase applies bad feed mask frame k to phase frame k.
+bb_phase_lifetime_in_samples: bf_mask_lifetime_in_samples
 
 ################################################################################
 
@@ -80,6 +80,11 @@ host_bb_beams_buffer:
     dimscalings: [num_times, 1, 1, 1, 1]
     metadata_pool: main_pool
 
+host_bb_pl_mask_ringbuffer:
+    kotekan_buffer: ring
+    ring_buffer_size: buffer_depth * (64 / 8) * num_polarizations * num_frequencies * (num_times / 64)
+    metadata_pool: main_pool
+
 ################################################################################
 
 # Stages
@@ -103,6 +108,7 @@ run_set_bb_beams:
 run_calc_bb_phase:
     kotekan_stage: calcBBPhase
     bb_beam_positions: host_bb_beam_positions_buffer
+    bf_mask: host_bf_mask_buffer
     bb_phase: host_bb_phase_buffer
     bb_shift: host_bb_shift_buffer
 
@@ -149,3 +155,17 @@ run_bb:
         - name: cudaOutputData
           gpu_mem: bb_beams_buffer
           out_buf: host_bb_beams_buffer
+
+# A beam sample is lost if any dish is lost at its time, frequency and polarization
+run_bb_pl_mask:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_pl_expanded_mask_ringbuffer: host_pl_expanded_mask_ringbuffer
+        out_buffers:
+            host_bb_pl_mask_ringbuffer: host_bb_pl_mask_ringbuffer
+        commands:
+        - name: cudaPLMaskBasebandBeamformer
+          pl_expanded_mask_name: pl_expanded_mask
+          bb_pl_mask_name: bb_pl_mask

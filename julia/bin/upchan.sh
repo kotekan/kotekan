@@ -14,6 +14,7 @@ setups='
     chime_U2_K8 chime_U4_K8 chime_U8_K8 chime_U16_K8 chime_U32_K8 chime_U64_K8 chime_U128_K8
     chord_U2_K4 chord_U4_K4 chord_U8_K4 chord_U16_K4 chord_U32_K4 chord_U64_K4 chord_U128_K4
     hirax_U8_K4 hirax_U16_K4 hirax_U32_K4 hirax_U64_K4 hirax_U128_K4
+    hirax128_U8_K4 hirax128_U16_K4 hirax128_U32_K4 hirax128_U64_K4 hirax128_U128_K4
     pathfinder_U2_K4 pathfinder_U4_K4 pathfinder_U8_K4 pathfinder_U16_K4 pathfinder_U32_K4 pathfinder_U64_K4 pathfinder_U128_K4
 '
 # smallfinder_U2_K4 smallfinder_U4_K4 smallfinder_U8_K4 smallfinder_U16_K4 smallfinder_U32_K4 smallfinder_U64_K4

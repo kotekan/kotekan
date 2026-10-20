@@ -9,12 +9,14 @@
 #include "DataType.hpp"
 #include "NDArrayBuffer.hpp"
 #include "NDArrayRingBuffer.hpp"
+#include "UpchannelizationSchedule.hpp"
 #include "bufferContainer.hpp"
 #include "chordMetadata.hpp"
 #include "cudaCommand.hpp"
 #include "cudaDeviceInterface.hpp"
 #include "cudaUtils.hpp"
 #include "div.hpp"
+#include "upchannelizeReference.hpp"
 
 #include <algorithm>
 #include <array>
@@ -111,8 +113,10 @@ private:
 
     // The largest upchannelization factor used in this run. All upchannelizers of a run label
     // their output with the same time offset `T_offset = (M-1) * max_upchannelization_factor / 2`
-    // (in input samples), so that their outputs are aligned in time. See `wait_on_precondition`.
+    // (in input samples), rounded up to a multiple of `upchan_output_alignment`, so that their
+    // outputs are aligned in time. See `wait_on_precondition`.
     const int max_upchannelization_factor;
+    const std::int64_t output_alignment;
     // Output time offset relative to the input, in input samples
     const std::ptrdiff_t T_offset;
     // Number of input samples we skip at startup
@@ -208,7 +212,8 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
     Fmin(config.get<int>(unique_name, "Fmin")),
     Fmax(config.get<int>(unique_name, "Fmax")),
     max_upchannelization_factor(config.get<int>(unique_name, "max_upchannelization_factor")),
-    T_offset((cuda_number_of_taps - 1) * std::ptrdiff_t(max_upchannelization_factor) / 2),
+    output_alignment(upchan_output_alignment(config, unique_name)),
+    T_offset(upchan_output_offset(config, unique_name)),
     T_skip(T_offset - (cuda_number_of_taps - 1) * std::ptrdiff_t(cuda_upchannelization_factor) / 2),
 
     poison_buffers(config.get_default<bool>(unique_name, "poison_buffers", false)),
@@ -275,6 +280,8 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
                     "(taps-1)*max_upchannelization_factor must be even",
                     int(cuda_upchannelization_factor), int(cuda_number_of_taps),
                     max_upchannelization_factor);
+    // `T_offset` is calculated with the default number of taps
+    static_assert(cuda_number_of_taps == kotekan::upchan_default_num_taps);
     assert(T_skip >= 0);
 
     // Register host memory
@@ -478,8 +485,17 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
 
         // Output sample `tbar` begins at input sample `T_offset + U * tbar` (see
         // `wait_on_precondition`). We set the metadata only once since we use a ring buffer.
-        if (E_meta->has_fpga_seq_num())
-            Ebar_meta->set_fpga_seq_num(E_meta->get_fpga_seq_num() + T_offset * E_time_downsampling_fpga);
+        if (E_meta->has_fpga_seq_num()) {
+            const std::int64_t Ebar_fpga_seq_num = E_meta->get_fpga_seq_num() + T_offset * E_time_downsampling_fpga;
+            if (Ebar_fpga_seq_num % output_alignment != 0)
+                FATAL_ERROR("Kernel {{{kernel_name}}}: the output begins at "
+                            "fpga_seq_num={:d}, which is not a multiple of "
+                            "upchan_output_alignment={:d}. The input begins at {:d}; its "
+                            "alignment (e.g. the dpdk alignment) must be a multiple of "
+                            "upchan_output_alignment.",
+                            Ebar_fpga_seq_num, output_alignment, E_meta->get_fpga_seq_num());
+            Ebar_meta->set_fpga_seq_num(Ebar_fpga_seq_num);
+        }
     } // if !did_set_metadata
 
     if (!Ebar_buffer.has_metadata())

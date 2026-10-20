@@ -6,14 +6,6 @@
 #ifndef EIGENN2ITER_HPP
 #define EIGENN2ITER_HPP
 
-#include <blaze/Blaze.h> // for HermitianMatrix
-#include <map>           // for map
-#include <stdint.h>      // for uint32_t, int32_t
-#include <string>        // for string
-#include <utility>       // for pair
-#include <vector>        // for vector
-
-// TODO: figure out how to forward declare eig_t
 #include "Config.hpp"            // for Config
 #include "LinearAlgebra.hpp"     // for EigConvergenceStats
 #include "N2Util.hpp"            // for movingAverage, cfloat
@@ -21,6 +13,13 @@
 #include "buffer.hpp"            // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "prometheusMetrics.hpp" // for Gauge, MetricFamily
+
+#include <blaze/Blaze.h> // for DynamicVector
+#include <map>           // for map
+#include <stdint.h>      // for uint32_t, int32_t
+#include <string>        // for string
+#include <utility>       // for pair
+#include <vector>        // for vector
 
 
 /**
@@ -86,10 +85,11 @@
  * @conf  num_ev_conv      UInt. Test only the top `num_ev_conv` eigenpairs for convergence.
  * @conf  krylov           UInt, default 2. Size of the Krylov basis to use.
  * @conf  subspace         UInt, default 3. Number of subspace iteration substeps.
- * @conf  num_blaze_workers UInt, default 0. If greater than 0, set the number of
+ * @conf  num_blaze_workers UInt, default 1. If greater than 0, set the number of
  *                          Blaze SMP worker threads used by this stage's
  *                          intra-op parallelization (per-stage with the OpenMP
- *                          backend; should match the size of cpu_affinity).
+ *                          backend; should match the size of cpu_affinity). 0 leaves
+ *                          the OpenMP default, one thread per core of the process.
  *
  * @par Metrics
  * @metric kotekan_eigenN2iter_comp_time_seconds
@@ -129,7 +129,7 @@ public:
 
 private:
     // Update the prometheus metrics
-    void update_metrics(int freq_id, double elapsed_time, const eig_t<cfloat>& eigpair,
+    void update_metrics(int freq_id, double elapsed_time, const blaze::DynamicVector<float>& evals,
                         const EigConvergenceStats& stats);
 
     /**
@@ -140,9 +140,11 @@ private:
      * @param flags         Binarized per-element flags, zero for an element to
      *                      mask and one otherwise. All ones when
      *                      @c mask_flagged_inputs is off.
+     * @param mask          The mask, built in place so that a rebuild does not
+     *                      allocate.
      */
-    DynamicHermitian<float> calculate_mask(size_t num_elements,
-                                           const std::vector<float>& flags) const;
+    void calculate_mask(size_t num_elements, const std::vector<float>& flags,
+                        DynamicHermitian<float>& mask) const;
 
     Buffer* in_buf;
     Buffer* out_buf;

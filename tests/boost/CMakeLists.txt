@@ -5,8 +5,19 @@ find_package(Boost REQUIRED COMPONENTS unit_test_framework filesystem)
 
 include_directories(SYSTEM ${Boost_INCLUDE_DIRS})
 
+# kotekanLoggingFixture.hpp includes kotekanLogging.hpp, which needs lib/core (for errors.h) and
+# external/fmt (for fmt.hpp), and not every test links a target that provides them -- test_Metadata
+# links only kotekan_metadata. Give every test in this directory kotekan_core_headers, which carries
+# kotekan_core's full set of header usage requirements: adding the include paths on their own would
+# hand the tests lib/core's headers without the compile definitions those headers branch on, e.g.
+# WITH_SSL in Config.hpp.
+link_libraries(kotekan_core_headers)
+
 add_executable(test_truncate test_truncate.cpp)
 target_link_libraries(test_truncate PRIVATE kotekan_libs kotekan_utils)
+
+add_executable(test_pfb_prototype test_pfb_prototype.cpp)
+target_link_libraries(test_pfb_prototype PRIVATE kotekan_libs kotekan_utils)
 
 add_executable(test_synchronized_queue test_synchronized_queue.cpp)
 target_link_libraries(test_synchronized_queue PRIVATE pthread kotekan_libs kotekan_utils)
@@ -89,6 +100,10 @@ target_link_libraries(test_fmt PRIVATE kotekan_libs kotekan_utils)
 add_executable(test_restclient test_restclient.cpp)
 target_link_libraries(test_restclient PRIVATE libexternal kotekan_libs kotekan_utils kotekan_core)
 
+add_executable(test_restserver_bind test_restserver_bind.cpp)
+target_link_libraries(test_restserver_bind PRIVATE libexternal kotekan_libs kotekan_utils
+                                                   kotekan_core)
+
 # test_bip_buffer needs fmt
 add_executable(test_bip_buffer test_bip_buffer.cpp)
 target_link_libraries(test_bip_buffer PRIVATE libexternal kotekan_libs kotekan_utils kotekan_core)
@@ -160,7 +175,13 @@ endif()
 
 if(LAPACKE_FOUND AND BLAZE_FOUND)
     add_executable(test_linearAlgebra test_linearAlgebra.cpp)
-    target_link_libraries(test_linearAlgebra PRIVATE pthread libexternal kotekan_utils kotekan_core)
+    # CMAKE_DL_LIBS for the dlsym behind its allocation counting
+    target_link_libraries(test_linearAlgebra PRIVATE pthread libexternal kotekan_utils kotekan_core
+                                                     ${CMAKE_DL_LIBS} ${LAPACKE_LIBRARIES})
+    # The OpenBLAS API behind openblas_set_num_threads, as for the eigen stages
+    if(DEFINED OPENBLAS_EXTRA_LIB AND OPENBLAS_EXTRA_LIB)
+        target_link_libraries(test_linearAlgebra PRIVATE ${OPENBLAS_EXTRA_LIB})
+    endif()
     target_include_directories(test_linearAlgebra PUBLIC . ${CUDA_INCLUDE_DIR} ${CUDA_INCLUDE_DIRS})
 
     add_executable(test_eigenStages test_eigenStages.cpp)
@@ -177,6 +198,10 @@ target_link_libraries(test_DataType kotekan_metadata libexternal)
 add_executable(test_frb1IntensityBound test_frb1IntensityBound.cpp)
 target_include_directories(test_frb1IntensityBound PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages)
 target_link_libraries(test_frb1IntensityBound kotekan_metadata libexternal)
+
+# test_frbDishLayout - where the FRB1 kernels place the dishes on their grid (header-only helper)
+add_executable(test_frbDishLayout test_frbDishLayout.cpp)
+target_link_libraries(test_frbDishLayout PRIVATE kotekan_utils)
 
 add_executable(test_Metadata test_Metadata.cpp)
 target_link_libraries(test_Metadata kotekan_metadata)

@@ -75,6 +75,18 @@ elseif setup ≡ :hirax
     const Wd = 2
     const Wp = 1
 
+elseif setup ≡ :hirax128
+
+    # HIRAX 128
+    const B = 16                # 8...32
+
+    const T1_stride = 128
+    const T2_stride = 32
+
+    const Wb = idiv(B, 8)
+    const Wd = 1
+    const Wp = 2
+
 elseif setup ≡ :pathfinder || setup ≡ :smallfinder
 
     # CHORD pathfinder
@@ -523,6 +535,30 @@ function make_bb_kernel()
             Polr(:polr, 1, P) => Block(:block, Bt, Bp),
             freq => Block(:block, Bt * Bp, F),
         ])
+    elseif D == 128
+        num_time_warps_for_Ecopy = prevpow(2, Wb)
+        num_time_registers_for_Ecopy = idiv(8, num_time_warps_for_Ecopy)
+        num_warps_for_Ecopy = Wd * num_time_warps_for_Ecopy * Wp
+        @assert 4 * num_time_warps_for_Ecopy * num_time_registers_for_Ecopy == 32
+        @assert 1 ≤ num_warps_for_Ecopy ≤ 32
+        @assert Wd == 1
+        layout_E_registers = Layout([
+            int4value => SIMD(:simd, 1, 4),
+            cplx => SIMD(:simd, 4, C),
+            dish01 => SIMD(:simd, 4 * C, 4),
+            dish23 => Register(:dish, 4, 4),
+            dish456 => Thread(:thread, 1, 8),
+            time01 => Thread(:thread, 8, 4),
+            Time(:time, 4, num_time_warps_for_Ecopy) => Warp(:warp, Wd, num_time_warps_for_Ecopy),
+            Time(:time, 4 * num_time_warps_for_Ecopy, num_time_registers_for_Ecopy) =>
+                Register(:time, 4 * num_time_warps_for_Ecopy, num_time_registers_for_Ecopy),
+            time56 => loopT2,
+            time7etc => loopT1,
+            Time(:time, idiv(T, Bt), Bt) => Block(:block, 1, Bt),
+            Polr(:polr, 1, Bp) => Block(:block, Bt, Bp),
+            Polr(:polr, Bp, Wp) => Warp(:warp, Wd * num_time_warps_for_Ecopy, Wp),
+            freq => Block(:block, Bt * Bp, F),
+        ])
     elseif D == 64
         @assert Wd == 1
         num_time_warps_for_Ecopy = Wb
@@ -755,6 +791,30 @@ function make_bb_kernel()
         permute!(emitter, :A, :A, Register(:cplx, 1, C), SIMD(:simd, 8, 2))
         permute!(emitter, :A, :A, Register(:dish, 8, 2), Thread(:thread, 2, 2))
         permute!(emitter, :A, :A, Register(:dish, 16, 2), Thread(:thread, 4, 2))
+    elseif D == 128
+        @assert Wd == 1
+        layout_A0_registers = Layout([
+            int8value => SIMD(:simd, 1, 8),
+            cplx => SIMD(:simd, 8, 2),       # want register
+            dish0 => SIMD(:simd, 16, 2),     # want simd3
+            dish1 => Register(:cplx, 1, C),  # want simd4
+            dish2 => Register(:dish, 4, 2),  # final
+            dish34 => Thread(:thread, 2, 4), # want register
+            dish5 => Thread(:thread, 1, 2),  # final
+            dish6 => Register(:dish, 8, 2),  # want thread2
+            beam0 => Register(:dish, 16, 2), # want thread4
+            beam12 => Thread(:thread, 8, 4), # final
+            beam3etc => Warp(:warp, Wd, Wb),
+            Polr(:polr, 1, Bp) => Block(:block, Bt, Bp),
+            Polr(:polr, Bp, Wp) => Warp(:warp, Wd * Wb, Wp),
+            freq => Block(:block, Bt * Bp, F),
+        ])
+
+        load!(emitter, :A => layout_A0_registers, :A_memory => layout_A_memory; align=16)
+        permute!(emitter, :A, :A, Register(:cplx, 1, C), SIMD(:simd, 16, 2))
+        permute!(emitter, :A, :A, Register(:cplx, 1, C), SIMD(:simd, 8, 2))
+        permute!(emitter, :A, :A, Register(:dish, 8, 2), Thread(:thread, 2, 2))
+        permute!(emitter, :A, :A, Register(:dish, 16, 2), Thread(:thread, 4, 2))
     elseif D == 64
         @assert Wd == 1
         layout_A0_registers = Layout([
@@ -947,7 +1007,7 @@ function make_bb_kernel()
                 split!(emitter, [:Julo, :Juhi], :Ju, Dish(:dish, 128, 2))
                 # TODO use add_sat
                 apply!(emitter, :J, [:Julo, :Juhi], (Julo, Juhi) -> :($Julo + $Juhi))
-            elseif D == 64
+            elseif D == 128 || D == 64
                 apply!(emitter, :J, [:Ju], (Ju,) -> :($Ju))
             else
                 @assert false

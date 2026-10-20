@@ -84,6 +84,21 @@ elseif setup ≡ :hirax
     const W = 16                # number of warps
     const B = 1                 # number of blocks per SM
 
+elseif setup ≡ :hirax128
+
+    # HIRAX 128 Setup
+    # The second FFT expands the M direction for each of the 2N beams of the
+    # first FFT, so the smaller dish grid dimension comes first.
+
+    const M = 8
+    const N = 16
+
+    const Touter = 64
+    const Tinner = 8
+
+    const W = 8                 # number of warps
+    const B = 2                 # number of blocks per SM
+
 elseif setup ≡ :pathfinder || setup ≡ :smallfinder
 
     # CHORD pathfinder (case 2)
@@ -116,10 +131,7 @@ end
 
 const Ttilde = 4 * 256
 
-# The beamforming weights are recalculated periodically, and handed to the GPU through a ring
-# buffer holding this many of them (the Kotekan buffer depth). How many FPGA samples one set of
-# weights covers is a run-time setting, `frb1_phase_lifetime_in_samples`.
-const TW = 4
+const TW = 4                # length of time axis of beamforming weights
 
 # I = 1/(2 · P · M·N · Tds) · Σ_t Σ_pol |Ẽ|²
 # I is the mean beam power per polarisation per real component, in units of the
@@ -143,7 +155,7 @@ const Tw = idiv(W, Mw)
 const Tr = idiv(Touter, 2 * Tw)
 
 # Fsh1 layout
-const ΣF1 = D == 64 ? 260 : 257
+const ΣF1 = D == 64 ? 260 : D == 128 ? 258 : 257
 
 # Fsh2 layout
 const ΣF2 = 32 * (M + 1) + Mt
@@ -523,6 +535,53 @@ function copy_global_memory_to_Fsh1!(emitter)
         permute!(emitter, :E, :E, Cplx(:cplx, 1, C), Dish(:dish, 2, 2))
         store!(emitter, :Fsh1_shared => layout_Fsh1_shared, :E)
 
+    elseif setup === :hirax128
+
+        # As eqns. (88)-(92), but a tile has 128 dishes and 2 time samples;
+        # the time sample takes the thread bit of dish 7
+        @assert D == 128
+        @assert Touter % 4 == 0
+        @assert idiv(Touter, 4) % W == 0
+        layout_E_registers = Layout([
+            IntValue(:intvalue, 1, 4) => SIMD(:simd, 1, 4),
+            Cplx(:cplx, 1, C) => SIMD(:simd, 4, 2),
+            Dish(:dish, 1, 4) => SIMD(:simd, 8, 4),
+            Dish(:dish, 4, 4) => Register(:dish, 4, 4),
+            Dish(:dish, 16, 8) => Thread(:thread, 1, 8),
+            Freq(:freq, 1, Fbar_in) => Block(:block, 1, Fbar_in),
+            Polr(:polr, 1, P) => Thread(:thread, 8, 2),
+            Time(:time, 1, 2) => Thread(:thread, 16, 2),
+            Time(:time, 2, W) => Warp(:warp, 1, W),
+            Time(:time, 2 * W, idiv(Touter, 4 * W)) => Register(:time, 2 * W, idiv(Touter, 4 * W)),
+            Time(:time, idiv(Touter, 2), 2) => Register(:time, idiv(Touter, 2), 2),
+            Time(:time, Touter, fld(Tbar, Touter)) => Loop(:t_outer, Touter, fld(Tbar, Touter)),
+        ])
+        load!(
+            emitter,
+            :E => layout_E_registers,
+            :E_memory => layout_E_memory;
+            align=16,
+            postprocess=addr -> :(
+                let
+                    offset =
+                        $(shrinkmul(idiv(D, 4) * P * Fbar_in, :Tbarmin, Tbar)) +
+                        $(shrinkmul(idiv(D, 4) * P, :Fbar_in_min, Fbar_in))
+                    length = $(shrink(idiv(D, 4) * P * Fbar_in * Tbar))
+                    mod($addr + offset, length)
+                end
+            ),
+        )
+        # Swap polr0, dish3
+        permute!(emitter, :E, :E, Polr(:polr, 1, P), Dish(:dish, 8, 2))
+        # E -> Fbar_in shuffle
+        # 1. swap polr0, cplx0
+        # 2. swap timehi, dish0
+        # 3. swap cplx0, dish1
+        permute!(emitter, :E, :E, Polr(:polr, 1, P), Cplx(:cplx, 1, C))
+        permute!(emitter, :E, :E, Time(:time, idiv(Touter, 2), 2), Dish(:dish, 1, 2))
+        permute!(emitter, :E, :E, Cplx(:cplx, 1, C), Dish(:dish, 2, 2))
+        store!(emitter, :Fsh1_shared => layout_Fsh1_shared, :E)
+
     elseif setup === :pathfinder || setup === :smallfinder
 
         # Eqn. (83)
@@ -726,9 +785,12 @@ function read_Fsh2!(emitter)
     return nothing
 end
 
+# `sgn = -1` conjugates all coefficients, i.e. it reverses the direction of the FFT.
 function setup_fft_coefficients!(
-    emitter, Γ¹::Symbol, Γ²::Symbol, Γ³::Symbol, N::Int, mkDishLo, mkDishHi, mkBeam, mkSpectatorIn, mkSpectator
+    emitter, Γ¹::Symbol, Γ²::Symbol, Γ³::Symbol, N::Int, mkDishLo, mkDishHi, mkBeam, mkSpectatorIn, mkSpectator; sgn::Int=1
 )
+    @assert sgn == 1 || sgn == -1
+
     # Section 3.3
 
     # TODO: Ensure we're converting warp bits into spectator bits
@@ -756,7 +818,7 @@ function setup_fft_coefficients!(
                 thread = IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, $num_threads)
                 c = thread % 4i32 # DishHi
                 v = thread ÷ 4i32 # Beam
-                Γ¹ = cispi(((c * v) % 8i32 / 4.0f0) % 2.0f0)
+                Γ¹ = cispi($(Float32(sgn)) * (((c * v) % 8i32 / 4.0f0) % 2.0f0))
                 (+Γ¹.re, -Γ¹.im, +Γ¹.im, +Γ¹.re)
             end
         end,
@@ -788,8 +850,8 @@ function setup_fft_coefficients!(
                 d1 = ((thread ÷ spectators) % $N4pad2) * 2i32 + 1i32
                 v = thread ÷ 4i32 # Beam
                 # s = thread % spectators # Spectator
-                Γ²_d0 = d0 < $N4 ? cispi(((d0 * v) % $(Int32(2 * N)) / $(Float32(N))) % 2.0f0) : Complex(0.0f0)
-                Γ²_d1 = d1 < $N4 ? cispi(((d1 * v) % $(Int32(2 * N)) / $(Float32(N))) % 2.0f0) : Complex(0.0f0)
+                Γ²_d0 = d0 < $N4 ? cispi($(Float32(sgn)) * (((d0 * v) % $(Int32(2 * N)) / $(Float32(N))) % 2.0f0)) : Complex(0.0f0)
+                Γ²_d1 = d1 < $N4 ? cispi($(Float32(sgn)) * (((d1 * v) % $(Int32(2 * N)) / $(Float32(N))) % 2.0f0)) : Complex(0.0f0)
                 (Γ²_d0.re, Γ²_d0.im, Γ²_d1.re, Γ²_d1.im)
             end
         end,
@@ -821,8 +883,8 @@ function setup_fft_coefficients!(
                     d0 = (thread % 4i32) * 2i32 + 0i32
                     d1 = (thread % 4i32) * 2i32 + 1i32
                     u = (thread ÷ 4i32) % 8i32
-                    Γ³_d0 = d0 < $N4 && u < $N4 ? cispi(((d0 * u) % $N4 / $(Float32(N / 8))) % 2.0f0) : Complex(0.0f0)
-                    Γ³_d1 = d1 < $N4 && u < $N4 ? cispi(((d1 * u) % $N4 / $(Float32(N / 8))) % 2.0f0) : Complex(0.0f0)
+                    Γ³_d0 = d0 < $N4 && u < $N4 ? cispi($(Float32(sgn)) * (((d0 * u) % $N4 / $(Float32(N / 8))) % 2.0f0)) : Complex(0.0f0)
+                    Γ³_d1 = d1 < $N4 && u < $N4 ? cispi($(Float32(sgn)) * (((d1 * u) % $N4 / $(Float32(N / 8))) % 2.0f0)) : Complex(0.0f0)
                     (+Γ³_d0.re, -Γ³_d0.im, +Γ³_d0.im, +Γ³_d0.re, +Γ³_d1.re, -Γ³_d1.im, +Γ³_d1.im, +Γ³_d1.re)
                 end
             end,
@@ -857,8 +919,8 @@ function setup_fft_coefficients!(
                     d0 = (thread % 2i32) * 2i32 + 0i32
                     d1 = (thread % 2i32) * 2i32 + 1i32
                     u = (thread ÷ 4i32) % 4i32
-                    Γ³_d0 = d0 < $N4 && u < $N4 ? cispi(((d0 * u) % $N4 / $(Float32(N / 8))) % 2.0f0) : Complex(0.0f0)
-                    Γ³_d1 = d1 < $N4 && u < $N4 ? cispi(((d1 * u) % $N4 / $(Float32(N / 8))) % 2.0f0) : Complex(0.0f0)
+                    Γ³_d0 = d0 < $N4 && u < $N4 ? cispi($(Float32(sgn)) * (((d0 * u) % $N4 / $(Float32(N / 8))) % 2.0f0)) : Complex(0.0f0)
+                    Γ³_d1 = d1 < $N4 && u < $N4 ? cispi($(Float32(sgn)) * (((d1 * u) % $N4 / $(Float32(N / 8))) % 2.0f0)) : Complex(0.0f0)
                     reim = (thread ÷ 2i32) % 2i32
                     reim == 0i32 ? (+Γ³_d0.re, +Γ³_d0.im, +Γ³_d1.re, +Γ³_d1.im) : (-Γ³_d0.im, +Γ³_d0.re, -Γ³_d1.im, +Γ³_d1.re)
                 end
@@ -894,8 +956,8 @@ function setup_fft_coefficients!(
                     s1in = (thread ÷ 1i32) % 2i32
                     s1out = (thread ÷ 16i32) % 2i32
                     δ = s1in == s1out
-                    Γ³_d0 = d0 < $N4 && u < $N4 && δ ? cispi(((d0 * u) % $N4 / $(Float32(N / 8))) % 2.0f0) : Complex(0.0f0)
-                    Γ³_d1 = d1 < $N4 && u < $N4 && δ ? cispi(((d1 * u) % $N4 / $(Float32(N / 8))) % 2.0f0) : Complex(0.0f0)
+                    Γ³_d0 = d0 < $N4 && u < $N4 && δ ? cispi($(Float32(sgn)) * (((d0 * u) % $N4 / $(Float32(N / 8))) % 2.0f0)) : Complex(0.0f0)
+                    Γ³_d1 = d1 < $N4 && u < $N4 && δ ? cispi($(Float32(sgn)) * (((d1 * u) % $N4 / $(Float32(N / 8))) % 2.0f0)) : Complex(0.0f0)
                     reim = (thread ÷ 2i32) % 2i32
                     reim == 0i32 ? (+Γ³_d0.re, +Γ³_d0.im, +Γ³_d1.re, +Γ³_d1.im) : (-Γ³_d0.im, +Γ³_d0.re, -Γ³_d1.im, +Γ³_d1.re)
                 end
@@ -935,19 +997,23 @@ function do_first_fft!(emitter)
         Register(:time, Tinner, idiv(Touter, 2 * Tinner)) => Loop(:t_inner_lo, Tinner, idiv(Touter, 2 * Tinner)),
     )
 
+    # The `E -> Fsh1` shuffle moved `Polr` into the nibble that `swap_offset` swaps, and `Cplx`
+    # into the Float16x2 half-word. Undo only the offset encoding: `swapped_withoffset=true`
+    # would exchange the polarizations. The real part ends up in `cplx = 1`, as Γ¹ expects.
+    apply!(emitter, :Freg2″, [:Freg2′], (F,) -> :(Int4x8($F.val ⊻ 0x88888888)))
     widen2!(
         emitter,
         :E′,
-        :Freg2′,
+        :Freg2″,
         SIMD(:simd, 4, 2) => Register(:polr, 1, P),
         SIMD(:simd, 8, 2) => Register(:time, idiv(Touter, 2), 2);
         newtype=FloatValue,
-        swapped_withoffset=true,
     )
 
     select!(emitter, :E, :E′, Register(:time, idiv(Touter, 2), 2) => UnrolledLoop(:t_inner_hi, idiv(Touter, 2), 2))
 
-    apply!(emitter, :WE, [:E, :W], (E, W) -> :(complex_mul($W, $E)))
+    # `E` and `W` both hold the real part in `cplx = 1`
+    apply!(emitter, :WE, [:E, :W], (E, W) -> :(swapped_complex_mul($W, $E)))
 
     # Chapter 4.10 notation:
     #     G_mq = FT WE_mn
@@ -1068,7 +1134,7 @@ function do_first_fft!(emitter)
     split!(emitter, [:aΓ²re, :aΓ²im], :aΓ², Register(:cplx, 1, 2))
     split!(emitter, [:Zre, :Zim], :Z, Register(:cplx, 1, 2))
     # TODO: Find a better set of conditions
-    if trailing_zeros(Npad) == 5 || setup === :hirax
+    if trailing_zeros(Npad) == 5 || setup === :hirax || setup === :hirax128
         # CHORD? and Hirax
         apply!(emitter, :Vre, [:Zre, :Zim, :aΓ²re, :aΓ²im], (Zre, Zim, aΓ²re, aΓ²im) -> :(muladd($aΓ²re, $Zre, -$aΓ²im * $Zim)))
         apply!(emitter, :Vim, [:Zre, :Zim, :aΓ²re, :aΓ²im], (Zre, Zim, aΓ²re, aΓ²im) -> :(muladd($aΓ²re, $Zim, +$aΓ²im * $Zre)))
@@ -1691,7 +1757,11 @@ function make_frb_kernel()
         (off, len) -> DishMHi(:dishMHi, off, len),
         (off, len) -> BeamP(:beamP, off, len),
         (off, len) -> BeamQ(:beamQ_in, off, len),
-        (off, len) -> BeamQ(:beamQ, off, len),
+        (off, len) -> BeamQ(:beamQ, off, len);
+        # Γ¹ reads `cplx_in = 1` as the real part, but the first FFT writes `G` with the real
+        # part in `cplx = 0`. The second FFT thus transforms i conj(G). Conjugating its
+        # coefficients makes |Ẽ|² come out as in eqn. (4).
+        sgn=-1,
     )
 
     let
@@ -1773,7 +1843,8 @@ function make_frb_kernel()
             end
         )) do emitter
             load!(emitter, :W => layout_W_registers, :W_memory => layout_W_memory)
-            apply!(emitter, :W, [:W], (W,) -> :($(Float16x2(input_gain, input_gain)) * $W))
+            # Move the real part into `cplx = 1`, where `E` has it (see `do_first_fft!`)
+            apply!(emitter, :W, [:W], (W,) -> :(reverse($(Float16x2(input_gain, input_gain)) * $W)))
             return nothing
         end
     end
@@ -2043,7 +2114,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
 
     # TODO: determine types and sizes automatically
     Smn_memory = Array{Int16x2}(undef, M * N)
-    W_memory = Array{Float16x2}(undef, M * N * Fbar_in * P)
+    W_memory = Array{Float16x2}(undef, M * N * P * Fbar_W)
     E_memory = Array{Int4x8}(undef, idiv(D, 4) * P * Fbar_in * Tbar)
     I_wanted = Array{Float16x2}(undef, M * 2 * N * Fbar_out * Ttilde)
     info_wanted = Array{Int32}(undef, num_threads * num_warps * num_blocks)
@@ -2080,14 +2151,29 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
         Ttildemin = Int32(0)
         Ttildemax = Int32(Ttildemin + fld(Tbarmax - Tbarmin, Tds))
 
-        Fbar_in_min = Int32(0)
-        Fbar_in_max = Int32(min(Fbar_in, Fbar_out))
-        Fbar_out_min = Int32(0)
-        Fbar_out_max = Int32(min(Fbar_in, Fbar_out))
+        # As in Kotekan, `W` holds just the frequency span, which therefore cannot exceed `Fbar_W`
+        max_span = U * fld(min(Fbar_in, Fbar_W, Fbar_out), U)
+        if run_selftest
+            # A random span, placed at random in the input and the output
+            span = U * rand(1:(max_span ÷ U))
+            Fbar_in_min = Int32(rand(0:(Fbar_in - span)))
+            Fbar_out_min = Int32(rand(0:(Fbar_out - span)))
+        else
+            span = max_span
+            Fbar_in_min = Int32(0)
+            Fbar_out_min = Int32(0)
+        end
+        Fbar_in_max = Int32(Fbar_in_min + span)
+        Fbar_out_max = Int32(Fbar_out_min + span)
+        # As in Kotekan, one block per frequency of the span
+        blocks = span
 
         @show Tbarmin Tbarmax Fbar_in_min Fbar_in_max
         @show Ttildemin Ttildemax Fbar_out_min Fbar_out_max
-        @show num_threads num_warps num_blocks
+        @show num_threads num_warps blocks
+
+        # The kernel writes only complete downsampled time samples
+        time_range = Tbarmin:(Tbarmin + Tds * (Ttildemax - Ttildemin) - 1)
 
         input = :planewave
         # Largest expected intensity, used to scale the self-test tolerance
@@ -2114,11 +2200,13 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
             W_memory .= [Float16x2(c2t(Wvalue)...) for i in eachindex(W_memory)]
 
             dish = rand(0:(D - 1))
-            freq = rand(0:(Fbar_in - 1))
+            block = rand(0:(blocks - 1))
+            freq_in = Fbar_in_min + block
+            freq_out = Fbar_out_min + block
             polr = rand(0:(P - 1))
-            time = rand(0:(Tbar - 1))
-            @show dish freq polr time
-            Eidx = dish ÷ 4 + idiv(D, 4) * polr + idiv(D, 4) * P * freq + idiv(D, 4) * P * Fbar_in * time
+            time = rand(time_range)
+            @show dish freq_in freq_out polr time
+            Eidx = dish ÷ 4 + idiv(D, 4) * polr + idiv(D, 4) * P * freq_in + idiv(D, 4) * P * Fbar_in * time
             Fvalue = 7.5f0 * uniform_in_disk()
             Evalue = round(Int, real(Fvalue)) + im * round(Int, imag(Fvalue))
             Evalue8 = zero(SVector{8,Int8})
@@ -2131,7 +2219,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
             dstime = time ÷ Tds
             @show dstime
             for beamq in 0:(2 * N - 1), beamp in 0:(2 * M - 1)
-                Iidx = beamp ÷ 2 + M * beamq + M * 2 * N * freq + M * 2 * N * Fbar_out * dstime
+                Iidx = beamp ÷ 2 + M * beamq + M * 2 * N * freq_out + M * 2 * N * Fbar_out * dstime
                 dishm, dishn = dish_grid[dish + 1]
                 # Eqn. (4)
                 Ẽvalue = cispi((2 * dishm * beamp / Float32(2 * M) + 2 * dishn * beamq / Float32(2 * N)) % 2.0f0) * Wvalue * Evalue
@@ -2145,56 +2233,83 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
                 I_wanted[Iidx + 1] = Float16x2(Ivalue2...)
             end
         elseif input ≡ :planewave
+            # In each polarization, a plane wave from a random direction, and weights with a random
+            # complex gain that steer by a random offset. This input is not symmetric under
+            # p → -p or q → -q, nor under exchanging the polarizations, so it detects an FFT with
+            # the wrong sign, a conjugated `W`, and `W` applied to the other polarization.
             # Choose dish grid
             # Dishes 0:(D-1) are "real" dishes with E-field data.
             # Dishes D:(M*N-1) are "dummy" dishes where we set the E-field to zero.
             grid = [(m, n) for m in 0:(M - 1), n in 0:(N - 1)]
-            dish_grid = grid[1:(M * N)]
-            @show dish_grid
+            dish_grid = grid[randperm(length(grid))]
             for d in 1:(M * N)
                 Smn_memory[d] = Int16x2(dish_grid[d]...)
             end
 
-            Wvalue = 1 + 0im
-            W_memory .= [Float16x2(c2t(Wvalue)...) for i in eachindex(W_memory)]
+            # Block `block` beamforms input frequency `freq_in` with the weights `W[block]`, and
+            # writes output frequency `freq_out`
+            block = rand(0:(blocks - 1))
+            freq_in = Fbar_in_min + block
+            freq_out = Fbar_out_min + block
+            time = rand(time_range)
+            @show block freq_in freq_out time
 
-            freq = rand(0:(Fbar_in - 1))
-            polr = rand(0:(P - 1))
-            time = rand(0:(Tbar - 1))
-            @show freq polr time
-            
-            Fvalue = 7.5f0 * uniform_in_disk()
-            Evalue = round(Int, real(Fvalue)) + im * round(Int, imag(Fvalue))
-            @show Fvalue Evalue
-            for dish in 0:D-1
-                Eidx = dish ÷ 4 + idiv(D, 4) * polr + idiv(D, 4) * P * freq + idiv(D, 4) * P * Fbar_in * time
-                Evalue8 = convert(NTuple{8,Int8}, swap_offset(E_memory[Eidx + 1]))
-                Evalue8 = setindex(Evalue8, real(Evalue), 2 * (dish % 4) + 0 + 1)
-                Evalue8 = setindex(Evalue8, imag(Evalue), 2 * (dish % 4) + 1 + 1)
-                E_memory[Eidx + 1] = swap_offset(Int4x8(Evalue8...))
-                # println("dish=$dish E=$(E_memory[Eidx + 1])")
+            # Eqn. (4): the phase of dish (m, n) in beam (p, q)
+            beam_phase = (m, n, p, q) -> cispi((2 * m * p / Float32(2 * M) + 2 * n * q / Float32(2 * N)) % 2.0f0)
+
+            # The other frequencies of the span get different weights, and the frequencies past the
+            # span NaN (as in setFRB1Phase), so that weights from any other frequency are noticed
+            fill!(W_memory, Float16x2(NaN, NaN))
+            for f in 0:(blocks - 1), polr in 0:(P - 1)
+                Wother = Float16x2(c2t(uniform_in_disk())...)
+                for n in 0:(N - 1), m in 0:(M - 1)
+                    W_memory[m + M * n + M * N * polr + M * N * P * f + 1] = Wother
+                end
+            end
+
+            Wvalues = zeros(ComplexF32, M, N, P)
+            Evalues = zeros(Complex{Int}, D, P)
+            for polr in 0:(P - 1)
+                p0, q0 = rand(0:(2 * M - 1)), rand(0:(2 * N - 1))
+                Δp, Δq = rand(0:(2 * M - 1)), rand(0:(2 * N - 1))
+                Wgain = (0.5f0 + 0.5f0 * rand(Float32)) * cispi(2 * rand(Float32))
+                @show polr p0 q0 Δp Δq Wgain
+
+                for n in 0:(N - 1), m in 0:(M - 1)
+                    Wvalue = Wgain * beam_phase(m, n, Δp, Δq)
+                    Wvalue = Complex{Float32}(Float16(real(Wvalue)), Float16(imag(Wvalue)))
+                    Wvalues[m + 1, n + 1, polr + 1] = Wvalue
+                    W_memory[m + M * n + M * N * polr + M * N * P * block + 1] = Float16x2(c2t(Wvalue)...)
+                end
+
+                for dish in 0:(D - 1)
+                    dishm, dishn = dish_grid[dish + 1]
+                    Fvalue = 7.0f0 * conj(beam_phase(dishm, dishn, p0, q0))
+                    Evalue = round(Int, real(Fvalue)) + im * round(Int, imag(Fvalue))
+                    Evalues[dish + 1, polr + 1] = Evalue
+                    Eidx = dish ÷ 4 + idiv(D, 4) * polr + idiv(D, 4) * P * freq_in + idiv(D, 4) * P * Fbar_in * time
+                    Evalue8 = convert(NTuple{8,Int8}, swap_offset(E_memory[Eidx + 1]))
+                    Evalue8 = setindex(Evalue8, real(Evalue), 2 * (dish % 4) + 0 + 1)
+                    Evalue8 = setindex(Evalue8, imag(Evalue), 2 * (dish % 4) + 1 + 1)
+                    E_memory[Eidx + 1] = swap_offset(Int4x8(Evalue8...))
+                end
             end
 
             dstime = time ÷ Tds
             @show dstime
             for beamq in 0:(2 * N - 1), beamp in 0:(2 * M - 1)
-                Iidx = beamp ÷ 2 + M * beamq + M * 2 * N * freq + M * 2 * N * Fbar_out * dstime
-                Ẽvalue = 0.0f0
-                for dish in 0:D-1
-                    dishm, dishn = dish_grid[dish + 1]
-                    # Eqn. (4)
-                    Ẽvalue += cispi((2 * dishm * beamp / Float32(2 * M) + 2 * dishn * beamq / Float32(2 * N)) % 2.0f0) * Wvalue * Evalue
+                Iidx = beamp ÷ 2 + M * beamq + M * 2 * N * freq_out + M * 2 * N * Fbar_out * dstime
+                Ivalue = 0.0f0
+                for polr in 0:(P - 1)
+                    Ẽvalue = zero(ComplexF32)
+                    for dish in 0:(D - 1)
+                        dishm, dishn = dish_grid[dish + 1]
+                        Ẽvalue +=
+                            beam_phase(dishm, dishn, beamp, beamq) * Wvalues[dishm + 1, dishn + 1, polr + 1] * Evalues[dish + 1, polr + 1]
+                    end
+                    Ivalue += output_gain * abs2(input_gain * Ẽvalue)
                 end
-                # Ẽvalue2 = 0.0
-                # for dish in 0:D-1
-                #     dishm, dishn = dish_grid[dish + 1]
-                #     # Eqn. (4)
-                #     Ẽvalue2 += cispi(2 * dishm * beamp / Float64(2 * M) + 2 * dishn * beamq / Float64(2 * N)) * Wvalue * Evalue
-                # end
-                # @assert abs(Ẽvalue - Ẽvalue2) <= 1.0f-4 # + 0.01f0 * max(abs(Ẽvalue), max(Ẽvalue2))
-                Ivalue = output_gain * abs2(input_gain * Ẽvalue)
                 I_max = max(I_max, Ivalue)
-                # println("beamp=$beamp beamq=$beamq I=$Ivalue")
                 Ivalue2 = convert(NTuple{2,Float32}, I_wanted[Iidx + 1])
                 Ivalue2 = setindex(Ivalue2, Ivalue, beamp % 2 + 1)
                 I_wanted[Iidx + 1] = Float16x2(Ivalue2...)
@@ -2224,7 +2339,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
             I_cuda,
             info_cuda;
             threads=(num_threads, num_warps),
-            blocks=num_blocks,
+            blocks=blocks,
             shmem=shmem_bytes,
         )
         synchronize()
@@ -2247,7 +2362,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
                         I_cuda,
                         info_cuda;
                         threads=(num_threads, num_warps),
-                        blocks=num_blocks,
+                        blocks=blocks,
                         shmem=shmem_bytes,
                     )
                 end
@@ -2256,7 +2371,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
             # All times in μsec
             runtime = stats.time / nruns * 1.0e+6
             num_frequencies_scaled = F₀
-            runtime_scaled = runtime / Fbar_in * num_frequencies_scaled
+            runtime_scaled = runtime / blocks * num_frequencies_scaled
             dataframe_length = T * sampling_time_μsec
             fraction = runtime_scaled / dataframe_length
             round1(x) = round(x; digits=1)
@@ -2279,7 +2394,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
                 blocks_per_sm: $num_blocks_per_sm
               call-parameters:
                 threads: [$num_threads, $num_warps]
-                blocks: [$num_blocks]
+                blocks: [$blocks]
                 shmem_bytes: $shmem_bytes
               result-μsec:
                 runtime: $(round1(runtime))
@@ -2295,7 +2410,8 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
         # @show count(isnan, (@view I_memory[1:(M * 2 * N * Fbar_out * Ttildemax)]))
         # @assert all(!isnan, (@view I_memory[1:(M * 2 * N * Fbar_out * Ttildemax)]))
         info_memory = Array(info_cuda)
-        @assert all(==(0), info_memory)
+        # Only the launched blocks write their status
+        @assert all(==(0), @view info_memory[1:(num_threads * num_warps * blocks)])
 
         if run_selftest
             println("Checking results...")
@@ -2353,6 +2469,18 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
 
     println("Done.")
     return nothing
+end
+
+# A kernel argument's buffer is described by its quantity name and axis labels, which default to
+# the argument's name and axis labels.
+function with_buffer_labels(kernel_arguments)
+    for arg in kernel_arguments
+        get!(arg, "quantity", arg["name"])
+        for axis in get(arg, "axes", [])
+            get!(axis, "buffer_label", axis["label"])
+        end
+    end
+    return kernel_arguments
 end
 
 function fix_ptx_kernel()
@@ -2508,7 +2636,7 @@ function fix_ptx_kernel()
             "num_blocks" => num_blocks,
             "shmem_bytes" => shmem_bytes,
             "kernel_symbol" => kernel_symbol,
-            "kernel_arguments" => [
+            "kernel_arguments" => with_buffer_labels([
                 Dict(
                     "name" => "Tbar_min",
                     "kotekan_name" => "Tbar_min",
@@ -2614,12 +2742,14 @@ function fix_ptx_kernel()
                 Dict(
                     "name" => "Ebar",
                     "kotekan_name" => "voltage_name",
+                    # For U=1 there is no upchannelizer, and the kernel reads the voltages E directly
+                    "quantity" => U == 1 ? "E" : "Ebar",
                     "type" => "int4x2_swapped_withoffset",
                     "axes" => [
                         Dict("label" => "D", "length" => D, "dimscaling" => 1),
                         Dict("label" => "P", "length" => P, "dimscaling" => 1),
-                        Dict("label" => "Fbar", "length" => Fbar_in, "dimscaling" => 1),
-                        Dict("label" => "Tbar", "length" => Tbar, "dimscaling" => U),
+                        Dict("label" => "Fbar", "buffer_label" => U == 1 ? "F" : "Fbar", "length" => Fbar_in, "dimscaling" => 1),
+                        Dict("label" => "Tbar", "buffer_label" => U == 1 ? "T" : "Tbar", "length" => Tbar, "dimscaling" => U),
                     ],
                     "isoutput" => false,
                     "hasbuffer" => true,
@@ -2654,7 +2784,7 @@ function fix_ptx_kernel()
                     "hasbuffer" => false,
                     "isscalar" => false,
                 ),
-            ],
+            ]),
         ),
     )
     write("output/frb_$(setup)_U$(U).cxx", cxx)

@@ -1,0 +1,34 @@
+# Configuration name
+const setup = :hirax128
+# See `setup_charts.jl` for what `compute_capability`, `ptx_compat`, and
+# `cuda_arch` mean.
+const compute_capability = v"8.6" # A40
+const ptx_compat = v"8.0"
+const cuda_arch = "sm_86" # A40
+
+# Time between time samples
+const sampling_time_μsec = 4096 / 1600
+
+# Number of complex number components
+const C = 2
+
+# Number of polarizations
+const P = 2
+
+# Number of dishes
+const D = 128
+
+# Number of coarse frequencies per GPU
+const F = 128
+
+# Number of time samples per frame processed by the GPU, times the Kotekan buffer depth
+const T = 4 * 16384
+
+# Maximum number of coarse frequencies per upchannelization factor, rounded up to a power of 2
+const F_per_U = Dict(1 => 1, 2 => 1, 4 => 1, 8 => 32, 16 => 64, 32 => 64, 64 => 1, 128 => 1)
+
+# Maximum number of fine frequencies per GPU, for all upchannelization factors combined
+const Fbar_out = 4096
+
+# FRB downsampling factor for U=1
+const Tds_U1 = 384

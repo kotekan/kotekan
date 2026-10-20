@@ -1,15 +1,16 @@
-#include "Config.hpp"                // for Config
-#include "DataType.hpp"              // for int4x2_swapped_withoffset_t, float16_t, cint8
-#include "NDArrayBuffer.hpp"         // for NDArrayBuffer, buffer_type_t
-#include "NDArrayRingBuffer.hpp"     // for NDArrayRingBuffer, read_descriptor_t
-#include "bufferContainer.hpp"       // for bufferContainer
-#include "chordMetadata.hpp"         // for chordMetadata
-#include "cudaCommand.hpp"           // for cudaCommand, REGISTER_CUDA_COMMAND
-#include "cudaDeviceInterface.hpp"   // for cudaDeviceInterface
-#include "cudaUtils.hpp"             // for CHECK_CUDA_ERROR
-#include "div.hpp"                   // for div_noremainder, round_down
-#include "kotekanLogging.hpp"        // for FATAL_ERROR, INFO
-#include "upchannelizeReference.hpp" // for upchannelize_reference, upchan_window
+#include "Config.hpp"                   // for Config
+#include "DataType.hpp"                 // for int4x2_swapped_withoffset_t, float16_t, cint8
+#include "NDArrayBuffer.hpp"            // for NDArrayBuffer, buffer_type_t
+#include "NDArrayRingBuffer.hpp"        // for NDArrayRingBuffer, read_descriptor_t
+#include "UpchannelizationSchedule.hpp" // for upchan_output_alignment
+#include "bufferContainer.hpp"          // for bufferContainer
+#include "chordMetadata.hpp"            // for chordMetadata
+#include "cudaCommand.hpp"              // for cudaCommand, REGISTER_CUDA_COMMAND
+#include "cudaDeviceInterface.hpp"      // for cudaDeviceInterface
+#include "cudaUtils.hpp"                // for CHECK_CUDA_ERROR
+#include "div.hpp"                      // for div_noremainder, round_down, round_up
+#include "kotekanLogging.hpp"           // for FATAL_ERROR, INFO
+#include "upchannelizeReference.hpp"    // for upchannelize_reference, upchan_window
 
 #include <algorithm>          // for min
 #include <array>              // for array
@@ -24,7 +25,7 @@
 
 using kotekan::bufferContainer;
 using kotekan::Config;
-using kotekan::div_noremainder, kotekan::round_down;
+using kotekan::div_noremainder, kotekan::round_down, kotekan::round_up;
 
 /**
  * @class gpuSimulateCudaUpchannelizer
@@ -95,6 +96,8 @@ using kotekan::div_noremainder, kotekan::round_down;
  *                                    @f$(M-1) U_\mathrm{max} / 2@f$, so that the outputs of all
  *                                    upchannelization factors are aligned in time; see
  *                                    @c wait_on_precondition.
+ * @conf  upchan_output_alignment  Int.  Optional. Round the output start up to a multiple
+ *                                    of this many FPGA samples.
  * @conf  granularity_number_of_timesamples  Int.  Time samples processed per call, default
  *                                    256. Affects only chunking, not the result.
  * @conf  max_times_per_iteration  Int.  Cap on the input samples read per call, default 0
@@ -147,9 +150,9 @@ private:
     const int _num_taps;
     const int _max_upchannelization_factor;
     /// Output time offset relative to the input, in input samples
-    std::ptrdiff_t _T_offset;
+    const std::ptrdiff_t _T_offset;
     /// Number of input samples we skip at startup
-    std::ptrdiff_t _T_skip;
+    const std::ptrdiff_t _T_skip;
     const int _granularity;
     const int _max_times_per_iteration;
     const int _Fmin;
@@ -190,7 +193,9 @@ gpuSimulateCudaUpchannelizerT<OutT>::gpuSimulateCudaUpchannelizerT(Config& confi
     _upchannelization_factor(config.get<int>(unique_name, "upchannelization_factor")),
     _num_taps(config.get_default<int>(unique_name, "num_taps", kotekan::upchan_default_num_taps)),
     _max_upchannelization_factor(config.get<int>(unique_name, "max_upchannelization_factor")),
-    _T_offset(-1), _T_skip(-1),
+    _T_offset(round_up(std::ptrdiff_t(_num_taps - 1) * _max_upchannelization_factor / 2,
+                       upchan_output_alignment(config, unique_name))),
+    _T_skip(_T_offset - std::ptrdiff_t(_num_taps - 1) * _upchannelization_factor / 2),
     _granularity(config.get_default<int>(unique_name, "granularity_number_of_timesamples", 256)),
     _max_times_per_iteration(config.get_default<int>(unique_name, "max_times_per_iteration", 0)),
     _Fmin(config.get<int>(unique_name, "Fmin")), _Fmax(config.get<int>(unique_name, "Fmax")),
@@ -227,8 +232,6 @@ gpuSimulateCudaUpchannelizerT<OutT>::gpuSimulateCudaUpchannelizerT(Config& confi
         FATAL_ERROR("Upchannelization factor {:d} with {:d} taps: max_upchannelization_factor={:d} "
                     "must not be smaller, and (taps-1)*U must be even for both",
                     _upchannelization_factor, _num_taps, _max_upchannelization_factor);
-    _T_offset = std::ptrdiff_t(_num_taps - 1) * _max_upchannelization_factor / 2;
-    _T_skip = _T_offset - std::ptrdiff_t(_num_taps - 1) * _upchannelization_factor / 2;
     // The ring bookkeeping subtracts a whole number of output samples as overlap.
     if (_granularity % _upchannelization_factor != 0)
         FATAL_ERROR("granularity_number_of_timesamples ({:d}) must be a multiple of the "
