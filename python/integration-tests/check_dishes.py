@@ -29,7 +29,7 @@ import check_phases
 from kit import (
     audit,
     C0,
-    channel_width,
+    sky_frequency,
     decode_int4x2,
     direction_vector,
     dish_positions,
@@ -275,7 +275,7 @@ def check_onehot(out_dir, var, config):
     beams = read_output(out_dir, "bb_beam_positions").data[:num_beams]  # [B, 2]
     n = np.array([direction_vector(b) for b in beams])  # [B, 3]
     pos, exists = dish_positions(config)
-    nu = channels * channel_width(config)
+    nu = sky_frequency(config, channels)
     gain = value(config, "bb_gain") * 127.5 / 128
     residuals = []
     amplitudes = []

@@ -182,24 +182,73 @@ def power_centroid(labels, power):
 C0 = 299792458.0  # speed of light [m/s]
 
 
+NUM_TAPS = 4  # kotekan::upchan_default_num_taps
+
+
+def output_alignment(config):
+    """The upchannelizer output alignment `upchan_output_alignment` (default 1, CHIME: 3 frames),
+    in FPGA samples."""
+    return (
+        value(config, "upchan_output_alignment")
+        if "upchan_output_alignment" in config
+        else 1
+    )
+
+
+def upchan_t_star(config):
+    """The upchannelizer output offset T* = (taps - 1) U_max / 2, rounded up to a multiple of
+    the output alignment (`upchan_output_offset`)."""
+    align = output_alignment(config)
+    t_star = (NUM_TAPS - 1) * value(config, "max_upchannelization_factor") // 2
+    return -(-t_star // align) * align
+
+
 def large_seq(config):
     """A large start FPGA sequence number. N2Accumulate needs frames to start at multiples of
-    the frame length; 7 frames past 2**33 aligns it with no lifetime or integration."""
-    return 2 ** 33 + 7 * value(config, "num_times")
+    the frame length, and the voltage stream must start at a multiple of the upchannelizer
+    output alignment; 7 frames past 2**33, rounded up to both, aligns it with no lifetime or
+    integration."""
+    step = math.lcm(value(config, "num_times"), output_alignment(config))
+    return -(-(2 ** 33 + 7 * value(config, "num_times")) // step) * step
 
 
 def value(config, key, block=None):
     """A top-level config value, or one in the top-level `block`; kotekan arithmetic expressions
-    such as `5.0 / 4` that refer to other top-level values are evaluated."""
-    v = (config if block is None else config[block])[key]
+    such as `5.0 / 4` that refer to other top-level values are evaluated. A key that is not at
+    the top level is looked up in the top-level blocks (CHIME's `FRB`), and expressions there
+    refer to that block first."""
+    scope = config if block is None else config[block]
+    if key not in scope and block is None:
+        blocks = [b for b, v in config.items() if isinstance(v, dict) and key in v]
+        require(blocks, f"config: no value {key}")
+        return value(config, key, blocks[0])
+    v = scope[key]
     if not isinstance(v, str):
         return v
 
     class Names(dict):
         def __missing__(self, name):
+            if block is not None and name in config[block]:
+                return value(config, name, block)
             return value(config, name)
 
     return eval(v, {"__builtins__": {}}, Names())
+
+
+def has_bb(config):
+    """Whether the config has the baseband beamformer (CHIME has none)."""
+    return "host_bb_beams_buffer" in config
+
+
+def find_stages(config, kotekan_stage):
+    """The config blocks of every stage of type `kotekan_stage`, at any depth."""
+    found = []
+    for v in config.values():
+        if isinstance(v, dict):
+            if v.get("kotekan_stage") == kotekan_stage:
+                found.append(v)
+            found += find_stages(v, kotekan_stage)
+    return found
 
 
 def dish_positions(config):
@@ -229,6 +278,17 @@ def channel_width(config):
     return value(config, "adc_frequency") / value(config, "num_samples_per_frame")
 
 
+def sky_frequency(config, channels, f_tone=0):
+    """The sky frequency (Hz) of `f_tone` cycles per sample in coarse `channels`. As in
+    `Telescope`, Nyquist zone z (`telescope.nyquist_zone`, default 1) starts at floor(z/2) times
+    the ADC frequency and counts up in odd and down in even zones (CHIME)."""
+    zone = config["telescope"].get("nyquist_zone", 1)
+    sign = 1 if zone % 2 else -1
+    return zone // 2 * value(config, "adc_frequency") + sign * (
+        np.asarray(channels) + f_tone
+    ) * channel_width(config)
+
+
 def direction_vector(direction):
     nx, ny = direction
     return np.array([nx, ny, np.sqrt(1 - nx ** 2 - ny ** 2)])
@@ -251,6 +311,22 @@ def grid_beam_direction(config, prefix, bx, by):
         sep = value(config, f"{prefix}_beam_separation_{axis}")
         angles.append(np.radians(-sep * (num - 1) / 2 + sep * b))
     return [float(np.sin(a)) for a in angles]
+
+
+def frb2_beam_positions(config):
+    """The FRB2 beam positions [R, 2] that setFRBBeams produces for its `grid_degrees` or
+    `manual` mode."""
+    stage = find_stages(config, "setFRBBeams")[0]
+    if stage["mode"] == "manual":
+        return np.array([[b["x_dir_grid"], b["y_dir_grid"]] for b in stage["beams"]])
+    num_x, num_y = value(config, "frb2_num_beams_x"), value(config, "frb2_num_beams_y")
+    return np.array(
+        [
+            grid_beam_direction(config, "frb2", bx, by)
+            for by in range(num_y)
+            for bx in range(num_x)
+        ]
+    )
 
 
 def grid_point(lo, hi, n, i):
@@ -324,13 +400,13 @@ def frb2_peak_line(frb2, expected_beam):
         peaks = tone.argmax(axis=0)[bad]
         require(
             False,
-            f"frb2_beams: beam {expected_beam} has only {share[bad].min():.3f} of the peak "
+            f"{frb2.name}: beam {expected_beam} has only {share[bad].min():.3f} of the peak "
             f"tone power (peak in beams {np.unique(peaks).tolist()}) in {bad.sum()} of "
             f"{tone.shape[1]} channels",
         )
     ties = (tone >= 0.98 * tone.max(axis=0)).sum(axis=0) > 1
     return (
-        f"frb2_beams: beam {expected_beam} holds the peak in all {tone.shape[1]} channels "
+        f"{frb2.name}: beam {expected_beam} holds the peak in all {tone.shape[1]} channels "
         f"({ties.sum()} ties with grating lobes)"
     )
 

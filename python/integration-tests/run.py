@@ -2,8 +2,8 @@
 """Run one X-engine integration test: run kotekan with the test's jinja variables, then check
 the written output. See docs/sphinx/dev/dev_integration_tests.rst.
 
-A test module defines either `VARIANTS`, each run and checked on its own, or `RUNS`, which are
-all run before one check compares them. A variant can also POST to kotekan's REST server while it
+A test module defines either `VARIANTS`, each run and checked on its own (or `variants(config)`,
+those that apply to a telescope), or `RUNS`, which are all run before one check compares them. A variant can also POST to kotekan's REST server while it
 runs: `posts(tel, config, variant)` returns a list of (delay, endpoint, payload), each posted
 `delay` seconds after the server answers. If the module defines `MEMORY_INTERVAL`, kotekan's
 resident memory and GPU memory are sampled every `MEMORY_INTERVAL` seconds into
@@ -169,7 +169,11 @@ def main():
         if args.variant:
             parser.error(f"--variant: check_{args.test} compares all of its runs")
         return 0 if run_compared(args, test) else 1
-    variants = args.variant or test.VARIANTS
+    if hasattr(test, "variants"):
+        all_variants = test.variants(render_config(args.tel, {}))
+    else:
+        all_variants = test.VARIANTS
+    variants = args.variant or all_variants
     failed = 0
     for variant in variants:
         failed += not run_variant(args, test, variant)
