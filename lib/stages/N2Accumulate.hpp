@@ -293,6 +293,7 @@ private:
     const int _num_workers; ///< number of OpenMP threads to use to process data
 
     bool _do_fringestop; ///< Whether to fringestop the current accumulation bin
+    /// Updatable config path for the fringestop setting; empty if not set
     const std::string _fringestop_config_path;
     /// Pending fringestop setting from updatable config; applied at a bin start
     std::mutex _fringestop_mutex;
