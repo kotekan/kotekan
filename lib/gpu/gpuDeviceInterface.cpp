@@ -158,17 +158,13 @@ void gpuDeviceInterface::check_memory_claim(const std::string& name) {
         case gpuClaimResult::conflict:
             if (have_hs && want_hs)
                 FATAL_ERROR("GPU[{:d}] memory: \"{:s}\" is used by both {:s} and {:s}, declared "
-                            "shared through different things ({:s} vs {:s}). A share is ordered by "
-                            "ONE thing: two ring buffers were given one backing store, or one "
-                            "side names a ring while the other lists it under shared_gpu_memory.",
+                            "shared through different rings ({:s} vs {:s}): two ring buffers "
+                            "were given one backing store.",
                             gpu_id, name, *have, owner, *have_hs, *want_hs);
             FATAL_ERROR("GPU[{:d}] memory: \"{:s}\" is used by both {:s} and {:s}{:s}. A named "
-                        "region belongs to one stage unless both declare the share, because "
-                        "nothing here can see which streams the two will touch it on. If "
-                        "something outside the GPU already orders their accesses -- a host "
-                        "buffer handed between them, say -- list the name under "
-                        "`shared_gpu_memory` on BOTH stages; a GPU ring buffer declares itself. "
-                        "Otherwise give one of them its own name.",
+                        "region belongs to one stage; GPU memory crosses between stages only "
+                        "through a GPU ring buffer, which declares the share itself. Give one "
+                        "of them its own name, or pass the data through a ring buffer.",
                         gpu_id, name, *have, owner,
                         have_hs   ? fmt::format(" (only {:s} declared it)", *have)
                         : want_hs ? fmt::format(" (only {:s} declared it)", owner)

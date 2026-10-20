@@ -209,9 +209,8 @@ public:
      * classes (cudaCopyToRingbuffer, cudaCopyFromRingbuffer, cudaCopyNToRingbuffer,
      * NDArrayRingBuffer) pass the host RingBuffer's name: producer and consumer wait on and
      * signal that ring, and the ring is signalled only once the producing stage's frame has
-     * completed on the device. Config authors reach the same declaration through
-     * `shared_gpu_memory` on the stage (gpuProcess), whose handshake is that key. Must be
-     * called with an owner in effect (a stage under construction, or a registered thread).
+     * completed on the device. Must be called with an owner in effect (a stage under
+     * construction, or a registered thread).
      */
     void declare_shared_gpu_memory(const std::string& name, const std::string& handshake);
 

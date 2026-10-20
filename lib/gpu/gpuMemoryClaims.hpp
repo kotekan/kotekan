@@ -14,13 +14,12 @@ enum class gpuClaimResult {
 /**
  * @brief Decide whether a stage may use a named GPU memory region another stage already owns.
  *
- * A named region belongs to one stage. Two stages may share it only if BOTH declare the share,
- * and name the SAME thing as what orders their accesses -- the handshake. For a GPU ring buffer
- * that is the host RingBuffer both sides wait on and signal, and the ring classes declare it
- * themselves; for anything else a stage lists the name under `shared_gpu_memory`, and the
- * handshake is that key. Requiring both sides is what keeps a declaration from exempting a
- * name for every stage on the device; requiring the same handshake is what refuses two rings
- * that were given one backing store by mistake.
+ * A named region belongs to one stage. Two stages may share it only as the two ends of one GPU
+ * ring buffer: BOTH declare the share, and name the SAME host RingBuffer -- the handshake --
+ * as what orders their accesses. The ring classes make that declaration themselves. Requiring
+ * both sides is what keeps a declaration from exempting a name for every stage on the device;
+ * requiring the same handshake is what refuses two rings that were given one backing store by
+ * mistake.
  *
  * Nothing finer is decidable here. Whether two stages' accesses are ordered depends on which
  * streams each kernel and copy lands on and on the chains being enqueued contiguously, none of

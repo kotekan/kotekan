@@ -44,9 +44,9 @@
  *
  *                        \warning A GPU memory region named the same in two stages on one GPU -- @c
  *                        gpuDeviceInterface::get_gpu_memory keys those by name across the whole
- *                        device -- is refused at construction unless both stages declare the share
- *                        (see @c gpuMemoryClaims.hpp). Sharing a base does NOT make such a share
- *                        safe: a chain that crosses streams (kernel on 3*base+2, copy-out on
+ *                        device -- is refused at construction unless it is a GPU ring buffer's
+ *                        store (see @c gpuMemoryClaims.hpp). Sharing a base does NOT make a
+ *                        share safe: a chain that crosses streams (kernel on 3*base+2, copy-out on
  *                        3*base+1) can be overtaken by the other stage's kernel while the copy
  *                        still reads. Memory passed between stages through a ring buffer is
  *                        declared by the ring classes themselves: the host ring is signalled only

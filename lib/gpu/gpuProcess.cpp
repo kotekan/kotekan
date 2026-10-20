@@ -110,12 +110,9 @@ void gpuProcess::init() {
     dev->set_log_prefix(fmt::format(fmt("GPU[{:d}] device interface"), gpu_id));
 
     // GPU memory taken while the commands are built belongs to this stage, and a region a
-    // second stage takes is refused unless both declare the share -- here, in config, or in
-    // code by the ring-buffer classes. See gpuMemoryClaims.hpp.
+    // second stage takes is refused unless both are ends of one GPU ring buffer, which declare
+    // the share themselves. See gpuMemoryClaims.hpp.
     gpuMemoryOwnerScope constructing(*dev, unique_name);
-    for (const auto& name :
-         config.get_default<std::vector<std::string>>(unique_name, "shared_gpu_memory", {}))
-        dev->declare_shared_gpu_memory(name, "shared_gpu_memory");
 
     vector<json> cmds = config.get<std::vector<json>>(unique_name, "commands");
     int i = 0;

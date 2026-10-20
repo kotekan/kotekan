@@ -137,7 +137,7 @@ BOOST_AUTO_TEST_CASE(wiring_a_one_sided_declaration_does_not_exempt_the_name) {
     hostDevice dev(config);
     {
         gpuMemoryOwnerScope constructing(dev, A);
-        dev.declare_shared_gpu_memory("half", "shared_gpu_memory");
+        dev.declare_shared_gpu_memory("half", "host_ring");
         dev.get_gpu_memory("half", 64);
     }
     gpuMemoryOwnerScope constructing(dev, B);
@@ -158,8 +158,7 @@ BOOST_AUTO_TEST_CASE(wiring_two_rings_on_one_store_are_refused) {
 }
 
 BOOST_AUTO_TEST_CASE(wiring_redeclaring_through_a_different_handshake_is_refused) {
-    // A stage that declares one store through two rings has two rings on one store; and a
-    // config declaration must not be silently replaced by a ring's.
+    // A stage that declares one store through two rings has two rings on one store.
     kotekan::Config config;
     hostDevice dev(config);
     gpuMemoryOwnerScope constructing(dev, A);
@@ -188,7 +187,7 @@ BOOST_AUTO_TEST_CASE(wiring_a_registered_name_counts_before_allocation) {
 }
 
 BOOST_AUTO_TEST_CASE(wiring_two_stages_registering_one_name_conflict) {
-    // The multi-pipe shape: neither stage has allocated yet, both registered from constructors.
+    // Neither stage has allocated yet; both registered the name from their constructors.
     kotekan::Config config;
     hostDevice dev(config);
     {
