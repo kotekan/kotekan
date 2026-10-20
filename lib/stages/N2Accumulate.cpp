@@ -883,8 +883,14 @@ bool N2Accumulate::receive_fringestop_enabled(nlohmann::json& json) {
         WARN("N2Accumulate failed to read update to {:s}: {:s}", _fringestop_config_path, e.what());
         return false;
     }
-    // Times before the telescope's time zero would underflow to_seq; they apply at once.
-    int64_t seq = time_ns <= _tel.to_time_ns(0) ? 0 : int64_t(_tel.to_seq(time_ns));
+    // Times before the telescope's time zero would underflow to_seq. A past time applies at
+    // the next bin start; refusing it would leave the live config out of step with the stage.
+    // 0 means from startup.
+    if (time_ns != 0 && time_ns < _tel.to_time_ns(0))
+        ERROR("Fringestop update valid_at_time_ns {:d} is before the telescope's time zero; "
+              "applying it at the next bin start",
+              time_ns);
+    int64_t seq = time_ns < _tel.to_time_ns(0) ? 0 : int64_t(_tel.to_seq(time_ns));
     INFO("{:s} fringestopping from the first bin starting at or after t_inst {:d} ns (seq {:d})",
          enabled ? "Enabling" : "Disabling", time_ns, seq);
     std::lock_guard<std::mutex> lock(_fringestop_mutex);

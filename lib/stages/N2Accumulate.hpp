@@ -178,7 +178,9 @@ void from_json(const nlohmann::json& j, N2VarianceMode& m);
  *                                          with fields `enabled` (bool) and `valid_at_time_ns`
  *                                          (int64, instrument time). Overrides do_fringestop;
  *                                          a change takes effect at the first accumulation bin
- *                                          starting at or after valid_at_time_ns.
+ *                                          starting at or after valid_at_time_ns. Only one
+ *                                          change is pending at a time; a new post replaces
+ *                                          a pending one.
  * @conf    input_order                     String. Ordering of data in input correlation matrix.
  *                                          Default: Telescope::fiducial_element_order()
  * @conf    output_order                    String. Ordering of data in ouput correlation matrix.
