@@ -403,6 +403,24 @@ def test_singlefile_rejects_frame_decimation(tmpdir_factory):
     assert "cannot be combined with create_single_file" in r.output
 
 
+def test_perframe_frame_decimation(tmpdir_factory):
+    """write_x_frames 2 / per_y_frames 3 writes the first 2 of every 3 frames."""
+    case = CASES["int8_random"]
+    tmpdir = tmpdir_factory.mktemp("hdf5_perframe_decimation")
+    _siphon(tmpdir, case, False, write_extra=dict(write_x_frames=2, per_y_frames=3))
+    files = sorted(glob.glob(os.path.join(str(tmpdir), FILE_NAME + ".*.h5")))
+    frames = [k for k in range(NUM_FRAMES) if k % 3 < 2]
+    assert [os.path.basename(f) for f in files] == [
+        f"{FILE_NAME}.{k:08d}.h5" for k in frames
+    ]
+    for path, k in zip(files, frames):
+        with h5py.File(path, "r") as f:
+            assert (
+                f[FILE_NAME].attrs["fpga_seq_num"]
+                == k * case["gen"]["samples_per_data_set"]
+            )
+
+
 def test_singlefile_rejects_non_time_axis0(tmpdir_factory):
     """Axis 0 of a single file has to be a time axis (a name starting with T)."""
     case = _variant(
