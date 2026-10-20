@@ -38,12 +38,13 @@ set(PILOTPROXY_C_FUNCTIONS
     fstat_ref_fine_powers_u64
     fstat_ref_powers_from_fine_u64)
 foreach(window 64 128)
-    set(build pilotproxy_k${window})
-    list(TRANSFORM PILOTPROXY_C_FUNCTIONS REPLACE "^(.+)$" "\\1=${build}_\\1" OUTPUT_VARIABLE renames)
-    add_library(${build} OBJECT pilotproxy_core.cu)
+    set(_target pilotproxy_k${window})
+    list(TRANSFORM PILOTPROXY_C_FUNCTIONS REPLACE "^(.+)$" "\\1=${_target}_\\1" OUTPUT_VARIABLE
+                                                                                _renames)
+    add_library(${_target} OBJECT pilotproxy_core.cu)
     target_compile_definitions(
-        ${build} PRIVATE FSTAT_DETECTOR_WINDOW_SAMPLES=${window} PILOTPROXY_NAMESPACE=${build}
-                         ${renames} NDEBUG)
+        ${_target} PRIVATE FSTAT_DETECTOR_WINDOW_SAMPLES=${window} PILOTPROXY_NAMESPACE=${_target}
+                           ${_renames} NDEBUG)
 endforeach()
 add_library(pilotproxy STATIC $<TARGET_OBJECTS:pilotproxy_k64> $<TARGET_OBJECTS:pilotproxy_k128>)
 
