@@ -2742,6 +2742,15 @@ def main():
         "lanes+residual = lanes first, then the eigen path on what is left",
     )
     ap.add_argument(
+        "--n2-project-core-index",
+        type=int,
+        default=-1,
+        help="GnssN2Project's core as an index into the GPU's runtime pool; -1 (default) = "
+        "pool[(gpu + 5) %% len], the telemetry packers' core. With lane directions the stage "
+        "does ~4 k n^2 operations per channel-frame, so a canary moves it to a slot with "
+        "light stages (cx51: 9 = cores 43 / 63)",
+    )
+    ap.add_argument(
         "--n2-project-lanes-max",
         type=int,
         default=8,
@@ -3354,9 +3363,13 @@ def main():
                 raise SystemExit("--n2-project: %s is not in the base" % _corr)
             _stage = {
                 "kotekan_stage": "GnssN2Project",
-                # The telemetry packer's core (see gnss_chain_vars): a light host stage on this
-                # GPU's own NUMA pool.
-                "cpu_affinity": [_pool[(_gpu + 5) % len(_pool)]],
+                # The telemetry packer's core (see gnss_chain_vars) by default: a light host
+                # stage on this GPU's own NUMA pool; --n2-project-core-index picks another slot.
+                "cpu_affinity": [
+                    _pool[(_gpu + 5) % len(_pool)]
+                    if args.n2_project_core_index < 0
+                    else _pool[args.n2_project_core_index % len(_pool)]
+                ],
                 "in_buf": _corr,
                 # num_elements / num_local_freq / samples_per_data_set / sub_integration_ntime
                 # are read from the globals (a local `num_elements: num_elements` is a
