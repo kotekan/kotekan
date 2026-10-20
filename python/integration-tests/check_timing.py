@@ -1,14 +1,17 @@
 """T1 timing: a time-limited signal must appear at the predicted FPGA sequence numbers in every
 output.
 
-Input: a constant voltage 1 + 0i (a tone at the centre of every coarse channel, from zenith) on
+Input: a constant voltage A + 0i (a tone at the centre of every coarse channel, from zenith) on
 every dish and polarization in the FPGA samples [box_begin, box_end), zero elsewhere. The box
-starts mid-frame. The amplitude is small enough that no output saturates with the production
-gains.
+starts mid-frame. A = 1 is small enough that no output saturates with the production gains. With
+upchannelizer gains below 0.8 sqrt(U) (CHIME: 1) A is raised in proportion, so that the tone, at
+the edge of two fine channels, does not round to zero.
 
 Variants: `seq0` starts all generators at FPGA sequence number 0, `seqlarge` at a large value
 that is frame-aligned but aligned to no lifetime or integration boundary.
 """
+
+import math
 
 import numpy as np
 
@@ -30,6 +33,14 @@ from kit import (
 VARIANTS = ["seq0", "seqlarge"]
 
 
+def amplitude(config):
+    gains = [
+        min(value(config, f"run_set_upchan_U{U}_gain")["upchan_gain"]) / (0.8 * U ** 0.5)
+        for U in config["upchan_factors"]
+    ]
+    return max(1, math.ceil(round(1 / min(gains), 6)))
+
+
 def variables(tel, config, variant):
     seq0 = large_seq(config) if variant == "seqlarge" else 0
     num_times = value(config, "num_times")
@@ -48,7 +59,7 @@ def variables(tel, config, variant):
         "input_kind": "sky",
         "sources": [
             {
-                "amplitude": 1,
+                "amplitude": amplitude(config),
                 "direction": [0, 0],
                 "tone_cycles_per_frame": 0,
                 "window": [box_begin, box_begin + 3000],
