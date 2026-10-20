@@ -3388,7 +3388,7 @@ def main():
                 # #190: the chains' directions. The board group is the assemblers' unique_name
                 # up to the first '_' ("/gnss<gpu>"); tracker_stations is the chains' element
                 # axis, station of element e = live_element_tiles[e >> 4] * 16 + (e & 15).
-                _tiles = live_tile_columns(arr)
+                _tiles = live_tile_columns(cfg["array"])
                 _stage["source"] = args.n2_project_source
                 _stage["board_group"] = "/gnss%d" % _gpu
                 _stage["tracker_stations"] = [
