@@ -360,10 +360,9 @@ Findings
   telescope takes the system time at startup as its time origin
   (``lib/utils/CHORDTelescope.cpp:270``), and about 60 fringe-stopped visibilities and weights
   of an integration differed between two identical runs. The tests now fix the origin.
-* **The hdf5FileWrite decimation writes one frame too many** (T10). With ``write_x_frames`` X
-  and ``per_y_frames`` Y it writes the first X + 1 of every Y frames, not the first X as
-  documented: ``frame_counter % per_y_frames > write_x_frames``
-  (``lib/stages/hdf5FileWrite.cpp:708``) skips frames X + 1 to Y - 1 only. T10 expects the documented frames and fails on this.
+* **The hdf5FileWrite decimation wrote one frame too many** (T10). With ``write_x_frames`` X
+  and ``per_y_frames`` Y it wrote the first X + 1 of every Y frames, not the first X as
+  documented. Fixed in #1797.
 * Over 8640 frames (362 s simulated) everything stays exact (T10): 2880 BB/FRB1 lifetimes, 1439
   FRB2 lifetimes, 959 bad feed changes and 359 N2 integrations switch on time, every writer gets
   every frame, the FRB PL mask and the N2 counts follow the loss, and resident memory grows by

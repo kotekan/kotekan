@@ -99,14 +99,13 @@ Expectations only, re-checked on kept output:
 
 ## Result (pathfinder, cx67, Release)
 
-**FAIL**, only in the frame decimation of `hdf5FileWrite` (last row). It writes the first
-X + 1 of every Y frames, not the first X as documented: `frame_counter % per_y_frames >
-write_x_frames` (lib/stages/hdf5FileWrite.cpp:708) writes frame X too. Every pipeline check
-passes.
+**PASS** with the hdf5FileWrite fix of #1797; every check is exact. Without that fix T10 failed
+in the frame decimation only: `hdf5FileWrite` wrote the first X + 1 of every Y frames instead of
+the first X as documented (N2 17 frequencies, FRB2 frames 0, 1, 359, 360, …).
 
 | check | result |
 |---|---|
-| run | 8640 frames, 362 s simulated; kotekan 582 s wall-clock, 13.9 to 17.9 frames/s per tenth of the run, no trend |
+| run | 8640 frames, 362 s simulated; kotekan about 585 s wall-clock, 13 to 19 frames/s per tenth of the run, no trend |
 | frames | every writer got all its frames, contiguous `fpga_seq_num` |
 | masks | 2880 + 8640 frames, 959 changes, equal to the schedule, streams agree |
 | beams | BB 2880 and FRB2 1439 frames hold the configured beams at `seq0 + k L`, `seq0 + T* + k L₂` |
@@ -115,8 +114,8 @@ passes.
 | FRB PL mask | 1439 frames, 2 352 584 invalid samples, exact |
 | N2 | 359 contiguous integrations; counts and flags (8 to 20 elements flagged) exact; no NaN or Inf |
 | FRB2 | beam 92 holds the peak in all 384 channels in all 10 frames; no NaN or Inf |
-| memory | 7160 MiB, growth +1.6 MiB; one sample +475 MiB during an FRB2 write; GPU 11 092 MiB throughout |
-| decimation | the first X + 1 of every Y frames written: N2 17 frequencies, FRB2 frames 0, 1, 359, 360, … |
+| memory | 7160 MiB, growth +1.5 MiB; single samples up to +475 MiB during an FRB2 write; GPU 11 092 MiB throughout |
+| decimation | the first 16 of every 384 N2 frequencies; FRB2 frames 0, 359, 718, 1077, 1436 |
 
 The test takes about 15 minutes (5 of them for the check) and writes 4.2 GB in 26 274 files:
 FRB2 3.3 GB, N2 0.6 GB, the rest 0.3 GB.
