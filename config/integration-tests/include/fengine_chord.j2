@@ -38,6 +38,9 @@ telescope:
     dish_separation_x_m: 6.3
     dish_separation_y_m: 8.5
 
+    # North is +y (grid_y_idx), east is +x (grid_x_idx). With `half_filled`, dishes 256 to 511, the
+    # northern half, are Missing, as in an array that is filled from the south.
+
     dish_inputs:
 {% for y in range(0, 24) %}
 {%   for x in range(0, 24) %}
@@ -47,7 +50,7 @@ telescope:
       grid_y_idx: {{y}}
       feed_pos_disp_m: [0.0, 0.0, 0.0]
       coelev_disp_deg: 0.0
-      type: ArrayDish
+      type: {{ 'Missing' if half_filled | default(false) and x+24*y >= 256 else 'ArrayDish' }}
       label: CHORD-{{"ABCDEFGHIJKLMNOPQRSTUVWXYZ"[y]}}{{"{:02d}".format(x+1)}}
 {%     endif %}
 {%   endfor %}
