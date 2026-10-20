@@ -12,7 +12,7 @@
 #include <algorithm>  // for clamp
 #include <array>      // for array
 #include <cassert>    // for assert
-#include <cmath>      // for exp2, floor, log2, lrint, sqrt, M_PI
+#include <cmath>      // for exp2, floor, isfinite, log2, lrint, sqrt, M_PI
 #include <complex>    // for complex, imag, polar, real
 #include <cstddef>    // for ptrdiff_t
 #include <cstdint>    // for int8_t, int32_t
@@ -166,6 +166,14 @@ public:
                     unique_name, bb_beam_positions_frame_id)));
             if (!bb_beam_positions_frame)
                 return;
+            for (int beam = 0; beam < bb_num_beams; ++beam) {
+                const float n_x = bb_beam_positions_frame[2 * beam + 0];
+                const float n_y = bb_beam_positions_frame[2 * beam + 1];
+                if (!std::isfinite(n_x) || !std::isfinite(n_y))
+                    FATAL_ERROR("{:s}[{:d}]: beam {:d} has a non-finite position ({:g}, {:g})",
+                                bb_beam_positions_buffer->buffer_name, bb_beam_positions_frame_id,
+                                beam, n_x, n_y);
+            }
 
             DEBUG("[{:s}/{:d}] Waiting for buffer...", bf_mask_buffer->buffer_name, frame_index);
             const std::int8_t* const bf_mask_frame =
