@@ -45,7 +45,7 @@ GnssN2Project::GnssN2Project(Config& config, const std::string& unique_name,
     tracker_stations(config.get_default<std::vector<int>>(unique_name, "tracker_stations", {})),
     k_lanes_max(config.get_default<int>(unique_name, "k_lanes_max", 8)),
     lane_max_age_s(config.get_default<double>(unique_name, "lane_max_age_s", 1.0)),
-    lane_coh_min(config.get_default<double>(unique_name, "lane_coh_min", 0.05)),
+    lane_coh_min(config.get_default<double>(unique_name, "lane_coh_min", 0.08)),
     lane_min_new_frac(config.get_default<double>(unique_name, "lane_min_new_frac", 0.1)),
     lane_conj(config.get_default<bool>(unique_name, "lane_conj", true)) {
     if (source != "eigen" && source != "lanes" && source != "lanes+residual")

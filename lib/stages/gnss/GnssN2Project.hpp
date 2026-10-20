@@ -95,7 +95,9 @@
  *                         (live_element_tiles[e >> 4] * 16 + (e & 15)). Required with lanes.
  * @conf k_lanes_max       Int. Lane directions per channel at most (8).
  * @conf lane_max_age_s    Double. A board entry older than this is ignored (1.0).
- * @conf lane_coh_min      Double. Minimum LaneDirection coherence of a usable row (0.05).
+ * @conf lane_coh_min      Double. Minimum LaneDirection coherence of a usable row (0.08: five
+ *                         times the noise floor ~1/n at 96 elements; a satellite at per-record
+ *                         SNR 0.1 per element reads ~0.11).
  * @conf lane_min_new_frac Double. Gram-Schmidt: a direction with less than this fraction of
  *                         its energy outside the basis so far is a duplicate (0.1).
  * @conf lane_conj         Bool. Conjugate the row into the N^2 frame (true).

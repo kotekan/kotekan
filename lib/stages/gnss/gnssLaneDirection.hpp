@@ -26,13 +26,20 @@ namespace gnss {
  * own-row trackers (ProjSubspace::push, v v^H) cost O(n^2) and run only for boresight
  * candidates. The direction in the raw correlator frame is conj(D) o mean, unit-normalised.
  *
- * Quality: coherence = |mean|^2 / mean(|row|^2), both summed over the elements. A pure-noise
- * row averages to dt / (2 tau) (0.5% at 10.49 ms / 1 s); a satellite at per-record SNR rho per
- * element reads ~rho / (1 + rho), and its averaged direction carries SNR rho x 2 tau / dt per
- * element. Readers gate on it; nothing here decides.
+ * Quality: coherence = |mean|^2 / mean(|row|^2), both summed over the elements. A satellite
+ * at per-record SNR rho per element reads ~rho / (1 + rho), and its averaged direction
+ * carries SNR rho x 2 tau / dt per element. Pure noise does not read zero: the phase
+ * alignment below projects every record onto the mean, so noise accumulates ~1/n of its
+ * energy along it and the floor is ~dt / (2 tau) + 1 / n (0.016 at n 96, tau 1 s; 0.027
+ * measured at n 48 in the boost test). Readers gate at a few times that; nothing here
+ * decides.
  *
- * Phase: the steered frame pins the phase to the reference element's, so consecutive records
- * add coherently; a reanchor or PRN change on the slot is a reset.
+ * Phase: steering removes the geometric phase only. Each record's row still carries the
+ * satellite's residual carrier phase and its symbol sign, common to all elements and
+ * arbitrary from record to record, so a plain average would cancel. push() aligns every
+ * record to the running mean first, by the phase of mean^H row (the O(n) form of the rank-1
+ * power iteration ProjSubspace does on v v^H): the direction is then phase-invariant and
+ * only its own phase origin is arbitrary. A PRN change on the slot is a reset.
  */
 class LaneDirection {
 public:
@@ -74,9 +81,17 @@ public:
             age = (dt_s > 0.0) ? dt_s : 1e-3;
             return;
         }
+        // Align the record's common phase to the mean: rotate v by conj(phase(mean^H v)).
+        // A record orthogonal to the mean (pure noise, or the first after a sign flip of
+        // a cold mean) keeps its phase; its weight in the mean is small anyway.
+        cd ip(0.0, 0.0);
+        for (int i = 0; i < _n; ++i)
+            ip += std::conj(m[i]) * v[i];
+        const double ipa = std::abs(ip);
+        const cd rot = ipa > 0.0 ? std::conj(ip) / ipa : cd(1.0, 0.0);
         const double a = 1.0 - std::exp(-dt_s / _tau);
         for (int i = 0; i < _n; ++i)
-            m[i] += a * (v[i] - m[i]);
+            m[i] += a * (v[i] * rot - m[i]);
         p += a * (e - p);
         age += dt_s;
     }

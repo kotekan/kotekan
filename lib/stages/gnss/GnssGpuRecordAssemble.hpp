@@ -348,7 +348,8 @@ private:
     // #190 lane directions: every running non-probe slot's averaged steered prompt row,
     // published per channel on the ProjBoard (src 2) for GnssN2Project. Config
     // elem_dir_publish off|all, elem_dir_tau_s (0.5), elem_dir_every records (4),
-    // elem_dir_coh_min (0.02). Owner "<unique_name>/lane/<prn>"; retired when the slot
+    // elem_dir_coh_min (0.05: ~3x the noise floor 1/n, so probe slots never publish). Owner
+    // "<unique_name>/lane/<prn>"; retired when the slot
     // stops or changes PRN. Rows are taken after the in-place elem projection, so a
     // victim's row carries no bright-source leakage.
     bool _lane_on = false;

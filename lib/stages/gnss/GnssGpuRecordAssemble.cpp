@@ -203,7 +203,7 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
         _lane_on = (pub == "all");
         const double tau = config.get_default<double>(unique_name, "elem_dir_tau_s", 0.5);
         _lane_every = std::max(1, config.get_default<int>(unique_name, "elem_dir_every", 4));
-        _lane_coh_min = config.get_default<double>(unique_name, "elem_dir_coh_min", 0.02);
+        _lane_coh_min = config.get_default<double>(unique_name, "elem_dir_coh_min", 0.05);
         _lane_fids = config.get_default<std::vector<int>>(unique_name, "channel_ids", {});
         _lane_group = unique_name.substr(0, unique_name.find('_'));
         const int np = (int)_prns.size();

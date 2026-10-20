@@ -105,8 +105,39 @@ BOOST_AUTO_TEST_CASE(noisy_rows_average_to_the_direction) {
     }
 }
 
-// Pure noise: the coherence sits at the dt / (2 tau) floor, far below any satellite, and the
-// power is the noise power.
+// The record phase is arbitrary: a random common phase and a random sign per record (the
+// residual carrier and the symbol) must not cancel the average. The direction still converges
+// and the coherence still reads the SNR.
+BOOST_AUTO_TEST_CASE(random_record_phase_and_sign_do_not_cancel) {
+    const int n = 48;
+    const double dt = 0.01049, tau = 1.0;
+    for (double rho : {0.3, 3.0}) {
+        Sim sim(n, 1.0);
+        const double sigma = 1.0 / std::sqrt(rho);
+        LaneDirection L(n, 1, 1, tau);
+        std::mt19937 prng(11);
+        std::uniform_real_distribution<double> u(0.0, 6.283185307);
+        std::vector<cd> v(n), out(n);
+        for (int r = 0; r < 1500; ++r) {
+            sim.row(sigma, v.data());
+            const cd ph = std::polar(1.0, u(prng)) * ((r % 3 == 0) ? -1.0 : 1.0);
+            for (cd& x : v)
+                x *= ph;
+            L.push(0, 0, v.data(), dt);
+        }
+        BOOST_CHECK(L.direction(0, 0, sim.D.data(), out.data()));
+        const double c = sim.cos2(out.data());
+        const double coh = L.coherence(0, 0);
+        BOOST_TEST_MESSAGE("random phase, rho " << rho << ": cos2 " << c << " coherence " << coh);
+        BOOST_CHECK(c > 0.9);
+        const double expect = rho / (1.0 + rho) + dt / (2.0 * tau);
+        BOOST_CHECK(coh > 0.5 * expect && coh < 2.0 * expect);
+    }
+}
+
+// Pure noise: the coherence sits at the floor dt / (2 tau) + 1 / n (the phase alignment keeps
+// ~1/n of each record's energy along the mean), far below any satellite, and the power is the
+// noise power.
 BOOST_AUTO_TEST_CASE(pure_noise_coherence_is_the_floor) {
     const int n = 48;
     const double dt = 0.01049, tau = 1.0;
@@ -118,8 +149,10 @@ BOOST_AUTO_TEST_CASE(pure_noise_coherence_is_the_floor) {
         L.push(0, 0, v.data(), dt);
     }
     const double coh = L.coherence(0, 0);
-    BOOST_TEST_MESSAGE("noise coherence " << coh << " floor " << dt / (2 * tau));
-    BOOST_CHECK(coh < 4.0 * dt / (2.0 * tau));
+    const double floor = dt / (2.0 * tau) + 1.0 / n;
+    BOOST_TEST_MESSAGE("noise coherence " << coh << " floor " << floor);
+    BOOST_CHECK(coh < 2.0 * floor);
+    BOOST_CHECK(coh > 0.25 * floor);
     BOOST_CHECK_CLOSE(L.power(0, 0), (double)n, 15.0);
 }
 
