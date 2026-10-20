@@ -602,7 +602,8 @@ void N2Accumulate::main_thread() {
         const auto& coarse_freq = frame_metadata->get_coarse_freq();
 
         // Apply a pending first-stage excision switch from the first frame starting at or
-        // after its valid seq, the rule cudaRFISKtilde applies.
+        // after its valid seq, the rule cudaRFISKtilde applies. This matches the GPU while
+        // each n2k frame covers one voltage frame.
         {
             std::lock_guard<std::mutex> lock(_rfi_first_stage_mutex);
             if (seq0 >= _next_rfi_first_stage_valid_at_seq) {

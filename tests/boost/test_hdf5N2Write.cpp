@@ -89,6 +89,9 @@ static void fill_n2_frame_with_abs_freq(Buffer* buf, int frame_id, size_t num_in
     meta->bin_end_ERA_deg = 7.89 + double(t_index);
     meta->bin_start_ERAL_deg = 1.23 + double(t_index);
     meta->bin_end_ERAL_deg = 4.56 + double(t_index);
+    // Distinct per (f, t): nodes can switch first-stage excision at different times
+    meta->n_rfi_first_stage_enabled_fpga_ticks =
+        std::min<uint64_t>(10 * f_index + t_index, frame_length_ticks);
 }
 
 
@@ -280,6 +283,16 @@ static void validate_dataset_content(File& file, size_t num_input, size_t num_ev
             BOOST_CHECK_CLOSE_FRACTION(fl_out[f][t], 1.0f - 80.0f / 100.0f, 1e-6f);
             BOOST_CHECK_CLOSE_FRACTION(fr_out[f][t], 5.0f / 100.0f, 1e-6f);
         }
+    }
+
+    // first-stage excision fraction, every (freq, time)
+    {
+        std::vector<std::vector<float>> out;
+        file.getDataSet("/frac_rfi_first_stage_enabled").read(out);
+        BOOST_REQUIRE_GE(out.size(), nfreq);
+        for (size_t fi = 0; fi < nfreq; ++fi)
+            for (size_t t = 0; t < file_nt; ++t)
+                BOOST_CHECK_CLOSE_FRACTION(out[fi][t], float(10 * fi + t) / 100.0f, 1e-6f);
     }
 
     // per-time arrays shape exists
