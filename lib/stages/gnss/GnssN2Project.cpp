@@ -436,4 +436,7 @@ void GnssN2Project::main_thread() {
         out_buf->mark_frame_full(unique_name, out_id++);
         in_buf->mark_frame_empty(unique_name, in_id++);
     }
+    if (use_lanes)
+        INFO("GnssN2Project {:s}: {:d} frames; lane directions used {:d}, duplicates {:d}",
+             source, (int)frame_count, (int)lane_used, (int)lane_dup);
 }

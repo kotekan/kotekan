@@ -178,7 +178,8 @@ if(FFTW_FOUND)
                 gnss/GnssN2RecordAssemble.cpp
                 gnss/GnssChordDequantize.cpp
                 gnss/GnssChanAlignMerge.cpp
-                gnss/GnssN2Project.cpp)
+                gnss/GnssN2Project.cpp
+                gnss/GnssProjBoardTestPub.cpp)
     if(USE_CUDA)
         target_sources(kotekan_stages PRIVATE gnss/cudaGnssChordTrack.cpp gnss/cudaGnssInject.cpp)
     endif()
