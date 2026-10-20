@@ -194,6 +194,39 @@ inline constexpr SignalDescriptor GPS_L5_Q_NH = {
     /*tdm_phase=*/0,
 };
 
+/// SBAS L5 Q (1176.45 MHz), the dataless pilot of the WAAS/EGNOS/MSAS/GAGAN GEOs (PRNs
+/// 120..158): the GPS L5 code family (gpsL5Code, the ICD's XB advance for the SBAS PRNs) under
+/// the 2-chip Manchester secondary (+1, -1; 2 ms), not NH20. The I channel carries 250 bps
+/// through rate-1/2 FEC (500 sps) with the same Manchester overlay; the pilot is what a lane
+/// direction needs (#190: the WAAS GEOs sit at 1176 permanently, el 33 due south from DRAO).
+inline constexpr SignalDescriptor SBAS_L5_Q = {
+    "SBAS_L5_Q",
+    1176.45e6,
+    10.23e6,
+    10230,
+    1e-3,
+    Modulation::BPSK,
+    0,
+    0,
+    /*secondary_length=*/2,
+    /*time_multiplexed=*/false,
+    /*tdm_phase=*/0,
+};
+/// SBAS L5 Q with the Manchester overlay tiled into the code: one 20460-chip, 2 ms code, as
+/// GPS_L5_Q_NH tiles NH20. The overlay phase follows from the satellite's code periods.
+inline constexpr SignalDescriptor SBAS_L5_Q_MC = {
+    "SBAS_L5_Q_MC",
+    1176.45e6,
+    10.23e6,
+    20460,
+    2e-3,
+    Modulation::BPSK,
+    0,
+    0,
+    /*secondary_length=*/0,
+    /*time_multiplexed=*/false,
+    /*tdm_phase=*/0,
+};
 /// Galileo E1-C (1575.42 MHz, the GPS L1 carrier), the OS dataless pilot: 4092-chip memory
 /// code at 1.023 Mcps (4 ms). Transmitted CBOC(6,1,1/11) and modelled as BOC(1,1), which loses
 /// ~0.4 dB. Shared CS25 secondary (100 ms). Code: galileoE1Code (ICD Annex C tables).

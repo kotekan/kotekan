@@ -718,7 +718,10 @@ def predict_all(
         )
         if e is None:
             continue
-        if health_gate and e.get("health", 0) not in (0, 0.0) and key[0] != "C":
+        if health_gate and e.get("health", 0) not in (0, 0.0) and key[0] not in "CS":
+            # SBAS is exempt too: the RINEX S health is MT17's status bitmask (ranging /
+            # corrections / integrity flags; WAAS reads 31 with the signal on the air),
+            # and a lane direction (#190) needs the transmission, not a ranging licence.
             # BeiDou is exempt: SatH1 describes B1I, so a BDS-3 satellite can carry SatH1 = 1
             # while the signal a chain tracks is fine, and the gate would drop it.
             # TODO: try the strict gate for C on sky; if no healthy satellite is lost, remove

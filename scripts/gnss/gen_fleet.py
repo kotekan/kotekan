@@ -135,7 +135,7 @@ def flags_from(mapping):
 #   DEAD     (slot, no active satellite)             -> wasted capacity: warns.
 #   DARK     (slot, active, cannot broadcast it)     -> a noise probe on a chain that sets
 #                                                       probe-dark: noted; elsewhere DEAD.
-SYS_OF = {"GPS": "G", "GAL": "E", "BDS": "C", "GLO": "R"}
+SYS_OF = {"GPS": "G", "GAL": "E", "BDS": "C", "GLO": "R", "SBAS": "S"}
 LAT, LON, ALT = 49.32075144444, -119.62081125, 545.0
 # Capability, not just activity: BeiDou B2a/B2b are BDS-3 signals the BDS-2 satellites do not
 # broadcast, and L2C/L5 are carried only by the newer GPS blocks, so leaving those satellites

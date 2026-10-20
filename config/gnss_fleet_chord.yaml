@@ -210,6 +210,10 @@ common:
         # that rise above 10 deg here (the rise threshold of gen_fleet.py --check-prns). A
         # satellite that cannot be up costs 4 lanes and produces noise.
         - BDS_B2A_P_CS:6,7,8,11,12,13,14,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42
+        # SBAS L5-Q (the WAAS GEOs, #190 coverage): PRNs 131 Eutelsat 117 West B, 133 SES-15, 135
+        # Galaxy 30, 138 ANIK F1R, geostationary at el ~33 due south of DRAO; state vectors from
+        # the IGS BRDC's S records. Model-primary (no search), lanes for the projection.
+        - SBAS_L5_Q_MC:131,133,135,138
 
         # 1207.14 MHz: Galileo E5b-Q, the same list as E5a.
         - GAL_E5B_Q_CS:2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,18,19,21,22,23,24,25,26,27,28,29,30,31,32,33,34,36

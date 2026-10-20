@@ -564,6 +564,26 @@ chains:
   # integration past 20 ms needs the nav-bit wipe no chain runs. `signal: bds_b3i` implies no
   # capability gate and no PRN floor (BDS-2 and BDS-3 both broadcast B3I), so the broker
   # predicts, maps and seeds every BeiDou PRN, C06-C08 and C11-C14 among them.
+    # SBAS L5 (#190 coverage): the WAAS GEOs 131/133/135/138 on the GPS L5 code family under
+    # the 2-chip Manchester overlay (SBAS_L5_Q_MC), geostationary at el ~33 due south of DRAO,
+    # state vectors from the IGS BRDC's S records (gnss_ephemeris, 2 h age). Model-primary
+    # like glo_l3oc: no search, the dead-reckon seed from the ephemeris (a GEO's range is known
+    # to metres and its Doppler is ~0), the joint clock adopted. No signal-capability: the
+    # registry has no SBAS block types; the manifest's PRN list is the capable set. The
+    # chain's tag is _l5 (signal_tag of SBAS_L5_Q_MC), so its node endpoints read gnss<g>_l5_*.
+    sbas_l5:
+        signal: sbas_l5
+        presence-admit-displaced: true
+        seed-phase-transport: true
+        dr-clock-adopt: true
+        joint-consume: clk,rate
+        fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
+        fleet-trim-bandwidth: 2.5
+        fleet-trim-readback: 1
+        trackers: "http://cx19:12048/gnss{0..1}_l5_inject,http://cx27:12048/gnss{0..1}_l5_inject,http://cx42:12048/gnss{0..1}_l5_inject,http://cx43:12048/gnss{0..1}_l5_inject,http://cx44:12048/gnss{0..1}_l5_inject,http://cx51:12048/gnss{0..1}_l5_inject"
+        combiner: gnss0_l5_n2combine
+        spectrum-endpoints: "http://cx19:12048/gnss{0..1}_l5_n2assemble,http://cx27:12048/gnss{0..1}_l5_n2assemble,http://cx42:12048/gnss{0..1}_l5_n2assemble,http://cx43:12048/gnss{0..1}_l5_n2assemble,http://cx44:12048/gnss{0..1}_l5_n2assemble,http://cx51:12048/gnss{0..1}_l5_n2assemble"
+        dll-combiners: "http://cx19:12048/gnss{0..1}_l5_n2combine,http://cx27:12048/gnss{0..1}_l5_n2combine,http://cx42:12048/gnss{0..1}_l5_n2combine,http://cx43:12048/gnss{0..1}_l5_n2combine,http://cx44:12048/gnss{0..1}_l5_n2combine,http://cx51:12048/gnss{0..1}_l5_n2combine"
     bds_b3i:
         signal: bds_b3i
         dr-clock-adopt: true

@@ -16,6 +16,10 @@ namespace gnss {
 static std::vector<int8_t> gen_l5_nh10() {
     return {gps::L5_NH10.begin(), gps::L5_NH10.end()};
 }
+// The SBAS L5 Manchester overlay (+1, -1): both the I (500 sps data) and Q (pilot) channels.
+static std::vector<int8_t> gen_l5_mc2() {
+    return {1, -1};
+}
 static std::vector<int8_t> gen_e5ai_cs20() {
     const auto o = galileo::e5ai_secondary(); // shared 20-chip CS20 (E5a-I data channel)
     return {o.begin(), o.end()};
@@ -43,6 +47,7 @@ static std::vector<int8_t> gen_l3oc_bc5() {
 static const OverlayDescriptor OVERLAY_REGISTRY[] = {
     // GPS L5 I5 data: 10-chip Neuman-Hofman under the CNAV symbol.
     {"L5_NH10", 10, gen_l5_nh10, "GPS_L5_I"},
+    {"L5_MC2", 2, gen_l5_mc2, "SBAS_L5_Q"},
     // Galileo E5a-I data: shared 20-chip CS20 under the F/NAV symbol (20 ms per symbol).
     {"E5A_CS20", 20, gen_e5ai_cs20, "GAL_E5A_I"},
     // BeiDou-3 B2a data: shared 5-chip secondary under the B-CNAV2 symbol (5 ms per symbol).

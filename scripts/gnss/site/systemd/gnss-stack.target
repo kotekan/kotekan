@@ -18,6 +18,7 @@ Wants=gnss-obs@gps_l5.service gnss-obs@gps_l2c.service
 Wants=gnss-obs@gal_e5a.service gnss-obs@gal_e5b.service gnss-obs@gal_e6.service
 Wants=gnss-obs@bds_b2a.service gnss-obs@bds_b2b.service gnss-obs@bds_b3i.service
 Wants=gnss-obs@glo_l3oc.service gnss-obs@glo_l2oc.service
+Wants=gnss-obs@sbas_l5.service
 
 [Install]
 WantedBy=default.target

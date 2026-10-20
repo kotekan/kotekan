@@ -43,7 +43,7 @@ _HPP = os.path.normpath(
 )
 
 # name prefix -> the single-letter constellation the broker and RINEX both use
-_SYS = {"GPS": "G", "GAL": "E", "BDS": "C", "GLO": "R"}
+_SYS = {"GPS": "G", "GAL": "E", "BDS": "C", "GLO": "R", "SBAS": "S"}
 
 _DESC_RX = re.compile(
     r"inline\s+constexpr\s+SignalDescriptor\s+(\w+)\s*=\s*\{\s*"
@@ -87,6 +87,9 @@ _CHAINS = {
     "gps_l1c": ("GPS_L1C_P", None, None),
     "gps_l2c": ("GPS_L2C_CM", "GPS_L2C_CL", None),
     "gps_l5": ("GPS_L5_Q", "GPS_L5_Q_NH", None),
+    # SBAS L5: the WAAS GEOs (PRNs 131, 133, 135, 138) on the GPS L5 code family under a
+    # 2-chip Manchester overlay; RINEX S records give their state vectors (#190 coverage).
+    "sbas_l5": ("SBAS_L5_Q", "SBAS_L5_Q_MC", None),
     "gal_e1c": ("GAL_E1C", None, None),
     "gal_e5a": ("GAL_E5A_Q", "GAL_E5A_Q_CS", None),
     "gal_e5b": ("GAL_E5B_Q", "GAL_E5B_Q_CS", None),
