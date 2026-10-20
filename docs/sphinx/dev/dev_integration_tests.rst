@@ -234,8 +234,8 @@ upchannelizer output start ``T*``, ``coarse_freq`` / ``freq_upchan_factor`` /
      - As T9 without poison; masks from two ``bufferBadInputs``, all good until a POST to
        ``/updatable_config/bad_inputs``.
      - both mask streams, BB phases, FRB1 weights, S012tilde, N2
-     - Each stream changes once to the posted set, both at the same sample; A, W, S0tilde and
-       the N2 flags follow.
+     - Each stream changes once to the posted set, at the first common boundary at or after the
+       posted FPGA start time; A, W, S0tilde and the N2 flags follow.
      - exact
    * - T10 Long run
      - Noise plus tone, 0.01% loss, changing bad feeds, short lifetimes, 10 minutes.
@@ -335,12 +335,13 @@ Findings
   window holds no unmasked poison are bit-identical with and without poison (the last FRB sample
   of each weight frame straddles the mask change and is exposed), S012tilde sums only the good
   inputs, and good N2 products are unchanged.
-* **Two ``bufferBadInputs`` stages switch at different samples** (T9r). Each applies a posted
-  update to the frames it produces after the start time (``lib/stages/bufferBadInputs.cpp:257``),
-  and each runs ahead of its consumers by its own buffer depth, so in three runs the one-frame
-  stream for ``N2Accumulate`` changed 11 to 23 frames after the beamformer stream. Together with
-  the lifetime conflict above, a production config has no way to give N2 and the beamformers
-  the same mask at the same sample.
+* **Two ``bufferBadInputs`` stages switched at different samples** (T9r). Each applied a posted
+  update to the frames it produced after the start time by the wall clock, and each runs ahead
+  of its consumers by its own buffer depth. In three runs the one-frame stream for
+  ``N2Accumulate`` changed 11 to 23 frames after the beamformer stream.
+  #1793 applies updates by FPGA time, at a configurable alignment boundary
+  (``bf_mask_update_alignment_in_samples``). With the same boundary for both stages, N2 and the
+  beamformers now get the same mask at the same sample.
 * **First-stage RFI excision flags everything when more than 20% of the inputs are masked**
   (T9). The SK validity threshold ``rfi_feed_averaged_min_good_frac`` (0.8 in ``config/fengine``)
   counts masked inputs as missing samples, so for the half-filled array SKtilde is invalid, the
