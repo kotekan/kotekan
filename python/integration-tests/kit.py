@@ -423,13 +423,13 @@ def frb2_peak_line(frb2, expected_beam):
         peaks = tone.argmax(axis=0)[bad]
         require(
             False,
-            f"{frb2.name}: beam {expected_beam} has only {share[bad].min():.3f} of the peak "
+            f"frb2_beams: beam {expected_beam} has only {share[bad].min():.3f} of the peak "
             f"tone power (peak in beams {np.unique(peaks).tolist()}) in {bad.sum()} of "
             f"{tone.shape[1]} channels",
         )
     ties = (tone >= 0.98 * tone.max(axis=0)).sum(axis=0) > 1
     return (
-        f"{frb2.name}: beam {expected_beam} holds the peak in all {tone.shape[1]} channels "
+        f"frb2_beams: beam {expected_beam} holds the peak in all {tone.shape[1]} channels "
         f"({ties.sum()} ties with grating lobes)"
     )
 
