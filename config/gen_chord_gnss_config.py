@@ -2514,6 +2514,37 @@ def iface_stamp():
     return iface.stamp_line(iface.golden())
 
 
+def check_tree_golden():
+    """Warn when the kotekan tree here carries an interface golden whose signals or sizing
+    sections differ from the vendored one, which the frames are sized from: a binary built from
+    that tree would not match these configs until the vendored golden is synced from it."""
+    if not kotekan_src.SRC:
+        return
+    path = kotekan_src.src(iface.KOTEKAN_GOLDEN)
+    if not os.path.exists(path):
+        return
+    g = iface.golden()
+    try:
+        with open(path) as fh:
+            have = iface.section_digests(json.load(fh))
+        moved = [
+            s
+            for s in ("signals",) + iface.SIZING
+            if have.get(s) != g.section_digests[s]
+        ]
+    except (OSError, ValueError, KeyError, TypeError, AttributeError) as e:
+        moved = ["(unreadable: %s)" % e]
+    if moved:
+        print(
+            f"WARNING: {path} differs from the vendored interface golden (pin kotekan "
+            f"{g.commit[:12]}) in {', '.join(moved)}. The frames are sized from the vendored "
+            "one, so a binary built from this tree will not match these configs. Sync it, "
+            f"from python/scripts/gnss: python3 -m gnss_broker.iface sync --from "
+            f"{kotekan_src.SRC}",
+            file=sys.stderr,
+        )
+
+
 def check_descriptors(cfg, args):
     """Refuse a descriptor the interface golden does not define, naming it: a binary built
     from the kotekan the golden pins would not resolve it, and the node would stop at stage
@@ -2999,6 +3030,7 @@ def main():
         raise SystemExit(f"unknown node {args.node}")
     check_telem_windows()
     check_descriptors(cfg, args)
+    check_tree_golden()
 
     # Record epoch (see check_frame0). Only a pinned epoch probes the running fleet.
     pinned = bool(cfg["fengine"].get("frame0_utc")) or bool(args.frame0_nano)

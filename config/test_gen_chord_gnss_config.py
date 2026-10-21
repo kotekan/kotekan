@@ -10,11 +10,13 @@ nothing, and every probe that does run here goes to a stubbed urllib.request.url
 import argparse
 import ast
 import contextlib
+import copy
 import io
 import json
 import os
 import re
 import shlex
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -48,10 +50,15 @@ def node_cfg():
         return yaml.safe_load(fh)
 
 
-def run_gen(*argv):
-    """The generator as a subprocess from the repo root: (returncode, stdout, stderr)."""
+def run_gen(*argv, env=None):
+    """The generator as a subprocess from the repo root, with env added to this environment:
+    (returncode, stdout, stderr)."""
     p = subprocess.run(
-        [sys.executable, GEN, *argv], capture_output=True, text=True, cwd=ROOT
+        [sys.executable, GEN, *argv],
+        capture_output=True,
+        text=True,
+        cwd=ROOT,
+        env=None if env is None else dict(os.environ, **env),
     )
     return p.returncode, p.stdout, p.stderr
 
@@ -261,6 +268,61 @@ def test_unknown_descriptor_is_refused():
         extra_signal=["SBAS_L5_Q_MC:131"], aggregator_extra_search=["GAL_E5A_Q"]
     )
     g.check_descriptors(cfg, args)  # every name known: no exit
+
+
+def test_a_kotekan_golden_that_moved_is_warned():
+    """The frames are sized from the vendored golden. A kotekan tree whose own golden differs
+    from it in signals or a sizing section is warned, naming the sync; the config is the same.
+    Nothing is said when the two agree, when they differ elsewhere, or with no golden there."""
+    d = tempfile.mkdtemp(prefix="gen_tree_golden_")
+    path = os.path.join(d, iface.KOTEKAN_GOLDEN)
+    real = kotekan_src.SRC
+
+    def said(doc):
+        """What the check says of a tree holding doc as its golden (None: no golden)."""
+        if doc is not None:
+            with open(path, "w") as fh:
+                fh.write(iface.format_golden(doc))
+        elif os.path.exists(path):
+            os.unlink(path)
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            g.check_tree_golden()
+        return err.getvalue()
+
+    try:
+        os.makedirs(os.path.dirname(path))
+        kotekan_src.SRC = d
+        doc = copy.deepcopy(iface.golden().doc)
+        check(said(doc) == "", "the vendored golden itself: nothing said")
+        doc["sections"]["record.elem"]["ELEM_FLOATS"] += 1
+        check(said(doc) == "", "a change outside signals and sizing: nothing said")
+        doc["sections"]["record.row"]["RECORD_FLOATS"] += 1
+        err = said(doc)
+        check(
+            err.startswith("WARNING: ")
+            and " in record.row. " in err
+            and "python3 -m gnss_broker.iface sync --from %s" % d in err,
+            "a sizing section moved: warned, naming the sync (%r)" % err[:200],
+        )
+        check(said(None) == "", "no golden in the tree: nothing said")
+        kotekan_src.SRC = None
+        check(said(None) == "", "no kotekan tree: nothing said")
+        with open(path, "w") as fh:
+            fh.write(iface.format_golden(doc))
+        flags = ("--base", BASE, "--node", "cx19", "--gather-instance")
+        rc0, out0, err0 = run_gen(*flags)
+        rc1, out1, err1 = run_gen(*flags, env={"KOTEKAN_SRC": d})
+        check(
+            rc0 == rc1 == 0
+            and out1 == out0
+            and "sync --from" not in err0
+            and "sync --from %s" % d in err1,
+            "the generator warns and writes the same config (rc %d, %d)" % (rc0, rc1),
+        )
+    finally:
+        kotekan_src.SRC = real
+        shutil.rmtree(d, ignore_errors=True)
 
 
 def test_recipe_lines():
