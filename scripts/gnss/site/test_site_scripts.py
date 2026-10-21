@@ -808,7 +808,7 @@ def test_install_user_units_will_not_move_the_stack_unasked():
         shutil.rmtree(d, ignore_errors=True)
 
 
-def test_run_component_exports_kotekan_src_to_the_broker_alone():
+def test_run_component_exports_no_kotekan_src():
     d = os.path.realpath(tempfile.mkdtemp(prefix="site_print_"))
     try:
         k, kt = site_tree(d, "run_component.sh", "stack_components.sh")
@@ -833,15 +833,12 @@ def test_run_component_exports_kotekan_src_to_the_broker_alone():
             "the broker runs from the checkout the scripts are in",
         )
         check(
-            "env\tKOTEKAN_SRC=%s\n" % kt in out["broker"],
-            "the broker's environment carries KOTEKAN_SRC, the kotekan tree beside it",
-        )
-        check(
             "argv\t%s/build_nodpdk/kotekan/kotekan\n" % kt in out["gather"],
-            "the gather runs that kotekan tree's binary",
+            "the gather runs the binary of the kotekan tree beside the checkout",
         )
-        others = [n for n in out if n != "broker" and "env\tKOTEKAN_SRC" in out[n]]
-        check(not others, "no other component exports KOTEKAN_SRC (%s)" % others)
+        # The broker speaks the interface golden it carries and reads nothing from kotekan.
+        exporting = [n for n in out if "env\tKOTEKAN_SRC" in out[n]]
+        check(not exporting, "no component exports KOTEKAN_SRC (%s)" % exporting)
         check(
             "env\tGNSS_CHAIN=gps_l5\n" in out["obs"],
             "an obs writer's GNSS_CHAIN, set by its unit, is still listed",

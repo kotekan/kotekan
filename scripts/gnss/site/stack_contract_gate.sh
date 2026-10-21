@@ -21,7 +21,7 @@ check() {
     checked=$((checked + 1))
     local want_argv have_argv want_env v val
     # What the unit gets, not what this shell would pass on: systemd gives a unit no KOTEKAN_SRC,
-    # and the broker's definition sets its own.
+    # and no definition sets one.
     want_argv=$(env -u KOTEKAN_SRC GNSS_CHAIN="$chain" "$here/run_component.sh" --print "$name" | awk -F'\t' '$1=="argv"{print $2}')
     have_argv=$(tr '\0' '\n' < "/proc/$pid/cmdline")
     if [ "$want_argv" != "$have_argv" ]; then

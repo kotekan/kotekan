@@ -319,11 +319,6 @@ reproduced command line with a dropped `export`, which an argv-only comparison w
 eleven obs writers. Run with no component named on a host where none is running, it checked
 nothing and exits non-zero.
 
-⚠️ The broker's definition now exports `KOTEKAN_SRC`. A broker started before that reached the
-live checkout reports `broker ENV MISSING: KOTEKAN_SRC=/home/kvand/gnss/kotekan` until its next
-restart: the one expected mismatch, and harmless (the broker finds the same tree without it).
-Clear it with a broker restart that is due anyway, at least 10 min after any aggregator restart.
-
 ### Editing
 
 ```sh
