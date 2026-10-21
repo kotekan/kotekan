@@ -78,15 +78,6 @@ networkPowerStream::networkPowerStream(Config& config, const std::string& unique
     header.handshake_utc = -1;
 
     frame_idx = 0;
-
-    // Prevent SIGPIPE on send failure.
-    // This is used for MacOS, since linux doesn't have SO_NOSIGPIPE
-#ifdef SO_NOSIGPIPE
-    int set = 1;
-    if (setsockopt(socket_fd, SOL_SOCKET, SO_NOSIGPIPE, (void*)&set, sizeof(int)) < 0) {
-        ERROR("bufferSend: setsockopt() NOSIGPIPE ");
-    }
-#endif
 }
 
 networkPowerStream::~networkPowerStream() {}
@@ -157,7 +148,8 @@ void networkPowerStream::main_thread() {
             }
             if (tcp_connected) {
                 atomic_flag_clear(&socket_lock);
-                for (int t = 0; t < times; t++) {
+                bool lost = false;
+                for (int t = 0; t < times && !lost; t++) {
                     packet_header->frame_idx = frame_idx++;
                     for (int p = 0; p < elems; p++) {
                         packet_header->elem_idx = p;
@@ -165,7 +157,8 @@ void networkPowerStream::main_thread() {
                             ((uint*)frame)[t * elems * (freqs + 1) + p * (freqs + 1) + freqs];
                         memcpy(local_data, frame + (t * elems + p) * (freqs + 1) * sizeof(uint),
                                freqs * sizeof(uint));
-                        uint32_t bytes_sent = send(socket_fd, packet_buffer, packet_length, 0);
+                        uint32_t bytes_sent =
+                            send(socket_fd, packet_buffer, packet_length, MSG_NOSIGNAL);
                         if (bytes_sent != packet_length) {
                             ERROR("Lost TCP connection!");
                             while (atomic_flag_test_and_set(&socket_lock)) {
@@ -173,6 +166,7 @@ void networkPowerStream::main_thread() {
                             close(socket_fd);
                             tcp_connected = false;
                             atomic_flag_clear(&socket_lock);
+                            lost = true;
                             break;
                         }
                     }
@@ -210,6 +204,10 @@ void networkPowerStream::tcpConnect() {
     socket_fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (socket_fd == -1) {
         ERROR("Could not create TCP socket for output stream");
+        while (atomic_flag_test_and_set(&socket_lock)) {
+        }
+        tcp_connecting = false;
+        atomic_flag_clear(&socket_lock);
         return;
     }
 
@@ -227,6 +225,14 @@ void networkPowerStream::tcpConnect() {
         return;
     }
     setsockopt(socket_fd, SOL_SOCKET, SO_SNDTIMEO, (char*)&timeout, sizeof(timeout));
+    // Prevent SIGPIPE on send failure.
+    // This is used for MacOS, since linux doesn't have SO_NOSIGPIPE
+#ifdef SO_NOSIGPIPE
+    int set = 1;
+    if (setsockopt(socket_fd, SOL_SOCKET, SO_NOSIGPIPE, (void*)&set, sizeof(int)) < 0) {
+        ERROR("networkPowerStream: setsockopt() NOSIGPIPE ");
+    }
+#endif
 
     { // put together handshake
         while (atomic_flag_test_and_set(&socket_lock)) {
@@ -234,13 +240,14 @@ void networkPowerStream::tcpConnect() {
         header.handshake_idx = handshake_idx;
         header.handshake_utc = handshake_utc;
         atomic_flag_clear(&socket_lock);
-        int bytes_sent = send(socket_fd, (void*)&header, sizeof(header), 0);
+        int bytes_sent = send(socket_fd, (void*)&header, sizeof(header), MSG_NOSIGNAL);
         if (bytes_sent != sizeof(header)) {
             ERROR("Could not send TCP header for output stream");
             while (atomic_flag_test_and_set(&socket_lock)) {
             }
             close(socket_fd);
             tcp_connected = false;
+            tcp_connecting = false;
             atomic_flag_clear(&socket_lock);
             return;
         }
@@ -258,7 +265,7 @@ void networkPowerStream::tcpConnect() {
         //  YX  XY  YY  XX  LR  RL  LL  RR  I   Q   U   V
         for (int e = 0; e < elems; e++)
             ((char*)((char*)info + info_size - elems * sizeof(char)))[e] = -5 - e;
-        bytes_sent = send(socket_fd, info, info_size, 0);
+        bytes_sent = send(socket_fd, info, info_size, MSG_NOSIGNAL);
         free(info);
         if (bytes_sent != info_size) {
             ERROR("Could not send TCP header for output stream");
@@ -266,6 +273,7 @@ void networkPowerStream::tcpConnect() {
             }
             close(socket_fd);
             tcp_connected = false;
+            tcp_connecting = false;
             atomic_flag_clear(&socket_lock);
             return;
         }
