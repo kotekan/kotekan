@@ -47,6 +47,28 @@ def _split_header(text):
     return "".join(lines[:n]), "".join(lines[n:])
 
 
+# The generator's interface stamp (gnss_broker/iface.py stamp_line): the golden the frames were
+# sized from. --check leaves it out of the comparison: it configures nothing (the deploy
+# preflight checks it against the binary), and a config written before the stamp has none,
+# which must not read as a difference.
+_STAMP = "# gnss_iface: "
+
+
+def _stamp(text):
+    """The config's gnss_iface stamp line, or None."""
+    for line in _split_header(text)[0].splitlines():
+        if line.startswith(_STAMP):
+            return line
+    return None
+
+
+def _drop_stamp(text):
+    head, body = _split_header(text)
+    return (
+        "".join(ln for ln in head.splitlines(True) if not ln.startswith(_STAMP)) + body
+    )
+
+
 def _drop_live(text):
     """Blank the live values in a rendered config: the Earth-orientation table and bffs's
     bad-input block. Both are fetched at generation time and move on their own (the EOP window
@@ -448,12 +470,22 @@ def main():
             for kind, path, detail, _ in undeclared[:12]:
                 print("    !!  %s %s  %s" % (kind, path, detail))
         # The EOP table and bad-input block are live data that move on their own: blank them on
-        # both sides (_drop_live) and keep everything else byte-exact.
-        have_c, text_c = _drop_live(have), _drop_live(text)
+        # both sides (_drop_live), leave the interface stamp out (_drop_stamp), and keep
+        # everything else byte-exact.
+        have_s, text_s = _drop_stamp(have), _drop_stamp(text)
+        have_c, text_c = _drop_live(have_s), _drop_live(text_s)
         if have_c == text_c and have != text:
+            why = []
+            if _stamp(have) != _stamp(text):
+                why.append(
+                    "the gnss_iface stamp%s"
+                    % (" (none on disk)" if _stamp(have) is None else "")
+                )
+            if have_s != text_s:
+                why.append("live data: EOP table / bad inputs")
             print(
-                "ok*      %s  (differs only in live data: EOP table / bad inputs)"
-                % os.path.relpath(out, K)
+                "ok*      %s  (differs only in %s)"
+                % (os.path.relpath(out, K), "; ".join(why))
             )
             continue
         if have == text:
@@ -461,10 +493,14 @@ def main():
         else:
             bad.append(node)
             print("DIFFERS  %s" % os.path.relpath(out, K))
+            if _stamp(have) != _stamp(text):
+                print("    (the gnss_iface stamp differs too; not in the diff below)")
+            # The diff of what the verdict compared: without the stamp, which an unstamped
+            # config on disk would otherwise open with and count in its line total.
             d = list(
                 difflib.unified_diff(
-                    have.splitlines(),
-                    text.splitlines(),
+                    have_s.splitlines(),
+                    text_s.splitlines(),
                     "committed",
                     "regenerated",
                     lineterm="",
