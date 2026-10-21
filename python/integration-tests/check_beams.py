@@ -121,7 +121,8 @@ def frb2_angles(config):
     """The production FRB2 beam positions in degrees, beam by beam."""
     if find_stages(config, "setFRBBeams")[0]["mode"] == "manual":
         return [
-            [math.degrees(math.asin(c)) for c in pos] for pos in frb2_beam_positions(config)
+            [math.degrees(math.asin(c)) for c in pos]
+            for pos in frb2_beam_positions(config)
         ]
     (nx, ny), (x_min, x_max, y_min, y_max) = frb2_grid(config)
     return [
@@ -318,7 +319,10 @@ def check(out_dir, var, config):
     at_source = np.float32(direction)
     stage = find_stages(config, "setFRBBeams")[0]
     frb2_positions, frb2_ids = configured_beams(
-        config, "run_set_frb2_beams" if "run_set_frb2_beams" in config else stage, "mode", "beams"
+        config,
+        "run_set_frb2_beams" if "run_set_frb2_beams" in config else stage,
+        "mode",
+        "beams",
     )
     frb2_source = np.nonzero(np.all(frb2_positions == at_source, axis=1))[0]
     if with_bb:
@@ -367,17 +371,26 @@ def check(out_dir, var, config):
         bb = read_output(out_dir, "bb_beams")
         audit(bb, first_seq=SEQ0, frequency_channels=channels)
         require(
-            bb.data.shape[0] == BB_FRAMES, f"bb_beams: {bb.data.shape[0]} frames written"
+            bb.data.shape[0] == BB_FRAMES,
+            f"bb_beams: {bb.data.shape[0]} frames written",
         )
         results.append(
             bb_peak_line(
-                bb.data[:2], bb_positions.astype(np.float64), config, phases, nu, amplitude
+                bb.data[:2],
+                bb_positions.astype(np.float64),
+                config,
+                phases,
+                nu,
+                amplitude,
             )
         )
         lut = np.abs(decode_int4x2(np.arange(256))) ** 2
-        rms = np.sqrt([lut[bb.data[:, b]].mean() for b in range(bb.data.shape[1])])  # [B]
+        rms = np.sqrt(
+            [lut[bb.data[:, b]].mean() for b in range(bb.data.shape[1])]
+        )  # [B]
         require(
-            np.all(rms > 0), f"bb_beams: beams {np.nonzero(rms == 0)[0].tolist()} are zero",
+            np.all(rms > 0),
+            f"bb_beams: beams {np.nonzero(rms == 0)[0].tolist()} are zero",
         )
         results.append(
             f"bb_beams: all {len(rms)} beams non-zero, rms {rms.min():.2f} to {rms.max():.2f} LSB"
@@ -386,10 +399,16 @@ def check(out_dir, var, config):
         # BB continuity: the coherent tone c_wfp = Σ_t J_src(t) exp(-2πi f_tone (t - seq0)) in windows
         # of BB_WINDOW samples, projected on its mean over windows
         seqs = frame_seq_nums(bb)
-        t = (seqs[:, None] + np.arange(num_times)[None, :] - SEQ0).reshape(-1)  # [Thi T]
-        src = decode_int4x2(bb.data[:, bb_source]).astype(np.complex64)  # [Thi, F, P, T]
+        t = (seqs[:, None] + np.arange(num_times)[None, :] - SEQ0).reshape(
+            -1
+        )  # [Thi T]
+        src = decode_int4x2(bb.data[:, bb_source]).astype(
+            np.complex64
+        )  # [Thi, F, P, T]
         src = np.moveaxis(src, -1, 1).reshape(-1, *src.shape[1:3])  # [Thi T, F, P]
-        tone = src * np.exp(-2j * np.pi * f_tone * t).astype(np.complex64)[:, None, None]
+        tone = (
+            src * np.exp(-2j * np.pi * f_tone * t).astype(np.complex64)[:, None, None]
+        )
         c = tone.reshape(-1, BB_WINDOW, *tone.shape[1:]).sum(axis=1)  # [W, F, P]
         mean = c.mean(axis=0)
         r = (c * mean.conj()).sum(axis=(1, 2)) / (np.abs(mean) ** 2).sum()

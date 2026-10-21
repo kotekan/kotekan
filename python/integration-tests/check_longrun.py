@@ -90,9 +90,9 @@ CHUNK_FRAMES = 48
 
 
 def n2_bin_length(config):
-    return find_stages(config, "N2Accumulate")[0]["num_subintegrations_per_bin"] * value(
-        config, "n2k_samples_per_data_set"
-    )
+    return find_stages(config, "N2Accumulate")[0][
+        "num_subintegrations_per_bin"
+    ] * value(config, "n2k_samples_per_data_set")
 
 
 def frame_counts(config, seq0, num_frames):

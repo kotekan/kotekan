@@ -76,7 +76,6 @@ PAIR_UPCHAN_FACTORS = [16, 32, 64]
 PATTERN_TOLERANCE = 0.01
 
 
-
 def grid_dishes(config):
     """The dish index of every grid cell (x, y) listed in `telescope.dish_inputs`."""
     return {
@@ -104,13 +103,18 @@ def onehot_inputs(config):
         (max(cells.values()), 0),
         (cells[(width - 1, top)], 1),
     ]
-    return corners + [(cells[grid_cell(config, cell)], pol) for cell, pol in ONEHOT_INNER]
+    return corners + [
+        (cells[grid_cell(config, cell)], pol) for cell, pol in ONEHOT_INNER
+    ]
 
 
 def pairs(config):
     """The dishes of the pairs `PAIR_CELLS`."""
     cells = grid_dishes(config)
-    return [(cells[grid_cell(config, a)], cells[grid_cell(config, b)]) for a, b in PAIR_CELLS]
+    return [
+        (cells[grid_cell(config, a)], cells[grid_cell(config, b)])
+        for a, b in PAIR_CELLS
+    ]
 
 
 def pair_cycles(config, j):
@@ -222,7 +226,9 @@ def check_dish_attrs(name, attrs, config):
         f"{written_grid[bad[:8]].tolist()}, expected {grid[bad[:8]].tolist()}",
     )
     offset = (written_pos - pos)[listed].mean(axis=0)
-    bad = np.nonzero(np.any(np.abs(written_pos - pos - offset) > 1e-9, axis=1) & listed)[0]
+    bad = np.nonzero(
+        np.any(np.abs(written_pos - pos - offset) > 1e-9, axis=1) & listed
+    )[0]
     require(
         not bad.size,
         f"{name}: feed_positions_m of dishes {bad[:8].tolist()} are "
@@ -425,7 +431,9 @@ def check_pairs(out_dir, var, config):
             for slot in np.nonzero((factor == U) & (index == u))[0]:
                 intensity = data[slot] / data[slot].max()
                 worst = max(worst, np.abs(intensity - pattern).max())
-                if peaks is not None and not np.array_equal(intensity >= threshold, peaks):
+                if peaks is not None and not np.array_equal(
+                    intensity >= threshold, peaks
+                ):
                     wrong_peaks.append((int(coarse[slot]), U))
                 checked += 1
         line = (
@@ -435,8 +443,7 @@ def check_pairs(out_dir, var, config):
                 if peaks is not None
                 else "no gap between the fringe levels to check the peak bins"
             )
-            + 
-            f"{'' if not wrong_peaks else ' except in ' + str(wrong_peaks[:4])}, "
+            + f"{'' if not wrong_peaks else ' except in ' + str(wrong_peaks[:4])}, "
             f"max |I / I_max - fringe| {worst:.4f}"
         )
         if not checked or wrong_peaks or worst > PATTERN_TOLERANCE:

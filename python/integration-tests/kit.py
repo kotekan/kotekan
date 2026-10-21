@@ -247,13 +247,17 @@ def frb1_swap_MN(config):
 
 def has_value(config, key):
     """Whether `key` is a top-level value or one in a top-level block (see `value`)."""
-    return key in config or any(isinstance(v, dict) and key in v for v in config.values())
+    return key in config or any(
+        isinstance(v, dict) and key in v for v in config.values()
+    )
 
 
 def has_command(config, name):
     """Whether any cudaProcess stage of the config runs the GPU command `name`."""
     if isinstance(config, dict):
-        return config.get("name") == name or any(has_command(v, name) for v in config.values())
+        return config.get("name") == name or any(
+            has_command(v, name) for v in config.values()
+        )
     if isinstance(config, list):
         return any(has_command(v, name) for v in config)
     return False

@@ -35,7 +35,8 @@ VARIANTS = ["seq0", "seqlarge"]
 
 def amplitude(config):
     gains = [
-        min(value(config, f"run_set_upchan_U{U}_gain")["upchan_gain"]) / (0.8 * U ** 0.5)
+        min(value(config, f"run_set_upchan_U{U}_gain")["upchan_gain"])
+        / (0.8 * U ** 0.5)
         for U in config["upchan_factors"]
     ]
     # The configs round the gains to 4 digits
