@@ -112,3 +112,17 @@ Only expectations were changed in Python, and the kept output re-checked with `-
 
 Kotekan runs for 27 s and 25 s; the test takes 81 s. Each variant writes 1.9 GB, mostly the
 10 BB frames and 3 FRB2 frames.
+
+## Result (CHIME, cx68, A40, Release)
+
+**PASS**, both variants. CHIME has no BB beamformer, and its production FRB2 beams are `manual`.
+`grid` keeps these production beams, with the source on beam 23; `manual` jitters them.
+
+| check | `grid` | `manual` |
+|---|---|---|
+| positions, ids | 3 FRB2 frames of 1024 beams exact, at `seq0 + T* + k L₂` | same |
+| FRB2 peak | source beam in all 16 channels (1 grating-lobe tie) | all 16 (no ties) |
+| FRB2 continuity | 48 windows within 1.8σ, σ = 0.05%; steps ≤ 0.07% | within 1.5σ, σ = 0.08%; steps ≤ 0.15% |
+
+The FRB1 lifetime is 3 frames (49152 samples), the FRB2 lifetime one FRB2 frame (98304
+samples). Kotekan runs for 43 s and 48 s.
