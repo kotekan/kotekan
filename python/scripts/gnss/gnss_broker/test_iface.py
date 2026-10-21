@@ -229,14 +229,21 @@ class TestGolden(unittest.TestCase):
                 "cubearch": ("cube", "metadata"),
             },
         )
-        self.assertEqual(
-            iface.SIZING, ("telem", "record.row", "gpu_chain", "cube", "metadata")
+        sizing = (
+            "telem",
+            "record.row",
+            "record.chan",
+            "record.elem",
+            "gpu_chain",
+            "cube",
+            "metadata",
         )
+        self.assertEqual(iface.SIZING, sizing)
         self.assertEqual(
             iface.ROLE_SIZING,
             {
-                "node": ("telem", "record.row", "gpu_chain", "cube", "metadata"),
-                "gather": ("telem", "record.row", "metadata"),
+                "node": sizing,
+                "gather": ("telem", "record.row", "record.chan", "metadata"),
                 "aggregator": ("metadata",),
                 "cubearch": ("cube", "metadata"),
             },

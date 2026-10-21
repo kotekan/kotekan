@@ -99,13 +99,23 @@ ROLES = {
 #: The sections that size frames: the generator stamps their digests into every config it
 #: writes, and the preflight checks a binary against the stamp on those its role's frames are
 #: sized from (ROLE_SIZING).
-SIZING = ("telem", "record.row", "gpu_chain", "cube", "metadata")
-#: The sizing sections each role's frames are sized from. Every role's frames carry
-#: GnssChanMetadata, whose size bufferRecv checks against its own; the aggregator's search feeds
-#: are sized from samples_per_data_set and the comb, so that is all the stamp says of them.
+SIZING = (
+    "telem",
+    "record.row",
+    "record.chan",
+    "record.elem",
+    "gpu_chain",
+    "cube",
+    "metadata",
+)
+#: The sizing sections each role's frames are sized from. A telemetry row is RECORD_FLOATS plus
+#: CHAN_FLOATS per comb column, and a node's record stride adds ELEM_FLOATS per element. Every
+#: role's frames carry GnssChanMetadata, whose size bufferRecv checks against its own; the
+#: aggregator's search feeds are sized from samples_per_data_set and the comb, so that is all
+#: the stamp says of them.
 ROLE_SIZING = {
     "node": SIZING,
-    "gather": ("telem", "record.row", "metadata"),
+    "gather": ("telem", "record.row", "record.chan", "metadata"),
     "aggregator": ("metadata",),
     "cubearch": ("cube", "metadata"),
 }

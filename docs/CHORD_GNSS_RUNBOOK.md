@@ -256,9 +256,9 @@ document it speaks, pinned to a kotekan commit (`python/scripts/gnss/gnss_broker
 - **A kotekan commit that changes `lib/stages/gnss/gnss_interface.json` is a flag day for the
   starts.** A changed leaf the role compares, even one meaning token, refuses that role's starts
   until the broker's golden is synced. The stamp check covers the sizing sections the role's
-  frames are sized from: the node's telem, record.row, gpu_chain, cube and metadata, the
-  gather's telem, record.row and metadata, the archiver's cube and metadata, the aggregator's
-  metadata. On a config stamped from the broker's golden, a changed or missing leaf there
+  frames are sized from: the node's telem, record.row, record.chan, record.elem, gpu_chain, cube
+  and metadata, the gather's telem, record.row, record.chan and metadata, the archiver's cube
+  and metadata, the aggregator's metadata. On a config stamped from the broker's golden, a changed or missing leaf there
   refuses and an added one warns; on a config stamped from another golden, a section that moved
   warns, and refuses only where the binary also disagrees with the broker's golden. Deploy the
   three together: the sync (a broker commit), `scripts/gnss/gen_fleet.py

@@ -295,16 +295,22 @@ def test_a_kotekan_golden_that_moved_is_warned():
         kotekan_src.SRC = d
         doc = copy.deepcopy(iface.golden().doc)
         check(said(doc) == "", "the vendored golden itself: nothing said")
-        doc["sections"]["record.elem"]["ELEM_FLOATS"] += 1
+        doc["sections"]["record.cmb"]["CMB_ARC"]["meaning"] += ";x"
         check(said(doc) == "", "a change outside signals and sizing: nothing said")
+        for section, key in (
+            ("record.elem", "ELEM_FLOATS"),
+            ("record.row", "RECORD_FLOATS"),
+        ):
+            moved = copy.deepcopy(doc)
+            moved["sections"][section][key] += 1
+            err = said(moved)
+            check(
+                err.startswith("WARNING: ")
+                and " in %s. " % section in err
+                and "python3 -m gnss_broker.iface sync --from %s" % d in err,
+                "%s moved: warned, naming the sync (%r)" % (section, err[:200]),
+            )
         doc["sections"]["record.row"]["RECORD_FLOATS"] += 1
-        err = said(doc)
-        check(
-            err.startswith("WARNING: ")
-            and " in record.row. " in err
-            and "python3 -m gnss_broker.iface sync --from %s" % d in err,
-            "a sizing section moved: warned, naming the sync (%r)" % err[:200],
-        )
         check(said(None) == "", "no golden in the tree: nothing said")
         kotekan_src.SRC = None
         check(said(None) == "", "no kotekan tree: nothing said")
