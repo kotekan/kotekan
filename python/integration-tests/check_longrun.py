@@ -4,9 +4,9 @@ late, or growing in memory.
 
 Input: T2's weak tone (check_phases.py) on FRB2 beam (12, 5) in Gaussian noise of 2.8 LSB per
 component, with the production gains, from `large_seq`. Random packet loss at `LOSS_RATE`, with
-lost voltages 0+0i (T8); random bad inputs changing every `CHANGE_FRAMES` frames (T9), poisoned
+lost voltages 0+0i (T8); random bad inputs changing every `CHANGE_LIFETIMES` lifetimes (T9), poisoned
 with random bytes where their packets are not lost; BB phase and FRB1 weights lifetimes of
-`LIFETIME_FRAMES` frames and an FRB2 weights lifetime of one FRB2 frame (T7).
+T9's mask lifetime (3 frames; CHIME: 6) and an FRB2 weights lifetime of one FRB2 frame (T7).
 
 Variants: `long` runs `RUN_FRAMES["long"]` frames, about 10 minutes of kotekan time on cx67.
 `short` (not run by default) runs the same setup for a few seconds of simulated time.
@@ -29,6 +29,10 @@ Checks:
 - Memory: kotekan's resident memory does not grow by more than `MEMORY_TOLERANCE_MIB` after
   `MEMORY_WARMUP` seconds (see `check_memory`).
 
+CHIME has one bad feed mask stream and no BB (see check_badfeeds.py), and poisons with
+`random_valid` bytes; its run has as many frames, which also holds whole N2 integrations of 240
+frames.
+
 See docs/integration-tests/T10-long-run.md.
 """
 
@@ -41,16 +45,24 @@ import h5py
 import numpy as np
 
 import check_phases
-from check_badfeeds import LIFETIME_FRAMES, Schedule, check_masks, result_line
+from check_badfeeds import (
+    Schedule,
+    check_masks,
+    lifetime_frames,
+    n2_masked,
+    result_line,
+)
 from check_beams import check_beam_stream, configured_beams
 from check_dishes import n2_bin_start
 from check_packetloss import Loss, frb_frame_length, frb_valid, t_star
 from kit import (
     CheckFailed,
     audit,
+    find_stages,
     frame_files,
     frb2_peak_line,
-    grid_beam_direction,
+    has_bb,
+    has_command,
     large_seq,
     read_frame,
     read_output,
@@ -58,9 +70,10 @@ from kit import (
 )
 
 VARIANTS = ["long"]
-# Simulated voltage frames, a multiple of 72 (lifetimes, schedule periods, FRB and N2 frames)
+# Simulated voltage frames, a multiple of 72 (lifetimes, schedule periods, FRB and N2 frames;
+# CHIME: 720)
 RUN_FRAMES = {"long": 8640, "short": 216}
-CHANGE_FRAMES = 9
+CHANGE_LIFETIMES = 3
 BF_COUNT = [3, 5]
 BF_SEED = 10
 LOSS_RATE = 1e-4
@@ -77,7 +90,7 @@ CHUNK_FRAMES = 48
 
 
 def n2_bin_length(config):
-    return config["run_N2_accumulate"]["num_subintegrations_per_bin"] * value(
+    return find_stages(config, "N2Accumulate")[0]["num_subintegrations_per_bin"] * value(
         config, "n2k_samples_per_data_set"
     )
 
@@ -90,12 +103,13 @@ def frame_counts(config, seq0, num_frames):
     frb = (num_frames * T - t_star(config)) // frb_frame_length(config)
     bin0 = n2_bin_start(config, seq0)
     integrations = (seq0 + num_frames * T - bin0) // n2_bin_length(config)
-    counts = {
-        "n2_bf_mask": num_frames,
-        "n2k_plcounts": num_frames,
-        "bf_mask": num_frames // LIFETIME_FRAMES,
-        "bb_beam_positions": num_frames // LIFETIME_FRAMES,
-        "bb_beam_ids": num_frames // LIFETIME_FRAMES,
+    counts = {"n2_bf_mask": num_frames} if n2_masked(config) else {}
+    counts["n2k_plcounts"] = num_frames
+    counts["bf_mask"] = num_frames // lifetime_frames(config)
+    if has_bb(config):
+        counts["bb_beam_positions"] = num_frames // lifetime_frames(config)
+        counts["bb_beam_ids"] = num_frames // lifetime_frames(config)
+    counts |= {
         "frb_pl_mask": frb,
         "frb2_beam_positions": frb,
         "frb2_beam_ids": frb,
@@ -129,9 +143,7 @@ def variables(tel, config, variant):
         "sources": [
             {
                 "amplitude": check_phases.AMPLITUDE,
-                "direction": grid_beam_direction(
-                    config, "frb2", *check_phases.FRB2_BEAM
-                ),
+                "direction": check_phases.source_direction(config, "frb2"),
                 "tone_cycles_per_frame": check_phases.tone_cycles(config),
             }
         ],
@@ -139,11 +151,16 @@ def variables(tel, config, variant):
         "loss_rate": LOSS_RATE,
         "loss_seed": LOSS_SEED,
         "lost_voltage": "zero",
-        "bf_mask_lifetime_frames": LIFETIME_FRAMES,
-        "bf_change_frames": CHANGE_FRAMES,
+        "bf_mask_lifetime_frames": lifetime_frames(config),
+        "bf_change_frames": CHANGE_LIFETIMES * lifetime_frames(config),
         "bf_random_count": BF_COUNT,
         "bf_seed": BF_SEED,
-        "bad_voltage": "random",
+        # Transpose2048_chime traps on -8 (julia/kernels/xpose2048.jl)
+        "bad_voltage": (
+            "random_valid"
+            if has_command(config, "cudaTranspose2048_chime")
+            else "random"
+        ),
         "frb2_weights_lifetime_in_samples": frb_frame_length(config),
         "outputs": list(counts),
         "write_frames": counts,
@@ -319,6 +336,8 @@ def check_n2(out_dir, var, config, sched, lost, integrations, results, failures)
             or int(attrs["n_rfi_fpga_ticks"]) != 0
         )
         good = np.all(sched.good(seq0 + T * frames), axis=0)
+        if not n2_masked(config):
+            good[:] = True
         wrong_flags += np.any(flags != good)
         num_flagged.append(np.count_nonzero(~good))
     starts = sorted(starts)
@@ -387,10 +406,7 @@ def frb2_frame(filename, k, config, seq0):
     """FRB2 frame k: its fpga_seq_num, no NaN or Inf, the peak in the source beam (T2)."""
     frame = read_frame(filename, "frb2_beams")
     audit(frame, first_seq=seq0 + t_star(config) + k * frb_frame_length(config))
-    beam = check_phases.FRB2_BEAM[0] + value(config, "frb2_num_beams_x") * (
-        check_phases.FRB2_BEAM[1]
-    )
-    return f"frame {k}: " + frb2_peak_line(frame, beam)
+    return f"frame {k}: " + frb2_peak_line(frame, check_phases.frb2_beam(config))
 
 
 def check_memory(out_dir, results, failures):
@@ -430,10 +446,10 @@ def check_memory(out_dir, results, failures):
     )
 
 
-def frame_rate(out_dir):
-    """Frames per wall-clock second over the run, from the drain of the one-frame mask
-    stream in the kotekan log, in tenths of the run."""
-    pattern = re.compile(r"drain_n2_bf_mask frame (\d+) \(duration ([0-9.e+-]+) sec\)")
+def frame_rate(out_dir, stream):
+    """Frames per wall-clock second over the run, from the drain of the one-frame output
+    `stream` in the kotekan log, in tenths of the run."""
+    pattern = re.compile(rf"drain_{stream} frame (\d+) \(duration ([0-9.e+-]+) sec\)")
     points = []
     with open(out_dir + ".log") as log:
         for line in log:
@@ -452,29 +468,39 @@ def frame_rate(out_dir):
 
 def check(out_dir, var, config):
     seq0 = var["first_fpga_seq_num"]
-    num_frames = var["write_frames"]["n2_bf_mask"]
+    num_frames = var["write_frames"]["n2k_plcounts"]
     counts, integrations = frame_counts(config, seq0, num_frames)
     sched = Schedule(var, config)
     results = []
     failures = []
-    results.append(frame_rate(out_dir))
+    results.append(
+        frame_rate(out_dir, "n2_bf_mask" if n2_masked(config) else "n2k_plcounts")
+    )
     check_counts(out_dir, config, counts, results, failures)
     check_masks(out_dir, config, sched, results, failures)
-    bb_positions, bb_ids = configured_beams(
-        config, "run_set_bb_beams", "fixed_mode", "fixed_beams"
-    )
+    stage = find_stages(config, "setFRBBeams")[0]
     frb2_positions, frb2_ids = configured_beams(
-        config, "run_set_frb2_beams", "mode", "beams"
+        config,
+        "run_set_frb2_beams" if "run_set_frb2_beams" in config else stage,
+        "mode",
+        "beams",
     )
-    for prefix, positions, ids, first, lifetime, origin in [
-        (
-            "bb",
-            bb_positions,
-            bb_ids,
-            seq0,
-            value(config, "bb_phase_lifetime_in_samples"),
-            "seq0",
-        ),
+    streams = []
+    if has_bb(config):
+        bb_positions, bb_ids = configured_beams(
+            config, "run_set_bb_beams", "fixed_mode", "fixed_beams"
+        )
+        streams.append(
+            (
+                "bb",
+                bb_positions,
+                bb_ids,
+                seq0,
+                value(config, "bb_phase_lifetime_in_samples"),
+                "seq0",
+            )
+        )
+    for prefix, positions, ids, first, lifetime, origin in streams + [
         (
             "frb2",
             frb2_positions,

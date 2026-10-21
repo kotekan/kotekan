@@ -250,6 +250,15 @@ def has_value(config, key):
     return key in config or any(isinstance(v, dict) and key in v for v in config.values())
 
 
+def has_command(config, name):
+    """Whether any cudaProcess stage of the config runs the GPU command `name`."""
+    if isinstance(config, dict):
+        return config.get("name") == name or any(has_command(v, name) for v in config.values())
+    if isinstance(config, list):
+        return any(has_command(v, name) for v in config)
+    return False
+
+
 def find_stages(config, kotekan_stage):
     """The config blocks of every stage of type `kotekan_stage`, at any depth."""
     found = []

@@ -42,8 +42,8 @@
 #     bf_change_frames, bf_random_count, bf_seed
 #                   random bad feeds on top of bf_mode, changing every bf_change_frames frames
 #                   (default: 0, none), see testBadFeeds in lib/testing/testSkySignal.hpp
-#     bad_voltage   the voltage of the bad feeds of bf_change_frames and of Missing dishes: keep or
-#                   random (default: keep)
+#     bad_voltage   the voltage of the bad feeds of bf_change_frames and of Missing dishes: keep,
+#                   random, or random_valid (random without -8) (default: keep)
 
 {% set input_kind = input_kind | default('random') %}
 {% set voltage_buffers = voltage_buffers | default(['host_voltage_buffer']) %}
