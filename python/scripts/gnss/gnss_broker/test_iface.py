@@ -447,15 +447,23 @@ class TestSourcesAndCli(unittest.TestCase):
         b = self.put("b.json", doc)
         doc["sections"]["telem"]["TELEM_VERSION"] = 9
         c = self.put("c.json", doc)
+        doc = golden_doc()
+        doc["sections"]["core"] = {"BUFFER_HDR": 64}
+        core = self.put("core.json", doc)
         self.assertEqual(run_cli("diff", "golden", a), (0, "same\n"))
         rc, out = run_cli("diff", a, b)
         self.assertEqual((rc, out), (0, "compatible (extra: rest/new_family)\n"))
         rc, out = run_cli("diff", "golden", c)
         self.assertEqual(rc, 1)
         self.assertEqual(out, "flag day: telem/TELEM_VERSION: A 8, B 9\n")
+        # A section only B has is an extra.
+        self.assertEqual(
+            run_cli("diff", "golden", core), (0, "compatible (extra: core)\n")
+        )
         # Neither change is in the aggregator's scope (signals, rest/search).
         self.assertEqual(
-            run_cli("diff", "golden", c, "--role", "aggregator"), (0, "same\n")
+            run_cli("diff", "golden", c, "--role", "aggregator"),
+            (0, "same in scope (the documents differ outside it)\n"),
         )
 
     def test_preflight(self):

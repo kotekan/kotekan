@@ -514,9 +514,9 @@ def _walk(g, d, path, fails, extras):
 
 def compare(ref, doc, role=None, signals=None, sections=None):
     """Compare a document with a reference (a Golden or a document). With no role, every
-    section of the reference; otherwise the scope of the role, or of a list of roles (see
-    scope()); with sections, those whole sections. A reference path that the reference itself
-    lacks is a caller error (ValueError)."""
+    section of either, a section only the document has being an extra; otherwise the scope of
+    the role, or of a list of roles (see scope()); with sections, those whole sections. A
+    reference path that the reference itself lacks is a caller error (ValueError)."""
     ref_doc = ref.doc if isinstance(ref, Golden) else ref
     try:
         validate_doc(doc)
@@ -534,6 +534,10 @@ def compare(ref, doc, role=None, signals=None, sections=None):
         if g is _ABSENT:
             raise ValueError("%s is not in the reference document" % path_str(p))
         _walk(g, _get(doc["sections"], p), p, fails, extras)
+    if role is None and sections is None:
+        extras += [
+            (k,) for k in sorted(doc["sections"]) if k not in ref_doc["sections"]
+        ]
     state = MISMATCH if fails else COMPATIBLE if extras else MATCH
     return Comparison(state, fails, extras)
 
@@ -549,12 +553,15 @@ def describe_fails(fails, a="golden", b="binary", limit=None):
     return lines
 
 
-def summary(c, limit=8):
-    """'same', 'compatible (extra: ...)' or 'flag day: ...' -- what `iface diff` prints."""
+def summary(c, limit=8, identical=True):
+    """'same', 'compatible (extra: ...)' or 'flag day: ...' -- what `iface diff` prints. A
+    MATCH of documents that are not identical (a role's scope) is not 'same'."""
     if c.state == UNCOMPARABLE:
         return "uncomparable: %s" % c.reason
     if c.state == MATCH:
-        return "same"
+        return (
+            "same" if identical else "same in scope (the documents differ outside it)"
+        )
     if c.state == COMPATIBLE:
         ex = [path_str(p) for p in c.extras]
         more = " ... and %d more" % (len(ex) - limit) if len(ex) > limit else ""
@@ -836,7 +843,8 @@ def _cmd_diff(a):
     sa, sb = read_source(a.a), read_source(a.b)
     sig = a.signals.split(",") if a.signals else None
     c = compare(sa.doc, sb.doc, role=a.role, signals=sig)
-    print(summary(c, limit=a.limit))
+    same = doc_digest(sa.doc) == doc_digest(sb.doc)
+    print(summary(c, limit=a.limit, identical=same))
     return 1 if c.state in (MISMATCH, UNCOMPARABLE) else 0
 
 
