@@ -29,8 +29,8 @@ Checks:
 - Memory: kotekan's resident memory does not grow by more than `MEMORY_TOLERANCE_MIB` after
   `MEMORY_WARMUP` seconds (see `check_memory`).
 
-CHIME has one bad feed mask stream and no BB (see check_badfeeds.py), and poisons with
-`random_valid` bytes; its run has as many frames, which also holds whole N2 integrations of 240
+CHIME has one bad feed mask stream and no BB, and poisons with `random_valid` bytes (see
+check_badfeeds.py); its run has as many frames, which also hold whole N2 integrations of 240
 frames.
 
 See docs/integration-tests/T10-long-run.md.
@@ -265,8 +265,10 @@ def check_frb_mask(out_dir, var, config, results, failures):
     first_wrong = None
     for k0 in range(0, num_frames, CHUNK_FRAMES // 6):
         k1 = min(k0 + CHUNK_FRAMES // 6, num_frames)
-        # The FRB windows of these frames lie within [seq0 + k0 span, seq0 + k1 span + 512)
-        loss = Loss(var, seq0 + k0 * span, (k1 - k0) * span + 512, num_freqs)
+        # The FRB windows of these frames lie within [seq0 + k0 span, seq0 + k1 span + T* + 512)
+        loss = Loss(
+            var, seq0 + k0 * span, (k1 - k0) * span + t_star(config) + 512, num_freqs
+        )
         labels = out.fpga_seq_num + out.time_downsampling * np.arange(k0 * nt, k1 * nt)
         expected = frb_valid(loss, config, labels)
         measured = out.data[k0 * nt : k1 * nt, : expected.shape[1]] != 0
@@ -336,8 +338,6 @@ def check_n2(out_dir, var, config, sched, lost, integrations, results, failures)
             or int(attrs["n_rfi_fpga_ticks"]) != 0
         )
         good = np.all(sched.good(seq0 + T * frames), axis=0)
-        if not n2_masked(config):
-            good[:] = True
         wrong_flags += np.any(flags != good)
         num_flagged.append(np.count_nonzero(~good))
     starts = sorted(starts)
