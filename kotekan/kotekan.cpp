@@ -3,6 +3,7 @@
 #include "backtrace.hpp"          // for request_backtraces
 #include "basebandApiManager.hpp" // for basebandApiManager
 #include "errors.h"               // for ReturnCode, __enable_syslog, exit_kotekan, get_exit_...
+#include "interfaceRegistry.hpp"  // for build_interfaces, canonical_json
 #include "kotekanLogging.hpp"     // for logLevel, ERROR_NON_OO, INFO_NON_OO, FATAL_ERROR_NON_OO
 #include "kotekanMode.hpp"        // for kotekanMode
 #include "kotekanTrackers.hpp"    // for KotekanTrackers
@@ -200,6 +201,7 @@ else:
 enum : int {
     OPT_CHECK = 1000,
     OPT_DRY_RUN,
+    OPT_IFACE,
 };
 
 kotekanMode* kotekan_mode = nullptr;
@@ -222,6 +224,7 @@ void print_help() {
            "enabled.\n");
     printf("    --variables (-e) [json]        Add Jinja config variables in JSON format\n");
     printf("    --version (-v)                 Prints the kotekan version and build details.\n");
+    printf("    --interfaces-json              Prints the interface documents and digests.\n");
 
     printf("    --print-json (-p)              Prints the json version of the config.\n");
     printf("    --print-yaml (-y)              Prints the yaml version of the config.\n\n");
@@ -311,7 +314,7 @@ json parse_cmake_options() {
     return j;
 }
 
-json get_json_version_info() {
+json get_json_version_info(const json& interfaces) {
     // Create version information
     json version_json;
     version_json["kotekan_version"] = get_kotekan_version();
@@ -323,11 +326,15 @@ json get_json_version_info() {
     for (auto& stage_maker : known_stages)
         available_stages.push_back(stage_maker.first);
     version_json["available_stages"] = available_stages;
+    // Digests only: the documents are served at /interfaces/<name>.
+    version_json["interfaces"] = interfaces;
+    for (auto& entry : version_json["interfaces"])
+        entry.erase("doc");
     return version_json;
 }
 
 void print_json_version() {
-    std::cout << get_json_version_info().dump(2) << std::endl;
+    std::cout << get_json_version_info(build_interfaces()).dump(2) << std::endl;
 }
 
 std::string exec(std::vector<std::string>& cmd) {
@@ -697,6 +704,7 @@ int main(int argc, char** argv) {
                                                {"print-yaml", no_argument, nullptr, 'y'},
                                                {"check-config", no_argument, nullptr, OPT_CHECK},
                                                {"dry-run", no_argument, nullptr, OPT_DRY_RUN},
+                                               {"interfaces-json", no_argument, nullptr, OPT_IFACE},
                                                {nullptr, 0, nullptr, 0}};
 
         int option_index = 0;
@@ -748,6 +756,9 @@ int main(int argc, char** argv) {
             case OPT_DRY_RUN:
                 dry_run = true;
                 break;
+            case OPT_IFACE:
+                std::cout << canonical_json(build_interfaces()) << std::endl;
+                return 0;
             default:
                 printf("Invalid option, run with -h to see options");
                 return -1;
@@ -974,10 +985,20 @@ int main(int argc, char** argv) {
         conn.send_json_reply(reply);
     });
 
-    json version_json = get_json_version_info();
+    json interfaces = build_interfaces();
+    json version_json = get_json_version_info(interfaces);
 
     rest_server.register_get_callback(
         "/version", [&](connectionInstance& conn) { conn.send_json_reply(version_json); });
+
+    // The canonical bytes go out as they are; send_json_reply would dump them again.
+    for (auto& it : interfaces.items()) {
+        const json& entry = it.value();
+        std::string body = canonical_json(entry.contains("doc") ? entry.at("doc") : entry);
+        rest_server.register_get_callback(
+            "/interfaces/" + it.key(),
+            [body](connectionInstance& conn) { conn.send_text_reply(body, "application/json"); });
+    }
 
     auto& metrics = prometheus::Metrics::instance();
     metrics.register_with_server(&rest_server);

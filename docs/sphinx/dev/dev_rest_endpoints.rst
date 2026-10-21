@@ -35,6 +35,14 @@ The kotekan framework registers a number of points
 
 ``/version`` ``[GET]``
     Returns the current kotekan version information; including build options.
+    Under ``interfaces`` it gives each interface document's schema number and digests.
+
+``/interfaces/<name>`` ``[GET]``
+    Returns the interface document ``<name>`` as canonical JSON, the bytes its
+    ``/version`` digest is taken over. A subsystem registers one with
+    ``REGISTER_KOTEKAN_INTERFACE`` (``lib/core/interfaceRegistry.hpp``), built from
+    compiled constants. ``kotekan --interfaces-json`` prints every document and its
+    digests without a config.
 
 ``/endpoints`` ``[GET]``
     Returns all available REST endpoints in the system.
