@@ -255,6 +255,8 @@ run_hfb23:
             # host_hfb3_beams_offsetscale_buffer: host_hfb3_beams_offsetscale_buffer
         commands:
         - name: cudaFRBBeamReformer
+          # accumulate the sums in float32, as for FRB2; float16 loses precision
+          accumulate_float32: true
           frb1_max_num_frequencies: upchan_hfb_upchan_U128_max_num_output_channels
           frb1_max_num_times: buffer_depth * hfb_num_output_times
           frb2_num_frequencies: upchan_hfb_upchan_U128_max_num_output_channels
