@@ -38,6 +38,7 @@ add_library(
     cudaGnssDespreadKernel.cu
     cudaGnssAcquireKernel.cu
     cudaGnssChordDespread.cu
+    cudaGnssPsiSynth.cu
     cudaGnssN2Gather.cu
     chordMVPSetup.cpp
     cudaPLMaskAccumulator.cpp
@@ -192,7 +193,7 @@ target_include_directories(cuda_gnss_despread_test PRIVATE . ../stages ../stages
 # Prototype code-phase-table (Psi) replica synthesis vs the production waveform kernel at CHORD
 # geometry, with timings. The kernel is part of the bench, not of kotekan_cuda.
 # Run: ./lib/cuda/cuda_gnss_psi_bench [all|bench|tiled] [n_prn]
-add_executable(cuda_gnss_psi_bench cudaGnssPsiBench.cpp cudaGnssPsiSynth.cu)
+add_executable(cuda_gnss_psi_bench cudaGnssPsiBench.cpp)
 target_link_libraries(cuda_gnss_psi_bench PRIVATE kotekan_cuda kotekan_stages kotekan_core
                                                   kotekan_libs libexternal)
 target_include_directories(cuda_gnss_psi_bench PRIVATE . ../stages ../stages/gnss ../core
