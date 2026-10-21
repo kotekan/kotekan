@@ -1,8 +1,7 @@
 # PilotProxy detector core
 
 The CUDA detector core is copied from `cuda/` in
-[WVURAIL/pilotproxy-code](https://github.com/WVURAIL/pilotproxy-code), the
-code-only release of PilotProxy. `VENDOR.json` names the upstream revision and
+[WVURAIL/pilotproxy](https://github.com/WVURAIL/pilotproxy). `VENDOR.json` names the upstream revision and
 records each file's SHA-256 digest.
 
 The seven upstream files are:

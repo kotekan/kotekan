@@ -1,9 +1,9 @@
 {
   "schema": "kotekan_vendor_manifest_v1",
   "component": "pilotproxy-detector-core",
-  "upstream_repo": "https://github.com/WVURAIL/pilotproxy-code",
+  "upstream_repo": "https://github.com/WVURAIL/pilotproxy",
   "upstream_subdir": "cuda",
-  "upstream_commit": "2ed28a972afa035872cd0b61df18328905b4e4bf",
+  "upstream_commit": "0a925f57100d713a0c1062300b3b77296f2382d8",
   "policy": "Files below are byte-identical copies of upstream. Re-vendoring is a pure copy + hash comparison; local edits are not permitted. Fix upstream first, then bump upstream_commit and refresh these digests.",
   "files": {
     "config.h": "sha256:38e26620b6d0a32da09056374f1a36e3af017b402b09ab63194997d21ba2e592",
