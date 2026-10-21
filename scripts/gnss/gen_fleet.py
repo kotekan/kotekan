@@ -493,10 +493,14 @@ def main():
         else:
             bad.append(node)
             print("DIFFERS  %s" % os.path.relpath(out, K))
+            if _stamp(have) != _stamp(text):
+                print("    (the gnss_iface stamp differs too; not in the diff below)")
+            # The diff of what the verdict compared: without the stamp, which an unstamped
+            # config on disk would otherwise open with and count in its line total.
             d = list(
                 difflib.unified_diff(
-                    have.splitlines(),
-                    text.splitlines(),
+                    have_s.splitlines(),
+                    text_s.splitlines(),
                     "committed",
                     "regenerated",
                     lineterm="",

@@ -140,6 +140,17 @@ def test_check_leaves_the_stamp_out():
     )
     exc, out = check_against("# GENERATED\na: 1\nb: 2\n", new)
     check(exc is not None and "DIFFERS" in out, "a changed body still differs")
+    note = "the gnss_iface stamp differs too"
+    diff = out.split(note, 1)[-1]
+    check(
+        note in out and "-b: 2" in diff and "gnss_iface" not in diff,
+        "its diff shows the body, not the stamp, which it notes once (%r)" % out,
+    )
+    exc, out = check_against(new.replace("a: 1", "a: 2"), new)
+    check(
+        "-a: 2" in out and "+a: 1" in out and "gnss_iface" not in out,
+        "a stamped config that differs in its body notes no stamp (%r)" % out,
+    )
 
 
 def run_check(base):
