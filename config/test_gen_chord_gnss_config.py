@@ -222,6 +222,49 @@ def test_recipe_lines():
     )
 
 
+def test_paths_in_the_kotekan_tree():
+    """A recipe records a file in the kotekan tree relative to that tree, wherever the tree
+    is, and a relative input not there from the cwd is looked for in it."""
+    saved = g.kotekan_src.SRC
+    with tempfile.TemporaryDirectory() as d:
+        kot = os.path.realpath(d)
+        os.makedirs(os.path.join(kot, "config", "chord"))
+        open(os.path.join(kot, "config", "chord", "only_here.j2"), "w").close()
+        try:
+            g.kotekan_src.SRC = kot
+            j2 = os.path.join(kot, "config", "chord", "pathfinder.j2")
+            check(
+                g._rel(j2) == "config/chord/pathfinder.j2",
+                "_rel: a file in a separate kotekan tree is relative to it",
+            )
+            check(
+                g._rel(GEN) == "config/gen_chord_gnss_config.py",
+                "_rel: a file in this repo is still relative to the repo",
+            )
+            outside = os.path.join(os.path.dirname(kot), "elsewhere.j2")
+            check(g._rel(outside) == outside, "_rel: a file in neither stays absolute")
+            g.kotekan_src.SRC = os.path.join(ROOT, "kotekan")
+            check(
+                g._rel(os.path.join(ROOT, "kotekan", "config", "x.j2"))
+                == "config/x.j2",
+                "_rel: a kotekan submodule inside the repo wins over the repo",
+            )
+            g.kotekan_src.SRC = kot
+            rel = "config/chord/only_here.j2"
+            check(
+                g._kotekan_input(rel) == os.path.join(kot, rel),
+                "--base: relative and not here, found in the kotekan tree",
+            )
+            check(
+                g._kotekan_input("config/chord/no_such.j2")
+                == "config/chord/no_such.j2",
+                "--base: in neither place, left as given",
+            )
+            check(g._kotekan_input(GEN) == GEN, "--base: absolute, left as given")
+        finally:
+            g.kotekan_src.SRC = saved
+
+
 def test_aggregator_feed_ports():
     cfg = node_cfg()
     # cx19 (combs 4, 14) holds 6020 on GPU 0 only; cx27 (combs 0, 8) holds 6016 and 6024.
