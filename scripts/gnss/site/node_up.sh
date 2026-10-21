@@ -19,7 +19,7 @@
 # each call, so separate down and up loops prompt for the password twice per node.
 #
 #   env:  GNSS_BIN  binary            (default $KOTEKAN_SRC/build/kotekan/kotekan)
-#         KOTEKAN_SRC  kotekan tree   (default this checkout)
+#         KOTEKAN_SRC  kotekan tree   (default: found as kotekan_src.sh says)
 #         GNSS_CFG  config            (default: the config the fleet manifest owns for <node>)
 #         GNSS_LOG  log file          (default /tmp/gnss_node.log)
 #         GNSS_ENV  extra environment for kotekan, "VAR=value [VAR=value ...]" (this start only)
@@ -29,8 +29,11 @@
 # Needs an interactive sudo on the target, so it uses `ssh -t` and prompts per node (`status`
 # needs neither).
 set -u
-K=/home/kvand/gnss/kotekan
-KOTEKAN_SRC=${KOTEKAN_SRC:-$K}   # the kotekan tree: build/ and lib/stages/gnss
+# shellcheck source=kotekan_src.sh
+. "$(dirname "${BASH_SOURCE[0]}")/kotekan_src.sh"
+K=$GNSS_CHECKOUT
+KOTEKAN_SRC=$(gnss_kotekan_src "$K")   # the kotekan tree: build/ and lib/stages/gnss
+export KOTEKAN_SRC                      # for gen_fleet.py, which renders kotekan's templates
 BIN=${GNSS_BIN:-$KOTEKAN_SRC/build/kotekan/kotekan}
 N=${1:?usage: node_up.sh <node> [up|down|restart|status]}
 ACT=${2:-up}

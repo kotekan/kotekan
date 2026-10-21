@@ -44,10 +44,14 @@ def session_pgrep(bindir):
         stub(bindir, tool, 'exec /usr/bin/%s -s 0 "$@"\n' % tool)
 
 
-def run(cmd, env, timeout=120, cwd=None):
-    """Run cmd in a new session with env added to this environment; (rc, stdout+stderr).
-    On a timeout the session's process group is killed, so nothing it started outlives it."""
-    e = dict(os.environ)
+def run(cmd, env, timeout=120, cwd=None, bare=False):
+    """Run cmd in a new session with env added to this environment, or with bare=True to
+    cron's (PATH and HOME alone); (rc, stdout+stderr). On a timeout the session's process
+    group is killed, so nothing it started outlives it."""
+    if bare:
+        e = {"PATH": "/usr/bin:/bin", "HOME": os.environ.get("HOME", "/")}
+    else:
+        e = dict(os.environ)
     e.update(env)
     p = subprocess.Popen(
         cmd,
@@ -329,6 +333,8 @@ def test_cubecompact_up_waits_for_the_old_loop():
 
 GEN_FLEET_STUB = r"""import os, sys
 K = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+with open(os.path.join(K, "gen_fleet.env"), "a") as fh:
+    fh.write(os.environ.get("KOTEKAN_SRC", "(unset)") + "\n")
 if "--print-path" in sys.argv:
     print(os.path.join(K, "config", "generated", "chord_gnss_cx19_other.yaml"))
     sys.exit(0)
@@ -337,16 +343,180 @@ with open(os.path.join(K, "gen_fleet.calls"), "a") as fh:
 """
 
 
+def site_tree(d, *scripts):
+    """A GNSS checkout d/k holding the named site scripts and kotekan_src.sh, with a kotekan
+    tree beside it at d/kotekan; (checkout, kotekan tree)."""
+    k = os.path.join(d, "k")
+    site = os.path.join(k, "scripts", "gnss", "site")
+    os.makedirs(site)
+    for name in scripts + ("kotekan_src.sh",):
+        shutil.copy(os.path.join(HERE, name), site)
+    kt = os.path.join(d, "kotekan")
+    os.makedirs(os.path.join(kt, "lib", "stages", "gnss"))
+    return k, kt
+
+
+def test_kotekan_src_helper_follows_the_python_rule():
+    """kotekan_src.sh and python/scripts/gnss/kotekan_src.py, copied into the same checkout,
+    find the same tree in every layout the rule names, in cron's environment."""
+    py = os.path.join(
+        HERE, "..", "..", "..", "python", "scripts", "gnss", "kotekan_src.py"
+    )
+    mark = os.path.join("lib", "stages", "gnss")
+    # (what, trees holding lib/stages/gnss, relative to d, with c the checkout; KOTEKAN_SRC;
+    #  the tree expected, relative to d unless absolute, or None for none)
+    layouts = (
+        ("one tree", ("c",), None, "c"),
+        ("a submodule", ("c/kotekan",), None, "c/kotekan"),
+        ("a checkout beside", ("kotekan",), None, "kotekan"),
+        ("the checkout before a submodule", ("c", "c/kotekan", "kotekan"), None, "c"),
+        ("a submodule before one beside", ("c/kotekan", "kotekan"), None, "c/kotekan"),
+        ("none", (), None, None),
+        ("KOTEKAN_SRC before the checkout", ("c",), "/no/such", "/no/such"),
+        ("a relative KOTEKAN_SRC is made absolute", ("c",), "x/../kt", "kt"),
+        ("an empty KOTEKAN_SRC is unset", ("kotekan",), "", "kotekan"),
+    )
+    for what, trees, env_src, want in layouts:
+        d = tempfile.mkdtemp(prefix="site_ksrc_")
+        try:
+            c = os.path.join(d, "c")
+            site = os.path.join(c, "scripts", "gnss", "site")
+            pydir = os.path.join(c, "python", "scripts", "gnss")
+            os.makedirs(site)
+            os.makedirs(pydir)
+            shutil.copy(os.path.join(HERE, "kotekan_src.sh"), site)
+            shutil.copy(py, pydir)
+            for t in trees:
+                os.makedirs(os.path.join(d, t, mark))
+            env = {} if env_src is None else {"KOTEKAN_SRC": env_src}
+            # Sourced by a relative path from d, as `scripts/gnss/site/x.sh` is from a checkout.
+            rc, sh_out = run(
+                [
+                    "bash",
+                    "-c",
+                    'set -u; . "$1"; echo "$GNSS_CHECKOUT"; gnss_kotekan_src "$GNSS_CHECKOUT"',
+                    "sh",
+                    os.path.join("c", "scripts", "gnss", "site", "kotekan_src.sh"),
+                ],
+                env,
+                cwd=d,
+                bare=True,
+            )
+            lines = sh_out.splitlines()
+            _, py_out = run(
+                [
+                    sys.executable,
+                    "-c",
+                    "import sys; sys.path.insert(0, sys.argv[1]); import kotekan_src; "
+                    "print(kotekan_src.SRC)",
+                    pydir,
+                ],
+                env,
+                cwd=d,
+                bare=True,
+            )
+            want_abs = None if want is None else os.path.join(d, want)
+            check(
+                lines[:1] == [c],
+                "%s: GNSS_CHECKOUT is the checkout the helper is in (%r)"
+                % (what, lines[:1]),
+            )
+            if want_abs is None:
+                check(
+                    rc == 1
+                    and len(lines) == 2
+                    and "set KOTEKAN_SRC" in lines[1]
+                    and py_out.strip() == "None",
+                    "%s: no tree, rc 1 and a message naming KOTEKAN_SRC; Python finds none "
+                    "too (rc %d, %r, %r)" % (what, rc, lines[1:], py_out.strip()),
+                )
+            else:
+                check(
+                    rc == 0 and lines[1:] == [want_abs] and py_out.strip() == want_abs,
+                    "%s: both find %s (shell rc %d %r, Python %r)"
+                    % (what, want, rc, lines[1:], py_out.strip()),
+                )
+        finally:
+            shutil.rmtree(d, ignore_errors=True)
+
+
+def test_run_component_exports_kotekan_src_to_the_broker_alone():
+    d = tempfile.mkdtemp(prefix="site_print_")
+    try:
+        k, kt = site_tree(d, "run_component.sh", "stack_components.sh")
+        # The viewer's cwd: --print changes into it.
+        os.makedirs(os.path.join(k, "python", "scripts", "js_viewer"))
+        rc_sh = os.path.join(k, "scripts", "gnss", "site", "run_component.sh")
+        out = {}
+        names = "broker gather aggregator viewer obs rail cubearch cubecompact"
+        for name in names.split():
+            rc, out[name] = run(
+                ["bash", rc_sh, "--print", name],
+                {"GNSS_CHAIN": "gps_l5"} if name == "obs" else {},
+                bare=True,
+            )
+            check(
+                rc == 0,
+                "--print %s exits 0 (rc %d%s)"
+                % (name, rc, "" if rc == 0 else ": " + out[name][-200:]),
+            )
+        check(
+            "argv\t%s/scripts/gnss/broker_multi.py\n" % k in out["broker"],
+            "the broker runs from the checkout the scripts are in",
+        )
+        check(
+            "env\tKOTEKAN_SRC=%s\n" % kt in out["broker"],
+            "the broker's environment carries KOTEKAN_SRC, the kotekan tree beside it",
+        )
+        check(
+            "argv\t%s/build_nodpdk/kotekan/kotekan\n" % kt in out["gather"],
+            "the gather runs that kotekan tree's binary",
+        )
+        others = [n for n in out if n != "broker" and "env\tKOTEKAN_SRC" in out[n]]
+        check(not others, "no other component exports KOTEKAN_SRC (%s)" % others)
+        check(
+            "env\tGNSS_CHAIN=gps_l5\n" in out["obs"],
+            "an obs writer's GNSS_CHAIN, set by its unit, is still listed",
+        )
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def test_node_up_exports_kotekan_src_to_gen_fleet():
+    d = tempfile.mkdtemp(prefix="site_node_up_src_")
+    try:
+        path = node_up_stubs(d)
+        k, kt = site_tree(d, "node_up.sh")
+        os.makedirs(os.path.join(k, "config"))
+        with open(os.path.join(k, "scripts", "gnss", "gen_fleet.py"), "w") as fh:
+            fh.write(GEN_FLEET_STUB)
+        open(os.path.join(k, "config", "gnss_fleet_chord.yaml"), "w").write("x: 1\n")
+        rc, out = run(
+            [
+                "bash",
+                os.path.join(k, "scripts", "gnss", "site", "node_up.sh"),
+                "cxtest",
+                "status",
+            ],
+            {"PATH": path},
+            bare=True,
+        )
+        seen = os.path.join(k, "gen_fleet.env")
+        seen = open(seen).read().splitlines() if os.path.exists(seen) else []
+        check(
+            seen == [kt],
+            "node_up runs gen_fleet with KOTEKAN_SRC, the kotekan tree beside its checkout "
+            "(saw %r; rc %d)" % (seen, rc),
+        )
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
 def test_eop_cron_reads_the_configs_the_manifest_owns():
     d = tempfile.mkdtemp(prefix="site_eop_")
     try:
-        k = os.path.join(d, "k")
-        os.makedirs(os.path.join(k, "scripts", "gnss", "site"))
+        k, kt = site_tree(d, "eop_cron.sh")
         os.makedirs(os.path.join(k, "config", "generated"))
-        shutil.copy(
-            os.path.join(HERE, "eop_cron.sh"),
-            os.path.join(k, "scripts", "gnss", "site"),
-        )
         with open(os.path.join(k, "scripts", "gnss", "gen_fleet.py"), "w") as fh:
             fh.write(GEN_FLEET_STUB)
         open(os.path.join(k, "config", "gnss_fleet_chord.yaml"), "w").write(
@@ -380,6 +550,7 @@ def test_eop_cron_reads_the_configs_the_manifest_owns():
                 "EOP_LOG": log,
                 "EOP_STATE": state,
             },
+            bare=True,
         )
         text = open(log).read() if os.path.exists(log) else out
         calls = os.path.join(k, "gen_fleet.calls")
@@ -393,6 +564,13 @@ def test_eop_cron_reads_the_configs_the_manifest_owns():
         check(
             calls == ["--check", ""],
             "after a --check, then a write (gen_fleet calls %r)" % calls,
+        )
+        seen = os.path.join(k, "gen_fleet.env")
+        seen = open(seen).read().splitlines() if os.path.exists(seen) else []
+        check(
+            seen == [kt] * 3,
+            "each gen_fleet run gets KOTEKAN_SRC, the kotekan tree beside the checkout (%r)"
+            % seen,
         )
     finally:
         shutil.rmtree(d, ignore_errors=True)

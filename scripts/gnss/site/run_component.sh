@@ -26,11 +26,12 @@ gnss_component "$name"
 if [ "$PRINT" = 1 ]; then
     printf 'cwd\t%s\n' "${GNSS_CWD:-$PWD}"
     for a in "${GNSS_EXEC[@]}"; do printf 'argv\t%s\n' "$a"; done
-    # Every variable the definition may export. A name missing from this list is a variable
+    # Every variable the definition may export, as exported: a shell variable reaches no child,
+    # so only what printenv sees is printed. A name missing from this list is a variable
     # stack_contract_gate.sh cannot check, which is how an environment drifts unnoticed.
-    for v in GNSS_PY GNSS_CHAIN \
+    for v in GNSS_PY GNSS_CHAIN KOTEKAN_SRC \
              OPENBLAS_NUM_THREADS OMP_NUM_THREADS MKL_NUM_THREADS NUMEXPR_NUM_THREADS; do
-        eval "val=\${$v:-}"; [ -n "$val" ] && printf 'env\t%s=%s\n' "$v" "$val"
+        val=$(printenv "$v") && [ -n "$val" ] && printf 'env\t%s=%s\n' "$v" "$val"
     done
     exit 0
 fi

@@ -28,8 +28,12 @@
 # @author Keith Vanderlinde
 set -u
 
-GNSS_K=${GNSS_K:-/home/kvand/gnss/kotekan}
-KOTEKAN_SRC=${KOTEKAN_SRC:-$GNSS_K}   # the kotekan tree, for its build (python: kotekan_src.py)
+# shellcheck source=kotekan_src.sh
+. "$(dirname "${BASH_SOURCE[0]}")/kotekan_src.sh"
+GNSS_K=${GNSS_K:-$GNSS_CHECKOUT}                   # the GNSS checkout: this one
+# The kotekan tree, for its build and the broker's signal table; empty when there is none,
+# which only the components that run kotekan or read it notice. The broker alone exports it.
+KOTEKAN_SRC=$(gnss_kotekan_src "$GNSS_K") || true
 GNSS_ROOT=${GNSS_ROOT:-/home/kvand/gnss}
 GNSS_VENV=${GNSS_VENV:-$GNSS_ROOT/venv}            # 3.12, everything except the broker
 GNSS_VENV_FT=${GNSS_VENV_FT:-$GNSS_ROOT/venv-ft}   # 3.14t free-threaded, the broker only
@@ -89,6 +93,8 @@ gnss_component() {
         # and starves the telemetry reader. At these sizes one thread is also faster. Part of
         # the command, not an optimisation.
         export OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 NUMEXPR_NUM_THREADS=1
+        # The signal table is parsed from kotekan's gnssSignal.hpp at startup.
+        export KOTEKAN_SRC
         GNSS_EXEC=("$GNSS_PY" -u "$GNSS_K/scripts/gnss/broker_multi.py"
                    "${GNSS_CHAINS_YAML:-$GNSS_K/config/gnss_chains_chord.yaml}")
         ;;

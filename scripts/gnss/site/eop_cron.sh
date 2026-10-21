@@ -23,7 +23,9 @@
 #   env:      GNSS_NODES (default the six), EOP_LOG (default /var/tmp/gnss-logs/eop_cron.log),
 #             EOP_STATE (the staged table, default /var/tmp/gnss-logs/eop-state.json)
 set -u
-K=$(cd "$(dirname "$0")/../../.." && pwd)
+# shellcheck source=kotekan_src.sh
+. "$(dirname "${BASH_SOURCE[0]}")/kotekan_src.sh"
+K=$GNSS_CHECKOUT
 NODES=${GNSS_NODES:-"cx19 cx27 cx42 cx43 cx44 cx51"}
 LOG=${EOP_LOG:-/var/tmp/gnss-logs/eop_cron.log}
 F=${EOP_STATE:-/var/tmp/gnss-logs/eop-state.json}
@@ -85,6 +87,8 @@ fi
 # the manifest owns (gen_fleet.py --print-path): their names carry its suffix.
 PY=/home/kvand/gnss/venv/bin/python
 MAN="$K/config/gnss_fleet_chord.yaml"
+# gen_fleet renders kotekan's config templates and parses its headers.
+KOTEKAN_SRC=$(gnss_kotekan_src "$K") && export KOTEKAN_SRC
 mapfile -t OWNED < <("$PY" "$K/scripts/gnss/gen_fleet.py" "$MAN" --print-path 2>/dev/null)
 DISK_END=$("$PY" - "${OWNED[@]}" <<'PYE'
 import sys, yaml

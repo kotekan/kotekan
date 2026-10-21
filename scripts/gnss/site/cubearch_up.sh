@@ -29,8 +29,10 @@
 set -u
 CHECK=0
 [ "${1:-}" = "--check" ] && { CHECK=1; shift; }
-K=/home/kvand/gnss/kotekan
-KOTEKAN_SRC=${KOTEKAN_SRC:-$K}   # the kotekan tree, for its build
+# shellcheck source=kotekan_src.sh
+. "$(dirname "${BASH_SOURCE[0]}")/kotekan_src.sh"
+K=$GNSS_CHECKOUT
+KOTEKAN_SRC=$(gnss_kotekan_src "$K")   # the kotekan tree, for its build
 H=$(hostname -s)
 BIN=${GNSS_BIN:-$KOTEKAN_SRC/build_nodpdk/kotekan/kotekan}   # cf06 has no DPDK
 if [ ! -x "$BIN" ]; then

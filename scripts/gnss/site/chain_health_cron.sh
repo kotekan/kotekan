@@ -12,7 +12,9 @@
 # Why a file and not a page: nothing on site pages. The viewer, a shell prompt or a human can
 # test for the file; the daily beam-cube build reads the per-day mask independently.
 set -u
-K=/home/kvand/gnss/kotekan
+# shellcheck source=kotekan_src.sh
+. "$(dirname "${BASH_SOURCE[0]}")/kotekan_src.sh"
+K=$GNSS_CHECKOUT
 PY=${GNSS_PY:-/home/kvand/gnss/venv/bin/python}
 OBS=${GNSS_OBS_OUT:-/home/kvand/gnss/fixtures/obs}
 H=$OBS/health
