@@ -65,7 +65,7 @@ class inventVoltage : public kotekan::Stage {
     const testPacketLoss loss{config, unique_name};
     // The voltage of bad inputs (see `testBadFeeds`, the schedule of `inventBFMask`, and the
     // dishes listed as Missing in `telescope.dish_inputs`, which `inventBFMask` mode `auto` marks
-    // bad): `keep` the signal, or `random` bytes
+    // bad): `keep` the signal, `random` bytes, or `random_valid` bytes without -8 (no data)
     const std::string bad_voltage =
         config.get_default<std::string>(unique_name, "bad_voltage", "keep");
     const testBadFeeds bad_feeds{config, unique_name};
@@ -147,7 +147,7 @@ public:
             FATAL_ERROR("Unknown value for `lost_voltage`: \"{:s}\"", lost_voltage);
         if (lost_voltage != "keep" && reuse_frames)
             FATAL_ERROR("`lost_voltage` requires `reuse_frames: false`");
-        if (!(bad_voltage == "keep" || bad_voltage == "random"))
+        if (!(bad_voltage == "keep" || bad_voltage == "random" || bad_voltage == "random_valid"))
             FATAL_ERROR("Unknown value for `bad_voltage`: \"{:s}\"", bad_voltage);
         if (bad_voltage != "keep" && reuse_frames)
             FATAL_ERROR("`bad_voltage` requires `reuse_frames: false`");
@@ -376,7 +376,8 @@ private:
     }
 
     // Overwrite the bad inputs in a [T, F, P, D] frame whose first sample is `frame_seq` with
-    // random bytes: every int4 pair, including -8 (no data), is equally likely
+    // random bytes: every int4 pair, including -8 (no data), is equally likely, or with
+    // `random_valid` every pair without -8
     void overwrite_bad(kotekan::int4x2_swapped_withoffset_t* const frame,
                        const std::int64_t frame_seq) const {
         const std::ptrdiff_t num_inputs = std::ptrdiff_t(num_polarizations) * num_dishes;
@@ -388,8 +389,12 @@ private:
             for (int freq = 0; freq < num_frequencies; ++freq) {
                 for (const int input : bad) {
                     const std::ptrdiff_t element = freq * num_inputs + input;
+                    const std::uint64_t h =
+                        splitmix64(std::uint64_t(frame_seq + time) * time_stride + element);
                     const std::uint8_t byte =
-                        splitmix64(std::uint64_t(frame_seq + time) * time_stride + element) >> 56;
+                        bad_voltage == "random"
+                            ? std::uint8_t(h >> 56)
+                            : std::uint8_t((1 + (h >> 56) % 15) << 4 | (1 + (h >> 48 & 0xff) % 15));
                     std::memcpy(&frame[time * time_stride + element], &byte, 1);
                 }
             }
