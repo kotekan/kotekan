@@ -96,6 +96,27 @@ frbNetworkSend::frbNetworkSend(Config& config_, const std::string& unique_name,
 }
 
 frbNetworkSend::~frbNetworkSend() {
+    // notify the worker threads that we are ending (forcible if needs be)
+    if (!stop_thread) {
+        ping_cv.notify_all();
+    } else {
+        if (send_ping_thread.joinable()) {
+            pthread_cancel(send_ping_thread.native_handle());
+        }
+        if (receive_ping_thread.joinable()) {
+            pthread_cancel(receive_ping_thread.native_handle());
+        }
+    }
+
+    // wait for threads before closing fds still in use by select()
+    if (send_ping_thread.joinable()) {
+        send_ping_thread.join();
+    }
+
+    if (receive_ping_thread.joinable()) {
+        receive_ping_thread.join();
+    }
+
     for (auto src : src_sockets) {
         close(src.socket_fd);
     }
@@ -103,14 +124,6 @@ frbNetworkSend::~frbNetworkSend() {
     // close pinging sockets
     for (auto fd : ping_src_fd) {
         close(fd);
-    }
-
-    if (send_ping_thread.joinable()) {
-        send_ping_thread.join();
-    }
-
-    if (receive_ping_thread.joinable()) {
-        receive_ping_thread.join();
     }
 }
 
