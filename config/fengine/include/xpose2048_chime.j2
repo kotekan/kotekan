@@ -6,10 +6,10 @@
 
 # Transpose kernel setup
 
-# The transpose puts input element i into element scatter_indices[i]. As in
-# config/chime_upgrade_frb.j2, parseReorderDefault computes the indices from `input_order` to
-# `output_order`; both are CHIMEBeamformer, the order the F-engine simulator produces, so the
-# indices are the identity.
+# The transpose puts input element i into element scatter_indices[i]. parseReorderDefault
+# computes the indices from `input_reorder` (include/input_reorder_chime.j2): the voltages arrive
+# in correlator (ADC) order, and element j of the table goes to element j of the output. This
+# undoes the reordering with which RadioTelescopeFEngine.jl writes the simulated voltages.
 
 ################################################################################
 
@@ -37,8 +37,8 @@ host_xposed_voltage_ringbuffer:
 run_set_scatter_indices:
     kotekan_stage: parseReorderDefault
     out_buf: host_scatter_indices_buffer
-    input_order: CHIMEBeamformer
-    output_order: CHIMEBeamformer
+    input_order: CHIMECorrelator
+    output_order: CHIMECylinder
     name: scatter_indices
 
 run_xpose2048:
