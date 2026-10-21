@@ -3,9 +3,10 @@
 # CHIME n2k setup
 
 # The N2 chain of config/chime_upgrade_frb.j2: counts from the lost samples (lostSamplesToN2Counts),
-# 10 s integrations (CHIMEv1 variance), eigendecomposition and conversion to visibility frames. As
+# integrations with CHIMEv1 variance, eigendecomposition and conversion to visibility frames. As
 # in the pathfinder and CHORD, N2Accumulate also reads the bad feed mask, which
-# config/chime_upgrade_frb.j2 does not.
+# config/chime_upgrade_frb.j2 does not. The integrations are 1 s instead of production's 10 s, so
+# that a short input file gives an integration.
 
 ################################################################################
 
@@ -118,14 +119,14 @@ vis_pool:
     kotekan_metadata_pool: VisMetadata
     num_metadata_objects: buffer_depth * num_frequencies
 
-eig_10s_buffer:
+eig_buffer:
     kotekan_buffer: N2
     num_ev: num_ev_to_calculate
     n2_layout: "FullUpperTri"
     num_frames: buffer_depth * num_frequencies
     metadata_pool: n2_pool
 
-failed_10s_buffer:
+failed_buffer:
     kotekan_buffer: N2
     num_ev: 0
     n2_layout: "FullUpperTri"
@@ -205,8 +206,8 @@ run_N2_accumulate:
     kotekan_stage: N2Accumulate
     samples_per_data_set: n2k_samples_per_data_set
     sub_integration_ntime: n2k_sub_integration_ntime
-    # round_up_to_even(10 s / (16384 * 2.56 us) * 1) = 240
-    num_subintegrations_per_bin: 240
+    # About 1 s; production (config/chime_upgrade_frb.j2) uses 240 frames, about 10 s
+    num_subintegrations_per_bin: 24
     num_elements: n2k_correlation_num_elements
     num_freq_per_n2k_frame: num_frequencies
     packet_loss_is_scalar: true
@@ -232,8 +233,8 @@ eigencalc:
     num_blaze_workers: 3
     num_ev: num_ev_to_calculate
     in_buf: host_n2_vis_buffer
-    out_buf: eig_10s_buffer
-    failed_buf: failed_10s_buffer
+    out_buf: eig_buffer
+    failed_buf: failed_buffer
     # Convergence config from chime science run
     tol_eval: 0.00001
     tol_evec: 0.0001
@@ -250,6 +251,6 @@ eigencalc:
 
 vis_convert:
     kotekan_stage: n2FrameToVisFrame
-    n2_buf: eig_10s_buffer
+    n2_buf: eig_buffer
     vis_buf: vis_buffer
     freq_ids: {{ frequency_channels }}
