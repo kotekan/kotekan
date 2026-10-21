@@ -170,6 +170,9 @@ constexpr int REC_PROJ_K = 30;
 /// where its basis directions came from: 1 its own row of the source satellite, 2 a sibling
 /// chain's row, 4 the gated probe stack. 0 when no basis is in force. Same value on every row.
 constexpr int REC_PROJ_SRC = 31;
+constexpr int REC_PROJ_SRC_OWN = 1;     ///< REC_PROJ_SRC bit: its own row of the source satellite
+constexpr int REC_PROJ_SRC_SIBLING = 2; ///< REC_PROJ_SRC bit: a sibling chain's row
+constexpr int REC_PROJ_SRC_PROBE = 4;   ///< REC_PROJ_SRC bit: the gated probe stack
 
 /// Phi-cache staleness, Hz: doppler_now - the Doppler this PRN's channelizer filter (Phi) was
 /// built at; NaN if no Phi was built. GnssCudaDespread rebuilds a PRN's Phi only when its
@@ -177,6 +180,11 @@ constexpr int REC_PROJ_SRC = 31;
 /// and a candidate for a phase intercept that differs per instance. A spread across instances
 /// comparable to refresh_hz is the sign of it.
 constexpr int REC_PHI_DDOP = 27;
+
+/// Values of gnss_gpu::PrnCtl::reanchored (gnssGpuChain.hpp): whether f_ref moved at a record.
+constexpr int REANCHORED_NONE = 0;
+constexpr int REANCHORED_FRESH = 1; ///< fresh acquisition: the NCO resets and the arc breaks
+constexpr int REANCHORED_REPIN = 3; ///< continuous re-pin: the phase steps by PrnCtl::dcyc
 
 // Combiner-record slots
 constexpr int CMB_AMP_INCOH = 3;

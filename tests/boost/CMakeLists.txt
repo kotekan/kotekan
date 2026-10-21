@@ -49,6 +49,15 @@ target_include_directories(test_beidou_b3i_code PRIVATE ../../lib/stages ../../l
 add_executable(test_gnss_band_plan test_gnss_band_plan.cpp ../../lib/stages/gnss/gnssBandPlan.cpp)
 target_include_directories(test_gnss_band_plan PRIVATE ../../lib/stages ../../lib/stages/gnss)
 
+# The gnss interface document against its golden and the GNSS headers; no FFTW or CUDA.
+add_executable(test_gnss_interface test_gnss_interface.cpp ../../lib/stages/gnss/gnssInterface.cpp
+                                   ../../lib/stages/gnss/gnssBandPlan.cpp)
+target_include_directories(test_gnss_interface PRIVATE ../../lib/stages ../../lib/stages/gnss)
+target_link_libraries(test_gnss_interface PRIVATE libexternal kotekan_metadata kotekan_core
+                                                  kotekan_utils)
+target_compile_definitions(test_gnss_interface
+                           PRIVATE GNSS_SOURCE_DIR="${KOTEKAN_SOURCE_DIR}/lib/stages/gnss")
+
 # The shared element model's fleet-common phase pin: header-only, no Telescope/FFTW.
 add_executable(test_gnss_shared_pin test_gnss_shared_pin.cpp)
 target_include_directories(test_gnss_shared_pin PRIVATE ../../lib/stages ../../lib/stages/gnss)
@@ -242,6 +251,10 @@ target_link_libraries(test_restclient PRIVATE libexternal kotekan_libs kotekan_u
 add_executable(test_restserver_bind test_restserver_bind.cpp)
 target_link_libraries(test_restserver_bind PRIVATE libexternal kotekan_libs kotekan_utils
                                                    kotekan_core)
+
+# test_interfaceRegistry - canonical form and digests of the interface documents
+add_executable(test_interfaceRegistry test_interfaceRegistry.cpp)
+target_link_libraries(test_interfaceRegistry PRIVATE libexternal kotekan_core)
 
 # test_bip_buffer needs fmt
 add_executable(test_bip_buffer test_bip_buffer.cpp)

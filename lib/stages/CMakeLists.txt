@@ -69,6 +69,9 @@ add_library(
     # The fleet code loop runs in the gather instance beside GnssTelemGather (the only place
     # with the whole fleet at frame rate), so it is in the same no-FFTW block.
     gnss/GnssFleetTrim.cpp
+    # The gnss interface document (with the band edges it lists) is served by every binary.
+    gnss/gnssInterface.cpp
+    gnss/gnssBandPlan.cpp
     $<$<STREQUAL:${WITH_SPAWN_PROCESS},ON>:SpawnProcess.cpp>
     freqSplit.cpp
     FreqSubset.cpp
@@ -169,7 +172,6 @@ if(FFTW_FOUND)
         kotekan_stages
         PRIVATE fftwEngine.cpp
                 dspPfbPrototype.cpp
-                gnss/gnssBandPlan.cpp
                 gnss/gnssChannelizedAcquire.cpp
                 gnss/gnssChannelizedReplica.cpp
                 gnss/gnssSeedTransport.cpp
