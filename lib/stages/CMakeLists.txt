@@ -172,6 +172,7 @@ if(FFTW_FOUND)
                 gnss/gnssBandPlan.cpp
                 gnss/gnssChannelizedAcquire.cpp
                 gnss/gnssChannelizedReplica.cpp
+                gnss/gnssPsiTable.cpp
                 gnss/gnssSeedTransport.cpp
                 gnss/GnssChannelizedSearch.cpp
                 gnss/GnssChordVoltageTap.cpp

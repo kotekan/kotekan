@@ -983,11 +983,14 @@ int main(int argc, char** argv) {
             for (int q = 0; q < n_slot; ++q)
                 s2s_b[(size_t)q] = (q == 3 || q == 7) ? -1 : sp++;
         }
-        int *d_s2s_a = nullptr, *d_s2s_b = nullptr;
+        const std::vector<int> s2s_c((size_t)n_slot, -1);
+        int *d_s2s_a = nullptr, *d_s2s_b = nullptr, *d_s2s_c = nullptr;
         CK(cudaMalloc(&d_s2s_a, (size_t)n_slot * sizeof(int)));
         CK(cudaMalloc(&d_s2s_b, (size_t)n_slot * sizeof(int)));
+        CK(cudaMalloc(&d_s2s_c, (size_t)n_slot * sizeof(int)));
         CK(cudaMemcpy(d_s2s_a, s2s_a.data(), (size_t)n_slot * sizeof(int), cudaMemcpyHostToDevice));
         CK(cudaMemcpy(d_s2s_b, s2s_b.data(), (size_t)n_slot * sizeof(int), cudaMemcpyHostToDevice));
+        CK(cudaMemcpy(d_s2s_c, s2s_c.data(), (size_t)n_slot * sizeof(int), cudaMemcpyHostToDevice));
 
         const size_t wn = (size_t)3 * n_job * n_chan * n_hops, en = (size_t)4 * n_job * n_chan;
         float2* d_wave = nullptr;
@@ -1003,6 +1006,7 @@ int main(int argc, char** argv) {
             int fixed;
             bool caseB, other;
             int opts = 0;
+            bool none = false; ///< case C: every slot inactive, jobs/pjobs/theta/rot nullptr
         };
         std::vector<unsigned char> A(synth_len), Bv(synth_len);
         std::vector<double> e_ref(en), e_fus(en);
@@ -1014,23 +1018,35 @@ int main(int argc, char** argv) {
             const gnss_cuda::PsiJob* pjobs = fc.half ? dj.half : dj.psi;
             const float* rot = fc.rot ? dj.rot : nullptr;
             const gnss_cuda::DespreadJob* jobs = fc.caseB ? d_jobs_b : dj.full;
-            const int* s2s = fc.caseB ? d_s2s_b : d_s2s_a;
-            const std::vector<int>& s2s_h = fc.caseB ? s2s_b : s2s_a;
+            const int* s2s = fc.none ? d_s2s_c : (fc.caseB ? d_s2s_b : d_s2s_a);
+            const std::vector<int>& s2s_h = fc.none ? s2s_c : (fc.caseB ? s2s_b : s2s_a);
             const int n_lanes = n_lanes_for(fc.lps, n_slot);
             CK(cudaMemset(d_energy, 0, en * sizeof(double)));
             CK(cudaMemset(d_energy_f, 0xff, en * sizeof(double))); // NaN: untouched rows show
             CK(cudaMemset(d_synth_a, 0x5a, synth_len));
             CK(cudaMemset(d_synth_b, 0x5a, synth_len));
-            CK(gnss_cuda::launch_psi_waveform(jobs, pjobs, dj.theta, n_job, n_chan, pp, rot,
-                                              fc.fixed, d_wave, d_energy, 0));
             const double* escale = fc.other ? d_energy + (size_t)4 * n_prn * n_chan : d_energy;
-            CK(gnss_cuda::launch_pack44(d_wave, escale, jobs, s2s, n_slot, fc.lps, n_chan, n_hops,
-                                        d_chan_map, fcs, n_lanes, lane_base, lane_pitch, d_synth_a,
-                                        0));
-            CK(gnss_cuda::launch_psi_pack_opts(jobs, pjobs, dj.theta, rot, fc.fixed, s2s, n_slot,
-                                               fc.lps, n_chan, pp, d_chan_map, fcs, n_lanes,
-                                               lane_base, lane_pitch, fc.other ? escale : nullptr,
-                                               d_energy_f, d_synth_b, fc.opts, 0));
+            if (fc.none) {
+                // A record with no active PRN, as the stage launches it: slot2spec all -1 and
+                // the job arrays unwritten (nullptr here, so a read would fault).
+                CK(gnss_cuda::launch_pack44(d_wave, d_energy, nullptr, s2s, n_slot, fc.lps, n_chan,
+                                            n_hops, d_chan_map, fcs, n_lanes, lane_base, lane_pitch,
+                                            d_synth_a, 0));
+                CK(gnss_cuda::launch_psi_pack_opts(nullptr, nullptr, nullptr, nullptr, fc.fixed,
+                                                   s2s, n_slot, fc.lps, n_chan, pp, d_chan_map, fcs,
+                                                   n_lanes, lane_base, lane_pitch, nullptr,
+                                                   d_energy_f, d_synth_b, fc.opts, 0));
+            } else {
+                CK(gnss_cuda::launch_psi_waveform(jobs, pjobs, dj.theta, n_job, n_chan, pp, rot,
+                                                  fc.fixed, d_wave, d_energy, 0));
+                CK(gnss_cuda::launch_pack44(d_wave, escale, jobs, s2s, n_slot, fc.lps, n_chan,
+                                            n_hops, d_chan_map, fcs, n_lanes, lane_base, lane_pitch,
+                                            d_synth_a, 0));
+                CK(gnss_cuda::launch_psi_pack_opts(
+                    jobs, pjobs, dj.theta, rot, fc.fixed, s2s, n_slot, fc.lps, n_chan, pp,
+                    d_chan_map, fcs, n_lanes, lane_base, lane_pitch, fc.other ? escale : nullptr,
+                    d_energy_f, d_synth_b, fc.opts, 0));
+            }
             CK(cudaDeviceSynchronize());
             CK(cudaMemcpy(A.data(), d_synth_a, synth_len, cudaMemcpyDeviceToHost));
             CK(cudaMemcpy(Bv.data(), d_synth_b, synth_len, cudaMemcpyDeviceToHost));
@@ -1104,7 +1120,8 @@ int main(int argc, char** argv) {
         if (!prof) {
             printf("\n=== fused: launch_psi_pack vs launch_psi_waveform + launch_pack44, synth "
                    "[%d][%d][%d] bytes, lane_base %d, n_lanes 64, chan_map 2,4,..,14; %d slots; "
-                   "case B = slots 3,7 inactive + channel %d uncovered; 'own' = record-0 scale "
+                   "case B = slots 3,7 inactive + channel %d uncovered; case C = no active PRN "
+                   "(slot2spec all -1, job pointers nullptr); 'own' = record-0 scale "
                    "(this launch's energies), 'other' = scale from the +0.1-chip jobs' energies "
                    "===\n",
                    n_hops, fcs, lane_pitch, lane_base, n_slot, chans[(size_t)UNCOV]);
@@ -1138,6 +1155,10 @@ int main(int argc, char** argv) {
                 {"lanes 4 rot  fp16 fixed  B other T512", 4, true, true, 1, true, true, 1},
                 {"lanes 4 exact fp16 fixed A own   T512", 4, false, true, 1, false, false, 1},
                 {"lanes 4 exact fp16 fixed B other T512", 4, false, true, 1, true, true, 1},
+                {"lanes 2 rot  fp16 fixed  C (no PRN, null jobs)", 2, true, true, 1, false, false,
+                 0, true},
+                {"lanes 2 rot  fp16 fixed  C T512", 2, true, true, 1, false, false, 1, true},
+                {"lanes 4 rot  fp16 fixed  C T512", 4, true, true, 1, false, false, 1, true},
             };
             for (const auto& fc : cases)
                 run_case(fc);
