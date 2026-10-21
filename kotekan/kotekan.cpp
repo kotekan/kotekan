@@ -994,6 +994,8 @@ int main(int argc, char** argv) {
     // The canonical bytes go out as they are; send_json_reply would dump them again.
     for (auto& it : interfaces.items()) {
         const json& entry = it.value();
+        if (entry.contains("error"))
+            WARN_NON_OO("interface {:s}: {:s}", it.key(), entry.at("error").get<std::string>());
         std::string body = canonical_json(entry.contains("doc") ? entry.at("doc") : entry);
         rest_server.register_get_callback(
             "/interfaces/" + it.key(),
