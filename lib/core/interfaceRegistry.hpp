@@ -83,6 +83,9 @@ std::string canonical_double(double value);
 /**
  * @brief The FNV-1a 64-bit hash of a byte string, as `fnv1a64:` and 16
  *        lowercase hex digits.
+ *
+ * FNV-1a rather than MurmurHash3 (Hash.hpp) or MD5: a peer computes it in a
+ * few lines of plain Python, and OpenSSL is optional in kotekan_core.
  */
 std::string fnv1a64_digest(const std::string& bytes);
 
@@ -93,6 +96,10 @@ std::string fnv1a64_digest(const std::string& bytes);
  *
  * Use in the .cpp file that defines the builder, e.g.
  * `REGISTER_KOTEKAN_INTERFACE("gnss", 1, build_gnss_interface);`
+ *
+ * A builder reports a problem by throwing, which gives its interface an error
+ * block. It must not call FATAL_ERROR: that raises SIGTERM before it throws,
+ * so kotekan stops even though the registry catches the throw.
  *
  * @param name    Interface name, a string.
  * @param schema  Schema number of the document.
