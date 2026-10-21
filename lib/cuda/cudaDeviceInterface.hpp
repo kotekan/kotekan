@@ -12,6 +12,7 @@
 #include "gpuDeviceInterface.hpp" // for gpuDeviceInterface
 
 #include <cuda.h>   // for CUfunction
+#include <deque>    // for deque
 #include <map>      // for map
 #include <memory>   // for allocator, shared_ptr, weak_ptr
 #include <mutex>    // for recursive_mutex
@@ -48,6 +49,12 @@ public:
 
     /// Returns the number of streams available
     int32_t get_num_streams();
+
+    /// Async copy engines this device reports. Two are needed for a host-to-device copy to
+    /// overlap a device-to-host one; with one they serialise whatever the stream layout says.
+    int32_t async_engine_count() const {
+        return _async_engine_count;
+    }
 
     /// This function calls cudaSetDevice and must be called from every thread operating with this
     /// gpuDeviceInterface, or making calls directly to one of the cuda streams
@@ -109,15 +116,37 @@ public:
     // Map containing the runtime kernels built with nvrtc from the kernel file (if needed)
     std::map<std::string, CUfunction> runtime_kernels;
 
-    // Mutex for queuing GPU commands
-    std::recursive_mutex gpu_command_mutex;
+    /// The command-queuing mutex for one CUDA stream.
+    ///
+    /// Queuing is locked per stream rather than per device because intra-frame ordering does
+    /// not depend on exclusive stream access: each pipeline chains its own commands with
+    /// explicit `cudaStreamWaitEvent` calls on events held in a vector local to its own
+    /// `queue_commands` (see cudaSyncStream::execute). The state a command may share with its
+    /// neighbours is the `cudaCommandState` object a REGISTER_CUDA_COMMAND_WITH_STATE command
+    /// declares, and that is created per create_command, so it is shared only within one
+    /// pipeline -- a pipeline that locks the streams it uses preserves that exactly. Two
+    /// cudaProcess stages whose stream sets are disjoint therefore never exclude each other.
+    ///
+    /// A cudaProcess takes this for every stream its commands enqueue onto (see
+    /// cudaCommand::cuda_stream_id), through lock_streams_ascending, which fixes the order.
+    /// Anything else that queues work on a stream should do the same.
+    std::recursive_mutex& stream_mutex(int32_t stream_id);
 
 protected:
     void* alloc_gpu_memory(size_t len) override;
     void free_gpu_memory(void*) override;
 
+    /// Async copy engines, from cudaGetDeviceProperties at construction.
+    int32_t _async_engine_count = 0;
+
     // Cuda Streams
     std::vector<cudaStream_t> streams;
+
+    /// One command-queuing mutex per entry of `streams`, emplaced in prepareStreams() before
+    /// the stream it guards is created, so every stream has one. A deque rather than a vector
+    /// because a `std::recursive_mutex` is neither movable nor copyable, and a deque grows
+    /// without relocating its elements.
+    std::deque<std::recursive_mutex> stream_mutexes;
 
     // Cache of device instances (weak to avoid lifetime extension)
     static std::map<int32_t, std::weak_ptr<cudaDeviceInterface>> inst_map;
