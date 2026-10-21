@@ -97,7 +97,17 @@ Measured per-record cost = (chains) x (one 0.18 ms wave each, at fp16 Phi and 80
    warp shuffle. Bench on an idle A40 at L5 geometry, 12 PRN x 7 channels x 2048 hops
    (`fixtures/gpu_budget/psi_bench_cx52_20261021.txt`): production waveform launch 100 us,
    Psi fp32 tables 33.7 us, fp16 tables 21.5 us (36 jobs: 229 -> 50 us), before the pack is
-   fused in. Tables cost 12-25 ms of CPU per PRN per Doppler bucket (80 KB per channel at
+   fused in. Fused (`psi_fused_cx52_20261021.txt`, byte-identical to Psi synthesis followed
+   by `gnss_pack44` in every case incl. inactive slots, uncovered channels and the no-PRN
+   record): 28.7 us per record-chain at 12 slots against 122.9 us for the production
+   waveform + pack pair (24 slots 42.0 vs 201.7, 36 slots 69.6 vs 278.5); the write-only
+   floor (every slot inactive) is 12-15 us, the scattered 2-byte lane stores. Replay A/B on
+   cx52 (`delta_psion_vs_psioff_20261021.txt`, the live cx44 recipe's 9 chains x 12 PRN per
+   GPU, all-zero replay data so timing only): per GPU per frame `gnss_waveform` 4.16/4.41 ms
+   + `gnss_pack44` 0.69/0.72 -> `gnss_psi_pack_kernel` 1.65/1.68 (36 launches, 46 us each in
+   situ beside the N^2 and the input copy); n2k, the dual and the RFI kernels unchanged;
+   kernels union busy 7.29/7.68 -> 4.03/4.12 ms, 17-18% -> 10% of the frame. Tables cost
+   12-25 ms of CPU per PRN per Doppler bucket (80 KB per channel at
    10.23 Mcps, G grid points per chip at lower rates), rebuilt at `psi_refresh_hz` (30 Hz).
    The replica is NOT the production replica: it is the full PFB span (+1.1% energy, ~1% in
    correlation against the 80-chip gather), the near carrier image only (the far image is a
@@ -107,8 +117,12 @@ Measured per-record cost = (chains) x (one 0.18 ms wave each, at fp16 Phi and 80
    "Chips kept" below). Config: `psi_synth: true` on the track block (generator `--psi-synth`,
    requires `--epl-from-prompt`), `psi_fp16` (default true), `psi_refresh_hz` (default 30);
    the 80-chip guard does not apply. Replay A/B on cx52: `chord_gnss_prof_cx52_psioff.yaml` /
-   `_psion.yaml` (make_prof_config.py `--psi-synth`), the same binary, `prof_run.sh` as for
-   the epl A/B.
+   `_psion.yaml` (make_prof_config.py `--psi-synth`), the same binary, `run_psi_ab.sh` as for
+   the epl A/B. The 10-13 recordings predate #1787 (int32 -> int64 `time_downsampling_fpga`
+   in chordMetadataFormat); `make_replay.py --widen-tdf` converts the header on the fly, since
+   the size check in rawFileRead cannot tell the layouts apart (it read `dim[0]` as `dims`).
+   Not yet measured: the replica on sky (the replay data is zero), a tracker-observable A/B, a
+   canary node.
 3. **Fewer chips (`despread_max_chips`, centred).** Loss is exactly the dropped window energy:
    212 chips 0 dB, 105 -0.018, 80 -0.045 (production), 60 -0.27, 40 -1.1, 20 -3.4. Cross-PRN
    leakage does not depend on it (set by the comb's channel count: -32 dB on 6 channels, -38 on
