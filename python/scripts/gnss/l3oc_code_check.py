@@ -275,7 +275,12 @@ def main():
 
     # ---- 3. bit-exactness vs the C++ ---------------------------------------
     cpp = _cpp_codes()
-    if cpp is None:
+    # GNSS_REQUIRE_CXX (the test runner sets it): this host must compile the C++, so no
+    # compiler fails rather than skips.
+    if cpp is None and os.environ.get("GNSS_REQUIRE_CXX"):
+        print("bit-exact: no compiler, and GNSS_REQUIRE_CXX is set")
+        ok = False
+    elif cpp is None:
         print("bit-exact: no compiler, SKIPPED -- structural checks only")
     elif isinstance(cpp, str):
         print("bit-exact: C++ %s" % cpp)

@@ -213,7 +213,12 @@ def main():
         if checked and (prn in _FINGERPRINT or prn % 8 == 0):
             print(line)
     cpp = _cpp_codes()
-    if cpp is None:
+    # GNSS_REQUIRE_CXX (the test runner sets it): this host must compile the C++, so no
+    # compiler fails rather than skips.
+    if cpp is None and os.environ.get("GNSS_REQUIRE_CXX"):
+        print("C++: no compiler, and GNSS_REQUIRE_CXX is set")
+        fails += 1
+    elif cpp is None:
         print("C++: no compiler, bit-exact check SKIPPED")
     elif isinstance(cpp, str):
         print("C++: %s" % cpp)

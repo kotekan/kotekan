@@ -391,7 +391,8 @@ class TestDarkInstLine(unittest.TestCase):
         import subprocess
         import tempfile
 
-        if not shutil.which("node"):
+        # GNSS_REQUIRE_NODE (the test runner sets it): no node fails rather than skips.
+        if not shutil.which("node") and not os.environ.get("GNSS_REQUIRE_NODE"):
             self.skipTest("no node")
         panel = os.path.join(
             os.path.dirname(os.path.abspath(__file__)),

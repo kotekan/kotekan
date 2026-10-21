@@ -3,7 +3,8 @@
 
     /home/kvand/gnss/venv/bin/python test_transit_arcs.py
 
-The figure test needs matplotlib (the venv has it; venv-ft does not, and skips it).
+The figure test needs matplotlib (the venv has it; venv-ft does not, and skips it unless
+GNSS_REQUIRE_PLOT is set).
 """
 import importlib.util
 import os
@@ -25,7 +26,11 @@ sys.path.remove(ta.GNSS)
 HAVE_MPL = importlib.util.find_spec("matplotlib") is not None
 
 
-@unittest.skipUnless(HAVE_MPL, "needs matplotlib")
+# GNSS_REQUIRE_PLOT (the test runner sets it): no matplotlib fails rather than skips, since a
+# skip here only ever means the wrong interpreter.
+@unittest.skipUnless(
+    HAVE_MPL or os.environ.get("GNSS_REQUIRE_PLOT"), "needs matplotlib"
+)
 class TestTransitLegend(unittest.TestCase):
     """The survival map's transit legend names the --bore-deg the windows were cut at."""
 
