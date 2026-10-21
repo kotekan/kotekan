@@ -80,6 +80,10 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     _num_elements(_num_polarizations * _num_dishes),
     _num_workers(config.get_default<int>(unique_name, "num_workers", 1)),
     _do_fringestop(config.get_default<bool>(unique_name, "do_fringestop", false)),
+    _fringestop_config_path(
+        config.get_default<std::string>(unique_name, "fringestop_updatable_config", "")),
+    _next_do_fringestop(_do_fringestop),
+    _next_fringestop_valid_at_seq(std::numeric_limits<int64_t>::max()),
     _variance_mode(config.get<N2VarianceMode>(unique_name, "variance_mode")),
     _debug_accum_mode(config.get_default<bool>(unique_name, "debug_accum_mode", false)),
     _profile_info(config.get_default<bool>(unique_name, "profile_info", false)),
@@ -129,6 +133,14 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
 
     in_rfiframemask_buf = get_buffer("in_rfiframemask_buf");
     in_rfiframemask_buf->register_consumer(unique_name);
+
+    if (!_fringestop_config_path.empty()) {
+        using namespace std::placeholders;
+        INFO("Subscribing {:s} to updatable config.", _fringestop_config_path);
+        kotekan::configUpdater::instance().subscribe(
+            _fringestop_config_path,
+            std::bind(&N2Accumulate::receive_fringestop_enabled, this, _1));
+    }
 
     // Optional bad feed mask (1 == good), folded into the output frames'
     // per-element flags. Consumed 1:1 with the correlation frames.
@@ -639,6 +651,7 @@ void N2Accumulate::main_thread() {
                     _accum_fpga_start_tick = seq;
                     _accum_bin_idx = bin_idx;
                     target_eop = get_accum_bin_EOP(bin_idx);
+                    update_fringestop(seq);
 
                     state = AccumState::ACCUMULATING;
                     DEBUG("MODE: Setting accum_fpga_start_tick: {0:d}", _accum_fpga_start_tick);
@@ -765,6 +778,7 @@ void N2Accumulate::main_thread() {
                 _accum_fpga_start_tick = seq + _n_fpga_samples_per_n2k_correlation;
                 _accum_bin_idx = next_bin_idx;
                 target_eop = get_accum_bin_EOP(next_bin_idx);
+                update_fringestop(_accum_fpga_start_tick);
             }
 
 #ifdef WITH_OMP
@@ -855,6 +869,40 @@ int64_t N2Accumulate::calculate_ERA_bin_idx_from_time(const timespec& t_inst) {
     int64_t ERA_idx = static_cast<int64_t>(floor((ERA_deg / 360.0) * _num_bins_per_rotation));
 
     return _num_bins_per_rotation * nrot + ERA_idx;
+}
+
+bool N2Accumulate::receive_fringestop_enabled(nlohmann::json& json) {
+    bool enabled;
+    int64_t time_ns;
+    try {
+        enabled = json.at("enabled").get<bool>();
+        time_ns = json.at("valid_at_time_ns").get<int64_t>();
+    } catch (std::exception& e) {
+        WARN("N2Accumulate failed to read update to {:s}: {:s}", _fringestop_config_path, e.what());
+        return false;
+    }
+    // Times before the telescope's time zero would underflow to_seq. A past time applies at
+    // the next bin start; refusing it would leave the live config out of step with the stage.
+    // 0 means from startup.
+    if (time_ns != 0 && time_ns < _tel.to_time_ns(0))
+        ERROR("Fringestop update valid_at_time_ns {:d} is before the telescope's time zero; "
+              "applying it at the next bin start",
+              time_ns);
+    int64_t seq = time_ns < _tel.to_time_ns(0) ? 0 : int64_t(_tel.to_seq(time_ns));
+    INFO("{:s} fringestopping from the first bin starting at or after t_inst {:d} ns (seq {:d})",
+         enabled ? "Enabling" : "Disabling", time_ns, seq);
+    std::lock_guard<std::mutex> lock(_fringestop_mutex);
+    _next_do_fringestop = enabled;
+    _next_fringestop_valid_at_seq = seq;
+    return true;
+}
+
+void N2Accumulate::update_fringestop(int64_t bin_start_seq) {
+    std::lock_guard<std::mutex> lock(_fringestop_mutex);
+    if (bin_start_seq >= _next_fringestop_valid_at_seq) {
+        _do_fringestop = _next_do_fringestop;
+        _next_fringestop_valid_at_seq = std::numeric_limits<int64_t>::max();
+    }
 }
 
 int64_t N2Accumulate::get_accum_abs_bin_idx(uint64_t seq) {
@@ -1218,6 +1266,7 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& in_rfiframema
         meta->n_rfi_first_stage_enabled_fpga_ticks = _n_rfi_first_stage_enabled_ticks;
 
         meta->rfi_frame_excision_enabled = rfi_frame_excision_enabled;
+        meta->fringestop_enabled = _do_fringestop;
         meta->rfi_frame_excision_num = num_thresholds;
         meta->rfi_frame_excision_threshold = rfi_threshold;
         meta->rfi_frame_excision_fraction = rfi_fraction;
