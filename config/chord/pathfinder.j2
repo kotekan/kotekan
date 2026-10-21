@@ -85,7 +85,10 @@ element_long: num_elements / element_short
 updatable_config:
     # Bad feed list, POSTed to /updatable_config/bad_inputs (e.g. by bffs via choco):
     # element indices in [P][D] (CHORDBeamformer) order, i.e. positions in dish_inputs.
-    # Every update must carry all three keys.
+    # Every update must carry all three keys. bufferBadInputs applies an update by FPGA time, at
+    # the first mask frame at or after start_time; the stage runs up to bad_feed_mask_buffer_depth
+    # frames (~2 s) ahead, so a start_time a few seconds ahead lands exactly, and an earlier one
+    # is applied late, from the next frame produced.
     bad_inputs:
         kotekan_update_endpoint: json
         bad_inputs: []
@@ -637,9 +640,9 @@ PL_mask_compactor{{ n.sfx }}:
 
 # Bad feed mask from /updatable_config/bad_inputs (fed by bffs via choco). One instance per
 # NUMA half, clocked to that half's voltage buffer (see host_bf_mask_buffer_<n>); both apply the
-# same posted list, though an update can land one frame apart between the halves. CHORD
-# flags and masks share the [P][D] order, so no reorder. Non-ArrayDish elements (Missing, RFI
-# antennas) are always masked, whatever the posted list says.
+# same posted list at the same sample (the captures start on frame boundaries) unless the update
+# is late. CHORD flags and masks share the [P][D] order, so no reorder. Non-ArrayDish elements
+# (Missing, RFI antennas) are always masked, whatever the posted list says.
 set_bf_mask:
     input_order: CHORDBeamformer
     output_order: CHORDBeamformer
