@@ -97,7 +97,7 @@ BOOST_AUTO_TEST_CASE(headers_covered) {
     for (const gnss::SignalDescriptor* s : gnss::ALL_SIGNALS)
         listed.insert(s->name);
     const std::string sig = read_source("gnssSignal.hpp");
-    const std::regex descriptor(R"(inline\s+constexpr\s+SignalDescriptor\s+(\w+)\s*=)");
+    const std::regex descriptor(R"((?:constexpr|const)\s+SignalDescriptor\s+(\w+)\s*[={])");
     size_t n_desc = 0;
     for (std::sregex_iterator m(sig.begin(), sig.end(), descriptor), end; m != end; ++m) {
         ++n_desc;
@@ -105,13 +105,15 @@ BOOST_AUTO_TEST_CASE(headers_covered) {
                                                               "ALL_SIGNALS: a config naming it "
                                                               "cannot start a node");
     }
-    // Also fails when a descriptor is defined in a form this scan does not see.
+    // Fewer than listed means a descriptor in ALL_SIGNALS is defined in a form this scan does
+    // not see, so a new one in that form would not be seen either.
     BOOST_CHECK_EQUAL(n_desc, std::size(gnss::ALL_SIGNALS));
 
     std::set<std::string> keys;
     collect_keys(gnss_entry()["doc"], keys);
     const std::regex constant(
-        R"(constexpr[^=;(){}]*?\b((?:REC|RECORD|CHAN|ELEM|CMB|TELEM|CUBE|ROW|ROWS|LANES)_\w+)\s*=)");
+        R"(constexpr[^=;(){}]*?\b((?:REC|RECORD|CHAN|ELEM|CMB|TELEM|CUBE|ROW|ROWS|LANES|)"
+        R"(REANCHORED|MAX)_\w+)\s*[={])");
     size_t n_const = 0;
     for (const char* header :
          {"gnssSignal.hpp", "gnssRecord.hpp", "gnssTelem.hpp", "gnssGpuChain.hpp"}) {

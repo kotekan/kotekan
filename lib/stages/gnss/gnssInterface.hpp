@@ -9,12 +9,19 @@
  * digests in /version, the document at GET /interfaces/gnss, and both from
  * `kotekan --interfaces-json`. Its sections:
  *  - signals: every descriptor in ALL_SIGNALS by name, with its band edges at zero Doppler;
- *  - telem: the gnssTelem.hpp constants, the TelemHeader fields and sample frame sizes;
+ *  - telem: the gnssTelem.hpp constants, the TelemHeader fields, and sample frame sizes, row
+ *    offsets and comb column offsets;
  *  - record.row, record.chan, record.elem, record.cmb: the gnssRecord.hpp slots, each with a
- *    meaning: the unit, then any reference, sign or sentinel, e.g. "rad;nan=no job";
- *  - cube: the beam-cube constants, array order and sample frame sizes;
+ *    meaning: the unit, then any reference, sign or sentinel, e.g. "rad;nan=no job". REC_P
+ *    stands for REC_P_RE + i*REC_P_IM, and <x> for a mean over records. sign=r2c on a
+ *    correlation means its phase is in the r2c-flipped internal sense: for the prompt,
+ *    arg(A)/2pi = Phi_cmd - Phi_rx (gnssRecord.hpp, CARRIER PHASE);
+ *  - cube: the beam-cube constants, array order and sample frame sizes. The array order is
+ *    typed from GnssGpuRecordAssemble's writer and the header fields before CUBE_UTC0_OFFSET
+ *    are not listed, so CUBE_VERSION alone guards both;
  *  - gpu_chain: the gnssGpuChain.hpp constants, FrameHdr and PrnCtl fields and sample frame sizes;
- *  - metadata: the GnssChanMetadata wire format;
+ *  - metadata: the GnssChanMetadata wire format, and the bytes it serializes to for a known
+ *    sample_seq;
  *  - enums: Modulation, the REC_PROJ_SRC bits and the PrnCtl::reanchored values;
  *  - rest: a version per family of REST endpoints.
  *

@@ -317,6 +317,10 @@
       "u32"
      ]
     ],
+    "serialized": {
+     "bytes": "080706050403020100000000",
+     "sample_seq": 72623859790382856
+    },
     "size": 12
    }
   },
@@ -330,16 +334,16 @@
     "slot": 5
    },
    "CHAN_E_IM": {
-    "meaning": "corr;early;rot=exp(-i*REC_PHI0);weighted per channel;0=not covering",
+    "meaning": "corr;early;rot=exp(-i*REC_PHI0);sign=r2c;weighted per channel;0=not covering",
     "slot": 4
    },
    "CHAN_E_RE": {
-    "meaning": "corr;early;rot=exp(-i*REC_PHI0);weighted per channel;0=not covering",
+    "meaning": "corr;early;rot=exp(-i*REC_PHI0);sign=r2c;weighted per channel;0=not covering",
     "slot": 3
    },
    "CHAN_FLOATS": 9,
    "CHAN_IM": {
-    "meaning": "corr;prompt;rot=exp(-i*REC_PHI0);weighted per channel;0=not covering",
+    "meaning": "corr;prompt;rot=exp(-i*REC_PHI0);sign=r2c;weighted per channel;0=not covering",
     "slot": 1
    },
    "CHAN_L_ENERGY": {
@@ -347,15 +351,15 @@
     "slot": 8
    },
    "CHAN_L_IM": {
-    "meaning": "corr;late;rot=exp(-i*REC_PHI0);weighted per channel;0=not covering",
+    "meaning": "corr;late;rot=exp(-i*REC_PHI0);sign=r2c;weighted per channel;0=not covering",
     "slot": 7
    },
    "CHAN_L_RE": {
-    "meaning": "corr;late;rot=exp(-i*REC_PHI0);weighted per channel;0=not covering",
+    "meaning": "corr;late;rot=exp(-i*REC_PHI0);sign=r2c;weighted per channel;0=not covering",
     "slot": 6
    },
    "CHAN_RE": {
-    "meaning": "corr;prompt;rot=exp(-i*REC_PHI0);weighted per channel;0=not covering",
+    "meaning": "corr;prompt;rot=exp(-i*REC_PHI0);sign=r2c;weighted per channel;0=not covering",
     "slot": 0
    }
   },
@@ -365,7 +369,7 @@
     "slot": 6
    },
    "CMB_AMP_INCOH": {
-    "meaning": "amp;sqrt<|A|^2>",
+    "meaning": "amp;sqrt<|H|^2+|A-H|^2>;A=REC_P/REC_P_ENERGY;H=REC_PH/REC_P_ENERGY, or A if REC_PH_ENERGY=0",
     "slot": 3
    },
    "CMB_ARC": {
@@ -389,7 +393,7 @@
     "slot": 13
    },
    "CMB_E_POW": {
-    "meaning": "pow;<|E|^2>",
+    "meaning": "pow;<|REC_E/REC_E_ENERGY|^2>",
     "slot": 11
    },
    "CMB_HEAD_FRAC": {
@@ -401,15 +405,15 @@
     "slot": 19
    },
    "CMB_L_POW": {
-    "meaning": "pow;<|L|^2>",
+    "meaning": "pow;<|REC_L/REC_L_ENERGY|^2>",
     "slot": 12
    },
    "CMB_MEAN_IM": {
-    "meaning": "amp;<A>.im",
+    "meaning": "amp;<A>.im;sign=r2c",
     "slot": 5
    },
    "CMB_MEAN_RE": {
-    "meaning": "amp;<A>.re",
+    "meaning": "amp;<A>.re;sign=r2c",
     "slot": 4
    },
    "CMB_NCHAN": {
@@ -430,51 +434,51 @@
      "slot": 3
     },
     "CMB_ELEM_AMP_INCOH": {
-     "meaning": "amp;sqrt<|A_e|^2>",
+     "meaning": "amp;sqrt<|A_e|^2>;A_e=ELEM_P/REC_P_ENERGY",
      "slot": 0
     },
     "CMB_ELEM_MEAN_IM": {
-     "meaning": "amp;<A_e>.im",
+     "meaning": "amp;<A_e>.im;sign=r2c",
      "slot": 2
     },
     "CMB_ELEM_MEAN_RE": {
-     "meaning": "amp;<A_e>.re",
+     "meaning": "amp;<A_e>.re;sign=r2c",
      "slot": 1
     }
    }
   },
   "record.elem": {
    "ELEM_E_IM": {
-    "meaning": "corr;early;rot=exp(-i*REC_PHI0)",
+    "meaning": "corr;early;rot=exp(-i*REC_PHI0);sign=r2c",
     "slot": 3
    },
    "ELEM_E_RE": {
-    "meaning": "corr;early;rot=exp(-i*REC_PHI0)",
+    "meaning": "corr;early;rot=exp(-i*REC_PHI0);sign=r2c",
     "slot": 2
    },
    "ELEM_FLOATS": 12,
    "ELEM_L_IM": {
-    "meaning": "corr;late;rot=exp(-i*REC_PHI0)",
+    "meaning": "corr;late;rot=exp(-i*REC_PHI0);sign=r2c",
     "slot": 5
    },
    "ELEM_L_RE": {
-    "meaning": "corr;late;rot=exp(-i*REC_PHI0)",
+    "meaning": "corr;late;rot=exp(-i*REC_PHI0);sign=r2c",
     "slot": 4
    },
    "ELEM_PH_IM": {
-    "meaning": "corr;prompt head;rot=exp(-i*REC_PHI0)",
+    "meaning": "corr;prompt head;rot=exp(-i*REC_PHI0);sign=r2c",
     "slot": 7
    },
    "ELEM_PH_RE": {
-    "meaning": "corr;prompt head;rot=exp(-i*REC_PHI0)",
+    "meaning": "corr;prompt head;rot=exp(-i*REC_PHI0);sign=r2c",
     "slot": 6
    },
    "ELEM_P_IM": {
-    "meaning": "corr;prompt;rot=exp(-i*REC_PHI0)",
+    "meaning": "corr;prompt;rot=exp(-i*REC_PHI0);sign=r2c",
     "slot": 1
    },
    "ELEM_P_RE": {
-    "meaning": "corr;prompt;rot=exp(-i*REC_PHI0)",
+    "meaning": "corr;prompt;rot=exp(-i*REC_PHI0);sign=r2c",
     "slot": 0
    },
    "ELEM_RES_IM": {
@@ -509,7 +513,7 @@
     "slot": 2
    },
    "REC_CPHASE": {
-    "meaning": "cycle;increment of fcar*t_abs-nco;0=arc start",
+    "meaning": "cycle;increment of fcar*t_abs-nco;sign=physical;0=arc start",
     "slot": 15
    },
    "REC_DOPPLER": {
@@ -521,11 +525,11 @@
     "slot": 7
    },
    "REC_E_IM": {
-    "meaning": "corr;early;rot=none",
+    "meaning": "corr;early;rot=none;sign=r2c",
     "slot": 12
    },
    "REC_E_RE": {
-    "meaning": "corr;early;rot=none",
+    "meaning": "corr;early;rot=none;sign=r2c",
     "slot": 11
    },
    "REC_L_ENERGY": {
@@ -533,11 +537,11 @@
     "slot": 8
    },
    "REC_L_IM": {
-    "meaning": "corr;late;rot=none",
+    "meaning": "corr;late;rot=none;sign=r2c",
     "slot": 14
    },
    "REC_L_RE": {
-    "meaning": "corr;late;rot=none",
+    "meaning": "corr;late;rot=none;sign=r2c",
     "slot": 13
    },
    "REC_NCHAN": {
@@ -557,11 +561,11 @@
     "slot": 18
    },
    "REC_PH_IM": {
-    "meaning": "corr;prompt head;rot=exp(-i*REC_PHI0)",
+    "meaning": "corr;prompt head;rot=exp(-i*REC_PHI0);sign=r2c",
     "slot": 17
    },
    "REC_PH_RE": {
-    "meaning": "corr;prompt head;rot=exp(-i*REC_PHI0)",
+    "meaning": "corr;prompt head;rot=exp(-i*REC_PHI0);sign=r2c",
     "slot": 16
    },
    "REC_PRN": {
@@ -585,11 +589,11 @@
     "slot": 5
    },
    "REC_P_IM": {
-    "meaning": "corr;prompt;rot=exp(-i*REC_PHI0)",
+    "meaning": "corr;prompt;rot=exp(-i*REC_PHI0);sign=r2c",
     "slot": 4
    },
    "REC_P_RE": {
-    "meaning": "corr;prompt;rot=exp(-i*REC_PHI0)",
+    "meaning": "corr;prompt;rot=exp(-i*REC_PHI0);sign=r2c",
     "slot": 3
    },
    "REC_RES_IM": {
@@ -1312,6 +1316,16 @@
     ],
     "size": 112
    },
+   "chan_offset": [
+    32,
+    41,
+    50,
+    59,
+    68,
+    77,
+    86,
+    95
+   ],
    "frame_bytes": [
     {
      "bytes": 240,
@@ -1330,6 +1344,22 @@
      "n_cols": 8,
      "n_prn": 16,
      "n_rec": 8
+    }
+   ],
+   "row_offset": [
+    {
+     "floats": 32,
+     "n_cols": 0,
+     "n_prn": 3,
+     "p": 1,
+     "r": 0
+    },
+    {
+     "floats": 650,
+     "n_cols": 2,
+     "n_prn": 5,
+     "p": 3,
+     "r": 2
     }
    ]
   }
