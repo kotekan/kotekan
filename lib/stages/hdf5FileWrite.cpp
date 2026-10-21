@@ -614,6 +614,8 @@ public:
         file.createAttribute("n_rfi_fpga_ticks", frame.n_rfi_fpga_ticks);
         file.createAttribute("n_rfi_only_fpga_ticks", frame.n_rfi_only_fpga_ticks);
         file.createAttribute("n_pl_fpga_ticks", frame.n_pl_fpga_ticks);
+        file.createAttribute("n_rfi_first_stage_enabled_fpga_ticks",
+                             frame.n_rfi_first_stage_enabled_fpga_ticks);
         file.createAttribute("rfi_frame_excision_enabled", frame.rfi_frame_excision_enabled);
         file.createAttribute("fringestop_enabled", frame.fringestop_enabled);
         file.createAttribute("rfi_frame_excision_num", frame.rfi_frame_excision_num);
@@ -704,7 +706,7 @@ public:
             // Optionally, only write every X out of Y frames.
             bool do_write = true;
             if (write_x_frames >= 0 && per_y_frames > 0) {
-                if (frame_counter % per_y_frames > write_x_frames) {
+                if (frame_counter % per_y_frames >= write_x_frames) {
                     do_write = false;
                 }
             }

@@ -57,7 +57,8 @@ BOOST_AUTO_TEST_CASE(test_chordMetadata) {
     };
     meta0.set_freq_upchan_index(freq_upchan_index);
 
-    meta0.set_time_downsampling_fpga(47);
+    // Larger than INT_MAX: about 24 hours of CHORD FPGA samples
+    meta0.set_time_downsampling_fpga(16875000000);
 
     timeval tv = {17863, 341};
     meta0.set_first_packet_recv_time(tv);

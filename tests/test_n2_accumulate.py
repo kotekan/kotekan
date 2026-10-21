@@ -120,6 +120,8 @@ def accum_setup(request):
                 "enabled": True,
                 "thresholds": np.array([[3.0, 0.1]], dtype=np.float32),
             },
+            # Switch first-stage excision off halfway through this input frame
+            "first_stage_off_frame": 23,
         },
         {
             "config": prod_config,
@@ -180,6 +182,24 @@ def setup(request, accum_setup):
         request.param["tel"]["eop_updatable_config"] = "/eop"
 
     config["telescope"] = request.param["tel"]
+
+    # prod_config and accum_setup are shared between params, so set or clear both
+    config.pop("rfi_first_stage_enabled", None)
+    accum_setup.pop("rfi_first_stage_enabled_updatable_config", None)
+    if "first_stage_off_frame" in request.param:
+        frame_len = config["samples_per_data_set"]
+        off_seq = (
+            config["first_frame_index"] + request.param["first_stage_off_frame"]
+        ) * frame_len + frame_len // 2
+        config["rfi_first_stage_enabled"] = {
+            "kotekan_update_endpoint": "json",
+            "enabled": False,
+            "valid_at_time_ns": tel.get_t_inst_ns(off_seq, request.param["tel"]),
+        }
+        accum_setup[
+            "rfi_first_stage_enabled_updatable_config"
+        ] = "/rfi_first_stage_enabled"
+        request.param["first_stage_off_seq"] = off_seq
 
     request.param["rng"] = np.random.default_rng(seed=_TEST_SEED)
 
@@ -563,6 +583,7 @@ def rfiframemask_data(setup):
 
 
 # Elements flagged bad in every bad_feed_mask frame; folded into the output flags.
+# Frame i additionally flags element i, so the flags show which frames were folded.
 BAD_FEEDS = [3, 17, 40]
 
 
@@ -571,7 +592,7 @@ def bad_feed_mask_data(setup):
     """
     Generate a list of input bad feed mask frames in ChordBuffers
 
-    Every frame carries the same mask: all elements good except BAD_FEEDS.
+    Frame i flags BAD_FEEDS and element i.
     As with bufferBadInputs, a frame is one mask sample covering
     bf_mask_lifetime_in_samples, so the sequence numbers step by that.
 
@@ -603,9 +624,10 @@ def bad_feed_mask_data(setup):
         time_downsampling=lifetime,
     )
 
-    for buf in bufs:
+    for i, buf in enumerate(bufs):
         buf.data[...] = 1
         buf.data.reshape(-1)[BAD_FEEDS] = 0
+        buf.data.reshape(-1)[i % config["num_elements"]] = 0
 
     return bufs
 
@@ -687,6 +709,17 @@ def accum_data(
     }
     accum_config.update(accum_setup)
 
+    # Switch fringestopping on mid-run through the updatable config. It should
+    # take effect only from the last bin.
+    config["fringestop_enabled"] = {
+        "kotekan_update_endpoint": "json",
+        "enabled": True,
+        "valid_at_time_ns": int(
+            tel.get_t_inst_ns(fringestop_switch_seq(accum_list), setup["tel"])
+        ),
+    }
+    accum_config["fringestop_updatable_config"] = "/fringestop_enabled"
+
     # The test stage!
     test = runner.KotekanStageTester(
         "N2Accumulate",
@@ -707,6 +740,11 @@ def accum_data(
     test.run()
 
     yield dump_buffer.load()
+
+
+def fringestop_switch_seq(accum_list):
+    """Sequence number one tick before the last bin starts."""
+    return accum_list[-1]["seq"] - 1
 
 
 def get_era_nrot_idx_of_seq(seq, tel_config, use_eop, num_bins_per_rotation):
@@ -1212,6 +1250,7 @@ def test_simple_meta(accum_data, setup, accum_list):
         )
         assert (data_threshold == setup["rfiframemask"]["thresholds"][:, 0]).all()
         assert (data_fraction == setup["rfiframemask"]["thresholds"][:, 1]).all()
+        assert frame.metadata.fringestop_enabled == (t == len(accum_list) - 1)
 
 
 def test_eop_meta(setup, accum_setup, accum_data, accum_list):
@@ -1304,6 +1343,29 @@ def test_counts(accum_data, expected_accum, accum_list, setup):
         )
 
 
+def test_first_stage_enabled(accum_data, accum_list, setup):
+
+    if setup["fail"]:
+        return
+
+    config = setup["config"]
+    frame_len = config["samples_per_data_set"]
+    sub_len = config["sub_integration_ntime"]
+    off_seq = setup.get("first_stage_off_seq")
+
+    for idx, frame in enumerate(accum_data):
+        accum = accum_list[idx // config["num_local_freq"]]
+        expected = accum["seq_len"]
+        if off_seq is not None:
+            # A switch applies from the first input frame starting at or after it
+            sub_seqs = (
+                config["first_frame_index"] * frame_len + sub_len * accum["sub_idx"]
+            )
+            frame_starts = sub_seqs - sub_seqs % frame_len
+            expected = sub_len * np.count_nonzero(frame_starts < off_seq)
+        assert frame.metadata.n_rfi_first_stage_enabled_fpga_ticks == expected
+
+
 def test_vis(accum_data, expected_accum, accum_list, setup):
 
     if setup["fail"]:
@@ -1317,6 +1379,10 @@ def test_vis(accum_data, expected_accum, accum_list, setup):
         t = idx // config["num_local_freq"]
         f = idx % config["num_local_freq"]
 
+        # expected_accum does not fringestop
+        if t == len(accum_list) - 1:
+            continue
+
         assert frame.vis.shape == exp_vis[t, f].shape
 
         # vis_diff = frame.vis - exp_vis[t, f]
@@ -1324,20 +1390,23 @@ def test_vis(accum_data, expected_accum, accum_list, setup):
         np.testing.assert_allclose(frame.vis, exp_vis[t, f], 1.0e-6, 1.0e-6)
 
 
-def test_flags(accum_data, setup):
+def test_flags(accum_data, accum_list, setup):
     """
-    The per-element flags carry the bad feed mask (1.0 == good). N2Accumulate
-    consumes one mask frame per correlation frame, so every output frame shows
-    exactly the flagged feeds.
+    The per-element flags carry the bad feed mask (1.0 == good), ANDed over
+    exactly the mask frames of the correlation frames accumulated into the bin.
     """
 
     if setup["fail"]:
         return
 
-    expected = np.ones(setup["config"]["num_elements"], dtype=np.float32)
-    expected[BAD_FEEDS] = 0.0
+    config = setup["config"]
+    subs_per_frame = config["samples_per_data_set"] // config["sub_integration_ntime"]
 
-    for frame in accum_data:
+    for idx, frame in enumerate(accum_data):
+        accum = accum_list[idx // config["num_local_freq"]]
+        expected = np.ones(config["num_elements"], dtype=np.float32)
+        expected[BAD_FEEDS] = 0.0
+        expected[np.unique(accum["sub_idx"] // subs_per_frame)] = 0.0
         np.testing.assert_array_equal(frame.flags, expected)
 
 
@@ -1353,6 +1422,10 @@ def test_weight(accum_data, expected_accum, accum_list, setup, accum_setup):
     for idx, frame in enumerate(accum_data):
         t = idx // config["num_local_freq"]
         f = idx % config["num_local_freq"]
+
+        # expected_accum does not fringestop
+        if t == len(accum_list) - 1:
+            continue
 
         assert frame.weight.shape == exp_w[t, f].shape
 

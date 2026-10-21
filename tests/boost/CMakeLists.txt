@@ -531,6 +531,33 @@ endif()
 target_include_directories(test_TransposeBasebandArray PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages
                                                                ${KOTEKAN_SOURCE_DIR}/lib/utils)
 
+# test_bufferBadInputs - tests for bufferBadInputs stage
+add_executable(test_bufferBadInputs test_bufferBadInputs.cpp)
+if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+    target_link_libraries(
+        test_bufferBadInputs
+        PRIVATE libexternal
+                kotekan_stages
+                kotekan_libs
+                kotekan_utils
+                kotekan_core
+                -Wl,-all_load
+                kotekan_metadata)
+else()
+    target_link_libraries(
+        test_bufferBadInputs
+        PRIVATE libexternal
+                kotekan_stages
+                kotekan_libs
+                kotekan_utils
+                kotekan_core
+                -Wl,--whole-archive
+                kotekan_metadata
+                -Wl,--no-whole-archive)
+endif()
+target_include_directories(test_bufferBadInputs PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages
+                                                        ${KOTEKAN_SOURCE_DIR}/lib/utils)
+
 # test_upchannelizeReference - the serial float32 upchannelization reference. The reference lives in
 # lib/cuda, next to its only caller, but has no CUDA dependency of its own. Compile it directly
 # rather than linking kotekan_cuda, so these tests still build and run on a machine without CUDA.

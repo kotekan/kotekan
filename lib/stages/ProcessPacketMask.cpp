@@ -311,6 +311,10 @@ void ProcessPacketMask::main_thread() {
                 if (byte_val == 0xff)
                     continue;
 
+                // Lose 4-stream groups whole: the compact PL mask ANDs 4 channels, one per stream
+                byte_val &= ((byte_val & 0x0f) == 0x0f ? 0x0f : 0x00)
+                            | ((byte_val & 0xf0) == 0xf0 ? 0xf0 : 0x00);
+
                 size_t source_id = base_source_id + byte_idx;
                 size_t time_long_idx = time_long_base + source_id / num_source_ids;
 

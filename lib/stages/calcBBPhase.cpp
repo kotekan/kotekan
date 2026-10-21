@@ -12,7 +12,7 @@
 #include <algorithm>  // for clamp
 #include <array>      // for array
 #include <cassert>    // for assert
-#include <cmath>      // for sin, lrint, sqrt, M_PI
+#include <cmath>      // for exp2, floor, isfinite, log2, lrint, sqrt, M_PI
 #include <complex>    // for complex, imag, polar, real
 #include <cstddef>    // for ptrdiff_t
 #include <cstdint>    // for int8_t, int32_t
@@ -52,7 +52,8 @@ class calcBBPhase : public kotekan::Stage {
 
     // Baseband beamformer setup
     const int bb_num_beams = config.get<int>(unique_name, "bb_num_beams");
-    const int bb_scale = config.get<int>(unique_name, "bb_scale");
+    // The beams are J = bb_gain · Σ_d exp(iφ_d) E_d.
+    const double bb_gain = config.get<double>(unique_name, "bb_gain");
 
     // Each phase matrix is valid for this many FPGA samples. It is the cadence at which this
     // stage produces frames, and the `dimscaling` of the phase matrix's leading time axis.
@@ -127,6 +128,13 @@ public:
             telescope.get_feed_positions_m(num_elements, telescope.fiducial_element_order());
         assert(std::ptrdiff_t(feed_pos_m.size()) == num_elements);
 
+        // Split bb_gain into the beamformer's shift s and the phase amplitude |A| = 127.5 a with
+        // a in (1/2, 1], so that bb_gain = 2^7 a / 2^s. The beamformer requires s >= 1.
+        if (!(bb_gain > 0 && bb_gain <= 64))
+            FATAL_ERROR("bb_gain is {:g}, but must be in (0, 64]", bb_gain);
+        const int bb_shift = 7 + int(std::floor(-std::log2(bb_gain)));
+        const float bb_amplitude = 127.5f * float(bb_gain * std::exp2(bb_shift - 7));
+
         // Get frequencies
         std::vector<float> frequencies(num_frequencies); // [Hz]
         for (int freq = 0; freq < num_frequencies; ++freq) {
@@ -158,6 +166,14 @@ public:
                     unique_name, bb_beam_positions_frame_id)));
             if (!bb_beam_positions_frame)
                 return;
+            for (int beam = 0; beam < bb_num_beams; ++beam) {
+                const float n_x = bb_beam_positions_frame[2 * beam + 0];
+                const float n_y = bb_beam_positions_frame[2 * beam + 1];
+                if (!std::isfinite(n_x) || !std::isfinite(n_y))
+                    FATAL_ERROR("{:s}[{:d}]: beam {:d} has a non-finite position ({:g}, {:g})",
+                                bb_beam_positions_buffer->buffer_name, bb_beam_positions_frame_id,
+                                beam, n_x, n_y);
+            }
 
             DEBUG("[{:s}/{:d}] Waiting for buffer...", bf_mask_buffer->buffer_name, frame_index);
             const std::int8_t* const bf_mask_frame =
@@ -228,7 +244,7 @@ public:
                                     n_x * dish_x / c0 + n_y * dish_y / c0 + n_z * dish_z / c0;
                                 const float f = frequencies.at(freq);
                                 const float phi = 2 * float(M_PI) * f * deltat;
-                                const std::complex<float> A = polar(127.5f, phi);
+                                const std::complex<float> A = polar(bb_amplitude, phi);
                                 const std::complex<std::int8_t> iA(
                                     clamp(int(lrint(real(A))), -127, +127),
                                     clamp(int(lrint(imag(A))), -127, +127));
@@ -277,7 +293,7 @@ public:
                                 assert(idx >= 0
                                        && idx < std::ptrdiff_t(s_buffer->frame_size
                                                                / sizeof *s_frame));
-                                s_frame[idx] = bb_scale;
+                                s_frame[idx] = bb_shift;
                             }
                         }
                     }

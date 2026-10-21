@@ -1,0 +1,281 @@
+---
+# Check the beam positions of the grid modes of setBBBeams and setFRBBeams against the same
+# beams listed in manual mode. Each grid has a single beam along one axis (as the CHIME baseband
+# config does), which must sit midway between the minimum and maximum.
+
+type: config
+log_level: info
+cpu_affinity: []
+num_polarizations: 2
+num_dishes: 64
+buffer_depth: 2
+
+time_downsampling_fpga: 1000
+# setFRBBeams starts its stream where the upchannelizers' output would begin
+max_upchannelization_factor: 8
+
+GIGA: 1000000000
+start_time_s: 1760000000
+
+# Telescope
+telescope:
+    name: CHIMETelescope
+    require_gps: false
+
+gps_time:
+    frame0_nano: start_time_s * GIGA
+
+# Metadata
+main_pool:
+    kotekan_metadata_pool: chordMetadata
+    num_metadata_objects: 20 * buffer_depth
+
+# Buffers
+host_dummy_voltage_buffer:
+    kotekan_buffer: ndarray
+    num_frames: 1
+    value_type: int4x2_swapped_withoffset
+    extents: [1, 1, 1]
+    quantity_name: "E"
+    dimnames: ["F", "T", "E"]
+    dimscalings: [1, 1, 1]
+    metadata_pool: main_pool
+
+bb_grid_beams:
+    num_frames: buffer_depth
+    metadata_pool: main_pool
+    positions:
+        value_type: float32
+        extents: [3, 2]
+        quantity_name: "bb_beam_positions"
+        dimnames: ["B", "X/Y"]
+        dimscalings: [1, 1]
+        bb_grid_pos_buffer:
+            kotekan_buffer: ndarray
+        bb_grid_manual_pos_buffer:
+            kotekan_buffer: ndarray
+    ids:
+        value_type: uint64
+        extents: [3]
+        quantity_name: "bb_beam_ids"
+        dimnames: ["B"]
+        dimscalings: [1]
+        bb_grid_id_buffer:
+            kotekan_buffer: ndarray
+        bb_grid_manual_id_buffer:
+            kotekan_buffer: ndarray
+
+bb_grid_degrees_beams:
+    num_frames: buffer_depth
+    metadata_pool: main_pool
+    positions:
+        value_type: float32
+        extents: [2, 2]
+        quantity_name: "bb_beam_positions"
+        dimnames: ["B", "X/Y"]
+        dimscalings: [1, 1]
+        bb_grid_degrees_pos_buffer:
+            kotekan_buffer: ndarray
+        bb_grid_degrees_manual_pos_buffer:
+            kotekan_buffer: ndarray
+    ids:
+        value_type: uint64
+        extents: [2]
+        quantity_name: "bb_beam_ids"
+        dimnames: ["B"]
+        dimscalings: [1]
+        bb_grid_degrees_id_buffer:
+            kotekan_buffer: ndarray
+        bb_grid_degrees_manual_id_buffer:
+            kotekan_buffer: ndarray
+
+frb_grid_beams:
+    num_frames: buffer_depth
+    metadata_pool: main_pool
+    positions:
+        value_type: float32
+        extents: [3, 2]
+        quantity_name: "frb2_beam_positions"
+        dimnames: ["R", "X/Y"]
+        dimscalings: [1, 1]
+        frb_grid_pos_buffer:
+            kotekan_buffer: ndarray
+        frb_grid_manual_pos_buffer:
+            kotekan_buffer: ndarray
+    ids:
+        value_type: uint64
+        extents: [3]
+        quantity_name: "frb2_beam_ids"
+        dimnames: ["R"]
+        dimscalings: [1]
+        frb_grid_id_buffer:
+            kotekan_buffer: ndarray
+        frb_grid_manual_id_buffer:
+            kotekan_buffer: ndarray
+
+frb_grid_degrees_beams:
+    num_frames: buffer_depth
+    metadata_pool: main_pool
+    positions:
+        value_type: float32
+        extents: [2, 2]
+        quantity_name: "frb2_beam_positions"
+        dimnames: ["R", "X/Y"]
+        dimscalings: [1, 1]
+        frb_grid_degrees_pos_buffer:
+            kotekan_buffer: ndarray
+        frb_grid_degrees_manual_pos_buffer:
+            kotekan_buffer: ndarray
+    ids:
+        value_type: uint64
+        extents: [2]
+        quantity_name: "frb2_beam_ids"
+        dimnames: ["R"]
+        dimscalings: [1]
+        frb_grid_degrees_id_buffer:
+            kotekan_buffer: ndarray
+        frb_grid_degrees_manual_id_buffer:
+            kotekan_buffer: ndarray
+
+# Stages
+
+# setBBBeams and setFRBBeams take their clock (fpga_seq_num) from the first frame of this buffer.
+run_set_dummy_voltage:
+    kotekan_stage: testDataGen
+    type: const_offset
+    value: 0x88
+    array_shape: [1, 1, 1]
+    dim_scaling: [1, 1, 1]
+    dim_name: ["F", "T", "E"]
+    num_local_freq: 1
+    manual_freq_ids: [0]
+    num_frames: 1
+    out_buf: host_dummy_voltage_buffer
+
+# One beam in x, three in y
+set_bb_grid_beams:
+    kotekan_stage: setBBBeams
+    metadata_source: host_dummy_voltage_buffer
+    out_pos_buf: bb_grid_pos_buffer
+    out_id_buf: bb_grid_id_buffer
+    fixed_mode: grid
+    num_beams: 3
+    num_x: 1
+    num_y: 3
+    x_min: -0.1
+    x_max: 0.3
+    y_min: -0.2
+    y_max: 0.2
+
+set_bb_grid_manual_beams:
+    kotekan_stage: setBBBeams
+    metadata_source: host_dummy_voltage_buffer
+    out_pos_buf: bb_grid_manual_pos_buffer
+    out_id_buf: bb_grid_manual_id_buffer
+    fixed_mode: manual
+    num_beams: 3
+    fixed_beams:
+        - {id: 0, x_dir_grid: 0.1, y_dir_grid: -0.2}
+        - {id: 1, x_dir_grid: 0.1, y_dir_grid: 0.0}
+        - {id: 2, x_dir_grid: 0.1, y_dir_grid: 0.2}
+
+# Two beams in x, one in y; positions are sin(angle)
+set_bb_grid_degrees_beams:
+    kotekan_stage: setBBBeams
+    metadata_source: host_dummy_voltage_buffer
+    out_pos_buf: bb_grid_degrees_pos_buffer
+    out_id_buf: bb_grid_degrees_id_buffer
+    fixed_mode: grid_degrees
+    num_beams: 2
+    num_x: 2
+    num_y: 1
+    x_min: -30.0
+    x_max: 30.0
+    y_min: 10.0
+    y_max: 30.0
+
+set_bb_grid_degrees_manual_beams:
+    kotekan_stage: setBBBeams
+    metadata_source: host_dummy_voltage_buffer
+    out_pos_buf: bb_grid_degrees_manual_pos_buffer
+    out_id_buf: bb_grid_degrees_manual_id_buffer
+    fixed_mode: manual
+    num_beams: 2
+    fixed_beams:
+        - {id: 0, x_dir_grid: -0.5, y_dir_grid: 0.3420201433256687}
+        - {id: 1, x_dir_grid: 0.5, y_dir_grid: 0.3420201433256687}
+
+set_frb_grid_beams:
+    kotekan_stage: setFRBBeams
+    metadata_source: host_dummy_voltage_buffer
+    out_pos_buf: frb_grid_pos_buffer
+    out_id_buf: frb_grid_id_buffer
+    mode: grid
+    num_beams: 3
+    num_x: 1
+    num_y: 3
+    x_min: -0.1
+    x_max: 0.3
+    y_min: -0.2
+    y_max: 0.2
+
+set_frb_grid_manual_beams:
+    kotekan_stage: setFRBBeams
+    metadata_source: host_dummy_voltage_buffer
+    out_pos_buf: frb_grid_manual_pos_buffer
+    out_id_buf: frb_grid_manual_id_buffer
+    mode: manual
+    num_beams: 3
+    beams:
+        - {id: 0, x_dir_grid: 0.1, y_dir_grid: -0.2}
+        - {id: 1, x_dir_grid: 0.1, y_dir_grid: 0.0}
+        - {id: 2, x_dir_grid: 0.1, y_dir_grid: 0.2}
+
+set_frb_grid_degrees_beams:
+    kotekan_stage: setFRBBeams
+    metadata_source: host_dummy_voltage_buffer
+    out_pos_buf: frb_grid_degrees_pos_buffer
+    out_id_buf: frb_grid_degrees_id_buffer
+    mode: grid_degrees
+    num_beams: 2
+    num_x: 2
+    num_y: 1
+    x_min: -30.0
+    x_max: 30.0
+    y_min: 10.0
+    y_max: 30.0
+
+set_frb_grid_degrees_manual_beams:
+    kotekan_stage: setFRBBeams
+    metadata_source: host_dummy_voltage_buffer
+    out_pos_buf: frb_grid_degrees_manual_pos_buffer
+    out_id_buf: frb_grid_degrees_manual_id_buffer
+    mode: manual
+    num_beams: 2
+    beams:
+        - {id: 0, x_dir_grid: -0.5, y_dir_grid: 0.3420201433256687}
+        - {id: 1, x_dir_grid: 0.5, y_dir_grid: 0.3420201433256687}
+
+check_bb_grid_beams:
+    kotekan_stage: testDataCheckFloat
+    first_buf: bb_grid_pos_buffer
+    second_buf: bb_grid_manual_pos_buffer
+    num_frames_to_test: buffer_depth
+
+check_bb_grid_degrees_beams:
+    kotekan_stage: testDataCheckFloat
+    first_buf: bb_grid_degrees_pos_buffer
+    second_buf: bb_grid_degrees_manual_pos_buffer
+    num_frames_to_test: buffer_depth
+
+check_frb_grid_beams:
+    kotekan_stage: testDataCheckFloat
+    first_buf: frb_grid_pos_buffer
+    second_buf: frb_grid_manual_pos_buffer
+    num_frames_to_test: buffer_depth
+
+check_frb_grid_degrees_beams:
+    kotekan_stage: testDataCheckFloat
+    first_buf: frb_grid_degrees_pos_buffer
+    second_buf: frb_grid_degrees_manual_pos_buffer
+    num_frames_to_test: buffer_depth

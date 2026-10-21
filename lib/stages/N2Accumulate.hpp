@@ -180,23 +180,19 @@ void from_json(const nlohmann::json& j, N2VarianceMode& m);
  *                                          with fields `enabled` (bool) and `valid_at_time_ns`
  *                                          (int64, instrument time). Overrides do_fringestop;
  *                                          a change takes effect at the first accumulation bin
- *                                          starting at or after valid_at_time_ns.
+ *                                          starting at or after valid_at_time_ns. Only one
+ *                                          change is pending at a time; a new post replaces
+ *                                          a pending one.
  * @conf    input_order                     String. Ordering of data in input correlation matrix.
  *                                          Default: Telescope::fiducial_element_order()
  * @conf    output_order                    String. Ordering of data in ouput correlation matrix.
  *                                          Default: Telescope::fiducial_element_order()
  * @conf    rfi_first_stage_enabled_updatable_config  String. Optional path to the updatable
  *                                          config block that switches first-stage (GPU) RFI
- *                                          excision, the same block cudaRFISKtilde subscribes
- *                                          to. Used to record, per output frame, how many FPGA
- *                                          ticks first-stage excision was enabled for; a switch
- *                                          applies from the first input frame starting at or
- *                                          after its valid time, as on the GPU. The two agree
- *                                          because the n2k kernel emits one output frame per
- *                                          voltage frame; a kernel frame spanning several
- *                                          voltage frames would put them up to one voltage
- *                                          frame apart. Without this key the count is the
- *                                          whole frame.
+ *                                          excision, the block cudaRFISKtilde subscribes to.
+ *                                          Used to count the FPGA ticks of each output frame
+ *                                          during which excision was on. Without this key the
+ *                                          count is the whole frame.
  */
 class N2Accumulate : public kotekan::Stage {
 public:
@@ -301,6 +297,7 @@ private:
     const int _num_workers; ///< number of OpenMP threads to use to process data
 
     bool _do_fringestop; ///< Whether to fringestop the current accumulation bin
+    /// Updatable config path for the fringestop setting; empty if not set
     const std::string _fringestop_config_path;
     /// Pending fringestop setting from updatable config; applied at a bin start
     std::mutex _fringestop_mutex;
