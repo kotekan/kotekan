@@ -8,9 +8,13 @@ config generator (`config/gen_chord_gnss_config.py`, `scripts/gnss/gen_fleet.py`
 browser viewer (`python/scripts/js_viewer/`).
 
 The GNSS stages are C++ in kotekan (`lib/stages/gnss/`). Kotekan also keeps the C++ harnesses
-in its `scripts/gnss/` with their build script, and the Python that only checks its C++: the
-`*_code_check.py` cross-checks of the code tables, `trim_sign_gate.py` and
-`test_e2e_exact_seed.py`.
+in its `scripts/gnss/` with their build script, and the twelve Python files that only check its
+C++, listed in `scripts/gnss/run_tests.py`'s `KOTEKAN_ONLY`: the code-table cross-checks
+`python/scripts/gnss/{b1i_b3i,b2b,e5b,e6,glonass_ca,l1cd,l2oc,l3oc}_code_check.py` and
+`python/scripts/gnss/test_code_check_cpp.py`, and `scripts/gnss/trim_sign_gate.py`,
+`scripts/gnss/test_trim_sign_gate.py` and `scripts/gnss/test_e2e_exact_seed.py`.
+`python/scripts/gnss/kotekan_src.py` is in both repositories, since those checks find kotekan's
+sources through it too.
 
 ## Layout
 
@@ -19,6 +23,11 @@ Every file keeps the path it had in kotekan, where this code grew. Its history c
 and the bug list still name real files. The modules also find each other by relative path from
 their own location: `broker_multi.py` puts `python/scripts/gnss` on `sys.path`, and the
 generator reads `config/` beside it.
+
+The commit SHAs that the docs, the bug list and the comments cite from before the split are
+kotekan's, and resolve in kotekan/kotekan. `docs/kotekan_commit_map.txt` maps each one that came
+along to its commit here. `scripts/gnss/split_paths.txt` is the recipe the repository was
+extracted with.
 
 ## Finding kotekan
 
@@ -55,7 +64,8 @@ dependencies as lower bounds, for `uv pip install -r pyproject.toml --extra tool
 it is not an installable package, since the code runs from the checkout. `/usr/bin/python3` runs
 `bad_inputs_cron.py`, `rail_watch.py` and `node_up.sh`'s `gen_fleet.py`, with apt's
 `python3-yaml` and `python3-jinja2`. The tests also need node (apt `nodejs`), a C++ compiler and
-git.
+git. `python/scripts/js_viewer/ccera_rest.py`, the viewer's upstream pointing helper, needs
+tornado, which neither venv has: these environments do not support it.
 
 ## Tests
 

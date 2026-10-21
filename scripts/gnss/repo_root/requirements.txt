@@ -20,6 +20,8 @@ skyfield==1.54        # gps_beamtrack.py: the viewer's sky panel
 Twisted==26.4.0       # livebeam_server.py
 autobahn==26.7.1      # livebeam_server.py
 zope.interface==8.5   # livebeam_server.py; Twisted
+# Not supported: python/scripts/js_viewer/ccera_rest.py, the viewer's upstream pointing helper,
+# which needs tornado.
 # What those pull in, at the versions the production venv runs.
 astropy==8.0.1                          # healpy
 astropy-iers-data==0.2026.8.10.0.32.39  # astropy
