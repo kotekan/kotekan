@@ -87,13 +87,35 @@ Measured per-record cost = (chains) x (one 0.18 ms wave each, at fp16 Phi and 80
    On sky 10-17 22:50Z with that ninth chain (glo_l3oc: 14 PRNs x 2 lanes, 6-7 channels per
    GPU, base 128, the dual still 192 of 384): 55-66 % per card (cx19 55/65, cx42 62/58, cx43
    58/50, cx44 64/64, cx51 66/65), about five points for the chain.
-2. **Fewer chips (`despread_max_chips`, centred).** Loss is exactly the dropped window energy:
+2. **Code-phase tables (`psi_synth`, 10-21; branch kv/psi-synth).** Instead of walking 80
+   chips per (PRN, channel, hop), the per-chip sum is tabulated once per (PRN, channel, Doppler
+   bucket) on a chip grid and the kernel evaluates it at any code phase from four table taps
+   with a cubic Lagrange interpolation under the exact carrier ramp
+   (`lib/cuda/cudaGnssPsiSynth.hpp`; tiled codes as one primary period plus a lookback). The
+   synthesis is fused with the pack (`launch_psi_pack`: no wave buffer, no `gnss_pack44`
+   launch), the hop loop runs in 64-bit fixed point (no fp64), and the energy reduction is a
+   warp shuffle. Bench on an idle A40 at L5 geometry, 12 PRN x 7 channels x 2048 hops
+   (`fixtures/gpu_budget/psi_bench_cx52_20261021.txt`): production waveform launch 100 us,
+   Psi fp32 tables 33.7 us, fp16 tables 21.5 us (36 jobs: 229 -> 50 us), before the pack is
+   fused in. Tables cost 12-25 ms of CPU per PRN per Doppler bucket (80 KB per channel at
+   10.23 Mcps, G grid points per chip at lower rates), rebuilt at `psi_refresh_hz` (30 Hz).
+   The replica is NOT the production replica: it is the full PFB span (+1.1% energy, ~1% in
+   correlation against the 80-chip gather), the near carrier image only (the far image is a
+   rect-chip artefact the band-limited sky signal does not contain, 1e-3..4e-2 per channel)
+   and fractional chip edges. Every absolute SNR gate (deep_snr, present, trim quality) sees
+   the energy step at a cutover; the discriminator and the per-element ratios do not (see
+   "Chips kept" below). Config: `psi_synth: true` on the track block (generator `--psi-synth`,
+   requires `--epl-from-prompt`), `psi_fp16` (default true), `psi_refresh_hz` (default 30);
+   the 80-chip guard does not apply. Replay A/B on cx52: `chord_gnss_prof_cx52_psioff.yaml` /
+   `_psion.yaml` (make_prof_config.py `--psi-synth`), the same binary, `prof_run.sh` as for
+   the epl A/B.
+3. **Fewer chips (`despread_max_chips`, centred).** Loss is exactly the dropped window energy:
    212 chips 0 dB, 105 -0.018, 80 -0.045 (production), 60 -0.27, 40 -1.1, 20 -3.4. Cross-PRN
    leakage does not depend on it (set by the comb's channel count: -32 dB on 6 channels, -38 on
    27) and the aliases shrink rather than grow. The per-block time scales with chips (bench: 0.10
    ms at 40 vs 0.15 at 80), so 40 chips saves ~2 ms per frame. Nothing but the tracking SNR
    sees the dropped energy, see below.
-3. **Centralising synthesis** moves the same GPU-seconds (cost is linear in channels, nothing is
+4. **Centralising synthesis** moves the same GPU-seconds (cost is linear in channels, nothing is
    shared across channels or PRNs because the Doppler sits in the Phi table exponent). Fleet-wide
    today ~1.2-2.4 A40s, full CHORD channel count 3-6, 1-2 with lever 1. The replica is already
    quantised to the ring's 4+4 bit, so shipping it is 1 B per (lane, channel, hop), 7-12 Gb/s per
