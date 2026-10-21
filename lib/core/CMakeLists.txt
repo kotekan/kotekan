@@ -14,6 +14,7 @@ add_library(
     configUpdater.cpp
     cpuMonitor.cpp
     errors.c
+    interfaceRegistry.cpp
     kotekanLogging.cpp
     kotekanMode.cpp
     kotekanTrackers.cpp
