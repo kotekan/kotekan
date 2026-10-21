@@ -712,16 +712,21 @@ inline constexpr SignalDescriptor GLO_L2OC_P_OC = {
     /*tdm_phase=*/0,
 };
 
+/// Every descriptor a config can name: signal_by_name searches this list, and the gnss interface
+/// document (gnssInterface.hpp) lists it. A descriptor left out compiles, but a node whose config
+/// names it cannot start; test_gnss_interface checks that every descriptor above is here.
+inline constexpr const SignalDescriptor* ALL_SIGNALS[] = {
+    &GPS_L1CA,     &GPS_L1C_P,  &GPS_L2C_CM,   &GPS_L2C_CL,    &GPS_L5_I,      &GPS_L5_Q,
+    &GPS_L5_Q_NH,  &GAL_E1C,    &GAL_E1B,      &BDS_B1C_P,     &BDS_B1C_D,     &GAL_E5A_Q,
+    &GAL_E5A_Q_CS, &GAL_E5A_I,  &GAL_E5B_Q_CS, &BDS_B2A_P,     &BDS_B2A_P_CS,  &BDS_B2A_D,
+    &BDS_B2B_I,    &GAL_E5B_Q,  &GAL_E5B_I,    &GPS_L1C_D,     &GAL_E6_C,      &GAL_E6_B,
+    &BDS_B1I,      &BDS_B3I,    &BDS_B3I_NH,   &BDS_B2I,       &GLO_L3OC_P,    &GLO_L3OC_D,
+    &GLO_L2OF,     &GLO_L2OC_P, &GAL_E6_C_CS,  &GLO_L3OC_P_NH, &GLO_L2OC_P_OC, &SBAS_L5_Q,
+    &SBAS_L5_Q_MC};
+
 /// Look up a descriptor by its @c name (the config string); nullptr if unknown.
 inline const SignalDescriptor* signal_by_name(const std::string& name) {
-    for (const SignalDescriptor* s :
-         {&GPS_L1CA,     &GPS_L1C_P,  &GPS_L2C_CM,   &GPS_L2C_CL,    &GPS_L5_I,      &GPS_L5_Q,
-          &GPS_L5_Q_NH,  &GAL_E1C,    &GAL_E1B,      &BDS_B1C_P,     &BDS_B1C_D,     &GAL_E5A_Q,
-          &GAL_E5A_Q_CS, &GAL_E5A_I,  &GAL_E5B_Q_CS, &BDS_B2A_P,     &BDS_B2A_P_CS,  &BDS_B2A_D,
-          &BDS_B2B_I,    &GAL_E5B_Q,  &GAL_E5B_I,    &GPS_L1C_D,     &GAL_E6_C,      &GAL_E6_B,
-          &BDS_B1I,      &BDS_B3I,    &BDS_B3I_NH,   &BDS_B2I,       &GLO_L3OC_P,    &GLO_L3OC_D,
-          &GLO_L2OF,     &GLO_L2OC_P, &GAL_E6_C_CS,  &GLO_L3OC_P_NH, &GLO_L2OC_P_OC, &SBAS_L5_Q,
-          &SBAS_L5_Q_MC})
+    for (const SignalDescriptor* s : ALL_SIGNALS)
         if (name == s->name)
             return s;
     return nullptr;

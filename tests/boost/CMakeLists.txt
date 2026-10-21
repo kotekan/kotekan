@@ -49,6 +49,15 @@ target_include_directories(test_beidou_b3i_code PRIVATE ../../lib/stages ../../l
 add_executable(test_gnss_band_plan test_gnss_band_plan.cpp ../../lib/stages/gnss/gnssBandPlan.cpp)
 target_include_directories(test_gnss_band_plan PRIVATE ../../lib/stages ../../lib/stages/gnss)
 
+# The gnss interface document against its golden and the GNSS headers; no FFTW or CUDA.
+add_executable(test_gnss_interface test_gnss_interface.cpp ../../lib/stages/gnss/gnssInterface.cpp
+                                   ../../lib/stages/gnss/gnssBandPlan.cpp)
+target_include_directories(test_gnss_interface PRIVATE ../../lib/stages ../../lib/stages/gnss)
+target_link_libraries(test_gnss_interface PRIVATE libexternal kotekan_metadata kotekan_core
+                                                  kotekan_utils)
+target_compile_definitions(test_gnss_interface
+                           PRIVATE GNSS_SOURCE_DIR="${KOTEKAN_SOURCE_DIR}/lib/stages/gnss")
+
 # The shared element model's fleet-common phase pin: header-only, no Telescope/FFTW.
 add_executable(test_gnss_shared_pin test_gnss_shared_pin.cpp)
 target_include_directories(test_gnss_shared_pin PRIVATE ../../lib/stages ../../lib/stages/gnss)
