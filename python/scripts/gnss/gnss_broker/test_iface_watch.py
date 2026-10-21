@@ -400,6 +400,26 @@ class TestVerdicts(Fleet):
         self.assertIn(" LEGACY ", row[self.s.netloc])
         self.assertIn(" MATCH ", row[self.a.netloc])
 
+    def test_check_fleet_columns_fit_an_origin_with_every_role(self):
+        self.all_match()
+        self.cfg["chains"]["gps_l5"]["detectors"] = "gps_search"  # on rest-url, node a
+        self.cfg["common"]["fleet-trim-url"] = "fleet_trim"  # and the gather too
+        lines, bad = iface_watch.check_fleet(self.cfg, timeout=TIMEOUT_S)
+        self.assertFalse(bad, lines)
+        head, rows = lines[1], lines[2:]
+        self.assertTrue(
+            any(" aggregator,gather,node " in ln for ln in rows), "\n".join(lines)
+        )
+        # Every row's verdict and kotekan start under their headings.
+        for col in ("verdict", "kotekan"):
+            at = head.index(col)
+            for ln in rows:
+                self.assertEqual(
+                    (ln[at - 1], ln[at] != " "),
+                    (" ", True),
+                    "%s misaligned:\n%s" % (col, "\n".join(lines)),
+                )
+
     def test_check_fleet_cli(self):
         self.all_match()
         path = os.path.join(self.d, "chains.yaml")

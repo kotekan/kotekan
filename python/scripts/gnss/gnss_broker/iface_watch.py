@@ -661,13 +661,19 @@ def check_fleet(cfg, timeout=TIMEOUT_S):
         confirm=False,
     )
     w.run_pass()
+    rows = sorted(w.origins.items())
+    # The origin and roles columns as wide as their longest value: an origin can hold all
+    # three roles.
+    fmt = "%%-%ds %%-%ds %%-13s %%-12s %%s" % (
+        max([22] + [len(n) for n, _ in rows]),
+        max([18] + [len(",".join(o.roles)) for _, o in rows]),
+    )
     lines = [
         "golden %s, pin kotekan %s" % (w.golden.digest, w.golden.commit),
-        "%-22s %-18s %-13s %-12s %s"
-        % ("origin", "roles", "verdict", "kotekan", "detail"),
+        fmt % ("origin", "roles", "verdict", "kotekan", "detail"),
     ]
     bad = False
-    for n, o in sorted(w.origins.items()):
+    for n, o in rows:
         if o.state == iface.MISMATCH:
             bad = True
             detail = "; ".join(iface.describe_fails(o.fails, limit=3))
@@ -678,7 +684,7 @@ def check_fleet(cfg, timeout=TIMEOUT_S):
         else:
             detail = o.reason
         lines.append(
-            "%-22s %-18s %-13s %-12s %s"
+            fmt
             % (n, ",".join(sorted(o.roles)), o.state, (o.commit or "-")[:12], detail)
         )
     return lines, bad
