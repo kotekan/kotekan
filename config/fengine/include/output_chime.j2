@@ -615,7 +615,9 @@ write_data:
         kotekan_stage: hdf5FileWrite
         in_buf: host_frb3_beams_offsetscale_buffer
         file_name: frb3_beams_offsetscale
-        max_frames: 4
+        # The 25-frame input file gives 3 FRB frames after the 3-frame output delay
+        # (upchan_output_alignment); kotekan exits after the last one
+        max_frames: 3
         create_single_file: false  # dim 0 has extent 1; single file needs a gap-free stream
     write_frb_pl_mask:
         kotekan_stage: hdf5FileWrite
