@@ -89,6 +89,59 @@ def test_check_relays_notes():
     )
 
 
+STAMP = "# gnss_iface: fnv1a64:0123456789abcdef pin c0ffee sizing telem=fnv1a64:0000000000000001"
+
+
+def check_against(disk, regenerated):
+    """--check of one node whose config on disk is `disk` and whose generator prints
+    `regenerated`: (exit message or None, stdout)."""
+    with tempfile.TemporaryDirectory() as d:
+        base = os.path.join(d, "base.j2")
+        with open(base, "w") as fh:
+            fh.write("a: 1\n")
+        with open(os.path.join(d, "chord_gnss_cx44.yaml"), "w") as fh:
+            fh.write(disk)
+        argv = ["gen_fleet.py", manifest(d, base), "--check", "--preview-dir", d]
+
+        def fake_run(cmd, **kw):
+            return subprocess.CompletedProcess(cmd, 0, stdout=regenerated, stderr="")
+
+        real_run, real_argv = subprocess.run, sys.argv
+        subprocess.run, sys.argv = fake_run, argv
+        out, exc = io.StringIO(), None
+        try:
+            with contextlib.redirect_stdout(out):
+                gen_fleet.main()
+        except SystemExit as e:
+            exc = str(e.code)
+        finally:
+            subprocess.run, sys.argv = real_run, real_argv
+    return exc, out.getvalue()
+
+
+def test_check_leaves_the_stamp_out():
+    """A config written before the interface stamp has none; the regenerated one has it. That
+    must not read as a difference, or every node would read DIFFERS and eop_cron would stop
+    regenerating them."""
+    old = "# GENERATED\na: 1\n"
+    new = "# GENERATED\n%s\na: 1\n" % STAMP
+    exc, out = check_against(old, new)
+    check(
+        exc is None and "ok*" in out and "the gnss_iface stamp (none on disk)" in out,
+        "an unstamped config on disk checks ok* (%s, %r)" % (exc, out.strip()),
+    )
+    exc, out = check_against(new, new)
+    check(exc is None and "ok      " in out, "the stamped config checks ok (%r)" % out)
+    moved = new.replace("0123456789abcdef", "fedcba9876543210")
+    exc, out = check_against(moved, new)
+    check(
+        exc is None and "differs only in the gnss_iface stamp)" in out,
+        "a stamp from another golden checks ok* (%r)" % out.strip(),
+    )
+    exc, out = check_against("# GENERATED\na: 1\nb: 2\n", new)
+    check(exc is not None and "DIFFERS" in out, "a changed body still differs")
+
+
 def run_check(base):
     with tempfile.TemporaryDirectory() as d:
         p = subprocess.run(

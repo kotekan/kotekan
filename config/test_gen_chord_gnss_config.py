@@ -32,6 +32,7 @@ import gen_chord_gnss_config as g  # noqa: E402
 
 sys.path.append(os.path.join(ROOT, "python", "scripts", "gnss"))
 import kotekan_src  # noqa: E402
+from gnss_broker import iface  # noqa: E402
 
 _fails = []
 
@@ -186,6 +187,80 @@ def test_gather_recipe():
         got == ["config/gen_chord_gnss_config.py"] + argv,
         "gather header recipe splits back to argv, whole tokens, no --out",
     )
+
+
+def test_headers_carry_the_iface_stamp():
+    """Every config written names the interface golden its frames were sized from, on the
+    header's second line; the deploy preflight compares a binary's sizing sections with it."""
+    line = iface.stamp_line(iface.golden())
+    for flags in (
+        ["--gather-instance"],
+        ["--cube-archive-instance"],
+        ["--aggregator-instance", "cx19", "--aggregator-cores", "0,1,2,3,4,5"],
+    ):
+        rc, out, _ = run_gen("--base", BASE, "--node", "cx19", *flags)
+        check(
+            rc == 0 and out.splitlines()[1] == line and iface.parse_stamp(out),
+            "%s: the header carries the gnss_iface stamp (rc %d)" % (flags[0], rc),
+        )
+    if kotekan_src.SRC is None:
+        print("  [SKIP] node config: no kotekan tree to render the base from")
+        return
+    # A node config, its live reads (EOP table, bad inputs, frame 0) stubbed out.
+    names = (
+        "choco_eop_table",
+        "live_eop_table",
+        "choco_bad_inputs",
+        "live_bad_inputs",
+        "live_frame0_utc",
+    )
+    real = {n: getattr(g, n) for n in names}
+    for n in names:
+        setattr(g, n, lambda *a, **k: None)
+    try:
+        base = kotekan_src.src("config", "chord/pathfinder.j2")
+        argv = ["--base", base, "--node", "cx19", "--telem-host", "gnss"]
+        exc, out, _ = run_main(argv + ["--cube-host", "cf06"])
+    finally:
+        for n, f in real.items():
+            setattr(g, n, f)
+    check(
+        exc is None and out.splitlines()[1] == line,
+        "a node config carries the gnss_iface stamp (%s)" % exc,
+    )
+
+
+def test_unknown_descriptor_is_refused():
+    for flags, where in (
+        (["--gather-instance", "--extra-signal", "GPS_L9_X:1,2"], "--extra-signal"),
+        (
+            ["--aggregator-instance", "cx19", "--aggregator-extra-search", "GPS_L9_X"],
+            "--aggregator-extra-search",
+        ),
+    ):
+        rc, _, err = run_gen("--base", BASE, "--node", "cx19", *flags)
+        check(
+            rc != 0
+            and "%s GPS_L9_X: not a descriptor in the interface golden" % where in err,
+            "%s GPS_L9_X is refused, naming it (rc %d)" % (where, rc),
+        )
+    cfg = node_cfg()
+    cfg["signals"]["tracker"] = "GPS_L5_Q_NHX"
+    args = argparse.Namespace(extra_signal=None, aggregator_extra_search=None)
+    try:
+        g.check_descriptors(cfg, args)
+        msg = None
+    except SystemExit as e:
+        msg = str(e)
+    check(
+        msg is not None and msg.startswith("signals.tracker GPS_L5_Q_NHX:"),
+        "a tracker descriptor the golden lacks is refused (%s)" % msg,
+    )
+    cfg = node_cfg()
+    args = argparse.Namespace(
+        extra_signal=["SBAS_L5_Q_MC:131"], aggregator_extra_search=["GAL_E5A_Q"]
+    )
+    g.check_descriptors(cfg, args)  # every name known: no exit
 
 
 def test_recipe_lines():
