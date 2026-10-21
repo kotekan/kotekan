@@ -13,7 +13,7 @@ the probe-anchored floor.
 import sys
 import time
 
-from gnss_broker import combdll, trimarm
+from gnss_broker import combdll, transport, trimarm
 
 
 _fails = []
@@ -53,6 +53,7 @@ def run(
     dls=None,
     dr_state=None,
     chip_rate_hz=10.23e6,
+    trackers=("http://cx19:12048/gnss0_inject",),
 ):
     """Drive the stage once at cycle clock t0 (default: now); return (policy dict the gather
     would receive, ctx). Pass `dls` to carry the loop state across cycles."""
@@ -88,7 +89,7 @@ def run(
             dls=dls if dls is not None else new_dls(hold),
             dr_state=dr_state,
             telem_chain="gps_l5",
-            trackers=["http://cx19:12048/gnss0_inject"],
+            trackers=list(trackers),
             t0=time.time() if t0 is None else t0,
         )
         trimarm.stage_fleet_trim_arming(ctx)
@@ -114,6 +115,22 @@ def main():
     )
     check(ctx.dls.armed_last == {1, 8, 10}, "armed_last records what was handed over")
     check(ctx.dls.stat["posts"] == 1, "one policy POST counted")
+
+    # 1b. A tracker the interface watcher fences (enforce mode) is not a target.
+    transport.set_iface_fence({("cx19:12048", None)})
+    try:
+        pol, _ = run(
+            trackers=(
+                "http://cx19:12048/gnss0_inject",
+                "http://cx27:12048/gnss0_inject",
+            )
+        )
+    finally:
+        transport.set_iface_fence(frozenset())
+    check(
+        pol.get("targets") == ["http://cx27:12048/gnss0_inject/set_trim"],
+        "a fenced tracker is left out of the targets (%r)" % pol.get("targets"),
+    )
 
     # 2. Presence with a hold: a PRN absent this cycle stays armed inside the hold and is
     #    released once it has been absent longer than fleet_trim_hold_s.

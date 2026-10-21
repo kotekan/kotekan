@@ -301,6 +301,80 @@ class TestVerdicts(Fleet):
         w.run_pass(now=680.0)
         self.assertEqual(o.state, iface.MATCH)
 
+    def test_a_good_read_clears_a_pending_mismatch(self):
+        self.all_match()
+        w = self.watcher()
+        doc = golden_doc()
+        doc["sections"]["record.row"]["REC_CP"]["slot"] += 1
+        self.a.serve(doc)
+        w.run_pass(now=0.0)
+        o = w.origins[self.a.netloc]
+        self.assertTrue(o.pending)
+        self.a.serve(golden_doc())
+        w.run_pass(now=10.0)
+        self.assertEqual((o.state, o.pending), (iface.MATCH, None))
+        # The same mismatch at the next poll is a first read again, not a confirmation.
+        self.a.serve(doc)
+        w.run_pass(now=70.0)
+        self.assertEqual(o.state, iface.MATCH, "confirmed on one read")
+        self.assertTrue(o.pending)
+
+    def test_the_confirming_read_is_the_next_dirty_poll(self):
+        """The 10 s poll puts the second read CONFIRM_S after the first, so it confirms; the
+        CONFIRM_S guard keeps the gap should the poll be made shorter."""
+        self.assertGreaterEqual(iface_watch.DIRTY_POLL_S, iface_watch.CONFIRM_S)
+        self.addCleanup(setattr, iface_watch, "DIRTY_POLL_S", iface_watch.DIRTY_POLL_S)
+        iface_watch.DIRTY_POLL_S = 5.0
+        self.all_match()
+        doc = golden_doc()
+        doc["sections"]["record.row"]["REC_CP"]["slot"] += 1
+        self.a.serve(doc)
+        w = self.watcher()
+        w.run_pass(now=0.0)
+        w.run_pass(now=5.0)
+        o = w.origins[self.a.netloc]
+        self.assertEqual(self.a.paths().count("/version"), 2)
+        self.assertEqual(o.state, iface_watch.UNKNOWN, "confirmed 5 s after the first")
+        w.run_pass(now=10.0)
+        self.assertEqual(o.state, iface.MISMATCH)
+
+    def test_a_standing_mismatch_is_not_confirmed_again(self):
+        self.all_match()
+        doc = golden_doc()
+        doc["sections"]["record.row"]["REC_CP"]["slot"] += 1
+        self.a.serve(doc)
+        w = self.watcher()
+        for t in range(0, 600, 10):
+            w.run_pass(now=float(t))
+        self.assertEqual(w.origins[self.a.netloc].state, iface.MISMATCH)
+        self.assertEqual(self.a.paths().count("/version"), 60, "read every 10 s")
+        self.assertEqual(len(self.logged("%s reads a mismatch" % self.a.netloc)), 1)
+        self.assertEqual(len(self.logged("ERROR %s MISMATCH" % self.a.netloc)), 1)
+
+    def test_a_clean_read_ends_the_10_s_polls(self):
+        self.all_match()
+        w = self.watcher()
+        w.run_pass(now=0.0)
+        self.a.replies["/version"] = (500, b"oops")
+        w.run_pass(now=60.0)
+        self.a.serve(golden_doc())
+        w.run_pass(now=70.0)
+        self.assertFalse(w.origins[self.a.netloc].dirty)
+        w.run_pass(now=80.0)
+        self.assertEqual(self.a.paths().count("/version"), 3, "polled at 80 s")
+        w.run_pass(now=130.0)
+        self.assertEqual(self.a.paths().count("/version"), 4)
+
+    def test_another_schema_in_version_is_uncomparable(self):
+        self.all_match()
+        body = json.loads(version_body(golden_doc()))
+        body["interfaces"]["gnss"]["schema"] = 2
+        self.a.replies["/version"] = (200, json.dumps(body).encode())
+        w = self.watcher()
+        w.run_pass(now=0.0)
+        self.assertEqual(w.origins[self.a.netloc].state, iface.UNCOMPARABLE)
+        self.assertEqual(self.a.paths(), ["/version"])
+
     def test_a_different_second_read_is_not_a_confirmation(self):
         self.all_match()
         w = self.watcher()
@@ -367,6 +441,26 @@ class TestVerdicts(Fleet):
             1,
         )
         self.assertTrue(w.snapshot()["odd_one_out"])
+
+    def test_odd_one_out_needs_two_nodes_with_one_digest(self):
+        self.all_match()
+        row = golden_doc()
+        row["sections"]["record.row"]["REC_CP"]["slot"] += 1
+        tel = golden_doc()
+        tel["sections"]["telem"]["TELEM_VERSION"] += 1
+        self.a.serve(row)
+        self.b.replies["/version"] = (500, b"oops")
+        w = self.watcher()
+        w.run_pass(now=0.0)
+        w.run_pass(now=10.0)
+        self.assertEqual(w.origins[self.a.netloc].state, iface.MISMATCH)
+        self.assertFalse(w.odd_one_out, "one node answering")
+        self.b.serve(tel)
+        w.run_pass(now=20.0)
+        w.run_pass(now=30.0)
+        self.assertEqual(w.origins[self.b.netloc].state, iface.MISMATCH)
+        self.assertFalse(w.odd_one_out, "two nodes, two documents")
+        self.assertEqual(self.logged("odd one out"), [])
 
     def test_an_exception_at_one_origin_is_isolated(self):
         self.all_match()

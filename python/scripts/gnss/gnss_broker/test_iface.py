@@ -14,6 +14,7 @@ import json
 import os
 import shutil
 import struct
+import subprocess
 import tempfile
 import threading
 import unittest
@@ -201,6 +202,46 @@ class TestGolden(unittest.TestCase):
             iface.load_golden(gp, pp)
         self.assertIn("no section enums", str(cm.exception))
 
+    def test_the_role_and_sizing_tables(self):
+        """What each role is compared on and sized from, written out: a path dropped from a
+        table is a check lost without a failure anywhere else."""
+        self.assertEqual(
+            iface.ROLES,
+            {
+                "node": (
+                    "signals",
+                    "telem",
+                    "record.row",
+                    "record.chan",
+                    "rest/tracker",
+                    "rest/combiner",
+                    "rest/assembler",
+                    "rest/tap",
+                ),
+                "gather": (
+                    "telem",
+                    "record.row",
+                    "record.chan",
+                    "metadata",
+                    "rest/fleet_trim",
+                ),
+                "aggregator": ("signals", "rest/search"),
+                "cubearch": ("cube", "metadata"),
+            },
+        )
+        self.assertEqual(
+            iface.SIZING, ("telem", "record.row", "gpu_chain", "cube", "metadata")
+        )
+        self.assertEqual(
+            iface.ROLE_SIZING,
+            {
+                "node": ("telem", "record.row", "gpu_chain", "cube", "metadata"),
+                "gather": ("telem", "record.row", "metadata"),
+                "aggregator": ("metadata",),
+                "cubearch": ("cube", "metadata"),
+            },
+        )
+
     def test_telem_header_format_is_the_one_the_broker_had(self):
         # The literal telem.py carried before it read the golden.
         self.assertEqual(
@@ -279,6 +320,23 @@ class TestCompare(unittest.TestCase):
         self.assertEqual(
             sorted(iface.path_str(p) for p, _, _ in c.fails),
             ["signals/GPS_L5_Q/time_multiplexed", "telem/TELEM_VERSION"],
+        )
+
+    def test_a_container_replaced_by_another_type_is_a_mismatch(self):
+        g = iface.golden()
+        for value in ([], "record.row", 1):
+            doc = golden_doc()
+            doc["sections"]["record.row"] = value
+            c = iface.compare(g, doc)
+            self.assertEqual(c.state, iface.MISMATCH)
+            self.assertEqual(
+                c.fails, [(("record.row",), g.sections["record.row"], value)]
+            )
+        doc = golden_doc()
+        doc["sections"]["telem"]["frame_bytes"] = {}
+        c = iface.compare(g, doc, role="node")
+        self.assertEqual(
+            [iface.path_str(p) for p, _, _ in c.fails], ["telem/frame_bytes"]
         )
 
     def test_a_role_sees_only_its_scope(self):
@@ -602,6 +660,33 @@ class TestSourcesAndCli(unittest.TestCase):
         self.assertEqual(st["sizing"], {s: g.section_digests[s] for s in iface.SIZING})
         self.assertIsNone(iface.parse_stamp("# GENERATED\na: 1\n%s\n" % line))
         self.assertIsNone(iface.parse_stamp("# GENERATED\na: 1\n"))
+
+    def test_sync_from_a_tree_pins_its_commit_unless_the_golden_is_edited(self):
+        tree = os.path.join(self.d, "kotekan")
+        path = os.path.join(tree, iface.KOTEKAN_GOLDEN)
+        os.makedirs(os.path.dirname(path))
+        doc = golden_doc()
+        with open(path, "w") as fh:
+            fh.write(iface.format_golden(doc))
+        git = ["git", "-C", tree, "-c", "user.name=t", "-c", "user.email=t@t"]
+        git += ["-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null"]
+        for args in (["init", "-q"], ["add", "."], ["commit", "-q", "-m", "golden"]):
+            subprocess.run(git + args, check=True, stdout=subprocess.DEVNULL)
+        head = subprocess.run(
+            git + ["rev-parse", "HEAD"], check=True, stdout=subprocess.PIPE, text=True
+        ).stdout.strip()
+        gp, pp = os.path.join(self.d, "g.json"), os.path.join(self.d, "p.json")
+        rc, out = run_cli("sync", "--from", tree, "--golden", gp, "--pin", pp)
+        self.assertEqual(rc, 0, out)
+        self.assertEqual(iface.load_golden(gp, pp).commit, head)
+        # Edited since that commit: no commit describes it, and the pin is not moved.
+        os.unlink(pp)
+        doc["sections"]["rest"]["new_family"] = 1
+        with open(path, "w") as fh:
+            fh.write(iface.format_golden(doc))
+        rc, out = run_cli("sync", "--from", tree, "--golden", gp, "--pin", pp)
+        self.assertEqual(rc, 2, out)
+        self.assertFalse(os.path.exists(pp))
 
     def test_sync_vendors_and_pins(self):
         gp, pp = os.path.join(self.d, "g.json"), os.path.join(self.d, "p.json")

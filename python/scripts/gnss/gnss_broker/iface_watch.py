@@ -34,6 +34,12 @@ on it.
                   apart that give the same digest and the same failing leaves. The first good
                   read ends it.
 
+An origin is judged on its scope alone: one whose document differs from the golden's only
+outside it (another chain's descriptor added or changed) reads MATCH, not COMPATIBLE, though its
+digest is not the golden's. A MISMATCH's second read is a second GET /version with the same
+digest: the document is fetched and checked once per digest, so it is not fetched again. With
+DIRTY_POLL_S >= CONFIRM_S that read is the next dirty poll.
+
 The mode comes from the chains yaml's common block, `iface: warn` or `iface: {mode: warn,
 mode-file: PATH}`, and a mode file (default /var/tmp/gnss-logs/iface_mode, one word) read on
 every pass overrides it, so it changes without a restart:
