@@ -141,3 +141,25 @@ The reference run has every mask valid and every count at T. No kotekan error wa
 
 Kotekan runs for 40, 40 and 36 s; the whole test takes 3 min. The runs write 2.6, 2.4 and
 2.4 GB, mostly FRB1, the upchannelized voltages and the voltage frame.
+
+## Result (CHIME, cx68, A40, Release)
+
+**PASS**, all three runs. As in production, the loss enters as lost samples per group of 4
+frequencies, which zeroSamples applies to the voltages (also in `dense`) and lostSamplesToPLMask
+turns into the PL mask. CHIME has no BB beamformer, only U = 16, and its N2 counts come from
+lostSamplesToN2Counts.
+
+| check | `sparse` | `dense` |
+|---|---|---|
+| samples lost | 0.014% | 1.00% |
+| PL mask | 95 232 invalid bits, exact | 754 688, exact |
+| expanded mask | 761 856, exact | 6 037 504, exact |
+| U = 16 mask | 70 656, exact | 1 668 096, exact |
+| FRB mask | 1088 of 131 072 invalid, exact | 32 512, exact |
+| valid U = 16, FRB1, FRB2 | 0 differ | 0 differ |
+| FRB3 (8 bits) | 0 exactly where invalid; ≤ 1.53 steps | ≤ 1.57 steps |
+| N2 counts | 2976 lost samples in 8 frames, exact | — |
+| N2 integration | 6400 lost, n_valid exact, no RFI flags | — |
+| Σ V n | max relative \|Δ\| 6.0·10^−7; Σ_lost up to 8655 | — |
+
+Kotekan runs for 93, 90 and 67 s.

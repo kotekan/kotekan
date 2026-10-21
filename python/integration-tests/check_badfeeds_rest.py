@@ -3,17 +3,20 @@ masks once, at a mask frame boundary, in both mask streams at the same sample, a
 subsystem must follow the masks.
 
 Input: as T9 (check_badfeeds.py), but the masks come from two bufferBadInputs stages, one per
-lifetime (`LIFETIME_FRAMES` frames for RFI, BB and FRB1, one frame for N2Accumulate), as
+lifetime (that of T9 for RFI, BB and FRB1, one frame for N2Accumulate), as
 config/chord/pathfinder.j2 produces them. All inputs are good until `BAD_INPUTS` are posted, as
 soon as kotekan's REST server answers, with the FPGA time of sample `START_FRAMES` frames and one
 sample after the first as start time. bufferBadInputs applies an update by FPGA time at the next
-boundary of `LIFETIME_FRAMES` frames, so both streams must change at the same frame.
+lifetime boundary, so both streams must change at the same frame.
 
 Checks:
 - Each stream starts all good and changes exactly once, to `BAD_INPUTS`, at the first boundary at
   or after the start time.
 - The two streams agree at every sample.
 - BB phases, FRB1 weights, S0tilde and the N2 flags follow the written masks (as in T9).
+
+CHIME has no BB; it posts the bad inputs in cylinder order, as config/chime_upgrade_frb.j2, which
+for these inputs is the mask order.
 
 See docs/integration-tests/T9-bad-feed-mask.md.
 """
@@ -23,23 +26,31 @@ import numpy as np
 import check_badfeeds
 import check_phases
 from check_badfeeds import (
-    LIFETIME_FRAMES,
-    UPCHAN_FACTORS,
     check_bb_phase,
     check_frb1_weights,
+    lifetime_frames,
+    n2_bin_frames,
     n2_flags,
     read_n2,
     result_line,
 )
 from check_dishes import n2_bin_start
-from kit import audit, frame_seq_nums, large_seq, read_output, require, value
+from check_packetloss import frb_factors
+from kit import audit, frame_seq_nums, has_bb, large_seq, read_output, require, value
 
 VARIANTS = ["rest"]
 POST_DELAY = 0
 START_FRAMES = 180
 BAD_INPUTS = [5, 17, 70, 100]
 MASK_FRAMES = 240
-N2_INTEGRATIONS = 9
+
+
+def mask_frames(config):
+    """MASK_FRAMES frames (9 N2 integrations for the pathfinder), or enough lifetimes for one N2
+    integration (CHIME, with 240-frame integrations)."""
+    L = lifetime_frames(config)
+    need = check_badfeeds.N2_LEAD_FRAMES + n2_bin_frames(config)
+    return max(MASK_FRAMES, -(-need // L) * L)
 
 
 def variables(tel, config, variant):
@@ -47,16 +58,17 @@ def variables(tel, config, variant):
     T = value(config, "num_times")
     var["first_fpga_seq_num"] = check_badfeeds_first_seq(config)
     var["bf_source"] = "rest"
-    var["bf_mask_lifetime_frames"] = LIFETIME_FRAMES
-    lifetimes = MASK_FRAMES // LIFETIME_FRAMES
-    write_frames = {
-        "bf_mask": lifetimes,
-        "n2_bf_mask": MASK_FRAMES,
-        "bb_phase": lifetimes,
-        "rfi_S012tilde": MASK_FRAMES,
-        "n2_vis": N2_INTEGRATIONS * value(config, "num_frequencies"),
-    }
-    for U in [1] + UPCHAN_FACTORS:
+    var["bf_mask_lifetime_frames"] = lifetime_frames(config)
+    lifetimes = mask_frames(config) // lifetime_frames(config)
+    integrations = (
+        mask_frames(config) - check_badfeeds.N2_LEAD_FRAMES
+    ) // n2_bin_frames(config)
+    write_frames = {"bf_mask": lifetimes, "n2_bf_mask": mask_frames(config)}
+    if has_bb(config):
+        write_frames["bb_phase"] = lifetimes
+    write_frames["rfi_S012tilde"] = mask_frames(config)
+    write_frames["n2_vis"] = integrations * value(config, "num_frequencies")
+    for U in frb_factors(config):
         write_frames[f"frb1_U{U}_phase"] = lifetimes
     var["outputs"] = list(write_frames)
     var["write_frames"] = write_frames
@@ -116,7 +128,7 @@ def check_stream(out_dir, name, lifetime, config, results, failures):
     after[BAD_INPUTS] = False
     changes = np.nonzero(np.any(stream.mask[1:] != stream.mask[:-1], axis=1))[0] + 1
     T = value(config, "num_times")
-    boundary = LIFETIME_FRAMES * T
+    boundary = value(config, "bf_mask_lifetime_in_samples")
     expected = -(-(start_seq(config) - stream.seq0) // boundary) * boundary // lifetime
     wrong = (
         list(changes) != [expected]
@@ -161,10 +173,15 @@ def check(out_dir, var, config):
     results = []
     failures = []
     bf, bf_change = check_stream(
-        out_dir, "bf_mask", LIFETIME_FRAMES * T, config, results, failures
+        out_dir,
+        "bf_mask",
+        value(config, "bf_mask_lifetime_in_samples"),
+        config,
+        results,
+        failures,
     )
-    n2, n2_change = check_stream(out_dir, "n2_bf_mask", T, config, results, failures)
     require(bf.seq0 == var["first_fpga_seq_num"], f"bf_mask starts at {bf.seq0}")
+    n2, n2_change = check_stream(out_dir, "n2_bf_mask", T, config, results, failures)
     require(n2.seq0 == var["first_fpga_seq_num"], f"n2_bf_mask starts at {n2.seq0}")
     use = n2.seq < bf.seq[-1] + bf.lifetime
     differ = np.any(n2.mask[use] != bf.good(n2.seq[use]), axis=1)
@@ -176,7 +193,8 @@ def check(out_dir, var, config):
         line += f" (n2_bf_mask changes {(n2_change - bf_change) // T:+d} frames later)"
     results.append(result_line("mask streams", differ.any(), line, failures))
 
-    check_bb_phase(out_dir, bf, results, failures)
+    if has_bb(config):
+        check_bb_phase(out_dir, bf, results, failures)
     check_frb1_weights(out_dir, config, bf, results, failures)
     check_s0tilde(out_dir, bf, results, failures)
     for start, entries in read_n2(out_dir).items():

@@ -3,8 +3,8 @@ marked bad, so that their voltages do not matter.
 
 Input: T2's weak tone (check_phases.py) in Gaussian noise of 2.8 LSB per component, with the
 production gains. The bad feed schedule is `testBadFeeds` (lib/testing/testSkySignal.hpp): 3 to 5
-random inputs per period of `CHANGE_FRAMES` frames, starting at the first sample. The bad feed
-mask lifetime of RFI, BB and FRB1 is `LIFETIME_FRAMES` frames; N2Accumulate gets a one-frame mask
+random inputs per period of one mask lifetime, starting at the first sample. The bad feed mask
+lifetime of RFI, BB and FRB1 is `LIFETIME_FRAMES` frames (see `lifetime_frames`); N2Accumulate gets a one-frame mask
 stream with the same content. The run starts `N2_LEAD_FRAMES` frames before an N2 bin boundary,
 so that the N2 bins begin and end at mask changes.
 
@@ -13,7 +13,8 @@ Runs, in pairs with the same masks:
 - `half`, `half_reference`: the northern half of the dishes is Missing (`half_filled`), and
   `bf_mode: auto` marks them bad as well.
 In `full` and `half` the voltages of the bad inputs and of the Missing dishes are random bytes
-(`bad_voltage: random`); in the reference runs they carry the normal signal.
+(`bad_voltage: random`; CHIME: `random_valid`, without -8, on which its transpose traps); in the
+reference runs they carry the normal signal.
 
 Checks:
 - Both mask streams equal the schedule, frame by frame, with fpga_seq_num stepping by their
@@ -30,6 +31,11 @@ Checks:
   frames it accumulates; visibilities and weights of products of good elements, and the sample
   counts, equal the reference.
 
+CHIME has no BB beamformer and no FRB U = 1; its FRB1 weights are the feed gains of
+processFRBFeedGains.
+CHIMETelescope has no dish types for `bf_mode: auto`, so the half-filled CHIME run lists the
+Missing inputs with `bf_mode: manual`.
+
 See docs/integration-tests/T9-bad-feed-mask.md.
 """
 
@@ -41,11 +47,16 @@ import numpy as np
 
 import check_phases
 from check_dishes import n2_bin_start
-from check_packetloss import UPCHAN_FACTORS, NUM_TAPS, frb3_values, t_star
+from check_packetloss import frb3_values, frb_factors, t_star
 from kit import (
+    NUM_TAPS,
     audit,
     dish_positions,
+    find_stages,
     frame_seq_nums,
+    frb1_swap_MN,
+    has_bb,
+    has_command,
     large_seq,
     read_output,
     require,
@@ -54,18 +65,44 @@ from kit import (
 
 RUNS = ["full_reference", "full", "half_reference", "half"]
 LIFETIME_FRAMES = 3
-CHANGE_FRAMES = 3
 SEED = 9
 COUNT = [3, 5]
 # The first N2 bin starts this many frames after the first sample
 N2_LEAD_FRAMES = 3
 N2_INTEGRATIONS = 2
-# Frames written: masks for both N2 integrations; voltages; BB, RFI; FRB1; FRB2 and FRB3
-MASK_FRAMES = N2_LEAD_FRAMES + 24 * N2_INTEGRATIONS
+# Frames written: voltages; BB, RFI; FRB1; FRB2 and FRB3 (masks: for both N2 integrations)
 VOLTAGE_FRAMES = 1
 DATA_FRAMES = 7
 FRB1_FRAMES = 1
 FRB2_FRAMES = 2
+
+
+def lifetime_frames(config):
+    """The bad feed mask lifetime in frames: LIFETIME_FRAMES, or at least twice the
+    upchannelizer output offset T*. The FRB1 weights made from mask frame k apply from T* after
+    its start (processFRBFeedGains, setFRB1Phase), so for T* of a whole lifetime (CHIME: 3
+    frames) no FRB sample would have the weights of its own mask frame."""
+    T = value(config, "num_times")
+    return max(LIFETIME_FRAMES, -(-2 * t_star(config) // T))
+
+
+def render_half(tel):
+    """The config with `half_filled`, for its Missing dishes."""
+    from run import render_config
+
+    return render_config(tel, {"half_filled": True})
+
+
+def n2_bin_frames(config):
+    return (
+        find_stages(config, "N2Accumulate")[0]["num_subintegrations_per_bin"]
+        * value(config, "n2k_samples_per_data_set")
+        // value(config, "num_times")
+    )
+
+
+def mask_frames(config):
+    return N2_LEAD_FRAMES + n2_bin_frames(config) * N2_INTEGRATIONS
 
 
 def variables(tel, config, run):
@@ -75,25 +112,36 @@ def variables(tel, config, run):
     var["first_fpga_seq_num"] = (
         n2_bin_start(config, large_seq(config)) - N2_LEAD_FRAMES * T
     )
-    var["bf_mask_lifetime_frames"] = LIFETIME_FRAMES
-    var["bf_change_frames"] = CHANGE_FRAMES
+    var["bf_mask_lifetime_frames"] = lifetime_frames(config)
+    var["bf_change_frames"] = lifetime_frames(config)
     var["bf_random_count"] = COUNT
     var["bf_seed"] = SEED
     if run.startswith("half"):
         var["half_filled"] = True
-        var["bf_mode"] = "auto"
+        if config["telescope"]["name"] == "CHORDTelescope":
+            var["bf_mode"] = "auto"
+        else:
+            # inventBFMask's `auto` needs CHORDTelescope's dish types
+            _, exists = dish_positions(render_half(tel))
+            var["bf_mode"] = "manual"
+            var["bf_manual_bad_feeds"] = np.nonzero(~np.tile(exists, 2))[0].tolist()
         # As config/chord/pathfinder.j2: the default 0.8 counts masked inputs as missing data and
         # flags everything when more than 20% of the inputs are masked
         var["rfi_feed_averaged_min_good_frac"] = 0.1
     if not run.endswith("reference"):
-        var["bad_voltage"] = "random"
-    lifetimes = MASK_FRAMES // LIFETIME_FRAMES
+        # Transpose2048_chime traps on -8 (julia/kernels/xpose2048.jl)
+        chime_transpose = has_command(config, "cudaTranspose2048_chime")
+        var["bad_voltage"] = "random_valid" if chime_transpose else "random"
+    lifetimes = mask_frames(config) // lifetime_frames(config)
     write_frames = {
         "bf_mask": lifetimes,
-        "n2_bf_mask": MASK_FRAMES,
+        "n2_bf_mask": mask_frames(config),
         "voltage": VOLTAGE_FRAMES,
-        "bb_phase": DATA_FRAMES // LIFETIME_FRAMES + 1,
-        "bb_beams": DATA_FRAMES,
+    }
+    if has_bb(config):
+        write_frames["bb_phase"] = DATA_FRAMES // lifetime_frames(config) + 1
+        write_frames["bb_beams"] = DATA_FRAMES
+    write_frames |= {
         "rfi_S012": DATA_FRAMES,
         "rfi_S012tilde": DATA_FRAMES,
         "rfi_SKtilde": DATA_FRAMES,
@@ -104,7 +152,7 @@ def variables(tel, config, run):
         "frb3_beams_offsetscale": FRB2_FRAMES,
         "n2_vis": N2_INTEGRATIONS * value(config, "num_frequencies"),
     }
-    for U in [1] + UPCHAN_FACTORS:
+    for U in frb_factors(config):
         write_frames[f"frb1_U{U}_phase"] = lifetimes
     var["outputs"] = list(write_frames)
     var["write_frames"] = write_frames
@@ -135,6 +183,7 @@ class Schedule:
         if var.get("bf_mode") == "auto":
             _, exists = dish_positions(config)
             self.base = np.tile(exists, self.num_inputs // self.num_dishes)
+        self.base[var.get("bf_manual_bad_feeds", [])] = False
 
     def random_bad(self, k):
         """The random bad inputs of period k."""
@@ -186,7 +235,8 @@ def check_masks(out_dir, config, sched, results, failures):
     """Both mask streams equal the schedule and agree at every sample."""
     T = value(config, "num_times")
     streams = {}
-    for name, lifetime in [("bf_mask", LIFETIME_FRAMES * T), ("n2_bf_mask", T)]:
+    L = value(config, "bf_mask_lifetime_in_samples")
+    for name, lifetime in [("bf_mask", L), ("n2_bf_mask", T)]:
         out = read_output(out_dir, name)
         audit(out, first_seq=sched.seq0)
         require(
@@ -213,7 +263,7 @@ def check_masks(out_dir, config, sched, results, failures):
     # The two streams at the first sample of every one-frame mask frame
     seq, n2_mask = streams["n2_bf_mask"]
     bf_seq, bf_mask = streams["bf_mask"]
-    index = (seq - bf_seq[0]) // (LIFETIME_FRAMES * T)
+    index = (seq - bf_seq[0]) // L
     use = index < len(bf_seq)
     differ = np.any(n2_mask[use] != bf_mask[index[use]], axis=1)
     results.append(
@@ -290,20 +340,25 @@ def frb1_cells(config):
         sorted(cell.ravel().tolist())[:D] == list(range(D)),
         "frb1 cells: dishes missing",
     )
-    return cell
+    # [N, M] with M along grid y (CHIME)
+    return cell.T if frb1_swap_MN(config) else cell
 
 
 def check_frb1_weights(out_dir, config, sched, results, failures):
     """W [TW, Fbar, P, N, M, C] is zero exactly at the grid cells of bad inputs, and
-    frb1_input_scale elsewhere, in every used fine channel."""
+    frb1_input_scale (CHIME: the default feed gain of loadFeedGains) elsewhere, in every used
+    fine channel."""
     cell = frb1_cells(config)
     on_grid = cell < sched.num_dishes
-    scale = value(config, "frb1_input_scale")
-    L = LIFETIME_FRAMES * value(config, "num_times")
+    gains = find_stages(config, "loadFeedGains")
+    weight = (
+        gains[0]["default_gains"] if gains else [value(config, "frb1_input_scale"), 0]
+    )
+    L = value(config, "bf_mask_lifetime_in_samples")
     num_wrong = 0
     num_zero = 0
     first_wrong = None
-    for U in [1] + UPCHAN_FACTORS:
+    for U in frb_factors(config):
         name = f"frb1_U{U}_phase"
         out = read_output(out_dir, name)
         num = U * (
@@ -317,10 +372,9 @@ def check_frb1_weights(out_dir, config, sched, results, failures):
         w = out.data.astype(np.float64)  # [TW, Fbar, P, N, M, C]
         good = sched.good(seq).reshape(len(seq), -1, sched.num_dishes)  # [TW, P, D]
         expected_good = np.where(on_grid, good[:, :, np.where(on_grid, cell, 0)], True)
-        expected = np.stack(
-            [np.where(expected_good, scale, 0.0), np.zeros(expected_good.shape)],
-            axis=-1,
-        )[:, None]
+        expected = np.stack([np.where(expected_good, w, 0.0) for w in weight], axis=-1)[
+            :, None
+        ]
         wrong = w != np.broadcast_to(expected, w.shape)
         require(out.time_downsampling == L, f"{name}: lifetime {out.time_downsampling}")
         num_wrong += np.count_nonzero(wrong)
@@ -361,15 +415,16 @@ def frb_clean(sched, config, labels):
     weight frame floor((L - seq0 - T*) / lifetime). It is exposed if a poisoned input in its
     window is good in that weight frame. Windows span at most two mask periods."""
     tds = value(config, "frb_downsampling_factor")
-    L = LIFETIME_FRAMES * value(config, "num_times")
+    L = value(config, "bf_mask_lifetime_in_samples")
     labels = np.asarray(labels)
     weight_frame = (labels - sched.seq0 - t_star(config)) // L
     weight_seq = sched.seq0 + weight_frame * L
-    clean = np.zeros(
-        (len(labels), value(config, "upchan_all_max_output_channel")), dtype=bool
+    num_out = max(
+        value(config, f"upchan_U{U}_max_output_channel") for U in frb_factors(config)
     )
+    clean = np.zeros((len(labels), num_out), dtype=bool)
     good_w = sched.good(weight_seq)  # [J, I]
-    for U in [1] + UPCHAN_FACTORS:
+    for U in frb_factors(config):
         fmin = value(config, f"upchan_U{U}_min_channel")
         fmax = value(config, f"upchan_U{U}_max_channel")
         lo = value(config, f"upchan_U{U}_min_output_channel")
@@ -423,21 +478,33 @@ def check_frb(out_dir, ref_dir, config, sched, results, failures):
     )
 
     # FRB3: one offset and scale per 256 samples, so an exposed sample changes its chunk
-    q, xhat, scale, offset = frb3_values(out_dir, num)
-    q_ref, xhat_ref, scale_ref, offset_ref = frb3_values(ref_dir, num)
+    q, xhat, scale, offset, (nodata, qmin, qmax) = frb3_values(out_dir, num)
+    q_ref, xhat_ref, scale_ref, offset_ref, _ = frb3_values(ref_dir, num)
     x = out.data[:, :, :num].astype(np.float64)
     clean = np.broadcast_to(clean, q.shape)
-    whole = np.all(clean, axis=3, keepdims=True)
-    same_chunk = np.all(q == q_ref, axis=3, keepdims=True) & (scale == scale_ref)
-    same_chunk &= offset == offset_ref
-    wrong_whole = np.count_nonzero(whole[..., 0] & ~same_chunk[..., 0])
-    use = clean & (np.abs(q) < 7) & (np.abs(q_ref) < 7)
+
+    def chunks(a):
+        # 4 bits: 256 samples per chunk, 8 bits: 16 (and 16 frequencies, over which the
+        # exposure does not change)
+        return a.reshape(*a.shape[:3], -1, 256 if nodata == -8 else 16)
+
+    whole = np.all(chunks(clean), axis=4)
+    same_chunk = np.all(chunks(q == q_ref), axis=4)
+    same_chunk &= np.all(
+        chunks(np.broadcast_to((scale == scale_ref) & (offset == offset_ref), q.shape)),
+        axis=4,
+    )
+    wrong_whole = np.count_nonzero(whole & ~same_chunk)
+    use = clean & (q > qmin) & (q < qmax) & (q_ref > qmin) & (q_ref < qmax)
+    if nodata != -8:
+        use = clean
     allowance = 2.0 ** -9 * (2 * np.abs(x) + np.abs(offset) + np.abs(offset_ref))
     allowance = allowance + 2.0 ** -9 * (scale + scale_ref)
     excess = np.abs(xhat - xhat_ref) - (scale + scale_ref) / 2 - allowance
     num_beyond = np.count_nonzero(use & (excess > 0))
     step = np.maximum(scale, scale_ref)
-    worst = float((np.abs(xhat - xhat_ref) / np.where(step > 0, step, 1))[use].max())
+    ratio = (np.abs(xhat - xhat_ref) / np.where(step > 0, step, 1))[use]
+    worst = float(ratio.max()) if ratio.size else 0.0
     results.append(
         result_line(
             "frb3_beams",
@@ -612,13 +679,15 @@ def check(runs):
         sched = Schedule(var, run_config)
         results.append(f"[{run}]")
         check_masks(out_dir, run_config, sched, results, failures)
-        check_bb_phase(out_dir, sched, results, failures)
+        if has_bb(run_config):
+            check_bb_phase(out_dir, sched, results, failures)
         check_frb1_weights(out_dir, run_config, sched, results, failures)
         if run.endswith("reference"):
             continue
         ref_dir = runs[run + "_reference"][0]
         check_voltage(out_dir, ref_dir, sched, results, failures)
-        check_bb(out_dir, ref_dir, sched, results, failures)
+        if has_bb(run_config):
+            check_bb(out_dir, ref_dir, sched, results, failures)
         check_frb(out_dir, ref_dir, run_config, sched, results, failures)
         check_rfi(out_dir, ref_dir, sched, results, failures)
         check_n2(out_dir, ref_dir, run_config, sched, results, failures)

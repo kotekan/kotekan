@@ -141,3 +141,17 @@ shown (rms 2.05 to 2.08, 19.0% to 19.7% zeros). BB has rms 2.78 (model 2.76) wit
 FRB3 rms 2.48 (model 2.51) with 1.28% at ±7. FRB3 encodes FRB2 within
 `|q − (x − offset)/scale| ≤ 0.676` below saturation; all 470.8 M samples are valid and pass.
 Kotekan runs for 27 s; the test takes 2.5 minutes.
+
+## Result (CHIME, cx68, A40, Release)
+
+**PASS**, with the production gains of config/chime_upgrade_frb.j2. Only U = 16 exists, and CHIME
+has no BB beamformer.
+
+- **U = 16:** rms 0.70 LSB (model 0.68), 57.1% zeros, no ±7, no -8. The production
+  `upchan_gain` is 1, not 0.8·√U as in config/fengine (#1784), so the output is under-loaded as
+  the pathfinder was before #1784; with 0.8·√U it would be 2 LSB.
+- **FRB3** is quantized to 8 bits (cudaQuantize8): codes 1 to 254 per chunk of 16 frequencies ×
+  16 samples, 0 for no data. All 254 codes occur; all 67.1 M samples are valid and within half a
+  step plus float16 rounding (`|q − (x − offset)/scale| ≤ 0.932`).
+
+Kotekan runs for 46 s.

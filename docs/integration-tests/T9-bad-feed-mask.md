@@ -153,3 +153,32 @@ three runs the beamformer stream changed at frames 54, 42 and 108 and the N2 str
 
 Kotekan runs for 38 to 57 s per run; the test takes 4.5 min and writes 2.3 to 2.5 GB per run.
 T9r runs for 26 s and writes 0.4 GB.
+
+## Result (CHIME, cx68, A40, Release)
+
+**PASS**; every check is exact. CHIME has no BB beamformer and only U = 16, and its FRB1 weights
+are the processFRBFeedGains feed gains. Its transpose traps on -8 (`julia/kernels/xpose2048.jl`),
+so the poison is `bad_voltage: random_valid`, random bytes without -8. The mask lifetime is 6
+frames, at least 2 T*: the FRB1 weights of a mask frame apply from T* = 49152 samples after its
+start, and with a lifetime of T* no FRB sample would have the weights of its own frame. As on the
+pathfinder, N2Accumulate reads the bad feed mask from a one-frame stream; config/chime_upgrade_frb.j2
+does not, and without that stream the N2 flags were not set for any of the 154 elements bad in
+an integration.
+
+| check | `full` | `half` |
+|---|---|---|
+| masks | 80 + 483 frames, 79 changes, equal to the schedule, streams agree | 1024 to 1029 bad |
+| W | zero exactly for the bad inputs | same |
+| voltage | 0 good values differ; 99.56% of bad values poisoned | same |
+| FRB1 / FRB2 | 0 clean differ; 98% / 98% of the exposed values differ | same |
+| FRB3 (8 bits) | 3 670 016 of 8 388 608 chunks clean, none differ; ≤ 1.33 steps | ≤ 1.34 steps |
+| RFI | S0tilde = 256 × 2043…2044, S012tilde, SKtilde, RFI mask identical | 256 × 1022 |
+| N2 flags | the AND over each bin (154 and 157 elements) | 1114 and 1115 |
+| N2 good products | 1 794 565 and 1 788 886 per frequency identical | 436 645 and 435 711 |
+
+The half-filled run lists the Missing inputs with `bf_mode: manual`: CHIMETelescope has no dish
+types for `auto`. Kotekan runs for 85 to 114 s per run.
+
+T9r passes on CHIME: both streams change at frame 186 after `seq0`, agree at all 246 frames, and
+the N2 flags of the one integration follow them. The posted inputs are in cylinder order, as in
+config/chime_upgrade_frb.j2; for these inputs that is the mask order. T9r runs for 61 s.

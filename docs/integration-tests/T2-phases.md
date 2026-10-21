@@ -176,3 +176,19 @@ All four variants pass.
 | N2 | `V_ab = E_a conj(E_b)` within 0.00° (99th percentile 4.8°), amplitude 0.97, 99.5% of the samples valid (pathfinder: 3.3°, 71%) |
 
 Kotekan runs for 20 to 37 s per variant; the test takes about 10 minutes.
+
+## Result (CHIME, cx68, A40, Release)
+
+The `frb2`, `offgrid` and `n2` variants pass; `bb` does not apply (no BB beamformer). The tone is
+on a U = 16 fine-channel centre (4.5/16 cycles per sample), and the FRB2 source beam is the
+production beam 23 (`FRB2_BEAM` clamped to the 4 × 256 grid, at 55.6° south).
+
+| output | result |
+|---|---|
+| input | tone phase within 0.04° (99th percentile 12.6°), amplitude 0.99 |
+| U = 16 | fine channel 12; phase within 0.0° (99th percentile 3.3°); amplitude 0.99 |
+| FRB1 | peak at the predicted (p, q) in all 16 channels (beam axes swapped, P along the cylinders) |
+| FRB2 | source beam holds the peak in all 16 channels, 1 of them tied with a grating lobe |
+| N2 | `V_ab = E_a conj(E_b)` within 0.00° (99th percentile 4.1°), amplitude 0.97, A = 1.33, 99.1% of the samples valid |
+
+Kotekan runs for 58, 60 and 84 s.

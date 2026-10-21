@@ -4,8 +4,9 @@ flips, NaN or Inf.
 Input, without noise (lib/testing/testSkySignal.hpp):
 - `full_scale`: 7 + 7i on every input, constant, i.e. a coherent source at zenith at the centre
   of every coarse channel.
-- `full_scale_tone`: an amplitude-7 tone from BB beam `BB_BEAM`, at 1/128 cycles per sample (a
-  fine-channel centre for U=64). The input repeats every 128 samples.
+- `full_scale_tone`: an amplitude-7 tone from BB beam `BB_BEAM` (CHIME, without BB: from T2's
+  FRB2 source beam), at 1/128 cycles per sample (a fine-channel centre for U=64). The input
+  repeats every 128 samples.
 
 First-stage RFI excision is off: a signal of constant power has spectral kurtosis 0 and would be
 flagged entirely, and the correlator would sum nothing.
@@ -17,27 +18,31 @@ Checks:
   is no -8. Away from rounding ties the output is the predicted value, rounded and clamped.
 - BB: equal to the integer beamformer applied to the written phases A and shifts s, exactly.
 - FRB1: finite and at most the bound for int4 input (lib/stages/frb1IntensityBound.hpp).
-- FRB2, FRB3 offset and scale: finite; FRB3: no -8.
+- FRB2, FRB3 offset and scale: finite; FRB3: no no-data code (4 bits: -8, 8 bits: 0).
 
 See docs/integration-tests/T4-overflow.md.
 """
 
 import numpy as np
 
+import check_phases
 from kit import (
+    NUM_TAPS,
     audit,
     decode_int4x2,
+    find_stages,
+    frb3_codes,
     grid_beam_direction,
+    has_bb,
     large_seq,
     read_output,
     require,
+    upchan_t_star,
     upchan_window,
     used_channels,
     value,
 )
 
-UPCHAN_FACTORS = [2, 4, 8, 16, 32, 64]
-NUM_TAPS = 4
 VARIANTS = ["full_scale", "full_scale_tone"]
 BB_BEAM = (3, 1)
 PERIOD = 128  # input period in samples (both variants)
@@ -62,15 +67,17 @@ def variables(tel, config, variant):
     else:
         source = {
             "amplitude": 7,
-            "direction": grid_beam_direction(config, "bb", *BB_BEAM),
+            "direction": (
+                grid_beam_direction(config, "bb", *BB_BEAM)
+                if has_bb(config)
+                else check_phases.source_direction(config, "frb2")
+            ),
             "tone_cycles_per_frame": value(config, "num_times") // PERIOD,
         }
-    outputs = [f"upchan_U{U}_voltage" for U in UPCHAN_FACTORS]
+    outputs = [f"upchan_U{U}_voltage" for U in config["upchan_factors"]]
+    outputs += ["n2k_correlation"]
+    outputs += ["bb_beams", "bb_phase", "bb_shift"] * has_bb(config)
     outputs += [
-        "n2k_correlation",
-        "bb_beams",
-        "bb_phase",
-        "bb_shift",
         "frb1_beams",
         "frb2_beams",
         "frb3_beams",
@@ -149,9 +156,9 @@ def int4_components(data):
 def check_upchan(out_dir, var, config, e, results, failures):
     """Ē_u(L) = (G_u/U) Σ_s W(s) exp(-2πi (u - (U-1)/2) s/U) E(L - (M-1) U/2 + s)."""
     SEQ0 = var["first_fpga_seq_num"]
-    t_star = (NUM_TAPS - 1) * value(config, "max_upchannelization_factor") // 2
+    t_star = upchan_t_star(config)
     channels = list(value(config, "frequency_channels"))
-    for U in UPCHAN_FACTORS:
+    for U in config["upchan_factors"]:
         name = f"upchan_U{U}_voltage"
         out = read_output(out_dir, name)
         audit(out, upchan_factor=U, first_seq=SEQ0 + t_star)
@@ -160,7 +167,9 @@ def check_upchan(out_dir, var, config, e, results, failures):
         num_coarse = len(coarse) // U
         local = [channels.index(c) for c in coarse.reshape(num_coarse, U)[:, 0]]
 
-        gain = np.array(config[f"run_set_upchan_U{U}_gain"]["upchan_gain"], dtype=float)
+        gain = np.array(
+            value(config, f"run_set_upchan_U{U}_gain")["upchan_gain"], dtype=float
+        )
         s = np.arange(NUM_TAPS * U)
         c = np.arange(U) - (U - 1) / 2
         kernel = (
@@ -256,16 +265,22 @@ def check_bb(out_dir, var, e, results, failures):
 
 def check_frb(out_dir, var, config, results, failures):
     SEQ0 = var["first_fpga_seq_num"]
-    t_star = (NUM_TAPS - 1) * value(config, "max_upchannelization_factor") // 2
+    t_star = upchan_t_star(config)
 
-    # FRB1 [Ttilde, Fbar, beamQ, beamP]. For unit weights on the D dishes of an M x N grid and
-    # |E| <= 7 sqrt(2), I <= 98 / (4 M N) · P · D²  (lib/stages/frb1IntensityBound.hpp).
+    # FRB1 [Ttilde, Fbar, beamQ, beamP]. For weights of magnitude w on the D dishes of an M x N
+    # grid and |E| <= 7 sqrt(2), I <= 98 / (4 M N) · P · (w D)²  (lib/stages/frb1IntensityBound.hpp).
+    # w is `frb1_input_scale` (setFRB1Phase) or, for CHIME, the default gain of loadFeedGains,
+    # since the test has no gain files.
     frb1 = read_output(out_dir, "frb1_beams")
     audit(frb1, first_seq=SEQ0 + t_star)
     intensity = used_channels(frb1, 1).astype(np.float64)
     M, N = intensity.shape[3] // 2, intensity.shape[2] // 2
     num_dishes = len(config["telescope"]["dish_inputs"])
-    weight = config.get("frb1_input_scale", 1)
+    gains = find_stages(config, "loadFeedGains")
+    if gains:
+        weight = abs(complex(*gains[0]["default_gains"]))
+    else:
+        weight = config.get("frb1_input_scale", 1)
     bound = 98 / (4 * M * N) * 2 * (num_dishes * weight) ** 2
     peak = intensity.max()
     line = f"frb1_beams: max I {peak:.1f}, bound {bound:.1f} (ratio {peak / bound:.4f})"
@@ -274,28 +289,25 @@ def check_frb(out_dir, var, config, results, failures):
         failures.append("frb1_beams")
     results.append(line)
 
-    # FRB2 [Ttildehi256, R, Fbar, Ttildelo256] float16; FRB3 the same as int4x2 (two's
-    # complement); offset and scale [Ttilde256, R, Fbar, 2]
+    # FRB2 [Ttildehi256, R, Fbar, Ttildelo256] float16; FRB3 codes (kit.frb3_codes)
     frb2 = read_output(out_dir, "frb2_beams")
-    frb3 = read_output(out_dir, "frb3_beams")
-    offsetscale = read_output(out_dir, "frb3_beams_offsetscale")
-    for output in [frb2, frb3, offsetscale]:
-        audit(output, first_seq=SEQ0 + t_star)
+    for name in ["frb2_beams", "frb3_beams", "frb3_beams_offsetscale"]:
+        audit(read_output(out_dir, name), first_seq=SEQ0 + t_star)
     num_freqs = len(np.atleast_1d(frb2.attr("coarse_freq")))
     results.append(
         f"frb2_beams: finite, max {frb2.data[:, :, :num_freqs].astype(np.float64).max():.1f}"
     )
-    nibbles = frb3.data[:, :, :num_freqs]
-    q = (np.stack([nibbles & 0xF, nibbles >> 4]).astype(np.int8) ^ 8) - 8
-    scale = offsetscale.data[:, :, :num_freqs, 1]
-    nodata = np.count_nonzero(q == -8)
+    q, offset, scale, nodata_code, qmin, qmax = frb3_codes(out_dir, num_freqs)
+    nodata = np.count_nonzero(q == nodata_code)
+    extreme = np.count_nonzero((q == qmin) | (q == qmax)) / q.size
+    zero_scale = np.count_nonzero(np.broadcast_to(scale, q.shape) == 0) / q.size
     line = (
-        f"frb3_beams: {nodata} of {q.size} values -8, {np.count_nonzero(np.abs(q) == 7) / q.size:.1%} "
-        f"at ±7; offset and scale finite, {np.count_nonzero(scale == 0)} of {scale.size} chunks "
-        "with scale 0"
+        f"frb3_beams: {nodata} of {q.size} values {nodata_code} (no data), {extreme:.1%} at "
+        f"{qmin} or {qmax}; offset and scale finite, {zero_scale:.1%} of the samples with "
+        "scale 0"
     )
     if nodata:
-        line += "  <- -8 without packet loss"
+        line += "  <- no data without packet loss"
         failures.append("frb3_beams")
     results.append(line)
 
@@ -306,7 +318,8 @@ def check(out_dir, var, config):
     e = input_period(out_dir, var, config)
     check_correlator(out_dir, e, results, failures)
     check_upchan(out_dir, var, config, e, results, failures)
-    check_bb(out_dir, var, e, results, failures)
+    if "bb_beams" in var["outputs"]:
+        check_bb(out_dir, var, e, results, failures)
     check_frb(out_dir, var, config, results, failures)
     require(
         not failures, f"{len(failures)} outputs wrong:\n    " + "\n    ".join(results),

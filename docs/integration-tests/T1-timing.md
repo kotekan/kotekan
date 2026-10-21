@@ -114,3 +114,15 @@ Both variants pass:
 - **All upchannelizers:** power centroids within ±U/4.
 - **FRB1:** centroid 0.5 samples from the box centre.
 - **FRB2:** centroid 0.3 samples from the box centre.
+
+## Result (CHIME, cx68, A40, Release)
+
+Both variants pass. CHIME has no BB beamformer and only U = 16. Its production `upchan_gain` is 1,
+under which a box of amplitude 1 at the edge of two fine channels rounds to zero, so the box
+amplitude is 4.
+
+- **Input:** the transposed voltage holds the signal exactly in [box_begin, box_end).
+- **U = 16:** centroid 2.0 samples from the box centre (±4).
+- **FRB1, FRB2:** centroids 2.1 samples from the box centre (±96).
+
+Kotekan runs for 52 s per variant.

@@ -182,24 +182,96 @@ def power_centroid(labels, power):
 C0 = 299792458.0  # speed of light [m/s]
 
 
+NUM_TAPS = 4  # kotekan::upchan_default_num_taps
+
+
+def output_alignment(config):
+    """The upchannelizer output alignment `upchan_output_alignment` (default 1, CHIME: 3 frames),
+    in FPGA samples."""
+    return (
+        value(config, "upchan_output_alignment")
+        if "upchan_output_alignment" in config
+        else 1
+    )
+
+
+def upchan_t_star(config):
+    """The upchannelizer output offset T* = (taps - 1) U_max / 2, rounded up to a multiple of
+    the output alignment (`upchan_output_offset`)."""
+    align = output_alignment(config)
+    t_star = (NUM_TAPS - 1) * value(config, "max_upchannelization_factor") // 2
+    return -(-t_star // align) * align
+
+
 def large_seq(config):
     """A large start FPGA sequence number. N2Accumulate needs frames to start at multiples of
-    the frame length; 7 frames past 2**33 aligns it with no lifetime or integration."""
-    return 2 ** 33 + 7 * value(config, "num_times")
+    the frame length, and the voltage stream must start at a multiple of the upchannelizer
+    output alignment; 7 frames past 2**33, rounded up to both, aligns it with no lifetime or
+    integration."""
+    step = math.lcm(value(config, "num_times"), output_alignment(config))
+    return -(-(2 ** 33 + 7 * value(config, "num_times")) // step) * step
 
 
 def value(config, key, block=None):
     """A top-level config value, or one in the top-level `block`; kotekan arithmetic expressions
-    such as `5.0 / 4` that refer to other top-level values are evaluated."""
-    v = (config if block is None else config[block])[key]
+    such as `5.0 / 4` that refer to other top-level values are evaluated. A key that is not at
+    the top level is looked up in the top-level blocks (CHIME's `FRB`), and expressions there
+    refer to that block first."""
+    scope = config if block is None else config[block]
+    if key not in scope and block is None:
+        blocks = [b for b, v in config.items() if isinstance(v, dict) and key in v]
+        require(blocks, f"config: no value {key}")
+        return value(config, key, blocks[0])
+    v = scope[key]
     if not isinstance(v, str):
         return v
 
     class Names(dict):
         def __missing__(self, name):
+            if block is not None and name in config[block]:
+                return value(config, name, block)
             return value(config, name)
 
     return eval(v, {"__builtins__": {}}, Names())
+
+
+def has_bb(config):
+    """Whether the config has the baseband beamformer (CHIME has none)."""
+    return "host_bb_beams_buffer" in config
+
+
+def frb1_swap_MN(config):
+    """Whether FRB1 beam axis P (M) runs along grid y instead of x (CHIME)."""
+    return value(config, "frb1_num_beams_P") != 2 * value(config, "num_dishes_x")
+
+
+def has_value(config, key):
+    """Whether `key` is a top-level value or one in a top-level block (see `value`)."""
+    return key in config or any(
+        isinstance(v, dict) and key in v for v in config.values()
+    )
+
+
+def has_command(config, name):
+    """Whether any cudaProcess stage of the config runs the GPU command `name`."""
+    if isinstance(config, dict):
+        return config.get("name") == name or any(
+            has_command(v, name) for v in config.values()
+        )
+    if isinstance(config, list):
+        return any(has_command(v, name) for v in config)
+    return False
+
+
+def find_stages(config, kotekan_stage):
+    """The config blocks of every stage of type `kotekan_stage`, at any depth."""
+    found = []
+    for v in config.values():
+        if isinstance(v, dict):
+            if v.get("kotekan_stage") == kotekan_stage:
+                found.append(v)
+            found += find_stages(v, kotekan_stage)
+    return found
 
 
 def dish_positions(config):
@@ -229,6 +301,17 @@ def channel_width(config):
     return value(config, "adc_frequency") / value(config, "num_samples_per_frame")
 
 
+def sky_frequency(config, channels, f_tone=0):
+    """The sky frequency (Hz) of `f_tone` cycles per sample in coarse `channels`. As in
+    `Telescope`, Nyquist zone z (`telescope.nyquist_zone`, default 1) starts at floor(z/2) times
+    the ADC frequency and counts up in odd and down in even zones (CHIME)."""
+    zone = config["telescope"].get("nyquist_zone", 1)
+    sign = 1 if zone % 2 else -1
+    return zone // 2 * value(config, "adc_frequency") + sign * (
+        np.asarray(channels) + f_tone
+    ) * channel_width(config)
+
+
 def direction_vector(direction):
     nx, ny = direction
     return np.array([nx, ny, np.sqrt(1 - nx ** 2 - ny ** 2)])
@@ -251,6 +334,22 @@ def grid_beam_direction(config, prefix, bx, by):
         sep = value(config, f"{prefix}_beam_separation_{axis}")
         angles.append(np.radians(-sep * (num - 1) / 2 + sep * b))
     return [float(np.sin(a)) for a in angles]
+
+
+def frb2_beam_positions(config):
+    """The FRB2 beam positions [R, 2] that setFRBBeams produces for its `grid_degrees` or
+    `manual` mode."""
+    stage = find_stages(config, "setFRBBeams")[0]
+    if stage["mode"] == "manual":
+        return np.array([[b["x_dir_grid"], b["y_dir_grid"]] for b in stage["beams"]])
+    num_x, num_y = value(config, "frb2_num_beams_x"), value(config, "frb2_num_beams_y")
+    return np.array(
+        [
+            grid_beam_direction(config, "frb2", bx, by)
+            for by in range(num_y)
+            for bx in range(num_x)
+        ]
+    )
 
 
 def grid_point(lo, hi, n, i):
@@ -333,6 +432,31 @@ def frb2_peak_line(frb2, expected_beam):
         f"frb2_beams: beam {expected_beam} holds the peak in all {tone.shape[1]} channels "
         f"({ties.sum()} ties with grating lobes)"
     )
+
+
+def frb3_codes(out_dir, num):
+    """FRB3 codes q, offsets and scales, each [Ttildehi256, R, Fbar, Ttildelo256] for the first
+    `num` frequencies, and the codes for no data and the lowest and highest values. A value is
+    encoded as offset + scale q.
+    - 4 bits (cudaQuantize4): int4x2, two's complement, the earlier sample in the low nibble;
+      no data -8, values -7 to 7; offset and scale per 256 samples [Ttilde256, R, Fbar, 2].
+    - 8 bits (cudaQuantize8, CHIME): [Ttilde256, R4, Fbar64, Ttilde16_lo16, Rlo4, Fbar16_lo4,
+      Fbarlo16, Ttildelo16]; no data 0, values 1 to 254; offset and scale per 16 frequencies and
+      16 samples [Ttilde256, R4, Fbar64, Ttilde16_lo16, Rlo4, Fbar16_lo4, 2]."""
+    frb3 = read_output(out_dir, "frb3_beams").data
+    offsetscale = read_output(out_dir, "frb3_beams_offsetscale").data
+    if frb3.ndim == 4:
+        frb3 = frb3[:, :, :num]
+        offsetscale = offsetscale[:, :, :num].astype(np.float64)
+        q = np.stack([frb3 & 0xF, frb3 >> 4], axis=-1).reshape(*frb3.shape[:3], -1)
+        q = ((q.astype(np.int8) ^ 8) - 8).astype(np.float64)
+        return q, offsetscale[..., 0:1], offsetscale[..., 1:2], -8, -7, 7
+    n = frb3.shape[0]
+    q = frb3.transpose(0, 1, 4, 2, 5, 6, 3, 7).reshape(n, -1, 256, 256)[:, :, :num]
+    offsetscale = offsetscale.transpose(0, 1, 4, 2, 5, 3, 6).reshape(n, -1, 16, 16, 2)
+    offsetscale = np.repeat(np.repeat(offsetscale, 16, axis=2), 16, axis=3)[:, :, :num]
+    offsetscale = offsetscale.astype(np.float64)
+    return q.astype(np.float64), offsetscale[..., 0], offsetscale[..., 1], 0, 1, 254
 
 
 def upchan_window(num_taps, U):

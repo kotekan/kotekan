@@ -1,6 +1,17 @@
 # -*-yaml-*-
 
-# CHORD and CHORD pathfinder integration test input
+# Integration test input
+#
+# Set by the telescope config (CHIME):
+#     voltage_buffers
+#                   one voltage buffer per frequency (default: host_voltage_buffer)
+#     lost_samples_buffers
+#                   lost samples buffers, one per 4 frequencies, instead of the PL mask
+#                   (default: none, inventPLMask fills host_pl_mask_buffer)
+#     bf_mask_orders
+#                   bufferBadInputs input and output order (default: CHORDBeamformer)
+#     bad_inputs_defined
+#                   the telescope config defines /updatable_config/bad_inputs (default: false)
 #
 # Jinja variables:
 #     first_fpga_seq_num
@@ -30,10 +41,12 @@
 #     bf_change_frames, bf_random_count, bf_seed
 #                   random bad feeds on top of bf_mode, changing every bf_change_frames frames
 #                   (default: 0, none), see testBadFeeds in lib/testing/testSkySignal.hpp
-#     bad_voltage   the voltage of the bad feeds of bf_change_frames and of Missing dishes: keep or
-#                   random (default: keep)
+#     bad_voltage   the voltage of the bad feeds of bf_change_frames and of Missing dishes: keep,
+#                   random, or random_valid (random without -8) (default: keep)
 
 {% set input_kind = input_kind | default('random') %}
+{% set voltage_buffers = voltage_buffers | default(['host_voltage_buffer']) %}
+{% set bf_mask_orders = bf_mask_orders | default(['CHORDBeamformer', 'CHORDBeamformer']) %}
 
 first_fpga_seq_num: {{ first_fpga_seq_num | default(0) }}
 
@@ -56,7 +69,10 @@ bad_feed_seed: {{ bf_seed | default(1) }}
 
 generate_voltage:
     kotekan_stage: inventVoltage
-    voltage: host_voltage_buffer
+    voltage: {{ voltage_buffers[0] if voltage_buffers | length == 1 else voltage_buffers | tojson }}
+{% if lost_samples_buffers is defined %}
+    lost_samples: {{ lost_samples_buffers | tojson }}
+{% endif %}
     input_kind: {{ input_kind }}
     lost_voltage: {{ lost_voltage | default('keep') }}
     bad_voltage: {{ bad_voltage | default('keep') }}
@@ -76,39 +92,43 @@ generate_voltage:
     reuse_frames: true
 {% endif %}
 
+{% if lost_samples_buffers is not defined %}
 generate_pl_mask:
     kotekan_stage: inventPLMask
     pl_mask: host_pl_mask_buffer
     box_begin: {{ pl_box_begin | default(0) }}
     box_end: {{ pl_box_end | default(0) }}
+{% endif %}
 
 {% if bf_source | default('invent') == 'rest' %}
 # The bad feed masks from POSTs to /updatable_config/bad_inputs, as in config/chord/pathfinder.j2
+{% if not bad_inputs_defined | default(false) %}
 updatable_config:
     bad_inputs:
         kotekan_update_endpoint: json
         bad_inputs: []
         start_time: 0.
         update_id: "initial"
+{% endif %}
 
 set_bf_mask:
     num_elements: num_polarizations * num_dishes
-    input_order: CHORDBeamformer
-    output_order: CHORDBeamformer
+    input_order: {{ bf_mask_orders[0] }}
+    output_order: {{ bf_mask_orders[1] }}
     # Both streams switch at the beamformer stream's frame boundaries
     bf_mask_update_alignment_in_samples: {{ bf_mask_lifetime_frames | default(24) }} * num_times
     for_beamformers:
         kotekan_stage: bufferBadInputs
         updatable_config:
             bad_inputs: /updatable_config/bad_inputs
-        metadata_source: host_voltage_buffer
+        metadata_source: {{ voltage_buffers[0] }}
         out_buf: host_bf_mask_buffer
     # The same mask for N2Accumulate, one frame per correlation frame
     for_n2:
         kotekan_stage: bufferBadInputs
         updatable_config:
             bad_inputs: /updatable_config/bad_inputs
-        metadata_source: host_voltage_buffer
+        metadata_source: {{ voltage_buffers[0] }}
         out_buf: host_n2_bf_mask_buffer
         bf_mask_lifetime_in_samples: n2k_samples_per_data_set
 {% else %}

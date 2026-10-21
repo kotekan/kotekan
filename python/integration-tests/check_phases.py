@@ -2,17 +2,18 @@
 
 Input: one tone from direction n, the same on every input apart from the geometric phase
 exp(-2πi ν n·r_d / c) (lib/testing/testSkySignal.hpp), in Gaussian noise of 2.8 LSB per
-component. The tone is at 19.5/64 cycles per sample in every coarse channel: on a fine-channel
-centre for U=64, and away from the mirror channel for every U. Its amplitude (0.75 LSB) keeps the
-upchannelizer outputs below saturation with the production gains, which multiply a tone at a
-fine-channel centre by 0.81 sqrt(U); the noise dithers the int4 rounding. The BB source beam
-(0.75 sqrt(D)) saturates for D > 64, which the BB peak check tolerates. Phases and amplitudes are estimated
-coherently, by averaging over time against the predicted tone.
+component. The tone is at 19.5/64 cycles per sample in every coarse channel, moved to a
+fine-channel centre for the largest U (64; CHIME: U=16, 4.5/16), and away from the mirror channel
+for every U. Its amplitude (0.75 LSB) keeps the upchannelizer outputs below saturation with the
+production gains, which multiply a tone at a fine-channel centre by 0.81 sqrt(U); the noise
+dithers the int4 rounding. The BB source beam (0.75 sqrt(D)) saturates for D > 64, which the BB
+peak check tolerates. Phases and amplitudes are estimated coherently, by averaging over time
+against the predicted tone.
 
-Variants: the source is on a BB beam (`bb`), on an FRB2 beam (`frb2`), or between beams
-(`offgrid`). The variant `n2` checks the visibilities with a stronger tone (`n2_amplitude`, 2 for
-the pathfinder) that still passes RFI excision; fringe stopping is off, since Earth rotation
-would add up to a few degrees over one integration.
+Variants: the source is on a BB beam (`bb`, not for CHIME, which has no BB beamformer), on an
+FRB2 beam (`frb2`), or between beams (`offgrid`). The variant `n2` checks the visibilities with a
+stronger tone (`n2_amplitude`, 2 for the pathfinder) that still passes RFI excision; fringe
+stopping is off, since Earth rotation would add up to a few degrees over one integration.
 """
 
 import glob
@@ -26,24 +27,27 @@ from kit import (
     audit,
     bb_peak_line,
     C0,
-    channel_width,
+    NUM_TAPS,
     direction_vector,
     decode_int4x2,
+    frb2_beam_positions,
     frb2_peak_line,
     frb2_tone_power,
+    frb1_swap_MN,
     geometric_phases,
     grid_beam_direction,
+    has_bb,
     large_seq,
     read_output,
     require,
     rounded_gaussian,
+    sky_frequency,
+    upchan_t_star,
     upchan_window,
     used_channels,
     value,
 )
 
-UPCHAN_FACTORS = [2, 4, 8, 16, 32, 64]
-NUM_TAPS = 4
 VARIANTS = ["bb", "frb2", "offgrid", "n2"]
 AMPLITUDE = 0.75
 NOISE = 2.8
@@ -53,11 +57,22 @@ FRB2_BEAM = (12, 5)
 N2_SK_MARGIN = 1.2
 
 
+def variants(config):
+    return [v for v in VARIANTS if v != "bb" or has_bb(config)]
+
+
+def frb2_beam(config):
+    """The FRB2 source beam R: FRB2_BEAM (x, y) clamped to the beam grid (CHIME: 4 x 256)."""
+    bx = min(FRB2_BEAM[0], value(config, "frb2_num_beams_x") - 1)
+    by = min(FRB2_BEAM[1], value(config, "frb2_num_beams_y") - 1)
+    return bx + value(config, "frb2_num_beams_x") * by
+
+
 def source_direction(config, variant):
     if variant == "bb":
         return grid_beam_direction(config, "bb", *BB_BEAM)
     if variant == "frb2":
-        return grid_beam_direction(config, "frb2", *FRB2_BEAM)
+        return [float(x) for x in frb2_beam_positions(config)[frb2_beam(config)]]
     return [float(np.sin(np.radians(0.5))), float(np.sin(np.radians(0.8)))]
 
 
@@ -79,7 +94,11 @@ def n2_amplitude(config):
 
 
 def tone_cycles(config):
-    return round(19.5 / 64 * value(config, "num_times"))
+    """19.5/64 cycles per sample, moved down to the nearest fine-channel centre for the largest
+    upchannelization factor."""
+    u_max = max(config["upchan_factors"])
+    f_tone = (np.floor(19.5 / 64 * u_max) + 0.5) / u_max
+    return round(f_tone * value(config, "num_times"))
 
 
 def variables(tel, config, variant):
@@ -99,8 +118,9 @@ def variables(tel, config, variant):
         var["outputs"] = ["n2_vis"]
         var["write_frames"] = {"n2_vis": 2 * value(config, "num_frequencies")}
         return var
-    outputs = ["voltage", "bb_beams", "bb_beam_positions", "frb1_beams", "frb2_beams"]
-    outputs += [f"upchan_U{U}_voltage" for U in UPCHAN_FACTORS]
+    outputs = ["voltage"] + ["bb_beams", "bb_beam_positions"] * has_bb(config)
+    outputs += ["frb1_beams", "frb2_beams"]
+    outputs += [f"upchan_U{U}_voltage" for U in config["upchan_factors"]]
     write_frames = {name: 2 for name in outputs}
     write_frames.update(
         {"voltage": 1, "bb_beam_positions": 1, "frb1_beams": 1, "frb2_beams": 1}
@@ -122,13 +142,13 @@ def check(out_dir, var, config):
     if "n2_vis" in var["outputs"]:
         return check_n2(out_dir, var, config)
     SEQ0 = var["first_fpga_seq_num"]
-    t_star = (NUM_TAPS - 1) * value(config, "max_upchannelization_factor") // 2
+    t_star = upchan_t_star(config)
     num_times = value(config, "num_times")
     channels = np.array(value(config, "frequency_channels"))
     direction = var["sources"][0]["direction"]
     k = var["sources"][0]["tone_cycles_per_frame"]
     f_tone = k / num_times  # cycles per sample within a coarse channel
-    nu = (channels + f_tone) * channel_width(config)
+    nu = sky_frequency(config, channels, f_tone)
     phases = geometric_phases(config, direction, nu)  # [F, D]
     exists = np.abs(phases[0]) > 0
     results = []
@@ -154,11 +174,12 @@ def check(out_dir, var, config):
     )
 
     # Baseband beams [Thi, B, F, P, T]: the power must peak in the predicted beam
-    bb = read_output(out_dir, "bb_beams")
-    audit(bb, first_seq=SEQ0, frequency_channels=channels)
-    num_beams = bb.data.shape[1]
-    positions = read_output(out_dir, "bb_beam_positions").data[:num_beams]  # [B, 2]
-    results.append(bb_peak_line(bb.data, positions, config, phases, nu, AMPLITUDE))
+    if "bb_beams" in var["outputs"]:
+        bb = read_output(out_dir, "bb_beams")
+        audit(bb, first_seq=SEQ0, frequency_channels=channels)
+        num_beams = bb.data.shape[1]
+        positions = read_output(out_dir, "bb_beam_positions").data[:num_beams]  # [B, 2]
+        results.append(bb_peak_line(bb.data, positions, config, phases, nu, AMPLITUDE))
 
     # Upchannelized voltages [Tbar, Fbar, P, D]. For the tone,
     #     Ē_u(L) = G_u A R_u exp(2πi f_tone (w - t0)) phases,   w = L - (M-1) U / 2,
@@ -166,7 +187,7 @@ def check(out_dir, var, config):
     # where L is the output label and w the start of its input window. The fine channel with the
     # largest coherent amplitude must be the predicted one, and there the time-averaged ratio of
     # measured to predicted must have phase 0 and amplitude 1.
-    for U in UPCHAN_FACTORS:
+    for U in config["upchan_factors"]:
         name = f"upchan_U{U}_voltage"
         ebar_out = read_output(out_dir, name)
         audit(
@@ -206,7 +227,7 @@ def check(out_dir, var, config):
         )
 
         gain = np.array(
-            config[f"run_set_upchan_U{U}_gain"]["upchan_gain"], dtype=float
+            value(config, f"run_set_upchan_U{U}_gain")["upchan_gain"], dtype=float
         )[u_peak]
         s = np.arange(NUM_TAPS * U)
         response = (
@@ -238,14 +259,19 @@ def check(out_dir, var, config):
     M, N = num_P // 2, num_Q // 2
     tel = config["telescope"]
     n = direction_vector(direction)
+    # M runs along grid x and N along y, unless the beamformer swaps them (CHIME)
+    axis_M, axis_N = (1, 0) if frb1_swap_MN(config) else (0, 1)
+    sep_M, sep_N = [
+        float(tel[f"dish_separation_{a}_m"]) for a in ("xy"[axis_M], "xy"[axis_N])
+    ]
     wrong = []
     checked = 0
     for chan in np.unique(coarse):
         slots = np.nonzero(coarse == chan)[0]
         slot = slots[data[slots].max(axis=(1, 2)).argmax()]
-        nu_tone = (chan + f_tone) * channel_width(config)
-        two_theta_M = 2 * M * n[0] * float(tel["dish_separation_x_m"]) * nu_tone / C0
-        two_theta_N = 2 * N * n[1] * float(tel["dish_separation_y_m"]) * nu_tone / C0
+        nu_tone = sky_frequency(config, chan, f_tone)
+        two_theta_M = 2 * M * n[axis_M] * sep_M * nu_tone / C0
+        two_theta_N = 2 * N * n[axis_N] * sep_N * nu_tone / C0
         q, p = np.unravel_index(data[slot].argmax(), data[slot].shape)
         dp = (p - two_theta_M + M) % (2 * M) - M
         dq = (q - two_theta_N + N) % (2 * N) - N
@@ -277,9 +303,8 @@ def check(out_dir, var, config):
     # must hold the peak tone power
     frb2 = read_output(out_dir, "frb2_beams")
     audit(frb2, first_seq=SEQ0 + t_star)
-    if direction == grid_beam_direction(config, "frb2", *FRB2_BEAM):
-        expected_beam = FRB2_BEAM[0] + value(config, "frb2_num_beams_x") * FRB2_BEAM[1]
-        results.append(frb2_peak_line(frb2, expected_beam))
+    if direction == source_direction(config, "frb2"):
+        results.append(frb2_peak_line(frb2, frb2_beam(config)))
     else:
         tone = frb2_tone_power(frb2)
         results.append(
@@ -311,7 +336,7 @@ def check_n2(out_dir, var, config):
                 f.attrs["n_valid_fpga_ticks"] / f.attrs["frame_length_fpga_ticks"]
             )
         vis = vis[:, 0] + 1j * vis[:, 1]
-        nu = (freq_id + f_tone) * channel_width(config)
+        nu = sky_frequency(config, freq_id, f_tone)
         g = geometric_phases(config, source["direction"], np.array([nu]))[0]
         e = np.concatenate([g, g])  # element a = p D + d
         ia, ib = np.triu_indices(len(e))
