@@ -1303,7 +1303,8 @@ def build_parser(description):
         default="",
         help="comma list of chain (signal) names declaring the RF bands the receiver "
         "flies, e.g. gps_l5,gal_e5b,gps_l2c,bds_b3i,gal_e6; the carriers come from "
-        "gnssSignal.hpp. The stream-health panel labels each channel the "
+        "the interface golden (gnssSignal.hpp's descriptors). The stream-health panel "
+        "labels each channel the "
         "--rf-stats-endpoints taps monitor with the nearest declared carrier. "
         "Matching the whole band table instead would name bands CHORD does not fly, "
         "so with this unset the rows read 'lobe N'. List the fleet's bands, not only "
@@ -1731,8 +1732,8 @@ def build_parser(description):
         "overlay checks and joint fit work modulo this many periods, so it must match "
         "the trackers' "
         "signal, not the search's: a seed reduced to one primary period of a "
-        "20-period code is right 1 time in 20. --signal sets it from "
-        "lib/stages/gnss/gnssSignal.hpp; an explicit value that disagrees is an "
+        "20-period code is right 1 time in 20. --signal sets it from the interface "
+        "golden (gnssSignal.hpp's descriptors); an explicit value that disagrees is an "
         "error.",
     )
     ap.add_argument(
@@ -1744,8 +1745,8 @@ def build_parser(description):
         "each satellite's phase as its GPS transmit time modulo this period, and the "
         "receiver clock it resolves, known modulo this period, is what lets a chain "
         "whose code period is longer than a donor's adopt that donor's clock "
-        "(--dr-clock-adopt). --signal sets it from lib/stages/gnss/gnssSignal.hpp; an "
-        "explicit value that disagrees is an error.",
+        "(--dr-clock-adopt). --signal sets it from the interface golden "
+        "(gnssSignal.hpp's descriptors); an explicit value that disagrees is an error.",
     )
     ap.add_argument(
         "--bias-min-snr",
@@ -2047,7 +2048,8 @@ def build_parser(description):
         help="name this chain's signal (e.g. gps_l5) instead of typing its constants: "
         "it sets --carrier-hz, --chip-rate-hz, --code-length, --long-code-segments, "
         "--long-code-epoch-s, --nh-overlay-len, --constellation and --dr-constellation "
-        "from lib/stages/gnss/gnssSignal.hpp, the descriptors the trackers' replica "
+        "from the interface golden (gnss_broker/iface_golden.json), which carries "
+        "lib/stages/gnss/gnssSignal.hpp's descriptors, the ones the trackers' replica "
         "bank is built from, and for the BDS-3-only signals (B1C, B2a, B2b) "
         "--dr-min-prn 19 and --signal-capability. These constants fail silently when "
         "mistyped (a wrong overlay length seeds a random one of the overlay periods), "

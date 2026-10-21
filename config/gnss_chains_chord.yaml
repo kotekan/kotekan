@@ -14,9 +14,10 @@
 # broker; a broker pointed at stages that do not exist yet fails its polls and posts.
 #
 # The per-signal constants are not here: `signal: gps_l5` resolves carrier, chip rate, code
-# length, long-code segments and epoch, and overlay length from lib/stages/gnss/gnssSignal.hpp,
-# the descriptors the trackers' replica bank is built from. A mistyped constant fails silently,
-# so none is restated here.
+# length, long-code segments and epoch, and overlay length from the broker's interface golden
+# (gnss_broker/iface_golden.json), which carries lib/stages/gnss/gnssSignal.hpp's descriptors,
+# the ones the trackers' replica bank is built from. A mistyped constant fails silently, so
+# none is restated here.
 
 common:
   # -- the receiver: one telescope, one site, one F-engine --
