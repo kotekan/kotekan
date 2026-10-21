@@ -2,7 +2,8 @@
 headers that the telemetry, record and signal tables are parsed from, the stock config templates
 the generator renders, and the build trees whose binaries the tools run.
 
-The first of these that applies, with <checkout> the checkout this file is in:
+The first of these that applies, with <checkout> the checkout this file is in, as a physical
+path (scripts/gnss/site/kotekan_src.sh takes the same one):
 
     $KOTEKAN_SRC            when set, taken as it is
     <checkout>              kotekan and the GNSS Python in one tree
@@ -18,8 +19,8 @@ directory.
 
 import os
 
-_HERE = os.path.dirname(os.path.abspath(__file__))
-_CHECKOUT = os.path.abspath(os.path.join(_HERE, "..", "..", ".."))
+_HERE = os.path.dirname(os.path.realpath(__file__))
+_CHECKOUT = os.path.dirname(os.path.dirname(os.path.dirname(_HERE)))
 _MARK = os.path.join("lib", "stages", "gnss")
 
 

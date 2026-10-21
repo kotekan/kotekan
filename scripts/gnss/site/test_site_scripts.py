@@ -600,8 +600,9 @@ def test_kotekan_src_helper_follows_the_python_rule():
 
 def test_kotekan_src_helper_is_physical_and_takes_a_relative_checkout():
     """Through a symlinked checkout, with a kotekan tree beside the link and another beside the
-    real directory, the helper takes the one beside the real directory, as kotekan_src.py does;
-    and a relative checkout argument still reaches the tree beside it."""
+    real directory, the helper and kotekan_src.py, each reached through the link, both take the
+    one beside the real directory; and a relative checkout argument still reaches the tree
+    beside it."""
     py = os.path.join(
         HERE, "..", "..", "..", "python", "scripts", "gnss", "kotekan_src.py"
     )
@@ -620,21 +621,21 @@ def test_kotekan_src_helper_is_physical_and_takes_a_relative_checkout():
         link = os.path.join(d, "L", "c")
         os.symlink(real, link)
         want = os.path.join(d, "P", "kotekan")
-        # kotekan_src.py imported from the real checkout's directory.
+        # kotekan_src.py imported through the link.
         _, py_out = run(
             [
                 sys.executable,
                 "-c",
                 "import sys; sys.path.insert(0, sys.argv[1]); import kotekan_src; "
                 "print(kotekan_src.SRC)",
-                os.path.join(real, "python", "scripts", "gnss"),
+                os.path.join(link, "python", "scripts", "gnss"),
             ],
             {},
             bare=True,
         )
         check(
             py_out.strip() == want,
-            "kotekan_src.py finds the tree beside the real checkout (%r)"
+            "through the link kotekan_src.py finds the tree beside the real checkout (%r)"
             % py_out.strip(),
         )
         helper = os.path.join("scripts", "gnss", "site", "kotekan_src.sh")

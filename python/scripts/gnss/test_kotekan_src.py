@@ -39,10 +39,12 @@ class TestResolve(unittest.TestCase):
         os.makedirs(os.path.join(root, MARK))
         return root
 
-    def load(self, env=None):
-        """The copied kotekan_src, imported with os.environ = `env`."""
+    def load(self, env=None, gnss_py=None):
+        """The copied kotekan_src, imported from `gnss_py` (default its own directory) with
+        os.environ = `env`."""
         spec = importlib.util.spec_from_file_location(
-            "kotekan_src_under_test", os.path.join(self.gnss_py, "kotekan_src.py")
+            "kotekan_src_under_test",
+            os.path.join(gnss_py or self.gnss_py, "kotekan_src.py"),
         )
         mod = importlib.util.module_from_spec(spec)
         with mock.patch.dict(os.environ, env or {}, clear=True):
@@ -84,6 +86,18 @@ class TestResolve(unittest.TestCase):
     def test_sibling(self):
         self.tree(self.sibling)
         self.assertEqual(self.load().SRC, self.sibling)
+
+    def test_symlinked_checkout_is_physical(self):
+        """Through a link to the checkout, the tree beside the real directory, not the one
+        beside the link, as scripts/gnss/site/kotekan_src.sh finds it."""
+        self.tree(self.sibling)
+        link_dir = os.path.join(self.tmp, "L")
+        self.tree(os.path.join(link_dir, "kotekan"))
+        link = os.path.join(link_dir, "gnss-broker")
+        os.symlink(self.checkout, link)
+        k = self.load(gnss_py=os.path.join(link, "python", "scripts", "gnss"))
+        self.assertEqual(k._CHECKOUT, self.checkout)
+        self.assertEqual(k.SRC, self.sibling)
 
     def test_paths(self):
         self.tree(self.checkout)
