@@ -10,8 +10,10 @@
 # with the broker, and against the frame sizes <config> was generated for (its gnss_iface
 # stamp). Its lines go to stderr.
 #
-# Returns 1 only when the check refuses the start. A binary built before the document, an
-# unstamped config, a command that fails, or a check that cannot run warns and returns 0.
+# Returns 1 only when the check refuses the start, which it says by exiting 3, a status the
+# interpreter never gives on its own. A binary built before the document, an unstamped config,
+# a command that fails, or a check that cannot run (any other exit: 1 when gnss_broker does not
+# import, 2 when the golden does not load) warns and returns 0.
 # GNSS_SKIP_PREFLIGHT=1 skips it.
 
 gnss_iface_preflight() {
@@ -35,7 +37,7 @@ gnss_iface_preflight() {
     if [ -n "$out" ]; then
         printf '%s\n' "$out" >&2
     fi
-    if [ "$rc" -eq 1 ]; then
+    if [ "$rc" -eq 3 ]; then
         return 1
     fi
     if [ "$rc" -ne 0 ]; then

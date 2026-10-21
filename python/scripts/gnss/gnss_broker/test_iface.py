@@ -485,33 +485,39 @@ class TestSourcesAndCli(unittest.TestCase):
         self.assertIn("MATCH", out)
         self.assertIn("config stamp agrees", out)
         rc, out = pf(bad)
-        self.assertEqual(rc, 1, out)
+        self.assertEqual(rc, iface.PREFLIGHT_REFUSED, out)
         self.assertIn("ERROR record.row/REC_CP/slot: golden 2, binary 3", out)
         # cube is a sizing section the node role does not compare: the stamp catches it.
         self.assertEqual(pf(cube)[0], 0)
         rc, out = pf(cube, "--config", stamped)
-        self.assertEqual(rc, 1, out)
+        self.assertEqual(rc, iface.PREFLIGHT_REFUSED, out)
         self.assertIn("section cube", out)
         rc, out = pf(cube, "--config", unstamped)
         self.assertEqual(rc, 0, out)
         self.assertIn("carries no gnss_iface stamp", out)
         # The archiver's own scope holds the cube.
         rc, out = run_cli("preflight", "--role", "cubearch", "--from", cube)
-        self.assertEqual(rc, 1, out)
+        self.assertEqual(rc, iface.PREFLIGHT_REFUSED, out)
         self.assertIn("ERROR cube/CUBE_HEADER_BYTES: golden 152, binary 160", out)
         self.assertIn("REFUSED", out)
         rc, out = run_cli("preflight", "--role", "cubearch", "--from", good)
         self.assertEqual(rc, 0, out)
         # The 10-20 failure: the config names a descriptor the binary does not resolve.
         rc, out = pf(nosbas, "--config", unstamped)
-        self.assertEqual(rc, 1, out)
+        self.assertEqual(rc, iface.PREFLIGHT_REFUSED, out)
         self.assertIn("names descriptor SBAS_L5_Q_MC, which this binary does not", out)
         self.assertEqual(pf(nosbas, "--signals", "GPS_L5_Q,GPS_L5_Q_NH")[0], 0)
         rc, out = pf(legacy, "--config", stamped)
         self.assertEqual(rc, 0, out)
         self.assertIn("WARN LEGACY", out)
         self.assertEqual(pf(os.path.join(self.d, "absent.json"))[0], 0)
-        # A failure inside the check is not a refusal: exit 2, never 1.
+        # A document that does not hash to the digest served with it is not compared.
+        lie = entry_of(golden_doc())
+        lie["digest"] = "fnv1a64:0000000000000000"
+        rc, out = pf(self.put("lie.json", {"gnss": lie}), "--config", stamped)
+        self.assertEqual(rc, 0, out)
+        self.assertIn("WARN UNCOMPARABLE", out)
+        # A failure inside the check is not a refusal: exit 2.
         real, iface.compare = iface.compare, None
         try:
             with redirect_stderr(io.StringIO()):

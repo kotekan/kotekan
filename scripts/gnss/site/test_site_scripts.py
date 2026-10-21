@@ -490,22 +490,28 @@ def test_run_component_iface_preflight():
         shutil.rmtree(d, ignore_errors=True)
 
 
+def cubearch_site(d):
+    """cubearch_up.sh in a checkout of its own under d, with its own copy of the interface
+    module and golden, so no node config there can disagree on frame_size; (script, config,
+    the gnss_broker copy)."""
+    k, _ = site_tree(d, "cubearch_up.sh")
+    pkg = os.path.join(k, "python", "scripts", "gnss", "gnss_broker")
+    os.makedirs(pkg)
+    for name in ("__init__.py", "iface.py", "iface_golden.json", "iface_pin.json"):
+        shutil.copy(os.path.join(os.path.dirname(iface.__file__), name), pkg)
+    arch = os.path.join(d, "archive")
+    extra = (
+        "cube_recv: {listen_port: 11070}\ncube_write: {base_dir: %s}\n"
+        "cube_buf: {frame_size: 1024}\n" % arch
+    )
+    cfg = iface_config(d, True, extra)
+    return os.path.join(k, "scripts", "gnss", "site", "cubearch_up.sh"), cfg, pkg
+
+
 def test_cubearch_up_iface_preflight():
-    """In a checkout of its own, so no node config there can disagree on frame_size."""
     d = os.path.realpath(tempfile.mkdtemp(prefix="site_cube_iface_"))
     try:
-        k, _ = site_tree(d, "cubearch_up.sh")
-        pkg = os.path.join(k, "python", "scripts", "gnss", "gnss_broker")
-        os.makedirs(pkg)
-        for name in ("__init__.py", "iface.py", "iface_golden.json", "iface_pin.json"):
-            shutil.copy(os.path.join(os.path.dirname(iface.__file__), name), pkg)
-        arch = os.path.join(d, "archive")
-        extra = (
-            "cube_recv: {listen_port: 11070}\ncube_write: {base_dir: %s}\n"
-            "cube_buf: {frame_size: 1024}\n" % arch
-        )
-        cfg = iface_config(d, True, extra)
-        sh = os.path.join(k, "scripts", "gnss", "site", "cubearch_up.sh")
+        sh, cfg, _ = cubearch_site(d)
         for kind, ok in (("legacy", True), ("match", True), ("cube", False)):
             rc, out = run(
                 ["bash", sh, "--check", cfg], {"GNSS_BIN": iface_binary(d, kind)}
@@ -516,6 +522,42 @@ def test_cubearch_up_iface_preflight():
                 else (rc == 1 and "ERROR cube/CUBE_HEADER_BYTES" in out),
                 "cubearch_up --check on a %s binary %s (rc %d)"
                 % (kind, "passes" if ok else "fails", rc),
+            )
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def test_a_preflight_that_cannot_run_never_refuses():
+    """Only the check's refusal status (3) refuses. A gnss_broker that does not import (the
+    interpreter exits 1) or a golden that does not load (exit 2) is a check that did not run:
+    it warns and the start goes on, even for a binary the check would refuse."""
+    d = os.path.realpath(tempfile.mkdtemp(prefix="site_iface_broken_"))
+    try:
+        sh, cfg, pkg = cubearch_site(d)
+        env = {"GNSS_BIN": iface_binary(d, "cube")}
+        rc, out = run(["bash", sh, "--check", cfg], env, cwd=d)
+        check(
+            rc == 1 and "REFUSED" in out,
+            "with the check running, the binary is refused (rc %d)" % rc,
+        )
+        for name, was, now, code in (
+            ("iface.py", "import argparse", "<<<<<<< HEAD\nimport argparse", 1),
+            ("iface_golden.json", '"CUBE_VERSION": 3', '"CUBE_VERSION": 4', 2),
+        ):
+            path = os.path.join(pkg, name)
+            with open(path) as fh:
+                text = fh.read()
+            with open(path, "w") as fh:
+                fh.write(text.replace(was, now, 1))
+            rc, out = run(["bash", sh, "--check", cfg], env, cwd=d)
+            with open(path, "w") as fh:
+                fh.write(text)
+            check(
+                rc == 0
+                and "WARN the check could not run (exit %d)" % code in out
+                and "pre-flight OK" in out,
+                "a broken %s (exit %d) warns and starts (rc %d%s)"
+                % (name, code, rc, "" if rc == 0 else ": " + out[-400:]),
             )
     finally:
         shutil.rmtree(d, ignore_errors=True)

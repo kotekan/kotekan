@@ -106,6 +106,11 @@ MISMATCH = "MISMATCH"
 UNCOMPARABLE = "UNCOMPARABLE"
 LEGACY = "LEGACY"
 
+#: `preflight`'s exit status for a refusal. Not 1 or 2: the interpreter exits 1 on an uncaught
+#: exception or a module that does not import and 2 on a usage error, and neither may refuse a
+#: start.
+PREFLIGHT_REFUSED = 3
+
 _HERE = os.path.dirname(os.path.abspath(__file__))
 GOLDEN_PATH = os.path.join(_HERE, "iface_golden.json")
 PIN_PATH = os.path.join(_HERE, "iface_pin.json")
@@ -861,9 +866,10 @@ def _cmd_sync(a):
 
 
 def _cmd_preflight(a):
-    """Exit 0: start it (MATCH or COMPATIBLE, or nothing to compare, which is warned); 1:
-    refuse, with an ERROR line per reason; 2: no check was made (a usage error or a bad
-    golden), which the caller treats as a warning, never a refusal.
+    """Exit 0: start it (MATCH or COMPATIBLE, or nothing to compare, which is warned);
+    PREFLIGHT_REFUSED (3): refuse, with an ERROR line per reason. Any other status, 2 for a
+    usage error, a bad golden or an internal error, means no check was made, which the caller
+    treats as a warning, never a refusal.
 
     Refused: a binary that disagrees with the broker's golden on the role's scope; a config
     descriptor the binary does not resolve (it would stop at stage construction); a sizing
@@ -942,7 +948,7 @@ def _cmd_preflight(a):
             "(pin %s) or the config's stamp on %d point(s), listed above"
             % (tag, s.what, doc_digest(s.doc), g.commit, len(refuse))
         )
-        return 1
+        return PREFLIGHT_REFUSED
     extra = " (extra: %d leaves)" % len(c.extras) if c.extras else ""
     print(
         "%s: %s %s%s%s"
@@ -1033,7 +1039,7 @@ def main(argv=None):
         print("iface %s: %s" % (a.cmd, e), file=sys.stderr)
         return 2
     except Exception:
-        # Never 1, which preflight's callers read as a refusal and diff's as a flag day.
+        # 2: nothing was checked. Not 1, a flag day to diff and a MISMATCH to check-fleet.
         traceback.print_exc()
         print("iface %s: internal error, nothing was checked" % a.cmd, file=sys.stderr)
         return 2
