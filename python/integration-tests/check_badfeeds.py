@@ -32,8 +32,7 @@ Checks:
   counts, equal the reference.
 
 CHIME has no BB beamformer and no FRB U = 1; its FRB1 weights are the feed gains of
-processFRBFeedGains, and its N2Accumulate does not read the bad feed mask (as
-config/chime_upgrade_frb.j2), so there is no second mask stream, and N2 cannot flag bad inputs.
+processFRBFeedGains.
 CHIMETelescope has no dish types for `bf_mode: auto`, so the half-filled CHIME run lists the
 Missing inputs with `bf_mode: manual`.
 
@@ -102,11 +101,6 @@ def n2_bin_frames(config):
     )
 
 
-def n2_masked(config):
-    """Whether N2Accumulate reads a bad feed mask (not on CHIME)."""
-    return "in_bad_feed_mask_buf" in find_stages(config, "N2Accumulate")[0]
-
-
 def mask_frames(config):
     return N2_LEAD_FRAMES + n2_bin_frames(config) * N2_INTEGRATIONS
 
@@ -139,10 +133,11 @@ def variables(tel, config, run):
         chime_transpose = has_command(config, "cudaTranspose2048_chime")
         var["bad_voltage"] = "random_valid" if chime_transpose else "random"
     lifetimes = mask_frames(config) // lifetime_frames(config)
-    write_frames = {"bf_mask": lifetimes}
-    if n2_masked(config):
-        write_frames["n2_bf_mask"] = mask_frames(config)
-    write_frames["voltage"] = VOLTAGE_FRAMES
+    write_frames = {
+        "bf_mask": lifetimes,
+        "n2_bf_mask": mask_frames(config),
+        "voltage": VOLTAGE_FRAMES,
+    }
     if has_bb(config):
         write_frames["bb_phase"] = DATA_FRAMES // lifetime_frames(config) + 1
         write_frames["bb_beams"] = DATA_FRAMES
@@ -241,8 +236,7 @@ def check_masks(out_dir, config, sched, results, failures):
     T = value(config, "num_times")
     streams = {}
     L = value(config, "bf_mask_lifetime_in_samples")
-    names = [("bf_mask", L)] + [("n2_bf_mask", T)] * n2_masked(config)
-    for name, lifetime in names:
+    for name, lifetime in [("bf_mask", L), ("n2_bf_mask", T)]:
         out = read_output(out_dir, name)
         audit(out, first_seq=sched.seq0)
         require(
@@ -267,8 +261,6 @@ def check_masks(out_dir, config, sched, results, failures):
         )
         streams[name] = (seq, mask)
     # The two streams at the first sample of every one-frame mask frame
-    if not n2_masked(config):
-        return
     seq, n2_mask = streams["n2_bf_mask"]
     bf_seq, bf_mask = streams["bf_mask"]
     index = (seq - bf_seq[0]) // L

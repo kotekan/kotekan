@@ -1,7 +1,8 @@
 # -*-yaml-*-
 
 # CHIME N2 setup, copied from config/chime_upgrade_frb.j2 without the outputs (VisWriter) and huge
-# pages.
+# pages. As in the pathfinder and CHORD test configs, N2Accumulate reads the bad feed mask, from
+# its own one-frame mask stream (see below); config/chime_upgrade_frb.j2 does not.
 # Jinja variable: do_fringestop (default: off, as N2Accumulate).
 
 ################################################################################
@@ -194,6 +195,26 @@ n2k_PLmask_count:
     sub_integration_ntime: n2k_sub_integration_ntime
     packet_loss_is_scalar: True
 
+# Bad feed mask for N2Accumulate, which needs one mask frame per correlation frame. BB and FRB1
+# need the mask lifetime to equal their phase lifetimes, a multiple of the FRB processing quantum,
+# so they cannot share this stream. It carries the same mask as host_bf_mask_buffer.
+# N2Accumulate holds each mask frame until its correlation frame is accumulated, so the depth
+# bounds the GPU's lead over it.
+n2_bf_mask_buffer_depth: 12 * buffer_depth
+n2_bf_mask_pool:
+    kotekan_metadata_pool: chordMetadata
+    num_metadata_objects: n2_bf_mask_buffer_depth + 4 * buffer_depth
+host_n2_bf_mask_buffer:
+    kotekan_buffer: ndarray
+    peek_hold: true
+    num_frames: n2_bf_mask_buffer_depth
+    value_type: int8
+    extents: [1, num_polarizations, num_dishes]
+    quantity_name: "bf_mask"
+    dimnames: ["Tbf", "P", "D"]
+    dimscalings: [n2k_samples_per_data_set, 1, 1]
+    metadata_pool: n2_bf_mask_pool
+
 vis_accumulate:
     kotekan_stage: N2Accumulate
     in_buf: host_n2k_correlation_buffer
@@ -201,6 +222,7 @@ vis_accumulate:
     in_rficounts_buf: host_n2k_RFIcounts_buffer
     in_plcounts_buf: host_n2k_PLcounts_buffer
     in_rfiframemask_buf: host_rfi_RFIframemask_buffer
+    in_bad_feed_mask_buf: host_n2_bf_mask_buffer
     out_buf: vis_10s_buffer
     packet_loss_is_scalar: True
     cpu_affinity: [17, 18, 19]
