@@ -188,3 +188,12 @@ target_link_libraries(cuda_gnss_despread_test PRIVATE kotekan_cuda kotekan_stage
                                                       kotekan_libs libexternal)
 target_include_directories(cuda_gnss_despread_test PRIVATE . ../stages ../stages/gnss ../core
                                                            ../utils ../metadata)
+
+# Prototype code-phase-table (Psi) replica synthesis vs the production waveform kernel at CHORD
+# geometry, with timings. The kernel is part of the bench, not of kotekan_cuda.
+# Run: ./lib/cuda/cuda_gnss_psi_bench [all|bench] [n_prn]
+add_executable(cuda_gnss_psi_bench cudaGnssPsiBench.cpp cudaGnssPsiSynth.cu)
+target_link_libraries(cuda_gnss_psi_bench PRIVATE kotekan_cuda kotekan_stages kotekan_core
+                                                  kotekan_libs libexternal)
+target_include_directories(cuda_gnss_psi_bench PRIVATE . ../stages ../stages/gnss ../core
+                                                       ../utils ../metadata)
