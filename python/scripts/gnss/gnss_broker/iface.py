@@ -712,10 +712,19 @@ def fetch_doc(base, entry, timeout):
     return doc
 
 
+# A kotekan_version of a build from a modified tree: versioneer's "<v>+<n>.g<hash>.dirty".
+_DIRTY = re.compile(r"[.+-]dirty$")
+
+
 def _from_url(base, timeout):
     ver = read_version(base, timeout)
     doc = fetch_doc(base, version_entry(ver, base), timeout)
-    return Source(doc, ver.get("git_commit_hash"), base)
+    commit = ver.get("git_commit_hash")
+    if _DIRTY.search(str(ver.get("kotekan_version") or "")):
+        # Built from a modified tree, so the document it serves need not be its commit's
+        # golden: no commit describes it, as for a tree whose golden is edited (read_source).
+        return Source(doc, None, "%s (a dirty build of %s)" % (base, commit))
+    return Source(doc, commit, base)
 
 
 def _from_bytes(raw, what, commit=None):
@@ -827,8 +836,8 @@ def _cmd_sync(a):
     commit = a.commit or s.commit
     if not commit:
         raise SourceError(
-            "%s names no kotekan commit (a dump, or a golden edited since its last commit): "
-            "give --commit" % s.what
+            "%s names no kotekan commit (a dump, a dirty build, or a golden edited since its "
+            "last commit): give --commit" % s.what
         )
     text = format_golden(s.doc)
     if s.raw is not None and s.raw.decode("ascii") != text:

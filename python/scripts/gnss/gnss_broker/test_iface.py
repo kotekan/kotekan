@@ -409,6 +409,27 @@ class TestSourcesAndCli(unittest.TestCase):
         replies["/interfaces/gnss"] = (200, body)
         s = iface.read_source(url)
         self.assertEqual((s.doc, s.commit), (doc, "abc"))
+
+        # A dirty build serves its tree's document, not its commit's golden: it names no
+        # commit, so sync pins it only with --commit.
+        dirty = dict(version, kotekan_version="2024.11a+42.gabc.dirty")
+        replies["/version"] = (200, json.dumps(dirty).encode())
+        s = iface.read_source(url)
+        self.assertEqual((s.doc, s.commit), (doc, None))
+        self.assertIn("a dirty build of abc", s.what)
+        gp, pp = os.path.join(self.d, "g.json"), os.path.join(self.d, "p.json")
+        rc, _ = run_cli("sync", "--from", url, "--golden", gp, "--pin", pp)
+        self.assertEqual(rc, 2, "a dirty build is not pinned to its commit")
+        self.assertFalse(os.path.exists(pp))
+        rc, out = run_cli(
+            "sync", "--from", url, "--commit", "c0ffee", "--golden", gp, "--pin", pp
+        )
+        self.assertEqual(rc, 0, out)
+        self.assertEqual(iface.load_golden(gp, pp).commit, "c0ffee")
+        clean = dict(version, kotekan_version="2024.11a+42.gabc")
+        replies["/version"] = (200, json.dumps(clean).encode())
+        self.assertEqual(iface.read_source(url).commit, "abc")
+
         replies["/interfaces/gnss"] = (200, json.dumps(doc, indent=1).encode())
         with self.assertRaises(iface.Uncomparable):
             iface.read_source(url)  # served, but not canonical
