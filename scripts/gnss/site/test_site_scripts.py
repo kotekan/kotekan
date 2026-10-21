@@ -48,10 +48,10 @@ def session_pgrep(bindir):
         stub(bindir, tool, 'exec /usr/bin/%s -s 0 "$@"\n' % tool)
 
 
-def run(cmd, env, timeout=120, cwd=None, bare=False):
+def run(cmd, env, timeout=120, cwd=None, bare=False, stdin=None):
     """Run cmd in a new session with env added to this environment, or with bare=True to
-    cron's (PATH and HOME alone); (rc, stdout+stderr). On a timeout the session's process
-    group is killed, so nothing it started outlives it."""
+    cron's (PATH and HOME alone), and stdin as its input when given; (rc, stdout+stderr). On a
+    timeout the session's process group is killed, so nothing it started outlives it."""
     if bare:
         e = {"PATH": "/usr/bin:/bin", "HOME": os.environ.get("HOME", "/")}
     else:
@@ -61,13 +61,14 @@ def run(cmd, env, timeout=120, cwd=None, bare=False):
         cmd,
         env=e,
         cwd=cwd,
+        stdin=None if stdin is None else subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
         start_new_session=True,
     )
     try:
-        out, _ = p.communicate(timeout=timeout)
+        out, _ = p.communicate(input=stdin, timeout=timeout)
     except subprocess.TimeoutExpired:
         os.killpg(p.pid, signal.SIGKILL)
         out, _ = p.communicate()
@@ -279,6 +280,20 @@ exec bash -c "$*"
 """
 
 
+# ssh as ssh is: it reads its stdin for the remote side unless -n. Each call logs what it read,
+# tagged preflight (the --interfaces-json read) or start.
+SSH_STDIN_STUB = r"""n=0
+while [ $# -gt 1 ]; do
+    case "$1" in -n) n=1; shift ;; -o) shift 2 ;; -*) shift ;; *) break ;; esac
+done
+shift
+case "$*" in *--interfaces-json*) tag=preflight ;; *) tag=start ;; esac
+got=; [ $n = 1 ] || got=$(cat)
+echo "$tag:$got" >> "$SSH_LOG"
+exec bash -c "$*" < /dev/null
+"""
+
+
 def node_up_stubs(d):
     """ssh runs the remote string here; sudo runs only what node_up needs, and systemd-run
     fails; systemctl and curl fail; mkdir and sleep do nothing."""
@@ -464,6 +479,42 @@ def test_node_up_iface_preflight():
         check(
             rc == 1 and not started and "baked EOP table" in out,
             "GNSS_SKIP_IFACE=1 leaves the EOP check in place (rc %d)" % rc,
+        )
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def test_node_up_iface_preflight_leaves_stdin_alone():
+    """The preflight's ssh reads none of node_up's stdin: what is typed ahead for the start's
+    sudo prompt reaches the start."""
+    d = tempfile.mkdtemp(prefix="site_node_stdin_")
+    try:
+        path = node_up_stubs(d)
+        bindir = os.path.join(d, "bin")
+        stub(
+            bindir,
+            "curl",
+            'case "$*" in *frame0*) echo \'{"frame0_nano": 1}\' ;; *) exit 7 ;; esac\n',
+        )
+        stub(bindir, "ssh", SSH_STDIN_STUB)
+        log = os.path.join(d, "ssh.log")
+        env = {
+            "PATH": path,
+            "GNSS_CFG": iface_config(d, True),
+            "GNSS_BIN": iface_binary(d, "legacy"),
+            "GNSS_LOG": os.path.join(d, "node.log"),
+            "SUDO_LOG": os.path.join(d, "sudo.log"),
+            "SSH_LOG": log,
+        }
+        rc, out = run(
+            ["bash", os.path.join(HERE, "node_up.sh"), "cxtest", "up"],
+            env,
+            stdin="typed-ahead\n",
+        )
+        got = open(log).read().splitlines() if os.path.exists(log) else []
+        check(
+            got == ["preflight:", "start:typed-ahead"],
+            "the preflight's ssh reads nothing, the start's gets the input (%r)" % got,
         )
     finally:
         shutil.rmtree(d, ignore_errors=True)

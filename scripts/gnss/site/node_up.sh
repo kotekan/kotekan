@@ -143,9 +143,11 @@ print("%s:%s%s" % (c["host"], c["port"], c.get("timing_endpoint", "/get-frame0-t
         fi
         # The binary's own interface document against the broker's golden and the frame sizes
         # this config was generated for (iface_preflight.sh). It runs on the node, where the
-        # binary's libraries are; only a disagreement refuses, anything unchecked warns.
-        if ! gnss_iface_preflight node "$CFG" ssh -o BatchMode=yes -o ConnectTimeout=10 "$N" \
-                "timeout 20 '$BIN' --interfaces-json"; then
+        # binary's libraries are; only a disagreement refuses, anything unchecked warns. ssh -n
+        # leaves this script's stdin (a typed-ahead sudo password) to the start below, and the
+        # local timeout bounds a connection that hangs (--foreground: Ctrl-C still reaches it).
+        if ! gnss_iface_preflight node "$CFG" timeout --foreground 40 ssh -n -o BatchMode=yes \
+                -o ConnectTimeout=10 "$N" "timeout 20 '$BIN' --interfaces-json"; then
             echo "FAILED: $BIN on $N disagrees with the broker's interface golden or with the" >&2
             echo "  frame sizes $CFG was generated for (above). Build the binary and generate" >&2
             echo "  the config from one tree. (GNSS_SKIP_IFACE=1 overrides.)" >&2
