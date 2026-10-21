@@ -42,7 +42,7 @@ fi
 if [ -n "$GNSS_IFACE_ROLE" ] && ! gnss_iface_preflight "$GNSS_IFACE_ROLE" "${GNSS_EXEC[2]}" \
         timeout 20 "${GNSS_EXEC[0]}" --interfaces-json; then
     echo "run_component: $name refused by the interface preflight (above;" \
-         "GNSS_SKIP_PREFLIGHT=1 overrides)" >&2
+         "GNSS_SKIP_IFACE=1 overrides)" >&2
     exit 1
 fi
 

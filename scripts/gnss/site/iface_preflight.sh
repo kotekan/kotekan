@@ -14,13 +14,14 @@
 # interpreter never gives on its own. A binary built before the document, an unstamped config,
 # a command that fails, or a check that cannot run (any other exit: 1 when gnss_broker does not
 # import, 2 when the golden does not load) warns and returns 0.
-# GNSS_SKIP_PREFLIGHT=1 skips it.
+# GNSS_SKIP_IFACE=1 skips it alone; GNSS_SKIP_PREFLIGHT=1 skips it with node_up.sh's EOP and
+# F-engine checks.
 
 gnss_iface_preflight() {
     local role=${1:?usage: gnss_iface_preflight <role> <config> <command...>}
     local cfg=${2:-} ij out rc=0
     shift 2
-    if [ "${GNSS_SKIP_PREFLIGHT:-0}" = 1 ]; then
+    if [ "${GNSS_SKIP_PREFLIGHT:-0}" = 1 ] || [ "${GNSS_SKIP_IFACE:-0}" = 1 ]; then
         return 0
     fi
     ij=$("$@" 2>/dev/null) || rc=$?

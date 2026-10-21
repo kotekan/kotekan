@@ -351,13 +351,15 @@ def test_node_up_systemd_run_failure_retries():
 def iface_binary(d, kind):
     """A stand-in kotekan binary in d: `--interfaces-json` prints what a binary of `kind` prints
     (legacy: kotekan's "Invalid option" and exit 255; silent: nothing and exit 1; match: the
-    golden; mismatch: a record slot moved; cube: the cube header grown); anything else prints
-    RUN and its argv, as the started program."""
+    golden; mismatch: a record slot moved; cube: the cube header grown; search: the search's
+    REST version moved); anything else prints RUN and its argv, as the started program."""
     doc = copy.deepcopy(iface.golden().doc)
     if kind == "mismatch":
         doc["sections"]["record.row"]["REC_CP"]["slot"] += 1
     elif kind == "cube":
         doc["sections"]["cube"]["CUBE_HEADER_BYTES"] += 8
+    elif kind == "search":
+        doc["sections"]["rest"]["search"] += 1
     entry = {
         "schema": iface.SCHEMA,
         "digest": iface.doc_digest(doc),
@@ -393,7 +395,8 @@ def iface_config(d, stamped, extra=""):
 def test_node_up_iface_preflight():
     """The binary's interface document is read on the node before the start: a LEGACY binary,
     an unstamped config or a binary that cannot say warn and start; a disagreement with the
-    golden or with the config's stamp refuses; GNSS_SKIP_PREFLIGHT=1 skips it."""
+    golden or with the config's stamp refuses; GNSS_SKIP_PREFLIGHT=1 and GNSS_SKIP_IFACE=1 skip
+    it, and only GNSS_SKIP_PREFLIGHT=1 the EOP check too."""
     d = tempfile.mkdtemp(prefix="site_node_iface_")
     try:
         path = node_up_stubs(d)
@@ -439,7 +442,7 @@ def test_node_up_iface_preflight():
             )
         for kind, cfg, want in (
             ("mismatch", plain, "ERROR record.row/REC_CP/slot"),
-            ("cube", stamped, "ERROR section cube"),
+            ("cube", stamped, "ERROR cube/CUBE_HEADER_BYTES: config sized for"),
         ):
             rc, out, started = node_up(kind, cfg)
             check(
@@ -447,27 +450,43 @@ def test_node_up_iface_preflight():
                 "a %s binary, %s config: refused before any start (rc %d)"
                 % (kind, os.path.basename(cfg), rc),
             )
-            rc, out, started = node_up(kind, cfg, GNSS_SKIP_PREFLIGHT="1")
-            check(
-                started and "iface preflight" not in out,
-                "and GNSS_SKIP_PREFLIGHT=1 skips the check and starts it (rc %d)" % rc,
-            )
+            for skip in ("GNSS_SKIP_PREFLIGHT", "GNSS_SKIP_IFACE"):
+                rc, out, started = node_up(kind, cfg, **{skip: "1"})
+                check(
+                    started and "iface preflight" not in out,
+                    "and %s=1 skips the check and starts it (rc %d)" % (skip, rc),
+                )
+        # The EOP table ends in the past: GNSS_SKIP_IFACE=1 still refuses it.
+        stale = os.path.join(d, "cfg_stale.yaml")
+        with open(stale, "w") as fh:
+            fh.write("t_inst_ns: %d\n" % int((time.time() - 86400) * 1e9))
+        rc, out, started = node_up("match", stale, GNSS_SKIP_IFACE="1")
+        check(
+            rc == 1 and not started and "baked EOP table" in out,
+            "GNSS_SKIP_IFACE=1 leaves the EOP check in place (rc %d)" % rc,
+        )
     finally:
         shutil.rmtree(d, ignore_errors=True)
 
 
 def test_run_component_iface_preflight():
     """The gather and the aggregator run the check before their exec; --print never does, and
-    a refusal stops the start."""
+    a refusal stops the start. Each is checked on what it exchanges and is sized from: the
+    cube is neither's, a record slot only the gather's."""
     d = tempfile.mkdtemp(prefix="site_rc_iface_")
     try:
         cfg = iface_config(d, True)
         rc_sh = os.path.join(HERE, "run_component.sh")
-        for name, cfg_var in (
-            ("gather", "GNSS_GATHER_CFG"),
-            ("aggregator", "GNSS_AGG_CFG"),
+        for name, cfg_var, theirs, not_theirs in (
+            ("gather", "GNSS_GATHER_CFG", "mismatch", "cube"),
+            ("aggregator", "GNSS_AGG_CFG", "search", "mismatch"),
         ):
-            for kind, ok in (("legacy", True), ("match", True), ("mismatch", False)):
+            for kind, ok in (
+                ("legacy", True),
+                ("match", True),
+                (not_theirs, True),
+                (theirs, False),
+            ):
                 env = {"GNSS_BIN": iface_binary(d, kind), cfg_var: cfg}
                 rc, out = run(["bash", rc_sh, name], env)
                 ran = "RUN --config %s" % cfg in out
@@ -483,9 +502,9 @@ def test_run_component_iface_preflight():
                 rc == 0 and "iface preflight" not in out,
                 "%s --print runs no check" % name,
             )
-            env["GNSS_SKIP_PREFLIGHT"] = "1"
-            rc, out = run(["bash", rc_sh, name], env)
-            check(rc == 0 and "RUN --config" in out, "GNSS_SKIP_PREFLIGHT=1 skips it")
+            for skip in ("GNSS_SKIP_PREFLIGHT", "GNSS_SKIP_IFACE"):
+                rc, out = run(["bash", rc_sh, name], dict(env, **{skip: "1"}))
+                check(rc == 0 and "RUN --config" in out, "%s=1 skips it" % skip)
     finally:
         shutil.rmtree(d, ignore_errors=True)
 

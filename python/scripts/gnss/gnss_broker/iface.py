@@ -97,8 +97,18 @@ ROLES = {
     "cubearch": ("cube", "metadata"),
 }
 #: The sections that size frames: the generator stamps their digests into every config it
-#: writes, and a binary must agree with the stamp before it starts on that config.
+#: writes, and the preflight checks a binary against the stamp on those its role's frames are
+#: sized from (ROLE_SIZING).
 SIZING = ("telem", "record.row", "gpu_chain", "cube", "metadata")
+#: The sizing sections each role's frames are sized from. Every role's frames carry
+#: GnssChanMetadata, whose size bufferRecv checks against its own; the aggregator's search feeds
+#: are sized from samples_per_data_set and the comb, so that is all the stamp says of them.
+ROLE_SIZING = {
+    "node": SIZING,
+    "gather": ("telem", "record.row", "metadata"),
+    "aggregator": ("metadata",),
+    "cubearch": ("cube", "metadata"),
+}
 
 MATCH = "MATCH"
 COMPATIBLE = "COMPATIBLE"
@@ -502,17 +512,19 @@ def _walk(g, d, path, fails, extras):
         fails.append((path, g, d))
 
 
-def compare(ref, doc, role=None, signals=None):
+def compare(ref, doc, role=None, signals=None, sections=None):
     """Compare a document with a reference (a Golden or a document). With no role, every
     section of the reference; otherwise the scope of the role, or of a list of roles (see
-    scope()). A reference path that the reference itself lacks is a caller error
-    (ValueError)."""
+    scope()); with sections, those whole sections. A reference path that the reference itself
+    lacks is a caller error (ValueError)."""
     ref_doc = ref.doc if isinstance(ref, Golden) else ref
     try:
         validate_doc(doc)
     except ValueError as e:
         return Comparison(UNCOMPARABLE, reason=str(e))
-    if role is None:
+    if sections is not None:
+        paths = [(k,) for k in sections]
+    elif role is None:
         paths = [(k,) for k in sorted(ref_doc["sections"])]
     else:
         paths = scope(role, signals)
@@ -872,9 +884,13 @@ def _cmd_preflight(a):
     treats as a warning, never a refusal.
 
     Refused: a binary that disagrees with the broker's golden on the role's scope; a config
-    descriptor the binary does not resolve (it would stop at stage construction); a sizing
-    section whose digest is not the one the config was generated for. Warned and started: a
-    LEGACY binary, an UNCOMPARABLE or unreadable document, an unstamped config."""
+    descriptor the binary does not resolve (it would stop at stage construction); for a config
+    stamped from the broker's golden, a leaf of the sections the role's frames are sized from
+    (ROLE_SIZING) that the binary lacks or holds another value of; for one stamped from another
+    golden, such a section that moved from the stamp, when the binary also disagrees with the
+    broker's golden on it. Warned and started: a LEGACY binary, an UNCOMPARABLE or unreadable
+    document, an unstamped config, a binary that adds sizing leaves, and a section that moved
+    from another golden's stamp where the binary agrees with the broker's golden."""
     tag = "iface preflight (%s)" % a.role
     g = golden()
     cfg_text, stamp = None, None
@@ -932,14 +948,49 @@ def _cmd_preflight(a):
             "%s against the broker's golden (pin %s)" % (ln, g.commit)
             for ln in describe_fails(c.fails, "golden", "binary", limit=a.limit)
         ]
+    stamp_ok = stamp is not None
     if stamp is not None:
-        sd = section_digests(s.doc)
-        for sec, want in sorted(stamp["sizing"].items()):
-            if sd.get(sec) != want:
-                refuse.append(
-                    "section %s is %s in the binary, but the config was sized for %s "
-                    "(pin %s)" % (sec, sd.get(sec), want, stamp["pin"])
+        sizing = ROLE_SIZING[a.role]
+        cs = compare(g, s.doc, sections=sizing)
+        listed = set(p for p, _, _ in c.fails)
+        fails = [f for f in cs.fails if f[0] not in listed]
+        if stamp["digest"] == g.digest:
+            # Sized from this golden: every sizing leaf of it must be the binary's. A leaf the
+            # binary adds sized nothing in this config.
+            refuse += describe_fails(fails, "config sized for", "binary", a.limit)
+            if cs.state == COMPATIBLE:
+                stamp_ok = False
+                print(
+                    "%s: WARN the binary adds %d leaves to the sections %s was sized from "
+                    "(COMPATIBLE): %s"
+                    % (
+                        tag,
+                        len(cs.extras),
+                        a.config,
+                        ", ".join(path_str(p) for p in cs.extras[: a.limit]),
+                    )
                 )
+        else:
+            sd = section_digests(s.doc)
+            moved = [
+                "section %s is %s in the binary, but the config was sized for %s from "
+                "golden %s (pin %s)"
+                % (x, sd.get(x), stamp["sizing"].get(x), stamp["digest"], stamp["pin"])
+                for x in sizing
+                if sd.get(x) != stamp["sizing"].get(x)
+            ]
+            if moved and cs.state == MISMATCH:
+                refuse += moved + [
+                    "%s against the broker's golden (pin %s)" % (ln, g.commit)
+                    for ln in describe_fails(fails, "golden", "binary", a.limit)
+                ]
+            elif moved:
+                stamp_ok = False
+                for ln in moved:
+                    print(
+                        "%s: WARN %s; the binary agrees with the broker's golden there. "
+                        "Regenerate the config." % (tag, ln)
+                    )
     for ln in refuse:
         print("%s: ERROR %s" % (tag, ln))
     if refuse:
@@ -957,7 +1008,7 @@ def _cmd_preflight(a):
             c.state,
             doc_digest(s.doc),
             extra,
-            ", config stamp agrees" if stamp else "",
+            ", config stamp agrees" if stamp_ok else "",
         )
     )
     return 0

@@ -25,6 +25,7 @@
 #         GNSS_ENV  extra environment for kotekan, "VAR=value [VAR=value ...]" (this start only)
 #         GNSS_EOP_MIN_H       hours of baked EOP table required ahead of now (default 12)
 #         GNSS_SKIP_PREFLIGHT  1 skips the EOP-table, F-engine controller and interface checks
+#         GNSS_SKIP_IFACE      1 skips the interface check only
 #
 # Needs an interactive sudo on the target, so it uses `ssh -t` and prompts per node (`status`
 # needs neither).
@@ -147,7 +148,7 @@ print("%s:%s%s" % (c["host"], c["port"], c.get("timing_endpoint", "/get-frame0-t
                 "timeout 20 '$BIN' --interfaces-json"; then
             echo "FAILED: $BIN on $N disagrees with the broker's interface golden or with the" >&2
             echo "  frame sizes $CFG was generated for (above). Build the binary and generate" >&2
-            echo "  the config from one tree. (GNSS_SKIP_PREFLIGHT=1 overrides.)" >&2
+            echo "  the config from one tree. (GNSS_SKIP_IFACE=1 overrides.)" >&2
             exit 1
         fi
     fi

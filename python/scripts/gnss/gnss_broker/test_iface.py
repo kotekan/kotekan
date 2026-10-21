@@ -491,7 +491,9 @@ class TestSourcesAndCli(unittest.TestCase):
         self.assertEqual(pf(cube)[0], 0)
         rc, out = pf(cube, "--config", stamped)
         self.assertEqual(rc, iface.PREFLIGHT_REFUSED, out)
-        self.assertIn("section cube", out)
+        self.assertIn(
+            "ERROR cube/CUBE_HEADER_BYTES: config sized for 152, binary 160", out
+        )
         rc, out = pf(cube, "--config", unstamped)
         self.assertEqual(rc, 0, out)
         self.assertIn("carries no gnss_iface stamp", out)
@@ -524,6 +526,64 @@ class TestSourcesAndCli(unittest.TestCase):
                 self.assertEqual(pf(good)[0], 2)
         finally:
             iface.compare = real
+
+    def test_the_stamp_check_is_the_roles_sizing(self):
+        """A stamped config refuses a binary only on a leaf of the sections its role's frames are
+        sized from: an added leaf warns, and a config stamped from another golden (a rollback)
+        warns unless the binary also disagrees with the broker's golden there."""
+        g = iface.golden()
+
+        def binary(name, section, key, value):
+            doc = golden_doc()
+            doc["sections"][section][key] = value
+            return self.put(name, {"gnss": entry_of(doc)}), doc
+
+        added, added_doc = binary(
+            "added.json", "record.row", "REC_NEW", {"meaning": "flag", "slot": 31}
+        )
+        gpu, _ = binary("gpu.json", "gpu_chain", "NEW_GPU_CONST", 7)
+        floats, _ = binary("floats.json", "record.row", "RECORD_FLOATS", 33)
+        cube, _ = binary("cube.json", "cube", "CUBE_HEADER_BYTES", 160)
+        prnctl = golden_doc()
+        prnctl["sections"]["gpu_chain"]["PrnCtl"]["size"] += 8
+        prnctl = self.put("prnctl.json", {"gnss": entry_of(prnctl)})
+        good = self.put("good.json", {"gnss": entry_of(golden_doc())})
+        body = "x:\n    signal: GPS_L5_Q_NH\n"
+        ours = self.put(
+            "ours.yaml", "# GENERATED\n%s\n%s" % (iface.stamp_line(g), body)
+        )
+        newer = iface.Golden(added_doc, {"kotekan_commit": "c0ffee"}, None)
+        theirs = self.put(
+            "theirs.yaml", "# GENERATED\n%s\n%s" % (iface.stamp_line(newer), body)
+        )
+
+        def pf(role, src, cfg):
+            return run_cli("preflight", "--role", role, "--from", src, "--config", cfg)
+
+        refused = iface.PREFLIGHT_REFUSED
+        for role, src, cfg, rc_want, want in (
+            # A section the role's frames are not sized from is not the stamp's to check.
+            ("cubearch", added, ours, 0, "config stamp agrees"),
+            ("cubearch", floats, ours, 0, "config stamp agrees"),
+            ("gather", gpu, ours, 0, "config stamp agrees"),
+            ("gather", cube, ours, 0, "config stamp agrees"),
+            ("aggregator", floats, ours, 0, "config stamp agrees"),
+            # An added leaf sized nothing in the config: COMPATIBLE, warned.
+            ("node", added, ours, 0, "WARN the binary adds 1 leaves"),
+            ("node", gpu, ours, 0, "gpu_chain/NEW_GPU_CONST"),
+            # A changed one did.
+            ("node", prnctl, ours, refused, "ERROR gpu_chain/PrnCtl/size: config"),
+            ("cubearch", cube, ours, refused, "ERROR cube/CUBE_HEADER_BYTES"),
+            # Stamped from another golden, the binary the broker's: a rollback, warned.
+            ("node", good, theirs, 0, "WARN section record.row is"),
+            ("gather", good, theirs, 0, "Regenerate the config"),
+            # ... unless the binary also disagrees with the broker's golden there.
+            ("node", cube, theirs, refused, "ERROR section cube is"),
+        ):
+            rc, out = pf(role, src, cfg)
+            what = "%s, %s, %s" % (role, os.path.basename(src), os.path.basename(cfg))
+            self.assertEqual(rc, rc_want, "%s:\n%s" % (what, out))
+            self.assertIn(want, out, what)
 
     def test_stamp_round_trips_and_is_found_in_the_header_only(self):
         g = iface.golden()

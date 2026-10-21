@@ -99,7 +99,7 @@ fi
 if ! gnss_iface_preflight cubearch "$CFG" timeout 20 "$BIN" --interfaces-json; then
     echo "FAILED: $BIN disagrees with the broker's interface golden or with the frame sizes" >&2
     echo "  $CFG was generated for (above). Build the binary and generate the config from one" >&2
-    echo "  tree. (GNSS_SKIP_PREFLIGHT=1 overrides.)" >&2
+    echo "  tree. (GNSS_SKIP_IFACE=1 overrides.)" >&2
     exit 1
 fi
 if [ "$CHECK" = 1 ]; then

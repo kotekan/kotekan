@@ -240,7 +240,8 @@ document it speaks, pinned to a kotekan commit (`python/scripts/gnss/gnss_broker
   aggregator) run the binary's `--interfaces-json` and refuse it when it disagrees with the golden,
   or with the frame sizes the config was generated for (the config's `# gnss_iface:` header line).
   A binary built before the registry, an unstamped config, or a check that cannot run only warns.
-  `GNSS_SKIP_PREFLIGHT=1` skips it.
+  `GNSS_SKIP_IFACE=1` skips it alone; `GNSS_SKIP_PREFLIGHT=1` also skips `node_up.sh`'s EOP and
+  F-engine checks.
 - **While running.** The broker re-reads every origin in the chains yaml (60 s, 10 s after a
   failure) and serves the verdicts at `curl -s http://127.0.0.1:12060/get_iface`, with a summary per
   chain in `/get_chains`. One read: `python3 -m gnss_broker.iface check-fleet` (from
@@ -254,13 +255,16 @@ document it speaks, pinned to a kotekan commit (`python/scripts/gnss/gnss_broker
   wants `--commit` for it.
 - **A kotekan commit that changes `lib/stages/gnss/gnss_interface.json` is a flag day for the
   starts.** A changed leaf the role compares, even one meaning token, refuses that role's starts
-  until the broker's golden is synced. Any change to a sizing section (telem, record.row,
-  gpu_chain, cube, metadata), even an added constant, refuses every start until the configs are
-  regenerated, and their stamp comes from the broker's golden. Deploy the three together: the
-  sync (a broker commit), `scripts/gnss/gen_fleet.py config/gnss_fleet_chord.yaml` plus the
-  gather, aggregator and archiver configs (their commands are in `stack_components.sh` and
-  `cubearch_up.sh`), then the restarts. `GNSS_SKIP_PREFLIGHT=1` is the override for one start.
-  A change only in record.elem, record.cmb or enums refuses nothing.
+  until the broker's golden is synced. The stamp check covers the sizing sections the role's
+  frames are sized from: the node's telem, record.row, gpu_chain, cube and metadata, the
+  gather's telem, record.row and metadata, the archiver's cube and metadata, the aggregator's
+  metadata. On a config stamped from the broker's golden, a changed or missing leaf there
+  refuses and an added one warns; on a config stamped from another golden, a section that moved
+  warns, and refuses only where the binary also disagrees with the broker's golden. Deploy the
+  three together: the sync (a broker commit), `scripts/gnss/gen_fleet.py
+  config/gnss_fleet_chord.yaml` plus the gather, aggregator and archiver configs (their commands
+  are in `stack_components.sh` and `cubearch_up.sh`), then the restarts. `GNSS_SKIP_IFACE=1` is
+  the override for one start. A change only in record.elem, record.cmb or enums refuses nothing.
 - **Rolling back past the stamp** (to a commit whose `gen_fleet.py` has no `_drop_stamp`): in
   the same step, regenerate the configs with the rolled-back generator (`gen_fleet.py
   config/gnss_fleet_chord.yaml`, then `--check`). That generator's `--check` reads every stamped
