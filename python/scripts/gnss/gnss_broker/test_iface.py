@@ -52,8 +52,9 @@ CPP_DOUBLES = (
     (1e22, "1e+22"),
     (-0.0, "-0"),
 )
-# What kotekan served for the golden at fe1936269 (/version and GET /interfaces/gnss of the
-# build, recomputed there in Python), by document digest.
+# What kotekan served for each golden, by document digest: the section digests of
+# `kotekan --interfaces-json` from a build at the pinned commit. A sync adds the new golden's
+# entry here; an unrecorded golden fails test_digests_are_the_ones_kotekan_served.
 KOTEKAN_SERVED = {
     "fnv1a64:d952a1895d4b1588": {
         "cube": "fnv1a64:9d8189ee49526cd3",
@@ -67,7 +68,21 @@ KOTEKAN_SERVED = {
         "rest": "fnv1a64:9cde53faca83ad60",
         "signals": "fnv1a64:87d44429c62b7ddb",
         "telem": "fnv1a64:4fc6ec77e47425b8",
-    }
+    },
+    # d514b84c8: CMB_CARRIER_RESID's meaning gained sign=r2c.
+    "fnv1a64:a34c012162b1dedc": {
+        "cube": "fnv1a64:9d8189ee49526cd3",
+        "enums": "fnv1a64:ce7f87e79a2838f6",
+        "gpu_chain": "fnv1a64:1f5f16e80dbb5c93",
+        "metadata": "fnv1a64:ff0b089558622884",
+        "record.chan": "fnv1a64:df5e8f24a8e017fe",
+        "record.cmb": "fnv1a64:e049ac69f9ee836a",
+        "record.elem": "fnv1a64:b61468c5a83782d3",
+        "record.row": "fnv1a64:436522cd6437ce2d",
+        "rest": "fnv1a64:9cde53faca83ad60",
+        "signals": "fnv1a64:87d44429c62b7ddb",
+        "telem": "fnv1a64:4fc6ec77e47425b8",
+    },
 }
 
 
@@ -157,8 +172,12 @@ class TestGolden(unittest.TestCase):
     def test_digests_are_the_ones_kotekan_served(self):
         g = iface.golden()
         served = KOTEKAN_SERVED.get(g.digest)
-        if served is None:
-            self.skipTest("no served digests recorded for %s" % g.digest)
+        self.assertIsNotNone(
+            served,
+            "no served digests recorded for the golden %s: add the sections of "
+            "`kotekan --interfaces-json` from a build at %s to KOTEKAN_SERVED"
+            % (g.digest, g.commit),
+        )
         self.assertEqual(g.section_digests, served)
 
     def test_vendored_golden_is_kotekans(self):
