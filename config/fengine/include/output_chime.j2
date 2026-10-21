@@ -422,6 +422,18 @@ run_recv_hfb1_accumulated_beams:
 
 # Output
 
+# The visibilities with eigenvectors (include/n2k_chime.j2), in the raw format of
+# config/chime_upgrade_frb.j2. VisWriter creates only its acquisition directory, so it writes into
+# base_dir, which hdf5FileWrite creates. The integrations whose eigendecomposition failed are
+# written by hdf5FileWrite (write_failed_n2_vis), not by a second VisWriter as in
+# config/chime_upgrade_frb.j2: its acquisition directory would have the same name.
+write_vis:
+    kotekan_stage: VisWriter
+    root_path: {{ base_dir }}
+    file_type: raw
+    file_length: 256
+    in_buf: vis_buffer
+
 write_data:
     create_single_file: true
     write_bf_mask:
@@ -505,6 +517,16 @@ write_data:
         in_buf: host_n2_vis_buffer
         file_name: n2_vis
         create_single_file: false # not implemented
+    write_failed_n2_vis:
+        kotekan_stage: hdf5FileWrite
+        in_buf: failed_10s_buffer
+        file_name: failed_n2_vis
+        create_single_file: false # not implemented
+    write_n2_bf_mask:
+        kotekan_stage: hdf5FileWrite
+        in_buf: host_n2_bf_mask_buffer
+        file_name: n2_bf_mask
+        create_single_file: false  # not time-major
     write_bb_beam_positions:
         kotekan_stage: hdf5FileWrite
         in_buf: host_bb_beam_positions_buffer
