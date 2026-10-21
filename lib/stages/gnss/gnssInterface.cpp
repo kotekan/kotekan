@@ -286,7 +286,7 @@ json record_cmb() {
             {"CMB_E_POW", slot(CMB_E_POW, "pow;<|REC_E/REC_E_ENERGY|^2>")},
             {"CMB_L_POW", slot(CMB_L_POW, "pow;<|REC_L/REC_L_ENERGY|^2>")},
             {"CMB_DLL_DISC", slot(CMB_DLL_DISC, "ratio;(E-L)/(E+L) of the powers;0=no power")},
-            {"CMB_CARRIER_RESID", slot(CMB_CARRIER_RESID, "Hz;carrier residual")},
+            {"CMB_CARRIER_RESID", slot(CMB_CARRIER_RESID, "Hz;carrier residual;sign=r2c")},
             {"CMB_ARC", slot(CMB_ARC, "id;+1 per phase break")},
             {"CMB_HEAD_FRAC", slot(CMB_HEAD_FRAC, "ratio;<PH_energy>/<P_energy>;0=none")},
             {"CMB_PEEL_DEEP", slot(CMB_PEEL_DEEP, "reserved;0")},
