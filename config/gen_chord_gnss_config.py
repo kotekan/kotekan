@@ -80,23 +80,22 @@ DUAL_SYNTH_LANES = 384
 LANE_STEP = 64
 
 
-# Tracker codes that keep the three-trial E/P/L walk under --epl-from-prompt. Each instance
-# of these chains holds one or two channels of the lobe, so the rotated E and L are the prompt
-# times a phase (|E| = |L|, the instance's discriminator reads 0), and a pair 16 ids apart
-# (3.125 MHz) repeats every 0.32 us. GLONASS L2OC adds a second reason: across one 195 kHz
-# channel its 0.4-chip taps rotate 0.24 rad, where the rotation was validated at 0.06.
-EPL_WALK_SIGNALS = ("GPS_L2C_CM", "GLO_L2OC_P_OC")
-
-
-def lanes_per_slot_for(args, track_signal):
+def lanes_per_slot_for(args):
     """Synth lanes per PRN slot a chain packs (gnssGpuChain.hpp LANES_FULL / LANES_PROMPT).
 
-    With --epl-from-prompt every comb chain packs two (P and P_HEAD): its E and L rows are the
+    With --epl-from-prompt every chain packs two (P and P_HEAD): its E and L rows are the
     prompt rotated per channel on the host from the rotation the kernel carries in PrnCtl::rot.
-    The EPL_WALK_SIGNALS chains (L2C, L2OC) keep four: one or two channels per instance carry
-    no cross-channel phase to rotate, so they keep the three-trial walk and pack every trial.
+    No chain is excepted for holding one or two channels per instance (L2C, L2OC): the code
+    loop closes on the lobe-coherent discriminator, every instance's channels rotated onto one
+    phase reference and summed across the fleet before squaring (gnss_broker/combdll.py,
+    gnssFleetDll.hpp), so the rotation acts on the pooled lobe, where a simulation at the real
+    channel geometry puts the rotated discriminator's slope within 0.3% of the true one with
+    no zero-crossing bias at 0.4 chips of 511.5 kcps (fixtures/gpu_budget/epl_rotation_sim.py).
+    A one-channel instance's own E and L are then the prompt times a phase, which only its
+    status page and the polled fallback see; such an instance has no usable discriminator of
+    its own with either method.
     """
-    return 2 if (args.epl_from_prompt and track_signal not in EPL_WALK_SIGNALS) else 4
+    return 2 if args.epl_from_prompt else 4
 # Frames per GNSS chain buffer.
 BUFFER_DEPTH = 4
 # The primary chain's PRN slots (each extra chain carries its own list).
@@ -601,7 +600,7 @@ def gnss_chain_vars(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=None):
     _aslots = [int(x) for x in str(getattr(args, "assembler_core_slots", "2") or "2").split(",")]
     n_live = live_element_count(arr)
     track_signal = chain["tracker"] if chain else sig.get("tracker", sig["primary"])
-    lanes_per_slot = lanes_per_slot_for(args, track_signal)
+    lanes_per_slot = lanes_per_slot_for(args)
     num_synth = lanes_per_slot * SYNTH_SLOTS
 
     # --- frame sizes (ctl/epl: gnssGpuChain.hpp frame_bytes, ROWS_PLAIN = 4) ------------------
@@ -994,7 +993,7 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
 
     # Tile count per channel: see n2_tiles_per_chan (one contract, three sites). The lane
     # range is the chain's slots times its lanes per slot (lanes_per_slot_for).
-    lanes_per_slot = lanes_per_slot_for(args, track_signal)
+    lanes_per_slot = lanes_per_slot_for(args)
     num_synth = lanes_per_slot * SYNTH_SLOTS
     # A frame is samples_per_data_set hops (spds, from the base config, which production owns),
     # split into records of HOPS_PER_RECORD hops.
@@ -1075,15 +1074,9 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
                     # E/L tap offset in the signal's chips, set by the channel geometry: see
                     # dll_spacing_chips. Must match the broker chain's dll-spacing.
                     "dll_spacing": dll_spacing_chips(track_signal),
-                    # The E/L lanes as rotations of the prompt, one chip walk per hop: every
-                    # comb chain; not L2C or L2OC (EPL_WALK_SIGNALS), whose one or two
-                    # channels per instance carry no cross-channel phase (the per-instance
-                    # discriminator would read 0).
-                    **(
-                        {"epl_from_prompt": True}
-                        if args.epl_from_prompt and track_signal not in EPL_WALK_SIGNALS
-                        else {}
-                    ),
+                    # The E/L lanes as rotations of the prompt, one chip walk per hop
+                    # (lanes_per_slot_for).
+                    **({"epl_from_prompt": True} if args.epl_from_prompt else {}),
                     "f_offset_hz": carrier_hz,
                     "hops_per_record": HOPS_PER_RECORD,
                     "fft_length": cfg["fengine"]["fft_length"],
@@ -2716,9 +2709,8 @@ def main():
         help="cudaGnssChordTrack epl_from_prompt: synthesise the prompt replica only and "
         "take the E/L rows as its per-channel rotations (one chip walk per hop instead of "
         "three), and pack two synth lanes per PRN slot (P, P_HEAD) instead of four, "
-        "GnssN2RecordAssemble rotating P into the E and L rows (lanes_per_slot). Comb "
-        "chains only; L2C and L2OC (EPL_WALK_SIGNALS) keep their three trials and four "
-        "lanes.",
+        "GnssN2RecordAssemble rotating P into the E and L rows (lanes_per_slot), on every "
+        "chain.",
     )
     ap.add_argument(
         "--n2-project",

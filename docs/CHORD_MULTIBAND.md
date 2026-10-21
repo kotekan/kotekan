@@ -324,11 +324,14 @@ the band set five things apart from L3OC.
 - **One or two channels per GPU.** The lobe, 1246.0-1250.1 MHz, is freq_ids 6380-6401, so
   every GPU holds one channel or two 16 apart, and the six nodes hold 17 of the 22 (6385,
   6387, 6393, 6395 and 6401 are on cx47 and cx52), about 60% of the power. cx44 holds the two
-  brightest (6386, 6394); cx43 GPU 0 holds the carrier null. So the chain keeps the E/P/L
-  walk and four lanes per slot, as L2C does (`EPL_WALK_SIGNALS` in the generator): a rotated
-  E and L on one channel are the prompt times a phase, and across a 195 kHz channel the taps
-  would rotate 0.24 rad where the rotation was validated at 0.06. The fleet loop sums the
-  instances coherently through the gather.
+  brightest (6386, 6394); cx43 GPU 0 holds the carrier null. The chain packs two lanes per
+  slot like every other under `--epl-from-prompt`: a rotated E and L on one channel are the
+  prompt times a phase, so a single instance has no discriminator of its own, but the code
+  loop closes on the lobe-coherent sum across the fleet (combdll, gnssFleetDll), where the
+  rotation acts on the pooled 17 channels; at the real channel geometry the rotated
+  discriminator's slope is within 0.3% of the true one with no zero-crossing bias
+  (fixtures/gpu_budget/epl_rotation_sim.py). The 0.24 rad intra-channel ramp of the 0.4-chip
+  taps is symmetric between E and L.
 - **The DLL spacing is 0.4 chip, at fleet-trim-bandwidth 1.4.** On the fleet's 17-channel sum:
 
   | spacing | q on peak | slope vs the trim law | linear to | sign kept to |

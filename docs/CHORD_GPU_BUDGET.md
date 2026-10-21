@@ -62,7 +62,7 @@ Measured per-record cost = (chains) x (one 0.18 ms wave each, at fp16 Phi and 80
    Implementation (branch kv/epl-from-prompt, worktree ~/gnss/elp-wt): the waveform kernel walks
    the prompt once and writes the E and L rows as the rotated prompt with the prompt's energy;
    lanes, pack, N^2, assembler, records and broker are unchanged. Config key `epl_from_prompt`
-   on the track block (generator `--epl-from-prompt`, every chain but L2C), default off.
+   on the track block (generator `--epl-from-prompt`, every chain), default off.
    `cuda_gnss_despread_test` keeps P and P_HEAD bit-exact against the fused kernel and pins the
    rotation's sign against the fused E row (the analytic sign was wrong by a conjugation).
    Measured on cx52, same binary, 12 PRN x 7 chains per GPU (`run_epl_ab.sh`,
