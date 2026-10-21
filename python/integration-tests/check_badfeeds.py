@@ -77,12 +77,8 @@ FRB2_FRAMES = 2
 
 
 def lifetime_frames(config):
-    """The bad feed mask lifetime in frames: LIFETIME_FRAMES, or at least twice the
-    upchannelizer output offset T*. The FRB1 weights made from mask frame k apply from T* after
-    its start (processFRBFeedGains, setFRB1Phase), so for T* of a whole lifetime (CHIME: 3
-    frames) no FRB sample would have the weights of its own mask frame."""
-    T = value(config, "num_times")
-    return max(LIFETIME_FRAMES, -(-2 * t_star(config) // T))
+    """The bad feed mask lifetime in frames."""
+    return LIFETIME_FRAMES
 
 
 def render_half(tel):
@@ -367,7 +363,8 @@ def check_frb1_weights(out_dir, config, sched, results, failures):
         # The unused fine channels are NaN
         out.data = out.data[:, :num]
         audit(out, first_seq=sched.seq0 + t_star(config))
-        seq = frame_seq_nums(out) - t_star(config)
+        # Each weight frame follows the mask valid at its first sample
+        seq = frame_seq_nums(out)
         w = out.data.astype(np.float64)  # [TW, Fbar, P, N, M, C]
         good = sched.good(seq).reshape(len(seq), -1, sched.num_dishes)  # [TW, P, D]
         expected_good = np.where(on_grid, good[:, :, np.where(on_grid, cell, 0)], True)
@@ -411,13 +408,14 @@ def frb_clean(sched, config, labels):
     """Whether FRB samples with labels `labels` [J] are independent of the poison: [J, Fbar].
     An FRB sample of upchannelization factor U depends on the input samples
     [L - (M-1) U/2, L + 192 + (M-1) U/2) (U > 1) or [L, L + 192) (U = 1), and is weighted with
-    weight frame floor((L - seq0 - T*) / lifetime). It is exposed if a poisoned input in its
-    window is good in that weight frame. Windows span at most two mask periods."""
+    weight frame floor((L - seq0 - T*) / lifetime), which follows the mask valid at its first
+    sample. It is exposed if a poisoned input in its window is good in that weight frame.
+    Windows span at most two mask periods."""
     tds = value(config, "frb_downsampling_factor")
     L = value(config, "bf_mask_lifetime_in_samples")
     labels = np.asarray(labels)
     weight_frame = (labels - sched.seq0 - t_star(config)) // L
-    weight_seq = sched.seq0 + weight_frame * L
+    weight_seq = sched.seq0 + t_star(config) + weight_frame * L
     num_out = max(
         value(config, f"upchan_U{U}_max_output_channel") for U in frb_factors(config)
     )

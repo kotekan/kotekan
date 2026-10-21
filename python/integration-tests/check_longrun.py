@@ -6,7 +6,7 @@ Input: T2's weak tone (check_phases.py) on FRB2 beam (12, 5) in Gaussian noise o
 component, with the production gains, from `large_seq`. Random packet loss at `LOSS_RATE`, with
 lost voltages 0+0i (T8); random bad inputs changing every `CHANGE_LIFETIMES` lifetimes (T9), poisoned
 with random bytes where their packets are not lost; BB phase and FRB1 weights lifetimes of
-T9's mask lifetime (3 frames; CHIME: 6) and an FRB2 weights lifetime of one FRB2 frame (T7).
+T9's mask lifetime (3 frames) and an FRB2 weights lifetime of one FRB2 frame (T7).
 
 Variants: `long` runs `RUN_FRAMES["long"]` frames, about 10 minutes of kotekan time on cx67.
 `short` (not run by default) runs the same setup for a few seconds of simulated time.

@@ -266,8 +266,7 @@ upchannelizer output start ``T*``, ``coarse_freq`` / ``freq_upchan_factor`` /
 
 The pathfinder is tested first, then CHORD, then CHIME. All Level 1 tests pass on all three. On
 CHIME, BB is tested as on the other telescopes, the HFB upchannelizer (U = 128) in T1, T2 and T8,
-and the HFB1 and HFB2 timing in T1; T9 and T10 use a bad feed mask lifetime of at least 2 T* (see
-Findings).
+and the HFB1 and HFB2 timing in T1; T9 uses a bad feed mask lifetime of T* (see Findings).
 
 Missing features (known gaps)
 =============================
@@ -426,11 +425,12 @@ CHIME (``config/fengine``, run on an A40):
 * **The CHIME transpose stops on -8** (T9). ``julia/kernels/xpose2048.jl`` traps if any input
   nibble is -8 (no data), and kotekan dies with CUDA error 719. One input sending -8 stops a CHIME
   node. T9 and T10 poison CHIME inputs with random bytes without -8.
-* **The FRB1 weights lag the bad feed mask by T*** (T9). ``upchan_output_alignment`` makes T* 3
-  frames on CHIME, and the weights made from mask frame k apply from T* after the start of that
-  frame, so after a mask change FRB1 uses the previous bad inputs for 3 frames (of 24 in
-  production). This holds on every telescope; #1802 removes the lag when the lifetime divides
-  T*. T9 uses a mask lifetime of at least 2 T* on CHIME.
+* **The FRB1 weights lagged the bad feed mask by T*** (T9). Weight frame k begins T* after mask
+  frame k, but ``processFRBFeedGains`` and ``setFRB1Phase`` made it from mask frame k. On CHIME
+  ``upchan_output_alignment`` makes T* 3 frames (49152 samples). Since #1802 both make weight
+  frame k from the mask valid at its first sample, frame ``k + T* / L``, so the weights lag the
+  mask by ``T* mod L``: none for T9 on CHIME (L = T*), but still 3 frames of 24 in production
+  CHIME, and 96 samples on CHORD.
 * **The HFB gain saturates T2's tone.** With ``upchan_gain`` 0.8 √128 the 0.75 LSB tone reaches
   6.8 LSB at U = 128 and saturates the int4 output; T2 scales the HFB gains by 1/√2.
 * The CHIME BB beams are a narrow column (1 × 32, ``grid_degrees``): sources off the column get

@@ -68,8 +68,9 @@ def variables(tel, config, variant):
         write_frames["bb_phase"] = lifetimes
     write_frames["rfi_S012tilde"] = mask_frames(config)
     write_frames["n2_vis"] = integrations * value(config, "num_frequencies")
+    # A weight frame follows the mask valid at its first sample, T* (at most one lifetime) later
     for U in frb_factors(config):
-        write_frames[f"frb1_U{U}_phase"] = lifetimes
+        write_frames[f"frb1_U{U}_phase"] = lifetimes - 1
     var["outputs"] = list(write_frames)
     var["write_frames"] = write_frames
     return var

@@ -47,7 +47,9 @@ samples (T8), bad inputs must not be zeroed upstream: excluding them is the job 
   the input exactly. A BB sample at time t uses phase frame `(t − seq0) / L`.
 - **FRB1:** `setFRB1Phase` sets `W = 0` at the grid cells of bad inputs, placing dishes as the
   kernels do (`frb_dish_index_at_location`: ArrayDishes at their grid indices, other dishes in the
-  empty cells in order). Weight frame k is stamped `seq0 + T* + k·L` (setFRB1Phase.cpp:258). A
+  empty cells in order). Weight frame k is stamped `seq0 + T* + k·L` (setFRB1Phase.cpp:258)
+  and made from the mask valid at that sample, mask frame `k + T* / L`; processFRBFeedGains
+  (CHIME) does the same. A
   float16 `0 · E` is ±0 for any int4 E, so a zeroed input adds nothing.
 - **FRB2, FRB3:** linear in FRB1 at the same time and fine channel; FRB3 quantizes 256 samples
   with one offset and scale.
@@ -158,9 +160,10 @@ T9r runs for 26 s and writes 0.4 GB.
 
 **PASS**; every check is exact. The FRB1 weights are the processFRBFeedGains feed gains. The
 transpose traps on -8 (`julia/kernels/xpose2048.jl`), so the poison is `bad_voltage:
-random_valid`, random bytes without -8. The mask lifetime is 6 frames, at least 2 T*: the FRB1
-weights of a mask frame apply from T* = 49152 samples after its start, and with a lifetime of T*
-no FRB sample would have the weights of its own frame. As on the pathfinder, N2Accumulate reads
+random_valid`, random bytes without -8. The mask lifetime is 3 frames, equal to T* = 49152
+samples, so each weight frame follows the next mask frame (#1802: the weights follow the mask
+valid at their first sample). Before #1802 they lagged the mask by T* = one lifetime: 679424 W
+were wrong and 98% of the clean FRB1 values differed. As on the pathfinder, N2Accumulate reads
 the bad feed mask from a one-frame stream.
 
 | check | `full` | `half` |
