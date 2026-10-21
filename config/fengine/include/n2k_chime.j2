@@ -243,7 +243,9 @@ eigencalc:
     subspace: 1
     # Masking config from chime science run
     diagonal_bands_filled: [ [0, 30], [251, 262] ]
-    # The initial bad inputs of /updatable_config/bad_inputs (include/fengine_chime.j2)
+    # The initial bad inputs of /updatable_config/bad_inputs (include/fengine_chime.j2), in
+    # cylinder order, as in config/chime_upgrade_frb.j2.
+    # TODO: Check that this is the input order EigenN2Iter expects.
     exclude_inputs: *bad_inputs
 
 vis_convert:
