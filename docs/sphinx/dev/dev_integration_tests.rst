@@ -13,8 +13,9 @@ Scope
 
 * One X-engine node in isolation, with simulated inputs. Outputs are checked per node, without
   combining frequencies and without the FRB back-end.
-* Subsystems: N2 correlator, upchannelizer, baseband beamformer (BB), FRB beamformer, and for
-  CHIME also HFB.
+* Subsystems: N2 correlator, upchannelizer, baseband beamformer (BB) and FRB beamformer. The
+  CHIME pipeline (``config/chime_upgrade_frb.j2``) has no GPU BB beamformer and no HFB, so the
+  CHIME tests cover neither.
 * The tests exercise the stages that call the kernels and the interfaces between stages. Kernels
   are only spot-checked (phases, complex conjugation).
 * Input enters as voltage, packet-loss (PL) mask and bad feed mask frames; there is no input
@@ -32,9 +33,10 @@ Test levels:
 Environment
 ===========
 
-* CHORD and the pathfinder run on cx67/cx68 (NVIDIA A40); CHIME runs on upgrade-gpu1 (NVIDIA
-  L40S). These nodes are shared: check ``nvidia-smi`` before a run and select an idle GPU with
-  ``CUDA_VISIBLE_DEVICES``.
+* CHORD and the pathfinder run on cx67/cx68 (NVIDIA A40). CHIME runs on upgrade-gpu1 (NVIDIA
+  L40S); while that node is unavailable, the CHIME tests run on cx68, assuming that the A40 and
+  the L40S compute the same results. These nodes are shared: check ``nvidia-smi`` before a run
+  and select an idle GPU with ``CUDA_VISIBLE_DEVICES``.
 * Use a Release build with the test stages:
   ``-DCMAKE_BUILD_TYPE=Release -DUSE_CUDA=ON -DWITH_TESTS=ON``.
 * About 1 TByte of disk is available for all tests combined. Outputs of a passing test are
@@ -49,12 +51,14 @@ Layout
    the test signal, schedules and outputs. ``run.py`` renders the config with them into
    ``<out>/<tel>_<test>_<variant>.yaml``, next to the log, and passes that file to kotekan: a
    command-line argument is limited to 128 KiB, which T7's manual CHORD beams exceed. The
-   directory is self-contained: ``include/`` holds copies of the ``config/fengine`` includes,
-   changed as described below, plus the test input and output includes.
+   directory is self-contained: ``include/`` holds copies of the ``config/fengine`` includes
+   for the pathfinder and CHORD, and of ``config/chime_upgrade_frb.j2`` for CHIME (the
+   ``config/fengine`` CHIME setup is outdated), changed as described below, plus the test input
+   and output includes.
 
 ``lib/testing/``
-   The test input generators ``inventVoltage``, ``inventVoltageCHIME``, ``inventPLMask`` and
-   ``inventBFMask``, extended for these tests.
+   The test input generators ``inventVoltage``, ``inventPLMask`` and ``inventBFMask``, extended
+   for these tests.
 
 ``python/integration-tests/``
    ``run.py`` runs kotekan and the check for one test; ``kit.py`` holds the shared HDF5 reading,
@@ -68,11 +72,15 @@ Layout
    One Markdown description per test (``T<n>-<name>.md``): the errors the test catches, and the
    mechanism and formulae it relies on.
 
-Differences from ``config/fengine``:
+Differences from ``config/fengine`` (pathfinder, CHORD) and ``config/chime_upgrade_frb.j2``
+(CHIME):
 
 * ``poison_buffers`` is left at its default (``false``). Only the buffers a test checks are
   copied to the host and written.
-* Inputs come from test generators instead of ``hdf5FileReadSingleFile``.
+* Inputs come from test generators instead of ``hdf5FileReadSingleFile`` or ``dpdkCore``. For
+  CHIME, ``gps_time`` and the default frequency map replace the queries to the FPGA controller,
+  there are no gain files, and the writers and ``rfiBroadcast`` of the production config are
+  removed.
 * ``N2Accumulate`` reads the bad feed mask (``in_bad_feed_mask_buf``), as in
   ``config/chord/pathfinder.j2``. It needs one mask frame per correlation frame, while BB and FRB1
   need the mask lifetime to equal their phase lifetimes, so it gets its own one-frame mask stream
@@ -81,8 +89,9 @@ Differences from ``config/fengine``:
   ``rfi_excision_enabled``, the gains ``upchan_gains`` (a dict from U to the U fine-channel
   gains), ``bb_gain`` and ``frb1_input_scale``, and the test outputs are jinja variables;
   production values are the defaults.
-* ``half_filled`` (default ``false``) marks the northern half of the pathfinder dishes (32 to
-  63; north is +y) as ``Missing``.
+* ``half_filled`` (default ``false``) marks the northern half of the dishes as ``Missing``
+  (north is +y): pathfinder dishes 32 to 63, CHORD dishes 256 to 511, and on CHIME the feeds with
+  ``grid_y_idx`` 128 to 255 of every cylinder.
 * ``bf_source: rest`` (default ``invent``) produces the bad feed masks with ``bufferBadInputs``
   from POSTs to ``/updatable_config/bad_inputs``, as ``config/chord/pathfinder.j2`` does.
 * ``rfi_feed_averaged_min_good_frac`` (default 0.8, as ``config/fengine``) is a jinja variable.
@@ -120,7 +129,7 @@ Test inputs
 
 Inputs are generated on the fly; nothing is read from disk.
 
-* ``inventVoltage`` (``input_kind: sky``) and ``inventVoltageCHIME`` produce point-source tones
+* ``inventVoltage`` (``input_kind: sky``) produces point-source tones
   with per-dish geometric phases, noise, time windows, and one-hot or few-hot inputs. Tones have
   an integer number of cycles per frame, so frames repeat; the generator copies frames from a
   precomputed pool and changes only the time-limited parts. Dish positions are computed from the
@@ -141,6 +150,11 @@ Inputs are generated on the fly; nothing is read from disk.
 * ``inventVoltage`` can overwrite the voltages of lost packets with 0+0i, as the receivers do,
   or poison them with the int4 no-data value ``-8-8i`` (jinja variable ``lost_voltage``), and
   replace the voltages of bad feeds and Missing dishes by random bytes (``bad_voltage``).
+* For CHIME, ``inventVoltage`` writes one voltage buffer per frequency, and the lost samples as
+  the receivers do: one byte per sample for each group of 4 frequencies, with no per-input
+  information. The production ``zeroSamples`` and ``lostSamplesToPLMask`` then zero the lost
+  voltages and build the PL mask. ``bad_voltage: random_valid`` gives random bytes without -8
+  (finding below).
 
 Level 1 tests
 =============
@@ -168,8 +182,7 @@ upchannelizer output start ``T*``, ``coarse_freq`` / ``freq_upchan_factor`` /
        noise (a pure tone is flagged as RFI), fringe stopping off.
      - N2, upchan, BB, FRB1, FRB2
      - Visibility phases match geometry (sign, conjugation). The tone is in the predicted fine
-       channel with the predicted phase for each U. CHIME: U=16 and U=128 agree. Beams peak in
-       the right place.
+       channel with the predicted phase for each U. Beams peak in the right place.
      - N2 2°; upchan 2° mean, 15° 99th percentile; BB/FRB1 peak index exact; FRB2 source beam
        within 0.5% of the peak (grating-lobe ties)
    * - T3 Quantization
@@ -256,8 +269,9 @@ upchannelizer output start ``T*``, ``coarse_freq`` / ``freq_upchan_factor`` /
        flat after warm-up.
      - exact; loss rate 3σ; memory 32 MiB
 
-The pathfinder is tested first, then CHORD, then CHIME. All Level 1 tests pass on the pathfinder
-and on CHORD.
+The pathfinder is tested first, then CHORD, then CHIME. All Level 1 tests pass on all three. On
+CHIME, which has no BB beamformer and only U = 16, the BB parts of the checks do not apply, and
+T9 and T10 use a bad feed mask lifetime of at least 2 T* (see Findings).
 
 Missing features (known gaps)
 =============================
@@ -400,6 +414,47 @@ Findings
   (seen while writing T5, not tested), which a Release build drops: extra gains are ignored,
   and too few throw ``std::out_of_range``.
 
+CHIME (``config/chime_upgrade_frb.j2``, run on an A40):
+
+* **The production config does not start with the current kotekan** (T1).
+  ``processFRBFeedGains`` is not given ``frb1_swap_MN: true`` and ``host_frb1_U16_phase_buffer``
+  has the dish axes in the order ``dishN, dishM``, so the frame descriptions of the FRB1 weights
+  ring disagree. The SKtilde buffer names its last axis ``S``, while ``cudaRFISKtilde`` requires
+  ``SK``. The test copy fixes both.
+* **CHIME N2 does not flag bad inputs** (T9). ``N2Accumulate`` in ``chime_upgrade_frb.j2`` has
+  no ``in_bad_feed_mask_buf``, unlike ``config/chord/pathfinder.j2``; it would need the one-frame
+  mask stream that the test configs use. In a test copy without it, none of the 154 inputs that
+  were bad during an integration was flagged; with it, T9 and T10 pass.
+* **The lost samples of a link group are applied to the wrong frequencies** (code reading). In
+  ``chime_upgrade_frb.j2`` the dpdk handlers of link group 0 write ``lost_samples_buffer_0`` for
+  ``host_voltage_buffer_3`` to ``_6``, but ``zeroSamples`` (``id // 4``) and
+  ``lostSamplesToPLMask`` (frequency group 0) apply it to buffers 0 to 3; the same holds for
+  groups 1 to 3.
+* **The CHIME transpose stops on -8** (T9). ``julia/kernels/xpose2048.jl`` traps if any input
+  nibble is -8 (no data), and kotekan dies with CUDA error 719. One input sending -8 stops a CHIME
+  node. T9 and T10 poison CHIME inputs with random bytes without -8.
+* **The CHIME FRB1 weights lag the bad feed mask by T*** (T9). ``upchan_output_alignment`` makes
+  T* 3 frames (49152 samples), and the weights that ``processFRBFeedGains`` makes from mask frame
+  k apply from T* after the start of that frame. After a mask change FRB1 therefore uses the
+  previous bad inputs for 3 frames (of 24 in production). T9 uses a mask lifetime of at least
+  2 T* on CHIME.
+* **The CHIME upchannelizer gain is 1** (T1, T3, T4). ``chime_upgrade_frb.j2`` keeps
+  ``upchan_gain`` 1, where #1784 set 0.8 √U in ``config/fengine``. For 2.8 LSB input noise the
+  U = 16 output has an rms of 0.70 LSB with 57% zeros, and full-scale input reaches only 3.8 LSB.
+* The production transpose is the identity: ``parseReorderDefault`` maps ``CHIMEBeamformer`` to
+  ``CHIMEBeamformer`` ("FEngine simulator produces beamformer order"), so data in correlator
+  order would not be reordered. The tests follow production.
+* ``cudaCalcFRB2Weights`` assigns rising frequencies to the fine channels in every Nyquist zone
+  (``lib/cuda/cudaCalcFRB2Weights.cpp:205``), while the fine channels count down in the second
+  zone. The FRB2 beam positions are off by at most half a coarse channel, about 0.05%, too
+  little for T2 to see.
+* The N2 counts come from ``lostSamplesToN2Counts`` and are exact (T8). ``CHIMETelescope``
+  centres the array, so the written feed positions are offset by (-33.0, -38.862) m (T6).
+* With no gain files, ``loadFeedGains`` uses ``default_gains`` 1+1i, and
+  ``processFRBFeedGains`` warns that FRB1 can overflow float16 by a factor of 1.24.
+* The CHIME tests assume kotekan's conventions (channel c at 800 MHz - c Δν, the geometric phase
+  exp(-2πiν n·r/c)); these are not checked against ICEboard data.
+
 Data volume and run time
 ========================
 
@@ -415,6 +470,8 @@ Data volume and run time
   be 14 GB of N2 and 470 GB of FRB2).
 * On CHORD, T1 to T9 take about 35 minutes. T10 takes about 11 minutes and writes about 33 GB,
   mostly N2 (16 of 48 frequencies, 5.2 MB per frequency and integration).
+* On CHIME (A40), a run takes about 1 to 2 minutes. T10 runs at about 15 frames/s (600 s for
+  8640 frames) with 86 GB of resident memory.
 
 Future ideas
 ============
