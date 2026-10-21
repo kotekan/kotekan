@@ -516,6 +516,8 @@ write_data:
         kotekan_stage: hdf5FileWrite
         in_buf: host_n2_vis_buffer
         file_name: n2_vis
+        # One frame per frequency: kotekan exits after the first integration
+        max_frames: num_frequencies
         create_single_file: false # not implemented
     write_failed_n2_vis:
         kotekan_stage: hdf5FileWrite
@@ -551,6 +553,8 @@ write_data:
         kotekan_stage: hdf5FileWrite
         in_buf: host_bb_beams_buffer
         file_name: bb_beams
+        # One frame per input frame: kotekan exits after all 25 frames of the input file
+        max_frames: 25
         create_single_file: false  # dim 0 has extent 1; single file needs a gap-free stream
     write_bb_pl_mask:
         kotekan_stage: hdf5FileWrite
