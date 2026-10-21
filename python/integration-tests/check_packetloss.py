@@ -77,16 +77,20 @@ def t_star(config):
 
 def frb_factors(config):
     """The upchannelization factors of the FRB chain, with U = 1 where it has one."""
-    return [U for U in [1] + config["upchan_factors"] if has_value(config, f"upchan_U{U}_min_channel")]
+    return [
+        U
+        for U in [1] + config["upchan_factors"]
+        if has_value(config, f"upchan_U{U}_min_channel")
+    ]
 
 
 def predicted_frames(config):
     """The frames from seq0 to the end of the first N2 integration, and a margin."""
     seq0 = large_seq(config)
     T = value(config, "num_times")
-    length = find_stages(config, "N2Accumulate")[0]["num_subintegrations_per_bin"] * value(
-        config, "n2k_samples_per_data_set"
-    )
+    length = find_stages(config, "N2Accumulate")[0][
+        "num_subintegrations_per_bin"
+    ] * value(config, "n2k_samples_per_data_set")
     end = -(-seq0 // length) * length + length
     return (end - seq0) // T + PREDICTED_MARGIN_FRAMES
 
@@ -235,7 +239,9 @@ def frb_valid(loss, config, labels):
     [L - (M-1) U/2, L + 192 + (M-1) U/2) for U > 1, and on [L, L + 192) for U = 1."""
     tds = value(config, "frb_downsampling_factor")
     labels = np.asarray(labels)
-    num_out = max(value(config, f"upchan_U{U}_max_output_channel") for U in frb_factors(config))
+    num_out = max(
+        value(config, f"upchan_U{U}_max_output_channel") for U in frb_factors(config)
+    )
     valid = np.zeros((labels.shape[0], num_out), dtype=bool)
     for U in frb_factors(config):
         fmin, fmax = upchan_channels(config, U)
@@ -347,7 +353,9 @@ def check_data(out_dir, ref_dir, config, loss, results, failures):
         seq = frame_seq_nums(out)[:, None] + np.arange(out.data.shape[-1])[None, :]
         valid = ~loss.lost(seq).transpose(0, 2, 1)  # [Thi, F, T]
         results.append(
-            equal_line("bb_beams", out.data, ref.data, valid[:, None, :, None], failures)
+            equal_line(
+                "bb_beams", out.data, ref.data, valid[:, None, :, None], failures
+            )
         )
 
     # FRB1 beams [Ttilde, Fbar, beamQ, beamP], FRB2 beams [Ttildehi256, R, Fbar, Ttildelo256]

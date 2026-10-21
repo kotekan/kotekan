@@ -100,7 +100,9 @@ def variables(tel, config, run):
             var["bb_gain"] = BB_SCALING * value(config, "bb_gain")
         gains = find_stages(config, "loadFeedGains")
         if gains:
-            var["frb_default_gains"] = [FRB1_SCALING * g for g in gains[0]["default_gains"]]
+            var["frb_default_gains"] = [
+                FRB1_SCALING * g for g in gains[0]["default_gains"]
+            ]
         else:
             var["frb1_input_scale"] = FRB1_SCALING * value(config, "frb1_input_scale")
     return var
@@ -221,7 +223,9 @@ def check(runs):
         results.append(
             deviation_line(
                 "bb_beams",
-                np.array([unrounded_sigma(rms) / unrounded_sigma(ref_rms) / expected - 1]),
+                np.array(
+                    [unrounded_sigma(rms) / unrounded_sigma(ref_rms) / expected - 1]
+                ),
                 INT4_TOLERANCE,
                 failures,
                 f"gain ratio {expected}, rms {ref_rms:.3f} (reference), {rms:.3f} (scaled), "

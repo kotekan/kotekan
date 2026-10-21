@@ -127,7 +127,9 @@ def check(out_dir, var, config):
         bb = read_output(out_dir, "bb_beams")
         audit(bb, first_seq=SEQ0, frequency_channels=channels)
         # J = bb_gain · Σ_d exp(iφ_d) E_d, with |A| = 127.5 a for 2^7 a (calcBBPhase)
-        sigma = sigma_in * math.sqrt(num_dishes) * value(config, "bb_gain") * 127.5 / 128
+        sigma = (
+            sigma_in * math.sqrt(num_dishes) * value(config, "bb_gain") * 127.5 / 128
+        )
         results.append(
             int4_line("bb_beams", histogram(bb.data, offset=True), sigma, failures)
         )

@@ -187,7 +187,9 @@ def check(out_dir, var, config):
             f"{np.count_nonzero(use)} frames"
         )
         if bf_change is not None and n2_change is not None:
-            line += f" (n2_bf_mask changes {(n2_change - bf_change) // T:+d} frames later)"
+            line += (
+                f" (n2_bf_mask changes {(n2_change - bf_change) // T:+d} frames later)"
+            )
         results.append(result_line("mask streams", differ.any(), line, failures))
 
     if has_bb(config):

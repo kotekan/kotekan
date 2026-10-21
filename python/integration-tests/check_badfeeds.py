@@ -95,9 +95,11 @@ def render_half(tel):
 
 
 def n2_bin_frames(config):
-    return find_stages(config, "N2Accumulate")[0]["num_subintegrations_per_bin"] * value(
-        config, "n2k_samples_per_data_set"
-    ) // value(config, "num_times")
+    return (
+        find_stages(config, "N2Accumulate")[0]["num_subintegrations_per_bin"]
+        * value(config, "n2k_samples_per_data_set")
+        // value(config, "num_times")
+    )
 
 
 def n2_masked(config):
@@ -357,7 +359,9 @@ def check_frb1_weights(out_dir, config, sched, results, failures):
     cell = frb1_cells(config)
     on_grid = cell < sched.num_dishes
     gains = find_stages(config, "loadFeedGains")
-    weight = gains[0]["default_gains"] if gains else [value(config, "frb1_input_scale"), 0]
+    weight = (
+        gains[0]["default_gains"] if gains else [value(config, "frb1_input_scale"), 0]
+    )
     L = value(config, "bf_mask_lifetime_in_samples")
     num_wrong = 0
     num_zero = 0
@@ -376,9 +380,9 @@ def check_frb1_weights(out_dir, config, sched, results, failures):
         w = out.data.astype(np.float64)  # [TW, Fbar, P, N, M, C]
         good = sched.good(seq).reshape(len(seq), -1, sched.num_dishes)  # [TW, P, D]
         expected_good = np.where(on_grid, good[:, :, np.where(on_grid, cell, 0)], True)
-        expected = np.stack(
-            [np.where(expected_good, w, 0.0) for w in weight], axis=-1
-        )[:, None]
+        expected = np.stack([np.where(expected_good, w, 0.0) for w in weight], axis=-1)[
+            :, None
+        ]
         wrong = w != np.broadcast_to(expected, w.shape)
         require(out.time_downsampling == L, f"{name}: lifetime {out.time_downsampling}")
         num_wrong += np.count_nonzero(wrong)
@@ -423,7 +427,9 @@ def frb_clean(sched, config, labels):
     labels = np.asarray(labels)
     weight_frame = (labels - sched.seq0 - t_star(config)) // L
     weight_seq = sched.seq0 + weight_frame * L
-    num_out = max(value(config, f"upchan_U{U}_max_output_channel") for U in frb_factors(config))
+    num_out = max(
+        value(config, f"upchan_U{U}_max_output_channel") for U in frb_factors(config)
+    )
     clean = np.zeros((len(labels), num_out), dtype=bool)
     good_w = sched.good(weight_seq)  # [J, I]
     for U in frb_factors(config):
@@ -492,7 +498,10 @@ def check_frb(out_dir, ref_dir, config, sched, results, failures):
 
     whole = np.all(chunks(clean), axis=4)
     same_chunk = np.all(chunks(q == q_ref), axis=4)
-    same_chunk &= np.all(chunks(np.broadcast_to((scale == scale_ref) & (offset == offset_ref), q.shape)), axis=4)
+    same_chunk &= np.all(
+        chunks(np.broadcast_to((scale == scale_ref) & (offset == offset_ref), q.shape)),
+        axis=4,
+    )
     wrong_whole = np.count_nonzero(whole & ~same_chunk)
     use = clean & (q > qmin) & (q < qmax) & (q_ref > qmin) & (q_ref < qmax)
     if nodata != -8:
