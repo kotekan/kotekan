@@ -583,6 +583,7 @@ def rfiframemask_data(setup):
 
 
 # Elements flagged bad in every bad_feed_mask frame; folded into the output flags.
+# Frame i additionally flags element i, so the flags show which frames were folded.
 BAD_FEEDS = [3, 17, 40]
 
 
@@ -591,7 +592,7 @@ def bad_feed_mask_data(setup):
     """
     Generate a list of input bad feed mask frames in ChordBuffers
 
-    Every frame carries the same mask: all elements good except BAD_FEEDS.
+    Frame i flags BAD_FEEDS and element i.
     As with bufferBadInputs, a frame is one mask sample covering
     bf_mask_lifetime_in_samples, so the sequence numbers step by that.
 
@@ -623,9 +624,10 @@ def bad_feed_mask_data(setup):
         time_downsampling=lifetime,
     )
 
-    for buf in bufs:
+    for i, buf in enumerate(bufs):
         buf.data[...] = 1
         buf.data.reshape(-1)[BAD_FEEDS] = 0
+        buf.data.reshape(-1)[i % config["num_elements"]] = 0
 
     return bufs
 
@@ -1367,20 +1369,23 @@ def test_vis(accum_data, expected_accum, accum_list, setup):
         np.testing.assert_allclose(frame.vis, exp_vis[t, f], 1.0e-6, 1.0e-6)
 
 
-def test_flags(accum_data, setup):
+def test_flags(accum_data, accum_list, setup):
     """
-    The per-element flags carry the bad feed mask (1.0 == good). N2Accumulate
-    consumes one mask frame per correlation frame, so every output frame shows
-    exactly the flagged feeds.
+    The per-element flags carry the bad feed mask (1.0 == good), ANDed over
+    exactly the mask frames of the correlation frames accumulated into the bin.
     """
 
     if setup["fail"]:
         return
 
-    expected = np.ones(setup["config"]["num_elements"], dtype=np.float32)
-    expected[BAD_FEEDS] = 0.0
+    config = setup["config"]
+    subs_per_frame = config["samples_per_data_set"] // config["sub_integration_ntime"]
 
-    for frame in accum_data:
+    for idx, frame in enumerate(accum_data):
+        accum = accum_list[idx // config["num_local_freq"]]
+        expected = np.ones(config["num_elements"], dtype=np.float32)
+        expected[BAD_FEEDS] = 0.0
+        expected[np.unique(accum["sub_idx"] // subs_per_frame)] = 0.0
         np.testing.assert_array_equal(frame.flags, expected)
 
 
