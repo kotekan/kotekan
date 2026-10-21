@@ -377,7 +377,7 @@
     "slot": 15
    },
    "CMB_CARRIER_RESID": {
-    "meaning": "Hz;carrier residual",
+    "meaning": "Hz;carrier residual;sign=r2c",
     "slot": 14
    },
    "CMB_COH_FRAC": {
