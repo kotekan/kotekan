@@ -1,0 +1,54 @@
+# The dependencies, as lower bounds, for installing into a venv other than the production ones,
+# whose exact versions are in the requirements*.txt files. This is not an installable package:
+# the code runs from the checkout, each entry point putting python/scripts/gnss on sys.path, and
+# the broker and the rest run under different interpreters. Install the dependencies only:
+#
+#   uv pip install --python venv-ft/bin/python -r pyproject.toml --extra dev
+#   uv pip install --python venv/bin/python -r pyproject.toml --extra tools --extra viewer --extra dev
+
+[project]
+name = "gnss-broker"
+version = "0"
+description = "The CHORD GNSS broker, its tools, site deployment, config generator and viewer"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.12"
+# The broker's (CPython 3.14t).
+dependencies = [
+    "numpy>=2.5",
+    "PyYAML>=6.0",
+]
+
+[project.optional-dependencies]
+# The generator, the cube compactor and beam cube, the analysis tools (CPython 3.12).
+tools = [
+    "Jinja2>=3.1",
+    "h5py>=3.16",
+    "healpy>=1.20",
+    "scipy>=1.18",
+    "matplotlib>=3.11",
+    "pillow>=12.3",
+]
+# livebeam_server.py (CPython 3.12).
+viewer = [
+    "skyfield>=1.54",
+    "Twisted>=26.4",
+    "autobahn>=26.7",
+    "zope.interface>=8.5",
+]
+dev = [
+    "pyflakes>=3.4; python_version >= '3.14'",
+    "dukpy>=0.6; python_version >= '3.14'",
+    "quickjs>=1.19; python_version < '3.13'",
+    "py-spy>=0.4; python_version < '3.13'",
+    "black==19.10b0; python_version < '3.13'",
+    "click==8.0.2; python_version < '3.13'",
+]
+
+# uv sync and uv run install the dependencies, never the project.
+[tool.uv]
+package = false
+
+# kotekan's formatter (black 19.10b0, as kotekan CI runs it).
+[tool.black]
+line-length = 88

@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+# A venv made here with plain `uv venv`.
+/.venv/
+# Written by config/gen_chord_gnss_config.py and scripts/gnss/gen_fleet.py; regenerate, do not
+# commit (config/gnss/example_chord_gnss_cx51_multi.yaml is one example).
+/config/generated/
+# Celestrak TLE downloads: gps_beamtrack.py caches them in ~/.cache/kotekan_gps, but skyfield's
+# default loader names a download after the URL's basename.
+gp.php*
