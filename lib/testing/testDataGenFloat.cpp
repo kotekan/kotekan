@@ -101,7 +101,7 @@ void testDataGenFloat::main_thread() {
     int frame_id = 0;
     int frame_id_abs = 0;
     void* frame = nullptr;
-    uint64_t seq_num = _samples_per_data_set * _first_frame_index;
+    uint64_t seq_num = _samples_per_data_set * static_cast<uint64_t>(_first_frame_index);
     bool finished_seeding_consant = false;
     struct timeval now;
     // Random-number state for `type == "random"`; per stage, so that two instances do not share it

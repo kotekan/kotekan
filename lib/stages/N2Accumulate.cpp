@@ -502,9 +502,6 @@ void N2Accumulate::main_thread() {
                             in_bad_feed_mask_buf->buffer_name, in_bad_feed_mask_frame_id,
                             bad_feed_mask_metadata->get_fpga_seq_num());
             }
-            // AND this frame's mask into the current bin's flags: a feed flagged at any
-            // point in the bin is flagged for the whole bin.
-            fold_bad_feed_mask_into_accum(bad_feed_mask);
         }
 
         // Counts and masks must refer to the same times and frequencies as the correlations.
@@ -680,6 +677,11 @@ void N2Accumulate::main_thread() {
             if (_rfi_first_stage_enabled)
                 _n_rfi_first_stage_enabled_ticks += _n_fpga_samples_per_n2k_correlation;
 
+            // AND the mask of this sample's frame into the current bin's flags: a feed
+            // flagged in any frame contributing to the bin is flagged for the whole bin.
+            if (bad_feed_mask != nullptr)
+                fold_bad_feed_mask_into_accum(bad_feed_mask);
+
             uint64_t corr_offset_t = t * corr_stride_t;
             uint64_t counts_offset_t = t * counts_stride_t;
             uint64_t rfipl_offset_t = t * _num_freq_per_n2k_frame;
@@ -773,10 +775,6 @@ void N2Accumulate::main_thread() {
                         .set(_vis_input_frames_skipped_rfi.at(f));
                 }
                 output_and_reset(in_frame_id, in_rfiframemask_frame_id, out_frame_id);
-                // The rest of this frame's samples accumulate into the fresh bin, so its
-                // flags must include this frame's mask too.
-                if (bad_feed_mask != nullptr)
-                    fold_bad_feed_mask_into_accum(bad_feed_mask);
 
                 _vis_samples_in_out_frame = 0;
                 _n_rfi_first_stage_enabled_ticks = 0;
@@ -888,8 +886,14 @@ bool N2Accumulate::receive_fringestop_enabled(nlohmann::json& json) {
         WARN("N2Accumulate failed to read update to {:s}: {:s}", _fringestop_config_path, e.what());
         return false;
     }
-    // Times before the telescope's time zero would underflow to_seq; they apply at once.
-    int64_t seq = time_ns <= _tel.to_time_ns(0) ? 0 : int64_t(_tel.to_seq(time_ns));
+    // Times before the telescope's time zero would underflow to_seq. A past time applies at
+    // the next bin start; refusing it would leave the live config out of step with the stage.
+    // 0 means from startup.
+    if (time_ns != 0 && time_ns < _tel.to_time_ns(0))
+        ERROR("Fringestop update valid_at_time_ns {:d} is before the telescope's time zero; "
+              "applying it at the next bin start",
+              time_ns);
+    int64_t seq = time_ns < _tel.to_time_ns(0) ? 0 : int64_t(_tel.to_seq(time_ns));
     INFO("{:s} fringestopping from the first bin starting at or after t_inst {:d} ns (seq {:d})",
          enabled ? "Enabling" : "Disabling", time_ns, seq);
     std::lock_guard<std::mutex> lock(_fringestop_mutex);

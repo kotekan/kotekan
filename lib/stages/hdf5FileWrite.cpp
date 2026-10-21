@@ -706,7 +706,7 @@ public:
             // Optionally, only write every X out of Y frames.
             bool do_write = true;
             if (write_x_frames >= 0 && per_y_frames > 0) {
-                if (frame_counter % per_y_frames > write_x_frames) {
+                if (frame_counter % per_y_frames >= write_x_frames) {
                     do_write = false;
                 }
             }
