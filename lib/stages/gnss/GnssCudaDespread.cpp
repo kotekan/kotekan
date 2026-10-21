@@ -459,7 +459,7 @@ struct GnssCudaDespread::Impl {
         pc.doppler = doppler;
         pc.G = G;
         pc.Ns = S.Ns;
-        pc.n_prev = (int)n_prev;
+        pc.n_prev = S.Ns > 1 ? S.n_prev : 0; // per channel (PsiJob::n_prev)
         pc.n_chips = S.n_chips;
         if (pc.n_builds++ == 0)
             INFO_NON_OO("GnssCudaDespread: Psi tables for slot {:d} (PRN {:d}): G {:d}, period "
