@@ -20,14 +20,16 @@ check() {
     [ "${pid:-0}" = 0 ] && { printf '  %-22s not running -- skipped\n' "$name"; return 0; }
     checked=$((checked + 1))
     local want_argv have_argv want_env v val
-    want_argv=$(GNSS_CHAIN="$chain" "$here/run_component.sh" --print "$name" | awk -F'\t' '$1=="argv"{print $2}')
+    # What the unit gets, not what this shell would pass on: systemd gives a unit no KOTEKAN_SRC,
+    # and the broker's definition sets its own.
+    want_argv=$(env -u KOTEKAN_SRC GNSS_CHAIN="$chain" "$here/run_component.sh" --print "$name" | awk -F'\t' '$1=="argv"{print $2}')
     have_argv=$(tr '\0' '\n' < "/proc/$pid/cmdline")
     if [ "$want_argv" != "$have_argv" ]; then
         printf '  %-22s ARGV MISMATCH\n' "$name"
         diff <(echo "$want_argv") <(echo "$have_argv") | sed 's/^/      /'
         bad=$((bad + 1)); return 0
     fi
-    want_env=$(GNSS_CHAIN="$chain" "$here/run_component.sh" --print "$name" | awk -F'\t' '$1=="env"{print $2}')
+    want_env=$(env -u KOTEKAN_SRC GNSS_CHAIN="$chain" "$here/run_component.sh" --print "$name" | awk -F'\t' '$1=="env"{print $2}')
     local miss=""
     while IFS= read -r kv; do
         [ -z "$kv" ] && continue

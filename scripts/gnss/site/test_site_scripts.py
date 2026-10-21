@@ -134,6 +134,140 @@ def test_contract_gate_fails_when_nothing_checked():
         shutil.rmtree(d, ignore_errors=True)
 
 
+def gate_tree(d):
+    """A checkout holding the real definition, launcher and gate, whose broker and rail are
+    stubs that sleep, and a systemctl that gives the pid in GATE_<COMPONENT>_PID as a unit's
+    MainPID; (gate, launcher, stack_components.sh, the kotekan tree)."""
+    k, kt = site_tree(
+        d, "stack_contract_gate.sh", "stack_components.sh", "run_component.sh"
+    )
+    site = os.path.join(k, "scripts", "gnss", "site")
+    for path in (
+        os.path.join(k, "scripts", "gnss", "broker_multi.py"),
+        os.path.join(site, "rail_watch.py"),
+    ):
+        with open(path, "w") as fh:
+            fh.write("import time\ntime.sleep(60)\n")
+    stub(
+        os.path.join(d, "bin"),
+        "systemctl",
+        'case "$3" in\n'
+        '  gnss-broker.service) echo "${GATE_BROKER_PID:-0}" ;;\n'
+        '  gnss-rail.service) echo "${GATE_RAIL_PID:-0}" ;;\n'
+        "  *) echo 0 ;;\n"
+        "esac\n",
+    )
+    return (
+        os.path.join(site, "stack_contract_gate.sh"),
+        os.path.join(site, "run_component.sh"),
+        os.path.join(site, "stack_components.sh"),
+        kt,
+    )
+
+
+def start_component(launcher, name):
+    """Start a component through run_component.sh in cron's environment, as its unit does, in
+    a session of its own; the Popen, once the stub has replaced the launcher."""
+    p = subprocess.Popen(
+        ["bash", launcher, name],
+        env={"PATH": "/usr/bin:/bin", "HOME": "/", "GNSS_PY": "/usr/bin/python3"},
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    script = {"broker": b"broker_multi.py", "rail": b"rail_watch.py"}[name]
+    for _ in range(100):
+        try:
+            if script in open("/proc/%d/cmdline" % p.pid, "rb").read():
+                break
+        except OSError:
+            break
+        time.sleep(0.05)
+    return p
+
+
+def stop_component(p):
+    try:
+        os.killpg(p.pid, signal.SIGKILL)
+    except OSError:
+        pass
+    p.wait()
+
+
+def test_contract_gate_sees_a_dropped_export():
+    """A definition that sets the broker's BLAS caps without exporting them starts a broker
+    without them, and the gate, reading the same definition, says so (#134)."""
+    d = os.path.realpath(tempfile.mkdtemp(prefix="site_gate_"))
+    try:
+        gate, launcher, comps, _ = gate_tree(d)
+        line = "export OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1"
+        text = open(comps).read()
+        check(text.count(line) == 1, "the broker's BLAS line is in the definition")
+        env = {
+            "PATH": os.path.join(d, "bin") + ":/usr/bin:/bin",
+            "GNSS_PY": "/usr/bin/python3",
+        }
+        for dropped in (False, True):
+            if dropped:
+                with open(comps, "w") as fh:
+                    fh.write(text.replace(line, line[len("export ") :]))
+            p = start_component(launcher, "broker")
+            try:
+                env["GATE_BROKER_PID"] = str(p.pid)
+                rc, out = run(["bash", gate, "broker"], env, bare=True)
+            finally:
+                stop_component(p)
+            if dropped:
+                check(
+                    rc == 1
+                    and "broker" in out
+                    and "ENV MISSING: OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1" in out,
+                    "with the export dropped the gate reports the caps missing (rc %d: %r)"
+                    % (rc, out.strip().splitlines()[:1]),
+                )
+            else:
+                check(
+                    rc == 0 and "broker" in out and " ok " in out,
+                    "with the export in place the same broker passes (rc %d: %r)"
+                    % (rc, out.strip().splitlines()[:1]),
+                )
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def test_contract_gate_ignores_the_callers_kotekan_src():
+    """The gate expects what a unit gets, which never includes the operator's KOTEKAN_SRC: with
+    one exported, naming the tree the broker uses or another, a matching stack still passes."""
+    d = os.path.realpath(tempfile.mkdtemp(prefix="site_gate_"))
+    try:
+        gate, launcher, _, kt = gate_tree(d)
+        procs = {name: start_component(launcher, name) for name in ("broker", "rail")}
+        try:
+            env = {
+                "PATH": os.path.join(d, "bin") + ":/usr/bin:/bin",
+                "GNSS_PY": "/usr/bin/python3",
+                "GATE_BROKER_PID": str(procs["broker"].pid),
+                "GATE_RAIL_PID": str(procs["rail"].pid),
+            }
+            for src in (None, kt, os.path.join(d, "elsewhere")):
+                e = dict(env) if src is None else dict(env, KOTEKAN_SRC=src)
+                rc, out = run(["bash", gate], e, bare=True)
+                check(
+                    rc == 0 and "checked 2 component(s), 0 mismatch(es)" in out,
+                    "KOTEKAN_SRC %s in the caller: broker and rail pass (rc %d: %r)"
+                    % (
+                        "unset" if src is None else "=" + src,
+                        rc,
+                        [x for x in out.splitlines() if "MISS" in x][:2],
+                    ),
+                )
+        finally:
+            for p in procs.values():
+                stop_component(p)
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
 SSH_STUB = r"""# ssh [opts] host 'remote command' -> the remote command, run here
 while [ $# -gt 1 ]; do case "$1" in -o) shift 2 ;; -*) shift ;; *) break ;; esac; done
 shift

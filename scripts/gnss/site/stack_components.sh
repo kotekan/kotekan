@@ -32,15 +32,16 @@ set -u
 . "$(dirname "${BASH_SOURCE[0]}")/kotekan_src.sh"
 GNSS_K=${GNSS_K:-$GNSS_CHECKOUT}                   # the GNSS checkout: this one
 # The kotekan tree, for its build and the broker's signal table; empty when there is none,
-# which only the components that run kotekan or read it notice. The broker alone exports it.
-KOTEKAN_SRC=$(gnss_kotekan_src "$GNSS_K") || true
+# which only the components that run kotekan or read it notice. The broker's definition alone
+# sets KOTEKAN_SRC, since run_component.sh --print reports it wherever this shell holds it.
+GNSS_KOTEKAN=$(gnss_kotekan_src "$GNSS_K") || true
 GNSS_ROOT=${GNSS_ROOT:-/home/kvand/gnss}
 GNSS_VENV=${GNSS_VENV:-$GNSS_ROOT/venv}            # 3.12, everything except the broker
 GNSS_VENV_FT=${GNSS_VENV_FT:-$GNSS_ROOT/venv-ft}   # 3.14t free-threaded, the broker only
 
 # The kotekan binary: the DPDK-free build. These components run on the gnss VM and cf06, never
 # on a cx node (the nodes run the DPDK build through node_up.sh).
-GNSS_BIN=${GNSS_BIN:-$KOTEKAN_SRC/build_nodpdk/kotekan/kotekan}
+GNSS_BIN=${GNSS_BIN:-$GNSS_KOTEKAN/build_nodpdk/kotekan/kotekan}
 
 GNSS_BROKER_URL=${GNSS_BROKER_URL:-http://127.0.0.1:12060}
 GNSS_FRAME0_URL=${GNSS_FRAME0_URL:-http://cx43:12048}
@@ -94,7 +95,7 @@ gnss_component() {
         # the command, not an optimisation.
         export OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 NUMEXPR_NUM_THREADS=1
         # The signal table is parsed from kotekan's gnssSignal.hpp at startup.
-        export KOTEKAN_SRC
+        export KOTEKAN_SRC=$GNSS_KOTEKAN
         GNSS_EXEC=("$GNSS_PY" -u "$GNSS_K/scripts/gnss/broker_multi.py"
                    "${GNSS_CHAINS_YAML:-$GNSS_K/config/gnss_chains_chord.yaml}")
         ;;
