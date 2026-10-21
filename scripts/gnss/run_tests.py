@@ -25,8 +25,9 @@ Each job runs with PYTHONDONTWRITEBYTECODE=1, the broker's BLAS thread caps, and
 GNSS_REQUIRE_CXX, GNSS_REQUIRE_NODE and GNSS_REQUIRE_PLOT set to 1 (GNSS_REQUIRE_FT too under
 venv-ft), so a missing compiler, node, plotting library or free-threaded build fails instead
 of skipping. A value already in the environment wins, and an empty one lifts the requirement.
-GNSS_REQUIRE_GPU and KOTEKAN_SRC pass through: set GNSS_REQUIRE_GPU=1 on a GPU host with an
-e2e build.
+GNSS_REQUIRE_GPU, GNSS_REQUIRE_KOTEKAN and KOTEKAN_SRC pass through: set GNSS_REQUIRE_GPU=1 on
+a GPU host with an e2e build, and GNSS_REQUIRE_KOTEKAN=1 where a kotekan tree must be found (the
+vendored interface golden is compared with kotekan's).
 
 The jobs share a TMPDIR of the run's own under --out, removed at the end unless a job FAILed
 or TIMEOUTed.

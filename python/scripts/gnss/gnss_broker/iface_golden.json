@@ -1,0 +1,1367 @@
+{
+ "interface": "gnss",
+ "schema": 1,
+ "sections": {
+  "cube": {
+   "CUBE_CHAIN_CHARS": 48,
+   "CUBE_CHAIN_OFFSET": 104,
+   "CUBE_HEADER_BYTES": 152,
+   "CUBE_UTC0_OFFSET": 96,
+   "CUBE_VERSION": 3,
+   "arrays": [
+    [
+     "phi0",
+     "f64",
+     "max_prn"
+    ],
+    [
+     "freq_id_lo",
+     "i32",
+     "max_bins"
+    ],
+    [
+     "freq_id_hi",
+     "i32",
+     "max_bins"
+    ],
+    [
+     "prn",
+     "i32",
+     "max_prn"
+    ],
+    [
+     "n_rec",
+     "i32",
+     "max_prn"
+    ],
+    [
+     "n_reanchor",
+     "i32",
+     "max_prn"
+    ],
+    [
+     "w",
+     "f32",
+     "max_prn*max_bins"
+    ],
+    [
+     "energy",
+     "f32",
+     "max_prn*max_bins"
+    ],
+    [
+     "coh_re",
+     "f32",
+     "max_prn*max_bins*n_elem"
+    ],
+    [
+     "coh_im",
+     "f32",
+     "max_prn*max_bins*n_elem"
+    ],
+    [
+     "incoh",
+     "f32",
+     "max_prn*max_bins*n_elem"
+    ]
+   ],
+   "frame_bytes": [
+    {
+     "bytes": 200,
+     "max_bins": 1,
+     "max_prn": 1,
+     "n_elem": 1
+    },
+    {
+     "bytes": 1632,
+     "max_bins": 5,
+     "max_prn": 3,
+     "n_elem": 7
+    },
+    {
+     "bytes": 594840,
+     "max_bins": 16,
+     "max_prn": 32,
+     "n_elem": 96
+    }
+   ]
+  },
+  "enums": {
+   "Modulation": {
+    "BOC": 1,
+    "BPSK": 0
+   },
+   "PrnCtl.reanchored": {
+    "REANCHORED_FRESH": 1,
+    "REANCHORED_NONE": 0,
+    "REANCHORED_REPIN": 3
+   },
+   "REC_PROJ_SRC": {
+    "REC_PROJ_SRC_OWN": 1,
+    "REC_PROJ_SRC_PROBE": 4,
+    "REC_PROJ_SRC_SIBLING": 2
+   }
+  },
+  "gpu_chain": {
+   "FrameHdr": {
+    "fields": [
+     [
+      "n_rec",
+      0,
+      4,
+      "i32"
+     ],
+     [
+      "n_prn",
+      4,
+      4,
+      "i32"
+     ],
+     [
+      "n_chan",
+      8,
+      4,
+      "i32"
+     ],
+     [
+      "n_jobs",
+      12,
+      4,
+      "i32"
+     ],
+     [
+      "seq0",
+      16,
+      8,
+      "i64"
+     ],
+     [
+      "utc0",
+      24,
+      8,
+      "f64"
+     ],
+     [
+      "n_rows_spec",
+      32,
+      4,
+      "i32"
+     ],
+     [
+      "lanes_per_slot",
+      36,
+      4,
+      "i32"
+     ],
+     [
+      "_pad1",
+      40,
+      8,
+      "i64"
+     ]
+    ],
+    "size": 48
+   },
+   "LANES_FULL": 4,
+   "LANES_PROMPT": 2,
+   "MAX_REC": 16,
+   "MAX_ROT_CHAN": 8,
+   "PrnCtl": {
+    "fields": [
+     [
+      "run",
+      0,
+      1,
+      "u8"
+     ],
+     [
+      "reanchored",
+      1,
+      1,
+      "u8"
+     ],
+     [
+      "prn",
+      2,
+      2,
+      "u16"
+     ],
+     [
+      "job0",
+      4,
+      4,
+      "i32"
+     ],
+     [
+      "fcar_report",
+      8,
+      4,
+      "f32"
+     ],
+     [
+      "n_owned",
+      12,
+      4,
+      "f32"
+     ],
+     [
+      "cp_seed",
+      16,
+      8,
+      "f64"
+     ],
+     [
+      "f_nco",
+      24,
+      8,
+      "f64"
+     ],
+     [
+      "chan_mask",
+      32,
+      8,
+      "u64"
+     ],
+     [
+      "ctrim_hz",
+      40,
+      8,
+      "f64"
+     ],
+     [
+      "ang0",
+      48,
+      8,
+      "f64"
+     ],
+     [
+      "phi_ddop",
+      56,
+      8,
+      "f64"
+     ],
+     [
+      "fcar",
+      64,
+      8,
+      "f64"
+     ],
+     [
+      "dcyc",
+      72,
+      8,
+      "f64"
+     ],
+     [
+      "rot",
+      80,
+      32,
+      "f32[8]"
+     ]
+    ],
+    "size": 112
+   },
+   "ROWS_PEEL": 6,
+   "ROWS_PLAIN": 4,
+   "ROW_E": 0,
+   "ROW_L": 2,
+   "ROW_P": 1,
+   "ROW_PH": 3,
+   "ROW_RES_P": 4,
+   "ROW_RES_PH": 5,
+   "frame_bytes": [
+    {
+     "bytes": 3504,
+     "n_chan": 1,
+     "n_elem": 1,
+     "n_prn": 1,
+     "off_corr": 1968,
+     "off_energy": 2992,
+     "rows_spec": 4
+    },
+    {
+     "bytes": 178352,
+     "n_chan": 5,
+     "n_elem": 7,
+     "n_prn": 3,
+     "off_corr": 5552,
+     "off_energy": 166832,
+     "rows_spec": 6
+    },
+    {
+     "bytes": 12677296,
+     "n_chan": 8,
+     "n_elem": 96,
+     "n_prn": 16,
+     "off_corr": 28848,
+     "off_energy": 12611760,
+     "rows_spec": 4
+    }
+   ],
+   "off_prnctl": 176,
+   "off_winstart": 48
+  },
+  "metadata": {
+   "GnssChanMetadata": {
+    "fields": [
+     [
+      "sample_seq",
+      0,
+      8,
+      "i64"
+     ],
+     [
+      "reserved",
+      8,
+      4,
+      "u32"
+     ]
+    ],
+    "serialized": {
+     "bytes": "080706050403020100000000",
+     "sample_seq": 72623859790382856
+    },
+    "size": 12
+   }
+  },
+  "record.chan": {
+   "CHAN_ENERGY": {
+    "meaning": "energy;prompt replica;weighted per channel",
+    "slot": 2
+   },
+   "CHAN_E_ENERGY": {
+    "meaning": "energy;early replica;weighted per channel",
+    "slot": 5
+   },
+   "CHAN_E_IM": {
+    "meaning": "corr;early;rot=exp(-i*REC_PHI0);sign=r2c;weighted per channel;0=not covering",
+    "slot": 4
+   },
+   "CHAN_E_RE": {
+    "meaning": "corr;early;rot=exp(-i*REC_PHI0);sign=r2c;weighted per channel;0=not covering",
+    "slot": 3
+   },
+   "CHAN_FLOATS": 9,
+   "CHAN_IM": {
+    "meaning": "corr;prompt;rot=exp(-i*REC_PHI0);sign=r2c;weighted per channel;0=not covering",
+    "slot": 1
+   },
+   "CHAN_L_ENERGY": {
+    "meaning": "energy;late replica;weighted per channel",
+    "slot": 8
+   },
+   "CHAN_L_IM": {
+    "meaning": "corr;late;rot=exp(-i*REC_PHI0);sign=r2c;weighted per channel;0=not covering",
+    "slot": 7
+   },
+   "CHAN_L_RE": {
+    "meaning": "corr;late;rot=exp(-i*REC_PHI0);sign=r2c;weighted per channel;0=not covering",
+    "slot": 6
+   },
+   "CHAN_RE": {
+    "meaning": "corr;prompt;rot=exp(-i*REC_PHI0);sign=r2c;weighted per channel;0=not covering",
+    "slot": 0
+   }
+  },
+  "record.cmb": {
+   "CMB_AMP_COH": {
+    "meaning": "amp;|<A>|",
+    "slot": 6
+   },
+   "CMB_AMP_INCOH": {
+    "meaning": "amp;sqrt<|H|^2+|A-H|^2>;A=REC_P/REC_P_ENERGY;H=REC_PH/REC_P_ENERGY, or A if REC_PH_ENERGY=0",
+    "slot": 3
+   },
+   "CMB_ARC": {
+    "meaning": "id;+1 per phase break",
+    "slot": 15
+   },
+   "CMB_CARRIER_RESID": {
+    "meaning": "Hz;carrier residual",
+    "slot": 14
+   },
+   "CMB_COH_FRAC": {
+    "meaning": "ratio;|sum A|/sum|A|;0=not computed",
+    "slot": 21
+   },
+   "CMB_DEEP": {
+    "meaning": "amp;deep |A|",
+    "slot": 8
+   },
+   "CMB_DLL_DISC": {
+    "meaning": "ratio;(E-L)/(E+L) of the powers;0=no power",
+    "slot": 13
+   },
+   "CMB_E_POW": {
+    "meaning": "pow;<|REC_E/REC_E_ENERGY|^2>",
+    "slot": 11
+   },
+   "CMB_HEAD_FRAC": {
+    "meaning": "ratio;<PH_energy>/<P_energy>;0=none",
+    "slot": 16
+   },
+   "CMB_HOP_SLOT": {
+    "meaning": "hop;i64 over 2 slots;-1=unset",
+    "slot": 19
+   },
+   "CMB_L_POW": {
+    "meaning": "pow;<|REC_L/REC_L_ENERGY|^2>",
+    "slot": 12
+   },
+   "CMB_MEAN_IM": {
+    "meaning": "amp;<A>.im;sign=r2c",
+    "slot": 5
+   },
+   "CMB_MEAN_RE": {
+    "meaning": "amp;<A>.re;sign=r2c",
+    "slot": 4
+   },
+   "CMB_NCHAN": {
+    "meaning": "count;mean covering channels",
+    "slot": 7
+   },
+   "CMB_PEEL_DEEP": {
+    "meaning": "reserved;0",
+    "slot": 17
+   },
+   "CMB_PEEL_INCOH": {
+    "meaning": "reserved;0",
+    "slot": 18
+   },
+   "elem": {
+    "CMB_ELEM_AMP_COH": {
+     "meaning": "amp;|<A_e>|",
+     "slot": 3
+    },
+    "CMB_ELEM_AMP_INCOH": {
+     "meaning": "amp;sqrt<|A_e|^2>;A_e=ELEM_P/REC_P_ENERGY",
+     "slot": 0
+    },
+    "CMB_ELEM_MEAN_IM": {
+     "meaning": "amp;<A_e>.im;sign=r2c",
+     "slot": 2
+    },
+    "CMB_ELEM_MEAN_RE": {
+     "meaning": "amp;<A_e>.re;sign=r2c",
+     "slot": 1
+    }
+   }
+  },
+  "record.elem": {
+   "ELEM_E_IM": {
+    "meaning": "corr;early;rot=exp(-i*REC_PHI0);sign=r2c",
+    "slot": 3
+   },
+   "ELEM_E_RE": {
+    "meaning": "corr;early;rot=exp(-i*REC_PHI0);sign=r2c",
+    "slot": 2
+   },
+   "ELEM_FLOATS": 12,
+   "ELEM_L_IM": {
+    "meaning": "corr;late;rot=exp(-i*REC_PHI0);sign=r2c",
+    "slot": 5
+   },
+   "ELEM_L_RE": {
+    "meaning": "corr;late;rot=exp(-i*REC_PHI0);sign=r2c",
+    "slot": 4
+   },
+   "ELEM_PH_IM": {
+    "meaning": "corr;prompt head;rot=exp(-i*REC_PHI0);sign=r2c",
+    "slot": 7
+   },
+   "ELEM_PH_RE": {
+    "meaning": "corr;prompt head;rot=exp(-i*REC_PHI0);sign=r2c",
+    "slot": 6
+   },
+   "ELEM_P_IM": {
+    "meaning": "corr;prompt;rot=exp(-i*REC_PHI0);sign=r2c",
+    "slot": 1
+   },
+   "ELEM_P_RE": {
+    "meaning": "corr;prompt;rot=exp(-i*REC_PHI0);sign=r2c",
+    "slot": 0
+   },
+   "ELEM_RES_IM": {
+    "meaning": "reserved;0",
+    "slot": 9
+   },
+   "ELEM_RES_PH_IM": {
+    "meaning": "reserved;0",
+    "slot": 11
+   },
+   "ELEM_RES_PH_RE": {
+    "meaning": "reserved;0",
+    "slot": 10
+   },
+   "ELEM_RES_RE": {
+    "meaning": "reserved;0",
+    "slot": 8
+   }
+  },
+  "record.row": {
+   "RECORD_FLOATS": 32,
+   "RECORD_UTC_SLOT": {
+    "meaning": "s;f64 over 2 slots;utc of window start",
+    "slot": 9
+   },
+   "REC_ANG0": {
+    "meaning": "rad;nan=no job",
+    "slot": 26
+   },
+   "REC_CP": {
+    "meaning": "chip;code phase arg at REC_DOPPLER;mod=record_cp_mod_chips",
+    "slot": 2
+   },
+   "REC_CPHASE": {
+    "meaning": "cycle;increment of fcar*t_abs-nco;sign=physical;0=arc start",
+    "slot": 15
+   },
+   "REC_DOPPLER": {
+    "meaning": "Hz;doppler;sign=physical",
+    "slot": 1
+   },
+   "REC_E_ENERGY": {
+    "meaning": "energy;early replica",
+    "slot": 7
+   },
+   "REC_E_IM": {
+    "meaning": "corr;early;rot=none;sign=r2c",
+    "slot": 12
+   },
+   "REC_E_RE": {
+    "meaning": "corr;early;rot=none;sign=r2c",
+    "slot": 11
+   },
+   "REC_L_ENERGY": {
+    "meaning": "energy;late replica",
+    "slot": 8
+   },
+   "REC_L_IM": {
+    "meaning": "corr;late;rot=none;sign=r2c",
+    "slot": 14
+   },
+   "REC_L_RE": {
+    "meaning": "corr;late;rot=none;sign=r2c",
+    "slot": 13
+   },
+   "REC_NCHAN": {
+    "meaning": "count;covering channels",
+    "slot": 6
+   },
+   "REC_PHI0": {
+    "meaning": "rad;range=[-pi,pi]",
+    "slot": 28
+   },
+   "REC_PHI_DDOP": {
+    "meaning": "Hz;nan=no phi",
+    "slot": 27
+   },
+   "REC_PH_ENERGY": {
+    "meaning": "energy;head replica",
+    "slot": 18
+   },
+   "REC_PH_IM": {
+    "meaning": "corr;prompt head;rot=exp(-i*REC_PHI0);sign=r2c",
+    "slot": 17
+   },
+   "REC_PH_RE": {
+    "meaning": "corr;prompt head;rot=exp(-i*REC_PHI0);sign=r2c",
+    "slot": 16
+   },
+   "REC_PRN": {
+    "meaning": "prn;integer",
+    "slot": 0
+   },
+   "REC_PROJ_COST": {
+    "meaning": "cos2;range=[0,1];-1=none",
+    "slot": 29
+   },
+   "REC_PROJ_K": {
+    "meaning": "count;0=no basis",
+    "slot": 30
+   },
+   "REC_PROJ_SRC": {
+    "meaning": "bits=REC_PROJ_SRC_*;0=no basis",
+    "slot": 31
+   },
+   "REC_P_ENERGY": {
+    "meaning": "energy;prompt replica",
+    "slot": 5
+   },
+   "REC_P_IM": {
+    "meaning": "corr;prompt;rot=exp(-i*REC_PHI0);sign=r2c",
+    "slot": 4
+   },
+   "REC_P_RE": {
+    "meaning": "corr;prompt;rot=exp(-i*REC_PHI0);sign=r2c",
+    "slot": 3
+   },
+   "REC_RES_IM": {
+    "meaning": "reserved;0",
+    "slot": 21
+   },
+   "REC_RES_PH_IM": {
+    "meaning": "reserved;0",
+    "slot": 23
+   },
+   "REC_RES_PH_RE": {
+    "meaning": "reserved;0",
+    "slot": 22
+   },
+   "REC_RES_RE": {
+    "meaning": "reserved;0",
+    "slot": 20
+   },
+   "REC_SKY_IM": {
+    "meaning": "corr;sky-phase prompt;rot=exp(-i*REC_PHI0);0=absent",
+    "slot": 25
+   },
+   "REC_SKY_RE": {
+    "meaning": "corr;sky-phase prompt;rot=exp(-i*REC_PHI0);0=absent",
+    "slot": 24
+   },
+   "REC_TRIM_INC": {
+    "meaning": "cycle;increment of ctrim_hz*dt;0=arc start",
+    "slot": 19
+   }
+  },
+  "rest": {
+   "assembler": 1,
+   "combiner": 1,
+   "fleet_trim": 1,
+   "search": 1,
+   "tap": 1,
+   "tracker": 1
+  },
+  "signals": {
+   "BDS_B1C_D": {
+    "boc_m": 1,
+    "boc_n": 1,
+    "carrier_hz": "1575420000",
+    "chip_rate_hz": "1023000",
+    "code_length": 10230,
+    "code_period_s": "0.01",
+    "half_bandwidth_hz": "2046000",
+    "mod": "BOC",
+    "occupied_hi_hz": "1577466000",
+    "occupied_lo_hz": "1573374000",
+    "secondary_length": 0,
+    "tdm_phase": 0,
+    "time_multiplexed": false
+   },
+   "BDS_B1C_P": {
+    "boc_m": 1,
+    "boc_n": 1,
+    "carrier_hz": "1575420000",
+    "chip_rate_hz": "1023000",
+    "code_length": 10230,
+    "code_period_s": "0.01",
+    "half_bandwidth_hz": "2046000",
+    "mod": "BOC",
+    "occupied_hi_hz": "1577466000",
+    "occupied_lo_hz": "1573374000",
+    "secondary_length": 1800,
+    "tdm_phase": 0,
+    "time_multiplexed": false
+   },
+   "BDS_B1I": {
+    "boc_m": 0,
+    "boc_n": 0,
+    "carrier_hz": "1561098000",
+    "chip_rate_hz": "2046000",
+    "code_length": 2046,
+    "code_period_s": "0.001",
+    "half_bandwidth_hz": "2046000",
+    "mod": "BPSK",
+    "occupied_hi_hz": "1563144000",
+    "occupied_lo_hz": "1559052000",
+    "secondary_length": 20,
+    "tdm_phase": 0,
+    "time_multiplexed": false
+   },
+   "BDS_B2A_D": {
+    "boc_m": 0,
+    "boc_n": 0,
+    "carrier_hz": "1176450000",
+    "chip_rate_hz": "10230000",
+    "code_length": 10230,
+    "code_period_s": "0.001",
+    "half_bandwidth_hz": "10230000",
+    "mod": "BPSK",
+    "occupied_hi_hz": "1186680000",
+    "occupied_lo_hz": "1166220000",
+    "secondary_length": 5,
+    "tdm_phase": 0,
+    "time_multiplexed": false
+   },
+   "BDS_B2A_P": {
+    "boc_m": 0,
+    "boc_n": 0,
+    "carrier_hz": "1176450000",
+    "chip_rate_hz": "10230000",
+    "code_length": 10230,
+    "code_period_s": "0.001",
+    "half_bandwidth_hz": "10230000",
+    "mod": "BPSK",
+    "occupied_hi_hz": "1186680000",
+    "occupied_lo_hz": "1166220000",
+    "secondary_length": 100,
+    "tdm_phase": 0,
+    "time_multiplexed": false
+   },
+   "BDS_B2A_P_CS": {
+    "boc_m": 0,
+    "boc_n": 0,
+    "carrier_hz": "1176450000",
+    "chip_rate_hz": "10230000",
+    "code_length": 1023000,
+    "code_period_s": "0.10000000000000001",
+    "half_bandwidth_hz": "10230000",
+    "mod": "BPSK",
+    "occupied_hi_hz": "1186680000",
+    "occupied_lo_hz": "1166220000",
+    "secondary_length": 0,
+    "tdm_phase": 0,
+    "time_multiplexed": false
+   },
+   "BDS_B2B_I": {
+    "boc_m": 0,
+    "boc_n": 0,
+    "carrier_hz": "1207140000",
+    "chip_rate_hz": "10230000",
+    "code_length": 10230,
+    "code_period_s": "0.001",
+    "half_bandwidth_hz": "10230000",
+    "mod": "BPSK",
+    "occupied_hi_hz": "1217370000",
+    "occupied_lo_hz": "1196910000",
+    "secondary_length": 0,
+    "tdm_phase": 0,
+    "time_multiplexed": false
+   },
+   "BDS_B2I": {
+    "boc_m": 0,
+    "boc_n": 0,
+    "carrier_hz": "1207140000",
+    "chip_rate_hz": "2046000",
+    "code_length": 2046,
+    "code_period_s": "0.001",
+    "half_bandwidth_hz": "2046000",
+    "mod": "BPSK",
+    "occupied_hi_hz": "1209186000",
+    "occupied_lo_hz": "1205094000",
+    "secondary_length": 20,
+    "tdm_phase": 0,
+    "time_multiplexed": false
+   },
+   "BDS_B3I": {
+    "boc_m": 0,
+    "boc_n": 0,
+    "carrier_hz": "1268520000",
+    "chip_rate_hz": "10230000",
+    "code_length": 10230,
+    "code_period_s": "0.001",
+    "half_bandwidth_hz": "10230000",
+    "mod": "BPSK",
+    "occupied_hi_hz": "1278750000",
+    "occupied_lo_hz": "1258290000",
+    "secondary_length": 20,
+    "tdm_phase": 0,
+    "time_multiplexed": false
+   },
+   "BDS_B3I_NH": {
+    "boc_m": 0,
+    "boc_n": 0,
+    "carrier_hz": "1268520000",
+    "chip_rate_hz": "10230000",
+    "code_length": 204600,
+    "code_period_s": "0.02",
+    "half_bandwidth_hz": "10230000",
+    "mod": "BPSK",
+    "occupied_hi_hz": "1278750000",
+    "occupied_lo_hz": "1258290000",
+    "secondary_length": 0,
+    "tdm_phase": 0,
+    "time_multiplexed": false
+   },
+   "GAL_E1B": {
+    "boc_m": 1,
+    "boc_n": 1,
+    "carrier_hz": "1575420000",
+    "chip_rate_hz": "1023000",
+    "code_length": 4092,
+    "code_period_s": "0.0040000000000000001",
+    "half_bandwidth_hz": "2046000",
+    "mod": "BOC",
+    "occupied_hi_hz": "1577466000",
+    "occupied_lo_hz": "1573374000",
+    "secondary_length": 0,
+    "tdm_phase": 0,
+    "time_multiplexed": false
+   },
+   "GAL_E1C": {
+    "boc_m": 1,
+    "boc_n": 1,
+    "carrier_hz": "1575420000",
+    "chip_rate_hz": "1023000",
+    "code_length": 4092,
+    "code_period_s": "0.0040000000000000001",
+    "half_bandwidth_hz": "2046000",
+    "mod": "BOC",
+    "occupied_hi_hz": "1577466000",
+    "occupied_lo_hz": "1573374000",
+    "secondary_length": 25,
+    "tdm_phase": 0,
+    "time_multiplexed": false
+   },
+   "GAL_E5A_I": {
+    "boc_m": 0,
+    "boc_n": 0,
+    "carrier_hz": "1176450000",
+    "chip_rate_hz": "10230000",
+    "code_length": 10230,
+    "code_period_s": "0.001",
+    "half_bandwidth_hz": "10230000",
+    "mod": "BPSK",
+    "occupied_hi_hz": "1186680000",
+    "occupied_lo_hz": "1166220000",
+    "secondary_length": 20,
+    "tdm_phase": 0,
+    "time_multiplexed": false
+   },
+   "GAL_E5A_Q": {
+    "boc_m": 0,
+    "boc_n": 0,
+    "carrier_hz": "1176450000",
+    "chip_rate_hz": "10230000",
+    "code_length": 10230,
+    "code_period_s": "0.001",
+    "half_bandwidth_hz": "10230000",
+    "mod": "BPSK",
+    "occupied_hi_hz": "1186680000",
+    "occupied_lo_hz": "1166220000",
+    "secondary_length": 100,
+    "tdm_phase": 0,
+    "time_multiplexed": false
+   },
+   "GAL_E5A_Q_CS": {
+    "boc_m": 0,
+    "boc_n": 0,
+    "carrier_hz": "1176450000",
+    "chip_rate_hz": "10230000",
+    "code_length": 1023000,
+    "code_period_s": "0.10000000000000001",
+    "half_bandwidth_hz": "10230000",
+    "mod": "BPSK",
+    "occupied_hi_hz": "1186680000",
+    "occupied_lo_hz": "1166220000",
+    "secondary_length": 0,
+    "tdm_phase": 0,
+    "time_multiplexed": false
+   },
+   "GAL_E5B_I": {
+    "boc_m": 0,
+    "boc_n": 0,
+    "carrier_hz": "1207140000",
+    "chip_rate_hz": "10230000",
+    "code_length": 10230,
+    "code_period_s": "0.001",
+    "half_bandwidth_hz": "10230000",
+    "mod": "BPSK",
+    "occupied_hi_hz": "1217370000",
+    "occupied_lo_hz": "1196910000",
+    "secondary_length": 4,
+    "tdm_phase": 0,
+    "time_multiplexed": false
+   },
+   "GAL_E5B_Q": {
+    "boc_m": 0,
+    "boc_n": 0,
+    "carrier_hz": "1207140000",
+    "chip_rate_hz": "10230000",
+    "code_length": 10230,
+    "code_period_s": "0.001",
+    "half_bandwidth_hz": "10230000",
+    "mod": "BPSK",
+    "occupied_hi_hz": "1217370000",
+    "occupied_lo_hz": "1196910000",
+    "secondary_length": 100,
+    "tdm_phase": 0,
+    "time_multiplexed": false
+   },
+   "GAL_E5B_Q_CS": {
+    "boc_m": 0,
+    "boc_n": 0,
+    "carrier_hz": "1207140000",
+    "chip_rate_hz": "10230000",
+    "code_length": 1023000,
+    "code_period_s": "0.10000000000000001",
+    "half_bandwidth_hz": "10230000",
+    "mod": "BPSK",
+    "occupied_hi_hz": "1217370000",
+    "occupied_lo_hz": "1196910000",
+    "secondary_length": 0,
+    "tdm_phase": 0,
+    "time_multiplexed": false
+   },
+   "GAL_E6_B": {
+    "boc_m": 0,
+    "boc_n": 0,
+    "carrier_hz": "1278750000",
+    "chip_rate_hz": "5115000",
+    "code_length": 5115,
+    "code_period_s": "0.001",
+    "half_bandwidth_hz": "5115000",
+    "mod": "BPSK",
+    "occupied_hi_hz": "1283865000",
+    "occupied_lo_hz": "1273635000",
+    "secondary_length": 0,
+    "tdm_phase": 0,
+    "time_multiplexed": false
+   },
+   "GAL_E6_C": {
+    "boc_m": 0,
+    "boc_n": 0,
+    "carrier_hz": "1278750000",
+    "chip_rate_hz": "5115000",
+    "code_length": 5115,
+    "code_period_s": "0.001",
+    "half_bandwidth_hz": "5115000",
+    "mod": "BPSK",
+    "occupied_hi_hz": "1283865000",
+    "occupied_lo_hz": "1273635000",
+    "secondary_length": 100,
+    "tdm_phase": 0,
+    "time_multiplexed": false
+   },
+   "GAL_E6_C_CS": {
+    "boc_m": 0,
+    "boc_n": 0,
+    "carrier_hz": "1278750000",
+    "chip_rate_hz": "5115000",
+    "code_length": 511500,
+    "code_period_s": "0.10000000000000001",
+    "half_bandwidth_hz": "5115000",
+    "mod": "BPSK",
+    "occupied_hi_hz": "1283865000",
+    "occupied_lo_hz": "1273635000",
+    "secondary_length": 0,
+    "tdm_phase": 0,
+    "time_multiplexed": false
+   },
+   "GLO_L2OC_P": {
+    "boc_m": 0,
+    "boc_n": 0,
+    "carrier_hz": "1248060000",
+    "chip_rate_hz": "2046000",
+    "code_length": 40920,
+    "code_period_s": "0.02",
+    "half_bandwidth_hz": "2046000",
+    "mod": "BPSK",
+    "occupied_hi_hz": "1250106000",
+    "occupied_lo_hz": "1246014000",
+    "secondary_length": 50,
+    "tdm_phase": 0,
+    "time_multiplexed": false
+   },
+   "GLO_L2OC_P_OC": {
+    "boc_m": 0,
+    "boc_n": 0,
+    "carrier_hz": "1248060000",
+    "chip_rate_hz": "2046000",
+    "code_length": 2046000,
+    "code_period_s": "1",
+    "half_bandwidth_hz": "2046000",
+    "mod": "BPSK",
+    "occupied_hi_hz": "1250106000",
+    "occupied_lo_hz": "1246014000",
+    "secondary_length": 0,
+    "tdm_phase": 0,
+    "time_multiplexed": false
+   },
+   "GLO_L2OF": {
+    "boc_m": 0,
+    "boc_n": 0,
+    "carrier_hz": "1246000000",
+    "chip_rate_hz": "511000",
+    "code_length": 511,
+    "code_period_s": "0.001",
+    "half_bandwidth_hz": "511000",
+    "mod": "BPSK",
+    "occupied_hi_hz": "1246511000",
+    "occupied_lo_hz": "1245489000",
+    "secondary_length": 0,
+    "tdm_phase": 0,
+    "time_multiplexed": false
+   },
+   "GLO_L3OC_D": {
+    "boc_m": 0,
+    "boc_n": 0,
+    "carrier_hz": "1202025000",
+    "chip_rate_hz": "10230000",
+    "code_length": 10230,
+    "code_period_s": "0.001",
+    "half_bandwidth_hz": "10230000",
+    "mod": "BPSK",
+    "occupied_hi_hz": "1212255000",
+    "occupied_lo_hz": "1191795000",
+    "secondary_length": 5,
+    "tdm_phase": 0,
+    "time_multiplexed": false
+   },
+   "GLO_L3OC_P": {
+    "boc_m": 0,
+    "boc_n": 0,
+    "carrier_hz": "1202025000",
+    "chip_rate_hz": "10230000",
+    "code_length": 10230,
+    "code_period_s": "0.001",
+    "half_bandwidth_hz": "10230000",
+    "mod": "BPSK",
+    "occupied_hi_hz": "1212255000",
+    "occupied_lo_hz": "1191795000",
+    "secondary_length": 10,
+    "tdm_phase": 0,
+    "time_multiplexed": false
+   },
+   "GLO_L3OC_P_NH": {
+    "boc_m": 0,
+    "boc_n": 0,
+    "carrier_hz": "1202025000",
+    "chip_rate_hz": "10230000",
+    "code_length": 102300,
+    "code_period_s": "0.01",
+    "half_bandwidth_hz": "10230000",
+    "mod": "BPSK",
+    "occupied_hi_hz": "1212255000",
+    "occupied_lo_hz": "1191795000",
+    "secondary_length": 0,
+    "tdm_phase": 0,
+    "time_multiplexed": false
+   },
+   "GPS_L1CA": {
+    "boc_m": 0,
+    "boc_n": 0,
+    "carrier_hz": "1575420000",
+    "chip_rate_hz": "1023000",
+    "code_length": 1023,
+    "code_period_s": "0.001",
+    "half_bandwidth_hz": "1023000",
+    "mod": "BPSK",
+    "occupied_hi_hz": "1576443000",
+    "occupied_lo_hz": "1574397000",
+    "secondary_length": 0,
+    "tdm_phase": 0,
+    "time_multiplexed": false
+   },
+   "GPS_L1C_D": {
+    "boc_m": 1,
+    "boc_n": 1,
+    "carrier_hz": "1575420000",
+    "chip_rate_hz": "1023000",
+    "code_length": 10230,
+    "code_period_s": "0.01",
+    "half_bandwidth_hz": "2046000",
+    "mod": "BOC",
+    "occupied_hi_hz": "1577466000",
+    "occupied_lo_hz": "1573374000",
+    "secondary_length": 0,
+    "tdm_phase": 0,
+    "time_multiplexed": false
+   },
+   "GPS_L1C_P": {
+    "boc_m": 1,
+    "boc_n": 1,
+    "carrier_hz": "1575420000",
+    "chip_rate_hz": "1023000",
+    "code_length": 10230,
+    "code_period_s": "0.01",
+    "half_bandwidth_hz": "2046000",
+    "mod": "BOC",
+    "occupied_hi_hz": "1577466000",
+    "occupied_lo_hz": "1573374000",
+    "secondary_length": 1800,
+    "tdm_phase": 0,
+    "time_multiplexed": false
+   },
+   "GPS_L2C_CL": {
+    "boc_m": 0,
+    "boc_n": 0,
+    "carrier_hz": "1227600000",
+    "chip_rate_hz": "511500",
+    "code_length": 767250,
+    "code_period_s": "1.5",
+    "half_bandwidth_hz": "1023000",
+    "mod": "BPSK",
+    "occupied_hi_hz": "1228623000",
+    "occupied_lo_hz": "1226577000",
+    "secondary_length": 0,
+    "tdm_phase": 1,
+    "time_multiplexed": true
+   },
+   "GPS_L2C_CM": {
+    "boc_m": 0,
+    "boc_n": 0,
+    "carrier_hz": "1227600000",
+    "chip_rate_hz": "511500",
+    "code_length": 10230,
+    "code_period_s": "0.02",
+    "half_bandwidth_hz": "1023000",
+    "mod": "BPSK",
+    "occupied_hi_hz": "1228623000",
+    "occupied_lo_hz": "1226577000",
+    "secondary_length": 0,
+    "tdm_phase": 0,
+    "time_multiplexed": true
+   },
+   "GPS_L5_I": {
+    "boc_m": 0,
+    "boc_n": 0,
+    "carrier_hz": "1176450000",
+    "chip_rate_hz": "10230000",
+    "code_length": 10230,
+    "code_period_s": "0.001",
+    "half_bandwidth_hz": "10230000",
+    "mod": "BPSK",
+    "occupied_hi_hz": "1186680000",
+    "occupied_lo_hz": "1166220000",
+    "secondary_length": 10,
+    "tdm_phase": 0,
+    "time_multiplexed": false
+   },
+   "GPS_L5_Q": {
+    "boc_m": 0,
+    "boc_n": 0,
+    "carrier_hz": "1176450000",
+    "chip_rate_hz": "10230000",
+    "code_length": 10230,
+    "code_period_s": "0.001",
+    "half_bandwidth_hz": "10230000",
+    "mod": "BPSK",
+    "occupied_hi_hz": "1186680000",
+    "occupied_lo_hz": "1166220000",
+    "secondary_length": 20,
+    "tdm_phase": 0,
+    "time_multiplexed": false
+   },
+   "GPS_L5_Q_NH": {
+    "boc_m": 0,
+    "boc_n": 0,
+    "carrier_hz": "1176450000",
+    "chip_rate_hz": "10230000",
+    "code_length": 204600,
+    "code_period_s": "0.02",
+    "half_bandwidth_hz": "10230000",
+    "mod": "BPSK",
+    "occupied_hi_hz": "1186680000",
+    "occupied_lo_hz": "1166220000",
+    "secondary_length": 0,
+    "tdm_phase": 0,
+    "time_multiplexed": false
+   },
+   "SBAS_L5_Q": {
+    "boc_m": 0,
+    "boc_n": 0,
+    "carrier_hz": "1176450000",
+    "chip_rate_hz": "10230000",
+    "code_length": 10230,
+    "code_period_s": "0.001",
+    "half_bandwidth_hz": "10230000",
+    "mod": "BPSK",
+    "occupied_hi_hz": "1186680000",
+    "occupied_lo_hz": "1166220000",
+    "secondary_length": 2,
+    "tdm_phase": 0,
+    "time_multiplexed": false
+   },
+   "SBAS_L5_Q_MC": {
+    "boc_m": 0,
+    "boc_n": 0,
+    "carrier_hz": "1176450000",
+    "chip_rate_hz": "10230000",
+    "code_length": 20460,
+    "code_period_s": "0.002",
+    "half_bandwidth_hz": "10230000",
+    "mod": "BPSK",
+    "occupied_hi_hz": "1186680000",
+    "occupied_lo_hz": "1166220000",
+    "secondary_length": 0,
+    "tdm_phase": 0,
+    "time_multiplexed": false
+   }
+  },
+  "telem": {
+   "TELEM_HEADER_BYTES": 112,
+   "TELEM_MAGIC": 827085895,
+   "TELEM_MAX_CHAN": 8,
+   "TELEM_MAX_REC": 8,
+   "TELEM_NAME": 16,
+   "TELEM_VERSION": 8,
+   "TelemHeader": {
+    "fields": [
+     [
+      "magic",
+      0,
+      4,
+      "u32"
+     ],
+     [
+      "version",
+      4,
+      2,
+      "u16"
+     ],
+     [
+      "n_rec",
+      6,
+      2,
+      "u16"
+     ],
+     [
+      "n_prn",
+      8,
+      2,
+      "u16"
+     ],
+     [
+      "n_row",
+      10,
+      2,
+      "u16"
+     ],
+     [
+      "n_chan",
+      12,
+      2,
+      "u16"
+     ],
+     [
+      "n_elem",
+      14,
+      2,
+      "u16"
+     ],
+     [
+      "hops_per_record",
+      16,
+      4,
+      "u32"
+     ],
+     [
+      "fft_len",
+      20,
+      4,
+      "u32"
+     ],
+     [
+      "win",
+      24,
+      8,
+      "u64"
+     ],
+     [
+      "seq",
+      32,
+      8,
+      "u64"
+     ],
+     [
+      "wstart0",
+      40,
+      8,
+      "i64"
+     ],
+     [
+      "utc0",
+      48,
+      8,
+      "f64"
+     ],
+     [
+      "present",
+      56,
+      4,
+      "u32"
+     ],
+     [
+      "max_chan",
+      60,
+      2,
+      "u16"
+     ],
+     [
+      "n_row_total",
+      62,
+      2,
+      "u16"
+     ],
+     [
+      "chain",
+      64,
+      16,
+      "char[16]"
+     ],
+     [
+      "inst",
+      80,
+      16,
+      "char[16]"
+     ],
+     [
+      "chan_id",
+      96,
+      16,
+      "u16[8]"
+     ]
+    ],
+    "size": 112
+   },
+   "chan_offset": [
+    32,
+    41,
+    50,
+    59,
+    68,
+    77,
+    86,
+    95
+   ],
+   "frame_bytes": [
+    {
+     "bytes": 240,
+     "n_cols": 0,
+     "n_prn": 1,
+     "n_rec": 1
+    },
+    {
+     "bytes": 3112,
+     "n_cols": 2,
+     "n_prn": 5,
+     "n_rec": 3
+    },
+    {
+     "bytes": 53360,
+     "n_cols": 8,
+     "n_prn": 16,
+     "n_rec": 8
+    }
+   ],
+   "row_offset": [
+    {
+     "floats": 32,
+     "n_cols": 0,
+     "n_prn": 3,
+     "p": 1,
+     "r": 0
+    },
+    {
+     "floats": 650,
+     "n_cols": 2,
+     "n_prn": 5,
+     "p": 3,
+     "r": 2
+    }
+   ]
+  }
+ }
+}
