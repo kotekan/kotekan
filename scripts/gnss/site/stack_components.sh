@@ -30,6 +30,8 @@ set -u
 
 # shellcheck source=kotekan_src.sh
 . "$(dirname "${BASH_SOURCE[0]}")/kotekan_src.sh"
+# shellcheck source=iface_preflight.sh
+. "$(dirname "${BASH_SOURCE[0]}")/iface_preflight.sh"
 GNSS_K=${GNSS_K:-$GNSS_CHECKOUT}                   # the GNSS checkout: this one
 # The kotekan tree, for its build; empty when there is none, which only the components that
 # run kotekan notice. No definition exports it: the broker speaks the interface golden it
@@ -82,6 +84,9 @@ gnss_cube_components() { echo "cubearch cubecompact"; }                      # c
 gnss_component() {
     local name=${1:?gnss_component <broker|gather|aggregator|viewer|obs|rail|cubearch|cubecompact>}
     GNSS_CWD=""
+    # The interface preflight's role for a kotekan that run_component.sh starts here (its
+    # config is GNSS_EXEC[2]); empty for the rest. cubearch_up.sh --check runs the archiver's.
+    GNSS_IFACE_ROLE=""
     case "$name" in
 
     broker)
@@ -107,6 +112,7 @@ gnss_component() {
         GNSS_EXEC=("$GNSS_BIN" --config
                    "${GNSS_GATHER_CFG:-$GNSS_K/config/generated/chord_gnss_gather.yaml}"
                    --bind-address "0.0.0.0:${GNSS_GATHER_REST:-12051}")
+        GNSS_IFACE_ROLE=gather
         ;;
 
     aggregator)
@@ -122,6 +128,7 @@ gnss_component() {
         GNSS_EXEC=("$GNSS_BIN" --config
                    "${GNSS_AGG_CFG:-$GNSS_K/config/generated/chord_gnss_agg6_cuda.yaml}"
                    --bind-address "0.0.0.0:12050")
+        GNSS_IFACE_ROLE=aggregator
         ;;
 
     viewer)
@@ -162,8 +169,8 @@ gnss_component() {
         # cf06 only: the far side of the beam-cube push leg, one bufferRecv on :11070 for the
         # whole fleet's windows and a rawFileWrite onto /mnt/cs00. Start it before the nodes
         # (cubearch_up.sh says why). The pre-flight (config present, archive dir writable,
-        # sender/receiver frame_size agree) is `cubearch_up.sh --check`, which
-        # gnss-cubearch.service runs as ExecStartPre.
+        # sender/receiver frame_size agree, the binary's interface) is `cubearch_up.sh --check`,
+        # which gnss-cubearch.service runs as ExecStartPre.
         GNSS_EXEC=("$GNSS_BIN" -c
                    "${GNSS_CUBEARCH_CFG:-$GNSS_K/config/generated/chord_gnss_cubearch.yaml}")
         ;;

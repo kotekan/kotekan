@@ -31,6 +31,8 @@ CHECK=0
 [ "${1:-}" = "--check" ] && { CHECK=1; shift; }
 # shellcheck source=kotekan_src.sh
 . "$(dirname "${BASH_SOURCE[0]}")/kotekan_src.sh"
+# shellcheck source=iface_preflight.sh
+. "$(dirname "${BASH_SOURCE[0]}")/iface_preflight.sh"
 K=$GNSS_CHECKOUT
 KOTEKAN_SRC=$(gnss_kotekan_src "$K")   # the kotekan tree, for its build
 H=$(hostname -s)
@@ -90,6 +92,14 @@ if [ "$MISMATCH" = 1 ]; then
     echo "FAILED: sender/receiver frame_size disagree. bufferRecv would accept every" >&2
     echo "connection and deliver nothing. Regenerate both from one tree: the archiver with config/gen_chord_gnss_config.py --cube-archive-instance, the nodes with" >&2
     echo "  python3 $K/scripts/gnss/gen_fleet.py $K/config/gnss_fleet_chord.yaml" >&2
+    exit 1
+fi
+# The binary's own interface document against the broker's golden and the frame sizes this
+# config was generated for (iface_preflight.sh); only a disagreement refuses.
+if ! gnss_iface_preflight cubearch "$CFG" timeout 20 "$BIN" --interfaces-json; then
+    echo "FAILED: $BIN disagrees with the broker's interface golden or with the frame sizes" >&2
+    echo "  $CFG was generated for (above). Build the binary and generate the config from one" >&2
+    echo "  tree. (GNSS_SKIP_PREFLIGHT=1 overrides.)" >&2
     exit 1
 fi
 if [ "$CHECK" = 1 ]; then

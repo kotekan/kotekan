@@ -24,13 +24,15 @@
 #         GNSS_LOG  log file          (default /tmp/gnss_node.log)
 #         GNSS_ENV  extra environment for kotekan, "VAR=value [VAR=value ...]" (this start only)
 #         GNSS_EOP_MIN_H       hours of baked EOP table required ahead of now (default 12)
-#         GNSS_SKIP_PREFLIGHT  1 skips the EOP-table and F-engine controller checks
+#         GNSS_SKIP_PREFLIGHT  1 skips the EOP-table, F-engine controller and interface checks
 #
 # Needs an interactive sudo on the target, so it uses `ssh -t` and prompts per node (`status`
 # needs neither).
 set -u
 # shellcheck source=kotekan_src.sh
 . "$(dirname "${BASH_SOURCE[0]}")/kotekan_src.sh"
+# shellcheck source=iface_preflight.sh
+. "$(dirname "${BASH_SOURCE[0]}")/iface_preflight.sh"
 K=$GNSS_CHECKOUT
 KOTEKAN_SRC=$(gnss_kotekan_src "$K")   # the kotekan tree: build/ and lib/stages/gnss
 export KOTEKAN_SRC                      # for gen_fleet.py, which renders kotekan's templates
@@ -136,6 +138,16 @@ print("%s:%s%s" % (c["host"], c["port"], c.get("timing_endpoint", "/get-frame0-t
             echo "  (ConfigTracker) or latches the wrong epoch (CHORDTelescope). Wait until" >&2
             echo "    curl -s http://$_fc" >&2
             echo "  returns a start_ctime you believe, then retry. (GNSS_SKIP_PREFLIGHT=1 overrides.)" >&2
+            exit 1
+        fi
+        # The binary's own interface document against the broker's golden and the frame sizes
+        # this config was generated for (iface_preflight.sh). It runs on the node, where the
+        # binary's libraries are; only a disagreement refuses, anything unchecked warns.
+        if ! gnss_iface_preflight node "$CFG" ssh -o BatchMode=yes -o ConnectTimeout=10 "$N" \
+                "timeout 20 '$BIN' --interfaces-json"; then
+            echo "FAILED: $BIN on $N disagrees with the broker's interface golden or with the" >&2
+            echo "  frame sizes $CFG was generated for (above). Build the binary and generate" >&2
+            echo "  the config from one tree. (GNSS_SKIP_PREFLIGHT=1 overrides.)" >&2
             exit 1
         fi
     fi

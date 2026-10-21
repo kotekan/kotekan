@@ -7,6 +7,8 @@ Nothing here reaches a node, a unit or a process outside the test: ssh, sudo, sy
 scp and the like are stubs on PATH, and pgrep/pkill are wrapped to match only processes in the
 test's own session (pgrep -s 0), so a pattern can never touch the live stack on this host.
 """
+import copy
+import json
 import os
 import shutil
 import signal
@@ -17,6 +19,8 @@ import tempfile
 import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.join(HERE, "..", "..", "..", "python", "scripts", "gnss"))
+from gnss_broker import iface  # noqa: E402
 
 _fails = []
 
@@ -344,6 +348,179 @@ def test_node_up_systemd_run_failure_retries():
         shutil.rmtree(d, ignore_errors=True)
 
 
+def iface_binary(d, kind):
+    """A stand-in kotekan binary in d: `--interfaces-json` prints what a binary of `kind` prints
+    (legacy: kotekan's "Invalid option" and exit 255; silent: nothing and exit 1; match: the
+    golden; mismatch: a record slot moved; cube: the cube header grown); anything else prints
+    RUN and its argv, as the started program."""
+    doc = copy.deepcopy(iface.golden().doc)
+    if kind == "mismatch":
+        doc["sections"]["record.row"]["REC_CP"]["slot"] += 1
+    elif kind == "cube":
+        doc["sections"]["cube"]["CUBE_HEADER_BYTES"] += 8
+    entry = {
+        "schema": iface.SCHEMA,
+        "digest": iface.doc_digest(doc),
+        "sections": iface.section_digests(doc),
+        "doc": doc,
+    }
+    out = os.path.join(d, "ij_%s.json" % kind)
+    with open(out, "w") as fh:
+        json.dump({"gnss": entry}, fh)
+    ij = {
+        "legacy": 'printf "Invalid option, run with -h to see options"; exit 255',
+        "silent": "exit 1",
+    }.get(kind, "cat '%s'; exit 0" % out)
+    return stub(
+        os.path.join(d, "bin_" + kind),
+        "kotekan",
+        'if [ "$1" = --interfaces-json ]; then %s; fi\n' 'echo "RUN $*"\n' % ij,
+    )
+
+
+def iface_config(d, stamped, extra=""):
+    """A config whose baked EOP table ends two days ahead, with or without the stamp."""
+    path = os.path.join(d, "cfg_%s.yaml" % ("stamped" if stamped else "plain"))
+    end_ns = int((time.time() + 2 * 86400) * 1e9)
+    with open(path, "w") as fh:
+        fh.write("# GENERATED\n")
+        if stamped:
+            fh.write(iface.stamp_line(iface.golden()) + "\n")
+        fh.write("t_inst_ns: %d\nstage:\n    signal: GPS_L5_Q_NH\n%s" % (end_ns, extra))
+    return path
+
+
+def test_node_up_iface_preflight():
+    """The binary's interface document is read on the node before the start: a LEGACY binary,
+    an unstamped config or a binary that cannot say warn and start; a disagreement with the
+    golden or with the config's stamp refuses; GNSS_SKIP_PREFLIGHT=1 skips it."""
+    d = tempfile.mkdtemp(prefix="site_node_iface_")
+    try:
+        path = node_up_stubs(d)
+        # The F-engine controller answers; the node's REST port never does.
+        stub(
+            os.path.join(d, "bin"),
+            "curl",
+            'case "$*" in *frame0*) echo \'{"frame0_nano": 1}\' ;; *) exit 7 ;; esac\n',
+        )
+        sudo_log = os.path.join(d, "sudo.log")
+        plain, stamped = iface_config(d, False), iface_config(d, True)
+
+        def node_up(kind, cfg, **env):
+            open(sudo_log, "w").close()
+            e = {
+                "PATH": path,
+                "GNSS_CFG": cfg,
+                "GNSS_BIN": iface_binary(d, kind),
+                "GNSS_LOG": os.path.join(d, "node.log"),
+                "SUDO_LOG": sudo_log,
+            }
+            e.update(env)
+            rc, out = run(["bash", os.path.join(HERE, "node_up.sh"), "cxtest", "up"], e)
+            return rc, out, "systemd-run" in open(sudo_log).read()
+
+        for kind, cfg, want in (
+            ("legacy", stamped, "WARN LEGACY binary"),
+            ("silent", stamped, "the binary's interface is not checked"),
+            ("match", plain, "carries no gnss_iface stamp"),
+            ("match", stamped, "config stamp agrees"),
+        ):
+            rc, out, started = node_up(kind, cfg)
+            check(
+                started and want in out and "REFUSED" not in out,
+                "a %s binary, %s config: '%s', and it starts (rc %d%s)"
+                % (
+                    kind,
+                    os.path.basename(cfg),
+                    want,
+                    rc,
+                    "" if started else ": " + out[-400:],
+                ),
+            )
+        for kind, cfg, want in (
+            ("mismatch", plain, "ERROR record.row/REC_CP/slot"),
+            ("cube", stamped, "ERROR section cube"),
+        ):
+            rc, out, started = node_up(kind, cfg)
+            check(
+                rc == 1 and not started and want in out and "REFUSED" in out,
+                "a %s binary, %s config: refused before any start (rc %d)"
+                % (kind, os.path.basename(cfg), rc),
+            )
+            rc, out, started = node_up(kind, cfg, GNSS_SKIP_PREFLIGHT="1")
+            check(
+                started and "iface preflight" not in out,
+                "and GNSS_SKIP_PREFLIGHT=1 skips the check and starts it (rc %d)" % rc,
+            )
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def test_run_component_iface_preflight():
+    """The gather and the aggregator run the check before their exec; --print never does, and
+    a refusal stops the start."""
+    d = tempfile.mkdtemp(prefix="site_rc_iface_")
+    try:
+        cfg = iface_config(d, True)
+        rc_sh = os.path.join(HERE, "run_component.sh")
+        for name, cfg_var in (
+            ("gather", "GNSS_GATHER_CFG"),
+            ("aggregator", "GNSS_AGG_CFG"),
+        ):
+            for kind, ok in (("legacy", True), ("match", True), ("mismatch", False)):
+                env = {"GNSS_BIN": iface_binary(d, kind), cfg_var: cfg}
+                rc, out = run(["bash", rc_sh, name], env)
+                ran = "RUN --config %s" % cfg in out
+                check(
+                    (rc == 0 and ran)
+                    if ok
+                    else (rc == 1 and not ran and "refused" in out),
+                    "%s on a %s binary %s (rc %d)"
+                    % (name, kind, "starts" if ok else "is refused", rc),
+                )
+            rc, out = run(["bash", rc_sh, "--print", name], env)
+            check(
+                rc == 0 and "iface preflight" not in out,
+                "%s --print runs no check" % name,
+            )
+            env["GNSS_SKIP_PREFLIGHT"] = "1"
+            rc, out = run(["bash", rc_sh, name], env)
+            check(rc == 0 and "RUN --config" in out, "GNSS_SKIP_PREFLIGHT=1 skips it")
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def test_cubearch_up_iface_preflight():
+    """In a checkout of its own, so no node config there can disagree on frame_size."""
+    d = os.path.realpath(tempfile.mkdtemp(prefix="site_cube_iface_"))
+    try:
+        k, _ = site_tree(d, "cubearch_up.sh")
+        pkg = os.path.join(k, "python", "scripts", "gnss", "gnss_broker")
+        os.makedirs(pkg)
+        for name in ("__init__.py", "iface.py", "iface_golden.json", "iface_pin.json"):
+            shutil.copy(os.path.join(os.path.dirname(iface.__file__), name), pkg)
+        arch = os.path.join(d, "archive")
+        extra = (
+            "cube_recv: {listen_port: 11070}\ncube_write: {base_dir: %s}\n"
+            "cube_buf: {frame_size: 1024}\n" % arch
+        )
+        cfg = iface_config(d, True, extra)
+        sh = os.path.join(k, "scripts", "gnss", "site", "cubearch_up.sh")
+        for kind, ok in (("legacy", True), ("match", True), ("cube", False)):
+            rc, out = run(
+                ["bash", sh, "--check", cfg], {"GNSS_BIN": iface_binary(d, kind)}
+            )
+            check(
+                (rc == 0 and "pre-flight OK" in out)
+                if ok
+                else (rc == 1 and "ERROR cube/CUBE_HEADER_BYTES" in out),
+                "cubearch_up --check on a %s binary %s (rc %d)"
+                % (kind, "passes" if ok else "fails", rc),
+            )
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
 def test_stack_down_summary_is_one_count():
     d = tempfile.mkdtemp(prefix="site_stack_down_")
     try:
@@ -509,7 +686,7 @@ def site_tree(d, *scripts):
     k = os.path.join(d, "k")
     site = os.path.join(k, "scripts", "gnss", "site")
     os.makedirs(site)
-    for name in scripts + ("kotekan_src.sh",):
+    for name in scripts + ("kotekan_src.sh", "iface_preflight.sh"):
         shutil.copy(os.path.join(HERE, name), site)
     kt = os.path.join(d, "kotekan")
     os.makedirs(os.path.join(kt, "lib", "stages", "gnss"))

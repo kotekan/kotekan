@@ -230,6 +230,27 @@ symptom of each:
 published field (`fadr_g_hist`, #117) went unrecorded for 26 minutes because only the broker had
 been restarted. If a change spans the two, restart both.
 
+### The kotekan interface
+
+A kotekan built since the interface registry describes what its GNSS stages exchange with the
+broker (`kotekan --interfaces-json`, GET /version, GET /interfaces/gnss). The broker carries the
+document it speaks, pinned to a kotekan commit (`python/scripts/gnss/gnss_broker/iface.py`).
+
+- **Before a start.** `node_up.sh`, `cubearch_up.sh --check` and `run_component.sh` (gather,
+  aggregator) run the binary's `--interfaces-json` and refuse it when it disagrees with the golden,
+  or with the frame sizes the config was generated for (the config's `# gnss_iface:` header line).
+  A binary built before the registry, an unstamped config, or a check that cannot run only warns.
+  `GNSS_SKIP_PREFLIGHT=1` skips it.
+- **While running.** The broker re-reads every origin in the chains yaml (60 s, 10 s after a
+  failure) and serves the verdicts at `curl -s http://127.0.0.1:12060/get_iface`, with a summary per
+  chain in `/get_chains`. One read: `python3 -m gnss_broker.iface check-fleet` (from
+  `python/scripts/gnss`). MISMATCH logs an ERROR naming the paths and both values.
+- **Mode.** `warn` by default. `echo enforce > /var/tmp/gnss-logs/iface_mode` fences a MISMATCH
+  node like a node that is down; `echo off >` stops the reads; delete the file to go back to the
+  chains yaml's `iface:` (default warn). No restart. The gather and the aggregator are never fenced.
+- **Moving the pin** is a broker commit: `python3 -m gnss_broker.iface sync --from <kotekan tree>`.
+  `gen_fleet.py --check` ignores the stamp line, so a moved pin does not stop `eop_cron.sh`.
+
 ## 6. ⚠️ cf06: what is still there, and what will hurt you
 
 **Still on cf06, legitimately:** the cube archiver, the cube compactor, the static cube viewer

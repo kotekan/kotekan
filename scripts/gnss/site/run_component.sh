@@ -37,5 +37,14 @@ if [ "$PRINT" = 1 ]; then
     exit 0
 fi
 
+# The gather's and the aggregator's interface preflight (iface_preflight.sh): before the exec,
+# so the process systemd supervises keeps its argv and environment.
+if [ -n "$GNSS_IFACE_ROLE" ] && ! gnss_iface_preflight "$GNSS_IFACE_ROLE" "${GNSS_EXEC[2]}" \
+        timeout 20 "${GNSS_EXEC[0]}" --interfaces-json; then
+    echo "run_component: $name refused by the interface preflight (above;" \
+         "GNSS_SKIP_PREFLIGHT=1 overrides)" >&2
+    exit 1
+fi
+
 shift                       # anything after the component name is appended verbatim
 exec "${GNSS_EXEC[@]}" "$@"
