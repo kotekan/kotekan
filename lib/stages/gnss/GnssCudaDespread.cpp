@@ -2,6 +2,8 @@
 
 #include "cudaGnssChordDespread.hpp"
 #include "cudaGnssDespreadKernel.hpp"
+#include "cudaGnssPsiSynth.hpp"
+#include "kotekanLogging.hpp"
 #include "kotekanNvtx.hpp"
 
 #include <algorithm>
@@ -70,6 +72,27 @@ struct GnssCudaDespread::Impl {
                                                // the pointer)
     };
     std::vector<PhiCache> phi;
+
+    /// Per-PRN Doppler-bucketed Psi code-phase tables on the device (set_psi_synth): one
+    /// primary period plus the previous-period lookback and the period signs, the PsiJob
+    /// layout of cudaGnssPsiSynth.hpp, over all channels like Phi.
+    struct PsiCache {
+        bool valid = false;
+        double doppler = 0.0;
+        int P = 0; ///< primary period of the slot's code; 0 = not yet searched (set_prn resets)
+        int G = 1, Ns = 1, n_prev = 0, n_chips = 0;
+        void* d_psi = nullptr;   // [n_chan][G*P] float2, or __half2 under psi_half
+        void* d_prev = nullptr;  // [n_chan][n_prev]; nullptr for a plain code
+        int8_t* d_sec = nullptr; // [Ns]; nullptr for a plain code
+        size_t psi_bytes = 0, prev_bytes = 0, sec_bytes = 0; // allocated
+        int n_builds = 0;
+    };
+    std::vector<PsiCache> psi;
+    bool psi_on = false;
+    bool psi_half = false;
+    double psi_refresh_hz = 30.0;
+    std::vector<gnss_cuda::PsiJob> h_pjobs; ///< [n_prn] staging, pageable like h_jobs
+    std::vector<float> h_theta;             ///< [n_prn][n_chan] staging
 
     /// Pinned upload buffers for ensure_phi on a caller's stream, used in turn. A slot is
     /// rewritten only after the copy out of it has completed (`done`).
@@ -162,6 +185,9 @@ struct GnssCudaDespread::Impl {
         h_rot.assign(maxs * nc, 0.0f);
         ck(cudaStreamCreate(&stream), "stream");
         phi.resize(np);
+        psi.resize(np);
+        h_pjobs.resize(maxs);
+        h_theta.assign(maxs * nc, 0.0f);
         // NaN, not 0: "no job built for this PRN" must not read as ang0 == 0, a legal value of
         // 2*pi*frac(f*n0/fs).
         last_ang0.assign((size_t)np, std::numeric_limits<double>::quiet_NaN());
@@ -186,6 +212,11 @@ struct GnssCudaDespread::Impl {
         for (auto& pc : phi) {
             cudaFree(pc.d_A);
             cudaFree(pc.d_B);
+        }
+        for (auto& pc : psi) {
+            cudaFree(pc.d_psi);
+            cudaFree(pc.d_prev);
+            cudaFree(pc.d_sec);
         }
         for (auto& sg : staging) {
             if (sg.done)
@@ -346,16 +377,129 @@ struct GnssCudaDespread::Impl {
         return pc;
     }
 
+    // (Re)build PRN p's Psi tables at this Doppler if it moved more than psi_refresh_hz. The
+    // upload goes through a pinned staging slot, ordered on `st`, as ensure_phi's does. The
+    // tables are the bank's full PFB span: build_psi_split refuses a truncated bank, and the
+    // engine's max_chips is the Phi path's (set_psi_synth).
+    PsiCache& ensure_psi(int p, double doppler, cudaStream_t st) {
+        PsiCache& pc = psi[(size_t)p];
+        if (pc.valid && std::fabs(doppler - pc.doppler) <= psi_refresh_hz)
+            return pc;
+        KOTEKAN_NVTX_RANGE("psi build");
+        const double cps = bank.eff_chip_rate() / fs
+                           * (1.0 + bank.code_doppler_sign * doppler / bank.carrier_hz());
+        const int n_full = (int)std::ceil((double)(Lf - 1) * cps) + 2; // the bank's span
+        if (pc.P == 0) {
+            pc.P = gnss_cuda::psi_primary_period(bank.full_code(p).data(), code_len, n_full);
+            if (pc.P <= 0)
+                throw std::runtime_error("GnssCudaDespread: PRN slot " + std::to_string(p)
+                                         + ": no primary period for the Psi split (code length "
+                                         + std::to_string(code_len) + ", PFB span "
+                                         + std::to_string(n_full) + " chips)");
+        }
+        const int G = gnss_cuda::psi_grid_for(1.0 / cps);
+        const gnss_cuda::PsiSplit S =
+            gnss_cuda::build_psi_split(bank, p, all_chans, doppler, fs, G, pc.P);
+        // The table holds the near carrier image only. Refuse a channel whose far image is
+        // the nearer one (a carrier above fs/2) or is not far enough to be negligible.
+        for (int ci = 0; ci < n_chan; ++ci) {
+            double far = 0.0;
+            const double thB =
+                gnss_cuda::psi_theta(all_chans[(size_t)ci], bank.fft_len(), S.wc, &far);
+            if (far <= std::fabs(thB) || far * S.inv_cps < 50.0)
+                throw std::runtime_error("GnssCudaDespread: channel "
+                                         + std::to_string(all_chans[(size_t)ci])
+                                         + ": far carrier image at |theta| " + std::to_string(far)
+                                         + " rad/sample (" + std::to_string(far * S.inv_cps)
+                                         + " rad/chip, near image " + std::to_string(std::fabs(thB))
+                                         + ") -- the Psi table carries the near image only");
+        }
+        const size_t esz = psi_half ? sizeof(float2) / 2 : sizeof(float2);
+        const size_t n_psi = S.psi_plain.size();
+        const size_t n_prev = S.Ns > 1 ? S.psi_prev.size() : 0; // a plain code has no lookback
+        const size_t b_psi = n_psi * esz, b_prev = n_prev * esz;
+        const size_t b_sec = S.Ns > 1 ? S.sec.size() : 0;
+        // G and P are fixed by the code and the chip rate; n_prev moves by a grid cell or so
+        // with the Doppler, so the buffers grow at most once.
+        if (pc.psi_bytes < b_psi) {
+            ck(cudaFree(pc.d_psi), "free psi");
+            ck(cudaMalloc(&pc.d_psi, b_psi), "alloc psi");
+            pc.psi_bytes = b_psi;
+        }
+        if (pc.prev_bytes < b_prev) {
+            ck(cudaFree(pc.d_prev), "free psi_prev");
+            ck(cudaMalloc(&pc.d_prev, b_prev), "alloc psi_prev");
+            pc.prev_bytes = b_prev;
+        }
+        if (pc.sec_bytes < b_sec) {
+            ck(cudaFree(pc.d_sec), "free psi sec");
+            ck(cudaMalloc(&pc.d_sec, b_sec), "alloc psi sec");
+            pc.sec_bytes = b_sec;
+        }
+        Staging& sg = next_staging(b_psi + b_prev + b_sec);
+        if (psi_half) {
+            pairs_to_half(S.psi_plain.data(), sg.host, n_psi);
+            if (n_prev)
+                pairs_to_half(S.psi_prev.data(), sg.host + b_psi, n_prev);
+        } else {
+            std::memcpy(sg.host, S.psi_plain.data(), b_psi);
+            std::memcpy(sg.host + b_psi, S.psi_prev.data(), b_prev);
+        }
+        std::memcpy(sg.host + b_psi + b_prev, S.sec.data(), b_sec);
+        ck(cudaMemcpyAsync(pc.d_psi, sg.host, b_psi, cudaMemcpyHostToDevice, st), "psi up");
+        if (b_prev)
+            ck(cudaMemcpyAsync(pc.d_prev, sg.host + b_psi, b_prev, cudaMemcpyHostToDevice, st),
+               "psi_prev up");
+        if (b_sec)
+            ck(cudaMemcpyAsync(pc.d_sec, sg.host + b_psi + b_prev, b_sec, cudaMemcpyHostToDevice,
+                               st),
+               "psi sec up");
+        ck(cudaEventRecord(sg.done, st), "psi staging record");
+        pc.valid = true;
+        pc.doppler = doppler;
+        pc.G = G;
+        pc.Ns = S.Ns;
+        pc.n_prev = (int)n_prev;
+        pc.n_chips = S.n_chips;
+        if (pc.n_builds++ == 0)
+            INFO_NON_OO("GnssCudaDespread: Psi tables for slot {:d} (PRN {:d}): G {:d}, period "
+                        "{:d} x {:d}, span {:d} chips, {:.1f} KB/channel {:s}, built in {:.1f} "
+                        "ms at Doppler {:.1f} Hz",
+                        p, slot_prn[(size_t)p], G, pc.P, S.Ns, S.n_chips,
+                        (double)(b_psi + b_prev) / n_chan / 1e3, psi_half ? "fp16" : "fp32",
+                        S.build_seconds * 1e3, doppler);
+        else
+            DEBUG_NON_OO("GnssCudaDespread: Psi rebuild slot {:d} at Doppler {:.1f} Hz: {:.1f} ms",
+                         p, doppler, S.build_seconds * 1e3);
+        return pc;
+    }
+
     // Build the per-PRN jobs for `specs` against the window starting at window_start, building
     // any Phi bucket that needs it on `st` (`pinned` as for ensure_phi), and upload them to
     // d_jobs_slot on `st`. Every Spec-taking call builds its jobs here, so their replicas cannot
     // differ. h_jobs staging is pageable, so the async H2D below is host-synchronous on return
-    // and the buffer is safely reusable per call.
+    // and the buffer is safely reusable per call. `psi_path` builds the slot's Psi tables
+    // instead of Phi: the job's Phi fields are then null and its span the table's (the Psi
+    // kernels ignore both), and last_phi_ddop records the Psi table's staleness.
     void upload_jobs(const std::vector<Spec>& specs, void* d_jobs_slot, long long window_start,
-                     cudaStream_t st, bool pinned) {
+                     cudaStream_t st, bool pinned, bool psi_path = false) {
         for (size_t i = 0; i < specs.size(); ++i) {
             const Spec& sp = specs[i];
-            auto& pc = ensure_phi(sp.p, sp.doppler_hz, st, pinned);
+            const float2 *dA = nullptr, *dB = nullptr;
+            int n_chips = 0, d_first = 0;
+            double table_doppler = 0.0;
+            if (psi_path) {
+                const PsiCache& pc = ensure_psi(sp.p, sp.doppler_hz, st);
+                n_chips = pc.n_chips;
+                table_doppler = pc.doppler;
+            } else {
+                const PhiCache& pc = ensure_phi(sp.p, sp.doppler_hz, st, pinned);
+                dA = pc.d_A;
+                dB = pc.d_B;
+                n_chips = pc.n_chips;
+                d_first = pc.d_first;
+                table_doppler = pc.doppler;
+            }
             const double cps = bank.eff_chip_rate() / fs
                                * (1.0 + bank.code_doppler_sign * sp.doppler_hz / bank.carrier_hz());
             // The carrier trim enters wc and ang0 only (see wc_for).
@@ -379,14 +523,14 @@ struct GnssCudaDespread::Impl {
                 code_offset[(size_t)sp.p],
                 (int)code_len,
                 mask,
-                pc.d_A,
-                pc.d_B,
-                pc.n_chips,
+                dA,
+                dB,
+                n_chips,
                 m_head,
-                pc.d_first};
+                d_first};
             // Record what the kernel is given, read back from the job (see last_ang0).
             last_ang0[(size_t)sp.p] = h_jobs[i].ang0;
-            last_phi_ddop[(size_t)sp.p] = sp.doppler_hz - pc.doppler;
+            last_phi_ddop[(size_t)sp.p] = sp.doppler_hz - table_doppler;
             if (epl_rot) {
                 // Row 0 (the prompt - ds trial) is the prompt rotated by
                 // +2 pi (f_c - f_car) ds/cps/fs on the channel centred at f_c, with f_car the
@@ -451,6 +595,8 @@ bool GnssCudaDespread::set_prn(int p, int prn, void* stream) {
     // would still be valid, but it is dropped with the rest so that nothing keyed to the old
     // satellite survives; it is rebuilt on the slot's next job.
     im.phi[(size_t)p].valid = false;
+    im.psi[(size_t)p].valid = false;
+    im.psi[(size_t)p].P = 0; // the new code's primary period is searched afresh
     im.last_ang0[(size_t)p] = std::numeric_limits<double>::quiet_NaN();
     im.last_phi_ddop[(size_t)p] = std::numeric_limits<double>::quiet_NaN();
     im.slot_prn[(size_t)p] = prn;
@@ -509,10 +655,31 @@ void GnssCudaDespread::set_epl_from_prompt() {
     _impl->epl_rot = true;
 }
 
+void GnssCudaDespread::set_psi_synth(double refresh_hz) {
+    Impl& im = *_impl;
+    im.psi_on = true;
+    im.psi_refresh_hz = refresh_hz;
+    INFO_NON_OO("GnssCudaDespread: Psi synthesis ARMED (table refresh {:g} Hz, {:s} tables), "
+                "full PFB span{:s}",
+                refresh_hz, im.psi_half ? "fp16" : "fp32",
+                im.max_chips > 0 ? ": the chip cap is the Phi path's and does not apply" : "");
+}
+
+void GnssCudaDespread::set_psi_fp16() {
+    Impl& im = *_impl;
+    im.psi_half = true;
+    for (auto& pc : im.psi) // rebuild any float2 table as half before a kernel reads it
+        pc.valid = false;
+}
+
 void GnssCudaDespread::set_max_chips(int n) {
     _impl->max_chips = n;
     for (auto& pc : _impl->phi) // force a rebuild so the cap takes effect on cached buckets
         pc.valid = false;
+    if (_impl->psi_on)
+        INFO_NON_OO("GnssCudaDespread: max_chips {:d} applies to the Phi path only; the Psi "
+                    "tables keep the full PFB span",
+                    n);
 }
 
 int GnssCudaDespread::max_batch_specs() const {
@@ -639,5 +806,65 @@ int GnssCudaDespread::enqueue_waveform(long long window_start_sample,
                                   im.n_chan, par, im.epl_rot ? im.d_rot : nullptr, (float2*)d_wave,
                                   (double*)d_energy_out, st),
        "launch waveform (inject)");
+    return n_spec;
+}
+
+int GnssCudaDespread::enqueue_psi_pack(long long window_start_sample,
+                                       const std::vector<Spec>& specs, void* d_jobs_slot,
+                                       void* d_pjobs_slot, void* d_theta_slot,
+                                       const int* slot2spec_dev, int n_slot, int lanes_per_slot,
+                                       const int* chan_map_dev, int frame_chan_stride, int n_lanes,
+                                       int lane_base, int lane_pitch, const double* energy_scale,
+                                       void* d_energy_out, unsigned char* d_synth_rec,
+                                       void* stream) {
+    Impl& im = *_impl;
+    if (!im.psi_on)
+        throw std::runtime_error("GnssCudaDespread: enqueue_psi_pack without set_psi_synth");
+    const int n_spec = (int)specs.size();
+    const cudaStream_t st = (cudaStream_t)stream;
+    if (n_spec > 0) {
+        im.upload_jobs(specs, d_jobs_slot, window_start_sample, st, true, true);
+        for (int i = 0; i < n_spec; ++i) {
+            const Impl::PsiCache& pc = im.psi[(size_t)specs[(size_t)i].p];
+            const gnss_cuda::DespreadJob& j = im.h_jobs[(size_t)i];
+            gnss_cuda::PsiJob& pj = im.h_pjobs[(size_t)i];
+            pj = gnss_cuda::PsiJob{};
+            pj.psi = pc.d_psi;
+            pj.psi_prev = pc.d_prev;
+            pj.sec = pc.d_sec;
+            pj.P = pc.P;
+            pj.Ns = pc.Ns;
+            pj.G = pc.G;
+            pj.n_prev = pc.n_prev;
+            gnss_cuda::psi_fixed_setup(j, pj, im.bank.fft_len(), im.n_hops);
+            // The interpolation ramp per channel at this job's carrier (trim included), in
+            // the kernel's grid units: theta_B * inv_cps / G.
+            for (int ci = 0; ci < im.n_chan; ++ci)
+                im.h_theta[(size_t)i * im.n_chan + ci] =
+                    (float)(gnss_cuda::psi_theta(im.all_chans[(size_t)ci], im.bank.fft_len(), j.wc)
+                            * j.inv_cps / pc.G);
+        }
+        ck(cudaMemcpyAsync(d_pjobs_slot, im.h_pjobs.data(),
+                           (size_t)n_spec * sizeof(gnss_cuda::PsiJob), cudaMemcpyHostToDevice, st),
+           "psi jobs upload");
+        ck(cudaMemcpyAsync(d_theta_slot, im.h_theta.data(),
+                           (size_t)n_spec * im.n_chan * sizeof(float), cudaMemcpyHostToDevice, st),
+           "psi theta upload");
+    }
+
+    gnss_cuda::DespreadParams par;
+    par.phi_half = im.psi_half ? 1 : 0; // selects the __half2 TABLE kernel; Phi is not read
+    par.n0 = window_start_sample + im.bank.fft_len() - 1;
+    par.fft_len = im.bank.fft_len();
+    par.n_hops = im.n_hops;
+    par.Lf = im.Lf;
+    par.data_stride = im.n_hops;
+    // Unconditional, as launch_pack44's is: with no spec the record's lanes still go 0x88.
+    ck(gnss_cuda::launch_psi_pack(
+           (const gnss_cuda::DespreadJob*)d_jobs_slot, (const gnss_cuda::PsiJob*)d_pjobs_slot,
+           (const float*)d_theta_slot, im.epl_rot ? im.d_rot : nullptr, /*fixed=*/1, slot2spec_dev,
+           n_slot, lanes_per_slot, im.n_chan, par, chan_map_dev, frame_chan_stride, n_lanes,
+           lane_base, lane_pitch, energy_scale, (double*)d_energy_out, d_synth_rec, st),
+       "launch psi pack (inject)");
     return n_spec;
 }

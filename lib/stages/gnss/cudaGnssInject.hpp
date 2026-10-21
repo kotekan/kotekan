@@ -34,7 +34,9 @@
  * Replicas are synthesized per record (hops_per_record; 4 records per 8192-hop frame at CHORD),
  * from gnss::propagate_seed at each record's window start with the fleet code trim from
  * cudaGnssChordTrackState::snapshot_trims, through GnssCudaDespread::build_jobs like every
- * other Spec-taking despread.
+ * other Spec-taking despread. Under the state's psi_synth the synthesis and the pack are one
+ * launch (GnssCudaDespread::enqueue_psi_pack); the control block, energies and lanes are the
+ * same.
  *
  * Lanes: lane = synth_lane_base + lanes_per_slot*prn_slot + k, k the lane's trial in slot
  * order (E/P/L/P_HEAD with four lanes per slot, P/P_HEAD with two), fixed per slot as

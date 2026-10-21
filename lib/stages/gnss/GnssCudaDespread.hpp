@@ -17,7 +17,9 @@
  * per-PRN jobs. Replicas follow ChannelizedReplicaBank::hoprate_stream. Phi tables cover every
  * local channel (a job selects its covering subset with a 64-bit mask) and are rebuilt on the CPU
  * only when a PRN's Doppler moves more than refresh_hz. @ref despread_batch synchronizes; the
- * enqueue_* calls are ordered on the caller's stream and do not.
+ * enqueue_* calls are ordered on the caller's stream and do not. Under @ref set_psi_synth the
+ * per-PRN tables are Psi code-phase tables instead (lib/cuda/cudaGnssPsiSynth.hpp) and
+ * @ref enqueue_psi_pack fuses the synthesis with the N^2 pack.
  *
  * Built only when USE_CUDA=ON.
  */
@@ -99,9 +101,22 @@ public:
 
     /// Synthesise the prompt alone and take E and L as its per-channel rotations (the @c rot
     /// argument of gnss_cuda::launch_waveform), one chip walk per hop instead of three. Only
-    /// @ref enqueue_waveform honours it; @ref despread_batch and @ref enqueue_batch_nm keep
-    /// their three trials.
+    /// @ref enqueue_waveform and @ref enqueue_psi_pack honour it; @ref despread_batch and
+    /// @ref enqueue_batch_nm keep their three trials.
     void set_epl_from_prompt();
+
+    /// Arm the code-phase-table ("Psi") synthesis for @ref enqueue_psi_pack
+    /// (lib/cuda/cudaGnssPsiSynth.hpp): per PRN slot a Doppler-bucketed table of the replica
+    /// on a chip grid, rebuilt on the CPU when the slot's Doppler moves more than
+    /// @c refresh_hz and invalidated by @ref set_prn like the Phi cache. The tables are the
+    /// full PFB span (the bank must not truncate it; build_psi_split refuses), so the cap set by
+    /// @ref set_max_chips does not apply on this path. Does not touch the Phi path.
+    void set_psi_synth(double refresh_hz = 30.0);
+
+    /// Store the Psi tables as __half2 from now on (storage error ~1.8e-4 relative per sample,
+    /// cudaGnssPsiBench) and take the __half2 table kernel. Off until called; no way back.
+    /// Independent of @ref set_phi_fp16: the Psi path never reads Phi.
+    void set_psi_fp16();
 
     /// Largest @c specs.size() for @ref despread_batch, @ref build_jobs and the Spec-taking
     /// enqueue_* calls: the host job staging, and despread_batch's device job arena, hold n_prn
@@ -118,7 +133,8 @@ public:
 
     /// Doppler of slot @p p's last job minus the Doppler its Phi table was built at, Hz; NaN as
     /// for @ref last_ang0. Phi is rebuilt only past refresh_hz, so this is per-instance state
-    /// (gnss::REC_PHI_DDOP).
+    /// (gnss::REC_PHI_DDOP). Under @ref set_psi_synth it is the Psi table's staleness, the
+    /// same quantity for the table that path reads.
     double last_phi_ddop(int p) const;
 
     /// The per-channel rotation the last @ref enqueue_waveform handed the kernel for PRN slot
@@ -165,6 +181,28 @@ public:
     int enqueue_waveform(long long window_start_sample, const std::vector<Spec>& specs,
                          void* d_jobs_slot, void* d_wave,
                          void* d_energy_out /*double [4*specs][n_chan]*/, void* stream);
+
+    /// Psi path of cudaGnssInject: @ref enqueue_waveform's replicas written straight into the
+    /// N^2 synthetic lanes by gnss_cuda::launch_psi_pack, which replaces launch_waveform +
+    /// launch_pack44 and needs no wave buffer. Requires @ref set_psi_synth. The jobs are built
+    /// by @ref build_jobs (same DespreadJob, same last_ang0 / last_rot records), with the
+    /// slot's Psi tables in place of Phi; a slot whose table is stale is rebuilt here, on
+    /// @c stream. @c d_pjobs_slot ([specs] gnss_cuda::PsiJob) and @c d_theta_slot
+    /// ([specs][n_chan] float) are this record's device slices, allocated by the caller like
+    /// @c d_jobs_slot. @c slot2spec_dev, @c n_slot, @c lanes_per_slot, @c chan_map_dev,
+    /// @c frame_chan_stride, @c n_lanes, @c lane_base, @c lane_pitch and @c d_synth_rec are
+    /// launch_pack44's; @c energy_scale is nullptr for a frame's record 0 (the pack scales from
+    /// its own energy reduction) and the record-0 energy rows for the others. The E and L
+    /// lanes are the rotated prompt under @ref set_epl_from_prompt (the ROT contract of
+    /// launch_waveform). The launch is unconditional, as launch_pack44's is: with no spec the
+    /// record's lanes are still refreshed (0x88). Returns specs.size().
+    int enqueue_psi_pack(long long window_start_sample, const std::vector<Spec>& specs,
+                         void* d_jobs_slot, void* d_pjobs_slot, void* d_theta_slot,
+                         const int* slot2spec_dev, int n_slot, int lanes_per_slot,
+                         const int* chan_map_dev, int frame_chan_stride, int n_lanes, int lane_base,
+                         int lane_pitch, const double* energy_scale,
+                         void* d_energy_out /*double [4*specs][n_chan]*/,
+                         unsigned char* d_synth_rec, void* stream);
 
 private:
     struct Impl;
