@@ -315,7 +315,8 @@ exits non-zero on the first mismatch. The environment half is the point: #134 wa
 reproduced command line with a dropped `export`, which an argv-only comparison would pass.
 
 **Run it after any change to a unit, a launcher, or the definition.** Expect
-`checked 12 component(s), 0 mismatch(es)`.
+`checked 12 component(s), 0 mismatch(es)`. Run with no component named on a host where none is
+running, it checked nothing and exits non-zero.
 
 ### Editing
 

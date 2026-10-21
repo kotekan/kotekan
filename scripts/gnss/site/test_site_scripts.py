@@ -110,6 +110,30 @@ def test_contract_gate_env_is_whole_record():
         shutil.rmtree(d, ignore_errors=True)
 
 
+def test_contract_gate_fails_when_nothing_checked():
+    """With no component named and none running the gate has checked nothing, which is not a
+    pass. A named component that is not running is still skipped."""
+    d = tempfile.mkdtemp(prefix="site_gate_")
+    try:
+        k, _ = site_tree(d, "stack_contract_gate.sh", "stack_components.sh")
+        gate = os.path.join(k, "scripts", "gnss", "site", "stack_contract_gate.sh")
+        bindir = os.path.join(d, "bin")
+        stub(bindir, "systemctl", "echo 0\n")
+        env = {"PATH": bindir + ":" + os.environ["PATH"]}
+        rc, out = run(["bash", gate], env)
+        check(
+            rc != 0 and "checked 0 component(s)" in out,
+            "nothing running and nothing named fails (rc %d)" % rc,
+        )
+        rc, out = run(["bash", gate, "broker"], env)
+        check(
+            rc == 0 and "not running -- skipped" in out,
+            "a named component that is not running is skipped (rc %d)" % rc,
+        )
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
 SSH_STUB = r"""# ssh [opts] host 'remote command' -> the remote command, run here
 while [ $# -gt 1 ]; do case "$1" in -o) shift 2 ;; -*) shift ;; *) break ;; esac; done
 shift

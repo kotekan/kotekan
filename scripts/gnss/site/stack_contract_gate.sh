@@ -8,7 +8,8 @@
 #     stack_contract_gate.sh            # every component that is running
 #     stack_contract_gate.sh broker     # just one
 # A component that is not running is skipped. Exits non-zero if any checked component
-# mismatches, so it is usable as a gate.
+# mismatches, or if none was named and none is running: a gate that checked nothing has not
+# passed.
 set -u
 here=$(cd "$(dirname "$0")" && pwd)
 bad=0 checked=0
@@ -58,4 +59,8 @@ else
     for c in $(gnss_chains); do check obs "gnss-obs@$c.service" "$c"; done
 fi
 echo "  checked $checked component(s), $bad mismatch(es)"
+if [ $# -eq 0 ] && [ "$checked" -eq 0 ]; then
+    echo "  nothing checked: no component of the stack is running here"
+    exit 1
+fi
 [ "$bad" -eq 0 ]

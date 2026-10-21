@@ -189,8 +189,8 @@ def test_boresight_separation_is_the_documented_pointing():
 
 
 if __name__ == "__main__":
-    # Standalone driver: same assertions, no pytest. Exits nonzero on the first failure so it
-    # is usable as a gate, not just as a report.
+    # Standalone driver: same assertions, no pytest. Exits nonzero when any case fails or none
+    # ran, so it is usable as a gate, not just as a report.
     import traceback
 
     fns = [
@@ -212,4 +212,4 @@ if __name__ == "__main__":
                 print("  FAIL %s" % label)
                 traceback.print_exc()
     print("%d case(s), %d failure(s)" % (n_run, n_fail))
-    sys.exit(1 if n_fail else 0)
+    sys.exit(1 if n_fail or not n_run else 0)

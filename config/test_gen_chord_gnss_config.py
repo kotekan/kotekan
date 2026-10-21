@@ -502,6 +502,9 @@ def test_core_pools_clear_production():
 
 
 def main():
+    # The generator reads relative paths from the cwd and _rel() resolves every argv token
+    # against it, so the in-process calls run from the repo root, as gen_fleet and run_gen do.
+    os.chdir(ROOT)
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:
         print(t.__name__)

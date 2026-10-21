@@ -113,6 +113,13 @@ def test_crash_exits_2():
         rc, err = run_check(base)
     check(rc == 2, "--check whose stock render raises exits 2 (got %d)" % rc)
     check("Traceback" in err, "and prints the traceback")
+    # Any crash passes the two checks above, a missing jinja2 among them: the render must
+    # have reached the template.
+    check(
+        "TemplateSyntaxError" in err,
+        "and the traceback is the template's error (%s)"
+        % (err.strip().splitlines() or ["no stderr"])[-1],
+    )
 
 
 def main():
