@@ -6,7 +6,9 @@
 #     KOTEKAN_SRC=$(gnss_kotekan_src "$K")
 #
 # GNSS_CHECKOUT is the checkout this file is in, found from its own path, so that cron, systemd
-# and ssh, which start a script by its path in a bare environment, need nothing set.
+# and ssh, which start a script by its path in a bare environment, need nothing set. It is the
+# physical path, as kotekan_src.py's must be: through a symlink, a logical and a physical path
+# look for ../kotekan beside different directories.
 #
 # gnss_kotekan_src <checkout> prints the kotekan tree for that checkout, by the rule
 # python/scripts/gnss/kotekan_src.py writes down: the first of these that applies,
@@ -22,7 +24,7 @@
 #
 # Nothing here is exported: a script exports KOTEKAN_SRC to the programs that read kotekan.
 
-GNSS_CHECKOUT=$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../../.." && pwd)
+GNSS_CHECKOUT=$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../../.." && pwd -P)
 
 gnss_kotekan_src() {
     local c=${1:?usage: gnss_kotekan_src <checkout>} p
@@ -30,6 +32,7 @@ gnss_kotekan_src() {
         realpath -ms -- "$KOTEKAN_SRC"
         return
     fi
+    c=$(realpath -m -- "$c")    # absolute and physical: the dirname of a relative . is .
     for p in "$c" "$c/kotekan" "$(dirname -- "$c")/kotekan"; do
         if [ -d "$p/lib/stages/gnss" ]; then
             printf '%s\n' "$p"

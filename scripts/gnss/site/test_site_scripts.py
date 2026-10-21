@@ -535,7 +535,7 @@ def test_kotekan_src_helper_follows_the_python_rule():
         ("an empty KOTEKAN_SRC is unset", ("kotekan",), "", "kotekan"),
     )
     for what, trees, env_src, want in layouts:
-        d = tempfile.mkdtemp(prefix="site_ksrc_")
+        d = os.path.realpath(tempfile.mkdtemp(prefix="site_ksrc_"))
         try:
             c = os.path.join(d, "c")
             site = os.path.join(c, "scripts", "gnss", "site")
@@ -598,8 +598,151 @@ def test_kotekan_src_helper_follows_the_python_rule():
             shutil.rmtree(d, ignore_errors=True)
 
 
+def test_kotekan_src_helper_is_physical_and_takes_a_relative_checkout():
+    """Through a symlinked checkout, with a kotekan tree beside the link and another beside the
+    real directory, the helper takes the one beside the real directory, as kotekan_src.py does;
+    and a relative checkout argument still reaches the tree beside it."""
+    py = os.path.join(
+        HERE, "..", "..", "..", "python", "scripts", "gnss", "kotekan_src.py"
+    )
+    d = os.path.realpath(tempfile.mkdtemp(prefix="site_ksrc_"))
+    try:
+        real = os.path.join(d, "P", "c")
+        os.makedirs(os.path.join(real, "scripts", "gnss", "site"))
+        os.makedirs(os.path.join(real, "python", "scripts", "gnss"))
+        shutil.copy(
+            os.path.join(HERE, "kotekan_src.sh"),
+            os.path.join(real, "scripts", "gnss", "site"),
+        )
+        shutil.copy(py, os.path.join(real, "python", "scripts", "gnss"))
+        for t in ("P", "L"):
+            os.makedirs(os.path.join(d, t, "kotekan", "lib", "stages", "gnss"))
+        link = os.path.join(d, "L", "c")
+        os.symlink(real, link)
+        want = os.path.join(d, "P", "kotekan")
+        # kotekan_src.py imported from the real checkout's directory.
+        _, py_out = run(
+            [
+                sys.executable,
+                "-c",
+                "import sys; sys.path.insert(0, sys.argv[1]); import kotekan_src; "
+                "print(kotekan_src.SRC)",
+                os.path.join(real, "python", "scripts", "gnss"),
+            ],
+            {},
+            bare=True,
+        )
+        check(
+            py_out.strip() == want,
+            "kotekan_src.py finds the tree beside the real checkout (%r)"
+            % py_out.strip(),
+        )
+        helper = os.path.join("scripts", "gnss", "site", "kotekan_src.sh")
+        # Sourced through the link by its absolute path; then asked for the link by name.
+        rc, out = run(
+            [
+                "bash",
+                "-c",
+                'set -u; . "$1"; echo "$GNSS_CHECKOUT"; gnss_kotekan_src "$GNSS_CHECKOUT"; '
+                'gnss_kotekan_src "$2"',
+                "sh",
+                os.path.join(link, helper),
+                link,
+            ],
+            {},
+            bare=True,
+        )
+        check(
+            rc == 0 and out.splitlines() == [real, want, want],
+            "through the link the checkout is the real directory, and both calls find %s "
+            "(rc %d, %r)" % (want, rc, out.splitlines()),
+        )
+        # A relative checkout, as GNSS_K=. passes it: its ../kotekan is the tree beside it.
+        for cwd, arg in ((real, "."), (os.path.join(d, "P"), "c")):
+            rc, out = run(
+                [
+                    "bash",
+                    "-c",
+                    'set -u; . "$1"; gnss_kotekan_src "$2"',
+                    "sh",
+                    os.path.join(real, helper),
+                    arg,
+                ],
+                {},
+                cwd=cwd,
+                bare=True,
+            )
+            check(
+                rc == 0 and out.splitlines() == [want],
+                "gnss_kotekan_src %s from %s finds %s (rc %d, %r)"
+                % (arg, os.path.relpath(cwd, d), want, rc, out.splitlines()),
+            )
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def test_install_user_units_names_its_own_checkout():
+    """install_user_units.sh <dir> writes every unit with its own checkout, as a physical path,
+    in place of /home/kvand/gnss/kotekan, and changes nothing else: from the main checkout the
+    units are installed byte for byte. It reloads nothing."""
+    d = os.path.realpath(tempfile.mkdtemp(prefix="site_units_"))
+    try:
+        # A checkout path holding the characters a sed replacement treats specially.
+        k = os.path.join(d, "a&b|c", "k")
+        units = os.path.join(k, "scripts", "gnss", "site", "systemd")
+        shutil.copytree(os.path.join(HERE, "systemd"), units)
+        link = os.path.join(d, "link")
+        os.symlink(k, link)
+        bindir = os.path.join(d, "bin")
+        log = os.path.join(d, "calls.log")
+        for tool in ("systemctl", "loginctl"):
+            stub(bindir, tool, 'echo "$0 $*" >> "$UNITS_TEST_LOG"\n')
+        out_dir = os.path.join(d, "out")
+        rc, out = run(
+            [
+                "sh",
+                os.path.join(
+                    link, "scripts", "gnss", "site", "systemd", "install_user_units.sh"
+                ),
+                out_dir,
+            ],
+            {"PATH": bindir + ":/usr/bin:/bin", "UNITS_TEST_LOG": log},
+            bare=True,
+        )
+        names = sorted(
+            f
+            for f in os.listdir(units)
+            if f.startswith("gnss-") and f.endswith((".service", ".target"))
+        )
+        check(
+            rc == 0 and os.path.isdir(out_dir) and sorted(os.listdir(out_dir)) == names,
+            "it writes the %d units and nothing else (rc %d: %s)"
+            % (len(names), rc, out.strip()[-200:]),
+        )
+        main = "/home/kvand/gnss/kotekan/"
+        texts = {f: open(os.path.join(units, f)).read() for f in names}
+        check(
+            any(main in t for t in texts.values()),
+            "the units name the main checkout, so there is something to replace",
+        )
+        wrong = [
+            f
+            for f in names
+            if not os.path.exists(os.path.join(out_dir, f))
+            or open(os.path.join(out_dir, f)).read() != texts[f].replace(main, k + "/")
+        ]
+        check(
+            not wrong,
+            "each unit names the installer's checkout by its real path, and is otherwise "
+            "the file as it is (differ: %s)" % wrong,
+        )
+        check(not os.path.exists(log), "and nothing is reloaded")
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
 def test_run_component_exports_kotekan_src_to_the_broker_alone():
-    d = tempfile.mkdtemp(prefix="site_print_")
+    d = os.path.realpath(tempfile.mkdtemp(prefix="site_print_"))
     try:
         k, kt = site_tree(d, "run_component.sh", "stack_components.sh")
         # The viewer's cwd: --print changes into it.
@@ -641,7 +784,7 @@ def test_run_component_exports_kotekan_src_to_the_broker_alone():
 
 
 def test_node_up_exports_kotekan_src_to_gen_fleet():
-    d = tempfile.mkdtemp(prefix="site_node_up_src_")
+    d = os.path.realpath(tempfile.mkdtemp(prefix="site_node_up_src_"))
     try:
         path = node_up_stubs(d)
         k, kt = site_tree(d, "node_up.sh")
@@ -671,7 +814,7 @@ def test_node_up_exports_kotekan_src_to_gen_fleet():
 
 
 def test_eop_cron_reads_the_configs_the_manifest_owns():
-    d = tempfile.mkdtemp(prefix="site_eop_")
+    d = os.path.realpath(tempfile.mkdtemp(prefix="site_eop_"))
     try:
         k, kt = site_tree(d, "eop_cron.sh")
         os.makedirs(os.path.join(k, "config", "generated"))
