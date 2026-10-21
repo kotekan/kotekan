@@ -17,9 +17,13 @@
 // against each set: the lobe-coherent E-L discriminator and the prompt SNR, normalised as
 // gnssFleetDll does.
 //
-//   ./cuda_gnss_psi_bench [all|bench|tiled] [n_prn]
+//   ./cuda_gnss_psi_bench [all|bench|tiled|fused|fusedprof] [n_prn]
 //
 // "bench" skips the CPU references (for ncu); "tiled" checks the tiled-code split on GPS_L5_Q_NH.
+// "fused" validates launch_psi_pack (synthesis + 4+4b pack in one kernel) byte for byte against
+// launch_psi_waveform + launch_pack44 on the stage's synth-array geometry, runs the sky test on
+// the dequantised lanes, and times it against the production pair; "fusedprof" launches each
+// fused configuration once, in a fixed order, for ncu.
 // Never run beside a live node: the bench saturates the GPU.
 
 #include "cudaGnssChordDespread.hpp"
@@ -340,6 +344,7 @@ int run_tiled(int n_job) {
 int main(int argc, char** argv) {
     const std::string mode = argc > 1 ? argv[1] : "all";
     const bool bench_only = (mode == "bench");
+    const bool fused_mode = (mode == "fused" || mode == "fusedprof");
     const int n_prn = argc > 2 ? atoi(argv[2]) : 12;
     if (mode == "tiled")
         return run_tiled(n_prn);
@@ -626,8 +631,61 @@ int main(int argc, char** argv) {
     gnss_cuda::DespreadParams p16 = p32;
     p16.phi_half = 1;
 
+    // ---- the synthetic sky (bank.channels_hoprate: full span, rect model, both images; x3 +
+    // noise) for PRN slot b, and the correlation-level observables of a replica set against
+    // it: e = |sum_c G_E|^2 / (sum_c E_E)^2 (l likewise), disc = (e-l)/(e+l), prompt =
+    // |sum_c G_P|^2 / sum_c E_P, as gnssFleetDll normalises ----
+    auto make_data = [&](int b) {
+        const auto sky = bank.channels_hoprate(b, window_start, cp_true[(size_t)b], dop[(size_t)b],
+                                               n_hops, chans);
+        std::vector<std::vector<cf>> data((size_t)n_chan, std::vector<cf>((size_t)n_hops));
+        unsigned s2 = 777u + (unsigned)b;
+        auto nz = [&s2]() {
+            s2 = s2 * 1664525u + 1013904223u;
+            return ((double)(s2 >> 8) / (double)(1 << 24)) - 0.5;
+        };
+        for (int c = 0; c < n_chan; ++c)
+            for (int m = 0; m < n_hops; ++m)
+                data[(size_t)c][(size_t)m] =
+                    sky[(size_t)c][(size_t)m] * 3.0f + cf((float)nz(), (float)nz());
+        return data;
+    };
+    struct Obs {
+        double disc, prompt;
+    };
+    // From per-channel correlations g[t][c] and energy rows.
+    auto obs_of = [&](const std::vector<cd>& g, const std::vector<double>& energy, int j) {
+        cd gs[3] = {0.0, 0.0, 0.0};
+        double e[3] = {0.0, 0.0, 0.0};
+        for (int t = 0; t < 3; ++t)
+            for (int c = 0; c < n_chan; ++c) {
+                gs[t] += g[(size_t)t * n_chan + c];
+                e[t] += energy[(size_t)(4 * j + t) * n_chan + c];
+            }
+        const double ee = std::norm(gs[0]) / (e[0] * e[0]);
+        const double ll = std::norm(gs[2]) / (e[2] * e[2]);
+        Obs o;
+        o.disc = (ee - ll) / (ee + ll);
+        o.prompt = std::norm(gs[1]) / e[1];
+        return o;
+    };
+    auto observe_wave = [&](const std::vector<float2>& wave, const std::vector<double>& energy,
+                            int j, const std::vector<std::vector<cf>>& data) {
+        std::vector<cd> g((size_t)3 * n_chan, cd(0.0, 0.0));
+        for (int t = 0; t < 3; ++t)
+            for (int c = 0; c < n_chan; ++c) {
+                const size_t o = ((size_t)(3 * j + t) * n_chan + c) * n_hops;
+                cd gc(0.0, 0.0);
+                for (int m = 0; m < n_hops; ++m)
+                    gc += cd(data[(size_t)c][(size_t)m])
+                          * std::conj(cd(wave[o + m].x, wave[o + m].y));
+                g[(size_t)t * n_chan + c] = gc;
+            }
+        return obs_of(g, energy, j);
+    };
+
     // =========================== validation ===========================
-    if (!bench_only) {
+    if (!bench_only && !fused_mode) {
         const int n_job = 2 * n_prn; // true phase, then +0.1 chip
         const DevJobs dj = upload_jobs(n_job, 0.1);
         const size_t wn = (size_t)3 * n_job * n_chan * n_hops, en = (size_t)4 * n_job * n_chan;
@@ -805,28 +863,8 @@ int main(int argc, char** argv) {
                "x3 + noise) correlated against each replica set ===\n");
         printf("   e = |sum_c G_E|^2 / (sum_c E_E)^2 (l likewise), disc = (e-l)/(e+l); "
                "prompt = |sum_c G_P|^2 / sum_c E_P\n");
-        struct Obs {
-            double disc, prompt;
-        };
         auto observe = [&](const Set& S, int j, const std::vector<std::vector<cf>>& data) {
-            cd g[3] = {0.0, 0.0, 0.0};
-            double e[3] = {0.0, 0.0, 0.0};
-            for (int t = 0; t < 3; ++t)
-                for (int c = 0; c < n_chan; ++c) {
-                    cd gc(0.0, 0.0);
-                    const size_t o = ((size_t)(3 * j + t) * n_chan + c) * n_hops;
-                    for (int m = 0; m < n_hops; ++m)
-                        gc += cd(data[(size_t)c][(size_t)m])
-                              * std::conj(cd(S.wave[o + m].x, S.wave[o + m].y));
-                    g[t] += gc;
-                    e[t] += S.energy[(size_t)(4 * j + t) * n_chan + c];
-                }
-            const double ee = std::norm(g[0]) / (e[0] * e[0]);
-            const double ll = std::norm(g[2]) / (e[2] * e[2]);
-            Obs o;
-            o.disc = (ee - ll) / (ee + ll);
-            o.prompt = std::norm(g[1]) / e[1];
-            return o;
+            return observe_wave(S.wave, S.energy, j, data);
         };
         const Set* sets[] = {&FULL, &NOA, &PROD, &PSI, &PSI_ROT, &PSI_FIX, &PSI_H16};
         const int n_sets = 7;
@@ -840,18 +878,7 @@ int main(int argc, char** argv) {
                worst_prompt_noff = 0.0;
         for (int j = 0; j < n_job; ++j) {
             const int b = j % n_prn;
-            const auto sky = bank.channels_hoprate(b, window_start, cp_true[(size_t)b],
-                                                   dop[(size_t)b], n_hops, chans);
-            std::vector<std::vector<cf>> data((size_t)n_chan, std::vector<cf>((size_t)n_hops));
-            unsigned s2 = 777u + (unsigned)b;
-            auto nz = [&s2]() {
-                s2 = s2 * 1664525u + 1013904223u;
-                return ((double)(s2 >> 8) / (double)(1 << 24)) - 0.5;
-            };
-            for (int c = 0; c < n_chan; ++c)
-                for (int m = 0; m < n_hops; ++m)
-                    data[(size_t)c][(size_t)m] =
-                        sky[(size_t)c][(size_t)m] * 3.0f + cf((float)nz(), (float)nz());
+            const std::vector<std::vector<cf>> data = make_data(b);
             Obs ref{0.0, 0.0}, refn{0.0, 0.0};
             for (int s = 0; s < n_sets; ++s) {
                 const Obs o = observe(*sets[s], j, data);
@@ -895,9 +922,558 @@ int main(int argc, char** argv) {
         cudaFree(d_energy);
     }
 
+    // =========================== fused synthesis + pack ===========================
+    if (fused_mode) {
+        const bool prof = (mode == "fusedprof");
+        // The stage's synth array (cudaGnssInject): [n_hops][frame_chan_stride][lane_pitch]
+        // bytes, this chain at lane_base with its covering channels at chan_map.
+        const int fcs = 16, lane_pitch = 512, lane_base = 128;
+        const std::vector<int> h_chan_map = {2, 4, 6, 8, 10, 12, 14};
+        int* d_chan_map = nullptr;
+        CK(cudaMalloc(&d_chan_map, (size_t)n_chan * sizeof(int)));
+        CK(cudaMemcpy(d_chan_map, h_chan_map.data(), (size_t)n_chan * sizeof(int),
+                      cudaMemcpyHostToDevice));
+        const size_t synth_len = (size_t)n_hops * fcs * lane_pitch;
+        unsigned char *d_synth_a = nullptr, *d_synth_b = nullptr;
+        CK(cudaMalloc(&d_synth_a, synth_len));
+        CK(cudaMalloc(&d_synth_b, synth_len));
+        auto n_lanes_for = [](int lps, int n_slot) {
+            const int v = (lps * n_slot + 15) / 16 * 16;
+            return v < 64 ? 64 : v; // the chain's num_synth at 12 PRNs is 64
+        };
+        auto byte_at = [&](const std::vector<unsigned char>& a, int m, int c, int lane) {
+            return a[((size_t)m * fcs + h_chan_map[(size_t)c]) * lane_pitch + lane_base + lane];
+        };
+
+        // Jobs: specs 0..n_prn-1 at the true phase ("this record"), n_prn..2n_prn-1 at +0.1 chip
+        // (a different launch, whose energies stand in for the frame's record-0 rows). Case B
+        // clears channel UNCOV of every job's chan_mask and leaves slots 3 and 7 inactive.
+        const int n_job = 2 * n_prn;
+        const DevJobs dj = upload_jobs(n_job, 0.1);
+        const int UNCOV = 3;
+        gnss_cuda::DespreadJob* d_jobs_b = nullptr;
+        {
+            std::vector<gnss_cuda::DespreadJob> jf, jn, jp;
+            std::vector<gnss_cuda::PsiJob> pj, pr, ph;
+            std::vector<float> rot, theta;
+            make_jobs(n_job, 0.1, jf, jn, jp, pj, pr, ph, rot, theta);
+            for (auto& J : jf)
+                J.chan_mask &= ~(1ULL << UNCOV);
+            CK(cudaMalloc(&d_jobs_b, jf.size() * sizeof(gnss_cuda::DespreadJob)));
+            CK(cudaMemcpy(d_jobs_b, jf.data(), jf.size() * sizeof(gnss_cuda::DespreadJob),
+                          cudaMemcpyHostToDevice));
+        }
+        std::vector<int> m_head(n_job);
+        std::vector<float> rot_host((size_t)n_job * n_chan);
+        {
+            std::vector<gnss_cuda::DespreadJob> jf, jn, jp;
+            std::vector<gnss_cuda::PsiJob> pj, pr, ph;
+            std::vector<float> rot, theta;
+            make_jobs(n_job, 0.1, jf, jn, jp, pj, pr, ph, rot, theta);
+            for (int j = 0; j < n_job; ++j)
+                m_head[(size_t)j] = jf[(size_t)j].m_head;
+            rot_host = rot;
+        }
+        const int n_slot = n_prn;
+        std::vector<int> s2s_a(n_slot), s2s_b(n_slot);
+        for (int q = 0; q < n_slot; ++q)
+            s2s_a[(size_t)q] = q;
+        {
+            int sp = 0;
+            for (int q = 0; q < n_slot; ++q)
+                s2s_b[(size_t)q] = (q == 3 || q == 7) ? -1 : sp++;
+        }
+        int *d_s2s_a = nullptr, *d_s2s_b = nullptr;
+        CK(cudaMalloc(&d_s2s_a, (size_t)n_slot * sizeof(int)));
+        CK(cudaMalloc(&d_s2s_b, (size_t)n_slot * sizeof(int)));
+        CK(cudaMemcpy(d_s2s_a, s2s_a.data(), (size_t)n_slot * sizeof(int), cudaMemcpyHostToDevice));
+        CK(cudaMemcpy(d_s2s_b, s2s_b.data(), (size_t)n_slot * sizeof(int), cudaMemcpyHostToDevice));
+
+        const size_t wn = (size_t)3 * n_job * n_chan * n_hops, en = (size_t)4 * n_job * n_chan;
+        float2* d_wave = nullptr;
+        double *d_energy = nullptr, *d_energy_f = nullptr;
+        CK(cudaMalloc(&d_wave, wn * sizeof(float2)));
+        CK(cudaMalloc(&d_energy, en * sizeof(double)));
+        CK(cudaMalloc(&d_energy_f, en * sizeof(double)));
+
+        struct FusedCase {
+            const char* name;
+            int lps;
+            bool rot, half;
+            int fixed;
+            bool caseB, other;
+            int opts = 0;
+        };
+        std::vector<unsigned char> A(synth_len), Bv(synth_len);
+        std::vector<double> e_ref(en), e_fus(en);
+        int n_fail = 0;
+        // Reference (launch_psi_waveform -> launch_pack44) and fused (launch_psi_pack) for one
+        // configuration; every byte of the synth array and the active specs' energy rows.
+        auto run_case = [&](const FusedCase& fc) {
+            const gnss_cuda::DespreadParams& pp = fc.half ? p16 : p32;
+            const gnss_cuda::PsiJob* pjobs = fc.half ? dj.half : dj.psi;
+            const float* rot = fc.rot ? dj.rot : nullptr;
+            const gnss_cuda::DespreadJob* jobs = fc.caseB ? d_jobs_b : dj.full;
+            const int* s2s = fc.caseB ? d_s2s_b : d_s2s_a;
+            const std::vector<int>& s2s_h = fc.caseB ? s2s_b : s2s_a;
+            const int n_lanes = n_lanes_for(fc.lps, n_slot);
+            CK(cudaMemset(d_energy, 0, en * sizeof(double)));
+            CK(cudaMemset(d_energy_f, 0xff, en * sizeof(double))); // NaN: untouched rows show
+            CK(cudaMemset(d_synth_a, 0x5a, synth_len));
+            CK(cudaMemset(d_synth_b, 0x5a, synth_len));
+            CK(gnss_cuda::launch_psi_waveform(jobs, pjobs, dj.theta, n_job, n_chan, pp, rot,
+                                              fc.fixed, d_wave, d_energy, 0));
+            const double* escale = fc.other ? d_energy + (size_t)4 * n_prn * n_chan : d_energy;
+            CK(gnss_cuda::launch_pack44(d_wave, escale, jobs, s2s, n_slot, fc.lps, n_chan, n_hops,
+                                        d_chan_map, fcs, n_lanes, lane_base, lane_pitch, d_synth_a,
+                                        0));
+            CK(gnss_cuda::launch_psi_pack_opts(jobs, pjobs, dj.theta, rot, fc.fixed, s2s, n_slot,
+                                               fc.lps, n_chan, pp, d_chan_map, fcs, n_lanes,
+                                               lane_base, lane_pitch, fc.other ? escale : nullptr,
+                                               d_energy_f, d_synth_b, fc.opts, 0));
+            CK(cudaDeviceSynchronize());
+            CK(cudaMemcpy(A.data(), d_synth_a, synth_len, cudaMemcpyDeviceToHost));
+            CK(cudaMemcpy(Bv.data(), d_synth_b, synth_len, cudaMemcpyDeviceToHost));
+            CK(cudaMemcpy(e_ref.data(), d_energy, en * sizeof(double), cudaMemcpyDeviceToHost));
+            CK(cudaMemcpy(e_fus.data(), d_energy_f, en * sizeof(double), cudaMemcpyDeviceToHost));
+
+            // Bytes: the whole array (a fused write outside the chain's lanes would show as a
+            // difference against the reference's untouched 0x5a).
+            size_t n_diff = 0, first = synth_len;
+            for (size_t i = 0; i < synth_len; ++i)
+                if (A[i] != Bv[i]) {
+                    if (n_diff == 0)
+                        first = i;
+                    ++n_diff;
+                }
+            // 0x88 by region over the chain's bytes: lanes beyond n_slot, inactive slots, the
+            // uncovered channel, the head lane past m_head, and the live rest (natural zeros).
+            size_t z[5] = {0, 0, 0, 0, 0}, tot[5] = {0, 0, 0, 0, 0};
+            for (int m = 0; m < n_hops; ++m)
+                for (int c = 0; c < n_chan; ++c)
+                    for (int lane = 0; lane < n_lanes; ++lane) {
+                        const int slot = lane / fc.lps, tl = lane - slot * fc.lps;
+                        const int t = (fc.lps == 4) ? tl : (tl == 0 ? 1 : 3);
+                        int region = 4;
+                        if (slot >= n_slot)
+                            region = 0;
+                        else if (s2s_h[(size_t)slot] < 0)
+                            region = 1;
+                        else if (fc.caseB && c == UNCOV)
+                            region = 2;
+                        else if (t == 3 && m >= m_head[(size_t)s2s_h[(size_t)slot]])
+                            region = 3;
+                        ++tot[region];
+                        if (byte_at(Bv, m, c, lane) == 0x88)
+                            ++z[region];
+                    }
+            // Energy rows of the active specs.
+            int n_spec = 0;
+            for (int q = 0; q < n_slot; ++q)
+                n_spec = std::max(n_spec, s2s_h[(size_t)q] + 1);
+            size_t e_same = 0, e_n = 0;
+            double e_rel = 0.0;
+            for (int j = 0; j < n_spec; ++j)
+                for (int t = 0; t < 4; ++t)
+                    for (int c = 0; c < n_chan; ++c) {
+                        const size_t i = (size_t)(4 * j + t) * n_chan + c;
+                        ++e_n;
+                        if (std::memcmp(&e_ref[i], &e_fus[i], sizeof(double)) == 0)
+                            ++e_same;
+                        else
+                            e_rel = std::max(e_rel, std::fabs(e_fus[i] - e_ref[i])
+                                                        / std::max(1e-300, std::fabs(e_ref[i])));
+                    }
+            const bool ok = (n_diff == 0) && (e_same == e_n) && z[0] == tot[0] && z[1] == tot[1]
+                            && z[2] == tot[2] && z[3] == tot[3];
+            if (!ok)
+                ++n_fail;
+            printf("   %-44s bytes differ %zu / %zu", fc.name, n_diff, synth_len);
+            if (n_diff)
+                printf(" (first at byte %zu: hop %zu chan-pos %zu lane-pos %zu, ref 0x%02x fused "
+                       "0x%02x)",
+                       first, first / ((size_t)fcs * lane_pitch), (first / lane_pitch) % fcs,
+                       first % lane_pitch, A[first], Bv[first]);
+            printf("; energy rows %zu/%zu bit-identical (max rel %.3e); 0x88: beyond-n_slot "
+                   "%zu/%zu inactive %zu/%zu uncovered %zu/%zu head-gated %zu/%zu live %zu/%zu "
+                   "%s\n",
+                   e_same, e_n, e_rel, z[0], tot[0], z[1], tot[1], z[2], tot[2], z[3], tot[3], z[4],
+                   tot[4], ok ? "OK" : "FAIL");
+        };
+
+        if (!prof) {
+            printf("\n=== fused: launch_psi_pack vs launch_psi_waveform + launch_pack44, synth "
+                   "[%d][%d][%d] bytes, lane_base %d, n_lanes 64, chan_map 2,4,..,14; %d slots; "
+                   "case B = slots 3,7 inactive + channel %d uncovered; 'own' = record-0 scale "
+                   "(this launch's energies), 'other' = scale from the +0.1-chip jobs' energies "
+                   "===\n",
+                   n_hops, fcs, lane_pitch, lane_base, n_slot, chans[(size_t)UNCOV]);
+            const FusedCase cases[] = {
+                {"lanes 2 rot  fp16 fixed  A own", 2, true, true, 1, false, false},
+                {"lanes 2 rot  fp16 fixed  A other", 2, true, true, 1, false, true},
+                {"lanes 2 rot  fp16 fixed  B own", 2, true, true, 1, true, false},
+                {"lanes 2 rot  fp16 fixed  B other", 2, true, true, 1, true, true},
+                {"lanes 2 rot  fp32 fixed  A own", 2, true, false, 1, false, false},
+                {"lanes 2 rot  fp32 fixed  B other", 2, true, false, 1, true, true},
+                {"lanes 2 rot  fp32 fp64   A own", 2, true, false, 0, false, false},
+                {"lanes 2 rot  fp16 fp64   B other", 2, true, true, 0, true, true},
+                {"lanes 4 rot  fp16 fixed  A own", 4, true, true, 1, false, false},
+                {"lanes 4 rot  fp16 fixed  A other", 4, true, true, 1, false, true},
+                {"lanes 4 rot  fp16 fixed  B own", 4, true, true, 1, true, false},
+                {"lanes 4 rot  fp16 fixed  B other", 4, true, true, 1, true, true},
+                {"lanes 4 rot  fp32 fixed  A own", 4, true, false, 1, false, false},
+                {"lanes 4 rot  fp32 fp64   B other", 4, true, false, 0, true, true},
+                {"lanes 4 exact fp16 fixed A own", 4, false, true, 1, false, false},
+                {"lanes 4 exact fp16 fixed A other", 4, false, true, 1, false, true},
+                {"lanes 4 exact fp16 fixed B own", 4, false, true, 1, true, false},
+                {"lanes 4 exact fp16 fixed B other", 4, false, true, 1, true, true},
+                {"lanes 4 exact fp32 fixed A own", 4, false, false, 1, false, false},
+                {"lanes 4 exact fp32 fp64  B other", 4, false, false, 0, true, true},
+                {"lanes 2 rot  fp16 fixed  A own   T512", 2, true, true, 1, false, false, 1},
+                {"lanes 2 rot  fp16 fixed  A other T512", 2, true, true, 1, false, true, 1},
+                {"lanes 2 rot  fp16 fixed  B own   T512", 2, true, true, 1, true, false, 1},
+                {"lanes 2 rot  fp16 fixed  B other T512", 2, true, true, 1, true, true, 1},
+                {"lanes 2 rot  fp32 fixed  B other T512", 2, true, false, 1, true, true, 1},
+                {"lanes 4 rot  fp16 fixed  A own   T512", 4, true, true, 1, false, false, 1},
+                {"lanes 4 rot  fp16 fixed  B other T512", 4, true, true, 1, true, true, 1},
+                {"lanes 4 exact fp16 fixed A own   T512", 4, false, true, 1, false, false, 1},
+                {"lanes 4 exact fp16 fixed B other T512", 4, false, true, 1, true, true, 1},
+            };
+            for (const auto& fc : cases)
+                run_case(fc);
+            printf("   byte-compare: %d of %zu cases FAIL\n", n_fail,
+                   sizeof(cases) / sizeof(cases[0]));
+
+            // ---- (c) sky test on the dequantised lanes ----
+            // Each lane is undone with the pack's scale from the record-0 energy rows as
+            // GnssN2RecordAssemble does (s = 7/(3 sqrt(e0/n_hops)), the conjugate undone), and
+            // under lanes 2 the E/L correlations are the prompt's rotated by the kernel's rot
+            // (corr_E = corr_P e^{-i rot}, corr_L = corr_P e^{+i rot}).
+            auto observe_lanes = [&](const std::vector<unsigned char>& synth,
+                                     const std::vector<double>& energy, int lps, int j,
+                                     const std::vector<std::vector<cf>>& data) {
+                std::vector<cd> g((size_t)3 * n_chan, cd(0.0, 0.0));
+                for (int c = 0; c < n_chan; ++c) {
+                    const double e0 = energy[(size_t)(4 * j + 1) * n_chan + c];
+                    const double sP = 7.0 / (3.0 * std::sqrt(e0 / n_hops));
+                    cd gP(0.0, 0.0);
+                    for (int m = 0; m < n_hops; ++m) {
+                        const unsigned char bt = byte_at(synth, m, c, lps * j + (lps == 4 ? 1 : 0));
+                        const cd w(((double)((bt >> 4) & 0xf) - 8.0) / sP,
+                                   -(((double)(bt & 0xf) - 8.0) / sP));
+                        gP += cd(data[(size_t)c][(size_t)m]) * std::conj(w);
+                    }
+                    g[(size_t)1 * n_chan + c] = gP;
+                    for (int t = 0; t < 3; t += 2) {
+                        if (lps == 2) {
+                            const double sgn = (t == 0) ? -1.0 : 1.0;
+                            g[(size_t)t * n_chan + c] =
+                                gP
+                                * std::polar(1.0, sgn * (double)rot_host[(size_t)j * n_chan + c]);
+                            continue;
+                        }
+                        const double et = energy[(size_t)(4 * j + t) * n_chan + c];
+                        const double st = 7.0 / (3.0 * std::sqrt(et / n_hops));
+                        cd gt(0.0, 0.0);
+                        for (int m = 0; m < n_hops; ++m) {
+                            const unsigned char bt = byte_at(synth, m, c, lps * j + t);
+                            const cd w(((double)((bt >> 4) & 0xf) - 8.0) / st,
+                                       -(((double)(bt & 0xf) - 8.0) / st));
+                            gt += cd(data[(size_t)c][(size_t)m]) * std::conj(w);
+                        }
+                        g[(size_t)t * n_chan + c] = gt;
+                    }
+                }
+                return obs_of(g, energy, j);
+            };
+            struct LaneSet {
+                const char* name;
+                std::vector<unsigned char> synth;
+                std::vector<double> energy;
+                int lps;
+            };
+            struct WaveSet {
+                const char* name;
+                std::vector<float2> wave;
+                std::vector<double> energy;
+            };
+            auto grab_wave = [&](const char* name, std::function<cudaError_t()> launch) {
+                WaveSet w;
+                w.name = name;
+                CK(cudaMemset(d_energy, 0, en * sizeof(double)));
+                CK(launch());
+                CK(cudaDeviceSynchronize());
+                w.wave.resize(wn);
+                w.energy.resize(en);
+                CK(cudaMemcpy(w.wave.data(), d_wave, wn * sizeof(float2), cudaMemcpyDeviceToHost));
+                CK(cudaMemcpy(w.energy.data(), d_energy, en * sizeof(double),
+                              cudaMemcpyDeviceToHost));
+                return w;
+            };
+            // The float parents and their quantised children, record-0 scale (own energies).
+            const WaveSet PSIW = grab_wave("PSI f16 rot", [&] {
+                return gnss_cuda::launch_psi_waveform(dj.full, dj.half, dj.theta, n_job, n_chan,
+                                                      p16, dj.rot, 1, d_wave, d_energy, 0);
+            });
+            const WaveSet PSIX = grab_wave("PSI f16 exact", [&] {
+                return gnss_cuda::launch_psi_waveform(dj.full, dj.half, dj.theta, n_job, n_chan,
+                                                      p16, nullptr, 1, d_wave, d_energy, 0);
+            });
+            const WaveSet PRODW = grab_wave("PROD", [&] {
+                return gnss_cuda::launch_waveform(d_code, dj.prod, n_job, n_chan, p16, dj.rot,
+                                                  d_wave, d_energy, 0);
+            });
+            auto grab_fused = [&](const char* name, int lps, bool rot_on) {
+                LaneSet L;
+                L.name = name;
+                L.lps = lps;
+                CK(cudaMemset(d_energy_f, 0, en * sizeof(double)));
+                CK(cudaMemset(d_synth_b, 0x5a, synth_len));
+                CK(gnss_cuda::launch_psi_pack(dj.full, dj.half, dj.theta, rot_on ? dj.rot : nullptr,
+                                              1, d_s2s_a, n_slot, lps, n_chan, p16, d_chan_map, fcs,
+                                              n_lanes_for(lps, n_slot), lane_base, lane_pitch,
+                                              nullptr, d_energy_f, d_synth_b, 0));
+                CK(cudaDeviceSynchronize());
+                L.synth.resize(synth_len);
+                L.energy.resize(en);
+                CK(cudaMemcpy(L.synth.data(), d_synth_b, synth_len, cudaMemcpyDeviceToHost));
+                CK(cudaMemcpy(L.energy.data(), d_energy_f, en * sizeof(double),
+                              cudaMemcpyDeviceToHost));
+                return L;
+            };
+            auto grab_prodq = [&](const char* name, int lps) {
+                // PROD's wave is in d_wave only until the next launch: re-run it, then pack.
+                LaneSet L;
+                L.name = name;
+                L.lps = lps;
+                CK(cudaMemset(d_energy, 0, en * sizeof(double)));
+                CK(cudaMemset(d_synth_a, 0x5a, synth_len));
+                CK(gnss_cuda::launch_waveform(d_code, dj.prod, n_job, n_chan, p16, dj.rot, d_wave,
+                                              d_energy, 0));
+                CK(gnss_cuda::launch_pack44(d_wave, d_energy, dj.full, d_s2s_a, n_slot, lps, n_chan,
+                                            n_hops, d_chan_map, fcs, n_lanes_for(lps, n_slot),
+                                            lane_base, lane_pitch, d_synth_a, 0));
+                CK(cudaDeviceSynchronize());
+                L.synth.resize(synth_len);
+                L.energy.resize(en);
+                CK(cudaMemcpy(L.synth.data(), d_synth_a, synth_len, cudaMemcpyDeviceToHost));
+                CK(cudaMemcpy(L.energy.data(), d_energy, en * sizeof(double),
+                              cudaMemcpyDeviceToHost));
+                return L;
+            };
+            const LaneSet F2 = grab_fused("FUSED l2 rot", 2, true);
+            const LaneSet F4 = grab_fused("FUSED l4 rot", 4, true);
+            const LaneSet F4X = grab_fused("FUSED l4 exact", 4, false);
+            const LaneSet Q2 = grab_prodq("PRODq l2", 2);
+            const LaneSet Q4 = grab_prodq("PRODq l4", 4);
+
+            printf("\n=== sky test on the dequantised lanes (fp16 tables, fixed phases; %d jobs "
+                   "at the true phase): disc and prompt per set, d = quantised - its float "
+                   "parent ===\n",
+                   n_prn);
+            printf("   job PRN  set             disc          prompt       d_disc      "
+                   "d_prompt/prompt\n");
+            struct Worst {
+                double disc = 0.0, prompt = 0.0;
+            } wF2, wF4, wF4X, wQ2, wQ4;
+            auto line = [&](int j, const char* name, const Obs& o, const Obs& parent, Worst* w) {
+                const double dd = o.disc - parent.disc;
+                const double dp = (o.prompt - parent.prompt) / parent.prompt;
+                printf("   %3d %3d  %-14s  %+.6e  %.6e  %+.3e  %+.3e\n", j, prns[(size_t)j % n_prn],
+                       name, o.disc, o.prompt, dd, dp);
+                if (w) {
+                    w->disc = std::max(w->disc, std::fabs(dd));
+                    w->prompt = std::max(w->prompt, std::fabs(dp));
+                }
+            };
+            for (int j = 0; j < n_prn; ++j) {
+                const std::vector<std::vector<cf>> data = make_data(j);
+                const Obs oPSI = observe_wave(PSIW.wave, PSIW.energy, j, data);
+                const Obs oPSIX = observe_wave(PSIX.wave, PSIX.energy, j, data);
+                const Obs oPROD = observe_wave(PRODW.wave, PRODW.energy, j, data);
+                line(j, "PSI float rot", oPSI, oPSI, nullptr);
+                line(j, "FUSED l2 rot", observe_lanes(F2.synth, F2.energy, 2, j, data), oPSI, &wF2);
+                line(j, "FUSED l4 rot", observe_lanes(F4.synth, F4.energy, 4, j, data), oPSI, &wF4);
+                line(j, "PSI float exact", oPSIX, oPSIX, nullptr);
+                line(j, "FUSED l4 exact", observe_lanes(F4X.synth, F4X.energy, 4, j, data), oPSIX,
+                     &wF4X);
+                line(j, "PROD float", oPROD, oPROD, nullptr);
+                line(j, "PRODq l2", observe_lanes(Q2.synth, Q2.energy, 2, j, data), oPROD, &wQ2);
+                line(j, "PRODq l4", observe_lanes(Q4.synth, Q4.energy, 4, j, data), oPROD, &wQ4);
+            }
+            printf("   quantisation effect, max over jobs |d_disc| / |d_prompt/prompt|: FUSED l2 "
+                   "rot %.3e / %.3e, FUSED l4 rot %.3e / %.3e, FUSED l4 exact %.3e / %.3e, PRODq "
+                   "l2 %.3e / %.3e, PRODq l4 %.3e / %.3e\n",
+                   wF2.disc, wF2.prompt, wF4.disc, wF4.prompt, wF4X.disc, wF4X.prompt, wQ2.disc,
+                   wQ2.prompt, wQ4.disc, wQ4.prompt);
+        }
+
+        // ---- (d) bench ----
+        cudaFree(d_wave);
+        cudaFree(d_energy);
+        cudaFree(d_energy_f);
+        if (!prof)
+            printf("\n=== fused bench: cudaEvent per launch (pairs timed as two launches), one "
+                   "stream, warm-up 3, n=20 ===\n");
+        for (int ns : {n_prn, 2 * n_prn, 3 * n_prn}) {
+            if (prof && ns != n_prn)
+                break;
+            const DevJobs db = upload_jobs(ns, 0.1);
+            const size_t wnb = (size_t)3 * ns * n_chan * n_hops, enb = (size_t)4 * ns * n_chan;
+            float2* d_wb = nullptr;
+            double *d_eb = nullptr, *d_e0 = nullptr;
+            CK(cudaMalloc(&d_wb, wnb * sizeof(float2)));
+            CK(cudaMalloc(&d_eb, enb * sizeof(double)));
+            CK(cudaMalloc(&d_e0, enb * sizeof(double)));
+            std::vector<int> ident(ns), none(ns, -1);
+            for (int q = 0; q < ns; ++q)
+                ident[(size_t)q] = q;
+            int *d_ident = nullptr, *d_none = nullptr;
+            CK(cudaMalloc(&d_ident, (size_t)ns * sizeof(int)));
+            CK(cudaMalloc(&d_none, (size_t)ns * sizeof(int)));
+            CK(cudaMemcpy(d_ident, ident.data(), (size_t)ns * sizeof(int), cudaMemcpyHostToDevice));
+            CK(cudaMemcpy(d_none, none.data(), (size_t)ns * sizeof(int), cudaMemcpyHostToDevice));
+            // A record-1 launch: the scale from d_e0 (filled by one record-0 launch first).
+            CK(gnss_cuda::launch_psi_pack(db.full, db.half, db.theta, db.rot, 1, d_ident, ns, 2,
+                                          n_chan, p16, d_chan_map, fcs, n_lanes_for(2, ns),
+                                          lane_base, lane_pitch, nullptr, d_e0, d_synth_b, 0));
+            CK(cudaDeviceSynchronize());
+            auto fused = [&](const gnss_cuda::PsiJob* pj, const gnss_cuda::DespreadParams& pp,
+                             const float* rot, int lps, const int* s2s, const double* es,
+                             int opts = 0) {
+                return gnss_cuda::launch_psi_pack_opts(
+                    db.full, pj, db.theta, rot, 1, s2s, ns, lps, n_chan, pp, d_chan_map, fcs,
+                    n_lanes_for(lps, ns), lane_base, lane_pitch, es, d_eb, d_synth_b, opts, 0);
+            };
+            if (prof) {
+                // One launch each, in this order, for ncu -k regex:psi_pack: 1 fp16 l2 rot,
+                // 2 fp32 l2 rot, 3 fp16 l4 rot, 4 fp16 l4 exact, 5 fp16 l2 rot all-inactive,
+                // 6 fp16 l2 rot record-1 (energy_scale); then regex:pack44: one pack44 l2 after
+                // a PSI fp16 rot launch; then regex:psi_waveform: that PSI launch.
+                CK(fused(db.half, p16, db.rot, 2, d_ident, nullptr));
+                CK(fused(db.psi, p32, db.rot, 2, d_ident, nullptr));
+                CK(fused(db.half, p16, db.rot, 4, d_ident, nullptr));
+                CK(fused(db.half, p16, nullptr, 4, d_ident, nullptr));
+                CK(fused(db.half, p16, db.rot, 2, d_none, nullptr));
+                CK(fused(db.half, p16, db.rot, 2, d_ident, d_e0));
+                // 7 fp16 l2 rot T512, 8 T512 record-1, 9 lanes 4 rot T512, 10 all-inactive
+                // T512 (the sweeper + inactive blocks), 11 fp32 l2 rot T512.
+                CK(fused(db.half, p16, db.rot, 2, d_ident, nullptr, 1));
+                CK(fused(db.half, p16, db.rot, 2, d_ident, d_e0, 1));
+                CK(fused(db.half, p16, db.rot, 4, d_ident, nullptr, 1));
+                CK(fused(db.half, p16, db.rot, 2, d_none, nullptr, 1));
+                CK(fused(db.psi, p32, db.rot, 2, d_ident, nullptr, 1));
+                CK(gnss_cuda::launch_psi_waveform(db.full, db.half, db.theta, ns, n_chan, p16,
+                                                  db.rot, 1, d_wb, d_eb, 0));
+                CK(gnss_cuda::launch_pack44(d_wb, d_eb, db.full, d_ident, ns, 2, n_chan, n_hops,
+                                            d_chan_map, fcs, n_lanes_for(2, ns), lane_base,
+                                            lane_pitch, d_synth_b, 0));
+                CK(cudaDeviceSynchronize());
+                printf("fusedprof: %d slots, launches done\n", ns);
+                break;
+            }
+            printf("-- %d slots x %d channels, %d hops; n_lanes %d (lanes 2) / %d (lanes 4)\n", ns,
+                   n_chan, n_hops, n_lanes_for(2, ns), n_lanes_for(4, ns));
+            double mn, md;
+            time_launch(
+                "FUSED fp16 fixed lanes2 rot (rec0)",
+                [&] { return fused(db.half, p16, db.rot, 2, d_ident, nullptr); }, 20, &mn, &md);
+            time_launch(
+                "FUSED fp16 fixed lanes2 rot (rec1)",
+                [&] { return fused(db.half, p16, db.rot, 2, d_ident, d_e0); }, 20, &mn, &md);
+            time_launch(
+                "FUSED fp32 fixed lanes2 rot (rec0)",
+                [&] { return fused(db.psi, p32, db.rot, 2, d_ident, nullptr); }, 20, &mn, &md);
+            time_launch(
+                "FUSED fp16 fixed lanes4 rot (rec0)",
+                [&] { return fused(db.half, p16, db.rot, 4, d_ident, nullptr); }, 20, &mn, &md);
+            time_launch(
+                "FUSED fp16 fixed lanes4 exact (rec0)",
+                [&] { return fused(db.half, p16, nullptr, 4, d_ident, nullptr); }, 20, &mn, &md);
+            time_launch(
+                "FUSED fp16 lanes2, all slots inactive",
+                [&] { return fused(db.half, p16, db.rot, 2, d_none, nullptr); }, 20, &mn, &md);
+            time_launch(
+                "FUSED fp16 lanes2 rot (rec0) T512",
+                [&] { return fused(db.half, p16, db.rot, 2, d_ident, nullptr, 1); }, 20, &mn, &md);
+            time_launch(
+                "FUSED fp16 lanes2 rot (rec1) T512",
+                [&] { return fused(db.half, p16, db.rot, 2, d_ident, d_e0, 1); }, 20, &mn, &md);
+            time_launch(
+                "FUSED fp32 lanes2 rot (rec0) T512",
+                [&] { return fused(db.psi, p32, db.rot, 2, d_ident, nullptr, 1); }, 20, &mn, &md);
+            time_launch(
+                "FUSED fp16 lanes4 rot (rec0) T512",
+                [&] { return fused(db.half, p16, db.rot, 4, d_ident, nullptr, 1); }, 20, &mn, &md);
+            time_launch(
+                "FUSED fp16 lanes4 rot (rec1) T512",
+                [&] { return fused(db.half, p16, db.rot, 4, d_ident, d_e0, 1); }, 20, &mn, &md);
+            time_launch(
+                "FUSED fp16 lanes4 exact (rec0) T512",
+                [&] { return fused(db.half, p16, nullptr, 4, d_ident, nullptr, 1); }, 20, &mn, &md);
+            time_launch(
+                "FUSED fp16 lanes2 all inactive T512",
+                [&] { return fused(db.half, p16, db.rot, 2, d_none, nullptr, 1); }, 20, &mn, &md);
+            time_launch(
+                "PSI fp16 fixed rot + pack44 lanes2",
+                [&] {
+                    cudaError_t e = gnss_cuda::launch_psi_waveform(
+                        db.full, db.half, db.theta, ns, n_chan, p16, db.rot, 1, d_wb, d_eb, 0);
+                    if (e != cudaSuccess)
+                        return e;
+                    return gnss_cuda::launch_pack44(d_wb, d_eb, db.full, d_ident, ns, 2, n_chan,
+                                                    n_hops, d_chan_map, fcs, n_lanes_for(2, ns),
+                                                    lane_base, lane_pitch, d_synth_b, 0);
+                },
+                20, &mn, &md);
+            time_launch(
+                "PROD (fp16, 80 chips, rot) + pack44 lanes2",
+                [&] {
+                    cudaError_t e = gnss_cuda::launch_waveform(d_code, db.prod, ns, n_chan, p16,
+                                                               db.rot, d_wb, d_eb, 0);
+                    if (e != cudaSuccess)
+                        return e;
+                    return gnss_cuda::launch_pack44(d_wb, d_eb, db.full, d_ident, ns, 2, n_chan,
+                                                    n_hops, d_chan_map, fcs, n_lanes_for(2, ns),
+                                                    lane_base, lane_pitch, d_synth_b, 0);
+                },
+                20, &mn, &md);
+            time_launch(
+                "PROD + pack44 lanes4",
+                [&] {
+                    cudaError_t e = gnss_cuda::launch_waveform(d_code, db.prod, ns, n_chan, p16,
+                                                               db.rot, d_wb, d_eb, 0);
+                    if (e != cudaSuccess)
+                        return e;
+                    return gnss_cuda::launch_pack44(d_wb, d_eb, db.full, d_ident, ns, 4, n_chan,
+                                                    n_hops, d_chan_map, fcs, n_lanes_for(4, ns),
+                                                    lane_base, lane_pitch, d_synth_b, 0);
+                },
+                20, &mn, &md);
+            time_launch(
+                "pack44 lanes2 alone",
+                [&] {
+                    return gnss_cuda::launch_pack44(d_wb, d_eb, db.full, d_ident, ns, 2, n_chan,
+                                                    n_hops, d_chan_map, fcs, n_lanes_for(2, ns),
+                                                    lane_base, lane_pitch, d_synth_b, 0);
+                },
+                20, &mn, &md);
+            cudaFree(d_wb);
+            cudaFree(d_eb);
+            cudaFree(d_e0);
+            cudaFree(d_ident);
+            cudaFree(d_none);
+        }
+        printf("done\n");
+        return n_fail ? 1 : 0;
+    }
+
     // =========================== bench ===========================
-    printf("\n=== bench: cudaEvent per launch, one stream, warm-up 3, n=20 ===\n");
+    if (!fused_mode)
+        printf("\n=== bench: cudaEvent per launch, one stream, warm-up 3, n=20 ===\n");
     for (int n_job : {n_prn, 2 * n_prn, 3 * n_prn}) {
+        if (fused_mode)
+            break;
         const DevJobs dj = upload_jobs(n_job, 0.1);
         const size_t wn = (size_t)3 * n_job * n_chan * n_hops, en = (size_t)4 * n_job * n_chan;
         float2* d_wave = nullptr;

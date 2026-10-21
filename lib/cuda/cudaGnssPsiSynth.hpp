@@ -104,6 +104,95 @@ cudaError_t launch_psi_waveform(const DespreadJob* jobs, const PsiJob* pjobs, co
                                 int n_job, int n_chan, const DespreadParams& p, const float* rot,
                                 int fixed, float2* wave, double* energy, cudaStream_t stream);
 
+/**
+ * @brief Fused synthesis + pack: @ref launch_psi_waveform's replica written straight into the
+ *        N^2 synthetic lanes, replacing launch_waveform + launch_pack44 and the wave buffer.
+ *
+ * jobs, pjobs, theta, rot, fixed and p are @ref launch_psi_waveform's (jobs indexed by spec);
+ * slot2spec, n_slot, lanes_per_slot, n_chan, chan_map, frame_chan_stride, n_lanes, lane_base,
+ * lane_pitch and synth are @ref launch_pack44's. The bytes written are those launch_psi_waveform
+ * followed by launch_pack44 would write, for every byte of this record's rows: lane =
+ * lanes_per_slot*slot + tl for every lane in [0, n_lanes), at
+ * synth[((m*frame_chan_stride + chan_map[c])*lane_pitch + lane_base + lane)]; lanes whose slot
+ * is >= n_slot or whose slot2spec is -1, uncovered channels (chan_mask) and the P_HEAD lane at
+ * hops >= m_head are 0x88. The quantisation is gnss_pack44_kernel's: s = 7/(3*rms), rms =
+ * sqrt(E_row/n_hops) (the P_HEAD lane: sqrt(E_row3/max(m_head,1))), qr = rn(s*w.x),
+ * qi = rn(-s*w.y) (the conjugate), clamped to [-7,7], byte ((qr+8)<<4)|((qi+8)&0xf). Under
+ * lanes_per_slot 2 lane 0 packs the prompt and lane 1 the prompt gated to hops < m_head with
+ * row 3's scale; under 4 the lanes are E, P, L, P_HEAD.
+ *
+ * Grid: one block per (slot, channel) with the hop lanes of launch_psi_waveform (so the energy
+ * rows are reduced in the same order and are bit-identical to that kernel's), plus sweeper
+ * blocks that write the lanes beyond the last slot; blocks of inactive slots only write 0x88.
+ * Record 0 synthesises its hops into registers (<= 4 hops per thread: more is refused with
+ * cudaErrorInvalidValue), reduces the energy, broadcasts the scale through shared memory and
+ * quantises; with energy_scale the scale is known up front and each hop is quantised inside
+ * the synthesis loop. A hop's lanes_per_slot bytes go out as one 16- or 32-bit store when
+ * synth, lane_base and lane_pitch are multiples of lanes_per_slot (byte stores otherwise).
+ * Under lanes_per_slot 2 the 512-thread variant runs (PSI_PACK_T512, two blocks per SM; the
+ * bytes and energy rows are the same), under 4 the 1024-thread one; see
+ * @ref launch_psi_pack_opts. At 12 slots x 7 channels x 2048 hops on an A40: 28.7 us (lanes 2,
+ * fp16 tables, fixed phases; 26.6 us for records with energy_scale) against 47.1 us for
+ * launch_psi_waveform + launch_pack44 and 122.9 us for launch_waveform + launch_pack44
+ * (fixtures/gpu_budget/psi_fused_cx52_20261021.txt).
+ *
+ * @param energy_scale nullptr: the scale comes from this launch's own energy reduction (record
+ *                     0 of a frame). Else [4*n_spec][n_chan] double, the frame's record-0
+ *                     energy rows (cudaGnssInject's d_energy0), used for the scale exactly as
+ *                     launch_pack44 uses its energy argument, with THIS record's job.m_head
+ *                     for the head lane.
+ * @param energy       out [4*n_spec][n_chan] double rows E/P/L/P_HEAD as launch_psi_waveform
+ *                     writes them (an uncovered channel's rows are 0), for every spec an
+ *                     active slot maps to. rot != nullptr: E/L rows = P's (the ROT contract).
+ *                     rot == nullptr with lanes_per_slot 4: exact E/L lookups with their own
+ *                     energies. rot == nullptr with lanes_per_slot 2: the E/L rows are never
+ *                     packed and their exact lookups would be wasted, so the E/L energy rows
+ *                     are written EQUAL TO P's (this is the one departure from
+ *                     launch_psi_waveform + launch_pack44, which would hold the exact E/L
+ *                     energies in rows nobody reads).
+ * @param lanes_per_slot 2 (P, P_HEAD) or 4 (E, P, L, P_HEAD); anything else is refused
+ */
+cudaError_t launch_psi_pack(const DespreadJob* jobs, const PsiJob* pjobs, const float* theta,
+                            const float* rot, int fixed, const int* slot2spec, int n_slot,
+                            int lanes_per_slot, int n_chan, const DespreadParams& p,
+                            const int* chan_map, int frame_chan_stride, int n_lanes, int lane_base,
+                            int lane_pitch, const double* energy_scale, double* energy,
+                            unsigned char* synth, cudaStream_t stream);
+
+/// Kernel variants of @ref launch_psi_pack_opts (cudaGnssPsiBench's fused bench measures them).
+/// @ref launch_psi_pack picks PSI_PACK_T512 under lanes_per_slot 2 and the 1024-thread kernel
+/// under 4, where the bench showed each winning.
+enum : int {
+    /// 512-thread blocks, two per SM, so one block's store drain overlaps another's synthesis;
+    /// the 1024-thread kernel's reduction order is emulated, so the energy rows and the bytes
+    /// are unchanged. Fixed-point phases and n_hops in [1024, 2048] only; else the 1024-thread
+    /// kernel runs.
+    PSI_PACK_T512 = 1,
+};
+
+/// @ref launch_psi_pack with explicit kernel variants (@c opts: PSI_PACK_*).
+cudaError_t launch_psi_pack_opts(const DespreadJob* jobs, const PsiJob* pjobs, const float* theta,
+                                 const float* rot, int fixed, const int* slot2spec, int n_slot,
+                                 int lanes_per_slot, int n_chan, const DespreadParams& p,
+                                 const int* chan_map, int frame_chan_stride, int n_lanes,
+                                 int lane_base, int lane_pitch, const double* energy_scale,
+                                 double* energy, unsigned char* synth, int opts,
+                                 cudaStream_t stream);
+
+/// The primary period of a tiled code for @ref build_psi_split: the smallest divisor P of @c L
+/// with P >= n_chips + 1 (the PFB span must not reach back more than one period) such that
+/// every period of @c code equals +-1 times the first; a period of zeros does not qualify. L
+/// itself for a plain code (every code is a sign tiling of itself), 0 when no divisor
+/// qualifies (L <= n_chips, or the code is not periodic at any admissible P).
+int psi_primary_period(const int8_t* code, long L, int n_chips);
+
+/// Table grid points per combined chip for a chip rate given as @c inv_cps samples per chip:
+/// max(1, lround(inv_cps / 312.8)), i.e. 1 at 10.23 Mcps (312.8 samples per chip at 3.2 GS/s),
+/// 2 at 5.115, 10 at 1.023 M/s combined, 20 at 0.5115. Holds the grid spacing near 313
+/// samples, where the Lagrange interpolation of the ~25x-oversampled prototype is good to
+/// ~1e-5 (see the file comment).
+int psi_grid_for(double inv_cps);
+
 /// Fill @c pj's fixed-point fields from @c j for a record of @c n_hops hops: the shift is the
 /// largest that keeps the record's code-phase range (in grid units) below 2^62, so the per-hop
 /// advance rounds to <= 2^-(shift+1) grid units (2^-46 at L5 geometry, 2^-39 for the 10.4M-chip
