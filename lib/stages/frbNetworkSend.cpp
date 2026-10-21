@@ -93,6 +93,13 @@ frbNetworkSend::frbNetworkSend(Config& config_, const std::string& unique_name,
     } else {
         INFO("L1 ping check is disabled");
     }
+
+    // beam offset (coudl be called right away)
+    // subscribe in constructor which is single threaded due to lack to of
+    // locking in configUpdater
+    using namespace std::placeholders;
+    configUpdater::instance().subscribe(
+        this, std::bind(&frbNetworkSend::update_offset_callback, this, _1));
 }
 
 frbNetworkSend::~frbNetworkSend() {
@@ -166,11 +173,6 @@ void frbNetworkSend::main_thread() {
         pthread_setaffinity_np(send_ping_thread.native_handle(), sizeof(cpu_set_t), &cpuset);
         pthread_setaffinity_np(receive_ping_thread.native_handle(), sizeof(cpu_set_t), &cpuset);
     }
-
-    // beam offset
-    using namespace std::placeholders;
-    configUpdater::instance().subscribe(
-        this, std::bind(&frbNetworkSend::update_offset_callback, this, _1));
 
     int in_frame_id = 0;
     uint8_t* beams_buffer = (uint8_t*)in_buf->wait_for_full_frame(unique_name, in_frame_id);
