@@ -289,14 +289,33 @@ class TestCompare(unittest.TestCase):
         search["sections"]["rest"]["search"] = 2
         meta = golden_doc()
         meta["sections"]["metadata"]["GnssChanMetadata"]["size"] = 16
+        cube = golden_doc()
+        cube["sections"]["cube"]["CUBE_VERSION"] = 4
         for doc, want in (
-            (cmb, {"node": "MATCH", "gather": "MATCH", "aggregator": "MATCH"}),
-            (search, {"node": "MATCH", "gather": "MATCH", "aggregator": "MISMATCH"}),
-            (meta, {"node": "MATCH", "gather": "MISMATCH", "aggregator": "MATCH"}),
+            (cmb, {"node": "MATCH", "gather": "MATCH", "aggregator": "MATCH"},),
+            (search, {"node": "MATCH", "gather": "MATCH", "aggregator": "MISMATCH"},),
+            (meta, {"node": "MATCH", "gather": "MISMATCH", "cubearch": "MISMATCH"},),
+            (cube, {"node": "MATCH", "gather": "MATCH", "cubearch": "MISMATCH"}),
         ):
             got = {r: iface.compare(g, doc, role=r).state for r in want}
             self.assertEqual(got, want)
             self.assertEqual(iface.compare(g, doc).state, iface.MISMATCH)
+
+    def test_several_roles_compare_the_union_of_their_scopes(self):
+        g = iface.golden()
+        paths = iface.scope(["node", "gather"], ["GPS_L5_Q"])
+        self.assertEqual(len(paths), len(set(paths)), "each path once")
+        self.assertEqual(
+            set(paths),
+            set(iface.scope("node", ["GPS_L5_Q"]))
+            | set(iface.scope("gather", ["GPS_L5_Q"])),
+        )
+        search = golden_doc()
+        search["sections"]["rest"]["search"] = 2
+        c = iface.compare(g, search, role=["node", "aggregator"], signals=["GPS_L5_Q"])
+        self.assertEqual([iface.path_str(p) for p, _, _ in c.fails], ["rest/search"])
+        with self.assertRaises(ValueError):
+            iface.scope(["node", "nobody"])
 
     def test_the_signals_scope_is_the_chains_descriptors(self):
         g = iface.golden()
@@ -455,6 +474,13 @@ class TestSourcesAndCli(unittest.TestCase):
         rc, out = pf(cube, "--config", unstamped)
         self.assertEqual(rc, 0, out)
         self.assertIn("carries no gnss_iface stamp", out)
+        # The archiver's own scope holds the cube.
+        rc, out = run_cli("preflight", "--role", "cubearch", "--from", cube)
+        self.assertEqual(rc, 1, out)
+        self.assertIn("ERROR cube/CUBE_HEADER_BYTES: golden 152, binary 160", out)
+        self.assertIn("REFUSED", out)
+        rc, out = run_cli("preflight", "--role", "cubearch", "--from", good)
+        self.assertEqual(rc, 0, out)
         # The 10-20 failure: the config names a descriptor the binary does not resolve.
         rc, out = pf(nosbas, "--config", unstamped)
         self.assertEqual(rc, 1, out)

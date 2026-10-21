@@ -43,11 +43,13 @@ the deploy preflights.
     python3 -m gnss_broker.iface diff A B [--role ROLE]
     python3 -m gnss_broker.iface sync --from SOURCE [--commit SHA]
     python3 -m gnss_broker.iface preflight --role ROLE [--config CFG] [--from SOURCE]
+    python3 -m gnss_broker.iface check-fleet [CHAINS_YAML]
 
 A SOURCE is `golden` (the vendored copy), a kotekan tree, http://host:port (a running kotekan),
 a file holding a document or `kotekan --interfaces-json` output, or `-` for stdin.
 """
 import argparse
+import http.client
 import json
 import os
 import re
@@ -90,6 +92,9 @@ ROLES = {
     ),
     "gather": ("telem", "record.row", "record.chan", "metadata", "rest/fleet_trim"),
     "aggregator": ("signals", "rest/search"),
+    # The beam-cube archiver: the cube frames and their metadata, which the archive's readers
+    # (gnss_cube_read.py) take apart.
+    "cubearch": ("cube", "metadata"),
 }
 #: The sections that size frames: the generator stamps their digests into every config it
 #: writes, and a binary must agree with the stamp before it starts on that config.
@@ -106,6 +111,10 @@ GOLDEN_PATH = os.path.join(_HERE, "iface_golden.json")
 PIN_PATH = os.path.join(_HERE, "iface_pin.json")
 #: Where a kotekan tree keeps the document its build serves.
 KOTEKAN_GOLDEN = "lib/stages/gnss/gnss_interface.json"
+#: The chains yaml check-fleet reads by default: this checkout's.
+CHAINS_YAML = os.path.normpath(
+    os.path.join(_HERE, "..", "..", "..", "..", "config", "gnss_chains_chord.yaml")
+)
 
 _INT64_MIN, _INT64_MAX = -(1 << 63), (1 << 63) - 1
 
@@ -419,19 +428,23 @@ def show_value(v):
 
 
 def scope(role, signals=None):
-    """The paths (tuples into the sections) a role is compared on. `signals`, an iterable of
-    descriptor names, narrows the signals section to those descriptors."""
-    if role not in ROLES:
-        raise ValueError(
-            "unknown role %r (known: %s)" % (role, ", ".join(sorted(ROLES)))
-        )
+    """The paths (tuples into the sections) a role, or several roles together, is compared on.
+    `signals`, an iterable of descriptor names, narrows the signals section to those
+    descriptors."""
+    roles = (role,) if isinstance(role, str) else tuple(role)
+    for r in roles:
+        if r not in ROLES:
+            raise ValueError(
+                "unknown role %r (known: %s)" % (r, ", ".join(sorted(ROLES)))
+            )
     out = []
-    for p in ROLES[role]:
+    for p in [p for r in roles for p in ROLES[r]]:
         t = tuple(p.split("/"))
         if t == ("signals",) and signals is not None:
-            out += [("signals", n) for n in sorted(set(signals))]
+            ts = [("signals", n) for n in sorted(set(signals))]
         else:
-            out.append(t)
+            ts = [t]
+        out += [t for t in ts if t not in out]
     return out
 
 
@@ -486,8 +499,9 @@ def _walk(g, d, path, fails, extras):
 
 def compare(ref, doc, role=None, signals=None):
     """Compare a document with a reference (a Golden or a document). With no role, every
-    section of the reference; otherwise the role's scope (see scope()). A reference path that
-    the reference itself lacks is a caller error (ValueError)."""
+    section of the reference; otherwise the scope of the role, or of a list of roles (see
+    scope()). A reference path that the reference itself lacks is a caller error
+    (ValueError)."""
     ref_doc = ref.doc if isinstance(ref, Golden) else ref
     try:
         validate_doc(doc)
@@ -632,6 +646,11 @@ def _git(tree, *args):
     return p.stdout.strip() if p.returncode == 0 else None
 
 
+# What a failed HTTP read can raise: a refused or timed-out connection (OSError), an HTTP status
+# (URLError), a broken reply (HTTPException) or a body that is not JSON (ValueError).
+_READ_ERRORS = (OSError, ValueError, urllib.error.URLError, http.client.HTTPException)
+
+
 def _http_get(url, timeout):
     req = urllib.request.Request(url, headers={"Accept": "application/json"})
     try:
@@ -642,32 +661,60 @@ def _http_get(url, timeout):
         raise
 
 
-def _from_url(base, timeout):
+def read_version(base, timeout):
+    """A running kotekan's GET /version, as a dict. SourceError when it cannot be read or is
+    not a JSON object."""
     try:
         ver = json.loads(_http_get(base + "/version", timeout).decode("utf-8"))
-    except (OSError, ValueError, urllib.error.URLError) as e:
+    except _READ_ERRORS as e:
         raise SourceError("%s/version: %s" % (base, e))
     if not isinstance(ver, dict):
         raise SourceError("%s/version: not a JSON object" % base)
+    return ver
+
+
+def version_entry(ver, what):
+    """The gnss entry ({schema, digest, sections}) of a /version reply. Legacy when there is
+    none; Uncomparable when it is in error or of another schema."""
     if "interfaces" not in ver:
         raise Legacy(
-            "%s serves no interfaces (kotekan %s)" % (base, ver.get("git_commit_hash"))
+            "%s serves no interfaces (kotekan %s)" % (what, ver.get("git_commit_hash"))
         )
     entry = ver["interfaces"].get(NAME) if isinstance(ver["interfaces"], dict) else None
     if entry is None:
-        raise Legacy("%s serves no %s interface" % (base, NAME))
+        raise Legacy("%s serves no %s interface" % (what, NAME))
+    if not isinstance(entry, dict):
+        raise Uncomparable("%s: the %s entry is not an object" % (what, NAME))
     if "error" in entry:
         raise Uncomparable(
-            "%s: the gnss document is in error: %s" % (base, entry["error"])
+            "%s: the gnss document is in error: %s" % (what, entry["error"])
         )
+    if entry.get("schema") != SCHEMA or type(entry.get("schema")) is not int:
+        raise Uncomparable(
+            "%s: schema %r; this code reads schema %d only"
+            % (what, entry.get("schema"), SCHEMA)
+        )
+    return entry
+
+
+def fetch_doc(base, entry, timeout):
+    """GET /interfaces/gnss, checked against the digests /version served with it (entry).
+    SourceError when it cannot be read; Uncomparable when it does not hash to them or is not
+    canonical."""
     try:
         body = _http_get(base + "/interfaces/" + NAME, timeout)
         doc = json.loads(body.decode("ascii"))
-    except (OSError, ValueError, urllib.error.URLError) as e:
+    except _READ_ERRORS as e:
         raise SourceError("%s/interfaces/%s: %s" % (base, NAME, e))
     _check_served(doc, entry, base)
     if canonical(doc) != body:
         raise Uncomparable("%s/interfaces/%s: the body is not canonical" % (base, NAME))
+    return doc
+
+
+def _from_url(base, timeout):
+    ver = read_version(base, timeout)
+    doc = fetch_doc(base, version_entry(ver, base), timeout)
     return Source(doc, ver.get("git_commit_hash"), base)
 
 
@@ -881,7 +928,11 @@ def _cmd_preflight(a):
     for ln in refuse:
         print("%s: ERROR %s" % (tag, ln))
     if refuse:
-        print("%s: REFUSED (%s, %s)" % (tag, s.what, doc_digest(s.doc)))
+        print(
+            "%s: REFUSED: the binary (%s, document %s) disagrees with the broker's golden "
+            "(pin %s) or the config's stamp on %d point(s), listed above"
+            % (tag, s.what, doc_digest(s.doc), g.commit, len(refuse))
+        )
         return 1
     extra = " (extra: %d leaves)" % len(c.extras) if c.extras else ""
     print(
@@ -895,6 +946,25 @@ def _cmd_preflight(a):
         )
     )
     return 0
+
+
+def _cmd_check_fleet(a):
+    """One read of every origin the chains yaml names, as the broker's watcher reads them
+    (iface_watch.py). Exit 1 when one is in MISMATCH; a single read decides here."""
+    try:
+        import yaml  # every interpreter that runs this has it (the venvs; apt's for /usr/bin)
+    except ImportError:
+        raise SourceError("check-fleet reads the chains yaml, which needs PyYAML")
+    from . import iface_watch
+
+    try:
+        with open(a.chains) as fh:
+            cfg = yaml.safe_load(fh) or {}
+        lines, bad = iface_watch.check_fleet(cfg, timeout=a.timeout)
+    except (OSError, ValueError, yaml.YAMLError) as e:
+        raise SourceError("%s: %s" % (a.chains, e))
+    print("\n".join(lines))
+    return 1 if bad else 0
 
 
 def main(argv=None):
@@ -932,6 +1002,12 @@ def main(argv=None):
     p.add_argument("--signals", help="the descriptors to check (default: the config's)")
     p.add_argument("--timeout", type=float, default=3.0, help="for a URL source, s")
     p.add_argument("--limit", type=int, default=20, help="paths listed at most")
+    p = sub.add_parser(
+        "check-fleet",
+        help="read every origin of a chains yaml once and print its verdict",
+    )
+    p.add_argument("chains", nargs="?", default=CHAINS_YAML)
+    p.add_argument("--timeout", type=float, default=3.0, help="per read, s")
     a = ap.parse_args(argv)
     if a.cmd is None:
         ap.print_help()
@@ -942,6 +1018,7 @@ def main(argv=None):
             "diff": _cmd_diff,
             "sync": _cmd_sync,
             "preflight": _cmd_preflight,
+            "check-fleet": _cmd_check_fleet,
         }[a.cmd](a)
     except (SourceError, GoldenError) as e:
         print("iface %s: %s" % (a.cmd, e), file=sys.stderr)

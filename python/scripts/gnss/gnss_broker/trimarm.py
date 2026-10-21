@@ -24,7 +24,7 @@ after which the loop starts again from the seed.
 @author Keith Vanderlinde
 """
 
-from gnss_broker.transport import _get, _log, _post, _log_rl, log_tag
+from gnss_broker.transport import _get, _log, _post, _log_rl, iface_unfenced, log_tag
 
 # One GPU's channels lie on a stride-16 comb of 0.1953125-MHz channels, 3.125 MHz apart, so one
 # instance's correlation response repeats every 320 ns: a grating lobe 3.27 chips out at
@@ -213,7 +213,10 @@ def stage_fleet_trim_arming(ctx):
                     "leak_per_s": ctx.args.fleet_trim_leak_per_s,
                     "clamp": trim_clamp(ctx.args.chip_rate_hz),
                     "spacing": ctx.args.dll_spacing,
-                    "targets": ["%s/set_trim" % t for t in ctx.trackers],
+                    # Less any tracker the interface watcher fences (enforce mode only).
+                    "targets": [
+                        "%s/set_trim" % t for t in iface_unfenced(ctx.trackers)
+                    ],
                 }
             }
         }

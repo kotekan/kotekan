@@ -179,6 +179,75 @@ def http_request(method, url, timeout, data=None, headers=None):
 
 
 # ---------------------------------------------------------------------------------------
+# The interface fence (gnss_broker/iface_watch.py). In enforce mode the interface watcher fences
+# a node origin whose kotekan disagrees with the golden this broker speaks, and it then looks
+# like a node that is down: its requests raise IfaceRefused, a URLError, so every caller's
+# unreachable path applies. The fence is empty unless the mode is enforce, so in the default
+# modes each request pays one truth test and goes out exactly as before.
+
+
+class IfaceRefused(urllib.error.URLError):
+    """A request to an origin the interface watcher has fenced (enforce mode only)."""
+
+
+# (netloc, chain) pairs, chain None for every chain. Replaced whole, never changed in place.
+_iface_fence = frozenset()
+# Called with the URL of each request that failed, other than a refused one, so the watcher reads
+# that origin again sooner. None without a watcher.
+_iface_on_error = None
+# Paths no fence covers: kotekan's own, the time0 read (/telescope/time0_ns) among them.
+_IFACE_EXEMPT = ("/version", "/config", "/metrics", "/status")
+
+
+def set_iface_fence(fence):
+    global _iface_fence
+    _iface_fence = frozenset(fence)
+
+
+def set_iface_error_hook(fn):
+    global _iface_on_error
+    _iface_on_error = fn
+
+
+def iface_fenced(url):
+    """Is url fenced for this thread's chain?"""
+    fence = _iface_fence
+    if not fence:
+        return False
+    u = urllib.parse.urlsplit(url)
+    if u.path in _IFACE_EXEMPT or u.path.startswith("/telescope/"):
+        return False
+    return (u.netloc, None) in fence or (u.netloc, log_tag()) in fence
+
+
+def iface_unfenced(urls):
+    """urls less those fenced for this thread's chain; urls itself when nothing is fenced."""
+    if not _iface_fence:
+        return urls
+    return [u for u in urls if not iface_fenced(u)]
+
+
+def iface_fenced_sender(inst, chain):
+    """Is a telemetry sender fenced? inst is its "<node>.<gpu>" tag, matched against the
+    fenced origins' host names."""
+    fence = _iface_fence
+    if not fence:
+        return False
+    node = inst.split(".", 1)[0]
+    return any(n.rsplit(":", 1)[0] == node and c in (None, chain) for n, c in fence)
+
+
+def _iface_failed(url, e):
+    hook = _iface_on_error
+    if hook is None or isinstance(e, IfaceRefused):
+        return
+    try:
+        hook(url)
+    except Exception:
+        pass
+
+
+# ---------------------------------------------------------------------------------------
 # Transcript: record/replay of every external interaction, the broker's refactoring gate.
 # One run's whole conversation with the world is recorded, replayed against changed code
 # (scripts/gnss/broker_equiv.py), and the POST stream must come out byte-identical. That bar
@@ -301,10 +370,13 @@ class _Transcript:
             return r["r"]
         _t0 = time.perf_counter()
         try:
+            if _iface_fence and iface_fenced(url):
+                raise IfaceRefused("%s: fenced by the interface watcher" % url)
             v = json.loads(http_request("GET", url, timeout)[1].decode())
             _http_record("get", url, time.perf_counter() - _t0, True)
         except Exception as e:
             _http_record("get", url, time.perf_counter() - _t0, False)
+            _iface_failed(url, e)
             if self._mine() and self.mode == "write":
                 self._emit({"k": "get", "u": url, "r": None, "e": repr(e)})
             raise
@@ -333,6 +405,8 @@ class _Transcript:
         data = json.dumps(payload).encode()
         _t0 = time.perf_counter()
         try:
+            if _iface_fence and iface_fenced(url):
+                raise IfaceRefused("%s: fenced by the interface watcher" % url)
             s = http_request(
                 "POST",
                 url,
@@ -343,6 +417,7 @@ class _Transcript:
             _http_record("post", url, time.perf_counter() - _t0, True)
         except Exception as e:
             _http_record("post", url, time.perf_counter() - _t0, False)
+            _iface_failed(url, e)
             if self._mine() and self.mode == "write":
                 self._emit({"k": "post", "u": url, "s": None, "e": repr(e)})
             raise

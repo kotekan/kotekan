@@ -29,7 +29,7 @@ import struct
 import threading
 import time
 
-from . import iface
+from . import iface, transport
 from .transport import _log, _log_rl
 
 # The wire format, from the interface golden (gnssTelem.hpp TELEM_MAGIC, TELEM_VERSION and
@@ -352,6 +352,9 @@ class TelemClient(object):
         self.last_rx = 0.0
         self._seen_seq = {}  # (chain, inst) -> last seq
         self.gaps = 0
+        # Frames from senders the interface watcher fences (enforce mode only; see
+        # transport.iface_fenced_sender), dropped before they are stored.
+        self.iface_dropped = 0
 
     # -- lifecycle ---------------------------------------------------------------------------
     def start(self):
@@ -582,6 +585,9 @@ class TelemClient(object):
 
     def _store_frame(self, f):
         if self.chains_filter is not None and f.chain not in self.chains_filter:
+            return
+        if transport._iface_fence and transport.iface_fenced_sender(f.inst, f.chain):
+            self.iface_dropped += 1
             return
         with self._lock:
             self.frames += 1

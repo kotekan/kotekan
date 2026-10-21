@@ -58,6 +58,9 @@ class FleetPublisher:
     """
 
     def __init__(self, port, log):
+        # The interface watcher (iface_watch.Watcher), set by broker_multi: GET /get_iface serves
+        # its verdicts and /get_chains adds each chain's summary. None in a single-chain broker.
+        self.iface = None
         self._rf = {"t": None, "instances": {}}  # receiver-wide RF health (set_rf)
         self._dark = {}  # chain -> {"t", "instances": {tap url: verdict}} (set_dark)
         # Receiver-wide sky, so the viewer draws what the broker believes instead of
@@ -131,8 +134,25 @@ class FleetPublisher:
                         # Discovery: each registered chain's descriptor (constellation,
                         # band, record length, ...; see register), so one viewer instance
                         # builds its table from what is actually running.
+                        _w = pub.iface
                         body = json.dumps(
-                            [pub._chains[c]["desc"] for c in pub._order]
+                            [
+                                pub._chains[c]["desc"]
+                                if _w is None
+                                else dict(
+                                    pub._chains[c]["desc"], iface=_w.chain_summary(c)
+                                )
+                                for c in pub._order
+                            ]
+                        ).encode()
+                    elif p.endswith("get_iface"):
+                        # Receiver-wide: the interface watcher's verdict on every origin
+                        # (iface_watch.py), whatever the chain selector.
+                        _w = pub.iface
+                        body = json.dumps(
+                            _w.snapshot()
+                            if _w is not None
+                            else {"mode": None, "error": "no interface watcher here"}
                         ).encode()
                     elif p.endswith("get_detections"):
                         body = json.dumps(pub._collect(ids, "dets")).encode()

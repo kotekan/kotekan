@@ -49,7 +49,7 @@ sys.path.insert(0, os.path.join(K, "python", "scripts", "gnss"))
 
 import yaml  # noqa: E402
 import gps_distributed_broker as broker  # noqa: E402
-from gnss_broker import iface, publish, receiver, transport  # noqa: E402
+from gnss_broker import iface, iface_watch, publish, receiver, transport  # noqa: E402
 
 
 def flags(d):
@@ -71,7 +71,9 @@ def flags(d):
 
 def load(path):
     cfg = yaml.safe_load(open(path)) or {}
-    common = cfg.get("common") or {}
+    common = dict(cfg.get("common") or {})
+    # The interface watcher's settings (gnss_broker/iface_watch.py), not a chain flag.
+    common.pop("iface", None)
     chains = cfg.get("chains") or {}
     if not chains:
         sys.exit("%s defines no chains" % path)
@@ -147,6 +149,12 @@ def main():
     # corrupt golden has already stopped the start, never a chain mid-run.
     golden = iface.golden()
     transport._log("iface: golden %s, pin kotekan %s" % (golden.digest, golden.commit))
+    # The watcher compares what every origin in the chains yaml serves with the golden, on a
+    # thread of its own (gnss_broker/iface_watch.py). A bad `iface:` setting stops the start.
+    try:
+        watcher = iface_watch.from_chains(yaml.safe_load(open(a.config)) or {})
+    except ValueError as e:
+        sys.exit("%s: %s" % (a.config, e))
     # One publisher for the whole process, on the first non-zero --publish-port in chain
     # order, so one viewer origin serves every chain. Chains are told apart by
     # /<chain>/get_status or ?chain=<id>.
@@ -163,6 +171,12 @@ def main():
     pub = publish.FleetPublisher(port, transport._log) if port else None
     if pub:
         transport._log("fleet publisher shared by every chain on :%d" % port)
+        pub.iface = watcher
+    transport._log(
+        "iface: watching %d origin(s), mode %s, mode file %s"
+        % (len(watcher.origins), watcher.yaml_mode, watcher.mode_file)
+    )
+    watcher.start()
     transport._log(
         "starting %d chain(s): %s" % (len(chains), ", ".join(n for n, _ in chains))
     )
@@ -206,6 +220,9 @@ def main():
                     transport._log(ln)
                 for ln in transport.http_timing_report(top=12):
                     transport._log(ln)
+                alarm = watcher.stale_alarm()
+                if alarm:
+                    transport._log(alarm)
     except KeyboardInterrupt:
         transport.set_log_tag("driver")
         transport._log(

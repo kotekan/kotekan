@@ -10,6 +10,7 @@ that closes the carrier loop.
 """
 import os
 import sys
+import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -62,11 +63,28 @@ def test_commanded_chains_feed_no_command():
     check(n > 0, "the chains yaml has commanded chains (%d)" % n)
 
 
+def test_iface_is_not_a_chain_flag():
+    """common `iface:` configures the interface watcher (gnss_broker/iface_watch.py); passed on
+    as --iface, every chain would refuse to start."""
+    with tempfile.NamedTemporaryFile("w", suffix=".yaml") as fh:
+        fh.write(
+            "common:\n  iface: enforce\n  interval: 2\nchains:\n  a: {signal: gps_l5}\n"
+        )
+        fh.flush()
+        got = broker_multi.load(fh.name)
+    check(
+        got == [("a", ["--interval", "2", "--signal", "gps_l5"])],
+        "common iface: is dropped from the chains' flags (got %r)" % got,
+    )
+
+
 def main():
     print("broker_multi.py slack interval checks")
     test_slack_interval()
     print("commanded chains in config/gnss_chains_chord.yaml")
     test_commanded_chains_feed_no_command()
+    print("the interface watcher's settings")
+    test_iface_is_not_a_chain_flag()
     if _fails:
         print("FAILED (%d)" % len(_fails))
         return 1
