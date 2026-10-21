@@ -29,9 +29,8 @@ Checks:
 - Memory: kotekan's resident memory does not grow by more than `MEMORY_TOLERANCE_MIB` after
   `MEMORY_WARMUP` seconds (see `check_memory`).
 
-CHIME has one bad feed mask stream and no BB, and poisons with `random_valid` bytes (see
-check_badfeeds.py); its run has as many frames, which also hold whole N2 integrations of 240
-frames.
+CHIME has no BB and poisons with `random_valid` bytes (see check_badfeeds.py); its run has as
+many frames, which also hold whole N2 integrations of 240 frames.
 
 See docs/integration-tests/T10-long-run.md.
 """
@@ -49,7 +48,6 @@ from check_badfeeds import (
     Schedule,
     check_masks,
     lifetime_frames,
-    n2_masked,
     result_line,
 )
 from check_beams import check_beam_stream, configured_beams
@@ -103,8 +101,7 @@ def frame_counts(config, seq0, num_frames):
     frb = (num_frames * T - t_star(config)) // frb_frame_length(config)
     bin0 = n2_bin_start(config, seq0)
     integrations = (seq0 + num_frames * T - bin0) // n2_bin_length(config)
-    counts = {"n2_bf_mask": num_frames} if n2_masked(config) else {}
-    counts["n2k_plcounts"] = num_frames
+    counts = {"n2_bf_mask": num_frames, "n2k_plcounts": num_frames}
     counts["bf_mask"] = num_frames // lifetime_frames(config)
     if has_bb(config):
         counts["bb_beam_positions"] = num_frames // lifetime_frames(config)
@@ -446,10 +443,10 @@ def check_memory(out_dir, results, failures):
     )
 
 
-def frame_rate(out_dir, stream):
-    """Frames per wall-clock second over the run, from the drain of the one-frame output
-    `stream` in the kotekan log, in tenths of the run."""
-    pattern = re.compile(rf"drain_{stream} frame (\d+) \(duration ([0-9.e+-]+) sec\)")
+def frame_rate(out_dir):
+    """Frames per wall-clock second over the run, from the drain of the one-frame mask
+    stream in the kotekan log, in tenths of the run."""
+    pattern = re.compile(r"drain_n2_bf_mask frame (\d+) \(duration ([0-9.e+-]+) sec\)")
     points = []
     with open(out_dir + ".log") as log:
         for line in log:
@@ -468,14 +465,12 @@ def frame_rate(out_dir, stream):
 
 def check(out_dir, var, config):
     seq0 = var["first_fpga_seq_num"]
-    num_frames = var["write_frames"]["n2k_plcounts"]
+    num_frames = var["write_frames"]["n2_bf_mask"]
     counts, integrations = frame_counts(config, seq0, num_frames)
     sched = Schedule(var, config)
     results = []
     failures = []
-    results.append(
-        frame_rate(out_dir, "n2_bf_mask" if n2_masked(config) else "n2k_plcounts")
-    )
+    results.append(frame_rate(out_dir))
     check_counts(out_dir, config, counts, results, failures)
     check_masks(out_dir, config, sched, results, failures)
     stage = find_stages(config, "setFRBBeams")[0]

@@ -15,9 +15,8 @@ Checks:
 - The two streams agree at every sample.
 - BB phases, FRB1 weights, S0tilde and the N2 flags follow the written masks (as in T9).
 
-CHIME has one stream (its N2Accumulate reads no mask, see check_badfeeds.py) and no BB; it posts
-the bad inputs in cylinder order, as config/chime_upgrade_frb.j2, which for these inputs is the
-mask order.
+CHIME has no BB; it posts the bad inputs in cylinder order, as config/chime_upgrade_frb.j2, which
+for these inputs is the mask order.
 
 See docs/integration-tests/T9-bad-feed-mask.md.
 """
@@ -30,8 +29,8 @@ from check_badfeeds import (
     check_bb_phase,
     check_frb1_weights,
     lifetime_frames,
+    n2_bin_frames,
     n2_flags,
-    n2_masked,
     read_n2,
     result_line,
 )
@@ -44,7 +43,14 @@ POST_DELAY = 0
 START_FRAMES = 180
 BAD_INPUTS = [5, 17, 70, 100]
 MASK_FRAMES = 240
-N2_INTEGRATIONS = 9
+
+
+def mask_frames(config):
+    """MASK_FRAMES frames (9 N2 integrations for the pathfinder), or enough lifetimes for one N2
+    integration (CHIME, with 240-frame integrations)."""
+    L = lifetime_frames(config)
+    need = check_badfeeds.N2_LEAD_FRAMES + n2_bin_frames(config)
+    return max(MASK_FRAMES, -(-need // L) * L)
 
 
 def variables(tel, config, variant):
@@ -53,15 +59,15 @@ def variables(tel, config, variant):
     var["first_fpga_seq_num"] = check_badfeeds_first_seq(config)
     var["bf_source"] = "rest"
     var["bf_mask_lifetime_frames"] = lifetime_frames(config)
-    lifetimes = MASK_FRAMES // lifetime_frames(config)
-    write_frames = {"bf_mask": lifetimes}
-    if n2_masked(config):
-        write_frames["n2_bf_mask"] = MASK_FRAMES
+    lifetimes = mask_frames(config) // lifetime_frames(config)
+    integrations = (
+        mask_frames(config) - check_badfeeds.N2_LEAD_FRAMES
+    ) // n2_bin_frames(config)
+    write_frames = {"bf_mask": lifetimes, "n2_bf_mask": mask_frames(config)}
     if has_bb(config):
         write_frames["bb_phase"] = lifetimes
-    write_frames["rfi_S012tilde"] = MASK_FRAMES
-    if n2_masked(config):
-        write_frames["n2_vis"] = N2_INTEGRATIONS * value(config, "num_frequencies")
+    write_frames["rfi_S012tilde"] = mask_frames(config)
+    write_frames["n2_vis"] = integrations * value(config, "num_frequencies")
     for U in frb_factors(config):
         write_frames[f"frb1_U{U}_phase"] = lifetimes
     var["outputs"] = list(write_frames)
@@ -175,30 +181,24 @@ def check(out_dir, var, config):
         failures,
     )
     require(bf.seq0 == var["first_fpga_seq_num"], f"bf_mask starts at {bf.seq0}")
-    if n2_masked(config):
-        n2, n2_change = check_stream(
-            out_dir, "n2_bf_mask", T, config, results, failures
-        )
-        require(n2.seq0 == var["first_fpga_seq_num"], f"n2_bf_mask starts at {n2.seq0}")
-        use = n2.seq < bf.seq[-1] + bf.lifetime
-        differ = np.any(n2.mask[use] != bf.good(n2.seq[use]), axis=1)
-        line = (
-            f"bf_mask and n2_bf_mask differ in {np.count_nonzero(differ)} of "
-            f"{np.count_nonzero(use)} frames"
-        )
-        if bf_change is not None and n2_change is not None:
-            line += (
-                f" (n2_bf_mask changes {(n2_change - bf_change) // T:+d} frames later)"
-            )
-        results.append(result_line("mask streams", differ.any(), line, failures))
+    n2, n2_change = check_stream(out_dir, "n2_bf_mask", T, config, results, failures)
+    require(n2.seq0 == var["first_fpga_seq_num"], f"n2_bf_mask starts at {n2.seq0}")
+    use = n2.seq < bf.seq[-1] + bf.lifetime
+    differ = np.any(n2.mask[use] != bf.good(n2.seq[use]), axis=1)
+    line = (
+        f"bf_mask and n2_bf_mask differ in {np.count_nonzero(differ)} of "
+        f"{np.count_nonzero(use)} frames"
+    )
+    if bf_change is not None and n2_change is not None:
+        line += f" (n2_bf_mask changes {(n2_change - bf_change) // T:+d} frames later)"
+    results.append(result_line("mask streams", differ.any(), line, failures))
 
     if has_bb(config):
         check_bb_phase(out_dir, bf, results, failures)
     check_frb1_weights(out_dir, config, bf, results, failures)
     check_s0tilde(out_dir, bf, results, failures)
-    if n2_masked(config):
-        for start, entries in read_n2(out_dir).items():
-            n2_flags(start, entries, config, n2, results, failures)
+    for start, entries in read_n2(out_dir).items():
+        n2_flags(start, entries, config, n2, results, failures)
     require(
         not failures,
         f"{len(failures)} checks failed ({', '.join(failures)}):\n    "

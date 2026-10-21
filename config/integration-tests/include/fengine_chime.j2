@@ -9,6 +9,7 @@
 #   bf_source: rest).
 # - The telescope takes its time origin from /gps_time and uses the default frequency map. It
 #   lists the dishes for the test generators.
+# - N2Accumulate reads the bad feed mask, from its own one-frame stream (n2k_chime.j2).
 # - No gain files for loadFeedGains, no CPU affinity of the main threads, no huge pages.
 # - Jinja variables: bf_mask_lifetime_frames, rfi_excision_enabled, half_filled.
 
