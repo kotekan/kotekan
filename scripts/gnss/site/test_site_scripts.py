@@ -498,6 +498,8 @@ if "--print-path" in sys.argv:
     sys.exit(0)
 with open(os.path.join(K, "gen_fleet.calls"), "a") as fh:
     fh.write(" ".join(sys.argv[2:]) + "\n")
+if "--check" in sys.argv:
+    sys.exit(int(os.environ.get("GEN_FLEET_CHECK_RC", "0")))
 """
 
 
@@ -742,6 +744,70 @@ def test_install_user_units_names_its_own_checkout():
         shutil.rmtree(d, ignore_errors=True)
 
 
+def test_install_user_units_will_not_move_the_stack_unasked():
+    """A live install from a checkout other than the one the installed broker unit runs is
+    refused unless GNSS_UNITS_CHECKOUT names the checkout; an empty <dir> is refused."""
+    d = os.path.realpath(tempfile.mkdtemp(prefix="site_units_live_"))
+    try:
+        k = os.path.join(d, "k")
+        shutil.copytree(
+            os.path.join(HERE, "systemd"),
+            os.path.join(k, "scripts", "gnss", "site", "systemd"),
+        )
+        inst = os.path.join(
+            k, "scripts", "gnss", "site", "systemd", "install_user_units.sh"
+        )
+        bindir = os.path.join(d, "bin")
+        log = os.path.join(d, "calls.log")
+        for tool in ("systemctl", "loginctl"):
+            stub(bindir, tool, 'echo "$0 $*" >> "$UNITS_TEST_LOG"\n')
+        live = os.path.join(d, "config", "systemd", "user")
+        os.makedirs(live)
+        broker = os.path.join(live, "gnss-broker.service")
+        with open(broker, "w") as f:
+            f.write("ExecStart=/elsewhere/scripts/gnss/site/run_component.sh broker\n")
+        env = {
+            "PATH": bindir + ":/usr/bin:/bin",
+            "UNITS_TEST_LOG": log,
+            "XDG_CONFIG_HOME": os.path.join(d, "config"),
+            "GNSS_LOGS": os.path.join(d, "logs"),
+        }
+
+        rc, out = run(["sh", inst, ""], env, bare=True)
+        check(rc == 2 and "empty" in out, "an empty <dir> is refused (rc %d)" % rc)
+
+        rc, out = run(["sh", inst], env, bare=True)
+        check(
+            rc == 1
+            and "REFUSING" in out
+            and "/elsewhere" in out
+            and open(broker).read().startswith("ExecStart=/elsewhere/")
+            and not os.path.exists(log),
+            "a checkout other than the installed one is refused, and nothing is written "
+            "(rc %d: %s)" % (rc, out.strip()[-200:]),
+        )
+
+        env["GNSS_UNITS_CHECKOUT"] = k
+        rc, out = run(["sh", inst], env, bare=True)
+        check(
+            rc == 0
+            and ("ExecStart=%s/scripts/gnss/site/run_component.sh broker" % k)
+            in open(broker).read()
+            and os.path.exists(log),
+            "named by GNSS_UNITS_CHECKOUT, it installs and reloads (rc %d: %s)"
+            % (rc, out.strip()[-200:]),
+        )
+
+        del env["GNSS_UNITS_CHECKOUT"]
+        rc, out = run(["sh", inst], env, bare=True)
+        check(
+            rc == 0,
+            "reinstalling from the checkout the units run needs no name (rc %d)" % rc,
+        )
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
 def test_run_component_exports_kotekan_src_to_the_broker_alone():
     d = os.path.realpath(tempfile.mkdtemp(prefix="site_print_"))
     try:
@@ -874,6 +940,29 @@ def test_eop_cron_reads_the_configs_the_manifest_owns():
             "each gen_fleet run gets KOTEKAN_SRC, the kotekan tree beside the checkout (%r)"
             % seen,
         )
+        for check_rc, want in (
+            (
+                1,
+                "on-disk configs differ from the manifest beyond live data; NOT regenerated",
+            ),
+            (2, "gen_fleet --check could not compare (rc 2); NOT regenerated"),
+        ):
+            rc, out = run(
+                ["bash", os.path.join(k, "scripts", "gnss", "site", "eop_cron.sh")],
+                {
+                    "PATH": bindir + ":" + os.environ["PATH"],
+                    "GNSS_NODES": "cxtest",
+                    "EOP_LOG": log,
+                    "EOP_STATE": state,
+                    "GEN_FLEET_CHECK_RC": str(check_rc),
+                },
+                bare=True,
+            )
+            last = open(log).read().strip().splitlines()[-1:]
+            check(
+                bool(last) and want in last[0],
+                "a --check that exits %d is logged as such (%r)" % (check_rc, last),
+            )
     finally:
         shutil.rmtree(d, ignore_errors=True)
 

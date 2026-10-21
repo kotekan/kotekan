@@ -16,6 +16,11 @@ Things outside the repository that name these paths, and must follow a move:
 * the gnss crontab: `eop_cron.sh`, `bad_inputs_cron.py`, `elem_ref_cron.sh`, and the logrotate
   line, which names `logrotate.conf` (`tle_refresh.py` documents a line but is not installed);
 * the cf06 crontab: `chain_health_cron.sh`;
+* `config/generated`, the untracked configs every kotekan instance runs: it must stay ONE
+  directory with one writer, so make the new checkout's `config/generated` a symlink to the
+  old one and never copy it. A copy splits the EOP table: `eop_cron.sh` refreshes the new
+  checkout's files while the nodes' on-failure restarts, the gather, the aggregator and the
+  cf06 archiver keep reading the old path until each is relaunched;
 * the symlinks into `python/scripts/gnss`: `/home/kvand/gnss/fixtures/beamcube/web/index.html`
   and `beamcube.js` (re-run `beamview_up.sh` on cf06), and
   `/home/kvand/gnss/fixtures/tec_wander/transit_arcs.py` (to `gnss_transit_arcs.py`);

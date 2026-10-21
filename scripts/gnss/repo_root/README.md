@@ -73,7 +73,9 @@ tornado, which neither venv has: these environments do not support it.
 
 runs every test, each under the interpreter it is written for (`GNSS_VENV`, `GNSS_VENV_FT` and
 `GNSS_SYS_PY` override them), and prints a PASS/FAIL/SKIP/TIMEOUT table; its docstring has the
-rules. Set `KOTEKAN_SRC` when kotekan is not beside the checkout.
+rules. Set `KOTEKAN_SRC` when kotekan is not beside the checkout. A test that needs something
+the host lacks (a compiler, node, the plotting libraries) fails rather than skipping; the e2e
+GPU tests stay in kotekan and report SKIP without a build unless `GNSS_REQUIRE_GPU=1`.
 
 ## Docs
 

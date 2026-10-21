@@ -328,7 +328,7 @@ def main():
     for v in ("OPENBLAS", "OMP", "MKL", "NUMEXPR"):
         base_env.setdefault(v + "_NUM_THREADS", "1")
 
-    out = a.out or tempfile.mkdtemp(prefix="gnss-tests-")
+    out = os.path.abspath(a.out or tempfile.mkdtemp(prefix="gnss-tests-"))
     os.makedirs(out, exist_ok=True)
     tmp = base_env["TMPDIR"] = tempfile.mkdtemp(prefix="tmp-", dir=out)
     head = [

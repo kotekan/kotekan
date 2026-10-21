@@ -102,14 +102,18 @@ print(min(ends) if ends else "")
 PYE
 )
 if [ -n "$DISK_END" ] && [ "$DISK_END" -lt "$FILE_END" ]; then
-    if "$PY" "$K/scripts/gnss/gen_fleet.py" "$MAN" --check >/dev/null 2>&1; then
+    rc=0
+    "$PY" "$K/scripts/gnss/gen_fleet.py" "$MAN" --check >/dev/null 2>&1 || rc=$?
+    if [ "$rc" = 0 ]; then
         if "$PY" "$K/scripts/gnss/gen_fleet.py" "$MAN" >/dev/null 2>&1; then
             echo "  on-disk configs regenerated: table end $DISK_END -> $FILE_END"
         else
             echo "  on-disk regen FAILED (gen_fleet write); table end still $DISK_END"
         fi
-    else
+    elif [ "$rc" = 1 ]; then
         echo "  on-disk configs differ from the manifest beyond live data; NOT regenerated (table end $DISK_END)"
+    else
+        echo "  gen_fleet --check could not compare (rc $rc); NOT regenerated (table end $DISK_END)"
     fi
 elif [ -z "$DISK_END" ]; then
     echo "  on-disk configs: no table end readable in the manifest's ${#OWNED[@]} config(s); NOT checked"
