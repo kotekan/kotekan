@@ -46,7 +46,15 @@ import cmath
 import math
 
 from .fleet import apply_presence
-from .telem import REC_PHI0, REC_PROJ_COST
+from .telem import (
+    REC_P_ENERGY,
+    REC_P_IM,
+    REC_P_RE,
+    REC_PHI0,
+    REC_PROJ_COST,
+    REC_SKY_IM,
+    REC_SKY_RE,
+)
 
 #: The clip on an exponential probe population, in multiples of its median: records above it
 #: are dropped from the clipped mean. It must clear the tail: at 8x the median the clip drops
@@ -831,11 +839,11 @@ def coh_cn0(
                     row = f.row(r, prn)
                     if row is None:
                         continue
-                    en = row[5]  # REC_P_ENERGY
+                    en = row[REC_P_ENERGY]
                     if en <= 0.0:
                         continue
-                    a = complex(row[3], row[4]) / en  # REC_P_RE/IM
-                    skr, ski = row[24], row[25]  # REC_SKY_RE/IM (0 = absent)
+                    a = complex(row[REC_P_RE], row[REC_P_IM]) / en
+                    skr, ski = row[REC_SKY_RE], row[REC_SKY_IM]  # 0 = absent
                     sky = (
                         (complex(skr, ski) / en) if (skr != 0.0 or ski != 0.0) else None
                     )

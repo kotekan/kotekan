@@ -1,23 +1,20 @@
 #!/usr/bin/env python3
-"""Record and wire-frame layout constants (RECORD_FLOATS, ELEM_FLOATS, ...), read from the C++
-headers that define them.
+"""Record and wire-frame layout constants (RECORD_FLOATS, ELEM_FLOATS, ...), from the interface
+golden.
 
 The widths are C++ constants (gnssRecord.hpp, gnssTelem.hpp, gnssGpuChain.hpp) but kotekan
 frames are sized in the generated yaml (`n_prn * record_floats * sizeof_float32`). The generator
-reads the constants from the headers instead of restating them, so they cannot drift. The
-frame-size expressions below (telem_frame_bytes, cube_frame_bytes) restate their C++
-counterparts and must change with them.
-
-Parsed, not imported: these are plain `constexpr int` one-liners, and a regex over them is
-cheaper than any build-time codegen. If a header stops matching, this raises rather than
-silently returning a stale default.
+takes the constants from the interface document kotekan builds from those headers
+(gnss_broker/iface.py, the golden the broker also speaks) instead of restating them, so they
+cannot drift. The frame-size expressions below (telem_frame_bytes, cube_frame_bytes) restate
+their C++ counterparts and must change with them; the golden's frame_bytes samples check them
+(config/test_record_layout.py).
 """
 
 import os
-import re
 import sys
 
-# kotekan_src (python/scripts/gnss) says where the kotekan source tree is.
+# python/scripts/gnss, for the interface golden (gnss_broker/iface.py).
 _GNSS_PY = os.path.normpath(
     os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "..", "python", "scripts", "gnss"
@@ -25,33 +22,21 @@ _GNSS_PY = os.path.normpath(
 )
 if _GNSS_PY not in sys.path:
     sys.path.append(_GNSS_PY)
-import kotekan_src  # noqa: E402
-
-HEADER = kotekan_src.gnss_cpp("gnssRecord.hpp")
-TELEM_HEADER = kotekan_src.gnss_cpp("gnssTelem.hpp")
-CHAIN_HEADER = kotekan_src.gnss_cpp("gnssGpuChain.hpp")
+from gnss_broker import iface  # noqa: E402
 
 
-def _read(name, path=HEADER):
-    with open(path) as fh:
-        text = fh.read()
-    m = re.search(r"^\s*constexpr\s+int\s+%s\s*=\s*(\d+)\s*;" % name, text, re.M)
-    if not m:
-        raise SystemExit(
-            "%s: could not parse `constexpr int %s` -- the header's shape "
-            "changed and config/gnss_record_layout.py needs updating" % (path, name)
-        )
-    return int(m.group(1))
+def _const(section, name):
+    return iface.golden().const(section, name)
 
 
 def record_floats():
     """Per-PRN record header width, floats (gnss::RECORD_FLOATS)."""
-    return _read("RECORD_FLOATS")
+    return _const("record.row", "RECORD_FLOATS")
 
 
 def elem_floats():
     """Per-element block width, floats (gnss::ELEM_FLOATS)."""
-    return _read("ELEM_FLOATS")
+    return _const("record.elem", "ELEM_FLOATS")
 
 
 def record_stride(n_elem):
@@ -60,41 +45,30 @@ def record_stride(n_elem):
 
 
 def prnctl_bytes():
-    """sizeof(gnss_gpu::PrnCtl) -- parsed from its static_assert in gnssGpuChain.hpp.
+    """sizeof(gnss_gpu::PrnCtl), the size of the golden's PrnCtl table (gnssGpuChain.hpp).
 
     The generator sizes the epl and ctl frames with it (gnss_gpu::frame_bytes, restated in
     Python with this one term read). A literal copy goes stale when PrnCtl grows, and every node
     then refuses to start on a frame that is (new - old) * 16 * n_prn bytes short.
 
-    Parsed from the static_assert rather than a constexpr because the size is the compiler's
-    to decide; the assert is the one place the expected value is written down, and every build
-    checks it.
+    The document takes the size from the compiler (sizeof), and its field table must tile it.
     """
-    with open(CHAIN_HEADER) as fh:
-        text = fh.read()
-    m = re.search(r"static_assert\s*\(\s*sizeof\s*\(\s*PrnCtl\s*\)\s*==\s*(\d+)", text)
-    if not m:
-        raise SystemExit(
-            "%s: could not parse the sizeof(PrnCtl) static_assert -- the header's "
-            "shape changed and config/gnss_record_layout.py needs updating"
-            % CHAIN_HEADER
-        )
-    return int(m.group(1))
+    return iface.golden().sections["gpu_chain"]["PrnCtl"]["size"]
 
 
 def telem_header_bytes():
     """gnss::TELEM_HEADER_BYTES -- the telemetry wire frame's header (gnssTelem.hpp)."""
-    return _read("TELEM_HEADER_BYTES", TELEM_HEADER)
+    return _const("telem", "TELEM_HEADER_BYTES")
 
 
 def telem_max_chan():
     """gnss::TELEM_MAX_CHAN -- the most comb columns a wire row may carry (not the stride)."""
-    return _read("TELEM_MAX_CHAN", TELEM_HEADER)
+    return _const("telem", "TELEM_MAX_CHAN")
 
 
 def chan_floats():
     """gnss::CHAN_FLOATS -- floats per comb column (re, im, energy for prompt, early, late)."""
-    return _read("CHAN_FLOATS")
+    return _const("record.chan", "CHAN_FLOATS")
 
 
 def telem_row_floats(n_cols):
@@ -116,32 +90,16 @@ def telem_frame_bytes(n_rec, n_prn, n_cols):
 
 def cube_chain_chars():
     """gnss::CUBE_CHAIN_CHARS -- "<hostname>/<stage>" field width in the beam-cube frame."""
-    return _read("CUBE_CHAIN_CHARS")
+    return _const("cube", "CUBE_CHAIN_CHARS")
 
 
 def cube_header_bytes():
-    """gnss::CUBE_HEADER_BYTES.
+    """gnss::CUBE_HEADER_BYTES: the fixed fields, then the CUBE_CHAIN_CHARS chain string.
 
-    Parsed from the header's own expression rather than restated here: it is written as
-    `104 + CUBE_CHAIN_CHARS`, and a literal copy would go stale the first time a field is
-    added -- silently, because bufferRecv closes a frame of the wrong size with a message about
-    frame_size and nothing about this file.
+    A stale copy fails silently: bufferRecv closes a frame of the wrong size with a message
+    about frame_size and nothing about this file.
     """
-    with open(HEADER) as fh:
-        text = fh.read()
-    m = re.search(
-        r"^\s*constexpr\s+size_t\s+CUBE_HEADER_BYTES\s*=\s*"
-        r"(\d+)\s*\+\s*CUBE_CHAIN_CHARS\s*;",
-        text,
-        re.M,
-    )
-    if not m:
-        raise SystemExit(
-            "%s: could not parse `constexpr size_t CUBE_HEADER_BYTES = N + "
-            "CUBE_CHAIN_CHARS` -- the header's shape changed and "
-            "config/gnss_record_layout.py needs updating" % HEADER
-        )
-    return int(m.group(1)) + cube_chain_chars()
+    return _const("cube", "CUBE_HEADER_BYTES")
 
 
 def cube_frame_bytes(max_prn, max_bins, n_elem):

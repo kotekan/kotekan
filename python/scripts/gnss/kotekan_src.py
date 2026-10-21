@@ -1,6 +1,7 @@
-"""Where the kotekan source tree is, for everything the GNSS Python reads out of it: the C++
-headers that the telemetry, record and signal tables are parsed from, the stock config templates
-the generator renders, and the build trees whose binaries the tools run.
+"""Where the kotekan source tree is, for everything the GNSS Python reads out of it: the stock
+config templates the generator renders, the build trees whose binaries the tools run, the C++
+sources the code-table checks compile, and the interface document (lib/stages/gnss/
+gnss_interface.json) the broker's vendored golden is compared with.
 
 The first of these that applies, with <checkout> the checkout this file is in, as a physical
 path (scripts/gnss/site/kotekan_src.sh takes the same one):

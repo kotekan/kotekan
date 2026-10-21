@@ -3,10 +3,12 @@
 
 Three groups of test here, and the first is the one that matters:
 
-  A. Cross-language. scripts/gnss/telemfmt.cpp is compiled and run, so the parser is checked
-     against gnssTelem.hpp itself rather than against a transcription of it. The C++ struct and
-     the struct.Struct format string are two independent statements of one layout, and a drift
-     between them does not raise: it yields plausible numbers with the wrong meaning.
+  A. Against the interface golden. A frame is laid out from the golden alone (each header
+     field packed at its stated offset with its own type, rows and comb columns where the
+     golden's samples put them) and read back through telem.py. kotekan's test_gnss_interface
+     checks the golden against the compiled C++ structs, so this closes the chain from
+     gnssTelem.hpp to the parser. A drift between the two statements of one layout does not
+     raise: it yields plausible numbers with the wrong meaning.
 
   B. Behavioural. The window ring, the lag rule, hole-vs-shift on a dropped record, and the
      cross-instance grouping: each is a case where a transport that inferred alignment would
@@ -22,20 +24,84 @@ Three groups of test here, and the first is the one that matters:
 """
 import json
 import os
-import re
-import shutil
 import struct
-import subprocess
 import sys
 import time
-import tempfile
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
-import kotekan_src  # noqa: E402
 from gnss_broker import telem  # noqa: E402
+
+# The golden as a plain document, read here rather than through telem.py's constants, which are
+# what is under test.
+with open(os.path.join(HERE, "gnss_broker", "iface_golden.json")) as _fh:
+    GOLDEN = json.load(_fh)["sections"]
+_T, _ROW, _CHAN = GOLDEN["telem"], GOLDEN["record.row"], GOLDEN["record.chan"]
+# The struct code of each TelemHeader field type, written out here rather than taken from
+# gnss_broker/iface.py, which builds telem.py's format.
+_FIELD_CODE = {
+    "u16": "H",
+    "u32": "I",
+    "u64": "Q",
+    "i64": "q",
+    "f64": "d",
+    "char[16]": "16s",
+    "u16[8]": "8H",
+}
+
+
+def _row_floats(n_cols):
+    return _ROW["RECORD_FLOATS"] + n_cols * _CHAN["CHAN_FLOATS"]
+
+
+def _row_offset(r, p, n_prn, n_cols):
+    """Floats from the payload start to row (r, p): gnss::telem_row_offset, which the golden's
+    row_offset samples witness (TestWireFormat.test_layout_rules_are_the_goldens)."""
+    return (r * n_prn + p) * _row_floats(n_cols)
+
+
+def _golden_frame(n_rec, n_prn, n_cols, header, cells):
+    """A wire frame laid out from the golden: header {field: value} packed field by field at
+    the TelemHeader table's offsets, cells {(r, p, float index in the row): value}."""
+    buf = bytearray(_T["TELEM_HEADER_BYTES"] + n_rec * n_prn * _row_floats(n_cols) * 4)
+    for name, off, size, ftype in _T["TelemHeader"]["fields"]:
+        v = header.get(name, 0)
+        fmt = "<" + _FIELD_CODE[ftype]
+        assert struct.calcsize(fmt) == size, name
+        if isinstance(v, (list, tuple)):
+            struct.pack_into(fmt, buf, off, *v)
+        else:
+            struct.pack_into(fmt, buf, off, v)
+    base = _T["TELEM_HEADER_BYTES"]
+    for (r, p, i), v in cells.items():
+        struct.pack_into(
+            "<f", buf, base + (_row_offset(r, p, n_prn, n_cols) + i) * 4, v
+        )
+    return bytes(buf)
+
+
+def _header(n_rec, n_prn, n_chan, n_cols, **kw):
+    """Header fields for a frame of this shape; kw overrides any of them."""
+    h = {
+        "magic": _T["TELEM_MAGIC"],
+        "version": _T["TELEM_VERSION"],
+        "n_rec": n_rec,
+        "n_prn": n_prn,
+        "n_row": _ROW["RECORD_FLOATS"],
+        "n_chan": n_chan,
+        "n_elem": 32,
+        "hops_per_record": 2048,
+        "fft_len": 16384,
+        "max_chan": n_cols,
+        "n_row_total": _row_floats(n_cols),
+        "chain": b"gal_e5a",
+        "inst": b"cx42.1",
+        "chan_id": [0] * _T["TELEM_MAX_CHAN"],
+    }
+    h.update(kw)
+    return h
 
 
 def _make_frame(
@@ -113,86 +179,145 @@ def _make_frame(
 
 
 class TestWireFormat(unittest.TestCase):
-    """A. The parser against the C++ definition."""
+    """A. The parser against the interface golden."""
 
     @classmethod
     def setUpClass(cls):
-        cls.tmp = tempfile.mkdtemp(prefix="telemfmt-")
-        cls.addClassCleanup(shutil.rmtree, cls.tmp, ignore_errors=True)
-        src = kotekan_src.src("scripts", "gnss", "telemfmt.cpp")
-        cls.bin = os.path.join(cls.tmp, "telemfmt")
-        # No compiler is an environment this cannot run in. A compiler that rejects the harness
-        # means it and the header disagree, which is what this class exists to catch: fail.
-        if shutil.which("c++") is None and not os.environ.get("GNSS_REQUIRE_CXX"):
-            raise unittest.SkipTest("no c++ compiler")
-        p = subprocess.run(
-            [
-                "c++",
-                "-std=c++17",
-                "-O1",
-                "-I",
-                kotekan_src.gnss_cpp(),
-                "-o",
-                cls.bin,
-                src,
-            ],
-            capture_output=True,
-            text=True,
+        # max_chan is the row stride and differs from both n_chan and TELEM_MAX_CHAN, so a
+        # reader that strides by either reads every row after the first at the wrong offset;
+        # the sixth column stays zero, so a reader that ignores n_chan is caught too. Slot 2 is
+        # left empty: a dropped record must read as a hole at its own index, not as a shift of
+        # the records after it.
+        n_rec, n_prn, n_chan, n_cols = 4, 5, 5, 6
+        win, seq = 1234567, 42
+        chan_id = [5972 + 16 * ch for ch in range(n_chan)]
+        chan_id += [0] * (_T["TELEM_MAX_CHAN"] - n_chan)
+        h = _header(
+            n_rec,
+            n_prn,
+            n_chan,
+            n_cols,
+            win=win,
+            seq=seq,
+            wstart0=win * n_rec * 2048 * 16384,
+            utc0=1786285988.5,
+            present=0b1011,
+            chan_id=chan_id,
         )
-        if p.returncode != 0:
-            raise AssertionError(
-                "telemfmt.cpp does not compile against %s:\n%s"
-                % (kotekan_src.gnss_cpp(), p.stderr)
-            )
-        cls.frame_path = os.path.join(cls.tmp, "frame.bin")
-        r = subprocess.run(
-            [cls.bin, cls.frame_path], capture_output=True, text=True, check=True
-        )
-        cls.meta = json.loads(r.stdout)
-        with open(cls.frame_path, "rb") as fh:
-            cls.raw = fh.read()
+        cells = {}
+        for r in range(n_rec):
+            for p in range(n_prn):
+                for f in range(_ROW["RECORD_FLOATS"]):
+                    cells[(r, p, f)] = 1000 * r + 10 * p + f
+                cells[(r, p, _ROW["REC_PRN"]["slot"])] = 100 + p
+                # > 0 so every row survives the energy gate
+                cells[(r, p, _ROW["REC_P_ENERGY"]["slot"])] = p + 1
+                # A distinct value per (record, PRN, channel, slot), so a wrong row stride or
+                # comb offset reads a number that identifiably belongs to another cell.
+                for ch in range(n_chan):
+                    cb = _T["chan_offset"][ch]
+                    b = 100000 * r + 1000 * p + 10 * ch
+                    for name, v in (
+                        ("CHAN_RE", b + 1),
+                        ("CHAN_IM", b + 2),
+                        ("CHAN_ENERGY", ch + 1),
+                        ("CHAN_E_RE", b + 3),
+                        ("CHAN_E_IM", b + 4),
+                        ("CHAN_E_ENERGY", ch + 1),
+                        ("CHAN_L_RE", b + 5),
+                        ("CHAN_L_IM", b + 6),
+                        ("CHAN_L_ENERGY", ch + 1),
+                    ):
+                        cells[(r, p, cb + _CHAN[name]["slot"])] = v
+        cls.raw = _golden_frame(n_rec, n_prn, n_cols, h, cells)
+        cls.header = h
+        cls.meta = {
+            "row_floats": _row_floats(n_cols),
+            "max_chan": n_cols,
+            "max_chan_const": _T["TELEM_MAX_CHAN"],
+            "chan_floats": _CHAN["CHAN_FLOATS"],
+        }
 
-    def test_header_size_and_offsets(self):
-        m = self.meta
-        self.assertEqual(m["header_bytes"], telem._HDR_BYTES)
-        self.assertEqual(m["header_bytes"], m["telem_header_bytes_const"])
-        self.assertEqual(telem._HDR.size, telem._HDR_BYTES)
-        self.assertEqual(m["record_floats"], telem._ROW_FLOATS)
-        self.assertEqual(m["magic"], telem._MAGIC)
-        self.assertEqual(m["version"], telem._VERSION)
-        # Field offsets, one by one. A same-size layout with two fields transposed passes a
-        # size check and fails here, which is the point.
-        for name, want in (
-            ("win", 24),
-            ("seq", 32),
-            ("wstart0", 40),
-            ("utc0", 48),
-            ("present", 56),
-            ("chain", 64),
-            ("inst", 80),
-        ):
+    def test_layout_rules_are_the_goldens(self):
+        # The row and column offsets this file lays frames out with, against the golden's own
+        # samples of gnss::telem_row_offset, telem_chan_offset and telem_frame_bytes.
+        for s in _T["row_offset"]:
             self.assertEqual(
-                m["off_" + name], want, "gnssTelem.hpp moved field %r" % name
+                _row_offset(s["r"], s["p"], s["n_prn"], s["n_cols"]), s["floats"], s
+            )
+        self.assertEqual(
+            _T["chan_offset"],
+            [
+                _ROW["RECORD_FLOATS"] + ch * _CHAN["CHAN_FLOATS"]
+                for ch in range(_T["TELEM_MAX_CHAN"])
+            ],
+        )
+        for s in _T["frame_bytes"]:
+            self.assertEqual(
+                _T["TELEM_HEADER_BYTES"]
+                + s["n_rec"] * s["n_prn"] * _row_floats(s["n_cols"]) * 4,
+                s["bytes"],
+                s,
             )
 
-    def test_parses_cpp_frame(self):
-        m = self.meta
-        self.assertEqual(len(self.raw), m["frame_bytes"])
+    def test_header_constants_are_the_goldens(self):
+        self.assertEqual(telem._HDR.size, _T["TelemHeader"]["size"])
+        self.assertEqual(telem._HDR_BYTES, _T["TELEM_HEADER_BYTES"])
+        self.assertEqual(telem._MAGIC, _T["TELEM_MAGIC"])
+        self.assertEqual(telem._VERSION, _T["TELEM_VERSION"])
+        self.assertEqual(telem._MAX_CHAN, _T["TELEM_MAX_CHAN"])
+        self.assertEqual(telem._MAX_REC, _T["TELEM_MAX_REC"])
+        self.assertEqual(telem._ROW_FLOATS, _ROW["RECORD_FLOATS"])
+        self.assertEqual(telem._CHAN_FLOATS, _CHAN["CHAN_FLOATS"])
+
+    def test_every_header_field_reads_back(self):
+        # Each field packed at the golden's offset with its own type, read through telem's
+        # struct. A same-size layout with two fields transposed passes a size check and fails
+        # here, which is the point.
         f = telem.TelemFrame(telem._HDR.unpack_from(self.raw, 0), self.raw, 0.0)
-        self.assertEqual(f.chain, "gal_e5a")
-        self.assertEqual(f.inst, "cx42.1")
-        self.assertEqual(f.win, m["win"])
-        self.assertEqual(f.seq, m["seq"])
-        self.assertEqual(f.wstart0, m["wstart0"])
-        self.assertEqual(f.n_rec, m["n_rec"])
-        self.assertEqual(f.n_prn, m["n_prn"])
-        self.assertEqual(f.hops_per_record, 2048)
-        self.assertEqual(f.fft_len, 16384)
+        h = self.header
+        got = {
+            "n_rec": f.n_rec,
+            "n_prn": f.n_prn,
+            "n_chan": f.n_chan,
+            "n_elem": f.n_elem,
+            "hops_per_record": f.hops_per_record,
+            "fft_len": f.fft_len,
+            "win": f.win,
+            "seq": f.seq,
+            "wstart0": f.wstart0,
+            "utc0": f.utc0,
+            "present": f.present,
+            "max_chan": f.max_chan,
+            "n_row_total": f.row_total,
+        }
+        self.assertEqual(got, {k: h[k] for k in got})
+        self.assertEqual((f.chain, f.inst), ("gal_e5a", "cx42.1"))
+        self.assertEqual(f.chan_ids, h["chan_id"][: h["n_chan"]])
+        hdr = telem._HDR.unpack_from(self.raw, 0)
+        self.assertEqual(
+            (hdr[0], hdr[1], hdr[4]), (h["magic"], h["version"], h["n_row"])
+        )
+
+    def test_frames_of_the_goldens_sizes_are_accepted(self):
+        for s in _T["frame_bytes"]:
+            n_rec, n_prn, n_cols = s["n_rec"], s["n_prn"], s["n_cols"]
+            h = _header(n_rec, n_prn, n_cols, n_cols, present=1)
+            raw = _golden_frame(n_rec, n_prn, n_cols, h, {(0, 0, 0): 7.0})
+            self.assertEqual(len(raw), s["bytes"])
+            c = telem.TelemClient(depth=4)
+            c._parse_and_store(raw, 0.0)
+            self.assertEqual((c.bad, c.chains()), (0, ["gal_e5a"]), s)
+            c._parse_and_store(raw + b"\0\0\0\0", 0.0)
+            self.assertEqual(c.bad, 1, "a frame longer than its header says")
+
+    def test_parses_the_frame(self):
+        f = telem.TelemFrame(telem._HDR.unpack_from(self.raw, 0), self.raw, 0.0)
         self.assertEqual(f.prns(), [100, 101, 102, 103, 104])
 
     def test_row_values_and_slot_addressing(self):
         f = telem.TelemFrame(telem._HDR.unpack_from(self.raw, 0), self.raw, 0.0)
-        # telemfmt writes row[f] = 1000*r + 10*p + f, then overwrites PRN and P_ENERGY.
+        # The fixture writes row[f] = 1000*r + 10*p + f, then overwrites PRN and P_ENERGY.
         row = f.row(3, 102)  # r=3, p=2
         self.assertIsNotNone(row)
         self.assertEqual(row[telem.REC_PRN], 102.0)
@@ -201,7 +326,7 @@ class TestWireFormat(unittest.TestCase):
         self.assertEqual(row[telem.REC_CPHASE], 3000 + 20 + telem.REC_CPHASE)
 
     def test_missing_slot_is_a_hole_not_a_shift(self):
-        # telemfmt sets present = 0b1011: slot 2 absent. The records after it must keep their
+        # The fixture sets present = 0b1011: slot 2 absent. The records after it must keep their
         # own identity: a transport that appended instead of addressing would hand slot 3's
         # data back as slot 2, and every downstream number would be one record stale with
         # nothing to show for it.
@@ -214,7 +339,7 @@ class TestWireFormat(unittest.TestCase):
         self.assertEqual(f.row(3, 100)[telem.REC_P_IM], 3000 + 0 + telem.REC_P_IM)
 
     def test_comb_labels_and_values(self):
-        # telemfmt writes comb[ch] = 100000*r + 1000*p + 10*ch + {1,2} with energy ch+1, and
+        # The fixture writes comb[ch] = 100000*r + 1000*p + 10*ch + {1,2} with energy ch+1, and
         # freq_ids on a real stride-16 comb. Every element of the address (record, PRN,
         # channel, slot) is in the value, so a wrong row stride or a wrong comb offset returns
         # a number that provably belongs somewhere else.
@@ -244,7 +369,7 @@ class TestWireFormat(unittest.TestCase):
             )
 
     def test_comb_epl_carries_all_three_taps(self):
-        # E/P/L per channel is the comb DLL's input (combdll.py). telemfmt writes +1/+2 for P,
+        # E/P/L per channel is the comb DLL's input (combdll.py). The fixture writes +1/+2 for P,
         # +3/+4 for E, +5/+6 for L, so a tap swap is a wrong value rather than a plausible one.
         f = telem.TelemFrame(telem._HDR.unpack_from(self.raw, 0), self.raw, 0.0)
         epl = f.comb_epl(3, 102)
@@ -258,7 +383,7 @@ class TestWireFormat(unittest.TestCase):
             self.assertEqual((eE, eP, eL), (ch + 1, ch + 1, ch + 1))
 
     def test_unused_comb_columns_do_not_leak(self):
-        # telemfmt ships 6 columns and fills 5 on purpose. The reserved-but-unused one must read
+        # The fixture ships 6 columns and fills 5 on purpose. The reserved-but-unused one must read
         # as absent, never as the neighbouring row's first channel -- which is what a row stride
         # computed from n_chan instead of the header's max_chan would hand back.
         f = telem.TelemFrame(telem._HDR.unpack_from(self.raw, 0), self.raw, 0.0)
@@ -336,10 +461,8 @@ class TestWindowRing(unittest.TestCase):
     def test_a_header_with_no_records_or_rows_is_refused(self):
         # gnss::telem_shape_ok's bounds. With n_rec or n_prn zero the payload is empty, so the
         # length check alone passes a bare header and the frame would open an empty window.
-        # The record limit is read from gnssTelem.hpp, not from the constant under test.
-        with open(kotekan_src.gnss_cpp("gnssTelem.hpp")) as fh:
-            m = re.search(r"constexpr\s+int\s+TELEM_MAX_REC\s*=\s*(\d+)\s*;", fh.read())
-        max_rec = int(m.group(1))
+        # The record limit is read from the golden, not from the constant under test.
+        max_rec = _T["TELEM_MAX_REC"]
         for kw in ({"n_rec": 0}, {"n_prn": 0}, {"n_rec": max_rec + 1}):
             c = self._client()
             c._parse_and_store(_make_frame(**kw), 0.0)

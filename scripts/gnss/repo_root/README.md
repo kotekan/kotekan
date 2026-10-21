@@ -29,11 +29,24 @@ kotekan's, and resolve in kotekan/kotekan. `docs/kotekan_commit_map.txt` maps ea
 along to its commit here. `scripts/gnss/split_paths.txt` is the recipe the repository was
 extracted with.
 
+## The kotekan interface
+
+What the broker and kotekan must agree on (the signal descriptors, the telemetry header, the
+record slots, the frame layouts, a version per REST family) is a document kotekan builds from its
+compiled constants and serves at `GET /interfaces/gnss`, with its digests in `/version`. The
+broker carries a pinned copy, `python/scripts/gnss/gnss_broker/iface_golden.json` and
+`iface_pin.json`, and takes its signal table and record and telemetry layouts from it, as do the
+generator's `config/gnss_record_layout.py` and `config/chord_band_plan.py`; the broker needs no
+kotekan tree. `python3 -m gnss_broker.iface` (from `python/scripts/gnss`) shows, diffs and syncs
+it; moving the pin is a commit here:
+
+    python3 -m gnss_broker.iface sync --from <kotekan tree | http://host:port | dump file>
+
 ## Finding kotekan
 
-The broker parses its signal table from kotekan's `lib/stages/gnss/gnssSignal.hpp` when it is
-imported, the generator renders kotekan's `config/chord/pathfinder.j2` and reads its headers,
-and the site scripts run kotekan's builds. All of them find the kotekan tree by one rule
+The generator renders kotekan's `config/chord/pathfinder.j2`, the site scripts run kotekan's
+builds, and `gnss_broker/test_iface.py` compares the golden with kotekan's
+`lib/stages/gnss/gnss_interface.json`. All of them find the kotekan tree by one rule
 (`python/scripts/gnss/kotekan_src.py`, and `scripts/gnss/site/kotekan_src.sh` for the shell),
 the first of these that holds `lib/stages/gnss`:
 
@@ -43,9 +56,9 @@ the first of these that holds `lib/stages/gnss`:
     <checkout>/../kotekan   a kotekan checkout beside this one
 
 On the gnss VM this checkout is `/home/kvand/gnss/gnss-broker`, beside
-`/home/kvand/gnss/kotekan`, so nothing needs to be set. With no kotekan tree, the broker and the
-generator fail at import, and `gen_fleet.py` exits 2 when it needs kotekan, each naming
-`KOTEKAN_SRC` and the places tried.
+`/home/kvand/gnss/kotekan`, so nothing needs to be set. With no kotekan tree, `gen_fleet.py`
+exits 2 when it needs kotekan, naming `KOTEKAN_SRC` and the places tried, and the golden's
+comparison with kotekan's copy skips (or fails, under `GNSS_REQUIRE_KOTEKAN=1`).
 
 ## Environments
 

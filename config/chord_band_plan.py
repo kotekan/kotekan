@@ -6,8 +6,8 @@ occupied_band / covering_channels semantics, including the open-interval
 passband overlap test (a channel counts if its passband overlaps the occupied
 band at all, not merely if its centre falls inside). One difference: for a
 time-multiplexed signal (L2C CM/CL) the C++ half-bandwidth is twice the chip
-rate, while this mirror uses the chip rate (signal_table() does not parse
-time_multiplexed).
+rate, while this mirror uses the chip rate. band_edges() gives the C++ edges
+from the interface golden; the generator's covering sets still use the mirror's.
 
 config/gen_chord_gnss_config.py takes each chain's covering channels from
 here. As a script it reports, for the node file's primary signal: which
@@ -26,7 +26,8 @@ import sys
 import yaml
 
 CONF = os.path.dirname(os.path.abspath(__file__))
-# kotekan_src (python/scripts/gnss) says where the kotekan source tree is.
+# python/scripts/gnss, for the interface golden (gnss_broker/iface.py) the signal table comes
+# from.
 _GNSS_PY = os.path.normpath(
     os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "..", "python", "scripts", "gnss"
@@ -34,7 +35,7 @@ _GNSS_PY = os.path.normpath(
 )
 if _GNSS_PY not in sys.path:
     sys.path.append(_GNSS_PY)
-import kotekan_src  # noqa: E402
+from gnss_broker import iface  # noqa: E402
 
 DEFAULT_NODE_FILE = os.path.join(CONF, "chord_gnss_node.yaml")
 
@@ -73,54 +74,45 @@ def covering_channels(chans, carrier_hz, chip_rate_hz, max_doppler_hz, **kw):
     return [fid for _, fid in hits]
 
 
-def signal_table(header=None):
-    """Every SignalDescriptor in lib/stages/gnss/gnssSignal.hpp, by name.
+def signal_table(doc=None):
+    """Every SignalDescriptor in lib/stages/gnss/gnssSignal.hpp, by name, from the signals
+    section of the interface golden (or of `doc`, an interface document).
 
-    Parsed, not transcribed: the descriptors are spec constants that live in one place, and a
-    second copy here would drift silently. A config whose covering channels disagree with the
+    Not transcribed: the descriptors are spec constants that live in one place, and a second
+    copy here would drift silently. A config whose covering channels disagree with the
     replica the stage builds has its tracker look in the wrong part of the band and report
-    noise. Each row is:
-
-        inline constexpr SignalDescriptor NAME = {
-            "NAME", carrier_hz, chip_rate_hz, code_length, code_period_s,
-            Modulation::MOD, boc_m, boc_n, ...
+    noise.
 
     Returns {name: {carrier_hz, chip_rate_hz, code_length, code_period_s, modulation,
                     boc_m, boc_n}}.
     """
-    if header is None:
-        header = kotekan_src.gnss_cpp("gnssSignal.hpp")
-    import re
-
-    text = open(header).read()
-    pat = re.compile(
-        r"inline\s+constexpr\s+SignalDescriptor\s+(\w+)\s*=\s*\{\s*"
-        r'"(\w+)"\s*,\s*([\d.eE+-]+)\s*,\s*([\d.eE+-]+)\s*,\s*(\d+)\s*,\s*([\d.eE+-]+)\s*,\s*'
-        r"Modulation::(\w+)\s*,\s*(-?\d+)\s*,\s*(-?\d+)\s*,"
-    )
+    sigs = (doc if doc is not None else iface.golden().doc)["sections"]["signals"]
     out = {}
-    for m in pat.finditer(text):
-        var, name = m.group(1), m.group(2)
-        if var != name:
-            raise SystemExit(
-                f"{header}: descriptor {var} declares name '{name}' -- "
-                "the two must match or config lookups by name go wrong"
-            )
+    for name, d in sigs.items():
         out[name] = {
-            "carrier_hz": float(m.group(3)),
-            "chip_rate_hz": float(m.group(4)),
-            "code_length": int(m.group(5)),
-            "code_period_s": float(m.group(6)),
-            "modulation": m.group(7),
-            "boc_m": int(m.group(8)),
-            "boc_n": int(m.group(9)),
+            "carrier_hz": iface.dbl(d["carrier_hz"]),
+            "chip_rate_hz": iface.dbl(d["chip_rate_hz"]),
+            "code_length": d["code_length"],
+            "code_period_s": iface.dbl(d["code_period_s"]),
+            "modulation": d["mod"],
+            "boc_m": d["boc_m"],
+            "boc_n": d["boc_n"],
         }
     if not out:
         raise SystemExit(
-            f"{header}: parsed zero SignalDescriptors -- the header's shape "
-            "changed and this parser needs updating"
+            "the interface golden holds no signal descriptors (gnss_broker/iface_golden.json)"
         )
     return out
+
+
+def band_edges(name, doc=None):
+    """(half_bandwidth_hz, occupied_lo_hz, occupied_hi_hz) of a descriptor at zero Doppler,
+    as gnssBandPlan.cpp computes them: from the interface golden (or `doc`)."""
+    d = (doc if doc is not None else iface.golden().doc)["sections"]["signals"][name]
+    return tuple(
+        iface.dbl(d[k])
+        for k in ("half_bandwidth_hz", "occupied_lo_hz", "occupied_hi_hz")
+    )
 
 
 def node_channels(cfg, node):

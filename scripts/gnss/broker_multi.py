@@ -49,7 +49,7 @@ sys.path.insert(0, os.path.join(K, "python", "scripts", "gnss"))
 
 import yaml  # noqa: E402
 import gps_distributed_broker as broker  # noqa: E402
-from gnss_broker import publish, receiver, transport  # noqa: E402
+from gnss_broker import iface, publish, receiver, transport  # noqa: E402
 
 
 def flags(d):
@@ -143,6 +143,10 @@ def main():
 
     rx = receiver.Receiver(log=transport._log)
     transport.set_log_tag("driver")
+    # The kotekan interface this broker speaks. telem loads it on import, so a missing or
+    # corrupt golden has already stopped the start, never a chain mid-run.
+    golden = iface.golden()
+    transport._log("iface: golden %s, pin kotekan %s" % (golden.digest, golden.commit))
     # One publisher for the whole process, on the first non-zero --publish-port in chain
     # order, so one viewer origin serves every chain. Chains are told apart by
     # /<chain>/get_status or ?chain=<id>.

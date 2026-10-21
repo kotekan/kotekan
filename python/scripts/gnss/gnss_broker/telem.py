@@ -29,63 +29,73 @@ import struct
 import threading
 import time
 
+from . import iface
 from .transport import _log, _log_rl
 
-# gnssTelem.hpp TELEM_MAGIC, TELEM_VERSION and TelemHeader: keep in step. Magic, version and
-# n_row are checked on every frame, so a mismatch shows as rejected frames, not wrong numbers.
-_MAGIC = 0x314C5447
-_VERSION = 8
-_HDR = struct.Struct("<IHHHHHHIIQQqdIHH16s16s8H")
-_HDR_BYTES = 112
-_MAX_CHAN = 8
-_MAX_REC = 8  # gnssTelem.hpp TELEM_MAX_REC: record slots a frame may carry
-_CHAN_FLOATS = 9
-CHAN_RE, CHAN_IM, CHAN_ENERGY = 0, 1, 2  # prompt
-CHAN_E_RE, CHAN_E_IM, CHAN_E_ENERGY = 3, 4, 5  # early
-CHAN_L_RE, CHAN_L_IM, CHAN_L_ENERGY = 6, 7, 8  # late
-# gnssRecord.hpp RECORD_FLOATS, checked against every frame's own n_row: a tracker built with a
-# wider record than this broker would otherwise be read at the wrong stride.
-_ROW_FLOATS = 32
+# The wire format, from the interface golden (gnssTelem.hpp TELEM_MAGIC, TELEM_VERSION and
+# TelemHeader, gnssRecord.hpp RECORD_FLOATS and the slots). Magic, version and n_row are checked
+# on every frame, so a sender on another format shows as rejected frames, not wrong numbers.
+_G = iface.golden()
+_MAGIC = _G.const("telem", "TELEM_MAGIC")
+_VERSION = _G.const("telem", "TELEM_VERSION")
+_HDR = struct.Struct(_G.struct_format("telem", "TelemHeader"))
+_HDR_BYTES = _G.const("telem", "TELEM_HEADER_BYTES")
+_MAX_CHAN = _G.const("telem", "TELEM_MAX_CHAN")
+_MAX_REC = _G.const("telem", "TELEM_MAX_REC")  # record slots a frame may carry
+_CHAN_FLOATS = _G.const("record.chan", "CHAN_FLOATS")
+# A comb column: prompt, early, late, each re, im, replica energy.
+CHAN_RE = _G.slot("record.chan", "CHAN_RE")
+CHAN_IM = _G.slot("record.chan", "CHAN_IM")
+CHAN_ENERGY = _G.slot("record.chan", "CHAN_ENERGY")
+CHAN_E_RE = _G.slot("record.chan", "CHAN_E_RE")
+CHAN_E_IM = _G.slot("record.chan", "CHAN_E_IM")
+CHAN_E_ENERGY = _G.slot("record.chan", "CHAN_E_ENERGY")
+CHAN_L_RE = _G.slot("record.chan", "CHAN_L_RE")
+CHAN_L_IM = _G.slot("record.chan", "CHAN_L_IM")
+CHAN_L_ENERGY = _G.slot("record.chan", "CHAN_L_ENERGY")
+# Checked against every frame's own n_row: a tracker built with a wider record than this broker
+# would otherwise be read at the wrong stride.
+_ROW_FLOATS = _G.const("record.row", "RECORD_FLOATS")
 
-# Row slots we name here (gnssRecord.hpp). The rest of the row travels intact and is available
-# through `row()` -- this is a transport, not a schema.
-REC_PRN = 0
-REC_DOPPLER = 1
-REC_CP = 2
-REC_P_RE = 3
-REC_P_IM = 4
-REC_P_ENERGY = 5
-REC_NCHAN = 6
-REC_E_ENERGY = 7
-REC_L_ENERGY = 8
-REC_UTC = 9
-REC_E_RE = 11
-REC_E_IM = 12
-REC_L_RE = 13
-REC_L_IM = 14
-REC_CPHASE = 15
+# Row slots we name here. The rest of the row travels intact and is available through `row()`
+# -- this is a transport, not a schema. The golden carries each slot's meaning.
+REC_PRN = _G.slot("record.row", "REC_PRN")
+REC_DOPPLER = _G.slot("record.row", "REC_DOPPLER")
+REC_CP = _G.slot("record.row", "REC_CP")
+REC_P_RE = _G.slot("record.row", "REC_P_RE")
+REC_P_IM = _G.slot("record.row", "REC_P_IM")
+REC_P_ENERGY = _G.slot("record.row", "REC_P_ENERGY")
+REC_NCHAN = _G.slot("record.row", "REC_NCHAN")
+REC_E_ENERGY = _G.slot("record.row", "REC_E_ENERGY")
+REC_L_ENERGY = _G.slot("record.row", "REC_L_ENERGY")
+REC_UTC = _G.slot("record.row", "RECORD_UTC_SLOT")
+REC_E_RE = _G.slot("record.row", "REC_E_RE")
+REC_E_IM = _G.slot("record.row", "REC_E_IM")
+REC_L_RE = _G.slot("record.row", "REC_L_RE")
+REC_L_IM = _G.slot("record.row", "REC_L_IM")
+REC_CPHASE = _G.slot("record.row", "REC_CPHASE")
 # Per-(instance, PRN) carrier state that no external measurement reaches: ang0 as the kernel
-# used it, and the Phi-cache staleness (gnssRecord.hpp REC_ANG0, REC_PHI_DDOP).
-REC_ANG0 = 26
-REC_PHI_DDOP = 27
+# used it, and the Phi-cache staleness.
+REC_ANG0 = _G.slot("record.row", "REC_ANG0")
+REC_PHI_DDOP = _G.slot("record.row", "REC_PHI_DDOP")
 # The rotation exp(-i*phi0) applied to slots 3/4 and to every comb column. Its origin is
 # arbitrary per instance, so multiply by exp(+i*phi0) to put instances on one reference before
-# combining them within a record (gnssRecord.hpp REC_PHI0).
-REC_PHI0 = 28
-REC_PH_RE = 16
-REC_PH_IM = 17
-REC_PH_ENERGY = 18
-REC_TRIM_INC = 19
-REC_SKY_RE = 24
-REC_SKY_IM = 25
+# combining them within a record.
+REC_PHI0 = _G.slot("record.row", "REC_PHI0")
+REC_PH_RE = _G.slot("record.row", "REC_PH_RE")
+REC_PH_IM = _G.slot("record.row", "REC_PH_IM")
+REC_PH_ENERGY = _G.slot("record.row", "REC_PH_ENERGY")
+REC_TRIM_INC = _G.slot("record.row", "REC_TRIM_INC")
+REC_SKY_RE = _G.slot("record.row", "REC_SKY_RE")
+REC_SKY_IM = _G.slot("record.row", "REC_SKY_IM")
 # Bright-satellite projection cost on this row, cos^2 in [0, 1] of the satellite's live element
 # weights inside the projected subspace (the row kept (1 - cost)^2 of its prompt power); -1 =
 # no basis in force, a source, unsteered or cold. See gnssRecord.hpp REC_PROJ_COST.
-REC_PROJ_COST = 29
+REC_PROJ_COST = _G.slot("record.row", "REC_PROJ_COST")
 # The rank of the projection basis in force on the record (0 = none) and the OR of its
 # sources over the sender's channels: 1 own row, 2 sibling chain, 4 probe stack (gnssRecord.hpp).
-REC_PROJ_K = 30
-REC_PROJ_SRC = 31
+REC_PROJ_K = _G.slot("record.row", "REC_PROJ_K")
+REC_PROJ_SRC = _G.slot("record.row", "REC_PROJ_SRC")
 
 # Widest row the format admits: gnss::telem_row_floats(TELEM_MAX_CHAN), i.e. RECORD_FLOATS +
 # TELEM_MAX_CHAN * CHAN_FLOATS; TELEM_MAX_CHAN is also the size of the header's freq_id array.
@@ -94,7 +104,7 @@ REC_PROJ_SRC = 31
 # wrong offsets: plausible numbers, wrong PRNs.
 _MAX_ROW_TOTAL = _ROW_FLOATS + _MAX_CHAN * _CHAN_FLOATS
 
-assert _HDR.size == _HDR_BYTES, "TelemHeader struct format does not match gnssTelem.hpp"
+assert _HDR.size == _HDR_BYTES, "TelemHeader struct format does not match its size"
 
 
 class TelemFrame(object):

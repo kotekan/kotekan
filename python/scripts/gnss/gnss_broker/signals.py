@@ -6,8 +6,9 @@ seed lands in an effectively random one of the overlay periods. --signal sets th
 name.
 
 The source of truth is lib/stages/gnss/gnssSignal.hpp, whose `SignalDescriptor`s build the
-trackers' replica bank. The header is parsed rather than retyped here, so the two cannot
-drift apart, and a name the header does not define is an error at startup.
+trackers' replica bank. They come here through the interface golden (iface.py): the signals
+section kotekan builds from the same descriptors, so the two cannot drift apart, a name the
+golden does not define is an error at startup, and no kotekan tree is needed.
 
 A chain is a pair. The search acquires the primary code; the tracker despreads the long code
 with the secondary built in:
@@ -26,39 +27,29 @@ the same for every signal on the instrument) and code_doppler_sign (a decode con
 """
 import re
 
-import kotekan_src
-
-_HPP = kotekan_src.gnss_cpp("gnssSignal.hpp")
+from . import iface
 
 # name prefix -> the single-letter constellation the broker and RINEX both use
 _SYS = {"GPS": "G", "GAL": "E", "BDS": "C", "GLO": "R", "SBAS": "S"}
 
-_DESC_RX = re.compile(
-    r"inline\s+constexpr\s+SignalDescriptor\s+(\w+)\s*=\s*\{\s*"
-    r'"[^"]+"\s*,\s*([0-9.eE+-]+)\s*,\s*([0-9.eE+-]+)\s*,\s*(\d+)\s*,\s*([0-9.eE+-]+)\s*,'
-)
-_SECONDARY_RX = re.compile(r"/\*secondary_length=\*/\s*(\d+)")
 
-
-def _load_descriptors(path=None):
-    """{name: (carrier_hz, chip_rate_hz, code_length, code_period_s, secondary_length)}."""
-    src = open(path or _HPP).read()
+def _load_descriptors(doc=None):
+    """{name: (carrier_hz, chip_rate_hz, code_length, code_period_s, secondary_length)}, from
+    the signals section of an interface document (default: the golden)."""
+    sigs = (doc if doc is not None else iface.golden().doc)["sections"]["signals"]
     out = {}
-    for m in _DESC_RX.finditer(src):
-        tail = src[m.end() : m.end() + 400]
-        sec = _SECONDARY_RX.search(tail)
-        out[m.group(1)] = (
-            float(m.group(2)),
-            float(m.group(3)),
-            int(m.group(4)),
-            float(m.group(5)),
-            int(sec.group(1)) if sec else 0,
+    for name, d in sigs.items():
+        out[name] = (
+            iface.dbl(d["carrier_hz"]),
+            iface.dbl(d["chip_rate_hz"]),
+            d["code_length"],
+            iface.dbl(d["code_period_s"]),
+            d["secondary_length"],
         )
     if not out:
         raise RuntimeError(
-            "no SignalDescriptors parsed from %s -- the header's shape "
-            "changed and this parser must be updated. Failing at the door "
-            "rather than silently serving an empty registry." % (path or _HPP)
+            "the interface golden holds no signal descriptors. Failing at the door rather "
+            "than silently serving an empty registry."
         )
     return out
 
@@ -211,8 +202,9 @@ class SignalDef(object):
         for n in (prim, lng):
             if n is not None and n not in descs:
                 raise KeyError(
-                    "signal %s names descriptor %s, which is not in "
-                    "gnssSignal.hpp" % (key, n)
+                    "signal %s names descriptor %s, which is not in the interface "
+                    "golden (gnssSignal.hpp at kotekan %s)"
+                    % (key, n, iface.golden().commit)
                 )
         c_hz, chip, clen, per, sec = descs[prim]
         self.key, self.primary, self.long = key, prim, lng
