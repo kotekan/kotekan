@@ -321,8 +321,17 @@ def _sbas_record(prn, af, orb, toe_gpst):
     the record epoch (GPS time), the clock aGf0 + aGf1 (t - toc). PRNs are the RINEX S number
     + 100 (S31 = PRN 131, WAAS). A GEO's state is good for tens of minutes from its epoch;
     SBAS_MAX_AGE_S bounds it."""
-    pos = (orb[0] * 1e3, orb[4] * 1e3, orb[8] * 1e3)
-    if math.sqrt(sum(p * p for p in pos)) < 1.0e7:  # sanity: reject empty/garbled records
+    # RINEX writes the state in km, km/s, km/s^2. The rapid BRDC (BRDC00WRD_R) carries the
+    # GAGAN records (S27, S28) in metres, 1000x too far, which a horizon test then passes
+    # (2026-10-20: the broker listed PRNs 127/128 as up from DRAO). A geocentric radius above
+    # 1e6 km is not an orbit, so it is read as metres; outside 30,000-50,000 km (GEO/IGSO) the
+    # record is dropped.
+    scale = 1e3
+    r_km = math.sqrt(orb[0] ** 2 + orb[4] ** 2 + orb[8] ** 2)
+    if r_km > 1.0e6:
+        scale = 1.0
+        r_km *= 1e-3
+    if not 3.0e4 <= r_km <= 5.0e4:
         return None
     return dict(
         sys="S",
@@ -330,9 +339,9 @@ def _sbas_record(prn, af, orb, toe_gpst):
         af0=af[0],
         af1=af[1],
         frame_time=af[2],
-        pos=pos,
-        vel=(orb[1] * 1e3, orb[5] * 1e3, orb[9] * 1e3),
-        acc=(orb[2] * 1e3, orb[6] * 1e3, orb[10] * 1e3),
+        pos=(orb[0] * scale, orb[4] * scale, orb[8] * scale),
+        vel=(orb[1] * scale, orb[5] * scale, orb[9] * scale),
+        acc=(orb[2] * scale, orb[6] * scale, orb[10] * scale),
         health=orb[3],
         ura=orb[7],
         iodn=orb[11],

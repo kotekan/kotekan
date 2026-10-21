@@ -61,6 +61,24 @@ class TestSBAS(unittest.TestCase):
         self.assertAlmostEqual(v["az"], 176.5, delta=1.0)
         self.assertLess(abs(v["range_rate_mps"]), 1.0)
 
+    def test_record_units_metres_or_km(self):
+        """The rapid BRDC writes the GAGAN records (S27, S28) in metres, not RINEX's km: read as
+        metres when the radius says so, dropped when it is no orbit at all."""
+        e_km = self.recs[("S", 131)][0]
+        af = (e_km["af0"], e_km["af1"], e_km["frame_time"])
+        km = [c * 1e-3 for c in e_km["pos"]]
+        v = [c * 1e-3 for c in e_km["vel"]]
+        a = [c * 1e-3 for c in e_km["acc"]]
+        orb_km = [km[0], v[0], a[0], 0.0, km[1], v[1], a[1], 2.0, km[2], v[2], a[2], 5.0]
+        orb_m = [c * 1e3 if i % 4 != 3 else c for i, c in enumerate(orb_km)]
+        e_m = ge._sbas_record(31, af, orb_m, e_km["toe_gpst"])
+        self.assertIsNotNone(e_m)
+        for i in range(3):
+            self.assertAlmostEqual(e_m["pos"][i], e_km["pos"][i], places=3)
+            self.assertAlmostEqual(e_m["vel"][i], e_km["vel"][i], places=6)
+        self.assertIsNone(ge._sbas_record(31, af, [1.0, 0, 0, 0, 1.0, 0, 0, 0, 1.0, 0, 0, 0], e_km["toe_gpst"]))
+        self.assertIsNone(ge._sbas_record(31, af, [7.0e4, 0, 0, 0, 0.0, 0, 0, 0, 0.0, 0, 0, 0], e_km["toe_gpst"]))
+
     def test_age_bound(self):
         """A record older than SBAS_MAX_AGE_S is not used for a clock-grade prediction."""
         recs = self.recs[("S", 131)]
