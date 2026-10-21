@@ -154,6 +154,32 @@ PsiTable build_psi_table(const gnss::ChannelizedReplicaBank& bank, int prn_index
                          const std::vector<int>& chans, double doppler_hz, double sample_rate,
                          int G, bool frac = true);
 
+/// The tiled-code split of a Psi table (PsiJob::psi, psi_prev, sec): one primary period plus
+/// the lookback, for a code of Ns periods that differ only by a sign.
+struct PsiSplit {
+    int G = 1;
+    int P = 0;  ///< primary period, combined chips
+    int Ns = 0; ///< periods in the code (code_len = Ns * P)
+    int n_chips = 0;
+    int n_prev = 0; ///< G * (n_chips - 1) entries per channel of psi_prev
+    double inv_cps = 0.0;
+    double wc = 0.0;
+    std::vector<double> theta;     ///< [n_chan]
+    std::vector<float2> psi_plain; ///< [n_chan][G*P], the first period's table
+    std::vector<float2> psi_prev;  ///< [n_chan][n_prev]
+    std::vector<int8_t> sec;       ///< [Ns] sign of period q relative to the first
+    double build_seconds = 0.0;
+};
+
+/// @ref build_psi_table's tables for a tiled code of primary period @c P: Psi_plain over the
+/// first period (which defines sec[0] = +1), Psi_prev[m'] = sum_{d > floor(m'/G)}
+/// prim[(m'-d) mod P] K_d, and sec[]. Throws unless every period is a sign of the first and
+/// the PFB span is shorter than a period. The kernel reconstructs
+/// Psi[q*P + m'] = sec[q] Psi_plain[m'] + (sec[q-1] - sec[q]) Psi_prev[m'] exactly.
+PsiSplit build_psi_split(const gnss::ChannelizedReplicaBank& bank, int prn_index,
+                         const std::vector<int>& chans, double doppler_hz, double sample_rate,
+                         int G, int P, bool frac = true);
+
 } // namespace gnss_cuda
 
 #endif // CUDA_GNSS_PSI_SYNTH_HPP

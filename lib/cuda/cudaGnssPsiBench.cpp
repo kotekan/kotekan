@@ -17,10 +17,10 @@
 // against each set: the lobe-coherent E-L discriminator and the prompt SNR, normalised as
 // gnssFleetDll does.
 //
-//   ./cuda_gnss_psi_bench [all|bench] [n_prn]
+//   ./cuda_gnss_psi_bench [all|bench|tiled] [n_prn]
 //
-// "bench" skips the CPU references (for ncu). Never run beside a live node: the bench
-// saturates the GPU.
+// "bench" skips the CPU references (for ncu); "tiled" checks the tiled-code split on GPS_L5_Q_NH.
+// Never run beside a live node: the bench saturates the GPU.
 
 #include "cudaGnssChordDespread.hpp"
 #include "cudaGnssDespreadKernel.hpp"
@@ -131,12 +131,218 @@ void time_launch(const char* name, F&& launch, int n_it, double* out_min, double
     cudaEventDestroy(e1);
 }
 
+/// Tiled-code check on GPS_L5_Q_NH (L = 20 x 10230): the kernel's Psi_plain / Psi_prev / sec
+/// split against a table built over the whole 204600-chip code, and both against NOA on the
+/// NH bank. Two PRNs; the jobs are replicated to @c n_job for the timing.
+int run_tiled(int n_job) {
+    const double fs = 3.2e9, f_off = 1176.45e6;
+    const int N = 8192, taps = 4, fft_len = 2 * N, n_hops = 2048;
+    const double spacing = 0.5;
+    const std::vector<int> chans = {5975, 5991, 6007, 6023, 6039, 6055, 6071};
+    const int n_chan = (int)chans.size();
+    const long long window_start = 114436200145LL * 16384LL;
+    const long long n0 = window_start + fft_len - 1;
+    const gnss::SignalDescriptor* sig = gnss::signal_by_name("GPS_L5_Q_NH");
+    if (!sig)
+        return 2;
+    const int n_prn = 2;
+    gnss::ChannelizedReplicaBank bank(*sig, fs, f_off, N, taps, dsp::window_from_string("hamming"),
+                                      {1, 2});
+    const int L = (int)bank.eff_code_length();
+    const int P = 10230;
+    const int Lf = fft_len * taps;
+    printf("tiled check: %s L %d = %d x %d, %d jobs\n", sig->name, L, L / P, P, n_job);
+    const double dop[2] = {-3000.0, 2500.0};
+    const double cp_true[2] = {123456.789, 204599.5};
+    std::vector<int8_t> code8;
+    for (int b = 0; b < n_prn; ++b) {
+        const auto& fc = bank.full_code(b);
+        code8.insert(code8.end(), fc.begin(), fc.end());
+    }
+    int8_t* d_code = nullptr;
+    CK(cudaMalloc(&d_code, code8.size()));
+    CK(cudaMemcpy(d_code, code8.data(), code8.size(), cudaMemcpyHostToDevice));
+
+    const size_t phi_n = (size_t)n_chan * (Lf + 1);
+    float2* d_zeroA = nullptr;
+    CK(cudaMalloc(&d_zeroA, phi_n * sizeof(float2)));
+    CK(cudaMemset(d_zeroA, 0, phi_n * sizeof(float2)));
+    std::vector<float2*> d_phiB(n_prn), d_full(n_prn), d_plain(n_prn), d_prev(n_prn);
+    std::vector<int8_t*> d_sec(n_prn);
+    std::vector<gnss_cuda::PsiTable> T(n_prn);
+    std::vector<gnss_cuda::PsiSplit> S(n_prn);
+    int n_chips = 0;
+    double cps[2], wc[2];
+    for (int b = 0; b < n_prn; ++b) {
+        cps[b] =
+            bank.eff_chip_rate() / fs * (1.0 + bank.code_doppler_sign * dop[b] / sig->carrier_hz);
+        wc[b] = 2.0 * M_PI * (f_off + dop[b]) / fs;
+        const auto filt = bank.hoprate_filter(chans, dop[b], b);
+        n_chips = filt.n_chips;
+        std::vector<float2> hB(phi_n);
+        for (int c = 0; c < n_chan; ++c)
+            for (int k = 0; k <= Lf; ++k)
+                hB[(size_t)c * (Lf + 1) + k] =
+                    make_float2((float)filt.PhiB[(size_t)c][(size_t)k].real(),
+                                (float)filt.PhiB[(size_t)c][(size_t)k].imag());
+        CK(cudaMalloc(&d_phiB[(size_t)b], phi_n * sizeof(float2)));
+        CK(cudaMemcpy(d_phiB[(size_t)b], hB.data(), phi_n * sizeof(float2),
+                      cudaMemcpyHostToDevice));
+        T[(size_t)b] = gnss_cuda::build_psi_table(bank, b, chans, dop[b], fs, 1, true);
+        S[(size_t)b] = gnss_cuda::build_psi_split(bank, b, chans, dop[b], fs, 1, P, true);
+        printf("   PRN %d: full table %.3f s (%zu entries/chan), split %.3f s (%d + %d "
+               "entries/chan, Ns %d, sec[0..3] %d %d %d %d)\n",
+               b + 1, T[(size_t)b].build_seconds, T[(size_t)b].psi.size() / n_chan,
+               S[(size_t)b].build_seconds, P, S[(size_t)b].n_prev, S[(size_t)b].Ns,
+               S[(size_t)b].sec[0], S[(size_t)b].sec[1], S[(size_t)b].sec[2], S[(size_t)b].sec[3]);
+        const size_t nf = T[(size_t)b].psi.size(), np = S[(size_t)b].psi_plain.size(),
+                     nv = S[(size_t)b].psi_prev.size();
+        CK(cudaMalloc(&d_full[(size_t)b], nf * sizeof(float2)));
+        CK(cudaMemcpy(d_full[(size_t)b], T[(size_t)b].psi.data(), nf * sizeof(float2),
+                      cudaMemcpyHostToDevice));
+        CK(cudaMalloc(&d_plain[(size_t)b], np * sizeof(float2)));
+        CK(cudaMemcpy(d_plain[(size_t)b], S[(size_t)b].psi_plain.data(), np * sizeof(float2),
+                      cudaMemcpyHostToDevice));
+        CK(cudaMalloc(&d_prev[(size_t)b], nv * sizeof(float2)));
+        CK(cudaMemcpy(d_prev[(size_t)b], S[(size_t)b].psi_prev.data(), nv * sizeof(float2),
+                      cudaMemcpyHostToDevice));
+        CK(cudaMalloc(&d_sec[(size_t)b], S[(size_t)b].sec.size()));
+        CK(cudaMemcpy(d_sec[(size_t)b], S[(size_t)b].sec.data(), S[(size_t)b].sec.size(),
+                      cudaMemcpyHostToDevice));
+    }
+
+    std::vector<gnss_cuda::DespreadJob> jn((size_t)n_job);
+    std::vector<gnss_cuda::PsiJob> pf((size_t)n_job), ps((size_t)n_job);
+    std::vector<float> theta((size_t)n_job * n_chan);
+    for (int j = 0; j < n_job; ++j) {
+        const int b = j % n_prn;
+        const double cp0 = cp_true[b] + 0.1 * (j / n_prn);
+        long double c = (long double)cp0 + (long double)n0 * (long double)cps[b];
+        c = fmodl(c, (long double)L);
+        if (c < 0.0L)
+            c += (long double)L;
+        long double fr = fmodl(
+            ((long double)f_off + (long double)dop[b]) / (long double)fs * (long double)n0, 1.0L);
+        if (fr < 0.0L)
+            fr += 1.0L;
+        const double C0 = cp0 + (double)n0 * cps[b];
+        const double next_b = (std::floor(C0 / L) + 1.0) * L;
+        int m_head = (int)std::ceil((next_b - C0) / ((double)fft_len * cps[b]));
+        m_head = std::max(0, std::min(n_hops, m_head));
+        jn[(size_t)j] = {spacing,
+                         (double)c,
+                         cps[b],
+                         1.0 / cps[b],
+                         wc[b],
+                         (double)(TWO_PI_L * fr),
+                         b * L,
+                         L,
+                         (1ULL << n_chan) - 1,
+                         d_zeroA,
+                         d_phiB[(size_t)b],
+                         n_chips,
+                         m_head,
+                         0};
+        gnss_cuda::PsiJob F{};
+        F.psi = d_full[(size_t)b];
+        F.P = L;
+        F.Ns = 1;
+        F.G = 1;
+        gnss_cuda::psi_fixed_setup(jn[(size_t)j], F, fft_len, n_hops);
+        pf[(size_t)j] = F;
+        gnss_cuda::PsiJob Q = F;
+        Q.psi = d_plain[(size_t)b];
+        Q.psi_prev = d_prev[(size_t)b];
+        Q.sec = d_sec[(size_t)b];
+        Q.P = P;
+        Q.Ns = L / P;
+        Q.n_prev = S[(size_t)b].n_prev;
+        ps[(size_t)j] = Q;
+        for (int c2 = 0; c2 < n_chan; ++c2)
+            theta[(size_t)j * n_chan + c2] =
+                (float)(gnss_cuda::psi_theta(chans[(size_t)c2], fft_len, wc[b]) / cps[b]);
+    }
+    gnss_cuda::DespreadJob* d_jn = nullptr;
+    gnss_cuda::PsiJob *d_pf = nullptr, *d_ps = nullptr;
+    float* d_theta = nullptr;
+    CK(cudaMalloc(&d_jn, jn.size() * sizeof(gnss_cuda::DespreadJob)));
+    CK(cudaMalloc(&d_pf, pf.size() * sizeof(gnss_cuda::PsiJob)));
+    CK(cudaMalloc(&d_ps, ps.size() * sizeof(gnss_cuda::PsiJob)));
+    CK(cudaMalloc(&d_theta, theta.size() * sizeof(float)));
+    CK(cudaMemcpy(d_jn, jn.data(), jn.size() * sizeof(gnss_cuda::DespreadJob),
+                  cudaMemcpyHostToDevice));
+    CK(cudaMemcpy(d_pf, pf.data(), pf.size() * sizeof(gnss_cuda::PsiJob), cudaMemcpyHostToDevice));
+    CK(cudaMemcpy(d_ps, ps.data(), ps.size() * sizeof(gnss_cuda::PsiJob), cudaMemcpyHostToDevice));
+    CK(cudaMemcpy(d_theta, theta.data(), theta.size() * sizeof(float), cudaMemcpyHostToDevice));
+
+    gnss_cuda::DespreadParams p{};
+    p.n0 = n0;
+    p.fft_len = fft_len;
+    p.n_hops = n_hops;
+    p.Lf = Lf;
+    p.data_stride = n_hops;
+    const size_t wn = (size_t)3 * n_job * n_chan * n_hops, en = (size_t)4 * n_job * n_chan;
+    float2* d_wave = nullptr;
+    double* d_energy = nullptr;
+    CK(cudaMalloc(&d_wave, wn * sizeof(float2)));
+    CK(cudaMalloc(&d_energy, en * sizeof(double)));
+    std::vector<float2> w_noa(wn), w_full(wn), w_split(wn);
+    std::vector<double> e_full(en), e_split(en);
+    CK(gnss_cuda::launch_waveform(d_code, d_jn, n_job, n_chan, p, nullptr, d_wave, d_energy, 0));
+    CK(cudaDeviceSynchronize());
+    CK(cudaMemcpy(w_noa.data(), d_wave, wn * sizeof(float2), cudaMemcpyDeviceToHost));
+    CK(gnss_cuda::launch_psi_waveform(d_jn, d_pf, d_theta, n_job, n_chan, p, nullptr, 1, d_wave,
+                                      d_energy, 0));
+    CK(cudaDeviceSynchronize());
+    CK(cudaMemcpy(w_full.data(), d_wave, wn * sizeof(float2), cudaMemcpyDeviceToHost));
+    CK(cudaMemcpy(e_full.data(), d_energy, en * sizeof(double), cudaMemcpyDeviceToHost));
+    CK(gnss_cuda::launch_psi_waveform(d_jn, d_ps, d_theta, n_job, n_chan, p, nullptr, 1, d_wave,
+                                      d_energy, 0));
+    CK(cudaDeviceSynchronize());
+    CK(cudaMemcpy(w_split.data(), d_wave, wn * sizeof(float2), cudaMemcpyDeviceToHost));
+    CK(cudaMemcpy(e_split.data(), d_energy, en * sizeof(double), cudaMemcpyDeviceToHost));
+    print_stats("PSI split (Psi_plain/Psi_prev/sec) vs PSI full-length table (NH, fixed, 3 "
+                "trials)",
+                compare_sets(w_split, w_full, n_job, n_chan, n_hops), chans);
+    double emax = 0.0;
+    for (size_t i = 0; i < en; ++i)
+        emax = std::max(emax, std::fabs(e_split[i] - e_full[i]) / std::max(1e-300, e_full[i]));
+    printf("   energy rows split vs full: max rel %.3e\n", emax);
+    print_stats("PSI full-length table vs NOA (NH bank)",
+                compare_sets(w_full, w_noa, n_job, n_chan, n_hops), chans);
+    double mn, md;
+    time_launch(
+        "NH NOA (fp32, 212 chips, 3 trials)",
+        [&] {
+            return gnss_cuda::launch_waveform(d_code, d_jn, n_job, n_chan, p, nullptr, d_wave,
+                                              d_energy, 0);
+        },
+        20, &mn, &md);
+    time_launch(
+        "NH PSI full table (1.6 MB/chan)",
+        [&] {
+            return gnss_cuda::launch_psi_waveform(d_jn, d_pf, d_theta, n_job, n_chan, p, nullptr, 1,
+                                                  d_wave, d_energy, 0);
+        },
+        20, &mn, &md);
+    time_launch(
+        "NH PSI split (80 KB + 1.7 KB/chan)",
+        [&] {
+            return gnss_cuda::launch_psi_waveform(d_jn, d_ps, d_theta, n_job, n_chan, p, nullptr, 1,
+                                                  d_wave, d_energy, 0);
+        },
+        20, &mn, &md);
+    return 0;
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
     const std::string mode = argc > 1 ? argv[1] : "all";
     const bool bench_only = (mode == "bench");
     const int n_prn = argc > 2 ? atoi(argv[2]) : 12;
+    if (mode == "tiled")
+        return run_tiled(n_prn);
 
     // ---- production geometry ----
     const double fs = 3.2e9, f_off = 1176.45e6;
