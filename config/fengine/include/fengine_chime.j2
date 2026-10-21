@@ -33,7 +33,6 @@ telescope:
     query_frequency_map: false
     require_frequency_map: false
     allow_default_frequency_map: true
-    eop_updatable_config: /earth_rotation_data
     origin_itrs_lat_deg: +49.32070922 # centre of the array
     origin_itrs_lon_deg: -119.62367743
     grid_x_axis: [1.0, 0.0, 0.0]
@@ -70,10 +69,6 @@ telescope:
 gps_time:
     frame0_nano: 1767225600000000000 # 2026-01-01T00:00:00Z
 
-earth_rotation_data:
-    kotekan_update_endpoint: json
-    earth_orientation_parameter_table:
-    - {t_inst_ns: 0, delta_UT1_inst: 0.0, xp_as: 0.0, yp_as: 0.0}
 
 ################################################################################
 
