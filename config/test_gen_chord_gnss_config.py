@@ -219,6 +219,17 @@ def test_recipe_lines():
     )
 
 
+def test_psi_synth_needs_epl():
+    """--psi-synth is refused without --epl-from-prompt, before anything is probed."""
+    with fleet(FakeFleet(None)) as fake:
+        exc, _, _ = run_main(["--base", BASE, "--node", "cx19", "--psi-synth"])
+    check(
+        exc is not None and "--epl-from-prompt" in exc,
+        "--psi-synth alone is refused naming --epl-from-prompt (%r)" % (exc,),
+    )
+    check(not fake.urls, "the refusal probes nothing")
+
+
 def test_aggregator_feed_ports():
     cfg = node_cfg()
     # cx19 (combs 4, 14) holds 6020 on GPU 0 only; cx27 (combs 0, 8) holds 6016 and 6024.

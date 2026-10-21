@@ -1077,6 +1077,8 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
                     # The E/L lanes as rotations of the prompt, one chip walk per hop
                     # (lanes_per_slot_for).
                     **({"epl_from_prompt": True} if args.epl_from_prompt else {}),
+                    # Replicas from code-phase tables, fused with the pack (--psi-synth).
+                    **({"psi_synth": True} if args.psi_synth else {}),
                     "f_offset_hz": carrier_hz,
                     "hops_per_record": HOPS_PER_RECORD,
                     "fft_length": cfg["fengine"]["fft_length"],
@@ -2713,6 +2715,15 @@ def main():
         "chain.",
     )
     ap.add_argument(
+        "--psi-synth",
+        action="store_true",
+        help="cudaGnssChordTrack psi_synth on every chain: replica synthesis from per-PRN "
+        "code-phase tables over the full PFB span, fused with the N^2 pack (one launch per "
+        "record instead of gnss_waveform + gnss_pack44; lib/cuda/cudaGnssPsiSynth.hpp). "
+        "Requires --epl-from-prompt. The replica carries +1.1%% more energy than the "
+        "80-chip gather, so every absolute SNR gate steps at the cutover.",
+    )
+    ap.add_argument(
         "--n2-project",
         choices=["off", "live"],
         default="off",
@@ -2941,6 +2952,11 @@ def main():
         "with a WARN otherwise.",
     )
     args = ap.parse_args()
+    if args.psi_synth and not args.epl_from_prompt:
+        raise SystemExit(
+            "--psi-synth requires --epl-from-prompt: the fused synthesis packs two lanes per "
+            "slot (P, P_HEAD) with the E/L rows rotated from the prompt"
+        )
 
     with open(NODE_FILE) as fh:
         cfg = yaml.safe_load(fh)
