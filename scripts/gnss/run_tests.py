@@ -28,6 +28,9 @@ of skipping. A value already in the environment wins, and an empty one lifts the
 GNSS_REQUIRE_GPU and KOTEKAN_SRC pass through: set GNSS_REQUIRE_GPU=1 on a GPU host with an
 e2e build.
 
+The jobs share a TMPDIR of the run's own under --out, removed at the end unless a job FAILed
+or TIMEOUTed.
+
 A job PASSes on exit 0, SKIPs on exit 77 (its environment is absent) or on exit 0 with
 unittest cases skipped, TIMEOUTs past --timeout (its process group is killed), and FAILs
 otherwise. A table entry naming a file that is not there FAILs as stale, unless the file is one
@@ -41,6 +44,7 @@ import glob
 import importlib.util
 import os
 import re
+import shutil
 import signal
 import subprocess
 import sys
@@ -326,6 +330,7 @@ def main():
 
     out = a.out or tempfile.mkdtemp(prefix="gnss-tests-")
     os.makedirs(out, exist_ok=True)
+    tmp = base_env["TMPDIR"] = tempfile.mkdtemp(prefix="tmp-", dir=out)
     head = [
         "root     %s (%s)" % (root, git_head(root)),
         "kotekan  %s" % (kotekan_tree(root) or "none found"),
@@ -337,6 +342,7 @@ def main():
             if k.startswith("GNSS_REQUIRE_") or k == "KOTEKAN_SRC"
         ),
         "logs     %s" % out,
+        "TMPDIR   %s" % tmp,
     ]
     print("\n".join(head))
     sys.stdout.flush()
@@ -388,6 +394,10 @@ def main():
     print("\n".join(lines))
     with open(os.path.join(out, "summary.txt"), "w") as f:
         f.write("\n".join(head + [""] + lines) + "\n")
+    if counts["FAIL"] or counts["TIMEOUT"]:
+        print("temp files kept in %s" % tmp)
+    else:
+        shutil.rmtree(tmp, ignore_errors=True)
     bad = counts["FAIL"] + counts["TIMEOUT"] + (counts["SKIP"] if a.strict else 0)
     return 1 if bad else 0
 

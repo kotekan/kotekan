@@ -77,13 +77,16 @@ def policy_for(chain, armed, targets=("http://127.0.0.1:9/set_trim",)):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument(
-        "--bin", default=kotekan_src.src("build_nodpdk", "kotekan", "kotekan")
+        "--bin",
+        help="the binary (default: build_nodpdk/kotekan/kotekan in the kotekan tree)",
     )
     ap.add_argument(
         "--config", default=os.path.join(K, "config/generated/chord_gnss_gather.yaml")
     )
     ap.add_argument("--stage", default="fleet_trim")
     a = ap.parse_args()
+    if a.bin is None:
+        a.bin = kotekan_src.src("build_nodpdk", "kotekan", "kotekan")
 
     import yaml
 

@@ -131,9 +131,14 @@ def approx(a, b, tol=1e-9):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--kotekan", default=kotekan_src.src("build", "kotekan", "kotekan"))
+    ap.add_argument(
+        "--kotekan",
+        help="the binary (default: build/kotekan/kotekan in the kotekan tree)",
+    )
     ap.add_argument("--port", type=int, default=12099)
     args = ap.parse_args()
+    if args.kotekan is None:
+        args.kotekan = kotekan_src.src("build", "kotekan", "kotekan")
 
     if not os.path.exists(args.kotekan):
         print("no kotekan binary at %s -- build it first" % args.kotekan)

@@ -10,6 +10,7 @@ manifest, a one-line template as the base and a preview directory.
 import contextlib
 import io
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -120,6 +121,51 @@ def test_crash_exits_2():
         "and the traceback is the template's error (%s)"
         % (err.strip().splitlines() or ["no stderr"])[-1],
     )
+
+
+def test_no_kotekan_tree():
+    """In a checkout with no kotekan tree beside it and KOTEKAN_SRC unset, --print-path still
+    answers, and --check, which renders the base from kotekan, exits 2 with the reason."""
+    with tempfile.TemporaryDirectory() as d:
+        c = os.path.join(os.path.realpath(d), "c")
+        for rel in (
+            "scripts/gnss/gen_fleet.py",
+            "scripts/gnss/stock_parity.py",
+            "python/scripts/gnss/kotekan_src.py",
+        ):
+            os.makedirs(os.path.dirname(os.path.join(c, rel)), exist_ok=True)
+            shutil.copy(os.path.join(HERE, "..", "..", rel), os.path.join(c, rel))
+        man = manifest(c, "chord/pathfinder.j2")
+        env = {k: v for k, v in os.environ.items() if k != "KOTEKAN_SRC"}
+        env["PYTHONDONTWRITEBYTECODE"] = "1"
+
+        def gen_fleet(*args):
+            p = subprocess.run(
+                [
+                    sys.executable,
+                    os.path.join(c, "scripts", "gnss", "gen_fleet.py"),
+                    man,
+                ]
+                + list(args),
+                capture_output=True,
+                text=True,
+                env=env,
+            )
+            return p.returncode, p.stdout, p.stderr
+
+        rc, out, err = gen_fleet("--print-path")
+        want = os.path.join(c, "config", "generated", "chord_gnss_cx44.yaml")
+        check(
+            rc == 0 and out.splitlines() == [want],
+            "--print-path needs no kotekan (rc %d, %r, %r)"
+            % (rc, out.splitlines(), err.strip().splitlines()[-1:]),
+        )
+        rc, out, err = gen_fleet("--check")
+        check(
+            rc == 2 and "set KOTEKAN_SRC" in err and "Traceback" not in err,
+            "--check with no kotekan tree exits 2 with the reason, no traceback (rc %d, %r)"
+            % (rc, err.strip().splitlines()[-1:]),
+        )
 
 
 def main():

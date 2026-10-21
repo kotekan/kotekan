@@ -496,9 +496,13 @@ def main():
 
 if __name__ == "__main__":
     # Exit 1 means a config differs from the manifest (node_up.sh's preflight reads it that
-    # way), so a crash here, which has compared nothing, exits 2.
+    # way), so a crash here, or no kotekan tree to render the base from, which has compared
+    # nothing, exits 2.
     try:
         sys.exit(main())
+    except kotekan_src.NotFound as e:
+        sys.stderr.write("%s\n" % e)
+        sys.exit(2)
     except Exception:
         traceback.print_exc()
         sys.exit(2)

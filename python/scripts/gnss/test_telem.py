@@ -118,6 +118,7 @@ class TestWireFormat(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.tmp = tempfile.mkdtemp(prefix="telemfmt-")
+        cls.addClassCleanup(shutil.rmtree, cls.tmp, ignore_errors=True)
         src = kotekan_src.src("scripts", "gnss", "telemfmt.cpp")
         cls.bin = os.path.join(cls.tmp, "telemfmt")
         # No compiler is an environment this cannot run in. A compiler that rejects the harness

@@ -34,8 +34,9 @@ the first of these that holds `lib/stages/gnss`:
     <checkout>/../kotekan   a kotekan checkout beside this one
 
 On the gnss VM this checkout is `/home/kvand/gnss/gnss-broker`, beside
-`/home/kvand/gnss/kotekan`, so nothing needs to be set. With no kotekan tree, the broker, the
-generator and `gen_fleet.py` fail at import, naming `KOTEKAN_SRC` and the places tried.
+`/home/kvand/gnss/kotekan`, so nothing needs to be set. With no kotekan tree, the broker and the
+generator fail at import, and `gen_fleet.py` exits 2 when it needs kotekan, each naming
+`KOTEKAN_SRC` and the places tried.
 
 ## Environments
 

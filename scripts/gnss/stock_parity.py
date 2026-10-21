@@ -33,8 +33,6 @@ ROOT = os.path.dirname(os.path.dirname(HERE))
 sys.path.append(os.path.join(ROOT, "python", "scripts", "gnss"))
 import kotekan_src  # noqa: E402
 
-TEMPLATE = kotekan_src.src("config", "chord", "pathfinder.j2")
-
 # (path pattern, kinds, why). Kinds: + added, - removed, ~ changed. Patterns are fnmatch over
 # the dotted path with list indices as plain components (commands[0] matches commands.*). Each
 # is ours to upstream or retire. All but two are data-neutral; the excision exemption and the
@@ -88,11 +86,17 @@ def is_gnss(key):
     return key.startswith("gnss")
 
 
-def render_stock(path=TEMPLATE):
-    """The template rendered stock, exactly as kotekan does (see kotekan/kotekan.cpp)."""
+def template():
+    """The stock reference by default: config/chord/pathfinder.j2 in the kotekan tree."""
+    return kotekan_src.src("config", "chord", "pathfinder.j2")
+
+
+def render_stock(path=None):
+    """The template (default template()) rendered stock, exactly as kotekan does (see
+    kotekan/kotekan.cpp)."""
     import jinja2
 
-    d, f = os.path.split(os.path.abspath(path))
+    d, f = os.path.split(os.path.abspath(path or template()))
     env = jinja2.Environment(
         loader=jinja2.FileSystemLoader(d), autoescape=jinja2.select_autoescape()
     )
@@ -176,10 +180,9 @@ def main():
     ap.add_argument("config", help="a generated node config (yaml)")
     ap.add_argument(
         "--stock",
-        default=TEMPLATE,
         help="reference: a .j2 template (rendered stock, as kotekan renders it), a .json or "
         "yaml file, or the http:// URL of a /config endpoint (default: "
-        "config/chord/pathfinder.j2; ignored with --live)",
+        "config/chord/pathfinder.j2 in the kotekan tree; ignored with --live)",
     )
     ap.add_argument(
         "--live",
@@ -196,7 +199,7 @@ def main():
     )
     a = ap.parse_args()
 
-    ref_src = "http://%s:12048/config" % a.live if a.live else a.stock
+    ref_src = "http://%s:12048/config" % a.live if a.live else a.stock or template()
     ref, cfg = load(ref_src), load(a.config)
     declared, undeclared = classify(differences(ref, cfg), live=bool(a.live))
     n_stock = sum(1 for k in cfg if not is_gnss(k))
