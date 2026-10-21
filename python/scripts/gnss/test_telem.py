@@ -32,7 +32,6 @@ import tempfile
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-K = os.path.abspath(os.path.join(HERE, "..", "..", ".."))
 sys.path.insert(0, HERE)
 
 import kotekan_src  # noqa: E402
@@ -119,7 +118,7 @@ class TestWireFormat(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.tmp = tempfile.mkdtemp(prefix="telemfmt-")
-        src = os.path.join(K, "scripts", "gnss", "telemfmt.cpp")
+        src = kotekan_src.src("scripts", "gnss", "telemfmt.cpp")
         cls.bin = os.path.join(cls.tmp, "telemfmt")
         # No compiler is an environment this cannot run in. A compiler that rejects the harness
         # means it and the header disagree, which is what this class exists to catch: fail.
