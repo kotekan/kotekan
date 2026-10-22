@@ -52,10 +52,11 @@ static double query_dish_coelev_deg(const std::string& host, uint32_t port,
         if (reply.first)
             break;
         if (std::chrono::steady_clock::now() >= deadline)
-            FATAL_ERROR_NON_OO("No reply from pointing service {:s}:{:d}{:s} after {:d} s.", host,
-                               port, endpoint, timeout_s);
-        WARN_NON_OO("No reply from pointing service {:s}:{:d}{:s}, retrying.", host, port,
-                    endpoint);
+            FATAL_ERROR_NON_OO(
+                "No successful reply from pointing service {:s}:{:d}{:s} after {:d} s.", host, port,
+                endpoint, timeout_s);
+        WARN_NON_OO("No successful reply from pointing service {:s}:{:d}{:s}, retrying.", host,
+                    port, endpoint);
         std::this_thread::sleep_for(std::chrono::seconds(1));
     }
 
@@ -96,8 +97,11 @@ DishParams DishParams::from_config(const kotekan::Config& config, const std::str
     if (!std::isfinite(dish_params.dish_coelev_deg) || std::abs(dish_params.dish_coelev_deg) > 90.0)
         FATAL_ERROR_NON_OO("CHORDTelescope dish_coelev_deg {:f} is outside [-90, 90].",
                            dish_params.dish_coelev_deg);
-    INFO_NON_OO("CHORDTelescope dish pointing co-elevation: {:f} deg.",
-                dish_params.dish_coelev_deg);
+    if (dish_params.dish_coelev_set)
+        INFO_NON_OO("CHORDTelescope dish pointing co-elevation: {:f} deg.",
+                    dish_params.dish_coelev_deg);
+    else
+        INFO_NON_OO("CHORDTelescope dish pointing not set; using 0.0 deg.");
 
     // Whether to check for duplicate dish grid locations
     const bool check_duplicate_dish_grid =

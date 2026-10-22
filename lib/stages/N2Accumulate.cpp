@@ -153,7 +153,8 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
 
     // Sanity checks on initialization
     {
-        if (_do_fringestop && !_tel.phase_center_is_set())
+        // With an updatable config, receive_fringestop_enabled checks the phase center instead.
+        if (_do_fringestop && _fringestop_config_path.empty() && !_tel.phase_center_is_set())
             FATAL_ERROR("do_fringestop is set but the telescope phase center (dish_coelev_deg) is "
                         "not.");
 
