@@ -129,9 +129,7 @@ updatable_config:
     # Bad input mask, in cylinder order (bufferBadInputs `input_order`)
     bad_inputs:
         kotekan_update_endpoint: json
-        # yamlfix:off
-        bad_inputs: &bad_inputs []
-        # yamlfix:on
+        bad_inputs: []
         start_time: 0.
         update_id: "initial"
     # RFI excision (include/rfi_chime.j2, include/n2k_chime.j2). 0 is a special case which
@@ -215,10 +213,9 @@ host_voltage_ringbuffer:
 
 # The lost samples, one byte (1 = lost) per sample, for all dishes and polarizations of a group of
 # 4 frequencies: lost_samples_buffer_<k> serves host_voltage_buffer_<4k> to <4k+3>.
-# config/chime_upgrade_frb.j2 also zeroes the lost voltages with zeroSamples. zeroSamples is a
-# second producer of the voltage buffers and relies on the lost samples being marked full after the
-# voltages are written, as dpdk does. The file input and the generators produce the two streams
-# independently, so there is no zeroSamples here; no samples are lost.
+# zeroSamples, a second producer of the voltage buffers, zeroes the lost voltages; it relies on the
+# lost samples being marked full after the voltages are written, as dpdk does. The test generator
+# (inventVoltage, include/input_test_chord.j2) writes both in that order and runs zeroSamples.
 {% for id in range(16 // 4) %}   # num_frequencies = 16
 lost_samples_buffer_{{ id }}:
     kotekan_buffer: ndarray
