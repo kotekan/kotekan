@@ -76,6 +76,11 @@ dishes within a sample and has no memory, so the first and last non-zero samples
   shift the centroid by much less than this.
 - The first sample must be at `t0 + T*`.
 
+**HFB** (CHIME). The U = 128 upchannelizer is checked as the others, starting at `t0 + T*` of
+the HFB chain. HFB1 sums 16384 samples per output sample: exactly the HFB1 samples that overlap
+`[box_begin − M U, box_end + M U)` must hold power. HFB2 is checked only for the frame that
+holds the box.
+
 **Metadata audit**, on every output:
 
 - consecutive frames are contiguous;
@@ -115,14 +120,16 @@ Both variants pass:
 - **FRB1:** centroid 0.5 samples from the box centre.
 - **FRB2:** centroid 0.3 samples from the box centre.
 
-## Result (CHIME, cx68, A40, Release)
+## Result (CHIME, cx67, A40, Release)
 
-Both variants pass. CHIME has no BB beamformer and only U = 16. Its production `upchan_gain` is 1,
-under which a box of amplitude 1 at the edge of two fine channels rounds to zero, so the box
-amplitude is 4.
+Both variants pass, with the production gains of config/fengine.
 
 - **Input:** the transposed voltage holds the signal exactly in [box_begin, box_end).
+- **BB:** signal edges exact.
 - **U = 16:** centroid 2.0 samples from the box centre (±4).
+- **U = 128 (HFB):** centroid 1.4 samples from the box centre (±32).
 - **FRB1, FRB2:** centroids 2.1 samples from the box centre (±96).
+- **HFB1:** power only in the sample at `t0 + T*` (16384 samples), which holds the box.
+- **HFB2:** power only in the frame at `t0 + T*`.
 
-Kotekan runs for 52 s per variant.
+Kotekan runs for 37 s per variant.

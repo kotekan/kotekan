@@ -50,7 +50,7 @@ kotekan mask exactly, for all dishes and polarizations:
 - **Input and expanded mask:** sample s is valid iff it is not lost. The input mask has one bit
   per sample pair, the expanded mask one bit per sample, least significant bit first.
 - **BB mask:** the AND of the expanded mask over dishes, per time, frequency and polarization.
-- **Upchannelized mask (each U):** the output labelled L (`fpga_seq_num + U t̄`, with
+- **Upchannelized mask (each U, and the HFB U = 128 on CHIME):** the output labelled L (`fpga_seq_num + U t̄`, with
   `fpga_seq_num = seq0 + T*`) is valid iff no input sample in
   `[L − (M−1)U/2, L − (M−1)U/2 + MU)` is lost.
 - **FRB mask:** an FRB1 sample sums Td = 192/U upchannelized samples, so the sample labelled L
@@ -142,24 +142,26 @@ The reference run has every mask valid and every count at T. No kotekan error wa
 Kotekan runs for 40, 40 and 36 s; the whole test takes 3 min. The runs write 2.6, 2.4 and
 2.4 GB, mostly FRB1, the upchannelized voltages and the voltage frame.
 
-## Result (CHIME, cx68, A40, Release)
+## Result (CHIME, cx67, A40, Release)
 
 **PASS**, all three runs. As in production, the loss enters as lost samples per group of 4
 frequencies, which zeroSamples applies to the voltages (also in `dense`) and lostSamplesToPLMask
-turns into the PL mask. CHIME has no BB beamformer, only U = 16, and its N2 counts come from
-lostSamplesToN2Counts.
+turns into the PL mask. The N2 counts come from lostSamplesToN2Counts. The HFB upchannelizer
+(U = 128) is checked as the U = 16 one, with the output offset of the HFB chain.
 
 | check | `sparse` | `dense` |
 |---|---|---|
-| samples lost | 0.014% | 1.00% |
+| samples lost | 0.039% | 1.02% |
 | PL mask | 95 232 invalid bits, exact | 754 688, exact |
 | expanded mask | 761 856, exact | 6 037 504, exact |
+| BB mask | 5952, exact | 47 168, exact |
 | U = 16 mask | 70 656, exact | 1 668 096, exact |
+| U = 128 (HFB) mask | 45 056, exact | 1 172 480, exact |
 | FRB mask | 1088 of 131 072 invalid, exact | 32 512, exact |
-| valid U = 16, FRB1, FRB2 | 0 differ | 0 differ |
-| FRB3 (8 bits) | 0 exactly where invalid; ≤ 1.53 steps | ≤ 1.57 steps |
+| valid U = 16, U = 128, BB, FRB1, FRB2 | 0 differ | 0 differ |
+| FRB3 (8 bits) | 0 exactly where invalid; ≤ 1.45 steps | ≤ 1.52 steps |
 | N2 counts | 2976 lost samples in 8 frames, exact | — |
-| N2 integration | 6400 lost, n_valid exact, no RFI flags | — |
-| Σ V n | max relative \|Δ\| 6.0·10^−7; Σ_lost up to 8655 | — |
+| N2 integration | 704 lost, n_valid exact, no RFI flags | — |
+| Σ V n | max relative \|Δ\| 4.8·10^−8; Σ_lost up to 1608 | — |
 
-Kotekan runs for 93, 90 and 67 s.
+Kotekan runs for 46, 49 and 41 s.

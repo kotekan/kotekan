@@ -144,19 +144,21 @@ With the peak-bin threshold halfway between 1 and the next predicted value (0.99
 diagonal pairs failed in the four U = 32 channels, where the measured fringe deviates by up to
 0.003. Kotekan runs for 17 s, 20 s and 53 s; the test takes 2 minutes.
 
-## Result (CHIME, cx68, A40, Release)
+## Result (CHIME, cx67, A40, Release)
 
-All three variants pass. Grid cells beyond the 4 × 256 grid are wrapped into it. CHIME has no BB
-beamformer, so `onehot` checks only N2.
+All three variants pass. Grid cells beyond the 4 × 256 grid are wrapped into it.
 
 - **`onehot`:** only the 8 one-hot autocorrelations are non-zero, equal to Σ|E|²/n within
   2.5·10^−8. The written feed positions are those of the config offset by (−33.0, −38.862) m:
-  CHIMETelescope centres the array.
-- **`pairs`:** the FRB1 fringes match within 0.0044. The peak bins are checked only for the two
+  CHIMETelescope centres the array. BB: the phase of J_b / E_d matches calcBBPhase within 2.11°
+  (99th percentile 1.79°) for 8 inputs, 32 beams and 16 frequencies, predicted from the written
+  (centred) positions; the amplitude is 0.968 to 1.032 times `bb_gain`.
+- **`pairs`:** the FRB1 fringes match within 0.0047. The peak bins are checked only for the two
   pairs separated along the 4 cylinders. Along the 512 beams of the cylinder axis the fringe
   levels have no gap of 2%, so the peak bins are not checkable there.
-- **`half`:** T2's `frb2` variant passes with the 512 present dishes.
-  CHIMETelescope has no dish types, so inventBFMask `auto` marks all dishes good; the
+- **`half`:** T2's `frb2` variant passes with the 512 present dishes, including the HFB chain;
+  the BB peak is not checked (source far from the column). CHIMETelescope has no dish types: it
+  writes grid indices for the Missing dishes, and inventBFMask `auto` marks all dishes good; the
   Missing dishes carry no input.
 
-Kotekan runs for 134, 44 and 95 s.
+Kotekan runs for 23, 20 and 123 s.
