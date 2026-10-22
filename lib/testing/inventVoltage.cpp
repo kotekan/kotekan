@@ -15,7 +15,7 @@
 
 #include "json.hpp" // for json
 
-#include <algorithm>  // for copy, fill_n
+#include <algorithm>  // for copy, fill_n, sort
 #include <array>      // for array
 #include <cassert>    // for assert
 #include <cmath>      // for fmax, fmin, sqrt
@@ -26,6 +26,7 @@
 #include <functional> // for function
 #include <iomanip>    // for operator<<, setfill, setw
 #include <memory>     // for allocator, shared_ptr, __shared_ptr_access
+#include <numeric>    // for iota
 #ifdef WITH_OMP
 #include <omp.h> // for omp_get_wtime
 #endif
@@ -86,6 +87,10 @@ class inventVoltage : public kotekan::Stage {
     Buffer* const buffer;
     // For per-frequency buffers: the [T, F, P, D] frame before it is split
     std::vector<kotekan::int4x2_swapped_withoffset_t> scratch;
+    // For per-frequency buffers with `input_reorder` (CHIME): input e of [P, D] goes to element
+    // input_reorder[e][0] (the ADC input), as RadioTelescopeFEngine.jl writes the voltages. The
+    // transpose (parseReorderDefault, CHIMECorrelator to CHIMECylinder) undoes this.
+    std::vector<int> adc_inputs;
     // Optional (CHIME): the lost samples of `testPacketLoss`, one buffer [T] per group of 4
     // frequencies with one byte per sample, 1 if lost, as dpdkCore writes them. They are marked
     // full after the voltage frame is filled, so that `zeroSamples` can then zero the lost samples.
@@ -138,6 +143,19 @@ public:
                         "E", {1, num_times, num_polarizations * num_dishes}, {"F", "T", "E"},
                         {1, 1, 1}));
             scratch.resize(frame_elements);
+            for (const auto& entry :
+                 config.get_default<std::vector<nlohmann::json>>(unique_name, "input_reorder", {}))
+                adc_inputs.push_back(entry.at(0).get<int>());
+            if (!adc_inputs.empty()) {
+                std::vector<int> sorted = adc_inputs, inputs(num_polarizations * num_dishes);
+                std::sort(sorted.begin(), sorted.end());
+                std::iota(inputs.begin(), inputs.end(), 0);
+                if (sorted != inputs)
+                    FATAL_ERROR(
+                        "The ADC inputs of `input_reorder` are not a permutation of the {:d} "
+                        "inputs",
+                        inputs.size());
+            }
         }
 
         if (input_kind == "sky")
@@ -321,15 +339,23 @@ public:
     }
 
 private:
-    // Copy the [T, F, P, D] scratch frame to the per-frequency frames [F=1, T, E]
+    // Copy the [T, F, P, D] scratch frame to the per-frequency frames [F=1, T, E], reordered by
+    // `adc_inputs`
     void split(const std::vector<kotekan::int4x2_swapped_withoffset_t*>& out_frames) const {
         const std::ptrdiff_t num_inputs = std::ptrdiff_t(num_polarizations) * num_dishes;
 #pragma omp parallel for
         for (int time = 0; time < num_times; ++time)
-            for (int freq = 0; freq < num_frequencies; ++freq)
-                std::memcpy(out_frames[freq] + time * num_inputs,
-                            &scratch[(std::ptrdiff_t(time) * num_frequencies + freq) * num_inputs],
-                            num_inputs);
+            for (int freq = 0; freq < num_frequencies; ++freq) {
+                const kotekan::int4x2_swapped_withoffset_t* const src =
+                    &scratch[(std::ptrdiff_t(time) * num_frequencies + freq) * num_inputs];
+                kotekan::int4x2_swapped_withoffset_t* const dst =
+                    out_frames[freq] + time * num_inputs;
+                if (adc_inputs.empty())
+                    std::memcpy(dst, src, num_inputs);
+                else
+                    for (std::ptrdiff_t e = 0; e < num_inputs; ++e)
+                        dst[adc_inputs[e]] = src[e];
+            }
     }
 
     // Write and mark full the lost samples frames of frame `frame_index`; false on shutdown
