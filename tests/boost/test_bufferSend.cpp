@@ -67,7 +67,7 @@ static json sender_config(const std::string& name, uint16_t port) {
     return cfg;
 }
 
-BOOST_AUTO_TEST_CASE(test_frame_without_metadata) {
+BOOST_AUTO_TEST_CASE(test_frame_without_metadata, *boost::unit_test::timeout(10)) {
     uint16_t port = 0;
     const int listener = bind_localhost(port, true);
 
@@ -108,7 +108,7 @@ BOOST_AUTO_TEST_CASE(test_frame_without_metadata) {
     close(listener);
 }
 
-BOOST_AUTO_TEST_CASE(test_stop_during_reconnect_wait) {
+BOOST_AUTO_TEST_CASE(test_stop_during_reconnect_wait, *boost::unit_test::timeout(10)) {
     // Bound but not listening, so every connection attempt is refused.
     uint16_t port = 0;
     const int refusing = bind_localhost(port, false);
