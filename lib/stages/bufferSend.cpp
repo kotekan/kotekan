@@ -6,7 +6,7 @@
 #include "buffer.hpp"            // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "configTracker.hpp"     // for ConfigTracker
-#include "kotekanLogging.hpp"    // for DEBUG2, ERROR, INFO, DEBUG, WARN
+#include "kotekanLogging.hpp"    // for DEBUG2, ERROR, FATAL_ERROR, INFO, DEBUG, WARN
 #include "metadata.hpp"          // for metadataObject
 #include "prometheusMetrics.hpp" // for Counter, Metrics
 
@@ -109,6 +109,15 @@ void bufferSend::main_thread() {
             int32_t n_sent = 0;
 
             auto meta = buf->get_metadata(frame_id);
+            if (!meta) {
+                // FATAL_ERROR throws out of this function, so end the connect thread first.
+                stop();
+                close_connection();
+                connect_thread.join();
+                FATAL_ERROR("Frame {:s}[{:d}] has no metadata object: its producer did not "
+                            "allocate one",
+                            buf->buffer_name, frame_id);
+            }
             auto metadata_size = meta->get_serialized_size();
             auto frame_size = buf->frame_size;
             bufferFrameHeader header;
