@@ -4,8 +4,10 @@
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "bufferSend.hpp"      // for bufferSend
+#include "chordMetadata.hpp"   // for chordMetadata
 #include "errors.h"            // for get_exit_code, ReturnCode
-#include "kotekanLogging.hpp"  // for kotekanLogging
+#include "kotekanLogging.hpp"  // for kotekanLogging, FatalError
+#include "metadata.hpp"        // for metadataPool
 
 #include "json.hpp" // for json
 
@@ -13,6 +15,7 @@
 #include <boost/test/included/unit_test.hpp> // for BOOST_CHECK, BOOST_REQUIRE
 #include <chrono>                            // for steady_clock, duration, milliseconds
 #include <csignal>                           // for signal, SIGTERM, SIG_IGN
+#include <memory>                            // for shared_ptr
 #include <netinet/in.h>                      // for sockaddr_in, INADDR_LOOPBACK
 #include <stdint.h>                          // for uint16_t, uint8_t
 #include <string>                            // for string
@@ -67,6 +70,11 @@ static json sender_config(const std::string& name, uint16_t port) {
     return cfg;
 }
 
+// A pool for the send buffer. The tests never allocate from it.
+static std::shared_ptr<metadataPool> send_pool() {
+    return metadataPool::create(4, sizeof(chordMetadata), "send_pool", "chordMetadata");
+}
+
 BOOST_AUTO_TEST_CASE(test_frame_without_metadata, *boost::unit_test::timeout(10)) {
     uint16_t port = 0;
     const int listener = bind_localhost(port, true);
@@ -77,8 +85,8 @@ BOOST_AUTO_TEST_CASE(test_frame_without_metadata, *boost::unit_test::timeout(10)
     Config config;
     config.update_config(cfg);
 
-    // With no metadata pool the producer cannot allocate a metadata object.
-    Buffer buf(4, 1024, nullptr, "send_buf", "standard", 0, false, false, std::vector<int>{}, true);
+    Buffer buf(4, 1024, send_pool(), "send_buf", "standard", 0, false, false, std::vector<int>{},
+               true);
     buf.register_producer("test");
     bufferContainer bc;
     bc.add_buffer("send_buf", &buf);
@@ -88,6 +96,7 @@ BOOST_AUTO_TEST_CASE(test_frame_without_metadata, *boost::unit_test::timeout(10)
     const int conn = accept(listener, nullptr, nullptr);
     BOOST_REQUIRE(conn >= 0);
 
+    // The producer marks the frame full without allocating a metadata object.
     BOOST_REQUIRE(buf.wait_for_empty_frame("test", 0) != nullptr);
     buf.mark_frame_full("test", 0);
 
@@ -118,7 +127,8 @@ BOOST_AUTO_TEST_CASE(test_stop_during_reconnect_wait, *boost::unit_test::timeout
     Config config;
     config.update_config(cfg);
 
-    Buffer buf(4, 1024, nullptr, "send_buf", "standard", 0, false, false, std::vector<int>{}, true);
+    Buffer buf(4, 1024, send_pool(), "send_buf", "standard", 0, false, false, std::vector<int>{},
+               true);
     buf.register_producer("test");
     bufferContainer bc;
     bc.add_buffer("send_buf", &buf);
@@ -137,4 +147,19 @@ BOOST_AUTO_TEST_CASE(test_stop_during_reconnect_wait, *boost::unit_test::timeout
     BOOST_CHECK_LT(stop_seconds, 3.0);
 
     close(refusing);
+}
+
+// test_frame_without_metadata has already set the FATAL_ERROR exit code, so this case checks the
+// thrown FatalError and its message.
+BOOST_AUTO_TEST_CASE(test_buffer_without_metadata_pool, *boost::unit_test::timeout(10)) {
+    Config config;
+    config.update_config(sender_config("send_no_pool", 11024));
+
+    Buffer buf(4, 1024, nullptr, "send_buf", "standard", 0, false, false, std::vector<int>{}, true);
+    bufferContainer bc;
+    bc.add_buffer("send_buf", &buf);
+    BOOST_CHECK_THROW(bufferSend(config, "/send_no_pool", bc), FatalError);
+    BOOST_CHECK_EQUAL(
+        kotekan::kotekanLogging::get_error_message(),
+        "Buffer send_buf has no metadata_pool: every frame sent needs a metadata object");
 }
