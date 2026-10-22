@@ -1,6 +1,7 @@
 # -*-yaml-*-
 
 # CHORD n2k setup
+{% set n2k_rfi_name = n2k_rfi_name|default("dtv_RFImask" if dtv_apply_mask|default(false) else "rfi_RFImask") %}
 
 ################################################################################
 
@@ -95,7 +96,7 @@ run_n2k_correlation:
         gpu_id: 0
         in_buffers:
             host_voltage_ringbuffer: host_voltage_ringbuffer
-            host_rfi_RFImask_ringbuffer: host_rfi_RFImask_ringbuffer
+            host_{{ n2k_rfi_name }}_ringbuffer: host_{{ n2k_rfi_name }}_ringbuffer
         out_buffers:
             host_n2k_correlation_buffer: host_n2k_correlation_buffer
         commands:
@@ -105,7 +106,7 @@ run_n2k_correlation:
           samples_per_data_set: n2k_samples_per_data_set
           sub_integration_ntime: n2k_sub_integration_ntime
           voltage_name: voltage
-          rfi_RFImask_name: rfi_RFImask
+          rfi_RFImask_name: {{ n2k_rfi_name }}
           n2k_correlation_name: n2k_correlation
         - name: cudaSyncOutput
         - name: cudaOutputData
@@ -118,7 +119,7 @@ run_n2k_counts:
         gpu_id: 0
         in_buffers:
             host_pl_expanded_mask_ringbuffer: host_pl_expanded_mask_ringbuffer
-            host_rfi_RFImask_ringbuffer: host_rfi_RFImask_ringbuffer
+            host_{{ n2k_rfi_name }}_ringbuffer: host_{{ n2k_rfi_name }}_ringbuffer
         out_buffers:
             host_n2k_counts_buffer: host_n2k_counts_buffer
         commands:
@@ -128,7 +129,7 @@ run_n2k_counts:
           samples_per_data_set: n2k_samples_per_data_set
           sub_integration_ntime: n2k_sub_integration_ntime
           pl_expanded_mask_name: pl_expanded_mask
-          rfi_RFImask_name: rfi_RFImask
+          rfi_RFImask_name: {{ n2k_rfi_name }}
           n2k_counts_name: n2k_counts
         - name: cudaSyncOutput
         - name: cudaOutputData
@@ -142,7 +143,7 @@ run_n2_counting:
 
     count_rfi_mask:
         kotekan_stage: RfiMaskSum
-        in_buf: host_rfi_RFImask_buffer
+        in_buf: host_{{ n2k_rfi_name }}_buffer
         out_buf: host_n2k_rficounts_buffer
 
     count_pl:

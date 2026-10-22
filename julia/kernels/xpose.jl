@@ -579,7 +579,9 @@ if CUDA.functional()
     # Output kernel
     open("output/xpose_$setup.ptx", "w") do fh
         redirect_stdout(fh) do
+            println("R\"===(")
             @device_code_ptx main(; compile_only=true)
+            println(")===\"")
         end
     end
     open("output/xpose_$setup.sass", "w") do fh

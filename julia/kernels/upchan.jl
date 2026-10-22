@@ -2367,7 +2367,9 @@ if CUDA.functional()
     println("Writing PTX code...")
     open("output/upchan_$(setup)_U$(U)_K$(K).ptx", "w") do fh
         redirect_stdout(fh) do
+            println("R\"===(")
             @device_code_ptx main(; compile_only=true, silent=true)
+            println(")===\"")
         end
     end
     fix_ptx_kernel()

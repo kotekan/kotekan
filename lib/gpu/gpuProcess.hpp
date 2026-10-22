@@ -18,6 +18,11 @@
 #include <thread>   // for thread
 #include <vector>   // for vector
 
+/**
+ * @class gpuProcess
+ * @brief Base class for a stage that drives one chain of gpuCommands on one GPU device, frame by
+ *        frame, from its own thread. cudaProcess and the other backends derive from it.
+ */
 class gpuProcess : public kotekan::Stage {
 public:
     gpuProcess(kotekan::Config& config, const std::string& unique_name,

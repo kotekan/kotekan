@@ -435,8 +435,11 @@ cudaBasebandBeamformer_chime::cudaBasebandBeamformer_chime(Config& config,
             "--gpu-name=sm_89",
             "--verbose",
         };
-        device.build_ptx("lib/cuda/generated/BasebandBeamformer_chime.ptx", {kernel_symbol}, opts,
-                         "BasebandBeamformer_chime_");
+        const char* const kernel_code =
+#include "BasebandBeamformer_chime.ptx"
+            ;
+        device.build_ptx(kernel_code, "lib/cuda/generated/BasebandBeamformer_chime.ptx",
+                         {kernel_symbol}, opts, "BasebandBeamformer_chime_");
     }
 }
 

@@ -47,6 +47,11 @@ GPU_NEED = re.compile(
       | (lib/[^/]+/|lib/)?CMakeLists\.txt$    # top-level and lib/ build files
       | config/ci-tests/gpu_batch/            # the GPU test configs
       | config/ci-tests/run_tests\.sh         # their runner
+      | tests/ci-scripts/pilotproxy/          # run by the GPU job, with the files below
+      | tests/(test_pilotproxy_integration|test_dtv_rfi_mask|verify_pilotproxy_pipeline)\.py$
+      | config/tests/verify_pilotproxy_pipeline\.yaml$
+      | lib/stages/DtvRfiMask\.cpp$
+      | config/(fengine/)?include/dtv_.*\.j2$
       | tools/docker/                         # the CI images
       | tools/ci_select_jobs\.py              # this script
       | \.github/                             # the CI workflows
@@ -134,6 +139,10 @@ SELF_TEST_CASES = [
     (["lib/cuda/generated/Upchannelizer_chord_U16_K4.ptx"], False, True, True),
     (["config/ci-tests/gpu_batch/verify_cuda_upchan.j2"], False, True, False),
     (["config/ci-tests/cpu_batch/new.yaml"], True, False, False),
+    (["tests/test_dtv_rfi_mask.py"], True, True, False),
+    (["lib/stages/DtvRfiMask.cpp"], True, True, False),
+    (["config/fengine/include/dtv_chord.j2"], True, True, False),
+    (["config/include/dtv_chime_upgrade.j2"], True, True, False),
     (["docs/sphinx/index.rst", "README.md"], False, False, False),
     (["tools/check_ptx.sh"], True, False, True),
     ([".github/workflows/main.yaml"], True, True, True),

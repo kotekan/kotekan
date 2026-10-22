@@ -390,8 +390,11 @@ cudaUpchannelizer_chime_U32_K8::cudaUpchannelizer_chime_U32_K8(Config& config,
             "--gpu-name=sm_89",
             "--verbose",
         };
-        device.build_ptx("lib/cuda/generated/Upchannelizer_chime_U32_K8.ptx", {kernel_symbol}, opts,
-                         "Upchannelizer_chime_U32_K8_");
+        const char* const kernel_code =
+#include "Upchannelizer_chime_U32_K8.ptx"
+            ;
+        device.build_ptx(kernel_code, "lib/cuda/generated/Upchannelizer_chime_U32_K8.ptx",
+                         {kernel_symbol}, opts, "Upchannelizer_chime_U32_K8_");
     }
 }
 

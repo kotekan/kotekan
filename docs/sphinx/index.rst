@@ -45,5 +45,7 @@ Welcome to Kotekan's documentation!
    dev/dev_unit_tests
    dev/dev_actions
    dev/dev_config_tracker
+   dev/dev_pilotproxy_testing
+   dev/dev_pilotproxy_chime
 
 You can also peruse the full `doxygen docs <html/>`_.

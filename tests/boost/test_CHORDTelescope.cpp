@@ -15,7 +15,6 @@
 
 #include <boost/test/included/unit_test.hpp>
 #include <complex>
-#include <csignal>
 #include <filesystem>
 #include <inttypes.h>
 #include <sys/wait.h>
@@ -88,18 +87,6 @@ const CHORDTelescope& get_telescope(json& json_config) {
  * HELPERS
  *
  ******************/
-
-// FATAL_ERROR raises SIGTERM before throwing FatalError. Ignore the signal for the duration of a
-// test so it observes the throw instead of being terminated.
-struct IgnoreSigtermFixture {
-    IgnoreSigtermFixture() {
-        prev_handler = std::signal(SIGTERM, SIG_IGN);
-    }
-    ~IgnoreSigtermFixture() {
-        std::signal(SIGTERM, prev_handler);
-    }
-    void (*prev_handler)(int);
-};
 
 // Serve a fixed JSON reply on a GET endpoint of the local REST server and point the telescope's
 // pointing query at it.
@@ -287,12 +274,18 @@ BOOST_AUTO_TEST_CASE(_dish_coelev) {
     const CHORDTelescope& tel_default = get_telescope(json_config);
     BOOST_CHECK_EQUAL(tel_default.get_dish_coelev_deg(), 0.0);
     BOOST_CHECK(!tel_default.phase_center_is_set());
+
+    // A value above the telescope block is found as get_default finds it.
+    json_config["dish_coelev_deg"] = coelev;
+    const CHORDTelescope& tel_parent = get_telescope(json_config);
+    BOOST_CHECK_EQUAL(tel_parent.get_dish_coelev_deg(), coelev);
+    BOOST_CHECK(tel_parent.phase_center_is_set());
 }
 
 /*
  * @brief   Test rejection of bad coelev config.
  */
-BOOST_FIXTURE_TEST_CASE(_dish_coelev_bad, IgnoreSigtermFixture) {
+BOOST_AUTO_TEST_CASE(_dish_coelev_bad) {
     json json_config = json::parse(default_config_str);
 
     json_config["telescope"]["dish_coelev_deg"] = 90.5;
@@ -306,7 +299,7 @@ BOOST_FIXTURE_TEST_CASE(_dish_coelev_bad, IgnoreSigtermFixture) {
 /*
  * @brief   Test coelev from a pointing service.
  */
-BOOST_FIXTURE_TEST_CASE(_dish_coelev_query, IgnoreSigtermFixture) {
+BOOST_AUTO_TEST_CASE(_dish_coelev_query) {
     json json_config = json::parse(default_config_str);
 
     serve_pointing(json_config, "/test_pointing", {{"dish_coelev_deg", -27.3}});
