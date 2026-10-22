@@ -1,6 +1,7 @@
 #include "cudaCommand.hpp"
 
-#include "cudaUtils.hpp"      // for CHECK_CUDA_ERROR
+#include "cudaStreamAssignment.hpp" // for resolve_cuda_stream, CUDA_STREAM_NEEDS_EXPLICIT
+#include "cudaUtils.hpp"            // for CHECK_CUDA_ERROR
 #include "cuda_runtime_api.h" // for cudaEventCreate, cudaEventDestroy, cudaEventRecord, cudaEv...
 #include "visUtil.hpp"        // for StatTracker
 
@@ -61,58 +62,18 @@ cudaCommand::cudaCommand(Config& config_, const std::string& unique_name_,
 
 void cudaCommand::set_command_type(const gpuCommandType& type) {
     command_type = type;
-    // Use the cuda_stream if provided
+    // An explicit `cuda_stream` is absolute and ignores the base.
     cuda_stream_id = config.get_default<int32_t>(unique_name, "cuda_stream", -1);
-
-    if (cuda_stream_id >= device.get_num_streams()) {
-        throw std::runtime_error(
-            "Asked for a CUDA stream greater than the maximum number available");
-    }
-    // If the stream is set (not -1), we don't need to set a default below.
     if (cuda_stream_id >= 0)
         return;
 
-    // ⚠️ PRIVATE STREAMS ARE WHAT MAKE THE PER-STREAM QUEUING LOCK WORTH HAVING (2026-08-31).
-    // Every pipeline used to land on streams 0/1/2 by type, so every pipeline on a GPU
-    // contended for the same locks no matter how finely we locked them. `cuda_stream_base`,
-    // set ONCE on the cudaProcess (config lookup walks up, so its commands inherit it),
-    // shifts this pipeline's whole default triple: base+0 copy-in, base+1 copy-out, base+2
-    // kernel. Give each pipeline a disjoint base and they never contend -- the difference
-    // between the wedge being unlikely and being impossible.
-    // An explicit per-command `cuda_stream` stays ABSOLUTE and ignores the base.
+    // Otherwise assign by role within the pipeline's triple: 3*base+0 copy-in, 3*base+1
+    // copy-out, 3*base+2 kernel. The owning cudaProcess checks the result against its own
+    // num_cuda_streams once every command is built (cudaProcess::collect_stream_ids).
     const int32_t base = config.get_default<int32_t>(unique_name, "cuda_stream_base", 0);
-    if (base < 0)
-        throw std::runtime_error("cuda_stream_base must be >= 0");
-
-    // If no stream set use a default stream, or generate an error
-    switch (command_type) {
-        case gpuCommandType::NOT_SET:
-            throw std::runtime_error("No command type set");
-            break;
-        case gpuCommandType::COPY_IN:
-            cuda_stream_id = base + 0;
-            break;
-        case gpuCommandType::COPY_OUT:
-            cuda_stream_id = base + 1;
-            break;
-        case gpuCommandType::KERNEL:
-            cuda_stream_id = base + 2;
-            break;
-        case gpuCommandType::BARRIER:
-            throw std::runtime_error("cuda_stream required for barrier type command object");
-            break;
-        default:
-            throw std::runtime_error("Invalid GPU Command type");
-    }
-
-    // Fail LOUDLY rather than indexing off the end of the stream table later: a base that
-    // outruns num_cuda_streams is a config mistake, and the pipeline it silently breaks is
-    // one nobody would think to look at.
-    if (cuda_stream_id >= device.get_num_streams())
-        throw std::runtime_error(fmt::format(
-            "cuda_stream_base {:d} puts {:s} on stream {:d}, but the device has only {:d} "
-            "-- raise num_cuda_streams on the owning cudaProcess",
-            base, unique_name, cuda_stream_id, device.get_num_streams()));
+    cuda_stream_id = resolve_cuda_stream(command_type, base);
+    if (cuda_stream_id == CUDA_STREAM_NEEDS_EXPLICIT)
+        throw std::runtime_error("cuda_stream required for barrier type command object");
 }
 
 cudaCommand::~cudaCommand() {
@@ -157,6 +118,10 @@ bool cudaCommand::should_execute(cudaPipelineState& pipestate, const std::vector
 }
 
 void cudaCommand::finalize_frame() {
+    // An event that has not completed when finalize_frame runs means the frame was signalled
+    // before its work finished, and the host frames it guards may already be released. Keep
+    // this a hard error rather than tolerating cudaErrorNotReady: it is the only place that
+    // early signal is visible.
     if (profiling && (start_event != nullptr) && (end_event != nullptr)) {
         float exec_time;
         CHECK_CUDA_ERROR(cudaEventElapsedTime(&exec_time, start_event, end_event));

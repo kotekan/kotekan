@@ -347,8 +347,11 @@ cudaTranspose2048_chime::cudaTranspose2048_chime(Config& config, const std::stri
             "--gpu-name=sm_89",
             "--verbose",
         };
-        device.build_ptx("lib/cuda/generated/Transpose2048_chime.ptx", {kernel_symbol}, opts,
-                         "Transpose2048_chime_");
+        const char* const kernel_code =
+#include "Transpose2048_chime.ptx"
+            ;
+        device.build_ptx(kernel_code, "lib/cuda/generated/Transpose2048_chime.ptx", {kernel_symbol},
+                         opts, "Transpose2048_chime_");
     }
 }
 

@@ -697,7 +697,7 @@ public:
      *                  phase for each position will be written to this vector.
      **/
     void fill_fringestop_phases_1d(double freq_MHz, const EOP& eop, const EOP& eop0,
-                                   const std::vector<vec3d_t> feed_positions_m,
+                                   const std::vector<vec3d_t>& feed_positions_m,
                                    const std::vector<bool>& fringestop_mask,
                                    std::vector<std::complex<float>>& phases) const;
 

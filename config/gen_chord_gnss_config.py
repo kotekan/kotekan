@@ -1476,12 +1476,13 @@ def merge_n2dual_gpu(blocks, cfg, args, node, gpu, chains, spds):
     procs = {p["pre"]: blocks.pop(f"{p['pre']}n2dual") for p in pres}
     primary = procs[f"gnss{gpu}_"]
     merged = {k: v for k, v in primary.items() if k != "commands"}
-    # Private CUDA streams: cuda_stream_base moves this process's copy-in, copy-out and kernel
-    # streams to 3, 4, 5, leaving 0, 1, 2 to production's pipelines, so the GNSS chains never
-    # queue against production's per-stream locks (one thread blocked in the CUDA driver there
-    # would stall the GPU's pipelines and back up to the NIC). prepareStreams only grows the
-    # device's pool, so asking for 6 holds whatever the construction order.
-    merged["cuda_stream_base"] = 3
+    # Private CUDA streams: cuda_stream_base is a pipeline index, and 1 moves this process's
+    # copy-in, copy-out and kernel streams to 3, 4, 5, leaving 0, 1, 2 to production's pipelines,
+    # so the GNSS chains never queue against production's per-stream locks (one thread blocked in
+    # the CUDA driver there would stall the GPU's pipelines and back up to the NIC).
+    # prepareStreams only grows the device's pool, so asking for 6 holds whatever the
+    # construction order.
+    merged["cuda_stream_base"] = 1
     merged["num_cuda_streams"] = 6
     out_buffers = {}
     injects, outputs = [], []

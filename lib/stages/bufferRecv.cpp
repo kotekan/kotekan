@@ -67,12 +67,9 @@ bufferRecv::bufferRecv(Config& config, const std::string& unique_name,
     use_config_tracker =
         config.get_default<bool>(unique_name, "use_config_tracker", ct_enabled) && ct_enabled;
     use_frame_desc = config.get_default<bool>(unique_name, "use_frame_desc", false);
-    // SENDERS OF DIFFERENT FRAME SIZES ON ONE LISTENER. Off by default: for every other user of
-    // this stage a frame size that disagrees with the buffer IS the bug -- a sender built
-    // against a different shape -- and closing the connection is how that stops being silent.
-    // A producer whose frames are SELF-DESCRIBING (the GNSS telemetry frames carry their shape
-    // in a header every consumer already validates) can opt in, and then the buffer is sized to
-    // the widest sender while each ships only its own bytes.
+    // Off by default: a frame size that disagrees with the buffer is a misconfigured sender, and
+    // closing the connection makes that visible. Producers whose payload records its own length
+    // can opt in, so senders of different sizes share one listener sized for the largest.
     allow_short_frames = config.get_default<bool>(unique_name, "allow_short_frames", false);
 
     listen_port = config.get_default<uint32_t>(unique_name, "listen_port", 11024);
@@ -115,6 +112,13 @@ bufferRecv::bufferRecv(Config& config, const std::string& unique_name,
 
     buf = get_buffer("buf");
     buf->register_producer(unique_name);
+
+    // A frame descriptor, declared in config or received with use_frame_desc, and the shape in
+    // chordMetadata all describe a full frame, so they would mislabel or refuse a short one.
+    if (allow_short_frames
+        && (use_frame_desc || buf->get_frame_desc() || metadata_is_chord(buf, 0)))
+        FATAL_ERROR("allow_short_frames cannot be used with use_frame_desc, chordMetadata, or a "
+                    "buffer with a frame descriptor");
 }
 
 bufferRecv::~bufferRecv() {}
@@ -549,13 +553,24 @@ void connInstance::internal_read_callback() {
                            buf_frame_header.metadata_size, buf_frame_header.frame_size,
                            buf_frame_header.config_tracker_update);
 
-                    const bool size_ok =
-                        allow_short_frames
-                            ? buf_frame_header.frame_size <= (unsigned int)buf->frame_size
-                            : buf_frame_header.frame_size == (unsigned int)buf->frame_size;
-                    if (!size_ok) {
+                    const uint32_t size = buf_frame_header.frame_size;
+                    bool size_ok = true;
+                    if (!allow_short_frames && size != (unsigned int)buf->frame_size) {
                         ERROR("Frame size does not match between server: {:d} and client: {:d}",
-                              buf->frame_size, buf_frame_header.frame_size);
+                              buf->frame_size, size);
+                        size_ok = false;
+                    } else if (allow_short_frames && size > (unsigned int)buf->frame_size) {
+                        ERROR("Frame of {:d} bytes is larger than the buffer's frame size, {:d}",
+                              size, buf->frame_size);
+                        size_ok = false;
+                    } else if (allow_short_frames && size == 0) {
+                        // Refused rather than read: a read of 0 bytes returns 0, which reads as
+                        // the peer closing the connection.
+                        ERROR("Empty frame (0 bytes): allow_short_frames accepts 1 to {:d} bytes",
+                              buf->frame_size);
+                        size_ok = false;
+                    }
+                    if (!size_ok) {
                         decrement_ref_count();
                         close_instance();
                         return;
@@ -698,11 +713,8 @@ void connInstance::internal_read_callback() {
                 if (frame == nullptr)
                     return;
 
-                // A SHORT FRAME LEAVES A TAIL, and frame_space is recycled, so that tail is the
-                // PREVIOUS frame's bytes -- a consumer that walks past the shape its header
-                // declares would read another sender's rows rather than obvious garbage. Clear
-                // it: consumers are supposed to stride by the header, and this makes the cost of
-                // not doing so visible instead of plausible.
+                // frame_space is recycled, so a short frame's tail would hold an earlier frame's
+                // bytes. Zero it.
                 if (allow_short_frames
                     && buf_frame_header.frame_size < (unsigned int)buf->frame_size)
                     memset(frame_space + buf_frame_header.frame_size, 0,
