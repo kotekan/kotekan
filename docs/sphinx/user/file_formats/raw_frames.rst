@@ -23,9 +23,8 @@ buffer/metadata type. Files are written to ``base_dir`` as::
 with a 7-digit file counter and the hostname prefix controlled by
 ``prefix_hostname`` (default true). The counter starts at 0, or with
 ``continue_numbering`` one past the highest existing file of the same
-name. Each file holds
-``num_frames_per_file`` frames (default 1), appended sequentially. Each
-frame is laid out as:
+name. Each file holds ``num_frames_per_file`` frames (default 1),
+appended sequentially. Each frame is laid out as:
 
 .. code-block:: text
 

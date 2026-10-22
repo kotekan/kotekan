@@ -87,8 +87,7 @@ void rawFileWrite::main_thread() {
     if (_continue_numbering) {
         // Start one past the highest file number in base_dir. Only the names this stage writes,
         // "<prefix><file number as %07u>.<file_ext>", count. Other names are ignored, so writers
-        // with different file names can share a base_dir. The last number, UINT32_MAX, is
-        // ignored too, so the next number always fits.
+        // with different file names can share a base_dir.
         const std::string prefix = _prefix_hostname
                                        ? fmt::format(fmt("{:s}_{:s}_"), hostname, _file_name)
                                        : fmt::format(fmt("{:s}_"), _file_name);
@@ -106,13 +105,15 @@ void rawFileWrite::main_thread() {
             if (digits.size() > 10 || digits.find_first_not_of("0123456789") != std::string::npos)
                 continue;
             const uint64_t num = std::stoull(digits);
-            if (num >= UINT32_MAX || fmt::format(fmt("{:07d}"), num) != digits)
+            if (num > UINT32_MAX || fmt::format(fmt("{:07d}"), num) != digits)
                 continue;
             next_file_num = std::max(next_file_num, num + 1);
         }
         if (ec)
             FATAL_ERROR("Cannot list base_dir {:s} for continue_numbering: {:s}", _base_dir,
                         ec.message());
+        if (next_file_num > UINT32_MAX)
+            FATAL_ERROR("continue_numbering: the file numbers in {:s} are exhausted", _base_dir);
         file_num = next_file_num;
         INFO("continue_numbering: the first file number is {:07d}", file_num);
     }
@@ -140,6 +141,12 @@ void rawFileWrite::main_thread() {
         double st = current_time();
 
         if (!isFileOpen) {
+
+            // The number comes back to 0 only by wrapping past UINT32_MAX, and with
+            // continue_numbering file 0 is then an earlier run's file.
+            if (_continue_numbering && file_num == 0 && first_file_num != 0)
+                FATAL_ERROR("continue_numbering: the file numbers in {:s} are exhausted",
+                            _base_dir);
 
             if (_prefix_hostname) {
                 snprintf(full_path, full_path_len, "%s/%s_%s_%07u.%s", _base_dir.c_str(), hostname,

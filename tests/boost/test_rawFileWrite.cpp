@@ -108,9 +108,11 @@ BOOST_AUTO_TEST_CASE(test_numbering_default) {
 
 BOOST_AUTO_TEST_CASE(test_continue_numbering) {
     tmp_dir dir;
-    // Only x_<7 digits>.dat counts. Each of the other names would give a higher number.
+    // Only x_<7 digits>.dat counts. Each of the other names would give a higher number or
+    // fail to parse as one.
     const std::set<std::string> seeded = {"x_0000003.dat", "x_0000004.dat",  "y_0000009.dat",
-                                          "x_0000009.raw", "x_00000099.dat", "x_9999a99.dat"};
+                                          "x_0000009.raw", "x_00000099.dat", "x_9999a99.dat",
+                                          "x_abcdefg.dat", "x_.dat"};
     for (const std::string& name : seeded)
         write_file(dir.path / name, "old");
 
@@ -131,10 +133,10 @@ BOOST_AUTO_TEST_CASE(test_continue_numbering) {
 BOOST_AUTO_TEST_CASE(test_continue_numbering_past_7_digits) {
     tmp_dir dir;
     // Past 9999999 the names have more digits. Names the stage does not write are ignored: a
-    // leading zero past 7 digits, more than 10 digits, or a number of UINT32_MAX or above.
-    const std::set<std::string> seeded = {
-        "x_9999999.dat",    "x_10000000.dat",   "x_010000005.dat",           "x_10000000000.dat",
-        "x_4294967295.dat", "x_4294967296.dat", "x_99999999999999999999.dat"};
+    // leading zero past 7 digits, more than 10 digits, or a number above UINT32_MAX.
+    const std::set<std::string> seeded = {"x_9999999.dat",    "x_10000000.dat",
+                                          "x_010000005.dat",  "x_10000000000.dat",
+                                          "x_4294967296.dat", "x_99999999999999999999.dat"};
     for (const std::string& name : seeded)
         write_file(dir.path / name, "old");
 
@@ -167,6 +169,45 @@ BOOST_AUTO_TEST_CASE(test_continue_numbering_hostname) {
                                             "x_0000009.dat"};
     const std::set<std::string> found = list_dir(dir.path);
     BOOST_CHECK_EQUAL_COLLECTIONS(found.begin(), found.end(), expected.begin(), expected.end());
+}
+
+static bool exhausted(const FatalError& e) {
+    return std::string(e.what()).find("are exhausted") != std::string::npos;
+}
+
+BOOST_AUTO_TEST_CASE(test_continue_numbering_exhausted) {
+    // base_dir already holds the last number, so there is no next one.
+    tmp_dir dir;
+    write_file(dir.path / "x_4294967295.dat", "old");
+    json cfg = writer_config("exhausted_at_start", dir.path);
+    cfg["exhausted_at_start"]["continue_numbering"] = true;
+    BOOST_CHECK_EXCEPTION(write_files(cfg, "exhausted_at_start", 1), FatalError, exhausted);
+    BOOST_CHECK_EQUAL(list_dir(dir.path).size(), 1);
+    BOOST_CHECK_EQUAL(read_file(dir.path / "x_4294967295.dat"), "old");
+
+    // The run writes the last number, and the next file would wrap to file 0.
+    tmp_dir dir2;
+    write_file(dir2.path / "x_4294967294.dat", "old");
+    write_file(dir2.path / "x_0000000.dat", "old");
+    cfg = writer_config("exhausted_in_run", dir2.path);
+    cfg["exhausted_in_run"]["continue_numbering"] = true;
+    BOOST_CHECK_EXCEPTION(write_files(cfg, "exhausted_in_run", 2), FatalError, exhausted);
+    const std::set<std::string> expected = {"x_0000000.dat", "x_4294967294.dat",
+                                            "x_4294967295.dat"};
+    const std::set<std::string> found = list_dir(dir2.path);
+    BOOST_CHECK_EQUAL_COLLECTIONS(found.begin(), found.end(), expected.begin(), expected.end());
+    BOOST_CHECK_EQUAL(read_file(dir2.path / "x_0000000.dat"), "old");
+}
+
+static bool cannot_list(const FatalError& e) {
+    return std::string(e.what()).find("Cannot list base_dir") != std::string::npos;
+}
+
+BOOST_AUTO_TEST_CASE(test_continue_numbering_missing_base_dir) {
+    tmp_dir dir;
+    json cfg = writer_config("continue_missing", dir.path / "missing");
+    cfg["continue_missing"]["continue_numbering"] = true;
+    BOOST_CHECK_EXCEPTION(write_files(cfg, "continue_missing", 1), FatalError, cannot_list);
 }
 
 // Construct the rawFileWrite `name` without starting it.
