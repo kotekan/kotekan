@@ -109,5 +109,3 @@ ktk_tristate_option(USE_OPENCL "Build OpenCL GPU Framework" OFF)
 ktk_tristate_option(
     WITH_TESTS "Build and link lib/testing helper library (does not build Boost unit tests)" OFF)
 ktk_tristate_option(WITH_BOOST_TESTS "Compile boost C++ unit tests" OFF)
-ktk_tristate_option(WITH_SPAWN_PROCESS
-                    "Build the SpawnProcess stage (runs a shell command from the config)" OFF)
