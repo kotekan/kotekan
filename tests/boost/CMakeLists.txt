@@ -153,6 +153,12 @@ target_link_libraries(test_chime_stacking PRIVATE libexternal kotekan_utils kote
                                                   kotekan_core)
 target_include_directories(test_chime_stacking PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages)
 
+# test_rawFileWrite - tests for the rawFileWrite stage
+add_executable(test_rawFileWrite test_rawFileWrite.cpp)
+target_link_libraries(test_rawFileWrite PRIVATE libexternal kotekan_stages kotekan_libs
+                                                kotekan_utils kotekan_core)
+target_include_directories(test_rawFileWrite PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages)
+
 # source files for broker test
 add_executable(dataset_broker_producer dataset_broker_producer.cpp)
 add_executable(dataset_broker_producer2 dataset_broker_producer2.cpp)

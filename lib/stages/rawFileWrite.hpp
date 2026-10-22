@@ -27,6 +27,10 @@
  * @conf allow_ndarray      Bool. Write an NDArray buffer's raw bytes instead of failing.
  *                          Default false. The frame descriptor is NOT written, so the
  *                          reader has to know the shape out of band.
+ * @conf continue_numbering Bool. Number files from one past the highest existing
+ *                          file of the same name in base_dir, instead of from 0.
+ *                          Default false. Files are opened without O_TRUNC, so numbering
+ *                          from 0 overwrites existing files in place.
  *
  * @par Metrics
  * @metric kotekan_rawfilewrite_write_time_seconds
@@ -54,6 +58,7 @@ private:
     uint32_t _exit_after_n_files;
     /// Write NDArray-descriptor buffers anyway (shape known out of band; see the .cpp note).
     bool _allow_ndarray = false;
+    bool _continue_numbering = false;
     // Prefix file name with hostname or not
     bool _prefix_hostname;
 };
