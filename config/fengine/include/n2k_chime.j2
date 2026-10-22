@@ -247,7 +247,8 @@ eigencalc:
     # The initial bad inputs of /updatable_config/bad_inputs (include/fengine_chime.j2), in
     # cylinder order, as in config/chime_upgrade_frb.j2.
     # TODO: Check that this is the input order EigenN2Iter expects.
-    exclude_inputs: *bad_inputs
+    {% from "include/bad_inputs_chime.j2" import bad_inputs %}
+    exclude_inputs: {{ bad_inputs }}
 
 vis_convert:
     kotekan_stage: n2FrameToVisFrame
