@@ -67,6 +67,10 @@ bufferRecv::bufferRecv(Config& config, const std::string& unique_name,
     use_config_tracker =
         config.get_default<bool>(unique_name, "use_config_tracker", ct_enabled) && ct_enabled;
     use_frame_desc = config.get_default<bool>(unique_name, "use_frame_desc", false);
+    // Off by default: a frame size that disagrees with the buffer is a misconfigured sender, and
+    // closing the connection makes that visible. Producers whose payload records its own length
+    // can opt in, so senders of different sizes share one listener sized for the largest.
+    allow_short_frames = config.get_default<bool>(unique_name, "allow_short_frames", false);
 
     listen_port = config.get_default<uint32_t>(unique_name, "listen_port", 11024);
     num_threads = config.get_default<uint32_t>(unique_name, "num_threads", 1);
@@ -108,6 +112,10 @@ bufferRecv::bufferRecv(Config& config, const std::string& unique_name,
 
     buf = get_buffer("buf");
     buf->register_producer(unique_name);
+
+    // A frame shape is checked against the full frame size, so a short frame would be fatal.
+    if (allow_short_frames && (use_frame_desc || metadata_is_chord(buf, 0)))
+        FATAL_ERROR("allow_short_frames cannot be used with use_frame_desc or chordMetadata");
 }
 
 bufferRecv::~bufferRecv() {}
@@ -228,9 +236,10 @@ void bufferRecv::internal_accept_connection(evutil_socket_t listener, short even
               ip_str);
     }
 
-    connInstance* instance = new connInstance(
-        accept_args->unique_name, accept_args->buf, accept_args->buffer_recv, ip_str, port,
-        read_timeout, use_config_tracker, use_frame_desc, conn_upstream_rest_port);
+    connInstance* instance =
+        new connInstance(accept_args->unique_name, accept_args->buf, accept_args->buffer_recv,
+                         ip_str, port, read_timeout, use_config_tracker, use_frame_desc,
+                         allow_short_frames, conn_upstream_rest_port);
 
     // Setup logging for the instance object.
     instance->set_log_prefix(accept_args->unique_name + "/instance");
@@ -434,11 +443,12 @@ void bufferRecv::add_graph_details(kotekan::PipelineGraph& graph) const {
 
 connInstance::connInstance(const std::string& producer_name, Buffer* buf, bufferRecv* buffer_recv,
                            const std::string& client_ip, int port, struct timeval read_timeout,
-                           bool use_config_tracker, bool use_frame_desc,
+                           bool use_config_tracker, bool use_frame_desc, bool allow_short_frames,
                            uint16_t upstream_rest_port) :
     producer_name(producer_name), buf(buf), buffer_recv(buffer_recv), client_ip(client_ip),
     port(port), read_timeout(read_timeout), use_config_tracker(use_config_tracker),
-    use_frame_desc(use_frame_desc), upstream_rest_port(upstream_rest_port) {
+    use_frame_desc(use_frame_desc), allow_short_frames(allow_short_frames),
+    upstream_rest_port(upstream_rest_port) {
 
     frame_space = buffer_malloc(buf->aligned_frame_size, buf->numa_node, buf->use_hugepages,
                                 buf->mlock_frames, false);
@@ -540,7 +550,11 @@ void connInstance::internal_read_callback() {
                            buf_frame_header.metadata_size, buf_frame_header.frame_size,
                            buf_frame_header.config_tracker_update);
 
-                    if ((unsigned int)buf->frame_size != buf_frame_header.frame_size) {
+                    const bool size_ok =
+                        allow_short_frames
+                            ? buf_frame_header.frame_size <= (unsigned int)buf->frame_size
+                            : buf_frame_header.frame_size == (unsigned int)buf->frame_size;
+                    if (!size_ok) {
                         ERROR("Frame size does not match between server: {:d} and client: {:d}",
                               buf->frame_size, buf_frame_header.frame_size);
                         decrement_ref_count();
@@ -684,6 +698,13 @@ void connInstance::internal_read_callback() {
                 uint8_t* frame = buf->wait_for_empty_frame(producer_name, frame_id);
                 if (frame == nullptr)
                     return;
+
+                // frame_space is recycled, so a short frame's tail would hold an earlier frame's
+                // bytes. Zero it.
+                if (allow_short_frames
+                    && buf_frame_header.frame_size < (unsigned int)buf->frame_size)
+                    memset(frame_space + buf_frame_header.frame_size, 0,
+                           (size_t)buf->frame_size - buf_frame_header.frame_size);
 
                 buf->allocate_new_metadata_object(frame_id);
 

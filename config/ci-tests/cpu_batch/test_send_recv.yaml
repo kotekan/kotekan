@@ -2,7 +2,8 @@
 #
 # A simple test pipeline that generates random data and does a send/receive,
 # for each buffer type: standard, N2, and ndarray (the latter both with and
-# without the optional descriptor labels declared in config).
+# without the optional descriptor labels declared in config). The N2 frames
+# are also sent into a larger standard buffer, to test allow_short_frames.
 #
 type: config
 log_level: INFO
@@ -45,7 +46,7 @@ main_pool:
 
 N2_pool:
     kotekan_metadata_pool: N2Metadata
-    num_metadata_objects: 2 * buffer_depth
+    num_metadata_objects: 3 * buffer_depth
 
 # Buffers
 #
@@ -85,6 +86,13 @@ recv_N2_buffer:
     metadata_pool: N2_pool
     n2_layout: "FullUpperTri"
     num_frames: buffer_depth
+
+# Larger than an N2 frame, so every frame it receives is short.
+recv_short_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: 8192
+    metadata_pool: N2_pool
 
 # ndarray with a full descriptor: the labels (quantity_name, dimnames) are
 # declared in config, so bufferRecv validates the received shape against them.
@@ -208,6 +216,24 @@ buffer_recv_n2:
     buf: recv_N2_buffer
     listen_port: 11025
 
+# N2 frames again, into the larger standard buffer. N2Metadata carries no frame
+# shape, and there is no frame descriptor, so nothing checks the full frame size.
+
+buffer_send_short:
+    kotekan_stage: bufferSend
+    use_frame_desc: false
+    buf: send_N2_buffer
+    server_ip: 127.0.0.1
+    server_port: 11029
+    drop_frames: false
+
+buffer_recv_short:
+    kotekan_stage: bufferRecv
+    use_frame_desc: false
+    allow_short_frames: true
+    buf: recv_short_buffer
+    listen_port: 11029
+
 # ndarray buffer (labels declared in config): generate and send/recv
 
 gen_ndarray_data:
@@ -317,5 +343,6 @@ buffer_monitor:
         - recv_N2_buffer
         - recv_ndarray_buffer
         - recv_ndarray_nolabel_buffer
+        - recv_short_buffer
     clean_exit_after_frames: 6 # Trigger success after this many frames have been seen
 log_config_usage: fatal_error
