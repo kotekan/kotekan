@@ -204,10 +204,11 @@ host_voltage_ringbuffer:
 
 # The lost samples, one byte (1 = lost) per sample, for all dishes and polarizations of a group of
 # 4 frequencies: lost_samples_buffer_<k> serves host_voltage_buffer_<4k> to <4k+3>.
-# config/chime_upgrade_frb.j2 also zeroes the lost voltages with zeroSamples. zeroSamples is a
-# second producer of the voltage buffers and relies on the lost samples being marked full after the
-# voltages are written, as dpdk does. The file input and the generators produce the two streams
-# independently, so there is no zeroSamples here; no samples are lost.
+# zeroSamples, a second producer of the voltage buffers, zeroes the lost voltages; it relies on the
+# lost samples being marked full after the voltages are written, as dpdk does. The generator
+# (include/invent_voltage_chime.j2) writes both in that order and runs zeroSamples. The file input
+# (include/input_chime.j2) produces the two streams independently, so it has no zeroSamples and no
+# lost samples.
 {% for id in range(16 // 4) %}   # num_frequencies = 16
 lost_samples_buffer_{{ id }}:
     kotekan_buffer: ndarray
