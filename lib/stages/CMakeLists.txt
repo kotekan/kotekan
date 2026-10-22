@@ -103,6 +103,7 @@ add_library(
     givenDataGen.cpp
     testDataGen.cpp
     testDataGenFewHot.cpp
+    zeroSamples.cpp
     DPDKShuffleSimulate.cpp
     BadInputFlag.cpp
     hexDump.cpp
