@@ -1,17 +1,24 @@
 # -*-yaml-*-
 
-# CHIME N2 setup, copied from config/chime_upgrade_frb.j2 without the outputs (VisWriter) and huge
-# pages. As in the pathfinder and CHORD test configs, N2Accumulate reads the bad feed mask, from
-# its own one-frame mask stream (see below); config/chime_upgrade_frb.j2 does not.
-# Jinja variable: do_fringestop (default: off, as N2Accumulate).
+# Copied from config/fengine/include/n2k_chime.j2 for the integration tests. Jinja variable:
+# do_fringestop (default: off, as N2Accumulate).
+
+# CHIME n2k setup
+
+# The N2 chain of config/chime_upgrade_frb.j2: counts from the lost samples (lostSamplesToN2Counts),
+# integrations with CHIMEv1 variance, eigendecomposition and conversion to visibility frames. As
+# in the pathfinder and CHORD, N2Accumulate also reads the bad feed mask, which
+# config/chime_upgrade_frb.j2 does not. The integrations are 1 s instead of production's 10 s, so
+# that a short input file gives an integration.
 
 ################################################################################
-# n2k setup
 
 # Correlator setup
-n2k_sub_integration_ntime: samples_per_data_set
-# n2k_samples_per_data_set = max(samples_per_data_set, n2k_sub_integration_ntime)
-n2k_samples_per_data_set: samples_per_data_set
+n2k_sub_integration_ntime: 16384
+# n2k_samples_per_data_set = max(num_times, n2k_sub_integration_ntime)
+n2k_samples_per_data_set: 16384
+
+################################################################################
 
 # Buffers
 
@@ -19,187 +26,79 @@ n2k_num_subintegrations: n2k_samples_per_data_set / n2k_sub_integration_ntime
 
 n2k_correlation_blocksize: 16
 n2k_correlation_num_elements: num_dishes * num_polarizations
-n2k_correlation_linear_num_blocks: (n2k_correlation_num_elements + n2k_correlation_blocksize - 1) / n2k_correlation_blocksize
+n2k_correlation_linear_num_blocks: (n2k_correlation_num_elements + 1) / n2k_correlation_blocksize
 n2k_correlation_triangle_num_blocks: n2k_correlation_linear_num_blocks * (n2k_correlation_linear_num_blocks + 1) / 2
 n2k_correlation_triangle_size: n2k_correlation_blocksize * n2k_correlation_blocksize * n2k_correlation_triangle_num_blocks
 
 n2k_counts_blocksize: 8
 n2k_counts_num_elements: num_dishes / 8 * num_polarizations
-n2k_counts_linear_num_blocks: (n2k_counts_num_elements + n2k_counts_blocksize - 1) / n2k_counts_blocksize
+n2k_counts_linear_num_blocks: (n2k_counts_num_elements + 1) / n2k_counts_blocksize
 n2k_counts_triangle_num_blocks: n2k_counts_linear_num_blocks * (n2k_counts_linear_num_blocks + 1) / 2
 n2k_counts_triangle_size: n2k_counts_blocksize * n2k_counts_blocksize * n2k_counts_triangle_num_blocks
 
 host_n2k_correlation_buffer:
     kotekan_buffer: ndarray
-    num_frames: gpu_buffer_depth
+    num_frames: 4 * buffer_depth # 4 times larger as buffer for a slow N2Accumulate
     value_type: int32
-    # produced by cudaCorrelator (n2k_correlation): NDArrayBuffer<int32,6>
-    # cudaCorrelator uses (num_elements+1)/16 = (2048+1)/16 = 128 blocks, same as
-    # CPU num_elements/16 = 128 (num_elements=2048 is a multiple of 16; no triangle divergence).
-    extents: [n2k_num_subintegrations, num_freq_gpu_buf, n2k_correlation_triangle_num_blocks, n2k_correlation_blocksize, n2k_correlation_blocksize, num_components]
+    extents: [n2k_num_subintegrations, num_frequencies, n2k_correlation_triangle_num_blocks, n2k_correlation_blocksize, n2k_correlation_blocksize, 2]
+    quantity_name: "n2k_correlation"
+    dimnames: ["Tc", "F", "DPhi", "DPlo1", "DPlo2", "C"]
+    dimscalings: [n2k_sub_integration_ntime, 1, 16, 1, 1, 1]
     metadata_pool: main_pool
 
 host_n2k_counts_buffer:
     kotekan_buffer: ndarray
-    num_frames: gpu_buffer_depth
+    num_frames: 4 * buffer_depth # 4 times larger as buffer for a slow N2Accumulate
     value_type: int32
-    # produced by lostSamplesToN2Counts (n2k_counts): NDArrayBuffer<int32,5>
-    # ntiles = (num_elements/64)*(1+num_elements/64)/2 = 32*33/2 = 528, matches
-    # config n2k_counts_triangle_num_blocks (= (n2k_counts_num_elements+1)/8 triangle) since
-    # num_elements=2048 makes both = 528 (no divergence).
-    extents: [n2k_num_subintegrations, num_freq_gpu_buf, n2k_counts_triangle_num_blocks, n2k_counts_blocksize, n2k_counts_blocksize]
+    extents: [n2k_num_subintegrations, num_frequencies, n2k_counts_triangle_num_blocks, n2k_counts_blocksize, n2k_counts_blocksize]
+    quantity_name: "n2k_counts"
+    dimnames: ["Tc", "F", "D8Phi", "D8Plo1", "D8Plo2"]
+    dimscalings: [n2k_sub_integration_ntime, 1, 64, 8, 8]
     metadata_pool: main_pool
 
-host_n2k_RFIcounts_buffer:
+host_n2k_plcounts_buffer:
     kotekan_buffer: ndarray
-    num_frames: gpu_buffer_depth
+    num_frames: 4 * buffer_depth # 4 times larger as buffer for a slow N2Accumulate
     value_type: int32
-    # produced by RfiMaskSum (out_buf): {num_integrations, num_local_freq}
-    extents: [samples_per_data_set / n2k_sub_integration_ntime, num_freq_gpu_buf]
+    extents: [n2k_num_subintegrations, num_frequencies]
+    quantity_name: "pl_lost_counts_scalar"
+    dimnames: ["Tc", "F"]
+    dimscalings: [n2k_sub_integration_ntime, 1]
     metadata_pool: main_pool
 
-host_n2k_PLcounts_buffer:
+host_n2k_rficounts_buffer:
     kotekan_buffer: ndarray
-    num_frames: gpu_buffer_depth
+    num_frames: 4 * buffer_depth # 4 times larger as buffer for a slow N2Accumulate
     value_type: int32
-    # produced by CountLostPLSamplesScalar (out_buf): {num_integrations, num_local_freq}
-    extents: [samples_per_data_set / n2k_sub_integration_ntime, num_freq_gpu_buf]
+    extents: [n2k_num_subintegrations, num_frequencies]
+    quantity_name: "RFImask_counts"
+    dimnames: ["Tc", "F"]
+    dimscalings: [n2k_sub_integration_ntime, 1]
     metadata_pool: main_pool
 
-# Stages
+host_n2k_rfiframemask_buffer:
+    kotekan_buffer: ndarray
+    num_frames: 4 * buffer_depth # 4 times larger as buffer for a slow N2Accumulate
+    value_type: uint8
+    extents: [n2k_num_subintegrations, num_frequencies]
+    quantity_name: "RFIFrameMask"
+    dimnames: ["Tc", "F"]
+    dimscalings: [n2k_sub_integration_ntime, 1]
+    metadata_pool: main_pool
 
-run_n2k_correlation:
-    gpu_0:
-        kotekan_stage: cudaProcess
-        gpu_id: 0
-        buffer_depth: gpu_buffer_depth
-        frame_arrival_period: network_frame_arrival_period
-        num_times: samples_per_data_set
-        in_buffers:
-            host_xposed_voltage_ringbuffer: host_xposed_voltage_ringbuffer
-            host_rfi_RFImask_ringbuffer: host_rfi_RFImask_ringbuffer
-        out_buffers:
-            host_n2k_correlation_buffer: host_n2k_correlation_buffer
-        commands:
-        - name: cudaCorrelator
-          num_elements: num_dishes * num_polarizations
-          #samples_per_data_set: n2k_samples_per_data_set # global samples_per_data_set exists and is used in n2k_samples_per_data_set
-          sub_integration_ntime: n2k_sub_integration_ntime
-          voltage_name: xposed_voltage
-          rfi_RFImask_name: rfi_RFImask
-          n2k_correlation_name: n2k_correlation
-        - name: cudaSyncOutput
-        - name: cudaOutputData
-          gpu_mem: n2k_correlation_buffer
-          out_buf: host_n2k_correlation_buffer
-
-run_n2k_counts:
-        kotekan_stage: lostSamplesToN2Counts
-        num_n2k_freq: num_freq_gpu_buf
-        sub_integration_ntime: n2k_sub_integration_ntime
-        # already set via global
-        # samples_per_data_set: samples_per_data_set
-        # already set via global
-        # num_elements: num_elements
-        rfi_mask_buf: host_rfi_RFImask_buffer
-        lost_samples_buffers:
-{%- for id in range(num_freq_gpu_buf // 4) %}
-        - lost_samples_buffer_{{ id }}
-{%- endfor %}
-        n2k_counts_buf: host_n2k_counts_buffer
-
-################################################################################
-# visibility matrix and eigendecomposition
-
-# Buffers
-
-vis_10s_buffer:
+host_n2_vis_buffer:
     kotekan_buffer: N2
-    num_ev: 0
     n2_layout: "FullUpperTri"
-    num_frames: gpu_buffer_depth * num_freq_gpu_buf
-    metadata_pool: n2_pool
-
-eig_10s_buffer:
-    kotekan_buffer: N2
-    num_ev: num_ev_to_calculate
-    n2_layout: "FullUpperTri"
-    num_frames: gpu_buffer_depth * num_freq_gpu_buf
-    metadata_pool: n2_pool
-
-failed_10s_buffer:
-    kotekan_buffer: N2
+    num_elements: n2k_correlation_num_elements
+    num_frames: buffer_depth * num_frequencies
     num_ev: 0
-    n2_layout: "FullUpperTri"
-    num_frames: gpu_buffer_depth * num_freq_gpu_buf
     metadata_pool: n2_pool
-
-vis_buffer:
-    kotekan_buffer: vis
-    num_ev: num_ev_to_calculate
-    num_frames: gpu_buffer_depth * num_freq_gpu_buf
-    metadata_pool: vis_pool
-
-failed_vis_buffer:
-    kotekan_buffer: vis
-    num_ev: 0
-    num_frames: gpu_buffer_depth * num_freq_gpu_buf
-    metadata_pool: vis_pool
-
-vis_buffer_post:
-    kotekan_buffer: vis
-    num_ev: num_ev_to_calculate
-    num_frames: gpu_buffer_depth * num_freq_gpu_buf
-    metadata_pool: vis_pool
-
-failed_vis_buffer_post:
-    kotekan_buffer: vis
-    num_ev: 0
-    num_frames: gpu_buffer_depth * num_freq_gpu_buf
-    metadata_pool: vis_pool
-
-# Stages
-
-run_recv_rfi_RFImask:
-    gpu_0:
-        kotekan_stage: cudaProcess
-        gpu_id: 0
-        buffer_depth: gpu_buffer_depth
-        # maybe? Depends on the chunking of the previous stage
-        frame_arrival_period: network_frame_arrival_period
-        num_times: samples_per_data_set
-        in_buffers:
-            host_rfi_RFImask_ringbuffer: host_rfi_RFImask_ringbuffer
-        out_buffers:
-            host_rfi_RFImask_buffer: host_rfi_RFImask_buffer
-        commands:
-        - name: cudaCopyFromRingbuffer
-          host_signal: host_rfi_RFImask_ringbuffer
-          gpu_mem_input: rfi_RFImask_buffer
-          output_size: num_freq_gpu_buf * samples_per_data_set / 8
-          ring_buffer_size: gpu_buffer_depth * output_size
-          out_buf: host_rfi_RFImask_buffer
-
-rfi_RFImask_count:
-    kotekan_stage: RfiMaskSum
-    in_buf: host_rfi_RFImask_buffer
-    out_buf: host_n2k_RFIcounts_buffer
-    sub_integration_ntime: n2k_sub_integration_ntime
-
-n2k_PLmask_count:
-    kotekan_stage: CountLostPLSamplesScalar
-    # this is pretty silly, the actual source of truth is
-    # lost_samples_buffer_{{ id }} which are already scalars
-    in_buf: host_pl_mask_buffer
-    out_buf: host_n2k_PLcounts_buffer
-    sub_integration_ntime: n2k_sub_integration_ntime
-    packet_loss_is_scalar: True
 
 # Bad feed mask for N2Accumulate, which needs one mask frame per correlation frame. BB and FRB1
 # need the mask lifetime to equal their phase lifetimes, a multiple of the FRB processing quantum,
-# so they cannot share this stream. It carries the same mask as host_bf_mask_buffer.
-# N2Accumulate holds each mask frame until its correlation frame is accumulated, so the depth
-# bounds the GPU's lead over it.
+# so they cannot share this stream. It carries the same mask as host_bf_mask_buffer
+# (include/fengine_chime.j2). N2Accumulate holds each mask frame until its correlation frame is
+# accumulated, so the depth bounds the GPU's lead over it.
 n2_bf_mask_buffer_depth: 12 * buffer_depth
 n2_bf_mask_pool:
     kotekan_metadata_pool: chordMetadata
@@ -215,45 +114,133 @@ host_n2_bf_mask_buffer:
     dimscalings: [n2k_samples_per_data_set, 1, 1]
     metadata_pool: n2_bf_mask_pool
 
-vis_accumulate:
-    kotekan_stage: N2Accumulate
-    in_buf: host_n2k_correlation_buffer
-    in_counts_buf: host_n2k_counts_buffer
-    in_rficounts_buf: host_n2k_RFIcounts_buffer
-    in_plcounts_buf: host_n2k_PLcounts_buffer
-    in_rfiframemask_buf: host_rfi_RFIframemask_buffer
-    in_bad_feed_mask_buf: host_n2_bf_mask_buffer
-    out_buf: vis_10s_buffer
-    packet_loss_is_scalar: True
-    cpu_affinity: [17, 18, 19]
-    num_workers: 3
-    input_order: CHIMEBeamformer
-    # round_to_even(10e9 / ( n2k_samples_per_data_set * frame_arrival_period_ns ) * n2k_num_subintegrations)
-    # round_up_to_even(10s / ( 16384 * 2.56us ) * 1) = 240
-    # num_subintegrations_per_bin_maybe_odd: 10e9 / ( n2k_samples_per_data_set * frame_arrival_period_ns ) * n2k_num_subintegrations)
-    # num_subintegrations_per_bin: (num_subintegrations_per_bin_maybe_odd + 1) / 2 * 2
-    num_subintegrations_per_bin: 240
-    # these recap values from cudaCorrelator
-    num_freq_per_n2k_frame: num_freq_gpu_buf
-    #samples_per_data_set: n2k_samples_per_data_set # a global of this nam exists used by n2k_samples_per_data_set
+# Visibility matrix and eigendecomposition
+
+num_ev_to_calculate: 4
+
+vis_pool:
+    kotekan_metadata_pool: VisMetadata
+    num_metadata_objects: buffer_depth * num_frequencies
+
+eig_buffer:
+    kotekan_buffer: N2
+    num_ev: num_ev_to_calculate
+    n2_layout: "FullUpperTri"
+    num_frames: buffer_depth * num_frequencies
+    metadata_pool: n2_pool
+
+failed_buffer:
+    kotekan_buffer: N2
+    num_ev: 0
+    n2_layout: "FullUpperTri"
+    num_frames: buffer_depth * num_frequencies
+    metadata_pool: n2_pool
+
+vis_buffer:
+    kotekan_buffer: vis
+    num_ev: num_ev_to_calculate
+    num_frames: buffer_depth * num_frequencies
+    metadata_pool: vis_pool
+
+################################################################################
+
+# Stages
+
+run_n2k_correlation:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_xposed_voltage_ringbuffer: host_xposed_voltage_ringbuffer
+            host_rfi_RFImask_ringbuffer: host_rfi_RFImask_ringbuffer
+        out_buffers:
+            host_n2k_correlation_buffer: host_n2k_correlation_buffer
+        commands:
+        - name: cudaCorrelator
+          num_elements: num_dishes * num_polarizations
+          num_local_freq: num_frequencies
+          samples_per_data_set: n2k_samples_per_data_set
+          sub_integration_ntime: n2k_sub_integration_ntime
+          voltage_name: xposed_voltage
+          rfi_RFImask_name: rfi_RFImask
+          n2k_correlation_name: n2k_correlation
+        - name: cudaSyncOutput
+        - name: cudaOutputData
+          gpu_mem: n2k_correlation_buffer
+          out_buf: host_n2k_correlation_buffer
+
+# The valid sample counts of the correlator products, from the lost samples (which hold for all
+# inputs) and the RFI mask
+run_n2k_counts:
+    kotekan_stage: lostSamplesToN2Counts
+    num_n2k_freq: num_frequencies
     sub_integration_ntime: n2k_sub_integration_ntime
-    # set as global variable of same name
-    #rfi_downsampling_factor: rfi_downsampling_factor
+    rfi_mask_buf: host_rfi_RFImask_buffer
+    lost_samples_buffers:
+{% for id in range(16 // 4) %}   # num_frequencies = 16
+    - lost_samples_buffer_{{ id }}
+{% endfor %}
+    n2k_counts_buf: host_n2k_counts_buffer
+
+run_n2_counting:
+    num_local_freq: num_frequencies
+    samples_per_data_set: n2k_samples_per_data_set
+    sub_integration_ntime: n2k_sub_integration_ntime
+
+    count_rfi_mask:
+        kotekan_stage: RfiMaskSum
+        in_buf: host_rfi_RFImask_buffer
+        out_buf: host_n2k_rficounts_buffer
+
+    count_pl:
+        kotekan_stage: CountLostPLSamplesScalar
+        in_buf: host_pl_mask_buffer
+        out_buf: host_n2k_plcounts_buffer
+        packet_loss_is_scalar: true
+
+    compute_RFI_frame_mask:
+        kotekan_stage: RfiFrameMask
+        in_buf: host_rfi_SKtilde_buffer
+        out_buf: host_n2k_rfiframemask_buffer
+        enabled_updatable_config: /updatable_config/rfi_second_stage_enabled
+        thresholds_updatable_config: /updatable_config/rfi_second_stage_thresholds
+
+run_N2_accumulate:
+    kotekan_stage: N2Accumulate
+    samples_per_data_set: n2k_samples_per_data_set
+    sub_integration_ntime: n2k_sub_integration_ntime
+    # About 1 s; production (config/chime_upgrade_frb.j2) uses 240 frames, about 10 s
+    num_subintegrations_per_bin: 24
     num_elements: n2k_correlation_num_elements
+    num_freq_per_n2k_frame: num_frequencies
+    packet_loss_is_scalar: true
+    input_order: CHIMEBeamformer
     num_ev: 0 # only allowed value
     variance_mode: CHIMEv1
+    num_workers: 3
+    in_buf: host_n2k_correlation_buffer
+    in_counts_buf: host_n2k_counts_buffer
+    in_plcounts_buf: host_n2k_plcounts_buffer
+    in_rficounts_buf: host_n2k_rficounts_buffer
+    in_rfiframemask_buf: host_n2k_rfiframemask_buffer
+    in_bad_feed_mask_buf: host_n2_bf_mask_buffer
 {%- if do_fringestop is defined %}
     do_fringestop: {{ do_fringestop }}
 {%- endif %}
+    out_buf: host_n2_vis_buffer
+
+dataset_manager:
+    use_dataset_broker: False
+
+{% from "include/frequency_channels_chime.j2" import frequency_channels %}
 
 eigencalc:
     kotekan_stage: EigenN2Iter
-    cpu_affinity: [14, 15, 16] # for blaze
     num_blaze_workers: 3
     num_ev: num_ev_to_calculate
-    in_buf: vis_10s_buffer
-    out_buf: eig_10s_buffer
-    failed_buf: failed_10s_buffer
+    in_buf: host_n2_vis_buffer
+    out_buf: eig_buffer
+    failed_buf: failed_buffer
     # Convergence config from chime science run
     tol_eval: 0.00001
     tol_evec: 0.0001
@@ -263,35 +250,13 @@ eigencalc:
     subspace: 1
     # Masking config from chime science run
     diagonal_bands_filled: [ [0, 30], [251, 262] ]
-    exclude_inputs: [  46,   84,  107,  136,  142,  256,  257,  319,  348,  357,  369,
-                      370,  453,  550,  551,  579,  638,  688,  739,  742,  768,  784,
-                      807,  855,  944,  960,  967,  971,  981,  986, 1005, 1010, 1020,
-                     1023, 1058, 1141, 1166, 1225, 1280, 1281, 1285, 1311, 1314, 1343,
-                     1380, 1381, 1479, 1521, 1523, 1543, 1642, 1684, 1687, 1738, 1792,
-                     1794, 1910, 1912, 1943, 1945, 1950, 1982, 1984, 1987, 2032, 2034]
+    # The initial bad inputs of /updatable_config/bad_inputs (include/fengine_chime.j2), in
+    # cylinder order, as in config/chime_upgrade_frb.j2.
+    # TODO: Check that this is the input order EigenN2Iter expects.
+    exclude_inputs: *bad_inputs
 
 vis_convert:
     kotekan_stage: n2FrameToVisFrame
-    n2_buf: eig_10s_buffer
+    n2_buf: eig_buffer
     vis_buf: vis_buffer
-    freq_ids: [ 58, 66, 234, 666, 698, 730, 738, 746, 802, 818, 826, 898, 906, 954, 962, 978 ]
-
-failed_vis_convert:
-    kotekan_stage: n2FrameToVisFrame
-    n2_buf: failed_10s_buffer
-    vis_buf: failed_vis_buffer
-    freq_ids: [ 58, 66, 234, 666, 698, 730, 738, 746, 802, 818, 826, 898, 906, 954, 962, 978 ]
-
-switch_vis_out:
-    kotekan_stage: bufferSwitch
-    in_bufs:
-      - enabled: vis_buffer
-    out_buf: vis_buffer_post
-    updatable_config: /updatable_config/enable_vis_out
-
-switch_failed_out:
-    kotekan_stage: bufferSwitch
-    in_bufs:
-      - enabled: failed_vis_buffer
-    out_buf: failed_vis_buffer_post
-    updatable_config: /updatable_config/enable_failed_out
+    freq_ids: {{ frequency_channels }}

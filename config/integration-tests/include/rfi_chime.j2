@@ -1,15 +1,15 @@
 # -*-yaml-*-
 
-# CHIME RFI setup, copied from config/chime_upgrade_frb.j2 without the network output
-# (rfiBroadcast) and with the SKtilde dimension name fixed (see below). Jinja variable:
+# Copied from config/fengine/include/rfi_chime.j2 for the integration tests. Jinja variable:
 # rfi_feed_averaged_min_good_frac.
 
-################################################################################
-# RFI setup
+# CHIME RFI setup, as config/chime_upgrade_frb.j2
 
-# from 2.56 us to 0.655 ms
+################################################################################
+
+# from 2.56 μs to 0.65536 ms
 rfi_downsampling_factor: 256
-# from 0.655 ms ms to 41.94304 ms
+# from 0.65536 ms to 41.94304 ms
 rfi_second_downsampling_factor: 64
 
 rfi_sk_rfimask_sigmas: 5.0
@@ -20,116 +20,74 @@ rfi_feed_averaged_min_good_frac: {{ rfi_feed_averaged_min_good_frac | default(0.
 rfi_mu_min: 2.0
 rfi_mu_max: 50.0
 
+################################################################################
+
 # Buffers
 
-rfi_num_times: 64      # 0.655 ms cadence
-rfi_num_times_bar: 1   # 41.94304 ms cadence
+rfi_num_times: 64               # 0.65536 ms cadence
+rfi_num_times_bar: 1            # 41.94304 ms cadence
 
 host_rfi_S012_ringbuffer:
     kotekan_buffer: ring
-    num_frames: gpu_buffer_depth
-    ring_buffer_size: gpu_buffer_depth * sizeof_uint64 * num_dishes * num_polarizations * 3 * num_freq_gpu_buf * rfi_num_times
-    type: uint64
-    dimnames: ["Trfi", "F", "S", "P", "D"]
-    shape: [gpu_buffer_depth * rfi_num_times, num_freq_gpu_buf, 3, num_polarizations, num_dishes]
+    num_frames: buffer_depth
+    ring_buffer_size: buffer_depth * sizeof_uint64 * num_dishes * num_polarizations * 3 * num_frequencies * rfi_num_times
     metadata_pool: main_pool
 
 host_rfi_S012bar_ringbuffer:
     kotekan_buffer: ring
-    num_frames: gpu_buffer_depth
-    ring_buffer_size: gpu_buffer_depth * sizeof_uint64 * num_dishes * num_polarizations * 3 * num_freq_gpu_buf * rfi_num_times_bar
-    type: uint64
-    dimnames: ["Trfibar", "F", "S", "P", "D"]
-    shape: [gpu_buffer_depth * rfi_num_times_bar, num_freq_gpu_buf, 3, num_polarizations, num_dishes]
+    num_frames: buffer_depth
+    ring_buffer_size: buffer_depth * sizeof_uint64 * num_dishes * num_polarizations * 3 * num_frequencies * rfi_num_times_bar
     metadata_pool: main_pool
 
 host_rfi_S012tilde_ringbuffer:
     kotekan_buffer: ring
-    num_frames: gpu_buffer_depth
-    ring_buffer_size: gpu_buffer_depth * sizeof_uint64 * 3 * num_freq_gpu_buf * rfi_num_times
-    type: uint64
-    dimnames: ["Trfi", "F", "S"]
-    shape: [gpu_buffer_depth * rfi_num_times, num_freq_gpu_buf, 3]
+    num_frames: buffer_depth
+    ring_buffer_size: buffer_depth * sizeof_uint64 * 3 * num_frequencies * rfi_num_times
     metadata_pool: main_pool
 
 host_rfi_SKtilde_buffer:
     kotekan_buffer: ndarray
-    num_frames: gpu_buffer_depth
+    num_frames: buffer_depth
     value_type: float32
-    # GPU producer cudaRFISKtilde rfi_SKtilde (leading extent = per-frame rfi_num_times);
-    # also validated by RfiFrameMask in_buf as {Trfi, F, SK}.
-    # config/chime_upgrade_frb.j2 has "S", which cudaRFISKtilde rejects
+    extents: [rfi_num_times, num_frequencies, 3]
+    quantity_name: "SKtilde"
     dimnames: ["Trfi", "F", "SK"]
-    extents: [rfi_num_times, num_freq_gpu_buf, 3]
+    dimscalings: [rfi_downsampling_factor, 1, 1]
     metadata_pool: main_pool
 host_rfi_SKtilde_ringbuffer:
     kotekan_buffer: ring
-    num_frames: gpu_buffer_depth
-    ring_buffer_size: gpu_buffer_depth * sizeof_float32 * 3 * num_freq_gpu_buf * rfi_num_times
-    type: float32
-    dimnames: ["Trfi", "F", "S"]
-    shape: [gpu_buffer_depth * rfi_num_times, num_freq_gpu_buf, 3]
+    num_frames: buffer_depth
+    ring_buffer_size: buffer_depth * sizeof_float32 * 3 * num_frequencies * rfi_num_times
     metadata_pool: main_pool
 
 host_rfi_RFImask_buffer:
     kotekan_buffer: ndarray
-    num_frames: gpu_buffer_depth
+    num_frames: 4 * buffer_depth # 4 times larger as buffer for a slow N2Accumulate
     value_type: uint1x8
-    # GPU producer cudaRFISKtilde rfi_RFImask (leading = per-frame samples/(8*128));
-    # also validated by RfiMaskSum/lostSamplesToN2Counts/cudaCorrelator as RFImask.
-    extents: [samples_per_data_set / 8 / 128, num_freq_gpu_buf, 128]
+    extents: [num_times / 8 / 128, num_frequencies, 128]
+    quantity_name: "RFImask"
+    dimnames: ["T8hi128", "F", "T8lo128"]
+    dimscalings: [1024, 1, 8]
     metadata_pool: main_pool
 host_rfi_RFImask_ringbuffer:
     kotekan_buffer: ring
-    num_frames: gpu_buffer_depth
-    ring_buffer_size: gpu_buffer_depth * num_freq_gpu_buf * samples_per_data_set / 8
-    type: uint1x8
-    dimnames: ["T8hi128", "F", "T8lo128"]
-    shape: [gpu_buffer_depth * samples_per_data_set / 8 / 128, num_freq_gpu_buf, 128]
+    num_frames: buffer_depth
+    ring_buffer_size: buffer_depth * num_frequencies * num_times / 8
     metadata_pool: main_pool
 
-host_rfi_SKbar_buffer:
-    kotekan_buffer: ndarray
-    num_frames: gpu_buffer_depth
-    value_type: float32
-    # GPU producer cudaRFISKbar rfi_SKbar (leading = per-frame rfi_num_times_bar).
-    extents: [rfi_num_times_bar, num_freq_gpu_buf, 3, num_polarizations, num_dishes]
-    metadata_pool: main_pool
 host_rfi_SKbar_ringbuffer:
     kotekan_buffer: ring
-    num_frames: gpu_buffer_depth
-    ring_buffer_size: gpu_buffer_depth * sizeof_float32 * num_dishes * num_polarizations * 3 * num_freq_gpu_buf * rfi_num_times_bar
-    type: float32
-    dimnames: ["Trfi", "F", "S", "P", "D"]
-    shape: [gpu_buffer_depth * rfi_num_times_bar, num_freq_gpu_buf, 3, num_polarizaions, num_dishes]
+    num_frames: buffer_depth
+    ring_buffer_size: buffer_depth * sizeof_float32 * num_dishes * num_polarizations * 3 * num_frequencies * rfi_num_times_bar
     metadata_pool: main_pool
 
-host_rfi_SKbartilde_buffer:
-    kotekan_buffer: ndarray
-    num_frames: gpu_buffer_depth
-    value_type: float32
-    # GPU producer cudaRFISKbar rfi_SKbartilde (leading = per-frame rfi_num_times_bar).
-    extents: [rfi_num_times_bar, num_freq_gpu_buf, 3]
-    metadata_pool: main_pool
 host_rfi_SKbartilde_ringbuffer:
     kotekan_buffer: ring
-    num_frames: gpu_buffer_depth
-    ring_buffer_size: gpu_buffer_depth * sizeof_float32 * 3 * num_freq_gpu_buf * rfi_num_times_bar
-    type: float32
-    dimnames: ["Trfi", "F", "S"]
-    shape: [gpu_buffer_depth * rfi_num_times_bar, num_freq_gpu_buf, 3]
+    num_frames: buffer_depth
+    ring_buffer_size: buffer_depth * sizeof_float32 * 3 * num_frequencies * rfi_num_times_bar
     metadata_pool: main_pool
 
-# The mask for second stage RFI excision.
-host_rfi_RFIframemask_buffer:
-    kotekan_buffer: ndarray
-    num_frames: gpu_buffer_depth
-    value_type: uint8
-    # produced by RfiFrameMask (out_buf): {num_integrations, num_local_freq}
-    extents: [samples_per_data_set / n2k_sub_integration_ntime, num_local_freq]
-    zero_new_frames: true
-    zero_value: 0xFF
-    metadata_pool: main_pool
+################################################################################
 
 # Stages
 
@@ -137,9 +95,6 @@ run_rfi_S012:
     gpu_0:
         kotekan_stage: cudaProcess
         gpu_id: 0
-        buffer_depth: gpu_buffer_depth
-        frame_arrival_period: network_frame_arrival_period
-        num_times: samples_per_data_set
         in_buffers:
             # TODO: transpose pl_mask
             host_pl_mask_ringbuffer: host_pl_mask_ringbuffer
@@ -148,7 +103,6 @@ run_rfi_S012:
             host_rfi_S012_ringbuffer: host_rfi_S012_ringbuffer
         commands:
         - name: cudaRFIS012
-          num_frequencies: num_freq_gpu_buf
           pl_mask_name: pl_mask
           voltage_name: xposed_voltage
           rfi_S012_name: rfi_S012
@@ -157,10 +111,6 @@ run_rfi_S012tilde:
     gpu_0:
         kotekan_stage: cudaProcess
         gpu_id: 0
-        buffer_depth: gpu_buffer_depth
-        # maybe? Depends on the chunking of the previous stage
-        frame_arrival_period: network_frame_arrival_period
-        num_times: samples_per_data_set
         in_buffers:
             host_bf_mask_ringbuffer: host_bf_mask_ringbuffer
             host_rfi_S012_ringbuffer: host_rfi_S012_ringbuffer
@@ -168,7 +118,6 @@ run_rfi_S012tilde:
             host_rfi_S012tilde_ringbuffer: host_rfi_S012tilde_ringbuffer
         commands:
         - name: cudaRFIS012tilde
-          num_frequencies: num_freq_gpu_buf
           bf_mask_name: bf_mask
           rfi_S012_name: rfi_S012
           rfi_S012tilde_name: rfi_S012tilde
@@ -177,17 +126,13 @@ run_rfi_S012bar:
     gpu_0:
         kotekan_stage: cudaProcess
         gpu_id: 0
-        buffer_depth: gpu_buffer_depth
-        # maybe? Depends on the chunking of the previous stage
-        frame_arrival_period: network_frame_arrival_period
-        num_times: samples_per_data_set
         in_buffers:
             host_rfi_S012_ringbuffer: host_rfi_S012_ringbuffer
         out_buffers:
             host_rfi_S012bar_ringbuffer: host_rfi_S012bar_ringbuffer
         commands:
         - name: cudaRFIS012bar
-          num_frequencies: num_freq_gpu_buf
+          bf_mask_name: bf_mask
           rfi_S012_name: rfi_S012
           rfi_S012bar_name: rfi_S012bar
 
@@ -195,10 +140,6 @@ run_rfi_SKtilde:
     gpu_0:
         kotekan_stage: cudaProcess
         gpu_id: 0
-        buffer_depth: gpu_buffer_depth
-        # maybe? Depends on the chunking of the previous stage
-        frame_arrival_period: network_frame_arrival_period
-        num_times: samples_per_data_set
         in_buffers:
             host_bf_mask_ringbuffer: host_bf_mask_ringbuffer
             host_rfi_S012_ringbuffer: host_rfi_S012_ringbuffer
@@ -207,7 +148,6 @@ run_rfi_SKtilde:
             host_rfi_RFImask_ringbuffer: host_rfi_RFImask_ringbuffer
         commands:
         - name: cudaRFISKtilde
-          num_frequencies: num_freq_gpu_buf
           bf_mask_name: bf_mask
           rfi_S012_name: rfi_S012
           rfi_SKtilde_name: rfi_SKtilde
@@ -218,10 +158,6 @@ run_rfi_SKbar:
     gpu_0:
         kotekan_stage: cudaProcess
         gpu_id: 0
-        buffer_depth: gpu_buffer_depth
-        # maybe? Depends on the chunking of the previous stage
-        frame_arrival_period: network_frame_arrival_period
-        num_times: samples_per_data_set
         in_buffers:
             host_bf_mask_ringbuffer: host_bf_mask_ringbuffer
             host_rfi_S012bar_ringbuffer: host_rfi_S012bar_ringbuffer
@@ -230,47 +166,15 @@ run_rfi_SKbar:
             host_rfi_SKbartilde_ringbuffer: host_rfi_SKbartilde_ringbuffer
         commands:
         - name: cudaRFISKbar
-          num_frequencies: num_freq_gpu_buf
           bf_mask_name: bf_mask
           rfi_S012bar_name: rfi_S012bar
           rfi_SKbar_name: rfi_SKbar
           rfi_SKbartilde_name: rfi_SKbartilde
 
-run_rfi_SK_copy_from_GPU:
-    gpu0:
-        kotekan_stage: cudaProcess
-        gpu_id: 0
-        buffer_depth: gpu_buffer_depth
-        frame_arrival_period: network_frame_arrival_period
-        num_times: rfi_num_times_bar
-        in_buffers:
-            host_rfi_SKbar_ringbuffer: host_rfi_SKbar_ringbuffer
-            host_rfi_SKtilde_ringbuffer: host_rfi_SKtilde_ringbuffer
-        out_buffers:
-            host_rfi_SKbar_buffer: host_rfi_SKbar_buffer
-            host_rfi_SKtilde_buffer: host_rfi_SKtilde_buffer
-        commands:
-        - name: cudaCopyFromRingbuffer
-          host_signal: host_rfi_SKbar_ringbuffer
-          gpu_mem_input: rfi_SKbar_buffer
-          output_size: sizeof_float32 * num_dishes * num_polarizations * 3 * num_freq_gpu_buf * rfi_num_times_bar
-          ring_buffer_size: gpu_buffer_depth * output_size
-          out_buf: host_rfi_SKbar_buffer
-        - name: cudaCopyFromRingbuffer
-          host_signal: host_rfi_SKtilde_ringbuffer
-          gpu_mem_input: rfi_SKtilde_buffer
-          output_size: sizeof_float32 * 3 * num_freq_gpu_buf * rfi_num_times
-          ring_buffer_size: gpu_buffer_depth * output_size
-          out_buf: host_rfi_SKtilde_buffer
-
-run_rfi_MASK_copy_from_GPU:
+run_recv_rfi_RFImask:
     gpu_0:
         kotekan_stage: cudaProcess
         gpu_id: 0
-        buffer_depth: gpu_buffer_depth
-        # maybe? Depends on the chunking of the previous stage
-        frame_arrival_period: network_frame_arrival_period
-        num_times: samples_per_data_set
         in_buffers:
             host_rfi_RFImask_ringbuffer: host_rfi_RFImask_ringbuffer
         out_buffers:
@@ -279,15 +183,22 @@ run_rfi_MASK_copy_from_GPU:
         - name: cudaCopyFromRingbuffer
           host_signal: host_rfi_RFImask_ringbuffer
           gpu_mem_input: rfi_RFImask_buffer
-          output_size: num_freq_gpu_buf * samples_per_data_set / 8
-          ring_buffer_size: gpu_buffer_depth * output_size
+          output_size: num_frequencies * num_times / 8
+          ring_buffer_size: buffer_depth * output_size
           out_buf: host_rfi_RFImask_buffer
 
-# Second-stage RFI flagging
-compute_RFI_frame_mask:
-    kotekan_stage: RfiFrameMask
-    in_buf: host_rfi_SKtilde_buffer
-    out_buf: host_rfi_RFIframemask_buffer
-    sub_integration_ntime: n2k_sub_integration_ntime
-    enabled_updatable_config: /updatable_config/rfi_second_stage_enabled
-    thresholds_updatable_config: /updatable_config/rfi_second_stage_thresholds
+run_recv_rfi_SKtilde:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_rfi_SKtilde_ringbuffer: host_rfi_SKtilde_ringbuffer
+        out_buffers:
+            host_rfi_SKtilde_buffer: host_rfi_SKtilde_buffer
+        commands:
+        - name: cudaCopyFromRingbuffer
+          host_signal: host_rfi_SKtilde_ringbuffer
+          gpu_mem_input: rfi_SKtilde_buffer
+          output_size: sizeof_float32 * 3 * num_frequencies * rfi_num_times
+          ring_buffer_size: buffer_depth * output_size
+          out_buf: host_rfi_SKtilde_buffer

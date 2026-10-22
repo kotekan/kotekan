@@ -92,6 +92,18 @@ generate_voltage:
     reuse_frames: true
 {% endif %}
 
+{% if lost_samples_buffers is defined %}
+# Zero the lost samples, as config/fengine/include/invent_voltage_chime.j2. inventVoltage marks the
+# lost samples full after the voltages, as dpdk does.
+zero_samples:
+{% for buf in voltage_buffers %}
+    zero_{{ loop.index0 }}:
+        kotekan_stage: zeroSamples
+        lost_samples_buf: {{ lost_samples_buffers[loop.index0 // 4] }}
+        out_buf: {{ buf }}
+{% endfor %}
+{% endif %}
+
 {% if lost_samples_buffers is not defined %}
 generate_pl_mask:
     kotekan_stage: inventPLMask
