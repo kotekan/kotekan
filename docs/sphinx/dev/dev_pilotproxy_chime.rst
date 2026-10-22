@@ -44,6 +44,13 @@ with integer CPU references, including window reversal, blocks crossing input
 frames, ring reuse, namespace refusal, and candidate refusal. The original
 CHORD integration suite applies to 64-sample bundles.
 
+For the full CHIME detector geometry, use a CHIME bundle and enable
+``PILOTPROXY_SOAK_FRAMES`` with ``-k production_geometry_soak``. Start with
+eight frames before the 2048-frame run. The two cases use 2048 inputs,
+16 frequencies and 16384-sample blocks, covering all 23 pilots across two
+frequency assignments. See :ref:`dev_pilotproxy_testing` for memory limits,
+reference checks and the scope of these synthetic tests.
+
 ``tests/test_dtv_rfi_mask.py::test_chime_mask_visibility_and_counts_across_ring_wrap``
 checks the 16384-sample adapter using synthetic decisions, packet loss, invalid
 rank support, and permanent masks. It compares GPU visibilities and counts and

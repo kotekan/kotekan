@@ -2,8 +2,9 @@
 
 Set PILOTPROXY_TEST_BINARY and PILOTPROXY_TEST_BUNDLE to run these tests.
 The bundle must match the compiled core. PILOTPROXY_SOAK_FRAMES (at least 8)
-also enables 64-dish/384-channel and 512-dish/48-channel runs, each with two
-polarizations and full-rate fine support. Four voltage frames repeat; every
+also enables full-size CHORD and CHIME runs with two polarizations and
+full-rate fine support; see dev_pilotproxy_testing.rst for their geometry.
+Four voltage frames repeat; every
 mask, power, and support output is compared with its CPU reference. Each
 pipeline has a 1,800-second timeout, overridable with
 PILOTPROXY_SOAK_TIMEOUT_SECONDS. Synthetic calibration is for these tests only.
@@ -131,6 +132,7 @@ class Pipeline:
         namespace = self.bundle.get("receiver_channel_id_namespace", "chord_freq_id")
         self.detector["receiver_channel_id_namespace"] = namespace
         if namespace == "chime_freq_id":
+            self.config["frame_arrival_period"] = "2.56e-6 * num_times"
             ids = [
                 row["receiver_channel_id"]
                 for row in self.bundle["profiles"]
@@ -652,22 +654,39 @@ def test_rejects_invalid_runtime(pipeline, case, diagnostic):
 
 
 @pytest.mark.parametrize(
-    "num_dishes,num_freq",
-    [(64, 384), (512, 48)],
-    ids=["pathfinder-padded", "full-chord"],
+    "namespace,num_dishes,num_freq,pilot_start",
+    [
+        ("chord_freq_id", 64, 384, 0),
+        ("chord_freq_id", 512, 48, 0),
+        ("chime_freq_id", 1024, 16, 0),
+        ("chime_freq_id", 1024, 16, 15),
+    ],
+    ids=["pathfinder-padded", "full-chord", "chime-pilots-14-28", "chime-pilots-29-36"],
 )
-def test_production_geometry_soak(pipeline, record_property, num_dishes, num_freq):
+def test_production_geometry_soak(
+    pipeline, record_property, namespace, num_dishes, num_freq, pilot_start
+):
     requested = os.environ.get("PILOTPROXY_SOAK_FRAMES")
     if requested is None:
         pytest.skip("set PILOTPROXY_SOAK_FRAMES to run the production geometry soak")
     frames = int(requested)
     assert frames >= 8, "use at least eight frames to wrap the ring buffer"
+    if pipeline.detector["receiver_channel_id_namespace"] != namespace:
+        pytest.skip(f"geometry requires a {namespace} bundle")
+    window_samples = 128 if namespace == "chime_freq_id" else 64
+    assert pipeline.block_samples == window_samples * 128
     pipeline.calibrate()
-    # Stress all 23 pilots simultaneously, more than a normal CHORD node carries.
-    ids = [row["chord_channel_id"] for row in pipeline.bundle["profiles"]]
-    ids += [freq for freq in range(1600, 2400) if freq not in ids][
-        : num_freq - len(ids)
+    pilot_ids = [
+        row.get("receiver_channel_id", row.get("chord_channel_id"))
+        for row in pipeline.bundle["profiles"]
     ]
+    # CHIME has 16 channels per GPU; cover all pilots in two batches and retain
+    # at least one unbound channel in each. CHORD fits all 23 in either geometry.
+    ids = pilot_ids[pilot_start : pilot_start + num_freq - 1]
+    bound_profiles = len(ids)
+    assert bound_profiles > 0
+    unbound = range(1024) if namespace == "chime_freq_id" else range(1600, 2400)
+    ids += [freq for freq in unbound if freq not in pilot_ids][: num_freq - len(ids)]
     assert len(ids) == num_freq and len(set(ids)) == num_freq
     pipeline.config.update(
         num_dishes=num_dishes,
@@ -676,7 +695,7 @@ def test_production_geometry_soak(pipeline, record_property, num_dishes, num_fre
         samples_per_data_set="num_times",
     )
     pipeline.config["gen_voltage"].update(
-        array_shape=[8192, num_freq, 2, num_dishes],
+        array_shape=[pipeline.block_samples, num_freq, 2, num_dishes],
         manual_freq_ids=ids,
         reuse_random=True,
         meta_time_downsample_factor=1,
@@ -714,9 +733,16 @@ def test_production_geometry_soak(pipeline, record_property, num_dishes, num_fre
     record_property("pipeline_seconds", pipeline.elapsed)
     record_property("verification_seconds", time.monotonic() - verification_start)
     record_property("fine_support_rows_checked", frames * num_freq)
-    record_property("bound_fine_profiles", len(pipeline.bundle["profiles"]))
+    record_property("bound_fine_profiles", bound_profiles)
+    record_property("receiver_channel_id_namespace", namespace)
+    record_property("block_samples", pipeline.block_samples)
+    record_property("num_dishes", num_dishes)
+    record_property("num_frequencies", num_freq)
     record_property("pipeline_timeout_seconds", timeout)
-    record_property("voltage_gib", frames * 8192 * num_freq * 2 * num_dishes / 2 ** 30)
+    record_property(
+        "voltage_gib",
+        frames * pipeline.block_samples * num_freq * 2 * num_dishes / 2 ** 30,
+    )
     print(
         f"Verified {frames} production-size blocks; pipeline took {pipeline.elapsed:.2f}s"
     )

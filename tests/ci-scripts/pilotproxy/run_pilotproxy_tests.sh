@@ -55,4 +55,4 @@ PILOTPROXY_TEST_BUNDLE="$WORK/pilotproxy_bundle_chord" \
     timeout --signal=TERM --kill-after=10s 20m python3 -m pytest -v -x --basetemp "$WORK/pytest_chord" -o cache_dir="$WORK/pytest-cache" "$SRC/tests/test_pilotproxy_integration.py" "$SRC/tests/test_dtv_rfi_mask.py"
 PILOTPROXY_TEST_BUNDLE="$WORK/pilotproxy_bundle_chime" \
     timeout --signal=TERM --kill-after=10s 20m python3 -m pytest -v -x --basetemp "$WORK/pytest_chime" -o cache_dir="$WORK/pytest-cache" "$SRC/tests/test_pilotproxy_integration.py" "$SRC/tests/test_dtv_rfi_mask.py" \
-    -k 'receiver_geometry or receiver_namespace or archive_review or chime_detector'
+    -k 'receiver_geometry or receiver_namespace or archive_review or chime_detector or production_geometry_soak'
