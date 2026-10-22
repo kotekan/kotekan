@@ -15,7 +15,7 @@ if(CUDAToolkit_FOUND)
     add_subdirectory(ksgpu)
     target_link_libraries(libexternal INTERFACE ksgpu)
     add_subdirectory(n2k)
-    target_link_libraries(libexternal INTERFACE n2k)
+    target_link_libraries(libexternal INTERFACE "$<LINK_LIBRARY:WHOLE_ARCHIVE,n2k>")
     # PilotProxy DTV pilot-tone detector core (vendored; used by lib/cuda/cudaPilotProxyDetector and
     # testPilotProxyDetector).
     add_subdirectory(pilotproxy)

@@ -518,8 +518,11 @@ cudaFRBBeamformer_pathfinder_U8::cudaFRBBeamformer_pathfinder_U8(Config& config,
             "--gpu-name=sm_86",
             "--verbose",
         };
-        device.build_ptx("lib/cuda/generated/FRBBeamformer_pathfinder_U8.ptx", {kernel_symbol},
-                         opts, "FRBBeamformer_pathfinder_U8_");
+        const char* const kernel_code =
+#include "FRBBeamformer_pathfinder_U8.ptx"
+            ;
+        device.build_ptx(kernel_code, "lib/cuda/generated/FRBBeamformer_pathfinder_U8.ptx",
+                         {kernel_symbol}, opts, "FRBBeamformer_pathfinder_U8_");
     }
 }
 

@@ -640,6 +640,9 @@ verifies consistency, within ns-level tolerance, as frames arrive).
        N2Accumulate reads the switch only when
        ``rfi_first_stage_enabled_updatable_config`` is set; otherwise this is
        1.0 whatever the GPU state.
+   * - ``fringestop_enabled``
+     - bool
+     - Whether the visibilities in this bin were fringestopped.
 
 Completeness tracking and configuration snapshots
 =================================================

@@ -709,6 +709,17 @@ def accum_data(
     }
     accum_config.update(accum_setup)
 
+    # Switch fringestopping on mid-run through the updatable config. It should
+    # take effect only from the last bin.
+    config["fringestop_enabled"] = {
+        "kotekan_update_endpoint": "json",
+        "enabled": True,
+        "valid_at_time_ns": int(
+            tel.get_t_inst_ns(fringestop_switch_seq(accum_list), setup["tel"])
+        ),
+    }
+    accum_config["fringestop_updatable_config"] = "/fringestop_enabled"
+
     # The test stage!
     test = runner.KotekanStageTester(
         "N2Accumulate",
@@ -729,6 +740,11 @@ def accum_data(
     test.run()
 
     yield dump_buffer.load()
+
+
+def fringestop_switch_seq(accum_list):
+    """Sequence number one tick before the last bin starts."""
+    return accum_list[-1]["seq"] - 1
 
 
 def get_era_nrot_idx_of_seq(seq, tel_config, use_eop, num_bins_per_rotation):
@@ -1234,6 +1250,7 @@ def test_simple_meta(accum_data, setup, accum_list):
         )
         assert (data_threshold == setup["rfiframemask"]["thresholds"][:, 0]).all()
         assert (data_fraction == setup["rfiframemask"]["thresholds"][:, 1]).all()
+        assert frame.metadata.fringestop_enabled == (t == len(accum_list) - 1)
 
 
 def test_eop_meta(setup, accum_setup, accum_data, accum_list):
@@ -1362,6 +1379,10 @@ def test_vis(accum_data, expected_accum, accum_list, setup):
         t = idx // config["num_local_freq"]
         f = idx % config["num_local_freq"]
 
+        # expected_accum does not fringestop
+        if t == len(accum_list) - 1:
+            continue
+
         assert frame.vis.shape == exp_vis[t, f].shape
 
         # vis_diff = frame.vis - exp_vis[t, f]
@@ -1401,6 +1422,10 @@ def test_weight(accum_data, expected_accum, accum_list, setup, accum_setup):
     for idx, frame in enumerate(accum_data):
         t = idx // config["num_local_freq"]
         f = idx % config["num_local_freq"]
+
+        # expected_accum does not fringestop
+        if t == len(accum_list) - 1:
+            continue
 
         assert frame.weight.shape == exp_w[t, f].shape
 

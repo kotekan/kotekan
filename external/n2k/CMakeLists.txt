@@ -77,7 +77,7 @@ foreach(file ${KERNELFILES})
 endforeach()
 
 # Add library targets
-add_library(n2k SHARED ${CUFILES} ${HFILES})
+add_library(n2k ${CUFILES} ${HFILES})
 target_link_libraries(n2k ksgpu)
 
 # Include directories

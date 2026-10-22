@@ -44,6 +44,7 @@ downsamp_params = {
     "num_bins_per_rotation": n_bins_per_rot,
     "max_age": 2 * T_rot_sec / n_bins_per_rot,
     "input_order": "CHORDBeamformer",
+    "do_fringestop": False,  # FakeN2 frames are not fringestopped.
 }
 
 global_params = {

@@ -117,6 +117,13 @@ void N2TimeDownsample::main_thread() {
 
         N2FrameView frame(in_buf, frame_id);
 
+        // The phases applied here are differential, so they are only valid on
+        // input that was fringestopped upstream, and vice versa.
+        if (frame.fringestop_enabled != do_fringestop) {
+            FATAL_ERROR("Input frame at t={:d} has fringestop_enabled={}, but do_fringestop={}",
+                        frame.frame_start_time_ns, frame.fringestop_enabled, do_fringestop);
+        }
+
         DEBUG("Input frame - num_elements: {:d} - t: {:d}", frame.num_elements,
               frame.frame_start_time_ns);
 
