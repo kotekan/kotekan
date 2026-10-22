@@ -8,6 +8,7 @@
 #include "bufferRecv.hpp"      // for bufferRecv
 #include "bufferSend.hpp"      // for bufferFrameHeaderNoConfigTracker
 #include "chordMetadata.hpp"   // for chordMetadata
+#include "errors.h"            // for __enable_syslog
 #include "kotekanLogging.hpp"  // for FatalError
 #include "metadata.hpp"        // for metadataPool
 
@@ -22,12 +23,13 @@
 #include <memory>                            // for shared_ptr, unique_ptr
 #include <netinet/in.h>                      // for sockaddr_in, INADDR_ANY, INADDR_LOOPBACK
 #include <stdint.h>                          // for uint8_t, uint16_t, uint32_t
+#include <stdio.h>                           // for tmpfile, fflush, fileno, fread, rewind
 #include <string>                            // for string
 #include <sys/socket.h>                      // for socket, bind, connect, send, recv
 #include <sys/time.h>                        // for timeval
 #include <thread>                            // for sleep_for
 #include <time.h>                            // for clock_gettime, timespec
-#include <unistd.h>                          // for close
+#include <unistd.h>                          // for close, dup, dup2
 #include <vector>                            // for vector
 
 using kotekan::bufferContainer;
@@ -187,20 +189,65 @@ BOOST_AUTO_TEST_CASE(test_short_frame_tail_is_zeroed) {
     BOOST_CHECK(r.consume((num_frames + 1) % num_frames) == expected);
 }
 
-// The next two send only the header: the stage must refuse the frame on its size alone.
+// What the stage logs while this is alive. kotekan logs to syslog by default, so this sends
+// the log to stderr and captures that.
+class stderrCapture {
+public:
+    stderrCapture() : file(tmpfile()), saved(dup(2)), saved_syslog(__enable_syslog) {
+        BOOST_REQUIRE(file && saved >= 0);
+        fflush(stderr);
+        dup2(fileno(file), 2);
+        __enable_syslog = 0;
+    }
+    ~stderrCapture() {
+        restore();
+        fclose(file);
+    }
+    std::string text() {
+        restore();
+        rewind(file);
+        std::string out;
+        char chunk[4096];
+        size_t n;
+        while ((n = fread(chunk, 1, sizeof(chunk), file)) > 0)
+            out.append(chunk, n);
+        return out;
+    }
+
+private:
+    void restore() {
+        if (saved >= 0) {
+            __enable_syslog = saved_syslog;
+            fflush(stderr);
+            dup2(saved, 2);
+            close(saved);
+            saved = -1;
+        }
+    }
+    FILE* file;
+    int saved;
+    int saved_syslog;
+};
+
+// The next two send only the header: the stage must refuse the frame on its size alone, and
+// say why.
 
 BOOST_AUTO_TEST_CASE(test_frame_larger_than_buffer_closes_connection) {
+    stderrCapture log;
     shortFrameReceiver r("recv_long");
     r.send_header(frame_size + 1);
     BOOST_CHECK(r.connection_closed());
     BOOST_CHECK_EQUAL(r.buf.get_num_full_frames(), 0);
+    BOOST_CHECK(log.text().find("is larger than the buffer's frame size") != std::string::npos);
 }
 
 BOOST_AUTO_TEST_CASE(test_empty_frame_closes_connection) {
+    stderrCapture log;
     shortFrameReceiver r("recv_empty");
     r.send_header(0);
     BOOST_CHECK(r.connection_closed());
     BOOST_CHECK_EQUAL(r.buf.get_num_full_frames(), 0);
+    BOOST_CHECK(log.text().find("Empty frame (0 bytes)") != std::string::npos);
 }
 
 static bool is_short_frames_refusal(const FatalError& e) {

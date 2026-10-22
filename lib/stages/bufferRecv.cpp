@@ -553,16 +553,24 @@ void connInstance::internal_read_callback() {
                            buf_frame_header.metadata_size, buf_frame_header.frame_size,
                            buf_frame_header.config_tracker_update);
 
-                    // A zero-length frame is refused here: its read would return 0, which
-                    // reads as the peer closing the connection.
-                    const bool size_ok =
-                        allow_short_frames
-                            ? buf_frame_header.frame_size > 0
-                                  && buf_frame_header.frame_size <= (unsigned int)buf->frame_size
-                            : buf_frame_header.frame_size == (unsigned int)buf->frame_size;
-                    if (!size_ok) {
+                    const uint32_t size = buf_frame_header.frame_size;
+                    bool size_ok = true;
+                    if (!allow_short_frames && size != (unsigned int)buf->frame_size) {
                         ERROR("Frame size does not match between server: {:d} and client: {:d}",
-                              buf->frame_size, buf_frame_header.frame_size);
+                              buf->frame_size, size);
+                        size_ok = false;
+                    } else if (allow_short_frames && size > (unsigned int)buf->frame_size) {
+                        ERROR("Frame of {:d} bytes is larger than the buffer's frame size, {:d}",
+                              size, buf->frame_size);
+                        size_ok = false;
+                    } else if (allow_short_frames && size == 0) {
+                        // Refused rather than read: a read of 0 bytes returns 0, which reads as
+                        // the peer closing the connection.
+                        ERROR("Empty frame (0 bytes): allow_short_frames accepts 1 to {:d} bytes",
+                              buf->frame_size);
+                        size_ok = false;
+                    }
+                    if (!size_ok) {
                         decrement_ref_count();
                         close_instance();
                         return;
