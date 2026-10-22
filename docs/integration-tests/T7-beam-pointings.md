@@ -113,16 +113,22 @@ Only expectations were changed in Python, and the kept output re-checked with `-
 Kotekan runs for 27 s and 25 s; the test takes 81 s. Each variant writes 1.9 GB, mostly the
 10 BB frames and 3 FRB2 frames.
 
-## Result (CHIME, cx68, A40, Release)
+## Result (CHIME, cx67, A40, Release)
 
-**PASS**, both variants. CHIME has no BB beamformer, and its production FRB2 beams are `manual`.
-`grid` keeps these production beams, with the source on beam 23; `manual` jitters them.
+**PASS**, both variants. The production FRB2 beams are `manual`. `grid` keeps them, with the
+source on beam 23 at (0.8°, −55.6°), and centres the BB column (1 × 32) on it with the FRB2 y
+spacing at the source; `manual` jitters both.
 
 | check | `grid` | `manual` |
 |---|---|---|
-| positions, ids | 3 FRB2 frames of 1024 beams exact, at `seq0 + T* + k L₂` | same |
-| FRB2 peak | source beam in all 16 channels (1 grating-lobe tie) | all 16 (no ties) |
-| FRB2 continuity | 48 windows within 1.8σ, σ = 0.05%; steps ≤ 0.07% | within 1.5σ, σ = 0.08%; steps ≤ 0.15% |
+| BB positions, ids | 4 frames of 32 beams exact, at `seq0 + k · 49152` | same |
+| BB peak | source beam 15 in all 16 frequencies | beam 11 in all 15 unambiguous frequencies |
+| BB beams | all 32 non-zero, rms 3.91 to 9.25 LSB | rms 3.90 to 9.25 LSB |
+| BB continuity | 320 windows within 2.7σ, σ = 0.14%; steps ≤ 0.22%, phase range 0.41° | within 3.5σ, σ = 0.12%; steps ≤ 0.26%, phase range 0.46° |
+| FRB2 positions, ids | 3 frames of 1024 beams exact, at `seq0 + T* + k L₂` | same |
+| FRB2 peak | source beam in all 16 channels (1 grating-lobe tie) | beam 173 in all 16 (no ties) |
+| FRB2 continuity | 48 windows within 1.7σ, σ = 0.05%; steps ≤ 0.10% | within 3.9σ, σ = 0.03%; steps ≤ 0.10% |
 
-The FRB1 lifetime is 3 frames (49152 samples), the FRB2 lifetime one FRB2 frame (98304
-samples). Kotekan runs for 43 s and 48 s.
+The BB and FRB1 lifetimes are 3 frames (49152 samples), the FRB2 lifetime one FRB2 frame (98304
+samples). setBBBeams computes the grid positions from degrees, so the BB beam on the source is
+the closest one (within 10^−6). Kotekan runs for 17 s and 16 s.

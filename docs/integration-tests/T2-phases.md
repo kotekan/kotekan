@@ -72,6 +72,9 @@ using the beam positions `n_b` that kotekan actually wrote.
   ≥ 1.25 × the second best and at least 1 LSB² more. The power estimates average about 30,000
   samples, so their noise is about 0.1 LSB².
 - **Tolerance: exact beam index.**
+- A source far from all BB beams is not checked: the strongest predicted beam has less than 10%
+  of the on-source power `(A · bb_gain · D)²`. This is CHIME's 1 × 32 column for `frb2` and
+  `offgrid`.
 
 **Upchannelizer**, for each U. The kernel computes
 
@@ -92,6 +95,12 @@ Checks and tolerances:
 - **Phase:** at `u*`, the time-averaged ratio of measured to predicted must have phase within a
   mean of 2° and a 99th percentile (over inputs) of 10°.
 - **Amplitude:** its median modulus must lie in [0.8, 1.25].
+
+**HFB upchannelizer** (CHIME, U = 128): checked as the others, with the output offset T* of the
+HFB chain. The tone is on a U = 128 fine-channel centre. The production gain 0.8·√128 would
+saturate the tone, so the HFB gains are scaled by 1/√2. The time-averaged ratio must also agree
+with that of the largest FRB U (16): the U = 128 fine channel lies inside the U = 16 one, the
+phases agree within 2° and the amplitudes within 5%.
 
 **FRB1.** FRB1 is a spatial FFT over the dish grid, with 2M × 2N beams. The FRB2 weights
 (`cudaCalcFRB2WeightsKernel.cu`, after Kendrick's note) assume that beam `(p, q)` responds as
@@ -177,18 +186,22 @@ All four variants pass.
 
 Kotekan runs for 20 to 37 s per variant; the test takes about 10 minutes.
 
-## Result (CHIME, cx68, A40, Release)
+## Result (CHIME, cx67, A40, Release)
 
-The `frb2`, `offgrid` and `n2` variants pass; `bb` does not apply (no BB beamformer). The tone is
-on a U = 16 fine-channel centre (4.5/16 cycles per sample), and the FRB2 source beam is the
-production beam 23 (`FRB2_BEAM` clamped to the 4 × 256 grid, at 55.6° south).
+All four variants pass. The tone is on a U = 128 fine-channel centre (39.5/128 cycles per
+sample). The BB source beam is (0, 1) of the 1 × 32 column (`BB_BEAM` clamped), and the FRB2
+source beam the production beam 23 (`FRB2_BEAM` clamped to the 4 × 256 grid, at 55.6° south).
 
 | output | result |
 |---|---|
-| input | tone phase within 0.04° (99th percentile 12.6°), amplitude 0.99 |
-| U = 16 | fine channel 12; phase within 0.0° (99th percentile 3.3°); amplitude 0.99 |
+| input | tone phase within 0.06° (99th percentile 12.9°), amplitude 0.99 |
+| BB | `bb`: peak in the predicted beam 1 in all 16 frequencies; `frb2`, `offgrid`: source far from the column (strongest beam 0.1% and 0.3% of the on-source power), not checked |
+| U = 16 | fine channel 12; phase within 0.0° (99th percentile 3.7°); amplitude 0.99 |
+| U = 128 (HFB) | fine channel 103; phase +0.7° (99th percentile 3.6°); amplitude 0.98 |
+| U = 128 vs 16 | fine channel [0.3047, 0.3125) inside [0.25, 0.3125); ratio phase +0.71°, amplitude 0.997 |
 | FRB1 | peak at the predicted (p, q) in all 16 channels (beam axes swapped, P along the cylinders) |
 | FRB2 | source beam holds the peak in all 16 channels, 1 of them tied with a grating lobe |
-| N2 | `V_ab = E_a conj(E_b)` within 0.00° (99th percentile 4.1°), amplitude 0.97, A = 1.33, 99.1% of the samples valid |
+| N2 | `V_ab = E_a conj(E_b)` within 0.00° (99th percentile 4.1°), amplitude 0.97, A = 1.33, 99.3% of the samples valid |
 
-Kotekan runs for 58, 60 and 84 s.
+With the production HFB gain, the U = 128 amplitude was 0.92 and the U = 128 to U = 16 ratio
+0.937: the tone (6.8 LSB) plus noise saturates int4. Kotekan runs for 48, 36, 37 and 26 s.

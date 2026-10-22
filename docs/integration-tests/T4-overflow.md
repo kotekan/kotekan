@@ -142,20 +142,19 @@ saturate as on the pathfinder, without errors. BB is exact (1.7% and 5.3% clampe
 reaches 20496 and 16512; FRB3 has no -8. Kotekan runs for 24 s and 36 s; the test takes
 2.5 minutes.
 
-## Result (CHIME, cx68, A40, Release)
+## Result (CHIME, cx67, A40, Release)
 
-**PASS**, with the production gains. Only U = 16 exists, and CHIME has no BB beamformer; the
-`full_scale_tone` source is T2's FRB2 source beam.
+**PASS**, with the production gains of config/fengine; the `full_scale_tone` source is T2's FRB2
+source beam. The BB shift is σ = 4 for 1024 dishes. The HFB chain is not checked here.
 
 | output | `full_scale` | `full_scale_tone` |
 |---|---|---|
 | n2k | all 67.6 M values exact, max 1605632 | all exact, max 826368 |
-| U = 16 | exact, max \|prediction\| 3.8, nothing at ±7 | exact, max 5.3 |
-| FRB1 max I | 25632 (0.255 × bound) | 26912 (0.268 × bound) |
-| FRB2 max | 25632 | 27440 |
-| FRB3 (8 bits) | no 0 code; 94% at 1 or 254 | no 0 code; 93% at 1 or 254 |
+| U = 16 | 12.5% predicted beyond ±6.52 (max 12.3), all at ±7; exact elsewhere | 4.7% beyond (max 16.9), all at ±7 |
+| BB | all 33.6 M components exact; 5.5% clamped (max 23); int16 partial sums ≤ 1469 | exact; 5.5% clamped (max 225); partial sums ≤ 14407 |
+| FRB1 max I | 50112 (0.9987 × bound) | 38336 (0.764 × bound) |
+| FRB2 max | 50112 | 27632 |
+| FRB3 (8 bits) | no 0 code; 94.7% at 1 or 254 | no 0 code; 66.9% at 1 or 254 |
 
-With `upchan_gain` 1 the upchannelizer cannot saturate, so the saturation checks do not apply on
-CHIME. The FRB1 bound uses the default feed gain 1 + 1i of loadFeedGains.
-
-Kotekan runs for 46 s and 56 s.
+The FRB1 bound uses the default feed gain 1 + 0i of loadFeedGains. Kotekan runs for 19 s and
+33 s.

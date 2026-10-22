@@ -129,15 +129,17 @@ Kotekan runs for 22 s per run and the check for about 10 s. The output is 1.7 GB
 1.264 → 2.468), FRB1 by −0.0014 to +0.0026 (0 at U = 1). Kotekan runs for 29 s and 22 s; the
 test takes about a minute.
 
-## Result (CHIME, cx68, A40, Release)
+## Result (CHIME, cx67, A40, Release)
 
-**PASS.** Only U = 16 exists, and CHIME has no BB beamformer. The FRB1 weights are the feed gains
-of loadFeedGains; without gain files they are `default_gains` (jinja variable
-`frb_default_gains`), which the scaled run halves.
+**PASS.** The FRB1 weights are the feed gains of loadFeedGains; without gain files they are
+`default_gains` (jinja variable `frb_default_gains`), which the scaled run halves. The HFB chain
+is not checked here.
 
-- **U = 16:** the inferred σ ratio is the gain ratio within −0.0002 to +0.0004, for gain ratios
-  1.000 to 1.938 and a reference rms of 0.26 LSB (production gain 1); the raw rms ratio deviates
-  by up to 21%.
-- **FRB1:** the intensity ratio is 0.25 times the upchannelized power ratio within ±0.0006.
+- **U = 16:** the inferred σ ratio is the gain ratio within −0.0005 to 0.0000, for gain ratios
+  1.000 to 1.938 and a reference rms of 0.93 LSB; the raw rms ratio deviates by up to 3.7%.
+- **BB:** gain ratio 2, the inferred ratio is exact (rms 1.26 and 2.47 LSB, 0.82% at ±7); the
+  raw rms ratio deviates by 2.4%.
+- **FRB1:** the intensity ratio is the predicted one within ±0.0001, for intensity ratios 0.25
+  to 0.87.
 
-Kotekan runs for 72 s and 57 s.
+Kotekan runs for 28 s and 26 s.
