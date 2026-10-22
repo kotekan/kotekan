@@ -23,7 +23,7 @@
 #include <sys/socket.h> // for send, MSG_NOSIGNAL, AF_INET, connect, setsockopt, socket
 #include <sys/time.h>   // for timeval
 #include <thread>       // for thread
-#include <unistd.h>     // for close, sleep
+#include <unistd.h>     // for close
 
 // Some systems don't support MSG_NOSIGNAL and don't include it in socket.h
 #ifndef MSG_NOSIGNAL
@@ -282,9 +282,13 @@ void bufferSend::connect_to_server() {
                  "to retry...",
                  server_ip, server_port, strerror(errno), errno, reconnect_time);
             close(socket_fd);
-            // TODO Add a Stage level "breakable sleep" so this doesn't
-            // lock up the shutdown process for upto reconnect_time seconds.
-            sleep(reconnect_time);
+            // A stop ends this wait early: main_thread() calls close_connection(), which
+            // notifies, before it joins this thread.
+            {
+                std::unique_lock<std::mutex> connection_lock(connection_state_mutex);
+                connection_state_cv.wait_for(connection_lock, std::chrono::seconds(reconnect_time),
+                                             [&]() { return (bool)stop_thread; });
+            }
             continue;
         }
 

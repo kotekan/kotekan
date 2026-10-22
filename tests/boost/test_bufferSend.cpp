@@ -11,7 +11,7 @@
 
 #include <arpa/inet.h>                       // for htonl, ntohs
 #include <boost/test/included/unit_test.hpp> // for BOOST_CHECK, BOOST_REQUIRE
-#include <chrono>                            // for milliseconds
+#include <chrono>                            // for steady_clock, duration, milliseconds
 #include <csignal>                           // for signal, SIGTERM, SIG_IGN
 #include <netinet/in.h>                      // for sockaddr_in, INADDR_LOOPBACK
 #include <stdint.h>                          // for uint16_t, uint8_t
@@ -106,4 +106,35 @@ BOOST_AUTO_TEST_CASE(test_frame_without_metadata) {
     send.join();
     close(conn);
     close(listener);
+}
+
+BOOST_AUTO_TEST_CASE(test_stop_during_reconnect_wait) {
+    // Bound but not listening, so every connection attempt is refused.
+    uint16_t port = 0;
+    const int refusing = bind_localhost(port, false);
+
+    json cfg = sender_config("send_refused", port);
+    cfg["send_refused"]["reconnect_time"] = 30;
+    Config config;
+    config.update_config(cfg);
+
+    Buffer buf(4, 1024, nullptr, "send_buf", "standard", 0, false, false, std::vector<int>{}, true);
+    buf.register_producer("test");
+    bufferContainer bc;
+    bc.add_buffer("send_buf", &buf);
+    bufferSend send(config, "/send_refused", bc);
+    send.start();
+
+    // Let the first attempt fail and the reconnect wait begin.
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+
+    const auto stop_start = std::chrono::steady_clock::now();
+    send.stop();
+    buf.send_shutdown_signal();
+    send.join();
+    const double stop_seconds =
+        std::chrono::duration<double>(std::chrono::steady_clock::now() - stop_start).count();
+    BOOST_CHECK_LT(stop_seconds, 3.0);
+
+    close(refusing);
 }
