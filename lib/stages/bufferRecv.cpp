@@ -113,9 +113,12 @@ bufferRecv::bufferRecv(Config& config, const std::string& unique_name,
     buf = get_buffer("buf");
     buf->register_producer(unique_name);
 
-    // A frame shape is checked against the full frame size, so a short frame would be fatal.
-    if (allow_short_frames && (use_frame_desc || metadata_is_chord(buf, 0)))
-        FATAL_ERROR("allow_short_frames cannot be used with use_frame_desc or chordMetadata");
+    // A frame descriptor, declared in config or received with use_frame_desc, and the shape in
+    // chordMetadata all describe a full frame, so they would mislabel or refuse a short one.
+    if (allow_short_frames
+        && (use_frame_desc || buf->get_frame_desc() || metadata_is_chord(buf, 0)))
+        FATAL_ERROR("allow_short_frames cannot be used with use_frame_desc, chordMetadata, or a "
+                    "buffer with a frame descriptor");
 }
 
 bufferRecv::~bufferRecv() {}

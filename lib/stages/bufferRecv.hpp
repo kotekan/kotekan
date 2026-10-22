@@ -64,9 +64,10 @@ class connInstance;
  * @conf drop_frames         Bool, default true.  Whether to drop frames when buffer fills.
  * @conf allow_short_frames  Bool, default false.  Accept frames smaller than @c buf's frame
  *        size, for producers whose payload records its own length. The rest of the frame is
- *        zeroed. Otherwise a frame of a different size closes the connection. The metadata
- *        must not carry a frame shape (as chordMetadata does) and @c use_frame_desc must be
- *        false; the stage refuses to start otherwise.
+ *        zeroed. Otherwise a frame of a different size closes the connection. @c buf must not
+ *        declare a frame shape (no N2 or ndarray buffer type), its metadata must not be
+ *        chordMetadata, and @c use_frame_desc must be false; the stage refuses to start
+ *        otherwise.
  * @conf upstream_rest_port  Int, default: this instance's own REST port. The
  *        REST port to reach a sender on when fetching config-tracker state.
  *        Nothing on the wire carries the sender's REST port, so it has to be
