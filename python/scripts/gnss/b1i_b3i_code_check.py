@@ -35,8 +35,10 @@ import re
 import sys
 import zlib
 
+import kotekan_src
+
 HERE = os.path.dirname(os.path.abspath(__file__))
-CPP = os.path.normpath(os.path.join(HERE, "..", "..", "..", "lib", "stages", "gnss"))
+CPP = kotekan_src.gnss_cpp()
 
 B1I_N, B3I_N, N_PRN = 2046, 10230, 63
 

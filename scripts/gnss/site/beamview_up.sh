@@ -20,7 +20,9 @@ set -u
 WEB=${BEAMVIEW_WEB:-/home/kvand/gnss/fixtures/beamcube/web}
 PORT=${BEAMVIEW_PORT:-8877}
 LOG=${BEAMVIEW_LOG:-/tmp/gnss_beamview.log}
-SRC=/home/kvand/gnss/kotekan/python/scripts/gnss/beam_cube_viewer
+# shellcheck source=kotekan_src.sh
+. "$(dirname "${BASH_SOURCE[0]}")/kotekan_src.sh"
+SRC=$GNSS_CHECKOUT/python/scripts/gnss/beam_cube_viewer
 
 HOST=${BEAMVIEW_HOST_NAME:-cf06}
 if [ "$(hostname -s)" != "$HOST" ]; then

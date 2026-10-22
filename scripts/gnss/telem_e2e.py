@@ -48,6 +48,7 @@ K = os.path.abspath(
 sys.path.insert(0, os.path.join(K, "python", "scripts", "gnss"))
 sys.path.insert(0, os.path.join(K, "config"))
 
+import kotekan_src  # noqa: E402
 from gnss_broker import telem  # noqa: E402
 from gnss_record_layout import (
     record_stride,
@@ -259,16 +260,16 @@ def kotekan_binary():
     config problem."""
     host = socket.gethostname().split(".")[0]
     cand = (
-        [os.path.join(K, "build", "kotekan", "kotekan")]
+        [kotekan_src.src("build", "kotekan", "kotekan")]
         if host.startswith("cx")
-        else [os.path.join(K, "build_nodpdk", "kotekan", "kotekan")]
+        else [kotekan_src.src("build_nodpdk", "kotekan", "kotekan")]
     )
-    cand.append(os.path.join(K, "build_nodpdk", "kotekan", "kotekan"))
-    cand.append(os.path.join(K, "build", "kotekan", "kotekan"))
+    cand.append(kotekan_src.src("build_nodpdk", "kotekan", "kotekan"))
+    cand.append(kotekan_src.src("build", "kotekan", "kotekan"))
     for c in cand:
         if os.path.exists(c):
             return c
-    sys.exit("no kotekan binary found under %s" % K)
+    sys.exit("no kotekan binary found under %s" % kotekan_src.SRC)
 
 
 def main():

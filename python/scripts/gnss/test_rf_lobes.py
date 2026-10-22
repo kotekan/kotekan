@@ -351,8 +351,14 @@ def live_element_arms():
         )
 
     # 13. The viewer's stream-health panel renders the live-element row (run under node).
+    #     GNSS_REQUIRE_NODE (the test runner sets it): no node fails rather than skips.
     if not shutil.which("node"):
-        print("skip  viewer live-element row: no node")
+        if os.environ.get("GNSS_REQUIRE_NODE"):
+            fails.append(
+                "viewer live-element row: no node, and GNSS_REQUIRE_NODE is set"
+            )
+        else:
+            print("skip  viewer live-element row: no node")
         return fails
     panel = os.path.join(
         os.path.dirname(os.path.abspath(__file__)),

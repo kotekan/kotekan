@@ -24,23 +24,11 @@ defined (`_derive` enforces it; selftest.py cross-checks the derived values).
 Receiver-scope constants are not set here: --hops-per-sec (the F-engine's record geometry,
 the same for every signal on the instrument) and code_doppler_sign (a decode convention).
 """
-import os
 import re
 
-# python/scripts/gnss/gnss_broker/ -> four levels to the repo root
-_HPP = os.path.normpath(
-    os.path.join(
-        os.path.dirname(os.path.abspath(__file__)),
-        "..",
-        "..",
-        "..",
-        "..",
-        "lib",
-        "stages",
-        "gnss",
-        "gnssSignal.hpp",
-    )
-)
+import kotekan_src
+
+_HPP = kotekan_src.gnss_cpp("gnssSignal.hpp")
 
 # name prefix -> the single-letter constellation the broker and RINEX both use
 _SYS = {"GPS": "G", "GAL": "E", "BDS": "C", "GLO": "R", "SBAS": "S"}

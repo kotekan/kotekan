@@ -19,16 +19,9 @@ import re
 import sys
 import zlib
 
-CPP = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)),
-    "..",
-    "..",
-    "..",
-    "lib",
-    "stages",
-    "gnss",
-    "galileoE6Code.cpp",
-)
+import kotekan_src
+
+CPP = kotekan_src.gnss_cpp("galileoE6Code.cpp")
 
 N_PRN = 50
 CHIPS = 5115

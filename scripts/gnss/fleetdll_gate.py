@@ -51,6 +51,7 @@ import tempfile
 _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(_HERE, "..", "..", "python", "scripts", "gnss"))
 
+import kotekan_src  # noqa: E402
 from gnss_broker import combdll, telem  # noqa: E402
 
 
@@ -655,7 +656,11 @@ def main():
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    ap.add_argument("--exe", default=os.path.join(_HERE, "fleetdll"))
+    ap.add_argument(
+        "--exe",
+        help="the C++ arm (default: scripts/gnss/fleetdll in the kotekan tree, which "
+        "kotekan_src finds)",
+    )
     ap.add_argument(
         "--n-win",
         type=int,
@@ -697,21 +702,31 @@ def main():
     # clobber each other), so an existing path only says someone built it, from some source.
     # A binary on an older wire format rejects every frame as BAD_HEADER, which this gate
     # reports as "Python has a row, C++ does not", not as a stale binary.
+    # fleetdll.cpp and build_tool.sh are kotekan's, and the build is given the same tree for
+    # the headers it compiles against.
     if not args.no_build:
-        b = subprocess.run(
-            [os.path.join(_HERE, "site", "build_tool.sh"), "fleetdll"],
-            capture_output=True,
-            text=True,
-            cwd=_HERE,
-        )
+        try:
+            tool = kotekan_src.src("scripts", "gnss", "site", "build_tool.sh")
+            b = subprocess.run(
+                [tool, "fleetdll"],
+                capture_output=True,
+                text=True,
+                cwd=kotekan_src.src("scripts", "gnss"),
+                env=dict(os.environ, KOTEKAN_SRC=kotekan_src.SRC),
+            )
+        except (OSError, kotekan_src.NotFound) as e:
+            raise SystemExit("site/build_tool.sh fleetdll FAILED: %s" % e)
         if b.returncode != 0:
             raise SystemExit(
-                "site/build_tool.sh fleetdll FAILED:\n%s\n%s"
-                % (b.stdout[-2000:], b.stderr[-2000:])
+                "%s fleetdll FAILED:\n%s\n%s"
+                % (tool, b.stdout[-2000:], b.stderr[-2000:])
             )
+    if args.exe is None:
+        args.exe = kotekan_src.src("scripts", "gnss", "fleetdll")
     if not os.path.exists(args.exe):
         raise SystemExit(
-            "no %s -- build it with site/build_tool.sh fleetdll" % args.exe
+            "no %s -- build it with kotekan's scripts/gnss/site/build_tool.sh fleetdll"
+            % args.exe
         )
 
     tmp = args.keep or tempfile.mkdtemp(prefix="fleetdll_gate-")

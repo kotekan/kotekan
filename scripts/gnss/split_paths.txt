@@ -1,0 +1,143 @@
+# git filter-repo --paths-from-file for kotekan -> gnss-broker (path-preserving, ONE pass, no --invert-paths).
+# This file lists itself (the scripts/gnss regex), so it goes along as the record of how gnss-broker was made.
+#
+#   git clone --no-local --single-branch --branch <branch> <kotekan checkout> gnss-broker
+#   cd gnss-broker && git filter-repo --paths-from-file scripts/gnss/split_paths.txt
+#
+# A fresh clone of the one branch, since filter-repo rewrites every ref it has. Then, before the first push:
+#   git tag -l | xargs -r git tag -d     # kotekan's tags: the 3 that point into the history kept
+#   git branch -m main
+#   cp .git/filter-repo/commit-map docs/kotekan_commit_map.txt    # old kotekan SHA -> new SHA
+#   git add docs/kotekan_commit_map.txt && git commit    # the new repo's first commit, so the
+#                                                        # kotekan SHAs the docs cite translate
+#
+# Plain lines are literal path prefixes (dir/ or exact file); 'regex:' lines use re.search (hence the ^ anchors);
+# 'glob:' lines use fnmatch ('*' also matches '/'). filter-repo applies the lines IN ORDER per path: a filter
+# line only tests the name as renamed by the rename lines ABOVE it, so the one rename line is LAST.
+# Stays in kotekan (excluded inside the two regex: lines by negative lookahead): every C++ harness, the
+# tool symlinks/binary, scripts/gnss/.gitignore, build_tool.sh (both paths), and the 12 Python files that only
+# verify kotekan's C++: python/scripts/gnss/{b1i_b3i,b2b,e5b,e6,glonass_ca,l1cd,l2oc,l3oc}_code_check.py,
+# python/scripts/gnss/test_code_check_cpp.py, scripts/gnss/{trim_sign_gate,test_trim_sign_gate,test_e2e_exact_seed}.py.
+# python/scripts/gnss/kotekan_src.py moves AND stays (kotekan keeps its copy).
+# The generator block can be dropped to keep the generator in kotekan, but only once the moved code that reads
+# its files from its own checkout looks for them in kotekan: the broker config/gnss_chains_chord.yaml, the site
+# scripts config/gnss_fleet_chord.yaml, gen_fleet.py the generator, bad_inputs_cron.py config/bffs_bad_inputs.py,
+# gnss_arraymap.py config/chord_array_epochs.json.
+
+# ---- GNSS Python: broker, runtime libs, tools, tests, beam-cube viewer, kotekan_src.py; minus one deleted
+#      C++ harness, the 9 C++ verifiers that stay in kotekan, and 6 generated plots (cn0_*.png, 12 blobs)
+#      that were committed by mistake and untracked in 000cf23e6 ----
+regex:^python/scripts/gnss/(?!(diag/wipe_fsweep\.cpp|(b1i_b3i|b2b|e5b|e6|glonass_ca|l1cd|l2oc|l3oc)_code_check\.py|test_code_check_cpp\.py|cn0_(coh|inc)_(beammap|vs_elev|vs_time)\.png)$).+
+# pre-e31fab008 (2026-07-13) top-level locations, renamed into python/scripts/gnss/ or deleted
+python/scripts/gnss_adr_check.py
+python/scripts/gnss_coherence_ladder.py
+python/scripts/gnss_deadreckon_check.py
+python/scripts/gnss_direct_cn0.py
+python/scripts/gnss_ephemeris.py
+python/scripts/gnss_observables.py
+python/scripts/gnss_stages.py
+python/scripts/gnss_time_bootstrap.py
+python/scripts/gps_almanac_rest.py
+python/scripts/gps_beam_watch.py
+python/scripts/gps_beamtrack.py
+python/scripts/gps_broker.py
+python/scripts/gps_cl_seed.py
+python/scripts/gps_cn0_map.py
+python/scripts/gps_cnav.py
+python/scripts/gps_distributed_broker.py
+python/scripts/gps_gain_sweep.py
+python/scripts/gps_hoprate_validate.py
+python/scripts/gps_intgn_check.py
+python/scripts/gps_l1c_wipe_check.py
+python/scripts/gps_l2c_subband_validate.py
+python/scripts/gps_mono_watch.py
+python/scripts/gps_nav_decode.py
+python/scripts/gps_navdecode.py
+python/scripts/gps_pulse_check.py
+python/scripts/gps_status_logger.py
+python/scripts/gps_visibility.py
+python/scripts/gps_visible_prns.py
+python/scripts/gps_requirements.txt
+
+# ---- scripts/gnss: broker entry + gates + tools + site/ + site/systemd/ + fixtures/, and the pre-e56ff6058
+#      scripts/gnss/{*.sh,*.py,systemd/} site files. EXCLUDED: every *.cpp (8 live, 13 deleted), the 10 tracked
+#      tool symlinks + the seedchk binary, scripts/gnss/.gitignore, build_tool.sh at both of its paths, and the
+#      three e2e drivers trim_sign_gate.py, test_trim_sign_gate.py, test_e2e_exact_seed.py. scripts/gnss/repo_root/
+#      IS matched here (repo_root/.gitignore is not scripts/gnss/.gitignore) and renamed to the root below. ----
+regex:^scripts/gnss/(?!(.*\.cpp|\.gitignore|build_tool\.sh|site/build_tool\.sh|acqbench|fleetdll|n2dualtest|n2dualxval|n2skyab|n2timing|phibits|phishare|phisharegpu|wavebench|seedchk|trim_sign_gate\.py|test_trim_sign_gate\.py|test_e2e_exact_seed\.py)$).+
+
+# ---- generator code + data (droppable to keep the generator in kotekan, with the caveat in the header) ----
+config/gen_chord_gnss_config.py
+config/test_gen_chord_gnss_config.py
+config/test_gen_telem_windows.py
+config/chord_band_plan.py
+config/gnss_record_layout.py
+config/bffs_bad_inputs.py
+config/gnss_chains_chord.yaml
+config/gnss_fleet_chord.yaml
+config/chord_gnss_node.yaml
+config/chord_array_epochs.json
+config/pointings.yaml
+config/elem_positions_refined_20260927.json
+config/elem_shared_ref_20261010.json
+config/elem_shared_ref_20261017.json
+config/elem_shared_ref_20261020.json
+config/base/
+config/gnss/
+config/gates/
+# history only: ancestors of config/gnss/example_chord_gnss_cx51_multi.yaml (035bbb4e7 R099, 6e76d7933 R090)
+config/generated/chord_gnss_cx51_multi.yaml
+config/generated/chord_gnss_cx51_e5afleet.yaml
+# history only: deleted generator lineage, node map, launchers, snapshots
+config/gen_3band_config.py
+config/gen_band_config.py
+config/gen_comb_config.py
+config/gen_live_config.py
+config/gen_live_lowrate.py
+config/gen_loop_config.py
+config/gen_mono_config.py
+config/gen_search_config.py
+config/gen_unified_config.py
+config/gen_xnode_configs.py
+config/gnss_node.yaml
+config/WIRING.md
+config/chord_dish_layout.json
+config/elem_positions_refined_20260924.json
+config/elem_positions_refined_20260925.json
+config/elem_shared_ref_20261006.json
+config/elem_shared_ref_20261009.json
+config/bandctl.sh
+config/binomial_trial.sh
+config/night_batch.sh
+config/replay_bench_leg.sh
+config/replay_l1bds_leg.sh
+config/replay_l1gps_leg.sh
+config/run_3band.sh
+config/run_band.sh
+config/run_live.sh
+config/run_mono.sh
+config/run_trim_bench.sh
+
+# ---- docs (develop never had a docs/CHORD_* or docs/gnss_* path) ----
+glob:docs/CHORD_*.md
+glob:docs/gnss_*.md
+docs/adr_trim_subtraction.md
+docs/RUNNING_STATE.md
+
+# ---- viewer: the WHOLE js_viewer directory, forked with its upstream files and their history ----
+python/scripts/js_viewer/
+
+# ---- pure-Python GNSS tests under tests/ (named: tests/test_gps_*|test_gnss_* also match 4 deleted C++ stage tests) ----
+tests/test_beam_cube.py
+tests/test_gps_cnav.py
+tests/test_gps_nav_decode.py
+tests/test_gps_beamtrack.py
+tests/test_gps_navdecode.py
+tests/test_gps_broker.py
+
+# ---- deleted root-level GNSS launcher ----
+launch_xnode.sh
+
+# ---- the new repo's root files: scripts/gnss/repo_root/X becomes X (no scripts/gnss/repo_root/ copy is kept).
+#      MUST stay the last line: filters above test the original name. ----
+scripts/gnss/repo_root/==>

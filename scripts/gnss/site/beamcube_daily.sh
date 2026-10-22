@@ -12,7 +12,9 @@
 # The export takes every master. `export` rewrites index.json from its arguments alone, so
 # passing only the new day would drop every other day off the page; the glob below does it.
 set -u
-K=/home/kvand/gnss/kotekan
+# shellcheck source=kotekan_src.sh
+. "$(dirname "${BASH_SOURCE[0]}")/kotekan_src.sh"
+K=$GNSS_CHECKOUT
 PY=${GNSS_PY:-/home/kvand/gnss/venv/bin/python}     # needs h5py + healpy: venv, not venv-ft
 TOOL=$K/python/scripts/gnss/gnss_beam_cube.py
 BEAM=${BEAMCUBE_DIR:-/home/kvand/gnss/fixtures/beamcube}

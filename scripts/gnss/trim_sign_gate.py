@@ -21,6 +21,8 @@ in combined chips, so the slope is 1/comb_mult, and its sign is the actuator's.
     ./trim_sign_gate.py            # sweep, verdict
     ./trim_sign_gate.py -v         # and print the table
 
+With no e2e build it exits 77 (environment absent), or fails when GNSS_REQUIRE_GPU is set.
+
 The null is located, not assumed at trim 0. e2e's default seed is exact, but an extra flag that
 perturbs the seed (--seed-cp-err, --seed-dop-err) moves the open-loop error, and a sweep about
 trim 0 could then sit outside the +-0.5-chip pull-in region, where the E/L discriminator is
@@ -74,8 +76,14 @@ def main():
         help="extra e2e flags, after a bare -- (e.g. -- --signal GAL_E5A_Q_CS)",
     )
     a = ap.parse_args()
+    # 77 is "environment absent" (automake's skip status): it says nothing about the sign.
+    # GNSS_REQUIRE_GPU (the test runner sets it on a GPU host) makes it a failure.
     if not os.path.exists(a.exe):
-        raise SystemExit("no %s -- build it with site/build_tool.sh e2e" % a.exe)
+        why = "no %s -- build it with site/build_tool.sh e2e" % a.exe
+        if os.environ.get("GNSS_REQUIRE_GPU"):
+            raise SystemExit("%s, and GNSS_REQUIRE_GPU is set" % why)
+        print("skip  %s" % why)
+        return 77
 
     # Locate the null rather than assume it. err is linear in the commanded trim:
     # propagate_seed adds the trim in combined chips and e2e divides err by comb_mult, so the

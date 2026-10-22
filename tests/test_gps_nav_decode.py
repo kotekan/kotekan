@@ -43,3 +43,26 @@ def test_trim_word_resets_the_chain():
         word = nd.parity_encode(src, d29, d30)
         assert int(word[28]) == 0 and int(word[29]) == 0
         assert nd.parity_check(word, d29, d30)[1]
+
+
+if __name__ == "__main__":
+    # Standalone driver, as in test_beam_cube.py: every test_* function, nonzero when any fails
+    # or none ran.
+    import traceback
+
+    fns = [
+        (k, v)
+        for k, v in sorted(globals().items())
+        if k.startswith("test_") and callable(v)
+    ]
+    n_fail = 0
+    for name, fn in fns:
+        try:
+            fn()
+            print("  ok   %s" % name)
+        except Exception:
+            n_fail += 1
+            print("  FAIL %s" % name)
+            traceback.print_exc()
+    print("%d case(s), %d failure(s)" % (len(fns), n_fail))
+    sys.exit(1 if n_fail or not fns else 0)

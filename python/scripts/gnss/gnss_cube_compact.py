@@ -66,7 +66,16 @@ L0_ROWS = (
     "coh",
     "incoh",
 )
-DEFAULT_POINTINGS = "/home/kvand/gnss/kotekan/config/pointings.yaml"
+DEFAULT_POINTINGS = os.path.normpath(
+    os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "..",
+        "..",
+        "..",
+        "config",
+        "pointings.yaml",
+    )
+)
 
 
 def h5py_mod():

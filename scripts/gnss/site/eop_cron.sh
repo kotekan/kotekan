@@ -23,7 +23,9 @@
 #   env:      GNSS_NODES (default the six), EOP_LOG (default /var/tmp/gnss-logs/eop_cron.log),
 #             EOP_STATE (the staged table, default /var/tmp/gnss-logs/eop-state.json)
 set -u
-K=$(cd "$(dirname "$0")/../../.." && pwd)
+# shellcheck source=kotekan_src.sh
+. "$(dirname "${BASH_SOURCE[0]}")/kotekan_src.sh"
+K=$GNSS_CHECKOUT
 NODES=${GNSS_NODES:-"cx19 cx27 cx42 cx43 cx44 cx51"}
 LOG=${EOP_LOG:-/var/tmp/gnss-logs/eop_cron.log}
 F=${EOP_STATE:-/var/tmp/gnss-logs/eop-state.json}
@@ -85,6 +87,8 @@ fi
 # the manifest owns (gen_fleet.py --print-path): their names carry its suffix.
 PY=/home/kvand/gnss/venv/bin/python
 MAN="$K/config/gnss_fleet_chord.yaml"
+# gen_fleet renders kotekan's config templates and parses its headers.
+KOTEKAN_SRC=$(gnss_kotekan_src "$K") && export KOTEKAN_SRC
 mapfile -t OWNED < <("$PY" "$K/scripts/gnss/gen_fleet.py" "$MAN" --print-path 2>/dev/null)
 DISK_END=$("$PY" - "${OWNED[@]}" <<'PYE'
 import sys, yaml
@@ -98,14 +102,18 @@ print(min(ends) if ends else "")
 PYE
 )
 if [ -n "$DISK_END" ] && [ "$DISK_END" -lt "$FILE_END" ]; then
-    if "$PY" "$K/scripts/gnss/gen_fleet.py" "$MAN" --check >/dev/null 2>&1; then
+    rc=0
+    "$PY" "$K/scripts/gnss/gen_fleet.py" "$MAN" --check >/dev/null 2>&1 || rc=$?
+    if [ "$rc" = 0 ]; then
         if "$PY" "$K/scripts/gnss/gen_fleet.py" "$MAN" >/dev/null 2>&1; then
             echo "  on-disk configs regenerated: table end $DISK_END -> $FILE_END"
         else
             echo "  on-disk regen FAILED (gen_fleet write); table end still $DISK_END"
         fi
-    else
+    elif [ "$rc" = 1 ]; then
         echo "  on-disk configs differ from the manifest beyond live data; NOT regenerated (table end $DISK_END)"
+    else
+        echo "  gen_fleet --check could not compare (rc $rc); NOT regenerated (table end $DISK_END)"
     fi
 elif [ -z "$DISK_END" ]; then
     echo "  on-disk configs: no table end readable in the manifest's ${#OWNED[@]} config(s); NOT checked"

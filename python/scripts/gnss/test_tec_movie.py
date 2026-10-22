@@ -4,7 +4,7 @@
     /home/kvand/gnss/venv/bin/python test_tec_movie.py
 
 The leveling test runs main() and needs matplotlib and scipy (the venv has them; venv-ft does
-not, and skips it).
+not, and skips it unless GNSS_REQUIRE_PLOT is set).
 """
 import contextlib
 import importlib.util
@@ -94,7 +94,11 @@ class TestIonexMissing(unittest.TestCase):
         self.assertTrue(np.isnan(maps[bad]).all())
         np.testing.assert_allclose(maps[~bad], 20.0)
 
-    @unittest.skipUnless(HAVE_PLOT, "needs matplotlib and scipy")
+    # GNSS_REQUIRE_PLOT (the test runner sets it): no matplotlib or scipy fails rather than
+    # skips, since a skip here only ever means the wrong interpreter.
+    @unittest.skipUnless(
+        HAVE_PLOT or os.environ.get("GNSS_REQUIRE_PLOT"), "needs matplotlib and scipy"
+    )
     def test_leveling_skips_unavailable_cells(self):
         """One arc, most of it north where the GIM has a hole: the arc is leveled on its
         southern points, which read the GIM's 20 TECU exactly, and the northern ones drop."""

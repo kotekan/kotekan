@@ -310,12 +310,19 @@ detaches the child from the unit's cgroup so supervision is lost entirely, and t
 ssh gnss 'cd /home/kvand/gnss/kotekan && ./scripts/gnss/site/stack_contract_gate.sh'
 ```
 
-It compares each **running** process against the definition — **argv *and* environment** — and
-exits non-zero on the first mismatch. The environment half is the point: #134 was a faithfully
+It compares each **running** process against the definition — **argv *and* environment** —
+reports each one, and exits non-zero if any mismatched. The environment half is the point: #134 was a faithfully
 reproduced command line with a dropped `export`, which an argv-only comparison would pass.
 
 **Run it after any change to a unit, a launcher, or the definition.** Expect
-`checked 12 component(s), 0 mismatch(es)`.
+`checked 16 component(s), 0 mismatch(es)`: broker, gather, aggregator, viewer, rail and the
+eleven obs writers. Run with no component named on a host where none is running, it checked
+nothing and exits non-zero.
+
+⚠️ The broker's definition now exports `KOTEKAN_SRC`. A broker started before that reached the
+live checkout reports `broker ENV MISSING: KOTEKAN_SRC=/home/kvand/gnss/kotekan` until its next
+restart: the one expected mismatch, and harmless (the broker finds the same tree without it).
+Clear it with a broker restart that is due anyway, at least 10 min after any aggregator restart.
 
 ### Editing
 

@@ -15,31 +15,21 @@ silently returning a stale default.
 
 import os
 import re
+import sys
 
-HEADER = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)),
-    "..",
-    "lib",
-    "stages",
-    "gnss",
-    "gnssRecord.hpp",
+# kotekan_src (python/scripts/gnss) says where the kotekan source tree is.
+_GNSS_PY = os.path.normpath(
+    os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "..", "python", "scripts", "gnss"
+    )
 )
-TELEM_HEADER = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)),
-    "..",
-    "lib",
-    "stages",
-    "gnss",
-    "gnssTelem.hpp",
-)
-CHAIN_HEADER = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)),
-    "..",
-    "lib",
-    "stages",
-    "gnss",
-    "gnssGpuChain.hpp",
-)
+if _GNSS_PY not in sys.path:
+    sys.path.append(_GNSS_PY)
+import kotekan_src  # noqa: E402
+
+HEADER = kotekan_src.gnss_cpp("gnssRecord.hpp")
+TELEM_HEADER = kotekan_src.gnss_cpp("gnssTelem.hpp")
+CHAIN_HEADER = kotekan_src.gnss_cpp("gnssGpuChain.hpp")
 
 
 def _read(name, path=HEADER):

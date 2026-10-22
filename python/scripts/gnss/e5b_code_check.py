@@ -22,10 +22,10 @@ import sys
 import tempfile
 import zlib
 
+import kotekan_src
+
 HERE = os.path.dirname(os.path.abspath(__file__))
-CPP_DIR = os.path.normpath(
-    os.path.join(HERE, "..", "..", "..", "lib", "stages", "gnss")
-)
+CPP_DIR = kotekan_src.gnss_cpp()
 CPP = os.path.join(CPP_DIR, "galileoE5bCode.cpp")
 
 CODE_LENGTH = 10230
@@ -254,18 +254,13 @@ CS100_FP = {  # prn: (crc32 of the 100-bit string, popcount of 1s)
     50: (0x1DD70A1B, 48),
 }
 SKY_CONFIRMED = [2, 7, 10, 11, 12, 19, 26, 27, 28, 29, 30, 33]
-_CPP = "lib/stages/gnss/galileoE5bCode.cpp"
-_CPP_A = "lib/stages/gnss/galileoE5aCode.cpp"
+_CPP = kotekan_src.gnss_cpp("galileoE5bCode.cpp")
+_CPP_A = kotekan_src.gnss_cpp("galileoE5aCode.cpp")
 
 
 def _cs100_table(path, name):
     """Parse a CS100 hex table straight out of the C++ -- never transcribe it a second time."""
-    import os
-
-    root = os.path.dirname(
-        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    )
-    src = open(os.path.join(root, path)).read()
+    src = open(path).read()
     i = src.index(name)
     j = src.index("};", i)
     import re as _re
@@ -383,7 +378,12 @@ def main():
             if checked and (prn in table or not (prn % 10)):
                 print(line)
     cpp = _cpp_codes()
-    if cpp is None:
+    # GNSS_REQUIRE_CXX (the test runner sets it): this host must compile the C++, so no
+    # compiler fails rather than skips.
+    if cpp is None and os.environ.get("GNSS_REQUIRE_CXX"):
+        print("C++: no compiler, and GNSS_REQUIRE_CXX is set")
+        fails += 1
+    elif cpp is None:
         print("C++: no compiler, bit-exact check SKIPPED")
     elif isinstance(cpp, str):
         print("C++: %s" % cpp)

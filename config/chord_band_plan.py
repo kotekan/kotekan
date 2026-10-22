@@ -21,10 +21,21 @@ of nodes sees, and where the delay response aliases.
 import argparse
 import math
 import os
+import sys
 
 import yaml
 
 CONF = os.path.dirname(os.path.abspath(__file__))
+# kotekan_src (python/scripts/gnss) says where the kotekan source tree is.
+_GNSS_PY = os.path.normpath(
+    os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "..", "python", "scripts", "gnss"
+    )
+)
+if _GNSS_PY not in sys.path:
+    sys.path.append(_GNSS_PY)
+import kotekan_src  # noqa: E402
+
 DEFAULT_NODE_FILE = os.path.join(CONF, "chord_gnss_node.yaml")
 
 # The GNSS base chipping/subcarrier unit that BOC orders multiply (gnssBandPlan.cpp).
@@ -78,9 +89,7 @@ def signal_table(header=None):
                     boc_m, boc_n}}.
     """
     if header is None:
-        header = os.path.join(
-            os.path.dirname(CONF), "lib", "stages", "gnss", "gnssSignal.hpp"
-        )
+        header = kotekan_src.gnss_cpp("gnssSignal.hpp")
     import re
 
     text = open(header).read()
