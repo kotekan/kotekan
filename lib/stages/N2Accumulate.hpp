@@ -182,7 +182,9 @@ void from_json(const nlohmann::json& j, N2VarianceMode& m);
  *                                          a change takes effect at the first accumulation bin
  *                                          starting at or after valid_at_time_ns. Only one
  *                                          change is pending at a time; a new post replaces
- *                                          a pending one.
+ *                                          a pending one. An update that enables
+ *                                          fringestopping fails if the telescope phase center
+ *                                          is not set.
  * @conf    input_order                     String. Ordering of data in input correlation matrix.
  *                                          Default: Telescope::fiducial_element_order()
  * @conf    output_order                    String. Ordering of data in ouput correlation matrix.
