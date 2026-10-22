@@ -75,11 +75,10 @@ BOOST_AUTO_TEST_CASE(_fringestop_update_needs_phase_center) {
         bc.add_buffer(name, bufs.back().get());
     }
 
-    // configUpdater throws when the subscriber refuses the initial value.
-    BOOST_CHECK_EXCEPTION(N2Accumulate(conf, "/accumulate", bc), std::runtime_error,
-                          [](const std::runtime_error& e) {
-                              return std::string(e.what()).find("initial value at endpoint "
-                                                                "'/fringestop_enabled'")
-                                     != std::string::npos;
-                          });
+    // The subscriber logs an ERROR and refuses the initial value; kotekan_logging_fixture turns
+    // that ERROR into a FatalError.
+    BOOST_CHECK_EXCEPTION(
+        N2Accumulate(conf, "/accumulate", bc), FatalError, [](const FatalError& e) {
+            return std::string(e.what()).find("Cannot enable fringestopping") != std::string::npos;
+        });
 }

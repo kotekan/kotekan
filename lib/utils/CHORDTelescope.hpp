@@ -164,7 +164,7 @@ struct DishParams {
      * @conf   pointing_endpoint    string. Endpoint of the pointing service. Required with
      *                              pointing_host_info.
      * @conf   pointing_query_timeout_s  uint32. Time to keep retrying the pointing query before
-     *                              failing. The last attempt can add 2 s. The query runs inside
+     *                              failing. The last attempt can add 3 s. The query runs inside
      *                              the POST /start call, so keep the total below the caller's
      *                              timeout (10 s for choco). Default: 5.
      * @conf   grid_x_axis          array<double,3>. Unit vector giving the grid x axis in

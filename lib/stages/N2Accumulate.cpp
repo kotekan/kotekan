@@ -888,8 +888,8 @@ bool N2Accumulate::receive_fringestop_enabled(nlohmann::json& json) {
         return false;
     }
     if (enabled && !_tel.phase_center_is_set()) {
-        WARN("Cannot enable fringestopping: the telescope phase center (dish_coelev_deg) is not "
-             "set.");
+        ERROR("Cannot enable fringestopping: the telescope phase center (dish_coelev_deg) is not "
+              "set; stopping kotekan.");
         return false;
     }
     // Times before the telescope's time zero would underflow to_seq. A past time applies at

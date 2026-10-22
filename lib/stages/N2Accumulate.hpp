@@ -183,8 +183,8 @@ void from_json(const nlohmann::json& j, N2VarianceMode& m);
  *                                          starting at or after valid_at_time_ns. Only one
  *                                          change is pending at a time; a new post replaces
  *                                          a pending one. An update that enables
- *                                          fringestopping fails if the telescope phase center
- *                                          is not set.
+ *                                          fringestopping while the telescope phase center is
+ *                                          not set stops kotekan.
  * @conf    input_order                     String. Ordering of data in input correlation matrix.
  *                                          Default: Telescope::fiducial_element_order()
  * @conf    output_order                    String. Ordering of data in ouput correlation matrix.
