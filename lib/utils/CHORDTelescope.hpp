@@ -163,7 +163,7 @@ struct DishParams {
      * - @c pointing_endpoint    string. Endpoint of the pointing service. Required with
      *                              pointing_host_info.
      * - @c pointing_query_timeout_s  uint32. Time to keep retrying the pointing query before
-     *                              failing. The last attempt can add 2 s. The query runs inside
+     *                              failing. The last attempt can add 3 s. The query runs inside
      *                              the POST /start call, so keep the total below the caller's
      *                              timeout (10 s for choco). Default: 5.
      * - @c dish_inputs          array<dishInfo>. List of dish inputs, with all fields populated.
