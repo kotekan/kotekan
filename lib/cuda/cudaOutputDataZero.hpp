@@ -25,11 +25,10 @@
  * This is a cudaCommand that async copies a buffer of zeros from CPU to GPU.
  *
  * @par GPU Memory
- * @gpu_mem gpu_mem          Buffer to zero, arbitrary size
+ * @gpu_mem output           Buffer to zero, arbitrary size
  *     @gpu_mem_type         staging
  *     @gpu_mem_format       Any
  *
- * @conf   gpu_mem           String, name of the GPU memory to zero.
  * @conf   data_length       Int, size of buffer to zero in Bytes.
  *
  * @author Keith Vanderlinde
@@ -46,8 +45,6 @@ public:
 
 private:
     int32_t output_len;
-    /// Name of the GPU memory to zero.
-    std::string _gpu_mem;
     void* output_zeros;
 };
 
