@@ -14,7 +14,7 @@
 #include "kotekanLogging.hpp"      // for DEBUG, INFO
 #include "n2k/rfi_kernels.hpp"     // for SkKernel
 
-#include <algorithm>          // for min
+#include <algorithm>          // for find, min
 #include <cstddef>            // for ptrdiff_t
 #include <cstdint>            // for int8_t, uint64_t, uint8_t
 #include <cuda_runtime_api.h> // for cudaStreamSynchronize
@@ -26,6 +26,8 @@
 #include <numeric>            // for gcd
 #include <string>             // for basic_string, string
 #include <sys/types.h>        // for uint, ulong
+#include <utility>            // for pair
+#include <vector>             // for vector
 
 using kotekan::div_noremainder;
 using kotekan::round_down;
@@ -66,6 +68,12 @@ using kotekan::round_up;
  *      with fields `enabled` (bool) and `valid_at_time_ns` (int64), switching first-stage
  *      excision on or off from the first frame starting at or after that instrument time.
  *      A time of 0 means from startup. N2Accumulate applies the same rule to record the switch.
+ * @conf rfi_first_stage_excision_exempt_freq_ids  vector of int  Default empty. Coarse
+ *      frequency IDs exempt from first-stage excision: while excision is enabled, their rows
+ *      of the RFI mask are set all-good after the SK kernel. Their SKtilde is still computed.
+ *      They are matched against the coarse frequencies in the `rfi_S012_name` metadata on the
+ *      first frame. N2Accumulate still counts these channels as enabled in
+ *      `frac_rfi_first_stage_enabled`, although they are not excised.
  */
 class cudaRFISKtilde : public cudaCommand {
 public:
@@ -129,6 +137,12 @@ private:
     std::mutex apply_mask_toggle_mutex;
     bool next_excision_enabled = true;
     int64_t next_enabled_valid_at_seq = std::numeric_limits<int64_t>::max();
+    // Channels exempt from first-stage excision, resolved to runs [first, last] of local
+    // channels on the first frame
+    const std::vector<int> excision_exempt_freq_ids;
+    std::vector<std::pair<int, int>> excision_exempt_runs;
+    bool excision_exempt_resolved = false;
+    void resolve_excision_exempt();
 
     const std::int64_t rfi_samples_per_bf_sample;
 
@@ -176,6 +190,8 @@ cudaRFISKtilde::cudaRFISKtilde(kotekan::Config& config, const std::string& uniqu
     enabled_config_path(
         config.get_default<std::string>(unique_name, "enabled_updatable_config", "")),
     excision_enabled(config.get_default<bool>(unique_name, "excision_enabled", true)),
+    excision_exempt_freq_ids(config.get_default<std::vector<int>>(
+        unique_name, "rfi_first_stage_excision_exempt_freq_ids", {})),
     rfi_samples_per_bf_sample(
         div_noremainder(bf_mask_lifetime_in_samples, rfi_downsampling_factor)),
     rfi_S012_read_granularity(8 * 128 / std::gcd(8 * 128, rfi_downsampling_factor)),
@@ -252,6 +268,45 @@ cudaRFISKtilde::cudaRFISKtilde(kotekan::Config& config, const std::string& uniqu
 }
 
 cudaRFISKtilde::~cudaRFISKtilde() {}
+
+void cudaRFISKtilde::resolve_excision_exempt() {
+    excision_exempt_resolved = true;
+    const std::shared_ptr<chordMetadata> meta = rfi_S012.get_metadata();
+    if (!meta->has_coarse_freq())
+        FATAL_ERROR("rfi_first_stage_excision_exempt_freq_ids needs the coarse frequencies in "
+                    "{:s}'s metadata, and it has none",
+                    rfi_S012_name);
+    const std::vector<int> coarse_freq = meta->get_coarse_freq();
+    if (coarse_freq.size() != size_t(num_frequencies))
+        FATAL_ERROR("{:s} has {:d} coarse frequencies for {:d} channels", rfi_S012_name,
+                    coarse_freq.size(), num_frequencies);
+    for (int f = 0; f < num_frequencies; ++f) {
+        if (std::find(excision_exempt_freq_ids.begin(), excision_exempt_freq_ids.end(),
+                      coarse_freq[f])
+            == excision_exempt_freq_ids.end())
+            continue;
+        if (!excision_exempt_runs.empty() && excision_exempt_runs.back().second + 1 == f)
+            excision_exempt_runs.back().second = f;
+        else
+            excision_exempt_runs.emplace_back(f, f);
+    }
+
+    if (get_instance_num() != 0)
+        return;
+    if (excision_exempt_runs.empty()) {
+        WARN("None of the {:d} rfi_first_stage_excision_exempt_freq_ids is in {:s}",
+             excision_exempt_freq_ids.size(), rfi_S012_name);
+        return;
+    }
+    std::string runs;
+    for (const auto& run : excision_exempt_runs) {
+        if (run.first == run.second)
+            runs += fmt::format(" {:d}", run.first);
+        else
+            runs += fmt::format(" {:d}-{:d}", run.first, run.second);
+    }
+    INFO("First-stage RFI excision exempts local channels{:s}", runs);
+}
 
 int cudaRFISKtilde::wait_on_precondition() {
     // Wait for data to be available in input ringbuffers
@@ -368,6 +423,9 @@ cudaEvent_t cudaRFISKtilde::execute(cudaPipelineState& /*pipestate*/,
                     "clock bufferBadInputs (metadata_source) to this GPU's voltage buffer",
                     bad_feed_mask_start, data_start);
 
+    if (!excision_exempt_freq_ids.empty() && !excision_exempt_resolved)
+        resolve_excision_exempt();
+
     // Apply a pending excision toggle at the start of a new frame at or after
     // the supplied valid sequence number
     auto rfi_S012_meta = rfi_S012.get_metadata();
@@ -444,6 +502,24 @@ cudaEvent_t cudaRFISKtilde::execute(cudaPipelineState& /*pipestate*/,
         if (mask_rows > mask_rows_to_end)
             CHECK_CUDA_ERROR(cudaMemsetAsync(
                 rfi_RFImask_memory, 0xff, (mask_rows - mask_rows_to_end) * mask_row_bytes, stream));
+    } else if (!excision_exempt_runs.empty()) {
+        // Overwrite the exempt channels' part of each claimed mask row with 1s, after the
+        // kernel on the same stream. The claimed region may wrap around the end of the ring.
+        const long chan_len = rfi_RFImask.get_ndarray().get_extent(2);
+        const long row_len = rfi_RFImask.get_ndarray().get_extent(1) * chan_len;
+        const long row_bytes = row_len * sizeof(kotekan::uint1x8_t);
+        const long rows = rfi_RFImask.get_write_valid().size();
+        const long rows_to_end = std::min(rows, rfimask_T512size - rfimask_T512min);
+        for (const auto& run : excision_exempt_runs) {
+            kotekan::uint1x8_t* const run_memory = rfi_RFImask_memory + run.first * chan_len;
+            const long run_bytes =
+                (run.second - run.first + 1) * chan_len * sizeof(kotekan::uint1x8_t);
+            CHECK_CUDA_ERROR(cudaMemset2DAsync(run_memory + rfimask_T512min * row_len, row_bytes,
+                                               0xff, run_bytes, rows_to_end, stream));
+            if (rows > rows_to_end)
+                CHECK_CUDA_ERROR(cudaMemset2DAsync(run_memory, row_bytes, 0xff, run_bytes,
+                                                   rows - rows_to_end, stream));
+        }
     }
 #ifdef DEBUGGING
     CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
