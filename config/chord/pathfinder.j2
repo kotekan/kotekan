@@ -625,8 +625,8 @@ dpdk:
 #   15    15    16    Et22   H01-H08 pol 1
 #
 # List only boards that send nothing; a listed board's inputs must also be flagged in
-# choco's bffs manual grid. Oct 19 2026: row H (slots 7, 15) is silent.
-missing_source_ids: [7, 15]
+# choco's bffs manual grid. Oct 22 2026: every board delivers.
+missing_source_ids: []
 
 # Combine packet receipt bitmaps and generate packet-loss masks
 {% for n in numa_halves %}
