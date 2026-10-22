@@ -13,9 +13,9 @@ Variants:
 - `half`: the northern half of the dishes is Missing (and masked bad); T2's `frb2` variant
   (check_phases.py) must still pass, with predictions from the present dishes only.
 
-Grid cells beyond the grid (CHIME has 4 x 256) are wrapped around it. Without a
-BB beamformer (CHIME) the BB parts are left out. Feed positions are compared up to a common
-offset, which no output depends on (CHIMETelescope centres the array).
+Grid cells beyond the grid (CHIME has 4 x 256) are wrapped around it. Feed positions are
+compared up to a common offset (CHIMETelescope centres the array); the BB phases are predicted
+from the written positions.
 
 `onehot` and `pairs` have no noise and first-stage RFI excision off, since a tone has spectral
 kurtosis 0.
@@ -190,7 +190,8 @@ def variables(tel, config, variant):
 
 def config_dish_attrs(config):
     """The dish grid indices [D, 2] (-1 unless an ArrayDish) and feed positions [D, 3] that the
-    config implies, and which dishes are listed."""
+    config implies, and which dishes are listed. CHIMETelescope does not read the dish types and
+    places every dish on the grid."""
     tel = config["telescope"]
     num_dishes = value(config, "num_dishes")
     grid = np.full((num_dishes, 2), -1)
@@ -198,7 +199,7 @@ def config_dish_attrs(config):
     listed = np.zeros(num_dishes, dtype=bool)
     for dish in tel["dish_inputs"]:
         d = dish["dish_idx"]
-        if dish["type"] == "ArrayDish":
+        if dish["type"] == "ArrayDish" or tel["name"] == "CHIMETelescope":
             grid[d] = [dish["grid_x_idx"], dish["grid_y_idx"]]
         disp = dish["feed_pos_disp_m"]
         pos[d] = [
@@ -337,9 +338,12 @@ def check_onehot(out_dir, var, config):
     audit(bb, first_seq=SEQ0, frequency_channels=channels)
     seqs = frame_seq_nums(bb)
     num_beams = bb.data.shape[1]
-    beams = read_output(out_dir, "bb_beam_positions").data[:num_beams]  # [B, 2]
+    positions = read_output(out_dir, "bb_beam_positions")
+    results.append(check_dish_attrs("bb_beam_positions", positions.attrs, config))
+    beams = positions.data[:num_beams]  # [B, 2]
     n = np.array([direction_vector(b) for b in beams])  # [B, 3]
-    pos, exists = dish_positions(config)
+    # The written feed positions, which calcBBPhase uses (CHIMETelescope centres the array)
+    pos = np.asarray(positions.attrs["feed_positions_m"])
     nu = sky_frequency(config, channels)
     gain = value(config, "bb_gain") * 127.5 / 128
     residuals = []

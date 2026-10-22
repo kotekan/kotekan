@@ -4,9 +4,8 @@ flips, NaN or Inf.
 Input, without noise (lib/testing/testSkySignal.hpp):
 - `full_scale`: 7 + 7i on every input, constant, i.e. a coherent source at zenith at the centre
   of every coarse channel.
-- `full_scale_tone`: an amplitude-7 tone from BB beam `BB_BEAM` (CHIME, without BB: from T2's
-  FRB2 source beam), at 1/128 cycles per sample (a fine-channel centre for U=64). The input
-  repeats every 128 samples.
+- `full_scale_tone`: an amplitude-7 tone from T2's BB source beam, at 1/128 cycles per sample (a
+  fine-channel centre for U=64). The input repeats every 128 samples.
 
 First-stage RFI excision is off: a signal of constant power has spectral kurtosis 0 and would be
 flagged entirely, and the correlator would sum nothing.
@@ -32,7 +31,6 @@ from kit import (
     decode_int4x2,
     find_stages,
     frb3_codes,
-    grid_beam_direction,
     has_bb,
     large_seq,
     read_output,
@@ -44,7 +42,6 @@ from kit import (
 )
 
 VARIANTS = ["full_scale", "full_scale_tone"]
-BB_BEAM = (3, 1)
 PERIOD = 128  # input period in samples (both variants)
 # The upchannelizer computes in float16; predictions within this margin of a rounding
 # threshold are not checked
@@ -67,11 +64,7 @@ def variables(tel, config, variant):
     else:
         source = {
             "amplitude": 7,
-            "direction": (
-                grid_beam_direction(config, "bb", *BB_BEAM)
-                if has_bb(config)
-                else check_phases.source_direction(config, "frb2")
-            ),
+            "direction": check_phases.source_direction(config, "bb"),
             "tone_cycles_per_frame": value(config, "num_times") // PERIOD,
         }
     outputs = [f"upchan_U{U}_voltage" for U in config["upchan_factors"]]

@@ -15,8 +15,8 @@ Checks:
 - The two streams agree at every sample.
 - BB phases, FRB1 weights, S0tilde and the N2 flags follow the written masks (as in T9).
 
-CHIME has no BB; it posts the bad inputs in cylinder order, as config/chime_upgrade_frb.j2, which
-for these inputs is the mask order.
+CHIME posts the bad inputs in cylinder order, as config/chime_upgrade_frb.j2, which for these
+inputs is the mask order.
 
 See docs/integration-tests/T9-bad-feed-mask.md.
 """
