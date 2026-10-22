@@ -1,0 +1,112 @@
+{#-
+  dtv.j2
+  PilotProxy DTV pilot detector on each NUMA half, detect only: the mask is written to disk
+  and not applied to N2.  Included by pathfinder.j2 when dtv_enabled is set, e.g.
+      -e '{"dtv_enabled": true, "dtv_runtime_bundle_dir": "/path/to/bundle"}'
+  Each half binds the bundle profiles whose chord_channel_id is in its coarse_freq list; a
+  half with none logs "detector DISABLED" and writes all-zero masks and powers.  Every bound
+  channel must be calibrated in the bundle, so export only the channels under test.  The
+  detector takes its own CUDA stream triple: pipeline index 1 while the pathfinder's
+  pipelines all share index 0, and the index after theirs (13) once stream_base_step
+  separates them.  See docs/sphinx/user/modules/pilotproxy.rst.
+-#}
+{% set dtv_runtime_bundle_dir = dtv_runtime_bundle_dir|default("data/pilotproxy_bundle") %}
+{% set dtv_output_dir = dtv_output_dir|default("/scratch/dtv") %}
+
+# One frame per 8192-sample block: the mask byte, the three frame powers
+# (target, lower, upper; each the sum of 256 fine powers) and the fine rank
+# support of each local frequency.
+{% for n in numa_halves %}
+host_dtv_mask_buffer{{ n.sfx }}:
+    kotekan_buffer: ndarray
+    num_frames: host_side_buffer_depth
+    value_type: int8
+    extents: [num_local_freq]
+    quantity_name: "dtv_mask"
+    dimnames: ["F"]
+    dimscalings: [1]
+    metadata_pool: main_pool
+{%- if n.id %}
+    numa_node: {{ n.id }}
+{%- endif %}
+
+host_dtv_powers_buffer{{ n.sfx }}:
+    kotekan_buffer: ndarray
+    num_frames: host_side_buffer_depth
+    value_type: uint64
+    extents: [num_local_freq, 3]
+    quantity_name: "dtv_powers"
+    dimnames: ["F", "W"]
+    dimscalings: [1, 1]
+    metadata_pool: main_pool
+{%- if n.id %}
+    numa_node: {{ n.id }}
+{%- endif %}
+
+host_dtv_fine_support_buffer{{ n.sfx }}:
+    kotekan_buffer: ndarray
+    num_frames: host_side_buffer_depth
+    value_type: int32
+    extents: [num_local_freq, 2]
+    quantity_name: "dtv_fine_support"
+    dimnames: ["F", "S"]
+    dimscalings: [1, 1]
+    metadata_pool: main_pool
+{%- if n.id %}
+    numa_node: {{ n.id }}
+{%- endif %}
+{% endfor %}
+
+run_dtv_detector:
+{% for n in numa_halves %}
+    gpu_{{ n.id }}:
+        kotekan_stage: cudaProcess
+        gpu_id: {{ n.id }}
+        cuda_stream_base: {{ 13 * stream_base_step if stream_base_step else 1 }}
+        cpu_affinity: {{ n.gpu_cpus }}
+        in_buffers:
+            host_voltage_ringbuffer: host_voltage_ringbuffer{{ n.sfx }}
+        out_buffers:
+            host_dtv_mask: host_dtv_mask_buffer{{ n.sfx }}
+            host_dtv_powers: host_dtv_powers_buffer{{ n.sfx }}
+            host_dtv_fine_support: host_dtv_fine_support_buffer{{ n.sfx }}
+        commands:
+        - name: cudaPilotProxyDetector
+          num_frequencies: num_local_freq
+          voltage_name: voltage
+          detector_window_samples: 64
+          dtv_mask_name: dtv_mask
+          dtv_powers_name: dtv_powers
+          dtv_fine_support_name: dtv_fine_support
+          pilot_profiles_path: {{ dtv_runtime_bundle_dir }}/pilot_profiles.json
+          weights_path: {{ dtv_runtime_bundle_dir }}/weights.bin
+        - name: cudaSyncOutput
+        - name: cudaOutputData
+          gpu_mem: dtv_mask_buffer
+          out_buf: host_dtv_mask
+        - name: cudaOutputData
+          gpu_mem: dtv_powers_buffer
+          out_buf: host_dtv_powers
+        - name: cudaOutputData
+          gpu_mem: dtv_fine_support_buffer
+          out_buf: host_dtv_fine_support
+{% endfor %}
+
+# rawFileWrite stores each frame's 148888-byte chordMetadata with it, so the three
+# files take about 459 kB per 41.9 ms block per half: 11 MB/s, about 40 GB an hour,
+# on every half, including halves where the detector is disabled. 1024 blocks (43 s)
+# per file.
+write_dtv:
+{% for n in numa_halves %}
+{% for product in ["mask", "powers", "fine_support"] %}
+    {{ product }}_{{ n.id }}:
+        kotekan_stage: rawFileWrite
+        cpu_affinity: {{ n.other_cpus }}
+        in_buf: host_dtv_{{ product }}_buffer{{ n.sfx }}
+        base_dir: {{ dtv_output_dir }}
+        file_name: dtv_{{ product }}{{ n.sfx }}
+        file_ext: raw
+        num_frames_per_file: 1024
+        allow_ndarray: true
+{% endfor %}
+{% endfor %}
