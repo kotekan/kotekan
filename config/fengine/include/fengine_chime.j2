@@ -120,15 +120,8 @@ updatable_config:
     # Bad input mask, in cylinder order (bufferBadInputs `input_order`)
     bad_inputs:
         kotekan_update_endpoint: json
-        # yamlfix:off
-        bad_inputs: &bad_inputs [
-              46,   84,  107,  136,  142,  256,  257,  319,  348,  357,  369,
-             370,  453,  550,  551,  579,  638,  688,  739,  742,  768,  784,
-             807,  855,  944,  960,  967,  971,  981,  986, 1005, 1010, 1020,
-            1023, 1058, 1141, 1166, 1225, 1280, 1281, 1285, 1311, 1314, 1343,
-            1380, 1381, 1479, 1521, 1523, 1543, 1642, 1684, 1687, 1738, 1792,
-            1794, 1910, 1912, 1943, 1945, 1950, 1982, 1984, 1987, 2032, 2034]
-        # yamlfix:on
+        {% from "include/bad_inputs_chime.j2" import bad_inputs %}
+        bad_inputs: {{ bad_inputs }}
         start_time: 1535048997.
         update_id: "initial_flags"
     # RFI excision (include/rfi_chime.j2, include/n2k_chime.j2). 0 is a special case which
@@ -211,10 +204,11 @@ host_voltage_ringbuffer:
 
 # The lost samples, one byte (1 = lost) per sample, for all dishes and polarizations of a group of
 # 4 frequencies: lost_samples_buffer_<k> serves host_voltage_buffer_<4k> to <4k+3>.
-# config/chime_upgrade_frb.j2 also zeroes the lost voltages with zeroSamples. zeroSamples is a
-# second producer of the voltage buffers and relies on the lost samples being marked full after the
-# voltages are written, as dpdk does. The file input and the generators produce the two streams
-# independently, so there is no zeroSamples here; no samples are lost.
+# zeroSamples, a second producer of the voltage buffers, zeroes the lost voltages; it relies on the
+# lost samples being marked full after the voltages are written, as dpdk does. The generator
+# (include/invent_voltage_chime.j2) writes both in that order and runs zeroSamples. The file input
+# (include/input_chime.j2) produces the two streams independently, so it has no zeroSamples and no
+# lost samples.
 {% for id in range(16 // 4) %}   # num_frequencies = 16
 lost_samples_buffer_{{ id }}:
     kotekan_buffer: ndarray
