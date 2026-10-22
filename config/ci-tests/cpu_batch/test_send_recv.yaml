@@ -3,7 +3,8 @@
 # A simple test pipeline that generates random data and does a send/receive,
 # for each buffer type: standard, N2, and ndarray (the latter both with and
 # without the optional descriptor labels declared in config). The N2 frames
-# are also sent into a larger standard buffer, to test allow_short_frames.
+# are also sent into a larger standard buffer with allow_short_frames set;
+# that case checks only that the short frames are accepted.
 #
 type: config
 log_level: INFO
@@ -288,7 +289,8 @@ buffer_recv_ndarray_nolabel:
     buf: recv_ndarray_nolabel_buffer
     listen_port: 11028
 
-# Verify each recv buffer matches its send buffer (data and metadata).
+# Verify each recv buffer, except recv_short_buffer, matches its send buffer
+# (data and metadata).
 
 check_standard_send_recv:
     kotekan_stage: testDataCheckUchar
