@@ -14,8 +14,9 @@ Variants:
 - `manual`: both setters in `manual` mode, with beams at irregular positions and random 64-bit
   ids, in shuffled order. The source is off the production grids.
 
-CHIME has no BB beamformer, and its production FRB2 beams are `manual`: there `grid` keeps them and
-the source is T2's FRB2 source beam; `manual` jitters them.
+CHIME's production FRB2 beams are `manual`: there `grid` keeps them, the source is T2's FRB2
+source beam, and the BB column (num_x 1) is centred on it with the FRB2 y spacing at the source;
+`manual` jitters the FRB2 beams.
 
 Checks: the written positions and ids equal the configured ones, one frame per lifetime with
 `fpga_seq_num` seq0 + k L (BB) and seq0 + T* + k L (FRB2); the BB power peaks in the predicted
@@ -135,8 +136,27 @@ def frb2_angles(config):
 def variables(tel, config, variant):
     manual_frb2 = find_stages(config, "setFRBBeams")[0]["mode"] == "manual"
     if variant == "grid" and manual_frb2:
-        direction = check_phases.source_direction(config, "frb2")
+        # The source is T2's FRB2 beam. The BB column has the FRB2 y spacing at the source and is
+        # centred on it.
+        positions = frb2_beam_positions(config)
+        source = check_phases.frb2_beam(config)
+        direction = [float(c) for c in positions[source]]
         layouts = {}
+        if has_bb(config):
+            x, y = [math.degrees(math.asin(c)) for c in direction]
+            nx = value(config, "frb2_num_beams_x")
+            spacing = math.degrees(math.asin(positions[source + nx][1])) - y
+            num_y = value(config, "bb_num_beams")
+            bb_y_min = y - (num_y - 1) // 2 * spacing
+            layouts["bb_beam_layout"] = {
+                "fixed_mode": "grid_degrees",
+                "num_x": 1,
+                "num_y": num_y,
+                "x_min": x - BB_COLUMN_HALF_WIDTH,
+                "x_max": x + BB_COLUMN_HALF_WIDTH,
+                "y_min": bb_y_min,
+                "y_max": bb_y_min + (num_y - 1) * spacing,
+            }
     elif variant == "grid":
         (nx, ny), (x_min, x_max, y_min, y_max) = frb2_grid(config)
         x = grid_point(x_min, x_max, nx, FRB2_GRID_BEAM[0])
@@ -329,7 +349,14 @@ def check(out_dir, var, config):
         bb_positions, bb_ids = configured_beams(
             config, "run_set_bb_beams", "fixed_mode", "fixed_beams"
         )
-        bb_source = np.nonzero(np.all(bb_positions == at_source, axis=1))[0]
+        # The closest beam: setBBBeams computes grid positions from degrees, which can round the
+        # position of a manual FRB2 beam (CHIME) differently
+        distance = np.abs(bb_positions - at_source).sum(axis=1)
+        bb_source = np.nonzero(distance == distance.min())[0][:1]
+        require(
+            distance.min() < 1e-6,
+            f"source {direction} is {distance.min():.2g} from the closest BB beam",
+        )
     else:
         bb_source = np.zeros(1, dtype=int)
     require(

@@ -4,11 +4,15 @@ output.
 Input: a constant voltage A + 0i (a tone at the centre of every coarse channel, from zenith) on
 every dish and polarization in the FPGA samples [box_begin, box_end), zero elsewhere. The box
 starts mid-frame. A = 1 is small enough that no output saturates with the production gains. With
-upchannelizer gains below 0.8 sqrt(U) (CHIME: 1) A is raised in proportion, so that the tone, at
-the edge of two fine channels, does not round to zero.
+upchannelizer gains below 0.8 sqrt(U) (config/chime_upgrade_frb.j2: 1) A is raised in proportion,
+so that the tone, at the edge of two fine channels, does not round to zero.
 
 Variants: `seq0` starts all generators at FPGA sequence number 0, `seqlarge` at a large value
 that is frame-aligned but aligned to no lifetime or integration boundary.
+
+CHIME also checks the HFB chain: the U = 128 upchannelizer as the others; HFB1, whose samples
+cover one frame each, has signal exactly in the samples whose window reaches the box; and the
+HFB2 frame (20 frames) that holds the box has signal and the next one has none.
 """
 
 import math
@@ -21,6 +25,8 @@ from kit import (
     decode_int4x2,
     frame_seq_nums,
     has_bb,
+    hfb_t_star,
+    hfb_upchan_factors,
     large_seq,
     power_centroid,
     read_output,
@@ -56,6 +62,12 @@ def variables(tel, config, variant):
     write_frames = {name: num_frames for name in outputs}
     write_frames["frb1_beams"] = 1
     write_frames["frb2_beams"] = 1
+    for U in hfb_upchan_factors(config):
+        write_frames[f"upchan_hfb_U{U}_voltage"] = num_frames
+    if hfb_upchan_factors(config):
+        write_frames["hfb1_beams"] = 1
+        write_frames["hfb2_beams"] = 2
+    outputs = list(write_frames)
     return {
         "first_fpga_seq_num": seq0,
         "input_kind": "sky",
@@ -113,11 +125,19 @@ def check(out_dir, var, config):
 
     # Upchannelized voltages: [Tbar, Fbar, P, D]; a sample's label is the beginning of the
     # centred upchannelized sample, which covers U FPGA samples
-    for U in config["upchan_factors"]:
-        name = f"upchan_U{U}_voltage"
+    chains = [(f"upchan_U{U}", U, t_star) for U in config["upchan_factors"]]
+    chains += [
+        (f"upchan_hfb_U{U}", U, hfb_t_star(config, U))
+        for U in hfb_upchan_factors(config)
+    ]
+    for chain, U, chain_t_star in chains:
+        name = f"{chain}_voltage"
         ebar = read_output(out_dir, name)
         audit(
-            ebar, upchan_factor=U, first_seq=seq0 + t_star, frequency_channels=channels
+            ebar,
+            upchan_factor=U,
+            first_seq=seq0 + chain_t_star,
+            frequency_channels=channels,
         )
         labels = ebar.fpga_seq_num + U * np.arange(ebar.data.shape[0]) + (U - 1) / 2
         power = (np.abs(decode_int4x2(used_channels(ebar, 1))) ** 2).sum(axis=(1, 2, 3))
@@ -160,4 +180,48 @@ def check(out_dir, var, config):
     )
     results.append(f"frb2_beams: centroid {mean:.1f}")
 
+    if "hfb1_beams" in var["outputs"]:
+        results += check_hfb(out_dir, var, config)
+    return results
+
+
+def check_hfb(out_dir, var, config):
+    """HFB1 [Ttilde, Fbar, beamQ, beamP] and HFB2 [Ttildehi256, R, Fbar, Ttildelo256] (one sample
+    per frame, per-frame files)."""
+    box_begin, box_end = var["box_begin"], var["box_end"]
+    seq0 = var["first_fpga_seq_num"]
+    U = max(hfb_upchan_factors(config))
+    t_star = hfb_t_star(config, U)
+    reach = NUM_TAPS * U
+    results = []
+
+    hfb1 = read_output(out_dir, "hfb1_beams")
+    audit(hfb1, first_seq=seq0 + t_star)
+    step = hfb1.time_downsampling
+    labels = hfb1.fpga_seq_num + step * np.arange(hfb1.data.shape[0])
+    power = used_channels(hfb1, 1).astype(np.float64).sum(axis=(1, 2, 3))
+    expected = (labels < box_end + reach) & (labels + step > box_begin - reach)
+    require(
+        expected.any() and np.all((power > 0) == expected),
+        f"hfb1_beams: signal in samples at {labels[power > 0].tolist()}, expected "
+        f"{labels[expected].tolist()} ({step} samples each)",
+    )
+    results.append(
+        f"hfb1_beams: signal only in the sample at {labels[expected].tolist()} ({step} samples)"
+    )
+
+    hfb2 = read_output(out_dir, "hfb2_beams")
+    audit(hfb2, first_seq=seq0 + t_star)
+    seqs = frame_seq_nums(hfb2)
+    length = hfb2.data.shape[0] // len(seqs) * hfb2.time_downsampling
+    power = hfb2.data.astype(np.float64).reshape(len(seqs), -1).sum(axis=1)
+    holds = (seqs <= box_begin) & (box_end <= seqs + length)
+    require(
+        holds.any() and np.all((power > 0) == holds),
+        f"hfb2_beams: power {power.tolist()} in frames at {seqs.tolist()}, "
+        f"expected only in the frame holding [{box_begin}, {box_end})",
+    )
+    results.append(
+        f"hfb2_beams: signal only in the frame at {seqs[holds][0]} ({length} samples)"
+    )
     return results

@@ -8,7 +8,7 @@ For the upchannelized voltages (every U), the BB beams and the 4-bit FRB3 beams 
 measures the rms, the fraction of zeros, the fraction at ±7 (saturated) and the fraction of -8
 (no data) over the used frequency slots, and compares them with a Gaussian noise model. It fails
 if the rms is below 0.5 or above 3.5 LSB, more than 5% are saturated, or a used slot holds -8.
-FRB3 (4 bits, or 8 bits for CHIME, which has no BB beamformer) is dequantized with its offset and
+FRB3 (4 bits, or 8 bits for CHIME) is dequantized with its offset and
 scale and compared with FRB2.
 
 See docs/integration-tests/T3-quantization.md.

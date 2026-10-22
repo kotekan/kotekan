@@ -203,6 +203,19 @@ def upchan_t_star(config):
     return -(-t_star // align) * align
 
 
+def hfb_upchan_factors(config):
+    """The upchannelization factors of the HFB chain (CHIME: [128]; none elsewhere)."""
+    return config.get("upchan_hfb", {}).get("upchan_factors", [])
+
+
+def hfb_t_star(config, U):
+    """The output offset T* of the HFB upchannelizer of factor U, which aligns its output with
+    the largest factor of the HFB chain (`max_upchannelization_factor` of its stage)."""
+    align = output_alignment(config)
+    u_max = config[f"run_upchan_hfb_U{U}"]["max_upchannelization_factor"]
+    return -(-((NUM_TAPS - 1) * u_max // 2) // align) * align
+
+
 def large_seq(config):
     """A large start FPGA sequence number. N2Accumulate needs frames to start at multiples of
     the frame length, and the voltage stream must start at a multiple of the upchannelizer
@@ -236,7 +249,7 @@ def value(config, key, block=None):
 
 
 def has_bb(config):
-    """Whether the config has the baseband beamformer (CHIME has none)."""
+    """Whether the config has the baseband beamformer."""
     return "host_bb_beams_buffer" in config
 
 
@@ -360,12 +373,18 @@ def grid_point(lo, hi, n, i):
     return (lo * (n - i - 1) + hi * i) / (n - 1)
 
 
+# A source whose strongest predicted BB beam has less than this fraction of the on-source power
+# is far from the BB beams
+BB_FAR_SOURCE = 0.1
+
+
 def bb_peak_line(bb_data, positions, config, phases, nu, amplitude):
     """Baseband beams `bb_data` [Thi, B, F, P, T] (int4 bytes) of a tone of `amplitude` with geometric phases `phases`
     [F, D] at frequencies `nu` [F], beams at `positions` [B, 2]. J = bb_gain Σ_d exp(iφ_bd) E_d,
     so the predicted tone power in beam b is (A bb_gain |Σ_d exp(2πi ν (n_b - n)·r_d / c)|)^2 on
     top of a noise floor that is the same for all beams. Where the prediction is unambiguous,
-    the measured power must peak in the predicted beam."""
+    the measured power must peak in the predicted beam. A source far from all BB beams (CHIME's
+    1 x N column) is not checked."""
     power = (np.abs(decode_int4x2(bb_data)) ** 2).mean(axis=(0, 3, 4))  # [B, F]
     gain = value(config, "bb_gain") * 127.5 / 128
     predicted = np.stack(
@@ -382,6 +401,12 @@ def bb_peak_line(bb_data, positions, config, phases, nu, amplitude):
         ]
     )  # [B, F]
     ranked = np.sort(predicted, axis=0)
+    on_source = (amplitude * gain * np.abs(phases).sum(axis=1)) ** 2  # [F]
+    if np.all(ranked[-1] < BB_FAR_SOURCE * on_source):
+        return (
+            f"bb_beams: source far from the BB beams (strongest beam at most "
+            f"{(ranked[-1] / on_source).max():.1%} of the on-source power), peak not checked"
+        )
     clear = (ranked[-1] >= 1.25 * ranked[-2]) & (ranked[-1] - ranked[-2] >= 1)
     require(clear.any(), "bb_beams: no frequency with an unambiguous predicted peak")
     wrong = clear & (power.argmax(axis=0) != predicted.argmax(axis=0))

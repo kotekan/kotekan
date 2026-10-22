@@ -31,8 +31,7 @@ Checks:
   frames it accumulates; visibilities and weights of products of good elements, and the sample
   counts, equal the reference.
 
-CHIME has no BB beamformer and no FRB U = 1; its FRB1 weights are the feed gains of
-processFRBFeedGains.
+CHIME has no FRB U = 1; its FRB1 weights are the feed gains of processFRBFeedGains.
 CHIMETelescope has no dish types for `bf_mode: auto`, so the half-filled CHIME run lists the
 Missing inputs with `bf_mode: manual`.
 

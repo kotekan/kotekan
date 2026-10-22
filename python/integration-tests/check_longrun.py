@@ -29,8 +29,7 @@ Checks:
 - Memory: kotekan's resident memory does not grow by more than `MEMORY_TOLERANCE_MIB` after
   `MEMORY_WARMUP` seconds (see `check_memory`).
 
-CHIME has no BB and poisons with `random_valid` bytes (see check_badfeeds.py); its run has as
-many frames, which also hold whole N2 integrations of 240 frames.
+CHIME poisons with `random_valid` bytes (see check_badfeeds.py).
 
 See docs/integration-tests/T10-long-run.md.
 """

@@ -3,17 +3,22 @@
 Input: one tone from direction n, the same on every input apart from the geometric phase
 exp(-2πi ν n·r_d / c) (lib/testing/testSkySignal.hpp), in Gaussian noise of 2.8 LSB per
 component. The tone is at 19.5/64 cycles per sample in every coarse channel, moved to a
-fine-channel centre for the largest U (64; CHIME: U=16, 4.5/16), and away from the mirror channel
-for every U. Its amplitude (0.75 LSB) keeps the upchannelizer outputs below saturation with the
+fine-channel centre for the largest U (64; CHIME: U=128 of the HFB chain, 39.5/128), and away
+from the mirror channel for every U. Its amplitude (0.75 LSB) keeps the upchannelizer outputs below saturation with the
 production gains, which multiply a tone at a fine-channel centre by 0.81 sqrt(U); the noise
-dithers the int4 rounding. The BB source beam (0.75 sqrt(D)) saturates for D > 64, which the BB
+dithers the int4 rounding. For this the HFB gains (U=128) are scaled by 1/sqrt(2). The BB source beam (0.75 sqrt(D)) saturates for D > 64, which the BB
 peak check tolerates. Phases and amplitudes are estimated coherently, by averaging over time
 against the predicted tone.
 
-Variants: the source is on a BB beam (`bb`, not for CHIME, which has no BB beamformer), on an
-FRB2 beam (`frb2`), or between beams (`offgrid`). The variant `n2` checks the visibilities with a
+Variants: the source is on a BB beam (`bb`), on an FRB2 beam (`frb2`), or between beams
+(`offgrid`). The beams are `BB_BEAM` and `FRB2_BEAM`, moved into the grid where it is smaller
+(CHIME: BB 1 x 32, FRB2 4 x 256); the BB peak is not checked for a source far from the BB
+beams (CHIME `frb2`). The variant `n2` checks the visibilities with a
 stronger tone (`n2_amplitude`, 2 for the pathfinder) that still passes RFI excision; fringe
 stopping is off, since Earth rotation would add up to a few degrees over one integration.
+
+CHIME also checks the HFB upchannelizer (U=128) as the others, and that it agrees with U=16: the
+tone is in the U=128 fine channel inside the U=16 one, with the same phase and amplitude.
 """
 
 import glob
@@ -37,6 +42,8 @@ from kit import (
     geometric_phases,
     grid_beam_direction,
     has_bb,
+    hfb_t_star,
+    hfb_upchan_factors,
     large_seq,
     read_output,
     require,
@@ -51,6 +58,9 @@ from kit import (
 VARIANTS = ["bb", "frb2", "offgrid", "n2"]
 AMPLITUDE = 0.75
 NOISE = 2.8
+# The HFB chain's production gain 0.8 sqrt(128) would saturate the tone (6.8 LSB); this scale
+# brings it to 4.8 LSB, as for U = 64
+HFB_GAIN_SCALE = 1 / math.sqrt(2)
 BB_BEAM = (3, 1)
 FRB2_BEAM = (12, 5)
 # The N2 tone's spectral kurtosis lies this many standard deviations inside the RFI threshold
@@ -59,6 +69,14 @@ N2_SK_MARGIN = 1.2
 
 def variants(config):
     return [v for v in VARIANTS if v != "bb" or has_bb(config)]
+
+
+def bb_beam(config):
+    """The BB source beam (x, y): BB_BEAM clamped to the beam grid (CHIME: 1 x 32)."""
+    return (
+        min(BB_BEAM[0], value(config, "bb_num_beams_x") - 1),
+        min(BB_BEAM[1], value(config, "bb_num_beams_y") - 1),
+    )
 
 
 def frb2_beam(config):
@@ -70,7 +88,7 @@ def frb2_beam(config):
 
 def source_direction(config, variant):
     if variant == "bb":
-        return grid_beam_direction(config, "bb", *BB_BEAM)
+        return grid_beam_direction(config, "bb", *bb_beam(config))
     if variant == "frb2":
         return [float(x) for x in frb2_beam_positions(config)[frb2_beam(config)]]
     return [float(np.sin(np.radians(0.5))), float(np.sin(np.radians(0.8)))]
@@ -96,7 +114,7 @@ def n2_amplitude(config):
 def tone_cycles(config):
     """19.5/64 cycles per sample, moved down to the nearest fine-channel centre for the largest
     upchannelization factor."""
-    u_max = max(config["upchan_factors"])
+    u_max = max(config["upchan_factors"] + hfb_upchan_factors(config))
     f_tone = (np.floor(19.5 / 64 * u_max) + 0.5) / u_max
     return round(f_tone * value(config, "num_times"))
 
@@ -121,10 +139,14 @@ def variables(tel, config, variant):
     outputs = ["voltage"] + ["bb_beams", "bb_beam_positions"] * has_bb(config)
     outputs += ["frb1_beams", "frb2_beams"]
     outputs += [f"upchan_U{U}_voltage" for U in config["upchan_factors"]]
+    outputs += [f"upchan_hfb_U{U}_voltage" for U in hfb_upchan_factors(config)]
     write_frames = {name: 2 for name in outputs}
     write_frames.update(
         {"voltage": 1, "bb_beam_positions": 1, "frb1_beams": 1, "frb2_beams": 1}
     )
+    for U in hfb_upchan_factors(config):
+        gains = value(config, f"run_set_upchan_hfb_U{U}_gain")["upchan_gain"]
+        var.setdefault("upchan_gains", {})[str(U)] = [g * HFB_GAIN_SCALE for g in gains]
     var["outputs"] = outputs
     var["write_frames"] = write_frames
     return var
@@ -187,13 +209,19 @@ def check(out_dir, var, config):
     # where L is the output label and w the start of its input window. The fine channel with the
     # largest coherent amplitude must be the predicted one, and there the time-averaged ratio of
     # measured to predicted must have phase 0 and amplitude 1.
-    for U in config["upchan_factors"]:
-        name = f"upchan_U{U}_voltage"
+    chains = [(f"upchan_U{U}", U, t_star) for U in config["upchan_factors"]]
+    chains += [
+        (f"upchan_hfb_U{U}", U, hfb_t_star(config, U))
+        for U in hfb_upchan_factors(config)
+    ]
+    measured = {}  # chain -> (U, fine-channel range in cycles per sample, mean ratio)
+    for chain, U, chain_t_star in chains:
+        name = f"{chain}_voltage"
         ebar_out = read_output(out_dir, name)
         audit(
             ebar_out,
             upchan_factor=U,
-            first_seq=SEQ0 + t_star,
+            first_seq=SEQ0 + chain_t_star,
             frequency_channels=channels,
         )
         ebar = decode_int4x2(used_channels(ebar_out, 1)).astype(
@@ -227,7 +255,7 @@ def check(out_dir, var, config):
         )
 
         gain = np.array(
-            value(config, f"run_set_upchan_U{U}_gain")["upchan_gain"], dtype=float
+            value(config, f"run_set_{chain}_gain")["upchan_gain"], dtype=float
         )[u_peak]
         s = np.arange(NUM_TAPS * U)
         response = (
@@ -246,6 +274,30 @@ def check(out_dir, var, config):
         results.append(
             f"{name}: fine channel {u_peak}, phase {mean:+.1f} deg (99%: {worst:.1f}), amplitude x{amp:.2f}"
         )
+        fine_range = ((u_peak - U / 2) / U, (u_peak + 1 - U / 2) / U)
+        measured[chain] = (U, fine_range, ratio.mean())
+
+    # Each HFB upchannelizer (CHIME: U=128) must see the tone as the largest FRB one (U=16)
+    for chain in [c for c in measured if c.startswith("upchan_hfb")]:
+        frb_chain = max(
+            (c for c in measured if not c.startswith("upchan_hfb")),
+            key=lambda c: measured[c][0],
+        )
+        U1, (lo1, hi1), r1 = measured[frb_chain]
+        U2, (lo2, hi2), r2 = measured[chain]
+        rel = r2 / r1
+        line = (
+            f"U={U2} fine channel [{lo2:.4f}, {hi2:.4f}) in U={U1} [{lo1:.4f}, {hi1:.4f}), "
+            f"ratio phase {np.degrees(np.angle(rel)):+.2f} deg, amplitude x{abs(rel):.3f}"
+        )
+        require(
+            lo1 <= lo2
+            and hi2 <= hi1
+            and abs(np.degrees(np.angle(rel))) <= 2
+            and abs(abs(rel) - 1) <= 0.05,
+            f"{chain}_voltage does not agree with {frb_chain}_voltage: {line}",
+        )
+        results.append(f"{chain}_voltage agrees with {frb_chain}_voltage: {line}")
 
     # FRB1 beams [Ttilde, Fbar, beamQ, beamP]: a spatial FFT over the dish grid. Beam p peaks at
     # p = 2 θ_M mod 2M with θ_M = M (n·σ_M) ν / c, σ_M the grid spacing along M (and likewise q

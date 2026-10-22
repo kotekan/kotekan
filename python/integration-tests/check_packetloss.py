@@ -13,7 +13,8 @@ Runs, all with the same input:
 
 CHIME receives lost samples per group of 4 frequencies (lost_samples_buffer_<n>), from which
 zeroSamples zeroes the lost voltages, also in `dense`, and lostSamplesToPLMask makes the PL mask;
-it has no BB beamformer, and the FRB chain has no U = 1.
+the FRB chain has no U = 1. The HFB upchannelizer (U = 128) is checked as the others, with the
+output offset of the HFB chain.
 
 The loss model is `testPacketLoss` (lib/testing/testSkySignal.hpp): random loss drops packets of
 16 FPGA samples of 4 frequencies for all inputs; boxes have the PL mask resolution of 2 samples.
@@ -49,6 +50,8 @@ from kit import (
     frb3_codes,
     has_bb,
     has_value,
+    hfb_t_star,
+    hfb_upchan_factors,
     large_seq,
     read_output,
     require,
@@ -126,8 +129,8 @@ def variables(tel, config, run):
     var["noise_period_frames"] = 1
     var["do_fringestop"] = False
     masks = ["pl_mask", "pl_expanded_mask"] + ["bb_pl_mask"] * has_bb(config)
-    masks += [f"upchan_U{U}_expanded_pl_mask" for U in config["upchan_factors"]]
-    data = [f"upchan_U{U}_voltage" for U in config["upchan_factors"]]
+    masks += [f"{chain}_expanded_pl_mask" for chain, _, _, _ in upchan_chains(config)]
+    data = [f"{chain}_voltage" for chain, _, _, _ in upchan_chains(config)]
     data += ["bb_beams"] * has_bb(config)
     frb = ["frb1_beams", "frb2_beams", "frb3_beams", "frb3_beams_offsetscale"]
     write_frames = {name: MASK_FRAMES for name in masks}
@@ -217,18 +220,34 @@ def mask_line(name, measured, expected, failures):
     return line
 
 
-def upchan_channels(config, U):
-    """The local coarse channels [Fmin, Fmax) of upchannelization factor U."""
+def upchan_chains(config):
+    """(output prefix, U, prefix of the channel range keys, output offset T*) of every
+    upchannelizer: the FRB chain and the HFB chain (CHIME)."""
+    chains = [
+        (f"upchan_U{U}", U, f"upchan_U{U}", t_star(config))
+        for U in config["upchan_factors"]
+    ]
+    chains += [
+        (f"upchan_hfb_U{U}", U, f"upchan_hfb_upchan_U{U}", hfb_t_star(config, U))
+        for U in hfb_upchan_factors(config)
+    ]
+    return chains
+
+
+def upchan_channels(config, U, keys=None):
+    """The local coarse channels [Fmin, Fmax) of upchannelization factor U (channel range keys
+    `<keys>_min_channel`, default `upchan_U<U>`)."""
+    keys = keys or f"upchan_U{U}"
     return (
-        value(config, f"upchan_U{U}_min_channel"),
-        value(config, f"upchan_U{U}_max_channel"),
+        value(config, f"{keys}_min_channel"),
+        value(config, f"{keys}_max_channel"),
     )
 
 
-def upchan_valid(loss, config, U, labels):
+def upchan_valid(loss, config, U, labels, keys=None):
     """Validity [Tbar, channel] of the upchannelized samples with labels `labels`: the window
     [L - (M-1) U/2, L - (M-1) U/2 + M U) must not contain lost samples."""
-    fmin, fmax = upchan_channels(config, U)
+    fmin, fmax = upchan_channels(config, U, keys)
     begin = np.asarray(labels) - (NUM_TAPS - 1) * U // 2
     return ~loss.any_lost(begin, begin + NUM_TAPS * U)[..., fmin:fmax]
 
@@ -284,14 +303,14 @@ def check_masks(out_dir, config, loss, results, failures):
         )
 
     # Upchannelized PL masks [Thi64, F, P, D8, Tlo64]: bit tbar has the label L = seq + U tbar
-    for U in config["upchan_factors"]:
-        name = f"upchan_U{U}_expanded_pl_mask"
+    for chain, U, keys, chain_t_star in upchan_chains(config):
+        name = f"{chain}_expanded_pl_mask"
         out = read_output(out_dir, name)
-        audit(out, first_seq=seq0 + ts)
+        audit(out, first_seq=seq0 + chain_t_star)
         labels = out.fpga_seq_num + U * (
             64 * np.arange(out.data.shape[0])[:, None] + np.arange(64)[None, :]
         )
-        valid = upchan_valid(loss, config, U, labels)  # [Thi64, 64, channel]
+        valid = upchan_valid(loss, config, U, labels, keys)  # [Thi64, 64, channel]
         measured = bits(out.data[:, : valid.shape[2]])
         expected = valid.transpose(0, 2, 1)[:, :, None, None, :]
         results.append(mask_line(name, measured, expected, failures))
@@ -327,13 +346,13 @@ def check_data(out_dir, ref_dir, config, loss, results, failures):
     ts = t_star(config)
 
     # Upchannelized voltages [Tbar, Fbar, P, D], Fbar = U channel + u
-    for U in config["upchan_factors"]:
-        name = f"upchan_U{U}_voltage"
+    for chain, U, keys, chain_t_star in upchan_chains(config):
+        name = f"{chain}_voltage"
         out = read_output(out_dir, name)
         ref = read_output(ref_dir, name)
-        audit(out, upchan_factor=U, first_seq=seq0 + ts)
+        audit(out, upchan_factor=U, first_seq=seq0 + chain_t_star)
         labels = out.fpga_seq_num + U * np.arange(out.data.shape[0])
-        valid = np.repeat(upchan_valid(loss, config, U, labels), U, axis=1)
+        valid = np.repeat(upchan_valid(loss, config, U, labels, keys), U, axis=1)
         num = valid.shape[1]
         results.append(
             equal_line(
