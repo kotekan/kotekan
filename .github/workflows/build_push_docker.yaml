@@ -165,9 +165,8 @@ jobs:
             needs_build=1
           fi
 
-          # A PR that restores the base Dockerfile can reuse the base images.
-          if [[ "$DOCKERFILE_RECENT_CHANGED" == "true" &&
-                ( "$event" != "pull_request" || "$DOCKERFILE_EVER_CHANGED" == "true" ) ]]; then
+          # Rebuild if Dockerfile changed in the latest push
+          if [[ "$DOCKERFILE_RECENT_CHANGED" == "true" ]]; then
             echo "Dockerfile changed in latest push. Forcing docker rebuild."
             needs_build=1
           fi
