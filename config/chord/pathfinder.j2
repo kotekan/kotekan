@@ -598,12 +598,11 @@ dpdk:
 {% endfor %}
 
 
-# Reordering map, index = output slot, value = raw source_id of the CRS board in that slot.
-# So [2, ...] puts the board with source_id 2 in output slot 0, and so on. Slots 0-7 are
-# pol 0 and 8-15 pol 1 of dish groups 0-7: every board sends pol 0 from its even and pol 1
-# from its odd source_id. This must stay at the root level: the DPDK capture workers use it
-# to place boards, and ProcessPacketMask uses it to label per-board packet loss by source_id.
-crs_board_remap: [0, 2, 4, 6, 8, 10, 12, 14, 1, 3, 5, 7, 9, 11, 13, 15]
+# CRS board order: part of the telescope (crs_board_remap in telescope.j2), so the
+# receiver's telescope check covers it. This must stay at the root level: the DPDK capture
+# workers use it to place boards, and ProcessPacketMask uses it to label per-board packet
+# loss by source_id.
+crs_board_remap: *crs_board_remap
 
 # Output slots (after crs_board_remap, not raw source_ids) with no CRS board behind them:
 # ProcessPacketMask marks them fully received so an absent board is not 100% packet loss.
