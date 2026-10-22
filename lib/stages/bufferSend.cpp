@@ -45,6 +45,11 @@ bufferSend::bufferSend(Config& config, const std::string& unique_name,
         Metrics::instance().add_counter("kotekan_buffer_send_dropped_frame_count", unique_name)) {
 
     buf = get_buffer("buf");
+    // Every frame is sent with its metadata object; bufferRecv cannot accept a frame without one.
+    if (!buf->metadata_pool) {
+        FATAL_ERROR("Buffer {:s} has no metadata_pool: every frame sent needs a metadata object",
+                    buf->buffer_name);
+    }
     buf->register_consumer(unique_name);
 
     connected = false;
