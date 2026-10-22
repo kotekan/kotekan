@@ -62,12 +62,12 @@ class connInstance;
  * @conf num_threads         Int, default 1.  The number of worker threads to use
  * @conf connection_timeout  Int, default 60.  Number of seconds before timeout on transfer
  * @conf drop_frames         Bool, default true.  Whether to drop frames when buffer fills.
- * @conf allow_short_frames  Bool, default false.  Accept frames smaller than @c buf's frame
- *        size, for producers whose payload records its own length. The rest of the frame is
- *        zeroed. Otherwise a frame of a different size closes the connection. @c buf must not
- *        declare a frame shape (no N2 or ndarray buffer type), its metadata must not be
- *        chordMetadata, and @c use_frame_desc must be false; the stage refuses to start
- *        otherwise.
+ * @conf allow_short_frames  Bool, default false.  Accept non-empty frames smaller than
+ *        @c buf's frame size, for producers whose payload records its own length. The rest of
+ *        the frame is zeroed. Otherwise a frame of a different size closes the connection.
+ *        @c buf must not declare a frame shape (no N2 or ndarray buffer type), its metadata
+ *        must not be chordMetadata, and @c use_frame_desc must be false; the stage refuses to
+ *        start otherwise.
  * @conf upstream_rest_port  Int, default: this instance's own REST port. The
  *        REST port to reach a sender on when fetching config-tracker state.
  *        Nothing on the wire carries the sender's REST port, so it has to be
@@ -168,7 +168,7 @@ private:
     /// the next frame header, after one corrupted frame.
     bool use_frame_desc;
 
-    /// Accept frames smaller than the buffer's frame size.
+    /// Accept non-empty frames smaller than the buffer's frame size.
     bool allow_short_frames;
 
     static void read_callback(evutil_socket_t fd, short what, void* arg);

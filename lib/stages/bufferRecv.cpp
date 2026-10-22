@@ -553,9 +553,12 @@ void connInstance::internal_read_callback() {
                            buf_frame_header.metadata_size, buf_frame_header.frame_size,
                            buf_frame_header.config_tracker_update);
 
+                    // A zero-length frame is refused here: its read would return 0, which
+                    // reads as the peer closing the connection.
                     const bool size_ok =
                         allow_short_frames
-                            ? buf_frame_header.frame_size <= (unsigned int)buf->frame_size
+                            ? buf_frame_header.frame_size > 0
+                                  && buf_frame_header.frame_size <= (unsigned int)buf->frame_size
                             : buf_frame_header.frame_size == (unsigned int)buf->frame_size;
                     if (!size_ok) {
                         ERROR("Frame size does not match between server: {:d} and client: {:d}",
