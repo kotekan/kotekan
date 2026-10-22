@@ -6,7 +6,7 @@
 #include "buffer.hpp"            // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "configTracker.hpp"     // for ConfigTracker
-#include "kotekanLogging.hpp"    // for DEBUG2, ERROR, INFO, DEBUG, WARN
+#include "kotekanLogging.hpp"    // for DEBUG2, ERROR, FATAL_ERROR, INFO, DEBUG, WARN
 #include "metadata.hpp"          // for metadataObject
 #include "prometheusMetrics.hpp" // for Counter, Metrics
 
@@ -55,6 +55,38 @@ bufferSend::bufferSend(Config& config, const std::string& unique_name,
     reconnect_time = config.get_default<uint32_t>(unique_name, "reconnect_time", 5);
     drop_frames = config.get_default<bool>(unique_name, "drop_frames", true);
     drop_threshold = config.get_default<float>(unique_name, "drop_threshold", 0.6);
+
+    // SO_MAX_PACING_RATE is set as a uint32_t (bytes/s), the size every kernel with the option
+    // accepts. UINT32_MAX there means unlimited, so the largest cap is one less.
+    const double max_pacing_rate_mbps =
+        config.get_default<double>(unique_name, "max_pacing_rate_mbps", 0);
+    const double max_pacing_rate_bytes = max_pacing_rate_mbps * 1e6 / 8;
+    if (!(max_pacing_rate_bytes == 0
+          || (max_pacing_rate_bytes >= 1 && max_pacing_rate_bytes < UINT32_MAX)))
+        FATAL_ERROR("max_pacing_rate_mbps is {:g}, but must be 0 (off) or from {:g} to {:.3f} "
+                    "(1 to UINT32_MAX - 1 bytes/s)",
+                    max_pacing_rate_mbps, 8e-6, (UINT32_MAX - 1) * 8e-6);
+    max_pacing_rate = (uint32_t)max_pacing_rate_bytes;
+    if (max_pacing_rate > 0) {
+#ifdef SO_MAX_PACING_RATE
+        // Set the option once on a spare socket, so that a platform that refuses it stops
+        // kotekan at startup.
+        const int probe_fd = socket(AF_INET, SOCK_STREAM, 0);
+        if (probe_fd < 0)
+            FATAL_ERROR("Could not create a socket to check SO_MAX_PACING_RATE: {:s}",
+                        strerror(errno));
+        const int rc = setsockopt(probe_fd, SOL_SOCKET, SO_MAX_PACING_RATE, (void*)&max_pacing_rate,
+                                  sizeof(max_pacing_rate));
+        const int err = errno;
+        close(probe_fd);
+        if (rc < 0)
+            FATAL_ERROR("max_pacing_rate_mbps is set, but setsockopt() SO_MAX_PACING_RATE "
+                        "failed: {:s}",
+                        strerror(err));
+#else
+        FATAL_ERROR("max_pacing_rate_mbps is set, but this platform has no SO_MAX_PACING_RATE");
+#endif
+    }
 
     // Publish current dropped frame count.
 
@@ -297,6 +329,23 @@ void bufferSend::connect_to_server() {
             < 0) {
             ERROR("bufferSend: setsockopt() timeout failed.");
         }
+
+#ifdef SO_MAX_PACING_RATE
+        if (max_pacing_rate > 0
+            && setsockopt(socket_fd, SOL_SOCKET, SO_MAX_PACING_RATE, (void*)&max_pacing_rate,
+                          sizeof(max_pacing_rate))
+                   < 0) {
+            // FATAL_ERROR throws, which would end this thread with std::terminate.
+            const std::string msg = fmt::format(
+                fmt("bufferSend: setsockopt() SO_MAX_PACING_RATE failed: {:s}"), strerror(errno));
+            ERROR("{:s}", msg);
+            close(socket_fd);
+            socket_fd = -1;
+            set_error_message(fmt("{:s}"), msg);
+            exit_kotekan(ReturnCode::FATAL_ERROR);
+            return;
+        }
+#endif
 
         INFO("Connected to server {:s}:{:d} for sending buffer {:s}", server_ip, server_port,
              buf->buffer_name);
