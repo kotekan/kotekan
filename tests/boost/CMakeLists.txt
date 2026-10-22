@@ -138,6 +138,19 @@ target_link_libraries(test_buffer_swap PRIVATE pthread libexternal kotekan_libs 
 add_executable(test_prometheus_metrics test_prometheus_metrics.cpp)
 target_link_libraries(test_prometheus_metrics PRIVATE libexternal kotekan_libs kotekan_core)
 
+# test_bufferSendPacing - bufferSend's max_pacing_rate_mbps; CMAKE_DL_LIBS for the dlsym behind its
+# setsockopt() override
+add_executable(test_bufferSendPacing test_bufferSendPacing.cpp)
+target_link_libraries(test_bufferSendPacing PRIVATE libexternal kotekan_stages kotekan_libs
+                                                    kotekan_utils kotekan_core ${CMAKE_DL_LIBS})
+target_include_directories(test_bufferSendPacing PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages)
+# test_pacing_rate allocates a chordMetadata object, whose type registers from a static initializer.
+# macOS builds without that test, since it has no SO_MAX_PACING_RATE.
+if(NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+    target_link_libraries(test_bufferSendPacing PRIVATE -Wl,--whole-archive kotekan_metadata
+                                                        -Wl,--no-whole-archive)
+endif()
+
 # test_config needs Config, json
 add_executable(test_config test_config.cpp)
 target_link_libraries(test_config PRIVATE libexternal kotekan_core kotekan_stages)

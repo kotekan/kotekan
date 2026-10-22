@@ -71,6 +71,13 @@ static_assert(sizeof(bufferFrameHeader) == 12, "bufferFrameHeader should be 12 b
  *                         to empty frames exceeds this value.  A value of 1.0 means only drop
  *                         frames if the connection is down, otherwise generate back-pressure
  *                         This setting has no effect if drop_frames is false
+ * @conf max_pacing_rate_mbps  Float, default 0 (off). Cap the send rate, in Mbit/s, with the
+ *                         SO_MAX_PACING_RATE socket option, so that a frame leaves spread over
+ *                         time instead of in one burst at line rate. Set it a little above the
+ *                         stream's mean rate. Linux 4.13 and later paces TCP on its own; older
+ *                         kernels need the fq qdisc. A nonzero value must be from 8e-6 to
+ *                         34359.738 (1 to UINT32_MAX - 1 bytes/s). The stage stops at startup if
+ *                         the value is out of range or the platform cannot set the option.
  *
  * @par Metrics
  * @metric kotekan_buffer_send_dropped_frame_count
@@ -118,6 +125,9 @@ private:
 
     /// Threshold to drop frames
     float drop_threshold;
+
+    /// SO_MAX_PACING_RATE in bytes/s, or 0 to leave the socket unpaced
+    uint32_t max_pacing_rate;
 
     /// Flag to indicate if config tracker header data should be sent
     bool use_config_tracker;
