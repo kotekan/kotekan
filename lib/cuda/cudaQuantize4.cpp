@@ -168,6 +168,16 @@ cudaQuantize4::cudaQuantize4(Config& config, const std::string& unique_name,
         FATAL_ERROR("The packet loss mask ring buffer [{:d}, {:d}] must hold at least the {:d} "
                     "frequencies, and a multiple of the {:d} times, of a frame",
                     _frb1_max_num_times, _frb1_max_num_frequencies, _num_frequencies, _num_times);
+    // check that Telescope is as expected
+    const auto& tel = Telescope::instance();
+    // TOOD: this could use Telescope::nyquist_zone() which may yield the same
+    // information
+    if (tel.num_freq() >= 2 && tel.to_freq_MHz(freq_id_t(0)) > tel.to_freq_MHz(freq_id_t(1))) {
+        FATAL_ERROR("This stage passes on the fine frequencies such that they appear low-to-high "
+                    "frequency (in MHz) in the output array (as appropriate for CHORD), but the "
+                    "telescope ({:s}) sorts its coarse frequencies high-to-low (like CHIME does).",
+                    tel.get_name());
+    }
 }
 
 cudaQuantize4::~cudaQuantize4() {}
