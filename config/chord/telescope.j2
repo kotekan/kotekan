@@ -35,17 +35,15 @@ telescope:
     dish_grid_size_y: 12
     dish_separation_x_m: 6.300156854906823
     dish_separation_y_m: 8.500057809796308
-    # Live wiring (Oct 17 2026): 16 CRS boards x 8 ADCs, one board per (dish group, pol); the
-    # X-engine's missing_source_ids says which boards deliver. Every dish is ArrayDish, since
-    # type is per dish and cannot express a dish with one dead board: the inputs of silent
-    # boards (E01-F04 both pols, E05-F08 pol 1, G01-G08 pol 0) are flagged by hand in
-    # choco's bffs manual grid, not by this table. Boards 1-12 each
-    # carry four dishes of two rows; boards 13-16 were cabled with a full row per board, so
+    # Live wiring (Oct 17 2026): 16 CRS boards x 8 ADCs, one board per (dish group, pol).
+    # Boards 1-12 each carry four dishes of two rows; boards 13-16 carry a full row each, so
     # dish slots 48-55 are G01-G08 and 56-63 are H01-H08. The RFI antennas are disconnected.
     # Element order is [P][D] (CHORDBeamformer): the X-engine's crs_board_remap groups
-    # the polarizations and this table defines the D axis. RFIDish rows are correlated but
-    # always masked on the X-engine and kept in the DishInputs subset; Missing rows are not
-    # connected, flip to ArrayDish when wired.
+    # the polarizations and this table defines the D axis.
+    # Type is per dish and cannot express a dish with one silent board, so every dish is
+    # ArrayDish. The X-engine's missing_source_ids lists the silent boards, and their inputs
+    # are flagged in choco's bffs manual grid. RFIDish rows are correlated but always masked
+    # on the X-engine; Missing rows are not connected.
     # CRS board order of the element axis: output slot i takes the board whose raw source_id
     # is crs_board_remap[i]. Slots 0-7 are pol 0 and 8-15 pol 1 of dish groups 0-7. Every
     # board sends pol 0 from an even and pol 1 from an odd source_id (X on the odd crate
