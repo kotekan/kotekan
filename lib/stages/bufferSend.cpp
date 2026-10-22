@@ -282,6 +282,7 @@ void bufferSend::connect_to_server() {
                  "to retry...",
                  server_ip, server_port, strerror(errno), errno, reconnect_time);
             close(socket_fd);
+            socket_fd = -1;
             // A stop ends this wait early: main_thread() calls close_connection(), which
             // notifies, before it joins this thread.
             {
