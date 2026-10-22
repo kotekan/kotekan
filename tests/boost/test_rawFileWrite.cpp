@@ -168,3 +168,32 @@ BOOST_AUTO_TEST_CASE(test_continue_numbering_hostname) {
     const std::set<std::string> found = list_dir(dir.path);
     BOOST_CHECK_EQUAL_COLLECTIONS(found.begin(), found.end(), expected.begin(), expected.end());
 }
+
+// Construct the rawFileWrite `name` without starting it.
+static void construct_writer(const json& cfg, const std::string& name) {
+    Config config;
+    config.update_config(cfg);
+
+    Buffer buf(1, frame_size, nullptr, "in_buf", "standard", 0, false, false, std::vector<int>{},
+               true);
+    bufferContainer bc;
+    bc.add_buffer("in_buf", &buf);
+    rawFileWrite writer(config, "/" + name, bc);
+}
+
+BOOST_AUTO_TEST_CASE(test_create_base_dir) {
+    tmp_dir dir;
+    json cfg = writer_config("create", dir.path / "a" / "b");
+    construct_writer(cfg, "create");
+    BOOST_CHECK(!fs::exists(dir.path / "a"));
+
+    cfg["create"]["create_base_dir"] = true;
+    construct_writer(cfg, "create");
+    BOOST_CHECK(fs::is_directory(dir.path / "a" / "b"));
+
+    // A base_dir that cannot be created fails at construction.
+    write_file(dir.path / "file", "");
+    cfg = writer_config("create", dir.path / "file" / "b");
+    cfg["create"]["create_base_dir"] = true;
+    BOOST_CHECK_THROW(construct_writer(cfg, "create"), FatalError);
+}

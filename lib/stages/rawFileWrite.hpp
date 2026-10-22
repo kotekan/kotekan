@@ -31,6 +31,9 @@
  *                          file of the same name in base_dir, instead of from 0.
  *                          Default false. Files are opened without O_TRUNC, so numbering
  *                          from 0 overwrites existing files in place.
+ * @conf create_base_dir    Bool. Create base_dir and its parents at construction. Default
+ *                          false, in which case a missing base_dir fails at the first write,
+ *                          or at start with continue_numbering.
  *
  * @par Metrics
  * @metric kotekan_rawfilewrite_write_time_seconds

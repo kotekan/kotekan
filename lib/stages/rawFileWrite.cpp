@@ -9,6 +9,7 @@
 #include "kotekanLogging.hpp"      // for ERROR, DEBUG, FATAL_ERROR, INFO
 #include "metadata.hpp"            // for metadataObject
 #include "prometheusMetrics.hpp"   // for Metrics, Gauge
+#include "util.h"                  // for mkdir_p
 #include "visUtil.hpp"             // for current_time
 #include "waitingForMaxFrames.hpp" // for waiting_for_max_frames
 
@@ -24,6 +25,7 @@
 #include <stdint.h>   // for uint32_t, uint64_t, UINT32_MAX, int32_t, uint8_t
 #include <stdio.h>    // for snprintf, size_t
 #include <stdlib.h>   // for exit
+#include <string.h>   // for strerror
 #include <string>     // for string, stoull
 #include <unistd.h>   // for write, close, gethostname, ssize_t
 
@@ -55,6 +57,12 @@ rawFileWrite::rawFileWrite(Config& config, const std::string& unique_name,
     // known out of band (a flat sample stream whose only "shape" is samples_per_data_set,
     // pinned in both the capture and the replay config). Default false: you must say you know.
     _allow_ndarray = config.get_default<bool>(unique_name, "allow_ndarray", false);
+
+    if (config.get_default<bool>(unique_name, "create_base_dir", false)
+        && mkdir_p(_base_dir.c_str(), 0777) != 0) {
+        const char* const msg = strerror(errno);
+        FATAL_ERROR("Could not create base_dir {:s}: {:s}", _base_dir, msg);
+    }
 
     if (_exit_after_n_files > 0)
         waiting_for_max_frames++;

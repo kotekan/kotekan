@@ -43,7 +43,7 @@ frame's size prefix in turn.
 Configuration: ``base_dir``, ``file_name``, ``file_ext`` (all required);
 ``num_frames_per_file`` (default 1); ``exit_after_n_files`` (default 0 =
 unlimited); ``prefix_hostname`` (default true); ``continue_numbering``
-(default false).
+(default false); ``create_base_dir`` (default false).
 
 nDiskFileWrite
 ==============
