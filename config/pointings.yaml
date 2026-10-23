@@ -24,6 +24,11 @@
       note: dishes tipped in semi-random directions during the 10-12..10-17 F-engine outage; no common boresight, so no beam maps from this epoch; ends at the realignment
     - id: p2_ab_cyga_cf_tipped
       from: 2026-10-20T00:22:00Z
-      to:
+      to: 2026-10-23T11:37:00Z
       boresight_dec_deg:
       note: rows A/B still on the Cyg A pointing (dec +40.73), rows C-F tipped further down (KV 2026-10-19); no common boresight, so no beam maps; starts with the 96-element live set (rows A-F, array epoch 2026-10-20-rows-af96), so a sender's day file never mixes element counts; ends at the realignment
+    - id: p3_ab_cyga_cfgh_tipped
+      from: 2026-10-23T11:37:00Z
+      to:
+      boresight_dec_deg:
+      note: same aim as p2 (rows A/B on the Cyg A pointing, dec +40.73; rows C-F tipped further down) with rows G/H tipped with C-F (KV 2026-10-23); no common boresight, so no beam maps; starts with the 128-element live set (rows A-H, array epoch 2026-10-23-rows-ah128), so a sender's day file never mixes element counts; ends at the realignment
