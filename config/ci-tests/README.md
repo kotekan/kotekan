@@ -18,7 +18,7 @@ Any mix of directories and individual configs can be given. Directories are sear
 ./run_tests.sh ./build-2404/kotekan/kotekan 2m config/ci-tests/gpu_batch config/ci-tests/cpu_batch/run_n2accum.yaml
 ```
 
-## Output Exampe
+## Output Example
 
 ```
 ======================================
@@ -29,6 +29,12 @@ Passed: 8
 Failed: 1
 Timed out: 1
 
+Passed tests:
+  ...
+
 Failed tests:
-  - config/ci-tests/cpu_batch/test_broken.yaml (exit code: 1)
+  - config/ci-tests/cpu_batch/test_broken.yaml (exit code: 1, duration: 12s)
+
+Timed out tests:
+  - config/ci-tests/cpu_batch/test_slow.yaml (exit code: 124, duration: 02m:00s)
 ```

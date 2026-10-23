@@ -75,16 +75,17 @@ TIMED_OUT_TEST_EXIT_CODES=()
 # Run tests
 for config_file in "${CONFIG_FILES[@]}"; do
   echo "Running test with config: $config_file"
-  
+
   # Run the test with timeout. kotekan only records a SIGTERM and shuts down on its own, so a
   # process wedged in its own teardown never exits: -k sends SIGKILL after a grace period, and
   # the exit status is then 137, counted as a failure below rather than hanging the job.
+  # --foreground keeps kotekan in the terminal's process group, so Ctrl-C reaches it.
   start_time=$(date +%s)
-  timeout -k 30s "$TIMEOUT_DURATION" "$KOTEKAN_BINARY" --config "$config_file"
+  timeout --foreground -k 30s "$TIMEOUT_DURATION" "$KOTEKAN_BINARY" --config "$config_file"
   EXIT_CODE=$?
   end_time=$(date +%s)
   elapsed=$((end_time - start_time))
-  
+
   if [ $EXIT_CODE -eq 124 ]; then
     echo "Test timed out for config: $config_file"
     TIMED_OUT_TESTS+=("$config_file")
