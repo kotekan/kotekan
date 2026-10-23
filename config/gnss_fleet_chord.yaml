@@ -143,10 +143,11 @@ common:
     # scripts/gnss/site/elem_ref_cron.sh reads both keys from this file as text and compares
     # every instance with the reference; with ELEM_REF_ACT=1 it also re-posts the reference to
     # an instance that lost it or is pinned off it.
-    # No reference yet for the 128-element epoch (2026-10-23-rows-ah128): each instance pins to
-    # its own first model until a snapshot is taken against it (elem_shared_ref.py snapshot, once
-    # every instance is warm) and named here with elem-shared-ref-mode: live. Without the line
-    # the cron logs "no reference file" and does nothing.
+    # Taken 2026-10-23 12:05:48Z, 20 min into the 128-element epoch, and posted live at once:
+    # without it L2C's five instances held arbitrary global phases (two 48-151 deg off) and
+    # cancelled in the fleet sum (q 1.6-2.0, disc +0.5).
+    elem-shared-ref: config/elem_shared_ref_20261023.json
+    elem-shared-ref-mode: live
     # The gnss VM, which runs the search aggregator, the telemetry gather and the broker.
     # 127.0.0.1, the generator default, would point every node at itself. Moving the aggregator
     # or the gather means changing search-host / telem-host and restarting the nodes.
