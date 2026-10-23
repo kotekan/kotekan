@@ -5,7 +5,7 @@ project(kotekan_dpdk)
 
 find_package(NUMA REQUIRED)
 
-add_library(kotekan_dpdk dpdkCore.cpp zeroSamples.cpp invalidateVDIFframes.cpp)
+add_library(kotekan_dpdk dpdkCore.cpp invalidateVDIFframes.cpp)
 
 if(WITH_BOOST_TESTS)
     # If we're compiling with boost tests, use dynamic flags
