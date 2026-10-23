@@ -3,22 +3,22 @@
 # timeout protection. Directories are searched recursively for .yaml, .yml and .j2
 # configs. With no configs given, runs every config under this script's directory.
 # Tracks pass/fail/timeout status and provides a summary at the end.
-# Usage: ./run_tests.sh <kotekan_binary> <timeout_duration> [test_config_dir|test_config]...
+# Usage: ./run_tests.sh [kotekan_binary [timeout_duration [test_config_dir|test_config]...]]
 
-# Check if required arguments are provided
-if [ $# -lt 2 ]; then
-  echo "Usage: $0 <kotekan_binary> <timeout_duration> [test_config_dir|test_config]..."
+if [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
+  echo "Usage: $0 [kotekan_binary [timeout_duration [test_config_dir|test_config]...]]"
+  echo "kotekan_binary defaults to build/kotekan/kotekan, timeout_duration to 2m."
   echo "Directories are searched recursively for .yaml, .yml and .j2 configs."
   echo "With no configs given, runs every config under $(dirname "$0")."
-  echo "Example: $0 ./build-2404/kotekan/kotekan 2m"
-  echo "Example: $0 ./build-2404/kotekan/kotekan 2m config/ci-tests"
+  echo "Example: $0"
+  echo "Example: $0 ./build-2404/kotekan/kotekan 2m config/ci-tests/cpu_batch"
   echo "Example: $0 ./build-2404/kotekan/kotekan 2m config/ci-tests/cpu_batch/foo.yaml"
-  exit 1
+  exit 0
 fi
 
-KOTEKAN_BINARY="$1"
-TIMEOUT_DURATION="$2"
-shift 2
+KOTEKAN_BINARY="${1:-build/kotekan/kotekan}"
+TIMEOUT_DURATION="${2:-2m}"
+shift $(($# < 2 ? $# : 2))
 [ $# -eq 0 ] && set -- "$(dirname "$0")"
 
 format_duration() {
