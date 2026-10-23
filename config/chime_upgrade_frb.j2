@@ -735,14 +735,6 @@ host_rfi_SKtilde_buffer:
     dimnames: ["Trfi", "F", "S"]
     extents: [rfi_num_times, num_freq_gpu_buf, 3]
     metadata_pool: main_pool
-host_rfi_SKtilde_buffer_post:
-    kotekan_buffer: ndarray
-    num_frames: gpu_buffer_depth
-    value_type: float32
-    # GPU producer cudaRFISKtilde rfi_SKtilde (leading extent = per-frame rfi_num_times);
-    # also validated by RfiFrameMask in_buf as {Trfi, F, SK}.
-    extents: [rfi_num_times, num_freq_gpu_buf, 3]
-    metadata_pool: main_pool
 host_rfi_SKtilde_ringbuffer:
     kotekan_buffer: ring
     num_frames: gpu_buffer_depth
@@ -2183,10 +2175,12 @@ write_frb_offsetscale:
 # enable to dump sk statistics data
 host_rfi_SKtilde_buffer_post:
     kotekan_buffer: ndarray
-    num_frames: host_buffer_depth
+    num_frames: gpu_buffer_depth
     frame_size: sizeof_float32 * 3 * num_freq_gpu_buf * rfi_num_times
     type: float32
     dimnames: ["Trfi", "F", "S"]
+    # GPU producer cudaRFISKtilde rfi_SKtilde (leading extent = per-frame rfi_num_times);
+    # also validated by RfiFrameMask in_buf as {Trfi, F, SK}.
     shape: [rfi_num_times, num_freq_gpu_buf, 3]
     metadata_pool: main_pool
 
