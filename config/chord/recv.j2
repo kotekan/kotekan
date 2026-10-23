@@ -8,6 +8,13 @@
 # plus headroom for late frames.
 {% set num_recv_frames = 6550 %}
 
+# Depth of the subset receive buffer, in accumulation bins. hdf5N2Write writes a whole file
+# when it finalizes it (late_frame_grace_seconds after its last frame) and takes no frames
+# meanwhile: ~90 s for a 40-bin, 20 GB file. At buffer_depth (4 bins) the buffer filled after
+# ~45 s and bufferRecv dropped the next 3-4 bins of every file. 16 bins (160 s) covers the
+# stall with margin, at ~0.7 GB per bin (recv1 has 1 TB).
+{% set subset_recv_depth = 16 %}
+
 # The frequency IDs the F-engine sends, 1536 + 128 index + stream for 48 indices and 128
 # streams: 1536 to 7679, the 300-1500 MHz band in telescope.j2. Rows of the auto spectrum.
 {% set first_freq_id = 1536 %}
@@ -66,7 +73,7 @@ n2_recv_subset_buffer:
     peek_hold: true
     num_ev: num_ev_to_calculate
     n2_layout: "DishInputs"
-    num_frames: buffer_depth * {{ num_recv_frames }}
+    num_frames: {{ subset_recv_depth }} * {{ num_recv_frames }}
     metadata_pool: n2_pool
 
 # Receive full N2 Buffer
