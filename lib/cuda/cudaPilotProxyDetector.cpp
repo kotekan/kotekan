@@ -469,7 +469,7 @@ private:
 
 /**
  * @class cudaPilotProxyDetector
- * @brief cudaCommand running the PilotProxy ATSC DTV pilot-tone F-statistic
+ * @brief cudaCommand running the PilotProxy ATSC DTV pilot-tone rank-based power-ratio
  * detector (vendored in external/pilotproxy) on packed receiver voltage data.
  *
  * @author Dylan Gormley
