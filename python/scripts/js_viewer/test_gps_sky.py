@@ -13,6 +13,7 @@ Needs the viewer's interpreter (twisted, autobahn, skyfield):
 
     ~/gnss/venv/bin/python test_gps_sky.py
 """
+import json
 import os
 import shutil
 import sys
@@ -144,6 +145,46 @@ class TestBrokerSky(unittest.TestCase):
             out = r._compute()
         self.assertTrue(out["ok"])
         self.assertEqual(out["sats"], self.ROWS)
+
+    def test_sbas_rows_map_to_the_s_tag(self):
+        # The broker's /get_sky serves the SBAS GEOs as const "S" (BRDC S records).
+        r = lb.GpsSkyResource(43.0, -79.0, 0.0, 0.0, broker=("127.0.0.1", 12060))
+        rows = [
+            {"prn": 131, "const": "S", "az": 176.6, "el": 33.4},
+            {"prn": 3, "const": "G", "az": 10.0, "el": 50.0},
+        ]
+        body = mock.MagicMock()
+        body.__enter__.return_value.read.return_value = json.dumps(rows).encode()
+        with mock.patch("urllib.request.urlopen", return_value=body):
+            got = r._brdc_skypos(["G", "S"])
+        self.assertIn({"prn": 131, "const": "S", "az": 176.6, "el": 33.4}, got)
+
+    def test_sbas_is_asked_of_the_broker_never_of_tle(self):
+        # S has no TLE group: it is wanted from the broker, and the TLE paths (merge and
+        # whole-sky fallback) never see it.
+        r = lb.GpsSkyResource(43.0, -79.0, 0.0, 0.0, broker=("127.0.0.1", 12060))
+        seen = {}
+
+        def brdc(want):
+            seen["brdc"] = list(want)
+            return [{"prn": 131, "const": "S", "az": 176.6, "el": 33.4}]
+
+        def tle(want=None):
+            seen.setdefault("tle", []).append(list(want or []))
+            return []
+
+        with mock.patch.object(r, "_brdc_skypos", side_effect=brdc), mock.patch.object(
+            r, "_tle_skypos", side_effect=tle
+        ):
+            out = r._compute()
+        self.assertIn("S", seen["brdc"])
+        self.assertTrue(all("S" not in w for w in seen["tle"]))
+        self.assertIn(131, [x["prn"] for x in out["sats"] if x["const"] == "S"])
+        with mock.patch.object(r, "_brdc_skypos", return_value=None), mock.patch.object(
+            r, "_tle_skypos", side_effect=tle
+        ):
+            r._compute()
+        self.assertNotIn("S", seen["tle"][-1])
 
     def test_bind_address_connects_to_loopback(self):
         r = lb.GpsSkyResource(43.0, -79.0, 0.0, 0.0, broker=("0.0.0.0", 12060))

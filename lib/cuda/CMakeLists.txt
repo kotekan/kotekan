@@ -38,6 +38,7 @@ add_library(
     cudaGnssDespreadKernel.cu
     cudaGnssAcquireKernel.cu
     cudaGnssChordDespread.cu
+    cudaGnssPsiSynth.cu
     cudaGnssN2Gather.cu
     chordMVPSetup.cpp
     cudaPLMaskAccumulator.cpp
@@ -53,6 +54,11 @@ add_library(
     testPLMaskUpchannelizer.cpp
     testUpchanAlignment.cpp
     cudaPL1bitCorrelator.cpp
+    # PilotProxy DTV pilot-tone detector (vendored kernel core in
+    # external/pilotproxy, linked via libexternal)
+    cudaPilotProxyDetector.cpp
+    cudaPilotProxyPacker.cu
+    testPilotProxyDetector.cpp
     cudaQuantize4.cpp
     cudaQuantize8.cpp
     cudaQuantize8Chime.cpp
@@ -170,6 +176,11 @@ target_link_libraries(
     PRIVATE libexternal kotekan_libs -lstdc++
     INTERFACE ${CUDA_LIBRARIES} cublas cuda nvrtc nvptxcompiler_static)
 
+# cudaPilotProxyDetector checks its runtime bundle with OpenSSL's SHA-256 (found in lib/core).
+if(OPENSSL_CRYPTO_LIBRARY)
+    target_link_libraries(kotekan_cuda PRIVATE ${OPENSSL_CRYPTO_LIBRARY})
+endif()
+
 set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --forward-unknown-to-host-compiler")
 
 target_include_directories(kotekan_cuda INTERFACE ${CUDAToolkit_INCLUDE_DIRS})
@@ -188,3 +199,12 @@ target_link_libraries(cuda_gnss_despread_test PRIVATE kotekan_cuda kotekan_stage
                                                       kotekan_libs libexternal)
 target_include_directories(cuda_gnss_despread_test PRIVATE . ../stages ../stages/gnss ../core
                                                            ../utils ../metadata)
+
+# Prototype code-phase-table (Psi) replica synthesis vs the production waveform kernel at CHORD
+# geometry, with timings. The kernel is part of the bench, not of kotekan_cuda.
+# Run: ./lib/cuda/cuda_gnss_psi_bench [all|bench|tiled] [n_prn]
+add_executable(cuda_gnss_psi_bench cudaGnssPsiBench.cpp)
+target_link_libraries(cuda_gnss_psi_bench PRIVATE kotekan_cuda kotekan_stages kotekan_core
+                                                  kotekan_libs libexternal)
+target_include_directories(cuda_gnss_psi_bench PRIVATE . ../stages ../stages/gnss ../core
+                                                       ../utils ../metadata)

@@ -122,13 +122,13 @@ void monitorBuffer::main_thread() {
                     buf.second->print_full_status();
                 }
                 usleep(50000);
+                if (!wait_for_first_frame && last_arrival == monitor_start_time) {
+                    WARN("No frames were ever received on buffer {:s}.", buf->buffer_name);
+                }
                 if (graceful_shutdown) {
                     INFO("The buffer {:s} hasn't received a frame for {:f} seconds.\nPerforming "
                          "graceful shutdown of kotekan because of system timeout.",
                          buf->buffer_name, (cur_time - last_arrival));
-                    if (!wait_for_first_frame && last_arrival == monitor_start_time) {
-                        WARN("No frames were ever received on buffer {:s}.", buf->buffer_name);
-                    }
                     exit_kotekan(CLEAN_EXIT);
                     goto end_loop;
                 } else {

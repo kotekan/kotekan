@@ -39,6 +39,8 @@ chord_tel = {
     "dish_inputs": [],
     "origin_itrs_lat_deg": 50.0,
     "origin_itrs_lon_deg": -120.0,
+    # Fringestopping is switched on mid-run, which needs a set pointing.
+    "dish_coelev_deg": 0.0,
 }
 
 chime_tel = {

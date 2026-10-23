@@ -65,14 +65,27 @@ common:
 
     # GnssN2Project on the science N2: per frame and channel, solve the live block's dominant
     # spread components and write (I-QQ^H)V(I-QQ^H) into the copy N2Accumulate reads, only in
-    # the given freq_ids ("exempt" = rfi-excision-exempt-freq-ids above). Station 7 (B04X) is
-    # left out of the stations: it saturates. cx19 overrides n2-project to "off" (see nodes).
+    # the given freq_ids ("exempt" = rfi-excision-exempt-freq-ids above). The stations are the
+    # trackers' elements (the rows-ah128 epoch: rows A-H, both pols), so a lane direction covers
+    # every one; station 7 (B04X) is left out: it saturates. An input outside the trackers'
+    # elements cannot be nulled by a lane (16/47 of the power was left when row H came back with
+    # the 10-23 chord merge). eigen-channels live runs the eigen path only on the channels it
+    # writes, which pays for the ~4x of 95 stations against 47. cx19 overrides n2-project to
+    # "off" (see nodes).
     # The E and L lanes as rotations of the prompt, one chip walk per hop (#189): every comb
     # chain, L2C excepted by the generator. Canary cx51 10-17 17:33Z, fleet from the remap cycle.
     epl-from-prompt: true
+    # Replicas synthesised from per-PRN code-phase (Psi) tables, fused with the 4+4b pack (lever 2
+    # in docs/CHORD_GPU_BUDGET.md): ~1/3 of the old GNSS synthesis+pack time per frame. The
+    # tables are built on a builder thread and a slot stays dark until its tables land, so a
+    # start does not starve the DPDK ring. Needs epl-from-prompt and a node binary from
+    # fleet-8fff60c37 on. Canary cx51 10-23 12:20Z (tracking = sibling to +-5 %, GPU 47/50 %
+    # against 60-68 %); fleet from the next cycle.
+    psi-synth: true
     n2-project: live
     n2-project-live-freq-ids: exempt
-    n2-project-stations: "0-6,8-15,56-79,120-127"
+    n2-project-stations: "0-6,8-127"
+    n2-project-eigen-channels: live
 
     # Ship the N^2 products as a stock node does: the buffer_send_n2_* legs (full n2_buffer and
     # the eigen subset, both GPUs) and the bad-feed mask legs, to the standard receiver recv1
@@ -113,9 +126,8 @@ common:
     # The phase sign depends on the F-engine's FFT and conjugation conventions, so it is
     # calibrated from data (gnssElemSteer.hpp); +1 is the measured value.
     elem-steer-sign: 1.0
-    # No elem-positions-file: the 2026-10-20-rows-af96 epoch carries the refined A/B positions
-    # and nominal C-F ones itself. A refinement file is solved against one epoch key and refused
-    # for any other; add one here once C-F are re-solved (possolve.py) against this epoch.
+    # No elem-positions-file: a refinement is solved against one epoch key and refused for any
+    # other. The 2026-10-23-rows-ah128-repoint epoch carries the G/H solve itself.
     # Shared instrument model: the per-PRN self-cals learn but do not set the weights; the live
     # element weights are one per-element gain per polarisation (a 300 s consensus over every
     # satellite) plus one inter-pol coefficient per satellite, so a boresight transit cannot
@@ -137,7 +149,11 @@ common:
     # scripts/gnss/site/elem_ref_cron.sh reads both keys from this file as text and compares
     # every instance with the reference; with ELEM_REF_ACT=1 it also re-posts the reference to
     # an instance that lost it or is pinned off it.
-    elem-shared-ref: config/elem_shared_ref_20261020.json
+    # Taken 2026-10-23 22:05Z, 18 min into the 2026-10-23-rows-ah128-repoint epoch (L2C's
+    # entry posted alone at 21:52Z), and posted live at once: without one, L2C's instances held
+    # arbitrary global phases and cancelled in the fleet sum (2026-10-23, q 1.6-2.0). The dishes
+    # move during this epoch, so the cron re-takes a band the reference stops describing.
+    elem-shared-ref: config/elem_shared_ref_20261023_repoint.json
     elem-shared-ref-mode: live
     # The gnss VM, which runs the search aggregator, the telemetry gather and the broker.
     # 127.0.0.1, the generator default, would point every node at itself. Moving the aggregator
@@ -287,11 +303,19 @@ nodes:
     # the stage on its default slot; 8 lanes per channel first (12:53Z: stage 30% of its core,
     # lanes on every band), then every tracked satellite (40). Five slots, not six: the rotation
     # adds the GPU index, so slot 9 on GPU 1 is pool[0], the cudaProcess core.
-    # SBAS L5-Q canary (#190 coverage): the WAAS GEOs 131 Eutelsat 117 West B, 133 SES-15, 135
+    # SBAS L5 canary (#190 coverage): the WAAS GEOs 131 Eutelsat 117 West B, 133 SES-15, 135
     # Galaxy 30, geostationary at el ~33 due south of DRAO; state vectors from the IGS BRDC's S
     # records (no S38 on air: ANIK F1R left WAAS, so PRN 138 would be 4 idle jobs); model-primary
-    # (no search), lanes for the projection. A node entry's extra-signal appends to the common
-    # list. Move to common once the canary tracks.
+    # (no search), lanes for the projection. Tracked on the I channel since 10-23: SBAS L5 has no
+    # pilot, and the Q-code model of 10-20 never detected. 121/123/136 (EGNOS, below the horizon)
+    # are the broker's noise probes: presence needs 3 probes reporting, and a probe reports only
+    # from a slot. A node entry's extra-signal appends to the common list. Move to common once
+    # the canary tracks.
+    # The lanes cost ~4 k n^2 per live channel-frame, so at 95 stations cx51's projection gets its
+    # own pool slot: 7 = cores 41 / 61, the lightest of each pool (21-22 % on 10-23); it ran at
+    # 75 % of that core there, so cx51 keeps rows A-F as its stations (127 would need ~1.8x).
+    # Rows G/H stay outside its block: unprojected on cx51's channels, not mis-projected.
     cx51: {search-port-base: 11050, n2-project-source: lanes+residual, n2-project-lanes-max: 40,
+           n2-project-core-index: 7, n2-project-stations: "0-6,8-47,64-111",
            elem-dir-publish: all, assembler-core-slots: "2,1,3,4,8",
-           extra-signal: ["SBAS_L5_Q_MC:131,133,135"]}
+           extra-signal: ["SBAS_L5_I_MC:131,133,135,121,123,136"]}

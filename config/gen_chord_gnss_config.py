@@ -1079,6 +1079,8 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
                     # The E/L lanes as rotations of the prompt, one chip walk per hop
                     # (lanes_per_slot_for).
                     **({"epl_from_prompt": True} if args.epl_from_prompt else {}),
+                    # Replicas from code-phase tables, fused with the pack (--psi-synth).
+                    **({"psi_synth": True} if args.psi_synth else {}),
                     "f_offset_hz": carrier_hz,
                     "hops_per_record": HOPS_PER_RECORD,
                     "fft_length": cfg["fengine"]["fft_length"],
@@ -1477,12 +1479,13 @@ def merge_n2dual_gpu(blocks, cfg, args, node, gpu, chains, spds):
     procs = {p["pre"]: blocks.pop(f"{p['pre']}n2dual") for p in pres}
     primary = procs[f"gnss{gpu}_"]
     merged = {k: v for k, v in primary.items() if k != "commands"}
-    # Private CUDA streams: cuda_stream_base moves this process's copy-in, copy-out and kernel
-    # streams to 3, 4, 5, leaving 0, 1, 2 to production's pipelines, so the GNSS chains never
-    # queue against production's per-stream locks (one thread blocked in the CUDA driver there
-    # would stall the GPU's pipelines and back up to the NIC). prepareStreams only grows the
-    # device's pool, so asking for 6 holds whatever the construction order.
-    merged["cuda_stream_base"] = 3
+    # Private CUDA streams: cuda_stream_base is a pipeline index, and 1 moves this process's
+    # copy-in, copy-out and kernel streams to 3, 4, 5, leaving 0, 1, 2 to production's pipelines,
+    # so the GNSS chains never queue against production's per-stream locks (one thread blocked in
+    # the CUDA driver there would stall the GPU's pipelines and back up to the NIC).
+    # prepareStreams only grows the device's pool, so asking for 6 holds whatever the
+    # construction order.
+    merged["cuda_stream_base"] = 1
     merged["num_cuda_streams"] = 6
     out_buffers = {}
     injects, outputs = [], []
@@ -2794,6 +2797,15 @@ def main():
         "chain.",
     )
     ap.add_argument(
+        "--psi-synth",
+        action="store_true",
+        help="cudaGnssChordTrack psi_synth on every chain: replica synthesis from per-PRN "
+        "code-phase tables over the full PFB span, fused with the N^2 pack (one launch per "
+        "record instead of gnss_waveform + gnss_pack44; lib/cuda/cudaGnssPsiSynth.hpp). "
+        "Requires --epl-from-prompt. The replica carries +1.1%% more energy than the "
+        "80-chip gather, so every absolute SNR gate steps at the cutover.",
+    )
+    ap.add_argument(
         "--n2-project",
         choices=["off", "live"],
         default="off",
@@ -2838,6 +2850,14 @@ def main():
         "pool[(gpu + 5) %% len], the telemetry packers' core. With lane directions the stage "
         "does ~4 k n^2 operations per channel-frame, so a canary moves it to a slot with "
         "light stages (cx51: 9 = cores 43 / 63)",
+    )
+    ap.add_argument(
+        "--n2-project-eigen-channels",
+        choices=["all", "live"],
+        default="all",
+        help="channels GnssN2Project's eigen path runs on: all (default; every channel gets "
+        "the gauges) or live (only --n2-project-live-freq-ids, which it writes). The cost is "
+        "per channel and ~n^2 in the stations, so live is what pays for a larger station set",
     )
     ap.add_argument(
         "--n2-project-lanes-max",
@@ -3022,6 +3042,11 @@ def main():
         "with a WARN otherwise.",
     )
     args = ap.parse_args()
+    if args.psi_synth and not args.epl_from_prompt:
+        raise SystemExit(
+            "--psi-synth requires --epl-from-prompt: the fused synthesis packs two lanes per "
+            "slot (P, P_HEAD) with the E/L rows rotated from the prompt"
+        )
     args.base = _kotekan_input(args.base)
 
     with open(NODE_FILE) as fh:
@@ -3476,6 +3501,8 @@ def main():
                 "solve_every": int(N2_PROJECT_SOLVE_EVERY),
                 "metric_period_s": 1.0,
             }
+            if args.n2_project_eigen_channels != "all":
+                _stage["eigen_channels"] = args.n2_project_eigen_channels
             if args.n2_project_source != "eigen":
                 # #190: the chains' directions. The board group is the assemblers' unique_name
                 # up to the first '_' ("/gnss<gpu>"); tracker_stations is the chains' element

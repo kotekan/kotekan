@@ -42,12 +42,23 @@
  * @conf frame0_utc      Double. UTC of absolute sample 0; overrides the telescope's. Default 0.
  * @conf trim_ttl_s      Double. Trim lifetime without a refresh, s; must be > 0. Default 4.
  * @conf despread_max_chips      Int. Must be 80: the despread gathers an 80-chip window
- *                               centred on the PFB span. Default 80.
- * @conf despread_chips_centered Bool. Must be true. Default true.
- * @conf phi_fp16        Bool. Must be true: the Phi tables are fp16. Default true.
+ *                               centred on the PFB span. Default 80. Not read under psi_synth.
+ * @conf despread_chips_centered Bool. Must be true. Default true. Not read under psi_synth.
+ * @conf phi_fp16        Bool. Must be true: the Phi tables are fp16. Default true. Not read
+ *                       under psi_synth, which builds no Phi table.
  * @conf epl_from_prompt Bool. Synthesise the prompt replica only and take the E and L lanes as
  *                       its per-channel rotations (GnssCudaDespread::set_epl_from_prompt): one
  *                       chip walk per hop instead of three. Default false.
+ * @conf psi_synth       Bool. Replica synthesis from per-PRN code-phase tables
+ *                       (GnssCudaDespread::set_psi_synth, lib/cuda/cudaGnssPsiSynth.hpp), fused
+ *                       with the N^2 pack in cudaGnssInject. The tables are the full PFB span,
+ *                       so the replica carries +1.1% more energy (~1% in correlation) than the
+ *                       80-chip Phi replica: every absolute SNR gate sees that step at a
+ *                       cutover. Default false.
+ * @conf psi_fp16        Bool. Under psi_synth, store the tables as fp16 (storage error
+ *                       ~1.8e-4 per sample, cudaGnssPsiBench). Default true.
+ * @conf psi_refresh_hz  Double. Under psi_synth, rebuild a slot's table when its Doppler moves
+ *                       further than this from the table's. Default 30.
  * @conf seed_endpoint   String. POST /set_seeds.
  * @conf trim_endpoint   String, ignored (read only so a usage report does not list it).
  * @conf set_trim_endpoint String. POST /set_trim.
@@ -132,6 +143,11 @@ public:
     int hops_per_record = 0, n_hops_frame = 0, fft_len = 0;
     double sample_rate = 0.0, f_offset_hz = 0.0, dll_spacing = 0.0;
     bool epl_from_prompt = false;
+    bool psi_synth = false; ///< cudaGnssInject takes GnssCudaDespread::enqueue_psi_pack
+    /// Startup coverage under psi_synth, kept here because the command's instances (one per
+    /// in-flight frame) share it: the frame hop at which a seeded slot was first found waiting
+    /// for its Psi tables, -1 while none is. Written by the GPU thread only.
+    long long psi_dark_hop0 = -1;
     double frame0_utc = 0.0; ///< UTC of absolute sample 0; 0 = unknown, which the record
                              ///< assembler refuses
 

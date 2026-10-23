@@ -9,9 +9,11 @@ ptxas=${1:-ptxas}
 rc=0
 for cpp in lib/cuda/generated/cuda*.cpp; do
     name=$(basename "$cpp" .cpp)
-    ptx=$(grep -o 'build_ptx("[^"]*"' "$cpp" | cut -d'"' -f2)
+    ptx=$(grep 'device[.]build_ptx[(]' "$cpp" | cut -d'"' -f2)
     arch=$(grep -o -- '--gpu-name=sm_[0-9]*' "$cpp" | cut -d= -f2)
-    if out=$("$ptxas" -arch="$arch" -o /dev/null "$ptx" 2>&1); then
+    # the PTX code is wrapped in C++ raw string tags to be read in to C++.
+    # Remove these here to get back PTX code that compiles.
+    if out=$(grep -v '^R\"===($' "$ptx" | grep -v '^)===\"$' | "$ptxas" -arch="$arch" -o /dev/null /dev/stdin 2>&1); then
         echo "ok   $arch $ptx"
     else
         echo "$out" | grep -v Advisory

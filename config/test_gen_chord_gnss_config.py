@@ -265,7 +265,7 @@ def test_unknown_descriptor_is_refused():
     )
     cfg = node_cfg()
     args = argparse.Namespace(
-        extra_signal=["SBAS_L5_Q_MC:131"], aggregator_extra_search=["GAL_E5A_Q"]
+        extra_signal=["SBAS_L5_I_MC:131"], aggregator_extra_search=["GAL_E5A_Q"]
     )
     g.check_descriptors(cfg, args)  # every name known: no exit
 
@@ -363,6 +363,17 @@ def test_recipe_lines():
     check(
         all(ln.startswith("#   ") for ln in lines), "recipe_lines are '#   ' comments"
     )
+
+
+def test_psi_synth_needs_epl():
+    """--psi-synth is refused without --epl-from-prompt, before anything is probed."""
+    with fleet(FakeFleet(None)) as fake:
+        exc, _, _ = run_main(["--base", BASE, "--node", "cx19", "--psi-synth"])
+    check(
+        exc is not None and "--epl-from-prompt" in exc,
+        "--psi-synth alone is refused naming --epl-from-prompt (%r)" % (exc,),
+    )
+    check(not fake.urls, "the refusal probes nothing")
 
 
 def test_paths_in_the_kotekan_tree():
@@ -569,6 +580,7 @@ def test_live_ranges_pol_mirror():
 
     check(not refused([[0, 15], [64, 79]]), "32 elements, one range per pol: accepted")
     check(not refused([[0, 47], [64, 111]]), "96 elements, one range per pol: accepted")
+    check(not refused([[0, 63], [64, 127]]), "128 elements, one range per pol: accepted")
     check(refused([[0, 31], [64, 79]]), "48 elements (unequal pol halves): refused")
     check(refused([[0, 15], [16, 31]]), "two pol-0 ranges: refused")
     check(refused([[0, 63]]), "a single range: refused")

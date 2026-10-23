@@ -391,8 +391,11 @@ cudaUpchannelizer_charts_U32_K4::cudaUpchannelizer_charts_U32_K4(Config& config,
             "--gpu-name=sm_120",
             "--verbose",
         };
-        device.build_ptx("lib/cuda/generated/Upchannelizer_charts_U32_K4.ptx", {kernel_symbol},
-                         opts, "Upchannelizer_charts_U32_K4_");
+        const char* const kernel_code =
+#include "Upchannelizer_charts_U32_K4.ptx"
+            ;
+        device.build_ptx(kernel_code, "lib/cuda/generated/Upchannelizer_charts_U32_K4.ptx",
+                         {kernel_symbol}, opts, "Upchannelizer_charts_U32_K4_");
     }
 }
 

@@ -147,6 +147,7 @@ add_library(
     dropAllFrames.cpp
     N2FrameToVisFrame.cpp
     RfiMaskSum.cpp
+    DtvRfiMask.cpp
     RfiFrameMask.cpp
     RfiSKMetrics.cpp
     CountLostPLSamplesScalar.cpp
@@ -174,6 +175,7 @@ if(FFTW_FOUND)
                 dspPfbPrototype.cpp
                 gnss/gnssChannelizedAcquire.cpp
                 gnss/gnssChannelizedReplica.cpp
+                gnss/gnssPsiTable.cpp
                 gnss/gnssSeedTransport.cpp
                 gnss/GnssChannelizedSearch.cpp
                 gnss/GnssChordVoltageTap.cpp

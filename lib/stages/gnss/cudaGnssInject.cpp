@@ -2,6 +2,7 @@
 
 #include "cudaGnssChordDespread.hpp"  // for launch_pack44
 #include "cudaGnssDespreadKernel.hpp" // for DespreadJob
+#include "cudaGnssPsiSynth.hpp"       // for PsiJob (the Psi path's per-record slots)
 #include "cudaUtils.hpp"              // for CHECK_CUDA_ERROR
 #include "gnssGpuChain.hpp"           // for max_specs
 #include "gnssSeedTransport.hpp"      // for propagate_seed
@@ -106,9 +107,11 @@ cudaGnssInject::cudaGnssInject(Config& config, const std::string& unique_name,
 
     set_command_type(gpuCommandType::KERNEL);
     INFO("cudaGnssInject: {:d} PRN slots x {:d} lanes into '{:s}' [{:d}][{:d}][{:d}] at lanes "
-         "[{:d}, {:d}), {:d} records/frame, channels {:d}",
+         "[{:d}, {:d}), {:d} records/frame, channels {:d}; synthesis: {:s}",
          S.n_prn, _lanes_per_slot, _gnss_synth_name, _num_times, _synth_n_chan, _synth_lane_pitch,
-         _synth_lane_base, _synth_lane_base + _num_synth, n_rec, S.n_chan);
+         _synth_lane_base, _synth_lane_base + _num_synth, n_rec, S.n_chan,
+         S.psi_synth ? "Psi code-phase tables, fused with the pack (launch_psi_pack)"
+                     : "Phi chip walk (launch_waveform + launch_pack44)");
 }
 
 cudaGnssChordTrackState* cudaGnssInject::st() {
@@ -147,9 +150,10 @@ cudaEvent_t cudaGnssInject::execute(cudaPipelineState& pipestate, const std::vec
                     (int)meta->get_time_downsampling_fpga());
     const long long hop0_frame = meta->get_fpga_seq_num() + voltage.get_read_valid().begin();
 
-    // Device buffers. jobs and slot2spec are per frame slot (frames pipeline); wave, energy and
-    // energy0 are shared scratch, which is safe because every frame's work is enqueued on the
-    // same stream.
+    // Device buffers. jobs, the Psi path's pjobs and theta, and slot2spec are per frame slot
+    // (frames pipeline); wave, energy and energy0 are shared scratch, which is safe because
+    // every frame's work is enqueued on the same stream. The Psi path writes the lanes straight
+    // from the synthesis, so it has no wave buffer.
     const size_t max_jobs = (size_t)gnss_gpu::max_specs(S.n_prn);
     auto* d_jobs = (gnss_cuda::DespreadJob*)device.get_gpu_memory_array(
         unique_name + "_jobs", pipestate.gpu_frame_id, _gpu_buffer_depth,
@@ -157,8 +161,21 @@ cudaEvent_t cudaGnssInject::execute(cudaPipelineState& pipestate, const std::vec
     auto* d_slot2spec =
         (int*)device.get_gpu_memory_array(unique_name + "_slot2spec", pipestate.gpu_frame_id,
                                           _gpu_buffer_depth, (size_t)n_rec * S.n_prn * sizeof(int));
-    auto* d_wave = (float2*)device.get_gpu_memory(
-        unique_name + "_wave", (size_t)3 * S.n_prn * S.n_chan * S.hops_per_record * sizeof(float2));
+    gnss_cuda::PsiJob* d_pjobs = nullptr;
+    float* d_theta = nullptr;
+    float2* d_wave = nullptr;
+    if (S.psi_synth) {
+        d_pjobs = (gnss_cuda::PsiJob*)device.get_gpu_memory_array(
+            unique_name + "_pjobs", pipestate.gpu_frame_id, _gpu_buffer_depth,
+            max_jobs * sizeof(gnss_cuda::PsiJob));
+        d_theta = (float*)device.get_gpu_memory_array(unique_name + "_theta",
+                                                      pipestate.gpu_frame_id, _gpu_buffer_depth,
+                                                      max_jobs * S.n_chan * sizeof(float));
+    } else {
+        d_wave = (float2*)device.get_gpu_memory(unique_name + "_wave",
+                                                (size_t)3 * S.n_prn * S.n_chan * S.hops_per_record
+                                                    * sizeof(float2));
+    }
     auto* d_energy = (double*)device.get_gpu_memory(
         unique_name + "_energy", (size_t)4 * S.n_prn * S.n_chan * sizeof(double));
     // The quantizer scale is fixed for the frame: record 0's energy, handed to every record's
@@ -225,13 +242,14 @@ cudaEvent_t cudaGnssInject::execute(cudaPipelineState& pipestate, const std::vec
              "phase has stepped back to the broker's bare model.",
              prn);
 
-    int n_jobs_frame = 0, n_active = 0;
+    int n_jobs_frame = 0, n_active = 0, n_psi_dark0 = 0;
     for (int r = 0; r < n_rec; ++r) {
         const long long hop0 = hop0_frame + (long long)r * S.hops_per_record;
         const long long wstart = hop0 * (long long)S.fft_len;
 
         std::vector<GnssCudaDespread::Spec> specs;
         specs.reserve((size_t)S.n_prn);
+        int n_psi_dark = 0;
         int* slot2spec = _h_slot2spec.data() + (size_t)r * S.n_prn;
         for (int p = 0; p < S.n_prn; ++p) {
             slot2spec[p] = -1;
@@ -258,6 +276,17 @@ cudaEvent_t cudaGnssInject::execute(cudaPipelineState& pipestate, const std::vec
             ss.ref_hop = sd.ref_hop;
             const gnss::SeedPropagation pr = gnss::propagate_seed(
                 *S.replica, ss, hop0, S.sample_rate, S.f_offset_hz, trim_now[(size_t)p]);
+
+            // Psi tables are built on the despread's builder thread and uploaded one per
+            // record: a slot whose tables are not on the device yet (first seed, a swap, a
+            // bucket past its grace) is dark this record exactly as a slot without a seed,
+            // and joins when they land. Asked here, before anything is written for the slot:
+            // no run, no job row, no fold history, slot2spec stays -1.
+            if (S.psi_synth && !S.despread->psi_ready(p, pr.doppler_hz, (void*)stream)) {
+                FH.ok[(size_t)p] = 0;
+                ++n_psi_dark;
+                continue;
+            }
 
             GnssCudaDespread::Spec sp;
             sp.p = p;
@@ -302,8 +331,10 @@ cudaEvent_t cudaGnssInject::execute(cudaPipelineState& pipestate, const std::vec
             slot2spec[p] = (int)specs.size();
             specs.push_back(sp);
         }
-        if (r == 0)
+        if (r == 0) {
             n_active = (int)specs.size();
+            n_psi_dark0 = n_psi_dark;
+        }
 
         // Upload slot2spec even when empty: the pack must still refresh this record's rows (the
         // frame slot's contents are a buffer depth of frames old, and a PRN that just set must
@@ -315,8 +346,21 @@ cudaEvent_t cudaGnssInject::execute(cudaPipelineState& pipestate, const std::vec
         winstart[r] = wstart;
 
         gnss_cuda::DespreadJob* d_jobs_r = d_jobs + (size_t)r * S.n_prn;
-        if (!specs.empty()) {
+        unsigned char* d_synth_rec =
+            d_synth + (size_t)r * S.hops_per_record * _synth_n_chan * _synth_lane_pitch;
+        if (S.psi_synth)
+            // Synthesis and pack in one launch, every record (an empty record still refreshes
+            // its lanes). Record 0 sets the frame's quantizer scale from its own energy; the
+            // others take record 0's rows, as launch_pack44 does below.
+            S.despread->enqueue_psi_pack(
+                wstart, specs, d_jobs_r, d_pjobs + (size_t)r * S.n_prn,
+                d_theta + (size_t)r * S.n_prn * S.n_chan, d_slot2spec + (size_t)r * S.n_prn,
+                S.n_prn, _lanes_per_slot, d_chan_map, _synth_n_chan, _num_synth, _synth_lane_base,
+                _synth_lane_pitch, r == 0 ? nullptr : d_energy0, d_energy, d_synth_rec,
+                (void*)stream);
+        else if (!specs.empty())
             S.despread->enqueue_waveform(wstart, specs, d_jobs_r, d_wave, d_energy, (void*)stream);
+        if (!specs.empty()) {
             // ang0 exists only once the despread has built the jobs, so this is a second pass
             // over pctl. It is read from the despread's record of what it handed the kernel,
             // not re-derived here.
@@ -348,15 +392,34 @@ cudaEvent_t cudaGnssInject::execute(cudaPipelineState& pipestate, const std::vec
         }
         n_jobs_frame += (int)specs.size();
 
-        unsigned char* d_synth_rec =
-            d_synth + (size_t)r * S.hops_per_record * _synth_n_chan * _synth_lane_pitch;
-        CHECK_CUDA_ERROR(gnss_cuda::launch_pack44(
-            d_wave, d_energy0, d_jobs_r, d_slot2spec + (size_t)r * S.n_prn, S.n_prn,
-            _lanes_per_slot, S.n_chan, S.hops_per_record, d_chan_map, _synth_n_chan, _num_synth,
-            _synth_lane_base, _synth_lane_pitch, d_synth_rec, stream));
+        if (!S.psi_synth)
+            CHECK_CUDA_ERROR(gnss_cuda::launch_pack44(
+                d_wave, d_energy0, d_jobs_r, d_slot2spec + (size_t)r * S.n_prn, S.n_prn,
+                _lanes_per_slot, S.n_chan, S.hops_per_record, d_chan_map, _synth_n_chan, _num_synth,
+                _synth_lane_base, _synth_lane_pitch, d_synth_rec, stream));
     }
 
     hdr->n_jobs = n_jobs_frame * gnss_gpu::ROWS_PLAIN;
+
+    // Startup coverage: seeded slots waiting for their Psi tables, by record 0 of each frame.
+    // Logged at the first frame with a dark slot and at the first with none again; the state
+    // holds it because this command's instances (one per in-flight frame) each see every
+    // n-th frame.
+    if (S.psi_synth) {
+        if (n_psi_dark0 > 0 && S.psi_dark_hop0 < 0) {
+            S.psi_dark_hop0 = hop0_frame;
+            INFO("cudaGnssInject: Psi tables pending for {:d} of {:d} seeded slots: dark until "
+                 "built (frame hop0 {:d})",
+                 n_psi_dark0, n_psi_dark0 + n_active, hop0_frame);
+        } else if (n_psi_dark0 == 0 && S.psi_dark_hop0 >= 0) {
+            const double frames = (double)(hop0_frame - S.psi_dark_hop0) / S.n_hops_frame;
+            S.psi_dark_hop0 = -1;
+            INFO("cudaGnssInject: Psi coverage complete: {:d} seeded slots, {:.0f} frames "
+                 "({:.0f} ms) after the first dark one",
+                 n_active, frames, frames * S.n_hops_frame * S.fft_len / S.sample_rate * 1e3);
+        }
+    }
+
     // Header, winstart and PrnCtl only: the energy rows were already written D2D above.
     CHECK_CUDA_ERROR(
         cudaMemcpyAsync(d_ctl, _ctl_stage.data(), _ctl_off_energy, cudaMemcpyHostToDevice, stream));

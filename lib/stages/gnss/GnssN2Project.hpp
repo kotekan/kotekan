@@ -64,9 +64,15 @@
  * @conf live_freq_ids    Int list. The projected block is written only for these absolute
  *                        freq_ids, resolved against the first frame's coarse frequencies (fatal
  *                        if its metadata has none); must not be empty. Metrics cover every
- *                        channel. The contract with the cosmology pipeline: live writes
- *                        touch exactly the GNSS lobes exempted from first-stage RFI excision
- *                        (the config generator's "exempt").
+ *                        channel unless eigen_channels is live. The contract with the cosmology
+ *                        pipeline: live writes touch exactly the GNSS lobes exempted from
+ *                        first-stage RFI excision (the config generator's "exempt").
+ * @conf eigen_channels   String, all (default) or live. With live, a channel outside
+ *                        live_freq_ids is skipped entirely: no covariance, no solve and no
+ *                        gauges. Its output is the input copy either way, and each channel's
+ *                        subspace is its own, so the live channels' output is unchanged. The
+ *                        cost is per channel and ~n^2 in the stations, so this is what pays for
+ *                        a larger station set; the price is the other channels' diagnostics.
  * @conf pr_min           Double. A component must be spread over the array: participation
  *                        ratio 1 / sum |q_i|^4 >= pr_min (6.0). A lone correlated input pair
  *                        (cross-talk, or one saturated dish's two pols) is a rank-1 term with
@@ -146,6 +152,7 @@ private:
     const std::string source;
     const bool use_lanes;    ///< source != eigen
     const bool use_residual; ///< the eigen path runs (eigen, or on the residual)
+    bool eigen_live_only = false; ///< eigen_channels: live
     const std::string board_group;
     std::vector<int> tracker_stations;
     const int k_lanes_max;

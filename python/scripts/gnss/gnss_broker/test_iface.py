@@ -405,16 +405,16 @@ class TestCompare(unittest.TestCase):
         g = iface.golden()
         doc = golden_doc()
         doc["sections"]["signals"]["GAL_E6_C"]["carrier_hz"] = "1278760000"
-        del doc["sections"]["signals"]["SBAS_L5_Q_MC"]
+        del doc["sections"]["signals"]["SBAS_L5_I_MC"]
         l5 = ["GPS_L5_Q", "GPS_L5_Q_NH"]
         self.assertEqual(iface.compare(g, doc, "node", signals=l5).state, iface.MATCH)
         c = iface.compare(g, doc, "node")
         self.assertEqual(c.state, iface.MISMATCH)
         bad = sorted(set(p[1] for p, _, _ in c.fails))
-        self.assertEqual(bad, ["GAL_E6_C", "SBAS_L5_Q_MC"])
-        c = iface.compare(g, doc, "aggregator", signals=["SBAS_L5_Q", "SBAS_L5_Q_MC"])
+        self.assertEqual(bad, ["GAL_E6_C", "SBAS_L5_I_MC"])
+        c = iface.compare(g, doc, "aggregator", signals=["SBAS_L5_I", "SBAS_L5_I_MC"])
         self.assertEqual(c.state, iface.MISMATCH)
-        self.assertTrue(all(p[1] == "SBAS_L5_Q_MC" for p, _, _ in c.fails))
+        self.assertTrue(all(p[1] == "SBAS_L5_I_MC" for p, _, _ in c.fails))
         with self.assertRaises(ValueError):
             iface.compare(g, doc, "node", signals=["NO_SUCH"])
         with self.assertRaises(ValueError):
@@ -560,10 +560,10 @@ class TestSourcesAndCli(unittest.TestCase):
         doc["sections"]["cube"]["CUBE_HEADER_BYTES"] = 160
         cube = self.put("cube.json", {"gnss": entry_of(doc)})
         doc = golden_doc()
-        del doc["sections"]["signals"]["SBAS_L5_Q_MC"]
+        del doc["sections"]["signals"]["SBAS_L5_I_MC"]
         nosbas = self.put("nosbas.json", {"gnss": entry_of(doc)})
         legacy = self.put("legacy.json", "")
-        body = "    signal: GPS_L5_Q_NH\n    signal: SBAS_L5_Q_MC\n"
+        body = "    signal: GPS_L5_Q_NH\n    signal: SBAS_L5_I_MC\n"
         stamped = self.put(
             "stamped.yaml", "# GENERATED\n%s\nx:\n%s" % (iface.stamp_line(g), body)
         )
@@ -599,7 +599,7 @@ class TestSourcesAndCli(unittest.TestCase):
         # The 10-20 failure: the config names a descriptor the binary does not resolve.
         rc, out = pf(nosbas, "--config", unstamped)
         self.assertEqual(rc, iface.PREFLIGHT_REFUSED, out)
-        self.assertIn("names descriptor SBAS_L5_Q_MC, which this binary does not", out)
+        self.assertIn("names descriptor SBAS_L5_I_MC, which this binary does not", out)
         self.assertEqual(pf(nosbas, "--signals", "GPS_L5_Q,GPS_L5_Q_NH")[0], 0)
         rc, out = pf(legacy, "--config", stamped)
         self.assertEqual(rc, 0, out)

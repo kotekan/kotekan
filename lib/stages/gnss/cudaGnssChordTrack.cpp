@@ -39,6 +39,7 @@ cudaGnssChordTrackState::cudaGnssChordTrackState(Config& config, const std::stri
                     "always conjugated to absorb the F-engine conjugation");
     dll_spacing = config.get<double>(unique_name, "dll_spacing");
     epl_from_prompt = config.get_default<bool>(unique_name, "epl_from_prompt", false);
+    psi_synth = config.get_default<bool>(unique_name, "psi_synth", false);
     trim_ttl_s = config.get_default<double>(unique_name, "trim_ttl_s", 4.0);
     if (!(trim_ttl_s > 0.0))
         FATAL_ERROR("cudaGnssChordTrack: trim_ttl_s {:g} must be > 0", trim_ttl_s);
@@ -121,22 +122,36 @@ cudaGnssChordTrackState::cudaGnssChordTrackState(Config& config, const std::stri
     // The despread takes each channel's global bin, since the comb is sparse.
     despread = std::make_unique<GnssCudaDespread>(*replica, n_prn, channel_ids, hops_per_record,
                                                   sample_rate);
-    // The per-hop PFB chip gather is an 80-chip window centred on the ~210-chip span, 2.6x
-    // less synthesis work than the full span. A capped gather is a different replica, but at
-    // CHORD geometry (scripts/gnss/e2e --max-chips --chips-centered) a centred window
-    // reproduces the full-depth code phase down to 60 chips. The Phi tables are fp16, half the
-    // device footprint at a storage error of ~3.3e-4. The config keys are read only to refuse
-    // any other setting.
-    constexpr int max_chips = 80;
-    if (config.get_default<int>(unique_name, "despread_max_chips", max_chips) != max_chips
-        || !config.get_default<bool>(unique_name, "despread_chips_centered", true)
-        || !config.get_default<bool>(unique_name, "phi_fp16", true))
-        FATAL_ERROR("cudaGnssChordTrack: the despread runs only a centred {:d}-chip gather with "
-                    "fp16 Phi; despread_max_chips must be {:d}, despread_chips_centered and "
-                    "phi_fp16 true",
-                    max_chips, max_chips);
-    despread->set_max_chips(max_chips);
-    despread->set_phi_fp16();
+    if (psi_synth) {
+        // Code-phase tables over the full PFB span: no Phi table, no chip cap (the Psi
+        // interpolation needs the whole span; cudaGnssPsiSynth.hpp). The Phi keys are not
+        // read, so a config carrying them is not refused and not honoured.
+        const double refresh = config.get_default<double>(unique_name, "psi_refresh_hz", 30.0);
+        if (!(refresh > 0.0))
+            FATAL_ERROR("cudaGnssChordTrack: psi_refresh_hz {:g} must be > 0", refresh);
+        if (config.get_default<bool>(unique_name, "psi_fp16", true))
+            despread->set_psi_fp16();
+        despread->set_psi_synth(refresh);
+        INFO("cudaGnssChordTrack: psi_synth: replicas from code-phase tables over the full PFB "
+             "span (+1.1% replica energy against the 80-chip gather: absolute SNR gates step)");
+    } else {
+        // The per-hop PFB chip gather is an 80-chip window centred on the ~210-chip span, 2.6x
+        // less synthesis work than the full span. A capped gather is a different replica, but
+        // at CHORD geometry (scripts/gnss/e2e --max-chips --chips-centered) a centred window
+        // reproduces the full-depth code phase down to 60 chips. The Phi tables are fp16, half
+        // the device footprint at a storage error of ~3.3e-4. The config keys are read only to
+        // refuse any other setting.
+        constexpr int max_chips = 80;
+        if (config.get_default<int>(unique_name, "despread_max_chips", max_chips) != max_chips
+            || !config.get_default<bool>(unique_name, "despread_chips_centered", true)
+            || !config.get_default<bool>(unique_name, "phi_fp16", true))
+            FATAL_ERROR("cudaGnssChordTrack: the despread runs only a centred {:d}-chip gather "
+                        "with fp16 Phi; despread_max_chips must be {:d}, "
+                        "despread_chips_centered and phi_fp16 true",
+                        max_chips, max_chips);
+        despread->set_max_chips(max_chips);
+        despread->set_phi_fp16();
+    }
     if (epl_from_prompt) {
         despread->set_epl_from_prompt();
         INFO("cudaGnssChordTrack: epl_from_prompt: the E and L lanes are the rotated prompt");

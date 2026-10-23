@@ -20,12 +20,17 @@ cudaOutputDataZero::cudaOutputDataZero(Config& config, const std::string& unique
     cudaCommand(config, unique_name, host_buffers, device, inst) {
 
     output_len = config.get<int>(unique_name, "data_length");
+    _gpu_mem = config.get<std::string>(unique_name, "gpu_mem");
     output_zeros = malloc(output_len);
     memset(output_zeros, 0, output_len);
     CHECK_CUDA_ERROR(cudaHostRegister(output_zeros, output_len, 0));
-    gpu_buffers_used.push_back(std::make_tuple("output", true, false, true));
+    gpu_buffers_used.push_back(std::make_tuple(_gpu_mem, true, false, true));
+
+    // Taken in execute(); attribute it to this stage now (see gpuMemoryClaims.hpp).
+    device.register_gpu_memory_name(_gpu_mem);
 
     set_command_type(gpuCommandType::COPY_IN);
+    set_name("zero: " + _gpu_mem);
 }
 
 cudaOutputDataZero::~cudaOutputDataZero() {
@@ -36,7 +41,7 @@ cudaEvent_t cudaOutputDataZero::execute(cudaPipelineState&, const std::vector<cu
     pre_execute();
 
     void* gpu_memory_frame =
-        device.get_gpu_memory_array("output", gpu_frame_id, _gpu_buffer_depth, output_len);
+        device.get_gpu_memory_array(_gpu_mem, gpu_frame_id, _gpu_buffer_depth, output_len);
     record_start_event();
 
     // Data transfer to GPU

@@ -1,0 +1,158 @@
+---
+################################################################################
+# Parallel per-stream chains that no cudaSyncInput or cudaSyncOutput joins.
+#
+# Other cudaProcess stages in this directory put a frame's events on
+# more than one stream, and every one of those orders them with a cudaSync*
+# command already, so removing the end-of-frame join in
+# cudaProcess::queue_commands changes nothing they can detect. This config is
+# the shape that needs it, at both widths that occur in the tree:
+#
+#   /gpu_3stream  two slow device-to-host copies (streams 0 and 3) and a small
+#                 host-to-device copy LAST on stream 4 -- two siblings, the
+#                 shape of the 35 stages carrying two or more on their first
+#                 frame -- 11 of them in the steady state too -- among them
+#                 config/fengine/chord.j2's /run_bb.
+#   /gpu_2stream  one slow copy and the same small copy last -- one sibling,
+#                 the shape of the other 141.
+#
+# Neither is redundant: only gpu_2stream catches skipping the join for a
+# single-sibling wait list, and only gpu_3stream catches waiting on the first
+# sibling alone.
+#
+# The race depends on the copy engine, not the copy size: the final command is a
+# host-to-DEVICE copy while the slow work is device-to-host, so it uses the other
+# async engine and completes while they are in flight. With one engine it would
+# queue behind them and this config would pass with the defect present, so both
+# stages set `require_async_engines: 2` and refuse to start without it.
+#
+# The oracle is the profiling path (on by default, pinned below): without the
+# join, finalize_frame queries cudaEventElapsedTime on an incomplete event and
+# CHECK_CUDA_ERROR aborts, naming the stage and command. That abort happens
+# before mark_frame_full, so what this detects is the early signal rather than
+# the corruption it would cause -- a proxy, and a sufficient one.
+#
+# The device buffers are copied out without ever being written; the bytes are
+# irrelevant here, only the timing of the copies. compute-sanitizer initcheck
+# will say so.
+#
+# A failure here is proof of a defect.
+################################################################################
+type: config
+log_level: INFO
+
+buffer_depth: 2
+cpu_affinity: [0]
+
+samples_per_data_set: 1024
+frame_arrival_period: 5.12e-6 * samples_per_data_set
+
+# /telescope reads these through the config's upward lookup; startup fails without
+# them, though the pipeline shape does not depend on their values.
+num_polarizations: 2
+num_dishes: 64
+
+big_size: 16777216
+small_size: 4096
+n_frames: 12
+
+main_pool:
+    kotekan_metadata_pool: chordMetadata
+    num_metadata_objects: 40 * buffer_depth
+
+host_outA_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: big_size
+    metadata_pool: main_pool
+
+host_outB_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: big_size
+    metadata_pool: main_pool
+
+host_outC_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: big_size
+    metadata_pool: main_pool
+
+host_small_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: small_size
+    metadata_pool: main_pool
+
+gen_small:
+    kotekan_stage: testDataGen
+    type: const
+    value: 0x07
+    out_buf: host_small_buffer
+    num_frames: n_frames
+
+gpu:
+    profiling: true                     # the assertion -- see the header
+    log_profiling: false
+    gpu_3stream:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        num_cuda_streams: 5
+        require_async_engines: 2
+        commands:
+            # Slow device-to-host copy on stream 0 -- a waitee, not the join stream.
+            - name: cudaOutputData
+              cuda_stream: 0
+              gpu_mem: big
+              out_buf: host_outA
+            # Slow device-to-host copy on stream 3.
+            - name: cudaOutputData
+              cuda_stream: 3
+              gpu_mem: big
+              out_buf: host_outB
+            # Small host-to-device copy LAST, on stream 4: the other copy engine is
+            # idle, so it completes while both copies above are still in flight.
+            - name: cudaInputData
+              cuda_stream: 4
+              in_buf: host_small
+              gpu_mem: small
+        in_buffers:
+            host_small: host_small_buffer
+        out_buffers:
+            host_outA: host_outA_buffer
+            host_outB: host_outB_buffer
+
+    # One sibling: the shape of 141 of the 176 multi-stream stages in the tree.
+    gpu_2stream:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        num_cuda_streams: 5
+        require_async_engines: 2
+        commands:
+            - name: cudaOutputData
+              cuda_stream: 0
+              gpu_mem: big2
+              out_buf: host_outC
+            - name: cudaInputData
+              cuda_stream: 4
+              in_buf: host_small
+              gpu_mem: small2
+        in_buffers:
+            host_small: host_small_buffer
+        out_buffers:
+            host_outC: host_outC_buffer
+
+eat_A:
+    kotekan_stage: dropAllFrames
+    in_buf: host_outA_buffer
+    max_frames: n_frames
+
+eat_B:
+    kotekan_stage: dropAllFrames
+    in_buf: host_outB_buffer
+    max_frames: n_frames
+
+eat_C:
+    kotekan_stage: dropAllFrames
+    in_buf: host_outC_buffer
+    max_frames: n_frames

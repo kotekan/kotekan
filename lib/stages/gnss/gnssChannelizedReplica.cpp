@@ -77,14 +77,14 @@ std::vector<int8_t> signal_code(const std::string& name, int prn) {
                 tiled.push_back((int8_t)(a[(size_t)i] * gps::L5_NH20[(size_t)k]));
         return tiled;
     }
-    if (name == "SBAS_L5_Q") {
-        auto a = gps::generate_l5q_code(prn); // PRN 120..158: the SBAS rows of the L5 table
+    if (name == "SBAS_L5_I") {
+        auto a = gps::generate_l5i_code(prn); // PRN 120..158: the SBAS rows of the L5 table
         return std::vector<int8_t>(a.begin(), a.end());
     }
-    if (name == "SBAS_L5_Q_MC") {
-        // Q5 primary tiled by the 2-chip Manchester overlay (+1, -1), as GPS_L5_Q_NH tiles NH20:
+    if (name == "SBAS_L5_I_MC") {
+        // I5 primary tiled by the 2-chip Manchester pair (+1, -1), as GPS_L5_Q_NH tiles NH20:
         // a code phase in this 20460-chip space is primary cp + 10230 * (period index mod 2).
-        auto a = gps::generate_l5q_code(prn);
+        auto a = gps::generate_l5i_code(prn);
         std::vector<int8_t> tiled;
         tiled.reserve((size_t)gps::L5_CODE_LENGTH * 2);
         for (int k = 0; k < 2; ++k)
@@ -263,8 +263,8 @@ ChannelizedReplicaBank::ChannelizedReplicaBank(const SignalDescriptor& sig, doub
         const std::string name(_sig.name);
         if (name == "GPS_L5_Q")
             _secondary.assign(gps::L5_NH20.begin(), gps::L5_NH20.end());
-        else if (name == "SBAS_L5_Q")
-            _secondary.assign({1, -1}); // the SBAS Manchester overlay, 2 ms
+        else if (name == "SBAS_L5_I")
+            _secondary.assign({1, -1}); // the SBAS bi-binary (Manchester) pair, 2 ms
         else if (name == "GPS_L5_I")
             _secondary.assign(gps::L5_NH10.begin(), gps::L5_NH10.end());
         else if (name == "GAL_E1C")
