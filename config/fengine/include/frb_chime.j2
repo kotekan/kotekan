@@ -1,6 +1,7 @@
 # -*-yaml-*-
 
-# CHIME FRB beamformer setup
+# CHIME FRB beamformer setup, as config/chime_upgrade_frb.j2: FRB1 weights from the feed gains
+# (loadFeedGains, processFRBFeedGains), FRB2 on the CHIME/FRB beams
 
 ################################################################################
 
@@ -14,8 +15,6 @@ frb1_num_beams_Q: 2 * num_dishes_x
 frb2_num_beams_x: 4
 frb2_num_beams_y: 256
 frb2_num_beams: frb2_num_beams_x * frb2_num_beams_y
-frb2_beam_separation_x: 1.3 / 4
-frb2_beam_separation_y: 90.0 / 256
 
 # The FRB2 beamforming weights are valid for this many input samples. This must be a multiple of
 # frb_num_output_times * frb_downsampling_factor, the number of input samples the FRB2 beamformer
@@ -32,7 +31,8 @@ frb_chunk_size: 256
 # The FRB1 beamforming weights are valid for this many input samples (about one second). The
 # U = 16 FRB1 kernel processes multiples of 16 * (384 / 16) = 384 input samples, so this must be a
 # multiple of 384.
-# setFRB1Phase applies bad feed mask frame k to weight frame k.
+# processFRBFeedGains emits one set of weights per bad feed mask frame, so this has to be the
+# mask's lifetime.
 frb1_phase_lifetime_in_samples: bf_mask_lifetime_in_samples
 
 ################################################################################
@@ -41,7 +41,19 @@ frb1_phase_lifetime_in_samples: bf_mask_lifetime_in_samples
 
 # Phases
 
-# One frame is one set of weights, covering frb1_phase_lifetime_in_samples input samples.
+# Beamforming gains at coarse frequency resolution, from loadFeedGains
+host_frb1_phase_buffer:
+    kotekan_buffer: ndarray
+    num_frames: 1
+    value_type: float32
+    extents: [num_frequencies, num_elements, num_components]
+    quantity_name: "gain"
+    dimnames: ["F", "E", "C"]
+    dimscalings: [1, 1, 1]
+    metadata_pool: main_pool
+
+# Beamforming gains at upchannelized frequency resolution, from processFRBFeedGains. One frame is
+# one set of weights, covering frb1_phase_lifetime_in_samples input samples.
 host_frb1_U16_phase_buffer:
     kotekan_buffer: ndarray
     num_frames: buffer_depth
@@ -128,21 +140,28 @@ host_frb3_beams_offsetscale_buffer:
 
 # FRB 1
 
-run_set_frb1_U16_phase:
-    kotekan_stage: setFRB1Phase
-    num_dishes_x: 256           # tranposed dish layout
-    num_dishes_y: 4
+# The feed gains from the files in /updatable_config/frb_gain/0 (include/fengine_chime.j2), or
+# `default_gains` without them
+run_load_frb1_phase:
+    kotekan_stage: loadFeedGains
+    beamformer_type: "frb"
+    filename_template: "quick_gains_%04d_reordered.bin"
+    default_gains: [1.0, 0.0]
+    gain_buffers:
+      - host_frb1_phase_buffer
+    in_buf: host_rfi_RFImask_buffer
+    updatable_config:
+      frb_gain: /updatable_config/frb_gain
+
+# The FRB1 weights: the feed gains, copied to every fine channel, zero for bad feeds. This reads
+# the mask on the host side as a flat array of num_elements bytes, which the [1, P, D] mask is.
+run_process_frb1_U16_phase:
+    kotekan_stage: processFRBFeedGains
     upchan_factor: 16
-    upchan_min_channel: upchan_U16_min_channel
-    upchan_max_channel: upchan_U16_max_channel
-    upchan_max_num_channels: upchan_U16_max_num_channels
-    frb1_phase: host_frb1_U16_phase_buffer
-    bf_mask: host_bf_mask_buffer
-    # The weight stream starts at the sequence number of the first voltage frame
-    metadata_source:
-{% for id in range(16) %}   # num_frequencies = 16
-        - host_voltage_buffer_{{ id }}
-{% endfor %}
+    gain_buffers:
+      - host_frb1_phase_buffer
+    in_mask_buf: host_bf_mask_buffer
+    out_buf: host_frb1_U16_phase_buffer
 
 # Send the weights to their GPU ringbuffer. One set of weights covers
 # frb1_phase_lifetime_in_samples input samples, so this runs far less often than run_frb1_U16.
@@ -209,14 +228,23 @@ run_set_frb2_beams:
     out_pos_buf: host_frb2_beam_positions_buffer
     out_id_buf: host_frb2_beam_ids_buffer
     time_downsampling_fpga: frb2_weights_lifetime_in_samples
-    mode: grid_degrees
+    mode: manual
     num_beams: frb2_num_beams
-    num_x: frb2_num_beams_x
-    num_y: frb2_num_beams_y
-    x_min: -frb2_beam_separation_x * (frb2_num_beams_x - 1) / 2.0
-    x_max: frb2_beam_separation_x * (frb2_num_beams_x - 1) / 2.0
-    y_min: -frb2_beam_separation_y * (frb2_num_beams_y - 1) / 2.0
-    y_max: frb2_beam_separation_y * (frb2_num_beams_y - 1) / 2.0
+    # The CHIME/FRB beams: the beam separation in EW is 0.4 deg, in NS such that sin(angle)
+    # changes by sqrt(3)/256 (from
+    # https://github.com/chime-frb-open-data/chime-frb-beam-model/blob/e65b070243056fe5d33a2b1f4ce52ce685b74fc5/cfbm/formed.py#L86
+    # via Paul Scholz). x_dir_grid and y_dir_grid are the direction sines,
+    # sin(angle from zenith towards x) and towards y.
+    # Beam R = ns * frb2_num_beams_x + ew, with the CHIME/FRB beam id 1000 * ew + ns.
+    {% set sin_achromatic_beam_angles_EW = [-0.00698126029796155, 0.0, 0.00698126029796155, 0.0139621803391453] %}
+    beams:
+{% for ns in range(256) %}   # frb2_num_beams_y = 256
+{%   for ew in range(4) %}   # frb2_num_beams_x = 4
+      - id: {{ 1000 * ew + ns }}
+        x_dir_grid: {{ sin_achromatic_beam_angles_EW[ew] }}
+        y_dir_grid: {{ (ns - 127) * 1.73205080756888 / 256 }}
+{%   endfor %}
+{% endfor %}
 
 # Calculate the weights on the GPU, one matrix per positions frame. This runs once per
 # frb2_weights_lifetime_in_samples, so a single command instance suffices. The frequencies come
@@ -264,6 +292,8 @@ run_frb23:
             host_frb3_beams_offsetscale_buffer: host_frb3_beams_offsetscale_buffer
         commands:
         - name: cudaFRBBeamReformer
+          # accumulate the 4096-term sums in float32; float16 loses precision
+          accumulate_float32: true
           frb1_max_num_frequencies: upchan_U16_max_num_output_channels
           frb1_max_num_times: buffer_depth * frb_num_output_times
           frb2_num_frequencies: upchan_U16_max_num_output_channels
