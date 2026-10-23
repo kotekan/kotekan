@@ -32,8 +32,14 @@ GPS_UTC_LEAP = 18.0  # GPST - UTC, s; update at the next leap second
 BDT_GPST = -14.0  # BDT = GPST - 14 s
 GPS_EPOCH = datetime(1980, 1, 6, tzinfo=timezone.utc)
 
-# Gravitational parameter / earth rotation per constellation ICD.
-MU = {"G": 3.986005e14, "E": 3.986004418e14, "C": 3.986004418e14, "R": 3.986004418e14}
+# Gravitational parameter / earth rotation per constellation ICD (S: WGS84, the MT9 frame).
+MU = {
+    "G": 3.986005e14,
+    "E": 3.986004418e14,
+    "C": 3.986004418e14,
+    "R": 3.986004418e14,
+    "S": 3.986004418e14,
+}
 OMEGA_E = {
     "G": 7.2921151467e-5,
     "E": 7.2921151467e-5,
@@ -53,7 +59,15 @@ GLONASS_INTENDED_S = 900.0  # a record is meant for +-15 min about its epoch tb
 # the default 4 h; 2.5 h keeps a seed inside the spectrum fit's capture while leaving the
 # hourly merge's 35-95 min record age nearly an hour of slack.
 GLONASS_MAX_AGE_S = 9000.0
-SBAS_MAX_AGE_S = 7200.0  # a GEO's MT9 state vector (RINEX S record), minutes-cadence in the BRDC
+# A GEO's MT9 state vector (RINEX S record, 256 s cadence in the BRDC) propagated as a two-body
+# orbit (sbas_state) errs ~85 m median against the next records at 60-90 min of age, ~160 m at
+# 90-120 min and ~210 m (0.7 L5 chip) at 2 h; a chain seeds from a record 1-2 h old.
+SBAS_MAX_AGE_S = 7200.0
+SBAS_STEP_S = 60.0  # RK4 step of the two-body propagation (sbas_state), as GLONASS's
+# How sbas_state carries an S record away from its epoch: "twobody" integrates the state vector
+# as a point-mass orbit, "constaccel" is the MT9 polynomial pos + vel t + acc t^2 / 2 (the only
+# model before 2026-10-23, kept for comparison). The function's `model` keyword overrides.
+SBAS_MODEL = "twobody"
 # GLONASS L3OC per-satellite timing against the FDMA broadcast clock (#210). The broadcast
 # clock (-tau_n) is fitted to the FDMA L1/L2 signals; some satellites transmit the CDMA L3OC
 # code with a large, stable offset from it: the two GLONASS-K2 (SVN 803, 804) ~135-138 m EARLY,
@@ -251,7 +265,7 @@ def _parse_rinex_nav_file(path):
             toc_gpst -= BDT_GPST  # BDT epoch -> GPST seconds-since-GPS-epoch
         if sysc == "S":
             # SBAS GEO: epoch in GPS time, orbit lines X/X'/X''/health, Y/Y'/Y''/URA, Z/Z'/Z''/IODN
-            # in km (RINEX 3.04 table A14); propagated as pos + vel t + acc t^2 / 2 (SBAS MT9).
+            # in km (RINEX 3.04 table A14); propagated by sbas_state.
             e = _sbas_record(prn, af, orb, toc_gpst)
             if e is not None:
                 out.setdefault((sysc, e["prn"]), []).append(e)  # keyed by the PRN (S31 -> 131)
@@ -319,8 +333,8 @@ def _parse_rinex_nav_file(path):
 def _sbas_record(prn, af, orb, toe_gpst):
     """SBAS S record -> eph dict: ECEF (WGS84) position, velocity and acceleration in metres at
     the record epoch (GPS time), the clock aGf0 + aGf1 (t - toc). PRNs are the RINEX S number
-    + 100 (S31 = PRN 131, WAAS). A GEO's state is good for tens of minutes from its epoch;
-    SBAS_MAX_AGE_S bounds it."""
+    + 100 (S31 = PRN 131, WAAS). A GEO's state carried by sbas_state is good to half an L5 chip
+    for ~100 min from its epoch; SBAS_MAX_AGE_S bounds it."""
     # RINEX writes the state in km, km/s, km/s^2. The rapid BRDC (BRDC00WRD_R) carries the
     # GAGAN records (S27, S28) in metres, 1000x too far, which a horizon test then passes
     # (2026-10-20: the broker listed PRNs 127/128 as up from DRAO). A geocentric radius above
@@ -350,12 +364,76 @@ def _sbas_record(prn, af, orb, toe_gpst):
     )
 
 
-def sbas_state(e, t_gpst):
-    """ECEF position and velocity of an SBAS GEO at t_gpst from its MT9-style state vector."""
+def _twobody_deriv(s):
+    """d/dt of the inertial state (x, y, z, vx, vy, vz) under point-mass gravity (WGS84 GM)."""
+    x, y, z, vx, vy, vz = s
+    r2 = x * x + y * y + z * z
+    g = -MU["S"] / (r2 * math.sqrt(r2))
+    return (vx, vy, vz, g * x, g * y, g * z)
+
+
+def sbas_state(e, t_gpst, model=None):
+    """ECEF (WGS84) position (m) and velocity (m/s) of an SBAS GEO at t_gpst from its MT9 state
+    vector (RINEX S record), by `model` (SBAS_MODEL when None).
+
+    "twobody": the record's (position, velocity) is taken into an inertial frame whose axes
+    coincide with ECEF at the record epoch (the velocity gains omega x r), integrated as a
+    point-mass orbit r'' = -GM r / |r|^3 by 4th-order Runge-Kutta at SBAS_STEP_S or finer, and
+    rotated back to ECEF by the Earth rotation over the elapsed time. The record's acceleration
+    is unused: it is the ECEF acceleration at MT9's 1.25e-5 m/s^2 LSB (DO-229), so its rounding
+    alone moves the quadratic term by up to 0.5 * 6.25e-6 * dt^2 = 40 m per axis at 1 h and
+    160 m at 2 h, while the orbit's own acceleration follows from (r, v) and GM to the 0.0004 m/s
+    LSB of the velocity. What the point mass leaves out (J2, the Moon and the Sun, ~1e-5 m/s^2
+    at GEO) is the remainder. Against the later records of the WAAS GEOs (sbas_eph_check.py,
+    the rapid BRDCs of 2026-10-21/22, 5418 record pairs): median position error 85 m (per PRN
+    82-88) at 60-90 min of age and 163 m (159-180) at 90-120 min, where the polynomial errs
+    195 m (160-246) and 411 m (320-556); the median reaches half an L5 chip (146 m) at ~100 min
+    against ~67 min. Under ~15 min the polynomial is the slightly better model (1.2 m median
+    against 1.6: its acceleration carries the J2 and lunisolar terms); the hourly BRDC lands
+    about an hour late, so 1-2 h of age is the norm for the sbas_l5 seed, one L5 chip is
+    293 m and the tracker pulls in +-0.5 chip.
+
+    "constaccel": the MT9 polynomial pos + vel dt + acc dt^2 / 2, the ICD's extrapolation for
+    minutes about the epoch.
+
+    Past SBAS_MAX_AGE_S from the epoch a warning is raised, as glonass_state does past its
+    intended window; predict_all's clock-grade window stops there."""
+    if model is None:
+        model = SBAS_MODEL
     dt = t_gpst - e["toe_gpst"]
-    pos = tuple(e["pos"][i] + e["vel"][i] * dt + 0.5 * e["acc"][i] * dt * dt for i in range(3))
-    vel = tuple(e["vel"][i] + e["acc"][i] * dt for i in range(3))
-    return pos, vel
+    if abs(dt) > SBAS_MAX_AGE_S:
+        warnings.warn("SBAS record propagated beyond 2 h of its epoch", stacklevel=2)
+    if model == "constaccel":
+        pos = tuple(
+            e["pos"][i] + e["vel"][i] * dt + 0.5 * e["acc"][i] * dt * dt for i in range(3)
+        )
+        vel = tuple(e["vel"][i] + e["acc"][i] * dt for i in range(3))
+        return pos, vel
+    if model != "twobody":
+        raise ValueError("sbas_state: unknown model %r" % (model,))
+    w = OMEGA_E["S"]
+    x, y, z = e["pos"]
+    vx, vy, vz = e["vel"]
+    # Inertial axes = ECEF axes at the epoch: the position carries over, the velocity gains the
+    # frame's own motion omega x r = (-w y, w x, 0).
+    s = [x, y, z, vx - w * y, vy + w * x, vz]
+    n = max(1, int(math.ceil(abs(dt) / SBAS_STEP_S)))
+    h = dt / n
+    for _ in range(n):
+        k1 = _twobody_deriv(s)
+        k2 = _twobody_deriv([s[i] + 0.5 * h * k1[i] for i in range(6)])
+        k3 = _twobody_deriv([s[i] + 0.5 * h * k2[i] for i in range(6)])
+        k4 = _twobody_deriv([s[i] + h * k3[i] for i in range(6)])
+        s = [
+            s[i] + h / 6.0 * (k1[i] + 2.0 * k2[i] + 2.0 * k3[i] + k4[i])
+            for i in range(6)
+        ]
+    # ECEF has turned eastward by w dt since the epoch: take omega x r back out of the velocity
+    # and rotate both vectors about z by -w dt.
+    x, y, z, vx, vy, vz = s
+    vx, vy = vx + w * y, vy - w * x
+    c, sn = math.cos(w * dt), math.sin(w * dt)
+    return (c * x + sn * y, c * y - sn * x, z), (c * vx + sn * vy, c * vy - sn * vx, vz)
 
 
 def _glonass_record(prn, af, orb, tb_gpst):
