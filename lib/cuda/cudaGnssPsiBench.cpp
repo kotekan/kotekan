@@ -138,6 +138,56 @@ void time_launch(const char* name, F&& launch, int n_it, double* out_min, double
 /// Tiled-code check on GPS_L5_Q_NH (L = 20 x 10230): the kernel's Psi_plain / Psi_prev / sec
 /// split against a table built over the whole 204600-chip code, and both against NOA on the
 /// NH bank. Two PRNs; the jobs are replicated to @c n_job for the timing.
+// build_psi_split by FFT (the production builder) against the direct sum, per PRN: the build
+// times, the agreement of the double accumulators (the FFT's roundoff, ~1e-13 relative) and
+// how many float2 entries round differently (a handful of ties at most).
+void psi_split_methods(const gnss::ChannelizedReplicaBank& bank, const std::vector<int>& chans,
+                       const std::vector<double>& dop, double fs, int n_chips) {
+    const int n_prn = (int)dop.size();
+    const long L = bank.eff_code_length();
+    double t_fft = 0.0, t_dir = 0.0, t_fft_max = 0.0, t_dir_max = 0.0;
+    double rel_max = 0.0, abs_max = 0.0;
+    size_t n_diff = 0, n_tot = 0;
+    for (int b = 0; b < n_prn; ++b) {
+        const int8_t* code = bank.full_code(b).data();
+        const int P = gnss_cuda::psi_primary_period(code, L, n_chips);
+        const gnss_cuda::PsiCodeSplit cs = gnss_cuda::psi_split_code(code, L, P);
+        const gnss_cuda::PsiSplit F = gnss_cuda::build_psi_split_from(
+            bank, b, chans, dop[(size_t)b], fs, 1, cs, true, gnss_cuda::PsiBuildMethod::FFT, true);
+        const gnss_cuda::PsiSplit D =
+            gnss_cuda::build_psi_split_from(bank, b, chans, dop[(size_t)b], fs, 1, cs, true,
+                                            gnss_cuda::PsiBuildMethod::DIRECT, true);
+        t_fft += F.build_seconds;
+        t_dir += D.build_seconds;
+        t_fft_max = std::max(t_fft_max, F.build_seconds);
+        t_dir_max = std::max(t_dir_max, D.build_seconds);
+        double num = 0.0, den = 0.0;
+        for (size_t i = 0; i < F.plain_d.size(); ++i) {
+            const double d = std::abs(F.plain_d[i] - D.plain_d[i]);
+            num += d * d;
+            den += std::norm(D.plain_d[i]);
+            abs_max = std::max(abs_max, d);
+        }
+        rel_max = std::max(rel_max, std::sqrt(num / std::max(den, 1e-300)));
+        for (size_t i = 0; i < F.psi_plain.size(); ++i)
+            n_diff +=
+                (F.psi_plain[i].x != D.psi_plain[i].x) || (F.psi_plain[i].y != D.psi_plain[i].y);
+        n_tot += F.psi_plain.size();
+        // The lookback is the direct sum on both paths and must be identical.
+        for (size_t i = 0; i < F.prev_d.size(); ++i)
+            if (F.prev_d[i] != D.prev_d[i]) {
+                printf("   PRN %d: psi_prev differs between the builders at %zu\n", b + 1, i);
+                break;
+            }
+    }
+    printf("build_psi_split (%d chans x %d chips, P from psi_primary_period): direct mean %.1f "
+           "max %.1f ms/PRN, FFT mean %.1f max %.1f ms/PRN (x%.1f); FFT vs direct in double: "
+           "rel rms max %.2e, abs max %.2e; float2 entries differing %zu / %zu %s\n",
+           (int)chans.size(), n_chips, 1e3 * t_dir / n_prn, 1e3 * t_dir_max, 1e3 * t_fft / n_prn,
+           1e3 * t_fft_max, t_dir / std::max(t_fft, 1e-12), rel_max, abs_max, n_diff, n_tot,
+           rel_max < 1e-11 ? "OK" : "DISAGREE");
+}
+
 int run_tiled(int n_job) {
     const double fs = 3.2e9, f_off = 1176.45e6;
     const int N = 8192, taps = 4, fft_len = 2 * N, n_hops = 2048;
@@ -194,7 +244,7 @@ int run_tiled(int n_job) {
                       cudaMemcpyHostToDevice));
         T[(size_t)b] = gnss_cuda::build_psi_table(bank, b, chans, dop[b], fs, 1, true);
         S[(size_t)b] = gnss_cuda::build_psi_split(bank, b, chans, dop[b], fs, 1, P, true);
-        printf("   PRN %d: full table %.3f s (%zu entries/chan), split %.3f s (%d + %d "
+        printf("   PRN %d: full table %.3f s (%zu entries/chan), split (FFT) %.3f s (%d + %d "
                "entries/chan, Ns %d, sec[0..3] %d %d %d %d)\n",
                b + 1, T[(size_t)b].build_seconds, T[(size_t)b].psi.size() / n_chan,
                S[(size_t)b].build_seconds, P, S[(size_t)b].n_prev, S[(size_t)b].Ns,
@@ -214,6 +264,8 @@ int run_tiled(int n_job) {
         CK(cudaMemcpy(d_sec[(size_t)b], S[(size_t)b].sec.data(), S[(size_t)b].sec.size(),
                       cudaMemcpyHostToDevice));
     }
+
+    psi_split_methods(bank, chans, std::vector<double>(dop, dop + n_prn), fs, n_chips);
 
     std::vector<gnss_cuda::DespreadJob> jn((size_t)n_job);
     std::vector<gnss_cuda::PsiJob> pf((size_t)n_job), ps((size_t)n_job);
@@ -507,6 +559,7 @@ int main(int argc, char** argv) {
            "per PRN min %.3f mean %.3f max %.3f s; table %.1f KB fp32 per (PRN, channel)\n",
            n_chan, n_chips_full, L, build_s, n_prn, build_min, build_s / n_prn, build_max,
            (double)L * sizeof(float2) / 1024.0);
+    psi_split_methods(bank, chans, dop, fs, n_chips_full);
     {
         // The far image and the near-image choice per channel at this chain (the skeptic's
         // guard: |theta_far| * inv_cps < 50 would be a > 2e-2 far image at the centre channel).

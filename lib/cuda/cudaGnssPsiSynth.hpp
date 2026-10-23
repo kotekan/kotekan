@@ -258,6 +258,10 @@ struct PsiSplit {
     std::vector<float2> psi_prev;  ///< [n_chan][n_prev]
     std::vector<int8_t> sec;       ///< [Ns] sign of period q relative to the first
     double build_seconds = 0.0;
+    /// The double accumulators psi_plain / psi_prev were rounded from, filled only when
+    /// @ref build_psi_split_from is asked to keep them (cuda_gnss_psi_bench compares the FFT
+    /// and the direct builds here, below float resolution).
+    std::vector<std::complex<double>> plain_d, prev_d;
 };
 
 /// @ref build_psi_table's tables for a tiled code of primary period @c P: Psi_plain over the
@@ -265,7 +269,7 @@ struct PsiSplit {
 /// prim[(m'-d) mod P] K_d, and sec[]. Throws unless every period is a sign of the first and
 /// the PFB span is shorter than a period. The kernel reconstructs
 /// Psi[q*P + m'] = sec[q] Psi_plain[m'] + (sec[q-1] - sec[q]) Psi_prev[m'] exactly.
-/// @ref psi_split_code followed by @ref build_psi_split_from.
+/// @ref psi_split_code followed by @ref build_psi_split_from with the FFT method.
 PsiSplit build_psi_split(const gnss::ChannelizedReplicaBank& bank, int prn_index,
                          const std::vector<int>& chans, double doppler_hz, double sample_rate,
                          int G, int P, bool frac = true);
@@ -286,11 +290,25 @@ struct PsiCodeSplit {
 /// period is +-1 times the first (the sign is read at the first non-zero chip).
 PsiCodeSplit psi_split_code(const int8_t* code, long L, int P);
 
+/// How @ref build_psi_split_from forms Psi_plain. The lookback table Psi_prev is always the
+/// direct sum (G*(n_chips-1) entries per channel, 211 at L5 geometry).
+enum class PsiBuildMethod : int {
+    /// Psi_plain[m] = sum_d prim[(m-d) mod P] K_d is a circular convolution of period P, done
+    /// as IFFT(FFT(prim) . FFT(K zero-padded to P)) in double (FFTW): one transform of the
+    /// code per build plus two per (channel, grid point). The production path.
+    FFT = 0,
+    /// The direct O(G * n_chips * P) sum per channel: the reference the bench holds the FFT
+    /// build against (agreement ~1e-13 relative in double; the float2 tables round the same).
+    DIRECT = 1,
+};
+
 /// @ref build_psi_split from an already split code: reads the bank's geometry and filter
-/// (const) and never its code table.
+/// (const) and never its code table. @c keep_double fills PsiSplit::plain_d / prev_d.
 PsiSplit build_psi_split_from(const gnss::ChannelizedReplicaBank& bank, int prn_index,
                               const std::vector<int>& chans, double doppler_hz, double sample_rate,
-                              int G, const PsiCodeSplit& cs, bool frac = true);
+                              int G, const PsiCodeSplit& cs, bool frac = true,
+                              PsiBuildMethod method = PsiBuildMethod::FFT,
+                              bool keep_double = false);
 
 } // namespace gnss_cuda
 
