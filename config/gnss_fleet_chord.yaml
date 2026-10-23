@@ -126,9 +126,11 @@ common:
     # The phase sign depends on the F-engine's FFT and conjugation conventions, so it is
     # calibrated from data (gnssElemSteer.hpp); +1 is the measured value.
     elem-steer-sign: 1.0
-    # No elem-positions-file: the 2026-10-20-rows-af96 epoch carries the refined A/B positions
-    # and nominal C-F ones itself. A refinement file is solved against one epoch key and refused
-    # for any other; add one here once C-F are re-solved (possolve.py) against this epoch.
+    # A refinement file is solved against one epoch key and refused for any other. This one is
+    # the 2026-10-23-rows-ah128 epoch with the G3 dishes (G03-G07, H01-H08) moved to their
+    # horizontal positions from the 2026-10-23 preliminary G/H solve (up to 5.6 cm N, 2.2 cm
+    # E); built by fixtures/elemsteer/gh_refine_ah128_20261023.py.
+    elem-positions-file: config/elem_positions_ah128_gh_20261023.json
     # Shared instrument model: the per-PRN self-cals learn but do not set the weights; the live
     # element weights are one per-element gain per polarisation (a 300 s consensus over every
     # satellite) plus one inter-pol coefficient per satellite, so a boresight transit cannot
@@ -150,11 +152,12 @@ common:
     # scripts/gnss/site/elem_ref_cron.sh reads both keys from this file as text and compares
     # every instance with the reference; with ELEM_REF_ACT=1 it also re-posts the reference to
     # an instance that lost it or is pinned off it.
-    # Taken 2026-10-23 12:05:48Z, 20 min into the 128-element epoch, and posted live at once:
-    # without it L2C's five instances held arbitrary global phases (two 48-151 deg off) and
-    # cancelled in the fleet sum (q 1.6-2.0, disc +0.5).
-    elem-shared-ref: config/elem_shared_ref_20261023.json
-    elem-shared-ref-mode: live
+    # Off until a snapshot is taken against the positions above: the last one
+    # (config/elem_shared_ref_20261023.json) was taken against the epoch without the refinement
+    # and is refused. Take one minutes after the nodes start and post it live at once: without
+    # one, L2C's five instances held arbitrary global phases and cancelled in the fleet sum
+    # (2026-10-23, q 1.6-2.0).
+    elem-shared-ref-mode: "off"
     # The gnss VM, which runs the search aggregator, the telemetry gather and the broker.
     # 127.0.0.1, the generator default, would point every node at itself. Moving the aggregator
     # or the gather means changing search-host / telem-host and restarting the nodes.
