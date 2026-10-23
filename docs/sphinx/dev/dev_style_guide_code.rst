@@ -143,9 +143,15 @@ For more details, compare the `kotekan clang-format file
 Python Code Formatting
 ----------------------
 
-All python code in this project should be formatted accoring to the
-`black code style <https://black.readthedocs.io/en/stable/the_black_code_style.html>`_. You can let black take care
-of that using ``black --exclude docs kotekan/root/dir`` before you commit python code.
+Python code in this project follows the
+`Black code style <https://black.readthedocs.io/en/stable/the_black_code_style.html>`_.
+Install ``black==26.10.1`` in a virtual environment with Python 3.10 or newer,
+then run ``black .`` from the repository root before committing Python code.
+Use ``black --check .`` to check formatting without changing files.
+
+The root ``pyproject.toml`` requires the same Black version as the CI container
+and excludes documentation, vendored code, and IWYU tools. Black also respects
+``.gitignore``. Use the stable style; do not enable ``--preview`` or ``--unstable``.
 
 
 Automatic code formatting
@@ -155,7 +161,7 @@ Automatic code formatting
 
 kotekan uses the following tools for automatic code formatting:
 
-* `black <black.readthedocs.io>`_: python code formatting. Run it on the kotekan code base with ``black --exclude docs .``.
+* `Black <https://black.readthedocs.io>`_: Python code formatting. Run ``black .`` from the repository root.
 * `clang-format <https://clang.llvm.org/docs/ClangFormat.html>`_: C/C++ code formatting. Run it on your code with ``make clang-format`` from the build directory.
 * `iwyu>=0.10 <include-what-you-use.org>`_: include-what-you-use for C/C++. Checks if source files include everything they use and nothing else. Run it on the code by ``cmake -DIWYU=ON .. && make > fix_include --nosafe_headers --comments``.
 
