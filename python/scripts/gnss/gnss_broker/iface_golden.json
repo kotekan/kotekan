@@ -1159,7 +1159,7 @@
     "tdm_phase": 0,
     "time_multiplexed": false
    },
-   "SBAS_L5_Q": {
+   "SBAS_L5_I": {
     "boc_m": 0,
     "boc_n": 0,
     "carrier_hz": "1176450000",
@@ -1174,7 +1174,7 @@
     "tdm_phase": 0,
     "time_multiplexed": false
    },
-   "SBAS_L5_Q_MC": {
+   "SBAS_L5_I_MC": {
     "boc_m": 0,
     "boc_n": 0,
     "carrier_hz": "1176450000",
