@@ -388,24 +388,13 @@ class TestHeldPhase(unittest.TestCase):
                 dr_seed_phys(d, h1, HPS, CHIP, CARR, SGN, MOD),
             )
 
-    def test_first_slew_continues_the_tracked_phase(self):
-        """dr_seed's slew on a just-flipped PRN whose model agrees with the tracked phase: the
-        re-anchored seed continues it, moved by at most the slew cap."""
+    def _dr_seed(self, cp_predicted, t_fc, seeds, seeded, cap=0.05):
+        """Run dr_seed once for PRN on a minimal context: forecast epoch t_fc, model
+        cp_predicted, zero clock and b_sat. Returns the context."""
         from types import SimpleNamespace as NS
         from gnss_broker import deadreckon as dr
-        from gnss_broker.fits import tracker_phase_at
 
         c_light = 299792458.0
-        cap = 0.05
-        old = self._search_seed(4321.0, H0)
-        h1 = H0 + int(8.0 * HPS)
-        t1 = h1 / HPS
-        rate = CHIP * (1.0 + SGN * self.DOP / CARR)
-
-        def cp_predicted(v, t):
-            # the model sits on the phase the tracker runs (cp0's phase + OFF)
-            return (4321.0 + self.OFF + (t - H0 / HPS) * rate) % MOD
-
         args = NS(
             hops_per_sec=HPS,
             chip_rate_hz=CHIP,
@@ -433,7 +422,7 @@ class TestHeldPhase(unittest.TestCase):
             cp_held={},
             dr_untrusted={},
             detectors=["search"],
-            seeds={self.PRN: old},
+            seeds=seeds,
             hold=NS(q={}, prev={}, low_hits={}),
             status={},
             sig_of=lambda st: 10.0,
@@ -444,11 +433,13 @@ class TestHeldPhase(unittest.TestCase):
             joint_consume=(),
             joint_state=lambda rx, band, a: None,
             rx=None,
+            dls=NS(trim={}, last={}),
+            birth_steps={},
             dr_state={
                 "clk": 0.0,
-                "clk_t": t1,
-                "seeded": {self.PRN},
-                "pin": {self.PRN: 0.0},
+                "clk_t": t_fc,
+                "seeded": seeded,
+                "pin": {p: 0.0 for p in seeded},
             },
             drp=NS(
                 pd={
@@ -460,9 +451,9 @@ class TestHeldPhase(unittest.TestCase):
                 pd2={},
                 tag="G",
                 mod=MOD,
-                t_fc_abs=t1,
-                t_now_abs=t1,
-                now_w=t1,
+                t_fc_abs=t_fc,
+                t_now_abs=t_fc,
+                now_w=t_fc,
                 hold=False,
                 drift=0.0,
                 la=0.0,
@@ -477,6 +468,24 @@ class TestHeldPhase(unittest.TestCase):
             dr.dr_seed(ctx)
         finally:
             dr._log, dr._log_rl = saved
+        return ctx
+
+    def test_first_slew_continues_the_tracked_phase(self):
+        """dr_seed's slew on a just-flipped PRN whose model agrees with the tracked phase: the
+        re-anchored seed continues it, moved by at most the slew cap."""
+        from gnss_broker.fits import tracker_phase_at
+
+        cap = 0.05
+        old = self._search_seed(4321.0, H0)
+        h1 = H0 + int(8.0 * HPS)
+        t1 = h1 / HPS
+        rate = CHIP * (1.0 + SGN * self.DOP / CARR)
+
+        def cp_predicted(v, t):
+            # the model sits on the phase the tracker runs (cp0's phase + OFF)
+            return (4321.0 + self.OFF + (t - H0 / HPS) * rate) % MOD
+
+        ctx = self._dr_seed(cp_predicted, t1, {self.PRN: old}, {self.PRN}, cap)
         new = ctx.seeds[self.PRN]
         self.assertEqual(new.get("ref_hop"), h1, "the PRN was not slewed")
         step = self._wrap(
@@ -489,6 +498,34 @@ class TestHeldPhase(unittest.TestCase):
             "the first slew stepped the tracked phase %+.3f chips (cap %.2f)"
             % (step, cap),
         )
+
+    def test_birth_between_hops_ships_the_phase_at_its_label(self):
+        """A birth at a forecast epoch between two hops (no --dr-forecast-lead-s): the shipped
+        phase is the model's at ref_hop, and agrees with the phase cp0 implies there."""
+        from gnss_broker.fits import held_phase, dr_seed_phys
+
+        rate = CHIP * (1.0 + SGN * self.DOP / CARR)
+
+        def cp_predicted(v, t):
+            return (4321.0 + (t - H0 / HPS) * rate) % MOD
+
+        for frac in (-0.49, -0.2, 0.0, 0.37, 0.49):
+            t_fc = (H0 + 8 * int(HPS) + frac) / HPS
+            ctx = self._dr_seed(cp_predicted, t_fc, {}, set())
+            new = ctx.seeds[self.PRN]
+            h = new["ref_hop"]
+            self.assertIn("code_phase_at_ref_chips", new)
+            model = cp_predicted(None, h / HPS)
+            got = held_phase(new, h, HPS, CHIP, CARR, SGN, MOD)
+            self.assertAlmostEqual(
+                self._wrap(got - model), 0.0, delta=1e-3, msg="frac %+.2f" % frac
+            )
+            self.assertAlmostEqual(
+                self._wrap(got - dr_seed_phys(new, h, HPS, CHIP, CARR, SGN, MOD)),
+                0.0,
+                delta=1e-2,
+                msg="frac %+.2f" % frac,
+            )
 
 
 if __name__ == "__main__":

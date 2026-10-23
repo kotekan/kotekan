@@ -1720,14 +1720,18 @@ def dr_seed(ctx):
                 ref_hop=_rh_birth,
                 doppler_rate_hz_s=drate,
             )
-            # Birth and re-pin arm: cp0 was built from this phase (cp_predicted + _off at t_fc_abs),
-            # so shipping it costs nothing.
+            # Birth and re-pin arm: the shipped phase is the model's at the labelled hop
+            # _rh_birth, not at t_fc_abs. Without --dr-forecast-lead-s, t_fc_abs is not a whole
+            # hop, and the phase at t_fc_abs is up to half a hop (~26 chips at 10.23 Mcps) from
+            # the phase at its label (the same hazard as t_h in the slew arm). cp0 does not need
+            # this: it is back-referenced through the t it was built at.
             if ctx.args.seed_phase_transport:
                 ctx.seeds[prn].put(
                     "phase_xport",
                     epoch=_rh_birth,
                     code_phase_at_ref_chips=seed_phase_at_ref(
-                        (ctx.cp_predicted(v, ctx.drp.t_fc_abs) + _off) % ctx.drp.mod,
+                        (ctx.cp_predicted(v, _rh_birth / ctx.args.hops_per_sec) + _off)
+                        % ctx.drp.mod,
                         dop_seed,
                         ctx.args.chip_rate_hz,
                         ctx.args.hops_per_sec,
