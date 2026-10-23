@@ -83,11 +83,38 @@ frbNetworkSend::frbNetworkSend(Config& config_, const std::string& unique_name,
     samples_per_packet = config.get_default<int>(unique_name, "timesamples_per_frb_packet", 16);
     num_frequencies = config.get<int>(unique_name, "num_frequencies");
 
-    assert(samples_per_packet == _timesamples_per_frb_packet);
-    assert(packets_per_stream
-           == 8); // as in CHIME production, more here, but will chunk up like this
+    if (!(samples_per_packet == _timesamples_per_frb_packet))
+        FATAL_ERROR("samples_per_packet must be {:d} to be compatible with the existing L1 "
+                    "reciever, but got {:d}",
+                    _timesamples_per_frb_packet, samples_per_packet);
+    if (!(packets_per_stream == 8)) {
+        // 8 per input frame in CHIME production, more here, but will chunk up like this
+        FATAL_ERROR("packets_per_stream must be 8 to be compatible with the existing L1 receiver, "
+                    "but got {:d}",
+                    packets_per_stream);
+    }
+    if (!(num_frequencies % _nfreq_coarse == 0)) {
+        FATAL_ERROR("The total number of coarse frequencies {:d} must be a multiple of the number "
+                    "coarse frequencies per FRB packet {:d}, but is not",
+                    num_frequencies, _nfreq_coarse);
+    }
 
-    assert(num_frequencies % _nfreq_coarse == 0);
+    // size of UPD packets based on input parameters
+    const size_t data_nbytes = _nbeams * _nfreq_coarse * _factor_upchan_out;
+    static_assert(sizeof(FRBHeader) == 32);
+    const size_t variable_size_part = sizeof(uint16_t) * _nbeams +       // beam_ids
+                                      sizeof(uint16_t) * _nfreq_coarse + // coarse_freq_ids
+                                      // TODO: see how the quantizer generates these
+                                      sizeof(float) * _nbeams * _nfreq_coarse + // scale
+                                      sizeof(float) * _nbeams * _nfreq_coarse;  // offset
+    const size_t expected_udp_frb_packet_size =
+        sizeof(FRBHeader) + variable_size_part + data_nbytes;
+    if (!(expected_udp_frb_packet_size == udp_frb_packet_size)) {
+        FATAL_ERROR("Unexpected UDP packet size {:d} in config "
+                    "file, expected {:d}",
+                    udp_frb_packet_size, expected_udp_frb_packet_size);
+    }
+
     if (_ping_dead_threshold != std::chrono::seconds::zero()) {
         INFO("Pinging every {} / {}", _quick_ping_interval, _ping_interval);
     } else {
@@ -481,10 +508,9 @@ void frbNetworkSend::main_thread() {
                                     ssize_t expected_send_len = 0;
                                     for (size_t i = 0; i < hdr.msg_iovlen; ++i)
                                         expected_send_len += hdr.msg_iov[i].iov_len;
-                                    if (expected_send_len != udp_frb_packet_size)
-                                        FATAL_ERROR("Unexpected UDP packet size {:d} in config "
-                                                    "file, expected {:d}",
-                                                    udp_frb_packet_size, expected_send_len);
+                                    // udp_frb_packet_size checked against packet structure in
+                                    // constructor
+                                    assert(expected_send_len == udp_frb_packet_size);
                                     const ssize_t send_len =
                                         sendmsg(src_sockets[dst.sending_socket].socket_fd, &hdr, 0);
                                     if (send_len != expected_send_len) {
