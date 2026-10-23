@@ -3,14 +3,14 @@
   "component": "pilotproxy-detector-core",
   "upstream_repo": "https://github.com/WVURAIL/pilotproxy",
   "upstream_subdir": "cuda",
-  "upstream_commit": "0a925f57100d713a0c1062300b3b77296f2382d8",
+  "upstream_commit": "afe1c9defc3b4630a7a43dd2d09823704f1cb40d",
   "policy": "Files below are byte-identical copies of upstream. Re-vendoring is a pure copy + hash comparison; local edits are not permitted. Fix upstream first, then bump upstream_commit and refresh these digests.",
   "files": {
-    "config.h": "sha256:38e26620b6d0a32da09056374f1a36e3af017b402b09ab63194997d21ba2e592",
-    "f_statistic.h": "sha256:0ed31b11890647bba99daef18ccfc02bcbeb844ba0c3d10a5c24ae2fca688307",
-    "f_statistic.cu": "sha256:239119ce8b96cbd4cb60f2ee2836118bb3e8b622524e9ad40261c6d8d6a95d9e",
-    "f_statistic_reference.h": "sha256:ffc8005d43d7efaa2a075ca41d105ca7b9856fe8d5b2f616329f37efb5cf2882",
-    "f_statistic_reference.cpp": "sha256:e79f41780553b5a276976a40ba92833f10fe463b7d9e7533b727cd7bec8f65eb",
+    "config.h": "sha256:1a194970522590f92f967254677d45efa57482c59cba34b1bdefd07927eb3815",
+    "pilotproxy_detector.h": "sha256:3fe5c8d32a15e13c856e2adb5bf1d5975736c89f2abb339ae44dc5ba7bf2ca2a",
+    "pilotproxy_detector.cu": "sha256:ceabe9d5bf512ef014604255d82fabb1c0becd14e285aa72279503255678d2ea",
+    "pilotproxy_reference.h": "sha256:4a71c8fc66395063e99fb9e44fa75e137009869389e4f61b5db173e7b855ab67",
+    "pilotproxy_reference.cpp": "sha256:f8718aca5bbfc3ccb6f24f29a89960be6578206238e09ffbe5b8314c8b5e1ecf",
     "fxfft_master_twiddle.h": "sha256:25e3c33ae3819b640604eb9b7ca6c95a5275d794d70a7f39e3d74301bb188c49",
     "fxfft256_ref.c": "sha256:abf9a9e8eaac8b3c547c2758b5fc3b1d24cea0d385ec1eb70fe2095a223ac7cc"
   }

@@ -1,8 +1,8 @@
 /**
- * @file f_statistic.h
- * @brief Public C API for F-statistic CUDA kernel.
+ * @file pilotproxy_detector.h
+ * @brief Public C API for the PilotProxy power-ratio detector.
  *
- * Provides GPU-accelerated computation of the F-statistic for detecting
+ * Provides GPU-accelerated matched-filter powers and rank-based decisions for detecting
  * narrowband signals (e.g., DTV pilot tones) in wideband spectral data.
  *
  * @section usage Usage Example
@@ -10,13 +10,13 @@
  *     // Query compile-time parameters
  *     int detector_window_samples, num_weight_terms, bits, reference_offset_bins;
  *     int core_major, core_minor, core_patch, windows, pad, fine_bins;
- *     FStat_GetSpecs(
+ *     PilotProxy_GetSpecs(
  *         &detector_window_samples,
  *         &num_weight_terms,
  *         &bits,
  *         &reference_offset_bins);
- *     FStat_GetVersion(&core_major, &core_minor, &core_patch);
- *     FStat_GetFineSpecs(&windows, &pad, &fine_bins);   // 128 / 2 / 256
+ *     PilotProxy_GetVersion(&core_major, &core_minor, &core_patch);
+ *     PilotProxy_GetFineSpecs(&windows, &pad, &fine_bins);   // 128 / 2 / 256
  *
  *     // Allocate GPU buffers for the detector-matrix view of one block
  *     // (detector_rows_per_block must be a multiple of `windows`).
@@ -29,11 +29,11 @@
  *     cudaMalloc(&d_fine, num_weight_terms * fine_bins * sizeof(unsigned long long));
  *     cudaMalloc(&d_powers, num_weight_terms * sizeof(unsigned long long));
  *
- *     void* handle = FStat_Create(d_input, detector_rows_per_block);
- *     FStat_Compute_FusedFine_U64(handle, host_weights, d_fine, d_powers, NULL);
+ *     void* handle = PilotProxy_Create(d_input, detector_rows_per_block);
+ *     PilotProxy_Compute_FusedFine_U64(handle, host_weights, d_fine, d_powers, NULL);
  *     // The host forms F = 2 * P[0] / (P[1] + P[2]) from d_powers; the
- *     // deployed mask bit comes from FStat_Compute_FusedFineMask_U64.
- *     FStat_Destroy(handle);
+ *     // deployed mask bit comes from PilotProxy_Compute_FusedFineMask_U64.
+ *     PilotProxy_Destroy(handle);
  * @endcode
  *
  * @section dataformat Data Format
@@ -86,7 +86,7 @@
  *
  * @section refbins Reference Bin Contract
  * The locked detector uses two total reference bins: one lower reference bin
- * and one upper reference bin. With three weight terms, the raw F-statistic is
+ * and one upper reference bin. With three weight terms, the raw power ratio is
  * F = 2 * P_target / (P_ref1 + P_ref2), where each P_r is the frame power of
  * that term: the exact uint64 sum over the 256 fine bins of the frozen
  * fxfft256 power spectrum S_r[f] (kernel core 3.0.0). The transform length
@@ -95,9 +95,9 @@
  * @section execution Execution Policy
  * Handles are device-affine. All device work for a handle (uploads, memsets,
  * kernel launches) is issued on the handle's CUDA stream, which defaults to
- * the legacy default stream (0) and may be changed with FStat_SetStream. The
- * caller must set the intended CUDA device before FStat_Create/
- * FStat_Create_Batch and keep the same current device for compute and destroy
+ * the legacy default stream (0) and may be changed with PilotProxy_SetStream. The
+ * caller must set the intended CUDA device before PilotProxy_Create/
+ * PilotProxy_Create_Batch and keep the same current device for compute and destroy
  * calls on that handle. One host thread must not use the same handle
  * concurrently.
  *
@@ -139,7 +139,7 @@ extern "C" {
  *
  * @note Any parameter can be NULL if not needed.
  */
-void FStat_GetSpecs(
+void PilotProxy_GetSpecs(
     int* detector_window_samples,
     int* num_weight_terms,
     int* sample_bits_per_component,
@@ -149,7 +149,7 @@ void FStat_GetSpecs(
  * @brief Query compiled kernel feature switches.
  *
  * Returns the implementation features baked into the compiled library. These
- * are separate from the scientific detector geometry returned by FStat_GetSpecs.
+ * are separate from the scientific detector geometry returned by PilotProxy_GetSpecs.
  *
  * @param[out] use_dp4a                       Nonzero when the DP4A dot-product path is compiled in.
  * @param[out] use_uint64_power_accumulation  Nonzero when integer power accumulation is compiled in.
@@ -157,7 +157,7 @@ void FStat_GetSpecs(
  *
  * @note Any parameter can be NULL if not needed.
  */
-void FStat_GetFeatures(
+void PilotProxy_GetFeatures(
     int* use_dp4a,
     int* use_uint64_power_accumulation,
     int* block_threads);
@@ -166,7 +166,7 @@ void FStat_GetFeatures(
  * @brief Query compiled launch/placement optimization switches.
  *
  * This is additive metadata for benchmarking and reporting. It does not change
- * the scientific detector geometry returned by FStat_GetSpecs.
+ * the scientific detector geometry returned by PilotProxy_GetSpecs.
  *
  * @param[out] use_constant_weight_lanes Nonzero when DP4A weight lanes are stored in CUDA constant memory.
  * @param[out] use_shared_weight_lanes   Nonzero when DP4A weight lanes are preloaded into shared memory per block.
@@ -174,7 +174,7 @@ void FStat_GetFeatures(
  *
  * @note Any parameter can be NULL if not needed.
  */
-void FStat_GetOptimizationFeatures(
+void PilotProxy_GetOptimizationFeatures(
     int* use_constant_weight_lanes,
     int* use_shared_weight_lanes,
     int* grid_max_blocks);
@@ -184,7 +184,7 @@ void FStat_GetOptimizationFeatures(
  *
  * @note Any parameter can be NULL if not needed.
  */
-void FStat_GetVersion(
+void PilotProxy_GetVersion(
     int* major,
     int* minor,
     int* patch);
@@ -197,7 +197,7 @@ void FStat_GetVersion(
  * of having the process aborted. Public API entry points clear stale errors
  * before doing new work.
  */
-const char* FStat_LastError(void);
+const char* PilotProxy_LastError(void);
 
 /* ===========================================================================
  * LIFECYCLE FUNCTIONS
@@ -221,10 +221,10 @@ const char* FStat_LastError(void);
  * @note d_in must remain valid for the lifetime of the handle. Every output
  *       buffer is passed to the compute entry that writes it (kernel core
  *       3.0.0 removed the float output pointer of earlier cores).
- * @note The handle owns the device weight storage, freed by FStat_Destroy.
+ * @note The handle owns the device weight storage, freed by PilotProxy_Destroy.
  * @note The handle is bound to the CUDA device current at creation time.
  */
-void* FStat_Create(
+void* PilotProxy_Create(
     const InputType* d_in,
     int detector_rows_per_block);
 
@@ -246,37 +246,37 @@ void* FStat_Create(
  * @note d_in must remain valid for the lifetime of the handle. Every output
  *       buffer is passed to the compute entry that writes it (kernel core
  *       3.0.0 removed the float output pointer of earlier cores).
- * @note The handle owns the device weight storage, freed by FStat_Destroy.
+ * @note The handle owns the device weight storage, freed by PilotProxy_Destroy.
  * @note The handle is bound to the CUDA device current at creation time.
  */
-void* FStat_Create_Batch(
+void* PilotProxy_Create_Batch(
     const InputType* d_in,
     int detector_rows_per_block,
     int batch);
 
 /**
- * @brief Destroy an F-statistic handle and free resources.
+ * @brief Destroy a PilotProxy handle and free resources.
  *
- * @param handle Handle created by FStat_Create or FStat_Create_Batch
+ * @param handle Handle created by PilotProxy_Create or PilotProxy_Create_Batch
  *               (NULL is safely ignored).
  */
-void FStat_Destroy(void* handle);
+void PilotProxy_Destroy(void* handle);
 
 /**
  * @brief Set the CUDA stream on which the handle's device work is issued.
  *
- * Every subsequent FStat_Compute_* call on this handle enqueues its uploads,
+ * Every subsequent PilotProxy_Compute_* call on this handle enqueues its uploads,
  * memsets and kernel launches on @p stream instead of the legacy default
  * stream (0), the value a fresh handle starts with. The stream must belong to
  * the handle's device. Outputs are ready when @p stream has completed; the
  * caller orders any host or cross-stream consumer with the usual stream/
- * event primitives. The handle-less FStat_Compute_FinePowers_U64 entry has no
+ * event primitives. The handle-less PilotProxy_Compute_FinePowers_U64 entry has no
  * stream and stays on the default stream.
  *
- * @param handle Handle created by FStat_Create or FStat_Create_Batch
+ * @param handle Handle created by PilotProxy_Create or PilotProxy_Create_Batch
  * @param stream CUDA stream, or 0 for the legacy default stream
  */
-void FStat_SetStream(void* handle, cudaStream_t stream);
+void PilotProxy_SetStream(void* handle, cudaStream_t stream);
 
 /* ===========================================================================
  * COMPUTATION FUNCTIONS
@@ -303,16 +303,16 @@ void FStat_SetStream(void* handle, cudaStream_t stream);
  *
  * Values are exact integers (bit-reproducible; |component| <= 14336 for the
  * locked 4-bit path). This buffer is the input of
- * FStat_Compute_FinePowers_U64; the frame powers are the all-bin sums of
+ * PilotProxy_Compute_FinePowers_U64; the frame powers are the all-bin sums of
  * that stage's output (kernel core 3.0.0).
  *
- * @param handle          Handle from FStat_Create / FStat_Create_Batch
+ * @param handle          Handle from PilotProxy_Create / PilotProxy_Create_Batch
  * @param w_in            Host weight pointer [num_weight_terms x
  *                        detector_window_samples] packed InputType: target,
  *                        lower reference, upper reference rows
  * @param d_row_sums_out  Device int32 output (layout above)
  */
-void FStat_Compute_RowSums_I32(
+void PilotProxy_Compute_RowSums_I32(
     void* handle,
     const InputType* w_in,
     int* d_row_sums_out);
@@ -320,12 +320,12 @@ void FStat_Compute_RowSums_I32(
 /**
  * @brief Runtime capability probe: returns 1 when row-sum emission exists.
  */
-int FStat_Supports_RowSums(void);
+int PilotProxy_Supports_RowSums(void);
 
 /**
  * @brief On-device fine-reduction power stage (fxfft256 v1, kernel core 2.1.0).
  *
- * Consumes a row-sum buffer with the exact FStat_Compute_RowSums_I32 layout
+ * Consumes a row-sum buffer with the exact PilotProxy_Compute_RowSums_I32 layout
  * (term-major, stream-major rows, interleaved re/im int32) and writes exact
  * uint64 fine-power spectra:
  *
@@ -335,7 +335,7 @@ int FStat_Supports_RowSums(void);
  * where X_s is the frozen fxfft256 v1 fixed-point transform (zero-padded
  * 128 -> 256, Q15 twiddles, floor((v+2^14)/2^15) rounding) of stream s's
  * 128 window sums. The two calls compose directly: pass the same device
- * buffer FStat_Compute_RowSums_I32 filled, with num_streams =
+ * buffer PilotProxy_Compute_RowSums_I32 filled, with num_streams =
  * detector_rows_per_block / windows_per_stream.
  *
  * Determinism and exactness contract:
@@ -360,7 +360,7 @@ int FStat_Supports_RowSums(void);
  * on the device; it is zeroed by this call before accumulation. This
  * entry takes no handle: it reads only the caller's row-sum buffer.
  */
-void FStat_Compute_FinePowers_U64(
+void PilotProxy_Compute_FinePowers_U64(
     const int* d_row_sums,
     int num_weight_terms,
     int num_streams,
@@ -371,7 +371,7 @@ void FStat_Compute_FinePowers_U64(
 /**
  * @brief Runtime capability probe: returns 1 when the fine-power stage exists.
  */
-int FStat_Supports_FinePowers(void);
+int PilotProxy_Supports_FinePowers(void);
 
 /**
  * @brief Fused fine kernel (kernel core 2.2.0): one launch from packed
@@ -389,7 +389,7 @@ int FStat_Supports_FinePowers(void);
  * Outputs:
  *   d_fine_power_out : [batch x num_weight_terms x 256] uint64 (required;
  *                      zeroed by this call) --- S_r[f], identical layout
- *                      and bits to FStat_Compute_FinePowers_U64 over the
+ *                      and bits to PilotProxy_Compute_FinePowers_U64 over the
  *                      row sums;
  *   d_power_out      : [batch x num_weight_terms] uint64 (required) ---
  *                      the frame powers P_r = sum over the 256 fine bins
@@ -400,7 +400,7 @@ int FStat_Supports_FinePowers(void);
  *                      of the frozen transform;
  *   d_row_sums_out   : optional debug tap (NULL in production); when
  *                      bound, identical layout and bits to
- *                      FStat_Compute_RowSums_I32. With the tap unbound,
+ *                      PilotProxy_Compute_RowSums_I32. With the tap unbound,
  *                      row sums never touch global memory.
  *
  * Requires detector_rows_per_block to be a multiple of the frozen window
@@ -409,7 +409,7 @@ int FStat_Supports_FinePowers(void);
  * (tests/kernel/test_fused_fine_gpu.py). Policy-free: the fine
  * statistic, CFAR, and designated-set decision form downstream.
  */
-void FStat_Compute_FusedFine_U64(
+void PilotProxy_Compute_FusedFine_U64(
     void* handle,
     const InputType* w_in,
     unsigned long long* d_fine_power_out,
@@ -419,7 +419,7 @@ void FStat_Compute_FusedFine_U64(
 /**
  * @brief Runtime capability probe: returns 1 when the fused kernel exists.
  */
-int FStat_Supports_FusedFine(void);
+int PilotProxy_Supports_FusedFine(void);
 
 /**
  * @brief Fused fine kernel with decision epilogue (kernel core 2.3.0):
@@ -428,7 +428,7 @@ int FStat_Supports_FusedFine(void);
  *
  * The deployed form of the fine designated-set CFAR
  * (docs/DESIGN_DECISIONS.md): the fused datapath of
- * FStat_Compute_FusedFine_U64, plus a last-block epilogue (per-batch
+ * PilotProxy_Compute_FusedFine_U64, plus a last-block epilogue (per-batch
  * completion counter; threadfence-then-atomic visibility) that forms
  * the frozen fine decision v1 over the finalized exact fine power sums:
  *
@@ -453,17 +453,17 @@ int FStat_Supports_FusedFine(void);
  * Outputs: d_mask_out ([batch] int32, 1 = reject; zeroed by this call
  * --- it doubles as the completion counter) and d_fine_power_out
  * (required working accumulator, identical to
- * FStat_Compute_FusedFine_U64's; zeroed by this call). d_power_out and
+ * PilotProxy_Compute_FusedFine_U64's; zeroed by this call). d_power_out and
  * d_row_sums_out are optional taps (NULL in production): when bound,
  * d_power_out receives the frame powers P_r = sum over the 256 fine bins
  * of d_fine_power_out[b][r][:], reduced after the fused launch --- the
- * same values FStat_Compute_FusedFine_U64 writes (kernel core 3.0.0) ---
+ * same values PilotProxy_Compute_FusedFine_U64 writes (kernel core 3.0.0) ---
  * and d_row_sums_out the exact row sums as in the 2.2.0 entry. The
  * decision never reads the frame powers. Acceptance: mask bit-equality
  * against the Python reference over the same exact powers
  * (tests/kernel/test_fused_mask_gpu.py).
  */
-void FStat_Compute_FusedFineMask_U64(
+void PilotProxy_Compute_FusedFineMask_U64(
     void* handle,
     const InputType* w_in,
     int anchor_bin,
@@ -479,12 +479,12 @@ void FStat_Compute_FusedFineMask_U64(
 /**
  * @brief Runtime capability probe: returns 1 when the mask epilogue exists.
  */
-int FStat_Supports_FusedFineMask(void);
+int PilotProxy_Supports_FusedFineMask(void);
 
 /**
  * @brief Fine decision v1 with explicit rank-support outputs for every batch entry.
  *
- * Same mask and power arithmetic as FStat_Compute_FusedFineMask_U64. The required
+ * Same mask and power arithmetic as PilotProxy_Compute_FusedFineMask_U64. The required
  * device int32[batch] outputs d_rank_valid_out and d_n_bulk_out receive
  * (1, usable bulk count) when count > cfar_rank and (0, count) otherwise.
  * Invalid rank support still has the legacy mask zero; consumers must use the
@@ -494,7 +494,7 @@ int FStat_Supports_FusedFineMask(void);
  * rule is added. Outputs are initialized to -1 before a successful launch.
  * All output regions must be distinct and remain live until stream completion.
  */
-void FStat_Compute_FusedFineMaskWithSupport_U64(
+void PilotProxy_Compute_FusedFineMaskWithSupport_U64(
     void* handle,
     const InputType* w_in,
     int anchor_bin,
@@ -510,14 +510,14 @@ void FStat_Compute_FusedFineMaskWithSupport_U64(
     int* d_row_sums_out);
 
 /** @brief Return 1 when the additive rank-support entry point is available. */
-int FStat_Supports_FusedFineMaskWithSupport(void);
+int PilotProxy_Supports_FusedFineMaskWithSupport(void);
 
 /**
  * @brief Query the frozen fine-reduction geometry (128 / 2 / 256).
  *
  * @note Any parameter can be NULL if not needed.
  */
-void FStat_GetFineSpecs(
+void PilotProxy_GetFineSpecs(
     int* windows_per_stream,
     int* pad_factor,
     int* fine_bins);
