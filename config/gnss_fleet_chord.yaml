@@ -233,6 +233,13 @@ common:
         # integration past 1 ms needs a nav-bit wipe, which no chain here runs: it serves the band
         # (tau_band) rather than sensitivity.
         - BDS_B2B_I:6,7,8,11,12,13,14,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42
+        # SBAS L5 on the I channel (no pilot): the WAAS GEOs 131 Eutelsat 117 West B, 133 SES-15,
+        # 135 Galaxy 30, geostationary at el ~33 due south of DRAO, from the IGS BRDC's S records;
+        # model-primary (no search). 121/123/136 (EGNOS, below the horizon) are the broker's noise
+        # probes: presence needs 3 probes reporting, and a probe reports only from a slot. Canary
+        # cx51 10-23, locked 22:10Z prompt-centred; fleet-wide so the other combs break cx51's
+        # grating-lobe ambiguity. Needs a node binary from fleet-5663852b3 on.
+        - SBAS_L5_I_MC:131,133,135,121,123,136
 
         # 1268.52 MHz BeiDou B3I and 1278.75 MHz Galileo E6-C: a third carrier for tau_band. B3I
         # follows B2a/B2b although BDS-2 also broadcasts it; bds_b3i has no capability gate and
@@ -303,19 +310,10 @@ nodes:
     # the stage on its default slot; 8 lanes per channel first (12:53Z: stage 30% of its core,
     # lanes on every band), then every tracked satellite (40). Five slots, not six: the rotation
     # adds the GPU index, so slot 9 on GPU 1 is pool[0], the cudaProcess core.
-    # SBAS L5 canary (#190 coverage): the WAAS GEOs 131 Eutelsat 117 West B, 133 SES-15, 135
-    # Galaxy 30, geostationary at el ~33 due south of DRAO; state vectors from the IGS BRDC's S
-    # records (no S38 on air: ANIK F1R left WAAS, so PRN 138 would be 4 idle jobs); model-primary
-    # (no search), lanes for the projection. Tracked on the I channel since 10-23: SBAS L5 has no
-    # pilot, and the Q-code model of 10-20 never detected. 121/123/136 (EGNOS, below the horizon)
-    # are the broker's noise probes: presence needs 3 probes reporting, and a probe reports only
-    # from a slot. A node entry's extra-signal appends to the common list. Move to common once
-    # the canary tracks.
     # The lanes cost ~4 k n^2 per live channel-frame, so at 95 stations cx51's projection gets its
     # own pool slot: 7 = cores 41 / 61, the lightest of each pool (21-22 % on 10-23); it ran at
     # 75 % of that core there, so cx51 keeps rows A-F as its stations (127 would need ~1.8x).
     # Rows G/H stay outside its block: unprojected on cx51's channels, not mis-projected.
     cx51: {search-port-base: 11050, n2-project-source: lanes+residual, n2-project-lanes-max: 40,
            n2-project-core-index: 7, n2-project-stations: "0-6,8-47,64-111",
-           elem-dir-publish: all, assembler-core-slots: "2,1,3,4,8",
-           extra-signal: ["SBAS_L5_I_MC:131,133,135,121,123,136"]}
+           elem-dir-publish: all, assembler-core-slots: "2,1,3,4,8"}
