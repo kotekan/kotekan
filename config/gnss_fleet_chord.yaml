@@ -149,12 +149,12 @@ common:
     # scripts/gnss/site/elem_ref_cron.sh reads both keys from this file as text and compares
     # every instance with the reference; with ELEM_REF_ACT=1 it also re-posts the reference to
     # an instance that lost it or is pinned off it.
-    # Off until a snapshot is taken against the positions above: the last one
-    # (config/elem_shared_ref_20261023.json) was taken against the epoch without the refinement
-    # and is refused. Take one minutes after the nodes start and post it live at once: without
-    # one, L2C's five instances held arbitrary global phases and cancelled in the fleet sum
-    # (2026-10-23, q 1.6-2.0).
-    elem-shared-ref-mode: "off"
+    # Taken 2026-10-23 22:05Z, 18 min into the 2026-10-23-rows-ah128-repoint epoch (L2C's
+    # entry posted alone at 21:52Z), and posted live at once: without one, L2C's instances held
+    # arbitrary global phases and cancelled in the fleet sum (2026-10-23, q 1.6-2.0). The dishes
+    # move during this epoch, so the cron re-takes a band the reference stops describing.
+    elem-shared-ref: config/elem_shared_ref_20261023_repoint.json
+    elem-shared-ref-mode: live
     # The gnss VM, which runs the search aggregator, the telemetry gather and the broker.
     # 127.0.0.1, the generator default, would point every node at itself. Moving the aggregator
     # or the gather means changing search-host / telem-host and restarting the nodes.
