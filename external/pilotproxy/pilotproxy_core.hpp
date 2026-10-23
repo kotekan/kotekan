@@ -3,8 +3,8 @@
  * @brief Run-time choice between the builds of the vendored PilotProxy core.
  *
  * The core fixes its detector window length at compile time. pilotproxy_core.cu builds it for 64
- * (CHORD) and 128 (CHIME) samples per window. Each member points to the f_statistic.h or
- * f_statistic_reference.h function of the same name (without the FStat_ or fstat_ref_ prefix).
+ * (CHORD) and 128 (CHIME) samples per window. Each member points to the pilotproxy_detector.h or
+ * pilotproxy_reference.h function of the same name (without the PilotProxy_ or pilotproxy_ref_ prefix).
  */
 #pragma once
 
