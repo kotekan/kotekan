@@ -527,7 +527,7 @@ std::vector<bool> Telescope::get_fringestop_mask(uint64_t num_elements, ElementO
 }
 
 void Telescope::fill_fringestop_phases_1d(double freq_MHz, const EOP& eop, const EOP& eop0,
-                                          const std::vector<vec3d_t> feed_positions_m,
+                                          const std::vector<vec3d_t>& feed_positions_m,
                                           const std::vector<bool>& fringestop_mask,
                                           std::vector<std::complex<float>>& phases) const {
 

@@ -56,6 +56,7 @@ from gnss_record_layout import (
     chan_floats,
     prnctl_bytes,
 )
+import kotekan_src  # noqa: E402  (python/scripts/gnss, on sys.path through chord_band_plan)
 
 NODE_FILE = os.path.join(CONF, "chord_gnss_node.yaml")
 # The broker's chains file, read only by check_telem_windows.
@@ -1477,12 +1478,13 @@ def merge_n2dual_gpu(blocks, cfg, args, node, gpu, chains, spds):
     procs = {p["pre"]: blocks.pop(f"{p['pre']}n2dual") for p in pres}
     primary = procs[f"gnss{gpu}_"]
     merged = {k: v for k, v in primary.items() if k != "commands"}
-    # Private CUDA streams: cuda_stream_base moves this process's copy-in, copy-out and kernel
-    # streams to 3, 4, 5, leaving 0, 1, 2 to production's pipelines, so the GNSS chains never
-    # queue against production's per-stream locks (one thread blocked in the CUDA driver there
-    # would stall the GPU's pipelines and back up to the NIC). prepareStreams only grows the
-    # device's pool, so asking for 6 holds whatever the construction order.
-    merged["cuda_stream_base"] = 3
+    # Private CUDA streams: cuda_stream_base is a pipeline index, and 1 moves this process's
+    # copy-in, copy-out and kernel streams to 3, 4, 5, leaving 0, 1, 2 to production's pipelines,
+    # so the GNSS chains never queue against production's per-stream locks (one thread blocked in
+    # the CUDA driver there would stall the GPU's pipelines and back up to the NIC).
+    # prepareStreams only grows the device's pool, so asking for 6 holds whatever the
+    # construction order.
+    merged["cuda_stream_base"] = 1
     merged["num_cuda_streams"] = 6
     out_buffers = {}
     injects, outputs = [], []
@@ -2422,10 +2424,27 @@ def check_frame0(cfg, args, live_t0):
 
 
 def _rel(p):
-    """A path inside the repo relative to it, so a recorded recipe holds on any checkout."""
-    root = os.path.dirname(CONF)
+    """A path inside the repo or the kotekan tree relative to it, so a recorded recipe holds on
+    any checkout and reads the same whether or not the two are one tree. The deeper root wins:
+    a kotekan submodule sits inside the repo."""
     ap_ = os.path.abspath(p)
-    return os.path.relpath(ap_, root) if ap_.startswith(root + os.sep) else p
+    roots = [os.path.dirname(CONF)]
+    if kotekan_src.SRC:
+        roots.append(kotekan_src.SRC)
+    for root in sorted(roots, key=len, reverse=True):
+        if ap_.startswith(root + os.sep):
+            return os.path.relpath(ap_, root)
+    return p
+
+
+def _kotekan_input(p):
+    """An input path as given or, relative and not there from the cwd, the same path in the
+    kotekan tree if it is there: _rel records a kotekan file relative to that tree
+    (config/chord/pathfinder.j2), so a recipe pastes back in a checkout without one."""
+    if os.path.isabs(p) or os.path.exists(p) or not kotekan_src.SRC:
+        return p
+    k = kotekan_src.src(p)
+    return k if os.path.exists(k) else p
 
 
 def recipe_lines(argv):
@@ -2957,6 +2976,7 @@ def main():
             "--psi-synth requires --epl-from-prompt: the fused synthesis packs two lanes per "
             "slot (P, P_HEAD) with the E/L rows rotated from the prompt"
         )
+    args.base = _kotekan_input(args.base)
 
     with open(NODE_FILE) as fh:
         cfg = yaml.safe_load(fh)

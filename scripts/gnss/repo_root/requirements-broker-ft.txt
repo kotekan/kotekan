@@ -1,0 +1,16 @@
+# venv-ft: CPython 3.14t, free-threaded. The broker only (gnss-broker, run by
+# scripts/gnss/site/stack_components.sh with GNSS_VENV_FT), and the tests that run under it.
+#
+#   uv python install 3.14t
+#   uv venv --python 3.14t venv-ft
+#   uv pip install --python venv-ft/bin/python -r requirements-broker-ft.txt -r requirements-dev.txt
+#
+# This is the whole third-party closure of scripts/gnss/broker_multi.py. Under the GIL every
+# chain but L5 dies, and importing a C extension that does not declare free-threading support
+# turns the GIL back on, so nothing goes here that the broker does not import.
+numpy==2.5.1   # the nav decoders and predictors, gnss_broker/fleet.py, the joint filter
+PyYAML==6.0.3  # broker_multi.py reads config/gnss_chains_chord.yaml
+# skyfield is left out on purpose. gps_beamtrack.py imports it only for the broker's TLE
+# fallbacks, taken when the broadcast almanac or the IGS registry is unavailable; without it
+# they log the failure and the broker runs on without them. sgp4, which skyfield pulls in, has
+# an extension not known to support free-threading.

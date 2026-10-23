@@ -1,0 +1,54 @@
+# venv: CPython 3.12. Everything but the broker: the observables writers, the viewer, the cube
+# compactor and beam cube, the cron jobs, the config generator and the analysis tools
+# (GNSS_VENV in scripts/gnss/site/stack_components.sh).
+#
+#   uv venv --python /usr/bin/python3.12 venv
+#   uv pip install --python venv/bin/python -r requirements.txt -r requirements-dev.txt
+#
+# /usr/bin/python3 runs bad_inputs_cron.py (crontab), rail_watch.py (gnss-rail) and node_up.sh's
+# gen_fleet.py with apt's python3-yaml and python3-jinja2, which kotekan needs anyway to read
+# its configs; tle_refresh.py and rail_watch.py need only the standard library.
+numpy==2.5.1          # nearly everything
+PyYAML==6.0.3         # gen_fleet.py, the generator, bffs_bad_inputs.py, viscap_metadata.py
+Jinja2==3.1.6         # stock_parity.py and the generator render kotekan's .j2 templates
+h5py==3.16.0          # gnss_cube_compact.py, gnss_beam_cube.py, viscap_read.py
+healpy==1.20.0        # gnss_beam_cube.py export, gnss_beam_static.py, gnss_tec_movie.py
+scipy==1.18.0         # gnss_beam_static.py, gnss_tec_movie.py
+matplotlib==3.11.1    # the figures: gnss_beam_static, gnss_tec_*, gnss_transit_arcs, nb_run.py
+pillow==12.3.0        # gnss_tec_movie.py; matplotlib
+skyfield==1.54        # gps_beamtrack.py: the viewer's sky panel
+Twisted==26.4.0       # livebeam_server.py
+autobahn==26.7.1      # livebeam_server.py
+zope.interface==8.5   # livebeam_server.py; Twisted
+# Not supported: python/scripts/js_viewer/ccera_rest.py, the viewer's upstream pointing helper,
+# which needs tornado.
+# What those pull in, at the versions the production venv runs.
+astropy==8.0.1                          # healpy
+astropy-iers-data==0.2026.8.10.0.32.39  # astropy
+pyerfa==2.0.1.5                         # astropy
+packaging==26.2                         # astropy, matplotlib, Incremental
+contourpy==1.3.3                        # matplotlib
+cycler==0.12.1                          # matplotlib
+fonttools==4.63.0                       # matplotlib
+kiwisolver==1.5.0                       # matplotlib
+pyparsing==3.3.2                        # matplotlib
+python-dateutil==2.9.0.post0            # matplotlib
+six==1.17.0                             # python-dateutil
+MarkupSafe==3.0.3                       # Jinja2
+jplephem==2.24                          # skyfield
+sgp4==2.27                              # skyfield
+certifi==2026.7.22                      # skyfield
+attrs==26.1.0                           # Twisted
+Automat==25.4.16                        # Twisted
+constantly==23.10.4                     # Twisted
+hyperlink==21.0.0                       # Twisted, autobahn
+idna==3.18                              # hyperlink
+Incremental==24.11.0                    # Twisted
+typing_extensions==4.16.0               # Twisted
+txaio==26.6.1                           # autobahn
+cryptography==49.0.0                    # autobahn
+cffi==2.1.0                             # cryptography
+pycparser==3.0                          # cffi
+cbor2==6.1.3                            # autobahn
+msgpack==1.2.1                          # autobahn
+ujson==5.13.0                           # autobahn

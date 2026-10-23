@@ -104,7 +104,10 @@ class TestNoProducer(unittest.TestCase):
         out = dh.read_all(self.d, max_age_s=120.0, t_now=1010.0)
         self.assertEqual((out["n_files"], len(out["chains"])), (1, 1))
 
-    @unittest.skipUnless(shutil.which("node"), "needs node")
+    # GNSS_REQUIRE_NODE (the test runner sets it): no node fails rather than skips.
+    @unittest.skipUnless(
+        shutil.which("node") or os.environ.get("GNSS_REQUIRE_NODE"), "needs node"
+    )
     def test_panel_labels(self):
         d = self.d
         shutil.copy(PANEL, os.path.join(d, "panel.mjs"))

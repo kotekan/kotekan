@@ -110,6 +110,11 @@ void gpuProcess::init() {
     dev->set_log_level(s_log_level);
     dev->set_log_prefix(fmt::format(fmt("GPU[{:d}] device interface"), gpu_id));
 
+    // GPU memory taken while the commands are built belongs to this stage, and a region a
+    // second stage takes is refused unless both are ends of one GPU ring buffer, which declare
+    // the share themselves. See gpuMemoryClaims.hpp.
+    gpuMemoryOwnerScope constructing(*dev, unique_name);
+
     vector<json> cmds = config.get<std::vector<json>>(unique_name, "commands");
     int i = 0;
     for (json cmd : cmds) {
@@ -170,6 +175,9 @@ void gpuProcess::profile_callback(connectionInstance& conn) {
 
 void gpuProcess::main_thread() {
     dev->set_thread_device();
+    // Every frame this stage enqueues is enqueued from THIS thread, so a region a command first
+    // takes in execute() without having listed it belongs to this stage. See gpuMemoryClaims.hpp.
+    dev->claim_memory_owner_thread(unique_name);
 
     // A FatalError thrown from a command below leaves this function without reaching exit_loop;
     // the results thread would then wait forever on signals nobody stops, and ~gpuProcess would

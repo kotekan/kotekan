@@ -30,6 +30,9 @@ BASE = "config/base/live_config_20260730.json"
 sys.path.insert(0, HERE)
 import gen_chord_gnss_config as g  # noqa: E402
 
+sys.path.append(os.path.join(ROOT, "python", "scripts", "gnss"))
+import kotekan_src  # noqa: E402
+
 _fails = []
 
 
@@ -230,6 +233,49 @@ def test_psi_synth_needs_epl():
     check(not fake.urls, "the refusal probes nothing")
 
 
+def test_paths_in_the_kotekan_tree():
+    """A recipe records a file in the kotekan tree relative to that tree, wherever the tree
+    is, and a relative input not there from the cwd is looked for in it."""
+    saved = g.kotekan_src.SRC
+    with tempfile.TemporaryDirectory() as d:
+        kot = os.path.realpath(d)
+        os.makedirs(os.path.join(kot, "config", "chord"))
+        open(os.path.join(kot, "config", "chord", "only_here.j2"), "w").close()
+        try:
+            g.kotekan_src.SRC = kot
+            j2 = os.path.join(kot, "config", "chord", "pathfinder.j2")
+            check(
+                g._rel(j2) == "config/chord/pathfinder.j2",
+                "_rel: a file in a separate kotekan tree is relative to it",
+            )
+            check(
+                g._rel(GEN) == "config/gen_chord_gnss_config.py",
+                "_rel: a file in this repo is still relative to the repo",
+            )
+            outside = os.path.join(os.path.dirname(kot), "elsewhere.j2")
+            check(g._rel(outside) == outside, "_rel: a file in neither stays absolute")
+            g.kotekan_src.SRC = os.path.join(ROOT, "kotekan")
+            check(
+                g._rel(os.path.join(ROOT, "kotekan", "config", "x.j2"))
+                == "config/x.j2",
+                "_rel: a kotekan submodule inside the repo wins over the repo",
+            )
+            g.kotekan_src.SRC = kot
+            rel = "config/chord/only_here.j2"
+            check(
+                g._kotekan_input(rel) == os.path.join(kot, rel),
+                "--base: relative and not here, found in the kotekan tree",
+            )
+            check(
+                g._kotekan_input("config/chord/no_such.j2")
+                == "config/chord/no_such.j2",
+                "--base: in neither place, left as given",
+            )
+            check(g._kotekan_input(GEN) == GEN, "--base: absolute, left as given")
+        finally:
+            g.kotekan_src.SRC = saved
+
+
 def test_aggregator_feed_ports():
     cfg = node_cfg()
     # cx19 (combs 4, 14) holds 6020 on GPU 0 only; cx27 (combs 0, 8) holds 6016 and 6024.
@@ -420,7 +466,7 @@ def test_load_summary():
 def production_cores():
     """Every logical cpu production's template pins (pathfinder.j2): the numa_halves entries,
     the DPDK lcores and the instance's root cpu_affinity, and the DPDK lcores' HT siblings."""
-    src = open(os.path.join(HERE, "chord", "pathfinder.j2")).read()
+    src = open(kotekan_src.src("config", "chord", "pathfinder.j2")).read()
     halves = ast.literal_eval(
         re.search(r"\{% set numa_halves = (\[.*?\]) %\}", src, re.S).group(1)
     )
@@ -467,6 +513,9 @@ def test_core_pools_clear_production():
 
 
 def main():
+    # The generator reads relative paths from the cwd and _rel() resolves every argv token
+    # against it, so the in-process calls run from the repo root, as gen_fleet and run_gen do.
+    os.chdir(ROOT)
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:
         print(t.__name__)

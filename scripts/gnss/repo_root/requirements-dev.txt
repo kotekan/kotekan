@@ -1,0 +1,11 @@
+# Tests and formatting, for both venvs: the markers pick 3.14 for venv-ft and 3.12 for venv.
+# Not pip packages: node (apt nodejs) for check_js.sh and the viewer render tests, a C++
+# compiler for test_telem.py, git for test_broker_equiv.py.
+pyflakes==3.4.0 ; python_version >= "3.14"  # run by hand under the broker's grammar
+dukpy==0.6.0 ; python_version >= "3.14"     # the viewer panel tests; turns the GIL back on
+quickjs==1.19.4 ; python_version < "3.13"   # scripts/gnss/rf_panel_gate.py
+py-spy==0.4.2 ; python_version < "3.13"     # profiler for the 3.12 processes; cannot read 3.14t
+# kotekan CI's formatter, with its click pin: black 19.10b0 fails on click 8.1 and later, and
+# its typed-ast does not build on 3.14.
+black==19.10b0 ; python_version < "3.13"
+click==8.0.2 ; python_version < "3.13"

@@ -44,10 +44,14 @@ def session_pgrep(bindir):
         stub(bindir, tool, 'exec /usr/bin/%s -s 0 "$@"\n' % tool)
 
 
-def run(cmd, env, timeout=120, cwd=None):
-    """Run cmd in a new session with env added to this environment; (rc, stdout+stderr).
-    On a timeout the session's process group is killed, so nothing it started outlives it."""
-    e = dict(os.environ)
+def run(cmd, env, timeout=120, cwd=None, bare=False):
+    """Run cmd in a new session with env added to this environment, or with bare=True to
+    cron's (PATH and HOME alone); (rc, stdout+stderr). On a timeout the session's process
+    group is killed, so nothing it started outlives it."""
+    if bare:
+        e = {"PATH": "/usr/bin:/bin", "HOME": os.environ.get("HOME", "/")}
+    else:
+        e = dict(os.environ)
     e.update(env)
     p = subprocess.Popen(
         cmd,
@@ -102,6 +106,164 @@ def test_contract_gate_env_is_whole_record():
                     "OPENBLAS_NUM_THREADS=16 does not satisfy OPENBLAS_NUM_THREADS=1 (rc %d: %s)"
                     % (rc, out.strip().splitlines()[0] if out.strip() else ""),
                 )
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def test_contract_gate_fails_when_nothing_checked():
+    """With no component named and none running the gate has checked nothing, which is not a
+    pass. A named component that is not running is still skipped."""
+    d = tempfile.mkdtemp(prefix="site_gate_")
+    try:
+        k, _ = site_tree(d, "stack_contract_gate.sh", "stack_components.sh")
+        gate = os.path.join(k, "scripts", "gnss", "site", "stack_contract_gate.sh")
+        bindir = os.path.join(d, "bin")
+        stub(bindir, "systemctl", "echo 0\n")
+        env = {"PATH": bindir + ":" + os.environ["PATH"]}
+        rc, out = run(["bash", gate], env)
+        check(
+            rc != 0 and "checked 0 component(s)" in out,
+            "nothing running and nothing named fails (rc %d)" % rc,
+        )
+        rc, out = run(["bash", gate, "broker"], env)
+        check(
+            rc == 0 and "not running -- skipped" in out,
+            "a named component that is not running is skipped (rc %d)" % rc,
+        )
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def gate_tree(d):
+    """A checkout holding the real definition, launcher and gate, whose broker and rail are
+    stubs that sleep, and a systemctl that gives the pid in GATE_<COMPONENT>_PID as a unit's
+    MainPID; (gate, launcher, stack_components.sh, the kotekan tree)."""
+    k, kt = site_tree(
+        d, "stack_contract_gate.sh", "stack_components.sh", "run_component.sh"
+    )
+    site = os.path.join(k, "scripts", "gnss", "site")
+    for path in (
+        os.path.join(k, "scripts", "gnss", "broker_multi.py"),
+        os.path.join(site, "rail_watch.py"),
+    ):
+        with open(path, "w") as fh:
+            fh.write("import time\ntime.sleep(60)\n")
+    stub(
+        os.path.join(d, "bin"),
+        "systemctl",
+        'case "$3" in\n'
+        '  gnss-broker.service) echo "${GATE_BROKER_PID:-0}" ;;\n'
+        '  gnss-rail.service) echo "${GATE_RAIL_PID:-0}" ;;\n'
+        "  *) echo 0 ;;\n"
+        "esac\n",
+    )
+    return (
+        os.path.join(site, "stack_contract_gate.sh"),
+        os.path.join(site, "run_component.sh"),
+        os.path.join(site, "stack_components.sh"),
+        kt,
+    )
+
+
+def start_component(launcher, name):
+    """Start a component through run_component.sh in cron's environment, as its unit does, in
+    a session of its own; the Popen, once the stub has replaced the launcher."""
+    p = subprocess.Popen(
+        ["bash", launcher, name],
+        env={"PATH": "/usr/bin:/bin", "HOME": "/", "GNSS_PY": "/usr/bin/python3"},
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    script = {"broker": b"broker_multi.py", "rail": b"rail_watch.py"}[name]
+    for _ in range(100):
+        try:
+            if script in open("/proc/%d/cmdline" % p.pid, "rb").read():
+                break
+        except OSError:
+            break
+        time.sleep(0.05)
+    return p
+
+
+def stop_component(p):
+    try:
+        os.killpg(p.pid, signal.SIGKILL)
+    except OSError:
+        pass
+    p.wait()
+
+
+def test_contract_gate_sees_a_dropped_export():
+    """A definition that sets the broker's BLAS caps without exporting them starts a broker
+    without them, and the gate, reading the same definition, says so (#134)."""
+    d = os.path.realpath(tempfile.mkdtemp(prefix="site_gate_"))
+    try:
+        gate, launcher, comps, _ = gate_tree(d)
+        line = "export OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1"
+        text = open(comps).read()
+        check(text.count(line) == 1, "the broker's BLAS line is in the definition")
+        env = {
+            "PATH": os.path.join(d, "bin") + ":/usr/bin:/bin",
+            "GNSS_PY": "/usr/bin/python3",
+        }
+        for dropped in (False, True):
+            if dropped:
+                with open(comps, "w") as fh:
+                    fh.write(text.replace(line, line[len("export ") :]))
+            p = start_component(launcher, "broker")
+            try:
+                env["GATE_BROKER_PID"] = str(p.pid)
+                rc, out = run(["bash", gate, "broker"], env, bare=True)
+            finally:
+                stop_component(p)
+            if dropped:
+                check(
+                    rc == 1
+                    and "broker" in out
+                    and "ENV MISSING: OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1" in out,
+                    "with the export dropped the gate reports the caps missing (rc %d: %r)"
+                    % (rc, out.strip().splitlines()[:1]),
+                )
+            else:
+                check(
+                    rc == 0 and "broker" in out and " ok " in out,
+                    "with the export in place the same broker passes (rc %d: %r)"
+                    % (rc, out.strip().splitlines()[:1]),
+                )
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def test_contract_gate_ignores_the_callers_kotekan_src():
+    """The gate expects what a unit gets, which never includes the operator's KOTEKAN_SRC: with
+    one exported, naming the tree the broker uses or another, a matching stack still passes."""
+    d = os.path.realpath(tempfile.mkdtemp(prefix="site_gate_"))
+    try:
+        gate, launcher, _, kt = gate_tree(d)
+        procs = {name: start_component(launcher, name) for name in ("broker", "rail")}
+        try:
+            env = {
+                "PATH": os.path.join(d, "bin") + ":/usr/bin:/bin",
+                "GNSS_PY": "/usr/bin/python3",
+                "GATE_BROKER_PID": str(procs["broker"].pid),
+                "GATE_RAIL_PID": str(procs["rail"].pid),
+            }
+            for src in (None, kt, os.path.join(d, "elsewhere")):
+                e = dict(env) if src is None else dict(env, KOTEKAN_SRC=src)
+                rc, out = run(["bash", gate], e, bare=True)
+                check(
+                    rc == 0 and "checked 2 component(s), 0 mismatch(es)" in out,
+                    "KOTEKAN_SRC %s in the caller: broker and rail pass (rc %d: %r)"
+                    % (
+                        "unset" if src is None else "=" + src,
+                        rc,
+                        [x for x in out.splitlines() if "MISS" in x][:2],
+                    ),
+                )
+        finally:
+            for p in procs.values():
+                stop_component(p)
     finally:
         shutil.rmtree(d, ignore_errors=True)
 
@@ -329,24 +491,400 @@ def test_cubecompact_up_waits_for_the_old_loop():
 
 GEN_FLEET_STUB = r"""import os, sys
 K = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+with open(os.path.join(K, "gen_fleet.env"), "a") as fh:
+    fh.write(os.environ.get("KOTEKAN_SRC", "(unset)") + "\n")
 if "--print-path" in sys.argv:
     print(os.path.join(K, "config", "generated", "chord_gnss_cx19_other.yaml"))
     sys.exit(0)
 with open(os.path.join(K, "gen_fleet.calls"), "a") as fh:
     fh.write(" ".join(sys.argv[2:]) + "\n")
+if "--check" in sys.argv:
+    sys.exit(int(os.environ.get("GEN_FLEET_CHECK_RC", "0")))
 """
 
 
-def test_eop_cron_reads_the_configs_the_manifest_owns():
-    d = tempfile.mkdtemp(prefix="site_eop_")
+def site_tree(d, *scripts):
+    """A GNSS checkout d/k holding the named site scripts and kotekan_src.sh, with a kotekan
+    tree beside it at d/kotekan; (checkout, kotekan tree)."""
+    k = os.path.join(d, "k")
+    site = os.path.join(k, "scripts", "gnss", "site")
+    os.makedirs(site)
+    for name in scripts + ("kotekan_src.sh",):
+        shutil.copy(os.path.join(HERE, name), site)
+    kt = os.path.join(d, "kotekan")
+    os.makedirs(os.path.join(kt, "lib", "stages", "gnss"))
+    return k, kt
+
+
+def test_kotekan_src_helper_follows_the_python_rule():
+    """kotekan_src.sh and python/scripts/gnss/kotekan_src.py, copied into the same checkout,
+    find the same tree in every layout the rule names, in cron's environment."""
+    py = os.path.join(
+        HERE, "..", "..", "..", "python", "scripts", "gnss", "kotekan_src.py"
+    )
+    mark = os.path.join("lib", "stages", "gnss")
+    # (what, trees holding lib/stages/gnss, relative to d, with c the checkout; KOTEKAN_SRC;
+    #  the tree expected, relative to d unless absolute, or None for none)
+    layouts = (
+        ("one tree", ("c",), None, "c"),
+        ("a submodule", ("c/kotekan",), None, "c/kotekan"),
+        ("a checkout beside", ("kotekan",), None, "kotekan"),
+        ("the checkout before a submodule", ("c", "c/kotekan", "kotekan"), None, "c"),
+        ("a submodule before one beside", ("c/kotekan", "kotekan"), None, "c/kotekan"),
+        ("none", (), None, None),
+        ("KOTEKAN_SRC before the checkout", ("c",), "/no/such", "/no/such"),
+        ("a relative KOTEKAN_SRC is made absolute", ("c",), "x/../kt", "kt"),
+        ("an empty KOTEKAN_SRC is unset", ("kotekan",), "", "kotekan"),
+    )
+    for what, trees, env_src, want in layouts:
+        d = os.path.realpath(tempfile.mkdtemp(prefix="site_ksrc_"))
+        try:
+            c = os.path.join(d, "c")
+            site = os.path.join(c, "scripts", "gnss", "site")
+            pydir = os.path.join(c, "python", "scripts", "gnss")
+            os.makedirs(site)
+            os.makedirs(pydir)
+            shutil.copy(os.path.join(HERE, "kotekan_src.sh"), site)
+            shutil.copy(py, pydir)
+            for t in trees:
+                os.makedirs(os.path.join(d, t, mark))
+            env = {} if env_src is None else {"KOTEKAN_SRC": env_src}
+            # Sourced by a relative path from d, as `scripts/gnss/site/x.sh` is from a checkout.
+            rc, sh_out = run(
+                [
+                    "bash",
+                    "-c",
+                    'set -u; . "$1"; echo "$GNSS_CHECKOUT"; gnss_kotekan_src "$GNSS_CHECKOUT"',
+                    "sh",
+                    os.path.join("c", "scripts", "gnss", "site", "kotekan_src.sh"),
+                ],
+                env,
+                cwd=d,
+                bare=True,
+            )
+            lines = sh_out.splitlines()
+            _, py_out = run(
+                [
+                    sys.executable,
+                    "-c",
+                    "import sys; sys.path.insert(0, sys.argv[1]); import kotekan_src; "
+                    "print(kotekan_src.SRC)",
+                    pydir,
+                ],
+                env,
+                cwd=d,
+                bare=True,
+            )
+            want_abs = None if want is None else os.path.join(d, want)
+            check(
+                lines[:1] == [c],
+                "%s: GNSS_CHECKOUT is the checkout the helper is in (%r)"
+                % (what, lines[:1]),
+            )
+            if want_abs is None:
+                check(
+                    rc == 1
+                    and len(lines) == 2
+                    and "set KOTEKAN_SRC" in lines[1]
+                    and py_out.strip() == "None",
+                    "%s: no tree, rc 1 and a message naming KOTEKAN_SRC; Python finds none "
+                    "too (rc %d, %r, %r)" % (what, rc, lines[1:], py_out.strip()),
+                )
+            else:
+                check(
+                    rc == 0 and lines[1:] == [want_abs] and py_out.strip() == want_abs,
+                    "%s: both find %s (shell rc %d %r, Python %r)"
+                    % (what, want, rc, lines[1:], py_out.strip()),
+                )
+        finally:
+            shutil.rmtree(d, ignore_errors=True)
+
+
+def test_kotekan_src_helper_is_physical_and_takes_a_relative_checkout():
+    """Through a symlinked checkout, with a kotekan tree beside the link and another beside the
+    real directory, the helper and kotekan_src.py, each reached through the link, both take the
+    one beside the real directory; and a relative checkout argument still reaches the tree
+    beside it."""
+    py = os.path.join(
+        HERE, "..", "..", "..", "python", "scripts", "gnss", "kotekan_src.py"
+    )
+    d = os.path.realpath(tempfile.mkdtemp(prefix="site_ksrc_"))
+    try:
+        real = os.path.join(d, "P", "c")
+        os.makedirs(os.path.join(real, "scripts", "gnss", "site"))
+        os.makedirs(os.path.join(real, "python", "scripts", "gnss"))
+        shutil.copy(
+            os.path.join(HERE, "kotekan_src.sh"),
+            os.path.join(real, "scripts", "gnss", "site"),
+        )
+        shutil.copy(py, os.path.join(real, "python", "scripts", "gnss"))
+        for t in ("P", "L"):
+            os.makedirs(os.path.join(d, t, "kotekan", "lib", "stages", "gnss"))
+        link = os.path.join(d, "L", "c")
+        os.symlink(real, link)
+        want = os.path.join(d, "P", "kotekan")
+        # kotekan_src.py imported through the link.
+        _, py_out = run(
+            [
+                sys.executable,
+                "-c",
+                "import sys; sys.path.insert(0, sys.argv[1]); import kotekan_src; "
+                "print(kotekan_src.SRC)",
+                os.path.join(link, "python", "scripts", "gnss"),
+            ],
+            {},
+            bare=True,
+        )
+        check(
+            py_out.strip() == want,
+            "through the link kotekan_src.py finds the tree beside the real checkout (%r)"
+            % py_out.strip(),
+        )
+        helper = os.path.join("scripts", "gnss", "site", "kotekan_src.sh")
+        # Sourced through the link by its absolute path; then asked for the link by name.
+        rc, out = run(
+            [
+                "bash",
+                "-c",
+                'set -u; . "$1"; echo "$GNSS_CHECKOUT"; gnss_kotekan_src "$GNSS_CHECKOUT"; '
+                'gnss_kotekan_src "$2"',
+                "sh",
+                os.path.join(link, helper),
+                link,
+            ],
+            {},
+            bare=True,
+        )
+        check(
+            rc == 0 and out.splitlines() == [real, want, want],
+            "through the link the checkout is the real directory, and both calls find %s "
+            "(rc %d, %r)" % (want, rc, out.splitlines()),
+        )
+        # A relative checkout, as GNSS_K=. passes it: its ../kotekan is the tree beside it.
+        for cwd, arg in ((real, "."), (os.path.join(d, "P"), "c")):
+            rc, out = run(
+                [
+                    "bash",
+                    "-c",
+                    'set -u; . "$1"; gnss_kotekan_src "$2"',
+                    "sh",
+                    os.path.join(real, helper),
+                    arg,
+                ],
+                {},
+                cwd=cwd,
+                bare=True,
+            )
+            check(
+                rc == 0 and out.splitlines() == [want],
+                "gnss_kotekan_src %s from %s finds %s (rc %d, %r)"
+                % (arg, os.path.relpath(cwd, d), want, rc, out.splitlines()),
+            )
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def test_install_user_units_names_its_own_checkout():
+    """install_user_units.sh <dir> writes every unit with its own checkout, as a physical path,
+    in place of /home/kvand/gnss/kotekan, and changes nothing else: from the main checkout the
+    units are installed byte for byte. It reloads nothing."""
+    d = os.path.realpath(tempfile.mkdtemp(prefix="site_units_"))
+    try:
+        # A checkout path holding the characters a sed replacement treats specially.
+        k = os.path.join(d, "a&b|c", "k")
+        units = os.path.join(k, "scripts", "gnss", "site", "systemd")
+        shutil.copytree(os.path.join(HERE, "systemd"), units)
+        link = os.path.join(d, "link")
+        os.symlink(k, link)
+        bindir = os.path.join(d, "bin")
+        log = os.path.join(d, "calls.log")
+        for tool in ("systemctl", "loginctl"):
+            stub(bindir, tool, 'echo "$0 $*" >> "$UNITS_TEST_LOG"\n')
+        out_dir = os.path.join(d, "out")
+        rc, out = run(
+            [
+                "sh",
+                os.path.join(
+                    link, "scripts", "gnss", "site", "systemd", "install_user_units.sh"
+                ),
+                out_dir,
+            ],
+            {"PATH": bindir + ":/usr/bin:/bin", "UNITS_TEST_LOG": log},
+            bare=True,
+        )
+        names = sorted(
+            f
+            for f in os.listdir(units)
+            if f.startswith("gnss-") and f.endswith((".service", ".target"))
+        )
+        check(
+            rc == 0 and os.path.isdir(out_dir) and sorted(os.listdir(out_dir)) == names,
+            "it writes the %d units and nothing else (rc %d: %s)"
+            % (len(names), rc, out.strip()[-200:]),
+        )
+        main = "/home/kvand/gnss/kotekan/"
+        texts = {f: open(os.path.join(units, f)).read() for f in names}
+        check(
+            any(main in t for t in texts.values()),
+            "the units name the main checkout, so there is something to replace",
+        )
+        wrong = [
+            f
+            for f in names
+            if not os.path.exists(os.path.join(out_dir, f))
+            or open(os.path.join(out_dir, f)).read() != texts[f].replace(main, k + "/")
+        ]
+        check(
+            not wrong,
+            "each unit names the installer's checkout by its real path, and is otherwise "
+            "the file as it is (differ: %s)" % wrong,
+        )
+        check(not os.path.exists(log), "and nothing is reloaded")
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def test_install_user_units_will_not_move_the_stack_unasked():
+    """A live install from a checkout other than the one the installed broker unit runs is
+    refused unless GNSS_UNITS_CHECKOUT names the checkout; an empty <dir> is refused."""
+    d = os.path.realpath(tempfile.mkdtemp(prefix="site_units_live_"))
     try:
         k = os.path.join(d, "k")
-        os.makedirs(os.path.join(k, "scripts", "gnss", "site"))
-        os.makedirs(os.path.join(k, "config", "generated"))
-        shutil.copy(
-            os.path.join(HERE, "eop_cron.sh"),
-            os.path.join(k, "scripts", "gnss", "site"),
+        shutil.copytree(
+            os.path.join(HERE, "systemd"),
+            os.path.join(k, "scripts", "gnss", "site", "systemd"),
         )
+        inst = os.path.join(
+            k, "scripts", "gnss", "site", "systemd", "install_user_units.sh"
+        )
+        bindir = os.path.join(d, "bin")
+        log = os.path.join(d, "calls.log")
+        for tool in ("systemctl", "loginctl"):
+            stub(bindir, tool, 'echo "$0 $*" >> "$UNITS_TEST_LOG"\n')
+        live = os.path.join(d, "config", "systemd", "user")
+        os.makedirs(live)
+        broker = os.path.join(live, "gnss-broker.service")
+        with open(broker, "w") as f:
+            f.write("ExecStart=/elsewhere/scripts/gnss/site/run_component.sh broker\n")
+        env = {
+            "PATH": bindir + ":/usr/bin:/bin",
+            "UNITS_TEST_LOG": log,
+            "XDG_CONFIG_HOME": os.path.join(d, "config"),
+            "GNSS_LOGS": os.path.join(d, "logs"),
+        }
+
+        rc, out = run(["sh", inst, ""], env, bare=True)
+        check(rc == 2 and "empty" in out, "an empty <dir> is refused (rc %d)" % rc)
+
+        rc, out = run(["sh", inst], env, bare=True)
+        check(
+            rc == 1
+            and "REFUSING" in out
+            and "/elsewhere" in out
+            and open(broker).read().startswith("ExecStart=/elsewhere/")
+            and not os.path.exists(log),
+            "a checkout other than the installed one is refused, and nothing is written "
+            "(rc %d: %s)" % (rc, out.strip()[-200:]),
+        )
+
+        env["GNSS_UNITS_CHECKOUT"] = k
+        rc, out = run(["sh", inst], env, bare=True)
+        check(
+            rc == 0
+            and ("ExecStart=%s/scripts/gnss/site/run_component.sh broker" % k)
+            in open(broker).read()
+            and os.path.exists(log),
+            "named by GNSS_UNITS_CHECKOUT, it installs and reloads (rc %d: %s)"
+            % (rc, out.strip()[-200:]),
+        )
+
+        del env["GNSS_UNITS_CHECKOUT"]
+        rc, out = run(["sh", inst], env, bare=True)
+        check(
+            rc == 0,
+            "reinstalling from the checkout the units run needs no name (rc %d)" % rc,
+        )
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def test_run_component_exports_kotekan_src_to_the_broker_alone():
+    d = os.path.realpath(tempfile.mkdtemp(prefix="site_print_"))
+    try:
+        k, kt = site_tree(d, "run_component.sh", "stack_components.sh")
+        # The viewer's cwd: --print changes into it.
+        os.makedirs(os.path.join(k, "python", "scripts", "js_viewer"))
+        rc_sh = os.path.join(k, "scripts", "gnss", "site", "run_component.sh")
+        out = {}
+        names = "broker gather aggregator viewer obs rail cubearch cubecompact"
+        for name in names.split():
+            rc, out[name] = run(
+                ["bash", rc_sh, "--print", name],
+                {"GNSS_CHAIN": "gps_l5"} if name == "obs" else {},
+                bare=True,
+            )
+            check(
+                rc == 0,
+                "--print %s exits 0 (rc %d%s)"
+                % (name, rc, "" if rc == 0 else ": " + out[name][-200:]),
+            )
+        check(
+            "argv\t%s/scripts/gnss/broker_multi.py\n" % k in out["broker"],
+            "the broker runs from the checkout the scripts are in",
+        )
+        check(
+            "env\tKOTEKAN_SRC=%s\n" % kt in out["broker"],
+            "the broker's environment carries KOTEKAN_SRC, the kotekan tree beside it",
+        )
+        check(
+            "argv\t%s/build_nodpdk/kotekan/kotekan\n" % kt in out["gather"],
+            "the gather runs that kotekan tree's binary",
+        )
+        others = [n for n in out if n != "broker" and "env\tKOTEKAN_SRC" in out[n]]
+        check(not others, "no other component exports KOTEKAN_SRC (%s)" % others)
+        check(
+            "env\tGNSS_CHAIN=gps_l5\n" in out["obs"],
+            "an obs writer's GNSS_CHAIN, set by its unit, is still listed",
+        )
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def test_node_up_exports_kotekan_src_to_gen_fleet():
+    d = os.path.realpath(tempfile.mkdtemp(prefix="site_node_up_src_"))
+    try:
+        path = node_up_stubs(d)
+        k, kt = site_tree(d, "node_up.sh")
+        os.makedirs(os.path.join(k, "config"))
+        with open(os.path.join(k, "scripts", "gnss", "gen_fleet.py"), "w") as fh:
+            fh.write(GEN_FLEET_STUB)
+        open(os.path.join(k, "config", "gnss_fleet_chord.yaml"), "w").write("x: 1\n")
+        rc, out = run(
+            [
+                "bash",
+                os.path.join(k, "scripts", "gnss", "site", "node_up.sh"),
+                "cxtest",
+                "status",
+            ],
+            {"PATH": path},
+            bare=True,
+        )
+        seen = os.path.join(k, "gen_fleet.env")
+        seen = open(seen).read().splitlines() if os.path.exists(seen) else []
+        check(
+            seen == [kt],
+            "node_up runs gen_fleet with KOTEKAN_SRC, the kotekan tree beside its checkout "
+            "(saw %r; rc %d)" % (seen, rc),
+        )
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def test_eop_cron_reads_the_configs_the_manifest_owns():
+    d = os.path.realpath(tempfile.mkdtemp(prefix="site_eop_"))
+    try:
+        k, kt = site_tree(d, "eop_cron.sh")
+        os.makedirs(os.path.join(k, "config", "generated"))
         with open(os.path.join(k, "scripts", "gnss", "gen_fleet.py"), "w") as fh:
             fh.write(GEN_FLEET_STUB)
         open(os.path.join(k, "config", "gnss_fleet_chord.yaml"), "w").write(
@@ -380,6 +918,7 @@ def test_eop_cron_reads_the_configs_the_manifest_owns():
                 "EOP_LOG": log,
                 "EOP_STATE": state,
             },
+            bare=True,
         )
         text = open(log).read() if os.path.exists(log) else out
         calls = os.path.join(k, "gen_fleet.calls")
@@ -394,6 +933,36 @@ def test_eop_cron_reads_the_configs_the_manifest_owns():
             calls == ["--check", ""],
             "after a --check, then a write (gen_fleet calls %r)" % calls,
         )
+        seen = os.path.join(k, "gen_fleet.env")
+        seen = open(seen).read().splitlines() if os.path.exists(seen) else []
+        check(
+            seen == [kt] * 3,
+            "each gen_fleet run gets KOTEKAN_SRC, the kotekan tree beside the checkout (%r)"
+            % seen,
+        )
+        for check_rc, want in (
+            (
+                1,
+                "on-disk configs differ from the manifest beyond live data; NOT regenerated",
+            ),
+            (2, "gen_fleet --check could not compare (rc 2); NOT regenerated"),
+        ):
+            rc, out = run(
+                ["bash", os.path.join(k, "scripts", "gnss", "site", "eop_cron.sh")],
+                {
+                    "PATH": bindir + ":" + os.environ["PATH"],
+                    "GNSS_NODES": "cxtest",
+                    "EOP_LOG": log,
+                    "EOP_STATE": state,
+                    "GEN_FLEET_CHECK_RC": str(check_rc),
+                },
+                bare=True,
+            )
+            last = open(log).read().strip().splitlines()[-1:]
+            check(
+                bool(last) and want in last[0],
+                "a --check that exits %d is logged as such (%r)" % (check_rc, last),
+            )
     finally:
         shutil.rmtree(d, ignore_errors=True)
 

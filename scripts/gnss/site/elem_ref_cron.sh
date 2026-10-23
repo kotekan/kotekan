@@ -13,7 +13,9 @@
 # consensus when the reference no longer describes the models (new F-engine gains), into
 # $OBS/elem_ref/auto_ref.json until that file is committed. Unset, it only reports.
 set -u
-K=/home/kvand/gnss/kotekan
+# shellcheck source=kotekan_src.sh
+. "$(dirname "${BASH_SOURCE[0]}")/kotekan_src.sh"
+K=$GNSS_CHECKOUT
 PY=${GNSS_PY:-/home/kvand/gnss/venv/bin/python}
 OBS=${GNSS_OBS_OUT:-/home/kvand/gnss/fixtures/obs}
 REF=${ELEM_REF_FILE:-$K/$(grep -oP '^\s+elem-shared-ref:\s*\K\S+' "$K/config/gnss_fleet_chord.yaml")}

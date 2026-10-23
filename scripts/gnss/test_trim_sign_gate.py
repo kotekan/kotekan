@@ -38,11 +38,11 @@ def model(per_trim, disc_sign=1.0):
     return run
 
 
-def gate(run):
+def gate(run, exe=sys.executable):
     """(exit status, output) of the gate's main() with e2e replaced by `run`."""
     orig, argv = trim_sign_gate.run, sys.argv
     trim_sign_gate.run = run
-    sys.argv = ["trim_sign_gate.py", "--exe", sys.executable]
+    sys.argv = ["trim_sign_gate.py", "--exe", exe]
     out = io.StringIO()
     try:
         with contextlib.redirect_stdout(out):
@@ -83,6 +83,24 @@ def test_slope_not_one_over_m_is_refused():
     check(rc == 1 and "refusing" in out, "slope 0.7 is refused (rc %r)" % rc)
 
 
+def test_missing_build_is_absent_unless_required():
+    missing = os.path.join(HERE, "no_such_e2e")
+    saved = os.environ.pop("GNSS_REQUIRE_GPU", None)
+    try:
+        rc, out = gate(model(1.0), missing)
+        check(rc == 77 and "skip" in out, "no e2e build exits 77 (rc %r)" % rc)
+        os.environ["GNSS_REQUIRE_GPU"] = "1"
+        rc, out = gate(model(1.0), missing)
+        check(
+            rc == 1 and "GNSS_REQUIRE_GPU" in out,
+            "no e2e build fails with GNSS_REQUIRE_GPU set (rc %r)" % rc,
+        )
+    finally:
+        os.environ.pop("GNSS_REQUIRE_GPU", None)
+        if saved is not None:
+            os.environ["GNSS_REQUIRE_GPU"] = saved
+
+
 def main():
     print("trim_sign_gate.py checks")
     test_comb_mult_1_passes()
@@ -90,6 +108,7 @@ def main():
     test_inverted_actuator_fails()
     test_inverted_discriminator_fails()
     test_slope_not_one_over_m_is_refused()
+    test_missing_build_is_absent_unless_required()
     if _fails:
         print("FAILED (%d)" % len(_fails))
         return 1

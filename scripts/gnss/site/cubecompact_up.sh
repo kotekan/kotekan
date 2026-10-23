@@ -20,7 +20,9 @@
 #         CUBE_ROOT=/mnt/cs00/data/kvand/gnss_cube_test ... (a test run)
 #         GNSS_K=<checkout>                                  (loop and tool from another tree)
 set -u
-K=${GNSS_K:-/home/kvand/gnss/kotekan}
+# shellcheck source=kotekan_src.sh
+. "$(dirname "${BASH_SOURCE[0]}")/kotekan_src.sh"
+K=${GNSS_K:-$GNSS_CHECKOUT}
 PY=${GNSS_PY:-/home/kvand/gnss/venv/bin/python}     # needs h5py: venv, not venv-ft
 ROOT=${CUBE_ROOT:-/mnt/cs00/data/kvand/gnss_cube}
 RAW=${CUBE_RAW:-$ROOT/raw}

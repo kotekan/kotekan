@@ -515,8 +515,11 @@ cudaFRBBeamformer_hirax_U128::cudaFRBBeamformer_hirax_U128(Config& config,
             "--gpu-name=sm_86",
             "--verbose",
         };
-        device.build_ptx("lib/cuda/generated/FRBBeamformer_hirax_U128.ptx", {kernel_symbol}, opts,
-                         "FRBBeamformer_hirax_U128_");
+        const char* const kernel_code =
+#include "FRBBeamformer_hirax_U128.ptx"
+            ;
+        device.build_ptx(kernel_code, "lib/cuda/generated/FRBBeamformer_hirax_U128.ptx",
+                         {kernel_symbol}, opts, "FRBBeamformer_hirax_U128_");
     }
 }
 

@@ -2,6 +2,10 @@
 # Build one of the offline GNSS diagnostic tools against the already-built kotekan libraries.
 # usage: ./build_tool.sh <name>          (compiles scripts/gnss/<name>.cpp -> scripts/gnss/<name>)
 #        KBUILD=build_nodpdk ./build_tool.sh <name>
+#        KOTEKAN_SRC=<tree> ./build_tool.sh <name>
+#
+# The headers and build come from the kotekan tree this script is in, or from KOTEKAN_SRC; the
+# sources are always this tree's scripts/gnss/.
 #
 # KBUILD picks the kotekan build tree to link against. It matters because /home/kvand is NFS
 # shared: `build/` is a cx node's DPDK build and `build_nodpdk/` is cf06's, and linking a tool
@@ -9,9 +13,9 @@
 # with a plain $S/$N symlink, so two hosts building the same tool over NFS do not clobber each
 # other's binary; a clobbered binary shows up as a tool that suddenly segfaults.
 set -e
-K=/home/kvand/gnss/kotekan
-B=$K/${KBUILD:-build}
 S="$(cd "$(dirname "$0")/.." && pwd)"  # the tools live one level up
+K=${KOTEKAN_SRC:-$(cd "$S/../.." && pwd)}   # the kotekan tree: headers and build
+B=$K/${KBUILD:-build}
 N=$1
 H=$(hostname -s)
 

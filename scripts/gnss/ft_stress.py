@@ -39,6 +39,7 @@ import argparse
 import os
 import random
 import sys
+import sysconfig
 import threading
 import time
 
@@ -299,6 +300,21 @@ def main():
         if gil:
             # Not a harness fault: the GIL makes the read-then-rebind effectively atomic, so
             # the race cannot show here. The selftest means something only free-threaded.
+            # Inconclusive passes only on a GIL build. On a free-threaded build the GIL was
+            # re-enabled (PYTHON_GIL=1, or an extension that does not declare support), and
+            # GNSS_REQUIRE_FT (the test runner sets it) means this run had to be the real one.
+            if sysconfig.get_config_var("Py_GIL_DISABLED"):
+                print(
+                    "SELFTEST INCONCLUSIVE -- FAIL: a free-threaded build running with the "
+                    "GIL enabled, so the race cannot show"
+                )
+                return 1
+            if os.environ.get("GNSS_REQUIRE_FT"):
+                print(
+                    "SELFTEST INCONCLUSIVE -- FAIL: GNSS_REQUIRE_FT is set, and this "
+                    "interpreter has a GIL"
+                )
+                return 1
             print(
                 "SELFTEST INCONCLUSIVE UNDER THE GIL -- expected. The GIL hides this "
                 "defect. Re-run free-threaded."

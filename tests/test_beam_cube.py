@@ -10,8 +10,9 @@ ring2nest is the exact inverse permutation of nest2ring, so it cannot be wrong i
 nest2ring is not; both are checked against healpy here. The export's downgrade goes through
 NEST, so a wrong pair would quietly scramble every multi-resolution cube.
 
-Needs healpy: /home/kvand/gnss/venv/bin/python, NOT venv-ft. Skipped without it, and a skip
-here is a real loss of coverage, not a pass.
+Needs healpy: /home/kvand/gnss/venv/bin/python, NOT venv-ft. Run standalone, a missing healpy
+fails. Under pytest it is a skip unless GNSS_REQUIRE_PLOT is set, and a skip here is a real loss
+of coverage, not a pass.
 """
 import os
 import sys
@@ -61,9 +62,15 @@ except ImportError:  # pragma: no cover
 
     pytest = _Pytest()
 
-hp = pytest.importorskip(
-    "healpy", reason="healpy lives in /home/kvand/gnss/venv, not venv-ft"
-)
+# GNSS_REQUIRE_PLOT (the test runner sets it): the venv's science libraries must be there, so
+# under pytest too a missing healpy fails rather than skips. The shim's importorskip is a plain
+# import.
+if os.environ.get("GNSS_REQUIRE_PLOT"):
+    import healpy as hp
+else:
+    hp = pytest.importorskip(
+        "healpy", reason="healpy lives in /home/kvand/gnss/venv, not venv-ft"
+    )
 
 from gnss_beam_cube import (  # noqa: E402
     ang2pix_ring,
@@ -182,8 +189,8 @@ def test_boresight_separation_is_the_documented_pointing():
 
 
 if __name__ == "__main__":
-    # Standalone driver: same assertions, no pytest. Exits nonzero on the first failure so it
-    # is usable as a gate, not just as a report.
+    # Standalone driver: same assertions, no pytest. Exits nonzero when any case fails or none
+    # ran, so it is usable as a gate, not just as a report.
     import traceback
 
     fns = [
@@ -205,4 +212,4 @@ if __name__ == "__main__":
                 print("  FAIL %s" % label)
                 traceback.print_exc()
     print("%d case(s), %d failure(s)" % (n_run, n_fail))
-    sys.exit(1 if n_fail else 0)
+    sys.exit(1 if n_fail or not n_run else 0)

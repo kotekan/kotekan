@@ -20,11 +20,11 @@ It checks both directions. A test that only checks "noise reads unlocked" passes
 on a viewer that never reports a lock at all, so the healthy synthetic rows below are what
 make the negative result mean something.
 
-The live section reads the chain list from the publisher's /get_chains and each chain's rows
-from /<chain>/get_status over HTTP from the host this runs on, so publisher_host:port (default
-127.0.0.1:12060, the broker's publisher on the gnss VM) must be reachable from here. It prints
-counts and asserts nothing. The fetch path itself is checked against a canned publisher on a
-loopback port.
+The live section runs only when publisher_host:port is given (the broker's publisher on the
+gnss VM is 127.0.0.1:12060), so a plain run reads nothing outside this process. It reads the
+chain list from the publisher's /get_chains and each chain's rows from /<chain>/get_status
+over HTTP from the host this runs on, prints counts and asserts nothing. The fetch path itself
+is checked against a canned publisher on a loopback port.
 
 @author Keith Vanderlinde
 """
@@ -193,7 +193,7 @@ def canned_publisher(routes):
 
 
 def main():
-    host = sys.argv[1] if len(sys.argv) > 1 else "127.0.0.1:12060"
+    host = sys.argv[1] if len(sys.argv) > 1 else None
     js = build_js()
     print("extracted lock rule + signal_metrics from gps_feed.js (it parses)\n")
 
@@ -385,10 +385,16 @@ def main():
 
     # ---- dark probes (glo_l2oc --probe-dark, 10-18): an overhead satellite seeded as the
     # noise reference on a signal it cannot broadcast, while another chain tracks it (#206) --
-    print("\ndark probes: a probe on one signal does not grey a satellite another signal holds")
+    print(
+        "\ndark probes: a probe on one signal does not grey a satellite another signal holds"
+    )
     dark_a = dict(prn=4, fleet_q=0.9, fleet_q_floor=1.1, sig=-0.2, noise_probe=True)
     dark_b = dict(
-        prn=4, fleet_q=5.9, fleet_q_floor=1.1, sig=3000.0, cn0_prompt_db=36.0,
+        prn=4,
+        fleet_q=5.9,
+        fleet_q_floor=1.1,
+        sig=3000.0,
+        cn0_prompt_db=36.0,
         cn0_prompt_duty=1.0,
     )
     both_a = dict(prn=5, fleet_q=0.9, fleet_q_floor=1.1, sig=-0.2, noise_probe=True)
@@ -397,7 +403,10 @@ def main():
         x["prn"]: x
         for x in run_merged(
             js,
-            {"a": {"status": [dark_a, both_a, probe]}, "b": {"status": [dark_b, both_b]}},
+            {
+                "a": {"status": [dark_a, both_a, probe]},
+                "b": {"status": [dark_b, both_b]},
+            },
         )
     }
     check(
@@ -438,35 +447,40 @@ def main():
         srv.server_close()
 
     # ---- the live rows -------------------------------------------------------------------
-    print("\nlive rows from the publisher at %s" % host)
-    tot = locked = withc = 0
-    worst = None
-    for ch in chains(host):
-        rows = fetch(host, ch)
-        if not rows:
-            continue
-        out = run_js(js, rows)
-        for o in out:
-            tot += 1
-            locked += 1 if o["active"] else 0
-            withc += 1 if o["cn0"] is not None else 0
-            if worst is None or (o["sig"] or 0) > worst[0]:
-                worst = ((o["sig"] or 0), ch, o["prn"], o["q"], o["active"])
-    if not tot:
-        print("   no live rows -- skipping (this section needs a running publisher)")
+    if host is None:
+        print("\nlive rows: not read (give publisher_host:port to read them)")
     else:
-        print(
-            "   %d satellite row(s): %d would render LOCKED, %d would show a C/N0"
-            % (tot, locked, withc)
-        )
-        if worst:
+        print("\nlive rows from the publisher at %s" % host)
+        tot = locked = withc = 0
+        worst = None
+        for ch in chains(host):
+            rows = fetch(host, ch)
+            if not rows:
+                continue
+            out = run_js(js, rows)
+            for o in out:
+                tot += 1
+                locked += 1 if o["active"] else 0
+                withc += 1 if o["cn0"] is not None else 0
+                if worst is None or (o["sig"] or 0) > worst[0]:
+                    worst = ((o["sig"] or 0), ch, o["prn"], o["q"], o["active"])
+        if not tot:
             print(
-                "   loudest sig: %s PRN %s  sig %.0f  q %s  active=%s"
-                % (worst[1], worst[2], worst[0], worst[3], worst[4])
+                "   no live rows -- skipping (this section needs a running publisher)"
             )
-        # No assertion on the count: this file must stay useful with signal, where a nonzero
-        # locked count is the correct answer. The number is printed so a human can read it
-        # against what the sky is actually doing.
+        else:
+            print(
+                "   %d satellite row(s): %d would render LOCKED, %d would show a C/N0"
+                % (tot, locked, withc)
+            )
+            if worst:
+                print(
+                    "   loudest sig: %s PRN %s  sig %.0f  q %s  active=%s"
+                    % (worst[1], worst[2], worst[0], worst[3], worst[4])
+                )
+            # No assertion on the count: this file must stay useful with signal, where a
+            # nonzero locked count is the correct answer. The number is printed so a human can
+            # read it against what the sky is actually doing.
 
     print("\nFAILED (%d)" % len(_fails) if _fails else "\nOK")
     return 1 if _fails else 0

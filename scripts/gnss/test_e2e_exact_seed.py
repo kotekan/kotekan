@@ -16,8 +16,12 @@ reference time, and it changes by only rate * gap^2 from record to record. A sky
 jumps between records moves the mean or raises the sd. The deep fold ([4]) must then resolve the
 phase residual about a linear ramp, whatever the size of the mean step, and find it under
 TOL_RES.
+
+Without the build or a GPU it exits 77 (environment absent), or fails when GNSS_REQUIRE_GPU is
+set.
 """
 import argparse
+import glob
 import math
 import os
 import re
@@ -124,14 +128,29 @@ def check_case(exe, name, args, step=False):
         )
 
 
+def absent(exe):
+    """Why this host cannot run e2e (no build, or no GPU for its despread), or None."""
+    if not os.path.exists(exe):
+        return "no %s -- build it with site/build_tool.sh e2e" % exe
+    if not glob.glob("/dev/nvidia[0-9]*"):
+        return "no GPU (/dev/nvidia*) for e2e's despread"
+    return None
+
+
 def main():
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     ap.add_argument("--exe", default=os.path.join(HERE, "e2e"))
     a = ap.parse_args()
-    if not os.path.exists(a.exe):
-        raise SystemExit("no %s -- build it with site/build_tool.sh e2e" % a.exe)
+    # 77 is "environment absent" (automake's skip status): it says nothing about the chain.
+    # GNSS_REQUIRE_GPU (the test runner sets it on a GPU host) makes it a failure.
+    why = absent(a.exe)
+    if why and os.environ.get("GNSS_REQUIRE_GPU"):
+        raise SystemExit("%s, and GNSS_REQUIRE_GPU is set" % why)
+    if why:
+        print("skip  %s" % why)
+        return 77
     print("e2e exact-seed checks (%s)" % a.exe)
     for name, args in CASES:
         check_case(a.exe, name, args)

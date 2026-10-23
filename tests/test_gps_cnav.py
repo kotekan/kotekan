@@ -3,11 +3,31 @@ import os
 import sys
 
 import numpy as np
-import pytest
 
 sys.path.insert(
     0, os.path.join(os.path.dirname(__file__), "..", "python", "scripts", "gnss")
 )
+
+# Runnable without pytest, as test_beam_cube.py is: no venv on this host has pytest, and only
+# pytest.approx is used.
+try:
+    import pytest
+except ImportError:  # pragma: no cover
+
+    class _Approx:
+        def __init__(self, v, abs=0.0):
+            self.v, self.abs = v, abs
+
+        def __eq__(self, other):
+            return abs(other - self.v) <= (self.abs or 1e-12)
+
+    class _Pytest:
+        @staticmethod
+        def approx(v, abs=0.0):
+            return _Approx(v, abs)
+
+    pytest = _Pytest()
+
 import gps_cnav as nc  # noqa: E402
 from galileo_inav import (
     conv_encode,
@@ -147,3 +167,26 @@ def test_cnav_recovers_without_known_start():
     got = _crc_msgs(viterbi_decode(soft, known_start=False))
     assert len(got) >= 2  # later messages recovered after convergence
     assert all(g["prn"] == 7 and g["type"] in (30, 31, 32) for g in got)
+
+
+if __name__ == "__main__":
+    # Standalone driver, as in test_beam_cube.py: every test_* function, nonzero when any fails
+    # or none ran.
+    import traceback
+
+    fns = [
+        (k, v)
+        for k, v in sorted(globals().items())
+        if k.startswith("test_") and callable(v)
+    ]
+    n_fail = 0
+    for name, fn in fns:
+        try:
+            fn()
+            print("  ok   %s" % name)
+        except Exception:
+            n_fail += 1
+            print("  FAIL %s" % name)
+            traceback.print_exc()
+    print("%d case(s), %d failure(s)" % (len(fns), n_fail))
+    sys.exit(1 if n_fail or not fns else 0)

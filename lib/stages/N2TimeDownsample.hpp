@@ -43,7 +43,9 @@
  *                     Default is 120 (i.e. two minutes).
  * @conf  do_fringestop  Bool. Whether to apply fringestopping phases before averaging. Only
  *                       stations the telescope fringestops (ArrayDish for CHORD) get phases,
- *                       and the telescope phase center must be set. Default: true.
+ *                       and the telescope phase center must be set. Every input frame's
+ *                       `fringestop_enabled` must match it, or the stage exits with a fatal
+ *                       error. Default: true.
  *
  * @metric  kotekan_timedownsample_skipped_frame_total
  *      The number of frames skipped entirely because they were too old.

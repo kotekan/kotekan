@@ -59,7 +59,7 @@ from multiprocessing import Pool
 
 import numpy as np
 
-GNSS = "/home/kvand/gnss/kotekan/python/scripts/gnss"
+GNSS = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, GNSS)
 import gnss_tec_chord as gtc  # noqa: E402  the product's constants
 import gnss_ephemeris as ge  # noqa: E402

@@ -1,8 +1,9 @@
 # systemd units for the GNSS infrastructure on `gnss.site.chord-observatory.ca`
 
 **Installed on gnss as systemd user units** by `install_user_units.sh`, which copies the files
-here into `~/.config/systemd/user` verbatim and reloads. Edit them here, never the installed
-copies.
+here into `~/.config/systemd/user` and reloads. The copies differ only in the checkout they
+name: the installer's own in place of `/home/kvand/gnss/kotekan`. Edit them here, never the
+installed copies.
 
 **They carry `ConditionHost=` (gnss only), and must.** The user copies live in the NFS-shared
 home, so cf06, all eight cx nodes, recv1 and choco see them too. Without the condition, any login
