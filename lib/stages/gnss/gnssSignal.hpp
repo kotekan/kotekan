@@ -194,13 +194,15 @@ inline constexpr SignalDescriptor GPS_L5_Q_NH = {
     /*tdm_phase=*/0,
 };
 
-/// SBAS L5 Q (1176.45 MHz), the dataless pilot of the WAAS/EGNOS/MSAS/GAGAN GEOs (PRNs
-/// 120..158): the GPS L5 code family (gpsL5Code, the ICD's XB advance for the SBAS PRNs) under
-/// the 2-chip Manchester secondary (+1, -1; 2 ms), not NH20. The I channel carries 250 bps
-/// through rate-1/2 FEC (500 sps) with the same Manchester overlay; the pilot is what a lane
-/// direction needs (#190: the WAAS GEOs sit at 1176 permanently, el 33 due south from DRAO).
-inline constexpr SignalDescriptor SBAS_L5_Q = {
-    "SBAS_L5_Q",
+/// SBAS L5 (1176.45 MHz) of the WAAS/EGNOS/MSAS/GAGAN GEOs (PRNs 120..158): ONE in-phase BPSK(10)
+/// component, data only, with no pilot. ICAO Annex 10 (DFMC SBAS, 3.7.3.4.6): 250 bps through
+/// rate-1/2 FEC to 500 sps, each 2 ms symbol bi-binary (Manchester) encoded as two 1 ms halves
+/// of opposite sign, on the I5 code of the GPS L5 family (gpsL5Code, the ICD's XB advance for the
+/// SBAS PRNs). No Q5 is defined for SBAS, and receivers track it on I (IGS WILL00CAN logs
+/// S31/S33/S35 as C5I at ~46 dB-Hz, 10-23). The Manchester pair is the secondary here (+1, -1;
+/// 2 ms): a replica without it sums each symbol's two halves to zero.
+inline constexpr SignalDescriptor SBAS_L5_I = {
+    "SBAS_L5_I",
     1176.45e6,
     10.23e6,
     10230,
@@ -212,10 +214,14 @@ inline constexpr SignalDescriptor SBAS_L5_Q = {
     /*time_multiplexed=*/false,
     /*tdm_phase=*/0,
 };
-/// SBAS L5 Q with the Manchester overlay tiled into the code: one 20460-chip, 2 ms code, as
-/// GPS_L5_Q_NH tiles NH20. The overlay phase follows from the satellite's code periods.
-inline constexpr SignalDescriptor SBAS_L5_Q_MC = {
-    "SBAS_L5_Q_MC",
+/// SBAS L5 I with the Manchester pair tiled into the code: one 20460-chip, 2 ms code, i.e. one
+/// data symbol, as GPS_L5_Q_NH tiles NH20. The data sign flips whole tiles, so a 2048-hop record
+/// (~5 symbols) sums ~5 unknown signs: the E/P/L powers keep ~1/5 of a pilot's per-record power
+/// (~7 dB), and the carrier walk comes from the combiner's squared record-to-record product,
+/// which every chain uses. The pair's phase follows from the satellite's code periods; a
+/// one-period slip pairs adjacent symbols instead and keeps nearly the same power.
+inline constexpr SignalDescriptor SBAS_L5_I_MC = {
+    "SBAS_L5_I_MC",
     1176.45e6,
     10.23e6,
     20460,
@@ -720,8 +726,8 @@ inline const SignalDescriptor* signal_by_name(const std::string& name) {
           &GAL_E5A_Q_CS, &GAL_E5A_I,  &GAL_E5B_Q_CS, &BDS_B2A_P,     &BDS_B2A_P_CS,  &BDS_B2A_D,
           &BDS_B2B_I,    &GAL_E5B_Q,  &GAL_E5B_I,    &GPS_L1C_D,     &GAL_E6_C,      &GAL_E6_B,
           &BDS_B1I,      &BDS_B3I,    &BDS_B3I_NH,   &BDS_B2I,       &GLO_L3OC_P,    &GLO_L3OC_D,
-          &GLO_L2OF,     &GLO_L2OC_P, &GAL_E6_C_CS,  &GLO_L3OC_P_NH, &GLO_L2OC_P_OC, &SBAS_L5_Q,
-          &SBAS_L5_Q_MC})
+          &GLO_L2OF,     &GLO_L2OC_P, &GAL_E6_C_CS,  &GLO_L3OC_P_NH, &GLO_L2OC_P_OC, &SBAS_L5_I,
+          &SBAS_L5_I_MC})
         if (name == s->name)
             return s;
     return nullptr;

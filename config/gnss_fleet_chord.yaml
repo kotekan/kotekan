@@ -303,11 +303,14 @@ nodes:
     # the stage on its default slot; 8 lanes per channel first (12:53Z: stage 30% of its core,
     # lanes on every band), then every tracked satellite (40). Five slots, not six: the rotation
     # adds the GPU index, so slot 9 on GPU 1 is pool[0], the cudaProcess core.
-    # SBAS L5-Q canary (#190 coverage): the WAAS GEOs 131 Eutelsat 117 West B, 133 SES-15, 135
+    # SBAS L5 canary (#190 coverage): the WAAS GEOs 131 Eutelsat 117 West B, 133 SES-15, 135
     # Galaxy 30, geostationary at el ~33 due south of DRAO; state vectors from the IGS BRDC's S
     # records (no S38 on air: ANIK F1R left WAAS, so PRN 138 would be 4 idle jobs); model-primary
-    # (no search), lanes for the projection. A node entry's extra-signal appends to the common
-    # list. Move to common once the canary tracks.
+    # (no search), lanes for the projection. Tracked on the I channel since 10-23: SBAS L5 has no
+    # pilot, and the Q-code model of 10-20 never detected. 121/123/136 (EGNOS, below the horizon)
+    # are the broker's noise probes: presence needs 3 probes reporting, and a probe reports only
+    # from a slot. A node entry's extra-signal appends to the common list. Move to common once
+    # the canary tracks.
     # The lanes cost ~4 k n^2 per live channel-frame, so at 95 stations cx51's projection gets its
     # own pool slot: 7 = cores 41 / 61, the lightest of each pool (21-22 % on 10-23); it ran at
     # 75 % of that core there, so cx51 keeps rows A-F as its stations (127 would need ~1.8x).
@@ -315,4 +318,4 @@ nodes:
     cx51: {search-port-base: 11050, n2-project-source: lanes+residual, n2-project-lanes-max: 40,
            n2-project-core-index: 7, n2-project-stations: "0-6,8-47,64-111",
            elem-dir-publish: all, assembler-core-slots: "2,1,3,4,8",
-           extra-signal: ["SBAS_L5_Q_MC:131,133,135"]}
+           extra-signal: ["SBAS_L5_I_MC:131,133,135,121,123,136"]}

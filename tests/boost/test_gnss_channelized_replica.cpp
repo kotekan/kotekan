@@ -402,3 +402,42 @@ BOOST_AUTO_TEST_CASE(fdma_same_code_every_satellite) {
     BOOST_CHECK_MESSAGE(despread_mag(a, b) > 0.99,
                         "GLONASS PRNs must share one code; cross-despread " << despread_mag(a, b));
 }
+
+// SBAS L5 is one data channel on the I5 code (no pilot), each 2 ms symbol a Manchester pair of
+// opposite 1 ms halves. SBAS_L5_I_MC must resolve through signal_by_name (a name missing there
+// FATALs the node at start) and tile the I5 code of the SBAS PRN as [c, -c]; SBAS_L5_I with its
+// 2-chip secondary applied from period 0 is the same replica.
+BOOST_AUTO_TEST_CASE(sbas_l5i_mc_is_the_i5_code_under_the_manchester_pair) {
+    const std::vector<int> prns = {131};
+    auto bmc = make_bank("SBAS_L5_I_MC", prns);
+    auto bsi = make_bank("SBAS_L5_I", prns);
+    auto bi = make_bank("GPS_L5_I", prns); // the raw I5 code, overlay off by default
+    auto bq = make_bank("GPS_L5_Q", prns);
+    const int H = bi.repl_period_hops(); // one 1 ms code period
+    BOOST_REQUIRE_EQUAL(bmc.repl_period_hops(), 2 * H);
+
+    auto rMC = bmc.channels(0, 0, 0.0, 0.0, 2 * H);
+    auto rI = bi.channels(0, 0, 0.0, 0.0, 2 * H);
+    auto rQ = bq.channels(0, 0, 0.0, 0.0, 2 * H);
+    auto rS = bsi.channels(0, 0, 0.0, 0.0, 2 * H, 0); // the pair from period 0
+
+    auto half = [](const std::vector<std::vector<cf>>& r, int a, int b) {
+        std::vector<std::vector<cf>> out;
+        for (const auto& ch : r)
+            out.emplace_back(ch.begin() + a, ch.begin() + b);
+        return out;
+    };
+    auto amp = [](const std::vector<std::vector<cf>>& d, const std::vector<std::vector<cf>>& r) {
+        return gnss::channelized_despread(d, r).amplitude;
+    };
+
+    // First half is +c, second half -c (the PFB's few-hop edge at the sign flip aside).
+    BOOST_CHECK_GT(std::real(amp(half(rMC, 0, H), half(rI, 0, H))), 0.95);
+    BOOST_CHECK_LT(std::real(amp(half(rMC, H, 2 * H), half(rI, H, 2 * H))), -0.95);
+    // A replica without the pair sums a symbol's halves to ~zero.
+    BOOST_CHECK_LT(std::abs(amp(rMC, rI)), 0.05);
+    // The tiled code and the per-period secondary are the same replica.
+    BOOST_CHECK_GT(std::real(amp(rS, rMC)), 0.99);
+    // It is the I5 code: the Q5 code of the same PRN does not correlate.
+    BOOST_CHECK_LT(std::abs(amp(half(rMC, 0, H), half(rQ, 0, H))), 0.3);
+}
