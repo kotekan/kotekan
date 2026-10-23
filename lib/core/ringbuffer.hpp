@@ -62,10 +62,11 @@ public:
      * of the data stream.
      *
      * @param ring_size: the number of elements in the ring buffer to be managed
+     * @param pool The metadata pool associated with the buffer.
      * @param buffer_name: unique name for this buffer, from the config file declaration
      * @param buffer_type: "ring"
      */
-    RingBuffer(std::ptrdiff_t ring_size, std::shared_ptr<metadataPool>,
+    RingBuffer(std::ptrdiff_t ring_size, std::shared_ptr<metadataPool> pool,
                const std::string& buffer_name, const std::string& buffer_type);
     ~RingBuffer() override {}
 

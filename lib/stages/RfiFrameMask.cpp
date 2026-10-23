@@ -113,16 +113,16 @@ public:
     void main_thread() override;
 
 protected:
-    /// Updates _next_enabled_* from updatable config
+    /// Updates the `_next_enabled_*` fields from updatable config
     bool receive_rfi_excision_enabled(nlohmann::json& json);
-    /// Updates _next_threshold* from updatable config
+    /// Updates the `_next_threshold*` fields from updatable config
     bool receive_rfi_excision_thresholds(nlohmann::json& json);
     void send_rfi_excision_enabled(connectionInstance& conn);
     void send_rfi_excision_thresholds(connectionInstance& conn);
 
 private:
     /**
-     * @brief Update the active _enabled, _threshold, and _fraction values from their "next_*"
+     * @brief Update the active `_enabled`, `_threshold`, and `_fraction` values from their `next_*`
      * values if the correct sequence number has been reached.
      */
     void update_enabled_and_thresholds(int64_t seq_num);
