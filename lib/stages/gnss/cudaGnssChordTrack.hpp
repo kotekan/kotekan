@@ -143,7 +143,11 @@ public:
     int hops_per_record = 0, n_hops_frame = 0, fft_len = 0;
     double sample_rate = 0.0, f_offset_hz = 0.0, dll_spacing = 0.0;
     bool epl_from_prompt = false;
-    bool psi_synth = false;  ///< cudaGnssInject takes GnssCudaDespread::enqueue_psi_pack
+    bool psi_synth = false; ///< cudaGnssInject takes GnssCudaDespread::enqueue_psi_pack
+    /// Startup coverage under psi_synth, kept here because the command's instances (one per
+    /// in-flight frame) share it: the frame hop at which a seeded slot was first found waiting
+    /// for its Psi tables, -1 while none is. Written by the GPU thread only.
+    long long psi_dark_hop0 = -1;
     double frame0_utc = 0.0; ///< UTC of absolute sample 0; 0 = unknown, which the record
                              ///< assembler refuses
 

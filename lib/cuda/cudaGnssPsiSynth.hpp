@@ -265,9 +265,32 @@ struct PsiSplit {
 /// prim[(m'-d) mod P] K_d, and sec[]. Throws unless every period is a sign of the first and
 /// the PFB span is shorter than a period. The kernel reconstructs
 /// Psi[q*P + m'] = sec[q] Psi_plain[m'] + (sec[q-1] - sec[q]) Psi_prev[m'] exactly.
+/// @ref psi_split_code followed by @ref build_psi_split_from.
 PsiSplit build_psi_split(const gnss::ChannelizedReplicaBank& bank, int prn_index,
                          const std::vector<int>& chans, double doppler_hz, double sample_rate,
                          int G, int P, bool frac = true);
+
+/// A slot's code as @ref build_psi_split_from consumes it: the first primary period and the
+/// sign of every period against it. This is the only part of a table build that reads the
+/// code table, O(L), so a builder thread takes it under the lock that guards the bank's
+/// set_prn and builds the rest from the copy while the bank's owner goes on using the bank
+/// (hoprate_filter is const and allocates its own buffers).
+struct PsiCodeSplit {
+    int P = 0;                ///< primary period, combined chips
+    int Ns = 0;               ///< periods in the code (L = Ns * P)
+    std::vector<int8_t> prim; ///< [P] the first period (+-1, zeros in a TDM stream)
+    std::vector<int8_t> sec;  ///< [Ns] sign of period q relative to the first
+};
+
+/// Split @c code (length @c L) at primary period @c P. Throws unless P divides L and every
+/// period is +-1 times the first (the sign is read at the first non-zero chip).
+PsiCodeSplit psi_split_code(const int8_t* code, long L, int P);
+
+/// @ref build_psi_split from an already split code: reads the bank's geometry and filter
+/// (const) and never its code table.
+PsiSplit build_psi_split_from(const gnss::ChannelizedReplicaBank& bank, int prn_index,
+                              const std::vector<int>& chans, double doppler_hz, double sample_rate,
+                              int G, const PsiCodeSplit& cs, bool frac = true);
 
 } // namespace gnss_cuda
 

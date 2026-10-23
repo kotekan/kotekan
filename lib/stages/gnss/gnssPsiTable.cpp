@@ -132,22 +132,12 @@ PsiTable build_psi_table(const gnss::ChannelizedReplicaBank& bank, int prn_index
     return T;
 }
 
-PsiSplit build_psi_split(const gnss::ChannelizedReplicaBank& bank, int prn_index,
-                         const std::vector<int>& chans, double doppler_hz, double sample_rate,
-                         int G, int P, bool frac) {
-    const auto t0 = std::chrono::steady_clock::now();
-    PsiSplit S;
-    double inv = 0.0;
-    const auto f = psi_filter(bank, prn_index, chans, doppler_hz, sample_rate, &inv);
-    const int Lf = bank.fft_len() * bank.num_taps();
-    const int L = (int)bank.eff_code_length();
-    const auto& code = bank.full_code(prn_index);
+PsiCodeSplit psi_split_code(const int8_t* code, long L, int P) {
     if (P <= 0 || L % P != 0)
         throw std::runtime_error("build_psi_split: the primary period does not divide the code");
-    if (f.n_chips >= P)
-        throw std::runtime_error("build_psi_split: the PFB span reaches back more than one "
-                                 "primary period");
-    const int Ns = L / P;
+    PsiCodeSplit cs;
+    cs.P = P;
+    cs.Ns = (int)(L / P);
     // Period signs against the first period: the first non-zero chip carries the sign (a
     // TDM stream has zeros), and every chip must agree, or the code is not a sign tiling.
     int i0 = 0;
@@ -155,19 +145,38 @@ PsiSplit build_psi_split(const gnss::ChannelizedReplicaBank& bank, int prn_index
         ++i0;
     if (i0 == P)
         throw std::runtime_error("build_psi_split: all-zero primary period");
-    S.sec.resize((size_t)Ns);
-    for (int q = 0; q < Ns; ++q) {
+    cs.sec.resize((size_t)cs.Ns);
+    for (int q = 0; q < cs.Ns; ++q) {
         const int sg = (int)code[(size_t)q * P + i0] * (int)code[(size_t)i0];
         for (int i = 0; i < P; ++i)
             if ((int)code[(size_t)q * P + i] != sg * (int)code[(size_t)i])
                 throw std::runtime_error("build_psi_split: period " + std::to_string(q)
                                          + " is not a sign of the first period");
-        S.sec[(size_t)q] = (int8_t)sg;
+        cs.sec[(size_t)q] = (int8_t)sg;
     }
+    cs.prim.assign(code, code + P);
+    return cs;
+}
+
+PsiSplit build_psi_split_from(const gnss::ChannelizedReplicaBank& bank, int prn_index,
+                              const std::vector<int>& chans, double doppler_hz, double sample_rate,
+                              int G, const PsiCodeSplit& cs, bool frac) {
+    const auto t0 = std::chrono::steady_clock::now();
+    PsiSplit S;
+    double inv = 0.0;
+    const auto f = psi_filter(bank, prn_index, chans, doppler_hz, sample_rate, &inv);
+    const int Lf = bank.fft_len() * bank.num_taps();
+    const int P = cs.P;
+    if (P <= 0 || (int)cs.prim.size() != P || cs.Ns <= 0 || (int)cs.sec.size() != cs.Ns)
+        throw std::runtime_error("build_psi_split: malformed code split");
+    if (f.n_chips >= P)
+        throw std::runtime_error("build_psi_split: the PFB span reaches back more than one "
+                                 "primary period");
     const int nc = (int)chans.size();
     S.G = G;
     S.P = P;
-    S.Ns = Ns;
+    S.Ns = cs.Ns;
+    S.sec = cs.sec;
     S.n_chips = f.n_chips;
     S.n_prev = G * (f.n_chips - 1);
     S.inv_cps = inv;
@@ -177,11 +186,22 @@ PsiSplit build_psi_split(const gnss::ChannelizedReplicaBank& bank, int prn_index
     S.psi_prev.assign((size_t)nc * S.n_prev, make_float2(0.f, 0.f));
     for (int ci = 0; ci < nc; ++ci) {
         S.theta[(size_t)ci] = psi_theta(chans[(size_t)ci], bank.fft_len(), f.wc_built);
-        psi_convolve(f.PhiB[(size_t)ci], Lf, inv, f.n_chips, frac, code.data(), P, G, false,
+        psi_convolve(f.PhiB[(size_t)ci], Lf, inv, f.n_chips, frac, cs.prim.data(), P, G, false,
                      S.psi_plain.data() + (size_t)ci * G * P);
-        psi_convolve(f.PhiB[(size_t)ci], Lf, inv, f.n_chips, frac, code.data(), P, G, true,
+        psi_convolve(f.PhiB[(size_t)ci], Lf, inv, f.n_chips, frac, cs.prim.data(), P, G, true,
                      S.psi_prev.data() + (size_t)ci * S.n_prev);
     }
+    S.build_seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+    return S;
+}
+
+PsiSplit build_psi_split(const gnss::ChannelizedReplicaBank& bank, int prn_index,
+                         const std::vector<int>& chans, double doppler_hz, double sample_rate,
+                         int G, int P, bool frac) {
+    const auto t0 = std::chrono::steady_clock::now();
+    const auto& code = bank.full_code(prn_index);
+    const PsiCodeSplit cs = psi_split_code(code.data(), bank.eff_code_length(), P);
+    PsiSplit S = build_psi_split_from(bank, prn_index, chans, doppler_hz, sample_rate, G, cs, frac);
     S.build_seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
     return S;
 }

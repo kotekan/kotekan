@@ -36,14 +36,17 @@
  * cudaGnssChordTrackState::snapshot_trims, through GnssCudaDespread::build_jobs like every
  * other Spec-taking despread. Under the state's psi_synth the synthesis and the pack are one
  * launch (GnssCudaDespread::enqueue_psi_pack); the control block, energies and lanes are the
- * same.
+ * same. The Psi tables are built on the despread's builder thread, never here: a seeded slot
+ * whose tables are not on the device yet is left out of the record (dark, as without a seed;
+ * GnssCudaDespread::psi_ready) and joins when they land, so after the first seeds a chain's
+ * slots light up one per record over a few frames.
  *
  * Lanes: lane = synth_lane_base + lanes_per_slot*prn_slot + k, k the lane's trial in slot
  * order (E/P/L/P_HEAD with four lanes per slot, P/P_HEAD with two), fixed per slot as
  * satellites rise and set; slots without a seed are written as 0x88, so their tiles read
- * exactly 0. Requires lanes_per_slot*n_prn <= num_synth. The pack quantizes each lane and channel with its
- * own scale (see launch_pack44), which the consumer, GnssN2RecordAssemble, undoes using the
- * replica energies in the control block.
+ * exactly 0. Requires lanes_per_slot*n_prn <= num_synth. The pack quantizes each lane and channel
+ * with its own scale (see launch_pack44), which the consumer, GnssN2RecordAssemble, undoes using
+ * the replica energies in the control block.
  *
  * The voltage ring is consumed for its time reference only (the frame's absolute hop); no
  * voltage bytes are read. That makes the injector a flow-control participant of the ring, which

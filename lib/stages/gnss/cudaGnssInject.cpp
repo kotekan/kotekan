@@ -242,13 +242,14 @@ cudaEvent_t cudaGnssInject::execute(cudaPipelineState& pipestate, const std::vec
              "phase has stepped back to the broker's bare model.",
              prn);
 
-    int n_jobs_frame = 0, n_active = 0;
+    int n_jobs_frame = 0, n_active = 0, n_psi_dark0 = 0;
     for (int r = 0; r < n_rec; ++r) {
         const long long hop0 = hop0_frame + (long long)r * S.hops_per_record;
         const long long wstart = hop0 * (long long)S.fft_len;
 
         std::vector<GnssCudaDespread::Spec> specs;
         specs.reserve((size_t)S.n_prn);
+        int n_psi_dark = 0;
         int* slot2spec = _h_slot2spec.data() + (size_t)r * S.n_prn;
         for (int p = 0; p < S.n_prn; ++p) {
             slot2spec[p] = -1;
@@ -275,6 +276,17 @@ cudaEvent_t cudaGnssInject::execute(cudaPipelineState& pipestate, const std::vec
             ss.ref_hop = sd.ref_hop;
             const gnss::SeedPropagation pr = gnss::propagate_seed(
                 *S.replica, ss, hop0, S.sample_rate, S.f_offset_hz, trim_now[(size_t)p]);
+
+            // Psi tables are built on the despread's builder thread and uploaded one per
+            // record: a slot whose tables are not on the device yet (first seed, a swap, a
+            // bucket past its grace) is dark this record exactly as a slot without a seed,
+            // and joins when they land. Asked here, before anything is written for the slot:
+            // no run, no job row, no fold history, slot2spec stays -1.
+            if (S.psi_synth && !S.despread->psi_ready(p, pr.doppler_hz, (void*)stream)) {
+                FH.ok[(size_t)p] = 0;
+                ++n_psi_dark;
+                continue;
+            }
 
             GnssCudaDespread::Spec sp;
             sp.p = p;
@@ -319,8 +331,10 @@ cudaEvent_t cudaGnssInject::execute(cudaPipelineState& pipestate, const std::vec
             slot2spec[p] = (int)specs.size();
             specs.push_back(sp);
         }
-        if (r == 0)
+        if (r == 0) {
             n_active = (int)specs.size();
+            n_psi_dark0 = n_psi_dark;
+        }
 
         // Upload slot2spec even when empty: the pack must still refresh this record's rows (the
         // frame slot's contents are a buffer depth of frames old, and a PRN that just set must
@@ -386,6 +400,26 @@ cudaEvent_t cudaGnssInject::execute(cudaPipelineState& pipestate, const std::vec
     }
 
     hdr->n_jobs = n_jobs_frame * gnss_gpu::ROWS_PLAIN;
+
+    // Startup coverage: seeded slots waiting for their Psi tables, by record 0 of each frame.
+    // Logged at the first frame with a dark slot and at the first with none again; the state
+    // holds it because this command's instances (one per in-flight frame) each see every
+    // n-th frame.
+    if (S.psi_synth) {
+        if (n_psi_dark0 > 0 && S.psi_dark_hop0 < 0) {
+            S.psi_dark_hop0 = hop0_frame;
+            INFO("cudaGnssInject: Psi tables pending for {:d} of {:d} seeded slots: dark until "
+                 "built (frame hop0 {:d})",
+                 n_psi_dark0, n_psi_dark0 + n_active, hop0_frame);
+        } else if (n_psi_dark0 == 0 && S.psi_dark_hop0 >= 0) {
+            const double frames = (double)(hop0_frame - S.psi_dark_hop0) / S.n_hops_frame;
+            S.psi_dark_hop0 = -1;
+            INFO("cudaGnssInject: Psi coverage complete: {:d} seeded slots, {:.0f} frames "
+                 "({:.0f} ms) after the first dark one",
+                 n_active, frames, frames * S.n_hops_frame * S.fft_len / S.sample_rate * 1e3);
+        }
+    }
+
     // Header, winstart and PrnCtl only: the energy rows were already written D2D above.
     CHECK_CUDA_ERROR(
         cudaMemcpyAsync(d_ctl, _ctl_stage.data(), _ctl_off_energy, cudaMemcpyHostToDevice, stream));
