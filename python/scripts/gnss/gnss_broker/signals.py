@@ -238,7 +238,7 @@ class SignalDef(object):
 
     # Human names, derived from the descriptor name rather than typed a second time, so a new
     # descriptor is named correctly as soon as it is added.
-    _SYS_NAME = {"GPS": "GPS", "GAL": "Galileo", "BDS": "BeiDou", "GLO": "GLONASS"}
+    _SYS_NAME = {"GPS": "GPS", "GAL": "Galileo", "BDS": "BeiDou", "GLO": "GLONASS", "SBAS": "SBAS"}
 
     @property
     def short(self):

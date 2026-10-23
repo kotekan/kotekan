@@ -126,11 +126,8 @@ common:
     # The phase sign depends on the F-engine's FFT and conjugation conventions, so it is
     # calibrated from data (gnssElemSteer.hpp); +1 is the measured value.
     elem-steer-sign: 1.0
-    # A refinement file is solved against one epoch key and refused for any other. This one is
-    # the 2026-10-23-rows-ah128 epoch with the G3 dishes (G03-G07, H01-H08) moved to their
-    # horizontal positions from the 2026-10-23 preliminary G/H solve (up to 5.6 cm N, 2.2 cm
-    # E); built by fixtures/elemsteer/gh_refine_ah128_20261023.py.
-    elem-positions-file: config/elem_positions_ah128_gh_20261023.json
+    # No elem-positions-file: a refinement is solved against one epoch key and refused for any
+    # other. The 2026-10-23-rows-ah128-repoint epoch carries the G/H solve itself.
     # Shared instrument model: the per-PRN self-cals learn but do not set the weights; the live
     # element weights are one per-element gain per polarisation (a 300 s consensus over every
     # satellite) plus one inter-pol coefficient per satellite, so a boresight transit cannot

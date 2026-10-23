@@ -720,7 +720,7 @@ class ModeResource(resource.Resource):
 UNIFIED_SIGNALS = []
 
 # Signal-id prefix -> constellation letter; main() backfills each row's "sys" with it.
-_SYS_TAG = {"GPS": "G", "GAL": "E", "BDS": "C", "GLO": "R"}
+_SYS_TAG = {"GPS": "G", "GAL": "E", "BDS": "C", "GLO": "R", "SBAS": "S"}
 
 # The three column groups, which the page shows as High/Mid/Low. The keys are mirrored in
 # app/panels/gps_table.js's BAND_LABEL and BAND_ORDER, so rename them together.
@@ -930,6 +930,9 @@ class WsPortResource(resource.Resource):
             # GLONASS PRNs are orbital slot numbers (the L3OC code index is the slot), so
             # tag+prn keys GLONASS satellites the same way as the rest.
             {"tag": "R", "name": "GLONASS", "color": "#9b6fd6"},
+            # SBAS GEOs (WAAS 131/133/135): fixed points in the sky, positions from the
+            # broker's /get_sky (the BRDC S records).
+            {"tag": "S", "name": "SBAS", "color": "#3fae8c"},
         ]
         # Only the constellations actually being tracked: an empty sub-table for a
         # constellation this instrument cannot see reads as "nothing detected" rather
@@ -962,9 +965,9 @@ class GpsSkyResource(resource.Resource):
     plus ``"error"`` after a failed compute. Azimuth is degrees clockwise from true
     North, elevation degrees above the horizon; only the TLE path applies
     ``mask_deg``. The broker's REST endpoints supply the locks and metrics; this
-    endpoint supplies where each satellite is: the broker's /get_sky for G/E/C, and
-    Celestrak TLE + skyfield for GLONASS and for everything when the broker cannot
-    answer.
+    endpoint supplies where each satellite is: the broker's /get_sky for G/E/C and the
+    SBAS GEOs, and Celestrak TLE + skyfield for GLONASS and for everything with a TLE
+    group when the broker cannot answer.
 
     Positions are recomputed in a worker thread, on request, at most every
     :data:`SKY_REFRESH_S`; ``render_GET`` only serves the cached result, so the
@@ -998,8 +1001,9 @@ class GpsSkyResource(resource.Resource):
         self._last_compute = None  # monotonic s of last attempt
         self._refreshing = False
 
-    # Viewer tag -> the "const" letter of a broker /get_sky row (no R: GLONASS is TLE-only).
-    _TAG_SYS = {"G": "G", "E": "E", "C": "C"}
+    # Viewer tag -> the "const" letter of a broker /get_sky row (no R: GLONASS is TLE-only;
+    # S, the SBAS GEOs, has no TLE group here, so it comes from the broker alone).
+    _TAG_SYS = {"G": "G", "E": "E", "C": "C", "S": "S"}
 
     def _need_refresh(self):
         if self.lat is None or self.lon is None:
@@ -1019,19 +1023,23 @@ class GpsSkyResource(resource.Resource):
 
     # Constellations taken from the broker's /get_sky. 'R' always comes from TLE, even when
     # the broker's sky is healthy; _compute merges the two sources rather than choosing.
-    _BRDC_TAGS = frozenset(("G", "E", "C"))
+    _BRDC_TAGS = frozenset(("G", "E", "C", "S"))
+    # Broker-only constellations: no TLE group above, so they are asked of /get_sky alone and
+    # drop out of the TLE fallback (the SBAS GEOs, from the BRDC S records).
+    _BRDC_ONLY = ("S",)
 
     def _compute(self):
-        """Runs in a worker thread. G/E/C come from the broker's /get_sky, the
+        """Runs in a worker thread. G/E/C/S come from the broker's /get_sky, the
         broadcast-ephemeris geometry the tracker uses, keyed by PRN: the sky plot agrees with
         what is locked and needs no TLE name -> PRN mapping. GLONASS, and every constellation
-        when the broker cannot answer, comes from Celestrak TLE + skyfield.
+        with a TLE group when the broker cannot answer, comes from Celestrak TLE + skyfield;
+        the SBAS GEOs have none and are absent then.
 
         The two sources are merged, not chosen between: the broker path has no GLONASS, so
         taking its answer alone would drop GLONASS from the sky plot while it is being tracked.
         """
         want = [c[0] for c in self.CONSTELLATIONS]
-        brdc_want = [t for t in want if t in self._BRDC_TAGS]
+        brdc_want = [t for t in want if t in self._BRDC_TAGS] + list(self._BRDC_ONLY)
         tle_want = [t for t in want if t not in self._BRDC_TAGS]
         sats = self._brdc_skypos(brdc_want) if brdc_want else None
         if sats is None:
