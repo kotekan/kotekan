@@ -270,6 +270,7 @@ def main():
     lam = C_LIGHT / args.carrier_hz  # carrier wavelength (m/cycle)
 
     eph, eph_t, eph_probe_t = None, 0.0, 0.0
+    eph_mtime = 0.0  # newest mtime among the cache files the loaded eph was parsed from
     _iono = None  # Klobuchar coefficients beside eph (gnss_atmos.iono_params)
     frame0_check_t, frame0_warn_t = time.time(), 0.0
     last = {}  # prn -> (adr_arc, adr_records) of the last row written (emit dedup)
@@ -376,7 +377,19 @@ def main():
                 stale_geom = not any(k[0] == args.sys for k in probe)
             except Exception:
                 stale_geom = True
-        if eph is None or now - eph_t > 7200 or stale_geom:
+        # Reload when the cache has a newer file than the loaded eph was parsed from (the
+        # broker refreshes the hourly merge every 30 min, so a 2 h timer alone left eph_age_s
+        # up to 2 h behind the seed's record), on the 2 h timer regardless, or when the
+        # geometry went stale. The mtime probe is a stat per cache file every 5 min.
+        cache_newer = False
+        if eph is not None and now - eph_probe_t < 1.0:
+            try:
+                cache_newer = any(
+                    os.path.getmtime(p) > eph_mtime + 1.0 for p in cached_brdc()
+                )
+            except Exception:
+                cache_newer = False
+        if eph is None or now - eph_t > 7200 or stale_geom or cache_newer:
             try:
                 # Read-only (gnss_brdc_supply.cached_brdc): the broker is the nav cache's one
                 # writer. An empty cache omits geometry; it never triggers a fetch.
@@ -389,6 +402,10 @@ def main():
                 # Klobuchar coefficients beside the ephemeris (gnss_atmos): the row's iono_m
                 _iono = gnss_atmos.iono_params(srcs, write=False)
                 eph_t = now
+                try:
+                    eph_mtime = max(os.path.getmtime(p) for p in srcs)
+                except Exception:
+                    eph_mtime = now
                 if stale_geom:
                     print(
                         "BRDC geometry was stale for %s; reloaded the nav cache"
