@@ -1,5 +1,5 @@
-"""Use Python to run a kotekan instance, particularly for testing.
-"""
+"""Use Python to run a kotekan instance, particularly for testing."""
+
 import itertools
 import json
 import os
@@ -1728,7 +1728,7 @@ def fix_strings(d):
 
 
 def has_hdf5():
-    """ Check for HDF5 via registered stages """
+    """Check for HDF5 via registered stages"""
     config = KotekanRunner.kotekan_config()
 
     available = set(config.get("available_stages", []))

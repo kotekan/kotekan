@@ -157,7 +157,10 @@ if [ -z "$BLACK_CMD" ]; then
     exit 1
 fi
 echo "Using black at: $BLACK_CMD"
-$BLACK_CMD --exclude="/(\.eggs|\.git|\.hg|\.mypy_cache|\.nox|\.tox|\.venv|\.svn|_build|buck-out|build|build-iwyu|dist|docs|external|tools/iwyu)/" $KOTEKAN_DIR
+if ! $BLACK_CMD --required-version 26.10.1 --config "$KOTEKAN_DIR/pyproject.toml" "$KOTEKAN_DIR"; then
+    echo "Error: black failed; check its version against pyproject.toml." >&2
+    ERROR=1
+fi
 if ! git diff --exit-code; then
     echo "Error: black found formatting issues" >&2
     ERROR=1

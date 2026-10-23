@@ -3,7 +3,6 @@ import numpy as np
 
 from kotekan import runner
 
-
 accumulate_params = {
     "num_elements": 4,
     "num_ev": 0,

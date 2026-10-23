@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 /*********************************************************************************
-* Earth Orientation Parameter Tools 
+* Earth Orientation Parameter Tools
 * File: eop_utils.py
 * Purpose: Provide helper functions for converting between Astropy, Instrument, and UT1 times, for parsing EOP objects, and making REST calls to Kotekan and fpga_master
 * Python Version: 3.12
@@ -9,6 +9,7 @@
 * Authors: Geoffrey Ryan
 *********************************************************************************/
 """
+
 import json
 from pathlib import Path
 import sys
@@ -160,7 +161,7 @@ def get_kotekan_endpoints(host, port, timeout, protocol="http://"):
     r"""
 
     Check the REST endpoints available on a Kotekan instance.
-    
+
     Parameters
     ----------
     host : String
@@ -478,7 +479,7 @@ def calc_astropy_time_from_unix_ns(t_unix_ns):
 
 def calc_astropy_time_from_inst_ns(t_inst_ns, time0_ns):
     r"""
-    Constuct an astropy Time object corresponding to an Instrument time in nanoseconds. 
+    Constuct an astropy Time object corresponding to an Instrument time in nanoseconds.
     Parameters
     ----------
     t_inst_ns : int
@@ -665,7 +666,11 @@ def build_EOP_table(times, time0_ns, iers):
 
 
 def build_time_array(
-    t_ref, n_intervals_before, n_intervals_after, interval_length_days, snap_to_grid,
+    t_ref,
+    n_intervals_before,
+    n_intervals_after,
+    interval_length_days,
+    snap_to_grid,
 ):
     r"""
     Construct an array of times for the entries in the EOP Table.
@@ -699,7 +704,7 @@ def build_time_array(
         Length of intervals in UTC days (86399, 86400, or 86401 seconds).
     snap_to_grid : boolean
         Whether to snap the intervals to be at e.g. whole days.
-    
+
     Returns
     -------
     times : Astropy Time() array
@@ -779,7 +784,7 @@ def make_bare_EOP_from_full_EOP(eop):
     r"""
     Produce a BareEOP dict (suitable for sending to Kotekan or putting in a config
     file) from a full EOP dict (one received from Kotekan)
-    
+
     Parameters
     ----------
     eop : EOP full entry dict
@@ -821,7 +826,7 @@ def merge_eop_tables(
         the current table in kotekan (fields: t_inst_ns, t_ut1_ns, delta_ut1_inst, era_deg,
         xp_as, yp_as)
     new_eop_table : list of BareEOP update entry dicts
-        the proposed new eop table, may conflict with current table. (fields: 
+        the proposed new eop table, may conflict with current table. (fields:
         t_inst_ns, delta_ut1_inst, xp_as, yp_as)
     t_ref : Astropy Time object
         The reference (likely current) time used to determine the current interval.
@@ -831,7 +836,7 @@ def merge_eop_tables(
         Number of intervals desired in the final table before the current interval.
     merge_cushion_dt : Astropy TimeDelta
         Amount of buffer time to include when determining which current entries to drop.
-    
+
     Returns
     -------
     final_eop_table : List of BareEOP entry dicts
@@ -964,7 +969,7 @@ def print_eop_table(eop_table):
     Parameters
     ----------
     eop_table : List of EOP entry dicts
-    
+
     Returns
     -------
     None
@@ -987,7 +992,7 @@ def output_json_eop_table(eop_table, filename):
     filename : String
         Name of file to write the table to. Must be writable. If exists, will be
         overwritten.
-    
+
     Returns
     -------
     None
@@ -1009,7 +1014,7 @@ def output_json_eop_table(eop_table, filename):
 def parse_hostport_list(broadcast_list, default_host, default_port):
     r"""
     Parse the broadcast list (list of hosts and ports) into a list of
-    hostport pairs.  
+    hostport pairs.
 
     The broadcast list is a list of hosts (strings) and ports (positive
     integers). If a port appears after a host, the two form a host-port pair.
@@ -1030,7 +1035,7 @@ def parse_hostport_list(broadcast_list, default_host, default_port):
         Default host to use
     default_port : int
         Default port to use
-    
+
     Returns
     -------
     hostports : List of (str, int)
