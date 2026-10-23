@@ -106,9 +106,39 @@ Measured per-record cost = (chains) x (one 0.18 ms wave each, at fp16 Phi and 80
    GPU, all-zero replay data so timing only): per GPU per frame `gnss_waveform` 4.16/4.41 ms
    + `gnss_pack44` 0.69/0.72 -> `gnss_psi_pack_kernel` 1.65/1.68 (36 launches, 46 us each in
    situ beside the N^2 and the input copy); n2k, the dual and the RFI kernels unchanged;
-   kernels union busy 7.29/7.68 -> 4.03/4.12 ms, 17-18% -> 10% of the frame. Tables cost
-   12-25 ms of CPU per PRN per Doppler bucket (80 KB per channel at
-   10.23 Mcps, G grid points per chip at lower rates), rebuilt at `psi_refresh_hz` (30 Hz).
+   kernels union busy 7.29/7.68 -> 4.03/4.12 ms, 17-18% -> 10% of the frame. Tables are
+   80 KB per channel at 10.23 Mcps (G grid points per chip at lower rates), rebuilt at
+   `psi_refresh_hz` (30 Hz), and built on a builder thread per chain, never on the enqueue
+   thread: on 10-23 01:07Z the first seeds of cx51's ~11 chains x 12 PRNs built their tables
+   synchronously in `enqueue_psi_pack` (12-25 ms per PRN by the direct sum, ~2.6 s in all),
+   the DPDK voltage ring (8 frames, ~0.3 s) overflowed and the node died. Now
+   (`GnssCudaDespread::psi_ready`) a seeded slot whose tables are not on the device is left
+   out of the record, dark exactly as a slot without a seed (no run, no job, no fold history,
+   `slot2spec` -1, so the broker sees nothing for it), its build is queued once, and finished
+   tables are uploaded one slot per record through a pinned staging ring that is polled, never
+   waited on. Startup therefore fills in PRN by PRN: a chain's 12 slots take at least 12
+   records (3 frames), and in practice the builds' sum spread over a few frames; a swapped
+   slot goes through the same; a table past the refresh band keeps serving (up to twice the
+   band) while its replacement builds, so a refresh never darkens a slot.
+   `cudaGnssInject` logs the first frame with a pending slot and the first with full coverage.
+   The build itself is a circular convolution of period P (`gnssPsiTable.cpp`: the linear
+   convolution of the primary code and the per-chip kernel at a 5-smooth FFTW length with the
+   tail folded back, in double; one code transform per build and two per channel and grid
+   point; the direct sum stays as the bench's reference): cx52 10-23
+   (`psi_bench_cx52_20261023_all12.txt`, `_tiled.txt`) 27.8 -> 6.6 ms per PRN at L5 (7
+   channels x 212 chips, P 10230) and 18.4 -> 4.5 ms for the NH-tiled code, agreement 6e-16
+   relative in double, no float2 entry differs; `fused 12` byte-identical in all 32 cases.
+   The rig's stall detector is `nsys_gantt.py`'s stall report: the host-side interval between
+   consecutive launches of `gnss_psi_pack_kernel` (the enqueue thread's own cadence; the
+   GPU-side interval hides whatever the stream queue absorbs) in the 20 s after the seeds land
+   (`--seed-log`, the seed epoch moved onto the node's clock) against its steady state. Run
+   `prof_run.sh cx52 5 100 12` so the capture contains the seeding. 10-23 on cx52 (the stock
+   kotekan busy beside the rig, 0.7x real time): before the fix a train of 150-374 ms
+   intervals, one per chain, ~2.1 s per GPU, the first record with a PRN 2.1-2.3 s after the
+   seeds (STALL); after it 100 / 80 ms against a steady state of 97 / 88 ms (OK), every chain
+   covered 10-21 frames (0.42-0.88 s) after its first dark one (nine builder threads per GPU
+   on the gpuProcess's three cores, builds queued up to 1.2 s), per-kernel ms per frame
+   unchanged (`delta_psion_fix_vs_ref_20261023.txt`).
    The replica is NOT the production replica: it is the full PFB span (+1.1% energy, ~1% in
    correlation against the 80-chip gather), the near carrier image only (the far image is a
    rect-chip artefact the band-limited sky signal does not contain, 1e-3..4e-2 per channel)
