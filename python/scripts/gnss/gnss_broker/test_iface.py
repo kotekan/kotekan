@@ -83,6 +83,20 @@ KOTEKAN_SERVED = {
         "signals": "fnv1a64:87d44429c62b7ddb",
         "telem": "fnv1a64:4fc6ec77e47425b8",
     },
+    # db18c924e: SBAS_L5_Q / SBAS_L5_Q_MC renamed SBAS_L5_I / SBAS_L5_I_MC (kv/sbas-l5i).
+    "fnv1a64:d934ba5e8d6e68cc": {
+        "cube": "fnv1a64:9d8189ee49526cd3",
+        "enums": "fnv1a64:ce7f87e79a2838f6",
+        "gpu_chain": "fnv1a64:1f5f16e80dbb5c93",
+        "metadata": "fnv1a64:ff0b089558622884",
+        "record.chan": "fnv1a64:df5e8f24a8e017fe",
+        "record.cmb": "fnv1a64:e049ac69f9ee836a",
+        "record.elem": "fnv1a64:b61468c5a83782d3",
+        "record.row": "fnv1a64:436522cd6437ce2d",
+        "rest": "fnv1a64:9cde53faca83ad60",
+        "signals": "fnv1a64:877042c02b51892b",
+        "telem": "fnv1a64:4fc6ec77e47425b8",
+    },
 }
 
 
