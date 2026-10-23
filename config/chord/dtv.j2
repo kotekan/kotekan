@@ -1,0 +1,122 @@
+{#-
+  dtv.j2
+  PilotProxy DTV pilot detector on each NUMA half, detect only: the mask is written to disk
+  and not applied to N2.  Included by pathfinder.j2 when dtv_enabled is set, e.g.
+      -e '{"dtv_enabled": true, "dtv_runtime_bundle_dir": "/path/to/bundle"}'
+  Each half binds the bundle profiles whose chord_channel_id is in its coarse_freq list; a
+  half with none logs "detector DISABLED" and writes all-zero masks and powers.  Every bound
+  channel must be calibrated in the bundle, so export only the channels under test.  The
+  detector takes its own CUDA stream triple: pipeline index 1 while the pathfinder's
+  pipelines all share index 0, and the index after theirs (13) once stream_base_step
+  separates them.  See docs/sphinx/user/modules/pilotproxy.rst.
+-#}
+{% set dtv_runtime_bundle_dir = dtv_runtime_bundle_dir|default("data/pilotproxy_bundle") %}
+{% set dtv_output_dir = dtv_output_dir|default("/scratch/dtv") %}
+
+# One frame per 8192-sample block: the mask byte, the three frame powers
+# (target, lower, upper; each the sum of 256 fine powers) and the fine rank
+# support of each local frequency.  Each product has a second buffer behind
+# the write switch.
+{% set dtv_products = [
+    ("mask", "int8", "[num_local_freq]", '["F"]', "[1]"),
+    ("powers", "uint64", "[num_local_freq, 3]", '["F", "W"]', "[1, 1]"),
+    ("fine_support", "int32", "[num_local_freq, 2]", '["F", "S"]', "[1, 1]"),
+] %}
+{% for n in numa_halves %}
+{% for product, value_type, extents, dimnames, dimscalings in dtv_products %}
+{% for suffix in ["", "_write"] %}
+host_dtv_{{ product }}{{ suffix }}_buffer{{ n.sfx }}:
+    kotekan_buffer: ndarray
+    num_frames: host_side_buffer_depth
+    value_type: {{ value_type }}
+    extents: {{ extents }}
+    quantity_name: "dtv_{{ product }}"
+    dimnames: {{ dimnames }}
+    dimscalings: {{ dimscalings }}
+    metadata_pool: main_pool
+{%- if n.id %}
+    numa_node: {{ n.id }}
+{%- endif %}
+
+{% endfor %}
+{% endfor %}
+{% endfor %}
+# Runtime switches, e.g.
+#   curl -X POST -H 'Content-Type: application/json' -d '{"enabled": false}' \
+#       localhost:12048/dtv_write_enabled
+# The detector switch also takes valid_at_time_ns (0: from the next block). While the
+# detector is off it writes zero masks and powers and (-1,-1) fine support.
+dtv_detector_enabled:
+    kotekan_update_endpoint: json
+    enabled: true
+    valid_at_time_ns: 0
+
+dtv_write_enabled:
+    kotekan_update_endpoint: json
+    enabled: true
+
+run_dtv_detector:
+{% for n in numa_halves %}
+    gpu_{{ n.id }}:
+        kotekan_stage: cudaProcess
+        gpu_id: {{ n.id }}
+        cuda_stream_base: {{ 13 * stream_base_step if stream_base_step else 1 }}
+        cpu_affinity: {{ n.gpu_cpus }}
+        in_buffers:
+            host_voltage_ringbuffer: host_voltage_ringbuffer{{ n.sfx }}
+        out_buffers:
+            host_dtv_mask: host_dtv_mask_buffer{{ n.sfx }}
+            host_dtv_powers: host_dtv_powers_buffer{{ n.sfx }}
+            host_dtv_fine_support: host_dtv_fine_support_buffer{{ n.sfx }}
+        commands:
+        - name: cudaPilotProxyDetector
+          num_frequencies: num_local_freq
+          voltage_name: voltage
+          detector_window_samples: 64
+          dtv_mask_name: dtv_mask
+          dtv_powers_name: dtv_powers
+          dtv_fine_support_name: dtv_fine_support
+          pilot_profiles_path: {{ dtv_runtime_bundle_dir }}/pilot_profiles.json
+          weights_path: {{ dtv_runtime_bundle_dir }}/weights.bin
+          enabled_updatable_config: /dtv_detector_enabled
+        - name: cudaSyncOutput
+        - name: cudaOutputData
+          gpu_mem: dtv_mask_buffer
+          out_buf: host_dtv_mask
+        - name: cudaOutputData
+          gpu_mem: dtv_powers_buffer
+          out_buf: host_dtv_powers
+        - name: cudaOutputData
+          gpu_mem: dtv_fine_support_buffer
+          out_buf: host_dtv_fine_support
+{% endfor %}
+
+switch_dtv_write:
+{% for n in numa_halves %}
+{% for product in ["mask", "powers", "fine_support"] %}
+    {{ product }}_{{ n.id }}:
+        kotekan_stage: bufferSwitch
+        cpu_affinity: {{ n.other_cpus }}
+        in_bufs:
+          - enabled: host_dtv_{{ product }}_buffer{{ n.sfx }}
+        out_buf: host_dtv_{{ product }}_write_buffer{{ n.sfx }}
+        updatable_config: /dtv_write_enabled
+{% endfor %}
+{% endfor %}
+
+# Each file holds 1024 blocks (43 s) along an added time axis, with the
+# metadata stored once.  Re-enabling the writes starts a new file.
+write_dtv:
+{% for n in numa_halves %}
+{% for product in ["mask", "powers", "fine_support"] %}
+    {{ product }}_{{ n.id }}:
+        kotekan_stage: hdf5FileWrite
+        log_level: warn
+        cpu_affinity: {{ n.other_cpus }}
+        in_buf: host_dtv_{{ product }}_write_buffer{{ n.sfx }}
+        base_dir: {{ dtv_output_dir }}
+        file_name: dtv_{{ product }}{{ n.sfx }}
+        add_time_axis: true
+        frames_per_file: 1024
+{% endfor %}
+{% endfor %}
