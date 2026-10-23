@@ -320,6 +320,9 @@ gnss_n2_project:
         # #190: the known directions from the board (GnssProjBoardTestPub below publishes
         # them), then the eigen path on the residual.
         source: lanes+residual
+        # Only the live channels (freq_ids 0-7) run the eigen path and publish gauges;
+        # run_n2accum_gnssproject_live.yaml keeps the default, all.
+        eigen_channels: live
         board_group: /testboard
         k_lanes_max: 4
         lane_max_age_s: 1.0

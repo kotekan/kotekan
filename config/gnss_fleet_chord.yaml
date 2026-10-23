@@ -65,14 +65,20 @@ common:
 
     # GnssN2Project on the science N2: per frame and channel, solve the live block's dominant
     # spread components and write (I-QQ^H)V(I-QQ^H) into the copy N2Accumulate reads, only in
-    # the given freq_ids ("exempt" = rfi-excision-exempt-freq-ids above). Station 7 (B04X) is
-    # left out of the stations: it saturates. cx19 overrides n2-project to "off" (see nodes).
+    # the given freq_ids ("exempt" = rfi-excision-exempt-freq-ids above). The stations are the
+    # trackers' elements (the rows-af96 epoch: rows A-F, both pols), so a lane direction covers
+    # every one; station 7 (B04X) is left out: it saturates. An input outside the trackers'
+    # elements cannot be nulled by a lane (16/47 of the power was left when row H came back with
+    # the 10-23 chord merge). eigen-channels live runs the eigen path only on the channels it
+    # writes, which pays for the ~4x of 95 stations against 47. cx19 overrides n2-project to
+    # "off" (see nodes).
     # The E and L lanes as rotations of the prompt, one chip walk per hop (#189): every comb
     # chain, L2C excepted by the generator. Canary cx51 10-17 17:33Z, fleet from the remap cycle.
     epl-from-prompt: true
     n2-project: live
     n2-project-live-freq-ids: exempt
-    n2-project-stations: "0-6,8-15,56-79,120-127"
+    n2-project-stations: "0-6,8-47,64-111"
+    n2-project-eigen-channels: live
 
     # Ship the N^2 products as a stock node does: the buffer_send_n2_* legs (full n2_buffer and
     # the eigen subset, both GPUs) and the bad-feed mask legs, to the standard receiver recv1
@@ -292,6 +298,9 @@ nodes:
     # records (no S38 on air: ANIK F1R left WAAS, so PRN 138 would be 4 idle jobs); model-primary
     # (no search), lanes for the projection. A node entry's extra-signal appends to the common
     # list. Move to common once the canary tracks.
+    # The lanes cost ~4 k n^2 per live channel-frame, so at 95 stations cx51's projection gets its
+    # own pool slot: 7 = cores 41 / 61, the lightest of each pool (21-22 % on 10-23).
     cx51: {search-port-base: 11050, n2-project-source: lanes+residual, n2-project-lanes-max: 40,
+           n2-project-core-index: 7,
            elem-dir-publish: all, assembler-core-slots: "2,1,3,4,8",
            extra-signal: ["SBAS_L5_Q_MC:131,133,135"]}

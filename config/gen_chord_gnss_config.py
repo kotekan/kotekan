@@ -2778,6 +2778,14 @@ def main():
         "light stages (cx51: 9 = cores 43 / 63)",
     )
     ap.add_argument(
+        "--n2-project-eigen-channels",
+        choices=["all", "live"],
+        default="all",
+        help="channels GnssN2Project's eigen path runs on: all (default; every channel gets "
+        "the gauges) or live (only --n2-project-live-freq-ids, which it writes). The cost is "
+        "per channel and ~n^2 in the stations, so live is what pays for a larger station set",
+    )
+    ap.add_argument(
         "--n2-project-lanes-max",
         type=int,
         default=8,
@@ -3412,6 +3420,8 @@ def main():
                 "solve_every": int(N2_PROJECT_SOLVE_EVERY),
                 "metric_period_s": 1.0,
             }
+            if args.n2_project_eigen_channels != "all":
+                _stage["eigen_channels"] = args.n2_project_eigen_channels
             if args.n2_project_source != "eigen":
                 # #190: the chains' directions. The board group is the assemblers' unique_name
                 # up to the first '_' ("/gnss<gpu>"); tracker_stations is the chains' element
