@@ -270,7 +270,7 @@ iceBoardShuffle::iceBoardShuffle(kotekan::Config& config, const std::string& uni
         config.get<std::vector<std::string>>(unique_name, "out_bufs");
     if (shuffle_size != buffer_names.size()) {
         throw std::runtime_error("Expecting " + std::to_string(shuffle_size) + " buffers, got "
-                                 + std::to_string(port));
+                                 + std::to_string(buffer_names.size()));
     }
     for (uint32_t i = 0; i < shuffle_size; ++i) {
         out_bufs[i] = buffer_container.get_buffer(buffer_names[i]);
