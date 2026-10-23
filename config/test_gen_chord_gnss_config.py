@@ -426,6 +426,7 @@ def test_live_ranges_pol_mirror():
 
     check(not refused([[0, 15], [64, 79]]), "32 elements, one range per pol: accepted")
     check(not refused([[0, 47], [64, 111]]), "96 elements, one range per pol: accepted")
+    check(not refused([[0, 63], [64, 127]]), "128 elements, one range per pol: accepted")
     check(refused([[0, 31], [64, 79]]), "48 elements (unequal pol halves): refused")
     check(refused([[0, 15], [16, 31]]), "two pol-0 ranges: refused")
     check(refused([[0, 63]]), "a single range: refused")
