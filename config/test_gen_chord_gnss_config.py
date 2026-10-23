@@ -635,6 +635,9 @@ def production_cores():
 def test_core_pools_clear_production():
     """The GNSS pools and the node's REST cores never share a logical cpu with production, and
     each GPU pool sits on its GPU's NUMA node with a length coprime to dual_core's stride."""
+    if kotekan_src.SRC is None:
+        print("  [SKIP] core pools: no kotekan tree holding production's pathfinder.j2")
+        return
     prod, dpdk_sib = production_cores()
     rt = node_cfg()["runtime"]
     numa = {
