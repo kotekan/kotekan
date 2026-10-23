@@ -114,6 +114,14 @@ def test_incompatible_metadata_size_is_rejected(tmp_path, size):
         raw_frame(-1),
         raw_frame(downsampling=0),
     ],
+    ids=[
+        "one-byte",
+        "size-only",
+        "truncated-metadata",
+        "truncated-payload",
+        "negative-seq",
+        "zero-downsampling",
+    ],
 )
 def test_truncated_frames_or_missing_timing_are_rejected(tmp_path, data):
     path = tmp_path / "voltage_0000000.raw"
