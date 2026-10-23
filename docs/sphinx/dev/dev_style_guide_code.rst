@@ -145,12 +145,15 @@ Python Code Formatting
 
 Python code in this project follows the
 `Black code style <https://black.readthedocs.io/en/stable/the_black_code_style.html>`_.
-Install ``black==26.10.1`` in a virtual environment with Python 3.10 or newer,
-then run ``black .`` from the repository root before committing Python code.
+In a virtual environment with Python 3.10 or newer, install
+``python -m pip install -r tools/requirements-lint.txt`` from the repository root.
+Then run ``black .`` before committing Python code.
 Use ``black --check .`` to check formatting without changing files.
 
-The root ``pyproject.toml`` requires the same Black version as the CI container
-and excludes documentation, vendored code, and IWYU tools. Black also respects
+The root ``pyproject.toml`` requires the Black version pinned in
+``tools/requirements-lint.txt`` and excludes documentation, vendored code, and IWYU
+tools. CI installs these lint dependencies into the existing runtime image, so
+formatter updates do not require publishing new container images. Black also respects
 ``.gitignore``. Use the stable style; do not enable ``--preview`` or ``--unstable``.
 
 
