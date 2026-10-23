@@ -173,14 +173,18 @@ void from_json(const nlohmann::json& j, N2VarianceMode& m);
  * @conf    num_elements                    int64_t Number of elements (num_dish x num_pol) in
  *                                          the buffers.
  * @conf    do_fringestop                   bool    Whether to fringestop incoming correlations.
- *                                          Default: False
+ *                                          Only stations the telescope fringestops (ArrayDish
+ *                                          for CHORD) get phases, and the telescope phase
+ *                                          center must be set. Default: False
  * @conf    fringestop_updatable_config     String  Optional path to an updatable config block
  *                                          with fields `enabled` (bool) and `valid_at_time_ns`
  *                                          (int64, instrument time). Overrides do_fringestop;
  *                                          a change takes effect at the first accumulation bin
  *                                          starting at or after valid_at_time_ns. Only one
  *                                          change is pending at a time; a new post replaces
- *                                          a pending one.
+ *                                          a pending one. An update that enables
+ *                                          fringestopping while the telescope phase center is
+ *                                          not set stops kotekan.
  * @conf    input_order                     String. Ordering of data in input correlation matrix.
  *                                          Default: Telescope::fiducial_element_order()
  * @conf    output_order                    String. Ordering of data in ouput correlation matrix.
@@ -366,6 +370,7 @@ private:
 
     const std::vector<vec3d_t>
         _feed_positions_m; ///< The position of each element in the telescope grid frame
+    const std::vector<bool> _fringestop_mask; ///< Whether each element is fringestopped
     static constexpr std::complex<float> _sentinel_phase =
         std::complex<float>(2.0f, 2.0f); //  fringestop phases have |z| = 1.0
 
