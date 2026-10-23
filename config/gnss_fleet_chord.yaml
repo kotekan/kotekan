@@ -294,4 +294,8 @@ nodes:
     # list. Move to common once the canary tracks.
     cx51: {search-port-base: 11050, n2-project-source: lanes+residual, n2-project-lanes-max: 40,
            elem-dir-publish: all, assembler-core-slots: "2,1,3,4,8",
-           extra-signal: ["SBAS_L5_Q_MC:131,133,135"]}
+           extra-signal: ["SBAS_L5_Q_MC:131,133,135"],
+           # Psi canary (10-23): replica synthesis from code-phase tables, fused with the pack,
+           # on this node only; needs the kv/psi-synth binary (fleet-00038c8ee). Move to common
+           # once the canary is judged.
+           psi-synth: true}
