@@ -1,5 +1,5 @@
-"""Read a ChordBuffer dump into python.
-"""
+"""Read a ChordBuffer dump into python."""
+
 from pathlib import Path
 import numpy as np
 import h5py as h5

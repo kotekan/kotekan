@@ -6,7 +6,6 @@ import re
 from kotekan import visbuffer
 from kotekan import runner
 
-
 params = {
     "num_elements": 5,
     "num_ev": 0,

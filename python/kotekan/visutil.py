@@ -1,5 +1,4 @@
-"""Miscellaneous utilities.
-"""
+"""Miscellaneous utilities."""
 
 
 class prod_ctype(object):

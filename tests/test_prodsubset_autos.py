@@ -5,7 +5,6 @@ import glob
 
 from kotekan import runner
 
-
 subset_params = {
     "num_elements": 16,
     "num_ev": 2,

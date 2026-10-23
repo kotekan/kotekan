@@ -48,7 +48,6 @@ from twisted.python import log
 from twisted.web import resource, server, static
 from zope.interface import implementer
 
-
 # Binary WebSocket message types (first byte of each binary push).
 MSG_FREQLIST = 1  # bytes[1:] = nfreq * float32 frequency-bin centres (MHz)
 MSG_TIMESTEP = 2  # bytes[1:9] = float64 sample-time (UTC sec)
@@ -584,7 +583,8 @@ class LiveBeamWSFactory(WebSocketServerFactory):
         # reconnect (see app/socket.js) so transient network blips heal
         # themselves instead of leaving a frozen browser tab.
         self.setProtocolOptions(
-            autoPingInterval=WS_PING_INTERVAL_S, autoPingTimeout=WS_PING_TIMEOUT_S,
+            autoPingInterval=WS_PING_INTERVAL_S,
+            autoPingTimeout=WS_PING_TIMEOUT_S,
         )
 
     def register(self, client):
