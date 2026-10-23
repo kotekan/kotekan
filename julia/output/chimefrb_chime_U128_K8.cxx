@@ -412,8 +412,11 @@ cudaCHIMEFRBBeamformer_chime_U128_K8::cudaCHIMEFRBBeamformer_chime_U128_K8(
             "--gpu-name=sm_89",
             "--verbose",
         };
-        device.build_ptx("lib/cuda/generated/CHIMEFRBBeamformer_chime_U128_K8.ptx", {kernel_symbol},
-                         opts, "CHIMEFRBBeamformer_chime_U128_K8_");
+        const char* const kernel_code =
+#include "CHIMEFRBBeamformer_chime_U128_K8.ptx"
+            ;
+        device.build_ptx(kernel_code, "lib/cuda/generated/CHIMEFRBBeamformer_chime_U128_K8.ptx",
+                         {kernel_symbol}, opts, "CHIMEFRBBeamformer_chime_U128_K8_");
     }
 }
 

@@ -153,7 +153,8 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
 
     // Sanity checks on initialization
     {
-        if (_do_fringestop && !_tel.phase_center_is_set())
+        // With an updatable config, receive_fringestop_enabled checks the phase center instead.
+        if (_do_fringestop && _fringestop_config_path.empty() && !_tel.phase_center_is_set())
             FATAL_ERROR("do_fringestop is set but the telescope phase center (dish_coelev_deg) is "
                         "not.");
 
@@ -884,6 +885,11 @@ bool N2Accumulate::receive_fringestop_enabled(nlohmann::json& json) {
         time_ns = json.at("valid_at_time_ns").get<int64_t>();
     } catch (std::exception& e) {
         WARN("N2Accumulate failed to read update to {:s}: {:s}", _fringestop_config_path, e.what());
+        return false;
+    }
+    if (enabled && !_tel.phase_center_is_set()) {
+        ERROR("Cannot enable fringestopping: the telescope phase center (dish_coelev_deg) is not "
+              "set; stopping kotekan.");
         return false;
     }
     // Times before the telescope's time zero would underflow to_seq. A past time applies at

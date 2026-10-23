@@ -1931,7 +1931,9 @@ if CUDA.functional()
     main(; output_kernel=true)
     open("output/chimefrb_$(setup)_U$(U)_K$(K).ptx", "w") do fh
         redirect_stdout(fh) do
+            println("R\"===(")
             @device_code_ptx main(; compile_only=true, silent=true)
+            println(")===\"")
         end
     end
     fix_ptx_kernel()

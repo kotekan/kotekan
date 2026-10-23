@@ -435,8 +435,11 @@ cudaBasebandBeamformer_charts::cudaBasebandBeamformer_charts(Config& config,
             "--gpu-name=sm_120",
             "--verbose",
         };
-        device.build_ptx("lib/cuda/generated/BasebandBeamformer_charts.ptx", {kernel_symbol}, opts,
-                         "BasebandBeamformer_charts_");
+        const char* const kernel_code =
+#include "BasebandBeamformer_charts.ptx"
+            ;
+        device.build_ptx(kernel_code, "lib/cuda/generated/BasebandBeamformer_charts.ptx",
+                         {kernel_symbol}, opts, "BasebandBeamformer_charts_");
     }
 }
 
