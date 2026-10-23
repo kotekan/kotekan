@@ -59,6 +59,8 @@ inline bool is_time_axis(const std::string& dim_name) {
 
 } // namespace hdf5
 
+// HighFive owns this template; its definitions are outside the API documentation.
+/// @cond
 namespace HighFive {
 template<>
 inline HighFive::AtomicType<float16_t>::AtomicType() {
@@ -71,5 +73,6 @@ inline HighFive::AtomicType<float16_t>::AtomicType() {
     detail::h5t_set_ebias(_hid, 15);
 }
 } // namespace HighFive
+/// @endcond
 
 #endif // #ifndef HDF5FILES_HPP

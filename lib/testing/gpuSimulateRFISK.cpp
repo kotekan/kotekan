@@ -31,9 +31,9 @@ using kotekan::Config;
  *
  * Given an input buffer containing S0, S1, and S2 values:
  *
- * S0 = \sum_{t \in t_rfi} PL[t]
- * S1 = \sum_{t \in t_rfi} PL[t] x |E[t]|^2
- * S2 = \sum_{t \in t_rfi} PL[t] x |E[t]|^4
+ * @f[ S_0 = \sum_{t \in t_{\mathrm{rfi}}} \mathrm{PL}[t] @f]
+ * @f[ S_1 = \sum_{t \in t_{\mathrm{rfi}}} \mathrm{PL}[t] \, |E[t]|^2 @f]
+ * @f[ S_2 = \sum_{t \in t_{\mathrm{rfi}}} \mathrm{PL}[t] \, |E[t]|^4 @f]
  *
  * where `t_rfi` is a downsampled time variable, covering `downsampling_factor` fast time samples
  * `t`, PL is the packet loss mask, and E is the voltage/electric field.

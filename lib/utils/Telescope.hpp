@@ -233,7 +233,7 @@ public:
      *
      * @returns        A reference to the singleton instance.
      **/
-    static const Telescope& instance(const kotekan::Config&);
+    static const Telescope& instance(const kotekan::Config& config);
 
     /**
      * @brief Get a reference to the singleton Telescope instance.
@@ -527,7 +527,7 @@ public:
      *          out of table range, or fail fatally if `fatal_eop_out_of_range`
      *          is set.
      *
-     * @param   ts  Target UT1 time, in nanoseconds since J2000(UT1) int64_t
+     * @param   ut1 Target UT1 time, in nanoseconds since J2000(UT1) int64_t
      **/
     EOP get_EOP_at_UT1(int64_t ut1) const;
 
@@ -587,7 +587,7 @@ public:
     /**
      * @brief   Transform the given vector from ITRS to topocentric coords.
      *
-     * @param   v_topo  Vector in ITRS coordinates.
+     * @param   v_itrs  Vector in ITRS coordinates.
      **/
     vec3d_t vec_itrs_to_topo(const vec3d_t& v_itrs) const;
 
@@ -601,7 +601,7 @@ public:
     /**
      * @brief   Transform the given vector from CIRS to ITRS coords.
      *
-     * @param   v_topo  Vector in CIRS coordinates.
+     * @param   v_cirs  Vector in CIRS coordinates.
      * @param   eop     EOP for time of transformation.
      **/
     vec3d_t vec_cirs_to_itrs(const vec3d_t& v_cirs, const EOP& eop) const;
@@ -609,7 +609,7 @@ public:
     /**
      * @brief   Transform the given vector from ITRS to CIRS coords.
      *
-     * @param   v_topo  Vector in ITRS coordinates.
+     * @param   v_itrs  Vector in ITRS coordinates.
      * @param   eop     EOP for time of transformation.
      **/
     vec3d_t vec_itrs_to_cirs(const vec3d_t& v_itrs, const EOP& eop) const;
@@ -650,8 +650,8 @@ public:
     /**
      * @brief   Return an observing vector (normalized vec3) in GRID
      *          coordinates, corresponding to the given CIRS RA and DEC.
-     * @param   ra  Target Right Ascension in CIRS frame.
-     * @param   dec Target Declination in CIRS frame.
+     * @param   ra_cirs_deg  Target Right Ascension in CIRS frame in degrees.
+     * @param   dec_cirs_deg Target Declination in CIRS frame in degrees.
      * @param   eop EOP for the time of observation.
      **/
     vec3d_t vec_cirs_ra_dec_to_grid(double ra_cirs_deg, double dec_cirs_deg, const EOP& eop) const;
@@ -670,9 +670,9 @@ public:
      * @param   eop     Current EOP.
      * @param   eop0    EOP of phase reference time. if eop=eop0 all phases are
      *                  1.0
-     * @param   feed_posisions_m    The 3D feed positions in the telescope grid frame in meters. The
+     * @param   feed_positions_m    The 3D feed positions in the telescope grid frame in meters. The
      *                  positions returned from `station_id_to_feed_position_m`.
-     * @param   phases  Vector of std::complex<double>, with size equal to feed_positions_m. The
+     * @param   phases  Vector of std::complex<float>, with size equal to feed_positions_m. The
      *                  phase for each position will be written to this vector.
      **/
     void fill_fringestop_phases_1d(double freq_MHz, const EOP& eop, const EOP& eop0,
