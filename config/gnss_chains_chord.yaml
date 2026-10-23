@@ -574,11 +574,12 @@ chains:
     # to metres and its Doppler is ~0), the joint clock adopted. No signal-capability: the
     # registry has no SBAS block types; the manifest's PRN list is the capable set. The
     # chain's tag is _l5 (signal_tag of SBAS_L5_I_MC), so its node endpoints read gnss<g>_l5_*.
-    # Only cx51 carries SBAS_L5_I_MC (the canary), so the endpoints name cx51 alone:
-    # probe-require-slot filters probes by the PRN map the listed trackers agree on, and nodes
-    # without the chain answer 404, so with all six listed there is never agreement and the
-    # probes go unfiltered (no slot, no report, presence never anchored). List the other nodes
-    # again when SBAS moves to the common signal set.
+    # Every node carries SBAS_L5_I_MC (the manifest's common signal set). probe-require-slot
+    # filters probes by the PRN map the listed trackers agree on, and a listed node without the
+    # chain answers 404, so there is never agreement and the probes go unfiltered (no slot, no
+    # report, presence never anchored): list only nodes that carry it. An unreachable node
+    # also blocks the consensus (prnmap: every listed endpoint must answer), so cx42, out
+    # since 10-23, is left off until it is back.
     sbas_l5:
         signal: sbas_l5
         presence-admit-displaced: true
@@ -588,10 +589,10 @@ chains:
         fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
         fleet-trim-bandwidth: 2.5
         fleet-trim-readback: 1
-        trackers: "http://cx51:12048/gnss{0..1}_l5_inject"
+        trackers: "http://cx19:12048/gnss{0..1}_l5_inject,http://cx27:12048/gnss{0..1}_l5_inject,http://cx43:12048/gnss{0..1}_l5_inject,http://cx44:12048/gnss{0..1}_l5_inject,http://cx51:12048/gnss{0..1}_l5_inject"
         combiner: gnss0_l5_n2combine
-        spectrum-endpoints: "http://cx51:12048/gnss{0..1}_l5_n2assemble"
-        dll-combiners: "http://cx51:12048/gnss{0..1}_l5_n2combine"
+        spectrum-endpoints: "http://cx19:12048/gnss{0..1}_l5_n2assemble,http://cx27:12048/gnss{0..1}_l5_n2assemble,http://cx43:12048/gnss{0..1}_l5_n2assemble,http://cx44:12048/gnss{0..1}_l5_n2assemble,http://cx51:12048/gnss{0..1}_l5_n2assemble"
+        dll-combiners: "http://cx19:12048/gnss{0..1}_l5_n2combine,http://cx27:12048/gnss{0..1}_l5_n2combine,http://cx43:12048/gnss{0..1}_l5_n2combine,http://cx44:12048/gnss{0..1}_l5_n2combine,http://cx51:12048/gnss{0..1}_l5_n2combine"
     bds_b3i:
         signal: bds_b3i
         dr-clock-adopt: true
