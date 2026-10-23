@@ -564,13 +564,15 @@ chains:
   # integration past 20 ms needs the nav-bit wipe no chain runs. `signal: bds_b3i` implies no
   # capability gate and no PRN floor (BDS-2 and BDS-3 both broadcast B3I), so the broker
   # predicts, maps and seeds every BeiDou PRN, C06-C08 and C11-C14 among them.
-    # SBAS L5 (#190 coverage): the WAAS GEOs 131/133/135/138 on the GPS L5 code family under
-    # the 2-chip Manchester overlay (SBAS_L5_Q_MC), geostationary at el ~33 due south of DRAO,
+    # SBAS L5 (#190 coverage): the WAAS GEOs 131/133/135/138 on the I5 code of the GPS L5 family
+    # under the 2 ms Manchester pair (SBAS_L5_I_MC). SBAS L5 has no pilot: the I channel carries
+    # 500 sps data, so a record sums ~5 unknown symbol signs (~7 dB of a pilot's power; q and the
+    # squared carrier walk do not care about the signs). Geostationary at el ~33 due south of DRAO,
     # state vectors from the IGS BRDC's S records (gnss_ephemeris, 2 h age). Model-primary
     # like glo_l3oc: no search, the dead-reckon seed from the ephemeris (a GEO's range is known
     # to metres and its Doppler is ~0), the joint clock adopted. No signal-capability: the
     # registry has no SBAS block types; the manifest's PRN list is the capable set. The
-    # chain's tag is _l5 (signal_tag of SBAS_L5_Q_MC), so its node endpoints read gnss<g>_l5_*.
+    # chain's tag is _l5 (signal_tag of SBAS_L5_I_MC), so its node endpoints read gnss<g>_l5_*.
     sbas_l5:
         signal: sbas_l5
         presence-admit-displaced: true
