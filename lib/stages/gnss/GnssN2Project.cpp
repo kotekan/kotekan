@@ -50,6 +50,11 @@ GnssN2Project::GnssN2Project(Config& config, const std::string& unique_name,
     lane_conj(config.get_default<bool>(unique_name, "lane_conj", true)) {
     if (source != "eigen" && source != "lanes" && source != "lanes+residual")
         FATAL_ERROR("GnssN2Project: source '{:s}' must be eigen, lanes or lanes+residual", source);
+    const std::string eigen_channels =
+        config.get_default<std::string>(unique_name, "eigen_channels", "all");
+    if (eigen_channels != "all" && eigen_channels != "live")
+        FATAL_ERROR("GnssN2Project: eigen_channels '{:s}' must be all or live", eigen_channels);
+    eigen_live_only = eigen_channels == "live";
 
     // The stage always writes the projected copy; mode is read only to refuse another value.
     const std::string mode = config.get_default<std::string>(unique_name, "mode", "live");
@@ -315,6 +320,9 @@ void GnssN2Project::main_thread() {
 
         for (int t = 0; t < n_integrations; ++t) {
             for (int f = 0; f < num_local_freq; ++f) {
+                // eigen_channels live: a channel that is never written costs nothing.
+                if (eigen_live_only && !live_ch[f])
+                    continue;
                 const int32_t* fin = in + (size_t)t * per_int + (size_t)f * per_freq;
                 gnss_n2proj::extract(layout, fin, stations, V.data());
                 mean_auto[f] = gnss_n2proj::mean_auto(n, V.data());
@@ -422,6 +430,8 @@ void GnssN2Project::main_thread() {
         if (since_metric >= metric_period_s) {
             since_metric = 0.0;
             for (int f = 0; f < num_local_freq; ++f) {
+                if (eigen_live_only && !live_ch[f])
+                    continue;
                 const std::string fid = std::to_string(freq_ids[f]);
                 g_k.labels({fid}).set(k_cur[f]);
                 g_lam.labels({fid}).set(lam0_rel[f]);
