@@ -160,6 +160,17 @@ public:
         return true;
     }
 
+    /// Per element, the factor exp(i * sign * 2*pi * df * tau) that takes a phasor for
+    /// line-of-sight unit vector @p e (ENU) from frequency f to f + @p df_hz.
+    void shift(const double* e, double df_hz, cf* out) const {
+        for (int el_i = 0; el_i < _n_elem; ++el_i) {
+            const double* r = &_pos[(size_t)el_i * 3];
+            const double tau_s = (r[0] * e[0] + r[1] * e[1] + r[2] * e[2]) / 299792458.0;
+            const double ph = _sign * 2.0 * M_PI * df_hz * tau_s;
+            out[el_i] = cf((float)std::cos(ph), (float)std::sin(ph));
+        }
+    }
+
 private:
     /// How often a slot with rates is re-evaluated along its track, seconds; between rebuilds
     /// the path error grows at the path rate (~3.5 mm in 0.5 s at 7 mm/s).

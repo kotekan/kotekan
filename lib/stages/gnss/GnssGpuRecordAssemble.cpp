@@ -209,12 +209,20 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
         const int np = (int)_prns.size();
         _lane = gnss::LaneDirection(_n_elements, (int)_lane_fids.size(), np, tau);
         _lane_scratch.assign((size_t)_n_elements, std::complex<double>(0.0, 0.0));
-        _lane_dir.assign((size_t)_n_elements, std::complex<double>(0.0, 0.0));
         _lane_t_prev.assign((size_t)np, 0.0);
         _lane_prn.assign((size_t)np, 0);
         _lane_pub.assign((size_t)np, 0);
         _lane_cnt.assign((size_t)np, 0);
         _lane_owner.assign((size_t)np, std::string());
+        _lane_xfer_fids =
+            config.get_default<std::vector<int>>(unique_name, "lane_transfer_freq_ids", {});
+        for (const int fid : _lane_xfer_fids)
+            if (std::find(_lane_fids.begin(), _lane_fids.end(), fid) != _lane_fids.end())
+                FATAL_ERROR("lane_transfer_freq_ids: {:d} is one of channel_ids", fid);
+        _lane_ok.assign(_lane_fids.size(), 0);
+        _lane_pubdir.assign(_lane_fids.size() * (size_t)_n_elements,
+                            std::complex<double>(0.0, 0.0));
+        _lane_shift.assign((size_t)_n_elements, gnss::ElemSteer::cf(1.0f, 0.0f));
         if (_lane_on && _lane_fids.empty()) {
             WARN("elem_dir_publish all needs channel_ids: lane directions OFF");
             _lane_on = false;
@@ -222,8 +230,8 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
         if (_lane_on)
             INFO("lane directions: publishing every running non-probe slot's prompt-row "
                  "direction per channel to the board group {:s}, tau {:.2f} s, every {:d} "
-                 "records, coherence >= {:.3f}",
-                 _lane_group, tau, _lane_every, _lane_coh_min);
+                 "records, coherence >= {:.3f}, transferred to {:d} more channels",
+                 _lane_group, tau, _lane_every, _lane_coh_min, (int)_lane_xfer_fids.size());
     }
     // Bright-satellite projection (see the header and gnssProjSubspace.hpp). Needs channel_ids
     // (the board is keyed on freq_id) and elem_sum (the shadow learners). Off by default;
@@ -910,14 +918,16 @@ void GnssGpuRecordAssemble::main_thread() {
                         std::chrono::duration<double>(
                             std::chrono::steady_clock::now().time_since_epoch())
                             .count();
+                    std::fill(_lane_ok.begin(), _lane_ok.end(), 0);
                     for (int ch = 0; ch < n_chan; ++ch) {
                         if (!((c.chan_mask >> ch) & 1ULL) || !_lane.warm(p, ch))
                             continue;
                         const double coh = _lane.coherence(p, ch);
+                        std::complex<double>* dir = &_lane_pubdir[(size_t)ch * n_e];
                         if (coh < _lane_coh_min
-                            || !_lane.direction(p, ch, &_steer_buf[(size_t)ch * n_e],
-                                                _lane_dir.data()))
+                            || !_lane.direction(p, ch, &_steer_buf[(size_t)ch * n_e], dir))
                             continue;
+                        _lane_ok[(size_t)ch] = 1;
                         gnss::ProjEntry e;
                         e.owner = _lane_owner[p];
                         e.src = 2;
@@ -928,10 +938,47 @@ void GnssGpuRecordAssemble::main_thread() {
                         e.k = 1;
                         e.q.reserve((size_t)n_e);
                         for (int el = 0; el < n_e; ++el)
-                            e.q.emplace_back((float)_lane_dir[(size_t)el].real(),
-                                             (float)_lane_dir[(size_t)el].imag());
+                            e.q.emplace_back((float)dir[el].real(), (float)dir[el].imag());
                         board.publish(_lane_group, _lane_fids[(size_t)ch], e);
                         _lane_pub[p] = 1;
+                    }
+                    double los[3];
+                    bool have_los = false;
+                    if (!_lane_xfer_fids.empty()) {
+                        std::lock_guard<std::mutex> lk(_steer_mtx);
+                        have_los = _steer.direction((int)p, utc, los);
+                    }
+                    if (have_los) {
+                        for (const int fid : _lane_xfer_fids) {
+                            int src = -1;
+                            for (int ch = 0; ch < n_chan; ++ch)
+                                if (_lane_ok[(size_t)ch]
+                                    && (src < 0
+                                        || std::abs(_lane_fids[(size_t)ch] - fid)
+                                               < std::abs(_lane_fids[(size_t)src] - fid)))
+                                    src = ch;
+                            if (src < 0)
+                                break;
+                            _steer.shift(los, (fid - _lane_fids[(size_t)src]) * 0.1953125e6,
+                                         _lane_shift.data());
+                            const std::complex<double>* dir = &_lane_pubdir[(size_t)src * n_e];
+                            gnss::ProjEntry e;
+                            e.owner = _lane_owner[p];
+                            e.src = 2;
+                            e.t_pub = now_s;
+                            e.power = _lane.power(p, src);
+                            e.coh = _lane.coherence(p, src);
+                            e.n = n_e;
+                            e.k = 1;
+                            e.q.reserve((size_t)n_e);
+                            for (int el = 0; el < n_e; ++el) {
+                                const gnss::ElemSteer::cf sh = _lane_shift[(size_t)el];
+                                const std::complex<double> v =
+                                    dir[el] * std::complex<double>(sh.real(), -sh.imag());
+                                e.q.emplace_back((float)v.real(), (float)v.imag());
+                            }
+                            board.publish(_lane_group, fid, e);
+                        }
                     }
                 }
                 // Shadow projection (see the header): the same prompt, projected per channel

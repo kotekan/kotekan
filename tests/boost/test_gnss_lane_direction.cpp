@@ -1,6 +1,7 @@
 #define BOOST_TEST_MODULE "test_gnss_lane_direction"
 #include "gnssLaneDirection.hpp" // for LaneDirection
 #include <boost/test/included/unit_test.hpp>
+#include <algorithm> // for max
 #include <cmath>   // for exp, sqrt
 #include <complex> // for complex, conj, norm
 #include <random>  // for mt19937, normal_distribution
@@ -177,4 +178,33 @@ BOOST_AUTO_TEST_CASE(reset_and_bounds) {
     L.push(1, -1, v.data(), 0.02);                    // ignored
     BOOST_CHECK(!L.direction(7, 1, b.D.data(), out.data()));
     BOOST_CHECK_EQUAL(L.coherence(5, 0), 0.0);
+}
+
+// A lane transferred across frequency: the steering table at f1 times shift(e, f2 - f1) is the
+// table at f2, for the slot's own line of sight.
+BOOST_AUTO_TEST_CASE(shift_takes_the_table_across_frequency) {
+    const int n = 16;
+    std::vector<double> pos((size_t)n * 3);
+    for (int i = 0; i < n; ++i) {
+        pos[(size_t)i * 3] = 6.3 * (i % 4) - 9.0;
+        pos[(size_t)i * 3 + 1] = 8.5 * (i / 4) - 12.0;
+        pos[(size_t)i * 3 + 2] = 0.05 * i;
+    }
+    const double f1 = 1278.75, f2 = 1268.52;
+    ElemSteer S(pos, {f1, f2}, 1, 1.0, 120.0);
+    S.update(0, 141.0, 37.0, 0.0);
+    std::vector<ElemSteer::cf> tab((size_t)2 * n), sh((size_t)n);
+    S.copy_slot(0, tab.data());
+    double e[3];
+    BOOST_REQUIRE(S.direction(0, 0.0, e));
+    S.shift(e, (f2 - f1) * 1e6, sh.data());
+    double err = 0.0;
+    for (int i = 0; i < n; ++i)
+        err = std::max(err, (double)std::abs(tab[(size_t)i] * sh[(size_t)i] - tab[(size_t)n + i]));
+    BOOST_CHECK_LT(err, 1e-5);
+    // and the shift is not trivial over a 10 MHz move at these baselines
+    double moved = 0.0;
+    for (int i = 0; i < n; ++i)
+        moved = std::max(moved, (double)std::abs(sh[(size_t)i] - ElemSteer::cf(1.0f, 0.0f)));
+    BOOST_CHECK_GT(moved, 0.1);
 }

@@ -358,10 +358,18 @@ private:
     std::string _lane_group;
     std::vector<int> _lane_fids;
     gnss::LaneDirection _lane;
-    std::vector<std::complex<double>> _lane_scratch, _lane_dir;
+    std::vector<std::complex<double>> _lane_scratch;
     std::vector<double> _lane_t_prev; ///< [n_prn] utc of the last fed record, 0 = none
     std::vector<int> _lane_prn, _lane_pub, _lane_cnt;
     std::vector<std::string> _lane_owner;
+    // lane_transfer_freq_ids: channels outside channel_ids where the same satellites carry
+    // another signal (the Galileo E6 PRS lobe beside E6-B/C, GPS L2 P(Y) beside L2C). Each gets
+    // the direction of the nearest channel published this round, turned through the slot's
+    // geometric delay: q(f2) = q(f1) exp(-i sign 2 pi (f2 - f1) tau_e), under the same owner.
+    std::vector<int> _lane_xfer_fids;
+    std::vector<char> _lane_ok;                     ///< [n_chan] published this round
+    std::vector<std::complex<double>> _lane_pubdir; ///< [n_chan][n_elem]
+    std::vector<gnss::ElemSteer::cf> _lane_shift;   ///< [n_elem]
     bool _proj_ready = false;
     uint8_t _proj_nchan_warned = 0;
     std::vector<std::unique_ptr<gnss::ProjSubspace>> _proj_own; ///< per slot, while it is a source
