@@ -47,6 +47,7 @@ class PrnMapState(object):
         "swaps",
         "beat_t",
         "consensus",
+        "tried",
         "pending",
         "applied",
         "resync_t",
@@ -63,9 +64,13 @@ class PrnMapState(object):
         self.err = ""
         self.swaps = 0
         self.beat_t = 0.0  # last heartbeat line (prn_reconfig_heartbeat_s)
-        # The unanimous live slot->PRN list, or None while the sweep is incomplete or the
-        # nodes disagree. Read by the probe selector (--probe-require-slot).
+        # The unanimous live slot->PRN list of the endpoints that answer, or None while the
+        # sweep is incomplete, too few answer (_answered), or they disagree. Read by the probe
+        # selector (--probe-require-slot).
         self.consensus = None
+        # ep -> time of the last GET attempt, answered or not: a sweep is complete when every
+        # configured endpoint has been tried, which a node that is down still satisfies.
+        self.tried = {}
 
 
 def _endpoints(ctx):
@@ -105,6 +110,7 @@ def _poll(ctx, st, eps):
     st.cursor %= len(eps)
     ep = eps[st.cursor]
     st.cursor = (st.cursor + 1) % len(eps)
+    st.tried[ep] = ctx.t0
     try:
         r = _get("%s/get_prns" % ep, timeout=ctx.args.prn_reconfig_timeout_s)
         m = r.get("prns")
@@ -135,6 +141,27 @@ def _poll(ctx, st, eps):
     for gone in [k for k in st.maps if k not in eps]:
         st.maps.pop(gone, None)
         st.pending.pop(gone, None)
+    for gone in [k for k in st.tried if k not in eps]:
+        st.tried.pop(gone, None)
+
+
+def _answered(st, eps):
+    """The endpoints whose maps stand for the fleet, or None.
+
+    The fleet is whoever answers: a node that is down, pulled for stock use or serving another
+    build (404) is not despreading this chain, so it has no say in which slots exist, and one
+    such node must not veto every decision (10-24: cx42 on stock kotekan kept glo_l2oc's
+    consensus None, its probes went unfiltered onto unslotted PRNs and presence never
+    anchored). Two guards stay: every configured endpoint must have been TRIED since the last
+    reset, so a partial sweep cannot pass for unanimity among the first few to answer, and a
+    strict majority of the configured endpoints must have answered, so a broker cut off from
+    most of the fleet does not act on what one node says."""
+    if not eps or any(ep not in st.tried for ep in eps):
+        return None
+    ans = [ep for ep in eps if ep in st.maps]
+    if 2 * len(ans) <= len(eps):
+        return None
+    return ans
 
 
 def _consensus(maps):
@@ -465,7 +492,20 @@ def stage_prn_membership(ctx):
         _poll(ctx, st, eps)
     # A full sweep must have completed before the map means anything: a partial one looks like
     # unanimity among however few nodes have answered so far.
-    cur = _consensus(st.maps) if len(st.maps) >= len(eps) else None
+    ans = _answered(st, eps)
+    cur = _consensus({ep: st.maps[ep] for ep in ans}) if ans is not None else None
+    if ans is not None and len(ans) < len(eps):
+        _log_rl(
+            "prnmap-silent",
+            "PRN MAP %s: deciding on the %d of %d endpoint(s) that answer; silent: %s"
+            % (
+                log_tag() or a.signal,
+                len(ans),
+                len(eps),
+                ", ".join(ep for ep in eps if ep not in st.maps),
+            ),
+            every_s=600.0,
+        )
     # Published for read-only consumers (the probe selector). None while the sweep is
     # incomplete or the nodes disagree, and consumers then fall back to their unfiltered
     # behaviour rather than act on a partial map.
@@ -475,8 +515,8 @@ def stage_prn_membership(ctx):
     if a.prn_reconfig != "apply":
         return
     if cur is None:
-        if st.maps and len(st.maps) >= len(eps):
-            if not _resync_split(ctx, st, eps, now):
+        if ans is not None:
+            if not _resync_split(ctx, st, ans, now):
                 _log_rl(
                     "prnmap-split",
                     "PRN MAP: nodes DISAGREE about slot membership (%d reporting), and no "
@@ -799,6 +839,7 @@ def _apply_map(ctx, st, cur, want_map, moved, why, el, now):
     # diffs against what the nodes hold, and a POST that is accepted but does not take stays
     # visible.
     st.maps.clear()  # a full re-sweep before the next decision
+    st.tried.clear()
     st.poll_t = 0.0
     _log(
         "PRN MAP %s: %s -- posted to %d/%d node(s)%s%s, %s. Every moved slot acquires COLD: "

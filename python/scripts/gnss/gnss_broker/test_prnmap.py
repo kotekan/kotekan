@@ -71,6 +71,7 @@ class Ctx(object):
         # applying it: that read-back loop is part of what is tested.
         self.node_state = list(slots)
         self.prnmap.maps = {ep: list(slots) for ep in self.trackers}
+        self.prnmap.tried = {ep: t0 for ep in self.trackers}  # a complete sweep
         self.prnmap.poll_t = t0  # pre-swept: no HTTP in this test
         # The F-engine hop the deadline is built on, and when it was sampled. None models an
         # unknown axis, which must degrade to an unscheduled post, not to no post. fe_hop_t
@@ -116,6 +117,7 @@ def run_cycle(ctx, t):
     ctx.t0 = t
     ctx.prnmap.poll_t = t  # the sweep is stood in for below, so no HTTP happens
     ctx.prnmap.maps = {ep: list(ctx.node_state) for ep in ctx.trackers}
+    ctx.prnmap.tried = {ep: t for ep in ctx.trackers}
     prnmap.stage_prn_membership(ctx)
 
 
@@ -379,6 +381,7 @@ def main():
         ctx.t0 = t
         ctx.prnmap.poll_t = t
         ctx.prnmap.maps = {"http://node1": [1, 2, 3], "http://node2": [1, 2, 9]}
+        ctx.prnmap.tried = {ep: t for ep in ctx.trackers}
         prnmap.stage_prn_membership(ctx)
 
     split_cycle(1000.0)
@@ -402,6 +405,7 @@ def main():
         ctx.t0 = t
         ctx.prnmap.poll_t = t
         ctx.prnmap.maps = {k: list(v) for k, v in maps.items()}
+        ctx.prnmap.tried = {ep: t for ep in ctx.trackers}  # all tried; absent = silent
         if pending is not None:
             ctx.prnmap.pending = dict(pending)
         prnmap.stage_prn_membership(ctx)
@@ -1049,6 +1053,75 @@ def main():
             )
     finally:
         _pm._IGS_SNX = _saved
+
+    # ---- the fleet is whoever answers (10-24: cx42 on stock kotekan, glo_l2oc dark) ------
+    print(
+        "\nquorum: a silent node has no say; a partial sweep or a minority decides nothing"
+    )
+    _q_nodes = ["http://node%d" % i for i in range(1, 6)]
+    _q_map = [4, 5, 6, 19]
+
+    def _q_read(maps, tried):
+        c = Ctx(_q_map, {19: 40.0}, prn_reconfig="read")
+        c.trackers = list(_q_nodes)
+        c.prnmap.maps = {k: list(v) for k, v in maps.items()}
+        c.prnmap.tried = dict(tried)
+        c.prnmap.poll_t = c.t0
+        prnmap.stage_prn_membership(c)
+        return c.prnmap.consensus
+
+    _all_tried = {ep: 1000.0 for ep in _q_nodes}
+    _four = {ep: _q_map for ep in _q_nodes[:4]}
+    check(
+        _q_read(_four, _all_tried) == _q_map,
+        "4 of 5 answer, 1 silent (tried, no answer): the consensus is the 4's map -- one node down or on stock kotekan does not veto it",
+    )
+    check(
+        _q_read(_four, {ep: 1000.0 for ep in _q_nodes[:4]}) is None,
+        "... but not before the silent one has been TRIED: a partial sweep is not unanimity",
+    )
+    check(
+        _q_read({ep: _q_map for ep in _q_nodes[:2]}, _all_tried) is None,
+        "2 of 5 answer: no strict majority, no consensus (a broker cut off from most of the fleet does not act on a minority)",
+    )
+    _split4 = dict(_four)
+    _split4["http://node4"] = [4, 5, 6, 20]
+    check(
+        _q_read(_split4, _all_tried) is None,
+        "4 answer and disagree: still no consensus (a silent node does not make a split agree)",
+    )
+
+    # A split resync with a silent node: only the odd ANSWERING node is sent the map, and the
+    # silent one (no map read) neither crashes the resync nor gets a post.
+    POSTS[:] = []
+    _rs = Ctx(fleet, sky)
+    _rs.trackers = ["http://node%d" % i for i in range(1, 6)]
+    _rs_maps = {n: list(fleet) for n in _rs.trackers[:3]}
+    _rs_maps["http://node4"] = list(boot)  # node5 silent
+    sweep(_rs, _rs_maps, 1000.0)
+    check(
+        [u for u, _ in POSTS] == ["http://node4/set_prns"],
+        "3 fleet + 1 odd + 1 silent: only the odd answering node is put back (got %s)"
+        % [u for u, _ in POSTS],
+    )
+
+    # _poll marks an endpoint tried whether or not it answers.
+    _pc = Ctx([1, 2, 3], {1: 40.0}, prn_reconfig="read")
+    _pc.prnmap.maps, _pc.prnmap.tried = {}, {}
+
+    def _get_404(url, timeout=5.0):
+        raise RuntimeError("HTTP Error 404: NOT_FOUND")
+
+    _saved_get = prnmap._get
+    try:
+        prnmap._get = _get_404
+        prnmap._poll(_pc, _pc.prnmap, [_pc.trackers[0]])
+    finally:
+        prnmap._get = _saved_get
+    check(
+        _pc.trackers[0] in _pc.prnmap.tried and _pc.trackers[0] not in _pc.prnmap.maps,
+        "a 404 counts as tried, with no map: the sweep can complete around it",
+    )
 
     test_chains_config()
 
