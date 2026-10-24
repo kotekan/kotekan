@@ -340,6 +340,15 @@ At the F-engine's return, one step per restart:
       data versus pilot. (c) A GPS L5 chain seeded from the model beside the search-anchored
       one. Gate for everything below: every chain's code residual within 1 m of GPS L5 on the
       same satellites, or against a station reference.
+      **FOUND 2026-10-24 (buglist #191), offline:** the steps were the broker's own
+      `gpst % t_code` with a double period. 0.1 s is 0.1 + 5.6e-18 as a double, and over the
+      1.5e10 periods of frame 0 that is 82 ns on the 100 ms chains against 31 ns on the 20 ms
+      ones: 51 ns = 0.52 chip = 15.4 m, on exactly the four chains whose tracker code has a
+      100 ms period (E5a-Q, E5b-Q, E6-C, B2a-P). The station comparison in 6.1 had the sign of
+      `code_resid_m` reversed (tracker minus model: late reads negative), which is why the
+      pattern read as constellations. `deadreckon.t_mod_code` now reduces with the exact
+      rational period. The gate for step 2 is then the station-level agreement (~2 m) after
+      the next broker restart; the sky experiments (a)-(c) are not needed.
   2.  **Code feed from every chain, shadow.** The measurement is trkresid's observable
       (`cp_phys - cp_model - clk`, every chain, detectors or not): the DLL's replica placement,
       which is the sky only while the loop is on the peak. Gates on the feed: present, fleet q

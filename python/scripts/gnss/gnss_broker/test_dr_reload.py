@@ -21,6 +21,7 @@ class _Args(object):
     dcb_bias = 1
     dcb_max_age_days = 0.0
     dr_constellation = "C"
+    chip_rate_hz = 10.23e6
 
 
 class _EphMod(object):
@@ -44,6 +45,7 @@ def _ctx():
     c.dr_eph_mod = _EphMod()
     c.dr_state = {"eph": None, "eph_t": 0.0}
     c.drp = types.SimpleNamespace(now_w=10000.0, t_code=0.001)
+    c.lc_seg, c.code_len = 1, 10230
     c.utc0_sample0 = 1.0
     return c
 
@@ -160,6 +162,46 @@ class TestReloadCadence(unittest.TestCase):
         )
         self.assertNotIn("> 7200", body)
         self.assertIn("_DR_DCB_REFRESH_S", body)
+
+
+class TestT0mExact(unittest.TestCase):
+    """The sample-0 GPST reduced mod the code period must be exact to the picosecond for every
+    period: the double `% t_code` on a 1.48e9-s epoch was 82 ns short on the 100-ms codes and
+    31 ns on the 20-ms ones, half a 10.23-Mcps chip between the two families (buglist #191)."""
+
+    GPST0 = 1476826616.000004053  # the 2026-10-23 frame 0 (utc0 1792791398.000003815)
+
+    def test_exact_for_every_code_period(self):
+        from fractions import Fraction
+
+        for lc_seg, code_len, rate in (
+            (20, 10230, 10.23e6),  # gps_l5, bds_b3i
+            (100, 10230, 10.23e6),  # gal_e5a, gal_e5b, bds_b2a
+            (100, 5115, 5.115e6),  # gal_e6
+            (10, 10230, 10.23e6),  # glo_l3oc
+            (1, 10230, 10.23e6),  # bds_b2b
+            (2, 10230, 10.23e6),  # sbas_l5
+            (1, 10230, 0.5115e6),  # gps_l2c
+        ):
+            want = float(Fraction(self.GPST0) % Fraction(lc_seg * code_len, int(rate)))
+            got = dr.t_mod_code(self.GPST0, lc_seg, code_len, rate)
+            self.assertLess(abs(got - want), 1e-12, (lc_seg, code_len, rate))
+        # The defect, pinned so the double reduction cannot come back: 0.1 as a double.
+        naive = self.GPST0 % ((100 * 10230) / 10.23e6)
+        exact = dr.t_mod_code(self.GPST0, 100, 10230, 10.23e6)
+        self.assertGreater(abs(naive - exact), 50e-9)
+
+    def test_reload_sets_t0m_exactly(self):
+        c = _ctx()
+        c.lc_seg, c.code_len = 100, 10230
+        c.utc0_sample0 = self.GPST0  # _EphMod.gpst_of_utc is the identity
+        dr._dr_apply_reload(
+            c, {"eph": {}, "dcb": None, "has_dcb": False, "error": None, "t0": 0.0}
+        )
+        self.assertLess(
+            abs(c.dr_state["t0m"] - dr.t_mod_code(self.GPST0, 100, 10230, 10.23e6)),
+            1e-12,
+        )
 
 
 if __name__ == "__main__":

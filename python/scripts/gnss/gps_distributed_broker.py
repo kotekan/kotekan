@@ -895,8 +895,10 @@ def main(argv=None, rx=None, publisher=None):
         ~0.2 m/s^2) adds 0.5*a*(t_abs - t_eph_age)^2 of range: at the peak,
         about 1 m for a detection 3 s old and 360 m for one 60 s old. The
         troposphere (--tropo) and ionosphere (--iono) enter as the row's
-        tropo_m / iono_m. All mod arithmetic is on small numbers (t0m is the
-        sample-0 GPST pre-reduced mod _drp.t_code)."""
+        tropo_m / iono_m. All mod arithmetic is on small numbers: t0m is the
+        sample-0 GPST pre-reduced mod the exact code period (deadreckon.t_mod_code),
+        and the `% _drp.t_code` here, with its double period 5.6e-18 s off, errs by
+        t_abs / t_code x 5.6e-18 s: 1.5e-10 s (0.0015 chips) at t_abs = 30 days."""
         # range_m is geometric; the atmosphere rides as separate delays (predict_all's
         # tropo_m / iono_m, 0.0 when off or on the decoded fallback, which has none).
         t_tx = (

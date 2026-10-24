@@ -864,6 +864,34 @@ viewer 200. **GATE (tomorrow):** `scripts/gnss/gnss_resurvey.py --hours 6-13 --k
 ~/.cache/kotekan_gps/iono_corr.json> /home/kvand/gnss/fixtures/obs 20261019 gps_l5 gal_e5a bds_b3i` must read dU, dN
 within +-2 m of 0 (expect dU ~ +1.5 if the residual is real), and `gnss_resid_vs_el.py --atmos both --hours 6-13 ...`
 flat; then 0b closes.
+**10-24 ROOT CAUSE FOUND AND FIXED (offline, F-engine down): a floating-point modulo in the broker's range model.**
+Two things first. (i) The station comparison above was made with opposite signs: `code_resid_m` is tracker minus model
+(a late arrival reads NEGATIVE; the pre-geoid -18 m x sin(el) term of a model 16.5 m too high reads that way), while
+`drao_resid.py` is P minus model (late reads POSITIVE), so the receiver-side excess is `code_resid + r_station`, not
+the difference. With the flip the pattern is not "+9 Galileo, -14 B3I, -8.5 L2C, 0 B2a": it is **the four chains whose
+tracker code has a 100 ms period (E5a-Q, E5b-Q, E6-C, B2a-P) at +12.7 / +10.7 / +13.4 / +13.9 m, and every 20 / 10 / 1
+ms chain (L5-Q, B3I, L3OC, B2b) at 0 +- 2 m** (10-24 02-17Z against the 10-12 station run; two Javad stations, PRDS +1.5
+and SASK +2.1, agree with the six Septentrios on E5a-vs-L5, so the model is clean on 8 receivers). The night series
+(`fixtures/jointstate/isb_series/`, 06-13Z, 09-10..10-24) has the level at +9..+15 m on every night through every
+fleet, model and position change; the "growth 09-25..10-03" was the day window's gps_l5 datum wobble. (ii) The whole
+node side was cleared by an independent ICD-tiled sky through the production bank, the fused despread, the Psi
+synthesis, the 4+4b pack and the record slot (cf05, `/var/tmp/kvand-halfchip/`): all four signals placed alike to
+0.3 ns. **The cause:** `deadreckon._dr_apply_reload` set `t0m = gpst_of_utc(utc0_sample0) % ctx.drp.t_code` with
+`t_code` a double. 0.1 s as a double is 0.1 + 5.6e-18; over the 1.48e10 periods of the 2026-10-23 frame 0 (GPST
+1476826616.000004) the exact remainder of that wrong period is **82 ns short on the 100-ms chains and 31 ns short on
+the 20 / 10 / 2 / 1 ms ones** (0.02, 0.01, 0.002, 0.001 err alike). The common 31 ns lands in the receiver clock; the
+**51 ns difference = +0.524 chip = +15.4 m** is the step, with the right sign (model low, residual positive), the same
+time on E6, static (frame 0 moves by days: < 0.1 ns), seen by the search and the tracker alike (both read
+cp_predicted), invisible to the e2e harness (small epoch) and to the station script (metres, no modulo). **Fix:**
+`deadreckon.t_mod_code` reduces with the exact rational period (Fraction); `cp_predicted`'s own `% t_code` stays on
+small numbers (bound 0.0015 chips at 30 days, documented). `test_dr_reload.TestT0mExact` pins exactness for all seven
+periods and the defect itself (> 50 ns). 124 unit tests + selftest green; replays run clean, the e5a and the jwarm0
+l5_holds digests MOVE by design (every 100-ms seed shifts; the joint clock level shifts 0.31 chip), the plain and
+cprate l5_holds digests are EQUIVALENT (the clock solve absorbs a common model shift exactly). **Expected on sky at the
+next broker restart:** E5a/E5b/E6/B2a standing trims +0.4 -> ~0 chip, `SEARCH-MONITOR gal_e5a` +0.47 -> ~+0.05 chip
+(the station-level +1.7 m), those chains' `code_resid_m` medians down 15.4 m, every other chain unchanged, the joint
+clock +0.31 chip at the bootstrap. Steps 2-4 above are unblocked with no bias state and no constant; the step-1(b)
+split-chain experiment (`fixtures/jointstate/split_draft/`) is not needed.
 
 ### #171 — the ALERT files reach no one (2026-10-09)
 **What [tree]:** `chain_health_cron.sh` (cf06, */15) and `elem_ref_cron.sh` (gnss, */5) write ALERT files that

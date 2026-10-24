@@ -51,6 +51,21 @@ from gnss_broker.sky import nearest_boresight, transit_sky
 from gnss_broker.trkresid import wrap
 
 
+def t_mod_code(t_s, lc_seg, code_len, chip_rate_hz):
+    """t_s reduced modulo the code period lc_seg * code_len / chip_rate_hz, exactly.
+
+    The period is rational, not a double: 0.1 as a double is 0.1 + 5.6e-18, and `t % 0.1` on a
+    GPST of 1.48e9 s returns the exact remainder of that wrong period, 82 ns short, where the
+    20-ms chains' `% 0.02` is 31 ns short. The 51-ns difference put every 100-ms chain (E5a,
+    E5b, E6, B2a) half a 10.23-Mcps chip from the 20-ms ones for six weeks (buglist #191). The
+    chip rates are whole hertz, so the exact period is a Fraction and the remainder of the
+    double t_s is exact; the result's own double rounding is 1e-17 of a period."""
+    from fractions import Fraction
+
+    period = Fraction(int(lc_seg) * int(code_len), int(round(chip_rate_hz)))
+    return float(Fraction(t_s) % period)
+
+
 def _transit_pd(ctx):
     """The geometry-only sky (sky.transit_sky) the transit freeze reads: the last one the
     dead-reckon predict built, else the cycle context's, else the strict sky ctx.drp.pd."""
@@ -1897,7 +1912,14 @@ def _dr_apply_reload(ctx, res):
         return
     ctx.dr_state["eph"] = res["eph"]
     ctx.dr_state["eph_t"] = ctx.drp.now_w
-    ctx.dr_state["t0m"] = ctx.dr_eph_mod.gpst_of_utc(ctx.utc0_sample0) % ctx.drp.t_code
+    # Exact, never `% ctx.drp.t_code`: the double period's error times 1.5e10 periods is tens of
+    # nanoseconds, and differs between code periods (t_mod_code).
+    ctx.dr_state["t0m"] = t_mod_code(
+        ctx.dr_eph_mod.gpst_of_utc(ctx.utc0_sample0),
+        ctx.lc_seg,
+        ctx.code_len,
+        ctx.args.chip_rate_hz,
+    )
     if res["has_dcb"]:
         ctx.dr_state["dcb"] = res["dcb"]
         ctx.dr_state["dcb_t"] = ctx.drp.now_w
