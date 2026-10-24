@@ -678,6 +678,27 @@ REST replies carry `addressable` (GnssGpuRecordAssemble) and `pow_fft_len` (Gnss
 `d505f3943`; (a) waits for that binary too: stop emitting, then drop the reads. Check after each step: `gen_fleet
 --check` and `--check-config` on all nine configs.
 
+### #214 — the N^2 projection measured on 10-24: what the lanes leave, and what they cannot reach (2026-10-24, KV: "roll it out, get the E6 PRS lobe, note the 1202 emitter")
+**Measured (scratch proj1024/: gauges polled 40x on cx27/43/44/51 ~14:58Z, gains divided out per input, continuum
+from recv1's subset archive off-lobe 1100-1160 + 1300-1400 MHz, figure n2proj_1024.png):** cx51's lanes (95 stations)
+take the 1176 lobe from +4.0 dB over the continuum to -0.7 dB, 1.1 dB above the pure mode-loss line
+continuum x (1 - k/n) (33 lanes): ~13% of the satellite power left, code-shaped. E6-B/C sits at or below the line,
+L2OC +0.1, E5b/B2b +0.5..+1.1. The eigen-path nodes (cx27/43/44) remove <= 0.6 dB in the lobes (k = 0 at 1176).
+**Excess the lanes cannot reach:**
+- 1263-1273 MHz, +1.1..+3.1 dB centred on 1268.5: the Galileo E6 PRS lower lobe (laned only on 1274-1284) under
+  an intermittent rank-1 emitter (subset archive: top eigenvalue 8-25x the bulk most hours, 40-200x in episodes,
+  10-23 03-05Z and 10-24 12:09Z, then on the C-F X feeds). Lever: lane transfer (tier 1.5), kv/proj-rollout.
+- 1202.0 MHz: a ~2 MHz wide bump, +2..+6 dB over the E5b/B2b sides in every archive file 10-22 23Z..10-24 12Z,
+  rising each UTC morning; the L3OC lanes on its channels do not touch it, and an L3OC satellite is a 20 MHz sinc^2,
+  so it is NOT the L3OC carrier (the 10-20 reading). An untracked narrow emitter (1202 MHz is a DME reply channel);
+  the F-engine gains are cut ~3.5 dB on exactly those channels. Noted, not pursued (KV).
+- 1291-1295 MHz: an intermittent single emitter (30-36x the bulk at 10-24 12:09Z), outside the live channels.
+- 1217-1238 MHz: a GPS P(Y)/M-shaped pedestal (+0.8..+1.3 dB); the 10 L2C lanes on 1227.5 remove ~1/4 of it there.
+**Fixed on kv/proj-rollout:** the stage wrote back only the station block, so the products between the stations
+and the other inputs kept the satellites (on cx51, rows G/H: the archived frame was not a covariance, 200-340x
+components over 127 inputs). Also: cx42 runs a stock kotekan (no gnss metrics) on 10-24; recv1's subset archive
+stopped at 12:19Z 10-24.
+
 ### #190 — project ALL KNOWN satellites out of the science N^2 from the lane directions, not the N^2's own eigenvectors (2026-10-13, KV: "swap over once we get back on sky")
 **What [tree]:** GnssN2Project takes its subspace from the science N^2 block's own top-k eigenvectors, gated at
 lambda0 >= 3x mean auto (per-element INR ~ -12 dB over 48 live elements), frac0 >= 0.4, PR >= 6, k <= 3, EMA 0.5 s.
