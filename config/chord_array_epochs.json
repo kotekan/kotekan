@@ -52,6 +52,26 @@
    "bore_az_deg": null,
    "bore_el_deg": null,
    "source": "KV 2026-10-23: the whole array (rows A-H) is being repointed to Tau A (dec +22.0, meridian transit, el ~62.7 S), starting during the F-engine outage of 15:43Z, and dishes keep moving while data are taken (a jumbled array, likely over the weekend); no common boresight, so no beam map may be built on this pointing; ends when KV confirms the move complete"
+  },
+  "p5_taua_20261024": {
+   "dec_deg": null,
+   "bore_az_deg": null,
+   "bore_el_deg": null,
+   "_main_group": {
+    "dec_deg": 22.02,
+    "bore_az_deg": 180.0,
+    "bore_el_deg": 62.7,
+    "za_deg_s": 27.3
+   },
+   "_off_main_za_deg_s": {
+    "E01": 0.0,
+    "F01": 30.0,
+    "F02": 30.0,
+    "F03": 30.0,
+    "G01": 30.0,
+    "H01": 30.0
+   },
+   "source": "KV 2026-10-24, site dish maps (rows A-H): the Tau A repoint is complete except the western edge of rows E-H, skipped (likely wind): 122 dishes at 27.300 deg S of zenith (meridian, el 62.7, Tau A dec +22.0), E1 at 0.000 (zenith), F1/F2/F3/G1/H1 at 30.000 S. To stay until spring (>= 4 months). No common boresight while the west edge is off, so no beam map may be built on this pointing."
   }
  },
  "epochs": [
@@ -4193,7 +4213,7 @@
   {
    "name": "2026-10-23-rows-ah128-repoint",
    "valid_from": "2026-10-23T15:43:00Z",
-   "valid_to": null,
+   "valid_to": "2026-10-24T00:00:00Z",
    "pointing": "p4_repoint_taua_20261023",
    "cube_order": [
     0,
@@ -4333,6 +4353,1816 @@
     "Positions: 2026-10-23-rows-ah128's, with the G3 dishes (G03-G07, H01-H08) moved to their horizontal positions from the 2026-10-23 preliminary G/H solve (config/elem_positions_ah128_gh_20261023.json). They are positions for the p3 aim; the phase centres move with the tip (~2 cm N per degree), and the A/B to C-H group offset T should vanish once every dish shares one aim.",
     "Re-solve on data taken after the move is complete, as a new epoch.",
     "Built by fixtures/elemsteer/epoch_repoint_20261023.py."
+   ],
+   "elements": {
+    "0": {
+     "dish": 0,
+     "dish_name": "A01",
+     "slot": 0,
+     "plane": "A",
+     "plane_confidence": "measured",
+     "enu_m": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "position_confidence": "refined"
+    },
+    "1": {
+     "dish": 1,
+     "dish_name": "A02",
+     "slot": 0,
+     "plane": "A",
+     "plane_confidence": "measured",
+     "enu_m": [
+      6.287,
+      -0.005,
+      -0.027
+     ],
+     "position_confidence": "refined"
+    },
+    "2": {
+     "dish": 2,
+     "dish_name": "A03",
+     "slot": 0,
+     "plane": "A",
+     "plane_confidence": "measured",
+     "enu_m": [
+      12.58,
+      0.005,
+      -0.073
+     ],
+     "position_confidence": "refined"
+    },
+    "3": {
+     "dish": 3,
+     "dish_name": "A04",
+     "slot": 0,
+     "plane": "A",
+     "plane_confidence": "measured",
+     "enu_m": [
+      18.894,
+      -0.003,
+      -0.139
+     ],
+     "position_confidence": "refined"
+    },
+    "4": {
+     "dish": 4,
+     "dish_name": "B01",
+     "slot": 0,
+     "plane": null,
+     "plane_confidence": "unknown",
+     "enu_m": [
+      0.0,
+      8.5,
+      0.041
+     ],
+     "position_confidence": "nominal"
+    },
+    "5": {
+     "dish": 5,
+     "dish_name": "B02",
+     "slot": 0,
+     "plane": null,
+     "plane_confidence": "unknown",
+     "enu_m": [
+      6.3,
+      8.5,
+      -0.007
+     ],
+     "position_confidence": "nominal"
+    },
+    "6": {
+     "dish": 6,
+     "dish_name": "B03",
+     "slot": 0,
+     "plane": "A",
+     "plane_confidence": "measured",
+     "enu_m": [
+      12.607,
+      8.518,
+      -0.063
+     ],
+     "position_confidence": "refined"
+    },
+    "7": {
+     "dish": 7,
+     "dish_name": "B04",
+     "slot": 0,
+     "plane": null,
+     "plane_confidence": "unknown",
+     "enu_m": [
+      18.912,
+      7.964,
+      -0.261
+     ],
+     "position_confidence": "nominal+tie"
+    },
+    "8": {
+     "dish": 8,
+     "dish_name": "A05",
+     "slot": 0,
+     "plane": null,
+     "plane_confidence": "unknown",
+     "enu_m": [
+      25.188,
+      0.0,
+      -0.176
+     ],
+     "position_confidence": "refined"
+    },
+    "9": {
+     "dish": 9,
+     "dish_name": "A06",
+     "slot": 0,
+     "plane": "A",
+     "plane_confidence": "measured",
+     "enu_m": [
+      31.49,
+      0.007,
+      -0.212
+     ],
+     "position_confidence": "refined"
+    },
+    "10": {
+     "dish": 10,
+     "dish_name": "A07",
+     "slot": 0,
+     "plane": "A",
+     "plane_confidence": "measured",
+     "enu_m": [
+      37.784,
+      0.012,
+      -0.269
+     ],
+     "position_confidence": "refined"
+    },
+    "11": {
+     "dish": 11,
+     "dish_name": "A08",
+     "slot": 0,
+     "plane": "A",
+     "plane_confidence": "measured",
+     "enu_m": [
+      44.104,
+      -0.016,
+      -0.325
+     ],
+     "position_confidence": "refined"
+    },
+    "12": {
+     "dish": 12,
+     "dish_name": "B05",
+     "slot": 0,
+     "plane": null,
+     "plane_confidence": "unknown",
+     "enu_m": [
+      25.2,
+      8.488,
+      -0.146
+     ],
+     "position_confidence": "refined"
+    },
+    "13": {
+     "dish": 13,
+     "dish_name": "B06",
+     "slot": 0,
+     "plane": "A",
+     "plane_confidence": "ambiguous",
+     "enu_m": [
+      31.511,
+      8.482,
+      -0.203
+     ],
+     "position_confidence": "refined"
+    },
+    "14": {
+     "dish": 14,
+     "dish_name": "B07",
+     "slot": 0,
+     "plane": "A",
+     "plane_confidence": "measured",
+     "enu_m": [
+      37.776,
+      8.516,
+      -0.229
+     ],
+     "position_confidence": "refined"
+    },
+    "15": {
+     "dish": 15,
+     "dish_name": "B08",
+     "slot": 0,
+     "plane": null,
+     "plane_confidence": "unknown",
+     "enu_m": [
+      44.099,
+      8.475,
+      -0.285
+     ],
+     "position_confidence": "refined"
+    },
+    "16": {
+     "dish": 16,
+     "dish_name": "C01",
+     "slot": 0,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      0.012,
+      16.456,
+      -0.097
+     ],
+     "position_confidence": "nominal+tie"
+    },
+    "17": {
+     "dish": 17,
+     "dish_name": "C02",
+     "slot": 0,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      6.313,
+      16.436,
+      -0.143
+     ],
+     "position_confidence": "nominal+tie"
+    },
+    "18": {
+     "dish": 18,
+     "dish_name": "C03",
+     "slot": 0,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      12.613,
+      16.45,
+      -0.189
+     ],
+     "position_confidence": "nominal+tie"
+    },
+    "19": {
+     "dish": 19,
+     "dish_name": "C04",
+     "slot": 0,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      18.913,
+      16.438,
+      -0.235
+     ],
+     "position_confidence": "nominal+tie"
+    },
+    "20": {
+     "dish": 20,
+     "dish_name": "D01",
+     "slot": 0,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      0.017,
+      24.974,
+      -0.069
+     ],
+     "position_confidence": "nominal+tie"
+    },
+    "21": {
+     "dish": 21,
+     "dish_name": "D02",
+     "slot": 0,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      6.31,
+      24.952,
+      -0.115
+     ],
+     "position_confidence": "nominal+tie"
+    },
+    "22": {
+     "dish": 22,
+     "dish_name": "D03",
+     "slot": 0,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      12.612,
+      24.946,
+      -0.161
+     ],
+     "position_confidence": "nominal+tie"
+    },
+    "23": {
+     "dish": 23,
+     "dish_name": "D04",
+     "slot": 0,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      18.914,
+      24.94,
+      -0.207
+     ],
+     "position_confidence": "nominal+tie"
+    },
+    "24": {
+     "dish": 24,
+     "dish_name": "C05",
+     "slot": 0,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      25.2128,
+      16.4163,
+      -0.281
+     ],
+     "position_confidence": "solved_20261023+tie"
+    },
+    "25": {
+     "dish": 25,
+     "dish_name": "C06",
+     "slot": 0,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      31.516,
+      16.43,
+      -0.327
+     ],
+     "position_confidence": "solved_20261023+tie"
+    },
+    "26": {
+     "dish": 26,
+     "dish_name": "C07",
+     "slot": 0,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      37.814,
+      16.46,
+      -0.373
+     ],
+     "position_confidence": "nominal+tie"
+    },
+    "27": {
+     "dish": 27,
+     "dish_name": "C08",
+     "slot": 0,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      44.11,
+      16.432,
+      -0.419
+     ],
+     "position_confidence": "nominal+tie"
+    },
+    "28": {
+     "dish": 28,
+     "dish_name": "D05",
+     "slot": 0,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      25.214,
+      24.931,
+      -0.254
+     ],
+     "position_confidence": "nominal+tie"
+    },
+    "29": {
+     "dish": 29,
+     "dish_name": "D06",
+     "slot": 0,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      31.515,
+      24.951,
+      -0.3
+     ],
+     "position_confidence": "nominal+tie"
+    },
+    "30": {
+     "dish": 30,
+     "dish_name": "D07",
+     "slot": 0,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      37.8122,
+      24.9477,
+      -0.346
+     ],
+     "position_confidence": "solved_20261023+tie"
+    },
+    "31": {
+     "dish": 31,
+     "dish_name": "D08",
+     "slot": 0,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      44.117,
+      24.921,
+      -0.392
+     ],
+     "position_confidence": "nominal+tie"
+    },
+    "32": {
+     "dish": 32,
+     "dish_name": "E01",
+     "slot": 0,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      0.0158,
+      33.4558,
+      -0.042
+     ],
+     "position_confidence": "solved_20261023+tie"
+    },
+    "33": {
+     "dish": 33,
+     "dish_name": "E02",
+     "slot": 0,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      6.317,
+      33.437,
+      -0.088
+     ],
+     "position_confidence": "nominal+tie"
+    },
+    "34": {
+     "dish": 34,
+     "dish_name": "E03",
+     "slot": 0,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      12.615,
+      33.441,
+      -0.134
+     ],
+     "position_confidence": "nominal+tie"
+    },
+    "35": {
+     "dish": 35,
+     "dish_name": "E04",
+     "slot": 0,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      18.915,
+      33.433,
+      -0.18
+     ],
+     "position_confidence": "nominal+tie"
+    },
+    "36": {
+     "dish": 36,
+     "dish_name": "F01",
+     "slot": 0,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      0.021,
+      41.945,
+      -0.014
+     ],
+     "position_confidence": "nominal+tie"
+    },
+    "37": {
+     "dish": 37,
+     "dish_name": "F02",
+     "slot": 0,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      6.318,
+      41.941,
+      -0.061
+     ],
+     "position_confidence": "nominal+tie"
+    },
+    "38": {
+     "dish": 38,
+     "dish_name": "F03",
+     "slot": 0,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      12.614,
+      41.927,
+      -0.107
+     ],
+     "position_confidence": "nominal+tie"
+    },
+    "39": {
+     "dish": 39,
+     "dish_name": "F04",
+     "slot": 0,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      18.908,
+      41.939,
+      -0.153
+     ],
+     "position_confidence": "nominal+tie"
+    },
+    "40": {
+     "dish": 40,
+     "dish_name": "E05",
+     "slot": 0,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      25.2177,
+      33.4263,
+      -0.226
+     ],
+     "position_confidence": "solved_20261023+tie"
+    },
+    "41": {
+     "dish": 41,
+     "dish_name": "E06",
+     "slot": 0,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      31.516,
+      33.443,
+      -0.272
+     ],
+     "position_confidence": "nominal+tie"
+    },
+    "42": {
+     "dish": 42,
+     "dish_name": "E07",
+     "slot": 0,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      37.816,
+      33.433,
+      -0.318
+     ],
+     "position_confidence": "nominal+tie"
+    },
+    "43": {
+     "dish": 43,
+     "dish_name": "E08",
+     "slot": 0,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      44.114,
+      33.437,
+      -0.365
+     ],
+     "position_confidence": "nominal+tie"
+    },
+    "44": {
+     "dish": 44,
+     "dish_name": "F05",
+     "slot": 0,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      25.212,
+      41.933,
+      -0.199
+     ],
+     "position_confidence": "nominal+tie"
+    },
+    "45": {
+     "dish": 45,
+     "dish_name": "F06",
+     "slot": 0,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      31.511,
+      41.925,
+      -0.245
+     ],
+     "position_confidence": "nominal+tie"
+    },
+    "46": {
+     "dish": 46,
+     "dish_name": "F07",
+     "slot": 0,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      37.815,
+      41.961,
+      -0.291
+     ],
+     "position_confidence": "nominal+tie"
+    },
+    "47": {
+     "dish": 47,
+     "dish_name": "F08",
+     "slot": 0,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      44.113,
+      41.931,
+      -0.337
+     ],
+     "position_confidence": "nominal+tie"
+    },
+    "48": {
+     "dish": 48,
+     "dish_name": "G01",
+     "slot": 0,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      0.0222,
+      50.4439,
+      0.0133
+     ],
+     "position_confidence": "nominal+tie"
+    },
+    "49": {
+     "dish": 49,
+     "dish_name": "G02",
+     "slot": 0,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      6.322,
+      50.4419,
+      -0.0328
+     ],
+     "position_confidence": "nominal+tie"
+    },
+    "50": {
+     "dish": 50,
+     "dish_name": "G03",
+     "slot": 0,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      12.6357,
+      50.4438,
+      -0.0789
+     ],
+     "position_confidence": "solved_20261023_gh_prelim+tie"
+    },
+    "51": {
+     "dish": 51,
+     "dish_name": "G04",
+     "slot": 0,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      18.9395,
+      50.4878,
+      -0.125
+     ],
+     "position_confidence": "solved_20261023_gh_prelim+tie"
+    },
+    "52": {
+     "dish": 52,
+     "dish_name": "G05",
+     "slot": 0,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      25.2393,
+      50.4478,
+      -0.1711
+     ],
+     "position_confidence": "solved_20261023_gh_prelim+tie"
+    },
+    "53": {
+     "dish": 53,
+     "dish_name": "G06",
+     "slot": 0,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      31.539,
+      50.4317,
+      -0.2173
+     ],
+     "position_confidence": "solved_20261023_gh_prelim+tie"
+    },
+    "54": {
+     "dish": 54,
+     "dish_name": "G07",
+     "slot": 0,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      37.8408,
+      50.4517,
+      -0.2634
+     ],
+     "position_confidence": "solved_20261023_gh_prelim+tie"
+    },
+    "55": {
+     "dish": 55,
+     "dish_name": "G08",
+     "slot": 0,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      44.1205,
+      50.4297,
+      -0.3095
+     ],
+     "position_confidence": "nominal+tie"
+    },
+    "56": {
+     "dish": 56,
+     "dish_name": "H01",
+     "slot": 0,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      0.0429,
+      58.9794,
+      0.0407
+     ],
+     "position_confidence": "solved_20261023_gh_prelim+tie"
+    },
+    "57": {
+     "dish": 57,
+     "dish_name": "H02",
+     "slot": 0,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      6.3387,
+      58.9294,
+      -0.0054
+     ],
+     "position_confidence": "solved_20261023_gh_prelim+tie"
+    },
+    "58": {
+     "dish": 58,
+     "dish_name": "H03",
+     "slot": 0,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      12.6405,
+      58.9453,
+      -0.0515
+     ],
+     "position_confidence": "solved_20261023_gh_prelim+tie"
+    },
+    "59": {
+     "dish": 59,
+     "dish_name": "H04",
+     "slot": 0,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      18.9402,
+      58.9433,
+      -0.0976
+     ],
+     "position_confidence": "solved_20261023_gh_prelim+tie"
+    },
+    "60": {
+     "dish": 60,
+     "dish_name": "H05",
+     "slot": 0,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      25.242,
+      58.9533,
+      -0.1437
+     ],
+     "position_confidence": "solved_20261023_gh_prelim+tie"
+    },
+    "61": {
+     "dish": 61,
+     "dish_name": "H06",
+     "slot": 0,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      31.5378,
+      58.9432,
+      -0.1898
+     ],
+     "position_confidence": "solved_20261023_gh_prelim+tie"
+    },
+    "62": {
+     "dish": 62,
+     "dish_name": "H07",
+     "slot": 0,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      37.8455,
+      58.9872,
+      -0.2359
+     ],
+     "position_confidence": "solved_20261023_gh_prelim+tie"
+    },
+    "63": {
+     "dish": 63,
+     "dish_name": "H08",
+     "slot": 0,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      44.1413,
+      58.9312,
+      -0.2821
+     ],
+     "position_confidence": "solved_20261023_gh_prelim+tie"
+    },
+    "64": {
+     "dish": 0,
+     "dish_name": "A01",
+     "slot": 1,
+     "plane": "B",
+     "plane_confidence": "measured",
+     "enu_m": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "position_confidence": "refined"
+    },
+    "65": {
+     "dish": 1,
+     "dish_name": "A02",
+     "slot": 1,
+     "plane": "B",
+     "plane_confidence": "measured",
+     "enu_m": [
+      6.287,
+      -0.005,
+      -0.027
+     ],
+     "position_confidence": "refined"
+    },
+    "66": {
+     "dish": 2,
+     "dish_name": "A03",
+     "slot": 1,
+     "plane": "B",
+     "plane_confidence": "measured",
+     "enu_m": [
+      12.58,
+      0.005,
+      -0.073
+     ],
+     "position_confidence": "refined"
+    },
+    "67": {
+     "dish": 3,
+     "dish_name": "A04",
+     "slot": 1,
+     "plane": "B",
+     "plane_confidence": "measured",
+     "enu_m": [
+      18.894,
+      -0.003,
+      -0.139
+     ],
+     "position_confidence": "refined"
+    },
+    "68": {
+     "dish": 4,
+     "dish_name": "B01",
+     "slot": 1,
+     "plane": null,
+     "plane_confidence": "unknown",
+     "enu_m": [
+      0.0,
+      8.5,
+      0.041
+     ],
+     "position_confidence": "nominal"
+    },
+    "69": {
+     "dish": 5,
+     "dish_name": "B02",
+     "slot": 1,
+     "plane": null,
+     "plane_confidence": "unknown",
+     "enu_m": [
+      6.3,
+      8.5,
+      -0.007
+     ],
+     "position_confidence": "nominal"
+    },
+    "70": {
+     "dish": 6,
+     "dish_name": "B03",
+     "slot": 1,
+     "plane": "B",
+     "plane_confidence": "measured",
+     "enu_m": [
+      12.607,
+      8.518,
+      -0.063
+     ],
+     "position_confidence": "refined"
+    },
+    "71": {
+     "dish": 7,
+     "dish_name": "B04",
+     "slot": 1,
+     "plane": null,
+     "plane_confidence": "unknown",
+     "enu_m": [
+      18.912,
+      7.964,
+      -0.261
+     ],
+     "position_confidence": "nominal+tie"
+    },
+    "72": {
+     "dish": 8,
+     "dish_name": "A05",
+     "slot": 1,
+     "plane": null,
+     "plane_confidence": "unknown",
+     "enu_m": [
+      25.188,
+      0.0,
+      -0.176
+     ],
+     "position_confidence": "refined"
+    },
+    "73": {
+     "dish": 9,
+     "dish_name": "A06",
+     "slot": 1,
+     "plane": "B",
+     "plane_confidence": "measured",
+     "enu_m": [
+      31.49,
+      0.007,
+      -0.212
+     ],
+     "position_confidence": "refined"
+    },
+    "74": {
+     "dish": 10,
+     "dish_name": "A07",
+     "slot": 1,
+     "plane": "B",
+     "plane_confidence": "measured",
+     "enu_m": [
+      37.784,
+      0.012,
+      -0.269
+     ],
+     "position_confidence": "refined"
+    },
+    "75": {
+     "dish": 11,
+     "dish_name": "A08",
+     "slot": 1,
+     "plane": "B",
+     "plane_confidence": "measured",
+     "enu_m": [
+      44.104,
+      -0.016,
+      -0.325
+     ],
+     "position_confidence": "refined"
+    },
+    "76": {
+     "dish": 12,
+     "dish_name": "B05",
+     "slot": 1,
+     "plane": null,
+     "plane_confidence": "unknown",
+     "enu_m": [
+      25.2,
+      8.488,
+      -0.146
+     ],
+     "position_confidence": "refined"
+    },
+    "77": {
+     "dish": 13,
+     "dish_name": "B06",
+     "slot": 1,
+     "plane": "B",
+     "plane_confidence": "ambiguous",
+     "enu_m": [
+      31.511,
+      8.482,
+      -0.203
+     ],
+     "position_confidence": "refined"
+    },
+    "78": {
+     "dish": 14,
+     "dish_name": "B07",
+     "slot": 1,
+     "plane": "B",
+     "plane_confidence": "measured",
+     "enu_m": [
+      37.776,
+      8.516,
+      -0.229
+     ],
+     "position_confidence": "refined"
+    },
+    "79": {
+     "dish": 15,
+     "dish_name": "B08",
+     "slot": 1,
+     "plane": null,
+     "plane_confidence": "unknown",
+     "enu_m": [
+      44.099,
+      8.475,
+      -0.285
+     ],
+     "position_confidence": "refined"
+    },
+    "80": {
+     "dish": 16,
+     "dish_name": "C01",
+     "slot": 1,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      0.012,
+      16.456,
+      -0.097
+     ],
+     "position_confidence": "nominal+tie"
+    },
+    "81": {
+     "dish": 17,
+     "dish_name": "C02",
+     "slot": 1,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      6.313,
+      16.436,
+      -0.143
+     ],
+     "position_confidence": "nominal+tie"
+    },
+    "82": {
+     "dish": 18,
+     "dish_name": "C03",
+     "slot": 1,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      12.613,
+      16.45,
+      -0.189
+     ],
+     "position_confidence": "nominal+tie"
+    },
+    "83": {
+     "dish": 19,
+     "dish_name": "C04",
+     "slot": 1,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      18.913,
+      16.438,
+      -0.235
+     ],
+     "position_confidence": "nominal+tie"
+    },
+    "84": {
+     "dish": 20,
+     "dish_name": "D01",
+     "slot": 1,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      0.017,
+      24.974,
+      -0.069
+     ],
+     "position_confidence": "nominal+tie"
+    },
+    "85": {
+     "dish": 21,
+     "dish_name": "D02",
+     "slot": 1,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      6.31,
+      24.952,
+      -0.115
+     ],
+     "position_confidence": "nominal+tie"
+    },
+    "86": {
+     "dish": 22,
+     "dish_name": "D03",
+     "slot": 1,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      12.612,
+      24.946,
+      -0.161
+     ],
+     "position_confidence": "nominal+tie"
+    },
+    "87": {
+     "dish": 23,
+     "dish_name": "D04",
+     "slot": 1,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      18.914,
+      24.94,
+      -0.207
+     ],
+     "position_confidence": "nominal+tie"
+    },
+    "88": {
+     "dish": 24,
+     "dish_name": "C05",
+     "slot": 1,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      25.2128,
+      16.4163,
+      -0.281
+     ],
+     "position_confidence": "solved_20261023+tie"
+    },
+    "89": {
+     "dish": 25,
+     "dish_name": "C06",
+     "slot": 1,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      31.516,
+      16.43,
+      -0.327
+     ],
+     "position_confidence": "solved_20261023+tie"
+    },
+    "90": {
+     "dish": 26,
+     "dish_name": "C07",
+     "slot": 1,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      37.814,
+      16.46,
+      -0.373
+     ],
+     "position_confidence": "nominal+tie"
+    },
+    "91": {
+     "dish": 27,
+     "dish_name": "C08",
+     "slot": 1,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      44.11,
+      16.432,
+      -0.419
+     ],
+     "position_confidence": "nominal+tie"
+    },
+    "92": {
+     "dish": 28,
+     "dish_name": "D05",
+     "slot": 1,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      25.214,
+      24.931,
+      -0.254
+     ],
+     "position_confidence": "nominal+tie"
+    },
+    "93": {
+     "dish": 29,
+     "dish_name": "D06",
+     "slot": 1,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      31.515,
+      24.951,
+      -0.3
+     ],
+     "position_confidence": "nominal+tie"
+    },
+    "94": {
+     "dish": 30,
+     "dish_name": "D07",
+     "slot": 1,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      37.8122,
+      24.9477,
+      -0.346
+     ],
+     "position_confidence": "solved_20261023+tie"
+    },
+    "95": {
+     "dish": 31,
+     "dish_name": "D08",
+     "slot": 1,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      44.117,
+      24.921,
+      -0.392
+     ],
+     "position_confidence": "nominal+tie"
+    },
+    "96": {
+     "dish": 32,
+     "dish_name": "E01",
+     "slot": 1,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      0.0158,
+      33.4558,
+      -0.042
+     ],
+     "position_confidence": "solved_20261023+tie"
+    },
+    "97": {
+     "dish": 33,
+     "dish_name": "E02",
+     "slot": 1,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      6.317,
+      33.437,
+      -0.088
+     ],
+     "position_confidence": "nominal+tie"
+    },
+    "98": {
+     "dish": 34,
+     "dish_name": "E03",
+     "slot": 1,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      12.615,
+      33.441,
+      -0.134
+     ],
+     "position_confidence": "nominal+tie"
+    },
+    "99": {
+     "dish": 35,
+     "dish_name": "E04",
+     "slot": 1,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      18.915,
+      33.433,
+      -0.18
+     ],
+     "position_confidence": "nominal+tie"
+    },
+    "100": {
+     "dish": 36,
+     "dish_name": "F01",
+     "slot": 1,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      0.021,
+      41.945,
+      -0.014
+     ],
+     "position_confidence": "nominal+tie"
+    },
+    "101": {
+     "dish": 37,
+     "dish_name": "F02",
+     "slot": 1,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      6.318,
+      41.941,
+      -0.061
+     ],
+     "position_confidence": "nominal+tie"
+    },
+    "102": {
+     "dish": 38,
+     "dish_name": "F03",
+     "slot": 1,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      12.614,
+      41.927,
+      -0.107
+     ],
+     "position_confidence": "nominal+tie"
+    },
+    "103": {
+     "dish": 39,
+     "dish_name": "F04",
+     "slot": 1,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      18.908,
+      41.939,
+      -0.153
+     ],
+     "position_confidence": "nominal+tie"
+    },
+    "104": {
+     "dish": 40,
+     "dish_name": "E05",
+     "slot": 1,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      25.2177,
+      33.4263,
+      -0.226
+     ],
+     "position_confidence": "solved_20261023+tie"
+    },
+    "105": {
+     "dish": 41,
+     "dish_name": "E06",
+     "slot": 1,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      31.516,
+      33.443,
+      -0.272
+     ],
+     "position_confidence": "nominal+tie"
+    },
+    "106": {
+     "dish": 42,
+     "dish_name": "E07",
+     "slot": 1,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      37.816,
+      33.433,
+      -0.318
+     ],
+     "position_confidence": "nominal+tie"
+    },
+    "107": {
+     "dish": 43,
+     "dish_name": "E08",
+     "slot": 1,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      44.114,
+      33.437,
+      -0.365
+     ],
+     "position_confidence": "nominal+tie"
+    },
+    "108": {
+     "dish": 44,
+     "dish_name": "F05",
+     "slot": 1,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      25.212,
+      41.933,
+      -0.199
+     ],
+     "position_confidence": "nominal+tie"
+    },
+    "109": {
+     "dish": 45,
+     "dish_name": "F06",
+     "slot": 1,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      31.511,
+      41.925,
+      -0.245
+     ],
+     "position_confidence": "nominal+tie"
+    },
+    "110": {
+     "dish": 46,
+     "dish_name": "F07",
+     "slot": 1,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      37.815,
+      41.961,
+      -0.291
+     ],
+     "position_confidence": "nominal+tie"
+    },
+    "111": {
+     "dish": 47,
+     "dish_name": "F08",
+     "slot": 1,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      44.113,
+      41.931,
+      -0.337
+     ],
+     "position_confidence": "nominal+tie"
+    },
+    "112": {
+     "dish": 48,
+     "dish_name": "G01",
+     "slot": 1,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      0.0222,
+      50.4439,
+      0.0133
+     ],
+     "position_confidence": "nominal+tie"
+    },
+    "113": {
+     "dish": 49,
+     "dish_name": "G02",
+     "slot": 1,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      6.322,
+      50.4419,
+      -0.0328
+     ],
+     "position_confidence": "nominal+tie"
+    },
+    "114": {
+     "dish": 50,
+     "dish_name": "G03",
+     "slot": 1,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      12.6357,
+      50.4438,
+      -0.0789
+     ],
+     "position_confidence": "solved_20261023_gh_prelim+tie"
+    },
+    "115": {
+     "dish": 51,
+     "dish_name": "G04",
+     "slot": 1,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      18.9395,
+      50.4878,
+      -0.125
+     ],
+     "position_confidence": "solved_20261023_gh_prelim+tie"
+    },
+    "116": {
+     "dish": 52,
+     "dish_name": "G05",
+     "slot": 1,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      25.2393,
+      50.4478,
+      -0.1711
+     ],
+     "position_confidence": "solved_20261023_gh_prelim+tie"
+    },
+    "117": {
+     "dish": 53,
+     "dish_name": "G06",
+     "slot": 1,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      31.539,
+      50.4317,
+      -0.2173
+     ],
+     "position_confidence": "solved_20261023_gh_prelim+tie"
+    },
+    "118": {
+     "dish": 54,
+     "dish_name": "G07",
+     "slot": 1,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      37.8408,
+      50.4517,
+      -0.2634
+     ],
+     "position_confidence": "solved_20261023_gh_prelim+tie"
+    },
+    "119": {
+     "dish": 55,
+     "dish_name": "G08",
+     "slot": 1,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      44.1205,
+      50.4297,
+      -0.3095
+     ],
+     "position_confidence": "nominal+tie"
+    },
+    "120": {
+     "dish": 56,
+     "dish_name": "H01",
+     "slot": 1,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      0.0429,
+      58.9794,
+      0.0407
+     ],
+     "position_confidence": "solved_20261023_gh_prelim+tie"
+    },
+    "121": {
+     "dish": 57,
+     "dish_name": "H02",
+     "slot": 1,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      6.3387,
+      58.9294,
+      -0.0054
+     ],
+     "position_confidence": "solved_20261023_gh_prelim+tie"
+    },
+    "122": {
+     "dish": 58,
+     "dish_name": "H03",
+     "slot": 1,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      12.6405,
+      58.9453,
+      -0.0515
+     ],
+     "position_confidence": "solved_20261023_gh_prelim+tie"
+    },
+    "123": {
+     "dish": 59,
+     "dish_name": "H04",
+     "slot": 1,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      18.9402,
+      58.9433,
+      -0.0976
+     ],
+     "position_confidence": "solved_20261023_gh_prelim+tie"
+    },
+    "124": {
+     "dish": 60,
+     "dish_name": "H05",
+     "slot": 1,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      25.242,
+      58.9533,
+      -0.1437
+     ],
+     "position_confidence": "solved_20261023_gh_prelim+tie"
+    },
+    "125": {
+     "dish": 61,
+     "dish_name": "H06",
+     "slot": 1,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      31.5378,
+      58.9432,
+      -0.1898
+     ],
+     "position_confidence": "solved_20261023_gh_prelim+tie"
+    },
+    "126": {
+     "dish": 62,
+     "dish_name": "H07",
+     "slot": 1,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      37.8455,
+      58.9872,
+      -0.2359
+     ],
+     "position_confidence": "solved_20261023_gh_prelim+tie"
+    },
+    "127": {
+     "dish": 63,
+     "dish_name": "H08",
+     "slot": 1,
+     "plane": null,
+     "plane_confidence": null,
+     "enu_m": [
+      44.1413,
+      58.9312,
+      -0.2821
+     ],
+     "position_confidence": "solved_20261023_gh_prelim+tie"
+    }
+   }
+  },
+  {
+   "name": "2026-10-24-rows-ah128-taua",
+   "valid_from": "2026-10-24T00:00:00Z",
+   "valid_to": null,
+   "pointing": "p5_taua_20261024",
+   "cube_order": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22,
+    23,
+    24,
+    25,
+    26,
+    27,
+    28,
+    29,
+    30,
+    31,
+    32,
+    33,
+    34,
+    35,
+    36,
+    37,
+    38,
+    39,
+    40,
+    41,
+    42,
+    43,
+    44,
+    45,
+    46,
+    47,
+    48,
+    49,
+    50,
+    51,
+    52,
+    53,
+    54,
+    55,
+    56,
+    57,
+    58,
+    59,
+    60,
+    61,
+    62,
+    63,
+    64,
+    65,
+    66,
+    67,
+    68,
+    69,
+    70,
+    71,
+    72,
+    73,
+    74,
+    75,
+    76,
+    77,
+    78,
+    79,
+    80,
+    81,
+    82,
+    83,
+    84,
+    85,
+    86,
+    87,
+    88,
+    89,
+    90,
+    91,
+    92,
+    93,
+    94,
+    95,
+    96,
+    97,
+    98,
+    99,
+    100,
+    101,
+    102,
+    103,
+    104,
+    105,
+    106,
+    107,
+    108,
+    109,
+    110,
+    111,
+    112,
+    113,
+    114,
+    115,
+    116,
+    117,
+    118,
+    119,
+    120,
+    121,
+    122,
+    123,
+    124,
+    125,
+    126,
+    127
+   ],
+   "verified": false,
+   "provenance": "live_element_ranges [[0,63],[64,127]] as 2026-10-23-rows-ah128-repoint; opened when the Tau A repoint was confirmed complete apart from the west edge of rows E-H",
+   "notes": [
+    "Rows A-H, both pols, the same elements, cube order and positions as 2026-10-23-rows-ah128-repoint.",
+    "Aim: 122 dishes at 27.300 deg S of zenith (Tau A meridian); E01 at zenith and F01/F02/F03/G01/H01 at 30.000 deg S (pointing p5_taua_20261024, _off_main_za_deg_s). Leave those six out of anything that assumes one aim.",
+    "Positions are for the p3 aim (~57.6 S for C-H, Cyg A for A/B); re-solve on this epoch's data, where the A/B to C-H group offset T should vanish.",
+    "Built by fixtures/elemsteer/epoch_taua_settled_20261024.py."
    ],
    "elements": {
     "0": {
