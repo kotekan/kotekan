@@ -627,12 +627,13 @@ void GnssCoherentCombiner::main_thread() {
             rec[0] = ref_prn[p];
             rec[1] = ref_dop[p];
             rec[2] = ref_cp[p];
-            rec[3] = (float)std::sqrt(acc_pow[p] * inv);            // |A|_incoh = sqrt<|A|^2>
-            rec[4] = (float)(acc_ar[p] * inv);                      // <A>.re (coherent mean)
-            rec[5] = (float)(acc_ai[p] * inv);                      // <A>.im
-            rec[6] = (float)std::hypot(acc_ar[p], acc_ai[p]) * inv; // |<A>|_coh
-            rec[7] = (float)(acc_nchan[p] * inv);                   // covering channels used
-            // Per-antenna beam map, with the same `inv` normalization as rec[3], so
+            // sqrt<|H|^2 + |A-H|^2> with a boundary head, sqrt<|A|^2> without (p2 above)
+            rec[gnss::CMB_AMP_INCOH] = (float)std::sqrt(acc_pow[p] * inv);
+            rec[gnss::CMB_MEAN_RE] = (float)(acc_ar[p] * inv); // <A>.re (coherent mean)
+            rec[gnss::CMB_MEAN_IM] = (float)(acc_ai[p] * inv); // <A>.im
+            rec[gnss::CMB_AMP_COH] = (float)std::hypot(acc_ar[p], acc_ai[p]) * inv; // |<A>|
+            rec[gnss::CMB_NCHAN] = (float)(acc_nchan[p] * inv); // covering channels used
+            // Per-antenna beam map, with the same `inv` normalization as CMB_AMP_INCOH, so
             // CMB_ELEM_AMP_INCOH is directly comparable with it.
             {
                 // The element-gain REST snapshot: same emit and normalization, under the status

@@ -372,6 +372,10 @@ json metadata() {
     // GnssChanMetadata::serialize writes sample_seq, then a reserved zero word. "serialized" is
     // what it writes for a known sample_seq, so moving a field or writing a nonzero word changes
     // the document.
+    if (size - seq != sizeof(uint32_t))
+        throw std::runtime_error("GnssChanMetadata: the reserved word is "
+                                 + std::to_string(size - seq)
+                                 + " bytes, not the u32 this document names");
     json fields =
         json::array({json::array({"sample_seq", 0, seq, type_tag<decltype(m.sample_seq)>()}),
                      json::array({"reserved", seq, size - seq, "u32"})});
