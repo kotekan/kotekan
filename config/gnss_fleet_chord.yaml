@@ -153,7 +153,7 @@ common:
     # entry posted alone at 21:52Z), and posted live at once: without one, L2C's instances held
     # arbitrary global phases and cancelled in the fleet sum (2026-10-23, q 1.6-2.0). The dishes
     # move during this epoch, so the cron re-takes a band the reference stops describing.
-    elem-shared-ref: config/elem_shared_ref_20261023_repoint.json
+    elem-shared-ref: config/elem_shared_ref_20261024_taua.json
     elem-shared-ref-mode: live
     # The gnss VM, which runs the search aggregator, the telemetry gather and the broker.
     # 127.0.0.1, the generator default, would point every node at itself. Moving the aggregator

@@ -85,6 +85,7 @@ config/elem_shared_ref_20261017.json
 config/elem_shared_ref_20261020.json
 config/elem_shared_ref_20261023.json
 config/elem_shared_ref_20261023_repoint.json
+config/elem_shared_ref_20261024_taua.json
 config/base/
 config/gnss/
 config/gates/
