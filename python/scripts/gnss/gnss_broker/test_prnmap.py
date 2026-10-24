@@ -901,6 +901,37 @@ def main():
                 _pm.registry_capable("GLO_L2OF") is None,
                 "registry_capable: a signal every satellite carries proves nothing -> None",
             )
+            # Per-satellite exceptions (SVN_LACKS): one block name, GLO-K1B, covers 2014-2022
+            # birds without L2OC (R802 without L3OC either) and 2025+ birds with it. The
+            # exception follows the SVN, not the slot.
+            open(_f, "a").write(
+                "+SATELLITE/IDENTIFIER\n"
+                " R802 2014-075A  40315 GLO-K1B         x\n"
+                " R805 2020-075A  46805 GLO-K1B         x\n"
+                " R808 2025-206B  65590 GLO-K1B         x\n"
+                "-SATELLITE/IDENTIFIER\n"
+                "+SATELLITE/PRN\n"
+                " R802 2014:340:00000 0000:000:00000 R10\n"
+                " R805 2020:300:00000 0000:000:00000 R12\n"
+                " R808 2025:260:00000 0000:000:00000 R20\n"
+                "-SATELLITE/PRN\n"
+            )
+            _l3 = _pm.signal_incapable_prns("GLO_L3OC_P_NH")
+            _l2 = _pm.signal_incapable_prns("GLO_L2OC_P_OC")
+            check(
+                _l3 == {1, 10},
+                "SVN_LACKS: R802 (a 2014 K1B) is out of L3OC wherever it flies; R805/R808, "
+                "K1B too, stay in (got %s)" % sorted(_l3),
+            )
+            check(
+                _l2 == {1, 4, 10, 12},
+                "SVN_LACKS: R802 and R805 out of L2OC, R808 (a 2025 K1B) in -- the block "
+                "alone would have kept all three (got %s)" % sorted(_l2),
+            )
+            check(
+                _pm.signal_incapable_prns("GLO_L2OF") == set(),
+                "... and an exception never touches a signal it does not name (FDMA L2OF)",
+            )
             check(
                 _pm.ensure_registry() is not None and _pm.ensure_registry() < 60.0,
                 "ensure_registry: a fresh copy is left alone and its age returned",
@@ -977,8 +1008,8 @@ def main():
                 _os.utime(_f, ns=(_mt + 1_000_000_000,) * 2)
                 _l5 = [_pm.signal_incapable_prns("GPS_L5_Q_NH") for _ in range(2)]
                 _glo = _pm.prn_blocks("R")
-                check(
-                    len(_opens) == 1 and _l5 == [{22, 7}] * 2 and len(_glo) == 6,
+                check(  # 9 GLONASS PRNs: the 6 block rows + the 3 SVN_LACKS rows
+                    len(_opens) == 1 and _l5 == [{22, 7}] * 2 and len(_glo) == 9,
                     "the registry is read once for repeated asks, any constellation "
                     "(opens %d)" % len(_opens),
                 )

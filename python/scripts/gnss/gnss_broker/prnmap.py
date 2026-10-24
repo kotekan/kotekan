@@ -354,6 +354,32 @@ def _block_carries(signal, block):
     return True  # a signal we do not model: exclude nothing
 
 
+# Per-satellite exceptions to _block_carries, keyed by SVN (the bird, not the slot it flies
+# in): one block name can cover generations that differ in what they broadcast. Each entry
+# names the signal families (substrings of the descriptor name) the satellite does NOT carry,
+# and the evidence. Only what has been seen to be missing goes here: a wrong entry hides a
+# real satellite for good, with nothing saying why.
+SVN_LACKS = {
+    # GLO-K1B, launched 2014 (COSMOS 2501), slot R09: no L3OC on sky here (cn0_kcoh -3..-6
+    # dB-Hz at 62 deg el on 10-24 while R19/R20 read 42-51), and IGS WILL00CAN (PolaRx5) logs
+    # R09's FDMA signals with no L3 fields while it logs C3Q on R08/R16/R23/R24; no L2OC seen.
+    "R802": ("L3OC", "L2OC"),
+    # GLO-K1B, launched 2020 (COSMOS 2547), slot R11: L3OC tracked all day 10-24, L2OC noise
+    # (fleet amplitudes 0.1-3.8) overhead at 84 deg el.
+    "R805": ("L2OC",),
+    # GLO-K1B, launched 2022 (COSMOS 2557), slot R22: L3OC tracked, L2OC noise at 72 deg el
+    # while R23 (R813, a 2026 K1B) locked at align 0.993 in the same minute. The newer K1B
+    # (R808 2025, R813 2026), the K1+ (R807) and the K2 (R803, R804) carry L2OC.
+    "R806": ("L2OC",),
+}
+
+
+def svn_lacks(signal, svn):
+    """True if SVN_LACKS says satellite `svn` does not broadcast `signal`."""
+    s = (signal or "").upper()
+    return any(fam in s for fam in SVN_LACKS.get(svn or "", ()))
+
+
 def signal_incapable_prns(signal):
     """PRNs that cannot broadcast `signal`, or an empty set if that cannot be established.
 
@@ -385,7 +411,11 @@ def signal_incapable_prns(signal):
     )
     if sysc is None:
         return set()
-    return {p for p, b in prn_blocks(sysc).items() if not _block_carries(signal, b)}
+    return {
+        p
+        for p, (svn, b) in _prn_svn_blocks(sysc).items()
+        if not _block_carries(signal, b) or svn_lacks(signal, svn)
+    }
 
 
 def block_carries(signal, block):
@@ -455,6 +485,12 @@ def prn_blocks(sysc):
     resolves to the one satellite flying it at that instant: an assignment announced for a
     later date does not displace it, and at a hand-over, where the registry ends one window
     as the next begins, only one of the two counts. {} on any failure (fail open)."""
+    return {p: b for p, (_svn, b) in _prn_svn_blocks(sysc).items()}
+
+
+def _prn_svn_blocks(sysc):
+    """{prn -> (svn, block)} for the PRNs prn_blocks lists, so a per-satellite exception
+    (SVN_LACKS) can follow the satellite across slots. {} on any failure (fail open)."""
     try:
         svn_block, svn_prn = _read_registry()
     except Exception:
@@ -465,7 +501,7 @@ def prn_blocks(sysc):
             continue
         b = svn_block.get(svn)
         if b:
-            out[int(prn[1:])] = b
+            out[int(prn[1:])] = (svn, b)
     return out
 
 

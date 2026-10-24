@@ -844,8 +844,9 @@ def _gps_signal_capability():
 
     The source is the IGS metadata SINEX via gnss_broker.prnmap, per constellation
     (prnmap.prn_blocks), the registry the broker's --signal-capability filters on, and
-    prnmap.block_carries owns which block carries each signal (L3OC on GLO-K and GLO-M+, L2OC on
-    GLO-K only, B2a/B2b on BDS-3 only), so viewer and broker cannot disagree. SVN -> PRN
+    prnmap.signal_incapable_prns owns which satellite carries each signal (by block: L3OC on
+    GLO-K and GLO-M+, L2OC on GLO-K only, B2a/B2b on BDS-3 only; then the per-satellite
+    exceptions in prnmap.SVN_LACKS), so viewer and broker cannot disagree. SVN -> PRN
     assignments carry a validity window, so a re-used PRN resolves to the satellite flying it
     today. Celestrak TLE titles are not used: they carry identity errors, BeiDou worst. A
     constellation the registry does not list gets no "_prns" entry and no lists, and the client
@@ -880,9 +881,10 @@ def _gps_signal_capability():
             sysc = s.get("sys") or _SYS_TAG.get((sid or "")[:3])
             if not sid or not blocks.get(sysc):
                 continue  # no sigid, or no registry for it: the client shows "no detection"
-            caps[sid] = sorted(
-                p for p, b in blocks[sysc].items() if prnmap.block_carries(sid, b)
-            )
+            # signal_incapable_prns, not block_carries per block: it also applies the
+            # per-satellite exceptions (prnmap.SVN_LACKS), as the broker does.
+            _incap = prnmap.signal_incapable_prns(sid)
+            caps[sid] = sorted(p for p in blocks[sysc] if p not in _incap)
         # The PRNs the registry knows per constellation, so the client can tell "this block
         # does not carry the signal" from "this PRN is not in the registry" (unknown, shown as
         # no detection).
