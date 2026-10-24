@@ -86,6 +86,31 @@ common:
     n2-project-live-freq-ids: exempt
     n2-project-stations: "0-6,8-127"
     n2-project-eigen-channels: live
+    # #190 on every projecting node (canary cx51 10-20..10-24): the tracked satellites' lane
+    # directions first, the eigen path on what is left. On 10-24 the eigen path alone removed
+    # <= 0.6 dB in the lobes while the lanes removed ~80-87 % of the satellite power over the
+    # continuum (cx51). Up to 40 lanes per channel; the assemblers spread over five slots (the
+    # lane EMA tipped the shared slot at 96 elements).
+    n2-project-source: lanes+residual
+    n2-project-lanes-max: 40
+    elem-dir-publish: all
+    assembler-core-slots: "2,1,3,4,8"
+    # The stage on a whole idle physical core per NUMA node (15/47 and 19/51 read 0 % on
+    # cx27/43/44/51 on 10-24), outside the runtime pools: 127 stations with the transfers ran at
+    # 75-79 % of it on cx51 (10-24 16:40Z).
+    n2-project-cpus: "15,19"
+    # The same satellites' other signals: each chain's lanes, turned through the geometric delay,
+    # on the live channels of the band (tier 1.5). cx51 10-24 16:40Z, fraction of the non-noise
+    # power removed: Galileo E6 PRS lower lobe (BOCcos(10,5) at 1268.52 +-5.1 MHz) from E6-B/C
+    # 0.3-0.4 -> 0.8; GPS L2 P(Y)/M from L2C 0 -> 0.45-0.6 (on the GPU that holds L2C only);
+    # the E5 and B2 AltBOC power between the lobes 0.1-0.4 -> 0.55-0.75, from e5b/b2b, the
+    # nearer lobes (from all four, each satellite arrived twice: the two transfers disagree past
+    # the duplicate test and doubled the lanes there).
+    lane-transfer:
+        - e6:1263.4-1273.6
+        - l2c:1217.4-1237.8
+        - e5b:1186.7-1196.9
+        - b2b:1186.7-1196.9
 
     # Ship the N^2 products as a stock node does: the buffer_send_n2_* legs (full n2_buffer and
     # the eigen subset, both GPUs) and the bad-feed mask legs, to the standard receiver recv1
@@ -316,14 +341,4 @@ nodes:
     # the stage on its default slot; 8 lanes per channel first (12:53Z: stage 30% of its core,
     # lanes on every band), then every tracked satellite (40). Five slots, not six: the rotation
     # adds the GPU index, so slot 9 on GPU 1 is pool[0], the cudaProcess core.
-    # 10-24 (kv/proj-rollout, binary fleet-ef2e0ada7): the stage projects the station x other
-    # input products too, project() is twice as fast, so cx51 takes all 127 stations; it runs on
-    # a whole idle physical core per NUMA node (15/47 and 19/51 read 0 % on every node on 10-24),
-    # outside the runtime pools. The lanes are transferred to the same satellites' other signals
-    # (tier 1.5): Galileo E6 PRS lower lobe (BOCcos(10,5) at 1268.52 +-5.1 MHz) from E6-B/C, GPS
-    # L2 P(Y)/M across 1217-1238 MHz from L2C, the E5 and B2 AltBOC power between the a and b
-    # lobes from both. Moves to common once the binary is the fleet's.
-    cx51: {search-port-base: 11050, n2-project-source: lanes+residual, n2-project-lanes-max: 40,
-           n2-project-cpus: "15,19", elem-dir-publish: all, assembler-core-slots: "2,1,3,4,8",
-           lane-transfer: [e6:1263.4-1273.6, l2c:1217.4-1237.8, e5a:1186.7-1196.9,
-                           e5b:1186.7-1196.9, b2a:1186.7-1196.9, b2b:1186.7-1196.9]}
+    cx51: {search-port-base: 11050}
