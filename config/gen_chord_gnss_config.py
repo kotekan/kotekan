@@ -825,6 +825,47 @@ def elem_positions_from_arraymap(arr, n_elem):
     return out, ep.key()
 
 
+def n2_project_live_ids(args):
+    """The freq_ids GnssN2Project writes: --n2-project-live-freq-ids, 'exempt' meaning the
+    --rfi-excision-exempt-freq-ids ranges. Empty when neither is given."""
+    spec = args.n2_project_live_freq_ids
+    if spec == "exempt":
+        spec = args.rfi_excision_exempt_freq_ids
+    ids = set()
+    for part in str(spec or "").split(","):
+        if part.strip():
+            a, _, b = part.strip().partition("-")
+            ids.update(range(int(a), int(b or a) + 1))
+    return ids
+
+
+def lane_transfer_keys(cfg, node, gpu, tag, freq_ids, args):
+    """--lane-transfer TAG:LO-HI (MHz, repeatable): the chain tagged TAG also publishes its
+    lane directions on this GPU's channels centred in [LO, HI] that GnssN2Project writes, less
+    its own (#190 tier 1.5: the same satellites' other signals, e.g. the Galileo E6 PRS lobe
+    beside E6-B/C). Needs --elem-dir-publish all; empty otherwise."""
+    if not args.lane_transfer or args.elem_dir_publish != "all" or not tag:
+        return {}
+    live = n2_project_live_ids(args)
+    off = cfg["nodes"][node]["gpu_offsets_mod16"][gpu]
+    own = set(freq_ids)
+    out = set()
+    for spec in args.lane_transfer:
+        t, _, band = spec.partition(":")
+        lo, _, hi = band.partition("-")
+        if t.strip("_") != tag.strip("_"):
+            continue
+        for fid, centre_hz, _width in node_channels(cfg, node):
+            if (
+                float(lo) <= centre_hz / 1e6 <= float(hi)
+                and fid % 16 == off
+                and fid in live
+                and fid not in own
+            ):
+                out.add(fid)
+    return {"lane_transfer_freq_ids": sorted(out)} if out else {}
+
+
 def elem_proj_keys(args):
     """Assembler keys for the bright-satellite projection (gnssProjSubspace.hpp); nothing unless
     --elem-proj-mode is shadow or live, so a fleet without it is byte-identical. The mode is
@@ -1240,6 +1281,7 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
                 args, (tag or signal_tag(sig["primary"])).strip("_"), steer, n_live
             ),
             **elem_proj_keys(args),
+            **lane_transfer_keys(cfg, node, gpu, tag, freq_ids, args),
             **cube_assembler_keys(args, cfg, gpu, pre),
             "sample_rate": float(cfg["fengine"]["sampling_rate_MHz"]) * 1e6,
             "cpu_affinity": [V["cores"]["assemble"]],
@@ -2852,6 +2894,23 @@ def main():
         "light stages (cx51: 9 = cores 43 / 63)",
     )
     ap.add_argument(
+        "--n2-project-cpus",
+        type=str,
+        default="",
+        help="GnssN2Project's logical cpu per GPU, 'gpu0,gpu1', outside the runtime pools; "
+        "overrides --n2-project-core-index. The nodes leave whole physical cores idle on each "
+        "NUMA node (15/47 on node 0, 19/51 on node 1), and the lanes on 127 stations want one",
+    )
+    ap.add_argument(
+        "--lane-transfer",
+        action="append",
+        default=[],
+        help="TAG:LO-HI (MHz), repeatable: the chain tagged TAG (e6, l2c, e5a, ...) also "
+        "publishes its lane directions on the channels centred in [LO, HI] that GnssN2Project "
+        "writes, turned through each satellite's geometric delay (#190 tier 1.5: the same "
+        "satellites' other signals, e.g. e6:1263.4-1273.6 for the Galileo E6 PRS lobe)",
+    )
+    ap.add_argument(
         "--n2-project-eigen-channels",
         choices=["all", "live"],
         default="all",
@@ -3483,9 +3542,13 @@ def main():
                 # The telemetry packer's core (see gnss_chain_vars) by default: a light host
                 # stage on this GPU's own NUMA pool; --n2-project-core-index picks another slot.
                 "cpu_affinity": [
-                    _pool[(_gpu + 5) % len(_pool)]
-                    if args.n2_project_core_index < 0
-                    else _pool[args.n2_project_core_index % len(_pool)]
+                    int(args.n2_project_cpus.split(",")[_gpu])
+                    if args.n2_project_cpus
+                    else (
+                        _pool[(_gpu + 5) % len(_pool)]
+                        if args.n2_project_core_index < 0
+                        else _pool[args.n2_project_core_index % len(_pool)]
+                    )
                 ],
                 "in_buf": _corr,
                 # num_elements / num_local_freq / samples_per_data_set / sub_integration_ntime
@@ -3521,18 +3584,12 @@ def main():
                         "(e.g. %s): a lane direction cannot null them\n"
                         % (len(_missing), _missing[:6])
                     )
-            _lf = args.n2_project_live_freq_ids
-            if _lf == "exempt":
-                _lf = args.rfi_excision_exempt_freq_ids
-            if not _lf:
+            _lids = n2_project_live_ids(args)
+            if not _lids:
                 raise SystemExit(
                     "--n2-project live needs --n2-project-live-freq-ids (or 'exempt' with "
                     "--rfi-excision-exempt-freq-ids): GnssN2Project requires live_freq_ids"
                 )
-            _lids = set()
-            for _part in str(_lf).split(","):
-                _a, _, _b = _part.strip().partition("-")
-                _lids.update(range(int(_a), int(_b or _a) + 1))
             _stage["live_freq_ids"] = sorted(_lids)
             _buf = copy.deepcopy(out[_corr])  # no YAML aliases
             out["gnss_n2_proj_buffer" + _suf] = _buf
