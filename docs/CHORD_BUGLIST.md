@@ -567,6 +567,16 @@ a fallback list, or chosen at run time from the instances that answer; (c) a bro
 bootstrap gps_l5's clock once it arrives, as at a clean start (today it never did), and the model-primary chains must
 wait for that clock rather than seed on the prime after a fixed wait. Check: stop one node's kotekan (cx19 included),
 restart the broker, and every chain seeds on a measured clock within a few minutes.
+**Root cause of (c), found 10-24 in broker.log.6.gz:** the clock never bootstrapped because gps_l5 was DEAD. At
+02:39:24.812Z the anchor latched; 30 ms later `*** CHAIN DIED: TypeError("unsupported operand type(s) for -: 'NoneType'
+and 'NoneType'")` in seeding._nh_joint_consensus: the search's detections were already flowing on the cycle the anchor
+arrived, so the joint overlay fit voted (gated on utc0_sample0) before the dead-reckon pass had ever stamped
+drp.now_w, the same first-cycle hazard as the 09-28 crash. At a clean start nothing is detected on cycle 1, so it never
+shows. **Fixed 10-24 (kv/broker-robust):** (a) `transport.time0_from_any` over `node_bases(rest-url, trackers)`, for
+the latch and the 60 s re-read; (b) the per-cycle status read is a `transport.Failover` over `combiner` +
+dll-combiners, sticky, logged on a switch; (c) `_nhj_ok` requires drp.now_w and `_nh_joint_consensus` tolerates None.
+Tests: gnss_broker.test_failover, test_nhjoint (no cycle time). Still owed: the live check above (stop one node,
+cx19 included, restart the broker).
 
 ### #199 — the cf06 cube leg is not recording: the compactor dies in flush, the archiver is restarted by SIGTERM, the senders sit reset (2026-10-17)
 **What:** found while judging the glo_l3oc roll-out, 22:5xZ. (a) `gnss_cube_compact.py` dies on every pass since the

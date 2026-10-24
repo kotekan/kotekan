@@ -722,3 +722,76 @@ def parse_endpoints(csv, default_base):
         for tok in expand_token(raw):
             prefixes.append(resolve_prefix(tok, default_base))
     return prefixes
+
+
+def node_bases(base, endpoints):
+    """`base` first, then each distinct scheme://host:port among `endpoints`, in order.
+
+    The nodes a chain talks to all serve the same node-level paths (/telescope/time0_ns among
+    them), so any of them can answer for the instrument; --rest-url is only the first choice
+    (#200: one node down must not blind the broker)."""
+    out = []
+    for u in [base] + list(endpoints or []):
+        if not u:
+            continue
+        sp = urllib.parse.urlsplit(u)
+        if not sp.scheme or not sp.netloc:
+            continue
+        b = "%s://%s" % (sp.scheme, sp.netloc)
+        if b not in out:
+            out.append(b)
+    return out
+
+
+def time0_from_any(bases, path, get):
+    """(frame-0 UTC in s, base that answered) from the first base whose `path` answers with a
+    nonzero time0_ns. Raises RuntimeError naming every failure when none does."""
+    errs = []
+    for b in bases:
+        try:
+            v = float(get("%s/%s" % (b, path.strip("/"))).get("time0_ns", 0.0)) / 1e9
+        except Exception as e:  # a node being down is the normal outage case
+            errs.append("%s: %s" % (b, e))
+            continue
+        if v:
+            return v, b
+        errs.append("%s: time0_ns 0" % b)
+    raise RuntimeError(
+        "no node answered (%s)" % ("; ".join(errs) if errs else "none listed")
+    )
+
+
+class Failover(object):
+    """One logical endpoint served by any of several equivalent prefixes (#200).
+
+    `get(verb, getter)` tries the current prefix, then the others in order, and stays on the
+    first that answers (sticky: no flapping back while the current one works). Raises the last
+    error when none answers. A switch is reported through `on_switch(old, new)`."""
+
+    def __init__(self, candidates, on_switch=None):
+        self.candidates = list(dict.fromkeys(c for c in candidates if c))
+        self.i = 0
+        self.on_switch = on_switch
+
+    @property
+    def current(self):
+        return self.candidates[self.i] if self.candidates else None
+
+    def get(self, verb, getter):
+        if not self.candidates:
+            raise RuntimeError("no endpoint configured")
+        err = None
+        n = len(self.candidates)
+        for k in range(n):
+            j = (self.i + k) % n
+            try:
+                r = getter("%s/%s" % (self.candidates[j], verb))
+            except Exception as e:
+                err = e
+                continue
+            if j != self.i:
+                old, self.i = self.candidates[self.i], j
+                if self.on_switch is not None:
+                    self.on_switch(old, self.candidates[j])
+            return r
+        raise err

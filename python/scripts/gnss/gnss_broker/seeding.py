@@ -96,7 +96,15 @@ def _nh_joint_consensus(ctx, now):
     a = ctx.args
     LLc = ctx.lc_seg * ctx.code_len
     votes = ctx.cpt.nh_votes
-    for p in [p for p, (t, _, _) in votes.items() if now - t > a.nh_joint_window_s]:
+    if (
+        now is None
+    ):  # no cycle time yet (see _nhj_ok): nothing can expire, nothing resolves
+        return ctx.cpt.nh_common
+    for p in [
+        p
+        for p, (t, _, _) in votes.items()
+        if t is None or now - t > a.nh_joint_window_s
+    ]:
         votes.pop(p)
     if len(votes) < a.nh_joint_min_prns:
         return ctx.cpt.nh_common
@@ -715,9 +723,14 @@ def stage_detections_to_seeds(ctx):
                 ph = cp_at_ref % LLc
                 # Joint overlay fit (--nh-joint): vote on the raw measured phase, before the
                 # debounce or any offset touches it (_nh_joint_vote).
+                # drp.now_w too: when the anchor latches late (#200: the anchor node was down at
+                # start) detections are already flowing on the cycle it arrives, before the
+                # dead-reckon pass first stamps now_w, and a vote stamped None killed gps_l5 (the
+                # clock source) at 10-18 02:39:24Z, so no clock ever bootstrapped.
                 _nhj_ok = (
                     ctx.args.nh_joint != "off"
                     and ctx.utc0_sample0
+                    and ctx.drp.now_w is not None
                     and ctx.args.almanac
                     and prn in ctx.pred
                 )

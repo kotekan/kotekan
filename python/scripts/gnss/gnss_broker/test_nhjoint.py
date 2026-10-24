@@ -190,6 +190,37 @@ def test_consensus_kept_when_votes_expire():
     check(not ctx.cpt.nh_votes, "...while the stale votes themselves are pruned")
 
 
+def test_no_cycle_time_does_not_kill_the_chain():
+    """#200 (10-18 02:39:24Z): the anchor latched late, a detection reached the joint fit
+    before the dead-reckon pass first stamped drp.now_w, and `now - t` on None killed gps_l5,
+    the clock source, so no clock ever bootstrapped."""
+    ctx = mk_ctx(delta_true_chips=74679.0)
+    for j, prn in enumerate((1, 3, 4, 6, 9)):
+        _nh_joint_vote(
+            ctx, prn, true_ph(ctx, prn, 1000 + j), 1000 + j, 120.0, ctx.drp.now_w
+        )
+    ok = True
+    try:
+        c = _nh_joint_consensus(ctx, None)
+    except TypeError:
+        ok, c = False, None
+    check(ok, "a consensus with no cycle time (now_w None) does not raise")
+    check(
+        c is ctx.cpt.nh_common,
+        "... and changes nothing: the standing consensus comes back",
+    )
+    ctx.cpt.nh_votes[11] = (None, 0.0, 100.0)  # a vote stamped before now_w existed
+    try:
+        _nh_joint_consensus(ctx, ctx.drp.now_w)
+        ok = True
+    except TypeError:
+        ok = False
+    check(
+        ok and 11 not in ctx.cpt.nh_votes,
+        "a vote stamped None is pruned, not subtracted",
+    )
+
+
 def main():
     for fn in (
         test_consensus_resolves,
@@ -198,6 +229,7 @@ def main():
         test_boundary_is_not_special,
         test_noisy_sat_is_carried,
         test_consensus_kept_when_votes_expire,
+        test_no_cycle_time_does_not_kill_the_chain,
     ):
         print(fn.__name__)
         fn()

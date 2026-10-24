@@ -58,6 +58,7 @@ sys.path.insert(
 # as threads of one process.
 # ---------------------------------------------------------------------------------------
 from gnss_broker.transport import (  # noqa: E402
+    Failover,
     _TranscriptDone,
     _TR,
     _now,
@@ -67,6 +68,8 @@ from gnss_broker.transport import (  # noqa: E402
     _log_rl,
     resolve_prefix,
     parse_endpoints,
+    node_bases,
+    time0_from_any,
     log_tag,
     install_dns_cache,
     record_cycle,
@@ -289,6 +292,17 @@ def main(argv=None, rx=None, publisher=None):
     # kept separate so the two fleet numbers can be compared rather than blended. It feeds no
     # loop, so an n2 chain that is down or absent costs a log line and nothing else.
     n2_combiners = parse_endpoints(args.n2_combiners, base) if args.n2_combiners else []
+    # #200: nothing hangs off one node. The status source fails over along this chain's own
+    # instance combiners (--dll-combiners: the same stage on every node), and the frame-0
+    # anchor is read from --rest-url or, failing that, any tracker host.
+    _combiner_fo = Failover(
+        [combiner] + dll_combiners,
+        on_switch=lambda old, new: _log(
+            "status source %s unreachable -- now reading %s (any instance combiner of this "
+            "chain serves the same rows)" % (old, new)
+        ),
+    )
+    _time0_bases = node_bases(base, trackers)
     spectrum_endpoints = (
         parse_endpoints(args.spectrum_endpoints, base)
         if args.spectrum_endpoints
@@ -1475,14 +1489,7 @@ def main(argv=None, rx=None, publisher=None):
         ):
             _anchor_chk[0] = _now_anchor
             try:
-                _fresh = (
-                    float(
-                        _get("%s/%s" % (base, args.time0_endpoint.strip("/"))).get(
-                            "time0_ns", 0.0
-                        )
-                    )
-                    / 1e9
-                )
+                _fresh = time0_from_any(_time0_bases, args.time0_endpoint, _get)[0]
                 if _fresh and abs(_fresh - _ctx.utc0_sample0) > 1e-3:
                     _anchor_chk[1] += 1
                     _log(
@@ -1532,22 +1539,22 @@ def main(argv=None, rx=None, publisher=None):
                 # the Receiver: frame 0 belongs to the instrument, not a signal, so the
                 # process fetches it once for all its chains, which could otherwise straddle
                 # an F-engine restart and disagree.
-                _ctx.utc0_sample0 = (
-                    rx.time_anchor(
-                        lambda: float(
-                            _get("%s/%s" % (base, args.time0_endpoint.strip("/"))).get(
-                                "time0_ns", 0.0
-                            )
-                        )
-                        / 1e9,
-                        chain_id,
+                _t0_src = [None]
+
+                def _fetch_t0():
+                    v, _t0_src[0] = time0_from_any(
+                        _time0_bases, args.time0_endpoint, _get
                     )
-                    or 0.0
-                )
+                    return v
+
+                _ctx.utc0_sample0 = rx.time_anchor(_fetch_t0, chain_id) or 0.0
                 if _ctx.utc0_sample0:
                     _log(
-                        "time anchor: CHORD F-engine frame0 = %.9f s (GPS-disciplined)"
-                        % _ctx.utc0_sample0
+                        "time anchor: CHORD F-engine frame0 = %.9f s (GPS-disciplined%s)"
+                        % (
+                            _ctx.utc0_sample0,
+                            "; from %s" % _t0_src[0] if _t0_src[0] else "; shared",
+                        )
                     )
             except Exception as e:
                 _log("time anchor unavailable (%s); retrying" % e)
@@ -1568,7 +1575,10 @@ def main(argv=None, rx=None, publisher=None):
             1, int(round(args.coast_budget / max(args.interval, 1e-3)))
         )
         try:
-            _ctx.status = {int(r["prn"]): r for r in _get("%s/get_status" % combiner)}
+            _ctx.status = {
+                int(r["prn"]): r for r in _combiner_fo.get("get_status", _get)
+            }
+            combiner = _combiner_fo.current
             # The newest F-engine hop, captured at fetch time. fe_axis pairs it with the wall
             # time it last advanced, so the dead-reckon stage builds its "now" on the F-engine
             # axis with wall time entering only as the elapsed time since.

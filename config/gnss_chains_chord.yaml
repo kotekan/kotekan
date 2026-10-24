@@ -21,7 +21,9 @@
 
 common:
   # -- the receiver: one telescope, one site, one F-engine --
-    rest-url: http://cx19:12048    # a gnss node: base for bare stage names and time0-endpoint
+    # A gnss node: the first choice for bare stage names and time0-endpoint, not a dependency
+    # (#200): the anchor falls back to any tracker host and `combiner` to dll-combiners.
+    rest-url: http://cx19:12048
     time0-endpoint: telescope/time0_ns
     hops-per-sec: 195312.5         # F-engine record geometry, not a signal property
   # The dishes are tipped for site work (2026-10-17 until the realignment): there is no
@@ -213,9 +215,10 @@ chains:
         detectors: http://localhost:12050/gps_search
     # Stages are per GPU (gnss0, gnss1) on each node in config/gnss_fleet_chord.yaml `nodes:`;
     # a bare stage name resolves against rest-url. `combiner` is the one per-PRN status source
-    # (amplitudes, drop decisions, nav bits). dll-combiners, every instance's combiner, is
-    # polled for the fleet DLL, fleet_coherent and element-poll, and names the record
-    # assemblers that post-sat-geometry posts to.
+    # (amplitudes, drop decisions, nav bits); when it does not answer, the broker reads the next
+    # entry of dll-combiners that does and stays there (#200). dll-combiners, every instance's
+    # combiner, is polled for the fleet DLL, fleet_coherent and element-poll, and names the
+    # record assemblers that post-sat-geometry posts to.
         trackers: "http://cx19:12048/gnss{0..1}_inject,http://cx27:12048/gnss{0..1}_inject,http://cx42:12048/gnss{0..1}_inject,http://cx43:12048/gnss{0..1}_inject,http://cx44:12048/gnss{0..1}_inject,http://cx51:12048/gnss{0..1}_inject"
         combiner: gnss0_n2combine
         dll-combiners: "http://cx19:12048/gnss{0..1}_n2combine,http://cx27:12048/gnss{0..1}_n2combine,http://cx42:12048/gnss{0..1}_n2combine,http://cx43:12048/gnss{0..1}_n2combine,http://cx44:12048/gnss{0..1}_n2combine,http://cx51:12048/gnss{0..1}_n2combine"
@@ -673,7 +676,7 @@ chains:
     # cx43/1, 6285 cx51/1, 6288 cx27/0. 6283 is on cx47, outside this fleet, and cx44 holds
     # none. Re-derive the list if the comb offsets change.
         trackers: "http://cx19:12048/gnss1_l2c_inject,http://cx27:12048/gnss0_l2c_inject,http://cx42:12048/gnss1_l2c_inject,http://cx43:12048/gnss1_l2c_inject,http://cx51:12048/gnss1_l2c_inject"
-        combiner: gnss1_l2c_n2combine # a bare name on rest-url (cx19), whose L2C GPU is 1
+        combiner: gnss1_l2c_n2combine # bare on rest-url (cx19, L2C GPU 1); fails over along dll-combiners
         spectrum-endpoints: "http://cx19:12048/gnss1_l2c_n2assemble,http://cx27:12048/gnss0_l2c_n2assemble,http://cx42:12048/gnss1_l2c_n2assemble,http://cx43:12048/gnss1_l2c_n2assemble,http://cx51:12048/gnss1_l2c_n2assemble"
         dll-combiners: "http://cx19:12048/gnss1_l2c_n2combine,http://cx27:12048/gnss0_l2c_n2combine,http://cx42:12048/gnss1_l2c_n2combine,http://cx43:12048/gnss1_l2c_n2combine,http://cx51:12048/gnss1_l2c_n2combine"
 
