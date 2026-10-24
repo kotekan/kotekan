@@ -77,72 +77,139 @@ inline void writeback(const Layout& L, int32_t* f, const std::vector<int>& st, c
         }
 }
 
+/// Eight doubles; the projection's blocks are written in these so they compile to whole vector
+/// operations (GCC and clang). Read and written through casts of any double* (unaligned,
+/// aliasing double), never passed to or returned from a function, so no ABI depends on them.
+typedef double v8d __attribute__((vector_size(64), aligned(8), __may_alias__));
+
 /// V <- (I - Q Q^H) V (I - Q Q^H) in place for Hermitian V, Q = k orthonormal columns given
 /// row-wise as q[j * n + i] (ProjSubspace's layout). With W = V Q, M = Q^H W and Q^H V = W^H
 /// (V Hermitian): V' = V - Q W^H - W Q^H + Q M Q^H = V - Q W^H - (W - Q M) Q^H. Taking
-/// U = W - Q M first makes the update two rank-k products, linear in k. The update is computed
-/// on the lower triangle and mirrored, ~2 k n^2 complex multiply-adds in all; every [n][k]
-/// operand (Q transposed, W, U) is row-major so the inner loops run over k contiguously.
+/// U = W - Q M first makes the update two rank-k products, linear in k, ~2 k n^2 complex
+/// multiply-adds with the update on the lower triangle (mirrored after).
+///
+/// The work is done on real and imaginary parts held apart in @p W, padded to whole blocks of
+/// eight, each inner step a block of eight outputs kept in registers while a k-loop runs: no
+/// reduction in an inner loop, so the compiler has no sums to reorder. The row length is
+/// padded one block past n so the rows do not sit a power of two apart (at n = 127 the 1 KB
+/// stride put the update's four operands in the same few L1 sets).
 inline void project(int n, int k, const cd* q, cd* V, std::vector<cd>& W, std::vector<cd>& M) {
     if (k <= 0)
         return;
-    W.assign((size_t)3 * n * k, cd(0.0, 0.0));
-    M.assign((size_t)k * k, cd(0.0, 0.0));
-    cd* qt = W.data();
-    cd* WQ = qt + (size_t)n * k;
-    cd* U = WQ + (size_t)n * k;
-    for (int j = 0; j < k; ++j)
-        for (int i = 0; i < n; ++i)
-            qt[(size_t)i * k + j] = q[(size_t)j * n + i];
-    for (int i = 0; i < n; ++i) {
-        const cd* Vi = V + (size_t)i * n;
-        for (int j = 0; j < k; ++j) {
-            const cd* qj = q + (size_t)j * n;
-            cd s(0.0, 0.0);
-            for (int c = 0; c < n; ++c)
-                s += Vi[c] * qj[c];
-            WQ[(size_t)i * k + j] = s;
-        }
-    }
-    // M = Q^H W, U = W - Q M
-    for (int i = 0; i < n; ++i) {
-        const cd* qi = qt + (size_t)i * k;
-        const cd* wi = WQ + (size_t)i * k;
-        for (int a = 0; a < k; ++a) {
-            const cd ca = std::conj(qi[a]);
-            cd* Ma = M.data() + (size_t)a * k;
-            for (int b = 0; b < k; ++b)
-                Ma[b] += ca * wi[b];
-        }
-    }
-    for (int i = 0; i < n; ++i) {
-        const cd* qi = qt + (size_t)i * k;
-        cd* Ui = U + (size_t)i * k;
-        std::copy(WQ + (size_t)i * k, WQ + (size_t)(i + 1) * k, Ui);
-        for (int l = 0; l < k; ++l) {
-            const cd ql = qi[l];
-            const cd* Ml = M.data() + (size_t)l * k;
-            for (int b = 0; b < k; ++b)
-                Ui[b] -= ql * Ml[b];
-        }
-    }
-    // V'_ic = V_ic - sum_j q_ji conj(W_cj) - sum_j U_ij conj(q_jc), for c <= i
-    for (int i = 0; i < n; ++i) {
-        cd* Vi = V + (size_t)i * n;
-        const cd* qi = qt + (size_t)i * k;
-        const cd* Ui = U + (size_t)i * k;
-        for (int c = 0; c <= i; ++c) {
-            const cd* Wc = WQ + (size_t)c * k;
-            const cd* qc = qt + (size_t)c * k;
-            cd s(0.0, 0.0);
-            for (int j = 0; j < k; ++j)
-                s += qi[j] * std::conj(Wc[j]) + Ui[j] * std::conj(qc[j]);
-            Vi[c] -= s;
-        }
-    }
+    constexpr int B = 8;
+    constexpr int G = 5; // blocks of a row of W held at once
+    const int np = (n + B - 1) / B * B + B, kp = (k + B - 1) / B * B, nb = kp / B;
+    const size_t nk = (size_t)np * kp, nn = (size_t)np * np, kk = (size_t)kp * kp;
+    W.resize(5 * nk + nn);
+    M.assign(kk, cd(0.0, 0.0));
+    double* s = reinterpret_cast<double*>(W.data());
+    double *qr = s, *qi = qr + nk;       // Q, [kp][np]
+    double *tr = qi + nk, *ti = tr + nk; // Q transposed, [np][kp]
+    double *wr = ti + nk, *wi = wr + nk; // W, [np][kp]
+    double *xr = wi + nk, *xi = xr + nk; // W transposed, [kp][np]
+    double *ur = xi + nk, *ui = ur + nk; // U, [np][kp]
+    double *vr = ui + nk, *vi = vr + nn; // V, [np][np]
+    double* mr = reinterpret_cast<double*>(M.data());
+    double* mi = mr + kk;
+    // The blocks read past n and k: those pads must be finite, so they are zeroed.
     for (int i = 0; i < n; ++i)
-        for (int c = i + 1; c < n; ++c)
-            V[(size_t)i * n + c] = std::conj(V[(size_t)c * n + i]);
+        for (int j = k; j < kp; ++j)
+            tr[(size_t)i * kp + j] = ti[(size_t)i * kp + j] = 0.0;
+    for (int j = 0; j < k; ++j)
+        for (int c = n; c < np; ++c)
+            qr[(size_t)j * np + c] = qi[(size_t)j * np + c] = xr[(size_t)j * np + c] =
+                xi[(size_t)j * np + c] = 0.0;
+    for (int i = 0; i < n; ++i)
+        for (int c = n; c < np; ++c)
+            vr[(size_t)i * np + c] = vi[(size_t)i * np + c] = 0.0;
+    for (int j = 0; j < k; ++j)
+        for (int i = 0; i < n; ++i) {
+            const cd x = q[(size_t)j * n + i];
+            qr[(size_t)j * np + i] = tr[(size_t)i * kp + j] = x.real();
+            qi[(size_t)j * np + i] = ti[(size_t)i * kp + j] = x.imag();
+        }
+    for (int i = 0; i < n; ++i)
+        for (int c = 0; c < n; ++c) {
+            vr[(size_t)i * np + c] = V[(size_t)i * n + c].real();
+            vi[(size_t)i * np + c] = V[(size_t)i * n + c].imag();
+        }
+    // W = V Q, up to G blocks of a row of W in registers while the row of V streams past
+    for (int i = 0; i < n; ++i)
+        for (int g0 = 0; g0 < nb; g0 += G) {
+            const int ng = std::min(G, nb - g0);
+            v8d ar[G] = {}, ai[G] = {};
+            for (int c = 0; c < n; ++c) {
+                const double a = vr[(size_t)i * np + c], b = vi[(size_t)i * np + c];
+                const double* tc = tr + (size_t)c * kp + g0 * B;
+                const double* sc = ti + (size_t)c * kp + g0 * B;
+                for (int t = 0; t < ng; ++t) {
+                    const v8d x = *(const v8d*)(tc + t * B), y = *(const v8d*)(sc + t * B);
+                    ar[t] += a * x - b * y;
+                    ai[t] += a * y + b * x;
+                }
+            }
+            for (int t = 0; t < ng; ++t) {
+                *(v8d*)(wr + (size_t)i * kp + (g0 + t) * B) = ar[t];
+                *(v8d*)(wi + (size_t)i * kp + (g0 + t) * B) = ai[t];
+            }
+        }
+    // M = Q^H W, row by row
+    for (int i = 0; i < n; ++i)
+        for (int a = 0; a < k; ++a) {
+            const double qa = tr[(size_t)i * kp + a], qb = ti[(size_t)i * kp + a];
+            for (int b0 = 0; b0 < kp; b0 += B) {
+                const v8d w1 = *(const v8d*)(wr + (size_t)i * kp + b0),
+                          w2 = *(const v8d*)(wi + (size_t)i * kp + b0);
+                *(v8d*)(mr + (size_t)a * kp + b0) =
+                    *(const v8d*)(mr + (size_t)a * kp + b0) + qa * w1 + qb * w2;
+                *(v8d*)(mi + (size_t)a * kp + b0) =
+                    *(const v8d*)(mi + (size_t)a * kp + b0) + qa * w2 - qb * w1;
+            }
+        }
+    // U = W - Q M
+    for (int i = 0; i < n; ++i)
+        for (int b0 = 0; b0 < kp; b0 += B) {
+            v8d sr = *(const v8d*)(wr + (size_t)i * kp + b0),
+                si = *(const v8d*)(wi + (size_t)i * kp + b0);
+            for (int l = 0; l < k; ++l) {
+                const double a = tr[(size_t)i * kp + l], c = ti[(size_t)i * kp + l];
+                const v8d m1 = *(const v8d*)(mr + (size_t)l * kp + b0),
+                          m2 = *(const v8d*)(mi + (size_t)l * kp + b0);
+                sr -= a * m1 - c * m2;
+                si -= a * m2 + c * m1;
+            }
+            *(v8d*)(ur + (size_t)i * kp + b0) = sr;
+            *(v8d*)(ui + (size_t)i * kp + b0) = si;
+        }
+    for (int i = 0; i < n; ++i)
+        for (int j = 0; j < k; ++j) {
+            xr[(size_t)j * np + i] = wr[(size_t)i * kp + j];
+            xi[(size_t)j * np + i] = wi[(size_t)i * kp + j];
+        }
+    // V'_ic = V_ic - sum_j q_ji conj(W_cj) - sum_j U_ij conj(q_jc), blocks of c reaching c <= i
+    for (int c0 = 0; c0 < n; c0 += B)
+        for (int i = c0; i < n; ++i) {
+            v8d sr = *(const v8d*)(vr + (size_t)i * np + c0),
+                si = *(const v8d*)(vi + (size_t)i * np + c0);
+            for (int j = 0; j < k; ++j) {
+                const double ar = tr[(size_t)i * kp + j], ai = ti[(size_t)i * kp + j];
+                const double br = ur[(size_t)i * kp + j], bi = ui[(size_t)i * kp + j];
+                const v8d x1 = *(const v8d*)(xr + (size_t)j * np + c0),
+                          x2 = *(const v8d*)(xi + (size_t)j * np + c0);
+                const v8d q1 = *(const v8d*)(qr + (size_t)j * np + c0),
+                          q2 = *(const v8d*)(qi + (size_t)j * np + c0);
+                sr -= ar * x1 + ai * x2 + br * q1 + bi * q2;
+                si -= ai * x1 - ar * x2 + bi * q1 - br * q2;
+            }
+            *(v8d*)(vr + (size_t)i * np + c0) = sr;
+            *(v8d*)(vi + (size_t)i * np + c0) = si;
+        }
+    for (int i = 0; i < n; ++i) {
+        for (int c = 0; c <= i; ++c)
+            V[(size_t)i * n + c] = cd(vr[(size_t)i * np + c], vi[(size_t)i * np + c]);
+        for (int c = 0; c < i; ++c)
+            V[(size_t)c * n + i] = std::conj(V[(size_t)i * n + c]);
+    }
 }
 
 /// The products between the stations @p st and the inputs @p ot outside them, as X[a][o] =
