@@ -66,6 +66,10 @@ target_include_directories(test_gnss_shared_pin PRIVATE ../../lib/stages ../../l
 add_executable(test_gnss_lane_direction test_gnss_lane_direction.cpp)
 target_include_directories(test_gnss_lane_direction PRIVATE ../../lib/stages ../../lib/stages/gnss)
 
+# GnssN2Project's projection arithmetic against brute force: header-only.
+add_executable(test_gnss_n2project_math test_gnss_n2project_math.cpp)
+target_include_directories(test_gnss_n2project_math PRIVATE ../../lib/stages ../../lib/stages/gnss)
+
 # Per-channel noise weights for the assembler's cross-channel sums: header-only.
 add_executable(test_gnss_chan_power test_gnss_chan_power.cpp)
 target_include_directories(test_gnss_chan_power PRIVATE ../../lib/stages ../../lib/stages/gnss)

@@ -7,6 +7,7 @@
 #ifndef GNSS_N2_PROJECT_MATH_HPP
 #define GNSS_N2_PROJECT_MATH_HPP
 
+#include <algorithm>
 #include <cmath>
 #include <complex>
 #include <cstdint>
@@ -79,14 +80,20 @@ inline void writeback(const Layout& L, int32_t* f, const std::vector<int>& st, c
 /// V <- (I - Q Q^H) V (I - Q Q^H) in place for Hermitian V, Q = k orthonormal columns given
 /// row-wise as q[j * n + i] (ProjSubspace's layout). With W = V Q, M = Q^H W and Q^H V = W^H
 /// (V Hermitian): V' = V - Q W^H - W Q^H + Q M Q^H = V - Q W^H - (W - Q M) Q^H. Taking
-/// U = W - Q M first makes the update two rank-k products, ~4 k n^2 complex multiply-adds,
-/// linear in k (#190 projects a few dozen known directions per channel; the first version's
-/// Q M Q^H triple loop was k^2 n^2, 4 M operations per channel-frame at k = 20, n = 96).
+/// U = W - Q M first makes the update two rank-k products, linear in k. The update is computed
+/// on the lower triangle and mirrored, ~2 k n^2 complex multiply-adds in all; every [n][k]
+/// operand (Q transposed, W, U) is row-major so the inner loops run over k contiguously.
 inline void project(int n, int k, const cd* q, cd* V, std::vector<cd>& W, std::vector<cd>& M) {
     if (k <= 0)
         return;
-    W.assign((size_t)n * k, cd(0.0, 0.0));
+    W.assign((size_t)3 * n * k, cd(0.0, 0.0));
     M.assign((size_t)k * k, cd(0.0, 0.0));
+    cd* qt = W.data();
+    cd* WQ = qt + (size_t)n * k;
+    cd* U = WQ + (size_t)n * k;
+    for (int j = 0; j < k; ++j)
+        for (int i = 0; i < n; ++i)
+            qt[(size_t)i * k + j] = q[(size_t)j * n + i];
     for (int i = 0; i < n; ++i) {
         const cd* Vi = V + (size_t)i * n;
         for (int j = 0; j < k; ++j) {
@@ -94,37 +101,101 @@ inline void project(int n, int k, const cd* q, cd* V, std::vector<cd>& W, std::v
             cd s(0.0, 0.0);
             for (int c = 0; c < n; ++c)
                 s += Vi[c] * qj[c];
-            W[(size_t)i * k + j] = s;
+            WQ[(size_t)i * k + j] = s;
         }
     }
-    for (int a = 0; a < k; ++a)
-        for (int b = 0; b < k; ++b) {
-            cd s(0.0, 0.0);
-            for (int i = 0; i < n; ++i)
-                s += std::conj(q[(size_t)a * n + i]) * W[(size_t)i * k + b];
-            M[(size_t)a * k + b] = s;
+    // M = Q^H W, U = W - Q M
+    for (int i = 0; i < n; ++i) {
+        const cd* qi = qt + (size_t)i * k;
+        const cd* wi = WQ + (size_t)i * k;
+        for (int a = 0; a < k; ++a) {
+            const cd ca = std::conj(qi[a]);
+            cd* Ma = M.data() + (size_t)a * k;
+            for (int b = 0; b < k; ++b)
+                Ma[b] += ca * wi[b];
         }
-    // U = W - Q M, [n][k], in a scratch that lives in M's vector after M is consumed row by row
-    // would alias; keep it simple: a second [n][k] block appended to W.
-    W.resize((size_t)2 * n * k, cd(0.0, 0.0));
-    cd* U = W.data() + (size_t)n * k;
-    for (int i = 0; i < n; ++i)
-        for (int j = 0; j < k; ++j) {
-            cd s = W[(size_t)i * k + j];
-            for (int l = 0; l < k; ++l)
-                s -= q[(size_t)l * n + i] * M[(size_t)l * k + j];
-            U[(size_t)i * k + j] = s;
+    }
+    for (int i = 0; i < n; ++i) {
+        const cd* qi = qt + (size_t)i * k;
+        cd* Ui = U + (size_t)i * k;
+        std::copy(WQ + (size_t)i * k, WQ + (size_t)(i + 1) * k, Ui);
+        for (int l = 0; l < k; ++l) {
+            const cd ql = qi[l];
+            const cd* Ml = M.data() + (size_t)l * k;
+            for (int b = 0; b < k; ++b)
+                Ui[b] -= ql * Ml[b];
         }
-    // V'_ic = V_ic - sum_j q_ji conj(W_cj) - sum_j U_ij conj(q_jc)
+    }
+    // V'_ic = V_ic - sum_j q_ji conj(W_cj) - sum_j U_ij conj(q_jc), for c <= i
     for (int i = 0; i < n; ++i) {
         cd* Vi = V + (size_t)i * n;
+        const cd* qi = qt + (size_t)i * k;
         const cd* Ui = U + (size_t)i * k;
-        for (int c = 0; c < n; ++c) {
-            const cd* Wc = W.data() + (size_t)c * k;
+        for (int c = 0; c <= i; ++c) {
+            const cd* Wc = WQ + (size_t)c * k;
+            const cd* qc = qt + (size_t)c * k;
             cd s(0.0, 0.0);
             for (int j = 0; j < k; ++j)
-                s += q[(size_t)j * n + i] * std::conj(Wc[j]) + Ui[j] * std::conj(q[(size_t)j * n + c]);
+                s += qi[j] * std::conj(Wc[j]) + Ui[j] * std::conj(qc[j]);
             Vi[c] -= s;
+        }
+    }
+    for (int i = 0; i < n; ++i)
+        for (int c = i + 1; c < n; ++c)
+            V[(size_t)i * n + c] = std::conj(V[(size_t)c * n + i]);
+}
+
+/// The products between the stations @p st and the inputs @p ot outside them, as X[a][o] =
+/// V(st[a], ot[o]) (n x n_o, row-major).
+inline void extract_cross(const Layout& L, const int32_t* f, const std::vector<int>& st,
+                          const std::vector<int>& ot, cd* X) {
+    const int n = (int)st.size(), n_o = (int)ot.size();
+    for (int a = 0; a < n; ++a)
+        for (int o = 0; o < n_o; ++o) {
+            const bool lower = st[a] > ot[o];
+            const size_t k = lower ? L.idx(st[a], ot[o]) : L.idx(ot[o], st[a]);
+            const cd v((double)f[k], (double)f[k + 1]);
+            X[(size_t)a * n_o + o] = lower ? v : std::conj(v);
+        }
+}
+
+inline void writeback_cross(const Layout& L, int32_t* f, const std::vector<int>& st,
+                            const std::vector<int>& ot, const cd* X) {
+    const int n = (int)st.size(), n_o = (int)ot.size();
+    for (int a = 0; a < n; ++a)
+        for (int o = 0; o < n_o; ++o) {
+            const bool lower = st[a] > ot[o];
+            const size_t k = lower ? L.idx(st[a], ot[o]) : L.idx(ot[o], st[a]);
+            const cd v = lower ? X[(size_t)a * n_o + o] : std::conj(X[(size_t)a * n_o + o]);
+            f[k] = to_i32(v.real());
+            f[k + 1] = to_i32(v.imag());
+        }
+}
+
+/// X <- (I - Q Q^H) X for the station side of the cross products, so that with project() on the
+/// station block the frame is M V M^H, M = (I - Q Q^H) on the stations and the identity on the
+/// rest: the projection of the station voltages alone.
+inline void project_cross(int n, int n_o, int k, const cd* q, cd* X, std::vector<cd>& Y) {
+    if (k <= 0 || n_o <= 0)
+        return;
+    Y.assign((size_t)k * n_o, cd(0.0, 0.0));
+    for (int j = 0; j < k; ++j) {
+        const cd* qj = q + (size_t)j * n;
+        cd* Yj = Y.data() + (size_t)j * n_o;
+        for (int a = 0; a < n; ++a) {
+            const cd c = std::conj(qj[a]);
+            const cd* Xa = X + (size_t)a * n_o;
+            for (int o = 0; o < n_o; ++o)
+                Yj[o] += c * Xa[o];
+        }
+    }
+    for (int j = 0; j < k; ++j) {
+        const cd* qj = q + (size_t)j * n;
+        const cd* Yj = Y.data() + (size_t)j * n_o;
+        for (int a = 0; a < n; ++a) {
+            cd* Xa = X + (size_t)a * n_o;
+            for (int o = 0; o < n_o; ++o)
+                Xa[o] -= qj[a] * Yj[o];
         }
     }
 }

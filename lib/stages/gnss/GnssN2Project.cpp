@@ -230,6 +230,14 @@ void GnssN2Project::main_thread() {
     const size_t per_int = per_freq * (size_t)num_local_freq; // words per integration
     std::vector<cd> V((size_t)n * n), W, M;
     std::vector<cd> q((size_t)k_max * n);
+    // The inputs outside the stations: their products with the stations are projected on the
+    // station side, so the frame stays the projection of the station voltages.
+    std::vector<int> others;
+    for (int i = 0; i < num_elements; ++i)
+        if (!std::binary_search(stations.begin(), stations.end(), i))
+            others.push_back(i);
+    const int n_o = (int)others.size();
+    std::vector<cd> X((size_t)n * n_o), Y;
     std::vector<int> freq_ids(num_local_freq);
     for (int f = 0; f < num_local_freq; ++f)
         freq_ids[f] = f;
@@ -414,10 +422,16 @@ void GnssN2Project::main_thread() {
                         null_db[f] =
                             (l0 > 0.0) ? 10.0 * std::log10(std::max(l1, 1e-12 * l0) / l0) : 0.0;
                     }
-                    if (live_ch[f])
-                        gnss_n2proj::writeback(layout,
-                                               out + (size_t)t * per_int + (size_t)f * per_freq,
-                                               stations, V.data());
+                    if (live_ch[f]) {
+                        int32_t* fout = out + (size_t)t * per_int + (size_t)f * per_freq;
+                        gnss_n2proj::writeback(layout, fout, stations, V.data());
+                        if (n_o > 0) {
+                            gnss_n2proj::extract_cross(layout, fin, stations, others, X.data());
+                            gnss_n2proj::project_cross(n, n_o, kl, lanes.q.data(), X.data(), Y);
+                            gnss_n2proj::project_cross(n, n_o, k, q.data(), X.data(), Y);
+                            gnss_n2proj::writeback_cross(layout, fout, stations, others, X.data());
+                        }
+                    }
                     c_proj.inc();
                 } else {
                     null_db[f] = 0.0;

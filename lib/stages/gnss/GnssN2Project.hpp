@@ -41,9 +41,11 @@
  * and frac_next_min gates; k_max caps k. Each projected direction removes ~1/n_live of the sky
  * with it, so the cap stays small on a small array.
  *
- * Output. The projected live block is written into the output copy that N2Accumulate reads.
- * The input frame stays raw, as the subspace estimator must see it: a projected input would
- * null its own source and oscillate.
+ * Output. The projected live block is written into the output copy that N2Accumulate reads,
+ * with the products between the stations and the other inputs projected on the station side
+ * (X <- (I - QQ^H) X): the frame is that of the projected station voltages, and the other
+ * inputs' own products are unchanged. The input frame stays raw, as the subspace estimator must
+ * see it: a projected input would null its own source and oscillate.
  *
  * Reporting. Per-channel gauges labelled by freq_id: k; lambda0_rel and frac0, the first
  * spread component's eigenvalue in mean autos and its energy fraction (the trigger); pr0,
