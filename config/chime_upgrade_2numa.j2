@@ -732,6 +732,8 @@ numa_{{ numa }}:
         value_type: float32
         # GPU producer cudaRFISKtilde rfi_SKtilde (leading extent = per-frame rfi_num_times);
         # also validated by RfiFrameMask in_buf as {Trfi, F, SK}.
+        quantity_name: "SKtilde"
+        dimnames: ["Trfi", "F", "SK"]
         extents: [rfi_num_times, num_freq_gpu_buf, 3]
         metadata_pool: main_pool{{ numa_sfx }}
     host_rfi_SKtilde_ringbuffer{{ numa_sfx }}:
@@ -739,7 +741,8 @@ numa_{{ numa }}:
         num_frames: gpu_buffer_depth
         ring_buffer_size: gpu_buffer_depth * sizeof_float32 * 3 * num_freq_gpu_buf * rfi_num_times
         type: float32
-        dimnames: ["Trfi", "F", "S"]
+        quantity_name: "SKtilde"
+        dimnames: ["Trfi", "F", "SK"]
         shape: [gpu_buffer_depth * rfi_num_times, num_freq_gpu_buf, 3]
         metadata_pool: main_pool{{ numa_sfx }}
 
