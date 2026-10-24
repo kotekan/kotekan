@@ -16,7 +16,8 @@ satellite. Changes are therefore damped: elevation hysteresis (desired_map), a h
 keeps its slot, and at most one whole-map post per --prn-reconfig-interval-s.
 
 --prn-reconfig defaults to off (the stage does nothing; the replay fixtures' argv predates the
-flag); every live chain runs `apply`.
+flag); every live chain runs `apply` except sbas_l5, whose PRN list is fixed and which runs
+`read`: the map is read back and published for the probe selector, and never posted.
 
 The broker does not read the node's config; it GETs the live map, so it diffs against what
 each node actually holds. The map is a runtime overlay, not persisted: a node restart reverts
@@ -442,8 +443,8 @@ def prn_blocks(sysc):
 
 
 def stage_prn_membership(ctx):
-    """Reconcile the nodes' slot->PRN map against live BRDC. Does nothing unless
-    --prn-reconfig apply.
+    """Reconcile the nodes' slot->PRN map against live BRDC. Does nothing under
+    --prn-reconfig off; under read it only polls and publishes st.consensus.
 
     Each cycle computes the wanted map (desired_map); when it differs from the nodes' map it
     is posted whole, on one deadline, at most once per --prn-reconfig-interval-s. The module
@@ -469,6 +470,10 @@ def stage_prn_membership(ctx):
     # incomplete or the nodes disagree, and consumers then fall back to their unfiltered
     # behaviour rather than act on a partial map.
     st.consensus = cur
+    # read: the consensus is all this chain wants. Its PRN list is fixed (its nodes may not even
+    # accept another PRN), so it neither resyncs a split nor proposes a map.
+    if a.prn_reconfig != "apply":
+        return
     if cur is None:
         if st.maps and len(st.maps) >= len(eps):
             if not _resync_split(ctx, st, eps, now):

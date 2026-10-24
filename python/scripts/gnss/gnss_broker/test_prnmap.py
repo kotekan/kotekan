@@ -18,9 +18,13 @@ What is pinned:
 @author Keith Vanderlinde
 """
 
+import os
+import re
 import sys
 
-from gnss_broker import prnmap
+import yaml
+
+from gnss_broker import prnmap, signals
 
 
 _fails = []
@@ -113,6 +117,46 @@ def run_cycle(ctx, t):
     ctx.prnmap.poll_t = t  # the sweep is stood in for below, so no HTTP happens
     ctx.prnmap.maps = {ep: list(ctx.node_state) for ep in ctx.trackers}
     prnmap.stage_prn_membership(ctx)
+
+
+def test_chains_config():
+    """The production chains (config/gnss_chains_chord.yaml, each chain over `common:`) against
+    the manifest's PRN lists (config/gnss_fleet_chord.yaml): a chain under apply must have PRNs
+    the node's /set_prns can take (1-63: cudaGnssChordTrack.cpp), or every swap it proposes is
+    refused (sbas_l5, 10-23); and a chain with probe-require-slot must read the map back, or
+    the filter never has a map and the probes go unfiltered."""
+    print("\nthe chains' prn-reconfig against the manifest's PRN lists")
+    repo = os.path.normpath(
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "..")
+    )
+    chains = yaml.safe_load(open(os.path.join(repo, "config", "gnss_chains_chord.yaml")))
+    fleet = open(os.path.join(repo, "config", "gnss_fleet_chord.yaml")).read()
+    lists = {}
+    for m in re.finditer(r"^\s*- ([A-Z0-9_]+):([0-9,]+)\s*$", fleet, re.M):
+        lists.setdefault(m.group(1), set()).update(int(p) for p in m.group(2).split(","))
+    common = chains.get("common") or {}
+    n = 0
+    for name, block in chains["chains"].items():
+        opt = dict(common)
+        opt.update(block or {})
+        mode = opt.get("prn-reconfig") or "off"
+        if opt.get("probe-require-slot"):
+            check(
+                mode in ("read", "apply"),
+                "%s: probe-require-slot, and prn-reconfig %s reads a map back" % (name, mode),
+            )
+        sig = signals.get(opt.get("signal"))
+        prns = lists.get(sig.long) or lists.get(sig.primary)
+        if mode != "apply" or not prns:
+            continue
+        n += 1
+        bad = sorted(p for p in prns if not 1 <= p <= 63)
+        check(
+            not bad,
+            "%s: prn-reconfig apply, and the nodes' /set_prns takes every manifest PRN "
+            "(outside 1-63: %s)" % (name, bad or "none"),
+        )
+    check(n > 0, "at least one chain runs apply with a manifest PRN list (%d)" % n)
 
 
 def main():
@@ -537,6 +581,68 @@ def main():
         "--prn-reconfig off: the stage does nothing at all (no GET -- replay stays exact)",
     )
 
+    # ---- read: a fixed PRN list, read back and never posted ----------------------------
+    # sbas_l5's slots are fixed: the WAAS GEOs plus three EGNOS GEOs that never rise here, the
+    # noise probes. apply would trade those probes for the deeper GEOs in the BRDC sky (and
+    # the nodes refuse PRNs over 63). read must still publish the consensus, or
+    # --probe-require-slot fails open and the probes go to PRNs with no slot.
+    print("read: the map is published, never posted")
+    _sbas = [131, 133, 135, 121, 123, 136]
+    _sky = {
+        131: 33.0,
+        133: 30.0,
+        135: 28.0,
+        121: -40.0,
+        123: -45.0,
+        136: -50.0,
+        144: -70.0,
+        127: -80.0,
+        128: -85.0,
+    }
+    _kw = dict(
+        noise_probes=3,
+        prn_reconfig_admit_deg=0.0,
+        prn_reconfig_evict_deg=-2.0,
+        prn_reconfig_interval_s=120.0,
+        signal="SBAS_L5_I_MC",
+    )
+    POSTS[:] = []
+    run_cycle(Ctx(_sbas, _sky, prn_reconfig="apply", **_kw), 1000.0)
+    check(
+        bool(POSTS),
+        "the SBAS sky under apply proposes a swap (the probes for deeper GEOs) -- the "
+        "case read exists for",
+    )
+    POSTS[:] = []
+    _r = Ctx(_sbas, _sky, prn_reconfig="read", **_kw)
+    run_cycle(_r, 1000.0)
+    run_cycle(_r, 1000.0 + 100000.0)
+    check(not POSTS, "read posts nothing, however long the sky wants a swap")
+    check(
+        _r.prnmap.consensus == _sbas,
+        "... and publishes the unanimous map for --probe-require-slot (got %s)"
+        % _r.prnmap.consensus,
+    )
+    check(
+        prnmap.probe_order(
+            {p: e for p, e in _sky.items() if p in set(_r.prnmap.consensus or ())}
+        )[:3]
+        == [136, 123, 121],
+        "... which keeps the probes on the slotted EGNOS GEOs",
+    )
+    POSTS[:] = []
+    _r.prnmap.maps = {
+        "http://node1": list(_sbas),
+        "http://node2": [131, 133, 135, 121, 123, 9],
+    }
+    _r.prnmap.poll_t = _r.t0 = 1000.0 + 200000.0
+    CTX[0] = _r
+    prnmap.stage_prn_membership(_r)
+    check(
+        not POSTS and _r.prnmap.consensus is None,
+        "... and a split under read is not resynced (nothing posted, consensus None)",
+    )
+
     # ---- scheduled swaps: one frame, fleet-wide ---------------------------------------
     # A map posted for "now" lands on whatever frame each node is building, so the combiner
     # folds a window whose instances disagree about which satellite slot p holds. Every row is
@@ -943,6 +1049,8 @@ def main():
             )
     finally:
         _pm._IGS_SNX = _saved
+
+    test_chains_config()
 
     print("\n%s (%d check(s) failed)" % ("FAIL" if _fails else "PASS", len(_fails)))
     return 1 if _fails else 0

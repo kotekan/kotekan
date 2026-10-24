@@ -1,7 +1,7 @@
 # Live PRN reconfiguration
 
 **Status: LIVE.** Every chain runs `--prn-reconfig apply` (`config/gnss_chains_chord.yaml`,
-`common`). The node half is in place on every producer, the record assembler follows the frame,
+`common`) except sbas_l5, whose PRN list is fixed and which runs `read`. The node half is in place on every producer, the record assembler follows the frame,
 and the search is driven in step.
 
 ## Why
@@ -136,8 +136,11 @@ restart is a clean slate rather than a silently-inherited history.
 
 ### 6. Arming
 
-`--prn-reconfig off | apply`, default **off**: the stage does nothing (the replay fixtures'
-argv predates the flag). Every live chain runs `apply`.
+`--prn-reconfig off | read | apply`, default **off**: the stage does nothing (the replay
+fixtures' argv predates the flag). `read` polls `/get_prns` and publishes the unanimous map for
+`--probe-require-slot`, and never posts: sbas_l5 runs it, since its list (the WAAS GEOs plus
+three EGNOS GEOs as noise probes) is fixed and the nodes' `/set_prns` takes PRNs 1-63 only.
+Every other live chain runs `apply`.
 
 ## Verification
 

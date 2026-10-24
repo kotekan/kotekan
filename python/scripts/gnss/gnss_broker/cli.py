@@ -940,10 +940,10 @@ def build_parser(description):
         "--probe-require-slot",
         action="store_true",
         help="pick noise probes only from PRNs the nodes hold a slot for, from the "
-        "unanimous map that --prn-reconfig apply reads back (/get_prns): a probe "
-        "without a slot is seeded but never reports, which can leave the presence gate "
-        "short of the 3 probes its q floor needs. Fails open: with --prn-reconfig off, "
-        "before a full sweep, or while the nodes disagree, the probes are not "
+        "unanimous map that --prn-reconfig read or apply reads back (/get_prns): a "
+        "probe without a slot is seeded but never reports, which can leave the presence "
+        "gate short of the 3 probes its q floor needs. Fails open: with --prn-reconfig "
+        "off, before a full sweep, or while the nodes disagree, the probes are not "
         "filtered.",
     )
     # A satellite with ephemeris that the registry says cannot broadcast this signal
@@ -961,11 +961,13 @@ def build_parser(description):
     )
     ap.add_argument(
         "--prn-reconfig",
-        choices=["off", "apply"],
+        choices=["off", "read", "apply"],
         default="off",
         help="keep the nodes' slot->PRN map in step with live BRDC "
         "(gnss_broker/prnmap.py, docs/CHORD_LIVE_PRN_RECONFIG.md). off (default): the "
-        "stage does nothing. apply: read each tracker's map back (/get_prns) and, when "
+        "stage does nothing. read: read each tracker's map back (/get_prns) and publish "
+        "the unanimous map for --probe-require-slot, but never post one: for a chain "
+        "whose PRN list is fixed (sbas_l5). apply: as read, and when "
         "the wanted map (every satellite up, then the noise probes) differs, POST it "
         "whole to every tracker's /set_prns on one F-engine hop deadline, and without "
         "one to the detectors. A moved slot re-acquires cold (the node resets its code "

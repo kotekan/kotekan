@@ -580,8 +580,14 @@ chains:
     # report, presence never anchored): list only nodes that carry it. An unreachable node
     # also blocks the consensus (prnmap: every listed endpoint must answer), so cx42, out
     # since 10-23, is left off until it is back.
+    # The PRN list is fixed: the three WAAS GEOs plus 121/123/136, EGNOS GEOs that never rise
+    # here, kept as the noise probes. prn-reconfig is read, not common's apply: apply would
+    # trade the probes for whichever SBAS GEOs sit deeper in the BRDC sky, and the nodes refuse
+    # every such map anyway (set_prns takes PRNs 1-63 only, cudaGnssChordTrack.cpp). read still
+    # polls /get_prns, so probe-require-slot keeps the probes on the slotted 121/123/136.
     sbas_l5:
         signal: sbas_l5
+        prn-reconfig: read
         presence-admit-displaced: true
         seed-phase-transport: true
         dr-clock-adopt: true
