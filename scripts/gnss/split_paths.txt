@@ -154,6 +154,10 @@ tests/test_gps_broker.py
 # ---- deleted root-level GNSS launcher ----
 launch_xnode.sh
 
+# ---- 10-25 (#215): every element positions and shared-reference file, and the hardware input mask ----
+glob:config/elem_*.json
+config/gnss_bad_inputs.json
+
 # ---- the new repo's root files: scripts/gnss/repo_root/X becomes X (no scripts/gnss/repo_root/ copy is kept).
 #      MUST stay the last line: filters above test the original name. ----
 scripts/gnss/repo_root/==>
