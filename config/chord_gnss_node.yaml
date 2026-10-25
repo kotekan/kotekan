@@ -94,11 +94,12 @@ array:
     # crs_board_remap (config/chord/pathfinder.j2) puts dish slot d (config/chord/telescope.j2:
     # rows A-H, eight dishes each) at elements d (pol 0) and 64 + d (pol 1). 0-63 and 64-127
     # since row H came back with the 10-23 chord merge (array epoch 2026-10-23-rows-ah128).
-    # Row H is removed from the array since 2026-10-24 18:00Z (epoch 2026-10-24-rows-ag112-taua:
-    # rows A-G, 112 feeds) but its slots 56-63 and 120-127 stay in the ranges: ranges must be
-    # 16-aligned (live_tile_columns; the dual correlator gathers 16-wide tiles) and dish slots
-    # 48-63 share tiles 3 and 7 with row G, so [0, 55] cannot be expressed. The epoch table marks
-    # the 16 slots `removed`. Ranges are one pol each and equal in length: the shared model
+    # Row H's Y pol is removed from the array since 2026-10-24 18:00Z (epoch
+    # 2026-10-24-rows-ah120-taua: rows A-H X + rows A-G Y, 120 feeds; H01X..H08X at 56-63 stay
+    # live) but its slots 120-127 stay in the ranges: ranges must be 16-aligned
+    # (live_tile_columns; the dual correlator gathers 16-wide tiles) and dish slots 48-63 share
+    # tile 7 with row G, so [64, 119] cannot be expressed. The epoch table marks the 8 slots
+    # `removed`; bffs flags them. Ranges are one pol each and equal in length: the shared model
     # splits pols at n/2. The search taps the first element of the first range.
     live_element_ranges: [[0, 63], [64, 127]]
     # The F-engine's per-bin, per-input digital gains (applied before requantization, served at

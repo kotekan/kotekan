@@ -1,6 +1,6 @@
 {
- "what": "Element positions for epoch 2026-10-24-rows-ag112-taua:441d2daf: the 2026-10-24-rows-ah128-taua solve (config/elem_positions_taua_20261024.json, keyed 2026-10-24-rows-ah128-taua:441d2daf) carried over unchanged per element. Row H is removed from the array but its slots stay in the axis (see the epoch notes): they keep H's last positions. G01/G02 pol slots swapped on site; positions are per dish, so nothing moves. Original description: CANDIDATE (NOT installed) element positions for epoch 2026-10-24-rows-ah128-taua:441d2daf: one whole-array 3-D solve against C06 (pol 0; pol 1 where pol 0 fails) on 2026-10-24 02:10-11:15Z, G/H in-group vs H03 + tie T_GH, possolve model (fixtures/elemsteer/pos_taua_20261024.py, runners pos_taua_20261024.sh / _b.sh); table out/pos_taua_converge_20261024.txt; built by pos_taua_converge_20261024.py. Gauge: C06 keeps its epoch position (the installed C-H frame). positions_enu = epoch + offset, in cube_order; 'kept_epoch' entries are unchanged; pol-1 slots take their dish's position.",
- "epoch_key": "2026-10-24-rows-ag112-taua:441d2daf",
+ "what": "Element positions for epoch 2026-10-24-rows-ah120-taua:441d2daf: the 2026-10-24-rows-ah128-taua solve (config/elem_positions_taua_20261024.json, keyed 2026-10-24-rows-ah128-taua:441d2daf) carried over unchanged per element. Row H's Y pol is removed from the array but its slots (120-127) stay in the axis (see the epoch notes): they keep H's positions; H's X pol (56-63) is live. G01/G02 pol slots swapped on site; positions are per dish, so nothing moves. Original description: CANDIDATE (NOT installed) element positions for epoch 2026-10-24-rows-ah128-taua:441d2daf: one whole-array 3-D solve against C06 (pol 0; pol 1 where pol 0 fails) on 2026-10-24 02:10-11:15Z, G/H in-group vs H03 + tie T_GH, possolve model (fixtures/elemsteer/pos_taua_20261024.py, runners pos_taua_20261024.sh / _b.sh); table out/pos_taua_converge_20261024.txt; built by pos_taua_converge_20261024.py. Gauge: C06 keeps its epoch position (the installed C-H frame). positions_enu = epoch + offset, in cube_order; 'kept_epoch' entries are unchanged; pol-1 slots take their dish's position.",
+ "epoch_key": "2026-10-24-rows-ah120-taua:441d2daf",
  "cube_order": [
   0,
   1,
@@ -820,7 +820,7 @@
   0.016
  ],
  "source": "fixtures/elemsteer/out/postaua_20261024_*.json",
- "built_utc": "2026-10-24T21:20:21Z",
+ "built_utc": "2026-10-25T01:16:03Z",
  "elements": {
   "0": {
    "dish": 0,
@@ -5714,7 +5714,7 @@
     -0.018,
     0.016
    ],
-   "removed": "2026-10-24T18:00:00Z: row H removed from the array with its F-engine board (KV 2026-10-24: \"Row H is being removed altogether\"); the slot stays in the correlator axis (tile shared with row G) and keeps H's last position; nothing is expected on it"
+   "note": "2026-10-24T18:00:00Z: live; row H's Y pol (slot 1) is gone with its F-engine board, this X-pol slot stays (KV 2026-10-25: \"only H-y is out, the H-x should still be good\")"
   },
   "120": {
    "dish": 56,
@@ -5768,7 +5768,7 @@
     -0.018,
     0.016
    ],
-   "removed": "2026-10-24T18:00:00Z: row H removed from the array with its F-engine board (KV 2026-10-24: \"Row H is being removed altogether\"); the slot stays in the correlator axis (tile shared with row G) and keeps H's last position; nothing is expected on it"
+   "removed": "2026-10-24T18:00:00Z: row H's Y pol removed from the array with its F-engine board (KV 2026-10-24: \"Row H is being removed altogether\", 2026-10-25: \"only H-y is out, the H-x should still be good\"); the slot stays in the correlator axis (tile shared with row G) and keeps H's position; nothing is expected on it"
   },
   "57": {
    "dish": 57,
@@ -5822,7 +5822,7 @@
     -0.018,
     0.016
    ],
-   "removed": "2026-10-24T18:00:00Z: row H removed from the array with its F-engine board (KV 2026-10-24: \"Row H is being removed altogether\"); the slot stays in the correlator axis (tile shared with row G) and keeps H's last position; nothing is expected on it"
+   "note": "2026-10-24T18:00:00Z: live; row H's Y pol (slot 1) is gone with its F-engine board, this X-pol slot stays (KV 2026-10-25: \"only H-y is out, the H-x should still be good\")"
   },
   "121": {
    "dish": 57,
@@ -5876,7 +5876,7 @@
     -0.018,
     0.016
    ],
-   "removed": "2026-10-24T18:00:00Z: row H removed from the array with its F-engine board (KV 2026-10-24: \"Row H is being removed altogether\"); the slot stays in the correlator axis (tile shared with row G) and keeps H's last position; nothing is expected on it"
+   "removed": "2026-10-24T18:00:00Z: row H's Y pol removed from the array with its F-engine board (KV 2026-10-24: \"Row H is being removed altogether\", 2026-10-25: \"only H-y is out, the H-x should still be good\"); the slot stays in the correlator axis (tile shared with row G) and keeps H's position; nothing is expected on it"
   },
   "58": {
    "dish": 58,
@@ -5918,7 +5918,7 @@
     -0.018,
     0.016
    ],
-   "removed": "2026-10-24T18:00:00Z: row H removed from the array with its F-engine board (KV 2026-10-24: \"Row H is being removed altogether\"); the slot stays in the correlator axis (tile shared with row G) and keeps H's last position; nothing is expected on it"
+   "note": "2026-10-24T18:00:00Z: live; row H's Y pol (slot 1) is gone with its F-engine board, this X-pol slot stays (KV 2026-10-25: \"only H-y is out, the H-x should still be good\")"
   },
   "122": {
    "dish": 58,
@@ -5960,7 +5960,7 @@
     -0.018,
     0.016
    ],
-   "removed": "2026-10-24T18:00:00Z: row H removed from the array with its F-engine board (KV 2026-10-24: \"Row H is being removed altogether\"); the slot stays in the correlator axis (tile shared with row G) and keeps H's last position; nothing is expected on it"
+   "removed": "2026-10-24T18:00:00Z: row H's Y pol removed from the array with its F-engine board (KV 2026-10-24: \"Row H is being removed altogether\", 2026-10-25: \"only H-y is out, the H-x should still be good\"); the slot stays in the correlator axis (tile shared with row G) and keeps H's position; nothing is expected on it"
   },
   "59": {
    "dish": 59,
@@ -6014,7 +6014,7 @@
     -0.018,
     0.016
    ],
-   "removed": "2026-10-24T18:00:00Z: row H removed from the array with its F-engine board (KV 2026-10-24: \"Row H is being removed altogether\"); the slot stays in the correlator axis (tile shared with row G) and keeps H's last position; nothing is expected on it"
+   "note": "2026-10-24T18:00:00Z: live; row H's Y pol (slot 1) is gone with its F-engine board, this X-pol slot stays (KV 2026-10-25: \"only H-y is out, the H-x should still be good\")"
   },
   "123": {
    "dish": 59,
@@ -6068,7 +6068,7 @@
     -0.018,
     0.016
    ],
-   "removed": "2026-10-24T18:00:00Z: row H removed from the array with its F-engine board (KV 2026-10-24: \"Row H is being removed altogether\"); the slot stays in the correlator axis (tile shared with row G) and keeps H's last position; nothing is expected on it"
+   "removed": "2026-10-24T18:00:00Z: row H's Y pol removed from the array with its F-engine board (KV 2026-10-24: \"Row H is being removed altogether\", 2026-10-25: \"only H-y is out, the H-x should still be good\"); the slot stays in the correlator axis (tile shared with row G) and keeps H's position; nothing is expected on it"
   },
   "60": {
    "dish": 60,
@@ -6122,7 +6122,7 @@
     -0.018,
     0.016
    ],
-   "removed": "2026-10-24T18:00:00Z: row H removed from the array with its F-engine board (KV 2026-10-24: \"Row H is being removed altogether\"); the slot stays in the correlator axis (tile shared with row G) and keeps H's last position; nothing is expected on it"
+   "note": "2026-10-24T18:00:00Z: live; row H's Y pol (slot 1) is gone with its F-engine board, this X-pol slot stays (KV 2026-10-25: \"only H-y is out, the H-x should still be good\")"
   },
   "124": {
    "dish": 60,
@@ -6176,7 +6176,7 @@
     -0.018,
     0.016
    ],
-   "removed": "2026-10-24T18:00:00Z: row H removed from the array with its F-engine board (KV 2026-10-24: \"Row H is being removed altogether\"); the slot stays in the correlator axis (tile shared with row G) and keeps H's last position; nothing is expected on it"
+   "removed": "2026-10-24T18:00:00Z: row H's Y pol removed from the array with its F-engine board (KV 2026-10-24: \"Row H is being removed altogether\", 2026-10-25: \"only H-y is out, the H-x should still be good\"); the slot stays in the correlator axis (tile shared with row G) and keeps H's position; nothing is expected on it"
   },
   "61": {
    "dish": 61,
@@ -6230,7 +6230,7 @@
     -0.018,
     0.016
    ],
-   "removed": "2026-10-24T18:00:00Z: row H removed from the array with its F-engine board (KV 2026-10-24: \"Row H is being removed altogether\"); the slot stays in the correlator axis (tile shared with row G) and keeps H's last position; nothing is expected on it"
+   "note": "2026-10-24T18:00:00Z: live; row H's Y pol (slot 1) is gone with its F-engine board, this X-pol slot stays (KV 2026-10-25: \"only H-y is out, the H-x should still be good\")"
   },
   "125": {
    "dish": 61,
@@ -6284,7 +6284,7 @@
     -0.018,
     0.016
    ],
-   "removed": "2026-10-24T18:00:00Z: row H removed from the array with its F-engine board (KV 2026-10-24: \"Row H is being removed altogether\"); the slot stays in the correlator axis (tile shared with row G) and keeps H's last position; nothing is expected on it"
+   "removed": "2026-10-24T18:00:00Z: row H's Y pol removed from the array with its F-engine board (KV 2026-10-24: \"Row H is being removed altogether\", 2026-10-25: \"only H-y is out, the H-x should still be good\"); the slot stays in the correlator axis (tile shared with row G) and keeps H's position; nothing is expected on it"
   },
   "62": {
    "dish": 62,
@@ -6338,7 +6338,7 @@
     -0.018,
     0.016
    ],
-   "removed": "2026-10-24T18:00:00Z: row H removed from the array with its F-engine board (KV 2026-10-24: \"Row H is being removed altogether\"); the slot stays in the correlator axis (tile shared with row G) and keeps H's last position; nothing is expected on it"
+   "note": "2026-10-24T18:00:00Z: live; row H's Y pol (slot 1) is gone with its F-engine board, this X-pol slot stays (KV 2026-10-25: \"only H-y is out, the H-x should still be good\")"
   },
   "126": {
    "dish": 62,
@@ -6392,7 +6392,7 @@
     -0.018,
     0.016
    ],
-   "removed": "2026-10-24T18:00:00Z: row H removed from the array with its F-engine board (KV 2026-10-24: \"Row H is being removed altogether\"); the slot stays in the correlator axis (tile shared with row G) and keeps H's last position; nothing is expected on it"
+   "removed": "2026-10-24T18:00:00Z: row H's Y pol removed from the array with its F-engine board (KV 2026-10-24: \"Row H is being removed altogether\", 2026-10-25: \"only H-y is out, the H-x should still be good\"); the slot stays in the correlator axis (tile shared with row G) and keeps H's position; nothing is expected on it"
   },
   "63": {
    "dish": 63,
@@ -6446,7 +6446,7 @@
     -0.018,
     0.016
    ],
-   "removed": "2026-10-24T18:00:00Z: row H removed from the array with its F-engine board (KV 2026-10-24: \"Row H is being removed altogether\"); the slot stays in the correlator axis (tile shared with row G) and keeps H's last position; nothing is expected on it"
+   "note": "2026-10-24T18:00:00Z: live; row H's Y pol (slot 1) is gone with its F-engine board, this X-pol slot stays (KV 2026-10-25: \"only H-y is out, the H-x should still be good\")"
   },
   "127": {
    "dish": 63,
@@ -6500,7 +6500,7 @@
     -0.018,
     0.016
    ],
-   "removed": "2026-10-24T18:00:00Z: row H removed from the array with its F-engine board (KV 2026-10-24: \"Row H is being removed altogether\"); the slot stays in the correlator axis (tile shared with row G) and keeps H's last position; nothing is expected on it"
+   "removed": "2026-10-24T18:00:00Z: row H's Y pol removed from the array with its F-engine board (KV 2026-10-24: \"Row H is being removed altogether\", 2026-10-25: \"only H-y is out, the H-x should still be good\"); the slot stays in the correlator axis (tile shared with row G) and keeps H's position; nothing is expected on it"
   }
  },
  "derived_from": "elem_positions_taua_20261024.json",

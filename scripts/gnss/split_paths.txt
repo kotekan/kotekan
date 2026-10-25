@@ -81,7 +81,7 @@ config/pointings.yaml
 config/elem_positions_refined_20260927.json
 config/elem_positions_ah128_gh_20261023.json
 config/elem_positions_taua_20261024.json
-config/elem_positions_taua_20261024_ag112.json
+config/elem_positions_taua_20261024_ah120.json
 config/elem_shared_ref_20261010.json
 config/elem_shared_ref_20261017.json
 config/elem_shared_ref_20261020.json
@@ -89,7 +89,7 @@ config/elem_shared_ref_20261023.json
 config/elem_shared_ref_20261023_repoint.json
 config/elem_shared_ref_20261024_taua.json
 config/elem_shared_ref_20261024_taua_pos.json
-config/elem_shared_ref_20261024_ag112.json
+config/elem_shared_ref_20261024_ah120.json
 config/base/
 config/gnss/
 config/gates/
