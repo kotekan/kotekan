@@ -98,6 +98,8 @@ def lanes_per_slot_for(args):
     its own with either method.
     """
     return 2 if args.epl_from_prompt else 4
+
+
 # Frames per GNSS chain buffer.
 BUFFER_DEPTH = 4
 # The primary chain's PRN slots (each extra chain carries its own list).
@@ -599,7 +601,10 @@ def gnss_chain_vars(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=None):
     prns = chain["prns"] if chain else PRIMARY_PRNS
     n_prn = len(prns)
     ordv = chain["ord"] if chain else 0
-    _aslots = [int(x) for x in str(getattr(args, "assembler_core_slots", "2") or "2").split(",")]
+    _aslots = [
+        int(x)
+        for x in str(getattr(args, "assembler_core_slots", "2") or "2").split(",")
+    ]
     n_live = live_element_count(arr)
     track_signal = chain["tracker"] if chain else sig.get("tracker", sig["primary"])
     lanes_per_slot = lanes_per_slot_for(args)
@@ -756,7 +761,11 @@ def live_element_ranges(arr):
     Anything else would put one pol's elements in the other's half with nothing to tell.
     """
     r = [(int(a), int(b)) for a, b in arr["live_element_ranges"]]
-    if len(r) != 2 or not (0 <= r[0][0] <= r[0][1] < 64) or r[1] != (r[0][0] + 64, r[0][1] + 64):
+    if (
+        len(r) != 2
+        or not (0 <= r[0][0] <= r[0][1] < 64)
+        or r[1] != (r[0][0] + 64, r[0][1] + 64)
+    ):
         raise SystemExit(
             f"live_element_ranges: {r} must be one range per pol over the same dishes, "
             "[lo, hi] then [lo + 64, hi + 64] -- the shared model splits the elements at n/2"
@@ -900,12 +909,13 @@ def elem_shared_keys(args):
     return out
 
 
-def elem_shared_ref_keys(args, band, steer, n_elem):
+def elem_shared_ref_keys(args, band, steer, n_elem, bad=()):
     """One band's entry of the fleet reference snapshot (python/scripts/gnss/elem_shared_ref.py
     snapshot) for the shared model's phase pin; nothing unless --elem-shared-ref-mode is live
     and --elem-sum-shared is on, so a fleet without it is byte-identical. The snapshot is of the
     steered instrument, so it is refused unless it was taken against the epoch these positions
-    came from."""
+    came from. The flagged inputs' entries go in as 0: the pin's offset is scale-free
+    (gnssSharedPin.hpp), so a zero entry weighs nothing."""
     mode = getattr(args, "elem_shared_ref_mode", "off") or "off"
     if mode == "off" or not getattr(args, "elem_sum_shared", False):
         return {}
@@ -936,7 +946,9 @@ def elem_shared_ref_keys(args, band, steer, n_elem):
         )
     return {
         "elem_sum_shared_ref": [
-            round(float(x), 6) for pair in entry["ref"] for x in pair
+            0.0 if e in bad else round(float(x), 6)
+            for e, pair in enumerate(entry["ref"])
+            for x in pair
         ],
         "elem_sum_shared_ref_mode": mode,
     }
@@ -1274,11 +1286,18 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
             # live elements, the set live_element_tiles gathers).
             "chan_noise_norm": True,
             "chan_noise_norm_elems": [
-                e for lo, hi in live_element_ranges(arr) for e in range(lo, hi + 1)
+                e
+                for lo, hi in live_element_ranges(arr)
+                for e in range(lo, hi + 1)
+                if e not in bad_input_set(cfg, args)
             ],
             **elem_shared_keys(args),
             **elem_shared_ref_keys(
-                args, (tag or signal_tag(sig["primary"])).strip("_"), steer, n_live
+                args,
+                (tag or signal_tag(sig["primary"])).strip("_"),
+                steer,
+                n_live,
+                bad_input_set(cfg, args),
             ),
             **elem_proj_keys(args),
             **lane_transfer_keys(cfg, node, gpu, tag, freq_ids, args),
@@ -1952,7 +1971,10 @@ def build_aggregator_instance(cfg, nodes, args, port, spds=8192):
             raise SystemExit(
                 f"--aggregator-extra-search {name}: unknown signal (not in gnssSignal.hpp)"
             )
-        if abs(float(table[name]["carrier_hz"]) - float(cfg["signals"]["carrier_hz"])) > 1.0:
+        if (
+            abs(float(table[name]["carrier_hz"]) - float(cfg["signals"]["carrier_hz"]))
+            > 1.0
+        ):
             raise SystemExit(
                 f"--aggregator-extra-search {name}: its carrier ({table[name]['carrier_hz']} Hz)"
                 f" is not the primary's ({cfg['signals']['carrier_hz']} Hz); the merged comb"
@@ -1969,9 +1991,16 @@ def build_aggregator_instance(cfg, nodes, args, port, spds=8192):
             )
         key = signal_tag(name).lstrip("_") + "_search"
         if key in out:
-            raise SystemExit(f"--aggregator-extra-search {name}: stage '{key}' already exists")
+            raise SystemExit(
+                f"--aggregator-extra-search {name}: stage '{key}' already exists"
+            )
         out[key] = search_stage(
-            cfg, args, "agg_merged_buf", union_ids, cores[4 % len(cores)], signal=name,
+            cfg,
+            args,
+            "agg_merged_buf",
+            union_ids,
+            cores[4 % len(cores)],
+            signal=name,
             prns=prns,
         )
         out[key]["acquire_threads"] = nth
@@ -2251,10 +2280,43 @@ def node_names(cfg):
 def node_rest_port(cfg, args):
     """The port to ask our running nodes on: --rest-port for a node config, which gives the node
     that port; runtime.rest_port for an off-node instance, whose --rest-port is its own."""
-    instance = args.aggregator_instance or args.gather_instance or args.cube_archive_instance
+    instance = (
+        args.aggregator_instance or args.gather_instance or args.cube_archive_instance
+    )
     if args.rest_port is not None and not instance:
         return args.rest_port
     return cfg["runtime"]["rest_port"]
+
+
+def bad_input_block(cfg, args):
+    """bffs's bad-input block, (block, source) or None, fetched once per run and kept on args:
+    the node's updatable_config and the GNSS branch (bad_input_set) must read one list."""
+    if not hasattr(args, "_bad_inputs"):
+        bi = choco_bad_inputs()
+        if bi is None:
+            bi = live_bad_inputs(cfg)
+        args._bad_inputs = bi
+    return args._bad_inputs
+
+
+def bad_input_set(cfg, args):
+    """The flagged frame inputs as a set; empty when no source answered. bffs's index is the
+    flat [pol][dish] input index, the same axis as the GNSS element axis (cube_order), so no
+    translation. The element sum needs no list (ElemCal gates a dead input on its own
+    coherence), but the stations the projection nulls on, the inputs the channel noise is
+    averaged over and the fleet reference's entries are static lists, and a flagged input
+    there sits at full weight."""
+    bi = bad_input_block(cfg, args)
+    return set(int(i) for i in bi[0]["bad_inputs"]) if bi else set()
+
+
+def project_stations(spec, bad=()):
+    """--n2-project-stations ("0-6,8-127") as a sorted list, minus the flagged inputs."""
+    st = []
+    for part in str(spec).split(","):
+        a, _, b = part.strip().partition("-")
+        st.extend(range(int(a), int(b or a) + 1))
+    return sorted(set(st) - set(bad))
 
 
 def live_bad_inputs(cfg, timeout=5.0):
@@ -2338,7 +2400,9 @@ def live_eop_table(cfg, args, timeout=3.0):
     hosts = node_names(cfg) + [h for h in refs if h not in cfg["nodes"]]
     best = None
     for host in hosts:
-        port = cfg["runtime"]["rest_port"] if host in refs else node_rest_port(cfg, args)
+        port = (
+            cfg["runtime"]["rest_port"] if host in refs else node_rest_port(cfg, args)
+        )
         try:
             url = f"http://{host}:{port}/telescope/eop_table"
             with urllib.request.urlopen(url, timeout=timeout) as r:
@@ -2378,7 +2442,9 @@ def live_frame0_utc(cfg, args, timeout=3.0):
     refs = cfg["runtime"].get("eop_reference_nodes", [])
     seen = {}
     for node in node_names(cfg):
-        port = cfg["runtime"]["rest_port"] if node in refs else node_rest_port(cfg, args)
+        port = (
+            cfg["runtime"]["rest_port"] if node in refs else node_rest_port(cfg, args)
+        )
         try:
             url = f"http://{node}:{port}/telescope/time0_ns"
             with urllib.request.urlopen(url, timeout=timeout) as r:
@@ -2513,7 +2579,8 @@ def recipe_lines(argv):
     return [
         "#   " + ln
         for ln in textwrap.wrap(
-            "config/gen_chord_gnss_config.py " + " ".join(shlex.quote(_rel(a)) for a in keep),
+            "config/gen_chord_gnss_config.py "
+            + " ".join(shlex.quote(_rel(a)) for a in keep),
             width=92,
             subsequent_indent="    ",
             break_on_hyphens=False,
@@ -3191,7 +3258,11 @@ def main():
             else cfg["runtime"]["aggregator_rest_port"]
         )
         out, feeds, union_ids = build_aggregator_instance(
-            cfg, args.aggregator_instance, args, port, out.get("samples_per_data_set", 8192)
+            cfg,
+            args.aggregator_instance,
+            args,
+            port,
+            out.get("samples_per_data_set", 8192),
         )
         text = (
             "# GENERATED by config/gen_chord_gnss_config.py --aggregator-instance -- DO NOT "
@@ -3394,16 +3465,20 @@ def main():
     # ours (they are in maintenance mode), and scripts/gnss/site/bad_inputs_cron.py pushes it
     # only to running nodes, so a node starts from whatever its config carries. A wrong list is
     # wrong data in the bad-feed mask stream and the N^2 fold, so take it from bffs, as the EOP
-    # table above.
-    _bi = choco_bad_inputs()
-    if _bi is None:
-        _bi = live_bad_inputs(cfg)
+    # table above. The same list leaves the GNSS branch's static element lists (bad_input_set).
+    _bi = bad_input_block(cfg, args)
     if _bi is not None:
         _blk, _src = _bi
         out.setdefault("updatable_config", {})["bad_inputs"] = _blk
         print(
-            "  bad inputs %d flagged, %s from %s"
-            % (len(_blk["bad_inputs"]), _blk["update_id"], _src),
+            "  bad inputs %d flagged, %s from %s; out of the GNSS stations, channel-noise "
+            "inputs and shared ref: %s"
+            % (
+                len(_blk["bad_inputs"]),
+                _blk["update_id"],
+                _src,
+                sorted(int(i) for i in _blk["bad_inputs"]),
+            ),
             file=sys.stderr,
         )
     else:
@@ -3524,11 +3599,7 @@ def main():
     # N2Accumulate. One stage per GPU under gnss_n2_project, a gnss* key to the parity check;
     # its output copy replaces N2Accumulate's input, which stock_parity.py declares.
     if args.n2_project != "off":
-        _st = []
-        for _part in str(args.n2_project_stations).split(","):
-            _a, _, _b = _part.strip().partition("-")
-            _st.extend(range(int(_a), int(_b or _a) + 1))
-        _st = sorted(set(_st))
+        _st = project_stations(args.n2_project_stations, bad_input_set(cfg, args))
         _pool0 = gnss_cores(cfg["runtime"], 0)
         _pool1 = gnss_cores(cfg["runtime"], 1)
         out["gnss_n2_project"] = {}
@@ -3577,7 +3648,11 @@ def main():
                     int(_t) * 16 + _i for _t in _tiles for _i in range(16)
                 ]
                 _stage["k_lanes_max"] = int(args.n2_project_lanes_max)
-                _missing = sorted(set(_stage["tracker_stations"]) - set(_st))
+                _missing = sorted(
+                    set(_stage["tracker_stations"])
+                    - set(_st)
+                    - bad_input_set(cfg, args)
+                )
                 if _missing:
                     sys.stderr.write(
                         "  WARNING: %d tracker elements are outside --n2-project-stations "
@@ -3733,7 +3808,10 @@ def main():
         + ", ".join(f"gpu{g}:{len(v)}" for g, v in sorted(per_gpu.items())),
         file=sys.stderr,
     )
-    print(f"  record_floats {record_floats} (RECORD_FLOATS + n_elem*ELEM_FLOATS)", file=sys.stderr)
+    print(
+        f"  record_floats {record_floats} (RECORD_FLOATS + n_elem*ELEM_FLOATS)",
+        file=sys.stderr,
+    )
     print(f"  rest port     {port}", file=sys.stderr)
     print(f"  dropped       {len(dropped)} production blocks", file=sys.stderr)
     if n2_send_kept:

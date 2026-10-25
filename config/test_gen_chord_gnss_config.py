@@ -580,7 +580,9 @@ def test_live_ranges_pol_mirror():
 
     check(not refused([[0, 15], [64, 79]]), "32 elements, one range per pol: accepted")
     check(not refused([[0, 47], [64, 111]]), "96 elements, one range per pol: accepted")
-    check(not refused([[0, 63], [64, 127]]), "128 elements, one range per pol: accepted")
+    check(
+        not refused([[0, 63], [64, 127]]), "128 elements, one range per pol: accepted"
+    )
     check(refused([[0, 31], [64, 79]]), "48 elements (unequal pol halves): refused")
     check(refused([[0, 15], [16, 31]]), "two pol-0 ranges: refused")
     check(refused([[0, 63]]), "a single range: refused")
@@ -657,6 +659,58 @@ def test_core_pools_clear_production():
             not clash,
             "%s clears production's cores (shared: %s)" % (key, clash or "none"),
         )
+
+
+def test_bad_inputs_reach_the_gnss_branch():
+    """bffs's flagged inputs leave the GNSS branch's static lists: the projection stations, the
+    channel-noise inputs and the fleet reference's entries (zeroed, length kept); one fetch per
+    run, kept on args."""
+    block = {"bad_inputs": [5, 69, 120], "start_time": 1.0, "update_id": "t"}
+    real = (g.choco_bad_inputs, g.live_bad_inputs)
+    calls = []
+    g.choco_bad_inputs = lambda *a, **k: (calls.append(1), (dict(block), "stub"))[1]
+    g.live_bad_inputs = lambda *a, **k: None
+    try:
+        args = argparse.Namespace()
+        bad = g.bad_input_set({}, args)
+        g.bad_input_set({}, args)
+        check(
+            bad == {5, 69, 120} and len(calls) == 1, "one fetch per run, kept on args"
+        )
+        st = g.project_stations("0-6,8-127", bad)
+        check(
+            st == sorted((set(range(0, 7)) | set(range(8, 128))) - bad),
+            "flagged inputs leave the projection stations (%d left)" % len(st),
+        )
+        d = tempfile.mkdtemp()
+        try:
+            snap = os.path.join(d, "ref.json")
+            with open(snap, "w") as fh:
+                json.dump(
+                    {"epoch": "E", "bands": {"l5": {"ref": [[0.1, 0.2]] * 128}}}, fh
+                )
+            a = argparse.Namespace(
+                elem_shared_ref_mode="live", elem_sum_shared=True, elem_shared_ref=snap
+            )
+            keys = g.elem_shared_ref_keys(
+                a, "l5", {"elem_positions_epoch": "E"}, 128, bad
+            )
+            ref = keys["elem_sum_shared_ref"]
+            zeros = {
+                e for e in range(128) if ref[2 * e] == 0.0 and ref[2 * e + 1] == 0.0
+            }
+            check(
+                len(ref) == 256 and zeros == bad and ref[0] == 0.1,
+                "flagged entries of the fleet reference are zero, the rest kept (%s)"
+                % sorted(zeros),
+            )
+        finally:
+            shutil.rmtree(d)
+        a2 = argparse.Namespace()
+        g.choco_bad_inputs = lambda *a, **k: None
+        check(g.bad_input_set({}, a2) == set(), "no source: nothing excluded")
+    finally:
+        g.choco_bad_inputs, g.live_bad_inputs = real
 
 
 def main():
