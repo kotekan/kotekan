@@ -712,22 +712,28 @@ def main():
             elif not os.path.exists(out):
                 print("MISSING  %s" % rel)
                 bad.append("aggregator")
-            elif _drop_stamp(open(out).read()) == _drop_stamp(text):
-                print("ok       %s" % rel)
             else:
-                bad.append("aggregator")
-                print("DIFFERS  %s" % rel)
-                d = list(
-                    difflib.unified_diff(
-                        _drop_stamp(open(out).read()).splitlines(),
-                        _drop_stamp(text).splitlines(),
-                        "committed",
-                        "regenerated",
-                        lineterm="",
-                        n=1,
+                # The body only: the aggregator's header is a description (its flags live in
+                # the manifest), and a header-only change must not hold eop_cron.sh's regen,
+                # which waits for a passing check.
+                have_b = _split_header(open(out).read())[1]
+                text_b = _split_header(text)[1]
+                if have_b == text_b:
+                    print("ok       %s" % rel)
+                else:
+                    bad.append("aggregator")
+                    print("DIFFERS  %s" % rel)
+                    d = list(
+                        difflib.unified_diff(
+                            have_b.splitlines(),
+                            text_b.splitlines(),
+                            "committed",
+                            "regenerated",
+                            lineterm="",
+                            n=1,
+                        )
                     )
-                )
-                print("\n".join("    " + l for l in d[:40]))
+                    print("\n".join("    " + l for l in d[:40]))
 
     if a.print_cmd:
         return
