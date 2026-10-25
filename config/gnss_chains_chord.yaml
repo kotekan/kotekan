@@ -18,12 +18,21 @@
 # (gnss_broker/iface_golden.json), which carries lib/stages/gnss/gnssSignal.hpp's descriptors,
 # the ones the trackers' replica bank is built from. A mistyped constant fails silently, so
 # none is restated here.
+#
+# Nor are the nodes. A node endpoint key (trackers, combiner, dll-combiners, spectrum-endpoints,
+# rf-stats-endpoints, rest-url) set to `fleet` expands at load (config/gnss_fleet.py) to the
+# fleet's hosts, `nodes:` in config/gnss_fleet_chord.yaml: one URL per node GPU that holds a
+# covering channel of the chain's signal, by the generator's own covering rule, so a chain
+# that lives on some GPUs only (L2C) lists exactly those. Adding or removing a node is an edit
+# of that list, a regeneration and the restarts, never an edit here. `gnss_fleet.py expand`
+# prints the result; `broker_multi.py --list` prints each chain's resolved flags.
 
 common:
   # -- the receiver: one telescope, one site, one F-engine --
     # A gnss node: the first choice for bare stage names and time0-endpoint, not a dependency
     # (#200): the anchor falls back to any tracker host and `combiner` to dll-combiners.
-    rest-url: http://cx19:12048
+    # `fleet`: the fleet's first host.
+    rest-url: fleet
     time0-endpoint: telescope/time0_ns
     hops-per-sec: 195312.5         # F-engine record geometry, not a signal property
   # The dishes are tipped for site work (2026-10-17 until the realignment): there is no
@@ -213,15 +222,16 @@ chains:
     # The GPU acquisition search over every node's L5 lobe: the stack's aggregator on this host
     # (scripts/gnss/site/stack_components.sh).
         detectors: http://localhost:12050/gps_search
-    # Stages are per GPU (gnss0, gnss1) on each node in config/gnss_fleet_chord.yaml `nodes:`;
-    # a bare stage name resolves against rest-url. `combiner` is the one per-PRN status source
+    # Stages are per GPU (gnss0, gnss1) on each node in config/gnss_fleet_chord.yaml `nodes:`
+    # (`fleet`, above); a bare stage name resolves against rest-url, and the derived combiner
+    # is the chain's lowest GPU on rest-url's host. `combiner` is the one per-PRN status source
     # (amplitudes, drop decisions, nav bits); when it does not answer, the broker reads the next
     # entry of dll-combiners that does and stays there (#200). dll-combiners, every instance's
     # combiner, is polled for the fleet DLL, fleet_coherent and element-poll, and names the
     # record assemblers that post-sat-geometry posts to.
-        trackers: "http://cx19:12048/gnss{0..1}_inject,http://cx27:12048/gnss{0..1}_inject,http://cx42:12048/gnss{0..1}_inject,http://cx43:12048/gnss{0..1}_inject,http://cx44:12048/gnss{0..1}_inject,http://cx51:12048/gnss{0..1}_inject"
-        combiner: gnss0_n2combine
-        dll-combiners: "http://cx19:12048/gnss{0..1}_n2combine,http://cx27:12048/gnss{0..1}_n2combine,http://cx42:12048/gnss{0..1}_n2combine,http://cx43:12048/gnss{0..1}_n2combine,http://cx44:12048/gnss{0..1}_n2combine,http://cx51:12048/gnss{0..1}_n2combine"
+        trackers: fleet
+        combiner: fleet
+        dll-combiners: fleet
     # Trim presence for a PRN the search detects at snr >= 100 is judged on detection
     # (deep_snr >= 3 x deep_floor) rather than on summed prompt power, for
     # dll-deep-gate-search-hold-s (90 s) after the detection. Prompt power falls when the tap
@@ -257,7 +267,7 @@ chains:
     # power, served on the publisher's /get_rf. On this chain only: the tap is per GPU and
     # watches every chain's channels, so the readings are the receiver's, and arming it on
     # several chains would poll the same endpoints and raise each alarm once per chain.
-        rf-stats-endpoints: "http://cx19:12048/gnss{0..1}_srch_tap,http://cx27:12048/gnss{0..1}_srch_tap,http://cx42:12048/gnss{0..1}_srch_tap,http://cx43:12048/gnss{0..1}_srch_tap,http://cx44:12048/gnss{0..1}_srch_tap,http://cx51:12048/gnss{0..1}_srch_tap"
+        rf-stats-endpoints: fleet
     # Fold spectral-kurtosis RFI metrics (URL derived per rf-stats instance) and each host's
     # /metrics drop counters into the same /get_rf payload.
         rfi-stats: true
@@ -272,7 +282,7 @@ chains:
     # The record assemblers whose /get_spectrum (per-channel prompt sums before the
     # cross-channel combine) feed the fleet phase-slope delay fit (SPEC-FIT). Its tau updates
     # the per-satellite path-bias filter (b_sat) that dead-reckon seeds add to the clock.
-        spectrum-endpoints: "http://cx19:12048/gnss{0..1}_n2assemble,http://cx27:12048/gnss{0..1}_n2assemble,http://cx42:12048/gnss{0..1}_n2assemble,http://cx43:12048/gnss{0..1}_n2assemble,http://cx44:12048/gnss{0..1}_n2assemble,http://cx51:12048/gnss{0..1}_n2assemble"
+        spectrum-endpoints: fleet
     # Hint each PRN's NH overlay alignment from the ephemeris plus the receiver-clock offset
     # any detection measures, so the search scans nh_hint_span alignments either side instead
     # of all 20. Works for a satellite never detected.
@@ -388,8 +398,8 @@ chains:
     # fine samples a row deweighted that far stops following the carrier drift, and the command
     # wanders with it.
         rrate-coarse-deweight: 1.0
-        trackers: "http://cx19:12048/gnss{0..1}_e5a_inject,http://cx27:12048/gnss{0..1}_e5a_inject,http://cx42:12048/gnss{0..1}_e5a_inject,http://cx43:12048/gnss{0..1}_e5a_inject,http://cx44:12048/gnss{0..1}_e5a_inject,http://cx51:12048/gnss{0..1}_e5a_inject"
-        combiner: gnss0_e5a_n2combine
+        trackers: fleet
+        combiner: fleet
     # Difference res_cycles against the newest snapshot at least 16 s old instead of the last
     # poll's. The phase error sits at the two endpoints, so the rate noise falls as 1/span,
     # while the span-mean lags a drifting rate by span/2; the feed's sigma carries both terms.
@@ -397,8 +407,8 @@ chains:
     # satellite feeds at most once per span, so fed values share no data; the JRRP line shows
     # the unthrottled per-poll value.
         rrate-phase-span-s: 16
-        spectrum-endpoints: "http://cx19:12048/gnss{0..1}_e5a_n2assemble,http://cx27:12048/gnss{0..1}_e5a_n2assemble,http://cx42:12048/gnss{0..1}_e5a_n2assemble,http://cx43:12048/gnss{0..1}_e5a_n2assemble,http://cx44:12048/gnss{0..1}_e5a_n2assemble,http://cx51:12048/gnss{0..1}_e5a_n2assemble"
-        dll-combiners: "http://cx19:12048/gnss{0..1}_e5a_n2combine,http://cx27:12048/gnss{0..1}_e5a_n2combine,http://cx42:12048/gnss{0..1}_e5a_n2combine,http://cx43:12048/gnss{0..1}_e5a_n2combine,http://cx44:12048/gnss{0..1}_e5a_n2combine,http://cx51:12048/gnss{0..1}_e5a_n2combine"
+        spectrum-endpoints: fleet
+        dll-combiners: fleet
     # clk: each cycle, move the adopted clock's level onto the joint filter's clock, as a
     # wrapped delta. The adopted clock is gps_l5's circular median over its detected
     # satellites, which steps whenever that set changes; the filter solves the clock jointly
@@ -461,10 +471,10 @@ chains:
         fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
         fleet-trim-bandwidth: 2.5
         fleet-trim-readback: 1
-        trackers: "http://cx19:12048/gnss{0..1}_b2a_inject,http://cx27:12048/gnss{0..1}_b2a_inject,http://cx42:12048/gnss{0..1}_b2a_inject,http://cx43:12048/gnss{0..1}_b2a_inject,http://cx44:12048/gnss{0..1}_b2a_inject,http://cx51:12048/gnss{0..1}_b2a_inject"
-        combiner: gnss0_b2a_n2combine
-        spectrum-endpoints: "http://cx19:12048/gnss{0..1}_b2a_n2assemble,http://cx27:12048/gnss{0..1}_b2a_n2assemble,http://cx42:12048/gnss{0..1}_b2a_n2assemble,http://cx43:12048/gnss{0..1}_b2a_n2assemble,http://cx44:12048/gnss{0..1}_b2a_n2assemble,http://cx51:12048/gnss{0..1}_b2a_n2assemble"
-        dll-combiners: "http://cx19:12048/gnss{0..1}_b2a_n2combine,http://cx27:12048/gnss{0..1}_b2a_n2combine,http://cx42:12048/gnss{0..1}_b2a_n2combine,http://cx43:12048/gnss{0..1}_b2a_n2combine,http://cx44:12048/gnss{0..1}_b2a_n2combine,http://cx51:12048/gnss{0..1}_b2a_n2combine"
+        trackers: fleet
+        combiner: fleet
+        spectrum-endpoints: fleet
+        dll-combiners: fleet
 
   # -- 1207.14 MHz, the second band: gal_e5b and bds_b2b --
   # Galileo E5b-Q, the E5b pilot. Like E5a-Q it carries a per-PRN CS100 secondary, so it is
@@ -495,11 +505,11 @@ chains:
         carrier-max-hz: 10.0
         rrate-feed-applied: 0
         presence-admit-displaced: true
-        trackers: "http://cx19:12048/gnss{0..1}_e5b_inject,http://cx27:12048/gnss{0..1}_e5b_inject,http://cx42:12048/gnss{0..1}_e5b_inject,http://cx43:12048/gnss{0..1}_e5b_inject,http://cx44:12048/gnss{0..1}_e5b_inject,http://cx51:12048/gnss{0..1}_e5b_inject"
-        combiner: gnss0_e5b_n2combine
+        trackers: fleet
+        combiner: fleet
         rrate-phase-span-s: 16
-        spectrum-endpoints: "http://cx19:12048/gnss{0..1}_e5b_n2assemble,http://cx27:12048/gnss{0..1}_e5b_n2assemble,http://cx42:12048/gnss{0..1}_e5b_n2assemble,http://cx43:12048/gnss{0..1}_e5b_n2assemble,http://cx44:12048/gnss{0..1}_e5b_n2assemble,http://cx51:12048/gnss{0..1}_e5b_n2assemble"
-        dll-combiners: "http://cx19:12048/gnss{0..1}_e5b_n2combine,http://cx27:12048/gnss{0..1}_e5b_n2combine,http://cx42:12048/gnss{0..1}_e5b_n2combine,http://cx43:12048/gnss{0..1}_e5b_n2combine,http://cx44:12048/gnss{0..1}_e5b_n2combine,http://cx51:12048/gnss{0..1}_e5b_n2combine"
+        spectrum-endpoints: fleet
+        dll-combiners: fleet
 
   # BeiDou B2b-I, the PPP-B2b data component: no pilot and no secondary code (B-CNAV3 at
   # 1000 sps, one symbol per 1 ms code period). Coherent integration past 1 ms needs a nav-bit
@@ -519,10 +529,10 @@ chains:
         fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
         fleet-trim-bandwidth: 2.5
         fleet-trim-readback: 1
-        trackers: "http://cx19:12048/gnss{0..1}_b2b_inject,http://cx27:12048/gnss{0..1}_b2b_inject,http://cx42:12048/gnss{0..1}_b2b_inject,http://cx43:12048/gnss{0..1}_b2b_inject,http://cx44:12048/gnss{0..1}_b2b_inject,http://cx51:12048/gnss{0..1}_b2b_inject"
-        combiner: gnss0_b2b_n2combine
-        spectrum-endpoints: "http://cx19:12048/gnss{0..1}_b2b_n2assemble,http://cx27:12048/gnss{0..1}_b2b_n2assemble,http://cx42:12048/gnss{0..1}_b2b_n2assemble,http://cx43:12048/gnss{0..1}_b2b_n2assemble,http://cx44:12048/gnss{0..1}_b2b_n2assemble,http://cx51:12048/gnss{0..1}_b2b_n2assemble"
-        dll-combiners: "http://cx19:12048/gnss{0..1}_b2b_n2combine,http://cx27:12048/gnss{0..1}_b2b_n2combine,http://cx42:12048/gnss{0..1}_b2b_n2combine,http://cx43:12048/gnss{0..1}_b2b_n2combine,http://cx44:12048/gnss{0..1}_b2b_n2combine,http://cx51:12048/gnss{0..1}_b2b_n2combine"
+        trackers: fleet
+        combiner: fleet
+        spectrum-endpoints: fleet
+        dll-combiners: fleet
 
   # -- 1202.025 MHz: glo_l3oc --
   # GLONASS L3OC-p, the dataless pilot of GLONASS's CDMA signal (10230 chips at 10.23 Mcps with
@@ -555,10 +565,10 @@ chains:
         fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
         fleet-trim-bandwidth: 2.5
         fleet-trim-readback: 1
-        trackers: "http://cx19:12048/gnss{0..1}_l3oc_inject,http://cx27:12048/gnss{0..1}_l3oc_inject,http://cx42:12048/gnss{0..1}_l3oc_inject,http://cx43:12048/gnss{0..1}_l3oc_inject,http://cx44:12048/gnss{0..1}_l3oc_inject,http://cx51:12048/gnss{0..1}_l3oc_inject"
-        combiner: gnss0_l3oc_n2combine
-        spectrum-endpoints: "http://cx19:12048/gnss{0..1}_l3oc_n2assemble,http://cx27:12048/gnss{0..1}_l3oc_n2assemble,http://cx42:12048/gnss{0..1}_l3oc_n2assemble,http://cx43:12048/gnss{0..1}_l3oc_n2assemble,http://cx44:12048/gnss{0..1}_l3oc_n2assemble,http://cx51:12048/gnss{0..1}_l3oc_n2assemble"
-        dll-combiners: "http://cx19:12048/gnss{0..1}_l3oc_n2combine,http://cx27:12048/gnss{0..1}_l3oc_n2combine,http://cx42:12048/gnss{0..1}_l3oc_n2combine,http://cx43:12048/gnss{0..1}_l3oc_n2combine,http://cx44:12048/gnss{0..1}_l3oc_n2combine,http://cx51:12048/gnss{0..1}_l3oc_n2combine"
+        trackers: fleet
+        combiner: fleet
+        spectrum-endpoints: fleet
+        dll-combiners: fleet
 
   # -- 1268.52 and 1278.75 MHz, the third band: bds_b3i and gal_e6 --
   # The same rays at a third carrier, a third equation for tau_band. Neither chain has a search
@@ -580,9 +590,8 @@ chains:
     # Every node carries SBAS_L5_I_MC (the manifest's common signal set). probe-require-slot
     # filters probes by the PRN map the listed trackers agree on, and a listed node without the
     # chain answers 404, so there is never agreement and the probes go unfiltered (no slot, no
-    # report, presence never anchored): list only nodes that carry it. An unreachable node
-    # also blocks the consensus (prnmap: every listed endpoint must answer), so cx42, out
-    # since 10-23, is left off until it is back.
+    # report, presence never anchored): list only nodes that carry it, which `fleet` does. An
+    # unreachable node no longer blocks the consensus (prnmap: a quorum since 10-24).
     # The PRN list is fixed: the three WAAS GEOs plus 121/123/136, EGNOS GEOs that never rise
     # here, kept as the noise probes. prn-reconfig is read, not common's apply: apply would
     # trade the probes for whichever SBAS GEOs sit deeper in the BRDC sky, and the nodes refuse
@@ -598,10 +607,10 @@ chains:
         fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
         fleet-trim-bandwidth: 2.5
         fleet-trim-readback: 1
-        trackers: "http://cx19:12048/gnss{0..1}_l5_inject,http://cx27:12048/gnss{0..1}_l5_inject,http://cx43:12048/gnss{0..1}_l5_inject,http://cx44:12048/gnss{0..1}_l5_inject,http://cx51:12048/gnss{0..1}_l5_inject"
-        combiner: gnss0_l5_n2combine
-        spectrum-endpoints: "http://cx19:12048/gnss{0..1}_l5_n2assemble,http://cx27:12048/gnss{0..1}_l5_n2assemble,http://cx43:12048/gnss{0..1}_l5_n2assemble,http://cx44:12048/gnss{0..1}_l5_n2assemble,http://cx51:12048/gnss{0..1}_l5_n2assemble"
-        dll-combiners: "http://cx19:12048/gnss{0..1}_l5_n2combine,http://cx27:12048/gnss{0..1}_l5_n2combine,http://cx43:12048/gnss{0..1}_l5_n2combine,http://cx44:12048/gnss{0..1}_l5_n2combine,http://cx51:12048/gnss{0..1}_l5_n2combine"
+        trackers: fleet
+        combiner: fleet
+        spectrum-endpoints: fleet
+        dll-combiners: fleet
     bds_b3i:
         signal: bds_b3i
         dr-clock-adopt: true
@@ -611,10 +620,10 @@ chains:
         fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
         fleet-trim-bandwidth: 2.5
         fleet-trim-readback: 1
-        trackers: "http://cx19:12048/gnss{0..1}_b3i_inject,http://cx27:12048/gnss{0..1}_b3i_inject,http://cx42:12048/gnss{0..1}_b3i_inject,http://cx43:12048/gnss{0..1}_b3i_inject,http://cx44:12048/gnss{0..1}_b3i_inject,http://cx51:12048/gnss{0..1}_b3i_inject"
-        combiner: gnss0_b3i_n2combine
-        spectrum-endpoints: "http://cx19:12048/gnss{0..1}_b3i_n2assemble,http://cx27:12048/gnss{0..1}_b3i_n2assemble,http://cx42:12048/gnss{0..1}_b3i_n2assemble,http://cx43:12048/gnss{0..1}_b3i_n2assemble,http://cx44:12048/gnss{0..1}_b3i_n2assemble,http://cx51:12048/gnss{0..1}_b3i_n2assemble"
-        dll-combiners: "http://cx19:12048/gnss{0..1}_b3i_n2combine,http://cx27:12048/gnss{0..1}_b3i_n2combine,http://cx42:12048/gnss{0..1}_b3i_n2combine,http://cx43:12048/gnss{0..1}_b3i_n2combine,http://cx44:12048/gnss{0..1}_b3i_n2combine,http://cx51:12048/gnss{0..1}_b3i_n2combine"
+        trackers: fleet
+        combiner: fleet
+        spectrum-endpoints: fleet
+        dll-combiners: fleet
 
   # Galileo E6-C, the dataless E6 pilot: 5115 chips at 5.115 Mcps with a per-PRN CS100
   # secondary, which the trackers despread tiled into a 100 ms code (GAL_E6_C_CS). At half
@@ -629,10 +638,10 @@ chains:
         fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
         fleet-trim-bandwidth: 2.5
         fleet-trim-readback: 1
-        trackers: "http://cx19:12048/gnss{0..1}_e6_inject,http://cx27:12048/gnss{0..1}_e6_inject,http://cx42:12048/gnss{0..1}_e6_inject,http://cx43:12048/gnss{0..1}_e6_inject,http://cx44:12048/gnss{0..1}_e6_inject,http://cx51:12048/gnss{0..1}_e6_inject"
-        combiner: gnss0_e6_n2combine
-        spectrum-endpoints: "http://cx19:12048/gnss{0..1}_e6_n2assemble,http://cx27:12048/gnss{0..1}_e6_n2assemble,http://cx42:12048/gnss{0..1}_e6_n2assemble,http://cx43:12048/gnss{0..1}_e6_n2assemble,http://cx44:12048/gnss{0..1}_e6_n2assemble,http://cx51:12048/gnss{0..1}_e6_n2assemble"
-        dll-combiners: "http://cx19:12048/gnss{0..1}_e6_n2combine,http://cx27:12048/gnss{0..1}_e6_n2combine,http://cx42:12048/gnss{0..1}_e6_n2combine,http://cx43:12048/gnss{0..1}_e6_n2combine,http://cx44:12048/gnss{0..1}_e6_n2combine,http://cx51:12048/gnss{0..1}_e6_n2combine"
+        trackers: fleet
+        combiner: fleet
+        spectrum-endpoints: fleet
+        dll-combiners: fleet
 
   # -- 1227.60 MHz: gps_l2c --
   # GPS L2C CM, broadcast by every gps_l5 satellite and by Block IIR-M: a second GPS carrier,
@@ -670,15 +679,14 @@ chains:
         fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
         fleet-trim-bandwidth: 2.5
         fleet-trim-readback: 1
-    # Enumerated, not gnss{0..1} on every node: the chain exists only on a GPU that holds an L2C
-    # channel, and the pattern would 404 on the rest. freq_id % 16 picks the GPU
-    # (gpu_offsets_mod16 in config/chord_gnss_node.yaml): 6286 cx19/1, 6284 cx42/1, 6287
-    # cx43/1, 6285 cx51/1, 6288 cx27/0. 6283 is on cx47, outside this fleet, and cx44 holds
-    # none. Re-derive the list if the comb offsets change.
-        trackers: "http://cx19:12048/gnss1_l2c_inject,http://cx27:12048/gnss0_l2c_inject,http://cx42:12048/gnss1_l2c_inject,http://cx43:12048/gnss1_l2c_inject,http://cx51:12048/gnss1_l2c_inject"
-        combiner: gnss1_l2c_n2combine # bare on rest-url (cx19, L2C GPU 1); fails over along dll-combiners
-        spectrum-endpoints: "http://cx19:12048/gnss1_l2c_n2assemble,http://cx27:12048/gnss0_l2c_n2assemble,http://cx42:12048/gnss1_l2c_n2assemble,http://cx43:12048/gnss1_l2c_n2assemble,http://cx51:12048/gnss1_l2c_n2assemble"
-        dll-combiners: "http://cx19:12048/gnss1_l2c_n2combine,http://cx27:12048/gnss0_l2c_n2combine,http://cx42:12048/gnss1_l2c_n2combine,http://cx43:12048/gnss1_l2c_n2combine,http://cx51:12048/gnss1_l2c_n2combine"
+    # The chain exists only on a GPU that holds an L2C channel (freq_id % 16 picks the GPU,
+    # gpu_offsets_mod16 in config/chord_gnss_node.yaml): on 10-25, 6286 cx19/1, 6284 cx42/1,
+    # 6287 cx43/1, 6285 cx51/1, 6288 cx27/0; 6283 is on cx47 and cx44 holds none. `fleet`
+    # lists exactly those GPUs and follows a comb or fleet change.
+        trackers: fleet
+        combiner: fleet
+        spectrum-endpoints: fleet
+        dll-combiners: fleet
 
   # -- 1248.06 MHz: glo_l2oc --
   # GLONASS L2OC-p, the CDMA pilot on L2, broadcast by the K generations only (GLO-K1B, K1+, K2;
@@ -727,14 +735,13 @@ chains:
     # at ~4.5/s, past the round-trip stability bound (cli.py --fleet-trim-bandwidth).
         fleet-trim-bandwidth: 1.4
         fleet-trim-readback: 1
-    # Every GPU holds a channel of the lobe, so the {0..1} pattern serves. The combiner is
+    # Every GPU of the 10-25 fleet holds a channel of the lobe. The derived combiner is
     # cx19 GPU 0 (6388, ~6% of the power); its GPU 1 holds the near-empty lobe edges.
-        trackers: "http://cx19:12048/gnss{0..1}_l2oc_inject,http://cx27:12048/gnss{0..1}_l2oc_inject,http://cx42:12048/gnss{0..1}_l2oc_inject,http://cx43:12048/gnss{0..1}_l2oc_inject,http://cx44:12048/gnss{0..1}_l2oc_inject,http://cx51:12048/gnss{0..1}_l2oc_inject"
-        combiner: gnss0_l2oc_n2combine
-    # No phase-slope fit (null overrides common's gps_l5 endpoints, which would otherwise be
-    # inherited): only the five two-channel instances (16 ids apart) would inform it, its free
+        trackers: fleet
+        combiner: fleet
+    # No phase-slope fit (null: no endpoints, not `fleet`): only the five two-channel instances (16 ids apart) would inform it, its free
     # phase per instance leaves tau ambiguous by 0.65 chip, and its taus would feed b_sat as soon
     # as a sixth such instance exists (SatBiasFilter min_inst 6), past the DLL's +-0.9-chip
     # capture. L2C's fit returns nothing (one channel per instance).
         spectrum-endpoints: null
-        dll-combiners: "http://cx19:12048/gnss{0..1}_l2oc_n2combine,http://cx27:12048/gnss{0..1}_l2oc_n2combine,http://cx42:12048/gnss{0..1}_l2oc_n2combine,http://cx43:12048/gnss{0..1}_l2oc_n2combine,http://cx44:12048/gnss{0..1}_l2oc_n2combine,http://cx51:12048/gnss{0..1}_l2oc_n2combine"
+        dll-combiners: fleet

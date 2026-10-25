@@ -6,13 +6,21 @@
     scripts/gnss/gen_fleet.py config/gnss_fleet_chord.yaml --node cx19 --print-cmd
 
 The manifest holds every node's config/gen_chord_gnss_config.py flags, so each config can be
-reproduced from a committed file; a node's config is regenerated, never hand-edited.
+reproduced from a committed file; a node's config is regenerated, never hand-edited. Its
+`nodes:` is the fleet list (config/gnss_fleet.py): the nodes written are its hosts, each node's
+search-port-base comes from its slot, and the search aggregator's config (the manifest's
+`aggregator:` block) is written from the same list, so a node joining or leaving is one line
+there and one run of this.
 
 `--check` is the gate to run before a fleet restart. It regenerates every node into memory,
 compares the result byte for byte with the file on disk (the live EOP and bad-input values
 aside; the node is regenerated with the bad-input block its file carries, since the GNSS
-element lists are derived from it) and checks the file against the stock render (stock_parity.py), so a hand-edit, a
-changed base or a generator whose output moved all fail. It prints a diff per mismatching node
+element lists are derived from it) and checks the file against the stock render
+(stock_parity.py), so a hand-edit, a changed base or a generator whose output moved all fail.
+It does the same for the aggregator's config, and checks the chains yaml against the fleet:
+every node endpoint key must be `fleet` (or null), and the chain instances the broker will
+derive must be exactly the chains each regenerated config builds. It prints a diff per
+mismatching node
 and exits 1 if any node differs, 2 if nothing could be compared (a missing base, a generator
 that cannot run, a crash here).
 
@@ -23,11 +31,13 @@ import argparse
 import difflib
 import json
 import os
+import re
 import shlex
 import subprocess
 import sys
 import tempfile
 import traceback
+import urllib.parse
 
 import yaml
 
@@ -37,7 +47,11 @@ K = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 GEN = os.path.join(K, "config", "gen_chord_gnss_config.py")
 OUTDIR = os.path.join(K, "config", "generated")
 sys.path.append(os.path.join(K, "python", "scripts", "gnss"))
+sys.path.insert(0, os.path.join(K, "config"))
 import kotekan_src  # noqa: E402
+import gnss_fleet  # noqa: E402
+
+CHAINS = os.path.join(K, "config", "gnss_chains_chord.yaml")
 
 
 def _split_header(text):
@@ -315,6 +329,118 @@ def check_prns(man, rise_deg=RISE_DEG, hours=24.0, step_min=10.0):
     return 1 if bad else 0
 
 
+_COMBINE = re.compile(r"^gnss(\d+)(_[a-z0-9]+)?_n2combine$")
+
+
+def built_instances(text):
+    """{tag: {gpu}} of the chains a generated node config builds: one n2combine stage per
+    chain instance (gnss<g><tag>_n2combine; the primary's tag is '')."""
+    cfg = yaml.load(
+        _split_header(text)[1], Loader=getattr(yaml, "CSafeLoader", yaml.SafeLoader)
+    )
+    out = {}
+    for k in cfg or {}:
+        m = _COMBINE.match(str(k))
+        if m:
+            out.setdefault(m.group(2) or "", set()).add(int(m.group(1)))
+    return out
+
+
+def derived_instances(fleet, host):
+    """{tag: {gpu}} of the chains the fleet derivation puts on this host."""
+    out = {}
+    for chain, (_name, tag) in fleet.tracker_signals().items():
+        gpus = {g for h, g in fleet.instances(chain) if h == host}
+        if gpus:
+            out[tag] = gpus
+    return out
+
+
+def check_chains(fleet, path=CHAINS):
+    """Problems with the chains yaml against the fleet list, as lines (empty = none): a node
+    endpoint key written by hand rather than `fleet`, or an expanded URL on a host outside
+    the fleet."""
+    with open(path) as f:
+        raw = yaml.safe_load(f) or {}
+    keys = set(gnss_fleet.URL_KEYS) | set(gnss_fleet.SINGLE_KEYS)
+    bad = []
+    common = raw.get("common") or {}
+    for where, block in [("common", common)] + [
+        ("chains." + c, v or {}) for c, v in (raw.get("chains") or {}).items()
+    ]:
+        for k in sorted(keys & set(block)):
+            v = block[k]
+            if v is None or v == gnss_fleet.FLEET:
+                continue
+            bad.append(
+                "%s: %s is written by hand (%s); set it to `fleet` so it follows the "
+                "fleet list" % (where, k, str(v)[:60])
+            )
+    try:
+        cfg = gnss_fleet.expand_chains(raw, fleet)
+    except gnss_fleet.FleetError as e:
+        return bad + [str(e)]
+    hosts = set(fleet.hosts)
+    for c, spec in (cfg.get("chains") or {}).items():
+        merged = dict(cfg.get("common") or {})
+        merged.update(spec or {})
+        for k in sorted(keys):
+            v = merged.get(k)
+            if not isinstance(v, str):
+                continue
+            for url in v.split(","):
+                host = urllib.parse.urlsplit(url.strip()).hostname
+                if (
+                    host
+                    and host not in hosts
+                    and host not in ("localhost", "127.0.0.1")
+                ):
+                    bad.append(
+                        "chains.%s: %s names %s, which is not in the fleet list (%s)"
+                        % (c, k, host, " ".join(fleet.hosts))
+                    )
+    return bad
+
+
+def check_instances(fleet, regen):
+    """Lines for every node whose regenerated config builds other chain instances than the
+    fleet derivation lists for it."""
+    out = []
+    for node, text in sorted(regen.items()):
+        have, want = built_instances(text), derived_instances(fleet, node)
+        if have != want:
+            out.append(
+                "%s: the generator builds %s, the fleet derivation lists %s"
+                % (
+                    node,
+                    sorted((t, sorted(g)) for t, g in have.items()),
+                    sorted((t, sorted(g)) for t, g in want.items()),
+                )
+            )
+    return out
+
+
+def aggregator_cmd(man, fleet, base_dir):
+    """(generator argv, output path) for the manifest's aggregator: block, or None."""
+    agg = man.get("aggregator")
+    if not agg:
+        return None
+    agg = dict(agg)
+    base = agg.pop("base")
+    base = base if os.path.isabs(base) else os.path.join(K, "config", base)
+    out = os.path.join(base_dir, agg.pop("out"))
+    feeds = ["%s:%d" % (h, fleet.search_port_base(h)) for h in fleet.hosts]
+    cmd = (
+        [sys.executable, GEN, "--base", base, "--node", fleet.hosts[0]]
+        + ["--aggregator-instance"]
+        + feeds
+        + flags_from(agg.pop("flags", None) or {})
+    )
+    if agg:
+        raise SystemExit("aggregator: unknown keys %s" % ", ".join(sorted(agg)))
+    return cmd, out
+
+
 def main():
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -372,9 +498,14 @@ def main():
     if a.check_prns:
         return check_prns(man)
 
+    try:
+        fleet = gnss_fleet.Fleet(man)
+    except gnss_fleet.FleetError as e:
+        sys.exit("%s: %s" % (man_path, e))
+
     if a.print_path:
         sfx = man.get("suffix", "")
-        for n in sorted(man["nodes"]):
+        for n in sorted(fleet.hosts):
             if not a.node or n in a.node:
                 print(os.path.join(OUTDIR, "chord_gnss_%s%s.yaml" % (n, sfx)))
         return
@@ -400,25 +531,35 @@ def main():
         )
         return stock_parity.classify(stock_parity.differences(stock_ref, cfg))[1]
 
-    nodes = sorted(man["nodes"])
+    nodes = sorted(fleet.hosts)
     if a.node:
         missing = [n for n in a.node if n not in nodes]
         if missing:
             sys.exit(
-                "not in the manifest: %s (have %s)"
-                % (", ".join(missing), ", ".join(nodes))
+                "not in the fleet: %s (the fleet is %s%s)"
+                % (
+                    ", ".join(missing),
+                    ", ".join(nodes),
+                    "; role off: %s"
+                    % ", ".join(h for h in fleet.slots if fleet.roles[h] == "off")
+                    if len(fleet.slots) > len(fleet.hosts)
+                    else "",
+                )
             )
         nodes = [n for n in nodes if n in a.node]
 
-    bad, written = [], []
+    bad, written, regen = [], [], {}
     for node in nodes:
         out = os.path.join(
             a.preview_dir or OUTDIR, "chord_gnss_%s%s.yaml" % (node, suffix)
         )
+        # The node's port is the fleet's (its slot); gnss_fleet refuses a search-port-base
+        # anywhere in the manifest, so nothing after it overrides it.
         cmd = (
             [sys.executable, GEN, "--base", base, "--node", node]
             + common
-            + flags_from(man["nodes"][node] or {})
+            + ["--search-port-base", str(fleet.search_port_base(node))]
+            + flags_from(fleet.gen_flags(node))
         )
 
         if a.print_cmd:
@@ -459,6 +600,7 @@ def main():
             raise SystemExit(2)
         _relay_notes(node, p.stderr)
         text = p.stdout
+        regen[node] = text
 
         if not a.check:
             undeclared = parity(text)
@@ -543,8 +685,88 @@ def main():
             if len(d) > 40:
                 print("    ... %d more diff lines" % (len(d) - 40))
 
+    # The search aggregator, from the same fleet list. Not a node config: no stock parity and
+    # no live values, so it compares byte for byte (the interface stamp aside).
+    agg = aggregator_cmd(man, fleet, a.preview_dir or OUTDIR) if not a.node else None
+    if agg:
+        cmd, out = agg
+        if a.print_cmd:
+            print(" ".join(shlex.quote(c) for c in cmd + ["--out", out]))
+        else:
+            p = subprocess.run(cmd, capture_output=True, text=True, cwd=K)
+            if p.returncode != 0:
+                sys.stderr.write(p.stderr[-3000:] + "\n")
+                sys.stderr.write(
+                    "generator failed for the aggregator (exit %d)\n" % p.returncode
+                )
+                raise SystemExit(2)
+            _relay_notes("aggregator", p.stderr)
+            text = p.stdout
+            rel = os.path.relpath(out, K)
+            if not a.check:
+                tmp = out + ".tmp"
+                with open(tmp, "w") as f:
+                    f.write(text)
+                os.replace(tmp, out)
+                written.append(rel)
+            elif not os.path.exists(out):
+                print("MISSING  %s" % rel)
+                bad.append("aggregator")
+            elif _drop_stamp(open(out).read()) == _drop_stamp(text):
+                print("ok       %s" % rel)
+            else:
+                bad.append("aggregator")
+                print("DIFFERS  %s" % rel)
+                d = list(
+                    difflib.unified_diff(
+                        _drop_stamp(open(out).read()).splitlines(),
+                        _drop_stamp(text).splitlines(),
+                        "committed",
+                        "regenerated",
+                        lineterm="",
+                        n=1,
+                    )
+                )
+                print("\n".join("    " + l for l in d[:40]))
+
     if a.print_cmd:
         return
+
+    # The chains yaml against the fleet, and the derivation against what the generator built:
+    # the broker's endpoint lists come from gnss_fleet's covering rule, the stages from the
+    # generator's, and a GPU on one list and not the other is a chain polled at a 404 or a
+    # chain nobody reads.
+    # The chains yaml beside the manifest (a checkout's config/); a manifest elsewhere has none.
+    chains = os.path.join(os.path.dirname(man_path), os.path.basename(CHAINS))
+    problems = []
+    if os.path.exists(chains):
+        problems = check_chains(fleet, chains) + check_instances(fleet, regen)
+    else:
+        sys.stderr.write("no %s beside the manifest: fleet checks skipped\n" % chains)
+    # A role-off node's config goes, so nothing that lists the generated configs (node_up.sh,
+    # elem_shared_ref.py, cubearch_up.sh) still finds it; --check names one left behind.
+    if not a.node:
+        for host in fleet.slots:
+            if fleet.roles[host] != "off":
+                continue
+            stale = os.path.join(
+                a.preview_dir or OUTDIR, "chord_gnss_%s%s.yaml" % (host, suffix)
+            )
+            if not os.path.exists(stale):
+                continue
+            if a.check:
+                problems.append(
+                    "%s is role off but %s is still there (a write removes it)"
+                    % (host, os.path.relpath(stale, K))
+                )
+            else:
+                os.remove(stale)
+                written.append("removed %s (role off)" % os.path.relpath(stale, K))
+    for line in problems:
+        print("FLEET    %s" % line)
+    if problems:
+        bad.append("fleet")
+
     if a.check:
         if bad:
             sys.exit(
@@ -554,9 +776,17 @@ def main():
                 "changed underneath. All three are things to decide, not to ignore."
                 % (len(bad), len(nodes), ", ".join(bad))
             )
-        print("\nALL %d node configs match the manifest." % len(nodes))
+        print(
+            "\nALL %d node configs%s match the manifest; the chains yaml follows the fleet."
+            % (len(nodes), " and the aggregator's" if agg else "")
+        )
     else:
         print("\nwrote %d config(s):\n  %s" % (len(written), "\n  ".join(written)))
+        if problems:
+            sys.exit(
+                "\nthe chains yaml does not follow the fleet list (above): the configs are "
+                "written, but the broker would not poll what they build"
+            )
         print(
             "\nNothing restarts on its own -- `scripts/gnss/site/node_up.sh <node> restart`."
         )

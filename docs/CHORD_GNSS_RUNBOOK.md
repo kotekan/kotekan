@@ -157,9 +157,26 @@ Not in the target, on purpose — they are six machines, they need sudo, and cyc
 fleet-wide re-arm.
 
 ```sh
-for n in cx19 cx27 cx42 cx43 cx44 cx51; do scripts/gnss/site/node_up.sh $n restart; done
+for n in $(python3 config/gnss_fleet.py hosts); do scripts/gnss/site/node_up.sh $n restart; done
 scripts/gnss/site/eop_push.sh        # on gnss: pushes the table eop_cron.sh staged
 ```
+
+**The fleet is one list**, `nodes:` in `config/gnss_fleet_chord.yaml`. Everything else that names
+the nodes is derived from it by `config/gnss_fleet.py`: each node's search port (11040 + 2 x its
+position in the list), the aggregator's feeds, every chain's node endpoints in the chains yaml (the
+keys set to `fleet`, one URL per GPU that holds the chain's channels), the site scripts' host lists
+and the stock reference hosts (the site's other hosts). `python3 config/gnss_fleet.py table` shows
+it. Growing or shrinking it:
+
+1. A joining host must already be in `config/chord_gnss_node.yaml` `nodes:` with its combs read from
+   its taps, have the node hardware setup, and be in choco's maintenance mode. Append it to the list.
+   A leaving host is not deleted: set it `role: off`, so no other node's port moves.
+2. Commit, release to gnss-broker, then `scripts/gnss/gen_fleet.py config/gnss_fleet_chord.yaml` and
+   `--check`. It writes the node configs and the aggregator's, and removes a role-off node's config.
+3. Restart the aggregator. Start the joining node (`node_up.sh <node> restart`) or stop the leaving
+   one (`node_up.sh <node> down`). Then recv1 (Jim), which must see each sender's new config.
+4. At least 10 min after the aggregator (#211), restart the broker: it reads the endpoint lists at
+   start. A leaving node then goes back to production (choco maintenance mode off).
 
 **Bring the gather and the aggregator up BEFORE restarting nodes into them.** Sixty senders
 retrying a dead listener is ~2 log lines a second across the fleet.

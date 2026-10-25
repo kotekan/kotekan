@@ -73,9 +73,12 @@ nodes:
     # (gnss<g>_srch_tap/rf_stats freq_ids, labelled from the frame metadata). A wrong entry
     # leaves that GPU's chains despreading channels 195 kHz per step off their replicas: ~1/7
     # power at one step, nothing at two. comb_offset_mod8 is the GPU0 comb's residue mod 8,
-    # chord_band_plan.py's report order only. cx47 and cx52 run production only and are listed
-    # for their combs; cx27's GPU1 comb is as wired before 2026-10-17 (its port was down at
-    # the F-engine return) and needs reading when the port is back.
+    # chord_band_plan.py's report order only. This is the SITE table: every host whose combs
+    # are known, whether or not it runs the GNSS branch. Which ones do is the fleet list,
+    # config/gnss_fleet_chord.yaml nodes:; the rest run production and are the stock references.
+    # A host must be here, its combs read from its taps, before it joins the fleet. cx27's GPU1
+    # comb is as wired before 2026-10-17 (its port was down at the F-engine return) and needs
+    # reading when the port is back.
     cx19: {comb_offset_mod8: 4, gpu_offsets_mod16: [4, 14]}
     cx27: {comb_offset_mod8: 0, gpu_offsets_mod16: [0, 8]}
     cx42: {comb_offset_mod8: 5, gpu_offsets_mod16: [5, 12]}
@@ -126,9 +129,11 @@ runtime:
     # The search aggregator's port on the stack host, named by the broker's `detectors:` URL
     # (config/gnss_chains_chord.yaml); not derived from rest_port.
     aggregator_rest_port: 12050
-    # Stock nodes the generator asks for the EOP table (besides ours) and the bad-input block
-    # when choco cannot be read (live_eop_table, live_bad_inputs). Production keeps them current.
-    eop_reference_nodes: [cx47, cx52]
+    # The stock nodes the generator asks for the EOP table (besides ours) and the bad-input
+    # block when choco cannot be read are not listed here: they are the hosts of `nodes:` above
+    # that are not in the GNSS fleet (config/gnss_fleet_chord.yaml nodes:), which run
+    # production's kotekan and are kept current by choco (gen_chord_gnss_config.py
+    # stock_reference_hosts).
     # Base directory of the vis capture's rawFileWrites (<record_dir>/viscap). Local disk on
     # every node: /home is NFS and /data exists only on cx19. /tmp is on the NVMe, not a ramdisk.
     record_dir: /tmp/gnss

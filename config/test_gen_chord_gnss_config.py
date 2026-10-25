@@ -433,6 +433,9 @@ def test_aggregator_feed_ports():
             cuda_acquire=False,
         )
         out, feeds, _ = g.build_aggregator_instance(cfg, ["cx19", "cx27"], args, 12050)
+        out2, feeds2, _ = g.build_aggregator_instance(
+            cfg, ["cx19:11040", "cx27:11046"], args, 12050
+        )
     finally:
         g.covering_channels = real
     ports = [out["agg%d_recv" % i]["listen_port"] for i in range(len(feeds))]
@@ -441,6 +444,17 @@ def test_aggregator_feed_ports():
         "a node missing a GPU leaves its port unused, later nodes keep base+2k+g (got %s)"
         % ports,
     )
+    ports2 = [out2["agg%d_recv" % i]["listen_port"] for i in range(len(feeds2))]
+    check(
+        ports2 == [11040, 11046, 11047],
+        "NODE:BASE puts that node's GPU g on BASE + g, whatever its position (got %s)"
+        % ports2,
+    )
+    try:
+        g.aggregator_node("cx19:x", 11040)
+        check(False, "a malformed NODE:BASE is refused")
+    except SystemExit as e:
+        check("NODE:PORT_BASE" in str(e), "a malformed NODE:BASE is refused")
 
 
 def test_aggregator_spds():

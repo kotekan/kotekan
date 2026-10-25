@@ -46,8 +46,9 @@ faulthandler.register(signal.SIGUSR1, all_threads=True, chain=False)
 
 K = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(K, "python", "scripts", "gnss"))
+sys.path.insert(0, os.path.join(K, "config"))
 
-import yaml  # noqa: E402
+import gnss_fleet  # noqa: E402
 import gps_distributed_broker as broker  # noqa: E402
 from gnss_broker import iface, iface_watch, publish, receiver, transport  # noqa: E402
 
@@ -69,8 +70,17 @@ def flags(d):
     return out
 
 
-def load(path):
-    cfg = yaml.safe_load(open(path)) or {}
+def read(path):
+    """The chains yaml, parsed, its `fleet` endpoint keys expanded from the fleet list
+    (config/gnss_fleet.py)."""
+    try:
+        return gnss_fleet.load_chains(path)
+    except gnss_fleet.FleetError as e:
+        sys.exit("%s: %s" % (path, e))
+
+
+def load(path, cfg=None):
+    cfg = read(path) if cfg is None else cfg
     common = dict(cfg.get("common") or {})
     # The interface watcher's settings (gnss_broker/iface_watch.py), not a chain flag.
     common.pop("iface", None)
@@ -136,7 +146,8 @@ def main():
     )
     a, extra = ap.parse_known_args()
 
-    chains = load(a.config)
+    cfg = read(a.config)
+    chains = load(a.config, cfg)
 
     if a.list:
         for name, argv in chains:
@@ -152,7 +163,7 @@ def main():
     # The watcher compares what every origin in the chains yaml serves with the golden, on a
     # thread of its own (gnss_broker/iface_watch.py). A bad `iface:` setting stops the start.
     try:
-        watcher = iface_watch.from_chains(yaml.safe_load(open(a.config)) or {})
+        watcher = iface_watch.from_chains(cfg)
     except ValueError as e:
         sys.exit("%s: %s" % (a.config, e))
     # One publisher for the whole process, on the first non-zero --publish-port in chain

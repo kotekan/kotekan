@@ -58,10 +58,19 @@ RETAKE_EVERY_S = 7200.0  # --act re-takes one band's reference at most this ofte
 
 
 def nodes():
-    return sorted(
+    """The nodes with a generated config, less any outside the fleet list
+    (config/gnss_fleet.py), whose leftover config names a node that no longer runs it."""
+    have = sorted(
         re.sub(r".*chord_gnss_(cx\d+)_multi\.yaml$", r"\1", p)
         for p in glob.glob(GEN % "cx*")
     )
+    conf = os.path.join(K, "config")
+    if conf not in sys.path:
+        sys.path.insert(0, conf)
+    import gnss_fleet
+
+    fleet = set(gnss_fleet.hosts())
+    return [n for n in have if n in fleet]
 
 
 def endpoints():

@@ -1041,9 +1041,15 @@ def _cmd_check_fleet(a):
         raise SourceError("check-fleet reads the chains yaml, which needs PyYAML")
     from . import iface_watch
 
+    # The chains yaml's `fleet` endpoint keys expand from the fleet list (config/gnss_fleet.py,
+    # beside the chains yaml in a checkout), as the broker expands them.
+    conf = os.path.dirname(CHAINS_YAML)
+    if conf not in sys.path:
+        sys.path.insert(0, conf)
+    import gnss_fleet
+
     try:
-        with open(a.chains) as fh:
-            cfg = yaml.safe_load(fh) or {}
+        cfg = gnss_fleet.load_chains(a.chains)
         lines, bad = iface_watch.check_fleet(cfg, timeout=a.timeout)
     except (OSError, ValueError, yaml.YAMLError) as e:
         raise SourceError("%s: %s" % (a.chains, e))

@@ -57,6 +57,7 @@ from gnss_record_layout import (
     prnctl_bytes,
 )
 import kotekan_src  # noqa: E402  (python/scripts/gnss, on sys.path through chord_band_plan)
+from gnss_fleet import broker_chain_name, signal_tag  # noqa: E402
 from gnss_broker import iface  # noqa: E402
 
 NODE_FILE = os.path.join(CONF, "chord_gnss_node.yaml")
@@ -250,17 +251,6 @@ def gpu_pairs_for(cfg, node, gpu, chans):
     return sorted(out)
 
 
-def signal_tag(name):
-    """Short buffer/endpoint suffix for an extra signal chain, e.g. GAL_E5A_Q_CS -> _e5a.
-
-    Must be distinct across the chains on one node: every buffer, stage and REST endpoint of
-    the chain is named from it, and kotekan keys its per-consumer bookkeeping by stage name.
-    """
-    parts = name.split("_")
-    body = parts[1] if len(parts) > 1 else parts[0]
-    return "_" + body.lower()
-
-
 def dll_spacing_chips(name):
     """Early/Late tap offset from prompt, in the signal's own (component) chips.
 
@@ -342,18 +332,6 @@ def telem_rows_max():
     sender whose frame exceeds the buffer, so that sender delivers nothing at all.
     """
     return max([_TELEM_ROWS_DEFAULT] + list(_TELEM_ROWS.values()))
-
-
-def broker_chain_name(name):
-    """gnssSignal.hpp name -> the broker's chain key. GPS_L5_Q -> gps_l5, GAL_E5A_Q_CS -> gal_e5a.
-
-    config/gnss_chains_chord.yaml keys its chains the same way (gps_l5, gal_e5a, bds_b2a, ...),
-    so the key is derived rather than carried in a table. It goes on the telemetry wire
-    (gnssTelem.hpp) as a name, not an integer id: an id would need identical tables in the
-    generator, the C++ and the broker, and a drifted one would attribute one constellation's
-    data to another with nothing to say so.
-    """
-    return "_".join(name.split("_")[:2]).lower()
 
 
 def vis_capture_chain(args, chain, sig):
@@ -1804,6 +1782,19 @@ def search_stage(cfg, args, in_buf, chan_ids, core, signal=None, prns=None):
     }
 
 
+def aggregator_node(ent, default_base):
+    """An --aggregator-instance entry, NODE or NODE:BASE -> (node, base)."""
+    node, sep, base = str(ent).partition(":")
+    if not sep:
+        return node, default_base
+    try:
+        return node, int(base)
+    except ValueError:
+        raise SystemExit(
+            f"--aggregator-instance {ent}: expected NODE or NODE:PORT_BASE (e.g. cx19:11040)"
+        )
+
+
 def build_aggregator_instance(cfg, nodes, args, port, spds=8192):
     """One acquisition search over the union of several nodes' combs. One node GPU's feed holds
     ~7 of the ~106 L5 covering channels (-11.8 dB), which no amount of local integration
@@ -1812,10 +1803,12 @@ def build_aggregator_instance(cfg, nodes, args, port, spds=8192):
     global sample counter (equal sample_seq is simultaneity, so the union search is coherent
     across nodes), and one GnssChannelizedSearch runs on the merged comb.
 
-    Port layout: node k's GPU g feed listens on search_port_base + 2k + g. Each node's config
-    sends to its own --search-port-base + gpu, so the nodes' bases must be 2 apart in the order
-    given here (config/gnss_fleet_chord.yaml). A GPU with no covering channel has no feed and
-    leaves its port unused rather than shifting the later nodes'.
+    Port layout: `nodes` holds NODE or NODE:BASE entries; node k's GPU g feed listens on
+    BASE + g, or search_port_base + 2k + g for a bare NODE. Each node's config sends to its own
+    --search-port-base + gpu. gen_fleet.py passes NODE:BASE from the fleet list
+    (config/gnss_fleet.py: 11040 + 2 x the node's slot), so a node that leaves the fleet moves
+    no other node's port. A GPU with no covering channel has no feed and leaves its port
+    unused rather than shifting the later nodes'.
 
     `spds` is the base's samples_per_data_set, which sizes the senders' frames; bufferRecv
     closes a feed whose frame size differs.
@@ -1856,7 +1849,8 @@ def build_aggregator_instance(cfg, nodes, args, port, spds=8192):
     # columns in feed order, so union_ids is built in that order; the search takes it as
     # channel_ids and never assumes sortedness.
     feeds = []
-    for k, node in enumerate(nodes):
+    for k, ent in enumerate(nodes):
+        node, base = aggregator_node(ent, args.search_port_base + 2 * k)
         nchans = covering_channels(
             node_channels(cfg, node),
             float(sig["carrier_hz"]),
@@ -1870,7 +1864,7 @@ def build_aggregator_instance(cfg, nodes, args, port, spds=8192):
             gpu, idx = gpu_of_channel(cfg, node, fid)
             pg.setdefault(gpu, []).append(fid)
         for gpu in sorted(pg):
-            feeds.append((node, gpu, pg[gpu], args.search_port_base + 2 * k + gpu))
+            feeds.append((node, gpu, pg[gpu], base + gpu))
 
     union_ids = []
     in_buf_names = []
@@ -2347,8 +2341,36 @@ def project_stations(spec, bad=()):
     return sorted(set(st) - set(bad))
 
 
+_STOCK_NOTED = []
+
+
+def stock_reference_hosts(cfg):
+    """The stock nodes the generator asks for the EOP table (besides ours) and the bad-input
+    block when choco cannot be read: the site's hosts outside the GNSS fleet
+    (config/gnss_fleet.py), which run production's kotekan and are kept current by choco. With
+    none left, the EOP table comes from choco and our nodes and the bad inputs from bffs only;
+    that is said once, not skipped silently."""
+    import gnss_fleet
+
+    try:
+        refs = gnss_fleet.Fleet(gnss_fleet.MANIFEST, cfg).stock
+    except (OSError, gnss_fleet.FleetError) as e:
+        refs = []
+        why = f"the fleet list does not load ({e})"
+    else:
+        why = "every site host is in the GNSS fleet"
+    if not refs and not _STOCK_NOTED:
+        _STOCK_NOTED.append(True)
+        print(
+            f"  WARNING no stock reference node: {why}. The EOP table comes from choco and "
+            "our nodes only, and the bad inputs from bffs only.",
+            file=sys.stderr,
+        )
+    return refs
+
+
 def live_bad_inputs(cfg, timeout=5.0):
-    """The bad-input block a running stock node (runtime.eop_reference_nodes) holds, as
+    """The bad-input block a running stock node (stock_reference_hosts) holds, as
     (block, host), or None. The fallback when bffs's state cannot be read: choco keeps those
     nodes current. A block still at the template's initial_flags is skipped.
     """
@@ -2356,7 +2378,7 @@ def live_bad_inputs(cfg, timeout=5.0):
 
     # Stock nodes run production's kotekan, on production's port whatever --rest-port says.
     port = cfg["runtime"]["rest_port"]
-    for host in cfg["runtime"].get("eop_reference_nodes", []):
+    for host in stock_reference_hosts(cfg):
         try:
             with urllib.request.urlopen(
                 f"http://{host}:{port}/config", timeout=timeout
@@ -2424,7 +2446,7 @@ def live_eop_table(cfg, args, timeout=3.0):
     # Our nodes and the stock reference nodes; the freshest table wins. After a long outage of
     # our own, the stock nodes are the ones still being refreshed. They run production's
     # kotekan, so they are asked on production's port.
-    refs = cfg["runtime"].get("eop_reference_nodes", [])
+    refs = stock_reference_hosts(cfg)
     hosts = node_names(cfg) + [h for h in refs if h not in cfg["nodes"]]
     best = None
     for host in hosts:
@@ -2467,7 +2489,7 @@ def live_frame0_utc(cfg, args, timeout=3.0):
 
     # The nodes' REST port, which carries the telescope endpoints; production's on the stock
     # reference nodes.
-    refs = cfg["runtime"].get("eop_reference_nodes", [])
+    refs = stock_reference_hosts(cfg)
     seen = {}
     for node in node_names(cfg):
         port = (
@@ -3090,11 +3112,12 @@ def main():
     ap.add_argument(
         "--aggregator-instance",
         nargs="+",
-        metavar="NODE",
+        metavar="NODE[:BASE]",
         default=None,
         help="emit one standalone search instance over the union of these nodes'\
- combs (e.g. --aggregator-instance cx19 cx27). Node k's GPU g feed (k from 0 in this\
- list) listens on search_port_base + 2k + g, the port that node's config sends to. No DPDK\
+ combs (e.g. --aggregator-instance cx19:11040). NODE:BASE's GPU g feed listens on\
+ BASE + g; a bare node k (from 0 in this list) on search_port_base + 2k + g: the port that\
+ node's config sends to. gen_fleet.py passes the fleet's (config/gnss_fleet.py). No DPDK\
  or hugepages, and no GPU unless --cuda-acquire; runs as an ordinary user.",
     )
     # -- The frame-synced tracker -> broker telemetry transport -------------------------------
@@ -3310,12 +3333,11 @@ def main():
             f"# union comb: {len(union_ids)} channels {min(union_ids)}..{max(union_ids)}\n"
             "# The off-node acquisition search: one search of the signal above, plus one\n"
             "# per --aggregator-extra-search, over the union of these nodes' combs, aligned\n"
-            "# on the F-engine's global sample counter. Node k above (from 0) has its GPU g\n"
-            "# feed on --search-port-base + 2k + g, so the order must match each node's\n"
-            "# search-port-base in config/gnss_fleet_chord.yaml.\n"
-            "# Regenerate with --aggregator-instance, these nodes in this order and the same\n"
-            "# --aggregator-extra-search flags (scripts/gnss/site/stack_components.sh has\n"
-            "# the command).\n"
+            "# on the F-engine's global sample counter. A NODE:BASE above has its GPU g feed\n"
+            "# on BASE + g, the port that node's config sends to.\n"
+            "# Regenerate with scripts/gnss/gen_fleet.py config/gnss_fleet_chord.yaml, which\n"
+            "# takes the nodes and their ports from the fleet list and the flags from the\n"
+            "# manifest's aggregator: block.\n"
             + yaml.safe_dump(out, default_flow_style=False, sort_keys=True)
         )
         if args.out:

@@ -89,6 +89,47 @@ def test_check_relays_notes():
     )
 
 
+def test_check_names_a_role_off_config():
+    """A node set role off keeps its slot; its config left in the output directory is named by
+    --check (a write removes it)."""
+    with tempfile.TemporaryDirectory() as d:
+        base = os.path.join(d, "base.j2")
+        with open(base, "w") as fh:
+            fh.write("a: 1\n")
+        for n in ("cx44", "cx19"):
+            with open(os.path.join(d, "chord_gnss_%s.yaml" % n), "w") as fh:
+                fh.write("a: 1\n")
+        man = os.path.join(d, "m.yaml")
+        with open(man, "w") as fh:
+            fh.write("base: %s\nnodes:\n  cx19: {role: 'off'}\n  cx44: {}\n" % base)
+        argv = ["gen_fleet.py", man, "--check", "--preview-dir", d]
+
+        def fake_run(cmd, **kw):
+            check("cx19" not in cmd, "a role-off node is not generated")
+            check(
+                cmd[cmd.index("--search-port-base") + 1] == "11042",
+                "cx44 keeps slot 1's port with cx19 off",
+            )
+            return subprocess.CompletedProcess(cmd, 0, stdout="a: 1\n", stderr="")
+
+        real_run, real_argv = subprocess.run, sys.argv
+        subprocess.run, sys.argv = fake_run, argv
+        out, exc = io.StringIO(), None
+        try:
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(
+                io.StringIO()
+            ):
+                gen_fleet.main()
+        except SystemExit as e:
+            exc = str(e.code)
+        finally:
+            subprocess.run, sys.argv = real_run, real_argv
+    check(
+        exc is not None and "cx19 is role off but" in out.getvalue(),
+        "--check names the role-off node's leftover config (%r)" % out.getvalue(),
+    )
+
+
 STAMP = "# gnss_iface: fnv1a64:0123456789abcdef pin c0ffee sizing telem=fnv1a64:0000000000000001"
 
 
@@ -196,6 +237,8 @@ def test_no_kotekan_tree():
             "scripts/gnss/gen_fleet.py",
             "scripts/gnss/stock_parity.py",
             "python/scripts/gnss/kotekan_src.py",
+            "config/gnss_fleet.py",
+            "config/chord_gnss_node.yaml",
         ):
             os.makedirs(os.path.dirname(os.path.join(c, rel)), exist_ok=True)
             shutil.copy(os.path.join(HERE, "..", "..", rel), os.path.join(c, rel))
