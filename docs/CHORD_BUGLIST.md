@@ -744,6 +744,22 @@ than by the epoch's element set, so a mask change does not re-key them; (c) a li
 the elem-proj switch, persisted by the manifest at the next routine regen; (d) one scripted release
 (epoch edit -> re-key -> split release -> regen -> --check) that enforces the invariants instead of a
 recipe two sessions follow by hand.
+**Built 2026-10-25 (kv/epoch-health, (a), (b) and part of (d); not deployed):** (a) config/gnss_bad_inputs.json
+holds the inputs out for hardware reasons (row H's Y pol, 120-127); the generator's bad_input_set returns it with
+bffs's list, so the stations, chan_noise_norm_elems and the shared ref's zeros leave it out even with bffs
+unreachable; the outage guard counts bffs only and updatable_config/bad_inputs stays bffs's. gnss_arraymap check
+requires every masked input in the open epoch's cube_order and every `removed` element of it masked. The manifest's
+stations are back to 0-6,8-127; with the same bffs block the eight node configs regenerate byte-identical apart
+from the recipe line. Fixed with it: elem_shared_ref.py post and watch --act posted the reference whole, so every
+re-post put the zeroed inputs back at full weight; each POST now carries the instance's generated zeros.
+(b) an epoch's `wiring` id (ah120: g0102-fixed-20261024) and ArrayEpoch.ref_key() = pointing + digest of
+cube_order and wiring key the positions and the ref; key() is unchanged (ah120 still 441d2daf). A positions file
+with `pointing` and `positions_by_dish` is read per dish (config/elem_positions_taua_20261024_by_dish.json);
+`elem_shared_ref.py relabel` re-keys a ref (--swap for a pol swap at the feed), and the 10-25 ref is relabelled
+to config/elem_shared_ref_20261025_f0reset_refkey.json. Regenerated, the configs differ only in
+elem_positions_epoch (and the recipe line). (d) split_paths takes config/elem_*.json by glob; test_split_paths
+checks the append-only rule. A dead input is now one mask entry, a regen and a node restart: no epoch, no re-key.
+**Left:** (c) the live REST mask (the restart a mask change costs), and (d) the full scripted release.
 
 ### #214 — the N^2 projection measured on 10-24: what the lanes leave, and what they cannot reach (2026-10-24, KV: "roll it out, get the E6 PRS lobe, note the 1202 emitter")
 **Measured (scratch proj1024/: gauges polled 40x on cx27/43/44/51 ~14:58Z, gains divided out per input, continuum

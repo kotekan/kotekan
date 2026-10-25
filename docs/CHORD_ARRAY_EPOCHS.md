@@ -29,6 +29,11 @@ A new epoch starts when **what an element IS** changes: a recabling, a re-pointi
 of the data, and making it an epoch boundary would fragment the table into uselessness while
 telling you nothing you cannot measure from the cube itself.
 
+An input that is dark or removed for hardware reasons goes into `config/gnss_bad_inputs.json`
+(correlator input indices), which the GNSS generator takes out of its element lists together
+with bffs's flagged inputs; the open epoch's records mark it `removed`, and `check` requires the
+two to agree. An epoch name therefore never encodes the live element count or health.
+
 ## 2. The resolver never extrapolates
 
 A time outside every recorded interval raises `NoEpoch`. That is the whole value of the thing.
@@ -80,6 +85,11 @@ the pointing the epoch records, and writes into every master:
 The key is the name **plus a digest of what the table says**. If the table is later corrected in
 place — a plane pinned, a position re-measured — artifacts built against the old content stop
 matching rather than silently claiming agreement.
+
+The element positions and the shared element reference are keyed by `ref_key()` instead: the
+pointing name plus a digest of `cube_order` and the epoch's `wiring` id (the cabling, carried
+forward until it changes). The name, the `removed` marks, the planes and the table's positions
+stay out of it, so a health change does not re-key them; a re-pointing or a recabling does.
 
 Masters built before this existed carry no stamp. `assert_compatible` places those by their
 `day` and **says so in a note**; it does not treat unstamped as compatible-by-default.
