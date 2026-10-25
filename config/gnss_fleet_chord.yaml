@@ -89,17 +89,14 @@ common:
     # GnssN2Project on the science N2: per frame and channel, solve the live block's dominant
     # spread components and write (I-QQ^H)V(I-QQ^H) into the copy N2Accumulate reads, only in
     # the given freq_ids ("exempt" = rfi-excision-exempt-freq-ids above). The stations are the
-    # trackers' elements (the rows-ah120 epoch: rows A-H X pol, rows A-G Y pol), so a lane
-    # direction covers every one; station 7 (B04X) is left out: it saturates. An input outside
-    # the trackers' elements cannot be nulled by a lane (16/47 of the power was left when row H
-    # came back with the 10-23 chord merge). Row H's Y-pol inputs (120-127) are left out since
-    # 2026-10-24 18:00Z: that pol is removed from the array with its F-engine board, so nothing
-    # on those inputs is a satellite to null (the element axis keeps the slots because G and H
-    # share a gather tile); H's X pol (56-63) is live and in. bffs's flagged inputs come out on
-    # top at generation (the generator's "tracker elements outside the stations" warning
-    # counts only B04X). eigen-channels live runs the eigen path only on the channels it
-    # writes, which pays for the ~4x of 95 stations against 47. cx19 overrides n2-project to
-    # "off" (see nodes).
+    # trackers' elements, so a lane direction covers every one; station 7 (B04X) is left out:
+    # it saturates. An input outside the trackers' elements cannot be nulled by a lane (16/47
+    # of the power was left when row H came back with the 10-23 chord merge). An input that is
+    # dark or removed is not taken out here: bffs's flagged inputs and config/gnss_bad_inputs.json
+    # (row H's Y pol, 120-127, since 2026-10-24 18:00Z) come out at generation (the generator's
+    # "tracker elements outside the stations" warning counts only B04X). eigen-channels live
+    # runs the eigen path only on the channels it writes, which pays for the ~4x of 95
+    # stations against 47. cx19 overrides n2-project to "off" (see nodes).
     # The E and L lanes as rotations of the prompt, one chip walk per hop (#189): every comb
     # chain, L2C excepted by the generator. Canary cx51 10-17 17:33Z, fleet from the remap cycle.
     epl-from-prompt: true
@@ -112,7 +109,7 @@ common:
     psi-synth: true
     n2-project: live
     n2-project-live-freq-ids: exempt
-    n2-project-stations: "0-6,8-119"
+    n2-project-stations: "0-6,8-127"
     n2-project-eigen-channels: live
     # #190 on every projecting node (canary cx51 10-20..10-24): the tracked satellites' lane
     # directions first, the eigen path on what is left. On 10-24 the eigen path alone removed

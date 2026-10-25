@@ -20,6 +20,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import urllib.request
 
 import yaml
@@ -690,10 +691,11 @@ def test_bad_inputs_reach_the_gnss_branch():
     channel-noise inputs and the fleet reference's entries (zeroed, length kept); one fetch per
     run, kept on args."""
     block = {"bad_inputs": [5, 69, 120], "start_time": 1.0, "update_id": "t"}
-    real = (g.choco_bad_inputs, g.live_bad_inputs)
+    real = (g.choco_bad_inputs, g.live_bad_inputs, g.gnss_arraymap.manual_bad_inputs)
     calls = []
     g.choco_bad_inputs = lambda *a, **k: (calls.append(1), (dict(block), "stub"))[1]
     g.live_bad_inputs = lambda *a, **k: None
+    g.gnss_arraymap.manual_bad_inputs = lambda *a, **k: set()
     try:
         args = argparse.Namespace()
         bad = g.bad_input_set(_ARR128, args)
@@ -734,7 +736,7 @@ def test_bad_inputs_reach_the_gnss_branch():
         g.choco_bad_inputs = lambda *a, **k: None
         check(g.bad_input_set(_ARR128, a2) == set(), "no source: nothing excluded")
     finally:
-        g.choco_bad_inputs, g.live_bad_inputs = real
+        g.choco_bad_inputs, g.live_bad_inputs, g.gnss_arraymap.manual_bad_inputs = real
 
 
 _ARR128 = {"array": {"live_element_ranges": [[0, 63], [64, 127]]}}
@@ -745,11 +747,12 @@ def test_bad_inputs_from_file_and_outage_guard():
     config on disk carries) without asking bffs; the recipe header leaves it out; and a list
     flagging more than half the inputs (no data, not bad feeds) refuses the generation rather
     than empty the GNSS branch's element lists."""
-    real = (g.choco_bad_inputs, g.live_bad_inputs)
+    real = (g.choco_bad_inputs, g.live_bad_inputs, g.gnss_arraymap.manual_bad_inputs)
     g.choco_bad_inputs = lambda *a, **k: check(
         False, "bffs asked despite --bad-inputs-from"
     )
     g.live_bad_inputs = lambda *a, **k: None
+    g.gnss_arraymap.manual_bad_inputs = lambda *a, **k: set()
     d = tempfile.mkdtemp()
     try:
         path = os.path.join(d, "bi.json")
@@ -793,7 +796,151 @@ def test_bad_inputs_from_file_and_outage_guard():
             check("not a bad-input block" in str(e), "a malformed file is refused")
     finally:
         shutil.rmtree(d)
-        g.choco_bad_inputs, g.live_bad_inputs = real
+        g.choco_bad_inputs, g.live_bad_inputs, g.gnss_arraymap.manual_bad_inputs = real
+
+
+_LIVE_NAMES = (
+    "choco_eop_table",
+    "live_eop_table",
+    "choco_bad_inputs",
+    "live_bad_inputs",
+    "live_frame0_utc",
+)
+
+
+@contextlib.contextmanager
+def stubbed(mask, **stubs):
+    """The live reads stubbed (None unless given in stubs) and config/gnss_bad_inputs.json
+    read as `mask`."""
+    real = {n: getattr(g, n) for n in _LIVE_NAMES}
+    real_mask = g.gnss_arraymap.manual_bad_inputs
+    for n in _LIVE_NAMES:
+        setattr(g, n, stubs.get(n, lambda *a, **k: None))
+    g.gnss_arraymap.manual_bad_inputs = lambda *a, **k: set(mask)
+    try:
+        yield
+    finally:
+        for n, f in real.items():
+            setattr(g, n, f)
+        g.gnss_arraymap.manual_bad_inputs = real_mask
+
+
+_HY = set(range(120, 128))
+
+
+def test_manual_mask_joins_bffs():
+    """config/gnss_bad_inputs.json's inputs leave the GNSS branch's lists with bffs's: it
+    applies when no bffs source answers, and the outage guard counts bffs's list only."""
+    block = {"bad_inputs": [5, 69], "start_time": 1.0, "update_id": "t"}
+    with stubbed(_HY, choco_bad_inputs=lambda *a, **k: (dict(block), "stub")):
+        check(
+            g.bad_input_set(_ARR128, argparse.Namespace()) == {5, 69} | _HY,
+            "the mask joins bffs's list",
+        )
+    with stubbed(_HY):
+        check(
+            g.bad_input_set(_ARR128, argparse.Namespace()) == _HY,
+            "no bffs source: the mask still applies",
+        )
+    d = tempfile.mkdtemp()
+    try:
+        path = os.path.join(d, "bi.json")
+        for n, ok in ((64, True), (65, False)):
+            with open(path, "w") as fh:
+                json.dump({"bad_inputs": list(range(n)), "update_id": "u"}, fh)
+            try:
+                with stubbed(_HY):
+                    got = g.bad_input_set(
+                        _ARR128, argparse.Namespace(bad_inputs_from=path)
+                    )
+                check(
+                    ok and len(got) == n + 8, "%d from bffs + 8 masked is applied" % n
+                )
+            except SystemExit as e:
+                check(not ok, "%d from bffs + 8 masked refused: %s" % (n, e))
+    finally:
+        shutil.rmtree(d)
+
+
+def test_manual_mask_reaches_the_node_config():
+    """One node config with the mask and a bffs block: the stations, the channel-noise inputs
+    and the shared ref's zeros leave out both; updatable_config/bad_inputs, the science mask
+    bffs owns, carries bffs's list only."""
+    if kotekan_src.SRC is None:
+        print("  [SKIP] node config: no kotekan tree to render the base from")
+        return
+    sys.path.insert(0, os.path.join(ROOT, "python", "scripts", "gnss"))
+    import gnss_arraymap
+
+    key = gnss_arraymap.at(time.time()).key()
+    d = tempfile.mkdtemp()
+    try:
+        bi = os.path.join(d, "bi.json")
+        with open(bi, "w") as fh:
+            json.dump({"bad_inputs": [5, 69], "start_time": 1.0, "update_id": "t"}, fh)
+        ref = os.path.join(d, "ref.json")
+        with open(ref, "w") as fh:
+            json.dump({"epoch": key, "bands": {"l5": {"ref": [[0.1, 0.2]] * 128}}}, fh)
+        argv = [
+            "--base",
+            kotekan_src.src("config", "chord/pathfinder.j2"),
+            "--node",
+            "cx51",
+            "--telem-host",
+            "gnss",
+            "--cube-host",
+            "cf06",
+            "--bad-inputs-from",
+            bi,
+            "--n2-project",
+            "live",
+            "--n2-project-stations",
+            "0-6,8-127",
+            "--rfi-excision-exempt-freq-ids",
+            "5971-6076",
+            "--n2-project-live-freq-ids",
+            "exempt",
+            "--n2-project-source",
+            "lanes+residual",
+            "--elem-dir-publish",
+            "all",
+            "--elem-sum-shared",
+            "--elem-shared-ref",
+            ref,
+            "--elem-shared-ref-mode",
+            "live",
+        ]
+        with stubbed(_HY):
+            exc, out, err = run_main(argv)
+    finally:
+        shutil.rmtree(d)
+    check(exc is None, "the node config generates (%s)" % exc)
+    if exc is not None:
+        return
+    cfg = yaml.safe_load(out)
+    out_set = {5, 69} | _HY
+    st = cfg["gnss_n2_project"]["proj_0"]["stations"]
+    check(
+        st == sorted(set(range(128)) - {7} - out_set),
+        "the stations leave out bffs's and the mask's inputs (%d)" % len(st),
+    )
+    asm = cfg["gnss0_n2assemble"]
+    check(
+        asm["chan_noise_norm_elems"] == sorted(set(range(128)) - out_set),
+        "the channel-noise inputs leave them out",
+    )
+    r = asm["elem_sum_shared_ref"]
+    check(
+        {e for e in range(128) if r[2 * e] == r[2 * e + 1] == 0.0} == out_set,
+        "the shared ref's entries for them are zero",
+    )
+    check(
+        cfg["updatable_config"]["bad_inputs"]["bad_inputs"] == [5, 69],
+        "updatable_config/bad_inputs is bffs's list, without the mask",
+    )
+    check(
+        "1 tracker elements are outside" in err, "the tracker warning counts only B04X",
+    )
 
 
 def main():

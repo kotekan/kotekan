@@ -57,6 +57,7 @@ from gnss_record_layout import (
     prnctl_bytes,
 )
 import kotekan_src  # noqa: E402  (python/scripts/gnss, on sys.path through chord_band_plan)
+import gnss_arraymap  # noqa: E402
 from gnss_fleet import broker_chain_name, signal_tag  # noqa: E402
 from gnss_broker import iface  # noqa: E402
 
@@ -2315,12 +2316,13 @@ BAD_INPUTS_OUTAGE_FRACTION = 0.5
 
 
 def bad_input_set(cfg, args):
-    """The flagged frame inputs as a set; empty when no source answered. bffs's index is the
-    flat [pol][dish] input index, the same axis as the GNSS element axis (cube_order), so no
-    translation. The element sum needs no list (ElemCal gates a dead input on its own
-    coherence), but the stations the projection nulls on, the inputs the channel noise is
-    averaged over and the fleet reference's entries are static lists, and a flagged input
-    there sits at full weight."""
+    """The inputs out of the GNSS branch's static element lists, as a set: bffs's flagged inputs
+    (none when no source answered) and the inputs out for hardware reasons
+    (config/gnss_bad_inputs.json, read once per run). Both index the flat [pol][dish] input
+    axis, the same axis as the GNSS element axis (cube_order), so no translation. The element
+    sum needs no list (ElemCal gates a dead input on its own coherence), but the stations the
+    projection nulls on, the inputs the channel noise is averaged over and the fleet
+    reference's entries are static lists, and a flagged input there sits at full weight."""
     bi = bad_input_block(cfg, args)
     bad = set(int(i) for i in bi[0]["bad_inputs"]) if bi else set()
     n = live_element_count(cfg["array"])
@@ -2333,7 +2335,9 @@ def bad_input_set(cfg, args):
             "would be left empty, so nothing is generated. Regenerate when the data is back "
             "and bffs has unflagged the feeds, or pass --bad-inputs-from with a good block."
         )
-    return bad
+    if not hasattr(args, "_manual_bad_inputs"):
+        args._manual_bad_inputs = gnss_arraymap.manual_bad_inputs()
+    return bad | args._manual_bad_inputs
 
 
 def project_stations(spec, bad=()):
@@ -3529,19 +3533,20 @@ def main():
     # ours (they are in maintenance mode), and scripts/gnss/site/bad_inputs_cron.py pushes it
     # only to running nodes, so a node starts from whatever its config carries. A wrong list is
     # wrong data in the bad-feed mask stream and the N^2 fold, so take it from bffs, as the EOP
-    # table above. The same list leaves the GNSS branch's static element lists (bad_input_set).
+    # table above. The same list leaves the GNSS branch's static element lists (bad_input_set),
+    # with config/gnss_bad_inputs.json's on top; that mask stays out of this block.
     _bi = bad_input_block(cfg, args)
     if _bi is not None:
         _blk, _src = _bi
         out.setdefault("updatable_config", {})["bad_inputs"] = _blk
         print(
-            "  bad inputs %d flagged, %s from %s; out of the GNSS stations, channel-noise "
-            "inputs and shared ref: %s"
+            "  bad inputs %d flagged, %s from %s; with config/gnss_bad_inputs.json, out of "
+            "the GNSS stations, channel-noise inputs and shared ref: %s"
             % (
                 len(_blk["bad_inputs"]),
                 _blk["update_id"],
                 _src,
-                sorted(int(i) for i in _blk["bad_inputs"]),
+                sorted(bad_input_set(cfg, args)),
             ),
             file=sys.stderr,
         )
