@@ -943,6 +943,117 @@ def test_manual_mask_reaches_the_node_config():
     )
 
 
+_ARR4 = {"live_element_ranges": [[0, 1], [64, 65]]}
+
+
+def _epoch4(name="e", wiring="w1", pointing="pA", removed=None):
+    """A four-element epoch (dishes 0 and 1, both pols), read through gnss_arraymap."""
+    sys.path.insert(0, os.path.join(ROOT, "python", "scripts", "gnss"))
+    import gnss_arraymap
+
+    els = {}
+    for i in (0, 1, 64, 65):
+        els[str(i)] = {
+            "dish": i % 64,
+            "dish_name": "A0%d" % (i % 64 + 1),
+            "slot": i // 64,
+            "enu_m": [float(i), 0.0, 0.0],
+        }
+    if removed is not None:
+        els[str(removed)]["removed"] = "test"
+    table = {
+        "schema": 1,
+        "pointings": {
+            p: {"dec_deg": None, "bore_az_deg": None, "bore_el_deg": None}
+            for p in ("pA", "pB")
+        },
+        "epochs": [
+            {
+                "name": name,
+                "valid_from": "2026-01-01T00:00:00Z",
+                "valid_to": None,
+                "pointing": pointing,
+                "wiring": wiring,
+                "cube_order": [0, 1, 64, 65],
+                "elements": els,
+            }
+        ],
+    }
+    fh = tempfile.NamedTemporaryFile("w", suffix=".json", delete=False)
+    json.dump(table, fh)
+    fh.close()
+    try:
+        return gnss_arraymap.JsonBackend(fh.name).epochs()[0]
+    finally:
+        os.unlink(fh.name)
+
+
+def steer_keys(ep, positions):
+    """elem_steer_keys on _ARR4 with the epoch valid now set to ep and --elem-positions-file
+    holding `positions`: (keys, None) or (None, the refusal)."""
+    real = g.gnss_arraymap.at
+    g.gnss_arraymap.at = lambda *a, **k: ep
+    d = tempfile.mkdtemp()
+    try:
+        path = os.path.join(d, "pos.json")
+        with open(path, "w") as fh:
+            json.dump(positions, fh)
+        a = argparse.Namespace(elem_positions_file=path, elem_steer_sign=1.0)
+        return g.elem_steer_keys(a, _ARR4, 4), None
+    except SystemExit as e:
+        return None, str(e)
+    finally:
+        g.gnss_arraymap.at = real
+        shutil.rmtree(d)
+
+
+def test_positions_by_dish():
+    """A per-dish positions file maps each element to its dish's position, is keyed by the
+    epoch's ref_key (pointing and wiring) and refuses another pointing or a missing dish; the
+    older per-epoch form keeps its key."""
+    by_dish = {
+        "pointing": "pA",
+        "positions_by_dish": {"0": [1.0, 2.0, 3.0], "1": [4.0, 5.0, 6.0]},
+    }
+    ep = _epoch4()
+    keys, why = steer_keys(ep, by_dish)
+    check(
+        why is None and keys["elem_positions_enu"] == [1, 2, 3, 4, 5, 6] * 2,
+        "each element takes its dish's position (%s)" % why,
+    )
+    check(
+        keys["elem_positions_epoch"] == ep.ref_key() + "+pos.json",
+        "keyed by the ref_key: %s" % keys["elem_positions_epoch"],
+    )
+    _, why = steer_keys(_epoch4(pointing="pB"), by_dish)
+    check(why is not None and "pointing pA" in why, "another pointing is refused")
+    one = dict(by_dish, positions_by_dish={"0": [1.0, 2.0, 3.0]})
+    _, why = steer_keys(ep, one)
+    check(why is not None and "dish(es) [1]" in why, "a missing dish is refused")
+
+    def key(e):
+        return steer_keys(e, by_dish)[0]["elem_positions_epoch"]
+
+    check(key(_epoch4(wiring="w2")) != key(ep), "the key moves with the wiring")
+    check(key(_epoch4(name="other")) == key(ep), "the key does not move with the name")
+    check(
+        key(_epoch4(removed=65)) == key(ep),
+        "the key does not move with an element marked removed",
+    )
+    old = {
+        "epoch_key": ep.key(),
+        "cube_order": [0, 1, 64, 65],
+        "positions_enu": [[1.0, 2.0, 3.0]] * 4,
+    }
+    keys, why = steer_keys(ep, old)
+    check(
+        why is None and keys["elem_positions_epoch"] == ep.key() + "+pos.json",
+        "the per-epoch form keeps the epoch key (%s)" % why,
+    )
+    _, why = steer_keys(_epoch4(name="other"), old)
+    check(why is not None and "solved against epoch" in why, "and its refusal")
+
+
 def main():
     # The generator reads relative paths from the cwd and _rel() resolves every argv token
     # against it, so the in-process calls run from the repo root, as gen_fleet and run_gen do.

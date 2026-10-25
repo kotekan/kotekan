@@ -784,15 +784,12 @@ def elem_positions_from_arraymap(arr, n_elem):
     """Measured element positions: flat [n_elem][3] ENU metres from the array-epoch table
     (config/chord_array_epochs.json via gnss_arraymap) for the epoch valid now, in the
     assembler's element order, which is the epoch's cube_order and must equal the config's live
-    element ranges. Returns (positions, epoch_key).
+    element ranges. Returns (positions, epoch).
 
     The epoch table records what the array actually was, by date, and refuses rather than
     extrapolates. A position the table does not know is a refusal too: a steer built from a
     guessed position is a wrong steer, not a weaker one.
     """
-    sys.path.insert(0, os.path.join(CONF, "..", "python", "scripts", "gnss"))
-    import gnss_arraymap
-
     ep = gnss_arraymap.at(time.time())
     live = [e for lo, hi in live_element_ranges(arr) for e in range(lo, hi + 1)]
     if list(ep.cube_order) != live:
@@ -814,7 +811,7 @@ def elem_positions_from_arraymap(arr, n_elem):
                 "epoch %s" % (e.index, e.label(), ep.name)
             )
         out += [float(v) for v in e.enu_m]
-    return out, ep.key()
+    return out, ep
 
 
 def n2_project_live_ids(args):
@@ -939,27 +936,55 @@ def elem_shared_ref_keys(args, band, steer, n_elem, bad=()):
 
 def elem_steer_keys(args, arr, n_elem):
     """The assembler keys that arm steering for one band: the measured positions of the array
-    epoch valid now (refined by --elem-positions-file), the measured sign, and the epoch key the
+    epoch valid now (refined by --elem-positions-file), the measured sign, and the key the
     positions came from, so a config can be matched to the array it was built for."""
-    pos, key = elem_positions_from_arraymap(arr, n_elem)
+    pos, ep = elem_positions_from_arraymap(arr, n_elem)
+    key = ep.key()
     if args.elem_positions_file:
-        # A refinement on top of the epoch, solved from steered per-element phases and written
-        # in cube order against a named epoch key. It is valid only for the epoch it was solved
-        # against (a re-cabling makes a different array), so the key must match the epoch valid
-        # now and the order must be the epoch's cube_order.
+        # A refinement on top of the epoch, solved from steered per-element phases. A file
+        # with `pointing` holds one position per dish, solved on that pointing: it holds for
+        # any epoch on it, and is keyed by the epoch's ref_key (pointing and wiring), which a
+        # health change does not move. A file with `epoch_key` is in cube order against one
+        # epoch key, and is valid only for that epoch.
         ref = json.load(open(args.elem_positions_file))
-        live = [e for lo, hi in live_element_ranges(arr) for e in range(lo, hi + 1)]
-        if ref.get("epoch_key") != key:
-            raise SystemExit(
-                "--elem-positions-file %s was solved against epoch %s, the epoch "
-                "valid now is %s -- refusing"
-                % (args.elem_positions_file, ref.get("epoch_key"), key)
+        if "pointing" in ref:
+            if ref["pointing"] != ep.pointing.name:
+                raise SystemExit(
+                    "--elem-positions-file %s was solved on pointing %s, the epoch valid "
+                    "now (%s) is on %s -- refusing"
+                    % (
+                        args.elem_positions_file,
+                        ref["pointing"],
+                        ep.name,
+                        ep.pointing.name,
+                    )
+                )
+            by_dish = ref["positions_by_dish"]
+            missing = sorted(
+                {e.dish for _, e in ep.cube_elements() if str(e.dish) not in by_dish}
             )
-        if list(ref.get("cube_order", [])) != live:
-            raise SystemExit(
-                "--elem-positions-file cube_order != the config's live elements"
-            )
-        pos = [float(v) for row in ref["positions_enu"] for v in row]
+            if missing:
+                raise SystemExit(
+                    "--elem-positions-file %s has no position for dish(es) %s -- refusing"
+                    % (args.elem_positions_file, missing)
+                )
+            pos = [
+                float(v) for _, e in ep.cube_elements() for v in by_dish[str(e.dish)]
+            ]
+            key = ep.ref_key()
+        else:
+            live = [e for lo, hi in live_element_ranges(arr) for e in range(lo, hi + 1)]
+            if ref.get("epoch_key") != key:
+                raise SystemExit(
+                    "--elem-positions-file %s was solved against epoch %s, the epoch "
+                    "valid now is %s -- refusing"
+                    % (args.elem_positions_file, ref.get("epoch_key"), key)
+                )
+            if list(ref.get("cube_order", [])) != live:
+                raise SystemExit(
+                    "--elem-positions-file cube_order != the config's live elements"
+                )
+            pos = [float(v) for row in ref["positions_enu"] for v in row]
         if len(pos) != 3 * n_elem:
             raise SystemExit(
                 "--elem-positions-file: %d positions, assembler has %d elements"
@@ -2905,9 +2930,11 @@ def main():
         "--elem-positions-file",
         default="",
         help="element positions for steering, in place of the array epoch's "
-        "(config/chord_array_epochs.json via gnss_arraymap): a JSON with epoch_key, "
-        "cube_order and positions_enu. Refused unless its epoch_key is the epoch valid "
-        "at generation and its cube_order is the config's live elements",
+        "(config/chord_array_epochs.json via gnss_arraymap): a JSON with pointing and "
+        "positions_by_dish, refused unless its pointing is the epoch's valid at "
+        "generation and it places every dish of the epoch; or, the older form, with "
+        "epoch_key, cube_order and positions_enu, refused unless its epoch_key is the "
+        "epoch valid at generation and its cube_order is the config's live elements",
     )
     ap.add_argument(
         "--elem-steer-sign",
