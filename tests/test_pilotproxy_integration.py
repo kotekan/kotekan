@@ -1,13 +1,14 @@
-"""Test the CUDA pipeline with synthetic calibration and malformed bundles.
+"""Test the CUDA pipeline using synthetic calibration and malformed bundles.
 
-Set PILOTPROXY_TEST_BINARY and PILOTPROXY_TEST_BUNDLE to run these tests.
-The bundle must match the compiled core. PILOTPROXY_SOAK_FRAMES (at least 8)
-also enables full-size CHORD and CHIME runs with two polarizations and
-full-rate fine support; see dev_pilotproxy_testing.rst for their geometry.
-Four voltage frames repeat; every
-mask, power, and support output is compared with its CPU reference. Each
-pipeline has a 1,800-second timeout, overridable with
-PILOTPROXY_SOAK_TIMEOUT_SECONDS. Synthetic calibration is for these tests only.
+Set PILOTPROXY_TEST_BINARY and PILOTPROXY_TEST_BUNDLE to supply a binary and
+matching runtime bundle. PILOTPROXY_SOAK_FRAMES (at least 8) also enables the
+full-size CHORD and CHIME cases described in dev_pilotproxy_testing.rst.
+
+Those cases repeat four voltage frames with two polarizations and full-rate
+fine support. Every mask, power, and support output is checked against its
+CPU reference. Each pipeline has a 1,800-second timeout, which can be changed
+with PILOTPROXY_SOAK_TIMEOUT_SECONDS. The calibration is synthetic and applies
+only to these tests.
 """
 
 import importlib.util
@@ -686,7 +687,7 @@ def test_production_geometry_soak(
     record_property("pipeline_timeout_seconds", timeout)
     record_property(
         "voltage_gib",
-        frames * pipeline.block_samples * num_freq * 2 * num_dishes / 2 ** 30,
+        frames * pipeline.block_samples * num_freq * 2 * num_dishes / 2**30,
     )
     print(
         f"Verified {frames} production-size blocks; pipeline took {pipeline.elapsed:.2f}s"

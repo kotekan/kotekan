@@ -469,8 +469,10 @@ private:
 
 /**
  * @class cudaPilotProxyDetector
- * @brief cudaCommand running the PilotProxy ATSC DTV pilot-tone rank-based power-ratio
- * detector (vendored in external/pilotproxy) on packed receiver voltage data.
+ * @brief Detect ATSC DTV pilots in packed receiver voltages with PilotProxy.
+ *
+ * The detector compares pilot power with a ranked local reference. Its core
+ * is vendored in external/pilotproxy.
  *
  * @author Dylan Gormley
  *
