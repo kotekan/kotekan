@@ -2290,13 +2290,30 @@ def node_rest_port(cfg, args):
 
 def bad_input_block(cfg, args):
     """bffs's bad-input block, (block, source) or None, fetched once per run and kept on args:
-    the node's updatable_config and the GNSS branch (bad_input_set) must read one list."""
+    the node's updatable_config and the GNSS branch (bad_input_set) must read one list.
+    --bad-inputs-from FILE takes the block from a file instead (gen_fleet.py --check passes the
+    block the config on disk carries, so the lists derived from it regenerate identically)."""
     if not hasattr(args, "_bad_inputs"):
-        bi = choco_bad_inputs()
-        if bi is None:
-            bi = live_bad_inputs(cfg)
+        path = getattr(args, "bad_inputs_from", None)
+        if path:
+            with open(path) as f:
+                blk = yaml.safe_load(f)
+            if not isinstance(blk, dict) or "bad_inputs" not in blk:
+                raise SystemExit(
+                    f"--bad-inputs-from {path}: not a bad-input block (no bad_inputs key)"
+                )
+            bi = (blk, path)
+        else:
+            bi = choco_bad_inputs()
+            if bi is None:
+                bi = live_bad_inputs(cfg)
         args._bad_inputs = bi
     return args._bad_inputs
+
+
+#: bffs flagging more than this fraction of the inputs is no data, not bad feeds: the
+#: F-engine streaming zeros (10-25 01:46Z: 127 of 128 flagged) or a dead link.
+BAD_INPUTS_OUTAGE_FRACTION = 0.5
 
 
 def bad_input_set(cfg, args):
@@ -2307,7 +2324,18 @@ def bad_input_set(cfg, args):
     averaged over and the fleet reference's entries are static lists, and a flagged input
     there sits at full weight."""
     bi = bad_input_block(cfg, args)
-    return set(int(i) for i in bi[0]["bad_inputs"]) if bi else set()
+    bad = set(int(i) for i in bi[0]["bad_inputs"]) if bi else set()
+    n = live_element_count(cfg["array"])
+    if len(bad) > BAD_INPUTS_OUTAGE_FRACTION * n:
+        # Applied, it would empty the stations, the channel-noise inputs and the shared ref
+        # for as long as the config is run, long after the data came back.
+        raise SystemExit(
+            f"the bad-input list ({bi[0].get('update_id')}, from {bi[1]}) flags {len(bad)} of "
+            f"{n} inputs: an outage (no data), not bad feeds. The GNSS branch's element lists "
+            "would be left empty, so nothing is generated. Regenerate when the data is back "
+            "and bffs has unflagged the feeds, or pass --bad-inputs-from with a good block."
+        )
+    return bad
 
 
 def project_stations(spec, bad=()):
@@ -2562,9 +2590,11 @@ def recipe_lines(argv):
 
     --out is left out: it says where the file was written, not how it was built, and gen_fleet
     regenerates to stdout and compares byte for byte, so a recorded --out would never match.
-    Add --out when pasting the recipe, or let gen_fleet write the file.
+    Add --out when pasting the recipe, or let gen_fleet write the file. --bad-inputs-from is
+    left out for the same reason: it names a temporary file of live data (gen_fleet --check
+    passes the block the config already carries), and the block itself is in the config.
     """
-    sink_flags = ("--out",)
+    sink_flags = ("--out", "--bad-inputs-from")
     keep = []
     i = 0
     while i < len(argv):
@@ -2922,6 +2952,14 @@ def main():
         "dominant spatially coherent components (the transiting satellites) out of the "
         "--n2-project-stations block, and N2Accumulate reads the projected copy "
         "(gnss_n2_proj_buffer{,_1}). Needs --n2-project-live-freq-ids.",
+    )
+    ap.add_argument(
+        "--bad-inputs-from",
+        metavar="FILE",
+        default=None,
+        help="take the bad-input block (a node's updatable_config/bad_inputs, YAML or JSON) "
+        "from FILE instead of bffs or the stock nodes. gen_fleet.py --check passes the block "
+        "the config on disk carries, so the GNSS lists derived from it compare exactly.",
     )
     ap.add_argument(
         "--n2-project-stations",

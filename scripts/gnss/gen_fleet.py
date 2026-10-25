@@ -10,7 +10,8 @@ reproduced from a committed file; a node's config is regenerated, never hand-edi
 
 `--check` is the gate to run before a fleet restart. It regenerates every node into memory,
 compares the result byte for byte with the file on disk (the live EOP and bad-input values
-aside) and checks the file against the stock render (stock_parity.py), so a hand-edit, a
+aside; the node is regenerated with the bad-input block its file carries, since the GNSS
+element lists are derived from it) and checks the file against the stock render (stock_parity.py), so a hand-edit, a
 changed base or a generator whose output moved all fail. It prints a diff per mismatching node
 and exits 1 if any node differs, 2 if nothing could be compared (a missing base, a generator
 that cannot run, a crash here).
@@ -20,10 +21,12 @@ BRDC.
 """
 import argparse
 import difflib
+import json
 import os
 import shlex
 import subprocess
 import sys
+import tempfile
 import traceback
 
 import yaml
@@ -94,6 +97,15 @@ def _drop_live(text):
         default_flow_style=False,
         sort_keys=True,
     )
+
+
+def _bad_input_block_of(text):
+    """The updatable_config/bad_inputs block a config carries, or None."""
+    cfg = yaml.load(
+        _split_header(text)[1], Loader=getattr(yaml, "CSafeLoader", yaml.SafeLoader)
+    )
+    blk = ((cfg or {}).get("updatable_config") or {}).get("bad_inputs")
+    return blk if isinstance(blk, dict) and "bad_inputs" in blk else None
 
 
 def _live_inputs_missing(text):
@@ -413,9 +425,29 @@ def main():
             print(" ".join(shlex.quote(c) for c in cmd + ["--out", out]))
             continue
 
+        # --check regenerates with the bad-input block the file on disk carries. The block is
+        # live data (blanked by _drop_live), but the GNSS branch's element lists are derived
+        # from it at generation (stations, channel-noise inputs, shared-ref zeros), so with
+        # bffs's current list instead every bffs change would read as drift: --check would
+        # fail fleet-wide and eop_cron.sh would stop refreshing the on-disk EOP tables.
+        tmp_bi = None
+        if a.check and os.path.exists(out):
+            blk = _bad_input_block_of(open(out).read())
+            if blk is not None:
+                fd, tmp_bi = tempfile.mkstemp(
+                    prefix="gen_fleet_bad_inputs_", suffix=".json"
+                )
+                with os.fdopen(fd, "w") as f:
+                    json.dump(blk, f)
+                cmd = cmd + ["--bad-inputs-from", tmp_bi]
+
         # No --out: take the config on stdout so --check never touches the tree. The
         # generator writes its human summary to stderr, so stdout is the file exactly.
-        p = subprocess.run(cmd, capture_output=True, text=True, cwd=K)
+        try:
+            p = subprocess.run(cmd, capture_output=True, text=True, cwd=K)
+        finally:
+            if tmp_bi:
+                os.unlink(tmp_bi)
         if p.returncode != 0:
             # Exit 2, not 1: exit 1 means the config differs from the manifest, and
             # node_up.sh's preflight reads it that way. A generator that failed to run has

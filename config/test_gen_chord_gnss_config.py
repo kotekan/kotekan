@@ -672,8 +672,8 @@ def test_bad_inputs_reach_the_gnss_branch():
     g.live_bad_inputs = lambda *a, **k: None
     try:
         args = argparse.Namespace()
-        bad = g.bad_input_set({}, args)
-        g.bad_input_set({}, args)
+        bad = g.bad_input_set(_ARR128, args)
+        g.bad_input_set(_ARR128, args)
         check(
             bad == {5, 69, 120} and len(calls) == 1, "one fetch per run, kept on args"
         )
@@ -708,8 +708,67 @@ def test_bad_inputs_reach_the_gnss_branch():
             shutil.rmtree(d)
         a2 = argparse.Namespace()
         g.choco_bad_inputs = lambda *a, **k: None
-        check(g.bad_input_set({}, a2) == set(), "no source: nothing excluded")
+        check(g.bad_input_set(_ARR128, a2) == set(), "no source: nothing excluded")
     finally:
+        g.choco_bad_inputs, g.live_bad_inputs = real
+
+
+_ARR128 = {"array": {"live_element_ranges": [[0, 63], [64, 127]]}}
+
+
+def test_bad_inputs_from_file_and_outage_guard():
+    """--bad-inputs-from takes the block from a file (gen_fleet --check passes the one the
+    config on disk carries) without asking bffs; the recipe header leaves it out; and a list
+    flagging more than half the inputs (no data, not bad feeds) refuses the generation rather
+    than empty the GNSS branch's element lists."""
+    real = (g.choco_bad_inputs, g.live_bad_inputs)
+    g.choco_bad_inputs = lambda *a, **k: check(
+        False, "bffs asked despite --bad-inputs-from"
+    )
+    g.live_bad_inputs = lambda *a, **k: None
+    d = tempfile.mkdtemp()
+    try:
+        path = os.path.join(d, "bi.json")
+        with open(path, "w") as fh:
+            json.dump(
+                {"bad_inputs": [3, 70], "start_time": 1.0, "update_id": "disk"}, fh
+            )
+        a = argparse.Namespace(bad_inputs_from=path)
+        check(g.bad_input_set(_ARR128, a) == {3, 70}, "the block comes from the file")
+        check(g.bad_input_block(_ARR128, a)[1] == path, "its source is the file")
+        rec = "\n".join(
+            g.recipe_lines(["--node", "cx19", "--bad-inputs-from", path, "--out", "x"])
+        )
+        check(
+            "--bad-inputs-from" not in rec and path not in rec and "--node cx19" in rec,
+            "the recipe header leaves --bad-inputs-from out (%s)" % rec,
+        )
+        with open(path, "w") as fh:
+            json.dump({"bad_inputs": list(range(65)), "update_id": "outage"}, fh)
+        try:
+            g.bad_input_set(_ARR128, argparse.Namespace(bad_inputs_from=path))
+            check(False, "65 of 128 flagged was applied")
+        except SystemExit as e:
+            check(
+                "outage" in str(e) and "65 of 128" in str(e),
+                "an outage list refuses: %s" % e,
+            )
+        with open(path, "w") as fh:
+            json.dump({"bad_inputs": list(range(64)), "update_id": "half"}, fh)
+        check(
+            len(g.bad_input_set(_ARR128, argparse.Namespace(bad_inputs_from=path)))
+            == 64,
+            "exactly half is still applied",
+        )
+        with open(path, "w") as fh:
+            json.dump({"not": "a block"}, fh)
+        try:
+            g.bad_input_set(_ARR128, argparse.Namespace(bad_inputs_from=path))
+            check(False, "a file without bad_inputs was accepted")
+        except SystemExit as e:
+            check("not a bad-input block" in str(e), "a malformed file is refused")
+    finally:
+        shutil.rmtree(d)
         g.choco_bad_inputs, g.live_bad_inputs = real
 
 
