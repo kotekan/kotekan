@@ -690,11 +690,20 @@ flagger already takes flagged inputs out of the projection stations, chan_noise_
 (d5c07bde2). The element sum needed nothing either: ElemCal gates dead inputs on coherence. And the key
 hashes cube_order, the pointing name and the element records, yet here its digest stayed 441d2daf: only the
 epoch NAME (rows-ag112 -> ah120) moved the positions and the ref.
+**Measured 2026-10-25 (KV: the release, not its existence, should not take tens of minutes):** every
+mechanical step together is ~2 min: kotekan clone for the split 20 s (293 MB over NFS), filter-repo 2.4 s,
+the gnss-broker suite 31 s (140 jobs), regen of six nodes 12 s, gen_fleet --check 13 s, --check-config 0.8 s
+per config and binary, push/pull seconds. The rest is procedure: the epoch edit and the hand re-key of the
+positions and the ref, keeping two repos and split_paths.txt consistent (append-only: the first ah120 cut
+replaced two lines and stopped the extract fast-forwarding), preview passes and two sessions handing over.
+The complexity is in the number of hand-run steps and invariants, not in compute.
 **Directions (not decided):** (a) treat inputs that are dark or removed for hardware reasons as a health
 state (bffs or a manual mask read at regen) rather than an identity change, so a new epoch means a
 feed's cabling or position changing (G01/G02 here) or a repointing, never a dead input; (b) key the positions and the shared ref by dish, pol and pointing rather
 than by the epoch's element set, so a mask change does not re-key them; (c) a live mask set over REST, like
-the elem-proj switch, persisted by the manifest at the next routine regen.
+the elem-proj switch, persisted by the manifest at the next routine regen; (d) one scripted release
+(epoch edit -> re-key -> split release -> regen -> --check) that enforces the invariants instead of a
+recipe two sessions follow by hand.
 
 ### #214 — the N^2 projection measured on 10-24: what the lanes leave, and what they cannot reach (2026-10-24, KV: "roll it out, get the E6 PRS lobe, note the 1202 emitter")
 **Measured (scratch proj1024/: gauges polled 40x on cx27/43/44/51 ~14:58Z, gains divided out per input, continuum
