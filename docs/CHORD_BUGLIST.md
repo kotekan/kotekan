@@ -678,6 +678,29 @@ REST replies carry `addressable` (GnssGpuRecordAssemble) and `pow_fft_len` (Gnss
 `d505f3943`; (a) waits for that binary too: stop emitting, then drop the reads. Check after each step: `gen_fleet
 --check` and `--check-config` on all nine configs.
 
+### #216 — the fleet's node list is typed by hand in ~15 places; adding or removing a node is hours of edits (2026-10-25, KV: "fix up hardcoded node lists, make sure we're able to scale up and down quickly")
+**What:** cx42 came back and cx47/cx52 were offered (10-25 ~01:55Z), which would give all 16 combs (every channel
+of every lobe). The hardware matches (A40 x2, Gold 5416S, same isolcpus and hugepages, E810 on vfio, the NFS builds
+visible), and the binary needs no change. The node list, though, is hand-maintained in gnss-broker:
+- `config/gnss_chains_chord.yaml`: ~32 URLs per node across the chains' trackers / spectrum-endpoints /
+  dll-combiners. L2C and L2OC are enumerated per GPU from the combs by hand ("re-derive the list if the comb
+  offsets change").
+- `config/gnss_fleet_chord.yaml` `nodes:`: search-port-base = 11040 + 2 x the node's position in the aggregator's
+  `--aggregator-instance` order. Any other value reads one node's comb as another's.
+- `config/chord_gnss_node.yaml`: `eop_reference_nodes: [cx47, cx52]`, the stock fallbacks for EOP and bad inputs,
+  plus `stock_parity.py` and test_probe_ports.
+- About a dozen site scripts, each with its own list: stack_components.sh, eop_cron.sh, eop_push.sh,
+  bad_inputs_cron.py, rail_watch.py, fengine_status.sh, node_wedge_probe.sh, elemsweep.py, viscap.py,
+  port_axis_gate.py, telem_e2e.py, node_up.sh. The elem shared-ref JSONs are keyed per instance.
+
+Estimated at 1-2 h of edits and tests, then aggregator restart -> 10 min -> broker restart. Deferred.
+**Direction:** one fleet list (nodes, combs, GPUs, roles: GNSS / control / stock reference) in the fleet yaml.
+The generator derives everything else from it: the chain URL lists (from each chain's channels and
+gpu_offsets_mod16), the aggregator order and ports, and the scripts' host lists (emitted into gnss_vars, or read
+at run time). Then adding or removing a node is one line, a regen and the aggregator/broker restarts. A check
+in `gen_fleet --check` should refuse any host named outside the fleet list. Note the stock-side dependencies:
+with no stock node left, the EOP and bad-input fallbacks and stock_parity have no reference.
+
 ### #215 — changing the live element set costs a release cycle (2026-10-25, KV: "a weirdly large amount of processing")
 **What:** at the F-engine's return, row H's Y pol went out and H-X stayed good. That needed a new epoch.
 The element count is part of the epoch's identity, and the positions file and the shared ref are keyed by
