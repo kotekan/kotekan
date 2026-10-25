@@ -176,16 +176,14 @@ common:
     # The phase sign depends on the F-engine's FFT and conjugation conventions, so it is
     # calibrated from data (gnssElemSteer.hpp); +1 is the measured value.
     elem-steer-sign: 1.0
-    # A refinement file is solved against one epoch key and refused for any other. This one is
-    # the 2026-10-24-rows-ah128-taua solve (02:10-11:15Z, reference C06, 3-D) carried over
-    # unchanged per element under the 2026-10-24-rows-ah120-taua key (row H's Y pol removed
-    # from the array, its slots kept in the axis; G01/G02 pol slots swapped on site, positions
-    # are per dish): A/B moved (+2.2, -57.2, -17.2) cm with their tip from el 81.4 to 62.7,
-    # which removes the A/B to C-H tie; C-H moved a median 1.5 cm; G/H solved in their own
-    # group and tied in. Dark or unplaced dishes keep the epoch's positions (B01/B02 take the
-    # A/B move); solved by fixtures/elemsteer/pos_taua_20261024.py, re-keyed by
-    # epoch_ah120_20261024.py.
-    elem-positions-file: config/elem_positions_taua_20261024_ah120.json
+    # A refinement file holds one position per dish, solved on one pointing and refused on any
+    # other; the config's key is the epoch's ref_key (pointing and wiring), so a dark or removed
+    # input does not re-key it. This one is the 2026-10-24 Tau A solve (02:10-11:15Z, reference
+    # C06, 3-D) per dish: A/B moved (+2.2, -57.2, -17.2) cm with their tip from el 81.4 to
+    # 62.7, which removes the A/B to C-H tie; C-H moved a median 1.5 cm; G/H solved in their
+    # own group and tied in. Dark or unplaced dishes keep the epoch's positions (B01/B02 take
+    # the A/B move); solved by fixtures/elemsteer/pos_taua_20261024.py.
+    elem-positions-file: config/elem_positions_taua_20261024_by_dish.json
     # Shared instrument model: the per-PRN self-cals learn but do not set the weights; the live
     # element weights are one per-element gain per polarisation (a 300 s consensus over every
     # satellite) plus one inter-pol coefficient per satellite, so a boresight transit cannot
@@ -213,8 +211,10 @@ common:
     # of the fleet sums collapsed (xcoh -0.06 on B2a, whose trims flapped). Ten bands, all 16
     # instances, similarity medians 0.70-0.99; posted live at 17:28:55Z. Taken against the
     # rows-ah120 epoch, so G01/G02 and row H's Y pol are as that epoch has them; bffs's flagged
-    # inputs are zeroed on top at generation. After any F-engine restart, expect to re-take it.
-    elem-shared-ref: config/elem_shared_ref_20261025_f0reset.json
+    # inputs and config/gnss_bad_inputs.json's are zeroed on top at generation. Relabelled
+    # unchanged to the per-dish positions' key (elem_shared_ref.py relabel). After any F-engine
+    # restart, expect to re-take it.
+    elem-shared-ref: config/elem_shared_ref_20261025_f0reset_refkey.json
     elem-shared-ref-mode: live
     # The gnss VM, which runs the search aggregator, the telemetry gather and the broker.
     # 127.0.0.1, the generator default, would point every node at itself. Moving the aggregator
