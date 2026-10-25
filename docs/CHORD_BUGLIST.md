@@ -678,6 +678,24 @@ REST replies carry `addressable` (GnssGpuRecordAssemble) and `pow_fft_len` (Gnss
 `d505f3943`; (a) waits for that binary too: stop emitting, then drop the reads. Check after each step: `gen_fleet
 --check` and `--check-config` on all nine configs.
 
+### #215 — changing the live element set costs a release cycle (2026-10-25, KV: "a weirdly large amount of processing")
+**What:** at the F-engine's return, row H's Y pol went out and H-X stayed good. That needed a new epoch.
+The element count is part of the epoch's identity, and the positions file and the shared ref are keyed by
+the epoch key, so both re-key. The epoch table, the manifest and the keyed files live in the split repo, so
+the change runs kv/chord-gnss -> cf05 extract + suite -> push -> gnss-broker pull -> regen + --check (plus
+previews on both binaries): ~20-30 min for one flag on 8 inputs. A hand edit of the generated configs is
+undone by the hourly eop_cron and flagged by node_up.
+**Why it is odd:** the epoch table says an element going dark does not start a new epoch, and the bad-input
+flagger already takes flagged inputs out of the projection stations, chan_noise_norm and the shared ref
+(d5c07bde2). The element sum needed nothing either: ElemCal gates dead inputs on coherence. And the key
+hashes cube_order, the pointing name and the element records, yet here its digest stayed 441d2daf: only the
+epoch NAME (rows-ag112 -> ah120) moved the positions and the ref.
+**Directions (not decided):** (a) treat inputs that are dark or removed for hardware reasons as a health
+state (bffs or a manual mask read at regen) rather than an identity change, so a new epoch means a
+feed's cabling or position changing (G01/G02 here) or a repointing, never a dead input; (b) key the positions and the shared ref by dish, pol and pointing rather
+than by the epoch's element set, so a mask change does not re-key them; (c) a live mask set over REST, like
+the elem-proj switch, persisted by the manifest at the next routine regen.
+
 ### #214 — the N^2 projection measured on 10-24: what the lanes leave, and what they cannot reach (2026-10-24, KV: "roll it out, get the E6 PRS lobe, note the 1202 emitter")
 **Measured (scratch proj1024/: gauges polled 40x on cx27/43/44/51 ~14:58Z, gains divided out per input, continuum
 from recv1's subset archive off-lobe 1100-1160 + 1300-1400 MHz, figure n2proj_1024.png):** cx51's lanes (95 stations)
