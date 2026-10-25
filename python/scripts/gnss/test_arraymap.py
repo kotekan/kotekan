@@ -219,6 +219,50 @@ class TestKey(unittest.TestCase):
         be = write_table(TWO)
         self.assertEqual(be.epochs()[0].key(), write_table(TWO).epochs()[0].key())
 
+    def test_wiring_stays_out_of_the_key(self):
+        a = ep("a", "2026-01-01T00:00:00Z", None)
+        b = dict(a, wiring="w1")
+        self.assertEqual(
+            write_table([a]).epochs()[0].key(), write_table([b]).epochs()[0].key()
+        )
+
+
+class TestRefKey(unittest.TestCase):
+    """ref_key keys the positions and the shared reference: pointing and wiring, not health."""
+
+    PTS = {
+        "pA": {"dec_deg": 40.73, "bore_az_deg": 180.0, "bore_el_deg": 81.41},
+        "pB": {"dec_deg": 22.0, "bore_az_deg": 180.0, "bore_el_deg": 62.7},
+    }
+
+    def ref_key(self, change=None):
+        e = ep("a", "2026-01-01T00:00:00Z", None)
+        e["wiring"] = "w1"
+        if change:
+            change(e)
+        return write_table([e], self.PTS).epochs()[0].ref_key()
+
+    def test_moves_with_wiring_cube_order_and_pointing(self):
+        base = self.ref_key()
+        self.assertTrue(base.startswith("pA:"))
+        for change in (
+            lambda e: e.update(wiring="w2"),
+            lambda e: e.update(cube_order=[64, 0]),
+            lambda e: e.update(pointing="pB"),
+        ):
+            self.assertNotEqual(self.ref_key(change), base)
+
+    def test_not_with_name_removed_plane_or_note(self):
+        base = self.ref_key()
+        for change in (
+            lambda e: e.update(name="renamed"),
+            lambda e: e["elements"]["64"].update(removed="board gone"),
+            lambda e: e["elements"]["0"].update(plane="B"),
+            lambda e: e["elements"]["0"].update(note="anything"),
+            lambda e: e["elements"]["0"].update(enu_m=[1.0, 2.0, 3.0]),
+        ):
+            self.assertEqual(self.ref_key(change), base)
+
 
 class TestCompatibility(unittest.TestCase):
     def setUp(self):
@@ -392,6 +436,13 @@ class TestShippedTable(unittest.TestCase):
             ]
         )[0]
         self.assertEqual(e.name, "2026-08-29-baseline")
+
+    def test_the_open_epochs_keys_are_pinned(self):
+        # Beam-cube masters stamp key(); the positions and the shared reference carry
+        # ref_key(). Neither may move without a deliberate re-key.
+        e = am.at("2026-10-25T00:00:00Z")
+        self.assertEqual(e.key(), "2026-10-24-rows-ah120-taua:441d2daf")
+        self.assertEqual(e.ref_key(), "p5_taua_20261024:a476cb0e")
 
     def test_pointing_is_carried_and_matches_the_memo(self):
         p = am.at("20260908").pointing

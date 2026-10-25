@@ -19,6 +19,10 @@
   "epoch's records mark it `removed`.",
   "Data outside every listed interval RAISES -- the resolver never extrapolates.",
   "",
+  "`wiring` names the cabling (which feed reaches which element), carried forward from epoch",
+  "to epoch until a cabling change. With the pointing it keys the element positions and the",
+  "shared reference (gnss_arraymap ArrayEpoch.ref_key), so a health change re-keys neither.",
+  "",
   "Provenance: identity and positions from fixtures/chord_dish_layout_measured_20260907.json",
   "(viscap_20260907 survey, 7 satellites x 24 chunks, placement gate 10 ns / 1 m); feed-plane",
   "split from the beam-contrast clustering over 2026-09-05..08 (docs/CHORD_BEAM_MAPS.md).",
@@ -7839,6 +7843,7 @@
    "valid_from": "2026-10-24T18:00:00Z",
    "valid_to": null,
    "pointing": "p5_taua_20261024",
+   "wiring": "g0102-fixed-20261024",
    "cube_order": [
     0,
     1,

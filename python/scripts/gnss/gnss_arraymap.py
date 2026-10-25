@@ -156,6 +156,7 @@ class ArrayEpoch(object):
         self.valid_from = as_utc(d["valid_from"])
         self.valid_to = as_utc(d["valid_to"]) if d.get("valid_to") else None
         self.pointing = pointings[d["pointing"]]
+        self.wiring = d.get("wiring")
         self.cube_order = list(d["cube_order"])
         self.verified = bool(d.get("verified", False))
         self.provenance = d.get("provenance", "")
@@ -182,6 +183,17 @@ class ArrayEpoch(object):
             sort_keys=True,
         ).encode()
         return "%s:%s" % (self.name, hashlib.sha1(body).hexdigest()[:8])
+
+    def ref_key(self):
+        """The id the element positions and the shared reference are keyed by: the pointing
+        name plus a digest of the element axis and the wiring. The epoch's name, the removed
+        marks, the feed planes and the table's positions stay out, so a health change or a
+        relabelled plane does not re-key them; a re-pointing or a recabling does.
+        """
+        body = json.dumps(
+            {"cube_order": self.cube_order, "wiring": self.wiring}, sort_keys=True
+        ).encode()
+        return "%s:%s" % (self.pointing.name, hashlib.sha1(body).hexdigest()[:8])
 
     def contains(self, t):
         t = as_utc(t)
@@ -559,7 +571,13 @@ def cmd_show(args):
         )
     )
     print(
-        "  %s   key %s" % ("verified" if e.verified else "NOT VERIFIED ON SKY", e.key())
+        "  %s   key %s   ref key %s (wiring %s)"
+        % (
+            "verified" if e.verified else "NOT VERIFIED ON SKY",
+            e.key(),
+            e.ref_key(),
+            e.wiring or "-",
+        )
     )
     print("  %s" % e.provenance)
     for n in e.notes:
