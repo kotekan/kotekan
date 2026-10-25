@@ -43,6 +43,14 @@ def manifest(nodes, extra=None):
     return man
 
 
+SIX = ["cx19", "cx27", "cx42", "cx43", "cx44", "cx51"]
+
+
+def six():
+    """The 10-25 six-node fleet, fixed here so the tests do not follow the repo's list."""
+    return gf.Fleet(manifest({h: {} for h in SIX}), site())
+
+
 def refused(man, needle):
     try:
         gf.Fleet(man, site())
@@ -69,10 +77,10 @@ def test_slots_ports_and_roles():
     )
     live = gf.Fleet(None, None)
     check(
-        live.hosts == ["cx19", "cx27", "cx42", "cx43", "cx44", "cx51"]
-        and [live.search_port_base(h) for h in live.hosts]
+        live.hosts[:6] == SIX
+        and [live.search_port_base(h) for h in SIX]
         == [11040, 11042, 11044, 11046, 11048, 11050],
-        "the repo's fleet keeps the ports it ran with before the list (%s)"
+        "the repo's first six nodes keep the ports they ran with before the list (%s)"
         % [live.search_port_base(h) for h in live.hosts],
     )
 
@@ -100,7 +108,7 @@ def test_refusals():
 
 
 def test_instances():
-    fl = gf.Fleet(None, None)
+    fl = six()
     l2c = fl.instances("gps_l2c")
     check(
         l2c == [("cx19", 1), ("cx27", 0), ("cx42", 1), ("cx43", 1), ("cx51", 1)],
@@ -147,7 +155,7 @@ def chains_cfg():
 
 def test_expand():
     cfg = chains_cfg()
-    out = gf.expand_chains(cfg, gf.Fleet(None, None))
+    out = gf.expand_chains(cfg, six())
     c = out["chains"]
     check(cfg["common"]["rest-url"] == "fleet", "the input is not modified")
     check(out["common"]["rest-url"] == "http://cx19:12048", "rest-url: the first host")
@@ -216,7 +224,7 @@ def test_load_chains_uses_the_fleet_beside_it():
 
 
 def test_repo_chains_follow_the_fleet():
-    fl = gf.Fleet(None, None)
+    fl = six()
     probs = gen_fleet.check_chains(fl)
     check(probs == [], "the repo's chains yaml follows the fleet (%s)" % probs)
     with tempfile.TemporaryDirectory() as d:
@@ -255,7 +263,7 @@ def test_built_instances_matches_derived():
         got == {"": {0, 1}, "_l2c": {1}, "_e5a": {0}},
         "one n2combine per chain instance is read from a config (%s)" % got,
     )
-    fl = gf.Fleet(None, None)
+    fl = six()
     d = gen_fleet.derived_instances(fl, "cx44")
     check(
         "_l2c" not in d and d[""] == {0, 1},
@@ -348,7 +356,7 @@ def test_write_combs_edits_one_line():
 
 
 def test_check_combs():
-    fl = gf.Fleet(None, None)
+    fl = six()
     real = gf.comb_report
     gf.comb_report = lambda fleet, hosts, timeout=4.0: [
         ("cx19", [4, 14], [4, 12]),

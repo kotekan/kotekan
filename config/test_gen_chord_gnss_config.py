@@ -549,7 +549,17 @@ def test_check_frame0():
 
 
 def test_probe_ports():
+    # Two stock reference hosts whatever the fleet list holds today.
     cfg = node_cfg()
+    real_refs = g.stock_reference_hosts
+    g.stock_reference_hosts = lambda cfg: ["cx47", "cx52"]
+    try:
+        _probe_ports(cfg)
+    finally:
+        g.stock_reference_hosts = real_refs
+
+
+def _probe_ports(cfg):
     with fleet(FakeFleet()) as f:
         g.live_eop_table(cfg, instance_args(rest_port=12049), timeout=0.01)
     hosts = {u.split("/")[2] for u in f.urls}
