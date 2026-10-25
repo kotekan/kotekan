@@ -11,7 +11,8 @@
                       posted. It is written with the array epoch the configs were generated
                       for. The generator copies each band's entry into that band's assemblers
                       (--elem-shared-ref).
-  post FILE           POST every band's reference to its instances (--mode).
+  post FILE           POST every band's reference to its instances (--mode), zeroed where
+                      each instance's generated config holds it at 0 (as every POST here is).
   status [FILE]       Per instance and pol: offset and shape similarity against FILE (works on any
                       binary), plus the node's own fleet_ref block where the binary has one.
   watch FILE DIR      The safety net (scripts/gnss/site/elem_ref_cron.sh, every 5 min): per
@@ -291,8 +292,28 @@ def load_ref(path):
     return snap
 
 
+def config_zeros(node, stage):
+    """The elements one assembler's generated config holds at 0 in elem_sum_shared_ref: the
+    inputs the generator took out (bffs's flagged inputs, config/gnss_bad_inputs.json). Empty
+    if the config carries no reference."""
+    with open(GEN % node) as fh:
+        txt = fh.read()
+    m = re.search(
+        r"^%s:\n(?:  .*\n)*?  elem_sum_shared_ref:\n((?:  - .*\n)+)" % re.escape(stage),
+        txt,
+        re.M,
+    )
+    v = [float(x) for x in re.findall(r"- (\S+)", m.group(1))] if m else []
+    return {e for e in range(len(v) // 2) if v[2 * e] == 0.0 and v[2 * e + 1] == 0.0}
+
+
 def post_one(node, stage, body):
-    """POST one assembler's reference; returns its reply."""
+    """POST one assembler's reference, zeroed where its generated config holds it at 0 (the
+    generator is the one place those zeros come from; posted whole, the reference would put the
+    inputs it took out back at full weight); returns its reply."""
+    zeros = config_zeros(node, stage)
+    ref = [[0.0, 0.0] if e in zeros else x for e, x in enumerate(body["ref"])]
+    body = dict(body, ref=ref)
     req = urllib.request.Request(
         "http://%s:%d/%s/set_elem_sum_shared_ref" % (node, PORT, stage),
         data=json.dumps(body).encode(),

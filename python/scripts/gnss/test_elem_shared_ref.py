@@ -7,9 +7,18 @@ An instance whose band has no reference pins to its own first model, so its glob
 arbitrary while its shape is the fleet's. The consensus must form from such a band, phase-aligned,
 and still leave out a model whose shape it does not describe. On a band that is already pinned the
 reference keeps the pinned instances' phase, and an instance off that phase is listed, not dropped.
+
+A posted reference carries the zeros the instance's generated config holds, so a re-post does
+not put an input the generator took out back at full weight.
 """
+import argparse
+import contextlib
+import io
+import json
 import os
+import shutil
 import sys
+import tempfile
 import unittest
 
 import numpy as np
@@ -154,6 +163,74 @@ class TestBandConsensus(unittest.TestCase):
         _r0, r1 = ref_halves(e)
         maj = float(np.degrees(np.angle(np.mean([np.exp(1j * np.radians(p)) for p in p1[:6]]))))
         self.assertLess(abs(offset_deg(r1, self.shape[1] * np.exp(1j * np.radians(maj)))), 2.0)
+
+
+class FakeNode:
+    """urllib.request.urlopen for set_elem_sum_shared_ref: records (url, body) per POST."""
+
+    def __init__(self):
+        self.posts = []
+
+    def __call__(self, req, timeout=None):
+        self.posts.append((req.full_url, json.loads(req.data)))
+
+        class _R(io.BytesIO):
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+        return _R(json.dumps({"mode": "live", "staged": {}}).encode())
+
+
+class TestPostZeros(unittest.TestCase):
+    """Every POST zeroes the entries the instance's generated config holds at 0."""
+
+    REF = [[0.1, 0.2], [0.3, 0.4], [0.5, 0.6], [0.7, 0.8]]
+
+    def setUp(self):
+        self.d = tempfile.mkdtemp()
+        flat = [0.1, 0.2, 0.0, 0.0, 0.5, 0.6, 0.0, 0.0]
+        with open(os.path.join(self.d, "chord_gnss_cx51_multi.yaml"), "w") as fh:
+            fh.write(
+                "gnss0_n2assemble:\n  elem_positions_epoch: E\n  elem_sum_shared_ref:\n"
+                + "".join("  - %s\n" % x for x in flat)
+                + "  elem_sum_shared_ref_mode: live\n"
+                "gnss1_e5a_n2assemble:\n  elem_positions_epoch: E\n  elem_sum: true\n"
+            )
+        self.snap = os.path.join(self.d, "ref.json")
+        with open(self.snap, "w") as fh:
+            bands = {"l5": {"ref": self.REF}, "e5a": {"ref": self.REF}}
+            json.dump({"epoch": "E", "bands": bands}, fh)
+        self.real = (esr.GEN, esr.urllib.request.urlopen)
+        esr.GEN = os.path.join(self.d, "chord_gnss_%s_multi.yaml")
+        self.node = esr.urllib.request.urlopen = FakeNode()
+
+    def tearDown(self):
+        esr.GEN, esr.urllib.request.urlopen = self.real
+        shutil.rmtree(self.d)
+
+    def test_config_zeros(self):
+        self.assertEqual(esr.config_zeros("cx51", "gnss0_n2assemble"), {1, 3})
+        self.assertEqual(esr.config_zeros("cx51", "gnss1_e5a_n2assemble"), set())
+
+    def test_post_applies_the_configs_zeros(self):
+        with contextlib.redirect_stdout(io.StringIO()):
+            esr.post(argparse.Namespace(file=self.snap, mode="live"))
+        got = {url.split("/")[3]: body for url, body in self.node.posts}
+        self.assertEqual(
+            got["gnss0_n2assemble"]["ref"],
+            [[0.1, 0.2], [0.0, 0.0], [0.5, 0.6], [0.0, 0.0]],
+        )
+        self.assertEqual(got["gnss0_n2assemble"]["mode"], "live")
+        # a config without a reference has no zeros to apply
+        self.assertEqual(got["gnss1_e5a_n2assemble"]["ref"], self.REF)
+
+    def test_watch_posts_apply_them_too(self):
+        ok, _ = esr.post_note("cx51", "gnss0_n2assemble", self.REF, "live", "test")
+        self.assertTrue(ok)
+        self.assertEqual(self.node.posts[0][1]["ref"][1], [0.0, 0.0])
 
 
 if __name__ == "__main__":
