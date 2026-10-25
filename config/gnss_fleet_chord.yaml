@@ -210,18 +210,14 @@ common:
     # scripts/gnss/site/elem_ref_cron.sh reads both keys from this file as text and compares
     # every instance with the reference; with ELEM_REF_ACT=1 it also re-posts the reference to
     # an instance that lost it or is pinned off it.
-    # Taken 2026-10-24 12:29Z, ~10 min after the nodes started on the positions above, and
-    # posted live at once (12:30:15Z): without one, L2C's instances hold arbitrary global phases
-    # and cancel in the fleet sum (2026-10-23, q 1.6-2.0). Shapes agreed (similarity medians
-    # 0.89-0.996). l2oc formed no consensus (nothing tracked) and has no entry, so it keeps
-    # its own pin; the cron re-takes a band the reference stops describing.
-    # Relabelled to the rows-ah120 epoch (fixtures/elemsteer/epoch_ah120_20261024.py), not
-    # re-taken: the positions are unchanged per dish, so the pin carries over. G01/G02's slot-0
-    # and slot-1 entries are swapped with their pols, row H's Y-pol entries (120-127) are zero
-    # (a removed input weighs nothing in the pin; H's X pol keeps its entries), each half
-    # renormalised. The 12:29Z file is the source; bffs's flagged inputs are zeroed on top at
-    # generation.
-    elem-shared-ref: config/elem_shared_ref_20261024_ah120.json
+    # Re-taken 2026-10-25 17:28Z, ~35 min after the F-engine restart of 16:54Z: the restart
+    # changed the per-input phases, the 10-24 reference stopped describing every model (shape
+    # similarity 0.0-0.36), each instance fell back to its own pin, and the cross-node coherence
+    # of the fleet sums collapsed (xcoh -0.06 on B2a, whose trims flapped). Ten bands, all 16
+    # instances, similarity medians 0.70-0.99; posted live at 17:28:55Z. Taken against the
+    # rows-ah120 epoch, so G01/G02 and row H's Y pol are as that epoch has them; bffs's flagged
+    # inputs are zeroed on top at generation. After any F-engine restart, expect to re-take it.
+    elem-shared-ref: config/elem_shared_ref_20261025_f0reset.json
     elem-shared-ref-mode: live
     # The gnss VM, which runs the search aggregator, the telemetry gather and the broker.
     # 127.0.0.1, the generator default, would point every node at itself. Moving the aggregator

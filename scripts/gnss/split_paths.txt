@@ -97,6 +97,7 @@ config/elem_positions_taua_20261024_ag112.json
 config/elem_shared_ref_20261024_ag112.json
 config/gnss_fleet.py
 config/test_gnss_fleet.py
+config/elem_shared_ref_20261025_f0reset.json
 config/base/
 config/gnss/
 config/gates/
