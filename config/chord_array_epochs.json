@@ -9569,7 +9569,7 @@
       0.0407
      ],
      "position_confidence": "solved_20261023_gh_prelim+tie",
-     "removed": "2026-10-24T18:00:00Z: row H's Y pol removed from the array with its F-engine board (KV 2026-10-24: \"Row H is being removed altogether\", 2026-10-25: \"only H-y is out, the H-x should still be good\"); the slot stays in the correlator axis (tile shared with row G) and keeps H's position; nothing is expected on it"
+     "note": "OUT 2026-10-24T18:00Z to 2026-10-25, back after the site revert (subset archive 18:18Z: coherence 0.20-0.26 with the other Y inputs, rows A-F median 0.25, dead inputs 0.005); config/gnss_bad_inputs.json entry deleted. Was: row H's Y pol removed from the array with its F-engine board (KV 2026-10-24: \"Row H is being removed altogether\", 2026-10-25: \"only H-y is out, the H-x should still be good\"); the slot stays in the correlator axis (tile shared with row G) and keeps H's position; nothing is expected on it"
     },
     "121": {
      "dish": 57,
@@ -9583,7 +9583,7 @@
       -0.0054
      ],
      "position_confidence": "solved_20261023_gh_prelim+tie",
-     "removed": "2026-10-24T18:00:00Z: row H's Y pol removed from the array with its F-engine board (KV 2026-10-24: \"Row H is being removed altogether\", 2026-10-25: \"only H-y is out, the H-x should still be good\"); the slot stays in the correlator axis (tile shared with row G) and keeps H's position; nothing is expected on it"
+     "note": "OUT 2026-10-24T18:00Z to 2026-10-25, back after the site revert (subset archive 18:18Z: coherence 0.20-0.26 with the other Y inputs, rows A-F median 0.25, dead inputs 0.005); config/gnss_bad_inputs.json entry deleted. Was: row H's Y pol removed from the array with its F-engine board (KV 2026-10-24: \"Row H is being removed altogether\", 2026-10-25: \"only H-y is out, the H-x should still be good\"); the slot stays in the correlator axis (tile shared with row G) and keeps H's position; nothing is expected on it"
     },
     "122": {
      "dish": 58,
@@ -9597,7 +9597,7 @@
       -0.0515
      ],
      "position_confidence": "solved_20261023_gh_prelim+tie",
-     "removed": "2026-10-24T18:00:00Z: row H's Y pol removed from the array with its F-engine board (KV 2026-10-24: \"Row H is being removed altogether\", 2026-10-25: \"only H-y is out, the H-x should still be good\"); the slot stays in the correlator axis (tile shared with row G) and keeps H's position; nothing is expected on it"
+     "note": "OUT 2026-10-24T18:00Z to 2026-10-25, back after the site revert (subset archive 18:18Z: coherence 0.20-0.26 with the other Y inputs, rows A-F median 0.25, dead inputs 0.005); config/gnss_bad_inputs.json entry deleted. Was: row H's Y pol removed from the array with its F-engine board (KV 2026-10-24: \"Row H is being removed altogether\", 2026-10-25: \"only H-y is out, the H-x should still be good\"); the slot stays in the correlator axis (tile shared with row G) and keeps H's position; nothing is expected on it"
     },
     "123": {
      "dish": 59,
@@ -9611,7 +9611,7 @@
       -0.0976
      ],
      "position_confidence": "solved_20261023_gh_prelim+tie",
-     "removed": "2026-10-24T18:00:00Z: row H's Y pol removed from the array with its F-engine board (KV 2026-10-24: \"Row H is being removed altogether\", 2026-10-25: \"only H-y is out, the H-x should still be good\"); the slot stays in the correlator axis (tile shared with row G) and keeps H's position; nothing is expected on it"
+     "note": "OUT 2026-10-24T18:00Z to 2026-10-25, back after the site revert (subset archive 18:18Z: coherence 0.20-0.26 with the other Y inputs, rows A-F median 0.25, dead inputs 0.005); config/gnss_bad_inputs.json entry deleted. Was: row H's Y pol removed from the array with its F-engine board (KV 2026-10-24: \"Row H is being removed altogether\", 2026-10-25: \"only H-y is out, the H-x should still be good\"); the slot stays in the correlator axis (tile shared with row G) and keeps H's position; nothing is expected on it"
     },
     "124": {
      "dish": 60,
@@ -9625,7 +9625,7 @@
       -0.1437
      ],
      "position_confidence": "solved_20261023_gh_prelim+tie",
-     "removed": "2026-10-24T18:00:00Z: row H's Y pol removed from the array with its F-engine board (KV 2026-10-24: \"Row H is being removed altogether\", 2026-10-25: \"only H-y is out, the H-x should still be good\"); the slot stays in the correlator axis (tile shared with row G) and keeps H's position; nothing is expected on it"
+     "note": "OUT 2026-10-24T18:00Z to 2026-10-25, back after the site revert (subset archive 18:18Z: coherence 0.20-0.26 with the other Y inputs, rows A-F median 0.25, dead inputs 0.005); config/gnss_bad_inputs.json entry deleted. Was: row H's Y pol removed from the array with its F-engine board (KV 2026-10-24: \"Row H is being removed altogether\", 2026-10-25: \"only H-y is out, the H-x should still be good\"); the slot stays in the correlator axis (tile shared with row G) and keeps H's position; nothing is expected on it"
     },
     "125": {
      "dish": 61,
@@ -9639,7 +9639,7 @@
       -0.1898
      ],
      "position_confidence": "solved_20261023_gh_prelim+tie",
-     "removed": "2026-10-24T18:00:00Z: row H's Y pol removed from the array with its F-engine board (KV 2026-10-24: \"Row H is being removed altogether\", 2026-10-25: \"only H-y is out, the H-x should still be good\"); the slot stays in the correlator axis (tile shared with row G) and keeps H's position; nothing is expected on it"
+     "note": "OUT 2026-10-24T18:00Z to 2026-10-25, back after the site revert (subset archive 18:18Z: coherence 0.20-0.26 with the other Y inputs, rows A-F median 0.25, dead inputs 0.005); config/gnss_bad_inputs.json entry deleted. Was: row H's Y pol removed from the array with its F-engine board (KV 2026-10-24: \"Row H is being removed altogether\", 2026-10-25: \"only H-y is out, the H-x should still be good\"); the slot stays in the correlator axis (tile shared with row G) and keeps H's position; nothing is expected on it"
     },
     "126": {
      "dish": 62,
@@ -9653,7 +9653,7 @@
       -0.2359
      ],
      "position_confidence": "solved_20261023_gh_prelim+tie",
-     "removed": "2026-10-24T18:00:00Z: row H's Y pol removed from the array with its F-engine board (KV 2026-10-24: \"Row H is being removed altogether\", 2026-10-25: \"only H-y is out, the H-x should still be good\"); the slot stays in the correlator axis (tile shared with row G) and keeps H's position; nothing is expected on it"
+     "note": "OUT 2026-10-24T18:00Z to 2026-10-25, back after the site revert (subset archive 18:18Z: coherence 0.20-0.26 with the other Y inputs, rows A-F median 0.25, dead inputs 0.005); config/gnss_bad_inputs.json entry deleted. Was: row H's Y pol removed from the array with its F-engine board (KV 2026-10-24: \"Row H is being removed altogether\", 2026-10-25: \"only H-y is out, the H-x should still be good\"); the slot stays in the correlator axis (tile shared with row G) and keeps H's position; nothing is expected on it"
     },
     "127": {
      "dish": 63,
@@ -9667,7 +9667,7 @@
       -0.2821
      ],
      "position_confidence": "solved_20261023_gh_prelim+tie",
-     "removed": "2026-10-24T18:00:00Z: row H's Y pol removed from the array with its F-engine board (KV 2026-10-24: \"Row H is being removed altogether\", 2026-10-25: \"only H-y is out, the H-x should still be good\"); the slot stays in the correlator axis (tile shared with row G) and keeps H's position; nothing is expected on it"
+     "note": "OUT 2026-10-24T18:00Z to 2026-10-25, back after the site revert (subset archive 18:18Z: coherence 0.20-0.26 with the other Y inputs, rows A-F median 0.25, dead inputs 0.005); config/gnss_bad_inputs.json entry deleted. Was: row H's Y pol removed from the array with its F-engine board (KV 2026-10-24: \"Row H is being removed altogether\", 2026-10-25: \"only H-y is out, the H-x should still be good\"); the slot stays in the correlator axis (tile shared with row G) and keeps H's position; nothing is expected on it"
     }
    }
   }
