@@ -22,6 +22,7 @@ from gnss_broker.fleet import fleet_dll, fleet_coherent
 from gnss_broker.fits import q_stall_verdict, instance_stall_verdict
 from gnss_broker import instruments
 from gnss_broker import codeloop
+from gnss_broker import jtrk
 from gnss_broker import trkresid
 from gnss_broker import fleetadr
 
@@ -479,6 +480,13 @@ def stage_fleet_dll(ctx):
         except Exception as _te:
             ctx.dllp.trk = {}
             _log_rl("trkresid", "tracker residual failed (%s)" % _te, every_s=60.0)
+        # The shadow joint state (#191 step 2): this chain's gated residuals, consumed by
+        # nothing. Like the residual itself, failure costs the loop nothing.
+        if ctx.args.joint_trk_feed:
+            try:
+                jtrk.stage_joint_trk(ctx)
+            except Exception as _je:
+                _log_rl("jtrk", "JTRK feed failed (%s)" % _je, every_s=60.0)
         if ctx.dllp.trk:
             _log_rl(
                 "trkres",

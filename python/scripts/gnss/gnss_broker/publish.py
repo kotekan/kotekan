@@ -62,6 +62,8 @@ class FleetPublisher:
         # its verdicts and /get_chains adds each chain's summary. None in a single-chain broker.
         self.iface = None
         self._rf = {"t": None, "instances": {}}  # receiver-wide RF health (set_rf)
+        # the tracker-fed shadow joint state and each chain's feed (set_joint, get_joint)
+        self._joint = {"t": None, "trk": None, "feed": {}}
         self._dark = {}  # chain -> {"t", "instances": {tap url: verdict}} (set_dark)
         # Receiver-wide sky, so the viewer draws what the broker believes instead of
         # re-deriving it. Keyed by constellation because each chain contributes its own and
@@ -189,6 +191,11 @@ class FleetPublisher:
                                     }
                                 )
                         body = json.dumps(_sky).encode()
+                    elif p.endswith("get_joint"):
+                        # Receiver-wide: the shadow joint state (#191 step 2) and, per chain,
+                        # what its feed offered, passed and why it held. The body ignores
+                        # the chain selector.
+                        body = json.dumps(pub._joint).encode()
                     elif p.endswith("get_rf"):
                         # Receiver-wide, so the body ignores the chain selector. `dark` holds
                         # each chain's dark instances, keyed by the tap URLs of `instances`.
@@ -281,6 +288,15 @@ class FleetPublisher:
         """The newest set_rf instances (tap URL -> health), for each chain's dark check."""
         with self._lock:
             return dict(self._rf["instances"])
+
+    def set_joint(self, snap, feed, t, chain=None):
+        """The tracker-fed shadow joint state (receiver.joint_trk_snapshot) and one chain's
+        feed (jtrk.stage_joint_trk), served on /get_joint. The state is receiver-wide, so the
+        newest snapshot replaces the last whichever chain sent it; the feeds are per chain."""
+        with self._lock:
+            self._joint["t"] = t
+            self._joint["trk"] = snap
+            self._joint["feed"][chain] = feed
 
     def set_dark(self, dark, t, chain=None):
         """One chain's dark instances (fleet.dark_instances), served in get_rf under `dark`.
@@ -728,6 +744,10 @@ class _ChainView(object):
 
     def set_dark(self, dark, t):
         return self._pub.set_dark(dark, t, chain=self._chain)
+
+    def set_joint(self, snap, feed, t):
+        # Receiver-wide state, per-chain feed: the chain tag rides on the feed.
+        return self._pub.set_joint(snap, feed, t, chain=self._chain)
 
     def set_sky(self, sysc, sats, t):
         # Per-chain call site, receiver-wide effect: the chain names its own constellation and

@@ -1,0 +1,155 @@
+"""The tracker's code feed into the joint receiver state, as a shadow (#191 step 2).
+
+docs/CHORD_JOINT_TRACKING.md section 6.3 step 2: every admitted chain feeds trkresid's
+observable, where the closed DLL holds the replica minus the model, into a joint state of its
+own: a second JointReceiverState (receiver.TRK_STATE), beside the one gps_l5's search
+detections feed. Nothing reads it: no seed, clock or rate comes from it. It is logged
+(JOINT[trk], JTRK) and served (/get_joint), so the step-2 gates can be judged on the sky
+before step 3 lets a chain consume it.
+
+The measurement, per satellite, in this chain's chips then converted to reference chips:
+
+    y_i = wrap(cp_phys - cp_model) = clk + b_i + noise
+
+trkresid's `raw`, which keeps the receiver clock in. b_i is keyed by (constellation, PRN), so
+every chain on one satellite updates the same row: E5a, E5b and E6 of one Galileo satellite
+are one range error seen three times, which is the point of the joint state and the reason a
+chain is admitted only once its signal reads within ~1 m of the others on the same satellites
+(--joint-trk-feed, set per chain in config/gnss_chains_chord.yaml).
+
+The observable is the sky only while the loop is on the peak (on noise the replica sits where
+the seed put it, and the residual is the seed read back: the mirror). So every gate below is
+load-bearing, and a satellite that fails one contributes nothing: there is no fallback value
+(the #85 feed's fallback to seed + trim - model was the #152 latch pathway). Per satellite:
+present (trkresid admits only those, probes excluded), fleet q at or above the floor, the
+spectrum fit's |tau| under joint_trk_spec_tau_max whenever the fit is valid, enough records
+behind the residual, records newer than the last fed, and the chain's own track gate. Per
+chain and cycle: no feed during the warm-up or a boresight transit, and none unless at least
+joint_trk_min_sats satellites pass (a thin set cannot separate clk from b).
+"""
+
+from gnss_broker.transport import _log, _log_rl
+
+#: Gate names, in the order a satellite is tested; the first that fails is the one counted.
+GATES = ("track", "q", "tau", "nrec", "stale")
+
+
+def feed_rows(
+    trk, fleet, spec_fit, track_ok, last_hop, tag, k, sigma_ref, tau_max, min_rec,
+):
+    """The rows this chain may feed, and why the rest may not. Pure.
+
+    trk: trkresid.tracker_residuals' {prn: {"raw", "n", "hop", ...}} (present, non-probe);
+    fleet: the fleet DLL's {prn: {"q", "q_floor", ...}}; spec_fit: {prn: {"tau_chips"}} for
+    the PRNs whose fit is valid this cycle; track_ok(prn) the chain's track gate; last_hop:
+    {prn: newest hop already fed}, not modified; k: reference chips per chip of this chain.
+
+    Returns (rows, failed, hops): rows [((tag, prn), y_ref, sigma_ref)], failed {gate: n},
+    hops {prn: hop} for the rows (to record once fed)."""
+    rows, hops = [], {}
+    failed = dict.fromkeys(GATES, 0)
+    for prn in sorted(trk):
+        v = trk[prn]
+        f = fleet.get(prn) or {}
+        if not track_ok(prn):
+            failed["track"] += 1
+        elif f.get("q") is None or f.get("q_floor") is None or f["q"] < f["q_floor"]:
+            failed["q"] += 1
+        elif prn in spec_fit and abs(spec_fit[prn]["tau_chips"]) >= tau_max:
+            failed["tau"] += 1
+        elif int(v.get("n", 0)) < min_rec:
+            failed["nrec"] += 1
+        elif last_hop.get(prn) is not None and int(v["hop"]) <= last_hop[prn]:
+            failed["stale"] += 1
+        else:
+            rows.append(((tag, prn), float(v["raw"]) * k, sigma_ref))
+            hops[prn] = int(v["hop"])
+    return rows, failed, hops
+
+
+def stage_joint_trk(ctx):
+    """Feed this chain's gated tracker residuals to the shadow state (receiver.TRK_STATE).
+
+    Runs on a chain with --joint-trk-feed once trkresid has produced this cycle's residuals.
+    Changes nothing any actuator reads; failure costs the loop nothing."""
+    from gnss_broker.deadreckon import _transit_pd
+    from gnss_broker.receiver import JOINT_REF_RATE_HZ, TRK_STATE
+    from gnss_broker.sky import nearest_boresight
+
+    a = ctx.args
+    st = ctx.dr_state.setdefault("jtrk", {"last_hop": {}, "cycles": 0, "thin": 0})
+    st["cycles"] += 1
+    why = None
+    if ctx.uptime_s < a.joint_feed_warmup_s:
+        why = "warm-up (%.0f s of %.0f)" % (ctx.uptime_s, a.joint_feed_warmup_s)
+    else:
+        near = nearest_boresight(_transit_pd(ctx))
+        if near is not None and near[0] < a.dr_clock_transit_freeze_deg:
+            why = "transit (%s %d at %.1f deg)" % (near[1][0], near[1][1], near[0])
+    k = JOINT_REF_RATE_HZ / a.chip_rate_hz
+    rows, failed, hops = feed_rows(
+        ctx.dllp.trk or {},
+        ctx.dllp.fleet or {},
+        ctx.dllp.spec_fit or {},
+        ctx.track_ok,
+        st["last_hop"],
+        ctx.drp.tag,
+        k,
+        a.joint_trk_sigma,
+        a.joint_trk_spec_tau_max,
+        a.joint_trk_min_records,
+    )
+    if why is None and len(rows) < a.joint_trk_min_sats:
+        why = "thin set (%d < %d)" % (len(rows), a.joint_trk_min_sats)
+        st["thin"] += 1
+    n_ok = 0
+    js = ctx.rx.joint_receiver(
+        ctx.band_id, ctx.code_len, a.chip_rate_hz, which=TRK_STATE, gauge_mode="prior",
+    )
+    if why is None:
+        n_ok = js.cycle(rows, ctx.drp.t_now_abs)
+        st["last_hop"].update(hops)
+    for n in js.drain_notes():
+        _log_rl("jtrk-note", "JOINT[trk]: %s" % n, every_s=10.0)
+    st["last"] = {
+        "t": ctx.t0,
+        "offered": len(ctx.dllp.trk or {}),
+        "passed": len(rows),
+        "accepted": n_ok,
+        "failed": failed,
+        "held": why,
+    }
+    _log_rl(
+        "jtrk-chain",
+        "JTRK %s: %s; %d of %d residuals passed (failed %s); %d accepted; thin-set cycles %d "
+        "of %d"
+        % (
+            ctx.args.signal,
+            ("held: " + why) if why else "fed",
+            len(rows),
+            len(ctx.dllp.trk or {}),
+            " ".join("%s %d" % (g, n) for g, n in failed.items() if n) or "none",
+            n_ok,
+            st["thin"],
+            st["cycles"],
+        ),
+        every_s=60.0,
+    )
+    snap = ctx.rx.joint_trk_snapshot(ctx.drp.t_now_abs)
+    if ctx.publisher is not None and snap is not None:
+        ctx.publisher.set_joint(snap, st["last"], ctx.t0)
+    if snap is not None:
+        live = snap.get("live_clk")
+        _log_rl(
+            "jtrk-summary",
+            "JOINT[trk] %s | clk %+.3f sigma %.3f vs search-fed joint %s"
+            % (
+                js.summary(ctx.drp.t_now_abs),
+                snap["clk"],
+                snap["clk_sigma"],
+                "%+.3f (trk - joint %+.3f, wrapped)" % (live, snap["clk_delta"])
+                if live is not None
+                else "absent",
+            ),
+            every_s=30.0,
+        )

@@ -39,6 +39,12 @@ from .transport import _log
 # 1.0, so its numbers pass through bit for bit.
 JOINT_REF_RATE_HZ = 10.23e6
 
+#: The live joint state (fed by gps_l5's search detections, read by the joint consumers) and the
+#: shadow one #191 step 2 adds (fed by the admitted chains' tracker residuals, gnss_broker/jtrk.py,
+#: read by nothing). Two states so the shadow can be judged without moving a seed.
+JOINT_STATE = "__receiver__"
+TRK_STATE = "__receiver_trk__"
+
 
 class _Shared(object):
     """One contributed quantity: who said it, what, how well, and when."""
@@ -65,12 +71,13 @@ class Receiver(object):
         # known mod extra["epoch_s"], e.g. the NH joint
         # fit's clock mod 20 ms): what extends a
         # short-window donor clock.
-        self._joint = {}  # "__receiver__" -> the one JointReceiverState, in
+        self._joint = {}  # JOINT_STATE / TRK_STATE -> a JointReceiverState, in
         # reference chips (JOINT_REF_RATE_HZ) whatever its feeders' chip rates
 
     # -- the joint receiver state -----------------------------------------------------------
-    def joint_receiver(self, band, code_len, chip_rate_hz, **kw):
-        """One joint state for the whole receiver, shared by every chain.
+    def joint_receiver(self, band, code_len, chip_rate_hz, which=JOINT_STATE, **kw):
+        """One joint state for the whole receiver, shared by every chain. `which` names it:
+        JOINT_STATE, the live one, or TRK_STATE, the tracker-fed shadow (jtrk.py).
 
         Created on first use, so a process that never runs the joint solve never builds it
         (its constructor imports numpy).
@@ -93,18 +100,55 @@ class Receiver(object):
 
         L_ref = float(code_len) * (JOINT_REF_RATE_HZ / float(chip_rate_hz))
         with self._lock:
-            cur = self._joint.get("__receiver__")
+            cur = self._joint.get(which)
             if cur is None:
                 kw = dict(kw)
                 kw["code_len"] = L_ref
-                self._joint["__receiver__"] = JointReceiverState(**kw)
+                self._joint[which] = JointReceiverState(**kw)
             elif L_ref < cur.L:
                 # Shorten in place, never rebuild: a rebuild would discard every converged
                 # row the moment another chain joined. Reducing a modulus loses no
                 # information (JointReceiverState.shorten_modulus): same rows, same
                 # covariance, clk re-wrapped.
                 cur.shorten_modulus(L_ref)
-            return self._joint["__receiver__"]
+            return self._joint[which]
+
+    def joint_trk_snapshot(self, t_now):
+        """The shadow state (TRK_STATE) as plain numbers, for /get_joint and the JOINT[trk]
+        line, or None before any chain feeds it. Reference chips throughout. `clk_delta` is
+        its clock minus the live state's, wrapped to the shadow's modulus: the step-2 check
+        that the two clocks agree, which needs no legacy median."""
+        with self._lock:
+            st = self._joint.get(TRK_STATE)
+            live = self._joint.get(JOINT_STATE)
+        if st is None:
+            return None
+        sats = {}
+        for key in list(st._idx):
+            age = st.age(key, t_now)
+            sats["%s%02d" % (key[0], int(key[1]))] = {
+                "b": round(st.bias(key), 4),
+                "sigma": round(st.sigma(key), 4),
+                "n": int(st._n.get(key, 0)),
+                "age_s": None if age is None else round(age, 1),
+            }
+        out = {
+            "clk": round(st.clk, 4),
+            "clk_sigma": round(st.sigma(), 4),
+            "clk_rate": round(st.clk_rate, 6),
+            "modulus": st.L,
+            "n_sats": len(sats),
+            "n_updates": int(st.n_updates),
+            "rejected": int(st.rejected),
+            "deaf": bool(st.deaf),
+            "sats": sats,
+            "live_clk": None,
+            "clk_delta": None,
+        }
+        if live is not None:
+            out["live_clk"] = round(live.clk, 4)
+            out["clk_delta"] = round(st.wrap(st.clk - live.clk), 4)
+        return out
 
     def joint_ambiguous(self):
         """True when |clk| exceeds 0.4 of the state's wrap. Only the JOINT[shadow] log line
@@ -112,7 +156,7 @@ class Receiver(object):
         and every consumer of the clock (joint_clk_delta, the dead-reckon gates) take it
         modulo a window, where a clock near the wrap is as good as any other."""
         with self._lock:
-            st = self._joint.get("__receiver__")
+            st = self._joint.get(JOINT_STATE)
             return bool(st is not None and abs(st.clk) > 0.4 * st.L)
 
     def joint_unit(self):
@@ -121,7 +165,7 @@ class Receiver(object):
         One state holds one unit by construction (every feeder converts in), so a consumer
         at any chip rate converts out through this and joint_clk_delta."""
         with self._lock:
-            st = self._joint.get("__receiver__")
+            st = self._joint.get(JOINT_STATE)
             return None if st is None else (JOINT_REF_RATE_HZ, float(st.L))
 
     # -- time anchor --------------------------------------------------------------------

@@ -360,6 +360,20 @@ At the F-engine's return, one step per restart:
       Gate (the GAP 2 mirror test, #85's form): the fed chains' y trends agree with the unfed
       chains' to 0.001 chips/s; Galileo and BeiDou b_sat within +-0.3 chips; 24 h of `joint_latch_detect.py` with zero alarms and a
       re-derived reference.
+      **Built 2026-10-25 (gnss_broker/jtrk.py, --joint-trk-feed).** A second JointReceiverState
+      (receiver.TRK_STATE) beside the live one, same constructor and prior gauge, b keyed by
+      (constellation, PRN). Fed each cycle with trkresid's `raw` times the reference ratio at
+      joint_trk_sigma (0.1 reference chips), per satellite only if present (trkresid), the
+      chain's track gate passes, fleet q >= its floor, |spec_tau| < 0.3 chips when the fit is
+      valid, >= 4 records, and records newer than the last fed; per chain and cycle nothing
+      during the warm-up or a boresight transit, and nothing unless >= 3 satellites pass. Set
+      on gps_l5, gal_e5a/e5b/e6, bds_b2a/b2b/b3i (the signals within ~1.2 m on the same
+      satellites, 10-25); not gps_l2c (+22 m vs L5 since its spacing change), the GLONASS
+      chains or sbas_l5. Logged as JOINT[trk] (the state, and its clock minus the live
+      state's) every 30 s and JTRK per chain (what passed and which gate refused the rest);
+      served on the publisher's /get_joint. The mirror test reads the y trends from the obs
+      archive (`code_resid_m` is this residual); the latch check is the JOINT[trk] clock
+      delta, which needs no legacy median.
   3.  **Consume on every chain.** `joint-consume: clk,rate,slew` everywhere; the seed offset is
       clk + b_i; the SatBiasFilter stops feeding seeds. Gate: readback trims per chain
       median within +-0.05 chips and per PRN within +-0.1 (the per-signal offsets are gone by then); the post-restart readback decay no slower than before; same-satellite

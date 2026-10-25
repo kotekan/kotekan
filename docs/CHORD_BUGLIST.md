@@ -947,6 +947,7 @@ viewer 200. **GATE (tomorrow):** `scripts/gnss/gnss_resurvey.py --hours 6-13 --k
 ~/.cache/kotekan_gps/iono_corr.json> /home/kvand/gnss/fixtures/obs 20261019 gps_l5 gal_e5a bds_b3i` must read dU, dN
 within +-2 m of 0 (expect dU ~ +1.5 if the residual is real), and `gnss_resid_vs_el.py --atmos both --hours 6-13 ...`
 flat; then 0b closes.
+**10-25 on sky, after the F-engine's return: the fix holds.** SEARCH-MONITOR gal_e5a search - joint -0.045 chip (+0.47 before); trims E5a -0.15, E5b -0.09, E6 -0.05, B2a -0.19 chips, as B2b/B3I; chain medians vs gps_l5 (17:05-18:55Z against the 10-24 night) E5a +12.9 -> -1.6 m, E5b +12.9 -> -0.6, E6 +11.0 -> -0.8, B2a +7.9 -> -5.2; same-satellite differences within a constellation <= 1.2 m. Step 2 built the same day (jtrk.py, the shadow feed). Open: the BeiDou chains' common -4..-5 m vs L5 (per constellation; the station comparison), and gps_l2c moved -13.9 -> +8.6 m vs L5 after its 0.4 -> 0.33 spacing change.
 **10-24 ROOT CAUSE FOUND AND FIXED (offline, F-engine down): a floating-point modulo in the broker's range model.**
 Two things first. (i) The station comparison above was made with opposite signs: `code_resid_m` is tracker minus model
 (a late arrival reads NEGATIVE; the pre-geoid -18 m x sin(el) term of a model 16.5 m too high reads that way), while

@@ -275,6 +275,20 @@ _FROZEN = dict(
     # noise runs 0.03-0.5 chips; 0.3 is not tuned against the answer, and the state's own covariance
     # reports whether it fits.
     joint_sigma=0.3,
+    # The tracker feed of the shadow joint state (--joint-trk-feed, jtrk.py; #191 step 2).
+    # Measurement sigma in reference chips (10.23 Mcps): the closed DLL's placement scatters
+    # ~0.02-0.05 chips cycle to cycle and the residual averages tens of records, so 0.1 is
+    # conservative; the state's own covariance and rejection count report whether it fits.
+    joint_trk_sigma=0.1,
+    # A satellite's spectrum-fit delay at or beyond this (chips) says the replica is off the peak,
+    # so its residual is not fed (only while the fit is valid; a closed loop reads ~0).
+    joint_trk_spec_tau_max=0.3,
+    # Fewest records behind a residual: one record carries ~0.1-0.3 chips of float32 quantization
+    # (trkresid), and the one-record coh_row fallback is not a measurement worth feeding.
+    joint_trk_min_records=4,
+    # Fewest satellites a chain must pass in one cycle before any of them is fed: below it clk and
+    # the biases do not separate within the cycle (the plan's set gate).
+    joint_trk_min_sats=3,
     # Detection significance (sigma above noise, sig_of) at which a satellite counts as locked: the
     # primary lock metric, noise-relative where |A| is noise-biased. Noise sits at ~1, a real lock
     # well above 3.
@@ -1149,6 +1163,17 @@ def build_parser(description):
         "joint_max_rate_ppm); 'slew' (dead-reckon seed offsets take the joint clk + "
         "b_sat instead of the clock plus SatBiasFilter, refused per satellite beyond "
         "joint_slew_max_chips; the SEED-OFFSET lines compare the two).",
+    )
+    ap.add_argument(
+        "--joint-trk-feed",
+        action="store_true",
+        help="feed this chain's tracker code residuals (trkresid's observable) into the "
+        "shadow joint state (gnss_broker/jtrk.py; docs/CHORD_JOINT_TRACKING.md 6.3 step 2), "
+        "gated per satellite on presence, fleet q, the spectrum-fit delay, the record count "
+        "and freshness, and per cycle on the warm-up, the transit veto and at least "
+        "joint_trk_min_sats passing satellites. Nothing reads that state: it is logged "
+        "(JOINT[trk], JTRK) and served on /get_joint. Set only on a chain whose signal reads "
+        "within ~1 m of the others on the same satellites.",
     )
     ap.add_argument(
         "--joint-feed-warmup-s",

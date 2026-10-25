@@ -215,6 +215,12 @@ chains:
     # as the history lasts. The satellite rides the birth path while a clean fit rebuilds.
         fit-flush-on-reject: 3
         signal: gps_l5
+    # The shadow joint state (#191 step 2, gnss_broker/jtrk.py): this chain's tracker residuals
+    # feed a second joint state that nothing reads, logged as JOINT[trk] / JTRK and served
+    # on /get_joint. Set on the seven chains whose signals read within ~1.2 m of each other
+    # on the same satellites on 10-25 (after the #191 fix); not gps_l2c (+22 m vs L5 since
+    # its spacing change, unexplained), the GLONASS chains (#210) or sbas_l5.
+        joint-trk-feed: true
     # Seed and hint only PRNs whose block transmits L5 (IIF and later), by the IGS registry's
     # block types (Celestrak block names only if the registry proves nothing; both fail open).
     # With the search's require_hint, an unhinted PRN is never scanned.
@@ -336,6 +342,7 @@ chains:
     # phase, so this relies on dr-fengine-axis (common:) keeping NTP drift out of the seed epoch.
         seed-phase-transport: true
         signal: gal_e5a
+        joint-trk-feed: true
     # #191 step 1 (10-18): the aggregator's E5a search (`--aggregator-extra-search GAL_E5A_Q`,
     # stage e5a_search on the merged L5/E5a comb) is read for the record only: SEARCH-MONITOR
     # logs the search's clock against the joint clock and nothing seeds, holds, escapes or
@@ -455,6 +462,7 @@ chains:
     # is BDS-3 only: the IGS registry's block types decide which PRNs carry it (C11-C14 are
     # BDS-3 MEOs on re-used BDS-2 PRNs); if it proves nothing, PRNs below 19 are not seeded.
         signal: bds_b2a
+        joint-trk-feed: true
         dr-clock-adopt: true
         joint-consume: clk,rate
     # The carrier loop as on gal_e5a without the fine feed (rrate-phase-feed and its keys), so
@@ -486,6 +494,7 @@ chains:
     gal_e5b:
         seed-phase-transport: true
         signal: gal_e5b
+        joint-trk-feed: true
     # Only gps_l5 solves a clock, at 1176.45 MHz, so this chain adopts it across bands
     # (Receiver.dr_clock_any_band). The adopted code phase therefore carries the group-delay
     # difference between the two carriers (tau_band), an offset inside the DLL pull-in.
@@ -524,6 +533,7 @@ chains:
         presence-admit-displaced: true
         seed-phase-transport: true
         signal: bds_b2b
+        joint-trk-feed: true
         dr-clock-adopt: true
         joint-consume: clk,rate
         fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
@@ -613,6 +623,7 @@ chains:
         dll-combiners: fleet
     bds_b3i:
         signal: bds_b3i
+        joint-trk-feed: true
         dr-clock-adopt: true
         seed-phase-transport: true
         presence-admit-displaced: true
@@ -631,6 +642,7 @@ chains:
   # (Receiver.clock_chips_convert); taken as raw chips it would read as twice the time.
     gal_e6:
         signal: gal_e6
+        joint-trk-feed: true
         dr-clock-adopt: true
         seed-phase-transport: true
         presence-admit-displaced: true
