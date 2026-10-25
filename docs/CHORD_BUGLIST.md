@@ -693,13 +693,26 @@ visible), and the binary needs no change. The node list, though, is hand-maintai
   bad_inputs_cron.py, rail_watch.py, fengine_status.sh, node_wedge_probe.sh, elemsweep.py, viscap.py,
   port_axis_gate.py, telem_e2e.py, node_up.sh. The elem shared-ref JSONs are keyed per instance.
 
-Estimated at 1-2 h of edits and tests, then aggregator restart -> 10 min -> broker restart. Deferred.
+Estimated at 1-2 h of edits and tests, then aggregator restart -> 10 min -> broker restart.
 **Direction:** one fleet list (nodes, combs, GPUs, roles: GNSS / control / stock reference) in the fleet yaml.
 The generator derives everything else from it: the chain URL lists (from each chain's channels and
 gpu_offsets_mod16), the aggregator order and ports, and the scripts' host lists (emitted into gnss_vars, or read
 at run time). Then adding or removing a node is one line, a regen and the aggregator/broker restarts. A check
 in `gen_fleet --check` should refuse any host named outside the fleet list. Note the stock-side dependencies:
 with no stock node left, the EOP and bad-input fallbacks and stock_parity have no reference.
+**Built 2026-10-25 (kv/fleet-nodes, not deployed):** `nodes:` in config/gnss_fleet_chord.yaml is the list, its
+order the slot (port 11040 + 2k); a leaving node is `role: off` and keeps its slot. config/gnss_fleet.py derives
+the ports, the aggregator's feeds (gen_fleet writes the aggregator config from the manifest's `aggregator:`
+block), every chain's endpoints (chains-yaml keys set to `fleet`, expanded at broker load by the generator's
+covering rule), the stock references (site hosts not in the fleet) and the site scripts' host lists.
+`gen_fleet --check` refuses hand-written endpoint keys and foreign hosts and compares the derived chain
+instances with what each config builds; test_fleet_hosts.py refuses hand-typed host lists. On the 10-25 tree the
+six node configs regenerate byte-identical, the aggregator's body is identical and every chain resolves the same
+except sbas_l5, which gains cx42. Adding a node: site table entry with its combs, choco maintenance mode, one
+line, regen, aggregator, node, recv1, broker >= 10 min later (CHORD_GNSS_RUNBOOK.md section 5). Left: the
+combs are still read by hand from each GPU's tap (#194: a check against live tap freq_ids in --check when
+reachable), the obs writers move their frame-0 node to the first fleet host at their next restart, and
+the aggregator config keeps its agg6 file name.
 
 ### #215 — changing the live element set costs a release cycle (2026-10-25, KV: "a weirdly large amount of processing")
 **What:** at the F-engine's return, row H's Y pol went out and H-X stayed good. That needed a new epoch.
