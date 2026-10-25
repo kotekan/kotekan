@@ -130,12 +130,18 @@ common:
     # 0.3-0.4 -> 0.8; GPS L2 P(Y)/M from L2C 0 -> 0.45-0.6 (on the GPU that holds L2C only);
     # the E5 and B2 AltBOC power between the lobes 0.1-0.4 -> 0.55-0.75, from e5b/b2b, the
     # nearer lobes (from all four, each satellite arrived twice: the two transfers disagree past
-    # the duplicate test and doubled the lanes there).
+    # the duplicate test and doubled the lanes there). The sidelobes of other systems' signals
+    # in the same channels come from their own chains: GPS L5's upper sidelobes between the E5
+    # lobes (G09/G21 survived projection there, 10-25 archive), and E5b/B2b's upper sidelobes
+    # in the L2 band (E21, E27, C40 survived there).
     lane-transfer:
         - e6:1263.4-1273.6
         - l2c:1217.4-1237.8
         - e5b:1186.7-1196.9
         - b2b:1186.7-1196.9
+        - l5:1186.7-1196.9
+        - e5b:1217.4-1237.8
+        - b2b:1217.4-1237.8
 
     # Ship the N^2 products as a stock node does: the buffer_send_n2_* legs (full n2_buffer and
     # the eigen subset, both GPUs) and the bad-feed mask legs, to the standard receiver recv1
