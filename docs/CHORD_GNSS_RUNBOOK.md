@@ -168,8 +168,10 @@ keys set to `fleet`, one URL per GPU that holds the chain's channels), the site 
 and the stock reference hosts (the site's other hosts). `python3 config/gnss_fleet.py table` shows
 it. Growing or shrinking it:
 
-1. A joining host must already be in `config/chord_gnss_node.yaml` `nodes:` with its combs read from
-   its taps, have the node hardware setup, and be in choco's maintenance mode. Append it to the list.
+1. A joining host must already be in `config/chord_gnss_node.yaml` `nodes:` with its combs:
+   `python3 config/gnss_fleet.py combs <host> --write` reads them from its frames (stock kotekan is
+   enough). It must have the node hardware setup and be in choco's maintenance mode. Append it to
+   the list.
    A leaving host is not deleted: set it `role: off`, so no other node's port moves.
 2. Commit, release to gnss-broker, then `scripts/gnss/gen_fleet.py config/gnss_fleet_chord.yaml` and
    `--check`. It writes the node configs and the aggregator's, and removes a role-off node's config.
@@ -177,6 +179,13 @@ it. Growing or shrinking it:
    one (`node_up.sh <node> down`). Then recv1 (Jim), which must see each sender's new config.
 4. At least 10 min after the aggregator (#211), restart the broker: it reads the endpoint lists at
    start. A leaving node then goes back to production (choco maintenance mode off).
+
+**The combs are read, not typed.** `python3 config/gnss_fleet.py combs` compares every host's combs
+(the freq_id mod 16 its frames carry, per GPU) with the node table. gen_fleet.py will not write a
+config, and `--check` fails, while a fleet host's frames disagree with its line. While running, the
+broker logs `COMB MISMATCH` for any tap whose frames move off the table (an F-engine rewiring, #194),
+and get_rf marks that tap with `comb_table`. Either way: `combs --write`, regenerate, restart that
+node, then the aggregator and, 10 min later, the broker.
 
 **Bring the gather and the aggregator up BEFORE restarting nodes into them.** Sixty senders
 retrying a dead listener is ~2 log lines a second across the fleet.

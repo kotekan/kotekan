@@ -34,6 +34,7 @@ from gnss_broker import elemgain
 from gnss_broker.fits import rf_lobes
 from gnss_broker import signals
 from gnss_broker.fleet import (
+    comb_mismatches,
     dark_instances,
     fleet_spectrum_aligned,
     fit_spectrum_delay,
@@ -151,6 +152,21 @@ def instr_rf_stats(ctx):
                 fetch_drops=ctx.args.drop_stats,
                 live_elems=gnss_arraymap._live_ranges(gnss_arraymap.NODE_CONFIG),
             )
+            # Each tap's comb against the node table, which the configs were built from.
+            for _url, _m in sorted(
+                comb_mismatches(_rf, gnss_arraymap.node_combs()).items()
+            ):
+                _rf[_url]["comb_table"] = _m["table"]
+                _log_rl(
+                    "comb-%s" % _url,
+                    "COMB MISMATCH: %s gpu %d's frames carry comb %s (freq_id mod 16), the "
+                    "node table and its config say %d. Its chains despread channels their "
+                    "replicas are not for. Read the combs (python3 config/gnss_fleet.py "
+                    "combs), write them, regenerate and restart that node, the aggregator "
+                    "and the broker."
+                    % (_m["node"], _m["gpu"], _m["frames"], _m["table"]),
+                    every_s=60.0,
+                )
             ctx.publisher.set_rf(_rf, ctx.t0)
             _on = [v for v in _rf.values() if v.get("state") == "on"]
             if _on:

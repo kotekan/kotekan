@@ -420,6 +420,24 @@ def check_instances(fleet, regen):
     return out
 
 
+def check_combs(fleet, hosts):
+    """Lines for every host whose frames name other combs than the node table; a host that
+    does not answer is noted on stderr, not failed (a node down for work)."""
+    out = []
+    for host, tab, live in gnss_fleet.comb_report(fleet, hosts):
+        if live is None:
+            sys.stderr.write(
+                "combs: %s did not answer; its table entry is unverified\n" % host
+            )
+        elif live != tab:
+            out.append(
+                "%s: the node table says combs %s, its frames say %s (python3 "
+                "config/gnss_fleet.py combs --write, then regenerate)"
+                % (host, tab, live)
+            )
+    return out
+
+
 def aggregator_cmd(man, fleet, base_dir):
     """(generator argv, output path) for the manifest's aggregator: block, or None."""
     agg = man.get("aggregator")
@@ -547,6 +565,21 @@ def main():
                 )
             )
         nodes = [n for n in nodes if n in a.node]
+
+    # The fleet checks need this checkout's chains yaml beside the manifest; a manifest
+    # elsewhere (a test's) has none and skips them.
+    chains = os.path.join(os.path.dirname(man_path), os.path.basename(CHAINS))
+    fleet_checks = os.path.exists(chains)
+    # The combs the configs are built for, against the frames. A config built for the wrong
+    # comb despreads channels its replicas are not for (#194), so it is not written.
+    comb_problems = (
+        check_combs(fleet, nodes) if fleet_checks and not a.print_cmd else []
+    )
+    if comb_problems and not a.check:
+        sys.exit(
+            "NOT WRITTEN: the node table's combs disagree with the frames:\n  %s"
+            % "\n  ".join(comb_problems)
+        )
 
     bad, written, regen = [], [], {}
     for node in nodes:
@@ -742,11 +775,9 @@ def main():
     # the broker's endpoint lists come from gnss_fleet's covering rule, the stages from the
     # generator's, and a GPU on one list and not the other is a chain polled at a 404 or a
     # chain nobody reads.
-    # The chains yaml beside the manifest (a checkout's config/); a manifest elsewhere has none.
-    chains = os.path.join(os.path.dirname(man_path), os.path.basename(CHAINS))
-    problems = []
-    if os.path.exists(chains):
-        problems = check_chains(fleet, chains) + check_instances(fleet, regen)
+    problems = list(comb_problems)
+    if fleet_checks:
+        problems += check_chains(fleet, chains) + check_instances(fleet, regen)
     else:
         sys.stderr.write("no %s beside the manifest: fleet checks skipped\n" % chains)
     # A role-off node's config goes, so nothing that lists the generated configs (node_up.sh,

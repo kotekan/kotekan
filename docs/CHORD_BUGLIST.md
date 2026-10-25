@@ -710,9 +710,13 @@ instances with what each config builds; test_fleet_hosts.py refuses hand-typed h
 six node configs regenerate byte-identical, the aggregator's body is identical and every chain resolves the same
 except sbas_l5, which gains cx42. Adding a node: site table entry with its combs, choco maintenance mode, one
 line, regen, aggregator, node, recv1, broker >= 10 min later (CHORD_GNSS_RUNBOOK.md section 5). Left: the
-combs are still read by hand from each GPU's tap (#194: a check against live tap freq_ids in --check when
-reachable), the obs writers move their frame-0 node to the first fleet host at their next restart, and
-the aggregator config keeps its agg6 file name.
+obs writers move their frame-0 node to the first fleet host at their next restart, and the aggregator
+config keeps its agg6 file name.
+**Combs read from the frames (2026-10-25, kv/combs-live):** `gnss_fleet.py combs` reads each host's combs from
+the freq_id of its n2_buffer frames (stock nodes too) and `--write` sets the table; gen_fleet refuses to write
+and --check fails on a fleet host whose frames disagree; the broker's RF poll logs COMB MISMATCH per tap
+while running. All eight site hosts read equal to the table on 10-25 (cx27's GPU 1, never read since 10-17,
+is 8 as entered).
 
 ### #215 — changing the live element set costs a release cycle (2026-10-25, KV: "a weirdly large amount of processing")
 **What:** at the F-engine's return, row H's Y pol went out and H-X stayed good. That needed a new epoch.

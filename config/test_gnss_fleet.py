@@ -277,6 +277,96 @@ def test_check_instances_names_a_mismatch():
     )
 
 
+def test_live_comb_reads_the_frames():
+    """live_comb takes each GPU's comb from its n2_buffer frame's freq_id; a node that does
+    not answer, or a frame outside the science band, gives no verdict."""
+    import io
+    import json
+    import urllib.request
+
+    sb = site()["science_band"]
+    frames = {"n2_buffer_0": 7668, "n2_buffer_1": 7678}
+    asked = []
+
+    def fake(url, timeout=None):
+        asked.append(url)
+        name = url.rsplit("name=", 1)[1]
+        if name not in frames:
+            raise OSError("refused")
+        return io.BytesIO(json.dumps({"metadata": {"freq_id": frames[name]}}).encode())
+
+    real = urllib.request.urlopen
+    urllib.request.urlopen = fake
+    try:
+        check(
+            gf.live_comb("cx19", 12048, sb) == [4, 14],
+            "both GPUs' combs from the frames",
+        )
+        check(
+            asked[0] == "http://cx19:12048/buffer_frame?name=n2_buffer_0",
+            "asked on the node's REST port (%s)" % asked[0],
+        )
+        frames["n2_buffer_1"] = 0
+        check(
+            gf.live_comb("cx19", 12048, sb) is None, "a freq_id outside the band: none"
+        )
+        del frames["n2_buffer_1"]
+        check(
+            gf.live_comb("cx19", 12048, sb) is None, "a GPU that does not answer: none"
+        )
+    finally:
+        urllib.request.urlopen = real
+
+
+def test_write_combs_edits_one_line():
+    with tempfile.TemporaryDirectory() as d:
+        p = os.path.join(d, "n.yaml")
+        with open(gf.NODE_FILE) as fh:
+            orig = fh.read()
+        with open(p, "w") as fh:
+            fh.write(orig)
+        gf.write_combs(p, {"cx19": [4, 12], "cx99": [0, 1]})
+        with open(p) as fh:
+            new = fh.read()
+        got = yaml.safe_load(new)["nodes"]
+        changed = [
+            (a, b) for a, b in zip(orig.splitlines(), new.splitlines()) if a != b
+        ]
+    check(
+        got["cx19"]["gpu_offsets_mod16"] == [4, 12]
+        and got["cx99"]["gpu_offsets_mod16"] == [0, 1]
+        and got["cx27"]["gpu_offsets_mod16"] == [0, 8]
+        and "bringup_order" in got,
+        "the host's comb is set, a new host added, the rest kept",
+    )
+    check(
+        len(new.splitlines()) == len(orig.splitlines()) + 1
+        and len(changed) >= 1
+        and all("cx19" in a for a, _ in changed[:1]),
+        "only cx19's line changes and one line is added (comments kept)",
+    )
+
+
+def test_check_combs():
+    fl = gf.Fleet(None, None)
+    real = gf.comb_report
+    gf.comb_report = lambda fleet, hosts, timeout=4.0: [
+        ("cx19", [4, 14], [4, 12]),
+        ("cx27", [0, 8], [0, 8]),
+        ("cx42", [5, 12], None),
+    ]
+    try:
+        probs = gen_fleet.check_combs(fl, ["cx19", "cx27", "cx42"])
+    finally:
+        gf.comb_report = real
+    check(
+        len(probs) == 1
+        and probs[0].startswith("cx19: the node table says combs [4, 14]")
+        and "[4, 12]" in probs[0],
+        "a moved comb fails, a node that does not answer only notes (%s)" % probs,
+    )
+
+
 def test_aggregator_cmd():
     fl = gf.Fleet(manifest({"cx19": {}, "cx42": {"role": "off"}, "cx43": {}}), site())
     man = {

@@ -324,6 +324,75 @@ def load_chains(path=None, fleet=None):
     return expand_chains(cfg, fleet)
 
 
+def live_comb(host, port, science_band, timeout=4.0):
+    """[GPU0's comb, GPU1's comb] (freq_id mod 16) as the host's frames label them, or None.
+
+    Read from the newest frame of each GPU's n2_buffer_<g> (/buffer_frame), whose chord
+    metadata carries the frame's freq_id: every node has those buffers, production's stock
+    nodes and ours alike, so a host can be read before it joins the fleet, and the label holds
+    while the F-engine sends zeros. None when the node does not answer or a frame carries no
+    science-band freq_id (a node still starting)."""
+    import json
+    import urllib.request
+
+    out = []
+    for g in (0, 1):
+        url = "http://%s:%d/buffer_frame?name=n2_buffer_%d" % (host, port, g)
+        try:
+            with urllib.request.urlopen(url, timeout=timeout) as r:
+                fid = int(json.load(r)["metadata"]["freq_id"])
+        except Exception:
+            return None
+        if not science_band["min_freq_id"] <= fid <= science_band["max_freq_id"]:
+            return None
+        out.append(fid % 16)
+    return out
+
+
+def comb_report(fleet, hosts, timeout=4.0):
+    """[(host, table comb or None, live comb or None)] for each host."""
+    site = fleet.site
+    port = int(site["runtime"]["rest_port"])
+    out = []
+    for h in hosts:
+        tab = (site["nodes"].get(h) or {}).get("gpu_offsets_mod16")
+        out.append(
+            (
+                h,
+                list(tab) if tab else None,
+                live_comb(h, port, site["science_band"], timeout),
+            )
+        )
+    return out
+
+
+def write_combs(node_file, combs):
+    """Set `gpu_offsets_mod16` for each {host: [c0, c1]} in the node table file, rewriting only
+    that host's line, so the comments and layout stay. A host with no line gets one after the
+    last host line of `nodes:`."""
+    lines = open(node_file).read().split("\n")
+    start = lines.index("nodes:")
+    at = {}  # host -> line index, for the `    host: {...}` lines of nodes:
+    for i in range(start + 1, len(lines)):
+        if lines[i] and not lines[i].startswith(" "):
+            break
+        key, sep, val = lines[i].strip().partition(":")
+        if sep and not key.startswith("#") and val.strip().startswith("{"):
+            at[key] = i
+    entry = "    %s: {gpu_offsets_mod16: [%d, %d]}"
+    for host, comb in combs.items():
+        if host in at:
+            lines[at[host]] = entry % (host, comb[0], comb[1])
+    last = max(at.values()) if at else start
+    for host in sorted(set(combs) - set(at)):
+        last += 1
+        lines.insert(last, entry % (host, combs[host][0], combs[host][1]))
+    tmp = node_file + ".tmp"
+    with open(tmp, "w") as f:
+        f.write("\n".join(lines))
+    os.replace(tmp, node_file)
+
+
 def hosts(manifest=None, node_file=None):
     """The fleet's GNSS hosts in slot order (the site scripts' default node list)."""
     return Fleet(manifest, node_file).hosts
@@ -346,6 +415,19 @@ def main(argv=None):
     g.add_argument("--stock", action="store_true", help="the stock reference hosts")
     g.add_argument("--off", action="store_true", help="the role-off hosts")
     sub.add_parser("table", help="slot, search port, combs and chains per host")
+    c = sub.add_parser(
+        "combs",
+        help="read each host's combs from its frames and compare them with the node table",
+    )
+    c.add_argument(
+        "hosts", nargs="*", help="default: every host in the node table and the fleet"
+    )
+    c.add_argument(
+        "--write",
+        action="store_true",
+        help="set the node table's gpu_offsets_mod16 to what the frames say, for every "
+        "host read (a host not in the table is added)",
+    )
     e = sub.add_parser("expand", help="print the chains yaml with `fleet` expanded")
     e.add_argument("chains", nargs="?", default=CHAINS_YAML)
     a = ap.parse_args(argv)
@@ -397,6 +479,33 @@ def main(argv=None):
             )
         print("stock: %s" % (" ".join(fl.stock) or "(none)"))
         return 0
+    if a.cmd == "combs":
+        want = a.hosts or list(dict.fromkeys(fl.site_hosts + list(fl.slots)))
+        rows = comb_report(fl, want)
+        print("%-6s %-10s %-10s" % ("host", "table", "frames"))
+        fix, bad = {}, 0
+        for h, tab, live in rows:
+            verdict = (
+                "unreachable"
+                if live is None
+                else "ok"
+                if live == tab
+                else "NOT IN TABLE"
+                if tab is None
+                else "MISMATCH"
+            )
+            print("%-6s %-10s %-10s %s" % (h, tab or "-", live or "-", verdict))
+            if live is not None and live != tab:
+                fix[h] = live
+                bad += 1
+        if a.write and fix:
+            write_combs(a.node_file, fix)
+            print(
+                "wrote %d host(s) to %s; regenerate (scripts/gnss/gen_fleet.py) and restart "
+                "those nodes, the aggregator and the broker" % (len(fix), a.node_file)
+            )
+            return 0
+        return 1 if bad else 0
     if a.cmd == "expand":
         yaml.safe_dump(
             load_chains(a.chains, fl), sys.stdout, sort_keys=False, width=100000

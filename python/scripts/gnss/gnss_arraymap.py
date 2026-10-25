@@ -455,6 +455,24 @@ def check(be=None, node_config=NODE_CONFIG):
     return bad
 
 
+def node_combs(path=None):
+    """{node: [comb of GPU 0, comb of GPU 1]} (gpu_offsets_mod16) from the node yaml's table;
+    {} if it cannot be read. A regex for the reason _live_ranges gives."""
+    import re
+
+    try:
+        with open(path or NODE_CONFIG) as fh:
+            txt = fh.read()
+    except IOError:
+        return {}
+    return {
+        m.group(1): [int(m.group(2)), int(m.group(3))]
+        for m in re.finditer(
+            r"^\s+(\w+):\s*\{[^}\n]*gpu_offsets_mod16:\s*\[(\d+),\s*(\d+)\]", txt, re.M
+        )
+    }
+
+
 def _live_ranges(path):
     """array.live_element_ranges from the node yaml, flattened. None if it cannot be read.
 

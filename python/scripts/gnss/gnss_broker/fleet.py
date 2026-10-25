@@ -178,6 +178,9 @@ def poll_rf_stats(
             "elem_clip_live_worst": max(live, key=lambda e: ec[e]) if live else None,
             "elem_power_med": (sorted(ep_live)[len(ep_live) // 2] if ep_live else None),
             "n_live_elem": len(ep_live) if ep else None,
+            # The comb(s) (freq_id mod 16) the frames carry: one per GPU, checked against the
+            # node table by comb_mismatches.
+            "comb": sorted({int(f) % 16 for f in (r.get("freq_ids") or [])}),
             "passes": r.get("passes"),
             "cost_ms": r.get("cost_ms"),
             "age_s": r.get("age_s"),
@@ -197,6 +200,33 @@ def poll_rf_stats(
                 if d:
                     summ["drops"] = d
         out[url] = summ
+    return out
+
+
+def comb_mismatches(rf, table):
+    """{tap url: {node, gpu, table, frames}} for every armed tap whose frames carry another comb
+    than the node table's gpu_offsets_mod16 for that node and GPU: a rewiring at the F-engine
+    (#194), which leaves that GPU's chains despreading channels their replicas are not for.
+    `table` is {node: [comb of GPU 0, comb of GPU 1]}. A tap with no freq_ids yet, or a node
+    the table does not hold, has no verdict."""
+    out = {}
+    for url, v in (rf or {}).items():
+        if v.get("state") != "on" or not v.get("comb"):
+            continue
+        key = inst_key(url)
+        if key is None:
+            continue
+        node, gpu = key.split("/")
+        tab = (table or {}).get(node)
+        if not tab or int(gpu) >= len(tab):
+            continue
+        if v["comb"] != [int(tab[int(gpu)])]:
+            out[url] = {
+                "node": node,
+                "gpu": int(gpu),
+                "table": int(tab[int(gpu)]),
+                "frames": v["comb"],
+            }
     return out
 
 
