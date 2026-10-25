@@ -233,5 +233,40 @@ class TestPostZeros(unittest.TestCase):
         self.assertEqual(self.node.posts[0][1]["ref"][1], [0.0, 0.0])
 
 
+class TestRelabel(unittest.TestCase):
+    REF = [[0.6, 0.0], [0.0, 0.8], [1.0, 0.0], [0.0, 0.0]]
+
+    def relabel(self, swap=""):
+        d = tempfile.mkdtemp()
+        try:
+            inp, out = os.path.join(d, "in.json"), os.path.join(d, "out.json")
+            with open(inp, "w") as fh:
+                json.dump({"epoch": "OLD", "bands": {"l5": {"ref": self.REF}}}, fh)
+            a = argparse.Namespace(inp=inp, out=out, epoch="NEW", swap=swap)
+            with contextlib.redirect_stdout(io.StringIO()):
+                esr.relabel(a)
+            with open(out) as fh:
+                return json.load(fh)
+        finally:
+            shutil.rmtree(d)
+
+    def test_relabel_keeps_the_vector(self):
+        r = self.relabel()
+        self.assertEqual(r["epoch"], "NEW")
+        self.assertEqual(r["epoch_relabelled_from"], "OLD")
+        self.assertEqual(r["bands"]["l5"]["ref"], self.REF)
+        self.assertNotIn("relabel_swap", r)
+
+    def test_swap_across_the_pols_renormalises_each_half(self):
+        r = self.relabel("1:2")
+        F = np.array([complex(a, b) for a, b in r["bands"]["l5"]["ref"]])
+        # pol 0 now (0.6, 1.0), pol 1 (0.8j, 0): each half back to unit norm
+        pol0 = np.array([0.6, 1.0]) / np.hypot(0.6, 1.0)
+        np.testing.assert_allclose(F[:2], pol0, 1e-5)
+        np.testing.assert_allclose(F[2:], [1j, 0.0], atol=1e-6)
+        self.assertEqual(r["relabel_swap"], "1:2")
+        self.assertEqual(r["epoch_relabelled_from"], "OLD")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

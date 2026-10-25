@@ -13,6 +13,11 @@
                       (--elem-shared-ref).
   post FILE           POST every band's reference to its instances (--mode), zeroed where
                       each instance's generated config holds it at 0 (as every POST here is).
+  relabel IN OUT --epoch KEY [--swap I:J,...]
+                      Copy a reference under another positions key (elem_positions_epoch), the
+                      old one kept in epoch_relabelled_from: for an instrument that is unchanged
+                      but re-keyed. --swap exchanges entries (cube indices), for feeds whose
+                      pols were swapped at the analog end, and renormalises each pol half.
   status [FILE]       Per instance and pol: offset and shape similarity against FILE (works on any
                       binary), plus the node's own fleet_ref block where the binary has one.
   watch FILE DIR      The safety net (scripts/gnss/site/elem_ref_cron.sh, every 5 min): per
@@ -352,6 +357,32 @@ def post(a):
             )
 
 
+def relabel(a):
+    snap = json.load(open(a.inp))
+    pairs = [tuple(int(i) for i in p.split(":")) for p in a.swap.split(",") if p]
+    # A swap across the pols moves weight between the halves; the pin is scale-free per half
+    # (gnssSharedPin.hpp), so each is brought back to unit norm. Without one, nothing moves.
+    if pairs:
+        for ent in snap["bands"].values():
+            v = np.array([complex(x, y) for x, y in ent["ref"]])
+            for i, j in pairs:
+                v[[i, j]] = v[[j, i]]
+            h = len(v) // 2
+            v = np.concatenate([unit(v[:h]), unit(v[h:])])
+            ent["ref"] = [[round(float(x.real), 6), round(float(x.imag), 6)] for x in v]
+    out = dict(
+        snap,
+        epoch=a.epoch,
+        epoch_relabelled_from=snap["epoch"],
+        relabelled_utc=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    )
+    if pairs:
+        out["relabel_swap"] = a.swap
+    with open(a.out, "w") as f:
+        json.dump(out, f, indent=1)
+    print("wrote %s (epoch %s, from %s)" % (a.out, a.epoch, snap["epoch"]))
+
+
 def status(a):
     snap = load_ref(a.file) if a.file else None
     res = poll()
@@ -659,6 +690,11 @@ def main():
     p = sub.add_parser("post")
     p.add_argument("file")
     p.add_argument("--mode", choices=("off", "live"))
+    r = sub.add_parser("relabel")
+    r.add_argument("inp")
+    r.add_argument("out")
+    r.add_argument("--epoch", required=True)
+    r.add_argument("--swap", default="")
     t = sub.add_parser("status")
     t.add_argument("file", nargs="?")
     w = sub.add_parser("watch")
@@ -667,7 +703,13 @@ def main():
     w.add_argument("--mode", choices=("off", "live"), default="live")
     w.add_argument("--act", action="store_true")
     a = ap.parse_args()
-    {"snapshot": snapshot, "post": post, "status": status, "watch": watch}[a.cmd](a)
+    {
+        "snapshot": snapshot,
+        "post": post,
+        "relabel": relabel,
+        "status": status,
+        "watch": watch,
+    }[a.cmd](a)
 
 
 if __name__ == "__main__":

@@ -908,7 +908,8 @@ def elem_shared_ref_keys(args, band, steer, n_elem, bad=()):
     if snap.get("epoch") != epoch:
         raise SystemExit(
             "--elem-shared-ref %s was taken against epoch %s, these positions are %s "
-            "-- take a new snapshot (elem_shared_ref.py snapshot)"
+            "-- take a new snapshot (elem_shared_ref.py snapshot), or relabel it "
+            "(elem_shared_ref.py relabel) if the instrument is unchanged and only its key moved"
             % (args.elem_shared_ref, snap.get("epoch"), epoch)
         )
     entry = snap["bands"].get(band)
