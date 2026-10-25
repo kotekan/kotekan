@@ -1,7 +1,8 @@
 #define BOOST_TEST_MODULE "test_gnss_lane_direction"
-#include "gnssLaneDirection.hpp" // for LaneDirection
-#include <boost/test/included/unit_test.hpp>
+#include "gnssLaneDirection.hpp" // for LaneDirection, InstDelay
+
 #include <algorithm> // for max
+#include <boost/test/included/unit_test.hpp>
 #include <cmath>   // for exp, sqrt
 #include <complex> // for complex, conj, norm
 #include <random>  // for mt19937, normal_distribution
@@ -30,8 +31,8 @@ struct Sim {
     // one steered row: (s_i + sigma * noise) * D_i
     void row(double sigma, cd* v) {
         for (int i = 0; i < n; ++i)
-            v[i] = (s[i] + sigma * cd(g(rng), g(rng)) / std::sqrt(2.0))
-                   * cd(D[i].real(), D[i].imag());
+            v[i] =
+                (s[i] + sigma * cd(g(rng), g(rng)) / std::sqrt(2.0)) * cd(D[i].real(), D[i].imag());
     }
     // |<dir, truth>|^2 with truth = s / |s|: the cos^2 of the returned direction
     double cos2(const cd* dir) const {
@@ -174,8 +175,8 @@ BOOST_AUTO_TEST_CASE(reset_and_bounds) {
     b.row(0.0, v.data());
     L.push(1, 1, v.data(), 0.02);
     BOOST_CHECK_CLOSE(L.power(1, 1), 4 * 9.0, 1e-4); // the new row outright, no EMA with the old
-    L.push(7, 1, v.data(), 0.02);                     // ignored
-    L.push(1, -1, v.data(), 0.02);                    // ignored
+    L.push(7, 1, v.data(), 0.02);                    // ignored
+    L.push(1, -1, v.data(), 0.02);                   // ignored
     BOOST_CHECK(!L.direction(7, 1, b.D.data(), out.data()));
     BOOST_CHECK_EQUAL(L.coherence(5, 0), 0.0);
 }
@@ -207,4 +208,108 @@ BOOST_AUTO_TEST_CASE(shift_takes_the_table_across_frequency) {
     for (int i = 0; i < n; ++i)
         moved = std::max(moved, (double)std::abs(sh[(size_t)i] - ElemSteer::cf(1.0f, 0.0f)));
     BOOST_CHECK_GT(moved, 0.1);
+}
+
+// Instrumental delays: each element's response carries exp(i 2 pi f tau_e) on top of the
+// geometry. InstDelay measures tau_e (up to a common delay) from adjacent comb channels of two
+// satellites, and a transfer 10 MHz off the comb matches the true direction there only with
+// the measured delays applied.
+BOOST_AUTO_TEST_CASE(inst_delay_carries_the_transfer) {
+    const int n = 32, n_comb = 7;
+    std::vector<double> pos((size_t)n * 3);
+    std::mt19937 rng(5);
+    std::uniform_real_distribution<double> u(-1.0, 1.0);
+    std::vector<double> tau_inst(n), amp(n), ph0(n);
+    for (int i = 0; i < n; ++i) {
+        pos[(size_t)i * 3] = 6.3 * (i % 8) - 22.0;
+        pos[(size_t)i * 3 + 1] = 7.9 * (i / 8) - 12.0;
+        pos[(size_t)i * 3 + 2] = 0.05 * i;
+        tau_inst[i] = 5e-9 * u(rng);
+        amp[i] = 1.0 + 0.5 * u(rng);
+        ph0[i] = M_PI * u(rng);
+    }
+    const double df0 = 16 * 0.1953125e6;
+    std::vector<double> f_mhz;
+    for (int k = 0; k < n_comb; ++k)
+        f_mhz.push_back((5975 + 16 * k) * 0.1953125);
+    const double f_x = f_mhz.back() + 9.96; // the transfer target, off the comb
+    f_mhz.push_back(f_x);
+    const int n_ch = (int)f_mhz.size();
+    ElemSteer S(pos, f_mhz, 2, 1.0, 120.0);
+    S.update(0, 141.0, 37.0, 0.0);
+    S.update(1, 230.0, 62.0, 0.0);
+    std::vector<ElemSteer::cf> tab((size_t)n_ch * n), sh((size_t)n);
+
+    // Unit raw-frame direction for (slot, channel): conj(D) x instrument x a random common phase.
+    auto truth = [&](int ch, double common, std::vector<cd>& q) {
+        double e = 0.0;
+        for (int i = 0; i < n; ++i) {
+            const ElemSteer::cf D = tab[(size_t)ch * n + i];
+            q[i] =
+                std::conj(cd(D.real(), D.imag()))
+                * std::polar(amp[i], ph0[i] + 2.0 * M_PI * f_mhz[ch] * 1e6 * tau_inst[i] + common);
+            e += std::norm(q[i]);
+        }
+        for (cd& x : q)
+            x /= std::sqrt(e);
+    };
+
+    gnss::InstDelay est(n, df0, 10.0);
+    std::vector<std::vector<cd>> q(n_ch, std::vector<cd>(n));
+    for (int t = 0; t <= 20; ++t) {
+        est.advance(t);
+        for (int slot = 0; slot < 2; ++slot) {
+            S.copy_slot(slot, tab.data());
+            double los[3] = {};
+            BOOST_REQUIRE(S.direction(slot, 0.0, los));
+            S.shift(los, df0, sh.data());
+            for (int ch = 0; ch < n_comb; ++ch)
+                truth(ch, M_PI * u(rng), q[ch]);
+            for (int ch = 1; ch < n_comb; ++ch)
+                est.add(q[ch - 1].data(), q[ch].data(), sh.data(), 0.5);
+        }
+        BOOST_CHECK_EQUAL(est.warm(), t >= 10);
+    }
+
+    // Slopes: estimate minus truth is one delay common to every element, to the float
+    // phasors' precision (1e-7 rad over 2 pi x 3.125 MHz is ~5e-15 s).
+    const double d0 = est.delay_s(0) - tau_inst[0];
+    double slope_err = 0.0, rms_true = 0.0;
+    for (int i = 0; i < n; ++i) {
+        slope_err = std::max(slope_err, std::abs(est.delay_s(i) - tau_inst[i] - d0));
+        rms_true += tau_inst[i] * tau_inst[i];
+    }
+    BOOST_TEST_MESSAGE("instrumental delay: max error " << slope_err << " s, truth rms "
+                                                        << std::sqrt(rms_true / n) << " s, rms_s "
+                                                        << est.rms_s() << " s");
+    BOOST_CHECK_LT(slope_err, 1e-13);
+
+    // Transfer slot 0 from the last comb channel to f_x: geometric shift, then the delays.
+    S.copy_slot(0, tab.data());
+    double los[3] = {};
+    BOOST_REQUIRE(S.direction(0, 0.0, los));
+    const double df = (f_x - f_mhz[n_comb - 1]) * 1e6;
+    S.shift(los, df, sh.data());
+    std::vector<cd> src(n), want(n), geo(n), full(n);
+    truth(n_comb - 1, 0.3, src);
+    truth(n_comb, -1.2, want);
+    for (int i = 0; i < n; ++i)
+        geo[i] = src[i] * std::conj(cd(sh[i].real(), sh[i].imag()));
+    full = geo;
+    est.apply(df, full.data());
+    // max element error after aligning the common phase to the truth
+    auto err = [&](const std::vector<cd>& x) {
+        cd ip(0.0, 0.0);
+        for (int i = 0; i < n; ++i)
+            ip += std::conj(x[i]) * want[i];
+        const cd rot = ip / std::abs(ip);
+        double m = 0.0;
+        for (int i = 0; i < n; ++i)
+            m = std::max(m, std::abs(x[i] * rot - want[i]));
+        return m;
+    };
+    BOOST_TEST_MESSAGE("transfer by " << df * 1e-6 << " MHz: max element error " << err(full)
+                                      << " with the delays, " << err(geo) << " without");
+    BOOST_CHECK_LT(err(full), 1e-6);
+    BOOST_CHECK_GT(err(geo), 1e-2);
 }

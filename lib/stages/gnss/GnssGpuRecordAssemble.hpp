@@ -7,9 +7,10 @@
 #include "bufferContainer.hpp"
 #include "gnssElemCal.hpp"
 #include "gnssElemSteer.hpp"
+#include "gnssLaneDirection.hpp" // for LaneDirection, InstDelay (#190)
 #include "gnssProjSubspace.hpp"
-#include "gnssLaneDirection.hpp" // for LaneDirection (#190)
-#include "gnssSharedPin.hpp" // for ReseedState
+#include "gnssSharedPin.hpp"     // for ReseedState
+#include "prometheusMetrics.hpp" // for Gauge
 #include "restServer.hpp"
 
 #include "json.hpp" // nlohmann::json for the REST POST callbacks
@@ -366,10 +367,21 @@ private:
     // another signal (the Galileo E6 PRS lobe beside E6-B/C, GPS L2 P(Y) beside L2C). Each gets
     // the direction of the nearest channel published this round, turned through the slot's
     // geometric delay: q(f2) = q(f1) exp(-i sign 2 pi (f2 - f1) tau_e), under the same owner.
+    // With lane_transfer_inst_slope (default true) the transfer also turns each element by its
+    // instrumental delay (gnss::InstDelay), measured from adjacent published channels of every
+    // slot and forgotten over lane_transfer_inst_tau_s (300 s); until that has averaged for
+    // tau_s the transfer is geometric only.
     std::vector<int> _lane_xfer_fids;
     std::vector<char> _lane_ok;                     ///< [n_chan] published this round
     std::vector<std::complex<double>> _lane_pubdir; ///< [n_chan][n_elem]
     std::vector<gnss::ElemSteer::cf> _lane_shift;   ///< [n_elem]
+    bool _inst_on = false;
+    int _inst_df_fid = 0; ///< the channel spacing the estimate is fed at, freq_ids
+    gnss::InstDelay _inst;
+    double _inst_gauge_t = 0.0; ///< utc of the last gauge update
+    kotekan::prometheus::Gauge* _m_inst_rms_ns = nullptr;
+    kotekan::prometheus::Gauge* _m_inst_weight = nullptr;
+    kotekan::prometheus::Gauge* _m_inst_warm = nullptr;
     bool _proj_ready = false;
     uint8_t _proj_nchan_warned = 0;
     std::vector<std::unique_ptr<gnss::ProjSubspace>> _proj_own; ///< per slot, while it is a source

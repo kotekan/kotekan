@@ -227,11 +227,27 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
             WARN("elem_dir_publish all needs channel_ids: lane directions OFF");
             _lane_on = false;
         }
+        _inst_df_fid = _lane_fids.size() >= 2 ? _lane_fids[1] - _lane_fids[0] : 0;
+        _inst_on = _lane_on && !_lane_xfer_fids.empty() && _inst_df_fid != 0
+                   && config.get_default<bool>(unique_name, "lane_transfer_inst_slope", true);
+        if (_inst_on) {
+            _inst = gnss::InstDelay(
+                _n_elements, _inst_df_fid * 0.1953125e6,
+                config.get_default<double>(unique_name, "lane_transfer_inst_tau_s", 300.0));
+            auto& m = kotekan::prometheus::Metrics::instance();
+            _m_inst_rms_ns =
+                &m.add_gauge("kotekan_gnss_record_assemble_lane_inst_delay_rms_ns", unique_name);
+            _m_inst_weight =
+                &m.add_gauge("kotekan_gnss_record_assemble_lane_inst_weight", unique_name);
+            _m_inst_warm = &m.add_gauge("kotekan_gnss_record_assemble_lane_inst_warm", unique_name);
+        }
         if (_lane_on)
             INFO("lane directions: publishing every running non-probe slot's prompt-row "
                  "direction per channel to the board group {:s}, tau {:.2f} s, every {:d} "
-                 "records, coherence >= {:.3f}, transferred to {:d} more channels",
-                 _lane_group, tau, _lane_every, _lane_coh_min, (int)_lane_xfer_fids.size());
+                 "records, coherence >= {:.3f}, transferred to {:d} more channels, "
+                 "instrumental delay {:s}",
+                 _lane_group, tau, _lane_every, _lane_coh_min, (int)_lane_xfer_fids.size(),
+                 _inst_on ? "on" : "off");
     }
     // Bright-satellite projection (see the header and gnssProjSubspace.hpp). Needs channel_ids
     // (the board is keyed on freq_id) and elem_sum (the shadow learners). Off by default;
@@ -914,10 +930,9 @@ void GnssGpuRecordAssemble::main_thread() {
                 // per covering channel whose EMA is warm and coherent, in the raw frame.
                 if (lane_rec && (++_lane_cnt[p] % _lane_every) == 0) {
                     gnss::ProjBoard& board = gnss::ProjBoard::instance();
-                    const double now_s =
-                        std::chrono::duration<double>(
-                            std::chrono::steady_clock::now().time_since_epoch())
-                            .count();
+                    const double now_s = std::chrono::duration<double>(
+                                             std::chrono::steady_clock::now().time_since_epoch())
+                                             .count();
                     std::fill(_lane_ok.begin(), _lane_ok.end(), 0);
                     for (int ch = 0; ch < n_chan; ++ch) {
                         if (!((c.chan_mask >> ch) & 1ULL) || !_lane.warm(p, ch))
@@ -942,6 +957,32 @@ void GnssGpuRecordAssemble::main_thread() {
                         board.publish(_lane_group, _lane_fids[(size_t)ch], e);
                         _lane_pub[p] = 1;
                     }
+                    // Adjacent published channels measure the instrumental delay.
+                    if (_inst_on) {
+                        _inst.advance(utc);
+                        int a = -1;
+                        for (int ch = 0; ch < n_chan; ++ch) {
+                            if (!_lane_ok[(size_t)ch])
+                                continue;
+                            if (a >= 0
+                                && _lane_fids[(size_t)ch] - _lane_fids[(size_t)a] == _inst_df_fid) {
+                                const gnss::ElemSteer::cf* Da = &_steer_buf[(size_t)a * n_e];
+                                const gnss::ElemSteer::cf* Db = &_steer_buf[(size_t)ch * n_e];
+                                for (int el = 0; el < n_e; ++el)
+                                    _lane_shift[(size_t)el] = Db[el] * std::conj(Da[el]);
+                                _inst.add(&_lane_pubdir[(size_t)a * n_e],
+                                          &_lane_pubdir[(size_t)ch * n_e], _lane_shift.data(),
+                                          _lane.coherence(p, a) * _lane.coherence(p, ch));
+                            }
+                            a = ch;
+                        }
+                        if (utc - _inst_gauge_t >= 1.0) {
+                            _inst_gauge_t = utc;
+                            _m_inst_rms_ns->set(_inst.rms_s() * 1e9);
+                            _m_inst_weight->set(_inst.weight());
+                            _m_inst_warm->set(_inst.warm() ? 1.0 : 0.0);
+                        }
+                    }
                     double los[3];
                     bool have_los = false;
                     if (!_lane_xfer_fids.empty()) {
@@ -959,9 +1000,16 @@ void GnssGpuRecordAssemble::main_thread() {
                                     src = ch;
                             if (src < 0)
                                 break;
-                            _steer.shift(los, (fid - _lane_fids[(size_t)src]) * 0.1953125e6,
-                                         _lane_shift.data());
+                            const double df_hz = (fid - _lane_fids[(size_t)src]) * 0.1953125e6;
+                            _steer.shift(los, df_hz, _lane_shift.data());
                             const std::complex<double>* dir = &_lane_pubdir[(size_t)src * n_e];
+                            std::complex<double>* v = _lane_scratch.data();
+                            for (int el = 0; el < n_e; ++el) {
+                                const gnss::ElemSteer::cf sh = _lane_shift[(size_t)el];
+                                v[el] = dir[el] * std::complex<double>(sh.real(), -sh.imag());
+                            }
+                            if (_inst_on && _inst.warm())
+                                _inst.apply(df_hz, v);
                             gnss::ProjEntry e;
                             e.owner = _lane_owner[p];
                             e.src = 2;
@@ -971,12 +1019,8 @@ void GnssGpuRecordAssemble::main_thread() {
                             e.n = n_e;
                             e.k = 1;
                             e.q.reserve((size_t)n_e);
-                            for (int el = 0; el < n_e; ++el) {
-                                const gnss::ElemSteer::cf sh = _lane_shift[(size_t)el];
-                                const std::complex<double> v =
-                                    dir[el] * std::complex<double>(sh.real(), -sh.imag());
-                                e.q.emplace_back((float)v.real(), (float)v.imag());
-                            }
+                            for (int el = 0; el < n_e; ++el)
+                                e.q.emplace_back((float)v[el].real(), (float)v[el].imag());
                             board.publish(_lane_group, fid, e);
                         }
                     }

@@ -1,12 +1,14 @@
 /**
  * @file
  * @brief Per (slot, channel) direction of a tracked satellite from its own prompt row, for the
- *        science-N^2 projection of every known satellite (#190). Header-only, no CUDA.
+ *        science-N^2 projection of every known satellite (#190), and the per-element
+ *        instrumental delay that carries it across frequency. Header-only, no CUDA.
  */
 #ifndef GNSS_LANE_DIRECTION_HPP
 #define GNSS_LANE_DIRECTION_HPP
 #include "gnssElemSteer.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <complex>
 #include <cstddef>
@@ -161,6 +163,107 @@ private:
     double _tau = 0.5;
     std::vector<cd> _m;
     std::vector<double> _p, _age;
+};
+
+/**
+ * @class InstDelay
+ * @brief Per-element instrumental delay from the lane directions of adjacent channels, for
+ *        lane_transfer_freq_ids.
+ *
+ * A lane direction q(f) is the raw-frame element vector: geometric phase times each element's
+ * instrumental response. ElemSteer::shift moves only the geometric phase across frequency; the
+ * instrumental phase has its own per-element slope, a delay tau_e of a few ns, so a transfer
+ * q(f2) = q(f1) conj(shift(f2 - f1)) turns each element by 2 pi (f2 - f1) tau_e too.
+ *
+ * For one slot's channels a and b = a + df0, z_e = q_b[e] conj(q_a[e]) shift_e(df0) is
+ * exp(i 2 pi df0 tau_e) |q_a[e] q_b[e]| times a phase common to the elements (each channel's
+ * direction has its own phase origin), removed by referencing z to its sum over the elements.
+ * add() accumulates the referenced z per element, pooled over pairs and slots and forgotten
+ * with time constant tau_s; tau_e = arg(sum) / (2 pi df0). The delays are relative to the
+ * array: a delay common to every element is a common phase, which QQ^H does not see.
+ * apply() turns a transferred direction by exp(i 2 pi df tau_e).
+ */
+class InstDelay {
+public:
+    using cd = std::complex<double>;
+    InstDelay() = default;
+    /// @param df0_hz the channel spacing of the pairs fed to add(), Hz.
+    /// @param tau_s forgetting time constant, seconds.
+    InstDelay(int n_elem, double df0_hz, double tau_s) :
+        _n(n_elem), _df0(df0_hz), _tau(tau_s > 0.0 ? tau_s : 300.0),
+        _c((size_t)n_elem, cd(0.0, 0.0)), _z((size_t)n_elem) {}
+
+    /// Move the clock to @p t_s (seconds), forgetting by exp(-dt / tau_s). Call before add().
+    void advance(double t_s) {
+        if (_t_first < 0.0) {
+            _t_first = _t_last = t_s;
+            return;
+        }
+        const double dt = t_s - _t_last;
+        if (!(dt > 0.0))
+            return;
+        const double f = std::exp(-dt / _tau);
+        for (cd& c : _c)
+            c *= f;
+        _w *= f;
+        _t_last = t_s;
+    }
+
+    /// One channel pair of one slot: unit directions @p qa at f and @p qb at f + df0, with
+    /// @p shift = ElemSteer::shift(los, df0) for the slot's line of sight, weighted by @p w.
+    void add(const cd* qa, const cd* qb, const ElemSteer::cf* shift, double w) {
+        if (_n <= 0 || !(w > 0.0))
+            return;
+        cd sum(0.0, 0.0);
+        for (int i = 0; i < _n; ++i) {
+            _z[(size_t)i] = qb[i] * std::conj(qa[i]) * cd(shift[i].real(), shift[i].imag());
+            sum += _z[(size_t)i];
+        }
+        const double a = std::abs(sum);
+        if (!(a > 0.0))
+            return;
+        const cd ref = w * std::conj(sum) / a;
+        for (int i = 0; i < _n; ++i)
+            _c[(size_t)i] += _z[(size_t)i] * ref;
+        _w += w;
+    }
+
+    /// The estimate has averaged for at least tau_s.
+    bool warm() const {
+        return _w > 0.0 && _t_last - _t_first >= _tau;
+    }
+    /// Pair weight accumulated (forgotten like the estimate).
+    double weight() const {
+        return _w;
+    }
+    /// Element @p i's instrumental delay, seconds, up to a delay common to all elements.
+    double delay_s(int i) const {
+        return std::arg(_c[(size_t)i]) / (2.0 * M_PI * _df0);
+    }
+    /// Spread of the delays over the elements, seconds: rms about the mean, each element
+    /// weighted by its accumulated magnitude (dead elements read near zero weight).
+    double rms_s() const {
+        double sw = 0.0, s1 = 0.0, s2 = 0.0;
+        for (int i = 0; i < _n; ++i) {
+            const double w = std::abs(_c[(size_t)i]), d = delay_s(i);
+            sw += w;
+            s1 += w * d;
+            s2 += w * d * d;
+        }
+        return sw > 0.0 ? std::sqrt(std::max(0.0, s2 / sw - (s1 / sw) * (s1 / sw))) : 0.0;
+    }
+    /// Turn a direction transferred by @p df_hz: q[i] *= exp(i 2 pi df tau_i).
+    void apply(double df_hz, cd* q) const {
+        for (int i = 0; i < _n; ++i)
+            q[i] *= std::polar(1.0, 2.0 * M_PI * df_hz * delay_s(i));
+    }
+
+private:
+    int _n = 0;
+    double _df0 = 1.0, _tau = 300.0;
+    double _w = 0.0, _t_first = -1.0, _t_last = -1.0;
+    std::vector<cd> _c; ///< [n_elem] sum of the referenced pair products
+    std::vector<cd> _z; ///< [n_elem] scratch: one pair's products
 };
 
 } // namespace gnss
