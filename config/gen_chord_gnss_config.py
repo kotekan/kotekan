@@ -262,15 +262,19 @@ def dll_spacing_chips(name):
     correlation is chip-narrow and 0.5 chip sits on the slope. L2C's covering set is six
     freq_ids, fewer than the comb stride, so each instance despreads one 195 kHz channel, whose
     |sinc|^2 nulls at 2.6 CM chips. But the fleet loop sums the senders' complex taps
-    coherently, and on L2C the senders are five contiguous channels, so the loop sees a
-    5-channel Dirichlet whose first null is 1/(5B) = 0.52 CM chips. The offset must sit inside
-    that combined width, where the discriminator is monotonic (q on peak is then ~6; a q far
-    higher means the taps have landed in a null, not that the lock improved).
+    coherently, and on L2C the senders are the fleet's contiguous L2C channels, so the loop sees
+    an N-channel Dirichlet whose first null is 1/(NB): 0.52 CM chips for the six-node fleet's
+    five (6284-6288), 0.44 for the eight-node fleet's six (6283 on cx47). The offset must sit
+    inside that combined width, where the discriminator is monotonic (a q far higher than ~6
+    means the taps have landed in a null, not that the lock improved). 0.33 puts the six-channel
+    taps at the level 0.4 gave five (|R| 0.28 of the peak), and five at 0.46: it holds whether
+    or not cx47 reports. At 0.4 six channels put the taps at 0.09, beside the null.
 
     GLONASS L2OC is BOC(1,1) under a data/pilot TDM: its autocorrelation in 2.046 Mcps chips
     crosses zero at +-0.67 and bottoms at -0.5 at +-1, and its spectrum has a null at the
-    carrier. Each instance holds one or two of the lobe's 22 channels; the six nodes hold 17
-    of them (~60% of the power). On that 17-channel sum, at 0.4 spacing, q on peak is 4.4 (a
+    carrier. Each instance holds one or two of the lobe's 22 channels; six nodes hold 17 of
+    them (~60% of the power), eight all 22 (at 0.4: q 3.8, the sign kept to +-0.82 chip, so
+    0.4 serves both). On the 17-channel sum, at 0.4 spacing, q on peak is 4.4 (a
     BPSK chain's is 4 at 0.5, so the fixed 2.2 lock bars read alike), the S-curve is linear to
     +-0.23 chip and keeps its sign to +-0.91, outside which the BOC side peaks (+-1.05 chips)
     are stable false locks. Its slope is 1.8x what the trim law assumes (dll_tau scales a
@@ -283,7 +287,7 @@ def dll_spacing_chips(name):
     loop takes its law's spacing from the arming payload while the taps come from here, so
     cycle the nodes before the broker and the taps lead the law.
     """
-    return {"GPS_L2C_CM": 0.4, "GLO_L2OC_P_OC": 0.4}.get(name, 0.5)
+    return {"GPS_L2C_CM": 0.33, "GLO_L2OC_P_OC": 0.4}.get(name, 0.5)
 
 
 # Record slot 2's modulus per tracker code (GnssGpuRecordAssemble record_cp_mod_chips): the

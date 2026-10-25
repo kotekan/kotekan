@@ -667,13 +667,14 @@ chains:
         seed-phase-transport: true
     # E/L tap offset from prompt, in CM chips (the default 0.5 suits the chip-narrow chains).
     # Each L2C instance despreads one channel of width B = 195.3 kHz, and the fleet loop sums
-    # the five contiguous channels coherently: a 5-channel Dirichlet whose first null is
-    # 1/(5B) = 0.52 CM chips, not the single channel's |sinc|^2 null at 2.6. Taps beyond it sit
-    # on sidelobes, where the discriminator reverses sign and the loop false-locks off peak.
-    # Must match the node taps (config/gen_chord_gnss_config.py dll_spacing_chips); when
-    # changing both, cycle the nodes before the broker so the taps lead the law. Re-derive both
-    # if the count of contiguous channels changes (another node, or a wider covering band).
-        dll-spacing: 0.4
+    # the contiguous channels coherently: an N-channel Dirichlet whose first null is 1/(NB),
+    # 0.52 CM chips for five channels and 0.44 for six (cx47 adds 6283), not the single
+    # channel's |sinc|^2 null at 2.6. Taps beyond it sit on sidelobes, where the discriminator
+    # reverses sign and the loop false-locks off peak. 0.33 serves five and six
+    # (gen_chord_gnss_config.py dll_spacing_chips has the numbers). Must match the node taps;
+    # when changing both, cycle the nodes before the broker so the taps lead the law.
+    # Re-derive both if the count of contiguous channels changes again.
+        dll-spacing: 0.33
         presence-admit-displaced: true
         joint-consume: clk,rate
         fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
@@ -723,7 +724,8 @@ chains:
     # E/L tap offset from prompt, in 2.046 Mcps chips. On the fleet's 17-channel BOC sum, at 0.4,
     # q on peak is 4.4 (the lock bars' 2.2 reads as on a BPSK chain at 0.5), the S-curve is
     # linear to +-0.23 chip and keeps its sign to +-0.91, outside which the BOC side peaks
-    # (+-1.05) are stable false locks. Must match the node taps (config/gen_chord_gnss_config.py
+    # (+-1.05) are stable false locks. With all 22 channels (eight nodes) 0.4 gives q 3.8 and keeps
+    # the sign to +-0.82. Must match the node taps (config/gen_chord_gnss_config.py
     # dll_spacing_chips); when changing both, cycle the nodes before the broker. Re-derive if the
     # node set changes.
         dll-spacing: 0.4
