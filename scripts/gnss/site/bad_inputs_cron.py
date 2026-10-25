@@ -20,7 +20,8 @@ Each run (cheap when nothing changed):
      bufferBadInputs did not drop it as out of order. That rejection is silent at the REST layer:
      configUpdater stores the values either way, so only the stage's late-update counter shows it.
 
-env: GNSS_NODES (default the six), BADIN_LOG (default /var/tmp/gnss-logs/bad_inputs_cron.log),
+env: GNSS_NODES (default the fleet: config/gnss_fleet.py hosts),
+     BADIN_LOG (default /var/tmp/gnss-logs/bad_inputs_cron.log),
      DRY_RUN=1 (report, push nothing), FORCE=1 (push even when current: a format test).
 """
 import json
@@ -36,8 +37,9 @@ K = os.path.dirname(
 )
 sys.path.insert(0, os.path.join(K, "config"))
 import bffs_bad_inputs  # noqa: E402
+import gnss_fleet  # noqa: E402
 
-NODES = os.environ.get("GNSS_NODES", "cx19 cx27 cx42 cx43 cx44 cx51").split()
+NODES = os.environ.get("GNSS_NODES", "").split()
 LOG = os.environ.get("BADIN_LOG", "/var/tmp/gnss-logs/bad_inputs_cron.log")
 STAGE = "/var/tmp/gnss-logs/bffs-state.json"
 STAGE_CONF = "/var/tmp/gnss-logs/bffs.yaml"
@@ -149,8 +151,16 @@ def main():
             % (now, type(e).__name__, e)
         )
         return 1
+    try:
+        nodes = NODES or gnss_fleet.hosts()
+    except Exception as e:
+        log(
+            "== %s bad_inputs_cron: no fleet host list from config/gnss_fleet.py (%s: %s); "
+            "nothing pushed" % (now, type(e).__name__, e)
+        )
+        return 1
     lines, fail, current = [], 0, 0
-    for n in NODES:
+    for n in nodes:
         try:
             _, text = http("http://%s:12048/config" % n)
             cfg = json.loads(text)

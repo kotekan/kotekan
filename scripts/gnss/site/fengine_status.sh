@@ -1,7 +1,7 @@
 #!/bin/bash
 # Is the F-engine actually delivering, and is our reference time still valid?
 #
-# usage: fengine_status.sh [node ...]        (default: the six GNSS nodes)
+# usage: fengine_status.sh [node ...]        (default: the fleet, config/gnss_fleet.py hosts)
 #
 # Three questions, in the order that matters. Status endpoints keep serving their last values
 # when no data arrives, so quality metrics (deep_snr, lock times) look plausible when nothing
@@ -16,7 +16,10 @@
 #      --frame0-nano) is silently wrong: wrong record stamps, wrong predicted code phase, every
 #      PRN despreading noise while it reads as a clock bug.
 set -u
-NODES=${*:-"cx19 cx27 cx42 cx43 cx44 cx51"}
+# shellcheck source=kotekan_src.sh
+. "$(dirname "${BASH_SOURCE[0]}")/kotekan_src.sh"
+NODES=${*:-}
+[ -n "$NODES" ] || NODES=$(gnss_fleet_hosts "$GNSS_CHECKOUT") || exit 1
 # The nodes serve REST on 0.0.0.0:12048 (node_up.sh --bind-address). A node that cannot be
 # polled reads as "?", never as zero packets, so a wrong port says so instead of reporting a
 # silent F-engine.

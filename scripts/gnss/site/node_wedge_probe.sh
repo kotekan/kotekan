@@ -19,16 +19,18 @@
 #     wedged   a dpdk-worker in state S, CPU ticks frozen; ring drops climbing
 #     healthy  every dpdk-worker in state R;                ring drops 0
 #
-# usage:  node_wedge_probe.sh [node ...]        (default: the whole fleet)
+# usage:  node_wedge_probe.sh [node ...]        (default: the fleet, config/gnss_fleet.py hosts)
 #         node_wedge_probe.sh --bt cx19         also prints, for the first node, the gdb command
 #                                                (needs sudo on the node) that dumps thread
 #                                                backtraces, so the stage that stopped consuming
 #                                                can be named rather than inferred.
 set -u
-NODES_DEFAULT="cx19 cx27 cx42 cx43 cx44 cx51"
+# shellcheck source=kotekan_src.sh
+. "$(dirname "${BASH_SOURCE[0]}")/kotekan_src.sh"
 BT=0
 if [ "${1:-}" = "--bt" ]; then BT=1; shift; fi
-NODES="${*:-$NODES_DEFAULT}"
+NODES=${*:-}
+[ -n "$NODES" ] || NODES=$(gnss_fleet_hosts "$GNSS_CHECKOUT") || exit 1
 
 # kotekan is found by process name, the oldest if more than one. "^kotekan" also matches a
 # binary staged beside it (GNSS_BIN=.../kotekan.next_<tag>). A command-line pattern misses a

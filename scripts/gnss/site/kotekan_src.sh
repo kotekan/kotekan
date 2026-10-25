@@ -22,6 +22,12 @@
 # says why on stderr and returns 1. The Python and the shell must find the same tree, so a
 # change to the rule goes in both; test_site_scripts.py runs the two over the same layouts.
 #
+# gnss_fleet_hosts <checkout> [--stock] prints the fleet's hosts, space-separated in slot order
+# (or with --stock the stock production hosts), from that checkout's config/gnss_fleet.py,
+# which reads `nodes:` in config/gnss_fleet_chord.yaml. gnss_fleet_rest_url <checkout> prints
+# the REST URL of the fleet's first host. Both say why on stderr and return 1 when the list
+# cannot be read, so a script never runs over an empty node list.
+#
 # Nothing here is exported: a script exports KOTEKAN_SRC to the programs that read kotekan.
 
 GNSS_CHECKOUT=$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../../.." && pwd -P)
@@ -42,4 +48,30 @@ gnss_kotekan_src() {
     echo "no kotekan source tree: set KOTEKAN_SRC to a kotekan checkout (none of $c," \
          "$c/kotekan, $(dirname -- "$c")/kotekan holds lib/stages/gnss)" >&2
     return 1
+}
+
+gnss_fleet_hosts() {
+    local c=${1:?usage: gnss_fleet_hosts <checkout> [--stock]} out
+    shift
+    out=$(python3 "$c/config/gnss_fleet.py" hosts "$@") && [ -n "$out" ] || {
+        echo "no fleet host list from $c/config/gnss_fleet.py; name the nodes explicitly" >&2
+        return 1
+    }
+    printf '%s\n' "$out"
+}
+
+gnss_fleet_rest_url() {
+    local c=${1:?usage: gnss_fleet_rest_url <checkout>} out
+    out=$(python3 - "$c/config" <<'PY'
+import sys
+sys.path.insert(0, sys.argv[1])
+import gnss_fleet
+f = gnss_fleet.Fleet()
+print(f.rest_url(f.hosts[0]))
+PY
+) && [ -n "$out" ] || {
+        echo "no fleet REST URL from $c/config/gnss_fleet.py" >&2
+        return 1
+    }
+    printf '%s\n' "$out"
 }

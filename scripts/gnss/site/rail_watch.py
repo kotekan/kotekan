@@ -31,9 +31,30 @@ import sys
 import time
 import urllib.request
 
-NODES = ["cx19", "cx27", "cx42", "cx43", "cx44", "cx51"]
-DEF_EP = [f"http://{n}:12048/gnss{g}_srch_tap" for n in NODES for g in (0, 1)]
+CONF = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "config"
+)
 REC_OUT = "/home/kvand/gnss/fixtures/obs/rf_chan_%Y%m%d.jsonl"
+
+
+def fleet_taps():
+    """Both GPUs' search taps on every fleet host (config/gnss_fleet_chord.yaml nodes:, read by
+    config/gnss_fleet.py, which needs PyYAML: apt's python3-yaml under /usr/bin/python3)."""
+    sys.path.insert(0, CONF)
+    try:
+        import gnss_fleet
+
+        fleet = gnss_fleet.Fleet()
+    except Exception as e:
+        sys.exit(
+            "no fleet host list from %s/gnss_fleet.py (%s: %s); name the taps with --endpoints"
+            % (CONF, type(e).__name__, e)
+        )
+    return [
+        "%s/gnss%d_srch_tap" % (fleet.rest_url(n), g)
+        for n in fleet.hosts
+        for g in (0, 1)
+    ]
 
 
 def _r(v, n=4):
@@ -59,7 +80,7 @@ def record(args):
     """
     from concurrent.futures import ThreadPoolExecutor
 
-    eps = args.endpoints.split(",") if args.endpoints else DEF_EP
+    eps = args.endpoints.split(",") if args.endpoints else fleet_taps()
     name = {
         u: u.split("//")[1].split(":")[0] + "." + u.rsplit("gnss", 1)[1][0] for u in eps
     }
@@ -156,6 +177,11 @@ if __name__ == "__main__":
         "nodes' band_power_period_s (the generator's --rf-stats-period-s) so that every "
         "pass is read",
     )
-    ap.add_argument("--endpoints", default="")
+    ap.add_argument(
+        "--endpoints",
+        default="",
+        help="comma list of srch_tap URLs; default both GPUs' taps on every fleet host "
+        "(config/gnss_fleet.py hosts)",
+    )
     ap.add_argument("--timeout", type=float, default=6.0)
     record(ap.parse_args())

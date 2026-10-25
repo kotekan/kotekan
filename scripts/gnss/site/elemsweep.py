@@ -4,6 +4,8 @@
     elemsweep.py                      # per-element power on every node, one table
     elemsweep.py --set 9              # point every node's search tap at element 9
 
+The nodes are --nodes, by default the fleet (config/gnss_fleet.py hosts).
+
 The search correlates a single element, the one its tap copies, against a replica, so a dark
 element gives no detections and a best peak below the pure-noise ceiling (correlating against
 zeros gives a surface smoother than noise). This table finds a dark element from the running
@@ -18,12 +20,30 @@ can answer, and this table is not one.
 
 import argparse
 import json
+import os
 import sys
 import urllib.request
 
-NODES = ["cx19", "cx27", "cx42", "cx43", "cx44", "cx51"]
+CONF = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "config"
+)
 PORT = 12048
 TAPS = ["gnss0_srch_tap", "gnss1_srch_tap"]
+
+
+def fleet_hosts():
+    """The fleet's hosts in slot order: config/gnss_fleet_chord.yaml nodes:, read by
+    config/gnss_fleet.py."""
+    sys.path.insert(0, CONF)
+    try:
+        import gnss_fleet
+
+        return gnss_fleet.hosts()
+    except Exception as e:
+        sys.exit(
+            "no fleet host list from %s/gnss_fleet.py (%s: %s); name the nodes explicitly"
+            % (CONF, type(e).__name__, e)
+        )
 
 
 def _get(url, timeout=8):
@@ -101,7 +121,9 @@ def set_element(nodes, elem):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--nodes", nargs="*", default=NODES)
+    ap.add_argument(
+        "--nodes", nargs="*", help="default: the fleet (config/gnss_fleet.py hosts)"
+    )
     ap.add_argument(
         "--set",
         type=int,
@@ -111,6 +133,7 @@ def main():
         "restart restores the config's element_offset",
     )
     a = ap.parse_args()
+    a.nodes = a.nodes or fleet_hosts()
 
     if a.set is not None:
         print("setting search element -> %d" % a.set)

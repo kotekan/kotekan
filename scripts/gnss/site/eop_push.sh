@@ -14,10 +14,13 @@
 # /var/tmp/gnss-logs/eop-state.json, which is the default here; run this on gnss.
 #
 #   usage:  eop_push.sh [file]          default /var/tmp/gnss-logs/eop-state.json
-#   env:    GNSS_NODES                  default "cx19 cx27 cx42 cx43 cx44 cx51"
+#   env:    GNSS_NODES                  default the fleet (config/gnss_fleet.py hosts)
 set -u
+# shellcheck source=kotekan_src.sh
+. "$(dirname "${BASH_SOURCE[0]}")/kotekan_src.sh"
 F=${1:-/var/tmp/gnss-logs/eop-state.json}
-NODES=${GNSS_NODES:-"cx19 cx27 cx42 cx43 cx44 cx51"}
+NODES=${GNSS_NODES:-}
+[ -n "$NODES" ] || NODES=$(gnss_fleet_hosts "$GNSS_CHECKOUT") || exit 1
 
 python3 - "$F" <<'PY' || exit 1
 import json, sys, datetime, time

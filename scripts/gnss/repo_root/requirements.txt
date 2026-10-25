@@ -7,7 +7,8 @@
 #
 # /usr/bin/python3 runs bad_inputs_cron.py (crontab), rail_watch.py (gnss-rail) and node_up.sh's
 # gen_fleet.py with apt's python3-yaml and python3-jinja2, which kotekan needs anyway to read
-# its configs; tle_refresh.py and rail_watch.py need only the standard library.
+# its configs; rail_watch.py needs yaml only to read the fleet list (config/gnss_fleet.py), and
+# tle_refresh.py only the standard library.
 numpy==2.5.1          # nearly everything
 PyYAML==6.0.3         # gen_fleet.py, the generator, bffs_bad_inputs.py, viscap_metadata.py
 Jinja2==3.1.6         # stock_parity.py and the generator render kotekan's .j2 templates

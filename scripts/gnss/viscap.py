@@ -21,15 +21,31 @@ docs/CHORD_VIS_CAPTURE.md for the whole procedure.
 """
 import argparse
 import json
+import os
 import sys
 import time
 import urllib.request
 
-NODES = ["cx19", "cx27", "cx42", "cx43", "cx44", "cx51"]
+CONF = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "config")
 PORT = 12048
 # One gate per GPU gates every captured chain on that GPU.
 GATES = ["gnss0_viscap_gate", "gnss1_viscap_gate"]
 FRAME_S = 8192 * 5120e-9  # hops per frame x hop length -- the geometry cross-check only
+
+
+def fleet_hosts():
+    """The fleet's hosts in slot order: config/gnss_fleet_chord.yaml nodes:, read by
+    config/gnss_fleet.py."""
+    sys.path.insert(0, CONF)
+    try:
+        import gnss_fleet
+
+        return gnss_fleet.hosts()
+    except Exception as e:
+        sys.exit(
+            "no fleet host list from %s/gnss_fleet.py (%s: %s); name the nodes explicitly"
+            % (CONF, type(e).__name__, e)
+        )
 
 
 def _get(url, timeout=6):
@@ -187,8 +203,9 @@ def main():
     ap.add_argument("cmd", choices=["status", "arm", "disarm", "watch"])
     ap.add_argument(
         "--nodes",
-        default=",".join(NODES),
-        help="comma list; host or host:port (default port %d)" % PORT,
+        default="",
+        help="comma list; host or host:port (default port %d); default the fleet "
+        "(config/gnss_fleet.py hosts)" % PORT,
     )
     ap.add_argument(
         "--gates",
@@ -228,7 +245,7 @@ def main():
         help="watch: poll period, seconds (default %(default)s)",
     )
     a = ap.parse_args()
-    nodes = [n for n in a.nodes.split(",") if n]
+    nodes = [n for n in a.nodes.split(",") if n] or fleet_hosts()
     gates = [g for g in a.gates.split(",") if g]
     if a.tags is not None:
         gates = [

@@ -20,17 +20,19 @@
 #      that has ended.
 #
 #   crontab:  17 * * * *  /home/kvand/gnss/kotekan/scripts/gnss/site/eop_cron.sh
-#   env:      GNSS_NODES (default the six), EOP_LOG (default /var/tmp/gnss-logs/eop_cron.log),
+#   env:      GNSS_NODES (default the fleet: config/gnss_fleet.py hosts),
+#             EOP_LOG (default /var/tmp/gnss-logs/eop_cron.log),
 #             EOP_STATE (the staged table, default /var/tmp/gnss-logs/eop-state.json)
 set -u
 # shellcheck source=kotekan_src.sh
 . "$(dirname "${BASH_SOURCE[0]}")/kotekan_src.sh"
 K=$GNSS_CHECKOUT
-NODES=${GNSS_NODES:-"cx19 cx27 cx42 cx43 cx44 cx51"}
 LOG=${EOP_LOG:-/var/tmp/gnss-logs/eop_cron.log}
 F=${EOP_STATE:-/var/tmp/gnss-logs/eop-state.json}
 exec >>"$LOG" 2>&1
 echo "== $(date -u +%FT%TZ) eop_cron"
+NODES=${GNSS_NODES:-}
+[ -n "$NODES" ] || NODES=$(gnss_fleet_hosts "$K") || exit 1
 
 if ! scp -q -o BatchMode=yes -o ConnectTimeout=10 choco:/var/lib/choco/eop/state.json "$F.new"; then
     echo "  choco unreachable; keeping the last staged table"

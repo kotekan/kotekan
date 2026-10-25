@@ -22,6 +22,10 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "..", "..", "python", "scripts", "gnss"))
 from gnss_broker import iface  # noqa: E402
 
+CONFIG = os.path.join(HERE, "..", "..", "..", "config")
+sys.path.insert(0, CONFIG)
+import gnss_fleet  # noqa: E402
+
 _fails = []
 
 
@@ -1103,6 +1107,10 @@ def test_run_component_exports_no_kotekan_src():
         k, kt = site_tree(d, "run_component.sh", "stack_components.sh")
         # The viewer's cwd: --print changes into it.
         os.makedirs(os.path.join(k, "python", "scripts", "js_viewer"))
+        # The obs writers' frame-0 node defaults to the fleet's first host.
+        os.makedirs(os.path.join(k, "config"))
+        for name in ("gnss_fleet.py", "gnss_fleet_chord.yaml", "chord_gnss_node.yaml"):
+            shutil.copy(os.path.join(CONFIG, name), os.path.join(k, "config"))
         rc_sh = os.path.join(k, "scripts", "gnss", "site", "run_component.sh")
         out = {}
         names = "broker gather aggregator viewer obs rail cubearch cubecompact"
@@ -1131,6 +1139,12 @@ def test_run_component_exports_no_kotekan_src():
         check(
             "env\tGNSS_CHAIN=gps_l5\n" in out["obs"],
             "an obs writer's GNSS_CHAIN, set by its unit, is still listed",
+        )
+        fleet = gnss_fleet.Fleet()
+        frame0 = fleet.rest_url(fleet.hosts[0])
+        check(
+            "argv\t--frame0-url\nargv\t%s\n" % frame0 in out["obs"],
+            "an obs writer's frame-0 node is the fleet's first host, %s" % frame0,
         )
     finally:
         shutil.rmtree(d, ignore_errors=True)

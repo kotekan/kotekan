@@ -12,7 +12,7 @@
 # usage:  node_up.sh <node> [up|down|restart|status]      default: up
 #         node_up.sh cx51
 #         node_up.sh cx51 status
-#         for n in cx19 cx27 cx42 cx43 cx44 cx51; do scripts/gnss/site/node_up.sh $n restart; done
+#         for n in $(python3 config/gnss_fleet.py hosts); do scripts/gnss/site/node_up.sh $n restart; done
 #
 # `up` and `restart` both stop the unit and start it inside one ssh session. Use either rather
 # than `down` then `up`: sudo's credential cache is per-TTY and `ssh -t` allocates a fresh one

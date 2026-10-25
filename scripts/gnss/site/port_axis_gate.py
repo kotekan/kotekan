@@ -10,18 +10,36 @@ normal. Two things show it: the gather's last_win for that instance sits a const
 behind its siblings, and the two ports' newest FPGA_SEQ_NUM differ by N frames. Healthy ports
 differ by about one frame (ring-position jitter).
 
-usage:  port_axis_gate.py [node ...]     (default: the whole fleet)
+usage:  port_axis_gate.py [node ...]     (default: the fleet, config/gnss_fleet.py hosts)
 exit 0 = every node's ports agree within TOL_FRAMES; exit 1 = a stale axis or an unreachable
 node, named.
 """
 import json
+import os
 import sys
 import urllib.request
 
-NODES_DEFAULT = ["cx19", "cx27", "cx42", "cx43", "cx44", "cx51"]
+CONF = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "config"
+)
 TOL_FRAMES = 4  # ring-position jitter is +-1 frame; 4 leaves headroom
 SAMPLES_PER_FRAME = 8192
 FRAME_S = 0.04194304
+
+
+def fleet_hosts():
+    """The fleet's hosts in slot order: config/gnss_fleet_chord.yaml nodes:, read by
+    config/gnss_fleet.py."""
+    sys.path.insert(0, CONF)
+    try:
+        import gnss_fleet
+
+        return gnss_fleet.hosts()
+    except Exception as e:
+        sys.exit(
+            "no fleet host list from %s/gnss_fleet.py (%s: %s); name the nodes explicitly"
+            % (CONF, type(e).__name__, e)
+        )
 
 
 def newest_seq(node: str, buf: str) -> int:
@@ -32,7 +50,7 @@ def newest_seq(node: str, buf: str) -> int:
 
 
 def main() -> int:
-    nodes = sys.argv[1:] or NODES_DEFAULT
+    nodes = sys.argv[1:] or fleet_hosts()
     bad = 0
     for n in nodes:
         try:

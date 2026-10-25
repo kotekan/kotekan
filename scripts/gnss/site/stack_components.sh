@@ -46,7 +46,7 @@ GNSS_VENV_FT=${GNSS_VENV_FT:-$GNSS_ROOT/venv-ft}   # 3.14t free-threaded, the br
 GNSS_BIN=${GNSS_BIN:-$GNSS_KOTEKAN/build_nodpdk/kotekan/kotekan}
 
 GNSS_BROKER_URL=${GNSS_BROKER_URL:-http://127.0.0.1:12060}
-GNSS_FRAME0_URL=${GNSS_FRAME0_URL:-http://cx43:12048}
+GNSS_FRAME0_URL=${GNSS_FRAME0_URL:-}   # the obs writers' frame-0 node; empty: the fleet's first
 GNSS_OBS_OUT=${GNSS_OBS_OUT:-$GNSS_ROOT/fixtures/obs}
 GNSS_SITE_LL=${GNSS_SITE_LL:-"--lat 49.3199845 --lon -119.62262691 --alt 528.4"}  # = config/gnss_chains_chord.yaml common (ellipsoidal alt)
 
@@ -117,14 +117,8 @@ gnss_component() {
 
     aggregator)
         # The search runs on the GPU (use_cuda_acquire), so GNSS_BIN must be a CUDA build, not
-        # a -DUSE_CUDA=OFF tree. The config is generated and untracked. Regenerate it with
-        #   config/gen_chord_gnss_config.py --base config/base/live_config_20260730.json \
-        #       --node cx19 --aggregator-instance cx19 cx27 cx42 cx43 cx44 cx51 \
-        #       --rest-port 12050 --cuda-acquire --aggregator-cores 0,1,2,3,4,5 \
-        #       --aggregator-extra-search GAL_E5A_Q \
-        #       --out config/generated/chord_gnss_agg6_cuda.yaml
-        # --aggregator-extra-search GAL_E5A_Q (since 10-18, #191 step 1): a second search,
-        # e5a_search, that gal_e5a reads under detectors-monitor; drop it when that ends.
+        # a -DUSE_CUDA=OFF tree. The config is generated and untracked: gen_fleet.py
+        # config/gnss_fleet_chord.yaml writes it from the manifest's aggregator: block.
         GNSS_EXEC=("$GNSS_BIN" --config
                    "${GNSS_AGG_CFG:-$GNSS_K/config/generated/chord_gnss_agg6_cuda.yaml}"
                    --bind-address "0.0.0.0:12050")
@@ -149,18 +143,20 @@ gnss_component() {
             echo "stack_components: no RF row for chain '${GNSS_CHAIN}'" >&2; return 1; }
         # shellcheck disable=SC2086  # deliberate word split of the table row
         set -- $row
+        local frame0=$GNSS_FRAME0_URL
+        [ -n "$frame0" ] || frame0=$(gnss_fleet_rest_url "$GNSS_K") || return 1
         GNSS_EXEC=("$GNSS_VENV/bin/python" -u "$GNSS_K/python/scripts/gnss/gnss_observables.py"
                    --url "$GNSS_BROKER_URL" --combiner "$1" --search "$1"
                    --sys "$2" --band "$1"
                    --carrier-hz "$3" --chip-rate-hz "$4" --code-length "$5"
-                   $GNSS_SITE_LL --frame0-url "$GNSS_FRAME0_URL"
+                   $GNSS_SITE_LL --frame0-url "$frame0"
                    --out "$GNSS_OBS_OUT/$1_%Y%m%d.jsonl")
         ;;
 
     rail)
         # Per-channel 4+4b rail fraction and band power from every GPU's voltage tap, every pass
-        # (1 s on the nodes). Standalone: stdlib only, reads the nodes' rf_stats and nothing else,
-        # so it can never touch the control path.
+        # (1 s on the nodes). Standalone: reads the fleet list and the nodes' rf_stats and
+        # nothing else, so it can never touch the control path.
         GNSS_EXEC=(/usr/bin/python3 -u "$GNSS_K/scripts/gnss/site/rail_watch.py" record
                    --out "$GNSS_OBS_OUT/rf_chan_%Y%m%d.jsonl")
         ;;
