@@ -90,6 +90,11 @@ config/elem_shared_ref_20261023_repoint.json
 config/elem_shared_ref_20261024_taua.json
 config/elem_shared_ref_20261024_taua_pos.json
 config/elem_shared_ref_20261024_ah120.json
+# APPEND-ONLY from here on (10-25): filter-repo filters every commit with the list as it is now, so a
+# removed line changes the extraction of every earlier commit and the push stops fast-forwarding.
+# A file deleted from the tree stays listed (the two ag112 files below were added 9dad9217e, deleted 211a18037).
+config/elem_positions_taua_20261024_ag112.json
+config/elem_shared_ref_20261024_ag112.json
 config/base/
 config/gnss/
 config/gates/
