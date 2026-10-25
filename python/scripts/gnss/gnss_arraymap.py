@@ -36,6 +36,7 @@ _HERE = os.path.dirname(os.path.abspath(__file__))  # python/scripts/gnss
 _ROOT = os.path.dirname(os.path.dirname(os.path.dirname(_HERE)))
 CONFIG = os.path.join(_ROOT, "config", "chord_array_epochs.json")
 NODE_CONFIG = os.path.join(os.path.dirname(CONFIG), "chord_gnss_node.yaml")
+BAD_INPUTS = os.path.join(os.path.dirname(CONFIG), "gnss_bad_inputs.json")
 
 
 class Refused(Exception):
@@ -92,6 +93,7 @@ class Element(object):
         "plane_confidence",
         "enu_m",
         "position_confidence",
+        "removed",
     )
 
     def __init__(self, index, d):
@@ -103,6 +105,7 @@ class Element(object):
         self.plane_confidence = d.get("plane_confidence", "unknown")
         self.enu_m = tuple(d.get("enu_m") or ())
         self.position_confidence = d.get("position_confidence", "nominal")
+        self.removed = d.get("removed")
 
     @property
     def known(self):
@@ -392,8 +395,21 @@ def assert_compatible(metas, be=None):
     return ep, notes
 
 
+# ── health ─────────────────────────────────────────────────────────────────────────────────
+def manual_bad_inputs(path=BAD_INPUTS):
+    """The inputs out for hardware reasons (config/gnss_bad_inputs.json), as a set of
+    correlator element indices. A health state, not an identity: no epoch changes with it."""
+    with open(path) as fh:
+        d = json.load(fh)
+    if int(d.get("schema", 0)) != 1:
+        raise ValueError(
+            "%s: schema %r, this module speaks 1" % (path, d.get("schema"))
+        )
+    return {int(i) for ent in d["entries"] for i in ent["inputs"]}
+
+
 # ── validation ─────────────────────────────────────────────────────────────────────────────
-def check(be=None, node_config=NODE_CONFIG):
+def check(be=None, node_config=NODE_CONFIG, bad_inputs=BAD_INPUTS):
     """Validate the table. Returns a list of problems; empty means good."""
     bad = []
     eps = epochs(be)
@@ -452,6 +468,21 @@ def check(be=None, node_config=NODE_CONFIG):
                     want,
                 )
             )
+    # The health mask names inputs of the open epoch, and covers every element it marks
+    # removed. A closed epoch's `removed` is history.
+    if live and os.path.exists(bad_inputs):
+        ep, mask = live[-1], manual_bad_inputs(bad_inputs)
+        for i in sorted(mask - set(ep.cube_order)):
+            bad.append(
+                "%s masks input %d, which is not in epoch %s's cube_order"
+                % (os.path.basename(bad_inputs), i, ep.name)
+            )
+        for i in sorted(ep.elements):
+            if ep.elements[i].removed and i not in mask:
+                bad.append(
+                    "epoch %s: element %d is removed but not in %s"
+                    % (ep.name, i, os.path.basename(bad_inputs))
+                )
     return bad
 
 
@@ -656,7 +687,7 @@ def cmd_check(args):
         eps = epochs()
         print(
             "OK  %d epoch(s), %s .. %s, no overlaps; live cube_order matches "
-            "array.live_element_ranges"
+            "array.live_element_ranges; the health mask fits the open epoch"
             % (
                 len(eps),
                 eps[0].valid_from.date(),

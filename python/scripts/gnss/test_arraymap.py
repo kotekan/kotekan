@@ -315,6 +315,46 @@ class TestCheck(unittest.TestCase):
         )
 
 
+def write_mask(inputs):
+    fh = tempfile.NamedTemporaryFile("w", suffix=".json", delete=False)
+    json.dump({"schema": 1, "entries": [{"inputs": list(inputs)}]}, fh)
+    fh.close()
+    return fh.name
+
+
+def removed_ep(name, frm, to):
+    e = ep(name, frm, to)
+    e["elements"]["64"]["removed"] = "test: board gone"
+    return e
+
+
+class TestHealthMask(unittest.TestCase):
+    def problems(self, epochs, mask):
+        return am.check(
+            write_table(epochs), node_config="/nonexistent", bad_inputs=write_mask(mask)
+        )
+
+    def test_the_mask_is_a_set_of_inputs(self):
+        self.assertEqual(am.manual_bad_inputs(write_mask([64, 0, 64])), {0, 64})
+
+    def test_a_masked_input_outside_the_open_epoch_is_caught(self):
+        bad = self.problems([ep("a", "2026-01-01T00:00:00Z", None)], [5])
+        self.assertTrue(any("masks input 5" in b for b in bad), bad)
+
+    def test_a_removed_element_must_be_masked(self):
+        e = [removed_ep("a", "2026-01-01T00:00:00Z", None)]
+        bad = self.problems(e, [])
+        self.assertTrue(any("element 64 is removed" in b for b in bad), bad)
+        self.assertEqual(self.problems(e, [64]), [])
+
+    def test_a_closed_epochs_removed_is_history(self):
+        e = [
+            removed_ep("a", "2026-01-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+            ep("b", "2026-02-01T00:00:00Z", None),
+        ]
+        self.assertEqual(self.problems(e, []), [])
+
+
 class TestShippedTable(unittest.TestCase):
     """The facts the table is meant to carry, asserted against the real file."""
 

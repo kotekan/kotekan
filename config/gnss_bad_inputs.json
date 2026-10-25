@@ -1,0 +1,24 @@
+{
+ "schema": 1,
+ "_comment": [
+  "INPUTS OUT FOR HARDWARE REASONS: a health mask the generator reads at every regeneration.",
+  "",
+  "Indices are on the correlator/bffs input axis, pol*64 + dish, the same axis as the GNSS",
+  "element axis (chord_array_epochs.json cube_order). The generator takes the union of these",
+  "and bffs's flagged inputs out of the GNSS branch's static element lists (projection",
+  "stations, channel-noise inputs, shared-reference entries). It does not touch the node's",
+  "updatable_config/bad_inputs, the science N2 mask, which bffs and choco own.",
+  "",
+  "A dark or removed input goes here, not into a new array epoch. gnss_arraymap.py check",
+  "requires every masked input to be in the open epoch's cube_order and every element that",
+  "epoch marks `removed` to be masked. `since` is a record, not evaluated against the clock."
+ ],
+ "entries": [
+  {
+   "inputs": [120, 121, 122, 123, 124, 125, 126, 127],
+   "labels": "H01Y-H08Y",
+   "since": "2026-10-24T18:00:00Z",
+   "why": "F-engine board carrying row H's Y pol removed (KV 2026-10-25)"
+  }
+ ]
+}
