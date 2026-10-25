@@ -388,3 +388,8 @@ nodes:
     # lanes on every band), then every tracked satellite (40). Five slots, not six: the rotation
     # adds the GPU index, so slot 9 on GPU 1 is pool[0], the cudaProcess core.
     cx51: {}
+    # cx47 and cx52 joined 2026-10-25 (#216: the whole band, all sixteen combs), taken out of
+    # production for the purpose (choco maintenance mode). To give either back: `role: off`,
+    # regenerate, restart, and choco maintenance mode off.
+    cx47: {}
+    cx52: {}
