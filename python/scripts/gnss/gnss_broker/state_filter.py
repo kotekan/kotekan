@@ -164,6 +164,7 @@ class JointReceiverState:
         f_ref_hz=None,
         clk0=0.0,
         escape_min_sats=3,
+        escape_clock_min_sats=None,
         p_floor=0.04,
         birth_gate_after=30,
     ):
@@ -236,6 +237,18 @@ class JointReceiverState:
         # clock is the one term independent satellites share, so agreement across them is
         # a clock event. The evidence is counted in satellites, never in samples.
         self.escape_min_sats = int(escape_min_sats)
+        # Below escape_max_step, whether a believed step may move the CLOCK. None (the live
+        # state): every escape inflates P[0,0] as well as the satellite's own bias, the
+        # search-fed design, where one satellite's coherent run is usually a re-acquired
+        # wrap. An integer N (the tracker-fed shadow, jtrk.py): a step is a clock event only
+        # when N satellites, this one included, hold coherent runs implying it
+        # (_corroborators); otherwise only P[i,i] is inflated and the step lands in b_i. A
+        # tracker's own step is a lobe or a fade on one satellite, and with the clock
+        # inflated on its word the others then disagree and escape in turn (10-26 05:38Z:
+        # C35 -1.6 chips moved the shadow clock -1.5, then G6, C22, C24 ... cascaded).
+        self.escape_clock_min_sats = (
+            None if escape_clock_min_sats is None else int(escape_clock_min_sats)
+        )
         # A run votes for another satellite's escape only while it is current. A run is kept
         # until that satellite's next accepted update or its age-out, so a satellite that
         # stopped reporting would otherwise vote with an old y. 20 s is two full runs at the
@@ -765,14 +778,41 @@ class JointReceiverState:
                             self.escape_spread,
                         )
                     )
-                self._note(
-                    "ESCAPE %s: %d consecutive rejections agreeing to %.2f chips "
-                    "-- believing a %+.1f chip step and inflating P"
-                    % (self._key_str(key), self._rej_run[key], spread, innov)
-                )
-                self.P[0, 0] += 25.0
+                _clock = True
+                if self.escape_clock_min_sats is not None:
+                    # One short of a full run votes: a clock step reaches every satellite in
+                    # the same cycle, and the first one updated sees the rest at
+                    # reject_escape - 1, their own rejection this cycle still to come.
+                    _nc = (
+                        self._corroborators(
+                            key, innov, t_now, min_run=self.reject_escape - 1
+                        )
+                        + 1
+                    )
+                    _clock = _nc >= self.escape_clock_min_sats
+                if _clock:
+                    self._note(
+                        "ESCAPE %s: %d consecutive rejections agreeing to %.2f chips "
+                        "-- believing a %+.1f chip step and inflating P"
+                        % (self._key_str(key), self._rej_run[key], spread, innov)
+                    )
+                    self.P[0, 0] += 25.0
+                    self.P[0, 1] = self.P[1, 0] = 0.0
+                else:
+                    self._note(
+                        "ESCAPE %s (bias only): %d consecutive rejections agreeing to %.2f "
+                        "chips imply a %+.1f chip step that %d/%d satellites share -- this "
+                        "satellite's step, not the clock's: inflating its own b only"
+                        % (
+                            self._key_str(key),
+                            self._rej_run[key],
+                            spread,
+                            innov,
+                            _nc,
+                            self.escape_clock_min_sats,
+                        )
+                    )
                 self.P[i, i] += 25.0
-                self.P[0, 1] = self.P[1, 0] = 0.0
         self._rej_hist.pop(key, None)
         self._rej_t.pop(key, None)
         self._rej_run.pop(key, None)
@@ -862,7 +902,7 @@ class JointReceiverState:
             H[_ordered[_n // 2]] = 0.5
         self._scalar_update(H, -float(H @ self.x), self.gauge_sigma ** 2)
 
-    def _corroborators(self, key, innov, t_now):
+    def _corroborators(self, key, innov, t_now, min_run=None):
         """How many other satellites have a coherent rejection run implying the same step
         as `innov` now.
 
@@ -871,11 +911,12 @@ class JointReceiverState:
         its measurement repeats. A run votes only if it holds reject_escape samples, its
         newest rejection is within escape_vote_age_s, and it passes the same escape_spread
         test as the caller; its implied step is its newest measurement against the current
-        prediction.
+        prediction. `min_run` (default reject_escape) is the shortest run that votes.
         """
         n = 0
+        min_run = self.reject_escape if min_run is None else int(min_run)
         for k2, h2 in self._rej_hist.items():
-            if k2 == key or len(h2) < self.reject_escape:
+            if k2 == key or len(h2) < min_run:
                 continue
             if t_now - self._rej_t.get(k2, -math.inf) > self.escape_vote_age_s:
                 continue  # that sat stopped reporting; its old y is not current evidence

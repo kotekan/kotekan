@@ -27,8 +27,15 @@ def row(raw, n=20, hop=1000):
     return {"raw": raw, "chips": raw - 150.0, "n": n, "hop": hop, "sd": 0.01}
 
 
-def fl(q, floor=1.1):
-    return {"q": q, "q_floor": floor, "present": True}
+def fl(q, floor=1.1, p=200.0, gate="q+p:probes"):
+    return {
+        "q": q,
+        "q_floor": floor,
+        "present": True,
+        "present_gate": gate,
+        "p_pow": p,
+        "p_med": 1.0,
+    }
 
 
 def test_gates():
@@ -46,7 +53,7 @@ def test_gates():
     fleet[4] = fl(1.0)
     spec = {1: {"tau_chips": 0.05}, 5: {"tau_chips": -0.4}}
     rows, failed, hops = jtrk.feed_rows(
-        trk, fleet, spec, lambda p: p != 7, {6: 900}, "E", 2.0, 0.1, 0.3, 4,
+        trk, fleet, spec, lambda p: p != 7, {6: 900}, "E", 2.0, 0.1, 0.3, 4, 10.0,
     )
     keys = [k for k, _y, _s in rows]
     check(
@@ -58,14 +65,67 @@ def test_gates():
         "the residual goes in times k, at the reference sigma (%s)" % (rows[0],),
     )
     check(
-        failed == {"track": 1, "q": 2, "tau": 1, "nrec": 1, "stale": 1},
+        failed
+        == {
+            "track": 1,
+            "q": 2,
+            "onpeak": 0,
+            "power": 0,
+            "tau": 1,
+            "nrec": 1,
+            "stale": 1,
+        },
         "each refusal counted once, under its first failing gate (%s)" % failed,
     )
     check(hops == {1: 1000, 2: 1000}, "the fed rows' hops are returned to record")
     rows2, failed2, _ = jtrk.feed_rows(
-        {1: row(150.2)}, {1: fl(3.0)}, {}, lambda p: True, {}, "E", 1.0, 0.1, 0.3, 4
+        {1: row(150.2)},
+        {1: fl(3.0)},
+        {},
+        lambda p: True,
+        {},
+        "E",
+        1.0,
+        0.1,
+        0.3,
+        4,
+        10.0,
     )
     check(len(rows2) == 1, "no spectrum fit this cycle is not a refusal")
+    # 10-26 03:24Z: G3 at el 12 faded from ~500x to 3.6x the probes' median, still present
+    # (presence's bar is 3x), and its replica wandered +3 chips on noise into the feed.
+    trk3 = {1: row(150.2), 2: row(153.4), 3: row(150.3), 4: row(150.4), 5: row(150.5)}
+    fleet3 = {
+        1: fl(3.0),
+        2: fl(1.6, p=3.6),  # the fade: present, q over its floor, power at noise
+        3: fl(3.0, p=9.9),  # just under the bar
+        4: fl(2.0, gate="q+p:probes+disp"),  # admitted displaced: off the peak
+        5: fl(2.0, gate="deep"),  # admitted by the deep fold: off the peak
+    }
+    rows3, failed3, _ = jtrk.feed_rows(
+        trk3, fleet3, {}, lambda p: True, {}, "G", 1.0, 0.1, 0.3, 4, 10.0
+    )
+    check(
+        [k for k, _y, _s in rows3] == [("G", 1)]
+        and failed3["power"] == 2
+        and failed3["onpeak"] == 2,
+        "a fade to 3.6x and a row at 9.9x fail power; displaced and deep admissions fail "
+        "onpeak (%s)" % failed3,
+    )
+    rows4, _f, _ = jtrk.feed_rows(
+        {1: row(150.2)},
+        {1: {"q": 3.0, "q_floor": 1.1, "present_gate": "q+p:probes"}},
+        {},
+        lambda p: True,
+        {},
+        "G",
+        1.0,
+        0.1,
+        0.3,
+        4,
+        10.0,
+    )
+    check(rows4 == [], "a row without p_pow or p_med is not fed (no bar, no feed)")
 
 
 def test_two_states():
@@ -115,6 +175,7 @@ def ctx_for(rx, trk, uptime=1000.0, t=100.0):
         joint_trk_sigma=0.1,
         joint_trk_spec_tau_max=0.3,
         joint_trk_min_records=4,
+        joint_trk_p_min=10.0,
         joint_trk_min_sats=3,
         signal="gal_e5a",
     )

@@ -291,6 +291,11 @@ _FROZEN = dict(
     # Fewest records behind a residual: one record carries ~0.1-0.3 chips of float32 quantization
     # (trkresid), and the one-record coh_row fallback is not a measurement worth feeding.
     joint_trk_min_records=4,
+    # Prompt power, in units of the noise probes' median p_pow, below which a satellite's residual
+    # is not fed: presence's own bar is 3x, and a satellite fading to noise stays present at 3-5x
+    # while its replica wanders (jtrk.py). Overnight 10-26, 97% of rows sat above 50x and the
+    # 5-20x band held ~1%; a noise peak reaches ~5x.
+    joint_trk_p_min=10.0,
     # Fewest satellites a chain must pass in one cycle before any of them is fed: below it clk and
     # the biases do not separate within the cycle (the plan's set gate).
     joint_trk_min_sats=3,

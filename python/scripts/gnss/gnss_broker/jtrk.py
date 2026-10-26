@@ -21,9 +21,14 @@ The observable is the sky only while the loop is on the peak (on noise the repli
 the seed put it, and the residual is the seed read back: the mirror). So every gate below is
 load-bearing, and a satellite that fails one contributes nothing: there is no fallback value
 (the #85 feed's fallback to seed + trim - model was the #152 latch pathway). Per satellite:
-present (trkresid admits only those, probes excluded), fleet q at or above the floor, the
-spectrum fit's |tau| under joint_trk_spec_tau_max whenever the fit is valid, enough records
-behind the residual, records newer than the last fed, and the chain's own track gate. Per
+present (trkresid admits only those, probes excluded), fleet q at or above the floor,
+present on its peak (the q and prompt-power bars, not the displaced or deep admission), prompt
+power at least joint_trk_p_min times the noise probes' median, the spectrum fit's |tau| under
+joint_trk_spec_tau_max whenever the fit is valid, enough records behind the residual, records
+newer than the last fed, and the chain's own track gate. The power bar is stricter than
+presence's (k_sigma x the median, 3): a satellite fading at low elevation stays present at
+3-5x while its replica wanders on noise (10-26 02:23-04:50Z, G1/G3/G28 at el 9-13 deg, steps
+of +-3 chips fed), and 97% of rows overnight sat above 50x. Per
 chain and cycle: no feed during the warm-up or a boresight transit, and none unless at least
 joint_trk_min_sats satellites pass (a thin set cannot separate clk from b).
 """
@@ -31,16 +36,32 @@ joint_trk_min_sats satellites pass (a thin set cannot separate clk from b).
 from gnss_broker.transport import _log, _log_rl
 
 #: Gate names, in the order a satellite is tested; the first that fails is the one counted.
-GATES = ("track", "q", "tau", "nrec", "stale")
+GATES = ("track", "q", "onpeak", "power", "tau", "nrec", "stale")
+#: The presence verdict that says the replica is on the peak: both the q and the prompt-power
+#: bars against the noise probes. The displaced admission ("+disp") and the deep gate
+#: ("deep") admit a satellite whose tap is OFF the peak, which is what they exist for, and
+#: there this residual is the seed read back (the mirror), not the sky.
+ONPEAK_GATE = "q+p:probes"
 
 
 def feed_rows(
-    trk, fleet, spec_fit, track_ok, last_hop, tag, k, sigma_ref, tau_max, min_rec,
+    trk,
+    fleet,
+    spec_fit,
+    track_ok,
+    last_hop,
+    tag,
+    k,
+    sigma_ref,
+    tau_max,
+    min_rec,
+    p_min,
 ):
     """The rows this chain may feed, and why the rest may not. Pure.
 
     trk: trkresid.tracker_residuals' {prn: {"raw", "n", "hop", ...}} (present, non-probe);
-    fleet: the fleet DLL's {prn: {"q", "q_floor", ...}}; spec_fit: {prn: {"tau_chips"}} for
+    fleet: the fleet DLL's {prn: {"q", "q_floor", "present_gate", "p_pow", "p_med", ...}};
+    p_min: the prompt-power bar in units of p_med; spec_fit: {prn: {"tau_chips"}} for
     the PRNs whose fit is valid this cycle; track_ok(prn) the chain's track gate; last_hop:
     {prn: newest hop already fed}, not modified; k: reference chips per chip of this chain.
 
@@ -55,6 +76,14 @@ def feed_rows(
             failed["track"] += 1
         elif f.get("q") is None or f.get("q_floor") is None or f["q"] < f["q_floor"]:
             failed["q"] += 1
+        elif f.get("present_gate") != ONPEAK_GATE:
+            failed["onpeak"] += 1
+        elif (
+            not f.get("p_med")
+            or f.get("p_pow") is None
+            or f["p_pow"] < p_min * f["p_med"]
+        ):
+            failed["power"] += 1
         elif prn in spec_fit and abs(spec_fit[prn]["tau_chips"]) >= tau_max:
             failed["tau"] += 1
         elif int(v.get("n", 0)) < min_rec:
@@ -98,13 +127,21 @@ def stage_joint_trk(ctx):
         a.joint_trk_sigma,
         a.joint_trk_spec_tau_max,
         a.joint_trk_min_records,
+        a.joint_trk_p_min,
     )
     if why is None and len(rows) < a.joint_trk_min_sats:
         why = "thin set (%d < %d)" % (len(rows), a.joint_trk_min_sats)
         st["thin"] += 1
     n_ok = 0
+    # escape_clock_min_sats: a tracker's step on one satellite moves that satellite's b, and
+    # the clock only when as many satellites as a clock solve needs agree (state_filter).
     js = ctx.rx.joint_receiver(
-        ctx.band_id, ctx.code_len, a.chip_rate_hz, which=TRK_STATE, gauge_mode="prior",
+        ctx.band_id,
+        ctx.code_len,
+        a.chip_rate_hz,
+        which=TRK_STATE,
+        gauge_mode="prior",
+        escape_clock_min_sats=a.joint_trk_min_sats,
     )
     if why is None:
         n_ok = js.cycle(rows, ctx.drp.t_now_abs)
