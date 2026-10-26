@@ -101,7 +101,7 @@ def test_gates():
         2: fl(1.6, p=3.6),  # the fade: present, q over its floor, power at noise
         3: fl(3.0, p=9.9),  # just under the bar
         4: fl(2.0, gate="q+p:probes+disp"),  # admitted displaced: off the peak
-        5: fl(2.0, gate="deep"),  # admitted by the deep fold: off the peak
+        5: fl(2.0, gate="q+deep:probes+disp"),  # displaced, on the deep fold's word
     }
     rows3, failed3, _ = jtrk.feed_rows(
         trk3, fleet3, {}, lambda p: True, {}, "G", 1.0, 0.1, 0.3, 4, 10.0
@@ -110,7 +110,7 @@ def test_gates():
         [k for k, _y, _s in rows3] == [("G", 1)]
         and failed3["power"] == 2
         and failed3["onpeak"] == 2,
-        "a fade to 3.6x and a row at 9.9x fail power; displaced and deep admissions fail "
+        "a fade to 3.6x and a row at 9.9x fail power; both displaced admissions fail "
         "onpeak (%s)" % failed3,
     )
     rows4, _f, _ = jtrk.feed_rows(
@@ -127,6 +127,27 @@ def test_gates():
         10.0,
     )
     check(rows4 == [], "a row without p_pow or p_med is not fed (no bar, no feed)")
+    # 10-26 15:59Z: gps_l5 re-judges every recently detected satellite with the deep gate,
+    # strong ones included, so "deep" is not off-peak: 4 of 6 were refused and the chain fed
+    # nothing. A deep row is judged by the q and power bars like any other.
+    rows7, failed7, _ = jtrk.feed_rows(
+        {1: row(150.2), 2: row(150.3)},
+        {1: fl(3.6, p=2937.6, gate="deep"), 2: fl(0.85, p=1.1, gate="deep")},
+        {},
+        lambda p: True,
+        {},
+        "G",
+        1.0,
+        0.1,
+        0.3,
+        4,
+        10.0,
+    )
+    check(
+        [k for k, _y, _s in rows7] == [("G", 1)] and failed7["onpeak"] == 0,
+        "deep-gated: a strong row (2937x) feeds, G18 07:01's (q 0.85, 1.1x) fails q (%s)"
+        % failed7,
+    )
     # 10-26 03:22Z: G3 at C/N0 ~50 (power far above the bar), its node trim walked to L5's
     # 1.473 clamp; at the rail the replica is pinned and the residual stops being the sky.
     trk5 = {1: row(150.2), 3: row(150.3), 6: row(150.4)}

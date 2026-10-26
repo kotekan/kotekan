@@ -22,7 +22,7 @@ the seed put it, and the residual is the seed read back: the mirror). So every g
 load-bearing, and a satellite that fails one contributes nothing: there is no fallback value
 (the #85 feed's fallback to seed + trim - model was the #152 latch pathway). Per satellite:
 present (trkresid admits only those, probes excluded), fleet q at or above the floor,
-present on its peak (the q and prompt-power bars, not the displaced or deep admission), prompt
+not admitted displaced (the displaced admission rescues an off-peak tap), prompt
 power at least joint_trk_p_min times the noise probes' median, the spectrum fit's |tau| under
 joint_trk_spec_tau_max whenever the fit is valid, enough records behind the residual, records
 newer than the last fed, and the chain's own track gate. The power bar is stricter than
@@ -41,11 +41,12 @@ from gnss_broker.transport import _log, _log_rl
 
 #: Gate names, in the order a satellite is tested; the first that fails is the one counted.
 GATES = ("track", "q", "onpeak", "power", "rail", "tau", "nrec", "stale")
-#: The presence verdict that says the replica is on the peak: both the q and the prompt-power
-#: bars against the noise probes. The displaced admission ("+disp") and the deep gate
-#: ("deep") admit a satellite whose tap is OFF the peak, which is what they exist for, and
-#: there this residual is the seed read back (the mirror), not the sky.
-ONPEAK_GATE = "q+p:probes"
+#: The presence verdicts that admit a satellite whose tap is OFF the peak by construction: the
+#: displaced admission ("q+p:probes+disp", "q+deep:probes+disp") rescues exactly that row, and
+#: there this residual is the seed read back (the mirror), not the sky. The deep gate ("deep")
+#: is not one of them: on gps_l5 it re-judges every recently detected satellite, strong ones
+#: included, and the q and power bars below judge those rows like any other.
+OFFPEAK_SUFFIX = "+disp"
 
 
 def feed_rows(
@@ -84,7 +85,7 @@ def feed_rows(
             failed["track"] += 1
         elif f.get("q") is None or f.get("q_floor") is None or f["q"] < f["q_floor"]:
             failed["q"] += 1
-        elif f.get("present_gate") != ONPEAK_GATE:
+        elif str(f.get("present_gate") or "").endswith(OFFPEAK_SUFFIX):
             failed["onpeak"] += 1
         elif (
             not f.get("p_med")
