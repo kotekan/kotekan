@@ -374,10 +374,32 @@ At the F-engine's return, one step per restart:
       served on the publisher's /get_joint. The mirror test reads the y trends from the obs
       archive (`code_resid_m` is this residual); the latch check is the JOINT[trk] clock
       delta, which needs no legacy median.
+      **Soaked 10-25 21:56Z..10-26 10:47Z; hardened 10-26 (gnss-broker 632f1eb).** Latch and
+      deaf passed; b_sat failed on C41 alone (-0.324, the BeiDou-wide ~-0.1-chip level, open).
+      The two clock dips (05:39Z, 06:48Z) were G13/E16 boresight transits with every guard
+      off (`boresight: none` had outlived the Tau A pointing): the broker now reads the
+      boresight from the nodes' telescope.dish_coelev_deg, and the l-a code-rate clock holds
+      through a transit and takes only mature, in-tolerance fits from >= 3 satellites. The
+      soak's other findings became gates: a lone satellite's escape inflates only its own b
+      (escape_clock_min_sats on TRK_STATE); the feed refuses a displaced admission (onpeak),
+      prompt power under 10x the probes' median (power: fades at el 9-13 deg stayed present at
+      3-5x) and a node trim past 0.75 of its clamp (rail: G3 at C/N0 ~50 walked to the L5
+      clamp); and a transit's solves neither confirm an unconfirmed live clock nor difference
+      its drift (a restart inside the E34 transit had frozen a noise bootstrap). Mirror test
+      (gnss-main, 10-26, el >= 15 deg, 10-min windows): fed-fed pairs 0 of 3333 over 0.001
+      chips/s; the fed-side failures were the el 10-13 GPS events the new gates refuse. Still
+      owed: a soak with the guards armed through at least one transit.
   3.  **Consume on every chain.** `joint-consume: clk,rate,slew` everywhere; the seed offset is
       clk + b_i; the SatBiasFilter stops feeding seeds. Gate: readback trims per chain
       median within +-0.05 chips and per PRN within +-0.1 (the per-signal offsets are gone by then); the post-restart readback decay no slower than before; same-satellite
       `code_resid_m` differences unchanged from step 0a's table.
+      **Built 2026-10-26 (gnss-main, `--joint-source {search,trk}`, default search; no chain
+      set to trk yet).** trk makes a chain's clk/rate/slew consumers read TRK_STATE; seeds are
+      clk_now + wrap(clk + b_i - clk_now), with a satellite's b taken only while it is settled
+      (sigma under 0.08, not rejecting(), no escape in 60 s: JointReceiverState accessors) and
+      within 0.5 reference chips of the median b of >= 3 others in its constellation;
+      otherwise the seed keeps clk + the SatBiasFilter offset. The unfed chains (gps_l2c,
+      GLONASS, sbas_l5) stay on the live state.
   4.  **Retire.** SatBiasFilter; the l-a EMA as a seed rate (keep the solve as the cp-rate
       tolerance reference until that reference is the joint rate); the sibling clock adoption
       as a level (the median solve stays as the modulus owner and the counterfactual the
