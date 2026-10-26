@@ -175,7 +175,9 @@ class FleetPublisher:
                         # [{"const": "G", "prn": 3, "el": .., "az": .., "age_s": ..}], flat
                         # because the consumer draws markers; age_s makes a frozen chain read
                         # as stale rather than as a satellite standing still.
-                        body = json.dumps(pub.sky_rows(time.time())).encode()
+                        # Under pub._lock already (the dispatch holds it), so the
+                        # lock-free body: sky_rows would take the same Lock again.
+                        body = json.dumps(pub._sky_rows_locked(time.time())).encode()
                     elif p.endswith("get_joint"):
                         # Receiver-wide: the shadow joint state (#191 step 2) and, per chain,
                         # what its feed offered, passed and why it held. The body ignores
@@ -321,26 +323,32 @@ class FleetPublisher:
         frozen chain reads as stale rather than as a satellite standing still. A satellite
         only a frozen chain holds stays listed with its growing age.
         """
-        rows = []
         with self._lock:
-            for sysc, by_chain in sorted(self._sky.items()):
-                best = {}  # prn -> (t, el, az)
-                for d in by_chain.values():
-                    t = d.get("t")
-                    for prn, (el, az) in d["sats"].items():
-                        cur = best.get(prn)
-                        if cur is None or (t is not None and (cur[0] is None or t > cur[0])):
-                            best[prn] = (t, el, az)
-                for prn, (t, el, az) in sorted(best.items()):
-                    rows.append(
-                        {
-                            "const": sysc,
-                            "prn": prn,
-                            "el": el,
-                            "az": az,
-                            "age_s": round(now_s - t, 1) if t else None,
-                        }
-                    )
+            return self._sky_rows_locked(now_s)
+
+    def _sky_rows_locked(self, now_s):
+        """sky_rows for a caller that already holds self._lock (the GET dispatch). The
+        lock is a plain Lock: taking it again from inside the dispatch deadlocks the
+        publisher and with it every chain that publishes (10-26 14:43Z)."""
+        rows = []
+        for sysc, by_chain in sorted(self._sky.items()):
+            best = {}  # prn -> (t, el, az)
+            for d in by_chain.values():
+                t = d.get("t")
+                for prn, (el, az) in d["sats"].items():
+                    cur = best.get(prn)
+                    if cur is None or (t is not None and (cur[0] is None or t > cur[0])):
+                        best[prn] = (t, el, az)
+            for prn, (t, el, az) in sorted(best.items()):
+                rows.append(
+                    {
+                        "const": sysc,
+                        "prn": prn,
+                        "el": el,
+                        "az": az,
+                        "age_s": round(now_s - t, 1) if t else None,
+                    }
+                )
         return rows
 
     def set_elements(self, table, chain=None):

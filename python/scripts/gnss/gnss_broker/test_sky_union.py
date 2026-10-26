@@ -8,12 +8,16 @@ the viewer's rows came and went every cycle. What is pinned:
   * a constellation is the union of its chains' satellites, whatever the write order;
   * a satellite two chains predict takes the newest prediction and its age;
   * a satellite only a frozen chain holds stays, with that chain's growing age;
-  * a single-chain broker (chain=None) and the per-chain view both still serve.
+  * a single-chain broker (chain=None) and the per-chain view both still serve;
+  * GET /get_sky answers through the real dispatch, which holds the publisher's lock (a
+    re-entrant take deadlocked the broker 10-26 14:43Z).
 
 @author Keith Vanderlinde
 """
 
+import json
 import sys
+import urllib.request
 
 from gnss_broker import publish
 
@@ -73,6 +77,17 @@ def main():
         "E4 + G9, sorted: %s" % [(r["const"], r["prn"]) for r in rows],
     )
     check(set(pub._sky["G"]) == {"gps_l5"}, "view tags its chain: %s" % list(pub._sky["G"]))
+
+    print("GET /get_sky through the dispatch")
+    pub.set_sky("C", {13: (85.0, 170.0)}, 12.0, chain="bds_b3i")
+    url = "http://127.0.0.1:%d/get_sky" % pub._srv.server_address[1]
+    try:
+        with urllib.request.urlopen(url, timeout=5.0) as r:
+            got = [(x["const"], x["prn"]) for x in json.loads(r.read())]
+    except Exception as e:
+        got = "no answer: %r" % e
+    check(got == [("C", 13), ("E", 4), ("G", 9)], "served %s" % (got,))
+    pub._srv.shutdown()
 
     if _fails:
         print("FAIL: %d" % len(_fails))
