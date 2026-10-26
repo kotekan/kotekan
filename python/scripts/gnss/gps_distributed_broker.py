@@ -1963,12 +1963,18 @@ def main(argv=None, rx=None, publisher=None):
             args.code_bias_repin_cycles,
         )
         if _act == "hold" and _was_held is None:
+            # code_ema is None on a chain that has never fitted its own (l-a) and borrows
+            # another band's (code_bias_any_band): the hold still applies, the value is unset.
             _log(
-                "code-rate clock (l-a) HELD at %+.4f ppm for a boresight transit (%s%d at "
+                "code-rate clock (l-a) HELD at %s for a boresight transit (%s%d at "
                 "%.1f deg < dr_clock_transit_freeze_deg %.1f): the search's fits are slopes "
                 "through noise until it clears"
                 % (
-                    _cb.code_ema * 1e6,
+                    (
+                        "%+.4f ppm" % (_cb.code_ema * 1e6)
+                        if _cb.code_ema is not None
+                        else "(unset, borrowing)"
+                    ),
                     _near[1][0],
                     _near[1][1],
                     _near[0],
