@@ -630,6 +630,12 @@ check (R ≥ 0.95 in every band within ~10 min after an F-engine re-base with no
 replays, #155's transit recount, #191's timing steps, #176's standing `REFUSED (step` watch through a 1176-MHz transit.
 **Check:** `grep -c 'BORESIGHT TRANSIT' broker.log` non-zero again after (1); R ≥ 0.95 at the next cron pass after (2);
 the beam map builds after (3).
+**2026-10-26:** (1) done by `89f9d73eb`, late: the line outlived the Tau A pointing (10-24), and the step-2 soak met two
+transits with every guard off (G13 at 0.12° 05:41Z, E16 at 0.91° 06:49Z; the code-rate clock walked every chain's seeds
+~1.2 chips/s for ~10 min each). The broker now reads the boresight from the nodes' `telescope.dish_coelev_deg`
+(`--boresight telescope`, the default), so a re-pointing needs no edit here; `none` remains for a tipped week. The same
+commit holds the code-rate clock through a transit, which nothing did before. (2) done 10-25
+(`elem_shared_ref_20261025_f0reset`); (4) moot since #216 reads every comb live. (3) and (5) open.
 
 ### #195 — a PRN whose disc sits at the clamp for minutes has no way back to its peak (2026-10-17, split from #175)
 **What:** the #175 refusal stops a chain-wide displaced admission, but a PRN that is already railed stays railed: a railed
