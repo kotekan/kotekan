@@ -11,8 +11,10 @@
 
 #include "fmt.hpp" // for compile_string_to_view, format, fmt
 
+#include <algorithm>   // for find
 #include <assert.h>    // for assert
 #include <cstring>     // for size_t, memset
+#include <functional>  // for bind
 #include <memory>      // for __shared_ptr_access, shared_ptr
 #include <optional>    // for optional
 #include <stdexcept>   // for runtime_error
@@ -21,10 +23,25 @@
 using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
+using kotekan::prometheus::Metrics;
 
 REGISTER_KOTEKAN_STAGE(ProcessPacketMask);
 
-STAGE_CONSTRUCTOR(ProcessPacketMask) {
+ProcessPacketMask::ProcessPacketMask(Config& config, const std::string& unique_name,
+                                     bufferContainer& buffer_container) :
+    Stage(config, unique_name, buffer_container, std::bind(&ProcessPacketMask::main_thread, this)),
+    lost_packets_metric(Metrics::instance().add_counter(
+        "kotekan_processpacketmask_lost_packets_total", unique_name)),
+    expected_packets_metric(Metrics::instance().add_counter(
+        "kotekan_processpacketmask_expected_packets_total", unique_name)),
+    lost_samples_metric(Metrics::instance().add_counter(
+        "kotekan_processpacketmask_lost_samples_total", unique_name)),
+    samples_metric(
+        Metrics::instance().add_counter("kotekan_processpacketmask_samples_total", unique_name)),
+    crs_board_lost_packets_metric(Metrics::instance().add_counter(
+        "kotekan_processpacketmask_crs_board_lost_packets_total", unique_name, {"source_id"})),
+    crs_board_expected_packets_metric(Metrics::instance().add_counter(
+        "kotekan_processpacketmask_crs_board_expected_packets_total", unique_name, {"source_id"})) {
     // Register as consumer on the voltage buffer
     voltage_buf = get_buffer("voltage_buf");
     voltage_buf->register_consumer(unique_name);
@@ -89,6 +106,17 @@ STAGE_CONSTRUCTOR(ProcessPacketMask) {
     // print the missing source ID mask
     INFO("ProcessPacketMask: Missing source ID mask: 0x{:016x}{:016x}", missing_source_id_mask[1],
          missing_source_id_mask[0]);
+
+    crs_board_remap = config.get_default<std::vector<uint32_t>>(unique_name, "crs_board_remap", {});
+    if (crs_board_remap.empty()) {
+        for (uint32_t i = 0; i < num_source_ids; i++)
+            crs_board_remap.push_back(i);
+    }
+    if (crs_board_remap.size() != num_source_ids) {
+        throw std::runtime_error(fmt::format(fmt("ProcessPacketMask: crs_board_remap must have "
+                                                 "exactly {:d} entries, got {:d}"),
+                                             num_source_ids, crs_board_remap.size()));
+    }
 
     // Validate voltage buffer size
     size_t expected_voltage_size =
@@ -286,6 +314,10 @@ void ProcessPacketMask::main_thread() {
         uint64_t* pl_mask_ptr = (uint64_t*)pl_mask_frame;
         std::memset(pl_mask_frame, 0xff, pl_mask_buf->frame_size);
 
+        // Lost packets per output slot, and streams flagged in the pl_mask per time_long
+        std::vector<uint64_t> slot_lost_packets(num_source_ids, 0);
+        std::vector<uint8_t> lost_streams(time_long, 0);
+
         // Process combined_receipt_bitmap to set zeros in pl_mask for missing packets
         // combined_receipt_bitmap layout: [time_long][source_id] with 8 stream_id bits per byte
         // Each zero bit means: set 16 time samples to 0 at all frequencies for that stream_id
@@ -311,12 +343,15 @@ void ProcessPacketMask::main_thread() {
                 if (byte_val == 0xff)
                     continue;
 
+                size_t source_id = base_source_id + byte_idx;
+                size_t time_long_idx = time_long_base + source_id / num_source_ids;
+                slot_lost_packets[source_id % num_source_ids] +=
+                    __builtin_popcount((uint8_t)~byte_val);
+
                 // Lose 4-stream groups whole: the compact PL mask ANDs 4 channels, one per stream
                 byte_val &= ((byte_val & 0x0f) == 0x0f ? 0x0f : 0x00)
                             | ((byte_val & 0xf0) == 0xf0 ? 0xf0 : 0x00);
-
-                size_t source_id = base_source_id + byte_idx;
-                size_t time_long_idx = time_long_base + source_id / num_source_ids;
+                lost_streams[time_long_idx] |= (uint8_t)~byte_val;
 
                 // Process each stream_id bit
                 for (uint32_t stream_bit = 0; stream_bit < num_stream_ids; stream_bit++) {
@@ -353,6 +388,25 @@ void ProcessPacketMask::main_thread() {
             }
         }
 
+        // Each lost stream flags time_short samples in each of its num_freq_per_stream frequencies
+        uint64_t lost_sample_count = 0;
+        for (uint8_t streams : lost_streams)
+            lost_sample_count += __builtin_popcount(streams);
+        lost_sample_count *= (uint64_t)num_freq_per_stream * time_short;
+
+        lost_packets_metric.inc(missing_packet_count);
+        expected_packets_metric.inc(frame_total_packets);
+        lost_samples_metric.inc(lost_sample_count);
+        samples_metric.inc((uint64_t)time_long * time_short * num_frequency);
+        for (uint32_t slot = 0; slot < num_source_ids; slot++) {
+            if (std::find(missing_source_ids.begin(), missing_source_ids.end(), slot)
+                != missing_source_ids.end())
+                continue;
+            const std::string source_id = std::to_string(crs_board_remap[slot]);
+            crs_board_lost_packets_metric.labels({source_id}).inc(slot_lost_packets[slot]);
+            crs_board_expected_packets_metric.labels({source_id})
+                .inc((uint64_t)time_long * num_stream_ids);
+        }
 
         // Zero out the receipt bitmaps that were just processed
         for (size_t i = 0; i < bitmap_frames.size(); i++) {
