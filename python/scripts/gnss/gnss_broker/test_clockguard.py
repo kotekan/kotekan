@@ -190,15 +190,24 @@ def test_cold_start_unchanged():
         and c.dr_state.get("clk_transit") is None,
         "...an UNCONFIRMED clock: a satellite at boresight does not freeze it",
     )
-    # cycle 3: an in-bound 5-sat update confirms it and moves the clock by the plain EMA step
+    # cycle 3: an in-bound 5-sat update moves the clock by the plain EMA step, but inside the
+    # transit it does not confirm it (a confirmed clock would freeze at a noise-led value)
     before = c.dr_state["clk"]
+    n = len(LOGS)
     _cycle(c, 104.0, _good(5), sky=_sky(0.2))
     raw = c.drp.raw_clk
     exp = (before + 0.2 * _wrap(raw - before)) % L5_LEN
     check(
         abs(c.dr_state["clk"] - exp) < 1e-12
-        and c.dr_state.get("clk_confirmed") is True,
-        "first in-bound 5-sat update: the plain EMA step; the clock is confirmed",
+        and c.dr_state.get("clk_confirmed") is False
+        and _logged("does NOT confirm", n),
+        "in-bound 5-sat update inside the transit: the plain EMA step, NOT confirmed",
+    )
+    # cycle 3b: the same update with the sky clear confirms it
+    _cycle(c, 105.0, _good(5))
+    check(
+        c.dr_state.get("clk_confirmed") is True,
+        "first in-bound 5-sat update outside a transit: the clock is confirmed",
     )
     # cycle 4: confirmed + satellite at boresight -> the freeze engages
     n = len(LOGS)
@@ -232,6 +241,41 @@ def test_unconfirmed_bootstrap_not_frozen_but_repinned():
         "(inside the transit)",
     )
     check(c.dr_state.get("clk_confirmed") is True, "...and the re-pin confirms it")
+
+
+def test_restart_inside_a_transit():
+    print(
+        "a restart inside a transit (10-26 15:06Z): no noise confirmation, no noise drift"
+    )
+    _capture()
+    c = _l5()
+    # the first solve: five transit-degraded detections, 1.5 chips low
+    _cycle(c, 100.0, _good(5, TRUE_CLK - 1.5), sky=_sky(3.4))
+    check(
+        abs(c.dr_state["clk"] - (TRUE_CLK - 1.5 + 0.3)) < 1e-9,
+        "bootstrap on the transit's solve (a bootstrap is never refused)",
+    )
+    # in-bound noise-led solves inside the transit, wandering by a chip
+    for k, off in enumerate((-1.2, -0.4, -1.8, -0.6, -1.0)):
+        _cycle(c, 102.0 + 2 * k, _good(5, TRUE_CLK + off), sky=_sky(3.4))
+    check(
+        c.dr_state.get("clk_confirmed") is False
+        and c.dr_state.get("clk_transit") is None,
+        "five in-bound solves inside the transit: still UNCONFIRMED, so not frozen",
+    )
+    check(
+        c.dr_state.get("drift") is None and "raw_prev" not in c.dr_state,
+        "no drift differenced from the transit's solves (it was +0.171 chips/s on 10-26)",
+    )
+    # the transit clears: the real sky confirms it and pulls it in
+    for k in range(10):
+        _cycle(c, 112.0 + 2 * k, _good(6))
+    check(
+        c.dr_state.get("clk_confirmed") is True
+        and abs(_wrap(c.dr_state["clk"] - (TRUE_CLK + 0.1))) < 0.3,
+        "after it clears: confirmed, and on the sky (%.2f, want ~%.2f)"
+        % (c.dr_state["clk"], TRUE_CLK + 0.1),
+    )
 
 
 def test_two_sat_corrupted_step_rejected():
@@ -877,6 +921,7 @@ def test_held_value_is_valid_now():
 if __name__ == "__main__":
     test_cold_start_unchanged()
     test_unconfirmed_bootstrap_not_frozen_but_repinned()
+    test_restart_inside_a_transit()
     test_two_sat_corrupted_step_rejected()
     test_genuine_repin_after_confirmation()
     test_transit_freeze()

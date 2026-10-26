@@ -70,6 +70,7 @@ def _ctx(
         dr_update_min_sats=4,
         dr_clock_step_max_chips=5.0,
         dr_clock_repin_solves=3,
+        dr_clock_transit_freeze_deg=5.0,
     )
     c.code_len = 10230.0
     c.chain_id, c.band_id = "gps_l5", "1176.45MHz"

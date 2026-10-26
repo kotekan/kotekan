@@ -274,6 +274,21 @@ def dr_clock_quality(ctx):
             and _dr_clock_step_gate(ctx) != "update"
         ):
             return
+        # Inside the transit cone an UNCONFIRMED clock stays free (a re-pin of agreeing solves
+        # must still be able to correct a bad bootstrap), but the transit's noise neither
+        # differences a drift nor confirms the clock: a confirmed clock would freeze at the
+        # transit's noise value, and a noise drift would walk it (10-26 15:06Z: a restart
+        # inside the E34 transit bootstrapped 1.5 chips low, one in-bound noise solve
+        # confirmed it, the freeze held it there for ~6 min with drift +0.171 chips/s).
+        _cone = (
+            _in_transit_cone(ctx)
+            if ctx.dr_state["clk"] is not None
+            and not ctx.dr_state.get("clk_primed")
+            and not ctx.dr_state.get("clk_confirmed")
+            else None
+        )
+        if _cone is not None:
+            ctx.dr_state.pop("raw_prev", None)
         prev_raw = ctx.dr_state.get("raw_prev")
         if prev_raw is not None and 0.5 < ctx.drp.now_w - prev_raw[1] < 30.0:
             d_est = (
@@ -306,7 +321,8 @@ def dr_clock_quality(ctx):
                     else ctx.dr_state["drift"] + 0.05 * (d_est - ctx.dr_state["drift"])
                 )
                 ctx.dr_state["drift_t"] = ctx.drp.now_w
-        ctx.dr_state["raw_prev"] = (ctx.drp.raw_clk, ctx.drp.now_w)
+        if _cone is None:
+            ctx.dr_state["raw_prev"] = (ctx.drp.raw_clk, ctx.drp.now_w)
         # Snap on the first solve, prime or not: a median over >= dr_min_sats satellites
         # measures what the prime guessed, and EMA-ing in from a guess only adds a walk-in.
         if ctx.dr_state["clk"] is None or ctx.dr_state.pop("clk_primed", False):
@@ -340,7 +356,18 @@ def dr_clock_quality(ctx):
                 (ctx.drp.raw_clk - clk + ctx.code_len / 2) % ctx.code_len
             ) - ctx.code_len / 2
             ctx.dr_state["clk"] = (clk + ctx.args.dr_clock_alpha * step) % ctx.code_len
-            ctx.dr_state["clk_confirmed"] = True
+            if _cone is None:
+                ctx.dr_state["clk_confirmed"] = True
+            else:
+                _log_rl(
+                    "clk-cone-unconfirmed",
+                    "dead-reckon: clock update %.2f chips inside a boresight transit (%s%d at "
+                    "%.1f deg) does NOT confirm it: the transit's solves are noise-led, and a "
+                    "confirmed clock would freeze at their value. Confirmation waits for a "
+                    "solve after it clears, or a re-pin"
+                    % (ctx.dr_state["clk"], _cone[1][0], _cone[1][1], _cone[0]),
+                    every_s=60.0,
+                )
         ctx.dr_state["clk_t"] = ctx.drp.now_w
         ctx.dr_state["clk_meas_t"] = ctx.drp.now_w
         # Contribute to the shared Receiver: clk and drift are the receiver's, the rest of
@@ -379,6 +406,16 @@ def _dr_clock_guarded(ctx):
         and not ctx.dr_state.get("clk_primed")
         and bool(ctx.dr_state.get("clk_confirmed"))
     )
+
+
+def _in_transit_cone(ctx):
+    """(separation_deg, (sys, prn)) while any satellite is inside dr_clock_transit_freeze_deg of
+    boresight, whatever this chain's clock state; else None."""
+    _deg = ctx.args.dr_clock_transit_freeze_deg
+    if not _deg or _deg <= 0.0:
+        return None
+    _near = nearest_boresight(_transit_pd(ctx))
+    return _near if (_near is not None and _near[0] < _deg) else None
 
 
 def dr_clock_transit(ctx):
