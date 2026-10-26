@@ -40,10 +40,29 @@ from .transport import _log
 JOINT_REF_RATE_HZ = 10.23e6
 
 #: The live joint state (fed by gps_l5's search detections, read by the joint consumers) and the
-#: shadow one #191 step 2 adds (fed by the admitted chains' tracker residuals, gnss_broker/jtrk.py,
-#: read by nothing). Two states so the shadow can be judged without moving a seed.
+#: one #191 step 2 adds (fed by the admitted chains' tracker residuals, gnss_broker/jtrk.py, read
+#: only by the consumers of a chain with --joint-source trk, step 3). Two states so the tracker
+#: one can be judged, and switched to one chain at a time, without moving another chain's seed.
 JOINT_STATE = "__receiver__"
 TRK_STATE = "__receiver_trk__"
+
+#: --joint-source -> the state that chain's joint consumers read.
+JOINT_SOURCES = {"search": JOINT_STATE, "trk": TRK_STATE}
+
+
+def joint_which(args):
+    """The state a chain's joint consumers (clk, rate, slew and their logs) read: TRK_STATE
+    under --joint-source trk, else JOINT_STATE. An args without the flag (a test's namespace)
+    reads the live state, as every chain did before the flag existed."""
+    return JOINT_SOURCES.get(
+        getattr(args, "joint_source", None) or "search", JOINT_STATE
+    )
+
+
+def joint_tag(args):
+    """The tag the consumers' log lines carry: "" on the search-fed state (the lines as they
+    were), "[trk]" on the tracker-fed one."""
+    return "[trk]" if joint_which(args) == TRK_STATE else ""
 
 
 class _Shared(object):
@@ -159,14 +178,47 @@ class Receiver(object):
             st = self._joint.get(JOINT_STATE)
             return bool(st is not None and abs(st.clk) > 0.4 * st.L)
 
-    def joint_unit(self):
-        """(chip_rate_hz, code_len) of the joint state's code phases: (JOINT_REF_RATE_HZ, its
-        modulus in reference chips) whenever the state exists, None only when it does not.
-        One state holds one unit by construction (every feeder converts in), so a consumer
-        at any chip rate converts out through this and joint_clk_delta."""
+    def joint_unit(self, which=JOINT_STATE):
+        """(chip_rate_hz, code_len) of the joint state `which` (JOINT_STATE, the live one, by
+        default; a consumer passes joint_which(args)): (JOINT_REF_RATE_HZ, its modulus in
+        reference chips) whenever that state exists, None only when it does not. The two
+        states can hold different moduli (each shortens to the shortest code of its own
+        callers), so a consumer must ask for the unit of the state it read. One state holds
+        one unit by construction (every feeder converts in), so a consumer at any chip rate
+        converts out through this and joint_clk_delta."""
         with self._lock:
-            st = self._joint.get(JOINT_STATE)
+            st = self._joint.get(which)
             return None if st is None else (JOINT_REF_RATE_HZ, float(st.L))
+
+    def joint_consumable(
+        self, band, code_len, chip_rate_hz, min_sats, which=JOINT_STATE
+    ):
+        """The joint state `which` if it is fit to be consumed, else None: absent, fewer than
+        min_sats satellites, or deaf. Never raises: a consumer must fall back to its own
+        estimator, not take the chain down. The broker's _joint_state (ctx.joint_state) is
+        this with the chain's code and --joint-source.
+
+        JOINT_STATE is created on first use here, as its consumers always have. TRK_STATE is
+        only looked up: its feeder (jtrk.py) builds it with constructor arguments of its own
+        (escape_clock_min_sats), which a consumer that got there first would drop."""
+        try:
+            if which == JOINT_STATE:
+                js = self.joint_receiver(
+                    band, code_len, chip_rate_hz, which=which, gauge_mode="prior"
+                )
+            else:
+                with self._lock:
+                    js = self._joint.get(which)
+                if js is None:
+                    return None
+            if len(js._idx) < min_sats:
+                return None
+            # A deaf state rejects every update, so it cannot correct itself while predict()
+            # keeps integrating clk_rate. Refuse it here, where fitness to consume is decided,
+            # rather than relying on each consumer's own bound.
+            return None if getattr(js, "deaf", False) else js
+        except Exception:
+            return None
 
     # -- time anchor --------------------------------------------------------------------
     def time_anchor(self, fetch, chain):

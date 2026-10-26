@@ -31,7 +31,7 @@ def _run(offs, joint_clk, joint=True, now=100.0, state=None):
     deadreckon._log = lambda msg: lines.append(msg)
     js = types.SimpleNamespace(clk=joint_clk)
     rx = types.SimpleNamespace(
-        joint_unit=lambda: (REF_RATE, REF_LEN) if joint else None,
+        joint_unit=lambda which=None: (REF_RATE, REF_LEN) if joint else None,
         joint_clk_delta=Receiver.joint_clk_delta,
     )
     ctx = types.SimpleNamespace(

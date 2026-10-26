@@ -271,6 +271,20 @@ def main(argv=None, rx=None, publisher=None):
     # without it the consumer would read a state nothing feeds.
     joint_consume = parse_joint_consume(args.joint_consume)
     args.joint_shadow = bool(joint_consume)
+    # Which joint state those consumers read (--joint-source; #191 step 3): said once, here.
+    if joint_consume or args.joint_source != "search":
+        _log(
+            "joint consumers %s on %s read the %s-fed joint state (--joint-source %s)%s"
+            % (
+                ",".join(sorted(joint_consume)) or "none",
+                args.signal or "this chain",
+                "tracker" if args.joint_source == "trk" else "search",
+                args.joint_source,
+                "; SatBiasFilter stops feeding the seeds the slew drives from it"
+                if args.joint_source == "trk" and "slew" in joint_consume
+                else "",
+            )
+        )
     if args.rrate_command and not args.rrate_state:
         args.rrate_state = True  # same rule: the command gates on the row's sigma, and
         # only the feed can bring that below infinity
@@ -689,19 +703,17 @@ def main(argv=None, rx=None, publisher=None):
         return key == p2c["key"] and key in js._idx
 
     def _joint_state(rx_, band, a):
-        """The receiver-wide joint state (Receiver.joint_receiver, the object the solve
-        writes) if it is fit to be consumed, else None. Never raises: a consumer must fall
-        back to its own estimator, not take the broker down."""
-        try:
-            js = rx_.joint_receiver(band, CODE_LEN, a.chip_rate_hz, gauge_mode="prior")
-            if len(js._idx) < a.joint_min_sats:
-                return None
-            # A deaf state rejects every update, so it cannot correct itself while predict()
-            # keeps integrating clk_rate. Refuse it here, where fitness to consume is decided,
-            # rather than relying on each consumer's own bound.
-            return None if getattr(js, "deaf", False) else js
-        except Exception:
-            return None
+        """The receiver-wide joint state this chain's consumers read (--joint-source: the
+        search-fed JOINT_STATE, or the tracker-fed TRK_STATE) if it is fit to be consumed
+        (Receiver.joint_consumable: joint_min_sats, not deaf), else None. Never raises: a
+        consumer must fall back to its own estimator, not take the broker down."""
+        return rx_.joint_consumable(
+            band,
+            CODE_LEN,
+            a.chip_rate_hz,
+            a.joint_min_sats,
+            which=receiver.joint_which(a),
+        )
 
     if args.dead_reckon:
         if not args.almanac:
@@ -2039,8 +2051,9 @@ def main(argv=None, rx=None, publisher=None):
             _jr = _joint_state(rx, band_id, args)
             # clk_rate is in the joint state's reference chips per second (Receiver.joint_unit),
             # not this chain's: dividing by our own chip rate would scale the fractional rate by
-            # the chip-rate ratio (20x on L2C, 2x on E6).
-            _ju = rx.joint_unit() if _jr is not None else None
+            # the chip-rate ratio (20x on L2C, 2x on E6). The unit of the state _jr is
+            # (--joint-source), not always the live one's.
+            _ju = rx.joint_unit(receiver.joint_which(args)) if _jr is not None else None
             _ppm = (_jr.clk_rate / _ju[0] * 1e6) if _ju is not None else None
             # Plausibility bound: never hand the instrument a physically impossible rate because
             # an estimator produced it. CHORD's reference is GPS-disciplined, so a rate beyond
@@ -2054,9 +2067,13 @@ def main(argv=None, rx=None, publisher=None):
                 cb_to_seed = _jr.clk_rate / _ju[0]
                 _log_rl(
                     "jointrate",
-                    "code-rate clock from the JOINT state: %+.5f ppm "
+                    "code-rate clock from the JOINT%s state: %+.5f ppm "
                     "(l-a EMA says %+.5f)"
-                    % (cb_to_seed * 1e6, (_cb.code_ema or 0.0) * 1e6),
+                    % (
+                        receiver.joint_tag(args),
+                        cb_to_seed * 1e6,
+                        (_cb.code_ema or 0.0) * 1e6,
+                    ),
                     every_s=60.0,
                 )
         if cb_to_seed is not None:

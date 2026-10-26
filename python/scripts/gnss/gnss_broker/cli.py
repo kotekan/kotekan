@@ -1192,15 +1192,50 @@ def build_parser(description):
         "joint_slew_max_chips; the SEED-OFFSET lines compare the two).",
     )
     ap.add_argument(
+        "--joint-source",
+        choices=("search", "trk"),
+        default="search",
+        help="which joint receiver state this chain's --joint-consume consumers read "
+        "(docs/CHORD_JOINT_TRACKING.md 6.3 step 3): 'search' (default), the state gps_l5's "
+        "search detections feed; 'trk', the one the --joint-trk-feed chains' tracker "
+        "residuals feed (gnss_broker/jtrk.py). Every consumer, its gates and its "
+        "JOINT-CLK / SEED-OFFSET lines (tagged [trk]) follow it. Under 'trk' a satellite "
+        "the slew consumer drives from that state takes clk + b_i with no SatBiasFilter "
+        "term; a satellite the state does not hold, or one refused, keeps the clock plus "
+        "SatBiasFilter, and a state unfit to consume is refused and coasted on as on "
+        "'search'. Takes effect only with --joint-consume.",
+    )
+    ap.add_argument(
+        "--joint-trk-bsat-sigma-max",
+        type=float,
+        default=0.08,
+        help="--joint-source trk, 'slew' consumer: a satellite's seed rides the tracker-fed "
+        "state's clk + b only while that sum's 1-sigma is under this (reference chips), the "
+        "satellite is not in a rejection run, and it has not escaped within "
+        "--joint-trk-escape-holdoff-s; otherwise it keeps the clock plus SatBiasFilter "
+        "(deadreckon.trk_unsettled). At the feed's 0.1-chip sigma a row reads 0.03-0.04 "
+        "settled, ~0.06 fed every third cycle, 0.10 one update after birth and 0.08 after "
+        "~25 s unfed. Default %(default)s.",
+    )
+    ap.add_argument(
+        "--joint-trk-escape-holdoff-s",
+        type=float,
+        default=60.0,
+        help="--joint-source trk, 'slew' consumer: seconds after a satellite's escape in the "
+        "tracker-fed state during which its seed keeps the clock plus SatBiasFilter (the "
+        "escape's own sigma collapses within an update or two). Default %(default)s.",
+    )
+    ap.add_argument(
         "--joint-trk-feed",
         action="store_true",
         help="feed this chain's tracker code residuals (trkresid's observable) into the "
         "shadow joint state (gnss_broker/jtrk.py; docs/CHORD_JOINT_TRACKING.md 6.3 step 2), "
         "gated per satellite on presence, fleet q, the spectrum-fit delay, the record count "
         "and freshness, and per cycle on the warm-up, the transit veto and at least "
-        "joint_trk_min_sats passing satellites. Nothing reads that state: it is logged "
-        "(JOINT[trk], JTRK) and served on /get_joint. Set only on a chain whose signal reads "
-        "within ~1 m of the others on the same satellites.",
+        "joint_trk_min_sats passing satellites. It is logged (JOINT[trk], JTRK) and served "
+        "on /get_joint, and read only by the consumers of a chain with --joint-source trk. "
+        "Set only on a chain whose signal reads within ~1 m of the others on the same "
+        "satellites.",
     )
     ap.add_argument(
         "--joint-feed-warmup-s",

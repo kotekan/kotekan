@@ -46,7 +46,7 @@ from gnss_broker.fits import (
     split_erratic_offsets,
     append_windowed,
 )
-from gnss_broker.receiver import JOINT_REF_RATE_HZ
+from gnss_broker.receiver import JOINT_REF_RATE_HZ, TRK_STATE, joint_tag, joint_which
 from gnss_broker.sky import nearest_boresight, transit_sky
 from gnss_broker.trkresid import wrap
 
@@ -1215,19 +1215,24 @@ def dr_joint_clk(ctx):
     those would put the chain back on the churned clock the joint replaces. The receiver
     clock moves under 0.003 chips/s, so a walk never meets the guard and a real level change
     is a discontinuity, followed one hold late."""
+    # --joint-source: the state ctx.joint_state hands out (search-fed or tracker-fed), whose
+    # unit every conversion below must use; the tag marks the lines of a chain on the latter.
+    _which = joint_which(ctx.args)
+    _tag = joint_tag(ctx.args)
     _jrC = ctx.joint_state(ctx.rx, ctx.band_id, ctx.args)
     if _jrC is None or len(_jrC._idx) < ctx.args.joint_min_sats:
         # Not fit to consume: thin, deaf, or absent. A transit that thins the feeders below
         # joint_min_sats is the case the coast exists for, so coast here too, on the stamps
         # of the last adoption, inside the same window and bound.
-        _unit0 = ctx.rx.joint_unit()
+        _unit0 = ctx.rx.joint_unit(_which)
         _c0 = _joint_coast(ctx, ctx.dr_state, _unit0[0], _unit0[1]) if _unit0 else None
         if _c0 is not None:
             _log_rl(
                 "jclk",
-                "JOINT-CLK: legacy %.3f chips, joint state not fit to consume (%s) -> COAST "
+                "JOINT-CLK%s: legacy %.3f chips, joint state not fit to consume (%s) -> COAST "
                 "(%+.3f joint chips over %.0f s at clk_rate %+.4f joint chips/s)"
                 % (
+                    _tag,
                     ctx.drp.clk_now,
                     "absent, deaf or under joint_min_sats"
                     if _jrC is None
@@ -1246,7 +1251,7 @@ def dr_joint_clk(ctx):
     _jsigC = _jrC.sigma()
     if _jsigC is None or _jsigC <= 0.0:
         _jsigC = float("inf")
-    _unit = ctx.rx.joint_unit()
+    _unit = ctx.rx.joint_unit(_which)
     if _unit is None:
         return  # the receiver holds no joint state (ctx.joint_state handed us a stray one)
     _jrate, _jlen = _unit
@@ -1355,9 +1360,10 @@ def dr_joint_clk(ctx):
     # in joint chips too.
     _log_rl(
         "jclk",
-        "JOINT-CLK: legacy %.3f joint %.3f chips (delta %+.3f,"
+        "JOINT-CLK%s: legacy %.3f joint %.3f chips (delta %+.3f,"
         " sigma %.3f, n %d)%s -> %s"
         % (
+            _tag,
             ctx.drp.clk_now,
             (_jrC.clk * _r) % ctx.code_len,
             _jdC,
@@ -1385,6 +1391,39 @@ def dr_joint_clk(ctx):
     elif _jcoast is not None:
         # No stamp moves on a coast: it must age out, so the bootstrap can re-arm.
         ctx.drp.clk_now = (ctx.drp.clk_now + _jcoast[0]) % ctx.code_len
+
+
+def trk_unsettled(js, key, t_now, args):
+    """Why the tracker-fed state's b for `key` is not settled enough for a seed to ride
+    clk + b (--joint-source trk with the slew consumer), or None when it is.
+
+    In TRK_STATE a lone satellite's tracker step (a lobe or a fade) lands in its own b, not in
+    the clock (state_filter escape_clock_min_sats), so b can sit chips off for a while, and a
+    seed on it would follow its own tracker. Settled means all three: sigma(key), the 1-sigma
+    of clk + b in reference chips, under joint_trk_bsat_sigma_max (a row born an update ago,
+    or unfed for tens of seconds, reads above it); not in a rejection run (b is then stale
+    while its sigma stays small); and no escape within joint_trk_escape_holdoff_s (an escape's
+    P inflation collapses within an update or two). Never raises: an error is unsettled."""
+    try:
+        s = js.sigma(key)
+        if s is None or not (s < args.joint_trk_bsat_sigma_max):
+            return "sigma %s >= %.3f" % (
+                "none" if s is None else "%.3f" % s,
+                args.joint_trk_bsat_sigma_max,
+            )
+        if js.rejecting(key):
+            return "rejecting"
+        if t_now is None:
+            return "no epoch"
+        e = js.since_escape(key, t_now)
+        if e is not None and e <= args.joint_trk_escape_holdoff_s:
+            return "escaped %.0f s ago, holdoff %.0f s" % (
+                e,
+                args.joint_trk_escape_holdoff_s,
+            )
+        return None
+    except Exception as e:
+        return "error: %s" % e
 
 
 def seeds_are_model_owned(ctx, prn):
@@ -1427,7 +1466,8 @@ def dr_seed(ctx):
         # (stage_dead_reckon) logs only on a chain with offsets of its own. Logged after the
         # joint-clock adoption, while JOINT-CLK keeps the legacy median visible. It is the clk_now
         # term of commanded = cp_predicted + clk_now + b_sat + trim (the BSAT and DLL lines carry
-        # the other two).
+        # the other two; on a chain whose slew drives a satellite from the tracker-fed joint
+        # state, --joint-source trk, its b_i replaces b_sat).
         _log_rl(
             "drclk",
             "DRCLK clk_now %.3f chips drift %+.4f chips/s (la %+.4f ppm)"
@@ -1442,7 +1482,8 @@ def dr_seed(ctx):
         # The joint is in reference chips (Receiver.joint_unit): the comparison is made in ours,
         # through the clock consumer's conversion and window, the only one both offsets are
         # defined in; at drp.mod a clock on the other side of a code wrap reads a whole period.
-        _u3 = ctx.rx.joint_unit() if _jr3 is not None else None
+        # The unit is that of the state --joint-source names, the one _jr3 is.
+        _u3 = ctx.rx.joint_unit(joint_which(ctx.args)) if _jr3 is not None else None
         if _u3 is not None and ctx.drp.now_w >= ctx.dr_state.get("jslew_log_next", 0.0):
             ctx.dr_state["jslew_log_next"] = ctx.drp.now_w + 30.0
             _r3 = ctx.args.chip_rate_hz / _u3[0]
@@ -1459,9 +1500,10 @@ def dr_seed(ctx):
             if _cmp:
                 _cmp.sort(key=lambda x: -abs(x[1]))
                 _log(
-                    "SEED-OFFSET %s: joint-vs-legacy over %d sat(s), "
+                    "SEED-OFFSET%s %s: joint-vs-legacy over %d sat(s), "
                     "median %+.3f chips | %s"
                     % (
+                        joint_tag(ctx.args),
                         ctx.band_id,
                         len(_cmp),
                         sorted(abs(c[1]) for c in _cmp)[len(_cmp) // 2],
@@ -1602,13 +1644,39 @@ def dr_seed(ctx):
             _off = _leg_off
             _jr3 = ctx.joint_state(ctx.rx, ctx.band_id, ctx.args)
             # The joint is in reference chips (Receiver.joint_unit), converted into ours below as
-            # in dr_joint_clk.
-            _u3 = ctx.rx.joint_unit() if _jr3 is not None else None
+            # in dr_joint_clk; the unit is that of the state --joint-source names.
+            _trk3 = joint_which(ctx.args) == TRK_STATE
+            _u3 = ctx.rx.joint_unit(joint_which(ctx.args)) if _jr3 is not None else None
             _joff = (
                 _jr3.predicted((ctx.drp.tag, prn))
                 if (_u3 is not None and (ctx.drp.tag, prn) in _jr3._idx)
                 else None
             )
+            # What the joint correction is applied to. On the search-fed state, the legacy
+            # offset. On the tracker-fed one, when this chain's slew consumes it, the clock
+            # alone (docs 6.3 step 3: the SatBiasFilter stops feeding seeds): the joint row
+            # carries this satellite's b_i, so an adopted offset is clk_now plus the wrapped
+            # (clk + b_i - clk_now), with no b_sat in it, and b_sat cannot move the seed through
+            # the bound either. A satellite the state does not hold, or one refused, keeps the
+            # legacy offset (b_sat included), as on the search-fed state.
+            _drv3 = _trk3 and "slew" in ctx.joint_consume
+            _base3 = ctx.drp.clk_now if _drv3 else _leg_off
+            # A seed rides clk + b_i only while b_i is settled (trk_unsettled); otherwise the
+            # satellite keeps the legacy offset, as if the state did not hold it.
+            _uns3 = (
+                trk_unsettled(_jr3, (ctx.drp.tag, prn), ctx.drp.t_now_abs, ctx.args)
+                if (_drv3 and _joff is not None)
+                else None
+            )
+            if _uns3 is not None:
+                _log_rl(
+                    "jslew-%d" % prn,
+                    "SEED-OFFSET[trk] PRN %d (%s): b not settled (%s) -> legacy %+.3f chips "
+                    "(clock + SatBiasFilter)"
+                    % (prn, "slew" if _slew else "cp0", _uns3, _leg_off),
+                    every_s=60.0,
+                )
+                _joff = None
             if _joff is not None:
                 # Apply the joint offset as a wrapped delta on the legacy offset, never in its
                 # place. The two agree only modulo the window Receiver.joint_clk_delta wraps in (the
@@ -1625,19 +1693,21 @@ def dr_seed(ctx):
                 # bracket.
                 _r3 = ctx.args.chip_rate_hz / _u3[0]
                 _d3, _d3j = ctx.rx.joint_clk_delta(
-                    _joff, _u3[0], _u3[1], _leg_off, ctx.args.chip_rate_hz, ctx.code_len
+                    _joff, _u3[0], _u3[1], _base3, ctx.args.chip_rate_hz, ctx.code_len
                 )
                 _ok3 = abs(_d3j) <= ctx.args.joint_slew_max_chips
                 _s3 = _jr3.sigma((ctx.drp.tag, prn)) or 0.0
                 _log_rl(
                     "jslew-%d" % prn,
-                    "SEED-OFFSET PRN %d (%s): joint %+.3f vs legacy %+.3f "
-                    "chips (diff %+.3f mod %g, sigma %.3f)%s%s"
+                    "SEED-OFFSET%s PRN %d (%s): joint %+.3f vs legacy %+.3f "
+                    "chips (diff%s %+.3f mod %g, sigma %.3f)%s%s"
                     % (
+                        joint_tag(ctx.args),
                         prn,
                         "slew" if _slew else "cp0",
                         _joff * _r3,
                         _leg_off,
+                        " vs clk" if _drv3 else "",
                         _d3,
                         min(_u3[1] * _r3, ctx.code_len),
                         _s3 * _r3,
@@ -1652,7 +1722,7 @@ def dr_seed(ctx):
                     every_s=60.0,
                 )
                 if "slew" in ctx.joint_consume and _ok3:
-                    _off = _leg_off + _d3
+                    _off = _base3 + _d3
             cp0 = (
                 (ctx.cp_predicted(v, ctx.drp.t_fc_abs) + _off)
                 - ctx.drp.t_fc_abs
@@ -2053,7 +2123,7 @@ def search_monitor(ctx, offs):
     name = getattr(ctx, "chain_id", None) or ctx.band_id
     m_per_chip = 299792458.0 / ctx.args.chip_rate_hz
     _jr = ctx.joint_state(ctx.rx, ctx.band_id, ctx.args)
-    _u = ctx.rx.joint_unit() if _jr is not None else None
+    _u = ctx.rx.joint_unit(joint_which(ctx.args)) if _jr is not None else None
     if _u is None:
         _log_rl(
             "smon",
