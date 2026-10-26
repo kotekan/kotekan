@@ -364,8 +364,10 @@ nodes:
     #
     # ORDER IS IDENTITY: a node's position is its slot, and the aggregator listens for slot k's
     # GPU g on 11040 + 2k + g. Append a new node at the end. A node that leaves is not deleted
-    # but set `role: off` (e.g. `cx42: {role: off}`), so it keeps its slot and no other node's
-    # port moves; to bring it back, drop the role. Then: gen_fleet.py (writes the node configs
+    # but set `role: "off"` (back on production's kotekan, a stock reference) or `role: "gone"`
+    # (left the instrument; nothing asks it anything), quoted since a bare off is YAML for
+    # false. Either way it keeps its slot and no other node's port moves; to bring it back,
+    # drop the role. Then: gen_fleet.py (writes the node configs
     # and the aggregator's), restart the aggregator and the nodes, and the broker >= 10 min
     # after the aggregator (#211). A host must already be in config/chord_gnss_node.yaml with
     # its combs read from its taps.
@@ -377,7 +379,7 @@ nodes:
     # `live`.
     cx19: {n2-project: "off"}
     cx27: {}
-    cx42: {}
+    cx42: {role: "gone"}  # taken over for other use on site, 2026-10-26
     cx43: {}
     cx44: {}
     # #190 canary, second attempt (the first, 10-20 12:16-12:27Z, relaunched every ~3 min: the
@@ -388,7 +390,7 @@ nodes:
     # adds the GPU index, so slot 9 on GPU 1 is pool[0], the cudaProcess core.
     cx51: {}
     # cx47 and cx52 joined 2026-10-25 (#216: the whole band, all sixteen combs), taken out of
-    # production for the purpose (choco maintenance mode). To give either back: `role: off`,
+    # production for the purpose (choco maintenance mode). To give either back: `role: "off"`,
     # regenerate, restart, and choco maintenance mode off.
     cx47: {}
     cx52: {}

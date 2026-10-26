@@ -75,9 +75,24 @@ def test_slots_ports_and_roles():
         fl.gen_flags("cx42") == {} and "role" not in fl.gen_flags("cx19"),
         "role is not a generator flag",
     )
+    gone = gf.Fleet(
+        manifest({"cx19": {}, "cx42": {"role": "gone"}, "cx43": {}}), site()
+    )
+    check(
+        gone.hosts == ["cx19", "cx43"] and gone.search_port_base("cx43") == 11044,
+        "role gone leaves the fleet and keeps its slot (%s)" % gone.hosts,
+    )
+    check(
+        "cx42" not in gone.stock,
+        "role gone is not a stock reference: nothing answers there (%s)" % gone.stock,
+    )
+    check(
+        refused(manifest({"cx19": {}, "cx42": {"role": False}}), "quote it"),
+        "a bare `role: off` (YAML false) is refused with a hint to quote it",
+    )
     live = gf.Fleet(None, None)
     check(
-        live.hosts[:6] == SIX
+        list(live.slots)[:6] == SIX
         and [live.search_port_base(h) for h in SIX]
         == [11040, 11042, 11044, 11046, 11048, 11050],
         "the repo's first six nodes keep the ports they ran with before the list (%s)"

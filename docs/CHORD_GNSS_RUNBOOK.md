@@ -172,7 +172,7 @@ it. Growing or shrinking it:
    `python3 config/gnss_fleet.py combs <host> --write` reads them from its frames (stock kotekan is
    enough). It must have the node hardware setup and be in choco's maintenance mode. Append it to
    the list.
-   A leaving host is not deleted: set it `role: off`, so no other node's port moves.
+   A leaving host is not deleted: set it `role: "off"` (back on production's kotekan, so a stock reference) or `role: "gone"` (left the instrument, like cx42 on 2026-10-26), quoted since a bare off is YAML for false, so no other node's port moves.
 2. Commit, release to gnss-broker, then `scripts/gnss/gen_fleet.py config/gnss_fleet_chord.yaml` and
    `--check`. It writes the node configs and the aggregator's, and removes a role-off node's config.
 3. Restart the aggregator. Start the joining node (`node_up.sh <node> restart`) or stop the leaving

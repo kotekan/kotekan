@@ -558,8 +558,10 @@ def main():
                 % (
                     ", ".join(missing),
                     ", ".join(nodes),
-                    "; role off: %s"
-                    % ", ".join(h for h in fleet.slots if fleet.roles[h] == "off")
+                    "; role off/gone: %s"
+                    % ", ".join(
+                        h for h in fleet.slots if fleet.roles[h] in gnss_fleet.OUT_ROLES
+                    )
                     if len(fleet.slots) > len(fleet.hosts)
                     else "",
                 )
@@ -780,11 +782,11 @@ def main():
         problems += check_chains(fleet, chains) + check_instances(fleet, regen)
     else:
         sys.stderr.write("no %s beside the manifest: fleet checks skipped\n" % chains)
-    # A role-off node's config goes, so nothing that lists the generated configs (node_up.sh,
+    # A role-off or role-gone node's config goes, so nothing that lists the generated configs (node_up.sh,
     # elem_shared_ref.py, cubearch_up.sh) still finds it; --check names one left behind.
     if not a.node:
         for host in fleet.slots:
-            if fleet.roles[host] != "off":
+            if fleet.roles[host] not in gnss_fleet.OUT_ROLES:
                 continue
             stale = os.path.join(
                 a.preview_dir or OUTDIR, "chord_gnss_%s%s.yaml" % (host, suffix)
@@ -793,12 +795,15 @@ def main():
                 continue
             if a.check:
                 problems.append(
-                    "%s is role off but %s is still there (a write removes it)"
-                    % (host, os.path.relpath(stale, K))
+                    "%s is role %s but %s is still there (a write removes it)"
+                    % (host, fleet.roles[host], os.path.relpath(stale, K))
                 )
             else:
                 os.remove(stale)
-                written.append("removed %s (role off)" % os.path.relpath(stale, K))
+                written.append(
+                    "removed %s (role %s)"
+                    % (os.path.relpath(stale, K), fleet.roles[host])
+                )
     for line in problems:
         print("FLEET    %s" % line)
     if problems:

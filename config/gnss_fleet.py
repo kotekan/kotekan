@@ -3,12 +3,14 @@
 
 The list is `nodes:` in config/gnss_fleet_chord.yaml. Its ORDER is each host's slot: the
 search aggregator listens for slot k's GPU g on SEARCH_PORT_BASE + 2k + g, and that host's
-config sends there. A node that leaves stays in the list with `role: off`, so it keeps its slot
-and no other node's port moves; a node that joins is appended. The site facts about every host,
+config sends there. A node that leaves stays in the list, so it keeps its slot and no other
+node's port moves: `role: "off"` when it goes back to production's kotekan, `role: "gone"` when
+it leaves the instrument altogether (quoted: a bare off is YAML for false). A node that joins is
+appended. The site facts about every host,
 its two combs (gpu_offsets_mod16), live in config/chord_gnss_node.yaml `nodes:`, which also lists
 hosts outside the fleet: those run production's stock kotekan and are the stock references the
 generator asks for the EOP table and the bad-input block (a role-off node is given back to
-production, so it is one too).
+production, so it is one too; a role-gone one is not, since nothing answers there).
 
 Derived from the list and nothing else:
   * each node's search-port-base (gen_fleet.py passes it to the generator);
@@ -43,8 +45,11 @@ CHAINS_YAML = os.path.join(CONF, "gnss_chains_chord.yaml")
 SEARCH_PORT_BASE = 11040
 #: Manifest node keys that are fleet facts, not generator flags (gen_fleet strips them).
 FLEET_KEYS = ("role",)
-#: role values. A node without `role` is "gnss".
-ROLES = ("gnss", "off")
+#: role values. A node without `role` is "gnss"; "off" is back on production's kotekan (a stock
+#: reference), "gone" has left the instrument (no longer asked anything). Both keep their slot.
+ROLES = ("gnss", "off", "gone")
+#: the roles that keep a slot but are not in the fleet
+OUT_ROLES = ("off", "gone")
 #: The value that asks for a derived endpoint list in the chains yaml.
 FLEET = "fleet"
 #: Chains-yaml keys that may be `fleet`, and the node stage each one names. rest-url and
@@ -93,10 +98,10 @@ def signal_tag(name):
 class Fleet:
     """The fleet list (manifest `nodes:`) joined with the site's node table.
 
-    hosts      the GNSS hosts, in slot order (role off left out)
-    slots      {host: slot} for every manifest node, off ones included
-    stock      site hosts not in the fleet (role off included): production's nodes, the
-               stock references
+    hosts      the GNSS hosts, in slot order (roles off and gone left out)
+    slots      {host: slot} for every manifest node, off and gone ones included
+    stock      site hosts not in the fleet (role off included, role gone not): production's
+               nodes, the stock references
     """
 
     def __init__(self, manifest=None, node_file=None):
@@ -127,8 +132,16 @@ class Fleet:
             role = spec.get("role", "gnss")
             if role not in ROLES:
                 raise FleetError(
-                    "%s: %s has role %r; one of %s"
-                    % (self.manifest_path, host, role, ", ".join(ROLES))
+                    "%s: %s has role %r; one of %s%s"
+                    % (
+                        self.manifest_path,
+                        host,
+                        role,
+                        ", ".join(ROLES),
+                        " (quote it: a bare off is YAML for false)"
+                        if role is False
+                        else "",
+                    )
                 )
             if host not in self.site_hosts:
                 raise FleetError(
@@ -146,11 +159,15 @@ class Fleet:
                 )
             self.slots[host] = k
             self.roles[host] = role
-            if role != "off":
+            if role not in OUT_ROLES:
                 self.hosts.append(host)
         if not self.hosts:
-            raise FleetError("%s: every node is role off" % self.manifest_path)
-        self.stock = [h for h in self.site_hosts if h not in self.hosts]
+            raise FleetError("%s: every node is role off or gone" % self.manifest_path)
+        self.stock = [
+            h
+            for h in self.site_hosts
+            if h not in self.hosts and self.roles.get(h) != "gone"
+        ]
         self.rest_port = int(self.site["runtime"]["rest_port"])
 
     # ---- per host --------------------------------------------------------------------------
@@ -413,7 +430,11 @@ def main(argv=None):
     h = sub.add_parser("hosts", help="the fleet's hosts, space-separated, slot order")
     g = h.add_mutually_exclusive_group()
     g.add_argument("--stock", action="store_true", help="the stock reference hosts")
-    g.add_argument("--off", action="store_true", help="the role-off hosts")
+    g.add_argument(
+        "--off",
+        action="store_true",
+        help="the hosts out of the fleet (role off or gone)",
+    )
     sub.add_parser("table", help="slot, search port, combs and chains per host")
     c = sub.add_parser(
         "combs",
@@ -439,7 +460,7 @@ def main(argv=None):
         if a.stock:
             print(" ".join(fl.stock))
         elif a.off:
-            print(" ".join(h for h in fl.slots if fl.roles[h] == "off"))
+            print(" ".join(h for h in fl.slots if fl.roles[h] in OUT_ROLES))
         else:
             print(" ".join(fl.hosts))
         return 0
@@ -450,14 +471,15 @@ def main(argv=None):
             "%-6s %4s %6s %-9s %s" % ("host", "slot", "port", "combs", "chains (GPUs)")
         )
         for host in fl.slots:
-            if fl.roles[host] == "off":
+            if fl.roles[host] in OUT_ROLES:
                 print(
-                    "%-6s %4d %6d %-9s off"
+                    "%-6s %4d %6d %-9s %s"
                     % (
                         host,
                         fl.slots[host],
                         fl.search_port_base(host),
                         fl.offsets(host),
+                        fl.roles[host],
                     )
                 )
                 continue
