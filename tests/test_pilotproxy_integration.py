@@ -1,13 +1,13 @@
 """Test the CUDA pipeline using synthetic calibration and malformed bundles.
 
-Set PILOTPROXY_TEST_BINARY and PILOTPROXY_TEST_BUNDLE to supply a binary and
-matching runtime bundle. PILOTPROXY_SOAK_FRAMES (at least 8) also enables the
-full-size CHORD and CHIME cases described in dev_pilotproxy_testing.rst.
+The binary and a matching runtime bundle are given by PILOTPROXY_TEST_BINARY
+and PILOTPROXY_TEST_BUNDLE. PILOTPROXY_SOAK_FRAMES (at least 8) also enables
+the full-size CHORD and CHIME cases described in dev_pilotproxy_testing.rst.
 
 Those cases repeat four voltage frames with two polarizations and full-rate
 fine support. Every mask, power, and support output is checked against its
-CPU reference. Each pipeline has a 1,800-second timeout, which can be changed
-with PILOTPROXY_SOAK_TIMEOUT_SECONDS. The calibration is synthetic and applies
+CPU reference. The timeout of each pipeline is 1800 seconds unless
+PILOTPROXY_SOAK_TIMEOUT_SECONDS is set. The calibration is synthetic and applies
 only to these tests.
 """
 
@@ -39,8 +39,8 @@ pytestmark = pytest.mark.serial
 
 @pytest.fixture(scope="module")
 def runtime():
-    # The binary comes from the usual build tree (KOTEKAN_BUILD_DIRNAME) unless overridden;
-    # the bundle is a separate input, so without it the CUDA tests skip.
+    # The binary is taken from the usual build tree (KOTEKAN_BUILD_DIRNAME) unless
+    # overridden. The bundle is an extra input, and the CUDA tests skip without it.
     binary = os.environ.get("PILOTPROXY_TEST_BINARY")
     if not binary:
         from kotekan import runner
@@ -626,7 +626,7 @@ def test_production_geometry_soak(
         row.get("receiver_channel_id", row.get("chord_channel_id"))
         for row in pipeline.bundle["profiles"]
     ]
-    # CHIME has 16 channels per GPU; cover all pilots in two batches and retain
+    # CHIME has 16 channels per GPU, so the pilots are covered in two batches with
     # at least one unbound channel in each. CHORD fits all 23 in either geometry.
     ids = pilot_ids[pilot_start : pilot_start + num_freq - 1]
     bound_profiles = len(ids)
@@ -697,7 +697,7 @@ def test_production_geometry_soak(
 @pytest.mark.parametrize("reverse", [True, False])
 @pytest.mark.parametrize("frame_blocks", [0.5, 1, 2])
 def test_receiver_geometry_against_cpu(pipeline, reverse, frame_blocks):
-    """Use either compiled geometry with independent integer references and ring reuse."""
+    """Check either compiled geometry against independent integer references, with ring reuse."""
     pipeline.calibrate()
     pipeline.bundle["input_preprocessing"][
         "time_reverse_detector_windows_before_kernel"

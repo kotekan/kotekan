@@ -31,8 +31,8 @@ for name, expected in manifest["files"].items():
 PY
 PP_COMMIT="$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["upstream_commit"])' "$SRC/external/pilotproxy/VENDOR.json")"
 PP_REPO="$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["upstream_repo"])' "$SRC/external/pilotproxy/VENDOR.json")"
-# The bundle exporter and the Python reference come from the pilot-proxy package
-# (upstream_repo in VENDOR.json); the detector core itself is vendored here.
+# The bundle exporter and the Python reference are installed from the pilot-proxy
+# package (upstream_repo in VENDOR.json). The detector core is vendored in external/pilotproxy.
 "$PYTHON" -m pip --python "$WORK/venv" install --no-deps --no-build-isolation "${PP_REPO}/archive/${PP_COMMIT}.tar.gz"
 "$PYTHON" -m pip --python "$WORK/venv" check
 PP_CONFIGS="$(python3 -c 'from pilot_proxy.paths import CONFIGS_DIR; print(CONFIGS_DIR)')"

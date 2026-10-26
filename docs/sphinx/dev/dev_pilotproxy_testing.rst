@@ -4,22 +4,24 @@
 PilotProxy validation
 *********************
 
-What the stage does and how it is configured on the telescope is in
+This page describes the tests of the PilotProxy detector and the DTV mask. The
+stage and its configuration on the telescope are described in
 :ref:`pilotproxy`.
 
-Build Kotekan with ``USE_CUDA=ON`` and ``WITH_TESTS=ON``. The CUDA device must
-support the vendored detector core. The CI harness creates a temporary virtual
-environment with pinned dependencies, exports both receiver bundles, and cleans
-up its generated files on exit:
+The tests need Kotekan built with ``USE_CUDA=ON`` and ``WITH_TESTS=ON``, and a
+CUDA device that supports the vendored detector core. The CI harness creates a
+temporary virtual environment with pinned dependencies, exports both receiver
+bundles, and removes its generated files on exit:
 
 .. code-block:: sh
 
     bash tests/ci-scripts/pilotproxy/run_pilotproxy_tests.sh "$PWD/build"
 
-For individual tests, use a separate Python environment with the dependencies
-in ``tests/ci-scripts/pilotproxy/requirements.txt``.
-The runtime bundle is a separate input. From the repository root, install the
-matching PilotProxy package, export the CHORD bundle and run the tests:
+Individual tests need their own Python environment with the dependencies in
+``tests/ci-scripts/pilotproxy/requirements.txt``. A runtime bundle is also
+needed, and it is exported with the PilotProxy tools. From the repository root,
+the matching PilotProxy package is installed, the CHORD bundle is exported, and
+the tests are run:
 
 .. code-block:: sh
 
@@ -39,19 +41,20 @@ matching PilotProxy package, export the CHORD bundle and run the tests:
         tests/test_pilotproxy_integration.py tests/test_dtv_rfi_mask.py
 
 
-The exported development bundle is for testing and is not calibrated.
+An exported development bundle is for testing only and is not calibrated.
 
-The integration tests compare every mask, frame power and FPGA timestamp
-against the CPU reference using synthetic calibration.
+In the integration tests, every mask, frame power, and FPGA timestamp is
+compared with the CPU reference, using a synthetic calibration.
 
-For a sustained workload, enable the larger geometries after checking the
-test process's soft and hard locked-memory limits (``ulimit -Sl`` and
-``ulimit -Hl``). The CHORD geometries have four 384 MiB host voltage frames;
-CHIME has four 512 MiB frames. The locked-memory allowance must exceed 1.5 GiB
-for CHORD or 2 GiB for CHIME, plus the other buffers. A 64 MiB
-default fails before detector execution. Use the host's approved mechanism
-to raise the dedicated test process's limit; record the effective user and
-limits. Preserve the usual locked-buffer configuration.
+For a sustained workload, the larger geometries are enabled after the soft and
+hard locked-memory limits of the test process are checked (``ulimit -Sl`` and
+``ulimit -Hl``). Each CHORD geometry has four host voltage frames of 384 MiB,
+and CHIME has four frames of 512 MiB. Locked memory must therefore exceed
+1.5 GiB for CHORD or 2 GiB for CHIME, plus the other buffers. With a 64 MiB
+default, the run fails before the detector executes. The limit is raised only
+for the dedicated test process, with the host's approved mechanism, and the
+usual locked-buffer configuration stays as it is. The effective user and limits
+must be recorded.
 
 .. code-block:: sh
 
@@ -59,47 +62,51 @@ limits. Preserve the usual locked-buffer configuration.
         python3 -m pytest -v -s \
         tests/test_pilotproxy_integration.py -k production_geometry_soak
 
-The bundle selects the receiver; cases for the other receiver skip. Export a
-``chime_dtv_fengine.json`` bundle to run CHIME. CHORD uses 64 dishes with 384
-frequencies or 512 dishes with 48 frequencies, each with two polarizations and
-8192 samples per block. Each CHORD case evaluates all 23 bound pilots.
+The bundle selects the receiver, and cases for the other receiver are skipped.
+The CHIME cases need a bundle exported with the ``chime_dtv_fengine.json``
+receiver profile.
+CHORD uses 64 dishes with 384 frequencies or 512 dishes with 48 frequencies,
+each with two polarizations and 8192 samples per block. Each CHORD case
+evaluates all 23 bound pilots.
 
-CHIME uses 1024 dual-polarization feeds (2048 inputs), 16 frequencies and
-16384 samples per block, matching ``config/chime_upgrade_n2.j2``. Two cases
-cover pilots 14--28 and 29--36, with unbound channels filling each 16-frequency
-frame. They use CHIME profiles, weights and channel IDs with the 128-sample
-core. Synthetic packed voltage enters at the detector ring; these cases do
-not exercise packet reception, the upstream transpose or the live correlator.
+CHIME uses 1024 dual-polarization feeds (2048 inputs), 16 frequencies, and
+16384 samples per block, as in ``config/chime_upgrade_n2.j2``. Two cases cover
+pilots 14--28 and 29--36, and unbound channels fill the rest of each
+16-frequency frame. These cases use the CHIME profiles, weights, and channel
+IDs with the 128-sample core. Synthetic packed voltage is written at the
+detector ring, so packet reception, the upstream transpose, and the live
+correlator are not covered.
 
-The full-rate fine-support product is compared with the independent CPU
-reference at every block, along with masks, frame powers, and FPGA timing;
-unbound frequencies must retain the ``[-1, -1]`` support sentinel.
+At every block, the full-rate fine-support product is compared with the
+independent CPU reference, along with the masks, frame powers, and FPGA
+timing. Unbound frequencies must keep the ``[-1, -1]`` support sentinel.
 
-Each 2,048-frame CHORD case processes 768 GiB of voltage through a four-frame
-ring; each CHIME case processes 1024 GiB. Only the four repeated seed voltage
-frames are saved, together with every mask, power, and support output. Allow
-3 GiB of scratch space per case
-and retain failed fixtures until reviewed. The default per-pipeline timeout
-is 1,800 seconds. Start with ``PILOTPROXY_SOAK_FRAMES=8`` to verify local
-allocation and geometry before a sustained run.
+Each 2048-frame CHORD case passes 768 GiB of voltage through a four-frame
+ring, and each CHIME case passes 1024 GiB. Only the four repeated seed voltage
+frames are saved, together with every mask, power, and support output. Each
+case needs 3 GiB of scratch space, and failed fixtures should be kept until
+they are reviewed. By default, each pipeline has a timeout of 1800 seconds. A
+first run with ``PILOTPROXY_SOAK_FRAMES=8`` checks the local allocation and
+geometry before a sustained run.
 
-The sample intervals are 5.12 microseconds for CHORD and 2.56 microseconds
-for CHIME. With their respective block sizes, 2,048 blocks represent
-85.89934592 seconds of data per case. Report measured wall time separately:
-it includes synthetic seed generation, GPU work, and file output. Reused
-synthetic inputs and file-I/O stress do not establish production cadence,
-processing headroom, or telescope acceptance.
+The sample interval is 5.12 microseconds for CHORD and 2.56 microseconds for
+CHIME. With their block sizes, 2048 blocks hold 85.89934592 seconds of data in
+each case. Measured wall time should be reported apart from this, since it
+covers synthetic seed generation, GPU work, and file output. These cases reuse
+synthetic inputs and stress the file I/O, and they do not cover production
+cadence, processing headroom, or telescope acceptance.
 
-The mask stage also has CPU-only Boost coverage, built with
+For the mask stage, CPU-only Boost coverage is built with
 ``WITH_BOOST_TESTS=ON`` and run in the CPU jobs:
 
 .. code-block:: sh
 
     build/tests/boost/test_DtvRfiMask
 
-It checks both block sizes across buffer wrap, mask intersection, invalid fine
-support, permanent masks, metadata preservation and malformed inputs. The
-CUDA visibility and count integration tests use the two variables above:
+It covers both block sizes across buffer wrap, the mask intersection, invalid
+fine support, permanent masks, metadata preservation, and malformed inputs. For
+the CUDA integration tests of visibilities and counts, the two environment
+variables above are used:
 
 .. code-block:: sh
 
@@ -109,10 +116,12 @@ CUDA visibility and count integration tests use the two variables above:
 Fine support and threshold limits
 =================================
 
-Record the Kotekan revision, vendor manifest, runtime bundle, and configuration
-when validating fine support and frequency policies. The support product and
-the two frequency lists are described in :ref:`pilotproxy`.
+When fine support and the two frequency lists are validated, the Kotekan
+revision, vendor manifest, runtime bundle, and configuration must be recorded.
+The support product and the frequency lists are described in
+:ref:`pilotproxy`.
 
-The integration tests include a real CUDA fine decision with invalid support
-and a permanent-mask limit, then verify the resulting visibilities and sample
-counts. Keep synthetic plumbing validation separate from telescope acceptance.
+In the integration tests, a CUDA fine decision is run with invalid support and
+a permanent-mask limit, and the resulting visibilities and sample counts are
+checked. These tests validate the data path with synthetic inputs and do not
+cover telescope acceptance.
