@@ -296,6 +296,10 @@ _FROZEN = dict(
     # while its replica wanders (jtrk.py). Overnight 10-26, 97% of rows sat above 50x and the
     # 5-20x band held ~1%; a noise peak reaches ~5x.
     joint_trk_p_min=10.0,
+    # Fraction of the node trim's clamp (trimarm.trim_clamp) at which a satellite's residual is not
+    # fed: at the rail the replica is pinned while the signal moves on (jtrk.py). 0.75 of L5's
+    # 1.473 is 1.10 chips; overnight 10-26, <= 0.06% of present rows off gps_l5 reached 0.7.
+    joint_trk_rail_frac=0.75,
     # Fewest satellites a chain must pass in one cycle before any of them is fed: below it clk and
     # the biases do not separate within the cycle (the plan's set gate).
     joint_trk_min_sats=3,
