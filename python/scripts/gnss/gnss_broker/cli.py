@@ -1226,6 +1226,16 @@ def build_parser(description):
         "escape's own sigma collapses within an update or two). Default %(default)s.",
     )
     ap.add_argument(
+        "--joint-trk-bsat-dev-max",
+        type=float,
+        default=0.5,
+        help="--joint-source trk, 'slew' consumer: a satellite's seed rides the tracker-fed "
+        "state's clk + b only while its b is within this (reference chips) of the median b of "
+        "at least 3 other satellites of its constellation. A lone tracker step (a lobe, 1-3 "
+        "chips) that outlasts --joint-trk-escape-holdoff-s stays in b; the constellation "
+        "spread is ~0.3 (10-26 soak). Default %(default)s.",
+    )
+    ap.add_argument(
         "--joint-trk-feed",
         action="store_true",
         help="feed this chain's tracker code residuals (trkresid's observable) into the "

@@ -32,6 +32,7 @@ not by the donor's age alone; see dr_clock_adopt_rx.
 
 import threading
 import os
+import statistics
 import time
 from datetime import datetime, timezone
 
@@ -1402,8 +1403,10 @@ def trk_unsettled(js, key, t_now, args):
     seed on it would follow its own tracker. Settled means all three: sigma(key), the 1-sigma
     of clk + b in reference chips, under joint_trk_bsat_sigma_max (a row born an update ago,
     or unfed for tens of seconds, reads above it); not in a rejection run (b is then stale
-    while its sigma stays small); and no escape within joint_trk_escape_holdoff_s (an escape's
-    P inflation collapses within an update or two). Never raises: an error is unsettled."""
+    while its sigma stays small); no escape within joint_trk_escape_holdoff_s (an escape's
+    P inflation collapses within an update or two); and b within joint_trk_bsat_dev_max of
+    the median b of at least 3 other satellites of its constellation. Never raises: an error
+    is unsettled."""
     try:
         s = js.sigma(key)
         if s is None or not (s < args.joint_trk_bsat_sigma_max):
@@ -1420,6 +1423,19 @@ def trk_unsettled(js, key, t_now, args):
             return "escaped %.0f s ago, holdoff %.0f s" % (
                 e,
                 args.joint_trk_escape_holdoff_s,
+            )
+        # A step the holdoff outlasts (a lobe the tracker stays on) is still in b. A
+        # satellite's group delay does not step by chips, and its constellation's b sit within
+        # a few tenths of each other, so b far from the median of its peers is the tracker's.
+        peers = [js.bias(k) for k in list(js._idx) if k[0] == key[0] and k != key]
+        if len(peers) < 3:
+            return "%d peer(s) in %s, need 3" % (len(peers), key[0])
+        dev = js.bias(key) - statistics.median(peers)
+        if not abs(dev) < args.joint_trk_bsat_dev_max:
+            return "b %+.3f off the %s median, bound %.3f" % (
+                dev,
+                key[0],
+                args.joint_trk_bsat_dev_max,
             )
         return None
     except Exception as e:

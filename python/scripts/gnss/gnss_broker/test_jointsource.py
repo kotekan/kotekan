@@ -165,6 +165,7 @@ def chain_args(source, **kw):
         joint_max_rate_ppm=0.01,
         joint_trk_bsat_sigma_max=_DEF.joint_trk_bsat_sigma_max,
         joint_trk_escape_holdoff_s=_DEF.joint_trk_escape_holdoff_s,
+        joint_trk_bsat_dev_max=_DEF.joint_trk_bsat_dev_max,
         signal="gal_e5a",
     )
     a.update(kw)
@@ -445,8 +446,13 @@ def test_trk_slew_bound_falls_back():
     jt = rx._joint[TRK_STATE]
     k = ("G", 3)
     jt.x[jt._idx[k]] += 9.0  # b_3 = 9.1 chips: past the 5-chip bound
+    # The median gate (trk_unsettled) would refuse it first; widened so the bound is reached.
     offs, clk_now, lines, _ = run_dr_seed(
-        rx, "trk", {3: 0.37, 9: 0.0}, consume=("slew",)
+        rx,
+        "trk",
+        {3: 0.37, 9: 0.0},
+        consume=("slew",),
+        argkw={"joint_trk_bsat_dev_max": 20.0},
     )
     check(
         clk_now == LEGACY_CLK
@@ -648,12 +654,37 @@ def test_trk_settled_gate():
         "30 s after the escape: PRN 3 keeps clk_now + b_sat, PRN 5 rides clk + b (%s)"
         % so,
     )
+    # Past the holdoff the step is still in b, 2 chips off its peers: the median leg keeps
+    # PRN 3 on the legacy offset at the default bound, and a bound wider than the step lets it
+    # ride (the holdoff alone would have).
     rx, jt, t_esc = escaped()
     offs, clk, lines, _ = run_dr_seed(rx, "trk", bsat, prns=(3, 5), t0=t_esc + 61.0)
+    so = _lines(lines, "SEED-OFFSET[trk] PRN 3")
+    check(
+        _DEF.joint_trk_bsat_dev_max == 0.5
+        and offs[3] == _w(clk + bsat[3])
+        and offs[5] == _trk_off(rx, clk, 5)
+        and so
+        and "off the G median" in so[0],
+        "61 s after, default bound 0.5: PRN 3 keeps clk_now + b_sat, PRN 5 rides (%s)" % so,
+    )
+    rx, jt, t_esc = escaped()
+    offs, clk, lines, _ = run_dr_seed(
+        rx, "trk", bsat, prns=(3, 5), t0=t_esc + 61.0, argkw={"joint_trk_bsat_dev_max": 3.0}
+    )
     check(
         offs[3] == _trk_off(rx, clk, 3) and abs(offs[3] - clk - TRK_B[3] - 2.0) < 0.2,
-        "61 s after: PRN 3 rides clk + b, the step included (%+.3f over clk)"
+        "61 s after, bound 3.0: PRN 3 rides clk + b, the step included (%+.3f over clk)"
         % (offs[3] - clk),
+    )
+    # Too few peers to judge: a constellation of 3 in the state leaves each 2 peers.
+    rx = make_rx("fed")
+    jt = rx._joint[TRK_STATE]
+    for k in [k for k in list(jt._idx) if k[1] not in (3, 5, 14)]:
+        jt._idx.pop(k)
+    check(
+        deadreckon.trk_unsettled(jt, k3, 200.0, chain_args("trk")) == "2 peer(s) in G, need 3",
+        "2 peers: unsettled (%s)" % deadreckon.trk_unsettled(jt, k3, 200.0, chain_args("trk")),
     )
     # The helper itself, on inputs the caller should never hand it.
     check(
