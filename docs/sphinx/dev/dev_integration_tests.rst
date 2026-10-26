@@ -25,7 +25,8 @@ Scope
 Test levels:
 
 #. Qualitative (correctness). This is the only level implemented so far.
-#. Quantitative (sensitivity): SNR, gain settings, PFB effects, fringe stopping.
+#. Quantitative (sensitivity): SNR, gain settings, PFB effects, fringe stopping. Planned; see
+   Level 2 tests.
 #. RFI handling: fast and slow RFI masks.
 #. Astronomy: pulsar, FRB and HI-like inputs.
 
@@ -268,6 +269,144 @@ The pathfinder is tested first, then CHORD, then CHIME. All Level 1 tests pass o
 CHIME, BB is tested as on the other telescopes, the HFB upchannelizer (U = 128) in T1, T2 and T8,
 and the HFB1 and HFB2 timing in T1; T9 and T10 use a bad feed mask lifetime of at least 2 T* (see
 Findings).
+
+Level 2 tests (planned)
+=======================
+
+Level 2 measures how much signal survives each stage. Each check measures a quantity with its
+statistical error (an efficiency, a response curve, a noise level) and compares it with a model.
+None of these tests exists yet.
+
+A check passes when every measured value agrees with its model within its statistical error: 3σ
+for a single value, more when many values are compared (5σ for 10^4 values), plus float16
+rounding for float16 outputs. The checks report the measured efficiencies. There are no
+requirement thresholds, since no digital loss budget is defined yet.
+
+Test inputs
+-----------
+
+``testSkySignal`` produces tones and independent white noise per input. Level 2 needs four
+extensions:
+
+* **Correlated noise source.** The same noise in every dish, delayed by the geometric delay at
+  every frequency inside the coarse channel, so that bandwidth smearing is real. It is a sum of
+  tones with random amplitudes and phases at every frequency of its period, each with its own
+  delay. Its strength is given as S/SEFD per dish: about 0.3 for
+  Cyg A on CHORD, 0.06 for Cyg A per CHIME feed, 0.02 for a 100 Jy FRB.
+* **F-engine channel shape.** Noise and sources are shaped by the response of the F-engine PFB,
+  including the alias from the neighbouring channel near the channel edges, before they are
+  rounded to int4. ``pfb_prototype`` (``lib/utils/pfbPrototype.hpp``) gives the prototype filter.
+  With white noise per coarse channel, the upchannelizer sees a flat noise spectrum, which the
+  F-engine does not deliver.
+* **Drifting source.** The direction follows a fixed RA and Dec as the Earth rotates. ``run.py``
+  computes the directions with astropy and passes them to the generator, so that an error in
+  ``Telescope`` does not cancel. Within a frame the phase is interpolated linearly; on CHORD's
+  longest east-west baseline at 1.5 GHz it changes by less than 1° per frame.
+* **Noise that does not repeat.** ``inventVoltage`` copies frames from a pool of
+  ``noise_period_frames`` precomputed frames (default 4), so its noise repeats. An N2 integration
+  spans 24 frames and a drifting source is not periodic, so these tests compute every frame,
+  which is slower.
+
+One run of T12 uses RadioTelescopeFEngine.jl files instead, read with ``hdf5FileReadSingleFile``
+(384 to 512 MiB per frame on disk). They come from a full ADC, PFB and int4 F-engine that is
+independent of kotekan.
+
+Tests
+-----
+
+.. list-table::
+   :header-rows: 1
+   :widths: 10 25 15 40 10
+
+   * - Test
+     - Input
+     - Outputs
+     - Check
+     - Tolerance
+   * - T11 Upchannelizer response
+     - Weak tones at many offsets within a coarse channel, one offset per group of inputs
+       (``active_inputs``), in noise with the F-engine channel shape; a variant with a few
+       adjacent coarse channels (jinja variable); T1's windowed tone for the time response.
+     - upchan (all U), on CHIME also the HFB upchannelizer (U = 128)
+     - The complex response of every fine channel against the tone offset (passband ripple,
+       scalloping, leakage into neighbouring fine channels, stopband, phase) equals the window and
+       ``upchan_gain`` model (``kit.upchan_window``). Each fine channel peaks at the frequency of
+       its ``freq_upchan_index``. Across adjacent coarse channels, the fine channels tile the band
+       as modelled. The output edge of a windowed tone follows the cumulative window.
+     - pass rule
+   * - T12 Loading and quantization efficiency
+     - Noise of 2.8 LSB with the F-engine channel shape and a weak correlated source (S/SEFD
+       0.02); variants with input rms from 1.5 to 4 LSB, with a bright source (Cyg A), and from
+       RadioTelescopeFEngine.jl files.
+     - upchan (all U), BB, FRB1, FRB2, FRB3, HFB
+     - Per output and fine channel: the rms against its target, its flatness across fine
+       channels, the fraction at ±7. The source's SNR in each output, against its SNR before
+       quantization, gives the efficiency of each requantization (upchan, BB including CHORD's
+       block shifts, FRB3) and the bias of FRB1's float16 accumulation. The bright variant gives
+       the source power at which each output compresses.
+     - pass rule
+   * - T13 Beam sensitivity and FRB2 beam shape
+     - A weak correlated source on a BB beam, on an FRB2 beam, between beams and far from
+       zenith; for the beam shape, weak tones at a grid of positions around one FRB2 (HFB2)
+       beam, one source per fine channel.
+     - BB, FRB1, FRB2; on CHIME HFB1 and HFB2
+     - The source power over the noise power in BB, FRB1 and FRB2 beams is D·S/SEFD times the T12
+       efficiencies. BB bandwidth smearing away from zenith follows
+       ``⟨|(1/D) Σ_d exp(2πi δν τ_d)|²⟩`` over the coarse channel, with τ_d the delay of
+       dish d between source and beam direction. FRB2 and HFB2 respond as a beam steered at
+       their position (below), with the peak at the configured position at every fine
+       frequency; the response midway between production FRB2 beams is reported. The FRB1, FRB2
+       and HFB intensities of noise have the predicted mean, a variance as χ² with the right
+       degrees of freedom, and the predicted correlation between neighbouring beams.
+     - pass rule
+   * - T14 N2 amplitude and noise
+     - Correlated sources with known weak and strong correlations in noise that does not repeat;
+       fringe stopping off; a variant with T8's packet loss.
+     - N2 visibilities, weights and counts
+     - V_ab / √(V_aa V_bb) equals the correlation, with a model of int4 quantization of
+       correlated Gaussian voltages. The variance of V_ab between integrations is V_aa V_bb / N,
+       with N the valid samples. The variance estimate (1 / weight) agrees with that scatter, for
+       ``EvenOddPosDef`` (pathfinder, CHORD) and ``CHIMEv1`` (CHIME).
+     - pass rule
+   * - T15 Fringe stopping and drift
+     - A drifting source near the phase centre and one away from it, in noise that does not
+       repeat; several minutes of simulated time; a variant that switches fringe stopping by
+       REST (``fringestop_updatable_config``).
+     - N2; BB with a tracking beam (``tracking_beams``) on the source and fixed beams; FRB2
+     - Each N2 bin equals the model visibilities of its sub-integrations, rotated by
+       fringe-stopping phases that the check computes with astropy for the bin centre, and
+       averaged; without fringe stopping, the unrotated average. The truncation of fringe-stopped
+       visibilities (Findings) stays below the noise of a long average. The tracking BB beam
+       keeps the source power; fixed BB and FRB2 beams see the source drift through, an
+       east-west cut of their response. The REST switch takes effect at the first bin at or after
+       the posted time.
+     - pass rule
+
+**The FRB2 beam model.** FRB2 interpolates FRB1 intensities. ``cudaCalcFRB2Weights`` sets
+``W2 = U(p, M, θ_M) U(q, N, θ_N)``, the trigonometric interpolation of Kendrick's note with
+trapezoid weights. Along M, the FRB1 intensity is a trigonometric polynomial with lags below M,
+which its 2M beams determine. An FRB2 beam at n_b therefore responds to a source at n as a beam
+steered at n_b: ``|AF(n − n_b, ν)|²``, with AF the array factor of the M × N dish grid with the
+FRB1 weights. The model is exact up to float16 rounding and the width of a fine channel. An error in
+the interpolation can leave every Level 1 peak check intact. The CHIME frequency ordering in the
+second Nyquist zone (Findings) shifts a beam in proportion to its angle, so it should show far
+from zenith. HFB2 uses the same weights and ``cudaFRBBeamReformer``.
+
+Expected results:
+
+* A CHORD BB beam centred on Cyg A has √(1 + 0.3 · 512) ≈ 12 times the noise rms that
+  ``bb_gain`` = 1/√D sets (about 2.8 LSB), so it saturates. T12's bright variant measures this
+  for every output.
+* T11 and T12 test the upchannelizer window and per-fine-channel gains against F-engine input;
+  they should be rerun when either changes.
+
+Order: the input extensions first, then T12, T11, T13 and T14; T15 last. T15 simulates several
+minutes; at T10's rates that takes 1.5 minutes per simulated minute on CHORD and 4 on CHIME, more
+if the generator limits the rate.
+
+Left for later levels: the SK false-flag rate on Gaussian noise, and whether a bright noise-like
+source is flagged (Level 3); dispersed pulses, FRB3 dynamic range for bright bursts, and HI lines
+through the HFB (Level 4).
 
 Missing features (known gaps)
 =============================
