@@ -21,9 +21,10 @@ buffer/metadata type. Files are written to ``base_dir`` as::
     <base_dir>/[<hostname>_]<file_name>_<file:07d>.<file_ext>
 
 with a 7-digit file counter and the hostname prefix controlled by
-``prefix_hostname`` (default true). Each file holds
-``num_frames_per_file`` frames (default 1), appended sequentially. Each
-frame is laid out as:
+``prefix_hostname`` (default true). The counter starts at 0, or with
+``continue_numbering`` one past the highest existing file of the same
+name. Each file holds ``num_frames_per_file`` frames (default 1),
+appended sequentially. Each frame is laid out as:
 
 .. code-block:: text
 
@@ -40,7 +41,8 @@ frame's size prefix in turn.
 
 Configuration: ``base_dir``, ``file_name``, ``file_ext`` (all required);
 ``num_frames_per_file`` (default 1); ``exit_after_n_files`` (default 0 =
-unlimited); ``prefix_hostname`` (default true).
+unlimited); ``prefix_hostname`` (default true); ``continue_numbering``
+(default false); ``create_base_dir`` (default false).
 
 nDiskFileWrite
 ==============
