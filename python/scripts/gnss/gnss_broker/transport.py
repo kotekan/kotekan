@@ -190,6 +190,39 @@ class IfaceRefused(urllib.error.URLError):
     """A request to an origin the interface watcher has fenced (enforce mode only)."""
 
 
+class NodeDown(urllib.error.URLError):
+    """A request to a node origin the health tracker (gnss_broker/nodehealth.py) holds DOWN:
+    raised at once, without a network attempt, so a node that stopped answering costs no
+    connect or timeout per call and every caller's unreachable path applies."""
+
+
+# The node health tracker's two hooks (nodehealth.enable sets them; None = off, as under a
+# transcript): _node_gate(netloc) -> True while that origin is held DOWN; _node_result(netloc,
+# ok, exc) after every request that went out.
+_node_gate = None
+_node_result = None
+
+
+def set_node_hooks(gate, result):
+    global _node_gate, _node_result
+    _node_gate, _node_result = gate, result
+
+
+def _node_check(url):
+    if _node_gate is not None:
+        n = urllib.parse.urlsplit(url).netloc
+        if _node_gate(n):
+            raise NodeDown("%s: node held DOWN by the health tracker" % n)
+
+
+def _node_note(url, ok, exc=None):
+    if _node_result is not None and not isinstance(exc, (IfaceRefused, NodeDown)):
+        try:
+            _node_result(urllib.parse.urlsplit(url).netloc, ok, exc)
+        except Exception:
+            pass
+
+
 # (netloc, chain) pairs, chain None for every chain. Replaced whole, never changed in place.
 _iface_fence = frozenset()
 # Called with the URL of each request that failed, other than a refused one, so the watcher reads
@@ -372,7 +405,14 @@ class _Transcript:
         try:
             if _iface_fence and iface_fenced(url):
                 raise IfaceRefused("%s: fenced by the interface watcher" % url)
-            v = json.loads(http_request("GET", url, timeout)[1].decode())
+            _node_check(url)
+            try:
+                _st, _body = http_request("GET", url, timeout)
+            except Exception as _e:
+                _node_note(url, False, _e)
+                raise
+            _node_note(url, True)
+            v = json.loads(_body.decode())
             _http_record("get", url, time.perf_counter() - _t0, True)
         except Exception as e:
             _http_record("get", url, time.perf_counter() - _t0, False)
@@ -407,13 +447,19 @@ class _Transcript:
         try:
             if _iface_fence and iface_fenced(url):
                 raise IfaceRefused("%s: fenced by the interface watcher" % url)
-            s = http_request(
-                "POST",
-                url,
-                timeout,
-                data=data,
-                headers={"Content-Type": "application/json"},
-            )[0]
+            _node_check(url)
+            try:
+                s = http_request(
+                    "POST",
+                    url,
+                    timeout,
+                    data=data,
+                    headers={"Content-Type": "application/json"},
+                )[0]
+            except Exception as _e:
+                _node_note(url, False, _e)
+                raise
+            _node_note(url, True)
             _http_record("post", url, time.perf_counter() - _t0, True)
         except Exception as e:
             _http_record("post", url, time.perf_counter() - _t0, False)

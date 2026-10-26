@@ -212,6 +212,12 @@ nodes returned, many were tens of chips off, and the broker slews a held phase b
 chips per step, ~0.25 chips/min. Twenty minutes later E23 and E31 were still ~20 chips off on E5a,
 and the Galileo position solve was in the hundreds of metres. A restart re-seeds every satellite
 from the orbit model. Do it outside a transit freeze, then check broker.log for CHAIN DIED at T+60 s.
+Since 2026-10-26 the broker does this itself when the WHOLE fleet was unreachable for at least
+--fleet-return-restart-s (1200 s): once half the nodes answer again (or 180 s after the first), and
+outside a transit, it logs `STOPPING THE BROKER ... (10-01 rule)` and exits 4 for systemd to
+relaunch. A partial outage does not trigger it; restart by hand after a long one. Its node tracker
+(gnss_broker/nodehealth.py) logs `NODE DOWN` / `NODE UP` per node origin, stops calling a DOWN node
+(probing /telescope/time0_ns every 15 s instead), and says on `NODE UP` whether frame 0 changed.
 
 **The non-GNSS half of every node config is production's, and a gate holds it there.** The
 generator builds on `config/chord/pathfinder.j2` rendered stock, the same templates choco renders

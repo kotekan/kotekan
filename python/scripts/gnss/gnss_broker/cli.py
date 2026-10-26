@@ -62,6 +62,13 @@ _FROZEN = dict(
     # (ClockBias.update_code_rate): the tolerance is measured from that clock, so a wrong clock
     # would otherwise refuse every honest fit. 10 cycles is ~20 s of agreement.
     code_bias_repin_cycles=10,
+    # Node health (nodehealth.py): a node REST origin is held DOWN after >= 3 connection failures
+    # spanning node_down_after_s with none answered, and probed every node_probe_s. A
+    # fleet-return restart waits fleet_return_settle_s after the first node is back, unless half
+    # the nodes are back sooner.
+    node_down_after_s=10.0,
+    node_probe_s=15.0,
+    fleet_return_settle_s=180.0,
     # Fleet coherent (fleet.fleet_coherent): a fleet deep_snr is published as a detection only above
     # this multiple of the null floor, re-measured every cycle by shuffling each instance's records
     # (real amplitudes, no common phase). The right bar depends on fleet size and window length, so
@@ -951,6 +958,15 @@ def build_parser(description):
         "satellite as its code-phase rate (unless --joint-consume rate supplies it) "
         "and shared with the process's chains that fit none. Small, so it averages "
         "out fit noise and follows oscillator drift.",
+    )
+    ap.add_argument(
+        "--fleet-return-restart-s",
+        type=float,
+        default=1200.0,
+        help="restart the broker (exit 4, for its supervisor to relaunch) when the whole "
+        "fleet has been unreachable for at least this long and has come back: the "
+        "dead-reckoned state aged unmeasured meanwhile (the 10-01 rule, runbook s.5). "
+        "Deferred while a satellite is inside the transit freeze cone. 0 = never",
     )
     ap.add_argument(
         "--code-bias-min-sats",

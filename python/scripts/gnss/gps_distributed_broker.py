@@ -73,7 +73,9 @@ from gnss_broker.transport import (  # noqa: E402
     log_tag,
     install_dns_cache,
     record_cycle,
+    NodeDown,
 )
+from gnss_broker import nodehealth  # noqa: E402
 from gnss_broker import sky as _sky  # noqa: E402
 from gnss_broker import telem as _telem  # noqa: E402
 from gnss_broker.fits import (  # noqa: E402
@@ -323,6 +325,19 @@ def main(argv=None, rx=None, publisher=None):
         _time0_bases,
         _get,
         watch=not (args.transcript_read or args.transcript_write),
+    )
+    # Node health (nodehealth.py): process-wide, keyed by node REST origin; off under a
+    # transcript, whose replay must see the same requests in the same order.
+    _nh = (
+        None
+        if (args.transcript_read or args.transcript_write)
+        else nodehealth.enable(
+            node_bases(base, trackers + dll_combiners),
+            down_after_s=args.node_down_after_s,
+            probe_s=args.node_probe_s,
+            return_restart_s=args.fleet_return_restart_s,
+            return_settle_s=args.fleet_return_settle_s,
+        )
     )
     spectrum_endpoints = (
         parse_endpoints(args.spectrum_endpoints, base)
@@ -1504,6 +1519,34 @@ def main(argv=None, rx=None, publisher=None):
         # mismatches, exit. Never re-anchor in place: every node cached the old frame 0 at its own
         # startup. _now(), not now_w: _drp.now_w is set later in the cycle.
         _now_anchor = _now()
+        # The fleet-return restart (nodehealth: the 10-01 rule), outside a boresight transit.
+        if _nh is not None:
+            _nhd = _nh.restart_decision(
+                _sky.nearest_boresight(getattr(_ctx, "transit_pd", None)),
+                args.dr_clock_transit_freeze_deg,
+            )
+            if _nhd == "defer":
+                _log_rl(
+                    "fleet-return-defer",
+                    "FLEET RETURNED: broker restart deferred while a satellite is inside "
+                    "the %.1f deg transit freeze cone"
+                    % args.dr_clock_transit_freeze_deg,
+                    every_s=60.0,
+                )
+            elif _nhd == "exit":
+                # os._exit, as for the anchor change below: sys.exit would stop only this
+                # chain's thread.
+                _log(
+                    "*** STOPPING THE BROKER: the fleet was dark for over %.0f s and is "
+                    "back; its supervisor relaunches it on fresh state (10-01 rule)"
+                    % args.fleet_return_restart_s
+                )
+                try:
+                    sys.stdout.flush()
+                    sys.stderr.flush()
+                except Exception:
+                    pass
+                os._exit(nodehealth.EXIT_FLEET_RETURNED)
         if (
             args.time0_endpoint
             and _ctx.utc0_sample0
@@ -1570,6 +1613,8 @@ def main(argv=None, rx=None, publisher=None):
                     return v
 
                 _ctx.utc0_sample0 = rx.time_anchor(_fetch_t0, chain_id) or 0.0
+                if _ctx.utc0_sample0 and _nh is not None:
+                    _nh.note_anchor(_ctx.utc0_sample0)
                 if _ctx.utc0_sample0:
                     _log(
                         "time anchor: CHORD F-engine frame0 = %.9f s (GPS-disciplined%s)"
@@ -2317,18 +2362,26 @@ def main(argv=None, rx=None, publisher=None):
         # unless --prn-reconfig apply.
         prnmap.stage_prn_membership(_ctx)
 
-        ok = 0
+        ok, down = 0, 0
         for t_ep in trackers:
             try:
                 _post("%s/set_seeds" % t_ep, _ctx.payload)
                 ok += 1
+            except NodeDown:
+                down += 1  # logged once, by the tracker
             except Exception as e:
                 _log("set_seeds %s failed: %s" % (t_ep, e))
 
         _log_rl(
             "active",
-            "active=%s (%d); seeded %d/%d trackers"
-            % (sorted(seeds), len(seeds), ok, len(trackers)),
+            "active=%s (%d); seeded %d/%d trackers%s"
+            % (
+                sorted(seeds),
+                len(seeds),
+                ok,
+                len(trackers),
+                " (%d on nodes held DOWN)" % down if down else "",
+            ),
         )
         if _ctx.cl_report:
             _log_rl("clreport", "CL: " + "; ".join(_ctx.cl_report))
