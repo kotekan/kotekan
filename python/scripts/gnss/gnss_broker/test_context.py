@@ -37,6 +37,7 @@ PER_CYCLE = {
     "coast_polls",
     "have_sig",
     "la_samples",
+    "la_rejected",
     "fitted",
     "cl_report",
     "dr_pd",

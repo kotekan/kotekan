@@ -587,6 +587,7 @@ def stage_detections_to_seeds(ctx):
             # the clock's only under --cp-rate-model-primary (below). The fit's position (cp_ref at
             # h0) is seeded either way, except on the cycle that flushes the history. 0 disables.
             _seed_rate = rate
+            _rate_rejected = False
             _tol = getattr(ctx.args, "cp_rate_model_tol", 0.0)
             if _tol > 0.0 and ctx.cb.code_ema is not None:
                 _model = cp_rate_from_code_bias(
@@ -594,6 +595,7 @@ def stage_detections_to_seeds(ctx):
                 )
                 _dev = (rate - _model) * ctx.args.hops_per_sec  # chips/s
                 if abs(_dev) > _tol:
+                    _rate_rejected = True
                     ctx.cp_rate_rejected[prn] = (
                         rate * ctx.args.hops_per_sec,
                         _model * ctx.args.hops_per_sec,
@@ -690,9 +692,27 @@ def stage_detections_to_seeds(ctx):
             # few-satellite median cannot reject, and a wandering pooled l-a moves every seeded code
             # rate (1 ppm = f_chip*1e-6 chips/s), walking the deep integration off peak within its
             # ~1 s window. Bounded by code_bias_max (ppm), and only from detections at acquire_snr
-            # or above.
-            if snr >= ctx.args.acquire_snr and abs(la) < ctx.args.code_bias_max * 1e-6:
-                ctx.la_samples.append(la)
+            # or above, from a mature fit (>= 6 points over fit_maturity_span_s: a fit rebuilt
+            # from 3 points after a flush is a slope through noise), and never from a rate the
+            # cp-rate-model-tol check just rejected: a rejection says the slope is wrap-blown,
+            # and the pool is what every chain's seeds ride (10-26 05:38Z: a 3-point fit and one
+            # other made a 2-sample median of +1.44 ppm, and the seeds walked at ~1 chip/s). A
+            # mature fit refused only by the tol goes to la_rejected, the re-pin's evidence
+            # should the pool itself be what is wrong.
+            _mature = (
+                len(h) >= 6
+                and (h[-1][0] - h[0][0]) / ctx.args.hops_per_sec
+                >= ctx.args.fit_maturity_span_s
+            )
+            if (
+                _mature
+                and snr >= ctx.args.acquire_snr
+                and abs(la) < ctx.args.code_bias_max * 1e-6
+            ):
+                if _rate_rejected:
+                    ctx.la_rejected.append(la)
+                else:
+                    ctx.la_samples.append(la)
             if fit is not None:
                 _log_rl(
                     "cpfit-%d" % prn,

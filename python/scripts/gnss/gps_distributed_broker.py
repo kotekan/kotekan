@@ -146,9 +146,6 @@ def main(argv=None, rx=None, publisher=None):
     # like flags; no command line can change them.
     for _k, _v in _FROZEN.items():
         setattr(args, _k, _v)
-    # Module state, since every consumer of the boresight (D3's veto, the dead-reckon transit
-    # freeze, the "_bore" post) asks sky.nearest_boresight and the chains share the process.
-    _sky.BORESIGHT_KNOWN = args.boresight != "none"
 
     # ── The loops' per-satellite state ────────────────────────────────────────────────
     # One owner object per loop (see gnss_broker/loopstate.py), constructed first because
@@ -303,6 +300,16 @@ def main(argv=None, rx=None, publisher=None):
         ),
     )
     _time0_bases = node_bases(base, trackers)
+    # The boresight is module state: every consumer (D3's veto, the transit freezes and holds,
+    # the "_bore" post) asks sky.nearest_boresight, and the chains share the process and the
+    # quantiser. Read from the same nodes the frame-0 anchor is; the re-read thread stays out
+    # of a transcript, whose replay must see the same requests in the same order.
+    _sky.init_boresight(
+        args.boresight,
+        _time0_bases,
+        _get,
+        watch=not (args.transcript_read or args.transcript_write),
+    )
     spectrum_endpoints = (
         parse_endpoints(args.spectrum_endpoints, base)
         if args.spectrum_endpoints
@@ -1472,6 +1479,7 @@ def main(argv=None, rx=None, publisher=None):
         _ctx.la_samples = (
             []
         )  # per-sat (l-a) estimates this cycle, from sats with a good code-rate fit
+        _ctx.la_rejected = []  # mature fits' (l-a) that the cp-rate-model-tol refused
         _ctx.fitted = set()  # PRNs that got their own >=3-snapshot slope fit this cycle
         _ctx.cl_report = (
             []
@@ -1938,31 +1946,84 @@ def main(argv=None, rx=None, publisher=None):
         # EMA-smoothed (slow, so it tracks oscillator drift), then seeded below to every unheld
         # sat as its code-phase rate. The code-side twin of the carrier clock bias: strong
         # detections calibrate the clock so weak ones never drift off peak. Ephemeris-free (v/c
-        # cancels). A median beyond code_bias_max (ppm) is refused.
-        if len(_ctx.la_samples) >= args.code_bias_min_sats:
-            raw_cb = statistics.median(_ctx.la_samples)
-            if abs(raw_cb) < args.code_bias_max * 1e-6:
-                _cb.code_ema = (
-                    raw_cb
-                    if _cb.code_ema is None
-                    else _cb.code_ema + args.code_bias_alpha * (raw_cb - _cb.code_ema)
+        # cancels). Held through a boresight transit, refused beyond code_bias_max (ppm), and
+        # re-pinned from agreeing refused fits (ClockBias.update_code_rate).
+        _near = _sky.nearest_boresight(getattr(_ctx, "transit_pd", None))
+        if _near is not None and _near[0] >= args.dr_clock_transit_freeze_deg:
+            _near = None
+        _was_held = _cb.code_hold
+        _act, raw_cb = _cb.update_code_rate(
+            _ctx.la_samples,
+            _ctx.la_rejected,
+            _near,
+            args.code_bias_min_sats,
+            args.code_bias_max * 1e-6,
+            args.code_bias_alpha,
+            args.cp_rate_model_tol / args.chip_rate_hz,
+            args.code_bias_repin_cycles,
+        )
+        if _act == "hold" and _was_held is None:
+            _log(
+                "code-rate clock (l-a) HELD at %+.4f ppm for a boresight transit (%s%d at "
+                "%.1f deg < dr_clock_transit_freeze_deg %.1f): the search's fits are slopes "
+                "through noise until it clears"
+                % (
+                    _cb.code_ema * 1e6,
+                    _near[1][0],
+                    _near[1][1],
+                    _near[0],
+                    args.dr_clock_transit_freeze_deg,
                 )
-                _log_rl(
-                    "la-pool",
-                    "code-rate clock offset (l-a) %+.3f ppm (raw %+.3f, %d fitted "
-                    "sats, EMA a=%.2f)"
-                    % (
-                        _cb.code_ema * 1e6,
-                        raw_cb * 1e6,
-                        len(_ctx.la_samples),
-                        args.code_bias_alpha,
-                    ),
-                )
-                # Shared through the Receiver, keyed by band. The value is a fractional
-                # frequency, so it holds for every band (Receiver.code_bias_any_band).
-                rx.contribute_code_bias(
-                    chain_id, band_id, _cb.code_ema, len(_ctx.la_samples), t0
-                )
+            )
+        elif _act != "hold" and _was_held is not None:
+            _log(
+                "code-rate clock (l-a) transit CLEAR (%s%d): updating again from %+.4f ppm"
+                % (_was_held[1][0], _was_held[1][1], (_cb.code_ema or 0.0) * 1e6)
+            )
+        if _act == "update":
+            _log_rl(
+                "la-pool",
+                "code-rate clock offset (l-a) %+.3f ppm (raw %+.3f, %d fitted "
+                "sats, EMA a=%.2f)"
+                % (
+                    _cb.code_ema * 1e6,
+                    raw_cb * 1e6,
+                    len(_ctx.la_samples),
+                    args.code_bias_alpha,
+                ),
+            )
+        elif _act == "repin":
+            _log(
+                "*** code-rate clock (l-a) RE-PINNED to %+.4f ppm: %d cycles with too few "
+                "accepted fits while %d refused ones agreed within --cp-rate-model-tol -- the "
+                "tolerance's own reference was what was wrong"
+                % (raw_cb * 1e6, args.code_bias_repin_cycles, len(_ctx.la_rejected))
+            )
+        elif _act == "refused":
+            _log_rl(
+                "la-pool-refused",
+                "code-rate clock (l-a): median %+.3f ppm of %d fits is beyond code_bias_max "
+                "%.1f -- refused, EMA stays %+.4f"
+                % (
+                    raw_cb * 1e6,
+                    len(_ctx.la_samples),
+                    args.code_bias_max,
+                    (_cb.code_ema or 0.0) * 1e6,
+                ),
+                every_s=60.0,
+            )
+        if _act in ("update", "repin", "hold"):
+            # Shared through the Receiver, keyed by band. The value is a fractional
+            # frequency, so it holds for every band (Receiver.code_bias_any_band). A held
+            # value is contributed too: it is the best estimate of a GPS-disciplined constant,
+            # and letting it go stale through a long transit would drop every borrower to 0.
+            rx.contribute_code_bias(
+                chain_id,
+                band_id,
+                _cb.code_ema,
+                len(_ctx.la_samples) if _act == "update" else 0,
+                t0,
+            )
         cb_to_seed = _cb.code_ema
         # Joint consumer 'rate' (--joint-consume): seed the code-rate clock from the joint
         # state's clk_rate instead of the l-a EMA. They are the same quantity: clk_rate

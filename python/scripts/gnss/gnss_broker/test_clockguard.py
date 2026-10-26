@@ -31,7 +31,11 @@ from types import SimpleNamespace as NS
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from gnss_broker import deadreckon as dr  # noqa: E402
 from gnss_broker.receiver import Receiver  # noqa: E402
-from gnss_broker.sky import BORESIGHT_AZ_DEG, BORESIGHT_EL_DEG  # noqa: E402
+from gnss_broker import sky as _sky  # noqa: E402
+
+# the transit tests need a pointed dish; the boresight is otherwise read from the fleet
+_sky.set_boresight(180.0, 81.41, "test")
+BORESIGHT_AZ_DEG, BORESIGHT_EL_DEG = _sky.BORESIGHT_AZ_DEG, _sky.BORESIGHT_EL_DEG
 
 _fails = []
 L5_RATE, L5_LEN = 10.23e6, 10230.0

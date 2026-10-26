@@ -159,6 +159,7 @@ class ChainContext(object):
         "jrc",
         "rr_cmd_new",
         "la_samples",
+        "la_rejected",
         "fitted",
         "cl_report",
         "dr_pd",

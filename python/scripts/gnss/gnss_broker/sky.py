@@ -431,16 +431,142 @@ def _bcnav1_brdc_xcheck(brdc_alm, sys, prn, bcnav1_eph, log):
 
 
 # ---- Boresight geometry (the quantiser-railing veto) ---------------------------------------
-# CHORD's dishes sit 8.59 deg south of zenith (dec +40.73): boresight is az 180.0, el 81.41.
-# `telescope.dish_coelev_deg` in the captured base config (config/base/live_config_*.json)
-# reads -27.3 and does not give this.
-BORESIGHT_AZ_DEG = 180.0
-BORESIGHT_EL_DEG = 81.41
-# False while the dishes are not pointed (--boresight none): nearest_boresight() then reports
-# no satellite near boresight, which turns off everything keyed on it -- the D3 transit veto,
-# the dead-reckon clock's transit freeze and the "_bore" post that freezes the assemblers'
-# model formation -- since a cone around a direction nobody points at is only in the way.
-BORESIGHT_KNOWN = True
+# Where the dishes point, read from the fleet's running config by load_boresight():
+# `telescope.dish_coelev_deg`, the tilt from zenith along the meridian (negative = south). It
+# is the value the F-engine and recv1 label their data with, and recv1's ConfigTracker refuses
+# a node whose telescope block differs from its own, so every node serves the same number.
+# None until read; while unknown (no node answered yet, or --boresight none with the dishes
+# tipped for site work) nearest_boresight() reports no satellite near boresight, which turns
+# off everything keyed on it -- the D3 transit veto, the dead-reckon clock's transit freeze,
+# the code-rate clock's transit hold, the shadow joint feed's transit hold and the "_bore" post
+# that freezes the assemblers' model formation.
+BORESIGHT_AZ_DEG = None
+BORESIGHT_EL_DEG = None
+BORESIGHT_KNOWN = False
+BORESIGHT_SOURCE = None
+_bore_lock = threading.Lock()
+_bore_init_lock = threading.Lock()
+_bore_watch = None
+_bore_inited = False
+
+
+def boresight_from_coelev(coelev_deg):
+    """(az, el) of the boresight for a meridian tilt of `coelev_deg` from zenith (negative =
+    south): -27.3 -> (180, 62.7)."""
+    c = float(coelev_deg)
+    return (180.0 if c < 0.0 else 0.0), 90.0 - abs(c)
+
+
+def set_boresight(az_deg, el_deg, source):
+    """Install a boresight for the whole process (every chain shares the quantiser), or clear
+    it with az_deg None."""
+    global BORESIGHT_AZ_DEG, BORESIGHT_EL_DEG, BORESIGHT_KNOWN, BORESIGHT_SOURCE
+    with _bore_lock:
+        if az_deg is None:
+            BORESIGHT_AZ_DEG = BORESIGHT_EL_DEG = None
+            BORESIGHT_KNOWN = False
+        else:
+            BORESIGHT_AZ_DEG, BORESIGHT_EL_DEG = float(az_deg), float(el_deg)
+            BORESIGHT_KNOWN = True
+        BORESIGHT_SOURCE = source
+
+
+def read_pointing(bases, get):
+    """(coelev_deg, detail) from the nodes' running config (GET <base>/config), or (None,
+    detail). Every base is asked; the ones that answer must agree, since a disagreement means
+    the fleet is mid-change or mislabelled and no single number describes the dishes."""
+    vals, errs = {}, []
+    for b in bases:
+        try:
+            v = (get("%s/config" % b.rstrip("/")).get("telescope") or {}).get(
+                "dish_coelev_deg"
+            )
+        except Exception as e:  # a node being down is the normal outage case
+            errs.append("%s: %s" % (b, e))
+            continue
+        if v is None:
+            errs.append("%s: no telescope.dish_coelev_deg" % b)
+            continue
+        vals[b] = float(v)
+    if not vals:
+        return None, "no node answered (%s)" % ("; ".join(errs) or "none listed")
+    distinct = sorted(set(vals.values()))
+    if len(distinct) > 1:
+        return (
+            None,
+            "nodes DISAGREE: %s"
+            % ", ".join("%s=%+.2f" % (b, v) for b, v in vals.items()),
+        )
+    return (
+        distinct[0],
+        "%d/%d node(s) agree%s"
+        % (
+            len(vals),
+            len(bases),
+            ("; unanswered: %s" % "; ".join(errs)) if errs else "",
+        ),
+    )
+
+
+def load_boresight(bases, get, quiet_if_same=False):
+    """Read the pointing (read_pointing) and install it. A failed read keeps whatever boresight
+    is installed, so a node outage does not switch the transit guards off. True when a
+    boresight is installed afterwards."""
+    coelev, detail = read_pointing(bases, get)
+    if coelev is None:
+        _log_rl(
+            "boresight-read",
+            "BORESIGHT: pointing not read (%s) -- %s"
+            % (
+                detail,
+                "keeping az %.2f el %.2f" % (BORESIGHT_AZ_DEG, BORESIGHT_EL_DEG)
+                if BORESIGHT_KNOWN
+                else "UNKNOWN: every transit guard is OFF until a node answers",
+            ),
+            every_s=300.0,
+        )
+        return BORESIGHT_KNOWN
+    az, el = boresight_from_coelev(coelev)
+    changed = not (
+        BORESIGHT_KNOWN
+        and abs(az - BORESIGHT_AZ_DEG) < 1e-6
+        and abs(el - BORESIGHT_EL_DEG) < 1e-6
+    )
+    if changed and BORESIGHT_KNOWN:
+        _log(
+            "*** BORESIGHT CHANGED: az %.2f el %.2f -> az %.2f el %.2f (dish_coelev_deg %+.2f; %s)"
+            % (BORESIGHT_AZ_DEG, BORESIGHT_EL_DEG, az, el, coelev, detail)
+        )
+    elif changed or not quiet_if_same:
+        _log(
+            "BORESIGHT az %.2f el %.2f from the fleet's telescope.dish_coelev_deg %+.2f (%s)"
+            % (az, el, coelev, detail)
+        )
+    set_boresight(az, el, "dish_coelev_deg %+.2f" % coelev)
+    return True
+
+
+def watch_boresight(bases, get, every_s=600.0):
+    """Re-read the pointing every `every_s` in one daemon thread per process (idempotent): a
+    re-pointing restarts the nodes but not the broker. The first read is the caller's."""
+    global _bore_watch
+    with _bore_lock:
+        if _bore_watch is not None:
+            return
+        bases = list(bases)
+
+        def _run():
+            ev = threading.Event()
+            while True:
+                # an unknown boresight is retried every minute, a known one every every_s
+                ev.wait(every_s if BORESIGHT_KNOWN else 60.0)
+                try:
+                    load_boresight(bases, get, quiet_if_same=True)
+                except Exception as e:  # never let the watcher die silently
+                    _log_rl("boresight-watch", "BORESIGHT watch: %s" % e, every_s=300.0)
+
+        _bore_watch = threading.Thread(target=_run, name="boresight-watch", daemon=True)
+        _bore_watch.start()
 
 
 def _unit(el_deg, az_deg):
@@ -448,15 +574,41 @@ def _unit(el_deg, az_deg):
     return (math.cos(e) * math.sin(a), math.cos(e) * math.cos(a), math.sin(e))
 
 
-def boresight_sep_deg(el_deg, az_deg, el0=BORESIGHT_EL_DEG, az0=BORESIGHT_AZ_DEG):
-    """Angular separation from boresight, degrees."""
+def init_boresight(setting, bases, get, watch=True):
+    """Apply --boresight once per process (the first chain to start; the rest find it done).
+    'none' clears it, an (az, el) tuple installs it as given, 'telescope' reads the fleet
+    (load_boresight) and, with `watch`, starts the re-read thread."""
+    global _bore_inited
+    with _bore_init_lock:
+        if _bore_inited:
+            return
+        _bore_inited = True
+        if setting == "none":
+            set_boresight(None, None, "--boresight none")
+            _log(
+                "BORESIGHT none: the dishes are not pointed; every transit guard is off"
+            )
+        elif isinstance(setting, tuple):
+            set_boresight(setting[0], setting[1], "--boresight %g,%g" % setting)
+            _log("BORESIGHT az %.2f el %.2f (fixed by --boresight)" % setting)
+        else:
+            load_boresight(bases, get)
+            if watch:
+                watch_boresight(bases, get)
+
+
+def boresight_sep_deg(el_deg, az_deg, el0=None, az0=None):
+    """Angular separation from boresight (the installed one unless el0/az0 are given),
+    degrees."""
+    el0 = BORESIGHT_EL_DEG if el0 is None else el0
+    az0 = BORESIGHT_AZ_DEG if az0 is None else az0
     u, b = _unit(el_deg, az_deg), _unit(el0, az0)
     return math.degrees(
         math.acos(max(-1.0, min(1.0, sum(x * y for x, y in zip(u, b)))))
     )
 
 
-def nearest_boresight(pd, el0=BORESIGHT_EL_DEG, az0=BORESIGHT_AZ_DEG):
+def nearest_boresight(pd, el0=None, az0=None):
     """(separation_deg, (sys, prn)) for the visible satellite closest to boresight, or None.
 
     Pooled over every constellation on purpose; `pd` (the transit sky) carries all of them.
@@ -466,6 +618,8 @@ def nearest_boresight(pd, el0=BORESIGHT_EL_DEG, az0=BORESIGHT_AZ_DEG):
     """
     if not BORESIGHT_KNOWN:
         return None
+    el0 = BORESIGHT_EL_DEG if el0 is None else el0
+    az0 = BORESIGHT_AZ_DEG if az0 is None else az0
     best = None
     for key, v in (pd or {}).items():
         try:

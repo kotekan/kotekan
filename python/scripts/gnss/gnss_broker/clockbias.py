@@ -25,6 +25,9 @@ reference the true offset is ~0, so seeding the solve commands its noise and not
 """
 
 
+import statistics
+
+
 class ClockBias(object):
     """The receiver clock-frequency bias and its freshness."""
 
@@ -37,6 +40,8 @@ class ClockBias(object):
         "available",
         "seed",
         "code_ema",
+        "code_hold",
+        "code_repin_n",
     )
 
     def __init__(self, value=0.0, ema=None, cal=None, meas_t=0.0):
@@ -70,6 +75,61 @@ class ClockBias(object):
         # seed ships code_phase_rate 0 and the prompt walks out of the correlation window in
         # minutes.
         self.code_ema = None
+        # The boresight transit the code-rate clock is held through ((sep_deg, (sys, prn)), or
+        # None), and the run of consecutive cycles whose refused samples agree on another rate
+        # (update_code_rate).
+        self.code_hold = None
+        self.code_repin_n = 0
+
+    def update_code_rate(
+        self, samples, rejected, near, min_sats, max_frac, alpha, tol_frac, repin_cycles
+    ):
+        """One cycle of the code-rate clock (l-a): the median of this cycle's samples, EMA'd.
+
+        samples: mature fits' (l-a) that passed the cp-rate tolerance; rejected: mature fits'
+        (l-a) that the tolerance refused (seeding's sample gate); near: the transit sky's
+        nearest-to-boresight (sep_deg, key) when inside the freeze cone, else None.
+
+        Held, not updated, through a boresight transit (and not bootstrapped inside one): the
+        search reports noise code phases for every satellite then, so the fits it feeds are
+        slopes through noise, and this rate is what every chain's seeds ride. Updated only from min_sats samples and a median
+        inside max_frac. Re-pinned to the refused samples' median when, for repin_cycles cycles
+        in a row, there are too few accepted samples and at least min_sats refused ones agree
+        to within tol_frac: the tolerance is measured from this very EMA, so an EMA that is
+        itself wrong would otherwise refuse every honest fit for ever.
+
+        Returns (action, raw): action is 'hold' (transit), 'update', 'repin', 'refused' (median
+        beyond max_frac) or 'few'; raw the median the action used, or None."""
+        if near is not None:
+            self.code_hold = near
+            self.code_repin_n = 0
+            return "hold", None
+        self.code_hold = None
+        if len(samples) >= min_sats:
+            self.code_repin_n = 0
+            raw = statistics.median(samples)
+            if abs(raw) >= max_frac:
+                return "refused", raw
+            self.code_ema = (
+                raw
+                if self.code_ema is None
+                else self.code_ema + alpha * (raw - self.code_ema)
+            )
+            return "update", raw
+        if (
+            self.code_ema is not None
+            and len(rejected) >= min_sats
+            and max(rejected) - min(rejected) <= tol_frac
+        ):
+            self.code_repin_n += 1
+            if self.code_repin_n >= repin_cycles:
+                raw = statistics.median(rejected)
+                self.code_ema = raw
+                self.code_repin_n = 0
+                return "repin", raw
+        else:
+            self.code_repin_n = 0
+        return "few", None
 
     def update_seed(self, source):
         """Advance the seed-side bias after this cycle's multi-satellite solve.

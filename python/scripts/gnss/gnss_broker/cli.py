@@ -57,6 +57,11 @@ _FROZEN = dict(
     # unwrap-blown slope fit is an outlier a few-satellite median cannot reject, and the seeded code
     # rate must stay ~0.1 ppm stable for the deep integration to stay on peak.
     code_bias_max=3.0,
+    # Consecutive cycles in which too few fits pass the cp-rate tolerance while >= code_bias_min_sats
+    # refused ones agree within it before the code-rate clock (l-a) is re-pinned to them
+    # (ClockBias.update_code_rate): the tolerance is measured from that clock, so a wrong clock
+    # would otherwise refuse every honest fit. 10 cycles is ~20 s of agreement.
+    code_bias_repin_cycles=10,
     # Fleet coherent (fleet.fleet_coherent): a fleet deep_snr is published as a detection only above
     # this multiple of the null floor, re-measured every cycle by shuffling each instance's records
     # (real amplitudes, no common phase). The right bar depends on fleet size and window length, so
@@ -644,6 +649,19 @@ def telem_gather_endpoint(telem_gather, transcript_read):
     return DARK_GATHER if (telem_gather and transcript_read) else telem_gather
 
 
+def _boresight_arg(v):
+    """--boresight: 'telescope', 'none', or 'AZ,EL' in degrees (returned as a float tuple)."""
+    if v in ("telescope", "none"):
+        return v
+    try:
+        az, el = (float(x) for x in v.split(","))
+    except ValueError:
+        raise argparse.ArgumentTypeError(
+            "expected telescope, none or AZ,EL in degrees, got %r" % v
+        )
+    return (az, el)
+
+
 def build_parser(description):
     """The broker's argument parser; `description` is the --help text (the broker's docstring)."""
     ap = argparse.ArgumentParser(
@@ -800,14 +818,18 @@ def build_parser(description):
     )
     ap.add_argument(
         "--boresight",
-        default="nominal",
-        choices=("nominal", "none"),
-        help="where the dishes point. nominal (default) = CHORD's fixed boresight (az "
-        "180, el 81.41), which the D3 sawtooth detector's transit veto, the "
-        "dead-reckon clock's transit freeze and the assemblers' model-formation freeze "
-        "key on. none = the dishes are not pointed (tipped for site work): no "
-        "satellite is ever near boresight, so all three stay off. The setting is "
-        "process-wide, so every chain of one broker_multi.py process must agree.",
+        default="telescope",
+        type=_boresight_arg,
+        help="where the dishes point, which the D3 sawtooth detector's transit veto, the "
+        "dead-reckon clock's transit freeze, the code-rate clock's transit hold, the "
+        "shadow joint feed's transit hold and the assemblers' model-formation freeze key "
+        "on. telescope (default) = read telescope.dish_coelev_deg from the nodes' running "
+        "config (GET /config on --rest-url and every tracker host, which must agree) at "
+        "start and every 10 minutes after; until a node answers no satellite is near "
+        "boresight. none = the dishes are not pointed (tipped for site work), so all of "
+        "them stay off. AZ,EL (degrees) = a fixed boresight, for replays and tests. The "
+        "setting is process-wide, so every chain of one broker_multi.py process must "
+        "agree.",
     )
     ap.add_argument(
         "--constellation",
@@ -924,7 +946,7 @@ def build_parser(description):
     ap.add_argument(
         "--code-bias-min-sats",
         type=int,
-        default=2,
+        default=3,
         help="fitted satellites a cycle needs before their median (l-a) updates the "
         "code-rate clock offset",
     )

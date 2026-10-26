@@ -122,6 +122,7 @@ def seeding_ctx(**args):
         code_len=L,
         fitted=set(),
         la_samples=[],
+        la_rejected=[],
         lc_seg=1,
         cl_report=[],
         status={},
@@ -145,7 +146,12 @@ def run(ctx, prn, dets, cp_at, t0=1000.0, cycle_s=2.0):
     try:
         for i, h in enumerate(dets):
             logs.append([])
-            ctx.fitted, ctx.la_samples, ctx.cl_report = set(), [], []  # per cycle
+            ctx.fitted, ctx.la_samples, ctx.la_rejected, ctx.cl_report = (
+                set(),
+                [],
+                [],
+                [],
+            )  # per cycle
             ctx.t0 = t0 + i * cycle_s
             ctx.drp.now_w = ctx.t0
             ctx.best = {prn: (40.0, DOP, cp_at(h), h, -1, -1.0, -1.0)}
