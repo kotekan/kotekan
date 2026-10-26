@@ -66,9 +66,10 @@ class FleetPublisher:
         self._joint = {"t": None, "trk": None, "feed": {}}
         self._dark = {}  # chain -> {"t", "instances": {tap url: verdict}} (set_dark)
         # Receiver-wide sky, so the viewer draws what the broker believes instead of
-        # re-deriving it. Keyed by constellation because each chain contributes its own and
-        # they must not overwrite each other.
-        self._sky = {}  # sysc -> {"t": float, "sats": {prn: (el, az)}}
+        # re-deriving it. Keyed by constellation AND chain: several chains predict one
+        # constellation (l5/l2c, b2a/b2b/b3i), each through its own signal-capability filter,
+        # so one constellation's satellites come from the union (sky_rows), not the last writer.
+        self._sky = {}  # sysc -> chain -> {"t": float, "sats": {prn: (el, az)}}
         # One port, many chains: each registered chain has its own store ({"rows", "dets",
         # "meta", "elem", "sig", "band", "desc"}, see register), and a request selects one
         # chain or gets them all, tagged.
@@ -174,23 +175,7 @@ class FleetPublisher:
                         # [{"const": "G", "prn": 3, "el": .., "az": .., "age_s": ..}], flat
                         # because the consumer draws markers; age_s makes a frozen chain read
                         # as stale rather than as a satellite standing still.
-                        _now_s = time.time()
-                        _sky = []
-                        for _sc, _d in sorted(pub._sky.items()):
-                            _age = (_now_s - _d["t"]) if _d.get("t") else None
-                            for _p, (_el, _az) in sorted(_d["sats"].items()):
-                                _sky.append(
-                                    {
-                                        "const": _sc,
-                                        "prn": _p,
-                                        "el": _el,
-                                        "az": _az,
-                                        "age_s": (
-                                            round(_age, 1) if _age is not None else None
-                                        ),
-                                    }
-                                )
-                        body = json.dumps(_sky).encode()
+                        body = json.dumps(pub.sky_rows(time.time())).encode()
                     elif p.endswith("get_joint"):
                         # Receiver-wide: the shadow joint state (#191 step 2) and, per chain,
                         # what its feed offered, passed and why it held. The body ignores
@@ -307,21 +292,56 @@ class FleetPublisher:
         with self._lock:
             self._dark[chain] = {"t": t, "instances": dark}
 
-    def set_sky(self, sysc, sats, t):
-        """One constellation's az/el, from the chain that predicts it. Receiver-wide output.
+    def set_sky(self, sysc, sats, t, chain=None):
+        """One chain's az/el for its constellation. Receiver-wide output (sky_rows).
 
         Served so the viewer draws the broker's sky. Computing its own would mean fetching and
         merging a second copy of the broadcast ephemeris (a second writer of the shared nav
         cache), with a sky that could disagree with the broker's.
+
+        Stored per chain: each chain's prediction is filtered to the satellites that transmit
+        its signal (almanac's capability gate), so GPS L5 holds fewer satellites than L2C. A
+        store keyed by constellation alone served whichever chain wrote last, and the viewer's
+        rows came and went every cycle.
         """
         with self._lock:
-            self._sky[sysc] = {
+            self._sky.setdefault(sysc, {})[chain] = {
                 "t": t,
                 "sats": {
                     int(p): (round(float(v[0]), 2), round(float(v[1]), 2))
                     for p, v in (sats or {}).items()
                 },
             }
+
+    def sky_rows(self, now_s):
+        """The sky as get_sky serves it: [{"const", "prn", "el", "az", "age_s"}], flat.
+
+        Each constellation is the union of its chains' satellites. A satellite more than one
+        chain predicts takes the newest prediction, and age_s is that prediction's age, so a
+        frozen chain reads as stale rather than as a satellite standing still. A satellite
+        only a frozen chain holds stays listed with its growing age.
+        """
+        rows = []
+        with self._lock:
+            for sysc, by_chain in sorted(self._sky.items()):
+                best = {}  # prn -> (t, el, az)
+                for d in by_chain.values():
+                    t = d.get("t")
+                    for prn, (el, az) in d["sats"].items():
+                        cur = best.get(prn)
+                        if cur is None or (t is not None and (cur[0] is None or t > cur[0])):
+                            best[prn] = (t, el, az)
+                for prn, (t, el, az) in sorted(best.items()):
+                    rows.append(
+                        {
+                            "const": sysc,
+                            "prn": prn,
+                            "el": el,
+                            "az": az,
+                            "age_s": round(now_s - t, 1) if t else None,
+                        }
+                    )
+        return rows
 
     def set_elements(self, table, chain=None):
         """The per-element complex-gain table, served on /get_elements.
@@ -750,6 +770,10 @@ class _ChainView(object):
         return self._pub.set_joint(snap, feed, t, chain=self._chain)
 
     def set_sky(self, sysc, sats, t):
-        # Per-chain call site, receiver-wide effect: the chain names its own constellation and
-        # the publisher unions them. Present here for the reason set_rf gives.
-        return self._pub.set_sky(sysc, sats, t)
+        # Per-chain call site, receiver-wide effect: the publisher unions the chains of each
+        # constellation. Present here for the reason set_rf gives.
+        return self._pub.set_sky(sysc, sats, t, chain=self._chain)
+
+    def sky_rows(self, now_s):
+        # Receiver-wide: the union over every chain, whichever chain asks.
+        return self._pub.sky_rows(now_s)
