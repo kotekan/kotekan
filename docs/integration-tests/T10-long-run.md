@@ -120,24 +120,24 @@ the first X as documented (N2 17 frequencies, FRB2 frames 0, 1, 359, 360, …).
 The test takes about 15 minutes (5 of them for the check) and writes 4.2 GB in 26 274 files:
 FRB2 3.3 GB, N2 0.6 GB, the rest 0.3 GB.
 
-## Result (CHIME, cx67, A40, Release)
+## Result (CHIME, cx68, A40, Release)
 
 **PASS**; every check is exact. As in T9, the poison is `bad_voltage: random_valid` and the mask
-lifetime 6 frames, with changes every 18 frames. The N2 integrations are 24 frames (1 s), as in
+lifetime 3 frames, with changes every 9 frames. The N2 integrations are 24 frames (1 s), as in
 config/fengine.
 
 | check | result |
 |---|---|
-| run | 8640 frames, 362 s simulated; kotekan 1599 s wall-clock, 5.0 to 6.0 frames/s per tenth of the run |
+| run | 8640 frames, 362 s simulated; kotekan 1670 s wall-clock, 4.9 to 5.8 frames/s per tenth of the run |
 | frames | every writer got all its frames, contiguous `fpga_seq_num` |
-| masks | 1440 + 8640 frames, 479 changes, equal to the schedule, streams agree |
-| beams | BB 1440 frames hold the 32 beams at `seq0 + k · 98304`; FRB2 1439 frames hold the 1024 production beams at `seq0 + T* + k L₂` |
+| masks | 2880 + 8640 frames, 959 changes, equal to the schedule, streams agree |
+| beams | BB 2880 frames hold the 32 beams at `seq0 + k · 49152`; FRB2 1439 frames hold the 1024 production beams at `seq0 + T* + k L₂` |
 | `n2k_plcounts` | 234 112 lost samples in 8640 frames, exact |
 | loss rate | 3658 packets of 3.54·10^7 lost, expected 3539 ± 59: +2.00 σ |
 | FRB PL mask | 1439 frames, 274 176 invalid samples, exact |
-| N2 | 359 contiguous integrations of all 16 frequencies; counts and flags (6 to 15 elements flagged) exact; no NaN or Inf |
+| N2 | 359 contiguous integrations of all 16 frequencies; counts and flags (9 to 20 elements flagged) exact; no NaN or Inf |
 | FRB2 | beam 23 holds the peak in all 16 channels in all 5 written frames; no NaN or Inf |
-| memory | 17 419 MiB, growth +0.5 MiB; GPU 34 618 MiB throughout |
+| memory | 17 425 MiB, growth +0.5 MiB; GPU 34 618 MiB throughout |
 
 Kotekan uses about 18 CPU cores. The earlier CHIME setup, without BB and HFB and with the input in
 element order, ran at 15 frames/s; the cause of the slowdown is not known.
