@@ -11,40 +11,40 @@ endif()
 # functions so that both link into one library. Without NDEBUG the core synchronizes its stream
 # after every call, and kotekan's default Test build does not define it.
 set(PILOTPROXY_C_FUNCTIONS
-    FStat_GetSpecs
-    FStat_GetFeatures
-    FStat_GetOptimizationFeatures
-    FStat_GetVersion
-    FStat_LastError
-    FStat_Create
-    FStat_Create_Batch
-    FStat_Destroy
-    FStat_SetStream
-    FStat_Compute_RowSums_I32
-    FStat_Supports_RowSums
-    FStat_Compute_FinePowers_U64
-    FStat_Supports_FinePowers
-    FStat_Compute_FusedFine_U64
-    FStat_Supports_FusedFine
-    FStat_Compute_FusedFineMask_U64
-    FStat_Supports_FusedFineMask
-    FStat_Compute_FusedFineMaskWithSupport_U64
-    FStat_Supports_FusedFineMaskWithSupport
-    FStat_GetFineSpecs
-    fstat_ref_sign_extend_i4
-    fstat_ref_unpack_complex_i4
-    fstat_ref_complex_mul_conj
-    fstat_ref_row_sums_i32
-    fstat_ref_fine_powers_u64
-    fstat_ref_powers_from_fine_u64)
+    PilotProxy_GetSpecs
+    PilotProxy_GetFeatures
+    PilotProxy_GetOptimizationFeatures
+    PilotProxy_GetVersion
+    PilotProxy_LastError
+    PilotProxy_Create
+    PilotProxy_Create_Batch
+    PilotProxy_Destroy
+    PilotProxy_SetStream
+    PilotProxy_Compute_RowSums_I32
+    PilotProxy_Supports_RowSums
+    PilotProxy_Compute_FinePowers_U64
+    PilotProxy_Supports_FinePowers
+    PilotProxy_Compute_FusedFine_U64
+    PilotProxy_Supports_FusedFine
+    PilotProxy_Compute_FusedFineMask_U64
+    PilotProxy_Supports_FusedFineMask
+    PilotProxy_Compute_FusedFineMaskWithSupport_U64
+    PilotProxy_Supports_FusedFineMaskWithSupport
+    PilotProxy_GetFineSpecs
+    pilotproxy_ref_sign_extend_i4
+    pilotproxy_ref_unpack_complex_i4
+    pilotproxy_ref_complex_mul_conj
+    pilotproxy_ref_row_sums_i32
+    pilotproxy_ref_fine_powers_u64
+    pilotproxy_ref_powers_from_fine_u64)
 foreach(window 64 128)
     set(_target pilotproxy_k${window})
     list(TRANSFORM PILOTPROXY_C_FUNCTIONS REPLACE "^(.+)$" "\\1=${_target}_\\1" OUTPUT_VARIABLE
                                                                                 _renames)
     add_library(${_target} OBJECT pilotproxy_core.cu)
     target_compile_definitions(
-        ${_target} PRIVATE FSTAT_DETECTOR_WINDOW_SAMPLES=${window} PILOTPROXY_NAMESPACE=${_target}
-                           ${_renames} NDEBUG)
+        ${_target} PRIVATE PILOTPROXY_DETECTOR_WINDOW_SAMPLES=${window}
+                           PILOTPROXY_NAMESPACE=${_target} ${_renames} NDEBUG)
 endforeach()
 add_library(pilotproxy STATIC $<TARGET_OBJECTS:pilotproxy_k64> $<TARGET_OBJECTS:pilotproxy_k128>)
 

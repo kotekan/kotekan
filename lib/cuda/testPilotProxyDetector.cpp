@@ -69,7 +69,7 @@ bool less_u256(const u256& x, const u256& y) {
 ////////////////////////////////////////////////////////////////////////////////
 // CPU model of the fine reduction: frozen fxfft256 v1 over each stream's row
 // sums, exact uint64 feed sums. Row-sum layout is the
-// FStat_Compute_RowSums_I32 contract: term-major, stream-major rows,
+// PilotProxy_Compute_RowSums_I32 contract: term-major, stream-major rows,
 // interleaved re/im int32.
 
 void cpu_fine_powers(const std::vector<std::int32_t>& row_sums, const int num_streams,
@@ -266,7 +266,7 @@ public:
 
         void* const handle = core.Create(d_packed, int(detector_rows));
         if (!handle)
-            FATAL_ERROR("FStat_Create failed: {:s}", core.LastError());
+            FATAL_ERROR("PilotProxy_Create failed: {:s}", core.LastError());
 
         std::vector<std::int8_t> packed_gpu(packed_count), packed_cpu(packed_count);
         std::vector<std::int32_t> row_sums_gpu(std::size_t(NUM_TERMS) * detector_rows * 2);

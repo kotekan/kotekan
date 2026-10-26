@@ -20,13 +20,16 @@
  * @class DtvRfiMask
  * @brief Fold one 8192- or 16384-sample DTV decision block into the aligned RFImask frame.
  *
- * DTV int8[F] uses 1 = reject; RFImask uint1x8[num_times/1024, F, 128] uses 1 = keep. The output is
- * their intersection: a rejected frequency has every time bit cleared, an accepted one keeps the
- * existing mask. Both the visibility correlator and its packet-loss counter must consume this
- * output. One detector block per RFImask frame; mismatched time or frequency identity stops the
- * run. Optional fine-support rows distinguish invalid rank support from a valid keep.
- * Invalid rows clear every time bit. The permanent-mask limit also clears every bit,
- * independently of the detector score; the raw detector products retain their meaning.
+ * The two masks use opposite conventions: DTV int8[F] uses 1 to reject,
+ * while RFImask uint1x8[num_times/1024, F, 128] uses 1 to keep. For a DTV
+ * rejection, clear every time bit at that frequency. Otherwise retain the
+ * existing RFImask. Both the correlator and its packet-loss counter must use
+ * this combined mask so they count the same accepted samples.
+ *
+ * One detector block must match one RFImask frame in time and frequency;
+ * a mismatch stops the run. Optional fine-support rows distinguish a valid
+ * keep from insufficient rank support. Invalid support and the permanent-mask
+ * limit each clear every time bit without changing the raw detector products.
  *
  * @par Buffers
  * @buffer  rfi_buf     RFImask frames from n2k.

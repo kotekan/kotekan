@@ -67,7 +67,7 @@ public:
             FATAL_ERROR("cudaPilotProxyDetector: unsupported receiver channel namespace");
         load_bundle(pilot_profiles_path, weights_path, channel_namespace);
 
-        // Create handles before the pipeline runs: FStat_Create queries device properties
+        // Create handles before the pipeline runs: PilotProxy_Create queries device properties
         // and allocates device scratch. Channels bind at the first frame and reuse the
         // staging region and scratch in command-stream order.
         int window = 0, fine_windows = 0, weight_terms = 0, fine_bins = 0;
@@ -85,9 +85,9 @@ public:
         for (auto& profile : bundle_profiles) {
             if (profile.receiver_channel_id < 0 || !profile.fine_calibrated)
                 continue;
-            profile.fstat_handle = core->Create(d_packed, detector_rows);
-            if (!profile.fstat_handle)
-                FATAL_ERROR("cudaPilotProxyDetector: FStat_Create failed "
+            profile.detector_handle = core->Create(d_packed, detector_rows);
+            if (!profile.detector_handle)
+                FATAL_ERROR("cudaPilotProxyDetector: PilotProxy_Create failed "
                             "for physical channel {:d}: "
                             "{:s}",
                             profile.physical_channel, core->LastError());
@@ -96,8 +96,8 @@ public:
 
     ~cudaPilotProxyDetectorState() {
         for (auto& profile : bundle_profiles)
-            if (profile.fstat_handle)
-                core->Destroy(profile.fstat_handle);
+            if (profile.detector_handle)
+                core->Destroy(profile.detector_handle);
     }
 
     /// One pilot channel row of pilot_profiles.json (runtime bundle).
@@ -116,7 +116,8 @@ public:
         int cfar_rank = 0;
         unsigned long long multiplier_q16 = 0;
         std::array<unsigned long long, 4> bulk_mask_words{{0, 0, 0, 0}};
-        void* fstat_handle = nullptr; // FStat_Create handle (d_in = d_packed), if calibrated
+        void* detector_handle =
+            nullptr; // PilotProxy_Create handle (d_in = d_packed), if calibrated
     };
 
     /// A bundle profile bound to a local frequency index at first frame.
@@ -468,8 +469,10 @@ private:
 
 /**
  * @class cudaPilotProxyDetector
- * @brief cudaCommand running the PilotProxy ATSC DTV pilot-tone F-statistic
- * detector (vendored in external/pilotproxy) on packed receiver voltage data.
+ * @brief Detect ATSC DTV pilots in packed receiver voltages with PilotProxy.
+ *
+ * The detector compares pilot power with a ranked local reference. Its core
+ * is vendored in external/pilotproxy.
  *
  * @author Dylan Gormley
  *
@@ -767,7 +770,7 @@ void cudaPilotProxyDetector::bind_first_frame(
     }
 
     for (const auto& channel : state.bound_channels)
-        state.core->SetStream(channel.profile->fstat_handle, device.getStream(cuda_stream_id));
+        state.core->SetStream(channel.profile->detector_handle, device.getStream(cuda_stream_id));
 
     state.run_state = State::RunState::running;
 }
@@ -855,14 +858,14 @@ cudaEvent_t cudaPilotProxyDetector::execute(cudaPipelineState& /*pipestate*/,
         if (support_memory) {
             // Rank support is not packet-loss or feed-health qualification.
             state.core->Compute_FusedFineMaskWithSupport_U64(
-                profile.fstat_handle, weights, profile.anchor_bin, profile.designated_half_width,
+                profile.detector_handle, weights, profile.anchor_bin, profile.designated_half_width,
                 profile.bulk_mask_words.data(), profile.cfar_rank, profile.multiplier_q16,
                 state.fine_power_scratch, state.mask_i32_scratch,
                 support_memory + 2 * channel.freq_index,
                 support_memory + 2 * channel.freq_index + 1, channel_powers, nullptr);
         } else {
             state.core->Compute_FusedFineMask_U64(
-                profile.fstat_handle, weights, profile.anchor_bin, profile.designated_half_width,
+                profile.detector_handle, weights, profile.anchor_bin, profile.designated_half_width,
                 profile.bulk_mask_words.data(), profile.cfar_rank, profile.multiplier_q16,
                 state.fine_power_scratch, state.mask_i32_scratch, channel_powers, nullptr);
         }

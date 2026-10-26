@@ -10,9 +10,10 @@
  *     = voltage[(pos + w*K + k') mod ring, f, p, d] XOR 0x88
  * @endcode
  *
- * Here s = p * num_dishes + d, K = detector_window_samples, and k' is k or
- * K-1-k according to time_reverse_windows. CHORD's runtime weight bundles
- * require window reversal even though their spectral sense is upright.
+ * The stream index is s = p * num_dishes + d, and each window has
+ * K = detector_window_samples taps. The bundle's time_reverse_windows
+ * selects k' = k or K-1-k. CHORD's bundles request the reversal even though
+ * the receiver's frequency axis is upright.
  *
  * Both layouts store the real component in the high nibble and the imaginary
  * component in the low nibble. XOR 0x88 converts offset-binary values to
@@ -50,9 +51,9 @@
  *                          internally with the power-of-two mask).
  * @param detector_window_samples K from the compiled kernel (64 on CHORD;
  *                          128 on CHIME).
- * @param time_reverse_windows Reverse each K-sample window (the adapter
- *                          flip assumed by post-spectral-sense weight
- *                          banks; true for CHORD runtime bundles).
+ * @param time_reverse_windows Reverse each K-sample window to match the
+ *                          runtime bundle's weight coordinates
+ *                          (true for CHORD runtime bundles).
  * @param stream            CUDA stream to launch on.
  */
 void launch_pilotproxy_pack(std::int8_t* packed_out, const std::uint8_t* voltage_ring,

@@ -164,7 +164,7 @@ def detector_rows_from_voltage(
     return real, imag
 
 
-def expected_row_sums(real, imag, weights_packed):
+def expected_row_projections(real, imag, weights_packed):
     """Exact complex projections [terms, rows, 2], computed on the CPU."""
     w = np.frombuffer(weights_packed, dtype=np.uint8).reshape(3, real.shape[1])
     w_real = sign_extend_nibble_twos(w >> 4)
@@ -251,7 +251,7 @@ def seal_bundle(bundle_dir, pilot_profiles):
 def expected_products(
     block_bytes, freq_ids, bundle, weight_bank, *, num_dishes=NUM_DISHES
 ):
-    """Reference frame powers and fine masks for a complete detector block.
+    """Reference masks, frame powers and rank support for one detector block.
 
     Fine decisions use PilotProxy's fixed-point Python FFT and integer CFAR
     reference. No GPU output is used to construct the expected products.
@@ -268,6 +268,7 @@ def expected_products(
     ]
     powers = np.zeros((len(freq_ids), 3), dtype=np.uint64)
     masks = np.zeros(len(freq_ids), dtype=np.uint8)
+    support = np.full((len(freq_ids), 2), -1, dtype=np.int32)
     for index, freq_id in enumerate(freq_ids):
         profile = profiles.get(freq_id)
         if profile is None:
@@ -282,7 +283,7 @@ def expected_products(
             num_dishes=num_dishes,
             window_samples=profile["weight_bank_nbytes"] // 3,
         )
-        projections = expected_row_sums(real, imag, weights)
+        projections = expected_row_projections(real, imag, weights)
         fine = fine_power_fx(projections, num_streams=NUM_POL * num_dishes)
         powers[index] = fine.sum(axis=1, dtype=np.uint64)
         calibration = profile["fine_calibration"]
@@ -290,15 +291,17 @@ def expected_products(
             raise ValueError(
                 f"physical channel {profile['physical_channel']} is not calibrated"
             )
-        masks[index] = fine_mask_decision(
+        decision = fine_mask_decision(
             fine,
             anchor_bin=calibration["anchor_bin"],
             designated_half_width=calibration["designated_half_width"],
             bulk_mask=[int(word, 16) for word in calibration["bulk_mask_words_hex"]],
             cfar_rank=calibration["cfar_rank"],
             multiplier_q16=calibration["cfar_multiplier_q16"],
-        ).mask
-    return masks, powers
+        )
+        masks[index] = decision.mask
+        support[index] = (int(decision.valid), decision.n_bulk)
+    return masks, powers, support
 
 
 def main():
@@ -378,7 +381,7 @@ def main():
             .tolist()
         )
         try:
-            want_masks, want_block_powers = expected_products(
+            want_masks, want_block_powers, _ = expected_products(
                 block_bytes, FREQ_IDS, pilot_profiles, weight_bank
             )
         except ValueError as exc:

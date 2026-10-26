@@ -23,7 +23,8 @@ Components
 ``cudaPilotProxyDetector`` (``lib/cuda``)
     A ``cudaCommand`` that reads the same voltage ring as the n2k correlator.
     For each bound frequency it packs one block from every input into 128
-    windows of 64 samples and runs the detector core. Per local frequency and
+    windows and runs the detector core. ``detector_window_samples`` selects
+    64 samples per window for CHORD or 128 for CHIME. Per local frequency and
     block it writes ``dtv_mask`` (``int8[F]``, 1 rejects the block),
     ``dtv_powers`` (``uint64[F, 3]``, the target and the two reference frame
     powers, each the sum of that term's 256 fine powers) and, optionally,
@@ -36,6 +37,8 @@ Components
     ``VENDOR.json`` pins the upstream revision and the hash of each file, and
     the PilotProxy CI script checks them. Changes to the core are
     made upstream and re-vendored, not edited here.
+    Core 4 uses the ``PilotProxy_*`` C API and ``pilotproxy_detector.*``
+    sources. Its integer arithmetic and runtime bundle format are unchanged.
 
 ``DtvRfiMask`` (``lib/stages``)
     Combines the DTV decision with the SK mask ``rfi_RFImask``. A rejected
