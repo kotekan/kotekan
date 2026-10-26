@@ -71,6 +71,7 @@ def test_gates():
             "q": 2,
             "onpeak": 0,
             "power": 0,
+            "rail": 0,
             "tau": 1,
             "nrec": 1,
             "stale": 1,
@@ -126,6 +127,34 @@ def test_gates():
         10.0,
     )
     check(rows4 == [], "a row without p_pow or p_med is not fed (no bar, no feed)")
+    # 10-26 03:22Z: G3 at C/N0 ~50 (power far above the bar), its node trim walked to L5's
+    # 1.473 clamp; at the rail the replica is pinned and the residual stops being the sky.
+    trk5 = {1: row(150.2), 3: row(150.3), 6: row(150.4)}
+    fleet5 = {p: fl(3.0) for p in trk5}
+    rows5, failed5, _ = jtrk.feed_rows(
+        trk5,
+        fleet5,
+        {},
+        lambda p: True,
+        {},
+        "G",
+        1.0,
+        0.1,
+        0.3,
+        4,
+        10.0,
+        trims={1: 0.40, 3: -1.47, 6: 1.11},
+        rail=0.75 * 1.473,
+    )
+    check(
+        [k for k, _y, _s in rows5] == [("G", 1)] and failed5["rail"] == 2,
+        "trims at -1.47 (the rail) and +1.11 (past 0.75 of it) fail rail; 0.40 feeds (%s)"
+        % failed5,
+    )
+    rows6, _f6, _ = jtrk.feed_rows(
+        trk5, fleet5, {}, lambda p: True, {}, "G", 1.0, 0.1, 0.3, 4, 10.0
+    )
+    check(len(rows6) == 3, "no readback and no rail: the gate is off")
 
 
 def test_two_states():
@@ -176,6 +205,7 @@ def ctx_for(rx, trk, uptime=1000.0, t=100.0):
         joint_trk_spec_tau_max=0.3,
         joint_trk_min_records=4,
         joint_trk_p_min=10.0,
+        joint_trk_rail_frac=0.75,
         joint_trk_min_sats=3,
         signal="gal_e5a",
     )
@@ -183,6 +213,7 @@ def ctx_for(rx, trk, uptime=1000.0, t=100.0):
         args=a,
         uptime_s=uptime,
         dr_state={},
+        dls=types.SimpleNamespace(readback={}),
         dllp=types.SimpleNamespace(
             trk=trk, fleet={p: fl(3.0) for p in trk}, spec_fit={}
         ),

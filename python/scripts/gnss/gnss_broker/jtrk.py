@@ -28,7 +28,11 @@ joint_trk_spec_tau_max whenever the fit is valid, enough records behind the resi
 newer than the last fed, and the chain's own track gate. The power bar is stricter than
 presence's (k_sigma x the median, 3): a satellite fading at low elevation stays present at
 3-5x while its replica wanders on noise (10-26 02:23-04:50Z, G1/G3/G28 at el 9-13 deg, steps
-of +-3 chips fed), and 97% of rows overnight sat above 50x. Per
+of +-3 chips fed), and 97% of rows overnight sat above 50x. And the node's own trim within
+joint_trk_rail_frac of its clamp: while the trim follows the signal the residual is the sky,
+but at the rail the replica is pinned and the signal moves on (10-26 03:21-03:23Z: G3 at C/N0
+~50, trim walking -0.55 -> -1.47, the L5 clamp, a minute before its power fell); off gps_l5,
+<= 0.06% of present rows overnight reached 70% of the clamp. Per
 chain and cycle: no feed during the warm-up or a boresight transit, and none unless at least
 joint_trk_min_sats satellites pass (a thin set cannot separate clk from b).
 """
@@ -36,7 +40,7 @@ joint_trk_min_sats satellites pass (a thin set cannot separate clk from b).
 from gnss_broker.transport import _log, _log_rl
 
 #: Gate names, in the order a satellite is tested; the first that fails is the one counted.
-GATES = ("track", "q", "onpeak", "power", "tau", "nrec", "stale")
+GATES = ("track", "q", "onpeak", "power", "rail", "tau", "nrec", "stale")
 #: The presence verdict that says the replica is on the peak: both the q and the prompt-power
 #: bars against the noise probes. The displaced admission ("+disp") and the deep gate
 #: ("deep") admit a satellite whose tap is OFF the peak, which is what they exist for, and
@@ -56,12 +60,16 @@ def feed_rows(
     tau_max,
     min_rec,
     p_min,
+    trims=None,
+    rail=None,
 ):
     """The rows this chain may feed, and why the rest may not. Pure.
 
     trk: trkresid.tracker_residuals' {prn: {"raw", "n", "hop", ...}} (present, non-probe);
     fleet: the fleet DLL's {prn: {"q", "q_floor", "present_gate", "p_pow", "p_med", ...}};
-    p_min: the prompt-power bar in units of p_med; spec_fit: {prn: {"tau_chips"}} for
+    p_min: the prompt-power bar in units of p_med; trims: {prn: the node's trim readback,
+    chips}, a PRN absent reading 0; rail: |trim| at or beyond which a PRN is refused (None:
+    no rail gate); spec_fit: {prn: {"tau_chips"}} for
     the PRNs whose fit is valid this cycle; track_ok(prn) the chain's track gate; last_hop:
     {prn: newest hop already fed}, not modified; k: reference chips per chip of this chain.
 
@@ -84,6 +92,8 @@ def feed_rows(
             or f["p_pow"] < p_min * f["p_med"]
         ):
             failed["power"] += 1
+        elif rail is not None and abs((trims or {}).get(prn) or 0.0) >= rail:
+            failed["rail"] += 1
         elif prn in spec_fit and abs(spec_fit[prn]["tau_chips"]) >= tau_max:
             failed["tau"] += 1
         elif int(v.get("n", 0)) < min_rec:
@@ -104,6 +114,7 @@ def stage_joint_trk(ctx):
     from gnss_broker.deadreckon import _transit_pd
     from gnss_broker.receiver import JOINT_REF_RATE_HZ, TRK_STATE
     from gnss_broker.sky import nearest_boresight
+    from gnss_broker.trimarm import trim_clamp
 
     a = ctx.args
     st = ctx.dr_state.setdefault("jtrk", {"last_hop": {}, "cycles": 0, "thin": 0})
@@ -128,6 +139,8 @@ def stage_joint_trk(ctx):
         a.joint_trk_spec_tau_max,
         a.joint_trk_min_records,
         a.joint_trk_p_min,
+        trims={p: r.get("trim_chips") for p, r in (ctx.dls.readback or {}).items()},
+        rail=a.joint_trk_rail_frac * trim_clamp(a.chip_rate_hz),
     )
     if why is None and len(rows) < a.joint_trk_min_sats:
         why = "thin set (%d < %d)" % (len(rows), a.joint_trk_min_sats)
