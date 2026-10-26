@@ -7,11 +7,15 @@ import shutil
 import signal
 import sys
 
+from pathlib import Path
 from subprocess import call, Popen
 
-producer_path = "../build/tests/boost/dataset_broker_producer"
-producer2_path = "../build/tests/boost/dataset_broker_producer2"
-consumer_path = "../build/tests/boost/dataset_broker_consumer"
+build_dir = Path(__file__).resolve().parents[1] / os.environ.get(
+    "KOTEKAN_BUILD_DIRNAME", "build"
+)
+producer_path = build_dir / "tests" / "boost" / "dataset_broker_producer"
+producer2_path = build_dir / "tests" / "boost" / "dataset_broker_producer2"
+consumer_path = build_dir / "tests" / "boost" / "dataset_broker_consumer"
 
 
 def has_redis(host="localhost", port=6379):
@@ -40,7 +44,7 @@ def test_produce_consume():
         or not os.path.isfile(consumer_path)
         or not os.path.isfile(producer2_path)
     ):
-        pytest.skip("Build with -DBOOST_TESTS=ON to activate this test")
+        pytest.skip("Build with -DWITH_BOOST_TESTS=ON to activate this test")
     if not broker_path:
         pytest.skip(
             "Make sure PYTHONPATH is set to where the comet dataset broker is installed."
