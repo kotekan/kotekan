@@ -52,10 +52,17 @@ REGISTER_KOTEKAN_STAGE(dpdkCore);
 
 static bool __eal_initalized = false;
 
+// NIC extended stats exported as kotekan_dpdk_nic_<name>_total, by their Intel driver names.
+static const vector<string> nic_xstat_names = {
+    "rx_crc_errors",    "rx_oversize_errors", "rx_undersized_errors", "rx_fragmented_errors",
+    "rx_jabber_errors", "mac_local_errors",   "mac_remote_errors",    "rx_dropped_packets"};
+
 dpdkCore::dpdkCore(Config& config, const string& unique_name, bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&dpdkCore::main_thread, this)),
     nic_rx_packets_total_metric(kotekan::prometheus::Metrics::instance().add_gauge(
         "kotekan_dpdk_nic_rx_packets_total", unique_name, {"port"})),
+    nic_rx_bytes_total_metric(kotekan::prometheus::Metrics::instance().add_gauge(
+        "kotekan_dpdk_nic_rx_bytes_total", unique_name, {"port"})),
     nic_rx_missed_total_metric(kotekan::prometheus::Metrics::instance().add_gauge(
         "kotekan_dpdk_nic_rx_missed_total", unique_name, {"port"})),
     nic_rx_errors_total_metric(kotekan::prometheus::Metrics::instance().add_gauge(
@@ -91,6 +98,12 @@ dpdkCore::dpdkCore(Config& config, const string& unique_name, bufferContainer& b
     // Storage for the per-port NIC hardware stats and link state polling.
     last_eth_stats.resize(num_system_ports);
     link_is_up.resize(num_system_ports, false);
+    nic_xstat_ids.resize(num_system_ports);
+    nic_xstat_port_metrics.resize(num_system_ports);
+    for (const string& name : nic_xstat_names) {
+        nic_xstat_metrics.push_back(&kotekan::prometheus::Metrics::instance().add_gauge(
+            "kotekan_dpdk_nic_" + name + "_total", unique_name, {"port"}));
+    }
 
     // This default works well for ICE boards,
     // but we might change this to something more genertic
@@ -455,10 +468,20 @@ void dpdkCore::update_port_stats() {
 
         std::vector<std::string> port_label = {to_string(port)};
         nic_rx_packets_total_metric.labels(port_label).set(stats.ipackets);
+        nic_rx_bytes_total_metric.labels(port_label).set(stats.ibytes);
         nic_rx_missed_total_metric.labels(port_label).set(stats.imissed);
         nic_rx_errors_total_metric.labels(port_label).set(stats.ierrors);
         nic_rx_nombuf_total_metric.labels(port_label).set(stats.rx_nombuf);
         nic_link_up_metric.labels(port_label).set(link_is_up[port] ? 1 : 0);
+
+        const vector<uint64_t>& xstat_ids = nic_xstat_ids[port];
+        vector<uint64_t> xstat_values(xstat_ids.size());
+        if (rte_eth_xstats_get_by_id(port, xstat_ids.data(), xstat_values.data(),
+                                     xstat_values.size())
+            == (int)xstat_values.size()) {
+            for (size_t i = 0; i < xstat_values.size(); ++i)
+                nic_xstat_port_metrics[port][i]->labels(port_label).set(xstat_values[i]);
+        }
 
         last_eth_stats[port] = stats;
     }
@@ -528,6 +551,17 @@ int32_t dpdkCore::port_init(uint8_t port, uint32_t lcore_id) {
     if (rte_eth_stats_get(port, &last_eth_stats[port]) != 0)
         WARN("Port {:d}: could not read initial NIC stats; first stats poll may over-report deltas",
              port);
+
+    for (size_t i = 0; i < nic_xstat_names.size(); ++i) {
+        uint64_t id;
+        if (rte_eth_xstats_get_id_by_name(port, nic_xstat_names[i].c_str(), &id) == 0) {
+            nic_xstat_ids[port].push_back(id);
+            nic_xstat_port_metrics[port].push_back(nic_xstat_metrics[i]);
+        } else {
+            INFO("Port {:d}: NIC driver has no {:s} stat; not exporting it", port,
+                 nic_xstat_names[i]);
+        }
+    }
 
     // Report the port MAC address.
     // TODO record the MAC address for export to JSON

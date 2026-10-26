@@ -167,6 +167,40 @@ protected:
  *                                             lcore RX loop begins. Required on E810 NICs
  *                                             to allow ports to become ready.
  *
+ * @par Metrics
+ * NIC hardware counters, each with a @c port label. The counters after
+ * @c kotekan_dpdk_nic_link_up are driver extended stats (xstats), and are not exported for
+ * a port whose driver lacks them.
+ * @metric kotekan_dpdk_nic_rx_packets_total
+ *         The number of packets received
+ * @metric kotekan_dpdk_nic_rx_bytes_total
+ *         The number of bytes received
+ * @metric kotekan_dpdk_nic_rx_missed_total
+ *         Packets dropped because the NIC packet buffer or the rx ring was full
+ * @metric kotekan_dpdk_nic_rx_errors_total
+ *         Bad frames dropped (CRC, size, fragment and jabber errors)
+ * @metric kotekan_dpdk_nic_rx_nombuf_total
+ *         The number of rx mbuf allocation failures
+ * @metric kotekan_dpdk_nic_link_up
+ *         1 if the link is up, 0 if not
+ * @metric kotekan_dpdk_nic_rx_crc_errors_total
+ *         Frames with a bad CRC
+ * @metric kotekan_dpdk_nic_rx_oversize_errors_total
+ *         Frames longer than the maximum frame size (see @c max_rx_pkt_len) with a valid CRC
+ * @metric kotekan_dpdk_nic_rx_undersized_errors_total
+ *         Frames shorter than 64 bytes with a valid CRC
+ * @metric kotekan_dpdk_nic_rx_fragmented_errors_total
+ *         Frames shorter than 64 bytes with a bad CRC
+ * @metric kotekan_dpdk_nic_rx_jabber_errors_total
+ *         Frames longer than the maximum frame size with a bad CRC
+ * @metric kotekan_dpdk_nic_mac_local_errors_total
+ *         MAC local faults: the NIC lost the incoming signal
+ * @metric kotekan_dpdk_nic_mac_remote_errors_total
+ *         MAC remote faults: the link partner lost the signal from the NIC
+ * @metric kotekan_dpdk_nic_rx_dropped_packets_total
+ *         Packets dropped in the NIC packet buffer. On E810 this is part of
+ *         kotekan_dpdk_nic_rx_missed_total; the rest are rx ring overflows.
+ *
  * @author Andre Renard
  */
 class dpdkCore : public kotekan::Stage {
@@ -244,10 +278,21 @@ private:
 
     /// Prometheus metrics for NIC-level (hardware) counters
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& nic_rx_packets_total_metric;
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& nic_rx_bytes_total_metric;
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& nic_rx_missed_total_metric;
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& nic_rx_errors_total_metric;
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& nic_rx_nombuf_total_metric;
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& nic_link_up_metric;
+
+    /// Prometheus metrics for the NIC extended stats, one per name in @c nic_xstat_names.
+    std::vector<kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>*> nic_xstat_metrics;
+
+    /// The driver ids of the NIC extended stats exported for each port, found at port init.
+    std::vector<std::vector<uint64_t>> nic_xstat_ids;
+
+    /// The metric for each id in @c nic_xstat_ids, per port.
+    std::vector<std::vector<kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>*>>
+        nic_xstat_port_metrics;
 
     /// The pool of DPDK mbufs, one per numa node
     std::vector<struct rte_mempool*> mbuf_pools;
