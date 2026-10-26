@@ -258,7 +258,7 @@ public:
     /**
      * @brief Create and write a file for a frame with chordMetadata
      *
-     * @param full_path The full path, including file name, for the file.
+     * @param frame_counter Frame number used to choose the output file.
      * @param frame uint8_t pointer to the frame data
      * @param meta shared pointer to the chordMetadata object for this frame.
      * @param frame_desc shared pointer to the NDarray description for this frame.
@@ -517,7 +517,7 @@ public:
     /**
      * @brief Create and write a file for an N2FrameView
      *
-     * @param full_path The full path, including file name, for the file.
+     * @param frame_counter Frame number used to choose the output file.
      * @param frame An N2FrameView object for the frame to output.
      */
     void write_n2(const N2FrameView& frame, const std::int64_t frame_counter) {

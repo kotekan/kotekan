@@ -144,6 +144,7 @@ private:
     int64_t flag_start_frame;
 
     /// Fill non vis components. A helper for the fill_mode functions.
+    /// @param frame       Frame view to fill.
     /// @param time_index  Time index of the frame being filled, counted from
     ///                    the start and shared by the frequencies at one time.
     void fill_non_vis(N2FrameView& frame, int64_t time_index);

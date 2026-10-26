@@ -185,7 +185,6 @@ public:
     /**
      * @brief Add a frame of data at the computed time index.
      * @param fv      Frame view containing data.
-     * @param meta    N2 metadata for the frame.
      * @param t_index Time index within this file block (0..num_file_t-1).
      *
      * @returns status describing whether the frame was accepted.
@@ -490,8 +489,8 @@ private:
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& _bad_feed_mask_unmasked_metric;
 
     /**
-     * @brief Get an absolute file number (index) for given metadata.
-     * @param meta  N2Metadata for the frame
+     * @brief Get an absolute file number (index) for a frame.
+     * @param fv    Frame view containing the timing metadata
      * @return      Absolute file index
      * This method computes which file a given frame belongs to,
      * based on its absolute frame index and the configured
