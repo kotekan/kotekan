@@ -100,7 +100,7 @@ frbNetworkSend::frbNetworkSend(Config& config_, const std::string& unique_name,
     }
 
     // size of UPD packets based on input parameters
-    const size_t data_nbytes = _nbeams * _nfreq_coarse * _factor_upchan_out;
+    const size_t data_nbytes = _nbeams * _nfreq_coarse * _factor_upchan_out * _timesamples_per_frb_packet;
     static_assert(sizeof(FRBHeader) == 32);
     const size_t variable_size_part = sizeof(uint16_t) * _nbeams +       // beam_ids
                                       sizeof(uint16_t) * _nfreq_coarse + // coarse_freq_ids
