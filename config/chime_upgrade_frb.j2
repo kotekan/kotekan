@@ -30,7 +30,7 @@ max_upchannelization_factor: 16
 upchan_output_alignment: 3 * samples_per_data_set
 
 # Test configuration parameters
-{% set using_dpdk = True %}
+{% set using_dpdk = False %}
 {% set fake_upchan_voltage = False %}
 {% set do_once_and_dump = False %}
 {% set send_frb = False %}
@@ -57,7 +57,7 @@ num_ev_to_calculate: 4            # from n2 test case
 samples_per_data_set: 16384
 sample_period_ns: 2560
 network_frame_arrival_period: 16384 * sample_period_ns / 1e9
-baseband_buffer_depth: 3*272 # = ~33 seconds after accounting for active frames
+baseband_buffer_depth: 3*32 #272 # = ~33 seconds after accounting for active frames
 # see where / if / how to use host_buffer_depth and gpu_buffer_depth
 # must be at least size of gpu_buffer_depth
 host_buffer_depth: 12
@@ -90,12 +90,15 @@ fpga_controller:
 telescope:
   name: CHIMETelescope
   require_gps: true
-  query_gps: true # GPS time is provided via coco
+  query_gps: false # GPS time is provided via coco
   gps_host_info: /fpga_controller
-  query_frequency_map: true # Frequency map is provided via coco
-  require_frequency_map: true # Make sure we have the full frequency map
-  allow_default_frequency_map: false # Don't fall back on default map
+  query_frequency_map: false # Frequency map is provided via coco
+  require_frequency_map: false # Make sure we have the full frequency map
+  allow_default_frequency_map: true # Don't fall back on default map
   eop_updatable_config: /earth_rotation_data
+
+gps_time:
+  frame0_nano: 1790027456999999960
 
 earth_rotation_data:
   kotekan_update_endpoint: json
@@ -158,7 +161,7 @@ updatable_config:
     enabled: false
   enable_frb_out:
     kotekan_update_endpoint: "json"
-    enabled: false
+    enabled: true
 
 frb:
   update_beam_offset:
@@ -201,7 +204,7 @@ host_voltage_buffers:
   extents: [num_freq_host_buf, samples_per_data_set, num_elements]
   dimnames: [F, T, E]
   metadata_pool: main_pool
-  use_hugepages: true
+  use_hugepages: false
   numa_0:
     numa_node: 0
 {%- for id in range(num_freq_gpu_buf) %}
@@ -408,7 +411,7 @@ fake_voltages_7:
 {% else %}
 fake_voltages_{{ id }}:
     kotekan_stage: testDataGen
-    first_frame_index: 10151881
+    first_frame_index: 10151881 + 2
     # set globally
     # samples_per_data_set: samples_per_data_set
     type: const_offset
@@ -426,7 +429,7 @@ fake_voltages_{{ id }}:
 {% for id in range(16//4) %}   # num_frequencies = 16
 fake_lost_samples_{{ id }}:
     kotekan_stage: testDataGen
-    first_frame_index: 10151881 #166328418304 / samples_per_data_set
+    first_frame_index: 10151881 + 2 #166328418304 / samples_per_data_set
     # set globally
     # samples_per_data_set: samples_per_data_set
     type: ramp # to get uint8 as data type
@@ -1025,7 +1028,7 @@ n2k_counts_triangle_size: n2k_counts_blocksize * n2k_counts_blocksize * n2k_coun
 host_n2k_correlation_buffer:
     kotekan_buffer: ndarray
     num_frames: gpu_buffer_depth
-    use_hugepages: true
+    use_hugepages: false
     value_type: int32
     # produced by cudaCorrelator (n2k_correlation): NDArrayBuffer<int32,6>
     # cudaCorrelator uses (num_elements+1)/16 = (2048+1)/16 = 128 blocks, same as
@@ -2197,7 +2200,7 @@ write_failed_vis:
 
 write_frb2:
     kotekan_stage: hdf5FileWrite
-    max_frames: 79
+    max_frames: 78
     log_level: warn
     use_compression: false
     base_dir: frb_beams
