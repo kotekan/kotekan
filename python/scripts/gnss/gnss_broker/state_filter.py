@@ -224,6 +224,9 @@ class JointReceiverState:
         # itself, not merely to be long.
         self._rej_hist = {}  # key -> recent rejected measurements y (rolling)
         self._rej_t = {}  # key -> time of its newest rejection
+        self._esc_t = (
+            {}
+        )  # key -> time of its newest believed escape (rejecting/since_escape)
         self.escape_spread = float(escape_spread)
         # An escape may believe a run that agrees, but not one that is physically
         # impossible. Same separation as the clock solve's MAD bound: real per-sat offsets
@@ -433,6 +436,7 @@ class JointReceiverState:
             self._rej_run.pop(k, None)
             self._rej_hist.pop(k, None)
             self._rej_t.pop(k, None)
+            self._esc_t.pop(k, None)
         self._remove_rows(rows)
         self._membership_changed()
 
@@ -813,6 +817,7 @@ class JointReceiverState:
                         )
                     )
                 self.P[i, i] += 25.0
+                self._esc_t[key] = t_now
         self._rej_hist.pop(key, None)
         self._rej_t.pop(key, None)
         self._rej_run.pop(key, None)
@@ -1194,6 +1199,20 @@ class JointReceiverState:
     @_locked
     def age(self, key, t_now):
         t = self._t_seen.get(key)
+        return None if t is None else (t_now - t)
+
+    @_locked
+    def rejecting(self, key):
+        """True while this satellite is in a run of rejected measurements: its b is stale (the
+        state has stopped believing it) though its sigma says nothing of that."""
+        return self._rej_run.get(key, 0) > 0
+
+    @_locked
+    def since_escape(self, key, t_now):
+        """Seconds since this satellite's newest believed escape, or None if it has had none.
+        An escape's P[i,i] inflation collapses within an update or two, so sigma alone does
+        not say a satellite's b has just stepped; this does."""
+        t = self._esc_t.get(key)
         return None if t is None else (t_now - t)
 
     @_locked

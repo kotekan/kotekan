@@ -92,6 +92,20 @@ def main():
         any("bias only" in n for n in notes),
         "logged as a bias-only escape (%d notes)" % len(notes),
     )
+    k35 = ("C", 35)
+    since = j.since_escape(k35, 0.0)
+    check(
+        j.since_escape(("G", 6), 0.0) is None and since is not None,
+        "since_escape: None for a satellite that never escaped, a time for C35",
+    )
+    check(not j.rejecting(k35), "rejecting: False once C35's b has taken the step")
+
+    print("mid-run: the rejections before an escape")
+    _p, _c, _b, j = run(3, [("C", 35)], -1.6, n_step=3)
+    check(
+        j.rejecting(("C", 35)) and j.since_escape(("C", 35), 0.0) is None,
+        "rejecting: True during the run (3 of 5 rejected), no escape yet",
+    )
 
     print("two satellites of one chain step -1.6 chips together (the cascade's shape)")
     peak, clk, b, j = run(3, [("C", 35), ("C", 22)], -1.6)
