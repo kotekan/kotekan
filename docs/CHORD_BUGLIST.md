@@ -723,6 +723,14 @@ the freq_id of its n2_buffer frames (stock nodes too) and `--write` sets the tab
 and --check fails on a fleet host whose frames disagree; the broker's RF poll logs COMB MISMATCH per tap
 while running. All eight site hosts read equal to the table on 10-25 (cx27's GPU 1, never read since 10-17,
 is 8 as entered).
+**Left (2026-10-26): L2C's tap spacing does not follow the fleet.** L2C sums its contiguous channels
+coherently (6283-6288, one per GPU: 6283 cx47/1, 6284 cx42/1), so the correlation's mainlobe widens as
+nodes leave. `dll_spacing_chips` (gen_chord_gnss_config.py) and the chain's `dll-spacing` are a hand-set
+0.33 for five or six channels. With cx42 and cx47 out for site tests (10-26 15:54Z) four remain
+(6285-6288), the first null moves 0.44 -> 0.66 CM chips, and q sits at 2.0-2.1 on every PRN at any power,
+under every 2.2 lock bar (lock_q, dll_quality_min, q_stall_bar); disc ~0 and 8 present. Nodes now come and
+go, so derive both from the fleet's count of contiguous L2C channels (~0.5 for four, 0.33 for five or six),
+in the generator and the chain config together, at each regen.
 
 ### #215 — changing the live element set costs a release cycle (2026-10-25, KV: "a weirdly large amount of processing")
 **What:** at the F-engine's return, row H's Y pol went out and H-X stayed good. That needed a new epoch.
@@ -1313,6 +1321,13 @@ and the cube leg's unit. Until this is understood, stop the broker and gather by
 ## Open — the fix is in the NODE BINARY (queue for the next cycle)
 
 
+
+### #217 — the assemblers' transit freeze is not observable (2026-10-26)
+**What:** `GnssGpuRecordAssemble::shared_frozen()` and `gnss::formation_frozen()` hold the element
+model through a boresight transit on the broker's `_bore` post, but log nothing and export no gauge. At G03's
+transit (10-26 18:02Z, 0.72 deg) the broker posted SAT-GEOMETRY to 12/16 assemblers, and whether the freeze
+engaged cannot be read. **Fix:** a `kotekan_gnss_record_assemble_shared_frozen` gauge (0/1) plus the
+`_bore` separation, and one INFO line on entry and exit.
 
 **Top priority: #177.** The others below it came from the same 10-12 comment review and are
 unconfirmed or dormant.
