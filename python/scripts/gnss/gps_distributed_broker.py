@@ -1624,7 +1624,15 @@ def main(argv=None, rx=None, publisher=None):
                         )
                     )
             except Exception as e:
-                _log("time anchor unavailable (%s); retrying" % e)
+                # every cycle until a node answers; once a minute while the fleet is dark
+                if _nh is not None and _nh.dark_since is not None:
+                    _log_rl(
+                        "t0-dark",
+                        "time anchor unavailable (%s); retrying" % e,
+                        every_s=60.0,
+                    )
+                else:
+                    _log("time anchor unavailable (%s); retrying" % e)
         _ctx.dr_pd = (dr_state or {}).get("pd") or {}
         _ctx.dr_pd2 = (dr_state or {}).get("pd2") or {}
         _ctx.dr_pd0 = (dr_state or {}).get("pd0") or {}
@@ -1783,7 +1791,10 @@ def main(argv=None, rx=None, publisher=None):
                 fe_off[1] = _ow
         except Exception as e:
             _ctx.status = {}
-            _log("get_status failed: %s" % e)
+            if isinstance(e, NodeDown):  # every status source held DOWN: once a minute
+                _log_rl("status-down", "get_status failed: %s" % e, every_s=60.0)
+            else:
+                _log("get_status failed: %s" % e)
         # Nav-message decode (--nav-bits): feed this cycle's nav_obs to the band's decoder.
         # Rows carry nav_obs only when the combiner exports them.
         navbits.stage_nav_bits(_ctx)

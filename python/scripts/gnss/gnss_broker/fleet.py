@@ -17,7 +17,7 @@ import numpy as _np
 import random
 import re
 
-from .transport import _get, _log_rl, _now
+from .transport import NodeDown, _get, _log_rl, _now
 
 
 def sk_url_for(tap_url):
@@ -422,7 +422,10 @@ def fleet_dll(
         try:
             polled[url] = _get("%s/get_status" % url) or []
         except Exception as e:
-            _log_rl("fleet-dll-%s" % url, "fleet DLL: %s unreachable (%s)" % (url, e))
+            if not isinstance(e, NodeDown):  # a DOWN node is logged once, by nodehealth
+                _log_rl(
+                    "fleet-dll-%s" % url, "fleet DLL: %s unreachable (%s)" % (url, e)
+                )
     # Judge each instance before any of its rows count (live_instances). Excluded instances still
     # report their hop to src_hops, so the axis and stall instruments keep seeing them.
     served = {
@@ -1095,9 +1098,11 @@ def fleet_coherent(
         try:
             recs = _get("%s/get_records" % url)
         except Exception as e:
-            _log_rl(
-                "fleet-coh-%s" % url, "fleet coherent: %s unreachable (%s)" % (url, e)
-            )
+            if not isinstance(e, NodeDown):
+                _log_rl(
+                    "fleet-coh-%s" % url,
+                    "fleet coherent: %s unreachable (%s)" % (url, e),
+                )
             continue
         per = {}
         for r in recs or []:
@@ -1463,9 +1468,11 @@ def fleet_spectrum_aligned(endpoints, prns=None, log=None, stale_margin=0):
         try:
             r = _get("%s/get_spectrum" % url)
         except Exception as e:
-            _log_rl(
-                "fleet-spec-%s" % url, "fleet spectrum: %s unreachable (%s)" % (url, e)
-            )
+            if not isinstance(e, NodeDown):
+                _log_rl(
+                    "fleet-spec-%s" % url,
+                    "fleet spectrum: %s unreachable (%s)" % (url, e),
+                )
             dropped.append((url, "unreachable"))
             continue
         a = r.get("available") or [-1, -1]
