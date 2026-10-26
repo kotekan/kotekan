@@ -466,8 +466,9 @@ def frb3_codes(out_dir, num):
     - 4 bits (cudaQuantize4): int4x2, two's complement, the earlier sample in the low nibble;
       no data -8, values -7 to 7; offset and scale per 256 samples [Ttilde256, R, Fbar, 2].
     - 8 bits (cudaQuantize8, CHIME): [Ttilde256, R4, Fbar64, Ttilde16_lo16, Rlo4, Fbar16_lo4,
-      Fbarlo16, Ttildelo16]; no data 0, values 1 to 254; offset and scale per 16 frequencies and
-      16 samples [Ttilde256, R4, Fbar64, Ttilde16_lo16, Rlo4, Fbar16_lo4, 2]."""
+      Fbarlo16, Ttildelo16], Fbarlo16 in descending order; no data 0, values 1 to 254; offset
+      and scale per 16 frequencies and 16 samples [Ttilde256, R4, Fbar64, Ttilde16_lo16, Rlo4,
+      Fbar16_lo4, 2]. The codes are returned in FRB2's frequency order."""
     frb3 = read_output(out_dir, "frb3_beams").data
     offsetscale = read_output(out_dir, "frb3_beams_offsetscale").data
     if frb3.ndim == 4:
@@ -477,6 +478,7 @@ def frb3_codes(out_dir, num):
         q = ((q.astype(np.int8) ^ 8) - 8).astype(np.float64)
         return q, offsetscale[..., 0:1], offsetscale[..., 1:2], -8, -7, 7
     n = frb3.shape[0]
+    frb3 = np.flip(frb3, axis=6)
     q = frb3.transpose(0, 1, 4, 2, 5, 6, 3, 7).reshape(n, -1, 256, 256)[:, :, :num]
     offsetscale = offsetscale.transpose(0, 1, 4, 2, 5, 3, 6).reshape(n, -1, 16, 16, 2)
     offsetscale = np.repeat(np.repeat(offsetscale, 16, axis=2), 16, axis=3)[:, :, :num]
