@@ -24,7 +24,9 @@ gone stale while nothing measured it, and the cure has been a broker restart onc
 are back. restart_due() turns True once the fleet returns: half the registered nodes UP, or
 return_settle_s after the first. The chain loop then exits the process (code
 EXIT_FLEET_RETURNED) for systemd to relaunch, unless a boresight transit is in the freeze cone
-(restart_decision), in which case it waits for it to clear.
+(restart_decision), in which case it waits for it to clear. A fleet that goes dark again
+before the restart fires cancels it, and the dark period resumes from its original start: a
+node whose REST server answers once and then stops (cx44, 10-26 19:31) is not a return.
 
 Off (no hooks, no thread) under a transcript: a replay must see the same requests in the same
 order, and a probe thread would talk to the live world.
@@ -95,6 +97,7 @@ class NodeHealth(object):
         self.anchor_s = None  # the broker's latched frame 0, UTC seconds (note_anchor)
         self.dark_since = None  # every registered node DOWN since
         self.return_t = None  # first node back after a long dark
+        self.dark_from = None  # start of the dark period return_t ended
         self.restart_due_since = None
         self._thread = None
 
@@ -195,22 +198,35 @@ class NodeHealth(object):
         with self._lk:
             n_up = sum(1 for st in self._n.values() if st["up"])
             n_all = len(self._n)
+            cancelled = None
             if n_up == 0 and self.dark_since is None:
-                self.dark_since = now
+                if self.return_t is not None:
+                    # dark again before the restart fired: not a return; the dark period
+                    # resumes from where it began
+                    self.dark_since = cancelled = self.dark_from
+                    self.return_t = self.dark_from = None
+                else:
+                    self.dark_since = now
                 dark_start = True
             else:
                 dark_start = False
             if n_up > 0 and self.dark_since is not None:
                 dark_s = now - self.dark_since
-                self.dark_since = None
                 if self.return_restart_s > 0.0 and dark_s >= self.return_restart_s:
-                    self.return_t = now
+                    self.return_t, self.dark_from = now, self.dark_since
                     returned = dark_s
                 else:
                     returned = None
+                self.dark_since = None
             else:
                 returned = None
-        if dark_start:
+        if cancelled is not None:
+            self.log(
+                "FLEET DARK again: none of the %d registered node(s) answers; the pending "
+                "fleet-return restart is cancelled and the dark period runs on from %.0f s ago"
+                % (n_all, now - cancelled)
+            )
+        elif dark_start:
             self.log(
                 "FLEET DARK: none of the %d registered node(s) answers -- seeds and polls "
                 "go nowhere; the dead-reckoned state ages from here" % n_all

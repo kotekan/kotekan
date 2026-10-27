@@ -216,6 +216,33 @@ def test_fleet_return():
     ans4.update({n: 1 for n in nodes})
     h4.probe_once()
     check(h4.restart_decision(None, 5.0) is None, "--fleet-return-restart-s 0: never")
+    # 10-26 19:31: cx44's REST server answered one probe after 3 h dark, stopped 10 s
+    # later, and the armed restart still fired at 19:34 with the whole fleet dark
+    h6, clk6, l6, ans6 = tracker(nodes)
+    _all_down(h6, clk6, nodes)
+    clk6.t += 1300.0
+    ans6[A] = 1
+    h6.probe_once()
+    check(h6.return_t is not None, "one node back after 1300 s dark: armed")
+    clk6.t += 2.0
+    del ans6[A]
+    _all_down(h6, clk6, [A])
+    check(
+        any(m.startswith("FLEET DARK again") for m in l6),
+        "it stops answering: FLEET DARK again",
+    )
+    clk6.t += 200.0
+    check(
+        h6.restart_decision(None, 5.0) is None,
+        "dark again: the pending restart is cancelled (past return_settle_s)",
+    )
+    clk6.t += 100.0
+    ans6[A] = ans6[B] = 1
+    h6.probe_once()
+    check(
+        h6.restart_decision(None, 5.0) == "exit",
+        "the real return re-arms at once: the dark period ran on from its start",
+    )
     h5, clk5, _l5, ans5 = tracker(nodes)
     _all_down(h5, clk5, [A, B, C])
     clk5.t += 5000.0
