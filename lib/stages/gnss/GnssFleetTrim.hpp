@@ -65,13 +65,16 @@
  * @conf post_threads          Int, default 4. Poster threads.
  *
  * @par REST
- * `<unique_name>/get_dll`      -- per chain, per PRN: disc, q, e/p/l_pow, n_src, n_chan, n_rec,
+ * `<unique_name>/get_dll`      -- per chain (?chain=<name> one chain), per PRN: disc, q,
+ *                                 e/p/l_pow, n_src, n_chan, n_rec,
  *                                 hop, win, n_updates, and for a PRN with a standing trim the
  *                                 integrator state (trim_chips, trim_steps, trim_railed,
  *                                 trim_skipped, trim_win, armed); per chain, `_p_floor_abs`.
  *                                 No presence: that is policy.
- * `<unique_name>/get_taps`     -- per chain, per PRN: lobe-coherent and per-channel taps.
- * `<unique_name>/get_rec_taps` -- per chain: the per-record lobe-coherent E/P/L series.
+ * `<unique_name>/get_taps`     -- per chain, per PRN: lobe-coherent and per-channel taps
+ *                                (?chain=<name> one chain; &chan=0 no per-channel tables).
+ * `<unique_name>/get_rec_taps` -- per chain: the per-record lobe-coherent E/P/L series
+ *                                (?chain=<name> one chain).
  * `<unique_name>/get_stats`    -- counters, fold cost, trim store, policy and poster state.
  * `<unique_name>/set_policy`   -- POST {"chains": {chain: {armed, gain_per_s, leak_per_s,
  *                                 clamp, spacing, p_floor_abs, targets}}}.

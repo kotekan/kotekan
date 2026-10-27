@@ -21,7 +21,8 @@ constexpr int PRN = 7;
 
 /// One sender's frame for window `win`, laid out as GnssTelemPack ships it: row 0 carries PRN,
 /// row 1 is unused, and only the slots set in `present` hold rows. The others stay zero.
-std::vector<char> make_frame(const std::string& inst, uint64_t win, uint32_t present) {
+std::vector<char> make_frame(const std::string& inst, uint64_t win, uint32_t present,
+                             const std::string& chain = "gal_e5a", int chan0 = 6000) {
     std::vector<char> buf(telem_frame_bytes(N_REC, N_PRN, N_CHAN), 0);
     auto* h = (TelemHeader*)buf.data();
     h->magic = TELEM_MAGIC;
@@ -39,10 +40,10 @@ std::vector<char> make_frame(const std::string& inst, uint64_t win, uint32_t pre
     h->present = present;
     h->max_chan = N_CHAN;
     h->n_row_total = telem_row_floats(N_CHAN);
-    telem_set_name(h->chain, "gal_e5a");
+    telem_set_name(h->chain, chain);
     telem_set_name(h->inst, inst);
     for (int c = 0; c < N_CHAN; ++c)
-        h->chan_id[c] = (uint16_t)(6000 + c);
+        h->chan_id[c] = (uint16_t)(chan0 + c);
 
     float* rows = telem_rows(buf.data());
     for (int r = 0; r < N_REC; ++r) {
@@ -147,4 +148,38 @@ BOOST_AUTO_TEST_CASE(empty_window_folds_nothing) {
     fold_window(d, 5000, 0x0);
     BOOST_CHECK(slots_of(d).empty());
     BOOST_CHECK(d.chains().at("gal_e5a").row.empty());
+}
+
+// One chain's taps without the per-channel tables (the broker's get_taps?chain=&chan=0): the
+// same lobe taps as the full reduction, nothing of the other chain, no channel table.
+BOOST_AUTO_TEST_CASE(taps_for_one_chain_without_channels) {
+    FleetDll d(4, 2);
+    // two senders on distinct channels (a channel both carry is left out of the table)
+    for (uint64_t w = 5000; w < 5003; ++w) {
+        for (const char* chain : {"gal_e5a", "gps_l5"}) {
+            auto a = make_frame("cx19.0", w, 0xF, chain, 6000);
+            auto b = make_frame("cx27.0", w, 0xF, chain, 6100);
+            BOOST_REQUIRE(d.fold(a.data(), a.size()) == FoldStatus::OK);
+            BOOST_REQUIRE(d.fold(b.data(), b.size()) == FoldStatus::OK);
+        }
+        d.flush();
+    }
+    const auto all = d.taps();
+    const auto one = d.taps("gal_e5a", false);
+    BOOST_REQUIRE_EQUAL(all.size(), 2u);
+    BOOST_REQUIRE_EQUAL(one.size(), 1u);
+    BOOST_REQUIRE(one.count("gal_e5a") && one.at("gal_e5a").count(PRN));
+    const auto& a = all.at("gal_e5a").at(PRN);
+    const auto& o = one.at("gal_e5a").at(PRN);
+    BOOST_CHECK_EQUAL(o.e, a.e);
+    BOOST_CHECK_EQUAL(o.p, a.p);
+    BOOST_CHECK_EQUAL(o.l, a.l);
+    BOOST_CHECK_EQUAL(o.n_chan, a.n_chan);
+    BOOST_CHECK_EQUAL(o.n_rec, a.n_rec);
+    BOOST_CHECK(!a.chan.empty());
+    BOOST_CHECK(o.chan.empty());
+    const auto rs = d.rec_series("gps_l5");
+    BOOST_CHECK_EQUAL(rs.size(), 1u);
+    BOOST_CHECK(rs.count("gps_l5"));
+    BOOST_CHECK(d.taps("glo_l2of").empty());
 }

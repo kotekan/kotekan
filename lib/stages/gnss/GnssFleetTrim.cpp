@@ -710,9 +710,15 @@ void GnssFleetTrim::post_loop(int slot) {
 }
 
 void GnssFleetTrim::dll_callback(kotekan::connectionInstance& conn) {
+    // Query `chain=<name>` serves that chain alone (each broker chain reads its own).
+    const auto q = conn.get_query();
+    const auto qc = q.find("chain");
+    const std::string only = qc != q.end() ? qc->second : "";
     nlohmann::json reply = nlohmann::json::object();
     std::lock_guard<std::mutex> lk(_mtx);
     for (const auto& cv : _dll.chains()) {
+        if (!only.empty() && cv.first != only)
+            continue;
         nlohmann::json prns = nlohmann::json::object();
         for (const auto& pv : cv.second.row) {
             const gnss::FleetDllRow& s = pv.second;
@@ -758,13 +764,22 @@ void GnssFleetTrim::dll_callback(kotekan::connectionInstance& conn) {
 /// lobe (gnssFleetDll.hpp), and `n_inst` is the completeness of the best record behind the
 /// mean, never an operand.
 ///
+/// Query: `chain=<name>` serves that chain alone, `chan=0` leaves out the per-channel tables.
+/// Each broker chain asks for its own taps every cycle; the full reply is ~0.8 MB at six nodes
+/// and grows with the node count, and is built under the lock the fold takes.
+///
 /// Measurements only: presence, the noise floor, the deep gate and arming stay in the broker.
 /// Records are filtered only by the `min_instances` completeness gate, as in the Python arm;
 /// channels two senders both carried in a window are left out.
 void GnssFleetTrim::taps_callback(kotekan::connectionInstance& conn) {
+    const auto q = conn.get_query();
+    const auto qc = q.find("chain");
+    const auto qch = q.find("chan");
+    const std::string only = qc != q.end() ? qc->second : "";
+    const bool with_chan = qch == q.end() || qch->second != "0";
     nlohmann::json reply = nlohmann::json::object();
     std::lock_guard<std::mutex> lk(_mtx);
-    for (const auto& cv : _dll.taps()) {
+    for (const auto& cv : _dll.taps(only, with_chan)) {
         nlohmann::json pj = nlohmann::json::object();
         for (const auto& pv : cv.second) {
             const gnss::FleetDll::LobeTap& t = pv.second;
@@ -776,9 +791,11 @@ void GnssFleetTrim::taps_callback(kotekan::connectionInstance& conn) {
                 cj[std::to_string(ch.first)] = {ch.second[0], ch.second[1], ch.second[2],
                                                 ch.second[3]};
             pj[std::to_string(pv.first)] = {
-                {"e", t.e},         {"p", t.p},           {"l", t.l},   {"n_chan", t.n_chan},
-                {"n_rec", t.n_rec}, {"n_inst", t.n_inst}, {"xcoh", xc}, {"n_xcoh", t.n_xcoh},
-                {"hop", t.hop},     {"chan", cj}};
+                {"e", t.e},           {"p", t.p},           {"l", t.l},
+                {"n_chan", t.n_chan}, {"n_rec", t.n_rec},   {"n_inst", t.n_inst},
+                {"xcoh", xc},         {"n_xcoh", t.n_xcoh}, {"hop", t.hop}};
+            if (with_chan)
+                pj[std::to_string(pv.first)]["chan"] = cj;
         }
         reply[cv.first] = pj;
     }
@@ -792,12 +809,16 @@ void GnssFleetTrim::taps_callback(kotekan::connectionInstance& conn) {
 ///
 /// Rows are [win, slot, prn, n_inst, n_chan, e, p, l], flat and time-ordered: the estimator
 /// gates and averages records itself, so nothing is reduced here. The probe anchor, the
-/// Gamma-mean debias, the q gate and the clip stay in the broker.
+/// Gamma-mean debias, the q gate and the clip stay in the broker. Query `chain=<name>` serves
+/// that chain alone.
 void GnssFleetTrim::rec_taps_callback(kotekan::connectionInstance& conn) {
+    const auto q = conn.get_query();
+    const auto qc = q.find("chain");
+    const std::string only = qc != q.end() ? qc->second : "";
     nlohmann::json reply = nlohmann::json::object();
     nlohmann::json hpr = nlohmann::json::object();
     std::lock_guard<std::mutex> lk(_mtx);
-    for (const auto& cv : _dll.rec_series()) {
+    for (const auto& cv : _dll.rec_series(only)) {
         nlohmann::json arr = nlohmann::json::array();
         for (const auto& r : cv.second)
             arr.push_back({r.win, r.slot, r.prn, r.n_inst, r.n_chan, r.e, r.p, r.l});

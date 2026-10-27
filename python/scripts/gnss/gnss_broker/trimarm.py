@@ -268,8 +268,11 @@ def stage_fleet_trim_arming(ctx):
         # and missing means unknown.
         if ctx.args.fleet_trim_readback:
             try:
+                # this chain alone; a gather that predates the query serves every chain
                 _rb = _get(
-                    "%s/get_dll" % ctx.args.fleet_trim_url.rstrip("/"), timeout=2.0
+                    "%s/get_dll?chain=%s"
+                    % (ctx.args.fleet_trim_url.rstrip("/"), ctx.telem_chain),
+                    timeout=2.0,
                 )
                 _rows = (_rb or {}).get(ctx.telem_chain) or {}
                 ctx.dls.readback.clear()

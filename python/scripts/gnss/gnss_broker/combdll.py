@@ -369,7 +369,13 @@ def taps_from_rest(get, url, chain, prns=None, timeout=5.0, want_win=None):
     `want_win`, when given, is the broker's window depth; a reply served at another depth
     raises ValueError (_check_taps_win), so the caller keeps the polled discriminator.
     """
-    d = get("%s/get_taps" % url.rstrip("/"), timeout=timeout) or {}
+    # This chain alone and no per-channel tables: the full reply is every chain's, ~0.8 MB at
+    # six nodes, and every chain asks each cycle. A gather that predates the query serves the
+    # full reply, which reads the same here.
+    d = (
+        get("%s/get_taps?chain=%s&chan=0" % (url.rstrip("/"), chain), timeout=timeout)
+        or {}
+    )
     _check_taps_win(d, want_win, "taps")
     want = None if prns is None else set(int(p) for p in prns)
     out = {}
@@ -507,7 +513,11 @@ def recs_from_rest(get, url, chain, prns=None, timeout=5.0, want_win=None):
     call prompt_cn0 walks the gathered frames a second time, after the comb DLL has walked them
     for its own reduction. `want_win` as in taps_from_rest.
     """
-    d = get("%s/get_rec_taps" % url.rstrip("/"), timeout=timeout) or {}
+    # this chain alone, as taps_from_rest
+    d = (
+        get("%s/get_rec_taps?chain=%s" % (url.rstrip("/"), chain), timeout=timeout)
+        or {}
+    )
     _check_taps_win(d, want_win, "rec-taps")
     want = None if prns is None else set(int(p) for p in prns)
     recs = {}

@@ -459,9 +459,11 @@ public:
         int slot, prn, n_inst, n_chan;
         double e, p, l;
     };
-    std::map<std::string, std::vector<RecRow>> rec_series() const {
+    std::map<std::string, std::vector<RecRow>> rec_series(const std::string& only = "") const {
         std::map<std::string, std::vector<RecRow>> out;
         for (const auto& cv : _chain) {
+            if (!only.empty() && cv.first != only)
+                continue;
             auto& rows = out[cv.first];
             const auto& ring = cv.second.closed;
             for (size_t k = ring.size() > (size_t)_taps_win ? ring.size() - _taps_win : 0;
@@ -498,9 +500,14 @@ public:
     /// count and each channel by its own, so a channel live for half the records is a mean over
     /// that half. No policy is applied: records are filtered only on completeness
     /// (`min_instances`), and channels two senders claimed (WindowAcc::dup) are left out.
-    std::map<std::string, std::map<int, LobeTap>> taps() const {
+    /// `only` names one chain (empty: every chain); `with_chan` false leaves the per-channel
+    /// tables empty.
+    std::map<std::string, std::map<int, LobeTap>> taps(const std::string& only = "",
+                                                       bool with_chan = true) const {
         std::map<std::string, std::map<int, LobeTap>> out;
         for (const auto& cv : _chain) {
+            if (!only.empty() && cv.first != only)
+                continue;
             auto& per_prn = out[cv.first];
             const auto& ring = cv.second.closed;
             for (size_t k = ring.size() > (size_t)_taps_win ? ring.size() - _taps_win : 0;
@@ -529,7 +536,7 @@ public:
                 for (const auto& pv : w.chan) {
                     // A PRN with no complete record this window gets no lobe tap from it, so
                     // its channels are skipped too: both tables cover the same windows.
-                    if (!complete.count(pv.first))
+                    if (!with_chan || !complete.count(pv.first))
                         continue;
                     LobeTap& t = per_prn[pv.first];
                     for (const auto& cv2 : pv.second) {
