@@ -14,6 +14,9 @@
 using kotekan::bufferContainer;
 using kotekan::Config;
 
+// The Doppler margin of an FDMA slot's own lobe: GLONASS's L2 Doppler stays under ~3.7 kHz here.
+static constexpr double FDMA_DOPPLER_MARGIN_HZ = 5e3;
+
 // ---------------------------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------------------------
@@ -123,6 +126,24 @@ cudaGnssChordTrackState::cudaGnssChordTrackState(Config& config, const std::stri
     // reads the bank. Empty for a CDMA signal.
     replica->set_prn_freq_offsets(
         config.get_default<std::vector<double>>(unique_name, "prn_freq_offset_hz", {}));
+    // Each FDMA slot owns the channels of its own lobe (main lobe and the Doppler margin),
+    // not the comb: the record and lane sums over the others would add noise and nothing else.
+    if (replica->prn_freq_offsets_set() > 0) {
+        slot_covering.assign((size_t)n_prn, {});
+        slot_chan_mask.assign((size_t)n_prn, 0);
+        std::string owned;
+        for (int p = 0; p < n_prn; ++p) {
+            const auto bins = replica->covering_bins(0.0, FDMA_DOPPLER_MARGIN_HZ, p);
+            for (int c = 0; c < n_chan; ++c)
+                if (std::find(bins.begin(), bins.end(), channel_ids[(size_t)c]) != bins.end()) {
+                    slot_covering[(size_t)p].push_back(c);
+                    slot_chan_mask[(size_t)p] |= 1ULL << c;
+                }
+            owned += fmt::format("{:s}{:d}", p ? "," : "", (int)slot_covering[(size_t)p].size());
+        }
+        INFO("cudaGnssChordTrack: FDMA, {:d} slot offsets; channels each slot owns here: {:s}",
+             replica->prn_freq_offsets_set(), owned);
+    }
     // The despread takes each channel's global bin, since the comb is sparse.
     despread = std::make_unique<GnssCudaDespread>(*replica, n_prn, channel_ids, hops_per_record,
                                                   sample_rate);

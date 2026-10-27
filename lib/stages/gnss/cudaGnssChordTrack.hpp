@@ -227,6 +227,10 @@ public:
     std::unique_ptr<gnss::ChannelizedReplicaBank> replica;
     std::unique_ptr<GnssCudaDespread> despread;
     std::vector<int> covering; ///< local channel indices this signal occupies (0..n_chan-1)
+    /// FDMA only (empty for CDMA): per slot, the local channels of its own lobe and their bit
+    /// mask. A slot owns only its own k's main lobe, not the whole comb.
+    std::vector<std::vector<int>> slot_covering;
+    std::vector<uint64_t> slot_chan_mask;
 };
 
 #endif // CUDA_GNSS_CHORD_TRACK_HPP

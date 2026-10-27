@@ -265,6 +265,12 @@ cudaEvent_t cudaGnssInject::execute(cudaPipelineState& pipestate, const std::vec
                 FH.ok[(size_t)p] = 0;
                 continue;
             }
+            // FDMA: a slot whose lobe has no channel on this GPU is dark here, as unseeded.
+            const bool fdma = !S.slot_covering.empty();
+            if (fdma && S.slot_covering[(size_t)p].empty()) {
+                FH.ok[(size_t)p] = 0;
+                continue;
+            }
 
             // Propagate the seed to this record's window, with the fleet trim.
             gnss::SeedState ss;
@@ -294,7 +300,7 @@ cudaEvent_t cudaGnssInject::execute(cudaPipelineState& pipestate, const std::vec
             sp.cp_seed = pr.cp;
             sp.spacing_chips = S.dll_spacing;
             sp.ctrim_hz = sd.ctrim_hz;
-            sp.covering = S.covering;
+            sp.covering = fdma ? S.slot_covering[(size_t)p] : S.covering;
 
             // PrnCtl, the gnssGpuChain.hpp contract the assembler reads. job0 indexes the 4 rows
             // (E/P/L/P_HEAD) this spec occupies in the consumer's corr/energy arrays.
@@ -321,10 +327,12 @@ cudaEvent_t cudaGnssInject::execute(cudaPipelineState& pipestate, const std::vec
             c.dcyc = dcyc;
             c.job0 = (n_jobs_frame + (int)specs.size()) * gnss_gpu::ROWS_PLAIN;
             c.fcar_report = (float)pr.doppler_hz;
-            c.n_owned = (float)S.n_chan;
+            c.n_owned = fdma ? (float)S.slot_covering[(size_t)p].size() : (float)S.n_chan;
             c.cp_seed = pr.cp;
             c.f_nco = sd.ctrim_hz;
-            c.chan_mask = (S.n_chan >= 64) ? ~0ULL : ((1ULL << S.n_chan) - 1ULL);
+            c.chan_mask = fdma               ? S.slot_chan_mask[(size_t)p]
+                          : (S.n_chan >= 64) ? ~0ULL
+                                             : ((1ULL << S.n_chan) - 1ULL);
             c.ctrim_hz = sd.ctrim_hz;
             // carrier_offset: f_offset plus the slot's FDMA offset (GLONASS L2OF), the carrier
             // the despread rotates to.
