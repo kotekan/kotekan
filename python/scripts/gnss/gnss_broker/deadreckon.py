@@ -49,6 +49,7 @@ from gnss_broker.fits import (
 )
 from gnss_broker.receiver import JOINT_REF_RATE_HZ, JOINT_STATE, TRK_STATE, joint_which
 from gnss_broker import sky as _sky
+from gnss_broker.signals import prn_carrier_hz
 from gnss_broker.sky import nearest_boresight, transit_sky
 from gnss_broker.trkresid import wrap
 
@@ -1743,9 +1744,8 @@ def dr_seed(ctx):
             # never the TLE almanac, whose BeiDou PRN mapping is wrong for some satellites. The
             # clock-frequency bias is a receiver constant, common to every model.
             v2 = ctx.drp.pd2.get((ctag, prn))
-            dop_geo = (
-                -v["range_rate_mps"] / ctx.dr_eph_mod.C_LIGHT * ctx.args.carrier_hz
-            )
+            f_sat = prn_carrier_hz(ctx.args, prn)  # FDMA: the satellite's own carrier
+            dop_geo = -v["range_rate_mps"] / ctx.dr_eph_mod.C_LIGHT * f_sat
             dop_seed = (
                 ctx.args.doppler_sign * dop_geo + ctx.cb.seed
             )  # the seed-side bias, not the hint EMA
@@ -1767,14 +1767,14 @@ def dr_seed(ctx):
                     ctx.args.doppler_sign
                     * (-(v2["range_rate_mps"] - v0["range_rate_mps"]) / 4.0)
                     / ctx.dr_eph_mod.C_LIGHT
-                    * ctx.args.carrier_hz
+                    * f_sat
                 )
             elif v2 is not None:
                 drate = (
                     ctx.args.doppler_sign
                     * (-(v2["range_rate_mps"] - v["range_rate_mps"]) / 2.0)
                     / ctx.dr_eph_mod.C_LIGHT
-                    * ctx.args.carrier_hz
+                    * f_sat
                 )
             dop_seed += drate * (ctx.drp.t_fc_abs - ctx.drp.t_now_abs)
             # cp0, the seed currency: the model's physical code phase plus _off at the forecast

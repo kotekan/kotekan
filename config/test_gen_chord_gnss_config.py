@@ -1054,6 +1054,35 @@ def test_positions_by_dish():
     check(why is not None and "solved against epoch" in why, "and its refusal")
 
 
+def test_fdma_slots():
+    """GLONASS L2OF: slot@k lists, and a covering set that is the union of the slots' lobes."""
+    from chord_band_plan import chain_covering_channels, parse_slots, signal_table
+
+    check(parse_slots("1,2, 3") == ([1, 2, 3], None), "a CDMA list has no channels")
+    check(parse_slots("1@1,10@-7") == ([1, 10], [1, -7]), "slot@k")
+    for bad in ("1@1,2", "1@7", "1@-8"):
+        try:
+            parse_slots(bad)
+            check(False, "%s refused" % bad)
+        except ValueError:
+            check(True, "%s refused" % bad)
+    w = 0.1953125e6
+    chans = [(f, f * w, w) for f in range(6340, 6420)]
+    s = signal_table()["GLO_L2OF_MC"]
+    one = chain_covering_channels(chans, s, 5e3, [0])
+    comb = chain_covering_channels(chans, s, 5e3, [-7, 0, 6])
+    check(5 <= len(one) <= 7, "one satellite's lobe is ~6 freq_ids (%d)" % len(one))
+    check(
+        set(one) < set(comb) and min(comb) == 6361 and max(comb) == 6396,
+        "the union spans k = -7..+6: %d..%d" % (min(comb), max(comb)),
+    )
+    check(
+        chain_covering_channels(chans, s, 5e3) == one,
+        "no channels list = the k = 0 carrier",
+    )
+    check(g.dll_spacing_chips("GLO_L2OF_MC") == 0.33, "L2OF takes L2C's DLL spacing")
+
+
 def main():
     # The generator reads relative paths from the cwd and _rel() resolves every argv token
     # against it, so the in-process calls run from the repo root, as gen_fleet and run_gen do.

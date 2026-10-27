@@ -77,8 +77,9 @@ def test_fleet_slots_above_floor():
     )
     fleet = open(os.path.join(REPO, "config", "gnss_fleet_chord.yaml")).read()
     lists = {}
-    for m in re.finditer(r"^\s*- ([A-Z0-9_]+):([0-9,]+)\s*$", fleet, re.M):
-        lists[m.group(1)] = [int(p) for p in m.group(2).split(",")]
+    # an FDMA list gives each slot as slot@k
+    for m in re.finditer(r"^\s*- ([A-Z0-9_]+):([0-9,@-]+)\s*$", fleet, re.M):
+        lists[m.group(1)] = [int(p.partition("@")[0]) for p in m.group(2).split(",")]
     n = 0
     for name, block in chains["chains"].items():
         key = block.get("signal")
@@ -101,10 +102,34 @@ def test_fleet_slots_above_floor():
     check(n > 0, "at least one ungated chain has a fleet slot list (%d)" % n)
 
 
+def test_fdma_carrier():
+    print("\nan FDMA satellite's own carrier (signals.prn_carrier_hz)")
+
+    class A(object):
+        carrier_hz = 1246.0e6
+
+    a = A()
+    check(signals.prn_carrier_hz(a, 3) == 1246.0e6, "no table: the chain's carrier")
+    a.fdma_df = {3: 5 * signals.FDMA_SPACING_HZ, 10: -7 * signals.FDMA_SPACING_HZ}
+    check(signals.prn_carrier_hz(a, 3) == 1248.1875e6, "k = 5: 1248.1875 MHz")
+    check(signals.prn_carrier_hz(a, 10) == 1242.9375e6, "k = -7: 1242.9375 MHz")
+    check(
+        signals.prn_carrier_hz(a, 4) == 1246.0e6,
+        "a slot without k: the chain's carrier",
+    )
+    check(signals.fdma_offsets("glo_l2oc") == {}, "a CDMA chain has no offsets")
+    sig = signals.get("glo_l2of")
+    check(
+        (sig.long_code_segments, sig.long_code_epoch_s) == (20, 0.02),
+        "glo_l2of: 20 C/A periods, 20 ms",
+    )
+
+
 def main():
     print("PRN floor checks")
     test_values()
     test_broker_uses_it()
+    test_fdma_carrier()
     test_fleet_slots_above_floor()
     if _fails:
         print("FAILED (%d)" % len(_fails))

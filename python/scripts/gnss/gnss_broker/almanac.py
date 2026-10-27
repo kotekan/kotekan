@@ -81,6 +81,7 @@ def stage_almanac_predict(ctx):
                     ctx.alm_min_prn,
                     t_pred,
                     ctx.args.carrier_hz,
+                    getattr(ctx.args, "fdma_df", None),
                 )
                 if ctx.capable is not None:
                     # Capability by block type; the alm_min_prn floor above is the fallback.

@@ -20,7 +20,9 @@ _SKY_BRIDGE_REFRESH_S = 60.0
 _SKY_RETRY_S = 600.0
 
 
-def brdc_predict(state, lat, lon, alt_m, sysc, min_prn, t_utc, f_carrier_hz):
+def brdc_predict(
+    state, lat, lon, alt_m, sysc, min_prn, t_utc, f_carrier_hz, fdma_df=None
+):
     """BRDC analogue of gps_beamtrack.predict_dopplers for one constellation:
     {prn: (doppler_hz, doppler_rate_hz_s, elevation_deg, range_m, sat_clk_s, az_deg,
     az_rate_deg_s, el_rate_deg_s, t_unix)}.
@@ -29,7 +31,8 @@ def brdc_predict(state, lat, lon, alt_m, sysc, min_prn, t_utc, f_carrier_hz):
     approaching); the rest are BRDC-only. sat_clk_s is the broadcast satellite clock, for the
     nh time-assist convention t_sv = t_gpst - range/c + clk. All elevations are returned
     (down to -90): the noise probes pick the deepest below-horizon satellites. The rates are
-    differenced over a 4 s epoch pair (t_utc, t_utc + 4 s).
+    differenced over a 4 s epoch pair (t_utc, t_utc + 4 s). fdma_df: {prn: carrier offset, Hz}
+    for an FDMA chain, each satellite's Doppler at its own carrier.
     """
     ge = state["mod"]
     # Install the broker's logger as the BRDC supply's LOG_HOOK, once. `_log` reads a
@@ -79,10 +82,11 @@ def brdc_predict(state, lat, lon, alt_m, sysc, min_prn, t_utc, f_carrier_hz):
     for (s, prn), v in pa.items():
         if s != sysc or prn < min_prn:
             continue
-        dop = -v["range_rate_mps"] / C * f_carrier_hz
+        f_sat = f_carrier_hz + (fdma_df or {}).get(prn, 0.0)
+        dop = -v["range_rate_mps"] / C * f_sat
         v2 = pb.get((s, prn))
         rate = (
-            -(v2["range_rate_mps"] - v["range_rate_mps"]) / dt / C * f_carrier_hz
+            -(v2["range_rate_mps"] - v["range_rate_mps"]) / dt / C * f_sat
             if v2
             else 0.0
         )

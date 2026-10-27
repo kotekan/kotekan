@@ -767,3 +767,30 @@ chains:
     # capture. L2C's fit returns nothing (one channel per instance).
         spectrum-endpoints: null
         dll-combiners: fleet
+    glo_l2of:
+    # GLONASS L2OF: the FDMA C/A signal on every satellite, the only one of the 14 plain GLO-M
+    # slots. Each satellite sits at 1246.0 + k * 0.4375 MHz; the node takes k per slot from its
+    # config (the manifest's slot@k) and the broker from broadcast ephemeris, for each
+    # satellite's model Doppler (signals.prn_carrier_hz). The tracker code tiles the 10 ms
+    # Manchester halves of a 20 ms bit (GLO_L2OF_MC); the clock is kept mod 20 ms, as gps_l2c's.
+        signal: glo_l2of
+    # The node pins every assigned slot (25 of 32) and refuses a live swap on an FDMA bank (the
+    # satellite is in its carrier, which /set_prns does not carry), so the map is read, never
+    # applied. Below-horizon slots are the noise probes.
+        prn-reconfig: read
+        dr-clock-adopt: true
+        seed-phase-transport: true
+    # E/L tap offset in 511 kcps chips: per satellite, L2C's geometry (each lobe ~6 channels, one
+    # per instance, summed coherently by the fleet loop). Must match the node taps
+    # (config/gen_chord_gnss_config.py dll_spacing_chips). First sky to confirm.
+        dll-spacing: 0.33
+        presence-admit-displaced: true
+        joint-consume: clk,rate
+        fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
+        fleet-trim-bandwidth: 2.5
+        fleet-trim-readback: 1
+        trackers: fleet
+        combiner: fleet
+    # No phase-slope fit: a slot owns at most one channel per instance.
+        spectrum-endpoints: null
+        dll-combiners: fleet

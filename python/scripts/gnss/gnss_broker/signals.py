@@ -89,7 +89,36 @@ _CHAINS = {
     # it to fewer slots. The tracker code bakes the 1 s OC2 into the 20 ms primary; the clock is
     # kept mod 20 ms, as gps_l2c's is, and the 1 s segment is placed from absolute time.
     "glo_l2oc": ("GLO_L2OC_P", "GLO_L2OC_P_OC", None),
+    # L2OF is GLONASS's FDMA signal, on every satellite: one code, each satellite on its own
+    # carrier, carrier_hz + k * FDMA_SPACING_HZ (prn_carrier_hz). The node takes k per slot from
+    # its config; the tracker code tiles the 10 ms Manchester halves of a 20 ms bit.
+    "glo_l2of": ("GLO_L2OF", "GLO_L2OF_MC", None),
 }
+
+# Chains whose satellites are separated by carrier, and the channel spacing (glonassCACode.hpp
+# L2OF_CHANNEL_SPACING_HZ).
+FDMA_CHAINS = {"glo_l2of"}
+FDMA_SPACING_HZ = 437.5e3
+
+
+def fdma_offsets(key):
+    """{prn: carrier offset from the chain's carrier, Hz} for an FDMA chain, from broadcast
+    ephemeris (gnss_ephemeris.glonass_freq_channels); {} for any other chain."""
+    if key not in FDMA_CHAINS:
+        return {}
+    import gnss_ephemeris
+
+    return {
+        prn: k * FDMA_SPACING_HZ
+        for prn, k in gnss_ephemeris.glonass_freq_channels().items()
+    }
+
+
+def prn_carrier_hz(args, prn):
+    """The satellite's own carrier: args.carrier_hz plus its FDMA offset (args.fdma_df, set at
+    startup; absent or empty for a CDMA chain). For converting a range rate to a Doppler. The
+    code-rate terms keep args.carrier_hz, as the node's seed propagation does."""
+    return args.carrier_hz + (getattr(args, "fdma_df", None) or {}).get(prn, 0.0)
 
 
 # RF band names, keyed by carrier in MHz rounded to 1 kHz. This is the column a viewer groups
@@ -230,7 +259,13 @@ class SignalDef(object):
 
     # Human names, derived from the descriptor name rather than typed a second time, so a new
     # descriptor is named correctly as soon as it is added.
-    _SYS_NAME = {"GPS": "GPS", "GAL": "Galileo", "BDS": "BeiDou", "GLO": "GLONASS", "SBAS": "SBAS"}
+    _SYS_NAME = {
+        "GPS": "GPS",
+        "GAL": "Galileo",
+        "BDS": "BeiDou",
+        "GLO": "GLONASS",
+        "SBAS": "SBAS",
+    }
 
     @property
     def short(self):

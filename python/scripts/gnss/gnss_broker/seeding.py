@@ -28,6 +28,7 @@ re-acquire it from nothing.
 import math
 import statistics
 
+from gnss_broker.signals import prn_carrier_hz
 from gnss_broker.sky import C_LIGHT
 from gnss_broker.transport import _log, _log_rl, axis_now
 from gnss_broker.clockhealth import dr_solve_healthy
@@ -390,7 +391,7 @@ def stage_detections_to_seeds(ctx):
             _dop_src = "dr" if _unt is None else "dr(code-untrusted)"
             seed_dop = (
                 ctx.args.doppler_sign
-                * (-v_dr["range_rate_mps"] / C_LIGHT * ctx.args.carrier_hz)
+                * (-v_dr["range_rate_mps"] / C_LIGHT * prn_carrier_hz(ctx.args, prn))
                 + ctx.cb.seed
             )
             if _unt is not None:
@@ -524,7 +525,7 @@ def stage_detections_to_seeds(ctx):
                     ctx.args.doppler_sign
                     * (-(v2_dr["range_rate_mps"] - v0_dr["range_rate_mps"]) / 4.0)
                     / C_LIGHT
-                    * ctx.args.carrier_hz
+                    * prn_carrier_hz(ctx.args, prn)
                 ),
             )
         elif v_dr is not None and v2_dr is not None:
@@ -537,7 +538,7 @@ def stage_detections_to_seeds(ctx):
                     ctx.args.doppler_sign
                     * (-(v2_dr["range_rate_mps"] - v_dr["range_rate_mps"]) / 2.0)
                     / C_LIGHT
-                    * ctx.args.carrier_hz
+                    * prn_carrier_hz(ctx.args, prn)
                 ),
             )
         elif ctx.args.almanac and prn in ctx.pred:

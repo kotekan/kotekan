@@ -212,6 +212,22 @@ def main(argv=None, rx=None, publisher=None):
                     % (_flag, _have, args.signal, _want)
                 )
         _log("signal %s: %r" % (args.signal, _sig))
+        if args.signal in signals.FDMA_CHAINS:
+            # Each satellite's carrier offset, for its model Doppler (signals.prn_carrier_hz).
+            # Without it every satellite's Doppler is scaled by the k = 0 carrier, up to ~10 Hz
+            # off: the carrier loop's to absorb, not a reason to stop.
+            try:
+                args.fdma_df = signals.fdma_offsets(args.signal)
+            except Exception as e:
+                args.fdma_df = {}
+                _log(
+                    "signal %s: FDMA carrier offsets unavailable (%s)"
+                    % (args.signal, e)
+                )
+            _log(
+                "signal %s: FDMA, %d satellite carrier offsets from broadcast ephemeris"
+                % (args.signal, len(args.fdma_df))
+            )
     if args.transcript_write and args.transcript_read:
         ap.error("--transcript-write and --transcript-read are mutually exclusive")
     if args.transcript_write:
