@@ -326,7 +326,9 @@ cudaEvent_t cudaGnssInject::execute(cudaPipelineState& pipestate, const std::vec
             c.f_nco = sd.ctrim_hz;
             c.chan_mask = (S.n_chan >= 64) ? ~0ULL : ((1ULL << S.n_chan) - 1ULL);
             c.ctrim_hz = sd.ctrim_hz;
-            c.fcar = S.f_offset_hz + pr.doppler_hz;
+            // carrier_offset: f_offset plus the slot's FDMA offset (GLONASS L2OF), the carrier
+            // the despread rotates to.
+            c.fcar = S.replica->carrier_offset(p) + pr.doppler_hz;
 
             slot2spec[p] = (int)specs.size();
             specs.push_back(sp);

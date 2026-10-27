@@ -119,6 +119,10 @@ cudaGnssChordTrackState::cudaGnssChordTrackState(Config& config, const std::stri
     replica = std::make_unique<gnss::ChannelizedReplicaBank>(
         *sig, sample_rate, f_offset_hz, N, /*num_taps=*/4, dsp::window_from_string("hamming"),
         prns);
+    // FDMA (GLONASS L2OF): each slot's carrier offset from the descriptor's, before the despread
+    // reads the bank. Empty for a CDMA signal.
+    replica->set_prn_freq_offsets(
+        config.get_default<std::vector<double>>(unique_name, "prn_freq_offset_hz", {}));
     // The despread takes each channel's global bin, since the comb is sparse.
     despread = std::make_unique<GnssCudaDespread>(*replica, n_prn, channel_ids, hops_per_record,
                                                   sample_rate);

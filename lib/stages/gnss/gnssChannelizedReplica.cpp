@@ -140,6 +140,18 @@ std::vector<int8_t> signal_code(const std::string& name, int prn) {
         const auto& a = glonass::ca_code();
         return std::vector<int8_t>(a.begin(), a.end());
     }
+    if (name == "GLO_L2OF_MC") {
+        // The shared C/A code tiled by the Manchester halves of a 20 ms bit (ten +1 periods,
+        // ten -1): a code phase in this 10220-chip space is cp + 511 * (period index mod 20).
+        (void)prn;
+        const auto& a = glonass::ca_code();
+        std::vector<int8_t> tiled;
+        tiled.reserve(a.size() * 20);
+        for (int k = 0; k < 20; ++k)
+            for (int8_t c : a)
+                tiled.push_back((int8_t)(c * (k < 10 ? 1 : -1)));
+        return tiled;
+    }
     if (name == "GLO_L2OC_P")
         return glonass::generate_l2ocp_code(prn); // already a vector (zeros = TDM'd data slots)
     // L2OC-p with the shared OC2 baked in: 50 periods of 40920 chips, 1 s (a code phase in this

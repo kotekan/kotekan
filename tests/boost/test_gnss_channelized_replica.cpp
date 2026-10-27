@@ -441,3 +441,38 @@ BOOST_AUTO_TEST_CASE(sbas_l5i_mc_is_the_i5_code_under_the_manchester_pair) {
     // It is the I5 code: the Q5 code of the same PRN does not correlate.
     BOOST_CHECK_LT(std::abs(amp(half(rMC, 0, H), half(rQ, 0, H))), 0.3);
 }
+
+// GLONASS L2OF's 50 bps bit is a Manchester pair of 10 ms halves. GLO_L2OF_MC must resolve
+// through signal_by_name and tile the C/A code ten periods +, ten periods -; the FDMA carrier
+// offset applies to it as to GLO_L2OF.
+BOOST_AUTO_TEST_CASE(glo_l2of_mc_is_the_ca_code_under_the_10ms_halves) {
+    const std::vector<int> prns = {1, 2};
+    auto bmc = make_bank("GLO_L2OF_MC", prns);
+    auto bca = make_bank("GLO_L2OF", prns);
+    const std::vector<double> df = {-7 * 437.5e3, 6 * 437.5e3};
+    bmc.set_prn_freq_offsets(df);
+    bca.set_prn_freq_offsets(df);
+    const int H = bca.repl_period_hops(); // one 1 ms code period
+    BOOST_REQUIRE_EQUAL(bmc.repl_period_hops(), 20 * H);
+
+    auto amp = [](const std::vector<std::vector<cf>>& d, const std::vector<std::vector<cf>>& r) {
+        return gnss::channelized_despread(d, r).amplitude;
+    };
+    for (int p = 0; p < 2; ++p) {
+        // the first and the last 1 ms of each 10 ms half, away from the PFB's edge at the flip
+        for (int period : {1, 8, 11, 18}) {
+            const long long ws = (long long)period * H * N * 2; // window start, samples
+            auto rMC = bmc.channels(p, ws, 0.0, 0.0, H);
+            auto rCA = bca.channels(p, ws, 0.0, 0.0, H);
+            const double a = std::real(amp(rMC, rCA));
+            if (period < 10)
+                BOOST_CHECK_MESSAGE(a > 0.95, "slot " << p << " period " << period << ": " << a);
+            else
+                BOOST_CHECK_MESSAGE(a < -0.95, "slot " << p << " period " << period << ": " << a);
+        }
+    }
+    // A replica without the halves sums the bit to ~zero.
+    auto rMC = bmc.channels(0, 0, 0.0, 0.0, 20 * H);
+    auto rCA = bca.channels(0, 0, 0.0, 0.0, 20 * H);
+    BOOST_CHECK_LT(std::abs(amp(rMC, rCA)), 0.05);
+}

@@ -674,6 +674,28 @@ inline constexpr SignalDescriptor GLO_L2OF = {
     /*tdm_phase=*/0,
 };
 
+/// GLONASS L2OF with the 10 ms Manchester halves tiled into the code: twenty 1 ms periods, ten
+/// +1 then ten -1, one 10220-chip, 20 ms code (one 50 bps data bit), as SBAS_L5_I_MC tiles its
+/// pair. A 10.49 ms record holds at most one period boundary of this code, where bare GLO_L2OF
+/// would hold ten, and the Manchester flip inside a bit is in the replica, so only the data sign
+/// is unknown per record. The bit epoch is GLONASS time, a whole number of seconds from GPS time
+/// (+3 h, leap seconds) plus tau_GPS, so the clock mod 20 ms places it. The 0.3 s time mark
+/// ending each 2 s string is plain 10 ms symbols, not Manchester pairs; records over it lose
+/// power. The per-satellite carrier offset is set as for GLO_L2OF.
+inline constexpr SignalDescriptor GLO_L2OF_MC = {
+    "GLO_L2OF_MC",
+    1246.0e6,
+    511e3,
+    10220,
+    20e-3,
+    Modulation::BPSK,
+    0,
+    0,
+    /*secondary_length=*/0,
+    /*time_multiplexed=*/false,
+    /*tdm_phase=*/0,
+};
+
 /// GLONASS L2OC-p (1248.06 MHz), the modernised CDMA pilot, 2.06 MHz above the L2OF k = 0
 /// centre; GLONASS-K satellites only. Its base ranging code is L3OC-p's (glonassL2OCCode expands
 /// generate_l3ocp_code()): each base chip becomes [0, 0, +chip, -chip], BOC(1,1) plus data/pilot
@@ -728,7 +750,7 @@ inline constexpr const SignalDescriptor* ALL_SIGNALS[] = {
     &BDS_B2B_I,    &GAL_E5B_Q,  &GAL_E5B_I,    &GPS_L1C_D,     &GAL_E6_C,      &GAL_E6_B,
     &BDS_B1I,      &BDS_B3I,    &BDS_B3I_NH,   &BDS_B2I,       &GLO_L3OC_P,    &GLO_L3OC_D,
     &GLO_L2OF,     &GLO_L2OC_P, &GAL_E6_C_CS,  &GLO_L3OC_P_NH, &GLO_L2OC_P_OC, &SBAS_L5_I,
-    &SBAS_L5_I_MC};
+    &SBAS_L5_I_MC, &GLO_L2OF_MC};
 
 /// Look up a descriptor by its @c name (the config string); nullptr if unknown.
 inline const SignalDescriptor* signal_by_name(const std::string& name) {

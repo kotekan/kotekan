@@ -27,6 +27,8 @@
  *
  * @conf prns            List of Int. PRN in each slot; the slot count n_prn is fixed.
  * @conf signal          String. Signal descriptor name (gnssSignal.hpp).
+ * @conf prn_freq_offset_hz List of Double (optional). Per-slot FDMA carrier offsets from the
+ *                       descriptor's carrier, Hz (GLONASS L2OF: k * 437.5 kHz). Empty for CDMA.
  * @conf n_channels      Int. Covering channels.
  * @conf channel_ids     List of Int. Global PFB bin of each covering channel, in local order.
  * @conf n_elements      Int. Required, but only logged.

@@ -994,6 +994,21 @@
     "tdm_phase": 0,
     "time_multiplexed": false
    },
+   "GLO_L2OF_MC": {
+    "boc_m": 0,
+    "boc_n": 0,
+    "carrier_hz": "1246000000",
+    "chip_rate_hz": "511000",
+    "code_length": 10220,
+    "code_period_s": "0.02",
+    "half_bandwidth_hz": "511000",
+    "mod": "BPSK",
+    "occupied_hi_hz": "1246511000",
+    "occupied_lo_hz": "1245489000",
+    "secondary_length": 0,
+    "tdm_phase": 0,
+    "time_multiplexed": false
+   },
    "GLO_L3OC_D": {
     "boc_m": 0,
     "boc_n": 0,
