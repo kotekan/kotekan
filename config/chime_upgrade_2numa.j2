@@ -1409,29 +1409,27 @@ numa_{{ numa }}:
     # The packet loss mask of the FRB1 beams. An FRB1 output sample is valid only if all input
     # samples it depends on are valid.
     run_frb1_pl_U16:
-        gpu_0:
-            kotekan_stage: cudaProcess
-            gpu_id: 0
-            buffer_depth: gpu_buffer_depth
-            frame_arrival_period: network_frame_arrival_period
-            num_times: samples_per_data_set
-            in_buffers:
-                host_upchan_U16_expanded_pl_mask_ringbuffer: host_upchan_U16_expanded_pl_mask_ringbuffer{{ numa_sfx }}
-            out_buffers:
-                host_frb1_pl_mask_ringbuffer: host_frb1_pl_mask_ringbuffer{{ numa_sfx }}
-            commands:
-            - name: cudaPLMaskFRB1
-              pl_mask_name: upchan_U16_expanded_pl_mask
-              frb1_pl_mask_name: frb1_pl_mask
-              num_frequencies: upchan_U16_max_num_channels
-              upchannelization_factor: 16
-              downsampling_factor: frb_downsampling_factor / 16
-              Fmin: 0
-              Fmax: upchan_U16_max_channel - upchan_U16_min_channel
-              Fbar_out_min: upchan_U16_min_output_channel
-              Fbar_out_max: upchan_U16_max_output_channel
-              num_output_frequencies: upchan_U16_max_num_output_channels
-              num_output_times: buffer_depth * frb_num_output_times
+       kotekan_stage: cudaProcess
+       buffer_depth: gpu_buffer_depth
+       frame_arrival_period: network_frame_arrival_period
+       num_times: samples_per_data_set
+       in_buffers:
+           host_upchan_U16_expanded_pl_mask_ringbuffer: host_upchan_U16_expanded_pl_mask_ringbuffer{{ numa_sfx }}
+       out_buffers:
+           host_frb1_pl_mask_ringbuffer: host_frb1_pl_mask_ringbuffer{{ numa_sfx }}
+       commands:
+       - name: cudaPLMaskFRB1
+         pl_mask_name: upchan_U16_expanded_pl_mask
+         frb1_pl_mask_name: frb1_pl_mask
+         num_frequencies: upchan_U16_max_num_channels
+         upchannelization_factor: 16
+         downsampling_factor: frb_downsampling_factor / 16
+         Fmin: 0
+         Fmax: upchan_U16_max_channel - upchan_U16_min_channel
+         Fbar_out_min: upchan_U16_min_output_channel
+         Fbar_out_max: upchan_U16_max_output_channel
+         num_output_frequencies: upchan_U16_max_num_output_channels
+         num_output_times: buffer_depth * frb_num_output_times
 
     # FRB 2 and 3
 
