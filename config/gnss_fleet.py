@@ -208,7 +208,13 @@ class Fleet:
         # Lazy: chord_band_plan imports the interface golden (gnss_broker.iface).
         if CONF not in sys.path:
             sys.path.insert(0, CONF)
-        from chord_band_plan import covering_channels, node_channels, signal_table
+        from chord_band_plan import (
+            chain_covering_channels,
+            covering_channels,
+            node_channels,
+            parse_slots,
+            signal_table,
+        )
 
         sig = self.site["signals"]
         doppler = float(sig["max_doppler_hz"])
@@ -219,16 +225,17 @@ class Fleet:
                 chans, float(sig["carrier_hz"]), float(sig["chip_rate_hz"]), doppler
             )
         else:
-            s = signal_table()[name]
-            cov = covering_channels(
-                chans,
-                s["carrier_hz"],
-                s["chip_rate_hz"],
-                doppler,
-                modulation=s["modulation"],
-                boc_m=s["boc_m"],
-                boc_n=s["boc_n"],
+            # As gen_chord_gnss_config.py: an FDMA chain covers the union of its slots' lobes.
+            prn_s = next(
+                (
+                    str(e).partition(":")[2]
+                    for e in (self.man.get("common") or {}).get("extra-signal") or []
+                    if str(e).partition(":")[0].strip() == name
+                ),
+                "",
             )
+            ks = parse_slots(prn_s)[1]
+            cov = chain_covering_channels(chans, signal_table()[name], doppler, ks)
         offs = self.offsets(host)
         return sorted({offs.index(f % 16) for f in cov})
 

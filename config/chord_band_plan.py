@@ -74,6 +74,55 @@ def covering_channels(chans, carrier_hz, chip_rate_hz, max_doppler_hz, **kw):
     return [fid for _, fid in hits]
 
 
+# GLONASS L2OF's frequency channels (lib/stages/gnss/glonassCACode.hpp L2OF_CHANNEL_SPACING_HZ,
+# L2OF_K_MIN, L2OF_K_MAX; the ICD's): slot carrier = 1246.0 MHz + k * 437.5 kHz.
+L2OF_CHANNEL_SPACING_HZ = 437.5e3
+L2OF_K_MIN, L2OF_K_MAX = -7, 6
+
+
+def parse_slots(prn_s):
+    """A manifest PRN list -> (prns, ks). An FDMA chain (GLONASS L2OF) gives every slot its
+    frequency channel, PRN@k; ks is None for a CDMA list. Raises ValueError on a list that
+    mixes the two or a k outside L2OF_K_MIN..L2OF_K_MAX."""
+    items = [p.strip() for p in str(prn_s).split(",") if p.strip()]
+    if not any("@" in p for p in items):
+        return [int(p) for p in items], None
+    if not all("@" in p for p in items):
+        raise ValueError(
+            "an FDMA list gives every slot its frequency channel (PRN@k), or none: %s"
+            % prn_s
+        )
+    prns = [int(p.partition("@")[0]) for p in items]
+    ks = [int(p.partition("@")[2]) for p in items]
+    if not all(L2OF_K_MIN <= k <= L2OF_K_MAX for k in ks):
+        raise ValueError(
+            "frequency channel outside %d..%d: %s" % (L2OF_K_MIN, L2OF_K_MAX, prn_s)
+        )
+    return prns, ks
+
+
+def chain_covering_channels(chans, s, max_doppler_hz, ks=None):
+    """covering_channels for a signal-table entry `s`; for an FDMA chain (ks given) the union
+    of its satellites' lobes, carrier_hz + k * L2OF_CHANNEL_SPACING_HZ. Ordered by centre."""
+    chans = list(chans)
+    centre = {fid: c for fid, c, _ in chans}
+    dfs = sorted({k * L2OF_CHANNEL_SPACING_HZ for k in ks}) if ks else [0.0]
+    fids = {
+        fid
+        for df in dfs
+        for fid in covering_channels(
+            chans,
+            s["carrier_hz"] + df,
+            s["chip_rate_hz"],
+            max_doppler_hz,
+            modulation=s["modulation"],
+            boc_m=s["boc_m"],
+            boc_n=s["boc_n"],
+        )
+    }
+    return sorted(fids, key=lambda fid: centre[fid])
+
+
 def signal_table(doc=None):
     """Every SignalDescriptor in lib/stages/gnss/gnssSignal.hpp, by name, from the signals
     section of the interface golden (or of `doc`, an interface document).

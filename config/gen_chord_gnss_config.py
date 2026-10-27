@@ -44,8 +44,11 @@ CONF = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, CONF)
 
 from chord_band_plan import (
-    covering_channels,  # noqa: E402
+    L2OF_CHANNEL_SPACING_HZ,  # noqa: E402
+    chain_covering_channels,
+    covering_channels,
     node_channels,
+    parse_slots,
     signal_table,
 )
 from gnss_record_layout import (
@@ -284,11 +287,17 @@ def dll_spacing_chips(name):
     the lock bars; 0.5 would put the taps by the zero (q 15, slope 4.2x). Re-derive if the
     node set changes.
 
+    GLONASS L2OF is L2C's geometry per satellite: 511 kcps BPSK, each satellite's lobe about six
+    freq_ids, one per instance, summed coherently by the fleet loop, so it takes L2C's 0.33
+    (first sky to confirm; FDMA puts each satellite on its own six of the comb's ~29).
+
     Must match the broker chain's dll-spacing (config/gnss_chains_chord.yaml): the C++ fleet
     loop takes its law's spacing from the arming payload while the taps come from here, so
     cycle the nodes before the broker and the taps lead the law.
     """
-    return {"GPS_L2C_CM": 0.33, "GLO_L2OC_P_OC": 0.4}.get(name, 0.5)
+    return {"GPS_L2C_CM": 0.33, "GLO_L2OC_P_OC": 0.4, "GLO_L2OF_MC": 0.33}.get(
+        name, 0.5
+    )
 
 
 # Record slot 2's modulus per tracker code (GnssGpuRecordAssemble record_cp_mod_chips): the
@@ -402,7 +411,13 @@ def parse_extra_signals(cfg, args, node, primary_chans):
                 "have different PRN ranges and the list fills the chain's PRN slots "
                 f"({SYNTH_SLOTS} slots per chain), so it is not something to default silently."
             )
-        prns = [int(p) for p in prn_s.split(",") if p.strip()]
+        # FDMA (GLONASS L2OF): every satellite shares the code and is separated by carrier, so
+        # each slot names its frequency channel, PRN@k (the RINEX R record's k, which
+        # gen_fleet --check-prns checks against broadcast ephemeris).
+        try:
+            prns, ks = parse_slots(prn_s)
+        except ValueError as e:
+            raise SystemExit(f"--extra-signal {name}: {e}")
         s = table[name]
         tag = signal_tag(name)
         if tag in tags:
@@ -411,14 +426,9 @@ def parse_extra_signals(cfg, args, node, primary_chans):
                 "every buffer and endpoint is named from it"
             )
         tags.add(tag)
-        chans = covering_channels(
-            node_channels(cfg, node),
-            s["carrier_hz"],
-            s["chip_rate_hz"],
-            float(cfg["signals"]["max_doppler_hz"]),
-            modulation=s["modulation"],
-            boc_m=s["boc_m"],
-            boc_n=s["boc_n"],
+        # An FDMA chain covers the union of its satellites' lobes.
+        chans = chain_covering_channels(
+            node_channels(cfg, node), s, float(cfg["signals"]["max_doppler_hz"]), ks
         )
         if not chans:
             # A narrowband signal can legitimately miss a node. A wideband chain should not (L5
@@ -439,6 +449,8 @@ def parse_extra_signals(cfg, args, node, primary_chans):
                 "signal": name,
                 "tracker": name,
                 "prns": prns,
+                # per-slot FDMA carrier offsets, Hz; None for CDMA
+                "prn_df": [k * L2OF_CHANNEL_SPACING_HZ for k in ks] if ks else None,
                 "tag": tag,
                 "ord": len(chains)
                 + 1,  # 0 is the primary chain; drives the core rotation
@@ -1144,6 +1156,11 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
                     # Replicas from code-phase tables, fused with the pack (--psi-synth).
                     **({"psi_synth": True} if args.psi_synth else {}),
                     "f_offset_hz": carrier_hz,
+                    **(
+                        {"prn_freq_offset_hz": chain["prn_df"]}
+                        if chain and chain.get("prn_df")
+                        else {}
+                    ),
                     "hops_per_record": HOPS_PER_RECORD,
                     "fft_length": cfg["fengine"]["fft_length"],
                     "sample_rate": float(cfg["fengine"]["sampling_rate_MHz"]) * 1e6,

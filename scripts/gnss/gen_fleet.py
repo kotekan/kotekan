@@ -207,15 +207,25 @@ def check_prns(man, rise_deg=RISE_DEG, hours=24.0, step_min=10.0):
     from datetime import datetime, timezone
 
     sys.path.insert(0, os.path.join(K, "python", "scripts", "gnss"))
-    from gnss_ephemeris import fetch_brdc, parse_rinex_nav, predict_all
+    from gnss_ephemeris import (
+        fetch_brdc,
+        glonass_freq_channels,
+        parse_rinex_nav,
+        predict_all,
+    )
     from gnss_broker.prnmap import ensure_registry, signal_incapable_prns
+    from chord_band_plan import parse_slots
 
     ensure_registry()
 
     lists = {}
+    fdma_k = {}  # FDMA chains (PRN@k): {name: {slot: k}}
     for ent in man.get("common", {}).get("extra-signal") or []:
         name, _, prn_s = str(ent).partition(":")
-        lists[name] = sorted(int(x) for x in prn_s.split(",") if x.strip())
+        prns, ks = parse_slots(prn_s)
+        lists[name] = sorted(prns)
+        if ks:
+            fdma_k[name] = dict(zip(prns, ks))
     if not lists:
         print("no extra-signal PRN lists in the manifest -- nothing to check")
         return 0
@@ -319,6 +329,21 @@ def check_prns(man, rise_deg=RISE_DEG, hours=24.0, step_min=10.0):
                 print(
                     "            -> %d dead slot(s) available; swap rather than resize."
                     % len(dead)
+                )
+        if name in fdma_k:
+            # an FDMA slot at the wrong frequency channel despreads another carrier: no error,
+            # no signal
+            brdc_k = glonass_freq_channels()
+            wrong = sorted(
+                (p, k, brdc_k.get(p))
+                for p, k in fdma_k[name].items()
+                if p in brdc_k and brdc_k[p] != k
+            )
+            if wrong:
+                bad += 1
+                print(
+                    "      FAIL  %d slot(s) at a frequency channel BRDC no longer gives "
+                    "(slot, manifest k, BRDC k): %s" % (len(wrong), wrong)
                 )
         if not dead and not excluded:
             print("      ok")
