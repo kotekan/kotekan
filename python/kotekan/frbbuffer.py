@@ -28,12 +28,10 @@ class FrbPacket(ctypes.Structure):
 
     @classmethod
     def from_file(cls, filename, max_packets=None):
-        """Load a list of frbPackets from a kotekan dump file.
+        """Load a list of frbPackets from a file.
 
-        FrbPostProcess stores packets for all 256 streams into a single frame,
-        one after the other, so they ought to appear like that in the dumped
-        buffer.
-
+        FrbNetworkSend sends packets for all 256 streams, one after the other,
+        so they ought to appear like that in the captured file.
         """
         filesize = os.path.getsize(filename)
 
@@ -48,9 +46,8 @@ class FrbPacket(ctypes.Structure):
     def from_buffer(cls, buffer, max_packets=None, name=None):
         """Load a list of frbPackets from a bytes buffer.
 
-        FrbPostProcess stores packets for all 256 streams into a single frame,
-        one after the other, so they ought to appear like that in the dumped
-        buffer.
+        FrbNetworkSend sends packets for all 256 streams, one after the other,
+        so they ought to appear like that in the buffer.
 
         """
 
