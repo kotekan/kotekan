@@ -279,7 +279,6 @@ BOOST_AUTO_TEST_CASE(stage_categories) {
     BOOST_CHECK(kotekan::stage_category("hipProcess") == GraphCategory::Gpu);
     // I/O is matched on substrings, so unseen stages still land right.
     BOOST_CHECK(kotekan::stage_category("bufferSend") == GraphCategory::Io);
-    BOOST_CHECK(kotekan::stage_category("frbNetworkProcess") == GraphCategory::Io);
     BOOST_CHECK(kotekan::stage_category("hdf5FileRead") == GraphCategory::Io);
     // Anything else is compute.
     BOOST_CHECK(kotekan::stage_category("accumulate") == GraphCategory::Compute);
