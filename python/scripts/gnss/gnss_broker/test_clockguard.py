@@ -104,6 +104,8 @@ def _l5(freeze_deg=5.0, min_sats=4, step_max=5.0, repin=3):
         dr_clock_step_max_chips=step_max,
         dr_clock_repin_solves=repin,
         dr_clock_transit_freeze_deg=freeze_deg,
+        boresight="telescope",
+        dr_boresight_wait_s=300.0,
     )
     c.code_len = L5_LEN
     c.chain_id, c.band_id = "gps_l5", "1176.45MHz"
@@ -276,6 +278,60 @@ def test_restart_inside_a_transit():
         "after it clears: confirmed, and on the sky (%.2f, want ~%.2f)"
         % (c.dr_state["clk"], TRUE_CLK + 0.1),
     )
+
+
+def test_unread_boresight_does_not_confirm():
+    print(
+        "a broker started with the fleet dark: no boresight, so no confirmation (bounded)"
+    )
+    from gnss_broker import sky  # the module (_sky here is the model-sky helper)
+
+    _capture()
+    az, el = sky.BORESIGHT_AZ_DEG, sky.BORESIGHT_EL_DEG
+    sky.set_boresight(None, None, "test: not read")
+    try:
+        c = _l5()
+        _cycle(c, 100.0, _good(6))
+        for k in range(5):
+            _cycle(c, 102.0 + 2 * k, _good(6))
+        check(
+            c.dr_state.get("clk_confirmed") is False and "raw_prev" not in c.dr_state,
+            "unread: bootstrapped (seeds flow) but unconfirmed, no drift differenced",
+        )
+        check(
+            bool(_logged("no boresight read yet")), "the withheld confirmation says why"
+        )
+        sky.set_boresight(az, el, "test: read on NODE UP")
+        _cycle(c, 112.0, _good(6))
+        check(
+            c.dr_state.get("clk_confirmed") is True
+            and "bore_wait_t0" not in c.dr_state,
+            "the pointing arrives: the next in-bound solve confirms",
+        )
+        sky.set_boresight(None, None, "test: never read")
+        c = _l5()
+        for k in range(6):
+            _cycle(c, 100.0 + 60.0 * k, _good(6))
+        check(
+            c.dr_state.get("clk_confirmed") is False,
+            "never read: still unconfirmed 240 s after the first update",
+        )
+        _cycle(c, 461.0, _good(6))
+        check(
+            c.dr_state.get("clk_confirmed") is True
+            and len(_logged("CLOCK CONFIRMS WITHOUT A BORESIGHT")) == 1,
+            "past dr_boresight_wait_s: confirms, logged once",
+        )
+        c = _l5()
+        c.args.boresight = "none"
+        _cycle(c, 100.0, _good(6))
+        _cycle(c, 102.0, _good(6))
+        check(
+            c.dr_state.get("clk_confirmed") is True,
+            "--boresight none: confirms at once, as before",
+        )
+    finally:
+        sky.set_boresight(az, el, "test")
 
 
 def test_two_sat_corrupted_step_rejected():
@@ -922,6 +978,7 @@ if __name__ == "__main__":
     test_cold_start_unchanged()
     test_unconfirmed_bootstrap_not_frozen_but_repinned()
     test_restart_inside_a_transit()
+    test_unread_boresight_does_not_confirm()
     test_two_sat_corrupted_step_rejected()
     test_genuine_repin_after_confirmation()
     test_transit_freeze()

@@ -48,6 +48,7 @@ from gnss_broker.fits import (
     append_windowed,
 )
 from gnss_broker.receiver import JOINT_REF_RATE_HZ, TRK_STATE, joint_tag, joint_which
+from gnss_broker import sky as _sky
 from gnss_broker.sky import nearest_boresight, transit_sky
 from gnss_broker.trkresid import wrap
 
@@ -281,14 +282,14 @@ def dr_clock_quality(ctx):
         # transit's noise value, and a noise drift would walk it (10-26 15:06Z: a restart
         # inside the E34 transit bootstrapped 1.5 chips low, one in-bound noise solve
         # confirmed it, the freeze held it there for ~6 min with drift +0.171 chips/s).
-        _cone = (
-            _in_transit_cone(ctx)
-            if ctx.dr_state["clk"] is not None
+        _free = (
+            ctx.dr_state["clk"] is not None
             and not ctx.dr_state.get("clk_primed")
             and not ctx.dr_state.get("clk_confirmed")
-            else None
         )
-        if _cone is not None:
+        _cone = _in_transit_cone(ctx) if _free else None
+        _unread = _free and _cone is None and _boresight_unread(ctx)
+        if _cone is not None or _unread:
             ctx.dr_state.pop("raw_prev", None)
         prev_raw = ctx.dr_state.get("raw_prev")
         if prev_raw is not None and 0.5 < ctx.drp.now_w - prev_raw[1] < 30.0:
@@ -322,7 +323,7 @@ def dr_clock_quality(ctx):
                     else ctx.dr_state["drift"] + 0.05 * (d_est - ctx.dr_state["drift"])
                 )
                 ctx.dr_state["drift_t"] = ctx.drp.now_w
-        if _cone is None:
+        if _cone is None and not _unread:
             ctx.dr_state["raw_prev"] = (ctx.drp.raw_clk, ctx.drp.now_w)
         # Snap on the first solve, prime or not: a median over >= dr_min_sats satellites
         # measures what the prime guessed, and EMA-ing in from a guess only adds a walk-in.
@@ -357,7 +358,16 @@ def dr_clock_quality(ctx):
                 (ctx.drp.raw_clk - clk + ctx.code_len / 2) % ctx.code_len
             ) - ctx.code_len / 2
             ctx.dr_state["clk"] = (clk + ctx.args.dr_clock_alpha * step) % ctx.code_len
-            if _cone is None:
+            if _unread:
+                _log_rl(
+                    "clk-bore-unread",
+                    "dead-reckon: clock update %.2f chips does NOT confirm it: no boresight "
+                    "read yet (--boresight telescope), so a transit cannot be ruled out. "
+                    "Confirmation waits for the pointing (at most %.0f s), or a re-pin"
+                    % (ctx.dr_state["clk"], ctx.args.dr_boresight_wait_s),
+                    every_s=60.0,
+                )
+            elif _cone is None:
                 ctx.dr_state["clk_confirmed"] = True
             else:
                 _log_rl(
@@ -407,6 +417,26 @@ def _dr_clock_guarded(ctx):
         and not ctx.dr_state.get("clk_primed")
         and bool(ctx.dr_state.get("clk_confirmed"))
     )
+
+
+def _boresight_unread(ctx):
+    """True while --boresight telescope has installed no pointing, for at most
+    dr_boresight_wait_s from the first call; then False, logged once."""
+    if ctx.args.boresight != "telescope" or _sky.BORESIGHT_KNOWN:
+        ctx.dr_state.pop("bore_wait_t0", None)
+        ctx.dr_state.pop("bore_wait_over", None)
+        return False
+    _t0 = ctx.dr_state.setdefault("bore_wait_t0", ctx.drp.now_w)
+    if ctx.drp.now_w - _t0 < ctx.args.dr_boresight_wait_s:
+        return True
+    if not ctx.dr_state.get("bore_wait_over"):
+        ctx.dr_state["bore_wait_over"] = True
+        _log(
+            "dead-reckon: CLOCK CONFIRMS WITHOUT A BORESIGHT: no pointing read in %.0f s "
+            "of solves; every transit guard stays off until one is"
+            % ctx.args.dr_boresight_wait_s
+        )
+    return False
 
 
 def _in_transit_cone(ctx):

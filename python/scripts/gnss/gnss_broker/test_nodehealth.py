@@ -10,7 +10,7 @@ import errno
 import socket
 import urllib.error
 
-from gnss_broker import nodehealth, transport
+from gnss_broker import nodehealth, sky, transport
 from gnss_broker.nodehealth import NodeHealth, is_conn_failure
 
 _fails = []
@@ -166,6 +166,23 @@ def test_probe_up():
     )
 
 
+def test_up_kicks_the_boresight():
+    print("NODE UP re-reads the pointing at once")
+    ups = []
+    h, clk, _logs, answers = tracker([A, B], on_up=ups.append)
+    for _ in range(3):
+        h.result(A, False, refused())
+        clk.t += 5.0
+    answers[A] = 1
+    clk.t += 15.0
+    h.probe_once()
+    check(ups == [A], "on_up is called with the origin that came back")
+    sky._bore_kick.clear()
+    sky.kick_boresight(A)
+    check(sky._bore_kick.is_set(), "kick_boresight wakes the watch thread")
+    sky._bore_kick.clear()
+
+
 def _all_down(h, clk, nodes):
     for _ in range(3):
         for n in nodes:
@@ -277,6 +294,7 @@ def main():
     test_transport_gate()
     test_probe_up()
     test_fleet_return()
+    test_up_kicks_the_boresight()
     test_enable_once()
     if _fails:
         raise SystemExit("FAILED: %d" % len(_fails))

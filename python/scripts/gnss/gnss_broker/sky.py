@@ -447,6 +447,7 @@ BORESIGHT_SOURCE = None
 _bore_lock = threading.Lock()
 _bore_init_lock = threading.Lock()
 _bore_watch = None
+_bore_kick = threading.Event()
 _bore_inited = False
 
 
@@ -546,9 +547,17 @@ def load_boresight(bases, get, quiet_if_same=False):
     return True
 
 
+def kick_boresight(*_):
+    """Have the watch thread re-read the pointing now (nodehealth calls it on NODE UP: a
+    broker started with the fleet dark has no boresight, and the return is the cold
+    bootstrap the transit guards exist for)."""
+    _bore_kick.set()
+
+
 def watch_boresight(bases, get, every_s=600.0):
-    """Re-read the pointing every `every_s` in one daemon thread per process (idempotent): a
-    re-pointing restarts the nodes but not the broker. The first read is the caller's."""
+    """Re-read the pointing every `every_s` in one daemon thread per process (idempotent), and
+    at once on kick_boresight: a re-pointing restarts the nodes but not the broker. The first
+    read is the caller's."""
     global _bore_watch
     with _bore_lock:
         if _bore_watch is not None:
@@ -556,10 +565,10 @@ def watch_boresight(bases, get, every_s=600.0):
         bases = list(bases)
 
         def _run():
-            ev = threading.Event()
             while True:
                 # an unknown boresight is retried every minute, a known one every every_s
-                ev.wait(every_s if BORESIGHT_KNOWN else 60.0)
+                _bore_kick.wait(every_s if BORESIGHT_KNOWN else 60.0)
+                _bore_kick.clear()
                 try:
                     load_boresight(bases, get, quiet_if_same=True)
                 except Exception as e:  # never let the watcher die silently

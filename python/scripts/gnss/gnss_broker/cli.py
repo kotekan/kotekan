@@ -463,6 +463,11 @@ _FROZEN = dict(
     # constant. Only a clock confirmed by an in-bound update or a re-pin freezes (never a prime or
     # an unconfirmed bootstrap), so a chain without detections never does.
     dr_clock_transit_freeze_deg=5.0,
+    # With --boresight telescope and no pointing read yet (a broker started with the fleet
+    # dark), a transit cannot be ruled out, so a solve does not confirm an unconfirmed clock,
+    # as inside the cone, for at most this many seconds of solves; then the clock confirms
+    # without a boresight and says so. The NODE UP re-read normally ends it in seconds.
+    dr_boresight_wait_s=300.0,
     # Withhold dead-reckon seeding while the receiver clock is still the --dr-clock-chips prime
     # rather than a measurement (0 = never wait). A seed born without a clock steps by the whole
     # clock at its first re-birth after the bootstrap, moving the whole fleet at once. It is a

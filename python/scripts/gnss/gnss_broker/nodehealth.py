@@ -83,6 +83,7 @@ class NodeHealth(object):
         clock=time.time,
         probe_get=None,
         log=_log,
+        on_up=None,
     ):
         self.down_after_s = float(down_after_s)
         self.down_min_fails = int(down_min_fails)
@@ -92,6 +93,7 @@ class NodeHealth(object):
         self.clock = clock
         self.probe_get = probe_get or _probe_time0
         self.log = log
+        self.on_up = on_up  # called with the origin after its NODE UP line
         self._lk = threading.Lock()
         self._n = {}  # netloc -> state dict
         self.anchor_s = None  # the broker's latched frame 0, UTC seconds (note_anchor)
@@ -193,6 +195,8 @@ class NodeHealth(object):
                 )
             self.log("NODE UP %s after %.0f s DOWN; %s" % (n, gone, anchor))
             self._fleet_changed(now)
+            if self.on_up is not None:
+                self.on_up(n)
 
     def _fleet_changed(self, now):
         with self._lk:

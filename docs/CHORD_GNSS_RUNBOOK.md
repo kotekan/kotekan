@@ -218,6 +218,10 @@ outside a transit, it logs `STOPPING THE BROKER ... (10-01 rule)` and exits 4 fo
 relaunch. A partial outage does not trigger it; restart by hand after a long one. Its node tracker
 (gnss_broker/nodehealth.py) logs `NODE DOWN` / `NODE UP` per node origin, stops calling a DOWN node
 (probing /telescope/time0_ns every 15 s instead), and says on `NODE UP` whether frame 0 changed.
+A fleet that goes dark again before the restart fires cancels it. `NODE UP` also re-reads the
+pointing at once: a broker started while the fleet was dark has no boresight, so every transit guard
+is off until it does, and until then (at most 300 s) no solve confirms the receiver clock. A broker
+started dark has latched no anchor and measured nothing, so its first return needs no restart.
 
 **The non-GNSS half of every node config is production's, and a gate holds it there.** The
 generator builds on `config/chord/pathfinder.j2` rendered stock, the same templates choco renders

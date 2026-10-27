@@ -337,6 +337,7 @@ def main(argv=None, rx=None, publisher=None):
             probe_s=args.node_probe_s,
             return_restart_s=args.fleet_return_restart_s,
             return_settle_s=args.fleet_return_settle_s,
+            on_up=_sky.kick_boresight,
         )
     )
     spectrum_endpoints = (
