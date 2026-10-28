@@ -179,9 +179,13 @@ host_pl_mask_exp_buffer{{ n.sfx }}:
 dpdk:
     kotekan_stage: dpdkCore
     log_level: INFO
-    # Format is index = lcore, value = cpu core
-    lcore_cpu_map: [5, 6, 7, 21, 22, 23] # [5,6,7]
-    main_lcore_cpu: 4
+    # Format is index = lcore, value = cpu core. Lcores 0-1 receive ports 0-1 and lcores 2-5
+    # run capture workers 0-3, so each sits on its half's NUMA node: port 1's NIC a0:00.0
+    # and worker rings 2-3 are on node 1. Same placement as pathfinder.j2.
+    lcore_cpu_map: [5, 21, 7, 6, 22, 23]
+    # The main lcore only polls stats once a second, so it shares core 0 rather than taking
+    # half 0's frame_service_cpu.
+    main_lcore_cpu: 0
     num_mbufs: 16384
     rx_ring_size: 1024
     mbuf_cache_size: 512
