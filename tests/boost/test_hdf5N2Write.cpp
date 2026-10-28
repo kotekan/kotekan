@@ -17,7 +17,8 @@
 #include "bufferContainer.hpp" // for bufferContainer
 #include "chordMetadata.hpp"   // for chordMetadata, get_chord_metadata
 #include "configUpdater.hpp"
-#include "hdf5N2Write.hpp" // for hdf5N2Write
+#include "hdf5N2Write.hpp"           // for hdf5N2Write
+#include "kotekanLoggingFixture.hpp" // for kotekan_logging_fixture
 #include "restServer.hpp"
 #include "test_logging.hpp"
 #include "test_utils.hpp"
@@ -46,10 +47,6 @@
 #include <unistd.h> // for gethostname
 #include <utility>
 #include <vector>
-
-// Lets the tests below catch FATAL_ERROR_NON_OO exceptions, which call
-// exit_kotekan and raise SIGTERM before throwing FatalError.
-static kotekan_test_logging::SigtermGuard g_sigterm_guard;
 
 using std::string;
 
@@ -94,6 +91,9 @@ static void fill_n2_frame_with_abs_freq(Buffer* buf, int frame_id, size_t num_in
     meta->bin_end_ERA_deg = 7.89 + double(t_index);
     meta->bin_start_ERAL_deg = 1.23 + double(t_index);
     meta->bin_end_ERAL_deg = 4.56 + double(t_index);
+    // Distinct per (f, t): nodes can switch first-stage excision at different times
+    meta->n_rfi_first_stage_enabled_fpga_ticks =
+        std::min<uint64_t>(10 * f_index + t_index, frame_length_ticks);
 }
 
 
@@ -295,6 +295,16 @@ static void validate_dataset_content(File& file, size_t num_input, size_t num_ev
         }
     }
 
+    // first-stage excision fraction, every (freq, time)
+    {
+        std::vector<std::vector<float>> out;
+        file.getDataSet("/frac_rfi_first_stage_enabled").read(out);
+        BOOST_REQUIRE_GE(out.size(), nfreq);
+        for (size_t fi = 0; fi < nfreq; ++fi)
+            for (size_t t = 0; t < file_nt; ++t)
+                BOOST_CHECK_CLOSE_FRACTION(out[fi][t], float(10 * fi + t) / 100.0f, 1e-6f);
+    }
+
     // per-time arrays shape exists
     {
         std::vector<uint64_t> s0, s2;
@@ -307,6 +317,8 @@ static void validate_dataset_content(File& file, size_t num_input, size_t num_ev
         BOOST_CHECK(!tcen.empty() && tcen.size() == bin.size());
     }
 }
+
+BOOST_GLOBAL_FIXTURE(kotekan_logging_fixture);
 
 /***********************************/
 /* Tests for the visFileData class */

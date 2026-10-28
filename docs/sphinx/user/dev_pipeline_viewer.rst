@@ -61,7 +61,9 @@ To enable crash dump, add the following to config:
 Running Debug Server
 -----------------------
 Debug server is written in python with Flask, and it provides a way for web interface to fetch run-time data
-from kotekan endpoints and read dump files from file system.
+from kotekan endpoints and read dump files from the configured dump directory.
+Only the viewer pages, static assets, and files under that directory are served.
+Dump files are sent as downloads, and paths or symlinks outside the directory are rejected.
 
 To start the server:
 

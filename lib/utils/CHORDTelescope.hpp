@@ -143,31 +143,27 @@ struct DishParams {
     /// Full dish info table (Missing + real dishes), used to build dish_positions.
     std::vector<dishInfo> dish_info_table;
 
+    /// The array dish at each grid location `x + dish_grid_size_x * y`, or -1 if there is none.
+    std::vector<dish_index_t> dish_idx_at_grid_loc;
+
     /**
-     * @brief Build full dish parameters (including rotation matrices and positions)
+     * @brief Build dish parameters (including input mappings and positions)
      * from the config for this telescope.
      *
-     * @conf   origin_itrs_lon_deg  double. Longitude of the telescope origin in ITRS coords.
-     * @conf   origin_itrs_lat_deg  double. Latitude of the telescope origin in ITRS coords.
-     * @conf   dish_coelev_deg      double. Dish pointing co-elevation angle.
-     * @conf   grid_x_axis          array<double,3>. Unit vector giving the grid x axis in
-     *                              topocentric (TOPO) coords.
-     * @conf   grid_y_axis          array<double,3>. Unit vector giving the grid y axis in
-     *                              topocentric (TOPO) coords.
-     * @conf   dish_elev_axis       array<double,3>. Unit vector giving the dish elevation axis in
-     *                              topocentric (TOPO) coords.
-     * @conf   dish_vert_axis       array<double,3>. Unit vector giving the dish vertical axis in
-     *                              topocentric (TOPO) coords.
-     * @conf   dish_inputs          array<dishInfo>. List of dish inputs, with all fields populated.
+     * @par Configuration
+     * - @c dish_coelev_deg      double. Dish pointing co-elevation angle.
+     * - @c dish_inputs          array<dishInfo>. List of dish inputs, with all fields populated.
      *                              See struct dishInfo for field descriptions.
-     * @conf   num_dishes           size_t. Total number of dishes.
-     * @conf   num_dishes_x         size_t. Number of dishes in the E/W (x) direction.
-     * @conf   num_dishes_y         size_t. Number of dishes in the N/S (y) direction.
-     * @conf   check_duplicate_dish_grid  bool. Fatal on duplicate dish grid locations.
+     * - @c check_duplicate_dish_grid  bool. Fatal on duplicate dish grid locations.
      *                              Default: true.
      *
      * @param   config  The config.
      * @param   path    This telescope's path in the config.
+     * @param   num_dishes Number of dishes, including missing entries.
+     * @param   dish_grid_size_x Number of grid columns along the x axis.
+     * @param   dish_grid_size_y Number of grid rows along the y axis.
+     * @param   dish_separation_x_m Dish spacing along the grid x axis, in meters.
+     * @param   dish_separation_y_m Dish spacing along the grid y axis, in meters.
      *
      * @return  The built DishParams.
      **/
@@ -182,6 +178,11 @@ struct DishParams {
      *
      * @param   config  The config.
      * @param   path    This telescope's path in the config.
+     * @param   num_dishes Number of dishes, including missing entries.
+     * @param   dish_grid_size_x Number of grid columns along the x axis.
+     * @param   dish_grid_size_y Number of grid rows along the y axis.
+     * @param   dish_separation_x_m Dish spacing along the grid x axis, in meters.
+     * @param   dish_separation_y_m Dish spacing along the grid y axis, in meters.
      **/
     void set_dish_info(const kotekan::Config& config, const std::string& path, uint64_t num_dishes,
                        uint64_t dish_grid_size_x, uint64_t dish_grid_size_y,
@@ -218,13 +219,14 @@ struct FreqParams {
     /**
      * @brief Build from kotekan::Config
      *
-     * @conf   sampling_rate_MHz   double. ADC Sampling Rate (default: 3.2 GHz for CHORD)
-     * @conf   fft_length          size_t. F-engine FFT length (default: 16384 for CHORD)
-     * @conf   nyquist_zone        nyquist_zone_t.  Nyquist Zone we're operating in (default: 1 for
+     * @par Configuration
+     * - @c sampling_rate_MHz   double. ADC Sampling Rate (default: 3.2 GHz for CHORD)
+     * - @c fft_length          size_t. F-engine FFT length (default: 16384 for CHORD)
+     * - @c nyquist_zone        nyquist_zone_t.  Nyquist Zone we're operating in (default: 1 for
      *CHORD)
-     * @conf   max_science_freq_MHz double. Maximum frequency used for science, in MHz (default:
+     * - @c max_science_freq_MHz double. Maximum frequency used for science, in MHz (default:
      *1500.0). Values exceeding the physical band allowed by fpga frequencies will be clamped.
-     * @conf   min_science_freq_MHz double. Minimum frequency used for science, in MHz (default:
+     * - @c min_science_freq_MHz double. Minimum frequency used for science, in MHz (default:
      *300.0). Values exceeding the physical band allowed by fpga frequencies will be clamped.
      *
      * @param   config  The config.
@@ -297,16 +299,20 @@ struct GPSTimeParams {
      * @brief Build GPS parameters from config, including (optionally) querying
      * a remote server and enforcing _require_gps.
      *
-     * @conf    require_gps         bool.   If true, exception is thrown if GPS
+     * @param config The config.
+     * @param path This telescope's path in the config.
+     *
+     * @par Configuration
+     * - @c  require_gps         bool.   If true, exception is thrown if GPS
      *                                      unavailable.
-     * @conf    query_gps           bool.   Should the telescope object get the GPS
+     * - @c  query_gps           bool.   Should the telescope object get the GPS
      *                                      from a remote source. If not available,
      *                                      or false, will try to retrieve from
      *                                      config.
-     * @conf    gps_host            string. The GPS server IP address.
-     * @conf    gps_port            uint.   The port number on the GPS server. Default: 54321
-     * @conf    gps_endpoint        string. The enpoint with the GPS time.
-     * @conf    auto_correct_gps_week_rollover  bool.   If true, correct GPS time0
+     * - @c  gps_host            string. The GPS server IP address.
+     * - @c  gps_port            uint.   The port number on the GPS server. Default: 54321
+     * - @c  gps_endpoint        string. The enpoint with the GPS time.
+     * - @c  auto_correct_gps_week_rollover  bool.   If true, correct GPS time0
      *                                      for the 1024 week GPS rollover using
      *                                      start_ctime from the GPS server.
      **/
@@ -336,6 +342,15 @@ private:
  * @see FreqParams::from_config (frequency sampling)
  * @see DishParams::from_config (dish and array geometry)
  *
+ * @par Configuration
+ * @conf    origin_itrs_lon_deg double. Longitude of the telescope origin in ITRS coordinates.
+ * @conf    origin_itrs_lat_deg double. Latitude of the telescope origin in ITRS coordinates.
+ * @conf    grid_x_axis         array<double,3>. Grid x unit vector in topocentric coordinates.
+ * @conf    grid_y_axis         array<double,3>. Grid y unit vector in topocentric coordinates.
+ * @conf    dish_elev_axis      array<double,3>. Dish elevation unit vector in topocentric
+ *coordinates.
+ * @conf    dish_vert_axis      array<double,3>. Dish vertical unit vector in topocentric
+ *coordinates.
  * @conf    eop_updatable_config    string. ConfigUpdater path for dynamic EOP updates. For more
  *information see Telescope.hpp
  * @conf    fatal_eop_out_of_range  bool. Optional, default false. Fail fatally when an EOP is
@@ -473,6 +488,16 @@ public:
     const dishInfo& get_dish_at_idx(int64_t idx) const;
 
     /**
+     * @brief   Return the index of the array dish at a grid location, or -1 if there is none.
+     *
+     * Locations outside the grid have no dish. If `check_duplicate_dish_grid` is false and
+     * several array dishes share a location, the one listed last in `dish_inputs` is returned.
+     *
+     * @param   grid_idx    Grid indices (x, y)
+     **/
+    dish_index_t get_dish_idx_at_grid_indices(const grid_idx_2d_t& grid_idx) const;
+
+    /**
      * @brief   Return the pointing vector (direction dish is pointing, the
      *          phase center), in Dish coordinates (x is elevation axis (~East),
      *          y is ~North, z is co-elevation = 0 deg (~up).
@@ -489,7 +514,7 @@ public:
     /**
      * @brief   Transform the given vector from Dish to Topocentric coords.
      *
-     * @param   v_topo  Vector in dish coordinates.
+     * @param   v_dish  Vector in dish coordinates.
      **/
     vec3d_t vec_dish_to_topo(const vec3d_t& v_dish) const;
 

@@ -8,7 +8,6 @@
 int _global_log_level = 3;
 int __enable_syslog = 1;
 enum ReturnCode __status_code = CLEAN_EXIT;
-char __err_msg[MAX_LOG_MSG_LEN] = "not set";
 
 static pthread_mutex_t status_mutex = PTHREAD_MUTEX_INITIALIZER;
 
@@ -42,12 +41,6 @@ enum ReturnCode get_exit_code() {
     enum ReturnCode code = __status_code;
     pthread_mutex_unlock(&status_mutex);
     return code;
-}
-char* get_error_message() {
-    pthread_mutex_lock(&status_mutex);
-    char* msg = __err_msg;
-    pthread_mutex_unlock(&status_mutex);
-    return msg;
 }
 
 // Return log level as string
@@ -89,14 +82,4 @@ char* get_exit_code_string(enum ReturnCode code) {
         default:
             return "INVALID_CODE";
     }
-}
-
-// Stores the error message
-void set_error_message_f(const char* format, ...) {
-    va_list args;
-    va_start(args, format);
-    pthread_mutex_lock(&status_mutex);
-    (void)vsnprintf(__err_msg, MAX_LOG_MSG_LEN, format, args);
-    pthread_mutex_unlock(&status_mutex);
-    va_end(args);
 }

@@ -636,6 +636,17 @@ verifies consistency, within ns-level tolerance, as frames arrive).
      - float32 (:math:`N_t`, :math:`N_k`)
      - Fraction of samples above the corresponding threshold required to
        trigger excision.
+   * - ``frac_rfi_first_stage_enabled``
+     - float32 (:math:`N_f`, :math:`N_t`)
+     - Fraction of the bin during which first-stage (GPU, SK-based) RFI
+       excision was enabled. A switch applies from the first input frame
+       starting at or after its scheduled time, on the GPU and in this count.
+       N2Accumulate reads the switch only when
+       ``rfi_first_stage_enabled_updatable_config`` is set; otherwise this is
+       1.0 whatever the GPU state.
+   * - ``fringestop_enabled``
+     - bool
+     - Whether the visibilities in this bin were fringestopped.
 
 Completeness tracking and configuration snapshots
 =================================================

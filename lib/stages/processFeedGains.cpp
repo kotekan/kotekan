@@ -128,15 +128,24 @@ void processFeedGains::main_thread() {
     set_frame_desc(out_buf);
     const std::shared_ptr<const kotekan::GenericNDArray> out_frame_desc =
         out_buf->get_frame_desc<kotekan::GenericNDArray>();
-    // The output frames are clocked by the mask frames: each output frame covers the same FPGA
-    // samples as the mask frame it was made from, and the output's leading time axis says how
-    // many these are.
+    // The output frames are clocked by the mask frames: each output frame covers as many FPGA
+    // samples as a mask frame, and the output's leading time axis says how many these are.
     if (out_frame_desc->get_rank() == 0)
         FATAL_ERROR("Output buffer {:s} has no leading time axis", out_buf->buffer_name);
     const std::ptrdiff_t out_lifetime = out_frame_desc->get_dimscaling(0);
+    // Output frame `k` covers the consumer's samples from `fpga_seq_num_offset + k * lifetime`
+    // after the first mask frame on. Make it from the mask frame valid at its first sample, i.e.
+    // skip the whole lifetimes of the offset in the mask stream.
+    const std::int64_t num_skipped_masks = fpga_seq_num_offset / out_lifetime;
 
     // make frame IDs for each gain buffer, and the output buffers
     N2::frameID in_mask_frame_id(in_mask_buf);
+    for (std::int64_t i = 0; i < num_skipped_masks; ++i) {
+        if (in_mask_buf->wait_for_full_frame(unique_name, in_mask_frame_id) == nullptr)
+            return;
+        in_mask_buf->mark_frame_empty(unique_name, in_mask_frame_id);
+        in_mask_frame_id++;
+    }
     N2::frameID out_buf_frame_id(out_buf);
     std::vector<N2::frameID> gain_buffer_frame_ids;
     for (size_t iter = 0; iter < gain_buffers.size(); iter++) {
@@ -217,7 +226,7 @@ void processFeedGains::main_thread() {
                         in_mask_buf->buffer_name);
         const std::int64_t mask_fpga_seq_num = mask_meta->get_fpga_seq_num();
         const std::int64_t mask_lifetime = mask_meta->get_time_downsampling_fpga();
-        // An output frame covers what its mask frame covers, so the two cadences must agree
+        // An output frame covers as many samples as its mask frame, so the cadences must agree
         if (mask_lifetime != out_lifetime)
             FATAL_ERROR("Mask buffer {:s} advances by {:d} FPGA samples per frame, but the "
                         "leading axis of output buffer {:s} covers {:d}; they must be equal",
@@ -241,10 +250,11 @@ void processFeedGains::main_thread() {
         auto meta = get_chord_metadata(out_buf, out_buf_frame_id);
         meta->set_from_frame_desc(out_frame_desc);
         meta->set_name("W");
-        // This frame covers the same FPGA samples as the mask frame it was made from, shifted to
-        // where the consumer's data begin
-        meta->set_fpga_seq_num(mask_fpga_seq_num + fpga_seq_num_offset);
-        meta->set_time_downsampling_fpga(int(mask_lifetime));
+        // This frame begins where the consumer's data begin, `fpga_seq_num_offset` after the
+        // first mask frame, plus `k` lifetimes
+        meta->set_fpga_seq_num(mask_fpga_seq_num - num_skipped_masks * mask_lifetime
+                               + fpga_seq_num_offset);
+        meta->set_time_downsampling_fpga(mask_lifetime);
         // Set the frequency upchannelization metadata
         meta->set_freq_upchan_factor(freq_upchan_factor);
         meta->set_freq_upchan_index(freq_upchan_index);

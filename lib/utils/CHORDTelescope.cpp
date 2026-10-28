@@ -75,7 +75,8 @@ DishParams DishParams::from_config(const kotekan::Config& config, const std::str
     for (size_t i = 0; i < num_dishes; i++)
         dish_info_table.at(i) = dishInfo(i);
 
-    std::vector<bool> occupied_loc(dish_grid_size_x * dish_grid_size_y, false);
+    dish_params.dish_idx_at_grid_loc =
+        std::vector<dish_index_t>(dish_grid_size_x * dish_grid_size_y, -1);
 
     // Load the dishes from the config into the table. Make sure dish indices are consistent and,
     // optionally, the ArrayDish grid locations are unique.
@@ -99,16 +100,12 @@ DishParams DishParams::from_config(const kotekan::Config& config, const std::str
                                    dish.label, dish.grid_y_idx, dish_grid_size_y);
             }
 
-            if (check_duplicate_dish_grid) {
-                int64_t occ_idx = dish.grid_x_idx + dish.grid_y_idx * dish_grid_size_x;
-
-                if (occupied_loc.at(occ_idx))
-                    FATAL_ERROR_NON_OO(
-                        "Array dish {:s} has grid_idx = ({:d}, {:d}) which is already occupied.",
-                        dish.label, dish.grid_x_idx, dish.grid_y_idx);
-
-                occupied_loc.at(occ_idx) = true;
-            }
+            const int64_t loc_idx = dish.grid_x_idx + dish.grid_y_idx * dish_grid_size_x;
+            if (check_duplicate_dish_grid && dish_params.dish_idx_at_grid_loc.at(loc_idx) >= 0)
+                FATAL_ERROR_NON_OO(
+                    "Array dish {:s} has grid_idx = ({:d}, {:d}) which is already occupied.",
+                    dish.label, dish.grid_x_idx, dish.grid_y_idx);
+            dish_params.dish_idx_at_grid_loc.at(loc_idx) = idx;
         }
         if (dish_info_table.at(idx).type != DishType::Missing) {
             FATAL_ERROR_NON_OO("dish {:s} has dish_idx {:d}, which is duplicated in `dish_inputs`",
@@ -588,6 +585,14 @@ uint64_t CHORDTelescope::get_num_polarizations() const {
 
 const dishInfo& CHORDTelescope::get_dish_at_idx(dish_index_t idx) const {
     return _dish_params.dish_info_table.at(idx);
+}
+
+dish_index_t CHORDTelescope::get_dish_idx_at_grid_indices(const grid_idx_2d_t& grid_idx) const {
+    if (grid_idx.at(0) < 0 || uint64_t(grid_idx.at(0)) >= _dish_grid_size_x || grid_idx.at(1) < 0
+        || uint64_t(grid_idx.at(1)) >= _dish_grid_size_y)
+        return -1;
+    return _dish_params.dish_idx_at_grid_loc.at(grid_idx.at(0)
+                                                + _dish_grid_size_x * grid_idx.at(1));
 }
 
 // Get the frequency in MHz corresponding to the given freq_id.

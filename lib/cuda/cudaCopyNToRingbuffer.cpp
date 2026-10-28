@@ -51,9 +51,17 @@ cudaCopyNToRingbuffer::cudaCopyNToRingbuffer(Config& config, const std::string& 
 
     _gpu_mem_output = config.get<std::string>(unique_name, "gpu_mem_output");
 
+
     signal_buffer = dynamic_cast<RingBuffer*>(
         host_buffers.get_generic_buffer(config.get<std::string>(unique_name, "signal_buf")));
     assert(signal_buffer && "Buffer given by signal_buf is null or not a RingBuffer");
+    // Producer and consumer stages both name this backing store on purpose, and the ring they
+    // wait on and signal is what orders them. Declare the share through the ring's own name
+    // (config aliases in in/out_buffers resolve to it) so the one-owner check accepts exactly
+    // that pairing, and register the store as this stage's now: it is only taken in execute(),
+    // and a conflict belongs at construction, where --dry-run can see it (gpuMemoryClaims.hpp).
+    device.declare_shared_gpu_memory(_gpu_mem_output, signal_buffer->buffer_name);
+    device.register_gpu_memory_name(_gpu_mem_output);
     if (instance_num == 0)
         signal_buffer->register_producer(unique_name);
 
@@ -194,7 +202,11 @@ cudaEvent_t cudaCopyNToRingbuffer::execute(cudaPipelineState& /*pipestate*/,
             freq_upchan_factor.at(i) = meta_in->get_freq_upchan_factor().at(0);
             freq_upchan_index.at(i) = meta_in->get_freq_upchan_index().at(0);
             // Check that the seq_num matches for all input buffers
-            assert(meta_ring->get_fpga_seq_num() == meta_in->get_fpga_seq_num());
+            if (meta_ring->get_fpga_seq_num() != meta_in->get_fpga_seq_num())
+                FATAL_ERROR("Sequence numbers do not match for all input buffers: {:d} ({:s} ) != "
+                            "{:d} ({:s})",
+                            meta_in0->get_fpga_seq_num(), in_buffers.at(0)->buffer_name,
+                            meta_in->get_fpga_seq_num(), in_buffers.at(i)->buffer_name);
         }
         meta_ring->set_coarse_freq(coarse_freq);
         meta_ring->set_freq_upchan_factor(freq_upchan_factor);

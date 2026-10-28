@@ -36,7 +36,7 @@
  *     @buffer_metadata none
  *
  * @par REST endpoints
- *  - POST @c <unique_name>/spectrum with @c {"integration_length": N}
+ *  - POST `<unique_name>/spectrum` with @c {"integration_length": N}
  *    returns @c {"stokes_i": [...]} once integration completes.
  *
  * @conf   spectrum_length      Int (default 1024). Number of samples in the spectrum.

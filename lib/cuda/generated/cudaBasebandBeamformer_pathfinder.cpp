@@ -436,8 +436,11 @@ cudaBasebandBeamformer_pathfinder::cudaBasebandBeamformer_pathfinder(Config& con
             "--gpu-name=sm_86",
             "--verbose",
         };
-        device.build_ptx("lib/cuda/generated/BasebandBeamformer_pathfinder.ptx", {kernel_symbol},
-                         opts, "BasebandBeamformer_pathfinder_");
+        const char* const kernel_code =
+#include "BasebandBeamformer_pathfinder.ptx"
+            ;
+        device.build_ptx(kernel_code, "lib/cuda/generated/BasebandBeamformer_pathfinder.ptx",
+                         {kernel_symbol}, opts, "BasebandBeamformer_pathfinder_");
     }
 }
 

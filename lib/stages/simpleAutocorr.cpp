@@ -76,8 +76,11 @@ void simpleAutocorr::main_thread() {
             integration_ct++;
 
             if (integration_ct >= integration_length) {
-                if (out_loc == 0)
+                if (out_loc == 0) {
                     out_local = (float*)buf_out->wait_for_empty_frame(unique_name, frame_out);
+                    if (out_local == nullptr)
+                        return;
+                }
                 for (int i = 0; i < spectrum_length; i++)
                     out_local[out_loc++] = spectrum_out[i];
                 // Trailing slot is the integration count, packed as uint32 in the

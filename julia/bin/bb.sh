@@ -8,7 +8,7 @@ set -euxo pipefail
 scriptdir=$(dirname "$0")
 cd "$scriptdir/.."
 
-setups='charts chime chord hirax pathfinder' # smallfinder
+setups='charts chime chord hirax hirax128 pathfinder' # smallfinder
 
 mkdir -p output
 

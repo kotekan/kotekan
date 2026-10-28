@@ -22,9 +22,10 @@ single file that violates the same rules on disk.
 
 `frames_per_file: N` (N > 1) concatenates up to N frames per file the same
 way, so the writer applies the same rules to each such file, starting afresh
-with every new file: a gap between two files is fine, one inside a file is
-not.
+with every new file, except that a gap inside a file closes it early and
+starts a new one instead of aborting.
 """
+
 import glob
 import os
 import shutil
@@ -202,7 +203,7 @@ def _buffer(name, buf):
             kotekan_buffer="ndarray",
             metadata_pool="main_pool",
             num_frames="buffer_depth",
-            **buf
+            **buf,
         )
     }
 
@@ -216,7 +217,9 @@ def _generator(case, out_buf):
     return gen
 
 
-def _siphon(tmpdir, case, single_file, write_extra=None, expect_failure=False):
+def _siphon(
+    tmpdir, case, single_file, write_extra=None, expect_failure=False, frames_per_file=1
+):
     """Session A: generate frames and write them. Returns the runner."""
     write = dict(
         kotekan_stage="hdf5FileWrite",
@@ -226,6 +229,7 @@ def _siphon(tmpdir, case, single_file, write_extra=None, expect_failure=False):
         prefix_hostname=False,
         max_frames=NUM_FRAMES,
         create_single_file=single_file,
+        frames_per_file=frames_per_file,
     )
     write.update(write_extra or {})
     r = runner.KotekanRunner(
@@ -238,33 +242,45 @@ def _siphon(tmpdir, case, single_file, write_extra=None, expect_failure=False):
     return r
 
 
-def _check_files(tmpdir, case, single_file):
+def _check_files(tmpdir, case, single_file, frames_per_file=1):
     extents = case["buf"]["extents"]
     indexed = sorted(glob.glob(os.path.join(str(tmpdir), FILE_NAME + ".*.h5")))
+
     if single_file:
         assert indexed == []
         files = [os.path.join(str(tmpdir), FILE_NAME + ".h5")]
         frames_per_file = NUM_FRAMES
     else:
-        assert [os.path.basename(f) for f in indexed] == [
-            "%s.%08d.h5" % (FILE_NAME, i) for i in range(NUM_FRAMES)
+        expected_files = [
+            f"{FILE_NAME}.{i:08d}.h5" for i in range(0, NUM_FRAMES, frames_per_file)
         ]
+        assert [os.path.basename(f) for f in indexed] == expected_files
         assert not os.path.exists(os.path.join(str(tmpdir), FILE_NAME + ".h5"))
         files = indexed
-        frames_per_file = 1
-    for i, path in enumerate(files):
+
+    # if there are multiple frames in each file and the number of frames per
+    # file does not divide the total number of frames, then the last file
+    # will have fewer total frames
+    nframes = [frames_per_file] * (NUM_FRAMES // frames_per_file)
+    if len(nframes) < len(files):
+        nframes.append(NUM_FRAMES % frames_per_file)
+
+    for i, (path, nf) in enumerate(zip(files, nframes)):
         with h5py.File(path, "r") as f:
             assert list(f.keys()) == [FILE_NAME]
             ds = f[FILE_NAME]
             assert ds.dtype == np.dtype(case["dtype"])
-            assert list(ds.shape) == [frames_per_file * extents[0]] + extents[1:]
+            assert list(ds.shape) == [nf * extents[0]] + extents[1:]
             a = ds.attrs
             assert list(a["chord_metadata_version"]) == [2, 0]
             assert a["name"] == case["buf"]["quantity_name"]
             assert a["type"] == case["buf"]["value_type"]
+            assert (
+                a["fpga_seq_num"]
+                == i * frames_per_file * case["gen"]["samples_per_data_set"]
+            )
             assert list(a["dim_names"]) == case["buf"]["dimnames"]
             assert list(a["dim_scalings"]) == case["buf"]["dimscalings"]
-            assert a["fpga_seq_num"] == i * case["gen"]["samples_per_data_set"]
             assert list(a["coarse_freq"]) == list(range(case["gen"]["num_local_freq"]))
             for key in ("telescope_name", "num_dishes", "num_polarizations"):
                 assert key in a
@@ -392,6 +408,24 @@ def test_singlefile_rejects_frame_decimation(tmpdir_factory):
     assert "cannot be combined with create_single_file" in r.output
 
 
+def test_perframe_frame_decimation(tmpdir_factory):
+    """write_x_frames 2 / per_y_frames 3 writes the first 2 of every 3 frames."""
+    case = CASES["int8_random"]
+    tmpdir = tmpdir_factory.mktemp("hdf5_perframe_decimation")
+    _siphon(tmpdir, case, False, write_extra=dict(write_x_frames=2, per_y_frames=3))
+    files = sorted(glob.glob(os.path.join(str(tmpdir), FILE_NAME + ".*.h5")))
+    frames = [k for k in range(NUM_FRAMES) if k % 3 < 2]
+    assert [os.path.basename(f) for f in files] == [
+        f"{FILE_NAME}.{k:08d}.h5" for k in frames
+    ]
+    for path, k in zip(files, frames):
+        with h5py.File(path, "r") as f:
+            assert (
+                f[FILE_NAME].attrs["fpga_seq_num"]
+                == k * case["gen"]["samples_per_data_set"]
+            )
+
+
 def test_singlefile_rejects_non_time_axis0(tmpdir_factory):
     """Axis 0 of a single file has to be a time axis (a name starting with T)."""
     case = _variant(
@@ -425,7 +459,7 @@ def test_perframe_allows_non_time_axis0(tmpdir_factory):
 
 def test_singlefile_rejects_dim_scaling_tds_mismatch(tmpdir_factory):
     """dim_scaling[0] must equal time_downsampling_fpga in single-file mode."""
-    case = _variant(CASES["int8_random"], gen=dict(meta_time_downsample_factor=16),)
+    case = _variant(CASES["int8_random"], gen=dict(meta_time_downsample_factor=16))
     tmpdir = tmpdir_factory.mktemp("hdf5_singlefile_scaling")
     r = _siphon(tmpdir, case, True, expect_failure=True)
     assert r.return_code != 0
@@ -454,55 +488,39 @@ def test_perframe_allows_gap_in_stream(tmpdir_factory):
     _replay(tmpdir, case, False)
 
 
-def _check_multiframe_files(tmpdir, case, frames_per_file, seq_nums):
-    """Each file holds `frames_per_file` frames and starts at the given fpga_seq_num."""
+def _check_multiframe_files(tmpdir, case, files):
+    """`files` lists (first frame, number of frames, fpga_seq_num) for each file."""
     extents = case["buf"]["extents"]
-    files = sorted(glob.glob(os.path.join(str(tmpdir), FILE_NAME + ".*.h5")))
-    assert [os.path.basename(f) for f in files] == [
-        "%s.%08d.h5" % (FILE_NAME, i) for i in range(0, NUM_FRAMES, frames_per_file)
+    paths = sorted(glob.glob(os.path.join(str(tmpdir), FILE_NAME + ".*.h5")))
+    assert [os.path.basename(p) for p in paths] == [
+        "%s.%08d.h5" % (FILE_NAME, first) for first, _, _ in files
     ]
-    assert len(files) == len(seq_nums)
-    for path, seq_num in zip(files, seq_nums):
+    for path, (_, num_frames, seq_num) in zip(paths, files):
         with h5py.File(path, "r") as f:
             ds = f[FILE_NAME]
-            assert list(ds.shape) == [frames_per_file * extents[0]] + extents[1:]
+            assert list(ds.shape) == [num_frames * extents[0]] + extents[1:]
             assert ds.attrs["fpga_seq_num"] == seq_num
-
-
-def test_multiframe_writes_contiguous_files(tmpdir_factory):
-    """frames_per_file splits the stream over files of several frames each."""
-    case = CASES["int8_random"]
-    samples = case["gen"]["samples_per_data_set"]
-    tmpdir = tmpdir_factory.mktemp("hdf5_multiframe")
-    _siphon(tmpdir, case, False, write_extra=dict(frames_per_file=3))
-    _check_multiframe_files(tmpdir, case, 3, [0, 3 * samples])
 
 
 def test_multiframe_allows_gap_between_files(tmpdir_factory):
     """A new file starts a new stream, so a gap at a file boundary is fine."""
     case = _variant(CASES["int8_random"], gen=dict(simulate_fpga_restart_at_frame=3))
     tmpdir = tmpdir_factory.mktemp("hdf5_multiframe_gap_between")
-    _siphon(tmpdir, case, False, write_extra=dict(frames_per_file=3))
-    _check_multiframe_files(tmpdir, case, 3, [0, 0])
+    _siphon(tmpdir, case, False, frames_per_file=3)
+    _check_multiframe_files(tmpdir, case, [(0, 3, 0), (3, 3, 0)])
 
 
-def test_multiframe_rejects_gap_in_file(tmpdir_factory):
-    """An fpga_seq_num jump inside a multi-frame file breaks its stream."""
+def test_multiframe_gap_in_file_starts_new_file(tmpdir_factory):
+    """An fpga_seq_num jump inside a multi-frame file closes it and starts a new one."""
     case = _variant(CASES["int8_random"], gen=dict(simulate_fpga_restart_at_frame=3))
     samples = case["gen"]["samples_per_data_set"]
     tmpdir = tmpdir_factory.mktemp("hdf5_multiframe_gap_within")
-    r = _siphon(
-        tmpdir,
-        case,
-        False,
-        write_extra=dict(frames_per_file=NUM_FRAMES),
-        expect_failure=True,
-    )
-    assert r.return_code != 0
+    r = _siphon(tmpdir, case, False, frames_per_file=4)
     assert (
-        "frames_per_file requires a contiguous stream, but frame 3 starts at "
-        "fpga_seq_num 0, expected %d" % (3 * samples)
+        "frame 3 starts at fpga_seq_num 0, expected %d; starting a new file"
+        % (3 * samples)
     ) in r.output
+    _check_multiframe_files(tmpdir, case, [(0, 3, 0), (3, 3, 0)])
 
 
 def test_multiframe_rejects_non_time_axis0(tmpdir_factory):
@@ -512,9 +530,7 @@ def test_multiframe_rejects_non_time_axis0(tmpdir_factory):
         buf=dict(dimnames=["F", "T", "D"]),
     )
     tmpdir = tmpdir_factory.mktemp("hdf5_multiframe_axis0")
-    r = _siphon(
-        tmpdir, case, False, write_extra=dict(frames_per_file=3), expect_failure=True
-    )
+    r = _siphon(tmpdir, case, False, frames_per_file=3, expect_failure=True)
     assert r.return_code != 0
     assert (
         "frames_per_file requires a time axis as dimension 0, but dimension 0 is"
@@ -529,7 +545,8 @@ def test_multiframe_rejects_frame_decimation(tmpdir_factory):
         tmpdir,
         case,
         False,
-        write_extra=dict(frames_per_file=3, write_x_frames=0, per_y_frames=2),
+        write_extra=dict(write_x_frames=0, per_y_frames=2),
+        frames_per_file=3,
         expect_failure=True,
     )
     assert r.return_code != 0
@@ -640,6 +657,22 @@ def test_singlefile_read_rejects_dim_scaling_tds_mismatch(
     r = _read_only(tmpdir, case["buf"])
     assert r.return_code != 0
     assert "dim_scalings[0] (1) != time_downsampling_fpga (2)" in r.output
+
+
+def test_multiframe_produces_expected_num_files(tmpdir_factory):
+    """Should produce int(`NUM_FRAMES` / frames_per_file) files."""
+    case = CASES["int8_random"]
+    tmpdir = tmpdir_factory.mktemp("hdf5_multiframe")
+    _siphon(tmpdir, case, False, frames_per_file=4)
+    _check_files(tmpdir, case, False, frames_per_file=4)
+
+
+def test_multiframe_ramp(tmpdir_factory):
+    """Should produce int(`NUM_FRAMES` / frames_per_file) files."""
+    case = CASES["uint8_ramp"]
+    tmpdir = tmpdir_factory.mktemp("hdf5_multiframe_ramp")
+    _siphon(tmpdir, case, False, frames_per_file=3)
+    _check_files(tmpdir, case, False, frames_per_file=3)
 
 
 def test_voltage_reader_roundtrip(tmpdir_factory):

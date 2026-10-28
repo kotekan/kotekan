@@ -1508,11 +1508,6 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
     I_max = 0.0f0
     if run_selftest
         # Plane-wave self-test with a CPU reference beamformer (ported from `frb.jl`).
-        function uniform_in_disk()
-            r = sqrt(rand(Float32))
-            α = rand(Float32)
-            return r * cispi(2 * α)
-        end
         c2t(c::Complex) = (real(c), imag(c))
 
         Random.seed!(0)
@@ -1520,49 +1515,72 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
         fill!(E_memory, K == 4 ? swap_offset(zero(Int4x8)) : zero(Int8x4))
         map!(i -> zero(Float16x2), I_wanted, I_wanted)
 
-        # Constant input gain; the kernel's `input_gain` keeps intensities in range
-        # for both bit depths, so unit weights are in range for both.
-        Wvalue = 1 + 0im
-        map!(i -> Float16x2(c2t(Wvalue)...), W_memory, W_memory)
-
-        # A single nonzero (freq, polr, time) sample, identical across all dishes.
+        # In each polarization, a plane wave from a random direction, and weights with a random
+        # complex gain that steer by a random offset. This input is not symmetric under
+        # p → -p or q → -q, nor under exchanging the polarizations, so it detects an FFT with
+        # the wrong sign, a conjugated `W`, and `W` applied to the other polarization.
+        # chimefrb's implicit dish layout is dishm = dish % M (N-S), dishn = dish ÷ M (E-W).
         freq = rand(0:(Fbar - 1))
-        polr = rand(0:(P - 1))
         time = rand(0:(Int(Tbarmax) - 1))
-        Fvalue = (Emax + 0.5f0) * uniform_in_disk()
-        Evalue = Complex{Int8}(clamp(round(Int, real(Fvalue)), -Emax, Emax), clamp(round(Int, imag(Fvalue)), -Emax, Emax))
-        @show freq polr time Evalue
+        @show freq time
 
-        # One 32-bit word holds `Ēdishes_per_word` complex samples, ReIm fastest
-        for dish in 0:(D - 1)
-            Eidx =
-                dish ÷ Ēdishes_per_word + Ēwords_per_row * polr + Ēwords_per_row * P * freq + Ēwords_per_row * P * Fbar * time
-            dishlo = dish % Ēdishes_per_word
-            if K == 4
-                Evalues = convert(NTuple{8,Int8}, swap_offset(E_memory[Eidx + 1]))
-                Evalues = setindex(Evalues, real(Evalue), 2 * dishlo + 0 + 1)
-                Evalues = setindex(Evalues, imag(Evalue), 2 * dishlo + 1 + 1)
-                E_memory[Eidx + 1] = swap_offset(Int4x8(Evalues...))
-            else
-                Evalues = convert(NTuple{4,Int8}, E_memory[Eidx + 1])
-                Evalues = setindex(Evalues, real(Evalue), 2 * dishlo + 0 + 1)
-                Evalues = setindex(Evalues, imag(Evalue), 2 * dishlo + 1 + 1)
-                E_memory[Eidx + 1] = Int8x4(Evalues...)
+        # Eqn. (4): the phase of dish (m, n) in beam (p, q)
+        beam_phase = (m, n, p, q) -> cispi((2 * m * p / Float32(2 * M) + 2 * n * q / Float32(2 * N)) % 2.0f0)
+
+        fill!(W_memory, zero(Float16x2))
+        Wvalues = zeros(ComplexF32, D, P)
+        Evalues = zeros(Complex{Int}, D, P)
+        for polr in 0:(P - 1)
+            p0, q0 = rand(0:(2 * M - 1)), rand(0:(2 * N - 1))
+            Δp, Δq = rand(0:(2 * M - 1)), rand(0:(2 * N - 1))
+            # The kernel's `input_gain` keeps intensities in range for |W| ≤ 1 at both bit depths
+            Wgain = (0.5f0 + 0.5f0 * rand(Float32)) * cispi(2 * rand(Float32))
+            @show polr p0 q0 Δp Δq Wgain
+
+            for dish in 0:(D - 1)
+                dishm, dishn = dish % M, dish ÷ M
+                Wvalue = Wgain * beam_phase(dishm, dishn, Δp, Δq)
+                Wvalue = Complex{Float32}(Float16(real(Wvalue)), Float16(imag(Wvalue)))
+                Wvalues[dish + 1, polr + 1] = Wvalue
+                for f in 0:(Fbar_W - 1)
+                    W_memory[dish + D * polr + D * P * f + 1] = Float16x2(c2t(Wvalue)...)
+                end
+
+                Fvalue = Emax * conj(beam_phase(dishm, dishn, p0, q0))
+                Evalue = round(Int, real(Fvalue)) + im * round(Int, imag(Fvalue))
+                Evalues[dish + 1, polr + 1] = Evalue
+
+                # One 32-bit word holds `Ēdishes_per_word` complex samples, ReIm fastest
+                Eidx =
+                    dish ÷ Ēdishes_per_word + Ēwords_per_row * polr + Ēwords_per_row * P * freq + Ēwords_per_row * P * Fbar * time
+                dishlo = dish % Ēdishes_per_word
+                if K == 4
+                    E8 = convert(NTuple{8,Int8}, swap_offset(E_memory[Eidx + 1]))
+                    E8 = setindex(E8, real(Evalue), 2 * dishlo + 0 + 1)
+                    E8 = setindex(E8, imag(Evalue), 2 * dishlo + 1 + 1)
+                    E_memory[Eidx + 1] = swap_offset(Int4x8(E8...))
+                else
+                    E4 = convert(NTuple{4,Int8}, E_memory[Eidx + 1])
+                    E4 = setindex(E4, real(Evalue), 2 * dishlo + 0 + 1)
+                    E4 = setindex(E4, imag(Evalue), 2 * dishlo + 1 + 1)
+                    E_memory[Eidx + 1] = Int8x4(E4...)
+                end
             end
         end
 
-        # Reference intensities (Eqn. 4): sum over dishes of the 2-D beam phase, then |·|².
-        # chimefrb's implicit dish layout is dishm = dish % M (N-S), dishn = dish ÷ M (E-W).
+        # Reference intensities (Eqn. 4)
         dstime = time ÷ Tds
         for beamq in 0:(2 * N - 1), beamp in 0:(2 * M - 1)
             Iidx = beamp ÷ 2 + M * beamq + M * 2 * N * freq + M * 2 * N * Fbar * dstime
-            Ẽvalue = complex(0.0f0)
-            for dish in 0:(D - 1)
-                dishm = dish % M
-                dishn = dish ÷ M
-                Ẽvalue += cispi((2 * dishm * beamp / Float32(2 * M) + 2 * dishn * beamq / Float32(2 * N)) % 2.0f0) * Wvalue * Evalue
+            Ivalue = 0.0f0
+            for polr in 0:(P - 1)
+                Ẽvalue = zero(ComplexF32)
+                for dish in 0:(D - 1)
+                    dishm, dishn = dish % M, dish ÷ M
+                    Ẽvalue += beam_phase(dishm, dishn, beamp, beamq) * Wvalues[dish + 1, polr + 1] * Evalues[dish + 1, polr + 1]
+                end
+                Ivalue += output_gain * abs2(input_gain * Ẽvalue)
             end
-            Ivalue = output_gain * abs2(input_gain * Ẽvalue)
             I_max = max(I_max, Ivalue)
             Ivalue2 = convert(NTuple{2,Float32}, I_wanted[Iidx + 1])
             Ivalue2 = setindex(Ivalue2, Ivalue, beamp % 2 + 1)
@@ -1913,7 +1931,9 @@ if CUDA.functional()
     main(; output_kernel=true)
     open("output/chimefrb_$(setup)_U$(U)_K$(K).ptx", "w") do fh
         redirect_stdout(fh) do
+            println("R\"===(")
             @device_code_ptx main(; compile_only=true, silent=true)
+            println(")===\"")
         end
     end
     fix_ptx_kernel()

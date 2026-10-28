@@ -105,7 +105,8 @@ using namespace HighFive;
  *       Mutually exclusive with create_single_file. A file with more than one frame is
  *       concatenated like a single file, with the metadata of its first frame only, so each
  *       such file must meet the same constraints as create_single_file (enforced per file).
- *       A new file starts a new stream, so consecutive files need not be contiguous.
+ *       A frame that does not continue the stream closes the open file early and starts a
+ *       new one, so every file is contiguous but consecutive files need not be.
  * @conf write_x_frames  Int. Write the first X out of every Y frames (see per_y_frames).
  *       Default: -1 (disabled). Cannot be combined with @c create_single_file or
  *       @c frames_per_file > 1.
@@ -424,7 +425,7 @@ public:
     /**
      * @brief Create and write a file for a frame with chordMetadata
      *
-     * @param full_path The full path, including file name, for the file.
+     * @param frame_counter Frame number used to choose the output file.
      * @param frame uint8_t pointer to the frame data
      * @param meta shared pointer to the chordMetadata object for this frame.
      * @param frame_desc shared pointer to the NDarray description for this frame.
@@ -447,6 +448,15 @@ public:
                 do_create_dataset = true;
             }
         } else {
+            // A frame that does not continue the open file's stream closes that file early,
+            // so every file stays contiguous.
+            if (current_file && stream_has_seq && meta->has_fpga_seq_num()
+                && meta->get_fpga_seq_num() != stream_next_seq) {
+                WARN("Buffer \"{:s}\": frame {:d} starts at fpga_seq_num {:d}, expected {:d}; "
+                     "starting a new file",
+                     buffer->buffer_name, frame_counter, meta->get_fpga_seq_num(), stream_next_seq);
+                current_file.reset();
+            }
             // Start a new file when none is open. It is named after the first frame
             // it holds and closes once frames_per_file frames have been written.
             if (!current_file) {
@@ -660,7 +670,7 @@ public:
     /**
      * @brief Create and write a file for an N2FrameView
      *
-     * @param full_path The full path, including file name, for the file.
+     * @param frame_counter Frame number used to choose the output file.
      * @param frame An N2FrameView object for the frame to output.
      */
     void write_n2(const N2FrameView& frame, const std::int64_t frame_counter) {
@@ -762,7 +772,10 @@ public:
         file.createAttribute("n_rfi_fpga_ticks", frame.n_rfi_fpga_ticks);
         file.createAttribute("n_rfi_only_fpga_ticks", frame.n_rfi_only_fpga_ticks);
         file.createAttribute("n_pl_fpga_ticks", frame.n_pl_fpga_ticks);
+        file.createAttribute("n_rfi_first_stage_enabled_fpga_ticks",
+                             frame.n_rfi_first_stage_enabled_fpga_ticks);
         file.createAttribute("rfi_frame_excision_enabled", frame.rfi_frame_excision_enabled);
+        file.createAttribute("fringestop_enabled", frame.fringestop_enabled);
         file.createAttribute("rfi_frame_excision_num", frame.rfi_frame_excision_num);
         file.createAttribute("rfi_frame_excision_threshold", frame.rfi_frame_excision_threshold);
         file.createAttribute("rfi_frame_excision_fraction", frame.rfi_frame_excision_fraction);
@@ -851,7 +864,7 @@ public:
             // Optionally, only write every X out of Y frames.
             bool do_write = true;
             if (write_x_frames >= 0 && per_y_frames > 0) {
-                if (frame_counter % per_y_frames > write_x_frames) {
+                if (frame_counter % per_y_frames >= write_x_frames) {
                     do_write = false;
                 }
             }

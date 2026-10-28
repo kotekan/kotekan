@@ -17,7 +17,7 @@
 
 #include "fmt.hpp" // for compile_string_to_view, formatter
 
-#include <algorithm>          // for find_if, fill_n
+#include <algorithm>          // for find_if, fill_n, min
 #include <array>              // for array
 #include <cmath>              // for isfinite
 #include <cstddef>            // for ptrdiff_t, size_t
@@ -219,6 +219,11 @@ private:
         if (ringbuffer->size != size_in_bytes)
             FATAL_ERROR("buffer {:s}: ring buffer {:s} holds {:d} bytes, but the array needs {:d}",
                         buffer_name, signal_buffer_name, ringbuffer->size, size_in_bytes);
+        // The producing and the consuming stage both build an NDArrayRingBuffer over the same
+        // host ring and so name the same device store; that ring's handshake is what orders
+        // them, so declare the share through it (see gpuMemoryClaims.hpp).
+        cuda_command.get_device().declare_shared_gpu_memory(buffer_name_device,
+                                                            ringbuffer->buffer_name);
         void* const ptr =
             cuda_command.get_device().get_gpu_memory(buffer_name_device, size_in_bytes);
         return static_cast<T*>(ptr);
@@ -245,6 +250,8 @@ public:
     //
     {
         set_log_level(cuda_command.get_log_level());
+        // Every command on the ring must agree on its layout
+        ringbuffer->ensure_frame_desc(frame_desc());
     }
 
     NDArrayRingBuffer(const std::string& buffer_name, const std::string& quantity_name,
@@ -291,7 +298,7 @@ public:
                                                    .does_read = true,
                                                    .does_write = false,
                                                    .frame_desc = frame_desc(),
-                                                   .signal_buffer = signal_buffer_name});
+                                                   .signal_buffer = ringbuffer->buffer_name});
         }
     }
 
@@ -303,7 +310,7 @@ public:
                                                    .does_read = false,
                                                    .does_write = true,
                                                    .frame_desc = frame_desc(),
-                                                   .signal_buffer = signal_buffer_name});
+                                                   .signal_buffer = ringbuffer->buffer_name});
         }
     }
 
@@ -464,21 +471,20 @@ public:
             return -1;
         if (read_head > 0)
             return 0;
-        // Our callers read at most a quarter of the ringbuffer at a time
-        const std::ptrdiff_t ringbuf_size = ndarray.extent(0);
-        if (!(skipped_elements <= ringbuf_size / 4))
-            FATAL_ERROR("kernel {:s}, buffer {:s}: need to skip {:d} elements, but the "
-                        "ringbuffer holds only {:d}",
-                        cuda_command.get_unique_name(), buffer_name, skipped_elements,
-                        ringbuf_size);
-        const int errcode = wait_and_claim_readable([&](const std::ptrdiff_t available) {
-            return available >= skipped_elements
-                       ? read_descriptor_t{.claimed = skipped_elements, .read = skipped_elements}
-                       : read_descriptor_t{.claimed = 0, .read = 0};
-        });
-        if (errcode < 0)
-            return errcode;
-        finish_read();
+        // Like our callers, claim at most a quarter of the ringbuffer at a time
+        const std::ptrdiff_t chunk_max = ndarray.extent(0) / 4;
+        RINGBUF_CHECK(chunk_max > 0);
+        for (std::ptrdiff_t skipped = 0; skipped < skipped_elements;) {
+            const std::ptrdiff_t chunk = std::min(skipped_elements - skipped, chunk_max);
+            const int errcode = wait_and_claim_readable([&](const std::ptrdiff_t available) {
+                return available >= chunk ? read_descriptor_t{.claimed = chunk, .read = chunk}
+                                          : read_descriptor_t{.claimed = 0, .read = 0};
+            });
+            if (errcode < 0)
+                return errcode;
+            finish_read();
+            skipped += chunk;
+        }
         return 0;
     }
 

@@ -74,6 +74,7 @@ jobs:
         env:
           EVENT_BEFORE: ${{ github.event.before }}
           PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           set -euo pipefail
           f=tools/docker/24.04/Dockerfile
@@ -82,6 +83,9 @@ jobs:
           recent=false
           if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
             git fetch -q origin "$GITHUB_BASE_REF"
+            # A fork's head is not on any origin branch (e.g. after a merge), so
+            # fetch it from the PR ref; otherwise the diff fails and reads as a change.
+            git cat-file -e "$head^{commit}" 2>/dev/null || git fetch -q origin "pull/$PR_NUMBER/head"
             git diff --quiet "origin/$GITHUB_BASE_REF...$head" -- "$f" || ever=true
           fi
           # github.event.before is the previous head on a push or PR synchronize.
@@ -257,6 +261,8 @@ jobs:
           sudo docker builder prune -a
           df -h
 
+      # The inline cache keeps only the layers of the pushed image's stage chain.
+      # A stage that is only COPY --from'd needs cache-to type=registry,mode=max.
       - name: Build CPU (target=cpu) image
         if: steps.docker_img.outputs.docker_build == '1'
         uses: docker/build-push-action@v7
@@ -267,8 +273,10 @@ jobs:
           tags: ${{ steps.docker_img.outputs.cpu_img_name }}
           push: ${{ env.ACT == '' }} # true on GitHub, false under act
           load: ${{ env.ACT != '' }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: |
+            type=registry,ref=${{ steps.docker_img.outputs.cpu_img_name }}
+            type=registry,ref=${{ env.CPU_IMG }}:develop
+          cache-to: type=inline
 
       - name: Build Intel (target=intel) image
         if: steps.docker_img.outputs.docker_build == '1'
@@ -280,8 +288,10 @@ jobs:
           tags: ${{ steps.docker_img.outputs.intel_img_name }}
           push: ${{ env.ACT == '' }} # true on GitHub, false under act
           load: ${{ env.ACT != '' }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: |
+            type=registry,ref=${{ steps.docker_img.outputs.intel_img_name }}
+            type=registry,ref=${{ env.INTEL_IMG }}:develop
+          cache-to: type=inline
 
       - name: Build GPU (target=gpu) image
         if: steps.docker_img.outputs.docker_build == '1'
@@ -293,5 +303,7 @@ jobs:
           tags: ${{ steps.docker_img.outputs.gpu_img_name }}
           push: ${{ env.ACT == '' }} # true on GitHub, false under act
           load: ${{ env.ACT != '' }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: |
+            type=registry,ref=${{ steps.docker_img.outputs.gpu_img_name }}
+            type=registry,ref=${{ env.GPU_IMG }}:develop
+          cache-to: type=inline

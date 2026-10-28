@@ -33,7 +33,8 @@ constexpr double deg2rad = M_PI / 180.0;
  *   - `"manual"`: Read beams from the `fixed_beams` config parameter, which is a list of
  *              FixedBBBeam objects.
  *   - `"grid"`: A rectangular grid of beams on the sky, uniform in vector components nx & ny.
- *              Requires `num_x`, `num_y`, `x_min`, `x_max`, `y_min`, `y_max` parameters.
+ *              Requires `num_x`, `num_y`, `x_min`, `x_max`, `y_min`, `y_max` parameters. With a
+ *              single beam along an axis, that beam sits midway between the minimum and maximum.
  *   - `"grid_degrees"`: As `grid`, but the grid is uniform in angle theta_x and theta_y from
  *              telescope zenith. `x_min`, etc are interpreted as angles in degrees.
  *
@@ -197,8 +198,11 @@ std::vector<FixedBBBeam> setBBBeams::build_grid_beams() const {
         for (uint32_t bx = 0; bx < num_x; bx++) {
             const uint32_t b = bx + num_x * by;
 
-            double x = (x_min * (num_x - bx - 1) + x_max * bx) / (num_x - 1);
-            double y = (y_min * (num_y - by - 1) + y_max * by) / (num_y - 1);
+            // A single beam along an axis sits at the midpoint
+            double x = num_x == 1 ? (x_min + x_max) / 2
+                                  : (x_min * (num_x - bx - 1) + x_max * bx) / (num_x - 1);
+            double y = num_y == 1 ? (y_min + y_max) / 2
+                                  : (y_min * (num_y - by - 1) + y_max * by) / (num_y - 1);
             grid_beams.at(b) = {.id = b, .x_dir_grid = x, .y_dir_grid = y};
         }
     }
@@ -214,8 +218,11 @@ std::vector<FixedBBBeam> setBBBeams::build_grid_deg_beams() const {
         for (uint32_t bx = 0; bx < num_x; bx++) {
             const uint32_t b = bx + num_x * by;
 
-            double x = (x_min * (num_x - bx - 1) + x_max * bx) / (num_x - 1);
-            double y = (y_min * (num_y - by - 1) + y_max * by) / (num_y - 1);
+            // A single beam along an axis sits at the midpoint
+            double x = num_x == 1 ? (x_min + x_max) / 2
+                                  : (x_min * (num_x - bx - 1) + x_max * bx) / (num_x - 1);
+            double y = num_y == 1 ? (y_min + y_max) / 2
+                                  : (y_min * (num_y - by - 1) + y_max * by) / (num_y - 1);
             grid_beams.at(b) = {
                 .id = b, .x_dir_grid = sin(x * deg2rad), .y_dir_grid = sin(y * deg2rad)};
         }

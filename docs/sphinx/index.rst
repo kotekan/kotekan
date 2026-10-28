@@ -20,6 +20,7 @@ Welcome to Kotekan's documentation!
    user/user_config
    user/user_operation
    user/user_element_order
+   user/user_packet_loss
    user/user_file_formats
    user/dev_pipeline_viewer
 
@@ -44,5 +45,7 @@ Welcome to Kotekan's documentation!
    dev/dev_unit_tests
    dev/dev_actions
    dev/dev_config_tracker
+   dev/dev_pilotproxy_testing
+   dev/dev_pilotproxy_chime
 
 You can also peruse the full `doxygen docs <html/>`_.

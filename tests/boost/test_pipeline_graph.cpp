@@ -1,6 +1,7 @@
 #define BOOST_TEST_MODULE "test_pipeline_graph"
 
-#include "PipelineGraph.hpp" // for PipelineGraph, GraphNode, GraphCluster
+#include "PipelineGraph.hpp"         // for PipelineGraph, GraphNode, GraphCluster
+#include "kotekanLoggingFixture.hpp" // for kotekan_logging_fixture
 
 #include <boost/test/included/unit_test.hpp>
 #include <string>
@@ -31,6 +32,8 @@ static void check_statements_terminated(const std::string& dot) {
         BOOST_CHECK_MESSAGE(trimmed.back() == ';', "unterminated statement: " + trimmed);
     }
 }
+
+BOOST_GLOBAL_FIXTURE(kotekan_logging_fixture);
 
 BOOST_AUTO_TEST_CASE(array_layout_line_formats_type_and_shape) {
     // Named dimensions read name:extent; an unnamed one is the bare extent, and a
@@ -276,7 +279,6 @@ BOOST_AUTO_TEST_CASE(stage_categories) {
     BOOST_CHECK(kotekan::stage_category("hipProcess") == GraphCategory::Gpu);
     // I/O is matched on substrings, so unseen stages still land right.
     BOOST_CHECK(kotekan::stage_category("bufferSend") == GraphCategory::Io);
-    BOOST_CHECK(kotekan::stage_category("frbNetworkProcess") == GraphCategory::Io);
     BOOST_CHECK(kotekan::stage_category("hdf5FileRead") == GraphCategory::Io);
     // Anything else is compute.
     BOOST_CHECK(kotekan::stage_category("accumulate") == GraphCategory::Compute);

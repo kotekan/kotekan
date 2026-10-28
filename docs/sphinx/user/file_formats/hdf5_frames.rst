@@ -10,7 +10,9 @@ test configurations. The file layout depends on the metadata type of the
 input buffer:
 
 * **CHORD metadata** (n-dimensional GPU-pipeline buffers): one extensible
-  dataset per file, frames appended along the first axis;
+  dataset per file, frames appended along the first axis. Files may
+  contain a single frame, a fixed number of frames, or an unlimited
+  number of frames;
 * **N2 metadata** (visibility frames): one file per frame holding a fixed
   set of datasets and attributes.
 
@@ -175,15 +177,6 @@ stream. ``hdf5FileWrite`` enforces that and aborts otherwise:
 * frame decimation (``write_x_frames``/``per_y_frames``) must not be
   combined with ``create_single_file`` (rejected at startup).
 
-A file written with ``frames_per_file`` greater than 1 is built the same way
---- its frames are concatenated along axis 0 and only its first frame's
-attributes are stored --- so each such file has to satisfy the same rules,
-and decimation cannot be combined with ``frames_per_file`` > 1 either. The
-checks start afresh with every new file: consecutive files need not be
-contiguous, because each one carries its own ``fpga_seq_num``. That is what
-lets ``merge_baseband_freq.py`` place every file in time on its own and
-record the gaps between them.
-
 Time downsampling itself is allowed, as long as the time axis is sampled at
 the downsampling rate of the frame. A buffer that violates one of these rules
 has to be dumped as per-frame files (``create_single_file: false``): per-frame
@@ -199,6 +192,19 @@ a gap-free frame stream.
 The checks run per frame, so a single-file writer that aborts part-way leaves
 a truncated (but still readable) file behind; a dump that ended in a ``FATAL``
 should therefore not be trusted without checking the log.
+
+Multi-frame constraints
+-----------------------
+A file written with ``frames_per_file`` greater than 1 is built the same way
+as a single file --- its frames are concatenated along axis 0 and only its
+first frame's attributes are stored --- so each such file has to satisfy the
+same rules, and decimation cannot be combined with ``frames_per_file`` > 1
+either. The one difference is a gap in ``fpga_seq_num``: instead of aborting,
+the writer closes the open file early and starts a new one at that frame, so
+every file is contiguous but consecutive files need not be. A stream with
+many gaps can therefore produce many more files than expected. Each file
+carries its own ``fpga_seq_num``, which is what lets ``merge_baseband_freq.py``
+place every file in time on its own and record the gaps between them.
 
 N2-metadata layout
 ==================
@@ -266,9 +272,11 @@ as dotted scalar attributes (``time_center_eop.t_inst_ns``,
 ``bin_start_ERA_deg``, ``bin_end_ERA_deg``, ``bin_start_ERAL_deg``,
 ``bin_end_ERAL_deg``; ``fpga_start_tick``, ``frame_start_time_ns``,
 ``frame_length_fpga_ticks``, ``n_valid_fpga_ticks``, ``n_rfi_fpga_ticks``,
-``n_rfi_only_fpga_ticks``, ``n_pl_fpga_ticks``;
+``n_rfi_only_fpga_ticks``, ``n_pl_fpga_ticks``,
+``n_rfi_first_stage_enabled_fpga_ticks``;
 ``rfi_frame_excision_enabled``, ``rfi_frame_excision_num``,
-``rfi_frame_excision_threshold``, ``rfi_frame_excision_fraction``; and the
+``rfi_frame_excision_threshold``, ``rfi_frame_excision_fraction``,
+``fringestop_enabled``; and the
 telescope geometry set (``itrs_lat_deg``, ``itrs_lon_deg``,
 ``grid_orientation``, ``grid_size_x``, ``grid_size_y``,
 ``feed_separation_x_m``, ``feed_separation_y_m``,
@@ -319,7 +327,8 @@ Configuration
      - Frames appended to each file before rolling over to a new one (CHORD
        mode only; mutually exclusive with ``create_single_file``). With more
        than one frame, each file has to satisfy the
-       `Single-file constraints`_; consecutive files need not be contiguous.
+       `Single-file constraints`_, and a gap in the stream starts a new file
+       (see `Multi-frame constraints`_).
    * - ``use_compression``
      - true
      - Compress the data with bitshuffle+zstd (filter 32008).
@@ -374,6 +383,8 @@ ndarray``; the reader validates the declared frame descriptor against the file.
   be a time axis and ``dim_scalings[0]`` has to equal
   ``time_downsampling_fpga`` --- and aborts if they do not hold, because the
   reconstruction below would otherwise silently mislabel the frames.
+* **Multi-frame files**: the read does _not_ currently handle multi-frame files
+  as a single batch --- they must be read as individual files in single file mode.
 
 In both modes the attributes ``chord_metadata_version``, ``name``, ``type``,
 ``dim_names`` and ``dim_scalings`` are mandatory and the HDF5 storage type of

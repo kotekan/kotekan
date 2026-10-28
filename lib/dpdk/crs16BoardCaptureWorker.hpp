@@ -99,6 +99,12 @@
  *                                    Applies to both the data frame element axis and the
  *                                    receipt bitmap.
  *
+ * @par Metrics
+ * @metric kotekan_dpdk_crs16_out_of_window_packets_total
+ *         Packets dropped for a sequence number outside the active frames and the catch-up
+ *         window, labelled by port. Non-zero means a packet arrived with a sequence number out of
+ *         step with the rest of the stream.
+ *
  * @author Andre Renard
  */
 class crs16BoardCaptureWorker : public dpdkRXhandler {
@@ -233,6 +239,36 @@ protected:
     uint64_t _last_check_seq = 0;
     uint64_t _seq_check_packet_count = 0;
 
+    /// A packet at least this many frames past the start of the next active frame is not caught
+    /// up to (see handle_packet). About 0.34 s of 8192-sample frames.
+    ///
+    /// Why there is a window at all: a packet lands ahead of the active frames when this worker
+    /// went without frames to fill. Downstream stalled until the output buffer was full, the
+    /// packets that arrived meanwhile were dropped, and the first one after the stall belongs to
+    /// a later frame. Skipping forward to it loses only those packets, and the receipt bitmap
+    /// already marks them missing. Following a packet further ahead would advance the frames this
+    /// worker shares with the port's other worker past packets that worker is still writing, and
+    /// then send empty frames downstream.
+    ///
+    /// Why 8: the stalls seen once the output buffer was full have been at most 4 frames, and a
+    /// stall that outlasts the buffer by a third of a second is a downstream fault in itself.
+    static constexpr uint64_t _max_frames_ahead = 8;
+
+    /// Packets outside the active frames and the window above. A one-off among good packets is
+    /// dropped, logged with its sequence number and counted
+    /// (kotekan_dpdk_crs16_out_of_window_packets_total): it may come from a fault in how the
+    /// F-engine assembles packets. This many within _out_of_window_burst_gap packets of each
+    /// other mean the stream is out of step -- an FPGA reset puts every packet behind the active
+    /// frames, a stall longer than the window puts every packet ahead of them, and a board in a
+    /// bad state sends bad sequence numbers continuously -- and kotekan stops.
+    static constexpr uint64_t _max_out_of_window_burst = 100;
+    /// Packets (about 2 s on one worker) after which an out-of-window packet starts a new burst.
+    static constexpr uint64_t _out_of_window_burst_gap = 1000000;
+    /// Out-of-window packets logged per burst; the rest are only counted.
+    static constexpr uint64_t _out_of_window_logged = 10;
+    uint64_t _out_of_window_burst = 0;
+    uint64_t _packets_since_out_of_window = 0;
+
     /**
      * @brief Copies one packet's payload into the output frame using non-temporal stores.
      *
@@ -246,6 +282,9 @@ protected:
     inline void packet_copy_to_frame(struct rte_mbuf* mbuf, uint8_t* frame_ptr,
                                      uint64_t relative_seq_num, uint16_t stream_id,
                                      uint16_t dest_slot);
+
+    /// kotekan_dpdk_crs16_out_of_window_packets_total for this worker's port.
+    kotekan::prometheus::Counter& out_of_window_packets_metric;
 };
 
 inline crs16BoardCaptureWorker::crs16BoardCaptureWorker(
@@ -259,7 +298,11 @@ inline crs16BoardCaptureWorker::crs16BoardCaptureWorker(
         buffer_container.get_buffer(config.get<std::string>(unique_name, "receipt_bitmap_buf"))),
     worker_id(worker_id), packet_size(config.get<uint32_t>(unique_name, "packet_size")),
     payload_size(config.get<uint32_t>(unique_name, "payload_size")),
-    num_expected_stream_ids(config.get<uint32_t>(unique_name, "num_expected_stream_ids")) {
+    num_expected_stream_ids(config.get<uint32_t>(unique_name, "num_expected_stream_ids")),
+    out_of_window_packets_metric(
+        kotekan::prometheus::Metrics::instance()
+            .add_counter("kotekan_dpdk_crs16_out_of_window_packets_total", unique_name, {"port"})
+            .labels({std::to_string(port)})) {
 
     out_buf->register_producer(unique_name);
     receipt_bitmap_buf->register_producer(unique_name);
@@ -547,7 +590,7 @@ inline int crs16BoardCaptureWorker::handle_packet(struct rte_mbuf* mbuf) {
     }
 
     if (seq_num < active_f0->start_seq
-        || seq_num >= active_f1->start_seq + time_samples_per_frame) {
+        || seq_num >= active_f1->start_seq + _max_frames_ahead * time_samples_per_frame) {
 
         // Don't warn if we are just waiting for the first frame
         if (seq_num < active_f0->start_seq
@@ -555,18 +598,56 @@ inline int crs16BoardCaptureWorker::handle_packet(struct rte_mbuf* mbuf) {
             return 0;
         }
 
-        // Packet is outside the range of the two active frames, drop it
-        ERROR("Port: {:d}, Worker: {:d}; Dropping packet with sequence number {:d} outside active "
-              "frame range [{:d}, {:d}]",
-              port, worker_id, seq_num, active_f0->start_seq,
-              active_f1->start_seq + time_samples_per_frame);
+        // Behind the active frames (late, or after an FPGA reset), or too far ahead to catch up
+        // to. A one-off is dropped, logged and counted; a burst of them stops kotekan (see
+        // _max_out_of_window_burst), since ending only this worker leaves the frames it shares
+        // unfinished.
+        out_of_window_packets_metric.inc();
+        if (_packets_since_out_of_window > _out_of_window_burst_gap)
+            _out_of_window_burst = 0;
+        _packets_since_out_of_window = 0;
+        if (++_out_of_window_burst < _max_out_of_window_burst) {
+            if (_out_of_window_burst > _out_of_window_logged) {
+                return 0;
+            }
+            if (seq_num < active_f0->start_seq) {
+                WARN("Port: {:d}, Worker: {:d}; Dropped packet with sequence number {:d} (source "
+                     "ID {:d}, stream ID {:d}): behind the active frames [{:d}, {:d})",
+                     port, worker_id, seq_num, source_id, stream_id, active_f0->start_seq,
+                     active_f1->start_seq + time_samples_per_frame);
+            } else {
+                WARN("Port: {:d}, Worker: {:d}; Dropped packet with sequence number {:d} (source "
+                     "ID {:d}, stream ID {:d}): {:d} frames past the start of the next active "
+                     "frame, the limit is {:d}",
+                     port, worker_id, seq_num, source_id, stream_id,
+                     (seq_num - active_f1->start_seq) / time_samples_per_frame, _max_frames_ahead);
+            }
+            return 0;
+        }
+        FATAL_ERROR("Port: {:d}, Worker: {:d}; {:d} packets outside the active frames [{:d}, {:d}) "
+                    "and the {:d}-frame window, each within {:d} packets of the last: the stream "
+                    "is out of step (an FPGA reset, a stall, or boards sending bad sequence "
+                    "numbers). The last had sequence number {:d} (source ID {:d}, stream ID {:d}). "
+                    "kotekan stopping...",
+                    port, worker_id, _out_of_window_burst, active_f0->start_seq,
+                    active_f1->start_seq + time_samples_per_frame, _max_frames_ahead,
+                    _out_of_window_burst_gap, seq_num, source_id, stream_id);
         return -1;
     }
+    ++_packets_since_out_of_window;
 
-    // If we are at least 160 time samples past the start of the next frame,
-    // then advance the frames. The 160 time sample margin ensures that we do not
-    // miss any packets that are slightly out of order.
-    if (seq_num >= active_f1->start_seq + 160) {
+    // Advance the frames while we are at least 160 time samples past the start of the next
+    // frame. The 160 time sample margin ensures that we do not miss any packets that are
+    // slightly out of order.
+    if (unlikely(seq_num >= active_f1->start_seq + time_samples_per_frame)) {
+        // Past the next frame: the packets in between were dropped while this worker had no
+        // frames (a downstream stall) or never arrived (a gap in the input). The frames passed
+        // over go downstream with them missing from the receipt bitmap.
+        WARN("Port: {:d}, Worker: {:d}; Packet with sequence number {:d} is {:d} frame(s) past "
+             "the start of the next frame; advancing the frames toward it",
+             port, worker_id, seq_num, (seq_num - active_f1->start_seq) / time_samples_per_frame);
+    }
+    while (seq_num >= active_f1->start_seq + 160) {
         _mm_sfence(); // Ensure all NT stores are complete before advancing
         prefetch_service->advance();
 
@@ -597,22 +678,14 @@ inline int crs16BoardCaptureWorker::handle_packet(struct rte_mbuf* mbuf) {
     }
 
 
-    uint8_t* frame_ptr;
-    uint64_t relative_seq_num;
-    if (seq_num < active_f1->start_seq) {
-        // Packet belongs to the current frame
-        frame_ptr = active_f0->frame_ptr;
-        relative_seq_num = seq_num - active_f0->start_seq;
-    } else {
-        // Packet belongs to the next frame
-        frame_ptr = active_f1->frame_ptr;
-        relative_seq_num = seq_num - active_f1->start_seq;
-    }
+    // The packet belongs to the current frame or the next one.
+    const kotekan::FrameInfo* frame = (seq_num < active_f1->start_seq) ? active_f0 : active_f1;
+    const uint64_t relative_seq_num = seq_num - frame->start_seq;
 
     // Map the raw board id to its output slot (identity unless crs_board_remap is set).
     const uint16_t dest_slot = dest_slot_for_source_id[source_id];
 
-    packet_copy_to_frame(mbuf, frame_ptr, relative_seq_num, stream_id, dest_slot);
+    packet_copy_to_frame(mbuf, frame->frame_ptr, relative_seq_num, stream_id, dest_slot);
 
     // Record which packets were received.
     // The layout of the packet receipt bitmap is:
@@ -623,8 +696,8 @@ inline int crs16BoardCaptureWorker::handle_packet(struct rte_mbuf* mbuf) {
     // stream_id = num_stream_ids
     // For the pathfinder this is [512][16][8] = 65536 bits = 8192 bytes
     // The source_id axis is in output-slot order (after crs_board_remap, if configured).
-    active_f0->receipt_bitmap_ptr[(relative_seq_num / time_samples_per_packet) * num_source_ids
-                                  + dest_slot] |= (1 << (stream_id / 16));
+    frame->receipt_bitmap_ptr[(relative_seq_num / time_samples_per_packet) * num_source_ids
+                              + dest_slot] |= (1 << (stream_id / 16));
 
     return 0;
 }

@@ -435,8 +435,11 @@ cudaBasebandBeamformer_chord::cudaBasebandBeamformer_chord(Config& config,
             "--gpu-name=sm_86",
             "--verbose",
         };
-        device.build_ptx("lib/cuda/generated/BasebandBeamformer_chord.ptx", {kernel_symbol}, opts,
-                         "BasebandBeamformer_chord_");
+        const char* const kernel_code =
+#include "BasebandBeamformer_chord.ptx"
+            ;
+        device.build_ptx(kernel_code, "lib/cuda/generated/BasebandBeamformer_chord.ptx",
+                         {kernel_symbol}, opts, "BasebandBeamformer_chord_");
     }
 }
 

@@ -1,0 +1,38 @@
+[Creating frb kernel...]
+[Done creating frb kernel]
+CHORD FRB beamformer
+Compiling kernel...
+Allocating input data...
+Setting up input data...
+Tbarmin = 0
+Tbarmax = 1024
+Fbar_in_min = 0
+Fbar_in_max = 1024
+Ttildemin = 0
+Ttildemax = 42
+Fbar_out_min = 0
+Fbar_out_max = 1024
+num_threads = 32
+num_warps = 8
+blocks = 1024
+block = 254
+freq_in = 254
+freq_out = 254
+time = 802
+polr = 0
+p0 = 14
+q0 = 24
+Δp = 2
+Δq = 13
+Wgain = -0.8339822f0 + 0.3424117f0im
+polr = 1
+p0 = 2
+q0 = 28
+Δp = 6
+Δq = 20
+Wgain = -0.559959f0 - 0.3212196f0im
+dstime = 33
+Copying data from CPU to GPU...
+Running kernel...
+Copying data back from GPU to CPU...
+Done.

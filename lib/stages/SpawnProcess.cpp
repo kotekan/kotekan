@@ -11,7 +11,7 @@
 #include <signal.h>   // for kill, SIGINT, SIGKILL
 #include <string.h>   // for strerror
 #include <sys/wait.h> // for waitpid, WNOHANG
-#include <unistd.h>   // for fork, execv, close, _exit, sysconf, usleep, _SC_OPEN_MAX
+#include <unistd.h>   // for fork, execv, close, _exit, sysconf, usleep, setpgid, getpgid
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -65,6 +65,16 @@ void SpawnProcess::main_thread() {
         // the parent's handles (USB device, sockets, buffer mmaps) leak into
         // the child, then exec. execv keeps the current environment. _exit(127)
         // mirrors the shell's "command not found" status if execv fails.
+        //
+        // Put the child in its own process group so terminate_child() can signal
+        // the whole tree. `sh -c` only exec-replaces itself when the command is
+        // simple enough; an exec line needing expansion (as the airspy configs'
+        // `${VIEWER_PYTHON:-python3} ...` does) makes it fork instead, and dash
+        // defers SIGINT while waiting on a foreground child. Signalling the sh pid
+        // alone then does nothing at all: the grace period elapses in full, SIGKILL
+        // reaps the shell only, and the real command is orphaned still holding its
+        // ports. setpgid is async-signal-safe, so it is legal here.
+        setpgid(0, 0);
         for (int fd = 3; fd < static_cast<int>(maxfd); fd++)
             close(fd);
         execv("/bin/sh", argv);
@@ -80,6 +90,11 @@ void SpawnProcess::main_thread() {
         ERROR("SpawnProcess: fork failed: {:s}; pipeline continues without the child process",
               strerror(errno));
     } else {
+        // Also set the group from this side: whichever of parent and child runs
+        // first wins and the other's call is a harmless no-op (or EACCES once the
+        // child has exec'd). Doing it in both places removes the race where we
+        // could signal before the child's own setpgid had taken effect.
+        setpgid(pid, pid);
         child_pid = pid;
         INFO("Spawned PID {:d}", pid);
     }
@@ -112,8 +127,16 @@ void SpawnProcess::terminate_child() {
     if (r == pid || (r == -1 && errno == ECHILD))
         return;
 
+    // Signal the child's whole process group, so a `sh -c` that forked rather than
+    // exec-replaced itself takes the real command down with it. Only do that once
+    // the child is confirmed to lead its own group: if setpgid failed on both
+    // sides, `-pid` would name no group and the signal would go nowhere, leaving
+    // the final waitpid() below to block forever. Fall back to the bare pid there.
+    const pid_t pgid = getpgid(pid);
+    const pid_t target = (pgid == pid) ? -pid : pid;
+
     // Ask politely, then wait up to ~5s for it to go.
-    kill(pid, SIGINT);
+    kill(target, SIGINT);
     for (int i = 0; i < 50; i++) {
         r = waitpid(pid, &status, WNOHANG);
         if (r == pid || (r == -1 && errno == ECHILD))
@@ -124,6 +147,6 @@ void SpawnProcess::terminate_child() {
     // Still alive: escalate and block until reaped so we never leak a zombie or
     // leave a runaway child behind after teardown.
     WARN("SpawnProcess: PID {:d} did not exit on SIGINT; sending SIGKILL", pid);
-    kill(pid, SIGKILL);
+    kill(target, SIGKILL);
     waitpid(pid, &status, 0);
 }

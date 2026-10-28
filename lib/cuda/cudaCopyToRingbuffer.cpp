@@ -1,10 +1,11 @@
 #include "cudaCopyToRingbuffer.hpp"
 
+#include "NDArray.hpp"        // for GenericNDArray
 #include "chordMetadata.hpp"  // for chordMetadata
 #include "cudaUtils.hpp"      // for CHECK_CUDA_ERROR
 #include "cuda_runtime_api.h" // for cudaMemcpyAsync, cudaHostGetFlags, cudaHostUnregister
 #include "gpuCommand.hpp"     // for gpuCommandType
-#include "kotekanLogging.hpp" // for DEBUG
+#include "kotekanLogging.hpp" // for DEBUG, FATAL_ERROR
 
 #include "fmt.hpp" // for compile_string_to_view
 
@@ -16,6 +17,7 @@
 #include <stdint.h>    // for uint8_t
 #include <sys/types.h> // for uint
 #include <tuple>       // for tuple, make_tuple
+#include <vector>      // for vector
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -47,6 +49,8 @@ cudaCopyToRingbuffer::cudaCopyToRingbuffer(Config& config, const std::string& un
     } else {
         in_buffer = nullptr;
         gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_input, true, true, false));
+        // Taken in execute(); attribute it to this stage now (see gpuMemoryClaims.hpp).
+        device.register_gpu_memory_name(_gpu_mem_input);
         DEBUG("Initializing cudaCopyToRingbuffer: from GPU memory \"{:s}\" to GPU memory \"{:s}\", "
               "chunk size {:d}, ring buffer size {:d}",
               _gpu_mem_input, _gpu_mem_output, _input_size, _ring_buffer_size);
@@ -55,8 +59,22 @@ cudaCopyToRingbuffer::cudaCopyToRingbuffer(Config& config, const std::string& un
     signal_buffer = dynamic_cast<RingBuffer*>(
         host_buffers.get_generic_buffer(config.get<std::string>(unique_name, "signal_buf")));
     assert(signal_buffer);
+    // Producer and consumer stages both name this backing store on purpose, and the ring they
+    // wait on and signal is what orders them. Declare the share through the ring's own name
+    // (config aliases in in/out_buffers resolve to it) so the one-owner check accepts exactly
+    // that pairing, and register the store as this stage's now: it is only taken in execute(),
+    // and a conflict belongs at construction, where --dry-run can see it (gpuMemoryClaims.hpp).
+    device.declare_shared_gpu_memory(_gpu_mem_output, signal_buffer->buffer_name);
+    device.register_gpu_memory_name(_gpu_mem_output);
     if (instance_num == 0)
         signal_buffer->register_producer(unique_name);
+
+    // Give the ring the layout of the input frames, with the ring's capacity in the slowest
+    // dimension. This attaches the ring's descriptor, or checks the input layout against the
+    // one from the config or the GPU commands.
+    const auto in_desc = in_buffer ? in_buffer->get_frame_desc<kotekan::GenericNDArray>() : nullptr;
+    if (in_desc)
+        set_ring_frame_desc(*in_desc);
 
     set_command_type(gpuCommandType::COPY_IN);
 
@@ -167,9 +185,8 @@ cudaEvent_t cudaCopyToRingbuffer::execute(cudaPipelineState& pipestate,
                            % out_meta->sample_bytes()
                        == 0);
                 assert(out_meta->dims > 0);
-                assert(in_buffer->frame_size % in_meta->sample_bytes() == 0);
-                assert(out_meta->dim[0]
-                       == std::ptrdiff_t(in_buffer->frame_size / in_meta->sample_bytes()));
+                assert(_input_size % in_meta->sample_bytes() == 0);
+                assert(out_meta->dim[0] == std::ptrdiff_t(_input_size / in_meta->sample_bytes()));
 
                 signal_buffer->set_metadata(0, out_meta);
             } else { // handle one of the later frames, frame 0 handler has set metadata
@@ -185,6 +202,21 @@ cudaEvent_t cudaCopyToRingbuffer::execute(cudaPipelineState& pipestate,
     }
 
     return record_end_event();
+}
+
+void cudaCopyToRingbuffer::set_ring_frame_desc(const kotekan::GenericNDArray& in_desc) {
+    const std::ptrdiff_t granularity =
+        std::ptrdiff_t(in_desc.get_byte_size()) / in_desc.get_extent(0);
+    if (signal_buffer->size % granularity != 0)
+        FATAL_ERROR("{:s}: ring buffer {:s} holds {:d} bytes, which is not a multiple of {:d} "
+                    "bytes, the size of one index of the slowest dimension of input buffer {:s}",
+                    unique_name, signal_buffer->buffer_name, signal_buffer->size, granularity,
+                    in_buffer->buffer_name);
+    std::vector<std::ptrdiff_t> extents = in_desc.get_extents();
+    extents.at(0) = signal_buffer->size / granularity;
+    signal_buffer->ensure_frame_desc(kotekan::GenericNDArray::describe(
+        in_desc.get_value_datatype(), in_desc.get_quantity_name(), extents, in_desc.get_dimnames(),
+        in_desc.get_dimscalings()));
 }
 
 void cudaCopyToRingbuffer::finalize_frame() {

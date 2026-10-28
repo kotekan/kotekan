@@ -109,6 +109,11 @@ void gpuProcess::init() {
     dev->set_log_level(s_log_level);
     dev->set_log_prefix(fmt::format(fmt("GPU[{:d}] device interface"), gpu_id));
 
+    // GPU memory taken while the commands are built belongs to this stage, and a region a
+    // second stage takes is refused unless both are ends of one GPU ring buffer, which declare
+    // the share themselves. See gpuMemoryClaims.hpp.
+    gpuMemoryOwnerScope constructing(*dev, unique_name);
+
     vector<json> cmds = config.get<std::vector<json>>(unique_name, "commands");
     int i = 0;
     for (json cmd : cmds) {
@@ -169,6 +174,9 @@ void gpuProcess::profile_callback(connectionInstance& conn) {
 
 void gpuProcess::main_thread() {
     dev->set_thread_device();
+    // Every frame this stage enqueues is enqueued from THIS thread, so a region a command first
+    // takes in execute() without having listed it belongs to this stage. See gpuMemoryClaims.hpp.
+    dev->claim_memory_owner_thread(unique_name);
 
     // A FatalError thrown from a command below leaves this function without reaching exit_loop;
     // the results thread would then wait forever on signals nobody stops, and ~gpuProcess would
@@ -477,13 +485,21 @@ void gpuProcess::add_graph_details(kotekan::PipelineGraph& graph) const {
         node.add_line(buffer_name);
 
         // The layout: from the descriptor a command registered for it (the
-        // NDArray wrappers do), else from the metadata on the memory itself,
-        // which hand-written kernels attach instead. Then its size, from the
-        // device, which knows whether it is one region or an array of them.
+        // NDArray wrappers do), else from its signal ring's descriptor, else
+        // from the metadata on the memory itself, which hand-written kernels
+        // attach instead. Then its size, from the device, which knows whether
+        // it is one region or an array of them.
         std::shared_ptr<const kotekan::FrameDesc> desc;
         for (auto& command : commands)
             if ((desc = command[0]->get_gpu_buffer_desc(buffer_name)))
                 break;
+        if (!desc && !signal.empty()) {
+            // Commands register the signal ring by its global name
+            auto& host_buffers = buffer_container.get_buffer_map();
+            auto ring = host_buffers.find(signal);
+            if (ring != host_buffers.end())
+                desc = ring->second->get_frame_desc();
+        }
         const std::optional<gpuMemoryInfo> info = dev->get_gpu_memory_info(buffer_name);
         if (auto array = std::dynamic_pointer_cast<const kotekan::GenericNDArray>(desc)) {
             std::vector<std::string> dimnames;

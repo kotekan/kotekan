@@ -6,17 +6,21 @@
  * Do not modify this C++ file, your changes will be lost.
  */
 
+#include "CHORDTelescope.hpp"
 #include "DataType.hpp"
 #include "NDArrayBuffer.hpp"
 #include "NDArrayRingBuffer.hpp"
 #include "Telescope.hpp"
+#include "UpchannelizationSchedule.hpp"
 #include "bufferContainer.hpp"
 #include "chordMetadata.hpp"
 #include "cudaCommand.hpp"
 #include "cudaDeviceInterface.hpp"
 #include "cudaUtils.hpp"
 #include "div.hpp"
+#include "frbDishLayout.hpp"
 #include "ringbuffer.hpp"
+#include "upchannelizeReference.hpp"
 
 #include <algorithm>
 #include <array>
@@ -134,12 +138,9 @@ private:
     const int Fbar_out_min, Fbar_out_max;
 
     // The upchannelizers skip input samples at startup so that all their outputs begin at input
-    // sample `(M-1) * max_upchannelization_factor / 2` (see `upchan_template.cxx`). Without
-    // upchannelization (U=1) we read the input voltages directly and skip the same number of
-    // samples ourselves, so that all producers of the shared output buffer `I` are aligned.
-    // Only needed for U=1.
-    const int max_upchannelization_factor;
-    // Number of input samples we skip at startup
+    // sample `upchan_output_offset` (see `upchan_template.cxx`). Without upchannelization (U=1)
+    // we read the input voltages directly and skip the same number of samples ourselves, so that
+    // all producers of the shared output buffer `I` are aligned. Only needed for U=1.
     const std::ptrdiff_t Tbar_skip;
 
     // Kernel arguments:
@@ -434,13 +435,7 @@ cudaFRBBeamformer_hirax_U16::cudaFRBBeamformer_hirax_U16(Config& config,
     Fbar_in_max(config.get<int>(unique_name, "Fbar_in_max")),
     Fbar_out_min(config.get<int>(unique_name, "Fbar_out_min")),
     Fbar_out_max(config.get<int>(unique_name, "Fbar_out_max")),
-    max_upchannelization_factor(cuda_upchannelization_factor == 1
-                                    ? config.get<int>(unique_name, "max_upchannelization_factor")
-                                    : 0),
-    Tbar_skip(cuda_upchannelization_factor == 1
-                  ? (cuda_upchan_number_of_taps - 1) * std::ptrdiff_t(max_upchannelization_factor)
-                        / 2
-                  : 0),
+    Tbar_skip(cuda_upchannelization_factor == 1 ? upchan_output_offset(config, unique_name) : 0),
 
     poison_buffers(config.get_default<bool>(unique_name, "poison_buffers", false)),
 
@@ -466,13 +461,8 @@ cudaFRBBeamformer_hirax_U16::cudaFRBBeamformer_hirax_U16(Config& config,
     host_info_buffer(info_length),
 
     did_init_host_S_buffer(false), did_set_metadata(false) {
-    if (cuda_upchannelization_factor == 1
-        && !(max_upchannelization_factor >= 1
-             && (cuda_upchan_number_of_taps - 1) * max_upchannelization_factor % 2 == 0))
-        FATAL_ERROR(
-            "Kernel FRBBeamformer_hirax_U16: max_upchannelization_factor={:d} must be positive, "
-            "and (taps-1)*max_upchannelization_factor must be even (taps={:d})",
-            max_upchannelization_factor, int(cuda_upchan_number_of_taps));
+    // `upchan_output_offset` is calculated with the default number of taps
+    static_assert(cuda_upchan_number_of_taps == kotekan::upchan_default_num_taps);
 
     // Register host memory
     CHECK_CUDA_ERROR(cudaHostRegister(host_S_buffer.data(),
@@ -525,8 +515,11 @@ cudaFRBBeamformer_hirax_U16::cudaFRBBeamformer_hirax_U16(Config& config,
             "--gpu-name=sm_86",
             "--verbose",
         };
-        device.build_ptx("lib/cuda/generated/FRBBeamformer_hirax_U16.ptx", {kernel_symbol}, opts,
-                         "FRBBeamformer_hirax_U16_");
+        const char* const kernel_code =
+#include "FRBBeamformer_hirax_U16.ptx"
+            ;
+        device.build_ptx(kernel_code, "lib/cuda/generated/FRBBeamformer_hirax_U16.ptx",
+                         {kernel_symbol}, opts, "FRBBeamformer_hirax_U16_");
     }
 }
 
@@ -566,7 +559,9 @@ int cudaFRBBeamformer_hirax_U16::wait_on_precondition() {
 
     // Where will our read begin? Ask the ringbuffer. We must not use our own `read_valid` for
     // this: every instance of this command shares one ringbuffer read head, so our own position
-    // lags it by whatever the other instances have claimed since our previous frame.
+    // lags it by whatever the other instances have claimed since our previous frame. Peeking
+    // and then claiming is safe because gpuProcess runs `wait_on_precondition` for all its
+    // instances on its one main thread, so no other instance claims in between.
     const std::ptrdiff_t Tbar_begin = Ebar_buffer.peek_read_head();
     if (Tbar_begin < 0)
         return -1; // shutting down
@@ -667,88 +662,8 @@ cudaEvent_t cudaFRBBeamformer_hirax_U16::execute(cudaPipelineState& /*pipestate*
         // They must serialize setting their part of the metadata.
         std::lock_guard<std::mutex> lock(frb_I_lock);
 
-        if (args::W == args::Ebar && cuda_upchannelization_factor == 1) {
-            // Replace "Ebar" with "E" etc. because we don't run the upchannelizer for U=1
-            // W_buffer.check_metadata();
-            const std::string quantity = "E";
-            const std::array<std::string, 4> dimname = {"T", "F", "P", "D"};
-            const std::shared_ptr<const chordMetadata> metadata = Ebar_buffer.get_metadata();
-            // A mismatch here means the kernel would index the buffer with a layout
-            // the producer did not use, silently producing wrong results, so these
-            // checks must hold in release builds as well.
-            if (!(metadata->get_name() == quantity))
-                FATAL_ERROR("buffer name: {:s}, quantity: {:s}, metadata name: {:s}",
-                            Ebar_buffer.get_buffer_name(), quantity, metadata->get_name());
-            const auto& ndarray = Ebar_buffer.get_ndarray();
-            if (!(metadata->type == ndarray.value_datatype))
-                FATAL_ERROR("buffer name: {:s}, metadata type: {:s}, ndarray type: {:s}",
-                            Ebar_buffer.get_buffer_name(), kotekan::type_to_string(metadata->type),
-                            kotekan::type_to_string(ndarray.value_datatype));
-            if (!(metadata->dims == int(ndarray.rank)))
-                FATAL_ERROR("buffer name: {:s}, metadata rank: {:d}, ndarray rank: {:d}",
-                            Ebar_buffer.get_buffer_name(), metadata->dims, int(ndarray.rank));
-            for (std::size_t d = 0; d < ndarray.rank; ++d) {
-                if (!(metadata->get_dimension_name(d) == dimname[d]))
-                    FATAL_ERROR("buffer name: {:s}, dimension: {:d}: metadata dimension name: "
-                                "{:s}, expected: {:s}",
-                                Ebar_buffer.get_buffer_name(), d, metadata->get_dimension_name(d),
-                                dimname[d]);
-                // The ring buffer direction is special
-                if (d > 0 && !(metadata->dim[d] == int(ndarray.extent(d))))
-                    FATAL_ERROR("buffer name: {:s}, dimension: {:d}: metadata extent: {:d}, "
-                                "ndarray extent: {:d}",
-                                Ebar_buffer.get_buffer_name(), d, metadata->dim[d],
-                                int(ndarray.extent(d)));
-                if (!(metadata->stride[d] == ndarray.stride(d)))
-                    FATAL_ERROR("buffer name: {:s}, dimension: {:d}: metadata stride: {:d}, "
-                                "ndarray stride: {:d}",
-                                Ebar_buffer.get_buffer_name(), d, metadata->stride[d],
-                                ndarray.stride(d));
-            }
-        } else {
-            W_buffer.check_metadata();
-        }
-        if (args::Ebar == args::Ebar && cuda_upchannelization_factor == 1) {
-            // Replace "Ebar" with "E" etc. because we don't run the upchannelizer for U=1
-            // Ebar_buffer.check_metadata();
-            const std::string quantity = "E";
-            const std::array<std::string, 4> dimname = {"T", "F", "P", "D"};
-            const std::shared_ptr<const chordMetadata> metadata = Ebar_buffer.get_metadata();
-            // A mismatch here means the kernel would index the buffer with a layout
-            // the producer did not use, silently producing wrong results, so these
-            // checks must hold in release builds as well.
-            if (!(metadata->get_name() == quantity))
-                FATAL_ERROR("buffer name: {:s}, quantity: {:s}, metadata name: {:s}",
-                            Ebar_buffer.get_buffer_name(), quantity, metadata->get_name());
-            const auto& ndarray = Ebar_buffer.get_ndarray();
-            if (!(metadata->type == ndarray.value_datatype))
-                FATAL_ERROR("buffer name: {:s}, metadata type: {:s}, ndarray type: {:s}",
-                            Ebar_buffer.get_buffer_name(), kotekan::type_to_string(metadata->type),
-                            kotekan::type_to_string(ndarray.value_datatype));
-            if (!(metadata->dims == int(ndarray.rank)))
-                FATAL_ERROR("buffer name: {:s}, metadata rank: {:d}, ndarray rank: {:d}",
-                            Ebar_buffer.get_buffer_name(), metadata->dims, int(ndarray.rank));
-            for (std::size_t d = 0; d < ndarray.rank; ++d) {
-                if (!(metadata->get_dimension_name(d) == dimname[d]))
-                    FATAL_ERROR("buffer name: {:s}, dimension: {:d}: metadata dimension name: "
-                                "{:s}, expected: {:s}",
-                                Ebar_buffer.get_buffer_name(), d, metadata->get_dimension_name(d),
-                                dimname[d]);
-                // The ring buffer direction is special
-                if (d > 0 && !(metadata->dim[d] == int(ndarray.extent(d))))
-                    FATAL_ERROR("buffer name: {:s}, dimension: {:d}: metadata extent: {:d}, "
-                                "ndarray extent: {:d}",
-                                Ebar_buffer.get_buffer_name(), d, metadata->dim[d],
-                                int(ndarray.extent(d)));
-                if (!(metadata->stride[d] == ndarray.stride(d)))
-                    FATAL_ERROR("buffer name: {:s}, dimension: {:d}: metadata stride: {:d}, "
-                                "ndarray stride: {:d}",
-                                Ebar_buffer.get_buffer_name(), d, metadata->stride[d],
-                                ndarray.stride(d));
-            }
-        } else {
-            Ebar_buffer.check_metadata();
-        }
+        W_buffer.check_metadata();
+        Ebar_buffer.check_metadata();
         if (args::I != args::I)
             I_buffer.set_metadata(Ebar_buffer.get_metadata());
 
@@ -872,7 +787,8 @@ cudaEvent_t cudaFRBBeamformer_hirax_U16::execute(cudaPipelineState& /*pipestate*
                 FATAL_ERROR(
                     "Another producer of buffer I starts at fpga_seq_num={:d}, but kernel "
                     "FRBBeamformer_hirax_U16 starts at {:d}. (Are all upchannelizers and the U=1 "
-                    "FRB beamformer using the same max_upchannelization_factor?)",
+                    "FRB beamformer using the same max_upchannelization_factor and "
+                    "upchan_output_alignment?)",
                     I_meta->has_fpga_seq_num() ? I_meta->get_fpga_seq_num() : -1, I_fpga_seq_num);
         } else if (I_has_metadata && I_meta->has_fpga_seq_num()) {
             FATAL_ERROR("Another producer of buffer I starts at fpga_seq_num={:d}, but the input "
@@ -1001,85 +917,28 @@ cudaEvent_t cudaFRBBeamformer_hirax_U16::execute(cudaPipelineState& /*pipestate*
         // The first `ndishes` dishes are real dishes,
         // the remaining dishes are not real and exist only to label the unoccupied dish locations.
 
-        const Telescope& tel = Telescope::instance();
+        const CHORDTelescope* const tel =
+            dynamic_cast<const CHORDTelescope*>(&Telescope::instance());
+        if (!tel)
+            FATAL_ERROR("Kernel FRBBeamformer_hirax_U16 needs a CHORDTelescope for its dish "
+                        "layout, not {:s}",
+                        Telescope::instance().get_name());
 
-        // First obtain from the Telescope the grid indices of every dish in the input data.
-        // The input order is a Beamformer type (P slow, D fast), so the first num_dishes
-        // entries will contain the grid indices for all connected dishes.
-        std::vector<grid_idx_2d_t> grid_indices =
-            tel.get_main_array_grid_indices(cuda_number_of_dishes, tel.fiducial_element_order());
-
-        // Now build:
-        // 1) a table of grid locations populated with the index of the dish at that location,
-        //      or -1 if it is unfilled.
-        // 2) a list of dish indices which do *not* correspond to dishes on the grid. This includes
-        //      dishes in the input array (with d < cuda_num_dishes) and "surplus" dishes used to
-        //      fill out the array (since dish_layout_M * dish_layout_N may be > num_dishes)
-        int array_dish_count = 0;
-        std::vector<int> dish_index_at_loc(cuda_dish_layout_M * cuda_dish_layout_N, -1);
-        std::vector<int> surplus_dishes{};
-        for (int d = 0; d < cuda_number_of_dishes; ++d) {
-            const grid_idx_2d_t grid_idx = grid_indices.at(d);
-            // Non-array dishes (e.g. RFI antennae) have grid indices -1.  Skip them.
-            if (grid_idx.at(0) < 0 || grid_idx.at(1) < 0) {
-                surplus_dishes.push_back(d);
-                continue;
-            }
-            // Assign a 1D address for this dish location. M/X fast, N/Y slow.
-            const int loc_idx = grid_idx.at(0) + cuda_dish_layout_M * grid_idx.at(1);
-            // Fill it with this dish index.
-            dish_index_at_loc.at(loc_idx) = d;
-            ++array_dish_count;
-        }
-        for (int d = cuda_number_of_dishes; d < cuda_dish_layout_M * cuda_dish_layout_N; ++d) {
-            surplus_dishes.push_back(d);
-        }
-        if (array_dish_count + surplus_dishes.size()
-            != std::size_t(cuda_dish_layout_M) * std::size_t(cuda_dish_layout_N))
-            FATAL_ERROR(
-                "Dish bookkeeping is inconsistent for kernel FRBBeamformer_hirax_U16: {:d} array "
-                "dishes plus {:d} surplus dishes do not fill the {:d}x{:d} dish grid",
-                array_dish_count, surplus_dishes.size(), int(cuda_dish_layout_M),
-                int(cuda_dish_layout_N));
-
-        // Finally we can build the host_S_buffer.  First initialize with -1 as a sentinel.
-        for (std::size_t s = 0; s < host_S_buffer.size(); ++s)
-            host_S_buffer.at(s) = -1;
-        // Loop through grid locations and assign dish indices.
-        size_t surplus_idx = 0;
+        // The input order is a Beamformer type (P slow, D fast), so dish indices are input indices.
+        std::vector<int> array_dish_at_loc(cuda_dish_layout_M * cuda_dish_layout_N);
+        for (int locM = 0; locM < cuda_dish_layout_M; ++locM)
+            for (int locN = 0; locN < cuda_dish_layout_N; ++locN)
+                array_dish_at_loc.at(locM + cuda_dish_layout_M * locN) =
+                    tel->get_dish_idx_at_grid_indices({locM, locN});
+        const std::vector<int> dish_index_at_loc = kotekan::frb_dish_index_at_location(
+            array_dish_at_loc, cuda_number_of_dishes, cuda_dish_layout_M, cuda_dish_layout_N);
         for (int locM = 0; locM < cuda_dish_layout_M; ++locM) {
             for (int locN = 0; locN < cuda_dish_layout_N; ++locN) {
-                // Calculate location idx as above, M fast, N slow
-                const int loc_idx = locM + cuda_dish_layout_M * locN;
-                // The dish at this position, or -1 if unoccupied
-                const int dish_index = dish_index_at_loc.at(loc_idx);
-
-                if (dish_index >= 0) {
-                    // This location holds a real dish, record its location
-                    host_S_buffer.at(2 * dish_index + 0) = locM;
-                    host_S_buffer.at(2 * dish_index + 1) = locN;
-                } else {
-                    // This location is empty, assign it a surplus dish index
-                    const int surplus_dish_index = surplus_dishes.at(surplus_idx);
-                    host_S_buffer.at(2 * surplus_dish_index + 0) = locM;
-                    host_S_buffer.at(2 * surplus_dish_index + 1) = locN;
-                    ++surplus_idx;
-                }
+                const int dish_index = dish_index_at_loc.at(locM + cuda_dish_layout_M * locN);
+                host_S_buffer.at(2 * dish_index + 0) = locM;
+                host_S_buffer.at(2 * dish_index + 1) = locN;
             }
         }
-        // Confirm we used all surplus dishes.
-        if (surplus_idx != surplus_dishes.size())
-            FATAL_ERROR("Kernel FRBBeamformer_hirax_U16 placed {:d} of {:d} surplus dishes on the "
-                        "dish grid",
-                        surplus_idx, surplus_dishes.size());
-        // Confirm the grid is filled. `S` is about to be copied to the GPU; a sentinel left here
-        // would make the kernel scatter dishes to undefined grid locations.
-        for (std::size_t s = 0; s < host_S_buffer.size(); ++s)
-            if (host_S_buffer.at(s) < 0)
-                FATAL_ERROR(
-                    "Kernel FRBBeamformer_hirax_U16 left entry {:d} of the dish location map `S` "
-                    "unassigned (value {:d})",
-                    s, host_S_buffer.at(s));
 
         // Done! Copy to the GPU.
         CHECK_CUDA_ERROR(cudaMemcpyAsync(S_memory, host_S_buffer.data(), S_length_in_bytes,

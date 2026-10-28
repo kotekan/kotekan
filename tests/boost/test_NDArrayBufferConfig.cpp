@@ -1,7 +1,8 @@
 #define BOOST_TEST_MODULE "test_NDArrayBufferConfig"
 
+#include "kotekanLoggingFixture.hpp" // for kotekan_logging_fixture
+
 #include <boost/test/included/unit_test.hpp>
-#include <csignal>   // for signal, SIG_IGN, SIGTERM
 #include <cstddef>   // for ptrdiff_t, size_t
 #include <map>       // for map
 #include <memory>    // for shared_ptr
@@ -16,6 +17,7 @@
 #include "buffer.hpp"        // for Buffer, is_frame_buffer
 #include "bufferFactory.hpp" // for bufferFactory
 #include "metadata.hpp"      // for metadataPool
+#include "ringbuffer.hpp"    // for RingBuffer
 
 #include "json.hpp" // for json
 
@@ -25,15 +27,7 @@ using kotekan::Symbol;
 
 using json = nlohmann::json;
 
-// NDArray descriptor validation failures are fatal: FATAL_ERROR_NON_OO signals
-// kotekan shutdown (SIGTERM) before throwing FatalError. Ignore the signal so
-// the tests observe the throw instead of being terminated.
-struct IgnoreSigterm {
-    IgnoreSigterm() {
-        std::signal(SIGTERM, SIG_IGN);
-    }
-};
-BOOST_GLOBAL_FIXTURE(IgnoreSigterm);
+BOOST_GLOBAL_FIXTURE(kotekan_logging_fixture);
 
 // Config::eval evaluates numbers and expression strings in a config scope.
 BOOST_AUTO_TEST_CASE(config_eval) {
@@ -218,9 +212,10 @@ BOOST_AUTO_TEST_CASE(buffer_factory_ndarray) {
         Symbol("gains"), {16, 4}, {Symbol("F"), Symbol("G")}, {1, 1}));
     BOOST_CHECK(buf->get_frame_desc<kotekan::GenericNDArray>() == desc);
 
-    // ... and a MISMATCHING declare call is fatal. (Under the boost test
-    // build, FATAL_ERROR throws std::runtime_error via KTK_BOOST_ERR before
-    // raising SIGTERM, so the fatal paths are testable with CHECK_THROW.)
+    // ... and a MISMATCHING declare call is fatal. (kotekan_logging_fixture
+    // installs a handler that throws std::runtime_error on a logged error, which
+    // FATAL_ERROR reports before raising SIGTERM, so the fatal paths are testable
+    // with CHECK_THROW.)
     // Same byte size, swapped extents/dimnames -- reaches the field checks:
     BOOST_CHECK_THROW((buf->ensure_frame_desc(kotekan::NDArray<float, 2>::describe(
                           Symbol("gains"), {4, 16}, {Symbol("G"), Symbol("F")}, {1, 1}))),
@@ -255,4 +250,75 @@ BOOST_AUTO_TEST_CASE(buffer_factory_ndarray) {
 
     for (auto& [name, b] : buffers)
         delete b;
+}
+
+// A ring buffer's descriptor covers the whole ring. The bufferFactory attaches
+// it when the config declares one, and commands using the ring reconcile
+// against it.
+BOOST_AUTO_TEST_CASE(buffer_factory_ring) {
+    json json_config = {{"log_level", "off"},
+                        {"described_ring",
+                         {{"kotekan_buffer", "ring"},
+                          {"ring_buffer_size", 64 * 4 * sizeof(float)},
+                          {"value_type", "float32"},
+                          {"quantity_name", "E"},
+                          {"extents", {64, 4}},
+                          {"dimnames", {"T", "F"}},
+                          {"metadata_pool", "none"}}},
+                        {"plain_ring",
+                         {{"kotekan_buffer", "ring"},
+                          {"ring_buffer_size", 64 * 4 * sizeof(float)},
+                          {"metadata_pool", "none"}}}};
+    Config config;
+    config.update_config(json_config);
+
+    std::map<std::string, std::shared_ptr<metadataPool>> pools;
+    kotekan::bufferFactory factory(config, pools);
+    auto buffers = factory.build_buffers();
+    BOOST_REQUIRE_EQUAL(buffers.size(), 2);
+
+    auto* described = dynamic_cast<RingBuffer*>(buffers.at("described_ring"));
+    BOOST_REQUIRE(described);
+    auto desc = described->get_frame_desc<GenericNDArray>();
+    BOOST_REQUIRE(desc);
+    BOOST_CHECK(desc->get_quantity_name() == Symbol("E"));
+    BOOST_CHECK_EQUAL(desc->get_extent(0), 64);
+    BOOST_CHECK_EQUAL(desc->get_extent(1), 4);
+
+    // A command with the same layout passes; one with another layout or size is fatal
+    described->ensure_frame_desc(GenericNDArray::describe(kotekan::float32, Symbol("E"), {64, 4},
+                                                          {Symbol("T"), Symbol("F")}, {1, 1}));
+    BOOST_CHECK(described->get_frame_desc<GenericNDArray>() == desc);
+    BOOST_CHECK_THROW(
+        described->ensure_frame_desc(GenericNDArray::describe(
+            kotekan::float32, Symbol("E"), {64, 4}, {Symbol("T"), Symbol("G")}, {1, 1})),
+        std::runtime_error);
+    BOOST_CHECK_THROW(
+        described->ensure_frame_desc(GenericNDArray::describe(
+            kotekan::float32, Symbol("E"), {32, 4}, {Symbol("T"), Symbol("F")}, {1, 1})),
+        std::runtime_error);
+
+    // Without a declaration the first command attaches the descriptor
+    auto* plain = dynamic_cast<RingBuffer*>(buffers.at("plain_ring"));
+    BOOST_REQUIRE(plain);
+    BOOST_CHECK(!plain->get_frame_desc());
+    plain->ensure_frame_desc(GenericNDArray::describe(kotekan::float32, Symbol("E"), {64, 4},
+                                                      {Symbol("T"), Symbol("F")}, {1, 1}));
+    BOOST_CHECK(plain->get_frame_desc<GenericNDArray>());
+
+    for (auto& [name, b] : buffers)
+        delete b;
+
+    // A declared descriptor must cover the whole ring
+    json bad_config = {{"log_level", "off"},
+                       {"bad_ring",
+                        {{"kotekan_buffer", "ring"},
+                         {"ring_buffer_size", 64 * 4 * sizeof(float)},
+                         {"value_type", "float32"},
+                         {"extents", {32, 4}},
+                         {"metadata_pool", "none"}}}};
+    Config bad;
+    bad.update_config(bad_config);
+    kotekan::bufferFactory bad_factory(bad, pools);
+    BOOST_CHECK_THROW(bad_factory.build_buffers(), std::runtime_error);
 }

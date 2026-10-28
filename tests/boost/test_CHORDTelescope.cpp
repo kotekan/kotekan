@@ -6,6 +6,7 @@
 #include "configUpdater.hpp"
 #include "errors.h" // _global_log_level
 #include "geoUtil.hpp"
+#include "kotekanLoggingFixture.hpp" // for kotekan_logging_fixture
 #include "restServer.hpp"
 #include "timeUtil.hpp"
 
@@ -187,6 +188,9 @@ std::array<double, 3> itrs_to_cirs(std::array<double, 3> v, double ERA_deg, doub
  * TESTS
  *
  ******************/
+
+
+BOOST_GLOBAL_FIXTURE(kotekan_logging_fixture);
 
 BOOST_AUTO_TEST_CASE(_DishType_to_json) {
 
@@ -462,6 +466,34 @@ BOOST_AUTO_TEST_CASE(_dish_grid_population) {
         BOOST_CHECK_EQUAL(g7.at(0), -1);
         BOOST_CHECK_EQUAL(g7.at(1), -1);
     }
+}
+
+/*
+ * @brief   Test the array dish lookup by grid location
+ */
+BOOST_AUTO_TEST_CASE(_dish_idx_at_grid_indices) {
+    dishInfo d0 = dishInfo(0, 0, 0, {0.0, 0.0, 0.0}, 0.0, DishType::ArrayDish, "D1");
+    dishInfo d1 = dishInfo(1, 0, 1, {0.0, 0.0, 0.0}, 35.0, DishType::ArrayDish, "D2");
+    dishInfo d2 = dishInfo(2, 1, 0, {0.1, 0.0, 0.0}, 0.0, DishType::ArrayDish, "D3");
+    dishInfo d3 = dishInfo(3, -1, -1, {0.0, 0.0, 0.0}, 0.0, DishType::RFIDish, "R1");
+    dishInfo d5 = dishInfo(5, 21, 23, {-0.3, 1.0, 0.5}, -9.0, DishType::ArrayDish, "D4");
+
+    json json_config = json::parse(default_config_str);
+    json_config["num_dishes"] = 8;
+    json_config["dish_grid_size_x"] = 22;
+    json_config["dish_grid_size_y"] = 24;
+    json_config["dish_inputs"] = std::vector<dishInfo>({d5, d0, d3, d2, d1});
+    const CHORDTelescope& tel = get_telescope(json_config);
+
+    BOOST_CHECK_EQUAL(tel.get_dish_idx_at_grid_indices({0, 0}), 0);
+    BOOST_CHECK_EQUAL(tel.get_dish_idx_at_grid_indices({0, 1}), 1);
+    BOOST_CHECK_EQUAL(tel.get_dish_idx_at_grid_indices({1, 0}), 2);
+    BOOST_CHECK_EQUAL(tel.get_dish_idx_at_grid_indices({21, 23}), 5);
+    // Empty locations, and locations outside the grid
+    BOOST_CHECK_EQUAL(tel.get_dish_idx_at_grid_indices({1, 1}), -1);
+    BOOST_CHECK_EQUAL(tel.get_dish_idx_at_grid_indices({22, 0}), -1);
+    BOOST_CHECK_EQUAL(tel.get_dish_idx_at_grid_indices({0, 24}), -1);
+    BOOST_CHECK_EQUAL(tel.get_dish_idx_at_grid_indices({-1, -1}), -1);
 }
 
 /*
