@@ -108,6 +108,9 @@ class CompactCase(unittest.TestCase):
             redo=False,
             batch=12,
             mtime_tol=60.0,
+            newest_first=False,
+            max_files=0,
+            readers=1,
         )
         vars(args).update(kw)
         with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(
@@ -271,6 +274,43 @@ class TestGeometryChangeInsideDay(CompactCase):
             self.files(),
             {self.day() + ".h5": (N_BIN, 2), self.day() + "_2b%de.h5" % N_ELEM: (2, 1)},
         )
+
+
+class TestOrderAndReaders(CompactCase):
+    """--newest-first with --max-files folds the newest files and leaves the rest for the next
+    pass; read-ahead threads (--readers) change nothing that reaches L0."""
+
+    def setUp(self):
+        super().setUp()
+        for j in range(5):
+            self.add_raw("%d.raw" % j, [frame(2 * j), frame(2 * j + 1)], T0 + 2 * j + 2)
+
+    def test_newest_first_in_passes(self):
+        m = self.compact(newest_first=True, max_files=2)
+        self.assertEqual(sorted(m), ["3.raw", "4.raw"])
+        m = self.compact(newest_first=True, max_files=2)
+        self.assertEqual(sorted(m), ["1.raw", "2.raw", "3.raw", "4.raw"])
+        m = self.compact(newest_first=True, max_files=2)
+        self.assertEqual(len(m), 5)
+        self.assertEqual(self.l0_rows(), 20)
+
+    def l0_dump(self):
+        out = {}
+        for p in glob.glob(os.path.join(self.out, "l0", "**", "*.h5"), recursive=True):
+            with h5py.File(p, "r") as f:
+                o = np.argsort(f["rows/idx"][:], kind="stable")
+                out[os.path.relpath(p, self.out)] = (
+                    f["rows/idx"][:][o].tolist(),
+                    f["rows/incoh"][:][o].tolist(),
+                )
+        return out
+
+    def test_readers_change_nothing(self):
+        self.compact(readers=1)
+        one = self.l0_dump()
+        shutil.rmtree(self.out)
+        self.compact(readers=3)
+        self.assertEqual(self.l0_dump(), one)
 
 
 if __name__ == "__main__":

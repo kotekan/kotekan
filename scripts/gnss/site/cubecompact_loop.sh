@@ -14,7 +14,12 @@ stopping=0
 trap 'stopping=1' TERM
 while [ "$stopping" = 0 ]; do
     echo "== $(date -u +%FT%TZ) compact"
-    "$PY" -u "$TOOL" compact --raw "$RAW" --out "$ROOT" 2>&1
+    # Newest first, at most 600 raw files a pass (~1 h): the newest days fold first and the
+    # rung step below runs between passes, while a backlog is worked through backwards. Raw
+    # files are read ahead on 4 threads: reading the raw store is the bound, and it saturates
+    # near 4 readers.
+    "$PY" -u "$TOOL" compact --raw "$RAW" --out "$ROOT" --newest-first --max-files 600 \
+        --readers 4 2>&1
     # Yesterday's rungs, once the day has been closed for 20 min (the last raw file of a day
     # closes ~10 s after midnight; 20 min is slack for a compactor pass to have folded it).
     today=$(date -u +%Y%m%d)

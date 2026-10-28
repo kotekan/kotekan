@@ -43,6 +43,8 @@ calibration wants. `ref_elem` is recorded in the attrs; `cohpow` = SUM_windows |
 @author Keith Vanderlinde
 """
 import argparse
+import collections
+import concurrent.futures
 import datetime
 import glob
 import json
@@ -372,6 +374,29 @@ def l0_path(out, pid, snd, day, nb, ne, claimed):
     return os.path.join(d, "%s_%db%de.h5" % (day, nb, ne))
 
 
+def prefetched(paths, readers):
+    """(path, frames) for each path in order, with up to `readers` files read and parsed ahead
+    on threads. Reading the raw store is the bound (a 356 MB file takes ~17 s cold, its fold
+    ~2 s), and parallel reads raise its throughput."""
+    if readers <= 1:
+        for p in paths:
+            yield p, list(raw.iter_frames(p))
+        return
+    with concurrent.futures.ThreadPoolExecutor(readers) as ex:
+        it = iter(paths)
+        ahead = collections.deque()
+        for p in it:
+            ahead.append((p, ex.submit(lambda q=p: list(raw.iter_frames(q)))))
+            if len(ahead) == readers:
+                break
+        while ahead:
+            p, fut = ahead.popleft()
+            nxt = next(it, None)
+            if nxt is not None:
+                ahead.append((nxt, ex.submit(lambda q=nxt: list(raw.iter_frames(q)))))
+            yield p, fut.result()
+
+
 def frame_utc(h, utc0):
     return utc0 + h["wstart0"] / h["sample_rate"]
 
@@ -438,7 +463,17 @@ def cmd_compact(args):
     if not todo:
         print("nothing to do")
         return
-    print(f"{len(todo)} raw file(s) to fold into {args.out}/l0")
+    if args.newest_first:
+        todo.reverse()
+    deferred = 0
+    if args.max_files and len(todo) > args.max_files:
+        deferred = len(todo) - args.max_files
+        todo = todo[: args.max_files]
+    print(
+        f"{len(todo)} raw file(s) to fold into {args.out}/l0"
+        + (", newest first" if args.newest_first else "")
+        + (f"; {deferred} left for later passes (--max-files)" if deferred else "")
+    )
 
     open_files = {}  # (pointing, sender, day, n_bin, n_elem) -> L0File
     claimed = {}  # plain L0 path -> (n_bin, n_elem) it holds
@@ -453,10 +488,10 @@ def cmd_compact(args):
         batch_sources.clear()
         return n
 
-    for i, path in enumerate(todo):
+    file_days = set()  # the days the last folded file wrote
+    for i, (path, frames) in enumerate(prefetched(todo, args.readers)):
         key = os.path.basename(path)
         st = os.stat(path)
-        frames = list(raw.iter_frames(path))
         if not frames:
             manifest[key] = dict(
                 size=st.st_size, mtime=st.st_mtime, frames=0, note="empty"
@@ -522,9 +557,11 @@ def cmd_compact(args):
             )
             stats["refused"] += 1
             continue
+        file_days = set()
         for h, a in frames:
             utc = frame_utc(h, utc0)
             day = utc_day(utc)
+            file_days.add(day)
             pid = pointing_at(epochs, utc)
             snd = sender_name(h["chain"])
             k = (pid, snd, day, h["n_bin"], h["n_elem"])
@@ -566,12 +603,11 @@ def cmd_compact(args):
                 f"({stats['frames'] / max(el, 1e-9):.0f} frames/s)",
                 flush=True,
             )
-            # Close the files of earlier days to keep handles bounded; a later row for one of
-            # them reopens it for append.
-            days = sorted({k[2] for k in open_files})
-            if len(days) > 1:
-                for k in [k for k in open_files if k[2] != days[-1]]:
-                    open_files.pop(k).close()
+            # Close the files of days the last raw file did not write, to keep handles
+            # bounded in either order (--newest-first walks the days backwards); a later row
+            # for one of them reopens it for append.
+            for k in [k for k in open_files if k[2] not in file_days]:
+                open_files.pop(k).close()
     # A todo list that ends on an empty or refused file `continue`s past the batch block, so
     # the rows folded since the last flush are written here, before the manifest marks their
     # files done.
@@ -965,6 +1001,25 @@ def main():
         type=int,
         default=12,
         help="raw files per HDF5 flush and manifest save",
+    )
+    p.add_argument(
+        "--newest-first",
+        action="store_true",
+        help="fold the newest raw files first, so a backlog never delays the latest days "
+        "(rungs and maps do not depend on the order windows reach L0)",
+    )
+    p.add_argument(
+        "--max-files",
+        type=int,
+        default=0,
+        help="fold at most this many raw files per pass (0: all), so a backlog is worked "
+        "through in passes the loop's other steps can run between",
+    )
+    p.add_argument(
+        "--readers",
+        type=int,
+        default=1,
+        help="raw files read and parsed ahead on threads (the raw store is read-bound)",
     )
     p.add_argument(
         "--redo",
