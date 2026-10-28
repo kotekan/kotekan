@@ -139,6 +139,8 @@ def residuals(
             "sd": sd,
             "n": len(rs),
             "hop": max(h for h, _c, _d in recs),
+            # the array code delay the model applied (gdvmap), m; 0.0 when off
+            "gdv_m": v.get("gdv_m", 0.0),
         }
     return out
 

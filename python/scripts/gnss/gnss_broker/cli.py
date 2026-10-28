@@ -1195,6 +1195,20 @@ def build_parser(description):
         "cached file carries them), or none.",
     )
     ap.add_argument(
+        "--gdv-map",
+        default="",
+        help="the array's direction-dependent code group delay map (gnss_broker/gdvmap.py; a "
+        "path relative to the repository root, or absolute), added to the dead-reckon range "
+        "model as gdv_m beside tropo_m and iono_m. It applies only while the installed "
+        "boresight is the map's pointing. Empty: off.",
+    )
+    ap.add_argument(
+        "--gdv-band",
+        default="",
+        help="the band of --gdv-map this chain reads (a key of its `bands`, e.g. gal_e5a). The "
+        "map is frequency-flat to ~1 m, so a chain without a fitted band may name a neighbour.",
+    )
+    ap.add_argument(
         "--joint-consume",
         default="",
         help="comma list of joint receiver-state consumers to switch on; empty "

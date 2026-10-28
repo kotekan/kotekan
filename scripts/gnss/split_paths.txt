@@ -158,6 +158,9 @@ launch_xnode.sh
 glob:config/elem_*.json
 config/gnss_bad_inputs.json
 
+# ---- 10-28: the array code group-delay map (gnss_broker/gdvmap.py) ----
+glob:config/gdvmap_*.json
+
 # ---- the new repo's root files: scripts/gnss/repo_root/X becomes X (no scripts/gnss/repo_root/ copy is kept).
 #      MUST stay the last line: filters above test the original name. ----
 scripts/gnss/repo_root/==>

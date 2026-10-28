@@ -51,6 +51,7 @@ from gnss_broker.receiver import JOINT_REF_RATE_HZ, JOINT_STATE, TRK_STATE, join
 from gnss_broker import sky as _sky
 from gnss_broker.signals import prn_carrier_hz
 from gnss_broker.sky import nearest_boresight, transit_sky
+from gnss_broker.gdvmap import GdvMap
 from gnss_broker.trkresid import wrap
 
 
@@ -438,6 +439,52 @@ def _boresight_unread(ctx):
             % ctx.args.dr_boresight_wait_s
         )
     return False
+
+
+def dr_gdv(ctx, pd, pd2, pd0):
+    """Fill each model row's gdv_m (gdvmap: the array's code delay toward the satellite, m,
+    + = late) from --gdv-map, or 0.0 while the installed boresight is not the map's pointing.
+    pd2 and pd0 (+-2 s) take pd's value: the satellite moves < 0.1 deg in 2 s, and one value
+    keeps the term out of the range-rate difference. Logs each on/off change."""
+    if not getattr(ctx.args, "gdv_map", ""):
+        return
+    m = ctx.dr_state.get("gdv")
+    if m is None:
+        try:
+            m = GdvMap.load(ctx.args.gdv_map, ctx.args.gdv_band)
+        except (OSError, ValueError, KeyError) as e:
+            m = False
+            _log(
+                "dead-reckon: GDV map %s NOT loaded (%s); no array delay term"
+                % (ctx.args.gdv_map, e)
+            )
+        ctx.dr_state["gdv"] = m
+    on = (
+        bool(m)
+        and _sky.BORESIGHT_KNOWN
+        and m.applies(_sky.BORESIGHT_AZ_DEG, _sky.BORESIGHT_EL_DEG)
+    )
+    if m and on != ctx.dr_state.get("gdv_on"):
+        ctx.dr_state["gdv_on"] = on
+        _log(
+            "dead-reckon: GDV map %s band %s %s (map boresight az %.1f el %.1f; installed %s)"
+            % (
+                m.pointing,
+                m.band,
+                "ON" if on else "OFF",
+                m.bore_az,
+                m.bore_el,
+                "az %.1f el %.1f" % (_sky.BORESIGHT_AZ_DEG, _sky.BORESIGHT_EL_DEG)
+                if _sky.BORESIGHT_KNOWN
+                else "none",
+            )
+        )
+    for k, v in pd.items():
+        g = m.delay_m(v["az"], v["el"]) if on else 0.0
+        v["gdv_m"] = g
+        for rows in (pd2, pd0):
+            if k in rows:
+                rows[k]["gdv_m"] = g
 
 
 def _in_transit_cone(ctx):
@@ -1512,7 +1559,11 @@ def jsrc_step(rx, to_search):
         if a is None or b is None or float(a.L) != float(b.L):
             return "n/a"
         L = float(a.L)
-        d = (float(b.clk) - float(a.clk)) if to_search else (float(a.clk) - float(b.clk))
+        d = (
+            (float(b.clk) - float(a.clk))
+            if to_search
+            else (float(a.clk) - float(b.clk))
+        )
         return "%+.3f" % (((d + L / 2.0) % L) - L / 2.0)
     except Exception:
         return "n/a"
@@ -2717,6 +2768,7 @@ def stage_dead_reckon(ctx):
             except Exception as e:
                 ctx.drp.pd, ctx.drp.pd2, pd0 = {}, {}, {}
                 _log("dead-reckon: predict failed: %s" % e)
+            dr_gdv(ctx, ctx.drp.pd, ctx.drp.pd2, pd0)
             # The geometry-only sky (sky.transit_sky) for the transit freezes and the D3 transit
             # veto: health gate off, a day of toe validity, every constellation. Built from the same
             # ephemeris as the seeds' sky and kept separate from it on purpose.

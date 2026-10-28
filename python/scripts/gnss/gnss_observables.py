@@ -558,6 +558,9 @@ def main():
                     "adr_arc": arc,
                     "adr_records": nrec,
                     "code_resid_m": code_resid_m,  # model-removed code range (CMC input)
+                    # the array code delay in that model (gnss_broker/gdvmap, m, + = late):
+                    # code_resid_m - gdv_m is the residual without it
+                    "gdv_m": r.get("trk_gdv_m") if code_resid_src == "trk" else None,
                     "code_resid_src": code_resid_src,  # trk | dr_integ
                     "code_resid_clk": _clk_in,  # True for trk (range form, clock left in)
                     # the tracker residual's own scatter and support (metres, records)

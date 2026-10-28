@@ -332,6 +332,13 @@ chains:
   # the two bands carry the same satellites, so each is the other's control, and a comparison
   # between them should differ in one key.
     gal_e5a:
+    # The array's direction-dependent code delay (gnss_broker/gdvmap.py: ~+8.5 m north low, +2 E/W
+    # low, ~0 south and high), fitted at the Tau A pointing; it applies only while the installed
+    # boresight is that pointing. On the Galileo and BeiDou chains, where the map's odd/even PRN
+    # split agrees (r 0.5-0.9); not on gps_l5 (r 0.08: per-satellite offsets dominate its cells).
+    # bds_b2b has no fitted band and reads bds_b2a's (the map is frequency-flat to ~1 m).
+        gdv-map: config/gdvmap_taua_20261024.json
+        gdv-band: gal_e5a
     # Build dead-reckon seeds for an exact hop 1.0 s ahead of now rather than for now. A seed is
     # a forecast labelled with its ref_hop, so the telemetry lag (~0.2-0.3 s) then costs margin
     # instead of entering the arithmetic. The lead must exceed transport plus install; at 1.0 s
@@ -456,6 +463,8 @@ chains:
   # for the reasons given there. It sets no dr-forecast-lead-s, so its dead-reckon seeds are
   # built for the current time rather than for a hop 1 s ahead.
     bds_b2a:
+        gdv-map: config/gdvmap_taua_20261024.json
+        gdv-band: bds_b2a
         presence-admit-displaced: true
         seed-phase-transport: true
     # Besides the code constants this sets constellation C and signal-capability bds_b2a. B2a
@@ -493,6 +502,8 @@ chains:
   # same rays at a second carrier is what lets a per-band instrumental delay (tau_band) be told
   # apart from a per-satellite bias.
     gal_e5b:
+        gdv-map: config/gdvmap_taua_20261024.json
+        gdv-band: gal_e5b
         seed-phase-transport: true
         signal: gal_e5b
         joint-trk-feed: true
@@ -535,6 +546,8 @@ chains:
   # loop (rrate-command, rrate-cmd-min-sig, carrier-max-hz, rrate-feed-applied); like gal_e5b
   # it adopts gps_l5's clock across bands.
     bds_b2b:
+        gdv-map: config/gdvmap_taua_20261024.json
+        gdv-band: bds_b2a
         presence-admit-displaced: true
         seed-phase-transport: true
         signal: bds_b2b
@@ -628,6 +641,8 @@ chains:
         spectrum-endpoints: fleet
         dll-combiners: fleet
     bds_b3i:
+        gdv-map: config/gdvmap_taua_20261024.json
+        gdv-band: bds_b3i
         signal: bds_b3i
         joint-trk-feed: true
         dr-clock-adopt: true
@@ -648,6 +663,8 @@ chains:
   # gps_l5's chip rate, dr-clock-adopt converts the adopted clock as a time
   # (Receiver.clock_chips_convert); taken as raw chips it would read as twice the time.
     gal_e6:
+        gdv-map: config/gdvmap_taua_20261024.json
+        gdv-band: gal_e6
         signal: gal_e6
         joint-trk-feed: true
         dr-clock-adopt: true

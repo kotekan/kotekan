@@ -337,7 +337,9 @@ class FleetPublisher:
                 t = d.get("t")
                 for prn, (el, az) in d["sats"].items():
                     cur = best.get(prn)
-                    if cur is None or (t is not None and (cur[0] is None or t > cur[0])):
+                    if cur is None or (
+                        t is not None and (cur[0] is None or t > cur[0])
+                    ):
                         best[prn] = (t, el, az)
             for prn, (t, el, az) in sorted(best.items()):
                 rows.append(
@@ -452,6 +454,8 @@ class FleetPublisher:
                     # the same residual with the receiver clock left in: the code range residual,
                     # the quantity a carrier residual also carries (Hatch differences the two)
                     "trk_range_s": (_trk.get(prn) or {}).get("raw_s"),
+                    # the array code delay inside that model (gdvmap, m, + = late)
+                    "trk_gdv_m": (_trk.get(prn) or {}).get("gdv_m"),
                     "trk_resid_sd_chips": (_trk.get(prn) or {}).get("sd"),
                     "trk_resid_n": (_trk.get(prn) or {}).get("n"),
                     "trk_resid_age_s": (

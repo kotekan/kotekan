@@ -954,7 +954,8 @@ def main(argv=None, rx=None, publisher=None):
         ~0.2 m/s^2) adds 0.5*a*(t_abs - t_eph_age)^2 of range: at the peak,
         about 1 m for a detection 3 s old and 360 m for one 60 s old. The
         troposphere (--tropo) and ionosphere (--iono) enter as the row's
-        tropo_m / iono_m. All mod arithmetic is on small numbers: t0m is the
+        tropo_m / iono_m, and the array's direction-dependent code delay (--gdv-map) as
+        gdv_m. All mod arithmetic is on small numbers: t0m is the
         sample-0 GPST pre-reduced mod the exact code period (deadreckon.t_mod_code),
         and the `% _drp.t_code` here, with its double period 5.6e-18 s off, errs by
         t_abs / t_code x 5.6e-18 s: 1.5e-10 s (0.0015 chips) at t_abs = 30 days."""
@@ -967,6 +968,7 @@ def main(argv=None, rx=None, publisher=None):
                 v["range_m"]
                 + v.get("tropo_m", 0.0)
                 + v.get("iono_m", 0.0)
+                + v.get("gdv_m", 0.0)
                 + v["range_rate_mps"] * (t_abs - _drp.t_eph_age)
             )
             / dr_eph_mod.C_LIGHT
