@@ -283,6 +283,38 @@ band's learned tau and slews trackers that are on their peaks (TRKRES ~0) by a c
 B3I +12..20, E5b -2.6 chips); chains were ~100 m off for ~5 min. No slew while the joint state is unestablished and the
 tracker is proven on peak is the missing gate.
 
+### #219 — gps_l2c's code reads ~+4 m against gps_l5 on the same satellites, so L2C cannot join the tracker-fed joint state (#191 step 3) (2026-10-28, KV: "file discrete bugs for the L2C and GLONASS bias offsets")
+**What:** step 3 admits a chain's code to TRK_STATE only once its signal reads within ~1 m of GPS L5 on the same
+satellites (#191 §6.2). gps_l2c does not, so it is unfed and stays `joint-source: search`.
+- **Same-satellite l5 - l2c** (isb_obs_ext, 10-26 06-13Z, 15 PRNs): median -3.94 m, p10/p90 -7.25/-0.28. L2C reads
+  late by ~4 m and with a wide spread.
+- It moved from -13.9 to +8.6 m when the DLL spacing went 0.4 -> 0.33 (10-25). The cleanup read +22 m on 10-25
+  against ~+4 m on 10-26. The spacing, the coherent N-channel Dirichlet over its 4-6 contiguous channels
+  (gen_chord_gnss_config.dll_spacing_chips) and the q ~2.0 with cx42/cx47 out (#216 note) all bear on where the loop
+  sits on the peak.
+- The mirror test (10-26) showed L2C's own large excursions (G30 a 17-chip swing).
+**Next:** root-cause before any calibration constant (KV 10-24):
+- with the fleet at 8 nodes (6 contiguous channels), re-measure l5 - l2c vs the DLL spacing and the per-channel tap
+  geometry;
+- check the CM/CL combination and the L2 group-delay model term (§6.3 0a: "still to add: the L2C ... terms");
+- then the step-3 admission test.
+
+### #220 — the GLONASS chains (glo_l3oc, glo_l2oc, glo_l2of) carry per-satellite / per-signal code offsets against the GPS/Galileo/BeiDou chains, so none can join the tracker-fed joint state (2026-10-28)
+**What:** all three GLONASS chains are unfed and stay `joint-source: search`.
+- **Chain medians** (m, clock included, isb_obs_ext 10-26 06-13Z): glo_l3oc 4463.48 vs gps_l5 4450.93, so L3OC sits
+  ~+12.5 m.
+- **Per satellite:** R10 -37 m (trim -1.08), R16 -14 m.
+- **#210** found glo_l3oc's +44 U / +8 N / +5 E (10-19) to be a SATELLITE-SIDE term (the FDMA broadcast clock that
+  the R records carry), with a month-scale day-to-day of 4-8 m.
+- **New 10-28: glo_l2of** (FDMA L2, live since 17:00Z) adds per-frequency-channel (k) inter-frequency biases, the
+  known FDMA hardware delay per carrier, on top. glo_l2oc is CDMA, and its offset has not been measured.
+**Next:**
+- re-run isb_obs_ext with glo_l2of rows once the obs archive has a night of them;
+- the per-k structure of L2OF against L2OC/L3OC on the same satellites (M+/K carry several);
+- decide whether GLONASS joins TRK_STATE with its own clock term (an inter-system bias state, which §6.2 ruled out
+  for the per-signal offsets) or stays on search.
+Root-cause first: no calibration table (KV 10-24).
+
 ### #210 — glo_l3oc's code residual carries a GLONASS-only range-model term: +44 m up-like, +8 m north, +5 m east against the GPS/Galileo/BeiDou chains (2026-10-19, the 0b night gate)
 **What:** the night re-survey fit (gnss_resurvey.py --hours 6-13) on 10-19 with the model live reads glo_l3oc model -
 true = +44.1 U / +8.2 N / +5.2 E (rms 3.5 m, 5,382 of 6,521 rows) while gps_l5, gal_e5b, bds_b2a and bds_b3i read
