@@ -50,12 +50,14 @@ GNSS_FRAME0_URL=${GNSS_FRAME0_URL:-}   # the obs writers' frame-0 node; empty: t
 GNSS_OBS_OUT=${GNSS_OBS_OUT:-$GNSS_ROOT/fixtures/obs}
 GNSS_SITE_LL=${GNSS_SITE_LL:-"--lat 49.3199845 --lon -119.62262691 --alt 528.4"}  # = config/gnss_chains_chord.yaml common (ellipsoidal alt)
 
-# ── the ten chains and their RF constants ─────────────────────────────────────────────────
+# ── the chains and their RF constants ─────────────────────────────────────────────────
 # Not free parameters: carrier, chip rate and code length must match the SignalDef the broker
 # runs, which it logs at startup ("signal gps_l5: SignalDef(...)"); if a chain's signal
 # changes, take the numbers from that line. L2C's chips are CM chips at 0.5115 Mcps (the
 # CM/CL multiplex), 586 m each, not 29 m. L2OC's are 2.046 Mcps chips (the BOC/TDM expansion
 # is in the code table), 146.5 m each; code_len is the 20 ms primary, not the 1 s baked code.
+# L2OF's carrier is the k = 0 centre (each satellite sits k x 437.5 kHz off it) and code_len the
+# 511-chip C/A primary, not the 20 ms Manchester-tiled code; 587 m chips at 511 kcps.
 #   chain  sys carrier_hz   chip_rate_hz  code_len
 GNSS_CHAIN_RF="
 gps_l5  G 1176450000 10230000 10230
@@ -68,6 +70,7 @@ gal_e6  E 1278750000  5115000  5115
 gps_l2c G 1227600000   511500 10230
 glo_l3oc R 1202025000 10230000 10230
 glo_l2oc R 1248060000  2046000 40920
+glo_l2of R 1246000000   511000   511
 sbas_l5 S 1176450000 10230000 10230
 "
 

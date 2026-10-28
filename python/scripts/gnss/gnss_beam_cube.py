@@ -62,29 +62,52 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from gnss_ephemeris import fetch_brdc, parse_rinex_nav, predict_all  # noqa: E402
 
 LAT, LON, ALT = 49.32075144444, -119.62081125, 545.0
-R_REF = 20.2e6            # m: the dB zero for range normalisation (semi-synchronous slant)
-import gnss_arraymap                                  # noqa: E402  (same directory)
-import gnss_chain_health                              # noqa: E402  (same directory)
+R_REF = 20.2e6  # m: the dB zero for range normalisation (semi-synchronous slant)
+import gnss_arraymap  # noqa: E402  (same directory)
+import gnss_chain_health  # noqa: E402  (same directory)
 
 # The p0_dec40p73 boresight (docs/CHORD_BEAM_MAPS.md §5; not telescope.dish_coelev_deg), for a
 # master built without bore_az_deg/bore_el_deg. The build takes the boresight from the epoch.
 BORE_AZ, BORE_EL = 180.0, 81.41
-MIN_ELEMS = 8             # a sample with fewer live elements says nothing about the beam
-FLOOR_BIN_S = 300.0       # pedestal bin: per (instance, subband, element, 5 min)
-HEALTH_DIR = "/home/kvand/gnss/fixtures/obs/health"   # gnss_chain_health.py masks, per day
-GEOM_BIN_S = 60.0         # BRDC evaluated once per minute, at its midpoint; no interpolation
+MIN_ELEMS = 8  # a sample with fewer live elements says nothing about the beam
+FLOOR_BIN_S = 300.0  # pedestal bin: per (instance, subband, element, 5 min)
+HEALTH_DIR = (
+    "/home/kvand/gnss/fixtures/obs/health"  # gnss_chain_health.py masks, per day
+)
+GEOM_BIN_S = 60.0  # BRDC evaluated once per minute, at its midpoint; no interpolation
 
 # Chain -> constellation letter, for the BRDC lookup. Declared, not inferred from the
 # frequency: constellations share carriers.
-CHAIN_SYS = {"gps_l5": "G", "gps_l2c": "G", "gal_e5a": "E", "gal_e5b": "E", "gal_e6": "E",
-             "bds_b2a": "C", "bds_b2b": "C", "bds_b3i": "C", "glo_l3oc": "R", "glo_l2oc": "R"}
+CHAIN_SYS = {
+    "gps_l5": "G",
+    "gps_l2c": "G",
+    "gal_e5a": "E",
+    "gal_e5b": "E",
+    "gal_e6": "E",
+    "bds_b2a": "C",
+    "bds_b2b": "C",
+    "bds_b3i": "C",
+    "glo_l3oc": "R",
+    "glo_l2oc": "R",
+    "glo_l2of": "R",
+}
 
 # Cube-archive sender ("cx19_gnss0_b2b_n2assemble") -> chain. The band token is the stage's
 # infix; the GPS L5 stage carries none. Declared, like CHAIN_SYS: a sender with an unlisted
 # infix maps to no chain, and find_inputs does not read its files.
-SENDER_BAND_CHAIN = {"": "gps_l5", "l2c": "gps_l2c", "e5a": "gal_e5a", "e5b": "gal_e5b",
-                     "e6": "gal_e6", "b2a": "bds_b2a", "b2b": "bds_b2b", "b3i": "bds_b3i",
-                     "l3oc": "glo_l3oc", "l2oc": "glo_l2oc"}
+SENDER_BAND_CHAIN = {
+    "": "gps_l5",
+    "l2c": "gps_l2c",
+    "e5a": "gal_e5a",
+    "e5b": "gal_e5b",
+    "e6": "gal_e6",
+    "b2a": "bds_b2a",
+    "b2b": "bds_b2b",
+    "b3i": "bds_b3i",
+    "l3oc": "glo_l3oc",
+    "l2oc": "glo_l2oc",
+    "l2of": "glo_l2of",
+}
 
 
 def sender_chain(sender):
@@ -106,7 +129,7 @@ def ang2pix_ring(nside, theta, phi):
     npix = 12 * nside * nside
     z = np.cos(theta)
     za = np.abs(z)
-    tt = np.mod(phi, 2.0 * np.pi) * (2.0 / np.pi)      # in [0, 4)
+    tt = np.mod(phi, 2.0 * np.pi) * (2.0 / np.pi)  # in [0, 4)
     pix = np.empty(theta.shape, dtype=np.int64)
 
     eq = za <= 2.0 / 3.0
@@ -115,9 +138,9 @@ def ang2pix_ring(nside, theta, phi):
         t, zz = tt[eq], z[eq]
         temp1 = nside * (0.5 + t)
         temp2 = nside * zz * 0.75
-        jp = (temp1 - temp2).astype(np.int64)          # ascending edge
-        jm = (temp1 + temp2).astype(np.int64)          # descending edge
-        ir = nside + 1 + jp - jm                       # in {1, 2n+1}
+        jp = (temp1 - temp2).astype(np.int64)  # ascending edge
+        jm = (temp1 + temp2).astype(np.int64)  # descending edge
+        ir = nside + 1 + jp - jm  # in {1, 2n+1}
         kshift = 1 - (ir & 1)
         ip = (jp + jm - nside + kshift + 1) // 2
         ip = np.mod(ip, 4 * nside)
@@ -132,8 +155,7 @@ def ang2pix_ring(nside, theta, phi):
         ir = jp + jm + 1
         ip = np.mod((t * ir).astype(np.int64), 4 * ir)
         north = zz > 0
-        p = np.where(north, 2 * ir * (ir - 1) + ip,
-                     npix - 2 * ir * (ir + 1) + ip)
+        p = np.where(north, 2 * ir * (ir - 1) + ip, npix - 2 * ir * (ir + 1) + ip)
         pix[~eq] = p
     return pix
 
@@ -162,20 +184,30 @@ class Geometry:
     """BRDC positions on a 1-minute grid, plus the cross-chain railing veto for that minute."""
 
     def __init__(self, day_unix, veto_deg, bore=(BORE_AZ, BORE_EL)):
-        self.eph = parse_rinex_nav(fetch_brdc(
-            datetime.fromtimestamp(day_unix + 43200, tz=timezone.utc)))
+        self.eph = parse_rinex_nav(
+            fetch_brdc(datetime.fromtimestamp(day_unix + 43200, tz=timezone.utc))
+        )
         self.veto_deg = veto_deg
-        self.bore = bore     # (az, el) deg, the array epoch's boresight
-        self._pos = {}       # (sys, prn, minute) -> (el, az, range_m) or None
-        self._all = {}       # minute -> {(sys, prn): v}
-        self._veto = {}      # minute -> (vetoed, closest_deg, closest_name)
+        self.bore = bore  # (az, el) deg, the array epoch's boresight
+        self._pos = {}  # (sys, prn, minute) -> (el, az, range_m) or None
+        self._all = {}  # minute -> {(sys, prn): v}
+        self._veto = {}  # minute -> (vetoed, closest_deg, closest_name)
 
     def _minute(self, minute):
         if minute not in self._all:
             try:
-                self._all[minute] = predict_all(self.eph, LAT, LON, ALT,
-                                                minute * GEOM_BIN_S + GEOM_BIN_S / 2,
-                                                mask_deg=-90.0, max_age=86400.0) or {}
+                self._all[minute] = (
+                    predict_all(
+                        self.eph,
+                        LAT,
+                        LON,
+                        ALT,
+                        minute * GEOM_BIN_S + GEOM_BIN_S / 2,
+                        mask_deg=-90.0,
+                        max_age=86400.0,
+                    )
+                    or {}
+                )
             except Exception:
                 self._all[minute] = {}
         return self._all[minute]
@@ -222,15 +254,18 @@ class CubeAccum:
         self.nside = int(nside)
         self.n_elem = int(n_elem)
         self.n_sub = 0
-        self.cells = {}   # (subband, pixel) -> [n(E), s1(E), s2(E)]
+        self.cells = {}  # (subband, pixel) -> [n(E), s1(E), s2(E)]
 
     def add(self, sub, pix, power, live):
         """power: [n_elem] linear debiased power; live: [n_elem] bool (dark elements excluded)."""
         self.n_sub = max(self.n_sub, sub + 1)
         c = self.cells.get((sub, pix))
         if c is None:
-            c = [np.zeros(self.n_elem, np.uint32), np.zeros(self.n_elem),
-                 np.zeros(self.n_elem)]
+            c = [
+                np.zeros(self.n_elem, np.uint32),
+                np.zeros(self.n_elem),
+                np.zeros(self.n_elem),
+            ]
             self.cells[(sub, pix)] = c
         c[0][live] += 1
         c[1][live] += power[live]
@@ -336,7 +371,7 @@ def build_day(args, chain, paths, day_unix, geom):
                     continue
                 if d.get("probe"):
                     stats["probe"] += 1
-                    continue           # a probe is the floor, never a beam sample
+                    continue  # a probe is the floor, never a beam sample
                 rows = _rows(d)
                 if not rows or len(rows[0]) < MIN_ELEMS:
                     stats["short"] += 1
@@ -383,11 +418,22 @@ def build_day(args, chain, paths, day_unix, geom):
         print("  %s: no usable rows (%s)" % (chain, dict(stats)))
         return None
     pix, n, s1, s2 = acc.arrays()
-    print("  %s: %d row(s) -> %d subband(s) x %d element(s) x %d pixel(s); "
-          "vetoed %d, no-geom %d, below-mask %d, thin %d"
-          % (chain, stats["rows"], n.shape[0], n.shape[1], len(pix),
-             stats["vetoed"], stats["nogeo"], stats["low"], stats["thin"]))
-    return dict(pix=pix, n=n, s1=s1, s2=s2, freq_ids=freq_ids[:n.shape[0]])
+    print(
+        "  %s: %d row(s) -> %d subband(s) x %d element(s) x %d pixel(s); "
+        "vetoed %d, no-geom %d, below-mask %d, thin %d"
+        % (
+            chain,
+            stats["rows"],
+            n.shape[0],
+            n.shape[1],
+            len(pix),
+            stats["vetoed"],
+            stats["nogeo"],
+            stats["low"],
+            stats["thin"],
+        )
+    )
+    return dict(pix=pix, n=n, s1=s1, s2=s2, freq_ids=freq_ids[: n.shape[0]])
 
 
 def _h5_rows(path):
@@ -399,6 +445,7 @@ def _h5_rows(path):
     mid-point of the row's first and last window (rung).
     """
     import h5py
+
     with h5py.File(path, "r") as f:
         a = dict(f.attrs)
         fmt = a.get("format")
@@ -414,7 +461,9 @@ def _h5_rows(path):
             t = 0.5 * (f["rows/utc0"][:] + f["rows/utc1"][:])
         else:
             raise SystemExit("%s: not a cube archive file (format=%r)" % (path, fmt))
-    P = np.where((w > 0.0)[:, :, None], incoh / np.maximum(w, 1e-30)[:, :, None], np.nan)
+    P = np.where(
+        (w > 0.0)[:, :, None], incoh / np.maximum(w, 1e-30)[:, :, None], np.nan
+    )
     return a, t, prn, P
 
 
@@ -425,15 +474,24 @@ def _h5_freq_ids(path):
     freq_id attrs takes them from the L0 file it was folded from, at the same
     <pointing>/<sender>/<day>.h5 under l0/."""
     import h5py
+
     with h5py.File(path, "r") as f:
         fmt = f.attrs.get("format")
-        lo = f["win/freq_id_lo"][0] if fmt == "gnss_cube_l0" else f.attrs.get("freq_id_lo")
-        hi = f["win/freq_id_hi"][0] if fmt == "gnss_cube_l0" else f.attrs.get("freq_id_hi")
+        lo = (
+            f["win/freq_id_lo"][0]
+            if fmt == "gnss_cube_l0"
+            else f.attrs.get("freq_id_lo")
+        )
+        hi = (
+            f["win/freq_id_hi"][0]
+            if fmt == "gnss_cube_l0"
+            else f.attrs.get("freq_id_hi")
+        )
     if lo is None:
         parts = os.path.normpath(path).split(os.sep)
         for i, seg in enumerate(parts):
             if seg.startswith("rung"):
-                l0p = os.sep.join(parts[:i] + ["l0"] + parts[i + 1:])
+                l0p = os.sep.join(parts[:i] + ["l0"] + parts[i + 1 :])
                 if os.path.exists(l0p):
                     with h5py.File(l0p, "r") as f0:
                         lo, hi = f0["win/freq_id_lo"][0], f0["win/freq_id_hi"][0]
@@ -441,8 +499,10 @@ def _h5_freq_ids(path):
     if lo is None:
         return None
     if hi is not None and list(lo) != list(hi):
-        sys.exit("%s: a bin spans channels %s..%s -- the archive promised one channel per bin"
-                 % (path, list(lo), list(hi)))
+        sys.exit(
+            "%s: a bin spans channels %s..%s -- the archive promised one channel per bin"
+            % (path, list(lo), list(hi))
+        )
     return [int(x) for x in lo]
 
 
@@ -471,8 +531,8 @@ def prn_gain_table(args, chain, paths, day_unix, geom, dth=5.0, dphi=90.0, iters
     The gains are centred on their median, so the map's absolute level is unchanged.
     """
     sys_ = CHAIN_SYS[chain]
-    lvl = defaultdict(list)          # (prn, coarse cell) -> [log10 power]
-    raw = defaultdict(list)          # prn -> [log10 power], for the printed raw spread
+    lvl = defaultdict(list)  # (prn, coarse cell) -> [log10 power]
+    raw = defaultdict(list)  # prn -> [log10 power], for the printed raw spread
     for path in paths:
         try:
             a, t, prn, P = _h5_rows(path)
@@ -494,8 +554,10 @@ def prn_gain_table(args, chain, paths, day_unix, geom, dth=5.0, dphi=90.0, iters
         minute = (t // GEOM_BIN_S).astype(int)
         uk, inv = np.unique(np.stack([prn, minute], 1), axis=0, return_inverse=True)
         inv = inv.ravel()
-        el = np.full(len(uk), np.nan); az = np.full(len(uk), np.nan)
-        rng = np.full(len(uk), np.nan); vet = np.zeros(len(uk), bool)
+        el = np.full(len(uk), np.nan)
+        az = np.full(len(uk), np.nan)
+        rng = np.full(len(uk), np.nan)
+        vet = np.zeros(len(uk), bool)
         for j, (pn, mn) in enumerate(uk):
             tt = mn * GEOM_BIN_S + GEOM_BIN_S / 2
             vet[j] = geom.vetoed(tt)
@@ -508,25 +570,40 @@ def prn_gain_table(args, chain, paths, day_unix, geom, dth=5.0, dphi=90.0, iters
         ok &= ~gnss_chain_health.unhealthy(getattr(args, "_health", {}), chain, t)
         if not ok.any():
             continue
-        rscale = np.ones(int(ok.sum())) if args.no_range_norm else (rng_r[ok] / R_REF) ** 2
+        rscale = (
+            np.ones(int(ok.sum())) if args.no_range_norm else (rng_r[ok] / R_REF) ** 2
+        )
         Pk, Fk = P[ok], floor[ok]
         with np.errstate(all="ignore"):
             live = (Pk > 0.0) & (Fk > 0.0) & (Pk > Fk)
-            pw = np.where(live, (Pk - Fk) / np.where(live, Fk, 1.0) * rscale[:, None, None],
-                          np.nan)
-            row = np.nanmean(pw, axis=(1, 2))        # pool subbands+elements: one level per row
+            pw = np.where(
+                live,
+                (Pk - Fk) / np.where(live, Fk, 1.0) * rscale[:, None, None],
+                np.nan,
+            )
+            row = np.nanmean(
+                pw, axis=(1, 2)
+            )  # pool subbands+elements: one level per row
         # theta (off boresight) and phi (position angle about it), the beam's own coordinates.
         aa, ee = az_r[ok], el_r[ok]
         th = angsep_deg(aa, ee, *geom.bore)
         ca, ce = math.radians(geom.bore[0]), math.radians(geom.bore[1])
-        u = np.stack([np.cos(np.radians(ee)) * np.sin(np.radians(aa)),
-                      np.cos(np.radians(ee)) * np.cos(np.radians(aa)),
-                      np.sin(np.radians(ee))], -1)
-        nh = np.array([-math.sin(ce) * math.sin(ca), -math.sin(ce) * math.cos(ca), math.cos(ce)])
+        u = np.stack(
+            [
+                np.cos(np.radians(ee)) * np.sin(np.radians(aa)),
+                np.cos(np.radians(ee)) * np.cos(np.radians(aa)),
+                np.sin(np.radians(ee)),
+            ],
+            -1,
+        )
+        nh = np.array(
+            [-math.sin(ce) * math.sin(ca), -math.sin(ce) * math.cos(ca), math.cos(ce)]
+        )
         ea = np.array([math.cos(ca), -math.sin(ca), 0.0])
         ph = np.degrees(np.arctan2(u @ ea, u @ nh)) % 360.0
-        cellkey = (np.floor(th / dth).astype(np.int64) * 1000
-                   + np.floor(ph / dphi).astype(np.int64))
+        cellkey = np.floor(th / dth).astype(np.int64) * 1000 + np.floor(
+            ph / dphi
+        ).astype(np.int64)
         good = np.isfinite(row) & (row > 0.0)
         with np.errstate(all="ignore"):
             lg = np.log10(np.where(good, row, 1.0))
@@ -538,9 +615,11 @@ def prn_gain_table(args, chain, paths, day_unix, geom, dth=5.0, dphi=90.0, iters
     cell = {k: float(np.median(v)) for k, v in lvl.items() if len(v) >= 3}
     prns = sorted({k[0] for k in cell})
     pixs = sorted({k[1] for k in cell})
-    by_prn = defaultdict(list); by_pix = defaultdict(list)
+    by_prn = defaultdict(list)
+    by_pix = defaultdict(list)
     for (p_, x_), v_ in cell.items():
-        by_prn[p_].append((x_, v_)); by_pix[x_].append((p_, v_))
+        by_prn[p_].append((x_, v_))
+        by_pix[x_].append((p_, v_))
     gain = {p_: 0.0 for p_ in prns}
     beam = {x_: 0.0 for x_ in pixs}
     for _ in range(iters):
@@ -553,25 +632,39 @@ def prn_gain_table(args, chain, paths, day_unix, geom, dth=5.0, dphi=90.0, iters
             if r:
                 gain[p_] = float(np.median(r))
     mid = float(np.median(list(gain.values())))
-    out = {p_: 10.0 * (gain[p_] - mid) for p_ in prns}     # dB, centred
+    out = {p_: 10.0 * (gain[p_] - mid) for p_ in prns}  # dB, centred
     sp = np.array(list(out.values()))
     occ = np.array([len({k[0] for k in cell if k[1] == x_}) for x_ in pixs])
     # The raw per-PRN spread is printed for reference, not as a check: a satellite that stays
     # at high theta is faint because the beam is faint there, and the fit rightly leaves that
     # in the beam, so the solved and raw spreads are not expected to match.
     rawmed = {p_: float(np.median(v)) for p_, v in raw.items() if len(v) >= 200}
-    rawsp = 10.0 * float(np.std(list(rawmed.values()))) if len(rawmed) > 3 else float("nan")
-    print("  %s: per-PRN gains over %d satellite(s), %d coarse cell(s) "
-          "(median %d PRN/cell): spread %.2f dB p-p, %.2f dB rms; raw per-PRN rms %.2f dB"
-          % (chain, len(prns), len(pixs), int(np.median(occ)) if len(occ) else 0,
-             sp.max() - sp.min(), sp.std(), rawsp))
+    rawsp = (
+        10.0 * float(np.std(list(rawmed.values()))) if len(rawmed) > 3 else float("nan")
+    )
+    print(
+        "  %s: per-PRN gains over %d satellite(s), %d coarse cell(s) "
+        "(median %d PRN/cell): spread %.2f dB p-p, %.2f dB rms; raw per-PRN rms %.2f dB"
+        % (
+            chain,
+            len(prns),
+            len(pixs),
+            int(np.median(occ)) if len(occ) else 0,
+            sp.max() - sp.min(),
+            sp.std(),
+            rawsp,
+        )
+    )
     # The guard is occupancy: with too few PRNs per cell the fit is degenerate and returns ~0
     # whatever the truth, so a small answer is trusted only when the cells are populated.
     med_occ = int(np.median(occ)) if len(occ) else 0
     if med_occ < 3:
-        print("  WARNING: %s: median %d PRN per cell -- the (gain, beam) fit is under-determined "
-              "and will return ~0 whatever the truth is. Coarsen dth/dphi before believing this."
-              % (chain, med_occ), file=sys.stderr)
+        print(
+            "  WARNING: %s: median %d PRN per cell -- the (gain, beam) fit is under-determined "
+            "and will return ~0 whatever the truth is. Coarsen dth/dphi before believing this."
+            % (chain, med_occ),
+            file=sys.stderr,
+        )
     return out
 
 
@@ -589,20 +682,27 @@ def build_day_h5(args, chain, paths, day_unix, geom, prn_gain=None):
     for path in paths:
         fid_by_path[path] = _h5_freq_ids(path)
         if fid_by_path[path] is None:
-            sys.exit("%s: no freq ids -- the subband axis cannot be built without them" % path)
+            sys.exit(
+                "%s: no freq ids -- the subband axis cannot be built without them"
+                % path
+            )
     band = sorted(set(x for v in fid_by_path.values() for x in v))
     sub_of = {fid: i for i, fid in enumerate(band)}
     freq_ids = [[fid, fid] for fid in band]
-    print("  %s: %d distinct channel(s) freq_id %d..%d across %d sender file(s)"
-          % (chain, len(band), band[0], band[-1], len(paths)))
+    print(
+        "  %s: %d distinct channel(s) freq_id %d..%d across %d sender file(s)"
+        % (chain, len(band), band[0], band[-1], len(paths))
+    )
     for path in paths:
         a, t, prn, P = _h5_rows(path)
         pt = str(a.get("pointing"))
         if pointing is None:
             pointing = pt
         elif pt != pointing:
-            sys.exit("%s: pointing %s in a build of %s -- one master is one pointing"
-                     % (path, pt, pointing))
+            sys.exit(
+                "%s: pointing %s in a build of %s -- one master is one pointing"
+                % (path, pt, pointing)
+            )
         R, S, E = P.shape
         sub_idx = [sub_of[f] for f in fid_by_path[path]]
         if acc is None:
@@ -648,7 +748,9 @@ def build_day_h5(args, chain, paths, day_unix, geom, prn_gain=None):
         if not ok.any():
             continue
         pix = azel_to_pix(args.nside, az_r[ok], el_r[ok]).astype(np.int64)
-        rscale = np.ones(int(ok.sum())) if args.no_range_norm else (rng_r[ok] / R_REF) ** 2
+        rscale = (
+            np.ones(int(ok.sum())) if args.no_range_norm else (rng_r[ok] / R_REF) ** 2
+        )
         Pk, Fk = P[ok], floor[ok]
         # Debias in power and drop a sample under its own pedestal (never clamp; see
         # build_day), in units of the pedestal. The cube's |A_e|^2 is normalised by the
@@ -672,37 +774,70 @@ def build_day_h5(args, chain, paths, day_unix, geom, prn_gain=None):
             if prn_gain:
                 gdb = np.array([prn_gain.get(int(p_), np.nan) for p_ in prn[ok]])
                 stats["prn_ungained"] += int(np.isnan(gdb).sum())
-                gsc = np.where(np.isfinite(gdb), 10.0 ** (-np.nan_to_num(gdb) / 10.0), 1.0)
+                gsc = np.where(
+                    np.isfinite(gdb), 10.0 ** (-np.nan_to_num(gdb) / 10.0), 1.0
+                )
                 rscale = rscale * gsc
-            pw = np.where(live, (Pk - Fk) / np.where(live, Fk, 1.0) * rscale[:, None, None], 0.0)
+            pw = np.where(
+                live, (Pk - Fk) / np.where(live, Fk, 1.0) * rscale[:, None, None], 0.0
+            )
         for sub in range(S):
             lv = live[:, sub, :]
             enough = lv.sum(1) >= MIN_ELEMS
             stats["thin"] += int((~enough & (lv.sum(1) > 0)).sum())
             if enough.any():
-                acc.add_bulk(np.full(int(enough.sum()), sub_idx[sub]), pix[enough],
-                             pw[enough, sub, :], lv[enough])
+                acc.add_bulk(
+                    np.full(int(enough.sum()), sub_idx[sub]),
+                    pix[enough],
+                    pw[enough, sub, :],
+                    lv[enough],
+                )
                 stats["cells"] += int(enough.sum())
-        print("    %s: %d rows, %d used" % (os.path.basename(os.path.dirname(path)),
-                                            int(inday.sum()), int(ok.sum())))
+        print(
+            "    %s: %d rows, %d used"
+            % (os.path.basename(os.path.dirname(path)), int(inday.sum()), int(ok.sum()))
+        )
     if acc is None or not acc.cells:
         print("  %s: no usable rows (%s)" % (chain, dict(stats)))
         return None
     pix, n, s1, s2 = acc.arrays()
-    print("  %s: %d row(s) -> %d subband(s) x %d element(s) x %d pixel(s); "
-          "vetoed %d, no-geom %d, below-mask %d, thin %d; pointing %s"
-          % (chain, stats["rows"], n.shape[0], n.shape[1], len(pix),
-             stats["vetoed"], stats["nogeo"], stats["low"], stats["thin"], pointing))
+    print(
+        "  %s: %d row(s) -> %d subband(s) x %d element(s) x %d pixel(s); "
+        "vetoed %d, no-geom %d, below-mask %d, thin %d; pointing %s"
+        % (
+            chain,
+            stats["rows"],
+            n.shape[0],
+            n.shape[1],
+            len(pix),
+            stats["vetoed"],
+            stats["nogeo"],
+            stats["low"],
+            stats["thin"],
+            pointing,
+        )
+    )
     if stats["unhealthy"]:
-        print("  %s: %d row(s) dropped by the chain-health mask" % (chain, stats["unhealthy"]))
+        print(
+            "  %s: %d row(s) dropped by the chain-health mask"
+            % (chain, stats["unhealthy"])
+        )
     assert n.shape[0] == len(band), (n.shape, len(band))
-    return dict(pix=pix, n=n, s1=s1, s2=s2, freq_ids=freq_ids, pointing=pointing,
-                units="pedestal" + ("_unbiased" if args.unbiased else ""))
+    return dict(
+        pix=pix,
+        n=n,
+        s1=s1,
+        s2=s2,
+        freq_ids=freq_ids,
+        pointing=pointing,
+        units="pedestal" + ("_unbiased" if args.unbiased else ""),
+    )
 
 
 def find_inputs(args, chain, daystr):
     if args.source == "l0":
         import glob
+
         out = []
         for p in sorted(glob.glob(os.path.join(args.archive, "*", daystr + ".h5"))):
             if sender_chain(os.path.basename(os.path.dirname(p))) == chain:
@@ -715,31 +850,46 @@ def find_inputs(args, chain, daystr):
 def cmd_build(args):
     os.makedirs(args.outdir, exist_ok=True)
     for daystr in args.days:
-        day_unix = datetime.strptime(daystr, "%Y%m%d").replace(
-            tzinfo=timezone.utc).timestamp()
+        day_unix = (
+            datetime.strptime(daystr, "%Y%m%d").replace(tzinfo=timezone.utc).timestamp()
+        )
         # Which array was this day? Resolved first: a recabling or re-pointing inside the day
         # would make the master a sum of two arrays that nothing later can unmix, so
         # gnss_arraymap.for_day refuses a day that straddles an epoch change.
         try:
             epoch = gnss_arraymap.for_day(daystr)
         except gnss_arraymap.Refused as exc:
-            sys.exit("%s: %s\n  Add the interval to %s (then gnss_arraymap.py check) before "
-                     "building this day." % (daystr, exc, gnss_arraymap.CONFIG))
+            sys.exit(
+                "%s: %s\n  Add the interval to %s (then gnss_arraymap.py check) before "
+                "building this day." % (daystr, exc, gnss_arraymap.CONFIG)
+            )
         chains = args.chains or sorted(CHAIN_SYS)
         present = [(c, find_inputs(args, c, daystr)) for c in chains]
         present = [(c, p) for c, p in present if p]
         if not present:
-            print("%s: no %s archives found in %s" % (daystr, args.source, args.archive))
+            print(
+                "%s: no %s archives found in %s" % (daystr, args.source, args.archive)
+            )
             continue
         print("%s: %d chain(s)" % (daystr, len(present)))
         bore = (epoch.pointing.bore_az_deg, epoch.pointing.bore_el_deg)
         geom = Geometry(day_unix, args.veto_deg, bore)
-        out = {"nside": args.nside, "day": daystr, "source": args.source,
-               "veto_deg": args.veto_deg, "range_norm": not args.no_range_norm,
-               "array_epoch": epoch.name, "array_epoch_key": epoch.key(),
-               "bore_az_deg": bore[0], "bore_el_deg": bore[1],
-               "chains": []}
-        print("  array epoch %s%s" % (epoch.key(), "" if epoch.verified else "  (UNVERIFIED)"))
+        out = {
+            "nside": args.nside,
+            "day": daystr,
+            "source": args.source,
+            "veto_deg": args.veto_deg,
+            "range_norm": not args.no_range_norm,
+            "array_epoch": epoch.name,
+            "array_epoch_key": epoch.key(),
+            "bore_az_deg": bore[0],
+            "bore_el_deg": bore[1],
+            "chains": [],
+        }
+        print(
+            "  array epoch %s%s"
+            % (epoch.key(), "" if epoch.verified else "  (UNVERIFIED)")
+        )
         # Only build_day_h5 applies the chain-health mask, so an elem build neither loads nor
         # records one: a mask in the meta would claim a veto that did not happen.
         hm = args.health_mask if args.source == "l0" else None
@@ -749,10 +899,22 @@ def cmd_build(args):
             hm = os.path.join(HEALTH_DIR, "mask_%s.json" % daystr)
         args._health = gnss_chain_health.load_mask(hm) if hm else {}
         if args._health:
-            print("  health mask %s: %s" % (hm, ", ".join("%s %d bin(s)" % (c, len(b)) for c, (_, b) in
-                                                          sorted(args._health.items()) if b) or "nothing masked"))
+            print(
+                "  health mask %s: %s"
+                % (
+                    hm,
+                    ", ".join(
+                        "%s %d bin(s)" % (c, len(b))
+                        for c, (_, b) in sorted(args._health.items())
+                        if b
+                    )
+                    or "nothing masked",
+                )
+            )
         elif hm:
-            print("  health mask %s: not found -- no chain-health veto for this day" % hm)
+            print(
+                "  health mask %s: not found -- no chain-health veto for this day" % hm
+            )
         out["health_mask"] = hm or None
         blobs = {}
         for chain, paths in present:
@@ -760,30 +922,44 @@ def cmd_build(args):
                 # The gain solve is its own pass over the same files: it needs every
                 # satellite's whole day before the first sample can be corrected, so it
                 # cannot ride along with the accumulation it corrects.
-                pg = (prn_gain_table(args, chain, paths, day_unix, geom)
-                      if args.prn_norm else None)
+                pg = (
+                    prn_gain_table(args, chain, paths, day_unix, geom)
+                    if args.prn_norm
+                    else None
+                )
                 r = build_day_h5(args, chain, paths, day_unix, geom, prn_gain=pg)
                 if pg:
                     out["prn_norm"] = True
-                    out.setdefault("prn_gains_db", {})[chain] = \
-                        {str(k): round(v, 3) for k, v in sorted(pg.items())}
+                    out.setdefault("prn_gains_db", {})[chain] = {
+                        str(k): round(v, 3) for k, v in sorted(pg.items())
+                    }
             else:
                 if args.prn_norm:
-                    sys.exit("--prn-norm needs --source l0 (it solves from the cube rows)")
+                    sys.exit(
+                        "--prn-norm needs --source l0 (it solves from the cube rows)"
+                    )
                 r = build_day(args, chain, paths, day_unix, geom)
             if r is None:
                 continue
             out["units"] = r.get("units", "power")
             if r.get("pointing"):
                 if out.get("pointing", r["pointing"]) != r["pointing"]:
-                    sys.exit("two pointings in one build: %s / %s" % (out["pointing"], r["pointing"]))
+                    sys.exit(
+                        "two pointings in one build: %s / %s"
+                        % (out["pointing"], r["pointing"])
+                    )
                 out["pointing"] = r["pointing"]
             i = len(out["chains"])
-            out["chains"].append({"chain": chain, "sys": CHAIN_SYS[chain],
-                                  "n_sub": int(r["n"].shape[0]),
-                                  "n_elem": int(r["n"].shape[1]),
-                                  "n_pix": int(len(r["pix"])),
-                                  "freq_ids": r["freq_ids"]})
+            out["chains"].append(
+                {
+                    "chain": chain,
+                    "sys": CHAIN_SYS[chain],
+                    "n_sub": int(r["n"].shape[0]),
+                    "n_elem": int(r["n"].shape[1]),
+                    "n_pix": int(len(r["pix"])),
+                    "freq_ids": r["freq_ids"],
+                }
+            )
             blobs["pix_%d" % i] = r["pix"]
             blobs["n_%d" % i] = r["n"]
             blobs["s1_%d" % i] = r["s1"]
@@ -791,11 +967,15 @@ def cmd_build(args):
         # The archive path names a pointing and the epoch records one; if they disagree, one
         # of the two is wrong and the map would be drawn around the wrong boresight.
         if out.get("pointing") and out["pointing"] != epoch.pointing.name:
-            sys.exit("%s: archive says pointing %s, epoch %s records %s -- fix one before "
-                     "building" % (daystr, out["pointing"], epoch.name, epoch.pointing.name))
+            sys.exit(
+                "%s: archive says pointing %s, epoch %s records %s -- fix one before "
+                "building" % (daystr, out["pointing"], epoch.name, epoch.pointing.name)
+            )
         nm, nv = geom.veto_stats()
-        print("  railing veto: %d/%d minute(s) vetoed (%.1f%%) at %.1f deg"
-              % (nv, nm, 100.0 * nv / max(1, nm), args.veto_deg))
+        print(
+            "  railing veto: %d/%d minute(s) vetoed (%.1f%%) at %.1f deg"
+            % (nv, nm, 100.0 * nv / max(1, nm), args.veto_deg)
+        )
         if not out["chains"]:
             continue
         path = os.path.join(args.outdir, "cube_%s_nside%d.npz" % (daystr, args.nside))
@@ -823,8 +1003,10 @@ def cmd_export(args):
         nside0 = int(meta["nside"])
         nside = args.nside or nside0
         if nside > nside0:
-            sys.exit("--nside %d is finer than the master's %d: a cube cannot be "
-                     "up-sampled, rebuild instead" % (nside, nside0))
+            sys.exit(
+                "--nside %d is finer than the master's %d: a cube cannot be "
+                "up-sampled, rebuild instead" % (nside, nside0)
+            )
         bore = (meta.get("bore_az_deg", BORE_AZ), meta.get("bore_el_deg", BORE_EL))
         shift = 0
         while (nside0 >> shift) > nside:
@@ -836,7 +1018,9 @@ def cmd_export(args):
                 pix = ring_downgrade(pix, nside0, nside)
             # Bin subbands, then coalesce duplicate pixels created by the downgrade: both are
             # plain sums because the stored quantity is a linear accumulator.
-            n, s1, sub_fid = bin_subbands(n, s1, meta["chains"][i]["freq_ids"], args.subbands)
+            n, s1, sub_fid = bin_subbands(
+                n, s1, meta["chains"][i]["freq_ids"], args.subbands
+            )
             pixu, inv = np.unique(pix, return_inverse=True)
             if len(pixu) != len(pix):
                 nn = np.zeros(n.shape[:2] + (len(pixu),), n.dtype)
@@ -848,14 +1032,25 @@ def cmd_export(args):
             # reproduce every centre's pixel index (verifyPixelisation in beamcube.js), or the
             # page refuses to draw.
             az, el = pix_centres(pixu, nside)
-            chains.append({"chain": c["chain"], "sys": c["sys"],
-                           "n_sub": int(n.shape[0]), "n_elem": int(n.shape[1]),
-                           "n_pix": int(len(pixu)), "freq_ids": sub_fid,
-                           "lobe_db": lobe_level_db(n, s1, az, el, args.offset_annulus,
-                                                    bore)})
-            arrays.append((pixu.astype(np.int32),
-                           np.stack([az, el], 1).astype(np.float32).ravel(),
-                           n.astype(np.uint32), s1.astype(np.float32)))
+            chains.append(
+                {
+                    "chain": c["chain"],
+                    "sys": c["sys"],
+                    "n_sub": int(n.shape[0]),
+                    "n_elem": int(n.shape[1]),
+                    "n_pix": int(len(pixu)),
+                    "freq_ids": sub_fid,
+                    "lobe_db": lobe_level_db(n, s1, az, el, args.offset_annulus, bore),
+                }
+            )
+            arrays.append(
+                (
+                    pixu.astype(np.int32),
+                    np.stack([az, el], 1).astype(np.float32).ravel(),
+                    n.astype(np.uint32),
+                    s1.astype(np.float32),
+                )
+            )
         # Cross-chain offsets. Pedestal units remove each bin's own noise-floor scale, but the
         # sky signal still differs per chain (satellite EIRP per band, code bandwidth caught by
         # the comb), so two chains are two beams with different zeros. Each chain's offset from
@@ -865,8 +1060,11 @@ def cmd_export(args):
         # never baked into the cube.
         ref = next((c for c in chains if c["chain"] == args.offset_ref), chains[0])
         for c in chains:
-            c["offset_db"] = (round(c["lobe_db"] - ref["lobe_db"], 2)
-                              if c["lobe_db"] is not None and ref["lobe_db"] is not None else 0.0)
+            c["offset_db"] = (
+                round(c["lobe_db"] - ref["lobe_db"], 2)
+                if c["lobe_db"] is not None and ref["lobe_db"] is not None
+                else 0.0
+            )
         day = meta["day"]
         # One .bin per chain, fetched by the page only when that chain is selected: with the
         # full channel axis a chain is tens of MB at nside 32.
@@ -878,18 +1076,26 @@ def cmd_export(args):
             with open(os.path.join(args.outdir, c["bin"]), "wb") as fh:
                 fh.write(blob)
             total += len(blob)
-        man = {"day": day, "nside": nside, "source": meta["source"],
-               "pointing": meta.get("pointing"), "units": meta.get("units", "power"),
-               "array_epoch": meta.get("array_epoch"),
-               "array_epoch_key": meta.get("array_epoch_key"),
-               "bore_az_deg": bore[0], "bore_el_deg": bore[1],
-               "veto_deg": meta["veto_deg"], "range_norm": meta["range_norm"],
-               "offset_ref": ref["chain"], "offset_annulus_deg": list(args.offset_annulus),
-               "chains": chains,
-               # The .bin layout; the viewer slices one ArrayBuffer in this order.
-               "layout": "per chain file: pix int32[n_pix], centre float32[n_pix*2] "
-                         "(az,el degrees), n uint32[n_sub*n_elem*n_pix], "
-                         "s1 float32[n_sub*n_elem*n_pix]"}
+        man = {
+            "day": day,
+            "nside": nside,
+            "source": meta["source"],
+            "pointing": meta.get("pointing"),
+            "units": meta.get("units", "power"),
+            "array_epoch": meta.get("array_epoch"),
+            "array_epoch_key": meta.get("array_epoch_key"),
+            "bore_az_deg": bore[0],
+            "bore_el_deg": bore[1],
+            "veto_deg": meta["veto_deg"],
+            "range_norm": meta["range_norm"],
+            "offset_ref": ref["chain"],
+            "offset_annulus_deg": list(args.offset_annulus),
+            "chains": chains,
+            # The .bin layout; the viewer slices one ArrayBuffer in this order.
+            "layout": "per chain file: pix int32[n_pix], centre float32[n_pix*2] "
+            "(az,el degrees), n uint32[n_sub*n_elem*n_pix], "
+            "s1 float32[n_sub*n_elem*n_pix]",
+        }
         with open(os.path.join(args.outdir, "cube_%s.json" % day), "w") as fh:
             json.dump(man, fh)
         # array_epoch goes in the index as well as the manifest: the page sums the days picked
@@ -898,15 +1104,36 @@ def cmd_export(args):
         # selected day's (sameCurrency in beamcube.js); the export does not refuse, since one
         # index legitimately lists days of several epochs. A null means a master built without
         # the field, which is no promise of a single epoch.
-        index.append({"day": day, "bytes": total,
-                      "array_epoch": meta.get("array_epoch"),
-                      "array_epoch_key": meta.get("array_epoch_key"),
-                      "chains": [c["chain"] for c in chains]})
-        print("%s -> %s/cube_%s_<chain>.bin (%.1f MB, nside %d, %d chain(s), %s)"
-              % (src, args.outdir, day, total / 1e6, nside, len(chains),
-                 "  ".join("%s %d ch" % (c["chain"], c["n_sub"]) for c in chains)))
-        print("   lobe %.0f..%.0f deg vs %s: %s" % (args.offset_annulus[0], args.offset_annulus[1],
-              ref["chain"], "  ".join("%s %+.1f dB" % (c["chain"], c["offset_db"]) for c in chains)))
+        index.append(
+            {
+                "day": day,
+                "bytes": total,
+                "array_epoch": meta.get("array_epoch"),
+                "array_epoch_key": meta.get("array_epoch_key"),
+                "chains": [c["chain"] for c in chains],
+            }
+        )
+        print(
+            "%s -> %s/cube_%s_<chain>.bin (%.1f MB, nside %d, %d chain(s), %s)"
+            % (
+                src,
+                args.outdir,
+                day,
+                total / 1e6,
+                nside,
+                len(chains),
+                "  ".join("%s %d ch" % (c["chain"], c["n_sub"]) for c in chains),
+            )
+        )
+        print(
+            "   lobe %.0f..%.0f deg vs %s: %s"
+            % (
+                args.offset_annulus[0],
+                args.offset_annulus[1],
+                ref["chain"],
+                "  ".join("%s %+.1f dB" % (c["chain"], c["offset_db"]) for c in chains),
+            )
+        )
     index.sort(key=lambda d: d["day"])
     with open(os.path.join(args.outdir, "index.json"), "w") as fh:
         json.dump({"days": index}, fh)
@@ -935,17 +1162,22 @@ def pix_centres(pix, nside):
     try:
         import healpy as hp
     except ImportError:
-        sys.exit("export needs healpy for pixel centres: run it with "
-                 "/home/kvand/gnss/venv/bin/python (not venv-ft). The build subcommand does "
-                 "not need it.")
+        sys.exit(
+            "export needs healpy for pixel centres: run it with "
+            "/home/kvand/gnss/venv/bin/python (not venv-ft). The build subcommand does "
+            "not need it."
+        )
     theta, phi = hp.pix2ang(int(nside), np.asarray(pix, np.int64), nest=False)
     return np.degrees(phi) % 360.0, 90.0 - np.degrees(theta)
 
 
 def ring_downgrade(pix, nside_in, nside_out):
     """RING -> RING at a coarser nside, via NEST where the downgrade is a bit shift."""
-    return nest2ring(ring2nest(np.asarray(pix, np.int64), nside_in)
-                     >> (2 * (int(np.log2(nside_in)) - int(np.log2(nside_out)))), nside_out)
+    return nest2ring(
+        ring2nest(np.asarray(pix, np.int64), nside_in)
+        >> (2 * (int(np.log2(nside_in)) - int(np.log2(nside_out)))),
+        nside_out,
+    )
 
 
 def bin_subbands(n, s1, freq_ids, nbin):
@@ -969,8 +1201,13 @@ _R2N_CACHE = {}
 
 def _compress(v):
     v = np.asarray(v, np.int64) & 0x5555555555555555
-    for s, m in ((1, 0x3333333333333333), (2, 0x0F0F0F0F0F0F0F0F), (4, 0x00FF00FF00FF00FF),
-                 (8, 0x0000FFFF0000FFFF), (16, 0x00000000FFFFFFFF)):
+    for s, m in (
+        (1, 0x3333333333333333),
+        (2, 0x0F0F0F0F0F0F0F0F),
+        (4, 0x00FF00FF00FF00FF),
+        (8, 0x0000FFFF0000FFFF),
+        (16, 0x00000000FFFFFFFF),
+    ):
         v = (v | (v >> s)) & m
     return v
 
@@ -1004,7 +1241,9 @@ def nest2ring(pix, nside):
         nr = np.int64(nside)
         kshift = (jr[eq] - nside) & 1
         jp = (jpll[f[eq]] * nr + x[eq] - y[eq] + 1 + kshift) // 2
-        jp = np.where(jp > 4 * nside, jp - 4 * nside, np.where(jp < 1, jp + 4 * nside, jp))
+        jp = np.where(
+            jp > 4 * nside, jp - 4 * nside, np.where(jp < 1, jp + 4 * nside, jp)
+        )
         out[eq] = ncap + (jr[eq] - nside) * 4 * nside + jp - 1
     return out
 
@@ -1015,68 +1254,110 @@ def ring2nest(pix, nside):
         npix = 12 * key * key
         nest = np.arange(npix, dtype=np.int64)
         inv = np.empty(npix, np.int64)
-        inv[nest2ring(nest, key)] = nest      # ring index -> nest index, exactly
+        inv[nest2ring(nest, key)] = nest  # ring index -> nest index, exactly
         _R2N_CACHE[key] = inv
     return _R2N_CACHE[key][np.asarray(pix, np.int64)]
 
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     b = sub.add_parser("build", help="archives -> master cube per day")
-    b.add_argument("--days", nargs="+", required=True, help="UTC days to build, YYYYMMDD")
-    b.add_argument("--chains", nargs="*",
-                   help="chains to build (default: every chain with an archive for the day)")
+    b.add_argument(
+        "--days", nargs="+", required=True, help="UTC days to build, YYYYMMDD"
+    )
+    b.add_argument(
+        "--chains",
+        nargs="*",
+        help="chains to build (default: every chain with an archive for the day)",
+    )
     b.add_argument("--source", choices=["elem", "l0"], default="elem")
-    b.add_argument("--archive", default=None,
-                   help="input directory. elem: the element archive (default "
-                        "/home/kvand/gnss/fixtures/obs); l0: one pointing's directory of the "
-                        "cube archive (default /mnt/cs00/data/kvand/gnss_cube/l0/p0_dec40p73), "
-                        "or the same pointing under rung12/ or rung60/")
+    b.add_argument(
+        "--archive",
+        default=None,
+        help="input directory. elem: the element archive (default "
+        "/home/kvand/gnss/fixtures/obs); l0: one pointing's directory of the "
+        "cube archive (default /mnt/cs00/data/kvand/gnss_cube/l0/p0_dec40p73), "
+        "or the same pointing under rung12/ or rung60/",
+    )
     b.add_argument("--outdir", default="/home/kvand/gnss/fixtures/beamcube")
     b.add_argument("--nside", type=int, default=64)
-    b.add_argument("--veto-deg", type=float, default=5.0,
-                   help="cross-chain railing veto: drop every minute in which a satellite "
-                        "of any constellation is within this many degrees of boresight, for "
-                        "every chain. 0 disables it and keeps the main lobe, contaminated by "
-                        "the railing -- quote its level as a lower bound")
+    b.add_argument(
+        "--veto-deg",
+        type=float,
+        default=5.0,
+        help="cross-chain railing veto: drop every minute in which a satellite "
+        "of any constellation is within this many degrees of boresight, for "
+        "every chain. 0 disables it and keeps the main lobe, contaminated by "
+        "the railing -- quote its level as a lower bound",
+    )
     b.add_argument("--mask-deg", type=float, default=0.0)
-    b.add_argument("--health-mask", default="auto",
-                   help="chain-health mask from gnss_chain_health.py, whose masked time bins are "
-                        "dropped per chain (--source l0 only); 'auto' = %s/mask_<day>.json, "
-                        "'' = none" % HEALTH_DIR)
+    b.add_argument(
+        "--health-mask",
+        default="auto",
+        help="chain-health mask from gnss_chain_health.py, whose masked time bins are "
+        "dropped per chain (--source l0 only); 'auto' = %s/mask_<day>.json, "
+        "'' = none" % HEALTH_DIR,
+    )
     b.add_argument("--no-range-norm", action="store_true")
-    b.add_argument("--prn-norm", action="store_true",
-                   help="divide out each satellite's own level (EIRP + its antenna "
-                        "pattern), solved jointly with a coarse beam by median polish "
-                        "(--source l0 only). Without it each satellite paints its track at "
-                        "its own level, and the map grows arcs along the bright ones.")
-    b.add_argument("--unbiased", action="store_true",
-                   help="l0: keep below-pedestal samples (signed debias) instead of dropping them")
+    b.add_argument(
+        "--prn-norm",
+        action="store_true",
+        help="divide out each satellite's own level (EIRP + its antenna "
+        "pattern), solved jointly with a coarse beam by median polish "
+        "(--source l0 only). Without it each satellite paints its track at "
+        "its own level, and the map grows arcs along the bright ones.",
+    )
+    b.add_argument(
+        "--unbiased",
+        action="store_true",
+        help="l0: keep below-pedestal samples (signed debias) instead of dropping them",
+    )
     b.set_defaults(func=cmd_build)
 
     e = sub.add_parser("export", help="master cubes -> browser cubes + index.json")
     e.add_argument("masters", nargs="+")
     e.add_argument("--outdir", default="/home/kvand/gnss/fixtures/beamcube/web")
-    e.add_argument("--nside", type=int, default=16,
-                   help="nside of the browser cubes (default %(default)s), at most the "
-                        "master's; 0 = keep the master's")
-    e.add_argument("--subbands", type=int, default=0,
-                   help="group the channel axis into N bins (0 = every channel, the default -- "
-                        "the axis is absolute freq_id and a sum across it is the reader's call)")
-    e.add_argument("--offset-ref", default="gps_l5",
-                   help="chain whose level in --offset-annulus defines 0 dB for the per-chain "
-                        "offsets (the first chain if it is absent)")
-    e.add_argument("--offset-annulus", type=float, nargs=2, default=(2.0, 12.0),
-                   metavar=("LO", "HI"), help="off-boresight degrees where the offsets are measured")
+    e.add_argument(
+        "--nside",
+        type=int,
+        default=16,
+        help="nside of the browser cubes (default %(default)s), at most the "
+        "master's; 0 = keep the master's",
+    )
+    e.add_argument(
+        "--subbands",
+        type=int,
+        default=0,
+        help="group the channel axis into N bins (0 = every channel, the default -- "
+        "the axis is absolute freq_id and a sum across it is the reader's call)",
+    )
+    e.add_argument(
+        "--offset-ref",
+        default="gps_l5",
+        help="chain whose level in --offset-annulus defines 0 dB for the per-chain "
+        "offsets (the first chain if it is absent)",
+    )
+    e.add_argument(
+        "--offset-annulus",
+        type=float,
+        nargs=2,
+        default=(2.0, 12.0),
+        metavar=("LO", "HI"),
+        help="off-boresight degrees where the offsets are measured",
+    )
     e.set_defaults(func=cmd_export)
 
     args = ap.parse_args()
     if getattr(args, "archive", 0) is None:
-        args.archive = ("/mnt/cs00/data/kvand/gnss_cube/l0/p0_dec40p73" if args.source == "l0"
-                        else "/home/kvand/gnss/fixtures/obs")
+        args.archive = (
+            "/mnt/cs00/data/kvand/gnss_cube/l0/p0_dec40p73"
+            if args.source == "l0"
+            else "/home/kvand/gnss/fixtures/obs"
+        )
     args.func(args)
 
 
