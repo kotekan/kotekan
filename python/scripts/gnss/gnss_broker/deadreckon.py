@@ -1500,6 +1500,23 @@ def trk_unfit(js, rx, t_now, args):
         return "error: %s" % e
 
 
+def jsrc_step(rx, to_search):
+    """The clock step a JOINT-SOURCE switch puts on the chain's seeds, for its log line: the
+    clock of the state switched to minus the one switched from, in reference chips, wrapped
+    to the shared modulus, or "n/a" when either state is absent or the moduli differ.
+    Never raises."""
+    try:
+        a = rx._joint.get(TRK_STATE)
+        b = rx._joint.get(JOINT_STATE)
+        if a is None or b is None or float(a.L) != float(b.L):
+            return "n/a"
+        L = float(a.L)
+        d = (float(b.clk) - float(a.clk)) if to_search else (float(a.clk) - float(b.clk))
+        return "%+.3f" % (((d + L / 2.0) % L) - L / 2.0)
+    except Exception:
+        return "n/a"
+
+
 def joint_read(ctx):
     """The joint state this chain's consumers read: (the state or None, which state it is,
     the log tag). The unit to convert through is ctx.rx.joint_unit(which), and the slew drives
@@ -1533,7 +1550,8 @@ def joint_read(ctx):
                     _log(
                         "JOINT-SOURCE %s: trk -> search (%s): the consumers read the "
                         "search-fed joint state until the tracker-fed one has passed for "
-                        "%.0f s" % (name, why, a.joint_trk_return_s)
+                        "%.0f s (clock step %s reference chips)"
+                        % (name, why, a.joint_trk_return_s, jsrc_step(ctx.rx, True))
                     )
         elif st["mode"] == "search":
             if st["fresh_t"] is None:
@@ -1541,8 +1559,9 @@ def joint_read(ctx):
             if t_now - st["fresh_t"] >= a.joint_trk_return_s:
                 st["mode"] = "trk"
                 _log(
-                    "JOINT-SOURCE %s: search -> trk (fit and fresh for %.0f s)"
-                    % (name, t_now - st["fresh_t"])
+                    "JOINT-SOURCE %s: search -> trk (fit and fresh for %.0f s; clock step "
+                    "%s reference chips)"
+                    % (name, t_now - st["fresh_t"], jsrc_step(ctx.rx, False))
                 )
             else:
                 why = "trk fresh %.0f of %.0f s" % (

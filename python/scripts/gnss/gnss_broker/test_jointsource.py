@@ -19,6 +19,7 @@ per-satellite slew offset, the birth), with every log line formatted.
 
 import ast
 import os
+import re
 import sys
 import types
 
@@ -916,7 +917,9 @@ def test_trk_held_feed_falls_back():
         and sw[0][0] == t_sw
         and "trk -> search (stale %.0f s)" % (t_sw - t0) in sw[0][1]
         and sw[1][0] == t_back
-        and "search -> trk (fit and fresh for %.0f s)" % ret_s in sw[1][1],
+        and "search -> trk (fit and fresh for %.0f s; clock step " % ret_s in sw[1][1]
+        and re.search(r"\(clock step [-+]\d+\.\d{3} reference chips\)$", sw[0][1]) is not None
+        and re.search(r"; clock step [-+]\d+\.\d{3} reference chips\)$", sw[1][1]) is not None,
         "one JOINT-SOURCE line each way, at %.0f s and %.0f s (%s)"
         % (t_sw, t_back, sw),
     )
@@ -1111,11 +1114,11 @@ def test_none_fields_format():
         got = deadreckon.joint_read(ctx)
         check(
             got[1] == JOINT_STATE
-            and lines
-            == [
+            and len(lines) == 1
+            and lines[0].startswith(
                 "JOINT-SOURCE %s: trk -> search (no epoch): the consumers read the search-fed "
-                "joint state until the tracker-fed one has passed for 30 s" % BAND
-            ],
+                "joint state until the tracker-fed one has passed for 30 s (clock step " % BAND
+            ),
             "no --signal: the switch line names the band (%s)" % lines,
         )
         del lines[:]
