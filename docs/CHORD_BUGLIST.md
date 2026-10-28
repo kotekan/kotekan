@@ -820,6 +820,20 @@ is NOT Galileo E6-A or the lane transfer. Satellites there are removed -14..-16 
   4. Then: a live b3i-chain trial and waveform subtraction; or, without a code, TLE-steered geometric lanes (tier 2:
      TLE ~0.05 deg against a synthesised beam ~0.18 deg).
   5. Tell the SNIFFLES authors if they lack 1202/1268.
+**Update 10-28 (tier2_1028/RESULTS_tier2_20261028.txt):**
+- **Correction:** the first TLE matches converted Unix time with skyfield `ts.utc(1970,1,1,0,0,t)`, which counts the 27
+  leap seconds, so positions were 27 s (~8 deg) early. Use `ts.from_datetime`.
+  - Corrected: 37 of 43 10-26 bursts sit on a DIGUI TLE track at dt 0.0 +- 0.2 s, 0.3-8.9 deg from boresight, each a
+    different satellite; the 12.7-min trains are consecutive DIGUI numbers.
+  - 40 of 44 passes within 6 deg give a burst. DIGUI-01/-03 (the first launch, 2024-240) are silent.
+- **TLE pointing** is 0.007-0.036 deg (0.04-0.2 synthesised beams).
+- **Projecting the TLE track** removes a burst by ~10 dB (16.5 ideal). It is limited by direction-dependent element
+  phase, not pointing. The eigen path already takes ~7 dB, so tier-2 lanes buy <= 0.5 dB; use the TLE to gate and seed
+  the eigen path instead.
+- **The continuous +35 % is the sum of the ~14 DIGUI in view through dish sidelobes** (60-70 % from satellites
+  45-90 deg off boresight). It is spatially spread: 14-28 extra modes gain only 0.7-1.6 dB over a null.
+- **At ~850 above the horizon** that sum is ~+10 dB over system noise in 1258-1279 MHz and full rank, so no projection
+  removes it. Code-based waveform subtraction (TODO 3-4) is the only scalable fix.
 
 ### #214 — the N^2 projection measured on 10-24: what the lanes leave, and what they cannot reach (2026-10-24, KV: "roll it out, get the E6 PRS lobe, note the 1202 emitter")
 **Measured (scratch proj1024/: gauges polled 40x on cx27/43/44/51 ~14:58Z, gains divided out per input, continuum
