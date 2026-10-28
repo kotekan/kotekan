@@ -27,16 +27,10 @@
 # hard coded.
 {% set num_subset_dishes = dish_blocks_subset|length * 8 %}
 
-# Subset frame size and buffer depth.  Derived rather than written out so that the figures
-# quoted in the comments below track dish_blocks_subset instead of going stale.
+# Input and subset frame sizes.  Derived rather than written out so that the figures quoted
+# in the comments below track dish_blocks_subset instead of going stale.
+{% set input_frame_mib = samples_per_data_set * num_local_freq * 2 * num_dishes // 1048576 %}
 {% set subset_frame_mib = samples_per_data_set * num_local_freq * 2 * num_subset_dishes // 1048576 %}
-{% set subset_buffer_depth = 20 %}
-# Each subset frame is {{ subset_frame_mib }} MiB, so each of the two subset buffers holds
-# {{ subset_buffer_depth }} x {{ subset_frame_mib }} MiB = {{ (subset_buffer_depth * subset_frame_mib / 1024) | round(2) }} GiB and absorbs ~{{ subset_buffer_depth * 42 }} ms of hdf5FileWrite
-# stalls (frames arrive every ~42 ms).  The depth stays at {{ subset_buffer_depth }} now that both
-# polarizations are copied: the frame size, and hence the write rate, both doubled, so the
-# stall tolerance is worth more than it was, and a few GiB per NUMA domain is negligible on
-# this host.
 
 # num_capture_frames: DPDK frames to record before the capture stops.
 # The pipeline is 1:1 from the network input buffer through to hdf5FileWrite, so this is also
@@ -45,11 +39,20 @@
 # running so the file writer can flush; the writer then shuts kotekan down.
 {% set num_capture_frames = 240 %}
 
+# Buffering.  hdf5FileWrite is the slowest stage (the Sep 4 2026 capture wrote 10 s of data in
+# ~40 s), so the backlog collects in its input: each subset buffer holds the whole capture,
+# {{ num_capture_frames }} x {{ subset_frame_mib }} MiB = {{ (num_capture_frames * subset_frame_mib / 1024) | round(2) }} GiB per NUMA half, from the 2 MiB hugepage pool.  The
+# stages before it keep up with the capture, so their buffers hold only host_side_buffer_depth
+# frames (~1 s) of the {{ input_frame_mib }} MiB input.  SubsetBaseband has the least headroom of them
+# (~40 ms per ~42 ms frame on an idle host); the network input and host voltage buffers absorb
+# it falling behind.  A stall that outlasts them drops packets at the capture workers, which
+# the receipt bitmaps mark missing.
+
 # The two NUMA halves, as in pathfinder.j2. Each owns a NIC port and a set of cores, and every
 # per-half buffer and stage below loops over this table; a block that exists once per half is
 # named <block>_<id> (sfx). Half 0's packet mask, subset and writer stages run on the root
 # cpu_affinity. Half 1's are pinned to free cores on node 1 (16-31; 16-18 and 20-23 are taken
-# by the packet mask, transposes, frame service and DPDK lcores), so that its 384 MiB input
+# by the packet mask, transposes, frame service and DPDK lcores), so that its {{ input_frame_mib }} MiB input
 # frames and {{ subset_frame_mib }} MiB output frames do not cross the socket link.
 {% set numa_halves = [
     {"id": 0, "sfx": "_0", "mask_cpus": [0, 1, 8, 11, 12, 13, 14, 15], "transpose_cpus": [2, 3],
@@ -91,16 +94,19 @@ main_pool:
 
 # Buffers
 network_input_buffers:
-    num_frames: {{ num_capture_frames }}
+    num_frames: host_side_buffer_depth
     frame_size: dpdk_output_frame_size
     metadata_pool: main_pool
     use_hugepages: true
 
     # The workers share an output buffer.
     # Fed by dpdkCore (crs16BoardCaptureWorker handler) -> leave standard.
+    # Frames are reused within a capture, so each is zeroed again once emptied; cpu_affinity
+    # keeps the zeroing threads on the buffer's NUMA node.
 {% for n in numa_halves %}
     network_input_buffer_{{ n.id }}:
         zero_new_frames: true
+        cpu_affinity: {{ n.other_cpus }}
         numa_node: {{ n.id }}
         zero_value: 0x88
         kotekan_buffer: standard
@@ -125,7 +131,7 @@ host_voltage_buffer_{{ n.id }}:
     numa_node: {{ n.id }}
 {% endfor %}
 
-# Subset Buffers, one per NUMA domain.
+# Subset Buffers, one per NUMA domain, each holding the whole capture (see Buffering above).
 # The extents must match what SubsetBaseband produces, which is why the trailing dish
 # extent is derived from dish_blocks_subset above.
 {% for n in numa_halves %}
@@ -134,15 +140,16 @@ subset_voltage_buffer_{{ n.id }}:
     extents: [samples_per_data_set, num_local_freq, 2, {{ num_subset_dishes }}]
     value_type: int4x2_swapped_withoffset
     numa_node: {{ n.id }}
-    num_frames: {{ subset_buffer_depth }}
+    num_frames: {{ num_capture_frames }}
     metadata_pool: main_pool
+    use_hugepages: true
 {% endfor %}
 
 # One receipt bitmap per capture worker (two per half), combined by that half's
 # process_packet_mask stage.
 packet_receipt_bitmap_buffers:
     log_level: info
-    num_frames: {{ num_capture_frames }}
+    num_frames: host_side_buffer_depth
     frame_size: (samples_per_data_set / time_samples_per_packet) * num_crs_boards  # One bit per stream
     metadata_pool: main_pool
     use_hugepages: true
