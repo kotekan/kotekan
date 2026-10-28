@@ -70,6 +70,7 @@ def test_gates():
             "track": 1,
             "q": 2,
             "onpeak": 0,
+            "xcoh": 0,
             "power": 0,
             "rail": 0,
             "tau": 1,
@@ -176,6 +177,20 @@ def test_gates():
         trk5, fleet5, {}, lambda p: True, {}, "G", 1.0, 0.1, 0.3, 4, 10.0
     )
     check(len(rows6) == 3, "no readback and no rail: the gate is off")
+    # 10-27/28: G20, G27 and G03 left the signal for minutes with q, power and every other gate
+    # passing; only the fleet's cross-instance coherence said so (~0 against 0.95+).
+    fleet8 = {p: fl(3.0) for p in trk5}
+    fleet8[1].update(xcoh=0.97, n_xcoh=40)
+    fleet8[3].update(xcoh=-0.05, n_xcoh=40)
+    fleet8[6].update(xcoh=0.05, n_xcoh=3)  # too few records to judge
+    rows8, failed8, _ = jtrk.feed_rows(
+        trk5, fleet8, {}, lambda p: True, {}, "G", 1.0, 0.1, 0.3, 4, 10.0
+    )
+    check(
+        [k for k, _y, _s in rows8] == [("G", 1), ("G", 6)] and failed8["xcoh"] == 1,
+        "xcoh -0.05 over 40 records fails; 0.97 feeds; 3 records is no verdict (%s)"
+        % failed8,
+    )
 
 
 def test_two_states():

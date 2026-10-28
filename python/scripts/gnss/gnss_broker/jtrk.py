@@ -38,9 +38,10 @@ joint_trk_min_sats satellites pass (a thin set cannot separate clk from b).
 """
 
 from gnss_broker.transport import _log, _log_rl
+from gnss_broker.trimarm import LOBE_MIN_RECORDS, LOBE_XCOH
 
 #: Gate names, in the order a satellite is tested; the first that fails is the one counted.
-GATES = ("track", "q", "onpeak", "power", "rail", "tau", "nrec", "stale")
+GATES = ("track", "q", "onpeak", "xcoh", "power", "rail", "tau", "nrec", "stale")
 #: The presence verdicts that admit a satellite whose tap is OFF the peak by construction: the
 #: displaced admission ("q+p:probes+disp", "q+deep:probes+disp") rescues exactly that row, and
 #: there this residual is the seed read back (the mirror), not the sky. The deep gate ("deep")
@@ -87,6 +88,15 @@ def feed_rows(
             failed["q"] += 1
         elif str(f.get("present_gate") or "").endswith(OFFPEAK_SUFFIX):
             failed["onpeak"] += 1
+        elif (
+            f.get("xcoh") is not None
+            and int(f.get("n_xcoh") or 0) >= LOBE_MIN_RECORDS
+            and f["xcoh"] < LOBE_XCOH
+        ):
+            # The instances' prompts do not agree: the tracker is off the signal, whatever q and
+            # the power say (10-27 G20 21:47, G27 22:44, 10-28 G03 03:12: xcoh ~0 for minutes,
+            # residuals -10..+23 chips, every other gate passed). trimarm's lobe test reads it.
+            failed["xcoh"] += 1
         elif (
             not f.get("p_med")
             or f.get("p_pow") is None
