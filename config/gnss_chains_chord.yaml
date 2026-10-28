@@ -506,7 +506,11 @@ chains:
         fleet-trim-readback: 1
         dr-forecast-lead-s: 1.0
         rrate-coarse-deweight: 1.0
-        joint-consume: clk,rate
+    # #191 step 3 canary (10-28): this chain's consumers read the tracker-fed state (TRK_STATE),
+    # and the slew drives each seed to its clk + b_i while b_i is settled and near its
+    # constellation's median, otherwise to clock + SatBiasFilter. Revert both keys to roll back.
+        joint-source: trk
+        joint-consume: clk,rate,slew
         dll-deep-gate: "33"
         rrate-cmd-min-sig: 100
         rrate-command: true
