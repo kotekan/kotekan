@@ -399,7 +399,11 @@ At the F-engine's return, one step per restart:
       (sigma under 0.08, not rejecting(), no escape in 60 s: JointReceiverState accessors) and
       within 0.5 reference chips of the median b of >= 3 others in its constellation;
       otherwise the seed keeps clk + the SatBiasFilter offset. The unfed chains (gps_l2c,
-      GLONASS, sbas_l5) stay on the live state.
+      GLONASS, sbas_l5) stay on the live state. A trk chain reads the search-fed state
+      instead while TRK_STATE is unfit or has accepted nothing for `--joint-trk-stale-s`
+      (30 s), and returns after `--joint-trk-return-s` (30 s) fresh: jtrk holds the feed
+      through a transit, and on 10-28 (G32) gal_e5b adopted the held clock for 13 min while
+      the receiver's moved ~0.6 chips (deadreckon.joint_read).
   4.  **Retire.** SatBiasFilter; the l-a EMA as a seed rate (keep the solve as the cp-rate
       tolerance reference until that reference is the joint rate); the sibling clock adoption
       as a level (the median solve stays as the modulus owner and the counterfactual the

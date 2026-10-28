@@ -47,7 +47,7 @@ from gnss_broker.fits import (
     split_erratic_offsets,
     append_windowed,
 )
-from gnss_broker.receiver import JOINT_REF_RATE_HZ, TRK_STATE, joint_tag, joint_which
+from gnss_broker.receiver import JOINT_REF_RATE_HZ, JOINT_STATE, TRK_STATE, joint_which
 from gnss_broker import sky as _sky
 from gnss_broker.sky import nearest_boresight, transit_sky
 from gnss_broker.trkresid import wrap
@@ -1246,11 +1246,10 @@ def dr_joint_clk(ctx):
     those would put the chain back on the churned clock the joint replaces. The receiver
     clock moves under 0.003 chips/s, so a walk never meets the guard and a real level change
     is a discontinuity, followed one hold late."""
-    # --joint-source: the state ctx.joint_state hands out (search-fed or tracker-fed), whose
-    # unit every conversion below must use; the tag marks the lines of a chain on the latter.
-    _which = joint_which(ctx.args)
-    _tag = joint_tag(ctx.args)
-    _jrC = ctx.joint_state(ctx.rx, ctx.band_id, ctx.args)
+    # --joint-source: the state joint_read hands out (search-fed, tracker-fed, or the
+    # search-fed one a trk chain falls back to), whose unit every conversion below must use;
+    # the tag says which.
+    _jrC, _which, _tag = joint_read(ctx)
     if _jrC is None or len(_jrC._idx) < ctx.args.joint_min_sats:
         # Not fit to consume: thin, deaf, or absent. A transit that thins the feeders below
         # joint_min_sats is the case the coast exists for, so coast here too, on the stamps
@@ -1472,6 +1471,93 @@ def trk_unsettled(js, key, t_now, args):
         return "error: %s" % e
 
 
+def trk_unfit(js, rx, t_now, args):
+    """Why the tracker-fed state may not be read by a --joint-source trk chain's consumers,
+    or None when it may. `js` is what ctx.joint_state handed out for it (None: refused by
+    Receiver.joint_consumable as absent, deaf or under joint_min_sats). Stale is no accepted
+    measurement within joint_trk_stale_s of t_now: jtrk holds the feed through a boresight
+    transit, and the state's clock then stands still (predict() may still advance its epoch,
+    so this reads the measurements, JointReceiverState.last_accepted). Never raises."""
+    try:
+        if js is None:
+            st = rx._joint.get(TRK_STATE)
+            if st is None:
+                return "unfit: absent"
+            if getattr(st, "deaf", False):
+                return "unfit: deaf"
+            if len(st._idx) < args.joint_min_sats:
+                return "unfit: n %d < %d" % (len(st._idx), args.joint_min_sats)
+            return "unfit"
+        if t_now is None:
+            return "no epoch"
+        t_acc = js.last_accepted()
+        if t_acc is None:
+            return "stale: nothing accepted"
+        if t_now - t_acc > args.joint_trk_stale_s:
+            return "stale %.0f s" % (t_now - t_acc)
+        return None
+    except Exception as e:
+        return "error: %s" % e
+
+
+def joint_read(ctx):
+    """The joint state this chain's consumers read: (the state or None, which state it is,
+    the log tag). The unit to convert through is ctx.rx.joint_unit(which), and the slew drives
+    a satellite from clk + b_i only when which is TRK_STATE.
+
+    --joint-source search: ctx.joint_state as it stands, JOINT_STATE, no tag. trk: TRK_STATE
+    while trk_unfit passes it, tagged [trk]; otherwise the search-fed JOINT_STATE through the
+    same gates, tagged [trk->search: why], which the consumers then treat exactly as on
+    search. A chain goes back to TRK_STATE only once it has passed for joint_trk_return_s.
+    The mode is per chain, in dr_state["jsrc"], and every switch logs one JOINT-SOURCE line
+    (a chain without dead-reckon has no dr_state and no epoch, so it reads JOINT_STATE and
+    logs no switch). With neither state fit the consumers get None and refuse or coast as
+    before. Never raises: an error reads as no state."""
+    a = ctx.args
+    if joint_which(a) != TRK_STATE:
+        return ctx.joint_state(ctx.rx, ctx.band_id, a), JOINT_STATE, ""
+    try:
+        t_now = getattr(ctx.drp, "t_now_abs", None)
+        jt = ctx.joint_state(ctx.rx, ctx.band_id, a)
+        why = trk_unfit(jt, ctx.rx, t_now, a)
+        persist = isinstance(ctx.dr_state, dict)
+        st = (ctx.dr_state if persist else {}).setdefault(
+            "jsrc", {"mode": "trk", "fresh_t": None}
+        )
+        name = getattr(a, "signal", None) or ctx.band_id
+        if why is not None:
+            st["fresh_t"] = None
+            if st["mode"] == "trk":
+                st["mode"] = "search"
+                if persist:
+                    _log(
+                        "JOINT-SOURCE %s: trk -> search (%s): the consumers read the "
+                        "search-fed joint state until the tracker-fed one has passed for "
+                        "%.0f s" % (name, why, a.joint_trk_return_s)
+                    )
+        elif st["mode"] == "search":
+            if st["fresh_t"] is None:
+                st["fresh_t"] = t_now
+            if t_now - st["fresh_t"] >= a.joint_trk_return_s:
+                st["mode"] = "trk"
+                _log(
+                    "JOINT-SOURCE %s: search -> trk (fit and fresh for %.0f s)"
+                    % (name, t_now - st["fresh_t"])
+                )
+            else:
+                why = "trk fresh %.0f of %.0f s" % (
+                    t_now - st["fresh_t"],
+                    a.joint_trk_return_s,
+                )
+        if st["mode"] == "trk":
+            return jt, TRK_STATE, "[trk]"
+        js = ctx.joint_state(ctx.rx, ctx.band_id, a, which=JOINT_STATE)
+        return js, JOINT_STATE, "[trk->search: %s]" % why
+    except Exception as e:
+        _log_rl("jsrc-err", "JOINT-SOURCE: no joint state read (%s)" % e, every_s=60.0)
+        return None, TRK_STATE, "[trk]"
+
+
 def seeds_are_model_owned(ctx, prn):
     """Does the model own this PRN's seed, so a locked seed is slewed toward the model rather
     than left to the DLL? True without detectors, under --detectors-monitor (the search is
@@ -1524,12 +1610,12 @@ def dr_seed(ctx):
         # satellite of this constellation in the joint state, every 30 s, outside the seeding loop.
         # The loop skips detected satellites (model-primary ones aside) and the joint state holds
         # only detected ones, so a comparison inside the loop would see almost none.
-        _jr3 = ctx.joint_state(ctx.rx, ctx.band_id, ctx.args)
+        _jr3, _w3, _tag3 = joint_read(ctx)
         # The joint is in reference chips (Receiver.joint_unit): the comparison is made in ours,
         # through the clock consumer's conversion and window, the only one both offsets are
         # defined in; at drp.mod a clock on the other side of a code wrap reads a whole period.
-        # The unit is that of the state --joint-source names, the one _jr3 is.
-        _u3 = ctx.rx.joint_unit(joint_which(ctx.args)) if _jr3 is not None else None
+        # The unit is that of the state _jr3 is (joint_read).
+        _u3 = ctx.rx.joint_unit(_w3) if _jr3 is not None else None
         if _u3 is not None and ctx.drp.now_w >= ctx.dr_state.get("jslew_log_next", 0.0):
             ctx.dr_state["jslew_log_next"] = ctx.drp.now_w + 30.0
             _r3 = ctx.args.chip_rate_hz / _u3[0]
@@ -1549,7 +1635,7 @@ def dr_seed(ctx):
                     "SEED-OFFSET%s %s: joint-vs-legacy over %d sat(s), "
                     "median %+.3f chips | %s"
                     % (
-                        joint_tag(ctx.args),
+                        _tag3,
                         ctx.band_id,
                         len(_cmp),
                         sorted(abs(c[1]) for c in _cmp)[len(_cmp) // 2],
@@ -1688,11 +1774,11 @@ def dr_seed(ctx):
                 continue  # withheld: the clock is still the prime (stage_dead_reckon)
             _leg_off = ctx.drp.clk_now + ctx.bsat.get(prn, ctx.drp.now_w)
             _off = _leg_off
-            _jr3 = ctx.joint_state(ctx.rx, ctx.band_id, ctx.args)
+            _jr3, _w3, _tag3 = joint_read(ctx)
             # The joint is in reference chips (Receiver.joint_unit), converted into ours below as
-            # in dr_joint_clk; the unit is that of the state --joint-source names.
-            _trk3 = joint_which(ctx.args) == TRK_STATE
-            _u3 = ctx.rx.joint_unit(joint_which(ctx.args)) if _jr3 is not None else None
+            # in dr_joint_clk; the unit is that of the state _jr3 is (joint_read).
+            _trk3 = _w3 == TRK_STATE
+            _u3 = ctx.rx.joint_unit(_w3) if _jr3 is not None else None
             _joff = (
                 _jr3.predicted((ctx.drp.tag, prn))
                 if (_u3 is not None and (ctx.drp.tag, prn) in _jr3._idx)
@@ -1748,7 +1834,7 @@ def dr_seed(ctx):
                     "SEED-OFFSET%s PRN %d (%s): joint %+.3f vs legacy %+.3f "
                     "chips (diff%s %+.3f mod %g, sigma %.3f)%s%s"
                     % (
-                        joint_tag(ctx.args),
+                        _tag3,
                         prn,
                         "slew" if _slew else "cp0",
                         _joff * _r3,
@@ -2168,8 +2254,8 @@ def search_monitor(ctx, offs):
     med, mad = circular_median(offs, ctx.code_len)
     name = getattr(ctx, "chain_id", None) or ctx.band_id
     m_per_chip = 299792458.0 / ctx.args.chip_rate_hz
-    _jr = ctx.joint_state(ctx.rx, ctx.band_id, ctx.args)
-    _u = ctx.rx.joint_unit(joint_which(ctx.args)) if _jr is not None else None
+    _jr, _jw, _jtag = joint_read(ctx)
+    _u = ctx.rx.joint_unit(_jw) if _jr is not None else None
     if _u is None:
         _log_rl(
             "smon",
@@ -2197,9 +2283,9 @@ def search_monitor(ctx, offs):
         hist.pop(0)
     _log_rl(
         "smon",
-        "SEARCH-MONITOR %s: search clock %.3f chips (n %d, MAD %.2f) vs joint %.3f -> "
+        "SEARCH-MONITOR %s: search clock %.3f chips (n %d, MAD %.2f) vs joint%s %.3f -> "
         "search - joint %+.3f chips = %+.1f m | per PRN vs joint: %s"
-        % (name, med, len(offs), mad, _jo, delta, delta * m_per_chip, per),
+        % (name, med, len(offs), mad, _jtag, _jo, delta, delta * m_per_chip, per),
         every_s=10.0,
     )
     if len(hist) >= 3 and ctx.drp.now_w >= ctx.dr_state.get("smon_sum_next", 0.0):

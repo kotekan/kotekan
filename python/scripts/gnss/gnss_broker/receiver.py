@@ -53,16 +53,11 @@ JOINT_SOURCES = {"search": JOINT_STATE, "trk": TRK_STATE}
 def joint_which(args):
     """The state a chain's joint consumers (clk, rate, slew and their logs) read: TRK_STATE
     under --joint-source trk, else JOINT_STATE. An args without the flag (a test's namespace)
-    reads the live state, as every chain did before the flag existed."""
+    reads the live state, as every chain did before the flag existed. Under trk,
+    deadreckon.joint_read reads JOINT_STATE instead while TRK_STATE is unfit or stale."""
     return JOINT_SOURCES.get(
         getattr(args, "joint_source", None) or "search", JOINT_STATE
     )
-
-
-def joint_tag(args):
-    """The tag the consumers' log lines carry: "" on the search-fed state (the lines as they
-    were), "[trk]" on the tracker-fed one."""
-    return "[trk]" if joint_which(args) == TRK_STATE else ""
 
 
 class _Shared(object):

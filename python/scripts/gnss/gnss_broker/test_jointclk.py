@@ -594,11 +594,15 @@ def rate_consumer_divisors(path=BROKER):
         and isinstance(d.op, ast.Div)
         and ast.unparse(d.left).endswith("clk_rate")
     ]
-    # The unit of the state the chain reads (--joint-source): joint_unit(joint_which(args)).
+    # The unit of the state the chain reads (deadreckon.joint_read): joint_unit(_jw).
     return (
         len(blocks),
         divs,
-        any("joint_unit(receiver.joint_which(args))" in ast.unparse(b) for b in blocks),
+        any(
+            "deadreckon.joint_read(_ctx)" in ast.unparse(b)
+            and "rx.joint_unit(_jw)" in ast.unparse(b)
+            for b in blocks
+        ),
     )
 
 

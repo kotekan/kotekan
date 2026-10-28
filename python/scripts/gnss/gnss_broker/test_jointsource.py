@@ -7,7 +7,9 @@ JOINT_STATE (gps_l5's search detections feed it) and TRK_STATE (the tracker resi
 jtrk.py). A chain with --joint-source trk has every consumer (clk, rate, slew, and the
 JOINT-CLK / SEED-OFFSET lines) read TRK_STATE in TRK_STATE's unit; the SatBiasFilter no longer
 moves the seed of a satellite the slew drives from it; a satellite TRK_STATE does not hold keeps
-clk_now + b_sat; a state unfit to consume is refused and coasted on, never raised into the loop.
+clk_now + b_sat. While TRK_STATE is unfit or stale (its feed held through a transit) the chain
+reads JOINT_STATE exactly as a search chain does, and returns after --joint-trk-return-s fresh;
+with neither fit it is refused and coasted on, never raised into the loop.
 
 The broker's own code is exercised, not a copy of it: the `_joint_state` closure, the rate
 consumer block and the startup line are lifted out of gps_distributed_broker.main by the AST
@@ -37,6 +39,8 @@ LEGACY_CLK = 150.0
 SEARCH_CLK, SEARCH_B = 150.2, {3: +0.6, 5: -0.4, 9: +0.3, 14: +0.2, 21: -0.9, 30: +0.5}
 TRK_CLK, TRK_B = 150.9, {3: +0.1, 5: -0.2, 14: 0.0, 21: +0.3, 30: -0.1}  # no PRN 9
 MODEL = 1000.0  # cp_predicted, constant: a born seed's phase is MODEL + its offset
+# The chain's cycle time: 12 s after make_rx's last feed (78 s), so TRK_STATE is fresh.
+T_NOW = 90.0
 
 _fails = []
 
@@ -82,12 +86,24 @@ def _if_block(test_src):
     return blocks[0]
 
 
-def run_rate_consumer(rx, args, joint_consume, code_ema):
-    """main's `if 'rate' in joint_consume:` block as written: (cb_to_seed, log lines)."""
+def run_rate_consumer(rx, args, joint_consume, code_ema, t_now=None, dr_state=None):
+    """main's `if 'rate' in joint_consume:` block as written: (cb_to_seed, log lines). The
+    chain's context carries what deadreckon.joint_read reads: the broker's _joint_state, the
+    axis time (T_NOW by default) and dr_state."""
     lines = []
+    ctx = types.SimpleNamespace(
+        args=args,
+        rx=rx,
+        band_id=BAND,
+        joint_state=broker_joint_state(),
+        dr_state={} if dr_state is None else dr_state,
+        drp=types.SimpleNamespace(t_now_abs=T_NOW if t_now is None else t_now),
+    )
     ns = {
         "joint_consume": joint_consume,
         "_joint_state": broker_joint_state(),
+        "_ctx": ctx,
+        "deadreckon": deadreckon,
         "rx": rx,
         "band_id": BAND,
         "args": args,
@@ -96,7 +112,13 @@ def run_rate_consumer(rx, args, joint_consume, code_ema):
         "cb_to_seed": code_ema,
         "_log_rl": lambda key, msg, every_s=10.0: lines.append(msg),
     }
-    _run_nodes([_if_block("'rate' in joint_consume")], ns)
+    saved = deadreckon._log, deadreckon._log_rl
+    deadreckon._log = lines.append
+    deadreckon._log_rl = lambda key, msg, every_s=10.0: lines.append(msg)
+    try:
+        _run_nodes([_if_block("'rate' in joint_consume")], ns)
+    finally:
+        deadreckon._log, deadreckon._log_rl = saved
     return ns["cb_to_seed"], lines
 
 
@@ -126,11 +148,17 @@ def _feed(js, clk, b, n=40, t_start=0.0, step=None):
         )
 
 
-def make_rx(trk="fed"):
-    """A Receiver with the search-fed state converged on SEARCH_*, and the tracker-fed one
-    converged on TRK_* ("fed"), born and never fed ("empty"), deaf ("deaf"), or absent."""
+def make_rx(trk="fed", search="fed"):
+    """A Receiver with the search-fed state converged on SEARCH_* ("fed") or on two satellites,
+    under joint_min_sats ("thin"), and the tracker-fed one converged on TRK_* ("fed"), born
+    and never fed ("empty"), deaf ("deaf"), or absent. Both are fed 0..78 s, so at T_NOW the
+    tracker-fed one is fresh (--joint-trk-stale-s)."""
     rx = Receiver(log=lambda m: None)
-    _feed(rx.joint_receiver(BAND, L, REF, gauge_mode="prior"), SEARCH_CLK, SEARCH_B)
+    _feed(
+        rx.joint_receiver(BAND, L, REF, gauge_mode="prior"),
+        SEARCH_CLK,
+        SEARCH_B if search == "fed" else {3: SEARCH_B[3], 9: SEARCH_B[9]},
+    )
     if trk in ("fed", "deaf"):
         js = rx.joint_receiver(BAND, L, REF, which=TRK_STATE, **TRK_KW)
         _feed(js, TRK_CLK, TRK_B)
@@ -166,6 +194,8 @@ def chain_args(source, **kw):
         joint_trk_bsat_sigma_max=_DEF.joint_trk_bsat_sigma_max,
         joint_trk_escape_holdoff_s=_DEF.joint_trk_escape_holdoff_s,
         joint_trk_bsat_dev_max=_DEF.joint_trk_bsat_dev_max,
+        joint_trk_stale_s=_DEF.joint_trk_stale_s,
+        joint_trk_return_s=_DEF.joint_trk_return_s,
         signal="gal_e5a",
     )
     a.update(kw)
@@ -179,11 +209,15 @@ def run_dr_seed(
     consume=("clk", "slew"),
     prns=(3, 9),
     ds=None,
-    t0=1000.0,
+    t0=None,
     argkw=None,
 ):
     """dr_seed once on a 10.23-Mcps chain with no search, every PRN of `prns` born from the
-    model: returns ({prn: offset added to the model}, clk_now, log lines, ctx)."""
+    model: returns ({prn: offset added to the model}, clk_now, log lines, ctx). t0 is also the
+    axis time (drp.t_now_abs), T_NOW unless given. ds seeds dr_state; its nested dicts (the
+    joint_read mode) are carried by reference, so a run fed the last run's ctx.dr_state
+    continues it."""
+    t0 = T_NOW if t0 is None else t0
     args = chain_args(source, **(argkw or {}))
     if source is None:
         del args.joint_source  # a namespace from before the flag (the older tests')
@@ -273,8 +307,8 @@ def test_flag_and_mapping():
         "joint_which: search / no flag -> JOINT_STATE, trk -> TRK_STATE",
     )
     check(
-        receiver.joint_tag(a0) == "" and receiver.joint_tag(a1) == "[trk]",
-        "the search lines carry no tag, the trk ones [trk]",
+        a1.joint_trk_stale_s == 30.0 and a1.joint_trk_return_s == 30.0,
+        "--joint-trk-stale-s and --joint-trk-return-s default to 30 s",
     )
 
 
@@ -319,6 +353,12 @@ def test_joint_state_closure():
             and js_fn(rx, BAND, chain_args("search")) is rx._joint[JOINT_STATE],
             "trk state %s: refused (None), the search one still served" % kind,
         )
+    rx = make_rx("fed")
+    check(
+        js_fn(rx, BAND, chain_args("trk"), which=JOINT_STATE) is rx._joint[JOINT_STATE]
+        and js_fn(rx, BAND, chain_args("search"), which=None) is rx._joint[JOINT_STATE],
+        "which= overrides --joint-source (joint_read's fallback); None keeps it",
+    )
     boom = types.SimpleNamespace(
         joint_consumable=Receiver.joint_consumable.__get__(
             types.SimpleNamespace(joint_receiver=lambda *a, **k: 1 / 0)
@@ -466,16 +506,18 @@ def test_trk_slew_bound_falls_back():
     )
 
 
-def test_trk_unfit_is_refused_and_coasts():
-    """Right after a restart TRK_STATE is born empty (n 0, sigma 200), or deaf, or absent: the
-    trk chain is refused, coasts on its last adoption when it has one (an absent state has no
-    modulus, and cannot have been adopted from), and every satellite keeps clk_now + b_sat. No
-    exception reaches the loop."""
+def test_trk_unfit_falls_back_or_coasts():
+    """Right after a restart TRK_STATE is born empty (n 0, sigma 200), or deaf, or absent. With
+    the search-fed state fit, the trk chain reads it exactly as a search chain does, its lines
+    tagged [trk->search: why]. With that one unfit too the chain is refused, coasts on its last
+    adoption when it has one, and every satellite keeps clk_now + b_sat. No exception reaches
+    the loop."""
     bsat = {3: 0.37, 9: -0.21}
+    want = {"empty": "unfit: n 0 < 4", "deaf": "unfit: deaf", "absent": "unfit: absent"}
     for kind in ("empty", "deaf", "absent"):
-        rx = make_rx(kind)
+        tag = "[trk->search: %s]" % want[kind]
         try:
-            offs, clk_now, lines, _ = run_dr_seed(rx, "trk", bsat)
+            offs, clk_now, lines, _ = run_dr_seed(make_rx(kind), "trk", bsat)
             raised = None
         except Exception as e:  # the regression this test is for
             raised = e
@@ -484,55 +526,64 @@ def test_trk_unfit_is_refused_and_coasts():
         )
         if raised is not None:
             continue
+        offs_s, clk_s, lines_s, _ = run_dr_seed(make_rx(kind), "search", bsat)
+        sw = _lines(lines, "JOINT-SOURCE")
+        check(
+            clk_now == clk_s and offs == offs_s and clk_now != LEGACY_CLK,
+            "trk state %s, search state fit: a search chain's clock and offsets (%r)"
+            % (kind, clk_now),
+        )
+        check(
+            [m.replace(tag, "") for m in lines if not m.startswith("JOINT-SOURCE")]
+            == lines_s
+            and _lines(lines, "JOINT-CLK%s: legacy" % tag)
+            and len(sw) == 1
+            and "trk -> search (%s)" % want[kind] in sw[0],
+            "...its lines, tagged %s, and one JOINT-SOURCE line (%s)" % (tag, sw),
+        )
+        # Both unfit (the search-fed state under joint_min_sats): refused, legacy clock.
+        rx = make_rx(kind, search="thin")
+        offs, clk_now, lines, _ = run_dr_seed(rx, "trk", bsat)
         check(
             clk_now == LEGACY_CLK
             and all(
                 offs[p] == (MODEL + LEGACY_CLK + bsat[p]) % MOD - MODEL for p in (3, 9)
-            ),
-            "trk state %s, no adoption behind: legacy clock, every seed clk_now + b_sat"
-            % kind,
+            )
+            and not _lines(lines, "SEED-OFFSET"),
+            "trk state %s, search state thin, no adoption behind: legacy clock, every seed "
+            "clk_now + b_sat, no SEED-OFFSET line" % kind,
         )
-        check(
-            not _lines(lines, "SEED-OFFSET"),
-            "...and no SEED-OFFSET line (nothing to compare)",
-        )
-        # With an adoption 60 s behind (from TRK_STATE: its stamps), the refusal coasts.
+        # With an adoption 60 s behind, the refusal coasts, in the unit of the state it reads.
         ds = {
-            "jclk_t": 940.0,
+            "jclk_t": T_NOW - 60.0,
             "jclk_last": 150.8,
-            "jclk_last_t": 940.0,
+            "jclk_last_t": T_NOW - 60.0,
             "jclk_last_rate": 0.001,
         }
-        rx = make_rx(kind)
+        rx = make_rx(kind, search="thin")
         offs, clk_now, lines, _ = run_dr_seed(rx, "trk", bsat, ds=ds)
         jc = _lines(lines, "JOINT-CLK")
-        if kind == "absent":
-            # No state, no modulus to coast in: legacy clock, and the consumer did not
-            # create the state (its feeder builds it with escape_clock_min_sats).
-            check(
-                clk_now == LEGACY_CLK and not jc and TRK_STATE not in rx._joint,
-                "trk state absent, stamps behind: legacy clock, no line, state not "
-                "created by the consumer (%s)" % (sorted(rx._joint),),
-            )
-            continue
         check(
             abs(clk_now - (150.8 + 0.06)) < 1e-9
             and len(jc) == 1
-            and jc[0].startswith("JOINT-CLK[trk]: legacy")
+            and jc[0].startswith("JOINT-CLK%s: legacy" % tag)
             and "not fit to consume" in jc[0]
             and "COAST" in jc[0],
-            "trk state %s, adopted 60 s ago: COAST to %.3f (%s)"
+            "trk state %s, search thin, adopted 60 s ago: COAST to %.3f (%s)"
             % (kind, clk_now, jc[:1]),
         )
         check(
-            all(abs(offs[p] - (clk_now + bsat[p])) < 1e-9 for p in (3, 9)),
-            "...the seeds ride the coasted clock + b_sat",
+            all(abs(offs[p] - (clk_now + bsat[p])) < 1e-9 for p in (3, 9))
+            and (kind != "absent" or TRK_STATE not in rx._joint),
+            "...the seeds ride the coasted clock + b_sat; an absent TRK_STATE is not "
+            "created by the consumer (its feeder builds it with escape_clock_min_sats)",
         )
-    # A state born and fed once (4 satellites, still cold): the clk consumer's sigma bound.
+    # A state born and fed once (4 satellites, still cold) is fit and fresh, so it is read,
+    # and the clk consumer's sigma bound refuses it.
     rx = make_rx("empty")
     jt = rx._joint[TRK_STATE]
     jt.cycle([(("G", p), TRK_CLK + TRK_B[p], 0.1) for p in (3, 5, 14, 21)], 0.0)
-    _o, clk_now, lines, _ = run_dr_seed(rx, "trk", bsat, prns=(9,))
+    _o, clk_now, lines, _ = run_dr_seed(rx, "trk", bsat, prns=(9,), t0=10.0)
     jc = _lines(lines, "JOINT-CLK")
     check(
         jt.sigma() > 0.5
@@ -624,13 +675,18 @@ def test_trk_settled_gate():
     # The escape leg: PRN 3 steps +2 chips and stays; after the (bias-only) escape its b holds
     # the step and its sigma is small again within updates. Inside the holdoff it keeps the
     # legacy offset; past it, it rides clk + b.
-    def escaped():
+    def escaped(after=None):
         rx = make_rx("fed")
         jt = rx._joint[TRK_STATE]
         _feed(jt, TRK_CLK, TRK_B, n=12, t_start=80.0, step={3: 2.0})
         t_last = 80.0 + 2.0 * 11
         e = jt.since_escape(k3, t_last)
-        return rx, jt, (None if e is None else t_last - e)
+        t_esc = None if e is None else t_last - e
+        if after is not None and t_esc is not None:
+            # Fed on to 2 s before the consumer's cycle at t_esc + after, so it is fresh there.
+            n = int((t_esc + after - 2.0 - t_last) // 2.0)
+            _feed(jt, TRK_CLK, TRK_B, n=n, t_start=t_last + 2.0, step={3: 2.0})
+        return rx, jt, t_esc
 
     rx, jt, t_esc = escaped()
     check(
@@ -657,7 +713,7 @@ def test_trk_settled_gate():
     # Past the holdoff the step is still in b, 2 chips off its peers: the median leg keeps
     # PRN 3 on the legacy offset at the default bound, and a bound wider than the step lets it
     # ride (the holdoff alone would have).
-    rx, jt, t_esc = escaped()
+    rx, jt, t_esc = escaped(after=61.0)
     offs, clk, lines, _ = run_dr_seed(rx, "trk", bsat, prns=(3, 5), t0=t_esc + 61.0)
     so = _lines(lines, "SEED-OFFSET[trk] PRN 3")
     check(
@@ -666,11 +722,17 @@ def test_trk_settled_gate():
         and offs[5] == _trk_off(rx, clk, 5)
         and so
         and "off the G median" in so[0],
-        "61 s after, default bound 0.5: PRN 3 keeps clk_now + b_sat, PRN 5 rides (%s)" % so,
+        "61 s after, default bound 0.5: PRN 3 keeps clk_now + b_sat, PRN 5 rides (%s)"
+        % so,
     )
-    rx, jt, t_esc = escaped()
+    rx, jt, t_esc = escaped(after=61.0)
     offs, clk, lines, _ = run_dr_seed(
-        rx, "trk", bsat, prns=(3, 5), t0=t_esc + 61.0, argkw={"joint_trk_bsat_dev_max": 3.0}
+        rx,
+        "trk",
+        bsat,
+        prns=(3, 5),
+        t0=t_esc + 61.0,
+        argkw={"joint_trk_bsat_dev_max": 3.0},
     )
     check(
         offs[3] == _trk_off(rx, clk, 3) and abs(offs[3] - clk - TRK_B[3] - 2.0) < 0.2,
@@ -683,8 +745,10 @@ def test_trk_settled_gate():
     for k in [k for k in list(jt._idx) if k[1] not in (3, 5, 14)]:
         jt._idx.pop(k)
     check(
-        deadreckon.trk_unsettled(jt, k3, 200.0, chain_args("trk")) == "2 peer(s) in G, need 3",
-        "2 peers: unsettled (%s)" % deadreckon.trk_unsettled(jt, k3, 200.0, chain_args("trk")),
+        deadreckon.trk_unsettled(jt, k3, 200.0, chain_args("trk"))
+        == "2 peer(s) in G, need 3",
+        "2 peers: unsettled (%s)"
+        % deadreckon.trk_unsettled(jt, k3, 200.0, chain_args("trk")),
     )
     # The helper itself, on inputs the caller should never hand it.
     check(
@@ -693,6 +757,425 @@ def test_trk_settled_gate():
             "error:"
         ),
         "trk_unsettled never raises: no epoch, a broken state -> unsettled",
+    )
+
+
+def test_last_accepted():
+    """JointReceiverState.last_accepted, what staleness is keyed on: the newest accepted
+    measurement over the rows the state holds. predict() advances the epoch and not it, and
+    a timestamp left by a row the state no longer holds neither makes a held state look
+    fresh nor a fed one stale."""
+    rx = make_rx("fed")
+    jt = rx._joint[TRK_STATE]
+    a = chain_args("trk")
+    check(jt.last_accepted() == 78.0, "fed 0..78 s: %r" % jt.last_accepted())
+    jt.predict(500.0)
+    check(
+        jt._t == 500.0 and jt.last_accepted() == 78.0,
+        "predict(500) moves the epoch (%r), not the newest accepted measurement (%r)"
+        % (jt._t, jt.last_accepted()),
+    )
+    jt._t_seen[("G", 99)] = 499.0  # a row gone from the state, its stamp newer than all
+    check(
+        jt.last_accepted() == 78.0
+        and deadreckon.trk_unfit(jt, rx, 500.0, a) == "stale 422 s",
+        "a dropped row's newer stamp does not make the held state fresh (%r, %r)"
+        % (jt.last_accepted(), deadreckon.trk_unfit(jt, rx, 500.0, a)),
+    )
+    rx = make_rx("fed")
+    jt = rx._joint[TRK_STATE]
+    jt.cycle([(("G", 5), TRK_CLK + TRK_B[5], 0.1)], 100.0)  # one live row fed at 100 s
+    jt._t_seen[("G", 98)] = 1.0  # a row gone from the state, its stamp older than all
+    check(
+        jt.last_accepted() == 100.0 and deadreckon.trk_unfit(jt, rx, 110.0, a) is None,
+        "a live row's newest stamp counts, an older dropped one does not (%r)"
+        % jt.last_accepted(),
+    )
+    del jt._t_seen[("G", 98)]
+    # The state's own age-out (max_age_s): rows unfed for 900 s leave, and their stamps with
+    # them.
+    jt.cycle([(("G", 5), TRK_CLK + TRK_B[5], 0.1)], 1000.0)
+    check(
+        sorted(jt._idx) == [("G", 5)] and jt.last_accepted() == 1000.0,
+        "after the age-out only G05 is held, last accepted 1000 s (%s, %r)"
+        % (sorted(jt._idx), jt.last_accepted()),
+    )
+    check(
+        receiver.Receiver(log=lambda m: None)
+        .joint_receiver(BAND, L, REF, which=TRK_STATE, **TRK_KW)
+        .last_accepted()
+        is None,
+        "a state never fed: None",
+    )
+
+
+# The held tracker feed of 10-28 12:43-12:55Z (the G32 transit): jtrk holds TRK_STATE's feed
+# for HOLD_S while gps_l5's search keeps feeding JOINT_STATE and the receiver clock walks 0.6
+# chips. TRK_STATE reads the clock `step` chips above JOINT_STATE (their gauges differ).
+HOLD_T0, HOLD_S = 100.0, 780.0
+
+
+def _held_feed_run(step, predict_hold=False, rate_at=None):
+    """Both states fed every 2 s, TRK_STATE held over (HOLD_T0, HOLD_T0 + HOLD_S) (with
+    predict() each cycle under predict_hold, as jtrk with a70103f99), and the trk chain's
+    dr_seed run whole every cycle from HOLD_T0 - 10 s to 70 s after the hold, its dr_state
+    carried. Returns {t: record} and the rate consumer's (cb, lines, clk_rate) at rate_at."""
+    rx = Receiver(log=lambda m: None)
+    js = rx.joint_receiver(BAND, L, REF, gauge_mode="prior")
+    jt = rx.joint_receiver(BAND, L, REF, which=TRK_STATE, **TRK_KW)
+    units = []
+    unit = rx.joint_unit
+
+    def joint_unit(which=JOINT_STATE):
+        units.append(which)
+        return unit(which)
+
+    rx.joint_unit = joint_unit
+    t_end = HOLD_T0 + HOLD_S + 70.0
+    walk = 0.6 / HOLD_S
+    bsat = {3: 0.37, 9: -0.21}
+    ds, out, rate = {}, {}, None
+    t = 0.0
+    while t <= t_end:
+        clock = SEARCH_CLK + walk * min(max(0.0, t - HOLD_T0), HOLD_S)
+        js.cycle([(("G", p), clock + b, 0.1) for p, b in sorted(SEARCH_B.items())], t)
+        if HOLD_T0 < t < HOLD_T0 + HOLD_S:
+            if predict_hold:
+                jt.predict(t)
+        else:
+            jt.cycle(
+                [(("G", p), clock + step + b, 0.1) for p, b in sorted(TRK_B.items())], t
+            )
+        if t >= HOLD_T0 - 10.0 and (
+            t <= HOLD_T0 + 70.0 or t >= HOLD_T0 + HOLD_S - 4.0 or t % 100.0 == 0.0
+        ):
+            del units[:]
+            rec = dict(
+                clock=clock,
+                js_clk=js.clk,
+                jt_clk=jt.clk,
+                js_pred={p: js.predicted(("G", p)) for p in (3, 9)},
+                epoch=jt._t,
+            )
+            offs, clk_now, lines, ctx = run_dr_seed(rx, "trk", bsat, t0=t, ds=ds)
+            ds = ctx.dr_state
+            rec.update(
+                offs=offs,
+                clk_now=clk_now,
+                lines=lines,
+                units=set(units),
+                mode=ds["jsrc"]["mode"],
+            )
+            out[t] = rec
+            if t == rate_at:
+                rate = run_rate_consumer(
+                    rx, chain_args("trk"), {"rate"}, 1e-9, t_now=t, dr_state=ds
+                ) + (js.clk_rate,)
+        t += 2.0
+    return out, rate
+
+
+def _adopted(clk):
+    """clk_now after an adoption of the joint clock clk from the legacy clock."""
+    return (
+        LEGACY_CLK + Receiver.joint_clk_delta(clk, REF, L, LEGACY_CLK, REF, L)[0]
+    ) % L
+
+
+def _search_off(clk_now, jpred, b):
+    """The search path's slew offset: legacy (clk_now + b_sat) plus the wrapped joint delta."""
+    leg = clk_now + b
+    return _w(leg + Receiver.joint_clk_delta(jpred, REF, L, leg, REF, L)[0])
+
+
+def test_trk_held_feed_falls_back():
+    """A trk chain through a held tracker feed (10-28 G32): TRK_STATE is read until it has
+    accepted nothing for --joint-trk-stale-s, then the chain reads JOINT_STATE exactly as a
+    search chain does (unit, slew on clk_now + b_sat, the clock adopted from it, the rate)
+    through the hold, and reads TRK_STATE again only once it has been fresh for
+    --joint-trk-return-s. A ~0.1-chip step between the two clocks is under
+    joint_clk_max_step_chips (0.3), so each switch is adopted at once."""
+    t0, t1 = HOLD_T0, HOLD_T0 + HOLD_S
+    stale_s, ret_s = _DEF.joint_trk_stale_s, _DEF.joint_trk_return_s
+    t_sw, t_back = t0 + stale_s + 2.0, t1 + ret_s
+    check(stale_s == 30.0 and ret_s == 30.0, "defaults: stale 30 s, return 30 s")
+    out, rate = _held_feed_run(0.15, rate_at=t0 + 300.0)
+    bsat = {3: 0.37, 9: -0.21}
+
+    def head(r):
+        jc = _lines(r["lines"], "JOINT-CLK")
+        return jc[0] if len(jc) == 1 else repr(jc)
+
+    sw = [
+        (t, m)
+        for t, r in sorted(out.items())
+        for m in _lines(r["lines"], "JOINT-SOURCE")
+    ]
+    check(
+        len(sw) == 2
+        and sw[0][0] == t_sw
+        and "trk -> search (stale %.0f s)" % (t_sw - t0) in sw[0][1]
+        and sw[1][0] == t_back
+        and "search -> trk (fit and fresh for %.0f s)" % ret_s in sw[1][1],
+        "one JOINT-SOURCE line each way, at %.0f s and %.0f s (%s)"
+        % (t_sw, t_back, sw),
+    )
+    pre = [r for t, r in out.items() if t <= t0 + stale_s]
+    check(
+        pre
+        and all(
+            r["mode"] == "trk"
+            and r["units"] == {TRK_STATE}
+            and head(r).startswith("JOINT-CLK[trk]: legacy")
+            and "ADOPTED" in head(r)
+            and r["clk_now"] == _adopted(r["jt_clk"])
+            for r in pre
+        ),
+        "up to %.0f s stale: TRK_STATE read, in its unit, its clock adopted (%d cycles)"
+        % (stale_s, len(pre)),
+    )
+    held = [r for t, r in out.items() if t_sw <= t < t1]
+    bad = [
+        (r["clk_now"], head(r))
+        for r in held
+        if not (
+            r["mode"] == "search"
+            and r["units"] == {JOINT_STATE}
+            and head(r).startswith("JOINT-CLK[trk->search: stale ")
+            and "ADOPTED" in head(r)
+            and r["clk_now"] == _adopted(r["js_clk"])
+            and all(
+                r["offs"][p] == _search_off(r["clk_now"], r["js_pred"][p], bsat[p])
+                for p in (3, 9)
+            )
+            and not any("vs clk" in m or "not settled" in m for m in r["lines"])
+        )
+    ]
+    check(
+        len(held) > 20 and not bad,
+        "%.0f s to the end of the hold: JOINT_STATE read in its unit, its clock adopted, every "
+        "seed on clk_now + b_sat + the wrapped joint delta (%d cycles; bad %s)"
+        % (t_sw, len(held), bad[:2]),
+    )
+    last, first = out[t1 - 2.0], out[t_sw]
+    moved = last["clk_now"] - first["clk_now"]
+    check(
+        abs(moved - (last["clock"] - first["clock"])) < 0.05
+        and last["clk_now"] - last["jt_clk"] > 0.4,
+        "through the hold clk_now moves %+.3f chips with the receiver clock (%+.3f) and ends "
+        "%+.3f from the held TRK clock"
+        % (moved, last["clock"] - first["clock"], last["clk_now"] - last["jt_clk"]),
+    )
+    sw_rec = out[t_sw]
+    check(
+        0.0 < out[t_sw - 2.0]["clk_now"] - sw_rec["clk_now"] < 0.3,
+        "the switch steps clk_now %+.3f chips, under joint_clk_max_step_chips: adopted at once"
+        % (sw_rec["clk_now"] - out[t_sw - 2.0]["clk_now"]),
+    )
+    cb, rl, js_rate = rate
+    check(
+        cb == js_rate / REF
+        and any(
+            m.startswith("code-rate clock from the JOINT[trk->search: stale")
+            for m in rl
+        ),
+        "the rate consumer reads JOINT_STATE's clk_rate during the hold (%r; %s)"
+        % (cb, rl),
+    )
+    back = [r for t, r in out.items() if t1 <= t < t_back]
+    check(
+        back
+        and all(
+            r["mode"] == "search"
+            and r["units"] == {JOINT_STATE}
+            and "[trk->search: trk fresh " in head(r)
+            and r["clk_now"] == _adopted(r["js_clk"])
+            for r in back
+        ),
+        "fed again at %.0f s: still JOINT_STATE until %.0f s fresh (%s)"
+        % (t1, ret_s, head(back[-1]) if back else None),
+    )
+    after = [r for t, r in out.items() if t >= t_back]
+    check(
+        after
+        and all(
+            r["mode"] == "trk"
+            and r["units"] == {TRK_STATE}
+            and head(r).startswith("JOINT-CLK[trk]: legacy")
+            and r["clk_now"] == _adopted(r["jt_clk"])
+            for r in after
+        ),
+        "from %.0f s: TRK_STATE read again, its clock adopted at once (%s)"
+        % (t_back, head(after[0]) if after else None),
+    )
+
+    # jtrk with a70103f99: a held cycle calls predict(), so the epoch advances; the staleness
+    # is the measurements', and the chain switches at the same cycle and reads the same clock.
+    out_p, _ = _held_feed_run(0.15, predict_hold=True)
+    sw_p = [t for t, r in sorted(out_p.items()) if _lines(r["lines"], "JOINT-SOURCE")]
+    check(
+        out_p[t0 + 50.0]["epoch"] == t0 + 50.0
+        and out[t0 + 50.0]["epoch"] == t0
+        and sw_p == [t_sw, t_back]
+        and all(
+            out_p[t]["clk_now"] == out[t]["clk_now"] for t in out if t_sw <= t < t1
+        ),
+        "held with predict(): epoch %.0f s, yet stale at %s as without it"
+        % (out_p[t0 + 50.0]["epoch"], sw_p),
+    )
+
+
+def test_trk_switch_step_held():
+    """A switch step beyond joint_clk_max_step_chips goes through the clk consumer's step
+    guard like any other: refused for joint_clk_step_hold_s while the chain coasts on the
+    clock it last adopted, then adopted. Both ways."""
+    t0, t1 = HOLD_T0, HOLD_T0 + HOLD_S
+    t_sw, t_back = t0 + 32.0, t1 + 30.0
+    hold = chain_args("trk").joint_clk_step_hold_s
+    out, _ = _held_feed_run(0.5)
+
+    def head(t):
+        jc = _lines(out[t]["lines"], "JOINT-CLK")
+        return jc[0] if len(jc) == 1 else repr(jc)
+
+    before = out[t_sw - 2.0]["clk_now"]
+    check(
+        all(
+            "[trk->search: stale" in head(t)
+            and "COAST (refused: step " in head(t)
+            and abs(out[t]["clk_now"] - before) < 0.01
+            for t in out
+            if t_sw <= t < t_sw + hold
+        )
+        and "ADOPTED" in head(t_sw + hold)
+        and out[t_sw + hold]["clk_now"] == _adopted(out[t_sw + hold]["js_clk"]),
+        "to JOINT_STATE (step %+.3f): coast on the last TRK adoption %.0f s, then adopted (%s)"
+        % (out[t_sw + hold]["clk_now"] - before, hold, head(t_sw)),
+    )
+    before = out[t_back - 2.0]["clk_now"]
+    check(
+        all(
+            head(t).startswith("JOINT-CLK[trk]")
+            and "COAST (refused: step " in head(t)
+            and abs(out[t]["clk_now"] - before) < 0.05
+            for t in out
+            if t_back <= t < t_back + hold
+        )
+        and "ADOPTED" in head(t_back + hold)
+        and out[t_back + hold]["clk_now"] == _adopted(out[t_back + hold]["jt_clk"]),
+        "back to TRK_STATE: coast %.0f s, then adopted (%s)" % (hold, head(t_back)),
+    )
+
+
+def test_none_fields_format():
+    """No epoch, no dr_state, no --signal, a raising state lookup, a missing option: every
+    path returns and every line formats, None fields included."""
+    a = chain_args("trk", signal=None)
+    rx = make_rx("fed")
+    jt = rx._joint[TRK_STATE]
+    check(
+        deadreckon.trk_unfit(jt, rx, None, a) == "no epoch"
+        and deadreckon.trk_unfit(None, types.SimpleNamespace(), 1.0, a).startswith(
+            "error:"
+        )
+        and deadreckon.trk_unfit(
+            Receiver(log=lambda m: None).joint_receiver(
+                BAND, L, REF, which=TRK_STATE, **TRK_KW
+            ),
+            rx,
+            1.0,
+            a,
+        )
+        == "stale: nothing accepted",
+        "trk_unfit: no epoch, a broken receiver, nothing accepted",
+    )
+    lines = []
+    saved = deadreckon._log, deadreckon._log_rl
+    deadreckon._log = lines.append
+    deadreckon._log_rl = lambda key, msg, every_s=10.0: lines.append(msg)
+    try:
+        base = dict(rx=rx, band_id=BAND, joint_state=broker_joint_state())
+        ctx = types.SimpleNamespace(
+            args=a, dr_state=None, drp=types.SimpleNamespace(t_now_abs=None), **base
+        )
+        got = deadreckon.joint_read(ctx)
+        check(
+            got == (rx._joint[JOINT_STATE], JOINT_STATE, "[trk->search: no epoch]")
+            and not lines,
+            "no epoch, no dr_state: JOINT_STATE, no switch line (%s; %s)"
+            % (got[1:], lines),
+        )
+        ctx = types.SimpleNamespace(
+            args=a, dr_state={}, drp=types.SimpleNamespace(t_now_abs=None), **base
+        )
+        got = deadreckon.joint_read(ctx)
+        check(
+            got[1] == JOINT_STATE
+            and lines
+            == [
+                "JOINT-SOURCE %s: trk -> search (no epoch): the consumers read the search-fed "
+                "joint state until the tracker-fed one has passed for 30 s" % BAND
+            ],
+            "no --signal: the switch line names the band (%s)" % lines,
+        )
+        del lines[:]
+        boom = dict(base, joint_state=lambda *x, **k: 1 / 0)
+        ctx = types.SimpleNamespace(
+            args=a, dr_state={}, drp=types.SimpleNamespace(t_now_abs=T_NOW), **boom
+        )
+        got = deadreckon.joint_read(ctx)
+        check(
+            got == (None, TRK_STATE, "[trk]")
+            and len(lines) == 1
+            and "no joint state read (division by zero)" in lines[0],
+            "a raising lookup: no state, one line (%s; %s)" % (got, lines),
+        )
+        del lines[:]
+        a2 = types.SimpleNamespace(**vars(a))
+        del a2.joint_trk_stale_s
+        ctx = types.SimpleNamespace(
+            args=a2, dr_state={}, drp=types.SimpleNamespace(t_now_abs=T_NOW), **base
+        )
+        got = deadreckon.joint_read(ctx)
+        check(
+            got[1] == JOINT_STATE and got[2].startswith("[trk->search: error:"),
+            "an args without --joint-trk-stale-s reads JOINT_STATE (%s)" % (got[2],),
+        )
+    finally:
+        deadreckon._log, deadreckon._log_rl = saved
+    # dr_seed whole, TRK stale and the search state thin: the coast line formats with the
+    # reason, with or without a stamped rate.
+    ds = {
+        "jclk_t": 30.0,
+        "jclk_last": 150.8,
+        "jclk_last_t": 30.0,
+        "jclk_last_rate": None,
+    }
+    try:
+        offs, clk_now, lines, _ = run_dr_seed(
+            make_rx("fed", search="thin"), "trk", {3: 0.0, 9: 0.0}, ds=ds, t0=118.0
+        )
+        jc = _lines(lines, "JOINT-CLK")
+        ok = clk_now == LEGACY_CLK or (
+            jc and jc[0].startswith("JOINT-CLK[trk->search: stale 40 s]")
+        )
+    except Exception as e:
+        ok, jc = False, e
+    check(ok, "TRK stale, search thin, no stamped rate: no exception (%s)" % (jc,))
+    offs, clk_now, lines, _ = run_dr_seed(
+        make_rx("fed", search="thin"),
+        "trk",
+        {3: 0.0, 9: 0.0},
+        ds=dict(ds, jclk_last_rate=0.001),
+        t0=118.0,
+    )
+    jc = _lines(lines, "JOINT-CLK")
+    check(
+        len(jc) == 1
+        and jc[0].startswith("JOINT-CLK[trk->search: stale 40 s]: legacy")
+        and "COAST" in jc[0]
+        and abs(clk_now - (150.8 + 0.088)) < 1e-9,
+        "TRK stale, search thin, adopted 88 s ago: COAST (%s)" % jc,
     )
 
 
@@ -715,16 +1198,30 @@ def test_rate_consumer_caller():
         "search: from JOINT_STATE's, the line as it was (%r; %s)" % (cb, lines[:1]),
     )
     for kind in ("empty", "deaf", "absent"):
+        rx = make_rx(kind)
+        rx._joint[JOINT_STATE].x[1] = -0.03
+        cb, lines = run_rate_consumer(rx, chain_args("trk"), {"rate"}, 1e-9)
+        check(
+            cb == -0.03 / REF
+            and any(
+                m.startswith("code-rate clock from the JOINT[trk->search: unfit")
+                for m in lines
+            ),
+            "trk state %s, search state fit: code rate from JOINT_STATE's clk_rate (%r; %s)"
+            % (kind, cb, lines),
+        )
         for ema in (None, 2e-9):
             try:
                 cb, lines = run_rate_consumer(
-                    make_rx(kind), chain_args("trk"), {"rate"}, ema
+                    make_rx(kind, search="thin"), chain_args("trk"), {"rate"}, ema
                 )
-                ok = cb == ema and not lines
+                ok = cb == ema and not _lines(lines, "code-rate")
             except Exception as e:
                 ok, cb = False, e
             check(
-                ok, "trk state %s, l-a EMA %r: refused, EMA kept (%r)" % (kind, ema, cb)
+                ok,
+                "trk state %s, search state thin, l-a EMA %r: refused, EMA kept (%r)"
+                % (kind, ema, cb),
             )
 
 

@@ -286,6 +286,13 @@ def main(argv=None, rx=None, publisher=None):
                 if args.joint_source == "trk" and "slew" in joint_consume
                 else "",
             )
+            + (
+                "; the search-fed state stands in while the tracker-fed one is unfit or "
+                "has accepted nothing for %.0f s, until it has been fresh %.0f s"
+                % (args.joint_trk_stale_s, args.joint_trk_return_s)
+                if args.joint_source == "trk"
+                else ""
+            )
         )
     if args.rrate_command and not args.rrate_state:
         args.rrate_state = True  # same rule: the command gates on the row's sigma, and
@@ -718,9 +725,10 @@ def main(argv=None, rx=None, publisher=None):
         """True while this sat is the one the P2C rotation is coasting."""
         return key == p2c["key"] and key in js._idx
 
-    def _joint_state(rx_, band, a):
+    def _joint_state(rx_, band, a, which=None):
         """The receiver-wide joint state this chain's consumers read (--joint-source: the
-        search-fed JOINT_STATE, or the tracker-fed TRK_STATE) if it is fit to be consumed
+        search-fed JOINT_STATE, or the tracker-fed TRK_STATE; `which` overrides it for
+        deadreckon.joint_read's fallback) if it is fit to be consumed
         (Receiver.joint_consumable: joint_min_sats, not deaf), else None. Never raises: a
         consumer must fall back to its own estimator, not take the broker down."""
         return rx_.joint_consumable(
@@ -728,7 +736,7 @@ def main(argv=None, rx=None, publisher=None):
             CODE_LEN,
             a.chip_rate_hz,
             a.joint_min_sats,
-            which=receiver.joint_which(a),
+            which=which or receiver.joint_which(a),
         )
 
     if args.dead_reckon:
@@ -2105,12 +2113,12 @@ def main(argv=None, rx=None, publisher=None):
         # (chips/s) divided by the chip rate is the fractional rate l-a. The l-a EMA remains the
         # fallback and is logged beside it.
         if "rate" in joint_consume:
-            _jr = _joint_state(rx, band_id, args)
+            _jr, _jw, _jtag = deadreckon.joint_read(_ctx)
             # clk_rate is in the joint state's reference chips per second (Receiver.joint_unit),
             # not this chain's: dividing by our own chip rate would scale the fractional rate by
-            # the chip-rate ratio (20x on L2C, 2x on E6). The unit of the state _jr is
-            # (--joint-source), not always the live one's.
-            _ju = rx.joint_unit(receiver.joint_which(args)) if _jr is not None else None
+            # the chip-rate ratio (20x on L2C, 2x on E6). The unit is that of the state _jr is
+            # (_jw: --joint-source, or the search-fed one a trk chain falls back to).
+            _ju = rx.joint_unit(_jw) if _jr is not None else None
             _ppm = (_jr.clk_rate / _ju[0] * 1e6) if _ju is not None else None
             # Plausibility bound: never hand the instrument a physically impossible rate because
             # an estimator produced it. CHORD's reference is GPS-disciplined, so a rate beyond
@@ -2126,11 +2134,7 @@ def main(argv=None, rx=None, publisher=None):
                     "jointrate",
                     "code-rate clock from the JOINT%s state: %+.5f ppm "
                     "(l-a EMA says %+.5f)"
-                    % (
-                        receiver.joint_tag(args),
-                        cb_to_seed * 1e6,
-                        (_cb.code_ema or 0.0) * 1e6,
-                    ),
+                    % (_jtag, cb_to_seed * 1e6, (_cb.code_ema or 0.0) * 1e6),
                     every_s=60.0,
                 )
         if cb_to_seed is not None:

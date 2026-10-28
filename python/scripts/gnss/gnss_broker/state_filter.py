@@ -1216,6 +1216,14 @@ class JointReceiverState:
         return None if t is None else (t_now - t)
 
     @_locked
+    def last_accepted(self):
+        """The newest accepted code measurement's time over the satellites the state holds, or
+        None with none. predict() advances the state epoch without a measurement, so a feed
+        that stops shows here and not there."""
+        ts = [self._t_seen[k] for k in self._idx if k in self._t_seen]
+        return max(ts) if ts else None
+
+    @_locked
     def summary(self, t_now, max_sats=12):
         parts = []
         for key, i in sorted(self._idx.items(), key=lambda kv: -abs(self.x[kv[1]])):

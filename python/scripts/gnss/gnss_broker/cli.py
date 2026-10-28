@@ -1227,8 +1227,9 @@ def build_parser(description):
         "JOINT-CLK / SEED-OFFSET lines (tagged [trk]) follow it. Under 'trk' a satellite "
         "the slew consumer drives from that state takes clk + b_i with no SatBiasFilter "
         "term; a satellite the state does not hold, or one refused, keeps the clock plus "
-        "SatBiasFilter, and a state unfit to consume is refused and coasted on as on "
-        "'search'. Takes effect only with --joint-consume.",
+        "SatBiasFilter. While the tracker-fed state is unfit or stale (--joint-trk-stale-s) "
+        "the consumers read the search-fed one, and a chain with neither fit refuses and "
+        "coasts as on 'search'. Takes effect only with --joint-consume.",
     )
     ap.add_argument(
         "--joint-trk-bsat-sigma-max",
@@ -1259,6 +1260,25 @@ def build_parser(description):
         "at least 3 other satellites of its constellation. A lone tracker step (a lobe, 1-3 "
         "chips) that outlasts --joint-trk-escape-holdoff-s stays in b; the constellation "
         "spread is ~0.3 (10-26 soak). Default %(default)s.",
+    )
+    ap.add_argument(
+        "--joint-trk-stale-s",
+        type=float,
+        default=30.0,
+        help="--joint-source trk: the consumers read the search-fed joint state instead "
+        "while the tracker-fed one is unfit to consume or has accepted no measurement for "
+        "more than this many seconds (deadreckon.joint_read). The tracker feed is held "
+        "through a boresight transit, and a held state's clock stands still while the "
+        "receiver's moves (10-28 G32 transit: ~0.6 chips in 13 min, taken up by the "
+        "trims). Default %(default)s.",
+    )
+    ap.add_argument(
+        "--joint-trk-return-s",
+        type=float,
+        default=30.0,
+        help="--joint-source trk: after a fallback to the search-fed state, read the "
+        "tracker-fed one again only once it has been fit and fresh for this many seconds. "
+        "Default %(default)s.",
     )
     ap.add_argument(
         "--joint-trk-feed",
