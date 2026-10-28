@@ -317,6 +317,20 @@ def test_stage():
             c.dr_state["jtrk"]["last"]["held"].startswith("transit"),
             "a boresight transit holds the feed",
         )
+        # 10-28 G32: held for 13 min, the state stood at its last epoch while the clock moved
+        # +0.6 chips. A held cycle is still a time update: the clock moves on clk_rate.
+        js = rx.joint_receiver("1176", 10230, 10.23e6, which=TRK_STATE)
+        js.x[1] = 0.0008
+        clk0, p0, n0, t0 = js.clk, float(js.P[0, 0]), js.n_updates, js._t
+        c.drp.t_now_abs = t0 + 780.0
+        jtrk.stage_joint_trk(c)
+        check(
+            abs(js.clk - (clk0 + 0.0008 * 780.0)) < 1e-6
+            and float(js.P[0, 0]) > p0
+            and js.n_updates == n0,
+            "held 780 s: clk %+.3f -> %+.3f on the rate, P grows, no update"
+            % (clk0, js.clk),
+        )
     finally:
         sky.nearest_boresight = real
 

@@ -170,6 +170,12 @@ def stage_joint_trk(ctx):
     if why is None:
         n_ok = js.cycle(rows, ctx.drp.t_now_abs)
         st["last_hop"].update(hops)
+    else:
+        # Held (a transit, a thin set, the warm-up): still a time update, so the clock moves
+        # on clk_rate and P grows. Without it the state stood at its last epoch, and a chain
+        # adopting it took a clock frozen for the whole hold (10-28 G32 transit: 13 min,
+        # +0.6 chips by the end, at the +0.0008 chips/s the rate row held).
+        js.predict(ctx.drp.t_now_abs)
     for n in js.drain_notes():
         _log_rl("jtrk-note", "JOINT[trk]: %s" % n, every_s=10.0)
     st["last"] = {
