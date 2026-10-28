@@ -1,0 +1,333 @@
+{#-
+  baseband.j2
+  Baseband capture: F-engine packet capture, SubsetBaseband and hdf5FileWrite, per NUMA half.
+-#}
+
+# Root log level for common.j2.
+{% set log_level = "INFO" %}
+
+# num_local_freq: number of frequency IDs captured on each NUMA half.
+{% set num_local_freq = 384 %}
+
+# num_dishes: dishes in the element axis of the voltage frames; must match pathfinder.j2.
+{% set num_dishes = 64 %}
+
+# fpga time samples per captured frame (data_set), per frequency/polarization/dish.
+{% set samples_per_data_set = 8192 %}
+
+# dish_blocks_subset: which 8-dish blocks of the 64-dish frame each SubsetBaseband keeps.
+# Both polarizations of every selected dish are copied, so this selects
+# dish_blocks_subset|length * 8 * 2 of the 128 elements.  Both NUMA domains record the same
+# inputs, they differ only in frequency.
+{% set dish_blocks_subset = [0, 1, 7] %}
+
+# Dishes surviving the subset, and the trailing extent of the subset buffers.
+# SubsetBaseband describes its output as [T, F, 2, num_subset_dishes] and fatally checks the
+# out_buf frame size against it, so this must be derived from dish_blocks_subset rather than
+# hard coded.
+{% set num_subset_dishes = dish_blocks_subset|length * 8 %}
+
+# Subset frame size and buffer depth.  Derived rather than written out so that the figures
+# quoted in the comments below track dish_blocks_subset instead of going stale.
+{% set subset_frame_mib = samples_per_data_set * num_local_freq * 2 * num_subset_dishes // 1048576 %}
+{% set subset_buffer_depth = 20 %}
+# Each subset frame is {{ subset_frame_mib }} MiB, so each of the two subset buffers holds
+# {{ subset_buffer_depth }} x {{ subset_frame_mib }} MiB = {{ (subset_buffer_depth * subset_frame_mib / 1024) | round(2) }} GiB and absorbs ~{{ subset_buffer_depth * 42 }} ms of hdf5FileWrite
+# stalls (frames arrive every ~42 ms).  The depth stays at {{ subset_buffer_depth }} now that both
+# polarizations are copied: the frame size, and hence the write rate, both doubled, so the
+# stall tolerance is worth more than it was, and a few GiB per NUMA domain is negligible on
+# this host.
+
+# num_capture_frames: DPDK frames to record before the capture stops.
+# The pipeline is 1:1 from the network input buffer through to hdf5FileWrite, so this is also
+# the number of frames written out (~42 ms / {{ subset_frame_mib }} MiB of subset data each).
+# The DPDK threads exit once these frames have been handed off, leaving the rest of kotekan
+# running so the file writer can flush; the writer then shuts kotekan down.
+{% set num_capture_frames = 240 %}
+
+# The two NUMA halves, as in pathfinder.j2. Each owns a NIC port and a set of cores, and every
+# per-half buffer and stage below loops over this table; a block that exists once per half is
+# named <block>_<id> (sfx). Half 0's packet mask, subset and writer stages run on the root
+# cpu_affinity. Half 1's are pinned to free cores on node 1 (16-31; 16-18 and 20-23 are taken
+# by the packet mask, transposes, frame service and DPDK lcores), so that its 384 MiB input
+# frames and {{ subset_frame_mib }} MiB output frames do not cross the socket link.
+{% set numa_halves = [
+    {"id": 0, "sfx": "_0", "mask_cpus": [0, 1, 8, 11, 12, 13, 14, 15], "transpose_cpus": [2, 3],
+     "frame_service_cpu": 4, "other_cpus": [0, 1, 8, 11, 12, 13, 14, 15]},
+    {"id": 1, "sfx": "_1", "mask_cpus": [16], "transpose_cpus": [17, 18],
+     "frame_service_cpu": 20, "other_cpus": [24, 25, 26, 27, 28, 29, 30, 31]},
+] %}
+
+---
+{% include "common.j2" %}
+
+num_local_freq: {{ num_local_freq }}
+
+numa_node: 0
+
+host_side_buffer_depth: buffer_depth * 6
+cpu_affinity: [0,1,8,11,12,13,14,15]
+
+samples_per_data_set: {{ samples_per_data_set }}
+
+# Which 8-dish blocks SubsetBaseband keeps.
+dish_blocks_subset: {{ dish_blocks_subset }}
+
+# DPDK related parameters
+dpdk_output_frame_size: samples_per_data_set * num_local_freq * num_elements
+num_crs_boards: 16  # Number of F-engine boards sending data
+time_samples_per_packet: 16
+time_short: 16
+time_long: samples_per_data_set / time_short
+element_short: 8
+element_long: num_elements / element_short
+
+{% include "telescope.j2" %}
+
+# Pools
+main_pool:
+    kotekan_metadata_pool: chordMetadata
+    num_metadata_objects: 40 * buffer_depth
+
+# Buffers
+network_input_buffers:
+    num_frames: {{ num_capture_frames }}
+    frame_size: dpdk_output_frame_size
+    metadata_pool: main_pool
+    use_hugepages: true
+
+    # The workers share an output buffer.
+    # Fed by dpdkCore (crs16BoardCaptureWorker handler) -> leave standard.
+{% for n in numa_halves %}
+    network_input_buffer_{{ n.id }}:
+        zero_new_frames: true
+        numa_node: {{ n.id }}
+        zero_value: 0x88
+        kotekan_buffer: standard
+{% endfor %}
+
+# Main voltage buffer after transpose.
+# Produced by TransposeBasebandArray: int4x2_swapped_withoffset "E"
+# [timesamples_per_frame, NUM_LOCAL_FREQ, 2, NUM_ELEMENTS/2] = [samples_per_data_set, 384, 2, 64].
+# The stage uses compile-time macros NUM_LOCAL_FREQ=384, NUM_ELEMENTS=128 (it fatally checks the
+# config num_local_freq/num_elements equal them); this config sets num_local_freq=384,
+# num_elements=128, so the static extents below are valid. These live outside the
+# network_input_buffers group: that group's frame_size is for the dpdk buffers, while
+# ndarray buffers derive their size from the descriptor.
+{% for n in numa_halves %}
+host_voltage_buffer_{{ n.id }}:
+    kotekan_buffer: ndarray
+    num_frames: host_side_buffer_depth
+    value_type: int4x2_swapped_withoffset
+    extents: [samples_per_data_set, num_local_freq, 2, num_elements / 2]
+    metadata_pool: main_pool
+    use_hugepages: true
+    numa_node: {{ n.id }}
+{% endfor %}
+
+# Subset Buffers, one per NUMA domain.
+# The extents must match what SubsetBaseband produces, which is why the trailing dish
+# extent is derived from dish_blocks_subset above.
+{% for n in numa_halves %}
+subset_voltage_buffer_{{ n.id }}:
+    kotekan_buffer: ndarray
+    extents: [samples_per_data_set, num_local_freq, 2, {{ num_subset_dishes }}]
+    value_type: int4x2_swapped_withoffset
+    numa_node: {{ n.id }}
+    num_frames: {{ subset_buffer_depth }}
+    metadata_pool: main_pool
+{% endfor %}
+
+# One receipt bitmap per capture worker (two per half), combined by that half's
+# process_packet_mask stage.
+packet_receipt_bitmap_buffers:
+    log_level: info
+    num_frames: {{ num_capture_frames }}
+    frame_size: (samples_per_data_set / time_samples_per_packet) * num_crs_boards  # One bit per stream
+    metadata_pool: main_pool
+    use_hugepages: true
+{% for n in numa_halves %}
+    packet_receipt_bitmap_buffer_{{ 2 * n.id }}:
+        kotekan_buffer: standard
+        numa_node: {{ n.id }}
+    packet_receipt_bitmap_buffer_{{ 2 * n.id + 1 }}:
+        kotekan_buffer: standard
+        numa_node: {{ n.id }}
+    combined_receipt_bitmap_buffer_{{ n.id }}:
+        kotekan_buffer: standard
+        numa_node: {{ n.id }}
+{% endfor %}
+
+# Note this is the expanded version of the pl_mask, produced by ProcessPacketMask (pl_mask_buf)
+# and applied to the voltages by TransposeBasebandArray.
+# uint1x8 "pl_mask_exp" [samples_per_data_set/64, num_local_freq, 2, num_elements/8/2, 8]
+# {Thi64, F, P, D8, Tlo64}.
+{% for n in numa_halves %}
+host_pl_mask_exp_buffer{{ n.sfx }}:
+    kotekan_buffer: ndarray
+    num_frames: host_side_buffer_depth
+    value_type: uint1x8
+    extents: [samples_per_data_set / 64, num_local_freq, 2, num_elements / 8 / 2, 8]
+    metadata_pool: main_pool
+    numa_node: {{ n.id }}
+{% endfor %}
+
+
+# Stages
+
+##  Packet capture from the F-engine ##
+dpdk:
+    kotekan_stage: dpdkCore
+    log_level: INFO
+    # Format is index = lcore, value = cpu core
+    lcore_cpu_map: [5, 6, 7, 21, 22, 23] # [5,6,7]
+    main_lcore_cpu: 4
+    num_mbufs: 16384
+    rx_ring_size: 1024
+    mbuf_cache_size: 512
+    packet_size: 6208
+    payload_size: 6144
+    max_rx_pkt_len: 6208
+    burst_size: 32
+    # crs_board_remap comes from telescope.j2.
+    max_link_start_delay: 10
+    # The number of stream IDs expected per worker
+    num_expected_stream_ids: 4
+    # Capture scheduling. Both options are read by every capture worker below.
+    #
+    # capture_start_time_utc: hold off until this UTC wall clock time. The time is turned into
+    # an FPGA seq number using the F-engine's GPS time (never the system clock) and rounded
+    # down to the nearest frame edge, so all workers start on the same frame. It must be at
+    # least 1 minute in the future, and a start more than 12 hours out only warns.
+    # Commented out means start at the first frame edge ~2 s after packets begin arriving.
+    # Worth keeping set while recording both NUMA domains: it is the only way the port 0 and
+    # port 1 workers are guaranteed the same start seq, and hence the two writers the same
+    # timestamped folder. Unscheduled, their starts can differ by one frame (~42 ms), which
+    # now and then rounds to two different folder names. Harmless for merging (point
+    # merge_baseband_freq.py at /scratch/baseband and it recurses into both), but untidy.
+    capture_start_time_utc: "2026-09-04 18:18:00"
+    # capture_n_frames: stop after this many frames, 0 = record until kotekan is stopped.
+    capture_n_frames: {{ num_capture_frames }}
+    # List of PCIe addresses to block from DPDK use
+    pcie_block_list:
+        - "0000:37:00.0"
+        - "0000:37:00.1"
+        - "0000:b5:00.0"
+        - "0000:b5:00.1"
+    # Two worker rings per half (2n, 2n+1), on that half's socket.
+    worker_ring_map:
+{% for n in numa_halves %}
+        - name: worker_ring_{{ 2 * n.id }}
+          num_slots: 512
+          socket_id: {{ n.id }}
+        - name: worker_ring_{{ 2 * n.id + 1 }}
+          num_slots: 512
+          socket_id: {{ n.id }}
+{% endfor %}
+    # Format is index = lcore, value = array of port IDs
+    # so [[0,1],[2,3]] maps lcore 0 to service ports 0 and 1,
+    # and lcore 1 to service ports 2 and 3. Here each half's port has its own lcore.
+    lcore_port_map:
+{% for n in numa_halves %}
+        - [{{ n.id }}]
+{% endfor %}
+    # One handler must be given per port
+    handlers:
+{% for n in numa_halves %}
+        - dpdk_handler: crs16BoardDistributor
+          worker_rings: [{{ 2 * n.id }},{{ 2 * n.id + 1 }}]
+{% endfor %}
+    # Exactly one worker per worker ring, in ring order: worker i reads worker_ring_i.
+    workers:
+{% for n in numa_halves %}
+        - dpdk_handler: crs16BoardCaptureWorker
+          frame_service_cpu_affinity: [{{ n.frame_service_cpu }}]
+          port: {{ n.id }}
+          allocate_metadata: true
+          out_buf: network_input_buffer_{{ n.id }}
+          receipt_bitmap_buf: packet_receipt_bitmap_buffer_{{ 2 * n.id }}
+        - dpdk_handler: crs16BoardCaptureWorker
+          frame_service_cpu_affinity: [{{ n.frame_service_cpu }}]
+          port: {{ n.id }}
+          out_buf: network_input_buffer_{{ n.id }}
+          receipt_bitmap_buf: packet_receipt_bitmap_buffer_{{ 2 * n.id + 1 }}
+{% endfor %}
+
+# Combine packet receipt bitmaps and generate packet-loss masks
+{% for n in numa_halves %}
+process_packet_mask_{{ n.id }}:
+    kotekan_stage: ProcessPacketMask
+    cpu_affinity: {{ n.mask_cpus }}
+    voltage_buf: network_input_buffer_{{ n.id }}
+    receipt_bitmap_bufs:
+        - packet_receipt_bitmap_buffer_{{ 2 * n.id }}
+        - packet_receipt_bitmap_buffer_{{ 2 * n.id + 1 }}
+    combined_receipt_bitmap_buf: combined_receipt_bitmap_buffer_{{ n.id }}
+    pl_mask_buf: host_pl_mask_exp_buffer{{ n.sfx }}
+    num_frequency: num_local_freq
+    num_source_ids: num_crs_boards
+{% endfor %}
+
+# Transpose the voltage data from the network input buffer into a more convenient layout
+# for the baseband dump processing.
+# This also applies the packet-loss mask to the data.
+# Two per half, one for even and one for odd frames.
+{% for n in numa_halves %}
+{% for parity in ["even", "odd"] %}
+transpose_voltage_{{ 2 * n.id + loop.index0 }}:
+    kotekan_stage: TransposeBasebandArray
+    cpu_affinity: [{{ n.transpose_cpus[loop.index0] }}]
+    timesamples_per_frame: samples_per_data_set
+    in_buf: network_input_buffer_{{ n.id }}
+    pl_mask_buf: host_pl_mask_exp_buffer{{ n.sfx }}
+    out_buf: host_voltage_buffer_{{ n.id }}
+    frame_mode: {{ parity }}
+    log_level: info
+{% endfor %}
+{% endfor %}
+
+# Keep dish_blocks_subset of each half's voltages.
+{% for n in numa_halves %}
+subset_baseband_{{ n.id }}:
+    kotekan_stage: SubsetBaseband
+    cpu_affinity: {{ n.other_cpus }}
+    timesamples_per_frame: samples_per_data_set
+    in_buf: host_voltage_buffer_{{ n.id }}
+    out_buf: subset_voltage_buffer_{{ n.id }}
+    log_level: info
+{% endfor %}
+
+# The two writers share a base_dir and a timestamped capture folder, so they need
+# distinct file names. prefix_host_rank prepends "x<frequency_pool_rank:04d>_", giving
+# <host>_x0000_baseband_subset.*.h5 and <host>_x0001_baseband_subset.*.h5. The dataset
+# name inside the files stays "baseband_subset" for both, which is what
+# python/scripts/merge_baseband_freq.py expects when it stitches the halves back
+# together by their coarse_freq attributes.
+{% for n in numa_halves %}
+hdf5_write_baseband_{{ n.id }}:
+    kotekan_stage: hdf5FileWrite
+    cpu_affinity: {{ n.other_cpus }}
+    in_buf: subset_voltage_buffer_{{ n.id }}
+    base_dir: /scratch/baseband
+    # Put each capture in its own base_dir/<UTC start time> folder, created on the first
+    # frame and named from that frame's FPGA seq number, e.g.
+    # /scratch/baseband/20260811T031500Z/
+    timestamp_subdir: true
+    file_name: baseband_subset
+    prefix_host_rank: true
+    frequency_pool_rank: {{ n.id }}
+    frequency_pool_size: {{ numa_halves | length }}
+    # Capture this many frames (~42 ms / {{ subset_frame_mib }} MiB each), then shut down kotekan.
+    # Matches the DPDK stage's capture_n_frames, so the writer flushes everything the
+    # capture produced and then exits.
+    max_frames: {{ num_capture_frames }}
+    # Fetch the FPGA digital gains from the controller and copy them into every output file
+    # as /digital_gains, so the recorded voltages can be interpreted without a side lookup.
+    # Each writer caches its own copy under <capture dir>/.partial/, so the two do not race.
+    baseband_gain_host_info: /fpga_controller
+    # Frames appended to each file before rolling over to a new one
+    frames_per_file: 20
+    # bitshuffle+zstd cannot keep up with the full subset data rate
+    use_compression: false
+    log_level: info
+{% endfor %}

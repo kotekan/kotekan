@@ -1,8 +1,8 @@
 {#-
   telescope.j2
-  The CHORD pathfinder telescope: site geometry, the dish table, the CRS board order and the
-  EOP hook.  Included by pathfinder.j2 (X-engine), recv.j2 (receiver) and
-  ../chord_pathfinder_baseband.j2 so all of them label the same element axis from one
+  The CHORD pathfinder telescope: site geometry, the dish table, the CRS board order, the
+  slots with no board, and the EOP hook.  Included by pathfinder.j2 (X-engine), recv.j2
+  (receiver) and baseband.j2 so all of them label the same element axis from one
   dish_inputs table; the receiver's hdf5N2Write would write files mislabeled if its table
   ever diverged from the X-engine's at the same connected count.
 -#}
@@ -123,6 +123,12 @@ telescope:
 # workers, which place the boards, and the HDF5 writers, which map the FPGA digital gains
 # (indexed by raw board) onto the element axis, agree.
 crs_board_remap: [0, 2, 4, 6, 8, 10, 12, 15, 1, 3, 5, 7, 9, 11, 13, 14]
+
+# Output slots (after crs_board_remap, not raw source_ids) with no CRS board behind them:
+# ProcessPacketMask marks them fully received so an absent board is not 100% packet loss.
+# Listing a slot that has a board disables its packet-loss accounting, so update this as
+# boards come and go. Populated (Oct 8 2026): slots 0-3, 8-11 (dishes) and 7, 15 (RFI).
+missing_source_ids: [4, 5, 6, 12, 13, 14]
 
 earth_rotation_data:
     kotekan_update_endpoint: json
