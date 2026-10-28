@@ -426,7 +426,8 @@ chains:
     # Not slew, which needs this chain's satellites in the joint state: only search detections
     # feed it, since a model-primary chain's code residual is measured against its own seed and
     # feeding it while consuming would close a loop with no sky reference.
-        joint-consume: clk,rate
+        joint-source: trk
+        joint-consume: clk,rate,slew
     # E33's trim presence is judged on the deep fold alone (deep_snr >= 3 x deep_floor), as on
     # gps_l5, and while the combiner reports a floor that verdict overrides the q, prompt and
     # displaced gates for it. Not widened: deep_snr can fire on noise, and this gate has no
@@ -463,7 +464,8 @@ chains:
         signal: bds_b2a
         joint-trk-feed: true
         dr-clock-adopt: true
-        joint-consume: clk,rate
+        joint-source: trk
+        joint-consume: clk,rate,slew
     # The carrier loop as on gal_e5a without the fine feed (rrate-phase-feed and its keys), so
     # this chain feeds the rows only from the KCOH fold and the coarse deep-fold rate.
     # rrate-coarse-deweight stays at its default 8, which deweights the coarse rate while a
@@ -538,7 +540,8 @@ chains:
         signal: bds_b2b
         joint-trk-feed: true
         dr-clock-adopt: true
-        joint-consume: clk,rate
+        joint-source: trk
+        joint-consume: clk,rate,slew
         fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
         fleet-trim-bandwidth: 2.5
         fleet-trim-readback: 1
@@ -630,7 +633,8 @@ chains:
         dr-clock-adopt: true
         seed-phase-transport: true
         presence-admit-displaced: true
-        joint-consume: clk,rate
+        joint-source: trk
+        joint-consume: clk,rate,slew
         fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
         fleet-trim-bandwidth: 2.5
         fleet-trim-readback: 1
@@ -649,7 +653,8 @@ chains:
         dr-clock-adopt: true
         seed-phase-transport: true
         presence-admit-displaced: true
-        joint-consume: clk,rate
+        joint-source: trk
+        joint-consume: clk,rate,slew
         fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
         fleet-trim-bandwidth: 2.5
         fleet-trim-readback: 1
