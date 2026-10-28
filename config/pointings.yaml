@@ -34,6 +34,11 @@
       note: same aim as p2 (rows A/B on the Cyg A pointing, dec +40.73; rows C-F tipped further down) with rows G/H tipped with C-F (KV 2026-10-23); no common boresight, so no beam maps; starts with the 128-element live set (rows A-H, array epoch 2026-10-23-rows-ah128), so a sender's day file never mixes element counts; ends at the realignment
     - id: p4_repoint_taua_20261023
       from: 2026-10-23T15:43:00Z
-      to:
+      to: 2026-10-24T00:00:00Z
       boresight_dec_deg:
       note: the whole array (rows A-H) being repointed to Tau A (dec +22.0, meridian, el ~62.7 S), starting during the F-engine outage of 15:43Z; dishes keep moving while data are taken (KV 2026-10-23, likely over the weekend), so no common boresight and no beam maps; array epoch 2026-10-23-rows-ah128-repoint; ends when KV confirms the move complete
+    - id: p5_taua_20261024
+      from: 2026-10-24T00:00:00Z
+      to:
+      boresight_dec_deg: 22.0
+      note: the whole array (rows A-H) on Tau A (dec +22.0, meridian, el 62.7 S), the repoint confirmed complete apart from the west edge of rows E-H (config/chord_array_epochs.json 2026-10-24-rows-ah128-taua, the same instant); per-dish N-S aim within +-0.55 deg, E-W -0.065 +- 0.04 deg (memory chord-taua-pointing-squint-20261024)

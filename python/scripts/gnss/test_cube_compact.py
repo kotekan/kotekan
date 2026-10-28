@@ -222,5 +222,56 @@ class TestRebaseInsideFile(CompactCase):
         self.assertIn("distinct utc0", str(e.exception))
 
 
+def reshape(fa, nb):
+    """The frame `fa` (frame()'s output) cut to its first nb bins: a sender regenerated with
+    fewer channels."""
+    h, a = fa
+    h = dict(h, n_bin=nb, max_bins=nb)
+    a = dict(a)
+    for k in ("freq_id_lo", "freq_id_hi"):
+        a[k] = a[k][:nb]
+    for k in ("w", "energy", "coh_re", "coh_im", "incoh"):
+        a[k] = a[k][:, :nb]
+    return h, a
+
+
+class TestGeometryChangeInsideDay(CompactCase):
+    """A sender whose bin count changes inside a day (a config regeneration) continues in a
+    tagged file beside the day file, in one batch or across passes, and never stops the pass."""
+
+    def day(self):
+        return cc.utc_day(T0)
+
+    def files(self):
+        d = os.path.join(self.out, "l0", "unknown", "cx19_gnss0_n2assemble")
+        out = {}
+        for p in sorted(glob.glob(os.path.join(d, "*.h5"))):
+            with h5py.File(p, "r") as f:
+                out[os.path.basename(p)] = (
+                    int(f.attrs["n_bin"]),
+                    f["win/idx"].shape[0],
+                )
+        return out
+
+    def test_one_batch(self):
+        self.add_raw("a.raw", [frame(0), frame(1), reshape(frame(2), 2)], T0 + 3)
+        m = self.compact()
+        self.assertEqual(m["a.raw"]["frames"], 3)
+        self.assertEqual(
+            self.files(),
+            {self.day() + ".h5": (N_BIN, 2), self.day() + "_2b%de.h5" % N_ELEM: (2, 1)},
+        )
+
+    def test_across_passes(self):
+        self.add_raw("a.raw", [frame(0)], T0 + 1)
+        self.compact()
+        self.add_raw("b.raw", [reshape(frame(1), 2), frame(2)], T0 + 3)
+        self.compact()
+        self.assertEqual(
+            self.files(),
+            {self.day() + ".h5": (N_BIN, 2), self.day() + "_2b%de.h5" % N_ELEM: (2, 1)},
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

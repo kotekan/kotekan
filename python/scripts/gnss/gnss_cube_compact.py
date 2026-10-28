@@ -3,7 +3,10 @@
 
     gnss_cube_compact.py compact  --raw DIR --out ROOT [--include-open] [--batch N]
         raw rawFileWrite bundles  ->  L0 HDF5, one file per (pointing, sender, UTC day):
-        <ROOT>/l0/<pointing>/<sender>/<YYYYMMDD>.h5. Only live slots are kept (a slot with
+        <ROOT>/l0/<pointing>/<sender>/<YYYYMMDD>.h5. A sender whose geometry (bins, elements)
+        changes inside a day, at a config regeneration, continues in <YYYYMMDD>_<B>b<E>e.h5
+        beside it: the plain file keeps the day's first geometry, and rungs are cut from the
+        plain files only. Only live slots are kept (a slot with
         n_rec == 0 is silence, not a zero -- see gnssRecord.hpp), the pad is dropped, and the
         window's UTC is written next to its F-engine sample index. Idempotent: a manifest at
         <ROOT>/l0/manifest.json records every raw file already folded in or refused.
@@ -347,6 +350,28 @@ def raw_files(rawdir, include_open):
     return files
 
 
+def l0_path(out, pid, snd, day, nb, ne, claimed):
+    """The L0 file for one (pointing, sender, day) at this frame geometry. The plain
+    <day>.h5 belongs to the first geometry that claims it -- the file's own attrs once it
+    exists, else the first frame this run -- and any other geometry gets <day>_<nb>b<ne>e.h5,
+    so two geometries never share a file. `claimed` caches the plain files' geometry."""
+    d = os.path.join(out, "l0", pid, snd)
+    plain = os.path.join(d, day + ".h5")
+    g = claimed.get(plain)
+    if g is None:
+        if os.path.exists(plain):
+            import h5py
+
+            with h5py.File(plain, "r") as f:
+                g = (int(f.attrs["n_bin"]), int(f.attrs["n_elem"]))
+        else:
+            g = (nb, ne)
+        claimed[plain] = g
+    if g == (nb, ne):
+        return plain
+    return os.path.join(d, "%s_%db%de.h5" % (day, nb, ne))
+
+
 def frame_utc(h, utc0):
     return utc0 + h["wstart0"] / h["sample_rate"]
 
@@ -415,7 +440,8 @@ def cmd_compact(args):
         return
     print(f"{len(todo)} raw file(s) to fold into {args.out}/l0")
 
-    open_files = {}  # (pointing, sender, day) -> L0File
+    open_files = {}  # (pointing, sender, day, n_bin, n_elem) -> L0File
+    claimed = {}  # plain L0 path -> (n_bin, n_elem) it holds
     stats = dict(frames=0, rows=0, files=0, refused=0)
     t_start = time.time()
     batch_sources = []
@@ -501,18 +527,19 @@ def cmd_compact(args):
             day = utc_day(utc)
             pid = pointing_at(epochs, utc)
             snd = sender_name(h["chain"])
-            k = (pid, snd, day)
+            k = (pid, snd, day, h["n_bin"], h["n_elem"])
             lf = open_files.get(k)
             if lf is None:
-                lf = L0File(
-                    h5py,
-                    os.path.join(args.out, "l0", pid, snd, day + ".h5"),
-                    h,
-                    utc0,
-                    src,
-                    pid,
-                    day,
+                path = l0_path(
+                    args.out, pid, snd, day, h["n_bin"], h["n_elem"], claimed
                 )
+                if not path.endswith(day + ".h5"):
+                    print(
+                        f"{snd} {day}: geometry {h['n_bin']} bins x {h['n_elem']} elements "
+                        f"differs from the day file's; continuing in {os.path.basename(path)}",
+                        file=sys.stderr,
+                    )
+                lf = L0File(h5py, path, h, utc0, src, pid, day)
                 open_files[k] = lf
             lf.add(h, a, utc)
             stats["frames"] += 1
