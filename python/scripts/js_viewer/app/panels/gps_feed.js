@@ -12,9 +12,18 @@
 const POLL_MS = 1500;
 const AMP_LOCK = 0.30;      // |A| lock bar where no row reports sig
 const SNR_LOCK = 3.0;       // sig lock bar (sigma above noise) for rows without q
-// The lock bars on q. gps_table.js colours q with the same numbers, so the panels agree:
+// The lock bars on q, used only when the broker does not publish its own verdict
+// (fleet_present, below). gps_table.js colours q with the same numbers, so the panels agree:
 // >= Q_LOCK is a lock (green), <= q_floor * Q_FLOOR_MARGIN is at the measured noise (red).
 // q_floor is published by the broker each cycle.
+//
+// Q_LOCK is an absolute bar, and q's on-peak value is lobe geometry, not lock quality: it is
+// the correlation shape at the early/late spacing, set by the spacing (0.5 chip reads ~4 on a
+// clean peak, 0.33 reads ~2.2) and by which channels the fleet's lobe sum holds. A GLONASS
+// L2OF slot (0.33 chip, ~6 channels of which a down node removes a different pair per slot)
+// reads 1.5-2.3 while locked, so the absolute bar called seven locked satellites noise
+// (10-28). The broker's gate is relative (q against its measured floor, prompt power against
+// the probe floor) and is what the DLL runs on, so it is the verdict where it is published.
 const Q_LOCK = 2.2;
 const Q_FLOOR_MARGIN = 1.15;
 // The fallback incoherent C/N0 in signal_metrics() has a pole at u -> a; refuse u/a above
@@ -123,6 +132,10 @@ export function signal_metrics(s, t_rec) {
     m.q = s.fleet_q != null ? s.fleet_q : null;
     m.q_floor = s.fleet_q_floor != null ? s.fleet_q_floor : null;
     m.q_inst = s.fleet_instances != null ? s.fleet_instances : null;
+    // present: the broker's own presence verdict for this signal (fleet.apply_presence:
+    // q >= its probe-measured floor AND prompt power >= the probe floor, plus the displaced
+    // and deep admissions). null where the broker is older than the field.
+    m.present = s.fleet_present != null ? !!s.fleet_present : null;
     // cn0 is the broker's cn0_prompt_db (combdll.prompt_cn0): per-record prompt power, kept
     // where presence is established and the prompt is the tallest tap, debiased by the noise
     // probes; no fit. cn0_duty is the fraction of records kept: at low duty the value rests on
@@ -347,7 +360,7 @@ export class GpsFeed {
             if (!sats.has(id)) sats.set(id, {
                 id, tag, prn, az: null, el: null, snr: null, detected: false,
                 amp: 0, sig: 0, cn0: null,
-                q: null, q_floor: null, noise_probe: false,
+                q: null, q_floor: null, present: null, noise_probe: false,
                 n_status: 0, n_probe: 0,   // status rows seen / of them flagged noise_probe
                 sig_by: {},     // combiner-key -> signal_metrics()
             });
@@ -403,8 +416,11 @@ export class GpsFeed {
                         r.sig = m.sig; r.amp = m.amp;
                     }
                     if (m.cn0 != null && (r.cn0 == null || m.cn0 > r.cn0)) r.cn0 = m.cn0;
-                    // The lock rule's inputs: the signal with the highest q, judged against its
-                    // own floor.
+                    // The lock rule's inputs: the broker's verdict (any signal it calls
+                    // present makes the row present; a row whose signals all carry a verdict
+                    // of "not present" is not), and for brokers without one the signal with
+                    // the highest q, judged against its own floor.
+                    if (m.present != null) r.present = r.present || m.present;
                     if (m.q != null && (r.q == null || m.q > r.q)) {
                         r.q = m.q; r.q_floor = m.q_floor;
                     }
@@ -435,14 +451,20 @@ export class GpsFeed {
         // rate and phase and certify whatever they land on, noise included, so a dead band can
         // serve sig in the thousands while q sits at its noise floor.
         //
-        // A row carrying q is active when q >= Q_LOCK and q is above q_floor * Q_FLOOR_MARGIN.
-        // Marginal rows (above the floor, under Q_LOCK; amber in the table) render idle, the
-        // conservative direction. A probe row is never active. A row without q falls back to
-        // sig >= SNR_LOCK, or to detection / |A| where no row reports sig.
+        // A row the broker judged (fleet_present on any of its signals) is active on that
+        // verdict: q against the floor the broker measured from its noise probes, and prompt
+        // power against the probe floor, the same gate the DLL arms on. The absolute Q_LOCK
+        // bar is kept only for brokers that do not publish the verdict: such a row is active
+        // when q >= Q_LOCK and q is above q_floor * Q_FLOOR_MARGIN; marginal rows (above the
+        // floor, under Q_LOCK; amber in the table) render idle, the conservative direction.
+        // A probe row is never active. A row without q falls back to sig >= SNR_LOCK, or to
+        // detection / |A| where no row reports sig.
         const have_sig = list.some(r => r.sig > 0);
         for (const r of list) {
             if (r.noise_probe)
                 r.active = false;
+            else if (r.present != null)
+                r.active = r.present;
             else if (r.q != null)
                 r.active = (r.q >= Q_LOCK)
                            && !(r.q_floor != null && r.q <= r.q_floor * Q_FLOOR_MARGIN);

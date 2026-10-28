@@ -70,19 +70,28 @@ const METRICS = {
     // q: the code-loop quality, the fleet discriminator's prompt-vs-shoulder ratio. It says
     // whether the code loop is on the peak, which every power metric in this table is blind to
     // (the deep fold's integration gain and rate search let sig and C/N0 look healthy while the
-    // prompt tap sits on noise). Coloured against the broker's measured floor: >= 2.2 solid
-    // lock, <= 1.15 x floor off-peak, marginal between (gps_feed's Q_LOCK and Q_FLOOR_MARGIN).
-    // The hover carries the floor and the contributing instance count.
+    // prompt tap sits on noise). Its on-peak value is lobe geometry (early/late spacing and
+    // the channels in the lobe sum: 0.5 chip ~4, 0.33 chip ~2.2, an L2OF slot missing its
+    // centre pair higher still), so the colour follows the broker's verdict where it publishes
+    // one: present (q over its measured floor AND prompt power over the probe floor) green,
+    // not present red at the floor / amber above it. Without a verdict the old absolute bars
+    // apply: >= 2.2 solid lock, <= 1.15 x floor off-peak, marginal between (gps_feed's Q_LOCK
+    // and Q_FLOOR_MARGIN). The hover carries the floor and the contributing instance count.
     q:    {label: "q", field: "q", unit: "",
            fmt: m => {
                if (!m || m.q == null) return null;
                const v = m.q.toFixed(2);
                const fl = m.q_floor, n = m.q_inst;
+               const at_floor = fl != null && m.q <= fl * 1.15;
+               const verdict = m.present == null ? ">=2.2 solid (no broker verdict)"
+                             : m.present ? "present (broker: q over floor, prompt over floor)"
+                             : "not present (broker)";
                const tip = `code-loop quality; floor ${fl != null ? fl.toFixed(2) : "?"}`
                          + `${n != null ? `, ${n} instances` : ""}`
-                         + ` -- >=2.2 solid, near the floor means the prompt tap is off-peak`;
-               const col = m.q >= 2.2 ? "#7fd67f"
-                         : (fl != null && m.q <= fl * 1.15) ? "#e06666" : "#e0c060";
+                         + ` -- ${verdict}; near the floor means the prompt tap is off-peak`;
+               const col = m.present != null
+                         ? (m.present ? "#7fd67f" : at_floor ? "#e06666" : "#e0c060")
+                         : m.q >= 2.2 ? "#7fd67f" : at_floor ? "#e06666" : "#e0c060";
                return `<span style="color:${col}" title="${tip}">${v}</span>`;
            }},
     sig:  {label: "sig",  field: "sig",     unit: "σ",
