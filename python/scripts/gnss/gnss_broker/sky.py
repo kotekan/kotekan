@@ -474,21 +474,27 @@ def set_boresight(az_deg, el_deg, source):
 
 def read_pointing(bases, get):
     """(coelev_deg, detail) from the nodes' running config (GET <base>/config), or (None,
-    detail). Every base is asked; the ones that answer must agree, since a disagreement means
-    the fleet is mid-change or mislabelled and no single number describes the dishes."""
-    vals, errs = {}, []
+    detail). Every base is asked; a node not running a GNSS config (no gnss* stage: a stock
+    kotekan on a fleet host, 10-28 cx47 at the pre-tilt -8.6) is skipped, and the rest must
+    agree, since a disagreement means the fleet is mid-change or mislabelled and no single
+    number describes the dishes."""
+    vals, errs, stock = {}, [], []
     for b in bases:
         try:
-            v = (get("%s/config" % b.rstrip("/")).get("telescope") or {}).get(
-                "dish_coelev_deg"
-            )
+            cfg = get("%s/config" % b.rstrip("/")) or {}
         except Exception as e:  # a node being down is the normal outage case
             errs.append("%s: %s" % (b, e))
             continue
+        if not any(str(k).startswith("gnss") for k in cfg):
+            stock.append(b)
+            continue
+        v = (cfg.get("telescope") or {}).get("dish_coelev_deg")
         if v is None:
             errs.append("%s: no telescope.dish_coelev_deg" % b)
             continue
         vals[b] = float(v)
+    if stock:
+        errs.append("not running a GNSS config: %s" % ", ".join(stock))
     if not vals:
         return None, "no node answered (%s)" % ("; ".join(errs) or "none listed")
     distinct = sorted(set(vals.values()))

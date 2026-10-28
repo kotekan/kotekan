@@ -21,13 +21,19 @@ def check(ok, what):
 
 
 def _getter(table):
-    """A /config GET over {base: coelev or Exception}."""
+    """A /config GET over {base: coelev, ("stock", coelev) or Exception}: a GNSS node's config
+    carries its gnss stages, a stock node's does not."""
 
     def get(url):
         v = table[url[: -len("/config")]]
         if isinstance(v, Exception):
             raise v
-        return {"telescope": {"dish_coelev_deg": v}} if v is not None else {}
+        if isinstance(v, tuple):
+            return {"telescope": {"dish_coelev_deg": v[1]}}
+        cfg = {"gnss0_inject": {"kotekan_stage": "cudaProcess"}}
+        if v is not None:
+            cfg["telescope"] = {"dish_coelev_deg": v}
+        return cfg
 
     return get
 
@@ -64,6 +70,16 @@ def main():
             bases, _getter({bases[0]: -27.3, bases[1]: -8.6, bases[2]: -27.3})
         )
         check(v is None and "DISAGREE" in d, "a disagreement installs nothing: %s" % d)
+        # 10-28 11:30Z: cx47 answered with a stock config at the pre-tilt -8.6 and the rule
+        # above installed nothing, leaving every transit guard off
+        v, d = sky.read_pointing(
+            bases,
+            _getter({bases[0]: -27.3, bases[1]: ("stock", -8.6), bases[2]: -27.3}),
+        )
+        check(
+            v == -27.3 and "not running a GNSS config: http://b:1" in d,
+            "a stock node is skipped, not a disagreement: %s" % d,
+        )
         v, d = sky.read_pointing(bases, _getter({b: None for b in bases}))
         check(v is None, "no dish_coelev_deg anywhere reads nothing")
 
