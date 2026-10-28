@@ -775,6 +775,52 @@ elem_positions_epoch (and the recipe line). (d) split_paths takes config/elem_*.
 checks the append-only rule. A dead input is now one mask entry, a regen and a node restart: no epoch, no re-key.
 **Left:** (c) the live REST mask (the restart a mask change costs), and (d) the full scripted release.
 
+### #218 — ⚠️ IMPORTANT: GuoWang LEO satellites transmit GNSS-like signals at 1268.52 and 1202.025 MHz; identify the code before the constellation fills the sky (2026-10-28, KV: "potentially disastrous if they're all broadcasting, we don't have the modes to blank that much sky")
+**Found (10-27/28; scratch e6lobe1027/, emit1027/, nearfield1028/, burstspec1028/; memory
+chord-e6-lower-lobe-is-an-emitter-20261027):** the 1263-1274 MHz projection residual (#214's "E6 lower lobe", 2-3 dB)
+is NOT Galileo E6-A or the lane transfer. Satellites there are removed -14..-16 dB, and the transfer caps at
+12-18 dB, worth < 0.1 dB if improved. 65-75 % of what is left is this emitter.
+- **Source:** China's GuoWang constellation (CelesTrak GROUP=hulianwang, "HULIANWANG DIGUI-nn"; no "guowang" group).
+  - Burst tracks are far field, 0.29-0.32 deg/s at el 58-68, headings 112/67 deg (~50 deg inclination), range
+    >= 24 km.
+  - 5 of 7 tracks match a DIGUI satellite at 1-8 deg with matching angular velocity (~5 % by chance per burst).
+  - Trains of 2-4 bursts every 12.67 +- 0.30 min = consecutive satellites in one plane (DIGUI-48 then -47).
+  - ADS-B (adsb.lol) and 13k other catalogued satellites ruled out.
+- **Signal** (raw channels only, 300-1500 MHz, 78 rail bursts 10-25..27, 53 archive bursts 10-26):
+  - Lit at exactly two places. (1) 1258.3-1278.6 MHz, BPSK(10.23) nulls at 1268.52 (the BDS B3 carrier), centre
+    1268.41 +- 0.09, flatter top than BPSK. (2) 1200.1-1204.1 MHz centred 1202.026 +- 0.026 (the GLONASS L3 carrier),
+    nulls every 2.0 MHz (~2.05 Mcps).
+  - Continuous and noise-like (duty >= 33-50 %), fixed frequency (drift < 0.01 MHz/s); not pulsed, swept or DME.
+  - Three variants, constant within a train: 1202 lobe with filtered sidelobes (50), with full sidelobes (16), no
+    1202 lobe (5).
+  - Polarisation varies burst to burst (not GNSS RHCP).
+  - Bursts ~5-10/h, x3-50 band power. Plus a continuous ~+35 % at 1267-1270, likely the ~15 DIGUI always above the
+    horizon seen in sidelobes (not yet shown).
+  - The "1200.78/1202.73 lines" (#214) were cx19's raw combs sampling the 1202 lobe in a projected stretch.
+- **Why it matters:** ~180 launched; ~13,000 filed (~7,000 near 1,145 km, ~6,000 at 500-600 km).
+  - Now ~15 above our horizon, ~6.6 above 15 deg, ~1.5 above 45 deg (8 % of a ~1150 km shell).
+  - Fully deployed: ~800-900 above the horizon, 300-400 above 15 deg, ~70 above 45 deg, and main-beam crossings
+    every ~10-20 s.
+  - Spatial nulling cannot scale (113 elements per channel). A known code would allow WAVEFORM SUBTRACTION (despread,
+    track, subtract per element), which removes only that signal's energy and costs no spatial modes.
+  - 1215-1300 MHz is RNSS space-to-Earth, so it is likely in-allocation.
+  - No public report of a GuoWang L-band/nav payload found (web search 10-28). SNIFFLES I (arXiv 2608.12999) tracked
+    GuoWang at 1-26 GHz with Mopra/ATCA; its abstract names nothing below 1613 MHz (full tables unchecked).
+- **TODO:**
+  1. A BASEBAND capture through a predicted near-boresight DIGUI pass. KV is talking to the team planning a
+     full-band, full-array 50-100 s dump (~week of 10-28). Our own capture over just 1194-1210 + 1248-1292 MHz may
+     allow a much longer recording. Either way, include both lobes and time the window from fresh TLEs.
+  2. A pass schedule for the chosen dates: every DIGUI pass within ~3 deg of boresight. Bracket the middle (strongest)
+     burst of a 12.7-min train; refresh the TLEs the day before.
+  3. An offline search pipeline, ready before the data:
+     - code period from the per-channel line spacing (B3I-like = 1 ms);
+     - the B3I PRNs, then the B3I-style Gold family (~8k codes), on a cf06 GPU;
+     - LEO Doppler +-30 kHz at up to ~100 Hz/s.
+     Validate on the MEO B3I/GLONASS satellites in the same data, so a null result means something.
+  4. Then: a live b3i-chain trial and waveform subtraction; or, without a code, TLE-steered geometric lanes (tier 2:
+     TLE ~0.05 deg against a synthesised beam ~0.18 deg).
+  5. Tell the SNIFFLES authors if they lack 1202/1268.
+
 ### #214 — the N^2 projection measured on 10-24: what the lanes leave, and what they cannot reach (2026-10-24, KV: "roll it out, get the E6 PRS lobe, note the 1202 emitter")
 **Measured (scratch proj1024/: gauges polled 40x on cx27/43/44/51 ~14:58Z, gains divided out per input, continuum
 from recv1's subset archive off-lobe 1100-1160 + 1300-1400 MHz, figure n2proj_1024.png):** cx51's lanes (95 stations)
