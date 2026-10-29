@@ -61,9 +61,9 @@
    "source": "KV 2026-10-23: the whole array (rows A-H) is being repointed to Tau A (dec +22.0, meridian transit, el ~62.7 S), starting during the F-engine outage of 15:43Z, and dishes keep moving while data are taken (a jumbled array, likely over the weekend); no common boresight, so no beam map may be built on this pointing; ends when KV confirms the move complete"
   },
   "p5_taua_20261024": {
-   "dec_deg": null,
-   "bore_az_deg": null,
-   "bore_el_deg": null,
+   "dec_deg": 22.02,
+   "bore_az_deg": 180.0,
+   "bore_el_deg": 62.7,
    "_main_group": {
     "dec_deg": 22.02,
     "bore_az_deg": 180.0,
@@ -78,7 +78,7 @@
     "G01": 30.0,
     "H01": 30.0
    },
-   "source": "KV 2026-10-24, site dish maps (rows A-H): the Tau A repoint is complete except the western edge of rows E-H, skipped (likely wind): 122 dishes at 27.300 deg S of zenith (meridian, el 62.7, Tau A dec +22.0), E1 at 0.000 (zenith), F1/F2/F3/G1/H1 at 30.000 S. To stay until spring (>= 4 months). No common boresight while the west edge is off, so no beam map may be built on this pointing."
+   "source": "KV 2026-10-24, site dish maps (rows A-H): the Tau A repoint is complete except the western edge of rows E-H, skipped (likely wind): 122 dishes at 27.300 deg S of zenith (meridian, el 62.7, Tau A dec +22.0), E1 at 0.000 (zenith), F1/F2/F3/G1/H1 at 30.000 S. To stay until spring (>= 4 months). Boresight = the main group's (az 180.0, el 62.7, dec +22.02) since 2026-10-29 (KV asked for Tau A beam maps from the cube): the 10-24 transits put F01/F02/F03/G01/H01 on Tau A, not the site map's 30 S, so only E01 (zenith) is off the common aim; exclude E01 from anything that assumes one aim."
   }
  },
  "epochs": [
