@@ -866,6 +866,11 @@ is NOT Galileo E6-A or the lane transfer. Satellites there are removed -14..-16 
   45-90 deg off boresight). It is spatially spread: 14-28 extra modes gain only 0.7-1.6 dB over a null.
 - **At ~850 above the horizon** that sum is ~+10 dB over system noise in 1258-1279 MHz and full rank, so no projection
   removes it. Code-based waveform subtraction (TODO 3-4) is the only scalable fix.
+**2026-10-29 (docs/CHORD_TAUA_GUOWANG_20261029.md):** the bursts with no catalogued match come from uncatalogued
+sets of nine at the in-plane midpoints of three catalogued 50-deg planes (RAAN 24.5 / 54.1 / 84.4 deg; orbit fitted
+from recv1 burst images, TLEs in taua1029/hidden_guowang_20261029.tle). The burst spectrum is BPSK at 10.23 Mcps on
+1268.52 MHz and 2.046 Mcps on 1202.025 MHz (null positions), with a flat-topped, high-sidelobe envelope that a
+white-code sinc^2 does not give. Deprojection removes ~70-85 % of a burst in projected channels.
 
 ### #214 — the N^2 projection measured on 10-24: what the lanes leave, and what they cannot reach (2026-10-24, KV: "roll it out, get the E6 PRS lobe, note the 1202 emitter")
 **Measured (scratch proj1024/: gauges polled 40x on cx27/43/44/51 ~14:58Z, gains divided out per input, continuum
