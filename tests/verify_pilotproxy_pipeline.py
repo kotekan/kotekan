@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Compare recorded detector outputs with CPU calculations from the input voltages.
 
-The config in config/tests/verify_pilotproxy_pipeline.yaml defines the raw
-array layouts. Frame metadata supplies timing and frequency IDs. The runtime
-bundle supplies channel bindings, preprocessing, weights and fine calibration.
-Frame powers (the sums of the fine powers) and fine masks use the matching
-PilotProxy reference package.
+The raw array layouts are defined by config/tests/verify_pilotproxy_pipeline.yaml,
+and the timing and frequency IDs are read from the frame metadata. The channel
+bindings, preprocessing, weights, and fine calibration are read from the runtime
+bundle. The frame powers (the sums of the fine powers) and the fine masks are
+computed with the matching PilotProxy reference package.
 
 Usage:
     python3 tests/verify_pilotproxy_pipeline.py --calibrate \
@@ -13,10 +13,10 @@ Usage:
     python3 tests/verify_pilotproxy_pipeline.py \
         --dump-dir fake_data/pilotproxy_verify --bundle-dir fake_data/pilotproxy_bundle
 
---calibrate writes a synthetic fine calibration into the bundle for this test
-and restamps the bundle digests that the stage checks at load.
-Otherwise returns 0 when all expected captures and detector products agree,
-1 otherwise.
+With --calibrate, a synthetic fine calibration for this test is written into
+the bundle, and the bundle digests checked by the stage at load are restamped.
+Without it, the script returns 0 when all expected captures and detector
+products agree and 1 otherwise.
 """
 
 import argparse
@@ -30,7 +30,7 @@ import sys
 
 import numpy as np
 
-# Geometry defaults; must match verify_pilotproxy_pipeline.yaml.
+# Geometry defaults. These must match verify_pilotproxy_pipeline.yaml.
 NUM_TIMES = 8192
 BLOCK_SAMPLES = 8192
 NUM_FREQ = 4
@@ -54,8 +54,10 @@ class RawFrame:
 
 
 def read_raw_frames(pattern, frame_size):
-    """Read rawFileWrite dumps: per frame, u32 metadata_size + metadata +
-    frame bytes. Retains the timing fields from chordMetadataFormat."""
+    """Read rawFileWrite dumps and keep the timing fields of chordMetadataFormat.
+
+    Each frame is stored as a u32 metadata_size, the metadata, and the frame bytes.
+    """
     frames = []
     for path in sorted(glob.glob(pattern)):
         with open(path, "rb") as f:
@@ -149,8 +151,10 @@ def detector_rows_from_voltage(
     num_dishes=NUM_DISHES,
     window_samples=K,
 ):
-    """[T, F, P, D] offset-binary bytes -> (re, im) int16 arrays of shape
-    [rows, K] in the kernel's row-major stream-major order."""
+    """Decode [T, F, P, D] offset-binary bytes into (re, im) int16 detector rows.
+
+    The arrays have shape [rows, K] in the row-major, stream-major order of the kernel.
+    """
     block_samples = 128 * window_samples
     arr = block_bytes.reshape(block_samples, num_freq, NUM_POL, num_dishes)
     channel = arr[:, freq_index, :, :]  # [T, P, D]
@@ -171,7 +175,7 @@ def expected_row_projections(real, imag, weights_packed):
     w_imag = sign_extend_nibble_twos(w)
     projections = []
     for term in range(3):
-        # row . conj(w): re = xr*wr + xi*wi ; im = xi*wr - xr*wi
+        # row . conj(w): re = xr*wr + xi*wi, im = xi*wr - xr*wi
         z_real = (real * w_real[term] + imag * w_imag[term]).sum(axis=1, dtype=np.int64)
         z_imag = (imag * w_real[term] - real * w_imag[term]).sum(axis=1, dtype=np.int64)
         projections.append(np.stack((z_real, z_imag), axis=-1))
@@ -181,9 +185,10 @@ def expected_row_projections(real, imag, weights_packed):
 def synthetic_calibration(bundle):
     """Write a synthetic fine calibration into every bundle profile.
 
-    Anchors alternate between an even and an odd fine bin. The bulk is every
-    second bin except those within two fine bins of the anchor: the designated
-    set and one independent bin on each side. For tests only.
+    The anchors alternate between an even and an odd fine bin. The bulk is every
+    second bin more than two fine bins from the anchor, so the designated set and
+    one independent bin on each side are excluded. The calibration is for tests
+    only.
     """
     for index, row in enumerate(bundle["profiles"]):
         anchor, half_width = (254 if index % 2 == 0 else 1), 2
@@ -253,8 +258,9 @@ def expected_products(
 ):
     """Reference masks, frame powers and rank support for one detector block.
 
-    Fine decisions use PilotProxy's fixed-point Python FFT and integer CFAR
-    reference. No GPU output is used to construct the expected products.
+    The fine decisions are computed with the fixed-point Python FFT and the
+    integer CFAR reference of PilotProxy. No GPU output is used to construct the
+    expected products.
     """
     from pilot_proxy.fine_decision import fine_mask_decision
     from pilot_proxy.fxfft import fine_power_fx

@@ -1,8 +1,9 @@
-// Compare the GPU packer and PilotProxy kernels with CPU references:
-// packed samples, row sums, fine powers, frame powers and the fine mask.
-// Fine powers use the vendored fixed-point FFT reference; fine decisions
-// use a C++ port of pilot-proxy's fine_decision.py with wide-integer comparisons.
-// Pipeline and metadata tests are in tests/test_pilotproxy_integration.py.
+// The GPU packer and PilotProxy kernels are compared with CPU references for the
+// packed samples, row sums, fine powers, frame powers, and fine mask. The fine
+// powers are checked against the vendored fixed-point FFT reference, and the fine
+// decisions against a C++ port of fine_decision.py from pilot-proxy with
+// wide-integer comparisons. The pipeline and metadata tests are in
+// tests/test_pilotproxy_integration.py.
 
 #include "Config.hpp"                     // for Config
 #include "Stage.hpp"                      // for Stage
@@ -15,8 +16,8 @@
 #include "kotekanLogging.hpp"             // for FATAL_ERROR, INFO
 #include "pilotproxy/pilotproxy_core.hpp" // for PilotProxyCore, pilotproxy_core
 
-// Frozen fxfft256 v1 reference transform (vendored, C source). Compiled into
-// this translation unit without its standalone file harness; the vendored
+// The frozen fxfft256 v1 reference transform (vendored C source) is compiled into
+// this translation unit without its standalone file harness. The vendored
 // reference library keeps its own copy internal.
 #define FXFFT256_REF_NO_MAIN
 #include "pilotproxy/fxfft256_ref.c"
@@ -46,7 +47,7 @@ struct u256 {
     u128 hi, lo;
 };
 
-// Exact 128x128 -> 256 bit product.
+// exact 256-bit product of two 128-bit integers
 u256 mul_u128(const u128 a, const u128 b) {
     const std::uint64_t a0 = std::uint64_t(a), a1 = std::uint64_t(a >> 64);
     const std::uint64_t b0 = std::uint64_t(b), b1 = std::uint64_t(b >> 64);
@@ -55,7 +56,7 @@ u256 mul_u128(const u128 a, const u128 b) {
     const u128 p10 = u128(a1) * b0;
     const u128 p11 = u128(a1) * b1;
     u128 mid = p01 + p10;
-    const u128 mid_carry = mid < p01 ? (u128(1) << 64) : 0; // wrapped 2^128 -> bit 64 of hi
+    const u128 mid_carry = mid < p01 ? (u128(1) << 64) : 0; // 2^128 wrap carries into bit 64 of hi
     const u128 lo = p00 + (mid << 64);
     const u128 lo_carry = lo < p00 ? 1 : 0;
     const u128 hi = p11 + (mid >> 64) + mid_carry + lo_carry;
@@ -67,10 +68,10 @@ bool less_u256(const u256& x, const u256& y) {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// CPU model of the fine reduction: frozen fxfft256 v1 over each stream's row
-// sums, exact uint64 feed sums. Row-sum layout is the
-// PilotProxy_Compute_RowSums_I32 contract: term-major, stream-major rows,
-// interleaved re/im int32.
+// CPU model of the fine reduction. The frozen fxfft256 v1 transform is applied to
+// the row sums of each stream, and the powers are summed over feeds exactly in
+// uint64. The row sums follow the PilotProxy_Compute_RowSums_I32 layout of
+// term-major, stream-major rows with interleaved re and im int32 values.
 
 void cpu_fine_powers(const std::vector<std::int32_t>& row_sums, const int num_streams,
                      const int windows_per_stream,
@@ -100,10 +101,10 @@ void cpu_fine_powers(const std::vector<std::int32_t>& row_sums, const int num_st
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// Bit-exact C++ port of pilot-proxy fine decision v1
-// (src/pilot_proxy/fine_decision.py). All comparisons are exact via 256-bit
-// products; Python's arbitrary-precision reference stays within these
-// widths for kernel-produced fine powers.
+// Bit-exact C++ port of the pilot-proxy fine decision v1
+// (src/pilot_proxy/fine_decision.py). All comparisons are made exactly with
+// 256-bit products. For fine powers produced by the kernel, the
+// arbitrary-precision Python reference does not exceed these widths.
 
 struct FineDecisionRef {
     int mask;   // 1 = reject (pilot present)
@@ -214,8 +215,8 @@ public:
         if (fine_bins != FINE_BINS)
             FATAL_ERROR("unexpected fine bins {:d}", fine_bins);
 
-        // Keep CPU reference calculations small while testing all dimensions:
-        // F channels, P*D streams and 128 windows per stream.
+        // The array is kept small for the CPU reference, and every dimension is
+        // still tested (F channels, P*D streams, and 128 windows per stream).
         const ptrdiff_t num_dishes = 4;
         const ptrdiff_t num_polarizations = 2;
         const ptrdiff_t num_frequencies = 3;
@@ -234,8 +235,8 @@ public:
             w = std::int8_t(((real & 0xF) << 4) | (imag & 0xF));
         }
 
-        // Ring geometries: no wrap, and a position that forces the block to
-        // wrap around the ring end.
+        // ring positions with no wrap, a wrap at a window boundary, and a wrap
+        // in the middle of a window
         const ptrdiff_t ring_size = 2 * num_time_samples; // power of two
         const std::array<ptrdiff_t, 3> ring_positions = {0, 5 * ring_size / 8, ring_size - K / 2};
 
@@ -278,7 +279,7 @@ public:
         for (const bool reverse : {false, true}) {
             for (int freq_index = 0; freq_index < num_frequencies; ++freq_index) {
                 for (const ptrdiff_t pos : ring_positions) {
-                    // --- Packer: GPU vs CPU, bit for bit.
+                    // The GPU and CPU packer outputs are compared bit for bit.
                     launch_pilotproxy_pack(d_packed, d_ring, num_dishes, num_polarizations,
                                            num_frequencies, freq_index, num_time_samples, ring_size,
                                            pos, K, reverse, /*stream=*/nullptr);
@@ -295,7 +296,7 @@ public:
                                         int(reverse), freq_index, pos, i, packed_gpu[i],
                                         packed_cpu[i]);
 
-                    // --- Row sums: GPU vs vendored CPU reference.
+                    // The GPU row sums are compared with the vendored CPU reference.
                     core.Compute_RowSums_I32(handle, weights.data(), d_row_sums);
                     CHECK_CUDA_ERROR(cudaDeviceSynchronize());
                     CHECK_CUDA_ERROR(cudaMemcpy(row_sums_gpu.data(), d_row_sums,
@@ -307,9 +308,9 @@ public:
                         FATAL_ERROR("row-sum mismatch (rev={:d},f={:d},pos={:d})", int(reverse),
                                     freq_index, pos);
 
-                    // --- Fused fine powers: GPU vs fxfft256 v1 + exact feed
-                    // sums over the CPU row sums. The frame powers are the
-                    // sums of each term's fine powers.
+                    // The fused GPU fine powers are compared with fxfft256 v1
+                    // and exact feed sums over the CPU row sums. Each frame
+                    // power is the sum of the fine powers of its term.
                     core.Compute_FusedFine_U64(handle, weights.data(), d_fine_powers, d_powers,
                                                nullptr);
                     CHECK_CUDA_ERROR(cudaDeviceSynchronize());
@@ -342,10 +343,11 @@ public:
                     };
                     check_powers("fused");
 
-                    // --- Fine designated-set CFAR mask: GPU epilogue vs the
-                    // fine decision v1 port, over several calibrations
-                    // (independent-bin bulk; guard-excluded designated set;
-                    // a degenerate bulk that must force mask 0 / invalid).
+                    // The designated-set CFAR mask of the GPU epilogue is
+                    // compared with the fine decision v1 port for several
+                    // calibrations. These have an independent-bin bulk, a
+                    // designated set excluded by guard bins, and a degenerate
+                    // bulk that must force mask 0 and invalid support.
                     const struct {
                         int anchor, half_width, rank;
                         std::uint64_t mult_q16;
@@ -354,12 +356,12 @@ public:
                         {0, 2, 8, 3ULL << 16, false},
                         {7, 1, 0, 1ULL << 16, false},
                         {250, 3, 20, 5ULL << 15, false},
-                        {13, 2, 200, 2ULL << 16, true}, // rank >= |bulk| -> invalid
+                        {13, 2, 200, 2ULL << 16, true}, // rank >= |bulk| gives invalid support
                     };
                     for (const auto& calibration : calibrations) {
                         std::array<unsigned long long, 4> words = {0, 0, 0, 0};
                         if (calibration.degenerate_bulk) {
-                            // Two bulk bins only; rank 200 exceeds them.
+                            // only two bulk bins, far fewer than rank 200
                             words[0] = (1ULL << 40) | (1ULL << 50);
                         } else {
                             // Even (independent) bins, excluding the

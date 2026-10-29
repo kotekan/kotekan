@@ -43,13 +43,12 @@
  * @param num_polarizations Polarization count P.
  * @param num_frequencies   Local coarse-frequency count F on this node.
  * @param freq_index        Local frequency index to extract, in [0, F).
- * @param num_time_samples  Channelized samples per detector block (multiple
- *                          of detector_window_samples; 8192 in the CHORD configuration).
- * @param ringbuf_size_t    Ring extent in time samples; must be a power of
- *                          two.
+ * @param num_time_samples  Channelized samples per detector block (a multiple
+ *                          of detector_window_samples, 8192 in the CHORD configuration).
+ * @param ringbuf_size_t    Ring extent in time samples (a power of two).
  * @param ringbuf_pos_t     Logical start position in time samples (wrapped
  *                          internally with the power-of-two mask).
- * @param detector_window_samples K from the compiled kernel (64 on CHORD;
+ * @param detector_window_samples K from the compiled kernel (64 on CHORD,
  *                          128 on CHIME).
  * @param time_reverse_windows Reverse each K-sample window to match the
  *                          runtime bundle's weight coordinates
@@ -64,8 +63,8 @@ void launch_pilotproxy_pack(std::int8_t* packed_out, const std::uint8_t* voltage
                             bool time_reverse_windows, cudaStream_t stream);
 
 /**
- * @brief CPU reference for @c launch_pilotproxy_pack (same arguments, minus
- * the CUDA stream; host pointers).
+ * @brief CPU reference for @c launch_pilotproxy_pack (same arguments without
+ * the CUDA stream, with host pointers).
  *
  * Used by testPilotProxyDetector to compare the packed output byte for byte.
  */

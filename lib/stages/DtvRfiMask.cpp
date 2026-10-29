@@ -20,14 +20,14 @@
  * @class DtvRfiMask
  * @brief Fold one 8192- or 16384-sample DTV decision block into the aligned RFImask frame.
  *
- * The two masks use opposite conventions: DTV int8[F] uses 1 to reject,
- * while RFImask uint1x8[num_times/1024, F, 128] uses 1 to keep. For a DTV
- * rejection, clear every time bit at that frequency. Otherwise retain the
- * existing RFImask. Both the correlator and its packet-loss counter must use
- * this combined mask so they count the same accepted samples.
+ * The DTV mask int8[F] uses 1 to reject a frequency, and the RFImask
+ * uint1x8[num_times/1024, F, 128] uses 1 to keep a sample. For a DTV
+ * rejection, every time bit at that frequency is cleared. Otherwise the
+ * existing RFImask is kept. Both the correlator and its packet-loss counter
+ * must use this combined mask so that they count the same accepted samples.
  *
- * One detector block must match one RFImask frame in time and frequency;
- * a mismatch stops the run. Optional fine-support rows distinguish a valid
+ * One detector block must match one RFImask frame in time and frequency,
+ * and a mismatch stops the run. Optional fine-support rows distinguish a valid
  * keep from insufficient rank support. Invalid support and the permanent-mask
  * limit each clear every time bit without changing the raw detector products.
  *
@@ -40,10 +40,11 @@
  *         @buffer_metadata chordMetadata
  * @buffer  out_buf     The combined mask, same format as rfi_buf.
  * @buffer  fine_support_buf Optional int32 [F,2] rows [rank_valid,n_bulk].
- *         (-1,-1) means no fine test; 0/1 means invalid/valid rank support.
+ *         A row of (-1,-1) has no fine test, and rank_valid 0 or 1 marks invalid or
+ *         valid rank support.
  *
  * @conf    num_local_freq  int  Frequencies per frame.
- * @conf    num_times       int  Samples per detector block; must be 8192 or 16384.
+ * @conf    num_times       int  Samples per detector block (8192 or 16384).
  * @conf    permanent_mask_freq_ids List of unique integer receiver coarse-frequency IDs
  *          in [0,CHORD_META_MAX_FREQ) at the reject-all limit (default []).
  * @conf    require_fine_freq_ids List of unique integer receiver coarse-frequency IDs

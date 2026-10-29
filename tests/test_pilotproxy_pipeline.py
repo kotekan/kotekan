@@ -58,7 +58,7 @@ def test_incorrect_frame_timing_is_rejected(product, field):
 
 
 def raw_frame(sequence=557056, downsampling=4):
-    # Current chordMetadata.cpp serializer, including the complete metadata tail.
+    # layout of the chordMetadata.cpp serializer, with the complete metadata tail
     metadata = bytearray(148888)
     struct.pack_into("<7i", metadata, 0, 10, 24, 24, 12288, 128, 8, 17)
     struct.pack_into("<q", metadata, 32, sequence)
