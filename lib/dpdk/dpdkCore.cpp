@@ -374,7 +374,7 @@ void dpdkCore::dpdk_init(vector<int> lcore_cpu_map, uint32_t main_lcore_cpu) {
 void dpdkCore::main_thread() {
 
     // Wait for every configured port's link to come up before launching the
-    // Rx lcores.  
+    // Rx lcores.
     constexpr uint32_t link_check_interval_ms = 100;
     const uint32_t max_wait_ms = max_link_start_delay * 1000;
     for (uint32_t port = 0; port < num_system_ports; ++port) {
@@ -394,11 +394,10 @@ void dpdkCore::main_thread() {
             waited_ms += link_check_interval_ms;
         }
         if (link.link_status != RTE_ETH_LINK_UP) {
-            FATAL_ERROR("Port {:d} link did not come up within {:d} seconds",
-                         port, max_link_start_delay);
+            FATAL_ERROR("Port {:d} link did not come up within {:d} seconds", port,
+                        max_link_start_delay);
         } else {
-            INFO("Port {:d} link up: {:d} Mbps {:s}-duplex (waited {:d} ms)", port,
-                 link.link_speed,
+            INFO("Port {:d} link up: {:d} Mbps {:s}-duplex (waited {:d} ms)", port, link.link_speed,
                  link.link_duplex == RTE_ETH_LINK_FULL_DUPLEX ? "full" : "half", waited_ms);
         }
     }
