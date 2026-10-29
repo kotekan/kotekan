@@ -14,7 +14,6 @@
 #include <chrono>    // for duration_cast, duration, nanoseconds, system_clock
 #include <cmath>     // for sin, cos, floor, ceil, M_PI, abs
 #include <stdexcept> // for runtime_error
-#include <thread>    // for sleep_for
 #include <vector>    // for vector
 
 
@@ -39,61 +38,16 @@ static constexpr double deg2rad = M_PI / 180.0;
 
 // Dish parameters calculation/initialization
 
-// Query the pointing service until it replies or timeout_s passes, and return its
-// dish_coelev_deg. Fatal on timeout or on a reply without a numeric dish_coelev_deg.
-static double query_dish_coelev_deg(const std::string& host, uint32_t port,
-                                    const std::string& endpoint, uint32_t timeout_s) {
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(timeout_s);
-    INFO_NON_OO("Requesting dish pointing from {:s}:{:d}{:s}", host, port, endpoint);
-
-    restClient::restReply reply;
-    while (true) {
-        reply = restClient::instance().make_request_blocking(endpoint, {}, host, port, 0, 2);
-        if (reply.first)
-            break;
-        if (std::chrono::steady_clock::now() >= deadline)
-            FATAL_ERROR_NON_OO(
-                "No successful reply from pointing service {:s}:{:d}{:s} after {:d} s.", host, port,
-                endpoint, timeout_s);
-        WARN_NON_OO("No successful reply from pointing service {:s}:{:d}{:s}, retrying.", host,
-                    port, endpoint);
-        std::this_thread::sleep_for(std::chrono::seconds(1));
-    }
-
-    nlohmann::json json_reply = nlohmann::json::parse(reply.second, nullptr, false);
-    if (!json_reply.is_object() || json_reply.contains("error")
-        || !json_reply.contains("dish_coelev_deg") || !json_reply["dish_coelev_deg"].is_number())
-        FATAL_ERROR_NON_OO(
-            "Pointing service reply has an error or no numeric dish_coelev_deg: {:s}",
-            reply.second);
-
-    return json_reply["dish_coelev_deg"].get<double>();
-}
-
 DishParams DishParams::from_config(const kotekan::Config& config, const std::string& path,
                                    uint64_t num_dishes, uint64_t dish_grid_size_x,
                                    uint64_t dish_grid_size_y, double dish_separation_x_m,
                                    double dish_separation_y_m) {
     DishParams dish_params;
 
-    // Dish pointing co-elevation, from the pointing service if one is given, else the config.
-    // NaN marks an unset value, since a JSON config cannot hold one.
+    // Dish pointing co-elevation. NaN marks an unset value, since a JSON config cannot hold one.
     const double config_coelev = config.get_default<double>(path, "dish_coelev_deg", NAN);
-    const std::string ref = config.get_default<std::string>(path, "pointing_host_info", "");
-    if (!ref.empty()) {
-        if (!std::isnan(config_coelev))
-            FATAL_ERROR_NON_OO("CHORDTelescope ({:s}): set dish_coelev_deg or pointing_host_info, "
-                               "not both.",
-                               path);
-        dish_params.dish_coelev_deg = query_dish_coelev_deg(
-            config.get<std::string>(ref, "host"), config.get<uint32_t>(ref, "port"),
-            config.get<std::string>(path, "pointing_endpoint"),
-            config.get_default<uint32_t>(path, "pointing_query_timeout_s", 5));
-        dish_params.dish_coelev_set = true;
-    } else {
-        dish_params.dish_coelev_set = !std::isnan(config_coelev);
-        dish_params.dish_coelev_deg = dish_params.dish_coelev_set ? config_coelev : 0.0;
-    }
+    dish_params.dish_coelev_set = !std::isnan(config_coelev);
+    dish_params.dish_coelev_deg = dish_params.dish_coelev_set ? config_coelev : 0.0;
     if (!std::isfinite(dish_params.dish_coelev_deg) || std::abs(dish_params.dish_coelev_deg) > 90.0)
         FATAL_ERROR_NON_OO("CHORDTelescope dish_coelev_deg {:f} is outside [-90, 90].",
                            dish_params.dish_coelev_deg);

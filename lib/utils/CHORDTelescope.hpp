@@ -155,17 +155,7 @@ struct DishParams {
      *
      * @par Configuration
      * - @c dish_coelev_deg      double. Dish pointing co-elevation angle, in [-90, 90].
-     *                              Default: 0.0. Must not be set with pointing_host_info.
-     * - @c pointing_host_info   string. Optional. Path to a block holding ``host`` and ``port``
-     *                              of a service that returns ``{"dish_coelev_deg": <float>}``.
-     *                              If set, the pointing is queried at startup, retrying until a
-     *                              reply arrives or pointing_query_timeout_s passes.
-     * - @c pointing_endpoint    string. Endpoint of the pointing service. Required with
-     *                              pointing_host_info.
-     * - @c pointing_query_timeout_s  uint32. Time to keep retrying the pointing query before
-     *                              failing. The last attempt can add 3 s. The query runs inside
-     *                              the POST /start call, so keep the total below the caller's
-     *                              timeout (10 s for choco). Default: 5.
+     *                              Default: 0.0.
      * - @c dish_inputs          array<dishInfo>. List of dish inputs, with all fields populated.
      *                              See struct dishInfo for field descriptions.
      * - @c check_duplicate_dish_grid  bool. Fatal on duplicate dish grid locations.
