@@ -3091,6 +3091,14 @@ def main():
         "satellites' other signals, e.g. e6:1263.4-1273.6 for the Galileo E6 PRS lobe)",
     )
     ap.add_argument(
+        "--fleet-lanes",
+        action="store_true",
+        help="GnssN2Project accepts lane directions the relay carries from the other nodes "
+        "(docs/CHORD_FLEET_LANES.md: POST set_lanes; the stage gets the assemblers' element "
+        "positions and steering sign to re-steer them). Needs --n2-project-source lanes or "
+        "lanes+residual",
+    )
+    ap.add_argument(
         "--n2-project-eigen-channels",
         choices=["all", "live"],
         default="all",
@@ -3762,6 +3770,13 @@ def main():
                     int(_t) * 16 + _i for _t in _tiles for _i in range(16)
                 ]
                 _stage["k_lanes_max"] = int(args.n2_project_lanes_max)
+                if args.fleet_lanes:
+                    _steer = elem_steer_keys(
+                        args, cfg["array"], len(_stage["tracker_stations"])
+                    )
+                    _stage["fleet_lanes"] = True
+                    _stage["elem_positions_enu"] = _steer["elem_positions_enu"]
+                    _stage["elem_steer_sign"] = _steer["elem_steer_sign"]
                 _missing = sorted(
                     set(_stage["tracker_stations"])
                     - set(_st)

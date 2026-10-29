@@ -164,6 +164,15 @@ gnss_component() {
                    --out "$GNSS_OBS_OUT/rf_chan_%Y%m%d.jsonl")
         ;;
 
+    lanerelay)
+        # Lane directions between nodes (docs/CHORD_FLEET_LANES.md): every second, each
+        # projecting GPU's get_lanes to every other's set_lanes. Standalone: reads the fleet
+        # files, the generated configs and the nodes' REST and nothing else, so it can never
+        # touch the control path; if it dies the nodes fall back to their local lanes.
+        GNSS_EXEC=(/usr/bin/python3 -u "$GNSS_K/scripts/gnss/site/lane_relay.py" run
+                   --status "$GNSS_OBS_OUT/lane_relay")
+        ;;
+
     cubearch)
         # cf06 only: the far side of the beam-cube push leg, one bufferRecv on :11070 for the
         # whole fleet's windows and a rawFileWrite onto /mnt/cs00. Start it before the nodes

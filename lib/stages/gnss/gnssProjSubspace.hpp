@@ -411,6 +411,12 @@ struct ProjEntry {
     double coh = 0.0;   ///< src 2: LaneDirection::coherence, the direction's quality in [0, 1]
     int n = 0, k = 0;
     std::vector<std::complex<float>> q; ///< [k][n]
+    // src 2: the track the row was steered with (ElemSteer::track), so the direction can be
+    // re-steered elsewhere (gnssFleetLane.hpp); xfer 1 = a lane_transfer_freq_ids copy.
+    double t_utc = 0.0;                   ///< the instant los describes (unix s; 0 = none)
+    double los[3] = {0.0, 0.0, 0.0};      ///< line of sight, ENU unit vector
+    double los_rate[3] = {0.0, 0.0, 0.0}; ///< its rate per second
+    int xfer = 0;
 };
 
 /// Process-wide board. The sibling assemblers of one GPU are threads of one kotekan process and

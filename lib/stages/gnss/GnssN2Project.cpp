@@ -11,6 +11,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstring>
+#include <map>
 #include <memory>
 
 using kotekan::bufferContainer;
@@ -39,15 +40,17 @@ GnssN2Project::GnssN2Project(Config& config, const std::string& unique_name,
     solve_every(std::max(1, config.get_default<int>(unique_name, "solve_every", 4))),
     metric_period_s(config.get_default<double>(unique_name, "metric_period_s", 1.0)),
     source(config.get_default<std::string>(unique_name, "source", "eigen")),
-    use_lanes(source != "eigen"),
-    use_residual(source != "lanes"),
+    use_lanes(source != "eigen"), use_residual(source != "lanes"),
     board_group(config.get_default<std::string>(unique_name, "board_group", "")),
     tracker_stations(config.get_default<std::vector<int>>(unique_name, "tracker_stations", {})),
     k_lanes_max(config.get_default<int>(unique_name, "k_lanes_max", 8)),
     lane_max_age_s(config.get_default<double>(unique_name, "lane_max_age_s", 1.0)),
     lane_coh_min(config.get_default<double>(unique_name, "lane_coh_min", 0.08)),
     lane_min_new_frac(config.get_default<double>(unique_name, "lane_min_new_frac", 0.1)),
-    lane_conj(config.get_default<bool>(unique_name, "lane_conj", true)) {
+    lane_conj(config.get_default<bool>(unique_name, "lane_conj", true)),
+    fleet_lanes(config.get_default<bool>(unique_name, "fleet_lanes", false)),
+    fleet_lane_max_age_s(config.get_default<double>(unique_name, "fleet_lane_max_age_s", 10.0)),
+    fleet_lane_rebuild_s(config.get_default<double>(unique_name, "fleet_lane_rebuild_s", 0.25)) {
     if (source != "eigen" && source != "lanes" && source != "lanes+residual")
         FATAL_ERROR("GnssN2Project: source '{:s}' must be eigen, lanes or lanes+residual", source);
     const std::string eigen_channels =
@@ -113,7 +116,8 @@ GnssN2Project::GnssN2Project(Config& config, const std::string& unique_name,
     auto_proj.assign(num_local_freq, 0.0);
     if (use_lanes) {
         if (board_group.empty() || tracker_stations.empty())
-            FATAL_ERROR("GnssN2Project: source {:s} needs board_group and tracker_stations", source);
+            FATAL_ERROR("GnssN2Project: source {:s} needs board_group and tracker_stations",
+                        source);
         if (k_lanes_max < 1 || k_lanes_max > n)
             FATAL_ERROR("k_lanes_max {:d} must be in [1, {:d}]", k_lanes_max, n);
         e2a.assign(tracker_stations.size(), -1);
@@ -142,6 +146,30 @@ GnssN2Project::GnssN2Project(Config& config, const std::string& unique_name,
              "conj {:d}",
              source, board_group, n_mapped, n, k_lanes_max, lane_max_age_s, lane_coh_min,
              (int)lane_conj);
+    }
+    if (use_lanes) {
+        fleet_k.assign(num_local_freq, 0);
+        using namespace std::placeholders;
+        kotekan::restServer::instance().register_get_callback(
+            unique_name + "/get_lanes", std::bind(&GnssN2Project::get_lanes_callback, this, _1));
+    }
+    if (fleet_lanes) {
+        if (!use_lanes)
+            FATAL_ERROR("GnssN2Project: fleet_lanes needs source lanes or lanes+residual");
+        std::vector<double> pos =
+            config.get<std::vector<double>>(unique_name, "elem_positions_enu");
+        if (pos.size() != 3 * tracker_stations.size())
+            FATAL_ERROR("elem_positions_enu: {:d} positions for {:d} tracker elements",
+                        (int)(pos.size() / 3), (int)tracker_stations.size());
+        const double sign = config.get_default<double>(unique_name, "elem_steer_sign", 1.0);
+        geo = gnss::ElemSteer(std::move(pos), std::vector<double>(), 0, sign, 0.0);
+        using namespace std::placeholders;
+        kotekan::restServer::instance().register_post_callback(
+            unique_name + "/set_lanes",
+            std::bind(&GnssN2Project::set_lanes_callback, this, _1, _2));
+        INFO("GnssN2Project: fleet lanes on ({:d} element positions, sign {:+.0f}), max age "
+             "{:.1f} s, re-evaluated every {:.2f} s",
+             (int)tracker_stations.size(), sign, fleet_lane_max_age_s, fleet_lane_rebuild_s);
     }
     INFO("GnssN2Project {:s}: {:d} live stations of {:d}, k_max {:d}, tau {:.2f} s, trigger "
          "frac0 >= {:.2f}, lambda0 >= {:.1f} x mean auto, spread >= {:.1f} inputs, solve every "
@@ -175,13 +203,27 @@ int GnssN2Project::build_lanes(int f, int freq_id, const cd* V, double now_s, bo
                 c.v[(size_t)a] = lane_conj ? std::conj(x) : x;
             }
         });
+    std::sort(cand.begin(), cand.end(),
+              [](const LaneCand& a, const LaneCand& b) { return a.power > b.power; });
+    // Fleet lanes after the board's, in the posted order: a local lane always wins the
+    // duplicate test and the budget.
+    const size_t n_local = cand.size();
+    if (fleet_on)
+        for (size_t l = 0; l < fleet_v.size(); ++l) {
+            const std::vector<cd>& v = fleet_v[l][(size_t)f];
+            if (v.empty())
+                continue;
+            cand.emplace_back();
+            cand.back().power = fleet[l].power;
+            cand.back().coh = fleet[l].coh;
+            cand.back().v = v;
+        }
     if (cand.empty()) {
         if (diag)
             lane_rq_conj_db[f] = lane_rq_raw_db[f] = 0.0;
+        fleet_k[f] = 0;
         return 0;
     }
-    std::sort(cand.begin(), cand.end(),
-              [](const LaneCand& a, const LaneCand& b) { return a.power > b.power; });
     if (diag) {
         // The strongest lane's q^H V q / mean auto both ways: the right conjugation reads the
         // emitter's INR, the wrong one ~1/n of it.
@@ -211,15 +253,188 @@ int GnssN2Project::build_lanes(int f, int freq_id, const cd* V, double now_s, bo
             lane_rq_raw_db[f] = lane_conj ? as_other : as_conf;
         }
     }
-    for (const LaneCand& c : cand) {
+    int kf = 0;
+    for (size_t i = 0; i < cand.size(); ++i) {
         if (lanes.k >= k_lanes_max)
             break;
-        if (lanes.add(c.v.data(), lane_min_new_frac))
+        if (lanes.add(cand[i].v.data(), lane_min_new_frac)) {
             ++lane_used;
-        else
+            if (i >= n_local)
+                ++kf;
+        } else
             ++lane_dup;
     }
+    fleet_k[f] = kf;
     return lanes.k;
+}
+
+void GnssN2Project::take_fleet(double now_s) {
+    std::lock_guard<std::mutex> lk(fleet_mtx);
+    if (fleet_pending_set) {
+        fleet.swap(fleet_pending);
+        fleet_pending.clear();
+        fleet_pending_set = false;
+        fleet_t_rx = now_s;
+        fleet_t_built = 0.0;
+    }
+    if (inst_pending_set) {
+        inst_delay_s.swap(inst_pending);
+        inst_pending.clear();
+        inst_pending_set = false;
+        fleet_t_built = 0.0;
+    }
+}
+
+void GnssN2Project::build_fleet(double t_utc) {
+    const int n = (int)stations.size();
+    const int n_e = (int)tracker_stations.size();
+    const double* inst = inst_delay_s.size() == (size_t)n_e ? inst_delay_s.data() : nullptr;
+    fleet_v.resize(fleet.size());
+    fleet_tmp.resize((size_t)n_e);
+    for (size_t l = 0; l < fleet.size(); ++l) {
+        std::vector<std::vector<cd>>& vf = fleet_v[l];
+        vf.resize((size_t)num_local_freq);
+        for (int f = 0; f < num_local_freq; ++f) {
+            std::vector<cd>& v = vf[(size_t)f];
+            if (!live_ch[f] || !fleet[l].covers(freq_ids[f])
+                || !gnss::fleet_lane_direction(fleet[l], geo, freq_ids[f] * 195312.5, t_utc, inst,
+                                               fleet_sh, fleet_tmp.data())) {
+                v.clear();
+                continue;
+            }
+            v.assign((size_t)n, cd(0.0, 0.0));
+            for (int el = 0; el < n_e; ++el) {
+                const int a = e2a[(size_t)el];
+                if (a >= 0)
+                    v[(size_t)a] =
+                        lane_conj ? std::conj(fleet_tmp[(size_t)el]) : fleet_tmp[(size_t)el];
+            }
+        }
+    }
+    fleet_t_built = t_utc;
+}
+
+void GnssN2Project::get_lanes_callback(kotekan::connectionInstance& conn) {
+    // Per owner, the measured entry of best coherence on this GPU's board, with its track;
+    // the transfers are left out. freq_ids and live_ch are read only once labelled_pub is set.
+    nlohmann::json out;
+    const bool ready = labelled_pub.load();
+    out["ready"] = ready;
+    out["n"] = (int)tracker_stations.size();
+    nlohmann::json lanes_j = nlohmann::json::array();
+    if (ready) {
+        const double now_s =
+            std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch())
+                .count();
+        std::map<std::string, std::pair<int, gnss::ProjEntry>> best;
+        for (int f = 0; f < num_local_freq; ++f) {
+            if (!live_ch[f])
+                continue;
+            const int fid = freq_ids[f];
+            gnss::ProjBoard::instance().for_each(
+                board_group, fid, unique_name, now_s, lane_max_age_s,
+                [&](const gnss::ProjEntry& e) {
+                    if (e.src != 2 || e.xfer || e.k < 1 || (size_t)e.n != tracker_stations.size()
+                        || e.q.size() < (size_t)e.n
+                        || (e.los[0] == 0.0 && e.los[1] == 0.0 && e.los[2] == 0.0))
+                        return;
+                    auto it = best.find(e.owner);
+                    if (it == best.end())
+                        best.emplace(e.owner, std::make_pair(fid, e));
+                    else if (e.coh > it->second.second.coh)
+                        it->second = std::make_pair(fid, e);
+                });
+        }
+        for (const auto& [owner, fe] : best) {
+            const gnss::ProjEntry& e = fe.second;
+            nlohmann::json q = nlohmann::json::array();
+            for (int i = 0; i < e.n; ++i)
+                q.push_back({e.q[(size_t)i].real(), e.q[(size_t)i].imag()});
+            lanes_j.push_back({{"owner", owner},
+                               {"freq_id", fe.first},
+                               {"t_utc", e.t_utc},
+                               {"los", {e.los[0], e.los[1], e.los[2]}},
+                               {"los_rate", {e.los_rate[0], e.los_rate[1], e.los_rate[2]}},
+                               {"coh", e.coh},
+                               {"power", e.power},
+                               {"q", q}});
+        }
+    }
+    out["lanes"] = lanes_j;
+    conn.send_json_reply(out);
+}
+
+void GnssN2Project::set_lanes_callback(kotekan::connectionInstance& conn, nlohmann::json& request) {
+    // docs/CHORD_FLEET_LANES.md: the relay's whole set, staged for main_thread.
+    const int n_e = (int)tracker_stations.size();
+    std::vector<gnss::FleetLane> in;
+    std::vector<double> inst;
+    bool inst_given = false;
+    try {
+        auto di = request.find("inst_delay_ns");
+        if (di != request.end()) {
+            if (!di->is_array())
+                throw std::runtime_error("'inst_delay_ns' must be an array");
+            inst_given = true;
+            if (!di->empty()) {
+                if ((int)di->size() != n_e)
+                    throw std::runtime_error("'inst_delay_ns' length != tracker elements");
+                inst.reserve((size_t)n_e);
+                for (auto& x : *di)
+                    inst.push_back(x.get<double>() * 1e-9);
+            }
+        }
+        auto& arr = request.at("lanes");
+        if (!arr.is_array())
+            throw std::runtime_error("'lanes' must be an array");
+        in.reserve(arr.size());
+        for (auto& j : arr) {
+            gnss::FleetLane L;
+            L.id = j.value("id", std::string());
+            L.f_src_hz = j.at("f_src_hz").get<double>();
+            L.t_utc = j.value("t_utc", 0.0);
+            L.coh = j.value("coh", 0.0);
+            L.power = j.value("power", 0.0);
+            auto& los = j.at("los");
+            auto& rate = j.at("los_rate");
+            if (!los.is_array() || los.size() != 3 || !rate.is_array() || rate.size() != 3)
+                throw std::runtime_error("'los' and 'los_rate' must be [E, N, U]");
+            for (int i = 0; i < 3; ++i) {
+                L.los[i] = los[i].get<double>();
+                L.los_rate[i] = rate[i].get<double>();
+            }
+            for (auto& r : j.at("fids")) {
+                if (!r.is_array() || r.size() != 2)
+                    throw std::runtime_error("each of 'fids' must be [lo, hi]");
+                L.fids.emplace_back(r[0].get<int>(), r[1].get<int>());
+            }
+            auto& q = j.at("q");
+            if (!q.is_array() || (int)q.size() != n_e)
+                throw std::runtime_error("'q' length != tracker elements");
+            L.q.reserve((size_t)n_e);
+            for (auto& x : q) {
+                if (!x.is_array() || x.size() != 2)
+                    throw std::runtime_error("each of 'q' must be [re, im]");
+                L.q.emplace_back(x[0].get<double>(), x[1].get<double>());
+            }
+            in.push_back(std::move(L));
+        }
+    } catch (const std::exception& ex) {
+        conn.send_error(std::string("set_lanes: ") + ex.what(),
+                        kotekan::HTTP_RESPONSE::BAD_REQUEST);
+        return;
+    }
+    const int n_in = (int)in.size();
+    {
+        std::lock_guard<std::mutex> lk(fleet_mtx);
+        fleet_pending.swap(in);
+        fleet_pending_set = true;
+        if (inst_given) {
+            inst_pending.swap(inst);
+            inst_pending_set = true;
+        }
+    }
+    conn.send_json_reply(nlohmann::json{{"lanes", n_in}, {"ready", labelled_pub.load()}});
 }
 
 void GnssN2Project::main_thread() {
@@ -238,7 +453,7 @@ void GnssN2Project::main_thread() {
             others.push_back(i);
     const int n_o = (int)others.size();
     std::vector<cd> X((size_t)n * n_o), Y;
-    std::vector<int> freq_ids(num_local_freq);
+    freq_ids.assign((size_t)num_local_freq, 0);
     for (int f = 0; f < num_local_freq; ++f)
         freq_ids[f] = f;
     bool labelled = false;
@@ -263,13 +478,19 @@ void GnssN2Project::main_thread() {
     auto& g_lane_rqr = Metrics::instance().add_gauge("kotekan_gnss_n2project_lane_rq_raw_db",
                                                      unique_name, {"freq_id"});
     auto& g_auto_raw = Metrics::instance().add_gauge("kotekan_gnss_n2project_auto_raw_db",
-                                                    unique_name, {"freq_id"});
-    auto& g_auto_proj = Metrics::instance().add_gauge("kotekan_gnss_n2project_auto_proj_db",
                                                      unique_name, {"freq_id"});
+    auto& g_auto_proj = Metrics::instance().add_gauge("kotekan_gnss_n2project_auto_proj_db",
+                                                      unique_name, {"freq_id"});
     auto& g_lane_used =
         Metrics::instance().add_gauge("kotekan_gnss_n2project_lane_directions_used", unique_name);
     auto& g_lane_dup = Metrics::instance().add_gauge(
         "kotekan_gnss_n2project_lane_directions_duplicate", unique_name);
+    auto& g_fleet_k = Metrics::instance().add_gauge("kotekan_gnss_n2project_fleet_lane_k",
+                                                    unique_name, {"freq_id"});
+    auto& g_fleet_lanes =
+        Metrics::instance().add_gauge("kotekan_gnss_n2project_fleet_lanes", unique_name);
+    auto& g_fleet_age =
+        Metrics::instance().add_gauge("kotekan_gnss_n2project_fleet_lane_age_s", unique_name);
 
     const double tick_s = Telescope::instance().seq_length_nsec() * 1e-9;
     int64_t prev_seq = -1;
@@ -313,6 +534,7 @@ void GnssN2Project::main_thread() {
                 n_live_ch += live_ch[f];
             }
             live_ch_resolved = true;
+            labelled_pub.store(true);
             INFO("GnssN2Project: live writes restricted to {:d} of {:d} channels", n_live_ch,
                  num_local_freq);
             if (n_live_ch == 0)
@@ -325,6 +547,23 @@ void GnssN2Project::main_thread() {
         const double now_s =
             std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch())
                 .count();
+        if (use_lanes) {
+            take_fleet(now_s);
+            fleet_on = !fleet.empty() && now_s - fleet_t_rx <= fleet_lane_max_age_s;
+            if (fleet_on) {
+                // The tracks are evaluated at the frame's own time, the data clock.
+                double t_utc = 0.0;
+                if (meta)
+                    t_utc =
+                        Telescope::instance().to_time_ns((uint64_t)meta->get_fpga_seq_num()) * 1e-9;
+                if (!(t_utc > 0.0))
+                    t_utc = std::chrono::duration<double>(
+                                std::chrono::system_clock::now().time_since_epoch())
+                                .count();
+                if (fleet_t_built <= 0.0 || t_utc - fleet_t_built >= fleet_lane_rebuild_s)
+                    build_fleet(t_utc);
+            }
+        }
 
         for (int t = 0; t < n_integrations; ++t) {
             for (int f = 0; f < num_local_freq; ++f) {
@@ -395,7 +634,8 @@ void GnssN2Project::main_thread() {
                                   q.begin() + (size_t)j * n);
                     gnss_n2proj::project(n, k, q.data(), V.data(), W, M);
                 }
-                auto_proj[f] = (k > 0 || kl > 0) ? gnss_n2proj::mean_auto(n, V.data()) : auto_raw[f];
+                auto_proj[f] =
+                    (k > 0 || kl > 0) ? gnss_n2proj::mean_auto(n, V.data()) : auto_raw[f];
                 if (k > 0 || kl > 0) {
                     nul.push_cov(f, V.data(), dt_int);
                     if (solve_now) {
@@ -413,12 +653,12 @@ void GnssN2Project::main_thread() {
                         }
                         // Reference: the first eigen component projected, else the strongest
                         // lane's Rayleigh quotient on the raw block (lane_rq, in mean autos).
-                        const double l0 =
-                            k > 0 ? sub.lambda(f, q_use[(size_t)f * k_max])
-                                  : mean_auto[f]
-                                        * std::pow(10.0, (lane_conj ? lane_rq_conj_db[f]
-                                                                    : lane_rq_raw_db[f])
-                                                             / 10.0);
+                        const double l0 = k > 0
+                                              ? sub.lambda(f, q_use[(size_t)f * k_max])
+                                              : mean_auto[f]
+                                                    * std::pow(10.0, (lane_conj ? lane_rq_conj_db[f]
+                                                                                : lane_rq_raw_db[f])
+                                                                         / 10.0);
                         null_db[f] =
                             (l0 > 0.0) ? 10.0 * std::log10(std::max(l1, 1e-12 * l0) / l0) : 0.0;
                     }
@@ -452,17 +692,22 @@ void GnssN2Project::main_thread() {
                 g_frac.labels({fid}).set(frac0[f]);
                 g_null.labels({fid}).set(null_db[f]);
                 g_pr.labels({fid}).set(pr0[f]);
-                g_auto_raw.labels({fid}).set(auto_raw[f] > 0.0 ? 10.0 * std::log10(auto_raw[f]) : -120.0);
-                g_auto_proj.labels({fid}).set(auto_proj[f] > 0.0 ? 10.0 * std::log10(auto_proj[f]) : -120.0);
+                g_auto_raw.labels({fid}).set(auto_raw[f] > 0.0 ? 10.0 * std::log10(auto_raw[f])
+                                                               : -120.0);
+                g_auto_proj.labels({fid}).set(auto_proj[f] > 0.0 ? 10.0 * std::log10(auto_proj[f])
+                                                                 : -120.0);
                 if (use_lanes && live_ch[f]) {
                     g_lane_k.labels({fid}).set(lane_k[f]);
                     g_lane_rqc.labels({fid}).set(lane_rq_conj_db[f]);
                     g_lane_rqr.labels({fid}).set(lane_rq_raw_db[f]);
+                    g_fleet_k.labels({fid}).set(fleet_k[f]);
                 }
             }
             if (use_lanes) {
                 g_lane_used.set((double)lane_used);
                 g_lane_dup.set((double)lane_dup);
+                g_fleet_lanes.set(fleet_on ? (double)fleet.size() : 0.0);
+                g_fleet_age.set(fleet.empty() ? -1.0 : now_s - fleet_t_rx);
             }
         }
         out_buf->allocate_new_metadata_object(out_id);
@@ -471,6 +716,6 @@ void GnssN2Project::main_thread() {
         in_buf->mark_frame_empty(unique_name, in_id++);
     }
     if (use_lanes)
-        INFO("GnssN2Project {:s}: {:d} frames; lane directions used {:d}, duplicates {:d}",
-             source, (int)frame_count, (int)lane_used, (int)lane_dup);
+        INFO("GnssN2Project {:s}: {:d} frames; lane directions used {:d}, duplicates {:d}", source,
+             (int)frame_count, (int)lane_used, (int)lane_dup);
 }

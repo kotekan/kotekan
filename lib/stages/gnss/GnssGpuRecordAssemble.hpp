@@ -307,6 +307,8 @@ private:
     void set_elem_sum_shared_ref_callback(kotekan::connectionInstance& conn,
                                           nlohmann::json& request);
     void get_elem_cal_callback(kotekan::connectionInstance& conn);
+    /// The per-element instrumental delay estimate behind lane_transfer_inst_slope.
+    void get_lane_inst_callback(kotekan::connectionInstance& conn);
     void set_reference_element_callback(kotekan::connectionInstance& conn, nlohmann::json& request);
 
     /// Live slot membership (docs/CHORD_LIVE_PRN_RECONFIG.md). Reconcile @c _prns with the

@@ -11,11 +11,18 @@
 #include "Stage.hpp"
 #include "buffer.hpp"
 #include "bufferContainer.hpp"
+#include "gnssElemSteer.hpp"
+#include "gnssFleetLane.hpp"
 #include "gnssN2ProjectMath.hpp"
 #include "gnssProjSubspace.hpp"
+#include "restServer.hpp"
 
+#include "json.hpp" // nlohmann::json for the REST callbacks
+
+#include <atomic>
 #include <complex>
 #include <cstdint>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -110,6 +117,24 @@
  *                         its energy outside the basis so far is a duplicate (0.1).
  * @conf lane_conj         Bool. Conjugate the row into the N^2 frame (true).
  *
+ * Fleet lanes (docs/CHORD_FLEET_LANES.md). With lanes, GET <unique_name>/get_lanes serves the
+ * board's measured lane directions (per owner the channel of best coherence, with the track
+ * each was steered with) for the relay that carries them to the other nodes. With fleet_lanes,
+ * POST <unique_name>/set_lanes takes the relay's set: each lane is evaluated on the live
+ * channels its target ranges cover (gnssFleetLane.hpp: the lane_transfer_freq_ids transfer
+ * with the line of sight moved along its track, every fleet_lane_rebuild_s) and appended to
+ * build_lanes' candidates after the board's, so a local lane always wins the duplicate test
+ * and the budget. A set older than fleet_lane_max_age_s is not used: a dead relay leaves the
+ * local lanes.
+ *
+ * @conf fleet_lanes           Bool. Accept posted lanes (false).
+ * @conf elem_positions_enu    Double list, [n][3]. The tracker elements' positions, metres
+ *                             ENU (the assemblers' value). Required with fleet_lanes.
+ * @conf elem_steer_sign       Double. The assemblers' steering sign (1.0).
+ * @conf fleet_lane_max_age_s  Double. A posted set older than this is ignored (10.0).
+ * @conf fleet_lane_rebuild_s  Double. How often the posted lanes are re-evaluated along their
+ *                             tracks (0.25).
+ *
  * auto_raw_db / auto_proj_db per freq_id: the mean auto over the live block before and
  * after projection, dB of correlator units, so a spectrum of what the projection removed
  * can be drawn from the gauges (null_db is a ratio of coherent components, not of power).
@@ -136,6 +161,7 @@ private:
     const std::vector<int> live_freq_ids;
     std::vector<char> live_ch; ///< per local channel: live writes allowed (set on frame 1)
     bool live_ch_resolved = false;
+    std::vector<int> freq_ids; ///< per local channel: the absolute freq_id once labelled
     const double tau_s;
     const int k_max;
     const double frac_first_min;
@@ -152,8 +178,8 @@ private:
     std::vector<int> q_use; ///< per channel: the solved components the gates accepted, in order
     // #190 lane directions
     const std::string source;
-    const bool use_lanes;    ///< source != eigen
-    const bool use_residual; ///< the eigen path runs (eigen, or on the residual)
+    const bool use_lanes;         ///< source != eigen
+    const bool use_residual;      ///< the eigen path runs (eigen, or on the residual)
     bool eigen_live_only = false; ///< eigen_channels: live
     const std::string board_group;
     std::vector<int> tracker_stations;
@@ -165,8 +191,10 @@ private:
     std::vector<int> e2a;    ///< tracker element e -> index on the stations axis, -1 if absent
     gnss::ProjBasis lanes;   ///< the channel's lane basis, rebuilt every frame
     std::vector<int> lane_k; ///< per channel: lanes projected this frame
-    std::vector<double> lane_rq_conj_db, lane_rq_raw_db; ///< per channel: top lane's q^H V q / mean auto
-    std::vector<double> auto_raw, auto_proj; ///< per channel: mean live auto before / after projection
+    std::vector<double> lane_rq_conj_db,
+        lane_rq_raw_db; ///< per channel: top lane's q^H V q / mean auto
+    std::vector<double> auto_raw,
+        auto_proj; ///< per channel: mean live auto before / after projection
     uint64_t lane_dup = 0, lane_used = 0;
     struct LaneCand {
         double power, coh;
@@ -174,9 +202,35 @@ private:
     };
     std::vector<LaneCand> cand;
     /// Read the board for local channel f, build `lanes` from the fresh, coherent entries in
-    /// power order; with @p diag also the two Rayleigh quotients of the strongest one against
-    /// the raw block V. Returns the basis size.
+    /// power order, then the fleet lanes that cover the channel; with @p diag also the two
+    /// Rayleigh quotients of the strongest one against the raw block V. Returns the basis size.
     int build_lanes(int f, int freq_id, const cd* V, double now_s, bool diag);
+
+    // Fleet lanes (docs/CHORD_FLEET_LANES.md)
+    const bool fleet_lanes;
+    const double fleet_lane_max_age_s;
+    const double fleet_lane_rebuild_s;
+    gnss::ElemSteer geo;                   ///< element positions and steering sign (shift() only)
+    std::atomic<bool> labelled_pub{false}; ///< freq_ids and live_ch are resolved
+    std::mutex fleet_mtx;                  ///< guards the pending set between REST and main_thread
+    std::vector<gnss::FleetLane> fleet_pending;
+    bool fleet_pending_set = false;
+    std::vector<double> inst_pending; ///< per-element instrumental delay, s; empty = none
+    bool inst_pending_set = false;
+    std::vector<gnss::FleetLane> fleet; ///< main_thread's set
+    std::vector<double> inst_delay_s;
+    double fleet_t_rx = 0.0;    ///< steady seconds the set was taken
+    double fleet_t_built = 0.0; ///< utc the directions were last evaluated at (0 = never)
+    bool fleet_on = false;      ///< the set is fresh enough to use this frame
+    std::vector<std::vector<std::vector<cd>>> fleet_v; ///< [lane][channel][stations]; empty
+                                                       ///< where the lane does not cover it
+    std::vector<gnss::ElemSteer::cf> fleet_sh;         ///< scratch
+    std::vector<cd> fleet_tmp;                         ///< scratch [n_elem]
+    std::vector<int> fleet_k;                          ///< per channel: fleet lanes in the basis
+    void take_fleet(double now_s);
+    void build_fleet(double t_utc);
+    void get_lanes_callback(kotekan::connectionInstance& conn);
+    void set_lanes_callback(kotekan::connectionInstance& conn, nlohmann::json& request);
 };
 
 #endif

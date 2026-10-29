@@ -1,4 +1,5 @@
 #define BOOST_TEST_MODULE "test_gnss_lane_direction"
+#include "gnssFleetLane.hpp"     // for FleetLane, fleet_lane_direction
 #include "gnssLaneDirection.hpp" // for LaneDirection, InstDelay
 
 #include <algorithm> // for max
@@ -312,4 +313,102 @@ BOOST_AUTO_TEST_CASE(inst_delay_carries_the_transfer) {
                                       << " with the delays, " << err(geo) << " without");
     BOOST_CHECK_LT(err(full), 1e-6);
     BOOST_CHECK_GT(err(geo), 1e-2);
+}
+
+// A lane shipped between nodes (gnssFleetLane.hpp): the source publishes q with the track it
+// steered with; the receiver's fleet_lane_direction at f is the local transfer
+// (q conj(shift(f - f_src)), then the instrumental delays) at the source's instant, equals the
+// truth at f, and re-steered later along the track still equals the truth there.
+BOOST_AUTO_TEST_CASE(fleet_lane_is_the_local_transfer_moved_along_the_track) {
+    const int n = 24;
+    std::vector<double> pos((size_t)n * 3);
+    std::mt19937 rng(7);
+    std::uniform_real_distribution<double> u(-1.0, 1.0);
+    std::vector<double> tau_inst(n), amp(n), ph0(n);
+    for (int i = 0; i < n; ++i) {
+        pos[(size_t)i * 3] = 6.3 * (i % 6) - 15.0;
+        pos[(size_t)i * 3 + 1] = 8.5 * (i / 6) - 12.0;
+        pos[(size_t)i * 3 + 2] = 0.05 * i;
+        tau_inst[i] = 5e-9 * u(rng);
+        amp[i] = 1.0 + 0.5 * u(rng);
+        ph0[i] = M_PI * u(rng);
+    }
+    const double f1 = 1227.6, f2 = 1268.52; // MHz: L2C's lane carried to B3I's channel
+    ElemSteer S(pos, {f1, f2}, 1, 1.0, 120.0);
+    const double t0 = 1.7e9;
+    S.update(0, 141.0, 37.0, 0.0, 0.01, -0.004, t0); // a moving track with an epoch
+    std::vector<ElemSteer::cf> tab((size_t)2 * n), sh((size_t)n);
+    S.copy_slot(0, tab.data());
+    auto truth = [&](int ch, double common, std::vector<cd>& q) {
+        double e = 0.0;
+        for (int i = 0; i < n; ++i) {
+            const ElemSteer::cf D = tab[(size_t)ch * n + i];
+            const double f = (ch == 0 ? f1 : f2) * 1e6;
+            q[i] = std::conj(cd(D.real(), D.imag()))
+                   * std::polar(amp[i], ph0[i] + 2.0 * M_PI * f * tau_inst[i] + common);
+            e += std::norm(q[i]);
+        }
+        for (cd& x : q)
+            x /= std::sqrt(e);
+    };
+    auto err = [&](const std::vector<cd>& x, const std::vector<cd>& want) {
+        cd ip(0.0, 0.0);
+        for (int i = 0; i < n; ++i)
+            ip += std::conj(x[i]) * want[i];
+        const cd rot = ip / std::abs(ip);
+        double m = 0.0;
+        for (int i = 0; i < n; ++i)
+            m = std::max(m, std::abs(x[i] * rot - want[i]));
+        return m;
+    };
+
+    gnss::FleetLane L;
+    L.f_src_hz = f1 * 1e6;
+    BOOST_REQUIRE(S.track(0, L.los, L.los_rate, &L.t_utc));
+    BOOST_CHECK_CLOSE(L.t_utc, t0, 1e-9);
+    BOOST_CHECK_GT(std::abs(L.los_rate[0]) + std::abs(L.los_rate[1]), 0.0);
+    L.q.resize(n);
+    truth(0, 0.3, L.q);
+    L.fids = {{6233, 6338}, {6442, 6573}};
+    BOOST_CHECK(L.covers(6500));
+    BOOST_CHECK(!L.covers(6400));
+
+    ElemSteer geo(pos, {}, 0, 1.0, 0.0); // positions and sign only: shift()
+    std::vector<ElemSteer::cf> scratch;
+    std::vector<cd> out(n), want(n), local(n);
+    // (a) at the source's instant, geometry only: the local transfer
+    BOOST_REQUIRE(gnss::fleet_lane_direction(L, geo, f2 * 1e6, t0, nullptr, scratch, out.data()));
+    double e0[3];
+    BOOST_REQUIRE(S.direction(0, t0, e0));
+    S.shift(e0, (f2 - f1) * 1e6, sh.data());
+    for (int i = 0; i < n; ++i)
+        local[i] = L.q[i] * std::conj(cd(sh[(size_t)i].real(), sh[(size_t)i].imag()));
+    double d = 0.0;
+    for (int i = 0; i < n; ++i)
+        d = std::max(d, std::abs(out[i] - local[i]));
+    BOOST_CHECK_LT(d, 1e-5);
+    // (b) with the delays: the truth at f2
+    truth(1, -1.2, want);
+    BOOST_REQUIRE(
+        gnss::fleet_lane_direction(L, geo, f2 * 1e6, t0, tau_inst.data(), scratch, out.data()));
+    BOOST_CHECK_LT(err(out, want), 1e-5);
+    BOOST_CHECK_GT(err(local, want), 1e-2);
+    // (c) 20 s on: the track has moved; evaluated there it is the truth there, held it is not
+    const double t1 = t0 + 20.0;
+    S.refresh(0, t1);
+    S.copy_slot(0, tab.data());
+    std::vector<cd> want1(n), held(n);
+    truth(1, 0.8, want1);
+    held = out;
+    BOOST_REQUIRE(
+        gnss::fleet_lane_direction(L, geo, f2 * 1e6, t1, tau_inst.data(), scratch, out.data()));
+    BOOST_TEST_MESSAGE("20 s along the track: error re-steered " << err(out, want1) << ", held "
+                                                                 << err(held, want1));
+    BOOST_CHECK_LT(err(out, want1), 1e-5);
+    BOOST_CHECK_GT(err(held, want1), 1e-2);
+    // a degenerate track is refused
+    gnss::FleetLane bad = L;
+    std::fill(bad.los, bad.los + 3, 0.0);
+    std::fill(bad.los_rate, bad.los_rate + 3, 0.0);
+    BOOST_CHECK(!gnss::fleet_lane_direction(bad, geo, f2 * 1e6, t0, nullptr, scratch, out.data()));
 }

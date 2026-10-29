@@ -1,0 +1,22 @@
+[Unit]
+Description=CHORD GNSS lane relay (lane directions between the projecting nodes, every second)
+Documentation=file:///home/kvand/gnss/gnss-broker/docs/CHORD_FLEET_LANES.md
+# This host only: the user copies sit in the NFS-shared home (see gnss-stack.target).
+ConditionHost=|gnss
+ConditionHost=|gnss.site.chord-observatory.ca
+RequiresMountsFor=/home/kvand
+PartOf=gnss-stack.target
+
+[Service]
+Type=simple
+# Through run_component.sh like every stack unit: argv and environment from one definition.
+ExecStart=/home/kvand/gnss/gnss-broker/scripts/gnss/site/run_component.sh lanerelay
+Restart=on-failure
+RestartSec=10
+MemoryAccounting=yes
+MemoryMax=256M
+StandardOutput=append:/var/tmp/gnss-logs/lanerelay.log
+StandardError=inherit
+
+[Install]
+WantedBy=gnss-stack.target

@@ -909,6 +909,7 @@ def test_manual_mask_reaches_the_node_config():
             ref,
             "--elem-shared-ref-mode",
             "live",
+            "--fleet-lanes",
         ]
         with stubbed(_HY):
             exc, out, err = run_main(argv)
@@ -925,6 +926,14 @@ def test_manual_mask_reaches_the_node_config():
         "the stations leave out bffs's and the mask's inputs (%d)" % len(st),
     )
     asm = cfg["gnss0_n2assemble"]
+    proj = cfg["gnss_n2_project"]["proj_0"]
+    check(
+        proj.get("fleet_lanes") is True
+        and proj.get("elem_positions_enu") == asm["elem_positions_enu"]
+        and proj.get("elem_steer_sign") == asm["elem_steer_sign"]
+        and len(proj["elem_positions_enu"]) == 3 * len(proj["tracker_stations"]),
+        "--fleet-lanes: the stage carries the assemblers' positions and sign",
+    )
     check(
         asm["chan_noise_norm_elems"] == sorted(set(range(128)) - out_set),
         "the channel-noise inputs leave them out",

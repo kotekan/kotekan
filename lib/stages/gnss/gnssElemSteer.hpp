@@ -160,8 +160,25 @@ public:
         return true;
     }
 
+    /// The slot's track as its table describes it: the line of sight (ENU) at the instant the
+    /// table was built for, written to @p *t_utc, and its rate per second (zero for a snapshot).
+    /// False if the slot has no geometry.
+    bool track(int slot, double* e_out, double* edot_out, double* t_utc) const {
+        if (!enabled() || slot < 0 || (size_t)slot >= _trk.size()
+            || _fresh_t[(size_t)slot] <= -1.0e17)
+            return false;
+        const Track& k = _trk[(size_t)slot];
+        if (!direction(slot, k.built_utc, e_out))
+            return false;
+        for (int i = 0; i < 3; ++i)
+            edot_out[i] = k.moving ? k.edot[i] : 0.0;
+        *t_utc = k.built_utc;
+        return true;
+    }
+
     /// Per element, the factor exp(i * sign * 2*pi * df * tau) that takes a phasor for
-    /// line-of-sight unit vector @p e (ENU) from frequency f to f + @p df_hz.
+    /// line-of-sight unit vector @p e (ENU) from frequency f to f + @p df_hz. From 0 Hz it is
+    /// the table's own phasor at df_hz (build()).
     void shift(const double* e, double df_hz, cf* out) const {
         for (int el_i = 0; el_i < _n_elem; ++el_i) {
             const double* r = &_pos[(size_t)el_i * 3];

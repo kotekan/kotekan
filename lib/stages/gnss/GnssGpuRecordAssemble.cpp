@@ -504,6 +504,25 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
     kotekan::restServer::instance().register_post_callback(
         unique_name + "/set_reference_element",
         std::bind(&GnssGpuRecordAssemble::set_reference_element_callback, this, _1, _2));
+    if (_inst_on)
+        kotekan::restServer::instance().register_get_callback(
+            unique_name + "/get_lane_inst",
+            std::bind(&GnssGpuRecordAssemble::get_lane_inst_callback, this, _1));
+}
+
+void GnssGpuRecordAssemble::get_lane_inst_callback(kotekan::connectionInstance& conn) {
+    // Read off main_thread without a lock: a torn double gives one element one wrong delay
+    // in one poll, which the relay's pooling over instances and time absorbs.
+    nlohmann::json out;
+    out["warm"] = _inst.warm();
+    out["weight"] = _inst.weight();
+    out["rms_ns"] = _inst.rms_s() * 1e9;
+    out["df_hz"] = _inst_df_fid * 0.1953125e6;
+    nlohmann::json d = nlohmann::json::array();
+    for (int i = 0; i < _n_elements; ++i)
+        d.push_back(_inst.delay_s(i) * 1e9);
+    out["delay_ns"] = d;
+    conn.send_json_reply(out);
 }
 
 void GnssGpuRecordAssemble::set_sat_geometry_callback(kotekan::connectionInstance& conn,
@@ -854,6 +873,9 @@ void GnssGpuRecordAssemble::main_thread() {
                 // copied under the lock and read from the copy, so a concurrent
                 // /set_sat_geometry cannot rewrite it mid-combine.
                 bool steered = false;
+                // The track the copied table describes, carried on this record's lane entries.
+                double lane_los[3] = {0.0, 0.0, 0.0}, lane_los_rate[3] = {0.0, 0.0, 0.0};
+                double lane_t_geo = 0.0;
                 if (_steer.enabled()) {
                     if (_steer.n_chan() != n_chan) {
                         // The table was built from the config's channel_ids and the frame
@@ -877,6 +899,7 @@ void GnssGpuRecordAssemble::main_thread() {
                             _steer.refresh((int)p, utc);
                             _steer_buf.resize((size_t)n_chan * n_e);
                             _steer.copy_slot((int)p, _steer_buf.data());
+                            _steer.track((int)p, lane_los, lane_los_rate, &lane_t_geo);
                             steered = true;
                         }
                     }
@@ -954,6 +977,9 @@ void GnssGpuRecordAssemble::main_thread() {
                         e.q.reserve((size_t)n_e);
                         for (int el = 0; el < n_e; ++el)
                             e.q.emplace_back((float)dir[el].real(), (float)dir[el].imag());
+                        e.t_utc = lane_t_geo;
+                        std::copy(lane_los, lane_los + 3, e.los);
+                        std::copy(lane_los_rate, lane_los_rate + 3, e.los_rate);
                         board.publish(_lane_group, _lane_fids[(size_t)ch], e);
                         _lane_pub[p] = 1;
                     }
@@ -1021,6 +1047,10 @@ void GnssGpuRecordAssemble::main_thread() {
                             e.q.reserve((size_t)n_e);
                             for (int el = 0; el < n_e; ++el)
                                 e.q.emplace_back((float)v[el].real(), (float)v[el].imag());
+                            e.t_utc = lane_t_geo;
+                            std::copy(lane_los, lane_los + 3, e.los);
+                            std::copy(lane_los_rate, lane_los_rate + 3, e.los_rate);
+                            e.xfer = 1;
                             board.publish(_lane_group, fid, e);
                         }
                     }
