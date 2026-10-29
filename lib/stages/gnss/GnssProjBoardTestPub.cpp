@@ -1,8 +1,8 @@
 #include "GnssProjBoardTestPub.hpp"
 
-#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE
+#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
 #include "gnssProjSubspace.hpp" // for ProjBoard, ProjEntry
-#include "kotekanLogging.hpp" // for INFO
+#include "kotekanLogging.hpp"   // for INFO
 
 #include <chrono>
 #include <cmath>
@@ -35,9 +35,9 @@ void GnssProjBoardTestPub::main_thread() {
     gnss::ProjBoard& board = gnss::ProjBoard::instance();
     const float inv = 1.0f / std::sqrt((float)n_elem);
     while (!stop_thread) {
-        const double now_s = std::chrono::duration<double>(
-                                 std::chrono::steady_clock::now().time_since_epoch())
-                                 .count();
+        const double now_s =
+            std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch())
+                .count();
         for (int j = 0; j < n_dirs; ++j) {
             gnss::ProjEntry e;
             e.owner = unique_name + "/lane/" + std::to_string(j);
@@ -47,6 +47,11 @@ void GnssProjBoardTestPub::main_thread() {
             e.coh = 1.0;
             e.n = n_elem;
             e.k = 1;
+            // A held track at the zenith, so get_lanes serves the entry.
+            e.los[2] = 1.0;
+            e.t_utc =
+                std::chrono::duration<double>(std::chrono::system_clock::now().time_since_epoch())
+                    .count();
             e.q.reserve((size_t)n_elem);
             for (int el = 0; el < n_elem; ++el) {
                 const float ph = (float)(j + 1) * 0.37f * (float)(el * el);
