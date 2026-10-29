@@ -19,7 +19,7 @@
 # Both polarizations of every selected dish are copied, so this selects
 # dish_blocks_subset|length * 8 * 2 of the 128 elements.  Both NUMA domains record the same
 # inputs, they differ only in frequency.
-{% set dish_blocks_subset = [0, 1, 7] %}
+{% set dish_blocks_subset = [0, 1, 2, 3, 4, 5, 6, 7] %}
 
 # Dishes surviving the subset, and the trailing extent of the subset buffers.
 # SubsetBaseband describes its output as [T, F, 2, num_subset_dishes] and fatally checks the
@@ -37,7 +37,7 @@
 # the number of frames written out (~42 ms / {{ subset_frame_mib }} MiB of subset data each).
 # The DPDK threads exit once these frames have been handed off, leaving the rest of kotekan
 # running so the file writer can flush; the writer then shuts kotekan down.
-{% set num_capture_frames = 240 %}
+{% set num_capture_frames = 1480 %}
 
 # Buffering.  hdf5FileWrite is the slowest stage (the Sep 4 2026 capture wrote 10 s of data in
 # ~40 s), so the backlog collects in its input: each subset buffer holds the whole capture,
@@ -216,7 +216,7 @@ dpdk:
     # timestamped folder. Unscheduled, their starts can differ by one frame (~42 ms), which
     # now and then rounds to two different folder names. Harmless for merging (point
     # merge_baseband_freq.py at /scratch/baseband and it recurses into both), but untidy.
-    capture_start_time_utc: "2026-09-04 18:18:00"
+    capture_start_time_utc: "2026-10-28 21:32:00"
     # capture_n_frames: stop after this many frames, 0 = record until kotekan is stopped.
     capture_n_frames: {{ num_capture_frames }}
     # List of PCIe addresses to block from DPDK use

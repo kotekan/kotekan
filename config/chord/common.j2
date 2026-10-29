@@ -16,7 +16,7 @@ log_level: {{ log_level | default("WARN") }}
 # Referenced by /CHORDTelescope/gps_host_info, /config_tracker/fpga_host_info,
 # and per-stage baseband_gain_host_info (e.g. on hdf5N2Write).
 fpga_controller:
-    host: "chive"
+    host: "crs-control"
     port: 54321
     config_endpoint: /config
     timing_endpoint: /get-frame0-time
