@@ -13,6 +13,7 @@
 #include <arpa/inet.h>  // for htons, inet_addr, inet_aton
 #include <functional>   // for bind, function
 #include <memory>       // for shared_ptr
+#include <mutex>        // for mutex, lock_guard, unique_lock
 #include <netinet/in.h> // for sockaddr_in, IPPROTO_TCP, IPPROTO_UDP, in_addr
 #include <stdlib.h>     // for free, malloc
 #include <string.h>     // for memcpy, memset
@@ -63,8 +64,6 @@ networkPowerStream::networkPowerStream(Config& config, const std::string& unique
     dest_port = config.get<uint32_t>(unique_name, "destination_port");
     dest_server_ip = config.get<std::string>(unique_name, "destination_ip");
     dest_protocol = config.get<std::string>(unique_name, "destination_protocol");
-
-    atomic_flag_clear(&socket_lock);
 
     header.packet_length = freqs * sizeof(float);
     header.header_length = sizeof(IntensityPacketHeader);
@@ -144,10 +143,9 @@ void networkPowerStream::main_thread() {
             if (frame == nullptr)
                 break;
 
-            while (atomic_flag_test_and_set(&socket_lock)) {
-            }
+            std::unique_lock<std::mutex> lock(socket_lock);
             if (tcp_connected) {
-                atomic_flag_clear(&socket_lock);
+                lock.unlock();
                 bool lost = false;
                 for (int t = 0; t < times && !lost; t++) {
                     packet_header->frame_idx = frame_idx++;
@@ -161,11 +159,10 @@ void networkPowerStream::main_thread() {
                             send(socket_fd, packet_buffer, packet_length, MSG_NOSIGNAL);
                         if (bytes_sent != packet_length) {
                             ERROR("Lost TCP connection!");
-                            while (atomic_flag_test_and_set(&socket_lock)) {
-                            }
+                            lock.lock();
                             close(socket_fd);
                             tcp_connected = false;
-                            atomic_flag_clear(&socket_lock);
+                            lock.unlock();
                             lost = true;
                             break;
                         }
@@ -177,11 +174,11 @@ void networkPowerStream::main_thread() {
                 gettimeofday(&tv, nullptr);
                 handshake_utc = tv.tv_sec + tv.tv_usec / 1e6;
                 tcp_connecting = true;
-                atomic_flag_clear(&socket_lock);
+                lock.unlock();
                 std::thread(&networkPowerStream::tcpConnect, this).detach();
             } else {
                 frame_idx += times;
-                atomic_flag_clear(&socket_lock);
+                lock.unlock();
             }
             // Mark buffer as empty.
             in_buf->mark_frame_empty(unique_name, frame_id);
@@ -204,10 +201,8 @@ void networkPowerStream::tcpConnect() {
     socket_fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (socket_fd == -1) {
         ERROR("Could not create TCP socket for output stream");
-        while (atomic_flag_test_and_set(&socket_lock)) {
-        }
+        std::lock_guard<std::mutex> lock(socket_lock);
         tcp_connecting = false;
-        atomic_flag_clear(&socket_lock);
         return;
     }
 
@@ -217,11 +212,9 @@ void networkPowerStream::tcpConnect() {
     timeout.tv_usec = 200000;
 
     if (connect(socket_fd, (struct sockaddr*)&address, sizeof(address)) != 0) {
-        while (atomic_flag_test_and_set(&socket_lock)) {
-        }
+        std::lock_guard<std::mutex> lock(socket_lock);
         tcp_connecting = false;
         close(socket_fd);
-        atomic_flag_clear(&socket_lock);
         return;
     }
     setsockopt(socket_fd, SOL_SOCKET, SO_SNDTIMEO, (char*)&timeout, sizeof(timeout));
@@ -235,20 +228,18 @@ void networkPowerStream::tcpConnect() {
 #endif
 
     { // put together handshake
-        while (atomic_flag_test_and_set(&socket_lock)) {
+        {
+            std::lock_guard<std::mutex> lock(socket_lock);
+            header.handshake_idx = handshake_idx;
+            header.handshake_utc = handshake_utc;
         }
-        header.handshake_idx = handshake_idx;
-        header.handshake_utc = handshake_utc;
-        atomic_flag_clear(&socket_lock);
         int bytes_sent = send(socket_fd, (void*)&header, sizeof(header), MSG_NOSIGNAL);
         if (bytes_sent != sizeof(header)) {
             ERROR("Could not send TCP header for output stream");
-            while (atomic_flag_test_and_set(&socket_lock)) {
-            }
+            std::lock_guard<std::mutex> lock(socket_lock);
             close(socket_fd);
             tcp_connected = false;
             tcp_connecting = false;
-            atomic_flag_clear(&socket_lock);
             return;
         }
         // FIXME: remove hardcoding of freq & Stokes
@@ -269,18 +260,14 @@ void networkPowerStream::tcpConnect() {
         free(info);
         if (bytes_sent != info_size) {
             ERROR("Could not send TCP header for output stream");
-            while (atomic_flag_test_and_set(&socket_lock)) {
-            }
+            std::lock_guard<std::mutex> lock(socket_lock);
             close(socket_fd);
             tcp_connected = false;
             tcp_connecting = false;
-            atomic_flag_clear(&socket_lock);
             return;
         }
     }
-    while (atomic_flag_test_and_set(&socket_lock)) {
-    }
+    std::lock_guard<std::mutex> lock(socket_lock);
     tcp_connected = true;
     tcp_connecting = false;
-    atomic_flag_clear(&socket_lock);
 }
