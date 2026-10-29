@@ -84,11 +84,54 @@ The target channels must be in `n2-project-live-freq-ids`, as for the local tran
 
 ## Rollout
 
-- cf05: Test build with boost tests (`test_gnss_lane_direction`: the fleet form equals the
-  local transfer, with and without the instrumental delays; the extrapolated line of sight).
-- Canary: one node on the new binary, the relay posting to that node only (`--to`), every
-  other node a source. Judge within minutes: `fleet_lanes` held and their age, `lane_k` on the
-  L2 channels of the GPU without L2C, `auto_proj_db` against the sibling GPU, and recv1's
-  cross-coherence on those streams during a GPS pass.
-- Fleet, then `fleet-lane-transfer` grows: `glo_l2of` across 1237.9-1258.2 MHz once that
-  range is projected, E6 PRS upper lobe, B2/E5 edges.
+Done 2026-10-29 (branch kv/fleet-lanes, two commits on 0ca8ce6e8; binary
+`~/gnss/builds/fleet-a87913c14/kotekan/kotekan`, Release, libraries resolve from a node):
+boost `test_gnss_lane_direction` (the fleet form equals the local transfer to 2e-8 with the
+delays; 20 s along the track the re-steered direction is exact where a held one is off by
+0.33); the generator test with `--fleet-lanes`; a cx51 preview config, `--check-config`
+PASSED; `config/ci-tests/cpu_batch/run_n2accum_gnssproject_fleet.yaml` run by hand on cf05
+with `get_lanes` read and `set_lanes` posted during the run (lanes in `fleet_lane_k` behind
+the board's, a short body refused with 400, the set aged out at 10 s). A `--dry-run` is not
+possible on cf05 (DPDK EAL): the canary is the first real construction.
+
+### Canary (one node; the fleet is back ~2026-10-31)
+
+1. The python half must be in the checkout the stack regenerates from:
+   `grep -c fleet-lanes ~/gnss/gnss-broker/config/gen_chord_gnss_config.py` (0 = not yet;
+   the cleanup session extracts from the branch). The relay itself can run from the
+   worktree with `--root ~/gnss/gnss-broker`.
+2. Fleet yaml, `common:`: `fleet-lanes: true` and
+   `fleet-lane-transfer: [l2c:1217.4-1237.8, e6:1263.4-1273.6]` (the relay's table, the same
+   form as `lane-transfer`; the targets are already in the projected ranges). Regenerate,
+   `--check`.
+3. Pick a node whose one GPU holds an L2C channel and the other does not, so the cross-GPU
+   case tests itself with one node: cx51 (GPU 1 holds L2C; GPU 0 receives). Cycle it onto the
+   binary: `GNSS_BIN=/home/kvand/gnss/builds/fleet-a87913c14/kotekan/kotekan
+   scripts/gnss/site/node_up.sh cx51 restart` from ~/gnss/gnss-broker. Both GPUs are
+   sources and receivers; every other node stays on the old binary (404 on `get_lanes`, so
+   `--from cx51` keeps the log quiet).
+4. Relay by hand (cf06 or the VM; ~50 MB):
+   `/usr/bin/python3 ~/gnss/fleetlane-wt/scripts/gnss/site/lane_relay.py show --root
+   ~/gnss/gnss-broker --from cx51 --to cx51`, then the same with `run --status
+   ~/gnss/fixtures/obs/lane_relay`. `show` lists what each GPU serves and would receive.
+5. Judge within minutes, on cx51:
+   - `curl -s cx51:12048/metrics | grep n2project_fleet`: `fleet_lanes` > 0 on both GPUs,
+     `fleet_lane_age_s` ~1-2 s, `fleet_lane_k{freq_id}` > 0 on GPU 0's L2 channels
+     (6233-6338, phase 7) whenever GPS satellites are tracked on L2C.
+   - `auto_proj_db` on those channels against GPU 1's and against the day before; recv1's
+     cross-coherence on cx51's phase-7 streams in 1217-1238 MHz during a GPS pass
+     (taua1029/taua_flux.py style, docs/CHORD_TAUA_GUOWANG_20261029.md section 2).
+   - The stage's CPU (`n2-project-cpus` 15/19): the rebuild is ~100 lanes x 32 channels x 128
+     phasors every 0.25 s, small; confirm.
+   - `lane_inst` on a single node is one instance: the pooled delays are that one GPU's own
+     estimate, no outlier rejection until three or more GPUs are on the binary.
+6. Rollback at any step: stop the relay (the nodes age the set out in 10 s and keep their
+   local lanes); `fleet-lanes: false`, regenerate and cycle; or the previous binary.
+
+### Fleet
+
+Every node on the binary, `fleet-lanes: true` everywhere, `systemctl --user start
+gnss-lanerelay` (in gnss-stack.target; `run_component.sh lanerelay`). Then
+`fleet-lane-transfer` grows: `glo_l2of` across 1237.9-1258.2 MHz once that range is in
+`n2-project-live-freq-ids` (split the projection list from the SK-exemption list first), the
+E6 PRS upper lobe, the B2/E5 edges.
