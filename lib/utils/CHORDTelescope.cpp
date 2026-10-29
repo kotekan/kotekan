@@ -44,10 +44,15 @@ DishParams DishParams::from_config(const kotekan::Config& config, const std::str
                                    double dish_separation_y_m) {
     DishParams dish_params;
 
-    // Dish pointing co-elevation. NaN marks an unset value, since a JSON config cannot hold one.
-    const double config_coelev = config.get_default<double>(path, "dish_coelev_deg", NAN);
-    dish_params.dish_coelev_set = !std::isnan(config_coelev);
-    dish_params.dish_coelev_deg = dish_params.dish_coelev_set ? config_coelev : 0.0;
+    // Dish pointing co-elevation. Fringestopping needs it set; the default serves the rest.
+    try {
+        config.get_value(path, "dish_coelev_deg");
+        dish_params.dish_coelev_set = true;
+    } catch (const std::runtime_error&) {
+        dish_params.dish_coelev_set = false;
+    }
+    if (dish_params.dish_coelev_set)
+        dish_params.dish_coelev_deg = config.get<double>(path, "dish_coelev_deg");
     if (!std::isfinite(dish_params.dish_coelev_deg) || std::abs(dish_params.dish_coelev_deg) > 90.0)
         FATAL_ERROR_NON_OO("CHORDTelescope dish_coelev_deg {:f} is outside [-90, 90].",
                            dish_params.dish_coelev_deg);
