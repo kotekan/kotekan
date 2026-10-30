@@ -61,7 +61,14 @@ common:
     # Fleet lanes (docs/CHORD_FLEET_LANES.md): GnssN2Project takes lanes the relay carries from the
     # other nodes; fleet-lane-transfer is the relay's table (site-only, not a generator flag).
     fleet-lanes: true
-    fleet-lane-transfer: [l2c:1217.4-1237.8, e6:1263.4-1273.6]
+    # The relay's table: the same targets as lane-transfer where a satellite's lane is not on
+    # every GPU (L2C on five, each GLONASS L2OF satellite on the six that hold its comb), plus
+    # the E5/B2 edges and the 1186.7-1196.9 gap, which carry GPS L5's lanes too (the relay tags
+    # the untagged GPS L5 assembler l5; the local table cannot name it).
+    fleet-lane-transfer: [l2c:1217.4-1237.8, e6:1263.4-1273.6, e6:1283.9-1294.1,
+                          l2of:1237.9-1258.2, e5a:1160.0-1166.2, b2a:1160.0-1166.2,
+                          l5:1160.0-1166.2, e5b:1186.7-1196.9, b2b:1186.7-1196.9,
+                          l5:1186.7-1196.9]
     # Channels exempt from first-stage (SK) RFI excision, absolute freq_id ranges
     # (freq_id = MHz / 0.1953125): the GNSS main lobes, one chip rate either side of each
     # carrier (10.23 MHz; E6-C's 5.115 MHz at the top), at 1176.45 (L5/E5a/B2a), 1202.025
@@ -74,7 +81,13 @@ common:
     # The exemption is what the GNSS branch needs, not only cosmology's loss: the dual
     # correlator applies the SK mask to the synthetic lanes too, so an excised channel
     # despreads to zero.
-    rfi-excision-exempt-freq-ids: "5971-6076,6102-6338,6361-6401,6442-6573"
+    # Widened 2026-10-30 to the lane transfers' targets beside the lobes: 1160.0-1166.2 and the
+    # 1186.7-1191.8 gap (the E5/B2 AltBOC edges), 1237.9-1258.2 (GLONASS L2's P-code spill, up
+    # to B3I's) and 1283.8-1294.1 (the E6 PRS upper lobe), one contiguous range. Those channels
+    # are projected with the lanes only: n2-project-eigen-channels keeps the eigen path on the
+    # lobes, where it earns its ~n^2 per channel (the stage runs on one core per GPU, at 60-78 %
+    # with the lobes alone).
+    rfi-excision-exempt-freq-ids: "5939-6626"
     # Bright-satellite projection in each record assembler: off | shadow | live. live projects
     # the transiting satellite's element direction out of the other slots' record rows in
     # place, from the node's own rows (own slot, sibling chain, probe stack); nodes exchange
@@ -114,7 +127,7 @@ common:
     n2-project: live
     n2-project-live-freq-ids: exempt
     n2-project-stations: "0-6,8-127"
-    n2-project-eigen-channels: live
+    n2-project-eigen-channels: "5971-6076,6102-6338,6361-6401,6442-6573"
     # #190 on every projecting node (canary cx51 10-20..10-24): the tracked satellites' lane
     # directions first, the eigen path on what is left. On 10-24 the eigen path alone removed
     # <= 0.6 dB in the lobes while the lanes removed ~80-87 % of the satellite power over the
@@ -146,6 +159,15 @@ common:
         - l5:1186.7-1196.9
         - e5b:1217.4-1237.8
         - b2b:1217.4-1237.8
+    # 2026-10-30: GLONASS L2OF's lanes over the P-code spill (R07's military code at 5.11 Mcps
+    # reached 1239-1242 and 1250-1257 MHz past the projected comb; the whole L2 range up to
+    # B3I's), E6-B/C's over the PRS upper lobe (BOCcos(10,5) at 1288.98 +-5.1 MHz), and the
+    # L5-band chains' over the lower AltBOC edge below E5a/B2a's null at 1166.2 MHz.
+        - l2of:1237.9-1258.2
+        - e6:1283.9-1294.1
+        - e5a:1160.0-1166.2
+        - b2a:1160.0-1166.2
+        - l5:1160.0-1166.2
 
     # Ship the N^2 products as a stock node does: the buffer_send_n2_* legs (full n2_buffer and
     # the eigen subset, both GPUs) and the bad-feed mask legs, to the standard receiver recv1
