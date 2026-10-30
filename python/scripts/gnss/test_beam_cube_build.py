@@ -266,7 +266,6 @@ class TestBuild(unittest.TestCase):
         self.assertIsNone(meta["health_mask"])
 
 
-
 class TestVetoKeepOwn(unittest.TestCase):
     """The railing veto drops every row of a minute in which any satellite is within veto_deg of
     boresight; with keep_own the satellite closest to boresight survives (the main lobe),
@@ -299,6 +298,38 @@ class TestVetoKeepOwn(unittest.TestCase):
         g = self._geom(True, {("G", 3): (180.0, 40.0)})
         self.assertFalse(g.vetoed(10.0, "G3"))
         self.assertFalse(g.vetoed(10.0, "E16"))
+
+
+class TestPedestal(unittest.TestCase):
+    """The pedestal is subtracted as measured; the envelope reference ignores a bin a transit
+    inflated, and the "bin" reference is the pedestal itself."""
+
+    def setUp(self):
+        nb, per = 41, 4
+        self.tb = np.repeat(np.arange(nb), per)
+        self.P = np.ones((nb * per, 2, 3))
+        self.P[self.tb == 20] = 8.0
+        self.inday = np.ones(nb * per, bool)
+
+    def test_envelope_ignores_the_transit_bin(self):
+        floor, ref = bc.pedestal(self.P, self.tb, self.inday, "envelope")
+        m = self.tb == 20
+        self.assertTrue(np.allclose(floor[m], 8.0))
+        self.assertTrue(np.allclose(ref[m], 1.0))
+        self.assertTrue(np.allclose(ref[~m], 1.0))
+
+    def test_bin_reference_is_the_pedestal(self):
+        floor, ref = bc.pedestal(self.P, self.tb, self.inday, "bin")
+        self.assertTrue(np.allclose(ref, floor))
+
+    def test_rows_outside_the_day_get_nothing(self):
+        inday = self.inday.copy()
+        inday[self.tb == 0] = False
+        floor, ref = bc.pedestal(self.P, self.tb, inday, "envelope")
+        self.assertTrue(
+            np.isnan(floor[self.tb == 0]).all() and np.isnan(ref[self.tb == 0]).all()
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

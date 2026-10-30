@@ -71,6 +71,8 @@ import gnss_chain_health  # noqa: E402  (same directory)
 BORE_AZ, BORE_EL = 180.0, 81.41
 MIN_ELEMS = 8  # a sample with fewer live elements says nothing about the beam
 FLOOR_BIN_S = 300.0  # pedestal bin: per (instance, subband, element, 5 min)
+ENV_HALF_BINS = 24  # pedestal reference: low envelope over +-2 h of pedestal bins
+ENV_PCT = 10.0
 HEALTH_DIR = (
     "/home/kvand/gnss/fixtures/obs/health"  # gnss_chain_health.py masks, per day
 )
@@ -449,6 +451,35 @@ def build_day(args, chain, paths, day_unix, geom):
     return dict(pix=pix, n=n, s1=s1, s2=s2, freq_ids=freq_ids[: n.shape[0]])
 
 
+def pedestal(P, tb, inday, ref="envelope"):
+    """Per row of P[R,S,E]: the pedestal, the median over every slot in the row's 5-min bin per
+    subband and element, and the reference a sample is divided by.
+
+    The pedestal is the despread noise at that moment, so it carries every satellite near the
+    beam: on 10-29 it rose x3-10 while a satellite crossed boresight and wandered 0.7-1.4 dB
+    between quiet bins 10-20 min apart. It stays the right thing to subtract. "envelope" divides
+    by its low envelope instead, the ENV_PCT percentile over +-ENV_HALF_BINS bins (0.6-2 dB over
+    the day, < 0.1 dB bin to bin); "bin" divides by the pedestal itself.
+    """
+    floor = np.full_like(P, np.nan)
+    refl = np.full_like(P, np.nan)
+    bins = np.unique(tb[inday])
+    fb = {}
+    for b in bins:
+        with np.errstate(all="ignore"):
+            fb[b] = np.nanmedian(P[(tb == b) & inday], axis=0)
+    for b in bins:
+        m = (tb == b) & inday
+        floor[m] = fb[b][None]
+        if ref == "bin":
+            refl[m] = fb[b][None]
+            continue
+        near = np.array([fb[c] for c in bins if abs(c - b) <= ENV_HALF_BINS])
+        with np.errstate(all="ignore"):
+            refl[m] = np.nanpercentile(near, ENV_PCT, axis=0)[None]
+    return floor, refl
+
+
 def _h5_rows(path):
     """One L0 or rung file -> (attrs, t[R], prn[R], P[R,S,E] mean power (nan: bin unused)).
 
@@ -559,11 +590,7 @@ def prn_gain_table(args, chain, paths, day_unix, geom, dth=5.0, dphi=90.0, iters
         if not inday.any():
             continue
         tb = ((t - day_unix) // FLOOR_BIN_S).astype(int)
-        floor = np.full_like(P, np.nan)
-        for b in np.unique(tb[inday]):
-            m = (tb == b) & inday
-            with np.errstate(all="ignore"):
-                floor[m] = np.nanmedian(P[m], axis=0)[None]
+        floor, refl = pedestal(P, tb, inday, getattr(args, "pedestal_ref", "envelope"))
         minute = (t // GEOM_BIN_S).astype(int)
         uk, inv = np.unique(np.stack([prn, minute], 1), axis=0, return_inverse=True)
         inv = inv.ravel()
@@ -586,12 +613,12 @@ def prn_gain_table(args, chain, paths, day_unix, geom, dth=5.0, dphi=90.0, iters
         rscale = (
             np.ones(int(ok.sum())) if args.no_range_norm else (rng_r[ok] / R_REF) ** 2
         )
-        Pk, Fk = P[ok], floor[ok]
+        Pk, Fk, Rk = P[ok], floor[ok], refl[ok]
         with np.errstate(all="ignore"):
-            live = (Pk > 0.0) & (Fk > 0.0) & (Pk > Fk)
+            live = (Pk > 0.0) & (Fk > 0.0) & (Rk > 0.0) & (Pk > Fk)
             pw = np.where(
                 live,
-                (Pk - Fk) / np.where(live, Fk, 1.0) * rscale[:, None, None],
+                (Pk - Fk) / np.where(live, Rk, 1.0) * rscale[:, None, None],
                 np.nan,
             )
             row = np.nanmean(
@@ -723,13 +750,9 @@ def build_day_h5(args, chain, paths, day_unix, geom, prn_gain=None):
             acc.n_sub = len(band)
         inday = (t >= tmin) & (t < tmax)
         stats["rows"] += int(inday.sum())
-        # -- pedestal: per (5-min, subband, element) median over every slot (module docstring) --
+        # -- pedestal (module docstring) and the reference a sample is divided by -------------
         tb = ((t - day_unix) // FLOOR_BIN_S).astype(int)
-        floor = np.full_like(P, np.nan)
-        for b in np.unique(tb[inday]):
-            m = (tb == b) & inday
-            with np.errstate(all="ignore"):
-                floor[m] = np.nanmedian(P[m], axis=0)[None]
+        floor, refl = pedestal(P, tb, inday, getattr(args, "pedestal_ref", "envelope"))
         # -- geometry per (prn, minute); veto per minute -------------------------------------
         minute = (t // GEOM_BIN_S).astype(int)
         keys = np.stack([prn, minute], 1)
@@ -764,21 +787,22 @@ def build_day_h5(args, chain, paths, day_unix, geom, prn_gain=None):
         rscale = (
             np.ones(int(ok.sum())) if args.no_range_norm else (rng_r[ok] / R_REF) ** 2
         )
-        Pk, Fk = P[ok], floor[ok]
+        Pk, Fk, Rk = P[ok], floor[ok], refl[ok]
         # Debias in power and drop a sample under its own pedestal (never clamp; see
-        # build_day), in units of the pedestal. The cube's |A_e|^2 is normalised by the
-        # channel's own replica energy (A = G/E_c), so a bin's scale is 1/E_c^2: under a
+        # build_day), in units of the pedestal reference. The cube's |A_e|^2 is normalised by
+        # the channel's own replica energy (A = G/E_c), so a bin's scale is 1/E_c^2: under a
         # BPSK(10) main lobe the centre channels sit ~20 dB below the edge ones, and a raw sum
-        # over subbands would be just the edge bins. Dividing by each (bin, element)'s own
-        # pedestal makes a cell "received power per element over that element's noise in that
-        # channel": dimensionless, and comparable across bins, elements and chains.
+        # over subbands would be just the edge bins. Dividing by each (bin, element)'s
+        # pedestal reference makes a cell "received power per element over that element's
+        # noise in that channel": dimensionless, and comparable across bins, elements and
+        # chains.
         # --unbiased keeps the samples under the pedestal too: (P-F)/F averaged with its sign
         # is an unbiased pattern estimate whose noise falls with more samples, while the drop
         # leaves a positive floor of ~0.8 sigma per cell (the half-normal mean) that no amount
         # of data lowers. The drop is the default and the elem-archive convention; an unbiased
         # cell can go negative, and the viewer leaves blank a pixel whose summed s1 is <= 0.
         with np.errstate(all="ignore"):
-            valid = (Pk > 0.0) & (Fk > 0.0)
+            valid = (Pk > 0.0) & (Fk > 0.0) & (Rk > 0.0)
             live = valid if args.unbiased else (valid & (Pk > Fk))
             # Per-satellite level, if solved, applied in power alongside the range scale so it
             # divides out the satellite's EIRP before the sample reaches a pixel. A PRN with no
@@ -792,7 +816,7 @@ def build_day_h5(args, chain, paths, day_unix, geom, prn_gain=None):
                 )
                 rscale = rscale * gsc
             pw = np.where(
-                live, (Pk - Fk) / np.where(live, Fk, 1.0) * rscale[:, None, None], 0.0
+                live, (Pk - Fk) / np.where(live, Rk, 1.0) * rscale[:, None, None], 0.0
             )
         for sub in range(S):
             lv = live[:, sub, :]
@@ -843,7 +867,9 @@ def build_day_h5(args, chain, paths, day_unix, geom, prn_gain=None):
         s2=s2,
         freq_ids=freq_ids,
         pointing=pointing,
-        units="pedestal" + ("_unbiased" if args.unbiased else ""),
+        units="pedestal"
+        + ("_env" if getattr(args, "pedestal_ref", "envelope") == "envelope" else "")
+        + ("_unbiased" if args.unbiased else ""),
     )
 
 
@@ -886,13 +912,19 @@ def cmd_build(args):
             continue
         print("%s: %d chain(s)" % (daystr, len(present)))
         bore = (epoch.pointing.bore_az_deg, epoch.pointing.bore_el_deg)
-        geom = Geometry(day_unix, args.veto_deg, bore, keep_own=getattr(args, "veto_keep_own", False))
+        geom = Geometry(
+            day_unix,
+            args.veto_deg,
+            bore,
+            keep_own=getattr(args, "veto_keep_own", False),
+        )
         out = {
             "nside": args.nside,
             "day": daystr,
             "source": args.source,
             "veto_deg": args.veto_deg,
             "veto_keep_own": bool(getattr(args, "veto_keep_own", False)),
+            "pedestal_ref": getattr(args, "pedestal_ref", "envelope"),
             "range_norm": not args.no_range_norm,
             "array_epoch": epoch.name,
             "array_epoch_key": epoch.key(),
@@ -1337,6 +1369,14 @@ def main():
         "--unbiased",
         action="store_true",
         help="l0: keep below-pedestal samples (signed debias) instead of dropping them",
+    )
+    b.add_argument(
+        "--pedestal-ref",
+        choices=["envelope", "bin"],
+        default="envelope",
+        help="l0: divide each sample by the low envelope of its pedestal (10th percentile "
+        "over +-2 h of 5-min bins), or by the 5-min pedestal itself, which rises with "
+        "every satellite near the beam (the pre-10-30 masters)",
     )
     b.set_defaults(func=cmd_build)
 
