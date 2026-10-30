@@ -1553,6 +1553,37 @@ the ephemeris epoch.
 
 ## Open — bench or offline, no deployment at all
 
+### #223 — GDV map, after a few days' soak: the day/night amplitude, direct surface evaluation, gps_l5 (2026-10-30, KV: "file the GDV questions as todo for once we've soaked a few days")
+Live since 10-30 17:41Z: config/gdvmap_taua_20261030.json, a per-band penalised (az, el) surface fitted on 66 h
+(builds/gdv_refit_1030/out/RESULTS.md), sampled into the broker's cells and read by the 2-deg kernel lookup. Open:
+- **Diurnal amplitude.** The north-low excess is x0.5-0.9 of the all-hours map from 20 to 06 h local mean solar time
+  and x1.3-1.55 at 12-16 h, on every date and satellite, frequency-independent (not the ionosphere). An amplitude in
+  local time buys a further 0.15-0.45 m at north-low in cross validation. Decide after a stable week: is it local
+  solar or sidereal time (separable after ~2 weeks), does it follow site temperature, and is a time term in the
+  range model worth it?
+- **Refit on the soak.** Rerun builds/gdv_refit_1030 (leave-one-day-out) on the week from 10-31 with no change to
+  the cp_predicted terms, dll spacing, chain set or pointing; rows carry gdv_m, so the pre-map residual is
+  code_resid_m - gdv_m.
+- **Lookup.** Sampling the surface into cells and re-smoothing with the 2-deg kernel costs up to 0.2 m at north-low
+  (E5b, B2a, B2b) against evaluating the surface; a node-grid format with bilinear lookup would remove it.
+- **gps_l5** is not mapped (the map file carries a gps_l5 band). Decide whether L5, the clock donor, takes it.
+- Standing level differences the map does not touch: Galileo E5 vs E6 ~+1.4 m; per-satellite B2a/B2b offsets.
+
+### #224 — Tau A beam, after a few days' soak: per-satellite levels, the east-west core, residual compression (2026-10-30, KV: "file the beam questions as todo for once we've soaked a few days")
+State: builds/beam_taua_1029/out/RESULTS.md (final, unbinned, envelope, night2night). The builder now subtracts the
+5-min pedestal and divides by its low envelope (5bb428fb2), keeps the closest satellite's rows in a vetoed minute
+(--veto-keep-own) and places each l0 row at its own time (27a47a23e). Open:
+- **Per-satellite levels draw the streaks.** Passes differ by 1.4-1.9 dB (per-satellite constants 1.5-1.9 dB rms
+  on 10-28 against DRAO's 0.6 dB transmitter spread). Solve beam + per-satellite + per-pass jointly (the 09-22
+  streak_joint method) on the soak's rows; compare per PRN with DRAO; Galileo IOV still reads ~2.4x DRAO in dB.
+- **The east-west core.** Every boresight pass on 10-28/29 ran within 16 deg of N-S, so only the N-S width is
+  measured (13-17 % wider than early October on L5/E5/B2, 29-35 % with L2C/B3I/GLONASS; pol 1 flat-topped, P 1.6-1.85).
+  A 2-D Tau A core needs passes on other headings or one satellite's level tied across its passes.
+- **Residual compression.** Per-input clip at the transit peak is 12.5-15 % now against 7-8 % in early October;
+  L2C reaches 27-32 % one-sided in-band and B3I's quiet level is 6 LSB^2. Revisit with the F-engine gain table
+  (fixtures/obs/fengine_gain_cuts_wanted_20261030.csv) once it is loaded.
+- **Far sidelobes are upper bounds** until a --unbiased master (the default drops samples under the pedestal).
+
 ### #221 — the beam-cube level still varies 0.6-2 dB over a day, and a single night's skirt repeats only to ~1-1.4 dB: origin unknown (2026-10-30, KV: "figure out the origin of the residual variation in the level")
 Since 5bb428fb2 a master divides each sample by the low envelope of its pedestal (10th percentile of the 5-min
 pedestal over +-2 h) instead of the 5-min pedestal, which carries every satellite near the beam (0.7-1.4 dB between
