@@ -8,12 +8,14 @@
 
 #include "Config.hpp"
 #include "FramePrefetchService.hpp"
+#include "Telescope.hpp"
 #include "buffer.hpp"
 #include "bufferContainer.hpp"
 #include "crsUtils.hpp"
 #include "dpdkCore.hpp"
 #include "packet_copy.h"
 #include "prometheusMetrics.hpp"
+#include "timeUtil.hpp"
 #include "util.h"
 #include "visUtil.hpp"
 
@@ -25,26 +27,33 @@
 
 
 /**
- * @brief DPDK packet handler that captures CRS board packets from one port and
- *        assembles them into output frames with deterministic memory positioning.
+ * @brief Capture worker for the 16 CRS (F-engine) board configuration.
  *
- * Each packet's location in the output frame is computed from its FPGA sequence
- * number (time axis), stream ID (frequency axis), and source ID (element/board
- * axis), so a frame always covers an exact sequence-number range. Frames are
- * supplied by a @c kotekan::FramePrefetchService running on separate cores, which
- * keeps this handler's hot path to a header parse and a non-temporal copy.
- * Several workers (one per port) write into the same frames, each covering its
- * own subset of stream IDs.
+ * Consumes the packets a @c crs16BoardDistributor placed on this worker's ring and copies
+ * them into the output voltage buffer, one frame per @c time_samples_per_frame FPGA samples.
+ * Packet validation (size, checksum, cookie, stream ID range) has already been done by the
+ * distributor, so this handler's hot path is just a header parse and a non-temporal copy.
+ *
+ * Each packet's location in the output frame is computed from its FPGA sequence number (time
+ * axis), stream ID (frequency axis), and source ID (element/board axis), so a frame always
+ * covers an exact sequence-number range. Frames are supplied by a
+ * @c kotekan::FramePrefetchService running on separate cores. Several workers (one per port)
+ * write into the same frames, each covering its own subset of stream IDs.
  *
  * The 16 CRS boards feeding a node are identified by a raw source ID
- * (slot_id + 16 * crate_id). By default board data is placed along the output
- * element axis in raw source-ID order; the optional @c crs_board_remap config
- * reorders the boards for downstream consumers. A per-packet receipt bitmap is
- * maintained alongside each data frame with layout
- * [time_long][board output slot][stream ID], one bit per packet; it uses the
- * same (possibly remapped) board axis as the data, so packet-loss accounting
- * (e.g. ProcessPacketMask) follows the output ordering. Log messages always
- * report the raw stream/source IDs as they appear in the packets.
+ * (slot_id + 16 * crate_id). By default board data is placed along the output element axis
+ * in raw source-ID order; the optional @c crs_board_remap config reorders the boards for
+ * downstream consumers. A per-packet receipt bitmap is maintained alongside each data frame
+ * with layout [time_long][board output slot][stream ID], one bit per packet; it uses the
+ * same (possibly remapped) board axis as the data, so packet-loss accounting (e.g.
+ * ProcessPacketMask) follows the output ordering. Log messages always report the raw
+ * stream/source IDs as they appear in the packets.
+ *
+ * @par Capture scheduling
+ * By default capture starts at the first frame edge a couple of seconds after packets begin
+ * to flow.  Set @c capture_start_time_utc to instead hold off until a given wall clock time,
+ * and @c capture_n_frames to stop after a fixed number of frames.  Both options can be set on
+ * the @c dpdkCore stage itself so that every worker shares them.
  *
  * @par Buffers
  * @buffer out_buf  Kotekan buffer the packet payloads are placed in.
@@ -64,15 +73,25 @@
  *                                    of payload_size * num_source_ids * num_stream_ids.
  * @conf  num_expected_stream_ids     UInt32. Number of distinct stream IDs expected on
  *                                    this port; capture starts once all have been seen.
- * @conf  capture_n_frames            UInt64. Default 0. Number of frames to capture
- *                                    before stopping, 0 = unlimited.
- * @conf  prefetch_depth              Int. Default 4. Number of frames the prefetch
- *                                    service keeps ready ahead of the write position.
  * @conf  frame_service_cpu_affinity  Array of Int. CPU cores the frame prefetch service
  *                                    thread may run on.
+ * @conf  prefetch_depth              Int. Default 4. Number of frames the prefetch
+ *                                    service keeps ready ahead of the write position.
  * @conf  allocate_metadata           Bool. Default false. Enable on the worker that
  *                                    should allocate and fill each frame's chordMetadata
  *                                    (exactly one worker per buffer).
+ * @conf  capture_start_time_utc      String. Default "" (start as soon as packets flow).
+ *                                    UTC time at which capture should start, e.g.
+ *                                    "2026-01-31 18:45:00".  The time is converted to an
+ *                                    FPGA sequence number using the GPS time of the F-engine
+ *                                    (never the system clock), and rounded down to the
+ *                                    nearest frame edge.  It must be at least one minute in
+ *                                    the future; a start more than 12 hours out is allowed
+ *                                    but warned about.
+ * @conf  capture_n_frames            UInt64. Default 0 (unlimited).  Stop capturing after
+ *                                    this many frames.  The DPDK threads exit but kotekan
+ *                                    keeps running, so downstream stages can flush what they
+ *                                    have.
  * @conf  crs_board_remap             Array of UInt32. Default empty (identity). Desired
  *                                    board order by output slot: output slot i receives
  *                                    the board whose raw source_id is crs_board_remap[i].
@@ -130,10 +149,11 @@ protected:
     const uint32_t num_stream_ids = 8;
     const uint32_t time_samples_per_packet = 16;
 
-    /// Output slot in the frame for each raw CRS source_id. Identity unless the
-    /// optional `crs_board_remap` config is set, in which case this is the inverse
-    /// of that list: output slot i receives the board whose raw source_id is
-    /// crs_board_remap[i].
+    /// Output slot in the frame for each raw CRS source_id: indexed by source_id, so
+    /// board `src` writes into slot dest_slot_for_source_id[src]. Identity unless the
+    /// optional `crs_board_remap` config is set, in which case this is the inverse of
+    /// that list. Note the config list is indexed the other way round, by output slot:
+    /// slot i receives the board whose raw source_id is crs_board_remap[i].
     std::array<uint16_t, num_source_ids> dest_slot_for_source_id;
 
     /// The stream IDs seen on this port during startup; packets with other IDs are dropped.
@@ -153,6 +173,63 @@ protected:
     /// The frame currently being filled, and the next one (for out-of-order margin).
     const kotekan::FrameInfo* active_f0 = nullptr;
     const kotekan::FrameInfo* active_f1 = nullptr;
+
+    /// Requested capture start time in ns since the UNIX epoch.
+    /// Zero means "start as soon as packets are flowing".
+    int64_t capture_start_time_ns = 0;
+
+    /// Number of frames to capture before stopping, 0 = unlimited.
+    uint64_t capture_n_frames;
+
+    /// Number of frames handed to the output buffer so far.
+    uint64_t frames_captured = 0;
+
+    /// FPGA seq number of the first sample of the first captured frame.
+    uint64_t capture_start_seq = 0;
+
+    /// Set once @c capture_start_seq has been worked out from the first packets.
+    bool capture_start_seq_known = false;
+
+    /// Instrument (GPS) time at FPGA seq 0, and the length of one seq tick, both in
+    /// nanoseconds. Cached from the Telescope when the start seq is computed.
+    int64_t time0_ns = 0;
+    int64_t seq_length_ns = 0;
+
+    /// How far ahead of @c capture_start_seq the prefetch service is armed.
+    uint64_t prefetch_lead_samples = 0;
+
+    /// The seq number at which the next "waiting for the scheduled start" message is logged.
+    uint64_t next_countdown_seq = 0;
+
+    /// The prefetch service is armed this long before the capture start, so that the first
+    /// frames are ready by the time the first packets belonging to them arrive.
+    static constexpr double _prefetch_lead_s = 2.0;
+
+    /// A scheduled start closer than this to the current F-engine time is an error, ...
+    static constexpr int64_t _min_start_lead_ns = 60L * 1'000'000'000L;
+
+    /// ... and one further out than this is allowed but warned about.
+    static constexpr int64_t _max_start_lead_ns = 12L * 3600L * 1'000'000'000L;
+
+    /// Interval between "waiting for the scheduled start" messages.
+    static constexpr int64_t _countdown_interval_ns = 60L * 1'000'000'000L;
+
+    /**
+     * @brief Work out, and sanity check, the seq number at which capture starts.
+     *
+     * Called once, with the seq number of a packet that is arriving now, so that the
+     * configured UTC start time can be compared against the F-engine's GPS time.
+     *
+     * @param current_seq The FPGA seq number of the packet being handled.
+     * @return False if the configured start time is unusable, in which case kotekan has
+     *         already been asked to shut down and the caller should stop the lcore.
+     */
+    bool compute_capture_start_seq(uint64_t current_seq);
+
+    /// Instrument (GPS) time in ns of an FPGA seq number, using the cached Telescope values.
+    int64_t seq_to_time_ns(uint64_t seq) const {
+        return time0_ns + (int64_t)seq * seq_length_ns;
+    }
 
     /// Sample-based FPGA seq monotonicity check. At each sample the seq must
     /// be strictly greater than the previous sample's, otherwise we treat it
@@ -250,7 +327,23 @@ inline crs16BoardCaptureWorker::crs16BoardCaptureWorker(
          unique_name, time_samples_per_frame, packets_per_frame);
 
     // Number of frames to capture before stopping, 0 = unlimited
-    uint64_t capture_n_frames = config.get_default<uint64_t>(unique_name, "capture_n_frames", 0);
+    capture_n_frames = config.get_default<uint64_t>(unique_name, "capture_n_frames", 0);
+    if (capture_n_frames > 0)
+        INFO("crs16BoardCaptureWorker {}: capturing {} frames, after which the DPDK threads "
+             "stop but kotekan keeps running",
+             unique_name, capture_n_frames);
+
+    // Optional scheduled start time. An empty string means start as soon as packets flow.
+    // Parsing failures are raised here so a typo is caught at startup rather than minutes
+    // into a run. The time itself is checked against the F-engine's GPS time once packets
+    // arrive, see compute_capture_start_seq().
+    const std::string capture_start_time_utc =
+        config.get_default<std::string>(unique_name, "capture_start_time_utc", "");
+    if (!capture_start_time_utc.empty()) {
+        capture_start_time_ns = utc_string_to_nanosec_i64(capture_start_time_utc);
+        INFO("crs16BoardCaptureWorker {}: capture scheduled to start at {}", unique_name,
+             nanosec_i64_to_utc_string(capture_start_time_ns));
+    }
 
     int prefetch_depth = config.get_default<int>(unique_name, "prefetch_depth", 4);
     std::vector<int> cpu_affinity =
@@ -300,6 +393,75 @@ inline crs16BoardCaptureWorker::crs16BoardCaptureWorker(
 }
 
 
+inline bool crs16BoardCaptureWorker::compute_capture_start_seq(uint64_t current_seq) {
+
+    const Telescope& tel = Telescope::instance();
+    time0_ns = tel.to_time_ns(0);
+    seq_length_ns = (int64_t)tel.seq_length_nsec();
+    capture_start_seq_known = true;
+
+    prefetch_lead_samples = (uint64_t)(_prefetch_lead_s * 1e9 / (double)seq_length_ns);
+
+    if (capture_start_time_ns == 0) {
+        // No scheduled start, so begin at the first frame edge past the prefetch lead time.
+        const uint64_t future_seq = current_seq + prefetch_lead_samples;
+        capture_start_seq = future_seq - (future_seq % time_samples_per_frame);
+        return true;
+    }
+
+    if (!tel.gps_time_enabled())
+        WARN("Port: {:d}, Worker: {:d}; capture_start_time_utc was set, but the telescope has no "
+             "GPS time, so FPGA seq numbers are timed against the system clock at kotekan "
+             "startup. The capture will not start when requested.",
+             port, worker_id);
+
+    // "Now" is the GPS time of the F-engine seq number of the packet we are handling, never
+    // the system clock.
+    const int64_t now_ns = tel.to_time_ns(current_seq);
+    const int64_t wait_ns = capture_start_time_ns - now_ns;
+
+    if (wait_ns < 0) {
+        FATAL_ERROR("Port: {:d}, Worker: {:d}; The requested capture_start_time_utc ({:s}) is "
+                    "{:s} in the past; the current F-engine time is {:s}. It must be at least "
+                    "one minute in the future.",
+                    port, worker_id, nanosec_i64_to_utc_string(capture_start_time_ns),
+                    format_duration_ns(-wait_ns), nanosec_i64_to_utc_string(now_ns));
+        return false;
+    }
+
+    if (wait_ns < _min_start_lead_ns) {
+        FATAL_ERROR("Port: {:d}, Worker: {:d}; The requested capture_start_time_utc ({:s}) is "
+                    "only {:s} away; the current F-engine time is {:s}. It must be at least one "
+                    "minute in the future to leave time to set the capture up.",
+                    port, worker_id, nanosec_i64_to_utc_string(capture_start_time_ns),
+                    format_duration_ns(wait_ns), nanosec_i64_to_utc_string(now_ns));
+        return false;
+    }
+
+    if (wait_ns > _max_start_lead_ns)
+        WARN("Port: {:d}, Worker: {:d}; The requested capture_start_time_utc ({:s}) is {:s} away, "
+             "more than 12 hours in the future. Kotekan will sit idle until then.",
+             port, worker_id, nanosec_i64_to_utc_string(capture_start_time_ns),
+             format_duration_ns(wait_ns));
+
+    // Round the start down to the nearest frame edge. Every worker uses the same frame
+    // length, so they all land on the same seq number and produce aligned frames.
+    capture_start_seq = tel.to_seq(capture_start_time_ns);
+    capture_start_seq -= capture_start_seq % time_samples_per_frame;
+
+    next_countdown_seq = current_seq + (uint64_t)(_countdown_interval_ns / seq_length_ns);
+
+    INFO("Port: {:d}, Worker: {:d}; Capture starts at {:s} (fpga seq {:d}), which is {:s} from "
+         "now, rounded down one frame edge from the requested {:s}. Current F-engine time is "
+         "{:s}.",
+         port, worker_id, nanosec_i64_to_utc_string(seq_to_time_ns(capture_start_seq)),
+         capture_start_seq, format_duration_ns(seq_to_time_ns(capture_start_seq) - now_ns),
+         nanosec_i64_to_utc_string(capture_start_time_ns), nanosec_i64_to_utc_string(now_ns));
+
+    return true;
+}
+
+
 inline int crs16BoardCaptureWorker::handle_packet(struct rte_mbuf* mbuf) {
 
     // Packet validation (size, IP checksum, cookie, stream_id range) is done
@@ -331,29 +493,46 @@ inline int crs16BoardCaptureWorker::handle_packet(struct rte_mbuf* mbuf) {
         // Note that in most cases we expect all source ID at every port.
         // In the 16 board configuration, each stream ID should be spaced by 16.
         // Note that this is slightly slow, but only happens once at startup.
-
-        // Check if the stream ID is already in the list, and if not add it.
-        if (std::find(stream_ids_expected.begin(), stream_ids_expected.end(), stream_id)
-            == stream_ids_expected.end()) {
-            stream_ids_expected.push_back(stream_id);
-        }
-
+        // Once the list is full we stop looking, both to keep this out of the hot path and
+        // so that a capture waiting on a scheduled start does not keep adding to the list.
         if (stream_ids_expected.size() < num_expected_stream_ids) {
-            return 0; // Wait for more packets to establish the full list
+
+            // Check if the stream ID is already in the list, and if not add it.
+            if (std::find(stream_ids_expected.begin(), stream_ids_expected.end(), stream_id)
+                == stream_ids_expected.end()) {
+                stream_ids_expected.push_back(stream_id);
+            }
+
+            if (stream_ids_expected.size() < num_expected_stream_ids) {
+                return 0; // Wait for more packets to establish the full list
+            }
         }
 
-        // Start capturing at a future frame to allow time for prefetching
-        // Note the switch (even with port fast enabled) seems to reset the port
-        // but only _after_ we start receiving packets. So we need to wait
-        // for the port reset to complete, which takes a lot longer than the prefetching.
-        // It is possible there might be some way to prevent this reset from happening,
-        // but for now we just start well into the future.
-        uint64_t future_seq = seq_num + 6000000; // About 30 second in the future.
-        uint64_t start_seq = future_seq - (future_seq % time_samples_per_frame);
-        prefetch_service->start(start_seq, stream_ids_expected);
+        // Work out where the capture begins, either a couple of seconds from now or at the
+        // scheduled UTC start time.
+        if (unlikely(!capture_start_seq_known)) {
+            if (!compute_capture_start_seq(seq_num))
+                return -1;
+        }
+
+        // Hold off arming the prefetch service until the start is close. A capture scheduled
+        // hours ahead would otherwise sit on empty buffer frames for the whole wait.
+        if (seq_num + prefetch_lead_samples < capture_start_seq) {
+            if (worker_id == 0 && seq_num >= next_countdown_seq) {
+                INFO("Waiting for the scheduled capture start at {:s}; {:s} remaining",
+                     nanosec_i64_to_utc_string(seq_to_time_ns(capture_start_seq)),
+                     format_duration_ns(seq_to_time_ns(capture_start_seq)
+                                        - seq_to_time_ns(seq_num)));
+                next_countdown_seq = seq_num + (uint64_t)(_countdown_interval_ns / seq_length_ns);
+            }
+            return 0;
+        }
+
+        prefetch_service->start(capture_start_seq, stream_ids_expected);
         first_run = false;
-        INFO("Port: {:d}, Worker: {:d}; Starting prefetch service at sequence number {:d}", port,
-             worker_id, start_seq);
+        INFO("Port: {:d}, Worker: {:d}; Starting prefetch service at sequence number {:d} ({:s})",
+             port, worker_id, capture_start_seq,
+             nanosec_i64_to_utc_string(seq_to_time_ns(capture_start_seq)));
         return 0;
     }
 
@@ -471,6 +650,20 @@ inline int crs16BoardCaptureWorker::handle_packet(struct rte_mbuf* mbuf) {
     while (seq_num >= active_f1->start_seq + 160) {
         _mm_sfence(); // Ensure all NT stores are complete before advancing
         prefetch_service->advance();
+
+        // Advancing hands the frame we just filled to the prefetch service, which marks it
+        // full for the downstream stages. Once we have handed over the requested number of
+        // frames we stop this lcore, but leave the rest of kotekan running so the file
+        // writers can flush what they have.
+        frames_captured++;
+        if (unlikely(capture_n_frames > 0 && frames_captured >= capture_n_frames)) {
+            INFO("Port: {:d}, Worker: {:d}; Captured the requested {:d} frames (seq {:d} to "
+                 "{:d}), stopping packet capture.",
+                 port, worker_id, capture_n_frames, capture_start_seq,
+                 capture_start_seq + capture_n_frames * time_samples_per_frame);
+            return -1;
+        }
+
         active_f0 = prefetch_service->get_frame(0);
         active_f1 = prefetch_service->get_frame(1);
 

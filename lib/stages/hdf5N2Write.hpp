@@ -5,6 +5,7 @@
 #include "N2Layout.hpp"          // for N2Layout
 #include "Stage.hpp"             // for Stage
 #include "Telescope.hpp"         // for ElementOrder
+#include "basebandGains.hpp"     // for BasebandGains
 #include "buffer.hpp"            // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "prometheusMetrics.hpp" // for Gauge, MetricFamily, Counter
@@ -18,7 +19,7 @@
 #include <highfive/H5File.hpp>         // for File
 #include <highfive/H5PropertyList.hpp> // for DataSetCreateProps
 #include <map>                         // for map
-#include <memory>                      // for unique_ptr
+#include <memory>                      // for unique_ptr, shared_ptr
 #include <mutex>                       // for mutex
 #include <optional>                    // for optional, nullopt
 #include <stddef.h>                    // for size_t
@@ -91,16 +92,15 @@ public:
     const double open_wall_s;       // time opened
     const uint64_t abs_file_idx;    // absolute file index (abs_time_idx / num_file_t)
     const std::string base_dir;     // base output directory (without /.partial)
-    const std::string
-        baseband_gain_file;             // Path to gains HDF5 file. If empty, gains are not written.
-    const int baseband_gain_update_idx; // update_time index (-1 = latest)
+    /// Digital gains archive; null if the stage has none.
+    const std::shared_ptr<const kotekan::BasebandGains> gains;
     const std::string partial_filepath; // working on-disk location
     const N2Layout n2_layout;           // visibility (N2) layout
 
     double last_update_wall_s;               // last frame receipt
     std::unique_ptr<HighFive::File> h5_file; // Working on-disk HDF5 file handle
-    std::optional<size_t> gains_file_hash =
-        std::nullopt; // hash of gains file contents at copy time
+    /// Digest of the gains archive when the file was created, to detect it changing.
+    std::optional<std::uint64_t> gains_hash_at_open;
 
 protected:
     // Datasets to be stored until ready to write
@@ -179,8 +179,8 @@ public:
                const ElementOrder input_order_, const size_t blocksize_f_,
                const size_t blocksize_p_, const size_t blocksize_t_, const std::string compression_,
                const size_t compression_level_, const bool use_bitshuffle_,
-               const std::string base_dir_, const std::string baseband_gain_file_,
-               const int baseband_gain_update_idx_ = -1);
+               const std::string base_dir_,
+               std::shared_ptr<const kotekan::BasebandGains> gains_ = nullptr);
 
     /**
      * @brief Add a frame of data at the computed time index.
@@ -340,6 +340,9 @@ public:
  *                                with `baseband_gain_file`.
  * @conf baseband_gain_update_idx Int. Index along the update_time axis to read from the gains
  *                                file (-1 = latest, default: -1).
+ * @conf crs_board_remap          List of int. Raw CRS board held by each 8-input slot of the
+ *                                element axis (default: identity), used to write the gains of
+ *                                the file's elements in [P][D] order (see kotekan::BasebandGains).
  * @conf late_frame_grace_seconds UInt. Grace period in seconds for late frames (default: 60).
  * @conf max_frames               Int. Stop writing after this many frames (-1 = unlimited).
  * @conf input_order              ElementOrder. The element order of input buffer.
@@ -402,17 +405,9 @@ public:
 private:
     // Config settings (initialized from Config in constructor)
     const std::string _base_dir; /// Base directory to write files into
-    /// Path to digital gains HDF5 file. Set either directly from config or, if
-    /// `baseband_gain_host_info` is configured, populated at startup after the
-    /// file is fetched into `<base_dir>/.partial/baseband_gains.h5`.
-    std::string _baseband_gain_file;
-    /// Resolved host/port/path for the gains-file HTTP fetch. All empty / 0 when
-    /// `baseband_gain_host_info` was not set. Filled in by the constructor body
-    /// from the referenced fpga-controller block.
-    std::string _baseband_gain_host;
-    std::uint16_t _baseband_gain_port = 0;
-    std::string _baseband_gain_endpoint;
-    const int _baseband_gain_update_idx; /// update_time index (-1 = latest)
+    /// The digital gains archive. When `baseband_gain_host_info` is set, main_thread() fetches
+    /// it into `<base_dir>/.partial/baseband_gains.h5`.
+    std::shared_ptr<kotekan::BasebandGains> _gains;
     const std::uint64_t _num_file_t; /// Number of incoming time frames per file, as indexed by the
                                      /// absolute frame index
     const std::string _compression;

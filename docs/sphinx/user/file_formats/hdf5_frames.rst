@@ -26,13 +26,22 @@ File naming
 
 Files are written to ``base_dir`` (created if missing) as::
 
-    <base_dir>/[<hostname>_][x<rank:04d>_]<file_name>.<frame:08d>.h5
+    <base_dir>/[<capture start time>/][<hostname>_][x<rank:04d>_]<file_name>.<frame:08d>.h5
 
+* ``<capture start time>/`` is included when ``timestamp_subdir`` is true (off by
+  default). The sub-directory is created if missing and named after the UTC time of
+  the first frame written, taken from the FPGA sequence number in its metadata, so a
+  capture's files are grouped together without any extra configuration. The name is
+  formatted with ``timestamp_subdir_format`` (default ``%Y%m%dT%H%M%SZ``, giving e.g.
+  ``20260131T184500Z``); the time is rounded to the nearest second, because a capture
+  scheduled on a whole second begins at the frame edge just before it;
 * ``<hostname>_`` is included when ``prefix_hostname`` is true (default);
 * ``x<rank:04d>_`` is included when ``prefix_host_rank`` is true (rank from
   ``frequency_pool_rank``), used when several writers split a frequency
   range;
-* ``<frame:08d>`` is an 8-digit frame counter, one file per frame. With
+* ``<frame:08d>`` is an 8-digit frame counter naming the first frame in the
+  file. By default each file holds one frame; with ``frames_per_file: N``
+  each file holds up to N consecutive frames (CHORD mode only). With
   ``create_single_file: true`` the counter is omitted and all frames go to
   one file.
 
@@ -47,9 +56,9 @@ CHORD-metadata layout
 Each file contains a single dataset named after the ``file_name``
 configuration value. Its rank and dimension names come from the buffer's
 ndarray description; the first dimension is unlimited and grows as frames
-are appended (one frame's extent per write; in per-frame mode each file
-holds exactly one frame). The element type is the buffer's data type mapped
-to HDF5.
+are appended (one frame's extent per write; a file holds one frame by
+default, or up to ``frames_per_file`` frames). The element type is the
+buffer's data type mapped to HDF5.
 
 The dataset is chunked (full frame extent, with the first dimension capped
 so a chunk stays around 8 Mi elements) and compressed with the *bitshuffle*
@@ -109,7 +118,40 @@ Dataset attributes:
      - Per-dish (x, y) grid indices, int64 with shape
        (``num_dishes``, 2); (-1, -1) off the main array.
    * - ``feed_positions_m``
-     - Per-element 3D feed positions in the grid frame, metres.
+     - Per-dish 3D feed positions in the grid frame, metres, float64 with
+       shape (``num_dishes``, 3).
+   * - ``digital_gains_hash``
+     - Digest of the digital gains archive in ``/digital_gains`` (only when
+       gains are configured; also written as a root attribute).
+
+These attributes describe the whole telescope. A frame whose metadata names
+the dishes it holds with ``dish_index`` (the output of ``SubsetBaseband``) is
+also described the way the N\ :sup:`2` visibility files are (see
+:ref:`n2_vis_file_format`): the root attributes ``input_list`` and
+``input_order`` and the per-element ``/index_map`` datasets (``dish_idx``,
+``pol``, ``label``, ``type``, the grid indices and displacements, and
+``dish_positions_in_grid_coords``). The file's elements are its ``P`` and
+``D`` axes taken P-major, so ``input_list`` gives, for each (polarization,
+dish) position, the array element ``p * num_dishes + dish`` in the
+telescope's fiducial (``CHORDBeamformer``) order, and the labels name the
+dish and polarization (``A01X``, ``A01Y``).
+
+When ``baseband_gain_file`` or ``baseband_gain_host_info`` is set, the FPGA
+digital gains archive is copied into every file as ``/digital_gains``, laid
+out as in the N\ :sup:`2` files. For a frame described by ``input_list``, the
+group also holds the gains of just the inputs the file holds, in its own
+[P][D] order: ``gain_coeff_by_dish``, ``gain_exp_by_dish`` and
+``gain_input_index``, located in the archive through ``crs_board_remap``.
+
+Because each node only writes the frequencies it processed, a full-band
+dataset is spread over one set of files per node. ``python/scripts/
+merge_baseband_freq.py`` stitches those back together: it checks that the
+files describe the same observation and the same FPGA ticks, then writes a
+single dataset whose frequency axis is the union of all of them (and whose
+time axis concatenates each node's successive files). Run it with
+``--dry-run`` to validate the inputs without writing, or ``--vds`` to build
+an HDF5 virtual dataset that references the sources instead of copying
+them.
 
 Single-file constraints
 -----------------------
@@ -153,12 +195,16 @@ should therefore not be trusted without checking the log.
 
 Multi-frame constraints
 -----------------------
-Multi-frame files (with a fixed number of frames per file) use the same path
-as the single-file mode, and are thus subject to most of the same restrictions.
-The only difference is that the multi-frame write mode allows for non-contiguous
-values of ``fpga_seq_num``; however, a new file is created whenever a non-contiguous
-sample is received, which can result in significantly more files than expected
-being created.
+A file written with ``frames_per_file`` greater than 1 is built the same way
+as a single file --- its frames are concatenated along axis 0 and only its
+first frame's attributes are stored --- so each such file has to satisfy the
+same rules, and decimation cannot be combined with ``frames_per_file`` > 1
+either. The one difference is a gap in ``fpga_seq_num``: instead of aborting,
+the writer closes the open file early and starts a new one at that frame, so
+every file is contiguous but consecutive files need not be. A stream with
+many gaps can therefore produce many more files than expected. Each file
+carries its own ``fpga_seq_num``, which is what lets ``merge_baseband_freq.py``
+place every file in time on its own and record the gaps between them.
 
 N2-metadata layout
 ==================
@@ -249,6 +295,14 @@ Configuration
    * - ``base_dir``
      - required
      - Output directory (created if missing).
+   * - ``timestamp_subdir``
+     - false
+     - Write into a ``base_dir/<capture start time>`` sub-directory, named from the
+       first frame's FPGA sequence number.
+   * - ``timestamp_subdir_format``
+     - ``%Y%m%dT%H%M%SZ``
+     - ``strftime(3)`` format for that sub-directory name. Must not contain a
+       path separator; whitespace is stripped.
    * - ``file_name``
      - required
      - Base file name; also the dataset name in CHORD mode.
@@ -268,13 +322,20 @@ Configuration
        `Single-file constraints`_ (time axis first, ``dim_scaling[0] ==
        time_downsampling_fpga``, contiguous ``fpga_seq_num``, no
        decimation); every other writer has to keep the default.
+   * - ``frames_per_file``
+     - 1
+     - Frames appended to each file before rolling over to a new one (CHORD
+       mode only; mutually exclusive with ``create_single_file``). With more
+       than one frame, each file has to satisfy the
+       `Single-file constraints`_, and a gap in the stream starts a new file
+       (see `Multi-frame constraints`_).
    * - ``use_compression``
      - true
      - Compress the data with bitshuffle+zstd (filter 32008).
    * - ``write_x_frames``, ``per_y_frames``
      - -1
      - Decimation: write only the first X out of every Y frames. Cannot be
-       combined with ``create_single_file``.
+       combined with ``create_single_file`` or ``frames_per_file`` > 1.
    * - ``max_frames``
      - -1
      - Values <= 0 (the default) mean unlimited; N > 0 stops (and shuts
@@ -285,6 +346,17 @@ Configuration
    * - ``num_polarizations``, ``num_dishes``
      - required
      - Telescope input counts recorded in the attributes.
+   * - ``baseband_gain_file``, ``baseband_gain_host_info``,
+       ``baseband_gain_update_idx``
+     - unset, unset, -1
+     - Where to find the FPGA digital gains archive copied into
+       ``/digital_gains``: a local file, or a config block naming the FPGA
+       controller to fetch it from (mutually exclusive).
+   * - ``crs_board_remap``
+     - identity
+     - Raw CRS board held by each 8-input slot of the element axis, as given
+       to the DPDK capture workers; locates each input's gains in the
+       archive.
 
 Reading the files requires the bitshuffle HDF5 plugin with zstd support
 (``import hdf5plugin`` in Python).

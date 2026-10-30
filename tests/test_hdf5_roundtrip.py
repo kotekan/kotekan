@@ -19,6 +19,11 @@ and frame decimation is forbidden. The negative tests below check that each
 violation aborts the writer, that the same data round-trips fine as per-frame
 files (which have none of those constraints), and that hdf5FileRead rejects a
 single file that violates the same rules on disk.
+
+`frames_per_file: N` (N > 1) concatenates up to N frames per file the same
+way, so the writer applies the same rules to each such file, starting afresh
+with every new file, except that a gap inside a file closes it early and
+starts a new one instead of aborting.
 """
 
 import glob
@@ -432,7 +437,7 @@ def test_singlefile_rejects_non_time_axis0(tmpdir_factory):
     r = _siphon(tmpdir, case, True, expect_failure=True)
     assert r.return_code != 0
     assert (
-        "storing multiple frames per file requires a time axis as dimension 0, but dimension 0 is"
+        "create_single_file requires a time axis as dimension 0, but dimension 0 is"
         in r.output
     )
 
@@ -459,7 +464,7 @@ def test_singlefile_rejects_dim_scaling_tds_mismatch(tmpdir_factory):
     r = _siphon(tmpdir, case, True, expect_failure=True)
     assert r.return_code != 0
     assert (
-        "storing multiple frames per file requires dim_scaling[0] (1) == time_downsampling_fpga (16)"
+        "create_single_file requires dim_scaling[0] (1) == time_downsampling_fpga (16)"
         in r.output
     )
 
@@ -470,7 +475,7 @@ def test_singlefile_rejects_gap_in_stream(tmpdir_factory):
     tmpdir = tmpdir_factory.mktemp("hdf5_singlefile_gap")
     r = _siphon(tmpdir, case, True, expect_failure=True)
     assert r.return_code != 0
-    assert "`create_single_file` requires a contiguous stream" in r.output
+    assert "create_single_file requires a contiguous stream" in r.output
 
 
 def test_perframe_allows_gap_in_stream(tmpdir_factory):
@@ -481,6 +486,73 @@ def test_perframe_allows_gap_in_stream(tmpdir_factory):
     tmpdir = tmpdir_factory.mktemp("hdf5_perframe_gap")
     _siphon(tmpdir, case, False)
     _replay(tmpdir, case, False)
+
+
+def _check_multiframe_files(tmpdir, case, files):
+    """`files` lists (first frame, number of frames, fpga_seq_num) for each file."""
+    extents = case["buf"]["extents"]
+    paths = sorted(glob.glob(os.path.join(str(tmpdir), FILE_NAME + ".*.h5")))
+    assert [os.path.basename(p) for p in paths] == [
+        "%s.%08d.h5" % (FILE_NAME, first) for first, _, _ in files
+    ]
+    for path, (_, num_frames, seq_num) in zip(paths, files):
+        with h5py.File(path, "r") as f:
+            ds = f[FILE_NAME]
+            assert list(ds.shape) == [num_frames * extents[0]] + extents[1:]
+            assert ds.attrs["fpga_seq_num"] == seq_num
+
+
+def test_multiframe_allows_gap_between_files(tmpdir_factory):
+    """A new file starts a new stream, so a gap at a file boundary is fine."""
+    case = _variant(CASES["int8_random"], gen=dict(simulate_fpga_restart_at_frame=3))
+    tmpdir = tmpdir_factory.mktemp("hdf5_multiframe_gap_between")
+    _siphon(tmpdir, case, False, frames_per_file=3)
+    _check_multiframe_files(tmpdir, case, [(0, 3, 0), (3, 3, 0)])
+
+
+def test_multiframe_gap_in_file_starts_new_file(tmpdir_factory):
+    """An fpga_seq_num jump inside a multi-frame file closes it and starts a new one."""
+    case = _variant(CASES["int8_random"], gen=dict(simulate_fpga_restart_at_frame=3))
+    samples = case["gen"]["samples_per_data_set"]
+    tmpdir = tmpdir_factory.mktemp("hdf5_multiframe_gap_within")
+    r = _siphon(tmpdir, case, False, frames_per_file=4)
+    assert (
+        "frame 3 starts at fpga_seq_num 0, expected %d; starting a new file"
+        % (3 * samples)
+    ) in r.output
+    _check_multiframe_files(tmpdir, case, [(0, 3, 0), (3, 3, 0)])
+
+
+def test_multiframe_rejects_non_time_axis0(tmpdir_factory):
+    case = _variant(
+        CASES["int8_random"],
+        gen=dict(dim_name=["F", "T", "D"]),
+        buf=dict(dimnames=["F", "T", "D"]),
+    )
+    tmpdir = tmpdir_factory.mktemp("hdf5_multiframe_axis0")
+    r = _siphon(tmpdir, case, False, frames_per_file=3, expect_failure=True)
+    assert r.return_code != 0
+    assert (
+        "frames_per_file requires a time axis as dimension 0, but dimension 0 is"
+        in r.output
+    )
+
+
+def test_multiframe_rejects_frame_decimation(tmpdir_factory):
+    case = CASES["int8_random"]
+    tmpdir = tmpdir_factory.mktemp("hdf5_multiframe_decimation")
+    r = _siphon(
+        tmpdir,
+        case,
+        False,
+        write_extra=dict(write_x_frames=0, per_y_frames=2),
+        frames_per_file=3,
+        expect_failure=True,
+    )
+    assert r.return_code != 0
+    assert (
+        "cannot be combined with create_single_file or frames_per_file > 1" in r.output
+    )
 
 
 @pytest.fixture(scope="module")

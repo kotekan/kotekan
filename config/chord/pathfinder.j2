@@ -549,15 +549,11 @@ dpdk:
     payload_size: 6144
     max_rx_pkt_len: 6208
     burst_size: 32
-    # Reordering map index by output location.
-    # So [2, ...], maps CRS board with source_id 2 to output location 0, and so on.
-    # Slots 0-7 are pol 0 and 8-15 pol 1 of dish groups 0-7. Dish boards send pol 0 from
-    # even and pol 1 from odd source_ids; the RFI-antenna boards are cabled the other way
-    # round (source_id 15 -> slot 7, 14 -> slot 15).
-    crs_board_remap: [0, 2, 4, 6, 8, 10, 12, 15, 1, 3, 5, 7, 9, 11, 13, 14]
+    # crs_board_remap comes from telescope.j2.
     # The number of stream IDs expected per worker
     num_expected_stream_ids: 4
-    lcore_start_delay: 10
+    # Max seconds to wait for each port's link to come up before giving up
+    max_link_start_delay: 10
     # List of PCIe addresses to block from DPDK use
     pcie_block_list:
         - "0000:37:00.0"
@@ -604,11 +600,7 @@ dpdk:
 {% endfor %}
 
 
-# Output slots (after crs_board_remap, not raw source_ids) with no CRS board behind them:
-# ProcessPacketMask marks them fully received so an absent board is not 100% packet loss.
-# Listing a slot that has a board disables its packet-loss accounting, so update this as
-# boards come and go. Populated (Oct 8 2026): slots 0-3, 8-11 (dishes) and 7, 15 (RFI).
-missing_source_ids: [4, 5, 6, 12, 13, 14]
+# missing_source_ids comes from telescope.j2.
 
 # Combine packet receipt bitmaps and generate packet-loss masks
 {% for n in numa_halves %}

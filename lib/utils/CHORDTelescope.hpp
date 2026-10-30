@@ -478,6 +478,11 @@ public:
     uint64_t get_num_dishes() const;
 
     /**
+     * @brief   Return the number of polarizations per dish.
+     **/
+    uint64_t get_num_polarizations() const;
+
+    /**
      * @brief get information about a specific dish.
      **/
     const dishInfo& get_dish_at_idx(int64_t idx) const;

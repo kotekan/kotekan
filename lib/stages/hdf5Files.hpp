@@ -1,12 +1,20 @@
 #ifndef HDF5FILES_HPP
 #define HDF5FILES_HPP
 
-#include "DataType.hpp" // for DataType, float16_t
+#include "DataType.hpp"  // for DataType, float16_t
+#include "Telescope.hpp" // for ElementOrder
 
 #include <array>                         // for array
+#include <cstddef>                       // for size_t
+#include <cstdint>                       // for uint64_t
 #include <highfive/H5DataType.hpp>       // for AtomicType, DataType, H5T_NATIVE_FLOAT
+#include <highfive/H5File.hpp>           // for File
+#include <highfive/H5PropertyList.hpp>   // for DataSetCreateProps
 #include <highfive/bits/h5t_wrapper.hpp> // for h5t_copy, h5t_set_ebias, h5t_set_fields, h5t_se...
 #include <string>                        // for string
+#include <vector>                        // for vector
+
+class CHORDTelescope;
 
 namespace hdf5 {
 
@@ -56,6 +64,37 @@ std::string file_path_prefix(const std::string& dir, const std::string& file_nam
 inline bool is_time_axis(const std::string& dim_name) {
     return !dim_name.empty() && dim_name[0] == 'T';
 }
+
+/**
+ * @brief Create a chunked dataset and record its dimension names in an "axis" attribute
+ *
+ * A 1-D dataset is a single chunk. Otherwise every dimension is chunked whole, except that
+ * "time", "freq*" and "prod*"/"el*" dimensions are capped at @p blocksize_t, @p blocksize_f
+ * and @p blocksize_p (0 leaves the dimension whole). An existing dataset is left as it is.
+ */
+void create_dataset_with_axis(HighFive::File& file, const std::string& name,
+                              const std::vector<hsize_t>& dims,
+                              const std::vector<std::string>& dim_names,
+                              const HighFive::DataType& dtype, HighFive::DataSetCreateProps props,
+                              std::size_t blocksize_f, std::size_t blocksize_p,
+                              std::size_t blocksize_t);
+
+/**
+ * @brief Write the per-element input description of a CHORD file into /index_map
+ *
+ * One row per element of the file's element axis, naming the dish and polarization the
+ * element decodes to and copying that dish's entry of the telescope's `dish_inputs` table:
+ * /index_map/{dish_idx,pol,grid_x_idx,grid_y_idx,feed_pos_disp_m,coelev_disp_deg,type,label},
+ * where the label is the dish label with the polarization name appended (A01X, A01Y). Also
+ * writes /index_map/dish_positions_in_grid_coords for every dish of the telescope. The format
+ * is documented in docs/sphinx/user/file_formats/n2_vis_hdf5.rst.
+ *
+ * @param rows         The array element, in @p order, held by each element of the file.
+ * @param blocksize_p  Chunk cap for the element dimension (0 = none).
+ */
+void write_index_map(HighFive::File& file, const CHORDTelescope& telescope,
+                     const std::vector<std::uint64_t>& rows, ElementOrder order,
+                     std::size_t blocksize_p);
 
 } // namespace hdf5
 

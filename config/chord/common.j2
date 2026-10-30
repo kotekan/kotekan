@@ -3,19 +3,20 @@
   Keys every CHORD pathfinder config shares (X-engine and receiver): kotekan's document
   type, logging, the F-engine controller and its tracker, the element counts, and the
   controller monitor stage.  Included right after the `---` document start; the includer
-  sets num_dishes first (see pathfinder.j2 and recv.j2).
+  sets num_dishes first, and may set log_level (default WARN) (see pathfinder.j2, recv.j2
+  and baseband.j2).
 -#}
 type: config
 
 # Logging level can be one of:
 # OFF, ERROR, WARN, INFO, DEBUG, DEBUG2 (case insensitive)
 # Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
-log_level: WARN
+log_level: {{ log_level | default("WARN") }}
 
 # Referenced by /CHORDTelescope/gps_host_info, /config_tracker/fpga_host_info,
 # and per-stage baseband_gain_host_info (e.g. on hdf5N2Write).
 fpga_controller:
-    host: "chive"
+    host: "crs-control"
     port: 54321
     config_endpoint: /config
     timing_endpoint: /get-frame0-time

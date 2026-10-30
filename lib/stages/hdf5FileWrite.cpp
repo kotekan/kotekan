@@ -9,6 +9,7 @@
 #include "StageFactory.hpp"        // for REGISTER_KOTEKAN_STAGE
 #include "Symbol.hpp"              // for Symbol
 #include "Telescope.hpp"           // for Telescope
+#include "basebandGains.hpp"       // for BasebandGains
 #include "buffer.hpp"              // for Buffer
 #include "bufferContainer.hpp"     // for bufferContainer
 #include "chordMetadata.hpp"       // for chordMetadata, metadata_is_chord, get_c...
@@ -27,6 +28,7 @@
 #include <array>                                 // for array
 #include <atomic>                                // for __atomic_base, atomic
 #include <cassert>                               // for assert
+#include <cctype>                                // for isspace
 #include <cstddef>                               // for size_t
 #include <cstdint>                               // for int64_t, uint8_t, uint32_t
 #include <errno.h>                               // for errno, EEXIST, EISDIR
@@ -44,6 +46,7 @@
 #include <iomanip>                               // for operator<<, setfill, setw
 #include <memory>                                // for allocator, shared_ptr, __shared_ptr_access
 #include <sstream>                               // for basic_ostream, operator<<, basic_ostrin...
+#include <stdexcept>                             // for invalid_argument
 #include <string.h>                              // for strerror
 #include <string>                                // for basic_string, char_traits, string, oper...
 #include <sys/stat.h>                            // for mkdir
@@ -63,6 +66,16 @@ using namespace HighFive;
  *     @buffer_metadata chord or N2
  *
  * @conf base_dir  String. Directory to write into.
+ * @conf timestamp_subdir  Bool. Default false. Write into a
+ *       `base_dir/<capture start time>` sub-directory, created if it does not exist.
+ *       The name is the UTC capture start time, taken from the FPGA sequence number in
+ *       the first frame's metadata, so it needs no configuring and matches the data.
+ *       It is resolved once, on the first frame, so a run's files all land together.
+ *       The time is rounded to the nearest second, because a capture scheduled on a
+ *       whole second starts at the frame edge just before it.
+ * @conf timestamp_subdir_format  String. Default "%Y%m%dT%H%M%SZ" (e.g.
+ *       `20260131T184500Z`). strftime(3) format for the sub-directory name. Must not
+ *       contain a path separator, and any whitespace it produces is stripped.
  * @conf file_name String. Base filename to write.
  * @conf prefix_hostname  Bool. Prepend hostname to output file names. Default:
  *       true.
@@ -87,10 +100,27 @@ using namespace HighFive;
  *       - frame decimation (@c write_x_frames / @c per_y_frames) must not be used.
  *       A writer whose buffer violates one of these has to use per-frame files
  *       (`create_single_file: false`), which have no such constraints.
+ * @conf frames_per_file  Int. Append this many frames to each file before rolling
+ *       over to a new one (CHORD metadata only). Default: 1 (one file per frame).
+ *       Mutually exclusive with create_single_file. A file with more than one frame is
+ *       concatenated like a single file, with the metadata of its first frame only, so each
+ *       such file must meet the same constraints as create_single_file (enforced per file).
+ *       A frame that does not continue the stream closes the open file early and starts a
+ *       new one, so every file is contiguous but consecutive files need not be.
  * @conf write_x_frames  Int. Write the first X out of every Y frames (see per_y_frames).
- *       Default: -1 (disabled). Cannot be combined with @c create_single_file.
+ *       Default: -1 (disabled). Cannot be combined with @c create_single_file or
+ *       @c frames_per_file > 1.
  * @conf per_y_frames  Int. Period Y for frame decimation (see write_x_frames).
- *       Default: -1 (disabled). Cannot be combined with @c create_single_file.
+ *       Default: -1 (disabled). Cannot be combined with @c create_single_file or
+ *       @c frames_per_file > 1.
+ * @conf baseband_gain_file, baseband_gain_host_info, baseband_gain_update_idx,
+ *       crs_board_remap  The FPGA digital gains archive copied into every file, see
+ *       kotekan::BasebandGains.
+ *
+ * Frames whose chordMetadata carries `dish_index` (as SubsetBaseband's do) are described
+ * like hdf5N2Write's files: root attributes `input_list` and `input_order`, the /index_map
+ * datasets (see hdf5::write_index_map), and the gains of just those inputs in
+ * /digital_gains (see kotekan::BasebandGains::write_by_dish).
  *
  * @par Metrics
  * @metric kotekan_hdf5filewrite_write_time_seconds
@@ -105,6 +135,9 @@ using namespace HighFive;
 class hdf5FileWrite : public kotekan::Stage {
 
     const std::string base_dir = config.get<std::string>(unique_name, "base_dir");
+    const bool timestamp_subdir = config.get_default<bool>(unique_name, "timestamp_subdir", false);
+    const std::string timestamp_subdir_format =
+        config.get_default<std::string>(unique_name, "timestamp_subdir_format", "%Y%m%dT%H%M%SZ");
     const std::string file_name = config.get<std::string>(unique_name, "file_name");
     const bool prefix_hostname = config.get_default<bool>(unique_name, "prefix_hostname", true);
     const bool prefix_host_rank = config.get_default<bool>(unique_name, "prefix_host_rank", false);
@@ -116,29 +149,48 @@ class hdf5FileWrite : public kotekan::Stage {
     const bool skip_writing = config.get_default<bool>(unique_name, "skip_writing", false);
     const bool create_single_file =
         config.get_default<bool>(unique_name, "create_single_file", false);
+    const std::int64_t frames_per_file =
+        config.get_default<std::int64_t>(unique_name, "frames_per_file", 1);
+    /// Whether a file holds several frames concatenated along axis 0, with the metadata of its
+    /// first frame only. Such a file must hold a contiguous stream; see the checks in write_chord.
+    const bool concatenates_frames = create_single_file || frames_per_file > 1;
+    /// The option that makes files hold several frames, and its per-frame-file setting, for
+    /// the error messages.
+    const char* const concat_option = create_single_file ? "create_single_file" : "frames_per_file";
+    const char* const concat_off =
+        create_single_file ? "create_single_file: false" : "frames_per_file: 1";
     const int64_t write_x_frames = config.get_default<int64_t>(unique_name, "write_x_frames", -1);
     const int64_t per_y_frames = config.get_default<int64_t>(unique_name, "per_y_frames", -1);
-    const uint64_t frames_per_file =
-        config.get_default<uint64_t>(unique_name, "frames_per_file", 1);
 
     const uint64_t num_polarizations = config.get<uint64_t>(unique_name, "num_polarizations");
     const uint64_t num_dishes = config.get<uint64_t>(unique_name, "num_dishes");
 
     Buffer* const buffer;
 
-    std::shared_ptr<File> the_current_file_pointer;
+    /// The FPGA digital gains archive, copied into every output file as /digital_gains so
+    /// that the recorded voltages can be interpreted without a separate lookup.
+    kotekan::BasebandGains gains{config, unique_name, "hdf5FileWrite"};
+    /// The archive is fetched at most once, when the first output file is created.
+    bool gains_resolved = false;
 
-    // The state of the single-file stream: the shape and time downsampling of the first frame,
-    // and the fpga_seq_num the next frame has to start at. See the checks in write_chord.
-    std::size_t multi_frame_file_dim0 = 0;
-    std::int64_t multi_frame_file_tds = 0;
-    bool multi_frame_file_has_seq = false;
-    std::int64_t multi_frame_file_next_seq = 0;
-    // track the first frame sequence number in the current file, if we are writing multiple
-    // frames per file with a fixed number per file (i.e., not just a single file)
-    int64_t current_file_start_frame = 0;
-    // track whether a new file should be started on the next frame
-    bool start_new_file = true;
+    // The directory the files are actually written into. Equal to base_dir unless
+    // timestamp_subdir is set, in which case resolve_output_dir() appends the capture
+    // start time on the first frame.
+    std::string output_dir = base_dir;
+    bool output_dir_resolved = false;
+
+    // The currently open output file (the single file, or a multi-frame file still
+    // being filled) and the number of frames written to it so far.
+    std::shared_ptr<File> current_file;
+    std::int64_t frames_in_current_file = 0;
+
+    // The state of the stream in the current multi-frame file: the shape and time downsampling
+    // of its first frame, and the fpga_seq_num the next frame has to start at. Reset by every
+    // new file, so consecutive files need not be contiguous. See the checks in write_chord.
+    std::size_t stream_dim0 = 0;
+    std::int64_t stream_tds = 0;
+    bool stream_has_seq = false;
+    std::int64_t stream_next_seq = 0;
 
     kotekan::prometheus::Gauge& write_time_metric =
         kotekan::prometheus::Metrics::instance().add_gauge(
@@ -153,19 +205,17 @@ public:
               }),
         buffer(get_buffer("in_buf")) {
 
-        if (frames_per_file == 0)
-            FATAL_ERROR("hdf5FileWrite {:s}: frames_per_file must be greater than zero",
-                        unique_name);
-
-        if ((create_single_file || frames_per_file > 1) && write_x_frames >= 0 && per_y_frames > 0)
+        if (frames_per_file < 1)
+            throw std::invalid_argument(fmt::format(
+                fmt("hdf5FileWrite: frames_per_file ({:d}) must be >= 1"), frames_per_file));
+        if (create_single_file && frames_per_file != 1)
+            throw std::invalid_argument(
+                "hdf5FileWrite: create_single_file and frames_per_file are mutually exclusive");
+        if (concatenates_frames && write_x_frames >= 0 && per_y_frames > 0)
             FATAL_ERROR("hdf5FileWrite {:s}: write_x_frames/per_y_frames (frame decimation) cannot "
-                        "be combined with create_single_file or multiple frames per file; a single "
-                        "file must hold a contiguous stream",
+                        "be combined with create_single_file or frames_per_file > 1; a file "
+                        "holding several frames must hold a contiguous stream",
                         unique_name);
-
-        if (create_single_file && frames_per_file > 1)
-            INFO("single file mode requested - ignoring `frames_per_file` config parameter (={:d})",
-                 frames_per_file);
 
         if (max_frames > 0)
             ++waiting_for_max_frames;
@@ -175,12 +225,73 @@ public:
 
     virtual ~hdf5FileWrite() {}
 
+    /**
+     * @brief Work out which directory this run's files go in, from the first frame.
+     *
+     * With timestamp_subdir set the output goes in a per-capture sub-directory of
+     * base_dir named after the UTC time of the first frame. Called for every frame but
+     * only does anything on the first one, so that a run does not straddle directories
+     * if it happens to cross a second boundary.
+     *
+     * @param fpga_seq_num The FPGA sequence number from the first frame's metadata.
+     * @param seq_valid False if the frame carries no sequence number, in which case there
+     *        is no capture time to name a directory after and base_dir is used as-is.
+     */
+    void resolve_output_dir(const std::int64_t fpga_seq_num, const bool seq_valid) {
+        // Resolve on the very first frame, whatever it holds, so that a run cannot end up
+        // split across two directories.
+        if (output_dir_resolved)
+            return;
+        output_dir_resolved = true;
+
+        if (!timestamp_subdir)
+            return;
+
+        if (!seq_valid) {
+            WARN("timestamp_subdir is set, but the first frame of buffer \"{:s}\" carries no FPGA "
+                 "sequence number, so there is no capture time to name a directory after. "
+                 "Writing directly into \"{:s}\".",
+                 buffer->buffer_name, base_dir);
+            return;
+        }
+
+        // Round to the nearest second: a capture scheduled for a whole second starts at
+        // the frame edge just before it, which would otherwise name the directory for the
+        // previous second.
+        const std::int64_t t_ns = Telescope::instance().to_time_ns((std::uint64_t)fpga_seq_num);
+        const std::int64_t t_rounded_ns = ((t_ns + 500'000'000L) / 1'000'000'000L) * 1'000'000'000L;
+
+        std::string dir_name = nanosec_i64_to_utc_string(t_rounded_ns, timestamp_subdir_format);
+
+        // The name is a single path component, so drop anything that would break that.
+        // Whitespace goes too, both because timestamps like "2026-01-31 18:45:00" are
+        // awkward in paths and because the format is meant to avoid it in the first place.
+        dir_name.erase(std::remove_if(dir_name.begin(), dir_name.end(),
+                                      [](unsigned char c) { return std::isspace(c) || c == '/'; }),
+                       dir_name.end());
+
+        if (dir_name.empty())
+            FATAL_ERROR("timestamp_subdir_format \"{:s}\" produced an empty directory name for "
+                        "fpga seq {:d}",
+                        timestamp_subdir_format, fpga_seq_num);
+
+        output_dir = base_dir + "/" + dir_name;
+        INFO("Writing this capture into \"{:s}\" (fpga seq {:d}, {:s})", output_dir, fpga_seq_num,
+             nanosec_i64_to_utc_string(t_ns));
+    }
+
+    /// Create a directory, tolerating one that already exists.
+    void make_directory(const std::string& path) const {
+        if (mkdir(path.c_str(), 0777) && errno != EEXIST && errno != EISDIR)
+            FATAL_ERROR("Could not create directory \"{:s}\":\n{:s}", path, strerror(errno));
+    }
+
     // Create the HDF5 file.
     // Determine the file name, and create the containing directory if necessary.
-    std::shared_ptr<File> create_file(const std::int64_t frame_counter) const {
+    std::shared_ptr<File> create_file(const std::int64_t frame_counter) {
         // Define file name
         std::ostringstream buf;
-        buf << hdf5::file_path_prefix(base_dir, file_name, prefix_hostname, prefix_host_rank,
+        buf << hdf5::file_path_prefix(output_dir, file_name, prefix_hostname, prefix_host_rank,
                                       host_pool_rank);
         if (create_single_file) {
             // Do not include the frame counter when all output is written to a single file
@@ -198,14 +309,11 @@ public:
         buf << ".h5";
         const std::string full_path = buf.str();
 
-        // Create directory if necessary
-        int ierr = mkdir(base_dir.c_str(), 0777);
-        if (ierr) {
-            if (errno != EEXIST && errno != EISDIR) {
-                const char* const msg = strerror(errno);
-                FATAL_ERROR("Could not create directory \"{:s}\":\n{:s}", base_dir.c_str(), msg);
-            }
-        }
+        // Create the directories if necessary, base_dir first so that the per-capture
+        // sub-directory can be made inside a base_dir that does not exist yet.
+        make_directory(base_dir);
+        if (output_dir != base_dir)
+            make_directory(output_dir);
 
         // Create HDF5 file
         FileAccessProps fapl;
@@ -216,7 +324,66 @@ public:
         // Use SWMR. This keeps HDF5 files readable even if they were not properly closed.
         // You may have to use `h5clear -s FILENAME.h5` to "tell" the file that the writer does not
         // exist any more.
-        return std::make_unique<File>(full_path, File::Truncate | File::WriteSWMR, fprops, fapl);
+        auto file =
+            std::make_shared<File>(full_path, File::Truncate | File::WriteSWMR, fprops, fapl);
+
+        // Fetch the gains archive once the capture directory exists, then copy it into this
+        // file. The cache name carries the stage's unique name so that two writers sharing a
+        // base_dir (one per NUMA domain, say) do not fetch onto each other.
+        if (gains.configured()) {
+            if (!gains_resolved) {
+                gains_resolved = true;
+                const std::string partial_dir = output_dir + "/.partial";
+                make_directory(partial_dir);
+                std::string stem = "baseband_gains" + unique_name;
+                std::replace(stem.begin(), stem.end(), '/', '_');
+                gains.resolve_local_copy(partial_dir, stem);
+            }
+            gains.copy_into(*file);
+        }
+
+        return file;
+    }
+
+    /**
+     * @brief The array element held by each (polarization, dish) position of a frame.
+     *
+     * For a frame that names its dishes with `dish_index`, position (p, k) of its P and D axes
+     * holds array element `p * num_dishes + dish_index[k]` in the telescope's fiducial order.
+     * The positions are listed P-major, which is the element axis of /index_map. Empty unless
+     * the frame carries `dish_index` and the telescope is a CHORDTelescope.
+     */
+    std::vector<std::uint64_t> element_rows(const chordMetadata& meta) const {
+        const auto* chord = dynamic_cast<const CHORDTelescope*>(&Telescope::instance());
+        if (!chord || !meta.has_dish_index())
+            return {};
+
+        int p_axis = -1, d_axis = -1;
+        for (int i = 0; i < meta.dims; i++) {
+            if (meta.get_dimension_name(i) == "P")
+                p_axis = i;
+            else if (meta.get_dimension_name(i) == "D")
+                d_axis = i;
+        }
+        const std::vector<int> dish_index = meta.get_dish_index();
+        if (p_axis < 0 || d_axis < p_axis || (std::size_t)meta.dim[d_axis] != dish_index.size()
+            || (std::uint64_t)meta.dim[p_axis] > chord->get_num_polarizations())
+            FATAL_ERROR("Buffer \"{:s}\": dish_index ({:d} dishes) does not describe a frame with "
+                        "a P axis before its D axis and at most {:d} polarizations",
+                        buffer->buffer_name, dish_index.size(), chord->get_num_polarizations());
+
+        const std::uint64_t n_dish = chord->get_num_dishes();
+        std::vector<std::uint64_t> rows;
+        for (int p = 0; p < meta.dim[p_axis]; p++) {
+            for (const int dish : dish_index) {
+                if (dish < 0 || (std::uint64_t)dish >= n_dish)
+                    FATAL_ERROR("Buffer \"{:s}\": dish_index entry {:d} is outside the "
+                                "telescope's {:d} dishes",
+                                buffer->buffer_name, dish, n_dish);
+                rows.push_back(p * n_dish + dish);
+            }
+        }
+        return rows;
     }
 
     /**
@@ -269,108 +436,78 @@ public:
                      const std::int64_t frame_counter) {
         const auto& telescope = Telescope::instance();
 
-        bool do_create_dataset = false; // Whether to create the dataset and write the attributes
+        resolve_output_dir(meta->has_fpga_seq_num() ? meta->get_fpga_seq_num() : 0,
+                           meta->has_fpga_seq_num());
 
+        std::shared_ptr<File> fileptr;
+        bool do_create_dataset = false; // Whether to create the dataset and write the attributes
         if (create_single_file) {
             // Create only a single file
-            if (!the_current_file_pointer) {
-                the_current_file_pointer = create_file(-1);
+            if (!current_file) {
+                current_file = create_file(-1);
                 do_create_dataset = true;
-                start_new_file = false;
             }
         } else {
-            // Create a new file for every frame or batch, accounting for
-            // an offset if any frames were dropped
-            int64_t frame_offset = frame_counter - current_file_start_frame;
-            if (frame_offset < 0)
-                FATAL_ERROR(
-                    "Received a frame number {:d} earlier than the start of the current file {:d}",
-                    frame_counter, current_file_start_frame);
-
-            // either start after a fixed number of frames, or if the start
-            // flag is explicitly set
-            if ((frame_offset % frames_per_file == 0) || start_new_file) {
-                // NB: `HighFive` flushes and closes a file once it goes out of scope,
-                // so the last file is automatically closed here
-                the_current_file_pointer = create_file(frame_counter);
-                current_file_start_frame = frame_counter;
+            // A frame that does not continue the open file's stream closes that file early,
+            // so every file stays contiguous.
+            if (current_file && stream_has_seq && meta->has_fpga_seq_num()
+                && meta->get_fpga_seq_num() != stream_next_seq) {
+                WARN("Buffer \"{:s}\": frame {:d} starts at fpga_seq_num {:d}, expected {:d}; "
+                     "starting a new file",
+                     buffer->buffer_name, frame_counter, meta->get_fpga_seq_num(), stream_next_seq);
+                current_file.reset();
+            }
+            // Start a new file when none is open. It is named after the first frame
+            // it holds and closes once frames_per_file frames have been written.
+            if (!current_file) {
+                current_file = create_file(frame_counter);
+                frames_in_current_file = 0;
                 do_create_dataset = true;
-                start_new_file = false;
             }
         }
-        // somehow we've gotten here without creating a file handler
-        if (the_current_file_pointer == nullptr)
-            FATAL_ERROR("Something went wrong creating the file");
+        fileptr = current_file;
+        auto& file = *fileptr;
 
-        auto& file = *the_current_file_pointer;
-
-        if (create_single_file || (frames_per_file > 1)) {
-            // A file with multiple frames concatenates frames along axis 0 and stores the metadata
-            // only once, so hdf5FileRead can only reconstruct the per-frame fpga_seq_num if axis 0
-            // is a contiguous, uniformly sampled time axis.
+        if (concatenates_frames) {
+            // A multi-frame file concatenates frames along axis 0 and stores the metadata only
+            // once, from its first frame, so a reader (hdf5FileRead, merge_baseband_freq.py) can
+            // only reconstruct the per-frame fpga_seq_num if axis 0 is a contiguous, uniformly
+            // sampled time axis. The stream state is reset by each new file.
             const std::string dim0_name = meta->get_dimension_name(0);
             if (!is_time_axis(dim0_name))
-                FATAL_ERROR(
-                    "Buffer \"{:s}\": storing multiple frames per file requires a time axis "
-                    "as dimension 0, but dimension 0 is \"{:s}\"; set create_single_file: "
-                    "false and frames_per_file: 1 for this writer",
-                    buffer->buffer_name, dim0_name);
-
+                FATAL_ERROR("Buffer \"{:s}\": {:s} requires a time axis as dimension 0, but "
+                            "dimension 0 is \"{:s}\"; set {:s} for this writer",
+                            buffer->buffer_name, concat_option, dim0_name, concat_off);
             const std::int64_t tds =
                 meta->has_time_downsampling_fpga() ? meta->get_time_downsampling_fpga() : 1;
-
             if (meta->dim_scaling[0] != tds)
-                FATAL_ERROR(
-                    "Buffer \"{:s}\": storing multiple frames per file requires dim_scaling[0] "
-                    "({:d}) == time_downsampling_fpga ({:d}); set create_single_file: false "
-                    "and frames_per_file: 1 for this writer",
-                    buffer->buffer_name, meta->dim_scaling[0], tds);
-
+                FATAL_ERROR("Buffer \"{:s}\": {:s} requires dim_scaling[0] ({:d}) == "
+                            "time_downsampling_fpga ({:d}); set {:s} for this writer",
+                            buffer->buffer_name, concat_option, meta->dim_scaling[0], tds,
+                            concat_off);
             if (do_create_dataset) {
-                multi_frame_file_dim0 = meta->dim[0];
-                multi_frame_file_tds = tds;
-                // use the fpga sequence number to track sample contiguity
-                multi_frame_file_has_seq = meta->has_fpga_seq_num();
+                stream_dim0 = meta->dim[0];
+                stream_tds = tds;
             } else {
-                if (std::size_t(meta->dim[0]) != multi_frame_file_dim0
-                    || tds != multi_frame_file_tds)
+                if (std::size_t(meta->dim[0]) != stream_dim0 || tds != stream_tds)
                     FATAL_ERROR("Buffer \"{:s}\": frame {:d} changes the frame shape/downsampling "
                                 "(dim[0] {:d}->{:d}, time_downsampling_fpga {:d}->{:d}) within a "
-                                "single file",
-                                buffer->buffer_name, frame_counter, multi_frame_file_dim0,
-                                meta->dim[0], multi_frame_file_tds, tds);
-
-                if (meta->has_fpga_seq_num() != multi_frame_file_has_seq)
+                                "file",
+                                buffer->buffer_name, frame_counter, stream_dim0, meta->dim[0],
+                                stream_tds, tds);
+                if (meta->has_fpga_seq_num() != stream_has_seq)
                     FATAL_ERROR("Buffer \"{:s}\": fpga_seq_num is present in some frames but not "
-                                "in others; cannot write a single file",
+                                "in others; cannot write them to one file",
                                 buffer->buffer_name);
-
-                if (multi_frame_file_has_seq
-                    && meta->get_fpga_seq_num() != multi_frame_file_next_seq) {
-                    if (create_single_file) {
-                        FATAL_ERROR(
-                            "Buffer \"{:s}\": `create_single_file` requires a contiguous "
-                            "stream, but frame {:d} starts at fpga_seq_num {:d}, expected {:d}",
-                            buffer->buffer_name, frame_counter, meta->get_fpga_seq_num(),
-                            multi_frame_file_next_seq);
-                    } else {
-                        WARN("Buffer \"{:s}\": received a non-contiguous frame {:d} starting at "
-                             "fpga_seq_num {:d} - starting a new file",
-                             buffer->buffer_name, frame_counter, meta->get_fpga_seq_num());
-                        // Start a new file and write out this frame
-                        start_new_file = true;
-                        // flush the last file, then start a new one
-                        file.flush();
-                        // ensure that this file goes out of scope and closes
-                        the_current_file_pointer.reset();
-                        return write_chord(frame, meta, frame_desc, frame_counter);
-                    }
-                }
+                if (stream_has_seq && meta->get_fpga_seq_num() != stream_next_seq)
+                    FATAL_ERROR("Buffer \"{:s}\": {:s} requires a contiguous stream, but frame "
+                                "{:d} starts at fpga_seq_num {:d}, expected {:d}",
+                                buffer->buffer_name, concat_option, frame_counter,
+                                meta->get_fpga_seq_num(), stream_next_seq);
             }
-
-            if (multi_frame_file_has_seq)
-                multi_frame_file_next_seq =
-                    meta->get_fpga_seq_num() + std::int64_t(meta->dim[0]) * tds;
+            stream_has_seq = meta->has_fpga_seq_num();
+            if (stream_has_seq)
+                stream_next_seq = meta->get_fpga_seq_num() + std::int64_t(meta->dim[0]) * tds;
         }
 
         if (do_create_dataset) {
@@ -469,9 +606,26 @@ public:
 
             write_telescope_metadata(dataset);
 
-            // only true when a new file is being started
+            // Alongside the /digital_gains group: a digest of the archive, on the dataset
+            // where tools merging several writers' files look for their attributes.
+            if (const auto gains_hash = gains.content_hash())
+                dataset.createAttribute("digital_gains_hash", *gains_hash);
+
+            // Describe the inputs the frame holds the way hdf5N2Write does, and add the gains of
+            // just those inputs. Must happen before SWMR starts, which freezes the layout.
+            const std::vector<std::uint64_t> rows = element_rows(*meta);
+            if (!rows.empty()) {
+                const auto& chord = Telescope::instance().cast<CHORDTelescope>();
+                const ElementOrder order = chord.fiducial_element_order();
+                file.createAttribute("input_order", ElementOrder_to_string(order));
+                file.createAttribute("input_list",
+                                     std::vector<std::int32_t>(rows.begin(), rows.end()));
+                hdf5::write_index_map(file, chord, rows, order, 0);
+                gains.write_by_dish(file, rows, chord.get_num_dishes());
+            }
+
             if (create_single_file || frames_per_file > 1) {
-                // Start SWMR mode
+                // Start SWMR mode on files that stay open across frames
                 // (Can only do that after creating the dataset and writing all attributes.)
                 file.flush(); // for good measure
                 file.startSWMRWrite();
@@ -503,14 +657,13 @@ public:
         // Write data
         hyperslab.write_raw(frame, type);
 
-        // Only flush when writing multiple frames to a single file.
-        // Otherwise we'll close the file anyway so we don't need to flush.
-        if (create_single_file || (frames_per_file > 1 && !start_new_file)) {
+        // Close a multi-frame file once its quota is reached (closing flushes it);
+        // flush files that stay open so SWMR readers see the new frame.
+        if (!create_single_file && ++frames_in_current_file >= frames_per_file) {
+            current_file.reset();
+        } else {
             // dataset.flush();
             file.flush();
-        } else {
-            // explicitly close the file
-            the_current_file_pointer.reset();
         }
     }
 
@@ -522,6 +675,11 @@ public:
      */
     void write_n2(const N2FrameView& frame, const std::int64_t frame_counter) {
         DEBUG("Writing N2 frame seq: {:d}", frame.fpga_start_tick);
+
+        if (frames_per_file != 1)
+            FATAL_ERROR("frames_per_file is only supported for CHORD-metadata buffers");
+
+        resolve_output_dir(frame.fpga_start_tick, true);
 
         std::shared_ptr<File> fileptr = create_file(frame_counter);
         auto& file = *fileptr;
@@ -763,7 +921,7 @@ public:
         } // for
 
         // Close file if necessary
-        the_current_file_pointer.reset();
+        current_file.reset();
 
         if (max_frames > 0) {
             // Unregister to allow the pipeline to continue, unless I'm the last

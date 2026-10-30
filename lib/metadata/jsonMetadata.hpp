@@ -58,6 +58,13 @@ const std::string
 const std::string
     FREQ_UPCHAN_INDEX("FREQ_UPCHAN_INDEX"); // an array of int of size CHORD_META_MAX_FREQ
 
+// Dish index -- the index into the telescope's `dish_inputs` table of each dish on the
+// array's dish axis, in the order the dishes appear on that axis. Set by stages that
+// subset or reorder the dish axis (e.g. SubsetBaseband) so that downstream consumers can
+// tell which of the telescope's dishes the data actually describes; absent means the axis
+// holds the telescope's dishes in fiducial order.
+const std::string DISH_INDEX("DISH_INDEX"); // an array of int, one per dish on the dish axis
+
 const std::string RFI_FRAME_EXCISION_ENABLED(
     "RFI_FRAME_EXCISION_ENABLED"); // a bool noting whether RFI second stage excision (gpu frames)
                                    // is enabled

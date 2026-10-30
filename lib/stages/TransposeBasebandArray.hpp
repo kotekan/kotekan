@@ -12,7 +12,7 @@
 
 /**
  * @class TransposeBasebandArray
- * @brief Transposes electric field data from DPDK format to a contiguous time-major layout
+ * @brief Transposes electric field data from CRS format to a contiguous time-major layout
  *
  * This stage takes electric field voltage data in the format produced by DPDK
  * (with time and element dimensions split into long and short components) and

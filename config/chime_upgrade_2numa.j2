@@ -362,7 +362,6 @@ dpdk:
   # align to the same granularity as 2018 CHIME since the backends rely on this
   alignment: 3*samples_per_data_set
   alignment_startup_delay: 30.0
-  lcore_start_delay: 1.0
   # PCIe devices DPDK must not attach to: the ConnectX 6 Lx output NICs (one
   # pair per NUMA node), listed by their PCIe address.  Host specific.
   pcie_block_list:
