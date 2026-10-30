@@ -1540,6 +1540,22 @@ the ephemeris epoch.
 
 ## Open — bench or offline, no deployment at all
 
+### #221 — the beam-cube level still varies 0.6-2 dB over a day, and a single night's skirt repeats only to ~1-1.4 dB: origin unknown (2026-10-30, KV: "figure out the origin of the residual variation in the level")
+Since 5bb428fb2 a master divides each sample by the low envelope of its pedestal (10th percentile of the 5-min
+pedestal over +-2 h) instead of the 5-min pedestal, which carries every satellite near the beam (0.7-1.4 dB between
+quiet bins 10-20 min apart, 6-9 dB over 10-29, x3-10 in a boresight transit). What is left and not explained:
+- **The envelope itself moves 0.6-2 dB over the day** (10-29 rung12, per sender/subband/element; < 0.1 dB bin to
+  bin). Gain drift (analog, temperature) or sky noise (the Galaxy through the beam and sidelobes)? Test: is the drift
+  common to every element and instance (gain on a shared path, or sky) or per element (front end); does it follow
+  LST (sky) or local time / site temperature (gain); compare the out-of-band channels the rail recorder taps.
+- **Night-to-night per-cell scatter** (envelope masters, single night, nside 128): 1.1-1.4 dB at 5-8 deg, 0.9-1.1 at
+  8-15, 1.0 at 15-30, 1.2-1.3 at 30-90. Each cell is one satellite track, so per-satellite level (EIRP, attitude,
+  1.5-1.9 dB rms per-PRN spread) is the leading suspect; the masters carry no per-satellite normalisation.
+- **Beyond 2.5 deg the map core falls 2-5 dB less than the transit cuts**: other satellites' passes at 2.4-4.8 deg
+  fill those cells at their own levels (same suspect).
+Analysis and products: builds/beam_taua_1029/out/{envelope,night2night,early_oct}/ and RESULTS.md; scripts
+scratch_kv/cubefix/pedestal_variability.py, pedestal_lowenv.py.
+
 ### #192 — comment pass, stage 10: the repair run is done; KV's decisions, the golden re-bless and three dead fixtures remain (2026-10-15; run 2026-10-18/19, NOT MERGED)
 **Done, branch `kv/repair-s10`** (24 commits on kv/chord-gnss 2afecde50, `git merge-tree` clean): every input
 (the 199 stage-8 findings, 253 unscreened reviewer residuals, the 27 stage-9 bugs, (a)–(h) and the "for KV" list
