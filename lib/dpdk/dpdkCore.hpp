@@ -33,6 +33,7 @@ extern "C" {
 #include <string> // for string, allocator, basic_string
 #include <vector> // for vector
 
+#ifdef DPDK_EXTRA_STATS
 /**
  * @brief Timing of the rx poll loop on one port.
  *
@@ -58,6 +59,7 @@ struct alignas(64) rxLoopStats {
     /// TSC at the previous poll, used only by the lcore
     uint64_t last_poll_cycles = 0;
 };
+#endif
 
 /**
  * @brief Abstract object for processing packets that come from a given NIC port
@@ -235,7 +237,8 @@ protected:
  *
  * @par Rx loop metrics
  * Timing of the rx poll loop, with a @c port label, to tell an lcore that paused from one
- * that cannot keep up. The @c max gauges cover the last stats period (~1 s).
+ * that cannot keep up. The @c max gauges cover the last stats period (~1 s). Only built with
+ * @c -DDPDK_EXTRA_STATS=ON, since timing the loop costs two @c rdtsc per poll.
  * @metric kotekan_dpdk_rx_loop_max_poll_interval_us
  *         Longest interval between two consecutive rte_eth_rx_burst calls
  * @metric kotekan_dpdk_rx_loop_max_burst_us
@@ -320,11 +323,24 @@ private:
      */
     void update_port_stats();
 
+#ifdef DPDK_EXTRA_STATS
     /// Timing of the rx poll loop, one per system port, written by the lcores.
     std::unique_ptr<rxLoopStats[]> rx_loop_stats;
 
     /// TSC frequency, for converting @c rxLoopStats cycles to microseconds.
     uint64_t tsc_hz;
+
+    /// Prometheus metrics for the rx poll loop timing, one per field of @c rxLoopStats
+    struct {
+        kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>* max_poll_interval;
+        kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>* max_burst;
+        kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>* max_handle;
+        kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>* max_queue_count;
+        kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>* polls;
+        kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>* bursts;
+        kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>* full_bursts;
+    } rx_loop_metrics;
+#endif
 
     /// The NIC hardware stats at the last poll, per port, for computing deltas.
     std::vector<struct rte_eth_stats> last_eth_stats;
@@ -359,15 +375,6 @@ private:
 
     /// The NIC packet buffer discard count at the last poll, per port, for computing deltas.
     std::vector<uint64_t> last_packet_buffer_dropped;
-
-    /// Prometheus metrics for the rx poll loop timing
-    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& rx_loop_max_poll_interval_metric;
-    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& rx_loop_max_burst_metric;
-    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& rx_loop_max_handle_metric;
-    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& rx_loop_max_queue_count_metric;
-    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& rx_loop_polls_total_metric;
-    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& rx_loop_bursts_total_metric;
-    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& rx_loop_full_bursts_total_metric;
 
     /// The pool of DPDK mbufs, one per numa node
     std::vector<struct rte_mempool*> mbuf_pools;

@@ -100,6 +100,8 @@ ktk_tristate_option(USE_LTO "Enable link-time optimization in Release builds" OF
 ktk_tristate_option(CCACHE "Use ccache to speed up the build" OFF)
 ktk_tristate_option(CMAKE_LINK_WHAT_YOU_USE "Report missing link dependencies while building" OFF)
 ktk_tristate_option(COMPILE_DOCS "Use Sphinx to compile documentation" OFF)
+ktk_tristate_option(DPDK_EXTRA_STATS "Time the DPDK rx poll loop and export it as metrics (costs cycles per poll)"
+                    OFF)
 ktk_tristate_option(IWYU "Enable include-what-you-use and print suggestions to stderr" OFF)
 ktk_tristate_option(NO_MEMLOCK "Do not lock buffer memory (useful when running in Docker)" OFF)
 ktk_tristate_option(SUPERDEBUG "Enable extra debugging with no optimisation" OFF)
