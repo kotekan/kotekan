@@ -247,6 +247,8 @@ feature when its dependencies are present and otherwise continues without it. Se
     Build the HIP backend when the HIP toolchain is available.
 * ``-DUSE_DPDK=<AUTO|ON|OFF>`` (default ``AUTO``)
     Enable DPDK components when ``libdpdk >= 19.11`` is discoverable via ``pkg-config``. Forced ``OFF`` when ``-DWITH_BOOST_TESTS=ON``.
+* ``-DDPDK_EXTRA_STATS=<ON|OFF>`` (default ``OFF``)
+    Time the DPDK rx poll loop and export it as the ``kotekan_dpdk_rx_loop_*`` metrics. Off by default because it costs cycles in the packet loop.
 * ``-DUSE_AIRSPY=<AUTO|ON|OFF>`` (default ``AUTO``)
     Build the Airspy capture stages when ``libairspy`` is present.
 * ``-DUSE_ASDF``, ``-DUSE_GDAL``, ``-DUSE_HDF5`` (each default ``AUTO``)

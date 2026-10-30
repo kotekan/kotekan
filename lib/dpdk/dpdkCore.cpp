@@ -16,6 +16,7 @@
 #include "fmt.hpp"  // for format, compile_string_to_view, fmt, format_string
 #include "json.hpp" // for basic_json, json, iter_impl
 
+#include <algorithm>               // for min
 #include <functional>              // for bind, function
 #include <numa.h>                  // for numa_node_of_cpu, numa_num_configured_nodes
 #include <rte_branch_prediction.h> // for unlikely
@@ -38,6 +39,9 @@
 #include <sys/types.h>             // for uint
 #include <unistd.h>                // for sleep
 #include <vector>                  // for vector
+#ifdef DPDK_EXTRA_STATS
+#include <rte_cycles.h> // for rte_rdtsc, rte_get_tsc_hz
+#endif
 
 using nlohmann::json;
 using std::string;
@@ -52,12 +56,64 @@ REGISTER_KOTEKAN_STAGE(dpdkCore);
 
 static bool __eal_initalized = false;
 
+// NIC extended stats exported as kotekan_dpdk_nic_<name>_total, by their Intel driver names.
+static const vector<string> nic_xstat_names = {
+    "rx_crc_errors",    "rx_oversize_errors", "rx_undersized_errors", "rx_fragmented_errors",
+    "rx_jabber_errors", "mac_local_errors",   "mac_remote_errors"};
+
+// The driver stat that counts packets discarded in the NIC receive packet buffer. On ice and
+// i40e it is the part of imissed that is not an rx ring overflow.
+static const char* packet_buffer_xstat_name = "rx_dropped_packets";
+
+#ifdef DPDK_EXTRA_STATS
+// An rx poll loop pause longer than this is logged even when no packets were dropped.
+static const double rx_loop_pause_warn_us = 1000;
+
+template<typename T>
+static inline void update_max(std::atomic<T>& max, T value) {
+    if (value > max.load(std::memory_order_relaxed))
+        max.store(value, std::memory_order_relaxed);
+}
+
+// Publish the timing of one rte_eth_rx_burst call on its port. t0, t1 and t2 are the TSC
+// before the call, after it, and after its packets were handled.
+static inline void record_poll(rxLoopStats& loop, uint16_t port, uint64_t t0, uint64_t t1,
+                               uint64_t t2, uint16_t num_rx, uint32_t burst_size) {
+    if (loop.last_poll_cycles != 0)
+        update_max(loop.max_poll_interval_cycles, t0 - loop.last_poll_cycles);
+    loop.last_poll_cycles = t0;
+    update_max(loop.max_burst_cycles, t1 - t0);
+    const uint64_t polls = loop.polls.load(std::memory_order_relaxed) + 1;
+    loop.polls.store(polls, std::memory_order_relaxed);
+    if (num_rx > 0) {
+        update_max(loop.max_handle_cycles, t2 - t1);
+        loop.bursts.store(loop.bursts.load(std::memory_order_relaxed) + 1,
+                          std::memory_order_relaxed);
+        if (num_rx == burst_size)
+            loop.full_bursts.store(loop.full_bursts.load(std::memory_order_relaxed) + 1,
+                                   std::memory_order_relaxed);
+    }
+    // The occupancy scan walks the ring up to the first free descriptor, so sample it.
+    if ((polls & 1023) == 0) {
+        const int count = rte_eth_rx_queue_count(port, 0);
+        if (count > 0)
+            update_max(loop.max_queue_count, (uint32_t)count);
+    }
+}
+#endif
+
 dpdkCore::dpdkCore(Config& config, const string& unique_name, bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&dpdkCore::main_thread, this)),
     nic_rx_packets_total_metric(kotekan::prometheus::Metrics::instance().add_gauge(
         "kotekan_dpdk_nic_rx_packets_total", unique_name, {"port"})),
+    nic_rx_bytes_total_metric(kotekan::prometheus::Metrics::instance().add_gauge(
+        "kotekan_dpdk_nic_rx_bytes_total", unique_name, {"port"})),
     nic_rx_missed_total_metric(kotekan::prometheus::Metrics::instance().add_gauge(
         "kotekan_dpdk_nic_rx_missed_total", unique_name, {"port"})),
+    nic_rx_packet_buffer_dropped_metric(kotekan::prometheus::Metrics::instance().add_gauge(
+        "kotekan_dpdk_nic_rx_packet_buffer_dropped_packets_total", unique_name, {"port"})),
+    nic_rx_ring_full_dropped_metric(kotekan::prometheus::Metrics::instance().add_gauge(
+        "kotekan_dpdk_nic_rx_ring_full_dropped_packets_total", unique_name, {"port"})),
     nic_rx_errors_total_metric(kotekan::prometheus::Metrics::instance().add_gauge(
         "kotekan_dpdk_nic_rx_errors_total", unique_name, {"port"})),
     nic_rx_nombuf_total_metric(kotekan::prometheus::Metrics::instance().add_gauge(
@@ -87,10 +143,37 @@ dpdkCore::dpdkCore(Config& config, const string& unique_name, bufferContainer& b
     dpdk_init(lcore_cpu_map, main_lcore_cpu);
 
     num_system_ports = rte_eth_dev_count_avail();
+#ifdef DPDK_EXTRA_STATS
+    tsc_hz = rte_get_tsc_hz();
+    rx_loop_stats.reset(new rxLoopStats[num_system_ports]);
+    kotekan::prometheus::Metrics& metrics = kotekan::prometheus::Metrics::instance();
+    rx_loop_metrics.max_poll_interval =
+        &metrics.add_gauge("kotekan_dpdk_rx_loop_max_poll_interval_us", unique_name, {"port"});
+    rx_loop_metrics.max_burst =
+        &metrics.add_gauge("kotekan_dpdk_rx_loop_max_burst_us", unique_name, {"port"});
+    rx_loop_metrics.max_handle =
+        &metrics.add_gauge("kotekan_dpdk_rx_loop_max_handle_us", unique_name, {"port"});
+    rx_loop_metrics.max_queue_count =
+        &metrics.add_gauge("kotekan_dpdk_rx_loop_max_queue_count", unique_name, {"port"});
+    rx_loop_metrics.polls =
+        &metrics.add_gauge("kotekan_dpdk_rx_loop_polls_total", unique_name, {"port"});
+    rx_loop_metrics.bursts =
+        &metrics.add_gauge("kotekan_dpdk_rx_loop_bursts_total", unique_name, {"port"});
+    rx_loop_metrics.full_bursts =
+        &metrics.add_gauge("kotekan_dpdk_rx_loop_full_bursts_total", unique_name, {"port"});
+#endif
 
     // Storage for the per-port NIC hardware stats and link state polling.
     last_eth_stats.resize(num_system_ports);
     link_is_up.resize(num_system_ports, false);
+    nic_xstat_ids.resize(num_system_ports);
+    nic_xstat_port_metrics.resize(num_system_ports);
+    packet_buffer_xstat_id.resize(num_system_ports, -1);
+    last_packet_buffer_dropped.resize(num_system_ports, 0);
+    for (const string& name : nic_xstat_names) {
+        nic_xstat_metrics.push_back(&kotekan::prometheus::Metrics::instance().add_gauge(
+            "kotekan_dpdk_nic_" + name + "_total", unique_name, {"port"}));
+    }
 
     // This default works well for ICE boards,
     // but we might change this to something more genertic
@@ -423,18 +506,60 @@ void dpdkCore::update_port_stats() {
         if (rte_eth_stats_get(port, &stats) != 0)
             continue;
 
-        // imissed counts packets that arrived at the NIC but were dropped because
-        // the rx ring was full, i.e. the lcore didn't service this port fast enough.
+        // Rx poll loop timing since the last poll, to tell a paused lcore from a slow one.
+        string loop_info;
+#ifdef DPDK_EXTRA_STATS
+        rxLoopStats& loop = rx_loop_stats[port];
+        const double us_per_cycle = 1e6 / tsc_hz;
+        const double max_poll_interval_us =
+            loop.max_poll_interval_cycles.exchange(0, std::memory_order_relaxed) * us_per_cycle;
+        const double max_burst_us =
+            loop.max_burst_cycles.exchange(0, std::memory_order_relaxed) * us_per_cycle;
+        const double max_handle_us =
+            loop.max_handle_cycles.exchange(0, std::memory_order_relaxed) * us_per_cycle;
+        const uint32_t max_queue_count =
+            loop.max_queue_count.exchange(0, std::memory_order_relaxed);
+        loop_info = fmt::format(
+            fmt("; longest poll interval {:.0f} us (rx_burst {:.0f} us, handlers "
+                "{:.0f} us), peak ring occupancy {:d} of {:d}"),
+            max_poll_interval_us, max_burst_us, max_handle_us, max_queue_count, rx_ring_size);
+#endif
+
+        // Split imissed by reason: packets discarded in the NIC packet buffer because the NIC
+        // could not DMA them to host memory in time, and packets dropped because the rx ring
+        // had no free descriptor, i.e. the lcore did not service the port. A driver without
+        // the packet buffer stat reports everything as rx ring full.
+        uint64_t packet_buffer_dropped = last_packet_buffer_dropped[port];
+        if (packet_buffer_xstat_id[port] >= 0) {
+            uint64_t id = packet_buffer_xstat_id[port];
+            rte_eth_xstats_get_by_id(port, &id, &packet_buffer_dropped, 1);
+        }
+        const uint64_t ring_full_dropped =
+            stats.imissed >= packet_buffer_dropped ? stats.imissed - packet_buffer_dropped : 0;
+
         // Guard against counter resets (e.g. a link/NIC reset), which would
         // otherwise underflow the unsigned delta into a bogus WARN.
         const uint64_t missed_delta = stats.imissed >= last_eth_stats[port].imissed
                                           ? stats.imissed - last_eth_stats[port].imissed
                                           : 0;
+        const uint64_t packet_buffer_delta =
+            packet_buffer_dropped >= last_packet_buffer_dropped[port]
+                ? std::min(packet_buffer_dropped - last_packet_buffer_dropped[port], missed_delta)
+                : 0;
         if (missed_delta > 0) {
-            WARN("Port {:d}: NIC dropped {:d} packets since the last poll (~1s) because the rx "
-                 "ring was full (lcore stalled or too slow); total missed: {:d}",
-                 port, missed_delta, stats.imissed);
+            INFO("Port {:d}: NIC dropped {:d} packets since the last poll (~1s): {:d} in the NIC "
+                 "packet buffer, {:d} because the rx ring was full; total missed: {:d}{:s}",
+                 port, missed_delta, packet_buffer_delta, missed_delta - packet_buffer_delta,
+                 stats.imissed, loop_info);
         }
+#ifdef DPDK_EXTRA_STATS
+        if (missed_delta == 0 && max_poll_interval_us > rx_loop_pause_warn_us) {
+            INFO("Port {:d}: rx poll loop paused for {:.0f} us (rx_burst {:.0f} us, handlers "
+                 "{:.0f} us) without dropping packets; peak ring occupancy {:d} of {:d}",
+                 port, max_poll_interval_us, max_burst_us, max_handle_us, max_queue_count,
+                 rx_ring_size);
+        }
+#endif
 
         const uint64_t error_delta = stats.ierrors >= last_eth_stats[port].ierrors
                                          ? stats.ierrors - last_eth_stats[port].ierrors
@@ -455,10 +580,34 @@ void dpdkCore::update_port_stats() {
 
         std::vector<std::string> port_label = {to_string(port)};
         nic_rx_packets_total_metric.labels(port_label).set(stats.ipackets);
+        nic_rx_bytes_total_metric.labels(port_label).set(stats.ibytes);
         nic_rx_missed_total_metric.labels(port_label).set(stats.imissed);
+        if (packet_buffer_xstat_id[port] >= 0)
+            nic_rx_packet_buffer_dropped_metric.labels(port_label).set(packet_buffer_dropped);
+        nic_rx_ring_full_dropped_metric.labels(port_label).set(ring_full_dropped);
+        last_packet_buffer_dropped[port] = packet_buffer_dropped;
         nic_rx_errors_total_metric.labels(port_label).set(stats.ierrors);
         nic_rx_nombuf_total_metric.labels(port_label).set(stats.rx_nombuf);
         nic_link_up_metric.labels(port_label).set(link_is_up[port] ? 1 : 0);
+#ifdef DPDK_EXTRA_STATS
+        rx_loop_metrics.max_poll_interval->labels(port_label).set(max_poll_interval_us);
+        rx_loop_metrics.max_burst->labels(port_label).set(max_burst_us);
+        rx_loop_metrics.max_handle->labels(port_label).set(max_handle_us);
+        rx_loop_metrics.max_queue_count->labels(port_label).set(max_queue_count);
+        rx_loop_metrics.polls->labels(port_label).set(loop.polls.load(std::memory_order_relaxed));
+        rx_loop_metrics.bursts->labels(port_label).set(loop.bursts.load(std::memory_order_relaxed));
+        rx_loop_metrics.full_bursts->labels(port_label)
+            .set(loop.full_bursts.load(std::memory_order_relaxed));
+#endif
+
+        const vector<uint64_t>& xstat_ids = nic_xstat_ids[port];
+        vector<uint64_t> xstat_values(xstat_ids.size());
+        if (rte_eth_xstats_get_by_id(port, xstat_ids.data(), xstat_values.data(),
+                                     xstat_values.size())
+            == (int)xstat_values.size()) {
+            for (size_t i = 0; i < xstat_values.size(); ++i)
+                nic_xstat_port_metrics[port][i]->labels(port_label).set(xstat_values[i]);
+        }
 
         last_eth_stats[port] = stats;
     }
@@ -528,6 +677,25 @@ int32_t dpdkCore::port_init(uint8_t port, uint32_t lcore_id) {
     if (rte_eth_stats_get(port, &last_eth_stats[port]) != 0)
         WARN("Port {:d}: could not read initial NIC stats; first stats poll may over-report deltas",
              port);
+
+    uint64_t id;
+    if (rte_eth_xstats_get_id_by_name(port, packet_buffer_xstat_name, &id) == 0) {
+        packet_buffer_xstat_id[port] = id;
+        rte_eth_xstats_get_by_id(port, &id, &last_packet_buffer_dropped[port], 1);
+    } else {
+        INFO("Port {:d}: NIC driver has no {:s} stat; missed packets are all reported as rx "
+             "ring full",
+             port, packet_buffer_xstat_name);
+    }
+    for (size_t i = 0; i < nic_xstat_names.size(); ++i) {
+        if (rte_eth_xstats_get_id_by_name(port, nic_xstat_names[i].c_str(), &id) == 0) {
+            nic_xstat_ids[port].push_back(id);
+            nic_xstat_port_metrics[port].push_back(nic_xstat_metrics[i]);
+        } else {
+            INFO("Port {:d}: NIC driver has no {:s} stat; not exporting it", port,
+                 nic_xstat_names[i]);
+        }
+    }
 
     // Report the port MAC address.
     // TODO record the MAC address for export to JSON
@@ -637,6 +805,9 @@ int dpdkCore::lcore_rx(void* args) {
     for (uint32_t i = 0; i < num_local_ports; ++i) {
         local_handlers[i] = core->handlers[ports[i]];
     }
+#ifdef DPDK_EXTRA_STATS
+    rxLoopStats* loop_stats = core->rx_loop_stats.get();
+#endif
 
     if (is_distributor_lcore) {
         // Distributor handlers take ownership of the mbuf; do not free here.
@@ -644,25 +815,45 @@ int dpdkCore::lcore_rx(void* args) {
         while (!core->stop_thread) {
             for (uint32_t i = 0; i < num_local_ports; ++i) {
                 uint32_t port = ports[i];
+#ifdef DPDK_EXTRA_STATS
+                const uint64_t t0 = rte_rdtsc();
+#endif
                 const uint16_t num_rx = rte_eth_rx_burst(port, 0, mbufs, burst_size);
+#ifdef DPDK_EXTRA_STATS
+                const uint64_t t1 = rte_rdtsc();
+#endif
                 for (uint16_t j = 0; j < num_rx; ++j) {
                     if (unlikely(local_handlers[i]->handle_packet(mbufs[j]) != 0)) {
                         goto exit_lcore;
                     }
                 }
+#ifdef DPDK_EXTRA_STATS
+                record_poll(loop_stats[port], port, t0, t1, num_rx ? rte_rdtsc() : t1, num_rx,
+                            burst_size);
+#endif
             }
         }
     } else {
         while (!core->stop_thread) {
             for (uint32_t i = 0; i < num_local_ports; ++i) {
                 uint32_t port = ports[i];
+#ifdef DPDK_EXTRA_STATS
+                const uint64_t t0 = rte_rdtsc();
+#endif
                 const uint16_t num_rx = rte_eth_rx_burst(port, 0, mbufs, burst_size);
+#ifdef DPDK_EXTRA_STATS
+                const uint64_t t1 = rte_rdtsc();
+#endif
                 for (uint16_t j = 0; j < num_rx; ++j) {
                     if (unlikely(local_handlers[i]->handle_packet(mbufs[j]) != 0)) {
                         goto exit_lcore;
                     }
                     rte_pktmbuf_free(mbufs[j]);
                 }
+#ifdef DPDK_EXTRA_STATS
+                record_poll(loop_stats[port], port, t0, t1, num_rx ? rte_rdtsc() : t1, num_rx,
+                            burst_size);
+#endif
             }
         }
     }
