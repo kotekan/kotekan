@@ -35,7 +35,7 @@ import math
 import os
 
 KERNEL_DEG = 2.0  # Gaussian sigma on the sky; the north-low gradient is ~1 m/deg in el
-SUPPORT_DEG = 4.0  # nearest fitted cell further than this: no correction
+SUPPORT_DEG = 5.5  # nearest fitted cell further than this: no correction; > the half-diagonal of a 10 x 5 deg cell
 BORESIGHT_TOL_DEG = 0.5
 _REACH_DEG = 3.0 * KERNEL_DEG
 _REPO_ROOT = os.path.abspath(

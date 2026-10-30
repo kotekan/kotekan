@@ -66,6 +66,10 @@ def test_lookup():
         abs(hi.delay_m(105.0, 42.5) - 3.0) < 1e-9,
         "high-sky cell centred at (az+5, el+2.5)",
     )
+    check(
+        abs(hi.delay_m(100.2, 40.2) - 3.0) < 1e-9,
+        "a high-sky cell's corner (4.3 deg from its centre) still gets the cell's value",
+    )
     try:
         GdvMap(_doc(flat), "nope")
         check(False, "an absent band refuses to load")
