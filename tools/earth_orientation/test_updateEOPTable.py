@@ -8,7 +8,6 @@ import matplotlib.pyplot as plt
 
 import eop_utils
 
-
 if __name__ == "__main__":
 
     time0_ns = eop_utils.read_fpga_master_frame0_ns("crs-control", 54321, 30)

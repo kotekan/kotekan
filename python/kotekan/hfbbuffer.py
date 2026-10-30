@@ -1,5 +1,5 @@
-"""Read a HFBBuffer dump into python.
-"""
+"""Read a HFBBuffer dump into python."""
+
 import ctypes
 import os
 import io

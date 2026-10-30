@@ -1,5 +1,5 @@
-"""Use Python to run a kotekan instance, particularly for testing.
-"""
+"""Use Python to run a kotekan instance, particularly for testing."""
+
 import itertools
 import json
 import os
@@ -158,9 +158,10 @@ class KotekanRunner(object):
 
         config_dict = fix_strings(config_dict)
 
-        with tempfile.NamedTemporaryFile(
-            mode="w"  # , delete=False
-        ) as fh, tempfile.NamedTemporaryFile() as f_out:
+        with (
+            tempfile.NamedTemporaryFile(mode="w") as fh,  # , delete=False
+            tempfile.NamedTemporaryFile() as f_out,
+        ):
 
             yaml.safe_dump(config_dict, fh)
             print(yaml.safe_dump(config_dict))
@@ -1627,7 +1628,7 @@ def fix_strings(d):
 
 
 def has_hdf5():
-    """ Check for HDF5 via registered stages """
+    """Check for HDF5 via registered stages"""
     config = KotekanRunner.kotekan_config()
 
     available = set(config.get("available_stages", []))
