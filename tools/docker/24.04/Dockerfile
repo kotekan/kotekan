@@ -92,11 +92,11 @@ ENV PIP_NO_CACHE_DIR=1
 RUN python3 -m pip install --upgrade \
         astropy \
         bitshuffle \
-        black==19.10b0 \
         breathe==4.35.* \
         'click>=8.1.3' \
         cmake_format \
         flask \
+        flask-cors \
         future \
         h5py \
         hdf5plugin \
@@ -116,6 +116,11 @@ RUN python3 -m pip install --upgrade \
         sphinx==6.2.* \
         sphinx_rtd_theme==2.0.* \
         tabulate
+
+# The current formatter needs an older Click than the runtime packages.
+RUN python3 -m venv /opt/black_env && \
+    /opt/black_env/bin/python -m pip install black==19.10b0 click==8.0.2 && \
+    ln -s /opt/black_env/bin/black /usr/local/bin/black
 
 # Uncomment this to check what version got installed
 # RUN python3 -m pip show <package>
