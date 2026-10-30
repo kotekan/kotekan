@@ -1,11 +1,5 @@
 project(kotekan_cuda)
 
-# Default to NVIDIA Ampere (A40, sm_86). Override for other GPUs with e.g.
-# -DCMAKE_CUDA_ARCHITECTURES=121 (GB10 / Grace Blackwell).
-if(NOT CMAKE_CUDA_ARCHITECTURES)
-    set(CMAKE_CUDA_ARCHITECTURES 86)
-endif()
-
 add_library(
     kotekan_cuda
     # Core
