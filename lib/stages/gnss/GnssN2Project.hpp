@@ -76,12 +76,17 @@
  *                        channel unless eigen_channels is live. The contract with the cosmology
  *                        pipeline: live writes touch exactly the GNSS lobes exempted from
  *                        first-stage RFI excision (the config generator's "exempt").
- * @conf eigen_channels   String, all (default) or live. With live, a channel outside
+ * @conf eigen_channels   String, all (default), live or list. With live, a channel outside
  *                        live_freq_ids is skipped entirely: no covariance, no solve and no
  *                        gauges. Its output is the input copy either way, and each channel's
  *                        subspace is its own, so the live channels' output is unchanged. The
  *                        cost is per channel and ~n^2 in the stations, so this is what pays for
  *                        a larger station set; the price is the other channels' diagnostics.
+ *                        With list, the eigen path runs on eigen_freq_ids; a live channel
+ *                        outside them gets the lane projection only (a lane target beside the
+ *                        lobes), and null_db and the eigen gauges stay 0 there.
+ * @conf eigen_freq_ids   Int list. With eigen_channels list: the eigen path's absolute
+ *                        freq_ids, resolved like live_freq_ids.
  * @conf pr_min           Double. A component must be spread over the array: participation
  *                        ratio 1 / sum |q_i|^4 >= pr_min (6.0). A lone correlated input pair
  *                        (cross-talk, or one saturated dish's two pols) is a rank-1 term with
@@ -178,9 +183,11 @@ private:
     std::vector<int> q_use; ///< per channel: the solved components the gates accepted, in order
     // #190 lane directions
     const std::string source;
-    const bool use_lanes;         ///< source != eigen
-    const bool use_residual;      ///< the eigen path runs (eigen, or on the residual)
-    bool eigen_live_only = false; ///< eigen_channels: live
+    const bool use_lanes;            ///< source != eigen
+    const bool use_residual;         ///< the eigen path runs (eigen, or on the residual)
+    std::string eigen_channels;      ///< all, live or list
+    std::vector<int> eigen_freq_ids; ///< eigen_channels list: the eigen path's absolute freq_ids
+    std::vector<char> eigen_ch;      ///< per local channel: the eigen path runs (set on frame 1)
     const std::string board_group;
     std::vector<int> tracker_stations;
     const int k_lanes_max;

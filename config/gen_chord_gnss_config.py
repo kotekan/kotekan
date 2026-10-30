@@ -826,18 +826,23 @@ def elem_positions_from_arraymap(arr, n_elem):
     return out, ep
 
 
-def n2_project_live_ids(args):
-    """The freq_ids GnssN2Project writes: --n2-project-live-freq-ids, 'exempt' meaning the
-    --rfi-excision-exempt-freq-ids ranges. Empty when neither is given."""
-    spec = args.n2_project_live_freq_ids
-    if spec == "exempt":
-        spec = args.rfi_excision_exempt_freq_ids
+def freq_id_ranges(spec):
+    """Absolute freq_ids from 'lo-hi,lo-hi,...' (a bare id is one channel); empty for none."""
     ids = set()
     for part in str(spec or "").split(","):
         if part.strip():
             a, _, b = part.strip().partition("-")
             ids.update(range(int(a), int(b or a) + 1))
     return ids
+
+
+def n2_project_live_ids(args):
+    """The freq_ids GnssN2Project writes: --n2-project-live-freq-ids, 'exempt' meaning the
+    --rfi-excision-exempt-freq-ids ranges. Empty when neither is given."""
+    spec = args.n2_project_live_freq_ids
+    if spec == "exempt":
+        spec = args.rfi_excision_exempt_freq_ids
+    return freq_id_ranges(spec)
 
 
 def lane_transfer_keys(cfg, node, gpu, tag, freq_ids, args):
@@ -3100,11 +3105,12 @@ def main():
     )
     ap.add_argument(
         "--n2-project-eigen-channels",
-        choices=["all", "live"],
         default="all",
         help="channels GnssN2Project's eigen path runs on: all (default; every channel gets "
-        "the gauges) or live (only --n2-project-live-freq-ids, which it writes). The cost is "
-        "per channel and ~n^2 in the stations, so live is what pays for a larger station set",
+        "the gauges), live (only --n2-project-live-freq-ids, which it writes) or absolute "
+        "freq_id ranges lo-hi, comma-separated (those; a live channel outside them gets the "
+        "lane projection only, for the lane targets beside the lobes). The cost is per "
+        "channel and ~n^2 in the stations, so this is what pays for a larger station set",
     )
     ap.add_argument(
         "--n2-project-lanes-max",
@@ -3769,8 +3775,18 @@ def main():
                 "solve_every": int(N2_PROJECT_SOLVE_EVERY),
                 "metric_period_s": 1.0,
             }
-            if args.n2_project_eigen_channels != "all":
-                _stage["eigen_channels"] = args.n2_project_eigen_channels
+            if args.n2_project_eigen_channels == "live":
+                _stage["eigen_channels"] = "live"
+            elif args.n2_project_eigen_channels != "all":
+                try:
+                    _eig = freq_id_ranges(args.n2_project_eigen_channels)
+                except ValueError:
+                    raise SystemExit(
+                        "--n2-project-eigen-channels: all, live or ranges lo-hi, not %r"
+                        % args.n2_project_eigen_channels
+                    )
+                _stage["eigen_channels"] = "list"
+                _stage["eigen_freq_ids"] = sorted(_eig)
             if args.n2_project_source != "eigen":
                 # #190: the chains' directions. The board group is the assemblers' unique_name
                 # up to the first '_' ("/gnss<gpu>"); tracker_stations is the chains' element

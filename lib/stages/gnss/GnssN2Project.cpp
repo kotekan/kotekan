@@ -53,11 +53,13 @@ GnssN2Project::GnssN2Project(Config& config, const std::string& unique_name,
     fleet_lane_rebuild_s(config.get_default<double>(unique_name, "fleet_lane_rebuild_s", 0.25)) {
     if (source != "eigen" && source != "lanes" && source != "lanes+residual")
         FATAL_ERROR("GnssN2Project: source '{:s}' must be eigen, lanes or lanes+residual", source);
-    const std::string eigen_channels =
-        config.get_default<std::string>(unique_name, "eigen_channels", "all");
-    if (eigen_channels != "all" && eigen_channels != "live")
-        FATAL_ERROR("GnssN2Project: eigen_channels '{:s}' must be all or live", eigen_channels);
-    eigen_live_only = eigen_channels == "live";
+    eigen_channels = config.get_default<std::string>(unique_name, "eigen_channels", "all");
+    if (eigen_channels != "all" && eigen_channels != "live" && eigen_channels != "list")
+        FATAL_ERROR("GnssN2Project: eigen_channels '{:s}' must be all, live or list",
+                    eigen_channels);
+    eigen_freq_ids = config.get_default<std::vector<int>>(unique_name, "eigen_freq_ids", {});
+    if (eigen_channels == "list" && eigen_freq_ids.empty())
+        FATAL_ERROR("GnssN2Project: eigen_channels list needs eigen_freq_ids");
 
     // The stage always writes the projected copy; mode is read only to refuse another value.
     const std::string mode = config.get_default<std::string>(unique_name, "mode", "live");
@@ -101,6 +103,7 @@ GnssN2Project::GnssN2Project(Config& config, const std::string& unique_name,
     nul.rel_min = 0.0;
     nul.frac_next_min = 0.0;
     live_ch.assign(num_local_freq, 0);
+    eigen_ch.assign(num_local_freq, 1);
     k_cur.assign(num_local_freq, 0);
     on.assign(num_local_freq, 0);
     lam0_rel.assign(num_local_freq, 0.0);
@@ -533,10 +536,21 @@ void GnssN2Project::main_thread() {
                 live_ch[f] = std::binary_search(wanted.begin(), wanted.end(), freq_ids[f]) ? 1 : 0;
                 n_live_ch += live_ch[f];
             }
+            std::vector<int> eig(eigen_freq_ids);
+            std::sort(eig.begin(), eig.end());
+            int n_eig = 0;
+            for (int f = 0; f < num_local_freq; ++f) {
+                eigen_ch[f] = eigen_channels == "all"                                   ? 1
+                              : eigen_channels == "live"                                ? live_ch[f]
+                              : std::binary_search(eig.begin(), eig.end(), freq_ids[f]) ? 1
+                                                                                        : 0;
+                n_eig += eigen_ch[f];
+            }
             live_ch_resolved = true;
             labelled_pub.store(true);
-            INFO("GnssN2Project: live writes restricted to {:d} of {:d} channels", n_live_ch,
-                 num_local_freq);
+            INFO("GnssN2Project: live writes restricted to {:d} of {:d} channels, the eigen "
+                 "path on {:d}",
+                 n_live_ch, num_local_freq, n_eig);
             if (n_live_ch == 0)
                 WARN("GnssN2Project: none of the {:d} live_freq_ids is on this GPU: it writes "
                      "nothing here",
@@ -567,8 +581,8 @@ void GnssN2Project::main_thread() {
 
         for (int t = 0; t < n_integrations; ++t) {
             for (int f = 0; f < num_local_freq; ++f) {
-                // eigen_channels live: a channel that is never written costs nothing.
-                if (eigen_live_only && !live_ch[f])
+                // A channel neither written nor on the eigen path costs nothing.
+                if (!live_ch[f] && !eigen_ch[f])
                     continue;
                 const int32_t* fin = in + (size_t)t * per_int + (size_t)f * per_freq;
                 gnss_n2proj::extract(layout, fin, stations, V.data());
@@ -583,13 +597,15 @@ void GnssN2Project::main_thread() {
                         gnss_n2proj::project(n, kl, lanes.q.data(), V.data(), W, M);
                 }
                 lane_k[f] = kl;
-                if (!use_residual) {
+                // eigen_channels list: a live channel outside it gets the lanes only.
+                const bool eig = use_residual && eigen_ch[f];
+                if (!eig) {
                     k_cur[f] = 0;
                     frac0[f] = lam0_rel[f] = pr0[f] = 0.0;
                 }
-                if (use_residual)
+                if (eig)
                     sub.push_cov(f, V.data(), dt_int);
-                if (use_residual && solve_now) {
+                if (eig && solve_now) {
                     const int ks = sub.solve(f, 2);
                     // Components spread over the array, in energy order; a lone correlated
                     // pair (PR 2) is skipped and the next component judged.
@@ -637,8 +653,9 @@ void GnssN2Project::main_thread() {
                 auto_proj[f] =
                     (k > 0 || kl > 0) ? gnss_n2proj::mean_auto(n, V.data()) : auto_raw[f];
                 if (k > 0 || kl > 0) {
-                    nul.push_cov(f, V.data(), dt_int);
-                    if (solve_now) {
+                    if (eigen_ch[f])
+                        nul.push_cov(f, V.data(), dt_int);
+                    if (eigen_ch[f] && solve_now) {
                         const int kn = nul.solve(f, 2);
                         double l1 = 0.0;
                         for (int j = 0; j < kn; ++j) {
@@ -684,7 +701,7 @@ void GnssN2Project::main_thread() {
         if (since_metric >= metric_period_s) {
             since_metric = 0.0;
             for (int f = 0; f < num_local_freq; ++f) {
-                if (eigen_live_only && !live_ch[f])
+                if (!live_ch[f] && !eigen_ch[f])
                     continue;
                 const std::string fid = std::to_string(freq_ids[f]);
                 g_k.labels({fid}).set(k_cur[f]);

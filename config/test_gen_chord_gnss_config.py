@@ -910,6 +910,8 @@ def test_manual_mask_reaches_the_node_config():
             "--elem-shared-ref-mode",
             "live",
             "--fleet-lanes",
+            "--n2-project-eigen-channels",
+            "5971-5980,6000",
         ]
         with stubbed(_HY):
             exc, out, err = run_main(argv)
@@ -933,6 +935,11 @@ def test_manual_mask_reaches_the_node_config():
         and proj.get("elem_steer_sign") == asm["elem_steer_sign"]
         and len(proj["elem_positions_enu"]) == 3 * len(proj["tracker_stations"]),
         "--fleet-lanes: the stage carries the assemblers' positions and sign",
+    )
+    check(
+        proj.get("eigen_channels") == "list"
+        and proj.get("eigen_freq_ids") == list(range(5971, 5981)) + [6000],
+        "--n2-project-eigen-channels ranges: the stage gets the list",
     )
     check(
         asm["chan_noise_norm_elems"] == sorted(set(range(128)) - out_set),
