@@ -313,5 +313,34 @@ class TestOrderAndReaders(CompactCase):
         self.assertEqual(self.l0_dump(), one)
 
 
+class TestFileRemovedDuringScan(CompactCase):
+    """A folded raw file removed between the listing and the stat (a sweep) is passed over,
+    not a crash, and the files still to fold are folded."""
+
+    def setUp(self):
+        super().setUp()
+        for j in range(4):
+            self.add_raw("%d.raw" % j, [frame(2 * j), frame(2 * j + 1)], T0 + 2 * j + 2)
+
+    def test_vanished_file_is_passed_over(self):
+        m = self.compact(newest_first=True, max_files=1)
+        self.assertEqual(sorted(m), ["3.raw"])
+        gone = os.path.join(self.raw, "3.raw")
+        real_stat = os.stat
+
+        def stat(p, *a, **k):
+            if p == gone:
+                raise FileNotFoundError(p)
+            return real_stat(p, *a, **k)
+
+        cc.os.stat = stat
+        try:
+            m = self.compact()
+        finally:
+            cc.os.stat = real_stat
+        self.assertEqual(sorted(m), ["0.raw", "1.raw", "2.raw", "3.raw"])
+        self.assertEqual(self.l0_rows(), 16)
+
+
 if __name__ == "__main__":
     unittest.main()

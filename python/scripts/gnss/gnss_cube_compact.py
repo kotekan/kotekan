@@ -338,6 +338,14 @@ class L0File:
         self.f.close()
 
 
+def _mtime(path):
+    """A file another process removed between the listing and the stat sorts oldest."""
+    try:
+        return os.path.getmtime(path)
+    except FileNotFoundError:
+        return -1.0
+
+
 def raw_files(rawdir, include_open):
     files = sorted(glob.glob(os.path.join(rawdir, "*.raw")))
     if not files:
@@ -348,7 +356,7 @@ def raw_files(rawdir, include_open):
         # ever be). Newest by mtime, not by name: a writer restarted with another file_name
         # sorts elsewhere, and the alphabetically last file could then be a closed one (never
         # folded) while the open one was folded early.
-        files.remove(max(files, key=os.path.getmtime))
+        files.remove(max(files, key=_mtime))
     return files
 
 
@@ -429,7 +437,10 @@ def cmd_compact(args):
     todo = []
     reskipped = 0
     for p in files:
-        st = os.stat(p)
+        try:
+            st = os.stat(p)
+        except FileNotFoundError:
+            continue  # removed since the listing (a sweep of folded raw files)
         key = os.path.basename(p)
         prev = manifest.get(key)
         if prev and prev["size"] == st.st_size and not args.redo:
