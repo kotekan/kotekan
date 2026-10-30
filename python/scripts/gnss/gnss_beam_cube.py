@@ -183,15 +183,16 @@ def angsep_deg(az1, el1, az2, el2):
 class Geometry:
     """BRDC positions on a 1-minute grid, plus the cross-chain railing veto for that minute."""
 
-    def __init__(self, day_unix, veto_deg, bore=(BORE_AZ, BORE_EL)):
+    def __init__(self, day_unix, veto_deg, bore=(BORE_AZ, BORE_EL), keep_own=False):
         self.eph = parse_rinex_nav(
             fetch_brdc(datetime.fromtimestamp(day_unix + 43200, tz=timezone.utc))
         )
         self.veto_deg = veto_deg
+        self.keep_own = keep_own
         self.bore = bore  # (az, el) deg, the array epoch's boresight
         self._pos = {}  # (sys, prn, minute) -> (el, az, range_m) or None
         self._all = {}  # minute -> {(sys, prn): v}
-        self._veto = {}  # minute -> (vetoed, closest_deg, closest_name)
+        self._veto = {}  # minute -> (vetoed, closest_deg, closest_name, names within)
 
     def _minute(self, minute):
         if minute not in self._all:
@@ -219,25 +220,37 @@ class Geometry:
             self._pos[key] = (v["el"], v["az"], v["range_m"]) if v else None
         return self._pos[key]
 
-    def vetoed(self, t):
+    def vetoed(self, t, own=None):
         """True if any satellite of any constellation is within veto_deg of boresight.
 
         Pooled over constellations because the chains share the 4+4b nibbles: a veto computed
         per chain would clean the one carrying the bright satellite and leave the rest
         contaminated while they look like clean controls.
+
+        With keep_own, a row whose OWN satellite `own` ("G3", "E16": sys letter + PRN) is the
+        CLOSEST to boresight survives: that is the main lobe, railed, which the plain veto
+        removes entirely (the 10-28 element-archive maps kept it; its core is an upper bound on
+        the beam width). Rows of every other satellite in such a minute are still dropped. The
+        closest, not "the only one within": a boresight pass (G13 at 0.12 deg, 10-29) is lost
+        otherwise whenever a second satellite sits at 3-5 deg, and the closest is the one doing
+        the railing.
         """
         if self.veto_deg <= 0.0:
             return False
         m = int(t // GEOM_BIN_S)
         if m not in self._veto:
-            best, name = 1e9, None
+            best, name, within = 1e9, None, set()
             for (sy, prn), v in self._minute(m).items():
                 if v is None or v.get("el") is None or v["el"] < 0.0:
                     continue
                 d = float(angsep_deg(v["az"], v["el"], *self.bore))
                 if d < best:
                     best, name = d, "%s%d" % (sy, prn)
-            self._veto[m] = (best < self.veto_deg, best, name)
+                if d < self.veto_deg:
+                    within.add("%s%d" % (sy, prn))
+            self._veto[m] = (best < self.veto_deg, best, name, within)
+        if self.keep_own and own is not None:
+            return self._veto[m][0] and own != self._veto[m][2]
         return self._veto[m][0]
 
     def veto_stats(self):
@@ -380,7 +393,7 @@ def build_day(args, chain, paths, day_unix, geom):
                     acc = CubeAccum(args.nside, len(rows[0]))
                     freq_ids = d.get("bin_freq_ids") or [[None, None]] * len(rows)
                 stats["rows"] += 1
-                if geom.vetoed(t):
+                if geom.vetoed(t, "%s%d" % (sys_, int(d["prn"]))):
                     stats["vetoed"] += 1
                     continue
                 g = geom.at(sys_, int(d["prn"]), t)
@@ -560,7 +573,7 @@ def prn_gain_table(args, chain, paths, day_unix, geom, dth=5.0, dphi=90.0, iters
         vet = np.zeros(len(uk), bool)
         for j, (pn, mn) in enumerate(uk):
             tt = mn * GEOM_BIN_S + GEOM_BIN_S / 2
-            vet[j] = geom.vetoed(tt)
+            vet[j] = geom.vetoed(tt, "%s%d" % (sys_, int(pn)))
             g = geom.at(sys_, int(pn), tt)
             if g and g[0] is not None:
                 el[j], az[j], rng[j] = g
@@ -728,7 +741,7 @@ def build_day_h5(args, chain, paths, day_unix, geom, prn_gain=None):
         vet = np.zeros(len(uk), bool)
         for j, (pn, mn) in enumerate(uk):
             tt = mn * GEOM_BIN_S + GEOM_BIN_S / 2
-            vet[j] = geom.vetoed(tt)
+            vet[j] = geom.vetoed(tt, "%s%d" % (sys_, int(pn)))
             g = geom.at(sys_, int(pn), tt)
             if g and g[0] is not None:
                 el[j], az[j], rng[j] = g
@@ -873,12 +886,13 @@ def cmd_build(args):
             continue
         print("%s: %d chain(s)" % (daystr, len(present)))
         bore = (epoch.pointing.bore_az_deg, epoch.pointing.bore_el_deg)
-        geom = Geometry(day_unix, args.veto_deg, bore)
+        geom = Geometry(day_unix, args.veto_deg, bore, keep_own=getattr(args, "veto_keep_own", False))
         out = {
             "nside": args.nside,
             "day": daystr,
             "source": args.source,
             "veto_deg": args.veto_deg,
+            "veto_keep_own": bool(getattr(args, "veto_keep_own", False)),
             "range_norm": not args.no_range_norm,
             "array_epoch": epoch.name,
             "array_epoch_key": epoch.key(),
@@ -1293,6 +1307,14 @@ def main():
         "of any constellation is within this many degrees of boresight, for "
         "every chain. 0 disables it and keeps the main lobe, contaminated by "
         "the railing -- quote its level as a lower bound",
+    )
+    b.add_argument(
+        "--veto-keep-own",
+        action="store_true",
+        help="in a vetoed minute keep the rows of the satellite closest to boresight "
+        "(the railed main lobe; its core is an upper bound on the beam width) and drop "
+        "only the other satellites' rows: the 10-28 element-archive method. Default: "
+        "drop every row in a vetoed minute",
     )
     b.add_argument("--mask-deg", type=float, default=0.0)
     b.add_argument(

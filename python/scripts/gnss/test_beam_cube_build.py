@@ -30,7 +30,7 @@ class StubGeom:
 
     bore = (bc.BORE_AZ, bc.BORE_EL)
 
-    def vetoed(self, t):
+    def vetoed(self, t, own=None):
         return False
 
     def at(self, sys_, prn, t):
@@ -145,8 +145,8 @@ class TestBuild(unittest.TestCase):
         made = self.made
 
         class SpyGeometry(self._saved["Geometry"]):
-            def __init__(self, *a):
-                super().__init__(*a)
+            def __init__(self, *a, **k):
+                super().__init__(*a, **k)
                 made.append(self)
 
         bc.fetch_brdc = lambda when: None
@@ -265,6 +265,40 @@ class TestBuild(unittest.TestCase):
         _, meta = self.build(health_mask=mask)
         self.assertIsNone(meta["health_mask"])
 
+
+
+class TestVetoKeepOwn(unittest.TestCase):
+    """The railing veto drops every row of a minute in which any satellite is within veto_deg of
+    boresight; with keep_own the satellite closest to boresight survives (the main lobe),
+    other satellites' rows in that minute still go, the closest of two within is kept."""
+
+    def _geom(self, keep_own, sats):
+        g = bc.Geometry.__new__(bc.Geometry)
+        g.veto_deg, g.keep_own, g.bore = 5.0, keep_own, (180.0, 62.7)
+        g._pos, g._all, g._veto = {}, {}, {}
+        g._all[0] = {k: dict(az=az, el=el, range_m=2e7) for k, (az, el) in sats.items()}
+        return g
+
+    def test_plain_veto_drops_the_own_satellite_too(self):
+        g = self._geom(False, {("G", 3): (180.0, 63.0), ("E", 16): (90.0, 30.0)})
+        self.assertTrue(g.vetoed(10.0, "G3"))
+        self.assertTrue(g.vetoed(10.0, "E16"))
+
+    def test_keep_own_keeps_only_the_satellite_within(self):
+        g = self._geom(True, {("G", 3): (180.0, 63.0), ("E", 16): (90.0, 30.0)})
+        self.assertFalse(g.vetoed(10.0, "G3"))
+        self.assertTrue(g.vetoed(10.0, "E16"))
+        self.assertTrue(g.vetoed(10.0), "no own given: the plain verdict")
+
+    def test_two_within_keeps_the_closest_only(self):
+        g = self._geom(True, {("G", 3): (180.0, 63.0), ("C", 20): (178.0, 60.0)})
+        self.assertFalse(g.vetoed(10.0, "G3"), "the closest (0.3 deg) survives")
+        self.assertTrue(g.vetoed(10.0, "C20"), "the second, at ~3 deg, does not")
+
+    def test_nothing_within_keeps_all(self):
+        g = self._geom(True, {("G", 3): (180.0, 40.0)})
+        self.assertFalse(g.vetoed(10.0, "G3"))
+        self.assertFalse(g.vetoed(10.0, "E16"))
 
 if __name__ == "__main__":
     unittest.main()
