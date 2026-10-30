@@ -274,8 +274,8 @@ if(HDF5_FOUND AND HighFive_FOUND)
     target_compile_definitions(test_hdf5N2Write
                                PRIVATE TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/testdata")
 
-    # SubsetBaseband feeding hdf5FileWrite. hdf5FileWrite has no header, so it is compiled in
-    # here, which also registers it with the StageFactory.
+    # SubsetBaseband feeding hdf5FileWrite. hdf5FileWrite has no header, so it is compiled in here,
+    # which also registers it with the StageFactory.
     add_executable(test_hdf5FileWrite_subset test_hdf5FileWrite_subset.cpp
                                              ${KOTEKAN_SOURCE_DIR}/lib/stages/hdf5FileWrite.cpp)
     target_link_libraries(
@@ -295,7 +295,7 @@ if(HDF5_FOUND AND HighFive_FOUND)
         test_hdf5FileWrite_subset PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages
                                           ${KOTEKAN_SOURCE_DIR}/lib/utils ${HDF5_INCLUDE_DIRS})
     target_include_directories(test_hdf5FileWrite_subset PUBLIC . ${CUDA_INCLUDE_DIR}
-                                                                  ${CUDA_INCLUDE_DIRS})
+                                                                ${CUDA_INCLUDE_DIRS})
 endif()
 
 add_executable(test_Telescope test_Telescope.cpp)
