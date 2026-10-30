@@ -137,7 +137,7 @@ struct DishParams {
     /// Dish pointing angle.  Measured in degrees from vertical.
     double dish_coelev_deg = 0.0;
 
-    /// Whether dish_coelev_deg came from the config or a pointing query, not the default.
+    /// Whether dish_coelev_deg is set in the config, not the default.
     bool dish_coelev_set = false;
 
     /// Dish positions in dish coordinate system.
@@ -441,7 +441,7 @@ public:
     /// Only ArrayDish stations are fringestopped.
     bool station_id_is_fringestopped(station_id_t st_id) const override;
 
-    /// True if dish_coelev_deg was set in the config or by a pointing query.
+    /// True if dish_coelev_deg is set in the config.
     bool phase_center_is_set() const override;
 
     /**
