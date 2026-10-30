@@ -1443,11 +1443,19 @@ numa_{{ numa }}:
         time_downsampling_fpga: frb2_weights_lifetime_in_samples
         mode: manual
         num_beams: frb2_num_beams
-        # beam separation in EW should be 0.4deg
+        # beam separation in EW should be 0.4deg such that beam 0 is the
+        # easternmost beam, beam 1 is zenith, and beam 3 is the westermost
+        # beam.
+        # The code uses East as the positive angle direction:
+        # (+x -> East, +y -> North), so westermost has large negative values.
         # beam separtion in NS is such that sin(angle) changes by sqrt(3)/256
-        # from https://github.com/chime-frb-open-data/chime-frb-beam-model/blob/e65b070243056fe5d33a2b1f4ce52ce685b74fc5/cfbm/formed.py#L86 via Paul Scholz
+        # from
+        # https://github.com/chime-frb-open-data/chime-frb-beam-model/blob/e65b070243056fe5d33a2b1f4ce52ce685b74fc5/cfbm/formed.py#L86
+        # via Paul Scholz
+        # starting at beam 0 pointing South by almost 60degree, and beam 255 pointing
+        # North by exactly 60 degree, beam 127 at zenith
         {% set sin_achromatic_beam_angles_EW = [
-          -0.00698126029796155, 0.0, 0.00698126029796155, 0.0139621803391453
+          +0.00698126029796155, 0.0, -0.00698126029796155, -0.0139621803391453
         ] %}
         # Beam R = ns * frb2_num_beams_x + ew, with the CHIME/FRB beam id 1000 * ew + ns.
         # x_dir_grid and y_dir_grid are the direction sines in the normal vector,
