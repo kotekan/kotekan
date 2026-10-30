@@ -84,9 +84,6 @@ target_link_libraries(n2k ksgpu)
 target_include_directories(n2k PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_include_directories(n2k PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 
-# Install the shared library so installed kotekan can find libn2k at runtime.
-install(TARGETS n2k LIBRARY DESTINATION lib)
-
 # Set language for CUDA files
 set_target_properties(n2k PROPERTIES LANGUAGE CUDA)
 set_target_properties(n2k PROPERTIES LINKER_LANGUAGE CUDA)
