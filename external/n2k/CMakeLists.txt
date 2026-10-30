@@ -87,9 +87,6 @@ target_include_directories(n2k PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 # Install the shared library so installed kotekan can find libn2k at runtime.
 install(TARGETS n2k LIBRARY DESTINATION lib)
 
-# Set architecture flags
-set_target_properties(n2k PROPERTIES CUDA_ARCHITECTURES "${CMAKE_CUDA_ARCHITECTURES}")
-
 # Set language for CUDA files
 set_target_properties(n2k PROPERTIES LANGUAGE CUDA)
 set_target_properties(n2k PROPERTIES LINKER_LANGUAGE CUDA)
