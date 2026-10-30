@@ -547,15 +547,15 @@ void dpdkCore::update_port_stats() {
                 ? std::min(packet_buffer_dropped - last_packet_buffer_dropped[port], missed_delta)
                 : 0;
         if (missed_delta > 0) {
-            WARN("Port {:d}: NIC dropped {:d} packets since the last poll (~1s): {:d} in the NIC "
-                 "packet buffer (DMA to host memory stalled), {:d} because the rx ring was full; "
+            INFO("Port {:d}: NIC dropped {:d} packets since the last poll (~1s): {:d} in the NIC "
+                 "packet buffer, {:d} because the rx ring was full; "
                  "total missed: {:d}{:s}",
                  port, missed_delta, packet_buffer_delta, missed_delta - packet_buffer_delta,
                  stats.imissed, loop_info);
         }
 #ifdef DPDK_EXTRA_STATS
         if (missed_delta == 0 && max_poll_interval_us > rx_loop_pause_warn_us) {
-            WARN("Port {:d}: rx poll loop paused for {:.0f} us (rx_burst {:.0f} us, handlers "
+            INFO("Port {:d}: rx poll loop paused for {:.0f} us (rx_burst {:.0f} us, handlers "
                  "{:.0f} us) without dropping packets; peak ring occupancy {:d} of {:d}",
                  port, max_poll_interval_us, max_burst_us, max_handle_us, max_queue_count,
                  rx_ring_size);
