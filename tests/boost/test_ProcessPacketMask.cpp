@@ -84,7 +84,7 @@ struct MaskPipeline {
               {"element_long", element_long},
               {"num_source_ids", num_source_ids},
               {"missing_source_ids", {5}},
-              {"crs_board_remap", {0, 2, 4, 6, 8, 10, 12, 15, 1, 3, 5, 7, 9, 11, 13, 14}}}}};
+              {"crs_board_remap", {0, 2, 4, 6, 8, 10, 12, 14, 1, 3, 5, 7, 9, 11, 13, 15}}}}};
         config.update_config(cfg);
         pl_mask.ensure_frame_desc(kotekan::GenericNDArray::describe(
             kotekan::uint1x8, "pl_mask_exp",
