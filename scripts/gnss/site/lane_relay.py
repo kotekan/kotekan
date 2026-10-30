@@ -38,7 +38,7 @@ NODES = "config/chord_gnss_node.yaml"
 GEN = "config/generated/chord_gnss_%s_multi.yaml"
 PORT = 12048
 CH_MHZ = 0.1953125
-OWNER = re.compile(r"^gnss(\d)(?:_([a-z0-9]+))?_n2assemble/lane/(\d+)$")
+OWNER = re.compile(r"^/?gnss(\d)(?:_([a-z0-9]+))?_n2assemble/lane/(\d+)$")
 LOG_EVERY_S = 60.0
 ERR_EVERY_S = 300.0
 
