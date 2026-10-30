@@ -29,8 +29,35 @@ extern "C" {
 #include "fmt.hpp" // for format
 
 #include <atomic> // for atomic
+#include <memory> // for unique_ptr
 #include <string> // for string, allocator, basic_string
 #include <vector> // for vector
+
+/**
+ * @brief Timing of the rx poll loop on one port.
+ *
+ * Written by the lcore that polls the port, and read then reset by the main thread once per
+ * stats period. A port whose rx ring overflows is then either an lcore that paused (a long
+ * poll interval) or one that cannot keep up (short poll intervals, full bursts and a rising
+ * ring occupancy). Times are TSC cycles. A maximum stored while the main thread resets it
+ * carries into the next period, which is harmless.
+ */
+struct alignas(64) rxLoopStats {
+    /// Longest interval between two consecutive @c rte_eth_rx_burst calls
+    std::atomic<uint64_t> max_poll_interval_cycles{0};
+    /// Longest single @c rte_eth_rx_burst call
+    std::atomic<uint64_t> max_burst_cycles{0};
+    /// Longest time spent handling the packets of one burst
+    std::atomic<uint64_t> max_handle_cycles{0};
+    /// Highest rx ring occupancy seen, in descriptors
+    std::atomic<uint32_t> max_queue_count{0};
+    /// Number of @c rte_eth_rx_burst calls, how many returned packets, how many were full
+    std::atomic<uint64_t> polls{0};
+    std::atomic<uint64_t> bursts{0};
+    std::atomic<uint64_t> full_bursts{0};
+    /// TSC at the previous poll, used only by the lcore
+    uint64_t last_poll_cycles = 0;
+};
 
 /**
  * @brief Abstract object for processing packets that come from a given NIC port
@@ -176,7 +203,15 @@ protected:
  * @metric kotekan_dpdk_nic_rx_bytes_total
  *         The number of bytes received
  * @metric kotekan_dpdk_nic_rx_missed_total
- *         Packets dropped because the NIC packet buffer or the rx ring was full
+ *         Packets the NIC dropped, the sum of the two reasons below
+ * @metric kotekan_dpdk_nic_rx_packet_buffer_dropped_packets_total
+ *         Packets discarded in the NIC receive packet buffer because the NIC could not
+ *         DMA them to host memory in time. Needs the driver's rx_dropped_packets stat
+ *         (ice, i40e); not exported without it.
+ * @metric kotekan_dpdk_nic_rx_ring_full_dropped_packets_total
+ *         Packets dropped because the rx ring had no free descriptor, i.e. the lcore did
+ *         not service the port in time. Without the packet buffer stat this is all of
+ *         kotekan_dpdk_nic_rx_missed_total.
  * @metric kotekan_dpdk_nic_rx_errors_total
  *         Bad frames dropped (CRC, size, fragment and jabber errors)
  * @metric kotekan_dpdk_nic_rx_nombuf_total
@@ -197,9 +232,24 @@ protected:
  *         MAC local faults: the NIC lost the incoming signal
  * @metric kotekan_dpdk_nic_mac_remote_errors_total
  *         MAC remote faults: the link partner lost the signal from the NIC
- * @metric kotekan_dpdk_nic_rx_dropped_packets_total
- *         Packets dropped in the NIC packet buffer. On E810 this is part of
- *         kotekan_dpdk_nic_rx_missed_total; the rest are rx ring overflows.
+ *
+ * @par Rx loop metrics
+ * Timing of the rx poll loop, with a @c port label, to tell an lcore that paused from one
+ * that cannot keep up. The @c max gauges cover the last stats period (~1 s).
+ * @metric kotekan_dpdk_rx_loop_max_poll_interval_us
+ *         Longest interval between two consecutive rte_eth_rx_burst calls
+ * @metric kotekan_dpdk_rx_loop_max_burst_us
+ *         Longest single rte_eth_rx_burst call
+ * @metric kotekan_dpdk_rx_loop_max_handle_us
+ *         Longest time spent handling the packets of one burst
+ * @metric kotekan_dpdk_rx_loop_max_queue_count
+ *         Highest rx ring occupancy seen, in descriptors, sampled every 1024 polls
+ * @metric kotekan_dpdk_rx_loop_polls_total
+ *         Number of rte_eth_rx_burst calls
+ * @metric kotekan_dpdk_rx_loop_bursts_total
+ *         Number of rte_eth_rx_burst calls that returned packets
+ * @metric kotekan_dpdk_rx_loop_full_bursts_total
+ *         Number of rte_eth_rx_burst calls that returned burst_size packets
  *
  * @author Andre Renard
  */
@@ -264,11 +314,17 @@ private:
     /**
      * @brief Polls the per-port NIC hardware counters and link state.
      *
-     * Logs link state changes and NIC-level packet drops (e.g. rx ring overflows
-     * when an lcore stalls), and exports them as prometheus metrics. Runs on the
-     * main thread, so it keeps working even if the rx lcores are stuck.
+     * Logs link state changes, NIC-level packet drops (e.g. rx ring overflows
+     * when an lcore stalls) and rx poll loop pauses, and exports them as prometheus
+     * metrics. Runs on the main thread, so it keeps working even if the rx lcores are stuck.
      */
     void update_port_stats();
+
+    /// Timing of the rx poll loop, one per system port, written by the lcores.
+    std::unique_ptr<rxLoopStats[]> rx_loop_stats;
+
+    /// TSC frequency, for converting @c rxLoopStats cycles to microseconds.
+    uint64_t tsc_hz;
 
     /// The NIC hardware stats at the last poll, per port, for computing deltas.
     std::vector<struct rte_eth_stats> last_eth_stats;
@@ -280,6 +336,9 @@ private:
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& nic_rx_packets_total_metric;
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& nic_rx_bytes_total_metric;
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& nic_rx_missed_total_metric;
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>&
+        nic_rx_packet_buffer_dropped_metric;
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& nic_rx_ring_full_dropped_metric;
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& nic_rx_errors_total_metric;
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& nic_rx_nombuf_total_metric;
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& nic_link_up_metric;
@@ -293,6 +352,22 @@ private:
     /// The metric for each id in @c nic_xstat_ids, per port.
     std::vector<std::vector<kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>*>>
         nic_xstat_port_metrics;
+
+    /// The driver id of the NIC packet buffer discard stat (rx_dropped_packets), per port,
+    /// or -1 if the driver has none.
+    std::vector<int64_t> packet_buffer_xstat_id;
+
+    /// The NIC packet buffer discard count at the last poll, per port, for computing deltas.
+    std::vector<uint64_t> last_packet_buffer_dropped;
+
+    /// Prometheus metrics for the rx poll loop timing
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& rx_loop_max_poll_interval_metric;
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& rx_loop_max_burst_metric;
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& rx_loop_max_handle_metric;
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& rx_loop_max_queue_count_metric;
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& rx_loop_polls_total_metric;
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& rx_loop_bursts_total_metric;
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& rx_loop_full_bursts_total_metric;
 
     /// The pool of DPDK mbufs, one per numa node
     std::vector<struct rte_mempool*> mbuf_pools;
