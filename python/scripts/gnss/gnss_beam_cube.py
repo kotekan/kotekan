@@ -951,6 +951,9 @@ def cmd_build(args):
             "nside": args.nside,
             "day": daystr,
             "source": args.source,
+            # where a row is placed on the sky: l0 rows at their own time (BRDC interpolated
+            # between minute midpoints), elem rows at their minute's midpoint
+            "row_position": "interpolated" if args.source == "l0" else "minute",
             "veto_deg": args.veto_deg,
             "veto_keep_own": bool(getattr(args, "veto_keep_own", False)),
             "pedestal_ref": getattr(args, "pedestal_ref", "envelope"),
