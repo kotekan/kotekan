@@ -79,4 +79,4 @@ jobs:
             --mount type=bind,src="$(pwd)",target=/code/kotekan \
             -w /code/kotekan \
             "${IMAGE}" \
-            /code/kotekan/tools/lint.sh -i ON -d /code/kotekan
+            bash -c "python3 -m pip install -r tools/requirements-lint.txt && /code/kotekan/tools/lint.sh -i ON -d /code/kotekan"

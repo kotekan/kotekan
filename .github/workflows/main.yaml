@@ -323,6 +323,7 @@ jobs:
       post_build: |
         cd $GITHUB_WORKSPACE
         git config --global --add safe.directory $GITHUB_WORKSPACE
+        python3 -m pip install -r tools/requirements-lint.txt
         bash ./tools/lint.sh
 
   # If kotekan-lint failed, open a PR with lint fixes back to the branch
@@ -370,7 +371,7 @@ jobs:
             --mount type=bind,src="$(pwd)",target=/code/kotekan \
             -w /code/kotekan \
             "${IMAGE}" \
-            bash -c "git config --global --add safe.directory /code/kotekan && /code/kotekan/tools/lint.sh -e OFF -d /code/kotekan" \
+            bash -c "git config --global --add safe.directory /code/kotekan && python3 -m pip install -r tools/requirements-lint.txt && /code/kotekan/tools/lint.sh -e OFF -d /code/kotekan" \
             || true
 
       - name: Restore file ownership (container ran as root)
