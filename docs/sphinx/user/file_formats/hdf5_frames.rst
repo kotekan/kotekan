@@ -160,6 +160,16 @@ values of ``fpga_seq_num``; however, a new file is created whenever a non-contig
 sample is received, which can result in significantly more files than expected
 being created.
 
+Buffers without a leading time axis
+-----------------------------------
+A buffer whose frames have no time axis (for example one value per frequency per
+frame) can still be stored several frames per file with ``add_time_axis: true``.
+Each frame is then written as one step of an added leading axis ``T``, whose
+``dim_scalings`` entry is the frame's ``time_downsampling_fpga``; the frames must
+carry ``fpga_seq_num``, and ``time_downsampling_fpga`` must be the frame period,
+so that consecutive frames are contiguous. The files have one more dimension than
+the buffer, and ``hdf5FileRead`` does not read them back.
+
 N2-metadata layout
 ==================
 
@@ -271,6 +281,14 @@ Configuration
    * - ``use_compression``
      - true
      - Compress the data with bitshuffle+zstd (filter 32008).
+   * - ``frames_per_file``
+     - 1
+     - Frames per file when ``create_single_file`` is false (see
+       `Multi-frame constraints`_).
+   * - ``add_time_axis``
+     - false
+     - Store each frame as one step of an added leading ``T`` axis (CHORD mode
+       only; see `Buffers without a leading time axis`_).
    * - ``write_x_frames``, ``per_y_frames``
      - -1
      - Decimation: write only the first X out of every Y frames. Cannot be

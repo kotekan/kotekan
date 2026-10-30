@@ -44,6 +44,8 @@
 # or from a derived config; 1 already gives every pipeline its own disjoint triple (the base is a
 # pipeline INDEX), larger steps only spread them out.
 {% set stream_base_step = stream_base_step | default(0) %}
+{# With dtv_apply_mask, the correlators and RfiMaskSum read the DTV-merged mask (see dtv.j2). #}
+{% set n2k_rfi_name = "dtv_RFImask" if dtv_apply_mask|default(false) else "rfi_RFImask" %}
 
 # The two NUMA halves. Each owns a NIC port, a GPU and a set of cores, and every per-half
 # buffer and stage below loops over this table; a block that exists once per half is
@@ -901,6 +903,10 @@ run_recv_rfi_RFImask:
           ring_buffer_size: buffer_depth * output_size
           out_buf: host_rfi_RFImask_buffer_out
 {% endfor %}
+{#- PilotProxy DTV pilot detector, off unless dtv_enabled or dtv_apply_mask is set (see dtv.j2). #}
+{%- if dtv_enabled|default(false) or dtv_apply_mask|default(false) %}
+{% include "dtv.j2" %}
+{% endif %}
 
 # Only the "normal" (downsampled) PL mask is sent to the GPU. This expands that mask for
 # the 1 bit correlator kernel. Other stages use the downsampled mask directly.
@@ -933,14 +939,14 @@ run_pl_corr:
         cpu_affinity: {{ n.gpu_cpus }}
         in_buffers:
             host_pl_mask_exp_ringbuffer: host_pl_mask_exp_ringbuffer{{ n.sfx }}
-            host_rfi_RFImask_ringbuffer: host_rfi_RFImask_ringbuffer{{ n.sfx }}
+            host_{{ n2k_rfi_name }}_ringbuffer: host_{{ n2k_rfi_name }}_ringbuffer{{ n.sfx }}
         out_buffers:
             host_counts_buffer: host_counts_buffer{{ n.sfx }}
         commands:
         - name: cudaPL1bitCorrelator
           num_frequencies: num_local_freq
           pl_expanded_mask_name: pl_mask_exp
-          rfi_RFImask_name: rfi_RFImask
+          rfi_RFImask_name: {{ n2k_rfi_name }}
           n2k_counts_name: counts
         - name: cudaSyncOutput
         - name: cudaOutputData
@@ -959,14 +965,14 @@ run_n2k:
         cpu_affinity: {{ n.gpu_cpus }}
         in_buffers:
             host_voltage_ringbuffer: host_voltage_ringbuffer{{ n.sfx }}
-            host_rfi_RFImask_ringbuffer: host_rfi_RFImask_ringbuffer{{ n.sfx }}
+            host_{{ n2k_rfi_name }}_ringbuffer: host_{{ n2k_rfi_name }}_ringbuffer{{ n.sfx }}
         out_buffers:
             host_correlation: host_correlation_buffer{{ n.sfx }}
         commands:
         - name: cudaCorrelator
           n2k_correlation_name: correlation
           voltage_name: voltage
-          rfi_RFImask_name: rfi_RFImask
+          rfi_RFImask_name: {{ n2k_rfi_name }}
         - name: cudaSyncOutput
         - name: cudaOutputData
           gpu_mem: correlation_buffer
@@ -980,7 +986,7 @@ run_n2k:
 count_rfi_mask{{ n.sfx }}:
     kotekan_stage: RfiMaskSum
     cpu_affinity: {{ n.other_cpus }}
-    in_buf: host_rfi_RFImask_buffer{{ n.sfx }}
+    in_buf: host_{{ n2k_rfi_name }}_buffer{{ n.sfx }}
     out_buf: host_rfi_RFImask_counts_buffer{{ n.sfx }}
 
 count_PL{{ n.sfx }}:

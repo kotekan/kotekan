@@ -3,14 +3,16 @@
 #include "NDArray.hpp"                    // for NDArray
 #include "NDArrayBuffer.hpp"              // for NDArrayBuffer
 #include "NDArrayRingBuffer.hpp"          // for NDArrayRingBuffer, read_descriptor_t
+#include "Telescope.hpp"                  // for Telescope
 #include "bufferContainer.hpp"            // for bufferContainer
 #include "chordMetadata.hpp"              // for chordMetadata
+#include "configUpdater.hpp"              // for configUpdater
 #include "cudaCommand.hpp"                // for cudaCommand, cudaCommandState, ...
 #include "cudaDeviceInterface.hpp"        // for cudaDeviceInterface
 #include "cudaPilotProxyPacker.hpp"       // for launch_pilotproxy_pack
 #include "cudaUtils.hpp"                  // for CHECK_CUDA_ERROR
 #include "gpuCommand.hpp"                 // for gpuCommandType
-#include "kotekanLogging.hpp"             // for FATAL_ERROR, INFO, DEBUG
+#include "kotekanLogging.hpp"             // for FATAL_ERROR, WARN, INFO, DEBUG
 #include "pilotproxy/pilotproxy_core.hpp" // for PilotProxyCore, pilotproxy_core
 
 #include "fmt.hpp"  // for compile_string_to_view
@@ -26,6 +28,7 @@
 #include <cstdint>            // for uint64_t, int8_t, uint8_t
 #include <cuda_runtime_api.h> // for cudaMemsetAsync, cudaMemcpyAsync
 #include <driver_types.h>     // for cudaEvent_t, cudaStream_t
+#include <exception>          // for exception
 #include <filesystem>         // for path
 #include <fstream>            // for ifstream
 #include <functional>         // for function
@@ -34,6 +37,7 @@
 #include <limits>             // for numeric_limits
 #include <map>                // for map
 #include <memory>             // for shared_ptr, static_pointer_cast
+#include <mutex>              // for mutex, lock_guard
 #include <set>                // for set
 #include <sstream>            // for istringstream
 #include <string>             // for string, stoull
@@ -145,6 +149,12 @@ public:
     std::vector<int> bound_coarse_freq; // coarse_freq at binding, to detect changes
     std::vector<BoundChannel> bound_channels;
     bool logged_disabled = false;
+
+    // On/off switch from enabled_updatable_config, applied by execute()
+    std::mutex enabled_mutex;
+    bool enabled = true;
+    bool next_enabled = true;
+    std::int64_t next_enabled_valid_at_seq = std::numeric_limits<std::int64_t>::max();
 
     const std::int8_t* weights_for(const PilotChannelProfile& profile) const {
         return weight_bank.data() + profile.weight_offset_bytes;
@@ -557,6 +567,12 @@ private:
  * @conf weights_path               String. Runtime bundle weights.bin.
  * @conf receiver_channel_id_namespace String. coarse_freq namespace: chord_freq_id (default)
  *                                  or chime_freq_id. Must match the bundle.
+ * @conf enabled_updatable_config   String. Optional path to an updatable config block with
+ *                                  fields `enabled` (bool) and `valid_at_time_ns` (int64),
+ *                                  switching the detector on or off from the first block
+ *                                  starting at or after that instrument time (0 means from
+ *                                  startup). While off, the kernels are skipped and every
+ *                                  frequency reports mask 0, powers 0 and fine support (-1,-1).
  */
 class cudaPilotProxyDetector : public cudaCommand {
 public:
@@ -575,6 +591,9 @@ private:
 
     void bind_first_frame(const std::shared_ptr<const chordMetadata>& metadata);
 
+    /// Queue an update from the `enabled_updatable_config` block
+    bool receive_enabled(nlohmann::json& json);
+
     std::shared_ptr<State> detector_state;
 
     // Parameters
@@ -590,6 +609,7 @@ private:
     const std::string dtv_mask_name;
     const std::string dtv_powers_name;
     const std::string dtv_fine_support_name; // empty: no fine-support output
+    const std::string enabled_config_path;
 
     // Block geometry
     const int detector_window_samples;    // K
@@ -636,6 +656,8 @@ cudaPilotProxyDetector::cudaPilotProxyDetector(kotekan::Config& config,
     dtv_powers_name(config.get_default<std::string>(unique_name, "dtv_powers_name", "dtv_powers")),
     dtv_fine_support_name(
         config.get_default<std::string>(unique_name, "dtv_fine_support_name", "")),
+    enabled_config_path(
+        config.get_default<std::string>(unique_name, "enabled_updatable_config", "")),
     // Block geometry
     detector_window_samples(query_window_samples(*detector_state->core)),
     samples_per_detector_frame(detector_window_samples * query_fine_windows(*detector_state->core)),
@@ -682,6 +704,12 @@ cudaPilotProxyDetector::cudaPilotProxyDetector(kotekan::Config& config,
             std::array<std::ptrdiff_t, 2>{1, 1}, *this);
         dtv_fine_support->register_producer();
     }
+
+    // The switch lives in the state shared by all instances, so subscribe once.
+    if (!enabled_config_path.empty() && get_instance_num() == 0)
+        kotekan::configUpdater::instance().subscribe(
+            enabled_config_path,
+            std::bind(&cudaPilotProxyDetector::receive_enabled, this, std::placeholders::_1));
 
     set_command_type(gpuCommandType::KERNEL);
 }
@@ -796,19 +824,17 @@ cudaEvent_t cudaPilotProxyDetector::execute(cudaPipelineState& /*pipestate*/,
     dtv_mask.set_metadata(in_metadata);
     dtv_powers.set_metadata(in_metadata);
     const std::ptrdiff_t block_start_sample = voltage.get_read_valid().begin();
+    const std::int64_t block_seq = in_metadata->get_fpga_seq_num()
+                                   + block_start_sample * in_metadata->get_time_downsampling_fpga();
     for (const auto& metadata : {dtv_mask.get_metadata(), dtv_powers.get_metadata()}) {
-        metadata->set_fpga_seq_num(in_metadata->get_fpga_seq_num()
-                                   + block_start_sample
-                                         * in_metadata->get_time_downsampling_fpga());
+        metadata->set_fpga_seq_num(block_seq);
         metadata->set_time_downsampling_fpga(in_metadata->get_time_downsampling_fpga()
                                              * samples_per_detector_frame);
     }
     if (dtv_fine_support) {
         dtv_fine_support->set_metadata(in_metadata);
         const auto metadata = dtv_fine_support->get_metadata();
-        metadata->set_fpga_seq_num(in_metadata->get_fpga_seq_num()
-                                   + block_start_sample
-                                         * in_metadata->get_time_downsampling_fpga());
+        metadata->set_fpga_seq_num(block_seq);
         metadata->set_time_downsampling_fpga(in_metadata->get_time_downsampling_fpga()
                                              * samples_per_detector_frame);
     }
@@ -838,6 +864,20 @@ cudaEvent_t cudaPilotProxyDetector::execute(cudaPipelineState& /*pipestate*/,
         }
         return record_end_event();
     }
+
+    {
+        std::lock_guard<std::mutex> lock(state.enabled_mutex);
+        if (block_seq >= state.next_enabled_valid_at_seq) {
+            // WARN, not INFO, so a transition shows at the production log level
+            if (state.next_enabled != state.enabled)
+                WARN("PilotProxy detector {:s} from seq {:d}", state.next_enabled ? "on" : "off",
+                     block_seq);
+            state.enabled = state.next_enabled;
+            state.next_enabled_valid_at_seq = std::numeric_limits<std::int64_t>::max();
+        }
+    }
+    if (!state.enabled)
+        return record_end_event();
 
     const kotekan::int4x2_swapped_withoffset_t* const voltage_memory = voltage.get_ndarray().data();
     const std::ptrdiff_t ring_size = voltage.get_ndarray().extent(0);
@@ -881,6 +921,37 @@ cudaEvent_t cudaPilotProxyDetector::execute(cudaPipelineState& /*pipestate*/,
     }
 
     return record_end_event();
+}
+
+bool cudaPilotProxyDetector::receive_enabled(nlohmann::json& json) {
+    bool enabled;
+    std::int64_t time_ns;
+    try {
+        enabled = json.at("enabled").get<bool>();
+        time_ns = json.at("valid_at_time_ns").get<std::int64_t>();
+    } catch (std::exception& e) {
+        WARN("Failed to read update to {:s}: {:s}", enabled_config_path, e.what());
+        return false;
+    }
+
+    // 0 means from startup. A time before the stream start would underflow in `to_seq`;
+    // refuse it. Return true: a false return stops kotekan.
+    std::int64_t seq = 0;
+    if (time_ns != 0) {
+        if (time_ns < Telescope::instance().to_time_ns(0)) {
+            WARN("Got invalid start time: {:d} - keeping the current PilotProxy detector state",
+                 time_ns);
+            return true;
+        }
+        seq = Telescope::instance().to_seq(time_ns);
+    }
+    INFO("{:s} the PilotProxy detector from seq {:d}", enabled ? "Enabling" : "Disabling", seq);
+
+    State& state = *detector_state;
+    std::lock_guard<std::mutex> lock(state.enabled_mutex);
+    state.next_enabled = enabled;
+    state.next_enabled_valid_at_seq = seq;
+    return true;
 }
 
 void cudaPilotProxyDetector::finalize_frame() {
