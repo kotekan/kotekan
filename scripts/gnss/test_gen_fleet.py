@@ -61,6 +61,14 @@ def test_relay_notes():
     check(err.getvalue() == "", "a run with no SKIPPED or WARNING relays nothing")
 
 
+def test_common_flags_leave_out_site_keys():
+    man = {"common": {"fleet-lanes": True, "fleet-lane-transfer": ["l2c:1217.4-1237.8"]}}
+    check(
+        gen_fleet.common_flags(man) == ["--fleet-lanes"],
+        "a site-only common key (the relay's transfer table) is not a generator flag",
+    )
+
+
 def test_check_relays_notes():
     """--check of one node whose generator succeeds with a note on stderr."""
     with tempfile.TemporaryDirectory() as d:

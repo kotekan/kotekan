@@ -174,6 +174,12 @@ def flags_from(mapping):
     return out
 
 
+def common_flags(man):
+    """The manifest's `common:` as generator flags, less the keys only site services read."""
+    common = man.get("common") or {}
+    return flags_from({k: v for k, v in common.items() if k not in gnss_fleet.SITE_KEYS})
+
+
 # ---- PRN content gate (--check-prns) -------------------------------------------------------
 # --check compares the generated files and is offline and deterministic. --check-prns asks a
 # different question: are the manifest's hand-written PRN lists, the slots each node boots
@@ -563,7 +569,7 @@ def main():
         )
         raise SystemExit(2)
     suffix = man.get("suffix", "")
-    common = flags_from(man.get("common") or {})
+    common = common_flags(man)
     # Every config, written or checked, is diffed against the stock render (stock_parity.py);
     # an undeclared difference stops a write and fails --check. Rendered once here.
     stock_ref = stock_parity.render_stock(base)
