@@ -68,7 +68,4 @@ if(TARGET n2k)
         PROPERTY INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/lib")
 endif()
 
-install(
-    TARGETS kotekan
-    DESTINATION /usr/local/bin
-    COMPONENT binaries)
+install(TARGETS kotekan RUNTIME COMPONENT binaries)
