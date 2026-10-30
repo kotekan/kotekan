@@ -131,7 +131,10 @@ possible on cf05 (DPDK EAL): the canary is the first real construction.
 ### Fleet
 
 Every node on the binary, `fleet-lanes: true` everywhere, `systemctl --user start
-gnss-lanerelay` (in gnss-stack.target; `run_component.sh lanerelay`). Then
+gnss-lanerelay` (in gnss-stack.target; `run_component.sh lanerelay`). Stop the canary's relay
+first (`systemctl --user stop gnss-lanerelay-canary`, the transient unit run on 2026-10-30): the
+target wants gnss-lanerelay, so a daemon-reload and a target start bring the fleet relay up beside
+it, and two relays post to the same GPUs. Then
 `fleet-lane-transfer` grows: `glo_l2of` across 1237.9-1258.2 MHz once that range is in
 `n2-project-live-freq-ids` (split the projection list from the SK-exemption list first), the
 E6 PRS upper lobe, the B2/E5 edges.
