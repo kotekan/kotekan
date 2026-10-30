@@ -1430,6 +1430,15 @@ and the cube leg's unit. Until this is understood, stop the broker and gather by
 
 ## Open — the fix is in the NODE BINARY (queue for the next cycle)
 
+### #225 — GnssN2Project runs at 77-86 % of its core per GPU after the 2026-10-30 widening (43 channels, 20-30 lanes): the lane projection's n^2 k per channel-frame is the cost, and the headroom shrinks as satellites rise
+**What:** the stage is single-threaded on one core per GPU (`n2-project-cpus` 15/19). With the 2026-10-30 widening to
+5939-6626 (the eigen path confined to the lobes by `eigen_channels: list`) the fleet's cores read 77-86 % at 28-30
+lanes per lobe channel, up from 65-73 % at 32 channels, with no backlog in host_correlation_buffer. The lane path
+(gnssN2ProjectMath::project, W = VQ and the rank-k update of V, ~4 n^2 k complex MACs) dominates; the 40-lane cap is
+the worst case, ~30 % above tonight's. **Levers:** project() on the upper triangle only (V is Hermitian; ~1.5-2x),
+channel-parallel threads on the idle HT siblings 47/51, a lane budget ordered by strength rather than board order.
+Related: the relay's copies of a GPU's own satellites on far targets (docs/CHORD_FLEET_LANES.md, Fleet).
+
 
 
 ### #217 — the assemblers' transit freeze is not observable (2026-10-26)
