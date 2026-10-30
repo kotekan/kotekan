@@ -44,8 +44,23 @@ DishParams DishParams::from_config(const kotekan::Config& config, const std::str
                                    double dish_separation_y_m) {
     DishParams dish_params;
 
-    // Dish pointing co-elevation
-    dish_params.dish_coelev_deg = config.get_default<double>(path, "dish_coelev_deg", 0.0);
+    // Dish pointing co-elevation. Fringestopping needs it set; the default serves the rest.
+    try {
+        config.get_value(path, "dish_coelev_deg");
+        dish_params.dish_coelev_set = true;
+    } catch (const std::runtime_error&) {
+        dish_params.dish_coelev_set = false;
+    }
+    if (dish_params.dish_coelev_set)
+        dish_params.dish_coelev_deg = config.get<double>(path, "dish_coelev_deg");
+    if (!std::isfinite(dish_params.dish_coelev_deg) || std::abs(dish_params.dish_coelev_deg) > 90.0)
+        FATAL_ERROR_NON_OO("CHORDTelescope dish_coelev_deg {:f} is outside [-90, 90].",
+                           dish_params.dish_coelev_deg);
+    if (dish_params.dish_coelev_set)
+        INFO_NON_OO("CHORDTelescope dish pointing co-elevation: {:f} deg.",
+                    dish_params.dish_coelev_deg);
+    else
+        INFO_NON_OO("CHORDTelescope dish pointing not set; using 0.0 deg.");
 
     // Whether to check for duplicate dish grid locations
     const bool check_duplicate_dish_grid =
@@ -489,6 +504,17 @@ bool CHORDTelescope::query_gps_time0_ns(uint64_t& time0_ns, int timeout) const {
 
 uint64_t CHORDTelescope::seq_length_nsec() const {
     return _freq_params.dt_ns;
+}
+
+bool CHORDTelescope::station_id_is_fringestopped(station_id_t st_id) const {
+    uint64_t dish;
+    uint64_t pol;
+    decode_station_id(st_id, dish, pol);
+    return _dish_params.dish_info_table.at(dish).type == DishType::ArrayDish;
+}
+
+bool CHORDTelescope::phase_center_is_set() const {
+    return _dish_params.dish_coelev_set;
 }
 
 double CHORDTelescope::get_dish_coelev_deg() const {
