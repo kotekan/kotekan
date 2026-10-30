@@ -548,8 +548,7 @@ void dpdkCore::update_port_stats() {
                 : 0;
         if (missed_delta > 0) {
             INFO("Port {:d}: NIC dropped {:d} packets since the last poll (~1s): {:d} in the NIC "
-                 "packet buffer, {:d} because the rx ring was full; "
-                 "total missed: {:d}{:s}",
+                 "packet buffer, {:d} because the rx ring was full; total missed: {:d}{:s}",
                  port, missed_delta, packet_buffer_delta, missed_delta - packet_buffer_delta,
                  stats.imissed, loop_info);
         }
