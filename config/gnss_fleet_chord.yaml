@@ -58,6 +58,10 @@ aggregator:
             - "GPS_L5_Q:131,133,135"
 
 common:
+    # Fleet lanes (docs/CHORD_FLEET_LANES.md): GnssN2Project takes lanes the relay carries from the
+    # other nodes; fleet-lane-transfer is the relay's table (site-only, not a generator flag).
+    fleet-lanes: true
+    fleet-lane-transfer: [l2c:1217.4-1237.8, e6:1263.4-1273.6]
     # Channels exempt from first-stage (SK) RFI excision, absolute freq_id ranges
     # (freq_id = MHz / 0.1953125): the GNSS main lobes, one chip rate either side of each
     # carrier (10.23 MHz; E6-C's 5.115 MHz at the top), at 1176.45 (L5/E5a/B2a), 1202.025
