@@ -13,7 +13,6 @@ import numpy as np
 
 from kotekan import runner
 
-
 SPECTRUM_LENGTH = 16
 INTEGRATION_LENGTH = 4
 SAMPLES_PER_FRAME = SPECTRUM_LENGTH * INTEGRATION_LENGTH

@@ -105,7 +105,7 @@ For linting, testing, and documentation, install these Python packages (often in
 .. code:: bash
 
    python3 -m pip install \
-     black \
+     black==26.10.1 \
      cmake_format \
      pytest pytest-xdist pytest-timeout \
      pytest-cpp \
@@ -205,7 +205,7 @@ To build only one part of the documentation:
 
 * Black::
 
-    sudo pip3 install black
+    python3 -m pip install black==26.10.1
 
 Hardware
 =========

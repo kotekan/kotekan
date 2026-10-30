@@ -1,4 +1,5 @@
 """Runner script to persistently run and convert data for new events."""
+
 from MySQLdb import _mysql
 import yaml
 import os
@@ -210,10 +211,8 @@ def connect_conversion_db():
     if not os.path.exists("bb_conversion.db"):
         con = sqlite3.connect("bb_conversion.db")
         sqlite = con.cursor()
-        sqlite.execute(
-            """CREATE TABLE conversion
-                   (event_no int, status text)"""
-        )
+        sqlite.execute("""CREATE TABLE conversion
+                   (event_no int, status text)""")
     else:
         con = sqlite3.connect("bb_conversion.db")
         sqlite = con.cursor()
@@ -245,7 +244,7 @@ def check_inventory():
     path = "/data/baseband_raw"
     total_volume = 0
     for event in os.listdir(path):
-        total_volume += round(get_size(os.path.join(path, event)) / 1024 ** 3, 2)
+        total_volume += round(get_size(os.path.join(path, event)) / 1024**3, 2)
     return total_volume
 
 

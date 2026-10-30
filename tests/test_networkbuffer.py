@@ -11,7 +11,6 @@ from subprocess import Popen
 
 from kotekan import runner
 
-
 params_kotekan = {
     "num_elements": 5,
     "num_ev": 0,

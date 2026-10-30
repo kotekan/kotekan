@@ -3,7 +3,6 @@ import numpy as np
 
 from kotekan import runner
 
-
 global_params = {
     "num_elements": 16,
     "num_ev": 2,

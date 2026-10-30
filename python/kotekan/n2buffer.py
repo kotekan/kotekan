@@ -1,5 +1,5 @@
-"""Read an N2Buffer dump into python.
-"""
+"""Read an N2Buffer dump into python."""
+
 import ctypes
 import os
 import io

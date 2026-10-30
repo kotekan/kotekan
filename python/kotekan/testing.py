@@ -1,4 +1,4 @@
-""" Python interface for validating that a VisRaw object contains valid and expected data"""
+"""Python interface for validating that a VisRaw object contains valid and expected data"""
 
 import copy
 import logging

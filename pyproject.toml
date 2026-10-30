@@ -1,0 +1,4 @@
+[tool.black]
+required-version = "26.10.1"
+target-version = ["py312"]
+exclude = '/(\.eggs|\.git|\.hg|\.mypy_cache|\.nox|\.tox|\.venv|\.svn|_build|buck-out|build|build-iwyu|dist|docs|external|tools/iwyu)/'

@@ -1,5 +1,5 @@
-"""Read a pulsarPostProcess dump into python.
-"""
+"""Read a pulsarPostProcess dump into python."""
+
 from ctypes import Structure, c_uint, c_uint8, c_uint32, sizeof
 import os
 import io

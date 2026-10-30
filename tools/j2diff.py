@@ -11,6 +11,7 @@ For config refactors that must not change what kotekan sees, e.g.
 Renders with kotekan.config.render_jinja, but rejects duplicate keys where kotekan keeps
 the last.  Exit 0 if the parsed dicts are equal, 1 with a key-sorted JSON diff otherwise.
 """
+
 import difflib
 import json
 import sys

@@ -374,7 +374,7 @@ def calc_astropy_time_from_unix_ns(t_unix_ns):
 
 def calc_astropy_time_from_inst_ns(t_inst_ns, time0_ns):
     r"""
-    Constuct an astropy Time object corresponding to an Instrument time in nanoseconds. 
+    Constuct an astropy Time object corresponding to an Instrument time in nanoseconds.
     Parameters
     ----------
     t_inst_ns : int
@@ -405,7 +405,7 @@ def calc_astropy_time_from_inst_ns(t_inst_ns, time0_ns):
 
 def calc_astropy_time_from_ut1_ns(ut1_ns):
     r"""
-    Constuct an astropy Time object corresponding to an Instrument time in nanoseconds. 
+    Constuct an astropy Time object corresponding to an Instrument time in nanoseconds.
     Parameters
     ----------
     t_inst_ns : int

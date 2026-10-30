@@ -3,7 +3,6 @@ from mpmath import mp
 import math
 import sys
 
-
 # 40 digits of decimal precision
 mp.dps = 40
 

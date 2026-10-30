@@ -4,7 +4,6 @@ import time
 from kotekan import runner
 from kotekan import visbuffer
 
-
 # -----------------------------------------------------------------------------
 # Shared configuration
 # -----------------------------------------------------------------------------

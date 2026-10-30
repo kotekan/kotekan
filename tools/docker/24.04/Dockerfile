@@ -90,7 +90,7 @@ RUN rm /usr/lib/python*/EXTERNALLY-MANAGED && \
     python3 -m pip install --upgrade \
         astropy \
         bitshuffle \
-        black==19.10b0 \
+        black==26.10.1 \
         breathe==4.35.* \
         click==8.0.2 \
         cmake_format \

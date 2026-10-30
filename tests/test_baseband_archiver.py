@@ -6,7 +6,6 @@ import pytest
 from kotekan.scripts import baseband_archiver
 import kotekan
 
-
 config = {
     "max_dump_samples": 3500,
     "num_elements": 28,
