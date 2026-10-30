@@ -400,6 +400,6 @@ nodes:
     cx51: {}
     # cx47 and cx52 joined 2026-10-25 (#216: the whole band, all sixteen combs), taken out of
     # production for the purpose (choco maintenance mode). To give either back: `role: off`,
-    # regenerate, restart, and choco maintenance mode off.
-    cx47: {}
+    # regenerate, restart, and choco maintenance mode off. cx47 given back 2026-10-30 (baseband work).
+    cx47: {role: "off"}
     cx52: {}
