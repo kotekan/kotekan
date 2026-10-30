@@ -43,7 +43,6 @@ add_library(
     simpleAutocorr.cpp
     SampleAutocorr.cpp
     SimpleCrosscorr.cpp
-    $<$<STREQUAL:${WITH_SPAWN_PROCESS},ON>:SpawnProcess.cpp>
     freqSplit.cpp
     FreqSubset.cpp
     prodSubset.cpp

@@ -24,33 +24,18 @@ pipelines with mostly server-side changes.
 
 ## Running
 
-Usually the viewer is launched as a kotekan child via the `SpawnProcess` stage,
-already wired into the airspy configs (build kotekan with `-DWITH_SPAWN_PROCESS=ON`):
-
-```yaml
-spawn_pyviewer:
-    kotekan_stage: SpawnProcess
-    in_buf: post_corr_buf
-    exec: '${VIEWER_PYTHON:-python3} ../../python/scripts/js_viewer/livebeam_server.py'
-```
-
-Point `VIEWER_PYTHON` at an interpreter that has the viewer deps installed:
+The viewer runs as its own process, alongside kotekan. Start them in either
+order; kotekan's `networkPowerStream` connects once the viewer is listening,
+and reconnects if the viewer is restarted.
 
 ```sh
 pip install -r python/scripts/js_viewer/requirements.txt
-VIEWER_PYTHON=/path/to/venv/bin/python ./kotekan -c config/airspy_crosscorr.yaml
+python3 python/scripts/js_viewer/livebeam_server.py                              # autocorr
+python3 python/scripts/js_viewer/livebeam_server.py --lag-align-stage lag_align  # crosscorr extras
+build/kotekan/kotekan -c config/airspy_crosscorr.yaml
 ```
 
 Then open <http://HOST:8080/>.
-
-To run it standalone, start it **before** kotekan connects (it blocks on
-`accept`):
-
-```sh
-cd python/scripts/js_viewer
-python livebeam_server.py                              # autocorr
-python livebeam_server.py --lag-align-stage lag_align  # crosscorr extras
-```
 
 ## Ports (all configurable)
 

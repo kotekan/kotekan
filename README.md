@@ -100,7 +100,6 @@ Cmake build options (defaults shown in parentheses; most feature toggles accept 
 * `-DSANITIZE=<AUTO|ON|OFF>` (`OFF`) - Enable the Clang/LLVM AddressSanitizer toolchain flags for Debug/Test builds.
 * `-DWITH_TESTS=<AUTO|ON|OFF>` (`OFF`) - Build and link the helper stages from `lib/testing` into the kotekan binary (used by QA/example configs). Does not build unit tests.
 * `-DWITH_BOOST_TESTS=<AUTO|ON|OFF>` (`OFF`) - Build the Boost.Test unit tests under `tests/boost` (requires `pytest-cpp`).
-* `-DWITH_SPAWN_PROCESS=<ON|OFF>` (`OFF`) - Build the `SpawnProcess` stage, which runs a shell command from the config. Anyone who can reach the REST port can then run commands via `/start`. Needed by the airspy configs.
 
 Additional helpers:
 

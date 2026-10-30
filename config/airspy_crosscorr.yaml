@@ -177,11 +177,6 @@ correlation_output:
         destination_protocol: TCP
         in_buf: post_corr_buf
 
-    # See the autocorr config for the rationale behind ``${VIEWER_PYTHON:-python3}``.
-    # The crosscorr viewer also wants to know about the lag-align stage so it can
-    # surface its REST endpoint as a UI control. SpawnProcess is built only with
-    # -DWITH_SPAWN_PROCESS=ON.
-    spawn_pyviewer:
-        kotekan_stage: SpawnProcess
-        in_buf: post_corr_buf
-        exec: '${VIEWER_PYTHON:-python3} ../../python/scripts/js_viewer/livebeam_server.py --lag-align-stage lag_align'
+# The browser viewer is a separate process; start it before or after kotekan
+# (see python/scripts/js_viewer/README.md). --lag-align-stage adds the lag-align controls:
+#   python3 python/scripts/js_viewer/livebeam_server.py --lag-align-stage lag_align
