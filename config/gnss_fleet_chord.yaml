@@ -61,14 +61,13 @@ common:
     # Fleet lanes (docs/CHORD_FLEET_LANES.md): GnssN2Project takes lanes the relay carries from the
     # other nodes; fleet-lane-transfer is the relay's table (site-only, not a generator flag).
     fleet-lanes: true
-    # The relay's table: the same targets as lane-transfer where a satellite's lane is not on
-    # every GPU (L2C on five, each GLONASS L2OF satellite on the six that hold its comb), plus
-    # the E5/B2 edges and the 1186.7-1196.9 gap, which carry GPS L5's lanes too (the relay tags
-    # the untagged GPS L5 assembler l5; the local table cannot name it).
+    # The relay's table: the targets of lane-transfer where a satellite's lane is not on every
+    # GPU (L2C on five, each GLONASS L2OF satellite on the six that hold its comb) and E6's two
+    # PRS lobes. Not the E5/B2 edges: every GPU tracks those chains, and the relay's copies of
+    # its own satellites passed the duplicate test (the re-steer differs by the pooled delays'
+    # noise over 10-16 MHz) and filled the 40-lane budget on cx51 (2026-10-30), at ~n^2 per lane.
     fleet-lane-transfer: [l2c:1217.4-1237.8, e6:1263.4-1273.6, e6:1283.9-1294.1,
-                          l2of:1237.9-1258.2, e5a:1160.0-1166.2, b2a:1160.0-1166.2,
-                          l5:1160.0-1166.2, e5b:1186.7-1196.9, b2b:1186.7-1196.9,
-                          l5:1186.7-1196.9]
+                          l2of:1237.9-1258.2]
     # Channels exempt from first-stage (SK) RFI excision, absolute freq_id ranges
     # (freq_id = MHz / 0.1953125): the GNSS main lobes, one chip rate either side of each
     # carrier (10.23 MHz; E6-C's 5.115 MHz at the top), at 1176.45 (L5/E5a/B2a), 1202.025
