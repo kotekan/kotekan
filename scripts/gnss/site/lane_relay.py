@@ -7,8 +7,8 @@
        the copy of best coherence of each (band, PRN), take the target channels from the
        fleet file's fleet-lane-transfer table, and POST .../set_lanes to every receiving GPU
        the lanes whose targets meet its live channels, less the ones it measured itself.
-       Every inst-period the gps_l5 assemblers' instrumental delays (get_lane_inst) are
-       pooled and sent along. --to limits the receivers (a canary), --from the sources.
+       Every inst-period the instrumental delays (get_lane_inst) of one transferring
+       assembler per GPU (inst_stage) are pooled and sent along. --to limits the receivers (a canary), --from the sources.
   show One cycle, printed: per GPU what it serves and what it would receive. Nothing posted.
 
 Reads config/gnss_fleet_chord.yaml (fleet-lane-transfer), config/chord_gnss_node.yaml
@@ -102,7 +102,7 @@ class Gpu:
     """One projecting GPU: a source when its stage publishes lanes, a receiver with
     fleet_lanes."""
 
-    def __init__(self, node, gpu, stage, offset):
+    def __init__(self, node, gpu, stage, offset, inst):
         self.node, self.gpu = node, gpu
         self.name = "%s/%d" % (node, gpu)
         self.source = stage.get("source", "eigen") != "eigen"
@@ -110,11 +110,7 @@ class Gpu:
         live = stage.get("live_freq_ids", []) or []
         self.live = sorted(int(f) for f in live if int(f) % 16 == offset)
         self.base = "http://%s:%d/gnss_n2_project/proj_%d" % (node, PORT, gpu)
-        self.inst_url = "http://%s:%d/gnss%d_n2assemble/get_lane_inst" % (
-            node,
-            PORT,
-            gpu,
-        )
+        self.inst_url = inst and "http://%s:%d/%s/get_lane_inst" % (node, PORT, inst)
 
     def wants(self, ranges):
         for lo, hi in ranges:
@@ -122,6 +118,21 @@ class Gpu:
                 if lo <= f <= hi:
                     return True
         return False
+
+
+def inst_stage(cfg, gpu):
+    """The assembler on this GPU that serves get_lane_inst, or None: one with lane transfers
+    and at least two lane channels (GnssGpuRecordAssemble's _inst_on). The untagged (GPS L5)
+    one first, then l5 (SBAS L5), then the one with the most channels."""
+    names = []
+    for k, v in cfg.items():
+        m = re.match(r"^gnss%d(?:_([a-z0-9]+))?_n2assemble$" % gpu, k)
+        if not m or not isinstance(v, dict) or not v.get("lane_transfer_freq_ids"):
+            continue
+        if len(v.get("channel_ids") or []) < 2 or v.get("lane_transfer_inst_slope") is False:
+            continue
+        names.append(({None: 0, "l5": 1}.get(m.group(1), 2), -len(v["channel_ids"]), k))
+    return min(names)[2] if names else None
 
 
 def gpus(root, offsets, only_from=None, only_to=None):
@@ -136,7 +147,7 @@ def gpus(root, offsets, only_from=None, only_to=None):
             stage = proj.get("proj_%d" % g)
             if not isinstance(stage, dict):
                 continue
-            u = Gpu(node, g, stage, offsets[node][g])
+            u = Gpu(node, g, stage, offsets[node][g], inst_stage(cfg, g))
             if only_from is not None and node not in only_from:
                 u.source = False
             if only_to is not None and node not in only_to:
@@ -287,7 +298,7 @@ class Relay:
             replies = [
                 r
                 for _, r in self.pool.map(
-                    self.get_inst, [u for u in self.units if u.source]
+                    self.get_inst, [u for u in self.units if u.source and u.inst_url]
                 )
             ]
             self.inst, self.inst_n = pool_inst(replies)

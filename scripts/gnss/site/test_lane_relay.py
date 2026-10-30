@@ -29,6 +29,22 @@ def test_parse_owner():
     check(lane_relay.parse_owner("/gnss1_l2c_n2combine/lane/11") == (None, None), "not an assembler")
 
 
+def test_inst_stage():
+    cfg = {
+        "gnss0_n2assemble": {"channel_ids": [1, 2, 3]},
+        "gnss0_l5_n2assemble": {"channel_ids": [6103, 6119], "lane_transfer_freq_ids": [6110]},
+        "gnss0_l2c_n2assemble": {"channel_ids": [6285], "lane_transfer_freq_ids": [6250]},
+        "gnss1_e6_n2assemble": {"channel_ids": [6541, 6557], "lane_transfer_freq_ids": [6480]},
+        "gnss1_e5b_n2assemble": {"channel_ids": [6151, 6167, 6183], "lane_transfer_freq_ids": [6200]},
+    }
+    check(lane_relay.inst_stage(cfg, 0) == "gnss0_l5_n2assemble", "l5 when the GPS one transfers nothing")
+    check(lane_relay.inst_stage(cfg, 1) == "gnss1_e5b_n2assemble", "else the most lane channels")
+    cfg["gnss0_n2assemble"]["lane_transfer_freq_ids"] = [6000]
+    check(lane_relay.inst_stage(cfg, 0) == "gnss0_n2assemble", "the GPS L5 one first")
+    check(lane_relay.inst_stage({"gnss0_l2c_n2assemble": cfg["gnss0_l2c_n2assemble"]}, 0) is None,
+          "one lane channel serves no estimate")
+
+
 def main():
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:
