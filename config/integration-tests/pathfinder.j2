@@ -1,0 +1,50 @@
+# -*-yaml-*-
+
+################################################################################
+#
+# CHORD pathfinder X-engine integration test
+#
+# Run through python/integration-tests/run.py, which passes the test's jinja variables
+# with `kotekan --variables`. See docs/sphinx/dev/dev_integration_tests.rst.
+#
+# Jinja variables:
+#     out_dir       directory for the written HDF5 files
+#     log_level     (default: info)
+#     rfi_excision_enabled
+#                   first-stage RFI excision (default: true)
+#     upchan_gains  dict from U (as a string) to the U fine-channel gains (default: 0.8 sqrt(U))
+#     bb_gain       (default: 1 / 8)
+#     frb1_input_scale
+#                   (default: 1)
+#     half_filled   mark the northern half of the dishes as Missing (default: false), see
+#                   include/fengine_pathfinder.j2
+#     bb_beam_layout, frb2_beam_layout
+#                   the setBBBeams and setFRBBeams keys that place the beams: `fixed_mode`
+#                   (`mode`) and its keys (default: the production grids)
+#     frb2_weights_lifetime_in_samples
+#                   (default: 240 FRB2 frames, about 60 s)
+#     rfi_feed_averaged_min_good_frac
+#                   (default: 0.8)
+#     and those listed in include/input_test_chord.j2 and include/output_test_chord.j2
+#
+################################################################################
+
+---
+log_level: {{ log_level | default('info') }}
+
+base_dir: {{ out_dir | default('/tmp/kotekan-integration-tests') }}
+prefix_hostname: false
+prefix_host_rank: false
+
+{% include "include/defs.j2" %}
+{% include "include/fengine_pathfinder.j2" %}
+
+{% include "include/rfi_pathfinder.j2" %}
+{% include "include/n2k_pathfinder.j2" %}
+{% include "include/bb_pathfinder.j2" %}
+{% include "include/upchan_pathfinder.j2" %}
+{% include "include/frb_pathfinder.j2" %}
+
+{% include "include/input_test_chord.j2" %}
+{% include "include/output_test_chord.j2" %}
+...

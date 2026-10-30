@@ -1,0 +1,79 @@
+# -*-yaml-*-
+
+################################################################################
+#
+# CHIME X-engine integration test
+#
+# The pipeline is that of config/fengine/chime.j2 (config/chime_upgrade_frb.j2 plus the BB and HFB
+# beamformers), with the test generators as input and the test outputs. The includes are copies
+# of the config/fengine includes; each states its test changes.
+#
+# Run through python/integration-tests/run.py, which passes the test's jinja variables
+# with `kotekan --variables`. See docs/sphinx/dev/dev_integration_tests.rst.
+#
+# Jinja variables:
+#     out_dir       directory for the written HDF5 files
+#     log_level     (default: info)
+#     rfi_excision_enabled
+#                   first-stage RFI excision (default: true)
+#     upchan_gains  dict from U (as a string, '16' or '128') to the U fine-channel gains
+#                   (default: 0.8 sqrt(U))
+#     bb_gain       (default: 1 / 32)
+#     half_filled   mark the northern half of every cylinder as Missing (default: false)
+#     bb_beam_layout, frb2_beam_layout
+#                   the setBBBeams and setFRBBeams keys that place the beams: `fixed_mode`
+#                   (`mode`) and its keys (default: the production beams)
+#     frb2_weights_lifetime_in_samples
+#                   (default: 240 FRB2 frames, about 60 s)
+#     rfi_feed_averaged_min_good_frac
+#                   (default: 0.8)
+#     do_fringestop N2 fringe stopping (default: off)
+#     frb_default_gains
+#                   the FRB1 and HFB1 feed gain [re, im] of every input, which loadFeedGains uses
+#                   without gain files (default: [1, 0])
+#     and those listed in include/input_test_chord.j2 and include/output_test_chord.j2
+#
+################################################################################
+
+{% set ns = namespace(voltage=[], lost=[]) %}
+{% for id in range(16) %}   # num_frequencies = 16
+{% set ns.voltage = ns.voltage + ['host_voltage_buffer_%d' % id] %}
+{% endfor %}
+{% for id in range(16 // 4) %}
+{% set ns.lost = ns.lost + ['lost_samples_buffer_%d' % id] %}
+{% endfor %}
+{% set voltage_buffers = ns.voltage %}
+{% set lost_samples_buffers = ns.lost %}
+{% set bad_inputs_defined = true %}
+{% set bf_mask_orders = ['CHIMECylinder', 'CHIMEBeamformer'] %}
+{% set upchan_factors = [16] %}
+{% set upchan_hfb_factors = [128] %}
+
+---
+log_level: {{ log_level | default('info') }}
+
+base_dir: {{ out_dir | default('/tmp/kotekan-integration-tests') }}
+prefix_hostname: false
+prefix_host_rank: false
+
+{% include "include/defs.j2" %}
+{% include "include/fengine_chime.j2" %}
+
+{% include "include/rfi_chime.j2" %}
+{% include "include/xpose2048_chime.j2" %}
+{% include "include/n2k_chime.j2" %}
+{% include "include/bb_chime.j2" %}
+{% include "include/upchan_chime.j2" %}
+{% include "include/frb_chime.j2" %}
+{% include "include/upchan_hfb_chime.j2" %}
+{% include "include/hfb_chime.j2" %}
+
+# The FRB test outputs (include/output_test_chord.j2) cover the channels of all upchannelization
+# factors; CHIME's FRB chain has only U = 16
+upchan_all_min_output_channel: upchan_U16_min_output_channel
+upchan_all_max_output_channel: upchan_U16_max_output_channel
+upchan_all_max_num_output_channels: upchan_U16_max_num_output_channels
+
+{% include "include/input_test_chord.j2" %}
+{% include "include/output_test_chord.j2" %}
+...

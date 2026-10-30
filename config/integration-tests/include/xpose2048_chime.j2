@@ -1,0 +1,64 @@
+# -*-yaml-*-
+
+# Copied unchanged from config/fengine/include/xpose2048_chime.j2.
+
+# CHIME transpose kernel
+
+################################################################################
+
+# Transpose kernel setup
+
+# The transpose puts input element i into element scatter_indices[i]. parseReorderDefault
+# computes the indices from `input_reorder` (include/input_reorder_chime.j2): the voltages arrive
+# in correlator (ADC) order, and element j of the table goes to element j of the output. This
+# undoes the reordering with which RadioTelescopeFEngine.jl writes the simulated voltages.
+
+################################################################################
+
+# Buffers
+
+host_scatter_indices_buffer:
+    kotekan_buffer: ndarray
+    num_frames: 1
+    value_type: int32
+    extents: [num_polarizations, num_dishes]
+    quantity_name: "scatter_indices"
+    dimnames: ["P", "D"]
+    dimscalings: [1, 1]
+    metadata_pool: main_pool
+
+host_xposed_voltage_ringbuffer:
+    kotekan_buffer: ring
+    ring_buffer_size: buffer_depth * num_dishes * num_polarizations * num_frequencies * num_times
+    metadata_pool: main_pool
+
+################################################################################
+
+# Stages
+
+run_set_scatter_indices:
+    kotekan_stage: parseReorderDefault
+    out_buf: host_scatter_indices_buffer
+    input_order: CHIMECorrelator
+    output_order: CHIMECylinder
+    name: scatter_indices
+
+run_xpose2048:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_scatter_indices_buffer: host_scatter_indices_buffer
+            host_voltage_ringbuffer: host_voltage_ringbuffer
+        out_buffers:
+            host_xposed_voltage_ringbuffer: host_xposed_voltage_ringbuffer
+        commands:
+        - name: cudaInputData
+          do_once: true
+          in_buf: host_scatter_indices_buffer
+          gpu_mem: scatter_indices_buffer
+        - name: cudaSyncInput
+        - name: cudaTranspose2048_chime
+          input_voltage_name: voltage
+          scatter_indices_name: scatter_indices
+          output_voltage_name: xposed_voltage
