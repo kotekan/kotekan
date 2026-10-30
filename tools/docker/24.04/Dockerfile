@@ -75,6 +75,7 @@ RUN apt-get update && \
         python3 \
         python3-dev \
         python3-pip \
+        python3-venv \
         software-properties-common \
         valgrind \
         wget \
@@ -82,17 +83,18 @@ RUN apt-get update && \
         && \
     apt-get clean && apt-get autoclean && rm -rf /var/lib/apt/lists/*
 
-# Install pip and python packages
-# Disable pip caching (keep docker image size smaller)
+# Keep pip packages separate from Ubuntu's Python packages.
+RUN python3 -m venv /opt/kotekan_env
+ENV PATH="/opt/kotekan_env/bin:${PATH}"
+
+# Disable pip caching to keep the image smaller.
 ENV PIP_NO_CACHE_DIR=1
-# Overwrite system install of python/pip if needed
-RUN rm /usr/lib/python*/EXTERNALLY-MANAGED && \
-    python3 -m pip install --upgrade \
+RUN python3 -m pip install --upgrade \
         astropy \
         bitshuffle \
         black==19.10b0 \
         breathe==4.35.* \
-        click==8.0.2 \
+        'click>=8.1.3' \
         cmake_format \
         flask \
         future \
@@ -118,9 +120,6 @@ RUN rm /usr/lib/python*/EXTERNALLY-MANAGED && \
 # Uncomment this to check what version got installed
 # RUN python3 -m pip show <package>
 # RUN apt-cache policy <package>
-
-# We want the `python` command to point to python3
-RUN ln -sf /usr/bin/python3 /usr/bin/python
 
 # Install Blaze v3.8.2 for the eigenvalue processes. Pin the cache size: Blaze bakes the build
 # host's L3 size into a header and rejects values above 100 MB at compile time.
@@ -186,7 +185,7 @@ ENV CCACHE_MAXSIZE=1G
 
 # Set the plugin path so kotekan can find bitshuffle
 # Ideally this would be determined dynamically, but for now...
-ENV HDF5_PLUGIN_PATH=/usr/local/lib/python3.12/dist-packages/hdf5plugin/plugins
+ENV HDF5_PLUGIN_PATH=/opt/kotekan_env/lib/python3.12/site-packages/hdf5plugin/plugins
 
 ENV KOTEKAN_BUILD_DIRNAME=build-2404
 
