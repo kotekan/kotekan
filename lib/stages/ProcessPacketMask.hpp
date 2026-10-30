@@ -48,8 +48,9 @@
  *                      behind them; they are marked fully received and are not counted
  *                      in the packet-loss metrics.
  * @conf crs_board_remap Array of UInt32. Default empty (identity). Raw source_id of the
- *                      board in each output slot, as given to crs16BoardCaptureWorker.
- *                      Used only to label the per-board metric.
+ *                      board in each output slot. Used only to label the per-board metric.
+ *                      Set it at the config root so this stage and the
+ *                      crs16BoardCaptureWorker instances read the same list.
  *
  * @par Metrics
  * @metric kotekan_processpacketmask_lost_packets_total

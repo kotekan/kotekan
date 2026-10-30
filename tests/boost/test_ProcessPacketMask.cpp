@@ -127,9 +127,9 @@ struct MaskPipeline {
         lo[0 * num_source_ids + 0] &= ~0x02; // t 0, slot 0 (source 0): stream 1
         hi[0 * num_source_ids + 9] &= ~0x20; // t 0, slot 9 (source 3): stream 5
         lo[0 * num_source_ids + 1] &= ~0x04; // t 0, slot 1 (source 2): stream 2
-        hi[3 * num_source_ids + 7] &= ~0x50; // t 3, slot 7 (source 15): streams 4, 6
+        hi[3 * num_source_ids + 7] &= ~0x50; // t 3, slot 7 (source 14): streams 4, 6
         lo[5 * num_source_ids + 5] = hi[5 * num_source_ids + 5] = 0;   // t 5, missing slot 5
-        lo[7 * num_source_ids + 15] = hi[7 * num_source_ids + 15] = 0; // t 7, slot 15 (source 14)
+        lo[7 * num_source_ids + 15] = hi[7 * num_source_ids + 15] = 0; // t 7, slot 15 (source 15)
 
         for (auto* b : {&voltage, &bitmap_lo, &bitmap_hi})
             b->mark_frame_full("test", slot);
@@ -169,8 +169,8 @@ BOOST_AUTO_TEST_CASE(packet_loss_metrics) {
         BOOST_CHECK_EQUAL(board_lost_packets(0), frames * 1);
         BOOST_CHECK_EQUAL(board_lost_packets(3), frames * 1);
         BOOST_CHECK_EQUAL(board_lost_packets(2), frames * 1);
-        BOOST_CHECK_EQUAL(board_lost_packets(15), frames * 2);
-        BOOST_CHECK_EQUAL(board_lost_packets(14), frames * 8);
+        BOOST_CHECK_EQUAL(board_lost_packets(14), frames * 2);
+        BOOST_CHECK_EQUAL(board_lost_packets(15), frames * 8);
         BOOST_CHECK_EQUAL(board_lost_packets(1), 0);
         // Slot 5 holds source 10, which is listed as missing and not exported.
         BOOST_CHECK_EQUAL(board_lost_packets(10), -1);
