@@ -92,6 +92,19 @@ the aggregator and gather. #184–#187 below are what the removal left for later
 
 ## Open — the fix is in the BROKER or a script (ships today, no node cycle)
 
+### #222 — a broker cold start after a long outage predicts from an expired BRDC set and hints nothing for up to 15 min: the collapse guard cannot see a sky that was empty from the first parse (2026-10-30, live)
+**What:** the stack had been down 19 h. The broker started at 16:44:45Z and every chain parsed the cached
+BRDC files at 16:44:47, whose records were all more than 4 h from toe, so `brdc_predict` kept none: `ctx.pred`
+empty, no `narrowed search` line, `n_prn 0` on every chain in `/get_status`, and the aggregator logged "0/N
+PRNs hinted ... scanning NOTHING" on all three searches. The hourly merge landed at 16:45:12 ("BRDC hourly
+merge ... Store 0 -> 566 record(s)"), but the sky re-parses only every `_SKY_REFRESH_S` (900 s), and the
+early re-parse in `sky.py` fires only on a collapse below half of `peak_n` with `peak_n >= 4`. A sky that was
+empty from the first parse has `peak_n` 0, so it is never a collapse. A broker restart at 16:49:49Z after
+the merge gave 9-15 PRNs per chain and hints within 2 s.
+**Fix (candidate):** treat an empty first sky like a collapse: with `peak_n` 0 and the store's newest record
+older than the 4 h window, re-parse on the bridge gate (60 s) until a satellite appears. **Workaround:** after
+an outage longer than ~4 h, restart the broker once the `BRDC hourly merge` line has appeared, or wait 15 min.
+
 ### #207 — every search-derived code phase carried range_rate x 16 ms: `detection_phase` left the replica anchor's code-Doppler advance on `cp0` and `cp_long` (2026-10-18, live, measured three ways; ROOT CAUSE FOUND + FIXED 10-18 21:30Z, DEPLOYED 22:53Z, live gate passed)
 **What [live 10-18, gps_l5 + gal_e5a]:** the broker's search-derived offsets (`_det_offset`: the detection's sample-0
 argument re-advanced to `ref_hop`, minus `cp_predicted` at that hop) feed the clock solve, the joint state's b_sat and
