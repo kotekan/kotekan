@@ -173,6 +173,18 @@ def azel_to_pix(nside, az_deg, el_deg):
     return ang2pix_ring(nside, theta, phi)
 
 
+def lerp_azel(el0, az0, el1, az1, w):
+    """(el, az) a fraction w of the way from (el0, az0) to (el1, az1), through unit vectors so
+    the azimuth wrap and the zenith are safe."""
+    e0, a0, e1, a1 = (np.radians(x) for x in (el0, az0, el1, az1))
+    v0 = np.stack([np.cos(e0) * np.sin(a0), np.cos(e0) * np.cos(a0), np.sin(e0)])
+    v1 = np.stack([np.cos(e1) * np.sin(a1), np.cos(e1) * np.cos(a1), np.sin(e1)])
+    v = v0 + w * (v1 - v0)
+    v /= np.linalg.norm(v, axis=0)
+    el = np.degrees(np.arcsin(np.clip(v[2], -1.0, 1.0)))
+    return el, np.degrees(np.arctan2(v[0], v[1])) % 360.0
+
+
 def angsep_deg(az1, el1, az2, el2):
     a1, e1, a2, e2 = (np.radians(x) for x in (az1, el1, az2, el2))
     c = np.sin(e1) * np.sin(e2) + np.cos(e1) * np.cos(e2) * np.cos(a1 - a2)
@@ -758,17 +770,34 @@ def build_day_h5(args, chain, paths, day_unix, geom, prn_gain=None):
         keys = np.stack([prn, minute], 1)
         uk, inv = np.unique(keys, axis=0, return_inverse=True)
         inv = inv.ravel()
-        el = np.full(len(uk), np.nan)
-        az = np.full(len(uk), np.nan)
-        rng = np.full(len(uk), np.nan)
+        # BRDC at each minute's midpoint and at both neighbours': a row's position is linear
+        # in time between its minute and the nearer neighbour. A satellite near boresight
+        # moves ~0.5 deg a minute, a pixel at nside 128, so one position per minute leaves
+        # every other pixel of a pass empty.
+        geo = np.full(
+            (3, len(uk), 3), np.nan
+        )  # (previous, this, next minute) x key x (el, az, range)
         vet = np.zeros(len(uk), bool)
         for j, (pn, mn) in enumerate(uk):
             tt = mn * GEOM_BIN_S + GEOM_BIN_S / 2
             vet[j] = geom.vetoed(tt, "%s%d" % (sys_, int(pn)))
-            g = geom.at(sys_, int(pn), tt)
-            if g and g[0] is not None:
-                el[j], az[j], rng[j] = g
-        vet_r, el_r, az_r, rng_r = vet[inv], el[inv], az[inv], rng[inv]
+            for k, d in enumerate((-1, 0, 1)):
+                g = geom.at(sys_, int(pn), tt + d * GEOM_BIN_S)
+                if g and g[0] is not None:
+                    geo[k, j] = g
+        vet_r = vet[inv]
+        el_r, az_r, rng_r = geo[1, inv].T
+        f = (t - (minute * GEOM_BIN_S + GEOM_BIN_S / 2)) / GEOM_BIN_S  # -0.5 .. 0.5
+        nb = np.where((f >= 0)[:, None], geo[2, inv], geo[0, inv])
+        w = np.abs(f)
+        have = np.isfinite(nb[:, 0]) & np.isfinite(el_r)
+        if have.any():
+            el_i, az_i = lerp_azel(
+                el_r[have], az_r[have], nb[have, 0], nb[have, 1], w[have]
+            )
+            el_r, az_r, rng_r = el_r.copy(), az_r.copy(), rng_r.copy()
+            el_r[have], az_r[have] = el_i, az_i
+            rng_r[have] += w[have] * (nb[have, 2] - rng_r[have])
         stats["vetoed"] += int((inday & vet_r).sum())
         stats["nogeo"] += int((inday & ~vet_r & np.isnan(el_r)).sum())
         ok = inday & ~vet_r & ~np.isnan(el_r)

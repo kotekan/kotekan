@@ -331,5 +331,51 @@ class TestPedestal(unittest.TestCase):
         )
 
 
+class TestLerpAzel(unittest.TestCase):
+    """A row's position between two minute positions: endpoints, the azimuth wrap, the midpoint."""
+
+    def test_endpoints(self):
+        el, az = bc.lerp_azel(
+            np.array([60.0]),
+            np.array([170.0]),
+            np.array([61.0]),
+            np.array([175.0]),
+            np.array([0.0]),
+        )
+        self.assertAlmostEqual(el[0], 60.0, 6)
+        self.assertAlmostEqual(az[0], 170.0, 6)
+        el, az = bc.lerp_azel(
+            np.array([60.0]),
+            np.array([170.0]),
+            np.array([61.0]),
+            np.array([175.0]),
+            np.array([1.0]),
+        )
+        self.assertAlmostEqual(el[0], 61.0, 6)
+        self.assertAlmostEqual(az[0], 175.0, 6)
+
+    def test_azimuth_wrap(self):
+        el, az = bc.lerp_azel(
+            np.array([30.0]),
+            np.array([359.0]),
+            np.array([30.0]),
+            np.array([1.0]),
+            np.array([0.5]),
+        )
+        self.assertTrue(az[0] < 0.01 or az[0] > 359.99, az)
+
+    def test_midpoint_is_half_the_separation(self):
+        el0, az0, el1, az1 = (
+            np.array([62.0]),
+            np.array([178.0]),
+            np.array([63.0]),
+            np.array([181.0]),
+        )
+        el, az = bc.lerp_azel(el0, az0, el1, az1, np.array([0.5]))
+        a = bc.angsep_deg(az0, el0, az, el)[0]
+        b = bc.angsep_deg(az, el, az1, el1)[0]
+        self.assertAlmostEqual(a, b, 3)
+
+
 if __name__ == "__main__":
     unittest.main()
