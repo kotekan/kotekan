@@ -116,6 +116,11 @@ cudaEvent_t cudaGnssBeamDump::execute(cudaPipelineState& pipestate,
 
     voltage.check_metadata();
     const std::shared_ptr<const chordMetadata> meta = voltage.get_metadata();
+    if (!_checked_freqs && !meta->has_coarse_freq()) {
+        WARN("cudaGnssBeamDump: the voltage ring carries no coarse frequencies (test data?); "
+             "beam_freq_ids are taken on trust");
+        _checked_freqs = true;
+    }
     if (!_checked_freqs) {
         // The config's freq_ids were resolved at generation time; the ring's labels are the
         // authority. A mismatch means a rewired comb, and a beam on the wrong channel is worse
