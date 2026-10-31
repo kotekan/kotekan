@@ -105,7 +105,9 @@
  * ordered by row power, gated by coherence and Gram-Schmidt'd (a sibling chain's copy of the
  * same emitter is dropped). lanes+residual then runs the data-driven path above on what is
  * left, as the detector of unlisted emitters; lanes alone runs no eigen path. Each lane costs
- * 1/n of the sky and ~4 n^2 operations per channel-frame, so k_lanes_max is a budget.
+ * 1/n of the sky and ~4 n^2 operations per channel-frame, so k_lanes_max is a budget. An entry
+ * the assembler holds (elem_dir_hold_s: the row lost coherence) is a lane like any other;
+ * lane_held_k counts them per freq_id.
  *
  * @conf source            String. eigen (default: the data-driven subspace only), lanes, or
  *                         lanes+residual.
@@ -205,6 +207,7 @@ private:
     uint64_t lane_dup = 0, lane_used = 0;
     struct LaneCand {
         double power, coh;
+        bool held = false; ///< the assembler's held direction (ProjEntry::held_s > 0)
         std::vector<cd> v; ///< on the stations axis, conjugated per lane_conj
     };
     std::vector<LaneCand> cand;
@@ -234,6 +237,7 @@ private:
     std::vector<gnss::ElemSteer::cf> fleet_sh;         ///< scratch
     std::vector<cd> fleet_tmp;                         ///< scratch [n_elem]
     std::vector<int> fleet_k;                          ///< per channel: fleet lanes in the basis
+    std::vector<int> held_k; ///< per channel: held local lanes in the basis
     void take_fleet(double now_s);
     void build_fleet(double t_utc);
     void get_lanes_callback(kotekan::connectionInstance& conn);

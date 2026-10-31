@@ -904,6 +904,8 @@ def test_manual_mask_reaches_the_node_config():
             "lanes+residual",
             "--elem-dir-publish",
             "all",
+            "--elem-dir-hold-s",
+            "300",
             "--elem-sum-shared",
             "--elem-shared-ref",
             ref,
@@ -940,6 +942,10 @@ def test_manual_mask_reaches_the_node_config():
         proj.get("eigen_channels") == "list"
         and proj.get("eigen_freq_ids") == list(range(5971, 5981)) + [6000],
         "--n2-project-eigen-channels ranges: the stage gets the list",
+    )
+    check(
+        asm.get("elem_dir_publish") == "all" and asm.get("elem_dir_hold_s") == 300.0,
+        "--elem-dir-hold-s: the assemblers hold a lane 300 s",
     )
     check(
         asm["chan_noise_norm_elems"] == sorted(set(range(128)) - out_set),

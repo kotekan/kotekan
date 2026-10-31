@@ -1,0 +1,151 @@
+     3.05           N: GNSS NAV DATA    M: MIXED            RINEX VERSION / TYPE
+BNC 2.13.7          rtproc              20261031 173824 UTC PGM / RUN BY / DATE
+BKG: Ephemeris from Data Streams updated every 15min        COMMENT
+Source: RTCM_3.3 igs-ip.net/ABMF00GLP0                      COMMENT
+Source: RTCM_3.2 igs-ip.net/ADH100ARE0                      COMMENT
+Source: RTCM_3.2 igs-ip.net/AGGO00ARG0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/AIRA00JPN0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/ALIC00AUS0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/AREG00PER0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/AUCK00NZL0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/BELE00BRA0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/BOAV00BRA0                      COMMENT
+Source: RTCM_3.2 igs-ip.net/BRAZ00BRA0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/BRST00FRA0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/BRUX00BEL0                      COMMENT
+Source: RTCM_3.2 igs-ip.net/CAS100ATA0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/CCJ200JPN0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/CEDU00AUS0                      COMMENT
+Source: RTCM_3.1 igs-ip.net/CEEU00BRA0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/CHTI00NZL0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/CIBG00IDN0                      COMMENT
+Source: RTCM_3.2 igs-ip.net/CKIS00COK0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/COCO00AUS0                      COMMENT
+Source: RTCM_3.1 igs-ip.net/CTWN00ZAF0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/CUT000AUS0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/CUUT00THA0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/CYNE00GUF0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/CZTG00ATF0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/DARW00AUS0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/DAV100ATA0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/DUMG00ATA0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/DUND00NZL0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/DYNG00GRC0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/ENAO00PRT0                      COMMENT
+Source: RTCM_3.2 igs-ip.net/FLIN00CAN0                      COMMENT
+Source: RTCM_3.2 igs-ip.net/FLRS00PRT0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/FTNA00WLF0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/GAMB00PYF0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/GAMG00KOR0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/HARB00ZAF0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/HERS00GBR0                      COMMENT
+Source: RTCM_3.2 igs-ip.net/HLFX00CAN0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/HOB200AUS0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/HRAG00ZAF0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/ISHI00JPN0                      COMMENT
+Source: RTCM_3.2 igs-ip.net/ISTA00TUR0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/JFNG00CHN0                      COMMENT
+Source: RTCM_3.2 igs-ip.net/JOZ200POL0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/KAT100AUS0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/KERG00ATF0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/KIR800SWE0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/KIRG01KIR0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/KIRI00KIR0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/KITG00UZB0                      COMMENT
+Source: RTCM_3.2 igs-ip.net/KOUR00GUF0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/KRGG00ATF0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/KZN200RUS0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/LAUT00FJI0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/MAC100AUS0                      COMMENT
+Source: RTCM_3.2 igs-ip.net/MAJU00MHL0                      COMMENT
+Source: RTCM_3.2 igs-ip.net/MAL200KEN0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/MAO000USA0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/MAW100ATA0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/MCHL00AUS0                      COMMENT
+Source: RTCM_3.2 igs-ip.net/MOBS00AUS0                      COMMENT
+Source: RTCM_3 igs-ip.net/MOIU00KEN0                        COMMENT
+Source: RTCM_3.3 igs-ip.net/MRO100AUS0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/NKLG00GAB0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/NRMG00NCL0                      COMMENT
+Source: RTCM_3.1 igs-ip.net/ONRJ00BRA0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/ONS100SWE0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/OWMG00NZL0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/PARK00AUS0                      COMMENT
+Source: RTCM_3.2 igs-ip.net/PDEL00PRT0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/PERT00AUS0                      COMMENT
+Source: RTCM_3.2 igs-ip.net/PNGM00PNG0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/POAL00BRA0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/POHN00FSM0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/POTS00DEU0                      COMMENT
+Source: RTCM_3.2 igs-ip.net/POVE00BRA0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/PTGG00PHL0                      COMMENT
+Source: RTCM_3.1 igs-ip.net/RBAY00ZAF0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/REUN00REU0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/RGDG00ARG0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/RIO200ARG0                      COMMENT
+Source: RTCM_3.2 igs-ip.net/SAVO00BRA0                      COMMENT
+Source: RTCM_3.2 igs-ip.net/SCH200CAN0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/SCTB00ATA0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/SEYG00SYC0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/SIN100SGP0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/SOLO00SLB0                      COMMENT
+Source: RTCM_3.2 igs-ip.net/STHL00GBR0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/STJ300CAN0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/STK200JPN0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/STR200AUS0                      COMMENT
+Source: RTCM_3.1 igs-ip.net/SULP00UKR0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/SUTM00ZAF0                      COMMENT
+Source: RTCM_3.2 igs-ip.net/SYDN00AUS0                      COMMENT
+Source: RTCM_3.2 igs-ip.net/SYOG00ATA0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/THTG00PYF0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/TID100AUS0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/TLSG00FRA0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/TOW200AUS0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/TSK200JPN0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/UCAL00CAN0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/ULAB00MNG0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/URUM00CHN0                      COMMENT
+Source: RTCM_3.2 igs-ip.net/VALD00CAN0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/WARK00NZL0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/WGTN00NZL0                      COMMENT
+Source: RTCM_3.2 igs-ip.net/WHIT00CAN0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/WIND00NAM0                      COMMENT
+Source: RTCM_3.2 igs-ip.net/WSRT00NLD0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/WTZZ00DEU0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/WUH200CHN0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/XMIS00AUS0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/YEL200CAN0                      COMMENT
+Source: RTCM_3.3 igs-ip.net/ZIM200CHE0                      COMMENT
+                                                            END OF HEADER
+E14 2026 10 31 00 20 00 5.600451375358e-03 2.144560085071e-10 1.040834085586e-17
+     1.040000000000e+02 2.377500000000e+02 4.354824253053e-09-2.608988293760e+00
+     7.888302206993e-06 1.692364054034e-01 1.415237784386e-05 5.289399648666e+03
+     5.196000000000e+05-2.708286046982e-06-2.206186128645e+00-1.799315214157e-06
+     8.509116506972e-01 6.078125000000e+01-3.051881828317e+00-6.598846297007e-09
+    -5.464513333200e-11 5.170000000000e+02 2.442000000000e+03 0.000000000000e+00
+     3.120000000000e+00 1.300000000000e+02-3.492459654808e-09-4.656612873077e-09
+     9.999000000000e+08                                                         
+E14 2026 10 31 00 20 00 5.600451782811e-03 2.144560085071e-10 1.040834085586e-17
+     1.040000000000e+02 2.377500000000e+02 4.354824253053e-09-2.608988293760e+00
+     7.888302206993e-06 1.692364054034e-01 1.415237784386e-05 5.289399648666e+03
+     5.196000000000e+05-2.708286046982e-06-2.206186128645e+00-1.799315214157e-06
+     8.509116506972e-01 6.078125000000e+01-3.051881828317e+00-6.598846297007e-09
+    -5.464513333200e-11 2.580000000000e+02 2.442000000000e+03 0.000000000000e+00
+     3.120000000000e+00 1.600000000000e+01-3.259629011154e-09 0.000000000000e+00
+     9.999000000000e+08                                                         
+E15 2026 10 31 00 00 00-3.031247179024e-04-3.240074875066e-12 0.000000000000e+00
+     1.020000000000e+02 7.875000000000e+01 2.620109138062e-09-2.447543270230e-01
+     3.790482878685e-06 3.995007136837e-04 2.145767211914e-06 5.440608982086e+03
+     5.184000000000e+05-2.793967723846e-08-9.634327057422e-01 6.519258022308e-08
+     9.966045472768e-01 3.130937500000e+02-1.389961103859e+00-5.636663361083e-09
+    -1.392915163365e-11 5.170000000000e+02 2.442000000000e+03 0.000000000000e+00
+     3.120000000000e+00 0.000000000000e+00 3.958120942116e-09 3.958120942116e-09
+     9.999000000000e+08                                                         
+E15 2026 10 31 00 00 00-3.031255328096e-04-3.240074875066e-12 0.000000000000e+00
+     1.020000000000e+02 7.875000000000e+01 2.620109138062e-09-2.447543270230e-01
+     3.790482878685e-06 3.995007136837e-04 2.145767211914e-06 5.440608982086e+03
+     5.184000000000e+05-2.793967723846e-08-9.634327057422e-01 6.519258022308e-08
+     9.966045472768e-01 3.130937500000e+02-1.389961103859e+00-5.636663361083e-09
+    -1.392915163365e-11 2.580000000000e+02 2.442000000000e+03 0.000000000000e+00
+     3.120000000000e+00 0.000000000000e+00 3.958120942116e-09 0.000000000000e+00
+     9.999000000000e+08                                                         

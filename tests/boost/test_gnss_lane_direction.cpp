@@ -182,6 +182,62 @@ BOOST_AUTO_TEST_CASE(reset_and_bounds) {
     BOOST_CHECK_EQUAL(L.coherence(5, 0), 0.0);
 }
 
+// A held direction outlives the satellite's coherence: after the rows turn to noise (the tracker
+// lost the satellite) the live direction is lost, while held_direction() with the CURRENT table
+// is the satellite's raw response at the new geometry, g o conj(D2) with g = s o D the steered
+// mean. A reset drops the hold.
+BOOST_AUTO_TEST_CASE(held_direction_survives_lost_coherence) {
+    const int n = 48;
+    const double dt = 0.01049, tau = 1.0;
+    Sim sim(n, 1.0), noise(n, 0.0);
+    LaneDirection L(n, 1, 1, tau);
+    std::vector<cd> v(n), out(n);
+    BOOST_CHECK_LT(L.held_age_s(0, 0, 100.0), 0.0);
+    BOOST_CHECK(!L.held_direction(0, 0, sim.D.data(), out.data()));
+    for (int r = 0; r < 1000; ++r) {
+        sim.row(1.0 / std::sqrt(3.0), v.data());
+        L.push(0, 0, v.data(), dt);
+    }
+    const double coh0 = L.coherence(0, 0), p0 = L.power(0, 0);
+    L.hold(0, 0, 100.0);
+    BOOST_CHECK_EQUAL(L.held_age_s(0, 0, 130.0), 30.0);
+    BOOST_CHECK_EQUAL(L.held_coherence(0, 0), coh0);
+    BOOST_CHECK_EQUAL(L.held_power(0, 0), p0);
+    for (int r = 0; r < 1000; ++r) {
+        noise.row(1.0, v.data());
+        L.push(0, 0, v.data(), dt);
+    }
+    BOOST_CHECK(L.direction(0, 0, sim.D.data(), out.data()));
+    const double c_live = sim.cos2(out.data());
+    // The satellite moved: a new table D2, and its raw response is g o conj(D2).
+    std::vector<ElemSteer::cf> D2(n);
+    std::vector<cd> s2(n);
+    for (int i = 0; i < n; ++i) {
+        D2[i] = ElemSteer::cf((float)std::cos(0.21 * i), (float)std::sin(0.21 * i));
+        s2[i] = sim.s[i] * cd(sim.D[i].real(), sim.D[i].imag())
+                * std::conj(cd(D2[i].real(), D2[i].imag()));
+    }
+    BOOST_CHECK(L.held_direction(0, 0, D2.data(), out.data()));
+    cd acc(0.0, 0.0);
+    double e = 0.0;
+    for (int i = 0; i < n; ++i) {
+        acc += std::conj(s2[i]) * out[i];
+        e += std::norm(s2[i]);
+    }
+    const double c_held = std::norm(acc) / e;
+    BOOST_TEST_MESSAGE("lost coherence " << L.coherence(0, 0) << " (held " << coh0
+                                         << "): live cos2 " << c_live << ", held at the new "
+                                         << "geometry " << c_held << ", the old one "
+                                         << sim.cos2(out.data()));
+    BOOST_CHECK_LT(L.coherence(0, 0), 0.05);
+    BOOST_CHECK_LT(c_live, 0.5);
+    BOOST_CHECK_GT(c_held, 0.95);
+    BOOST_CHECK_LT(sim.cos2(out.data()), 0.5);
+    L.reset(0);
+    BOOST_CHECK_LT(L.held_age_s(0, 0, 130.0), 0.0);
+    BOOST_CHECK(!L.held_direction(0, 0, D2.data(), out.data()));
+}
+
 // A lane transferred across frequency: the steering table at f1 times shift(e, f2 - f1) is the
 // table at f2, for the slot's own line of sight.
 BOOST_AUTO_TEST_CASE(shift_takes_the_table_across_frequency) {

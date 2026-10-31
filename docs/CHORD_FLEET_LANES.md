@@ -135,6 +135,12 @@ gnss-lanerelay` (in gnss-stack.target; `run_component.sh lanerelay`). Stop the c
 first (`systemctl --user stop gnss-lanerelay-canary`, the transient unit run on 2026-10-30): the
 target wants gnss-lanerelay, so a daemon-reload and a target start bring the fleet relay up beside
 it, and two relays post to the same GPUs. Then
-`fleet-lane-transfer` grows: `glo_l2of` across 1237.9-1258.2 MHz once that range is in
-`n2-project-live-freq-ids` (split the projection list from the SK-exemption list first), the
-E6 PRS upper lobe, the B2/E5 edges.
+the transfers beside the lobes (2026-10-30, fleet-94daacb22): the projected range is 5939-6626
+(1160.0-1294.1 MHz, one with the SK exemption), with the eigen path kept on the lobes
+(`n2-project-eigen-channels`; the stage runs on one core per GPU, and the lane projection's
+n^2 k per channel-frame already puts it at 77-86 % with 43 channels and 20-30 lanes). The
+local table carries `l2of` over the GLONASS L2 P-code spill, `e6` over the PRS upper lobe and
+`e5a`/`b2a`/`l5` over the lower AltBOC edge. The relay's table stays with the lanes that are
+not on every GPU (L2C, each GLONASS L2OF satellite) and E6: the relay's copies of a GPU's own
+satellites pass the duplicate test on a far target (the re-steer over 10-16 MHz differs by the
+pooled delays' noise) and filled the 40-lane budget on the E5/B2 edges with near-duplicates.

@@ -135,6 +135,13 @@ common:
     n2-project-source: lanes+residual
     n2-project-lanes-max: 40
     elem-dir-publish: all
+    # A bright pass takes the other satellites' tracker lock, so their lanes stopped: in the
+    # 10-30/31 recv1 files the exactly-nulled directions fell from ~20 to 2-3 at G13 (0.03 deg)
+    # and E14 (2 deg). Each lane now keeps its last coherent element response, steered with the
+    # current geometry, for up to 600 s: a bright pass is within 2 deg for ~10 min. A held
+    # response goes stale as the satellite crosses the sidelobes; a stale lane costs one
+    # dimension (1/n of the sky) and still nulls what it shares with the true direction.
+    elem-dir-hold-s: 600
     assembler-core-slots: "2,1,3,4,8"
     # The stage on a whole idle physical core per NUMA node (15/47 and 19/51 read 0 % on
     # cx27/43/44/51 on 10-24), outside the runtime pools: 127 stations with the transfers ran at
