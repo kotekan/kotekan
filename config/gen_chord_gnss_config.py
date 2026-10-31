@@ -882,6 +882,8 @@ def elem_proj_keys(args):
     # does not need the bright-satellite projection on (the rows are then raw).
     if getattr(args, "elem_dir_publish", "off") == "all":
         out["elem_dir_publish"] = "all"
+        if getattr(args, "elem_dir_hold_s", 0.0):
+            out["elem_dir_hold_s"] = float(args.elem_dir_hold_s)
     if mode not in ("shadow", "live"):
         return out
     out["elem_proj_mode"] = mode
@@ -3125,6 +3127,14 @@ def main():
         default="off",
         help="GnssGpuRecordAssemble: publish every running non-probe slot's averaged prompt-row "
         "direction per channel on the ProjBoard for GnssN2Project (#190); default off",
+    )
+    ap.add_argument(
+        "--elem-dir-hold-s",
+        type=float,
+        default=0.0,
+        help="with --elem-dir-publish all: seconds a lane whose row lost coherence (a bright "
+        "pass takes the tracker's lock) keeps being published from its last coherent mean, "
+        "steered with the current geometry; default 0 (off, nothing emitted)",
     )
     ap.add_argument(
         "--n2-project-live-freq-ids",

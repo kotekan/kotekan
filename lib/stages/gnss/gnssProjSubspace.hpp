@@ -417,6 +417,7 @@ struct ProjEntry {
     double los[3] = {0.0, 0.0, 0.0};      ///< line of sight, ENU unit vector
     double los_rate[3] = {0.0, 0.0, 0.0}; ///< its rate per second
     int xfer = 0;
+    double held_s = 0.0; ///< src 2: seconds since the row was last coherent (0 = live)
 };
 
 /// Process-wide board. The sibling assemblers of one GPU are threads of one kotekan process and

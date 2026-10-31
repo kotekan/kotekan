@@ -42,6 +42,11 @@ namespace gnss {
  * record to the running mean first, by the phase of mean^H row (the O(n) form of the rank-1
  * power iteration ProjSubspace does on v v^H): the direction is then phase-invariant and
  * only its own phase origin is arbitrary. A PRN change on the slot is a reset.
+ *
+ * Hold: hold() keeps a copy of the mean with its coherence and power. When the row stops
+ * being coherent (the tracker loses the satellite while a bright one passes), the steered
+ * mean is still the satellite's element response, so held_direction() re-steered with the
+ * current D is still its direction. A reset drops the copy.
  */
 class LaneDirection {
 public:
@@ -50,7 +55,9 @@ public:
     LaneDirection(int n_elem, int n_chan, int n_slot, double tau_s) :
         _n(n_elem), _nc(n_chan), _ns(n_slot), _tau(tau_s > 0.0 ? tau_s : 0.5),
         _m((size_t)n_slot * n_chan * n_elem, cd(0.0, 0.0)), _p((size_t)n_slot * n_chan, 0.0),
-        _age((size_t)n_slot * n_chan, 0.0) {}
+        _age((size_t)n_slot * n_chan, 0.0), _hm((size_t)n_slot * n_chan * n_elem, cd(0.0, 0.0)),
+        _hp((size_t)n_slot * n_chan, 0.0), _hc((size_t)n_slot * n_chan, 0.0),
+        _ht((size_t)n_slot * n_chan, -1.0) {}
 
     int n_elem() const {
         return _n;
@@ -105,6 +112,7 @@ public:
         for (int ch = 0; ch < _nc; ++ch) {
             _age[idx(slot, ch)] = 0.0;
             _p[idx(slot, ch)] = 0.0;
+            _ht[idx(slot, ch)] = -1.0;
         }
     }
 
@@ -140,7 +148,43 @@ public:
     bool direction(int slot, int ch, const ElemSteer::cf* D, cd* out) const {
         if (!ok(slot, ch) || _age[idx(slot, ch)] <= 0.0)
             return false;
-        const cd* m = &_m[idx(slot, ch) * (size_t)_n];
+        return steer_out(&_m[idx(slot, ch) * (size_t)_n], D, out);
+    }
+
+    /// Keep the current mean, its coherence and power as the held direction, stamped @p t_utc.
+    void hold(int slot, int ch, double t_utc) {
+        if (!ok(slot, ch) || _age[idx(slot, ch)] <= 0.0)
+            return;
+        const size_t k = idx(slot, ch);
+        std::copy(&_m[k * (size_t)_n], &_m[k * (size_t)_n] + _n, &_hm[k * (size_t)_n]);
+        _hp[k] = _p[k];
+        _hc[k] = coherence(slot, ch);
+        _ht[k] = t_utc;
+    }
+    /// Seconds from the last hold() to @p t_utc; negative when nothing is held.
+    double held_age_s(int slot, int ch, double t_utc) const {
+        if (!ok(slot, ch) || _ht[idx(slot, ch)] < 0.0)
+            return -1.0;
+        return t_utc - _ht[idx(slot, ch)];
+    }
+    /// The coherence and power the held mean had when it was kept.
+    double held_coherence(int slot, int ch) const {
+        return ok(slot, ch) ? _hc[idx(slot, ch)] : 0.0;
+    }
+    double held_power(int slot, int ch) const {
+        return ok(slot, ch) ? _hp[idx(slot, ch)] : 0.0;
+    }
+    /// direction() for the held mean: steered with @p D, the current table. False when nothing
+    /// is held.
+    bool held_direction(int slot, int ch, const ElemSteer::cf* D, cd* out) const {
+        if (!ok(slot, ch) || _ht[idx(slot, ch)] < 0.0)
+            return false;
+        return steer_out(&_hm[idx(slot, ch) * (size_t)_n], D, out);
+    }
+
+private:
+    /// out = conj(D) o m / |m|; false if m is zero.
+    bool steer_out(const cd* m, const ElemSteer::cf* D, cd* out) const {
         double e = 0.0;
         for (int i = 0; i < _n; ++i)
             e += std::norm(m[i]);
@@ -151,8 +195,6 @@ public:
             out[i] = std::conj(cd(D[i].real(), D[i].imag())) * m[i] * inv;
         return true;
     }
-
-private:
     bool ok(int slot, int ch) const {
         return slot >= 0 && slot < _ns && ch >= 0 && ch < _nc && _n > 0;
     }
@@ -163,6 +205,8 @@ private:
     double _tau = 0.5;
     std::vector<cd> _m;
     std::vector<double> _p, _age;
+    std::vector<cd> _hm;               ///< held means
+    std::vector<double> _hp, _hc, _ht; ///< held power, coherence, utc (-1 = none)
 };
 
 /**

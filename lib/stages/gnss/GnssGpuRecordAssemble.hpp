@@ -354,10 +354,13 @@ private:
     // elem_dir_coh_min (0.05: ~3x the noise floor 1/n, so probe slots never publish). Owner
     // "<unique_name>/lane/<prn>"; retired when the slot
     // stops or changes PRN. Rows are taken after the in-place elem projection, so a
-    // victim's row carries no bright-source leakage.
+    // victim's row carries no bright-source leakage. elem_dir_hold_s (0 = off): a channel whose
+    // row falls below elem_dir_coh_min (a bright pass takes the tracker's lock) keeps
+    // publishing its last coherent mean, steered with the current geometry, for this long.
     bool _lane_on = false;
     int _lane_every = 4;
     double _lane_coh_min = 0.02;
+    double _lane_hold_s = 0.0;
     std::string _lane_group;
     std::vector<int> _lane_fids;
     gnss::LaneDirection _lane;
@@ -374,7 +377,7 @@ private:
     // slot and forgotten over lane_transfer_inst_tau_s (300 s); until that has averaged for
     // tau_s the transfer is geometric only.
     std::vector<int> _lane_xfer_fids;
-    std::vector<char> _lane_ok;                     ///< [n_chan] published this round
+    std::vector<char> _lane_ok; ///< [n_chan] published this round: 1 live, 2 held
     std::vector<std::complex<double>> _lane_pubdir; ///< [n_chan][n_elem]
     std::vector<gnss::ElemSteer::cf> _lane_shift;   ///< [n_elem]
     bool _inst_on = false;

@@ -204,6 +204,8 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
         const double tau = config.get_default<double>(unique_name, "elem_dir_tau_s", 0.5);
         _lane_every = std::max(1, config.get_default<int>(unique_name, "elem_dir_every", 4));
         _lane_coh_min = config.get_default<double>(unique_name, "elem_dir_coh_min", 0.05);
+        _lane_hold_s =
+            std::max(0.0, config.get_default<double>(unique_name, "elem_dir_hold_s", 0.0));
         _lane_fids = config.get_default<std::vector<int>>(unique_name, "channel_ids", {});
         _lane_group = unique_name.substr(0, unique_name.find('_'));
         const int np = (int)_prns.size();
@@ -244,10 +246,10 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
         if (_lane_on)
             INFO("lane directions: publishing every running non-probe slot's prompt-row "
                  "direction per channel to the board group {:s}, tau {:.2f} s, every {:d} "
-                 "records, coherence >= {:.3f}, transferred to {:d} more channels, "
-                 "instrumental delay {:s}",
-                 _lane_group, tau, _lane_every, _lane_coh_min, (int)_lane_xfer_fids.size(),
-                 _inst_on ? "on" : "off");
+                 "records, coherence >= {:.3f}, held {:.0f} s, transferred to {:d} more "
+                 "channels, instrumental delay {:s}",
+                 _lane_group, tau, _lane_every, _lane_coh_min, _lane_hold_s,
+                 (int)_lane_xfer_fids.size(), _inst_on ? "on" : "off");
     }
     // Bright-satellite projection (see the header and gnssProjSubspace.hpp). Needs channel_ids
     // (the board is keyed on freq_id) and elem_sum (the shadow learners). Off by default;
@@ -950,7 +952,9 @@ void GnssGpuRecordAssemble::main_thread() {
                     e3[t] = e;
                 }
                 // #190: publish the slot's lane directions once per elem_dir_every records,
-                // per covering channel whose EMA is warm and coherent, in the raw frame.
+                // per covering channel whose EMA is warm and coherent, in the raw frame. A
+                // channel that lost coherence publishes its last coherent mean, steered with
+                // the current table, for up to elem_dir_hold_s (_lane_ok 2).
                 if (lane_rec && (++_lane_cnt[p] % _lane_every) == 0) {
                     gnss::ProjBoard& board = gnss::ProjBoard::instance();
                     const double now_s = std::chrono::duration<double>(
@@ -958,20 +962,33 @@ void GnssGpuRecordAssemble::main_thread() {
                                              .count();
                     std::fill(_lane_ok.begin(), _lane_ok.end(), 0);
                     for (int ch = 0; ch < n_chan; ++ch) {
-                        if (!((c.chan_mask >> ch) & 1ULL) || !_lane.warm(p, ch))
+                        if (!((c.chan_mask >> ch) & 1ULL))
                             continue;
-                        const double coh = _lane.coherence(p, ch);
+                        const gnss::ElemSteer::cf* st = &_steer_buf[(size_t)ch * n_e];
                         std::complex<double>* dir = &_lane_pubdir[(size_t)ch * n_e];
-                        if (coh < _lane_coh_min
-                            || !_lane.direction(p, ch, &_steer_buf[(size_t)ch * n_e], dir))
-                            continue;
-                        _lane_ok[(size_t)ch] = 1;
+                        double coh = _lane.warm(p, ch) ? _lane.coherence(p, ch) : 0.0;
+                        double power = _lane.power(p, ch);
+                        double held_s = 0.0;
+                        if (coh >= _lane_coh_min && _lane.direction(p, ch, st, dir)) {
+                            if (_lane_hold_s > 0.0)
+                                _lane.hold(p, ch, utc);
+                            _lane_ok[(size_t)ch] = 1;
+                        } else {
+                            held_s = _lane.held_age_s(p, ch, utc);
+                            if (_lane_hold_s <= 0.0 || held_s < 0.0 || held_s > _lane_hold_s
+                                || !_lane.held_direction(p, ch, st, dir))
+                                continue;
+                            coh = _lane.held_coherence(p, ch);
+                            power = _lane.held_power(p, ch);
+                            _lane_ok[(size_t)ch] = 2;
+                        }
                         gnss::ProjEntry e;
                         e.owner = _lane_owner[p];
                         e.src = 2;
                         e.t_pub = now_s;
-                        e.power = _lane.power(p, ch);
+                        e.power = power;
                         e.coh = coh;
+                        e.held_s = held_s;
                         e.n = n_e;
                         e.k = 1;
                         e.q.reserve((size_t)n_e);
@@ -983,12 +1000,12 @@ void GnssGpuRecordAssemble::main_thread() {
                         board.publish(_lane_group, _lane_fids[(size_t)ch], e);
                         _lane_pub[p] = 1;
                     }
-                    // Adjacent published channels measure the instrumental delay.
+                    // Adjacent channels published live measure the instrumental delay.
                     if (_inst_on) {
                         _inst.advance(utc);
                         int a = -1;
                         for (int ch = 0; ch < n_chan; ++ch) {
-                            if (!_lane_ok[(size_t)ch])
+                            if (_lane_ok[(size_t)ch] != 1)
                                 continue;
                             if (a >= 0
                                 && _lane_fids[(size_t)ch] - _lane_fids[(size_t)a] == _inst_df_fid) {
@@ -1036,12 +1053,14 @@ void GnssGpuRecordAssemble::main_thread() {
                             }
                             if (_inst_on && _inst.warm())
                                 _inst.apply(df_hz, v);
+                            const bool held = _lane_ok[(size_t)src] == 2;
                             gnss::ProjEntry e;
                             e.owner = _lane_owner[p];
                             e.src = 2;
                             e.t_pub = now_s;
-                            e.power = _lane.power(p, src);
-                            e.coh = _lane.coherence(p, src);
+                            e.power = held ? _lane.held_power(p, src) : _lane.power(p, src);
+                            e.coh = held ? _lane.held_coherence(p, src) : _lane.coherence(p, src);
+                            e.held_s = held ? _lane.held_age_s(p, src, utc) : 0.0;
                             e.n = n_e;
                             e.k = 1;
                             e.q.reserve((size_t)n_e);

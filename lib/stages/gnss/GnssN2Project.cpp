@@ -152,6 +152,7 @@ GnssN2Project::GnssN2Project(Config& config, const std::string& unique_name,
     }
     if (use_lanes) {
         fleet_k.assign(num_local_freq, 0);
+        held_k.assign(num_local_freq, 0);
         using namespace std::placeholders;
         kotekan::restServer::instance().register_get_callback(
             unique_name + "/get_lanes", std::bind(&GnssN2Project::get_lanes_callback, this, _1));
@@ -197,6 +198,7 @@ int GnssN2Project::build_lanes(int f, int freq_id, const cd* V, double now_s, bo
             LaneCand& c = cand.back();
             c.power = e.power;
             c.coh = e.coh;
+            c.held = e.held_s > 0.0;
             c.v.assign((size_t)n, cd(0.0, 0.0));
             for (int el = 0; el < e.n; ++el) {
                 const int a = e2a[(size_t)el];
@@ -224,7 +226,7 @@ int GnssN2Project::build_lanes(int f, int freq_id, const cd* V, double now_s, bo
     if (cand.empty()) {
         if (diag)
             lane_rq_conj_db[f] = lane_rq_raw_db[f] = 0.0;
-        fleet_k[f] = 0;
+        fleet_k[f] = held_k[f] = 0;
         return 0;
     }
     if (diag) {
@@ -256,7 +258,7 @@ int GnssN2Project::build_lanes(int f, int freq_id, const cd* V, double now_s, bo
             lane_rq_raw_db[f] = lane_conj ? as_other : as_conf;
         }
     }
-    int kf = 0;
+    int kf = 0, kh = 0;
     for (size_t i = 0; i < cand.size(); ++i) {
         if (lanes.k >= k_lanes_max)
             break;
@@ -264,10 +266,13 @@ int GnssN2Project::build_lanes(int f, int freq_id, const cd* V, double now_s, bo
             ++lane_used;
             if (i >= n_local)
                 ++kf;
+            else if (cand[i].held)
+                ++kh;
         } else
             ++lane_dup;
     }
     fleet_k[f] = kf;
+    held_k[f] = kh;
     return lanes.k;
 }
 
@@ -490,6 +495,8 @@ void GnssN2Project::main_thread() {
         "kotekan_gnss_n2project_lane_directions_duplicate", unique_name);
     auto& g_fleet_k = Metrics::instance().add_gauge("kotekan_gnss_n2project_fleet_lane_k",
                                                     unique_name, {"freq_id"});
+    auto& g_held_k = Metrics::instance().add_gauge("kotekan_gnss_n2project_lane_held_k",
+                                                   unique_name, {"freq_id"});
     auto& g_fleet_lanes =
         Metrics::instance().add_gauge("kotekan_gnss_n2project_fleet_lanes", unique_name);
     auto& g_fleet_age =
@@ -718,6 +725,7 @@ void GnssN2Project::main_thread() {
                     g_lane_rqc.labels({fid}).set(lane_rq_conj_db[f]);
                     g_lane_rqr.labels({fid}).set(lane_rq_raw_db[f]);
                     g_fleet_k.labels({fid}).set(fleet_k[f]);
+                    g_held_k.labels({fid}).set(held_k[f]);
                 }
             }
             if (use_lanes) {
