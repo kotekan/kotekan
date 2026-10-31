@@ -40,6 +40,8 @@ add_library(
     cudaGnssChordDespread.cu
     cudaGnssPsiSynth.cu
     cudaGnssN2Gather.cu
+    cudaGnssBeamDump.cpp
+    cudaGnssBeamDumpKernel.cu
     chordMVPSetup.cpp
     cudaPLMaskAccumulator.cpp
     cudaPLMaskBasebandBeamformer.cpp
@@ -199,6 +201,12 @@ target_link_libraries(cuda_gnss_despread_test PRIVATE kotekan_cuda kotekan_stage
                                                       kotekan_libs libexternal)
 target_include_directories(cuda_gnss_despread_test PRIVATE . ../stages ../stages/gnss ../core
                                                            ../utils ../metadata)
+
+# GNSS beam dump kernels (covariance, whitened eigenvector, beam) vs a CPU reference on a
+# synthetic 4+4b frame. Run: ./lib/cuda/cuda_gnss_beam_dump_test
+add_executable(cuda_gnss_beam_dump_test cudaGnssBeamDumpTest.cpp)
+target_link_libraries(cuda_gnss_beam_dump_test PRIVATE kotekan_cuda)
+target_include_directories(cuda_gnss_beam_dump_test PRIVATE .)
 
 # Prototype code-phase-table (Psi) replica synthesis vs the production waveform kernel at CHORD
 # geometry, with timings. The kernel is part of the bench, not of kotekan_cuda.

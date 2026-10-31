@@ -826,6 +826,16 @@ def elem_positions_from_arraymap(arr, n_elem):
     return out, ep
 
 
+def beam_dump_frame_bytes(n_chan, n_times):
+    """Bytes of one cudaGnssBeamDump frame: mirrors gnss_cuda::beam_dump_layout."""
+    align = lambda off: (off + 15) & ~15
+    off = align(64 + 4 * n_chan)  # header, freq_ids
+    off = align(off + 16 * n_chan)  # lambda[4]
+    off = align(off + 4 * 128 * n_chan)  # pw[128]
+    off = align(off + 8 * 128 * n_chan)  # w[128] float2
+    return align(off + 4 * n_chan * n_times)  # half2 samples
+
+
 def freq_id_ranges(spec):
     """Absolute freq_ids from 'lo-hi,lo-hi,...' (a bare id is one channel); empty for none."""
     ids = set()
@@ -1719,10 +1729,80 @@ def merge_n2dual_gpu(blocks, cfg, args, node, gpu, chains, spds):
                 sink, in_buf=vb, file_name=f"{node}_gnss{gpu}{p['tag']}_visctl"
             )
 
+    # The beam dump (docs/CHORD_GUOWANG_BEAMDUMP_PLAN.md): a self-calibrated beam per selected
+    # channel on this GPU, a ring consumer beside the correlator, gated by seq like the vis
+    # capture (the frame's clock is its int64 seq0 at byte 0) and written under
+    # <record_dir>/beamdump.
+    beam_cmd = []
+    bd_off = cfg["nodes"][node]["gpu_offsets_mod16"][gpu]
+    bd_ids = [
+        f for f in sorted(freq_id_ranges(args.beam_dump_freq_ids)) if f % 16 == bd_off
+    ]
+    bd_pairs = [(f, gpu_of_channel(cfg, node, f)[1]) for f in bd_ids]
+    if bd_pairs:
+        bd_bytes = beam_dump_frame_bytes(len(bd_pairs), int(spds))
+        bd_buf = f"gnss{gpu}_beam_buf"
+        bd_gated = f"gnss{gpu}_beamdump_buf"
+        beam_cmd = [
+            {
+                "name": "cudaGnssBeamDump",
+                "beam_name": f"gnss{gpu}_beam",
+                "beam_local_channels": [idx for _, idx in bd_pairs],
+                "beam_freq_ids": [fid for fid, _ in bd_pairs],
+                "beam_ref_input": args.beam_dump_ref_input,
+                "beam_eig_iters": args.beam_dump_eig_iters,
+            }
+        ]
+        out_buffers["host_gnss_beam"] = bd_buf
+        outputs.append(
+            {
+                "name": "cudaOutputData",
+                "gpu_mem": f"gnss{gpu}_beam_buffer",
+                "out_buf": "host_gnss_beam",
+            }
+        )
+        bd_core = GPU_VARS[gpu][0]["cores"]["sink"]
+        for name, depth in ((bd_buf, BUFFER_DEPTH), (bd_gated, args.beam_dump_depth)):
+            cap_blocks[name] = {
+                "kotekan_buffer": "standard",
+                "metadata_pool": "gnss_pool",
+                "num_frames": depth,
+                "frame_size": bd_bytes,
+            }
+        cap_blocks[f"gnss{gpu}_beamdump_gate"] = {
+            "kotekan_stage": "FrameWindowGate",
+            "in_bufs": [bd_buf],
+            "out_bufs": [bd_gated],
+            "clock_buf": 0,
+            "clock_source": "frame",
+            "clock_offset": 0,
+            "cpu_affinity": [bd_core],
+        }
+        cap_blocks[f"gnss{gpu}_beamdump_sink"] = {
+            "kotekan_stage": "rawFileWrite",
+            "in_buf": bd_gated,
+            "base_dir": (args.record_dir or rt["record_dir"]) + "/beamdump",
+            "file_name": f"{node}_gnss{gpu}_beam",
+            "file_ext": "raw",
+            "prefix_hostname": False,
+            "num_frames_per_file": args.beam_dump_frames_per_file,
+            "allow_ndarray": True,
+            "continue_numbering": True,
+            "create_base_dir": True,
+            "cpu_affinity": [bd_core],
+        }
+        print(
+            f"  gpu{gpu}: beam dump over {len(bd_pairs)} channels "
+            f"({bd_pairs[0][0]}..{bd_pairs[-1][0]}), {bd_bytes / 1e6:.2f} MB/frame",
+            file=sys.stderr,
+        )
+
     corr["gnss_gathers"] = names
     merged["in_buffers"] = primary["in_buffers"]
     merged["out_buffers"] = out_buffers
-    merged["commands"] = injects + [corr, {"name": "cudaSyncOutput"}] + outputs
+    merged["commands"] = (
+        injects + [corr] + beam_cmd + [{"name": "cudaSyncOutput"}] + outputs
+    )
     blocks[f"gnss{gpu}_n2dual"] = merged
     blocks.update(cap_blocks)
     print(
@@ -2915,6 +2995,48 @@ def main():
         metavar="N",
         dest="vis_capture_depth",
         help="frames of slack between the gate and each writer (default 8)",
+    )
+    ap.add_argument(
+        "--beam-dump-freq-ids",
+        default="",
+        metavar="RANGES",
+        dest="beam_dump_freq_ids",
+        help="absolute freq_id ranges ('lo-hi,lo-hi') for the beam dump: a self-calibrated beam "
+        "per channel on the GPU holding it (cudaGnssBeamDump), gated by seq like the vis capture "
+        "and written under <record_dir>/beamdump (docs/CHORD_GUOWANG_BEAMDUMP_PLAN.md). Empty = "
+        "no beam dump.",
+    )
+    ap.add_argument(
+        "--beam-dump-ref-input",
+        type=int,
+        default=100,
+        metavar="N",
+        dest="beam_dump_ref_input",
+        help="the beam's phase-reference input (default 100)",
+    )
+    ap.add_argument(
+        "--beam-dump-eig-iters",
+        type=int,
+        default=4,
+        metavar="N",
+        dest="beam_dump_eig_iters",
+        help="power iterations per frame per component (default 4)",
+    )
+    ap.add_argument(
+        "--beam-dump-frames-per-file",
+        type=int,
+        default=24,
+        metavar="N",
+        dest="beam_dump_frames_per_file",
+        help="frames per beam-dump file (default 24, ~1 s)",
+    )
+    ap.add_argument(
+        "--beam-dump-depth",
+        type=int,
+        default=8,
+        metavar="N",
+        dest="beam_dump_depth",
+        help="frames of slack between the beam-dump gate and its writer (default 8)",
     )
     ap.add_argument(
         "--frame0-nano",
