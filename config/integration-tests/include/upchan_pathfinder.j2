@@ -1,0 +1,263 @@
+# -*-yaml-*-
+
+# CHORD pathfinder upchannelizer setup
+
+################################################################################
+
+# Upchannelizer setup
+
+# TODO: Remove this
+upchannelization_factor: 4
+
+# This mapping was suggested by Seth Siegel's `ice_rfsoc_comparison_dm_2000_tint_1_gamma_0_tsys_30K_tsky.yaml`.
+# (This is the "worst case" mapping.)
+upchannelization_factor_mapping:
+    # - 0: 64
+    # - 341.65: 32
+    # - 442.01: 16
+    # - 568.66: 8
+    # - 714.99: 4
+    # - 907.41: 2
+    # - 1168.77: 1
+    -    0: 64                  # Fmin = 0
+    - 1750: 32                  # Fmin = 14
+    - 2264: 16                  # Fmin = 46
+    - 2912:  8                  # Fmin = 86
+    - 3661:  4                  # Fmin = 133
+    - 4646:  2                  # Fmin = 195
+    - 5985:  1                  # Fmin = 279
+
+# Notes:
+#  U  | lowest local channel | first global channel |    frequency
+#     | (see upchan table)   | (see channel table)  |
+# -----------------------------------------------------------------
+#  64 |                    0 |                 1536 |  300.000 MHz
+#  32 |                   14 |                 1760 |  343.750 MHz
+#  16 |                   46 |                 2272 |  443.750 MHz
+#   8 |                   86 |                 2912 |  568.750 MHz
+#   4 |                  133 |                 3664 |  715.625 MHz
+#   2 |                  195 |                 4656 |  909.375 MHz
+#   1 |                  279 |                 6000 | 1171.875 MHz
+
+
+
+# # This mapping was suggested by Seth Siegel's `ice_rfsoc_comparison_dm_750_tint_1_gamma_0_tsys_30K_tsky.yaml`.
+# # (This is the "default" mapping.)
+# upchannelization_factor_mapping:
+# #     - 0: 8
+# #     - 607.9: 4
+# #     - 790.57: 2
+# #     - 1032.16: 1
+
+# The above mappings are for CHORD. The mappings below are for the CHORD pathfinder.
+# TODO: Use them
+# dm_2000_tint_1.0_gamma_0.0:
+#   fbound:
+#   - 1405.03
+#   - 1216.22
+#   - 968.28
+#   - 721.05
+#   - 533.58
+#   - 372.40
+# 
+# dm_750_tint_1.0_gamma_0.0:
+#   fbound:
+#   - 1198.67
+#   - 944.24
+#   - 712.14
+#   - 542.19
+#   - 386.42
+
+
+
+# The largest upchannelization factor used in this run. All upchannelizers delay their
+# output so that it is aligned in time with that of the largest factor.
+max_upchannelization_factor: 64
+
+upchan_factors: [2, 4, 8, 16, 32, 64]
+# ranges are [min, max)
+upchan_channel_ranges:
+    64: [0, 1750]
+    32: [1750, 2264]
+    16: [2264, 2912]
+    8: [2912, 3661]
+    4: [3661, 4646]
+    2: [4646, 5985]
+    1: [5985, 8192]
+
+# The GPU-local (not global) channel index range for each upchannelization factor
+
+# actual = 14, scaled = 896
+upchan_U64_max_num_channels: 32
+upchan_U64_min_channel: 0
+upchan_U64_max_channel: 14
+upchan_U64_min_output_channel: upchan_all_min_output_channel
+upchan_U64_max_output_channel: upchan_U64_min_output_channel + (upchan_U64_max_channel - upchan_U64_min_channel) * 64
+
+# actual = 32, scaled = 1024
+upchan_U32_max_num_channels: 64
+upchan_U32_min_channel: 14
+upchan_U32_max_channel: 46
+upchan_U32_min_output_channel: upchan_U64_max_output_channel
+upchan_U32_max_output_channel: upchan_U32_min_output_channel + (upchan_U32_max_channel - upchan_U32_min_channel) * 32
+
+# actual = 40, scaled = 640
+upchan_U16_max_num_channels: 64
+upchan_U16_min_channel: 46
+upchan_U16_max_channel: 86
+upchan_U16_min_output_channel: upchan_U32_max_output_channel
+upchan_U16_max_output_channel: upchan_U16_min_output_channel + (upchan_U16_max_channel - upchan_U16_min_channel) * 16
+
+# actual = 47, scaled = 376
+upchan_U8_max_num_channels: 64
+upchan_U8_min_channel: 86
+upchan_U8_max_channel: 133
+upchan_U8_min_output_channel: upchan_U16_max_output_channel
+upchan_U8_max_output_channel: upchan_U8_min_output_channel + (upchan_U8_max_channel - upchan_U8_min_channel) * 8
+
+# actual = 62, scaled = 244
+upchan_U4_max_num_channels: 128
+upchan_U4_min_channel: 133
+upchan_U4_max_channel: 195
+upchan_U4_min_output_channel: upchan_U8_max_output_channel
+upchan_U4_max_output_channel: upchan_U4_min_output_channel + (upchan_U4_max_channel - upchan_U4_min_channel) * 4
+
+# actual = 84, scaled = 168
+upchan_U2_max_num_channels: 128
+upchan_U2_min_channel: 195
+upchan_U2_max_channel: 279
+upchan_U2_min_output_channel: upchan_U4_max_output_channel
+upchan_U2_max_output_channel: upchan_U2_min_output_channel + (upchan_U2_max_channel - upchan_U2_min_channel) * 2
+
+# actual = 105, scaled = 105
+upchan_U1_max_num_channels: 128
+upchan_U1_min_channel: 279
+upchan_U1_max_channel: 384
+upchan_U1_min_output_channel: upchan_U2_max_output_channel
+upchan_U1_max_output_channel: upchan_U1_min_output_channel + (upchan_U1_max_channel - upchan_U1_min_channel) * 1
+
+upchan_all_max_num_output_channels: 4096
+upchan_all_min_output_channel: 0
+upchan_all_max_output_channel: upchan_U1_max_output_channel
+
+################################################################################
+
+# Buffers
+
+# Gains
+
+{% for U in [2, 4, 8, 16, 32, 64] %}
+host_upchan_U{{ U }}_gain_buffer:
+    kotekan_buffer: ndarray
+    num_frames: 1
+    value_type: float16
+    extents: [upchan_U{{ U }}_max_num_channels * {{ U }}]
+    quantity_name: "G"
+    dimnames: ["Fbar"]
+    dimscalings: [1]
+    metadata_pool: main_pool
+{% endfor %}
+
+# Packet loss masks
+
+host_upchan_U2_expanded_pl_mask_ringbuffer:
+    kotekan_buffer: ring
+    ring_buffer_size: buffer_depth * (64 / 8) * (num_dishes / 8) * num_polarizations * upchan_U2_max_num_channels * (num_times / 64 / 2)
+    metadata_pool: main_pool
+
+host_upchan_U4_expanded_pl_mask_ringbuffer:
+    kotekan_buffer: ring
+    ring_buffer_size: buffer_depth * (64 / 8) * (num_dishes / 8) * num_polarizations * upchan_U4_max_num_channels * (num_times / 64 / 4)
+    metadata_pool: main_pool
+
+host_upchan_U8_expanded_pl_mask_ringbuffer:
+    kotekan_buffer: ring
+    ring_buffer_size: buffer_depth * (64 / 8) * (num_dishes / 8) * num_polarizations * upchan_U8_max_num_channels * (num_times / 64 / 8)
+    metadata_pool: main_pool
+
+host_upchan_U16_expanded_pl_mask_ringbuffer:
+    kotekan_buffer: ring
+    ring_buffer_size: buffer_depth * (64 / 8) * (num_dishes / 8) * num_polarizations * upchan_U16_max_num_channels * (num_times / 64 / 16)
+    metadata_pool: main_pool
+
+host_upchan_U32_expanded_pl_mask_ringbuffer:
+    kotekan_buffer: ring
+    ring_buffer_size: buffer_depth * (64 / 8) * (num_dishes / 8) * num_polarizations * upchan_U32_max_num_channels * (num_times / 64 / 32)
+    metadata_pool: main_pool
+
+host_upchan_U64_expanded_pl_mask_ringbuffer:
+    kotekan_buffer: ring
+    ring_buffer_size: buffer_depth * (64 / 8) * (num_dishes / 8) * num_polarizations * upchan_U64_max_num_channels * (num_times / 64 / 64)
+    metadata_pool: main_pool
+
+# Voltages
+
+{% for U in [2, 4, 8, 16, 32, 64] %}
+host_upchan_U{{ U }}_voltage_ringbuffer:
+    kotekan_buffer: ring
+    ring_buffer_size: buffer_depth * num_dishes * num_polarizations * (upchan_U{{ U }}_max_num_channels * {{ U }}) * (num_times / {{ U }})
+    metadata_pool: main_pool
+{% endfor %}
+
+################################################################################
+
+# Stages
+
+# upchan.jl scales its window by 1/U, so that a tone at a fine-channel centre keeps its
+# amplitude, while noise shrinks by 0.892/sqrt(U). A gain of 0.8 sqrt(U) takes F-engine noise
+# of 2.8 LSB to 2 LSB at the int4 output, leaving headroom for RFI. Such a tone is then
+# multiplied by 0.81 sqrt(U). The jinja variable `upchan_gains` maps U (as a string) to the U
+# gains of the fine channels, replacing these.
+{% set upchan_gains = upchan_gains | default({}) %}
+{% for U in [2, 4, 8, 16, 32, 64] %}
+run_set_upchan_U{{ U }}_gain:
+    kotekan_stage: setUpchanGain
+    upchan_factor: {{ U }}
+    upchan_max_num_channels: upchan_U{{ U }}_max_num_channels
+    upchan_gain: {{ upchan_gains.get(U | string, [(0.8 * U ** 0.5) | round(4)] * U) | tojson }}
+    upchan_gain_buffer: host_upchan_U{{ U }}_gain_buffer
+    metadata_source: host_voltage_buffer
+{% endfor %}
+
+{% for U in [2, 4, 8, 16, 32, 64] %}
+run_upchan_pl_U{{ U }}:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_pl_expanded_mask_ringbuffer: host_pl_expanded_mask_ringbuffer
+        out_buffers:
+            host_upchan_U{{ U }}_expanded_pl_mask_ringbuffer: host_upchan_U{{ U }}_expanded_pl_mask_ringbuffer
+        commands:
+        - name: cudaPLMaskUpchannelizer
+          expanded_pl_mask_name: pl_expanded_mask
+          upchannelized_expanded_pl_mask_name: upchan_U{{ U }}_expanded_pl_mask
+          upchannelization_factor: {{ U }}
+          num_frequencies_out: upchan_U{{ U }}_max_num_channels
+          Fmin: upchan_U{{ U }}_min_channel
+          Fmax: upchan_U{{ U }}_max_channel
+{% endfor %}
+
+{% for U in [2, 4, 8, 16, 32, 64] %}
+run_upchan_U{{ U }}:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_voltage_ringbuffer: host_voltage_ringbuffer
+            host_upchan_U{{ U }}_gain_buffer: host_upchan_U{{ U }}_gain_buffer
+        out_buffers:
+            host_upchan_U{{ U }}_voltage_ringbuffer: host_upchan_U{{ U }}_voltage_ringbuffer
+        commands:
+        - name: cudaInputData
+          do_once: true
+          in_buf: host_upchan_U{{ U }}_gain_buffer
+          gpu_mem: upchan_U{{ U }}_gain_buffer
+        - name: cudaSyncInput
+        - name: cudaUpchannelizer_pathfinder_U{{ U }}_K4
+          voltage_name: voltage
+          upchan_U{{ U }}_gain_name: upchan_U{{ U }}_gain
+          upchan_U{{ U }}_voltage_name: upchan_U{{ U }}_voltage
+          Fmin: upchan_U{{ U }}_min_channel
+          Fmax: upchan_U{{ U }}_max_channel
+{% endfor %}

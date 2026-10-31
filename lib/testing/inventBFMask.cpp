@@ -12,6 +12,7 @@
 #include "kotekanLogging.hpp"    // for DEBUG, FATAL_ERROR, INFO, WARN
 #include "metadata.hpp"          // for metadataObject
 #include "prometheusMetrics.hpp" // for Metrics, Gauge
+#include "testSkySignal.hpp"     // for testBadFeeds
 #include "visUtil.hpp"           // for current_time
 
 #include <algorithm>  // for copy
@@ -33,9 +34,15 @@ class inventBFMask : public kotekan::Stage {
     const int num_polarizations = config.get<int>(unique_name, "num_polarizations");
     const std::int64_t bf_mask_lifetime_in_samples =
         config.get<std::int64_t>(unique_name, "bf_mask_lifetime_in_samples");
+    // FPGA sequence number of the first sample; must agree between the voltage and mask
+    // generators
+    const std::int64_t first_fpga_seq_num =
+        config.get_default<std::int64_t>(unique_name, "first_fpga_seq_num", 0);
     const std::string mode = config.get_default<std::string>(unique_name, "mode", "all_good");
     const std::vector<int> manual_bad_feeds =
         config.get_default<std::vector<int>>(unique_name, "manual_bad_feeds", {});
+    // Bad feeds that change with time, on top of `mode`
+    const testBadFeeds bad_feeds{config, unique_name};
 
     // Only the "auto" mode needs to know which dishes exist, and dish types are a
     // CHORD-specific concept; the generic `Telescope` interface has no equivalent.
@@ -70,6 +77,12 @@ public:
             for (const auto feed : manual_bad_feeds)
                 if (!(feed >= 0 && feed < std::ptrdiff_t(buffer->frame_size)))
                     FATAL_ERROR("Bad feed number {:d} in `manual_bad_feeds`", feed);
+
+        // Each mask frame must lie within one period of `bad_feeds`
+        if (bad_feeds.get_change_in_samples() % bf_mask_lifetime_in_samples != 0)
+            FATAL_ERROR("bad_feed_change_in_samples {:d} must be a multiple of "
+                        "bf_mask_lifetime_in_samples {:d}",
+                        bad_feeds.get_change_in_samples(), bf_mask_lifetime_in_samples);
     }
 
     virtual ~inventBFMask() {}
@@ -94,7 +107,9 @@ public:
             buffer->allocate_new_metadata_object(frame_id);
             const auto& meta = get_chord_metadata(buffer->get_metadata(frame_id));
             meta->set_from_frame_desc(buffer->get_frame_desc<kotekan::GenericNDArray>());
-            meta->set_fpga_seq_num(frame_index * bf_mask_lifetime_in_samples);
+            const std::int64_t frame_seq =
+                first_fpga_seq_num + std::int64_t(frame_index) * bf_mask_lifetime_in_samples;
+            meta->set_fpga_seq_num(frame_seq);
             meta->set_time_downsampling_fpga(bf_mask_lifetime_in_samples);
 
             // Fill buffer
@@ -150,6 +165,8 @@ public:
             } else {
                 FATAL_ERROR("Internal logic error");
             }
+            for (const int input : bad_feeds.bad_inputs(frame_seq))
+                frame[input] = 0;
 
             // Mark buffer as full
             DEBUG("[{:s}/{:d}] Marking buffer as full...", buffer->buffer_name, frame_index);
