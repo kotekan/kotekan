@@ -746,6 +746,19 @@ def gpst_of_utc(t_utc):
     return (t_utc - GPS_EPOCH).total_seconds() + GPS_UTC_LEAP
 
 
+# Satellites predict_all keeps through its health gate, keyed (sys, prn): they broadcast a
+# non-zero health word but transmit, and passing near boresight they need a lane (#190) like any
+# other. Each entry names the satellite and the evidence.
+HEALTH_GATE_EXEMPT = {
+    # Galileo GSAT0202, launched 2014 into an eccentric orbit. I/NAV health 130 (E1-B and E5b
+    # "out of service"), F/NAV 16 (E5a), yet it passed 2.0 deg from boresight on 2026-10-31
+    # 00:47Z at ~+13 dB per input in the E5a, E5b and E6 lobes while no chain tracked it.
+    ("E", 14): "GSAT0202",
+    # Galileo GSAT0201, GSAT0202's twin: the same orbit type and the same health words.
+    ("E", 18): "GSAT0201",
+}
+
+
 def best_eph(records, t_gpst, max_age=14400.0):
     """The record whose toe is nearest t, within max_age (default 4 h); None if all stale."""
     cand = [e for e in records if abs(t_gpst - e["toe_gpst"]) < max_age]
@@ -787,7 +800,8 @@ def predict_all(
 
     health_gate=False keeps unhealthy records (BeiDou is never gated, see below), for geometry
     only (sky.transit_sky): an unhealthy satellite still transmits and still captures the
-    array. Seeds never set it."""
+    array. Seeds never set it. The gate also keeps the HEALTH_GATE_EXEMPT satellites, so the
+    chains track and lane them."""
     t = gpst_of_utc(t_utc)
     rx = _ecef_of_llh(lat, lon, alt)
     out = {}
@@ -805,7 +819,12 @@ def predict_all(
         )
         if e is None:
             continue
-        if health_gate and e.get("health", 0) not in (0, 0.0) and key[0] not in "CS":
+        if (
+            health_gate
+            and e.get("health", 0) not in (0, 0.0)
+            and key[0] not in "CS"
+            and key not in HEALTH_GATE_EXEMPT
+        ):
             # SBAS is exempt too: the RINEX S health is MT17's status bitmask (ranging /
             # corrections / integrity flags; WAAS reads 31 with the signal on the air),
             # and a lane direction (#190) needs the transmission, not a ranging licence.
