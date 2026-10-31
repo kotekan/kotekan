@@ -30,13 +30,6 @@ message(STATUS "SRCFILES: ${SRCFILES}")
 # Add library targets
 add_library(ksgpu ${HFILES} ${SRCFILES})
 
-# Set architecture flags (honor CMAKE_CUDA_ARCHITECTURES when provided, e.g. 121 for GB10)
-if(CMAKE_CUDA_ARCHITECTURES)
-    set_target_properties(ksgpu PROPERTIES CUDA_ARCHITECTURES "${CMAKE_CUDA_ARCHITECTURES}")
-else()
-    set_target_properties(ksgpu PROPERTIES CUDA_ARCHITECTURES "86;89")
-endif()
-
 # Set language for CUDA files
 set_target_properties(ksgpu PROPERTIES LANGUAGE CUDA)
 set_target_properties(ksgpu PROPERTIES LINKER_LANGUAGE CUDA)

@@ -1,11 +1,6 @@
 # Kotekan build glue; VENDOR.json identifies the unmodified detector sources.
 project(pilotproxy CXX CUDA)
 
-# Match lib/cuda's default; an explicit cache setting takes precedence.
-if(NOT CMAKE_CUDA_ARCHITECTURES)
-    set(CMAKE_CUDA_ARCHITECTURES 86)
-endif()
-
 # The core fixes its window length at compile time, so build it for 64 (CHORD) and 128 (CHIME)
 # samples per window; pilotproxy_core.hpp selects one at run time. Each build renames the core's C
 # functions so that both link into one library. Without NDEBUG the core synchronizes its stream
