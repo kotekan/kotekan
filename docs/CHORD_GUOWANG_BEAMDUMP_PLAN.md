@@ -3,8 +3,10 @@
 Status: 2026-10-31. KV: build it. Tier 1 is implemented on branch kv/guowang-beam (this document's
 branch): `cudaGnssBeamDump` (lib/cuda), its kernel test `cuda_gnss_beam_dump_test`, the generator
 option `--beam-dump-freq-ids` (fleet key `beam-dump-freq-ids`) with the gate and writer, and
-`scripts/gnss/beam_dump_read.py` (info, stitch). Not yet: the pass scheduler that arms the gates,
-and a node canary (needs the array back).
+`scripts/gnss/beam_dump_read.py` (info, stitch), and `scripts/gnss/beam_dump_sched.py` (plan,
+run: arms every gate on one seq window per pass from the TLE planner, as viscap.py does). Not
+yet: the fleet key in config/gnss_fleet_chord.yaml and a node canary (both need KV and the
+array back).
 Analysis so far: `~/gnss/bb1030/dg_*.py`, data `cf06:/var/tmp/bb1030/dg2`, notes in the gnss-main
 session memory (`chord-guowang-encoding-20261031`).
 
