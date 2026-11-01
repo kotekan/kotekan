@@ -34,6 +34,8 @@ add_library(
     testDataCheckExpected.cpp
     testDataGenQuad.cpp
     testDataGenFloat.cpp
+    udpPacketGen.cpp
+    udpPacketCheck.cpp
     testLostCountsGen.cpp
     testLostSamplesToPLMask.cpp
     testN2kGen.cpp

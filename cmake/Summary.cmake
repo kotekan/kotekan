@@ -218,10 +218,11 @@ kfeature_row("LAPACK/Blaze" "${USE_LAPACK_BLAZE}" "${LAPACK_BLAZE_REASON}"
 
 # Other
 kfeature_header("Other")
-# Alphabetical: Airspy, DPDK, Julia, NUMA, OpenMP, OpenSSL
+# Alphabetical: Airspy, DPDK, ibverbs, Julia, NUMA, OpenMP, OpenSSL
 kfeature_row("Airspy" "${USE_AIRSPY}" "${AIRSPY_REASON}" "${_airspy_present}" USE_AIRSPY)
 # Note: When WITH_BOOST_TESTS=ON, DPDK is disabled to avoid linker issues
 kfeature_row("DPDK" "${USE_DPDK}" "${DPDK_REASON}" "${USE_DPDK}" USE_DPDK)
+kfeature_row("ibverbs" "${USE_IBVERBS}" "${IBVERBS_REASON}" "${USE_IBVERBS}" USE_IBVERBS)
 kfeature_row("Julia" "${USE_JULIA}" "${JULIA_REASON}" "${USE_JULIA}" USE_JULIA)
 
 # Build meta
