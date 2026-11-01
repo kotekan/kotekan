@@ -15,30 +15,30 @@ host_dtv_mask_buffer:
     kotekan_buffer: ndarray
     num_frames: host_buffer_depth
     value_type: int8
-    extents: [num_freq_gpu_buf]
+    extents: [1, num_freq_gpu_buf]
     quantity_name: "dtv_mask"
-    dimnames: ["F"]
-    dimscalings: [1]
+    dimnames: ["T", "F"]
+    dimscalings: [16384, 1]
     metadata_pool: main_pool
 
 host_dtv_powers_buffer:
     kotekan_buffer: ndarray
     num_frames: host_buffer_depth
     value_type: uint64
-    extents: [num_freq_gpu_buf, 3]
+    extents: [1, num_freq_gpu_buf, 3]
     quantity_name: "dtv_powers"
-    dimnames: ["F", "W"]
-    dimscalings: [1, 1]
+    dimnames: ["T", "F", "W"]
+    dimscalings: [16384, 1, 1]
     metadata_pool: main_pool
 
 host_dtv_fine_support_buffer:
     kotekan_buffer: ndarray
     num_frames: host_buffer_depth
     value_type: int32
-    extents: [num_freq_gpu_buf, 2]
+    extents: [1, num_freq_gpu_buf, 2]
     quantity_name: "dtv_fine_support"
-    dimnames: ["F", "S"]
-    dimscalings: [1, 1]
+    dimnames: ["T", "F", "S"]
+    dimscalings: [16384, 1, 1]
     metadata_pool: main_pool
 
 run_dtv_detector:
