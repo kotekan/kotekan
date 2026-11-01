@@ -44,7 +44,7 @@
 # or from a derived config; 1 already gives every pipeline its own disjoint triple (the base is a
 # pipeline INDEX), larger steps only spread them out.
 {% set stream_base_step = stream_base_step | default(0) %}
-{# With dtv_apply_mask, the correlators and RfiMaskSum read the DTV-merged mask (see dtv.j2). #}
+{# Share the DTV-merged mask across correlators and RfiMaskSum. #}
 {% set n2k_rfi_name = "dtv_RFImask" if dtv_apply_mask|default(false) else "rfi_RFImask" %}
 
 # The two NUMA halves. Each owns a NIC port, a GPU and a set of cores, and every per-half
@@ -902,7 +902,7 @@ run_recv_rfi_RFImask:
           ring_buffer_size: buffer_depth * output_size
           out_buf: host_rfi_RFImask_buffer_out
 {% endfor %}
-{#- PilotProxy DTV pilot detector, off unless dtv_enabled or dtv_apply_mask is set (see dtv.j2). #}
+{#- Optional DTV detector; see dtv.j2. #}
 {%- if dtv_enabled|default(false) or dtv_apply_mask|default(false) %}
 {% include "dtv.j2" %}
 {% endif %}

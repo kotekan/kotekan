@@ -1,31 +1,20 @@
 {#-
   dtv.j2
-  PilotProxy DTV pilot detector on each NUMA half.  Included by pathfinder.j2 when
-  dtv_enabled or dtv_apply_mask is set, e.g.
-      -e '{"dtv_enabled": true, "dtv_runtime_bundle_dir": "/path/to/bundle"}'
-  With dtv_enabled alone it detects only: the mask is written to disk and not applied to N2.
-  With dtv_apply_mask, DtvRfiMask clears every sample of a rejected frequency in the SK mask,
-  and n2k, the counts correlator and RfiMaskSum read the merged mask.  Turning
-  /rfi_first_stage_enabled off makes the SK mask all-good, so the merged mask is the DTV
-  mask alone, for testing the detector by itself.
-  Each half binds the bundle profiles whose chord_channel_id is in its coarse_freq list; a
-  half with none logs "detector DISABLED" and writes all-zero masks and powers.  Every bound
-  channel must be calibrated in the bundle, so export only the channels under test.  The
-  detector takes its own CUDA stream triple: pipeline index 1 while the pathfinder's
-  pipelines all share index 0, and the index after theirs (13) once stream_base_step
-  separates them.  See docs/sphinx/user/modules/pilotproxy.rst.
+  dtv_enabled runs detection; dtv_apply_mask also applies its mask to N2.
+  Disable /rfi_first_stage_enabled for a DTV-only first-stage mask.
+  Profiles bind by receiver_channel_id against each NUMA half's coarse_freq.
+  Every bound channel must be calibrated; halves without matches emit zero masks/powers.
+  See docs/sphinx/user/modules/pilotproxy.rst for bundle setup and runtime controls.
 -#}
 {% set dtv_runtime_bundle_dir = dtv_runtime_bundle_dir|default("data/pilotproxy_bundle") %}
 {% set dtv_output_dir = dtv_output_dir|default("/scratch/dtv") %}
 
-# One frame per 8192-sample block: the mask byte, the three frame powers
-# (target, lower, upper; each the sum of 256 fine powers) and the fine rank
-# support of each local frequency.  Each product has a second buffer behind
-# the write switch.
+# One frame per 8192-sample block: mask, target/lower/upper powers
+# (sums of 256 fine powers), and per-frequency fine support.
 {% set dtv_products = [
-    ("mask", "int8", "[num_local_freq]", '["F"]', "[1]"),
-    ("powers", "uint64", "[num_local_freq, 3]", '["F", "W"]', "[1, 1]"),
-    ("fine_support", "int32", "[num_local_freq, 2]", '["F", "S"]', "[1, 1]"),
+    ("mask", "int8", "[1, num_local_freq]", '["T", "F"]', "[8192, 1]"),
+    ("powers", "uint64", "[1, num_local_freq, 3]", '["T", "F", "W"]', "[8192, 1, 1]"),
+    ("fine_support", "int32", "[1, num_local_freq, 2]", '["T", "F", "S"]', "[8192, 1, 1]"),
 ] %}
 {% for n in numa_halves %}
 {% for product, value_type, extents, dimnames, dimscalings in dtv_products %}
@@ -46,11 +35,9 @@ host_dtv_{{ product }}{{ suffix }}_buffer{{ n.sfx }}:
 {% endfor %}
 {% endfor %}
 {% endfor %}
-# Runtime switches, e.g.
-#   curl -X POST -H 'Content-Type: application/json' -d '{"enabled": false}' \
-#       localhost:12048/dtv_write_enabled
-# The detector switch also takes valid_at_time_ns (0: from the next block). While the
-# detector is off it writes zero masks and powers and (-1,-1) fine support.
+# POST {"enabled": false} to /dtv_write_enabled to stop recording.
+# Detector updates also require valid_at_time_ns (0: next block). Disabled detection emits
+# zero masks/powers and (-1,-1) fine support.
 dtv_detector_enabled:
     kotekan_update_endpoint: json
     enabled: true
@@ -65,6 +52,7 @@ run_dtv_detector:
     gpu_{{ n.id }}:
         kotekan_stage: cudaProcess
         gpu_id: {{ n.id }}
+        # Use a private stream triple even when pathfinder shares base 0.
         cuda_stream_base: {{ 13 * stream_base_step if stream_base_step else 1 }}
         cpu_affinity: {{ n.gpu_cpus }}
         in_buffers:
@@ -109,8 +97,8 @@ switch_dtv_write:
 {% endfor %}
 {% endfor %}
 
-# Each file holds 1024 blocks (43 s) along an added time axis, with the
-# metadata stored once.  Re-enabling the writes starts a new file.
+# Files span ~43 s, with metadata stored once.
+# Re-enabling writes starts a new file.
 write_dtv:
 {% for n in numa_halves %}
 {% for product in ["mask", "powers", "fine_support"] %}
@@ -121,13 +109,12 @@ write_dtv:
         in_buf: host_dtv_{{ product }}_write_buffer{{ n.sfx }}
         base_dir: {{ dtv_output_dir }}
         file_name: dtv_{{ product }}{{ n.sfx }}
-        add_time_axis: true
         frames_per_file: 1024
 {% endfor %}
 {% endfor %}
 
 {% if dtv_apply_mask|default(false) %}
-# The merged mask, in the SK mask's format, and its ring on the GPU.
+# Merged mask in SK format, plus its GPU ring.
 {% for n in numa_halves %}
 host_dtv_RFImask_buffer{{ n.sfx }}:
     kotekan_buffer: ndarray
@@ -156,7 +143,6 @@ merge_dtv_mask:
     half_{{ n.id }}:
         kotekan_stage: DtvRfiMask
         cpu_affinity: {{ n.other_cpus }}
-        num_local_freq: num_local_freq
         num_times: samples_per_data_set
         rfi_buf: host_rfi_RFImask_buffer{{ n.sfx }}
         dtv_buf: host_dtv_mask_buffer{{ n.sfx }}

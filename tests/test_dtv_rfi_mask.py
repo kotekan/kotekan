@@ -312,10 +312,10 @@ def setup_pipeline(
             kotekan_buffer="ndarray",
             num_frames=4,
             value_type="int32",
-            extents=[F, 2],
+            extents=[1, F, 2] if real_detector else [F, 2],
             quantity_name="dtv_fine_support",
-            dimnames=["F", "S"],
-            dimscalings=[1, 1],
+            dimnames=["T", "F", "S"] if real_detector else ["F", "S"],
+            dimscalings=[1, 1, 1] if real_detector else [1, 1],
             metadata_pool="main_pool",
         )
         cfg["combine"].update(
@@ -342,7 +342,14 @@ def setup_pipeline(
             ["T8hi128", "F", "T8lo128"],
             [1024, 1, 8],
         ),
-        ("dtv_mask", "int8", [F], "dtv_mask", ["F"], [1]),
+        (
+            "dtv_mask",
+            "int8",
+            [1, F] if real_detector else [F],
+            "dtv_mask",
+            ["T", "F"] if real_detector else ["F"],
+            [1, 1] if real_detector else [1],
+        ),
     ):
         cfg[f"host_{name}_buffer"] = dict(
             kotekan_buffer="ndarray",

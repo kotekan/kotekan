@@ -91,11 +91,6 @@ using namespace HighFive;
  *       Default: -1 (disabled). Cannot be combined with @c create_single_file.
  * @conf per_y_frames  Int. Period Y for frame decimation (see write_x_frames).
  *       Default: -1 (disabled). Cannot be combined with @c create_single_file.
- * @conf add_time_axis  Bool. Default: false. Store each frame as one step of an added
- *       leading time axis "T" whose dim_scaling is the frame's `time_downsampling_fpga`,
- *       so a buffer without a leading time axis can be written several frames per file.
- *       The frames must carry `fpga_seq_num`, and `time_downsampling_fpga` must be the
- *       frame period. Only for chord metadata; hdf5FileRead does not read these files.
  *
  * @par Metrics
  * @metric kotekan_hdf5filewrite_write_time_seconds
@@ -125,7 +120,6 @@ class hdf5FileWrite : public kotekan::Stage {
     const int64_t per_y_frames = config.get_default<int64_t>(unique_name, "per_y_frames", -1);
     const uint64_t frames_per_file =
         config.get_default<uint64_t>(unique_name, "frames_per_file", 1);
-    const bool add_time_axis = config.get_default<bool>(unique_name, "add_time_axis", false);
 
     const uint64_t num_polarizations = config.get<uint64_t>(unique_name, "num_polarizations");
     const uint64_t num_dishes = config.get<uint64_t>(unique_name, "num_dishes");
@@ -310,20 +304,11 @@ public:
 
         auto& file = *the_current_file_pointer;
 
-        const std::int64_t tds =
-            meta->has_time_downsampling_fpga() ? meta->get_time_downsampling_fpga() : 1;
-        if (add_time_axis && !(meta->has_fpga_seq_num() && meta->has_time_downsampling_fpga()))
-            FATAL_ERROR("Buffer \"{:s}\": add_time_axis requires fpga_seq_num and "
-                        "time_downsampling_fpga in the metadata",
-                        buffer->buffer_name);
-        // Steps along axis 0 of the file per frame
-        const std::size_t dim0 = add_time_axis ? 1 : meta->dim[0];
-
         if (create_single_file || (frames_per_file > 1)) {
             // A file with multiple frames concatenates frames along axis 0 and stores the metadata
             // only once, so hdf5FileRead can only reconstruct the per-frame fpga_seq_num if axis 0
             // is a contiguous, uniformly sampled time axis.
-            const std::string dim0_name = add_time_axis ? "T" : meta->get_dimension_name(0);
+            const std::string dim0_name = meta->get_dimension_name(0);
             if (!is_time_axis(dim0_name))
                 FATAL_ERROR(
                     "Buffer \"{:s}\": storing multiple frames per file requires a time axis "
@@ -331,26 +316,29 @@ public:
                     "false and frames_per_file: 1 for this writer",
                     buffer->buffer_name, dim0_name);
 
-            const std::int64_t dim0_scaling = add_time_axis ? tds : meta->dim_scaling[0];
-            if (dim0_scaling != tds)
+            const std::int64_t tds =
+                meta->has_time_downsampling_fpga() ? meta->get_time_downsampling_fpga() : 1;
+
+            if (meta->dim_scaling[0] != tds)
                 FATAL_ERROR(
                     "Buffer \"{:s}\": storing multiple frames per file requires dim_scaling[0] "
                     "({:d}) == time_downsampling_fpga ({:d}); set create_single_file: false "
                     "and frames_per_file: 1 for this writer",
-                    buffer->buffer_name, dim0_scaling, tds);
+                    buffer->buffer_name, meta->dim_scaling[0], tds);
 
             if (do_create_dataset) {
-                multi_frame_file_dim0 = dim0;
+                multi_frame_file_dim0 = meta->dim[0];
                 multi_frame_file_tds = tds;
                 // use the fpga sequence number to track sample contiguity
                 multi_frame_file_has_seq = meta->has_fpga_seq_num();
             } else {
-                if (dim0 != multi_frame_file_dim0 || tds != multi_frame_file_tds)
+                if (std::size_t(meta->dim[0]) != multi_frame_file_dim0
+                    || tds != multi_frame_file_tds)
                     FATAL_ERROR("Buffer \"{:s}\": frame {:d} changes the frame shape/downsampling "
                                 "(dim[0] {:d}->{:d}, time_downsampling_fpga {:d}->{:d}) within a "
                                 "single file",
-                                buffer->buffer_name, frame_counter, multi_frame_file_dim0, dim0,
-                                multi_frame_file_tds, tds);
+                                buffer->buffer_name, frame_counter, multi_frame_file_dim0,
+                                meta->dim[0], multi_frame_file_tds, tds);
 
                 if (meta->has_fpga_seq_num() != multi_frame_file_has_seq)
                     FATAL_ERROR("Buffer \"{:s}\": fpga_seq_num is present in some frames but not "
@@ -381,23 +369,21 @@ public:
             }
 
             if (multi_frame_file_has_seq)
-                multi_frame_file_next_seq = meta->get_fpga_seq_num() + std::int64_t(dim0) * tds;
+                multi_frame_file_next_seq =
+                    meta->get_fpga_seq_num() + std::int64_t(meta->dim[0]) * tds;
         }
 
         if (do_create_dataset) {
 
             // Choose dataspace
-            const auto frame_extents = frame_desc->get_extents();
-            std::vector<std::size_t> extents(frame_extents.begin(), frame_extents.end());
-            if (add_time_axis)
-                extents.insert(extents.begin(), 1);
-            std::vector<std::size_t> initial_shape(extents);
-            std::vector<std::size_t> maximum_shape(extents);
+            const auto extents = frame_desc->get_extents();
+            std::vector<std::size_t> initial_shape(extents.begin(), extents.end());
+            std::vector<std::size_t> maximum_shape(extents.begin(), extents.end());
             initial_shape.at(0) = 0;
             maximum_shape.at(0) = DataSpace::UNLIMITED;
             const DataSpace space(initial_shape, maximum_shape);
             assert(meta->offset == 0);
-            assert(space.getNumberDimensions() == extents.size());
+            assert(space.getNumberDimensions() == frame_desc->get_rank());
 
             // Choose datatype
             const DataType type = chord2hdf5(frame_desc->get_value_datatype());
@@ -449,13 +435,9 @@ public:
                                     kotekan::type_to_string(frame_desc->get_value_datatype()));
             const auto dimnames = frame_desc->get_dimnames();
             std::vector<std::string> dim_names(dimnames.begin(), dimnames.end());
-            if (add_time_axis)
-                dim_names.insert(dim_names.begin(), "T");
             dataset.createAttribute("dim_names", dim_names);
             const auto dimscalings = frame_desc->get_dimscalings();
             std::vector<std::ptrdiff_t> dim_scalings(dimscalings.begin(), dimscalings.end());
-            if (add_time_axis)
-                dim_scalings.insert(dim_scalings.begin(), tds);
             dataset.createAttribute("dim_scalings", dim_scalings);
 
             if (meta->has_fpga_seq_num()) {
@@ -508,14 +490,14 @@ public:
         const auto old_dims = dataspace.getDimensions();
         std::vector<std::size_t> new_dims(old_dims);
         assert(meta->dims > 0);
-        new_dims.at(0) = old_dims.at(0) + dim0;
+        new_dims.at(0) = old_dims.at(0) + meta->dim[0];
         dataset.resize(new_dims);
 
         // Choose hpyerslab
         std::vector<std::size_t> offset(new_dims.size(), 0);
         std::vector<std::size_t> count(new_dims);
         offset.at(0) = old_dims.at(0);
-        count.at(0) = dim0;
+        count.at(0) = meta->dim[0];
         auto hyperslab = dataset.select(offset, count);
 
         // Write data

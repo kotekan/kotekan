@@ -24,10 +24,12 @@ Components
     A ``cudaCommand`` that reads the same voltage ring as the n2k correlator.
     For each bound frequency it packs one block from every input into 128
     windows of 64 samples and runs the detector core. Per local frequency and
-    block it writes ``dtv_mask`` (``int8[F]``, 1 rejects the block),
-    ``dtv_powers`` (``uint64[F, 3]``, the target and the two reference frame
+    block it writes ``dtv_mask`` (``int8[1, F]``, 1 rejects the block),
+    ``dtv_powers`` (``uint64[1, F, 3]``, the target and the two reference frame
     powers, each the sum of that term's 256 fine powers) and, optionally,
-    ``dtv_fine_support`` (``int32[F, 2]``, see below).
+    ``dtv_fine_support`` (``int32[1, F, 2]``, see below). The leading ``T``
+    axis holds one detector block, scaled by its FPGA sequence period. This allows
+    ``hdf5FileWrite`` to concatenate blocks with ``frames_per_file``.
     Frequencies without a pilot get zero masks and powers. The detector sums
     every input in the ring, including inputs the correlator flags as bad.
 
@@ -113,6 +115,22 @@ Other keys:
 Both lists hold receiver IDs (``coarse_freq``), not ATSC channel numbers. They
 must not overlap, and every listed ID must be on the node, so they are set per
 node.
+
+
+Pathfinder recording
+--------------------
+
+``config/chord/pathfinder.j2`` uses the same ``dtv_enabled``, ``dtv_apply_mask``
+and ``dtv_runtime_bundle_dir`` switches. It records masks, powers and fine
+support in 1024-block files (about 43 seconds), under ``dtv_output_dir``
+(default ``/scratch/dtv``).
+
+While running, POST ``{"enabled": false}`` to ``/dtv_write_enabled`` to stop
+recording. POST ``{"enabled": false, "valid_at_time_ns": 0}`` to
+``/dtv_detector_enabled`` to stop detection at the next block. Set ``enabled``
+to true to resume; recording starts a new file. A nonzero ``valid_at_time_ns``
+applies the detector change at the first block starting at or after that
+instrument time. Both switches start enabled.
 
 
 GPU streams
