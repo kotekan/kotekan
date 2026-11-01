@@ -1,5 +1,5 @@
-# Set the version of CMake required for *all* CMake files in the project. 3.8.2 to match C++17.
-cmake_minimum_required(VERSION 3.8.2)
+# Require CMake 3.28, as provided by Ubuntu 24.04.
+cmake_minimum_required(VERSION 3.28)
 # Enforce INTERPROCEDURAL_OPTIMIZATION when set (required for LTO in Release builds).
 if(POLICY CMP0069)
     cmake_policy(SET CMP0069 NEW)

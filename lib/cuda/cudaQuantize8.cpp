@@ -6,6 +6,7 @@
 #include "NDArray.hpp"             // for NDArray
 #include "NDArrayBuffer.hpp"       // for NDArrayBuffer
 #include "NDArrayRingBuffer.hpp"   // for NDArrayRingBuffer, read_descriptor_t
+#include "Telescope.hpp"           // for Telescope
 #include "bufferContainer.hpp"     // for bufferContainer
 #include "chordMetadata.hpp"       // for chordMetadata
 #include "cudaCommand.hpp"         // for cudaCommand, cudaPipelineState, REGISTER_CUDA_COMMAND
@@ -20,7 +21,7 @@
 
 #include "fmt.hpp" // for format
 
-#include <algorithm>          // for max
+#include <algorithm>          // for max, reverse
 #include <array>              // for array
 #include <cassert>            // for assert
 #include <cstddef>            // for ptrdiff_t
@@ -191,6 +192,17 @@ cudaQuantize8::cudaQuantize8(Config& config, const std::string& unique_name,
                     "to [{:d}, {:d}, {:d}] and does not support [{:d}, {:d}, {:d}]",
                     in_nbeams, in_nfreqs, in_ntimes, _num_beams, _num_frequencies, _num_times);
     }
+
+    // check that Telescope is as expected
+    const auto& tel = Telescope::instance();
+    // TOOD: this could use Telescope::nyquist_zone() which may yield the same
+    // information
+    if (tel.num_freq() >= 2 && tel.to_freq_MHz(freq_id_t(0)) < tel.to_freq_MHz(freq_id_t(1))) {
+        FATAL_ERROR("This stage reverses the fine frequencies such that they appear high-to-low "
+                    "frequency (in MHz) in the output array (as appropriate for CHIME), but the "
+                    "telescope ({:s}) sorts its coarse frequencies low-to-high (like CHORD does).",
+                    tel.get_name());
+    }
 }
 
 cudaQuantize8::~cudaQuantize8() {}
@@ -246,6 +258,28 @@ cudaEvent_t cudaQuantize8::execute(cudaPipelineState&, const std::vector<cudaEve
     // Set metadata
     beam_buffer.set_metadata(input_meta);
     offsetscale_buffer.set_metadata(input_meta);
+    // we reverse the order of the upchannelized frequency channels so that they
+    // are high-MHz -> low-MHz like the coarse frequency channels. Make sure
+    // metadata reflects this and that indeed the telescope is such.
+    auto freq_upchan_index = input_meta->get_freq_upchan_index();
+    if (!(freq_upchan_index.size() == in_nfreqs)) {
+        FATAL_ERROR("This stage hard-codes the number incoming fine frequencies to {:d}, but "
+                    "received {:d} in buffer {:s}.",
+                    in_nfreqs, freq_upchan_index.size(), input_buffer.get_buffer_name());
+    }
+    if (!(freq_upchan_index.size() % out_nfreqs_chunk == 0)) {
+        FATAL_ERROR(
+            "The number of frequencies per output chunk (hard-coded to {:d}), must evenly divide "
+            "the number of incoming frequencies ({:d}) in buffer {:s}, but does not.",
+            out_nfreqs_chunk, freq_upchan_index.size(), input_buffer.get_buffer_name());
+    }
+    for (size_t chunk = 0; chunk < freq_upchan_index.size() / unsigned(out_nfreqs_chunk); ++chunk) {
+        auto first = freq_upchan_index.begin() + chunk * out_nfreqs_chunk;
+        auto last = first + out_nfreqs_chunk;
+        std::reverse(first, last);
+    }
+    beam_buffer.get_metadata()->set_freq_upchan_index(freq_upchan_index);
+    offsetscale_buffer.get_metadata()->set_freq_upchan_index(freq_upchan_index);
 
     const auto& input_ndarray = input_buffer.get_ndarray();
     const float16_t* const input = input_ndarray.data();

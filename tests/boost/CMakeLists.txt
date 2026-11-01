@@ -458,3 +458,8 @@ target_include_directories(test_upchannelizeReference PRIVATE ${KOTEKAN_SOURCE_D
 add_executable(test_DtvRfiMask test_DtvRfiMask.cpp ${KOTEKAN_SOURCE_DIR}/lib/stages/DtvRfiMask.cpp)
 target_link_libraries(test_DtvRfiMask PRIVATE kotekan_core kotekan_metadata kotekan_utils
                                               libexternal)
+
+add_executable(test_ProcessPacketMask test_ProcessPacketMask.cpp
+                                      ${KOTEKAN_SOURCE_DIR}/lib/stages/ProcessPacketMask.cpp)
+target_link_libraries(test_ProcessPacketMask PRIVATE kotekan_core kotekan_metadata kotekan_utils
+                                                     libexternal)

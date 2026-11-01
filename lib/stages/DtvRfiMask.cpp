@@ -20,13 +20,16 @@
  * @class DtvRfiMask
  * @brief Fold one 8192- or 16384-sample DTV decision block into the aligned RFImask frame.
  *
- * DTV int8[1,F] uses 1 = reject; RFImask uint1x8[num_times/1024, F, 128] uses 1 = keep. The output
- * is their intersection: a rejected frequency has every time bit cleared, an accepted one keeps the
- * existing mask. Both the visibility correlator and its packet-loss counter must consume this
- * output. One detector block per RFImask frame; mismatched time or frequency identity stops the
- * run. Optional fine-support rows distinguish invalid rank support from a valid keep.
- * Invalid rows clear every time bit. The permanent-mask limit also clears every bit,
- * independently of the detector score; the raw detector products retain their meaning.
+ * The DTV mask int8[1,F] uses 1 to reject a frequency, and the RFImask
+ * uint1x8[num_times/1024, F, 128] uses 1 to keep a sample. For a DTV
+ * rejection, every time bit at that frequency is cleared. Otherwise the
+ * existing RFImask is kept. Both the correlator and its packet-loss counter
+ * must use this combined mask so that they count the same accepted samples.
+ *
+ * One detector block must match one RFImask frame in time and frequency,
+ * and a mismatch stops the run. Optional fine-support rows distinguish a valid
+ * keep from insufficient rank support. Invalid support and the permanent-mask
+ * limit each clear every time bit without changing the raw detector products.
  *
  * @par Buffers
  * @buffer  rfi_buf     RFImask frames from n2k.
@@ -41,7 +44,7 @@
  *         A leading T axis must have length 1 and scaling time_downsampling_fpga.
  *
  * @conf    num_local_freq  int  Frequencies per frame.
- * @conf    num_times       int  Samples per detector block; must be 8192 or 16384.
+ * @conf    num_times       int  Samples per detector block (8192 or 16384).
  * @conf    permanent_mask_freq_ids List of unique integer receiver coarse-frequency IDs
  *          in [0,CHORD_META_MAX_FREQ) at the reject-all limit (default []).
  * @conf    require_fine_freq_ids List of unique integer receiver coarse-frequency IDs

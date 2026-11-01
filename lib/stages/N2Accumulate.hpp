@@ -257,6 +257,7 @@ public:
      * Helper function to keep code a bit more readable.
      *
      * @param in_frame_id The input frame ID.
+     * @param in_rfiframemask_frame_id The input RFI frame mask ID.
      * @param out_frame_id The output frame ID.
      * @return bool True if successful, false otherwise.
      */
