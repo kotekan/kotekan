@@ -43,3 +43,22 @@ Example test ``tests/boost/test_<name>.cpp``:
 * Make sure ``pytest-cpp`` is installed.
 
 * Run your test with ``pytest tests/boost/test_<name>``.
+
+
+Comet Integration Tests
+=======================
+
+The Comet tests exercise the dataset broker, frequency slicing, and shared-memory
+readers and writers. Build kotekan and the broker helpers with
+``-DWITH_TESTS=ON -DWITH_BOOST_TESTS=ON``, then run with Python 3.12 or newer:
+
+.. code:: bash
+
+   sudo apt-get install redis-server
+   bash tests/ci-scripts/comet/run_comet_tests.sh build
+
+The script installs the test dependencies into a temporary virtual environment
+and checks that the helper binaries exist before running all four test modules.
+Each module starts a private Redis database and Comet broker on local ports;
+both processes and their temporary files are removed after the tests. The GCC
+CPU test job runs the same script.

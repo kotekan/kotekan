@@ -110,6 +110,8 @@ jobs:
               cd $GITHUB_WORKSPACE/tests
               pytest -v -n auto -rs --dist=loadfile --durations=0 --timeout="${PYTEST_TIMEOUT}" -x -m 'not serial' || rc=1
               pytest -v -x -rs --durations=0 --timeout="${PYTEST_TIMEOUT}" -m serial || rc=1
+              apt-get update && apt-get install -y redis-server &&
+                bash "$GITHUB_WORKSPACE/tests/ci-scripts/comet/run_comet_tests.sh" "$GITHUB_WORKSPACE/build-2404" || rc=1
               exit $rc
 
           # Release gcc build + pytests
