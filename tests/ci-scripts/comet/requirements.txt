@@ -1,0 +1,8 @@
+-r ../../../python/requirements.txt
+astropy
+mpmath
+flask
+pytest
+pytest-localserver
+pytest-timeout
+comet @ git+https://github.com/chime-experiment/comet.git@fe6231d331a5aa4000ef54132d97b4a80d930e09

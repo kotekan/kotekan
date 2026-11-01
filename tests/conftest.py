@@ -14,6 +14,11 @@ import subprocess
 import os
 import sys
 import faulthandler
+import re
+import shutil
+import socket
+
+from time import monotonic, sleep
 
 faulthandler.enable()
 _fh_interval = os.environ.get("FAULTHANDLER_DUMP_INTERVAL")
@@ -104,3 +109,96 @@ def cal_broker(request, old_gains, new_gains):
     yield server
 
     server.stop()
+
+
+@pytest.fixture(scope="module")
+def comet_broker_port(tmp_path_factory):
+    """Run a Comet broker with an isolated, temporary Redis database."""
+    broker_path = shutil.which("comet")
+    redis_path = shutil.which("redis-server")
+    if not broker_path or not redis_path:
+        pytest.skip("Comet tests require comet and redis-server on PATH")
+    redis = pytest.importorskip("redis")
+    import requests
+
+    work = tmp_path_factory.mktemp("comet")
+    redis_log = work / "redis.log"
+    broker_log = work / "broker.log"
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        redis_port = sock.getsockname()[1]
+
+    processes = []
+    with redis_log.open("w") as redis_out, broker_log.open("w") as broker_out:
+        try:
+            server = subprocess.Popen(
+                [
+                    redis_path,
+                    "--bind",
+                    "127.0.0.1",
+                    "--port",
+                    str(redis_port),
+                    "--save",
+                    "",
+                    "--appendonly",
+                    "no",
+                ],
+                cwd=work,
+                stdout=redis_out,
+                stderr=subprocess.STDOUT,
+            )
+            processes.append(server)
+            client = redis.Redis("127.0.0.1", redis_port, socket_timeout=1)
+            deadline = monotonic() + 10
+            while monotonic() < deadline and server.poll() is None:
+                try:
+                    if client.ping():
+                        break
+                except redis.ConnectionError:
+                    pass
+                sleep(0.1)
+            else:
+                pytest.fail("Redis did not start:\n" + redis_log.read_text())
+            client.close()
+
+            broker = subprocess.Popen(
+                [broker_path, "broker", "-p", "0"],
+                stdout=broker_out,
+                stderr=subprocess.STDOUT,
+                env={
+                    **os.environ,
+                    "REDIS_HOST": "127.0.0.1",
+                    "REDIS_PORT": str(redis_port),
+                    "PYTHONUNBUFFERED": "1",
+                },
+            )
+            processes.append(broker)
+            deadline = monotonic() + 20
+            while monotonic() < deadline and broker.poll() is None:
+                match = re.search(
+                    r"Selected random port: (\d+)", broker_log.read_text()
+                )
+                if match:
+                    port = int(match.group(1))
+                    try:
+                        response = requests.get(
+                            f"http://127.0.0.1:{port}/status", timeout=1
+                        )
+                        if response.ok and response.json().get("running"):
+                            break
+                    except (requests.ConnectionError, requests.Timeout):
+                        pass
+                sleep(0.1)
+            else:
+                pytest.fail("Comet did not start:\n" + broker_log.read_text())
+            yield port
+        finally:
+            for process in reversed(processes):
+                process.terminate()
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait()
+            print(broker_log.read_text())
+            print(redis_log.read_text())
