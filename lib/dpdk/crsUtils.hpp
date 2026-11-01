@@ -1,6 +1,8 @@
 #ifndef CRS_UTILS_HPP
 #define CRS_UTILS_HPP
 
+#include "udpPacket.hpp" // for ethernet_header, ip_header, udp_header
+
 #include <rte_mbuf.h>
 
 #define CRS_PACKET_COOKIE 0xCF
@@ -9,32 +11,6 @@
 #define ELEMENT_SHORT_LEN 8
 
 #pragma pack(push, 1)
-struct ethernet_header {
-    uint8_t dest_mac[6];
-    uint8_t src_mac[6];
-    uint16_t ether_type;
-};
-
-struct ip_header {
-    uint8_t version_ihl;
-    uint8_t type_of_service;
-    uint16_t total_length;
-    uint16_t identification;
-    uint16_t flags_fragment_offset;
-    uint8_t ttl;
-    uint8_t protocol;
-    uint16_t header_checksum;
-    uint32_t src_addr;
-    uint32_t dest_addr;
-};
-
-struct udp_header {
-    uint16_t src_port;
-    uint16_t dest_port;
-    uint16_t length;
-    uint16_t checksum;
-};
-
 struct source_id_t {
     uint16_t link_id : 4;
     uint16_t slot_id : 4;

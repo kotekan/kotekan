@@ -12,6 +12,7 @@ Compiling **Kotekan**
    :hidden:
 
    dpdk
+   ibverbs
 
 
 .. toctree::
@@ -86,6 +87,10 @@ This section maps common CMake options (see :doc:`cmake_options`) to the package
 - ``USE_DPDK`` / DPDK support
   - Ubuntu packages: ``dpdk``, ``libdpdk-dev`` (and ``dpdk-dev``)
   - Default is ``AUTO``: the build enables DPDK when ``libdpdk >= 19.11`` is found via ``pkg-config`` and otherwise prints a warning. Set ``-DUSE_DPDK=ON`` to require it or ``OFF`` to disable it explicitly.
+
+- ``USE_IBVERBS`` / ibverbs raw packet UDP stages
+  - Ubuntu packages: ``libibverbs-dev`` (and ``ibverbs-providers`` for the NIC driver)
+  - Default is ``AUTO``: the build enables the stages when ``libibverbs`` is found via ``pkg-config``. See :doc:`ibverbs` for the runtime setup.
 
 - ``WITH_TESTS`` (C++ testing helpers in ``lib/testing``)
   - No extra system packages beyond base requirements.

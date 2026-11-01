@@ -1,0 +1,67 @@
+---
+#
+# Receives the packets ibv_udp_send.yaml sends: ibvUdpRecv -> udpPacketCheck.
+#
+# Needs CAP_NET_RAW on the kotekan binary after every build:
+#     sudo setcap cap_net_raw+ep <build>/kotekan/kotekan
+# and buffer_depth * 3 free 2 MB huge pages for the payload buffer. See docs/sphinx/compiling/ibverbs.rst.
+#
+# Watch it with: curl -s localhost:12048/metrics | grep -E 'ibv_udp_recv|udp_packet_check'
+#
+# Give the receive stage a core of its own: in event mode it must wake and post new frames
+# within queue_depth packets of the NIC, 4 ms at 100 GbE for these packets.
+#
+# The addresses below are the lab pair cobalt (sender) -> spark (receiver).
+#
+type: config
+log_level: INFO
+
+cpu_affinity: [2, 3]
+
+telescope:
+    name: fake
+
+# The receiving interface, its IP, and the UDP port the sender targets.
+interface: enp1s0f0np0
+dst_ip: 10.0.0.1
+dst_port: 4001
+
+# Must match the sender.
+header_size: 64
+header_slot: 128
+payload_size: 6144
+payload_slot: 6144
+packets_per_frame: 1024
+buffer_depth: 32
+# Receive work requests the QP holds: queue_depth / packets_per_frame frames are posted ahead.
+queue_depth: 8192
+# "event" sleeps between batches of completions, "busy" spins on the completion queue.
+poll_mode: event
+
+header_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: packets_per_frame * header_slot
+payload_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: packets_per_frame * payload_slot
+    use_hugepages: true
+    numa_node: 0
+
+recv:
+    kotekan_stage: ibvUdpRecv
+    cpu_affinity: [2]
+    header_buf: header_buffer
+    payload_buf: payload_buffer
+
+check:
+    kotekan_stage: udpPacketCheck
+    cpu_affinity: [3]
+    header_buf: header_buffer
+    payload_buf: payload_buffer
+    # Verify one payload in this many packets; 1 checks every byte received.
+    payload_check_interval: 64
+    # About once a second at line rate.
+    report_interval: 2000
+    num_frames: -1

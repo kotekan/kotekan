@@ -66,6 +66,8 @@ Core & Runtime Features
 - ``USE_DPDK`` (``AUTO``): Enable DPDK features when ``libdpdk >= 19.11`` is discoverable via
   ``pkg-config``. This option is forced ``OFF`` when ``WITH_BOOST_TESTS`` is ``ON`` to avoid linker
   conflicts.
+- ``USE_IBVERBS`` (``AUTO``): Build the ibverbs raw packet UDP stages (``ibvUdpSend``,
+  ``ibvUdpRecv``) when ``libibverbs`` is discoverable via ``pkg-config``. See :doc:`ibverbs`.
 - ``USE_OPENSSL`` (``AUTO``): Link OpenSSL (libcrypto) for hashing support in the core. Combine with
   ``-DOPENSSL_ROOT_DIR=<path>`` for non-standard installations.
 - ``NO_MEMLOCK`` (``OFF``): Define ``WITH_NO_MEMLOCK`` to skip memory locking and related policy calls,

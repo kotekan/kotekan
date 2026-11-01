@@ -239,6 +239,10 @@ target_link_libraries(test_Symbol libexternal kotekan_metadata)
 add_executable(test_div test_div.cpp)
 target_link_libraries(test_div PRIVATE kotekan_utils)
 
+# test_udp_packet - the on-wire header helpers and slot layout shared by the packet stages
+add_executable(test_udp_packet test_udp_packet.cpp)
+target_link_libraries(test_udp_packet PRIVATE libexternal kotekan_libs kotekan_utils kotekan_core)
+
 add_executable(test_timeUtil test_timeUtil.cpp)
 target_link_libraries(test_timeUtil PRIVATE kotekan_utils)
 target_compile_definitions(test_timeUtil PRIVATE TEST_SCRIPT_DIR="${PROJECT_BINARY_DIR}")

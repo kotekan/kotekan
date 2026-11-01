@@ -58,6 +58,7 @@ RUN apt-get update && \
         libgdal-dev \
         libhdf5-dev \
         libhdf5-serial-dev \
+        libibverbs-dev \
         liblapack-dev \
         liblapacke-dev \
         liblz4-dev \

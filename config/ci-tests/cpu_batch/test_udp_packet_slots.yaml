@@ -1,0 +1,55 @@
+---
+#
+# udpPacketGen -> udpPacketCheck in one process: the header/payload slot layout, the packet
+# header helpers and the sequence tracking, without a NIC. The hardware pipelines in
+# config/tests/ibv_udp_send.yaml and ibv_udp_recv.yaml put ibvUdpSend and ibvUdpRecv between
+# the same two stages.
+#
+type: config
+log_level: INFO
+
+cpu_affinity: [0, 1]
+
+telescope:
+    name: fake
+
+# CRS-like packets: 64 byte headers (42 Ethernet/IP/UDP + 22 application) and 6144 byte payloads.
+header_size: 64
+header_slot: 128
+payload_size: 6144
+payload_slot: 6144
+packets_per_frame: 64
+buffer_depth: 4
+dst_port: 4001
+
+header_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: packets_per_frame * header_slot
+payload_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: packets_per_frame * payload_slot
+
+gen:
+    kotekan_stage: udpPacketGen
+    header_buf: header_buffer
+    payload_buf: payload_buffer
+    src_mac: "30:c5:99:3f:09:1e"
+    dst_mac: "10:70:fd:53:05:06"
+    src_ip: 10.0.0.1
+    dst_ip: 10.0.0.2
+    src_port: 4000
+    # Two passes over the ring: the second one takes the sequence-number-only path.
+    num_frames: 8
+
+check:
+    kotekan_stage: udpPacketCheck
+    header_buf: header_buffer
+    payload_buf: payload_buffer
+    payload_check_interval: 1
+    report_interval: 4
+    num_frames: 8
+    max_lost_packets: 0
+
+log_config_usage: fatal_error
