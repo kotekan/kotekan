@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Compare recorded detector outputs with CPU calculations from the input voltages.
 
-The raw array layouts are defined by config/tests/verify_pilotproxy_pipeline.yaml,
-and the timing and frequency IDs are read from the frame metadata. The channel
+The raw array layouts and frequency IDs match config/tests/verify_pilotproxy_pipeline.yaml,
+and the timing is read from the frame metadata. The channel
 bindings, preprocessing, weights, and fine calibration are read from the runtime
 bundle. The frame powers (the sums of the fine powers) and the fine masks are
 computed with the matching PilotProxy reference package.
@@ -347,12 +347,12 @@ def main():
         time_reverse_windows,
     )
     profiles_by_id = {
-        row["chord_channel_id"]: row
+        row.get("receiver_channel_id", row.get("chord_channel_id")): row
         for row in pilot_profiles["profiles"]
         if row.get("receiver_channel_id", row.get("chord_channel_id")) is not None
     }
     if not profiles_by_id:
-        print("FAIL: bundle carries no chord_channel_id entries")
+        print("FAIL: bundle carries no receiver channel IDs")
         return 1
 
     voltage_size = NUM_TIMES * NUM_FREQ * NUM_POL * NUM_DISHES
