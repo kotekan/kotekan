@@ -442,6 +442,29 @@ BOOST_AUTO_TEST_CASE(sbas_l5i_mc_is_the_i5_code_under_the_manchester_pair) {
     BOOST_CHECK_LT(std::abs(amp(half(rMC, 0, H), half(rQ, 0, H))), 0.3);
 }
 
+// GuoWang 1202 (#227): GW_1202 must resolve through signal_by_name, take PRNs above 63 (the
+// G2' phase + 1), match itself, decorrelate from another satellite, and leave the frame's data
+// millisecond dark (zero chips, as GLO_L2OC_P's), so data chips there cannot bias the despread.
+BOOST_AUTO_TEST_CASE(gw1202_self_cross_and_the_dark_data_half) {
+    const std::vector<int> prns = {1214, 2028, 2047}; // DIGUI-26, DIGUI-79, the last phase
+    auto bank = make_bank("GW_1202", prns);
+    const int H = bank.repl_period_hops(); // one 2 ms frame
+    auto rA = bank.channels(0, 0, 0.0, 0.0, H);
+    auto rB = bank.channels(1, 0, 0.0, 0.0, H);
+    auto rC = bank.channels(2, 0, 0.0, 0.0, H);
+    BOOST_CHECK_CLOSE(despread_mag(rA, rA), 1.0, 1e-2);
+    BOOST_CHECK_LT(despread_mag(rA, rB), 0.3);
+    BOOST_CHECK_LT(despread_mag(rB, rC), 0.3);
+    // The data half (second millisecond) carries no replica energy, the PFB's few-hop edge
+    // at the code/zero boundary aside.
+    double e_code = 0.0, e_data = 0.0;
+    for (const auto& ch : rA)
+        for (int m = 0; m < H; ++m)
+            (m < H / 2 ? e_code : e_data) += std::norm(ch[(size_t)m]);
+    BOOST_TEST_MESSAGE("GW_1202 replica energy, data half / code half: " << e_data / e_code);
+    BOOST_CHECK_LT(e_data / e_code, 0.02);
+}
+
 // GLONASS L2OF's 50 bps bit is a Manchester pair of 10 ms halves. GLO_L2OF_MC must resolve
 // through signal_by_name and tile the C/A code ten periods +, ten periods -; the FDMA carrier
 // offset applies to it as to GLO_L2OF.
