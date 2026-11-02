@@ -130,6 +130,14 @@ def expand(files):
     return out
 
 
+def first_seq0(path):
+    """seq0 of the first frame, from the headers only."""
+    with open(path, "rb") as fh:
+        (msize,) = struct.unpack("<I", fh.read(4))
+        fh.seek(4 + msize)
+        return HDR.unpack_from(fh.read(64))[0]
+
+
 def cmd_info(a):
     for path in expand(a.files):
         seqs = []
@@ -182,15 +190,22 @@ def cmd_stitch(a):
     n_times = None
     ref = None
     conj = None
-    for path in expand(a.files):
+    lo, hi = (int(v) for v in a.freq.split("-")) if a.freq else (0, 1 << 30)
+    files = expand(a.files)
+    seq_lo = a.seq0 if a.seq0 is not None else min(first_seq0(p) for p in files)
+    seq_hi = seq_lo + int(a.max_seconds * 195312.5) if a.max_seconds else 1 << 62
+    for path in files:
         for fr in frames(path):
+            if fr["seq0"] < seq_lo or fr["seq0"] >= seq_hi:
+                continue
             n_times = fr["n_times"]
             ref = fr["ref"]
             conj = fr["conj"]
             d = per_seq.setdefault(fr["seq0"], {})
             for k, fid in enumerate(fr["freq_ids"]):
-                d[int(fid)] = (fr["beam"][k], fr["lam"][k], fr["pw"][k], fr["w"][k])
-                ids_all.add(int(fid))
+                if lo <= int(fid) <= hi:
+                    d[int(fid)] = (fr["beam"][k], fr["lam"][k], fr["pw"][k], fr["w"][k])
+                    ids_all.add(int(fid))
     if not per_seq:
         raise SystemExit("no frames")
     seqs = sorted(per_seq)
@@ -280,6 +295,15 @@ def main():
         "--ref-input",
         default="auto",
         help="re-reference the beams to this input: auto (the strongest, default), an index, or none",
+    )
+    p.add_argument("--freq", help="keep freq_ids LO-HI only (one lobe)")
+    p.add_argument(
+        "--seq0", type=int, help="first hop to keep (default: the earliest frame)"
+    )
+    p.add_argument(
+        "--max-seconds",
+        type=float,
+        help="keep this many seconds from --seq0 (or the start)",
     )
     p.add_argument("files", nargs="+")
     p.set_defaults(fn=cmd_stitch)
