@@ -22,6 +22,7 @@ Needs skyfield (the gnss venv: /home/kvand/gnss/venv/bin/python).
 import argparse
 import datetime as dt
 import glob
+import json
 import math
 import os
 import sys
@@ -183,7 +184,7 @@ def runs(mask):
     return list(zip(np.where(d == 1)[0], np.where(d == -1)[0] - 1))
 
 
-def main(argv=None):
+def parse_args(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--start", help="UTC, YYYY-MM-DDTHH:MM (default: now)")
     ap.add_argument("--hours", type=float, default=1.0)
@@ -222,8 +223,13 @@ def main(argv=None):
     ap.add_argument(
         "--by-band", action="store_true", help="also quiet windows per F-engine lobe"
     )
-    args = ap.parse_args(argv)
+    ap.add_argument("--json", action="store_true", help="print the forecast as JSON")
+    return ap.parse_args(argv)
 
+
+def forecast(args):
+    """The transits and quiet windows of args' window as one JSON-able document (schema
+    chord-gnss-transit-windows/0; times unix seconds, a window [start, end) to the second)."""
     t0 = parse_time(args.start)
     t = t0 + np.arange(0.0, args.hours * 3600.0, 1.0)
     bore = unit(args.az, args.el)
@@ -234,7 +240,7 @@ def main(argv=None):
             tl = read_tles(p)
             sats += tl
             sysof += [s] * len(tl)
-            ages.append("%s %.1f d" % (group, (t0 - os.path.getmtime(p)) / 86400.0))
+            ages.append([group, round((t0 - os.path.getmtime(p)) / 86400.0, 2)])
     gw = (
         fetch_guowang()
         if args.fetch
@@ -245,7 +251,7 @@ def main(argv=None):
         sats += tl
         sysof += ["W"] * len(tl)
         ages.append(
-            "%s %.1f d" % (os.path.basename(p), (t0 - os.path.getmtime(p)) / 86400.0)
+            [os.path.basename(p), round((t0 - os.path.getmtime(p)) / 86400.0, 2)]
         )
     if not sats:
         raise SystemExit("no TLEs found under %s or %s" % (GNSS_TLE, GW_CACHE))
@@ -254,16 +260,11 @@ def main(argv=None):
     gw_rows = sysof == "W"
 
     sky = np.zeros(t.size, bool)
-    notes = []
     ra, dec = sun_radec(t)
     saz, sel = radec_altaz(ra, dec, t)
     ssep = np.degrees(np.arccos(np.clip(unit(saz, sel) @ bore, -1, 1)))
     sky |= ssep < args.sun_deg
-    notes.append(
-        "Sun %.0f..%.0f deg from boresight (el %.0f..%.0f)"
-        % (ssep.min(), ssep.max(), sel.min(), sel.max())
-    )
-    src_rows = []
+    rows = []
     for name, (r, d) in SOURCES.items():
         a, e = radec_altaz(*precess(r, d, t0), t)
         s = np.degrees(np.arccos(np.clip(unit(a, e) @ bore, -1, 1)))
@@ -271,35 +272,9 @@ def main(argv=None):
         sky |= near
         for i0, i1 in runs(near):
             k = i0 + int(np.argmin(s[i0 : i1 + 1]))
-            src_rows.append((t[i0], t[i1], name, s[k], t[k]))
-
-    print(
-        "CHORD boresight az %.2f el %.2f; %s .. %s UTC (%s)"
-        % (
-            args.az,
-            args.el,
-            dt.datetime.fromtimestamp(t0, dt.timezone.utc).strftime(
-                "%Y-%m-%d %H:%M:%S"
-            ),
-            hms(t[-1] + 1),
-            ", ".join(ages),
-        )
-    )
-    print(
-        "transit: GNSS within %.1f deg, GuoWang within %.1f deg; quiet: no GNSS within %.1f, no GuoWang within "
-        "%.1f, Sun beyond %.0f, no source within %.0f, for >= %.0f s; %s"
-        % (
-            args.transit_deg,
-            args.guowang_transit_deg,
-            args.quiet_deg,
-            args.guowang_quiet_deg,
-            args.sun_deg,
-            args.source_deg,
-            args.min_quiet_s,
-            notes[0],
-        )
-    )
-    rows = []
+            rows.append(
+                (t[i0], t[i1], name, s[k], t[k], ["all (continuum source)"], "closest")
+            )
     for i in range(len(sats)):
         w = sysof[i] == "W"
         lim = args.guowang_transit_deg if w else args.transit_deg
@@ -311,7 +286,7 @@ def main(argv=None):
                 a, b = runs(sep[i, i0 : i1 + 1] < lim)[0]
                 a, b, kind = i0 + a, i0 + b, "closest"
             else:
-                a, b, kind = i0, i1, "near   "
+                a, b, kind = i0, i1, "near"
             bands = [b_ for b_, members in BANDS if sysof[i] in members]
             rows.append(
                 (
@@ -324,44 +299,123 @@ def main(argv=None):
                     kind,
                 )
             )
-    for r in src_rows:
-        rows.append(
-            (r[0], r[1], r[2], r[3], r[4], ["all (continuum source)"], "closest")
-        )
-    print("\nTRANSITS ('near' = inside the quiet radius only)")
-    if not rows:
-        print("  none")
-    for a, b, name, s, tk, bands, kind in sorted(rows):
-        print(
-            "  %s-%s  %-13s %s %5.2f deg at %s  %s"
-            % (hms(a), hms(b + 1), name, kind, s, hms(tk), ", ".join(bands))
-        )
 
-    def quiet_mask(members):
+    def quiet(members):
         rows_ = np.isin(sysof, list(members.replace("W", ""))) & ~gw_rows
         m = ~sky.copy()
         if rows_.any():
             m &= sep[rows_].min(0) >= args.quiet_deg
         if "W" in members and gw_rows.any():
             m &= sep[gw_rows].min(0) >= args.guowang_quiet_deg
-        return m
+        return [
+            [float(t[i0]), float(t[i1] + 1)]
+            for i0, i1 in runs(m)
+            if i1 - i0 + 1 >= args.min_quiet_s
+        ]
 
-    def show(mask, indent="  "):
-        n = 0
-        for i0, i1 in runs(mask):
-            if i1 - i0 + 1 >= args.min_quiet_s:
-                print(
-                    "%s%s-%s  %5.1f min"
-                    % (indent, hms(t[i0]), hms(t[i1] + 1), (i1 - i0 + 1) / 60.0)
-                )
-                n += i1 - i0 + 1
-        if n == 0:
-            print(indent + "none")
-        return n
+    return {
+        "schema": "chord-gnss-transit-windows/0",
+        "created_unix": round(time.time(), 3),
+        "start_unix": float(t0),
+        "end_unix": float(t[-1] + 1),
+        "boresight": {"az_deg": args.az, "el_deg": args.el},
+        "criteria": {
+            "transit_deg": args.transit_deg,
+            "guowang_transit_deg": args.guowang_transit_deg,
+            "quiet_deg": args.quiet_deg,
+            "guowang_quiet_deg": args.guowang_quiet_deg,
+            "sun_deg": args.sun_deg,
+            "source_deg": args.source_deg,
+            "min_quiet_s": args.min_quiet_s,
+        },
+        "tle_age_days": ages,
+        "sun_sep_deg": [float(ssep.min()), float(ssep.max())],
+        "sun_el_deg": [float(sel.min()), float(sel.max())],
+        # kind "closest": inside the transit radius over [start, end]; "near": only inside the
+        # quiet radius
+        "transits": [
+            {
+                "start_unix": float(a),
+                "end_unix": float(b + 1),
+                "name": name,
+                "kind": kind,
+                "min_sep_deg": round(float(s), 3),
+                "closest_unix": float(tk),
+                "bands": bands,
+            }
+            for a, b, name, s, tk, bands, kind in sorted(rows)
+        ],
+        "quiet": {"all": quiet("GECRW")},
+        "quiet_by_band": {name: quiet(members) for name, members in BANDS},
+    }
+
+
+def main(argv=None):
+    args = parse_args(argv)
+    doc = forecast(args)
+    if args.json:
+        print(json.dumps(doc))
+        return 0
+    n_t = doc["end_unix"] - doc["start_unix"]
+    print(
+        "CHORD boresight az %.2f el %.2f; %s .. %s UTC (%s)"
+        % (
+            args.az,
+            args.el,
+            dt.datetime.fromtimestamp(doc["start_unix"], dt.timezone.utc).strftime(
+                "%Y-%m-%d %H:%M:%S"
+            ),
+            hms(doc["end_unix"]),
+            ", ".join("%s %.1f d" % (n, a) for n, a in doc["tle_age_days"]),
+        )
+    )
+    print(
+        "transit: GNSS within %.1f deg, GuoWang within %.1f deg; quiet: no GNSS within %.1f, no GuoWang within "
+        "%.1f, Sun beyond %.0f, no source within %.0f, for >= %.0f s; Sun %.0f..%.0f deg from boresight "
+        "(el %.0f..%.0f)"
+        % (
+            args.transit_deg,
+            args.guowang_transit_deg,
+            args.quiet_deg,
+            args.guowang_quiet_deg,
+            args.sun_deg,
+            args.source_deg,
+            args.min_quiet_s,
+            doc["sun_sep_deg"][0],
+            doc["sun_sep_deg"][1],
+            doc["sun_el_deg"][0],
+            doc["sun_el_deg"][1],
+        )
+    )
+    print("\nTRANSITS ('near' = inside the quiet radius only)")
+    if not doc["transits"]:
+        print("  none")
+    for r in doc["transits"]:
+        print(
+            "  %s-%s  %-13s %-7s %5.2f deg at %s  %s"
+            % (
+                hms(r["start_unix"]),
+                hms(r["end_unix"]),
+                r["name"],
+                r["kind"],
+                r["min_sep_deg"],
+                hms(r["closest_unix"]),
+                ", ".join(r["bands"]),
+            )
+        )
+
+    def show(wins):
+        for a, b in wins:
+            print("  %s-%s  %5.1f min" % (hms(a), hms(b), (b - a) / 60.0))
+        if not wins:
+            print("  none")
+        print(
+            "  quiet %.0f %% of the window"
+            % (100.0 * sum(b - a for a, b in wins) / n_t)
+        )
 
     print("\nQUIET WINDOWS (all lobes)")
-    n = show(quiet_mask("GECRW"))
-    print("  quiet %.0f %% of the window" % (100.0 * n / t.size))
+    show(doc["quiet"]["all"])
     if args.by_band:
         for name, members in BANDS:
             print(
@@ -380,8 +434,7 @@ def main(argv=None):
                     ),
                 )
             )
-            n = show(quiet_mask(members))
-            print("  quiet %.0f %% of the window" % (100.0 * n / t.size))
+            show(doc["quiet_by_band"][name])
     return 0
 
 

@@ -6,7 +6,7 @@
 # itself, so Restart=, MemoryMax= and a clean stop all act on it. The header of
 # stack_components.sh says why the units cannot call a daemonising launcher instead.
 #
-#     run_component.sh broker|gather|aggregator|viewer|rail|lanerelay
+#     run_component.sh broker|gather|aggregator|viewer|rail|lanerelay|fengine
 #     GNSS_CHAIN=gps_l5 run_component.sh obs
 #     run_component.sh cubearch|cubecompact   # cf06's cube leg (gnss-cube.target)
 #     run_component.sh --print <name>     # show argv + env, run nothing (what the gate uses)
