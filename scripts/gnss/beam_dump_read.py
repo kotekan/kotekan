@@ -13,6 +13,11 @@ floats (lambda1, lambda2, 0, 0), 128 mean powers, 128 complex weights, and n_tim
 The npz is what guowang_search.py and the bb1030 dg_*.py tools read (chan, freq_hz, fs_chan);
 the samples are in the F-engine's convention (conj=0), so those tools' --conj applies as for
 the baseband dump. Frames missing on some GPU are zero-filled and reported.
+
+The kernel writes each beam in the units and phase of beam_ref_input; if that input carries no
+sky signal (2026-11-02: input 100 on the live array) the beams come out ~0 with a random phase
+per frame. stitch re-references them to a live input from the saved weights (--ref-input auto),
+which `info` reports as "median 128 |q_ref|^2".
 """
 import argparse
 import glob
@@ -98,6 +103,26 @@ def frames(path):
         pos += total
 
 
+def ref_phased_q(pw, w):
+    """The kernel's phase-referenced whitened eigenvector q (|q| = 1) and s = |q_ref| / wt_ref from
+    the saved weights w_i = conj(q_i) wt_i s, wt_i = 1 / sqrt(pw_i)."""
+    wt = 1.0 / np.sqrt(np.maximum(pw, 1e-3))
+    s2 = float(np.sum(np.abs(w) ** 2 * pw))
+    if s2 <= 0.0:
+        return None, 0.0
+    return np.conj(w) / (wt * np.sqrt(s2)), np.sqrt(s2)
+
+
+def reref_factor(pw, w, j):
+    """Scalar that turns the saved beam (reference input's units and phase) into input j's units
+    and phase: beam_j = beam * q_j / (wt_j s). Zero when the frame's beam is unrecoverable (the
+    kernel zeroes the beam when |q_ref| < 1e-6)."""
+    q, s = ref_phased_q(pw, w)
+    if q is None:
+        return 0.0
+    return q[j] * np.sqrt(np.maximum(pw[j], 1e-3)) / s
+
+
 def expand(files):
     out = []
     for f in files:
@@ -110,11 +135,19 @@ def cmd_info(a):
         seqs = []
         n = 0
         lam1 = []
+        qref = []
+        qabs = np.zeros(128)
         for fr in frames(path):
             seqs.append(fr["seq0"])
             lam1.append(fr["lam"][:, 0])
             n = fr["n_times"]
             ids = fr["freq_ids"]
+            ref = fr["ref"]
+            for k in range(len(ids)):
+                q, _ = ref_phased_q(fr["pw"][k], fr["w"][k])
+                if q is not None:
+                    qref.append(abs(q[ref]) ** 2)
+                    qabs += np.abs(q)
         if not seqs:
             print("%s: no frames" % path)
             continue
@@ -135,6 +168,11 @@ def cmd_info(a):
                     np.median(lam1, axis=0), precision=1, max_line_width=200
                 ),
             )
+        )
+        print(
+            "   reference input %d: median 128 |q_ref|^2 = %.3f (1 = an average live input; < 0.05 = no sky signal on it,"
+            " re-reference with stitch --ref-input); strongest input %d"
+            % (ref, 128 * np.median(qref) if qref else 0.0, int(np.argmax(qabs)))
         )
 
 
@@ -157,6 +195,22 @@ def cmd_stitch(a):
         raise SystemExit("no frames")
     seqs = sorted(per_seq)
     ids = sorted(ids_all)
+    # re-reference the beams to one live input: the kernel scales and phases them by the reference
+    # input's eigenvector element, which is ~0 (and its phase random per frame) when that input
+    # carries no sky signal; the saved weights hold what is needed to move the reference
+    ref_j = None
+    if a.ref_input != "none":
+        if a.ref_input == "auto":
+            qabs = np.zeros(128)
+            for s in seqs:
+                for fid, (row, l, p, ww) in per_seq[s].items():
+                    q, _ = ref_phased_q(p, ww)
+                    if q is not None:
+                        qabs += np.abs(q)
+            ref_j = int(np.argmax(qabs))
+        else:
+            ref_j = int(a.ref_input)
+        print("beams re-referenced to input %d (units and phase of that input)" % ref_j)
     step = n_times
     if any((s2 - s1) % step for s1, s2 in zip(seqs[:-1], seqs[1:])):
         print(
@@ -174,6 +228,8 @@ def cmd_stitch(a):
         j = (s - seqs[0]) // step
         for fid, (row, l, p, ww) in per_seq[s].items():
             i = col[fid]
+            if ref_j is not None:
+                row = row * np.complex64(reref_factor(p, ww, ref_j))
             chan[i, j * n_times : (j + 1) * n_times] = row
             lam[j, i] = l
             pw[j, i] = p
@@ -191,7 +247,8 @@ def cmd_stitch(a):
         pw=pw,
         w=w,
         have=have,
-        ref_input=ref,
+        ref_input=ref if ref_j is None else ref_j,
+        kernel_ref_input=ref,
         conj=conj,
     )
     print(
@@ -219,6 +276,11 @@ def main():
     p.set_defaults(fn=cmd_info)
     p = sub.add_parser("stitch")
     p.add_argument("--out", required=True)
+    p.add_argument(
+        "--ref-input",
+        default="auto",
+        help="re-reference the beams to this input: auto (the strongest, default), an index, or none",
+    )
     p.add_argument("files", nargs="+")
     p.set_defaults(fn=cmd_stitch)
     a = ap.parse_args()
