@@ -231,6 +231,14 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
         _lane_capture_cos2 = std::min(
             1.0,
             std::max(0.0, config.get_default<double>(unique_name, "elem_dir_capture_cos2", 0.5)));
+        // ... AND its coherence has jumped above this times the slot's best: for a lane of
+        // coherence c the mean overlaps the truth only ~c, so a weak lane's live and held
+        // means overlap little on their own (fleet-c10c2d9ee, 11-02 22:35Z: a third of all
+        // publishes read captured in quiet sky). The leakage is coherent, so a capture
+        // RAISES the coherence; a weak lane's wander does not, and a lane losing lock lowers
+        // it (the hold path).
+        _lane_capture_gain =
+            std::max(1.0, config.get_default<double>(unique_name, "elem_dir_capture_gain", 1.5));
         _lane_fids = config.get_default<std::vector<int>>(unique_name, "channel_ids", {});
         _lane_group = unique_name.substr(0, unique_name.find('_'));
         const int np = (int)_prns.size();
@@ -278,8 +286,8 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
                  "the slot's best coherence (floor {:.2f}), captured below cos^2 {:.2f} of the "
                  "held direction, transferred to {:d} more channels, instrumental delay {:s}",
                  _lane_group, tau, _lane_every, _lane_coh_min, _lane_hold_s, _lane_hold_frac,
-                 _lane_hold_coh_min, _lane_capture_cos2, (int)_lane_xfer_fids.size(),
-                 _inst_on ? "on" : "off");
+                 _lane_hold_coh_min, _lane_capture_gain, _lane_capture_cos2,
+                 (int)_lane_xfer_fids.size(), _inst_on ? "on" : "off");
         if (_lane_on) {
             auto& m = kotekan::prometheus::Metrics::instance();
             _m_lane_pub = &m.add_gauge("kotekan_gnss_record_assemble_lane_publish_total",
@@ -1011,20 +1019,15 @@ void GnssGpuRecordAssemble::main_thread() {
                             if (_lane_hold_s > 0.0) {
                                 const double hs = _lane.held_age_s(p, ch, utc);
                                 if (hs >= 0.0 && hs <= _lane_hold_s && _lane_capture_cos2 > 0.0
-                                    && _lane.held_direction(p, ch, st, _lane_hdir.data())) {
-                                    // both unit vectors (steer_out normalises)
-                                    std::complex<double> acc(0.0, 0.0);
-                                    for (int el = 0; el < n_e; ++el)
-                                        acc += std::conj(_lane_hdir[(size_t)el]) * dir[el];
-                                    if (std::norm(acc) < _lane_capture_cos2) {
-                                        captured = true;
-                                        std::copy(_lane_hdir.begin(), _lane_hdir.end(), dir);
-                                        coh = _lane.held_coherence(p, ch);
-                                        power = _lane.held_power(p, ch);
-                                        held_s = hs;
-                                        _lane_ok[(size_t)ch] = 2;
-                                        ++_dg_captured;
-                                    }
+                                    && _lane.captured(p, ch, utc, _lane_capture_gain,
+                                                      _lane_capture_cos2)
+                                    && _lane.held_direction(p, ch, st, dir)) {
+                                    captured = true;
+                                    coh = _lane.held_coherence(p, ch);
+                                    power = _lane.held_power(p, ch);
+                                    held_s = hs;
+                                    _lane_ok[(size_t)ch] = 2;
+                                    ++_dg_captured;
                                 }
                                 if (!captured)
                                     _lane.hold_if_best(p, ch, utc, _lane_hold_frac,

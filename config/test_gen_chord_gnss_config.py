@@ -912,6 +912,8 @@ def test_manual_mask_reaches_the_node_config():
             "0.8",
             "--elem-dir-capture-cos2",
             "0.4",
+            "--elem-dir-capture-gain",
+            "2.0",
             "--elem-dir-coh-min",
             "0.08",
             "--elem-sum-shared",
@@ -958,6 +960,7 @@ def test_manual_mask_reaches_the_node_config():
         and asm.get("elem_dir_hold_coh_min") == 0.25
         and asm.get("elem_dir_hold_frac") == 0.8
         and asm.get("elem_dir_capture_cos2") == 0.4
+        and asm.get("elem_dir_capture_gain") == 2.0
         and asm.get("elem_dir_coh_min") == 0.08,
         "--elem-dir-hold-s / -hold-coh-min / -hold-frac / -capture-cos2 / -coh-min: the "
         "assemblers hold a lane 300 s from a mean of coherence >= 0.25 within 0.8 of the "

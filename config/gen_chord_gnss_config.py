@@ -900,6 +900,8 @@ def elem_proj_keys(args):
                 out["elem_dir_hold_frac"] = float(args.elem_dir_hold_frac)
             if getattr(args, "elem_dir_capture_cos2", None) is not None:
                 out["elem_dir_capture_cos2"] = float(args.elem_dir_capture_cos2)
+            if getattr(args, "elem_dir_capture_gain", None) is not None:
+                out["elem_dir_capture_gain"] = float(args.elem_dir_capture_gain)
         if getattr(args, "elem_dir_coh_min", None) is not None:
             out["elem_dir_coh_min"] = float(args.elem_dir_coh_min)
     if mode not in ("shadow", "live"):
@@ -3289,6 +3291,14 @@ def main():
         help="with --elem-dir-hold-s: a live lane direction whose cos^2 with the held one is "
         "below this has been captured by a bright pass (coherent leakage): the held one is "
         "published instead; default the stage's 0.5 (nothing emitted)",
+    )
+    ap.add_argument(
+        "--elem-dir-capture-gain",
+        type=float,
+        default=None,
+        help="with --elem-dir-capture-cos2: a lane counts as captured only when its coherence "
+        "has also jumped this many times above the slot's best (the leakage is coherent; a "
+        "weak lane's wander is not a jump); default the stage's 1.5 (nothing emitted)",
     )
     ap.add_argument(
         "--elem-dir-coh-min",

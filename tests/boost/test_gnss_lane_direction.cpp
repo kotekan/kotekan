@@ -240,6 +240,58 @@ BOOST_AUTO_TEST_CASE(peak_hold_keeps_the_best_mean) {
     BOOST_CHECK_LT(L.held_age_s(0, 0, t_late + 10.0), 0.0);
 }
 
+BOOST_AUTO_TEST_CASE(capture_needs_a_coherence_jump_and_a_new_direction) {
+    // A weak lane's live and held means overlap little (both noisy) but its coherence does
+    // not jump: not captured. A bright pass leaking in raises the coherence AND moves the
+    // mean onto another direction: captured; when it leaves, no longer.
+    const int n = 48;
+    const double dt = 0.01049, tau = 1.0;
+    Sim weak(n, 1.0), bright(n, 1.0);
+    for (int i = 0; i < n; ++i) // the bright satellite's response: another direction
+        bright.s[i] = std::polar(1.0, 0.37 * i + 1.0);
+    LaneDirection L(n, 1, 1, tau);
+    L.set_best_tau_s(6000.0);
+    std::vector<cd> v(n);
+    BOOST_CHECK(!L.captured(0, 0, 100.0, 1.5, 0.5)); // nothing held
+    for (int r = 0; r < 1000; ++r) {
+        weak.row(2.0, v.data()); // noisy: coherence well below 1
+        L.push(0, 0, v.data(), dt);
+    }
+    const double c_weak = L.coherence(0, 0);
+    BOOST_CHECK(L.hold_if_best(0, 0, 100.0, 0.9, 0.08));
+    // More of the same: the mean wanders (overlap with the held one below 1) but the
+    // coherence stays near its best -> never captured.
+    int false_captures = 0;
+    double ov_min = 1.0;
+    for (int blk = 0; blk < 20; ++blk) {
+        for (int r = 0; r < 200; ++r) {
+            weak.row(2.0, v.data());
+            L.push(0, 0, v.data(), dt);
+        }
+        ov_min = std::min(ov_min, L.overlap(0, 0));
+        if (L.captured(0, 0, 100.0 + blk, 1.5, 0.5))
+            ++false_captures;
+    }
+    BOOST_TEST_MESSAGE("weak lane: coherence " << c_weak << ", min overlap with the held mean "
+                                               << ov_min);
+    BOOST_CHECK_EQUAL(false_captures, 0);
+    // The bright pass: strong rows in the other direction take the mean over.
+    for (int r = 0; r < 1000; ++r) {
+        bright.row(0.2, v.data());
+        L.push(0, 0, v.data(), dt);
+    }
+    BOOST_CHECK_GT(L.coherence(0, 0), 1.5 * c_weak);
+    BOOST_CHECK_LT(L.overlap(0, 0), 0.5);
+    BOOST_CHECK(L.captured(0, 0, 200.0, 1.5, 0.5));
+    BOOST_CHECK_EQUAL(L.held_coherence(0, 0), c_weak); // the snapshot was not refreshed
+    // It leaves: back to the weak rows, the coherence falls back -> not captured.
+    for (int r = 0; r < 2000; ++r) {
+        weak.row(2.0, v.data());
+        L.push(0, 0, v.data(), dt);
+    }
+    BOOST_CHECK(!L.captured(0, 0, 300.0, 1.5, 0.5));
+}
+
 BOOST_AUTO_TEST_CASE(held_direction_survives_lost_coherence) {
     const int n = 48;
     const double dt = 0.01049, tau = 1.0;

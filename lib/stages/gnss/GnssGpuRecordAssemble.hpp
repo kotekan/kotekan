@@ -364,6 +364,7 @@ private:
     double _lane_hold_coh_min = 0.08; ///< the hold snapshot's coherence floor
     double _lane_hold_frac = 0.9;     ///< ... and within this of the slot's best (peak-hold)
     double _lane_capture_cos2 = 0.5;  ///< a live direction further from the held one is captured
+    double _lane_capture_gain = 1.5;  ///< ... and its coherence jumped this much above the best
     std::vector<std::complex<double>> _lane_hdir; ///< [n_elem] scratch: the held direction
     /// Running totals of lane publish outcomes (the lane_publish_total gauge).
     uint64_t _dg_live = 0, _dg_held = 0, _dg_no_snap = 0, _dg_expired = 0, _dg_unsteered = 0,

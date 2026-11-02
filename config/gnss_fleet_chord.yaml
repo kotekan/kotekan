@@ -156,6 +156,10 @@ common:
     # projection drops it as a duplicate (35 % of candidates). A live direction below this
     # cos^2 of its held one is captured: the held one is published, the snapshot kept.
     elem-dir-capture-cos2: 0.5
+    # ... and only when the lane's coherence has jumped 1.5x above the slot's best: on its
+    # own the cos^2 test fires on every weak lane (two noisy means of one direction overlap
+    # only ~c_live x c_held; a third of all publishes read captured in quiet sky, 11-02).
+    elem-dir-capture-gain: 1.5
     # Live only from the projection's own floor (lane_coh_min 0.08): a lane published live
     # between 0.05 and 0.08 was dropped there with nothing held.
     elem-dir-coh-min: 0.08

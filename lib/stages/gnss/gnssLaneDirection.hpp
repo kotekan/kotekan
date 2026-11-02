@@ -199,6 +199,36 @@ public:
         hold(slot, ch, t_utc);
         return true;
     }
+    /// cos^2 between the live mean and the held one (both in the steered frame); 0 without
+    /// a hold. For a lane of coherence c the normalised mean overlaps the truth only ~c, so
+    /// two noisy means of ONE direction overlap less than 1: alone this is no capture test.
+    double overlap(int slot, int ch) const {
+        if (!ok(slot, ch) || _ht[idx(slot, ch)] < 0.0)
+            return 0.0;
+        const cd* m = &_m[idx(slot, ch) * (size_t)_n];
+        const cd* h = &_hm[idx(slot, ch) * (size_t)_n];
+        cd acc(0.0, 0.0);
+        double e1 = 0.0, e2 = 0.0;
+        for (int i = 0; i < _n; ++i) {
+            acc += std::conj(h[i]) * m[i];
+            e1 += std::norm(m[i]);
+            e2 += std::norm(h[i]);
+        }
+        return (e1 > 0.0 && e2 > 0.0) ? std::norm(acc) / (e1 * e2) : 0.0;
+    }
+    /// Captured by a bright pass: its code leaks COHERENTLY into this slot, so the lane's
+    /// coherence JUMPS above @p gain times the slot's (decayed) best while its mean leaves
+    /// the held one (overlap < @p cos2_max). A weak lane's noisy wander fails the first test
+    /// (its best tracks it), a lane merely losing lock fails it too (coherence falls, the
+    /// hold path takes that). False without a hold.
+    bool captured(int slot, int ch, double t_utc, double gain, double cos2_max) const {
+        if (!ok(slot, ch) || _ht[idx(slot, ch)] < 0.0 || _age[idx(slot, ch)] <= 0.0)
+            return false;
+        const double best = best_coherence(slot, ch, t_utc);
+        if (!(best > 0.0) || coherence(slot, ch) < gain * best)
+            return false;
+        return overlap(slot, ch) < cos2_max;
+    }
     /// Seconds from the last hold() to @p t_utc; negative when nothing is held.
     double held_age_s(int slot, int ch, double t_utc) const {
         if (!ok(slot, ch) || _ht[idx(slot, ch)] < 0.0)
