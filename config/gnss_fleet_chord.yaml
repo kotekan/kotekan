@@ -401,6 +401,14 @@ common:
         # against the next record, 5 m line-of-sight at 1 h and 18 m (0.6 chip) at 2 h median.
         - GLO_L3OC_P_NH:4,5,6,8,9,11,12,16,19,20,21,22,23,24
 
+        # 1202.025 MHz: GuoWang (China's LEO broadband satellites; docs/CHORD_GUOWANG_SIGNAL_
+        # 20261103.md, #227), the L3OC lobe's channels. GW_1202 is one 2 ms frame, the code then
+        # the data millisecond zeroed. The PRN is the satellite's G2' phase + 1 (no ICD; the
+        # beam-dump database maps TLE satellites to phases). Eight slots for the satellites near
+        # boresight in one pass, booted on the five identified ones; the broker arms them per
+        # pass from the TLE (no BRDC).
+        - GW_1202:894,1101,1214,1519,2028,1,2,3
+
         # 1248.06 MHz: GLONASS L2OC-p, the CDMA pilot on L2 (BOC(1,1) under a data/pilot TDM;
         # the code table carries both, half its chips zero), with the shared 50-chip OC2 baked
         # into a 1 s code (GLO_L2OC_P_OC): a 10.49 ms record straddles a 20 ms period half the
