@@ -18,6 +18,12 @@ coherent baseband from many passes, without a 129 GB dump per 0.84 s each time.
 
 ## What the dump told us (chunk 52 and 61, DIGUI-26)
 
+Superseded 2026-11-03: the chip rates, the offset-QPSK reading and the non-coherent chip clock
+below were artefacts of conjugating the channels in the stitch. The signal as established with the
+correct stitch is in CHORD_GUOWANG_SIGNAL_20261103.md (10.23 / 2.046 Mcps, one clock, a readable
+2046-chip code per satellite on the 1202 lobe). The instrument description and the rail caveats
+stand.
+
 - Two lobes, carriers 1268.5483 and 1201.9735 MHz (after the TLE Doppler; the TLE predicts the
   carrier to 1-2 Hz over 7.5 s).
 - Chip rates 10,278,000 and 2,055,600 Hz transmitted (10.23 and 2.046 x 1.00469, ratio 5), both
