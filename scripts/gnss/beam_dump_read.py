@@ -11,8 +11,12 @@ floats (lambda1, lambda2, 0, 0), 128 mean powers, 128 complex weights, and n_tim
                                                          # freq_hz, fs_chan, seq0, lam, pw, w (per frame)
 
 The npz is what guowang_search.py and the bb1030 dg_*.py tools read (chan, freq_hz, fs_chan);
-the samples are in the F-engine's convention (conj=0), so those tools' --conj applies as for
-the baseband dump. Frames missing on some GPU are zero-filled and reported.
+the samples are the F-engine's channelised output as decoded (conj=0). Stitch them WITHOUT
+conjugating the channels (channels_to_baseband(..., conj=False)): conjugating each channel's
+contents while keeping the channel placement mirrors every component about its own channel
+centre, which turns a wideband chip-clock line at R into images at 2 N x 195312.5 - R with the
+Doppler sign reversed (2026-11-02: the 10.278 / 2.0556 MHz "chip rates" were such images of the
+true 10.23 / 2.046 Mcps). Frames missing on some GPU are zero-filled and reported.
 
 The kernel writes each beam in the units and phase of beam_ref_input; if that input carries no
 sky signal (2026-11-02: input 100 on the live array) the beams come out ~0 with a random phase
