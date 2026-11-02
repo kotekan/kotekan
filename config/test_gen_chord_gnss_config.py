@@ -910,6 +910,10 @@ def test_manual_mask_reaches_the_node_config():
             "0.25",
             "--elem-dir-hold-frac",
             "0.8",
+            "--elem-dir-capture-cos2",
+            "0.4",
+            "--elem-dir-coh-min",
+            "0.08",
             "--elem-sum-shared",
             "--elem-shared-ref",
             ref,
@@ -952,9 +956,12 @@ def test_manual_mask_reaches_the_node_config():
     check(
         asm.get("elem_dir_publish") == "all" and asm.get("elem_dir_hold_s") == 300.0
         and asm.get("elem_dir_hold_coh_min") == 0.25
-        and asm.get("elem_dir_hold_frac") == 0.8,
-        "--elem-dir-hold-s / -coh-min / -frac: the assemblers hold a lane 300 s from a mean "
-        "of coherence >= 0.25 and within 0.8 of the slot's best",
+        and asm.get("elem_dir_hold_frac") == 0.8
+        and asm.get("elem_dir_capture_cos2") == 0.4
+        and asm.get("elem_dir_coh_min") == 0.08,
+        "--elem-dir-hold-s / -hold-coh-min / -hold-frac / -capture-cos2 / -coh-min: the "
+        "assemblers hold a lane 300 s from a mean of coherence >= 0.25 within 0.8 of the "
+        "slot's best, call it captured below cos^2 0.4, and publish live from 0.08",
     )
     bd = [c for c in cfg["gnss0_n2dual"]["commands"] if c.get("name") == "cudaGnssBeamDump"]
     check(

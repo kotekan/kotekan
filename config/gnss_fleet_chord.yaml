@@ -151,6 +151,14 @@ common:
     # they had no snapshot at all -- lanes -95 %, held 0). Floor 0.08 = the projection's own.
     elem-dir-hold-coh-min: 0.08
     elem-dir-hold-frac: 0.9
+    # Capture (GSAT0211 2.65 deg, 11-02): a bright pass leaks COHERENTLY into a weak slot, its
+    # lane's coherence rises while its direction swings onto the bright satellite's and the
+    # projection drops it as a duplicate (35 % of candidates). A live direction below this
+    # cos^2 of its held one is captured: the held one is published, the snapshot kept.
+    elem-dir-capture-cos2: 0.5
+    # Live only from the projection's own floor (lane_coh_min 0.08): a lane published live
+    # between 0.05 and 0.08 was dropped there with nothing held.
+    elem-dir-coh-min: 0.08
     # GuoWang beam dump (cudaGnssBeamDump, docs/CHORD_GUOWANG_BEAMDUMP_PLAN.md): per selected
     # channel the whitened top-eigenvector beam over the 128 inputs, written only while the
     # pass scheduler (scripts/gnss/beam_dump_sched.py) arms the gnss<g>_beamdump_gate around

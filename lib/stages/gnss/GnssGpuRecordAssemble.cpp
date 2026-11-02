@@ -221,6 +221,16 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
         // the leakage starting ~5 deg out).
         _lane_hold_frac = std::min(
             1.0, std::max(0.0, config.get_default<double>(unique_name, "elem_dir_hold_frac", 0.9)));
+        // Capture: a bright pass leaks COHERENTLY into a weak slot's rows (its code
+        // cross-correlation times the bright one's element response, the same from record
+        // to record), so the lane's coherence can RISE while its direction swings onto the
+        // bright satellite's; the projection then drops it as a duplicate (GSAT0211 2.65 deg,
+        // 11-02: duplicates 35 % of candidates, E5b lanes -44 %, nothing held). A live
+        // direction that has left its held one by more than this cos^2 is treated as
+        // captured: the held one is published and the snapshot is not refreshed.
+        _lane_capture_cos2 = std::min(
+            1.0,
+            std::max(0.0, config.get_default<double>(unique_name, "elem_dir_capture_cos2", 0.5)));
         _lane_fids = config.get_default<std::vector<int>>(unique_name, "channel_ids", {});
         _lane_group = unique_name.substr(0, unique_name.find('_'));
         const int np = (int)_prns.size();
@@ -239,6 +249,7 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
             if (std::find(_lane_fids.begin(), _lane_fids.end(), fid) != _lane_fids.end())
                 FATAL_ERROR("lane_transfer_freq_ids: {:d} is one of channel_ids", fid);
         _lane_ok.assign(_lane_fids.size(), 0);
+        _lane_hdir.assign((size_t)_n_elements, std::complex<double>(0.0, 0.0));
         _lane_pubdir.assign(_lane_fids.size() * (size_t)_n_elements,
                             std::complex<double>(0.0, 0.0));
         _lane_shift.assign((size_t)_n_elements, gnss::ElemSteer::cf(1.0f, 0.0f));
@@ -264,10 +275,11 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
             INFO("lane directions: publishing every running non-probe slot's prompt-row "
                  "direction per channel to the board group {:s}, tau {:.2f} s, every {:d} "
                  "records, coherence >= {:.3f}, held {:.0f} s from a mean within {:.2f} of "
-                 "the slot's best coherence (floor {:.2f}), transferred to {:d} more channels, "
-                 "instrumental delay {:s}",
+                 "the slot's best coherence (floor {:.2f}), captured below cos^2 {:.2f} of the "
+                 "held direction, transferred to {:d} more channels, instrumental delay {:s}",
                  _lane_group, tau, _lane_every, _lane_coh_min, _lane_hold_s, _lane_hold_frac,
-                 _lane_hold_coh_min, (int)_lane_xfer_fids.size(), _inst_on ? "on" : "off");
+                 _lane_hold_coh_min, _lane_capture_cos2, (int)_lane_xfer_fids.size(),
+                 _inst_on ? "on" : "off");
         if (_lane_on) {
             auto& m = kotekan::prometheus::Metrics::instance();
             _m_lane_pub = &m.add_gauge("kotekan_gnss_record_assemble_lane_publish_total",
@@ -995,10 +1007,33 @@ void GnssGpuRecordAssemble::main_thread() {
                         double power = _lane.power(p, ch);
                         double held_s = 0.0;
                         if (coh >= _lane_coh_min && _lane.direction(p, ch, st, dir)) {
-                            if (_lane_hold_s > 0.0)
-                                _lane.hold_if_best(p, ch, utc, _lane_hold_frac, _lane_hold_coh_min);
-                            _lane_ok[(size_t)ch] = 1;
-                            ++_dg_live;
+                            bool captured = false;
+                            if (_lane_hold_s > 0.0) {
+                                const double hs = _lane.held_age_s(p, ch, utc);
+                                if (hs >= 0.0 && hs <= _lane_hold_s && _lane_capture_cos2 > 0.0
+                                    && _lane.held_direction(p, ch, st, _lane_hdir.data())) {
+                                    // both unit vectors (steer_out normalises)
+                                    std::complex<double> acc(0.0, 0.0);
+                                    for (int el = 0; el < n_e; ++el)
+                                        acc += std::conj(_lane_hdir[(size_t)el]) * dir[el];
+                                    if (std::norm(acc) < _lane_capture_cos2) {
+                                        captured = true;
+                                        std::copy(_lane_hdir.begin(), _lane_hdir.end(), dir);
+                                        coh = _lane.held_coherence(p, ch);
+                                        power = _lane.held_power(p, ch);
+                                        held_s = hs;
+                                        _lane_ok[(size_t)ch] = 2;
+                                        ++_dg_captured;
+                                    }
+                                }
+                                if (!captured)
+                                    _lane.hold_if_best(p, ch, utc, _lane_hold_frac,
+                                                       _lane_hold_coh_min);
+                            }
+                            if (!captured) {
+                                _lane_ok[(size_t)ch] = 1;
+                                ++_dg_live;
+                            }
                         } else {
                             held_s = _lane.held_age_s(p, ch, utc);
                             if (_lane_hold_s <= 0.0 || held_s < 0.0) {
@@ -1481,6 +1516,7 @@ void GnssGpuRecordAssemble::main_thread() {
                 _m_lane_pub->labels({"no_snapshot"}).set((double)_dg_no_snap);
                 _m_lane_pub->labels({"hold_expired"}).set((double)_dg_expired);
                 _m_lane_pub->labels({"not_steered"}).set((double)_dg_unsteered);
+                _m_lane_pub->labels({"captured"}).set((double)_dg_captured);
             }
             if (out_buf->metadata_pool) {
                 out_buf->allocate_new_metadata_object(frame_out);
