@@ -142,6 +142,13 @@ common:
     # response goes stale as the satellite crosses the sidelobes; a stale lane costs one
     # dimension (1/n of the sky) and still nulls what it shares with the true direction.
     elem-dir-hold-s: 600
+    # GuoWang beam dump (cudaGnssBeamDump, docs/CHORD_GUOWANG_BEAMDUMP_PLAN.md): per selected
+    # channel the whitened top-eigenvector beam over the 128 inputs, written only while the
+    # pass scheduler (scripts/gnss/beam_dump_sched.py) arms the gnss<g>_beamdump_gate around
+    # a DIGUI pass. The channels cover both lobes: 1202 (E5b/L3 neighbourhood) and B3
+    # (1258-1284); each GPU keeps its own mod-16 share, so a stitchable band needs the whole
+    # fleet. ~16 GB fleet-wide per 80 s pass under <record_dir>/beamdump on each node.
+    beam-dump-freq-ids: "6122-6185,6395-6594"
     assembler-core-slots: "2,1,3,4,8"
     # The stage on a whole idle physical core per NUMA node (15/47 and 19/51 read 0 % on
     # cx27/43/44/51 on 10-24), outside the runtime pools: 127 stations with the transfers ran at
