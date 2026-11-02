@@ -45,6 +45,11 @@ target_include_directories(test_galileo_codes PRIVATE ../../lib/stages ../../lib
 add_executable(test_beidou_b3i_code test_beidou_b3i_code.cpp ../../lib/stages/gnss/beidouB3ICode.cpp)
 target_include_directories(test_beidou_b3i_code PRIVATE ../../lib/stages ../../lib/stages/gnss)
 
+# GuoWang 1202.025 MHz code (#227): the codes read off the sky, the family, the frame replica
+add_executable(test_guowang_1202_code test_guowang_1202_code.cpp
+                                      ../../lib/stages/gnss/guowang1202Code.cpp)
+target_include_directories(test_guowang_1202_code PRIVATE ../../lib/stages ../../lib/stages/gnss)
+
 # Pure band-plan logic: compile the source directly, no Telescope/FFTW needed.
 add_executable(test_gnss_band_plan test_gnss_band_plan.cpp ../../lib/stages/gnss/gnssBandPlan.cpp)
 target_include_directories(test_gnss_band_plan PRIVATE ../../lib/stages ../../lib/stages/gnss)
@@ -128,6 +133,7 @@ if(FFTW_FOUND)
         ../../lib/stages/gnss/beidouB3ICode.cpp
         ../../lib/stages/gnss/glonassL3OCCode.cpp
         ../../lib/stages/gnss/glonassL2OCCode.cpp
+        ../../lib/stages/gnss/guowang1202Code.cpp
         ../../lib/stages/gnss/glonassCACode.cpp)
     target_include_directories(test_gnss_channelized_acquire PRIVATE ../../lib/stages
                                                                      ../../lib/stages/gnss)
@@ -161,7 +167,8 @@ if(FFTW_FOUND)
         ../../lib/stages/gnss/beidouB2bCode.cpp
         ../../lib/stages/gnss/beidouB3ICode.cpp
         ../../lib/stages/gnss/glonassL3OCCode.cpp
-        ../../lib/stages/gnss/glonassL2OCCode.cpp)
+        ../../lib/stages/gnss/glonassL2OCCode.cpp
+        ../../lib/stages/gnss/guowang1202Code.cpp)
     target_include_directories(test_gnss_channelized_replica PRIVATE ../../lib/stages
                                                                      ../../lib/stages/gnss)
     target_include_directories(test_gnss_channelized_replica SYSTEM PRIVATE ${FFTW_INCLUDES})

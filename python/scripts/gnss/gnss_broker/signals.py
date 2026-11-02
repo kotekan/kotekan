@@ -30,7 +30,8 @@ import re
 from . import iface
 
 # name prefix -> the single-letter constellation the broker and RINEX both use
-_SYS = {"GPS": "G", "GAL": "E", "BDS": "C", "GLO": "R", "SBAS": "S"}
+# (W: GuoWang, no RINEX letter; transit_windows.py uses it too)
+_SYS = {"GPS": "G", "GAL": "E", "BDS": "C", "GLO": "R", "SBAS": "S", "GW": "W"}
 
 
 def _load_descriptors(doc=None):

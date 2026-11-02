@@ -18,6 +18,7 @@
 #include "gpsL1CCode.hpp"   // for generate_l1cp_code
 #include "gpsL2CCode.hpp"   // for generate_l2cm_code, generate_l2cl_code
 #include "gpsL5Code.hpp"    // for generate_l5i_code, generate_l5q_code
+#include "guowang1202Code.hpp"
 
 #include <algorithm> // for max
 #include <cassert>   // for assert (FDMA filter/PRN pairing)
@@ -112,6 +113,8 @@ std::vector<int8_t> signal_code(const std::string& name, int prn) {
         auto a = beidou::generate_b1i_code(prn);
         return std::vector<int8_t>(a.begin(), a.end());
     }
+    if (name == "GW_1202")
+        return guowang::generate_gw1202_frame(prn);
     if (name == "BDS_B2I") {
         // B2I uses B1I's ranging code: the ICD defines one generator for C_B1I and C_B2I.
         // Only the carrier and the broadcasting satellites differ.
