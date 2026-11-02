@@ -13,6 +13,7 @@ import os
 import shutil
 import sys
 import tempfile
+import time
 import urllib.request
 
 import numpy as np
@@ -254,6 +255,114 @@ def test_outlet_http_and_ack():
         shutil.rmtree(d, ignore_errors=True)
 
 
+def test_metrics_and_transit_windows():
+    """GET /metrics is Prometheus text: every line a comment or `name{labels} value`; it carries
+    the request per channel and band, the ack, the measurement and the forecast's state per lobe;
+    GET /transit_windows serves the forecast."""
+    import re
+
+    import transit_windows as tw
+
+    pol = fg.Policy(ranges=[(6000, 6040)])
+    c = fg.Controller(pol, in_force=np.ones(fg.N_FREQ))
+    out = fg.Outlet(None, c)
+    srv = out.serve(0, host="127.0.0.1")
+    base = "http://127.0.0.1:%d" % srv.server_address[1]
+    try:
+        g = np.ones(fg.N_FREQ)
+        g[6010] = 0.25
+        out.publish(fg.request(g, 3, 81920, 50.0, pol, snap([6010], 5.6)))
+        out.ack({"request_id": 3, "applied_fpga_seq": 81920})
+        out.snap = snap([6010, 6030], 1.4, t=95.0)
+        l5 = tw.BANDS[0][0]
+        now = time.time()
+        out.transits = {
+            "created_unix": now - 10.0,
+            "end_unix": now + 3600.0,
+            "transits": [
+                {
+                    "start_unix": now - 5,
+                    "end_unix": now + 60,
+                    "kind": "closest",
+                    "bands": [l5],
+                },
+                {
+                    "start_unix": now + 600,
+                    "end_unix": now + 700,
+                    "kind": "closest",
+                    "bands": [l5],
+                },
+                {
+                    "start_unix": now + 30,
+                    "end_unix": now + 90,
+                    "kind": "near",
+                    "bands": [l5],
+                },
+            ],
+            "quiet": {"all": [[now + 100, now + 500]]},
+            "quiet_by_band": {b: [[now - 100, now + 100]] for b, _ in tw.BANDS[1:]},
+        }
+        text = urllib.request.urlopen(base + "/metrics", timeout=5).read().decode()
+        line = re.compile(
+            r'^[a-z_]+(\{[a-z_]+="[^"]*"(,[a-z_]+="[^"]*")*\})? (NaN|\+Inf|-?[0-9.e+-]+)$'
+        )
+        bad = [
+            x for x in text.splitlines() if not x.startswith("#") and not line.match(x)
+        ]
+        check(not bad, "every sample line parses (%s)" % bad[:2])
+        vals = {}
+        for x in text.splitlines():
+            if not x.startswith("#"):
+                k, v = x.rsplit(" ", 1)
+                vals[k] = float(v)
+        check(
+            vals.get('gnss_fengine_gain{freq_id="6010"}') == 0.25,
+            "the request per channel",
+        )
+        check(
+            vals.get('gnss_fengine_gain{freq_id="6040"}') == 1.0,
+            "1 where nothing is requested",
+        )
+        check('gnss_fengine_gain{freq_id="6041"}' not in vals, "only managed channels")
+        check(
+            abs(vals.get('gnss_fengine_gain_band_min_db{band="L5/E5a/B2a"}', 0) + 12.04)
+            < 0.01
+            and vals.get('gnss_fengine_gain_band_channels_cut{band="L5/E5a/B2a"}') == 1,
+            "per band: the deepest cut and the channels cut",
+        )
+        check(
+            vals.get("gnss_fengine_request_id") == 3
+            and vals.get("gnss_fengine_acked_request_id") == 3,
+            "request and ack ids",
+        )
+        check(
+            abs(vals.get('gnss_fengine_output_rms_lsb{freq_id="6030"}', 0) - 1.4)
+            < 0.05,
+            "measured output rms per tap channel",
+        )
+        check(
+            vals.get('gnss_transit_active{band="%s"}' % l5) == 1
+            and 590 < vals.get('gnss_transit_next_start_s{band="%s"}' % l5, 0) < 601
+            and vals.get('gnss_transit_next_start_s{band="%s"}' % tw.BANDS[1][0])
+            == float("inf"),
+            "transit active now, the next one in 600 s ('near' passes ignored), none elsewhere",
+        )
+        check(
+            vals.get('gnss_quiet_now{band="all"}') == 0
+            and vals.get('gnss_quiet_now{band="%s"}' % tw.BANDS[1][0]) == 1,
+            "quiet now per lobe",
+        )
+        got = json.loads(
+            urllib.request.urlopen(base + "/transit_windows", timeout=5).read()
+        )
+        check(
+            got["transits"] == out.transits["transits"],
+            "GET /transit_windows serves it",
+        )
+    finally:
+        srv.shutdown()
+
+
 def test_state_round_trip():
     pol = fg.Policy(ranges=[(100, 120)], attack_persist_s=0.0)
     c = fg.Controller(pol, in_force=np.ones(fg.N_FREQ))
@@ -410,6 +519,25 @@ def test_once_against_a_fake_tap():
         check(
             os.path.exists(os.path.join(d, "state.json")), "state kept for the next run"
         )
+        hist = json.load(open(os.path.join(d, "state.json")))["history"]
+        check(
+            [s_ for s_, _ in hist] == [-1, doc["apply_at_fpga_seq"]],
+            "the request is in force from its apply seq",
+        )
+        d2 = tempfile.mkdtemp()
+        try:
+            fg.main(
+                ["once", "--endpoints", url, "--out", d2, "--attack-persist-s", "0"]
+                + ["--ack-only"]
+            )
+            doc2 = json.load(open(os.path.join(d2, "current.json")))
+            hist2 = json.load(open(os.path.join(d2, "state.json")))["history"]
+            check(
+                doc2["freq_id"] == doc["freq_id"] and [s_ for s_, _ in hist2] == [-1],
+                "--ack-only: the same request, not in force until acknowledged",
+            )
+        finally:
+            shutil.rmtree(d2, ignore_errors=True)
     finally:
         srv.shutdown()
         shutil.rmtree(d, ignore_errors=True)

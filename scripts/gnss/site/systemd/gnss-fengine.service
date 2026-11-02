@@ -1,0 +1,22 @@
+[Unit]
+Description=CHORD GNSS F-engine gain requests, transit forecast and metrics for choco and grafana (:12070)
+Documentation=file:///home/kvand/gnss/kotekan/scripts/gnss/site/fengine_gains.py
+# This host only: the user copies sit in the NFS-shared home (see gnss-stack.target).
+ConditionHost=|gnss
+ConditionHost=|gnss.site.chord-observatory.ca
+RequiresMountsFor=/home/kvand
+PartOf=gnss-stack.target
+
+[Service]
+Type=simple
+# Through run_component.sh like every stack unit: argv and environment from one definition.
+ExecStart=/home/kvand/gnss/kotekan/scripts/gnss/site/run_component.sh fengine
+Restart=on-failure
+RestartSec=10
+MemoryAccounting=yes
+MemoryMax=768M
+StandardOutput=append:/var/tmp/gnss-logs/fengine.log
+StandardError=inherit
+
+[Install]
+WantedBy=gnss-stack.target
