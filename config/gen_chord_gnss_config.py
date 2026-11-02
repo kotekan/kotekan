@@ -1748,6 +1748,7 @@ def merge_n2dual_gpu(blocks, cfg, args, node, gpu, chains, spds):
         beam_cmd = [
             {
                 "name": "cudaGnssBeamDump",
+                "voltage_name": "voltage",
                 "beam_name": f"gnss{gpu}_beam",
                 "beam_local_channels": [idx for _, idx in bd_pairs],
                 "beam_freq_ids": [fid for fid, _ in bd_pairs],

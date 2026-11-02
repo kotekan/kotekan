@@ -914,6 +914,8 @@ def test_manual_mask_reaches_the_node_config():
             "--fleet-lanes",
             "--n2-project-eigen-channels",
             "5971-5980,6000",
+            "--beam-dump-freq-ids",
+            "6122-6185,6395-6594",
         ]
         with stubbed(_HY):
             exc, out, err = run_main(argv)
@@ -946,6 +948,15 @@ def test_manual_mask_reaches_the_node_config():
     check(
         asm.get("elem_dir_publish") == "all" and asm.get("elem_dir_hold_s") == 300.0,
         "--elem-dir-hold-s: the assemblers hold a lane 300 s",
+    )
+    bd = [c for c in cfg["gnss0_n2dual"]["commands"] if c.get("name") == "cudaGnssBeamDump"]
+    check(
+        len(bd) == 1
+        and bd[0].get("voltage_name") == "voltage"
+        and bd[0]["beam_freq_ids"]
+        and all(f % 16 == bd[0]["beam_freq_ids"][0] % 16 for f in bd[0]["beam_freq_ids"]),
+        "--beam-dump-freq-ids: one cudaGnssBeamDump per GPU on its mod-16 share, reading "
+        "`voltage` (cx51 refused the config without voltage_name, 11-02)",
     )
     check(
         asm["chan_noise_norm_elems"] == sorted(set(range(128)) - out_set),
