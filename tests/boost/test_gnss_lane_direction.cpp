@@ -186,6 +186,60 @@ BOOST_AUTO_TEST_CASE(reset_and_bounds) {
 // lost the satellite) the live direction is lost, while held_direction() with the CURRENT table
 // is the satellite's raw response at the new geometry, g o conj(D2) with g = s o D the steered
 // mean. A reset drops the hold.
+BOOST_AUTO_TEST_CASE(peak_hold_keeps_the_best_mean) {
+    // The snapshot follows the slot's best recent coherence: a lane that sinks into a
+    // bright pass keeps its pre-pass mean; once the best has decayed, a lesser mean is
+    // accepted again; a reset forgets the best.
+    const int n = 48;
+    const double dt = 0.01049, tau = 1.0;
+    Sim sim(n, 1.0);
+    LaneDirection L(n, 1, 1, tau);
+    L.set_best_tau_s(1000.0);
+    std::vector<cd> v(n);
+    BOOST_CHECK_EQUAL(L.best_coherence(0, 0, 100.0), 0.0);
+    BOOST_CHECK(!L.hold_if_best(0, 0, 100.0, 0.9, 0.08)); // cold: nothing to hold
+    for (int r = 0; r < 1000; ++r) {
+        sim.row(1.0 / std::sqrt(3.0), v.data());
+        L.push(0, 0, v.data(), dt);
+    }
+    const double c_good = L.coherence(0, 0);
+    BOOST_CHECK_GT(c_good, 0.5);
+    BOOST_CHECK(L.hold_if_best(0, 0, 100.0, 0.9, 0.08));
+    BOOST_CHECK_EQUAL(L.held_coherence(0, 0), c_good);
+    BOOST_CHECK_CLOSE(L.best_coherence(0, 0, 100.0), c_good, 1e-9);
+    // The lane sinks (a bright pass leaks in): still above the floor, well under 0.9 of
+    // its best, so no new snapshot and the held mean stays the good one.
+    for (int r = 0; r < 1000; ++r) {
+        sim.row(2.0, v.data());
+        L.push(0, 0, v.data(), dt);
+    }
+    const double c_low = L.coherence(0, 0);
+    BOOST_CHECK_GT(c_low, 0.08);
+    BOOST_CHECK_LT(c_low, 0.9 * c_good);
+    BOOST_CHECK(!L.hold_if_best(0, 0, 110.0, 0.9, 0.08));
+    BOOST_CHECK_EQUAL(L.held_coherence(0, 0), c_good);
+    BOOST_CHECK_EQUAL(L.held_age_s(0, 0, 110.0), 10.0);
+    // Below the floor: never.
+    BOOST_CHECK(!L.hold_if_best(0, 0, 110.0, 0.9, c_low + 0.01));
+    // Long after, the best has decayed (e-folding 1000 s) and the lesser mean is accepted.
+    const double t_late = 100.0 + 1000.0 * std::log(c_good / (0.5 * c_low));
+    BOOST_CHECK_LT(L.best_coherence(0, 0, t_late), c_low);
+    BOOST_CHECK(L.hold_if_best(0, 0, t_late, 0.9, 0.08));
+    BOOST_CHECK_EQUAL(L.held_coherence(0, 0), c_low);
+    BOOST_CHECK_CLOSE(L.best_coherence(0, 0, t_late), c_low, 1e-9);
+    // Recovery: the coherence climbs back and the best follows it up.
+    for (int r = 0; r < 1000; ++r) {
+        sim.row(1.0 / std::sqrt(3.0), v.data());
+        L.push(0, 0, v.data(), dt);
+    }
+    BOOST_CHECK(L.hold_if_best(0, 0, t_late + 10.0, 0.9, 0.08));
+    BOOST_CHECK_GT(L.held_coherence(0, 0), 0.9 * c_good);
+    BOOST_CHECK_GT(L.best_coherence(0, 0, t_late + 10.0), 0.9 * c_good);
+    L.reset(0);
+    BOOST_CHECK_EQUAL(L.best_coherence(0, 0, t_late + 10.0), 0.0);
+    BOOST_CHECK_LT(L.held_age_s(0, 0, t_late + 10.0), 0.0);
+}
+
 BOOST_AUTO_TEST_CASE(held_direction_survives_lost_coherence) {
     const int n = 48;
     const double dt = 0.01049, tau = 1.0;

@@ -212,12 +212,21 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
         // 2501 at 0.01 deg, 11-02: GLO L2 lanes -35 %, held 0, with the snapshot refreshed
         // on every live publish down to 0.05 while the projection stops using a lane below
         // 0.08).
+        // The floor is GnssN2Project's lane_coh_min: a held entry below it is never used.
         _lane_hold_coh_min = std::max(
-            _lane_coh_min, config.get_default<double>(unique_name, "elem_dir_hold_coh_min", 0.2));
+            _lane_coh_min, config.get_default<double>(unique_name, "elem_dir_hold_coh_min", 0.08));
+        // Peak-hold: the snapshot follows the slot's best recent coherence (C20 1.01 deg,
+        // 11-02: a fixed 0.2 was above most lanes' everyday coherence, so they had no
+        // snapshot and died as before; and a 600 s hold expired before closest approach,
+        // the leakage starting ~5 deg out).
+        _lane_hold_frac = std::min(
+            1.0, std::max(0.0, config.get_default<double>(unique_name, "elem_dir_hold_frac", 0.9)));
         _lane_fids = config.get_default<std::vector<int>>(unique_name, "channel_ids", {});
         _lane_group = unique_name.substr(0, unique_name.find('_'));
         const int np = (int)_prns.size();
         _lane = gnss::LaneDirection(_n_elements, (int)_lane_fids.size(), np, tau);
+        _lane.set_best_tau_s(
+            config.get_default<double>(unique_name, "elem_dir_hold_best_tau_s", 6000.0));
         _lane_scratch.assign((size_t)_n_elements, std::complex<double>(0.0, 0.0));
         _lane_t_prev.assign((size_t)np, 0.0);
         _lane_prn.assign((size_t)np, 0);
@@ -254,10 +263,16 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
         if (_lane_on)
             INFO("lane directions: publishing every running non-probe slot's prompt-row "
                  "direction per channel to the board group {:s}, tau {:.2f} s, every {:d} "
-                 "records, coherence >= {:.3f}, held {:.0f} s from a mean of coherence >= "
-                 "{:.2f}, transferred to {:d} more channels, instrumental delay {:s}",
-                 _lane_group, tau, _lane_every, _lane_coh_min, _lane_hold_s, _lane_hold_coh_min,
-                 (int)_lane_xfer_fids.size(), _inst_on ? "on" : "off");
+                 "records, coherence >= {:.3f}, held {:.0f} s from a mean within {:.2f} of "
+                 "the slot's best coherence (floor {:.2f}), transferred to {:d} more channels, "
+                 "instrumental delay {:s}",
+                 _lane_group, tau, _lane_every, _lane_coh_min, _lane_hold_s, _lane_hold_frac,
+                 _lane_hold_coh_min, (int)_lane_xfer_fids.size(), _inst_on ? "on" : "off");
+        if (_lane_on) {
+            auto& m = kotekan::prometheus::Metrics::instance();
+            _m_lane_pub = &m.add_gauge("kotekan_gnss_record_assemble_lane_publish_total",
+                                       unique_name, {"outcome"});
+        }
     }
     // Bright-satellite projection (see the header and gnssProjSubspace.hpp). Needs channel_ids
     // (the board is keyed on freq_id) and elem_sum (the shadow learners). Off by default;
@@ -919,6 +934,8 @@ void GnssGpuRecordAssemble::main_thread() {
                 const int lane_prn = (c.prn > 0) ? (int)c.prn : _prns[p];
                 const bool lane_rec = _lane_on && steered && !_proj_isProbe[(size_t)p]
                                       && (int)_lane_fids.size() == n_chan;
+                if (_lane_on && !steered && c.run && !_proj_isProbe[(size_t)p])
+                    ++_dg_unsteered;
                 double lane_dt = 0.0;
                 if (lane_rec) {
                     if (_lane_prn[p] != lane_prn) {
@@ -978,17 +995,28 @@ void GnssGpuRecordAssemble::main_thread() {
                         double power = _lane.power(p, ch);
                         double held_s = 0.0;
                         if (coh >= _lane_coh_min && _lane.direction(p, ch, st, dir)) {
-                            if (_lane_hold_s > 0.0 && coh >= _lane_hold_coh_min)
-                                _lane.hold(p, ch, utc);
+                            if (_lane_hold_s > 0.0)
+                                _lane.hold_if_best(p, ch, utc, _lane_hold_frac, _lane_hold_coh_min);
                             _lane_ok[(size_t)ch] = 1;
+                            ++_dg_live;
                         } else {
                             held_s = _lane.held_age_s(p, ch, utc);
-                            if (_lane_hold_s <= 0.0 || held_s < 0.0 || held_s > _lane_hold_s
-                                || !_lane.held_direction(p, ch, st, dir))
+                            if (_lane_hold_s <= 0.0 || held_s < 0.0) {
+                                ++_dg_no_snap;
                                 continue;
+                            }
+                            if (held_s > _lane_hold_s) {
+                                ++_dg_expired;
+                                continue;
+                            }
+                            if (!_lane.held_direction(p, ch, st, dir)) {
+                                ++_dg_no_snap;
+                                continue;
+                            }
                             coh = _lane.held_coherence(p, ch);
                             power = _lane.held_power(p, ch);
                             _lane_ok[(size_t)ch] = 2;
+                            ++_dg_held;
                         }
                         gnss::ProjEntry e;
                         e.owner = _lane_owner[p];
@@ -1445,6 +1473,15 @@ void GnssGpuRecordAssemble::main_thread() {
                 _fcar_prev_ok[p] = 1;
             }
 
+            if (_m_lane_pub) {
+                // Running totals per outcome (rate() them): why a lane was or was not
+                // published this frame.
+                _m_lane_pub->labels({"live"}).set((double)_dg_live);
+                _m_lane_pub->labels({"held"}).set((double)_dg_held);
+                _m_lane_pub->labels({"no_snapshot"}).set((double)_dg_no_snap);
+                _m_lane_pub->labels({"hold_expired"}).set((double)_dg_expired);
+                _m_lane_pub->labels({"not_steered"}).set((double)_dg_unsteered);
+            }
             if (out_buf->metadata_pool) {
                 out_buf->allocate_new_metadata_object(frame_out);
                 get_gnss_chan_metadata(out_buf, frame_out)->sample_seq = wstart;

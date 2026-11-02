@@ -47,6 +47,12 @@ namespace gnss {
  * being coherent (the tracker loses the satellite while a bright one passes), the steered
  * mean is still the satellite's element response, so held_direction() re-steered with the
  * current D is still its direction. A reset drops the copy.
+ *
+ * Peak-hold: hold_if_best() takes the snapshot only while the coherence is within @p frac of
+ * the slot's best recent coherence (the best decays with best_tau_s), so a lane that sinks
+ * over minutes as a bright pass leaks into it keeps its PRE-pass mean, and every lane that is
+ * ever usable has a snapshot (a fixed threshold above a lane's everyday coherence never
+ * takes one: C20 at 1.01 deg, 11-02, lanes -95 %, held 0).
  */
 class LaneDirection {
 public:
@@ -57,7 +63,8 @@ public:
         _m((size_t)n_slot * n_chan * n_elem, cd(0.0, 0.0)), _p((size_t)n_slot * n_chan, 0.0),
         _age((size_t)n_slot * n_chan, 0.0), _hm((size_t)n_slot * n_chan * n_elem, cd(0.0, 0.0)),
         _hp((size_t)n_slot * n_chan, 0.0), _hc((size_t)n_slot * n_chan, 0.0),
-        _ht((size_t)n_slot * n_chan, -1.0) {}
+        _ht((size_t)n_slot * n_chan, -1.0), _hb((size_t)n_slot * n_chan, 0.0),
+        _hbt((size_t)n_slot * n_chan, -1.0) {}
 
     int n_elem() const {
         return _n;
@@ -113,6 +120,8 @@ public:
             _age[idx(slot, ch)] = 0.0;
             _p[idx(slot, ch)] = 0.0;
             _ht[idx(slot, ch)] = -1.0;
+            _hb[idx(slot, ch)] = 0.0;
+            _hbt[idx(slot, ch)] = -1.0;
         }
     }
 
@@ -161,6 +170,35 @@ public:
         _hc[k] = coherence(slot, ch);
         _ht[k] = t_utc;
     }
+    /// The e-folding time of the slot's best coherence (peak-hold); default 6000 s (~1 %/min).
+    void set_best_tau_s(double tau_s) {
+        _best_tau = tau_s > 0.0 ? tau_s : 6000.0;
+    }
+    /// The slot's best coherence, decayed to @p t_utc; 0 when none was ever noted.
+    double best_coherence(int slot, int ch, double t_utc) const {
+        if (!ok(slot, ch) || _hbt[idx(slot, ch)] < 0.0)
+            return 0.0;
+        const double dt = t_utc - _hbt[idx(slot, ch)];
+        return _hb[idx(slot, ch)] * (dt > 0.0 ? std::exp(-dt / _best_tau) : 1.0);
+    }
+    /// hold() if the current coherence is at least @p floor and within @p frac of the
+    /// slot's (decayed) best; the best follows the coherence up. True when held.
+    bool hold_if_best(int slot, int ch, double t_utc, double frac, double floor) {
+        if (!ok(slot, ch) || _age[idx(slot, ch)] <= 0.0)
+            return false;
+        const double coh = coherence(slot, ch);
+        if (coh < floor)
+            return false;
+        const double best = best_coherence(slot, ch, t_utc);
+        if (coh >= best) {
+            _hb[idx(slot, ch)] = coh;
+            _hbt[idx(slot, ch)] = t_utc;
+        }
+        if (coh < frac * best)
+            return false;
+        hold(slot, ch, t_utc);
+        return true;
+    }
     /// Seconds from the last hold() to @p t_utc; negative when nothing is held.
     double held_age_s(int slot, int ch, double t_utc) const {
         if (!ok(slot, ch) || _ht[idx(slot, ch)] < 0.0)
@@ -207,6 +245,8 @@ private:
     std::vector<double> _p, _age;
     std::vector<cd> _hm;               ///< held means
     std::vector<double> _hp, _hc, _ht; ///< held power, coherence, utc (-1 = none)
+    std::vector<double> _hb, _hbt;     ///< best coherence per (slot, ch) and its time (peak-hold)
+    double _best_tau = 6000.0;
 };
 
 /**

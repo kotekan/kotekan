@@ -361,7 +361,10 @@ private:
     int _lane_every = 4;
     double _lane_coh_min = 0.02;
     double _lane_hold_s = 0.0;
-    double _lane_hold_coh_min = 0.2; ///< a mean is kept for the hold only this coherent
+    double _lane_hold_coh_min = 0.08; ///< the hold snapshot's coherence floor
+    double _lane_hold_frac = 0.9;     ///< ... and within this of the slot's best (peak-hold)
+    /// Running totals of lane publish outcomes (the lane_publish_total gauge).
+    uint64_t _dg_live = 0, _dg_held = 0, _dg_no_snap = 0, _dg_expired = 0, _dg_unsteered = 0;
     std::string _lane_group;
     std::vector<int> _lane_fids;
     gnss::LaneDirection _lane;
@@ -388,6 +391,7 @@ private:
     kotekan::prometheus::Gauge* _m_inst_rms_ns = nullptr;
     kotekan::prometheus::Gauge* _m_inst_weight = nullptr;
     kotekan::prometheus::Gauge* _m_inst_warm = nullptr;
+    kotekan::prometheus::Gauge* _m_lane_pub = nullptr;
     bool _proj_ready = false;
     uint8_t _proj_nchan_warned = 0;
     std::vector<std::unique_ptr<gnss::ProjSubspace>> _proj_own; ///< per slot, while it is a source

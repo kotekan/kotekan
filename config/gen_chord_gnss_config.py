@@ -896,6 +896,8 @@ def elem_proj_keys(args):
             out["elem_dir_hold_s"] = float(args.elem_dir_hold_s)
             if getattr(args, "elem_dir_hold_coh_min", None) is not None:
                 out["elem_dir_hold_coh_min"] = float(args.elem_dir_hold_coh_min)
+            if getattr(args, "elem_dir_hold_frac", None) is not None:
+                out["elem_dir_hold_frac"] = float(args.elem_dir_hold_frac)
     if mode not in ("shadow", "live"):
         return out
     out["elem_proj_mode"] = mode
@@ -3265,9 +3267,16 @@ def main():
         "--elem-dir-hold-coh-min",
         type=float,
         default=None,
-        help="with --elem-dir-hold-s: the coherence a lane's mean must have to be kept as the "
-        "held one (the last GOOD mean, not the last above the publish floor); default the "
-        "stage's 0.2 (nothing emitted)",
+        help="with --elem-dir-hold-s: the coherence floor for a hold snapshot; default the "
+        "stage's 0.08 = GnssN2Project's lane_coh_min (nothing emitted)",
+    )
+    ap.add_argument(
+        "--elem-dir-hold-frac",
+        type=float,
+        default=None,
+        help="with --elem-dir-hold-s: peak-hold -- a snapshot is taken only while the lane's "
+        "coherence is within this fraction of the slot's best recent coherence, so the held "
+        "mean is the pre-pass one; default the stage's 0.9 (nothing emitted)",
     )
     ap.add_argument(
         "--n2-project-live-freq-ids",

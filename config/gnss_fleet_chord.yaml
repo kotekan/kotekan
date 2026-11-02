@@ -141,11 +141,16 @@ common:
     # current geometry, for up to 600 s: a bright pass is within 2 deg for ~10 min. A held
     # response goes stale as the satellite crosses the sidelobes; a stale lane costs one
     # dimension (1/n of the sky) and still nulls what it shares with the true direction.
-    elem-dir-hold-s: 600
-    # The held mean is the last one this coherent (COSMOS 2501 at 0.01 deg, 11-02: refreshing
-    # the hold on every live publish kept the contaminated direction and the GLO L2 lanes
-    # fell 35 % with nothing held; the projection drops a lane below 0.08 anyway).
-    elem-dir-hold-coh-min: 0.2
+    # 1500 s: the leakage starts ~5 deg out and a pass is within 5 deg for ~20 min (C20,
+    # 11-02: a 600 s hold expired before closest approach).
+    elem-dir-hold-s: 1500
+    # Peak-hold: the held mean is the slot's best recent one (within 0.9 of its best
+    # coherence, decaying ~1 %/min), never one taken on the way down into a pass (COSMOS 2501
+    # at 0.01 deg, 11-02: refreshing the hold on every live publish kept the contaminated
+    # direction; C20 at 1.01 deg: a fixed 0.2 was above most lanes' everyday coherence, so
+    # they had no snapshot at all -- lanes -95 %, held 0). Floor 0.08 = the projection's own.
+    elem-dir-hold-coh-min: 0.08
+    elem-dir-hold-frac: 0.9
     # GuoWang beam dump (cudaGnssBeamDump, docs/CHORD_GUOWANG_BEAMDUMP_PLAN.md): per selected
     # channel the whitened top-eigenvector beam over the 128 inputs, written only while the
     # pass scheduler (scripts/gnss/beam_dump_sched.py) arms the gnss<g>_beamdump_gate around
