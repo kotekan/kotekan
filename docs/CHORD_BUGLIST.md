@@ -1430,6 +1430,23 @@ and the cube leg's unit. Until this is understood, stop the broker and gather by
 
 ## Open — the fix is in the NODE BINARY (queue for the next cycle)
 
+### #226 — DTV band (470-600 MHz): a blind channel-identification subtraction stage recovers Tau A where projection cannot (2026-11-02, KV: "write up the DTV work, along with a proposed live pathway, and file to the todo list")
+**What:** the seven ATSC channels are one dominant mode plus a multipath tail at Tau A's eigenvalue, so a fixed-K
+projection removes Tau A with the tail (channel 24: 70 % at K = 4, channel 30 lost). Modelling each channel as one
+transmitter timestream through a lagged impulse response per input (49 lags), initialised from the Tau A-deflated
+eigen-beam and fitted by least squares, then peeling the co-channel second station the same way, brings channels
+17 / 24 / 30 to the clean floor with Tau A at 0.98 / 0.90 / 0.69 (the rest is 4-bit damage: the F-engine gain is 2
+and 7 dB down in those channels, levelled with the DTV in). The Green's functions are static over 80 s to < 1 %, so
+a frozen solution subtracts as well as a refitted one. Write-up and pathway: docs/CHORD_DTV_SUBTRACTION_20261102.md;
+tools ~/gnss/bb1030/dtv_*.py; data cf05/cf06:/var/tmp/bb1030/dtv.
+**Pathway:** a cudaCommand before cudaCorrelatorDual in gnss<g>_n2dual (lagged beam for the timestream, lagged
+subtract, requantise in place, lag correlator for a per-second g tracker; ~30 GMAC/s per GPU for ~12 sub-channels),
+the eigen start once per channel off-transit, generator plumbing like --beam-dump-freq-ids, A/B with the beam dump
+and recv1. The same stage covers the 600 / 700 MHz LTE downlinks. **Open before building:** the lag correlation
+between the two peeled timestreams, the direction fit of each arrival with the dish positions, why the MMSE
+refinement costs weak sources a few percent of Tau A, and the tracker's time constant on a longer capture.
+
+
 ### #225 — GnssN2Project runs at 77-86 % of its core per GPU after the 2026-10-30 widening (43 channels, 20-30 lanes): the lane projection's n^2 k per channel-frame is the cost, and the headroom shrinks as satellites rise
 **What:** the stage is single-threaded on one core per GPU (`n2-project-cpus` 15/19). With the 2026-10-30 widening to
 5939-6626 (the eigen path confined to the lobes by `eigen_channels: list`) the fleet's cores read 77-86 % at 28-30
