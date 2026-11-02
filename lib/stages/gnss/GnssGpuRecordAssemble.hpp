@@ -391,7 +391,7 @@ private:
     kotekan::prometheus::Gauge* _m_inst_rms_ns = nullptr;
     kotekan::prometheus::Gauge* _m_inst_weight = nullptr;
     kotekan::prometheus::Gauge* _m_inst_warm = nullptr;
-    kotekan::prometheus::Gauge* _m_lane_pub = nullptr;
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>* _m_lane_pub = nullptr;
     bool _proj_ready = false;
     uint8_t _proj_nchan_warned = 0;
     std::vector<std::unique_ptr<gnss::ProjSubspace>> _proj_own; ///< per slot, while it is a source
