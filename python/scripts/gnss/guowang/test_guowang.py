@@ -66,6 +66,28 @@ class CodeTest(unittest.TestCase):
         self.assertTrue((codes[0] == np.array(gc._l3._code(1, False, dc1))).all())
         self.assertTrue((codes[64] == np.array(gc._l3._code(1, True, dc1))).all())
 
+    def test_guowang_1202(self):
+        """The codes read off DIGUI-26 (dump 2026-10-30) and DIGUI-79 (beam dump 2026-11-02),
+        packed bits (1 = chip -1); every G2' phase gives a distinct code and the family labels
+        the known satellites."""
+        want = {
+            1213: "7c69ad3164f0c5f7e073030bd30ac1c3cac03395bccd8632a0787a16cca62e8a1ea8f4016d6a429f1eb1b2a16aeb7ca576b03305ef3fc9d0869bb8fe4f46eded1ba6b148894cce558333b0c73e868aa0cc2b004a36f31cbc251a2223192b369ead19916c55daa4a10a50d681bf27437beb4b5e11c2ba40bd2119f8fb7679256d3c5775342f7ed91af2516b712c5c3d559363b1a86974a0000bbcef916af0a4e95cf40308bb9d08a3a2bf6de97a96b008fc47ddaa3c82716108ef22ac70804fa1b8f95936595303201660f2a72d5b27cf4bf339dac26d5568062290f39ba72cb5ce4a834269849ad33173940ea2fad9e181da0961b1968134acfd1e4d5db08788",
+            2027: "30746637c4100cc9ef44a13aa55326e5ad8ffe9420209355d5f157aae61c4dc0045fff7dd4d9c21fa44f60535f71e20444586c0ce5e5d95a41a924291e0db8a3991ea46130b182a1588593394ba87bd804c72e1c92ff12c43ea290d664342c276a11499724565eebb77b191f50d9df45aab08841fc12abdbf239ec00eee56fa49fc0aa548fea987cbce9974825226f1d582bdd3cc1025e3be939f61177d2b2f93f23811772705308a35708a45c6c672d3f4ad2a7da9f27ff40cd7a706736854f7d54b6f28141621c6f34f39c1c8aa2ec8fc23b0b7d0abd79c35c2babe06c5e9d76c2321356598c100638b5c87803439630586220048ca56b4ce774dec9cba5e8",
+        }
+        for ph, hexbits in want.items():
+            c = gc.guowang_1202(ph)
+            self.assertEqual(len(c), 2046)
+            self.assertEqual(np.packbits(c < 0).tobytes().hex(), hexbits)
+        codes, labels = gc.guowang_1202_all()
+        self.assertEqual(codes.shape, (2047, 2046))
+        self.assertEqual(len({c.tobytes() for c in codes}), 2047)
+        self.assertEqual(labels[2027], "DIGUI-79/g2ph2027")
+        self.assertTrue((codes[2027] == gc.guowang_1202(2027)).all())
+        m2 = gc.guowang_g2prime(2047 + 11)
+        self.assertTrue(
+            (m2[2047:] == m2[:11]).all()
+        )  # period 2047: a maximal-length sequence
+
     def test_berlekamp_massey(self):
         bits = (gc.b3i_prn([7])[0] < 0).astype(np.uint8)
         for b in (bits, bits ^ 1):

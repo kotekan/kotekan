@@ -13,6 +13,9 @@ Families:
     b1i      BeiDou B1I PRN 1-63 (2046 chips, 2.046 Mcps, 1 ms)
     b1i_all  G1 XOR each of the 2047 phases of G2, plus G1 alone (2048 codes, truncated to 2046)
     l3oc     GLONASS L3OC data + pilot: DC1 x each of the 127 phases of the 7-stage LFSR (127)
+    guowang1202_all  the GuoWang 1202.025 MHz code family: B1I G1 (phase 1206) XOR each of the
+             2047 phases of the GuoWang G2' m-sequence (2046 chips, 2.046 Mcps, 1 ms of each 2 ms
+             frame); the known satellites are named in GUOWANG_1202_G2P_PHASE
 """
 
 import os
@@ -170,6 +173,58 @@ def l3oc_all():
     return np.array(codes, np.int8), labels
 
 
+# GuoWang 1202.025 MHz ranging code (found 2026-11-02 in the beam dump, ~/gnss/bb1030/
+# dg3_report_20261102.md section 7): BPSK at 2.046 Mcps; each 2 ms frame (4092 chips) is one
+# millisecond of a fixed 2046-chip code followed by one millisecond of data chips; a data sign
+# (250 sym/s = two frames) multiplies the frame. The code is B1I's G1 (taps above, initial state
+# 01010101010) from phase 1206 XOR a new degree-11 m-sequence G2' taken from a per-satellite phase
+# counted from G2''s all-ones state: BeiDou-style assignment by G2 phase.
+GUOWANG_1202_N, GUOWANG_1202_RC, GUOWANG_1202_FRAME = 2046, 2.046e6, 4092
+GUOWANG_1202_FC = 1202.025e6
+# G2' recurrence s[k] = XOR_i s[k - i]: connection polynomial 1 + x + x^3 + x^8 + x^9 + x^10 + x^11
+GUOWANG_G2P_TAPS = (1, 3, 8, 9, 10, 11)
+GUOWANG_G1_PHASE = 1206
+GUOWANG_1202_G2P_PHASE = {  # satellite: G2' phase (one beam-dump pass each; the database grows here)
+    "DIGUI-26": 1213,
+    "DIGUI-79": 2027,
+    "DIGUI-18": 893,
+    "DIGUI-97": 1100,
+    "DIGUI-176": 1518,
+}
+
+
+def guowang_g2prime(n, phase=0):
+    """n bits of the GuoWang G2' m-sequence from its all-ones state, starting `phase` bits in."""
+    s = np.ones(phase + n, np.uint8)
+    for k in range(11, phase + n):
+        v = 0
+        for i in GUOWANG_G2P_TAPS:
+            v ^= s[k - i]
+        s[k] = v
+    return s[phase : phase + n]
+
+
+def guowang_1202(g2_phase, g1_phase=GUOWANG_G1_PHASE):
+    """+-1 code (2046 chips) of the satellite whose G2' phase is g2_phase."""
+    g1 = lfsr_bits(B1I_G1_TAPS, _b1i_init(), g1_phase + GUOWANG_1202_N)[g1_phase:]
+    return to_pm(g1 ^ guowang_g2prime(GUOWANG_1202_N, g2_phase))
+
+
+def guowang_1202_all():
+    """Every G2' phase (2047 codes): label g2ph<phase>, with the satellite name where known."""
+    g1 = lfsr_bits(B1I_G1_TAPS, _b1i_init(), GUOWANG_G1_PHASE + GUOWANG_1202_N)[
+        GUOWANG_G1_PHASE:
+    ]
+    m2 = guowang_g2prime(2047)
+    codes = gold_codes(g1, m2, list(range(2047)), GUOWANG_1202_N)
+    name_of = {ph: s for s, ph in GUOWANG_1202_G2P_PHASE.items()}
+    labels = [
+        ("%s/" % name_of[ph] if ph in name_of else "") + "g2ph%d" % ph
+        for ph in range(2047)
+    ]
+    return codes, labels
+
+
 FAMILIES = {
     # name: (builder -> (codes, labels), chip rate, code length)
     "b3i": (lambda: (b3i_prn(), ["PRN%d" % p for p in range(1, 64)]), B3I_RC, B3I_N),
@@ -177,6 +232,7 @@ FAMILIES = {
     "b1i": (lambda: (b1i_prn(), ["PRN%d" % p for p in range(1, 64)]), B1I_RC, B1I_N),
     "b1i_all": (b1i_all, B1I_RC, B1I_N),
     "l3oc": (l3oc_all, L3OC_RC, L3OC_N),
+    "guowang1202_all": (guowang_1202_all, GUOWANG_1202_RC, GUOWANG_1202_N),
 }
 
 

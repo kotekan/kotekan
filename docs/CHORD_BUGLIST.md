@@ -1430,6 +1430,28 @@ and the cube leg's unit. Until this is understood, stop the broker and gather by
 
 ## Open — the fix is in the NODE BINARY (queue for the next cycle)
 
+### #227 — GuoWang 1202.025 MHz lanes: track the constellation's ranging code for beam mapping (2026-11-03, KV: "think about using these signals for beam mapping ... collate a database of code <-> sat values ... record their second ms of data chips")
+**What:** the GuoWang downlink at 1202.025 MHz is a GNSS-style ranging signal (dg3_report_20261102.md section 7):
+BPSK at 2.046 Mcps, 2 ms frames of 4092 chips, the first millisecond a fixed 2046-chip code (B1I's G1 from phase
+1206 XOR a new degree-11 m-sequence G2', the satellite set by the G2' phase, as BeiDou assigns PRNs), the second
+millisecond data chips, one data sign per two frames (250 sym/s), one clock for carrier and chips. Five satellites
+are known (`GUOWANG_1202_G2P_PHASE` in python/scripts/gnss/guowang/guowang_codes.py, generator `guowang_1202`,
+family `guowang1202_all`). Hundreds of LEO passes a day at 1202 MHz, ~35 satellites up at once, would probe the
+beam far more densely than the GNSS constellations.
+**Steps:** (a) the code <-> satellite database: every beam-dump window (cf06:/var/tmp/kvand-beamdump, 1202 lobe
+freq_ids 6122-6185, stitch with --ref-input auto, conj=False) through ~/gnss/bb1030/dg3_live.py (run_live3.sh is
+the recipe: --fd from dg_passdoppler.py at the window centre, --chip-dr ~ -0.51 Hz for the carrier-comb pitfall) or
+a correlation of the 1202 fold against the 2047-code family; grow the dict. (b) a signal descriptor (BPSK, 2.046
+Mcps, carrier 1202.025 MHz, 2046-chip code at a 4092-chip period = 50 % duty, 4 ms symbols) in gnssSignal.hpp AND
+ALL_SIGNALS AND the iface mirror (test_iface_mirrors.py); a replica generator beside beidouB1ICode.cpp with the
+test vectors of test_guowang.py. (c) orbit source: no BRDC; TLE-steered Doppler (guowang_passes.py; the
+transmitters sit ~-250 ppb from the TLE = -300 Hz, LEO rate -120 Hz/s) and a full code-phase search; passes last
+minutes, so lanes are armed per pass like the beam-dump scheduler. (d) log every satellite's data millisecond.
+**Traps:** the 1202 carrier carries a 10 ms (5-frame) phase pattern of up to 2.8 rad between frame classes, so
+coherent integration beyond one 2 ms frame needs it understood; a search near the TLE Doppler locks on a comb line
+~300 Hz high: confirm the carrier by the code. No further baseband dumps are needed; the beam dump's 1202 lobe gives
+codes and data chips.
+
 ### #226 — DTV band (470-600 MHz): a blind channel-identification subtraction stage recovers Tau A where projection cannot (2026-11-02, KV: "write up the DTV work, along with a proposed live pathway, and file to the todo list")
 **What:** the seven ATSC channels are one dominant mode plus a multipath tail at Tau A's eigenvalue, so a fixed-K
 projection removes Tau A with the tail (channel 24: 70 % at K = 4, channel 30 lost). Modelling each channel as one
