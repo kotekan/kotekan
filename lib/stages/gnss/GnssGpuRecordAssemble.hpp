@@ -361,6 +361,7 @@ private:
     int _lane_every = 4;
     double _lane_coh_min = 0.02;
     double _lane_hold_s = 0.0;
+    double _lane_hold_coh_min = 0.2; ///< a mean is kept for the hold only this coherent
     std::string _lane_group;
     std::vector<int> _lane_fids;
     gnss::LaneDirection _lane;

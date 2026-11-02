@@ -894,6 +894,8 @@ def elem_proj_keys(args):
         out["elem_dir_publish"] = "all"
         if getattr(args, "elem_dir_hold_s", 0.0):
             out["elem_dir_hold_s"] = float(args.elem_dir_hold_s)
+            if getattr(args, "elem_dir_hold_coh_min", None) is not None:
+                out["elem_dir_hold_coh_min"] = float(args.elem_dir_hold_coh_min)
     if mode not in ("shadow", "live"):
         return out
     out["elem_proj_mode"] = mode
@@ -3258,6 +3260,14 @@ def main():
         help="with --elem-dir-publish all: seconds a lane whose row lost coherence (a bright "
         "pass takes the tracker's lock) keeps being published from its last coherent mean, "
         "steered with the current geometry; default 0 (off, nothing emitted)",
+    )
+    ap.add_argument(
+        "--elem-dir-hold-coh-min",
+        type=float,
+        default=None,
+        help="with --elem-dir-hold-s: the coherence a lane's mean must have to be kept as the "
+        "held one (the last GOOD mean, not the last above the publish floor); default the "
+        "stage's 0.2 (nothing emitted)",
     )
     ap.add_argument(
         "--n2-project-live-freq-ids",

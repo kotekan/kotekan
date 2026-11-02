@@ -142,6 +142,10 @@ common:
     # response goes stale as the satellite crosses the sidelobes; a stale lane costs one
     # dimension (1/n of the sky) and still nulls what it shares with the true direction.
     elem-dir-hold-s: 600
+    # The held mean is the last one this coherent (COSMOS 2501 at 0.01 deg, 11-02: refreshing
+    # the hold on every live publish kept the contaminated direction and the GLO L2 lanes
+    # fell 35 % with nothing held; the projection drops a lane below 0.08 anyway).
+    elem-dir-hold-coh-min: 0.2
     # GuoWang beam dump (cudaGnssBeamDump, docs/CHORD_GUOWANG_BEAMDUMP_PLAN.md): per selected
     # channel the whitened top-eigenvector beam over the 128 inputs, written only while the
     # pass scheduler (scripts/gnss/beam_dump_sched.py) arms the gnss<g>_beamdump_gate around

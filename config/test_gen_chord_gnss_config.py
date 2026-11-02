@@ -906,6 +906,8 @@ def test_manual_mask_reaches_the_node_config():
             "all",
             "--elem-dir-hold-s",
             "300",
+            "--elem-dir-hold-coh-min",
+            "0.25",
             "--elem-sum-shared",
             "--elem-shared-ref",
             ref,
@@ -946,8 +948,10 @@ def test_manual_mask_reaches_the_node_config():
         "--n2-project-eigen-channels ranges: the stage gets the list",
     )
     check(
-        asm.get("elem_dir_publish") == "all" and asm.get("elem_dir_hold_s") == 300.0,
-        "--elem-dir-hold-s: the assemblers hold a lane 300 s",
+        asm.get("elem_dir_publish") == "all" and asm.get("elem_dir_hold_s") == 300.0
+        and asm.get("elem_dir_hold_coh_min") == 0.25,
+        "--elem-dir-hold-s / --elem-dir-hold-coh-min: the assemblers hold a lane 300 s from a "
+        "mean of coherence >= 0.25",
     )
     bd = [c for c in cfg["gnss0_n2dual"]["commands"] if c.get("name") == "cudaGnssBeamDump"]
     check(

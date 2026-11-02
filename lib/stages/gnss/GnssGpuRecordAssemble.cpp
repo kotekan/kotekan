@@ -206,6 +206,14 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
         _lane_coh_min = config.get_default<double>(unique_name, "elem_dir_coh_min", 0.05);
         _lane_hold_s =
             std::max(0.0, config.get_default<double>(unique_name, "elem_dir_hold_s", 0.0));
+        // The hold keeps the last GOOD mean, not the last one above the publish floor: as a
+        // bright pass leaks into a weak lane its coherence sinks through the floor over
+        // minutes, and a snapshot taken on the way down is the contaminated direction (COSMOS
+        // 2501 at 0.01 deg, 11-02: GLO L2 lanes -35 %, held 0, with the snapshot refreshed
+        // on every live publish down to 0.05 while the projection stops using a lane below
+        // 0.08).
+        _lane_hold_coh_min = std::max(
+            _lane_coh_min, config.get_default<double>(unique_name, "elem_dir_hold_coh_min", 0.2));
         _lane_fids = config.get_default<std::vector<int>>(unique_name, "channel_ids", {});
         _lane_group = unique_name.substr(0, unique_name.find('_'));
         const int np = (int)_prns.size();
@@ -246,9 +254,9 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
         if (_lane_on)
             INFO("lane directions: publishing every running non-probe slot's prompt-row "
                  "direction per channel to the board group {:s}, tau {:.2f} s, every {:d} "
-                 "records, coherence >= {:.3f}, held {:.0f} s, transferred to {:d} more "
-                 "channels, instrumental delay {:s}",
-                 _lane_group, tau, _lane_every, _lane_coh_min, _lane_hold_s,
+                 "records, coherence >= {:.3f}, held {:.0f} s from a mean of coherence >= "
+                 "{:.2f}, transferred to {:d} more channels, instrumental delay {:s}",
+                 _lane_group, tau, _lane_every, _lane_coh_min, _lane_hold_s, _lane_hold_coh_min,
                  (int)_lane_xfer_fids.size(), _inst_on ? "on" : "off");
     }
     // Bright-satellite projection (see the header and gnssProjSubspace.hpp). Needs channel_ids
@@ -970,7 +978,7 @@ void GnssGpuRecordAssemble::main_thread() {
                         double power = _lane.power(p, ch);
                         double held_s = 0.0;
                         if (coh >= _lane_coh_min && _lane.direction(p, ch, st, dir)) {
-                            if (_lane_hold_s > 0.0)
+                            if (_lane_hold_s > 0.0 && coh >= _lane_hold_coh_min)
                                 _lane.hold(p, ch, utc);
                             _lane_ok[(size_t)ch] = 1;
                         } else {
