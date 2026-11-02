@@ -46,6 +46,7 @@ OMEGA_E = {
     "C": 7.292115e-5,
     "R": 7.292115e-5,
     "S": 7.2921151467e-5,
+    "W": 7.2921151467e-5,  # GuoWang: TLE tables in ITRS (load_gw_table)
 }
 # PZ-90.11 (GLONASS ICD): the oblateness term of the equations of motion. PZ-90.11 and ITRF
 # agree to centimetres, so no frame transform is applied to the result.
@@ -100,7 +101,9 @@ GLO_SLOT_SVN = (
 
 
 def _gpst_of_iso(s):
-    return (datetime.fromisoformat(s).replace(tzinfo=timezone.utc) - GPS_EPOCH).total_seconds() + GPS_UTC_LEAP
+    return (
+        datetime.fromisoformat(s).replace(tzinfo=timezone.utc) - GPS_EPOCH
+    ).total_seconds() + GPS_UTC_LEAP
 
 
 _GLO_SLOT_SVN_GPST = tuple(
@@ -126,6 +129,7 @@ def glonass_l3_bias_s(slot, t_gpst):
     if svn is None:
         return 0.0
     return -GLO_L3_BIAS_M.get(svn, 0.0) / C_LIGHT
+
 
 F_REL = -4.442807633e-10  # relativistic clock coefficient (s/sqrt(m))
 
@@ -268,7 +272,9 @@ def _parse_rinex_nav_file(path):
             # in km (RINEX 3.04 table A14); propagated by sbas_state.
             e = _sbas_record(prn, af, orb, toc_gpst)
             if e is not None:
-                out.setdefault((sysc, e["prn"]), []).append(e)  # keyed by the PRN (S31 -> 131)
+                out.setdefault((sysc, e["prn"]), []).append(
+                    e
+                )  # keyed by the PRN (S31 -> 131)
             continue
         if sysc == "R":
             e = _glonass_record(prn, af, orb, toc_gpst + GPS_UTC_LEAP)
@@ -405,7 +411,8 @@ def sbas_state(e, t_gpst, model=None):
         warnings.warn("SBAS record propagated beyond 2 h of its epoch", stacklevel=2)
     if model == "constaccel":
         pos = tuple(
-            e["pos"][i] + e["vel"][i] * dt + 0.5 * e["acc"][i] * dt * dt for i in range(3)
+            e["pos"][i] + e["vel"][i] * dt + 0.5 * e["acc"][i] * dt * dt
+            for i in range(3)
         )
         vel = tuple(e["vel"][i] + e["acc"][i] * dt for i in range(3))
         return pos, vel
@@ -510,10 +517,59 @@ def glonass_state(e, t_gpst):
     return tuple(s[:3]), tuple(s[3:])
 
 
+def load_gw_table(path):
+    """GuoWang (no broadcast ephemeris, #227): {("W", prn): [record, ...]} from the table
+    scripts/gnss/site/gw_ephem_table.py writes, one record per satellite pass segment: ITRS
+    position and velocity on a regular grid (t0_gpst, dt), from the satellite's TLE (SGP4,
+    propagated off the broker; the broker interpolates). prn = the satellite's G2' phase + 1.
+    The records carry health 0 and no clock (sat_clk_s 0: the transmitters sit ~-0.25 ppm from
+    nominal, a Doppler offset the search absorbs, not a clock model)."""
+    import json
+
+    with open(path) as fh:
+        doc = json.load(fh)
+    out = {}
+    for r in doc.get("records", []):
+        r = dict(r, sys="W", health=0)
+        out.setdefault(("W", int(r["prn"])), []).append(r)
+    return out
+
+
+def _gw_state(e, t_gpst):
+    """Cubic Hermite interpolation of a GuoWang table record (position and velocity at the
+    grid points); a few ms past either end (the light-time step) is extrapolated."""
+    pos, vel, dt = e["pos"], e["vel"], float(e["dt"])
+    n = len(pos)
+    x = (t_gpst - float(e["t0_gpst"])) / dt
+    k = min(max(int(math.floor(x)), 0), n - 2)
+    s = x - k
+    s2, s3 = s * s, s * s * s
+    h00, h10, h01, h11 = 2 * s3 - 3 * s2 + 1, s3 - 2 * s2 + s, -2 * s3 + 3 * s2, s3 - s2
+    d00, d10, d01, d11 = (
+        6 * s2 - 6 * s,
+        3 * s2 - 4 * s + 1,
+        -6 * s2 + 6 * s,
+        3 * s2 - 2 * s,
+    )
+    p0, p1, v0, v1 = pos[k], pos[k + 1], vel[k], vel[k + 1]
+    p = tuple(
+        h00 * p0[i] + h10 * dt * v0[i] + h01 * p1[i] + h11 * dt * v1[i]
+        for i in range(3)
+    )
+    v = tuple(
+        (d00 * p0[i] + d10 * dt * v0[i] + d01 * p1[i] + d11 * dt * v1[i]) / dt
+        for i in range(3)
+    )
+    return p, v
+
+
 def sat_pos_clk(e, t_gpst):
     """ICD propagation -> ECEF position (m), velocity (m/s), clock offset (s): Kepler for
-    G/E/C, the integrated state vector for R.
+    G/E/C, the integrated state vector for R, the interpolated TLE table for W (GuoWang).
     t_gpst = seconds since the GPS epoch (continuous, no week rollover)."""
+    if e["sys"] == "W":
+        pos, vel = _gw_state(e, t_gpst)
+        return pos, vel, 0.0
     if e["sys"] == "S":
         pos, vel = sbas_state(e, t_gpst)
         return pos, vel, e["af0"] + e["af1"] * (t_gpst - e["toc_gpst"])
@@ -613,9 +669,13 @@ def group_delay_s(e, signal, dcb=None):
         return 0.0
     sig = str(signal).lower()
     sysc = e.get("sys")
+    if sysc == "W":
+        return 0.0  # no clock model, no group delay (load_gw_table)
     if sysc == "R":
         if "l3" in sig:
-            return glonass_l3_bias_s(int(e.get("prn") or 0), float(e.get("toe_gpst") or 0.0))
+            return glonass_l3_bias_s(
+                int(e.get("prn") or 0), float(e.get("toe_gpst") or 0.0)
+            )
         return 0.0
     # Measured DCBs (gnss_dcb.signal_bias_s) take precedence when loaded. They cover GPS L5 and
     # L2C, Galileo E5a/E5b and BeiDou B2a/B2b (B2a's broadcast term is not in RINEX 3 at all)
@@ -692,6 +752,8 @@ def group_delay_s(e, signal, dcb=None):
 
 
 def _pos_only(e, t_gpst):
+    if e["sys"] == "W":
+        return _gw_state(e, t_gpst)[0]
     if e["sys"] == "S":
         return sbas_state(e, t_gpst)[0]
     if e["sys"] == "R":
@@ -760,7 +822,12 @@ HEALTH_GATE_EXEMPT = {
 
 
 def best_eph(records, t_gpst, max_age=14400.0):
-    """The record whose toe is nearest t, within max_age (default 4 h); None if all stale."""
+    """The record whose toe is nearest t, within max_age (default 4 h); None if all stale.
+    A GuoWang table record (load_gw_table) is valid only inside its segment, so for those the
+    covering segment is taken and max_age does not apply."""
+    if records and records[0].get("sys") == "W":
+        cand = [e for e in records if e["t0_gpst"] <= t_gpst <= e["t1_gpst"]]
+        return min(cand, key=lambda e: abs(t_gpst - e["toe_gpst"])) if cand else None
     cand = [e for e in records if abs(t_gpst - e["toe_gpst"]) < max_age]
     return min(cand, key=lambda e: abs(t_gpst - e["toe_gpst"])) if cand else None
 
