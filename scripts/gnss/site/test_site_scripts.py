@@ -1113,7 +1113,7 @@ def test_run_component_exports_no_kotekan_src():
             shutil.copy(os.path.join(CONFIG, name), os.path.join(k, "config"))
         rc_sh = os.path.join(k, "scripts", "gnss", "site", "run_component.sh")
         out = {}
-        names = "broker gather aggregator viewer obs rail cubearch cubecompact"
+        names = "broker gather aggregator viewer obs rail fengine cubearch cubecompact"
         for name in names.split():
             rc, out[name] = run(
                 ["bash", rc_sh, "--print", name],
@@ -1128,6 +1128,12 @@ def test_run_component_exports_no_kotekan_src():
         check(
             "argv\t%s/scripts/gnss/broker_multi.py\n" % k in out["broker"],
             "the broker runs from the checkout the scripts are in",
+        )
+        check(
+            "argv\t%s/scripts/gnss/site/fengine_gains.py\n" % k in out["fengine"]
+            and "argv\t--ack-only\n" in out["fengine"]
+            and "argv\t--transit-opts=--fetch\n" in out["fengine"],
+            "the gains service runs advisory, with the forecast, from the checkout",
         )
         check(
             "argv\t%s/build_nodpdk/kotekan/kotekan\n" % kt in out["gather"],

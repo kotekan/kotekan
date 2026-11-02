@@ -173,6 +173,19 @@ gnss_component() {
                    --status "$GNSS_OBS_OUT/lane_relay")
         ;;
 
+    fengine)
+        # The F-engine gain requests and the transit forecast, for choco and grafana: GET
+        # /fengine_gains (the request), /transit_windows (the next 2 h of transits and quiet
+        # windows) and /metrics (Prometheus) on :12070. Advisory: --ack-only keeps the table the
+        # F-engine runs in force until it acknowledges a request. Standalone: reads the nodes'
+        # taps, the gain archive and the TLE caches, so it can never touch the control path.
+        GNSS_EXEC=("$GNSS_VENV/bin/python" -u "$GNSS_K/scripts/gnss/site/fengine_gains.py" run
+                   --ack-only --out "$GNSS_OBS_OUT/fengine_gains"
+                   --port "${GNSS_FENGINE_PORT:-12070}"
+                   --baseline-table 20261023T210749Z_chord_pathfinder_digitalgain
+                   --transit-hours 2 --transit-opts=--fetch)
+        ;;
+
     cubearch)
         # cf06 only: the far side of the beam-cube push leg, one bufferRecv on :11070 for the
         # whole fleet's windows and a rawFileWrite onto /mnt/cs00. Start it before the nodes

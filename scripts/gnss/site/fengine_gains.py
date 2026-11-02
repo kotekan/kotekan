@@ -33,6 +33,16 @@ Request (GET /fengine_gains, DIR/current.json; every request is appended to DIR/
   baseline, for the channels that differ from default_gain), basis {...}.
 POST /fengine_gains/applied {"request_id": N, "applied_fpga_seq": S} acknowledges one; acks are
 appended to DIR/applied.jsonl. The interface is a draft for the F-engine side to settle.
+With --ack-only a request is in force only once acknowledged (before that, the table the
+F-engine runs: the newest archived one, re-read every 5 min, against --baseline-table), so the
+requests stay right while nothing applies them.
+
+GET /metrics (Prometheus text): gnss_fengine_gain{freq_id} per managed channel and the band
+summaries, the request and ack ids, the measured output rms and clip fraction per tap channel,
+and with --transit-hours the forecast's gnss_transit_active / gnss_transit_next_start_s /
+gnss_quiet_now per F-engine lobe. GET /transit_windows: transit_windows.py's forecast of the
+next --transit-hours (JSON, schema chord-gnss-transit-windows/0), refreshed every
+--transit-every-s.
 """
 import argparse
 import datetime
@@ -457,6 +467,10 @@ class Outlet:
         self.current = None
         self.last_measure_t = None
         self.push_fail_t = 0.0
+        self.snap = None  # the last measurement (GET /metrics)
+        self.acked_id = 0
+        self.table = None  # the archived table taken to be in force
+        self.transits = None  # transit_windows.forecast(), GET /transit_windows
         p = os.path.join(out_dir, "current.json") if out_dir else None
         if p and os.path.exists(p):
             with open(p) as fh:
@@ -502,6 +516,7 @@ class Outlet:
                 h for h in self.ctrl.history if h[0] != cur["apply_at_fpga_seq"]
             ]
             self.ctrl.applied(seq, g)
+            self.acked_id = rid
         rec = {"t": round(time.time(), 3), "request_id": rid, "applied_fpga_seq": seq}
         if self.dir:
             append_jsonl(os.path.join(self.dir, "applied.jsonl"), rec)
@@ -520,6 +535,22 @@ class Outlet:
                 self.wfile.write(b)
 
             def do_GET(self):
+                if self.path.rstrip("/") == "/metrics":
+                    b = prom_metrics(outlet, time.time()).encode()
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/plain; version=0.0.4")
+                    self.send_header("Content-Length", str(len(b)))
+                    self.end_headers()
+                    self.wfile.write(b)
+                    return
+                if self.path.rstrip("/") == "/transit_windows":
+                    with outlet.lock:
+                        doc = outlet.transits
+                    return (
+                        self._send(200, doc)
+                        if doc
+                        else self._send(404, {"error": "no forecast yet"})
+                    )
                 if self.path.rstrip("/") == "/fengine_gains":
                     with outlet.lock:
                         cur = outlet.current
@@ -556,6 +587,194 @@ class Outlet:
         srv = ThreadingHTTPServer((host, port), H)
         threading.Thread(target=srv.serve_forever, daemon=True).start()
         return srv
+
+
+def _prom(lines, name, help_, rows):
+    """One Prometheus gauge family: rows of (labels dict or None, value)."""
+    lines.append("# HELP %s %s" % (name, help_))
+    lines.append("# TYPE %s gauge" % name)
+    for labels, v in rows:
+        lab = (
+            "{%s}" % ",".join('%s="%s"' % kv for kv in sorted(labels.items()))
+            if labels
+            else ""
+        )
+        v = float(v)
+        txt = "NaN" if v != v else ("+Inf" if v == math.inf else repr(v))
+        lines.append("%s%s %s" % (name, lab, txt))
+
+
+def prom_metrics(outlet, now):
+    """GET /metrics: the current request per managed channel and per band, the measurement it
+    came from, and the transit forecast's state per F-engine lobe, in Prometheus text format."""
+    with outlet.lock:
+        cur, snap, acked = outlet.current, outlet.snap, outlet.acked_id
+        table, fc = outlet.table, outlet.transits
+    man = np.nonzero(outlet.ctrl.man)[0]
+    g = np.ones(N_FREQ)
+    if cur:
+        g[np.asarray(cur["freq_id"], int)] = cur["gain"]
+    L = []
+    _prom(
+        L,
+        "gnss_fengine_gain",
+        "Requested voltage multiplier on the F-engine baseline table, per managed freq_id.",
+        [({"freq_id": str(f)}, g[f]) for f in man],
+    )
+    band_rows = []
+    for name, lo, hi in BANDS:
+        gb = g[lo : hi + 1]
+        band_rows.append(
+            (name, 20.0 * math.log10(gb.min()), int((gb < 1.0 - 1e-6).sum()))
+        )
+    _prom(
+        L,
+        "gnss_fengine_gain_band_min_db",
+        "Lowest requested gain in the band, dB on the baseline.",
+        [({"band": b}, v) for b, v, _ in band_rows],
+    )
+    _prom(
+        L,
+        "gnss_fengine_gain_band_channels_cut",
+        "Channels of the band requested below the baseline.",
+        [({"band": b}, n) for b, _, n in band_rows],
+    )
+    for name, key, help_ in (
+        (
+            "gnss_fengine_request_id",
+            "request_id",
+            "Id of the current request (0: none).",
+        ),
+        ("gnss_fengine_request_created_unix", "created_unix", "When it was made."),
+        (
+            "gnss_fengine_request_apply_at_fpga_seq",
+            "apply_at_fpga_seq",
+            "Its apply seq.",
+        ),
+        (
+            "gnss_fengine_request_apply_at_unix",
+            "apply_at_unix",
+            "Its apply time (NaN: no time0).",
+        ),
+    ):
+        _prom(
+            L,
+            name,
+            help_,
+            [(None, (cur or {}).get(key, 0 if key == "request_id" else math.nan))],
+        )
+    _prom(
+        L,
+        "gnss_fengine_acked_request_id",
+        "Last acknowledged request (0: none).",
+        [(None, acked)],
+    )
+    if table:
+        _prom(
+            L,
+            "gnss_fengine_table_info",
+            "Archived table taken to be in force.",
+            [({"table": table}, 1)],
+        )
+    age = now - snap["t_ref"] if snap else math.nan
+    _prom(
+        L,
+        "gnss_fengine_measure_age_s",
+        "Age of the last tap measurement.",
+        [(None, age)],
+    )
+    if snap:
+        _prom(
+            L,
+            "gnss_fengine_measure_taps",
+            "Taps in the last measurement.",
+            [(None, snap.get("n_taps", 0))],
+        )
+        rms = np.sqrt(np.maximum(snap["power"], 0.0) / 2.0)
+        _prom(
+            L,
+            "gnss_fengine_output_rms_lsb",
+            "Measured F-engine output rms per component, LSB, per tap freq_id (median over taps).",
+            [({"freq_id": str(f)}, r) for f, r in zip(snap["fids"], rms)],
+        )
+        _prom(
+            L,
+            "gnss_fengine_clip_fraction",
+            "Fraction of samples at the +7 rail, per tap freq_id.",
+            [({"freq_id": str(f)}, c) for f, c in zip(snap["fids"], snap["clip"])],
+        )
+    if fc:
+        sys.path.insert(0, HERE)
+        import transit_windows as tw
+
+        lobes = [b for b, _ in tw.BANDS]
+        active, nxt = {b: 0 for b in lobes}, {b: math.inf for b in lobes}
+        for r in fc["transits"]:
+            if r["kind"] != "closest":
+                continue
+            for b in r["bands"]:
+                if b not in active:
+                    continue
+                if r["start_unix"] <= now < r["end_unix"]:
+                    active[b] = 1
+                elif r["start_unix"] > now:
+                    nxt[b] = min(nxt[b], r["start_unix"] - now)
+
+        def in_quiet(wins):
+            return int(any(a <= now < b for a, b in wins))
+
+        _prom(
+            L,
+            "gnss_transit_forecast_age_s",
+            "Age of the transit forecast.",
+            [(None, now - fc["created_unix"])],
+        )
+        _prom(
+            L,
+            "gnss_transit_forecast_end_unix",
+            "End of the forecast window.",
+            [(None, fc["end_unix"])],
+        )
+        _prom(
+            L,
+            "gnss_transit_active",
+            "A satellite is inside the transit radius of the boresight, per F-engine lobe.",
+            [({"band": b}, active[b]) for b in lobes],
+        )
+        _prom(
+            L,
+            "gnss_transit_next_start_s",
+            "Seconds to the next transit's start, per lobe (+Inf: none in the forecast).",
+            [({"band": b}, nxt[b]) for b in lobes],
+        )
+        _prom(
+            L,
+            "gnss_quiet_now",
+            "Inside a quiet window (no satellite, Sun or bright source near the boresight).",
+            [({"band": "all"}, in_quiet(fc["quiet"]["all"]))]
+            + [({"band": b}, in_quiet(fc["quiet_by_band"].get(b, []))) for b in lobes],
+        )
+    return "\n".join(L) + "\n"
+
+
+def transit_loop(outlet, hours, every_s, opts):
+    """Refresh outlet.transits every every_s with the next `hours` from now."""
+    sys.path.insert(0, HERE)
+    import transit_windows as tw
+
+    while True:
+        t0 = time.time()
+        try:
+            doc = tw.forecast(tw.parse_args(["--hours", str(hours)] + opts))
+            with outlet.lock:
+                outlet.transits = doc
+        except (Exception, SystemExit) as e:
+            print(
+                "fengine_gains: transit forecast failed: %s" % e,
+                file=sys.stderr,
+                flush=True,
+            )
+        time.sleep(max(1.0, every_s - (time.time() - t0)))
 
 
 # ---- state for cron (once) ----
@@ -642,14 +861,35 @@ def one_pass(ctrl, outlet, urls, args, time0_ns):
     if snap is None or now - snap["t_ref"] > args.max_age_s:
         return None
     outlet.last_measure_t = round(snap["t_ref"], 3)
+    with outlet.lock:
+        outlet.snap = snap
     g = ctrl.update(snap, now)
     if g is None:
         return None
     seq = apply_seq(snap, now, args.lead_s, args.align)
     doc = request(g, ctrl.request_id, seq, now, ctrl.p, snap, time0_ns)
-    ctrl.applied(seq, g)
+    # --ack-only: a request is in force once acknowledged, not at its apply seq
+    if not args.ack_only:
+        ctrl.applied(seq, g)
     outlet.publish(doc)
     return doc
+
+
+def refresh_table(ctrl, outlet, args):
+    """With --baseline-table and no --applied-table: take the newest archived table as the one in
+    force, and start over from it when the F-engine loads a new one."""
+    if not args.baseline_table or args.applied_table:
+        return
+    name = latest_table()
+    if name == outlet.table:
+        return
+    ctrl.history = [(-1, table_multiplier(name, args.baseline_table))]
+    with outlet.lock:
+        outlet.table = name
+    print(
+        "fengine_gains: table in force %s (baseline %s)" % (name, args.baseline_table),
+        flush=True,
+    )
 
 
 def run(args, loop):
@@ -659,12 +899,31 @@ def run(args, loop):
     state = os.path.join(args.out, "state.json")
     load_state(state, ctrl)
     outlet = Outlet(args.out, ctrl, args.push)
+    refresh_table(ctrl, outlet, args)
     if args.port is not None:
         outlet.serve(args.port)
+        if args.transit_hours > 0:
+            opts = args.transit_opts.split() if args.transit_opts else []
+            threading.Thread(
+                target=transit_loop,
+                args=(outlet, args.transit_hours, args.transit_every_s, opts),
+                daemon=True,
+            ).start()
     base = urls[0].split("/gnss")[0]
     time0 = read_time0(args.time0_url or base)
+    t_table = time.time()
     while True:
         t0 = time.time()
+        if t0 - t_table >= 300.0:
+            t_table = t0
+            try:
+                refresh_table(ctrl, outlet, args)
+            except Exception as e:
+                print(
+                    "fengine_gains: table refresh failed: %s" % e,
+                    file=sys.stderr,
+                    flush=True,
+                )
         doc = one_pass(ctrl, outlet, urls, args, time0)
         if doc:
             print(
@@ -939,7 +1198,29 @@ def main(argv=None):
     ap.add_argument(
         "--out", help="run/once: state and request directory; replay: output prefix"
     )
-    ap.add_argument("--port", type=int, help="serve GET /fengine_gains on this port")
+    ap.add_argument(
+        "--port",
+        type=int,
+        help="serve GET /fengine_gains, /metrics and /transit_windows on this port",
+    )
+    ap.add_argument(
+        "--ack-only",
+        action="store_true",
+        help="a request goes into force only when acknowledged (POST /fengine_gains/applied), "
+        "not at its apply seq: for publishing before anything applies the requests",
+    )
+    ap.add_argument(
+        "--transit-hours",
+        type=float,
+        default=0.0,
+        help="with --port: serve transit_windows.py's forecast of the next this many hours "
+        "(0: off)",
+    )
+    ap.add_argument("--transit-every-s", type=float, default=300.0)
+    ap.add_argument(
+        "--transit-opts",
+        help="more transit_windows.py options, one string (e.g. '--fetch --el 62.7')",
+    )
     ap.add_argument("--push", help="POST every request to this URL")
     ap.add_argument(
         "--time0-url",
