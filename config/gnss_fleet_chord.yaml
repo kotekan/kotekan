@@ -322,9 +322,9 @@ common:
     # The frame size is set in the generator by CUBE_MAX_PRN x CUBE_MAX_BINS (32 x 8; the
     # generator refuses a chain with more PRN slots or covering channels), and bufferRecv closes
     # any connection that disagrees: changing either means regenerating the archiver config
-    # (--cube-archive-instance) too and restarting both ends. Each assembler sends ~100 kB per
-    # window, ~9 MB/s fleet-wide into the VM's 10 GbE; the generator paces every push leg at 2x its
-    # mean rate so the frame-synced senders do not burst. Offline test: scripts/gnss/cube_e2e.py.
+    # (--cube-archive-instance) too and restarting both ends. The frame is 396120 B, ~180 frames/s
+    # fleet-wide, ~71 MB/s into the VM's 10 GbE; the generator paces every push leg at 2x its mean
+    # rate so the frame-synced senders do not burst. Offline test: scripts/gnss/cube_e2e.py.
     cube-host: 10.222.0.56
 
     # Visibility capture, off. To take one: uncomment the key(s), regenerate, restart the nodes;
