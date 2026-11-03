@@ -1445,11 +1445,12 @@ a correlation of the 1202 fold against the 2047-code family; grow the dict. (b) 
 Mcps, carrier 1202.025 MHz, 2046-chip code at a 4092-chip period = 50 % duty, 4 ms symbols) in gnssSignal.hpp AND
 ALL_SIGNALS AND the iface mirror (test_iface_mirrors.py); a replica generator beside beidouB1ICode.cpp with the
 test vectors of test_guowang.py. (c) orbit source: no BRDC; TLE-steered Doppler (guowang_passes.py; the
-transmitters sit ~-250 ppb from the TLE = -300 Hz, LEO rate -120 Hz/s) and a full code-phase search; passes last
-minutes, so lanes are armed per pass like the beam-dump scheduler. (d) log every satellite's data millisecond.
-**Traps:** the 1202 carrier carries a 10 ms (5-frame) phase pattern of up to 2.8 rad between frame classes, so
-coherent integration beyond one 2 ms frame needs it understood; a search near the TLE Doppler locks on a comb line
-~300 Hz high: confirm the carrier by the code. No further baseband dumps are needed; the beam dump's 1202 lobe gives
+carriers match the TLE to ~20 ppb on the frame0 axis, LEO rate -120 Hz/s) and a code-phase search hinted by the
+UTC-tied frame epoch (guowang_1202_db.json on kv/gw1202); passes last minutes, so lanes are armed per pass like
+the beam-dump scheduler. (d) log every satellite's data millisecond.
+**Traps:** the 1202 carrier carries a UTC-locked 10 ms (5-frame) phase pattern of up to 0.7 rad (~0.7 dB over
+five frames), whose 100 Hz sidelines catch a search started from a wrong prediction: confirm the carrier by the
+code. The beam-dump window labels (manifest utc) are 2-3 s early; time passes by seq0 on the frame0 axis. No further baseband dumps are needed; the beam dump's 1202 lobe gives
 codes and data chips.
 
 ### #226 — DTV band (470-600 MHz): a blind channel-identification subtraction stage recovers Tau A where projection cannot (2026-11-02, KV: "write up the DTV work, along with a proposed live pathway, and file to the todo list")

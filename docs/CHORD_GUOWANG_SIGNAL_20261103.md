@@ -25,11 +25,17 @@ outputs cf06:/var/tmp/bb1030/dg3 and dg4.
   -97 1100, -176 1518), test vectors in test_guowang.py. Every folded code agrees with its
   generated code at all 2046 chips; single-read chip errors are 0.02-1.5 % on live beams.
 - One clock: the chip clock tracks the carrier to within +-9 ppb (one oscillator; the Doppler
-  steers the chip rate exactly). The transmitters were ~-250 ppb from the TLE Doppler on 11-02
-  (carrier and chips alike; -300 Hz at 1202 MHz) and +13.5 ppb on 10-30; our clock moved < 5 ppb.
-- The carrier phase steps between the five frame classes (frame index mod 5) by up to 2.8 rad in a
-  10 ms pattern, the same on every satellite. It puts a 100 Hz comb on the order-2 line: a line
-  search near the TLE Doppler locks ~300 Hz high. Confirm carriers by the code.
+  steers the chip rate exactly). On the GPS-disciplined frame0 axis the carriers match the TLE
+  Doppler to -10..+20 ppb. (An apparent -250 ppb on the 11-02 passes came from the beam-dump
+  window labels, which were 2-3 s early: 2.5 s of the -125 Hz/s Doppler rate is ~300 Hz.)
+- The carrier phase steps between the five frame classes in a 10 ms pattern locked to UTC and
+  the same on every satellite, about [0, +0.26, +0.45, -0.70, +0.11] rad: ~0.7 dB over five
+  frames. It puts weak 100 Hz sidelines on the order-2 line, so a search started from a wrong
+  prediction locks on a sideline instead of failing. Confirm carriers by the code.
+- The frame epoch is tied to UTC: the code start of each frame minus the nearest UTC 2 ms
+  boundary is constant through a pass, and the data symbols start on even UTC 2 ms boundaries.
+  13 satellites' codes, the G2' phase rule and the epochs: python/scripts/gnss/guowang/
+  guowang_1202_db.json on kv/gw1202 (the cleanup session's database run, 11-03).
 - DIGUI-176's data millisecond repeated every 8 ms in one record; the others did not repeat.
 - Tracking lanes for beam mapping: docs/CHORD_BUGLIST.md #227.
 
