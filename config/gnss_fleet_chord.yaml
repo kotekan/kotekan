@@ -172,8 +172,13 @@ common:
     # a DIGUI pass. The channels cover both lobes: 1202 (E5b/L3 neighbourhood) and B3
     # (1258-1284); each GPU keeps its own mod-16 share, so a stitchable band needs the whole
     # fleet. ~16 GB fleet-wide per 80 s pass under <record_dir>/beamdump on each node.
-    # + the DTV subtraction's channels: the beam's ring eigenvalue is its per-node check (#226).
-    beam-dump-freq-ids: "6122-6185,6395-6594,2714-2744,2898-2928"
+    beam-dump-freq-ids: "6122-6185,6395-6594"
+    # Lane dump (GnssN2Project.hpp): every 2 s, per live channel, the raw N2 block and every
+    # lane candidate with its Gram-Schmidt verdict, written only while
+    # scripts/gnss/lane_dump_sched.py arms the gnss<g>_lanedump_gate around a bright pass
+    # (within 3 deg of the boresight, 15 min before to 10 min after). ~6.7 MB per GPU per
+    # frame, ~10 GB per node per window under <record_dir>/lanedump.
+    lane-dump-period-s: 2
     # DTV subtraction (cudaDtvSubtract, #226) in ATSC 24 and 30, two sources per channel; the
     # stage starts in pass-through, and the per-channel state is loaded over REST.
     dtv-subtract-freq-ids: "2714-2744,2898-2928"
@@ -309,18 +314,18 @@ common:
     telem-host: 10.222.0.56
     # The beam cube: the continuous per-(channel x element) recording, the one product that
     # keeps both axes (the element blocks sum over channels, the comb over elements). Each
-    # assembler pushes its completed ~1 s windows to the archiver on cf06 (gnss-cubearch.service,
-    # config/generated/chord_gnss_cubearch.yaml) rather than being polled: its ring holds 8
-    # windows, so a poller stalled for more than ~8 s would lose them. Start the archiver before
-    # restarting nodes into it, as for the gather.
+    # assembler pushes its completed ~1 s windows to the archiver on the gnss VM
+    # (gnss-cubevm-arch.service, config/generated/chord_gnss_cubearch_vm.yaml) rather than being
+    # polled: its ring holds 8 windows, so a poller stalled for more than ~8 s would lose them.
+    # Start the archiver before restarting nodes into it, as for the gather.
     #
     # The frame size is set in the generator by CUBE_MAX_PRN x CUBE_MAX_BINS (32 x 8; the
     # generator refuses a chain with more PRN slots or covering channels), and bufferRecv closes
     # any connection that disagrees: changing either means regenerating the archiver config
     # (--cube-archive-instance) too and restarting both ends. Each assembler sends ~100 kB per
-    # window, ~9 MB/s fleet-wide into cf06's 1 GbE; the generator paces every push leg at 2x its
+    # window, ~9 MB/s fleet-wide into the VM's 10 GbE; the generator paces every push leg at 2x its
     # mean rate so the frame-synced senders do not burst. Offline test: scripts/gnss/cube_e2e.py.
-    cube-host: 10.222.3.6
+    cube-host: 10.222.0.56
 
     # Visibility capture, off. To take one: uncomment the key(s), regenerate, restart the nodes;
     # afterwards comment them out, regenerate and restart again. The value is the chains
