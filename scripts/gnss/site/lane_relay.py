@@ -7,6 +7,9 @@
        the copy of best coherence of each (band, PRN), take the target channels from the
        fleet file's fleet-lane-transfer table, and POST .../set_lanes to every receiving GPU
        the lanes whose targets meet its live channels, less the ones it measured itself.
+       A lane whose power is fleet-lane-transfer-bright-db (15) above its band's median also
+       goes to the fleet-lane-transfer-bright targets (a close pass's sidelobes), on every
+       GPU including its own.
        Every inst-period the instrumental delays (get_lane_inst) of one transferring
        assembler per GPU (inst_stage) are pooled and sent along. --to limits the receivers (a canary), --from the sources.
   show One cycle, printed: per GPU what it serves and what it would receive. Nothing posted.
@@ -73,19 +76,32 @@ def http_json(url, body=None, timeout=1.0):
     return json.loads(raw) if raw.strip() else {}
 
 
-def transfer_table(fleet_path):
-    """fleet-lane-transfer TAG:LO-HI (MHz) -> {tag: [[lo_fid, hi_fid], ...]}, the channels
-    centred inside [LO, HI], as the generator reads lane-transfer."""
+def transfer_table(fleet_path, key="fleet-lane-transfer"):
+    """KEY TAG:LO-HI (MHz) -> {tag: [[lo_fid, hi_fid], ...]}, the channels centred inside
+    [LO, HI], as the generator reads lane-transfer."""
     common = (yaml.safe_load(open(fleet_path)) or {}).get("common", {}) or {}
     out = {}
-    for spec in common.get("fleet-lane-transfer", []) or []:
+    for spec in common.get(key, []) or []:
         tag, _, band = str(spec).partition(":")
         lo, _, hi = band.partition("-")
         lo_f = int(-(-float(lo) // CH_MHZ))  # ceil
         hi_f = int(float(hi) // CH_MHZ)
         if not tag or hi_f < lo_f:
-            raise SystemExit("fleet-lane-transfer: bad entry %r" % spec)
+            raise SystemExit("%s: bad entry %r" % (key, spec))
         out.setdefault(tag.strip("_"), []).append([lo_f, hi_f])
+    return out
+
+
+def bright_lanes(best, powers, gate_db):
+    """The (tag, prn) keys of best whose power is gate_db above the median of every lane
+    of their tag this cycle; none for a tag with fewer than 3 lanes."""
+    out = set()
+    for key, (L, _src) in best.items():
+        p = sorted(powers.get(key[0], []))
+        if len(p) >= 3 and L.get("power", 0.0) >= p[len(p) // 2] * 10.0 ** (
+            gate_db / 10.0
+        ):
+            out.add(key)
     return out
 
 
@@ -129,7 +145,10 @@ def inst_stage(cfg, gpu):
         m = re.match(r"^gnss%d(?:_([a-z0-9]+))?_n2assemble$" % gpu, k)
         if not m or not isinstance(v, dict) or not v.get("lane_transfer_freq_ids"):
             continue
-        if len(v.get("channel_ids") or []) < 2 or v.get("lane_transfer_inst_slope") is False:
+        if (
+            len(v.get("channel_ids") or []) < 2
+            or v.get("lane_transfer_inst_slope") is False
+        ):
             continue
         names.append(({None: 0, "l5": 1}.get(m.group(1), 2), -len(v["channel_ids"]), k))
     return min(names)[2] if names else None
@@ -188,6 +207,15 @@ class Relay:
         self.a = a
         self.rl = RateLimited()
         self.table = transfer_table(os.path.join(a.root, FLEET))
+        self.bright = transfer_table(
+            os.path.join(a.root, FLEET), "fleet-lane-transfer-bright"
+        )
+        common = (yaml.safe_load(open(os.path.join(a.root, FLEET))) or {}).get(
+            "common", {}
+        )
+        self.bright_db = float(
+            (common or {}).get("fleet-lane-transfer-bright-db", 15.0)
+        )
         self.offsets = gpu_offsets(os.path.join(a.root, NODES))
         self.only_from = set(a.only_from.split(",")) if a.only_from else None
         self.only_to = set(a.only_to.split(",")) if a.only_to else None
@@ -211,6 +239,17 @@ class Relay:
                 or "(none: nothing will be posted)",
             )
         )
+        if self.bright:
+            log(
+                "lane relay: %.0f dB above the band median also to %s"
+                % (
+                    self.bright_db,
+                    ", ".join(
+                        "%s:%s" % (t, ",".join("%d-%d" % (lo, hi) for lo, hi in r))
+                        for t, r in sorted(self.bright.items())
+                    ),
+                )
+            )
 
     def get(self, u):
         try:
@@ -235,10 +274,12 @@ class Relay:
             return u, {"error": repr(e)[:100]}
 
     def collect(self):
-        """Every source's lanes: {(tag, prn): (lane, source Gpu)}, the best coherence."""
+        """Every source's lanes: {(tag, prn): (lane, source Gpu)}, the best coherence, and
+        {tag: [power of every lane]}."""
         srcs = [u for u in self.units if u.source]
         status = {}
         best = {}
+        powers = {}
         for u, r in self.pool.map(self.get, srcs):
             if "error" in r:
                 status[u.name] = {"error": r["error"]}
@@ -256,17 +297,23 @@ class Relay:
             }
             for L in lanes:
                 tag, prn = parse_owner(L.get("owner", ""))
-                if tag is None or tag not in self.table:
+                if tag is None or (tag not in self.table and tag not in self.bright):
                     continue
+                powers.setdefault(tag, []).append(float(L.get("power", 0.0)))
                 key = (tag, prn)
                 if key not in best or L["coh"] > best[key][0]["coh"]:
                     best[key] = (L, u)
-        return best, status
+        return best, status, powers
 
-    def body_for(self, u, best, inst):
+    def body_for(self, u, best, inst, bright=()):
         lanes = []
         for (tag, prn), (L, src) in sorted(best.items()):
-            if src is u or not u.wants(self.table[tag]):
+            fids = []
+            if tag in self.table and src is not u:
+                fids += self.table[tag]
+            if (tag, prn) in bright:
+                fids += self.bright[tag]
+            if not fids or not u.wants(fids):
                 continue
             lanes.append(
                 {
@@ -277,7 +324,7 @@ class Relay:
                     "los_rate": [float(x) for x in L["los_rate"]],
                     "coh": float(L["coh"]),
                     "power": float(L.get("power", 0.0)),
-                    "fids": self.table[tag],
+                    "fids": fids,
                     "q": [
                         [round(float(re_), 5), round(float(im), 5)]
                         for re_, im in L["q"]
@@ -291,7 +338,8 @@ class Relay:
 
     def cycle(self, post=True):
         t0 = time.monotonic()
-        best, src_status = self.collect()
+        best, src_status, powers = self.collect()
+        bright = bright_lanes(best, powers, self.bright_db) if self.bright else set()
         inst = None
         if time.monotonic() - self.inst_t >= self.a.inst_period:
             self.inst_t = time.monotonic()
@@ -305,7 +353,11 @@ class Relay:
             inst = self.inst
         rx_status = {}
         if post:
-            jobs = [(u, self.body_for(u, best, inst)) for u in self.units if u.receiver]
+            jobs = [
+                (u, self.body_for(u, best, inst, bright))
+                for u in self.units
+                if u.receiver
+            ]
             for u, r in self.pool.map(lambda j: self.post(*j), jobs):
                 n_sent = len(next(b for v, b in jobs if v is u)["lanes"])
                 if "error" in r:
@@ -328,6 +380,7 @@ class Relay:
                     "from": src.name,
                     "coh": round(L["coh"], 3),
                     "freq_id": L["freq_id"],
+                    "bright": (t, p) in bright,
                 }
                 for (t, p), (L, src) in sorted(best.items())
             ],
@@ -378,21 +431,29 @@ class Relay:
 
     def show(self):
         status = self.cycle(post=False)
-        best, _ = self.collect()
+        best, _, powers = self.collect()
+        bright = bright_lanes(best, powers, self.bright_db) if self.bright else set()
         print("sources:")
         for name, v in sorted(status["sources"].items()):
             print("  %-8s %s" % (name, v))
         print("lanes (%d):" % len(status["lanes"]))
         for l in status["lanes"]:
             print(
-                "  %-6s %3d  from %-8s coh %.3f  freq_id %d"
-                % (l["tag"], l["prn"], l["from"], l["coh"], l["freq_id"])
+                "  %-6s %3d  from %-8s coh %.3f  freq_id %d%s"
+                % (
+                    l["tag"],
+                    l["prn"],
+                    l["from"],
+                    l["coh"],
+                    l["freq_id"],
+                    "  BRIGHT" if l["bright"] else "",
+                )
             )
         print("receivers:")
         for u in self.units:
             if not u.receiver:
                 continue
-            body = self.body_for(u, best, None)
+            body = self.body_for(u, best, None, bright)
             print(
                 "  %-8s %2d lane(s): %s"
                 % (

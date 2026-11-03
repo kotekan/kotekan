@@ -62,7 +62,14 @@ def test_relay_notes():
 
 
 def test_common_flags_leave_out_site_keys():
-    man = {"common": {"fleet-lanes": True, "fleet-lane-transfer": ["l2c:1217.4-1237.8"]}}
+    man = {
+        "common": {
+            "fleet-lanes": True,
+            "fleet-lane-transfer": ["l2c:1217.4-1237.8"],
+            "fleet-lane-transfer-bright": ["b3i:1217.4-1258.2"],
+            "fleet-lane-transfer-bright-db": 15,
+        }
+    }
     check(
         gen_fleet.common_flags(man) == ["--fleet-lanes"],
         "a site-only common key (the relay's transfer table) is not a generator flag",
