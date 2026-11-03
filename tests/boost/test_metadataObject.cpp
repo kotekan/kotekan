@@ -31,8 +31,6 @@ BOOST_AUTO_TEST_CASE(test_chordMetadata) {
 
     // TODO: dish_locations etc
 
-    // TODO: no set_beam_coord yet
-
     meta0.set_fpga_seq_num(17133);
     meta0.set_frame_counter(19207);
 
