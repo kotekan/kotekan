@@ -605,6 +605,39 @@ chains:
         spectrum-endpoints: fleet
         dll-combiners: fleet
 
+  # -- 1202.025 MHz: gw_1202 --
+  # GuoWang (#227), China's LEO broadband satellites, filed with the ITU as the RNSS system "SATNET
+  # LEO": BPSK at 2.046 Mcps on 1202.025 MHz, a 2 ms frame of [1 ms code | 1 ms data], the data
+  # half zeroed in the replica. PRN = the satellite's G2' code phase + 1; codes are shared between
+  # satellites. No broadcast ephemeris: the orbits are the TLE table scripts/gnss/site/
+  # gw_ephem_table.py writes every ~10 min (gw-table), holding only passes near the boresight, so
+  # a satellite is predicted only during its pass. The code epoch is UTC-tied: the table's clk_s
+  # = -theta (python/scripts/gnss/guowang/guowang_1202_db.json) places it, and GPST-UTC (18 s) is
+  # a whole number of 2 ms frames. Model-primary with no detectors, like glo_l3oc; acquisition
+  # is unproven until second passes show the TLE and theta predict the code to ~1 chip across
+  # days. The PRN map ranks by boresight separation with a look-ahead, so a slot is armed
+  # before its satellite reaches the beam. The probes are codes no satellite in the library
+  # carries (PRNs 1-3), this chain's only signal-free rows.
+    gw_1202:
+        # A GuoWang pass vetoes like a GNSS transit: this band overlaps GuoWang's 1202 lobe.
+        gw-transits: 1
+        signal: gw_1202
+        gw-table: /var/tmp/gnss-guowang/gw_ephem.json
+        prn-rank: boresight
+        prn-rank-admit-sep-deg: 5
+        prn-rank-evict-sep-deg: 10
+        prn-rank-lookahead-s: 300
+        probe-dark: true
+        probe-dark-prns: "1,2,3"
+        dr-clock-adopt: true
+        fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
+        fleet-trim-bandwidth: 2.5
+        fleet-trim-readback: 1
+        trackers: fleet
+        combiner: fleet
+        spectrum-endpoints: fleet
+        dll-combiners: fleet
+
   # -- 1268.52 and 1278.75 MHz, the third band: bds_b3i and gal_e6 --
   # The same rays at a third carrier, a third equation for tau_band. Neither chain has a search
   # (it runs on GPS L5 only), so both are model-primary, and both carry bds_b2b's key set.

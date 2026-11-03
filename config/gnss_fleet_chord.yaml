@@ -419,10 +419,9 @@ common:
         # the data millisecond zeroed. The PRN is the satellite's G2' phase + 1 (no ICD; the
         # beam-dump database maps TLE satellites to phases). Eight slots for the satellites near
         # boresight in one pass, booted on the five identified ones; the broker arms them per
-        # pass from the TLE (no BRDC).
-        # Off until the broker drives a gw_1202 chain (TLE seeding, the PRN map): the descriptor and
-        # code are in the binary, and kv/gw1202 carries the chain.
-        # - GW_1202:894,1101,1214,1519,2028,1,2,3
+        # pass from the TLE table (no BRDC), ranked by boresight separation. PRNs 1-3 are codes
+        # no satellite in the library carries: the chain's dark noise probes.
+        - GW_1202:894,1101,1214,1519,2028,1,2,3
 
         # 1248.06 MHz: GLONASS L2OC-p, the CDMA pilot on L2 (BOC(1,1) under a data/pilot TDM;
         # the code table carries both, half its chips zero), with the shared 50-chip OC2 baked
