@@ -964,7 +964,8 @@ def main(argv=None, rx=None, publisher=None):
         (_drp.t_eph_age, the hop-axis now of that cycle: deadreckon.dr_eph_epoch),
         never from a wall-clock reading. The neglected range acceleration a (up to
         ~0.2 m/s^2) adds 0.5*a*(t_abs - t_eph_age)^2 of range: at the peak,
-        about 1 m for a detection 3 s old and 360 m for one 60 s old. The
+        about 1 m for a detection 3 s old and 360 m for one 60 s old. A LEO row (GuoWang,
+        ~30 m/s^2) carries range_acc_mps2 and is carried quadratically. The
         troposphere (--tropo) and ionosphere (--iono) enter as the row's
         tropo_m / iono_m, and the array's direction-dependent code delay (--gdv-map) as
         gdv_m. All mod arithmetic is on small numbers: t0m is the
@@ -982,6 +983,7 @@ def main(argv=None, rx=None, publisher=None):
                 + v.get("iono_m", 0.0)
                 + v.get("gdv_m", 0.0)
                 + v["range_rate_mps"] * (t_abs - _drp.t_eph_age)
+                + 0.5 * v.get("range_acc_mps2", 0.0) * (t_abs - _drp.t_eph_age) ** 2
             )
             / dr_eph_mod.C_LIGHT
             + v["sat_clk_s"]

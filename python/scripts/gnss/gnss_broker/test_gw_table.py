@@ -168,5 +168,42 @@ class TestDeadReckon(unittest.TestCase):
         self.assertEqual(c.dr_state["seeded"], {11, 12})
 
 
+class RangeAccelerationTest(unittest.TestCase):
+    def test_a_leo_range_is_carried_quadratically(self):
+        """A W prediction carries range_acc_mps2, and range + rate dt + acc dt^2 / 2 lands within a
+        few metres (0.03 chip) of the range 5 s on, where the linear carry is ~400 m (~3 chips) off
+        (cp_predicted). The rest is the jerk."""
+        rx = ge._ecef_of_llh(LAT, LON, ALT)
+        r0 = math.sqrt(sum(x * x for x in rx))
+        u = [x / r0 for x in rx]
+        e = [-u[1], u[0], 0.0]
+        n = math.sqrt(sum(x * x for x in e))
+        e = [x / n for x in e]
+        R = r0 + 1.2e6
+        w = math.sqrt(3.986004418e14 / R ** 3)  # circular orbit through the zenith
+        g0 = ge.gpst_of_utc(T0)
+        pos, vel = [], []
+        for k in range(61):
+            a = w * (k * 10.0 - 300.0)
+            pos.append(
+                [R * (math.cos(a) * ui + math.sin(a) * ei) for ui, ei in zip(u, e)]
+            )
+            vel.append(
+                [R * w * (-math.sin(a) * ui + math.cos(a) * ei) for ui, ei in zip(u, e)]
+            )
+        rec = dict(prn=5, t0_gpst=g0, t1_gpst=g0 + 600.0, dt=10.0, toe_gpst=g0 + 300.0)
+        rec.update(clk_s=0.0, pos=pos, vel=vel, sys="W", health=0)
+        eph = {("W", 5): [rec]}
+        t = T0 + timedelta(seconds=250.0)
+        v0 = ge.predict_all(eph, LAT, LON, ALT, t, mask_deg=-90.0)[("W", 5)]
+        v5 = ge.predict_all(
+            eph, LAT, LON, ALT, t + timedelta(seconds=5.0), mask_deg=-90.0
+        )
+        lin = v0["range_m"] + 5.0 * v0["range_rate_mps"]
+        quad = lin + 0.5 * v0["range_acc_mps2"] * 25.0
+        self.assertGreater(abs(v5[("W", 5)]["range_m"] - lin), 100.0)
+        self.assertLess(abs(v5[("W", 5)]["range_m"] - quad), 5.0)
+
+
 if __name__ == "__main__":
     unittest.main()

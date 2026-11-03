@@ -791,6 +791,22 @@ def _ecef_of_llh(lat, lon, alt):
     return ((N + alt) * cl * co, (N + alt) * cl * so, (N * (1 - e2) + alt) * sl)
 
 
+def _range_m(e, rx, lat, lon, t):
+    """Range (m) from rx to satellite record e at reception time t (light time and Sagnac as in
+    predict_all)."""
+    tau = 0.075
+    for _ in range(2):
+        pos = sat_pos_clk(e, t - tau)[0]
+        th = OMEGA_E[e["sys"]] * tau
+        pos_rx = (
+            pos[0] * math.cos(th) + pos[1] * math.sin(th),
+            -pos[0] * math.sin(th) + pos[1] * math.cos(th),
+            pos[2],
+        )
+        tau = _azel(rx, pos_rx, lat, lon)[2] / C_LIGHT
+    return tau * C_LIGHT
+
+
 def _azel(rx, sat, lat, lon):
     dx = [s - r for s, r in zip(sat, rx)]
     sl, cl = math.sin(math.radians(lat)), math.cos(math.radians(lat))
@@ -931,6 +947,14 @@ def predict_all(
         # Refer the broadcast clock to `signal` (group_delay_s). Only dead reckoning passes
         # one; signal=None leaves the clock as broadcast.
         _gd = group_delay_s(e, signal, dcb)
+        if e["sys"] == "W":
+            # LEO: the range acceleration (~30 m/s^2 near the beam) moves the code epoch by a
+            # chip in a few seconds, so cp_predicted carries the range quadratically for W.
+            r_m, r_p = (
+                _range_m(e, rx, lat, lon, t - 1.0),
+                _range_m(e, rx, lat, lon, t + 1.0),
+            )
+            range_acc = r_p - 2.0 * rng + r_m
         out[key] = dict(
             az=az,
             el=el,
@@ -948,4 +972,6 @@ def predict_all(
                 else 0.0
             ),
         )
+        if e["sys"] == "W":
+            out[key]["range_acc_mps2"] = range_acc
     return out
