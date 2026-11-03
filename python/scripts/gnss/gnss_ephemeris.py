@@ -522,8 +522,9 @@ def load_gw_table(path):
     scripts/gnss/site/gw_ephem_table.py writes, one record per satellite pass segment: ITRS
     position and velocity on a regular grid (t0_gpst, dt), from the satellite's TLE (SGP4,
     propagated off the broker; the broker interpolates). prn = the satellite's G2' phase + 1.
-    The records carry health 0 and no clock (sat_clk_s 0: the transmitters sit ~-0.25 ppm from
-    nominal, a Doppler offset the search absorbs, not a clock model)."""
+    The records carry health 0 and a constant clock, clk_s = -theta: each satellite starts its
+    code theta after every UTC 2 ms boundary (guowang_1202_db.json), so the code-phase model
+    treats it as a satellite clock offset; the frequencies match the TLE Doppler to ~10 ppb."""
     import json
 
     with open(path) as fh:
@@ -569,7 +570,7 @@ def sat_pos_clk(e, t_gpst):
     t_gpst = seconds since the GPS epoch (continuous, no week rollover)."""
     if e["sys"] == "W":
         pos, vel = _gw_state(e, t_gpst)
-        return pos, vel, 0.0
+        return pos, vel, float(e.get("clk_s", 0.0))
     if e["sys"] == "S":
         pos, vel = sbas_state(e, t_gpst)
         return pos, vel, e["af0"] + e["af1"] * (t_gpst - e["toc_gpst"])

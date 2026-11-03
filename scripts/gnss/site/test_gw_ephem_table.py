@@ -41,7 +41,11 @@ class TestTable(unittest.TestCase):
     def setUpClass(cls):
         cls.ts, cls.sat, cls.site = skyfield()
         cls.records, cls.unknown = gw.build(
-            [cls.sat], cls.ts, T_PASS - 900.0, T_PASS + 900.0, {"DIGUI-79": 2027}
+            [cls.sat],
+            cls.ts,
+            T_PASS - 900.0,
+            T_PASS + 900.0,
+            {"DIGUI-79": (2027, -16.578e-6)},
         )
 
     def test_one_segment_around_the_pass(self):
@@ -98,7 +102,7 @@ class TestTable(unittest.TestCase):
             self.assertAlmostEqual(g["el"], alt.degrees, delta=0.01)
             self.assertAlmostEqual(g["range_m"], dist.m, delta=5.0)
             self.assertAlmostEqual(g["range_rate_mps"], rr.m_per_s, delta=0.03)
-            self.assertEqual(g["sat_clk_s"], 0.0)
+            self.assertEqual(g["sat_clk_s"], 16.578e-6)  # -theta
         # outside the segment the satellite is not predicted
         far = ge.predict_all(
             eph, gp.SITE["lat"], gp.SITE["lon"], gp.SITE["h"], T_PASS + 3600.0
@@ -114,6 +118,29 @@ class TestTable(unittest.TestCase):
             [(5, 35, 10, 20), (55, 65, 20, 60)],
         )
         self.assertEqual(len(gw.segments(unix, sep, 25.0, 20.0)), 1)
+
+
+class TestDatabase(unittest.TestCase):
+    def test_every_satellite_has_a_phase_and_an_epoch(self):
+        db, unknown = gw.load_db()
+        self.assertGreaterEqual(len(db), 13)
+        self.assertEqual(db["DIGUI-79"], (2027, -16.578e-6))
+        self.assertTrue(all(0 <= ph < 2047 for ph, _ in db.values()))
+        self.assertTrue(all(th is not None and abs(th) < 1e-3 for _, th in db.values()))
+        self.assertAlmostEqual(unknown, -9.01e-6)
+
+    def test_an_unmeasured_epoch_takes_the_median(self):
+        ts, sat, _ = skyfield()
+        records, _ = gw.build(
+            [sat],
+            ts,
+            T_PASS - 900.0,
+            T_PASS + 900.0,
+            {"DIGUI-79": (2027, None)},
+            theta_unknown_s=-9.01e-6,
+        )
+        self.assertEqual(records[0]["clk_s"], 9.01e-6)
+        self.assertFalse(records[0]["theta_measured"])
 
 
 if __name__ == "__main__":

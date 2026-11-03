@@ -85,11 +85,34 @@ def state_grid(sat, ts, t0_gpst, n, step):
     )
 
 
+def load_db(path=guowang_codes.GUOWANG_1202_DB):
+    """{name: (G2' phase, theta_s or None)} and theta_unknown_s, from the satellite database."""
+    with open(path) as fh:
+        d = json.load(fh)
+    sats = {
+        n: (s["g2_phase"], s["theta_us"] * 1e-6 if "theta_us" in s else None)
+        for n, s in d["satellites"].items()
+    }
+    return sats, d["theta_unknown_us"] * 1e-6
+
+
 def build(
-    sats, ts, t_start, t_end, db, sep_deg=25.0, step=10.0, pad_s=60.0, coarse=10.0
+    sats,
+    ts,
+    t_start,
+    t_end,
+    db,
+    sep_deg=25.0,
+    step=10.0,
+    pad_s=60.0,
+    coarse=10.0,
+    theta_unknown_s=0.0,
 ):
-    """(records, unknown): table records for the satellites in `db` (name -> G2' phase) that pass
-    within sep_deg of the boresight in [t_start, t_end] (unix), and the passes of the others."""
+    """(records, unknown): table records for the satellites in `db` (name -> (G2' phase, theta_s
+    or None)) that pass within sep_deg of the boresight in [t_start, t_end] (unix), and the passes
+    of the others. A record's clk_s is -theta: the code starts theta after each UTC 2 ms
+    boundary, so the broker's code-phase model takes it as the satellite clock; theta_unknown_s
+    where the satellite's is not measured."""
     from skyfield.api import wgs84
 
     site = wgs84.latlon(gp.SITE["lat"], gp.SITE["lon"], elevation_m=gp.SITE["h"])
@@ -117,10 +140,13 @@ def build(
             g0 = math.floor(g0 / step) * step
             n = int(math.ceil((gnss_ephemeris.gpst_of_utc(t1) - g0) / step)) + 1
             pos, vel = state_grid(sat, ts, g0, n, step)
+            phase, theta = db[name]
             records.append(
                 dict(
-                    prn=int(db[name]) + 1,
-                    g2_phase=int(db[name]),
+                    prn=int(phase) + 1,
+                    g2_phase=int(phase),
+                    clk_s=-(theta if theta is not None else theta_unknown_s),
+                    theta_measured=theta is not None,
                     name=name,
                     catnum=cat,
                     t0_gpst=g0,
@@ -170,7 +196,7 @@ def main(argv=None):
     if not tle:
         sys.exit("no TLE: give --tle or --fetch")
     sats = gp.read_tle(tle, ts, "DIGUI")
-    db = dict(guowang_codes.GUOWANG_1202_G2P_PHASE)
+    db, theta_unknown_s = load_db()
     now = time.time()
     records, unknown = build(
         sats,
@@ -182,6 +208,7 @@ def main(argv=None):
         a.step_s,
         a.pad_s,
         a.coarse_s,
+        theta_unknown_s,
     )
     doc = dict(
         schema=SCHEMA,
