@@ -11,7 +11,9 @@ does for the visibility capture; the seq clock is measured from the gates.
     beam_dump_sched.py run  [--hours 6] [--max-sep 6] [--length 80] [--once]   # arm them in turn
     beam_dump_sched.py status | disarm
 
-A pass window is [tca - length/2, tca + length/2); overlapping windows are merged. Files land in
+A pass window is [tca - length/2, tca + length/2); overlapping windows are merged. --extra-tle adds
+the satellites of more TLE files (e.g. the inferred DIGUI-H sets of site/gw_hidden_tle.py), their
+windows widened by --extra-pad-s on each side for their larger timing error. Files land in
 <record_dir>/beamdump on each node (default /tmp/gnss/beamdump), one per --beam-dump-frames-
 per-file frames, read with scripts/gnss/beam_dump_read.py. The nodes' own records are the
 chip reader's input; nothing here reads them.
@@ -92,6 +94,15 @@ def windows(a, t0, t1):
     args.coarse = 10.0
     args.near = a.max_sep
     _, passes, _, _, _ = gp.compute(args, t0, t1)
+    for path in a.extra_tle:
+        if not os.path.exists(path):
+            print("extra TLE %s: missing, skipped" % path)
+            continue
+        args.tle = path
+        _, more, _, _, _ = gp.compute(args, t0, t1)
+        for p in more:
+            p["pad"] = a.extra_pad_s
+        passes += more
     skip = known(a.skip_known, revisit(a))
     passes = [
         p
@@ -102,7 +113,8 @@ def windows(a, t0, t1):
     ]
     out = []
     for p in sorted(passes, key=lambda p: p["tca"]):
-        s, e = p["tca"] - a.length / 2.0, p["tca"] + a.length / 2.0
+        half = a.length / 2.0 + p.get("pad", 0.0)
+        s, e = p["tca"] - half, p["tca"] + half
         if out and s <= out[-1][1]:
             out[-1][1] = max(out[-1][1], e)
             out[-1][2].append("%s %.2f deg" % (p["name"], p["sep"]))
@@ -192,6 +204,18 @@ def main():
     )
     ap.add_argument("--cache-dir", default=os.path.expanduser("~/.cache/guowang"))
     ap.add_argument("--name-filter", default="DIGUI")
+    ap.add_argument(
+        "--extra-tle",
+        action="append",
+        default=[],
+        help="more satellites from this TLE file (repeatable); a missing file is skipped",
+    )
+    ap.add_argument(
+        "--extra-pad-s",
+        type=float,
+        default=0.0,
+        help="s added to each side of the windows of the --extra-tle satellites",
+    )
     ap.add_argument(
         "--skip-known",
         action="append",
