@@ -31,27 +31,43 @@ import viscap  # noqa: E402
 GATES = ["gnss0_beamdump_gate", "gnss1_beamdump_gate"]
 
 
-def known(paths):
+def known(paths, revisit_s=None):
     """Satellite names already identified, from --skip-known files: a guowang_1202_db.json
     (its satellites with a known code; one never seen transmitting stays a target) or a
-    gw_reduce db_proposals.jsonl (each line's "sat"). A file that is missing or unreadable adds
-    nothing."""
+    gw_reduce db_proposals.jsonl (each line's "sat"). With revisit_s, a satellite last observed
+    more than revisit_s ago is a target again: its second pass measures how well the TLE and its
+    theta predict the code epoch across days. A file that is missing or unreadable adds nothing."""
+    import calendar
     import json
 
-    out = set()
+    seen = {}
+
+    def note(name, utc):
+        t = calendar.timegm(time.strptime(utc, "%Y-%m-%dT%H:%M:%SZ")) if utc else 0.0
+        seen[name] = max(seen.get(name, 0.0), t)
+
     for path in paths:
         try:
             with open(path) as fh:
                 if path.endswith(".jsonl"):
-                    out.update(json.loads(ln)["sat"] for ln in fh if ln.strip())
+                    for ln in fh:
+                        if ln.strip():
+                            p = json.loads(ln)
+                            note(p["sat"], p.get("measured_utc"))
                 else:
-                    sats = json.load(fh)["satellites"]
-                    out.update(
-                        n for n, s in sats.items() if s.get("g2_phase") is not None
-                    )
+                    for n, s in json.load(fh)["satellites"].items():
+                        if s.get("g2_phase") is not None:
+                            note(n, s.get("last_observed_utc") or s.get("measured_utc"))
         except (OSError, ValueError, KeyError):
             continue
-    return out
+    if revisit_s is None:
+        return set(seen)
+    now = time.time()
+    return {n for n, t in seen.items() if now - t < revisit_s}
+
+
+def revisit(a):
+    return a.revisit_hours * 3600.0 if a.revisit_hours else None
 
 
 def short(name):
@@ -76,7 +92,7 @@ def windows(a, t0, t1):
     args.coarse = 10.0
     args.near = a.max_sep
     _, passes, _, _, _ = gp.compute(args, t0, t1)
-    skip = known(a.skip_known)
+    skip = known(a.skip_known, revisit(a))
     passes = [
         p
         for p in passes
@@ -114,7 +130,7 @@ def cmd_run(a, nodes):
         if e < time.time():
             continue
         # the library grows while this runs: drop a window whose satellites were identified since
-        skip = known(a.skip_known)
+        skip = known(a.skip_known, revisit(a))
         if a.skip_known and all(short(n.rsplit(" ", 2)[0]) in skip for n in names):
             print(
                 "skip window %s .. %s: %s identified since"
@@ -182,6 +198,12 @@ def main():
         default=[],
         help="record only satellites not in this file (repeatable): a guowang_1202_db.json or a "
         "gw_reduce db_proposals.jsonl; re-read before each window",
+    )
+    ap.add_argument(
+        "--revisit-hours",
+        type=float,
+        help="with --skip-known, record an identified satellite again once its last observation "
+        "is older than this (default: never)",
     )
     a = ap.parse_args()
     nodes = a.node or viscap.fleet_hosts()
