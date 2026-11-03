@@ -215,3 +215,21 @@ with `--freq 2903,2909`. Judge in minutes: residual / raw power (dtv_state.py in
 dump's lambda1 in the four channels (raw 46-147, clean ~1.5 off transit), the SK flag fraction.
 At the Tau A transit compare the four channels' N2 with clean neighbours. `clear` reverts to
 pass-through without a restart.
+
+**Live canary (cx51, 2026-11-03 01:10-01:45Z, off transit).** Stage on channels 2727 and 2733 (ATSC 24) and
+2903 and 2909 (ATSC 30), driven over REST from cf06 (`~/gnss/bb1030/dtv_live.py`, `dtv_fleet.sh`). Top whitened
+eigenvalue of the ring per 42 ms frame (the beam dump in the same channels) and residual / raw power:
+
+| channel | raw | source 0 | sources 0 + 1 | power left |
+|---|---|---|---|---|
+| 2727 | 27.4 | 8.0 | 4.2 | 0.53 |
+| 2733 | 37.6 | 6.9 | 3.9-4.5 | 0.50 |
+| 2903 | 27.4 | 17.4 | 5.2-5.6 | 0.21 |
+| 2909 | 23.9 | 14.3 | 5.6-5.9 | 0.21 |
+
+The power left is about each channel's non-DTV share; the live fits explain the same fractions as the replay
+(0.45-0.50 and 0.75 for source 0, 0.03-0.06 for source 1) with the same arrival lags. A third source explains 1 %
+live and does not help. The ATSC 30 response drifts: with frozen g the top eigenvalue rose from 5.6 to 7.2 in about
+ten minutes and a refit of source 0 restored it, so the test runs a host refit loop (source 0 every 5 minutes,
+source 1 every 20, none of source 1 near the Tau A transit). Source 0's fit-to-fit change is 2-4 %, near its noise;
+source 1's is 20-90 %. The per-second lag-correlation tracker of the pathway above is what replaces the loop.
