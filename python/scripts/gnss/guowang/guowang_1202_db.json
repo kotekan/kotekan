@@ -1305,8 +1305,8 @@
  "no_sky": [
   {
    "start": "2026-11-03T16:34:50Z",
-   "end": "2026-11-03T22:06:00Z",
-   "note": "analog chains off for site work through the BC working day (gnss-main, from the broker log); ended when the nodes restarted 22:05:30-22:05:44Z (broker 22:08Z, gps_l5 bootstrapped on 6 satellites)"
+   "end": "2026-11-03T22:02:27Z",
+   "note": "analog chains off for site work through the BC working day (gnss-main, from the broker log); sky back 22:02:27Z, the first broker DLL with real power (gps_l5; gnss cleanup); nodes restarted again 22:05:31-45Z"
   }
  ],
  "silent_max_sep_deg": 4.0
