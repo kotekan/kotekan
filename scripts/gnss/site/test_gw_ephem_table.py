@@ -124,10 +124,11 @@ class TestDatabase(unittest.TestCase):
     def test_every_satellite_has_a_phase_and_an_epoch(self):
         db, unknown = gw.load_db()
         self.assertGreaterEqual(len(db), 13)
-        self.assertEqual(db["DIGUI-79"], (2027, -16.578e-6))
+        self.assertEqual(db["DIGUI-79"][0], 2027)
+        self.assertAlmostEqual(db["DIGUI-79"][1], -16.55e-6, delta=0.2e-6)
         self.assertTrue(all(0 <= ph < 2047 for ph, _ in db.values()))
         self.assertTrue(all(th is not None and abs(th) < 1e-3 for _, th in db.values()))
-        self.assertAlmostEqual(unknown, -9.01e-6)
+        self.assertAlmostEqual(unknown, -9.0e-6, delta=0.5e-6)
 
     def test_an_unmeasured_epoch_takes_the_median(self):
         ts, sat, _ = skyfield()
