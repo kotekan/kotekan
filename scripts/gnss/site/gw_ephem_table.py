@@ -7,7 +7,9 @@ venv, skyfield) propagates the satellites whose 1202 MHz code is known and write
 comes within --sep-deg of the dish boresight, their ITRS position and velocity on a --step-s
 grid. gnss_ephemeris.load_gw_table reads the file and interpolates (cubic Hermite: a 10 s step
 is good to well under a metre), so predict_all, seeding, the PRN map and the element steering
-see GuoWang satellites as constellation W, PRN = G2' phase + 1.
+see GuoWang satellites as constellation W, PRN = G2' phase + 1. Some satellites share a G2'
+phase; where their segments overlap, the satellite closer to the boresight keeps the time
+(one_per_prn), so the broker sees one satellite per PRN at a time.
 
     gw_ephem_table.py [--hours 3] [--sep-deg 25] [--step-s 10] [--out PATH] [--fetch]
 
@@ -166,6 +168,65 @@ def build(
     return records, unknown
 
 
+def one_per_prn(records):
+    """(records, names cut): where satellites that share a prn (a G2' phase) have overlapping
+    segments, each grid point goes to the one closer to the boresight, and a record keeps its
+    runs of two points or more, so no two records of one prn overlap in time. A handover
+    leaves one grid step with neither, so the broker drops the first satellite's seed before
+    it seeds the second. Every record of one build shares the grid (t0_gpst is a multiple of
+    dt)."""
+    lat, lon = gp.SITE["lat"], gp.SITE["lon"]
+    rx = gnss_ephemeris._ecef_of_llh(lat, lon, gp.SITE["h"])
+    bore = gp.enu_unit(gp.BORESIGHT["az"], gp.BORESIGHT["el"])
+    by_prn = {}
+    for r in records:
+        by_prn.setdefault(r["prn"], []).append(r)
+    out, cut = [], set()
+    for recs in by_prn.values():
+        if len(recs) == 1:
+            out += recs
+            continue
+        # grid index -> (separation, index in recs) of the closest satellite
+        owner = {}
+        for i, r in enumerate(recs):
+            k0 = round(r["t0_gpst"] / r["dt"])
+            for j, p in enumerate(r["pos"]):
+                az, el, _ = gnss_ephemeris._azel(rx, p, lat, lon)
+                c = float(gp.enu_unit(az, el) @ bore)
+                sep = math.degrees(math.acos(max(-1.0, min(1.0, c))))
+                if k0 + j not in owner or sep < owner[k0 + j][0]:
+                    owner[k0 + j] = (sep, i)
+        for i, r in enumerate(recs):
+            k0 = round(r["t0_gpst"] / r["dt"])
+            n = len(r["pos"])
+            mine = [owner[k0 + j][1] == i for j in range(n)]
+            if all(mine):
+                out.append(r)
+                continue
+            cut.add(r["name"])
+            j = 0
+            while j < n:
+                if not mine[j]:
+                    j += 1
+                    continue
+                e = j
+                while e + 1 < n and mine[e + 1]:
+                    e += 1
+                if e > j:
+                    out.append(
+                        dict(
+                            r,
+                            t0_gpst=r["t0_gpst"] + j * r["dt"],
+                            t1_gpst=r["t0_gpst"] + e * r["dt"],
+                            pos=r["pos"][j : e + 1],
+                            vel=r["vel"][j : e + 1],
+                        )
+                    )
+                j = e + 1
+    out.sort(key=lambda r: r["t0_gpst"])
+    return out, sorted(cut)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -211,6 +272,7 @@ def main(argv=None):
         a.coarse_s,
         theta_unknown_s,
     )
+    records, cut = one_per_prn(records)
     doc = dict(
         schema=SCHEMA,
         created_unix=now,
@@ -228,8 +290,16 @@ def main(argv=None):
         json.dump(doc, fh, separators=(",", ":"))
     os.replace(tmp, a.out)
     print(
-        "%s: %d pass segment(s) of %d known satellite(s), %d pass(es) of unknown ones, TLE %s"
-        % (a.out, len(records), len({r["name"] for r in records}), len(unknown), tle)
+        "%s: %d pass segment(s) of %d known satellite(s), %d pass(es) of unknown ones, "
+        "shared-prn overlap cut from %s, TLE %s"
+        % (
+            a.out,
+            len(records),
+            len({r["name"] for r in records}),
+            len(unknown),
+            ", ".join(cut) or "none",
+            tle,
+        )
     )
 
 

@@ -109,6 +109,31 @@ class TestTable(unittest.TestCase):
         )
         self.assertNotIn(("W", 2028), far)
 
+    def test_a_shared_prn_has_one_satellite_at_a_time(self):
+        """A second satellite on DIGUI-79's code, on the same track 120 s later: each keeps
+        the half of the overlap where it is closer to the boresight."""
+        a = self.records[0]
+        b = dict(a, name="DIGUI-X", catnum=1)
+        for k in ("t0_gpst", "t1_gpst", "toe_gpst"):
+            b[k] = a[k] + 120.0
+        other = dict(a, prn=7, g2_phase=6, name="DIGUI-Y", catnum=2)
+        out, cut = gw.one_per_prn([b, a, other])
+        self.assertEqual(cut, ["DIGUI-79", "DIGUI-X"])
+        self.assertIn(other, out)
+        first, second = [r for r in out if r["prn"] == 2028]
+        self.assertEqual((first["name"], second["name"]), ("DIGUI-79", "DIGUI-X"))
+        self.assertEqual(first["t0_gpst"], a["t0_gpst"])
+        self.assertEqual(second["t1_gpst"], b["t1_gpst"])
+        # the handover is half way between the two closest approaches, one step uncovered
+        self.assertEqual(second["t0_gpst"] - first["t1_gpst"], a["dt"])
+        self.assertLess(abs(first["t1_gpst"] - (a["toe_gpst"] + 60.0)), 20.0)
+        # a trimmed record interpolates as the full one did
+        t = second["t0_gpst"] + 23.0
+        p, v = ge._gw_state(dict(second, sys="W"), t)
+        pb, vb = ge._gw_state(dict(b, sys="W"), t)
+        self.assertLess(math.dist(p, pb), 1e-6)
+        self.assertLess(math.dist(v, vb), 1e-9)
+
     def test_segments_merge_and_pad(self):
         unix = list(range(0, 100, 10))
         sep = [30, 20, 10, 20, 30, 30, 20, 30, 30, 30]
