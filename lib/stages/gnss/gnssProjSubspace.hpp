@@ -74,8 +74,11 @@ struct ProjBasis {
     /// Gram-Schmidt one candidate direction into the basis. A candidate whose component outside
     /// the current span carries less than @p min_new_frac of its energy is the same emitter seen
     /// twice (own row, sibling row, probe stack) and is dropped. Returns true if a basis vector
-    /// was added.
-    bool add(const cd* v, double min_new_frac = 0.5) {
+    /// was added. With @p new_frac, also the fraction of the energy found outside the span (-1
+    /// if the candidate was not tested: the basis is full or the candidate is zero).
+    bool add(const cd* v, double min_new_frac = 0.5, double* new_frac = nullptr) {
+        if (new_frac)
+            *new_frac = -1.0;
         if (k >= kmax || n <= 0 || (size_t)(k + 1) * (size_t)n > q.size())
             return false; // last clause: a kmax raised above the allocation cannot overflow q
         cd* r = &q[(size_t)k * n];
@@ -97,6 +100,8 @@ struct ProjBasis {
         double e_out = 0.0;
         for (int i = 0; i < n; ++i)
             e_out += std::norm(r[i]);
+        if (new_frac)
+            *new_frac = e_out / e_in;
         if (e_out < min_new_frac * e_in)
             return false;
         const double inv = 1.0 / std::sqrt(e_out);

@@ -3423,6 +3423,40 @@ def main():
         "~4 n^2 operations per channel-frame; default %(default)s)",
     )
     ap.add_argument(
+        "--lane-dump-period-s",
+        type=float,
+        default=0.0,
+        metavar="S",
+        dest="lane_dump_period_s",
+        help="GnssN2Project's lane dump: every S seconds, per live channel, the raw N2 block "
+        "and every lane candidate with its Gram-Schmidt verdict, gated by seq like the beam "
+        "dump and written under <record_dir>/lanedump. 0 (default) = no dump",
+    )
+    ap.add_argument(
+        "--lane-dump-max-cand",
+        type=int,
+        default=96,
+        metavar="N",
+        dest="lane_dump_max_cand",
+        help="lane candidates recorded per channel (default %(default)s)",
+    )
+    ap.add_argument(
+        "--lane-dump-frames-per-file",
+        type=int,
+        default=15,
+        metavar="N",
+        dest="lane_dump_frames_per_file",
+        help="lane-dump frames per file (default %(default)s)",
+    )
+    ap.add_argument(
+        "--lane-dump-depth",
+        type=int,
+        default=4,
+        metavar="N",
+        dest="lane_dump_depth",
+        help="frames of slack between the lane-dump gate and its writer (default %(default)s)",
+    )
+    ap.add_argument(
         "--elem-dir-publish",
         choices=["off", "all"],
         default="off",
@@ -4173,6 +4207,56 @@ def main():
                     "--rfi-excision-exempt-freq-ids): GnssN2Project requires live_freq_ids"
                 )
             _stage["live_freq_ids"] = sorted(_lids)
+            # The lane dump (GnssN2Project.hpp): a slot per live channel on this GPU, gated by
+            # seq like the beam dump and written under <record_dir>/lanedump.
+            _off = cfg["nodes"][args.node]["gpu_offsets_mod16"][_gpu]
+            _nch = len([f for f in _lids if f % 16 == _off])
+            if args.lane_dump_period_s > 0 and _nch:
+                if args.n2_project_source == "eigen":
+                    raise SystemExit(
+                        "--lane-dump-period-s needs --n2-project-source lanes or "
+                        "lanes+residual"
+                    )
+                _slot = 64 + 4 * len(_st) * (len(_st) + 1)
+                _slot += args.lane_dump_max_cand * (160 + 8 * len(_st))
+                _ld_raw = "gnss%d_lanedump_raw" % _gpu
+                _ld_gated = "gnss%d_lanedump_buf" % _gpu
+                for _name, _depth in ((_ld_raw, 4), (_ld_gated, args.lane_dump_depth)):
+                    out[_name] = {
+                        "kotekan_buffer": "standard",
+                        "num_frames": _depth,
+                        "frame_size": 64 + _nch * _slot,
+                    }
+                _stage["lane_dump_buf"] = _ld_raw
+                _stage["lane_dump_period_s"] = float(args.lane_dump_period_s)
+                _stage["lane_dump_max_cand"] = int(args.lane_dump_max_cand)
+                _ld_core = _pool[(_gpu + 7) % len(_pool)]  # the GPU's sink core
+                out["gnss%d_lanedump_gate" % _gpu] = {
+                    "kotekan_stage": "FrameWindowGate",
+                    "in_bufs": [_ld_raw],
+                    "out_bufs": [_ld_gated],
+                    "clock_buf": 0,
+                    "clock_source": "frame",
+                    "clock_offset": 0,
+                    "cpu_affinity": [_ld_core],
+                }
+                out["gnss%d_lanedump_sink" % _gpu] = {
+                    "kotekan_stage": "rawFileWrite",
+                    "in_buf": _ld_gated,
+                    "base_dir": (args.record_dir or cfg["runtime"]["record_dir"])
+                    + "/lanedump",
+                    "file_name": "%s_gnss%d_lanes" % (args.node, _gpu),
+                    "file_ext": "raw",
+                    "prefix_hostname": False,
+                    "num_frames_per_file": args.lane_dump_frames_per_file,
+                    "continue_numbering": True,
+                    "create_base_dir": True,
+                    "cpu_affinity": [_ld_core],
+                }
+                sys.stderr.write(
+                    "  gpu%d: lane dump over %d channels, %.1f MB/frame every %.1f s\n"
+                    % (_gpu, _nch, (64 + _nch * _slot) / 1e6, args.lane_dump_period_s)
+                )
             _buf = copy.deepcopy(out[_corr])  # no YAML aliases
             out["gnss_n2_proj_buffer" + _suf] = _buf
             _stage["out_buf"] = "gnss_n2_proj_buffer" + _suf

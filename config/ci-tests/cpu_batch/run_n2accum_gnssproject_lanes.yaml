@@ -311,6 +311,20 @@ gnss_n2_proj_buffer:
         - vis_blocksize
         - 2
     metadata_pool: main_pool
+gnss_lane_dump_buf:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    # header + 8 live channels x (64 + 4 n (n + 1) + max_cand (160 + 8 n)), n = 32
+    frame_size: 64 + 8 * (64 + 4 * 32 * 33 + 2 * (160 + 8 * 32))
+lane_dump_write:
+    kotekan_stage: rawFileWrite
+    in_buf: gnss_lane_dump_buf
+    base_dir: fake_data
+    file_name: lane_dump
+    file_ext: raw
+    prefix_hostname: false
+    create_base_dir: true
+    num_frames_per_file: 64
 gnss_n2_project:
     proj_0:
         kotekan_stage: GnssN2Project
@@ -320,6 +334,11 @@ gnss_n2_project:
         # #190: the known directions from the board (GnssProjBoardTestPub below publishes
         # them), then the eigen path on the residual.
         source: lanes+residual
+        # The lane dump on every frame, written without a gate; 2 of the board's 3 candidates
+        # per channel are recorded.
+        lane_dump_buf: gnss_lane_dump_buf
+        lane_dump_period_s: 0.001
+        lane_dump_max_cand: 2
         # Only the live channels (freq_ids 0-7) run the eigen path and publish gauges;
         # run_n2accum_gnssproject_live.yaml keeps the default, all.
         eigen_channels: live
