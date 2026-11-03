@@ -31,8 +31,32 @@ import viscap  # noqa: E402
 GATES = ["gnss0_beamdump_gate", "gnss1_beamdump_gate"]
 
 
+def known(paths):
+    """Satellite names already identified, from --skip-known files: a guowang_1202_db.json
+    (its satellites) or a gw_reduce db_proposals.jsonl (each line's "sat"). A file that is
+    missing or unreadable adds nothing."""
+    import json
+
+    out = set()
+    for path in paths:
+        try:
+            with open(path) as fh:
+                if path.endswith(".jsonl"):
+                    out.update(json.loads(ln)["sat"] for ln in fh if ln.strip())
+                else:
+                    out.update(json.load(fh)["satellites"])
+        except (OSError, ValueError, KeyError):
+            continue
+    return out
+
+
+def short(name):
+    return name.replace("HULIANWANG ", "")
+
+
 def windows(a, t0, t1):
-    """Merged [start, end, names] windows of the passes closer than max_sep in [t0, t1]."""
+    """Merged [start, end, names] windows of the passes closer than max_sep in [t0, t1], less
+    the satellites already identified (--skip-known)."""
     import guowang_passes as gp
 
     class P:
@@ -48,7 +72,14 @@ def windows(a, t0, t1):
     args.coarse = 10.0
     args.near = a.max_sep
     _, passes, _, _, _ = gp.compute(args, t0, t1)
-    passes = [p for p in passes if p["sep"] <= a.max_sep and p["el"] >= a.el_min]
+    skip = known(a.skip_known)
+    passes = [
+        p
+        for p in passes
+        if p["sep"] <= a.max_sep
+        and p["el"] >= a.el_min
+        and short(p["name"]) not in skip
+    ]
     out = []
     for p in sorted(passes, key=lambda p: p["tca"]):
         s, e = p["tca"] - a.length / 2.0, p["tca"] + a.length / 2.0
@@ -77,6 +108,14 @@ def cmd_run(a, nodes):
         sys.exit("no pass within %.0f deg in the next %.1f h" % (a.max_sep, a.hours))
     for s, e, names in wins:
         if e < time.time():
+            continue
+        # the library grows while this runs: drop a window whose satellites were identified since
+        skip = known(a.skip_known)
+        if a.skip_known and all(short(n.rsplit(" ", 2)[0]) in skip for n in names):
+            print(
+                "skip window %s .. %s: %s identified since"
+                % (fmt(s), fmt(e), "; ".join(names))
+            )
             continue
         lead = max(0.0, s - time.time())
         print(
@@ -133,6 +172,13 @@ def main():
     )
     ap.add_argument("--cache-dir", default=os.path.expanduser("~/.cache/guowang"))
     ap.add_argument("--name-filter", default="DIGUI")
+    ap.add_argument(
+        "--skip-known",
+        action="append",
+        default=[],
+        help="record only satellites not in this file (repeatable): a guowang_1202_db.json or a "
+        "gw_reduce db_proposals.jsonl; re-read before each window",
+    )
     a = ap.parse_args()
     nodes = a.node or viscap.fleet_hosts()
     if a.mode == "status":
