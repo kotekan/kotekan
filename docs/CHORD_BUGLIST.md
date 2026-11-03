@@ -1467,6 +1467,7 @@ the eigen start once per channel off-transit, generator plumbing like --beam-dum
 and recv1. The same stage covers the 600 / 700 MHz LTE downlinks. **Open before building:** the lag correlation
 between the two peeled timestreams, the direction fit of each arrival with the dish positions, why the MMSE
 refinement costs weak sources a few percent of Tau A, and the tracker's time constant on a longer capture.
+**Status 2026-11-03:** test version built (cudaDtvSubtract replacing the ring copy-in, host fit scripts/gnss/dtv_state.py, branch kv/dtv-subtract); validated by a kernel test, a gpu_batch pipeline test and a replay of dump chunk 0 through the same kernels that reproduces the offline Tau A numbers; the cx51 live test (channels 2727/2733/2903/2909) is written up in the document and waits for KV's go.
 
 
 ### #225 — GnssN2Project runs at 77-86 % of its core per GPU after the 2026-10-30 widening (43 channels, 20-30 lanes): the lane projection's n^2 k per channel-frame is the cost, and the headroom shrinks as satellites rise

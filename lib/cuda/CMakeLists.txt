@@ -42,6 +42,8 @@ add_library(
     cudaGnssN2Gather.cu
     cudaGnssBeamDump.cpp
     cudaGnssBeamDumpKernel.cu
+    cudaDtvSubtract.cpp
+    cudaDtvSubtractKernel.cu
     chordMVPSetup.cpp
     cudaPLMaskAccumulator.cpp
     cudaPLMaskBasebandBeamformer.cpp
@@ -207,6 +209,13 @@ target_include_directories(cuda_gnss_despread_test PRIVATE . ../stages ../stages
 add_executable(cuda_gnss_beam_dump_test cudaGnssBeamDumpTest.cpp)
 target_link_libraries(cuda_gnss_beam_dump_test PRIVATE kotekan_cuda)
 target_include_directories(cuda_gnss_beam_dump_test PRIVATE .)
+
+# DTV subtraction kernels (beam, lag correlations, subtraction, re-quantisation, eigen start)
+# vs a CPU reference on a synthetic 4+4b frame with a known impulse response, then the host-side
+# least-squares fit of that response from the correlations. Run: ./lib/cuda/cuda_dtv_subtract_test
+add_executable(cuda_dtv_subtract_test cudaDtvSubtractTest.cpp)
+target_link_libraries(cuda_dtv_subtract_test PRIVATE kotekan_cuda)
+target_include_directories(cuda_dtv_subtract_test PRIVATE .)
 
 # Prototype code-phase-table (Psi) replica synthesis vs the production waveform kernel at CHORD
 # geometry, with timings. The kernel is part of the bench, not of kotekan_cuda.

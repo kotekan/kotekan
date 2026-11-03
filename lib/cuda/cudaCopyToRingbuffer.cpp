@@ -26,9 +26,10 @@ REGISTER_CUDA_COMMAND(cudaCopyToRingbuffer);
 
 cudaCopyToRingbuffer::cudaCopyToRingbuffer(Config& config, const std::string& unique_name,
                                            bufferContainer& host_buffers,
-                                           cudaDeviceInterface& device, int instance_num) :
+                                           cudaDeviceInterface& device, int instance_num,
+                                           const std::string& name) :
     cudaCommand(config, unique_name, host_buffers, device, instance_num, no_cuda_command_state,
-                "cudaCopyToRingbuffer", ""),
+                name, ""),
     output_cursor(0), initial_fpga_seq_num(-1) {
     _input_size = config.get<size_t>(unique_name, "input_size");
     _ring_buffer_size = config.get<size_t>(unique_name, "ring_buffer_size");
@@ -117,7 +118,13 @@ cudaEvent_t cudaCopyToRingbuffer::execute(cudaPipelineState& pipestate,
                                           const std::vector<cudaEvent_t>& pre_events) {
     (void)pipestate;
     pre_execute();
+    record_start_event();
+    copy_frame(pre_events);
+    return record_end_event();
+}
 
+std::shared_ptr<chordMetadata>
+cudaCopyToRingbuffer::copy_frame(const std::vector<cudaEvent_t>& pre_events) {
     void* rb_memory = device.get_gpu_memory(_gpu_mem_output, _ring_buffer_size);
 
     size_t start = output_cursor % _ring_buffer_size;
@@ -127,8 +134,6 @@ cudaEvent_t cudaCopyToRingbuffer::execute(cudaPipelineState& pipestate,
         ncopy = _ring_buffer_size - start;
         nwrap = _input_size - ncopy;
     }
-
-    record_start_event();
 
     std::shared_ptr<chordMetadata> in_meta;
     if (!in_buffer) {
@@ -201,7 +206,7 @@ cudaEvent_t cudaCopyToRingbuffer::execute(cudaPipelineState& pipestate,
         }
     }
 
-    return record_end_event();
+    return in_meta;
 }
 
 void cudaCopyToRingbuffer::set_ring_frame_desc(const kotekan::GenericNDArray& in_desc) {

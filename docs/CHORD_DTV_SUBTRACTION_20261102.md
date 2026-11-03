@@ -136,3 +136,82 @@ Open items before building: the lag cross-correlation between the two peeled sou
 timestreams (confirms distinct stations), the direction fit of each arrival with the dish
 positions, the cause of the MMSE loss on weak sources, and whether the g tracker's EMA time
 constant can be minutes (test on a longer capture or two dumps hours apart).
+
+## Test version (2026-11-03)
+
+KV: "dig in on implementing a test version ... try this on a couple of channels". Jim agreed to
+exempting the test channels from first-stage RFI excision.
+
+**What it is.** `cudaDtvSubtract` (lib/cuda/cudaDtvSubtract.{hpp,cpp}, kernels in
+cudaDtvSubtractKernel.{hpp,cu}) is `cudaCopyToRingbuffer` with the subtraction added: it replaces
+the copy-in of `run_send_voltage`, so the N2 correlators, the RFI statistics and the GNSS
+stages all read the subtracted voltages. Per frame and selected channel it decodes the channel,
+forms each source's timestream s = sum_i w_i x_i (lag 0), accumulates R_xs,i(lag) and R_ss(d)
+on the GPU, subtracts sum_lag g_i(lag) s(t - lag) and re-quantises the residual in place. The
+host fit is not in the node: `scripts/gnss/dtv_state.py fit` solves the Toeplitz normal
+equations from the recorded correlations and writes a state file; the node loads it by REST.
+It is the single-fit recipe of the study above (eigen-beam start, one least-squares fit of g, no
+MMSE refinement), with up to four sources peeled in turn.
+
+**Controls** (REST, on the command, e.g. `/run_send_voltage/gpu_0/commands/0`):
+`POST start {"source": k, "frames": n}` (eigen start of source k on the residual of sources
+< k: covariance over n frames, whitened top eigenvector, phase-referenced to the strongest
+input; the source then observes), `POST load {"file": path}` (weights and impulse responses
+from dtv_state.py; a record subtracts all its sources), `POST clear {"source": k}` (sources k
+and above off: pass-through), `GET status`. Its per-frame output (weights, per-input powers
+before and after, |s|^2, the correlations) goes through `gnss<g>_dtvdump_gate` to
+`<record_dir>/dtv`, armed like the beam dump's gate. Generator: `--dtv-subtract-freq-ids`,
+`--dtv-sources`, `--dtv-state-file`, `--dtv-lag-min`, `--dtv-n-lag`; stock_parity.py declares
+the replaced copy-in.
+
+**Validation.**
+- `cuda_dtv_subtract_test` (synthetic frame, known impulse response): decode, covariance and
+  powers exact; beam, R_xs, R_ss to 1e-4 of a CPU sum; the eigen start finds the direct path
+  (coherence 0.94-0.96); the host fit and GPU subtraction leave 1.07 x the noise (the excess is
+  the re-quantisation); the re-quantised bytes match a CPU subtraction; other channels untouched.
+- `run_dtv_subtract.yaml` (gpu_batch, through the kotekan binary): pass-through without state; a
+  unit state (s = input 0, g = 1 at lag 0 on input 0) zeroes input 0 exactly and leaves the other
+  127 exactly unchanged, and the ring consumer behind it sees input 0 at zero power; start,
+  load, a bad load (400), clear and status all behave during a run.
+- Replay on dump chunk 0 through the same kernels (`~/gnss/bb1030/dtv_replay.{cu,py}`,
+  `dtv_replay_run.sh`, `dtv_replay_b3src.sh`): eigen start or protected weights on frames 0-9,
+  g fitted there, scored on frames 10-19 (out of sample). Eigenvalues in noise units, Tau A
+  kept as above:
+
+| channel | raw | stage's own starts, 2 sources | protected starts, 2 sources | protected, 3 sources |
+|---|---|---|---|---|
+| 2512 (ATSC 17) | 8.5 6.2 5.5 4.9, kept 0.94 | 1 source: 5.7 5.0 2.4, 0.78 | 5.9 5.3 1.8, 0.96 | - |
+| 2720 (ATSC 24) | 46 20 14 11, kept 0.74 | 5.2 4.4 1.7, 0.75 | 5.5 4.9 1.7, 0.87 | 5.5 4.9 1.6, 0.87 |
+| 2912 (ATSC 30) | 147 126 81 66, kept -0.28 | 4.4 3.9 3.4 2.8, 0.55 | 4.5 3.9 3.4 2.7, 0.56 | 4.4 3.5 2.2 1.9, 0.57 |
+
+  The protected column reproduces the offline study (0.96 / 0.82-0.89 / 0.66), so the GPU stage
+  does what dtv_blind.py did. Channel 30 needs a third source; channel 17 has one station. Tau A
+  in channel 30 is limited by the 4-bit damage already in the recorded bits (above).
+- GPU time: 0.28 ms per channel per frame with two sources (3 channels x 2 sources: 0.84 ms of
+  a 41.9 ms frame on an L40S).
+
+**Rules the replay set.**
+- Run every eigen start with no bright source in the beam. With Tau A in the beam an
+  unprotected start mixes it into s: channel 17's single source kept Tau A at 0.78 instead of
+  0.96, and a second start there took Tau A itself (0.24). Live, start at night and away from
+  the Tau A transit (and other bright transits); the weights and g are static (above), so a
+  night-time solution serves the day.
+- Choose the source count per channel (`dtv_state.py fit --freq`): an eigen start covers every
+  channel on the GPU, but a source fitted where there is no station projects a sky mode out.
+- The last 8 samples of each frame miss the negative-lag terms (s after the frame's end is not
+  yet known): about 0.1 % of the samples keep the precursor paths' share of the DTV.
+
+**Live test (cx51, needs KV's go and the node cycle; after the 11-03 02:22Z C57 test).**
+cx51 holds residues 7 and 13, so the test channels are 2727 and 2733 (ATSC 24) and 2903 and 2909
+(ATSC 30), currently excised 8-34 % of the time by the SK flagger. Manifest, `nodes: cx51:`:
+`dtv-subtract-freq-ids: "2727,2733,2903,2909"`, `dtv-sources: 3`,
+`rfi-excision-exempt-freq-ids: "5939-6626,2727,2733,2903,2909"`,
+`n2-project-live-freq-ids: "5939-6626"` (it follows the exemption set otherwise and would put
+the GNSS projection live in the DTV channels) and the four ids added to `beam-dump-freq-ids`
+(the beam dump's whitened lambda1 of the ring is the per-frame judge of what remains). Then, off
+transit: start source 0 on both GPUs (24 frames), arm the dtv gates for a minute, `dtv_state.py
+fit --source 0`, copy the state to the node, load; source 1 the same with `--state`; source 2
+with `--freq 2903,2909`. Judge in minutes: residual / raw power (dtv_state.py info), the beam
+dump's lambda1 in the four channels (raw 46-147, clean ~1.5 off transit), the SK flag fraction.
+At the Tau A transit compare the four channels' N2 with clean neighbours. `clear` reverts to
+pass-through without a restart.

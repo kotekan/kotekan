@@ -1,0 +1,142 @@
+---
+##########################################
+#
+# run_dtv_subtract.yaml
+#
+# cudaDtvSubtract as the voltage ring's copy-in, on random 4+4b voltages: two selected channels
+# of a 2048-sample frame, a ring consumer (cudaGnssBeamDump) behind it, and the stage's output
+# frames written to /tmp by rawFileWrite (two files, then exit). With no state file the channels
+# pass through and the output carries the per-input powers only; read it back with
+#   scripts/gnss/dtv_state.py info /tmp/kotekan_dtv_subtract/test_dtv_*.raw
+# Set dtv_state_file to a state written by dtv_state.py to exercise the subtraction.
+#
+##########################################
+type: config
+log_level: INFO
+
+buffer_depth: 4
+cpu_affinity: [2, 3, 4, 5, 8, 9, 10, 11]
+frame_arrival_period: 5.12e-6 * samples_per_data_set
+
+samples_per_data_set: 2048
+num_times: samples_per_data_set
+num_polarizations: 2
+num_dishes: 64
+num_elements: num_polarizations * num_dishes
+num_local_freq: 8
+
+main_pool:
+    kotekan_metadata_pool: chordMetadata
+    num_metadata_objects: 15 * buffer_depth
+
+host_voltage_buffer:
+    kotekan_buffer: ndarray
+    num_frames: buffer_depth
+    value_type: int4x2_swapped_withoffset
+    extents: [samples_per_data_set, num_local_freq, num_polarizations, num_dishes]
+    metadata_pool: main_pool
+
+host_voltage_ringbuffer:
+    kotekan_buffer: ring
+    ring_buffer_size: buffer_depth * samples_per_data_set * num_elements * num_local_freq
+    metadata_pool: main_pool
+
+# gnss_cuda::dtv_out_layout(2, 2, 49) (gen_chord_gnss_config.dtv_frame_bytes)
+host_test_dtv_buf:
+    kotekan_buffer: standard
+    metadata_pool: main_pool
+    num_frames: buffer_depth
+    frame_size: 208528
+
+# gnss_cuda::beam_dump_layout(2, 2048)
+host_test_beam_buf:
+    kotekan_buffer: standard
+    metadata_pool: main_pool
+    num_frames: buffer_depth
+    frame_size: 19568
+
+gen_data_voltage:
+    type: random_signed_offset
+    value: 120
+    kotekan_stage: testDataGen
+    out_buf: host_voltage_buffer
+    name: "E"
+    array_shape: [2048, 8, 2, 64]
+    dim_name: ["T", "F", "P", "D"]
+    dim_scaling: [1, 1, 1, 1]
+    num_frames: 4 * buffer_depth
+
+run_send_voltage:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_voltage_buffer_in: host_voltage_buffer
+        out_buffers:
+            host_voltage_ringbuffer_out: host_voltage_ringbuffer
+            host_gnss_dtv: host_test_dtv_buf
+        commands:
+            - name: cudaDtvSubtract
+              input_size: samples_per_data_set * num_local_freq * num_elements
+              ring_buffer_size: buffer_depth * input_size
+              in_buf: host_voltage_buffer_in
+              signal_buf: host_voltage_ringbuffer_out
+              gpu_mem_output: voltage_buffer
+              dtv_local_channels: [1, 5]
+              dtv_freq_ids: [1, 5]   # testDataGen labels the channels by index
+              dtv_out_name: test_dtv
+              dtv_lag_min: -8
+              dtv_n_lag: 49
+              dtv_sources: 2
+              dtv_state_file: ""
+            - name: cudaSyncStream
+              cuda_stream: 1
+              source_cuda_streams: [0]
+            - name: cudaOutputData
+              gpu_mem: test_dtv_buffer
+              out_buf: host_gnss_dtv
+
+run_beam_dump:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        cuda_stream_base: 1
+        in_buffers:
+            host_voltage_ringbuffer: host_voltage_ringbuffer
+        out_buffers:
+            host_gnss_beam: host_test_beam_buf
+        commands:
+            - name: cudaGnssBeamDump
+              voltage_name: voltage
+              beam_name: test_beam
+              beam_local_channels: [1, 5]
+              beam_freq_ids: [1, 5]
+              beam_ref_input: 100
+              beam_eig_iters: 4
+            - name: cudaSyncOutput
+            - name: cudaOutputData
+              gpu_mem: test_beam_buffer
+              out_buf: host_gnss_beam
+
+dtv_sink:
+    kotekan_stage: rawFileWrite
+    in_buf: host_test_dtv_buf
+    base_dir: /tmp/kotekan_dtv_subtract
+    file_name: test_dtv
+    file_ext: raw
+    prefix_hostname: false
+    num_frames_per_file: 4
+    allow_ndarray: true
+    exit_after_n_files: 2
+    create_base_dir: true
+
+beam_sink:
+    kotekan_stage: rawFileWrite
+    in_buf: host_test_beam_buf
+    base_dir: /tmp/kotekan_dtv_subtract
+    file_name: test_beam
+    file_ext: raw
+    prefix_hostname: false
+    num_frames_per_file: 4
+    allow_ndarray: true
+    create_base_dir: true

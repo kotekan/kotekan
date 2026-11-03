@@ -826,6 +826,115 @@ def elem_positions_from_arraymap(arr, n_elem):
     return out, ep
 
 
+def dtv_frame_bytes(n_chan, n_src, n_lag):
+    """Bytes of one cudaDtvSubtract output frame: mirrors gnss_cuda::dtv_out_layout."""
+    align = lambda off: (off + 15) & ~15
+    off = align(64 + 4 * n_chan)  # header, freq_ids
+    off = align(off + 4 * n_chan * n_src)  # act
+    off = align(off + 4 * 128 * n_chan)  # pw_raw
+    off = align(off + 4 * 128 * n_chan)  # pw_res
+    off = align(off + 4 * n_chan * n_src)  # ps
+    off = align(off + 8 * 128 * n_chan * n_src)  # w
+    off = align(off + 8 * n_lag * n_chan * n_src)  # rss
+    return align(off + 8 * n_lag * 128 * n_chan * n_src)  # rxs
+
+
+def add_dtv_subtract(out, cfg, args, node, spds):
+    """cudaDtvSubtract (lib/cuda/cudaDtvSubtract.cpp) in place of cudaCopyToRingbuffer in
+    run_send_voltage on every GPU holding one of --dtv-subtract-freq-ids: the voltage ring's
+    copy-in with the lagged subtraction of a terrestrial transmitter on those channels, so every
+    consumer of the ring sees the same frame. Its per-frame output (weights, powers, lag
+    correlations) goes through a FrameWindowGate and a rawFileWrite under <record_dir>/dtv,
+    as the beam dump's does."""
+    ids = sorted(freq_id_ranges(args.dtv_subtract_freq_ids))
+    if not ids:
+        return
+    rt = cfg["runtime"]
+    for gpu, off in enumerate(cfg["nodes"][node]["gpu_offsets_mod16"]):
+        pairs = [(f, gpu_of_channel(cfg, node, f)[1]) for f in ids if f % 16 == off]
+        if not pairs:
+            continue
+        proc = out.get("run_send_voltage", {}).get(f"gpu_{gpu}")
+        if not proc:
+            raise SystemExit(
+                f"--dtv-subtract-freq-ids: the base has no run_send_voltage/gpu_{gpu}"
+            )
+        copies = [
+            c for c in proc["commands"] if c.get("name") == "cudaCopyToRingbuffer"
+        ]
+        if len(copies) != 1:
+            raise SystemExit(
+                f"--dtv-subtract-freq-ids: run_send_voltage/gpu_{gpu} has {len(copies)} "
+                "cudaCopyToRingbuffer commands, expected one"
+            )
+        out_name = f"gnss{gpu}_dtv"
+        copies[0].update(
+            {
+                "name": "cudaDtvSubtract",
+                "dtv_local_channels": [idx for _, idx in pairs],
+                "dtv_freq_ids": [fid for fid, _ in pairs],
+                "dtv_out_name": out_name,
+                "dtv_lag_min": args.dtv_lag_min,
+                "dtv_n_lag": args.dtv_n_lag,
+                "dtv_sources": args.dtv_sources,
+                "dtv_state_file": args.dtv_state_file,
+            }
+        )
+        buf = f"gnss{gpu}_dtv_buf"
+        gated = f"gnss{gpu}_dtvdump_buf"
+        proc.setdefault("out_buffers", {})["host_gnss_dtv"] = buf
+        # The subtraction runs on the copy-in stream; its output's copy-out waits for it.
+        base = int(proc.get("cuda_stream_base", 0))
+        proc["commands"] += [
+            {
+                "name": "cudaSyncStream",
+                "cuda_stream": 3 * base + 1,
+                "source_cuda_streams": [3 * base],
+            },
+            {
+                "name": "cudaOutputData",
+                "gpu_mem": f"{out_name}_buffer",
+                "out_buf": "host_gnss_dtv",
+            },
+        ]
+        frame_bytes = dtv_frame_bytes(len(pairs), args.dtv_sources, args.dtv_n_lag)
+        core = GPU_VARS[gpu][0]["cores"]["sink"]
+        for name, depth in ((buf, BUFFER_DEPTH), (gated, args.dtv_depth)):
+            out[name] = {
+                "kotekan_buffer": "standard",
+                "metadata_pool": "gnss_pool",
+                "num_frames": depth,
+                "frame_size": frame_bytes,
+            }
+        out[f"gnss{gpu}_dtvdump_gate"] = {
+            "kotekan_stage": "FrameWindowGate",
+            "in_bufs": [buf],
+            "out_bufs": [gated],
+            "clock_buf": 0,
+            "clock_source": "frame",
+            "clock_offset": 0,
+            "cpu_affinity": [core],
+        }
+        out[f"gnss{gpu}_dtvdump_sink"] = {
+            "kotekan_stage": "rawFileWrite",
+            "in_buf": gated,
+            "base_dir": (args.record_dir or rt["record_dir"]) + "/dtv",
+            "file_name": f"{node}_gnss{gpu}_dtv",
+            "file_ext": "raw",
+            "prefix_hostname": False,
+            "num_frames_per_file": args.dtv_frames_per_file,
+            "allow_ndarray": True,
+            "continue_numbering": True,
+            "create_base_dir": True,
+            "cpu_affinity": [core],
+        }
+        print(
+            f"  gpu{gpu}: DTV subtraction on {len(pairs)} channels "
+            f"({', '.join(str(f) for f, _ in pairs)}), {frame_bytes / 1e3:.1f} kB/frame of output",
+            file=sys.stderr,
+        )
+
+
 def beam_dump_frame_bytes(n_chan, n_times):
     """Bytes of one cudaGnssBeamDump frame: mirrors gnss_cuda::beam_dump_layout."""
     align = lambda off: (off + 15) & ~15
@@ -3052,6 +3161,65 @@ def main():
         help="frames of slack between the beam-dump gate and its writer (default 8)",
     )
     ap.add_argument(
+        "--dtv-subtract-freq-ids",
+        default="",
+        metavar="RANGES",
+        dest="dtv_subtract_freq_ids",
+        help="absolute freq_id ranges ('lo-hi,lo-hi') of channels taken by a terrestrial "
+        "transmitter (DTV): cudaDtvSubtract replaces cudaCopyToRingbuffer in run_send_voltage "
+        "on the GPU holding each, subtracting the transmitter from the voltage ring as the "
+        "frames are written (docs/CHORD_DTV_SUBTRACTION_20261102.md); its per-frame output is "
+        "gated by seq like the beam dump and written under <record_dir>/dtv. Empty = stock.",
+    )
+    ap.add_argument(
+        "--dtv-state-file",
+        default="",
+        metavar="PATH",
+        dest="dtv_state_file",
+        help="state file (weights and impulse responses, scripts/gnss/dtv_state.py) loaded at "
+        "start; empty = none (the channels pass through until a REST load or eigen start)",
+    )
+    ap.add_argument(
+        "--dtv-lag-min",
+        type=int,
+        default=-8,
+        metavar="N",
+        dest="dtv_lag_min",
+        help="first lag of the impulse response, hops (default -8)",
+    )
+    ap.add_argument(
+        "--dtv-n-lag",
+        type=int,
+        default=49,
+        metavar="N",
+        dest="dtv_n_lag",
+        help="lags of the impulse response (default 49: -8..40)",
+    )
+    ap.add_argument(
+        "--dtv-sources",
+        type=int,
+        default=1,
+        metavar="N",
+        dest="dtv_sources",
+        help="source slots per channel (default 1; a second peels a co-channel station)",
+    )
+    ap.add_argument(
+        "--dtv-frames-per-file",
+        type=int,
+        default=24,
+        metavar="N",
+        dest="dtv_frames_per_file",
+        help="frames per DTV output file (default 24, ~1 s)",
+    )
+    ap.add_argument(
+        "--dtv-depth",
+        type=int,
+        default=8,
+        metavar="N",
+        dest="dtv_depth",
+        help="frames of slack between the DTV output gate and its writer (default 8)",
+    )
+    ap.add_argument(
         "--frame0-nano",
         type=int,
         default=None,
@@ -4084,6 +4252,7 @@ def main():
             out.get("samples_per_data_set", 8192),
         )
         out.update(blocks)
+    add_dtv_subtract(out, cfg, args, args.node, out.get("samples_per_data_set", 8192))
 
     # The header is the provenance, complete enough to regenerate from: the argv and a hash of
     # the base. The generator and config/chord_gnss_node.yaml are inputs too, deliberately not

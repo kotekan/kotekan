@@ -926,6 +926,8 @@ def test_manual_mask_reaches_the_node_config():
             "5971-5980,6000",
             "--beam-dump-freq-ids",
             "6122-6185,6395-6594",
+            "--dtv-subtract-freq-ids",
+            "2720-2735",
         ]
         with stubbed(_HY):
             exc, out, err = run_main(argv)
@@ -956,7 +958,8 @@ def test_manual_mask_reaches_the_node_config():
         "--n2-project-eigen-channels ranges: the stage gets the list",
     )
     check(
-        asm.get("elem_dir_publish") == "all" and asm.get("elem_dir_hold_s") == 300.0
+        asm.get("elem_dir_publish") == "all"
+        and asm.get("elem_dir_hold_s") == 300.0
         and asm.get("elem_dir_hold_coh_min") == 0.25
         and asm.get("elem_dir_hold_frac") == 0.8
         and asm.get("elem_dir_capture_cos2") == 0.4
@@ -966,14 +969,46 @@ def test_manual_mask_reaches_the_node_config():
         "assemblers hold a lane 300 s from a mean of coherence >= 0.25 within 0.8 of the "
         "slot's best, call it captured below cos^2 0.4, and publish live from 0.08",
     )
-    bd = [c for c in cfg["gnss0_n2dual"]["commands"] if c.get("name") == "cudaGnssBeamDump"]
+    bd = [
+        c
+        for c in cfg["gnss0_n2dual"]["commands"]
+        if c.get("name") == "cudaGnssBeamDump"
+    ]
     check(
         len(bd) == 1
         and bd[0].get("voltage_name") == "voltage"
         and bd[0]["beam_freq_ids"]
-        and all(f % 16 == bd[0]["beam_freq_ids"][0] % 16 for f in bd[0]["beam_freq_ids"]),
+        and all(
+            f % 16 == bd[0]["beam_freq_ids"][0] % 16 for f in bd[0]["beam_freq_ids"]
+        ),
         "--beam-dump-freq-ids: one cudaGnssBeamDump per GPU on its mod-16 share, reading "
         "`voltage` (cx51 refused the config without voltage_name, 11-02)",
+    )
+    for g in (0, 1):
+        sv = cfg["run_send_voltage"]["gpu_%d" % g]
+        names = [c.get("name") for c in sv["commands"]]
+        dtv = [c for c in sv["commands"] if c.get("name") == "cudaDtvSubtract"]
+        base = int(sv.get("cuda_stream_base", 0))
+        sync = [c for c in sv["commands"] if c.get("name") == "cudaSyncStream"]
+        check(
+            names == ["cudaDtvSubtract", "cudaSyncStream", "cudaOutputData"]
+            and len(dtv[0]["dtv_freq_ids"]) == 1
+            and 2720 <= dtv[0]["dtv_freq_ids"][0] <= 2735
+            and dtv[0]["gpu_mem_output"] == "voltage_buffer"
+            and sync[0]["cuda_stream"] == 3 * base + 1
+            and sync[0]["source_cuda_streams"] == [3 * base]
+            and sv["out_buffers"]["host_gnss_dtv"] == "gnss%d_dtv_buf" % g
+            and cfg["gnss%d_dtvdump_gate" % g]["in_bufs"] == ["gnss%d_dtv_buf" % g]
+            and cfg["gnss%d_dtvdump_sink" % g]["in_buf"] == "gnss%d_dtvdump_buf" % g,
+            "--dtv-subtract-freq-ids: gpu%d's ring copy-in becomes cudaDtvSubtract on its one "
+            "channel of the range, its output copied out after a sync on the copy-in stream, "
+            "gated and written" % g,
+        )
+    check(
+        not any(
+            2720 <= f <= 2735 for f in cfg["gnss_n2_project"]["proj_0"]["live_freq_ids"]
+        ),
+        "--dtv-subtract-freq-ids leaves the GNSS N2 projection's live channels alone",
     )
     check(
         asm["chan_noise_norm_elems"] == sorted(set(range(128)) - out_set),

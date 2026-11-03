@@ -92,12 +92,14 @@ __device__ __forceinline__ float2 cmulc(float2 a, float2 b) { // a conj(b)
 __global__ void beam_eig_kernel(const float2* __restrict__ cov, int n_times, int ref, int n_iter,
                                 float2* __restrict__ q1s, float2* __restrict__ q2s,
                                 float2* __restrict__ w, float* __restrict__ pw_out,
-                                float* __restrict__ lam_out) {
+                                float* __restrict__ lam_out, const int* __restrict__ ref_dev) {
     __shared__ float2 q[NI];
     __shared__ float2 r[NI];
     __shared__ float wt[NI];
     __shared__ float scratch[4];
     const int c = blockIdx.x, i = threadIdx.x;
+    if (ref_dev)
+        ref = ref_dev[c];
     const float2* V = cov + (size_t)c * NI * NI;
     const float inv_t = 1.0f / (float)n_times;
     const float pw = V[i * NI + i].x * inv_t;
@@ -222,10 +224,12 @@ void launch_beam_cov(const unsigned char* in, const int* sel, int n_chan, int n_
 }
 
 void launch_beam_eig(const float2* cov, int n_chan, int n_times, int ref, int n_iter, float2* q1,
-                     float2* q2, float2* w, float* pw, float* lam, cudaStream_t stream) {
+                     float2* q2, float2* w, float* pw, float* lam, cudaStream_t stream,
+                     const int* ref_dev) {
     if (n_chan <= 0)
         return;
-    beam_eig_kernel<<<n_chan, NI, 0, stream>>>(cov, n_times, ref, n_iter, q1, q2, w, pw, lam);
+    beam_eig_kernel<<<n_chan, NI, 0, stream>>>(cov, n_times, ref, n_iter, q1, q2, w, pw, lam,
+                                               ref_dev);
 }
 
 void launch_beam_form(const unsigned char* in, const int* sel, int n_chan, int n_freq, int n_times,

@@ -5,6 +5,7 @@
 #include "NDArray.hpp"             // for GenericNDArray
 #include "buffer.hpp"              // for Buffer
 #include "bufferContainer.hpp"     // for bufferContainer
+#include "chordMetadata.hpp"       // for chordMetadata
 #include "cudaCommand.hpp"         // for cudaCommand, cudaPipelineState
 #include "cudaDeviceInterface.hpp" // for cudaDeviceInterface
 #include "driver_types.h"          // for cudaEvent_t
@@ -38,9 +39,10 @@
  */
 class cudaCopyToRingbuffer : public cudaCommand {
 public:
+    /// @p name is the command's name in logs and metrics (a subclass passes its own).
     cudaCopyToRingbuffer(kotekan::Config& config, const std::string& unique_name,
                          kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device,
-                         int instance_num);
+                         int instance_num, const std::string& name = "cudaCopyToRingbuffer");
     ~cudaCopyToRingbuffer();
 
     int wait_on_precondition() override;
@@ -50,7 +52,12 @@ public:
     void finalize_frame() override;
 
 protected:
-private:
+    /// Enqueue the frame's copy into the ring and keep its metadata; returns that metadata
+    /// (nullptr without any). execute() wraps this in the start and end events; a subclass that
+    /// works on the copied frame before the ring's write is finished calls it from its own
+    /// execute() and enqueues its work after it on the same stream.
+    std::shared_ptr<chordMetadata> copy_frame(const std::vector<cudaEvent_t>& pre_events);
+
     /// Attach (or check) the ring's descriptor: the input's layout, with the ring's capacity in
     /// the slowest dimension.
     void set_ring_frame_desc(const kotekan::GenericNDArray& in_desc);

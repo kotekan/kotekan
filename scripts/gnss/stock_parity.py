@@ -65,6 +65,19 @@ DECLARED = [
         "live GNSS N2 projection: N2Accumulate reads the projected copy "
         "gnss_n2_proj_buffer{,_1} written by gnss_n2_project",
     ),
+    (
+        "run_send_voltage.gpu_*.commands",
+        "~",
+        "DTV subtraction (--dtv-subtract-freq-ids, default off): cudaDtvSubtract is "
+        "cudaCopyToRingbuffer with a lagged subtraction of a terrestrial transmitter on the "
+        "selected channels, in the voltage ring every consumer reads; then the copy-out of its "
+        "per-frame output",
+    ),
+    (
+        "run_send_voltage.gpu_*.out_buffers.host_gnss_dtv",
+        "+",
+        "that output's host buffer",
+    ),
 ]
 # Values stock gets by REST at runtime; the generator injects the current ones. Different from
 # the bare render by design, and equal to a live stock node's, so --live does not allow them.

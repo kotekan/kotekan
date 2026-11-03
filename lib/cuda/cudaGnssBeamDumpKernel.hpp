@@ -91,9 +91,12 @@ void launch_beam_cov(const unsigned char* in, const int* sel, int n_chan, int n_
  *                  input's units
  * @param pw        out float [n_chan][BEAM_INPUTS]: mean |x|^2 per input
  * @param lam       out float [n_chan][4]
+ * @param ref_dev   optional int [n_chan] on the device: per-channel reference input that
+ *                  overrides ref (cudaDtvSubtract picks the strongest input this way)
  */
 void launch_beam_eig(const float2* cov, int n_chan, int n_times, int ref, int n_iter, float2* q1,
-                     float2* q2, float2* w, float* pw, float* lam, cudaStream_t stream);
+                     float2* q2, float2* w, float* pw, float* lam, cudaStream_t stream,
+                     const int* ref_dev = nullptr);
 
 /**
  * The beam samples: out[c][t] = sum_i w[c][i] x_i(t) as half2.
