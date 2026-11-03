@@ -186,6 +186,33 @@ class TestBrokerSky(unittest.TestCase):
             r._compute()
         self.assertNotIn("S", seen["tle"][-1])
 
+    def test_guowang_is_asked_of_the_broker_never_of_tle(self):
+        # W (GuoWang, from the gw_1202 chain's TLE table) comes from the broker's /get_sky
+        # alone, like S, and the TLE paths never see it.
+        r = lb.GpsSkyResource(43.0, -79.0, 0.0, 0.0, broker=("127.0.0.1", 12060))
+        row = {"prn": 1425, "const": "W", "az": 175.9, "el": 53.1}
+        body = mock.MagicMock()
+        body.__enter__.return_value.read.return_value = json.dumps([row]).encode()
+        with mock.patch("urllib.request.urlopen", return_value=body):
+            self.assertEqual(r._brdc_skypos(["W"]), [row])
+        seen = {}
+
+        def brdc(want):
+            seen["brdc"] = list(want)
+            return [row]
+
+        def tle(want=None):
+            seen.setdefault("tle", []).append(list(want or []))
+            return []
+
+        with mock.patch.object(r, "_brdc_skypos", side_effect=brdc), mock.patch.object(
+            r, "_tle_skypos", side_effect=tle
+        ):
+            out = r._compute()
+        self.assertIn("W", seen["brdc"])
+        self.assertTrue(all("W" not in w for w in seen.get("tle", [])))
+        self.assertIn(1425, [x["prn"] for x in out["sats"] if x["const"] == "W"])
+
     def test_bind_address_connects_to_loopback(self):
         r = lb.GpsSkyResource(43.0, -79.0, 0.0, 0.0, broker=("0.0.0.0", 12060))
         urls = []

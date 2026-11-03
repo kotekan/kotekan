@@ -107,10 +107,11 @@ WS_STUCK_PAUSED_S = 30
 
 
 # Minimum interval between /gps_sky recomputes of satellite az/el. MEO satellites move
-# ~0.01 deg/s, so a few seconds is plenty. The recompute (the broker's /get_sky, plus TLE for
-# GLONASS or as the fallback) runs in a worker thread and render_GET serves only the cached
-# result, so the Twisted reactor never blocks on it.
-SKY_REFRESH_S = 5.0
+# ~0.01 deg/s, but a GuoWang satellite near the zenith ~0.4 deg/s, so 2 s keeps its dot within
+# a degree. The recompute (the broker's /get_sky, plus TLE for GLONASS or as the fallback) runs
+# in a worker thread and render_GET serves only the cached result, so the Twisted reactor never
+# blocks on it.
+SKY_REFRESH_S = 2.0
 
 # Mode is decided by the number of visibility streams in the kotekan handshake.
 MODE_BY_NVIS = {1: "autocorr", 4: "crosscorr"}
@@ -935,6 +936,8 @@ class WsPortResource(resource.Resource):
             # SBAS GEOs (WAAS 131/133/135): fixed points in the sky, positions from the
             # broker's /get_sky (the BRDC S records).
             {"tag": "S", "name": "SBAS", "color": "#3fae8c"},
+            # GuoWang (gw_1202): LEO, positions from the broker's /get_sky (its TLE table).
+            {"tag": "W", "name": "GuoWang", "color": "#c9a227"},
         ]
         # Only the constellations actually being tracked: an empty sub-table for a
         # constellation this instrument cannot see reads as "nothing detected" rather
@@ -1004,8 +1007,9 @@ class GpsSkyResource(resource.Resource):
         self._refreshing = False
 
     # Viewer tag -> the "const" letter of a broker /get_sky row (no R: GLONASS is TLE-only;
-    # S, the SBAS GEOs, has no TLE group here, so it comes from the broker alone).
-    _TAG_SYS = {"G": "G", "E": "E", "C": "C", "S": "S"}
+    # S, the SBAS GEOs, and W, GuoWang, have no TLE group here, so they come from the broker
+    # alone).
+    _TAG_SYS = {"G": "G", "E": "E", "C": "C", "S": "S", "W": "W"}
 
     def _need_refresh(self):
         if self.lat is None or self.lon is None:
@@ -1025,10 +1029,11 @@ class GpsSkyResource(resource.Resource):
 
     # Constellations taken from the broker's /get_sky. 'R' always comes from TLE, even when
     # the broker's sky is healthy; _compute merges the two sources rather than choosing.
-    _BRDC_TAGS = frozenset(("G", "E", "C", "S"))
+    _BRDC_TAGS = frozenset(("G", "E", "C", "S", "W"))
     # Broker-only constellations: no TLE group above, so they are asked of /get_sky alone and
-    # drop out of the TLE fallback (the SBAS GEOs, from the BRDC S records).
-    _BRDC_ONLY = ("S",)
+    # drop out of the TLE fallback (the SBAS GEOs, from the BRDC S records; GuoWang, from the
+    # gw_1202 chain's TLE table, only the satellites with a known code).
+    _BRDC_ONLY = ("S", "W")
 
     def _compute(self):
         """Runs in a worker thread. G/E/C/S come from the broker's /get_sky, the
