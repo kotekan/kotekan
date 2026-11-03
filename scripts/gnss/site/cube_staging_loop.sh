@@ -1,25 +1,29 @@
 #!/bin/bash
-# Beam-cube local staging (cf06): the archiver writes its raw files to local disk (STAGE)
-# instead of cs00, whose NFS writes over cf06's one 1 GbE link fell behind the fleet's
-# inflow (bufferRecv dropped ~17 % of the frames, 2026-10-30). Each pass, in one process
-# so l0/manifest.json keeps one writer:
-#   1. fold every closed STAGE file into L0 on cs00;
-#   2. ship each STAGE file the manifest records to <ROOT>/raw_zst/<name>.zst (zstd -1,
-#      ~4.8x; tested before the local copy is deleted). The newest file by mtime (still
-#      being written) and the highest-numbered one stay: continue_numbering resumes past
-#      the highest number in STAGE, and an emptied STAGE would restart at 0000000 under
-#      names the manifest already holds;
+# Beam-cube staging: the archiver writes its raw files to STAGE (cf06's local disk, whose
+# NFS writes over one 1 GbE link fell behind the fleet's inflow, 2026-10-30; or a directory
+# on cs00 from the gnss VM) and this loop folds them into L0 and compresses them. Each pass,
+# with one process writing l0/manifest.json:
+#   1. fold every closed STAGE file into L0 on cs00 (READERS read ahead, a manifest save
+#      every BATCH files; memory grows with both), while
+#   2. a second process ships each STAGE file the manifest already records to
+#      <ROOT>/raw_zst/<name>.zst (zstd -1, ~4.4x; tested before the raw copy is deleted).
+#      The two touch disjoint files, and in sequence they take about as long as a file takes
+#      to arrive. The newest file by mtime (still being written) and the highest-numbered one
+#      stay: continue_numbering resumes past the highest number in STAGE, and an emptied
+#      STAGE would restart at 0000000 under names the manifest already holds;
 #   3. fold up to BACKLOG files of the cs00 raw backlog (0 = none).
 # The archiver's file stem must be one no other raw directory has used
 # (gen_chord_gnss_config.py --cube-archive-file-name): the manifest keys by basename.
 # Stop = `systemctl --user stop`: TERM is taken between steps, after the running fold.
-#   cube_staging_loop.sh PY TOOL STAGE ROOT [BACKLOG] [PAUSE_S]
+#   cube_staging_loop.sh PY TOOL STAGE ROOT [BACKLOG] [PAUSE_S] [READERS] [BATCH]
 set -u
-PY=$1; TOOL=$2; STAGE=$3; ROOT=$4; BACKLOG=${5:-100}; PAUSE=${6:-30}
+PY=$1; TOOL=$2; STAGE=$3; ROOT=$4; BACKLOG=${5:-100}; PAUSE=${6:-30}; READERS=${7:-4}
+BATCH=${8:-12}
 ZST=$ROOT/raw_zst
 LOW_GB=300
 stopping=0
-trap 'stopping=1' TERM
+shipper=
+trap 'stopping=1; [ -z "$shipper" ] || kill -TERM "$shipper" 2>/dev/null' TERM
 mkdir -p "$ZST"
 log() { echo "== $(date -u +%FT%TZ) $*"; }
 
@@ -61,12 +65,18 @@ ship() {
 }
 
 while [ "$stopping" = 0 ]; do
+    (trap 'stopping=1' TERM; ship) &
+    shipper=$!
     if [ "$(ls "$STAGE"/*.raw 2>/dev/null | wc -l)" -ge 2 ]; then
         log "compact $STAGE"
-        "$PY" -u "$TOOL" compact --raw "$STAGE" --out "$ROOT" --newest-first --readers 4 2>&1
+        "$PY" -u "$TOOL" compact --raw "$STAGE" --out "$ROOT" --newest-first \
+            --readers "$READERS" --batch "$BATCH" 2>&1
     fi
+    # A TERM interrupts the first wait; the second lets the shipper finish its file.
+    wait "$shipper"
+    wait "$shipper" 2>/dev/null
+    shipper=
     [ "$stopping" = 0 ] || break
-    ship
     free_gb=$(df -BG --output=avail "$STAGE" | tail -1 | tr -d ' G')
     if [ "$free_gb" -lt "$LOW_GB" ]; then
         log "LOW DISK: $free_gb GB free in $STAGE (unfolded files are not shipped)"
@@ -75,7 +85,7 @@ while [ "$stopping" = 0 ]; do
     if [ "$BACKLOG" -gt 0 ]; then
         log "compact backlog $ROOT/raw (up to $BACKLOG)"
         "$PY" -u "$TOOL" compact --raw "$ROOT/raw" --out "$ROOT" --newest-first \
-            --max-files "$BACKLOG" --readers 2 2>&1
+            --max-files "$BACKLOG" --readers 2 --batch "$BATCH" 2>&1
     fi
     [ "$stopping" = 0 ] || break
     sleep "$PAUSE" & wait $! || true

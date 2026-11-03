@@ -1,0 +1,38 @@
+[Unit]
+Description=CHORD GNSS beam-cube staging loop on the gnss VM (raw_v1 -> L0 + raw_zst, then the raw backlog)
+Documentation=file:///home/kvand/gnss/kotekan/scripts/gnss/site/cube_staging_loop.sh
+# This host only (see gnss-cubevm.target).
+ConditionHost=|gnss
+ConditionHost=|gnss.site.chord-observatory.ca
+RequiresMountsFor=/home/kvand /mnt/cs00/data
+After=gnss-cubevm-arch.service
+PartOf=gnss-cubevm.target
+
+[Service]
+Type=simple
+# The archiver's directory (gnss-cubevm-arch.service). Two loops on one L0 tree corrupt it: start
+# this only once cf06's gnss-cubecompact.service is stopped.
+Environment=CUBE_STAGE=/mnt/cs00/data/kvand/gnss_cube/raw_v1
+# One file read ahead and a manifest save every 4 files: ~2.2 GB with the 78 MB manifest of
+# 2026-11-03, ~2 s per file plus ~14 s per pass against one file per 5 s. The loop's defaults
+# (4, 12) take over 6 GB.
+Environment=CUBE_READERS=1 CUBE_BATCH=4
+ExecStartPre=/usr/bin/mountpoint -q /mnt/cs00/data
+ExecStartPre=/home/kvand/gnss/venv/bin/python -c "import h5py, numpy"
+ExecStartPre=/usr/bin/test -d /mnt/cs00/data/kvand/gnss_cube/raw_v1
+ExecStart=/home/kvand/gnss/kotekan/scripts/gnss/site/run_component.sh cubestage
+# A stop signals the loop alone, which finishes the running step and exits (gnss-cubecompact.service
+# says why); a backlog fold of 150 files can take tens of minutes.
+KillMode=mixed
+TimeoutStopSec=1800
+# The broker shares this host and must win. Every byte here is NFS, so no IO class applies.
+Nice=15
+CPUQuota=150%
+MemoryMax=3G
+Restart=on-failure
+RestartSec=60
+StandardOutput=append:/var/tmp/gnss-logs/cubevm_compact.log
+StandardError=inherit
+
+[Install]
+WantedBy=gnss-cubevm.target

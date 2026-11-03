@@ -161,6 +161,49 @@ def test_cube_default_port():
     check("rest     12052" in err, "cube archiver REST port defaults to 12052")
 
 
+def archive_pins(c):
+    return (
+        c["cpu_affinity"],
+        c["cube_recv"]["cpu_affinity"],
+        c["cube_write"]["cpu_affinity"],
+    )
+
+
+def test_cube_archive_cores():
+    rc, out, _ = run_gen("--base", BASE, "--node", "cx19", "--cube-archive-instance")
+    node = node_cfg()["runtime"]["cpu_affinity"]
+    check(
+        rc == 0
+        and archive_pins(yaml.safe_load(out))
+        == (node, node[:6], [node[6 % len(node)]]),
+        "the archiver's cores default to runtime.cpu_affinity (rc %d)" % rc,
+    )
+    rc, out, _ = run_gen(
+        "--base",
+        BASE,
+        "--node",
+        "cx19",
+        "--cube-archive-instance",
+        "--cube-archive-cores",
+        "4,5,6,7",
+    )
+    check(
+        rc == 0
+        and archive_pins(yaml.safe_load(out)) == ([4, 5, 6, 7], [4, 5, 6, 7], [6]),
+        "--cube-archive-cores pins the instance, bufferRecv's threads and the writer ([6] mod 4)",
+    )
+    rc, _, err = run_gen(
+        "--base",
+        BASE,
+        "--node",
+        "cx19",
+        "--cube-archive-instance",
+        "--cube-archive-cores",
+        ",",
+    )
+    check(rc != 0 and "empty list" in err, "an empty --cube-archive-cores is refused")
+
+
 def test_instance_refuses_aggregator_port():
     for flag in ("--gather-instance", "--cube-archive-instance"):
         rc, _, err = run_gen(
