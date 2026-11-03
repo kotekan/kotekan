@@ -502,6 +502,8 @@ chains:
   # same rays at a second carrier is what lets a per-band instrumental delay (tau_band) be told
   # apart from a per-satellite bias.
     gal_e5b:
+        # A GuoWang pass vetoes like a GNSS transit: this band overlaps GuoWang's 1202 lobe.
+        gw-transits: 1
         gdv-map: config/gdvmap_taua_20261030.json
         gdv-band: gal_e5b
         seed-phase-transport: true
@@ -546,6 +548,8 @@ chains:
   # loop (rrate-command, rrate-cmd-min-sig, carrier-max-hz, rrate-feed-applied); like gal_e5b
   # it adopts gps_l5's clock across bands.
     bds_b2b:
+        # A GuoWang pass vetoes like a GNSS transit: this band overlaps GuoWang's 1202 lobe.
+        gw-transits: 1
         gdv-map: config/gdvmap_taua_20261030.json
         gdv-band: bds_b2b
         presence-admit-displaced: true
@@ -581,6 +585,8 @@ chains:
   # before each refresh. With BKG down as well no daily covers today (CDDIS publishes closed days
   # only), and the chain loses its satellites 2.5 h after the last hourly record.
     glo_l3oc:
+        # A GuoWang pass vetoes like a GNSS transit: this band overlaps GuoWang's 1202 lobe.
+        gw-transits: 1
         signal: glo_l3oc
     # The IGS registry's block types decide which slots carry L3OC (K1/K1B/K1+/K2 and M+; the
     # plain GLO-M half of the constellation is FDMA-only): the PRNs it excludes are neither
@@ -641,6 +647,8 @@ chains:
         spectrum-endpoints: fleet
         dll-combiners: fleet
     bds_b3i:
+        # A GuoWang pass vetoes like a GNSS transit: this band overlaps GuoWang's 1268 lobe.
+        gw-transits: 1
         gdv-map: config/gdvmap_taua_20261030.json
         gdv-band: bds_b3i
         signal: bds_b3i
@@ -663,6 +671,8 @@ chains:
   # gps_l5's chip rate, dr-clock-adopt converts the adopted clock as a time
   # (Receiver.clock_chips_convert); taken as raw chips it would read as twice the time.
     gal_e6:
+        # A GuoWang pass vetoes like a GNSS transit: this band overlaps GuoWang's 1268 lobe (its top 5 MHz).
+        gw-transits: 1
         gdv-map: config/gdvmap_taua_20261030.json
         gdv-band: gal_e6
         signal: gal_e6

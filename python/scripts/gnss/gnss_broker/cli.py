@@ -850,13 +850,14 @@ def build_parser(description):
     ap.add_argument(
         "--gw-transits",
         type=int,
-        default=1,
-        help="nonzero (default): the transit sky also carries every GuoWang satellite's "
-        "passes near the boresight (the transits of --gw-table, code known or not), so "
-        "one crossing the beam triggers the D3 transit veto, the transit freezes and "
-        "holds and the assemblers' model-formation freeze like any GNSS satellite. A "
-        "missing or unreadable table adds none. Needs --dead-reckon, which builds the "
-        "transit sky. 0 = off.",
+        default=0,
+        help="nonzero: the transit sky also carries every GuoWang satellite's passes near "
+        "the boresight (the transits of --gw-table, code known or not), so one crossing "
+        "the beam triggers the D3 transit veto, the transit freezes and holds and the "
+        "assemblers' model-formation freeze like any GNSS satellite. Set on the chains "
+        "whose band overlaps a GuoWang lobe (1202.025 MHz +- 2.046, 1268.52 MHz +- 10.23); "
+        "no leakage outside them has been seen. A missing or unreadable table adds none. "
+        "Needs --dead-reckon, which builds the transit sky. Default 0 = off.",
     )
     ap.add_argument(
         "--boresight",
