@@ -178,7 +178,6 @@ if(FFTW_FOUND)
                 dspPfbPrototype.cpp
                 gnss/gnssChannelizedAcquire.cpp
                 gnss/gnssChannelizedReplica.cpp
-                gnss/gnssPsiTable.cpp
                 gnss/gnssSeedTransport.cpp
                 gnss/GnssChannelizedSearch.cpp
                 gnss/GnssChordVoltageTap.cpp
@@ -188,7 +187,10 @@ if(FFTW_FOUND)
                 gnss/GnssN2Project.cpp
                 gnss/GnssProjBoardTestPub.cpp)
     if(USE_CUDA)
-        target_sources(kotekan_stages PRIVATE gnss/cudaGnssChordTrack.cpp gnss/cudaGnssInject.cpp)
+        # gnssPsiTable.cpp builds the Psi tables for cudaGnssPsiSynth's kernels (it includes their
+        # CUDA header), so it is compiled with its CUDA users.
+        target_sources(kotekan_stages PRIVATE gnss/cudaGnssChordTrack.cpp gnss/cudaGnssInject.cpp
+                                              gnss/gnssPsiTable.cpp)
     endif()
     target_include_directories(kotekan_stages SYSTEM PRIVATE ${FFTW_INCLUDES})
     target_link_libraries(kotekan_stages PRIVATE ${FFTW_LIBRARIES})
