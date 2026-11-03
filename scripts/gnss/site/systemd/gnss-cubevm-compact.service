@@ -13,9 +13,8 @@ Type=simple
 # The archiver's directory (gnss-cubevm-arch.service). Two loops on one L0 tree corrupt it: the
 # loop runs on corrcal, so start this only once that one is stopped. No target pulls it in.
 Environment=CUBE_STAGE=/mnt/cs00/data/kvand/gnss_cube/raw_v1
-# One file read ahead and a manifest save every 4 files. On 2026-11-03 this still reached
-# MemoryMax: the 78 MB manifest plus the HDF5 caches of 182 open L0 day files. The loop's
-# defaults (4, 12) take over 6 GB.
+# One file read ahead and a manifest save every 4 files: ~2.3 GB at peak with 360 MB raw files
+# and the 300k-entry manifest of 2026-11-03. Memory grows with both.
 Environment=CUBE_READERS=1 CUBE_BATCH=4
 ExecStartPre=/usr/bin/mountpoint -q /mnt/cs00/data
 ExecStartPre=/home/kvand/gnss/venv/bin/python -c "import h5py, numpy"

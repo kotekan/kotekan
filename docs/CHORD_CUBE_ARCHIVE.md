@@ -15,7 +15,7 @@ tell a hole from a loss. The plan it implements is `fixtures/recording_plan_2026
 ```
 /mnt/cs00/data/kvand/gnss_cube/
   raw/gnss_cube_NNNNNNN.raw          rawFileWrite bundles, 900 frames each (~10 s of fleet)
-  l0/manifest.json                   which raw files have been folded (size, mtime, epoch)
+  l0/manifest.jsonl                  which raw files have been folded (size, mtime, epoch), a line each
   l0/<pointing>/<sender>/<YYYYMMDD>.h5      L0: every live (window, slot) cell, float32 as shipped
   rung12/<pointing>/<sender>/<YYYYMMDD>.h5  exact 12-window (~12 s) sums
   rung60/<pointing>/<sender>/<YYYYMMDD>.h5  exact 60-window (~60 s) sums
@@ -64,7 +64,7 @@ h5py) **on cf06** with absolute paths — the nodes are production trackers.
 
 - `python/scripts/gnss/gnss_cube_read.py ls|head` — the raw files, frame by frame.
 - `python/scripts/gnss/gnss_cube_compact.py`
-  - `compact` — raw → L0, idempotent through `l0/manifest.json`; only CLOSED raw files (every
+  - `compact` — raw → L0, idempotent through `l0/manifest.jsonl`; only CLOSED raw files (every
     file but the newest) unless `--include-open`. ~3400 frames/s on cf06 = ~38× real time.
   - `ls [--gaps]` — completeness per L0 file with every hole ATTRIBUTED (§5).
   - `rung --n 12|60` — L0 → exact sums per (absolute block = idx // n, slot, prn). A PRN swap

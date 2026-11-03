@@ -9,7 +9,8 @@ is stored as `uint32 metadata_size | metadata | frame` (rawFileWrite, or GnssCub
 packed form), and the frame's own header carries the maxima it was sized for, so this reader
 needs neither the generator's flags, the node config nor the frame size: the archive stays
 readable after the config changes. Packed frames (version 4, GnssCubeWrite.hpp) hold only the
-PRN slots with records and the actual bins; they are read back into the wire version's shape.
+PRN slots with records and the actual bins; they are read back into the wire version's shape,
+or kept packed with `expand=False`.
 
 What is and is not a loss. `dropped_windows` is cumulative per sender, so a rise between
 consecutive frames sizes a gap the sender made (a full output buffer). A hole in the window
@@ -108,10 +109,12 @@ def parse_header(buf):
     )
 
 
-def parse_arrays(buf, h):
-    """The five payload blocks, sliced to the actual extents (the pad is dropped here)."""
+def parse_arrays(buf, h, expand=True):
+    """The five payload blocks, sliced to the actual extents (the pad is dropped here). A packed
+    frame is read back into the wire shapes, or with expand=False kept to its live slots with
+    `slot`, each one's index among the chain's n_prn."""
     if h["version"] in CUBE_PACKED:
-        return parse_packed(buf, h)
+        return parse_packed(buf, h, expand)
     mp, mb, ne = h["max_prn"], h["max_bins"], h["n_elem"]
     np_, nb = h["n_prn"], h["n_bin"]
     o = h["header_bytes"]
@@ -148,9 +151,10 @@ def parse_arrays(buf, h):
     )
 
 
-def parse_packed(buf, h):
+def parse_packed(buf, h, expand=True):
     """A packed frame read back into parse_arrays' shapes: each live slot at its own index among
-    the chain's n_prn, zero in the slots that had no records (as the wire frame holds them)."""
+    the chain's n_prn, zero in the slots that had no records (as the wire frame holds them).
+    With expand=False, the live slots only, in the frame's order, and `slot`."""
     nl, nb, ne, np_ = h["max_prn"], h["max_bins"], h["n_elem"], h["n_prn"]
     o = h["header_bytes"]
 
@@ -178,9 +182,13 @@ def parse_packed(buf, h):
         ("n_rec", nrec, "<i4"),
         ("n_reanchor", nre, "<i4"),
     ):
-        full = np.zeros(np_, dtype)
-        full[slot] = a
-        out[name] = full
+        if expand:
+            full = np.zeros(np_, dtype)
+            full[slot] = a
+            a = full
+        out[name] = a
+    if not expand:
+        out["slot"] = slot
     for name, inner in (
         ("w", ()),
         ("energy", ()),
@@ -189,14 +197,18 @@ def parse_packed(buf, h):
         ("incoh", (ne,)),
     ):
         n = nl * nb * (ne if inner else 1)
-        full = np.zeros((np_, nb) + inner, "<f4")
-        full[slot] = take(n, "<f4", 4).reshape((nl, nb) + inner)
-        out[name] = full
+        a = take(n, "<f4", 4).reshape((nl, nb) + inner)
+        if expand:
+            full = np.zeros((np_, nb) + inner, "<f4")
+            full[slot] = a
+            a = full
+        out[name] = a
     return out
 
 
-def iter_frames(path, want_arrays=True):
-    """Yield (header, arrays|None) for every frame in one raw file.
+def iter_frames(path, want_arrays=True, expand=True):
+    """Yield (header, arrays|None) for every frame in one raw file. The arrays are views into the
+    file's buffer, which stays in memory while any of them does; `expand` is parse_arrays'.
 
     A truncated tail is normal, not an error: the archiver may be writing the newest file while
     this reads it, and a kill leaves a partial frame. Stop cleanly at the first short read; but
@@ -205,6 +217,7 @@ def iter_frames(path, want_arrays=True):
     """
     with open(path, "rb") as fh:
         blob = fh.read()
+    view = memoryview(blob)
     o, n = 0, len(blob)
     while o + 4 <= n:
         (msize,) = struct.unpack_from("<I", blob, o)
@@ -225,7 +238,7 @@ def iter_frames(path, want_arrays=True):
             raise SystemExit(f"{path}: frame at {o} claims a {fb} B length")
         if o + fb > n:
             return
-        yield h, (parse_arrays(blob[o : o + fb], h) if want_arrays else None)
+        yield h, (parse_arrays(view[o : o + fb], h, expand) if want_arrays else None)
         o += fb
 
 

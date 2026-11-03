@@ -141,6 +141,20 @@ class TestPackedFrames(unittest.TestCase):
                 np.testing.assert_array_equal(ap[k], aw[k], err_msg=k)
                 self.assertEqual(ap[k].shape, aw[k].shape, k)
 
+    def test_unexpanded_holds_the_live_slots(self):
+        rng = np.random.default_rng(3)
+        frames = [wire_frame(rng, live=(1, 2, 3, 4, 5)), wire_frame(rng, live=())]
+        wire = self.write("w.raw", [f for f, _, _ in frames])
+        packed = self.write("p.raw", [packed_frame(*f) for f in frames])
+        got_w = list(cr.iter_frames(wire))
+        got_p = list(cr.iter_frames(packed, expand=False))
+        for (hw, aw), (hp, ap) in zip(got_w, got_p):
+            live = np.nonzero(aw["n_rec"] > 0)[0]
+            np.testing.assert_array_equal(ap["slot"], live)
+            for k in aw:
+                want = aw[k] if k.startswith("freq_id") else aw[k][live]
+                np.testing.assert_array_equal(ap[k], want, err_msg=k)
+
     def test_a_packed_slot_outside_the_chain_is_refused(self):
         rng = np.random.default_rng(2)
         f = bytearray(packed_frame(*wire_frame(rng)))

@@ -9,7 +9,8 @@
         plain files only. Only live slots are kept (a slot with
         n_rec == 0 is silence, not a zero -- see gnssRecord.hpp), the pad is dropped, and the
         window's UTC is written next to its F-engine sample index. Idempotent: a manifest at
-        <ROOT>/l0/manifest.json records every raw file already folded in or refused.
+        <ROOT>/l0/manifest.jsonl records every raw file already folded in or refused (see
+        load_manifest).
     gnss_cube_compact.py rung     --n 12|60 FILE.h5 [...] --out ROOT
         L0  ->  <ROOT>/rung<n>/...: sums over n consecutive windows (absolute blocks,
         idx // n, so every sender's rungs line up in time), accumulated in float64 and stored
@@ -59,6 +60,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import gnss_cube_read as raw  # noqa: E402
 
 TOOL_VERSION = 1
+MANIFEST = "manifest.jsonl"
 L0_ROWS = (
     "idx",
     "slot",
@@ -282,6 +284,9 @@ class L0File:
 
     def add(self, h, a, utc):
         live = np.nonzero(a["n_rec"] > 0)[0]
+        # A packed frame read with expand=False holds only its live slots, each one's index in
+        # the sender's frame in `slot`; a wire frame holds every slot at its own index.
+        slots = a["slot"][live] if "slot" in a else live
         self.win["idx"].append(h["idx"])
         self.win["utc"].append(utc)
         self.win["wstart0"].append(h["wstart0"])
@@ -291,21 +296,22 @@ class L0File:
         self.win["freq_id_lo"].append(np.array(a["freq_id_lo"], dtype=np.int32))
         self.win["freq_id_hi"].append(np.array(a["freq_id_hi"], dtype=np.int32))
         self.versions.add(h["version"])
-        for p in live:
+        # The rows are copies: a view would hold the whole raw file's buffer until the flush.
+        for p, slot in zip(live, slots):
             self.rows["idx"].append(h["idx"])
-            self.rows["slot"].append(p)
+            self.rows["slot"].append(slot)
             self.rows["prn"].append(a["prn"][p])
             self.rows["n_rec"].append(a["n_rec"][p])
             self.rows["n_reanchor"].append(a["n_reanchor"][p])
             self.rows["phi0"].append(a["phi0"][p])
-            self.rows["w"].append(a["w"][p])
-            self.rows["energy"].append(a["energy"][p])
+            self.rows["w"].append(a["w"][p].copy())
+            self.rows["energy"].append(a["energy"][p].copy())
             # complex64 from the two float32 planes: re/im survive exactly (same 24-bit mantissa)
             self.rows["coh"].append(
                 a["coh_re"][p].astype(np.float32)
                 + 1j * a["coh_im"][p].astype(np.float32)
             )
-            self.rows["incoh"].append(a["incoh"][p])
+            self.rows["incoh"].append(a["incoh"][p].copy())
 
     def flush(self, source_files):
         n = len(self.win["idx"])
@@ -407,14 +413,16 @@ def prefetched(paths, readers, mbps=0.0):
     if readers <= 1:
         for p in paths:
             pace.wait(p)
-            yield p, list(raw.iter_frames(p))
+            yield p, list(raw.iter_frames(p, expand=False))
         return
     with concurrent.futures.ThreadPoolExecutor(readers) as ex:
         it = iter(paths)
         ahead = collections.deque()
         for p in it:
             pace.wait(p)
-            ahead.append((p, ex.submit(lambda q=p: list(raw.iter_frames(q)))))
+            ahead.append(
+                (p, ex.submit(lambda q=p: list(raw.iter_frames(q, expand=False))))
+            )
             if len(ahead) == readers:
                 break
         while ahead:
@@ -422,7 +430,12 @@ def prefetched(paths, readers, mbps=0.0):
             nxt = next(it, None)
             if nxt is not None:
                 pace.wait(nxt)
-                ahead.append((nxt, ex.submit(lambda q=nxt: list(raw.iter_frames(q)))))
+                ahead.append(
+                    (
+                        nxt,
+                        ex.submit(lambda q=nxt: list(raw.iter_frames(q, expand=False))),
+                    )
+                )
             yield p, fut.result()
 
 
@@ -431,18 +444,72 @@ def frame_utc(h, utc0):
 
 
 def load_manifest(root):
-    p = os.path.join(root, "l0", "manifest.json")
-    if os.path.exists(p):
-        return json.load(open(p))
-    return {}
+    """{raw file name: entry}. The manifest is a log, one JSON object per line ({"file": name,
+    ...entry}) appended as files are folded or refused, the last line for a name winning. A
+    manifest.json (the whole dict, from before the log) is read while no log exists. The text
+    after the last newline is left out: a kill mid-append tears it, and the writer may be
+    appending while another process reads."""
+    d = os.path.join(root, "l0")
+    p = os.path.join(d, MANIFEST)
+    if not os.path.exists(p):
+        old = os.path.join(d, "manifest.json")
+        return json.load(open(old)) if os.path.exists(old) else {}
+    m = {}
+    with open(p) as fh:
+        lines = fh.read().split("\n")
+    for i, line in enumerate(lines[:-1]):
+        try:
+            e = json.loads(line)
+        except ValueError:
+            raise SystemExit(f"{p}: line {i + 1} is not a manifest entry")
+        m[e.pop("file")] = e
+    return m
 
 
-def save_manifest(root, m):
-    p = os.path.join(root, "l0", "manifest.json")
-    os.makedirs(os.path.dirname(p), exist_ok=True)
-    tmp = p + ".tmp"
-    json.dump(m, open(tmp, "w"), indent=1, sort_keys=True)
-    os.replace(tmp, p)
+def manifest_lines(m):
+    return "".join(
+        json.dumps(dict(file=k, **v), sort_keys=True) + "\n" for k, v in m.items()
+    )
+
+
+def open_manifest(root):
+    """load_manifest for the one writer, with the log ready to append to: written whole from a
+    manifest.json, or cut back to its last newline after a torn append. A migrated manifest.json
+    is kept as manifest.json.migrated, and manifest.json is left holding a line that is not JSON:
+    a compactor from before the log then stops instead of folding every raw file again."""
+    d = os.path.join(root, "l0")
+    p = os.path.join(d, MANIFEST)
+    m = load_manifest(root)
+    if not os.path.exists(p):
+        os.makedirs(d, exist_ok=True)
+        with open(p + ".tmp", "w") as fh:
+            fh.write(manifest_lines(m))
+        os.replace(p + ".tmp", p)
+        old = os.path.join(d, "manifest.json")
+        if os.path.exists(old):
+            os.replace(old, old + ".migrated")
+            with open(old, "w") as fh:
+                fh.write(f"moved to {MANIFEST}\n")
+        return m
+    with open(p, "rb+") as fh:
+        n = fh.seek(0, os.SEEK_END)
+        fh.seek(max(0, n - 65536))
+        tail = fh.read()
+        nl = tail.rfind(b"\n")
+        if nl < 0 and n > len(tail):
+            raise SystemExit(f"{p}: no newline in its last {len(tail)} B")
+        end = n - len(tail) + nl + 1
+        if end < n:
+            print(f"{p}: cut a torn last line ({n - end} B)", file=sys.stderr)
+            fh.truncate(end)
+    return m
+
+
+def save_manifest(root, entries):
+    """Append entries ({name: entry}) to the log in one write."""
+    if entries:
+        with open(os.path.join(root, "l0", MANIFEST), "a") as fh:
+            fh.write(manifest_lines(entries))
 
 
 def cmd_compact(args):
@@ -453,7 +520,16 @@ def cmd_compact(args):
             f"no pointing epochs in {args.pointings}; files go under l0/unknown/",
             file=sys.stderr,
         )
-    manifest = load_manifest(args.out)
+    manifest = open_manifest(args.out)
+    unsaved = {}  # entries since the last save
+
+    def record(key, entry):
+        manifest[key] = unsaved[key] = entry
+
+    def save():
+        save_manifest(args.out, unsaved)
+        unsaved.clear()
+
     files = raw_files(args.raw, args.include_open)
     todo = []
     reskipped = 0
@@ -487,7 +563,8 @@ def cmd_compact(args):
             print(
                 f"{key}: size {prev['size']} -> {st.st_size} since it was compacted "
                 f"(--include-open earlier?). SKIPPED; to fold it again, delete its day's L0, "
-                f"remove that day's raw files from l0/manifest.json and run compact again.",
+                f"remove every l0/manifest.jsonl line naming that day's raw files and run "
+                f"compact again.",
                 file=sys.stderr,
             )
             continue
@@ -527,8 +604,8 @@ def cmd_compact(args):
         key = os.path.basename(path)
         st = os.stat(path)
         if not frames:
-            manifest[key] = dict(
-                size=st.st_size, mtime=st.st_mtime, frames=0, note="empty"
+            record(
+                key, dict(size=st.st_size, mtime=st.st_mtime, frames=0, note="empty")
             )
             continue
         # -- epoch: from the frames, gated against the file's mtime -----------------------------
@@ -539,12 +616,15 @@ def cmd_compact(args):
                 f"worse than one not dated)",
                 file=sys.stderr,
             )
-            manifest[key] = dict(
-                size=st.st_size,
-                mtime=st.st_mtime,
-                frames=len(frames),
-                refused="no utc0 in frames",
-                done=iso(time.time()),
+            record(
+                key,
+                dict(
+                    size=st.st_size,
+                    mtime=st.st_mtime,
+                    frames=len(frames),
+                    refused="no utc0 in frames",
+                    done=iso(time.time()),
+                ),
             )
             stats["refused"] += 1
             continue
@@ -557,12 +637,15 @@ def cmd_compact(args):
                 f"file) -- REFUSED",
                 file=sys.stderr,
             )
-            manifest[key] = dict(
-                size=st.st_size,
-                mtime=st.st_mtime,
-                frames=len(frames),
-                refused=f"frames carry {n_utc0} distinct utc0 (re-base inside the file)",
-                done=iso(time.time()),
+            record(
+                key,
+                dict(
+                    size=st.st_size,
+                    mtime=st.st_mtime,
+                    frames=len(frames),
+                    refused=f"frames carry {n_utc0} distinct utc0 (re-base inside the file)",
+                    done=iso(time.time()),
+                ),
             )
             stats["refused"] += 1
             continue
@@ -579,15 +662,18 @@ def cmd_compact(args):
             # Record the refusal: the verdict depends only on the file's frames and mtime, so
             # without it every pass would re-read every refused file for the same answer.
             # --redo retries, and the end-of-run line reports how many were skipped.
-            manifest[key] = dict(
-                size=st.st_size,
-                mtime=st.st_mtime,
-                frames=len(frames),
-                refused="epoch does not describe file (mtime gate)",
-                utc0=utc0,
-                utc0_source=src,
-                gap_s=gap,
-                done=iso(time.time()),
+            record(
+                key,
+                dict(
+                    size=st.st_size,
+                    mtime=st.st_mtime,
+                    frames=len(frames),
+                    refused="epoch does not describe file (mtime gate)",
+                    utc0=utc0,
+                    utc0_source=src,
+                    gap_s=gap,
+                    done=iso(time.time()),
+                ),
             )
             stats["refused"] += 1
             continue
@@ -615,21 +701,24 @@ def cmd_compact(args):
             lf.add(h, a, utc)
             stats["frames"] += 1
         batch_sources.append(key)
-        manifest[key] = dict(
-            size=st.st_size,
-            mtime=st.st_mtime,
-            frames=len(frames),
-            utc0=utc0,
-            utc0_source=src,
-            first_utc=frame_utc(frames[0][0], utc0),
-            last_utc=last_utc,
-            done=iso(time.time()),
+        record(
+            key,
+            dict(
+                size=st.st_size,
+                mtime=st.st_mtime,
+                frames=len(frames),
+                utc0=utc0,
+                utc0_source=src,
+                first_utc=frame_utc(frames[0][0], utc0),
+                last_utc=last_utc,
+                done=iso(time.time()),
+            ),
         )
         stats["files"] += 1
         if (i + 1) % args.batch == 0 or i + 1 == len(todo):
             stats["rows"] += sum(len(lf.rows["idx"]) for lf in open_files.values())
             flush_all()
-            save_manifest(args.out, manifest)
+            save()
             el = time.time() - t_start
             print(
                 f"  {i + 1}/{len(todo)} raw files, {stats['frames']} frames, "
@@ -652,7 +741,7 @@ def cmd_compact(args):
         lf.close()
     # Save unconditionally: a refused or empty file `continue`s past the batch block above, so
     # a pass that only refused would otherwise never persist its refusals.
-    save_manifest(args.out, manifest)
+    save()
     el = time.time() - t_start
     print(
         f"done: {stats['files']} raw files, {stats['frames']} frames, {stats['rows']} live rows "

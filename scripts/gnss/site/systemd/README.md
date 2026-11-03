@@ -50,8 +50,8 @@ Their logs stay where the launchers put them, `/tmp/gnss_cubearch.log` and
 ## The VM cube leg: `gnss-cubevm.target`
 
 `gnss-cubevm-arch.service`, the archiver on the gnss VM, hangs off `gnss-cubevm.target`, which is
-enabled. `gnss-cubevm-compact.service` hangs off nothing: the staging loop does not fit beside the
-stack on the VM and runs on corrcal, the one writer of the L0 tree.
+enabled. `gnss-cubevm-compact.service` hangs off nothing: the staging loop runs on corrcal, the one
+writer of the L0 tree.
 
 ## Beside them, not of them
 

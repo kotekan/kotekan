@@ -2,7 +2,7 @@
 # Beam-cube staging: the archiver writes its raw files to STAGE (cf06's local disk, whose
 # NFS writes over one 1 GbE link fell behind the fleet's inflow, 2026-10-30; or a directory
 # on cs00 from the gnss VM) and this loop folds them into L0 and compresses them. Each pass,
-# with one process writing l0/manifest.json:
+# with one process writing the manifest (l0/manifest.jsonl):
 #   1. fold every closed STAGE file into L0 on cs00 (READERS read ahead, a manifest save
 #      every BATCH files; memory grows with both), while
 #   2. a second process ships each STAGE file the manifest already records to
@@ -33,14 +33,19 @@ log() { echo "== $(date -u +%FT%TZ) $*"; }
 
 # The STAGE files the manifest records, less the newest by mtime and the highest-numbered.
 shippable() {
-    "$PY" - "$STAGE" "$ROOT/l0/manifest.json" <<'EOF'
+    "$PY" - "$STAGE" "$ROOT/l0" <<'EOF'
 import glob, json, os, sys
-stage, manifest = sys.argv[1], sys.argv[2]
+stage, l0 = sys.argv[1], sys.argv[2]
 files = sorted(glob.glob(os.path.join(stage, "*.raw")))
 if len(files) < 2:
     sys.exit(0)
 keep = {max(files, key=os.path.getmtime), files[-1]}
-done = json.load(open(manifest)) if os.path.exists(manifest) else {}
+# gnss_cube_compact.py load_manifest's rules: the text after the last newline may be torn.
+log, old = os.path.join(l0, "manifest.jsonl"), os.path.join(l0, "manifest.json")
+if os.path.exists(log):
+    done = {json.loads(line)["file"] for line in open(log).read().split("\n")[:-1]}
+else:
+    done = json.load(open(old)) if os.path.exists(old) else {}
 for f in files:
     if f not in keep and os.path.basename(f) in done:
         print(f)

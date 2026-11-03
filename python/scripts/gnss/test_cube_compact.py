@@ -70,6 +70,16 @@ def frame(idx, utc0=T0, chain=CHAIN, t=None):
     return h, a
 
 
+def packed(h, a):
+    """The frame as gnss_cube_read gives a packed one with expand=False: its live slots only,
+    each one's index in the wire frame in `slot`."""
+    live = np.nonzero(a["n_rec"] > 0)[0]
+    h = dict(h, version=4, max_prn=len(live))
+    p = {k: (v if k.startswith("freq_id") else v[live]) for k, v in a.items()}
+    p["slot"] = live.astype(np.int32)
+    return h, p
+
+
 class CompactCase(unittest.TestCase):
     def setUp(self):
         self.d = tempfile.mkdtemp(prefix="test_cube_compact-")
@@ -78,7 +88,7 @@ class CompactCase(unittest.TestCase):
         os.makedirs(self.raw)
         self.frames = {}
         self._orig = cc.raw.iter_frames
-        cc.raw.iter_frames = lambda path, want_arrays=True: list(
+        cc.raw.iter_frames = lambda path, want_arrays=True, expand=True: list(
             self.frames[os.path.basename(path)]
         )
 
@@ -327,7 +337,7 @@ class TestReadPace(unittest.TestCase):
                 fh.write(b"\0" * 1_000_000)
             self.paths.append(p)
         self._orig = cc.raw.iter_frames
-        cc.raw.iter_frames = lambda p, want_arrays=True: iter([])
+        cc.raw.iter_frames = lambda p, want_arrays=True, expand=True: iter([])
 
     def tearDown(self):
         cc.raw.iter_frames = self._orig
@@ -346,6 +356,82 @@ class TestReadPace(unittest.TestCase):
 
     def test_unpaced_reads_do_not_wait(self):
         self.assertLess(self.elapsed(2, 0.0), 0.15)
+
+
+class TestPackedFrames(CompactCase):
+    """Packed frames (expand=False) reach L0 exactly as their wire frames do: each row under its
+    slot in the sender's frame, not its place among the live slots."""
+
+    def wire_frames(self):
+        out = []
+        for i in range(3):
+            h, a = frame(i)
+            a["n_rec"][0] = 0  # slot 0 silent: the live slot is 1, packed first
+            a["incoh"] = a["incoh"] * (i + 2)
+            out.append((h, a))
+        return out
+
+    def l0_dump(self):
+        out = {}
+        for p in glob.glob(os.path.join(self.out, "l0", "**", "*.h5"), recursive=True):
+            with h5py.File(p, "r") as f:
+                out[os.path.relpath(p, self.out)] = {
+                    k: f["rows/" + k][:].tolist() for k in f["rows"]
+                }
+        return out
+
+    def test_packed_equals_wire(self):
+        self.add_raw("a.raw", self.wire_frames(), T0 + 3)
+        self.compact()
+        wire = self.l0_dump()
+        shutil.rmtree(self.out)
+        self.frames["a.raw"] = [packed(h, a) for h, a in self.frames["a.raw"]]
+        self.compact()
+        self.assertEqual(self.l0_dump(), wire)
+        self.assertEqual(set(next(iter(wire.values()))["slot"]), {1})
+
+
+class TestManifestLog(CompactCase):
+    """The manifest is a log appended at each save; a manifest.json from before it is migrated
+    once, and a torn last line is read past and cut by the next writer."""
+
+    def log(self):
+        with open(os.path.join(self.out, "l0", cc.MANIFEST)) as fh:
+            return fh.read()
+
+    def test_legacy_manifest_is_migrated(self):
+        self.seed_manifest({"old.raw": dict(size=1, mtime=1.0, frames=1)})
+        self.add_raw("a.raw", [frame(0)], T0 + 1)
+        m = self.compact()
+        self.assertEqual(sorted(m), ["a.raw", "old.raw"])
+        l0 = os.path.join(self.out, "l0")
+        self.assertTrue(os.path.exists(os.path.join(l0, "manifest.json.migrated")))
+        # a compactor from before the log stops here
+        with self.assertRaises(ValueError):
+            json.load(open(os.path.join(l0, "manifest.json")))
+        self.assertEqual(len(self.log().splitlines()), 2)
+
+    def test_saves_append(self):
+        self.add_raw("a.raw", [frame(0)], T0 + 1)
+        self.compact()
+        first = self.log()
+        self.add_raw("b.raw", [frame(1)], T0 + 2)
+        m = self.compact()
+        self.assertEqual(sorted(m), ["a.raw", "b.raw"])
+        self.assertTrue(self.log().startswith(first))
+        self.assertEqual(len(self.log().splitlines()), 2)
+
+    def test_torn_last_line(self):
+        self.add_raw("a.raw", [frame(0)], T0 + 1)
+        self.compact()
+        with open(os.path.join(self.out, "l0", cc.MANIFEST), "a") as fh:
+            fh.write('{"file": "b.raw", "fra')
+        self.assertEqual(sorted(cc.load_manifest(self.out)), ["a.raw"])
+        self.add_raw("b.raw", [frame(1)], T0 + 2)
+        m = self.compact()
+        self.assertEqual(sorted(m), ["a.raw", "b.raw"])
+        self.assertEqual(len(self.log().splitlines()), 2)
+        self.assertEqual(self.l0_rows(), 4)
 
 
 class TestFileRemovedDuringScan(CompactCase):
