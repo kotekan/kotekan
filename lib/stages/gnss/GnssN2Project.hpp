@@ -145,6 +145,30 @@
  * auto_raw_db / auto_proj_db per freq_id: the mean auto over the live block before and
  * after projection, dB of correlator units, so a spectrum of what the projection removed
  * can be drawn from the gauges (null_db is a ratio of coherent components, not of power).
+ *
+ * Lane dump. With lane_dump_buf (and lanes), the first frame of every lane_dump_period_s block
+ * of sequence numbers (so every node dumps the same frames) records, per live channel, the raw
+ * live block of the frame's first integration and every lane candidate build_lanes tested
+ * there, in order: its owner, power, coherence, hold age, track, the Gram-Schmidt verdict and
+ * the direction. The stage never waits on the dump: with no empty frame in lane_dump_buf the
+ * dump is dropped and counted (lane_dump_dropped_total). A FrameWindowGate downstream picks the
+ * windows written. Layout, little-endian, version 1:
+ *  - header, 64 bytes: int64 seq (the gate's clock), double t_utc, int32 version, n (stations),
+ *    n_ch (slots filled), max_cand, slot_bytes, lane_conj, int64 frame_bytes, int32 magic
+ *    0x454e414c ("LANE");
+ *  - n_ch slots of slot_bytes = 64 + 4 n (n + 1) + max_cand (160 + 8 n):
+ *    - 64 bytes: int32 freq_id, n_cand (recorded), n_cand_total, n_local (the board's; the
+ *      fleet lanes follow), k (the lane basis built); double mean_auto (at byte 24);
+ *    - the raw block's upper triangle (i <= j, row-major), complex<float>;
+ *    - max_cand records of 160 + 8 n bytes: char owner[64]; double power, coh, held_s, t_utc,
+ *      los[3], los_rate[3]; int32 src (0 board, 1 fleet), xfer, verdict (1 added, 0 duplicate,
+ *      -1 not tested: the budget was spent); float new_frac (energy outside the span, -1 if not
+ *      tested); complex<float> v[n], the candidate as tested (stations axis, after lane_conj).
+ *
+ * @buffer lane_dump_buf  Optional. The dump frames, no metadata.
+ * @conf lane_dump_period_s Double. Seconds between dump frames (2.0), in whole frames.
+ * @conf lane_dump_max_cand Int. Candidates recorded per channel (96); lane_dump_buf's frame must
+ *                          hold a slot per live channel.
  */
 class GnssN2Project : public kotekan::Stage {
 public:
@@ -209,12 +233,30 @@ private:
         double power, coh;
         bool held = false; ///< the assembler's held direction (ProjEntry::held_s > 0)
         std::vector<cd> v; ///< on the stations axis, conjugated per lane_conj
+        int verdict = -1;  ///< 1 added, 0 duplicate, -1 not tested
+        double new_frac = -1.0;
+        // Kept only for the lane dump
+        int src = 0, xfer = 0;
+        double held_s = 0.0, t_utc = 0.0;
+        double los[3] = {0.0, 0.0, 0.0}, los_rate[3] = {0.0, 0.0, 0.0};
+        std::string owner;
     };
     std::vector<LaneCand> cand;
     /// Read the board for local channel f, build `lanes` from the fresh, coherent entries in
     /// power order, then the fleet lanes that cover the channel; with @p diag also the two
-    /// Rayleigh quotients of the strongest one against the raw block V. Returns the basis size.
-    int build_lanes(int f, int freq_id, const cd* V, double now_s, bool diag);
+    /// Rayleigh quotients of the strongest one against the raw block V. With @p dump, keep each
+    /// candidate's owner and track for dump_channel. Returns the basis size.
+    int build_lanes(int f, int freq_id, const cd* V, double now_s, bool diag, bool dump = false);
+
+    // Lane dump
+    Buffer* dump_buf = nullptr;
+    const double lane_dump_period_s;
+    const int lane_dump_max_cand;
+    size_t dump_cand_bytes = 0, dump_slot_bytes = 0;
+    int dump_slots = 0;
+    size_t cand_n_local = 0; ///< build_lanes: the board's candidates (the fleet's follow)
+    /// Write channel f's slot: the raw block V and build_lanes' candidates.
+    void dump_channel(uint8_t* slot, int f, const cd* V) const;
 
     // Fleet lanes (docs/CHORD_FLEET_LANES.md)
     const bool fleet_lanes;

@@ -928,6 +928,8 @@ def test_manual_mask_reaches_the_node_config():
             "6122-6185,6395-6594",
             "--dtv-subtract-freq-ids",
             "2720-2735",
+            "--lane-dump-period-s",
+            "2",
         ]
         with stubbed(_HY):
             exc, out, err = run_main(argv)
@@ -969,6 +971,30 @@ def test_manual_mask_reaches_the_node_config():
         "assemblers hold a lane 300 s from a mean of coherence >= 0.25 within 0.8 of the "
         "slot's best, call it captured below cos^2 0.4, and publish live from 0.08",
     )
+    for g in (0, 1):
+        p = cfg["gnss_n2_project"]["proj_%d" % g]
+        n = len(p["stations"])
+        n_ch = len(
+            [f for f in p["live_freq_ids"] if f % 16 == p["live_freq_ids"][0] % 16]
+        )
+        raw = cfg.get(p.get("lane_dump_buf"), {})
+        gate = cfg.get("gnss%d_lanedump_gate" % g, {})
+        sink = cfg.get("gnss%d_lanedump_sink" % g, {})
+        check(
+            p.get("lane_dump_period_s") == 2.0
+            and p.get("lane_dump_max_cand") == 96
+            and raw.get("frame_size", 0)
+            >= 64 + (64 + 4 * n * (n + 1) + 96 * (160 + 8 * n))
+            and (raw.get("frame_size", 0) - 64)
+            % (64 + 4 * n * (n + 1) + 96 * (160 + 8 * n))
+            == 0
+            and gate.get("in_bufs") == [p["lane_dump_buf"]]
+            and sink.get("in_buf") == gate.get("out_bufs", [None])[0]
+            and sink.get("base_dir", "").endswith("/lanedump"),
+            "--lane-dump-period-s: gpu%d's GnssN2Project writes lane_dump_buf, a whole number "
+            "of channel slots, through a FrameWindowGate into a rawFileWrite (%d channels)"
+            % (g, n_ch),
+        )
     bd = [
         c
         for c in cfg["gnss0_n2dual"]["commands"]
