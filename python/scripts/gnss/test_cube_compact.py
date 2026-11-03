@@ -15,6 +15,7 @@ import os
 import shutil
 import sys
 import tempfile
+import time
 import unittest
 from argparse import Namespace
 
@@ -311,6 +312,40 @@ class TestOrderAndReaders(CompactCase):
         shutil.rmtree(self.out)
         self.compact(readers=3)
         self.assertEqual(self.l0_dump(), one)
+
+
+class TestReadPace(unittest.TestCase):
+    """--max-read-mbps holds the reads to an average: each file starts once the bytes before it
+    fit the budget."""
+
+    def setUp(self):
+        self.d = tempfile.mkdtemp(prefix="test_cube_compact-")
+        self.paths = []
+        for i in range(3):
+            p = os.path.join(self.d, "f%d.raw" % i)
+            with open(p, "wb") as fh:
+                fh.write(b"\0" * 1_000_000)
+            self.paths.append(p)
+        self._orig = cc.raw.iter_frames
+        cc.raw.iter_frames = lambda p, want_arrays=True: iter([])
+
+    def tearDown(self):
+        cc.raw.iter_frames = self._orig
+        shutil.rmtree(self.d, ignore_errors=True)
+
+    def elapsed(self, readers, mbps):
+        t0 = time.time()
+        got = [p for p, _ in cc.prefetched(self.paths, readers, mbps)]
+        self.assertEqual(got, self.paths)
+        return time.time() - t0
+
+    def test_paced_reads_take_their_budget(self):
+        # 3 x 1 MB at 10 MB/s: the third file starts no earlier than 0.2 s.
+        for readers in (1, 3):
+            self.assertGreaterEqual(self.elapsed(readers, 10.0), 0.19, readers)
+
+    def test_unpaced_reads_do_not_wait(self):
+        self.assertLess(self.elapsed(2, 0.0), 0.15)
 
 
 class TestFileRemovedDuringScan(CompactCase):

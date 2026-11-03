@@ -15,10 +15,11 @@
 # The archiver's file stem must be one no other raw directory has used
 # (gen_chord_gnss_config.py --cube-archive-file-name): the manifest keys by basename.
 # Stop = `systemctl --user stop`: TERM is taken between steps, after the running fold.
-#   cube_staging_loop.sh PY TOOL STAGE ROOT [BACKLOG] [PAUSE_S] [READERS] [BATCH]
+#   cube_staging_loop.sh PY TOOL STAGE ROOT [BACKLOG] [PAUSE_S] [READERS] [BATCH] [MAX_READ_MBPS]
+# MAX_READ_MBPS (default 0, unpaced) holds each fold's raw reads to that average.
 set -u
 PY=$1; TOOL=$2; STAGE=$3; ROOT=$4; BACKLOG=${5:-100}; PAUSE=${6:-30}; READERS=${7:-4}
-BATCH=${8:-12}
+BATCH=${8:-12}; MBPS=${9:-0}
 ZST=$ROOT/raw_zst
 LOW_GB=300
 stopping=0
@@ -70,7 +71,7 @@ while [ "$stopping" = 0 ]; do
     if [ "$(ls "$STAGE"/*.raw 2>/dev/null | wc -l)" -ge 2 ]; then
         log "compact $STAGE"
         "$PY" -u "$TOOL" compact --raw "$STAGE" --out "$ROOT" --newest-first \
-            --readers "$READERS" --batch "$BATCH" 2>&1
+            --readers "$READERS" --batch "$BATCH" --max-read-mbps "$MBPS" 2>&1
     fi
     # A TERM interrupts the first wait; the second lets the shipper finish its file.
     wait "$shipper"
@@ -85,7 +86,7 @@ while [ "$stopping" = 0 ]; do
     if [ "$BACKLOG" -gt 0 ]; then
         log "compact backlog $ROOT/raw (up to $BACKLOG)"
         "$PY" -u "$TOOL" compact --raw "$ROOT/raw" --out "$ROOT" --newest-first \
-            --max-files "$BACKLOG" --readers 2 --batch "$BATCH" 2>&1
+            --max-files "$BACKLOG" --readers 2 --batch "$BATCH" --max-read-mbps "$MBPS" 2>&1
     fi
     [ "$stopping" = 0 ] || break
     sleep "$PAUSE" & wait $! || true

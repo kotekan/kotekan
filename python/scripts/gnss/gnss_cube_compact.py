@@ -382,18 +382,36 @@ def l0_path(out, pid, snd, day, nb, ne, claimed):
     return os.path.join(d, "%s_%db%de.h5" % (day, nb, ne))
 
 
-def prefetched(paths, readers):
+class ReadPace:
+    """Holds the raw reads to a long-run average of `mbps` MB/s (0: unpaced): each file waits
+    until the bytes started so far fit the budget, so the archive host's link keeps room."""
+
+    def __init__(self, mbps):
+        self.rate = mbps * 1e6
+        self.t0 = time.time()
+        self.started = 0
+
+    def wait(self, path):
+        if self.rate > 0:
+            time.sleep(max(0.0, self.started / self.rate - (time.time() - self.t0)))
+        self.started += os.path.getsize(path)
+
+
+def prefetched(paths, readers, mbps=0.0):
     """(path, frames) for each path in order, with up to `readers` files read and parsed ahead
     on threads. Reading the raw store is the bound (a 356 MB file takes ~17 s cold, its fold
     ~2 s), and parallel reads raise its throughput."""
+    pace = ReadPace(mbps)
     if readers <= 1:
         for p in paths:
+            pace.wait(p)
             yield p, list(raw.iter_frames(p))
         return
     with concurrent.futures.ThreadPoolExecutor(readers) as ex:
         it = iter(paths)
         ahead = collections.deque()
         for p in it:
+            pace.wait(p)
             ahead.append((p, ex.submit(lambda q=p: list(raw.iter_frames(q)))))
             if len(ahead) == readers:
                 break
@@ -401,6 +419,7 @@ def prefetched(paths, readers):
             p, fut = ahead.popleft()
             nxt = next(it, None)
             if nxt is not None:
+                pace.wait(nxt)
                 ahead.append((nxt, ex.submit(lambda q=nxt: list(raw.iter_frames(q)))))
             yield p, fut.result()
 
@@ -500,7 +519,9 @@ def cmd_compact(args):
         return n
 
     file_days = set()  # the days the last folded file wrote
-    for i, (path, frames) in enumerate(prefetched(todo, args.readers)):
+    for i, (path, frames) in enumerate(
+        prefetched(todo, args.readers, getattr(args, "max_read_mbps", 0.0))
+    ):
         key = os.path.basename(path)
         st = os.stat(path)
         if not frames:
@@ -1031,6 +1052,13 @@ def main():
         type=int,
         default=1,
         help="raw files read and parsed ahead on threads (the raw store is read-bound)",
+    )
+    p.add_argument(
+        "--max-read-mbps",
+        type=float,
+        default=0.0,
+        help="hold the raw reads to this average, in MB/s (0: as fast as the store allows), to "
+        "leave room on a link the archive host shares",
     )
     p.add_argument(
         "--redo",
