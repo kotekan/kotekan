@@ -44,8 +44,12 @@ SEARCH_PORT_BASE = 11040
 #: Manifest node keys that are fleet facts, not generator flags (gen_fleet strips them).
 FLEET_KEYS = ("role",)
 #: Manifest `common:` keys read by site services, not the generator (gen_fleet strips them):
-#: the lane relay's transfer table (scripts/gnss/site/lane_relay.py).
-SITE_KEYS = ("fleet-lane-transfer",)
+#: the lane relay's transfer tables and gate (scripts/gnss/site/lane_relay.py).
+SITE_KEYS = (
+    "fleet-lane-transfer",
+    "fleet-lane-transfer-bright",
+    "fleet-lane-transfer-bright-db",
+)
 #: role values. A node without `role` is "gnss".
 ROLES = ("gnss", "off")
 #: The value that asks for a derived endpoint list in the chains yaml.

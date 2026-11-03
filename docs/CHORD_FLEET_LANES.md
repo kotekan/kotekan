@@ -82,6 +82,13 @@ Generator `--fleet-lanes` (fleet yaml `fleet-lanes: true`): GnssN2Project gets `
 table is `fleet-lane-transfer` in the fleet yaml's common block, read by the relay only.
 The target channels must be in `n2-project-live-freq-ids`, as for the local transfers.
 
+`fleet-lane-transfer-bright` (same form) holds the targets for a close pass: a lane whose
+power is `fleet-lane-transfer-bright-db` (default 15) above the median of its band's lanes in
+the same cycle also goes there, on every GPU including the one that measured it. Those targets
+are the sidelobes of wideband signals (B3I and L3OC at 10.23 Mcps, GLONASS L2's P code) that a
+satellite near the boresight spreads far past its own lane's channels; without them only the
+eigen path removes it there. No table, no change.
+
 ## Rollout
 
 Done 2026-10-29 (branch kv/fleet-lanes, two commits on 0ca8ce6e8; binary
