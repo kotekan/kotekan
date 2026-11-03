@@ -19,6 +19,15 @@ from gnss_broker.sky import brdc_predict, nearest_boresight
 from gnss_broker import timebase
 from gnss_broker import prnmap
 
+# The geometry post's cadence (--post-sat-geometry). A GNSS satellite takes many minutes to
+# cross the assemblers' 4-8 deg transit cones (elem_proj_deg, elem_sum_shared_freeze_deg, the
+# formation cone), a GuoWang (LEO) satellite under a minute. While one is within
+# _LEO_NEAR_DEG of boresight (the GuoWang table's transit radius) the post goes every
+# _LEO_POST_S, every cycle at the 2 s interval, so its "_bore" arms the freezes on time.
+_POST_S = 30.0
+_LEO_POST_S = 1.5
+_LEO_NEAR_DEG = 10.0
+
 
 def _refresh_capable(ctx):
     """Re-read the signal-capability set from the cached IGS registry every
@@ -130,19 +139,22 @@ def stage_almanac_predict(ctx):
             # Whether the rows carry an azimuth: the raw row's length, since _row pads element
             # 5 with 0.0 and every pred tuple is long enough to look as if it did.
             _has_az = len(next(iter(raw.values()), ())) > 5
-            # Geometry feed (--post-sat-geometry): every ~30 s, post each satellite's az/el to
-            # the record assemblers' /set_sat_geometry for the element steering
+            # Geometry feed (--post-sat-geometry): every _POST_S, or _LEO_POST_S near a GuoWang
+            # transit, post each satellite's az/el to the record assemblers' /set_sat_geometry
+            # for the element steering
             # (elem_positions_enu in the node config). With the rates and epoch (pred elements
             # 6-8, BRDC path) the post is [az, el, az_rate, el_rate, t_utc] and the assemblers
             # follow the track between posts; without them it is a bare [az, el] snapshot,
             # which they hold. The endpoints are --dll-combiners with n2combine -> n2assemble.
             # An assembler without steering acknowledges the post and drops it. TLE rows carry
             # no azimuth, so nothing is posted rather than every satellite at due north.
+            _leo = nearest_boresight(getattr(ctx, "transit_pd", None), sys="W")
+            _every = _LEO_POST_S if _leo and _leo[0] < _LEO_NEAR_DEG else _POST_S
             if (
                 _has_az
                 and getattr(ctx.args, "post_sat_geometry", 0)
                 and ctx.dll_combiners
-                and ctx.t0 - ctx.geom_post_t[0] >= 30.0
+                and ctx.t0 - ctx.geom_post_t[0] >= _every
             ):
                 ctx.geom_post_t[0] = ctx.t0
                 _body = {}

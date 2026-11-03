@@ -173,7 +173,7 @@ class TestTransitSky(_Case):
             )
             for got in (dr.dr_clock_transit(ctx), dr._in_transit_cone(ctx)):
                 self.assertEqual(got and got[1], key)
-            bore = _bore_post(pd).get("_bore")
+            bore = _posts([(1000.0, pd)])[0][1].get("_bore")
             if key is None:
                 self.assertGreater(bore[0], 5.0)
             else:
@@ -187,8 +187,47 @@ class TestTransitSky(_Case):
             self.assertEqual(list(_sky(self.eph, t, missing)), list(want))
 
 
-def _bore_post(pd):
-    """The body stage_almanac_predict posts to the assemblers, with `pd` as the transit sky."""
+def _row(sys_, sep_deg):
+    """A transit-sky row `sep_deg` north of the boresight, on its meridian."""
+    return {(sys_, 7): {"az": BORE[0], "el": BORE[1] + sep_deg, "health": 0}}
+
+
+class TestPostCadence(_Case):
+    """The geometry post goes every 30 s, and every cycle (2 s) while a GuoWang satellite is
+    within 10 deg of boresight, so the assemblers' freezes arm within a cycle of its entry."""
+
+    CYCLES = range(1000, 1062, 2)
+
+    def _times(self, sky_):
+        """The cycles that post, with one transit sky throughout."""
+        return [t for t, _ in _posts([(t, sky_) for t in self.CYCLES])]
+
+    def test_gnss_satellites_keep_the_30_s_cadence(self):
+        for sep in (0.5, 9.0, 40.0):
+            self.assertEqual(self._times(_row("E", sep)), [1000, 1030, 1060])
+        self.assertEqual(self._times({}), [1000, 1030, 1060])
+
+    def test_a_guowang_satellite_near_boresight_posts_every_cycle(self):
+        sky_ = {**_row("E", 30.0), **_row("W", 9.0)}
+        self.assertEqual(self._times(sky_), list(self.CYCLES))
+        self.assertEqual(self._times(_row("W", 11.0)), [1000, 1030, 1060])
+
+    def test_a_guowang_pass_arms_the_freeze_within_a_cycle(self):
+        """Across the boresight at 0.34 deg/s (1100 km): the first "_bore" inside the 6 deg
+        freeze cone is posted within one cycle of the entry, where the 30 s cadence alone
+        could post it up to 30 s late."""
+        posts = _posts(
+            [(t, _row("W", abs(15.0 - 0.34 * (t - 1000)))) for t in self.CYCLES]
+        )
+        entry = 1000 + 9.0 / 0.34
+        armed = min(t for t, b in posts if b["_bore"][0] < 6.0)
+        self.assertLessEqual(armed - entry, 2.0)
+        self.assertEqual([t for t, b in posts if b["_bore"][0] > 10.0], [1000])
+
+
+def _posts(cycles):
+    """[(t0, body)]: what stage_almanac_predict posts to the assemblers over `cycles`, one
+    (t0, transit sky) per cycle."""
     posts = []
     ctx = types.SimpleNamespace(
         args=types.SimpleNamespace(
@@ -213,25 +252,27 @@ def _bore_post(pd):
         alm_now=lambda: datetime.fromtimestamp(T_GW, tz=timezone.utc),
         dll_combiners=["http://cx19:12048/n2combine"],
         geom_post_t=[0.0],
-        transit_pd=pd,
+        transit_pd=None,
         publisher=None,
         cb=types.SimpleNamespace(ema=None, value=0.0),
         best={},
         det_fresh={},
-        t0=1000.0,
+        t0=None,
         utc0_sample0=0.0,
     )
     row = (-1200.0, 0.4, 45.0, 2.1e7, 1e-5, 120.0, 0.01, -0.02, 1.7e9)
     saved = (almanac.brdc_predict, almanac._post, almanac._log_rl, almanac.timebase)
     almanac.brdc_predict = lambda *a: {5: row}
-    almanac._post = lambda url, body, timeout=5.0: posts.append(body)
+    almanac._post = lambda url, body, timeout=5.0: posts.append((ctx.t0, body))
     almanac._log_rl = lambda key, msg, every_s=10.0: None
     almanac.timebase = types.SimpleNamespace(observe=lambda c, log_rl: None)
     try:
-        almanac.stage_almanac_predict(ctx)
+        for t0, pd in cycles:
+            ctx.t0, ctx.transit_pd = t0, pd
+            almanac.stage_almanac_predict(ctx)
     finally:
         almanac.brdc_predict, almanac._post, almanac._log_rl, almanac.timebase = saved
-    return posts[0]
+    return posts
 
 
 if __name__ == "__main__":

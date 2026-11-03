@@ -716,13 +716,15 @@ def boresight_sep_deg(el_deg, az_deg, el0=None, az0=None):
     )
 
 
-def nearest_boresight(pd, el0=None, az0=None):
+def nearest_boresight(pd, el0=None, az0=None, sys=None):
     """(separation_deg, (sys, prn)) for the visible satellite closest to boresight, or None.
 
     Pooled over every constellation on purpose; `pd` (the transit sky) carries all of them.
     One satellite near boresight rails the 4+4b quantiser for every chain, since they share
     the nibbles, so a per-constellation answer would clear the chain carrying the bright
-    satellite and leave the others contaminated while looking like clean controls.
+    satellite and leave the others contaminated while looking like clean controls. `sys`
+    limits the search to one constellation, for a question about its satellites alone (the
+    almanac's geometry post cadence), never for a transit gate.
     """
     if not BORESIGHT_KNOWN:
         return None
@@ -730,6 +732,8 @@ def nearest_boresight(pd, el0=None, az0=None):
     az0 = BORESIGHT_AZ_DEG if az0 is None else az0
     best = None
     for key, v in (pd or {}).items():
+        if sys is not None and key[0] != sys:
+            continue
         try:
             el, az = v["el"], v["az"]
         except (TypeError, KeyError):

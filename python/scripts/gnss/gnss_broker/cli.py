@@ -778,7 +778,8 @@ def build_parser(description):
         "--post-sat-geometry",
         type=int,
         default=0,
-        help="nonzero: every ~30 s, post this constellation's above-horizon "
+        help="nonzero: every ~30 s (every 1.5 s, at most once a cycle, while a GuoWang "
+        "satellite is within 10 deg of boresight), post this constellation's above-horizon "
         "satellites' az/el (with rates and epoch on the BRDC path) to each record "
         "assembler's /set_sat_geometry for the per-element steering, together with the "
         "nearest-to-boresight separation for the assemblers' model-formation freeze. "
