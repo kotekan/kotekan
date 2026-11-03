@@ -35,7 +35,8 @@ instances the chain manifest lists. Keep that list and
 `gnss-cubearch.service` (the beam-cube archiver, `cubearch_up.sh --check` as its pre-flight) and
 `gnss-cubecompact.service` (the compactor loop, which finishes its in-flight pass on a stop)
 carry `ConditionHost=cf06` and hang off `gnss-cube.target`, not the stack target. The install
-script copies them with the rest. The target is enabled, and the condition keeps it to cf06.
+script copies them with the rest. The condition keeps the target to cf06, where it has been
+disabled since 2026-11-03 for the VM leg below.
 Enabling it stops nothing started by hand, so stop the by-hand archiver and compactor first:
 two compactors on one L0 tree corrupt it.
 
@@ -45,6 +46,12 @@ systemctl --user daemon-reload && systemctl --user enable --now gnss-cube.target
 
 Their logs stay where the launchers put them, `/tmp/gnss_cubearch.log` and
 `/tmp/gnss_cubecompact.log` on cf06.
+
+## The VM cube leg: `gnss-cubevm.target`
+
+`gnss-cubevm-arch.service`, the archiver on the gnss VM, hangs off `gnss-cubevm.target`, which is
+enabled. `gnss-cubevm-compact.service` hangs off nothing: the staging loop does not fit beside the
+stack on the VM and runs on corrcal, the one writer of the L0 tree.
 
 ## Beside them, not of them
 
