@@ -94,6 +94,11 @@ _CHAINS = {
     # carrier, carrier_hz + k * FDMA_SPACING_HZ (prn_carrier_hz). The node takes k per slot from
     # its config; the tracker code tiles the 10 ms Manchester halves of a 20 ms bit.
     "glo_l2of": ("GLO_L2OF", "GLO_L2OF_MC", None),
+    # GuoWang (China's LEO broadband constellation, #227): the 1202.025 MHz BPSK code, one 2 ms
+    # frame of [1 ms code | 1 ms data] with the data half zeroed in the replica. PRN = G2' code
+    # phase + 1 (1..2047), and codes are shared between satellites. No broadcast ephemeris: the
+    # geometry is the TLE table of scripts/gnss/site/gw_ephem_table.py.
+    "gw_1202": ("GW_1202", None, None),
 }
 
 # Chains whose satellites are separated by carrier, and the channel spacing (glonassCACode.hpp
@@ -266,6 +271,7 @@ class SignalDef(object):
         "BDS": "BeiDou",
         "GLO": "GLONASS",
         "SBAS": "SBAS",
+        "GW": "GuoWang",
     }
 
     @property
