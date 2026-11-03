@@ -51,12 +51,16 @@ def short_name(name):
     return name.replace("HULIANWANG", "").strip()
 
 
-def separation_deg(sat, site, t, bore):
-    """Boresight separation (deg) of `sat` at each time of the skyfield Time `t`. Share one `t`
-    across satellites: skyfield keeps its Earth-orientation terms, the bulk of the cost."""
+def separation_deg(sat, site, t, bore, el_min=-90.0):
+    """Boresight separation (deg) of `sat` at each time of the skyfield Time `t`, 180 where it
+    is below el_min. Share one `t` across satellites: skyfield keeps its Earth-orientation
+    terms, the bulk of the cost."""
     alt, az, _ = (sat - site).at(t).altaz()
     cosang = gp.enu_unit(az.degrees, alt.degrees) @ bore
-    return [math.degrees(math.acos(max(-1.0, min(1.0, c)))) for c in cosang]
+    return [
+        math.degrees(math.acos(max(-1.0, min(1.0, c)))) if e >= el_min else 180.0
+        for c, e in zip(cosang, alt.degrees)
+    ]
 
 
 def segments(unix, sep, sep_deg, pad_s):
@@ -119,9 +123,10 @@ def build(
     pad_s=60.0,
     coarse=10.0,
     theta_unknown_s=0.0,
+    el_min=-90.0,
 ):
     """(records, unknown): table records for the satellites in `db` (name -> (G2' phase, theta_s
-    or None)) that pass within sep_deg of the boresight in [t_start, t_end] (unix), and the passes
+    or None)) that pass within sep_deg of the boresight above el_min in [t_start, t_end] (unix), and the passes
     of the others. A record's clk_s is -theta: the code starts theta after each UTC 2 ms
     boundary, so the broker's code-phase model takes it as the satellite clock; theta_unknown_s
     where the satellite's is not measured."""
@@ -134,7 +139,7 @@ def build(
     records, unknown = [], []
     for sat in sats:
         name = short_name(sat.name)
-        sep = separation_deg(sat, site, t, bore)
+        sep = separation_deg(sat, site, t, bore, el_min)
         segs = segments(unix, sep, sep_deg, pad_s)
         if not segs:
             continue
@@ -281,6 +286,12 @@ def main(argv=None):
     ap.add_argument(
         "--sep-deg", type=float, default=25.0, help="pass radius about boresight"
     )
+    ap.add_argument(
+        "--el-min",
+        type=float,
+        default=-90.0,
+        help="deg: pass segments only above this elevation (the transits are not cut)",
+    )
     ap.add_argument("--step-s", type=float, default=10.0, help="table grid")
     ap.add_argument(
         "--pad-s", type=float, default=60.0, help="segment padding each side"
@@ -331,6 +342,7 @@ def main(argv=None):
         a.pad_s,
         a.coarse_s,
         theta_unknown_s,
+        a.el_min,
     )
     records, cut = one_per_prn(records)
     # The extra TLEs are optional: an unreadable file costs its satellites, not the table.
@@ -356,6 +368,7 @@ def main(argv=None):
         tle=tle,
         tle_mtime_unix=os.path.getmtime(tle),
         sep_deg=a.sep_deg,
+        el_min_deg=a.el_min,
         step_s=a.step_s,
         known=sorted(db),
         records=records,
