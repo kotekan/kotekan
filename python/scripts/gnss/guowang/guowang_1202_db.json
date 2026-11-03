@@ -256,5 +256,12 @@
    "ref_input": 116,
    "drift_ns_s": 3.03
   }
- }
+ },
+ "no_sky": [
+  {
+   "start": "2026-11-03T16:34:50Z",
+   "end": null,
+   "note": "analog chains off for site work through the BC working day (gnss-main, from the broker log); end set when recv1 returns"
+  }
+ ]
 }
