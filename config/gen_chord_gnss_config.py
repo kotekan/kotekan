@@ -2264,8 +2264,8 @@ def build_cube_archive_instance(cfg, args, port):
     lands the frames, bundled, under CUBE_ARCHIVE_DIR.
 
     Its own instance, separate from the gather and the search aggregator, so that restarting
-    either never leaves holes in the record. Moving it is --cube-host on the nodes; its own cores
-    are runtime.cpu_affinity, which has no override flag.
+    either never leaves holes in the record. Moving it is --cube-host on the nodes, plus
+    --cube-archive-cores if the new host lacks the default cores.
 
     Raw frames, not a typed file format: each frame is self-describing (version, absolute
     window index, wstart, the sender's <host>/<stage> address, gpu, each bin's freq_ids, each
@@ -2278,7 +2278,16 @@ def build_cube_archive_instance(cfg, args, port):
     frame count from the file size and can start anywhere.
     """
     rt = cfg["runtime"]
-    cores = rt["cpu_affinity"]
+    # runtime.cpu_affinity (config/chord_gnss_node.yaml) is a CHORD node's core map; on a host
+    # without those cores pass --cube-archive-cores: the pin is a required key, so a wrong core
+    # is an EINVAL per stage.
+    cores = (
+        [int(c) for c in args.cube_archive_cores.split(",") if c.strip() != ""]
+        if getattr(args, "cube_archive_cores", None)
+        else rt["cpu_affinity"]
+    )
+    if not cores:
+        raise SystemExit("--cube-archive-cores parsed to an empty list")
     n_elem = live_element_count(cfg["array"])
     frame_bytes = cube_frame_bytes(CUBE_MAX_PRN, CUBE_MAX_BINS, n_elem)
     out = {
@@ -3574,6 +3583,15 @@ def main():
         help="file name stem of the archiver's raw files (<stem>_NNNNNNN.raw). The compactor "
         "keys its manifest by basename, so a directory that starts empty needs a stem no "
         "other directory has used: continue_numbering starts it at 0000000",
+    )
+    ap.add_argument(
+        "--cube-archive-cores",
+        help="logical CPUs the archiver instance may use, comma-separated "
+        "(--cube-archive-instance). Default: runtime.cpu_affinity from "
+        "config/chord_gnss_node.yaml, a CHORD node's core map, which another host may "
+        "lack; as with --gather-cores, a core that does not exist fails the stage's pin "
+        "with EINVAL. The list is used as the built-in one is (the first six for "
+        "bufferRecv's threads, then [6] modulo its length for rawFileWrite).",
     )
     ap.add_argument(
         "--gather-instance",

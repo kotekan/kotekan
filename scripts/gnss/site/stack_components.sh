@@ -81,11 +81,11 @@ gnss_chain_rf() {          # gnss_chain_rf <chain> -> "chain sys carrier chip co
 }
 
 gnss_components() { echo "broker gather aggregator viewer obs rail"; }   # the VM's stack
-gnss_cube_components() { echo "cubearch cubecompact"; }                      # cf06's cube leg
+gnss_cube_components() { echo "cubearch cubecompact cubestage"; }            # the cube leg
 
 # ── the definitions ────────────────────────────────────────────────────────────────────────
 gnss_component() {
-    local name=${1:?gnss_component <broker|gather|aggregator|viewer|obs|rail|cubearch|cubecompact>}
+    local name=${1:?gnss_component <broker|gather|aggregator|viewer|obs|rail|cubearch|cubecompact|cubestage>}
     GNSS_CWD=""
     # The interface preflight's role for a kotekan that run_component.sh starts here (its
     # config is GNSS_EXEC[2]); empty for the rest. cubearch_up.sh --check runs the archiver's.
@@ -203,8 +203,20 @@ gnss_component() {
                    "$GNSS_K/python/scripts/gnss/gnss_cube_compact.py"
                    "${CUBE_RAW:-$root/raw}" "$root" "${CUBE_COMPACT_PERIOD:-300}")
         ;;
+    cubestage)
+        # The staging loop (cube_staging_loop.sh says what a pass does) on the archiver's
+        # directory CUBE_STAGE: fold into L0, ship to raw_zst, then up to CUBE_BACKLOG files of
+        # the old raw backlog. CUBE_READERS and CUBE_BATCH set the fold's memory. One L0
+        # writer: never beside cubecompact on the same root.
+        local root=${CUBE_ROOT:-/mnt/cs00/data/kvand/gnss_cube}
+        GNSS_EXEC=("$GNSS_K/scripts/gnss/site/cube_staging_loop.sh" "$GNSS_VENV/bin/python"
+                   "$GNSS_K/python/scripts/gnss/gnss_cube_compact.py"
+                   "${CUBE_STAGE:?cubestage needs CUBE_STAGE}" "$root"
+                   "${CUBE_BACKLOG:-150}" "${CUBE_PAUSE:-30}" "${CUBE_READERS:-4}"
+                   "${CUBE_BATCH:-12}")
+        ;;
     *)
-        echo "stack_components: unknown component '$name' (have: $(gnss_components) cubearch cubecompact)" >&2
+        echo "stack_components: unknown component '$name' (have: $(gnss_components) $(gnss_cube_components))" >&2
         return 1 ;;
     esac
 }

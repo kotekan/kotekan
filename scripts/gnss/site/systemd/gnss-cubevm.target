@@ -1,0 +1,13 @@
+[Unit]
+Description=CHORD GNSS beam-cube leg on the gnss VM: archiver + staging loop
+Documentation=file:///home/kvand/gnss/kotekan/scripts/gnss/site/cubearch_up.sh
+# The gnss VM only, and both services say so too (gnss-cube.target says why). The nodes send
+# to it once their manifest's cube-host is the VM. Never beside cf06's gnss-cube.target on one
+# L0 tree: the move is the archiver first, then cf06's loop drained and stopped, then
+#   systemctl --user enable --now gnss-cubevm.target
+ConditionHost=|gnss
+ConditionHost=|gnss.site.chord-observatory.ca
+Wants=gnss-cubevm-arch.service gnss-cubevm-compact.service
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,36 @@
+[Unit]
+Description=CHORD GNSS beam-cube archiver on the gnss VM (bufferRecv :11070 -> rawFileWrite on cs00)
+Documentation=file:///home/kvand/gnss/kotekan/scripts/gnss/site/cubearch_up.sh
+# This host only (see gnss-cubevm.target). The archiver of gnss-cubearch.service under its own
+# name, so that cf06's leg can drain while this one runs.
+ConditionHost=|gnss
+ConditionHost=|gnss.site.chord-observatory.ca
+# The binary and config are on the NFS home; the archive is on cs00, mounted here at
+# /mnt/cs00/data.
+RequiresMountsFor=/home/kvand /mnt/cs00/data
+Wants=network-online.target
+After=network-online.target remote-fs.target
+PartOf=gnss-cubevm.target
+
+[Service]
+Type=simple
+# Generated with gen_chord_gnss_config.py --cube-archive-cores 6-11 (the gather and the
+# aggregator are pinned to 0-5) and --cube-archive-dir straight onto cs00.
+Environment=GNSS_CUBEARCH_CFG=/home/kvand/gnss/kotekan/config/generated/chord_gnss_cubearch_vm.yaml
+# Without the mount the archive directory is a path on the VM's root disk, which the archive
+# (~780 GB/day) fills in hours, under the broker.
+ExecStartPre=/usr/bin/mountpoint -q /mnt/cs00/data
+ExecStartPre=/home/kvand/gnss/kotekan/scripts/gnss/site/cubearch_up.sh --check /home/kvand/gnss/kotekan/config/generated/chord_gnss_cubearch_vm.yaml
+ExecStart=/home/kvand/gnss/kotekan/scripts/gnss/site/run_component.sh cubearch
+# The broker shares this host and must win. Judge the caps by
+# kotekan_buffer_recv_dropped_frame_total: the senders drop rather than block.
+Nice=5
+CPUQuota=200%
+MemoryMax=2G
+Restart=on-failure
+RestartSec=30
+StandardOutput=append:/var/tmp/gnss-logs/cubevm_arch.log
+StandardError=inherit
+
+[Install]
+WantedBy=gnss-cubevm.target
