@@ -71,7 +71,9 @@ L0_ROWS = (
     "coh",
     "incoh",
 )
-DEFAULT_POINTINGS = os.path.normpath(
+# The checkout's own pointings file, or GNSS_CUBE_POINTINGS: a copy of this script run from outside
+# a checkout must name the live file, or every row would land in l0/unknown/.
+DEFAULT_POINTINGS = os.environ.get("GNSS_CUBE_POINTINGS") or os.path.normpath(
     os.path.join(
         os.path.dirname(os.path.abspath(__file__)),
         "..",
@@ -1097,6 +1099,15 @@ def main():
     p.add_argument("--pointings", default=DEFAULT_POINTINGS)
     p.set_defaults(fn=cmd_verify)
     args = ap.parse_args()
+    # A missing pointings file files every row under l0/unknown/: acceptable when named on purpose
+    # (--pointings), never as the silent default.
+    if getattr(args, "pointings", None) == DEFAULT_POINTINGS and not os.path.exists(
+        DEFAULT_POINTINGS
+    ):
+        raise SystemExit(
+            f"no pointings file at {DEFAULT_POINTINGS}: set GNSS_CUBE_POINTINGS or pass "
+            f"--pointings (a missing file named that way files rows under l0/unknown/)"
+        )
     return args.fn(args)
 
 
