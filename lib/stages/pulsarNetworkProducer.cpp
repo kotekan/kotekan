@@ -2,7 +2,7 @@
 
 #include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.hpp"         // for Buffer, allocate_new_metadata_object, mark_frame_full
-#include "chimeMetadata.hpp"  // for set_first_packet_recv_time, set_fpga_seq_num, set_stream_id
+#include "chordMetadata.hpp"  // for set_first_packet_recv_time, set_fpga_seq_num, set_stream_id
 #include "kotekanLogging.hpp" // for INFO
 #include "visUtil.hpp"        // for frameID, modulo
 
@@ -59,11 +59,11 @@ void PulsarNetworkProducer::main_thread() {
             break;
 
         out_buf->allocate_new_metadata_object(frame_id);
-        set_fpga_seq_num(out_buf, frame_id, seq_num);
-        set_stream_id(out_buf, frame_id, stream_id);
+        get_chord_metadata(out_buf, frame_id)->set_fpga_seq_num(seq_num);
+        get_chord_metadata(out_buf, frame_id)->set_stream_id(stream_id);
 
         gettimeofday(&now, nullptr);
-        set_first_packet_recv_time(out_buf, frame_id, now);
+        get_chord_metadata(out_buf, frame_id)->set_first_packet_recv_time(now);
 
         // put some data into the frame.
         assert(samples_per_dataset % 4 == 0 && "samples_per_dataset must be a multiple of 4");
