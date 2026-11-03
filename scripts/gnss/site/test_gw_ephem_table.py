@@ -144,6 +144,56 @@ class TestTable(unittest.TestCase):
         )
         self.assertEqual(len(gw.segments(unix, sep, 25.0, 20.0)), 1)
 
+    def test_transits_cover_every_second_inside_the_radius(self):
+        """DIGUI-79's code plays no part: its transit is keyed by catalogue number, covers
+        every second it spends within the radius, and reads back through load_gw_table and
+        predict_all on skyfield's track. The code-keyed records are unchanged beside it."""
+        tr = gw.transits([self.sat], self.ts, T_PASS - 900.0, T_PASS + 900.0, 10.0)
+        self.assertEqual(len(tr), 1)
+        r = tr[0]
+        self.assertEqual((r["name"], r["catnum"], r["dt"]), ("DIGUI-79", 65311, 30.0))
+        self.assertNotIn("prn", r)
+        self.assertLess(r["min_sep_deg"], 1.0)
+        unix = [T_PASS - 120.0 + k for k in range(241)]
+        bore = gp.enu_unit(gp.BORESIGHT["az"], gp.BORESIGHT["el"])
+        sep = gw.separation_deg(self.sat, self.site, gp.ts_unix(self.ts, unix), bore)
+        inside = [u for u, s in zip(unix, sep) if s < 10.0]
+        self.assertGreater(len(inside), 30)
+        self.assertLessEqual(r["t0_gpst"], ge.gpst_of_utc(inside[0]))
+        self.assertGreaterEqual(r["t1_gpst"], ge.gpst_of_utc(inside[-1]))
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "gw.json")
+            with open(path, "w") as fh:
+                json.dump(dict(records=self.records, transits=tr), fh)
+            eph = ge.load_gw_table(path, transits=True)
+            self.assertEqual(list(ge.load_gw_table(path)), [("W", 2028)])
+        self.assertEqual(list(eph), [("W", 65311)])
+        for u, s in [(u, s) for u, s in zip(unix, sep) if s < 10.0][::7]:
+            g = ge.predict_all(
+                eph, gp.SITE["lat"], gp.SITE["lon"], gp.SITE["h"], u, mask_deg=-90.0
+            )[("W", 65311)]
+            c = gp.enu_unit(g["az"], g["el"]) @ bore
+            got = math.degrees(math.acos(max(-1.0, min(1.0, c))))
+            self.assertAlmostEqual(got, s, delta=0.01)
+
+
+class TestMain(unittest.TestCase):
+    def test_an_unreadable_extra_tle_still_writes_the_table(self):
+        skyfield()
+        with tempfile.TemporaryDirectory() as d:
+            tle, out = os.path.join(d, "gw.tle"), os.path.join(d, "gw.json")
+            with open(tle, "w") as fh:
+                fh.write("\n".join(TLE) + "\n")
+            gw.main(
+                ["--tle", tle, "--extra-tle", os.path.join(d, "none.tle")]
+                + ["--hours", "0.1", "--out", out]
+            )
+            with open(out) as fh:
+                doc = json.load(fh)
+        self.assertEqual(doc["transit_deg"], 10.0)
+        self.assertIn("transits", doc)
+        self.assertIn("records", doc)
+
 
 class TestDatabase(unittest.TestCase):
     def test_every_satellite_has_a_phase_and_an_epoch(self):
