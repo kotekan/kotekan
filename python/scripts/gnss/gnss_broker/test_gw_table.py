@@ -205,5 +205,66 @@ class RangeAccelerationTest(unittest.TestCase):
         self.assertLess(abs(v5[("W", 5)]["range_m"] - quad), 5.0)
 
 
+class DarkProbeTest(unittest.TestCase):
+    def _stage(self, raw):
+        from gnss_broker import almanac
+
+        args = types.SimpleNamespace(
+            almanac=True,
+            doppler_sign=1,
+            lat=LAT,
+            lon=LON,
+            alt=ALT,
+            carrier_hz=1202.025e6,
+            mask_deg=0.0,
+            post_sat_geometry=0,
+            bias_det_fresh_s=30.0,
+            bias_min_snr=10.0,
+            bias_min_sats=2,
+            probe_dark=True,
+            probe_dark_prns=[1, 2, 3],
+        )
+        ctx = types.SimpleNamespace(
+            args=args,
+            capable_t=None,
+            capable=None,
+            brdc_alm={},
+            almanac_sats=[],
+            alm_sys="W",
+            alm_min_prn=1,
+            alm_now=lambda: None,
+            dll_combiners=[],
+            geom_post_t=[0.0],
+            transit_pd=None,
+            publisher=None,
+            cb=types.SimpleNamespace(ema=None, value=0.0),
+            best={},
+            det_fresh={},
+            t0=1000.0,
+        )
+        saved = (almanac.brdc_predict, almanac._log_rl, almanac.timebase)
+        almanac.brdc_predict = lambda *a: raw
+        almanac._log_rl = lambda key, msg, every_s=10.0: None
+        almanac.timebase = types.SimpleNamespace(observe=lambda c, log_rl: None)
+        try:
+            almanac.stage_almanac_predict(ctx)
+        finally:
+            almanac.brdc_predict, almanac._log_rl, almanac.timebase = saved
+        return ctx
+
+    def test_dark_prns_are_probes_with_an_empty_sky(self):
+        """Between passes the table predicts nothing, and the dark PRNs are still probe rows."""
+        ctx = self._stage({})
+        self.assertEqual(ctx.pred, {})
+        self.assertEqual(sorted(ctx.pred_dark), [1, 2, 3])
+        self.assertEqual(ctx.pred_dark[1][2], -90.0)
+
+    def test_a_predicted_prn_is_not_dark(self):
+        row = (-1000.0, -120.0, 60.0, 1.3e6, 0.0, 180.0)
+        ctx = self._stage({2: row})
+        self.assertEqual(sorted(ctx.pred), [2])
+        self.assertEqual(sorted(ctx.pred_dark), [1, 3])
+
+
 if __name__ == "__main__":
     unittest.main()

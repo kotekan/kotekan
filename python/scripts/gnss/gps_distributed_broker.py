@@ -1854,7 +1854,13 @@ def main(argv=None, rx=None, publisher=None):
         # --signal-capability: signal-free at any elevation) ahead of the deepest; prnmap's
         # desired_map orders its probe slots by the same prnmap.probe_order.
         _ctx.probe_set = set()
-        if args.noise_probes > 0 and args.almanac and _ctx.pred:
+        # A --probe-dark-prns chain (GuoWang) keeps its probes between passes, when no
+        # satellite is predicted.
+        if (
+            args.noise_probes > 0
+            and args.almanac
+            and (_ctx.pred or (args.probe_dark_prns and _ctx.pred_dark))
+        ):
             _dark = (_ctx.pred_dark or {}) if args.probe_dark else {}
             _cands = prnmap.probe_order(
                 {p: v[2] for p, v in _ctx.pred.items()},

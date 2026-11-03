@@ -121,6 +121,12 @@ def stage_almanac_predict(ctx):
 
             ctx.pred = {p: _row(v) for p, v in raw.items()}
             ctx.pred_dark = {p: _row(v) for p, v in raw_dark.items()}
+            # --probe-dark-prns: codes no satellite of this chain transmits (GuoWang: G2' phases
+            # no satellite in the library carries), signal-free at any time. They have no
+            # orbit, so their rows are zero Doppler at el -90; a probe's Doppler is arbitrary.
+            for p in getattr(ctx.args, "probe_dark_prns", ()):
+                if p not in ctx.pred:
+                    ctx.pred_dark[p] = (0.0, 0.0, -90.0, 0.0, 0.0, 0.0)
             # Whether the rows carry an azimuth: the raw row's length, since _row pads element
             # 5 with 0.0 and every pred tuple is long enough to look as if it did.
             _has_az = len(next(iter(raw.values()), ())) > 5

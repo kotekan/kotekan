@@ -1023,6 +1023,16 @@ def build_parser(description):
     # A satellite with ephemeris that the registry says cannot broadcast this signal
     # (--signal-capability) is signal-free at any elevation: a noise probe that never sets.
     ap.add_argument(
+        "--probe-dark-prns",
+        type=lambda s: [int(x) for x in s.split(",") if x.strip()],
+        default=[],
+        help="comma-separated PRNs no satellite of this chain transmits, kept as dark noise "
+        "probes with no orbit (zero Doppler, el -90) under --probe-dark, also between "
+        "passes. For GuoWang (gw_1202), whose ephemeris table holds only satellites near "
+        "the boresight, these are the only probes: G2' code phases no satellite in the "
+        "library carries. The nodes must hold slots for them (the manifest PRN list).",
+    )
+    ap.add_argument(
         "--probe-dark",
         action="store_true",
         help="take noise probes first from the dark satellites: those with ephemeris "
