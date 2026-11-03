@@ -15,6 +15,11 @@ carrier NCO, seed, trim, power averages, element cal), since none of it describe
 satellite. Changes are therefore damped: elevation hysteresis (desired_map), a held satellite
 keeps its slot, and at most one whole-map post per --prn-reconfig-interval-s.
 
+--prn-rank boresight ranks by the least predicted separation from the dish boresight over the
+next --prn-rank-lookahead-s instead of by elevation (sep_ahead), with the same hysteresis in
+separation: for a chain whose satellites are seen only while they cross the beam (GuoWang's
+LEO satellites), so a slot is held before a satellite arrives and kept until it has passed.
+
 --prn-reconfig defaults to off (the stage does nothing; the replay fixtures' argv predates the
 flag); every live chain runs `apply` except sbas_l5, whose PRN list is fixed and which runs
 `read`: the map is read back and published for the probe selector, and never posted.
@@ -28,11 +33,13 @@ nothing else changes.
 @author Keith Vanderlinde
 """
 
+import math
 import os
 import re
 import time
 
-from gnss_broker.transport import _get, _post, _log, _log_rl, log_tag
+from gnss_broker import sky
+from gnss_broker.transport import _get, _post, _log, _log_rl, axis_now_utc, log_tag
 
 
 class PrnMapState(object):
@@ -589,7 +596,10 @@ def stage_prn_membership(ctx):
                 ),
                 every_s=600.0,
             )
-    if not el:
+    # Under --prn-rank boresight an empty sky now is the normal gap between passes, and the
+    # look-ahead may still see a satellite coming; sep_ahead guards the outage case instead.
+    bore = a.prn_rank == "boresight"
+    if not el and not bore:
         return  # no prediction this cycle: say nothing rather than evict the whole map
     # --probe-dark: satellites with ephemeris that cannot broadcast this signal, kept as noise
     # probes (probe_order). Not in `el`, so without this they would read as dead slots.
@@ -600,24 +610,34 @@ def stage_prn_membership(ctx):
     )
 
     held = set(cur)
+    tag = log_tag() or a.signal
 
     # ---- 3. Who wants a slot, and who can give one up -----------------------------------
+    # The rank decides who is up: elevation, or under --prn-rank boresight the separation
+    # from the boresight, negated so that desired_map's rule (higher is better, admitted at
+    # or above `admit`, kept until below `evict`) serves both.
+    rank, admit, evict = el, a.prn_reconfig_admit_deg, a.prn_reconfig_evict_deg
+    if bore:
+        sep = sep_ahead(ctx, _incap)
+        if sep is None:
+            return
+        rank = {p: -s for p, s in sep.items()}
+        admit, evict = -a.prn_rank_admit_sep_deg, -a.prn_rank_evict_sep_deg
     # Unslotted satellites above the admit mask, for the heartbeat's "waiting for a slot"
     # count only; desired_map() decides. There a slot holding a real satellite is given up
     # only for one above the admit mask or a noise probe (a swap costs a re-acquisition),
     # while a dead slot costs nothing to fill and goes to any satellite.
-    want = [p for p in el if p not in held and el[p] >= a.prn_reconfig_admit_deg]
+    want = [p for p in rank if p not in held and rank[p] >= admit]
 
     # Heartbeat: every other branch speaks only when it has something to propose, and
     # nothing to do is the normal state, so without it an armed, idle stage looks the same as
     # one that is not running.
-    tag = log_tag() or a.signal
     if now - st.beat_t >= a.prn_reconfig_heartbeat_s:
         st.beat_t = now
-        n_dead = sum(1 for p in held if p not in el and p not in dark)
-        n_down = sum(1 for p in held if p in el and el[p] < a.prn_reconfig_evict_deg)
+        n_dead = sum(1 for p in held if p not in rank and p not in dark)
+        n_down = sum(1 for p in held if p in rank and rank[p] < evict)
         _log(
-            "PRN MAP %s: %s, %d slots, %d nodes agree | %d dead, %d below %.0f deg, "
+            "PRN MAP %s: %s, %d slots, %d nodes agree | %d dead, %d %s, "
             "%d satellite(s) waiting for a slot | %d swap(s) so far%s"
             % (
                 tag,
@@ -626,7 +646,12 @@ def stage_prn_membership(ctx):
                 len(st.maps),
                 n_dead,
                 n_down,
-                a.prn_reconfig_evict_deg,
+                (
+                    "farther than %.1f deg from boresight within %.0f s"
+                    % (a.prn_rank_evict_sep_deg, a.prn_rank_lookahead_s)
+                    if bore
+                    else "below %.0f deg" % a.prn_reconfig_evict_deg
+                ),
                 len(want),
                 st.swaps,
                 (" | last error: %s" % st.err) if st.err else "",
@@ -635,24 +660,33 @@ def stage_prn_membership(ctx):
     # ---- 3a. The whole map, every cycle ------------------------------------------------
     # One statement of intent (all satellites up plus the noise probes), re-evaluated each
     # cycle, with no hold timers: a PRN with no ephemeris is dead now, and the hysteresis is
-    # in elevation (desired_map), so a broker restart loses no state the decision needs.
+    # in the rank (desired_map), so a broker restart loses no state the decision needs.
     n_probe = max(0, int(getattr(a, "noise_probes", 0) or 0))
     # The hysteresis band must be a band. With admit <= evict a satellite at the threshold
     # is admitted and evicted on alternate cycles, each flap a cold acquisition that looks
     # like a satellite that cannot be tracked low. Checked here, where the numbers are used.
-    if a.prn_reconfig_admit_deg <= a.prn_reconfig_evict_deg:
+    if admit <= evict:
         _log_rl(
             "prnmap-hyst",
-            "PRN MAP %s: --prn-reconfig-admit-deg %.1f is not ABOVE "
-            "--prn-reconfig-evict-deg %.1f, so there is no hysteresis band and a "
-            "satellite at the threshold will flap in and out of its slot, paying a cold "
-            "acquisition each time. Fix the pair; the map is left alone this cycle."
-            % (tag, a.prn_reconfig_admit_deg, a.prn_reconfig_evict_deg),
+            "PRN MAP %s: %s, so there is no hysteresis band and a satellite at the "
+            "threshold will flap in and out of its slot, paying a cold acquisition each "
+            "time. Fix the pair; the map is left alone this cycle."
+            % (
+                tag,
+                (
+                    "--prn-rank-admit-sep-deg %.1f is not BELOW --prn-rank-evict-sep-deg "
+                    "%.1f" % (a.prn_rank_admit_sep_deg, a.prn_rank_evict_sep_deg)
+                    if bore
+                    else "--prn-reconfig-admit-deg %.1f is not ABOVE "
+                    "--prn-reconfig-evict-deg %.1f"
+                    % (a.prn_reconfig_admit_deg, a.prn_reconfig_evict_deg)
+                ),
+            ),
             every_s=300.0,
         )
         return
     want_map, unplaced = desired_map(
-        cur, el, n_probe, a.prn_reconfig_admit_deg, a.prn_reconfig_evict_deg, dark=dark
+        cur, el, n_probe, admit, evict, dark=dark, rank=rank
     )
     moved = [i for i in range(len(cur)) if want_map[i] != cur[i]]
     if unplaced:
@@ -665,9 +699,7 @@ def stage_prn_membership(ctx):
             % (
                 tag,
                 len(unplaced),
-                ", ".join(
-                    "PRN %d el %+.0f" % (p, el.get(p, -99.0)) for p in unplaced[:6]
-                ),
+                ", ".join(_rank_txt(p, el, rank, bore) for p in unplaced[:6]),
             ),
             every_s=600.0,
         )
@@ -681,8 +713,73 @@ def stage_prn_membership(ctx):
     # and the map is never half-applied.
     if now - st.last_swap_t < a.prn_reconfig_interval_s:
         return
-    _apply_map(ctx, st, cur, want_map, moved, _why, el, now)
+    _new = ", ".join(_rank_txt(want_map[i], el, rank, bore) for i in moved[:6])
+    _apply_map(ctx, st, cur, want_map, moved, _why, _new, now)
     return
+
+
+def _rank_txt(p, el, rank, bore):
+    """A PRN and what ranked it, for the log: its elevation, or its least separation."""
+    if bore:
+        return "PRN %d sep %.1f" % (p, -rank.get(p, -99.0))
+    return "PRN %d el %+.0f" % (p, el.get(p, -99.0))
+
+
+# Spacing of the look-ahead's predictions. Near boresight a LEO satellite moves 0.3-0.7 deg/s,
+# so the sampled minimum misses the closest approach by at most a few degrees.
+RANK_STEP_S = 10.0
+
+
+def sep_ahead(ctx, incap):
+    """{prn: least separation from the boresight, deg, over [now, now + --prn-rank-lookahead-s]}
+    for every satellite of this chain predicted in that window, or None (logged) when it cannot
+    be predicted: the boresight unknown, or no ephemeris.
+
+    A satellite predicted only later in the window is a candidate too, so its slot is held
+    before it arrives. The predictions are predict_all's, as brdc_predict makes them for
+    ctx.pred, on this chain's records (constellation, PRN floor, capability) only."""
+    a = ctx.args
+    tag = log_tag() or a.signal
+    el0, az0 = sky.BORESIGHT_EL_DEG, sky.BORESIGHT_AZ_DEG
+    if not sky.BORESIGHT_KNOWN or el0 is None or az0 is None:
+        _log_rl(
+            "prnmap-nobore",
+            "PRN MAP %s: --prn-rank boresight, but the boresight is unknown -- the map is "
+            "left alone." % tag,
+            every_s=600.0,
+        )
+        return None
+    alm = ctx.brdc_alm
+    eph = alm.get("eph") if alm else None
+    if not eph:
+        _log_rl(
+            "prnmap-noeph",
+            "PRN MAP %s: --prn-rank boresight, but there is no ephemeris to predict from "
+            "-- the map is left alone." % tag,
+            every_s=600.0,
+        )
+        return None
+    capable = ctx.capable
+    recs = {
+        k: v
+        for k, v in eph.items()
+        if k[0] == ctx.alm_sys
+        and k[1] >= ctx.alm_min_prn
+        and (capable is None or k[1] in capable)
+        and k[1] not in incap
+    }
+    # The almanac stage's epoch for ctx.pred.
+    t_now = (axis_now_utc(ctx) or ctx.alm_now()).timestamp()
+    n = max(0, int(math.ceil(a.prn_rank_lookahead_s / RANK_STEP_S)))
+    sep = {}
+    for k in range(n + 1):
+        t = t_now + min(k * RANK_STEP_S, a.prn_rank_lookahead_s)
+        pa = alm["mod"].predict_all(recs, a.lat, a.lon, a.alt, t, mask_deg=-90.0)
+        for (_s, p), v in pa.items():
+            d = sky.boresight_sep_deg(v["el"], v["az"], el0, az0)
+            if d < sep.get(p, 181.0):
+                sep[p] = d
+    return sep
 
 
 def probe_order(el, dark=(), held=()):
@@ -703,12 +800,16 @@ def probe_order(el, dark=(), held=()):
     return list(dict.fromkeys(dark + deep))
 
 
-def desired_map(cur, el, n_probe, admit_deg, evict_deg, dark=()):
+def desired_map(cur, el, n_probe, admit_deg, evict_deg, dark=(), rank=None):
     """The map the chain should hold: every satellite worth tracking, plus the noise probes.
 
     Wanted: every satellite up (admitted at >= `admit_deg`, a held one kept until it falls
     below `evict_deg`), then `n_probe` noise probes in probe_order: the `dark` PRNs
     (--probe-dark; not in `el`), then the deepest below -15 deg.
+
+    `rank` ({prn: value}, higher is better; default `el`) is what "up" and the thresholds are
+    judged on and what orders the slots to reuse; a PRN not in it is dead. The probes are
+    always chosen on elevation, as the broker's probe selector chooses them.
 
     Returns (want_map, unplaced). `want_map` is `cur` with as much of the wanted set placed as
     there are slots; `unplaced` is whoever did not fit, best first, which the caller must
@@ -721,11 +822,16 @@ def desired_map(cur, el, n_probe, admit_deg, evict_deg, dark=()):
     Hysteresis: without it a satellite at the horizon flaps in and out every cycle, each flap
     a re-acquisition. The caller refuses admit_deg <= evict_deg.
     """
+    rank = el if rank is None else rank
     held = set(cur)
     # Wanted: everything up (with hysteresis), then the deepest below -15 deg as probes.
     up = sorted(
-        (p for p, e in el.items() if e >= admit_deg or (p in held and e >= evict_deg)),
-        key=lambda p: -el[p],
+        (
+            p
+            for p, e in rank.items()
+            if e >= admit_deg or (p in held and e >= evict_deg)
+        ),
+        key=lambda p: -rank[p],
     )
     probes = probe_order(el, dark, held)[:n_probe]
     want = list(dict.fromkeys(up + probes))  # ordered, de-duplicated: up wins ties
@@ -735,7 +841,7 @@ def desired_map(cur, el, n_probe, admit_deg, evict_deg, dark=()):
     # slot we still want.
     free = sorted(
         (i for i, p in enumerate(cur) if p not in want),
-        key=lambda i: (cur[i] in el, el.get(cur[i], -91.0)),
+        key=lambda i: (cur[i] in rank, rank.get(cur[i], -91.0)),
     )
     want_map = list(cur)
     for i, prn in zip(free, place):
@@ -750,9 +856,10 @@ def desired_map(cur, el, n_probe, admit_deg, evict_deg, dark=()):
     # Trading it for another unwanted satellite gains nothing and costs a cold acquisition,
     # and with one satellite left unslotted the two would trade places every interval.
     if len(place) < len(free):
-        spare = [i for i in free[len(place) :] if cur[i] not in el]
+        spare = [i for i in free[len(place) :] if cur[i] not in rank]
         rest = sorted(
-            (p for p in el if p not in want and p not in want_map), key=lambda p: -el[p]
+            (p for p in rank if p not in want and p not in want_map),
+            key=lambda p: -rank[p],
         )
         for i, prn in zip(spare, rest):
             want_map[i] = prn
@@ -829,10 +936,10 @@ def _at_hop(ctx, a, now):
         return None
 
 
-def _apply_map(ctx, st, cur, want_map, moved, why, el, now):
+def _apply_map(ctx, st, cur, want_map, moved, why, new, now):
     """POST the whole map to every producer with one deadline, then to the followers without
     it. One post moves any number of slots, so the nodes cross once and the map is never
-    half-applied."""
+    half-applied. `new` names the satellites moved in, for the log."""
     a = ctx.args
     tag = log_tag() or a.signal
     st.last_swap_t = now
@@ -879,7 +986,7 @@ def _apply_map(ctx, st, cur, want_map, moved, why, el, now):
     st.poll_t = 0.0
     _log(
         "PRN MAP %s: %s -- posted to %d/%d node(s)%s%s, %s. Every moved slot acquires COLD: "
-        "expect them dark for a minute or two. New satellites at el %s."
+        "expect them dark for a minute or two. New satellites: %s."
         % (
             tag,
             why,
@@ -890,6 +997,6 @@ def _apply_map(ctx, st, cur, want_map, moved, why, el, now):
             ("all crossing together at hop %d" % at_hop)
             if at_hop is not None
             else "UNSCHEDULED (no axis) -- the nodes will cross on different frames",
-            ", ".join("%+.0f" % el.get(want_map[i], -99.0) for i in moved[:6]),
+            new,
         )
     )

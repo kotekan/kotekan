@@ -1077,6 +1077,47 @@ def build_parser(description):
         "the slot can then go to a satellite that wants one",
     )
     ap.add_argument(
+        "--prn-rank",
+        choices=["elevation", "boresight"],
+        default="elevation",
+        help="what --prn-reconfig apply ranks satellites by. elevation (default): "
+        "--prn-reconfig-admit-deg and --prn-reconfig-evict-deg. boresight: the least "
+        "angular separation from the dish boresight predicted over the next "
+        "--prn-rank-lookahead-s, for a chain whose satellites are seen only while they "
+        "cross the beam (GuoWang's LEO satellites): a satellite predicted within "
+        "--prn-rank-admit-sep-deg is wanted, and a slot's satellite keeps it until it "
+        "is predicted to stay beyond --prn-rank-evict-sep-deg for the whole look-ahead. "
+        "A satellite predicted only later in the look-ahead is a candidate too. The "
+        "noise probes are still the deepest below -15 deg elevation. While the "
+        "boresight is unknown (--boresight none, or not read yet) the map is left "
+        "alone.",
+    )
+    ap.add_argument(
+        "--prn-rank-admit-sep-deg",
+        type=float,
+        default=5.0,
+        help="--prn-rank boresight: a satellite predicted within this separation from "
+        "the boresight, deg, during the look-ahead is wanted. Must be below "
+        "--prn-rank-evict-sep-deg: the gap is the hysteresis band (with no gap the map "
+        "is left alone and the fault logged).",
+    )
+    ap.add_argument(
+        "--prn-rank-evict-sep-deg",
+        type=float,
+        default=10.0,
+        help="--prn-rank boresight: a slot's satellite keeps it until it is predicted to "
+        "stay farther than this from the boresight, deg, for the whole look-ahead",
+    )
+    ap.add_argument(
+        "--prn-rank-lookahead-s",
+        type=float,
+        default=300.0,
+        help="--prn-rank boresight: how far ahead the separation is predicted, s, in 10 s "
+        "steps. It must cover --prn-reconfig-interval-s, the read-back sweep "
+        "(prn_reconfig_poll_s) and a cold acquisition, so a satellite holds its slot "
+        "before it reaches the beam.",
+    )
+    ap.add_argument(
         "--fit-gap-s",
         type=float,
         default=16.0,

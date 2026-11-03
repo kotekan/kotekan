@@ -13,7 +13,9 @@ What is pinned:
   * two unwanted satellites never trade a slot (the map is a fixed point, not a flip-flop);
   * a node that left the fleet's map (a restart, a missed post) is put back on it, alone and
     once per interval; a split with no reference -- no majority, nothing this broker posted
-    -- or one still mid-crossing changes nothing (nothing here is per-node).
+    -- or one still mid-crossing changes nothing (nothing here is per-node);
+  * under --prn-rank boresight the same rules hold in separation over the look-ahead, so an
+    approaching satellite holds a slot before it arrives and keeps it until it has passed.
 
 @author Keith Vanderlinde
 """
@@ -21,10 +23,11 @@ What is pinned:
 import os
 import re
 import sys
+from datetime import datetime, timezone
 
 import yaml
 
-from gnss_broker import prnmap, signals
+from gnss_broker import prnmap, signals, sky
 
 
 _fails = []
@@ -52,6 +55,10 @@ class Args(object):
         )
         self.noise_probes = 0
         self.signal = "GAL_E5A_Q_CS"
+        self.prn_rank = "elevation"
+        self.prn_rank_admit_sep_deg = 5.0
+        self.prn_rank_evict_sep_deg = 10.0
+        self.prn_rank_lookahead_s = 300.0
         self.__dict__.update(kw)
 
 
@@ -121,21 +128,279 @@ def run_cycle(ctx, t):
     prnmap.stage_prn_membership(ctx)
 
 
+BORE_AZ, BORE_EL = 180.0, 62.7  # the dishes' boresight (dish_coelev_deg -27.3)
+T0 = 1000.0  # the boresight tests' first cycle
+
+
+class FakeEphemeris(object):
+    """predict_all over straight tracks along the boresight's meridian: {(sys, prn): (t0, t1,
+    x0, v)}, predicted for t0 <= t <= t1 at az 180 and el 62.7 + x0 + v * (t - T0), so the
+    separation from the boresight is |x0 + v * (t - T0)| deg."""
+
+    @staticmethod
+    def predict_all(eph, lat, lon, alt, t, mask_deg=0.0):
+        out = {}
+        for key, (t0, t1, x0, v) in eph.items():
+            if t0 <= t <= t1:
+                out[key] = {"el": BORE_EL + x0 + v * (t - T0), "az": BORE_AZ}
+        return out
+
+
+def still(sep_deg):
+    """A satellite parked sep_deg up the meridian from the boresight, always predicted."""
+    return (0.0, 1e18, sep_deg, 0.0)
+
+
+class BoreCtx(Ctx):
+    """A --prn-rank boresight chain on constellation W, its ephemeris a FakeEphemeris of
+    `tracks` ({prn: track})."""
+
+    def __init__(self, slots, tracks, **kw):
+        kw.setdefault("prn_rank", "boresight")
+        kw.setdefault("noise_probes", 3)  # common: in the chains yaml
+        kw.setdefault("prn_reconfig_interval_s", 120.0)
+        kw.setdefault("signal", "GW_1202")
+        Ctx.__init__(self, slots, {}, t0=T0, lat=49.32, lon=-119.62, alt=528.4, **kw)
+        self.brdc_alm = {
+            "mod": FakeEphemeris,
+            "eph": {("W", p): v for p, v in tracks.items()},
+        }
+        self.alm_sys, self.alm_min_prn, self.capable = "W", 1, None
+
+    def alm_now(self):
+        return datetime.fromtimestamp(self.t0, tz=timezone.utc)
+
+
+def bore_cycle(ctx, t, eph=None):
+    """run_cycle, with ctx.pred made from the tracks at t (or from `eph` when the chain's own
+    ephemeris is withheld), as the almanac stage would."""
+    tracks = eph if eph is not None else ctx.brdc_alm["eph"]
+    ctx.pred = {}
+    for (_s, p), v in FakeEphemeris.predict_all(tracks, 0, 0, 0, t).items():
+        ctx.pred[p] = (0.0, 0.0, v["el"], 0.0, 0.0, v["az"], 0.0, 0.0, t)
+    run_cycle(ctx, t)
+
+
+def node_maps():
+    return [pl["prns"] for u, pl in POSTS if "node" in u]
+
+
+def test_boresight_rank():
+    """--prn-rank boresight: satellites are wanted for their least predicted separation from
+    the boresight over the look-ahead, not for their elevation."""
+    print("\n--prn-rank boresight: the separation over the look-ahead decides")
+    sky.set_boresight(BORE_AZ, BORE_EL, "test")
+
+    # Ordering. PRNs 1 and 2 have no satellite (dead slots); 500 holds the third. Of three
+    # candidates inside the 5 deg admit radius the two nearest get the dead slots, though the
+    # farthest is the highest; no satellite is below -15 deg, so there are no probes to hold.
+    POSTS[:] = []
+    LOGS[:] = []
+    ctx = BoreCtx(
+        [1, 2, 500],
+        {500: still(-1.0), 894: still(-0.5), 1101: still(-3.0), 1214: still(4.5)},
+    )
+    bore_cycle(ctx, T0)
+    check(
+        node_maps() and node_maps()[0] == [894, 1101, 500],
+        "the nearest to the boresight take the dead slots, not the highest (got %s)"
+        % node_maps(),
+    )
+    check(
+        any("cannot have one" in m and "PRN 1214" in m for m in LOGS),
+        "... and the farthest, at the highest elevation, is reported unplaced",
+    )
+
+    # Hysteresis in separation: admitted within 5 deg, kept until beyond 10.
+    POSTS[:] = []
+    ctx = BoreCtx(
+        [600, 601],
+        {600: still(7.0), 601: still(-12.0), 700: still(2.0), 701: still(-7.0)},
+    )
+    bore_cycle(ctx, T0)
+    check(
+        node_maps() and node_maps()[0] == [600, 700],
+        "a held satellite at 7 deg (inside the band) keeps its slot; one at 12 deg gives "
+        "it up to a satellite at 2 deg (got %s)" % node_maps(),
+    )
+    check(
+        not any(701 in m for m in node_maps()),
+        "... and a new satellite at 7 deg is not admitted: the band has two edges",
+    )
+    POSTS[:] = []
+    ctx = BoreCtx([600, 601], {600: still(7.0), 601: still(-12.0), 701: still(-7.0)})
+    bore_cycle(ctx, T0)
+    bore_cycle(ctx, T0 + 1000.0)
+    check(not POSTS, "a satellite at 7 deg evicts nobody, however long it waits")
+
+    # The look-ahead. 800 is 20 deg out now and crosses the boresight 200 s from now.
+    approach = (0.0, 1e18, -20.0, 0.1)
+    POSTS[:] = []
+    ctx = BoreCtx([800, 801], {800: approach, 801: still(1.0), 900: still(2.0)})
+    bore_cycle(ctx, T0)
+    check(
+        not POSTS,
+        "a held satellite 20 deg out but crossing the boresight within the look-ahead is "
+        "kept, though a satellite at 2 deg waits for a slot",
+    )
+    POSTS[:] = []
+    ctx = BoreCtx(
+        [800, 801],
+        {800: approach, 801: still(1.0), 900: still(2.0)},
+        prn_rank_lookahead_s=0.0,
+    )
+    bore_cycle(ctx, T0)
+    check(
+        node_maps() and node_maps()[0] == [900, 801],
+        "... and without the look-ahead it would have been evicted (got %s)"
+        % node_maps(),
+    )
+    POSTS[:] = []
+    ctx = BoreCtx([810, 801], {810: still(15.0), 801: still(1.0), 802: approach})
+    bore_cycle(ctx, T0)
+    check(
+        node_maps() and node_maps()[0] == [802, 801],
+        "a satellite 20 deg out and approaching takes a slot BEFORE it arrives (got %s)"
+        % node_maps(),
+    )
+    POSTS[:] = []
+    ctx = BoreCtx(
+        [810, 801],
+        {810: still(15.0), 801: still(1.0), 802: approach},
+        prn_rank_lookahead_s=60.0,
+    )
+    bore_cycle(ctx, T0)
+    check(
+        not POSTS,
+        "... but not when it comes no nearer than 14 deg within the look-ahead",
+    )
+    # 803's prediction starts 100 s from now: not in this cycle's pred, but in the look-ahead.
+    POSTS[:] = []
+    ctx = BoreCtx(
+        [810, 801],
+        {810: still(15.0), 801: still(1.0), 803: (T0 + 100.0, 1e18, -15.0, 0.1)},
+    )
+    bore_cycle(ctx, T0)
+    check(
+        803 not in ctx.pred and node_maps() and node_maps()[0] == [803, 801],
+        "a satellite predicted only later in the look-ahead takes a slot now (got %s)"
+        % node_maps(),
+    )
+    # After the pass it recedes: kept while it is within 10 deg, then given up.
+    pas = (0.0, 1e18, 0.0, 0.1)
+    POSTS[:] = []
+    ctx = BoreCtx([820, 801], {820: pas, 801: still(1.0), 900: still(2.0)})
+    bore_cycle(ctx, T0 + 90.0)
+    check(not POSTS, "a satellite 9 deg past the boresight and receding is kept")
+    bore_cycle(ctx, T0 + 110.0)
+    check(
+        node_maps() and node_maps()[0] == [900, 801],
+        "... and gives its slot up 11 deg out (got %s)" % node_maps(),
+    )
+
+    # The probes are still chosen on elevation: a held satellite below -15 deg is a noise
+    # probe, whatever its separation.
+    POSTS[:] = []
+    ctx = BoreCtx(
+        [850, 801],
+        {850: still(-102.7), 801: still(1.0), 900: still(2.0)},
+        noise_probes=1,
+    )
+    bore_cycle(ctx, T0)
+    check(not POSTS, "a held probe 40 deg below the horizon keeps its slot")
+    POSTS[:] = []
+    ctx = BoreCtx(
+        [850, 801],
+        {850: still(-102.7), 801: still(1.0), 900: still(2.0)},
+        noise_probes=0,
+    )
+    bore_cycle(ctx, T0)
+    check(
+        node_maps() and node_maps()[0] == [900, 801],
+        "... and without probes it is evicted like any satellite far from the boresight",
+    )
+
+    # Nothing predicted now or in the look-ahead (between passes): nothing moves, nothing
+    # breaks, though the chain wants 3 probes and has none.
+    POSTS[:] = []
+    ctx = BoreCtx([894, 1101, 1, 2, 3], {894: (T0 + 600.0, 1e18, 0.0, 0.0)})
+    bore_cycle(ctx, T0)
+    bore_cycle(ctx, T0 + 1000.0)
+    check(
+        not POSTS and ctx.node_state == [894, 1101, 1, 2, 3],
+        "an empty sky leaves the map alone (got %s)" % node_maps(),
+    )
+
+    # Unknown boresight, no ephemeris, no band: the map is left alone, and the log says why.
+    tracks = {810: still(15.0), 801: still(1.0), 900: still(2.0)}
+    POSTS[:] = []
+    LOGS[:] = []
+    sky.set_boresight(None, None, "test")
+    ctx = BoreCtx([810, 801], tracks)
+    bore_cycle(ctx, T0)
+    sky.set_boresight(BORE_AZ, BORE_EL, "test")
+    check(
+        not POSTS and any("boresight is unknown" in m for m in LOGS),
+        "an unknown boresight changes nothing, and says so",
+    )
+    POSTS[:] = []
+    LOGS[:] = []
+    ctx = BoreCtx([810, 801], tracks)
+    eph = ctx.brdc_alm["eph"]
+    ctx.brdc_alm = None
+    bore_cycle(ctx, T0, eph=eph)
+    check(
+        not POSTS and any("no ephemeris" in m for m in LOGS),
+        "no ephemeris to look ahead with changes nothing, and says so",
+    )
+    POSTS[:] = []
+    LOGS[:] = []
+    ctx = BoreCtx(
+        [810, 801], tracks, prn_rank_admit_sep_deg=10.0, prn_rank_evict_sep_deg=10.0
+    )
+    bore_cycle(ctx, T0)
+    check(
+        not POSTS and any("no hysteresis band" in m and "prn-rank" in m for m in LOGS),
+        "admit-sep == evict-sep is refused and named",
+    )
+    # The elevation pair is not read: 0 / 0 would be refused as no band in elevation mode.
+    POSTS[:] = []
+    LOGS[:] = []
+    ctx = BoreCtx(
+        [810, 801], tracks, prn_reconfig_admit_deg=0.0, prn_reconfig_evict_deg=0.0
+    )
+    bore_cycle(ctx, T0)
+    check(
+        node_maps() and node_maps()[0] == [900, 801],
+        "the elevation pair is not read in boresight mode (got %s)" % node_maps(),
+    )
+    sky.set_boresight(None, None, "test")
+
+
+# The highest PRN each manifest descriptor's code takes (gnss::max_prn, gnssSignal.hpp): 63
+# for the GNSS tables; GuoWang numbers its satellites by G2' phase, 1..2047.
+MAX_PRN = {"GW_1202": 2047}
+
+
 def test_chains_config():
     """The production chains (config/gnss_chains_chord.yaml, each chain over `common:`) against
     the manifest's PRN lists (config/gnss_fleet_chord.yaml): a chain under apply must have PRNs
-    the node's /set_prns can take (1-63: cudaGnssChordTrack.cpp), or every swap it proposes is
-    refused (sbas_l5, 10-23); and a chain with probe-require-slot must read the map back, or
-    the filter never has a map and the probes go unfiltered."""
+    the node's /set_prns can take (1..gnss::max_prn: cudaGnssChordTrack.cpp), or every swap it
+    proposes is refused (sbas_l5, 10-23); and a chain with probe-require-slot must read the map
+    back, or the filter never has a map and the probes go unfiltered."""
     print("\nthe chains' prn-reconfig against the manifest's PRN lists")
     repo = os.path.normpath(
         os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "..")
     )
-    chains = yaml.safe_load(open(os.path.join(repo, "config", "gnss_chains_chord.yaml")))
+    chains = yaml.safe_load(
+        open(os.path.join(repo, "config", "gnss_chains_chord.yaml"))
+    )
     fleet = open(os.path.join(repo, "config", "gnss_fleet_chord.yaml")).read()
     lists = {}
     for m in re.finditer(r"^\s*- ([A-Z0-9_]+):([0-9,]+)\s*$", fleet, re.M):
-        lists.setdefault(m.group(1), set()).update(int(p) for p in m.group(2).split(","))
+        lists.setdefault(m.group(1), set()).update(
+            int(p) for p in m.group(2).split(",")
+        )
     common = chains.get("common") or {}
     n = 0
     for name, block in chains["chains"].items():
@@ -145,18 +410,21 @@ def test_chains_config():
         if opt.get("probe-require-slot"):
             check(
                 mode in ("read", "apply"),
-                "%s: probe-require-slot, and prn-reconfig %s reads a map back" % (name, mode),
+                "%s: probe-require-slot, and prn-reconfig %s reads a map back"
+                % (name, mode),
             )
         sig = signals.get(opt.get("signal"))
-        prns = lists.get(sig.long) or lists.get(sig.primary)
+        desc = sig.long if sig.long in lists else sig.primary
+        prns = lists.get(desc)
         if mode != "apply" or not prns:
             continue
         n += 1
-        bad = sorted(p for p in prns if not 1 <= p <= 63)
+        top = MAX_PRN.get(desc, 63)
+        bad = sorted(p for p in prns if not 1 <= p <= top)
         check(
             not bad,
             "%s: prn-reconfig apply, and the nodes' /set_prns takes every manifest PRN "
-            "(outside 1-63: %s)" % (name, bad or "none"),
+            "(outside 1-%d: %s)" % (name, top, bad or "none"),
         )
     check(n > 0, "at least one chain runs apply with a manifest PRN list (%d)" % n)
 
@@ -290,8 +558,9 @@ def main():
         "probe_order: the dark PRNs the nodes hold come first, so a plain GLO-M slot the map "
         "lacks never displaces a held M+ probe",
     )
-    _wm2, _ = prnmap.desired_map([8, 9, 4, 5, 12], {8: 40.0, 9: 30.0}, 3, 10.0, 0.0,
-                                 dark=[1, 2, 3, 4, 5, 12])
+    _wm2, _ = prnmap.desired_map(
+        [8, 9, 4, 5, 12], {8: 40.0, 9: 30.0}, 3, 10.0, 0.0, dark=[1, 2, 3, 4, 5, 12]
+    )
     check(
         _wm2 == [8, 9, 4, 5, 12],
         "desired_map: with every GLO-M and M+ slot dark, the held M+ probes stay and nothing "
@@ -299,27 +568,35 @@ def main():
     )
     # Every slot is wanted once the dark probes count: a rising satellite finds no slot rather
     # than taking a dark probe's.
-    _wm, _un = prnmap.desired_map([8, 9, 4, 5], {8: 40.0, 9: 30.0, 11: 50.0}, 2, 10.0, 0.0,
-                                  dark=[4, 5, 12])
+    _wm, _un = prnmap.desired_map(
+        [8, 9, 4, 5], {8: 40.0, 9: 30.0, 11: 50.0}, 2, 10.0, 0.0, dark=[4, 5, 12]
+    )
     check(
         _wm == [8, 9, 4, 5] and _un == [11],
         "desired_map: dark probes 4 and 5 keep their slots; the rising PRN 11 is reported "
         "unplaced (got %s, unplaced %s)" % (_wm, _un),
     )
-    _wm0, _un0 = prnmap.desired_map([8, 9, 4, 5], {8: 40.0, 9: 30.0, 11: 50.0}, 2, 10.0, 0.0)
+    _wm0, _un0 = prnmap.desired_map(
+        [8, 9, 4, 5], {8: 40.0, 9: 30.0, 11: 50.0}, 2, 10.0, 0.0
+    )
     check(
         11 in _wm0 and not _un0,
         "... and without --probe-dark the same slots read as dead and are reused (got %s)"
         % _wm0,
     )
-    _wm1, _ = prnmap.desired_map([8, 9, 3, 6], {8: 40.0, 9: 30.0}, 2, 10.0, 0.0, dark=[4, 5])
+    _wm1, _ = prnmap.desired_map(
+        [8, 9, 3, 6], {8: 40.0, 9: 30.0}, 2, 10.0, 0.0, dark=[4, 5]
+    )
     check(
         sorted(_wm1) == [4, 5, 8, 9],
-        "desired_map: dark probes the nodes do not hold take the dead slots (got %s)" % _wm1,
+        "desired_map: dark probes the nodes do not hold take the dead slots (got %s)"
+        % _wm1,
     )
     # Through the stage: the map holds the dark probes and posts nothing.
     POSTS[:] = []
-    ctx = Ctx([8, 9, 4, 5], {8: 40.0, 9: 30.0, 11: 50.0}, noise_probes=2, probe_dark=True)
+    ctx = Ctx(
+        [8, 9, 4, 5], {8: 40.0, 9: 30.0, 11: 50.0}, noise_probes=2, probe_dark=True
+    )
     ctx.pred_dark = {4: (0.0, 0.0, 35.0, 0.0, 0.0), 5: (0.0, 0.0, -50.0, 0.0, 0.0)}
     run_cycle(ctx, 1000.0)
     check(
@@ -764,8 +1041,7 @@ def main():
     )
     _p6 = [b for u, b in POSTS if "search" not in u]
     check(
-        _p6 and 9 in _p6[0]["prns"],
-        "... and a satellite at +3 deg gets a slot",
+        _p6 and 9 in _p6[0]["prns"], "... and a satellite at +3 deg gets a slot",
     )
 
     # ---- the deadline clock is alive --------------------------------------------------
@@ -1154,6 +1430,7 @@ def main():
         "a 404 counts as tried, with no map: the sweep can complete around it",
     )
 
+    test_boresight_rank()
     test_chains_config()
 
     print("\n%s (%d check(s) failed)" % ("FAIL" if _fails else "PASS", len(_fails)))
