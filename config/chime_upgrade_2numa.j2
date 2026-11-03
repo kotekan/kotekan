@@ -57,7 +57,7 @@ log_level: info
 
 # Set to True to run without any network output: no FRB, baseband, visibility
 # or RFI senders, and no dataset broker.
-{% set disable_output = False %}
+{% set disable_output = True %}
 
 ########################
 #### NUMA layout    ####
@@ -106,7 +106,7 @@ num_ev_to_calculate: 4            # from n2 test case
 samples_per_data_set: 16384
 sample_period_ns: 2560
 network_frame_arrival_period: 16384 * sample_period_ns / 1e9
-baseband_buffer_depth: 3*272 # = ~33 seconds after accounting for active frames
+baseband_buffer_depth: 3*32 #272 # = ~33 seconds after accounting for active frames
 # see where / if / how to use host_buffer_depth and gpu_buffer_depth
 # must be at least size of gpu_buffer_depth
 host_buffer_depth: 12
@@ -142,12 +142,15 @@ fpga_controller:
 telescope:
   name: CHIMETelescope
   require_gps: true
-  query_gps: true # Set to false when coco is used
+  query_gps: false # Set to false when coco is used
   gps_host_info: /fpga_controller
-  query_frequency_map: true # Set to false when coco is used
-  require_frequency_map: true # Make sure we have the full frequency map
+  query_frequency_map: false # Set to false when coco is used
+  require_frequency_map: false # Make sure we have the full frequency map
   allow_default_frequency_map: false # Don't fall back on default map
   eop_updatable_config: /earth_rotation_data
+
+gps_time:
+  frame0_nano: 1790027456999999960
 
 earth_rotation_data:
   kotekan_update_endpoint: json
@@ -160,7 +163,8 @@ updatable_config:
   frb_gain:
     0:
       kotekan_update_endpoint: "json"
-      gain_directory: /mnt/frb-archiver/daily_gain_solutions/Latest_FRB
+      #gain_directory: /mnt/frb-archiver/daily_gain_solutions/Latest_FRB
+      gain_directory: frb_gains
   # bad input mask, assumed to be in cylinder order
   bad_inputs:
       kotekan_update_endpoint: json
@@ -178,10 +182,15 @@ updatable_config:
       thresholds: []
       valid_at_time_ns: 0
 
+  enable_frb_out:
+      kotekan_update_endpoint: "json"
+      enabled: true
+
 frb:
   update_beam_offset:
     kotekan_update_endpoint: "json"
     beam_offset: 0
+
 
 dataset_manager:
   use_dataset_broker: {{ not disable_output }}
@@ -329,77 +338,77 @@ host_scatter_indices_buffer:
     extents: [num_polarizations, num_dishes]
     metadata_pool: shared_pool
 
-################################################################################
-# Packet intake: one dpdkCore stage serving the NICs of both NUMA domains.
-#
-# This configuration assumes that the system ports are ordered as 4x10G links
-# for each QSFP+, that each QSFP+ port comes from exactly one iceBoard and that
-# each iceBoard is in a _different_ crate pair, but also in the same location
-# in terms of slot, crate (within the crate pair), and link (on the board).
-# DPDK numbers the ports in PCIe address order and the NICs of domain 0 come
-# first, so domain 0 owns ports 0-15 and domain 1 ports 16-31.  Each domain's
-# ports are serviced by lcores on that domain's CPUs and use that domain's
-# mbuf pool.
-dpdk:
-  kotekan_stage: dpdkCore
-  # Format is index = lcore, value = cpu core.  lcores 0-7 are on domain 0,
-  # lcores 8-15 on domain 1 (the same 8 cores of each socket).
-  lcore_cpu_map:
-{%- for n in numa_domains %}{% for c in dpdk_lcore_cores %}
-    - {{ cpus_per_socket * n + c }}
-{%- endfor %}{% endfor %}
-  main_lcore_cpu: 3
-  status_cadence: 60
-  max_rx_pkt_len: 5000
-  rx_ring_size: 2048
-  tx_ring_size: 128
-  num_mbufs: 4096
-  mbuf_cache_size: 256
-  # Hugepage memory preallocated by the EAL (--socket-mem), one entry per NUMA node
-  init_mem_alloc: "{% for n in numa_domains %}256{{ "," if not loop.last }}{% endfor %}"
-  # Set to true when using a switch to replicate packets
-  using_switch: true
-  # align to the same granularity as 2018 CHIME since the backends rely on this
-  alignment: 3*samples_per_data_set
-  alignment_startup_delay: 30.0
-  lcore_start_delay: 1.0
-  # PCIe devices DPDK must not attach to: the ConnectX 6 Lx output NICs (one
-  # pair per NUMA node), listed by their PCIe address.  Host specific.
-  pcie_block_list:
-    - 0d:00.0
-    - 0d:00.1
-    - 9f:00.0
-    - 9f:00.1
-  # Format is index = lcore, value = array of port IDs
-  # so [[0,1],[2,3]] maps lcore 0 to service ports 0 and 1,
-  # and lcore 1 to service ports 2 and 3.
-  # Within a domain, each lcore handles two ports of the same link group.
-{%- set lcore_port_pairs = [[0, 4], [8, 12], [1, 5], [9, 13], [2, 6], [10, 14], [3, 7], [11, 15]] %}
-  lcore_port_map:
-{%- for n in numa_domains %}{% for pair in lcore_port_pairs %}
-    - [{{ ports_per_numa * n + pair[0] }}, {{ ports_per_numa * n + pair[1] }}]
-{%- endfor %}{% endfor %}
-
-  # One handler must be given per port, mapping is in port order.
-  # Port 16*n + 4*i + g is stream i of link group 4*n + g of domain n.  Link
-  # group g of a domain writes its 4 frequencies to host_voltage_buffer_<n>_4g
-  # .. 4g+3 and its lost samples to lost_samples_buffer_<n>_g.
-  handlers:
-{%- for n in numa_domains %}
-{%- for id in range(4) %}
-{%- for g in range(4) %}
-    - dpdk_handler: iceBoardShuffle # port {{ ports_per_numa * n + 4 * id + g }}, NUMA domain {{ n }}
-      link_group: {{ 4 * n + g }}
-      link_group_subid: {{ id }}
-      out_bufs:
-{%- for k in range(4) %}
-        - host_voltage_buffer_n{{ n }}_{{ 4 * g + k }}
-{%- endfor %}
-      lost_samples_buf: lost_samples_buffer_n{{ n }}_{{ g }}
-{%- endfor %}
-{%- endfor %}
-{%- endfor %}
-
+## ################################################################################
+## # Packet intake: one dpdkCore stage serving the NICs of both NUMA domains.
+## #
+## # This configuration assumes that the system ports are ordered as 4x10G links
+## # for each QSFP+, that each QSFP+ port comes from exactly one iceBoard and that
+## # each iceBoard is in a _different_ crate pair, but also in the same location
+## # in terms of slot, crate (within the crate pair), and link (on the board).
+## # DPDK numbers the ports in PCIe address order and the NICs of domain 0 come
+## # first, so domain 0 owns ports 0-15 and domain 1 ports 16-31.  Each domain's
+## # ports are serviced by lcores on that domain's CPUs and use that domain's
+## # mbuf pool.
+## dpdk:
+##   kotekan_stage: dpdkCore
+##   # Format is index = lcore, value = cpu core.  lcores 0-7 are on domain 0,
+##   # lcores 8-15 on domain 1 (the same 8 cores of each socket).
+##   lcore_cpu_map:
+## {%- for n in numa_domains %}{% for c in dpdk_lcore_cores %}
+##     - {{ cpus_per_socket * n + c }}
+## {%- endfor %}{% endfor %}
+##   main_lcore_cpu: 3
+##   status_cadence: 60
+##   max_rx_pkt_len: 5000
+##   rx_ring_size: 2048
+##   tx_ring_size: 128
+##   num_mbufs: 4096
+##   mbuf_cache_size: 256
+##   # Hugepage memory preallocated by the EAL (--socket-mem), one entry per NUMA node
+##   init_mem_alloc: "{% for n in numa_domains %}256{{ "," if not loop.last }}{% endfor %}"
+##   # Set to true when using a switch to replicate packets
+##   using_switch: true
+##   # align to the same granularity as 2018 CHIME since the backends rely on this
+##   alignment: 3*samples_per_data_set
+##   alignment_startup_delay: 30.0
+##   lcore_start_delay: 1.0
+##   # PCIe devices DPDK must not attach to: the ConnectX 6 Lx output NICs (one
+##   # pair per NUMA node), listed by their PCIe address.  Host specific.
+##   pcie_block_list:
+##     - 0d:00.0
+##     - 0d:00.1
+##     - 9f:00.0
+##     - 9f:00.1
+##   # Format is index = lcore, value = array of port IDs
+##   # so [[0,1],[2,3]] maps lcore 0 to service ports 0 and 1,
+##   # and lcore 1 to service ports 2 and 3.
+##   # Within a domain, each lcore handles two ports of the same link group.
+## {%- set lcore_port_pairs = [[0, 4], [8, 12], [1, 5], [9, 13], [2, 6], [10, 14], [3, 7], [11, 15]] %}
+##   lcore_port_map:
+## {%- for n in numa_domains %}{% for pair in lcore_port_pairs %}
+##     - [{{ ports_per_numa * n + pair[0] }}, {{ ports_per_numa * n + pair[1] }}]
+## {%- endfor %}{% endfor %}
+## 
+##   # One handler must be given per port, mapping is in port order.
+##   # Port 16*n + 4*i + g is stream i of link group 4*n + g of domain n.  Link
+##   # group g of a domain writes its 4 frequencies to host_voltage_buffer_<n>_4g
+##   # .. 4g+3 and its lost samples to lost_samples_buffer_<n>_g.
+##   handlers:
+## {%- for n in numa_domains %}
+## {%- for id in range(4) %}
+## {%- for g in range(4) %}
+##     - dpdk_handler: iceBoardShuffle # port {{ ports_per_numa * n + 4 * id + g }}, NUMA domain {{ n }}
+##       link_group: {{ 4 * n + g }}
+##       link_group_subid: {{ id }}
+##       out_bufs:
+## {%- for k in range(4) %}
+##         - host_voltage_buffer_n{{ n }}_{{ 4 * g + k }}
+## {%- endfor %}
+##       lost_samples_buf: lost_samples_buffer_n{{ n }}_{{ g }}
+## {%- endfor %}
+## {%- endfor %}
+## {%- endfor %}
+## 
 {% for numa in numa_domains %}
 {%- set numa_sfx = "_n" ~ numa %}
 
@@ -451,7 +460,7 @@ numa_{{ numa }}:
         extents: [num_freq_host_buf, samples_per_data_set, num_elements]
         dimnames: [F, T, E]
         metadata_pool: main_pool{{ numa_sfx }}
-        use_hugepages: true
+        use_hugepages: false
 {%- for id in range(num_freq_gpu_buf) %}
         host_voltage_buffer{{ numa_sfx }}_{{ id }}:
             kotekan_buffer: ndarray
@@ -473,15 +482,15 @@ numa_{{ numa }}:
 
     # Stages
 
-    # Zero out lost samples recorded at the DPDK stage
-    zero_samples:
-        duplicate_ls_buffer: False
-{%- for id in range(num_freq_gpu_buf) %}
-        zero_{{ id }}:
-            kotekan_stage: zeroSamples
-            lost_samples_buf: lost_samples_buffer{{ numa_sfx }}_{{ id // 4 }}
-            out_buf: host_voltage_buffer{{ numa_sfx }}_{{ id }}
-{%- endfor %}
+#    # Zero out lost samples recorded at the DPDK stage
+#    zero_samples:
+#        duplicate_ls_buffer: False
+#{%- for id in range(num_freq_gpu_buf) %}
+#        zero_{{ id }}:
+#            kotekan_stage: zeroSamples
+#            lost_samples_buf: lost_samples_buffer{{ numa_sfx }}_{{ id // 4 }}
+#            out_buf: host_voltage_buffer{{ numa_sfx }}_{{ id }}
+#{%- endfor %}
 
     ############################################################################
     # Baseband capture and dump system
@@ -565,6 +574,55 @@ numa_{{ numa }}:
         metadata_pool: main_pool{{ numa_sfx }}
 
     # Stages
+    fake_voltages:
+    {% set frequency_channels = [ 666, 698, 730, 738, 826, 898, 906, 978, 58, 66, 818, 962, 234, 746, 802, 954, 49, 649, 657, 865, 25, 561, 641, 937, 529, 697, 729, 801, 537, 705, 737, 873 ] %}
+    {% for id in range(16) %}
+    {% if (numa == 0 and id == 7) %}
+        fake_voltages{{numa_sfx}}_{{ id }}:
+            kotekan_stage: hdf5FileRead
+            log_level: info
+            input_dir: b0329-data
+            # this is both (up to .h5) the name of the file and the name of the dataset
+            # in the file
+            file_name: host_voltage_buffer_{{ id }}
+            out_buf: host_voltage_buffer{{ numa_sfx }}_{{ id }}
+    {% else %}
+        fake_voltages{{numa_sfx}}_{{ id }}:
+            kotekan_stage: testDataGen
+            first_frame_index: 10151881 + 2
+            # set globally
+            # samples_per_data_set: samples_per_data_set
+            type: const_offset
+            value: 0x88
+            array_shape: [ 1, 16384, 2048 ]
+            dim_scaling: [ 1, 1, 1 ]
+            dim_name: [ F, T , E ]
+            num_local_freq: 1
+            manual_freq_ids:
+                - {{ frequency_channels[16 * numa + id] }}
+            out_buf: host_voltage_buffer{{ numa_sfx }}_{{ id }}
+    {% endif %}
+    {% endfor %}
+    {% for id in range(16//4) %}   # num_frequencies = 16
+        fake_lost_samples{{numa_sfx}}_{{ id }}:
+            kotekan_stage: testDataGen
+            first_frame_index: 10151881 + 2 #166328418304 / samples_per_data_set
+            # set globally
+            # samples_per_data_set: samples_per_data_set
+            type: ramp # to get uint8 as data type
+            value: 0
+            name: lost_samples
+            array_shape: [ 16384 ]
+            dim_scaling: [ 1 ]
+            dim_name: [ T ]
+            num_local_freq: 4
+            manual_freq_ids:
+    {%- for f in range(4) %}
+                - {{ frequency_channels[16*numa + 4*id + f] }}
+    {%- endfor %}
+            out_buf: lost_samples_buffer{{ numa_sfx }}_{{ id }}
+    {% endfor %}
+
 
     # glue code to handle lost frames formats
     lostSamplesToPLMask:
@@ -968,7 +1026,7 @@ numa_{{ numa }}:
     host_n2k_correlation_buffer{{ numa_sfx }}:
         kotekan_buffer: ndarray
         num_frames: gpu_buffer_depth
-        use_hugepages: true
+        use_hugepages: false
         value_type: int32
         # produced by cudaCorrelator (n2k_correlation): NDArrayBuffer<int32,6>
         # cudaCorrelator uses (num_elements+1)/16 = (2048+1)/16 = 128 blocks, same as
@@ -1088,63 +1146,63 @@ numa_{{ numa }}:
         sub_integration_ntime: n2k_sub_integration_ntime
         packet_loss_is_scalar: True
 
-    vis_accumulate:
-        kotekan_stage: N2Accumulate
-        in_buf: host_n2k_correlation_buffer{{ numa_sfx }}
-        in_counts_buf: host_n2k_counts_buffer{{ numa_sfx }}
-        in_rficounts_buf: host_n2k_RFIcounts_buffer{{ numa_sfx }}
-        in_plcounts_buf: host_n2k_PLcounts_buffer{{ numa_sfx }}
-        in_rfiframemask_buf: host_rfi_RFIframemask_buffer{{ numa_sfx }}
-        out_buf: vis_10s_buffer{{ numa_sfx }}
-        packet_loss_is_scalar: True
-        # dedicated cores of this NUMA domain, one per worker
-        cpu_affinity: {{ cpus(numa, n2acc_cores) }}
-        num_workers: {{ n2acc_cores | length }}
-        input_order: CHIMEBeamformer
-        output_order: CHIMECylinder
-        # round_to_even(10e9 / ( n2k_samples_per_data_set * frame_arrival_period_ns ) * n2k_num_subintegrations)
-        # round_up_to_even(10s / ( 16384 * 2.56us ) * 1) = 240
-        # num_subintegrations_per_bin_maybe_odd: 10e9 / ( n2k_samples_per_data_set * frame_arrival_period_ns ) * n2k_num_subintegrations)
-        # num_subintegrations_per_bin: (num_subintegrations_per_bin_maybe_odd + 1) / 2 * 2
-        num_subintegrations_per_bin: 240
-        # these recap values from cudaCorrelator
-        num_freq_per_n2k_frame: num_freq_gpu_buf
-        #samples_per_data_set: n2k_samples_per_data_set # a global of this nam exists used by n2k_samples_per_data_set
-        sub_integration_ntime: n2k_sub_integration_ntime
-        # set as global variable of same name
-        #rfi_downsampling_factor: rfi_downsampling_factor
-        num_elements: n2k_correlation_num_elements
-        num_ev: 0 # only allowed value
-        variance_mode: CHIMEv1
+    #vis_accumulate:
+    #    kotekan_stage: N2Accumulate
+    #    in_buf: host_n2k_correlation_buffer{{ numa_sfx }}
+    #    in_counts_buf: host_n2k_counts_buffer{{ numa_sfx }}
+    #    in_rficounts_buf: host_n2k_RFIcounts_buffer{{ numa_sfx }}
+    #    in_plcounts_buf: host_n2k_PLcounts_buffer{{ numa_sfx }}
+    #    in_rfiframemask_buf: host_rfi_RFIframemask_buffer{{ numa_sfx }}
+    #    out_buf: vis_10s_buffer{{ numa_sfx }}
+    #    packet_loss_is_scalar: True
+    #    # dedicated cores of this NUMA domain, one per worker
+    #    cpu_affinity: {{ cpus(numa, n2acc_cores) }}
+    #    num_workers: {{ n2acc_cores | length }}
+    #    input_order: CHIMEBeamformer
+    #    output_order: CHIMECylinder
+    #    # round_to_even(10e9 / ( n2k_samples_per_data_set * frame_arrival_period_ns ) * n2k_num_subintegrations)
+    #    # round_up_to_even(10s / ( 16384 * 2.56us ) * 1) = 240
+    #    # num_subintegrations_per_bin_maybe_odd: 10e9 / ( n2k_samples_per_data_set * frame_arrival_period_ns ) * n2k_num_subintegrations)
+    #    # num_subintegrations_per_bin: (num_subintegrations_per_bin_maybe_odd + 1) / 2 * 2
+    #    num_subintegrations_per_bin: 240
+    #    # these recap values from cudaCorrelator
+    #    num_freq_per_n2k_frame: num_freq_gpu_buf
+    #    #samples_per_data_set: n2k_samples_per_data_set # a global of this nam exists used by n2k_samples_per_data_set
+    #    sub_integration_ntime: n2k_sub_integration_ntime
+    #    # set as global variable of same name
+    #    #rfi_downsampling_factor: rfi_downsampling_factor
+    #    num_elements: n2k_correlation_num_elements
+    #    num_ev: 0 # only allowed value
+    #    variance_mode: CHIMEv1
 
-    eigencalc:
-        kotekan_stage: EigenN2Iter
-        # dedicated cores of this NUMA domain, one per blaze worker
-        cpu_affinity: {{ cpus(numa, eigen_cores) }}
-        num_blaze_workers: {{ eigen_cores | length }}
-        num_ev: num_ev_to_calculate
-        in_buf: vis_10s_buffer{{ numa_sfx }}
-        out_buf: eig_10s_buffer{{ numa_sfx }}
-        # Convergence config from chime science run
-        tol_eval: 0.00001
-        tol_evec: 0.0001
-        max_iterations: 19
-        num_ev_conv: 2
-        krylov: 2
-        subspace: 1
-        # Masking config from chime science run
-        # TODO: these are (Roland assumes) in CHIME cylinder order but data is in
-        # CHIME beamformer order (after xpose2048)
-        diagonal_bands_filled: [ [0, 30], [251, 262] ]
-        exclude_inputs: {{ bad_inputs }}
-
-    vis_convert:
-        kotekan_stage: n2FrameToVisFrame
-        n2_buf: eig_10s_buffer{{ numa_sfx }}
-        vis_buf: vis_buffer{{ numa_sfx }}
-        # frequencies of this stream, from the metadata of the first frame
-        metadata_source: host_n2k_correlation_buffer{{ numa_sfx }}
-        fake_git_tag: "f97998b79bb057668de62ced820273c3f5a5fd27" # 2021.11_hotfix - receiver
+#    eigencalc:
+#        kotekan_stage: EigenN2Iter
+#        # dedicated cores of this NUMA domain, one per blaze worker
+#        cpu_affinity: {{ cpus(numa, eigen_cores) }}
+#        num_blaze_workers: {{ eigen_cores | length }}
+#        num_ev: num_ev_to_calculate
+#        in_buf: vis_10s_buffer{{ numa_sfx }}
+#        out_buf: eig_10s_buffer{{ numa_sfx }}
+#        # Convergence config from chime science run
+#        tol_eval: 0.00001
+#        tol_evec: 0.0001
+#        max_iterations: 19
+#        num_ev_conv: 2
+#        krylov: 2
+#        subspace: 1
+#        # Masking config from chime science run
+#        # TODO: these are (Roland assumes) in CHIME cylinder order but data is in
+#        # CHIME beamformer order (after xpose2048)
+#        diagonal_bands_filled: [ [0, 30], [251, 262] ]
+#        exclude_inputs: {{ bad_inputs }}
+#
+#    vis_convert:
+#        kotekan_stage: n2FrameToVisFrame
+#        n2_buf: eig_10s_buffer{{ numa_sfx }}
+#        vis_buf: vis_buffer{{ numa_sfx }}
+#        # frequencies of this stream, from the metadata of the first frame
+#        metadata_source: host_n2k_correlation_buffer{{ numa_sfx }}
+#        fake_git_tag: "f97998b79bb057668de62ced820273c3f5a5fd27" # 2021.11_hotfix - receiver
 
     ############################################################################
     # FRB beamforming
@@ -1248,6 +1306,26 @@ numa_{{ numa }}:
         kotekan_buffer: ring
         num_frames: gpu_buffer_depth
         ring_buffer_size: gpu_buffer_depth * sizeof_float16 * frb1_num_beams_P * frb1_num_beams_Q * upchan_U16_max_num_output_channels * frb_num_output_times
+        metadata_pool: main_pool{{ numa_sfx }}
+
+    host_frb2_beams_buffer{{ numa_sfx }}:
+        kotekan_buffer: ndarray
+        num_frames: host_buffer_depth
+        value_type: float16
+        extents: [1, frb2_num_beams, upchan_U16_max_num_output_channels, frb_num_output_times]
+        quantity_name: "I2"
+        dimnames: ["Ttildehi256", "R", "Fbar", "Ttildelo256"]
+        dimscalings: [frb_downsampling_factor * 256, 1, 1, frb_downsampling_factor]
+        metadata_pool: main_pool{{ numa_sfx }}
+
+    host_frb2_beams_buffer_post{{ numa_sfx }}:
+        kotekan_buffer: ndarray
+        num_frames: host_buffer_depth
+        value_type: float16
+        extents: [1, frb2_num_beams, upchan_U16_max_num_output_channels, frb_num_output_times]
+        quantity_name: "I2"
+        dimnames: ["Ttildehi256", "R", "Fbar", "Ttildelo256"]
+        dimscalings: [frb_downsampling_factor * 256, 1, 1, frb_downsampling_factor]
         metadata_pool: main_pool{{ numa_sfx }}
 
     host_frb3_beams_buffer{{ numa_sfx }}:
@@ -1501,6 +1579,7 @@ numa_{{ numa }}:
             host_frb1_pl_mask_ringbuffer: host_frb1_pl_mask_ringbuffer{{ numa_sfx }}
             host_frb2_weights_ringbuffer: host_frb2_weights_ringbuffer{{ numa_sfx }}
         out_buffers:
+            host_frb2_beams_buffer: host_frb2_beams_buffer{{ numa_sfx }}
             host_frb3_beams_buffer: host_frb3_beams_buffer{{ numa_sfx }}
             host_frb3_beams_offsetscale_buffer: host_frb3_beams_offsetscale_buffer{{ numa_sfx }}
         commands:
@@ -1531,11 +1610,32 @@ numa_{{ numa }}:
           gpu_mem_pl_mask: frb1_pl_mask
         - name: cudaSyncOutput
         - name: cudaOutputData
+          # TODO: Don't do this in production
+          gpu_mem: frb2_beams_buffer
+          out_buf: host_frb2_beams_buffer
+        - name: cudaOutputData
           gpu_mem: frb3_beams_buffer
           out_buf: host_frb3_beams_buffer
         - name: cudaOutputData
           gpu_mem: frb3_beams_offsetscale_buffer
           out_buf: host_frb3_beams_offsetscale_buffer
+
+    switch_frb2_out:
+        kotekan_stage: bufferSwitch
+        in_bufs:
+          - enabled: host_frb2_beams_buffer{{ numa_sfx }}
+        out_buf: host_frb2_beams_buffer_post{{ numa_sfx }}
+        updatable_config: /updatable_config/enable_frb_out
+    write_frb2:
+        kotekan_stage: hdf5FileWrite
+        log_level: info
+        max_frames: 78
+        use_compression: false
+        base_dir: frb_beams
+        in_buf: host_frb2_beams_buffer_post{{ numa_sfx }}
+        file_name: host_frb2_beams_buffer{{ numa_sfx }}
+        create_single_file: true
+        input_order: CHIMEBeamformer
 
     ############################################################################
     # Output to receivers (none with disable_output; the output buffers then

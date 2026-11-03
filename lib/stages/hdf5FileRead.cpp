@@ -29,7 +29,7 @@
 #include <highfive/bits/H5Selection_misc.hpp>    // for Selection::getSpace
 #include <highfive/bits/H5Slice_traits_misc.hpp> // for SliceTraits::read_raw
 #include <iomanip>                               // for operator<<, setfill, setw
-#include <kotekanLogging.hpp>                    // for DEBUG, FATAL_ERROR, INFO, WARN
+#include <kotekanLogging.hpp>                    // for INFO, FATAL_ERROR, INFO, WARN
 #include <memory>                                // for allocator, shared_ptr, __shared_ptr_access
 #include <metadata.hpp>                          // for metadataObject
 #include <prometheusMetrics.hpp>                 // for Metrics, Gauge
@@ -466,7 +466,7 @@ public:
                 const File file(full_path, File::ReadOnly);
 
                 // Wait for buffer
-                DEBUG("[{:s}/{:d}] Waiting for buffer...", buffer->buffer_name, frame_index);
+                INFO("[{:s}/{:d}] Waiting for buffer...", buffer->buffer_name, frame_index);
                 std::uint8_t* const frame = buffer->wait_for_empty_frame(unique_name, frame_id);
                 if (!frame)
                     break;
@@ -505,11 +505,11 @@ public:
                 meta->check_frame_desc(buffer->get_frame_desc<kotekan::GenericNDArray>());
 
                 // Read buffer
-                DEBUG("[{:s}/{:d}] Filling buffer...", buffer->buffer_name, frame_index);
+                INFO("[{:s}/{:d}] Filling buffer...", buffer->buffer_name, frame_index);
                 dataset.read_raw(frame, type);
 
                 // Mark buffer as full
-                DEBUG("[{:s}/{:d}] Marking buffer as full...", buffer->buffer_name, frame_index);
+                INFO("[{:s}/{:d}] Marking buffer as full...", buffer->buffer_name, frame_index);
                 buffer->mark_frame_full(unique_name, frame_id);
 
                 // Stop timer
@@ -592,7 +592,7 @@ public:
                     break;
                 const int frame_id = int(frame_index % buffer->num_frames);
                 const double t0 = current_time();
-                DEBUG("[{:s}/{:d}] Waiting for buffer...", buffer->buffer_name, frame_index);
+                INFO("[{:s}/{:d}] Waiting for buffer...", buffer->buffer_name, frame_index);
                 std::uint8_t* const frame = buffer->wait_for_empty_frame(unique_name, frame_id);
                 if (!frame)
                     break;
@@ -606,12 +606,12 @@ public:
                 meta->check_frame_desc(buffer->get_frame_desc<kotekan::GenericNDArray>());
 
                 // Read this frame's hyperslab
-                DEBUG("[{:s}/{:d}] Filling buffer...", buffer->buffer_name, frame_index);
+                INFO("[{:s}/{:d}] Filling buffer...", buffer->buffer_name, frame_index);
                 std::vector<std::size_t> offset(dims.size(), 0);
                 offset.at(0) = std::size_t(frame_index) * frame_dim0;
                 dataset.select(offset, frame_dims).read_raw(frame, type);
 
-                DEBUG("[{:s}/{:d}] Marking buffer as full...", buffer->buffer_name, frame_index);
+                INFO("[{:s}/{:d}] Marking buffer as full...", buffer->buffer_name, frame_index);
                 buffer->mark_frame_full(unique_name, frame_id);
                 read_time_metric.set(current_time() - t0);
                 if (do_once) {
