@@ -1174,6 +1174,21 @@
     "tdm_phase": 0,
     "time_multiplexed": false
    },
+   "GW_1202": {
+    "boc_m": 0,
+    "boc_n": 0,
+    "carrier_hz": "1202025000",
+    "chip_rate_hz": "2046000",
+    "code_length": 4092,
+    "code_period_s": "0.002",
+    "half_bandwidth_hz": "2046000",
+    "mod": "BPSK",
+    "occupied_hi_hz": "1204071000",
+    "occupied_lo_hz": "1199979000",
+    "secondary_length": 0,
+    "tdm_phase": 0,
+    "time_multiplexed": false
+   },
    "SBAS_L5_I": {
     "boc_m": 0,
     "boc_n": 0,

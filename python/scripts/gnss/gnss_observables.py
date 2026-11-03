@@ -198,9 +198,10 @@ def main():
     ap.add_argument(
         "--sys",
         default="G",
-        choices=("G", "E", "C", "R", "S"),
+        choices=("G", "E", "C", "R", "S", "W"),
         help="RINEX constellation letter of the chain's satellites: selects their BRDC "
-        "records for the geometry and is written as each row's sys",
+        "records for the geometry and is written as each row's sys (W, GuoWang, has no BRDC: "
+        "the choice mirrors the signal table, no writer runs for it yet)",
     )
     ap.add_argument(
         "--band",

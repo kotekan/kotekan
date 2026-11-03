@@ -740,17 +740,37 @@ inline constexpr SignalDescriptor GLO_L2OC_P_OC = {
     /*tdm_phase=*/0,
 };
 
+/// GuoWang 1202.025 MHz (China's LEO broadband satellites, no ICD; docs/CHORD_BUGLIST.md #227):
+/// BPSK at 2.046 Mcps in 2 ms, 4092-chip frames of a fixed 2046-chip code then 2046 data chips.
+/// The replica zeroes the data half (guowang1202Code), so the code table is one frame. The data
+/// sign (4 ms) is unknown and multiplies whole frames: a record keeps about a third of a pilot's
+/// power, and the carrier walk comes from the combiner's squared record product (SBAS_L5_I_MC).
+/// PRN = the satellite's G2' phase + 1, 1..2047 (max_prn). Code: guowang1202Code.
+inline constexpr SignalDescriptor GW_1202 = {
+    "GW_1202",
+    1202.025e6,
+    2.046e6,
+    4092,
+    2e-3,
+    Modulation::BPSK,
+    0,
+    0,
+    /*secondary_length=*/0,
+    /*time_multiplexed=*/false,
+    /*tdm_phase=*/0,
+};
+
 /// Every descriptor a config can name: signal_by_name searches this list, and the gnss interface
 /// document (gnssInterface.hpp) lists it. A descriptor left out compiles, but a node whose config
 /// names it cannot start; test_gnss_interface checks that every descriptor above is here.
 inline constexpr const SignalDescriptor* ALL_SIGNALS[] = {
-    &GPS_L1CA,     &GPS_L1C_P,  &GPS_L2C_CM,   &GPS_L2C_CL,    &GPS_L5_I,      &GPS_L5_Q,
-    &GPS_L5_Q_NH,  &GAL_E1C,    &GAL_E1B,      &BDS_B1C_P,     &BDS_B1C_D,     &GAL_E5A_Q,
-    &GAL_E5A_Q_CS, &GAL_E5A_I,  &GAL_E5B_Q_CS, &BDS_B2A_P,     &BDS_B2A_P_CS,  &BDS_B2A_D,
-    &BDS_B2B_I,    &GAL_E5B_Q,  &GAL_E5B_I,    &GPS_L1C_D,     &GAL_E6_C,      &GAL_E6_B,
-    &BDS_B1I,      &BDS_B3I,    &BDS_B3I_NH,   &BDS_B2I,       &GLO_L3OC_P,    &GLO_L3OC_D,
-    &GLO_L2OF,     &GLO_L2OC_P, &GAL_E6_C_CS,  &GLO_L3OC_P_NH, &GLO_L2OC_P_OC, &SBAS_L5_I,
-    &SBAS_L5_I_MC, &GLO_L2OF_MC};
+    &GPS_L1CA,     &GPS_L1C_P,   &GPS_L2C_CM,   &GPS_L2C_CL,    &GPS_L5_I,      &GPS_L5_Q,
+    &GPS_L5_Q_NH,  &GAL_E1C,     &GAL_E1B,      &BDS_B1C_P,     &BDS_B1C_D,     &GAL_E5A_Q,
+    &GAL_E5A_Q_CS, &GAL_E5A_I,   &GAL_E5B_Q_CS, &BDS_B2A_P,     &BDS_B2A_P_CS,  &BDS_B2A_D,
+    &BDS_B2B_I,    &GAL_E5B_Q,   &GAL_E5B_I,    &GPS_L1C_D,     &GAL_E6_C,      &GAL_E6_B,
+    &BDS_B1I,      &BDS_B3I,     &BDS_B3I_NH,   &BDS_B2I,       &GLO_L3OC_P,    &GLO_L3OC_D,
+    &GLO_L2OF,     &GLO_L2OC_P,  &GAL_E6_C_CS,  &GLO_L3OC_P_NH, &GLO_L2OC_P_OC, &SBAS_L5_I,
+    &SBAS_L5_I_MC, &GLO_L2OF_MC, &GW_1202};
 
 /// Look up a descriptor by its @c name (the config string); nullptr if unknown.
 inline const SignalDescriptor* signal_by_name(const std::string& name) {
@@ -758,6 +778,12 @@ inline const SignalDescriptor* signal_by_name(const std::string& name) {
         if (name == s->name)
             return s;
     return nullptr;
+}
+
+/// The highest PRN a signal's code generator takes: 63 for the GNSS tables (the BeiDou and
+/// SBAS ranges are the widest); GW_1202 numbers its satellites by G2' phase, 1..2047.
+inline int max_prn(const SignalDescriptor& s) {
+    return std::string(s.name) == "GW_1202" ? 2047 : 63;
 }
 
 } // namespace gnss

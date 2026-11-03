@@ -18,6 +18,7 @@ Families:
              frame); the known satellites are named in GUOWANG_1202_G2P_PHASE
 """
 
+import json
 import os
 import sys
 
@@ -184,13 +185,19 @@ GUOWANG_1202_FC = 1202.025e6
 # G2' recurrence s[k] = XOR_i s[k - i]: connection polynomial 1 + x + x^3 + x^8 + x^9 + x^10 + x^11
 GUOWANG_G2P_TAPS = (1, 3, 8, 9, 10, 11)
 GUOWANG_G1_PHASE = 1206
-GUOWANG_1202_G2P_PHASE = {  # satellite: G2' phase (one beam-dump pass each; the database grows here)
-    "DIGUI-26": 1213,
-    "DIGUI-79": 2027,
-    "DIGUI-18": 893,
-    "DIGUI-97": 1100,
-    "DIGUI-176": 1518,
-}
+# satellite: G2' phase, from the database guowang_1202_db.json (one beam-dump pass each; phases
+# are not unique: DIGUI-75 and -76 share 746)
+GUOWANG_1202_DB = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "guowang_1202_db.json"
+)
+with open(GUOWANG_1202_DB) as _fh:
+    GUOWANG_1202_G2P_PHASE = {
+        name: s["g2_phase"] for name, s in json.load(_fh)["satellites"].items()
+    }
+# G2' phase -> the satellites carrying it (a name -> phase dict hides a shared code)
+GUOWANG_1202_SATS_BY_PHASE = {}
+for _name, _ph in sorted(GUOWANG_1202_G2P_PHASE.items()):
+    GUOWANG_1202_SATS_BY_PHASE.setdefault(_ph, []).append(_name)
 
 
 def guowang_g2prime(n, phase=0):
@@ -217,7 +224,7 @@ def guowang_1202_all():
     ]
     m2 = guowang_g2prime(2047)
     codes = gold_codes(g1, m2, list(range(2047)), GUOWANG_1202_N)
-    name_of = {ph: s for s, ph in GUOWANG_1202_G2P_PHASE.items()}
+    name_of = {ph: "+".join(s) for ph, s in GUOWANG_1202_SATS_BY_PHASE.items()}
     labels = [
         ("%s/" % name_of[ph] if ph in name_of else "") + "g2ph%d" % ph
         for ph in range(2047)
