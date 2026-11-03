@@ -475,7 +475,19 @@ def main(argv=None, rx=None, publisher=None):
         if not gating:
             _log("--almanac needs --lat/--lon; disabling")
             args.almanac = False
-    if args.almanac and args.almanac_source == "brdc":
+    if args.almanac and alm_sys == "W":
+        # GuoWang broadcasts no ephemeris: the table (--gw-table) is its only orbit source,
+        # with no BRDC or TLE fallback. The store is shared by path, like the BRDC one by day.
+        import gnss_ephemeris as _alm_eph_mod
+
+        brdc_alm = rx.brdc(
+            ("gw", args.gw_table), lambda: _sky.gw_store(_alm_eph_mod, args.gw_table)
+        )
+        _log(
+            "almanac: GuoWang table %s (%d W prns) @ (%.4f, %.4f)"
+            % (args.gw_table, len(brdc_alm["eph"]), args.lat, args.lon)
+        )
+    elif args.almanac and args.almanac_source == "brdc":
         try:
             import gnss_ephemeris as _alm_eph_mod
 

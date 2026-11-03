@@ -5,6 +5,7 @@ argument; none of it is per-signal. The BRDC store is shared (Receiver.brdc hand
 in the process the same dict), so one parse serves every constellation.
 """
 import math
+import os
 import re
 import threading
 from datetime import timedelta
@@ -33,6 +34,9 @@ def brdc_predict(
     (down to -90): the noise probes pick the deepest below-horizon satellites. The rates are
     differenced over a 4 s epoch pair (t_utc, t_utc + 4 s). fdma_df: {prn: carrier offset, Hz}
     for an FDMA chain, each satellite's Doppler at its own carrier.
+
+    For sysc W the store is a gw_store: the GuoWang table, reloaded when its file changes,
+    whose sky is never bridged.
     """
     ge = state["mod"]
     # Install the broker's logger as the BRDC supply's LOG_HOOK, once. `_log` reads a
@@ -65,7 +69,9 @@ def brdc_predict(
     lock = state.setdefault("lock", threading.Lock())
     if lock.acquire(blocking=state["eph"] is None):
         try:
-            if state["eph"] is None or (
+            if sysc == "W":
+                gw_refresh(state, now)
+            elif state["eph"] is None or (
                 now - state["eph_t"] > gate and now >= state.get("eph_retry_t", 0.0)
             ):
                 _eph_refresh(state, ge, now, t_utc)
@@ -116,6 +122,10 @@ def brdc_predict(
             _el_rate,
             t_utc.timestamp(),
         )
+    if sysc == "W":
+        # A GuoWang satellite is in the table only during its pass (load_gw_table), so an
+        # empty sky between passes is the table, not a collapse: never bridge it.
+        return out
     # Prediction-collapse guard. The daily BRDC's C/E nav records can lag the GPS ones by hours,
     # so a whole constellation's newest toe can leave best_eph's window at one instant: every
     # satellite of it drops in one cycle and the hint-gated search goes dark. If the predicted
@@ -209,6 +219,47 @@ def _eph_refresh(state, ge, now, t_utc):
             "brdc almanac: refresh failed (%s); coasting on the previous set "
             "(sats thin out as toe ages past 4 h)" % e
         )
+
+
+def gw_store(ge, path):
+    """The almanac store of a GuoWang chain (constellation W), in brdc_predict's layout: the
+    table at `path` (gnss_ephemeris.load_gw_table) in place of BRDC. An unreadable or missing
+    file leaves the store empty until gw_refresh reads one."""
+    state = {"mod": ge, "eph": {}, "eph_t": 0.0, "gw_path": path}
+    gw_refresh(state, _now())
+    return state
+
+
+def gw_refresh(state, now):
+    """Reload a gw_store's table when its file's mtime changes. A failed read keeps the last
+    table, and a file that fails to load is not read again until it changes."""
+    path = state["gw_path"]
+    try:
+        mtime = os.stat(path).st_mtime_ns
+    except OSError as e:
+        _log_rl(
+            "gw-table",
+            "gw table: %s unreadable (%s); keeping the last table (%d W prns)"
+            % (path, e, len(state["eph"])),
+            every_s=600.0,
+        )
+        return
+    if mtime == state.get("gw_mtime"):
+        return
+    state["gw_mtime"] = mtime
+    try:
+        eph = state["mod"].load_gw_table(path)
+    except Exception as e:
+        _log(
+            "gw table: %s failed to load (%s); keeping the last table (%d W prns)"
+            % (path, e, len(state["eph"]))
+        )
+        return
+    state["eph"], state["eph_t"] = eph, now
+    _log(
+        "gw table: %s loaded (%d W prns, %d pass segments)"
+        % (path, len(eph), sum(len(v) for v in eph.values()))
+    )
 
 
 def _dh_dpos(xc):

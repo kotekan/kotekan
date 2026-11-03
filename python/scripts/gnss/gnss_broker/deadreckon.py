@@ -2107,6 +2107,10 @@ def _dr_reload(ctx, first, with_dcb=True):
         "t0": time.time(),
     }
     try:
+        if ctx.args.dr_constellation == "W":
+            # GuoWang: the almanac's table store (sky.gw_refresh); no BRDC, DCB or Klobuchar.
+            res["eph"] = ctx.brdc_alm["eph"]
+            return res
         _paths = ctx.dr_eph_mod.fetch_brdc(block=first)
         res["eph"] = ctx.dr_eph_mod.parse_rinex_nav(_paths)
         # Klobuchar coefficients from the nav headers (GPSA/GPSB), when a cached file carries
@@ -2249,6 +2253,9 @@ def _dr_apply_reload(ctx, res):
                 "header carries a newer set)" % (_io["src"], _io["age_days"]),
                 every_s=3600.0,
             )
+    if ctx.args.dr_constellation == "W":
+        _log("dead-reckon: GuoWang table loaded (%d W prns)" % len(res["eph"]))
+        return
     _log(
         "dead-reckon: BRDC loaded (%d sats) -- %.1f s of fetch+parse, off the pass"
         % (len(res["eph"]), time.time() - res["t0"])
@@ -2402,6 +2409,15 @@ def stage_dead_reckon(ctx):
 
     ctx.drp.t_now_abs is None, never 0.0, until a model is first available: a missing axis time is
     unknown, and every consumer must check for None."""
+    if ctx.dr_state is not None and ctx.args.dr_constellation == "W" and not ctx.pred:
+        # GuoWang: between passes no table segment covers now, so ctx.pred is empty and the
+        # stage below, whose dr_seed drops a set satellite, does not run.
+        for prn in list(ctx.dr_state["seeded"]):
+            _log("dead-reckon drop PRN %d (its GuoWang table segment ended)" % prn)
+            ctx.seeds.pop(prn, None)
+            ctx.hold.low_hits.pop(prn, None)
+            ctx.dr_state["seeded"].discard(prn)
+            ctx.dr_state["pin"].pop(prn, None)
     if (
         ctx.dr_state is not None
         and ctx.args.almanac
@@ -2472,6 +2488,11 @@ def stage_dead_reckon(ctx):
             # The first load is synchronous: with no ephemeris there is nothing to seed from. Every
             # later reload runs on the dr-reload thread.
             _dr_apply_reload(ctx, _dr_reload(ctx, first=True))
+        elif ctx.args.dr_constellation == "W":
+            # GuoWang: a new table is taken as soon as the almanac's store holds it, and there
+            # is nothing to fetch.
+            if ctx.dr_state["eph"] is not ctx.brdc_alm["eph"]:
+                _dr_apply_reload(ctx, _dr_reload(ctx, first=False))
         elif (
             ctx.drp.now_w - ctx.dr_state["eph_t"] > _DR_EPH_REFRESH_S
             and _rl["thread"] is None

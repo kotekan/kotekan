@@ -835,7 +835,15 @@ def build_parser(description):
         "satellite clock, and no skyfield needed. tle: Celestrak's GPS TLEs (gps-ops, "
         "so GPS only) through skyfield, with km-level orbits and PRNs taken from "
         "satellite names, which can be mislabelled. tle is also the fallback when BRDC "
-        "is unavailable at startup.",
+        "is unavailable at startup. A constellation W (GuoWang) chain ignores it and "
+        "uses --gw-table.",
+    )
+    ap.add_argument(
+        "--gw-table",
+        default="/var/tmp/gnss-guowang/gw_ephem.json",
+        help="the GuoWang ephemeris table (scripts/gnss/site/gw_ephem_table.py) a "
+        "constellation W chain's almanac and dead reckoning read instead of BRDC, "
+        "re-read whenever the file changes. Default /var/tmp/gnss-guowang/gw_ephem.json.",
     )
     ap.add_argument(
         "--boresight",
@@ -855,12 +863,12 @@ def build_parser(description):
     ap.add_argument(
         "--constellation",
         default=None,
-        choices=("G", "E", "C", "R"),
+        choices=("G", "E", "C", "R", "W"),
         help="constellation the almanac predicts: G, E, C or R (one multi-system BRDC "
-        "file covers all of them). Unset: --dr-constellation; --signal sets it. For C, "
-        "the IGS registry's block types (--signal-capability) decide which satellites "
-        "carry the signal; without a registry decision, PRNs below 19 (BDS-2) are left "
-        "out.",
+        "file covers all of them), or W (GuoWang, from --gw-table). Unset: "
+        "--dr-constellation; --signal sets it. For C, the IGS registry's block types "
+        "(--signal-capability) decide which satellites carry the signal; without a "
+        "registry decision, PRNs below 19 (BDS-2) are left out.",
     )
     ap.add_argument(
         "--carrier-hz",
@@ -2045,7 +2053,7 @@ def build_parser(description):
     ap.add_argument(
         "--dr-constellation",
         default="G",
-        choices=("G", "E", "C", "R"),
+        choices=("G", "E", "C", "R", "W"),
         help="this chain's constellation as a RINEX letter: the system the dead-reckon "
         "model predicts, the key of its satellites in the receiver-wide joint state, "
         "and the almanac's when --constellation is unset. C also makes --dr-min-prn "
