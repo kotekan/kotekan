@@ -207,14 +207,14 @@ gnss_component() {
         # The staging loop (cube_staging_loop.sh says what a pass does) on the archiver's
         # directory CUBE_STAGE: fold into L0, ship to raw_zst, then up to CUBE_BACKLOG files of
         # the old raw backlog. CUBE_READERS and CUBE_BATCH set the fold's memory and
-        # CUBE_MAX_READ_MBPS caps its reads. One L0 writer: never beside cubecompact on the
-        # same root.
+        # CUBE_MAX_READ_MBPS and CUBE_SHIP_MBPS cap the fold's and the ship step's reads. One L0
+        # writer: never beside cubecompact on the same root.
         local root=${CUBE_ROOT:-/mnt/cs00/data/kvand/gnss_cube}
         GNSS_EXEC=("$GNSS_K/scripts/gnss/site/cube_staging_loop.sh" "$GNSS_VENV/bin/python"
                    "$GNSS_K/python/scripts/gnss/gnss_cube_compact.py"
                    "${CUBE_STAGE:?cubestage needs CUBE_STAGE}" "$root"
                    "${CUBE_BACKLOG:-150}" "${CUBE_PAUSE:-30}" "${CUBE_READERS:-4}"
-                   "${CUBE_BATCH:-12}" "${CUBE_MAX_READ_MBPS:-0}")
+                   "${CUBE_BATCH:-12}" "${CUBE_MAX_READ_MBPS:-0}" "${CUBE_SHIP_MBPS:-0}")
         ;;
     *)
         echo "stack_components: unknown component '$name' (have: $(gnss_components) $(gnss_cube_components))" >&2

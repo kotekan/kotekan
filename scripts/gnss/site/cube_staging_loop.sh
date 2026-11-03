@@ -16,10 +16,13 @@
 # (gen_chord_gnss_config.py --cube-archive-file-name): the manifest keys by basename.
 # Stop = `systemctl --user stop`: TERM is taken between steps, after the running fold.
 #   cube_staging_loop.sh PY TOOL STAGE ROOT [BACKLOG] [PAUSE_S] [READERS] [BATCH] [MAX_READ_MBPS]
-# MAX_READ_MBPS (default 0, unpaced) holds each fold's raw reads to that average.
+#                        [SHIP_MBPS]
+# MAX_READ_MBPS holds each fold's raw reads to that average and SHIP_MBPS (whole MB/s) the ship
+# step's; 0, the default, is unpaced. The ship step re-reads from the network what the host's
+# page cache no longer holds, so on a shared link both need a cap.
 set -u
 PY=$1; TOOL=$2; STAGE=$3; ROOT=$4; BACKLOG=${5:-100}; PAUSE=${6:-30}; READERS=${7:-4}
-BATCH=${8:-12}; MBPS=${9:-0}
+BATCH=${8:-12}; MBPS=${9:-0}; SHIP_MBPS=${10:-0}
 ZST=$ROOT/raw_zst
 LOW_GB=300
 stopping=0
@@ -44,8 +47,16 @@ for f in files:
 EOF
 }
 
+# Sleep out the rest of a file's SHIP_MBPS budget: pace_ship BYTES START_NS.
+pace_ship() {
+    [ "$SHIP_MBPS" -gt 0 ] || return 0
+    local left_ms=$(( $1 / (SHIP_MBPS * 1000) - ($(date +%s%N) - $2) / 1000000 ))
+    [ "$left_ms" -gt 0 ] && sleep "$((left_ms / 1000)).$(printf %03d $((left_ms % 1000)))"
+    return 0
+}
+
 ship() {
-    local n=0 f b out
+    local n=0 f b out t0 size
     for f in $(shippable); do
         b=$(basename "$f")
         out=$ZST/$b.zst
@@ -53,6 +64,8 @@ ship() {
             log "SHIP REFUSED $b: $out exists (a renumbered archiver?) -- local copy kept"
             continue
         fi
+        t0=$(date +%s%N)
+        size=$(stat -c %s "$f")
         if zstd -1 -q -T2 -o "$out.part" "$f" && zstd -t -q "$out.part" && mv "$out.part" "$out"; then
             rm -f "$f"
             n=$((n + 1))
@@ -60,6 +73,7 @@ ship() {
             log "SHIP FAILED $b -- local copy kept"
             rm -f "$out.part"
         fi
+        pace_ship "$size" "$t0"
         [ "$stopping" = 0 ] || break
     done
     log "shipped $n file(s); $(ls "$STAGE"/*.raw 2>/dev/null | wc -l) in $STAGE, $(df -BG --output=avail "$STAGE" | tail -1 | tr -d ' G') GB free"
