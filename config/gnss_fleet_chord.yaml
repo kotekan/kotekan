@@ -179,11 +179,13 @@ common:
     # (within 3 deg of the boresight, 15 min before to 10 min after). ~6.7 MB per GPU per
     # frame, ~10 GB per node per window under <record_dir>/lanedump.
     lane-dump-period-s: 2
-    # DTV subtraction (cudaDtvSubtract, #226) in ATSC 24 and 30, two sources per channel over
-    # lags -16..+47 hops (the stage's widest window), which take the long echoes. The stage starts
-    # in pass-through, and the per-channel state is loaded over REST.
+    # DTV subtraction (cudaDtvSubtract, #226) in ATSC 24 and 30, three sources per channel over
+    # lags -16..+47 hops (the stage's widest window): the wider lags take the long echoes, the third
+    # source the PFB-edge folding (offline on the 10-30 dump: residual third mode 3.5 -> 2.0 noise
+    # units in ATSC 30; replay GPU time 1.1 -> 2.8 ms per frame per GPU). The stage starts in
+    # pass-through, and the per-channel state is loaded over REST.
     dtv-subtract-freq-ids: "2714-2744,2898-2928"
-    dtv-sources: 2
+    dtv-sources: 3
     dtv-lag-min: -16
     dtv-n-lag: 64
     assembler-core-slots: "2,1,3,4,8"
