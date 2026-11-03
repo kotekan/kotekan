@@ -33,8 +33,9 @@ GATES = ["gnss0_beamdump_gate", "gnss1_beamdump_gate"]
 
 def known(paths):
     """Satellite names already identified, from --skip-known files: a guowang_1202_db.json
-    (its satellites) or a gw_reduce db_proposals.jsonl (each line's "sat"). A file that is
-    missing or unreadable adds nothing."""
+    (its satellites with a known code; one never seen transmitting stays a target) or a
+    gw_reduce db_proposals.jsonl (each line's "sat"). A file that is missing or unreadable adds
+    nothing."""
     import json
 
     out = set()
@@ -44,7 +45,10 @@ def known(paths):
                 if path.endswith(".jsonl"):
                     out.update(json.loads(ln)["sat"] for ln in fh if ln.strip())
                 else:
-                    out.update(json.load(fh)["satellites"])
+                    sats = json.load(fh)["satellites"]
+                    out.update(
+                        n for n, s in sats.items() if s.get("g2_phase") is not None
+                    )
         except (OSError, ValueError, KeyError):
             continue
     return out

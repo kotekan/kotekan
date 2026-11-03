@@ -185,14 +185,16 @@ GUOWANG_1202_FC = 1202.025e6
 # G2' recurrence s[k] = XOR_i s[k - i]: connection polynomial 1 + x + x^3 + x^8 + x^9 + x^10 + x^11
 GUOWANG_G2P_TAPS = (1, 3, 8, 9, 10, 11)
 GUOWANG_G1_PHASE = 1206
-# satellite: G2' phase, from the database guowang_1202_db.json (one beam-dump pass each; phases
-# are not unique: DIGUI-75 and -76 share 746)
+# satellite: G2' phase, from the database guowang_1202_db.json (phases are not unique: DIGUI-75
+# and -76 share 746); satellites never seen transmitting carry no phase and are left out
 GUOWANG_1202_DB = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "guowang_1202_db.json"
 )
 with open(GUOWANG_1202_DB) as _fh:
     GUOWANG_1202_G2P_PHASE = {
-        name: s["g2_phase"] for name, s in json.load(_fh)["satellites"].items()
+        name: s["g2_phase"]
+        for name, s in json.load(_fh)["satellites"].items()
+        if s.get("g2_phase") is not None
     }
 # G2' phase -> the satellites carrying it (a name -> phase dict hides a shared code)
 GUOWANG_1202_SATS_BY_PHASE = {}

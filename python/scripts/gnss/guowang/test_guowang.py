@@ -10,6 +10,8 @@
 - Berlekamp-Massey finds degree 26 (G1 x G2) on a B3I window, either polarity.
 - A 0.2 s synthetic B3I signal with NH20 + data: the blind carrier, the fold (chip 0 at the code
   epoch, no chip errors) and the acquisition find PRN 23 at its code phase.
+- The 1202 library merge (guowang_db.update): a close miss makes a no_transmission entry with no
+  code, a far miss and a no_sky window count for nothing, a later find turns it transmitting.
 
     /home/kvand/gnss/venv/bin/python test_guowang.py
 """
@@ -22,6 +24,7 @@ import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import guowang_codes as gc  # noqa: E402
+import guowang_db as gdb  # noqa: E402
 import guowang_passes as gp  # noqa: E402
 import guowang_search as gs  # noqa: E402
 import guowang_synth as gsy  # noqa: E402
@@ -194,6 +197,84 @@ class SearchTest(unittest.TestCase):
         self.assertTrue(best["detected"])
         self.assertTrue(res["identified"])
         self.assertLess(abs(best["chip0"] - 1234.5), 0.3)
+
+
+class DbTest(unittest.TestCase):
+    @staticmethod
+    def window(start, end, sats):
+        return dict(
+            complete=True,
+            lobe_channels=64,
+            utc_start=start,
+            utc_end=end,
+            satellites=sats,
+        )
+
+    def test_update(self):
+        import json
+        import tempfile
+
+        db = {
+            "about": "",
+            "satellites": {
+                "DIGUI-1": dict(
+                    catnum=1,
+                    g2_phase=10,
+                    theta_us=-1.0,
+                    measured_utc="2026-11-02T10:00:40Z",
+                    sep_deg=1.0,
+                    ref_input=116,
+                )
+            },
+            "no_sky": [dict(start="2026-11-02T12:00:00Z", end="2026-11-02T13:00:00Z")],
+        }
+        logs = [
+            self.window(
+                "2026-11-02T11:00:00.000Z",
+                "11:01:20.000",
+                [
+                    dict(sat="DIGUI-1", detected=True, sep_min_window=2.0),
+                    dict(sat="DIGUI-2", detected=False, sep_min_window=1.5),
+                    dict(sat="DIGUI-3", detected=False, sep_min_window=6.0),
+                ],
+            ),
+            self.window(
+                "2026-11-02T12:30:00.000Z",
+                "12:31:20.000",
+                [dict(sat="DIGUI-1", detected=False, sep_min_window=0.5)],
+            ),
+        ]
+        with tempfile.NamedTemporaryFile("w", suffix=".jsonl") as fh:
+            fh.write("".join(json.dumps(r) + "\n" for r in logs))
+            fh.flush()
+            passes, skipped = gdb.read_passes(db, [fh.name], 4.0)
+        self.assertEqual(skipped, {"incomplete": 0, "no_sky": 1, "far_miss": 1})
+        gdb.update(db, passes, {}, {"DIGUI-2": 2})
+        s = db["satellites"]
+        self.assertNotIn("DIGUI-3", s)
+        self.assertEqual(s["DIGUI-1"]["status"], "transmitting")
+        self.assertEqual(s["DIGUI-1"]["passes_found"], 2)
+        self.assertEqual(s["DIGUI-1"]["last_observed_utc"], "2026-11-02T11:00:40Z")
+        self.assertEqual(s["DIGUI-2"]["status"], "no_transmission")
+        self.assertIsNone(s["DIGUI-2"]["g2_phase"])
+        self.assertIsNone(s["DIGUI-2"]["last_observed_utc"])
+        self.assertEqual(s["DIGUI-2"]["catnum"], 2)
+        self.assertEqual(sorted(gdb.coded(db)), ["DIGUI-1"])
+
+        later = {
+            "DIGUI-2": {"2026-11-02T14:00:40Z": ["2026-11-02T14:00:40Z", 3.0, True]}
+        }
+        prop = dict(
+            sat="DIGUI-2", g2_phase=20, theta_us=2.0, sep_deg=3.0, ref_input=116
+        )
+        prop["measured_utc"] = "2026-11-02T14:00:38Z"
+        changes = gdb.update(db, later, {"DIGUI-2": [prop]}, {})
+        e = s["DIGUI-2"]
+        self.assertEqual((e["status"], e["g2_phase"]), ("transmitting", 20))
+        self.assertEqual((e["passes_found"], e["passes_silent"]), (1, 1))
+        self.assertEqual(e["last_observed_utc"], "2026-11-02T14:00:40Z")
+        self.assertTrue(any("no_transmission -> transmitting" in c for c in changes))
+        self.assertEqual(json.loads(gdb.dumps(db)), db)
 
 
 if __name__ == "__main__":

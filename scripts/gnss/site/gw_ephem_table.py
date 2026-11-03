@@ -92,6 +92,7 @@ def load_db(path=guowang_codes.GUOWANG_1202_DB):
     sats = {
         n: (s["g2_phase"], s["theta_us"] * 1e-6 if "theta_us" in s else None)
         for n, s in d["satellites"].items()
+        if s.get("g2_phase") is not None
     }
     return sats, d["theta_unknown_us"] * 1e-6
 
