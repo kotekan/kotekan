@@ -187,8 +187,8 @@ gnss_component() {
         ;;
 
     cubearch)
-        # cf06 only: the far side of the beam-cube push leg, one bufferRecv on :11070 for the
-        # whole fleet's windows and a rawFileWrite onto /mnt/cs00. Start it before the nodes
+        # The far side of the beam-cube push leg (the gnss VM; cf06 before 11-03), one bufferRecv
+        # on :11070 for the whole fleet's windows and a GnssCubeWrite onto /mnt/cs00. Start it before the nodes
         # (cubearch_up.sh says why). The pre-flight (config present, archive dir writable,
         # sender/receiver frame_size agree, the binary's interface) is `cubearch_up.sh --check`,
         # which gnss-cubearch.service runs as ExecStartPre.

@@ -5,7 +5,7 @@
 #   scripts/gnss/site/cubearch_up.sh --check [config]   # the pre-flight only (the unit's ExecStartPre)
 #
 # The far side of the beam-cube push leg: one bufferRecv on :11070 for the whole fleet's
-# completed ~1 s (subband x element) windows, and a rawFileWrite that lands them on cs00. This
+# completed ~1 s (subband x element) windows, and a GnssCubeWrite that lands them, packed, on cs00. This
 # archive is what the per-element, per-frequency beam maps are built from. It is a separate
 # process from the gather and the search aggregator so that restarting either cannot punch a
 # hole in it.
@@ -63,7 +63,7 @@ PY
 EOF
 echo "cube archiver: $(basename "$CFG") -- recv :$PORT, frame $FRAME B, writing $DIR"
 
-# The archive directory must exist and be writable before the stage opens a file: rawFileWrite
+# The archive directory must exist and be writable before the stage opens a file: GnssCubeWrite
 # takes base_dir from the config and exits on a missing path, and on cs00 that is an NFS mount
 # that can be absent without the host noticing.
 if ! mkdir -p "$DIR" 2>/dev/null || ! touch "$DIR/.wtest" 2>/dev/null; then

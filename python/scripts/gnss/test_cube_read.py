@@ -11,10 +11,13 @@ import io
 import os
 import re
 import shutil
+import struct
 import sys
 import tempfile
 import unittest
 from argparse import Namespace
+
+import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import gnss_cube_read as cr  # noqa: E402
@@ -32,6 +35,119 @@ def header(idx, dropped):
         win_samples=3.2e9,
         sample_rate=3.2e9,
     )
+
+
+def wire_frame(rng, mp=8, mb=4, ne=3, n_prn=6, n_bin=3, live=(0, 2, 5)):
+    """A v3 frame, zero outside the chain's slots and bins and in the slots with no records, as
+    the assembler fills them."""
+    a = dict(
+        phi0=np.zeros(mp, "<f8"),
+        lo=np.zeros(mb, "<i4"),
+        hi=np.zeros(mb, "<i4"),
+        prn=np.zeros(mp, "<i4"),
+        nrec=np.zeros(mp, "<i4"),
+        nre=np.zeros(mp, "<i4"),
+        w=np.zeros((mp, mb), "<f4"),
+        en=np.zeros((mp, mb), "<f4"),
+        cre=np.zeros((mp, mb, ne), "<f4"),
+        cim=np.zeros((mp, mb, ne), "<f4"),
+        inc=np.zeros((mp, mb, ne), "<f4"),
+    )
+    a["lo"][:n_bin] = 6000 + np.arange(n_bin)
+    a["hi"][:n_bin] = 6000 + np.arange(n_bin)
+    for s in live:
+        a["phi0"][s] = rng.normal()
+        a["prn"][s], a["nrec"][s], a["nre"][s] = 10 + s, 90 + s, s % 2
+        for k in ("w", "en", "cre", "cim", "inc"):
+            a[k][s, :n_bin] = rng.normal(size=a[k][s, :n_bin].shape)
+    hdr = bytearray(cr.CUBE_HEADER_BYTES[3])
+    struct.pack_into("<8q", hdr, 0, 3, 77, 1, 2, 0, n_prn, n_bin, ne)
+    struct.pack_into("<2d", hdr, 64, 1.0, 2.0)
+    struct.pack_into("<4i", hdr, 80, 0, 1, mp, mb)
+    struct.pack_into("<d", hdr, 96, 1.7e9)
+    hdr[104:120] = b"cx19/gnss0_cube\0"
+    body = b"".join(
+        a[k].tobytes()
+        for k in (
+            "phi0",
+            "lo",
+            "hi",
+            "prn",
+            "nrec",
+            "nre",
+            "w",
+            "en",
+            "cre",
+            "cim",
+            "inc",
+        )
+    )
+    return bytes(hdr) + body, a, (n_prn, n_bin, live)
+
+
+def packed_frame(wire, a, shape):
+    """The same frame as GnssCubeWrite packs it (GnssCubeWrite.hpp)."""
+    n_prn, n_bin, live = shape
+    hdr = bytearray(wire[: cr.CUBE_HEADER_BYTES[3]])
+    struct.pack_into("<q", hdr, 0, 4)
+    struct.pack_into("<2i", hdr, 88, len(live), n_bin)
+    L = list(live)
+    parts = [
+        a["phi0"][L],
+        a["lo"][:n_bin],
+        a["hi"][:n_bin],
+        a["prn"][L],
+        a["nrec"][L],
+        a["nre"][L],
+        np.array(L, "<i4"),
+    ]
+    parts += [a[k][L, :n_bin] for k in ("w", "en", "cre", "cim", "inc")]
+    return bytes(hdr) + b"".join(np.ascontiguousarray(x).tobytes() for x in parts)
+
+
+class TestPackedFrames(unittest.TestCase):
+    def setUp(self):
+        self.d = tempfile.mkdtemp(prefix="test_cube_read-")
+
+    def tearDown(self):
+        shutil.rmtree(self.d, ignore_errors=True)
+
+    def write(self, name, frames):
+        path = os.path.join(self.d, name)
+        with open(path, "wb") as fh:
+            for f in frames:
+                fh.write(struct.pack("<I", 0) + f)
+        return path
+
+    def test_packed_reads_back_as_the_wire_frame(self):
+        rng = np.random.default_rng(1)
+        frames = [
+            wire_frame(rng),
+            wire_frame(rng, live=()),
+            wire_frame(rng, live=(1, 2, 3, 4, 5)),
+        ]
+        wire = self.write("w.raw", [f for f, _, _ in frames])
+        packed = self.write("p.raw", [packed_frame(*f) for f in frames])
+        self.assertLess(os.path.getsize(packed), os.path.getsize(wire))
+        got_w, got_p = list(cr.iter_frames(wire)), list(cr.iter_frames(packed))
+        self.assertEqual(len(got_w), 3)
+        self.assertEqual(len(got_p), 3)
+        for (hw, aw), (hp, ap) in zip(got_w, got_p):
+            self.assertEqual(hp["version"], 4)
+            for k in ("idx", "n_prn", "n_bin", "n_elem", "chain", "utc0"):
+                self.assertEqual(hp[k], hw[k], k)
+            self.assertEqual(sorted(ap), sorted(aw))
+            for k in aw:
+                np.testing.assert_array_equal(ap[k], aw[k], err_msg=k)
+                self.assertEqual(ap[k].shape, aw[k].shape, k)
+
+    def test_a_packed_slot_outside_the_chain_is_refused(self):
+        rng = np.random.default_rng(2)
+        f = bytearray(packed_frame(*wire_frame(rng)))
+        o = cr.CUBE_HEADER_BYTES[3] + 3 * 8 + 3 * 4 * 2 + 3 * 4 * 3
+        struct.pack_into("<i", f, o, 7)  # the first slot index, beyond n_prn 6
+        with self.assertRaises(SystemExit):
+            list(cr.iter_frames(self.write("bad.raw", [bytes(f)])))
 
 
 class TestLsAttribution(unittest.TestCase):

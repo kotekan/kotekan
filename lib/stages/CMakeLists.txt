@@ -70,6 +70,8 @@ add_library(
     # The fleet code loop runs in the gather instance beside GnssTelemGather (the only place
     # with the whole fleet at frame rate), so it is in the same no-FFTW block.
     gnss/GnssFleetTrim.cpp
+    # The beam-cube archiver's writer runs on the archive host, with no FFTW either.
+    gnss/GnssCubeWrite.cpp
     # The gnss interface document (with the band edges it lists) is served by every binary.
     gnss/gnssInterface.cpp
     gnss/gnssBandPlan.cpp

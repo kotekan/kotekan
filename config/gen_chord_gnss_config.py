@@ -194,10 +194,11 @@ CUBE_RING_DEPTH = 8
 CUBE_MAX_PRN = 32
 CUBE_MAX_BINS = 8
 # Where the archiver writes: bulk storage, not /tmp (cf06's /tmp does not survive a reboot) and
-# not NFS home (far smaller). 900 frames per file is ~10 s of a ~90-sender fleet (~91 MB), which
-# keeps the file count manageable; rawFileRead derives the frame count from the file size.
+# not NFS home (far smaller). GnssCubeWrite packs each frame to its live PRN slots and bins (~25 %
+# of the wire frame on 2026-11-03), so 3600 frames, ~20 s of the fleet, make a ~360 MB file; the
+# compactor's manifest holds one entry per file.
 CUBE_ARCHIVE_DIR = "/mnt/cs00/data/kvand/gnss_cube/raw"
-CUBE_ARCHIVE_FRAMES_PER_FILE = 900
+CUBE_ARCHIVE_FRAMES_PER_FILE = 3600
 
 # The aggregator's acquisition search. Threads for the aggregate half (parallel over Doppler
 # bins x coarse lags; the affinity set is widened to match, up to the pool). Fine-lag
@@ -2260,8 +2261,9 @@ def build_aggregator_instance(cfg, nodes, args, port, spds=8192):
 def build_cube_archive_instance(cfg, args, port):
     """The beam-cube archiver: the whole fleet's completed cube windows onto bulk storage.
 
-    One bufferRecv accepts every sender (~90 assemblers) on a single port, and one rawFileWrite
-    lands the frames, bundled, under CUBE_ARCHIVE_DIR.
+    One bufferRecv accepts every sender (~90 assemblers) on a single port, and GnssCubeWrite
+    lands the frames, bundled and packed (only the PRN slots with records and the actual bins),
+    under CUBE_ARCHIVE_DIR.
 
     Its own instance, separate from the gather and the search aggregator, so that restarting
     either never leaves holes in the record. Moving it is --cube-host on the nodes, plus
@@ -2271,11 +2273,12 @@ def build_cube_archive_instance(cfg, args, port):
     window index, wstart, the sender's <host>/<stage> address, gpu, each bin's freq_ids, each
     slot's PRN and a cumulative dropped-window count all travel in the payload,
     gnssRecord.hpp), so the bytes on disk carry their own provenance, and converting them to a
-    science format is an offline job that can be redone. Short chains' zero padding (see
-    CUBE_MAX_PRN) is the converter's to strip, not the transport's.
+    science format is an offline job that can be redone. Every sender pads to CUBE_MAX_PRN x
+    CUBE_MAX_BINS on the wire (one buffer serves the fleet); GnssCubeWrite drops the padding on
+    disk, and python/scripts/gnss/gnss_cube_read.py restores the wire shape.
 
-    No frame is split across files: rawFileWrite bundles a fixed count, so a reader derives the
-    frame count from the file size and can start anywhere.
+    No frame is split across files: GnssCubeWrite bundles a fixed count, and a reader walks the
+    frames by their headers.
     """
     rt = cfg["runtime"]
     # runtime.cpu_affinity (config/chord_gnss_node.yaml) is a CHORD node's core map; on a host
@@ -2330,20 +2333,13 @@ def build_cube_archive_instance(cfg, args, port):
             "cpu_affinity": list(cores[:6]),
         },
         "cube_write": {
-            "kotekan_stage": "rawFileWrite",
+            # Files are <file_name>_NNNNNNN.raw, numbered on past the highest existing file so a
+            # restart never overwrites the archive.
+            "kotekan_stage": "GnssCubeWrite",
             "in_buf": "cube_buf",
             "base_dir": args.cube_archive_dir,
             "file_name": args.cube_archive_file_name,
-            "file_ext": "raw",
-            # The archiver's own hostname in every filename carries no information; the name
-            # that would (which sender wrote a frame) is in the frame, since one file holds
-            # frames from every sender.
-            "prefix_hostname": False,
             "num_frames_per_file": CUBE_ARCHIVE_FRAMES_PER_FILE,
-            # The archive outlives the process. rawFileWrite numbers from 0 at every start and
-            # opens without O_TRUNC, so a restart would overwrite the oldest files; resume past
-            # the highest existing number instead.
-            "continue_numbering": True,
             "cpu_affinity": [cores[6 % len(cores)]],
         },
     }
@@ -3865,7 +3861,8 @@ def main():
             f"# windows, landed raw under {args.cube_archive_dir}.\n"
             f"# wire frame {nbytes} B = {CUBE_MAX_PRN} PRN x {CUBE_MAX_BINS} bin "
             f"x {n_elem} elem; listen {CUBE_PORT}; rest {port}\n"
-            f"# {CUBE_ARCHIVE_FRAMES_PER_FILE} frames/file = {per_file / 1e6:.1f} MB\n"
+            f"# {CUBE_ARCHIVE_FRAMES_PER_FILE} frames/file, at most {per_file / 1e6:.1f} MB "
+            "(GnssCubeWrite packs each frame to its live slots and bins)\n"
             "# The generator's CUBE_MAX_PRN and CUBE_MAX_BINS and the live element count set\n"
             "# frame_size here and on every sender, and bufferRecv closes any connection whose\n"
             "# frame size differs: no data rather than bad data, and nothing says which end is\n"

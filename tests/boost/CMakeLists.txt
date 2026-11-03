@@ -83,6 +83,12 @@ target_include_directories(test_gnss_chan_power PRIVATE ../../lib/stages ../../l
 add_executable(test_gnss_fleet_dll test_gnss_fleet_dll.cpp)
 target_include_directories(test_gnss_fleet_dll PRIVATE ../../lib/stages ../../lib/stages/gnss)
 
+# The beam-cube archiver's packing of a frame into its archive form.
+add_executable(test_gnss_cube_write test_gnss_cube_write.cpp)
+target_link_libraries(test_gnss_cube_write PRIVATE libexternal kotekan_stages kotekan_libs
+                                                   kotekan_utils kotekan_core kotekan_metadata)
+target_include_directories(test_gnss_cube_write PRIVATE ../../lib/stages ../../lib/stages/gnss)
+
 # The GnssFleetTrim stage driven over its REST endpoints, with no frames flowing.
 add_executable(test_gnss_fleet_trim test_gnss_fleet_trim.cpp)
 target_link_libraries(test_gnss_fleet_trim PRIVATE libexternal kotekan_stages kotekan_libs

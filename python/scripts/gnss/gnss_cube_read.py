@@ -5,9 +5,11 @@
     gnss_cube_read.py head <file> [--n 1]      one frame's header and a slice of its arrays
 
 The file is self-delimiting and self-describing, and nothing here is configured. Each frame
-is stored as `uint32 metadata_size | metadata | frame` (rawFileWrite), and the frame's own
-header carries the maxima it was sized for, so this reader needs neither the generator's flags,
-the node config nor the frame size: the archive stays readable after the config changes.
+is stored as `uint32 metadata_size | metadata | frame` (rawFileWrite, or GnssCubeWrite for the
+packed form), and the frame's own header carries the maxima it was sized for, so this reader
+needs neither the generator's flags, the node config nor the frame size: the archive stays
+readable after the config changes. Packed frames (version 4, GnssCubeWrite.hpp) hold only the
+PRN slots with records and the actual bins; they are read back into the wire version's shape.
 
 What is and is not a loss. `dropped_windows` is cumulative per sender, so a rise between
 consecutive frames sizes a gap the sender made (a full output buffer). A hole in the window
@@ -35,15 +37,28 @@ CUBE_CHAIN_CHARS = 48
 CUBE_FIXED_BYTES = {2: 96, 3: 104}
 CUBE_HEADER_BYTES = {v: n + CUBE_CHAIN_CHARS for v, n in CUBE_FIXED_BYTES.items()}
 CUBE_HEADER_MIN = min(CUBE_HEADER_BYTES.values())  # enough to read the version + maxima
+# Packed archive versions (gnss::CUBE_PACKED_VERSION) -> the wire version they pack: its header,
+# then its arrays cut to max_prn = the slots with records and max_bins = n_bin, with int32
+# slot[max_prn] (each slot's index in the sender's frame) after n_reanchor.
+CUBE_PACKED = {4: 3}
+
+
+def wire_version(version):
+    return CUBE_PACKED.get(version, version)
+
+
+def header_bytes(version):
+    return CUBE_HEADER_BYTES.get(wire_version(version), CUBE_HEADER_MIN)
 
 
 def frame_bytes(max_prn, max_bins, n_elem, version=3):
     """Same expression as gnss::cube_frame_bytes and config/gnss_record_layout.py, which size
-    the current version; `version` selects the header size."""
+    the current version (gnss::cube_packed_bytes for a packed one); `version` selects the header
+    size."""
     return (
-        CUBE_HEADER_BYTES[version]
+        CUBE_HEADER_BYTES[wire_version(version)]
         + max_bins * 2 * 4
-        + max_prn * 3 * 4
+        + max_prn * (4 if version in CUBE_PACKED else 3) * 4
         + max_prn * 8
         + max_prn * max_bins * 2 * 4
         + max_prn * max_bins * n_elem * 3 * 4
@@ -62,15 +77,15 @@ def parse_header(buf):
             f"maxima, so their frame length is not derivable from the frame. Read them with the "
             f"generator flags that produced them, or re-record."
         )
-    if ver not in CUBE_HEADER_BYTES:
+    if wire_version(ver) not in CUBE_HEADER_BYTES:
         raise SystemExit(
-            f"cube frame version {ver}: this reader knows {sorted(CUBE_HEADER_BYTES)}"
-            f" -- update CUBE_FIXED_BYTES from gnssRecord.hpp"
+            f"cube frame version {ver}: this reader knows {sorted(CUBE_HEADER_BYTES)} and packed "
+            f"{sorted(CUBE_PACKED)} -- update CUBE_FIXED_BYTES from gnssRecord.hpp"
         )
     # utc0: UTC of absolute F-engine sample 0 (v3). A v2 frame has none: reported as None,
     # never guessed.
     utc0 = struct.unpack_from("<d", buf, 96)[0] if ver >= 3 else None
-    co = CUBE_FIXED_BYTES[ver]
+    co = CUBE_FIXED_BYTES[wire_version(ver)]
     chain = buf[co : co + CUBE_CHAIN_CHARS].split(b"\0")[0].decode("ascii", "replace")
     return dict(
         version=ver,
@@ -89,12 +104,14 @@ def parse_header(buf):
         max_bins=max_bins,
         chain=chain,
         utc0=utc0,
-        header_bytes=CUBE_HEADER_BYTES[ver],
+        header_bytes=header_bytes(ver),
     )
 
 
 def parse_arrays(buf, h):
     """The five payload blocks, sliced to the actual extents (the pad is dropped here)."""
+    if h["version"] in CUBE_PACKED:
+        return parse_packed(buf, h)
     mp, mb, ne = h["max_prn"], h["max_bins"], h["n_elem"]
     np_, nb = h["n_prn"], h["n_bin"]
     o = h["header_bytes"]
@@ -131,6 +148,53 @@ def parse_arrays(buf, h):
     )
 
 
+def parse_packed(buf, h):
+    """A packed frame read back into parse_arrays' shapes: each live slot at its own index among
+    the chain's n_prn, zero in the slots that had no records (as the wire frame holds them)."""
+    nl, nb, ne, np_ = h["max_prn"], h["max_bins"], h["n_elem"], h["n_prn"]
+    o = h["header_bytes"]
+
+    def take(count, dtype, itemsize):
+        nonlocal o
+        a = np.frombuffer(buf, dtype=dtype, count=count, offset=o)
+        o += count * itemsize
+        return a
+
+    phi0 = take(nl, "<f8", 8)
+    fid_lo = take(nb, "<i4", 4)
+    fid_hi = take(nb, "<i4", 4)
+    prn = take(nl, "<i4", 4)
+    nrec = take(nl, "<i4", 4)
+    nre = take(nl, "<i4", 4)
+    slot = take(nl, "<i4", 4)
+    if nl and (slot.min() < 0 or slot.max() >= np_ or len(set(slot.tolist())) != nl):
+        raise SystemExit(
+            f"packed cube frame idx {h['idx']}: slots {slot.tolist()} for n_prn {np_}"
+        )
+    out = dict(freq_id_lo=fid_lo, freq_id_hi=fid_hi)
+    for name, a, dtype in (
+        ("phi0", phi0, "<f8"),
+        ("prn", prn, "<i4"),
+        ("n_rec", nrec, "<i4"),
+        ("n_reanchor", nre, "<i4"),
+    ):
+        full = np.zeros(np_, dtype)
+        full[slot] = a
+        out[name] = full
+    for name, inner in (
+        ("w", ()),
+        ("energy", ()),
+        ("coh_re", (ne,)),
+        ("coh_im", (ne,)),
+        ("incoh", (ne,)),
+    ):
+        n = nl * nb * (ne if inner else 1)
+        full = np.zeros((np_, nb) + inner, "<f4")
+        full[slot] = take(n, "<f4", 4).reshape((nl, nb) + inner)
+        out[name] = full
+    return out
+
+
 def iter_frames(path, want_arrays=True):
     """Yield (header, arrays|None) for every frame in one raw file.
 
@@ -152,7 +216,7 @@ def iter_frames(path, want_arrays=True):
             return
         # The version sits at byte 0 and the header grows with it: peek the minimum, size the rest.
         (ver,) = struct.unpack_from("<q", blob, o)
-        hb = CUBE_HEADER_BYTES.get(ver, CUBE_HEADER_MIN)
+        hb = header_bytes(ver)
         if o + hb > n:
             return
         h = parse_header(blob[o : o + hb])
