@@ -118,6 +118,8 @@ class ChainContext(object):
         "mp_last_det",
         "almanac_sats",
         "brdc_alm",
+        # sky.gw_transit_store under --gw-transits, shared by every chain; None when off
+        "gw_transits",
         "det_fresh",
         "innov_hist",
         "minnov_hist",

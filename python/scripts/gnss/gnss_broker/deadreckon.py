@@ -2791,7 +2791,8 @@ def stage_dead_reckon(ctx):
                 _log("dead-reckon: predict failed: %s" % e)
             dr_gdv(ctx, ctx.drp.pd, ctx.drp.pd2, pd0)
             # The geometry-only sky (sky.transit_sky) for the transit freezes and the D3 transit
-            # veto: health gate off, a day of toe validity, every constellation. Built from the same
+            # veto: health gate off, a day of toe validity, every constellation, and with
+            # --gw-transits every GuoWang satellite near the boresight. Built from the same
             # ephemeris as the seeds' sky and kept separate from it on purpose.
             try:
                 if ctx.dr_state.get("eph"):
@@ -2802,6 +2803,7 @@ def stage_dead_reckon(ctx):
                         ctx.args.lon,
                         ctx.args.alt,
                         datetime.fromtimestamp(_ep_w, tz=timezone.utc),
+                        gw=ctx.gw_transits,
                     )
                     ctx.dr_state["transit_pd"] = ctx.drp.transit_pd
             except Exception as e:

@@ -843,7 +843,19 @@ def build_parser(description):
         default="/var/tmp/gnss-guowang/gw_ephem.json",
         help="the GuoWang ephemeris table (scripts/gnss/site/gw_ephem_table.py) a "
         "constellation W chain's almanac and dead reckoning read instead of BRDC, "
-        "re-read whenever the file changes. Default /var/tmp/gnss-guowang/gw_ephem.json.",
+        "re-read whenever the file changes; every chain reads its transits "
+        "(--gw-transits). Default /var/tmp/gnss-guowang/gw_ephem.json.",
+    )
+    ap.add_argument(
+        "--gw-transits",
+        type=int,
+        default=1,
+        help="nonzero (default): the transit sky also carries every GuoWang satellite's "
+        "passes near the boresight (the transits of --gw-table, code known or not), so "
+        "one crossing the beam triggers the D3 transit veto, the transit freezes and "
+        "holds and the assemblers' model-formation freeze like any GNSS satellite. A "
+        "missing or unreadable table adds none. Needs --dead-reckon, which builds the "
+        "transit sky. 0 = off.",
     )
     ap.add_argument(
         "--boresight",

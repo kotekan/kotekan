@@ -517,22 +517,26 @@ def glonass_state(e, t_gpst):
     return tuple(s[:3]), tuple(s[3:])
 
 
-def load_gw_table(path):
+def load_gw_table(path, transits=False):
     """GuoWang (no broadcast ephemeris, #227): {("W", prn): [record, ...]} from the table
     scripts/gnss/site/gw_ephem_table.py writes, one record per satellite pass segment: ITRS
     position and velocity on a regular grid (t0_gpst, dt), from the satellite's TLE (SGP4,
     propagated off the broker; the broker interpolates). prn = the satellite's G2' phase + 1.
     The records carry health 0 and a constant clock, clk_s = -theta: each satellite starts its
     code theta after every UTC 2 ms boundary (guowang_1202_db.json), so the code-phase model
-    treats it as a satellite clock offset; the frequencies match the TLE Doppler to ~10 ppb."""
+    treats it as a satellite clock offset; the frequencies match the TLE Doppler to ~10 ppb.
+
+    With `transits`, the table's "transits" instead: every satellite's passes near the
+    boresight, code known or not, keyed ("W", catalogue number) and with no clock. They are
+    geometry for the transit sky (sky.transit_sky) only."""
     import json
 
     with open(path) as fh:
         doc = json.load(fh)
     out = {}
-    for r in doc.get("records", []):
+    for r in doc.get("transits" if transits else "records", []):
         r = dict(r, sys="W", health=0)
-        out.setdefault(("W", int(r["prn"])), []).append(r)
+        out.setdefault(("W", int(r["catnum" if transits else "prn"])), []).append(r)
     return out
 
 

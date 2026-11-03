@@ -546,6 +546,15 @@ def main(argv=None, rx=None, publisher=None):
         except Exception as e:
             _log("almanac unavailable (%s); falling back to search Doppler" % e)
             args.almanac = False
+    # Every GuoWang satellite's passes near the boresight, for the transit sky: one store per
+    # table, shared by every chain like the BRDC one.
+    gw_transits = (
+        rx.brdc(
+            ("gw-transits", args.gw_table), lambda: _sky.gw_transit_store(args.gw_table)
+        )
+        if args.gw_transits
+        else None
+    )
 
     # Dead-reckoned cp seeding: the BRDC ephemeris and a receiver clock (solved, adopted or
     # primed) predict the code phase of every sat the search cannot (yet) see. State: eph =
@@ -1381,6 +1390,7 @@ def main(argv=None, rx=None, publisher=None):
         cb=_cb,
         almanac_sats=almanac_sats,
         brdc_alm=brdc_alm,
+        gw_transits=gw_transits,
         det_fresh=det_fresh,
         nho=_nho,
         dls=_dls,

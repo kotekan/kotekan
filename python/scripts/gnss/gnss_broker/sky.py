@@ -262,6 +262,44 @@ def gw_refresh(state, now):
     )
 
 
+def gw_transit_store(path):
+    """Every GuoWang satellite's passes near the boresight, the "transits" of the table at
+    `path`, for every chain's transit sky (transit_sky's `gw`). Shared by the receiver like the
+    BRDC store; gw_transits reads it."""
+    return {"path": path, "eph": {}, "mtime": None, "lock": threading.Lock()}
+
+
+def gw_transits(ge, state):
+    """A gw_transit_store's {("W", catnum): [record, ...]}, reloaded when the file's mtime
+    changes. A missing or unreadable file is no GuoWang transits, logged every 10 min. One
+    chain reloads at a time; the others take the set in hand."""
+    if not state["lock"].acquire(blocking=False):
+        return state["eph"]
+    try:
+        mtime = os.stat(state["path"]).st_mtime_ns
+        if mtime != state["mtime"]:
+            state["mtime"] = mtime
+            state["eph"] = ge.load_gw_table(state["path"], transits=True)
+            _log(
+                "gw transits: %s loaded (%d W satellites, %d pass segments)"
+                % (
+                    state["path"],
+                    len(state["eph"]),
+                    sum(len(v) for v in state["eph"].values()),
+                )
+            )
+    except Exception as e:
+        state["eph"] = {}
+        _log_rl(
+            "gw-transits",
+            "gw transits: %s unreadable (%s); no GuoWang transits" % (state["path"], e),
+            every_s=600.0,
+        )
+    finally:
+        state["lock"].release()
+    return state["eph"]
+
+
 def _dh_dpos(xc):
     """The numeric BRDC-agreement residual (metres) in an xcheck suffix, or None. The xcheck
     functions return log text (' | BRDC dpos=0.05 m ...'); the decode-health export wants the
@@ -708,7 +746,7 @@ def nearest_boresight(pd, el0=None, az0=None):
 TRANSIT_MAX_AGE_S = 86400.0
 
 
-def transit_sky(ge, eph, lat, lon, alt_m, t_utc):
+def transit_sky(ge, eph, lat, lon, alt_m, t_utc, gw=None):
     """Geometry only: {(sys, prn): {az, el, health, toe_age_s}} over every constellation in
     `eph`, with predict_all's health gate off and a day of toe validity.
 
@@ -717,7 +755,10 @@ def transit_sky(ge, eph, lat, lon, alt_m, t_utc):
     satellite, but that satellite still transmits, and passing near boresight it still
     captures the shared element model. Never for seeds, probes or hints: those keep
     predict_all's defaults, and nothing here carries a clock. Objects in no BRDC at all stay
-    invisible."""
+    invisible, except GuoWang's: with `gw` (a gw_transit_store), every GuoWang satellite near
+    the boresight joins the sky as ("W", catalogue number)."""
+    if gw is not None:
+        eph = {**eph, **gw_transits(ge, gw)}
     pa = ge.predict_all(
         eph,
         lat,
