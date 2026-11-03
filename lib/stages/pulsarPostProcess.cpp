@@ -189,11 +189,11 @@ void pulsarPostProcess::main_thread() {
         const uint8_t* in_frame = in_buffer->wait_for_full_frame(unique_name, in_buffer_ID);
         if (in_frame == nullptr)
             return;
-        const int64_t new_frame_fpga_seq_num = get_fpga_seq_num(in_buffer, in_buffer_ID);
+        const int64_t new_frame_fpga_seq_num = get_chord_metadata(in_buffer, in_buffer_ID)->get_fpga_seq_num();
 
         // Initialize data for header info, namely position and frequency labels.
-        beam_coord = get_beam_coord(in_buffer, in_buffer_ID);
-        thread_ids[0] = tel.to_freq_id(in_buffer, in_buffer_ID);
+        beam_coord = get_chord_metadata(in_buffer, in_buffer_ID)->get_beam_coord();
+        thread_ids[0] = get_chord_metadata(in_buffer, in_buffer_ID)->get_coarse_freq()[0];
         // TODO: replace by correct frequency ids
         for (unsigned int f = 1; f < _num_freqs_per_gpu; f++)
             thread_ids[f] = thread_ids[0];
