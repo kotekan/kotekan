@@ -19,6 +19,7 @@ per-file frames, read with scripts/gnss/beam_dump_read.py. The nodes' own record
 chip reader's input; nothing here reads them.
 """
 import argparse
+import json
 import os
 import sys
 import time
@@ -159,7 +160,12 @@ def cmd_run(a, nodes):
         if lead > a.lead:
             time.sleep(lead - a.lead)
         start_in = max(1.0, s - time.time())
-        viscap.arm(nodes, GATES, start_in, e - max(s, time.time()))
+        rec = viscap.arm(nodes, GATES, start_in, e - max(s, time.time()))
+        if a.armed_log:
+            # which GPUs record this window: the reducer expects exactly these
+            rec.update(t_start=s, t_end=e, utc_start=fmt(s), targets=names)
+            with open(a.armed_log, "a") as fh:
+                fh.write(json.dumps(rec) + "\n")
         if a.once:
             return
         time.sleep(max(0.0, e - time.time()) + 2.0)
@@ -222,6 +228,11 @@ def main():
         default=[],
         help="record only satellites not in this file (repeatable): a guowang_1202_db.json or a "
         "gw_reduce db_proposals.jsonl; re-read before each window",
+    )
+    ap.add_argument(
+        "--armed-log",
+        default="/home/kvand/gnss/builds/gw1202/armed_windows.jsonl",
+        help="append each window's armed gates and seq range here (read by gw_reduce.py); '' = off",
     )
     ap.add_argument(
         "--revisit-hours",

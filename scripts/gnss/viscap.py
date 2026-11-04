@@ -148,6 +148,7 @@ def measure_rate(nodes, gates, dt=2.0):
 
 
 def arm(nodes, gates, start_in, duration, start_seq=None, end_seq=None):
+    """Arm every gate for one window; returns {"start_seq", "end_seq", "armed": ["node/gate", ...]}."""
     rate, step, last = measure_rate(nodes, gates)
     if start_seq is None:
         # Frame-aligned to the grid the gates are actually seeing: last + k frames.
@@ -170,18 +171,18 @@ def arm(nodes, gates, start_in, duration, start_seq=None, end_seq=None):
             (start_seq - last) / rate,
         )
     )
-    ok = 0
+    armed = []
     for n, g, base in each_gate(nodes, gates):
         try:
             r = _post(
                 base + "/arm", {"start_seq": int(start_seq), "end_seq": int(end_seq)}
             )
             print("  %s/%s: armed (last_seq %d)" % (n, g, r.get("last_seq", -1)))
-            ok += 1
+            armed.append("%s/%s" % (n, g))
         except Exception as e:
             print("  %s/%s: FAILED (%s)" % (n, g, e), file=sys.stderr)
-    print("%d/%d gates armed" % (ok, len(nodes) * len(gates)))
-    return ok
+    print("%d/%d gates armed" % (len(armed), len(nodes) * len(gates)))
+    return {"start_seq": int(start_seq), "end_seq": int(end_seq), "armed": armed}
 
 
 def disarm(nodes, gates):
