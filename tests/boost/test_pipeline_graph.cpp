@@ -353,12 +353,14 @@ BOOST_AUTO_TEST_CASE(options_are_read_from_query_arguments) {
                                                           {"runtime", "false"},
                                                           {"urls", "off"},
                                                           {"kernels", "on"},
+                                                          {"gpu_table", "0"},
                                                           {"cluster", ""},
                                                           {"rankdir", "TB"}});
     BOOST_CHECK(!chosen.legend);
     BOOST_CHECK(!chosen.runtime);
     BOOST_CHECK(!chosen.urls); // any value that is not an "on" form turns it off
     BOOST_CHECK(chosen.kernels);
+    BOOST_CHECK(defaults.gpu_table && !chosen.gpu_table);
     BOOST_CHECK(chosen.cluster); // a bare `?cluster` counts as asking for it
     BOOST_CHECK(chosen.pools);   // not mentioned, stays at its default
     BOOST_CHECK_EQUAL(chosen.rankdir, "TB");
@@ -471,4 +473,24 @@ BOOST_AUTO_TEST_CASE(dot_draws_a_device_as_one_table) {
     const std::string boxes = graph.to_dot();
     BOOST_CHECK(contains(boxes, "cluster___gpu/0"));
     BOOST_CHECK(contains(boxes, "\"host_in\" -> \"/s/gpu_0/commands/0\""));
+}
+
+BOOST_AUTO_TEST_CASE(dot_keeps_a_device_box_without_memory) {
+    // As with kernels off: stages only, and a ring between them that is a
+    // plain buffer node, not device memory.
+    PipelineGraph graph;
+    auto& device = graph.add_cluster("__gpu/0");
+    device.label = "GPU 0";
+    device.set_attr("fillcolor", kotekan::graph_device_fill);
+    graph.add_node("host_in").add_line("host_in");
+    for (const char* id : {"/a/gpu_0", "ring", "/b/gpu_0"})
+        graph.add_node(id).add_line(id).cluster = "__gpu/0";
+    graph.add_edge("host_in", "/a/gpu_0");
+    graph.add_edge("/a/gpu_0", "ring");
+    graph.add_edge("ring", "/b/gpu_0");
+
+    const std::string dot = graph.to_dot();
+    BOOST_CHECK(contains(dot, "cluster___gpu/0"));
+    BOOST_CHECK(contains(dot, "\"/a/gpu_0\" -> \"ring\""));
+    BOOST_CHECK(contains(dot, "\"ring\" -> \"/b/gpu_0\""));
 }
