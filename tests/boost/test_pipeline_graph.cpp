@@ -468,6 +468,13 @@ BOOST_AUTO_TEST_CASE(dot_draws_a_device_as_one_table) {
     // The ring's region is named from the ring's line for this device.
     BOOST_CHECK(contains(dot, "<B>ring</B>"));
     BOOST_CHECK(contains(dot, ">full<"));
+    // Lines: down each region from its writer to its reader, and across the
+    // kernel's row from what it reads to what it writes.
+    using kotekan::graph_style;
+    BOOST_CHECK(contains(dot, std::string("BGCOLOR=\"")
+                                  + graph_style(kotekan::GraphCategory::Memory).line));
+    BOOST_CHECK(
+        contains(dot, std::string("BGCOLOR=\"") + graph_style(kotekan::GraphCategory::Gpu).line));
 
     graph.options.gpu_table = false;
     const std::string boxes = graph.to_dot();

@@ -247,7 +247,8 @@ struct GraphOptions {
 
     /// Draw each GPU as one table of its memory and the commands using it, as
     /// in @c PipelineGraph::to_device_svg(), instead of a box of nodes. Host
-    /// buffer edges end on the row of the command that copies them.
+    /// buffer edges end on the row of the command that copies them, and lines
+    /// join each command's marks and each region's users.
     bool gpu_table = true;
 
     /**

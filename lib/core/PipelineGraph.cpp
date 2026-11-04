@@ -909,6 +909,82 @@ std::string PipelineGraph::to_device_svg(const std::string& device_cluster) cons
     return svg;
 }
 
+// Sizes in a GPU table's line cells, in points: the row height, the box a
+// mark sits in, and the width of the lines joining marks.
+static const int table_row_height = 24, table_mark = 14, table_line = 2;
+
+/// A fixed-size cell of a line cell's nested table, filled with @p fill unless empty.
+static std::string grid_cell(int width, int height, const std::string& fill,
+                             const char* span = "") {
+    return fmt::format(fmt("<TD{:s} WIDTH=\"{:d}\" HEIGHT=\"{:d}\" FIXEDSIZE=\"TRUE\"{:s}></TD>"),
+                       span, width, height,
+                       fill.empty() ? "" : fmt::format(fmt(" BGCOLOR=\"{:s}\""), fill));
+}
+
+/**
+ * One (command, region) cell of a GPU table, @p width points wide: a mark, if
+ * any, and lines leaving the middle of the cell towards each side asked for.
+ *
+ * Graphviz tables cannot draw lines, so they are thin filled cells of a
+ * nested table, sized to fill the cell exactly. A cell without a mark has a
+ * line all the way across or none, so it needs fewer cells.
+ */
+static std::string line_cell(int width, const char* mark, const std::string& mark_ink, bool up,
+                             bool down, bool left, bool right, const std::string& v_ink,
+                             const std::string& h_ink) {
+    const bool vertical = up || down;
+    const bool horizontal = left || right;
+    if (!mark && !vertical && !horizontal)
+        return "<TD></TD>";
+
+    const std::string none;
+    const int pad = (table_mark - table_line) / 2;
+    const int left_w = width / 2 - table_line / 2 - pad;
+    const int right_w = width - left_w - table_mark;
+    const int top_h = table_row_height / 2 - table_line / 2 - pad;
+    const int bottom_h = table_row_height - top_h - table_mark;
+
+    std::string cell = "<TD CELLPADDING=\"0\"><TABLE BORDER=\"0\" CELLBORDER=\"0\" "
+                       "CELLSPACING=\"0\" CELLPADDING=\"0\">";
+    if (mark) {
+        // Columns: left_w, pad, line, pad, right_w; rows likewise. The mark
+        // spans the middle three of each. The top and bottom rows are five
+        // cells, not merged ones: graphviz sizes overlapping spans loosely.
+        const std::string up_ink = up ? v_ink : none, down_ink = down ? v_ink : none;
+        cell += "<TR>" + grid_cell(left_w, top_h, none) + grid_cell(pad, top_h, none)
+                + grid_cell(table_line, top_h, up_ink) + grid_cell(pad, top_h, none)
+                + grid_cell(right_w, top_h, none) + "</TR>";
+        cell += "<TR>" + grid_cell(left_w, pad, none)
+                + fmt::format(fmt("<TD ROWSPAN=\"3\" COLSPAN=\"3\" WIDTH=\"{0:d}\" "
+                                  "HEIGHT=\"{0:d}\" FIXEDSIZE=\"TRUE\"><FONT POINT-SIZE=\"13\" "
+                                  "COLOR=\"{1:s}\">{2:s}</FONT></TD>"),
+                              table_mark, mark_ink, mark)
+                + grid_cell(right_w, pad, none) + "</TR>";
+        cell += "<TR>" + grid_cell(left_w, table_line, left ? h_ink : none)
+                + grid_cell(right_w, table_line, right ? h_ink : none) + "</TR>";
+        cell += "<TR>" + grid_cell(left_w, pad, none) + grid_cell(right_w, pad, none) + "</TR>";
+        cell += "<TR>" + grid_cell(left_w, bottom_h, none) + grid_cell(pad, bottom_h, none)
+                + grid_cell(table_line, bottom_h, down_ink) + grid_cell(pad, bottom_h, none)
+                + grid_cell(right_w, bottom_h, none) + "</TR>";
+    } else if (!horizontal) {
+        cell += "<TR>" + grid_cell(left_w + pad, table_row_height, none)
+                + grid_cell(table_line, table_row_height, v_ink)
+                + grid_cell(pad + right_w, table_row_height, none) + "</TR>";
+    } else {
+        // The horizontal line is drawn across a vertical one: they cross,
+        // they do not join.
+        const std::string upright = vertical ? v_ink : none;
+        cell += "<TR>" + grid_cell(left_w + pad, top_h + pad, none)
+                + grid_cell(table_line, top_h + pad, upright)
+                + grid_cell(pad + right_w, top_h + pad, none) + "</TR>";
+        cell += "<TR>" + grid_cell(width, table_line, h_ink, " COLSPAN=\"3\"") + "</TR>";
+        cell += "<TR>" + grid_cell(left_w + pad, pad + bottom_h, none)
+                + grid_cell(table_line, pad + bottom_h, upright)
+                + grid_cell(pad + right_w, pad + bottom_h, none) + "</TR>";
+    }
+    return cell + "</TABLE></TD>";
+}
+
 std::string PipelineGraph::device_table(const DeviceLayout& layout,
                                         const std::string& title) const {
     const std::string gpu_line = graph_style(GraphCategory::Gpu).line;
@@ -925,7 +1001,11 @@ std::string PipelineGraph::device_table(const DeviceLayout& layout,
 
     // A column per row of the device view. A ring's region is named on the
     // ring's line for this device; other memory is named by its own label.
+    // Each column is given a fixed width, from an estimate of its header's
+    // width with some to spare: a column stretched wider than its line cells
+    // would leave gaps in the lines.
     const std::string region_prefix = title + ": ";
+    std::vector<int> widths;
     bool any_gauge = false;
     html += "<TR><TD></TD>";
     for (const GraphNode* row : layout.rows) {
@@ -946,10 +1026,14 @@ std::string PipelineGraph::device_table(const DeviceLayout& layout,
         if (name.size() > suffix.size()
             && name.compare(name.size() - suffix.size(), suffix.size(), suffix) == 0)
             name.resize(name.size() - suffix.size());
-        html += fmt::format(fmt("<TD><FONT POINT-SIZE=\"9\" COLOR=\"{:s}\"><B>{:s}</B></FONT><BR/>"
-                                "<FONT POINT-SIZE=\"8\" COLOR=\"{:s}\">{:s}</FONT></TD>"),
-                            memory_line, escape_html(name), graph_edge_line,
-                            escape_html(size.empty() ? " " : size));
+        const double text = std::max(1.2 * text_width(name, 9), text_width(size, 8));
+        widths.push_back(2 * (int)std::ceil((std::max(text, 44.0) + 12) / 2));
+        html +=
+            fmt::format(fmt("<TD CELLPADDING=\"0\" WIDTH=\"{:d}\" HEIGHT=\"30\" FIXEDSIZE=\"TRUE\">"
+                            "<FONT POINT-SIZE=\"9\" COLOR=\"{:s}\"><B>{:s}</B></FONT><BR/>"
+                            "<FONT POINT-SIZE=\"8\" COLOR=\"{:s}\">{:s}</FONT></TD>"),
+                        widths.back(), memory_line, escape_html(name), graph_edge_line,
+                        escape_html(size.empty() ? " " : size));
         any_gauge |= !std::isnan(row->occupancy);
     }
     html += "<TD></TD></TR>";
@@ -988,7 +1072,19 @@ std::string PipelineGraph::device_table(const DeviceLayout& layout,
         html += "<TD></TD></TR>";
     }
 
-    // A row per command, marking the regions it reads and writes.
+    // A row per command, marking the regions it reads and writes. A
+    // horizontal line joins a command's marks, running to the table's edge
+    // for a host copy; a vertical one joins a region's first and last user.
+    const int regions = (int)layout.rows.size();
+    std::vector<int> first_user(regions, (int)layout.columns.size()), last_user(regions, -1);
+    for (size_t c = 0; c < layout.columns.size(); c++) {
+        for (const auto* rows : {&layout.columns[c].reads, &layout.columns[c].writes}) {
+            for (size_t row : *rows) {
+                first_user[row] = std::min(first_user[row], (int)c);
+                last_user[row] = std::max(last_user[row], (int)c);
+            }
+        }
+    }
     for (size_t c = 0; c < layout.columns.size(); c++) {
         const DeviceColumn& column = layout.columns[c];
         bool stalled = false;
@@ -1006,21 +1102,32 @@ std::string PipelineGraph::device_table(const DeviceLayout& layout,
             fmt::format(fmt("<TR><TD PORT=\"in{:d}\" ALIGN=\"LEFT\"><FONT COLOR=\"{:s}\">"
                             "{:s}</FONT> <FONT POINT-SIZE=\"9\" COLOR=\"{:s}\">{:s}</FONT></TD>"),
                         c, ink, escape_html(stage), graph_edge_line, escape_html(command));
+        int first = column.from_host.empty() ? regions : -1;
+        int last = column.to_host.empty() ? -1 : regions;
+        for (const auto* rows : {&column.reads, &column.writes}) {
+            for (size_t row : *rows) {
+                first = std::min(first, (int)row);
+                last = std::max(last, (int)row);
+            }
+        }
         for (size_t row = 0; row < layout.rows.size(); row++) {
-            const char* mark = " ";
+            const char* mark = nullptr;
             if (std::find(column.writes.begin(), column.writes.end(), row) != column.writes.end())
                 mark = "●";
             else if (std::find(column.reads.begin(), column.reads.end(), row) != column.reads.end())
                 mark = "○";
-            html += fmt::format(fmt("<TD><FONT POINT-SIZE=\"13\" COLOR=\"{:s}\">{:s}</FONT></TD>"),
-                                ink, mark);
+            const int r = (int)row, at = (int)c;
+            html += line_cell(widths[row], mark, ink, first_user[row] < at && at <= last_user[row],
+                              first_user[row] <= at && at < last_user[row], first < r && r <= last,
+                              first <= r && r < last, memory_line, ink);
         }
         html += fmt::format(fmt("<TD PORT=\"out{:d}\"><FONT COLOR=\"{:s}\">{:s}</FONT></TD></TR>"),
                             c, host_line, column.to_host.empty() ? " " : "▶");
     }
 
     html += fmt::format(fmt("<TR><TD COLSPAN=\"{:d}\" ALIGN=\"LEFT\"><FONT POINT-SIZE=\"8\" "
-                            "COLOR=\"{:s}\">○ reads · ● writes · ▶ copies to a host buffer"
+                            "COLOR=\"{:s}\">○ reads · ● writes · ▶ copies to a host buffer · "
+                            "lines join only at ○ or ●"
                             "</FONT></TD></TR></TABLE>"),
                         width, graph_edge_line);
     return html;
