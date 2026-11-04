@@ -50,6 +50,12 @@ add_executable(test_guowang_1202_code test_guowang_1202_code.cpp
                                       ../../lib/stages/gnss/guowang1202Code.cpp)
 target_include_directories(test_guowang_1202_code PRIVATE ../../lib/stages ../../lib/stages/gnss)
 
+# GuoWang 1202.025 MHz data signs predicted from time and the message pages: CRC-24Q, the
+# convolutional encoder and the frame mapping against the sky's own subframes
+add_executable(test_guowang_1202_nav test_guowang_1202_nav.cpp
+                                     ../../lib/stages/gnss/guowang1202Nav.cpp)
+target_include_directories(test_guowang_1202_nav PRIVATE ../../lib/stages ../../lib/stages/gnss)
+
 # Pure band-plan logic: compile the source directly, no Telescope/FFTW needed.
 add_executable(test_gnss_band_plan test_gnss_band_plan.cpp ../../lib/stages/gnss/gnssBandPlan.cpp)
 target_include_directories(test_gnss_band_plan PRIVATE ../../lib/stages ../../lib/stages/gnss)

@@ -60,6 +60,7 @@ add_library(
     gnss/glonassCACode.cpp
     gnss/glonassL2OCCode.cpp
     gnss/guowang1202Code.cpp
+    gnss/guowang1202Nav.cpp
     gnss/gnssOverlay.cpp
     gnss/gnssChannelizedDespread.cpp
     gnss/GnssCoherentCombiner.cpp
