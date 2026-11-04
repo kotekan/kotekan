@@ -493,7 +493,9 @@ std::string PipelineGraph::to_dot() const {
     const std::set<std::string> cyclic = cyclic_clusters();
 
     // A device box drawn as a table: its nodes are replaced by the table, and
-    // edges to them by edges to the ports of the rows they belong to.
+    // edges to them by edges to the ports of the rows they belong to. A box
+    // with no memory drawn (kernels off) keeps its nodes: its rings are plain
+    // buffer nodes there, which the table has no place for.
     std::set<std::string> tables;
     std::map<std::string, std::pair<std::string, std::string>> table_port; // table, row
     std::string table_nodes;
@@ -503,7 +505,7 @@ std::string PipelineGraph::to_dot() const {
             || fill->second != graph_device_fill)
             continue;
         const DeviceLayout layout = device_layout(cluster.id);
-        if (layout.columns.empty())
+        if (layout.columns.empty() || layout.rows.empty())
             continue;
         tables.insert(cluster.id);
         for (const auto& id : layout.nodes)
@@ -915,7 +917,8 @@ std::string PipelineGraph::device_table(const DeviceLayout& layout,
     const size_t width = layout.rows.size() + 2;
 
     std::string html = fmt::format(fmt("<TABLE BORDER=\"1\" COLOR=\"{:s}\" CELLBORDER=\"0\" "
-                                       "CELLSPACING=\"0\" CELLPADDING=\"3\" BGCOLOR=\"{:s}\">"),
+                                       "CELLSPACING=\"0\" CELLPADDING=\"3\" BGCOLOR=\"{:s}\" "
+                                       "ROWS=\"*\" COLUMNS=\"*\">"),
                                    graph_device_line, graph_device_fill);
     html += fmt::format(fmt("<TR><TD COLSPAN=\"{:d}\" ALIGN=\"LEFT\"><B>{:s}</B></TD></TR>"), width,
                         escape_html(title));
@@ -962,7 +965,8 @@ std::string PipelineGraph::device_table(const DeviceLayout& layout,
                 continue;
             }
             const int bar = 40;
-            const int filled = (int)std::lround(bar * std::min(1.0, std::max(0.0, occupancy)));
+            const double fraction = std::min(1.0, std::max(0.0, occupancy));
+            const int filled = (int)std::lround(bar * fraction);
             std::string cells;
             if (filled > 0)
                 cells += fmt::format(fmt("<TD WIDTH=\"{:d}\" HEIGHT=\"7\" FIXEDSIZE=\"TRUE\" "
@@ -979,7 +983,7 @@ std::string PipelineGraph::device_table(const DeviceLayout& layout,
                     "<FONT POINT-SIZE=\"8\" COLOR=\"{:s}\">{:s}</FONT></TD></TR></TABLE></TD>"),
                 graph_edge_line, cells, layout.full[row] ? graph_full_line : graph_edge_line,
                 layout.full[row] ? std::string("full")
-                                 : fmt::format(fmt("{:.0f}%"), 100 * occupancy));
+                                 : fmt::format(fmt("{:.0f}%"), 100 * fraction));
         }
         html += "<TD></TD></TR>";
     }

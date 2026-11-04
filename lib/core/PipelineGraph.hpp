@@ -357,8 +357,8 @@ public:
      * added is dropped and reported in a comment, since graphviz would otherwise
      * conjure up an empty node for it.
      *
-     * With @c GraphOptions::gpu_table, a device box with commands in it is
-     * drawn as one table node instead, named for the box. Edges to the nodes
+     * With @c GraphOptions::gpu_table, a device box with commands and memory
+     * in it is drawn as one table node instead, named for the box. Edges to the nodes
      * it replaces end on ports `in<n>` and `out<n>`, row @c n's left and right
      * ends.
      */
