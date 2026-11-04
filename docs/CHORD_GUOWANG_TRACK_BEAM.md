@@ -68,7 +68,10 @@ version 1 but for the version number; the existing readers do not check it.
   kvand before the restart and the files are deletable without root.
 - Gate: `scripts/gnss/track_beam_arm.py` from cron on the gnss VM every 5 min extends every
   gate's window to 12 min past the fleet's last seq (start_seq 0, so no frame is dropped on a
-  re-arm). If the cron stops, the gates close within 12 min and nothing fills the disk.
+  re-arm). If the cron stops, the gates close within 12 min and nothing fills the disk. With
+  `--heartbeat FILE` it also requires the cf05 loop's heartbeat (written on the NFS home every
+  pull, with the number of files waiting on each node): a heartbeat older than 15 min or a node
+  backlog over 600 files disarms the gates, so a dead or stuck loop stops the recording too.
 - Reader: `beam_dump_read.py info` lists the target PRNs and the overlap check;
   `beam_dump_read.py stitch --target PRN` gives that PRN's beam across the fleet's GPUs.
 - Decode (cf05, next): pull the files, stitch per PRN, code-track with the library theta (a
