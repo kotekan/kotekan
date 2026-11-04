@@ -56,6 +56,10 @@ pulsar:
     pulsar_out_buf: pulsar_output_buffer
   writer:
     kotekan_stage: hdf5FileWrite
+    # these are apparently required, even when writing out datasets that have
+    # nothing to do with the dish grid anymore
+    num_polarizations: 2
+    num_dishes: 1024
     #kotekan_stage: rawFileWrite
     in_buf: pulsar_output_buffer
     base_dir: .
