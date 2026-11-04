@@ -16,7 +16,7 @@ baseband_buffer_depth: 272 # 272 = ~33 seconds after accounting for active frame
 buffer_depth: 15
 
 main_pool:
-  kotekan_metadata_pool: chimeMetadata
+  kotekan_metadata_pool: chordMetadata
   num_metadata_objects: 30 * buffer_depth + 5 * baseband_buffer_depth
                         + 100 * 8 * buffer_depth # This part is for the sk/var output.
 
@@ -30,7 +30,13 @@ tracking_output_buffers:
   frame_size: samples_per_data_set * num_pol * num_freqs * num_beams
   metadata_pool: main_pool
   beamform_tracking_output_valved_buffer:
-    kotekan_buffer: standard
+    quantity_name: "blob"
+    value_type: uint8
+    extents: [ frame_size ]
+    dimnames: [ "bytes" ]
+    dimscalings: [ 1 ]
+    metadata_pool: main_pool
+    kotekan_buffer: ndarray
 
 pulsar:
   timesamples_per_pulsar_packet: 625
@@ -44,8 +50,13 @@ pulsar:
   pulsar_output_buffer:
     num_frames: buffer_depth + 16
     frame_size: udp_pulsar_packet_size * num_stream * num_packet_per_stream
+    quantity_name: "blob"
+    value_type: uint8
+    extents: [ frame_size ]
+    dimnames: [ "bytes" ]
+    dimscalings: [ 1 ]
     metadata_pool: main_pool
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
 
   produce:
     kotekan_stage: PulsarNetworkProducer
