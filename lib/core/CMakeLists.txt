@@ -18,6 +18,7 @@ add_library(
     kotekanLogging.cpp
     kotekanMode.cpp
     kotekanTrackers.cpp
+    logBuffer.cpp
     metadata.cpp
     metadataFactory.cpp
     numaPolicy.cpp

@@ -88,8 +88,9 @@ def setup_pipeline(
     cfg = pipeline.config
     cfg.update(num_dishes=D, num_frequencies=F, num_times=T)
     pipeline.generator["array_shape"] = [T, F, 2, D]
-    # Generate metadata-bearing input files first, then introduce reproducible
-    # packet loss and masks and replay through the actual production stages.
+    # The input files with metadata are generated first. Reproducible packet loss
+    # and masks are then written into them, and the files are replayed through the
+    # actual production stages.
     for name, size, shape, dims, scales, kind, quantity, period in (
         (
             "rfi_RFImask",
@@ -187,7 +188,7 @@ def setup_pipeline(
         )
         t, f, group = np.indices((T, F, 16))
         pl = (t // 32 + 5 * f + group + index) % 7 != 0
-        # Include wholly absent input groups and a wholly absent time block.
+        # wholly absent input groups and a wholly absent time block
         pl[:, 0, 3] = False
         pl[4096:4160] = False
         raw_payload(source("pl_expanded_mask"), (T // 64, F, 2, 8, 8))[:] = np.packbits(
@@ -312,10 +313,10 @@ def setup_pipeline(
             kotekan_buffer="ndarray",
             num_frames=4,
             value_type="int32",
-            extents=[F, 2],
+            extents=[1, F, 2] if real_detector else [F, 2],
             quantity_name="dtv_fine_support",
-            dimnames=["F", "S"],
-            dimscalings=[1, 1],
+            dimnames=["T", "F", "S"] if real_detector else ["F", "S"],
+            dimscalings=[1, 1, 1] if real_detector else [1, 1],
             metadata_pool="main_pool",
         )
         cfg["combine"].update(
@@ -342,7 +343,14 @@ def setup_pipeline(
             ["T8hi128", "F", "T8lo128"],
             [1024, 1, 8],
         ),
-        ("dtv_mask", "int8", [F], "dtv_mask", ["F"], [1]),
+        (
+            "dtv_mask",
+            "int8",
+            [1, F] if real_detector else [F],
+            "dtv_mask",
+            ["T", "F"] if real_detector else ["F"],
+            [1, 1] if real_detector else [1],
+        ),
     ):
         cfg[f"host_{name}_buffer"] = dict(
             kotekan_buffer="ndarray",
@@ -469,7 +477,8 @@ def test_mask_visibility_and_counts_across_ring_wrap(
     if real_detector:
         decisions = [r.payload for r in read("out", "dtv_mask", F)]
         # Support and permanent masking exclude samples independently of a raw
-        # detection. The low finite word also exercises supported RFI rejection.
+        # detection. With reject_finite, the low finite multiplier (1 << 14 in Q16)
+        # also exercises supported RFI rejection.
         expected_decisions = {0} if fine_support and not reject_finite else {0, 1}
         assert set(np.concatenate(decisions)) == expected_decisions
     if real_detector and fine_support:

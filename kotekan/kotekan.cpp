@@ -7,6 +7,7 @@
 #include "kotekanLogging.hpp"     // for logLevel, ERROR_NON_OO, INFO_NON_OO, FATAL_ERROR_NON_OO
 #include "kotekanMode.hpp"        // for kotekanMode
 #include "kotekanTrackers.hpp"    // for KotekanTrackers
+#include "logBuffer.h"            // for get_log_buffer, log_buffer_on, set_log_buffer
 #include "prometheusMetrics.hpp"  // for Metrics, Gauge
 #include "restServer.hpp"         // for HTTP_RESPONSE, connectionInstance, restServer
 #include "util.h"                 // for EVER
@@ -465,6 +466,7 @@ void start_new_kotekan_mode(Config& config, bool dump_config) {
             Config::parse_usage_report_level(config.get_value("/", "log_config_usage")));
 
     update_log_levels(config);
+    set_log_buffer(config.get_default<bool>("/", "log_buffer", false));
 
     request_backtraces(config.get_default<std::vector<std::string>>("/", "trap_signals", {}));
 
@@ -1001,6 +1003,17 @@ int main(int argc, char** argv) {
             "/interfaces/" + it.key(),
             [body](connectionInstance& conn) { conn.send_text_reply(body, "application/json"); });
     }
+
+    rest_server.register_get_callback("/logs", [&](connectionInstance& conn) {
+        if (!log_buffer_on()) {
+            conn.send_error("Log buffer is off; set log_buffer: true in the config",
+                            HTTP_RESPONSE::NOT_FOUND);
+            return;
+        }
+        // Replace bytes that are not UTF-8, rather than throw: a log line may hold any bytes.
+        conn.send_text_reply(get_log_buffer().dump(0, ' ', false, json::error_handler_t::replace),
+                             "application/json");
+    });
 
     auto& metrics = prometheus::Metrics::instance();
     metrics.register_with_server(&rest_server);

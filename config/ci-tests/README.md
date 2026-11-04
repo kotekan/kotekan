@@ -1,23 +1,24 @@
 # Kotekan CI YAML Tests
 
-Config files in this directory are intended to be run as part of CI. The `run_tests.sh` script runs Kotekan tests against all YAML configuration files in a provided directory: everything in the `cpu_batch` directory will be run on cpu CI jobs, `gpu_batch` on gpu, while configs in `standalone` are intended for tests that need more tailoring (e.g. take a while, or expect specific compile flags).
+Config files in this directory are intended to be run as part of CI. The `run_tests.sh` script runs Kotekan tests against all configs under the given directories, including subdirectories: everything in the `cpu_batch` directory will be run on cpu CI jobs, and `gpu_batch` on gpu.
 
 ## Usage
 
-Any mix of directories and individual configs can be given. Directories are searched for `.yaml`, `.yml` and `.j2` configs; an individual config can be given regardless of its extension.
+Any mix of directories and individual configs can be given. Directories are searched recursively for `.yaml`, `.yml` and `.j2` configs; an individual config can be given regardless of its extension. With no configs given, every config under `config/ci-tests` is run. `kotekan_binary` defaults to `build/kotekan/kotekan` and `timeout_duration` to `2m`; `-h` prints the usage.
 
 ```bash
-./run_tests.sh <kotekan_binary> <timeout_duration> <test_config_dir|test_config>...
+./run_tests.sh [kotekan_binary [timeout_duration [test_config_dir|test_config]...]]
 ```
 
 **Examples:**
 ```bash
+./run_tests.sh
 ./run_tests.sh ./build-2404/kotekan/kotekan 2m config/ci-tests/cpu_batch
 ./run_tests.sh ./build-2404/kotekan/kotekan 2m config/ci-tests/cpu_batch/run_n2accum.yaml
 ./run_tests.sh ./build-2404/kotekan/kotekan 2m config/ci-tests/gpu_batch config/ci-tests/cpu_batch/run_n2accum.yaml
 ```
 
-## Output Exampe
+## Output Example
 
 ```
 ======================================
@@ -28,6 +29,12 @@ Passed: 8
 Failed: 1
 Timed out: 1
 
+Passed tests:
+  ...
+
 Failed tests:
-  - config/ci-tests/cpu_batch/test_broken.yaml (exit code: 1)
+  - config/ci-tests/cpu_batch/test_broken.yaml (exit code: 1, duration: 12s)
+
+Timed out tests:
+  - config/ci-tests/cpu_batch/test_slow.yaml (exit code: 124, duration: 02m:00s)
 ```

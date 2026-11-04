@@ -11,6 +11,10 @@ REST endpoints
 - ``/config`` (GET) – returns the active config.
 - ``/version`` (GET) – version/build info.
 - ``/interfaces/<name>`` (GET) – an interface document as canonical JSON; its digest is in ``/version``.
+- ``/logs`` (GET) – the last 1000 log lines, oldest first, as a JSON list of ``time`` (UNIX
+  seconds), ``level`` and ``msg``, each line cut to 1 KiB. Off unless the top-level
+  ``log_buffer: true`` is set. Lines are kept from the time a config starts, at the config's
+  ``log_level``, and survive ``/stop`` until the next config starts.
 - ``/endpoints`` (GET) – list all registered endpoints (including aliases).
 - ``/metrics`` (GET) – Prometheus-format metrics (buffers, stages, broker errors, etc.).
 - ``/buffers`` (GET) – per-buffer status: frame fullness, frame size, last arrival time.
@@ -19,6 +23,10 @@ REST endpoints
 - ``/pipeline_json`` (GET) – the same graph as JSON (nodes, edges, clusters), for clients
   that would rather lay it out, or diff it, than parse ``dot``. Takes the same query
   arguments.
+- ``/pipeline_gpu_svg?gpu=<id>`` (GET) – one GPU's memory and commands as an SVG: a row
+  per memory region (with a fill gauge for rings), a column per command in data-flow
+  order, marking the rows it reads and writes. ``gpu`` defaults to 0; takes the same
+  query arguments as ``/pipeline_dot``.
 - ``/buffer_frame?name=<buffer>`` (GET) – copy of the newest full frame in ``<buffer>`` as
   JSON: base64 ``data``, the frame's metadata, and the buffer's frame descriptor. ``&len=N``
   sets how many data bytes come back (64 KiB without it; ``len=0`` for metadata only).
@@ -88,6 +96,10 @@ Query arguments (all boolean ones take ``0``/``1``):
 - ``legend=0`` / ``pools=0`` – drop the colour key / the metadata pool list.
 - ``kernels=0`` – hide GPU commands and device memory; useful on large pipelines where
   they dominate the graph.
+- ``gpu_table=0`` – draw each GPU as a box of command and memory nodes. By default a GPU
+  is one table, as in ``/pipeline_gpu_svg`` but with a row per command. Host buffer edges
+  end on the row of the command that copies them; a horizontal line joins what each
+  command reads and writes, and a vertical one joins each region's writer to its readers.
 - ``runtime=0`` – structure only, no live numbers or state colouring. Use this to compare
   two runs: the live figures differ on every fetch.
 - ``urls=0`` – no links on buffer nodes.
@@ -99,6 +111,9 @@ Query arguments (all boolean ones take ``0``/``1``):
 
     # just the structure, without the GPU internals
     curl -s 'http://localhost:12048/pipeline_dot?runtime=0&kernels=0' | dot -Tpdf -o pipeline.pdf
+
+    # what GPU 0 is doing, no graphviz needed
+    curl -s 'http://localhost:12048/pipeline_gpu_svg?gpu=0' -o gpu0.svg
 
 
 Daemon mode

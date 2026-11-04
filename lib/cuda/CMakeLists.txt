@@ -1,11 +1,5 @@
 project(kotekan_cuda)
 
-# Default to NVIDIA Ampere (A40, sm_86). Override for other GPUs with e.g.
-# -DCMAKE_CUDA_ARCHITECTURES=121 (GB10 / Grace Blackwell).
-if(NOT CMAKE_CUDA_ARCHITECTURES)
-    set(CMAKE_CUDA_ARCHITECTURES 86)
-endif()
-
 add_library(
     kotekan_cuda
     # Core
@@ -192,8 +186,8 @@ target_include_directories(kotekan_cuda PUBLIC .)
 # cudaGnssBeamDump reads the chains' lane directions (header-only, lib/stages/gnss).
 target_include_directories(kotekan_cuda PRIVATE ../stages/gnss)
 
-# Per-architecture gencode flags are derived from CMAKE_CUDA_ARCHITECTURES (set above); keep
-# -lineinfo for profiling/debug symbols.
+# Per-architecture gencode flags are derived from CMAKE_CUDA_ARCHITECTURES; keep -lineinfo for
+# profiling/debug symbols.
 target_compile_options(kotekan_cuda PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-lineinfo>)
 
 add_dependencies(kotekan_cuda kotekan_gpu)

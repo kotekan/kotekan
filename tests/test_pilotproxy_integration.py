@@ -1,13 +1,14 @@
-"""Test the CUDA pipeline with synthetic calibration and malformed bundles.
+"""Test the CUDA pipeline using synthetic calibration and malformed bundles.
 
-Set PILOTPROXY_TEST_BINARY and PILOTPROXY_TEST_BUNDLE to run these tests.
-The bundle must match the compiled core. PILOTPROXY_SOAK_FRAMES (at least 8)
-also enables full-size CHORD and CHIME runs with two polarizations and
-full-rate fine support; see dev_pilotproxy_testing.rst for their geometry.
-Four voltage frames repeat; every
-mask, power, and support output is compared with its CPU reference. Each
-pipeline has a 1,800-second timeout, overridable with
-PILOTPROXY_SOAK_TIMEOUT_SECONDS. Synthetic calibration is for these tests only.
+The binary and a matching runtime bundle are given by PILOTPROXY_TEST_BINARY
+and PILOTPROXY_TEST_BUNDLE. PILOTPROXY_SOAK_FRAMES (at least 8) also enables
+the full-size CHORD and CHIME cases described in dev_pilotproxy_testing.rst.
+
+Those cases repeat four voltage frames with two polarizations and full-rate
+fine support. Every mask, power, and support output is checked against its
+CPU reference. The timeout of each pipeline is 1800 seconds unless
+PILOTPROXY_SOAK_TIMEOUT_SECONDS is set. The calibration is synthetic and applies
+only to these tests.
 """
 
 import importlib.util
@@ -36,57 +37,10 @@ spec.loader.exec_module(reference)
 pytestmark = pytest.mark.serial
 
 
-def expected_fine_products_with_support(block, freq_ids, bundle, weights, num_dishes):
-    """Calculate all three outputs once from the independent CPU references."""
-    from pilot_proxy.fine_decision import fine_mask_decision
-    from pilot_proxy.fxfft import fine_power_fx
-
-    profiles = {
-        row.get("receiver_channel_id", row.get("chord_channel_id")): row
-        for row in bundle["profiles"]
-    }
-    reverse = bundle["input_preprocessing"][
-        "time_reverse_detector_windows_before_kernel"
-    ]
-    masks = np.zeros(len(freq_ids), dtype=np.uint8)
-    powers = np.zeros((len(freq_ids), 3), dtype=np.uint64)
-    support = np.full((len(freq_ids), 2), -1, dtype=np.int32)
-    for index, freq_id in enumerate(freq_ids):
-        profile = profiles.get(freq_id)
-        if profile is None:
-            continue
-        calibration = profile["fine_calibration"]
-        assert calibration["status"] == "calibrated"
-        offset = profile["weight_bank_offset_bytes"]
-        bank = weights[offset : offset + profile["weight_bank_nbytes"]]
-        real, imag = reference.detector_rows_from_voltage(
-            block,
-            index,
-            reverse,
-            num_freq=len(freq_ids),
-            num_dishes=num_dishes,
-            window_samples=profile["weight_bank_nbytes"] // 3,
-        )
-        projections = reference.expected_row_sums(real, imag, bank)
-        fine = fine_power_fx(projections, num_streams=2 * num_dishes)
-        powers[index] = fine.sum(axis=1, dtype=np.uint64)
-        decision = fine_mask_decision(
-            fine,
-            anchor_bin=calibration["anchor_bin"],
-            designated_half_width=calibration["designated_half_width"],
-            bulk_mask=[int(word, 16) for word in calibration["bulk_mask_words_hex"]],
-            cfar_rank=calibration["cfar_rank"],
-            multiplier_q16=calibration["cfar_multiplier_q16"],
-        )
-        masks[index] = decision.mask
-        support[index] = (int(decision.valid), decision.n_bulk)
-    return masks, powers, support
-
-
 @pytest.fixture(scope="module")
 def runtime():
-    # The binary comes from the usual build tree (KOTEKAN_BUILD_DIRNAME) unless overridden;
-    # the bundle is a separate input, so without it the CUDA tests skip.
+    # The binary is taken from the usual build tree (KOTEKAN_BUILD_DIRNAME) unless
+    # overridden. The bundle is an extra input, and the CUDA tests skip without it.
     binary = os.environ.get("PILOTPROXY_TEST_BINARY")
     if not binary:
         from kotekan import runner
@@ -213,20 +167,12 @@ class Pipeline:
             blocks = np.concatenate([frame.payload for frame in voltage]).reshape(
                 -1, block_samples * num_freq * 2 * num_dishes
             )
-        if fine_support:
-            expected = [
-                expected_fine_products_with_support(
-                    block, freq_ids, self.bundle, weights, num_dishes
-                )
-                for block in blocks
-            ]
-        else:
-            expected = [
-                reference.expected_products(
-                    block, freq_ids, self.bundle, weights, num_dishes=num_dishes
-                )
-                for block in blocks
-            ]
+        expected = [
+            reference.expected_products(
+                block, freq_ids, self.bundle, weights, num_dishes=num_dishes
+            )
+            for block in blocks
+        ]
         for index, (mask, power) in enumerate(zip(masks, powers)):
             want = expected[index % len(expected)]
             want_mask, want_power = want[:2]
@@ -301,7 +247,7 @@ def test_independent_detectors_share_gpu(pipeline):
         for frame in (mask, power):
             assert frame.fpga_seq_num == voltage.fpga_seq_num
             assert frame.time_downsampling_fpga == 8192 * voltage.time_downsampling_fpga
-        expected_mask, expected_power = reference.expected_products(
+        expected_mask, expected_power, _ = reference.expected_products(
             voltage.payload,
             pipeline.generator["manual_freq_ids"],
             other_bundle,
@@ -627,6 +573,7 @@ def test_bulk_mask_excludes_anchor_guard(pipeline, index, half_width, side):
         ("extra_weights", "profile table accounts for"),
         ("missing_channel_ids", "no receiver channel IDs"),
         ("metadata_length", "coarse_freq"),
+        ("duplicate_channel_ids", "duplicate coarse_freq channel identifiers"),
     ],
 )
 def test_rejects_invalid_runtime(pipeline, case, diagnostic):
@@ -647,10 +594,71 @@ def test_rejects_invalid_runtime(pipeline, case, diagnostic):
                 row["receiver_channel_id"] = None
     elif case == "metadata_length":
         pipeline.config["gen_voltage"]["num_local_freq"] = 2
+    elif case == "duplicate_channel_ids":
+        ids = pipeline.generator["manual_freq_ids"]
+        ids[1] = ids[0]
     code, output = pipeline.run()
     assert code != 0, f"invalid {case} was accepted"
     assert diagnostic in output, output[-12000:]
     assert not list((pipeline.directory / "out").glob("dtv_*.raw"))
+
+
+@pytest.mark.parametrize(
+    "field,value,accepted",
+    [
+        ("factor", 2, False),
+        ("index", 1, False),
+        ("factor", 0, False),
+        ("index", -1, True),
+    ],
+)
+def test_voltage_upchannelization_metadata(pipeline, field, value, accepted):
+    pipeline.calibrate()
+    code, output = pipeline.run()
+    assert code == 0, output[-12000:]
+    source = pipeline.directory / "input"
+    source.mkdir()
+    for path in (pipeline.directory / "out").glob("*.raw"):
+        if path.name.startswith("voltage_"):
+            path.rename(source / path.name)
+        else:
+            path.unlink()
+    for path in source.glob("*.raw"):
+        with path.open("r+b") as stream:
+            metadata_size = struct.unpack("<I", stream.read(4))[0]
+            assert metadata_size == reference.CHORD_METADATA_SIZE
+            dims, name, dim_name, max_freq, _, _ = struct.unpack("<6i", stream.read(24))
+            # chordMetadataFormat through nfreq, followed by the three frequency arrays.
+            prefix = struct.calcsize(
+                f"<7i4xqq{name}sii{dims}i{dims * dim_name}s{2 * dims}qqi"
+            )
+            array = 1 if field == "factor" else 2
+            stream.seek(4 + prefix + array * max_freq * 4)
+            stream.write(struct.pack("<i", value))
+    del pipeline.config["gen_voltage"]
+    del pipeline.config["samples_per_data_set"]
+    for stage in ("dump_voltage", "dump_dtv_mask", "dump_dtv_powers"):
+        pipeline.config[stage]["exit_after_n_files"] = "num_gen_frames"
+    pipeline.config["replay_voltage"] = dict(
+        kotekan_stage="rawFileRead",
+        buf="host_voltage_buffer",
+        base_dir="input",
+        file_name="voltage",
+        file_ext="raw",
+        prefix_hostname=False,
+        end_interrupt=False,
+    )
+    code, output = pipeline.run()
+    if accepted:
+        # Live coarse-channel metadata may omit the index when its factor is one.
+        assert code == 0, output[-12000:]
+        pipeline.verify()
+    else:
+        assert code != 0, f"upchannelization {field} was accepted"
+        assert (
+            "PilotProxy requires un-upchannelized coarse frequencies" in output
+        ), output[-12000:]
+        assert not list((pipeline.directory / "out").glob("dtv_*.raw"))
 
 
 @pytest.mark.parametrize(
@@ -680,7 +688,7 @@ def test_production_geometry_soak(
         row.get("receiver_channel_id", row.get("chord_channel_id"))
         for row in pipeline.bundle["profiles"]
     ]
-    # CHIME has 16 channels per GPU; cover all pilots in two batches and retain
+    # CHIME has 16 channels per GPU, so the pilots are covered in two batches with
     # at least one unbound channel in each. CHORD fits all 23 in either geometry.
     ids = pilot_ids[pilot_start : pilot_start + num_freq - 1]
     bound_profiles = len(ids)
@@ -751,7 +759,7 @@ def test_production_geometry_soak(
 @pytest.mark.parametrize("reverse", [True, False])
 @pytest.mark.parametrize("frame_blocks", [0.5, 1, 2])
 def test_receiver_geometry_against_cpu(pipeline, reverse, frame_blocks):
-    """Use either compiled geometry with independent integer references and ring reuse."""
+    """Check either compiled geometry against independent integer references, with ring reuse."""
     pipeline.calibrate()
     pipeline.bundle["input_preprocessing"][
         "time_reverse_detector_windows_before_kernel"

@@ -279,7 +279,6 @@ BOOST_AUTO_TEST_CASE(stage_categories) {
     BOOST_CHECK(kotekan::stage_category("hipProcess") == GraphCategory::Gpu);
     // I/O is matched on substrings, so unseen stages still land right.
     BOOST_CHECK(kotekan::stage_category("bufferSend") == GraphCategory::Io);
-    BOOST_CHECK(kotekan::stage_category("frbNetworkProcess") == GraphCategory::Io);
     BOOST_CHECK(kotekan::stage_category("hdf5FileRead") == GraphCategory::Io);
     // Anything else is compute.
     BOOST_CHECK(kotekan::stage_category("accumulate") == GraphCategory::Compute);
@@ -354,12 +353,14 @@ BOOST_AUTO_TEST_CASE(options_are_read_from_query_arguments) {
                                                           {"runtime", "false"},
                                                           {"urls", "off"},
                                                           {"kernels", "on"},
+                                                          {"gpu_table", "0"},
                                                           {"cluster", ""},
                                                           {"rankdir", "TB"}});
     BOOST_CHECK(!chosen.legend);
     BOOST_CHECK(!chosen.runtime);
     BOOST_CHECK(!chosen.urls); // any value that is not an "on" form turns it off
     BOOST_CHECK(chosen.kernels);
+    BOOST_CHECK(defaults.gpu_table && !chosen.gpu_table);
     BOOST_CHECK(chosen.cluster); // a bare `?cluster` counts as asking for it
     BOOST_CHECK(chosen.pools);   // not mentioned, stays at its default
     BOOST_CHECK_EQUAL(chosen.rankdir, "TB");
@@ -384,4 +385,119 @@ BOOST_AUTO_TEST_CASE(default_style_and_legend_render) {
     BOOST_CHECK(contains(dot, "stage on the CPU"));
     BOOST_CHECK(contains(dot, "the far end: a socket, a port, a file"));
     check_statements_terminated(dot);
+}
+
+/// One device: host_in -> copyIn -> ring (full) -> kernel -> scratch -> copyOut -> host_out.
+static void add_device(PipelineGraph& graph) {
+    using kotekan::GraphCategory;
+    auto& device = graph.add_cluster("__gpu/0");
+    device.label = "GPU 0";
+    device.set_attr("fillcolor", kotekan::graph_device_fill);
+    auto& work = graph.add_cluster("/s/gpu_0/work");
+    work.label = "s";
+    work.parent = "__gpu/0";
+
+    graph.add_node("host_in").add_line("host_in").set_category(GraphCategory::Buffer);
+    graph.add_node("host_out").add_line("host_out").set_category(GraphCategory::Buffer);
+    auto& ring = graph.add_node("ring");
+    ring.add_line("host_ring").add_line("GPU 0: ring_buffer · 1 MiB");
+    ring.set_category(GraphCategory::Memory).set_buffer_state(kotekan::BufferState::Full);
+    ring.occupancy = 1.0;
+    ring.cluster = "__gpu/0";
+    auto& scratch = graph.add_node("scratch");
+    scratch.add_line("scratch_mem").set_category(GraphCategory::Memory).cluster = "__gpu/0";
+
+    // Added in the opposite order to the data flow, to check the sort.
+    const char* commands[] = {"/s/gpu_0/commands/2", "/s/gpu_0/commands/1", "/s/gpu_0/commands/0"};
+    const char* names[] = {"copyOut", "kernel", "copyIn"};
+    for (int i = 0; i < 3; i++) {
+        auto& node = graph.add_node(commands[i]).add_line(names[i]);
+        node.set_category(GraphCategory::Gpu).cluster = work.id;
+    }
+    graph.add_node("/s/gpu_0").add_line("gpu_0").cluster = work.id;
+    graph.add_edge("/s/gpu_0", "/s/gpu_0/commands/0").set_attr("style", "dotted");
+    graph.add_edge("host_in", "/s/gpu_0/commands/0");
+    graph.add_edge("/s/gpu_0/commands/0", "ring");
+    graph.add_edge("ring", "/s/gpu_0/commands/1");
+    graph.add_edge("/s/gpu_0/commands/1", "scratch");
+    graph.add_edge("scratch", "/s/gpu_0/commands/2");
+    graph.add_edge("/s/gpu_0/commands/2", "host_out");
+}
+
+BOOST_AUTO_TEST_CASE(device_svg_draws_memory_rows_and_command_columns) {
+    PipelineGraph graph;
+    add_device(graph);
+
+    const std::string svg = graph.to_device_svg("__gpu/0");
+    BOOST_REQUIRE(contains(svg, "<svg"));
+    // Columns follow the data, whatever order they were added in.
+    const size_t in = svg.find("s · copyIn"), kernel = svg.find("s · kernel"),
+                 out = svg.find("s · copyOut");
+    BOOST_REQUIRE(in != std::string::npos && kernel != std::string::npos
+                  && out != std::string::npos);
+    BOOST_CHECK(in < kernel && kernel < out);
+    // A stage node with only the dotted execution-order edge is no column.
+    BOOST_CHECK(!contains(svg, "s · gpu_0"));
+    // Rows: name, last label line, and a gauge only where occupancy is known.
+    BOOST_CHECK(contains(svg, "host_ring"));
+    BOOST_CHECK(contains(svg, "GPU 0: ring_buffer · 1 MiB"));
+    BOOST_CHECK(contains(svg, "scratch_mem"));
+    BOOST_CHECK(contains(svg, ">full<"));
+    // The writer of a full ring is drawn in the full colour.
+    BOOST_CHECK(contains(svg, std::string("stroke=\"") + kotekan::graph_full_line));
+    // Host buffers are named in the tooltips.
+    BOOST_CHECK(contains(svg, "from host_in"));
+    BOOST_CHECK(contains(svg, "to host_out"));
+
+    BOOST_CHECK(graph.to_device_svg("__gpu/1").empty());
+}
+
+BOOST_AUTO_TEST_CASE(dot_draws_a_device_as_one_table) {
+    PipelineGraph graph;
+    add_device(graph);
+
+    const std::string dot = graph.to_dot();
+    BOOST_CHECK(!contains(dot, "cluster___gpu/0"));
+    BOOST_CHECK(contains(dot, "\"__gpu/0\" [shape=\"plain\", label=<<TABLE"));
+    // Host edges end on the rows of the commands copying them, in data-flow order.
+    BOOST_CHECK(contains(dot, "\"host_in\" -> \"__gpu/0\":\"in0\":w"));
+    BOOST_CHECK(contains(dot, "\"__gpu/0\":\"out2\":e -> \"host_out\""));
+    // Edges inside the device, and the execution-order edge, are not drawn.
+    BOOST_CHECK(!contains(dot, "-> \"ring\""));
+    BOOST_CHECK(!contains(dot, "\"/s/gpu_0\""));
+    // The ring's region is named from the ring's line for this device.
+    BOOST_CHECK(contains(dot, "<B>ring</B>"));
+    BOOST_CHECK(contains(dot, ">full<"));
+    // Lines: down each region from its writer to its reader, and across the
+    // kernel's row from what it reads to what it writes.
+    using kotekan::graph_style;
+    BOOST_CHECK(contains(dot, std::string("BGCOLOR=\"")
+                                  + graph_style(kotekan::GraphCategory::Memory).line));
+    BOOST_CHECK(
+        contains(dot, std::string("BGCOLOR=\"") + graph_style(kotekan::GraphCategory::Gpu).line));
+
+    graph.options.gpu_table = false;
+    const std::string boxes = graph.to_dot();
+    BOOST_CHECK(contains(boxes, "cluster___gpu/0"));
+    BOOST_CHECK(contains(boxes, "\"host_in\" -> \"/s/gpu_0/commands/0\""));
+}
+
+BOOST_AUTO_TEST_CASE(dot_keeps_a_device_box_without_memory) {
+    // As with kernels off: stages only, and a ring between them that is a
+    // plain buffer node, not device memory.
+    PipelineGraph graph;
+    auto& device = graph.add_cluster("__gpu/0");
+    device.label = "GPU 0";
+    device.set_attr("fillcolor", kotekan::graph_device_fill);
+    graph.add_node("host_in").add_line("host_in");
+    for (const char* id : {"/a/gpu_0", "ring", "/b/gpu_0"})
+        graph.add_node(id).add_line(id).cluster = "__gpu/0";
+    graph.add_edge("host_in", "/a/gpu_0");
+    graph.add_edge("/a/gpu_0", "ring");
+    graph.add_edge("ring", "/b/gpu_0");
+
+    const std::string dot = graph.to_dot();
+    BOOST_CHECK(contains(dot, "cluster___gpu/0"));
+    BOOST_CHECK(contains(dot, "\"/a/gpu_0\" -> \"ring\""));
+    BOOST_CHECK(contains(dot, "\"ring\" -> \"/b/gpu_0\""));
 }

@@ -32,3 +32,5 @@ add_custom_target(
     "${CMAKE_CURRENT_SOURCE_DIR}"
     "${SPHINX_HTML_DIR}"
     COMMENT "Building HTML documentation with Sphinx")
+
+add_dependencies(sphinx doxygen)

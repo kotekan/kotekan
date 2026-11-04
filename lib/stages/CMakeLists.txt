@@ -85,7 +85,6 @@ add_library(
     visAccumulate.cpp
     visCompression.cpp
     timeDownsample.cpp
-    frbPostProcess.cpp
     basebandReadout.cpp
     BasebandWriter.cpp
     BaseWriter.cpp
@@ -95,7 +94,7 @@ add_library(
     VisWriter.cpp
     HFBRawReader.cpp
     restInspectFrame.cpp
-    frbNetworkProcess.cpp
+    frbNetworkSend.cpp
     pulsarNetworkProcess.cpp
     bufferMerge.cpp
     bufferCopy.cpp

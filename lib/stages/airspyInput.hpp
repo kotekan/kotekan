@@ -49,7 +49,8 @@
  *     @buffer_format Array of @c shorts (real samples, DC-corrected and Nyquist-shifted)
  *     @buffer_metadata none
  *
- * @par REST endpoints (registered under @c <unique_name>/)
+ * @par REST endpoints
+ * Registered under `<unique_name>/`.
  *  - GET  @c /get_config  — returns current gain/freq/samplerate as JSON.
  *  - GET  @c /adcstat     — triggers a one-shot ADC stats sample (mean, RMS, rail fraction).
  *  - POST @c /set_config  — updates @c freq, @c gain_lna, @c gain_mix, @c gain_if, or @c add_lag.

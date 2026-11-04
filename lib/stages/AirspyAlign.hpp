@@ -37,8 +37,8 @@
  *     @buffer_metadata none
  *
  * @par REST endpoints
- *  - GET @c <unique_name>/cal_lag         — returns @c {"lag": int}
- *  - GET @c <unique_name>/get_correlation — returns @c {"lag": int, "corr_pos": [...], "corr_neg":
+ *  - GET `<unique_name>/cal_lag`         — returns @c {"lag": int}
+ *  - GET `<unique_name>/get_correlation` — returns @c {"lag": int, "corr_pos": [...], "corr_neg":
  * [...]}
  *
  * @conf   lag_window   UInt (default: input frame size in samples). Number of samples to capture.

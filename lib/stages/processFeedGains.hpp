@@ -35,8 +35,10 @@ using std::vector;
  *
  * The output is a stream clocked by the input mask: for every mask frame this stage emits one
  * output frame, containing the current gains with the masked elements zeroed, and stamped with
- * the mask frame's `fpga_seq_num` (plus `fpga_seq_num_offset`, see there) and
- * `time_downsampling_fpga`. The output frame description must
+ * the mask frame's `fpga_seq_num` and `time_downsampling_fpga`. With a `fpga_seq_num_offset`
+ * (see there), output frame `k` begins that offset after the first mask frame plus `k`
+ * lifetimes, and is made from the mask frame valid at its first sample. The output frame
+ * description must
  * have a leading time axis whose `dimscaling` equals the mask's `time_downsampling_fpga`, i.e.
  * the number of FPGA samples one frame covers. The gain buffers are polled without blocking
  * (except for the first frame), since gains are updated rarely.
@@ -93,8 +95,9 @@ protected:
     /// fixed scaling factor
     float scaling_factor;
 
-    /// Added to the mask frames' `fpga_seq_num` when stamping the output frames, for consumers
-    /// whose data begin later than the voltages. 0 by default.
+    /// Where the output stream begins, in FPGA samples after the first mask frame, for consumers
+    /// whose data begin later than the voltages. Whole lifetimes of it skip mask frames. 0 by
+    /// default.
     std::int64_t fpga_seq_num_offset = 0;
 
     /// Store gain upchannelization factors

@@ -1,11 +1,11 @@
 ---
 # Compare detector output with a CPU calculation from recorded voltage frames.
-# The four test channels include two ATSC pilots (2408 and 2623) and two
-# non-pilot channels. Voltage, power and mask files retain their frame metadata.
+# The four test channels are two ATSC pilots (2408 and 2623) and two
+# non-pilot channels. The voltage, power, and mask files keep their frame metadata.
 #
-# The detector needs calibrated profiles, so the exported development bundle
-# gets a synthetic calibration first. It is for this test only; see
-# docs/sphinx/dev/dev_pilotproxy_testing.rst.
+# The detector requires calibrated profiles, so a synthetic calibration is first
+# written into the exported development bundle. This calibration is for this test
+# only (docs/sphinx/dev/dev_pilotproxy_testing.rst).
 #
 # After exporting a bundle to fake_data/pilotproxy_bundle:
 #   python3 tests/verify_pilotproxy_pipeline.py --calibrate \
@@ -28,7 +28,7 @@ num_times: 8192                  # voltage samples per generated frame
 num_local_freq: 4
 num_polarizations: 2
 num_dishes: 8
-num_gen_frames: 8                # -> 8 detector blocks
+num_gen_frames: 8                # 8 detector blocks
 
 # Output directory for the raw dumps (inherited by the rawFileWrite stages)
 # and the PilotProxy runtime-bundle files (inherited by the detector).
@@ -40,8 +40,8 @@ main_pool:
     kotekan_metadata_pool: chordMetadata
     num_metadata_objects: 30 * buffer_depth
 
-# Buffers (standard host buffers so rawFileWrite can dump them; the
-# chordMetadata carried by each frame still describes the array).
+# Buffers. These are standard host buffers so that rawFileWrite can dump them,
+# and the chordMetadata of each frame still describes the array.
 host_voltage_buffer:
     kotekan_buffer: standard
     num_frames: buffer_depth
@@ -94,7 +94,7 @@ dump_voltage:
     prefix_hostname: false
     num_frames_per_file: 1
     # testDataGen attaches an NDArray frame descriptor even to standard
-    # buffers; we only want the raw bytes (the verifier knows the layout).
+    # buffers. Only the raw bytes are needed, since the verifier knows the layout.
     allow_ndarray: true
     exit_after_n_files: 8           # = num_gen_frames
 
@@ -118,7 +118,7 @@ run_dtv_detector:
     gpu_0:
         kotekan_stage: cudaProcess
         gpu_id: 0
-        # The streams config/fengine/include/dtv_chord.j2 gives the detector.
+        # same streams as the detector in config/fengine/include/dtv_chord.j2
         num_cuda_streams: 5
         in_buffers:
             host_voltage_ringbuffer: host_voltage_ringbuffer
@@ -152,7 +152,8 @@ dump_dtv_powers:
     file_ext: "raw"
     prefix_hostname: false
     num_frames_per_file: 1
-    # cudaOutputData attaches an NDArray frame descriptor; raw bytes only.
+    # cudaOutputData attaches an NDArray frame descriptor, and only the raw
+    # bytes are written.
     allow_ndarray: true
     exit_after_n_files: 8           # = num_gen_frames
 
@@ -163,7 +164,8 @@ dump_dtv_mask:
     file_ext: "raw"
     prefix_hostname: false
     num_frames_per_file: 1
-    # cudaOutputData attaches an NDArray frame descriptor; raw bytes only.
+    # cudaOutputData attaches an NDArray frame descriptor, and only the raw
+    # bytes are written.
     allow_ndarray: true
     # All three dumpers carry exit_after_n_files, so kotekan exits cleanly
     # only once every dump (8 voltage + 8 powers + 8 mask files) is on disk.

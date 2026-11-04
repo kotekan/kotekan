@@ -1,4 +1,4 @@
-#include "f_statistic_reference.h"
+#include "pilotproxy_reference.h"
 
 #include <stdint.h>
 #include <stdio.h>
@@ -20,10 +20,10 @@ namespace {
 }  // namespace
 
 static_assert(
-    FX_NIN == FSTAT_FINE_WINDOWS_PER_STREAM,
+    FX_NIN == PILOTPROXY_FINE_WINDOWS_PER_STREAM,
     "fxfft256_ref.c input length must equal the frozen window count.");
 static_assert(
-    FX_N == FSTAT_FINE_NUM_BINS,
+    FX_N == PILOTPROXY_FINE_NUM_BINS,
     "fxfft256_ref.c transform length must equal the frozen fine bin count.");
 
 namespace {
@@ -40,12 +40,12 @@ int sign_extend_nbits(int x, int bits)
 
 }  // namespace
 
-int fstat_ref_sign_extend_i4(int x)
+int pilotproxy_ref_sign_extend_i4(int x)
 {
     return sign_extend_nbits(x, INT4_COMPONENT_BITS);
 }
 
-void fstat_ref_unpack_complex_i4(
+void pilotproxy_ref_unpack_complex_i4(
     InputType packed,
     int* real,
     int* imag)
@@ -53,14 +53,14 @@ void fstat_ref_unpack_complex_i4(
     const int byte = static_cast<int>(static_cast<unsigned char>(packed));
 
     if (real != nullptr) {
-        *real = fstat_ref_sign_extend_i4(byte >> INT4_COMPONENT_BITS);
+        *real = pilotproxy_ref_sign_extend_i4(byte >> INT4_COMPONENT_BITS);
     }
     if (imag != nullptr) {
-        *imag = fstat_ref_sign_extend_i4(byte);
+        *imag = pilotproxy_ref_sign_extend_i4(byte);
     }
 }
 
-void fstat_ref_complex_mul_conj(
+void pilotproxy_ref_complex_mul_conj(
     int xr,
     int xi,
     int wr,
@@ -76,7 +76,7 @@ void fstat_ref_complex_mul_conj(
     }
 }
 
-void fstat_ref_row_sums_i32(
+void pilotproxy_ref_row_sums_i32(
     const InputType* x,
     const InputType* w,
     int detector_rows,
@@ -90,11 +90,11 @@ void fstat_ref_row_sums_i32(
     }
 
     for (int m = 0; m < detector_rows; ++m) {
-        for (int n = 0; n < FSTAT_NUM_WEIGHT_TERMS; ++n) {
+        for (int n = 0; n < PILOTPROXY_NUM_WEIGHT_TERMS; ++n) {
             int dot_r = 0;
             int dot_i = 0;
 
-            for (int k = 0; k < FSTAT_DETECTOR_WINDOW_SAMPLES; ++k) {
+            for (int k = 0; k < PILOTPROXY_DETECTOR_WINDOW_SAMPLES; ++k) {
                 int xr;
                 int xi;
                 int wr;
@@ -102,15 +102,15 @@ void fstat_ref_row_sums_i32(
                 int yr;
                 int yi;
 
-                fstat_ref_unpack_complex_i4(
-                    x[m * FSTAT_DETECTOR_WINDOW_SAMPLES + k],
+                pilotproxy_ref_unpack_complex_i4(
+                    x[m * PILOTPROXY_DETECTOR_WINDOW_SAMPLES + k],
                     &xr,
                     &xi);
-                fstat_ref_unpack_complex_i4(
-                    w[n * FSTAT_DETECTOR_WINDOW_SAMPLES + k],
+                pilotproxy_ref_unpack_complex_i4(
+                    w[n * PILOTPROXY_DETECTOR_WINDOW_SAMPLES + k],
                     &wr,
                     &wi);
-                fstat_ref_complex_mul_conj(xr, xi, wr, wi, &yr, &yi);
+                pilotproxy_ref_complex_mul_conj(xr, xi, wr, wi, &yr, &yi);
 
                 dot_r += yr;
                 dot_i += yi;
@@ -124,16 +124,16 @@ void fstat_ref_row_sums_i32(
     }
 }
 
-void fstat_ref_fine_powers_u64(
+void pilotproxy_ref_fine_powers_u64(
     const int* row_sums,
     int num_streams,
-    unsigned long long out[FSTAT_NUM_WEIGHT_TERMS][FSTAT_FINE_NUM_BINS])
+    unsigned long long out[PILOTPROXY_NUM_WEIGHT_TERMS][PILOTPROXY_FINE_NUM_BINS])
 {
     if (out == nullptr) {
         return;
     }
-    for (int n = 0; n < FSTAT_NUM_WEIGHT_TERMS; ++n) {
-        for (int f = 0; f < FSTAT_FINE_NUM_BINS; ++f) {
+    for (int n = 0; n < PILOTPROXY_NUM_WEIGHT_TERMS; ++n) {
+        for (int f = 0; f < PILOTPROXY_FINE_NUM_BINS; ++f) {
             out[n][f] = 0ULL;
         }
     }
@@ -142,14 +142,14 @@ void fstat_ref_fine_powers_u64(
     }
 
     const long long rows =
-        static_cast<long long>(num_streams) * FSTAT_FINE_WINDOWS_PER_STREAM;
+        static_cast<long long>(num_streams) * PILOTPROXY_FINE_WINDOWS_PER_STREAM;
     int32_t in[FX_NIN][2];
     int32_t spectrum[FX_N][2];
-    for (int n = 0; n < FSTAT_NUM_WEIGHT_TERMS; ++n) {
+    for (int n = 0; n < PILOTPROXY_NUM_WEIGHT_TERMS; ++n) {
         for (int s = 0; s < num_streams; ++s) {
             const int* src = row_sums
                 + (static_cast<long long>(n) * rows
-                   + static_cast<long long>(s) * FSTAT_FINE_WINDOWS_PER_STREAM)
+                   + static_cast<long long>(s) * PILOTPROXY_FINE_WINDOWS_PER_STREAM)
                       * 2;
             for (int m = 0; m < FX_NIN; ++m) {
                 in[m][0] = src[2 * m];
@@ -165,21 +165,21 @@ void fstat_ref_fine_powers_u64(
     }
 }
 
-void fstat_ref_powers_from_fine_u64(
-    const unsigned long long fine[FSTAT_NUM_WEIGHT_TERMS][FSTAT_FINE_NUM_BINS],
-    unsigned long long P[FSTAT_NUM_WEIGHT_TERMS])
+void pilotproxy_ref_powers_from_fine_u64(
+    const unsigned long long fine[PILOTPROXY_NUM_WEIGHT_TERMS][PILOTPROXY_FINE_NUM_BINS],
+    unsigned long long P[PILOTPROXY_NUM_WEIGHT_TERMS])
 {
     if (P == nullptr) {
         return;
     }
-    for (int n = 0; n < FSTAT_NUM_WEIGHT_TERMS; ++n) {
+    for (int n = 0; n < PILOTPROXY_NUM_WEIGHT_TERMS; ++n) {
         P[n] = 0ULL;
     }
     if (fine == nullptr) {
         return;
     }
-    for (int n = 0; n < FSTAT_NUM_WEIGHT_TERMS; ++n) {
-        for (int f = 0; f < FSTAT_FINE_NUM_BINS; ++f) {
+    for (int n = 0; n < PILOTPROXY_NUM_WEIGHT_TERMS; ++n) {
+        for (int f = 0; f < PILOTPROXY_FINE_NUM_BINS; ++f) {
             P[n] += fine[n][f];
         }
     }

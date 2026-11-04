@@ -1,9 +1,11 @@
 """Checks for complete, correctly timestamped PilotProxy captures."""
 
 import importlib.util
+import json
 from pathlib import Path
 import struct
 import sys
+from unittest.mock import Mock
 
 import numpy as np
 import pytest
@@ -57,13 +59,13 @@ def test_incorrect_frame_timing_is_rejected(product, field):
         verifier.validate_frames(*frames, 8)
 
 
-def raw_frame(sequence=557056, downsampling=4):
-    # Current chordMetadata.cpp serializer, including the complete metadata tail.
+def raw_frame(sequence=557056, downsampling=4, payload=b"abcd"):
+    # layout of the chordMetadata.cpp serializer, with the complete metadata tail
     metadata = bytearray(148888)
     struct.pack_into("<7i", metadata, 0, 10, 24, 24, 12288, 128, 8, 17)
     struct.pack_into("<q", metadata, 32, sequence)
     struct.pack_into("<q", metadata, 40, downsampling)
-    return struct.pack("<I", len(metadata)) + metadata + b"abcd"
+    return struct.pack("<I", len(metadata)) + metadata + payload
 
 
 def test_reads_timing_for_every_frame_in_a_file(tmp_path):
@@ -114,12 +116,125 @@ def test_incompatible_metadata_size_is_rejected(tmp_path, size):
         raw_frame(-1),
         raw_frame(downsampling=0),
     ],
+    ids=[
+        "one-byte",
+        "size-only",
+        "truncated-metadata",
+        "truncated-payload",
+        "negative-seq",
+        "zero-downsampling",
+    ],
 )
 def test_truncated_frames_or_missing_timing_are_rejected(tmp_path, data):
     path = tmp_path / "voltage_0000000.raw"
     path.write_bytes(data)
     with pytest.raises(ValueError):
         verifier.read_raw_frames(str(path), 4)
+
+
+@pytest.mark.parametrize("channel_key", ["chord_channel_id", "receiver_channel_id"])
+@pytest.mark.parametrize(
+    "fault",
+    [None, "mask", "powers", "timing", "missing", "uncalibrated", "no_receiver"],
+)
+def test_verifier_cli_checks_capture_products(
+    tmp_path, monkeypatch, capsys, channel_key, fault
+):
+    # The GPU integration tests check the reference arithmetic. Keep CLI checks
+    # independent of the optional PilotProxy package used by those tests.
+    reference = Mock(
+        return_value=(
+            np.zeros(verifier.NUM_FREQ, dtype=np.uint8),
+            np.zeros((verifier.NUM_FREQ, 3), dtype=np.uint64),
+            np.zeros((verifier.NUM_FREQ, 2), dtype=np.int32),
+        )
+    )
+    if fault == "uncalibrated":
+        reference.side_effect = ValueError("physical channel 14 is not calibrated")
+    monkeypatch.setattr(verifier, "expected_products", reference)
+    bundle = {
+        "input_preprocessing": {"time_reverse_detector_windows_before_kernel": False},
+        "profiles": [
+            {
+                channel_key: verifier.FREQ_IDS[0],
+                "physical_channel": 14,
+                "weight_bank_offset_bytes": 0,
+                "weight_bank_nbytes": 3 * verifier.K,
+            }
+        ],
+    }
+    verifier.synthetic_calibration(bundle)
+    if fault == "uncalibrated":
+        bundle["profiles"][0]["fine_calibration"]["status"] = "pending_campaign"
+    elif fault == "no_receiver":
+        bundle["profiles"][0][channel_key] = None
+    (tmp_path / "pilot_profiles.json").write_text(json.dumps(bundle))
+    (tmp_path / "weights.bin").write_bytes(bytes([0x11]) * 3 * verifier.K)
+    voltage_size = (
+        verifier.NUM_TIMES * verifier.NUM_FREQ * verifier.NUM_POL * verifier.NUM_DISHES
+    )
+    (tmp_path / "voltage_0.raw").write_bytes(
+        raw_frame(payload=bytes([0x88]) * voltage_size)
+    )
+    masks = bytearray(verifier.NUM_FREQ)
+    powers = bytearray(verifier.NUM_FREQ * 3 * 8)
+    if fault == "mask":
+        masks[0] = 1
+    if fault == "powers":
+        powers[0] = 1
+    (tmp_path / "dtv_mask_0.raw").write_bytes(
+        raw_frame(downsampling=4 * verifier.BLOCK_SAMPLES, payload=masks)
+    )
+    if fault != "missing":
+        (tmp_path / "dtv_powers_0.raw").write_bytes(
+            raw_frame(
+                sequence=0 if fault == "timing" else 557056,
+                downsampling=4 * verifier.BLOCK_SAMPLES,
+                payload=powers,
+            )
+        )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "verify_pilotproxy_pipeline.py",
+            "--bundle-dir",
+            str(tmp_path),
+            "--dump-dir",
+            str(tmp_path),
+            "--num-input-frames",
+            "1",
+        ],
+    )
+    assert verifier.main() == (0 if fault is None else 1)
+    assert ("PASS:" if fault is None else "FAIL:") in capsys.readouterr().out
+
+
+def test_verifier_cli_calibration_restamps_all_bundle_digests(tmp_path, monkeypatch):
+    bundle = {"profiles": [{"physical_channel": 14}, {"physical_channel": 15}]}
+    (tmp_path / "pilot_profiles.json").write_text(json.dumps(bundle))
+    (tmp_path / "weights.manifest.json").write_text("{}")
+    (tmp_path / "detector_contract.json").write_text("{}")
+    (tmp_path / "weights.bin").write_bytes(bytes([0x11]) * 3 * verifier.K)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["verify_pilotproxy_pipeline.py", "--calibrate", "--bundle-dir", str(tmp_path)],
+    )
+    assert verifier.main() == 0
+    profiles = json.loads((tmp_path / "pilot_profiles.json").read_text())
+    manifest = json.loads((tmp_path / "weights.manifest.json").read_text())
+    digest = verifier.file_sha256(tmp_path / "weights.bin")
+    assert profiles["weights_sha256"] == manifest["weights_sha256"] == digest
+    assert all(
+        row["fine_calibration"]["status"] == "calibrated"
+        for row in profiles["profiles"]
+    )
+    lines = (tmp_path / "sha256sums.txt").read_text().splitlines()
+    assert len(lines) == len(verifier.BUNDLE_FILES)
+    for line in lines:
+        digest, name = line.split()
+        assert digest == verifier.file_sha256(tmp_path / name)
 
 
 def test_default_chord_template_leaves_detector_disabled():

@@ -24,6 +24,7 @@
 enum class PfbWindow { Rectangular, Hann, Hamming, Blackman };
 
 /**
+ * @anchor pfb_prototype_design
  * @brief Design a length-(num_chan * num_taps) lowpass prototype: a sinc with its cutoff at the
  *        channel spacing, times @p window.
  *
@@ -61,7 +62,7 @@ inline void pfb_push(T* hist, const T* block, int num_chan, int num_taps) {
  * The forward (sign -1) num_chan-point DFT of @p out gives the channels.
  *
  * @param hist      Delay line from @ref pfb_push, in time order.
- * @param proto     Prototype from @ref pfb_prototype.
+ * @param proto     Prototype from @ref pfb_prototype_design "pfb_prototype()".
  * @param num_chan  Number of channels.
  * @param num_taps  Taps per channel.
  * @param out       Output, length @p num_chan.
