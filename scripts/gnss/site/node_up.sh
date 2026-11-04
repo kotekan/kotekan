@@ -208,7 +208,12 @@ print("%s:%s%s" % (c["host"], c["port"], c.get("timing_endpoint", "/get-frame0-t
     true
 }
 
-# The mkdir makes /tmp/gnss, the configs' record_dir, on node-local disk (not the NFS home).
+# The mkdir makes /tmp/gnss, the configs' record_dir, on node-local disk (not the NFS home),
+# and each rawFileWrite sink's directory under it, AS THE USER: kotekan runs as root and would
+# make them root-owned, and then nobody but root could retire the dumps. A user-owned
+# directory lets the pull loops (beam dump, track beam, DTV, lane dump, vis capture) unlink
+# the root-owned files they have copied. /tmp is wiped at boot (tmpfiles.d), so every start
+# re-makes them.
 # A stopped or failed transient unit can stay loaded, and systemd-run then refuses the name
 # ("Unit gnss-node.service was already loaded or has a fragment file"); reset-failed clears it
 # and is harmless when there is nothing to clear, hence the `|| true`. An unreadable config ends
@@ -237,7 +242,7 @@ print("%s:%s%s" % (c["host"], c["port"], c.get("timing_endpoint", "/get-frame0-t
 # installed and the line is not already there.
 NR_CONF=/etc/needrestart/conf.d/gnss-node.conf
 NR_LINE='$nrconf{override_rc}{qr(^gnss-node\.service$)} = 0;'
-REMOTE_UP="mkdir -p /tmp/gnss && sudo systemctl reset-failed gnss-node 2>/dev/null || true; \
+REMOTE_UP="mkdir -p /tmp/gnss/beamdump /tmp/gnss/trackbeam /tmp/gnss/dtv /tmp/gnss/lanedump /tmp/gnss/viscap && sudo systemctl reset-failed gnss-node 2>/dev/null || true; \
       { [ -d $(dirname $NR_CONF) ] && ! grep -qxF '$NR_LINE' $NR_CONF 2>/dev/null \
         && echo '$NR_LINE' | sudo tee $NR_CONF >/dev/null; true; }; \
       { [ -f '$LOG' ] && sudo mv -f '$LOG' '$LOG.1'; true; }; \
