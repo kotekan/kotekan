@@ -384,3 +384,61 @@ BOOST_AUTO_TEST_CASE(default_style_and_legend_render) {
     BOOST_CHECK(contains(dot, "the far end: a socket, a port, a file"));
     check_statements_terminated(dot);
 }
+
+BOOST_AUTO_TEST_CASE(device_svg_draws_memory_rows_and_command_columns) {
+    using kotekan::GraphCategory;
+    PipelineGraph graph;
+    graph.add_cluster("__gpu/0");
+    auto& work = graph.add_cluster("/s/gpu_0/work");
+    work.label = "s";
+    work.parent = "__gpu/0";
+
+    graph.add_node("host_in").add_line("host_in").set_category(GraphCategory::Buffer);
+    graph.add_node("host_out").add_line("host_out").set_category(GraphCategory::Buffer);
+    auto& ring = graph.add_node("ring");
+    ring.add_line("host_ring").add_line("GPU 0: ring_buffer · 1 MiB");
+    ring.set_category(GraphCategory::Memory).set_buffer_state(kotekan::BufferState::Full);
+    ring.occupancy = 1.0;
+    ring.cluster = "__gpu/0";
+    auto& scratch = graph.add_node("scratch");
+    scratch.add_line("scratch_mem").set_category(GraphCategory::Memory).cluster = "__gpu/0";
+
+    // Added in the opposite order to the data flow, to check the sort.
+    const char* commands[] = {"/s/gpu_0/commands/2", "/s/gpu_0/commands/1", "/s/gpu_0/commands/0"};
+    const char* names[] = {"copyOut", "kernel", "copyIn"};
+    for (int i = 0; i < 3; i++) {
+        auto& node = graph.add_node(commands[i]).add_line(names[i]);
+        node.set_category(GraphCategory::Gpu).cluster = work.id;
+    }
+    graph.add_node("/s/gpu_0").add_line("gpu_0").cluster = work.id;
+    graph.add_edge("/s/gpu_0", "/s/gpu_0/commands/0").set_attr("style", "dotted");
+    graph.add_edge("host_in", "/s/gpu_0/commands/0");
+    graph.add_edge("/s/gpu_0/commands/0", "ring");
+    graph.add_edge("ring", "/s/gpu_0/commands/1");
+    graph.add_edge("/s/gpu_0/commands/1", "scratch");
+    graph.add_edge("scratch", "/s/gpu_0/commands/2");
+    graph.add_edge("/s/gpu_0/commands/2", "host_out");
+
+    const std::string svg = graph.to_device_svg("__gpu/0");
+    BOOST_REQUIRE(contains(svg, "<svg"));
+    // Columns follow the data, whatever order they were added in.
+    const size_t in = svg.find("s · copyIn"), kernel = svg.find("s · kernel"),
+                 out = svg.find("s · copyOut");
+    BOOST_REQUIRE(in != std::string::npos && kernel != std::string::npos
+                  && out != std::string::npos);
+    BOOST_CHECK(in < kernel && kernel < out);
+    // A stage node with only the dotted execution-order edge is no column.
+    BOOST_CHECK(!contains(svg, "s · gpu_0"));
+    // Rows: name, last label line, and a gauge only where occupancy is known.
+    BOOST_CHECK(contains(svg, "host_ring"));
+    BOOST_CHECK(contains(svg, "GPU 0: ring_buffer · 1 MiB"));
+    BOOST_CHECK(contains(svg, "scratch_mem"));
+    BOOST_CHECK(contains(svg, ">full<"));
+    // The writer of a full ring is drawn in the full colour.
+    BOOST_CHECK(contains(svg, std::string("stroke=\"") + kotekan::graph_full_line));
+    // Host buffers are named in the tooltips.
+    BOOST_CHECK(contains(svg, "from host_in"));
+    BOOST_CHECK(contains(svg, "to host_out"));
+
+    BOOST_CHECK(graph.to_device_svg("__gpu/1").empty());
+}

@@ -14,6 +14,7 @@
 
 #include <cstddef>  // for ptrdiff_t
 #include <deque>    // for deque
+#include <limits>   // for numeric_limits
 #include <map>      // for map
 #include <set>      // for set
 #include <stddef.h> // for size_t
@@ -149,6 +150,10 @@ struct GraphNode {
 
     /// Graphviz node attributes (shape, style, color, ...) other than the label.
     std::map<std::string, std::string> attrs;
+
+    /// For a buffer: the fraction of its capacity holding data not yet read,
+    /// from 0 to 1. NaN when unknown or not asked for.
+    double occupancy = std::numeric_limits<double>::quiet_NaN();
 
     /// Convenience: append a label line, ignoring empty strings.
     GraphNode& add_line(const std::string& line);
@@ -362,6 +367,22 @@ public:
      * a wiring bug here.
      */
     nlohmann::json to_json() const;
+
+    /**
+     * @brief Renders one device's memory and the commands using it as an SVG.
+     *
+     * Rows are the device's memory: the nodes in @p device_cluster, or in a
+     * cluster directly under it, filled with the GraphCategory::Memory colour.
+     * Columns are the other nodes there with a data edge (any edge but the
+     * dotted execution-order ones), ordered so that a column comes after every
+     * column writing a row it reads. A column marks the rows it reads (hollow)
+     * and writes (filled), and runs to the host band above or below for an edge
+     * to a node outside the device. A row with an @c occupancy gets a gauge.
+     *
+     * @return The SVG document, or an empty string if @p device_cluster has
+     *         no columns.
+     */
+    std::string to_device_svg(const std::string& device_cluster) const;
 
     /// What was asked to be included; readable by everything building the graph.
     GraphOptions options;

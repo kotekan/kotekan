@@ -80,6 +80,8 @@ public:
 
     kotekan::BufferState dot_buffer_state() override;
 
+    double dot_occupancy() override;
+
     /**
      * @brief Waits until the given number of elements are free to be
      * written.  Must be called by a producer before writing.  Returns

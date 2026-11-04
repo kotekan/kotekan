@@ -66,6 +66,7 @@ kotekanMode::~kotekanMode() {
     restServer::instance().remove_get_callback("/buffers");
     restServer::instance().remove_get_callback("/pipeline_dot");
     restServer::instance().remove_get_callback("/pipeline_json");
+    restServer::instance().remove_get_callback("/pipeline_gpu_svg");
     restServer::instance().remove_get_callback("/buffer_frame");
     restServer::instance().remove_all_aliases();
 
@@ -172,6 +173,9 @@ void kotekanMode::initalize_stages() {
     restServer::instance().register_get_callback(
         "/pipeline_json", std::bind(&kotekanMode::pipeline_json_graph_callback, this, _1));
 
+    restServer::instance().register_get_callback(
+        "/pipeline_gpu_svg", std::bind(&kotekanMode::pipeline_gpu_svg_callback, this, _1));
+
     // One frame-peek endpoint naming its buffer in the query, rather than one
     // registered per buffer: a pipeline has a hundred buffers or more, and the
     // REST server reads its callback map without holding the lock that guards
@@ -274,8 +278,10 @@ PipelineGraph kotekanMode::get_pipeline_graph(const GraphOptions& options) {
         auto& node = graph.add_node(buf.first);
         node.label_lines = buf.second->dot_label_lines(options);
         node.set_category(GraphCategory::Buffer);
-        if (options.runtime)
+        if (options.runtime) {
             node.set_buffer_state(buf.second->dot_buffer_state());
+            node.occupancy = buf.second->dot_occupancy();
+        }
         // A rendered graph is then a way in: click a buffer to see the frame it
         // is holding. Only frame buffers have somewhere to go.
         if (options.urls && dynamic_cast<Buffer*>(buf.second) != nullptr)
@@ -433,6 +439,24 @@ void kotekanMode::pipeline_dot_graph_callback(connectionInstance& conn) {
 
 void kotekanMode::pipeline_json_graph_callback(connectionInstance& conn) {
     conn.send_json_reply(get_pipeline_graph(GraphOptions::from_query(conn.get_query())).to_json());
+}
+
+void kotekanMode::pipeline_gpu_svg_callback(connectionInstance& conn) {
+    const std::map<std::string, std::string> query = conn.get_query();
+    auto gpu = query.find("gpu");
+    const std::string gpu_id = gpu == query.end() ? "0" : gpu->second;
+
+    // The view is built from the commands, so they are drawn whatever was asked.
+    GraphOptions options = GraphOptions::from_query(query);
+    options.kernels = true;
+    // gpuProcess names each device's cluster this way.
+    const std::string svg = get_pipeline_graph(options).to_device_svg("__gpu/" + gpu_id);
+    if (svg.empty()) {
+        conn.send_error(fmt::format(fmt("no commands on GPU {:s}"), gpu_id),
+                        HTTP_RESPONSE::NOT_FOUND);
+        return;
+    }
+    conn.send_text_reply(svg, "image/svg+xml; charset=utf-8");
 }
 
 void kotekanMode::buffer_frame_callback(connectionInstance& conn) {

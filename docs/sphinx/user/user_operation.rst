@@ -18,6 +18,10 @@ REST endpoints
 - ``/pipeline_json`` (GET) – the same graph as JSON (nodes, edges, clusters), for clients
   that would rather lay it out, or diff it, than parse ``dot``. Takes the same query
   arguments.
+- ``/pipeline_gpu_svg?gpu=<id>`` (GET) – one GPU's memory and commands as an SVG: a row
+  per memory region (with a fill gauge for rings), a column per command in data-flow
+  order, marking the rows it reads and writes. ``gpu`` defaults to 0; takes the same
+  query arguments as ``/pipeline_dot``.
 - ``/buffer_frame?name=<buffer>`` (GET) – copy of the newest full frame in ``<buffer>`` as
   JSON: base64 ``data``, the frame's metadata, and the buffer's frame descriptor. ``&len=N``
   sets how many data bytes come back (64 KiB without it; ``len=0`` for metadata only).
@@ -98,6 +102,9 @@ Query arguments (all boolean ones take ``0``/``1``):
 
     # just the structure, without the GPU internals
     curl -s 'http://localhost:12048/pipeline_dot?runtime=0&kernels=0' | dot -Tpdf -o pipeline.pdf
+
+    # what GPU 0 is doing, no graphviz needed
+    curl -s 'http://localhost:12048/pipeline_gpu_svg?gpu=0' -o gpu0.svg
 
 
 Daemon mode
