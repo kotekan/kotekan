@@ -91,6 +91,9 @@ Query arguments (all boolean ones take ``0``/``1``):
 - ``legend=0`` / ``pools=0`` – drop the colour key / the metadata pool list.
 - ``kernels=0`` – hide GPU commands and device memory; useful on large pipelines where
   they dominate the graph.
+- ``gpu_table=0`` – draw each GPU as a box of command and memory nodes. By default a GPU
+  is one table, as in ``/pipeline_gpu_svg`` but with a row per command, and host buffer
+  edges end on the row of the command that copies them.
 - ``runtime=0`` – structure only, no live numbers or state colouring. Use this to compare
   two runs: the live figures differ on every fetch.
 - ``urls=0`` – no links on buffer nodes.

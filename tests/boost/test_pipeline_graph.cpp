@@ -385,10 +385,12 @@ BOOST_AUTO_TEST_CASE(default_style_and_legend_render) {
     check_statements_terminated(dot);
 }
 
-BOOST_AUTO_TEST_CASE(device_svg_draws_memory_rows_and_command_columns) {
+/// One device: host_in -> copyIn -> ring (full) -> kernel -> scratch -> copyOut -> host_out.
+static void add_device(PipelineGraph& graph) {
     using kotekan::GraphCategory;
-    PipelineGraph graph;
-    graph.add_cluster("__gpu/0");
+    auto& device = graph.add_cluster("__gpu/0");
+    device.label = "GPU 0";
+    device.set_attr("fillcolor", kotekan::graph_device_fill);
     auto& work = graph.add_cluster("/s/gpu_0/work");
     work.label = "s";
     work.parent = "__gpu/0";
@@ -418,6 +420,11 @@ BOOST_AUTO_TEST_CASE(device_svg_draws_memory_rows_and_command_columns) {
     graph.add_edge("/s/gpu_0/commands/1", "scratch");
     graph.add_edge("scratch", "/s/gpu_0/commands/2");
     graph.add_edge("/s/gpu_0/commands/2", "host_out");
+}
+
+BOOST_AUTO_TEST_CASE(device_svg_draws_memory_rows_and_command_columns) {
+    PipelineGraph graph;
+    add_device(graph);
 
     const std::string svg = graph.to_device_svg("__gpu/0");
     BOOST_REQUIRE(contains(svg, "<svg"));
@@ -441,4 +448,27 @@ BOOST_AUTO_TEST_CASE(device_svg_draws_memory_rows_and_command_columns) {
     BOOST_CHECK(contains(svg, "to host_out"));
 
     BOOST_CHECK(graph.to_device_svg("__gpu/1").empty());
+}
+
+BOOST_AUTO_TEST_CASE(dot_draws_a_device_as_one_table) {
+    PipelineGraph graph;
+    add_device(graph);
+
+    const std::string dot = graph.to_dot();
+    BOOST_CHECK(!contains(dot, "cluster___gpu/0"));
+    BOOST_CHECK(contains(dot, "\"__gpu/0\" [shape=\"plain\", label=<<TABLE"));
+    // Host edges end on the rows of the commands copying them, in data-flow order.
+    BOOST_CHECK(contains(dot, "\"host_in\" -> \"__gpu/0\":\"in0\":w"));
+    BOOST_CHECK(contains(dot, "\"__gpu/0\":\"out2\":e -> \"host_out\""));
+    // Edges inside the device, and the execution-order edge, are not drawn.
+    BOOST_CHECK(!contains(dot, "-> \"ring\""));
+    BOOST_CHECK(!contains(dot, "\"/s/gpu_0\""));
+    // The ring's region is named from the ring's line for this device.
+    BOOST_CHECK(contains(dot, "<B>ring</B>"));
+    BOOST_CHECK(contains(dot, ">full<"));
+
+    graph.options.gpu_table = false;
+    const std::string boxes = graph.to_dot();
+    BOOST_CHECK(contains(boxes, "cluster___gpu/0"));
+    BOOST_CHECK(contains(boxes, "\"host_in\" -> \"/s/gpu_0/commands/0\""));
 }

@@ -245,6 +245,11 @@ struct GraphOptions {
     /// Draw each GPU stage's commands and device memory.
     bool kernels = true;
 
+    /// Draw each GPU as one table of its memory and the commands using it, as
+    /// in @c PipelineGraph::to_device_svg(), instead of a box of nodes. Host
+    /// buffer edges end on the row of the command that copies them.
+    bool gpu_table = true;
+
     /**
      * @brief Include what the pipeline is doing right now: rates, fill levels,
      *        CPU usage, kernel timings, and the full/idle colouring.
@@ -351,6 +356,11 @@ public:
      * is terminated and newline separated.  An edge naming a node that was never
      * added is dropped and reported in a comment, since graphviz would otherwise
      * conjure up an empty node for it.
+     *
+     * With @c GraphOptions::gpu_table, a device box with commands in it is
+     * drawn as one table node instead, named for the box. Edges to the nodes
+     * it replaces end on ports `in<n>` and `out<n>`, row @c n's left and right
+     * ends.
      */
     std::string to_dot() const;
 
@@ -443,9 +453,23 @@ private:
     std::set<std::string> cyclic_clusters() const;
 
     /// Renders the clusters whose parent is @c parent, and the nodes they hold.
-    /// Clusters named in @p cyclic are drawn at the top level instead.
+    /// Clusters named in @p cyclic are drawn at the top level instead, and
+    /// clusters named in @p skip are not drawn.
     std::string cluster_dot(const std::string& parent, const std::string& indent,
-                            const std::set<std::string>& cyclic) const;
+                            const std::set<std::string>& cyclic,
+                            const std::set<std::string>& skip) const;
+
+    /// A device's memory and the commands using it, both in display order.
+    struct DeviceLayout;
+
+    /// Works out the rows and columns described in @c to_device_svg().
+    DeviceLayout device_layout(const std::string& device_cluster) const;
+
+    /// @return "stage · command" for a column, naming the stage by its box's label.
+    std::string column_label(const GraphNode& node) const;
+
+    /// @return The HTML-like label drawing @p layout as a table, for @c to_dot().
+    std::string device_table(const DeviceLayout& layout, const std::string& title) const;
 
     /// @return True if @p id holds no node, directly or in any cluster under it.
     bool cluster_is_empty(const std::string& id, const std::set<std::string>& cyclic) const;
