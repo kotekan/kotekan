@@ -1929,8 +1929,8 @@
   },
   {
    "start": "2026-11-04T14:46:54Z",
-   "end": null,
-   "note": "site work 11-04 (analog front end / F-engine); opened by gw_nosky_watch.py: gps_l5 0 present"
+   "end": "2026-11-04T23:23:48Z",
+   "note": "site work 11-04 (analog front end / F-engine); closed by gw_nosky_watch.py: gps_l5 >= 3 present from 2026-11-04T23:23:48Z"
   }
  ],
  "silent_max_sep_deg": 4.0
