@@ -13,6 +13,7 @@
 #include <cstdint>
 #include <cstring>
 #include <functional>
+#include <limits>
 #include <set>
 #include <vector>
 
@@ -20,7 +21,7 @@
  * @class DtvRfiMask
  * @brief Fold one 8192- or 16384-sample DTV decision block into the aligned RFImask frame.
  *
- * The DTV mask int8[F] uses 1 to reject a frequency, and the RFImask
+ * The DTV mask int8[1,F] uses 1 to reject a frequency, and the RFImask
  * uint1x8[num_times/1024, F, 128] uses 1 to keep a sample. For a DTV
  * rejection, every time bit at that frequency is cleared. Otherwise the
  * existing RFImask is kept. Both the correlator and its packet-loss counter
@@ -36,12 +37,12 @@
  *         @buffer_format   NDArray uint1x8 [num_times/1024, num_local_freq, 128]
  *         @buffer_metadata chordMetadata
  * @buffer  dtv_buf     DTV decisions from cudaPilotProxyDetector.
- *         @buffer_format   NDArray int8 [num_local_freq]
+ *         @buffer_format   NDArray int8 [1,num_local_freq], or [num_local_freq].
  *         @buffer_metadata chordMetadata
  * @buffer  out_buf     The combined mask, same format as rfi_buf.
- * @buffer  fine_support_buf Optional int32 [F,2] rows [rank_valid,n_bulk].
- *         A row of (-1,-1) has no fine test, and rank_valid 0 or 1 marks invalid or
- *         valid rank support.
+ * @buffer  fine_support_buf Optional int32 [1,F,2] or [F,2] rows [rank_valid,n_bulk].
+ *         (-1,-1) means no fine test; 0/1 means invalid/valid rank support.
+ *         A leading T axis must have length 1 and scaling time_downsampling_fpga.
  *
  * @conf    num_local_freq  int  Frequencies per frame.
  * @conf    num_times       int  Samples per detector block (8192 or 16384).
@@ -98,14 +99,16 @@ public:
             {1024, 1, 8});
         rfi->require_frame_desc(desc);
         output->require_frame_desc(desc);
-        dtv->require_frame_desc(kotekan::GenericNDArray::describe(kotekan::int8, "dtv_mask",
-                                                                  {frequencies}, {"F"}, {1}));
+        const auto dtv_desc = dtv->get_frame_desc<kotekan::GenericNDArray>();
+        if (dtv_desc)
+            ensure_product_desc(dtv, false, dtv_desc->get_rank());
         if (support) {
             support->register_consumer(unique_name);
             if (support->frame_size != size_t(frequencies) * 2 * sizeof(int32_t))
                 FATAL_ERROR("DtvRfiMask fine support buffer size mismatch");
-            support->require_frame_desc(kotekan::GenericNDArray::describe(
-                kotekan::int32, "dtv_fine_support", {frequencies, 2}, {"F", "S"}, {1, 1}));
+            const auto support_desc = support->get_frame_desc<kotekan::GenericNDArray>();
+            if (support_desc)
+                ensure_product_desc(support, true, support_desc->get_rank());
         }
     }
 
@@ -133,12 +136,15 @@ public:
             const auto rm = get_chord_metadata(rfi, rfi_id);
             const auto dm = get_chord_metadata(dtv, dtv_id);
             rm->check_frame_desc(rfi->get_frame_desc<kotekan::GenericNDArray>());
+            if (!started)
+                ensure_product_desc(dtv, false, dm->dims, dm->get_time_downsampling_fpga());
             dm->check_frame_desc(dtv->get_frame_desc<kotekan::GenericNDArray>());
             const auto seq = rm->get_fpga_seq_num();
             const auto rp = rm->get_time_downsampling_fpga();
             const auto dp = dm->get_time_downsampling_fpga();
-            if (seq < 0 || dp <= 0 || rp <= 0 || rp % 1024 || rp * mask_rows != dp
-                || seq != dm->get_fpga_seq_num())
+            if (seq < 0 || dp <= 0 || rp <= 0 || rp % 1024 || dp % mask_rows || rp != dp / mask_rows
+                || seq > std::numeric_limits<int64_t>::max() - dp || seq != dm->get_fpga_seq_num()
+                || (dm->dims == 2 && dm->dim_scaling[0] != dp))
                 FATAL_ERROR("DtvRfiMask time alignment mismatch");
             if (!rm->has_coarse_freq() || !dm->has_coarse_freq()
                 || rm->get_coarse_freq().size() != size_t(frequencies)
@@ -148,9 +154,10 @@ public:
             if (std::set<int>(freq.begin(), freq.end()).size() != freq.size())
                 FATAL_ERROR("DtvRfiMask duplicate frequency identity");
             for (const auto& meta : {rm, dm}) {
-                if (!meta->has_freq_upchan_factor() || !meta->has_freq_upchan_index()
+                if (!meta->has_freq_upchan_factor()
                     || meta->get_freq_upchan_factor() != std::vector<int>(frequencies, 1)
-                    || meta->get_freq_upchan_index() != std::vector<int>(frequencies, 0))
+                    || (meta->has_freq_upchan_index()
+                        && meta->get_freq_upchan_index() != std::vector<int>(frequencies, 0)))
                     FATAL_ERROR("DtvRfiMask requires un-upchannelized coarse frequencies");
             }
             if (started && (seq != next_seq || dp != period || freq != bound_freq))
@@ -162,12 +169,15 @@ public:
                             FATAL_ERROR("DtvRfiMask threshold frequency ID {:d} is absent", id);
             if (support) {
                 const auto sm = get_chord_metadata(support, support_id);
+                if (!started)
+                    ensure_product_desc(support, true, sm->dims, sm->get_time_downsampling_fpga());
                 sm->check_frame_desc(support->get_frame_desc<kotekan::GenericNDArray>());
                 if (sm->get_fpga_seq_num() != seq || sm->get_time_downsampling_fpga() != dp
-                    || !sm->has_coarse_freq() || sm->get_coarse_freq() != freq
-                    || !sm->has_freq_upchan_factor() || !sm->has_freq_upchan_index()
+                    || (sm->dims == 3 && sm->dim_scaling[0] != dp) || !sm->has_coarse_freq()
+                    || sm->get_coarse_freq() != freq || !sm->has_freq_upchan_factor()
                     || sm->get_freq_upchan_factor() != std::vector<int>(frequencies, 1)
-                    || sm->get_freq_upchan_index() != std::vector<int>(frequencies, 0))
+                    || (sm->has_freq_upchan_index()
+                        && sm->get_freq_upchan_index() != std::vector<int>(frequencies, 0)))
                     FATAL_ERROR("DtvRfiMask fine support identity mismatch");
             }
             std::vector<bool> excluded(frequencies);
@@ -216,6 +226,28 @@ public:
     }
 
 private:
+    void ensure_product_desc(Buffer* buffer, bool fine, size_t rank, int64_t period = 1) {
+        std::vector<std::ptrdiff_t> extents{frequencies};
+        std::vector<kotekan::Symbol> names{"F"};
+        std::vector<std::ptrdiff_t> scalings{1};
+        if (fine) {
+            extents.push_back(2);
+            names.push_back("S");
+            scalings.push_back(1);
+        }
+        if (rank == extents.size() + 1) {
+            extents.insert(extents.begin(), 1);
+            names.insert(names.begin(), "T");
+            scalings.insert(scalings.begin(), period);
+        } else if (rank != extents.size()) {
+            FATAL_ERROR("DtvRfiMask input {:s} has unsupported rank {:d}", buffer->buffer_name,
+                        rank);
+        }
+        buffer->ensure_frame_desc(kotekan::GenericNDArray::describe(
+            fine ? kotekan::int32 : kotekan::int8, fine ? "dtv_fine_support" : "dtv_mask", extents,
+            names, scalings));
+    }
+
     const int frequencies;
     const int mask_rows;
     Buffer *rfi, *dtv, *output, *support;

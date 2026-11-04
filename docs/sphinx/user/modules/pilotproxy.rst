@@ -25,13 +25,15 @@ Components
     For each bound frequency, one block from every input is packed into 128
     windows and passed to the detector core. ``detector_window_samples``
     selects 64 samples per window for CHORD or 128 for CHIME. For each local
-    frequency and block, the command writes ``dtv_mask`` (``int8[F]``, 1
-    rejects the block), ``dtv_powers`` (``uint64[F, 3]``, the target and the
+    frequency and block, the command writes ``dtv_mask`` (``int8[1, F]``, 1
+    rejects the block), ``dtv_powers`` (``uint64[1, F, 3]``, the target and the
     two reference frame powers, each the sum of the 256 fine powers of that
-    term), and optionally ``dtv_fine_support`` (``int32[F, 2]``, described
+    term), and optionally ``dtv_fine_support`` (``int32[1, F, 2]``, described
     below). Frequencies without a pilot get zero masks and powers. The
     detector sums every input in the ring, even the inputs that the correlator
     flags as bad.
+    The leading ``T`` axis holds one block, scaled by its FPGA sequence period,
+    so ``hdf5FileWrite`` can concatenate blocks with ``frames_per_file``.
 
 ``external/pilotproxy``
     The CUDA detector core, copied unchanged from the PilotProxy project.
@@ -122,6 +124,36 @@ The other keys are listed below.
 Both lists hold receiver ``coarse_freq`` IDs. The ATSC channel number of a
 pilot is given only in the bundle. The two lists must not overlap, and every
 listed ID must be on the node, so the lists are set for each node.
+
+
+Pathfinder recording
+--------------------
+
+``config/chord/pathfinder.j2`` uses the same ``dtv_enabled``, ``dtv_apply_mask``
+and ``dtv_runtime_bundle_dir`` switches. It records masks, powers and fine
+support in 1024-block files (about 43 seconds), under ``dtv_output_dir``
+(default ``/scratch/dtv``).
+
+While running, POST ``{"enabled": false}`` to ``/dtv_write_enabled`` to stop
+recording. POST ``{"enabled": false, "valid_at_time_ns": 0}`` to
+``/dtv_detector_enabled`` to stop detection at the next block. Set ``enabled``
+to true to resume; recording starts a new file. A nonzero ``valid_at_time_ns``
+applies the detector change at the first block starting at or after that
+instrument time. Both switches start enabled.
+
+Each X-engine node writes to its own disk, and each file name starts with the
+node's hostname, so files from different nodes do not collide when gathered.
+To collect them in one place, ``dtv_output_dir`` can be set to a directory
+shared by all nodes.
+
+Recording on the recv node would remove the gathering step, and it needs two
+changes. The 16 halves would share one receive buffer for each product, as the
+bad feed masks do, and ``hdf5FileWrite`` opens a new file at each jump in
+``fpga_seq_num``. A stage that splits frames by ``coarse_freq`` is therefore
+needed in front of the writers. Each frame also carries about 149 kB of
+``chordMetadata`` over ``bufferSend``, so the three products would use about
+1.4 Gb/s to deliver 4.8 MB/s of data. Sending several blocks in each frame
+reduces this rate by the same factor.
 
 
 GPU streams
