@@ -9,6 +9,9 @@
 #include "json.hpp"
 
 #include <algorithm>
+#include <chrono>
+#include <cmath>
+#include <cstdio>
 #include <cstring>
 #include <fstream>
 #include <map>
@@ -18,6 +21,10 @@ using kotekan::Config;
 using namespace gnss_cuda;
 
 REGISTER_CUDA_COMMAND(cudaDtvSubtract);
+
+namespace {
+constexpr double HOP_S = 5.12e-6; // one sample of a 195.3125 kHz channel
+}
 
 std::shared_ptr<cudaDtvSubtract::Shared> cudaDtvSubtract::shared_for(const std::string& name) {
     static std::mutex mtx;
@@ -47,7 +54,7 @@ cudaDtvSubtract::cudaDtvSubtract(Config& config, const std::string& unique_name,
     _layout(dtv_out_layout((int)_local_channels.size(), _n_src, _n_lag)),
     out(_out_name, "dtv_out", std::array<std::ptrdiff_t, 2>{1, (std::ptrdiff_t)_layout.bytes},
         std::array<std::string, 2>{"B", "X"}, std::array<std::ptrdiff_t, 2>{1, 1}, *this),
-    _sh(shared_for(unique_name)) {
+    _sh(shared_for(unique_name)), _owner(instance_num == 0) {
     const int n = (int)_local_channels.size();
     if (_num_elements != DTV_INPUTS)
         FATAL_ERROR("cudaDtvSubtract: num_elements {:d} != {:d}; the kernels are written for 128 "
@@ -77,6 +84,21 @@ cudaDtvSubtract::cudaDtvSubtract(Config& config, const std::string& unique_name,
         FATAL_ERROR("cudaDtvSubtract: dtv_sources {:d} outside [1, {:d}]", _n_src, DTV_MAX_SRC);
     if (_eig_iters < 1 || _eig_iters > 256)
         FATAL_ERROR("cudaDtvSubtract: dtv_eig_iters {:d} outside [1, 256]", _eig_iters);
+    std::vector<double> roll_tau = config.get_default<std::vector<double>>(
+        unique_name, "dtv_roll_tau_s", {1.5, 4.0, 8.0, 8.0});
+    const int roll_interval = config.get_default<int>(unique_name, "dtv_roll_interval", 24);
+    const double roll_min_explained =
+        config.get_default<double>(unique_name, "dtv_roll_min_explained", 0.05);
+    const double roll_max_power =
+        config.get_default<double>(unique_name, "dtv_roll_max_power", 2.0);
+    if (roll_tau.empty())
+        FATAL_ERROR("cudaDtvSubtract: dtv_roll_tau_s is empty");
+    roll_tau.resize((size_t)_n_src, roll_tau.back());
+    for (double t : roll_tau)
+        if (!(t > 0.0 && t <= 3600.0))
+            FATAL_ERROR("cudaDtvSubtract: dtv_roll_tau_s entry {:g} outside (0, 3600] s", t);
+    if (roll_interval < 1 || roll_interval > 10000)
+        FATAL_ERROR("cudaDtvSubtract: dtv_roll_interval {:d} outside [1, 10000]", roll_interval);
 
     gpu_buffers_used.push_back(std::make_tuple(_out_name, true, false, true));
 
@@ -100,11 +122,19 @@ cudaDtvSubtract::cudaDtvSubtract(Config& config, const std::string& unique_name,
     device.get_gpu_memory(unique_name + "_pwtmp", (size_t)n * DTV_INPUTS * sizeof(float));
     device.get_gpu_memory(unique_name + "_lam", (size_t)n * 4 * sizeof(float));
     device.get_gpu_memory(unique_name + "_ref", (size_t)n * sizeof(int));
+    const size_t rss_bytes = (size_t)n * _n_src * _n_lag * sizeof(float2);
+    const size_t pw_bytes = (size_t)3 * n * sizeof(float);
+    void* d_acc_rxs = device.get_gpu_memory(unique_name + "_acc_rxs", g_bytes);
+    void* d_acc_rss = device.get_gpu_memory(unique_name + "_acc_rss", rss_bytes);
+    void* d_acc_pw = device.get_gpu_memory(unique_name + "_acc_pw", pw_bytes);
     if (instance_num == 0) {
         CHECK_CUDA_ERROR(cudaMemset(d_s, 0, s_bytes));
         CHECK_CUDA_ERROR(cudaMemset(d_w, 0, w_bytes));
         CHECK_CUDA_ERROR(cudaMemset(d_g, 0, g_bytes));
         CHECK_CUDA_ERROR(cudaMemset(d_act, 0, (size_t)n * _n_src * sizeof(int)));
+        CHECK_CUDA_ERROR(cudaMemset(d_acc_rxs, 0, g_bytes));
+        CHECK_CUDA_ERROR(cudaMemset(d_acc_rss, 0, rss_bytes));
+        CHECK_CUDA_ERROR(cudaMemset(d_acc_pw, 0, pw_bytes));
         CHECK_CUDA_ERROR(cudaMemcpy(d_sel, _local_channels.data(), (size_t)n * sizeof(int),
                                     cudaMemcpyHostToDevice));
         std::lock_guard<std::mutex> lk(_sh->mtx);
@@ -112,6 +142,19 @@ cudaDtvSubtract::cudaDtvSubtract(Config& config, const std::string& unique_name,
         _sh->g.assign((size_t)n * _n_src * _n_lag * DTV_INPUTS, make_float2(0.0f, 0.0f));
         _sh->act.assign((size_t)n * _n_src, 0);
         _sh->state_file = config.get_default<std::string>(unique_name, "dtv_state_file", "");
+        _sh->roll = config.get_default<bool>(unique_name, "dtv_roll", false);
+        _sh->roll_tau = roll_tau;
+        _sh->roll_freeze.assign((size_t)_n_src, 0);
+        _sh->roll_interval = roll_interval;
+        _sh->roll_min_explained = roll_min_explained;
+        _sh->roll_max_power = roll_max_power;
+        _sh->roll_reset.assign((size_t)n * _n_src, 0);
+        _sh->roll_since.assign((size_t)n * _n_src, 0);
+        _sh->roll_trip.assign((size_t)n, 0);
+        CHECK_CUDA_ERROR(cudaHostAlloc((void**)&_sh->snap_rxs, g_bytes, cudaHostAllocDefault));
+        CHECK_CUDA_ERROR(cudaHostAlloc((void**)&_sh->snap_rss, rss_bytes, cudaHostAllocDefault));
+        CHECK_CUDA_ERROR(cudaHostAlloc((void**)&_sh->snap_pw, pw_bytes, cudaHostAllocDefault));
+        CHECK_CUDA_ERROR(cudaEventCreateWithFlags(&_sh->snap_event, cudaEventDisableTiming));
     }
 
     _hdr_stage.assign(_layout.off_freq + sizeof(std::int32_t) * n, 0);
@@ -197,6 +240,7 @@ cudaDtvSubtract::cudaDtvSubtract(Config& config, const std::string& unique_name,
                         for (int j = k; j < n_src; j++)
                             sh->act[(size_t)c * n_src + j] = 0;
                     sh->start_src = -1;
+                    sh->roll_gen++;
                     sh->dirty_w = true;
                 }
                 INFO("cudaDtvSubtract[{:s}]: sources {:d}.. cleared", unique_name, k);
@@ -225,8 +269,86 @@ cudaDtvSubtract::cudaDtvSubtract(Config& config, const std::string& unique_name,
                     ch.push_back(e);
                 }
                 r["channels"] = ch;
+                r["rolling"] = roll_status();
                 conn.send_json_reply(r);
             });
+        rest.register_post_callback(
+            unique_name + "/rolling", [this, sh, n_src, n, unique_name](
+                                          kotekan::connectionInstance& conn, nlohmann::json& json) {
+                std::vector<double> tau;
+                std::vector<int> freeze;
+                std::string save;
+                try {
+                    if (json.contains("tau_s")) {
+                        if (json["tau_s"].is_number())
+                            tau.assign((size_t)n_src, json["tau_s"].get<double>());
+                        else
+                            tau = json["tau_s"].get<std::vector<double>>();
+                    }
+                    if (json.contains("freeze"))
+                        freeze = json["freeze"].get<std::vector<int>>();
+                    save = json.value("save", std::string());
+                    for (const char* key : {"enable", "reset"})
+                        if (json.contains(key))
+                            (void)json[key].get<bool>();
+                    for (const char* key : {"interval", "min_explained", "max_power"})
+                        if (json.contains(key))
+                            (void)json[key].get<double>();
+                } catch (const std::exception& ex) {
+                    conn.send_error(std::string("bad /rolling request: ") + ex.what(),
+                                    kotekan::HTTP_RESPONSE::BAD_REQUEST);
+                    return;
+                }
+                const int interval = json.value("interval", 24);
+                const double min_explained = json.value("min_explained", 0.05);
+                const double max_power = json.value("max_power", 2.0);
+                bool ok = tau.size() <= (size_t)n_src && freeze.size() <= (size_t)n_src
+                          && interval >= 1 && interval <= 10000 && min_explained >= 0.0
+                          && min_explained <= 1.0 && max_power > 0.0;
+                for (double t : tau)
+                    ok = ok && t > 0.0 && t <= 3600.0;
+                if (!ok) {
+                    conn.send_error("expected tau_s in (0, 3600] s and freeze for at most "
+                                        + std::to_string(n_src)
+                                        + " sources, interval 1..10000 frames, min_explained in "
+                                          "[0, 1], max_power > 0",
+                                    kotekan::HTTP_RESPONSE::BAD_REQUEST);
+                    return;
+                }
+                nlohmann::json r;
+                {
+                    std::lock_guard<std::mutex> lk(sh->mtx);
+                    if (json.contains("enable")) {
+                        const bool on = json["enable"].get<bool>();
+                        if (on && !sh->roll)
+                            roll_reset_all();
+                        sh->roll = on;
+                    }
+                    for (size_t k = 0; k < tau.size(); k++)
+                        sh->roll_tau[k] = tau[k];
+                    for (size_t k = 0; k < freeze.size(); k++)
+                        sh->roll_freeze[k] = freeze[k] != 0;
+                    if (json.contains("interval"))
+                        sh->roll_interval = interval;
+                    if (json.contains("min_explained"))
+                        sh->roll_min_explained = min_explained;
+                    if (json.contains("max_power"))
+                        sh->roll_max_power = max_power;
+                    if (json.value("reset", false)) {
+                        roll_reset_all();
+                        sh->roll_trip.assign((size_t)n, 0);
+                    }
+                    r = roll_status();
+                }
+                INFO("cudaDtvSubtract[{:s}]: rolling fit {:s}", unique_name, json.dump());
+                std::string err;
+                if (!save.empty() && !save_state_file(save, err)) {
+                    conn.send_error(err, kotekan::HTTP_RESPONSE::INTERNAL_ERROR);
+                    return;
+                }
+                conn.send_json_reply(r);
+            });
+        _sh->roll_thread = std::thread(&cudaDtvSubtract::roll_main, this);
     }
 
     INFO("cudaDtvSubtract: {:d} channels (freq_ids {:d}..{:d}) x {:d} samples, lags {:d}..{:d}, "
@@ -236,8 +358,204 @@ cudaDtvSubtract::cudaDtvSubtract(Config& config, const std::string& unique_name,
 }
 
 cudaDtvSubtract::~cudaDtvSubtract() {
+    if (_owner) {
+        {
+            std::lock_guard<std::mutex> lk(_sh->mtx);
+            _sh->roll_stop = true;
+        }
+        _sh->roll_cv.notify_all();
+        if (_sh->roll_thread.joinable())
+            _sh->roll_thread.join();
+        if (_sh->snap_event)
+            cudaEventDestroy(_sh->snap_event);
+        cudaFreeHost(_sh->snap_rxs);
+        cudaFreeHost(_sh->snap_rss);
+        cudaFreeHost(_sh->snap_pw);
+    }
     if (_lam_event)
         cudaEventDestroy(_lam_event);
+}
+
+void cudaDtvSubtract::roll_reset_all() {
+    std::fill(_sh->roll_reset.begin(), _sh->roll_reset.end(), 1);
+    _sh->roll_gen++;
+}
+
+nlohmann::json cudaDtvSubtract::roll_status() const {
+    const int n = (int)_local_channels.size();
+    const DtvRollOutcome& o = _sh->roll_out;
+    nlohmann::json r;
+    r["enable"] = _sh->roll;
+    r["tau_s"] = _sh->roll_tau;
+    r["freeze"] = _sh->roll_freeze;
+    r["interval"] = _sh->roll_interval;
+    r["min_explained"] = _sh->roll_min_explained;
+    r["max_power"] = _sh->roll_max_power;
+    r["refits"] = _sh->roll_updates;
+    r["holds"] = _sh->roll_holds;
+    r["trips"] = _sh->roll_trips;
+    r["failed_fits"] = _sh->roll_bad;
+    r["last_refit_frame"] = _sh->roll_last;
+    r["refit_ms"] = _sh->roll_ms;
+    nlohmann::json ch = nlohmann::json::array();
+    for (int c = 0; c < n; c++) {
+        nlohmann::json e;
+        e["freq_id"] = _freq_ids[(size_t)c];
+        e["tripped"] = _sh->roll_trip[(size_t)c] != 0;
+        if (o.trip.size() == (size_t)n) {
+            e["power_ratio"] = o.ratio[(size_t)c];
+            e["explained0"] = o.expl0[(size_t)c];
+            e["weak"] = o.weak[(size_t)c] != 0;
+            e["updated"] = std::vector<int>(o.upd.begin() + (size_t)c * _n_src,
+                                            o.upd.begin() + (size_t)(c + 1) * _n_src);
+            e["gain"] = std::vector<float>(o.gain.begin() + (size_t)c * _n_src,
+                                           o.gain.begin() + (size_t)(c + 1) * _n_src);
+            e["step"] = std::vector<float>(o.step.begin() + (size_t)c * _n_src,
+                                           o.step.begin() + (size_t)(c + 1) * _n_src);
+        }
+        ch.push_back(e);
+    }
+    r["channels"] = ch;
+    return r;
+}
+
+void cudaDtvSubtract::roll_main() {
+    const int n = (int)_local_channels.size();
+    const double frame_s = _num_times * HOP_S;
+    const size_t blk = (size_t)_n_lag * DTV_INPUTS; // complex entries per (channel, source)
+    std::vector<float> g_cur(_sh->g.size() * 2), g_new(_sh->g.size() * 2);
+    DtvRollSnapshot s;
+    s.n_chan = n;
+    s.n_src = _n_src;
+    s.n_lag = _n_lag;
+    s.ni = DTV_INPUTS;
+    s.rxs = _sh->snap_rxs;
+    s.rss = _sh->snap_rss;
+    s.pw = _sh->snap_pw;
+    std::unique_lock<std::mutex> lk(_sh->mtx);
+    for (;;) {
+        _sh->roll_cv.wait(lk, [this] { return _sh->roll_stop || _sh->roll_solving; });
+        if (_sh->roll_stop)
+            return;
+        DtvRollParams p;
+        p.freeze = _sh->roll_freeze;
+        p.min_explained = _sh->roll_min_explained;
+        p.max_power = _sh->roll_max_power;
+        for (int k = 0; k < _n_src; k++)
+            p.warm.push_back(std::max((long)_sh->roll_interval,
+                                      std::lround(_sh->roll_tau[(size_t)k] / frame_s)));
+        std::memcpy(g_cur.data(), _sh->g.data(), g_cur.size() * sizeof(float));
+        s.act = _sh->snap_act.data();
+        s.since = _sh->snap_since.data();
+        const long gen = _sh->snap_gen;
+        lk.unlock();
+
+        const auto t0 = std::chrono::steady_clock::now();
+        g_new = g_cur;
+        DtvRollOutcome o = dtv_roll_step(s, p, g_cur.data(), g_new.data());
+        const double ms =
+            std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0)
+                .count();
+
+        lk.lock();
+        _sh->roll_solving = false;
+        if (gen != _sh->roll_gen || !_sh->roll)
+            continue;
+        std::string tripped, weak_on, weak_off;
+        for (int c = 0; c < n; c++) {
+            if (o.trip[(size_t)c]) {
+                for (int k = 0; k < _n_src; k++) {
+                    int& a = _sh->act[(size_t)c * _n_src + k];
+                    a = std::min(a, 1);
+                }
+                _sh->roll_trip[(size_t)c] = 1;
+                _sh->roll_trips++;
+                _sh->dirty_g = true; // uploads act with g
+                tripped += fmt::format(" {:d}:{:.3g}", _freq_ids[(size_t)c], o.ratio[(size_t)c]);
+            }
+            const bool was_weak =
+                _sh->roll_out.weak.size() == (size_t)n && _sh->roll_out.weak[(size_t)c];
+            if (o.weak[(size_t)c]) {
+                _sh->roll_holds++;
+                if (!was_weak)
+                    weak_on +=
+                        fmt::format(" {:d}:{:.3f}", _freq_ids[(size_t)c], o.expl0[(size_t)c]);
+            } else if (was_weak) {
+                weak_off += fmt::format(" {:d}", _freq_ids[(size_t)c]);
+            }
+            for (int k = 0; k < _n_src; k++) {
+                const size_t ck = (size_t)c * _n_src + k;
+                if (!o.upd[ck] || _sh->act[ck] != 2)
+                    continue;
+                std::memcpy(&_sh->g[ck * blk], &g_new[ck * blk * 2], blk * sizeof(float2));
+                _sh->dirty_g = true;
+            }
+        }
+        _sh->roll_updates++;
+        _sh->roll_bad += o.n_bad;
+        _sh->roll_last = _sh->snap_frame;
+        _sh->roll_ms = ms;
+        _sh->roll_out = std::move(o);
+        lk.unlock();
+        if (!tripped.empty())
+            WARN("cudaDtvSubtract: rolling fit: residual / input power above {:g}; stopped "
+                 "subtracting on freq_id:ratio{:s} until the next load",
+                 p.max_power, tripped);
+        if (!weak_on.empty())
+            INFO("cudaDtvSubtract: rolling fit: source 0 explains less than {:g}; holding g of "
+                 "freq_id:fraction{:s}",
+                 p.min_explained, weak_on);
+        if (!weak_off.empty())
+            INFO("cudaDtvSubtract: rolling fit: refitting again on freq_ids{:s}", weak_off);
+        lk.lock();
+    }
+}
+
+bool cudaDtvSubtract::save_state_file(const std::string& path, std::string& err) {
+    const int n = (int)_local_channels.size();
+    std::vector<float2> w, g;
+    std::vector<int> act;
+    {
+        std::lock_guard<std::mutex> lk(_sh->mtx);
+        w = _sh->w;
+        g = _sh->g;
+        act = _sh->act;
+    }
+    const std::string tmp = path + ".tmp";
+    {
+        std::ofstream fh(tmp, std::ios::binary | std::ios::trunc);
+        if (!fh) {
+            err = "cannot write " + tmp;
+            return false;
+        }
+        DtvStateHdr h{DTV_STATE_MAGIC, DTV_STATE_VERSION, n,      DTV_INPUTS,
+                      _n_lag,          _lag_min,          _n_src, 0};
+        fh.write(reinterpret_cast<const char*>(&h), sizeof(h));
+        for (int c = 0; c < n; c++) {
+            DtvStateRec rec{_freq_ids[(size_t)c], 0, 0, 0};
+            for (int k = 0; k < _n_src; k++) {
+                const int a = act[(size_t)c * _n_src + k];
+                if (a >= 1)
+                    rec.n_src_set = k + 1;
+                if (a >= 2)
+                    rec.subtract = 1;
+            }
+            fh.write(reinterpret_cast<const char*>(&rec), sizeof(rec));
+            fh.write(reinterpret_cast<const char*>(&w[(size_t)c * _n_src * DTV_INPUTS]),
+                     (size_t)_n_src * DTV_INPUTS * sizeof(float2));
+            fh.write(reinterpret_cast<const char*>(&g[(size_t)c * _n_src * _n_lag * DTV_INPUTS]),
+                     (size_t)_n_src * _n_lag * DTV_INPUTS * sizeof(float2));
+        }
+        if (!fh) {
+            err = "write to " + tmp + " failed";
+            return false;
+        }
+    }
+    if (std::rename(tmp.c_str(), path.c_str()) != 0) {
+        err = "cannot rename " + tmp + " to " + path;
+        return false;
+    }
+    return true;
 }
 
 bool cudaDtvSubtract::load_state_file(const std::string& path, std::string& err) {
@@ -297,6 +615,24 @@ bool cudaDtvSubtract::load_state_file(const std::string& path, std::string& err)
         return false;
     }
     std::lock_guard<std::mutex> lk(_sh->mtx);
+    // A source's rolling sums restart when it starts or its w changes, and so do the sums of the
+    // sources after it, whose input it changes.
+    for (int c = 0; c < n; c++) {
+        bool restart = false;
+        for (int k = 0; k < _n_src; k++) {
+            const size_t ck = (size_t)c * _n_src + k;
+            restart = restart
+                      || (act[ck] >= 1
+                          && (_sh->act[ck] < 1
+                              || std::memcmp(&w[ck * DTV_INPUTS], &_sh->w[ck * DTV_INPUTS],
+                                             DTV_INPUTS * sizeof(float2))
+                                     != 0));
+            if (restart)
+                _sh->roll_reset[ck] = 1;
+        }
+    }
+    _sh->roll_trip.assign((size_t)n, 0);
+    _sh->roll_gen++;
     _sh->w.swap(w);
     _sh->g.swap(g);
     _sh->act.swap(act);
@@ -370,6 +706,11 @@ cudaEvent_t cudaDtvSubtract::execute(cudaPipelineState& pipestate,
     auto* d_lam =
         (float*)device.get_gpu_memory(unique_name + "_lam", (size_t)n * 4 * sizeof(float));
     auto* d_ref = (int*)device.get_gpu_memory(unique_name + "_ref", (size_t)n * sizeof(int));
+    const size_t rss_bytes = (size_t)n * _n_src * _n_lag * sizeof(float2);
+    const size_t pw_bytes = (size_t)3 * n * sizeof(float);
+    auto* d_acc_rxs = (float2*)device.get_gpu_memory(unique_name + "_acc_rxs", g_bytes);
+    auto* d_acc_rss = (float2*)device.get_gpu_memory(unique_name + "_acc_rss", rss_bytes);
+    auto* d_acc_pw = (float*)device.get_gpu_memory(unique_name + "_acc_pw", pw_bytes);
     unsigned char* d_out = out.get_ndarray().data();
 
     // The eigenvalues and weights of a finished eigen start, once their copies have landed.
@@ -391,8 +732,20 @@ cudaEvent_t cudaDtvSubtract::execute(cudaPipelineState& pipestate,
     // which return once the bytes are staged.
     int start_src = -1, start_total = 0;
     bool do_cov = false, do_finish = false;
+    bool roll = false, roll_ready = false;
+    DtvDecay lam = {};
     {
         std::lock_guard<std::mutex> lk(_sh->mtx);
+        // a finished snapshot copy goes to the refit thread
+        if (_sh->roll_copying) {
+            const cudaError_t e = cudaEventQuery(_sh->snap_event);
+            if (e == cudaSuccess) {
+                _sh->roll_copying = false;
+                _sh->roll_solving = roll_ready = true;
+            } else if (e != cudaErrorNotReady) {
+                CHECK_CUDA_ERROR(e);
+            }
+        }
         if (_sh->dirty_w || _sh->dirty_g) {
             if (_sh->dirty_w)
                 CHECK_CUDA_ERROR(
@@ -416,15 +769,43 @@ cudaEvent_t cudaDtvSubtract::execute(cudaPipelineState& pipestate,
                 do_finish = true;
                 start_total = _sh->start_total;
                 _sh->start_src = -1;
-                for (int c = 0; c < n; c++)
+                for (int c = 0; c < n; c++) {
                     _sh->act[(size_t)c * _n_src + start_src] =
                         std::max(_sh->act[(size_t)c * _n_src + start_src], 1);
+                    for (int k = start_src; k < _n_src; k++)
+                        _sh->roll_reset[(size_t)c * _n_src + k] = 1;
+                }
+                _sh->roll_gen++;
                 CHECK_CUDA_ERROR(cudaMemcpyAsync(d_act, _sh->act.data(), act_bytes,
                                                  cudaMemcpyHostToDevice, stream));
             }
         }
+        roll = _sh->roll;
+        if (roll) {
+            for (int c = 0; c < n; c++)
+                for (int k = 0; k < _n_src; k++) {
+                    const size_t ck = (size_t)c * _n_src + k;
+                    if (!_sh->roll_reset[ck])
+                        continue;
+                    CHECK_CUDA_ERROR(cudaMemsetAsync(d_acc_rxs + ck * _n_lag * DTV_INPUTS, 0,
+                                                     (size_t)_n_lag * DTV_INPUTS * sizeof(float2),
+                                                     stream));
+                    CHECK_CUDA_ERROR(cudaMemsetAsync(d_acc_rss + ck * _n_lag, 0,
+                                                     (size_t)_n_lag * sizeof(float2), stream));
+                    if (k == 0)
+                        for (int q = 0; q < 3; q++)
+                            CHECK_CUDA_ERROR(
+                                cudaMemsetAsync(d_acc_pw + q * n + c, 0, sizeof(float), stream));
+                    _sh->roll_reset[ck] = 0;
+                    _sh->roll_since[ck] = 0;
+                }
+            for (int k = 0; k < _n_src; k++)
+                lam.lam[k] = (float)std::exp(-_num_times * HOP_S / _sh->roll_tau[(size_t)k]);
+        }
         _sh->frames++;
     }
+    if (roll_ready)
+        _sh->roll_cv.notify_one();
 
     auto* hdr = reinterpret_cast<DtvOutHdr*>(_hdr_stage.data());
     hdr->seq0 = seq0;
@@ -467,6 +848,31 @@ cudaEvent_t cudaDtvSubtract::execute(cudaPipelineState& pipestate,
     }
     launch_dtv_encode(d_x, d_sel, d_act, n, _n_src, _num_local_freq, _num_times, d_frame,
                       (float*)(d_out + _layout.off_pw_res), stream);
+    if (roll) {
+        launch_dtv_roll_accum(
+            (const float2*)(d_out + _layout.off_rxs), (const float2*)(d_out + _layout.off_rss),
+            (const float*)(d_out + _layout.off_pw_raw), (const float*)(d_out + _layout.off_pw_res),
+            n, _n_src, _n_lag, lam, d_acc_rxs, d_acc_rss, d_acc_pw, stream);
+        std::lock_guard<std::mutex> lk(_sh->mtx);
+        for (long& v : _sh->roll_since)
+            v++;
+        if (++_sh->roll_frames >= _sh->roll_interval && !_sh->roll_copying && !_sh->roll_solving) {
+            CHECK_CUDA_ERROR(
+                cudaMemcpyAsync(_sh->snap_rxs, d_acc_rxs, g_bytes, cudaMemcpyDeviceToHost, stream));
+            CHECK_CUDA_ERROR(cudaMemcpyAsync(_sh->snap_rss, d_acc_rss, rss_bytes,
+                                             cudaMemcpyDeviceToHost, stream));
+            CHECK_CUDA_ERROR(
+                cudaMemcpyAsync(_sh->snap_pw, d_acc_pw, pw_bytes, cudaMemcpyDeviceToHost, stream));
+            CHECK_CUDA_ERROR(cudaMemsetAsync(d_acc_pw + n, 0, 2 * n * sizeof(float), stream));
+            CHECK_CUDA_ERROR(cudaEventRecord(_sh->snap_event, stream));
+            _sh->snap_act = _sh->act;
+            _sh->snap_since = _sh->roll_since;
+            _sh->snap_gen = _sh->roll_gen;
+            _sh->snap_frame = _sh->frames;
+            _sh->roll_copying = true;
+            _sh->roll_frames = 0;
+        }
+    }
     CHECK_CUDA_ERROR(cudaMemcpyAsync(d_out + _layout.off_act, d_act, act_bytes,
                                      cudaMemcpyDeviceToDevice, stream));
     CHECK_CUDA_ERROR(

@@ -139,6 +139,20 @@ void launch_dtv_encode(const float2* x, const int* sel, const int* act, int n_ch
                        int n_freq, int n_times, unsigned char* out, float* pw_res,
                        cudaStream_t stream);
 
+/// Per-source decay factors of the rolling fit's sums (dtvRollingFit.hpp).
+struct DtvDecay {
+    float lam[DTV_MAX_SRC];
+};
+
+/// The rolling fit's sums after a frame's correlations (rxs, rss, pw_raw and pw_res as the
+/// output frame holds them): acc_rxs[c][k] = lam[k] acc_rxs[c][k] + rxs[c][k] and acc_rss
+/// likewise; per channel, summed over the inputs, acc_pw[0][c] = lam[0] acc_pw[0][c] + pw_raw,
+/// acc_pw[1][c] += pw_raw and acc_pw[2][c] += pw_res (the caller zeroes [1] and [2] after each
+/// snapshot). acc_pw is float [3][n_chan].
+void launch_dtv_roll_accum(const float2* rxs, const float2* rss, const float* pw_raw,
+                           const float* pw_res, int n_chan, int n_src, int n_lag, DtvDecay lam,
+                           float2* acc_rxs, float2* acc_rss, float* acc_pw, cudaStream_t stream);
+
 /// cov[c][i][j] += sum_t x[c][t][i] conj(x[c][t][j]) (accumulated across frames for the eigen
 /// start; the caller zeroes cov). Lag 0 only.
 void launch_dtv_cov(const float2* x, int n_chan, int n_times, float2* cov, cudaStream_t stream);

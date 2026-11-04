@@ -7,13 +7,17 @@
 //    dominant arrival's steering vector
 //  - the host-side least-squares fit of the impulse response from the correlations (the
 //    Toeplitz normal equations, as scripts/gnss/dtv_state.py solves them) against the truth
+//  - the rolling fit's solver (dtvRollingFit.hpp) against that fit and a CPU subtraction, one
+//    refresh with its checks, and the decaying sums against a CPU sum
 //  - the subtraction with the true response: the residual power per input against the noise,
 //    and the re-quantised bytes against a CPU subtraction
 // Exits 0 when every check passes.   ./cuda_dtv_subtract_test [n_times]
 
 #include "cudaDtvSubtractKernel.hpp"
 #include "cudaGnssBeamDumpKernel.hpp"
+#include "dtvRollingFit.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <complex>
 #include <cstdio>
@@ -329,6 +333,104 @@ int main(int argc, char** argv) {
         }
     }
 
+    // 4b. the rolling fit's solver (dtvRollingFit.hpp) on the same correlations: g against the
+    //     elimination above, the power it removes against a CPU subtraction; then one refresh
+    //     and its checks (power, weak fit, freeze, warm-up)
+    {
+        const size_t blk = (size_t)NLAG * NI;
+        const float* rxs_f = reinterpret_cast<const float*>(rxs.data());
+        const float* rss_f = reinterpret_cast<const float*>(rss.data());
+        std::vector<float> g_roll(blk * 2), raw(NC);
+        std::vector<double> removed(NC);
+        for (int c = 0; c < NC; c++) {
+            const float* rxs_c = rxs_f + (size_t)c * NSRC * blk * 2;
+            gnss_cuda::DtvLsq lsq;
+            const bool ok = lsq.factor(rss_f + (size_t)c * NSRC * NLAG * 2, NLAG)
+                            && lsq.solve(rxs_c, NI, g_roll.data());
+            check(ok, "rolling solver: factor and solve", ok, 1);
+            double dmax = 0.0, gmax = 0.0;
+            for (size_t q = 0; q < blk; q++) {
+                dmax = std::max(
+                    dmax, (double)std::abs(cf(g_roll[2 * q], g_roll[2 * q + 1]) - g_fit[c][q]));
+                gmax = std::max(gmax, (double)std::abs(g_fit[c][q]));
+            }
+            check(dmax / gmax < 1e-4, "rolling solver vs elimination, max |dg| / max |g|",
+                  dmax / gmax, 0.0);
+            double p_in = 0.0, p_res = 0.0;
+            for (int t = 0; t < NT; t++)
+                for (int i = 0; i < NI; i++) {
+                    const cf x = x_true[c][(size_t)t * NI + i];
+                    cf r = x;
+                    for (int j = 0; j < NLAG; j++) {
+                        const int idx = DTV_HIST + t - (LAG_MIN + j);
+                        if (idx < NS)
+                            r -= cf(g_roll[2 * ((size_t)j * NI + i)],
+                                    g_roll[2 * ((size_t)j * NI + i) + 1])
+                                 * s_est[c][idx];
+                    }
+                    p_in += std::norm(x);
+                    p_res += std::norm(r);
+                }
+            const double cost = lsq.cost(rxs_c, g_roll.data(), NI);
+            check(std::abs(cost - (p_res - p_in)) / (p_in - p_res) < 0.02,
+                  "rolling solver: power removed vs a CPU subtraction", -cost, p_in - p_res);
+            removed[c] = -cost;
+            for (int i = 0; i < NI; i++)
+                raw[c] += pw_raw[c * NI + i];
+        }
+        std::vector<int> act_r(NC * NSRC, 0);
+        std::vector<long> since(NC * NSRC, 100);
+        std::vector<float> pw(3 * NC);
+        for (int c = 0; c < NC; c++) {
+            act_r[c * NSRC] = 2;
+            pw[c] = pw[NC + c] = raw[c];
+            pw[2 * NC + c] = 0.5f * raw[c];
+        }
+        gnss_cuda::DtvRollSnapshot snap;
+        snap.n_chan = NC;
+        snap.n_src = NSRC;
+        snap.n_lag = NLAG;
+        snap.ni = NI;
+        snap.rxs = rxs_f;
+        snap.rss = rss_f;
+        snap.pw = pw.data();
+        snap.act = act_r.data();
+        snap.since = since.data();
+        gnss_cuda::DtvRollParams par;
+        par.warm.assign(NSRC, 24);
+        par.freeze.assign(NSRC, 0);
+        std::vector<float> g0((size_t)NC * NSRC * blk * 2, 0.0f), g1(g0), g2(g0);
+        gnss_cuda::DtvRollOutcome o = gnss_cuda::dtv_roll_step(snap, par, g0.data(), g1.data());
+        check(o.n_upd == NC, "refresh: source 0 refitted on every channel", o.n_upd, NC);
+        double emax = 0.0, smax = 0.0;
+        for (int c = 0; c < NC; c++) {
+            emax = std::max(emax, std::abs(o.expl0[c] - removed[c] / raw[c]) / o.expl0[c]);
+            for (size_t q = 0; q < blk * 2; q++)
+                smax = std::max(smax, (double)std::abs(g1[(size_t)(c * NSRC + 1) * blk * 2 + q]));
+        }
+        check(emax < 1e-4, "refresh: fraction explained vs the solver", emax, 0.0);
+        check(smax == 0.0, "refresh: inactive source 1 untouched", smax, 0.0);
+        o = gnss_cuda::dtv_roll_step(snap, par, g1.data(), g2.data());
+        check(std::abs(o.gain[0]) < 1e-5 && o.step[0] < 1e-9,
+              "refresh on the same sums: gain and step ~0", std::abs(o.gain[0]) + o.step[0], 0.0);
+        pw[2 * NC] = 3.0f * raw[0];
+        o = gnss_cuda::dtv_roll_step(snap, par, g0.data(), g2.data());
+        check(o.trip[0] && !o.trip[1] && o.n_upd == 1,
+              "refresh: residual 3x the input power stops channel 0 only", o.n_upd, 1);
+        pw[2 * NC] = 0.5f * raw[0];
+        par.min_explained = 0.999;
+        o = gnss_cuda::dtv_roll_step(snap, par, g0.data(), g2.data());
+        check(o.weak[0] && o.weak[1] && o.n_upd == 0, "refresh: weak fits are held", o.n_upd, 0);
+        par.min_explained = 0.1;
+        par.freeze[0] = 1;
+        o = gnss_cuda::dtv_roll_step(snap, par, g0.data(), g2.data());
+        check(o.n_upd == 0, "refresh: frozen source held", o.n_upd, 0);
+        par.freeze[0] = 0;
+        std::fill(since.begin(), since.end(), 10);
+        o = gnss_cuda::dtv_roll_step(snap, par, g0.data(), g2.data());
+        check(o.n_upd == 0, "refresh: no fit before the warm-up", o.n_upd, 0);
+    }
+
     // 5. subtract with the fitted response on the GPU: residual power per input vs the noise
     //    (the second source on channel 1 stays), and the bytes vs a CPU subtraction
     std::vector<float2> g_dev((size_t)NC * NSRC * NLAG * NI, make_float2(0.0f, 0.0f));
@@ -394,6 +496,58 @@ int main(int argc, char** argv) {
             changed +=
                 frame_out[((size_t)t * NF + 1) * NI + i] != frame[((size_t)t * NF + 1) * NI + i];
     check(changed == 0, "unselected channel untouched", (double)changed, 0.0);
+
+    // 6. the rolling fit's sums: two frames of these correlations into zeroed sums
+    {
+        const size_t n_rxs = (size_t)NC * NSRC * NLAG * NI, n_rss = (size_t)NC * NSRC * NLAG;
+        float2 *d_arxs, *d_arss;
+        float* d_apw;
+        CK(cudaMalloc(&d_arxs, n_rxs * sizeof(float2)));
+        CK(cudaMalloc(&d_arss, n_rss * sizeof(float2)));
+        CK(cudaMalloc(&d_apw, 3 * NC * sizeof(float)));
+        CK(cudaMemset(d_arxs, 0, n_rxs * sizeof(float2)));
+        CK(cudaMemset(d_arss, 0, n_rss * sizeof(float2)));
+        CK(cudaMemset(d_apw, 0, 3 * NC * sizeof(float)));
+        const gnss_cuda::DtvDecay lam = {{0.5f, 0.25f, 1.0f, 1.0f}};
+        for (int f = 0; f < 2; f++)
+            gnss_cuda::launch_dtv_roll_accum(d_rxs, d_rss, d_pw_raw, d_pw_res, NC, NSRC, NLAG, lam,
+                                             d_arxs, d_arss, d_apw, st);
+        CK(cudaDeviceSynchronize());
+        std::vector<float2> arxs(n_rxs), arss(n_rss);
+        std::vector<float> apw(3 * NC);
+        CK(cudaMemcpy(arxs.data(), d_arxs, n_rxs * sizeof(float2), cudaMemcpyDeviceToHost));
+        CK(cudaMemcpy(arss.data(), d_arss, n_rss * sizeof(float2), cudaMemcpyDeviceToHost));
+        CK(cudaMemcpy(apw.data(), d_apw, 3 * NC * sizeof(float), cudaMemcpyDeviceToHost));
+        double amax = 0.0;
+        for (size_t q = 0; q < n_rxs; q++) {
+            const float k1 = 1.0f + lam.lam[(q / ((size_t)NLAG * NI)) % NSRC];
+            const double ref = std::abs(cf(rxs[q].x, rxs[q].y)) * k1 + 1e-6;
+            amax = std::max(amax, std::abs(cf(arxs[q].x - k1 * rxs[q].x, arxs[q].y - k1 * rxs[q].y))
+                                      / ref);
+        }
+        for (size_t q = 0; q < n_rss; q++) {
+            const float k1 = 1.0f + lam.lam[(q / NLAG) % NSRC];
+            const double ref = std::abs(cf(rss[q].x, rss[q].y)) * k1 + 1e-6;
+            amax = std::max(amax, std::abs(cf(arss[q].x - k1 * rss[q].x, arss[q].y - k1 * rss[q].y))
+                                      / ref);
+        }
+        check(amax < 1e-6, "rolling sums R_xs, R_ss max rel error", amax, 0.0);
+        double pmax = 0.0;
+        for (int c = 0; c < NC; c++) {
+            double raw = 0.0, res = 0.0;
+            for (int i = 0; i < NI; i++) {
+                raw += pw_raw[c * NI + i];
+                res += pw_res[c * NI + i];
+            }
+            pmax = std::max({pmax, std::abs(apw[c] - 1.5 * raw) / raw,
+                             std::abs(apw[NC + c] - 2.0 * raw) / raw,
+                             std::abs(apw[2 * NC + c] - 2.0 * res) / std::max(res, 1.0)});
+        }
+        check(pmax < 1e-5, "rolling sums of the powers max rel error", pmax, 0.0);
+        cudaFree(d_arxs);
+        cudaFree(d_arss);
+        cudaFree(d_apw);
+    }
 
     printf(fails ? "FAILED (%d)\n" : "all checks passed\n", fails);
     return fails ? 1 : 0;

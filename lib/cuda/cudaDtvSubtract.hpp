@@ -11,10 +11,15 @@
 #include "NDArrayBuffer.hpp" // for NDArrayBuffer
 #include "cudaCopyToRingbuffer.hpp"
 #include "cudaDtvSubtractKernel.hpp" // for DtvOutLayout
+#include "dtvRollingFit.hpp"         // for DtvRollOutcome
 
+#include "json.hpp" // for json
+
+#include <condition_variable>
 #include <memory>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
 
 /**
@@ -39,6 +44,17 @@
  * but no g it is observed (correlations written, nothing subtracted). POST `/clear`
  * ({"source": k}) drops sources k and above; GET `/status` reports the state.
  *
+ * Rolling fit (dtvRollingFit.hpp): when on, the stage keeps sums of the lag correlations on the
+ * device that decay with a time constant per source, copies them to the host every
+ * `dtv_roll_interval` frames, and a host thread refits g of every subtracting source from them;
+ * the next frame uploads the new g. w is untouched; the sums of a source restart when its w
+ * changes. A channel whose residual power over an interval exceeds `dtv_roll_max_power` times
+ * its input power stops subtracting (act 1) until the next load; a channel whose source-0 fit
+ * explains less than `dtv_roll_min_explained` of the input power keeps its g. POST
+ * `<unique_name>/rolling` changes the settings ({"enable": bool, "tau_s": [s per source],
+ * "interval": frames, "freeze": [0/1 per source], "min_explained", "max_power", "reset": true,
+ * "save": path}; "save" writes the state in use as a state file).
+ *
  * The output is an NDArrayBuffer `dtv_out_name` (on the device `<dtv_out_name>_buffer`) for
  * cudaOutputData: per frame the header (the int64 seq0 at byte 0 is FrameWindowGate's clock),
  * the weights in use, the per-input powers before and after subtraction, |s|^2 and the lag
@@ -56,6 +72,12 @@
  * @conf  dtv_sources         Int, default 1. Source slots per channel (<= 4).
  * @conf  dtv_state_file      String, default "". State file to load at start.
  * @conf  dtv_eig_iters       Int, default 24. Power iterations of the eigen start.
+ * @conf  dtv_roll            Bool, default false. Rolling fit on at start.
+ * @conf  dtv_roll_tau_s      List of Float, default [1.5, 4, 8, 8]. Time constant of each
+ *                            source's sums, s.
+ * @conf  dtv_roll_interval   Int, default 24. Frames between refits.
+ * @conf  dtv_roll_min_explained Float, default 0.05.
+ * @conf  dtv_roll_max_power  Float, default 2.0.
  */
 class cudaDtvSubtract : public cudaCopyToRingbuffer {
 public:
@@ -82,11 +104,49 @@ private:
         std::string state_file;
         std::string last_error;
         long frames = 0;
+
+        // rolling fit settings
+        bool roll = false;
+        std::vector<double> roll_tau; ///< [n_src] s
+        std::vector<int> roll_freeze; ///< [n_src]
+        int roll_interval = 24;
+        double roll_min_explained = 0.05;
+        double roll_max_power = 2.0;
+        // rolling fit state
+        std::vector<char> roll_reset; ///< [n_chan][n_src] zero these sums at the next frame
+        std::vector<long> roll_since; ///< [n_chan][n_src] frames in the sums
+        std::vector<char> roll_trip;  ///< [n_chan] stopped by the power check
+        long roll_gen = 0;            ///< bumped when w, g or act change outside the refits
+        int roll_frames = 0;          ///< frames since the last snapshot
+        bool roll_copying = false;    ///< a snapshot is being copied to the host
+        bool roll_solving = false;    ///< the refit thread has the snapshot
+        bool roll_stop = false;
+        float* snap_rxs = nullptr; ///< pinned copies of the sums
+        float* snap_rss = nullptr;
+        float* snap_pw = nullptr;
+        std::vector<int> snap_act;
+        std::vector<long> snap_since;
+        long snap_gen = 0;
+        long snap_frame = 0;
+        cudaEvent_t snap_event = nullptr;
+        std::condition_variable roll_cv;
+        std::thread roll_thread;
+        long roll_updates = 0, roll_holds = 0, roll_trips = 0, roll_bad = 0, roll_last = -1;
+        double roll_ms = 0.0;
+        gnss_cuda::DtvRollOutcome roll_out; ///< the last refit
     };
     static std::shared_ptr<Shared> shared_for(const std::string& name);
 
     /// Read a state file into the shared mirror; false with the reason on error.
     bool load_state_file(const std::string& path, std::string& err);
+    /// Write the w, g and act in use as a state file; false with the reason on error.
+    bool save_state_file(const std::string& path, std::string& err);
+    /// The refit thread: waits for a snapshot, refits, puts the accepted g in the mirror.
+    void roll_main();
+    /// Mark the sums of every source of every channel to restart (caller holds the lock).
+    void roll_reset_all();
+    /// The rolling fit's settings and last refit, for /status and /rolling (caller holds the lock).
+    nlohmann::json roll_status() const;
 
     const int _num_times;
     const int _num_elements;
@@ -109,6 +169,7 @@ private:
     bool _lam_pending = false;
     int _lam_src = -1;
     bool _checked_freqs = false;
+    const bool _owner; ///< instance 0: owns the REST endpoints and the refit thread
 };
 
 #endif

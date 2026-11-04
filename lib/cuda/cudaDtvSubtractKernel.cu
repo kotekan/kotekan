@@ -259,6 +259,37 @@ __global__ void dtv_encode_kernel(const float2* __restrict__ x, const int* __res
     add_input_sums(p4, sh, pw + c * NI);
 }
 
+__global__ void dtv_roll_accum_kernel(const float2* __restrict__ rxs,
+                                      const float2* __restrict__ rss,
+                                      const float* __restrict__ pw_raw,
+                                      const float* __restrict__ pw_res, int n_chan, int n_src,
+                                      int n_lag, DtvDecay lam, float2* __restrict__ acc_rxs,
+                                      float2* __restrict__ acc_rss, float* __restrict__ acc_pw) {
+    const size_t n_rxs = (size_t)n_chan * n_src * n_lag * NI,
+                 n_rss = (size_t)n_chan * n_src * n_lag;
+    const size_t q = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
+    if (q < n_rxs) {
+        const float l = lam.lam[(q / ((size_t)n_lag * NI)) % n_src];
+        const float2 a = acc_rxs[q], r = rxs[q];
+        acc_rxs[q] = make_float2(l * a.x + r.x, l * a.y + r.y);
+    } else if (q < n_rxs + n_rss) {
+        const size_t p = q - n_rxs;
+        const float l = lam.lam[(p / n_lag) % n_src];
+        const float2 a = acc_rss[p], r = rss[p];
+        acc_rss[p] = make_float2(l * a.x + r.x, l * a.y + r.y);
+    } else if (q < n_rxs + n_rss + n_chan) {
+        const int c = (int)(q - n_rxs - n_rss);
+        float raw = 0.0f, res = 0.0f;
+        for (int i = 0; i < NI; i++) {
+            raw += pw_raw[c * NI + i];
+            res += pw_res[c * NI + i];
+        }
+        acc_pw[c] = lam.lam[0] * acc_pw[c] + raw;
+        acc_pw[n_chan + c] += raw;
+        acc_pw[2 * n_chan + c] += res;
+    }
+}
+
 __global__ void dtv_cov_kernel(const float2* __restrict__ x, int n_times,
                                float2* __restrict__ cov) {
     __shared__ float2 tile[COV_TT * NI];
@@ -369,6 +400,17 @@ void launch_dtv_encode(const float2* x, const int* sel, const int* act, int n_ch
     const dim3 grid((n_times + ROW_SAMPLES - 1) / ROW_SAMPLES, n_chan);
     dtv_encode_kernel<<<grid, ROW_THREADS, 0, stream>>>(x, sel, act, n_src, n_freq, n_times, out,
                                                         pw_res);
+}
+
+void launch_dtv_roll_accum(const float2* rxs, const float2* rss, const float* pw_raw,
+                           const float* pw_res, int n_chan, int n_src, int n_lag, DtvDecay lam,
+                           float2* acc_rxs, float2* acc_rss, float* acc_pw, cudaStream_t stream) {
+    if (n_chan <= 0)
+        return;
+    const size_t total = (size_t)n_chan * n_src * n_lag * (NI + 1) + n_chan;
+    const int threads = 256;
+    dtv_roll_accum_kernel<<<(unsigned)((total + threads - 1) / threads), threads, 0, stream>>>(
+        rxs, rss, pw_raw, pw_res, n_chan, n_src, n_lag, lam, acc_rxs, acc_rss, acc_pw);
 }
 
 void launch_dtv_cov(const float2* x, int n_chan, int n_times, float2* cov, cudaStream_t stream) {
