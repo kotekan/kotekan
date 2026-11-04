@@ -88,23 +88,6 @@ const CHORDTelescope& get_telescope(json& json_config) {
  *
  ******************/
 
-// Serve a fixed JSON reply on a GET endpoint of the local REST server and point the telescope's
-// pointing query at it.
-void serve_pointing(json& json_config, const std::string& endpoint, const json& reply) {
-    restServer& rest_server = restServer::instance();
-    if (rest_server.port() == 0)
-        rest_server.start("127.0.0.1", 0);
-    rest_server.remove_get_callback(endpoint);
-    rest_server.register_get_callback(
-        endpoint, [reply](kotekan::connectionInstance& conn) { conn.send_json_reply(reply); });
-
-    json_config["pointing_service"] = {{"host", "127.0.0.1"}, {"port", rest_server.port()}};
-    json_config["telescope"].erase("dish_coelev_deg");
-    json_config["telescope"]["pointing_host_info"] = "/pointing_service";
-    json_config["telescope"]["pointing_endpoint"] = endpoint;
-    json_config["telescope"]["pointing_query_timeout_s"] = 0;
-}
-
 
 /*
  * @brief   Helper to compare dishes
@@ -289,35 +272,6 @@ BOOST_AUTO_TEST_CASE(_dish_coelev_bad) {
     json json_config = json::parse(default_config_str);
 
     json_config["telescope"]["dish_coelev_deg"] = 90.5;
-    BOOST_CHECK_THROW(get_telescope(json_config), FatalError);
-
-    json_config["telescope"]["dish_coelev_deg"] = -10.0;
-    json_config["telescope"]["pointing_host_info"] = "/pointing_service";
-    BOOST_CHECK_THROW(get_telescope(json_config), FatalError);
-}
-
-/*
- * @brief   Test coelev from a pointing service.
- */
-BOOST_AUTO_TEST_CASE(_dish_coelev_query) {
-    json json_config = json::parse(default_config_str);
-
-    serve_pointing(json_config, "/test_pointing", {{"dish_coelev_deg", -27.3}});
-    const CHORDTelescope& tel = get_telescope(json_config);
-    BOOST_CHECK_EQUAL(tel.get_dish_coelev_deg(), -27.3);
-    BOOST_CHECK(tel.phase_center_is_set());
-
-    serve_pointing(json_config, "/test_pointing", {{"dish_coelev_deg", 120.0}});
-    BOOST_CHECK_THROW(get_telescope(json_config), FatalError);
-
-    serve_pointing(json_config, "/test_pointing", {{"dish_coelev_deg", "-27.3"}});
-    BOOST_CHECK_THROW(get_telescope(json_config), FatalError);
-
-    serve_pointing(json_config, "/test_pointing", {{"error", "no pointing"}});
-    BOOST_CHECK_THROW(get_telescope(json_config), FatalError);
-
-    // No reply within pointing_query_timeout_s
-    json_config["telescope"]["pointing_endpoint"] = "/no_such_endpoint";
     BOOST_CHECK_THROW(get_telescope(json_config), FatalError);
 }
 

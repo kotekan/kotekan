@@ -8,9 +8,9 @@
 {% set dtv_runtime_bundle_dir = dtv_runtime_bundle_dir|default("data/pilotproxy_bundle") %}
 {% set dtv_output_dir = dtv_output_dir|default("/scratch/dtv") %}
 
-# One frame per 16384-sample block: mask byte, frame powers (target, lower,
-# upper; each the sum of 256 fine powers) and fine rank support for each of the
-# 16 local frequencies.
+# One frame is written per 16384-sample block. For each of the 16 local
+# frequencies, the frame holds the mask byte, the target, lower, and upper frame
+# powers (each the sum of 256 fine powers), and the fine rank support.
 host_dtv_mask_buffer:
     kotekan_buffer: ndarray
     num_frames: host_buffer_depth
@@ -45,13 +45,13 @@ run_dtv_detector:
     gpu_0:
         kotekan_stage: cudaProcess
         gpu_id: 0
-        # This config has no root buffer_depth, num_times or frame_arrival_period:
-        # set them here, as every other cudaProcess in it does.
+        # buffer_depth, num_times, and frame_arrival_period are not set at the root
+        # of this config, so they are set here as in every other cudaProcess.
         buffer_depth: gpu_buffer_depth
         frame_arrival_period: network_frame_arrival_period
         num_times: samples_per_data_set
-        # Nothing in chime_upgrade_n2.j2 sets cuda_stream, so 0, 1 and 2 are taken
-        # by the defaults and 3 and 4 are free.
+        # No stage in chime_upgrade_n2.j2 sets cuda_stream, so streams 0, 1, and 2
+        # are taken by the defaults and streams 3 and 4 are free.
         num_cuda_streams: 5
         in_buffers:
             host_xposed_voltage_ringbuffer: host_xposed_voltage_ringbuffer
@@ -86,7 +86,8 @@ run_dtv_detector:
           gpu_mem: dtv_fine_support_buffer
           out_buf: host_dtv_fine_support
 
-# Diagnostic outputs only; no visibility or weight consumer is routed through them.
+# These outputs are for diagnostics only. No visibility or weight consumer is
+# routed through them.
 write_dtv:
 {% for product in ["mask", "powers", "fine_support"] %}
     {{ product }}:

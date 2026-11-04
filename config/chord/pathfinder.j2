@@ -549,9 +549,6 @@ dpdk:
     payload_size: 6144
     max_rx_pkt_len: 6208
     burst_size: 32
-    # CRS board order: part of the telescope (crs_board_remap in telescope.j2), so the
-    # receiver's telescope check covers it.
-    crs_board_remap: *crs_board_remap
     # The number of stream IDs expected per worker
     num_expected_stream_ids: 4
     lcore_start_delay: 10
@@ -600,6 +597,12 @@ dpdk:
           receipt_bitmap_buf: packet_receipt_bitmap_buffer_{{ 2 * n.id + 1 }}
 {% endfor %}
 
+
+# CRS board order: part of the telescope (crs_board_remap in telescope.j2), so the
+# receiver's telescope check covers it. This must stay at the root level: the DPDK capture
+# workers use it to place boards, and ProcessPacketMask uses it to label per-board packet
+# loss by source_id.
+crs_board_remap: *crs_board_remap
 
 # Output slots (after crs_board_remap, not raw source_ids) with no CRS board behind them:
 # ProcessPacketMask marks them fully received so an absent board is not 100% packet loss.

@@ -83,15 +83,17 @@ public:
      * @brief Base constructor
      * @param config       The system config, passed by factory.
      * @param unique_name  The stage + command name.
-     * @param host_buffers The list of bufferes handled by this GPU stage.
+     * @param host_buffers The list of buffers handled by this GPU stage.
      * @param device       Abstracted GPU API interface for managing memory and common operations.
+     * @param instance_num Index of this command in the GPU pipeline buffer depth.
+     * @param state_       State shared by this command's buffer-depth instances.
      * @param default_kernel_command   Name of the kernel for profiling read out.
-     * @param default_kernel_file_name Kernel dile name, not really needed with cuda kernels.
+     * @param default_kernel_file_name Kernel file name, not really needed with cuda kernels.
      */
     cudaCommand(kotekan::Config& config, const std::string& unique_name,
                 kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device,
                 int instance_num,
-                std::shared_ptr<cudaCommandState> = std::shared_ptr<cudaCommandState>(),
+                std::shared_ptr<cudaCommandState> state_ = std::shared_ptr<cudaCommandState>(),
                 const std::string& default_kernel_command = "",
                 const std::string& default_kernel_file_name = "");
     /// Destructor that frees memory for the kernel and name.

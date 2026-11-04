@@ -103,7 +103,7 @@ protected:
     /**
      * @brief Parse the reordering configuration section
      * @param config    Configuration handle.
-     * @param base_path Path into YAML file to search from.
+     * @param path Path into YAML file to search from.
      * @param num_elements Total number of inputs (2048 for production CHIME)
      * @return          Tuple containing a vector of the input reorder map, and a
      *                  vector of the input labels for the index map.
@@ -138,7 +138,7 @@ protected:
     bool _query_gps;
 
     /// The GPS server IP address. Resolved from the block named by
-    /// /<path>/gps_host_info; left empty when that key is absent (in which
+    /// `/<path>/gps_host_info`; left empty when that key is absent (in which
     /// case @c _query_gps must also be false).
     std::string _gps_host;
 

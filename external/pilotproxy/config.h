@@ -1,6 +1,6 @@
 /**
  * @file config.h
- * @brief Compile-time configuration for the F-statistic CUDA kernel.
+ * @brief Compile-time configuration for the PilotProxy detector.
  *
  * Public host code should use detector_window_samples,
  * num_weight_terms, and reference_offset_bins.
@@ -19,13 +19,13 @@
  * ===========================================================================*/
 
 /*
- * Core version reported by FStat_GetVersion. The major number changes when an
+ * Core version reported by PilotProxy_GetVersion. The major number changes when an
  * entry point is removed or an output changes meaning; the minor number when
  * an entry point is added.
  */
-#define FSTAT_CORE_VERSION_MAJOR 3
-#define FSTAT_CORE_VERSION_MINOR 0
-#define FSTAT_CORE_VERSION_PATCH 0
+#define PILOTPROXY_CORE_VERSION_MAJOR 4
+#define PILOTPROXY_CORE_VERSION_MINOR 0
+#define PILOTPROXY_CORE_VERSION_PATCH 0
 
 /* ===========================================================================
  * ALGORITHM PARAMETERS
@@ -38,30 +38,30 @@
  * width to hold the fine-bin width near 3.05 kHz: CHIME channels are
  * 390.625 kHz wide and use K = 128; CHORD channels are 195.3125 kHz wide
  * and use K = 64. The window count per detector block
- * (FSTAT_FINE_WINDOWS_PER_STREAM) is frozen at 128 for every receiver;
+ * (PILOTPROXY_FINE_WINDOWS_PER_STREAM) is frozen at 128 for every receiver;
  * only the window length varies. Supported values are 64 and 128, and
  * the build must define it; there is no default. The
  * guard-bit chain and the static assertions below enforce the fixed-point
  * closure for each.
  */
-#ifndef FSTAT_DETECTOR_WINDOW_SAMPLES
-#error "Define FSTAT_DETECTOR_WINDOW_SAMPLES (64 or 128) when building the core."
+#ifndef PILOTPROXY_DETECTOR_WINDOW_SAMPLES
+#error "Define PILOTPROXY_DETECTOR_WINDOW_SAMPLES (64 or 128) when building the core."
 #endif
 
 /**
  * Number of detector weight terms: target, lower reference, upper reference.
  */
-#define FSTAT_NUM_WEIGHT_TERMS 3
+#define PILOTPROXY_NUM_WEIGHT_TERMS 3
 
 /**
  * Indices inside the three-term power vector.
  */
-#define FSTAT_TARGET_WEIGHT_INDEX 0
-#define FSTAT_LOWER_REFERENCE_WEIGHT_INDEX 1
-#define FSTAT_UPPER_REFERENCE_WEIGHT_INDEX 2
+#define PILOTPROXY_TARGET_WEIGHT_INDEX 0
+#define PILOTPROXY_LOWER_REFERENCE_WEIGHT_INDEX 1
+#define PILOTPROXY_UPPER_REFERENCE_WEIGHT_INDEX 2
 
 /*
- * Two-reference raw F-statistic contract: F = 2*P_target/(P_ref1+P_ref2),
+ * Two-reference raw power ratio contract: F = 2*P_target/(P_ref1+P_ref2),
  * where each P_r is the frame power, the all-bin sum of that term's fine
  * spectrum. The library forms neither the ratio nor any
  * float: hosts form F from the exact uint64 frame powers.
@@ -72,33 +72,33 @@
  * length and padding are part of the frozen FFT specification
  * (src/pilot_proxy/fxfft.py); they are not tunable parameters.
  */
-#define FSTAT_FINE_WINDOWS_PER_STREAM 128
-#define FSTAT_FINE_PAD_FACTOR 2
-#define FSTAT_FINE_NUM_BINS \
-    (FSTAT_FINE_PAD_FACTOR * FSTAT_FINE_WINDOWS_PER_STREAM)
+#define PILOTPROXY_FINE_WINDOWS_PER_STREAM 128
+#define PILOTPROXY_FINE_PAD_FACTOR 2
+#define PILOTPROXY_FINE_NUM_BINS \
+    (PILOTPROXY_FINE_PAD_FACTOR * PILOTPROXY_FINE_WINDOWS_PER_STREAM)
 
 /**
- * Radix-2 stage count of the fine transform, log2(FSTAT_FINE_NUM_BINS).
+ * Radix-2 stage count of the fine transform, log2(PILOTPROXY_FINE_NUM_BINS).
  *
- * Set alongside FSTAT_FINE_WINDOWS_PER_STREAM; the relation is asserted below.
+ * Set alongside PILOTPROXY_FINE_WINDOWS_PER_STREAM; the relation is asserted below.
  * The transform reads twiddles from the shared master table, so a stage indexes
  * it as `t << (FX_MASTER_LOG2 - stage)`: the decimation stride folds into the
- * shift, and at FSTAT_FINE_NUM_BINS = 256 that selects exactly the entries the
+ * shift, and at PILOTPROXY_FINE_NUM_BINS = 256 that selects exactly the entries the
  * frozen fxfft256 v1 table held.
  */
-#define FSTAT_FINE_LOG2 8
+#define PILOTPROXY_FINE_LOG2 8
 
 /**
  * Reference-bin offset used to construct the three detector weight terms.
  *
  * The weight terms are:
- *   t = FSTAT_TARGET_WEIGHT_INDEX: target bin
- *   t = FSTAT_LOWER_REFERENCE_WEIGHT_INDEX: lower reference bin
- *   t = FSTAT_UPPER_REFERENCE_WEIGHT_INDEX: upper reference bin
+ *   t = PILOTPROXY_TARGET_WEIGHT_INDEX: target bin
+ *   t = PILOTPROXY_LOWER_REFERENCE_WEIGHT_INDEX: lower reference bin
+ *   t = PILOTPROXY_UPPER_REFERENCE_WEIGHT_INDEX: upper reference bin
  *
  * This is not the final mask guard-bin dilation parameter.
  */
-#define FSTAT_REFERENCE_BIN_OFFSET 2
+#define PILOTPROXY_REFERENCE_BIN_OFFSET 2
 
 /* ===========================================================================
  * DATA TYPE CONFIGURATION
@@ -113,7 +113,7 @@
  * dot products, the frozen transform, the fine sums and their reduction to
  * frame powers are all exact integers; the library produces no float.
  */
-#define FSTAT_USE_UINT64_POWER_ACCUMULATION 1
+#define PILOTPROXY_USE_UINT64_POWER_ACCUMULATION 1
 
 /**
  * Use the DP4A dot-product path (1) or the scalar integer path (0).
@@ -124,8 +124,8 @@
  * in registers. The scalar path remains available via make DP4A=0 for direct
  * validation and debugging.
  */
-#ifndef FSTAT_USE_DP4A
-#define FSTAT_USE_DP4A 1
+#ifndef PILOTPROXY_USE_DP4A
+#define PILOTPROXY_USE_DP4A 1
 #endif
 
 /**
@@ -139,8 +139,8 @@
  * module-global table, so it assumes one active weight set per process call
  * sequence.
  */
-#ifndef FSTAT_USE_CONSTANT_WEIGHT_LANES
-#define FSTAT_USE_CONSTANT_WEIGHT_LANES 0
+#ifndef PILOTPROXY_USE_CONSTANT_WEIGHT_LANES
+#define PILOTPROXY_USE_CONSTANT_WEIGHT_LANES 0
 #endif
 
 /**
@@ -151,11 +151,11 @@
  * repeated per-row global loads while preserving per-handle weight storage and
  * avoiding the divergent-read penalty observed with constant memory.
  */
-#ifndef FSTAT_USE_SHARED_WEIGHT_LANES
-#define FSTAT_USE_SHARED_WEIGHT_LANES 1
+#ifndef PILOTPROXY_USE_SHARED_WEIGHT_LANES
+#define PILOTPROXY_USE_SHARED_WEIGHT_LANES 1
 #endif
 
-#if FSTAT_USE_CONSTANT_WEIGHT_LANES && FSTAT_USE_SHARED_WEIGHT_LANES
+#if PILOTPROXY_USE_CONSTANT_WEIGHT_LANES && PILOTPROXY_USE_SHARED_WEIGHT_LANES
 #error "Choose exactly one weight-lane placement mode: constant or shared."
 #endif
 
@@ -169,7 +169,7 @@ typedef int8_t InputType;
 /**
  * Bits per real/imaginary component, derived from InputType size.
  */
-#define FSTAT_SAMPLE_BITS_PER_COMPONENT (sizeof(InputType) * 4)
+#define PILOTPROXY_SAMPLE_BITS_PER_COMPONENT (sizeof(InputType) * 4)
 
 /**
  * Fixed-point bit-growth model for the int4 detector datapath.
@@ -182,21 +182,21 @@ typedef int8_t InputType;
  * the same storage. Shared-memory footprint scales with the window count,
  * and this margin is the lever that halves it.
  *
- * FSTAT_DOT_ACCUM_GUARD_BITS must equal log2(FSTAT_DETECTOR_WINDOW_SAMPLES).
+ * PILOTPROXY_DOT_ACCUM_GUARD_BITS must equal log2(PILOTPROXY_DETECTOR_WINDOW_SAMPLES).
  * It is derived here for each supported window length and asserted below.
  */
-#define FSTAT_INT4_COMPONENT_BITS 4
-#define FSTAT_COMPLEX_PRODUCT_COMPONENT_BITS \
-    (FSTAT_INT4_COMPONENT_BITS + FSTAT_INT4_COMPONENT_BITS + 1)
-#if FSTAT_DETECTOR_WINDOW_SAMPLES == 128
-#define FSTAT_DOT_ACCUM_GUARD_BITS 7
-#elif FSTAT_DETECTOR_WINDOW_SAMPLES == 64
-#define FSTAT_DOT_ACCUM_GUARD_BITS 6
+#define PILOTPROXY_INT4_COMPONENT_BITS 4
+#define PILOTPROXY_COMPLEX_PRODUCT_COMPONENT_BITS \
+    (PILOTPROXY_INT4_COMPONENT_BITS + PILOTPROXY_INT4_COMPONENT_BITS + 1)
+#if PILOTPROXY_DETECTOR_WINDOW_SAMPLES == 128
+#define PILOTPROXY_DOT_ACCUM_GUARD_BITS 7
+#elif PILOTPROXY_DETECTOR_WINDOW_SAMPLES == 64
+#define PILOTPROXY_DOT_ACCUM_GUARD_BITS 6
 #else
-#error "Unsupported FSTAT_DETECTOR_WINDOW_SAMPLES; add its guard-bit count."
+#error "Unsupported PILOTPROXY_DETECTOR_WINDOW_SAMPLES; add its guard-bit count."
 #endif
-#define FSTAT_COMPLEX_DOT_COMPONENT_BITS \
-    (FSTAT_COMPLEX_PRODUCT_COMPONENT_BITS + FSTAT_DOT_ACCUM_GUARD_BITS)
+#define PILOTPROXY_COMPLEX_DOT_COMPONENT_BITS \
+    (PILOTPROXY_COMPLEX_PRODUCT_COMPONENT_BITS + PILOTPROXY_DOT_ACCUM_GUARD_BITS)
 
 /**
  * Worst-case magnitude bounds used by the static assertions below.
@@ -209,20 +209,20 @@ typedef int8_t InputType;
  *
  * The bound is conservative (the true weight bound 7 gives 112*K). Which
  * window lengths are admitted is decided by the explicit guard-bit list
- * above (the #error for an unsupported FSTAT_DETECTOR_WINDOW_SAMPLES) and
+ * above (the #error for an unsupported PILOTPROXY_DETECTOR_WINDOW_SAMPLES) and
  * by the fxfft and frame-power closures asserted below, not by this margin.
  */
-#define FSTAT_MAX_SAMPLE_COMPONENT 8
-#define FSTAT_MAX_PRODUCT_COMPONENT \
-    (2 * FSTAT_MAX_SAMPLE_COMPONENT * FSTAT_MAX_SAMPLE_COMPONENT)
-#define FSTAT_MAX_ROW_SUM_COMPONENT \
-    ((long long)FSTAT_MAX_PRODUCT_COMPONENT * FSTAT_DETECTOR_WINDOW_SAMPLES)
+#define PILOTPROXY_MAX_SAMPLE_COMPONENT 8
+#define PILOTPROXY_MAX_PRODUCT_COMPONENT \
+    (2 * PILOTPROXY_MAX_SAMPLE_COMPONENT * PILOTPROXY_MAX_SAMPLE_COMPONENT)
+#define PILOTPROXY_MAX_ROW_SUM_COMPONENT \
+    ((long long)PILOTPROXY_MAX_PRODUCT_COMPONENT * PILOTPROXY_DETECTOR_WINDOW_SAMPLES)
 
 /** DP4A consumes two packed complex samples per tap pair. */
-#define FSTAT_DP4A_TAP_PAIRS (FSTAT_DETECTOR_WINDOW_SAMPLES / 2)
+#define PILOTPROXY_DP4A_TAP_PAIRS (PILOTPROXY_DETECTOR_WINDOW_SAMPLES / 2)
 
 #ifdef __cplusplus
-namespace fstat_geometry {
+namespace pilotproxy_geometry {
 
 /** Compile-time integer log2 for exact powers of two. */
 constexpr int log2_exact(long long v) {
@@ -246,10 +246,10 @@ constexpr double growth_after(int stages) {
     return stages == 0 ? 1.0 : kButterflyGrowth * growth_after(stages - 1) + 1.0;
 }
 
-constexpr int kFineStages = log2_exact(FSTAT_FINE_NUM_BINS);
+constexpr int kFineStages = log2_exact(PILOTPROXY_FINE_NUM_BINS);
 /** Post-transform bin magnitude, bounded by the triangle inequality. */
 constexpr double kMaxBinMagnitude =
-    static_cast<double>(FSTAT_MAX_ROW_SUM_COMPONENT) * FSTAT_FINE_WINDOWS_PER_STREAM;
+    static_cast<double>(PILOTPROXY_MAX_ROW_SUM_COMPONENT) * PILOTPROXY_FINE_WINDOWS_PER_STREAM;
 
 /**
  * Frame-power closure. The frame power of one term is
@@ -275,8 +275,8 @@ constexpr double kMaxBinMagnitude =
  *
  *   P_r <= L_F * 2 * R^2 * W * N_streams * 1.001
  *
- * with R = FSTAT_MAX_ROW_SUM_COMPONENT, W = FSTAT_FINE_WINDOWS_PER_STREAM
- * and L_F = FSTAT_FINE_NUM_BINS. At K = 128 that is 2^60 * 1.001 for the
+ * with R = PILOTPROXY_MAX_ROW_SUM_COMPONENT, W = PILOTPROXY_FINE_WINDOWS_PER_STREAM
+ * and L_F = PILOTPROXY_FINE_NUM_BINS. At K = 128 that is 2^60 * 1.001 for the
  * 65536-stream capacity (about 4 bits of margin to 2^64) and 2^55 * 1.001
  * at the 2048-stream CHIME frame (9 bits). The product is formed in
  * saturating integer arithmetic so the assertion itself cannot overflow at
@@ -289,63 +289,63 @@ constexpr unsigned long long mul_sat_u64(unsigned long long a, unsigned long lon
 }
 constexpr unsigned long long kClosureStreams = 65536ULL;
 constexpr unsigned long long kRowSumComponent =
-    static_cast<unsigned long long>(FSTAT_MAX_ROW_SUM_COMPONENT);
+    static_cast<unsigned long long>(PILOTPROXY_MAX_ROW_SUM_COMPONENT);
 constexpr unsigned long long kFramePowerBound = mul_sat_u64(
     mul_sat_u64(
         mul_sat_u64(
-            static_cast<unsigned long long>(FSTAT_FINE_NUM_BINS),
+            static_cast<unsigned long long>(PILOTPROXY_FINE_NUM_BINS),
             mul_sat_u64(2ULL, mul_sat_u64(kRowSumComponent, kRowSumComponent))),
-        static_cast<unsigned long long>(FSTAT_FINE_WINDOWS_PER_STREAM)),
+        static_cast<unsigned long long>(PILOTPROXY_FINE_WINDOWS_PER_STREAM)),
     kClosureStreams);
 
-} // namespace fstat_geometry
+} // namespace pilotproxy_geometry
 
 /* --- geometry consistency ------------------------------------------------ */
 static_assert(
-    fstat_geometry::is_pow2(FSTAT_DETECTOR_WINDOW_SAMPLES)
-        && FSTAT_DETECTOR_WINDOW_SAMPLES >= 2,
+    pilotproxy_geometry::is_pow2(PILOTPROXY_DETECTOR_WINDOW_SAMPLES)
+        && PILOTPROXY_DETECTOR_WINDOW_SAMPLES >= 2,
     "detector_window_samples must be a power of two >= 2.");
 static_assert(
-    FSTAT_SAMPLE_BITS_PER_COMPONENT == FSTAT_INT4_COMPONENT_BITS,
+    PILOTPROXY_SAMPLE_BITS_PER_COMPONENT == PILOTPROXY_INT4_COMPONENT_BITS,
     "Production detector uses packed complex int4 samples and weights.");
 static_assert(
-    FSTAT_DP4A_TAP_PAIRS * 2 == FSTAT_DETECTOR_WINDOW_SAMPLES,
+    PILOTPROXY_DP4A_TAP_PAIRS * 2 == PILOTPROXY_DETECTOR_WINDOW_SAMPLES,
     "DP4A tap pairs must be exactly detector_window_samples/2.");
 static_assert(
-    (1 << FSTAT_DOT_ACCUM_GUARD_BITS) == FSTAT_DETECTOR_WINDOW_SAMPLES,
-    "FSTAT_DOT_ACCUM_GUARD_BITS must equal log2(detector_window_samples); "
+    (1 << PILOTPROXY_DOT_ACCUM_GUARD_BITS) == PILOTPROXY_DETECTOR_WINDOW_SAMPLES,
+    "PILOTPROXY_DOT_ACCUM_GUARD_BITS must equal log2(detector_window_samples); "
     "update it whenever the window length changes.");
 static_assert(
-    fstat_geometry::is_pow2(FSTAT_FINE_NUM_BINS),
+    pilotproxy_geometry::is_pow2(PILOTPROXY_FINE_NUM_BINS),
     "Fine transform length must be a power of two.");
 static_assert(
-    FSTAT_FINE_NUM_BINS == FSTAT_FINE_PAD_FACTOR * FSTAT_FINE_WINDOWS_PER_STREAM,
+    PILOTPROXY_FINE_NUM_BINS == PILOTPROXY_FINE_PAD_FACTOR * PILOTPROXY_FINE_WINDOWS_PER_STREAM,
     "Fine bin count must be pad_factor * windows_per_stream.");
 static_assert(
-    (1 << FSTAT_FINE_LOG2) == FSTAT_FINE_NUM_BINS,
-    "FSTAT_FINE_LOG2 must equal log2(FSTAT_FINE_NUM_BINS); update it whenever "
+    (1 << PILOTPROXY_FINE_LOG2) == PILOTPROXY_FINE_NUM_BINS,
+    "PILOTPROXY_FINE_LOG2 must equal log2(PILOTPROXY_FINE_NUM_BINS); update it whenever "
     "the fine transform length changes.");
 
 /* --- no-overflow closure, derived per geometry ---------------------------- */
 static_assert(
-    FSTAT_MAX_ROW_SUM_COMPONENT <= 2147483647LL,
+    PILOTPROXY_MAX_ROW_SUM_COMPONENT <= 2147483647LL,
     "Completed dot-product components must fit the int32 row-sum storage.");
 static_assert(
-    fstat_geometry::kFramePowerBound < fstat_geometry::kU64Max
-        && fstat_geometry::kFramePowerBound
-               <= fstat_geometry::kU64Max - fstat_geometry::kFramePowerBound / 1000ULL,
+    pilotproxy_geometry::kFramePowerBound < pilotproxy_geometry::kU64Max
+        && pilotproxy_geometry::kFramePowerBound
+               <= pilotproxy_geometry::kU64Max - pilotproxy_geometry::kFramePowerBound / 1000ULL,
     "Frame power sum_f S_r[f] must fit uint64, with the 1.001 fixed-point "
     "Parseval slack, for stream counts up to 65536; reduce "
     "detector_window_samples or the stream capacity.");
 static_assert(
-    static_cast<double>(FSTAT_MAX_ROW_SUM_COMPONENT)
-            * fstat_geometry::growth_after(fstat_geometry::kFineStages)
+    static_cast<double>(PILOTPROXY_MAX_ROW_SUM_COMPONENT)
+            * pilotproxy_geometry::growth_after(pilotproxy_geometry::kFineStages)
         <= 2147483647.0,
     "fxfft working values must stay inside int32 across all butterfly stages; "
     "the admissible input norm falls as 2^31 / growth^stages, so this bound "
     "tightens every time the transform length doubles.");
 static_assert(
-    2.0 * fstat_geometry::kMaxBinMagnitude * fstat_geometry::kMaxBinMagnitude
+    2.0 * pilotproxy_geometry::kMaxBinMagnitude * pilotproxy_geometry::kMaxBinMagnitude
             * 65536.0
         <= 18446744073709551615.0,
     "Feed-summed fine power must fit uint64 for stream counts up to 65536.");
@@ -364,27 +364,27 @@ static_assert(
  * in that loop.  This is the default production block size.  The scalar
  * reference path remains correct because it strides over taps.
  */
-#ifndef FSTAT_BLOCK_THREADS
-#define FSTAT_BLOCK_THREADS 64
+#ifndef PILOTPROXY_BLOCK_THREADS
+#define PILOTPROXY_BLOCK_THREADS 64
 #endif
 
 /** CUDA warp size. */
-#define FSTAT_WARP_SIZE 32
+#define PILOTPROXY_WARP_SIZE 32
 
 /** Warps per CUDA block. */
-#define FSTAT_WARPS_PER_BLOCK (FSTAT_BLOCK_THREADS / FSTAT_WARP_SIZE)
+#define PILOTPROXY_WARPS_PER_BLOCK (PILOTPROXY_BLOCK_THREADS / PILOTPROXY_WARP_SIZE)
 
 /** Full warp participation mask for shuffle operations. */
-#define FSTAT_WARP_MASK 0xFFFFFFFF
+#define PILOTPROXY_WARP_MASK 0xFFFFFFFF
 
 /**
  * Maximum grid dimension of the staged row-sum launches.  With a 128-tap
  * detector window and 64-thread DP4A blocks, 4096 blocks gives one block per
  * 64 detector rows for a reference-sized 262144-row block.  It also sets the
  * stream capacity of the handle-less fine stage
- * (FSTAT_BLOCK_THREADS * FSTAT_GRID_MAX_BLOCKS streams).  The fused kernel
+ * (PILOTPROXY_BLOCK_THREADS * PILOTPROXY_GRID_MAX_BLOCKS streams).  The fused kernel
  * launches one block per stream and is not capped by it.
  */
-#ifndef FSTAT_GRID_MAX_BLOCKS
-#define FSTAT_GRID_MAX_BLOCKS 4096
+#ifndef PILOTPROXY_GRID_MAX_BLOCKS
+#define PILOTPROXY_GRID_MAX_BLOCKS 4096
 #endif

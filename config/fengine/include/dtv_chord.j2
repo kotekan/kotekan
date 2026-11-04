@@ -1,14 +1,14 @@
 # -*-yaml-*-
 
-# CHORD PilotProxy detector; see docs/sphinx/user/modules/pilotproxy.rst.
-# Bind local coarse_freq IDs to runtime-bundle chord_channel_id entries.
-# Non-pilot channels emit zero mask/power products.
-# One 8192-sample block is 41.94304 ms at CHORD's 195.3125 kHz sample rate:
-# 128 detector windows of 64 samples, aligned with one n2k integration.
+# PilotProxy DTV detector for CHORD (docs/sphinx/user/modules/pilotproxy.rst).
+# Local coarse_freq IDs are bound to the chord_channel_id entries of the runtime
+# bundle, and non-pilot channels emit zero mask and power products.
+# One 8192-sample block is 41.94304 ms at the CHORD sample rate of 195.3125 kHz.
+# It holds 128 detector windows of 64 samples and is aligned with one n2k integration.
 # Every cudaProcess on a GPU shares one set of CUDA streams. The F-engine and
-# n2k use the defaults (copies in on 0, copies out on 1, kernels on 2), so the
-# detector runs its kernels on stream 3 and copies its products out on stream 4,
-# and queues behind neither.
+# n2k use the default streams (copies in on 0, copies out on 1, kernels on 2),
+# so the detector kernels run on stream 3 and the detector products are copied
+# out on stream 4. The detector therefore queues behind neither of them.
 
 
 ################################################################################
@@ -86,7 +86,8 @@ run_dtv_detector:
           gpu_mem: dtv_fine_support_buffer
           out_buf: host_dtv_fine_support
 
-# Both correlation and valid-sample counts must consume this opt-in mask.
+# This mask is opt-in. When it is enabled, both the correlation and the
+# valid-sample counts must use it.
 {% if dtv_apply_mask|default(false) %}
 host_dtv_RFImask_buffer:
     kotekan_buffer: ndarray

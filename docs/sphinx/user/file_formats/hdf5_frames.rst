@@ -156,7 +156,7 @@ Multi-frame constraints
 Multi-frame files (with a fixed number of frames per file) use the same path
 as the single-file mode, and are thus subject to most of the same restrictions.
 The only difference is that the multi-frame write mode allows for non-contiguous
-``fpga_seq_num``s; however, a new file is created whenever a non-contiguous
+values of ``fpga_seq_num``; however, a new file is created whenever a non-contiguous
 sample is received, which can result in significantly more files than expected
 being created.
 

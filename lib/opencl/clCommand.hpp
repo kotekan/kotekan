@@ -52,12 +52,14 @@ public:
      * @param host_buffers              kotekan host-side buffers
      * @param device                    The instance of the clDeviceInterface class that abstracts
      *                                  the interfacing layer between the software and hardware.
+     * @param instance_num              Index of this command in the GPU pipeline buffer depth.
+     * @param command_state             State shared by this command's buffer-depth instances.
      * @param default_kernel_command    (optional) function name / proper name for a derived command
      * @param default_kernel_file_name  (optional) external file (e.g. CL) used by a command
      **/
     clCommand(kotekan::Config& config, const std::string& unique_name,
               kotekan::bufferContainer& host_buffers, clDeviceInterface& device, int instance_num,
-              std::shared_ptr<gpuCommandState> = std::shared_ptr<gpuCommandState>(),
+              std::shared_ptr<gpuCommandState> command_state = std::shared_ptr<gpuCommandState>(),
               const std::string& default_kernel_command = "",
               const std::string& default_kernel_file_name = "");
     /// Destructor that frees memory for the kernel and name.
@@ -74,15 +76,11 @@ public:
     void setKernelArg(cl_uint param_ArgPos, cl_mem param_Buffer);
 
     /** Execute a kernel, copy, etc.
-     * @param gpu_frame_id  The bufferID associated with the GPU commands.
-     * @param pre_event     The preceeding event in a sequence of chained event sequence of
-     *commands.
+     * @param pre_event     The preceding event in the command chain.
      **/
     virtual cl_event execute(cl_event pre_event) = 0;
 
-    /** Releases the memory of the event chain arrays per buffer_id
-     * @param gpu_frame_id    The bufferID to release all the memory references for.
-     **/
+    /// Record profiling data and release this command's completion event.
     virtual void finalize_frame() override;
 
 protected:

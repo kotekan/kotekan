@@ -446,7 +446,31 @@ void gpuProcess::add_graph_details(kotekan::PipelineGraph& graph) const {
         }
     }
 
+    std::set<std::string> drawn_as_ring;
     for (const auto& buffer_name : gpu_buffers) {
+        // A ring region is tracked by a host RingBuffer, and the commands using
+        // the region register on that ring as its producers and consumers. The
+        // ring's node therefore already has the region's edges, so it stands
+        // for the region: one node for the data and the cursors that pace it.
+        std::string signal;
+        for (auto& command : commands)
+            if (signal.empty())
+                signal = command[0]->get_gpu_buffer_signal(buffer_name);
+        if (!signal.empty() && graph.has_node(signal)) {
+            auto& ring = graph.add_node(signal);
+            std::string region = fmt::format(fmt("GPU {:d}: {:s}"), gpu_id, buffer_name);
+            if (const std::optional<gpuMemoryInfo> info = dev->get_gpu_memory_info(buffer_name))
+                region += " · " + kotekan::human_bytes(info->len);
+            if (std::find(ring.label_lines.begin(), ring.label_lines.end(), region)
+                == ring.label_lines.end()) {
+                ring.add_line(region);
+                ring.set_attr("fillcolor",
+                              kotekan::graph_style(kotekan::GraphCategory::Memory).fill);
+            }
+            drawn_as_ring.insert(buffer_name);
+            continue;
+        }
+
         auto& node = graph.add_node(mem_prefix + buffer_name);
         // Another stage on this device may have described it already; a writer
         // still claims it into its own box.
@@ -456,50 +480,18 @@ void gpuProcess::add_graph_details(kotekan::PipelineGraph& graph) const {
         else if (is_new)
             node.cluster = device.id;
 
-        // A ring region is tracked by a host RingBuffer, whose node the graph
-        // already has as a buffer: mark that node as the ring's signal and tie
-        // the two together, so it is not mistaken for data living on the host.
-        // The region's edges show where the data goes, so the ring drops its
-        // own; drawing both roughly triples the crossings on a large pipeline.
-        std::string signal;
-        for (auto& command : commands)
-            if (signal.empty())
-                signal = command[0]->get_gpu_buffer_signal(buffer_name);
-        if (!signal.empty() && graph.has_node(signal)) {
-            auto& ring = graph.add_node(signal);
-            const std::string mark = "signal for " + buffer_name;
-            if (std::find(ring.label_lines.begin(), ring.label_lines.end(), mark)
-                == ring.label_lines.end()) {
-                ring.add_line(mark);
-                ring.set_attr("fillcolor",
-                              kotekan::graph_style(kotekan::GraphCategory::Memory).fill);
-                ring.flow_drawn_elsewhere = true;
-                graph.add_edge(signal, mem_prefix + buffer_name)
-                    .set_attr("style", "dashed")
-                    .set_attr("arrowhead", "none");
-            }
-        }
-
         if (!is_new)
             continue;
         node.add_line(buffer_name);
 
         // The layout: from the descriptor a command registered for it (the
-        // NDArray wrappers do), else from its signal ring's descriptor, else
-        // from the metadata on the memory itself, which hand-written kernels
-        // attach instead. Then its size, from the device, which knows whether
-        // it is one region or an array of them.
+        // NDArray wrappers do), else from the metadata on the memory itself,
+        // which hand-written kernels attach instead. Then its size, from the
+        // device, which knows whether it is one region or an array of them.
         std::shared_ptr<const kotekan::FrameDesc> desc;
         for (auto& command : commands)
             if ((desc = command[0]->get_gpu_buffer_desc(buffer_name)))
                 break;
-        if (!desc && !signal.empty()) {
-            // Commands register the signal ring by its global name
-            auto& host_buffers = buffer_container.get_buffer_map();
-            auto ring = host_buffers.find(signal);
-            if (ring != host_buffers.end())
-                desc = ring->second->get_frame_desc();
-        }
         const std::optional<gpuMemoryInfo> info = dev->get_gpu_memory_info(buffer_name);
         if (auto array = std::dynamic_pointer_cast<const kotekan::GenericNDArray>(desc)) {
             std::vector<std::string> dimnames;
@@ -523,8 +515,6 @@ void gpuProcess::add_graph_details(kotekan::PipelineGraph& graph) const {
             if (info->depth > 1)
                 node.add_line(
                     fmt::format(fmt("{:s} ×{:d}"), kotekan::human_bytes(info->len), info->depth));
-            else if (!signal.empty())
-                node.add_line(fmt::format(fmt("{:s} · ring"), kotekan::human_bytes(info->len)));
             else
                 node.add_line(kotekan::human_bytes(info->len));
         }
@@ -535,6 +525,8 @@ void gpuProcess::add_graph_details(kotekan::PipelineGraph& graph) const {
     // Which commands read and write which GPU memory.
     for (auto& command : commands) {
         for (auto& buff : command[0]->get_gpu_buffers()) {
+            if (drawn_as_ring.count(std::get<0>(buff)))
+                continue; // the ring's own producer and consumer edges
             const std::string buffer_id = mem_prefix + std::get<0>(buff);
             if (std::get<2>(buff)) // read
                 graph.add_edge(buffer_id, command[0]->get_unique_name()).set_attr("style", "solid");

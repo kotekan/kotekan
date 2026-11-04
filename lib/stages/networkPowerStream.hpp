@@ -13,7 +13,7 @@
 #include "bufferContainer.hpp" // for bufferContainer
 #include "powerStreamUtil.hpp" // for IntensityHeader
 
-#include <atomic>      // for atomic_flag
+#include <mutex>       // for mutex
 #include <stdint.h>    // for uint32_t, uint64_t
 #include <string>      // for string, basic_string
 #include <sys/types.h> // for uint
@@ -85,7 +85,7 @@ private:
     // Thread off to the side that establishes the connection for us
     std::thread connect_thread;
     // Lock to prevent race conditions with the connection thread.
-    std::atomic_flag socket_lock;
+    std::mutex socket_lock;
 
     /// Number of frequencies in the buffer
     int freqs;

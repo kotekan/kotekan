@@ -77,6 +77,11 @@ public:
     /// rather lay it out (or diff it) themselves than parse DOT.
     void pipeline_json_graph_callback(connectionInstance& conn);
 
+    /// HTTP callback drawing one GPU's memory and commands as an SVG
+    /// (PipelineGraph::to_device_svg). Takes `gpu=<id>` (default 0) and the
+    /// GraphOptions query arguments.
+    void pipeline_gpu_svg_callback(connectionInstance& conn);
+
     /**
      * @brief HTTP callback serving a copy of the newest full frame in a buffer.
      *

@@ -43,8 +43,10 @@
  * The frame has a leading length-1 time axis `TW` whose `dimscaling` is the lifetime; that is how
  * the GPU ring buffer learns how many FPGA samples one set of weights covers.
  *
- * The weights are constant except for the bad feed mask: weight frame `k` is made from mask frame
- * `k`, so the mask must have the same lifetime. The weight of a dish grid cell is zero if the
+ * The weights are constant except for the bad feed mask, which must have the same lifetime and
+ * begin at `seq0`. Weight frame `k` is made from the mask frame valid at its first sample, frame
+ * `k + offset / lifetime`, so that the weights follow the mask; they lag it by
+ * `offset % lifetime`. The weight of a dish grid cell is zero if the
  * feed the FRB1 kernel places there (see `frb_dish_index_at_location`) is bad. On CHORD this
  * includes feeds outside the main array, which the kernel places on otherwise empty cells.
  *
@@ -130,7 +132,7 @@ public:
             {"TW", "Fbar", "P", "dishN", "dishM", "C"},
             {frb1_phase_lifetime_in_samples, 1, 1, 1, 1, 1}));
 
-        // Mask frame `k` is applied to weight frame `k`, so the mask must have our lifetime
+        // The weights follow the mask frame by frame, so the mask must have our lifetime
         bf_mask_buffer->require_frame_desc(kotekan::NDArray<std::int8_t, 3>::describe(
             "bf_mask", {1, num_polarizations, num_dishes}, {"Tbf", "P", "D"},
             {frb1_phase_lifetime_in_samples, 1, 1}));
@@ -227,11 +229,22 @@ public:
         const std::shared_ptr<const kotekan::GenericNDArray> frame_desc =
             frb1_phase_buffer->get_frame_desc<kotekan::GenericNDArray>();
 
+        // Weight frame `k` begins `output_offset + k * lifetime` after the first mask frame, so
+        // it is made from mask frame `k + num_skipped_masks`. Skip the mask frames before.
+        const std::int64_t num_skipped_masks = output_offset / frb1_phase_lifetime_in_samples;
+        for (std::int64_t mask_index = 0; mask_index < num_skipped_masks; ++mask_index) {
+            const int bf_mask_frame_id = mask_index % bf_mask_buffer->num_frames;
+            if (!bf_mask_buffer->wait_for_full_frame(unique_name, bf_mask_frame_id))
+                return;
+            bf_mask_buffer->mark_frame_empty(unique_name, bf_mask_frame_id);
+        }
+
         // `frame_index` counts all frames produced, not just the current slot: it must keep
         // increasing so that the weights form one continuous stream.
         for (std::int64_t frame_index = 0; !stop_thread; ++frame_index) {
             const int frame_id = frame_index % frb1_phase_buffer->num_frames;
-            const int bf_mask_frame_id = frame_index % bf_mask_buffer->num_frames;
+            const int bf_mask_frame_id =
+                (frame_index + num_skipped_masks) % bf_mask_buffer->num_frames;
 
             DEBUG("[{:s}/{:d}] Waiting for buffer...", bf_mask_buffer->buffer_name, frame_index);
             const std::int8_t* const bf_mask_frame =

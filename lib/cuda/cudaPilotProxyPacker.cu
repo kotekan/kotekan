@@ -13,7 +13,7 @@
 ////////////////////////////////////////////////////////////////////////////////
 // Kernel
 
-// Streams per tile: one block transposes one K-sample window of TILE_STREAMS streams.
+// streams per tile (one thread block transposes one K-sample window of these streams)
 constexpr int TILE_STREAMS = 128;
 
 // Shared-memory transpose from [T,F,P,D] to [stream,tap], so that both the
@@ -34,9 +34,9 @@ pilotproxy_pack(std::int8_t* __restrict__ const packed_out,
     const std::ptrdiff_t sample_stride = num_frequencies * num_streams; // ring bytes per sample
     const int tid = threadIdx.x;
 
-    // Load: adjacent threads read adjacent streams of one sample. The tile
+    // In the load, adjacent threads read adjacent streams of one sample. The tile
     // row is the output tap, so a reversed window is stored reversed.
-    // s = p * D + d and the ring inner axes are [P, D], so s is the inner offset directly.
+    // Since s = p * D + d and the inner ring axes are [P, D], s is the inner offset.
     for (int k = tid / TILE_STREAMS; k < K; k += blockDim.x / TILE_STREAMS) {
         const int sl = tid % TILE_STREAMS;
         const std::ptrdiff_t phys = (ringbuf_pos_t + w * K + k) & ringbuf_mask_t;
@@ -47,8 +47,8 @@ pilotproxy_pack(std::int8_t* __restrict__ const packed_out,
     }
     __syncthreads();
 
-    // Store: adjacent threads write adjacent taps of one stream's window,
-    // 64 threads per stream.
+    // In the store, adjacent threads write adjacent taps of the window of one
+    // stream, with 64 threads per stream.
     constexpr int lanes = 64;
     for (int sl = tid / lanes; sl < TILE_STREAMS && s0 + sl < num_streams; sl += blockDim.x / lanes)
         for (int k = tid % lanes; k < K; k += lanes)
@@ -74,8 +74,8 @@ void launch_pilotproxy_pack(std::int8_t* const packed_out, const std::uint8_t* c
     assert(0 <= freq_index && freq_index < num_frequencies);
     assert(detector_window_samples > 0);
     assert(num_time_samples > 0 && num_time_samples % detector_window_samples == 0);
-    // Ring size must be a power of two (wrap by mask, matching the other
-    // ring-buffer kernels in this directory).
+    // The ring size must be a power of two, since the indices wrap by mask as in
+    // the other ring-buffer kernels in this directory.
     assert(ringbuf_size_t > 0 && (ringbuf_size_t & (ringbuf_size_t - 1)) == 0);
     assert(ringbuf_pos_t >= 0);
 

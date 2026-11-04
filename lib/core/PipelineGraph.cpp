@@ -2,9 +2,11 @@
 
 #include "fmt.hpp" // for format
 
-#include <cctype>  // for tolower
-#include <set>     // for set
-#include <utility> // for pair
+#include <algorithm> // for max, min, sort
+#include <cctype>    // for tolower
+#include <cmath>     // for isnan
+#include <set>       // for set
+#include <utility>   // for pair
 
 namespace kotekan {
 
@@ -557,6 +559,280 @@ nlohmann::json PipelineGraph::to_json() const {
     }
 
     return out;
+}
+
+/// One command in the device view, and the rows it touches.
+struct DeviceColumn {
+    const GraphNode* node;
+    std::vector<size_t> reads, writes;
+    std::vector<std::string> from_host, to_host;
+    int level = 0;
+};
+
+/// Approximate width of @p text in px, for sizing the margins.
+static double text_width(const std::string& text, double font_px) {
+    // Count code points, not bytes: layout lines carry `×` and `·`.
+    size_t chars = 0;
+    for (unsigned char c : text)
+        if ((c & 0xC0) != 0x80)
+            chars++;
+    return 0.6 * font_px * chars;
+}
+
+static std::string joined_lines(const GraphNode& node) {
+    std::string out;
+    for (const auto& line : node.label_lines)
+        out += (out.empty() ? "" : "\n") + line;
+    return out;
+}
+
+std::string PipelineGraph::to_device_svg(const std::string& device_cluster) const {
+    std::set<std::string> device_clusters = {device_cluster};
+    for (const auto& cluster : _clusters)
+        if (cluster.parent == device_cluster)
+            device_clusters.insert(cluster.id);
+
+    const std::string memory_fill = graph_style(GraphCategory::Memory).fill;
+    std::set<std::string> on_device;
+    std::vector<const GraphNode*> rows;
+    std::map<std::string, size_t> row_of;
+    for (const auto& node : _nodes) {
+        if (!device_clusters.count(node.cluster))
+            continue;
+        on_device.insert(node.id);
+        auto fill = node.attrs.find("fillcolor");
+        if (fill != node.attrs.end() && fill->second == memory_fill) {
+            row_of[node.id] = rows.size();
+            rows.push_back(&node);
+        }
+    }
+
+    // The dotted edges are execution order within a stage, not data.
+    std::map<std::string, DeviceColumn> columns;
+    for (const auto& edge : _edges) {
+        auto style = edge.attrs.find("style");
+        if (style != edge.attrs.end() && style->second == "dotted")
+            continue;
+        if (!has_node(edge.from) || !has_node(edge.to))
+            continue;
+        const bool from_device = on_device.count(edge.from);
+        const bool to_device = on_device.count(edge.to);
+        const bool from_row = row_of.count(edge.from);
+        const bool to_row = row_of.count(edge.to);
+        if (from_row && to_device && !to_row)
+            columns[edge.to].reads.push_back(row_of[edge.from]);
+        else if (to_row && from_device && !from_row)
+            columns[edge.from].writes.push_back(row_of[edge.to]);
+        else if (from_device && !from_row && !to_device)
+            columns[edge.from].to_host.push_back(edge.to);
+        else if (to_device && !to_row && !from_device)
+            columns[edge.to].from_host.push_back(edge.from);
+    }
+    if (columns.empty())
+        return "";
+    for (auto& column : columns)
+        column.second.node = &_nodes[_node_index.at(column.first)];
+
+    // A column comes after every column writing a row it reads. The passes
+    // stop at the column count, so a loop through a ring cannot spin forever.
+    std::map<size_t, std::vector<const DeviceColumn*>> writers;
+    for (const auto& column : columns)
+        for (size_t row : column.second.writes)
+            writers[row].push_back(&column.second);
+    for (size_t pass = 0; pass < columns.size(); pass++) {
+        bool changed = false;
+        for (auto& column : columns) {
+            int level = 0;
+            for (size_t row : column.second.reads)
+                for (const DeviceColumn* writer : writers[row])
+                    if (writer != &column.second)
+                        level = std::max(level, writer->level + 1);
+            changed |= level != column.second.level;
+            column.second.level = level;
+        }
+        if (!changed)
+            break;
+    }
+
+    std::vector<const DeviceColumn*> order;
+    for (const auto& column : columns)
+        order.push_back(&column.second);
+    std::sort(order.begin(), order.end(), [this](const DeviceColumn* a, const DeviceColumn* b) {
+        if (a->level != b->level)
+            return a->level < b->level;
+        if (a->node->cluster != b->node->cluster)
+            return a->node->cluster < b->node->cluster;
+        return _node_index.at(a->node->id) < _node_index.at(b->node->id);
+    });
+
+    // Rows in the order their first writer appears; unwritten rows first.
+    std::vector<size_t> first_writer(rows.size(), 0);
+    for (size_t row = 0; row < rows.size(); row++)
+        for (size_t c = order.size(); c-- > 0;)
+            for (size_t written : order[c]->writes)
+                if (written == row)
+                    first_writer[row] = c + 1;
+    std::vector<size_t> row_order(rows.size());
+    for (size_t row = 0; row < rows.size(); row++)
+        row_order[row] = row;
+    std::stable_sort(row_order.begin(), row_order.end(), [&first_writer](size_t a, size_t b) {
+        return first_writer[a] < first_writer[b];
+    });
+
+    // Column labels slope up and to the right at 55 degrees.
+    const double row_h = 34, col_w = 44, band_h = 46, gauge = 170;
+    std::vector<std::string> column_labels;
+    double label_width = 0.0, overhang = 0.0;
+    for (const DeviceColumn* column : order) {
+        std::string label =
+            column->node->label_lines.empty() ? column->node->id : column->node->label_lines[0];
+        auto cluster = _cluster_index.find(column->node->cluster);
+        if (cluster != _cluster_index.end() && !_clusters[cluster->second].label.empty())
+            label = _clusters[cluster->second].label + " · " + label;
+        column_labels.push_back(label);
+        label_width = std::max(label_width, text_width(label, 10));
+        // How far this label reaches past the last column.
+        const double from_end = (double)column_labels.size() - 0.5 - (double)order.size();
+        overhang = std::max(overhang, col_w * from_end + 0.57 * text_width(label, 10));
+    }
+    double left = 160.0;
+    for (const GraphNode* row : rows) {
+        left = std::max(
+            left, 24 + text_width(row->label_lines.empty() ? row->id : row->label_lines[0], 11));
+        left = std::max(left, 24 + text_width(row->label_lines.back(), 9));
+    }
+
+    const double top = 30 + 0.82 * label_width;
+    const double right = std::max(gauge, overhang + 20);
+    const double width = left + col_w * order.size() + right;
+    const double height = top + 2 * band_h + row_h * rows.size() + 24;
+    const double y_in = top + band_h / 2;
+    const double y_out = top + band_h + row_h * rows.size() + band_h / 2;
+    auto row_y = [&](size_t row) {
+        return top + band_h
+               + row_h * (std::find(row_order.begin(), row_order.end(), row) - row_order.begin())
+               + row_h / 2;
+    };
+
+    const std::string gpu_line = graph_style(GraphCategory::Gpu).line;
+    const std::string host_fill = graph_style(GraphCategory::Buffer).fill;
+    const std::string host_line = graph_style(GraphCategory::Buffer).line;
+    const std::string memory_line = graph_style(GraphCategory::Memory).line;
+
+    std::string svg = fmt::format(
+        fmt("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{:.0f}\" height=\"{:.0f}\" "
+            "font-family=\"Helvetica,Arial,sans-serif\" font-size=\"11\" fill=\"{:s}\">\n"),
+        width, height, graph_ink);
+
+    // A shaded band behind every other stage's columns.
+    bool shade = false;
+    for (size_t c = 0; c < order.size(); c++) {
+        if (c == 0 || order[c]->node->cluster != order[c - 1]->node->cluster)
+            shade = !shade;
+        if (shade)
+            svg += fmt::format(fmt("<rect x=\"{:.1f}\" y=\"{:.1f}\" width=\"{:.1f}\" "
+                                   "height=\"{:.1f}\" fill=\"{:s}\"/>\n"),
+                               left + col_w * c, top - 0.82 * label_width, col_w,
+                               height - top + 0.82 * label_width, graph_device_fill);
+    }
+
+    for (double y : {y_in, y_out}) {
+        svg += fmt::format(fmt("<rect x=\"0\" y=\"{:.1f}\" width=\"{:.1f}\" height=\"{:.1f}\" "
+                               "fill=\"{:s}\"/>\n"),
+                           y - band_h / 2 + 3, width, band_h - 6, host_fill);
+        svg += fmt::format(fmt("<text x=\"12\" y=\"{:.1f}\" fill=\"{:s}\" "
+                               "font-weight=\"bold\">{:s}</text>\n"),
+                           y + 4, host_line, y == y_in ? "from host" : "to host");
+    }
+
+    std::set<size_t> full_rows;
+    for (size_t row = 0; row < rows.size(); row++) {
+        const GraphNode& node = *rows[row];
+        const double y = row_y(row);
+        auto color = node.attrs.find("color");
+        const bool full = color != node.attrs.end() && color->second == graph_full_line;
+        if (full)
+            full_rows.insert(row);
+        svg += fmt::format(fmt("<line x1=\"{:.1f}\" y1=\"{:.1f}\" x2=\"{:.1f}\" y2=\"{:.1f}\" "
+                               "stroke=\"{:s}\"/>\n"),
+                           left - 6, y, width - right + 6, y, graph_cluster_line);
+        svg += fmt::format(fmt("<g><title>{:s}</title><text x=\"12\" y=\"{:.1f}\" fill=\"{:s}\" "
+                               "font-weight=\"bold\">{:s}</text>"),
+                           escape_html(joined_lines(node)), y - 2, memory_line,
+                           escape_html(node.label_lines.empty() ? node.id : node.label_lines[0]));
+        if (node.label_lines.size() > 1)
+            svg += fmt::format(fmt("<text x=\"12\" y=\"{:.1f}\" font-size=\"9\">{:s}</text>"),
+                               y + 10, escape_html(node.label_lines.back()));
+        svg += "</g>\n";
+        if (!std::isnan(node.occupancy)) {
+            const double x = width - right + 16;
+            const double fraction = std::min(1.0, std::max(0.0, node.occupancy));
+            svg += fmt::format(fmt("<rect x=\"{:.1f}\" y=\"{:.1f}\" width=\"110\" height=\"10\" "
+                                   "fill=\"none\" stroke=\"{:s}\"/>\n"),
+                               x, y - 5, graph_edge_line);
+            svg += fmt::format(fmt("<rect x=\"{:.1f}\" y=\"{:.1f}\" width=\"{:.1f}\" "
+                                   "height=\"10\" fill=\"{:s}\"/>\n"),
+                               x, y - 5, 110 * fraction, full ? graph_full_line : memory_line);
+            svg += fmt::format(fmt("<text x=\"{:.1f}\" y=\"{:.1f}\" font-size=\"10\">"
+                                   "{:s}</text>\n"),
+                               x + 116, y + 4,
+                               full ? std::string("full")
+                                    : fmt::format(fmt("{:.0f}%"), 100 * fraction));
+        }
+    }
+
+    for (size_t c = 0; c < order.size(); c++) {
+        const DeviceColumn& column = *order[c];
+        const double x = left + col_w * c + col_w / 2;
+        bool stalled = false;
+        std::vector<double> ys;
+        for (size_t row : column.reads)
+            ys.push_back(row_y(row));
+        for (size_t row : column.writes) {
+            ys.push_back(row_y(row));
+            stalled |= full_rows.count(row) > 0;
+        }
+        if (!column.from_host.empty())
+            ys.push_back(y_in);
+        if (!column.to_host.empty())
+            ys.push_back(y_out);
+        const std::string line = stalled ? graph_full_line : gpu_line;
+        std::string tooltip = joined_lines(*column.node);
+        for (const auto& host : column.from_host)
+            tooltip += "\nfrom " + host;
+        for (const auto& host : column.to_host)
+            tooltip += "\nto " + host;
+        svg += fmt::format(fmt("<g><title>{:s}</title>\n"), escape_html(tooltip));
+        if (ys.size() > 1)
+            svg += fmt::format(fmt("<line x1=\"{0:.1f}\" y1=\"{1:.1f}\" x2=\"{0:.1f}\" "
+                                   "y2=\"{2:.1f}\" stroke=\"{3:s}\" stroke-width=\"2.5\"/>\n"),
+                               x, *std::min_element(ys.begin(), ys.end()),
+                               *std::max_element(ys.begin(), ys.end()), line);
+        for (size_t row : column.reads)
+            svg += fmt::format(fmt("<circle cx=\"{:.1f}\" cy=\"{:.1f}\" r=\"5\" fill=\"#ffffff\" "
+                                   "stroke=\"{:s}\" stroke-width=\"2\"/>\n"),
+                               x, row_y(row), line);
+        for (size_t row : column.writes)
+            svg += fmt::format(fmt("<circle cx=\"{:.1f}\" cy=\"{:.1f}\" r=\"5.5\" "
+                                   "fill=\"{:s}\"/>\n"),
+                               x, row_y(row), line);
+        if (!column.from_host.empty())
+            svg += fmt::format(fmt("<path d=\"M{:.1f} {:.1f} l-5 -9 h10 z\" fill=\"{:s}\"/>\n"), x,
+                               y_in + 2, host_line);
+        if (!column.to_host.empty())
+            svg += fmt::format(fmt("<path d=\"M{:.1f} {:.1f} l-5 -9 h10 z\" fill=\"{:s}\"/>\n"), x,
+                               y_out + 6, host_line);
+        svg += fmt::format(fmt("<text transform=\"translate({:.1f},{:.1f}) rotate(-55)\" "
+                               "fill=\"{:s}\" font-size=\"10\">{:s}</text></g>\n"),
+                           x + 3, top - 6, line, escape_html(column_labels[c]));
+    }
+
+    svg += fmt::format(fmt("<text x=\"12\" y=\"{:.1f}\" font-size=\"10\">"
+                           "○ reads · ● writes · ▼ to or from a host buffer · "
+                           "shaded columns: one stage</text>\n"),
+                       height - 8);
+    svg += "</svg>\n";
+    return svg;
 }
 
 } // namespace kotekan

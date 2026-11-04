@@ -136,7 +136,8 @@ Dataset manager & config tracker
 --------------------------------
 
 - The dataset manager tracks dataset IDs and their states across stages, and is typically used in CHIME
-pipelines. Commonly used config parameters include (under ``dataset_manager``):
+  pipelines. Commonly used config parameters include (under ``dataset_manager``):
+
   - ``use_dataset_broker`` (bool): sync states with the central broker (comet); must be set when
     broker coordination is desired.
   - ``ds_broker_host`` / ``ds_broker_port``: broker address/port (default 127.0.0.1:12050 when
@@ -146,6 +147,7 @@ pipelines. Commonly used config parameters include (under ``dataset_manager``):
   - REST: ``/dataset-manager/force-update`` forces re-registration with the broker.
   - Metrics: ``kotekan_datasetbroker_error_count`` (broker comms errors), plus per-stage dataset
     metrics (see writer/transform stages).
+
 - The Config Tracker is intended as a more lightweight replacement for the dataset manager.
   It stores snapshots of this node's own (local) config and configs from upstream peers, and
   optionally a combined ``{"config": ..., "timing": ...}`` snapshot fetched from an upstream
