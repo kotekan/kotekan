@@ -603,6 +603,34 @@ def test_multiframe_ramp(tmpdir_factory):
     _check_files(tmpdir, case, False, frames_per_file=3)
 
 
+def test_multiframe_singleton_time_axis(tmpdir_factory):
+    """One time sample per frame supports the existing multi-frame writer and reader."""
+    case = _variant(
+        CASES["int8_random"],
+        gen=dict(
+            array_shape=[1, 4, 8],
+            dim_name=["T", "F", "D"],
+            dim_scaling=[256, 1, 1],
+            meta_time_downsample_factor=256,
+        ),
+        buf=dict(extents=[1, 4, 8], dimnames=["T", "F", "D"], dimscalings=[256, 1, 1]),
+    )
+    stacked = tmpdir_factory.mktemp("hdf5_singleton_time_axis")
+    perframe = tmpdir_factory.mktemp("hdf5_singleton_time_axis_perframe")
+    _siphon(stacked, case, False, frames_per_file=3)
+    _siphon(perframe, case, False)
+    _check_files(stacked, case, False, frames_per_file=3)
+    for start in range(0, NUM_FRAMES, 3):
+        with h5py.File(str(stacked.join(f"{FILE_NAME}.{start:08d}.h5")), "r") as f:
+            for k in range(3):
+                name = f"{FILE_NAME}.{start + k:08d}.h5"
+                with h5py.File(str(perframe.join(name)), "r") as g:
+                    np.testing.assert_array_equal(f[FILE_NAME][k], g[FILE_NAME][0])
+    single = tmpdir_factory.mktemp("hdf5_singleton_time_axis_singlefile")
+    _siphon(single, case, True)
+    _replay(single, case, True)
+
+
 def test_voltage_reader_roundtrip(tmpdir_factory):
     """hdf5FileReadSingleFile replays a single-file voltage dump.
 

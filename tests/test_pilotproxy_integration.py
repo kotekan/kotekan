@@ -573,6 +573,7 @@ def test_bulk_mask_excludes_anchor_guard(pipeline, index, half_width, side):
         ("extra_weights", "profile table accounts for"),
         ("missing_channel_ids", "no receiver channel IDs"),
         ("metadata_length", "coarse_freq"),
+        ("duplicate_channel_ids", "duplicate coarse_freq channel identifiers"),
     ],
 )
 def test_rejects_invalid_runtime(pipeline, case, diagnostic):
@@ -593,10 +594,71 @@ def test_rejects_invalid_runtime(pipeline, case, diagnostic):
                 row["receiver_channel_id"] = None
     elif case == "metadata_length":
         pipeline.config["gen_voltage"]["num_local_freq"] = 2
+    elif case == "duplicate_channel_ids":
+        ids = pipeline.generator["manual_freq_ids"]
+        ids[1] = ids[0]
     code, output = pipeline.run()
     assert code != 0, f"invalid {case} was accepted"
     assert diagnostic in output, output[-12000:]
     assert not list((pipeline.directory / "out").glob("dtv_*.raw"))
+
+
+@pytest.mark.parametrize(
+    "field,value,accepted",
+    [
+        ("factor", 2, False),
+        ("index", 1, False),
+        ("factor", 0, False),
+        ("index", -1, True),
+    ],
+)
+def test_voltage_upchannelization_metadata(pipeline, field, value, accepted):
+    pipeline.calibrate()
+    code, output = pipeline.run()
+    assert code == 0, output[-12000:]
+    source = pipeline.directory / "input"
+    source.mkdir()
+    for path in (pipeline.directory / "out").glob("*.raw"):
+        if path.name.startswith("voltage_"):
+            path.rename(source / path.name)
+        else:
+            path.unlink()
+    for path in source.glob("*.raw"):
+        with path.open("r+b") as stream:
+            metadata_size = struct.unpack("<I", stream.read(4))[0]
+            assert metadata_size == reference.CHORD_METADATA_SIZE
+            dims, name, dim_name, max_freq, _, _ = struct.unpack("<6i", stream.read(24))
+            # chordMetadataFormat through nfreq, followed by the three frequency arrays.
+            prefix = struct.calcsize(
+                f"<7i4xqq{name}sii{dims}i{dims * dim_name}s{2 * dims}qqi"
+            )
+            array = 1 if field == "factor" else 2
+            stream.seek(4 + prefix + array * max_freq * 4)
+            stream.write(struct.pack("<i", value))
+    del pipeline.config["gen_voltage"]
+    del pipeline.config["samples_per_data_set"]
+    for stage in ("dump_voltage", "dump_dtv_mask", "dump_dtv_powers"):
+        pipeline.config[stage]["exit_after_n_files"] = "num_gen_frames"
+    pipeline.config["replay_voltage"] = dict(
+        kotekan_stage="rawFileRead",
+        buf="host_voltage_buffer",
+        base_dir="input",
+        file_name="voltage",
+        file_ext="raw",
+        prefix_hostname=False,
+        end_interrupt=False,
+    )
+    code, output = pipeline.run()
+    if accepted:
+        # Live coarse-channel metadata may omit the index when its factor is one.
+        assert code == 0, output[-12000:]
+        pipeline.verify()
+    else:
+        assert code != 0, f"upchannelization {field} was accepted"
+        assert (
+            "PilotProxy requires un-upchannelized coarse frequencies" in output
+        ), output[-12000:]
+        assert not list((pipeline.directory / "out").glob("dtv_*.raw"))
 
 
 @pytest.mark.parametrize(

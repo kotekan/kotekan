@@ -12,6 +12,7 @@
 #include <chrono>
 #include <cstdint>
 #include <cstring>
+#include <limits>
 #include <memory>
 #include <thread>
 #include <vector>
@@ -21,14 +22,16 @@ BOOST_GLOBAL_FIXTURE(kotekan_logging_fixture);
 struct MaskPipeline {
     static constexpr int F = 4;
     const int samples;
+    const bool has_fine;
+    std::shared_ptr<kotekan::GenericNDArray> dtv_desc, support_desc;
     kotekan::Config config;
     std::shared_ptr<metadataPool> pool;
     Buffer rfi, dtv, support, output;
     kotekan::bufferContainer buffers;
     std::unique_ptr<kotekan::Stage> stage;
 
-    MaskPipeline(int samples, bool fine = true) :
-        samples(samples),
+    MaskPipeline(int samples, bool fine = true, bool time_axis = false, bool declared = true) :
+        samples(samples), has_fine(fine),
         pool(metadataPool::create(32, sizeof(chordMetadata), "pool", "chordMetadata")),
         rfi(2, samples / 8 * F, pool, "rfi", "standard", 0, false, false, std::vector<int>{}, true),
         dtv(2, F, pool, "dtv", "standard", 0, false, false, std::vector<int>{}, true),
@@ -57,11 +60,22 @@ struct MaskPipeline {
                                               {"T8hi128", "F", "T8lo128"}, {1024, 1, 8});
         rfi.ensure_frame_desc(mask_desc);
         output.ensure_frame_desc(mask_desc);
-        dtv.ensure_frame_desc(
-            kotekan::GenericNDArray::describe(kotekan::int8, "dtv_mask", {F}, {"F"}, {1}));
+        dtv_desc = time_axis ? kotekan::GenericNDArray::describe(kotekan::int8, "dtv_mask", {1, F},
+                                                                 {"T", "F"}, {samples * 4, 1})
+                             : kotekan::GenericNDArray::describe(kotekan::int8, "dtv_mask", {F},
+                                                                 {"F"}, {1});
         if (fine)
-            support.ensure_frame_desc(kotekan::GenericNDArray::describe(
-                kotekan::int32, "dtv_fine_support", {F, 2}, {"F", "S"}, {1, 1}));
+            support_desc =
+                time_axis ? kotekan::GenericNDArray::describe(kotekan::int32, "dtv_fine_support",
+                                                              {1, F, 2}, {"T", "F", "S"},
+                                                              {samples * 4, 1, 1})
+                          : kotekan::GenericNDArray::describe(kotekan::int32, "dtv_fine_support",
+                                                              {F, 2}, {"F", "S"}, {1, 1});
+        if (declared) {
+            dtv.ensure_frame_desc(dtv_desc);
+            if (fine)
+                support.ensure_frame_desc(support_desc);
+        }
         for (auto* b : {&rfi, &dtv, &support, &output})
             buffers.add_buffer(b->buffer_name, b);
         rfi.register_producer("test");
@@ -79,21 +93,24 @@ struct MaskPipeline {
         stage->join();
     }
 
-    void fill(int index) {
+    void fill(int index, bool frequency_index = true) {
         const int slot = index % 2;
         for (auto* b : {&rfi, &dtv, &support}) {
-            if (b == &support && !support.get_frame_desc())
+            if (b == &support && !has_fine)
                 continue;
             BOOST_REQUIRE(b->wait_for_empty_frame("test", slot));
             b->allocate_new_metadata_object(slot);
             auto meta = get_chord_metadata(b, slot);
-            if (b != &support || support.get_frame_desc())
-                meta->set_from_frame_desc(b->get_frame_desc<kotekan::GenericNDArray>());
+            meta->set_from_frame_desc(b == &dtv ? dtv_desc
+                                      : b == &support
+                                          ? support_desc
+                                          : b->get_frame_desc<kotekan::GenericNDArray>());
             meta->set_fpga_seq_num((int64_t(1) << 34) + int64_t(index) * samples * 4);
             meta->set_time_downsampling_fpga(b == &rfi ? 4096 : samples * 4);
             meta->set_coarse_freq({10, 11, 12, 13});
             meta->set_freq_upchan_factor({1, 1, 1, 1});
-            meta->set_freq_upchan_index({0, 0, 0, 0});
+            if (frequency_index)
+                meta->set_freq_upchan_index({0, 0, 0, 0});
         }
         for (size_t j = 0; j < rfi.frame_size; ++j)
             rfi.frames[slot][j] = (j + index) % 251;
@@ -102,66 +119,122 @@ struct MaskPipeline {
         std::memcpy(dtv.frames[slot], reject, sizeof(reject));
         std::memcpy(support.frames[slot], fine, sizeof(fine));
         for (auto* b : {&rfi, &dtv, &support})
-            if (b != &support || support.get_frame_desc())
+            if (b != &support || has_fine)
                 b->mark_frame_full("test", slot);
     }
 };
 
 BOOST_AUTO_TEST_CASE(mask_and_metadata_across_wrap) {
     for (int samples : {8192, 16384})
-        for (bool fine : {false, true}) {
-            MaskPipeline p(samples, fine);
-            p.stage->start();
-            for (int index = 0; index < 8; ++index) {
-                p.fill(index);
-                const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
-                while (p.output.get_num_full_frames() == 0
-                       && std::chrono::steady_clock::now() < deadline)
-                    std::this_thread::sleep_for(std::chrono::milliseconds(1));
-                BOOST_REQUIRE_GT(p.output.get_num_full_frames(), 0);
-                const int slot = index % 2;
-                auto* data = p.output.wait_for_full_frame("test", slot);
-                BOOST_REQUIRE(data);
-                for (size_t j = 0; j < p.output.frame_size; ++j) {
-                    const int f = (j / 128) % MaskPipeline::F;
-                    const bool excluded = f == 1 || f == 2 || (fine && f == 3 && index % 2 == 0);
-                    BOOST_CHECK_EQUAL(data[j], excluded ? 0 : (j + index) % 251);
+        for (bool fine : {false, true})
+            for (bool time_axis : {false, true})
+                for (bool declared : {false, true}) {
+                    MaskPipeline p(samples, fine, time_axis, declared);
+                    p.stage->start();
+                    for (int index = 0; index < 8; ++index) {
+                        p.fill(index, index % 2 != 0);
+                        const auto deadline =
+                            std::chrono::steady_clock::now() + std::chrono::seconds(5);
+                        while (p.output.get_num_full_frames() == 0
+                               && std::chrono::steady_clock::now() < deadline)
+                            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                        BOOST_REQUIRE_GT(p.output.get_num_full_frames(), 0);
+                        const int slot = index % 2;
+                        auto* data = p.output.wait_for_full_frame("test", slot);
+                        BOOST_REQUIRE(data);
+                        for (size_t j = 0; j < p.output.frame_size; ++j) {
+                            const int f = (j / 128) % MaskPipeline::F;
+                            const bool excluded =
+                                f == 1 || f == 2 || (fine && f == 3 && index % 2 == 0);
+                            BOOST_CHECK_EQUAL(data[j], excluded ? 0 : (j + index) % 251);
+                        }
+                        auto meta = get_chord_metadata(&p.output, slot);
+                        BOOST_CHECK_EQUAL(meta->get_fpga_seq_num(),
+                                          (int64_t(1) << 34) + int64_t(index) * samples * 4);
+                        BOOST_CHECK_EQUAL(meta->get_time_downsampling_fpga(), 4096);
+                        BOOST_CHECK(meta->get_coarse_freq() == std::vector<int>({10, 11, 12, 13}));
+                        BOOST_CHECK_EQUAL(meta->has_freq_upchan_index(), index % 2 != 0);
+                        p.output.mark_frame_empty("test", slot);
+                    }
                 }
-                auto meta = get_chord_metadata(&p.output, slot);
-                BOOST_CHECK_EQUAL(meta->get_fpga_seq_num(),
-                                  (int64_t(1) << 34) + int64_t(index) * samples * 4);
-                BOOST_CHECK_EQUAL(meta->get_time_downsampling_fpga(), 4096);
-                BOOST_CHECK(meta->get_coarse_freq() == std::vector<int>({10, 11, 12, 13}));
-                p.output.mark_frame_empty("test", slot);
-            }
-        }
 }
 
 BOOST_AUTO_TEST_CASE(reject_malformed_input) {
-    for (int fault = 0; fault < 6; ++fault) {
-        MaskPipeline p(8192);
-        p.fill(0);
-        switch (fault) {
-            case 0:
-                p.dtv.frames[0][0] = 2;
-                break;
-            case 1:
-                get_chord_metadata(&p.dtv, 0)->set_fpga_seq_num(1);
-                break;
-            case 2:
-                get_chord_metadata(&p.dtv, 0)->set_coarse_freq({11, 10, 12, 13});
-                break;
-            case 3:
-                reinterpret_cast<int32_t*>(p.support.frames[0])[6] = 2;
-                break;
-            case 4:
-                reinterpret_cast<int32_t*>(p.support.frames[0])[6] = -1;
-                reinterpret_cast<int32_t*>(p.support.frames[0])[7] = -1;
-                break;
-            case 5:
-                get_chord_metadata(&p.support, 0)->set_time_downsampling_fpga(1);
-                break;
+    for (bool time_axis : {false, true})
+        for (int fault = 0; fault < (time_axis ? 10 : 6); ++fault) {
+            MaskPipeline p(8192, true, time_axis);
+            p.fill(0);
+            switch (fault) {
+                case 0:
+                    p.dtv.frames[0][0] = 2;
+                    break;
+                case 1:
+                    get_chord_metadata(&p.dtv, 0)->set_fpga_seq_num(1);
+                    break;
+                case 2:
+                    get_chord_metadata(&p.dtv, 0)->set_coarse_freq({11, 10, 12, 13});
+                    break;
+                case 3:
+                    reinterpret_cast<int32_t*>(p.support.frames[0])[6] = 2;
+                    break;
+                case 4:
+                    reinterpret_cast<int32_t*>(p.support.frames[0])[6] = -1;
+                    reinterpret_cast<int32_t*>(p.support.frames[0])[7] = -1;
+                    break;
+                case 5:
+                    get_chord_metadata(&p.support, 0)->set_time_downsampling_fpga(1);
+                    break;
+                case 6:
+                    get_chord_metadata(&p.dtv, 0)->dim[0] = 2;
+                    break;
+                case 7:
+                    get_chord_metadata(&p.support, 0)->set_dimension_name(0, "F");
+                    break;
+                case 8:
+                    get_chord_metadata(&p.dtv, 0)->dim_scaling[0] = 1;
+                    break;
+                case 9:
+                    get_chord_metadata(&p.support, 0)->dim_scaling[0] = 1;
+                    break;
+            }
+            BOOST_CHECK_THROW(p.stage->main_thread(), FatalError);
         }
-        BOOST_CHECK_THROW(p.stage->main_thread(), FatalError);
-    }
+}
+
+BOOST_AUTO_TEST_CASE(reject_overflowing_time_metadata) {
+    for (int samples : {8192, 16384})
+        for (bool time_axis : {false, true})
+            for (bool overflow_period : {false, true}) {
+                MaskPipeline p(samples, true, time_axis);
+                p.fill(0);
+                p.fill(1);
+                get_chord_metadata(&p.dtv, 1)->set_fpga_seq_num(0);
+                if (overflow_period) {
+                    // Multiplying this period by the mask rows wraps to samples * 4.
+                    const int64_t period = (int64_t(1) << (samples == 8192 ? 61 : 60)) + 4096;
+                    get_chord_metadata(&p.rfi, 0)->set_time_downsampling_fpga(period);
+                } else {
+                    const int64_t seq = std::numeric_limits<int64_t>::max() - samples * 4 + 1;
+                    for (auto* buffer : {&p.rfi, &p.dtv, &p.support})
+                        get_chord_metadata(buffer, 0)->set_fpga_seq_num(seq);
+                }
+                BOOST_CHECK_THROW(p.stage->main_thread(), FatalError);
+                BOOST_CHECK_EQUAL(p.output.get_num_full_frames(), 0);
+            }
+}
+
+BOOST_AUTO_TEST_CASE(accept_last_representable_frame) {
+    for (int samples : {8192, 16384})
+        for (bool time_axis : {false, true}) {
+            MaskPipeline p(samples, true, time_axis);
+            p.fill(0);
+            p.fill(1);
+            const int64_t seq = std::numeric_limits<int64_t>::max() - samples * 4;
+            for (auto* buffer : {&p.rfi, &p.dtv, &p.support})
+                get_chord_metadata(buffer, 0)->set_fpga_seq_num(seq);
+            // The first frame fits; the next frame has a discontinuous sequence.
+            BOOST_CHECK_THROW(p.stage->main_thread(), FatalError);
+            BOOST_REQUIRE_EQUAL(p.output.get_num_full_frames(), 1);
+            BOOST_CHECK_EQUAL(get_chord_metadata(&p.output, 0)->get_fpga_seq_num(), seq);
+        }
 }
