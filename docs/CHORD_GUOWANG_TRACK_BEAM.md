@@ -23,10 +23,13 @@ satellite's track). The gw_1202 chain's assemblers publish those directions alre
 (`elem-dir-publish all`, 24 slots, `n_elements` 128 = the ring's inputs), so nothing new is
 estimated: the weights the tracker locks with are the weights the beam uses.
 
-The targets are the `beam_targets` (2) strongest lanes by row power, i.e. the two GuoWang
-satellites closest to the boresight. Two, because each satellite lags the data epoch by 9-115 s
+The targets are the `beam_targets` (2) strongest lanes by coherent power (the lane's
+coherence times its row power; a lane below `beam_target_min_coh` 0.15 on every channel is
+skipped), i.e. the two GuoWang satellites the chain holds best. The row power alone ranks
+nothing: it is noise-dominated and nearly equal for every lane, and on 11-04 at sky-on each
+GPU picked a different held lane of an absent satellite over the one locked one. Two, because each satellite lags the data epoch by 9-115 s
 and the two streams overlap across a handover, and because one may be in a transit. A target
-is kept while its lane is on the board and replaced when another lane out-powers the weakest
+is kept while its lane is on the board and replaced when another lane out-scores the weakest
 target by `beam_target_gain` (1.5) for `beam_target_hold_s` (2 s), so a handover does not flap.
 Each GPU chooses on its own channels; the frame records the PRN per beam, and the stitch keys
 on PRN, so the GPUs need not agree on the order, only on the set.

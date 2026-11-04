@@ -112,6 +112,7 @@ cudaGnssBeamDump::cudaGnssBeamDump(Config& config, const std::string& unique_nam
         _lane_max_age_s = config.get_default<double>(unique_name, "beam_lane_max_age_s", 2.0);
         _target_hold_s = config.get_default<double>(unique_name, "beam_target_hold_s", 2.0);
         _target_gain = config.get_default<double>(unique_name, "beam_target_gain", 1.5);
+        _target_min_coh = config.get_default<double>(unique_name, "beam_target_min_coh", 0.15);
         _lane_conj = config.get_default<bool>(unique_name, "beam_lane_conj", false);
         auto pos = config.get<std::vector<double>>(unique_name, "elem_positions_enu");
         if ((int)pos.size() != 3 * gnss_cuda::BEAM_INPUTS)
@@ -137,9 +138,9 @@ cudaGnssBeamDump::cudaGnssBeamDump(Config& config, const std::string& unique_nam
         _tgt_stage.assign(_layout.off_tbeam - _layout.off_tgt, 0);
         _dir.assign((size_t)gnss_cuda::BEAM_INPUTS, std::complex<double>(0.0, 0.0));
         INFO("cudaGnssBeamDump: {:d} target beams from the lanes of '{:s}' (board group '{:s}'), "
-             "hold {:.1f} s at gain {:.2f}, conj {}, +{:.2f} MB/frame",
-             _n_targets, _lane_owner, _lane_group, _target_hold_s, _target_gain, _lane_conj,
-             (_layout.bytes - _layout.off_tgt) / 1.0e6);
+             "hold {:.1f} s at gain {:.2f}, coherence >= {:.2f}, conj {}, +{:.2f} MB/frame",
+             _n_targets, _lane_owner, _lane_group, _target_hold_s, _target_gain, _target_min_coh,
+             _lane_conj, (_layout.bytes - _layout.off_tgt) / 1.0e6);
     }
 
     set_command_type(gpuCommandType::KERNEL);
@@ -165,10 +166,10 @@ double cudaGnssBeamDump::frame_utc(long long seq) const {
     return (double)Telescope::instance().to_time_ns((uint64_t)seq) * 1e-9 + _frame0_offset_s;
 }
 
-int cudaGnssBeamDump::strongest_outsider(const std::map<int, double>& power) const {
+int cudaGnssBeamDump::strongest_outsider(const std::map<int, double>& score) const {
     int best = 0;
     double best_p = 0.0;
-    for (const auto& [prn, p] : power) {
+    for (const auto& [prn, p] : score) {
         if (std::find(_target_prn.begin(), _target_prn.end(), prn) != _target_prn.end())
             continue;
         if (best == 0 || p > best_p) {
@@ -179,35 +180,38 @@ int cudaGnssBeamDump::strongest_outsider(const std::map<int, double>& power) con
     return best;
 }
 
-void cudaGnssBeamDump::choose_targets(const std::map<int, double>& power, double now_s) {
-    // A target whose lane left the board (the slot stopped or changed PRN) frees its slot.
+void cudaGnssBeamDump::choose_targets(const std::map<int, double>& score, double now_s) {
+    // A target whose lane left the board (the slot stopped or changed PRN) or lost its
+    // coherence frees its slot.
     for (int& t : _target_prn)
-        if (t != 0 && !power.count(t)) {
-            INFO("cudaGnssBeamDump: target PRN {:d} dropped: its lane left the board", t);
+        if (t != 0 && !score.count(t)) {
+            INFO("cudaGnssBeamDump: target PRN {:d} dropped: its lane left the board or lost "
+                 "coherence",
+                 t);
             t = 0;
         }
     // Empty slots take the strongest lanes not yet targeted.
     for (int& t : _target_prn) {
         if (t != 0)
             continue;
-        const int best = strongest_outsider(power);
+        const int best = strongest_outsider(score);
         if (best == 0)
             break;
-        INFO("cudaGnssBeamDump: target PRN {:d} (row power {:.3g})", best, power.at(best));
+        INFO("cudaGnssBeamDump: target PRN {:d} (coherent power {:.3g})", best, score.at(best));
         t = best;
     }
-    // The strongest outsider replaces the weakest target once it has out-powered it by
-    // beam_target_gain for beam_target_hold_s: the top-2 by boresight separation, with
-    // hysteresis so a handover does not flap frame to frame.
-    const int best = strongest_outsider(power);
+    // The strongest outsider replaces the weakest target once it has out-scored it by
+    // beam_target_gain for beam_target_hold_s: the top-2 by coherent power, with hysteresis
+    // so a handover does not flap frame to frame.
+    const int best = strongest_outsider(score);
     int weak = -1;
     for (int k = 0; k < _n_targets; k++) {
         const int t = _target_prn[(size_t)k];
-        if (t != 0 && (weak < 0 || power.at(t) < power.at(_target_prn[(size_t)weak])))
+        if (t != 0 && (weak < 0 || score.at(t) < score.at(_target_prn[(size_t)weak])))
             weak = k;
     }
     if (best == 0 || weak < 0
-        || power.at(best) <= _target_gain * power.at(_target_prn[(size_t)weak])) {
+        || score.at(best) <= _target_gain * score.at(_target_prn[(size_t)weak])) {
         _challenger_prn = 0;
         return;
     }
@@ -218,8 +222,8 @@ void cudaGnssBeamDump::choose_targets(const std::map<int, double>& power, double
     }
     if (now_s - _challenger_since < _target_hold_s)
         return;
-    INFO("cudaGnssBeamDump: target PRN {:d} -> {:d} (row power {:.3g} -> {:.3g})",
-         _target_prn[(size_t)weak], best, power.at(_target_prn[(size_t)weak]), power.at(best));
+    INFO("cudaGnssBeamDump: target PRN {:d} -> {:d} (coherent power {:.3g} -> {:.3g})",
+         _target_prn[(size_t)weak], best, score.at(_target_prn[(size_t)weak]), score.at(best));
     _target_prn[(size_t)weak] = best;
     _challenger_prn = 0;
 }
@@ -251,15 +255,20 @@ void cudaGnssBeamDump::build_targets(long long seq0) {
                            rows[(size_t)c] = e;
                        });
     }
-    std::map<int, double> power;
+    // Rank the lanes by coherent power, coherence x row power, over the channels. The row
+    // power alone is noise-dominated and nearly equal for every lane, so a held lane of a
+    // satellite that never locked would outrank a locked one. A lane below
+    // beam_target_min_coh on every channel is not a target.
+    std::map<int, double> score;
     for (const auto& [prn, rows] : _lanes) {
-        double p = 0.0;
+        double s = -1.0;
         for (const gnss::ProjEntry& e : rows)
-            if (e.k > 0)
-                p = std::max(p, e.power);
-        power[prn] = p;
+            if (e.k > 0 && e.coh >= _target_min_coh)
+                s = std::max(s, e.coh * e.power);
+        if (s >= 0.0)
+            score[prn] = s;
     }
-    choose_targets(power, now_s);
+    choose_targets(score, now_s);
 
     // Each target's direction on each channel, re-steered to the frame's mid-time along the
     // lane's track (the entry is on the channel itself, so no instrumental-delay transfer).

@@ -36,13 +36,14 @@
  * Target beams (beam_lane_owner). The chain's assembler publishes, per channel, each tracked
  * PRN's element direction on the process-wide ProjBoard (gnssLaneDirection.hpp: the averaged
  * despread row, held through a bright pass by elem_dir_hold_s). Per frame the command takes
- * that chain's lanes on the selected channels, keeps the strongest beam_targets PRNs by row
- * power, re-steers each direction to the frame's mid-time along the lane's track
+ * that chain's lanes on the selected channels, keeps the strongest beam_targets PRNs by
+ * coherent power (coherence x row power), re-steers each direction to the frame's mid-time
+ * along the lane's track
  * (gnssFleetLane.hpp: a LEO moves the far elements' phase by tens of degrees in one frame)
  * and forms a beam with those weights beside the eigen beam. A target is kept while its lane
- * is on the board, and replaced when another lane out-powers the weakest target by
- * beam_target_gain for beam_target_hold_s. The frame carries, per target and channel, the
- * lane used, the weights and the beam (gnss_cuda::BeamDumpTarget). The weights are the
+ * is on the board above beam_target_min_coh, and replaced when another lane out-scores the
+ * weakest target by beam_target_gain for beam_target_hold_s. The frame carries, per target and
+ * channel, the lane used, the weights and the beam (gnss_cuda::BeamDumpTarget). The weights are the
  * direction itself: the despread row is the element response conjugated, in the ring's own
  * convention, so sum_i q_i x_i is the coherent sum. beam_lane_conj flips that if the sky says
  * otherwise (beam_dump_read.py info prints the overlap with the eigen weights).
@@ -67,8 +68,12 @@
  * @conf  elem_steer_sign       Double, default 1.0. The assembler's steering sign.
  * @conf  beam_lane_max_age_s   Double, default 2.0. A board entry older than this is ignored.
  * @conf  beam_target_hold_s    Double, default 2.0. See beam_target_gain.
- * @conf  beam_target_gain      Double, default 1.5. A lane replaces the weakest target once it
- *                              has out-powered it by this factor for beam_target_hold_s.
+ * @conf  beam_target_gain      Double, default 1.5. A lane replaces the weakest target once its
+ *                              coherent power has exceeded the target's by this factor for
+ *                              beam_target_hold_s.
+ * @conf  beam_target_min_coh   Double, default 0.15. A lane whose coherence is below this on
+ *                              every selected channel is not a target (the assembler
+ *                              publishes held rows from 0.08).
  * @conf  beam_lane_conj        Bool, default false. Conjugate the lane direction into the
  *                              weights.
  * @conf  frame0_utc            Double, default 0 (the telescope's GPS time0). The record epoch
@@ -90,10 +95,11 @@ public:
 private:
     /// UTC of hop @p seq on the assembler's record axis.
     double frame_utc(long long seq) const;
-    /// The strongest lane that is not a target; 0 if none.
-    int strongest_outsider(const std::map<int, double>& power) const;
-    /// Update _target_prn from this frame's lanes (power per PRN) at steady time @p now_s.
-    void choose_targets(const std::map<int, double>& power, double now_s);
+    /// The best-scoring lane that is not a target; 0 if none.
+    int strongest_outsider(const std::map<int, double>& score) const;
+    /// Update _target_prn from this frame's lanes (coherent power per PRN) at steady time
+    /// @p now_s.
+    void choose_targets(const std::map<int, double>& score, double now_s);
     /// Fill _tgt_stage (the target records and weights) for the frame starting at @p seq0.
     void build_targets(long long seq0);
 
@@ -123,6 +129,7 @@ private:
     std::string _lane_prefix; ///< "<owner>/lane/"
     std::string _lane_group;  ///< the board group: the owner up to its first '_'
     double _lane_max_age_s = 2.0, _target_hold_s = 2.0, _target_gain = 1.5;
+    double _target_min_coh = 0.15;
     bool _lane_conj = false;
     double _frame0_offset_s = 0.0; ///< config frame0_utc minus the telescope's epoch (0 = none)
     bool _time_ok = false;         ///< a record epoch exists (frame0_utc or the GPS time0)
