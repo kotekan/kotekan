@@ -5,6 +5,8 @@ cpu_affinity: [2]
 
 telescope:
   name: CHIMETelescope
+  num_dishes: 1024
+  num_polarizations: 2
   require_gps: false
 
 gps_time:
