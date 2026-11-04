@@ -302,6 +302,14 @@ void pulsarPostProcess::main_thread() {
                     if (frame == _num_packet_per_stream) { // last frame
                         frame = 0;
                         for (uint32_t freq_block = 0; freq_block < num_out_frames; ++freq_block) {
+                            // TODO: set actual metadata? No one uses it...
+                            pulsar_buf->allocate_new_metadata_object((out_buffer_ID + freq_block)
+                                                                     % pulsar_buf->num_frames);
+                            get_chord_metadata(pulsar_buf, (out_buffer_ID + freq_block)
+                                                               % pulsar_buf->num_frames)
+                                ->set_from_frame_desc(
+                                    pulsar_buf->get_frame_desc<kotekan::GenericNDArray>());
+
                             pulsar_buf->mark_frame_full(unique_name, (out_buffer_ID + freq_block)
                                                                          % pulsar_buf->num_frames);
                             out_frames[freq_block] = nullptr;
