@@ -1717,6 +1717,27 @@
    "passes": [
     ["2026-11-03T15:22:42Z", 11.88, true]
    ]
+  },
+  "DIGUI-H54-4": {
+   "status": "transmitting",
+   "catnum": 99013,
+   "g2_phase": 202,
+   "theta_us": 5.413,
+   "carrier_minus_tle_ppb": 8.2,
+   "measured_utc": "2026-11-04T10:49:13Z",
+   "source": "2026-11-04 beam dump window 84 (gw_reduce, 32644 frames over 165 s)",
+   "sep_deg": 4.19,
+   "ref_input": 116,
+   "drift_ns_s": -18.14,
+   "note": "inferred satellite: theta and ppb on its TLE moved +1.467 s along track (fitted to the carrier)",
+   "last_observed_utc": "2026-11-04T10:49:17Z",
+   "last_checked_utc": "2026-11-04T10:49:17Z",
+   "last_checked_sep_deg": 4.07,
+   "passes_found": 1,
+   "passes_silent": 0,
+   "passes": [
+    ["2026-11-04T10:49:17Z", 4.07, true]
+   ]
   }
  },
  "no_sky": [
