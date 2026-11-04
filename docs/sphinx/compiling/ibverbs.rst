@@ -75,6 +75,12 @@ Checking throughput
   ``kotekan_ibv_udp_recv_out_of_buffer`` (device-wide) and in ``ethtool -S <interface>`` as
   ``rx_out_of_buffer``; raise ``queue_depth`` or ``buffer_depth``, pin the receive stage with
   ``cpu_affinity``, or switch ``poll_mode`` to ``busy`` if they grow.
+* A ConnectX that receives at line rate but transmits far below it, whatever the queue depth
+  or the number of QPs, is usually short of outstanding PCIe reads. On a DGX Spark the
+  ConnectX-7 sent 13 Gb/s until ``mstconfig -d <pci id> set ADVANCED_PCI_SETTINGS=1
+  MAX_ACC_OUT_READ=32`` and a reboot, after which it sent 98 Gb/s. Query only the first
+  PCIe function of the NIC; querying the second PCIe link of the DGX Spark NIC crashed
+  the kernel.
 * Between a ConnectX-6 Dx and a ConnectX-7 with 6208 byte packets, both poll modes receive
   100 Gb/s on the wire (2.0 Mpps) without loss. ``event`` costs the receive thread about a
   fifth of a core and ``busy`` a whole one; the sender needs about a tenth of a core.
