@@ -4,8 +4,11 @@
     /home/kvand/gnss/venv-ft/bin/python test_beam_cube_build.py
 
 Offline: the BRDC fetch and orbit prediction are replaced by a fixed sky, and the archive
-reader by synthetic rows, so each test controls exactly which satellite is where.
+reader by synthetic rows, so each test controls exactly which satellite is where. TestGuowangSky
+needs skyfield, which only /home/kvand/gnss/venv has; venv-ft skips it.
 """
+import contextlib
+import io
 import json
 import os
 import shutil
@@ -298,6 +301,95 @@ class TestVetoKeepOwn(unittest.TestCase):
         g = self._geom(True, {("G", 3): (180.0, 40.0)})
         self.assertFalse(g.vetoed(10.0, "G3"))
         self.assertFalse(g.vetoed(10.0, "E16"))
+
+
+# One DIGUI TLE (CelesTrak hulianwang, 2026-11-04), so the GuoWang tests need no cache.
+GW_TLE = """HULIANWANG DIGUI-112
+1 66922U 25285H   26308.40219703 -.00000103  00000+0  46164-4 0  9991
+2 66922  50.0107   2.9230 0000488 295.4223  64.6598 13.29330994 44710
+"""
+
+
+def has_skyfield():
+    try:
+        import skyfield  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
+@unittest.skipUnless(has_skyfield(), "needs skyfield (/home/kvand/gnss/venv)")
+class TestGuowangSky(unittest.TestCase):
+    """A gw_1202 row's PRN is its satellite's code + 1; a code two satellites share is placed only
+    while exactly one is up; positions are on the 2 s grid, matching skyfield at the midpoint."""
+
+    DAY = datetime(2026, 11, 4, tzinfo=timezone.utc).timestamp()
+
+    def setUp(self):
+        self.d = tempfile.mkdtemp(prefix="test_beam_cube_gw-")
+        self.tle = os.path.join(self.d, "g.tle")
+        # DIGUI-113 is the same orbit under another name, so it is up whenever DIGUI-112 is.
+        twin = GW_TLE.replace("DIGUI-112", "DIGUI-113").replace("66922", "66923")
+        with open(self.tle, "w") as fh:
+            fh.write(GW_TLE + twin)
+        self.db = os.path.join(self.d, "db.json")
+        sats = {"DIGUI-112": 792, "DIGUI-113": 792, "DIGUI-999": 5}  # 999 has no TLE
+        with open(self.db, "w") as fh:
+            json.dump({"satellites": {k: {"g2_phase": v} for k, v in sats.items()}}, fh)
+
+    def tearDown(self):
+        shutil.rmtree(self.d, ignore_errors=True)
+
+    def sky(self, sats):
+        with open(self.db, "w") as fh:
+            json.dump({"satellites": {k: {"g2_phase": v} for k, v in sats.items()}}, fh)
+        with contextlib.redirect_stdout(io.StringIO()):
+            return bc.GuowangSky(self.DAY, self.db, self.tle)
+
+    def up_and_down(self, gw):
+        el = gw.track(793)[0][0]
+        return np.nonzero(el > 20.0)[0][0], np.nonzero(el < -20.0)[0][0]
+
+    def test_position_is_skyfield_at_the_grid_midpoint(self):
+        gw = self.sky({"DIGUI-112": 792})
+        i, _ = self.up_and_down(gw)
+        t = gw.t[i]
+        el, az, rng = gw.at(793, t + 0.7)  # anywhere in the bin: that bin's midpoint
+        from skyfield.api import load
+
+        import guowang_passes
+
+        geo = guowang_passes.Geometry(
+            load.timescale(), site=dict(lat=bc.LAT, lon=bc.LON, h=bc.ALT)
+        )
+        sat = guowang_passes.read_tle(self.tle, geo.ts)[0]
+        alt, a, dist = (sat - geo.site).at(guowang_passes.ts_unix(geo.ts, t)).altaz()
+        self.assertAlmostEqual(el, alt.degrees, places=6)
+        self.assertAlmostEqual(az, a.degrees, places=6)
+        self.assertAlmostEqual(rng, dist.m, delta=1.0)
+        self.assertAlmostEqual(t % bc.GW_GEOM_S, bc.GW_GEOM_S / 2)
+
+    def test_below_the_horizon_has_no_position(self):
+        gw = self.sky({"DIGUI-112": 792})
+        _, j = self.up_and_down(gw)
+        self.assertIsNone(gw.at(793, gw.t[j]))
+
+    def test_a_shared_code_with_both_up_has_no_position(self):
+        gw = self.sky({"DIGUI-112": 792, "DIGUI-113": 792})
+        i, _ = self.up_and_down(gw)
+        self.assertIsNone(gw.at(793, gw.t[i]))
+
+    def test_codes_without_a_satellite_have_no_position(self):
+        gw = self.sky({"DIGUI-112": 792, "DIGUI-999": 5})
+        i, _ = self.up_and_down(gw)
+        self.assertIsNone(gw.at(6, gw.t[i]), "DIGUI-999 has no TLE")
+        self.assertIsNone(gw.at(42, gw.t[i]), "no satellite has code 41")
+
+
+class TestGeomStep(unittest.TestCase):
+    def test_the_geometry_grid_is_per_system(self):
+        self.assertEqual(bc.geom_step("W"), bc.GW_GEOM_S)
+        self.assertEqual(bc.geom_step("G"), bc.GEOM_BIN_S)
 
 
 class TestPedestal(unittest.TestCase):
