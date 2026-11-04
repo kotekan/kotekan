@@ -8,6 +8,7 @@ import os
 import sys
 import tempfile
 import unittest
+import zlib
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -133,6 +134,30 @@ class TestTable(unittest.TestCase):
         pb, vb = ge._gw_state(dict(b, sys="W"), t)
         self.assertLess(math.dist(p, pb), 1e-6)
         self.assertLess(math.dist(v, vb), 1e-9)
+
+    def test_a_sweep_steps_theta_with_a_gap_between_steps(self):
+        a = self.records[0]
+        other = dict(a, prn=7, g2_phase=6, name="DIGUI-Y", catnum=2)
+        thetas = [k * 1e-6 for k in range(5)]
+        out = gw.sweep([a, other], {"DIGUI-79"}, thetas, 30.0)
+        self.assertIn(other, out)
+        steps = [r for r in out if r["name"] == "DIGUI-79"]
+        self.assertGreaterEqual(len(steps), 5)
+        off = zlib.crc32(b"DIGUI-79")
+        for r, nxt in zip(steps, steps[1:]):
+            s = r["sweep_step"]
+            self.assertEqual(r["t0_gpst"], s * 30.0)
+            self.assertEqual(r["t1_gpst"], s * 30.0 + 20.0)
+            self.assertEqual(len(r["pos"]), 3)
+            self.assertEqual(r["clk_s"], -thetas[(s + off) % 5])
+            self.assertEqual(nxt["t0_gpst"] - r["t1_gpst"], 10.0)
+            # the step's points are the full record's
+            j = int(round((r["t0_gpst"] - a["t0_gpst"]) / a["dt"]))
+            self.assertEqual(r["pos"][0], a["pos"][j])
+        # the gap predicts nothing, so the broker drops the seed and seeds the next step afresh
+        recs = [dict(r, sys="W", health=0) for r in steps]
+        self.assertIsNone(ge.best_eph(recs, steps[3]["t1_gpst"] + 5.0))
+        self.assertIs(ge.best_eph(recs, steps[3]["t1_gpst"] - 5.0)["clk_s"], steps[3]["clk_s"])
 
     def test_segments_merge_and_pad(self):
         unix = list(range(0, 100, 10))

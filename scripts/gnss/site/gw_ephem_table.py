@@ -22,6 +22,12 @@ beam rails the shared quantiser like any other bright satellite.
 Run every ~10 min (a pass is a few minutes; the file always covers the next --hours). The write
 is atomic; the broker keeps the last file it read. Passes by satellites whose code is not yet in
 the database are listed too ("unknown"), so the beam-dump schedule can target them.
+
+--sweep tables satellites whose code is predicted by the reuse rules but not yet measured
+("implied"). With no theta the chain cannot find their code epoch, theta spreading over ~30 us
+between satellites while a slot pulls in +-0.5 chip, so their passes are cut into steps
+(sweep), each at one theta of --sweep-theta-us; a step on which the chain finds the satellite
+gives its theta (builds/gw1202/gw_sweep_harvest.py), which the sweep file then carries.
 """
 
 import argparse
@@ -30,6 +36,7 @@ import math
 import os
 import sys
 import time
+import zlib
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 GNSS = os.path.join(HERE, "..", "..", "..", "python", "scripts", "gnss")
@@ -278,6 +285,58 @@ def one_per_prn(records):
     return out, sorted(cut)
 
 
+def load_sweep(path):
+    """{name: (G2' phase, theta_s or None)} from a --sweep file: satellites whose code is
+    predicted (code-reuse rules) but not measured, with a candidate theta once a sweep found one."""
+    with open(path) as fh:
+        d = json.load(fh)
+    return {
+        n: (s["g2_phase"], s["theta_us"] * 1e-6 if s.get("theta_us") is not None else None)
+        for n, s in d["satellites"].items()
+    }
+
+
+def sweep(records, names, thetas_s, step_s):
+    """The records of the satellites in `names` cut into steps of step_s on the GPST grid, each
+    step at its own clock: theta = thetas_s[(step index + crc32(name)) % len(thetas_s)], so every
+    run of this job gives a step the same theta, and two satellites on one schedule are offset.
+    A step keeps its grid points in [0, step_s - dt], so one grid step between steps has no
+    record: the broker drops the seed there and seeds the next step afresh at its theta (a held
+    seed would slew to the new code phase at 0.025 chips/s). A step needs two grid points.
+    step_s must be a multiple of the records' dt."""
+    out = []
+    for r in records:
+        if r["name"] not in names:
+            out.append(r)
+            continue
+        dt = r["dt"]
+        off = zlib.crc32(r["name"].encode())
+        steps = {}
+        for j in range(len(r["pos"])):
+            t = r["t0_gpst"] + j * dt
+            s = math.floor(t / step_s + 1e-9)
+            if t - s * step_s <= step_s - dt + 1e-6:
+                steps.setdefault(s, []).append(j)
+        for s, js in sorted(steps.items()):
+            if len(js) < 2:
+                continue
+            theta = thetas_s[(s + off) % len(thetas_s)]
+            out.append(
+                dict(
+                    r,
+                    t0_gpst=r["t0_gpst"] + js[0] * dt,
+                    t1_gpst=r["t0_gpst"] + js[-1] * dt,
+                    pos=r["pos"][js[0] : js[-1] + 1],
+                    vel=r["vel"][js[0] : js[-1] + 1],
+                    clk_s=-theta,
+                    sweep_step=s,
+                    theta_try_us=round(theta * 1e6, 4),
+                )
+            )
+    out.sort(key=lambda r: r["t0_gpst"])
+    return out
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -317,6 +376,18 @@ def main(argv=None):
     ap.add_argument(
         "--fetch", action="store_true", help="refresh the cache if older than 2 h"
     )
+    ap.add_argument(
+        "--sweep",
+        help="JSON of satellites with a predicted code, tabled too (\"implied\" in their "
+        "records): at their theta_us where it is given, else in --sweep-step-s steps "
+        "across --sweep-theta-us (sweep)",
+    )
+    ap.add_argument("--sweep-step-s", type=float, default=30.0)
+    ap.add_argument(
+        "--sweep-theta-us",
+        default="-18,12,0.375",
+        help="LO,HI,STEP: the thetas a sweep tries (0.375 us = 0.77 chip)",
+    )
     ap.add_argument("--cache-dir", default=gp.CACHE_DIR)
     ap.add_argument("--out", default=DEFAULT_OUT)
     a = ap.parse_args(argv)
@@ -330,13 +401,20 @@ def main(argv=None):
         sys.exit("no TLE: give --tle or --fetch")
     sats = gp.read_tle(tle, ts, "DIGUI")
     db, theta_unknown_s = load_db()
+    # A missing or unreadable sweep file costs the sweep, not the table.
+    implied = {}
+    if a.sweep:
+        try:
+            implied = {n: v for n, v in load_sweep(a.sweep).items() if n not in db}
+        except Exception as e:
+            print("%s: unreadable (%s); no sweep" % (a.sweep, e))
     now = time.time()
     records, unknown = build(
         sats,
         ts,
         now - 600.0,
         now + a.hours * 3600.0,
-        db,
+        dict(db, **implied),
         a.sep_deg,
         a.step_s,
         a.pad_s,
@@ -345,6 +423,13 @@ def main(argv=None):
         a.el_min,
     )
     records, cut = one_per_prn(records)
+    for r in records:
+        if r["name"] in implied:
+            r["implied"] = True
+    lo, hi, st = (float(x) for x in a.sweep_theta_us.split(","))
+    thetas = [(lo + k * st) * 1e-6 for k in range(int(round((hi - lo) / st)) + 1)]
+    swept = {n for n, (_, th) in implied.items() if th is None}
+    records = sweep(records, swept, thetas, a.sweep_step_s)
     # The extra TLEs are optional: an unreadable file costs its satellites, not the table.
     extra = []
     if a.extra_tle:
@@ -371,6 +456,10 @@ def main(argv=None):
         el_min_deg=a.el_min,
         step_s=a.step_s,
         known=sorted(db),
+        implied=sorted(implied),
+        sweep=dict(
+            file=a.sweep, step_s=a.sweep_step_s, theta_us=[lo, hi, st], names=sorted(swept)
+        ),
         records=records,
         unknown=unknown,
         extra_tle=a.extra_tle,
@@ -383,13 +472,17 @@ def main(argv=None):
         json.dump(doc, fh, separators=(",", ":"))
     os.replace(tmp, a.out)
     print(
-        "%s: %d pass segment(s) of %d known satellite(s), %d pass(es) of unknown ones, "
+        "%s: %d pass segment(s) of %d known satellite(s), %d sweep step(s) of %d implied "
+        "one(s) and %d at a candidate theta, %d pass(es) of unknown ones, "
         "shared-prn overlap cut from %s, %d transit(s) within %g deg of %d satellite(s) "
         "(%d extra), TLE %s"
         % (
             a.out,
-            len(records),
-            len({r["name"] for r in records}),
+            sum(1 for r in records if r["name"] in db),
+            len({r["name"] for r in records if r["name"] in db}),
+            sum(1 for r in records if "sweep_step" in r),
+            len({r["name"] for r in records if "sweep_step" in r}),
+            len({r["name"] for r in records if r.get("implied") and "sweep_step" not in r}),
             len(unknown),
             ", ".join(cut) or "none",
             len(tr),
