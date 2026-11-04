@@ -894,6 +894,26 @@
     ["2026-11-03T09:07:02Z", 5.39, true]
    ]
   },
+  "DIGUI-118": {
+   "status": "transmitting",
+   "catnum": 66957,
+   "g2_phase": 1940,
+   "theta_us": -16.664,
+   "carrier_minus_tle_ppb": 13.5,
+   "measured_utc": "2026-11-04T08:34:57Z",
+   "source": "2026-11-04 beam dump window 77 (gw_reduce, 39157 frames over 79 s)",
+   "sep_deg": 5.26,
+   "ref_input": 116,
+   "drift_ns_s": -13.23,
+   "last_observed_utc": "2026-11-04T08:35:01Z",
+   "last_checked_utc": "2026-11-04T08:35:01Z",
+   "last_checked_sep_deg": 5.23,
+   "passes_found": 1,
+   "passes_silent": 0,
+   "passes": [
+    ["2026-11-04T08:35:01Z", 5.23, true]
+   ]
+  },
   "DIGUI-119": {
    "status": "transmitting",
    "catnum": 67059,
