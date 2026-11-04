@@ -422,11 +422,13 @@ common:
         # 1202.025 MHz: GuoWang (China's LEO broadband satellites; docs/CHORD_GUOWANG_SIGNAL_
         # 20261103.md, #227), the L3OC lobe's channels. GW_1202 is one 2 ms frame, the code then
         # the data millisecond zeroed. The PRN is the satellite's G2' phase + 1 (no ICD; the
-        # beam-dump database maps TLE satellites to phases). Eight slots for the satellites near
-        # boresight in one pass, booted on the five identified ones; the broker arms them per
-        # pass from the TLE table (no BRDC), ranked by boresight separation. PRNs 1-3 are codes
-        # no satellite in the library carries: the chain's dark noise probes.
-        - GW_1202:894,1101,1214,1519,2028,1,2,3
+        # beam-dump database maps TLE satellites to phases). 21 satellite slots: at most 18 of the
+        # 177 catalogued satellites are above the horizon here at once (mean 15, 24 h sweep
+        # 2026-11-04), so the chain can hold every one down to the horizon. The broker arms them
+        # from the TLE table (no BRDC), ranked by boresight separation; the boot list is library
+        # codes. PRNs 1-3 are codes no satellite in the library carries: the chain's dark noise
+        # probes.
+        - GW_1202:894,1101,1214,1519,2028,133,188,203,266,269,288,391,600,613,648,703,747,793,831,896,906,1,2,3
 
         # 1248.06 MHz: GLONASS L2OC-p, the CDMA pilot on L2 (BOC(1,1) under a data/pilot TDM;
         # the code table carries both, half its chips zero), with the shared 50-chip OC2 baked
