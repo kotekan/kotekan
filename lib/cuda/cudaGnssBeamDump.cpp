@@ -258,12 +258,16 @@ void cudaGnssBeamDump::build_targets(long long seq0) {
     // Rank the lanes by coherent power, coherence x row power, over the channels. The row
     // power alone is noise-dominated and nearly equal for every lane, so a held lane of a
     // satellite that never locked would outrank a locked one. A lane below
-    // beam_target_min_coh on every channel is not a target.
+    // beam_target_min_coh on every channel is not a target; a target keeps its slot down to
+    // beam_target_min_coh / beam_target_gain, so a lane at the floor does not flap.
     std::map<int, double> score;
     for (const auto& [prn, rows] : _lanes) {
+        const bool is_target =
+            std::find(_target_prn.begin(), _target_prn.end(), prn) != _target_prn.end();
+        const double coh_min = is_target ? _target_min_coh / _target_gain : _target_min_coh;
         double s = -1.0;
         for (const gnss::ProjEntry& e : rows)
-            if (e.k > 0 && e.coh >= _target_min_coh)
+            if (e.k > 0 && e.coh >= coh_min)
                 s = std::max(s, e.coh * e.power);
         if (s >= 0.0)
             score[prn] = s;

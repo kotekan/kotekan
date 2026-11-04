@@ -73,7 +73,8 @@
  *                              beam_target_hold_s.
  * @conf  beam_target_min_coh   Double, default 0.15. A lane whose coherence is below this on
  *                              every selected channel is not a target (the assembler
- *                              publishes held rows from 0.08).
+ *                              publishes held rows from 0.08); a target keeps its slot down
+ *                              to this / beam_target_gain.
  * @conf  beam_lane_conj        Bool, default false. Conjugate the lane direction into the
  *                              weights.
  * @conf  frame0_utc            Double, default 0 (the telescope's GPS time0). The record epoch
