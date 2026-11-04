@@ -99,6 +99,7 @@ switch_dtv_write:
 
 # Files span ~43 s, with metadata stored once.
 # Re-enabling writes starts a new file.
+# Each node writes locally, with its hostname in the file name.
 write_dtv:
 {% for n in numa_halves %}
 {% for product in ["mask", "powers", "fine_support"] %}

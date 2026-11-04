@@ -141,6 +141,20 @@ to true to resume; recording starts a new file. A nonzero ``valid_at_time_ns``
 applies the detector change at the first block starting at or after that
 instrument time. Both switches start enabled.
 
+Each X-engine node writes to its own disk, and each file name starts with the
+node's hostname, so files from different nodes do not collide when gathered.
+To collect them in one place, ``dtv_output_dir`` can be set to a directory
+shared by all nodes.
+
+Recording on the recv node would remove the gathering step, and it needs two
+changes. The 16 halves would share one receive buffer for each product, as the
+bad feed masks do, and ``hdf5FileWrite`` opens a new file at each jump in
+``fpga_seq_num``. A stage that splits frames by ``coarse_freq`` is therefore
+needed in front of the writers. Each frame also carries about 149 kB of
+``chordMetadata`` over ``bufferSend``, so the three products would use about
+1.4 Gb/s to deliver 4.8 MB/s of data. Sending several blocks in each frame
+reduces this rate by the same factor.
+
 
 GPU streams
 ===========
