@@ -516,12 +516,15 @@ std::string PipelineGraph::to_dot() const {
                                    quote(cluster.id), device_table(layout, cluster.label));
     }
 
-    // Top-level nodes first, then the clusters (and the nodes they hold).
+    // Top-level nodes first, then the clusters (and the nodes they hold), then
+    // the device tables. Graphviz orders nodes starting from the order they
+    // are written in: with the tables last, a section box holding stages for
+    // both devices lands between the two tables rather than beside one.
     for (const auto& node : _nodes)
         if (node.cluster.empty())
             dot += node_dot(node, indent);
-    dot += table_nodes;
     dot += cluster_dot("", indent, cyclic, tables);
+    dot += table_nodes;
 
     // Graphviz would materialise an unknown endpoint as an unlabelled node, which
     // silently turns a wiring bug into a plausible-looking graph; drop those edges
