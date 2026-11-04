@@ -12,13 +12,18 @@
 #include "NDArrayRingBuffer.hpp" // for NDArrayRingBuffer
 #include "cudaCommand.hpp"
 #include "cudaGnssBeamDumpKernel.hpp" // for BeamDumpLayout
+#include "gnssElemSteer.hpp"          // for gnss::ElemSteer
+#include "gnssProjSubspace.hpp"       // for gnss::ProjEntry
 
+#include <complex>
+#include <map>
 #include <string>
 #include <vector>
 
 /**
  * @class cudaGnssBeamDump
- * @brief A self-calibrated beam toward the dominant source, per selected channel, per frame.
+ * @brief A self-calibrated beam toward the dominant source, per selected channel, per frame,
+ *        and a beam per tracked satellite steered by its chain's lane direction.
  *
  * For each selected channel the command forms the covariance of the 128 inputs over the frame,
  * whitens each input by its own power, takes the top eigenvector (power iterations warm-started
@@ -27,6 +32,20 @@
  * weights, the per-input powers and the two largest eigenvalues beside the samples
  * (cudaGnssBeamDumpKernel.hpp). It is a consumer of the voltage ring like cudaCorrelatorDual,
  * in the same process and on the same stream.
+ *
+ * Target beams (beam_lane_owner). The chain's assembler publishes, per channel, each tracked
+ * PRN's element direction on the process-wide ProjBoard (gnssLaneDirection.hpp: the averaged
+ * despread row, held through a bright pass by elem_dir_hold_s). Per frame the command takes
+ * that chain's lanes on the selected channels, keeps the strongest beam_targets PRNs by row
+ * power, re-steers each direction to the frame's mid-time along the lane's track
+ * (gnssFleetLane.hpp: a LEO moves the far elements' phase by tens of degrees in one frame)
+ * and forms a beam with those weights beside the eigen beam. A target is kept while its lane
+ * is on the board, and replaced when another lane out-powers the weakest target by
+ * beam_target_gain for beam_target_hold_s. The frame carries, per target and channel, the
+ * lane used, the weights and the beam (gnss_cuda::BeamDumpTarget). The weights are the
+ * direction itself: the despread row is the element response conjugated, in the ring's own
+ * convention, so sum_i q_i x_i is the coherent sum. beam_lane_conj flips that if the sky says
+ * otherwise (beam_dump_read.py info prints the overlap with the eigen weights).
  *
  * The output is an NDArrayBuffer named `beam_name`, on the device as `<beam_name>_buffer`, for
  * cudaOutputData to copy out; its metadata is the ring's with fpga_seq_num set to the frame's
@@ -40,6 +59,21 @@
  *                              the ring metadata's coarse frequencies on the first frame.
  * @conf  beam_ref_input        Int. The phase-reference input (a live, unflagged input).
  * @conf  beam_eig_iters        Int, default 4. Power iterations per frame per component.
+ * @conf  beam_lane_owner       String, default "". The assembler whose lanes are the targets
+ *                              (its unique_name, e.g. /gnss0_1202_n2assemble). "" = no targets.
+ * @conf  beam_targets          Int, default 2. Target beams per channel.
+ * @conf  elem_positions_enu    Double list [128][3]. The assembler's element positions, metres
+ *                              ENU. Required with targets.
+ * @conf  elem_steer_sign       Double, default 1.0. The assembler's steering sign.
+ * @conf  beam_lane_max_age_s   Double, default 2.0. A board entry older than this is ignored.
+ * @conf  beam_target_hold_s    Double, default 2.0. See beam_target_gain.
+ * @conf  beam_target_gain      Double, default 1.5. A lane replaces the weakest target once it
+ *                              has out-powered it by this factor for beam_target_hold_s.
+ * @conf  beam_lane_conj        Bool, default false. Conjugate the lane direction into the
+ *                              weights.
+ * @conf  frame0_utc            Double, default 0 (the telescope's GPS time0). The record epoch
+ *                              override cudaGnssChordTrack takes: the frame times that place
+ *                              the re-steer must share the assembler's axis.
  */
 class cudaGnssBeamDump : public cudaCommand {
 public:
@@ -54,6 +88,15 @@ public:
     void finalize_frame() override;
 
 private:
+    /// UTC of hop @p seq on the assembler's record axis.
+    double frame_utc(long long seq) const;
+    /// The strongest lane that is not a target; 0 if none.
+    int strongest_outsider(const std::map<int, double>& power) const;
+    /// Update _target_prn from this frame's lanes (power per PRN) at steady time @p now_s.
+    void choose_targets(const std::map<int, double>& power, double now_s);
+    /// Fill _tgt_stage (the target records and weights) for the frame starting at @p seq0.
+    void build_targets(long long seq0);
+
     const int _buffer_depth;
     const int _num_times;
     const int _num_elements;
@@ -64,6 +107,8 @@ private:
     const std::vector<std::int32_t> _freq_ids;
     const int _ref_input;
     const int _eig_iters;
+    const std::string _lane_owner;
+    const int _n_targets;
     const gnss_cuda::BeamDumpLayout _layout;
 
     NDArrayRingBuffer<kotekan::int4x2_swapped_withoffset_t, 4> voltage;
@@ -73,6 +118,24 @@ private:
     bool _uploaded_static = false;
     bool _checked_freqs = false;
     long _frames = 0;
+
+    // Targets (beam_lane_owner).
+    std::string _lane_prefix; ///< "<owner>/lane/"
+    std::string _lane_group;  ///< the board group: the owner up to its first '_'
+    double _lane_max_age_s = 2.0, _target_hold_s = 2.0, _target_gain = 1.5;
+    bool _lane_conj = false;
+    double _frame0_offset_s = 0.0; ///< config frame0_utc minus the telescope's epoch (0 = none)
+    bool _time_ok = false;         ///< a record epoch exists (frame0_utc or the GPS time0)
+    gnss::ElemSteer _geo;
+    std::vector<int> _target_prn;   ///< [n_targets]; 0 = empty slot
+    int _challenger_prn = 0;        ///< the outsider out-powering the weakest target
+    double _challenger_since = 0.0; ///< steady seconds since which it has
+    std::map<int, std::vector<gnss::ProjEntry>> _lanes; ///< this frame's lanes per PRN, per
+                                                        ///< selected channel (k 0 = none)
+    std::vector<unsigned char> _tgt_stage;  ///< the target records and weights, per frame
+    std::vector<gnss::ElemSteer::cf> _sh;   ///< fleet_lane_direction scratch
+    std::vector<std::complex<double>> _dir; ///< [BEAM_INPUTS]
+    bool _warned_n_elem = false;
 };
 
 #endif

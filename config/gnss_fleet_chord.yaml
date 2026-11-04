@@ -173,6 +173,16 @@ common:
     # (1258-1284); each GPU keeps its own mod-16 share, so a stitchable band needs the whole
     # fleet. ~16 GB fleet-wide per 80 s pass under <record_dir>/beamdump on each node.
     beam-dump-freq-ids: "6122-6185,6395-6594"
+    # Track beam (cudaGnssBeamDump with beam_lane_owner, docs/CHORD_GUOWANG_TRACK_BEAM.md): on
+    # the 1202 main lobe (+-1.1 MHz about 1202.025 MHz, ~77 % of the signal's power) a beam per
+    # tracked GuoWang satellite, steered by the gw_1202 chain's lane directions, for the two
+    # strongest by row power, beside the eigen beam. Every satellite sends the same message
+    # stream, so the two closest to the boresight give one continuous CSK readout with
+    # overlap across handovers. Written continuously under <record_dir>/trackbeam while
+    # scripts/gnss/track_beam_arm.py (cron on the gnss VM) keeps the gnss<g>_trackbeam_gate
+    # armed, ~2.4 MB/s per GPU; the cf05 decode loop pulls and deletes the files.
+    track-beam-freq-ids: "6149-6159"
+    track-beam-chain: gw_1202
     # Lane dump (GnssN2Project.hpp): every 2 s, per live channel, the raw N2 block and every
     # lane candidate with its Gram-Schmidt verdict, written only while
     # scripts/gnss/lane_dump_sched.py arms the gnss<g>_lanedump_gate around a bright pass

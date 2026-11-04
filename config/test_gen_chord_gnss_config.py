@@ -969,6 +969,10 @@ def test_manual_mask_reaches_the_node_config():
             "5971-5980,6000",
             "--beam-dump-freq-ids",
             "6122-6185,6395-6594",
+            "--track-beam-freq-ids",
+            "6144-6164",
+            "--extra-signal",
+            "GW_1202:894,1101,1214",
             "--dtv-subtract-freq-ids",
             "2720-2735",
             "--lane-dump-period-s",
@@ -1041,7 +1045,7 @@ def test_manual_mask_reaches_the_node_config():
     bd = [
         c
         for c in cfg["gnss0_n2dual"]["commands"]
-        if c.get("name") == "cudaGnssBeamDump"
+        if c.get("name") == "cudaGnssBeamDump" and not c.get("beam_lane_owner")
     ]
     check(
         len(bd) == 1
@@ -1052,6 +1056,36 @@ def test_manual_mask_reaches_the_node_config():
         ),
         "--beam-dump-freq-ids: one cudaGnssBeamDump per GPU on its mod-16 share, reading "
         "`voltage` (cx51 refused the config without voltage_name, 11-02)",
+    )
+    from gen_chord_gnss_config import beam_dump_frame_bytes  # g is a loop variable here
+
+    tb = [
+        (gpu, c)
+        for gpu in (0, 1)
+        for c in cfg["gnss%d_n2dual" % gpu]["commands"]
+        if c.get("name") == "cudaGnssBeamDump" and c.get("beam_lane_owner")
+    ]
+    check(
+        len(tb) >= 1
+        and all(
+            c["beam_lane_owner"] == "/gnss%d_1202_n2assemble" % gpu
+            and c["beam_targets"] == 2
+            and c["beam_name"] == "gnss%d_trackbeam" % gpu
+            and c["elem_positions_enu"]
+            == cfg["gnss%d_1202_n2assemble" % gpu]["elem_positions_enu"]
+            and all(6144 <= f <= 6164 for f in c["beam_freq_ids"])
+            and cfg["gnss%d_trackbeam_gate" % gpu]["in_bufs"]
+            == ["gnss%d_trackbeam_buf" % gpu]
+            and cfg["gnss%d_trackbeam_sink" % gpu]["in_buf"]
+            == "gnss%d_trackbeam_gated_buf" % gpu
+            and cfg["gnss%d_trackbeam_sink" % gpu]["base_dir"].endswith("/trackbeam")
+            and cfg["gnss%d_trackbeam_buf" % gpu]["frame_size"]
+            == beam_dump_frame_bytes(len(c["beam_freq_ids"]), 8192, 2)
+            for gpu, c in tb
+        ),
+        "--track-beam-freq-ids: a second cudaGnssBeamDump on each GPU holding a 6144-6164 "
+        "channel, steered by the gw_1202 assembler's lanes with its positions, gated and "
+        "written under trackbeam (%d GPUs)" % len(tb),
     )
     for g in (0, 1):
         sv = cfg["run_send_voltage"]["gpu_%d" % g]

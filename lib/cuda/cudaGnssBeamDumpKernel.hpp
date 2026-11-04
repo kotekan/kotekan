@@ -14,7 +14,9 @@
  * freq_id, the two largest whitened eigenvalues, the mean power per input, the 128 complex
  * weights, and the beam samples as half2 (float16 re, im) at the hop rate. The samples are
  * sum_i w_i x_i with x decoded as (real = high nibble, imaginary = low nibble, minus 8), i.e.
- * the F-engine's own convention, not conjugated to the sky convention.
+ * the F-engine's own convention, not conjugated to the sky convention. With targets
+ * (cudaGnssBeamDump beam_lane_owner) the frame continues with, per target and channel, the
+ * lane the beam was steered by (@ref BeamDumpTarget), its weights and its samples.
  */
 
 #ifndef CUDA_GNSS_BEAM_DUMP_KERNEL_HPP
@@ -40,33 +42,54 @@ struct BeamDumpHdr {
     int32_t ref_input; ///< the phase-reference input
     int32_t conj;      ///< 0: samples in the F-engine's (re high, im low) convention
     int32_t eig_iters; ///< power iterations per frame
-    int32_t reserved[6];
+    int32_t n_targets; ///< tracked-satellite beams per channel (the target sections; 0 = none)
+    int32_t reserved[5];
 };
 static constexpr int32_t BEAM_DUMP_MAGIC = 0x504d4442; // "BDMP" little-endian
-static constexpr int32_t BEAM_DUMP_VERSION = 1;
+/// Version 2 adds n_targets and the target sections; with n_targets 0 the frame is laid out
+/// as version 1.
+static constexpr int32_t BEAM_DUMP_VERSION = 2;
+
+/// One (target, channel) of the target sections: the lane the beam was steered by.
+struct BeamDumpTarget {
+    int32_t prn;  ///< the lane's PRN; 0 = no lane this frame (weights and beam are zero)
+    int32_t held; ///< 1: the assembler published its held direction (elem_dir_hold_s)
+    float coh;    ///< LaneDirection coherence of the row
+    float power;  ///< the row's EMA power, despread units
+    float held_s; ///< seconds since the row was last coherent (0 = live)
+    float age_s;  ///< frame mid-time minus the lane's track epoch: the re-steer interval
+    float reserved[2];
+};
 
 /// Byte offsets of the frame's sections, each 16-byte aligned.
 struct BeamDumpLayout {
-    size_t off_freq; ///< int32 [n_chan]
-    size_t off_lam;  ///< float [n_chan][4]: lambda1, lambda2 (whitened units, noise = 1), 0, 0
-    size_t off_pw;   ///< float [n_chan][BEAM_INPUTS]: mean |x|^2 per input
-    size_t off_w;    ///< float2 [n_chan][BEAM_INPUTS]: beam weights
-    size_t off_beam; ///< half2 [n_chan][n_times]
-    size_t bytes;    ///< whole frame
+    size_t off_freq;  ///< int32 [n_chan]
+    size_t off_lam;   ///< float [n_chan][4]: lambda1, lambda2 (whitened units, noise = 1), 0, 0
+    size_t off_pw;    ///< float [n_chan][BEAM_INPUTS]: mean |x|^2 per input
+    size_t off_w;     ///< float2 [n_chan][BEAM_INPUTS]: beam weights
+    size_t off_beam;  ///< half2 [n_chan][n_times]
+    size_t off_tgt;   ///< BeamDumpTarget [n_targets][n_chan]
+    size_t off_tw;    ///< float2 [n_targets][n_chan][BEAM_INPUTS]: the target beams' weights
+    size_t off_tbeam; ///< half2 [n_targets][n_chan][n_times]
+    size_t bytes;     ///< whole frame
 };
 
 inline size_t beam_dump_align(size_t off) {
     return (off + 15) & ~size_t(15);
 }
 
-inline BeamDumpLayout beam_dump_layout(int n_chan, int n_times) {
+inline BeamDumpLayout beam_dump_layout(int n_chan, int n_times, int n_targets = 0) {
     BeamDumpLayout L;
     L.off_freq = sizeof(BeamDumpHdr);
     L.off_lam = beam_dump_align(L.off_freq + sizeof(int32_t) * n_chan);
     L.off_pw = beam_dump_align(L.off_lam + sizeof(float) * 4 * n_chan);
     L.off_w = beam_dump_align(L.off_pw + sizeof(float) * BEAM_INPUTS * n_chan);
     L.off_beam = beam_dump_align(L.off_w + sizeof(float) * 2 * BEAM_INPUTS * n_chan);
-    L.bytes = beam_dump_align(L.off_beam + (size_t)4 * n_chan * n_times);
+    L.off_tgt = beam_dump_align(L.off_beam + (size_t)4 * n_chan * n_times);
+    L.off_tw = beam_dump_align(L.off_tgt + sizeof(BeamDumpTarget) * (size_t)n_targets * n_chan);
+    L.off_tbeam =
+        beam_dump_align(L.off_tw + sizeof(float) * 2 * BEAM_INPUTS * (size_t)n_targets * n_chan);
+    L.bytes = beam_dump_align(L.off_tbeam + (size_t)4 * n_targets * n_chan * n_times);
     return L;
 }
 

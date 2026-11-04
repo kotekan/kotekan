@@ -936,14 +936,17 @@ def add_dtv_subtract(out, cfg, args, node, spds):
         )
 
 
-def beam_dump_frame_bytes(n_chan, n_times):
+def beam_dump_frame_bytes(n_chan, n_times, n_targets=0):
     """Bytes of one cudaGnssBeamDump frame: mirrors gnss_cuda::beam_dump_layout."""
     align = lambda off: (off + 15) & ~15
     off = align(64 + 4 * n_chan)  # header, freq_ids
     off = align(off + 16 * n_chan)  # lambda[4]
     off = align(off + 4 * 128 * n_chan)  # pw[128]
     off = align(off + 8 * 128 * n_chan)  # w[128] float2
-    return align(off + 4 * n_chan * n_times)  # half2 samples
+    off = align(off + 4 * n_chan * n_times)  # half2 samples
+    off = align(off + 32 * n_targets * n_chan)  # BeamDumpTarget
+    off = align(off + 8 * 128 * n_targets * n_chan)  # target weights
+    return align(off + 4 * n_targets * n_chan * n_times)  # target samples
 
 
 def freq_id_ranges(spec):
@@ -1917,6 +1920,107 @@ def merge_n2dual_gpu(blocks, cfg, args, node, gpu, chains, spds):
         print(
             f"  gpu{gpu}: beam dump over {len(bd_pairs)} channels "
             f"({bd_pairs[0][0]}..{bd_pairs[-1][0]}), {bd_bytes / 1e6:.2f} MB/frame",
+            file=sys.stderr,
+        )
+
+    # The track beam (docs/CHORD_GUOWANG_TRACK_BEAM.md): the same command on the main-lobe
+    # channels of --track-beam-chain, with a beam per tracked satellite steered by that
+    # chain's lane directions (the --track-beam-targets strongest by row power) beside the
+    # eigen beam. Continuous while scripts/gnss/track_beam_arm.py keeps the
+    # gnss<g>_trackbeam_gate armed; written under <record_dir>/trackbeam.
+    tb_ids = [
+        f for f in sorted(freq_id_ranges(args.track_beam_freq_ids)) if f % 16 == bd_off
+    ]
+    tb_chain = next(
+        (
+            c["chain"]
+            for c in chains
+            if c["chain"]
+            and broker_chain_name(c["chain"]["signal"]) == args.track_beam_chain
+        ),
+        None,
+    )
+    if tb_ids and tb_chain is None:
+        print(
+            f"  gpu{gpu}: no track beam: chain {args.track_beam_chain} is not on this GPU",
+            file=sys.stderr,
+        )
+    if tb_ids and tb_chain is not None:
+        asm = blocks[f"gnss{gpu}{tb_chain['tag']}_n2assemble"]
+        if "elem_positions_enu" not in asm:
+            sys.exit(
+                "--track-beam-freq-ids needs steered assemblers (elem_positions_enu)"
+            )
+        tb_pairs = [(f, gpu_of_channel(cfg, node, f)[1]) for f in tb_ids]
+        tb_bytes = beam_dump_frame_bytes(
+            len(tb_pairs), int(spds), args.track_beam_targets
+        )
+        tb_buf = f"gnss{gpu}_trackbeam_buf"
+        tb_gated = f"gnss{gpu}_trackbeam_gated_buf"
+        beam_cmd.append(
+            {
+                "name": "cudaGnssBeamDump",
+                "voltage_name": "voltage",
+                "beam_name": f"gnss{gpu}_trackbeam",
+                "beam_local_channels": [idx for _, idx in tb_pairs],
+                "beam_freq_ids": [fid for fid, _ in tb_pairs],
+                "beam_ref_input": args.beam_dump_ref_input,
+                "beam_eig_iters": args.beam_dump_eig_iters,
+                "beam_lane_owner": f"/gnss{gpu}{tb_chain['tag']}_n2assemble",
+                "beam_targets": args.track_beam_targets,
+                "elem_positions_enu": asm["elem_positions_enu"],
+                "elem_steer_sign": asm["elem_steer_sign"],
+                # The assembler's record epoch (cudaGnssChordTrack's frame0_utc), so the
+                # re-steer times share the lanes' axis.
+                **(
+                    {"frame0_utc": float(cfg["fengine"]["frame0_utc"])}
+                    if cfg["fengine"].get("frame0_utc")
+                    else {}
+                ),
+            }
+        )
+        out_buffers["host_gnss_trackbeam"] = tb_buf
+        outputs.append(
+            {
+                "name": "cudaOutputData",
+                "gpu_mem": f"gnss{gpu}_trackbeam_buffer",
+                "out_buf": "host_gnss_trackbeam",
+            }
+        )
+        tb_core = GPU_VARS[gpu][0]["cores"]["sink"]
+        for name, depth in ((tb_buf, BUFFER_DEPTH), (tb_gated, args.beam_dump_depth)):
+            cap_blocks[name] = {
+                "kotekan_buffer": "standard",
+                "metadata_pool": "gnss_pool",
+                "num_frames": depth,
+                "frame_size": tb_bytes,
+            }
+        cap_blocks[f"gnss{gpu}_trackbeam_gate"] = {
+            "kotekan_stage": "FrameWindowGate",
+            "in_bufs": [tb_buf],
+            "out_bufs": [tb_gated],
+            "clock_buf": 0,
+            "clock_source": "frame",
+            "clock_offset": 0,
+            "cpu_affinity": [tb_core],
+        }
+        cap_blocks[f"gnss{gpu}_trackbeam_sink"] = {
+            "kotekan_stage": "rawFileWrite",
+            "in_buf": tb_gated,
+            "base_dir": (args.record_dir or rt["record_dir"]) + "/trackbeam",
+            "file_name": f"{node}_gnss{gpu}_trackbeam",
+            "file_ext": "raw",
+            "prefix_hostname": False,
+            "num_frames_per_file": args.track_beam_frames_per_file,
+            "allow_ndarray": True,
+            "continue_numbering": True,
+            "create_base_dir": True,
+            "cpu_affinity": [tb_core],
+        }
+        print(
+            f"  gpu{gpu}: track beam over {len(tb_pairs)} channels "
+            f"({tb_pairs[0][0]}..{tb_pairs[-1][0]}), {args.track_beam_targets} targets from "
+            f"{tb_chain['signal']}, {tb_bytes / 1e6:.2f} MB/frame",
             file=sys.stderr,
         )
 
@@ -3164,6 +3268,41 @@ def main():
         metavar="N",
         dest="beam_dump_depth",
         help="frames of slack between the beam-dump gate and its writer (default 8)",
+    )
+    ap.add_argument(
+        "--track-beam-freq-ids",
+        default="",
+        metavar="RANGES",
+        dest="track_beam_freq_ids",
+        help="absolute freq_id ranges for the track beam: a second cudaGnssBeamDump per GPU "
+        "with a beam per tracked satellite of --track-beam-chain, steered by its lane "
+        "directions, continuous while scripts/gnss/track_beam_arm.py keeps the "
+        "gnss<g>_trackbeam_gate armed, written under <record_dir>/trackbeam "
+        "(docs/CHORD_GUOWANG_TRACK_BEAM.md). Empty = none.",
+    )
+    ap.add_argument(
+        "--track-beam-chain",
+        default="gw_1202",
+        metavar="SIGNAL",
+        dest="track_beam_chain",
+        help="the chain whose lanes steer the track beam (default gw_1202)",
+    )
+    ap.add_argument(
+        "--track-beam-targets",
+        type=int,
+        default=2,
+        metavar="N",
+        dest="track_beam_targets",
+        help="tracked satellites with a beam each, the strongest by lane row power "
+        "(default 2)",
+    )
+    ap.add_argument(
+        "--track-beam-frames-per-file",
+        type=int,
+        default=240,
+        metavar="N",
+        dest="track_beam_frames_per_file",
+        help="frames per track-beam file (default 240, ~10 s)",
     )
     ap.add_argument(
         "--dtv-subtract-freq-ids",
