@@ -276,6 +276,33 @@ class DbTest(unittest.TestCase):
         self.assertTrue(any("no_transmission -> transmitting" in c for c in changes))
         self.assertEqual(json.loads(gdb.dumps(db)), db)
 
+    def test_no_sky_set_after_the_fact(self):
+        db = {
+            "about": "",
+            "satellites": {
+                "DIGUI-1": dict(
+                    catnum=1,
+                    g2_phase=10,
+                    measured_utc="2026-11-02T10:00:40Z",
+                    sep_deg=1.0,
+                    passes=[
+                        ["2026-11-02T10:00:40Z", 1.0, True],
+                        ["2026-11-02T18:00:40Z", 2.0, False],
+                    ],
+                    status="no_transmission",
+                ),
+            },
+            "no_sky": [],
+        }
+        gdb.update(db, {}, {}, {})
+        self.assertEqual(db["satellites"]["DIGUI-1"]["status"], "no_transmission")
+        # the 18:00 miss fell in an outage noticed later: it no longer counts
+        db["no_sky"] = [dict(start="2026-11-02T16:00:00Z", end=None)]
+        gdb.update(db, {}, {}, {})
+        e = db["satellites"]["DIGUI-1"]
+        self.assertEqual(e["status"], "transmitting")
+        self.assertEqual((e["passes_found"], e["passes_silent"]), (1, 0))
+
 
 if __name__ == "__main__":
     unittest.main()

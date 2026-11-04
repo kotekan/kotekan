@@ -217,7 +217,12 @@ def update(db, passes, proposals, catnums, silent_max_sep=SILENT_MAX_SEP_DEG):
         old = sats.get(name)
         e = dict(old) if old else {}
         # pass history: the stored list, the reduce logs, and the code reference's own pass
-        hist = {p[0]: list(p) for p in e.get("passes", [])}
+        # a miss inside a no-sky period (set after the fact) is not evidence of silence
+        hist = {
+            p[0]: list(p)
+            for p in e.get("passes", [])
+            if p[2] or not in_no_sky(db, parse_utc(p[0]))
+        }
         if e.get("g2_phase") is not None and e.get("measured_utc") and not hist:
             hist[e["measured_utc"]] = [e["measured_utc"], e.get("sep_deg"), True]
         for key, p in passes.get(name, {}).items():

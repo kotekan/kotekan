@@ -22,6 +22,9 @@ mkdir -p "$C"
 exec 9>"$C/lock"
 flock -n 9 || { echo "$(now) another run holds the lock"; exit 0; }
 
+# a new F-engine start goes into the reducer's frame0 list, so its windows are placed in time
+"$PY" "$WT/scripts/gnss/site/gw_frame0_sync.py" 2>&1 | sed "s/^/$(now) frame0: /"
+
 for h in cf06 cf05; do
     if timeout 120 scp -q -o BatchMode=yes -o ConnectTimeout=20 \
         "$h:/var/tmp/kvand-gw1202/reduce_log.jsonl" "$C/reduce_log_$h.jsonl.tmp"; then

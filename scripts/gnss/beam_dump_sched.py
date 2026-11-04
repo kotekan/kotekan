@@ -160,7 +160,13 @@ def cmd_run(a, nodes):
         if lead > a.lead:
             time.sleep(lead - a.lead)
         start_in = max(1.0, s - time.time())
-        rec = viscap.arm(nodes, GATES, start_in, e - max(s, time.time()))
+        try:
+            rec = viscap.arm(nodes, GATES, start_in, e - max(s, time.time()))
+        except SystemExit as err:
+            # no gate advancing (F-engine or nodes down): miss this window, keep the schedule
+            print("window %s .. %s not armed: %s" % (fmt(s), fmt(e), err))
+            time.sleep(max(0.0, e - time.time()) + 2.0)
+            continue
         if a.armed_log:
             # which GPUs record this window: the reducer expects exactly these
             rec.update(t_start=s, t_end=e, utc_start=fmt(s), targets=names)
