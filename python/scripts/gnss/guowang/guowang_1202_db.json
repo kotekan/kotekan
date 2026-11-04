@@ -1773,6 +1773,27 @@
     ["2026-11-04T08:52:25Z", 4.06, true]
    ]
   },
+  "DIGUI-H24-9": {
+   "status": "transmitting",
+   "catnum": 99009,
+   "g2_phase": 1377,
+   "theta_us": 31.387,
+   "carrier_minus_tle_ppb": 5.7,
+   "measured_utc": "2026-11-04T13:31:46Z",
+   "source": "2026-11-04 beam dump window 92 (gw_reduce, 43289 frames over 124 s)",
+   "sep_deg": 1.22,
+   "ref_input": 116,
+   "drift_ns_s": -24.78,
+   "note": "inferred satellite: theta and ppb on its TLE moved -7.582 s along track (fitted to the carrier)",
+   "last_observed_utc": "2026-11-04T13:31:39Z",
+   "last_checked_utc": "2026-11-04T13:31:39Z",
+   "last_checked_sep_deg": 1.21,
+   "passes_found": 1,
+   "passes_silent": 0,
+   "passes": [
+    ["2026-11-04T13:31:39Z", 1.21, true]
+   ]
+  },
   "DIGUI-H54-3": {
    "status": "transmitting",
    "catnum": 99012,
@@ -1905,6 +1926,11 @@
    "start": "2026-11-03T16:34:50Z",
    "end": "2026-11-03T22:02:27Z",
    "note": "analog chains off for site work through the BC working day (gnss-main, from the broker log); sky back 22:02:27Z, the first broker DLL with real power (gps_l5; gnss cleanup); nodes restarted again 22:05:31-45Z"
+  },
+  {
+   "start": "2026-11-04T14:46:54Z",
+   "end": null,
+   "note": "site work 11-04 (analog front end / F-engine); opened by gw_nosky_watch.py: gps_l5 0 present"
   }
  ],
  "silent_max_sep_deg": 4.0
