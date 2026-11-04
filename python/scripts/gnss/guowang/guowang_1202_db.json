@@ -3,6 +3,19 @@
  "about": "GuoWang 1202.025 MHz satellites identified in CHORD's beam dump (#227): the G2' phase of each one's code (guowang_codes.guowang_1202; PRN = phase + 1; phases are not unique) and theta, its code-start epoch: t_tx(code start) minus the nearest UTC 2 ms boundary, t_tx from the light-time TLE range on the broker's frame0 axis, no receiver clock or delay removed; beams referenced to input 116 (theta carries the reference input's delay, ~0.1 us between inputs) and the newest TLE at or before the pass, as ~/gnss/builds/gw1202/gw_reduce.py measures them (DIGUI-26: the 10-30 baseband dump, its own reference). theta held to < 0.6 chip within a pass; across days it is untested. theta_unknown_us is the median of the near-zero group, for a satellite not yet measured (its spread there: 16 chips rms, 40 worst; two satellites sit near +400 us). Schema 1 (2026-11-03): status is transmitting or no_transmission, from the newest conclusive pass: a complete beam-dump window outside the no_sky periods on which the code was found, or on which the satellite passed within silent_max_sep_deg of the boresight without it. g2_phase is null for a satellite never found; one that stops keeps its code. last_observed_utc is the newest pass with the code found, last_checked_utc the newest conclusive pass; passes lists every conclusive pass as [utc mid-window, closest separation deg, found]. guowang_db.py folds the reductions in; git history is the time record.",
  "theta_unknown_us": -9.075,
  "satellites": {
+  "DIGUI-05": {
+   "status": "no_transmission",
+   "catnum": 62327,
+   "g2_phase": null,
+   "last_observed_utc": null,
+   "last_checked_utc": "2026-11-04T12:34:03Z",
+   "last_checked_sep_deg": 0.24,
+   "passes_found": 0,
+   "passes_silent": 1,
+   "passes": [
+    ["2026-11-04T12:34:03Z", 0.24, false]
+   ]
+  },
   "DIGUI-06": {
    "status": "no_transmission",
    "catnum": 62328,
@@ -1777,6 +1790,27 @@
    "passes_silent": 0,
    "passes": [
     ["2026-11-04T10:49:17Z", 4.07, true]
+   ]
+  },
+  "DIGUI-H84-4": {
+   "status": "transmitting",
+   "catnum": 99022,
+   "g2_phase": 2027,
+   "theta_us": 277.184,
+   "carrier_minus_tle_ppb": -4.3,
+   "measured_utc": "2026-11-04T12:33:26Z",
+   "source": "2026-11-04 beam dump window 87 (gw_reduce, 4005 frames over 8 s)",
+   "sep_deg": 11.23,
+   "ref_input": 116,
+   "drift_ns_s": 4.24,
+   "note": "inferred satellite: theta and ppb on its TLE moved +0.217 s along track (fitted to the carrier)",
+   "last_observed_utc": "2026-11-04T12:34:03Z",
+   "last_checked_utc": "2026-11-04T12:34:03Z",
+   "last_checked_sep_deg": 10.95,
+   "passes_found": 1,
+   "passes_silent": 0,
+   "passes": [
+    ["2026-11-04T12:34:03Z", 10.95, true]
    ]
   }
  },
