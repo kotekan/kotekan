@@ -167,6 +167,13 @@ updatable_config:
       bad_inputs: {{ bad_inputs }}
       start_time: 1535048997.
       update_id: "initial_flags"
+
+  # Updatable Config for first-stage RFI excision
+  rfi_first_stage_enabled:
+    kotekan_update_endpoint: json
+    enabled: true
+    valid_at_time_ns: 0
+
   # Updatable Config for second stage RFI excision.
   rfi_second_stage_enabled:
       kotekan_update_endpoint: json
@@ -870,6 +877,7 @@ numa_{{ numa }}:
           rfi_S012_name: rfi_S012
           rfi_SKtilde_name: rfi_SKtilde
           rfi_RFImask_name: rfi_RFImask
+          enabled_updatable_config: updatable_config/rfi_first_stage_enabled
 
     run_rfi_SKbar:
         kotekan_stage: cudaProcess
