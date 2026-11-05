@@ -193,11 +193,20 @@ common:
     # NAME:FREQ_IDS:LAG_MIN:N_LAG:SOURCES. ATSC 24 and 30 take three sources per channel over lags
     # -16..+47 hops (the stage's widest window): the wider lags take the long echoes, the third
     # source the PFB-edge folding (offline on the 10-30 dump: residual third mode 3.5 -> 2.0 noise
-    # units in ATSC 30; replay GPU time 1.1 -> 2.8 ms per frame per GPU). The stage starts in
-    # pass-through, and the per-channel state is loaded over REST.
+    # units in ATSC 30). The five weaker ATSC stations take two sources over the same lags. MUOS
+    # (the Navy's satellite downlink, 360-380 MHz) takes one source over -4..+11: on the dump one
+    # source leaves its channels at the clean channels' level, and 8 lags do as well as 64. Up to
+    # 20 channels per GPU, ~2 ms per frame on an L40S. The stage starts in pass-through, and the
+    # per-channel state is loaded over REST.
     dtv-targets: >-
       atsc24:2714-2744:-16:64:3;
-      atsc30:2898-2928:-16:64:3
+      atsc30:2898-2928:-16:64:3;
+      atsc17:2499-2529:-16:64:2;
+      atsc19:2560-2590:-16:64:2;
+      atsc31:2929-2959:-16:64:2;
+      atsc33:2991-3020:-16:64:2;
+      atsc35:3052-3082:-16:64:2;
+      muos:1845-1867,1871-1892,1897-1918,1922-1943:-4:16:1
     assembler-core-slots: "2,1,3,4,8"
     # The stage on a whole idle physical core per NUMA node (15/47 and 19/51 read 0 % on
     # cx27/43/44/51 on 10-24), outside the runtime pools: 127 stations with the transfers ran at

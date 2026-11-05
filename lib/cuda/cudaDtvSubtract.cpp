@@ -150,16 +150,17 @@ cudaDtvSubtract::cudaDtvSubtract(Config& config, const std::string& unique_name,
     gpu_buffers_used.push_back(std::make_tuple(_out_name, true, false, true));
 
     // Shared device state, named here so --dry-run sees it; instance 0 initialises it.
-    const size_t x_bytes = (size_t)n * _num_times * DTV_INPUTS * sizeof(float2);
+    const size_t x_bytes = (size_t)n * 2 * _num_times * DTV_INPUTS * sizeof(float);
     const size_t s_bytes = (size_t)n * _n_src * (DTV_HIST + _num_times) * sizeof(float2);
     const size_t w_bytes = (size_t)n * _n_src * DTV_INPUTS * sizeof(float2);
     const size_t g_bytes = (size_t)n * _n_src * _n_lag * DTV_INPUTS * sizeof(float2);
+    const size_t gs_bytes = (size_t)n * _n_src * 2 * dtv_l16(_n_lag) * DTV_INPUTS * sizeof(float);
     const size_t cov_bytes = (size_t)n * DTV_INPUTS * DTV_INPUTS * sizeof(float2);
     const size_t q_bytes = (size_t)n * DTV_INPUTS * sizeof(float2);
     device.get_gpu_memory(unique_name + "_x", x_bytes);
     void* d_s = device.get_gpu_memory(unique_name + "_s", s_bytes);
     void* d_w = device.get_gpu_memory(unique_name + "_w", w_bytes);
-    void* d_g = device.get_gpu_memory(unique_name + "_g", g_bytes);
+    void* d_g = device.get_gpu_memory(unique_name + "_g", gs_bytes);
     void* d_act = device.get_gpu_memory(unique_name + "_act", (size_t)n * _n_src * sizeof(int));
     void* d_sel = device.get_gpu_memory(unique_name + "_sel", (size_t)n * sizeof(int));
     void* d_lags = device.get_gpu_memory(unique_name + "_lags", (size_t)n * 2 * sizeof(int));
@@ -178,7 +179,7 @@ cudaDtvSubtract::cudaDtvSubtract(Config& config, const std::string& unique_name,
     if (instance_num == 0) {
         CHECK_CUDA_ERROR(cudaMemset(d_s, 0, s_bytes));
         CHECK_CUDA_ERROR(cudaMemset(d_w, 0, w_bytes));
-        CHECK_CUDA_ERROR(cudaMemset(d_g, 0, g_bytes));
+        CHECK_CUDA_ERROR(cudaMemset(d_g, 0, gs_bytes));
         CHECK_CUDA_ERROR(cudaMemset(d_act, 0, (size_t)n * _n_src * sizeof(int)));
         CHECK_CUDA_ERROR(cudaMemset(d_acc_rxs, 0, g_bytes));
         CHECK_CUDA_ERROR(cudaMemset(d_acc_rss, 0, rss_bytes));
@@ -785,17 +786,18 @@ cudaEvent_t cudaDtvSubtract::execute(cudaPipelineState& pipestate,
     if (meta)
         out.set_metadata(meta);
 
-    const size_t x_bytes = (size_t)n * _num_times * DTV_INPUTS * sizeof(float2);
+    const size_t x_bytes = (size_t)n * 2 * _num_times * DTV_INPUTS * sizeof(float);
     const size_t s_bytes = (size_t)n * _n_src * (DTV_HIST + _num_times) * sizeof(float2);
     const size_t w_bytes = (size_t)n * _n_src * DTV_INPUTS * sizeof(float2);
     const size_t g_bytes = (size_t)n * _n_src * _n_lag * DTV_INPUTS * sizeof(float2);
+    const size_t gs_bytes = (size_t)n * _n_src * 2 * dtv_l16(_n_lag) * DTV_INPUTS * sizeof(float);
     const size_t act_bytes = (size_t)n * _n_src * sizeof(int);
     const size_t cov_bytes = (size_t)n * DTV_INPUTS * DTV_INPUTS * sizeof(float2);
     const size_t q_bytes = (size_t)n * DTV_INPUTS * sizeof(float2);
-    auto* d_x = (float2*)device.get_gpu_memory(unique_name + "_x", x_bytes);
+    auto* d_x = (float*)device.get_gpu_memory(unique_name + "_x", x_bytes);
     auto* d_s = (float2*)device.get_gpu_memory(unique_name + "_s", s_bytes);
     auto* d_w = (float2*)device.get_gpu_memory(unique_name + "_w", w_bytes);
-    auto* d_g = (float2*)device.get_gpu_memory(unique_name + "_g", g_bytes);
+    auto* d_g = (float*)device.get_gpu_memory(unique_name + "_g", gs_bytes);
     auto* d_act = (int*)device.get_gpu_memory(unique_name + "_act", act_bytes);
     auto* d_sel = (const int*)device.get_gpu_memory(unique_name + "_sel", (size_t)n * sizeof(int));
     auto* d_lags =
@@ -836,6 +838,7 @@ cudaEvent_t cudaDtvSubtract::execute(cudaPipelineState& pipestate,
     int start_src = -1, start_total = 0;
     bool do_cov = false, do_finish = false;
     bool roll = false, roll_ready = false;
+    bool src_on[DTV_MAX_SRC]; // any channel observing source k
     DtvDecay lam = {};
     {
         std::lock_guard<std::mutex> lk(_sh->mtx);
@@ -853,9 +856,22 @@ cudaEvent_t cudaDtvSubtract::execute(cudaPipelineState& pipestate,
             if (_sh->dirty_w)
                 CHECK_CUDA_ERROR(
                     cudaMemcpyAsync(d_w, _sh->w.data(), w_bytes, cudaMemcpyHostToDevice, stream));
-            if (_sh->dirty_g)
-                CHECK_CUDA_ERROR(
-                    cudaMemcpyAsync(d_g, _sh->g.data(), g_bytes, cudaMemcpyHostToDevice, stream));
+            // g de-interleaved as the fused pass takes it, zero where a source does not subtract
+            const size_t blk = (size_t)_n_lag * DTV_INPUTS, l16_blk = dtv_l16(_n_lag) * DTV_INPUTS;
+            _g_upload.assign(gs_bytes / sizeof(float), 0.0f);
+            for (size_t ck = 0; ck < _sh->act.size(); ck++) {
+                if (_sh->act[ck] < 2)
+                    continue;
+                const float2* g = _sh->g.data() + ck * blk;
+                float* re = _g_upload.data() + ck * 2 * l16_blk;
+                float* im = re + l16_blk;
+                for (size_t q = 0; q < blk; q++) {
+                    re[q] = g[q].x;
+                    im[q] = g[q].y;
+                }
+            }
+            CHECK_CUDA_ERROR(
+                cudaMemcpyAsync(d_g, _g_upload.data(), gs_bytes, cudaMemcpyHostToDevice, stream));
             CHECK_CUDA_ERROR(
                 cudaMemcpyAsync(d_act, _sh->act.data(), act_bytes, cudaMemcpyHostToDevice, stream));
             _sh->dirty_w = _sh->dirty_g = false;
@@ -884,6 +900,11 @@ cudaEvent_t cudaDtvSubtract::execute(cudaPipelineState& pipestate,
                 CHECK_CUDA_ERROR(cudaMemcpyAsync(d_act, _sh->act.data(), act_bytes,
                                                  cudaMemcpyHostToDevice, stream));
             }
+        }
+        for (int k = 0; k < _n_src; k++) {
+            src_on[k] = false;
+            for (int c = 0; c < n; c++)
+                src_on[k] = src_on[k] || _sh->act[(size_t)c * _n_src + k] >= 1;
         }
         roll = _sh->roll;
         if (roll) {
@@ -919,9 +940,10 @@ cudaEvent_t cudaDtvSubtract::execute(cudaPipelineState& pipestate,
     CHECK_CUDA_ERROR(
         cudaMemsetAsync(d_out + _layout.off_ps, 0, _layout.bytes - _layout.off_ps, stream));
 
-    launch_dtv_decode(d_frame, d_sel, n, _num_local_freq, _num_times, d_x,
-                      (float*)(d_out + _layout.off_pw_raw), stream);
+    float* d_ps = (float*)(d_out + _layout.off_ps);
     launch_dtv_shift(d_s, n, _n_src, _num_times, stream);
+    launch_dtv_decode(d_frame, d_sel, d_w, d_act, n, _n_src, _num_local_freq, _num_times, d_x,
+                      (float*)(d_out + _layout.off_pw_raw), d_s, d_ps, stream);
     for (int k = 0; k < _n_src; k++) {
         if (do_cov && k == start_src) {
             launch_dtv_cov(d_x, n, _num_times, d_cov, stream);
@@ -933,6 +955,10 @@ cudaEvent_t cudaDtvSubtract::execute(cudaPipelineState& pipestate,
                     d_w + (size_t)k * DTV_INPUTS, (size_t)_n_src * DTV_INPUTS * sizeof(float2),
                     d_wtmp, DTV_INPUTS * sizeof(float2), DTV_INPUTS * sizeof(float2), n,
                     cudaMemcpyDeviceToDevice, stream));
+                // source k's timestream again, with the new weights
+                CHECK_CUDA_ERROR(cudaMemset2DAsync(d_ps + k, (size_t)_n_src * sizeof(float), 0,
+                                                   sizeof(float), n, stream));
+                launch_dtv_beam(d_x, d_w, d_act, k, n, _n_src, _num_times, d_s, d_ps, stream);
                 CHECK_CUDA_ERROR(cudaMemcpyAsync(_lam_stage.data(), d_lam,
                                                  _lam_stage.size() * sizeof(float),
                                                  cudaMemcpyDeviceToHost, stream));
@@ -943,12 +969,13 @@ cudaEvent_t cudaDtvSubtract::execute(cudaPipelineState& pipestate,
                 _lam_src = k;
             }
         }
-        launch_dtv_beam(d_x, d_w, d_act, k, n, _n_src, _num_times, d_s,
-                        (float*)(d_out + _layout.off_ps), stream);
-        launch_dtv_lagcorr(d_x, d_s, d_act, d_lags, k, n, _n_src, _num_times, _n_lag,
-                           (float2*)(d_out + _layout.off_rxs), (float2*)(d_out + _layout.off_rss),
-                           stream);
-        launch_dtv_subtract(d_x, d_s, d_g, d_act, d_lags, k, n, _n_src, _num_times, _n_lag, stream);
+        // the pass of source k also forms the timestream of source k + 1
+        if (!src_on[k] && !(k + 1 < _n_src && src_on[k + 1]))
+            continue;
+        launch_dtv_rss(d_s, d_act, d_lags, k, n, _n_src, _num_times, _n_lag,
+                       (float2*)(d_out + _layout.off_rss), stream);
+        launch_dtv_fused(d_x, d_s, d_g, d_w, d_act, d_lags, k, n, _n_src, _num_times, _n_lag,
+                         (float2*)(d_out + _layout.off_rxs), d_ps, stream);
     }
     launch_dtv_encode(d_x, d_sel, d_act, n, _n_src, _num_local_freq, _num_times, d_frame,
                       (float*)(d_out + _layout.off_pw_res), stream);

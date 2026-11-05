@@ -12,10 +12,11 @@
  * normal equations of the least-squares fit); the residual r_i = x_i - g_i * s replaces x_i in
  * the voltage ring, re-quantised to 4+4 bits. A second source is the same on the residual.
  *
- * Per frame and selected channel the command decodes the channel into float (@ref
- * launch_dtv_decode), then per active source: carries the last DTV_HIST samples of s over from
- * the previous frame (@ref launch_dtv_shift), forms s (@ref launch_dtv_beam), accumulates the
- * lag correlations (@ref launch_dtv_lagcorr) and subtracts (@ref launch_dtv_subtract); then
+ * Per frame the command carries the last DTV_HIST samples of every timestream over (@ref
+ * launch_dtv_shift), decodes the selected channels into float and forms source 0's timestream
+ * (@ref launch_dtv_decode), then per active source takes R_ss (@ref launch_dtv_rss) and makes one
+ * fused pass over the frame (@ref launch_dtv_fused: the lag correlations and the subtraction as
+ * complex products on TF32 tensor cores, and the next source's timestream from the residual), and
  * re-quantises the residual in place (@ref launch_dtv_encode). The eigen start of a source's
  * weights uses @ref launch_dtv_cov with cudaGnssBeamDumpKernel's launch_beam_eig.
  */
@@ -122,41 +123,55 @@ static constexpr int32_t DTV_STATE_MAGIC = 0x53565444; // "DTVS"
 static constexpr int32_t DTV_STATE_VERSION = 1;
 static constexpr int32_t DTV_STATE_VERSION_LAGS = 2;
 
-/// The selected channels of a 4+4b frame into float: x[c][t][i], and sum |x|^2 over the frame
-/// per input (pw_raw, zeroed here). in is [n_times][n_freq][DTV_INPUTS] bytes; sel the local
-/// channels.
-void launch_dtv_decode(const unsigned char* in, const int* sel, int n_chan, int n_freq, int n_times,
-                       float2* x, float* pw_raw, cudaStream_t stream);
+/// The fused pass's g stride: n_lag rounded up to 16 (a whole number of 16 x 16 x 8 TF32 tiles).
+inline int dtv_l16(int n_lag) {
+    return (n_lag + 15) & ~15;
+}
+
+// The decoded channels x are float [n_chan][2][n_times][DTV_INPUTS], planar: each channel's real
+// parts, then its imaginary parts.
 
 /// Carry the last DTV_HIST samples of s over: s[c][k][0..DTV_HIST) = s[c][k][n_times..).
-/// s is float2 [n_chan][n_src][DTV_HIST + n_times].
+/// s is float2 [n_chan][n_src][DTV_HIST + n_times]. Before the frame's decode.
 void launch_dtv_shift(float2* s, int n_chan, int n_src, int n_times, cudaStream_t stream);
 
-/// s[c][k][DTV_HIST + t] = sum_i w[c][k][i] x[c][t][i] for the active (c, k); ps[c][k] +=
-/// sum |s|^2 over the frame (the caller zeroes ps). act is int [n_chan][n_src].
-void launch_dtv_beam(const float2* x, const float2* w, const int* act, int k, int n_chan, int n_src,
+/// The selected channels of a 4+4b frame into x, sum |x|^2 over the frame per input (pw_raw,
+/// zeroed here), and the timestream of source 0 where it is active (s[c][0][DTV_HIST + t] = sum_i
+/// w[c][0][i] x[c][t][i], ps[c][0] += sum |s|^2; the caller zeroes ps). in is [n_times][n_freq]
+/// [DTV_INPUTS] bytes; sel the local channels; act int [n_chan][n_src].
+void launch_dtv_decode(const unsigned char* in, const int* sel, const float2* w, const int* act,
+                       int n_chan, int n_src, int n_freq, int n_times, float* x, float* pw_raw,
+                       float2* s, float* ps, cudaStream_t stream);
+
+/// s[c][k][DTV_HIST + t] = sum_i w[c][k][i] x[c][t][i] for the active (c, k); ps[c][k] += sum
+/// |s|^2 over the frame (the caller zeroes ps). The decode and the fused pass form the
+/// timestreams; this is for a source whose weights change mid-frame (an eigen start's end).
+void launch_dtv_beam(const float* x, const float2* w, const int* act, int k, int n_chan, int n_src,
                      int n_times, float2* s, float* ps, cudaStream_t stream);
 
-/// rxs[c][k][j][i] = sum_t x[c][t][i] conj(s[c][k][DTV_HIST + t - lag_j]), lag_j = lag_min_c + j
-/// for j < n_lag_c, over the frame's samples (s beyond the frame's end, needed by negative lags,
-/// counts as 0), and rss[c][k][d] = sum_t s(t) conj(s(t - d)) for d = 0..n_lag_c-1, the lag
-/// differences of the normal equations. lags is int [n_chan][2]: lag_min_c, n_lag_c (n_lag_c <=
-/// n_lag, the stride of the lag axis; -16 <= lag_min_c, lag_min_c + n_lag_c <= DTV_HIST). Both
-/// are accumulated: the caller zeroes them each frame, which leaves the lags beyond n_lag_c 0.
-void launch_dtv_lagcorr(const float2* x, const float2* s, const int* act, const int* lags, int k,
-                        int n_chan, int n_src, int n_times, int n_lag, float2* rxs, float2* rss,
-                        cudaStream_t stream);
+/// rss[c][k][d] += sum_t s(t) conj(s(t - d)) for d < n_lag_c, the lag differences of the normal
+/// equations (the caller zeroes rss each frame). lags is int [n_chan][2]: lag_min_c, n_lag_c
+/// (n_lag_c <= n_lag, the stride of the lag axis; -16 <= lag_min_c, lag_min_c + n_lag_c <=
+/// DTV_HIST).
+void launch_dtv_rss(const float2* s, const int* act, const int* lags, int k, int n_chan, int n_src,
+                    int n_times, int n_lag, float2* rss, cudaStream_t stream);
 
-/// x[c][t][i] -= sum_{j < n_lag_c} g[c][k][j][i] s[c][k][DTV_HIST + t - lag_j] where act[c][k]
-/// == 2; lags and n_lag as for launch_dtv_lagcorr.
-void launch_dtv_subtract(float2* x, const float2* s, const float2* g, const int* act,
-                         const int* lags, int k, int n_chan, int n_src, int n_times, int n_lag,
-                         cudaStream_t stream);
+/// One pass of source k over each channel's frame, in place, on TF32 tensor cores: with S[t][j]
+/// = s[c][k][DTV_HIST + t - lag_j] (lag_j = lag_min_c + j, j < n_lag_c; 0 past the frame's end),
+/// rxs[c][k][j][i] += sum_t x[c][t][i] conj(S[t][j]) where source k is active (act >= 1), then
+/// x[c][t][i] -= sum_j g[c][k][j][i] S[t][j] where it subtracts (act == 2), then, where source k
+/// + 1 is active, its timestream from the residual with its power (s[c][k+1], ps[c][k+1] +=, as
+/// launch_dtv_beam). x is read and written once. gs is g de-interleaved: float [n_chan][n_src][2
+/// (re, im)][dtv_l16(n_lag)][DTV_INPUTS]. rxs is accumulated (the caller zeroes it each frame).
+/// A channel's work scales with its own window.
+void launch_dtv_fused(float* x, float2* s, const float* gs, const float2* w, const int* act,
+                      const int* lags, int k, int n_chan, int n_src, int n_times, int n_lag,
+                      float2* rxs, float* ps, cudaStream_t stream);
 
 /// Re-quantise x into the frame in place (round to the nearest integer, clipped to [-7, 7],
 /// offset-encoded as the F-engine does) and pw_res[c][i] = sum |x|^2 over the frame before the
 /// rounding (zeroed here). Channels with no subtracting source are left untouched.
-void launch_dtv_encode(const float2* x, const int* sel, const int* act, int n_chan, int n_src,
+void launch_dtv_encode(const float* x, const int* sel, const int* act, int n_chan, int n_src,
                        int n_freq, int n_times, unsigned char* out, float* pw_res,
                        cudaStream_t stream);
 
@@ -176,7 +191,7 @@ void launch_dtv_roll_accum(const float2* rxs, const float2* rss, const float* pw
 
 /// cov[c][i][j] += sum_t x[c][t][i] conj(x[c][t][j]) (accumulated across frames for the eigen
 /// start; the caller zeroes cov). Lag 0 only.
-void launch_dtv_cov(const float2* x, int n_chan, int n_times, float2* cov, cudaStream_t stream);
+void launch_dtv_cov(const float* x, int n_chan, int n_times, float2* cov, cudaStream_t stream);
 
 /// ref[c] = the input with the largest cov[c][i][i]: the eigen start's phase reference.
 void launch_dtv_pick_ref(const float2* cov, int n_chan, int* ref, cudaStream_t stream);

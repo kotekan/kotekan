@@ -206,9 +206,10 @@ add_executable(cuda_gnss_beam_dump_test cudaGnssBeamDumpTest.cpp)
 target_link_libraries(cuda_gnss_beam_dump_test PRIVATE kotekan_cuda)
 target_include_directories(cuda_gnss_beam_dump_test PRIVATE .)
 
-# DTV subtraction kernels (beam, lag correlations, subtraction, re-quantisation, eigen start)
-# vs a CPU reference on a synthetic 4+4b frame with a known impulse response, then the host-side
-# least-squares fit of that response from the correlations. Run: ./lib/cuda/cuda_dtv_subtract_test
+# DTV subtraction kernels (decode, beams, the fused correlation and subtraction pass,
+# re-quantisation, eigen start) vs a CPU reference on a synthetic 4+4b frame with a known impulse
+# response, then the host-side least-squares fit of that response from the correlations.
+# Run: ./lib/cuda/cuda_dtv_subtract_test
 add_executable(cuda_dtv_subtract_test cudaDtvSubtractTest.cpp)
 target_link_libraries(cuda_dtv_subtract_test PRIVATE kotekan_cuda)
 target_include_directories(cuda_dtv_subtract_test PRIVATE .)

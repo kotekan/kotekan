@@ -1,11 +1,12 @@
 // Replay of cudaDtvSubtract's per-frame sequence on recorded 4+4b voltages, with the repo's own
 // kernels (lib/cuda/cudaDtvSubtractKernel.cu, cudaGnssBeamDumpKernel.cu): the same uploads, eigen
-// start, beam, lag correlations, subtraction and re-quantisation as cudaDtvSubtract::execute, frame
-// by frame. Writes the stage's output frames (rawFileWrite layout with an empty metadata block, as
-// scripts/gnss/dtv_state.py reads them) and the residual bytes.
+// start, timestreams, lag correlations and subtraction (the fused pass, TF32) and
+// re-quantisation as cudaDtvSubtract::execute, frame by frame. Writes the stage's output frames
+// (rawFileWrite layout with an empty metadata block, as scripts/gnss/dtv_state.py reads them) and
+// the residual bytes.
 //
 //   nvcc -O3 -std=c++17 -o dtv_replay dtv_replay.cu <repo>/lib/cuda/cudaDtvSubtractKernel.cu \
-//        <repo>/lib/cuda/cudaGnssBeamDumpKernel.cu -I<repo>/lib/cuda
+//        <repo>/lib/cuda/cudaGnssBeamDumpKernel.cu -I<repo>/lib/cuda -arch=sm_86
 //   dtv_replay --in x.bin --freq 2512,2720,2912 --out out.raw --res res.bin [--state st.bin]
 //              [--start K --start-frames M] [--nsrc 2] [--lag-min -8] [--n-lag 49] [--eig-iters 24]
 //
@@ -57,7 +58,8 @@ static void load_state(const std::string& path, const std::vector<int>& fids, in
     int matched = 0;
     for (int r = 0; r < h.n_chan; r++) {
         DtvStateRec rec;
-        if (fread(&rec, sizeof(rec), 1, fh) != 1 || fread(rw.data(), sizeof(float2), rw.size(), fh) != rw.size()
+        if (fread(&rec, sizeof(rec), 1, fh) != 1
+            || fread(rw.data(), sizeof(float2), rw.size(), fh) != rw.size()
             || fread(rg.data(), sizeof(float2), rg.size(), fh) != rg.size())
             die(path + ": truncated");
         for (int c = 0; c < n; c++) {
@@ -69,7 +71,8 @@ static void load_state(const std::string& path, const std::vector<int>& fids, in
                 memcpy(&w[((size_t)c * n_src + k) * DTV_INPUTS], &rw[(size_t)k * DTV_INPUTS],
                        DTV_INPUTS * sizeof(float2));
                 memcpy(&g[((size_t)c * n_src + k) * n_lag * DTV_INPUTS],
-                       &rg[(size_t)k * n_lag * DTV_INPUTS], (size_t)n_lag * DTV_INPUTS * sizeof(float2));
+                       &rg[(size_t)k * n_lag * DTV_INPUTS],
+                       (size_t)n_lag * DTV_INPUTS * sizeof(float2));
                 act[(size_t)c * n_src + k] = rec.subtract ? 2 : 1;
             }
         }
@@ -103,7 +106,8 @@ int main(int argc, char** argv) {
             std::string s = val();
             for (size_t p = 0; p < s.size();) {
                 size_t q = s.find(',', p);
-                fids.push_back(atoi(s.substr(p, q == std::string::npos ? std::string::npos : q - p).c_str()));
+                fids.push_back(
+                    atoi(s.substr(p, q == std::string::npos ? std::string::npos : q - p).c_str()));
                 if (q == std::string::npos)
                     break;
                 p = q + 1;
@@ -138,7 +142,8 @@ int main(int argc, char** argv) {
         die(in + ": not a whole number of " + std::to_string(frame_bytes) + "-byte frames");
 
     const DtvOutLayout L = dtv_out_layout(n, n_src, n_lag);
-    std::vector<float2> w((size_t)n * n_src * NI, make_float2(0, 0)), g((size_t)n * n_src * n_lag * NI, make_float2(0, 0));
+    std::vector<float2> w((size_t)n * n_src * NI, make_float2(0, 0)),
+        g((size_t)n * n_src * n_lag * NI, make_float2(0, 0));
     std::vector<int> act((size_t)n * n_src, 0), sel(n);
     for (int c = 0; c < n; c++)
         sel[c] = c;
@@ -148,17 +153,19 @@ int main(int argc, char** argv) {
 
     unsigned char *d_frame, *d_out;
     int *d_sel, *d_act, *d_ref;
-    float2 *d_x, *d_s, *d_w, *d_g, *d_cov, *d_q1, *d_q2, *d_wtmp;
-    float *d_pwtmp, *d_lam;
+    float2 *d_s, *d_w, *d_cov, *d_q1, *d_q2, *d_wtmp;
+    float *d_x, *d_g, *d_pwtmp, *d_lam;
+    const int l16 = dtv_l16(n_lag);
+    std::vector<float> g_up((size_t)n * n_src * 2 * l16 * NI);
     CK(cudaMalloc(&d_frame, frame_bytes));
     CK(cudaMalloc(&d_out, L.bytes));
     CK(cudaMalloc(&d_sel, n * sizeof(int)));
     CK(cudaMalloc(&d_act, act.size() * sizeof(int)));
     CK(cudaMalloc(&d_ref, n * sizeof(int)));
-    CK(cudaMalloc(&d_x, (size_t)n * NT * NI * sizeof(float2)));
+    CK(cudaMalloc(&d_x, (size_t)n * 2 * NT * NI * sizeof(float)));
     CK(cudaMalloc(&d_s, (size_t)n * n_src * (DTV_HIST + NT) * sizeof(float2)));
     CK(cudaMalloc(&d_w, w.size() * sizeof(float2)));
-    CK(cudaMalloc(&d_g, g.size() * sizeof(float2)));
+    CK(cudaMalloc(&d_g, g_up.size() * sizeof(float)));
     CK(cudaMalloc(&d_cov, (size_t)n * NI * NI * sizeof(float2)));
     CK(cudaMalloc(&d_q1, (size_t)n * NI * sizeof(float2)));
     CK(cudaMalloc(&d_q2, (size_t)n * NI * sizeof(float2)));
@@ -185,6 +192,14 @@ int main(int argc, char** argv) {
         die("cannot open the outputs");
     const cudaStream_t st = 0;
     int left = start >= 0 ? start_frames : 0;
+    std::vector<int> lags;
+    for (int c = 0; c < n; c++) {
+        lags.push_back(lag_min);
+        lags.push_back(n_lag);
+    }
+    int* d_lags;
+    CK(cudaMalloc(&d_lags, lags.size() * sizeof(int)));
+    CK(cudaMemcpy(d_lags, lags.data(), lags.size() * sizeof(int), cudaMemcpyHostToDevice));
     cudaEvent_t t0, t1;
     CK(cudaEventCreate(&t0));
     CK(cudaEventCreate(&t1));
@@ -196,9 +211,22 @@ int main(int argc, char** argv) {
         CK(cudaMemcpy(d_frame, frame.data(), frame_bytes, cudaMemcpyHostToDevice));
         CK(cudaEventRecord(t0, st));
         if (dirty) {
-            CK(cudaMemcpyAsync(d_w, w.data(), w.size() * sizeof(float2), cudaMemcpyHostToDevice, st));
-            CK(cudaMemcpyAsync(d_g, g.data(), g.size() * sizeof(float2), cudaMemcpyHostToDevice, st));
-            CK(cudaMemcpyAsync(d_act, act.data(), act.size() * sizeof(int), cudaMemcpyHostToDevice, st));
+            CK(cudaMemcpyAsync(d_w, w.data(), w.size() * sizeof(float2), cudaMemcpyHostToDevice,
+                               st));
+            // as the stage does: de-interleaved, zero where its source does not subtract
+            std::fill(g_up.begin(), g_up.end(), 0.0f);
+            for (size_t ck = 0; ck < act.size(); ck++) {
+                if (act[ck] < 2)
+                    continue;
+                for (size_t q = 0; q < (size_t)n_lag * NI; q++) {
+                    g_up[ck * 2 * l16 * NI + q] = g[ck * n_lag * NI + q].x;
+                    g_up[(ck * 2 + 1) * l16 * NI + q] = g[ck * n_lag * NI + q].y;
+                }
+            }
+            CK(cudaMemcpyAsync(d_g, g_up.data(), g_up.size() * sizeof(float),
+                               cudaMemcpyHostToDevice, st));
+            CK(cudaMemcpyAsync(d_act, act.data(), act.size() * sizeof(int), cudaMemcpyHostToDevice,
+                               st));
             dirty = false;
         }
         bool do_cov = false, do_finish = false;
@@ -213,14 +241,17 @@ int main(int argc, char** argv) {
                 do_finish = true;
                 for (int c = 0; c < n; c++)
                     act[(size_t)c * n_src + start] = std::max(act[(size_t)c * n_src + start], 1);
-                CK(cudaMemcpyAsync(d_act, act.data(), act.size() * sizeof(int), cudaMemcpyHostToDevice, st));
+                CK(cudaMemcpyAsync(d_act, act.data(), act.size() * sizeof(int),
+                                   cudaMemcpyHostToDevice, st));
             }
         }
         H->seq0 = (int64_t)f * NT;
         CK(cudaMemcpyAsync(d_out, hdr.data(), hdr.size(), cudaMemcpyHostToDevice, st));
         CK(cudaMemsetAsync(d_out + L.off_ps, 0, L.bytes - L.off_ps, st));
-        launch_dtv_decode(d_frame, d_sel, n, n, NT, d_x, (float*)(d_out + L.off_pw_raw), st);
+        float* d_ps = (float*)(d_out + L.off_ps);
         launch_dtv_shift(d_s, n, n_src, NT, st);
+        launch_dtv_decode(d_frame, d_sel, d_w, d_act, n, n_src, n, NT, d_x,
+                          (float*)(d_out + L.off_pw_raw), d_s, d_ps, st);
         for (int k = 0; k < n_src; k++) {
             if (do_cov && k == start) {
                 launch_dtv_cov(d_x, n, NT, d_cov, st);
@@ -228,19 +259,26 @@ int main(int argc, char** argv) {
                     launch_dtv_pick_ref(d_cov, n, d_ref, st);
                     launch_beam_eig(d_cov, n, start_frames * NT, 0, eig_iters, d_q1, d_q2, d_wtmp,
                                     d_pwtmp, d_lam, st, d_ref);
-                    CK(cudaMemcpy2DAsync(d_w + (size_t)k * NI, (size_t)n_src * NI * sizeof(float2), d_wtmp,
-                                         NI * sizeof(float2), NI * sizeof(float2), n,
+                    CK(cudaMemcpy2DAsync(d_w + (size_t)k * NI, (size_t)n_src * NI * sizeof(float2),
+                                         d_wtmp, NI * sizeof(float2), NI * sizeof(float2), n,
                                          cudaMemcpyDeviceToDevice, st));
+                    CK(cudaMemset2DAsync(d_ps + k, (size_t)n_src * sizeof(float), 0, sizeof(float),
+                                         n, st));
+                    launch_dtv_beam(d_x, d_w, d_act, k, n, n_src, NT, d_s, d_ps, st);
                 }
             }
-            launch_dtv_beam(d_x, d_w, d_act, k, n, n_src, NT, d_s, (float*)(d_out + L.off_ps), st);
-            launch_dtv_lagcorr(d_x, d_s, d_act, k, n, n_src, NT, n_lag, lag_min,
-                               (float2*)(d_out + L.off_rxs), (float2*)(d_out + L.off_rss), st);
-            launch_dtv_subtract(d_x, d_s, d_g, d_act, k, n, n_src, NT, n_lag, lag_min, st);
+            launch_dtv_rss(d_s, d_act, d_lags, k, n, n_src, NT, n_lag, (float2*)(d_out + L.off_rss),
+                           st);
+            launch_dtv_fused(d_x, d_s, d_g, d_w, d_act, d_lags, k, n, n_src, NT, n_lag,
+                             (float2*)(d_out + L.off_rxs), d_ps, st);
         }
-        launch_dtv_encode(d_x, d_sel, d_act, n, n_src, n, NT, d_frame, (float*)(d_out + L.off_pw_res), st);
-        CK(cudaMemcpyAsync(d_out + L.off_act, d_act, act.size() * sizeof(int), cudaMemcpyDeviceToDevice, st));
-        CK(cudaMemcpyAsync(d_out + L.off_w, d_w, w.size() * sizeof(float2), cudaMemcpyDeviceToDevice, st));
+        CK(cudaGetLastError());
+        launch_dtv_encode(d_x, d_sel, d_act, n, n_src, n, NT, d_frame,
+                          (float*)(d_out + L.off_pw_res), st);
+        CK(cudaMemcpyAsync(d_out + L.off_act, d_act, act.size() * sizeof(int),
+                           cudaMemcpyDeviceToDevice, st));
+        CK(cudaMemcpyAsync(d_out + L.off_w, d_w, w.size() * sizeof(float2),
+                           cudaMemcpyDeviceToDevice, st));
         CK(cudaEventRecord(t1, st));
         CK(cudaStreamSynchronize(st));
         float ms;
@@ -253,7 +291,9 @@ int main(int argc, char** argv) {
             CK(cudaMemcpy(ref.data(), d_ref, n * sizeof(int), cudaMemcpyDeviceToHost));
             CK(cudaMemcpy(w.data(), d_w, w.size() * sizeof(float2), cudaMemcpyDeviceToHost));
             for (int c = 0; c < n; c++)
-                fprintf(stderr, "frame %d: eigen start of source %d, freq_id %d: reference input %d, whitened lambda1/lambda2 %.1f/%.1f\n",
+                fprintf(stderr,
+                        "frame %d: eigen start of source %d, freq_id %d: reference input %d, "
+                        "whitened lambda1/lambda2 %.1f/%.1f\n",
                         f, start, fids[c], ref[c], lam[c * 4], lam[c * 4 + 1]);
         }
         CK(cudaMemcpy(outf.data(), d_out, L.bytes, cudaMemcpyDeviceToHost));
@@ -269,7 +309,7 @@ int main(int argc, char** argv) {
     if (fr)
         fclose(fr);
     fclose(fi);
-    fprintf(stderr, "%d frames x %d channels x %d source slots: GPU time %.3f ms per frame\n", n_frames, n,
-            n_src, ms_total / n_frames);
+    fprintf(stderr, "%d frames x %d channels x %d source slots: GPU time %.3f ms per frame\n",
+            n_frames, n, n_src, ms_total / n_frames);
     return 0;
 }

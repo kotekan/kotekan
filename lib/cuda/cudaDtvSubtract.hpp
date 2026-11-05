@@ -33,7 +33,9 @@
  * (docs/CHORD_DTV_SUBTRACTION_20261102.md, cudaDtvSubtractKernel.hpp): per frame it forms the
  * timestream s = sum_i w_i x_i, correlates every input with s at the configured lags, subtracts
  * sum_tau g_i(tau) s(t - tau) from each input and re-quantises the residual in place. A second
- * source is the same on the residual.
+ * source is the same on the residual. Per source, the correlations, the subtraction and the next
+ * source's timestream are one pass over the frame, the first two as complex matrix products on
+ * TF32 tensor cores (relative error ~4e-4, ~100 times below the re-quantisation's).
  *
  * The weights w come from an eigen start on request (POST `<unique_name>/start`, {"source": k,
  * "frames": n}: the covariance of the residual entering source k over n frames, its whitened
@@ -172,6 +174,7 @@ private:
     std::vector<float> _lam_stage; ///< eigenvalues of the last eigen start, read back
     std::vector<float2> _w_stage;  ///< the device weights after an eigen start, read back
     cudaEvent_t _lam_event = nullptr;
+    std::vector<float> _g_upload; ///< g as the device takes it (de-interleaved): zero where act < 2
     bool _lam_pending = false;
     int _lam_src = -1;
     bool _checked_freqs = false;
