@@ -633,6 +633,22 @@ chains:
         fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
         fleet-trim-bandwidth: 2.5
         fleet-trim-readback: 1
+    # -- the carrier loop (11-05, KV): closed on GuoWang as on gal_e5a. The chain dead-reckons
+    # its carrier from the TLE, whose range-rate error is 10-25 ppb (10-25 Hz here, the
+    # library's carrier_minus_tle_ppb) and drifts through a LEO pass (11-05 KCOH residuals:
+    # |slope| p90 0.09 Hz/s, span p90 34 Hz per pass). Uncommanded, every record's phase winds
+    # at that rate: the fleet combine (leave-one-out per record) never sees it, every
+    # cross-record phase product (the beam cube's per-element coherence) does. Same command
+    # path as Galileo; what LEO changes: the clamp (Galileo's 10 Hz would rail on a 20 Hz TLE
+    # error, so the 40 Hz default stays), and the fine phase feed stays off until
+    # rrate-phase-sign is calibrated from the JRRP[W] line's response to a commanded step.
+    # The row's default walk follows the drift above at the 2 s coarse-feed cadence (0.3 Hz
+    # lag at 0.1 Hz/s, no rejections), and only satellites with that feed clear the sig bar.
+        rrate-cmd-min-sig: 100
+        carrier-max-hz: 40.0
+        rrate-feed-applied: 0
+        rrate-coarse-deweight: 1.0
+        rrate-command: true
         trackers: fleet
         combiner: fleet
         spectrum-endpoints: fleet
