@@ -364,9 +364,9 @@ void pulsarPostProcess::main_thread() {
 
                             const uint32_t in_index =
                                 psr * _num_freqs_per_gpu * _num_pol * _samples_per_data_set
-                                + (thread_id % _num_freqs_per_gpu) * _num_pol
-                                      * _samples_per_data_set
+                                + thread_id * _num_pol * _samples_per_data_set
                                 + p * _samples_per_data_set + i;
+
                             assert(out_index < pulsar_buf->frame_size);
                             assert(in_index < in_buffer->frame_size);
                             out_buf[out_index] = in_buf_data[in_index];
