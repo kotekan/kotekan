@@ -336,10 +336,12 @@ public:
  *                                false).
  * @conf err_sq_lim               Float. Truncate each visibility component with an error of at
  *                                most `sqrt(0.5 * err_sq_lim / weight)`, as VisTruncate does
- *                                (default: 0, off). Requires compression other than "none".
+ *                                (default: 0, off). Must be finite. Requires a compressor:
+ *                                deflate, or bitshuffle with zstd or lz4.
  * @conf weight_fixed_precision   Float. Truncate each weight with a relative error of at most
- *                                this (default: 0, off). Requires compression other than
- *                                "none".
+ *                                this, in [0, 1) (default: 0, off). The visibility error
+ *                                above uses the truncated weight. Requires a compressor, as
+ *                                for err_sq_lim.
  * @conf baseband_gain_file       String. Path to the digital gains HDF5 file. If empty (default),
  *                                gains are not written. Mutually exclusive with
  *                                `baseband_gain_host_info`.

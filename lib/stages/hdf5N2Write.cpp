@@ -899,12 +899,13 @@ N2FileData::AddFrameStatus N2FileData::add_frame(const N2FrameView& fv, size_t t
         N2::cfloat v = fv.vis[p];
         float w = fv.weight[p];
         if (w > 0.0f && std::isfinite(w)) {
+            // Weight first, so the vis error bound holds for the stored weight.
+            if (weight_fixed_precision > 0.0f)
+                w = bit_truncate_float(w, weight_fixed_precision * w);
             if (err_sq_lim > 0.0f) {
                 const float err = std::sqrt(0.5f * err_sq_lim / w);
                 v = {bit_truncate_float(v.real(), err), bit_truncate_float(v.imag(), err)};
             }
-            if (weight_fixed_precision > 0.0f)
-                w = bit_truncate_float(w, weight_fixed_precision * w);
         }
         vis[idx_fpt(f_index, p, t_index)] = v;
         vis_weight[idx_fpt(f_index, p, t_index)] = w;
@@ -1308,11 +1309,16 @@ hdf5N2Write::hdf5N2Write(kotekan::Config& config, const std::string& unique_name
 
     _buffer->register_consumer(unique_name);
 
-    if (!(_err_sq_lim >= 0.0f) || !(_weight_fixed_precision >= 0.0f))
-        FATAL_ERROR("err_sq_lim ({:f}) and weight_fixed_precision ({:f}) must be >= 0", _err_sq_lim,
-                    _weight_fixed_precision);
-    if ((_err_sq_lim > 0.0f || _weight_fixed_precision > 0.0f) && _compression == "none")
-        FATAL_ERROR("err_sq_lim and weight_fixed_precision need compression other than \"none\"");
+    if (!(_err_sq_lim >= 0.0f && std::isfinite(_err_sq_lim)))
+        FATAL_ERROR("err_sq_lim ({:f}) must be finite and >= 0", _err_sq_lim);
+    // A relative precision of 1 or more rounds weights to 0, marking the data missing.
+    if (!(_weight_fixed_precision >= 0.0f && _weight_fixed_precision < 1.0f))
+        FATAL_ERROR("weight_fixed_precision ({:f}) must be in [0, 1)", _weight_fixed_precision);
+    const bool compressed = _use_bitshuffle ? (_compression == "zstd" || _compression == "lz4")
+                                            : _compression == "deflate";
+    if ((_err_sq_lim > 0.0f || _weight_fixed_precision > 0.0f) && !compressed)
+        FATAL_ERROR("err_sq_lim and weight_fixed_precision need a compressor: deflate, or "
+                    "bitshuffle with zstd or lz4");
 
     if (_bad_feed_mask_buf != nullptr) {
         _bad_feed_mask_buf->register_consumer(unique_name);

@@ -395,16 +395,20 @@ BOOST_AUTO_TEST_CASE(test_visfiledata_add_frame_single_slot) {
     rm_tree_if_exists(base_dir);
 }
 
-// add_frame truncates each visibility within sqrt(0.5 * err_sq_lim / weight) and each
-// weight within weight_fixed_precision * weight; nonpositive weights leave both unchanged.
+// add_frame truncates each weight within weight_fixed_precision * weight and each
+// visibility within sqrt(0.5 * err_sq_lim / stored weight); nonpositive and nonfinite
+// weights leave both unchanged.
 BOOST_AUTO_TEST_CASE(test_visfiledata_add_frame_truncate) {
-    const size_t num_input = 3;
+    const size_t num_input = 4;
     const size_t num_prod = N2FrameDesc::get_num_prod(num_input, N2Layout::FullUpperTri);
     const size_t num_ev = 0;
     const size_t num_file_t = 1;
     const float err_sq_lim = 1e-2f;
     const float weight_fixed_precision = 1e-3f;
-    const std::array<float, 6> weights = {1.0f, 1e6f, 0.0f, -5.0f, 1e-4f, 123.456f};
+    // Product 6 has a visibility far below its error, which rounds to 0.
+    const size_t tiny_p = 6;
+    const std::array<float, 10> weights = {1.0f,     1e6f, 0.0f,     -5.0f, 1e-4f,
+                                           123.456f, 1.0f, INFINITY, NAN,   7.0f};
     BOOST_REQUIRE_EQUAL(num_prod, weights.size());
 
     const size_t frame_size = N2FrameDesc::calculate_frame_size(num_input, num_ev, num_prod);
@@ -426,6 +430,7 @@ BOOST_AUTO_TEST_CASE(test_visfiledata_add_frame_truncate) {
         fv.vis[p] = N2::cfloat(10.0f * p + 1.123456f, -(10.0f * p + 2.654321f));
         fv.weight[p] = weights[p];
     }
+    fv.vis[tiny_p] = N2::cfloat(1e-6f, -1e-6f);
 
     const std::string base_dir = "test_visfiledata_truncate";
     rm_tree_if_exists(base_dir);
@@ -446,16 +451,18 @@ BOOST_AUTO_TEST_CASE(test_visfiledata_add_frame_truncate) {
         const float w_in = fv.weight[p];
         const N2::cfloat v_out = data.get_vis(f_index, p, 0);
         const float w_out = data.get_weight(f_index, p, 0);
-        if (w_in <= 0.0f) {
+        if (!(w_in > 0.0f && std::isfinite(w_in))) {
             BOOST_CHECK(v_out == v_in);
-            BOOST_CHECK_EQUAL(w_out, w_in);
+            BOOST_CHECK(std::memcmp(&w_out, &w_in, sizeof(float)) == 0);
             continue;
         }
-        const float err = std::sqrt(0.5f * err_sq_lim / w_in);
+        BOOST_CHECK_LE(std::abs(w_out - w_in), weight_fixed_precision * w_in);
+        const float err = std::sqrt(0.5f * err_sq_lim / w_out);
         BOOST_CHECK_LE(std::abs(v_out.real() - v_in.real()), err);
         BOOST_CHECK_LE(std::abs(v_out.imag() - v_in.imag()), err);
         BOOST_CHECK(v_out != v_in);
-        BOOST_CHECK_LE(std::abs(w_out - w_in), weight_fixed_precision * w_in);
+        if (p == tiny_p)
+            BOOST_CHECK(v_out == N2::cfloat(0.0f, 0.0f));
     }
     rm_tree_if_exists(base_dir);
 }
