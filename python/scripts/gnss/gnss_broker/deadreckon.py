@@ -1690,7 +1690,9 @@ def gw_nav_fields(ctx, v, prn, ref_hop, off_chips, shipped_phase_chips=None):
     message pages (gw_ephem_table nav_pages, from the library) and the frame index of the phase
     at ref_hop (gw_nav_frame). nav_phase_at_ref is for stage_push_seeds, which moves the frame
     with the trim; it is not posted."""
-    if ctx.args.dr_constellation != "W" or not ctx.utc0_sample0:
+    if getattr(ctx.args, "dr_constellation", None) != "W" or not getattr(
+        ctx, "utc0_sample0", None
+    ):
         return None
     recs = (ctx.dr_state.get("eph") or {}).get(("W", int(prn))) or []
     t_ref = ref_hop / ctx.args.hops_per_sec

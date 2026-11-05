@@ -631,7 +631,7 @@
    "fleet_trim": 1,
    "search": 1,
    "tap": 1,
-   "tracker": 1
+   "tracker": 2
   },
   "signals": {
    "BDS_B1C_D": {

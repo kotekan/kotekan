@@ -157,7 +157,9 @@ class TestTable(unittest.TestCase):
         # the gap predicts nothing, so the broker drops the seed and seeds the next step afresh
         recs = [dict(r, sys="W", health=0) for r in steps]
         self.assertIsNone(ge.best_eph(recs, steps[3]["t1_gpst"] + 5.0))
-        self.assertIs(ge.best_eph(recs, steps[3]["t1_gpst"] - 5.0)["clk_s"], steps[3]["clk_s"])
+        self.assertIs(
+            ge.best_eph(recs, steps[3]["t1_gpst"] - 5.0)["clk_s"], steps[3]["clk_s"]
+        )
 
     def test_segments_merge_and_pad(self):
         unix = list(range(0, 100, 10))
@@ -226,8 +228,10 @@ class TestDatabase(unittest.TestCase):
         self.assertGreaterEqual(len(db), 13)
         self.assertEqual(db["DIGUI-79"][0], 2027)
         self.assertAlmostEqual(db["DIGUI-79"][1], -16.55e-6, delta=0.2e-6)
-        self.assertTrue(all(0 <= ph < 2047 for ph, _ in db.values()))
-        self.assertTrue(all(th is not None and abs(th) < 1e-3 for _, th in db.values()))
+        self.assertTrue(all(0 <= v[0] < 2047 for v in db.values()))
+        self.assertTrue(all(v[1] is not None and abs(v[1]) < 1e-3 for v in db.values()))
+        # the third element is the satellite's message pages (nav_pages) or None
+        self.assertTrue(all(len(v) == 3 for v in db.values()))
         self.assertAlmostEqual(unknown, -9.0e-6, delta=0.5e-6)
 
     def test_an_unmeasured_epoch_takes_the_median(self):

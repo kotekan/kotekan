@@ -108,7 +108,9 @@ def state_grid(sat, ts, t0_gpst, n, step):
 
 
 def load_db(path=guowang_codes.GUOWANG_1202_DB):
-    """{name: (G2' phase, theta_s or None)} and theta_unknown_s, from the satellite database."""
+    """{name: (G2' phase, theta_s or None, nav_pages or None)} and theta_unknown_s, from the
+    satellite database; nav_pages are the four low-rate message pages (79 hex digits each) that
+    the broker ships with the seed for the data-sign wipe."""
     with open(path) as fh:
         d = json.load(fh)
     sats = {
