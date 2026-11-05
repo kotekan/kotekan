@@ -11,6 +11,7 @@
 
 #include <algorithm>  // for copy_n, fill, find
 #include <chrono>     // for milliseconds
+#include <cmath>      // for isfinite
 #include <exception>  // for exception
 #include <functional> // for bind, placeholders
 #include <memory>     // for shared_ptr
@@ -95,6 +96,9 @@ bufferGains::gainUpdate bufferGains::parse_update(const nlohmann::json& json) co
             fmt::format(fmt("'gain' shape must be [{:d}, {:d}] (freq_id length, num_elements), "
                             "not {:s}"),
                         update.freq_id.size(), num_elements, gain.at("shape").dump()));
+    for (const std::complex<float>& g : data)
+        if (!std::isfinite(g.real()) || !std::isfinite(g.imag()))
+            throw std::invalid_argument("'gain' holds a value that is not finite");
     update.gain = std::move(data);
     return update;
 }
