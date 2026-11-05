@@ -67,6 +67,12 @@ pulsarPostProcess::pulsarPostProcess(Config& config_, const std::string& unique_
 
     in_buffer = get_buffer("network_input_buffer");
     in_buffer->register_consumer(unique_name);
+    in_buffer->require_frame_desc(
+        kotekan::
+            : GenericNDArray::describe(
+                kotekan::int4x2_swapped_withoffset, "J",
+                {1, _num_beams, _num_freqs_per_gpu, _num_pol, _samples_per_data_set},
+                {"Thi", "B", "F", "P", "T"}, {_samples_per_data_set, 1, 1, 1, 1}));
     pulsar_buf = get_buffer("pulsar_out_buf");
     pulsar_buf->register_producer(unique_name);
 }
