@@ -43,8 +43,9 @@
  *
  * @par File layout
  * - Attributes: version, file_mode (CHORD/CHIME), abs_file_idx,
- *   num_file_t, num_elements, num_prod, num_ev, num_freq, n2_layout, telescope
- *   geometry (origin, orientations, dish maps), EOP tables, num_file_f.
+ *   num_file_t, num_elements, num_prod, num_ev, num_freq, n2_layout, err_sq_lim,
+ *   weight_fixed_precision, telescope geometry (origin, orientations, dish maps), EOP
+ *   tables, num_file_f.
  * - Index maps: /index_map/freq (MHz + width per file frequency), /index_map/prod,
  *   per-element input tables over the frame's elements (/index_map/dish_idx, pol,
  *   grid_x_idx, grid_y_idx, feed_pos_disp_m, coelev_disp_deg, type, label), and

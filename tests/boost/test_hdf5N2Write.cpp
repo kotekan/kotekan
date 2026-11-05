@@ -435,6 +435,12 @@ BOOST_AUTO_TEST_CASE(test_visfiledata_add_frame_truncate) {
                          weight_fixed_precision);
     data.add_frame(fv, 0);
 
+    float attr = 0.0f;
+    data.h5_file->getAttribute("err_sq_lim").read(attr);
+    BOOST_CHECK_EQUAL(attr, err_sq_lim);
+    data.h5_file->getAttribute("weight_fixed_precision").read(attr);
+    BOOST_CHECK_EQUAL(attr, weight_fixed_precision);
+
     for (size_t p = 0; p < num_prod; ++p) {
         const N2::cfloat v_in = fv.vis[p];
         const float w_in = fv.weight[p];
