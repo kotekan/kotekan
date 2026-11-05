@@ -181,6 +181,26 @@
     ["2026-11-04T10:29:14Z", 3.91, true]
    ]
   },
+  "DIGUI-23": {
+   "status": "transmitting",
+   "catnum": 63690,
+   "g2_phase": 830,
+   "theta_us": -15.613,
+   "carrier_minus_tle_ppb": 12.2,
+   "measured_utc": "2026-11-05T10:25:14Z",
+   "source": "2026-11-05 beam dump window 129 (gw_reduce, 33716 frames over 80 s)",
+   "sep_deg": 3.57,
+   "ref_input": 116,
+   "drift_ns_s": -12.02,
+   "last_observed_utc": "2026-11-05T10:25:18Z",
+   "last_checked_utc": "2026-11-05T10:25:18Z",
+   "last_checked_sep_deg": 3.52,
+   "passes_found": 1,
+   "passes_silent": 0,
+   "passes": [
+    ["2026-11-05T10:25:18Z", 3.52, true]
+   ]
+  },
   "DIGUI-26": {
    "status": "transmitting",
    "catnum": 63693,
@@ -2035,6 +2055,48 @@
    "passes_silent": 0,
    "passes": [
     ["2026-11-04T13:31:39Z", 1.21, true]
+   ]
+  },
+  "DIGUI-H54-1": {
+   "status": "transmitting",
+   "catnum": 99010,
+   "g2_phase": 390,
+   "theta_us": -27.509,
+   "carrier_minus_tle_ppb": 17.6,
+   "measured_utc": "2026-11-05T10:53:49Z",
+   "source": "2026-11-05 beam dump window 131 (gw_reduce, 29597 frames over 69 s)",
+   "sep_deg": 5.69,
+   "ref_input": 116,
+   "drift_ns_s": -17.96,
+   "note": "inferred satellite: theta and ppb on its TLE moved +2.903 s along track (fitted to the carrier)",
+   "last_observed_utc": "2026-11-05T10:53:59Z",
+   "last_checked_utc": "2026-11-05T10:53:59Z",
+   "last_checked_sep_deg": 5.61,
+   "passes_found": 1,
+   "passes_silent": 0,
+   "passes": [
+    ["2026-11-05T10:53:59Z", 5.61, true]
+   ]
+  },
+  "DIGUI-H54-2": {
+   "status": "transmitting",
+   "catnum": 99011,
+   "g2_phase": 187,
+   "theta_us": 14.147,
+   "carrier_minus_tle_ppb": 5.0,
+   "measured_utc": "2026-11-05T10:41:04Z",
+   "source": "2026-11-05 beam dump window 130 (gw_reduce, 50717 frames over 164 s)",
+   "sep_deg": 0.75,
+   "ref_input": 116,
+   "drift_ns_s": 50.2,
+   "note": "inferred satellite: theta and ppb on its TLE moved +9.205 s along track (fitted to the carrier)",
+   "last_observed_utc": "2026-11-05T10:41:12Z",
+   "last_checked_utc": "2026-11-05T10:41:12Z",
+   "last_checked_sep_deg": 0.59,
+   "passes_found": 1,
+   "passes_silent": 0,
+   "passes": [
+    ["2026-11-05T10:41:12Z", 0.59, true]
    ]
   },
   "DIGUI-H54-3": {
