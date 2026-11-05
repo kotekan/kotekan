@@ -67,19 +67,28 @@ Message content: `PAYLOAD.md`.
 
 ## Code families and sharing
 
-- G2' phase rule: the first 11 G2' chips as an integer (first chip = LSB) give V = 448 + ID, ID
-  1..120: about 128 ranging codes for 504 satellites. Library 11-04 13Z: 89 satellites, 79
-  transmitting, 10 quiet, 53 codes of which 25 shared; code_coverage.py has 128/204 catalogued
-  satellites determined (63 %), 155 with one of two candidates, 45 forward predictions agree,
-  0 conflict.
-- Every shared code is shared within one orbital plane. Polar 10-satellite rings (36 deg
-  spacing) reuse a code every second slot (72 deg): 2 codes per ring (1213 on DIGUI-26/21/28; 830
-  predicted on -23/-22/-29/-25). The 18-slot 50 deg planes repeat a code at +80 deg in an
-  80-100-80-100 pattern: 4 uses per code, ~5 codes per plane, ~120 for 24 planes (plane 95
-  repeats 1518/893/1922 at +80; one anomaly, DIGUI-89 code 1553 in plane 35 with no 80 deg
-  partner). Forward predictions 5/5 on 11-04. 80 deg exceeds the ~64 deg mutual-visibility limit
-  at 1150 km, so two satellites on one code are never both above CHORD's horizon: cellular-style
-  spatial reuse.
+- Code number: c = V - 448, V = the first 11 G2' chips as an integer (first chip = LSB). The
+  codes in use run c = -1..234 (not 1..120 as first read).
+- PLANE & SLOT RULE (11-05, builds/gw1202/constellation.py; zero exceptions):
+  * each 50 deg plane uses 5 codes, each polar ring of 10 uses 2; the blocks ascend in ALMANAC ID
+    order (PAYLOAD.md): polar rings (IDs 22-83) lowest, then the 50 deg planes in ID blocks 1-9,
+    10-18, ... 100-108 (planes 2, 1, 0, 3, 4, 5, 11, 10, 9, 7, 8, 6 in the map's numbering);
+  * a 50 deg plane has 18 slots 20 deg apart; almanac satellite j (= ID - block start) sits at
+    s' = 2j, the inferred H satellites at odd s'; group g = (s' mod 9) mod 5 takes the plane's
+    (g+1)-th lowest code: a code at u, u+80, u+180, u+260 (the 80-100-80-100 pattern), group 4
+    at u and u+180 only. Nine-satellite planes: j = 0..8 -> g = 0,2,4,1,3,1,3,0,2;
+  * polar ring: even slot -> the lower code, odd -> the higher.
+  Tests: leave-one-out over 102 measured, 81/81 with a measured slot-mate predicted exactly, the
+  other 21 inside the block-order bounds; the sweep's 28 on-sky confirmations all agree; 58 groups,
+  no conflict, no order violation. Coverage of 204: measured 102, predicted 59, forced 2 (plane 2
+  group 4 = 50), bounded 41 (20 in the silent polar planes). Per-plane codes (c): p2 [<41,41,47,
+  49,50] p1 [51,54,64,67,70] p0 [72,74,80,81,85] p3 [86,..] p4 [100,103,104,108,..] p5 [117,119,
+  120,121,123] p11 [124,131,132,134,..] p10 [137,138,141,143,147] p9 [149,154,164,168,173] p7
+  [174,175,179,180,182] p8 [185,187,189,198,203] p6 [214,220,..,232,234]; rings RAAN 265 [-1,1],
+  234.6 [11,14], 204 [20,30], 356 [32,..]. OPEN: which c are skipped (not the CSK codes, not
+  balance); it would pin the bounded 41.
+- Two satellites on one code are 80 deg or more apart, beyond the ~64 deg mutual-visibility limit
+  at 1150 km, so they are never both above CHORD's horizon: cellular-style spatial reuse.
 - CSK code pairing: ranging G2' -> CSK G2' is a fixed per-code table with no arithmetic offset
   (37 satellites mapped 11-04; e.g. 1144 -> 1436, 1402 -> 1726, 390 -> 1041, 1585 -> 1002;
   `builds/gw1202/csk_streams/csk_codes.json`). Satellites sharing a ranging code share the CSK
@@ -95,6 +104,11 @@ Message content: `PAYLOAD.md`.
   through a pass (<= 0.6 chip); data symbols start on even UTC 2 ms boundaries; CSK 1 s frames on
   the UTC second; low-rate 3 s subframes on the UTC 3 s grid. GPST - UTC = 18 s is a multiple of
   2, 4 and 10 ms; BDT = UTC + 4 s.
+- theta is DECLARED by the satellite itself in slow page 1, payload bits 42-51 (signed 10 bit):
+  theta = -11.7 us - 2.07 us x field (49 satellites with dump theta: median |resid| 0.9 us, max
+  4 us; DIGUI-55 field -28 -> +46.3 vs +46.9 us measured, so the scale holds far out). Readable
+  only once tracked (a drift monitor, not a first-acquisition seed). No page carries OTHER
+  satellites' theta (slow_theta_others.py: every per-cycle live window as (ID, theta), 11-05).
 - theta per satellite (incl. receiver delay; ~0.1 us depends on the beam's reference input,
   116 in production): most span -10..0 us (~20 chips), median -9 us; branches at +400 us
   (DIGUI-176, -177) and +46.9 us (DIGUI-55). Across satellites rms 16 chips after the common
