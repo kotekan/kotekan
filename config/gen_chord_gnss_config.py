@@ -1059,6 +1059,11 @@ def lane_transfer_keys(cfg, node, gpu, tag, freq_ids, args):
     return {"lane_transfer_freq_ids": sorted(out)} if out else {}
 
 
+# GnssGpuRecordAssemble elem_proj_sys per system (the first part of the broker chain key): the
+# constellation letter that names the chain's satellites in the bright-satellite projection.
+PROJ_SYS = {"gps": "G", "sbas": "G", "gw": "G", "gal": "E", "bds": "C", "glo": "R"}
+
+
 def elem_proj_keys(args):
     """Assembler keys for the bright-satellite projection (gnssProjSubspace.hpp); nothing unless
     --elem-proj-mode is shadow or live, so a fleet without it is byte-identical. The mode is
@@ -1530,6 +1535,7 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
                 bad_input_set(cfg, args),
             ),
             **elem_proj_keys(args),
+            "elem_proj_sys": PROJ_SYS[V["chain"].partition("_")[0]],
             **lane_transfer_keys(cfg, node, gpu, tag, freq_ids, args),
             **cube_assembler_keys(args, cfg, gpu, pre),
             "sample_rate": float(cfg["fengine"]["sampling_rate_MHz"]) * 1e6,

@@ -41,6 +41,8 @@
  * @conf record_cp_mod_chips  Float (default 0 = off). Reduce record slot 2 (the code-phase
  *                argument, float32) mod this many chips: the primary code length on a chain
  *                whose baked code is long enough to cost float32 precision (GLO_L2OC_P_OC).
+ * @conf elem_proj_sys  String (default "G"). The constellation letter of the chain's PRNs
+ *                (G, E, C or R), which names its satellites in the bright-satellite projection.
  */
 class GnssGpuRecordAssemble : public kotekan::Stage {
 public:

@@ -304,12 +304,14 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
         _proj_mode = (mode_s == "live") ? 2 : (mode_s == "shadow") ? 1 : 0;
         _proj_deg = config.get_default<double>(unique_name, "elem_proj_deg", 4.0);
         _proj_group = unique_name.substr(0, unique_name.find('_'));
-        // The constellation, from the generator's band tokens in the stage name.
-        auto has = [&](const char* t) { return unique_name.find(t) != std::string::npos; };
-        _proj_sys = (has("_e5a") || has("_e5b") || has("_e6") || has("_e1"))         ? 'E'
-                    : (has("_b2a") || has("_b2b") || has("_b3i") || has("_b1"))      ? 'C'
-                    : (has("_l1of") || has("_l2of") || has("_l2oc") || has("_l3oc")) ? 'R'
-                                                                                     : 'G';
+        const std::string sys = config.get_default<std::string>(unique_name, "elem_proj_sys", "G");
+        if (sys.size() != 1) {
+            FATAL_ERROR("GnssGpuRecordAssemble[{:s}]: elem_proj_sys must be one letter, got "
+                        "'{:s}'",
+                        unique_name, sys);
+            return;
+        }
+        _proj_sys = sys[0];
         _proj_ready = _elem_sum && !fids.empty();
         if (_proj_ready) {
             _proj_fids = fids;

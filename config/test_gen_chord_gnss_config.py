@@ -995,6 +995,11 @@ def test_manual_mask_reaches_the_node_config():
     asm = cfg["gnss0_n2assemble"]
     proj = cfg["gnss_n2_project"]["proj_0"]
     check(
+        asm["elem_proj_sys"] == "G"
+        and cfg["gnss0_1202_n2assemble"]["elem_proj_sys"] == "G",
+        "elem_proj_sys: G for GPS L5 and GuoWang",
+    )
+    check(
         proj.get("fleet_lanes") is True
         and proj.get("elem_positions_enu") == asm["elem_positions_enu"]
         and proj.get("elem_steer_sign") == asm["elem_steer_sign"]
