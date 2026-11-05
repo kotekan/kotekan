@@ -566,7 +566,8 @@ All are 1-D of length :math:`N_t` (axis ``time``) unless noted. "Bin" values
 refer to the *nominal* accumulation bin on the upstream bin grid;
 "time-centre" values refer to the midpoint of the data actually accumulated.
 Identical values are shared by all frequencies of a time slot (the writer
-verifies consistency, within ns-level tolerance, as frames arrive).
+verifies consistency, within ns-level tolerance, as frames arrive), except in
+the datasets with a frequency axis, which hold one value per stream.
 
 .. list-table::
    :header-rows: 1
@@ -623,14 +624,14 @@ verifies consistency, within ns-level tolerance, as frames arrive).
        frequency and bin. Each frequency comes from one stream, and the
        streams switch independently.
    * - ``rfi_frame_excision_num``
-     - int32
+     - int32 (:math:`N_f`, :math:`N_t`)
      - Number of active excision thresholds (<= :math:`N_k`); only the
        first this many entries of the two datasets below are meaningful.
    * - ``rfi_frame_excision_threshold``
-     - float32 (:math:`N_t`, :math:`N_k`)
+     - float32 (:math:`N_f`, :math:`N_t`, :math:`N_k`)
      - Spectral-kurtosis thresholds, in sigma, used for excision.
    * - ``rfi_frame_excision_fraction``
-     - float32 (:math:`N_t`, :math:`N_k`)
+     - float32 (:math:`N_f`, :math:`N_t`, :math:`N_k`)
      - Fraction of samples above the corresponding threshold required to
        trigger excision.
    * - ``frac_rfi_first_stage_enabled``

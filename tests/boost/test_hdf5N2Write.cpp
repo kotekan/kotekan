@@ -94,6 +94,11 @@ static void fill_n2_frame_with_abs_freq(Buffer* buf, int frame_id, size_t num_in
         std::min<uint64_t>(10 * f_index + t_index, frame_length_ticks);
     meta->rfi_frame_excision_enabled = (f_index + t_index) % 2 == 1;
     meta->fringestop_enabled = f_index % 2 == 1;
+    meta->rfi_frame_excision_num = 1 + (f_index + t_index) % MAX_NUM_RFI_THRESHOLDS;
+    for (size_t k = 0; k < MAX_NUM_RFI_THRESHOLDS; ++k) {
+        meta->rfi_frame_excision_threshold[k] = float(100 * f_index + 10 * t_index + k);
+        meta->rfi_frame_excision_fraction[k] = float(100 * f_index + 10 * t_index + k) / 1000.0f;
+    }
 }
 
 
@@ -313,6 +318,25 @@ static void validate_dataset_content(File& file, size_t num_input, size_t num_ev
             for (size_t t = 0; t < file_nt; ++t) {
                 BOOST_CHECK_EQUAL(int(rfi_out[fi * file_nt + t]), int((fi + t) % 2));
                 BOOST_CHECK_EQUAL(int(fs_out[fi * file_nt + t]), int(fi % 2));
+            }
+    }
+
+    // second-stage excision thresholds, every (freq, time)
+    {
+        std::vector<std::vector<int32_t>> num_out;
+        std::vector<std::vector<std::vector<float>>> thr_out, frac_out;
+        file.getDataSet("/rfi_frame_excision_num").read(num_out);
+        file.getDataSet("/rfi_frame_excision_threshold").read(thr_out);
+        file.getDataSet("/rfi_frame_excision_fraction").read(frac_out);
+        BOOST_REQUIRE_GE(num_out.size(), nfreq);
+        for (size_t fi = 0; fi < nfreq; ++fi)
+            for (size_t t = 0; t < file_nt; ++t) {
+                BOOST_CHECK_EQUAL(num_out[fi][t], int32_t(1 + (fi + t) % MAX_NUM_RFI_THRESHOLDS));
+                for (size_t k = 0; k < MAX_NUM_RFI_THRESHOLDS; ++k) {
+                    const float expected = float(100 * fi + 10 * t + k);
+                    BOOST_CHECK_EQUAL(thr_out[fi][t][k], expected);
+                    BOOST_CHECK_CLOSE_FRACTION(frac_out[fi][t][k], expected / 1000.0f, 1e-6f);
+                }
             }
     }
 
