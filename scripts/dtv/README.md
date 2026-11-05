@@ -23,4 +23,5 @@ Several tools still use the paths of their first home, `~/gnss/bb1030` and `~/gn
   `bb_extract.py` (pull channels from the dump), `dtv_cov.py`, `dtv_modes.py`, `dtv_blind*.py`, `dtv_protect.py`.
 - `atsc_*.py`: 8-VSB acquisition, equalisation, trellis decode, replica regression; `atsc_nsrc.py` (sources needed).
 
-**Replay**: `dtv_replay.cu`, `dtv_replay*.sh`, `dtv_replay.py`, `dtv_synth_state.py` (GPU cost on cf05).
+**Replay and timing**: `dtv_replay.cu` (the stage's kernels frame by frame on recorded voltages), `dtv_replay*.sh`,
+`dtv_replay.py`, `dtv_synth_state.py`; `dtv_gemm_bench.cu` (time per frame at a given shape, checked against the CPU).

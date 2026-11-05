@@ -1,17 +1,19 @@
 // Standalone GPU check of the cudaDtvSubtract kernels on a synthetic 4+4b frame: one
 // transmitter timestream through a known impulse response per input (a direct path and two
-// reflections at different lags per input), plus noise and a weak second source.
+// reflections at different lags per input) plus noise.
 //  - decode and the per-input powers against a CPU sum (exact)
-//  - the beam and the lag correlations (cuBLAS products, FP32) against a CPU sum with the same
-//    weights
 //  - the eigen start: the covariance against a CPU sum, the eigenvector's coherence with the
 //    dominant arrival's steering vector
+//  - the beam the decode forms and the lag correlations of the fused pass (TF32) against CPU
+//    sums with the same weights
 //  - the host-side least-squares fit of the impulse response from the correlations (the
 //    Toeplitz normal equations, as scripts/gnss/dtv_state.py solves them) against the truth
 //  - the rolling fit's solver (dtvRollingFit.hpp) against that fit and a CPU subtraction, one
 //    refresh with its checks, and the decaying sums against a CPU sum
-//  - the subtraction with the true response: the residual power per input against the noise,
-//    and the re-quantised bytes against a CPU subtraction; then again with TF32 products
+//  - two sources subtracted by the fused pass (the fitted response, then a second source on the
+//    residual with a small random response): the second timestream, its correlations, the
+//    residual and its power against the CPU, the residual power against the noise, and the
+//    re-quantised bytes against a CPU subtraction
 // The two channels have different lag windows (dtv_lag_min, dtv_n_lag per channel).
 // Exits 0 when every check passes.   ./cuda_dtv_subtract_test [n_times]
 
@@ -118,32 +120,28 @@ int main(int argc, char** argv) {
             for (int i = 0; i < NI; i++)
                 x_true[c][(size_t)t * NI + i] = dec44(frame[((size_t)t * NF + sel_h[c]) * NI + i]);
 
-    // device buffers
+    // device buffers; x is planar, g de-interleaved (cudaDtvSubtractKernel.hpp)
+    const int L16 = gnss_cuda::dtv_l16(NLAG);
     unsigned char* d_frame;
     int *d_sel, *d_act, *d_ref, *d_lags;
-    float2 *d_x, *d_s, *d_w, *d_g, *d_cov, *d_q1, *d_q2, *d_wtmp, *d_rxs, *d_rss, *d_S;
-    float *d_pw_raw, *d_pw_res, *d_ps, *d_pwtmp, *d_lam;
+    float2 *d_s, *d_w, *d_cov, *d_q1, *d_q2, *d_wtmp, *d_rxs, *d_rss;
+    float *d_x, *d_g, *d_pw_raw, *d_pw_res, *d_ps, *d_pwtmp, *d_lam;
+    const size_t x_n = (size_t)NC * 2 * NT * NI, g_n = (size_t)NC * NSRC * 2 * L16 * NI;
     CK(cudaMalloc(&d_frame, frame.size()));
     CK(cudaMalloc(&d_sel, NC * sizeof(int)));
     CK(cudaMalloc(&d_lags, 2 * NC * sizeof(int)));
     CK(cudaMalloc(&d_act, NC * NSRC * sizeof(int)));
     CK(cudaMalloc(&d_ref, NC * sizeof(int)));
-    CK(cudaMalloc(&d_x, (size_t)NC * NT * NI * sizeof(float2)));
+    CK(cudaMalloc(&d_x, x_n * sizeof(float)));
     CK(cudaMalloc(&d_s, (size_t)NC * NSRC * NS * sizeof(float2)));
     CK(cudaMalloc(&d_w, (size_t)NC * NSRC * NI * sizeof(float2)));
-    CK(cudaMalloc(&d_g, (size_t)NC * NSRC * NLAG * NI * sizeof(float2)));
+    CK(cudaMalloc(&d_g, g_n * sizeof(float)));
     CK(cudaMalloc(&d_cov, (size_t)NC * NI * NI * sizeof(float2)));
     CK(cudaMalloc(&d_q1, (size_t)NC * NI * sizeof(float2)));
     CK(cudaMalloc(&d_q2, (size_t)NC * NI * sizeof(float2)));
     CK(cudaMalloc(&d_wtmp, (size_t)NC * NI * sizeof(float2)));
     CK(cudaMalloc(&d_rxs, (size_t)NC * NSRC * NLAG * NI * sizeof(float2)));
     CK(cudaMalloc(&d_rss, (size_t)NC * NSRC * NLAG * sizeof(float2)));
-    CK(cudaMalloc(&d_S, (size_t)NC * NLAG * NT * sizeof(float2)));
-    cublasHandle_t blas;
-    if (cublasCreate(&blas) != CUBLAS_STATUS_SUCCESS) {
-        fprintf(stderr, "cublasCreate failed\n");
-        return 2;
-    }
     CK(cudaMalloc(&d_pw_raw, NC * NI * sizeof(float)));
     CK(cudaMalloc(&d_pw_res, NC * NI * sizeof(float)));
     CK(cudaMalloc(&d_ps, NC * NSRC * sizeof(float)));
@@ -152,8 +150,10 @@ int main(int argc, char** argv) {
     CK(cudaMemcpy(d_frame, frame.data(), frame.size(), cudaMemcpyHostToDevice));
     CK(cudaMemcpy(d_sel, sel_h, NC * sizeof(int), cudaMemcpyHostToDevice));
     CK(cudaMemcpy(d_lags, lags_h, 2 * NC * sizeof(int), cudaMemcpyHostToDevice));
+    CK(cudaMemset(d_act, 0, NC * NSRC * sizeof(int)));
+    CK(cudaMemset(d_w, 0, (size_t)NC * NSRC * NI * sizeof(float2)));
     CK(cudaMemset(d_s, 0, (size_t)NC * NSRC * NS * sizeof(float2)));
-    CK(cudaMemset(d_g, 0, (size_t)NC * NSRC * NLAG * NI * sizeof(float2)));
+    CK(cudaMemset(d_g, 0, g_n * sizeof(float)));
     CK(cudaMemset(d_cov, 0, (size_t)NC * NI * NI * sizeof(float2)));
     CK(cudaMemset(d_q1, 0, (size_t)NC * NI * sizeof(float2)));
     CK(cudaMemset(d_q2, 0, (size_t)NC * NI * sizeof(float2)));
@@ -163,10 +163,11 @@ int main(int argc, char** argv) {
     const cudaStream_t st = 0;
 
     // 1. decode + raw powers
-    gnss_cuda::launch_dtv_decode(d_frame, d_sel, NC, NF, NT, d_x, d_pw_raw, st);
-    std::vector<float2> x_dev((size_t)NC * NT * NI);
+    gnss_cuda::launch_dtv_decode(d_frame, d_sel, d_w, d_act, NC, NSRC, NF, NT, d_x, d_pw_raw, d_s,
+                                 d_ps, st);
+    std::vector<float> x_dev(x_n);
     std::vector<float> pw_raw(NC * NI);
-    CK(cudaMemcpy(x_dev.data(), d_x, x_dev.size() * sizeof(float2), cudaMemcpyDeviceToHost));
+    CK(cudaMemcpy(x_dev.data(), d_x, x_n * sizeof(float), cudaMemcpyDeviceToHost));
     CK(cudaMemcpy(pw_raw.data(), d_pw_raw, pw_raw.size() * sizeof(float), cudaMemcpyDeviceToHost));
     double dmax = 0.0, pmax = 0.0;
     for (int c = 0; c < NC; c++) {
@@ -174,8 +175,9 @@ int main(int argc, char** argv) {
         for (int t = 0; t < NT; t++)
             for (int i = 0; i < NI; i++) {
                 const cf v = x_true[c][(size_t)t * NI + i];
-                const float2 d = x_dev[((size_t)c * NT + t) * NI + i];
-                dmax = std::max(dmax, (double)std::abs(cf(d.x, d.y) - v));
+                const float dr = x_dev[((size_t)c * 2 * NT + t) * NI + i];
+                const float di = x_dev[((size_t)(c * 2 + 1) * NT + t) * NI + i];
+                dmax = std::max(dmax, (double)std::abs(cf(dr, di) - v));
                 p[i] += std::norm(v);
             }
         for (int i = 0; i < NI; i++)
@@ -227,7 +229,8 @@ int main(int argc, char** argv) {
               -1);
     }
 
-    // 3. beam, lag correlations and the fit with the eigen-start weights (source 0 active)
+    // 3. the beam (formed by the decode), R_ss and the lag correlations (the fused pass, source 0
+    //    observed) with the eigen-start weights
     std::vector<int> act(NC * NSRC, 0);
     for (int c = 0; c < NC; c++)
         act[c * NSRC] = 1;
@@ -236,11 +239,12 @@ int main(int argc, char** argv) {
                     NI * sizeof(float2), NC, cudaMemcpyDeviceToDevice));
     // a previous frame's tail of s: the test's history is zero, as after a cold start
     gnss_cuda::launch_dtv_shift(d_s, NC, NSRC, NT, st);
-    gnss_cuda::launch_dtv_beam(d_x, d_w, d_act, 0, NC, NSRC, NT, d_s, d_ps, st);
-    gnss_cuda::launch_dtv_lagged(d_s, d_act, d_lags, 0, NC, NSRC, NT, NLAG, d_S, d_rss, st);
-    check(gnss_cuda::dtv_lagcorr(blas, d_x, d_S, 0, NC, NSRC, NT, NLAG, d_rxs)
-              == CUBLAS_STATUS_SUCCESS,
-          "cuBLAS lag correlations", 0, 0);
+    gnss_cuda::launch_dtv_decode(d_frame, d_sel, d_w, d_act, NC, NSRC, NF, NT, d_x, d_pw_raw, d_s,
+                                 d_ps, st);
+    gnss_cuda::launch_dtv_rss(d_s, d_act, d_lags, 0, NC, NSRC, NT, NLAG, d_rss, st);
+    gnss_cuda::launch_dtv_fused(d_x, d_s, d_g, d_w, d_act, d_lags, 0, NC, NSRC, NT, NLAG, d_rxs,
+                                d_ps, st);
+    CK(cudaGetLastError());
     CK(cudaDeviceSynchronize());
     std::vector<float2> s_dev((size_t)NC * NSRC * NS), rxs((size_t)NC * NSRC * NLAG * NI),
         rss((size_t)NC * NSRC * NLAG);
@@ -249,7 +253,29 @@ int main(int argc, char** argv) {
     CK(cudaMemcpy(rxs.data(), d_rxs, rxs.size() * sizeof(float2), cudaMemcpyDeviceToHost));
     CK(cudaMemcpy(rss.data(), d_rss, rss.size() * sizeof(float2), cudaMemcpyDeviceToHost));
     CK(cudaMemcpy(ps.data(), d_ps, ps.size() * sizeof(float), cudaMemcpyDeviceToHost));
-    double smax = 0.0, rmax = 0.0, rsmax = 0.0, psmax = 0.0, zmax = 0.0;
+    {
+        // the stage's beam after an eigen start, on the same x: the same timestream and power
+        float2* d_sb;
+        float* d_psb;
+        CK(cudaMalloc(&d_sb, (size_t)NC * NSRC * NS * sizeof(float2)));
+        CK(cudaMalloc(&d_psb, NC * NSRC * sizeof(float)));
+        CK(cudaMemset(d_sb, 0, (size_t)NC * NSRC * NS * sizeof(float2)));
+        CK(cudaMemset(d_psb, 0, NC * NSRC * sizeof(float)));
+        gnss_cuda::launch_dtv_beam(d_x, d_w, d_act, 0, NC, NSRC, NT, d_sb, d_psb, st);
+        std::vector<float2> sb(s_dev.size());
+        std::vector<float> psb(NC * NSRC);
+        CK(cudaMemcpy(sb.data(), d_sb, sb.size() * sizeof(float2), cudaMemcpyDeviceToHost));
+        CK(cudaMemcpy(psb.data(), d_psb, psb.size() * sizeof(float), cudaMemcpyDeviceToHost));
+        double bmax = 0.0;
+        for (size_t q = 0; q < sb.size(); q++)
+            bmax = std::max(bmax, (double)std::abs(cf(sb[q].x - s_dev[q].x, sb[q].y - s_dev[q].y)));
+        for (int c = 0; c < NC; c++)
+            bmax = std::max(bmax, (double)std::abs(psb[c * NSRC] - ps[c * NSRC]) / ps[c * NSRC]);
+        check(bmax < 1e-6, "beam kernel vs the decode's beam", bmax, 0.0);
+        cudaFree(d_sb);
+        cudaFree(d_psb);
+    }
+    double smax = 0.0, rmax = 0.0, rref = 0.0, rsmax = 0.0, psmax = 0.0, zmax = 0.0;
     std::vector<std::vector<cf>> s_est(NC, std::vector<cf>(NS, cf(0.0f, 0.0f)));
     for (int c = 0; c < NC; c++) {
         double pss = 0.0;
@@ -287,14 +313,15 @@ int main(int argc, char** argv) {
                         acc += cd(x_true[c][(size_t)t * NI + i]) * std::conj(cd(s_est[c][idx]));
                 }
                 const float2 d = rxs[(((size_t)c * NSRC + 0) * NLAG + j) * NI + i];
-                rmax = std::max(rmax, std::abs(acc - cd(d.x, d.y)) / (1.0 + std::abs(acc)));
+                rmax = std::max(rmax, std::abs(acc - cd(d.x, d.y)));
+                rref = std::max(rref, std::abs(acc));
             }
         }
     }
     check(smax < 1e-4, "beam max rel error", smax, 0.0);
     check(psmax < 1e-4, "beam power rel error", psmax, 0.0);
     check(rsmax < 1e-3, "R_ss max rel error", rsmax, 0.0);
-    check(rmax < 1e-3, "R_xs max rel error (sampled)", rmax, 0.0);
+    check(rmax / rref < 1e-3, "R_xs (TF32) max error / max |R_xs| (sampled)", rmax / rref, 0.0);
     check(zmax == 0.0, "R_xs, R_ss zero beyond each channel's window", zmax, 0.0);
 
     // 4. the host fit: Toeplitz normal equations T g_i = r_i with T[j][m] = R_ss(lag_j - lag_m)
@@ -464,21 +491,99 @@ int main(int argc, char** argv) {
         check(o.n_upd == 0, "refresh: no fit before the warm-up", o.n_upd, 0);
     }
 
-    // 5. subtract with the fitted response on the GPU: residual power per input vs the noise
-    //    (the second source on channel 1 stays), and the bytes vs a CPU subtraction
-    std::vector<float2> g_dev((size_t)NC * NSRC * NLAG * NI, make_float2(0.0f, 0.0f));
-    for (int c = 0; c < NC; c++)
-        for (int j = 0; j < NLAG; j++)
+    // 5. two sources subtracted by the fused pass, from a fresh decode: source 0 with the fitted
+    //    response; source 1 the residual's beam with random weights and a small random response.
+    //    Against the CPU in double: the second timestream and its power, its correlations, the
+    //    residual (float, before re-quantising) and its power, and the re-quantised bytes.
+    std::vector<cf> w1((size_t)NC * NI), g1((size_t)NC * NLAG * NI, cf(0.0f, 0.0f));
+    std::vector<float2> w_all((size_t)NC * NSRC * NI);
+    std::vector<float> g_dev(g_n, 0.0f);
+    for (int c = 0; c < NC; c++) {
+        for (int i = 0; i < NI; i++) {
+            w1[(size_t)c * NI + i] = cf(gauss(rng), gauss(rng)) / 16.0f;
+            w_all[((size_t)c * NSRC + 0) * NI + i] = w0[(size_t)c * NI + i];
+            w_all[((size_t)c * NSRC + 1) * NI + i] =
+                make_float2(w1[(size_t)c * NI + i].real(), w1[(size_t)c * NI + i].imag());
+        }
+        for (int j = 0; j < nlag_h[c]; j++)
             for (int i = 0; i < NI; i++)
-                g_dev[(((size_t)c * NSRC + 0) * NLAG + j) * NI + i] = make_float2(
-                    g_fit[c][(size_t)j * NI + i].real(), g_fit[c][(size_t)j * NI + i].imag());
-    CK(cudaMemcpy(d_g, g_dev.data(), g_dev.size() * sizeof(float2), cudaMemcpyHostToDevice));
+                g1[((size_t)c * NLAG + j) * NI + i] = cf(gauss(rng), gauss(rng)) * 0.01f;
+        for (int k = 0; k < NSRC; k++) {
+            float* re = g_dev.data() + ((size_t)c * NSRC + k) * 2 * L16 * NI;
+            float* im = re + (size_t)L16 * NI;
+            for (int j = 0; j < NLAG; j++)
+                for (int i = 0; i < NI; i++) {
+                    const cf v =
+                        k == 0 ? g_fit[c][(size_t)j * NI + i] : g1[((size_t)c * NLAG + j) * NI + i];
+                    re[(size_t)j * NI + i] = v.real();
+                    im[(size_t)j * NI + i] = v.imag();
+                }
+        }
+    }
+    // the CPU: r0 = x - g_fit * s0, s1 = w1 . r0, r1 = r0 - g1 * s1 (s1's history is zero)
+    std::vector<std::vector<cd>> r0(NC, std::vector<cd>((size_t)NT * NI)), r1(r0),
+        s1(NC, std::vector<cd>(NS, cd(0.0, 0.0)));
+    std::vector<double> pres_cpu(NC, 0.0), ps1_cpu(NC, 0.0);
+    std::vector<unsigned char> want(frame.size());
+    for (int c = 0; c < NC; c++) {
+        for (int t = 0; t < NT; t++) {
+            cd b(0.0, 0.0);
+            for (int i = 0; i < NI; i++) {
+                cd r = cd(x_true[c][(size_t)t * NI + i]);
+                for (int j = 0; j < nlag_h[c]; j++) {
+                    const int idx = DTV_HIST + t - (lag_min_h[c] + j);
+                    if (idx < NS)
+                        r -= cd(g_fit[c][(size_t)j * NI + i]) * cd(s_est[c][idx]);
+                }
+                r0[c][(size_t)t * NI + i] = r;
+                b += cd(w1[(size_t)c * NI + i]) * r;
+            }
+            s1[c][DTV_HIST + t] = b;
+            ps1_cpu[c] += std::norm(b);
+        }
+        for (int t = 0; t < NT; t++)
+            for (int i = 0; i < NI; i++) {
+                cd r = r0[c][(size_t)t * NI + i];
+                for (int j = 0; j < nlag_h[c]; j++) {
+                    const int idx = DTV_HIST + t - (lag_min_h[c] + j);
+                    if (idx < NS)
+                        r -= cd(g1[((size_t)c * NLAG + j) * NI + i]) * s1[c][idx];
+                }
+                r1[c][(size_t)t * NI + i] = r;
+                pres_cpu[c] += std::norm(r);
+                want[((size_t)t * NF + sel_h[c]) * NI + i] =
+                    enc44((float)r.real(), (float)r.imag());
+            }
+    }
+    float2 *d_rxs5, *d_rss5;
+    float *d_ps5, *d_pw_raw5;
+    CK(cudaMalloc(&d_rxs5, (size_t)NC * NSRC * NLAG * NI * sizeof(float2)));
+    CK(cudaMalloc(&d_rss5, (size_t)NC * NSRC * NLAG * sizeof(float2)));
+    CK(cudaMalloc(&d_ps5, NC * NSRC * sizeof(float)));
+    CK(cudaMalloc(&d_pw_raw5, NC * NI * sizeof(float)));
+    CK(cudaMemset(d_rxs5, 0, (size_t)NC * NSRC * NLAG * NI * sizeof(float2)));
+    CK(cudaMemset(d_rss5, 0, (size_t)NC * NSRC * NLAG * sizeof(float2)));
+    CK(cudaMemset(d_ps5, 0, NC * NSRC * sizeof(float)));
+    CK(cudaMemcpy(d_w, w_all.data(), w_all.size() * sizeof(float2), cudaMemcpyHostToDevice));
+    CK(cudaMemcpy(d_g, g_dev.data(), g_n * sizeof(float), cudaMemcpyHostToDevice));
     for (int c = 0; c < NC; c++)
-        act[c * NSRC] = 2;
+        act[c * NSRC] = act[c * NSRC + 1] = 2;
     CK(cudaMemcpy(d_act, act.data(), act.size() * sizeof(int), cudaMemcpyHostToDevice));
-    check(gnss_cuda::dtv_subtract(blas, d_x, d_S, d_g, 0, NC, NSRC, NT, NLAG)
-              == CUBLAS_STATUS_SUCCESS,
-          "cuBLAS subtraction", 0, 0);
+    gnss_cuda::launch_dtv_decode(d_frame, d_sel, d_w, d_act, NC, NSRC, NF, NT, d_x, d_pw_raw5, d_s,
+                                 d_ps5, st);
+    for (int k = 0; k < NSRC; k++) {
+        gnss_cuda::launch_dtv_rss(d_s, d_act, d_lags, k, NC, NSRC, NT, NLAG, d_rss5, st);
+        gnss_cuda::launch_dtv_fused(d_x, d_s, d_g, d_w, d_act, d_lags, k, NC, NSRC, NT, NLAG,
+                                    d_rxs5, d_ps5, st);
+    }
+    CK(cudaGetLastError());
+    CK(cudaDeviceSynchronize());
+    std::vector<float> xr_dev(x_n), ps5(NC * NSRC);
+    std::vector<float2> s5(s_dev.size()), rxs5(rxs.size());
+    CK(cudaMemcpy(xr_dev.data(), d_x, x_n * sizeof(float), cudaMemcpyDeviceToHost));
+    CK(cudaMemcpy(s5.data(), d_s, s5.size() * sizeof(float2), cudaMemcpyDeviceToHost));
+    CK(cudaMemcpy(rxs5.data(), d_rxs5, rxs5.size() * sizeof(float2), cudaMemcpyDeviceToHost));
+    CK(cudaMemcpy(ps5.data(), d_ps5, ps5.size() * sizeof(float), cudaMemcpyDeviceToHost));
     gnss_cuda::launch_dtv_encode(d_x, d_sel, d_act, NC, NSRC, NF, NT, d_frame, d_pw_res, st);
     CK(cudaDeviceSynchronize());
     std::vector<float> pw_res(NC * NI);
@@ -486,107 +591,66 @@ int main(int argc, char** argv) {
     CK(cudaMemcpy(pw_res.data(), d_pw_res, pw_res.size() * sizeof(float), cudaMemcpyDeviceToHost));
     CK(cudaMemcpy(frame_out.data(), d_frame, frame.size(), cudaMemcpyDeviceToHost));
     for (int c = 0; c < NC; c++) {
-        double praw = 0.0, pres = 0.0, pres_cpu = 0.0;
-        long nbyte = 0, nbad = 0;
+        double e_s = 0.0, m_s = 0.0, e_r = 0.0, m_r = 0.0, e_x = 0.0;
+        for (int t = 0; t < NT; t++) {
+            const float2 d = s5[((size_t)c * NSRC + 1) * NS + DTV_HIST + t];
+            e_s = std::max(e_s, std::abs(s1[c][DTV_HIST + t] - cd(d.x, d.y)));
+            m_s = std::max(m_s, std::abs(s1[c][DTV_HIST + t]));
+            for (int i = 0; i < NI; i++) {
+                const cd g(xr_dev[((size_t)c * 2 * NT + t) * NI + i],
+                           xr_dev[((size_t)(c * 2 + 1) * NT + t) * NI + i]);
+                e_x = std::max(e_x, std::abs(g - r1[c][(size_t)t * NI + i]));
+            }
+        }
+        for (int j = 0; j < nlag_h[c]; j++)
+            for (int i = 0; i < NI; i += 3) {
+                cd acc(0.0, 0.0);
+                for (int t = 0; t < NT; t++) {
+                    const int idx = DTV_HIST + t - (lag_min_h[c] + j);
+                    if (idx < NS)
+                        acc += r0[c][(size_t)t * NI + i] * std::conj(s1[c][idx]);
+                }
+                const float2 d = rxs5[(((size_t)c * NSRC + 1) * NLAG + j) * NI + i];
+                e_r = std::max(e_r, std::abs(acc - cd(d.x, d.y)));
+                m_r = std::max(m_r, std::abs(acc));
+            }
+        double praw = 0.0, pres = 0.0;
+        long nbyte = 0, n1 = 0, nbad = 0;
         for (int i = 0; i < NI; i++) {
             praw += pw_raw[c * NI + i];
             pres += pw_res[c * NI + i];
         }
         for (int t = 0; t < NT; t++)
             for (int i = 0; i < NI; i++) {
-                cf r = x_true[c][(size_t)t * NI + i];
-                for (int j = 0; j < nlag_h[c]; j++) {
-                    const int idx = DTV_HIST + t - (lag_min_h[c] + j);
-                    if (idx < NS)
-                        r -= g_fit[c][(size_t)j * NI + i] * s_est[c][idx];
-                }
-                pres_cpu += std::norm(r);
-                const unsigned char want = enc44(r.real(), r.imag());
-                const unsigned char got = frame_out[((size_t)t * NF + sel_h[c]) * NI + i];
+                const size_t q = ((size_t)t * NF + sel_h[c]) * NI + i;
                 nbyte++;
-                if (got != want) {
-                    // a rounding tie can differ by one LSB in one component
-                    const cf a = dec44(got), b = dec44(want);
-                    const bool tie =
-                        std::abs(std::abs(r.real() - std::trunc(r.real())) - 0.5f) < 0.05f
-                        || std::abs(std::abs(r.imag() - std::trunc(r.imag())) - 0.5f) < 0.05f;
-                    if (std::abs(a.real() - b.real()) > 1.0f || std::abs(a.imag() - b.imag()) > 1.0f
-                        || !tie)
-                        nbad++;
-                }
+                const cf a = dec44(frame_out[q]), b = dec44(want[q]);
+                if (std::abs(a.real() - b.real()) > 1.0f || std::abs(a.imag() - b.imag()) > 1.0f)
+                    nbad++;
+                else if (frame_out[q] != want[q])
+                    n1++; // one LSB at a rounding tie
             }
         const double noise = 2.0 * NT * (c == 1 ? NI - 1 : NI); // per-component variance 1
-        printf(
-            "   channel %d: power raw %.3g, residual %.3g (CPU %.3g), noise %.3g, %ld of %ld bytes "
-            "differ beyond a rounding tie\n",
-            c, praw, pres, pres_cpu, noise, nbad, nbyte);
-        check(std::abs(pres - pres_cpu) / pres_cpu < 1e-3, "residual power vs CPU", pres, pres_cpu);
+        printf("   channel %d: power raw %.4g, residual %.6g (CPU %.6g), noise %.4g; %ld of %ld "
+               "bytes one LSB off, %ld more\n",
+               c, praw, pres, pres_cpu[c], noise, n1, nbyte, nbad);
+        check(e_s / m_s < 1e-3, "source 1 timestream from the residual, max error / max |s|",
+              e_s / m_s, 0.0);
+        check(std::abs(ps5[c * NSRC + 1] - ps1_cpu[c]) / ps1_cpu[c] < 1e-3,
+              "source 1 timestream power", ps5[c * NSRC + 1], ps1_cpu[c]);
+        check(e_r / m_r < 1e-3, "source 1 R_xs, max error / max |R_xs| (sampled)", e_r / m_r, 0.0);
+        // TF32 on terms up to ~15: a few 1e-3, against the re-quantisation step of 1
+        check(e_x < 0.01, "residual of both sources, max |error|", e_x, 0.0);
+        check(std::abs(pres - pres_cpu[c]) / pres_cpu[c] < 1e-4, "residual power vs CPU", pres,
+              pres_cpu[c]);
         check(pres < 1.35 * noise, "residual power within 35 % of the noise", pres / noise, 1.0);
-        check(nbad == 0, "re-quantised bytes vs CPU", (double)nbad, 0.0);
+        check(nbad == 0 && n1 < nbyte / 1000,
+              "re-quantised bytes: none beyond one LSB, under 0.1 % one LSB off", (double)n1, 0.0);
     }
-    // 5b. the same subtraction with TF32 products, from a fresh decode of the frame: the residual
-    //     power and the bytes against the CPU subtraction
-    {
-        std::vector<double> pres_cpu(NC, 0.0);
-        std::vector<unsigned char> want(frame.size());
-        for (int c = 0; c < NC; c++)
-            for (int t = 0; t < NT; t++)
-                for (int i = 0; i < NI; i++) {
-                    cf r = x_true[c][(size_t)t * NI + i];
-                    for (int j = 0; j < nlag_h[c]; j++) {
-                        const int idx = DTV_HIST + t - (lag_min_h[c] + j);
-                        if (idx < NS)
-                            r -= g_fit[c][(size_t)j * NI + i] * s_est[c][idx];
-                    }
-                    pres_cpu[c] += std::norm(r);
-                    want[((size_t)t * NF + sel_h[c]) * NI + i] = enc44(r.real(), r.imag());
-                }
-        unsigned char* d_frame2;
-        float *d_pw_raw2, *d_pw_res2; // step 6 reads d_pw_raw and d_pw_res as step 5 left them
-        CK(cudaMalloc(&d_frame2, frame.size()));
-        CK(cudaMalloc(&d_pw_raw2, NC * NI * sizeof(float)));
-        CK(cudaMalloc(&d_pw_res2, NC * NI * sizeof(float)));
-        CK(cudaMemcpy(d_frame2, frame.data(), frame.size(), cudaMemcpyHostToDevice));
-        gnss_cuda::launch_dtv_decode(d_frame2, d_sel, NC, NF, NT, d_x, d_pw_raw2, st);
-        cublasSetMathMode(blas, CUBLAS_TF32_TENSOR_OP_MATH);
-        check(gnss_cuda::dtv_subtract(blas, d_x, d_S, d_g, 0, NC, NSRC, NT, NLAG)
-                  == CUBLAS_STATUS_SUCCESS,
-              "cuBLAS subtraction, TF32", 0, 0);
-        cublasSetMathMode(blas, CUBLAS_DEFAULT_MATH);
-        gnss_cuda::launch_dtv_encode(d_x, d_sel, d_act, NC, NSRC, NF, NT, d_frame2, d_pw_res2, st);
-        CK(cudaDeviceSynchronize());
-        std::vector<float> pw_tf(NC * NI);
-        std::vector<unsigned char> got(frame.size());
-        CK(cudaMemcpy(pw_tf.data(), d_pw_res2, pw_tf.size() * sizeof(float),
-                      cudaMemcpyDeviceToHost));
-        CK(cudaMemcpy(got.data(), d_frame2, frame.size(), cudaMemcpyDeviceToHost));
-        for (int c = 0; c < NC; c++) {
-            double pres = 0.0;
-            long nbad = 0, nbyte = 0;
-            for (int i = 0; i < NI; i++)
-                pres += pw_tf[c * NI + i];
-            for (int t = 0; t < NT; t++)
-                for (int i = 0; i < NI; i++) {
-                    const size_t q = ((size_t)t * NF + sel_h[c]) * NI + i;
-                    nbyte++;
-                    const cf a = dec44(got[q]), b = dec44(want[q]);
-                    if (std::abs(a.real() - b.real()) > 1.0f
-                        || std::abs(a.imag() - b.imag()) > 1.0f)
-                        nbad += 1000000; // beyond one LSB: never
-                    else if (got[q] != want[q])
-                        nbad++; // one LSB at a rounding tie
-                }
-            printf("   channel %d TF32: residual %.6g (CPU %.6g), %ld of %ld bytes one LSB off\n",
-                   c, pres, pres_cpu[c], nbad, nbyte);
-            check(std::abs(pres - pres_cpu[c]) / pres_cpu[c] < 1e-4, "TF32 residual power vs CPU",
-                  pres, pres_cpu[c]);
-            check(nbad < nbyte / 1000, "TF32 re-quantised bytes: under 0.1 % one LSB off",
-                  (double)nbad, 0.0);
-        }
-        cudaFree(d_frame2);
-        cudaFree(d_pw_raw2);
-        cudaFree(d_pw_res2);
-    }
+    cudaFree(d_rxs5);
+    cudaFree(d_rss5);
+    cudaFree(d_ps5);
+    cudaFree(d_pw_raw5);
 
     // the untouched channel's bytes are unchanged
     long changed = 0;
