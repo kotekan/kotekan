@@ -10,6 +10,7 @@ the per-input phase slope across adjacent clean channels (the channel itself exc
 (Tr(Q^H R Q) / 2 - Tr(R) / m) / n, Tau A's power in noise units (the dump's clean value was ~4.7).
 
     vis_dtv_extract.py --acq DIR --from 0900 --to 1230 --out /var/tmp/kvand-vis/dtv_20261103 [--procs 8]
+        [--set atsc2430|weak|muos]
 """
 import argparse
 import glob
@@ -26,14 +27,45 @@ import numpy as np  # noqa: E402
 sys.path.insert(0, os.path.expanduser("~/gnss/bb1030"))
 from dtv_modes import predict_p2, top_vecs  # noqa: E402
 
-CLEAN = [2480, 2544, 2688, 2752, 2848, 2864, 2976]
-CLEANED = [
-    2720,
-    2736,
-    2896,
-    2912,
-]  # chunks holding the DTV stage's channels (2714-2744, 2898-2928)
-UNCLEANED = [2512, 2944]
+# --set: the clean reference chunks (the Tau A template and the noise floor), the chunks holding the DTV
+# stage's channels, and uncleaned DTV chunks as controls
+SETS = {
+    # ATSC 24 and 30 (2714-2744, 2898-2928); 2512 and 2944 were uncleaned until 11-05 22:36Z
+    "atsc2430": dict(
+        clean=[2480, 2544, 2688, 2752, 2848, 2864, 2976],
+        cleaned=[2720, 2736, 2896, 2912],
+        uncleaned=[2512, 2944],
+    ),
+    # ATSC 17, 19, 31, 33, 35 (from 11-05 22:36Z); references in the gaps between the stations and in
+    # TV channel 37 (608-614 MHz, kept clear for radio astronomy)
+    "weak": dict(
+        clean=[2480, 2544, 2960, 3024, 3104],
+        cleaned=[
+            2496,
+            2512,
+            2528,
+            2560,
+            2576,
+            2928,
+            2944,
+            2992,
+            3008,
+            3040,
+            3056,
+            3072,
+        ],
+        uncleaned=[],
+    ),
+    # MUOS, 360-380 MHz (1845-1943, from 11-05 22:36Z); references 350-356 and 381-384 MHz
+    "muos": dict(
+        clean=[1792, 1808, 1952],
+        cleaned=[1840, 1856, 1872, 1888, 1904, 1920, 1936],
+        uncleaned=[],
+    ),
+}
+CLEAN, CLEANED, UNCLEANED = (
+    SETS["atsc2430"][k] for k in ("clean", "cleaned", "uncleaned")
+)
 CHUNKS = sorted(CLEAN + CLEANED + UNCLEANED)
 K0 = 1536
 PARTS = None
@@ -166,13 +198,18 @@ def main():
     ap.add_argument(
         "--date", help="YYYYMMDD of the files to take (an acquisition can span nights)"
     )
+    ap.add_argument("--set", default="atsc2430", choices=sorted(SETS))
     ap.add_argument(
         "--no-template",
         action="store_true",
         help="eigenvalues only: skip the Tau A template excess",
     )
     a = ap.parse_args()
-    global PARTS, TEMPLATE
+    global PARTS, TEMPLATE, CLEAN, CLEANED, UNCLEANED, CHUNKS
+    CLEAN, CLEANED, UNCLEANED = (
+        SETS[a.set][k] for k in ("clean", "cleaned", "uncleaned")
+    )
+    CHUNKS = sorted(CLEAN + CLEANED + UNCLEANED)
     PARTS = a.out + "_parts"
     os.makedirs(PARTS, exist_ok=True)
     TEMPLATE = not a.no_template
