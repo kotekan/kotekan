@@ -575,17 +575,17 @@ void N2Accumulate::main_thread() {
         // produces it at startup.
         if (in_gains_buf != nullptr) {
             while (true) {
-                const int status =
-                    have_gains ? in_gains_buf->wait_for_full_frame_timeout(
-                                     unique_name, in_gains_frame_id, {0, 0})
-                               : (in_gains_buf->wait_for_full_frame(unique_name, in_gains_frame_id)
-                                          == nullptr
-                                      ? -1
-                                      : 0);
-                if (status == -1)
-                    break; // shutdown; the next buffer wait returns
+                int status;
+                if (have_gains)
+                    status = in_gains_buf->wait_for_full_frame_timeout(unique_name,
+                                                                       in_gains_frame_id, {0, 0});
+                else if (in_gains_buf->wait_for_full_frame(unique_name, in_gains_frame_id)
+                         == nullptr)
+                    status = -1;
+                else
+                    status = 0;
                 if (status != 0)
-                    break; // no new frame
+                    break; // -1: shutdown, the next buffer wait returns; 1: no new frame
                 const std::shared_ptr<chordMetadata> gains_metadata =
                     get_chord_metadata(in_gains_buf, in_gains_frame_id);
                 if (!gains_metadata->has_coarse_freq()
@@ -1480,7 +1480,8 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& in_rfiframema
 
         // The gains in force now, when wired; they are recorded, not applied.
         if (in_gains_buf != nullptr)
-            std::copy_n(_gains.begin() + f * _num_elements, _num_elements, out_vis.gain.begin());
+            for (int64_t el = 0; el < _num_elements; ++el)
+                out_vis.gain[_reorder.at(el)] = _gains[f * _num_elements + el];
         else
             std::fill(out_vis.gain.begin(), out_vis.gain.end(), N2::cfloat{-1.0f, 0.0f});
 

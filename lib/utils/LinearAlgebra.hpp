@@ -234,8 +234,8 @@ public:
     }
 
     /// The eigenvectors found by the last solve(), one per column, ordered as evals().
-    /// Each is phased so that its element for the first input the mask does not exclude
-    /// entirely is real and non-negative.
+    /// Each is phased so that its element for the first input with at least one mask
+    /// entry of one is real and non-negative.
     const matrix_type& evecs() const {
         return V_;
     }
@@ -293,7 +293,7 @@ private:
     };
     std::vector<size_t> masked_start_;
     std::vector<MaskedEntry> masked_;
-    /// The first input the mask does not exclude entirely, whose element of each
+    /// The first input with at least one mask entry of one, whose element of each
     /// eigenvector is made real
     size_t phase_ref_ = 0;
 
@@ -413,8 +413,8 @@ void EigenMaskedSubspaceSolver<MT>::find_masked(const DynamicHermitian<float>& W
         masked_start_[j + 1] = count;
     }
     // An excluded input's eigenvector elements are rounding noise, so the phase is
-    // referenced to the first input that has some unmasked entries. With none, any
-    // input will do.
+    // referenced to the first input with at least one mask entry of one. With none,
+    // any input will do.
     phase_ref_ = 0;
     while (phase_ref_ < n_ && masked_start_[phase_ref_ + 1] == n_)
         phase_ref_++;
@@ -476,9 +476,10 @@ void EigenMaskedSubspaceSolver<MT>::augmented_ritz() {
     evals_ = blaze::subvector(evals_kp_, top, k_);
     V_ = blaze::submatrix(Vfull_, 0, top, n_, k_);
 
-    // Set the phase degeneracy if it exists, making the phase reference's element of
-    // each eigenvector real. An input whose visibilities are all zero can leave that
-    // element zero, with no phase to fix.
+    // Set the phase degeneracy, making the phase reference's element of each
+    // eigenvector real. An unmasked input with no signal leaves that element at
+    // rounding level, and the phase then follows the noise, so such inputs should be
+    // masked.
     for (size_t j = 0; j < k_; j++) {
         const MT z = V_(phase_ref_, j);
         const real_type magnitude = std::abs(z);

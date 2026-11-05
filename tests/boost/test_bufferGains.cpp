@@ -18,6 +18,7 @@
 #include "json.hpp" // for json
 
 #include <boost/test/included/unit_test.hpp> // for BOOST_CHECK_EQUAL, BOOST_REQUIRE
+#include <cmath>                             // for nanf
 #include <complex>                           // for complex
 #include <memory>                            // for unique_ptr, make_unique, shared_ptr
 #include <stdexcept>                         // for runtime_error
@@ -184,8 +185,8 @@ BOOST_AUTO_TEST_CASE(test_default_then_updates) {
     BOOST_CHECK(h.stage->receive_gains(u1));
     h.out->consume(labelled(local_freq));
 
-    // Updates missing a frequency, with the wrong element count, or with another dtype are
-    // ignored and counted, not fatal, and produce no frame.
+    // Updates missing a frequency, with the wrong element count, with another dtype, or
+    // holding a NaN are ignored and counted, not fatal, and produce no frame.
     json u2 = update("u2", {5, 9}, labelled({5, 9}));
     BOOST_CHECK(h.stage->receive_gains(u2));
     json u3 = {{"update_id", "u3"},
@@ -196,8 +197,12 @@ BOOST_AUTO_TEST_CASE(test_default_then_updates) {
     json u4 = update("u4", local_freq, labelled(local_freq));
     u4["gain"]["dtype"] = "complex128";
     BOOST_CHECK(h.stage->receive_gains(u4));
+    std::vector<cfloat> nan_gains = labelled(local_freq);
+    nan_gains[1] = {std::nanf(""), 0.0f};
+    json u6 = update("u6", local_freq, nan_gains);
+    BOOST_CHECK(h.stage->receive_gains(u6));
     BOOST_CHECK(h.out->quiet(0.3));
-    BOOST_CHECK(metric_has("kotekan_buffergains_invalid_update_count{stage_name=\"/gains\"} 3"));
+    BOOST_CHECK(metric_has("kotekan_buffergains_invalid_update_count{stage_name=\"/gains\"} 4"));
     BOOST_CHECK(metric_has("kotekan_buffergains_update_count{stage_name=\"/gains\"} 2"));
 
     // An empty gain object goes back to the default gains.

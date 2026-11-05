@@ -155,7 +155,8 @@ struct DishParams {
      *
      * @par Configuration
      * - @c dish_coelev_deg      double. Dish pointing co-elevation angle, in [-90, 90].
-     *                              Default: 0.0.
+     *                              Default: 0.0, but fringestopping stages require it to
+     *                              be set, and hdf5N2Write omits the attribute when unset.
      * - @c dish_inputs          array<dishInfo>. List of dish inputs, with all fields populated.
      *                              See struct dishInfo for field descriptions.
      * - @c check_duplicate_dish_grid  bool. Fatal on duplicate dish grid locations.

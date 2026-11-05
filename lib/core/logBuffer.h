@@ -21,7 +21,7 @@ void log_buffer_append(int level, const char* prefix, const char* msg);
 
 namespace kotekan {
 
-/// Turns the buffer on or off. Turning it off drops the kept lines.
+/// Turns the buffer on or off and drops the kept lines.
 void set_log_buffer(bool on);
 
 /// Whether the buffer is on.

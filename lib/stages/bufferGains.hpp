@@ -34,7 +34,8 @@
  * beamformer weight stages pick them up. A frame is produced for each accepted update, plus one
  * at startup, so a consumer polls the buffer without blocking (`wait_for_full_frame_timeout`
  * with a timeout already passed) and keeps the newest frame it has taken. The gains switch
- * when the frame is produced; a posted `start_time` is not honoured.
+ * when the frame is produced; a posted `start_time` is not honoured. Unlike loadFeedGains,
+ * which reads the gains from files named in the update, this stage takes them inline.
  *
  * An update is a JSON object with these keys (every key of the config block must be present in
  * every POST; keys this stage does not read, such as `start_time` and `weight`, are accepted
@@ -45,13 +46,14 @@
  * - `gain`: Object `{"shape": [num_freq, num_elements], "dtype": "complex64",
  *   "encoding": "base64", "data": String}`: the gains, row-major, as base64 of the
  *   little-endian complex64 array. Elements are in the frame's [P][D] order, the order of the
- *   telescope's dish_inputs table. An empty object `{}` means @c default_gains.
+ *   telescope's dish_inputs table. Every value must be finite; bad inputs belong in the bad
+ *   feed mask. An empty object `{}` means @c default_gains.
  *
  * The block's initial values arrive through the same path at startup, so a block whose `gain`
  * is `{}` gives @c default_gains until the first POST, and one carrying gains starts from
- * them. A POSTed update that is malformed, has the wrong number of elements or lacks one of
- * this instance's frequencies is logged, counted and ignored, so the previous gains stay in
- * force; a bad initial block stops kotekan.
+ * them. A POSTed update that is malformed, has the wrong number of elements, holds a value
+ * that is not finite, or lacks one of this instance's frequencies is logged, counted and
+ * ignored, so the previous gains stay in force; a bad initial block stops kotekan.
  *
  * This instance's frequencies are the `coarse_freq` of the first frame of @c metadata_source,
  * as for bufferBadInputs; the frames carry them as `coarse_freq`. Until that frame has arrived,

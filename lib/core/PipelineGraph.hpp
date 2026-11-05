@@ -361,7 +361,8 @@ public:
      * With @c GraphOptions::gpu_table, a device box with commands and memory
      * in it is drawn as one table node instead, named for the box. Edges to the nodes
      * it replaces end on ports `in<n>` and `out<n>`, row @c n's left and right
-     * ends.
+     * ends. Other nodes in the box are drawn beside the table, and a data edge
+     * the table has no place for is reported in a comment.
      */
     std::string to_dot() const;
 

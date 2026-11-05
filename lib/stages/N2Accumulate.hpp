@@ -153,7 +153,7 @@ void from_json(const nlohmann::json& j, N2VarianceMode& m);
  *         @buffer_format   NDArray int8 [1, num_polarizations, num_dishes]
  *         @buffer_metadata chordMetadata
  * @buffer  in_gains_buf  Optional per-input complex gains, as produced by bufferGains: one
- * frame per posted update, elements in the output order. Waited for once, then polled without
+ * frame per posted update, elements in the input order. Waited for once, then polled without
  * blocking at every correlation frame; the newest frame taken is recorded in the output frames'
  * `gain` field when a bin is written. The gains are recorded, not applied to the visibilities.
  * Without this input `gain` holds the sentinel -1+0j.
