@@ -1,7 +1,8 @@
 # GuoWang 1202.025 MHz: the message content
 
-Status: 2026-11-04 (decoded during the 11-04 site outage from stored gw_reduce products, no raw
-baseband). The signal is in `SIGNAL.md`. Products: cf05 `/var/tmp/kvand-gw1202/reduce/wNNN/<sat>.npz`
+Status: 2026-11-05 (the high-rate message decoded as a per-GNSS-satellite ephemeris from the
+overnight track-beam stream; the 11-04 sections below were decoded during the 11-04 site outage
+from stored gw_reduce products, no raw baseband). The signal is in `SIGNAL.md`. Products: cf05 `/var/tmp/kvand-gw1202/reduce/wNNN/<sat>.npz`
 (per-frame `car_ph`, `data_bits`, `code_err`, `theta`, `n` = UTC frame number); scripts under
 `/home/kvand/gnss/builds/gw1202/`.
 
@@ -35,6 +36,20 @@ of the CSK half (high rate). ITU-R M.1787-6 files them as 125 / 1500 bit/s; meas
   What it encodes is open; it is where an ephemeris or clock would sit.**
 - CN115685267A (Qixin receiver) describes this pilot channel as convolutional (Viterbi) + CRC
   with week number and SOW, 6 s subframes in its example; ours are 3 s.
+- Overnight 11-05 (`builds/gw1202/slow_dataset.py`: the loop's per-frame sign products through
+  `gw_nav_live.NavPages`; 6680 CRC-valid subframes from 76 satellites, cf05
+  `/var/tmp/kvand-trackbeam/stream/slow_night.npz`; `slow_study.py`, `slow_fields.py`,
+  `slow_angles.py`): on the catalogued satellites 23-29 of the 316 payload bits change per 12 s
+  cycle, in fixed regions per page (page 1: 35-41, 59-69, 77-91, 118-138, 149-190, 197-232,
+  237-291; page 2: 24-32, 47-53, 89-110, 125-141, 171-210, 259-314; page 3: 94-107, 137-166,
+  183-202, 216-314; page 4: 101-128, 139-154, 160-167, 169-190, 193-206, 215-221, 223-232,
+  236-289). Page 1 bits 26-40 are a 15-bit counter of 12 s cycles (BDT seconds / 12, minus 1);
+  page 2 bits 47-52 count every ~48 s. The other changing fields are per-satellite numbers,
+  never equal on two satellites at the same time, refreshed each cycle with no simple slope. No
+  field tracks the sender's own sqrtA, e, i, node, argument of latitude, latitude, longitude, or
+  ECEF position/velocity at any power-of-two scale, so the pages do not carry the sender's orbit
+  in the fast channel's form or as a state vector; what they carry is open. For the sign wipe
+  this means the changing bits are not forecastable from geometry; only the counters are.
 
 ## The high-rate CSK message
 
@@ -79,8 +94,53 @@ of the CSK half (high rate). ITU-R M.1787-6 files them as 125 / 1500 bit/s; meas
   a counter. (The earlier "7 x 5-bit + 14-bit table" was a snapshot label.)
 - Variant satellites (DIGUI-169/170/176/177, the inferred H24-x and H54-x; 556 of 5986 messages)
   send 0x6565 or zeros in the epoch fields; H84-1 and H24-1 sent zeros at 11-04 13:10Z.
-- Interpretation: live GNSS augmentation corrections (PPP-B2b-like) at ~10 s epochs, the
-  "augmentation" product of the filing. Decoding them as corrections is a separate project.
+- Interpretation (11-04, superseded 11-05): live GNSS augmentation corrections at ~10 s epochs.
+
+### Decoded 2026-11-05: a Keplerian ephemeris per GNSS satellite
+
+The overnight track-beam stream (43 051 CRC-valid messages, 87 senders, 11-04 23:27Z to 11-05
+14:45Z; tools `builds/gw1202/stream_*.py`, data cf05 `/var/tmp/kvand-trackbeam/stream/`) settled
+the body. The 11-04 "one stream, identical at (epoch, page)" was half right: the content is common
+to every sender, but each sender carries its own subset, so same-second messages differ.
+
+- Layout of the 1464-bit second: [49 header][record 1, bits 49-538][record 2, 539-1028][table
+  entry, 1029-1308][zeros 1309-1402][record 1's id 1403-1411][1111][0 1111 0 1111 0 1111 0]
+  [record 2's id 1432-1440][111 0 1111 0 1111 0 1111 0000]. Header bits 36-48 = BDT week (1087).
+- A record = the orbit and clock of ONE GNSS satellite. Offsets (start/width; angles in
+  semicircles; `layout.json`): 0/9 id = [3-bit system][6-bit PRN], system 0 BeiDou, 1 GPS, 2
+  Galileo; 12/15 toe = BDT second-of-week / 20 (the epoch, exact to < 0.1 s; all 18 records of a
+  superframe share it; it steps by 60 s each minute); 29/35 M0 x 2^-34; 64/28 e x 2^-33; 92/34
+  sqrtA x 2^-21; 126/35 i0 x 2^-34; 176/35 Omega0 x 2^-34 (BeiDou week convention: the
+  -omega_e * toe term takes the BDT second of week); 211/35 omega x 2^-34; 246/20 Cus x 2^-33 rad;
+  266/20 signed Cuc x 2^-33; 300/16 BDT second-of-day / 10 of the superframe; 316/30 signed af0
+  x 2^-36 s; 350/12 signed af1 x 2^-44; 362-441 per-satellite constants updated every few hours
+  (a 6-bit changing field at 364; the rest unassigned: not dn, Omegadot, IDOT, Cic/Cis, Crc/Crs or
+  TGD at any 2^k scale against the broadcast); 161-175, 286-299, 442-489 zeros and page flags.
+- How it was found: rank correlation of every candidate bit field with the day's broadcast
+  ephemeris (BKG `BRDC00WRD_S` day 309, `builds/gw1202/brdc/`) propagated to the record epoch
+  (`stream_ref.py`), power-of-two scale fits (`stream_eph.py`), the harmonic terms from the
+  residual's sin 2u / cos 2u structure (`stream_harm.py`), positions through the broker's
+  `gnss_ephemeris.sat_pos_clk` (`stream_verify.py`).
+- Verification against the broadcast ephemerides: at the epoch BeiDou |dp| median 0.5 m (radial
+  -0.5, along/cross MAD 0.1 m), Galileo 12.9 m, GPS 11.7 m (a ~10 m cos u cross-track term for
+  GPS and Galileo only: open); propagated as a plain Kepler set with the two harmonics and NO
+  secular terms, within 1 m (BeiDou) / 12 m (GPS, Galileo) at +-5 min and 11-22 m at +-15 min.
+  Clock: record af0 = broadcast clock - 433 ns (BeiDou, MAD 13), - 416 (Galileo, MAD 0.7), - 413
+  (GPS, MAD 1.5): one time scale for all three systems.
+- Which satellites: the pool satellites above ~22 deg elevation at the sender's ground sub-point
+  (entry median 22.8 deg, exit 21.4; a 22 deg threshold gives precision 0.95, recall 0.96); 4-8
+  per system, 18 per 9 s superframe, the set changing about every two minutes. The slot order is
+  stable while the set is unchanged (92 % of consecutive superframes), newcomers are appended at
+  the end, and the list is re-permuted at each 60 s epoch step by a key that is not elevation,
+  azimuth, bearing, PRN or system (within a system it follows the ephemeris age). Forecast value:
+  within an epoch a sender's next superframe repeats its records verbatim; the first superframe
+  after an epoch step carries re-fitted values no receiver can predict.
+- The table entry (1029-1308 = [11-bit index][flag][268 bits]): two tables by sender group. The
+  polar planes with RAAN 204/235/265 deg cycle indices 41..11 each with both flags plus 218 (62 s);
+  everyone else cycles 54 indices (flag 0: 310..257, flag 1: 309..256) descending once per 54 s.
+  Entries are identical across senders and replaced about every 6 h. They match no ephemeris or
+  almanac parameter under index = BeiDou PRN / GPS PRN = index - 255 / Galileo PRN = index - 274,
+  and no field looks like sqrtA at any 2^k scale. Identity open.
 
 ## What is not in it
 
