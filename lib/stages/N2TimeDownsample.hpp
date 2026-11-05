@@ -46,6 +46,9 @@
  *                       and the telescope phase center must be set. Every input frame's
  *                       `fringestop_enabled` must match it, or the stage exits with a fatal
  *                       error. Default: true.
+ * @conf  input_order  String. Ordering of the elements in the input frames: the
+ *                     @c output_order of the N2Accumulate upstream.
+ *                     Default: Telescope::fiducial_element_order()
  *
  * @metric  kotekan_timedownsample_skipped_frame_total
  *      The number of frames skipped entirely because they were too old.
