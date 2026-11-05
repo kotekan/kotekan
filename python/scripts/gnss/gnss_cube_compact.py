@@ -399,10 +399,13 @@ class ReadPace:
         self.t0 = time.time()
         self.started = 0
 
-    def wait(self, path):
+    def take(self, nbytes):
         if self.rate > 0:
             time.sleep(max(0.0, self.started / self.rate - (time.time() - self.t0)))
-        self.started += os.path.getsize(path)
+        self.started += nbytes
+
+    def wait(self, path):
+        self.take(os.path.getsize(path))
 
 
 def prefetched(paths, readers, mbps=0.0):
@@ -882,66 +885,105 @@ def cmd_ls(args):
 # ---------------------------------------------------------------------------------------------
 # rung
 # ---------------------------------------------------------------------------------------------
+def paced_read(ds, pace, chunk_bytes=64 << 20):
+    """A whole dataset, read in row slices of ~chunk_bytes, each waiting on `pace`."""
+    out = np.empty(ds.shape, ds.dtype)
+    step = max(1, chunk_bytes // max(1, out[:1].nbytes))
+    for i in range(0, len(out), step):
+        pace.take(out[i : i + step].nbytes)
+        ds.read_direct(out, np.s_[i : i + step], np.s_[i : i + step])
+    return out
+
+
+def rung_rows(ns, rows, ref):
+    """{n: (uk, out)}: the L0 rows summed per (block = idx // n, slot, prn) for each n, uk in
+    sorted key order. A prn change inside a block makes a second row. The sums are a sparse
+    group-indicator matrix times the rows in float64: each group sums in file order, the same
+    sums np.add.at makes, ~4x faster. Each per-row quantity is built once for every n."""
+    import scipy.sparse
+
+    R = len(rows["idx"])
+    idx = rows["idx"].astype(np.int64)
+    res = {}
+    for n in ns:
+        key = np.stack([idx // n, rows["slot"], rows["prn"]], axis=1)
+        uk, inv = np.unique(key, axis=0, return_inverse=True)
+        inv = inv.ravel()
+        m = len(uk)
+        out = dict(
+            blk=uk[:, 0],
+            slot=uk[:, 1].astype(np.int16),
+            prn=uk[:, 2].astype(np.int16),
+            idx0=np.full(m, np.iinfo(np.int64).max, np.int64),
+            idx1=np.full(m, -1, np.int64),
+            n_win=np.bincount(inv, minlength=m).astype(np.int32),
+            n_rec=np.zeros(m, np.int64),
+            n_reanchor=np.zeros(m, np.int64),
+        )
+        np.minimum.at(out["idx0"], inv, idx)
+        np.maximum.at(out["idx1"], inv, idx)
+        np.add.at(out["n_rec"], inv, rows["n_rec"])
+        np.add.at(out["n_reanchor"], inv, rows["n_reanchor"])
+        group = scipy.sparse.csr_matrix((np.ones(R), (inv, np.arange(R))), shape=(m, R))
+        res[n] = (uk, out, group)
+
+    def add(name, per_row):
+        for uk, out, group in res.values():
+            sums = group @ per_row.reshape(R, -1)
+            out[name] = sums.reshape((len(uk),) + per_row.shape[1:])
+
+    for k in ("w", "energy", "incoh"):
+        add(k, rows[k].astype(np.float64))
+    c = rows["coh"]
+    add("cohpow", c.real.astype(np.float64) ** 2 + c.imag.astype(np.float64) ** 2)
+    c = c.astype(np.complex128)
+    add("cohref", c * np.conj(c[:, :, ref : ref + 1]))
+    return {n: (uk, out) for n, (uk, out, _) in res.items()}
+
+
 def cmd_rung(args):
+    """Rungs for each L0 file, every n in args.n from one read. The file is opened without HDF5
+    locking, so a cut never blocks the compactor; a file modified during its cut is not written
+    and is cut again by the next run."""
     h5py = h5py_mod()
-    n = args.n
+    pace = ReadPace(args.max_read_mbps)
     for p in expand_h5(args.files):
-        with h5py.File(p, "r") as f:
+        rel = (
+            os.path.relpath(p, os.path.join(args.l0_root, "l0"))
+            if args.l0_root
+            else os.path.basename(p)
+        )
+        dsts = {n: os.path.join(args.out, f"rung{n}", rel) for n in args.n}
+        mtime = os.path.getmtime(p)
+        if args.skip_done and all(
+            os.path.exists(d) and os.path.getmtime(d) >= mtime for d in dsts.values()
+        ):
+            continue
+        with h5py.File(p, "r", locking=False) as f:
             a = dict(f.attrs)
             if a.get("format") != "gnss_cube_l0":
                 raise SystemExit(f"{p}: not an L0 file (format={a.get('format')!r})")
-            idx = f["rows/idx"][:]
-            if len(idx) == 0:
+            if len(f["rows/idx"]) == 0:
                 print(f"{p}: no rows")
                 continue
-            slot = f["rows/slot"][:].astype(np.int64)
-            prn = f["rows/prn"][:].astype(np.int64)
-            n_rec = f["rows/n_rec"][:]
-            n_re = f["rows/n_reanchor"][:]
-            w = f["rows/w"][:]
-            en = f["rows/energy"][:]
-            coh = f["rows/coh"][:]
-            incoh = f["rows/incoh"][:]
+            rows = {
+                k: paced_read(f["rows/" + k], pace)
+                for k in ("idx", "slot", "prn", "n_rec", "n_reanchor", "w", "energy")
+                + ("coh", "incoh")
+            }
+            rows["slot"] = rows["slot"].astype(np.int64)
+            rows["prn"] = rows["prn"].astype(np.int64)
             widx = f["win/idx"][:]
             wutc = f["win/utc"][:]
-            # -- reference element: the largest total incoh over the file -----------------------
-            ref = int(np.argmax(incoh.sum(axis=(0, 1))))
-            # -- group (block, slot, prn); a prn change inside a block makes a second row --------
-            blk = idx // n
-            key = np.stack([blk, slot, prn], axis=1)
-            uk, inv = np.unique(key, axis=0, return_inverse=True)
-            inv = inv.ravel()
+            fid_lo, fid_hi = f["win/freq_id_lo"][0], f["win/freq_id_hi"][0]
+        if os.path.getmtime(p) != mtime:
+            print(f"{p}: modified during the cut, not written")
+            continue
+        # -- reference element: the largest total incoh over the file ---------------------------
+        ref = int(np.argmax(rows["incoh"].sum(axis=(0, 1))))
+        for n, (uk, out) in rung_rows(args.n, rows, ref).items():
+            dst = dsts[n]
             m = len(uk)
-            out = dict(
-                blk=uk[:, 0],
-                slot=uk[:, 1].astype(np.int16),
-                prn=uk[:, 2].astype(np.int16),
-                idx0=np.full(m, np.iinfo(np.int64).max, np.int64),
-                idx1=np.full(m, -1, np.int64),
-                n_win=np.zeros(m, np.int32),
-                n_rec=np.zeros(m, np.int64),
-                n_reanchor=np.zeros(m, np.int64),
-                w=np.zeros((m,) + w.shape[1:], np.float64),
-                energy=np.zeros((m,) + en.shape[1:], np.float64),
-                incoh=np.zeros((m,) + incoh.shape[1:], np.float64),
-                cohpow=np.zeros((m,) + incoh.shape[1:], np.float64),
-                cohref=np.zeros((m,) + coh.shape[1:], np.complex128),
-            )
-            np.minimum.at(out["idx0"], inv, idx)
-            np.maximum.at(out["idx1"], inv, idx)
-            np.add.at(out["n_win"], inv, 1)
-            np.add.at(out["n_rec"], inv, n_rec)
-            np.add.at(out["n_reanchor"], inv, n_re)
-            np.add.at(out["w"], inv, w.astype(np.float64))
-            np.add.at(out["energy"], inv, en.astype(np.float64))
-            np.add.at(out["incoh"], inv, incoh.astype(np.float64))
-            np.add.at(
-                out["cohpow"],
-                inv,
-                (coh.real.astype(np.float64) ** 2 + coh.imag.astype(np.float64) ** 2),
-            )
-            c128 = coh.astype(np.complex128)
-            np.add.at(out["cohref"], inv, c128 * np.conj(c128[:, :, ref : ref + 1]))
             # row time: UTC of the row's first and last window (idx0, idx1), from the window table
             worder = np.argsort(widx)
             widx_s, wutc_s = widx[worder], wutc[worder]
@@ -952,12 +994,6 @@ def cmd_rung(args):
             # windows present per block, for completeness
             wblk = widx // n
             ub, cnt = np.unique(wblk, return_counts=True)
-            rel = (
-                os.path.relpath(p, os.path.join(args.l0_root, "l0"))
-                if args.l0_root
-                else os.path.basename(p)
-            )
-            dst = os.path.join(args.out, f"rung{n}", rel)
             os.makedirs(os.path.dirname(dst), exist_ok=True)
             if os.path.exists(dst):
                 os.remove(dst)
@@ -973,8 +1009,8 @@ def cmd_rung(args):
                 g.attrs["source_l0"] = p
                 # The covering channels, from the L0 window table (constant over a file unless
                 # the F-engine was reconfigured mid-day): a rung has no window table of its own.
-                g.attrs["freq_id_lo"] = f["win/freq_id_lo"][0]
-                g.attrs["freq_id_hi"] = f["win/freq_id_hi"][0]
+                g.attrs["freq_id_lo"] = fid_lo
+                g.attrs["freq_id_hi"] = fid_hi
                 g.attrs["created"] = iso(time.time())
                 g.attrs["units"] = (
                     "SUMS over the block's windows of the L0 sums (accumulated in float64, "
@@ -998,7 +1034,8 @@ def cmd_rung(args):
             os.replace(tmp, dst)
             split = int(np.sum(np.unique(uk[:, :2], axis=0, return_counts=True)[1] > 1))
             print(
-                f"{dst}: {m} rows from {len(idx)} L0 rows, {len(ub)} blocks, ref_elem {ref}, "
+                f"{dst}: {m} rows from {len(rows['idx'])} L0 rows, {len(ub)} blocks, "
+                f"ref_elem {ref}, "
                 f"{split} (block,slot) pairs split by a prn swap, "
                 f"{os.path.getsize(dst) / 1e6:.1f} MB (L0 {os.path.getsize(p) / 1e6:.1f} MB)"
             )
@@ -1171,7 +1208,18 @@ def main():
     p.set_defaults(fn=cmd_ls)
     p = sub.add_parser("rung", help="L0 -> exact n-window sums")
     p.add_argument("files", nargs="+")
-    p.add_argument("--n", type=int, required=True, choices=(12, 60))
+    p.add_argument("--n", type=int, nargs="+", required=True, choices=(12, 60))
+    p.add_argument(
+        "--skip-done",
+        action="store_true",
+        help="skip an L0 file whose rungs all exist and are newer than it",
+    )
+    p.add_argument(
+        "--max-read-mbps",
+        type=float,
+        default=0.0,
+        help="hold the L0 reads to this average, MB/s (0 = unpaced)",
+    )
     p.add_argument("--out", default="/mnt/cs00/data/kvand/gnss_cube")
     p.add_argument(
         "--l0-root",

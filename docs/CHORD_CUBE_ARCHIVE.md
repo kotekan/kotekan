@@ -68,9 +68,14 @@ h5py) **on cf06** with absolute paths — the nodes are production trackers.
   - `compact` — raw → L0, idempotent through `l0/manifest.jsonl`; only CLOSED raw files (every
     file but the newest) unless `--include-open`. ~3400 frames/s on cf06 = ~38× real time.
   - `ls [--gaps]` — completeness per L0 file with every hole ATTRIBUTED (§5).
-  - `rung --n 12|60` — L0 → exact sums per (absolute block = idx // n, slot, prn). A PRN swap
-    inside a block yields two rows (`n_win` < n), never a mixed sum.
+  - `rung --n 12 60` — L0 → exact sums per (absolute block = idx // n, slot, prn), every n from
+    one read. A PRN swap inside a block yields two rows (`n_win` < n), never a mixed sum.
+    `--skip-done` skips an L0 file whose rungs are newer; `--max-read-mbps` holds the reads to
+    an average. ~25 s for both rungs of a 5.2 GB L0 file on corrcal (~200 MB/s).
   - `verify --raw F.raw` — N random live cells re-read from L0 and compared BIT-FOR-BIT.
+- `scripts/gnss/site/cube_staging_loop.sh` on corrcal (the only L0 writer since 11-03): fold,
+  ship, and with RUNG_MBPS > 0, once a day from 00:20 UTC, `cube_rungs.sh` in the background:
+  rungs for every closed day of the last 14 that lacks them, newest first.
 - `scripts/gnss/site/cubecompact_up.sh` (cf06 stack style, restarts the loop) →
   `cubecompact_loop.sh`: `compact` every 300 s; after 00:20 UTC, rungs for YESTERDAY once.
   Log `/tmp/gnss_cubecompact.log` on cf06. Refusals ("REFUSED") in that log are the epoch gate.

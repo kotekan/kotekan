@@ -11,23 +11,30 @@
 #      to arrive. The newest file by mtime (still being written) and the highest-numbered one
 #      stay: continue_numbering resumes past the highest number in STAGE, and an emptied
 #      STAGE would restart at 0000000 under names the manifest already holds;
-#   3. fold up to BACKLOG files of the cs00 raw backlog (0 = none).
+#   3. fold up to BACKLOG files of the cs00 raw backlog (0 = none);
+#   4. once a UTC day from 00:20, and when the loop starts, cut the closed days' rungs in the
+#      background (cube_rungs.sh, reads held to RUNG_MBPS; 0 = no rung step): a day of L0
+#      takes hours to read at a modest cap, and the fold must not wait on it. A cut still
+#      running at the next 00:20 delays the next one rather than overlapping it.
 # The archiver's file stem must be one no other raw directory has used
 # (gen_chord_gnss_config.py --cube-archive-file-name): the manifest keys by basename.
 # Stop = `systemctl --user stop`: TERM is taken between steps, after the running fold.
 #   cube_staging_loop.sh PY TOOL STAGE ROOT [BACKLOG] [PAUSE_S] [READERS] [BATCH] [MAX_READ_MBPS]
-#                        [SHIP_MBPS]
+#                        [SHIP_MBPS] [RUNG_MBPS]
 # MAX_READ_MBPS holds each fold's raw reads to that average and SHIP_MBPS (whole MB/s) the ship
 # step's; 0, the default, is unpaced. The ship step re-reads from the network what the host's
 # page cache no longer holds, so on a shared link both need a cap.
 set -u
 PY=$1; TOOL=$2; STAGE=$3; ROOT=$4; BACKLOG=${5:-100}; PAUSE=${6:-30}; READERS=${7:-4}
-BATCH=${8:-12}; MBPS=${9:-0}; SHIP_MBPS=${10:-0}
+BATCH=${8:-12}; MBPS=${9:-0}; SHIP_MBPS=${10:-0}; RUNG_MBPS=${11:-0}
+SELFDIR=$(cd "$(dirname "$0")" && pwd)   # cube_rungs.sh is this script's sibling
 ZST=$ROOT/raw_zst
 LOW_GB=300
 stopping=0
 shipper=
-trap 'stopping=1; [ -z "$shipper" ] || kill -TERM "$shipper" 2>/dev/null' TERM
+runger=
+rung_day=
+trap 'stopping=1; for p in $shipper $runger; do kill -TERM "$p" 2>/dev/null; done' TERM
 mkdir -p "$ZST"
 log() { echo "== $(date -u +%FT%TZ) $*"; }
 
@@ -84,7 +91,20 @@ ship() {
     log "shipped $n file(s); $(ls "$STAGE"/*.raw 2>/dev/null | wc -l) in $STAGE, $(df -BG --output=avail "$STAGE" | tail -1 | tr -d ' G') GB free"
 }
 
+# Step 4: start the day's rung cut unless one is still running.
+rungs() {
+    [ "$RUNG_MBPS" -gt 0 ] || return 0
+    [ "$(date -u +%H%M)" -ge 20 ] && [ "$rung_day" != "$(date -u +%Y%m%d)" ] || return 0
+    if [ -n "$runger" ] && kill -0 "$runger" 2>/dev/null; then
+        return 0
+    fi
+    rung_day=$(date -u +%Y%m%d)
+    "$SELFDIR/cube_rungs.sh" "$PY" "$TOOL" "$ROOT" "$RUNG_MBPS" &
+    runger=$!
+}
+
 while [ "$stopping" = 0 ]; do
+    rungs
     (trap 'stopping=1' TERM; ship) &
     shipper=$!
     if [ "$(ls "$STAGE"/*.raw 2>/dev/null | wc -l)" -ge 2 ]; then
