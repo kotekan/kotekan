@@ -86,9 +86,11 @@ common:
     # are projected with the lanes only: n2-project-eigen-channels keeps the eigen path on the
     # lobes, where it earns its ~n^2 per channel (the stage runs on one core per GPU, at 60-78 %
     # with the lobes alone).
-    # + ATSC 24 and 30 (2714-2744, 2898-2928): the DTV subtraction's channels, which the SK
-    # flagger would otherwise excise (docs/CHORD_DTV_SUBTRACTION_20261102.md, #226).
-    rfi-excision-exempt-freq-ids: "5939-6626,2714-2744,2898-2928"
+    # + the DTV subtraction's channels (dtv-targets below: ATSC 24, 30, 17, 19, 31, 33, 35 and
+    # MUOS), which the SK flagger would otherwise excise, leaving nothing to judge the
+    # subtraction by (docs/CHORD_DTV_SUBTRACTION_20261102.md, #226).
+    rfi-excision-exempt-freq-ids: "5939-6626,2714-2744,2898-2928,2499-2529,2560-2590,2929-2959,\
+      2991-3020,3052-3082,1845-1867,1871-1892,1897-1918,1922-1943"
     # Bright-satellite projection in each record assembler: off | shadow | live. live projects
     # the transiting satellite's element direction out of the other slots' record rows in
     # place, from the node's own rows (own slot, sibling chain, probe stack); nodes exchange
