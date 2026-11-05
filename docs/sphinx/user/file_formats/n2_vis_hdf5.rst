@@ -618,9 +618,10 @@ verifies consistency, within ns-level tolerance, as frames arrive).
      - Local ERA (ERA + ITRS longitude + :math:`s'`) at the bin edges,
        degrees.
    * - ``rfi_frame_excision_enabled``
-     - bool
+     - bool (:math:`N_f`, :math:`N_t`)
      - Whether second-stage (frame-level) RFI excision was active for this
-       bin.
+       frequency and bin. Each frequency comes from one stream, and the
+       streams switch independently.
    * - ``rfi_frame_excision_num``
      - int32
      - Number of active excision thresholds (<= :math:`N_k`); only the
@@ -641,8 +642,9 @@ verifies consistency, within ns-level tolerance, as frames arrive).
        ``rfi_first_stage_enabled_updatable_config`` is set; otherwise this is
        1.0 whatever the GPU state.
    * - ``fringestop_enabled``
-     - bool
-     - Whether the visibilities in this bin were fringestopped.
+     - bool (:math:`N_f`, :math:`N_t`)
+     - Whether the visibilities of this frequency and bin were
+       fringestopped.
 
 Completeness tracking and configuration snapshots
 =================================================
