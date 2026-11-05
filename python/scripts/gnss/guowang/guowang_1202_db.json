@@ -3,6 +3,19 @@
  "about": "GuoWang 1202.025 MHz satellites identified in CHORD's beam dump (#227): the G2' phase of each one's code (guowang_codes.guowang_1202; PRN = phase + 1; phases are not unique) and theta, its code-start epoch: t_tx(code start) minus the nearest UTC 2 ms boundary, t_tx from the light-time TLE range on the broker's frame0 axis, no receiver clock or delay removed; beams referenced to input 116 (theta carries the reference input's delay, ~0.1 us between inputs) and the newest TLE at or before the pass, as ~/gnss/builds/gw1202/gw_reduce.py measures them (DIGUI-26: the 10-30 baseband dump, its own reference). theta held to < 0.6 chip within a pass; across days it is untested. theta_unknown_us is the median of the near-zero group, for a satellite not yet measured (its spread there: 16 chips rms, 40 worst; two satellites sit near +400 us). Schema 1 (2026-11-03): status is transmitting or no_transmission, from the newest conclusive pass: a complete beam-dump window outside the no_sky periods on which the code was found, or on which the satellite passed within silent_max_sep_deg of the boresight without it. g2_phase is null for a satellite never found; one that stops keeps its code. last_observed_utc is the newest pass with the code found, last_checked_utc the newest conclusive pass; passes lists every conclusive pass as [utc mid-window, closest separation deg, found]. guowang_db.py folds the reductions in; git history is the time record.",
  "theta_unknown_us": -9.075,
  "satellites": {
+  "DIGUI-04": {
+   "status": "no_transmission",
+   "catnum": 62326,
+   "g2_phase": null,
+   "last_observed_utc": null,
+   "last_checked_utc": "2026-11-05T00:59:14Z",
+   "last_checked_sep_deg": 1.42,
+   "passes_found": 0,
+   "passes_silent": 1,
+   "passes": [
+    ["2026-11-05T00:59:14Z", 1.42, false]
+   ]
+  },
   "DIGUI-05": {
    "status": "no_transmission",
    "catnum": 62327,
@@ -304,6 +317,26 @@
    "passes_silent": 1,
    "passes": [
     ["2026-11-02T21:53:38Z", 1.3, false]
+   ]
+  },
+  "DIGUI-51": {
+   "status": "transmitting",
+   "catnum": 65108,
+   "g2_phase": 1890,
+   "theta_us": 11.343,
+   "carrier_minus_tle_ppb": -2.0,
+   "measured_utc": "2026-11-05T01:18:11Z",
+   "source": "2026-11-05 beam dump window 115 (gw_reduce, 38885 frames over 79 s)",
+   "sep_deg": 0.6,
+   "ref_input": 116,
+   "drift_ns_s": 2.1,
+   "last_observed_utc": "2026-11-05T01:18:14Z",
+   "last_checked_utc": "2026-11-05T01:18:14Z",
+   "last_checked_sep_deg": 0.2,
+   "passes_found": 1,
+   "passes_silent": 0,
+   "passes": [
+    ["2026-11-05T01:18:14Z", 0.2, true]
    ]
   },
   "DIGUI-52": {
@@ -980,13 +1013,14 @@
    "sep_deg": 0.98,
    "ref_input": 116,
    "drift_ns_s": 2.55,
-   "last_observed_utc": "2026-11-03T05:53:34Z",
-   "last_checked_utc": "2026-11-03T05:53:34Z",
-   "last_checked_sep_deg": 0.94,
-   "passes_found": 1,
+   "last_observed_utc": "2026-11-05T00:59:14Z",
+   "last_checked_utc": "2026-11-05T00:59:14Z",
+   "last_checked_sep_deg": 9.55,
+   "passes_found": 2,
    "passes_silent": 0,
    "passes": [
-    ["2026-11-03T05:53:34Z", 0.94, true]
+    ["2026-11-03T05:53:34Z", 0.94, true],
+    ["2026-11-05T00:59:14Z", 9.55, true]
    ]
   },
   "DIGUI-121": {
