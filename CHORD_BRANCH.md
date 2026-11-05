@@ -22,4 +22,5 @@ Base: `develop` at `419f49ab1` (#1845).
 | `cd85d6afb` | `config/chord/common.j2` | Keep recent log lines for `GET /logs` (#1843) |
 | `030e1715f` | `config/chord/recv.j2` | Truncate subset vis and weights before writing (#1844) |
 | `12f44fcb5` | `CHORD_BRANCH.md`, `AGENTS.md` | This file and the chord workflow notes |
-| this row's commit | `config/chord/pathfinder.j2` | Record calibration gains in the X-engine N2 frames (#1849) |
+| `a82b96f02` | `config/chord/pathfinder.j2` | Record calibration gains in the X-engine N2 frames (#1849) |
+| this row's commit | `config/chord/common.j2` | Name the F-engine controller by its full name |
