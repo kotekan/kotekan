@@ -3,6 +3,19 @@
  "about": "GuoWang 1202.025 MHz satellites identified in CHORD's beam dump (#227): the G2' phase of each one's code (guowang_codes.guowang_1202; PRN = phase + 1; phases are not unique) and theta, its code-start epoch: t_tx(code start) minus the nearest UTC 2 ms boundary, t_tx from the light-time TLE range on the broker's frame0 axis, no receiver clock or delay removed; beams referenced to input 116 (theta carries the reference input's delay, ~0.1 us between inputs) and the newest TLE at or before the pass, as ~/gnss/builds/gw1202/gw_reduce.py measures them (DIGUI-26: the 10-30 baseband dump, its own reference). theta held to < 0.6 chip within a pass; across days it is untested. theta_unknown_us is the median of the near-zero group, for a satellite not yet measured (its spread there: 16 chips rms, 40 worst; two satellites sit near +400 us). Schema 1 (2026-11-03): status is transmitting or no_transmission, from the newest conclusive pass: a complete beam-dump window outside the no_sky periods on which the code was found, or on which the satellite passed within silent_max_sep_deg of the boresight without it. g2_phase is null for a satellite never found; one that stops keeps its code. last_observed_utc is the newest pass with the code found, last_checked_utc the newest conclusive pass; passes lists every conclusive pass as [utc mid-window, closest separation deg, found]. guowang_db.py folds the reductions in; git history is the time record.",
  "theta_unknown_us": -9.075,
  "satellites": {
+  "DIGUI-03": {
+   "status": "no_transmission",
+   "catnum": 62325,
+   "g2_phase": null,
+   "last_observed_utc": null,
+   "last_checked_utc": "2026-11-05T12:30:08Z",
+   "last_checked_sep_deg": 2.91,
+   "passes_found": 0,
+   "passes_silent": 1,
+   "passes": [
+    ["2026-11-05T12:30:08Z", 2.91, false]
+   ]
+  },
   "DIGUI-04": {
    "status": "no_transmission",
    "catnum": 62326,
