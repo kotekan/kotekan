@@ -71,6 +71,16 @@ If tests generate output files, this should be cleaned up, or directed to /tmp.
 If changes affect config parameters, existing configs and tests may need to be updated.
 
 
+chord branch
+------------
+
+This section and CHORD_BRANCH.md exist only on the `chord` branch. They must not be carried into PRs to `develop`, so branch PR work from `develop`, not from `chord`.
+
+`chord` is the CHORD production branch: `develop` plus the open PRs the site needs before they are reviewed, plus site config. Every code change in `chord` must have a PR against `develop`. Site config under config/chord goes straight to `chord`.
+
+CHORD_BRANCH.md lists the `develop` base, the PR head `chord` carries for each open PR, and the chord-only commits. Update it in the commit that changes `chord`: when a PR is added or its head is updated, when a PR merges into `develop` (drop its row and move the base), and when a chord-only commit is added. Merging `develop` with the listed PR heads must give the `chord` tree, apart from the chord-only commits.
+
+
 Common Commands
 ---------------
 
