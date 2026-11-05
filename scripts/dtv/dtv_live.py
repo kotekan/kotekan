@@ -70,17 +70,24 @@ def cmd_status(a):
     for g in (0, 1):
         s = get(a, cmd_path(g) + "/status")
         print(
-            "gpu%d: lags %+d..%+d, frames %d, state %s, start source %d (%d left), last error %r; channels %s"
+            "gpu%d: frames %d, state %s, start source %d (%d left), last error %r; channels %s"
             % (
                 g,
-                s["lag_min"],
-                s["lag_min"] + s["n_lag"] - 1,
                 s["frames"],
                 s["state_file"] or "-",
                 s["start_source"],
                 s["start_frames_left"],
                 s["last_error"],
-                " ".join("%d:%s" % (c["freq_id"], c["act"]) for c in s["channels"]),
+                " ".join(
+                    "%d:%+d..%+d:%s"
+                    % (
+                        c["freq_id"],
+                        c["lag_min"],
+                        c["lag_min"] + c["n_lag"] - 1,
+                        c["act"],
+                    )
+                    for c in s["channels"]
+                ),
             )
         )
 
