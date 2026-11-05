@@ -191,6 +191,10 @@ endif()
 add_executable(test_modulo test_modulo.cpp)
 target_link_libraries(test_modulo PRIVATE libexternal kotekan_libs kotekan_utils kotekan_core)
 
+# logBuffer: the line ring behind /logs
+add_executable(test_log_buffer test_log_buffer.cpp)
+target_link_libraries(test_log_buffer PRIVATE libexternal kotekan_libs kotekan_utils kotekan_core)
+
 # test_cuda_stream_assignment - stream-by-role and the pipeline's lock order. The functions under
 # test are header-only and call no CUDA, so this runs in the CPU-only builds; lib/gpu is named
 # explicitly because gpuCommand.hpp (for gpuCommandType) is only on an include path via kotekan_gpu,
@@ -635,6 +639,33 @@ else()
 endif()
 target_include_directories(test_bufferBadInputs PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages
                                                         ${KOTEKAN_SOURCE_DIR}/lib/utils)
+
+# test_bufferGains - tests for bufferGains stage
+add_executable(test_bufferGains test_bufferGains.cpp)
+if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+    target_link_libraries(
+        test_bufferGains
+        PRIVATE libexternal
+                kotekan_stages
+                kotekan_libs
+                kotekan_utils
+                kotekan_core
+                -Wl,-all_load
+                kotekan_metadata)
+else()
+    target_link_libraries(
+        test_bufferGains
+        PRIVATE libexternal
+                kotekan_stages
+                kotekan_libs
+                kotekan_utils
+                kotekan_core
+                -Wl,--whole-archive
+                kotekan_metadata
+                -Wl,--no-whole-archive)
+endif()
+target_include_directories(test_bufferGains PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages
+                                                    ${KOTEKAN_SOURCE_DIR}/lib/utils)
 
 # test_bufferRecv - tests for bufferRecv stage
 add_executable(test_bufferRecv test_bufferRecv.cpp)

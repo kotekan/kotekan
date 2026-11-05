@@ -188,8 +188,9 @@ h5py reads them natively as ``complex64``.
 
 **Sentinels.**
 Quantities that no upstream stage populated hold sentinel values rather than
-physical ones: ``erms`` = -1 or -FLT_MAX, ``gain`` = -1+0j,
-``radiometer_chi2`` = -1, and ``eval`` / ``evec`` = 0 when no eigensolver ran.
+physical ones: ``erms`` = -1 or -FLT_MAX, ``gain`` = -1+0j when no gains
+buffer is wired into the accumulator, ``radiometer_chi2`` = -1, and
+``eval`` / ``evec`` = 0 when no eigensolver ran.
 Which of these are real in a given acquisition depends on the deployed
 pipeline. ``flags`` is not among them: 1.0 is a good element and 0.0 a bad
 one, so a pipeline with no flagging stage reports every element as good
@@ -263,6 +264,15 @@ File identity and structure
      - string
      - Element ordering of the data (an ``ElementOrder`` name; see
        :ref:`element_order`).
+   * - ``err_sq_lim``
+     - float32
+     - Truncation limit for ``vis``: each component is within
+       :math:`\sqrt{0.5 \cdot \mathrm{err\_sq\_lim} / w}` of the accumulated
+       value, where :math:`w` is its ``vis_weight``. The truncation adds at
+       most ``err_sq_lim`` / 3 of the noise variance. 0 means not truncated.
+   * - ``weight_fixed_precision``
+     - float32
+     - Relative truncation limit for ``vis_weight``. 0 means not truncated.
    * - ``num_dishes``
      - uint64
      - Dish slots in the telescope description, :math:`N_d`.
@@ -338,8 +348,9 @@ Telescope geometry and timing
    or use older names: ``itrs_lat_deg`` / ``itrs_lon_deg`` were previously
    ``origin_itrs_lat_deg`` / ``origin_itrs_lon_deg``, and ``input_order``,
    ``grid_size_x``, ``grid_size_y``, ``feed_separation_x_m``,
-   ``feed_separation_y_m``, ``main_array_grid_indices``, and
-   ``feed_positions_m`` were added later.
+   ``feed_separation_y_m``, ``main_array_grid_indices``,
+   ``feed_positions_m``, ``err_sq_lim``, and ``weight_fixed_precision`` were
+   added later. Files without the truncation attributes are not truncated.
 
 Earth orientation parameter (EOP) table
 ---------------------------------------
@@ -475,14 +486,16 @@ uncompressed.
      - complex64
      - Accumulated visibilities :math:`V_{ab}`, normalized per valid FPGA
        sample (i.e. the mean correlation over the samples actually
-       accumulated). Product ordering per ``/index_map/prod``.
+       accumulated). Product ordering per ``/index_map/prod``. Truncated
+       below the noise when the ``err_sq_lim`` attribute is nonzero.
    * - ``vis_weight`` **[c]**
      - (:math:`N_f`, :math:`N_p`, :math:`N_t`)
      - float32
      - Statistical weight of each visibility, an inverse-variance estimate
        computed by ``N2Accumulate`` from the scatter of sub-integrations
        (estimator selected by the accumulator's ``variance_mode``). 0 where
-       the visibility is missing or invalid.
+       the visibility is missing or invalid. Truncated when the
+       ``weight_fixed_precision`` attribute is nonzero.
    * - ``eval`` **[c]**
      - (:math:`N_f`, :math:`N_{ev}`, :math:`N_t`)
      - float32
@@ -501,9 +514,11 @@ uncompressed.
    * - ``gain``
      - (:math:`N_f`, :math:`N_e`, :math:`N_t`)
      - complex64
-     - Complex gain applied to each input. Sentinel -1+0j when no gain
-       application was recorded (the F-engine digital gains are in
-       ``/digital_gains`` instead).
+     - Complex calibration gain of each input in force when the integration
+       was written, as posted to the X-engine (bufferGains) and recorded by
+       the accumulator. Recorded only: ``vis`` is not calibrated. Sentinel
+       -1+0j when no gains buffer is wired into the accumulator (the
+       F-engine digital gains are in ``/digital_gains`` instead).
    * - ``flags``
      - (:math:`N_f`, :math:`N_e`, :math:`N_t`)
      - float32
@@ -566,7 +581,8 @@ All are 1-D of length :math:`N_t` (axis ``time``) unless noted. "Bin" values
 refer to the *nominal* accumulation bin on the upstream bin grid;
 "time-centre" values refer to the midpoint of the data actually accumulated.
 Identical values are shared by all frequencies of a time slot (the writer
-verifies consistency, within ns-level tolerance, as frames arrive).
+verifies consistency, within ns-level tolerance, as frames arrive), except in
+the datasets with a frequency axis, which hold one value per stream.
 
 .. list-table::
    :header-rows: 1
@@ -618,18 +634,19 @@ verifies consistency, within ns-level tolerance, as frames arrive).
      - Local ERA (ERA + ITRS longitude + :math:`s'`) at the bin edges,
        degrees.
    * - ``rfi_frame_excision_enabled``
-     - bool
+     - bool (:math:`N_f`, :math:`N_t`)
      - Whether second-stage (frame-level) RFI excision was active for this
-       bin.
+       frequency and bin. Each frequency comes from one stream, and the
+       streams switch independently.
    * - ``rfi_frame_excision_num``
-     - int32
+     - int32 (:math:`N_f`, :math:`N_t`)
      - Number of active excision thresholds (<= :math:`N_k`); only the
        first this many entries of the two datasets below are meaningful.
    * - ``rfi_frame_excision_threshold``
-     - float32 (:math:`N_t`, :math:`N_k`)
+     - float32 (:math:`N_f`, :math:`N_t`, :math:`N_k`)
      - Spectral-kurtosis thresholds, in sigma, used for excision.
    * - ``rfi_frame_excision_fraction``
-     - float32 (:math:`N_t`, :math:`N_k`)
+     - float32 (:math:`N_f`, :math:`N_t`, :math:`N_k`)
      - Fraction of samples above the corresponding threshold required to
        trigger excision.
    * - ``frac_rfi_first_stage_enabled``
@@ -641,10 +658,11 @@ verifies consistency, within ns-level tolerance, as frames arrive).
        ``rfi_first_stage_enabled_updatable_config`` is set; otherwise this is
        1.0 whatever the GPU state.
    * - ``fringestop_enabled``
-     - bool
-     - Whether this bin was fringestopped. Only ``ArrayDish`` inputs get
-       fringestopping phases (see the input ``type`` table); a product with
-       an RFI or missing input uses a phase of 1 for that input.
+     - bool (:math:`N_f`, :math:`N_t`)
+     - Whether the visibilities of this frequency and bin were
+       fringestopped. Only ``ArrayDish`` inputs get fringestopping phases
+       (see the input ``type`` table); a product with an RFI or missing
+       input uses a phase of 1 for that input.
 
 Completeness tracking and configuration snapshots
 =================================================

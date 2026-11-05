@@ -151,6 +151,12 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     if (in_bad_feed_mask_buf != nullptr)
         in_bad_feed_mask_buf->register_consumer(unique_name);
 
+    // Optional gains, recorded in the output frames. Polled, not consumed 1:1.
+    in_gains_buf =
+        config.exists(unique_name, "in_gains_buf") ? get_buffer("in_gains_buf") : nullptr;
+    if (in_gains_buf != nullptr)
+        in_gains_buf->register_consumer(unique_name);
+
     // Sanity checks on initialization
     {
         // With an updatable config, receive_fringestop_enabled checks the phase center instead.
@@ -306,6 +312,19 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
                         mask_desc->get_dimscaling(0), _n_fpga_samples_per_n2k_frame);
     }
 
+    if (in_gains_buf != nullptr) {
+        const std::shared_ptr<const kotekan::GenericNDArray> gains_desc =
+            in_gains_buf->require_frame_desc<kotekan::GenericNDArray>();
+        if (gains_desc->get_value_datatype() != kotekan::float32 || gains_desc->get_rank() != 4
+            || gains_desc->get_extent(0) != _num_freq_per_n2k_frame
+            || gains_desc->get_extent(1) != _num_polarizations
+            || gains_desc->get_extent(2) != _num_dishes || gains_desc->get_extent(3) != 2)
+            FATAL_ERROR("in_gains_buf {:s} must be float32 [{:d}, {:d}, {:d}, 2]",
+                        in_gains_buf->buffer_name, _num_freq_per_n2k_frame, _num_polarizations,
+                        _num_dishes);
+        _gains.assign(_num_freq_per_n2k_frame * _num_elements, N2::cfloat{-1.0f, 0.0f});
+    }
+
 
     // Validate that the output buffer's frame descriptor (set by bufferFactory) matches
     // what this stage will produce
@@ -355,6 +374,8 @@ void N2Accumulate::main_thread() {
     int previous_in_plcounts_frame_id = -1;
     int previous_in_rfiframemask_frame_id = -1;
     int previous_in_bad_feed_mask_frame_id = -1; // only used when the mask input is wired
+    int in_gains_frame_id = 0;                   // only used when the gains input is wired
+    bool have_gains = false;
     bool have_previous_seq = false;
     int64_t previous_seq = 0;
     std::vector<int> coarse_freq_order;
@@ -547,6 +568,39 @@ void N2Accumulate::main_thread() {
             coarse_freq_order = frame_coarse_freq;
         } else if (frame_coarse_freq != coarse_freq_order) {
             FATAL_ERROR("N2Accumulate coarse-frequency order changed between correlation frames");
+        }
+
+        // Take every gains frame produced since the last poll; only the newest matters. The
+        // first one is waited for, so that the record never starts on the sentinel: bufferGains
+        // produces it at startup.
+        if (in_gains_buf != nullptr) {
+            while (true) {
+                int status;
+                if (have_gains)
+                    status = in_gains_buf->wait_for_full_frame_timeout(unique_name,
+                                                                       in_gains_frame_id, {0, 0});
+                else if (in_gains_buf->wait_for_full_frame(unique_name, in_gains_frame_id)
+                         == nullptr)
+                    status = -1;
+                else
+                    status = 0;
+                if (status != 0)
+                    break; // -1: shutdown, the next buffer wait returns; 1: no new frame
+                const std::shared_ptr<chordMetadata> gains_metadata =
+                    get_chord_metadata(in_gains_buf, in_gains_frame_id);
+                if (!gains_metadata->has_coarse_freq()
+                    || gains_metadata->get_coarse_freq() != frame_coarse_freq)
+                    FATAL_ERROR("N2Accumulate coarse-frequency mismatch in gains stream {:s}",
+                                in_gains_buf->buffer_name);
+                const float* gains = (const float*)in_gains_buf->frames.at(in_gains_frame_id);
+                for (size_t i = 0; i < _gains.size(); ++i)
+                    _gains[i] = {gains[2 * i], gains[2 * i + 1]};
+                INFO("Recording the gains of {:s}[{:d}] from seq {:d}", in_gains_buf->buffer_name,
+                     in_gains_frame_id, frame_metadata->get_fpga_seq_num());
+                in_gains_buf->mark_frame_empty(unique_name, in_gains_frame_id);
+                in_gains_frame_id = (in_gains_frame_id + 1) % in_gains_buf->num_frames;
+                have_gains = true;
+            }
         }
 
         // The even frame may be saved for the next iteration, so frames must be consecutive.
@@ -1424,9 +1478,15 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& in_rfiframema
                 if (!_accum_bad_feed_mask[el])
                     out_vis.flags[_reorder.at(el)] = 0.0f;
 
+        // The gains in force now, when wired; they are recorded, not applied.
+        if (in_gains_buf != nullptr)
+            for (int64_t el = 0; el < _num_elements; ++el)
+                out_vis.gain[_reorder.at(el)] = _gains[f * _num_elements + el];
+        else
+            std::fill(out_vis.gain.begin(), out_vis.gain.end(), N2::cfloat{-1.0f, 0.0f});
+
         // Fill with sentinel values to be filled by another stage.
         std::fill(out_vis.radiometer_chi2.begin(), out_vis.radiometer_chi2.end(), -1.0f);
-        std::fill(out_vis.gain.begin(), out_vis.gain.end(), N2::cfloat{-1.0f, 0.0f});
         std::fill(out_vis.mask.begin(), out_vis.mask.end(), static_cast<uint8_t>(255u));
     } // f
 

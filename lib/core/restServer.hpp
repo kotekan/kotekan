@@ -14,6 +14,7 @@
 #include <functional>         // for function
 #include <map>                // for map
 #include <mutex>              // for mutex
+#include <set>                // for set
 #include <shared_mutex>       // for shared_timed_mutex
 #include <stdint.h>           // for uint8_t
 #include <string>             // for string, allocator, basic_string
@@ -237,6 +238,19 @@ public:
      * teardown. Idempotent.
      */
     void stop_processing();
+
+    /**
+     * @brief Holds the endpoints registered from now on, until @c release_new_endpoints().
+     *
+     * A request to a held endpoint is answered 503 without running its callback.
+     * kotekan holds the endpoints a start registers while the start builds the
+     * stages, so that no request reaches a stage, or a config value, that is
+     * still being set up.
+     */
+    void hold_new_endpoints();
+
+    /// Lets requests through to the endpoints held since @c hold_new_endpoints().
+    void release_new_endpoints();
 
     /**
      * @brief Set the server thread CPU affinity
@@ -469,6 +483,12 @@ private:
 
     /// Mutex to lock changes to the maps while a request is in progress
     std::shared_timed_mutex callback_map_lock;
+
+    /// Set by @c hold_new_endpoints(). Protected by @c callback_map_lock.
+    bool _holding = false;
+
+    /// Endpoints registered while holding. Protected by @c callback_map_lock.
+    std::set<std::string> _held;
 
     /**
      * @brief Waits until no request is executing the callback for @c endpoint.

@@ -482,6 +482,47 @@ BOOST_AUTO_TEST_CASE(dot_draws_a_device_as_one_table) {
     BOOST_CHECK(contains(boxes, "\"host_in\" -> \"/s/gpu_0/commands/0\""));
 }
 
+BOOST_AUTO_TEST_CASE(dot_draws_what_the_table_cannot_hold_beside_it) {
+    using kotekan::GraphCategory;
+    PipelineGraph graph;
+    add_device(graph);
+    // A second stage on the device, reading a host buffer the first one writes:
+    // common_cluster puts that buffer in the device box.
+    auto& work = graph.add_cluster("/t/gpu_0/work");
+    work.label = "t";
+    work.parent = "__gpu/0";
+    graph.add_node("mid").add_line("mid").set_category(GraphCategory::Buffer).cluster = "__gpu/0";
+    graph.add_node("/t/gpu_0/commands/0").add_line("copyIn").cluster = work.id;
+    auto& t_mem = graph.add_node("t_mem");
+    t_mem.add_line("t_mem").set_category(GraphCategory::Memory).cluster = "__gpu/0";
+    graph.add_edge("/s/gpu_0/commands/2", "mid");
+    graph.add_edge("mid", "/t/gpu_0/commands/0");
+    graph.add_edge("/t/gpu_0/commands/0", "t_mem");
+    // Two names for one region, and an edge from a host buffer straight to a region.
+    graph.add_edge("ring", "scratch").set_attr("color", "red");
+    graph.add_edge("host_in", "scratch");
+    // A command's time on the device.
+    graph.add_node("/s/gpu_0/commands/1").add_line("kernel").add_line("1.23 ms");
+
+    const std::string dot = graph.to_dot();
+    check_statements_terminated(dot);
+    BOOST_CHECK(contains(dot, "\"__gpu/0\" [shape=\"plain\", label=<<TABLE"));
+    BOOST_CHECK(contains(dot, "\n    \"mid\" ["));
+    // t's copyIn reads no device memory, so it sorts with s's copyIn, before the kernel.
+    BOOST_CHECK(contains(dot, "\"__gpu/0\":\"out3\":e -> \"mid\""));
+    BOOST_CHECK(contains(dot, "\"mid\" -> \"__gpu/0\":\"in1\":w"));
+    BOOST_CHECK(contains(dot, "linked regions"));
+    BOOST_CHECK(contains(dot, "kernel · 1.23 ms"));
+    BOOST_CHECK(contains(dot, "// not drawn in the GPU table: host_in -> scratch"));
+    BOOST_CHECK(!contains(dot, "not drawn in the GPU table: ring"));
+
+    const std::string svg = graph.to_device_svg("__gpu/0");
+    BOOST_CHECK(contains(svg, "to mid"));
+    BOOST_CHECK(contains(svg, "from mid"));
+    BOOST_CHECK(contains(svg, "<title>ring -> scratch</title>"));
+    BOOST_CHECK(contains(svg, "◆ linked regions"));
+}
+
 BOOST_AUTO_TEST_CASE(dot_keeps_a_device_box_without_memory) {
     // As with kernels off: stages only, and a ring between them that is a
     // plain buffer node, not device memory.

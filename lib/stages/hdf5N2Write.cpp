@@ -11,6 +11,7 @@
 #include "kotekanLogging.hpp" // for FATAL_ERROR_NON_OO, FATAL_ERROR, WARN
 #include "restClient.hpp"     // for restClient
 #include "timeUtil.hpp"       // for EOP
+#include "truncate.hpp"       // for bit_truncate_float
 #include "util.h"             // for mkdir_p
 #include "visUtil.hpp"        // for cfloat
 
@@ -28,7 +29,7 @@
 #include <cassert>           // for assert
 #include <cfloat>            // for DBL_MAX
 #include <chrono>            // for duration, duration_cast, operator-, sys...
-#include <cmath>             // for fabs
+#include <cmath>             // for fabs, sqrt, isfinite
 #include <complex>           // for complex
 #include <configTracker.hpp> // for ConfigTracker
 #include <cstdint>           // for uint64_t, int64_t, int32_t, uint16_t
@@ -329,6 +330,8 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
         _check_create_attribute(*file, "num_ev", fv.num_ev);
         _check_create_attribute(*file, "n2_layout", N2Layout_to_string(fv.n2_layout));
         _check_create_attribute(*file, "input_order", ElementOrder_to_string(input_order));
+        _check_create_attribute(*file, "err_sq_lim", err_sq_lim);
+        _check_create_attribute(*file, "weight_fixed_precision", weight_fixed_precision);
 
         // Telescope info
         const CHORDTelescope& telescope = Telescope::instance().cast<CHORDTelescope>();
@@ -617,20 +620,25 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
                               HighFive::create_datatype<double>(), props_empty);
         _check_create_dataset(*file, "/bin_end_ERAL_deg", {num_file_t_}, {"time"},
                               HighFive::create_datatype<double>(), props_empty);
-        _check_create_dataset(*file, "/rfi_frame_excision_enabled", {num_file_t_}, {"time"},
-                              HighFive::create_datatype<bool>(), props_empty);
-        _check_create_dataset(*file, "/fringestop_enabled", {num_file_t_}, {"time"},
-                              HighFive::create_datatype<bool>(), props_empty);
-        _check_create_dataset(*file, "/rfi_frame_excision_num", {num_file_t_}, {"time"},
-                              HighFive::create_datatype<int32_t>(), props_empty);
+        _check_create_dataset(*file, "/rfi_frame_excision_num", {num_file_f, num_file_t_},
+                              {"frequency", "time"}, HighFive::create_datatype<int32_t>(),
+                              props_empty);
         _check_create_dataset(*file, "/rfi_frame_excision_threshold",
-                              {num_file_t_, MAX_NUM_RFI_THRESHOLDS}, {"time", "threshold"},
+                              {num_file_f, num_file_t_, MAX_NUM_RFI_THRESHOLDS},
+                              {"frequency", "time", "threshold"},
                               HighFive::create_datatype<float>(), props_empty);
         _check_create_dataset(*file, "/rfi_frame_excision_fraction",
-                              {num_file_t_, MAX_NUM_RFI_THRESHOLDS}, {"time", "threshold"},
+                              {num_file_f, num_file_t_, MAX_NUM_RFI_THRESHOLDS},
+                              {"frequency", "time", "threshold"},
                               HighFive::create_datatype<float>(), props_empty);
         _check_create_dataset(*file, "/frac_rfi_first_stage_enabled", {num_file_f, num_file_t_},
                               {"frequency", "time"}, HighFive::create_datatype<float>(),
+                              props_empty);
+        _check_create_dataset(*file, "/rfi_frame_excision_enabled", {num_file_f, num_file_t_},
+                              {"frequency", "time"}, HighFive::create_datatype<bool>(),
+                              props_empty);
+        _check_create_dataset(*file, "/fringestop_enabled", {num_file_f, num_file_t_},
+                              {"frequency", "time"}, HighFive::create_datatype<bool>(),
                               props_empty);
 
         // Digital gains: copy entire gains file verbatim into /digital_gains/ group
@@ -690,15 +698,17 @@ N2FileData::N2FileData(FileMode file_mode_, uint64_t num_file_t_, const N2FrameV
                        const ElementOrder input_order_, const size_t blocksize_f_,
                        const size_t blocksize_p_, const size_t blocksize_t_,
                        const std::string compression_, const size_t compression_level_,
-                       const bool use_bitshuffle_, const std::string base_dir_,
+                       const bool use_bitshuffle_, const float err_sq_lim_,
+                       const float weight_fixed_precision_, const std::string base_dir_,
                        const std::string baseband_gain_file_, const int baseband_gain_update_idx_) :
     num_elements(fv.num_elements), num_prod(fv.num_prod), num_ev(fv.num_ev),
     input_order(input_order_),
     num_file_f(Telescope::instance().cast<CHORDTelescope>().num_science_freqs()),
     num_file_t(num_file_t_), file_mode(file_mode_), blocksize_f(blocksize_f_),
     blocksize_p(blocksize_p_), blocksize_t(blocksize_t_), compression(compression_),
-    compression_level(compression_level_), use_bitshuffle(use_bitshuffle_),
-    open_wall_s(open_wall_s_), abs_file_idx(abs_file_idx_), base_dir(std::move(base_dir_)),
+    compression_level(compression_level_), use_bitshuffle(use_bitshuffle_), err_sq_lim(err_sq_lim_),
+    weight_fixed_precision(weight_fixed_precision_), open_wall_s(open_wall_s_),
+    abs_file_idx(abs_file_idx_), base_dir(std::move(base_dir_)),
     baseband_gain_file(std::move(baseband_gain_file_)),
     baseband_gain_update_idx(baseband_gain_update_idx_),
     partial_filepath(base_dir + "/.partial/" + "vis_" + std::to_string(abs_file_idx_) + ".h5"),
@@ -748,12 +758,12 @@ N2FileData::N2FileData(FileMode file_mode_, uint64_t num_file_t_, const N2FrameV
     bin_end_ERA_deg.assign(num_file_t, 0.0);
     bin_start_ERAL_deg.assign(num_file_t, 0.0);
     bin_end_ERAL_deg.assign(num_file_t, 0.0);
-    rfi_frame_excision_enabled.assign(num_file_t, false);
-    fringestop_enabled.assign(num_file_t, false);
-    rfi_frame_excision_num.assign(num_file_t, 0);
-    rfi_frame_excision_threshold.assign(num_file_t * MAX_NUM_RFI_THRESHOLDS, 0.0f);
-    rfi_frame_excision_fraction.assign(num_file_t * MAX_NUM_RFI_THRESHOLDS, 0.0f);
+    rfi_frame_excision_num.assign(num_file_f * num_file_t, 0);
+    rfi_frame_excision_threshold.assign(num_file_f * num_file_t * MAX_NUM_RFI_THRESHOLDS, 0.0f);
+    rfi_frame_excision_fraction.assign(num_file_f * num_file_t * MAX_NUM_RFI_THRESHOLDS, 0.0f);
     frac_rfi_first_stage_enabled.assign(num_file_f * num_file_t, 0.0f);
+    rfi_frame_excision_enabled.assign(num_file_f * num_file_t, 0);
+    fringestop_enabled.assign(num_file_f * num_file_t, 0);
 
 
     added_ft.assign(num_file_f * num_file_t, 0);
@@ -890,10 +900,21 @@ N2FileData::AddFrameStatus N2FileData::add_frame(const N2FrameView& fv, size_t t
                            f_index, t_index, structural_checks_failures);
 
 
-    // Store vis + weight
+    // Store vis + weight, truncated to the precision the weight supports
     for (size_t p = 0; p < num_prod; ++p) {
-        vis[idx_fpt(f_index, p, t_index)] = fv.vis[p];
-        vis_weight[idx_fpt(f_index, p, t_index)] = fv.weight[p];
+        N2::cfloat v = fv.vis[p];
+        float w = fv.weight[p];
+        if (w > 0.0f && std::isfinite(w)) {
+            // Weight first, so the vis error bound holds for the stored weight.
+            if (weight_fixed_precision > 0.0f)
+                w = bit_truncate_float(w, weight_fixed_precision * w);
+            if (err_sq_lim > 0.0f) {
+                const float err = std::sqrt(0.5f * err_sq_lim / w);
+                v = {bit_truncate_float(v.real(), err), bit_truncate_float(v.imag(), err)};
+            }
+        }
+        vis[idx_fpt(f_index, p, t_index)] = v;
+        vis_weight[idx_fpt(f_index, p, t_index)] = w;
     }
     // Store eval + evec
     for (size_t e = 0; e < num_ev; ++e) {
@@ -944,13 +965,15 @@ N2FileData::AddFrameStatus N2FileData::add_frame(const N2FrameView& fv, size_t t
     bin_end_ERA_deg[t_index] = fv.bin_end_ERA_deg;
     bin_start_ERAL_deg[t_index] = fv.bin_start_ERAL_deg;
     bin_end_ERAL_deg[t_index] = fv.bin_end_ERAL_deg;
-    rfi_frame_excision_enabled[t_index] = fv.rfi_frame_excision_enabled;
-    fringestop_enabled[t_index] = fv.fringestop_enabled;
-    rfi_frame_excision_num[t_index] = fv.rfi_frame_excision_num;
+    rfi_frame_excision_enabled[idx_ft(f_index, t_index)] = fv.rfi_frame_excision_enabled;
+    fringestop_enabled[idx_ft(f_index, t_index)] = fv.fringestop_enabled;
+    rfi_frame_excision_num[idx_ft(f_index, t_index)] = fv.rfi_frame_excision_num;
     std::copy(fv.rfi_frame_excision_threshold.begin(), fv.rfi_frame_excision_threshold.end(),
-              rfi_frame_excision_threshold.begin() + t_index * MAX_NUM_RFI_THRESHOLDS);
+              rfi_frame_excision_threshold.begin()
+                  + idx_ft(f_index, t_index) * MAX_NUM_RFI_THRESHOLDS);
     std::copy(fv.rfi_frame_excision_fraction.begin(), fv.rfi_frame_excision_fraction.end(),
-              rfi_frame_excision_fraction.begin() + t_index * MAX_NUM_RFI_THRESHOLDS);
+              rfi_frame_excision_fraction.begin()
+                  + idx_ft(f_index, t_index) * MAX_NUM_RFI_THRESHOLDS);
     frac_rfi_first_stage_enabled[idx_ft(f_index, t_index)] =
         (frame_len_ticks > 0)
             ? (float(fv.n_rfi_first_stage_enabled_fpga_ticks) / float(frame_len_ticks))
@@ -1194,18 +1217,24 @@ bool N2FileData::flush_to_disk() {
         h5_file->getDataSet("/bin_end_ERA_deg").write(bin_end_ERA_deg);
         h5_file->getDataSet("/bin_start_ERAL_deg").write(bin_start_ERAL_deg);
         h5_file->getDataSet("/bin_end_ERAL_deg").write(bin_end_ERAL_deg);
-        h5_file->getDataSet("/rfi_frame_excision_enabled").write(rfi_frame_excision_enabled);
-        h5_file->getDataSet("/fringestop_enabled").write(fringestop_enabled);
-        h5_file->getDataSet("/rfi_frame_excision_num").write(rfi_frame_excision_num);
+        h5_file->getDataSet("/rfi_frame_excision_num")
+            .select({0, 0}, {num_file_f, num_file_t})
+            .write_raw(rfi_frame_excision_num.data());
         h5_file->getDataSet("/rfi_frame_excision_threshold")
-            .select({0, 0}, {num_file_t, MAX_NUM_RFI_THRESHOLDS})
+            .select({0, 0, 0}, {num_file_f, num_file_t, MAX_NUM_RFI_THRESHOLDS})
             .write_raw(rfi_frame_excision_threshold.data());
         h5_file->getDataSet("/rfi_frame_excision_fraction")
-            .select({0, 0}, {num_file_t, MAX_NUM_RFI_THRESHOLDS})
+            .select({0, 0, 0}, {num_file_f, num_file_t, MAX_NUM_RFI_THRESHOLDS})
             .write_raw(rfi_frame_excision_fraction.data());
         h5_file->getDataSet("/frac_rfi_first_stage_enabled")
             .select({0, 0}, {num_file_f, num_file_t})
             .write_raw(frac_rfi_first_stage_enabled.data());
+        h5_file->getDataSet("/rfi_frame_excision_enabled")
+            .select({0, 0}, {num_file_f, num_file_t})
+            .write_raw(rfi_frame_excision_enabled.data(), HighFive::create_datatype<bool>());
+        h5_file->getDataSet("/fringestop_enabled")
+            .select({0, 0}, {num_file_f, num_file_t})
+            .write_raw(fringestop_enabled.data(), HighFive::create_datatype<bool>());
     } catch (const HighFive::Exception& e) {
         FATAL_ERROR_NON_OO("Failed to write data to HDF5 file {}: {}", partial_filepath, e.what());
         has_error = true;
@@ -1250,6 +1279,8 @@ hdf5N2Write::hdf5N2Write(kotekan::Config& config, const std::string& unique_name
     _compression(config.get_default<std::string>(unique_name, "compression", "none")),
     _compression_level(config.get_default<std::uint64_t>(unique_name, "compression_level", 0)),
     _use_bitshuffle(config.get_default<bool>(unique_name, "use_bitshuffle", false)),
+    _err_sq_lim(config.get_default<float>(unique_name, "err_sq_lim", 0.0f)),
+    _weight_fixed_precision(config.get_default<float>(unique_name, "weight_fixed_precision", 0.0f)),
     _blocksize_f(config.get_default<std::uint64_t>(unique_name, "blocksize_f", 16)),
     _blocksize_p(config.get_default<std::uint64_t>(unique_name, "blocksize_p", 16)),
     _blocksize_t(config.get_default<std::uint64_t>(unique_name, "blocksize_t", _num_file_t)),
@@ -1291,6 +1322,17 @@ hdf5N2Write::hdf5N2Write(kotekan::Config& config, const std::string& unique_name
         "kotekan_hdf5N2Write_bad_feed_mask_unmasked_freqs_total", unique_name, {"stream"})) {
 
     _buffer->register_consumer(unique_name);
+
+    if (!(_err_sq_lim >= 0.0f && std::isfinite(_err_sq_lim)))
+        FATAL_ERROR("err_sq_lim ({:f}) must be finite and >= 0", _err_sq_lim);
+    // A relative precision of 1 or more rounds weights to 0, marking the data missing.
+    if (!(_weight_fixed_precision >= 0.0f && _weight_fixed_precision < 1.0f))
+        FATAL_ERROR("weight_fixed_precision ({:f}) must be in [0, 1)", _weight_fixed_precision);
+    const bool compressed = _use_bitshuffle ? (_compression == "zstd" || _compression == "lz4")
+                                            : _compression == "deflate";
+    if ((_err_sq_lim > 0.0f || _weight_fixed_precision > 0.0f) && !compressed)
+        FATAL_ERROR("err_sq_lim and weight_fixed_precision need a compressor: deflate, or "
+                    "bitshuffle with zstd or lz4");
 
     if (_bad_feed_mask_buf != nullptr) {
         _bad_feed_mask_buf->register_consumer(unique_name);
@@ -1888,7 +1930,8 @@ void hdf5N2Write::main_thread() {
             auto N2FileData_obj = std::make_unique<N2FileData>(
                 N2FileData::CHORD, _num_file_t, fv, frame_recv_time, abs_file_idx, _input_order,
                 _blocksize_f, _blocksize_p, _blocksize_t, _compression, _compression_level,
-                _use_bitshuffle, _base_dir, _baseband_gain_file, _baseband_gain_update_idx);
+                _use_bitshuffle, _err_sq_lim, _weight_fixed_precision, _base_dir,
+                _baseband_gain_file, _baseband_gain_update_idx);
 
             filedata.emplace(abs_file_idx, std::move(N2FileData_obj));
             N2FileData_ptr = filedata.find(abs_file_idx)->second.get();

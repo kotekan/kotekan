@@ -463,13 +463,25 @@ struct DeviceColumn {
     int level = 0;
 };
 
+/// An edge between two rows of a device view, such as two names for one region.
+struct DeviceLink {
+    size_t from, to;
+    const GraphEdge* edge;
+};
+
 struct PipelineGraph::DeviceLayout {
-    /// Every node in the device box, drawn or not.
+    /// Every node the table stands for: the rows, and the nodes in the stage boxes.
     std::set<std::string> nodes;
+    /// The other nodes in the device box, such as a host buffer between two of its
+    /// stages; they are drawn beside the table.
+    std::vector<const GraphNode*> loose;
     std::vector<const GraphNode*> rows;
     /// Which rows are drawn as full buffers.
     std::vector<bool> full;
     std::vector<DeviceColumn> columns;
+    std::vector<DeviceLink> links;
+    /// Data edges touching the table that it has no place for.
+    std::vector<const GraphEdge*> undrawn;
 };
 
 std::string PipelineGraph::to_dot() const {
@@ -499,6 +511,7 @@ std::string PipelineGraph::to_dot() const {
     std::set<std::string> tables;
     std::map<std::string, std::pair<std::string, std::string>> table_port; // table, row
     std::string table_nodes;
+    std::vector<const GraphEdge*> undrawn;
     for (const auto& cluster : _clusters) {
         auto fill = cluster.attrs.find("fillcolor");
         if (!options.gpu_table || !cluster.parent.empty() || fill == cluster.attrs.end()
@@ -514,14 +527,20 @@ std::string PipelineGraph::to_dot() const {
             table_port[layout.columns[c].node->id] = {cluster.id, fmt::format(fmt("{:d}"), c)};
         table_nodes += fmt::format(fmt("{:s}{:s} [shape=\"plain\", label=<{:s}>];\n"), indent,
                                    quote(cluster.id), device_table(layout, cluster.label));
+        for (const GraphNode* node : layout.loose)
+            table_nodes += node_dot(*node, indent);
+        undrawn.insert(undrawn.end(), layout.undrawn.begin(), layout.undrawn.end());
     }
 
-    // Top-level nodes first, then the clusters (and the nodes they hold).
+    // Top-level nodes first, then the clusters (and the nodes they hold), then
+    // the device tables. Graphviz orders nodes starting from the order they
+    // are written in: with the tables last, a section box holding stages for
+    // both devices lands between the two tables rather than beside one.
     for (const auto& node : _nodes)
         if (node.cluster.empty())
             dot += node_dot(node, indent);
-    dot += table_nodes;
     dot += cluster_dot("", indent, cyclic, tables);
+    dot += table_nodes;
 
     // Graphviz would materialise an unknown endpoint as an unlabelled node, which
     // silently turns a wiring bug into a plausible-looking graph; drop those edges
@@ -569,6 +588,9 @@ std::string PipelineGraph::to_dot() const {
     for (const auto& id : cyclic)
         dot += fmt::format("{:s}// drawn at the top level, its parent chain loops: {:s}\n", indent,
                            id);
+    for (const GraphEdge* edge : undrawn)
+        dot += fmt::format("{:s}// not drawn in the GPU table: {:s} -> {:s}\n", indent, edge->from,
+                           edge->to);
 
     dot += "}\n";
     return dot;
@@ -624,10 +646,18 @@ nlohmann::json PipelineGraph::to_json() const {
 
 PipelineGraph::DeviceLayout PipelineGraph::device_layout(const std::string& device_cluster) const {
     DeviceLayout layout;
-    std::set<std::string> device_clusters = {device_cluster};
+    std::set<std::string> stage_clusters;
     for (const auto& cluster : _clusters)
         if (cluster.parent == device_cluster)
-            device_clusters.insert(cluster.id);
+            stage_clusters.insert(cluster.id);
+    // Every cluster under the device; the set only grows, so a parent loop ends it.
+    std::set<std::string> device_clusters = {device_cluster};
+    for (bool grew = true; grew;) {
+        grew = false;
+        for (const auto& cluster : _clusters)
+            if (device_clusters.count(cluster.parent))
+                grew |= device_clusters.insert(cluster.id).second;
+    }
 
     const std::string memory_fill = graph_style(GraphCategory::Memory).fill;
     std::vector<const GraphNode*> rows;
@@ -635,11 +665,15 @@ PipelineGraph::DeviceLayout PipelineGraph::device_layout(const std::string& devi
     for (const auto& node : _nodes) {
         if (!device_clusters.count(node.cluster))
             continue;
-        layout.nodes.insert(node.id);
         auto fill = node.attrs.find("fillcolor");
         if (fill != node.attrs.end() && fill->second == memory_fill) {
+            layout.nodes.insert(node.id);
             row_of[node.id] = rows.size();
             rows.push_back(&node);
+        } else if (stage_clusters.count(node.cluster)) {
+            layout.nodes.insert(node.id);
+        } else {
+            layout.loose.push_back(&node);
         }
     }
 
@@ -655,7 +689,9 @@ PipelineGraph::DeviceLayout PipelineGraph::device_layout(const std::string& devi
         const bool to_device = layout.nodes.count(edge.to);
         const bool from_row = row_of.count(edge.from);
         const bool to_row = row_of.count(edge.to);
-        if (from_row && to_device && !to_row)
+        if (from_row && to_row)
+            layout.links.push_back({row_of[edge.from], row_of[edge.to], &edge});
+        else if (from_row && to_device && !to_row)
             columns[edge.to].reads.push_back(row_of[edge.from]);
         else if (to_row && from_device && !from_row)
             columns[edge.from].writes.push_back(row_of[edge.to]);
@@ -663,6 +699,8 @@ PipelineGraph::DeviceLayout PipelineGraph::device_layout(const std::string& devi
             columns[edge.from].to_host.push_back(edge.to);
         else if (to_device && !to_row && !from_device)
             columns[edge.to].from_host.push_back(edge.from);
+        else if (from_device || to_device)
+            layout.undrawn.push_back(&edge);
     }
     if (columns.empty())
         return layout;
@@ -730,6 +768,10 @@ PipelineGraph::DeviceLayout PipelineGraph::device_layout(const std::string& devi
         for (size_t& row : layout.columns.back().writes)
             row = position[row];
     }
+    for (DeviceLink& link : layout.links) {
+        link.from = position[link.from];
+        link.to = position[link.to];
+    }
     return layout;
 }
 
@@ -769,13 +811,17 @@ std::string PipelineGraph::to_device_svg(const std::string& device_cluster) cons
     const double row_h = 34, col_w = 44, band_h = 46, gauge = 170;
     std::vector<std::string> column_labels;
     double label_width = 0.0, overhang = 0.0;
-    for (const DeviceColumn& column : order) {
-        const std::string label = column_label(*column.node);
-        column_labels.push_back(label);
-        label_width = std::max(label_width, text_width(label, 10));
+    // A column per command, then one per link between two rows.
+    for (const DeviceColumn& column : order)
+        column_labels.push_back(column_label(*column.node));
+    for (const DeviceLink& link : layout.links)
+        column_labels.push_back(link.edge->label);
+    const size_t num_columns = column_labels.size();
+    for (size_t c = 0; c < num_columns; c++) {
+        label_width = std::max(label_width, text_width(column_labels[c], 10));
         // How far this label reaches past the last column.
-        const double from_end = (double)column_labels.size() - 0.5 - (double)order.size();
-        overhang = std::max(overhang, col_w * from_end + 0.57 * text_width(label, 10));
+        const double from_end = (double)c + 0.5 - (double)num_columns;
+        overhang = std::max(overhang, col_w * from_end + 0.57 * text_width(column_labels[c], 10));
     }
     double left = 160.0;
     for (const GraphNode* row : rows) {
@@ -786,7 +832,7 @@ std::string PipelineGraph::to_device_svg(const std::string& device_cluster) cons
 
     const double top = 30 + 0.82 * label_width;
     const double right = std::max(gauge, overhang + 20);
-    const double width = left + col_w * order.size() + right;
+    const double width = left + col_w * num_columns + right;
     const double height = top + 2 * band_h + row_h * rows.size() + 24;
     const double y_in = top + band_h / 2;
     const double y_out = top + band_h + row_h * rows.size() + band_h / 2;
@@ -901,10 +947,30 @@ std::string PipelineGraph::to_device_svg(const std::string& device_cluster) cons
                            x + 3, top - 6, line, escape_html(column_labels[c]));
     }
 
+    for (size_t l = 0; l < layout.links.size(); l++) {
+        const DeviceLink& link = layout.links[l];
+        auto color = link.edge->attrs.find("color");
+        const std::string ink =
+            color == link.edge->attrs.end() ? std::string(graph_edge_line) : color->second;
+        const double x = left + col_w * (order.size() + l) + col_w / 2;
+        svg += fmt::format(fmt("<g><title>{:s} -> {:s}</title>\n"), escape_html(link.edge->from),
+                           escape_html(link.edge->to));
+        svg += fmt::format(fmt("<line x1=\"{0:.1f}\" y1=\"{1:.1f}\" x2=\"{0:.1f}\" "
+                               "y2=\"{2:.1f}\" stroke=\"{3:s}\" stroke-width=\"2.5\"/>\n"),
+                           x, row_y(link.from), row_y(link.to), ink);
+        for (size_t row : {link.from, link.to})
+            svg += fmt::format(fmt("<path d=\"M{:.1f} {:.1f} l6 6 l-6 6 l-6 -6 z\" "
+                                   "fill=\"{:s}\"/>\n"),
+                               x, row_y(row) - 6, ink);
+        svg += fmt::format(fmt("<text transform=\"translate({:.1f},{:.1f}) rotate(-55)\" "
+                               "fill=\"{:s}\" font-size=\"10\">{:s}</text></g>\n"),
+                           x + 3, top - 6, ink, escape_html(link.edge->label));
+    }
+
     svg += fmt::format(fmt("<text x=\"12\" y=\"{:.1f}\" font-size=\"10\">"
                            "○ reads · ● writes · ▼ to or from a host buffer · "
-                           "shaded columns: one stage</text>\n"),
-                       height - 8);
+                           "{:s}shaded columns: one stage</text>\n"),
+                       height - 8, layout.links.empty() ? "" : "◆ linked regions · ");
     svg += "</svg>\n";
     return svg;
 }
@@ -988,6 +1054,7 @@ static std::string line_cell(int width, const char* mark, const std::string& mar
 std::string PipelineGraph::device_table(const DeviceLayout& layout,
                                         const std::string& title) const {
     const std::string gpu_line = graph_style(GraphCategory::Gpu).line;
+    const std::string gpu_fill = graph_style(GraphCategory::Gpu).fill;
     const std::string memory_line = graph_style(GraphCategory::Memory).line;
     const std::string host_line = graph_style(GraphCategory::Buffer).line;
     const size_t width = layout.rows.size() + 2;
@@ -1098,10 +1165,18 @@ std::string PipelineGraph::device_table(const DeviceLayout& layout,
         if (cluster != _cluster_index.end())
             stage = _clusters[cluster->second].label;
 
-        html +=
-            fmt::format(fmt("<TR><TD PORT=\"in{:d}\" ALIGN=\"LEFT\"><FONT COLOR=\"{:s}\">"
-                            "{:s}</FONT> <FONT POINT-SIZE=\"9\" COLOR=\"{:s}\">{:s}</FONT></TD>"),
-                        c, ink, escape_html(stage), graph_edge_line, escape_html(command));
+        // A command's third line, when it has one, is its time on the device.
+        std::string timing;
+        auto fill = column.node->attrs.find("fillcolor");
+        if (fill != column.node->attrs.end() && fill->second == gpu_fill
+            && column.node->label_lines.size() > 2)
+            timing = " · " + column.node->label_lines[2];
+
+        html += fmt::format(fmt("<TR><TD PORT=\"in{:d}\" ALIGN=\"LEFT\"><FONT COLOR=\"{:s}\">"
+                                "{:s}</FONT> <FONT POINT-SIZE=\"9\" COLOR=\"{:s}\">{:s}{:s}</FONT>"
+                                "</TD>"),
+                            c, ink, escape_html(stage), graph_edge_line, escape_html(command),
+                            escape_html(timing));
         int first = column.from_host.empty() ? regions : -1;
         int last = column.to_host.empty() ? -1 : regions;
         for (const auto* rows : {&column.reads, &column.writes}) {
@@ -1125,11 +1200,26 @@ std::string PipelineGraph::device_table(const DeviceLayout& layout,
                             c, host_line, column.to_host.empty() ? " " : "▶");
     }
 
+    // A row per link between two regions, in the link's colour.
+    for (const DeviceLink& link : layout.links) {
+        auto color = link.edge->attrs.find("color");
+        const std::string ink =
+            color == link.edge->attrs.end() ? std::string(graph_edge_line) : color->second;
+        const int lo = (int)std::min(link.from, link.to), hi = (int)std::max(link.from, link.to);
+        html += fmt::format(fmt("<TR><TD ALIGN=\"LEFT\"><FONT POINT-SIZE=\"9\" COLOR=\"{:s}\">"
+                                "{:s}</FONT></TD>"),
+                            ink, escape_html(link.edge->label));
+        for (int r = 0; r < regions; r++)
+            html += line_cell(widths[r], r == lo || r == hi ? "◆" : nullptr, ink, false, false,
+                              lo < r && r <= hi, lo <= r && r < hi, memory_line, ink);
+        html += "<TD></TD></TR>";
+    }
+
     html += fmt::format(fmt("<TR><TD COLSPAN=\"{:d}\" ALIGN=\"LEFT\"><FONT POINT-SIZE=\"8\" "
                             "COLOR=\"{:s}\">○ reads · ● writes · ▶ copies to a host buffer · "
-                            "lines join only at ○ or ●"
+                            "{:s}lines join only at ○ or ●"
                             "</FONT></TD></TR></TABLE>"),
-                        width, graph_edge_line);
+                        width, graph_edge_line, layout.links.empty() ? "" : "◆ linked regions · ");
     return html;
 }
 

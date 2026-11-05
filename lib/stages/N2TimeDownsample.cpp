@@ -65,11 +65,12 @@ N2TimeDownsample::N2TimeDownsample(Config& config, const std::string& unique_nam
     num_elements = config.get<size_t>(unique_name, "num_elements");
     nprod = 0;
 
-    feed_positions_m = Telescope::instance().get_feed_positions_m(
-        num_elements, Telescope::instance().fiducial_element_order());
-    fringestop_mask = Telescope::instance().get_fringestop_mask(
-        num_elements, Telescope::instance().fiducial_element_order());
-    if (do_fringestop && !Telescope::instance().phase_center_is_set())
+    const Telescope& tel = Telescope::instance();
+    const ElementOrder input_order =
+        config.get_default<ElementOrder>(unique_name, "input_order", tel.fiducial_element_order());
+    feed_positions_m = tel.get_feed_positions_m(num_elements, input_order);
+    fringestop_mask = tel.get_fringestop_mask(num_elements, input_order);
+    if (do_fringestop && !tel.phase_center_is_set())
         FATAL_ERROR("do_fringestop is set but the telescope phase center (dish_coelev_deg) is "
                     "not.");
 }

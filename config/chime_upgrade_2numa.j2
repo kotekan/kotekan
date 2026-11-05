@@ -185,9 +185,7 @@ frb:
 
 dataset_manager:
   use_dataset_broker: {{ not disable_output }}
-  # Runs on the receiver; needs to be updated when production receiver nodes
-  # are available
-  ds_broker_host: "10.13.60.1"
+  ds_broker_host: 10.1.50.11 # cv0r1/recv1
   ds_broker_port: 12050
 
 ################################################################################
@@ -954,10 +952,8 @@ numa_{{ numa }}:
         # Same value as legacy system. Can be increased or decreased based
         # on the rate at which we want to be sending packets
         frames_per_packet: 10
-        destination_port: "3000"
-        # This is the IP of `vm-steelpan-recv1`. Needs to be updated when
-        # production aux nodes are available
-        destination_ip: "10.5.60.1"
+        destination_port: 3000
+        destination_ip: 10.1.20.4 # shoko.chime
 {%- endif %}
 
     ############################################################################
@@ -1144,7 +1140,8 @@ numa_{{ numa }}:
         vis_buf: vis_buffer{{ numa_sfx }}
         # frequencies of this stream, from the metadata of the first frame
         metadata_source: host_n2k_correlation_buffer{{ numa_sfx }}
-        fake_git_tag: "f97998b79bb057668de62ced820273c3f5a5fd27" # 2021.11_hotfix - receiver
+        # must match the git hash of the receiver, which is currently 2021.11_hotfix
+        fake_git_tag: "f97998b79bb057668de62ced820273c3f5a5fd27"
 
     ############################################################################
     # FRB beamforming
@@ -1841,7 +1838,7 @@ numa_{{ numa }}:
 
     # Transmit baseband data to the baseband receiver
     baseband_send:
-        server_ip: 10.5.60.2
+        server_ip: 10.1.50.51 # outrigger-buffer.chime
         reconnect_time: 60
         send_timeout: 600 # 10 minutes
         log_level: warn
@@ -1860,7 +1857,7 @@ numa_{{ numa }}:
         kotekan_stage: bufferSend
         # Receiver address; needs to be updated when production receiver nodes
         # are available
-        server_ip: 10.13.60.1
+        server_ip: 10.1.50.12 # cv0r2/recv2
         server_port: 11024
         reconnect_time: 20
         log_level: warn

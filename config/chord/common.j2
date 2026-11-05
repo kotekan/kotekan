@@ -17,8 +17,11 @@ log_buffer: true
 
 # Referenced by /CHORDTelescope/gps_host_info, /config_tracker/fpga_host_info,
 # and per-stage baseband_gain_host_info (e.g. on hdf5N2Write).
+# The full name: restClient resolves with libevent's evdns, and
+# systemd-resolved answers SERVFAIL for a bare single-label name, which
+# evdns takes as nameserver failure (a 10 s stall, or no GPS time).
 fpga_controller:
-    host: "crs-control"
+    host: "crs-control.site.chord-observatory.ca"
     port: 54321
     config_endpoint: /config
     timing_endpoint: /get-frame0-time
