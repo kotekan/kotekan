@@ -6,11 +6,13 @@
     dtv_roll.py --nodes cx51 freeze 0 1 1                        # per source: 1 = hold g
     dtv_roll.py --nodes cx19,cx51 status
     dtv_roll.py --nodes cx51 save            # the state in use -> STATES/<node>/st_g<g>_roll<HHMMSS>.bin, current
-    dtv_roll.py --nodes cx19,cx27,... watch [--every 60] [--save-every 600] [--taua 25] [--rearm] [--restore]
+    dtv_roll.py --nodes cx19,cx27,... watch [--every 60] [--save-every 600] [--protect-min 25]
+        [--protect NAME:RA:DEC ...] [--rearm] [--restore]
 
 watch: one status line per GPU each --every s; saves each --save-every s (keeps the last 3 per node, so a
-restarted node's restore loads a g at most minutes old); freezes sources 1.. while |Tau A hour angle| < --taua
-min; with --rearm, re-enables a GPU that subtracts with the rolling fit off (a node restart loses it); with
+restarted node's restore loads a g at most minutes old); freezes sources 1.. while a protected sky source
+(--protect, J2000 degrees; default Tau A) is within --protect-min minutes of drift of the boresight (on the
+meridian at --boresight-dec), so the blind sources do not fit it as it crosses the beam; with --rearm, re-enables a GPU that subtracts with the rolling fit off (a node restart loses it); with
 --restore, first loads the node's current state on a GPU in pass-through 600..30000 frames after a restart.
 Saves go through the node's local /tmp/gnss/dtvroll (kotekan is root; /home is root-squashed NFS).
 REST calls only: safe on the VM.
@@ -18,6 +20,7 @@ REST calls only: safe on the VM.
 import argparse
 import glob
 import json
+import math
 import os
 import subprocess
 import sys
@@ -138,11 +141,30 @@ def save(node, gpus):
     return tag if ok else None
 
 
-def taua_ha_min():
-    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-    from vis_dtv_plot import hour_angle_min  # skyfield; imported only when needed
+PROTECT = ["TauA:83.6331:22.0145"]  # NAME:RA:DEC, J2000 degrees
+BORESIGHT_DEC = (
+    22.02  # the dishes' declination on the meridian (Tau A at el 62.70, since 10-24)
+)
 
-    return float(hour_angle_min(time.time() * 1e9))
+
+def nearest_protected(specs, dec_b):
+    """(name, degrees from the boresight, hour angle in minutes) of the protected source nearest the
+    boresight now."""
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from vis_dtv_plot import hour_angle_min, radec_of_date, sky_time  # skyfield
+
+    best = None
+    for spec in specs:
+        name, ra, dec = spec.split(":")
+        ha = float(hour_angle_min(time.time() * 1e9, float(ra), float(dec)))
+        _, d = radec_of_date(float(ra), float(dec), sky_time(time.time()))
+        cos_sep = math.sin(math.radians(d)) * math.sin(math.radians(dec_b)) + math.cos(
+            math.radians(d)
+        ) * math.cos(math.radians(dec_b)) * math.cos(math.radians(ha / 4.0))
+        sep = math.degrees(math.acos(max(-1.0, min(1.0, cos_sep))))
+        if best is None or sep < best[1]:
+            best = (name, sep, ha)
+    return best
 
 
 def main():
@@ -163,11 +185,20 @@ def main():
     p.add_argument("--every", type=float, default=60.0)
     p.add_argument("--save-every", type=float, default=600.0)
     p.add_argument(
+        "--protect-min",
         "--taua",
+        dest="protect_min",
         type=float,
         default=25.0,
-        help="freeze sources 1.. while |HA| < this (min); 0: never",
+        help="freeze sources 1.. while a protected source is within this many minutes of drift of "
+        "the boresight (25: Tau A's |HA| < 25 min); 0: never",
     )
+    p.add_argument(
+        "--protect",
+        action="append",
+        help="NAME:RA:DEC (J2000 degrees), repeatable; default %s" % PROTECT[0],
+    )
+    p.add_argument("--boresight-dec", type=float, default=BORESIGHT_DEC)
     p.add_argument("--rearm", action="store_true")
     p.add_argument(
         "--restore",
@@ -211,9 +242,10 @@ def main():
         prev, last_save = {}, time.time()
         while True:
             want = None
-            if a.taua > 0:
-                ha = taua_ha_min()
-                want = 1 if abs(ha) < a.taua else 0
+            if a.protect_min > 0:
+                name, sep, ha = nearest_protected(a.protect or PROTECT, a.boresight_dec)
+                radius = a.protect_min / 4.0 * math.cos(math.radians(a.boresight_dec))
+                want = 1 if sep < radius else 0
             for n in a.nodes:
                 for g in a.gpus:
                     s = get(n, g)
@@ -258,7 +290,8 @@ def main():
                                 stamp(),
                                 n,
                                 "g%d" % g,
-                                "Tau A HA %.1f min: freeze %s ->" % (ha, fz),
+                                "%s %.1f deg from the boresight (HA %+.1f min): freeze %s ->"
+                                % (name, sep, ha, fz),
                                 post(n, g, "rolling", {"freeze": fz}).get("freeze"),
                                 flush=True,
                             )

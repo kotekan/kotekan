@@ -10,7 +10,7 @@
 set -u
 ACT=${1:?setup|refit-loop}; shift
 export DTV_STATES=/home/kvand/gnss/builds/dtv-live/states-rev2 DTV_WORK=/var/tmp/kvand-dtvlive2
-PY=~/gnss/venv/bin/python3; L=~/gnss/bb1030/dtv_live.py; LOG=$DTV_WORK/log; mkdir -p $LOG $DTV_STATES
+PY=~/gnss/venv/bin/python3; L=$(cd "$(dirname "$0")" && pwd)/dtv_live.py; LOG=$DTV_WORK/log; mkdir -p $LOG $DTV_STATES
 OLD=$(ps -eo pid=,args= | awk '$3 ~ /\/dtv_fleet\.sh$/ && $4 == "refit-loop" {print $1}')
 if [ -n "$OLD" ]; then echo "rev1 refit loop still running (PID $OLD): stop it first (kill $OLD)"; exit 3; fi
 NSRC=$(curl -s -m 5 http://cx51:12048/run_send_voltage/gpu_0/commands/0/status | $PY -c 'import json,sys; s=json.load(sys.stdin); print(len(s["channels"][0]["act"]), s["lag_min"], s["n_lag"])')

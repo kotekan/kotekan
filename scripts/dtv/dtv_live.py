@@ -16,12 +16,14 @@ import argparse
 import glob
 import json
 import os
+import shutil
 import subprocess
 import sys
 import time
 import urllib.request
 
-sys.path.insert(0, os.path.expanduser("~/gnss/dtv-wt/scripts/gnss"))
+GNSS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "gnss")
+sys.path.insert(0, GNSS)
 import numpy as np  # noqa: E402
 
 import dtv_state  # noqa: E402
@@ -33,8 +35,8 @@ STATES = os.environ.get(
     "DTV_STATES", "/home/kvand/gnss/builds/dtv-live/states"
 )  # NFS: the nodes read them
 PY = os.path.expanduser("~/gnss/venv/bin/python3")
-ST = os.path.expanduser("~/gnss/dtv-wt/scripts/gnss/dtv_state.py")
-BD = os.path.expanduser("~/gnss/dtv-wt/scripts/gnss/beam_dump_read.py")
+ST = os.path.join(GNSS, "dtv_state.py")
+BD = os.path.join(GNSS, "beam_dump_read.py")
 HOPS = 195312.5
 
 
@@ -148,8 +150,13 @@ def tag_files(a, tag, g, kind="dtv"):
     )
 
 
+def gpus(a):
+    """The GPUs a command acts on (setup and refit narrow it to those with the source slot)."""
+    return getattr(a, "gpus", None) or (0, 1)
+
+
 def cmd_start(a):
-    for g in (0, 1):
+    for g in gpus(a):
         print(
             "gpu%d start: %s"
             % (
@@ -165,7 +172,7 @@ def cmd_fit(a):
     os.makedirs(os.path.join(STATES, a.node), exist_ok=True)
     only = dict(x.split(":") for x in a.freq) if a.freq else {}
     fr = {}
-    for g in (0, 1):
+    for g in gpus(a):
         files = tag_files(a, a.tag, g)
         if not files:
             print("gpu%d: no files under tag %s" % (g, a.tag))
@@ -190,7 +197,7 @@ def cmd_fit(a):
 
 
 def cmd_load(a):
-    for g in (0, 1):
+    for g in gpus(a):
         p = os.path.join(STATES, a.node, "st_g%d_%s.bin" % (g, a.tag))
         print(
             "gpu%d load %s: %s"
@@ -253,31 +260,49 @@ def current_tag(a, tag=None):
 
 
 def drop_window(a, tag):
-    import shutil
-
     shutil.rmtree(os.path.join(WORK, a.node, tag), ignore_errors=True)
 
 
-def n_sources(a):
-    """The stage's source slots (dtv_sources), from GPU 0's status."""
-    ch = get(a, cmd_path(0) + "/status")["channels"]
-    return len(ch[0]["act"]) if ch else 1
+def gpu_slots(a):
+    """{gpu: the stage's source slots}: the most any of its channels has (dtv_sources)."""
+    out = {}
+    for g in (0, 1):
+        ch = get(a, cmd_path(g) + "/status")["channels"]
+        out[g] = len(ch[0]["act"]) if ch else 1
+    return out
+
+
+def carry(a, g, old, new):
+    """GPU g has no slot for this step: its state under the new tag is its state under the old one,
+    so every tag (and `current`) names a file for both GPUs."""
+    src = os.path.join(STATES, a.node, "st_g%d_%s.bin" % (g, old))
+    if old and os.path.exists(src):
+        shutil.copyfile(src, os.path.join(STATES, a.node, "st_g%d_%s.bin" % (g, new)))
+        print("gpu%d: no source slot here; %s carried to %s" % (g, old, new))
 
 
 def cmd_setup(a):
     """Eigen starts, fits and loads of every source slot in turn (or --sources N) on both GPUs, then a judging window.
-    Source k's eigen start runs on the residual after sources 0..k-1, so each one is fitted before the next starts."""
+    Source k's eigen start runs on the residual after sources 0..k-1, so each one is fitted before the next starts.
+    A GPU without slot k (its channels' dtv_sources) skips it; a channel without it is left alone by the stage's
+    eigen start and keeps its record in the fit."""
     t = a.prefix
-    n = a.sources or n_sources(a)
+    slots = gpu_slots(a)
+    n = a.sources or max(slots.values())
     prev = None
     for k in range(n):
         if k:
             time.sleep(2)
-        cmd_start(sub_args(a, source=k, frames=24))
+        on = tuple(g for g in (0, 1) if k < slots[g])
+        cmd_start(sub_args(a, source=k, frames=24, gpus=on))
         time.sleep(3)
         cmd_window(sub_args(a, seconds=a.seconds, tag=t + "s%d" % k, beam=False))
-        cmd_fit(sub_args(a, source=k, tag=t + "s%d" % k, state_tag=prev, freq=None))
-        cmd_load(sub_args(a, tag=t + "s%d" % k))
+        cmd_fit(
+            sub_args(a, source=k, tag=t + "s%d" % k, state_tag=prev, freq=None, gpus=on)
+        )
+        cmd_load(sub_args(a, tag=t + "s%d" % k, gpus=on))
+        for g in set((0, 1)) - set(on):
+            carry(a, g, prev, t + "s%d" % k)
         prev = t + "s%d" % k
     current_tag(a, prev)
     time.sleep(2)
@@ -348,13 +373,21 @@ def cmd_refit(a):
     cmd_load(sub_args(a, tag=t + "r0"))
     cur = current_tag(a, t + "r0")
     drop_window(a, t + "r0")
+    slots = gpu_slots(a)
     for k in ([1] if a.both else []) + [
         k for k in (a.extra or []) if not (a.both and k == 1)
     ]:
+        on = tuple(g for g in (0, 1) if k < slots[g])
+        if not on:
+            continue
         time.sleep(2)
         cmd_window(sub_args(a, seconds=a.seconds, tag=t + "r%d" % k, beam=False))
-        cmd_fit(sub_args(a, source=k, tag=t + "r%d" % k, state_tag=cur, freq=None))
-        cmd_load(sub_args(a, tag=t + "r%d" % k))
+        cmd_fit(
+            sub_args(a, source=k, tag=t + "r%d" % k, state_tag=cur, freq=None, gpus=on)
+        )
+        cmd_load(sub_args(a, tag=t + "r%d" % k, gpus=on))
+        for g in set((0, 1)) - set(on):
+            carry(a, g, cur, t + "r%d" % k)
         cur = current_tag(a, t + "r%d" % k)
         drop_window(a, t + "r%d" % k)
 

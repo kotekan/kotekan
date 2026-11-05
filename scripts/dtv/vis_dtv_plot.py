@@ -14,6 +14,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 from skyfield.api import load, wgs84  # noqa: E402
+from skyfield.positionlib import position_of_radec  # noqa: E402
 
 SITE = wgs84.latlon(49.3199845, -119.62262691, 528.4)
 CS = 0.1953125
@@ -22,13 +23,34 @@ CS = 0.1953125
 C_CLEAN, C_A24, C_A30 = "#6b7280", "#2563eb", "#ea580c"
 
 
-def hour_angle_min(t_ns):
-    """Tau A's hour angle in minutes of time: the site's local sidereal time minus Tau A's right ascension
-    precessed to 2026.84 (05:34:31.9 J2000 + 97 s; nutation and aberration are ~1 s, below a 10 s bin)."""
+TAUA = (83.6331, 22.0145)  # J2000 RA, dec (deg)
+
+
+def sky_time(t_unix):
+    """skyfield Time from Unix seconds (scalar or array). ts.utc(1970, 1, 1, 0, 0, t) would take the
+    leap-second offset of 1970 and run 27 s early; counting days keeps the date, and the offset, right."""
     ts = load.timescale()
-    tt = ts.utc(1970, 1, 1, 0, 0, np.asarray(t_ns, np.float64) / 1e9)
-    ra_date = 5 + 34 / 60 + (31.9 + 97.0) / 3600
-    ha = (SITE.lst_hours_at(tt) - ra_date + 12.0) % 24.0 - 12.0
+    t = np.asarray(t_unix, np.float64)
+    day = np.floor(t / 86400.0)
+    return ts.utc(1970, 1, 1 + day, 0, 0, t - day * 86400.0)
+
+
+def radec_of_date(ra_deg, dec_deg, tt):
+    """(RA hours, dec deg) of a J2000 position precessed to the date of tt (its middle, for an array;
+    a night moves it ~0.1 arcsec)."""
+    mid = tt if np.ndim(tt.tt) == 0 else tt.ts.tt_jd(float(np.median(tt.tt)))
+    ra, dec, _ = position_of_radec(ra_deg / 15.0, dec_deg, epoch=tt.ts.J2000).radec(
+        epoch=mid
+    )
+    return ra.hours, dec.degrees
+
+
+def hour_angle_min(t_ns, ra_deg=TAUA[0], dec_deg=TAUA[1]):
+    """A J2000 source's hour angle at the site in minutes of time (default Tau A): the local sidereal
+    time minus its right ascension of date (nutation and aberration, ~1 s, are below a 10 s bin)."""
+    tt = sky_time(np.asarray(t_ns, np.float64) / 1e9)
+    ra, _ = radec_of_date(ra_deg, dec_deg, tt)
+    ha = (SITE.lst_hours_at(tt) - ra + 12.0) % 24.0 - 12.0
     return ha * 60.0
 
 
