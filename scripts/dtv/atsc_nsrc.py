@@ -33,7 +33,9 @@ def weights(r, pw, Q, sel_u=None, nsub=64):
         R = (rw.T @ rw.conj()) / rw.shape[0]
     else:
         T = rw.shape[0] // nsub * nsub
-        F = np.fft.fftshift(np.fft.fft(rw[:T].reshape(-1, nsub, rw.shape[1]), axis=1), axes=1)
+        F = np.fft.fftshift(
+            np.fft.fft(rw[:T].reshape(-1, nsub, rw.shape[1]), axis=1), axes=1
+        )
         Y = F[:, sel_u, :].reshape(-1, rw.shape[1])
         R = (Y.T @ Y.conj()) / Y.shape[0]
     Pq = np.eye(R.shape[0]) - Q @ Q.conj().T
@@ -52,8 +54,11 @@ def main():
     ap.add_argument("--variants", default="full,edge")
     ap.add_argument("--nsub", type=int, default=64)
     ap.add_argument("--ufrac", type=float, default=0.35)
-    ap.add_argument("--noprotect", action="store_true",
-                    help="no Tau A protection or score (channels outside --modes' band, e.g. LTE): k = nan")
+    ap.add_argument(
+        "--noprotect",
+        action="store_true",
+        help="no Tau A protection or score (channels outside --modes' band, e.g. LTE): k = nan",
+    )
     a = ap.parse_args()
     m = np.load(a.modes)
     mfreq, clean, V16, mlam = m["freq"].astype(np.int64), m["clean"], m["V"], m["lam"]
@@ -73,7 +78,7 @@ def main():
         x = load_channel(a.dir, a.chunk, fid).astype(np.complex128)
         n = x.shape[0]
         w = np.zeros(n)
-        w[EDGE: n - EDGE] = 1
+        w[EDGE : n - EDGE] = 1
         sl = slice(EDGE + 64, n - EDGE - 64)
         lines = []
         for var in a.variants.split(","):
@@ -84,7 +89,9 @@ def main():
                 if k == 0 or var == "full" or k > 2:
                     v = weights(r[sl], pw, Q)
                 else:
-                    v = weights(r[sl], pw, Q, sels["lower" if k == 1 else "upper"], a.nsub)
+                    v = weights(
+                        r[sl], pw, Q, sels["lower" if k == 1 else "upper"], a.nsub
+                    )
                 s = (r / np.sqrt(np.maximum(pw, 1e-3))) @ np.conj(v)
                 X = np.fft.fft(r * w[:, None], db.NFFT, axis=0)
                 _, _, _, model = db.fit_lagged(X, [s * w], lags)
@@ -92,9 +99,16 @@ def main():
                 R, lam, _, _ = db.whitened_eig(r[sl])
                 nu = lam[20:120].mean()
                 ex = db.tau_excess(R, Q)[0] if Q.shape[1] else float("nan")
-                parts.append("%d src %s k%.2f" % (k + 1, "/".join("%.2f" % (v_ / nu) for v_ in lam[:4]), ex / ref))
+                parts.append(
+                    "%d src %s k%.2f"
+                    % (k + 1, "/".join("%.2f" % (v_ / nu) for v_ in lam[:4]), ex / ref)
+                )
             lines.append("%-4s: %s" % (var, "; ".join(parts)))
-        print("%d chunk %d lags %+d..%+d (%.0f s)\n   %s" % (fid, a.chunk, l0, l1, time.time() - t0, "\n   ".join(lines)), flush=True)
+        print(
+            "%d chunk %d lags %+d..%+d (%.0f s)\n   %s"
+            % (fid, a.chunk, l0, l1, time.time() - t0, "\n   ".join(lines)),
+            flush=True,
+        )
 
 
 if __name__ == "__main__":

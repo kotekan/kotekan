@@ -64,12 +64,27 @@ def main():
             for s in st:
                 idx = (s + 7) // 2
                 z0, z1 = idx & 1, (idx >> 1) & 1
-                chk = z0[2:] ^ (a1 * z0[1:-1]) ^ (a2 * z0[:-2]) ^ (b0 * z1[2:]) ^ (b1 * z1[1:-1]) ^ (b2 * z1[:-2])
+                chk = (
+                    z0[2:]
+                    ^ (a1 * z0[1:-1])
+                    ^ (a2 * z0[:-2])
+                    ^ (b0 * z1[2:])
+                    ^ (b1 * z1[1:-1])
+                    ^ (b2 * z1[:-2])
+                )
                 ok.append(np.mean(chk == 0))
             res.append((np.mean(ok), (a1, a2, b0, b1, b2), min(ok), max(ok)))
         res.sort(key=lambda x: -x[0])
-        print("interleave %-5s: best checks (a1 a2 b0 b1 b2: fraction satisfied, min/max over encoders): %s" % (
-            rule, "  ".join("%s:%.3f(%.3f/%.3f)" % ("".join(map(str, r[1])), r[0], r[2], r[3]) for r in res[:4])))
+        print(
+            "interleave %-5s: best checks (a1 a2 b0 b1 b2: fraction satisfied, min/max over encoders): %s"
+            % (
+                rule,
+                "  ".join(
+                    "%s:%.3f(%.3f/%.3f)" % ("".join(map(str, r[1])), r[0], r[2], r[3])
+                    for r in res[:4]
+                ),
+            )
+        )
 
 
 if __name__ == "__main__":

@@ -27,7 +27,12 @@ sys.path.insert(0, os.path.expanduser("~/gnss/bb1030"))
 from dtv_modes import predict_p2, top_vecs  # noqa: E402
 
 CLEAN = [2480, 2544, 2688, 2752, 2848, 2864, 2976]
-CLEANED = [2720, 2736, 2896, 2912]  # chunks holding the DTV stage's channels (2714-2744, 2898-2928)
+CLEANED = [
+    2720,
+    2736,
+    2896,
+    2912,
+]  # chunks holding the DTV stage's channels (2714-2744, 2898-2928)
 UNCLEANED = [2512, 2944]
 CHUNKS = sorted(CLEAN + CLEANED + UNCLEANED)
 K0 = 1536
@@ -67,14 +72,26 @@ def one_file(path):
     flg = np.concatenate(flg)
     fids = np.array(fids)
     C = len(fids)
-    keep = (flg > 0).all(axis=2).all(axis=0)  # inputs kept in every channel and bin of this file
+    keep = (
+        (flg > 0).all(axis=2).all(axis=0)
+    )  # inputs kept in every channel and bin of this file
     m = int(keep.sum())
     if m < MIN_KEPT:
-        return dict(path=path, start=file_time(path), kept=m, skipped=True, secs=time.time() - T0)
+        return dict(
+            path=path,
+            start=file_time(path),
+            kept=m,
+            skipped=True,
+            secs=time.time() - T0,
+        )
     clean = np.isin(fids // 16 * 16, CLEAN)
     # three long baselines between kept inputs of one polarisation, longest along the first coordinate
-    cand = [(abs(pos[i, 0] - pos[j, 0]), i, j) for i in range(128) for j in range(i + 1, 128)
-            if keep[i] and keep[j] and pol[i] == pol[j] and abs(pos[i, 1] - pos[j, 1]) < 1.0]
+    cand = [
+        (abs(pos[i, 0] - pos[j, 0]), i, j)
+        for i in range(128)
+        for j in range(i + 1, 128)
+        if keep[i] and keep[j] and pol[i] == pol[j] and abs(pos[i, 1] - pos[j, 1]) < 1.0
+    ]
     cand.sort(reverse=True)
     bl = [(i, j) for _, i, j in cand[:3]]
     pidx = {(int(x), int(y)): n for n, (x, y) in enumerate(zip(a, b))}
@@ -96,7 +113,9 @@ def one_file(path):
             Rs[c] = R
             for n_, (i, j) in enumerate(bl):
                 fr[c, n_, t] = vis[c, pidx[(i, j)], t] * w[i] * w[j]
-        ev_all = np.linalg.eigvalsh(Rs)[:, ::-1]  # [C, 128] descending (zeros for dropped inputs at the end)
+        ev_all = np.linalg.eigvalsh(Rs)[
+            :, ::-1
+        ]  # [C, 128] descending (zeros for dropped inputs at the end)
         n = ev_all[:, 20 : m - 8].mean(axis=1)
         noise[:, t] = n
         lam[:, :, t] = ev_all[:, :8] / n[:, None]
@@ -113,47 +132,93 @@ def one_file(path):
                 continue
             _, Q = top_vecs(Pp, 2)
             R = Rs[c]
-            excess[c, t] = (np.real(np.trace(Q.conj().T @ R @ Q)) / 2 - np.real(np.trace(R)) / m) / n[c]
-    r = dict(path=path, start=file_time(path), t_inst_ns=tins, fids=fids, lam=lam, noise=noise, excess=excess,
-             fringe=fr, baselines=np.array(bl).reshape(-1, 2), kept=m, skipped=False, secs=time.time() - T0)
+            excess[c, t] = (
+                np.real(np.trace(Q.conj().T @ R @ Q)) / 2 - np.real(np.trace(R)) / m
+            ) / n[c]
+    r = dict(
+        path=path,
+        start=file_time(path),
+        t_inst_ns=tins,
+        fids=fids,
+        lam=lam,
+        noise=noise,
+        excess=excess,
+        fringe=fr,
+        baselines=np.array(bl).reshape(-1, 2),
+        kept=m,
+        skipped=False,
+        secs=time.time() - T0,
+    )
     if part:
         np.savez(part, **r)
     return r
 
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("--acq", required=True)
     ap.add_argument("--from", dest="t0", default="0900")
     ap.add_argument("--to", dest="t1", default="1230")
     ap.add_argument("--out", required=True)
     ap.add_argument("--procs", type=int, default=8)
-    ap.add_argument("--date", help="YYYYMMDD of the files to take (an acquisition can span nights)")
-    ap.add_argument("--no-template", action="store_true", help="eigenvalues only: skip the Tau A template excess")
+    ap.add_argument(
+        "--date", help="YYYYMMDD of the files to take (an acquisition can span nights)"
+    )
+    ap.add_argument(
+        "--no-template",
+        action="store_true",
+        help="eigenvalues only: skip the Tau A template excess",
+    )
     a = ap.parse_args()
     global PARTS, TEMPLATE
     PARTS = a.out + "_parts"
     os.makedirs(PARTS, exist_ok=True)
     TEMPLATE = not a.no_template
-    files = [p for p in sorted(glob.glob(os.path.join(a.acq, "vis_*.h5")))
-             if a.t0 <= os.path.basename(p).split("_")[3][:4] <= a.t1
-             and (a.date is None or os.path.basename(p).split("_")[2].startswith(a.date))]
-    print("%d files %s .. %s" % (len(files), os.path.basename(files[0]), os.path.basename(files[-1])), flush=True)
+    files = [
+        p
+        for p in sorted(glob.glob(os.path.join(a.acq, "vis_*.h5")))
+        if a.t0 <= os.path.basename(p).split("_")[3][:4] <= a.t1
+        and (a.date is None or os.path.basename(p).split("_")[2].startswith(a.date))
+    ]
+    print(
+        "%d files %s .. %s"
+        % (len(files), os.path.basename(files[0]), os.path.basename(files[-1])),
+        flush=True,
+    )
     res = []
     with Pool(a.procs) as pool:
         for r in pool.imap(one_file, files):
             if r["skipped"]:
-                print("%s: %d kept inputs, SKIPPED (fewer than %d)" % (r["start"], r["kept"], MIN_KEPT), flush=True)
+                print(
+                    "%s: %d kept inputs, SKIPPED (fewer than %d)"
+                    % (r["start"], r["kept"], MIN_KEPT),
+                    flush=True,
+                )
                 continue
-            print("%s: %d kept inputs, baselines %s, %.0f s" % (r["start"], r["kept"], r["baselines"].tolist(), r["secs"]), flush=True)
+            print(
+                "%s: %d kept inputs, baselines %s, %.0f s"
+                % (r["start"], r["kept"], r["baselines"].tolist(), r["secs"]),
+                flush=True,
+            )
             res.append(r)
     nbl = min(r["fringe"].shape[1] for r in res)
-    np.savez(a.out + ".npz", starts=np.array([r["start"] for r in res]),
-             t_inst_ns=np.concatenate([r["t_inst_ns"] for r in res]), fids=res[0]["fids"],
-             lam=np.concatenate([r["lam"] for r in res], axis=2), noise=np.concatenate([r["noise"] for r in res], axis=1),
-             excess=np.concatenate([r["excess"] for r in res], axis=1),
-             fringe=np.concatenate([r["fringe"][:, :nbl] for r in res], axis=2), baselines=res[0]["baselines"][:nbl],
-             kept=np.array([r["kept"] for r in res]), clean=CLEAN, cleaned=CLEANED, uncleaned=UNCLEANED)
+    np.savez(
+        a.out + ".npz",
+        starts=np.array([r["start"] for r in res]),
+        t_inst_ns=np.concatenate([r["t_inst_ns"] for r in res]),
+        fids=res[0]["fids"],
+        lam=np.concatenate([r["lam"] for r in res], axis=2),
+        noise=np.concatenate([r["noise"] for r in res], axis=1),
+        excess=np.concatenate([r["excess"] for r in res], axis=1),
+        fringe=np.concatenate([r["fringe"][:, :nbl] for r in res], axis=2),
+        baselines=res[0]["baselines"][:nbl],
+        kept=np.array([r["kept"] for r in res]),
+        clean=CLEAN,
+        cleaned=CLEANED,
+        uncleaned=UNCLEANED,
+    )
     print("saved %s.npz" % a.out)
 
 

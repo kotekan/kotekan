@@ -43,7 +43,9 @@ def g0_at(node, hhmm_lo, hhmm_hi, last):
 
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("--first", default="0257")
     ap.add_argument("--last", default="1259")
     a = ap.parse_args()
@@ -66,7 +68,10 @@ def main():
             mag = np.sqrt(np.sum(wgt * (np.abs(ai) - 1) ** 2) / wgt.sum())
             ph = np.degrees(np.sqrt(np.sum(wgt * np.angle(ai) ** 2) / wgt.sum()))
             fac[(node, fid)] = (ai, wgt)
-            print("%s %d  %.3f   %.2f            %.3f      %.1f" % (node, fid, ch / np.sum(np.abs(ga) ** 2), 1 - resid / ch, mag, ph))
+            print(
+                "%s %d  %.3f   %.2f            %.3f      %.1f"
+                % (node, fid, ch / np.sum(np.abs(ga) ** 2), 1 - resid / ch, mag, ph)
+            )
 
     def agree(k1, k2):
         a1, w1 = fac[k1]
@@ -81,19 +86,37 @@ def main():
 
     keys = [k for k in fac if k[1] not in EDGE]
     st = lambda f: 24 if f < 2800 else 30  # noqa: E731
-    same_node_same_st, same_node_cross, cross_node_same_st, cross_node_cross = [], [], [], []
+    same_node_same_st, same_node_cross, cross_node_same_st, cross_node_cross = (
+        [],
+        [],
+        [],
+        [],
+    )
     for i, k1 in enumerate(keys):
-        for k2 in keys[i + 1:]:
+        for k2 in keys[i + 1 :]:
             c = agree(k1, k2)
             if k1[0] == k2[0]:
-                (same_node_same_st if st(k1[1]) == st(k2[1]) else same_node_cross).append(c)
+                (
+                    same_node_same_st if st(k1[1]) == st(k2[1]) else same_node_cross
+                ).append(c)
             else:
-                (cross_node_same_st if st(k1[1]) == st(k2[1]) else cross_node_cross).append(c)
-    print("\ncorrelation of the per-input drift (a - 1) between channels (median, p10-p90):")
-    for name, v in (("same node, same station", same_node_same_st), ("same node, other station", same_node_cross),
-                    ("other node, same station", cross_node_same_st), ("other node, other station", cross_node_cross)):
+                (
+                    cross_node_same_st if st(k1[1]) == st(k2[1]) else cross_node_cross
+                ).append(c)
+    print(
+        "\ncorrelation of the per-input drift (a - 1) between channels (median, p10-p90):"
+    )
+    for name, v in (
+        ("same node, same station", same_node_same_st),
+        ("same node, other station", same_node_cross),
+        ("other node, same station", cross_node_same_st),
+        ("other node, other station", cross_node_cross),
+    ):
         v = np.array(v)
-        print("  %-26s n=%4d  %.2f  (%.2f-%.2f)" % (name, len(v), np.median(v), np.percentile(v, 10), np.percentile(v, 90)))
+        print(
+            "  %-26s n=%4d  %.2f  (%.2f-%.2f)"
+            % (name, len(v), np.median(v), np.percentile(v, 10), np.percentile(v, 90))
+        )
 
 
 if __name__ == "__main__":

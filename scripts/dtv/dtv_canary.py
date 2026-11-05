@@ -24,12 +24,16 @@ def ratios(a, tag, g):
         for c, fid in enumerate(fr[0]["freq"]):
             use = [f for f in fr if (f["act"][c] >= 2).any()]
             if use:
-                out[int(fid)] = sum(f["pw_res"][c].sum() for f in use) / max(sum(f["pw_raw"][c].sum() for f in use), 1e-9)
+                out[int(fid)] = sum(f["pw_res"][c].sum() for f in use) / max(
+                    sum(f["pw_raw"][c].sum() for f in use), 1e-9
+                )
     return out, len(fr)
 
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("--node", required=True)
     ap.add_argument("--seconds", type=float, default=6.0)
     ap.add_argument("--rounds", type=int, default=10)
@@ -43,14 +47,29 @@ def main():
         d = os.path.join(dtv_live.WORK, a.node, a.tag)
         names = sorted(os.listdir(d)) if os.path.isdir(d) else []
         if names:
-            subprocess.run(["ssh", a.node, "cd /tmp/gnss/dtv && rm -f " + " ".join(names)], check=False)
+            subprocess.run(
+                ["ssh", a.node, "cd /tmp/gnss/dtv && rm -f " + " ".join(names)],
+                check=False,
+            )
         parts = []
         for g in (0, 1):
             r, nf = ratios(a, a.tag, g)
             s = dtv_live.get(a, dtv_live.cmd_path(g) + "/status").get("rolling", {})
-            parts.append("g%d %s refits %s (%d fr) %s" % (g, "ROLL" if s.get("enable") else "loop", s.get("refits"), nf,
-                         " ".join("%d:%.4f" % kv for kv in sorted(r.items()))))
-        print("%s %s res/raw | %s" % (time.strftime("%H:%M:%SZ", time.gmtime()), a.node, " | ".join(parts)), flush=True)
+            parts.append(
+                "g%d %s refits %s (%d fr) %s"
+                % (
+                    g,
+                    "ROLL" if s.get("enable") else "loop",
+                    s.get("refits"),
+                    nf,
+                    " ".join("%d:%.4f" % kv for kv in sorted(r.items())),
+                )
+            )
+        print(
+            "%s %s res/raw | %s"
+            % (time.strftime("%H:%M:%SZ", time.gmtime()), a.node, " | ".join(parts)),
+            flush=True,
+        )
         dtv_live.drop_window(a, a.tag)
         time.sleep(max(0.0, a.every - (time.time() - t0)))
 

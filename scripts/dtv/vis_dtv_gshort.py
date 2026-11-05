@@ -36,7 +36,9 @@ TEST0 = 120  # rolling replay: frames before this one only train
 def toeplitz(rss):
     n = rss.shape[0]
     d = np.arange(n)[None, :] - np.arange(n)[:, None]
-    return np.where(d >= 0, rss[np.abs(d)], np.conj(rss[np.abs(d)])).astype(np.complex128)
+    return np.where(d >= 0, rss[np.abs(d)], np.conj(rss[np.abs(d)])).astype(
+        np.complex128
+    )
 
 
 def solve(sx, st):
@@ -89,17 +91,28 @@ def one_window(args):
     nf = len(fr)
     first_n = sum(1 for _ in dtv_state.frames(paths[:1]))
     t0 = os.path.getmtime(paths[0]) - first_n * FRAME_S
-    rec = dict(gpu=gpu, t0=t0, nf=nf, seq0=fr[0]["seq0"], fids=fr[0]["freq"].copy(), ch={})
+    rec = dict(
+        gpu=gpu, t0=t0, nf=nf, seq0=fr[0]["seq0"], fids=fr[0]["freq"].copy(), ch={}
+    )
     if nf < 2 * max(BLOCKS):
         return rec
     for c, fid in enumerate(fr[0]["freq"]):
         for k in range(fr[0]["n_src"]):
-            if any(f["act"][c][k] < 1 for f in fr) or any(not np.array_equal(f["w"][c][k], fr[-1]["w"][c][k]) for f in fr):
+            if any(f["act"][c][k] < 1 for f in fr) or any(
+                not np.array_equal(f["w"][c][k], fr[-1]["w"][c][k]) for f in fr
+            ):
                 continue
             X = np.array([f["rxs"][c][k] for f in fr], np.complex128)  # [nf, n_lag, NI]
             S = np.array([f["rss"][c][k] for f in fr], np.complex128)  # [nf, n_lag]
-            r = dict(sx=X.sum(0).astype(np.complex64), st=S.sum(0), eo=excess(solve(X[0::2].sum(0), S[0::2].sum(0)),
-                                                                              X[1::2].sum(0), S[1::2].sum(0)))
+            r = dict(
+                sx=X.sum(0).astype(np.complex64),
+                st=S.sum(0),
+                eo=excess(
+                    solve(X[0::2].sum(0), S[0::2].sum(0)),
+                    X[1::2].sum(0),
+                    S[1::2].sum(0),
+                ),
+            )
             for B in BLOCKS:
                 nb = nf // B
                 Xb = X[: nb * B].reshape(nb, B, *X.shape[1:]).sum(1)
@@ -110,9 +123,20 @@ def one_window(args):
                     for b in range(nb):
                         if a != b:
                             pair[abs(a - b)].append(excess(gb[a], Xb[b], Sb[b]))
-                eo = [excess(solve(X[i * B : (i + 1) * B : 2].sum(0), S[i * B : (i + 1) * B : 2].sum(0)),
-                             X[i * B + 1 : (i + 1) * B : 2].sum(0), S[i * B + 1 : (i + 1) * B : 2].sum(0)) for i in range(nb)]
-                r["blk%d" % B] = np.array([np.mean(v) if v else np.nan for v in pair])  # index = separation in blocks
+                eo = [
+                    excess(
+                        solve(
+                            X[i * B : (i + 1) * B : 2].sum(0),
+                            S[i * B : (i + 1) * B : 2].sum(0),
+                        ),
+                        X[i * B + 1 : (i + 1) * B : 2].sum(0),
+                        S[i * B + 1 : (i + 1) * B : 2].sum(0),
+                    )
+                    for i in range(nb)
+                ]
+                r["blk%d" % B] = np.array(
+                    [np.mean(v) if v else np.nan for v in pair]
+                )  # index = separation in blocks
                 r["eo%d" % B] = float(np.mean(eo))
             # causal rolling replay on frames TEST0.., against the best fit to those frames
             xt, stt = X[TEST0:].sum(0), S[TEST0:].sum(0)
@@ -133,14 +157,19 @@ def one_window(args):
                     Z = lam * Z + S[j]
                 roll.append((tot - ct) / max(-ct, 1e-30))
             r["roll"] = np.array(roll)
-            r["frozen"] = (cost(solve(X[:TEST0].sum(0), S[:TEST0].sum(0)), xt, stt) - ct) / max(-ct, 1e-30)
+            r["frozen"] = (
+                cost(solve(X[:TEST0].sum(0), S[:TEST0].sum(0)), xt, stt) - ct
+            ) / max(-ct, 1e-30)
             rec["ch"][(int(fid), k)] = r
     return rec
 
 
 def cmd_reduce(a):
     wins = index(a.dir)
-    print("%d windows (%d frames or more: %d)" % (len(wins), 2 * max(BLOCKS), len(wins)), flush=True)
+    print(
+        "%d windows (%d frames or more: %d)" % (len(wins), 2 * max(BLOCKS), len(wins)),
+        flush=True,
+    )
     with Pool(a.procs) as pool:
         res = pool.map(one_window, wins, chunksize=1)
     res = [r for r in res if r["ch"]]
@@ -181,7 +210,9 @@ def cmd_cost(a):
                 continue
             mt, p, fitted = prior[-1]
             # a state's data time = the start of the window it was fitted on: the last window before it was written
-            fitted = {k: t0s[max(np.searchsorted(t0s, v) - 1, 0)] for k, v in fitted.items()}
+            fitted = {
+                k: t0s[max(np.searchsorted(t0s, v) - 1, 0)] for k, v in fitted.items()
+            }
             if p not in cache:
                 cache[p] = dtv_state.read_state(p)
             st = cache[p]
@@ -189,10 +220,26 @@ def cmd_cost(a):
                 rs = st["recs"].get(fid)
                 if rs is None or k not in fitted or not np.any(rs["g"][k]):
                     continue
-                ex = excess(rs["g"][k].astype(np.complex128), v["sx"].astype(np.complex128), v["st"])
-                rows.append(("loaded", gpu, fid, k, fitted[k], r["t0"], r["t0"] - fitted[k], ex, v["eo"] / 2))
+                ex = excess(
+                    rs["g"][k].astype(np.complex128),
+                    v["sx"].astype(np.complex128),
+                    v["st"],
+                )
+                rows.append(
+                    (
+                        "loaded",
+                        gpu,
+                        fid,
+                        k,
+                        fitted[k],
+                        r["t0"],
+                        r["t0"] - fitted[k],
+                        ex,
+                        v["eo"] / 2,
+                    )
+                )
         for i, ra in enumerate(W):
-            for rb in W[i + 1:]:
+            for rb in W[i + 1 :]:
                 if rb["t0"] - ra["t0"] > a.max_pair_h * 3600:
                     break
                 for key, va in ra["ch"].items():
@@ -201,12 +248,43 @@ def cmd_cost(a):
                         continue
                     ga = solve(va["sx"].astype(np.complex128), va["st"])
                     ex = excess(ga, vb["sx"].astype(np.complex128), vb["st"])
-                    rows.append(("pair", gpu, key[0], key[1], ra["t0"], rb["t0"], rb["t0"] - ra["t0"], ex, (va["eo"] + vb["eo"]) / 4))
-    dt = np.dtype([("kind", "U6"), ("gpu", "i4"), ("fid", "i4"), ("k", "i4"), ("ta", "f8"), ("tb", "f8"), ("age", "f8"),
-                   ("value", "f8"), ("floor", "f8")])
+                    rows.append(
+                        (
+                            "pair",
+                            gpu,
+                            key[0],
+                            key[1],
+                            ra["t0"],
+                            rb["t0"],
+                            rb["t0"] - ra["t0"],
+                            ex,
+                            (va["eo"] + vb["eo"]) / 4,
+                        )
+                    )
+    dt = np.dtype(
+        [
+            ("kind", "U6"),
+            ("gpu", "i4"),
+            ("fid", "i4"),
+            ("k", "i4"),
+            ("ta", "f8"),
+            ("tb", "f8"),
+            ("age", "f8"),
+            ("value", "f8"),
+            ("floor", "f8"),
+        ]
+    )
     out = np.array(rows, dtype=dt)
     np.save(a.out, out)
-    print("%s: %d loaded-state rows, %d window pairs -> %s" % (a.node, (out["kind"] == "loaded").sum(), (out["kind"] == "pair").sum(), a.out))
+    print(
+        "%s: %d loaded-state rows, %d window pairs -> %s"
+        % (
+            a.node,
+            (out["kind"] == "loaded").sum(),
+            (out["kind"] == "pair").sum(),
+            a.out,
+        )
+    )
 
 
 EDGE = {2714, 2743, 2744, 2898, 2928}
@@ -236,8 +314,13 @@ def cmd_plot(a):
     y_all = C["value"] - C["floor"]
 
     def within(k, b, h0, h1, B=24):
-        rows = [v["blk%d" % B] - v["eo%d" % B] / 2 for r in W if h0 <= hr(r["t0"]) < h1
-                for (fid, kk), v in r["ch"].items() if kk == k and fid not in EDGE and band(fid) == b]
+        rows = [
+            v["blk%d" % B] - v["eo%d" % B] / 2
+            for r in W
+            if h0 <= hr(r["t0"]) < h1
+            for (fid, kk), v in r["ch"].items()
+            if kk == k and fid not in EDGE and band(fid) == b
+        ]
         m = min(len(x) for x in rows)
         Y = np.array([x[:m] for x in rows])
         return np.arange(1, m) * B * FRAME_S, np.nanmedian(Y[:, 1:], axis=0)
@@ -245,14 +328,30 @@ def cmd_plot(a):
     edges = np.geomspace(20, 12 * 3600, 22)
 
     def pairs(k, b, h0, h1):
-        s_ = (C["kind"] == "pair") & (C["k"] == k) & (cb == b) & (hr(C["ta"]) >= h0) & (hr(C["tb"]) < h1)
+        s_ = (
+            (C["kind"] == "pair")
+            & (C["k"] == k)
+            & (cb == b)
+            & (hr(C["ta"]) >= h0)
+            & (hr(C["tb"]) < h1)
+        )
         x, y = C["age"][s_], y_all[s_]
-        med = [np.median(y[(x >= e0) & (x < e1)]) if ((x >= e0) & (x < e1)).sum() >= 10 else np.nan for e0, e1 in zip(edges[:-1], edges[1:])]
+        med = [
+            np.median(y[(x >= e0) & (x < e1)])
+            if ((x >= e0) & (x < e1)).sum() >= 10
+            else np.nan
+            for e0, e1 in zip(edges[:-1], edges[1:])
+        ]
         return np.sqrt(edges[1:] * edges[:-1]), np.array(med)
 
     def roll(k, b, h0, h1, key="roll"):
-        v = [r["ch"][(fid, kk)][key] for r in W if h0 <= hr(r["t0"]) < h1 for (fid, kk) in r["ch"]
-             if kk == k and fid not in EDGE and band(fid) == b]
+        v = [
+            r["ch"][(fid, kk)][key]
+            for r in W
+            if h0 <= hr(r["t0"]) < h1
+            for (fid, kk) in r["ch"]
+            if kk == k and fid not in EDGE and band(fid) == b
+        ]
         return np.median(np.array(v), axis=0)
 
     fig = plt.figure(figsize=(15, 11.5), constrained_layout=True)
@@ -265,18 +364,61 @@ def cmd_plot(a):
             x = np.concatenate([xw, xp])
             y = np.concatenate([yw, yp])
             ok = np.isfinite(y) & (y > 0)
-            ax.plot(x[ok], y[ok], color=col[b], ls=ls, lw=2, marker="o", ms=3.5, label="%s, %s" % (b, name))
-            s_ = (C["kind"] == "loaded") & (C["k"] == 0) & (cb == b) & (hr(C["tb"]) >= h0) & (hr(C["tb"]) < h1)
-            ax.scatter(C["age"][s_], np.maximum(y_all[s_], 1e-5), s=6, color=col[b], alpha=0.25, lw=0)
+            ax.plot(
+                x[ok],
+                y[ok],
+                color=col[b],
+                ls=ls,
+                lw=2,
+                marker="o",
+                ms=3.5,
+                label="%s, %s" % (b, name),
+            )
+            s_ = (
+                (C["kind"] == "loaded")
+                & (C["k"] == 0)
+                & (cb == b)
+                & (hr(C["tb"]) >= h0)
+                & (hr(C["tb"]) < h1)
+            )
+            ax.scatter(
+                C["age"][s_],
+                np.maximum(y_all[s_], 1e-5),
+                s=6,
+                color=col[b],
+                alpha=0.25,
+                lw=0,
+            )
             rr = roll(0, b, h0, h1)
-            print("%s %s source 0: within-window 1 s %.2e, 5 s %.2e, 9 s %.2e | window pairs %s | loaded g: median %.2e at "
-                  "median age %.0f s (r0 windows, age > 240 s: %.2e) | rolling tau 0.5/1/2/4 s %s; frozen 5 s %.2e" % (
-                      b, name, yw[0], yw[4], yw[-1],
-                      " ".join("%.0fs:%.2e" % (xx, yy) for xx, yy in zip(xp, yp) if np.isfinite(yy)),
-                      np.median(y_all[s_]), np.median(C["age"][s_]), np.median(y_all[s_ & (C["age"] > 240)]),
-                      " ".join("%.2e" % v for v in rr), roll(0, b, h0, h1, "frozen")))
+            print(
+                "%s %s source 0: within-window 1 s %.2e, 5 s %.2e, 9 s %.2e | window pairs %s | loaded g: median %.2e at "
+                "median age %.0f s (r0 windows, age > 240 s: %.2e) | rolling tau 0.5/1/2/4 s %s; frozen 5 s %.2e"
+                % (
+                    b,
+                    name,
+                    yw[0],
+                    yw[4],
+                    yw[-1],
+                    " ".join(
+                        "%.0fs:%.2e" % (xx, yy)
+                        for xx, yy in zip(xp, yp)
+                        if np.isfinite(yy)
+                    ),
+                    np.median(y_all[s_]),
+                    np.median(C["age"][s_]),
+                    np.median(y_all[s_ & (C["age"] > 240)]),
+                    " ".join("%.2e" % v for v in rr),
+                    roll(0, b, h0, h1, "frozen"),
+                )
+            )
             if ls == "-":
-                ax.axhline(rr[1], color=col[b], lw=1.2, ls=":", label="%s: rolling fit, tau = 1 s, re-solved every second" % b)
+                ax.axhline(
+                    rr[1],
+                    color=col[b],
+                    lw=1.2,
+                    ls=":",
+                    label="%s: rolling fit, tau = 1 s, re-solved every second" % b,
+                )
     ax.set_xscale("log")
     ax.set_yscale("log")
     ax.set_xlim(0.7, 15 * 3600)
@@ -284,10 +426,15 @@ def cmd_plot(a):
     for xx, lab in ((60, "1 min"), (390, "refit loop\n(6.5 min)"), (3600, "1 h")):
         ax.axvline(xx, color=C_CLEAN, lw=0.6)
         ax.text(xx * 1.05, 0.5, lab, fontsize=8, color="#374151", va="top")
-    ax.set_xlabel("age of the fit (s): blocks inside one 10 s window, then window pairs")
+    ax.set_xlabel(
+        "age of the fit (s): blocks inside one 10 s window, then window pairs"
+    )
     ax.set_ylabel("extra residual / power the fresh fit removes")
-    ax.set_title("Source 0: what a fit of a given age costs, median over channels (dots: the g the stage actually had loaded); "
-                 "fit noise subtracted", fontsize=10)
+    ax.set_title(
+        "Source 0: what a fit of a given age costs, median over channels (dots: the g the stage actually had loaded); "
+        "fit noise subtracted",
+        fontsize=10,
+    )
     ax.legend(fontsize=8, loc="upper left", frameon=False)
     ax.grid(color="#e5e7eb", lw=0.6, which="both")
 
@@ -298,10 +445,31 @@ def cmd_plot(a):
             xp, yp = pairs(k, b, 2.0, 9.5)
             x, y = np.concatenate([xw, xp]), np.concatenate([yw, yp])
             ok = np.isfinite(y) & (y > 0)
-            ax.plot(x[ok], y[ok], color=col[b], ls=ls, lw=1.8, marker="o", ms=3, label="%s, source %d" % (b, k))
-            print("%s source %d 02:00-09:30Z: within-window 1 s %.2e, 9 s %.2e | pairs %s | rolling %s" % (
-                b, k, yw[0], yw[-1], " ".join("%.0fs:%.2e" % (xx, yy) for xx, yy in zip(xp, yp) if np.isfinite(yy)),
-                " ".join("%.2e" % v for v in roll(k, b, 2.0, 9.5))))
+            ax.plot(
+                x[ok],
+                y[ok],
+                color=col[b],
+                ls=ls,
+                lw=1.8,
+                marker="o",
+                ms=3,
+                label="%s, source %d" % (b, k),
+            )
+            print(
+                "%s source %d 02:00-09:30Z: within-window 1 s %.2e, 9 s %.2e | pairs %s | rolling %s"
+                % (
+                    b,
+                    k,
+                    yw[0],
+                    yw[-1],
+                    " ".join(
+                        "%.0fs:%.2e" % (xx, yy)
+                        for xx, yy in zip(xp, yp)
+                        if np.isfinite(yy)
+                    ),
+                    " ".join("%.2e" % v for v in roll(k, b, 2.0, 9.5)),
+                )
+            )
     ax.set_xscale("log")
     ax.set_yscale("log")
     ax.set_xlim(0.7, 15 * 3600)
@@ -316,25 +484,45 @@ def cmd_plot(a):
     taus = np.array(TAUS) * FRAME_S
     for b in ("ATSC 24", "ATSC 30"):
         for k, ls in ((0, "-"), (1, "--"), (2, ":")):
-            ax.plot(taus, roll(k, b, 2.0, 9.5), color=col[b], ls=ls, lw=1.8, marker="o", ms=4, label="%s, source %d" % (b, k))
+            ax.plot(
+                taus,
+                roll(k, b, 2.0, 9.5),
+                color=col[b],
+                ls=ls,
+                lw=1.8,
+                marker="o",
+                ms=4,
+                label="%s, source %d" % (b, k),
+            )
     ax.set_xscale("log")
     ax.set_yscale("log")
     ax.set_xticks(taus)
     ax.set_xticklabels(["%.1f" % t for t in taus])
     ax.xaxis.set_minor_formatter(matplotlib.ticker.NullFormatter())
     ax.set_ylim(3e-5, 1.0)
-    ax.set_xlabel("rolling-fit time constant tau (s), re-solved every %.0f s" % (UPDATE * FRAME_S))
+    ax.set_xlabel(
+        "rolling-fit time constant tau (s), re-solved every %.0f s" % (UPDATE * FRAME_S)
+    )
     ax.set_ylabel("extra residual / power the best fit removes")
-    ax.set_title("Causal replay of a rolling fit on the last ~5 s of each window, 02:00-09:30Z", fontsize=10)
+    ax.set_title(
+        "Causal replay of a rolling fit on the last ~5 s of each window, 02:00-09:30Z",
+        fontsize=10,
+    )
     ax.legend(fontsize=8, ncol=2, loc="upper right", frameon=False)
     ax.grid(color="#e5e7eb", lw=0.6, which="both")
-    fig.suptitle("How fast the DTV fits go stale: stage refit windows of %s, 11-04" % ", ".join(a.nodes), fontsize=12)
+    fig.suptitle(
+        "How fast the DTV fits go stale: stage refit windows of %s, 11-04"
+        % ", ".join(a.nodes),
+        fontsize=12,
+    )
     fig.savefig(a.out, dpi=110)
     print("saved", a.out)
 
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     sp = ap.add_subparsers(dest="cmd", required=True)
     p = sp.add_parser("reduce")
     p.add_argument("--dir", required=True)
@@ -344,7 +532,9 @@ def main():
     p = sp.add_parser("cost")
     p.add_argument("reduced")
     p.add_argument("--node", required=True)
-    p.add_argument("--states", default=os.path.expanduser("~/gnss/builds/dtv-live/states-rev2"))
+    p.add_argument(
+        "--states", default=os.path.expanduser("~/gnss/builds/dtv-live/states-rev2")
+    )
     p.add_argument("--max-pair-h", type=float, default=12.0)
     p.add_argument("--out", required=True)
     p = sp.add_parser("plot")

@@ -18,10 +18,17 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from vis_dtv_plot import hour_angle_min  # noqa: E402
 
-STATIONS = (("ATSC 24", 2716, 2742, "Blues", "#2563eb"), ("ATSC 30", 2899, 2927, "Oranges", "#ea580c"))
+STATIONS = (
+    ("ATSC 24", 2716, 2742, "Blues", "#2563eb"),
+    ("ATSC 30", 2899, 2927, "Oranges", "#ea580c"),
+)
 C_SKY = "#6b7280"
-STYLE = [dict(color=C_SKY, lw=1.0, ls="-", alpha=0.9),  # first night: the reference, neutral
-         dict(lw=0.9, ls=":", alpha=0.55), dict(lw=1.0, ls="--", alpha=0.75), dict(lw=1.7, ls="-", alpha=1.0)]
+STYLE = [
+    dict(color=C_SKY, lw=1.0, ls="-", alpha=0.9),  # first night: the reference, neutral
+    dict(lw=0.9, ls=":", alpha=0.55),
+    dict(lw=1.0, ls="--", alpha=0.75),
+    dict(lw=1.7, ls="-", alpha=1.0),
+]
 
 
 def run_med(x, n):
@@ -29,7 +36,7 @@ def run_med(x, n):
     out = np.full(len(x), np.nan)
     h = n // 2
     for i in range(len(x)):
-        out[i] = np.nanmedian(x[max(0, i - h): i + h + 1])
+        out[i] = np.nanmedian(x[max(0, i - h) : i + h + 1])
     return out
 
 
@@ -46,17 +53,43 @@ def load(path, t0, t1):
     clean = np.isin(fids // 16 * 16, d["clean"]) & good
     ha = hour_angle_min(t[sel])
     day = np.datetime64(int(np.median(t)), "ns").astype("datetime64[D]")
-    return dict(th=th[sel], ha=ha, lam=lam, fids=fids, good=good, clean=clean, day=str(day),
-                sky=np.median(lam[clean, 0, :], axis=0), q99=np.percentile(lam[clean, 0, :], 99, axis=0))
+    return dict(
+        th=th[sel],
+        ha=ha,
+        lam=lam,
+        fids=fids,
+        good=good,
+        clean=clean,
+        day=str(day),
+        sky=np.median(lam[clean, 0, :], axis=0),
+        q99=np.percentile(lam[clean, 0, :], 99, axis=0),
+    )
 
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--night", action="append", required=True, help="LABEL=NPZ, repeatable, in row order")
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    ap.add_argument(
+        "--night",
+        action="append",
+        required=True,
+        help="LABEL=NPZ, repeatable, in row order",
+    )
     ap.add_argument("--from", dest="t0", type=float, default=3.83, help="UTC hours")
     ap.add_argument("--to", dest="t1", type=float, default=12.25)
-    ap.add_argument("--transit", type=float, default=20.0, help="|Tau A hour angle| (min) counted as the transit")
-    ap.add_argument("--smooth", type=int, default=18, help="running median (bins) for the line panels")
+    ap.add_argument(
+        "--transit",
+        type=float,
+        default=20.0,
+        help="|Tau A hour angle| (min) counted as the transit",
+    )
+    ap.add_argument(
+        "--smooth",
+        type=int,
+        default=18,
+        help="running median (bins) for the line panels",
+    )
     ap.add_argument("--out")
     a = ap.parse_args()
     nights = []
@@ -66,8 +99,20 @@ def main():
         n["label"] = label
         nights.append(n)
 
-    print("%-20s %-8s %7s %7s %7s %8s | %7s %7s %8s" % ("night", "station", "top", "sky", "excess", "extra %",
-                                                         "top@TA", "sky@TA", "extra %"))
+    print(
+        "%-20s %-8s %7s %7s %7s %8s | %7s %7s %8s"
+        % (
+            "night",
+            "station",
+            "top",
+            "sky",
+            "excess",
+            "extra %",
+            "top@TA",
+            "sky@TA",
+            "extra %",
+        )
+    )
     for n in nights:
         tr = np.abs(n["ha"]) < a.transit
         for name, lo, hi, _, _ in STATIONS:
@@ -77,21 +122,42 @@ def main():
             extra = ((L > n["q99"][None, None, :]).sum(axis=1) >= 1).mean(axis=0) > 0.5
             n[name] = dict(sel=sel, med=med, extra=extra)
             ot = ~tr
-            print("%-20s %-8s %7.2f %7.2f %7.2f %7.0f%% | %7.2f %7.2f %7.0f%%" % (
-                n["label"], name, np.median(med[ot]), np.median(n["sky"][ot]), np.median(med[ot] - n["sky"][ot]),
-                100 * extra[ot].mean(), np.median(med[tr]) if tr.any() else np.nan,
-                np.median(n["sky"][tr]) if tr.any() else np.nan, 100 * extra[tr].mean() if tr.any() else np.nan))
-    print("(top = channel median of the top eigenvalue, noise units, outside |HA| < %.0f min; @TA = inside)" % a.transit)
+            print(
+                "%-20s %-8s %7.2f %7.2f %7.2f %7.0f%% | %7.2f %7.2f %7.0f%%"
+                % (
+                    n["label"],
+                    name,
+                    np.median(med[ot]),
+                    np.median(n["sky"][ot]),
+                    np.median(med[ot] - n["sky"][ot]),
+                    100 * extra[ot].mean(),
+                    np.median(med[tr]) if tr.any() else np.nan,
+                    np.median(n["sky"][tr]) if tr.any() else np.nan,
+                    100 * extra[tr].mean() if tr.any() else np.nan,
+                )
+            )
+    print(
+        "(top = channel median of the top eigenvalue, noise units, outside |HA| < %.0f min; @TA = inside)"
+        % a.transit
+    )
     print("\nhourly channel-median top eigenvalue (UTC hour start):")
     hrs = np.arange(int(a.t0), int(np.ceil(a.t1)))
     print("%-20s %-8s " % ("", "") + " ".join("%5d" % h for h in hrs))
     for n in nights:
         for name, *_ in STATIONS:
-            v = [np.median(n[name]["med"][(n["th"] >= h) & (n["th"] < h + 1)]) if ((n["th"] >= h) & (n["th"] < h + 1)).any()
-                 else np.nan for h in hrs]
+            v = [
+                np.median(n[name]["med"][(n["th"] >= h) & (n["th"] < h + 1)])
+                if ((n["th"] >= h) & (n["th"] < h + 1)).any()
+                else np.nan
+                for h in hrs
+            ]
             print("%-20s %-8s " % (n["label"], name) + " ".join("%5.2f" % x for x in v))
-        v = [np.median(n["sky"][(n["th"] >= h) & (n["th"] < h + 1)]) if ((n["th"] >= h) & (n["th"] < h + 1)).any()
-             else np.nan for h in hrs]
+        v = [
+            np.median(n["sky"][(n["th"] >= h) & (n["th"] < h + 1)])
+            if ((n["th"] >= h) & (n["th"] < h + 1)).any()
+            else np.nan
+            for h in hrs
+        ]
         print("%-20s %-8s " % (n["label"], "sky") + " ".join("%5.2f" % x for x in v))
     if not a.out:
         return
@@ -112,12 +178,21 @@ def main():
             ax = fig.add_subplot(gs[row, col])
             f = n["fids"][n[name]["sel"]]
             Z = n["lam"][n[name]["sel"], 0, :]
-            own = float(np.median(n[name]["med"])) > 40  # off the shared scale: this row gets its own
+            own = (
+                float(np.median(n[name]["med"])) > 40
+            )  # off the shared scale: this row gets its own
             if own:
                 v0, v1 = np.nanpercentile(Z, [1, 99.5])
                 nrm = matplotlib.colors.LogNorm(v0, v1)
-            im = ax.pcolormesh(n["th"], np.arange(len(f)), Z, shading="nearest", cmap=cmap,
-                               norm=nrm if own else norm, rasterized=True)
+            im = ax.pcolormesh(
+                n["th"],
+                np.arange(len(f)),
+                Z,
+                shading="nearest",
+                cmap=cmap,
+                norm=nrm if own else norm,
+                rasterized=True,
+            )
             if own:
                 for sp in ax.spines.values():
                     sp.set_linewidth(2.2)
@@ -130,7 +205,9 @@ def main():
                 cb.minorticks_off()
                 cb.outline.set_linestyle((0, (5, 2.5)))
                 cb.outline.set_linewidth(1.6)
-                cb.set_label("THIS ROW ONLY\n%.0f-%.0f" % (v0, v1), fontsize=7, fontweight="bold")
+                cb.set_label(
+                    "THIS ROW ONLY\n%.0f-%.0f" % (v0, v1), fontsize=7, fontweight="bold"
+                )
             else:
                 shared.append(ax)
                 im_shared = im
@@ -143,8 +220,13 @@ def main():
             if row < nn - 1:
                 ax.set_xticklabels([])
             if own:
-                ax.set_title("%s  %s   OWN COLOUR SCALE: %.0f-%.0f (rows below: 1.2-40)" % (
-                    name, n["label"], v0, v1), fontsize=9, loc="left", fontweight="bold")
+                ax.set_title(
+                    "%s  %s   OWN COLOUR SCALE: %.0f-%.0f (rows below: 1.2-40)"
+                    % (name, n["label"], v0, v1),
+                    fontsize=9,
+                    loc="left",
+                    fontweight="bold",
+                )
             else:
                 ax.set_title("%s  %s" % (name, n["label"]), fontsize=9, loc="left")
             if col == 0:
@@ -154,20 +236,45 @@ def main():
             cb.set_ticks([1.5, 2, 3, 5, 10, 20, 40])
             cb.set_ticklabels(["1.5", "2", "3", "5", "10", "20", "40"])
             cb.minorticks_off()
-            cb.set_label("top eigenvalue (noise units)\nshared by these rows", fontsize=7)
+            cb.set_label(
+                "top eigenvalue (noise units)\nshared by these rows", fontsize=7
+            )
         ax = fig.add_subplot(gs[nn, col])
-        rest = STYLE[1:][-(nn - 1):] if nn > 1 else []  # the last night gets the bold solid line
+        rest = (
+            STYLE[1:][-(nn - 1) :] if nn > 1 else []
+        )  # the last night gets the bold solid line
         for k, n in enumerate(nights):
             st = dict(STYLE[0] if k == 0 else rest[k - 1])
             st.setdefault("color", hue)
-            ax.plot(n["th"], run_med(n[name]["med"], a.smooth), label="%s (%s)" % (n["label"], n["day"][5:]), **st)
+            ax.plot(
+                n["th"],
+                run_med(n[name]["med"], a.smooth),
+                label="%s (%s)" % (n["label"], n["day"][5:]),
+                **st
+            )
         sk = nights[-1]
-        ax.plot(sk["th"], run_med(sk["sky"], a.smooth), color="k", lw=0.8, ls="-.", alpha=0.6,
-                label="sky: clean channels, %s" % sk["label"])
+        ax.plot(
+            sk["th"],
+            run_med(sk["sky"], a.smooth),
+            color="k",
+            lw=0.8,
+            ls="-.",
+            alpha=0.6,
+            label="sky: clean channels, %s" % sk["label"],
+        )
         for n in nights:
-            ax.axvline(n["th"][np.argmin(np.abs(n["ha"]))], color="k", lw=0.5, ls=":", alpha=0.6)
+            ax.axvline(
+                n["th"][np.argmin(np.abs(n["ha"]))],
+                color="k",
+                lw=0.5,
+                ls=":",
+                alpha=0.6,
+            )
         ax.set_yscale("log")
-        top = max(60.0, 1.5 * max(np.nanmax(run_med(n[name]["med"], a.smooth)) for n in nights))
+        top = max(
+            60.0,
+            1.5 * max(np.nanmax(run_med(n[name]["med"], a.smooth)) for n in nights),
+        )
         ax.set_ylim(1.2, top)
         yt = [v for v in (1.5, 2, 3, 5, 10, 20, 50, 100, 200, 500) if v < top]
         ax.set_yticks(yt)
@@ -176,10 +283,24 @@ def main():
         ax.set_xlim(a.t0, a.t1)
         ax.grid(color="#e5e7eb", lw=0.6)
         ax.set_xlabel("UTC hour (dotted: Tau A transit, ~4 min earlier each night)")
-        ax.set_ylabel("top eigenvalue, channel median\n(%d-bin running median)" % a.smooth, fontsize=8)
-        ax.set_title("%s: residual against the sky, all nights" % name, fontsize=9, loc="left")
-        ax.legend(fontsize=7, loc="center left", bbox_to_anchor=(0.0, 0.6), frameon=False, ncol=2)
-    fig.suptitle("DTV residual by night (recv1 N2, whitened top eigenvalue per channel, 10 s bins)", fontsize=11)
+        ax.set_ylabel(
+            "top eigenvalue, channel median\n(%d-bin running median)" % a.smooth,
+            fontsize=8,
+        )
+        ax.set_title(
+            "%s: residual against the sky, all nights" % name, fontsize=9, loc="left"
+        )
+        ax.legend(
+            fontsize=7,
+            loc="center left",
+            bbox_to_anchor=(0.0, 0.6),
+            frameon=False,
+            ncol=2,
+        )
+    fig.suptitle(
+        "DTV residual by night (recv1 N2, whitened top eigenvalue per channel, 10 s bins)",
+        fontsize=11,
+    )
     fig.savefig(a.out, dpi=100)
     print("saved", a.out)
 

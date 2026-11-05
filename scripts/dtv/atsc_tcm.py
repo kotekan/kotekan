@@ -27,7 +27,9 @@ for s in range(4):
         NEXT[s, z1] = 2 * (z0p ^ z1) + z0c
         SUB[s, z1] = 2 * z1 + z0c
 # incoming pairs for each next state
-INC = [[(s, z1) for s in range(4) for z1 in (0, 1) if NEXT[s, z1] == ns] for ns in range(4)]
+INC = [
+    [(s, z1) for s in range(4) for z1 in (0, 1) if NEXT[s, z1] == ns] for ns in range(4)
+]
 
 
 def viterbi(R):
@@ -95,8 +97,11 @@ def main():
     hchk = np.mean((hz0[:, 2:] ^ hz0[:, :-2] ^ hz1[:, 1:-1]) == 0)
     err = R - LEV[dec]
     mer = 10 * np.log10(21.0 / np.mean(err ** 2))
-    print("Viterbi over %d symbols per encoder x 12: %.4f of the hard decisions changed; parity satisfied %.4f (hard %.4f); "
-          "MER against the decoded symbols %.1f dB (%.0f s)" % (T, changed, chk, hchk, mer, time.time() - t0))
+    print(
+        "Viterbi over %d symbols per encoder x 12: %.4f of the hard decisions changed; parity satisfied %.4f (hard %.4f); "
+        "MER against the decoded symbols %.1f dB (%.0f s)"
+        % (T, changed, chk, hchk, mer, time.time() - t0)
+    )
     # how often the decoded symbol is not the nearest level (a correction), split by distance
     full = np.zeros((nseg, SEG), int)
     full[:, :4] = np.array([5, -5, -5, 5])
@@ -110,9 +115,17 @@ def main():
     filled = np.zeros((nseg, SEG), bool)
     for q in range(12):
         filled[pos[q][:T, 0], pos[q][:T, 1]] = True
-    print("decoded stream: %d symbols, %.4f trellis-decoded, %.4f known, %.4f left (field-sync tail, encoder ends)" % (
-        full.size, filled.mean(), known.mean(), 1 - filled.mean() - known.mean()))
-    np.savez(a.out, sym=full.reshape(-1).astype(np.int8), filled=filled.reshape(-1), known=known.reshape(-1), fslot=fslot)
+    print(
+        "decoded stream: %d symbols, %.4f trellis-decoded, %.4f known, %.4f left (field-sync tail, encoder ends)"
+        % (full.size, filled.mean(), known.mean(), 1 - filled.mean() - known.mean())
+    )
+    np.savez(
+        a.out,
+        sym=full.reshape(-1).astype(np.int8),
+        filled=filled.reshape(-1),
+        known=known.reshape(-1),
+        fslot=fslot,
+    )
     print("wrote %s" % a.out)
 
 

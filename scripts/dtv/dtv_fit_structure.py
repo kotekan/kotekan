@@ -29,7 +29,9 @@ def tsec(s):
 
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("--from", dest="t0", default="030000")
     ap.add_argument("--to", dest="t1", default="130000")
     a = ap.parse_args()
@@ -47,7 +49,9 @@ def main():
             st = dtv_state.read_state(p)
             lag_min = st["lag_min"]
             for fid, r in st["recs"].items():
-                ser.setdefault(int(fid), []).append((tsec(m.group(1)), r["g"][0].copy()))
+                ser.setdefault(int(fid), []).append(
+                    (tsec(m.group(1)), r["g"][0].copy())
+                )
         for fid, v in ser.items():
             if fid in EDGE:
                 continue
@@ -73,14 +77,28 @@ def main():
         for msep in SEP_MIN:
             v = np.array(D[stn][msep])
             if len(v):
-                print("  %4d min  %.3f  (%.3f-%.3f)  n=%d" % (msep, np.median(v), np.percentile(v, 10), np.percentile(v, 90), len(v)))
+                print(
+                    "  %4d min  %.3f  (%.3f-%.3f)  n=%d"
+                    % (
+                        msep,
+                        np.median(v),
+                        np.percentile(v, 10),
+                        np.percentile(v, 90),
+                        len(v),
+                    )
+                )
         lc = np.median(np.array(lagchange[stn]), axis=0)
         lb = np.median(np.array(lagbase[stn]), axis=0)
         order = np.argsort(lc)[::-1][:10]
-        print("  first->last change by lag (share of change | share of g): " +
-              " ".join("%+d:%.2f|%.2f" % (lag_min + j, lc[j], lb[j]) for j in order))
+        print(
+            "  first->last change by lag (share of change | share of g): "
+            + " ".join("%+d:%.2f|%.2f" % (lag_min + j, lc[j], lb[j]) for j in order)
+        )
         far = np.abs(np.arange(len(lc)) + lag_min) > 6
-        print("  lags |d|>6 hops: %.2f of the change, %.2f of g" % (lc[far].sum(), lb[far].sum()))
+        print(
+            "  lags |d|>6 hops: %.2f of the change, %.2f of g"
+            % (lc[far].sum(), lb[far].sum())
+        )
 
 
 if __name__ == "__main__":

@@ -74,36 +74,73 @@ def one_node(args):
                 flat = g.reshape(T, -1)
                 gram = flat.conj() @ flat.T  # <g_a, g_b>
                 e = np.real(np.diag(gram))
-                d_tot = (e[None, :] + e[:, None] - 2 * np.real(gram)) / e[None, :]  # [a, b] / ||g_b||^2
+                d_tot = (e[None, :] + e[:, None] - 2 * np.real(gram)) / e[
+                    None, :
+                ]  # [a, b] / ||g_b||^2
                 d_scal = 1 - np.abs(gram) ** 2 / (e[:, None] * e[None, :])
                 gi = np.einsum("aln,bln->nab", g.conj(), g)  # per-input <g_a,i, g_b,i>
                 ei = np.real(np.einsum("naa->na", gi))  # [NI, T]
                 with np.errstate(invalid="ignore", divide="ignore"):
-                    left = np.where(ei[:, :, None] > 0, ei[:, None, :] - np.abs(gi) ** 2 / ei[:, :, None], ei[:, None, :])
+                    left = np.where(
+                        ei[:, :, None] > 0,
+                        ei[:, None, :] - np.abs(gi) ** 2 / ei[:, :, None],
+                        ei[:, None, :],
+                    )
                 d_inp = np.sum(left, axis=0) / e[None, :]
-                beta = np.where(ei[:, 0:1] > 0, gi[:, 0, :] / np.maximum(ei[:, 0:1], 1e-30), 0).T  # [T, NI] vs the setup
-                out.append(dict(node=node, gpu=gpu, fid=int(fid), k=k, t=ts, E=e, lagp=np.sum(np.abs(g) ** 2, axis=2),
-                                d_tot=d_tot, d_scal=d_scal, d_inp=d_inp, beta=beta.astype(np.complex64),
-                                ein=ei[:, 0], wdev=float(np.max(np.abs(w - w[0])) / max(np.max(np.abs(w[0])), 1e-30))))
+                beta = np.where(
+                    ei[:, 0:1] > 0, gi[:, 0, :] / np.maximum(ei[:, 0:1], 1e-30), 0
+                ).T  # [T, NI] vs the setup
+                out.append(
+                    dict(
+                        node=node,
+                        gpu=gpu,
+                        fid=int(fid),
+                        k=k,
+                        t=ts,
+                        E=e,
+                        lagp=np.sum(np.abs(g) ** 2, axis=2),
+                        d_tot=d_tot,
+                        d_scal=d_scal,
+                        d_inp=d_inp,
+                        beta=beta.astype(np.complex64),
+                        ein=ei[:, 0],
+                        wdev=float(
+                            np.max(np.abs(w - w[0])) / max(np.max(np.abs(w[0])), 1e-30)
+                        ),
+                    )
+                )
     return out
 
 
 def cmd_extract(a):
-    day0 = np.datetime64("%s-%s-%sT00:00" % (a.date[:4], a.date[4:6], a.date[6:]), "s").astype(np.int64)
+    day0 = np.datetime64(
+        "%s-%s-%sT00:00" % (a.date[:4], a.date[4:6], a.date[6:]), "s"
+    ).astype(np.int64)
     until = day0 + int(a.until[:2]) * 3600 + int(a.until[2:]) * 60
-    nodes = a.nodes or sorted(os.path.basename(p) for p in glob.glob(os.path.join(a.states, "cx*")))
+    nodes = a.nodes or sorted(
+        os.path.basename(p) for p in glob.glob(os.path.join(a.states, "cx*"))
+    )
     with Pool(min(len(nodes), a.procs)) as pool:
-        res = [r for rs in pool.map(one_node, [(a.states, n, day0, until) for n in nodes]) for r in rs]
+        res = [
+            r
+            for rs in pool.map(one_node, [(a.states, n, day0, until) for n in nodes])
+            for r in rs
+        ]
     np.save(a.out, np.array(res, dtype=object), allow_pickle=True)
     print("%d channel-source series from %s -> %s" % (len(res), " ".join(nodes), a.out))
     for r in res:
         if r["wdev"] > 1e-6:
-            print("WARNING %s fid %d source %d: w changed across the series (max rel %.2g)" % (r["node"], r["fid"], r["k"], r["wdev"]))
+            print(
+                "WARNING %s fid %d source %d: w changed across the series (max rel %.2g)"
+                % (r["node"], r["fid"], r["k"], r["wdev"])
+            )
 
 
 def cmd_gfull(a):
     """The full g series of a few channels (one node, one GPU, one source): setup + refits up to --until."""
-    day0 = np.datetime64("%s-%s-%sT00:00" % (a.date[:4], a.date[4:6], a.date[6:]), "s").astype(np.int64)
+    day0 = np.datetime64(
+        "%s-%s-%sT00:00" % (a.date[:4], a.date[4:6], a.date[6:]), "s"
+    ).astype(np.int64)
     until = day0 + int(a.until[:2]) * 3600 + int(a.until[2:]) * 60
     sel = []
     for p in glob.glob(os.path.join(a.states, a.node, "st_g%d_*.bin" % a.gpu)):
@@ -120,14 +157,34 @@ def cmd_gfull(a):
         ts.append(t)
         for f in fids:
             g[f].append(st["recs"][f]["g"][a.source])
-    np.savez(a.out, t=np.array(ts), fids=np.array(fids), lag_min=lag_min, node=a.node, gpu=a.gpu, source=a.source,
-             **{"g%d" % f: np.array(g[f]) for f in fids})
-    print("%s gpu%d source %d: %d states of %s -> %s" % (a.node, a.gpu, a.source, len(ts), fids, a.out))
+    np.savez(
+        a.out,
+        t=np.array(ts),
+        fids=np.array(fids),
+        lag_min=lag_min,
+        node=a.node,
+        gpu=a.gpu,
+        source=a.source,
+        **{"g%d" % f: np.array(g[f]) for f in fids}
+    )
+    print(
+        "%s gpu%d source %d: %d states of %s -> %s"
+        % (a.node, a.gpu, a.source, len(ts), fids, a.out)
+    )
 
 
 HOP_US = 5.12
-EDGE = {2714, 2743, 2744, 2898, 2928}  # band-edge channels: weak DTV, left out of the medians
-EPISODE = (8 + 5 / 60, 8 + 50 / 60)  # 11-04: both stations' residual ~9.8 despite full refits
+EDGE = {
+    2714,
+    2743,
+    2744,
+    2898,
+    2928,
+}  # band-edge channels: weak DTV, left out of the medians
+EPISODE = (
+    8 + 5 / 60,
+    8 + 50 / 60,
+)  # 11-04: both stations' residual ~9.8 despite full refits
 TRANSIT = 10 + 38 / 60  # Tau A, 11-04
 
 
@@ -170,22 +227,45 @@ def cmd_plot(a):
     for row, f in enumerate(G["fids"]):
         g = G["g%d" % f].astype(np.complex128)
         e0 = np.sum(np.abs(g[0]) ** 2)
-        for c, (Z, title) in enumerate((
-                (np.sum(np.abs(g) ** 2, axis=2) / e0, "the fit: power of g per lag, summed over inputs"),
-                (np.sum(np.abs(g - g[0]) ** 2, axis=2) / e0, "its change since the 01:41Z setup, per lag"))):
+        for c, (Z, title) in enumerate(
+            (
+                (
+                    np.sum(np.abs(g) ** 2, axis=2) / e0,
+                    "the fit: power of g per lag, summed over inputs",
+                ),
+                (
+                    np.sum(np.abs(g - g[0]) ** 2, axis=2) / e0,
+                    "its change since the 01:41Z setup, per lag",
+                ),
+            )
+        ):
             ax = fig.add_subplot(gs[row, c])
             yy = np.append(th, th[-1] + np.median(np.diff(th)))
-            im = ax.pcolormesh(np.append(lags, lags[-1] + HOP_US) - HOP_US / 2, yy, np.maximum(Z, 1e-6), cmap="Blues", norm=norm,
-                               shading="flat", rasterized=True)
+            im = ax.pcolormesh(
+                np.append(lags, lags[-1] + HOP_US) - HOP_US / 2,
+                yy,
+                np.maximum(Z, 1e-6),
+                cmap="Blues",
+                norm=norm,
+                shading="flat",
+                rasterized=True,
+            )
             marks(ax, horizontal=True)
             ax.set_ylim(th[0], yy[-1])
             ax.set_xlabel("lag (us; 1 hop = %.2f us)" % HOP_US)
             ax.set_ylabel("UTC hour, 11-04")
-            ax.set_title("%s gpu%s freq_id %d (%s), source %s: %s" % (G["node"], G["gpu"], f, band(f), G["source"], title),
-                         fontsize=10)
-            fig.colorbar(im, ax=ax, shrink=0.85, pad=0.01, label="fraction of ||g(setup)||^2")
-    fig.suptitle("DTV stage fits through the night: dashed = 08:05-08:50Z high-residual episode, dotted = Tau A transit",
-                 fontsize=12)
+            ax.set_title(
+                "%s gpu%s freq_id %d (%s), source %s: %s"
+                % (G["node"], G["gpu"], f, band(f), G["source"], title),
+                fontsize=10,
+            )
+            fig.colorbar(
+                im, ax=ax, shrink=0.85, pad=0.01, label="fraction of ||g(setup)||^2"
+            )
+    fig.suptitle(
+        "DTV stage fits through the night: dashed = 08:05-08:50Z high-residual episode, dotted = Tau A transit",
+        fontsize=12,
+    )
     fig.savefig(a.out_fits, dpi=110)
     print("saved", a.out_fits)
 
@@ -197,15 +277,38 @@ def cmd_plot(a):
         rs = [r for r in R if r["k"] == 0 and band(r["fid"]) == b]
         t = hr(rs[0]["t"])
         D = np.array([r["d_tot"][0, :] for r in rs])
-        ax.fill_between(t, np.percentile(D, 25, axis=0), np.percentile(D, 75, axis=0), color=col[b], alpha=0.15, lw=0)
-        ax.plot(t, np.median(D, axis=0), color=col[b], lw=2, label="%s: median of %d channels (band: quartiles)" % (b, len(rs)))
+        ax.fill_between(
+            t,
+            np.percentile(D, 25, axis=0),
+            np.percentile(D, 75, axis=0),
+            color=col[b],
+            alpha=0.15,
+            lw=0,
+        )
+        ax.plot(
+            t,
+            np.median(D, axis=0),
+            color=col[b],
+            lw=2,
+            label="%s: median of %d channels (band: quartiles)" % (b, len(rs)),
+        )
         Di = np.array([r["d_inp"][0, :] for r in rs])
-        ax.plot(t, np.median(Di, axis=0), color=col[b], lw=1.2, ls="--", label="%s: left after a per-input complex gain" % b)
+        ax.plot(
+            t,
+            np.median(Di, axis=0),
+            color=col[b],
+            lw=1.2,
+            ls="--",
+            label="%s: left after a per-input complex gain" % b,
+        )
     marks(ax)
     ax.set_xlim(1.5, 13.1)
     ax.set_ylim(0, 1.0)
     ax.set_ylabel("||g(t) - g(setup)||^2 / ||g(t)||^2")
-    ax.set_title("Source 0: change of the fit since the 01:41Z setup (w fixed since then)", fontsize=10)
+    ax.set_title(
+        "Source 0: change of the fit since the 01:41Z setup (w fixed since then)",
+        fontsize=10,
+    )
     ax.legend(fontsize=8, ncol=2, loc="upper left", frameon=False)
     ax.grid(color="#e5e7eb", lw=0.6)
 
@@ -216,16 +319,28 @@ def cmd_plot(a):
             t = hr(rs[0]["t"])
             j = np.arange(2, len(t))
             S = np.median([r["d_tot"][j - 1, j] for r in rs], axis=0)
-            S = np.where(np.diff(t)[j - 1] * 60 > 25, np.nan, S)  # no line across the Tau A blackout
-            ax.plot(t[j], S, color=col[b], ls=ls, lw=1.8 if k == 0 else 1.2,
-                    label="%s, source %d (every %.0f min)" % (b, k, np.median(np.diff(t[1:])) * 60))
+            S = np.where(
+                np.diff(t)[j - 1] * 60 > 25, np.nan, S
+            )  # no line across the Tau A blackout
+            ax.plot(
+                t[j],
+                S,
+                color=col[b],
+                ls=ls,
+                lw=1.8 if k == 0 else 1.2,
+                label="%s, source %d (every %.0f min)"
+                % (b, k, np.median(np.diff(t[1:])) * 60),
+            )
     marks(ax)
     ax.set_yscale("log")
     ax.set_xlim(1.5, 13.1)
     ax.set_ylim(3e-3, 1.0)
     ax.set_xlabel("UTC hour, 11-04")
     ax.set_ylabel("||g - g(previous refit)||^2 / ||g||^2")
-    ax.set_title("Change at each refit, median over channels (sources 1-2 not refitted 09:38-11:53Z)", fontsize=10)
+    ax.set_title(
+        "Change at each refit, median over channels (sources 1-2 not refitted 09:38-11:53Z)",
+        fontsize=10,
+    )
     ax.legend(fontsize=8, ncol=2, loc="upper left", frameon=False)
     ax.grid(color="#e5e7eb", lw=0.6, which="both")
 
@@ -246,14 +361,33 @@ def cmd_plot(a):
                 for i in range(len(mid)):
                     acc[i].extend(r["d_tot"][A[bi == i], B[bi == i]])
             y = np.array([np.median(v) if len(v) > 20 else np.nan for v in acc])
-            ax.plot(mid, y, color=col[b], ls=ls, lw=2, marker="o", ms=4, label="%s, pairs within %04.1f-%04.1fZ" % (b, h0, h1))
-            print("%s %04.1f-%04.1fZ structure function: %s" % (b, h0, h1, " ".join("%.0fmin:%.3f" % (m_, v) for m_, v in zip(mid, y))))
+            ax.plot(
+                mid,
+                y,
+                color=col[b],
+                ls=ls,
+                lw=2,
+                marker="o",
+                ms=4,
+                label="%s, pairs within %04.1f-%04.1fZ" % (b, h0, h1),
+            )
+            print(
+                "%s %04.1f-%04.1fZ structure function: %s"
+                % (
+                    b,
+                    h0,
+                    h1,
+                    " ".join("%.0fmin:%.3f" % (m_, v) for m_, v in zip(mid, y)),
+                )
+            )
     ax.plot(mid, 0.0025 * mid, color=C_CLEAN, lw=1, label="slope 1 (random walk)")
     ax.set_xscale("log")
     ax.set_yscale("log")
     ax.set_xlabel("time between the two fits (minutes)")
     ax.set_ylabel("||g_b - g_a||^2 / ||g_b||^2")
-    ax.set_title("Source 0: change vs time apart, median over channels and pairs", fontsize=10)
+    ax.set_title(
+        "Source 0: change vs time apart, median over channels and pairs", fontsize=10
+    )
     ax.legend(fontsize=8, loc="upper left", frameon=False)
     ax.grid(color="#e5e7eb", lw=0.6, which="both")
 
@@ -275,35 +409,63 @@ def cmd_plot(a):
     x, y = ph["ATSC 24"][good], ph["ATSC 30"][good]
     rho = np.corrcoef(x, y)[0, 1]
     lim = 1.1 * max(np.abs(x).max(), np.abs(y).max())
-    ax.plot([-lim, lim], [-lim, lim], color=C_CLEAN, lw=1, label="equal drift on both stations (analog chain or a shared arrival-direction change)")
-    ax.scatter(x, y, s=18, color="#374151", label="one input (%d with DTV response on every channel)" % good.sum())
+    ax.plot(
+        [-lim, lim],
+        [-lim, lim],
+        color=C_CLEAN,
+        lw=1,
+        label="equal drift on both stations (analog chain or a shared arrival-direction change)",
+    )
+    ax.scatter(
+        x,
+        y,
+        s=18,
+        color="#374151",
+        label="one input (%d with DTV response on every channel)" % good.sum(),
+    )
     ax.set_xlim(-lim, lim)
     ax.set_ylim(-lim, lim)
     ax.set_aspect("equal")
     ax.set_xlabel("ATSC 24: per-input phase of g vs setup (rad), channel median")
     ax.set_ylabel("ATSC 30: same")
-    ax.set_title("Per-input phase drift at %s UTC, common phase removed: correlation %.2f" % (
-        "%02d:%02d" % (int(hh), round(hh % 1 * 60)), rho), fontsize=10)
+    ax.set_title(
+        "Per-input phase drift at %s UTC, common phase removed: correlation %.2f"
+        % ("%02d:%02d" % (int(hh), round(hh % 1 * 60)), rho),
+        fontsize=10,
+    )
     ax.legend(fontsize=8, loc="upper left", frameon=False)
     ax.grid(color="#e5e7eb", lw=0.6)
-    print("per-input phase drift at %.2fh: rms ATSC 24 %.3f, ATSC 30 %.3f rad; correlation %.2f" % (hh, x.std(), y.std(), rho))
-    fig.suptitle("How fast the DTV fits drift: all 8 nodes, %d channels (band edges left out)" % len(rs0), fontsize=12)
+    print(
+        "per-input phase drift at %.2fh: rms ATSC 24 %.3f, ATSC 30 %.3f rad; correlation %.2f"
+        % (hh, x.std(), y.std(), rho)
+    )
+    fig.suptitle(
+        "How fast the DTV fits drift: all 8 nodes, %d channels (band edges left out)"
+        % len(rs0),
+        fontsize=12,
+    )
     fig.savefig(a.out_drift, dpi=110)
     print("saved", a.out_drift)
 
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     sp = ap.add_subparsers(dest="cmd", required=True)
     p = sp.add_parser("extract")
-    p.add_argument("--states", default=os.path.expanduser("~/gnss/builds/dtv-live/states-rev2"))
+    p.add_argument(
+        "--states", default=os.path.expanduser("~/gnss/builds/dtv-live/states-rev2")
+    )
     p.add_argument("--date", required=True)
     p.add_argument("--until", default="1300", help="HHMM UTC: last refit to use")
     p.add_argument("--procs", type=int, default=8)
     p.add_argument("--out", required=True)
     p.add_argument("nodes", nargs="*")
     p = sp.add_parser("gfull")
-    p.add_argument("--states", default=os.path.expanduser("~/gnss/builds/dtv-live/states-rev2"))
+    p.add_argument(
+        "--states", default=os.path.expanduser("~/gnss/builds/dtv-live/states-rev2")
+    )
     p.add_argument("--date", required=True)
     p.add_argument("--until", default="1300")
     p.add_argument("--node", required=True)
@@ -314,7 +476,12 @@ def main():
     p = sp.add_parser("plot")
     p.add_argument("summary")
     p.add_argument("gfull")
-    p.add_argument("--at", type=float, default=12.5, help="UTC hour of the per-input phase comparison")
+    p.add_argument(
+        "--at",
+        type=float,
+        default=12.5,
+        help="UTC hour of the per-input phase comparison",
+    )
     p.add_argument("--out-fits", required=True)
     p.add_argument("--out-drift", required=True)
     a = ap.parse_args()

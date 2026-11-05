@@ -25,7 +25,7 @@ import h5py
 import numpy as np
 
 PIECES = "/mnt/cs00/data/baseband/20261030T105920Z"
-NT, NF, BLOCK = 163840, 384, 1700          # BLOCK = 10 HDF5 chunks of 170 samples
+NT, NF, BLOCK = 163840, 384, 1700  # BLOCK = 10 HDF5 chunks of 170 samples
 
 
 def ranges(spec):
@@ -55,18 +55,22 @@ def pull_piece(path, keep, out_npy, out_freq):
             return 0, 0.0
         np.save(out_freq, cf[idx].astype(np.int32))
         tmp = out_npy + ".tmp.npy"
-        out = np.lib.format.open_memmap(tmp, mode="w+", dtype=np.uint8, shape=(NT, len(idx), 2, 64))
+        out = np.lib.format.open_memmap(
+            tmp, mode="w+", dtype=np.uint8, shape=(NT, len(idx), 2, 64)
+        )
         t0 = time.time()
         for s in range(0, NT, BLOCK):
-            blk = d[s:s + BLOCK]                      # sequential, chunk-aligned, [BLOCK, 384, 2, 64]
-            out[s:s + BLOCK] = blk[:, idx]
-        out.flush(); del out
+            blk = d[s : s + BLOCK]  # sequential, chunk-aligned, [BLOCK, 384, 2, 64]
+            out[s : s + BLOCK] = blk[:, idx]
+        out.flush()
+        del out
         os.rename(tmp, out_npy)
         return len(idx), time.time() - t0
 
 
 def cmd_pull(a):
-    keep = np.array(ranges(a.freq)); chunks = ranges(a.chunks)
+    keep = np.array(ranges(a.freq))
+    chunks = ranges(a.chunks)
     inst = instance_files()
     residues = ranges(a.residues) if a.residues != "all" else sorted(inst)
     os.makedirs(a.out, exist_ok=True)
@@ -75,40 +79,90 @@ def cmd_pull(a):
             out_npy = os.path.join(a.out, "k%02d_r%02d.npy" % (k, r))
             if os.path.exists(out_npy):
                 continue
-            path = os.path.join(PIECES, "%s_baseband_subset.%08d.h5" % (inst[r], 20 * k))
-            n, dt = pull_piece(path, keep, out_npy, os.path.join(a.out, "k%02d_r%02d_freq.npy" % (k, r)))
-            print("%s chunk %2d residue %2d (%s): %3d ch in %5.0f s (%.0f MB/s of piece)"
-                  % (time.strftime("%H:%M:%S", time.gmtime()), k, r, inst[r], n, dt, 8.07e3 / max(dt, 1e-9)), flush=True)
+            path = os.path.join(
+                PIECES, "%s_baseband_subset.%08d.h5" % (inst[r], 20 * k)
+            )
+            n, dt = pull_piece(
+                path,
+                keep,
+                out_npy,
+                os.path.join(a.out, "k%02d_r%02d_freq.npy" % (k, r)),
+            )
+            print(
+                "%s chunk %2d residue %2d (%s): %3d ch in %5.0f s (%.0f MB/s of piece)"
+                % (
+                    time.strftime("%H:%M:%S", time.gmtime()),
+                    k,
+                    r,
+                    inst[r],
+                    n,
+                    dt,
+                    8.07e3 / max(dt, 1e-9),
+                ),
+                flush=True,
+            )
 
 
 def cmd_assemble(a):
     for k in ranges(a.chunks):
         files = sorted(glob.glob(os.path.join(a.out, "k%02d_r??.npy" % k)))
         if len(files) != 16:
-            print("chunk %2d: %d/16 residues present, skipped" % (k, len(files))); continue
-        parts = [(np.load(f.replace(".npy", "_freq.npy")), np.load(f, mmap_mode="r")) for f in files]
-        freq = np.concatenate([p[0] for p in parts]); order = np.argsort(freq)
+            print("chunk %2d: %d/16 residues present, skipped" % (k, len(files)))
+            continue
+        parts = [
+            (np.load(f.replace(".npy", "_freq.npy")), np.load(f, mmap_mode="r"))
+            for f in files
+        ]
+        freq = np.concatenate([p[0] for p in parts])
+        order = np.argsort(freq)
         out_path = os.path.join(a.out, "k%02d.npy" % k)
-        out = np.lib.format.open_memmap(out_path + ".tmp.npy", mode="w+", dtype=np.uint8, shape=(NT, len(freq), 2, 64))
-        col = np.empty(len(freq), dtype=np.int64); col[order] = np.arange(len(freq))   # source column -> output column
+        out = np.lib.format.open_memmap(
+            out_path + ".tmp.npy",
+            mode="w+",
+            dtype=np.uint8,
+            shape=(NT, len(freq), 2, 64),
+        )
+        col = np.empty(len(freq), dtype=np.int64)
+        col[order] = np.arange(len(freq))  # source column -> output column
         j = 0
         for fr, arr in parts:
             for s in range(0, NT, 8192):
-                out[s:s + 8192, col[j:j + len(fr)]] = arr[s:s + 8192]
+                out[s : s + 8192, col[j : j + len(fr)]] = arr[s : s + 8192]
             j += len(fr)
-        out.flush(); del out
-        os.rename(out_path + ".tmp.npy", out_path); np.save(os.path.join(a.out, "k%02d_freq.npy" % k), freq[order].astype(np.int32))
-        print("chunk %2d assembled: %d channels %d..%d" % (k, len(freq), freq.min(), freq.max()), flush=True)
+        out.flush()
+        del out
+        os.rename(out_path + ".tmp.npy", out_path)
+        np.save(os.path.join(a.out, "k%02d_freq.npy" % k), freq[order].astype(np.int32))
+        print(
+            "chunk %2d assembled: %d channels %d..%d"
+            % (k, len(freq), freq.min(), freq.max()),
+            flush=True,
+        )
         if a.rm:
             for f in files:
-                os.remove(f); os.remove(f.replace(".npy", "_freq.npy"))
+                os.remove(f)
+                os.remove(f.replace(".npy", "_freq.npy"))
 
 
 if __name__ == "__main__":
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     sub = ap.add_subparsers(dest="cmd", required=True)
-    p = sub.add_parser("pull"); p.add_argument("--out", required=True); p.add_argument("--freq", required=True)
-    p.add_argument("--chunks", required=True); p.add_argument("--residues", default="all"); p.set_defaults(fn=cmd_pull)
-    p = sub.add_parser("assemble"); p.add_argument("--out", required=True); p.add_argument("--chunks", required=True)
-    p.add_argument("--rm", action="store_true", help="delete the per-residue files after assembling"); p.set_defaults(fn=cmd_assemble)
-    args = ap.parse_args(); args.fn(args)
+    p = sub.add_parser("pull")
+    p.add_argument("--out", required=True)
+    p.add_argument("--freq", required=True)
+    p.add_argument("--chunks", required=True)
+    p.add_argument("--residues", default="all")
+    p.set_defaults(fn=cmd_pull)
+    p = sub.add_parser("assemble")
+    p.add_argument("--out", required=True)
+    p.add_argument("--chunks", required=True)
+    p.add_argument(
+        "--rm",
+        action="store_true",
+        help="delete the per-residue files after assembling",
+    )
+    p.set_defaults(fn=cmd_assemble)
+    args = ap.parse_args()
+    args.fn(args)

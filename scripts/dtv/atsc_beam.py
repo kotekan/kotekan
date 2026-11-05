@@ -43,6 +43,7 @@ def ipfb_beam(X, V, D, ref, freq_hz, eps, nfft=4096):
     """Per fine bin: undo the PFB aliasing across channels on every input (atsc_ipfb's tridiagonal
     Wiener inverse), then beam each channel with its own weights, then stitch."""
     from atsc_ipfb import response
+
     n = len(X)
     u = (np.arange(nfft) - nfft // 2) / nfft
     A0, Ap, Am = response(u), response(u + 1), response(u - 1)
@@ -52,17 +53,32 @@ def ipfb_beam(X, V, D, ref, freq_hz, eps, nfft=4096):
     M[:, idx[:-1], idx[1:]] = Ap[:, None]
     M[:, idx[1:], idx[:-1]] = Am[:, None]
     MtM = np.einsum("jkl,jkm->jlm", M, M)
-    P = np.linalg.solve(MtM + eps * np.max(A0 ** 2) * np.eye(n)[None], np.transpose(M, (0, 2, 1))).astype(np.complex64)
+    P = np.linalg.solve(
+        MtM + eps * np.max(A0 ** 2) * np.eye(n)[None], np.transpose(M, (0, 2, 1))
+    ).astype(np.complex64)
     # weights per channel, in the reference input's units: [i, k]
-    Wk = np.array([V[c] / np.sqrt(np.maximum(D[c], 1e-3)) * (np.sqrt(D[c][ref]) * np.conj(V[c][ref])) for c in range(n)]).T.astype(np.complex64)
+    Wk = np.array(
+        [
+            V[c]
+            / np.sqrt(np.maximum(D[c], 1e-3))
+            * (np.sqrt(D[c][ref]) * np.conj(V[c][ref]))
+            for c in range(n)
+        ]
+    ).T.astype(np.complex64)
     Xa = np.stack(X)  # [k, t, i]
     n_t = Xa.shape[1] // nfft * nfft
     out = np.empty(n_t * n, np.complex64)
     for b in range(0, n_t, nfft):
-        F = sfft.fftshift(sfft.fft(Xa[:, b: b + nfft, :], axis=1, workers=8), axes=1)  # [l, j, i]
-        G = (F.reshape(n * nfft, -1) @ Wk).reshape(n, nfft, n)  # G[l, j, k] = channel l's data beamed with channel k's weights
+        F = sfft.fftshift(
+            sfft.fft(Xa[:, b : b + nfft, :], axis=1, workers=8), axes=1
+        )  # [l, j, i]
+        G = (F.reshape(n * nfft, -1) @ Wk).reshape(
+            n, nfft, n
+        )  # G[l, j, k] = channel l's data beamed with channel k's weights
         B = np.einsum("jkl,ljk->kj", P, G)
-        out[b * n: (b + nfft) * n] = sfft.ifft(sfft.ifftshift(B.reshape(-1)), workers=8) * n
+        out[b * n : (b + nfft) * n] = (
+            sfft.ifft(sfft.ifftshift(B.reshape(-1)), workers=8) * n
+        )
     fs = n * CS
     fc = freq_hz.min() + (n - 1) * CS / 2.0
     return out, fs, fc
@@ -73,9 +89,15 @@ def main():
     ap.add_argument("--dir", default="/var/tmp/bb1030/dtv")
     ap.add_argument("--chunk", type=int, default=0)
     ap.add_argument("--freq", default="2897-2929")
-    ap.add_argument("--ref", type=int, default=-1, help="reference input (default: best median |v|)")
+    ap.add_argument(
+        "--ref", type=int, default=-1, help="reference input (default: best median |v|)"
+    )
     ap.add_argument("--out", required=True)
-    ap.add_argument("--ipfb", action="store_true", help="alias-cancelling stitch per input before beamforming (atsc_ipfb.py)")
+    ap.add_argument(
+        "--ipfb",
+        action="store_true",
+        help="alias-cancelling stitch per input before beamforming (atsc_ipfb.py)",
+    )
     ap.add_argument("--eps", type=float, default=1e-3)
     a = ap.parse_args()
     lo, hi = (int(v) for v in a.freq.split("-"))
@@ -89,14 +111,23 @@ def main():
         R = (xw.T @ xw.conj()).astype(np.complex128) / NT  # R_ik = <x_i conj(x_k)>
         ev, U = np.linalg.eigh(R)
         noise = np.mean(ev[8:108])
-        V.append(U[:, -1].conj())  # with R_ik = <x_i x_k*>, the beam yw @ conj(u) maximises; keep conj(u) as the weight
+        V.append(
+            U[:, -1].conj()
+        )  # with R_ik = <x_i x_k*>, the beam yw @ conj(u) maximises; keep conj(u) as the weight
         D.append(p)
         LAM.append(ev[::-1][:6] / noise)
         X.append(x)
-        print("freq_id %d (%.3f MHz): lam/noise %s" % (fid, fid * CS / 1e6, " ".join("%.1f" % v for v in LAM[-1])), flush=True)
+        print(
+            "freq_id %d (%.3f MHz): lam/noise %s"
+            % (fid, fid * CS / 1e6, " ".join("%.1f" % v for v in LAM[-1])),
+            flush=True,
+        )
     V, D, LAM = np.array(V), np.array(D), np.array(LAM)
     ref = a.ref if a.ref >= 0 else int(np.argmax(np.median(np.abs(V), axis=0)))
-    print("reference input %d (median |v| %.3f, max %.3f)" % (ref, np.median(np.abs(V[:, ref])), np.median(np.abs(V), axis=0).max()))
+    print(
+        "reference input %d (median |v| %.3f, max %.3f)"
+        % (ref, np.median(np.abs(V[:, ref])), np.median(np.abs(V), axis=0).max())
+    )
     beams = np.empty((len(fids), NT), np.complex64)
     for c, x in enumerate(X):
         # beam b = sum_i (x_i / sqrt(D_i)) * wv_i with wv = conj(u): b = c_tx * sum|u|^2 = c_tx for x = c_tx sqrt(D) u.
@@ -117,8 +148,10 @@ def main():
     P = np.abs(Z) ** 2
     k = int(np.argmax(P))
     med = np.median(P)
-    print("stitched: %d samples at %.4f MHz, centre %.4f MHz; strongest line %.6f MHz at %.1f dB over the median bin"
-          % (n, fs / 1e6, fc / 1e6, f[k] / 1e6, 10 * np.log10(P[k] / med)))
+    print(
+        "stitched: %d samples at %.4f MHz, centre %.4f MHz; strongest line %.6f MHz at %.1f dB over the median bin"
+        % (n, fs / 1e6, fc / 1e6, f[k] / 1e6, 10 * np.log10(P[k] / med))
+    )
     order = np.argsort(P)[::-1]
     shown = []
     for j in order:
@@ -130,11 +163,24 @@ def main():
     # coarse spectrum in 100 kHz bins
     eb = np.arange(f[0], f[-1], 100e3)
     idx = np.digitize(f, eb)
-    prof = np.array([P[idx == i].mean() if np.any(idx == i) else 0 for i in range(1, len(eb))])
+    prof = np.array(
+        [P[idx == i].mean() if np.any(idx == i) else 0 for i in range(1, len(eb))]
+    )
     print("spectrum (100 kHz bins, dB rel median) from %.2f MHz:" % (eb[0] / 1e6))
     print(" ".join("%.0f" % (10 * np.log10(max(v, 1e-30) / med)) for v in prof))
     os.makedirs(os.path.dirname(a.out), exist_ok=True)
-    np.savez(a.out, z=z, fs=fs, fc=fc, fids=np.array(fids), lam=LAM, v=V, d=D, ref=ref, beams=beams)
+    np.savez(
+        a.out,
+        z=z,
+        fs=fs,
+        fc=fc,
+        fids=np.array(fids),
+        lam=LAM,
+        v=V,
+        d=D,
+        ref=ref,
+        beams=beams,
+    )
     print("wrote %s (%.0f s)" % (a.out, time.time() - t0))
 
 

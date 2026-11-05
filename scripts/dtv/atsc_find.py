@@ -37,12 +37,22 @@ def main():
             pk.append(f[j])
         if len(pk) >= 6:
             break
-    print("lines within 50 kHz of %.6f MHz (offset Hz: dB over the in-band median): %s" % (
-        a.pilot / 1e6, "  ".join("%+.0f: %.0f" % (p - a.pilot, 10 * np.log10(Z[np.argmin(abs(f - p))] / med)) for p in pk)))
+    print(
+        "lines within 50 kHz of %.6f MHz (offset Hz: dB over the in-band median): %s"
+        % (
+            a.pilot / 1e6,
+            "  ".join(
+                "%+.0f: %.0f"
+                % (p - a.pilot, 10 * np.log10(Z[np.argmin(abs(f - p))] / med))
+                for p in pk
+            ),
+        )
+    )
     # notch narrow lines (pilots, carriers): bins > 10 dB over the running median of +-2 kHz
     Zc = sfft.fft(z, workers=8)
     P = np.abs(Zc) ** 2
     from scipy.ndimage import median_filter
+
     w = int(2e3 / (fs / n)) | 1
     mloc = median_filter(P, size=w, mode="wrap")
     mask = P > 10 * mloc
@@ -60,9 +70,18 @@ def main():
         j = int(np.argmax(cc))
         ppm = (lags[j] / L0 - 1) * 1e6
         o = np.argsort(cc)[::-1]
-        print("field autocorr at %2d fields: peak %.5f at %+.2f ppm (median %.5f, peak/median %.1f); next peaks at %s ppm" % (
-            kf, cc[j], ppm, np.median(cc), cc[j] / np.median(cc),
-            " ".join("%+.2f" % ((lags[q] / L0 - 1) * 1e6) for q in o[1:4])), flush=True)
+        print(
+            "field autocorr at %2d fields: peak %.5f at %+.2f ppm (median %.5f, peak/median %.1f); next peaks at %s ppm"
+            % (
+                kf,
+                cc[j],
+                ppm,
+                np.median(cc),
+                cc[j] / np.median(cc),
+                " ".join("%+.2f" % ((lags[q] / L0 - 1) * 1e6) for q in o[1:4]),
+            ),
+            flush=True,
+        )
 
 
 if __name__ == "__main__":

@@ -31,7 +31,9 @@ def tsec(hhmmss):
 
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("--from", dest="t0", default="0250")
     ap.add_argument("--to", dest="t1", default="1300")
     ap.add_argument("--out", required=True)
@@ -54,7 +56,17 @@ def main():
                 srcs = [k] if kind == "r" else [k]
                 for s in srcs:
                     if np.any(r["g"][s] != 0):
-                        rows.append((node, int(fid), s, t, kind, r["w"][s].copy(), r["g"][s].copy()))
+                        rows.append(
+                            (
+                                node,
+                                int(fid),
+                                s,
+                                t,
+                                kind,
+                                r["w"][s].copy(),
+                                r["g"][s].copy(),
+                            )
+                        )
     # per (node, fid, source): the fits in time order, de-duplicated (a source-1 fit file repeats source 0's g)
     series = {}
     for node, fid, s, t, kind, w, g in rows:
@@ -68,12 +80,28 @@ def main():
         G = np.array([x[3] for x in v])  # [n, n_lag, NI]
         n = len(t)
         g0 = G[0].ravel()
-        dw = np.array([np.linalg.norm(W[i] - W[0]) / max(np.linalg.norm(W[0]), 1e-30) for i in range(n)])
+        dw = np.array(
+            [
+                np.linalg.norm(W[i] - W[0]) / max(np.linalg.norm(W[0]), 1e-30)
+                for i in range(n)
+            ]
+        )
         pw = np.array([np.sum(np.abs(G[i]) ** 2) for i in range(n)])
-        coh = np.array([np.abs(np.vdot(g0, G[i].ravel())) / max(np.linalg.norm(g0) * np.linalg.norm(G[i]), 1e-30)
-                        for i in range(n)])
-        step = np.array([np.nan] + [np.sum(np.abs(G[i] - G[i - 1]) ** 2) / max(np.sum(np.abs(G[i - 1]) ** 2), 1e-30)
-                                    for i in range(1, n)])
+        coh = np.array(
+            [
+                np.abs(np.vdot(g0, G[i].ravel()))
+                / max(np.linalg.norm(g0) * np.linalg.norm(G[i]), 1e-30)
+                for i in range(n)
+            ]
+        )
+        step = np.array(
+            [np.nan]
+            + [
+                np.sum(np.abs(G[i] - G[i - 1]) ** 2)
+                / max(np.sum(np.abs(G[i - 1]) ** 2), 1e-30)
+                for i in range(1, n)
+            ]
+        )
         prof = np.sum(np.abs(G) ** 2, axis=2)  # [n, n_lag]
         node, fid, s = key
         tag = "%s_%d_s%d" % key
@@ -83,10 +111,24 @@ def main():
         out[tag + "_coh"] = coh
         out[tag + "_step"] = step
         out[tag + "_prof"] = prof
-        summ.append((node, fid, s, n, float(np.nanmax(dw)), float(np.nanmedian(step)), float(np.nanpercentile(step, 90)),
-                     float(coh[-1]), float(coh.min()), float(pw[-1] / pw[0])))
+        summ.append(
+            (
+                node,
+                fid,
+                s,
+                n,
+                float(np.nanmax(dw)),
+                float(np.nanmedian(step)),
+                float(np.nanpercentile(step, 90)),
+                float(coh[-1]),
+                float(coh.min()),
+                float(pw[-1] / pw[0]),
+            )
+        )
     # power left before each refit, and explained fractions, from the node logs
-    pl = re.compile(r"^(cx\d+) (\d\d):(\d\d):(\d\d)Z before the refit of \S+: power left (.*)$")
+    pl = re.compile(
+        r"^(cx\d+) (\d\d):(\d\d):(\d\d)Z before the refit of \S+: power left (.*)$"
+    )
     for node in NODES:
         path = os.path.join(a.logs, node + ".log")
         if not os.path.exists(path):
@@ -106,7 +148,9 @@ def main():
         for f, v in vals.items():
             out["%s_%d_left" % (node, f)] = np.array(v)
     np.savez(a.out, **out)
-    print("node fid src fits  max|dw|  step_med step_p90  coh_last coh_min  pw_last/first")
+    print(
+        "node fid src fits  max|dw|  step_med step_p90  coh_last coh_min  pw_last/first"
+    )
     for r in summ:
         print("%s %d %d %4d  %.1e  %.3f    %.3f    %.3f    %.3f   %.2f" % r)
     print("saved", a.out)

@@ -47,17 +47,27 @@ def main():
         x = load_channel(a.dir, a.chunk, fid).astype(np.complex128)
         n = x.shape[0]
         w = np.zeros(n)
-        w[S.EDGE: n - S.EDGE] = 1
+        w[S.EDGE : n - S.EDGE] = 1
         regs = S.band_regressors(RZd, fz, fid, fids)
         if abs(fid * CS - f_pil) < 1.5 * CS:
             regs += S.band_regressors(RZp, fz, fid, fids)
-        regs = [r for r in regs if np.mean(np.abs(r[S.EDGE: n - S.EDGE]) ** 2) > 1e-12]  # neighbours outside the stitched set are empty
+        regs = [
+            r for r in regs if np.mean(np.abs(r[S.EDGE : n - S.EDGE]) ** 2) > 1e-12
+        ]  # neighbours outside the stitched set are empty
         X = np.fft.fft(x * w[:, None], db.NFFT, axis=0)
         G, Gf, Sf, model = db.fit_lagged(X, [r * w for r in regs], lags)
         res = np.fft.ifft(X - model, axis=0)[:n].astype(np.complex64)
         np.save(os.path.join(a.out_dir, "res_%d.npy" % fid), res)
         sl = slice(S.EDGE, n - S.EDGE)
-        print("%d: power left %.3f (%.0f s)" % (fid, np.sum(np.abs(res[sl]) ** 2) / np.sum(np.abs(x[sl]) ** 2), time.time() - t0), flush=True)
+        print(
+            "%d: power left %.3f (%.0f s)"
+            % (
+                fid,
+                np.sum(np.abs(res[sl]) ** 2) / np.sum(np.abs(x[sl]) ** 2),
+                time.time() - t0,
+            ),
+            flush=True,
+        )
 
 
 if __name__ == "__main__":

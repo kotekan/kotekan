@@ -34,7 +34,11 @@ def main():
     ap.add_argument("--modes", default="/var/tmp/bb1030/dtv/modes_k00.npz")
     ap.add_argument("--dir", default="/var/tmp/bb1030/dtv")
     ap.add_argument("--chunk", type=int, default=0)
-    ap.add_argument("--lags", default="-8:40", help="lag windows to compare, lmin:lmax[,lmin:lmax...] (own template only when several)")
+    ap.add_argument(
+        "--lags",
+        default="-8:40",
+        help="lag windows to compare, lmin:lmax[,lmin:lmax...] (own template only when several)",
+    )
     a = ap.parse_args()
     m = np.load(a.modes)
     mfreq, clean, V16, mlam = m["freq"].astype(np.int64), m["clean"], m["V"], m["lam"]
@@ -52,26 +56,53 @@ def main():
         x = xs[fid]
         n = x.shape[0]
         w = np.zeros(n)
-        w[EDGE: n - EDGE] = 1
+        w[EDGE : n - EDGE] = 1
         X = np.fft.fft(x * w[:, None], db.NFFT, axis=0)
         sl = slice(EDGE + 64, n - EDGE - 64)
         out = []
-        cases = ([("live recipe (own template)", [ss[fid]], np.arange(-8, 41)), ("+ neighbours' templates", [ss[fid - 1], ss[fid], ss[fid + 1]], np.arange(-8, 41))]
-                 if len(windows) == 1 else [("own template, lags %+d..%+d" % w_, [ss[fid]], np.arange(w_[0], w_[1] + 1)) for w_ in windows])
+        cases = (
+            [
+                ("live recipe (own template)", [ss[fid]], np.arange(-8, 41)),
+                (
+                    "+ neighbours' templates",
+                    [ss[fid - 1], ss[fid], ss[fid + 1]],
+                    np.arange(-8, 41),
+                ),
+            ]
+            if len(windows) == 1
+            else [
+                (
+                    "own template, lags %+d..%+d" % w_,
+                    [ss[fid]],
+                    np.arange(w_[0], w_[1] + 1),
+                )
+                for w_ in windows
+            ]
+        )
         for name, regs, lags in cases:
             G, Gf, Sf, model = db.fit_lagged(X, [r * w for r in regs], lags)
             res = np.fft.ifft(X - model, axis=0)[:n]
             R, lam, V, pw = db.whitened_eig(res[sl])
             nu = lam[20:120].mean()
             ex, _ = db.tau_excess(R, Q)
-            line = "%s: %s (kept %.2f)" % (name, " ".join("%.2f" % (v / nu) for v in lam[:6]), ex / ref)
+            line = "%s: %s (kept %.2f)" % (
+                name,
+                " ".join("%.2f" % (v / nu) for v in lam[:6]),
+                ex / ref,
+            )
             # one more protected blind source on top
             rb = db.blind(res, -lags[0], lags[-1], 1, Q, lambda m_: None, protect=True)
             R2, lam2, _, _ = db.whitened_eig(rb["r"][sl])
             ex2, _ = db.tau_excess(R2, Q)
-            line += "; + 1 protected source: %s (kept %.2f)" % (" ".join("%.2f" % (v / lam2[20:120].mean()) for v in lam2[:5]), ex2 / ref)
+            line += "; + 1 protected source: %s (kept %.2f)" % (
+                " ".join("%.2f" % (v / lam2[20:120].mean()) for v in lam2[:5]),
+                ex2 / ref,
+            )
             out.append(line)
-        print("%d (%.2f MHz)\n   %s" % (fid, fid * CS / 1e6, "\n   ".join(out)), flush=True)
+        print(
+            "%d (%.2f MHz)\n   %s" % (fid, fid * CS / 1e6, "\n   ".join(out)),
+            flush=True,
+        )
 
 
 if __name__ == "__main__":

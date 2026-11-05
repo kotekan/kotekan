@@ -47,7 +47,7 @@ def modes(cov):
     m = keep.sum()
     ev, U = np.linalg.eigh(R)
     ev, U = ev[::-1], U[:, ::-1]
-    noise = ev[20: m - 8].mean()
+    noise = ev[20 : m - 8].mean()
     u1 = U[:, 0]
     nf = cov.shape[0]
     p, ov = [], []
@@ -61,7 +61,9 @@ def modes(cov):
 
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("covs", nargs="+")
     ap.add_argument("--out")
     a = ap.parse_args()
@@ -70,7 +72,17 @@ def main():
         z = np.load(path)
         for c, fid in enumerate(z["freq"]):
             lam, cv, ov, m = modes(z["cov"][c].astype(np.complex128))
-            rows.append(dict(fid=int(fid), mhz=fid * CS, lam=lam, cv=cv, ov=ov, m=m, band=band_of(fid * CS)))
+            rows.append(
+                dict(
+                    fid=int(fid),
+                    mhz=fid * CS,
+                    lam=lam,
+                    cv=cv,
+                    ov=ov,
+                    m=m,
+                    band=band_of(fid * CS),
+                )
+            )
     rows.sort(key=lambda r: r["fid"])
     clean = [r for r in rows if r["band"] == "clean / other"]
     # Tau A's level: the clean channels' top eigenvalue, interpolated in frequency
@@ -80,25 +92,62 @@ def main():
     def taua(mhz):
         return float(np.interp(mhz, cf, cl)) if len(cf) else 5.0
 
-    print("%6s %8s %-40s %4s  %-38s %4s %4s %6s %5s" % ("fid", "MHz", "band", "m", "lam1..6 (noise units)", ">2",
-                                                         ">TA", "cv1", "ov1"))
+    print(
+        "%6s %8s %-40s %4s  %-38s %4s %4s %6s %5s"
+        % (
+            "fid",
+            "MHz",
+            "band",
+            "m",
+            "lam1..6 (noise units)",
+            ">2",
+            ">TA",
+            "cv1",
+            "ov1",
+        )
+    )
     for r in rows:
         r["ta"] = taua(r["mhz"])
         r["n2"] = int((r["lam"] > 2).sum())
         r["nta"] = int((r["lam"] > r["ta"] * 1.2).sum())
-        print("%6d %8.3f %-40s %4d  %-38s %4d %4d %6.3f %5.3f" % (
-            r["fid"], r["mhz"], r["band"][:40], r["m"], " ".join("%5.1f" % x for x in r["lam"][:6]), r["n2"], r["nta"],
-            r["cv"], r["ov"]))
-    print("\nper band (channel medians; Tau A level = clean channels' top eigenvalue, interpolated):")
-    print("%-42s %4s %8s %8s %6s %6s %6s %6s" % ("band", "n", "lam1", "TauA", ">2", ">1.2TA", "cv1", "ov1"))
+        print(
+            "%6d %8.3f %-40s %4d  %-38s %4d %4d %6.3f %5.3f"
+            % (
+                r["fid"],
+                r["mhz"],
+                r["band"][:40],
+                r["m"],
+                " ".join("%5.1f" % x for x in r["lam"][:6]),
+                r["n2"],
+                r["nta"],
+                r["cv"],
+                r["ov"],
+            )
+        )
+    print(
+        "\nper band (channel medians; Tau A level = clean channels' top eigenvalue, interpolated):"
+    )
+    print(
+        "%-42s %4s %8s %8s %6s %6s %6s %6s"
+        % ("band", "n", "lam1", "TauA", ">2", ">1.2TA", "cv1", "ov1")
+    )
     for lab in [b[0] for b in BANDS] + ["clean / other"]:
         rs = [r for r in rows if r["band"] == lab]
         if not rs:
             continue
-        print("%-42s %4d %8.1f %8.1f %6.1f %6.1f %6.3f %6.3f" % (
-            lab[:42], len(rs), np.median([r["lam"][0] for r in rs]), np.median([r["ta"] for r in rs]),
-            np.median([r["n2"] for r in rs]), np.median([r["nta"] for r in rs]), np.median([r["cv"] for r in rs]),
-            np.median([r["ov"] for r in rs])))
+        print(
+            "%-42s %4d %8.1f %8.1f %6.1f %6.1f %6.3f %6.3f"
+            % (
+                lab[:42],
+                len(rs),
+                np.median([r["lam"][0] for r in rs]),
+                np.median([r["ta"] for r in rs]),
+                np.median([r["n2"] for r in rs]),
+                np.median([r["nta"] for r in rs]),
+                np.median([r["cv"] for r in rs]),
+                np.median([r["ov"] for r in rs]),
+            )
+        )
     if a.out:
         import matplotlib
 
@@ -106,15 +155,35 @@ def main():
         import matplotlib.pyplot as plt
 
         groups = [b for b in BANDS if any(r["band"] == b[0] for r in rows)]
-        fig, axs = plt.subplots(1, len(groups), figsize=(3.2 * len(groups) + 1, 4.6), sharey=True, squeeze=False)
+        fig, axs = plt.subplots(
+            1,
+            len(groups),
+            figsize=(3.2 * len(groups) + 1, 4.6),
+            sharey=True,
+            squeeze=False,
+        )
         shades = ["#0b3d91", "#2563eb", "#60a5fa", "#93c5fd", "#bfdbfe", "#dbeafe"]
         for ax, (lab, lo, hi) in zip(axs[0], groups):
             pad = 3.0
             rs = [r for r in rows if lo - pad <= r["mhz"] <= hi + pad]
             x = np.array([r["mhz"] for r in rs])
             for k in range(5, -1, -1):
-                ax.plot(x, [r["lam"][k] for r in rs], "o", ms=3, color=shades[k], label="eigenvalue %d" % (k + 1))
-            ax.plot(x, [r["ta"] for r in rs], color="#6b7280", lw=1, ls="--", label="Tau A level (clean channels)")
+                ax.plot(
+                    x,
+                    [r["lam"][k] for r in rs],
+                    "o",
+                    ms=3,
+                    color=shades[k],
+                    label="eigenvalue %d" % (k + 1),
+                )
+            ax.plot(
+                x,
+                [r["ta"] for r in rs],
+                color="#6b7280",
+                lw=1,
+                ls="--",
+                label="Tau A level (clean channels)",
+            )
             ax.axvspan(lo, hi, color="#fde68a", alpha=0.3, lw=0)
             ax.set_yscale("log")
             ax.set_title(lab, fontsize=8)
@@ -123,8 +192,10 @@ def main():
             ax.grid(color="#e5e7eb", lw=0.6)
         axs[0][0].set_ylabel("whitened eigenvalue (noise units)")
         axs[0][0].legend(fontsize=6, loc="upper left", frameon=False)
-        fig.suptitle("Spatial modes per channel\n10-30 dump chunk 0 (0.84 s, Tau A at boresight); shaded: the allocation",
-                     fontsize=9)
+        fig.suptitle(
+            "Spatial modes per channel\n10-30 dump chunk 0 (0.84 s, Tau A at boresight); shaded: the allocation",
+            fontsize=9,
+        )
         fig.tight_layout()
         fig.savefig(a.out, dpi=110)
         print("saved", a.out)

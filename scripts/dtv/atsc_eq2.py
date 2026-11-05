@@ -35,7 +35,11 @@ def equalise(y, lg, h, eps):
     gl = np.arange(-(len(g) // 2), len(g) // 2 + 1)
     gf[gl % n] = g
     H = sfft.fft(hf, workers=W)
-    E = sfft.fft(gf, workers=W) * np.conj(H) / (np.abs(H) ** 2 + eps * np.max(np.abs(H) ** 2))
+    E = (
+        sfft.fft(gf, workers=W)
+        * np.conj(H)
+        / (np.abs(H) ** 2 + eps * np.max(np.abs(H) ** 2))
+    )
     return sfft.ifft(sfft.fft(y, workers=W) * E, workers=W)
 
 
@@ -51,14 +55,25 @@ def main():
     ap.add_argument("--rx", required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument("--iters", type=int, default=4)
-    ap.add_argument("--win", type=int, default=8, help="segments per phase estimate (77 us each)")
+    ap.add_argument(
+        "--win", type=int, default=8, help="segments per phase estimate (77 us each)"
+    )
     ap.add_argument("--span", type=int, default=220)
     ap.add_argument("--eps", type=float, default=3e-3)
-    ap.add_argument("--dd", type=int, default=0, help="from this pass on (>0), train on the decisions as well")
+    ap.add_argument(
+        "--dd",
+        type=int,
+        default=0,
+        help="from this pass on (>0), train on the decisions as well",
+    )
     a = ap.parse_args()
     t0 = time.time()
     d = np.load(a.rx)
-    y2, fslot, rsign = d["y2"].astype(np.complex128), int(d["fslot"]), complex(d["rsign"])
+    y2, fslot, rsign = (
+        d["y2"].astype(np.complex128),
+        int(d["fslot"]),
+        complex(d["rsign"]),
+    )
     L = 2 * SEG
     nseg = len(y2) // L
     y2 = y2[: nseg * L]
@@ -105,15 +120,44 @@ def main():
         dec = LEVELS[np.argmin(np.abs(ar[:, None] - LEVELS[None, :]), axis=1)]
         held = Ar[odd, 4:515]
         mer_h = 10 * np.log10(25.0 / np.mean((held - pn) ** 2))
-        ser_h = np.mean(LEVELS[np.argmin(np.abs(held.reshape(-1)[:, None] - LEVELS[None, :]), axis=1)] != np.tile(pn, len(odd)))
+        ser_h = np.mean(
+            LEVELS[
+                np.argmin(np.abs(held.reshape(-1)[:, None] - LEVELS[None, :]), axis=1)
+            ]
+            != np.tile(pn, len(odd))
+        )
         sign_h = np.mean(np.sign(held) != pn / 5)
         Dd = dec.reshape(nseg, SEG)
-        mer_dd = 10 * np.log10(np.mean(Dd[data] ** 2) / np.mean((Ar[data] - Dd[data]) ** 2))
+        mer_dd = 10 * np.log10(
+            np.mean(Dd[data] ** 2) / np.mean((Ar[data] - Dd[data]) ** 2)
+        )
         ssok = np.mean(np.all(Dd[:, :4] == SS, axis=1))
-        print("pass %d (%s): phase-track step rms %.1f deg; held-out PN511 MER %.1f dB, symbol errors %.4f, sign errors %.4f; "
-              "seg syncs exact %.3f; decision MER %.1f dB" % (it, how, np.degrees(np.std(dphi - dphi.mean())), mer_h, ser_h, sign_h, ssok, mer_dd), flush=True)
+        print(
+            "pass %d (%s): phase-track step rms %.1f deg; held-out PN511 MER %.1f dB, symbol errors %.4f, sign errors %.4f; "
+            "seg syncs exact %.3f; decision MER %.1f dB"
+            % (
+                it,
+                how,
+                np.degrees(np.std(dphi - dphi.mean())),
+                mer_h,
+                ser_h,
+                sign_h,
+                ssok,
+                mer_dd,
+            ),
+            flush=True,
+        )
         phi = phi + dphi + np.angle(beta)
-    np.savez(a.out, a=ar.astype(np.float32), dec=dec.astype(np.int8), phi=phi.astype(np.float32), lg=lg, h=h, fslot=fslot, mer_held=mer_h)
+    np.savez(
+        a.out,
+        a=ar.astype(np.float32),
+        dec=dec.astype(np.int8),
+        phi=phi.astype(np.float32),
+        lg=lg,
+        h=h,
+        fslot=fslot,
+        mer_held=mer_h,
+    )
     print("wrote %s (%.0f s)" % (a.out, time.time() - t0))
 
 

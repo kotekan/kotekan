@@ -23,7 +23,12 @@ def main():
     ap.add_argument("--rx", required=True)
     a = ap.parse_args()
     d = np.load(a.rx)
-    y2, fslot, rsign, delta = d["y2"].astype(np.complex128), int(d["fslot"]), complex(d["rsign"]), float(d["delta"])
+    y2, fslot, rsign, delta = (
+        d["y2"].astype(np.complex128),
+        int(d["fslot"]),
+        complex(d["rsign"]),
+        float(d["delta"]),
+    )
     L = 2 * SEG
     nseg = len(y2) // L
     y2 = y2[: nseg * L]
@@ -48,9 +53,20 @@ def main():
     taus, fi = np.array(taus), np.array(fi)
     p = np.polyfit(fi, taus, 1)
     corr = p[0] / (2 * SEG * FIELD)
-    print("timing per field (samples at 2/symbol): %s" % " ".join("%+.2f" % v for v in taus))
-    print("drift %.4f samples/field -> clock correction %+.4f ppm: use --delta %.4f (was %.4f); fit rms %.3f samples" % (
-        p[0], corr * 1e6, (delta + corr) * 1e6, delta * 1e6, np.std(taus - np.polyval(p, fi))))
+    print(
+        "timing per field (samples at 2/symbol): %s"
+        % " ".join("%+.2f" % v for v in taus)
+    )
+    print(
+        "drift %.4f samples/field -> clock correction %+.4f ppm: use --delta %.4f (was %.4f); fit rms %.3f samples"
+        % (
+            p[0],
+            corr * 1e6,
+            (delta + corr) * 1e6,
+            delta * 1e6,
+            np.std(taus - np.polyval(p, fi)),
+        )
+    )
 
 
 if __name__ == "__main__":

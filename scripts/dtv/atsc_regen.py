@@ -44,7 +44,18 @@ def main():
     # per-level statistics of the equalised symbols against the decoded ones (data only)
     filled = t["filled"]
     print("equalised vs decoded level (data symbols): level: mean error, rms error")
-    print("   " + "  ".join("%+d: %+.2f/%.2f" % (L, np.mean(ar[filled & (sym == L)] - L), np.std(ar[filled & (sym == L)] - L)) for L in range(-7, 8, 2)))
+    print(
+        "   "
+        + "  ".join(
+            "%+d: %+.2f/%.2f"
+            % (
+                L,
+                np.mean(ar[filled & (sym == L)] - L),
+                np.std(ar[filled & (sym == L)] - L),
+            )
+            for L in range(-7, 8, 2)
+        )
+    )
     hard = np.clip(2 * np.round((ar + 7) / 2) - 7, -7, 7)
     hard[~filled] = sym[~filled]
     for name, s in (("trellis-decoded", sym), ("raw slicer", hard)):
@@ -58,10 +69,25 @@ def main():
         res = y - pred
         rr = np.abs(res) ** 2
         pp = np.abs(pred) ** 2
-        per = [10 * np.log10(rr[f0 * 2 * SEG:(f0 + FIELD) * 2 * SEG].sum() / pp[f0 * 2 * SEG:(f0 + FIELD) * 2 * SEG].sum())
-               for f0 in range(0, nseg - FIELD + 1, FIELD)]
-        print("%s symbols: residual / replica power over the record %.4f (%.1f dB); per field min/median/max %.1f / %.1f / %.1f dB"
-              % (name, rr.sum() / pp.sum(), 10 * np.log10(rr.sum() / pp.sum()), min(per), np.median(per), max(per)))
+        per = [
+            10
+            * np.log10(
+                rr[f0 * 2 * SEG : (f0 + FIELD) * 2 * SEG].sum()
+                / pp[f0 * 2 * SEG : (f0 + FIELD) * 2 * SEG].sum()
+            )
+            for f0 in range(0, nseg - FIELD + 1, FIELD)
+        ]
+        print(
+            "%s symbols: residual / replica power over the record %.4f (%.1f dB); per field min/median/max %.1f / %.1f / %.1f dB"
+            % (
+                name,
+                rr.sum() / pp.sum(),
+                10 * np.log10(rr.sum() / pp.sum()),
+                min(per),
+                np.median(per),
+                max(per),
+            )
+        )
         if a.out and name.startswith("trellis"):
             np.savez(a.out, lg=lg, h=h, res_ratio=rr.sum() / pp.sum())
     # what a replica with NO errors would leave: the floor seen inside the known PN511 (atsc pnresid) was ~-18.5 dB

@@ -60,7 +60,11 @@ def cmd_prep(a):
         col = int(np.nonzero(fr == fid)[0][0])
         raw = np.load("%s/k%02d_r%02d.npy" % (DIR, a.chunk, r), mmap_mode="r")
         out[:, c, :] = np.asarray(raw[:, col]).reshape(NT, 128)
-        print("freq_id %d (%.3f MHz): residue %d column %d" % (fid, fid * 0.1953125, r, col), flush=True)
+        print(
+            "freq_id %d (%.3f MHz): residue %d column %d"
+            % (fid, fid * 0.1953125, r, col),
+            flush=True,
+        )
     out.tofile(a.out)
     print("wrote %s: %d frames x %d channels" % (a.out, NT // FRAME, len(fids)))
 
@@ -69,14 +73,22 @@ def cmd_protect(a):
     """Source a.source's weights: from the raw channel (source 0) or from a replay's residual bytes
     (--res, a later source), added to --state's records (or a new observe-only state)."""
     fids = fids_of(a.freq)
-    st = dtv_state.read_state(a.state) if a.state else dict(n_lag=a.n_lag, lag_min=a.lag_min, n_src=a.nsrc, recs={})
+    st = (
+        dtv_state.read_state(a.state)
+        if a.state
+        else dict(n_lag=a.n_lag, lag_min=a.lag_min, n_src=a.nsrc, recs={})
+    )
     res = np.fromfile(a.res, np.uint8).reshape(NT, len(fids), 128) if a.res else None
     for c, fid in enumerate(fids):
         Q, _ = template(a.modes, fid)
         if Q is None:
             raise SystemExit("freq_id %d: no Tau A template" % fid)
         sl = frame_slice(a.frames)
-        x = LUT[res[sl, c, :]] if res is not None else load_channel(DIR, a.chunk, fid)[sl]
+        x = (
+            LUT[res[sl, c, :]]
+            if res is not None
+            else load_channel(DIR, a.chunk, fid)[sl]
+        )
         R, lam, V, p = whitened_eig(x)
         P = np.eye(128) - Q @ Q.conj().T
         ev, U = np.linalg.eigh(P @ R @ P)
@@ -85,17 +97,33 @@ def cmd_protect(a):
         w = (np.conj(v) / np.sqrt(np.maximum(p, 1e-3))).astype(np.complex64)
         rec = st["recs"].get(fid)
         if rec is None:
-            rec = dict(n_set=0, subtract=0, w=np.zeros((st["n_src"], 128), np.complex64),
-                       g=np.zeros((st["n_src"], st["n_lag"], 128), np.complex64))
+            rec = dict(
+                n_set=0,
+                subtract=0,
+                w=np.zeros((st["n_src"], 128), np.complex64),
+                g=np.zeros((st["n_src"], st["n_lag"], 128), np.complex64),
+            )
             st["recs"][fid] = rec
         rec["w"][a.source] = w
         rec["n_set"] = max(rec["n_set"], a.source + 1)
         n = lam[20:120].mean()
-        print("freq_id %d source %d: %s whitened eigenvalues/noise %s; protected top eigenvalue %.1f; |v . Tau A template|^2 %.4f" % (
-            fid, a.source, "residual" if res is not None else "raw", " ".join("%.1f" % (l / n) for l in lam[:5]), ev[-1] / n,
-            np.sum(np.abs(Q.conj().T @ v) ** 2)), flush=True)
+        print(
+            "freq_id %d source %d: %s whitened eigenvalues/noise %s; protected top eigenvalue %.1f; |v . Tau A template|^2 %.4f"
+            % (
+                fid,
+                a.source,
+                "residual" if res is not None else "raw",
+                " ".join("%.1f" % (l / n) for l in lam[:5]),
+                ev[-1] / n,
+                np.sum(np.abs(Q.conj().T @ v) ** 2),
+            ),
+            flush=True,
+        )
     dtv_state.write_state(a.out, st)
-    print("wrote %s (source %d without g: fit it from a replay with this state)" % (a.out, a.source))
+    print(
+        "wrote %s (source %d without g: fit it from a replay with this state)"
+        % (a.out, a.source)
+    )
 
 
 def score(x, Q, ref):
@@ -114,15 +142,38 @@ def cmd_eval(a):
         x1 = LUT[res[sl, c, :]]
         l0, k0, p0 = score(x0, Q, ref)
         l1, k1, p1 = score(x1, Q, ref)
-        changed = np.mean(res[sl, c, :] != np.asarray(np.load("%s/k%02d_r%02d.npy" % (DIR, a.chunk, fid % 16), mmap_mode="r")[sl, int(np.nonzero(np.load("%s/k%02d_r%02d_freq.npy" % (DIR, a.chunk, fid % 16)) == fid)[0][0])]).reshape(-1, 128))
+        changed = np.mean(
+            res[sl, c, :]
+            != np.asarray(
+                np.load("%s/k%02d_r%02d.npy" % (DIR, a.chunk, fid % 16), mmap_mode="r")[
+                    sl,
+                    int(
+                        np.nonzero(
+                            np.load(
+                                "%s/k%02d_r%02d_freq.npy" % (DIR, a.chunk, fid % 16)
+                            )
+                            == fid
+                        )[0][0]
+                    ),
+                ]
+            ).reshape(-1, 128)
+        )
         print("freq_id %d (%.3f MHz), frames %s:" % (fid, fid * 0.1953125, a.frames))
-        print("   raw     : eigenvalues/noise %s; Tau A kept %.2f" % (" ".join("%.2f" % v for v in l0[:6]), k0))
-        print("   residual: eigenvalues/noise %s; Tau A kept %.2f; residual/raw power per input median %.3f; bytes changed %.2f" % (
-            " ".join("%.2f" % v for v in l1[:6]), k1, np.median(p1 / p0), changed), flush=True)
+        print(
+            "   raw     : eigenvalues/noise %s; Tau A kept %.2f"
+            % (" ".join("%.2f" % v for v in l0[:6]), k0)
+        )
+        print(
+            "   residual: eigenvalues/noise %s; Tau A kept %.2f; residual/raw power per input median %.3f; bytes changed %.2f"
+            % (" ".join("%.2f" % v for v in l1[:6]), k1, np.median(p1 / p0), changed),
+            flush=True,
+        )
 
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("--chunk", type=int, default=0)
     ap.add_argument("--modes", default=DIR + "/../dtv/modes_k00.npz")
     sub = ap.add_subparsers(dest="cmd", required=True)
