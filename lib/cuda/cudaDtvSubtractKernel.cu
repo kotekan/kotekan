@@ -6,11 +6,10 @@ namespace {
 
 constexpr int NI = DTV_INPUTS;
 constexpr int HIST = DTV_HIST;
-constexpr int ROW_THREADS = 256;     // 8 warps: one warp per sample, lane = 4 inputs
-constexpr int ROW_SAMPLES = 64;      // samples per block in the row kernels
-constexpr int TT = 256;              // samples per tile in the lag kernels
-constexpr int TILE = TT + HIST + 16; // s entries a tile needs: lags -16 .. HIST-1
-constexpr int LAG_GROUP = 16;        // lags per block in the correlation kernel
+constexpr int ROW_THREADS = 256;   // 8 warps: one warp per sample, lane = 4 inputs
+constexpr int ROW_SAMPLES = 64;    // samples per block in the row kernels
+constexpr int TT = 256;            // samples per tile in the R_ss kernel
+constexpr int LAGGED_BLOCKS = 256; // blocks per channel building the lagged timestream
 constexpr int COV_THREADS = 256;
 constexpr int COV_TT = 32;
 constexpr int COV_PAIRS = NI * NI / COV_THREADS;
@@ -125,61 +124,10 @@ __global__ void dtv_beam_kernel(const float2* __restrict__ x, const float2* __re
         atomicAdd(&ps[c * n_src + k], psh);
 }
 
-// The s entries a tile of TT samples needs, for lags lag_min..lag_min+n_lag-1 (>= -16, < HIST):
-// tile[m] = s[HIST + t0 - HIST + m], i.e. s index HIST + t - lag = tile index t - t0 - lag + HIST.
-__device__ __forceinline__ void load_s_tile(const float2* __restrict__ sk, int t0, int n_times,
-                                            float2* tile) {
-    for (int m = threadIdx.x; m < TILE; m += blockDim.x) {
-        const int idx = t0 + m; // s index HIST + t0 - HIST + m
-        tile[m] = idx < HIST + n_times ? sk[idx] : make_float2(0.0f, 0.0f);
-    }
-}
-
-// One block per (lag group, channel, tile of TT samples); the tiles' partial sums are added with
-// atomics into memory the caller zeroed.
-__global__ void dtv_lagcorr_kernel(const float2* __restrict__ x, const float2* __restrict__ s,
-                                   const int* __restrict__ act, const int* __restrict__ lags, int k,
-                                   int n_src, int n_times, int n_lag, float2* __restrict__ rxs) {
-    __shared__ float2 tile[TILE];
-    const int c = blockIdx.y;
-    const int lag_min = lags[2 * c], n_lag_c = lags[2 * c + 1];
-    const int j0 = blockIdx.x * LAG_GROUP;
-    if (act[c * n_src + k] < 1 || j0 >= n_lag_c)
-        return;
-    const int i = threadIdx.x;
-    const int nj = n_lag_c - j0 < LAG_GROUP ? n_lag_c - j0 : LAG_GROUP;
-    const int t0 = blockIdx.z * TT;
-    const float2* sk = s + (size_t)(c * n_src + k) * (HIST + n_times);
-    const float2* xc = x + (size_t)c * n_times * NI;
-    float2 acc[LAG_GROUP];
-#pragma unroll
-    for (int j = 0; j < LAG_GROUP; j++)
-        acc[j] = make_float2(0.0f, 0.0f);
-    load_s_tile(sk, t0, n_times, tile);
-    __syncthreads();
-    const int tn = n_times - t0 < TT ? n_times - t0 : TT;
-    for (int tt = 0; tt < tn; tt++) {
-        const float2 xv = xc[(size_t)(t0 + tt) * NI + i];
-        const float2* sp = tile + tt + HIST - lag_min - j0; // lag j: tile[tt + HIST - lag_j]
-#pragma unroll
-        for (int j = 0; j < LAG_GROUP; j++) {
-            if (j < nj) {
-                const float2 sv = sp[-j];
-                acc[j].x += xv.x * sv.x + xv.y * sv.y;
-                acc[j].y += xv.y * sv.x - xv.x * sv.y;
-            }
-        }
-    }
-    for (int j = 0; j < nj; j++) {
-        float2* dst = rxs + ((size_t)(c * n_src + k) * n_lag + j0 + j) * NI + i;
-        atomicAdd(&dst->x, acc[j].x);
-        atomicAdd(&dst->y, acc[j].y);
-    }
-}
-
 // rss[d] = sum_t s(t) conj(s(t - d)) for d = 0..n_lag_c-1: every lag difference the normal
 // equations need (negative ones by conjugate symmetry). d < DTV_HIST, so s(t - d) is always held.
-// One block per (channel, tile of TT samples), added with atomics like dtv_lagcorr_kernel.
+// One block per (channel, tile of TT samples); the tiles' partial sums are added with atomics
+// into memory the caller zeroed.
 __global__ void dtv_rss_kernel(const float2* __restrict__ s, const int* __restrict__ act,
                                const int* __restrict__ lags, int k, int n_src, int n_times,
                                int n_lag, float2* __restrict__ rss) {
@@ -201,34 +149,22 @@ __global__ void dtv_rss_kernel(const float2* __restrict__ s, const int* __restri
     atomicAdd(&dst->y, acc.y);
 }
 
-__global__ void dtv_subtract_kernel(float2* __restrict__ x, const float2* __restrict__ s,
-                                    const float2* __restrict__ g, const int* __restrict__ act,
-                                    const int* __restrict__ lags, int k, int n_src, int n_times,
-                                    int n_lag) {
-    __shared__ float2 tile[TILE];
+// S[c] (column-major n_lag x n_times: j fastest) = s[c][k][HIST + t - lag_j] for j < n_lag_c; 0
+// beyond the window, beyond the end of s and where source k is not active.
+__global__ void dtv_lagged_kernel(const float2* __restrict__ s, const int* __restrict__ act,
+                                  const int* __restrict__ lags, int k, int n_src, int n_times,
+                                  int n_lag, float2* __restrict__ S) {
     const int c = blockIdx.y;
-    if (act[c * n_src + k] < 2)
-        return;
+    const bool on = act[c * n_src + k] >= 1;
     const int lag_min = lags[2 * c], n_lag_c = lags[2 * c + 1];
-    const int i = threadIdx.x;
-    const int t0 = blockIdx.x * TT;
     const float2* sk = s + (size_t)(c * n_src + k) * (HIST + n_times);
-    const float2* gk = g + (size_t)(c * n_src + k) * n_lag * NI + i;
-    load_s_tile(sk, t0, n_times, tile);
-    __syncthreads();
-    const int tn = n_times - t0 < TT ? n_times - t0 : TT;
-    for (int tt = 0; tt < tn; tt++) {
-        float2 acc = make_float2(0.0f, 0.0f);
-        const float2* sp = tile + tt + HIST - lag_min; // lag j: sp[-j]
-        for (int j = 0; j < n_lag_c; j++) {
-            const float2 gv = gk[(size_t)j * NI];
-            const float2 sv = sp[-j];
-            acc.x += gv.x * sv.x - gv.y * sv.y;
-            acc.y += gv.x * sv.y + gv.y * sv.x;
-        }
-        float2* xv = x + ((size_t)c * n_times + t0 + tt) * NI + i;
-        xv->x -= acc.x;
-        xv->y -= acc.y;
+    float2* Sc = S + (size_t)c * n_lag * n_times;
+    const size_t n = (size_t)n_lag * n_times;
+    for (size_t q = (size_t)blockIdx.x * blockDim.x + threadIdx.x; q < n;
+         q += (size_t)gridDim.x * blockDim.x) {
+        const int j = (int)(q % n_lag), t = (int)(q / n_lag);
+        const int idx = HIST + t - (lag_min + j);
+        Sc[q] = on && j < n_lag_c && idx < HIST + n_times ? sk[idx] : make_float2(0.0f, 0.0f);
     }
 }
 
@@ -374,25 +310,41 @@ void launch_dtv_beam(const float2* x, const float2* w, const int* act, int k, in
     dtv_beam_kernel<<<grid, ROW_THREADS, 0, stream>>>(x, w, act, k, n_src, n_times, s, ps);
 }
 
-void launch_dtv_lagcorr(const float2* x, const float2* s, const int* act, const int* lags, int k,
-                        int n_chan, int n_src, int n_times, int n_lag, float2* rxs, float2* rss,
-                        cudaStream_t stream) {
+void launch_dtv_lagged(const float2* s, const int* act, const int* lags, int k, int n_chan,
+                       int n_src, int n_times, int n_lag, float2* S, float2* rss,
+                       cudaStream_t stream) {
     if (n_chan <= 0)
         return;
+    dtv_lagged_kernel<<<dim3(LAGGED_BLOCKS, n_chan), 256, 0, stream>>>(s, act, lags, k, n_src,
+                                                                       n_times, n_lag, S);
     const int n_tiles = (n_times + TT - 1) / TT;
-    const dim3 grid((n_lag + LAG_GROUP - 1) / LAG_GROUP, n_chan, n_tiles);
-    dtv_lagcorr_kernel<<<grid, NI, 0, stream>>>(x, s, act, lags, k, n_src, n_times, n_lag, rxs);
     dtv_rss_kernel<<<dim3(n_chan, n_tiles), DTV_MAX_LAGS, 0, stream>>>(s, act, lags, k, n_src,
                                                                        n_times, n_lag, rss);
 }
 
-void launch_dtv_subtract(float2* x, const float2* s, const float2* g, const int* act,
-                         const int* lags, int k, int n_chan, int n_src, int n_times, int n_lag,
-                         cudaStream_t stream) {
+cublasStatus_t dtv_lagcorr(cublasHandle_t h, const float2* x, const float2* S, int k, int n_chan,
+                           int n_src, int n_times, int n_lag, float2* rxs) {
     if (n_chan <= 0)
-        return;
-    const dim3 grid((n_times + TT - 1) / TT, n_chan);
-    dtv_subtract_kernel<<<grid, NI, 0, stream>>>(x, s, g, act, lags, k, n_src, n_times, n_lag);
+        return CUBLAS_STATUS_SUCCESS;
+    const cuComplex one = {1.0f, 0.0f}, zero = {0.0f, 0.0f};
+    // column-major: X_c is NI x n_times, S_c n_lag x n_times, R_c NI x n_lag
+    return cublasCgemmStridedBatched(
+        h, CUBLAS_OP_N, CUBLAS_OP_C, NI, n_lag, n_times, &one, (const cuComplex*)x, NI,
+        (long long)n_times * NI, (const cuComplex*)S, n_lag, (long long)n_lag * n_times, &zero,
+        (cuComplex*)(rxs + (size_t)k * n_lag * NI), NI, (long long)n_src * n_lag * NI, n_chan);
+}
+
+cublasStatus_t dtv_subtract(cublasHandle_t h, float2* x, const float2* S, const float2* g, int k,
+                            int n_chan, int n_src, int n_times, int n_lag) {
+    if (n_chan <= 0)
+        return CUBLAS_STATUS_SUCCESS;
+    const cuComplex one = {1.0f, 0.0f}, minus_one = {-1.0f, 0.0f};
+    // column-major: G_c is NI x n_lag
+    return cublasCgemmStridedBatched(h, CUBLAS_OP_N, CUBLAS_OP_N, NI, n_times, n_lag, &minus_one,
+                                     (const cuComplex*)(g + (size_t)k * n_lag * NI), NI,
+                                     (long long)n_src * n_lag * NI, (const cuComplex*)S, n_lag,
+                                     (long long)n_lag * n_times, &one, (cuComplex*)x, NI,
+                                     (long long)n_times * NI, n_chan);
 }
 
 void launch_dtv_encode(const float2* x, const int* sel, const int* act, int n_chan, int n_src,

@@ -14,9 +14,10 @@
  *
  * Per frame and selected channel the command decodes the channel into float (@ref
  * launch_dtv_decode), then per active source: carries the last DTV_HIST samples of s over from
- * the previous frame (@ref launch_dtv_shift), forms s (@ref launch_dtv_beam), accumulates the
- * lag correlations (@ref launch_dtv_lagcorr) and subtracts (@ref launch_dtv_subtract); then
- * re-quantises the residual in place (@ref launch_dtv_encode). The eigen start of a source's
+ * the previous frame (@ref launch_dtv_shift), forms s (@ref launch_dtv_beam), lays it out at
+ * every lag with R_ss (@ref launch_dtv_lagged), takes the lag correlations (@ref dtv_lagcorr)
+ * and subtracts (@ref dtv_subtract), both complex matrix products on cuBLAS; then re-quantises
+ * the residual in place (@ref launch_dtv_encode). The eigen start of a source's
  * weights uses @ref launch_dtv_cov with cudaGnssBeamDumpKernel's launch_beam_eig.
  */
 
@@ -25,6 +26,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <cublas_v2.h>
 #include <cuda_runtime.h>
 
 namespace gnss_cuda {
@@ -137,21 +139,27 @@ void launch_dtv_shift(float2* s, int n_chan, int n_src, int n_times, cudaStream_
 void launch_dtv_beam(const float2* x, const float2* w, const int* act, int k, int n_chan, int n_src,
                      int n_times, float2* s, float* ps, cudaStream_t stream);
 
-/// rxs[c][k][j][i] = sum_t x[c][t][i] conj(s[c][k][DTV_HIST + t - lag_j]), lag_j = lag_min_c + j
-/// for j < n_lag_c, over the frame's samples (s beyond the frame's end, needed by negative lags,
-/// counts as 0), and rss[c][k][d] = sum_t s(t) conj(s(t - d)) for d = 0..n_lag_c-1, the lag
-/// differences of the normal equations. lags is int [n_chan][2]: lag_min_c, n_lag_c (n_lag_c <=
-/// n_lag, the stride of the lag axis; -16 <= lag_min_c, lag_min_c + n_lag_c <= DTV_HIST). Both
-/// are accumulated: the caller zeroes them each frame, which leaves the lags beyond n_lag_c 0.
-void launch_dtv_lagcorr(const float2* x, const float2* s, const int* act, const int* lags, int k,
-                        int n_chan, int n_src, int n_times, int n_lag, float2* rxs, float2* rss,
-                        cudaStream_t stream);
+/// The lagged timestream of source k, as the products take it: S[c] is float2 [n_times][n_lag]
+/// (column-major n_lag x n_times), S[c][t][j] = s[c][k][DTV_HIST + t - lag_j], lag_j = lag_min_c
+/// + j, for j < n_lag_c; 0 beyond the window, beyond the end of s (negative lags at the frame's
+/// end) and where source k is not active. Also rss[c][k][d] = sum_t s(t) conj(s(t - d)) for d <
+/// n_lag_c, the lag differences of the normal equations, accumulated (the caller zeroes it each
+/// frame). lags is int [n_chan][2]: lag_min_c, n_lag_c (n_lag_c <= n_lag, the stride of the lag
+/// axis; -16 <= lag_min_c, lag_min_c + n_lag_c <= DTV_HIST).
+void launch_dtv_lagged(const float2* s, const int* act, const int* lags, int k, int n_chan,
+                       int n_src, int n_times, int n_lag, float2* S, float2* rss,
+                       cudaStream_t stream);
 
-/// x[c][t][i] -= sum_{j < n_lag_c} g[c][k][j][i] s[c][k][DTV_HIST + t - lag_j] where act[c][k]
-/// == 2; lags and n_lag as for launch_dtv_lagcorr.
-void launch_dtv_subtract(float2* x, const float2* s, const float2* g, const int* act,
-                         const int* lags, int k, int n_chan, int n_src, int n_times, int n_lag,
-                         cudaStream_t stream);
+/// rxs[c][k][j][i] = sum_t x[c][t][i] conj(S[c][t][j]): R_c = X_c S_c^H, column-major (X_c is
+/// DTV_INPUTS x n_times, R_c DTV_INPUTS x n_lag), batched over the channels on the handle's
+/// stream. Overwrites; zero where S is.
+cublasStatus_t dtv_lagcorr(cublasHandle_t h, const float2* x, const float2* S, int k, int n_chan,
+                           int n_src, int n_times, int n_lag, float2* rxs);
+
+/// x[c][t][i] -= sum_j g[c][k][j][i] S[c][t][j]: X_c -= G_c S_c, batched over the channels. g must
+/// be zero for the channels not subtracting source k (act < 2).
+cublasStatus_t dtv_subtract(cublasHandle_t h, float2* x, const float2* S, const float2* g, int k,
+                            int n_chan, int n_src, int n_times, int n_lag);
 
 /// Re-quantise x into the frame in place (round to the nearest integer, clipped to [-7, 7],
 /// offset-encoded as the F-engine does) and pw_res[c][i] = sum |x|^2 over the frame before the

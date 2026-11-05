@@ -170,6 +170,8 @@ cudaDtvSubtract::cudaDtvSubtract(Config& config, const std::string& unique_name,
     device.get_gpu_memory(unique_name + "_pwtmp", (size_t)n * DTV_INPUTS * sizeof(float));
     device.get_gpu_memory(unique_name + "_lam", (size_t)n * 4 * sizeof(float));
     device.get_gpu_memory(unique_name + "_ref", (size_t)n * sizeof(int));
+    device.get_gpu_memory(unique_name + "_lagged",
+                          (size_t)n * _n_lag * _num_times * sizeof(float2));
     const size_t rss_bytes = (size_t)n * _n_src * _n_lag * sizeof(float2);
     const size_t pw_bytes = (size_t)3 * n * sizeof(float);
     void* d_acc_rxs = device.get_gpu_memory(unique_name + "_acc_rxs", g_bytes);
@@ -224,6 +226,12 @@ cudaDtvSubtract::cudaDtvSubtract(Config& config, const std::string& unique_name,
     _lam_stage.assign((size_t)n * 4, 0.0f);
     _w_stage.assign((size_t)n * _n_src * DTV_INPUTS, make_float2(0.0f, 0.0f));
     CHECK_CUDA_ERROR(cudaEventCreateWithFlags(&_lam_event, cudaEventDisableTiming));
+    const bool tf32 = config.get_default<bool>(unique_name, "dtv_tf32", true);
+    if (cublasCreate(&_blas) != CUBLAS_STATUS_SUCCESS
+        || cublasSetStream(_blas, device.getStream(cuda_stream_id)) != CUBLAS_STATUS_SUCCESS
+        || cublasSetMathMode(_blas, tf32 ? CUBLAS_TF32_TENSOR_OP_MATH : CUBLAS_DEFAULT_MATH)
+               != CUBLAS_STATUS_SUCCESS)
+        FATAL_ERROR("cudaDtvSubtract: cannot set up cuBLAS");
 
     if (instance_num == 0) {
         std::string err;
@@ -432,6 +440,8 @@ cudaDtvSubtract::~cudaDtvSubtract() {
     }
     if (_lam_event)
         cudaEventDestroy(_lam_event);
+    if (_blas)
+        cublasDestroy(_blas);
 }
 
 void cudaDtvSubtract::roll_reset_all() {
@@ -800,6 +810,8 @@ cudaEvent_t cudaDtvSubtract::execute(cudaPipelineState& pipestate,
     auto* d_sel = (const int*)device.get_gpu_memory(unique_name + "_sel", (size_t)n * sizeof(int));
     auto* d_lags =
         (const int*)device.get_gpu_memory(unique_name + "_lags", (size_t)n * 2 * sizeof(int));
+    auto* d_lagged = (float2*)device.get_gpu_memory(
+        unique_name + "_lagged", (size_t)n * _n_lag * _num_times * sizeof(float2));
     auto* d_cov = (float2*)device.get_gpu_memory(unique_name + "_cov", cov_bytes);
     auto* d_q1 = (float2*)device.get_gpu_memory(unique_name + "_q1", q_bytes);
     auto* d_q2 = (float2*)device.get_gpu_memory(unique_name + "_q2", q_bytes);
@@ -836,6 +848,7 @@ cudaEvent_t cudaDtvSubtract::execute(cudaPipelineState& pipestate,
     int start_src = -1, start_total = 0;
     bool do_cov = false, do_finish = false;
     bool roll = false, roll_ready = false;
+    bool src_on[DTV_MAX_SRC], src_sub[DTV_MAX_SRC]; // any channel observing / subtracting k
     DtvDecay lam = {};
     {
         std::lock_guard<std::mutex> lk(_sh->mtx);
@@ -853,9 +866,16 @@ cudaEvent_t cudaDtvSubtract::execute(cudaPipelineState& pipestate,
             if (_sh->dirty_w)
                 CHECK_CUDA_ERROR(
                     cudaMemcpyAsync(d_w, _sh->w.data(), w_bytes, cudaMemcpyHostToDevice, stream));
-            if (_sh->dirty_g)
-                CHECK_CUDA_ERROR(
-                    cudaMemcpyAsync(d_g, _sh->g.data(), g_bytes, cudaMemcpyHostToDevice, stream));
+            // the products subtract every channel's g block: zero those whose source does not
+            // subtract, with every change of act
+            _g_upload = _sh->g;
+            const size_t blk = (size_t)_n_lag * DTV_INPUTS;
+            for (size_t ck = 0; ck < _sh->act.size(); ck++)
+                if (_sh->act[ck] < 2)
+                    std::fill(_g_upload.begin() + ck * blk, _g_upload.begin() + (ck + 1) * blk,
+                              make_float2(0.0f, 0.0f));
+            CHECK_CUDA_ERROR(
+                cudaMemcpyAsync(d_g, _g_upload.data(), g_bytes, cudaMemcpyHostToDevice, stream));
             CHECK_CUDA_ERROR(
                 cudaMemcpyAsync(d_act, _sh->act.data(), act_bytes, cudaMemcpyHostToDevice, stream));
             _sh->dirty_w = _sh->dirty_g = false;
@@ -883,6 +903,13 @@ cudaEvent_t cudaDtvSubtract::execute(cudaPipelineState& pipestate,
                 _sh->roll_gen++;
                 CHECK_CUDA_ERROR(cudaMemcpyAsync(d_act, _sh->act.data(), act_bytes,
                                                  cudaMemcpyHostToDevice, stream));
+            }
+        }
+        for (int k = 0; k < _n_src; k++) {
+            src_on[k] = src_sub[k] = false;
+            for (int c = 0; c < n; c++) {
+                src_on[k] = src_on[k] || _sh->act[(size_t)c * _n_src + k] >= 1;
+                src_sub[k] = src_sub[k] || _sh->act[(size_t)c * _n_src + k] >= 2;
             }
         }
         roll = _sh->roll;
@@ -945,10 +972,17 @@ cudaEvent_t cudaDtvSubtract::execute(cudaPipelineState& pipestate,
         }
         launch_dtv_beam(d_x, d_w, d_act, k, n, _n_src, _num_times, d_s,
                         (float*)(d_out + _layout.off_ps), stream);
-        launch_dtv_lagcorr(d_x, d_s, d_act, d_lags, k, n, _n_src, _num_times, _n_lag,
-                           (float2*)(d_out + _layout.off_rxs), (float2*)(d_out + _layout.off_rss),
-                           stream);
-        launch_dtv_subtract(d_x, d_s, d_g, d_act, d_lags, k, n, _n_src, _num_times, _n_lag, stream);
+        if (!src_on[k])
+            continue;
+        launch_dtv_lagged(d_s, d_act, d_lags, k, n, _n_src, _num_times, _n_lag, d_lagged,
+                          (float2*)(d_out + _layout.off_rss), stream);
+        cublasStatus_t e = dtv_lagcorr(_blas, d_x, d_lagged, k, n, _n_src, _num_times, _n_lag,
+                                       (float2*)(d_out + _layout.off_rxs));
+        if (e == CUBLAS_STATUS_SUCCESS && src_sub[k])
+            e = dtv_subtract(_blas, d_x, d_lagged, d_g, k, n, _n_src, _num_times, _n_lag);
+        if (e != CUBLAS_STATUS_SUCCESS)
+            FATAL_ERROR("cudaDtvSubtract: cuBLAS product of source {:d}: {:s}", k,
+                        cublasGetStatusString(e));
     }
     launch_dtv_encode(d_x, d_sel, d_act, n, _n_src, _num_local_freq, _num_times, d_frame,
                       (float*)(d_out + _layout.off_pw_res), stream);
