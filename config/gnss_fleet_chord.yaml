@@ -82,10 +82,8 @@ common:
     # despreads to zero.
     # Widened 2026-10-30 to the lane transfers' targets beside the lobes: 1160.0-1166.2 and the
     # 1186.7-1191.8 gap (the E5/B2 AltBOC edges), 1237.9-1258.2 (GLONASS L2's P-code spill, up
-    # to B3I's) and 1283.8-1294.1 (the E6 PRS upper lobe), one contiguous range. Those channels
-    # are projected with the lanes only: n2-project-eigen-channels keeps the eigen path on the
-    # lobes, where it earns its ~n^2 per channel (the stage runs on one core per GPU, at 60-78 %
-    # with the lobes alone).
+    # to B3I's) and 1283.8-1294.1 (the E6 PRS upper lobe), one contiguous range, projected with
+    # the lanes.
     # + the DTV subtraction's channels (dtv-targets below: ATSC 24, 30, 17, 19, 31, 33, 35 and
     # MUOS), which the SK flagger would otherwise excise, leaving nothing to judge the
     # subtraction by (docs/CHORD_DTV_SUBTRACTION_20261102.md, #226).
@@ -131,13 +129,15 @@ common:
     # Pinned to the GNSS band: "exempt" would follow the exemption above into the DTV channels.
     n2-project-live-freq-ids: "5939-6626"
     n2-project-stations: "0-6,8-127"
+    # The eigen path's channels; read only with n2-project-source lanes+residual.
     n2-project-eigen-channels: "5971-6076,6102-6338,6361-6401,6442-6573"
     # #190 on every projecting node (canary cx51 10-20..10-24): the tracked satellites' lane
-    # directions first, the eigen path on what is left. On 10-24 the eigen path alone removed
-    # <= 0.6 dB in the lobes while the lanes removed ~80-87 % of the satellite power over the
-    # continuum (cx51). Up to 40 lanes per channel; the assemblers spread over five slots (the
-    # lane EMA tipped the shared slot at 96 elements).
-    n2-project-source: lanes+residual
+    # directions. On 10-24 the eigen path alone removed <= 0.6 dB in the lobes while the lanes
+    # removed ~80-87 % of the satellite power over the continuum (cx51). Up to 40 lanes per
+    # channel; the assemblers spread over five slots (the lane EMA tipped the shared slot at 96
+    # elements). Lanes only since 2026-11-05 (KV): the eigen path on the residual covered for
+    # what the lanes miss and cannot be reconstructed offline. lanes+residual restores it.
+    n2-project-source: lanes
     n2-project-lanes-max: 40
     elem-dir-publish: all
     # A bright pass takes the other satellites' tracker lock, so their lanes stopped: in the

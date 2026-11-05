@@ -155,10 +155,13 @@ Result on 09-05 and 09-06, every chain: peak 4–8° off axis at +15–21 dB ove
 the far field is real spillover (PRN 28 at 52° off axis is +7 dB in a single centre bin), not
 floor. Timing on cf06: ~15 s/chain from rung12, 80 s for a full 13 h day of 8 chains.
 
-Coherence check: `|coh|²/(w·incoh)` ≈ 1/w (0.010) for noise; near boresight at +9.6 dB it
-measures 0.006 — **the per-window coherent sum WINDS** (residual carrier > 1 turn/s within the
-~1 s window), so the cube's coherent arc is currently incoherent and `incoh` is the beam. A
-usable arc needs a per-record (10 ms) rotation with the tracked carrier before the window sum.
+Coherence check: `|coh|²/(w·incoh)` has a noise MEDIAN of ln2/w (0.0072 at w = 96) and reaches 1
+for a fully coherent window. Each record is rotated by the carrier NCO phase before the window sum
+(`rot` in GnssGpuRecordAssemble), so GNSS windows are coherent: GPS L5 near boresight reaches
+`|coh|²/incoh` ≈ 88 of 96 records (2026-11-03). **GuoWang (`gw_1202`) windows still WIND**: the
+LEO residual carrier against the NCO is 1–13 Hz (broker KCOH, 2026-11-05), 1–13 turns a window, so
+a strong signal reads BELOW the noise median. Its `coh` is not usable for phase work; maps use
+`incoh`, which winding does not touch.
 
 **The subband axis is the ABSOLUTE F-engine channel — the full band, never an instance's bin
 index.** Each cube bin is one channel (0.1953125 MHz; `freq_id_lo == freq_id_hi`). An instance

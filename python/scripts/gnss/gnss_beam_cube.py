@@ -44,7 +44,10 @@ the 4+4b quantiser for every chain at once, since they share the same nibbles; a
 veto would clean the chain tracking it and leave the others contaminated while they look like
 clean controls. The veto is computed from BRDC geometry over every constellation, independent
 of what any chain tracks, and applied to every chain for that minute. It removes the main lobe
-itself: the main lobe is what rails the quantiser.
+itself: the main lobe is what rails the quantiser. GuoWang satellites (TLEs, every DIGUI
+whether coded or not) join it on their 2 s grid, per row: one crosses the cone in ~30 s, so a
+GuoWang transit vetoes the GNSS chains and a GNSS transit vetoes gw_1202.
+--no-guowang-veto leaves them out.
 
 @author Keith Vanderlinde
 """
@@ -80,6 +83,10 @@ HEALTH_DIR = (
     "/home/kvand/gnss/fixtures/obs/health"  # gnss_chain_health.py masks, per day
 )
 GEOM_BIN_S = 60.0  # BRDC evaluated once per minute, at its midpoint; no interpolation
+# GuoWang (LEO, ~0.3 deg/s near boresight) moves 18 deg in a minute, so its grid is 2 s.
+GW_GEOM_S = 2.0
+GW_TLE_GLOB = os.path.expanduser("~/.cache/guowang/hulianwang_*.tle")
+GW_HIDDEN_TLE = os.path.expanduser("~/.cache/guowang/hidden_digui.tle")
 
 # Chain -> constellation letter, for the BRDC lookup. Declared, not inferred from the
 # frequency: constellations share carriers.
@@ -95,7 +102,13 @@ CHAIN_SYS = {
     "glo_l3oc": "R",
     "glo_l2oc": "R",
     "glo_l2of": "R",
+    "gw_1202": "W",  # GuoWang: TLE positions and the code library (GuowangSky), not BRDC
 }
+
+
+def geom_step(sys_):
+    """Spacing of a system's position grid (s); rows interpolate between its points."""
+    return GW_GEOM_S if sys_ == "W" else GEOM_BIN_S
 
 
 def sender_chain(sender):
@@ -181,10 +194,24 @@ def angsep_deg(az1, el1, az2, el2):
 class Geometry:
     """BRDC positions on a 1-minute grid, plus the cross-chain railing veto for that minute."""
 
-    def __init__(self, day_unix, veto_deg, bore=(BORE_AZ, BORE_EL), keep_own=False):
+    def __init__(
+        self,
+        day_unix,
+        veto_deg,
+        bore=(BORE_AZ, BORE_EL),
+        keep_own=False,
+        guowang_db=None,
+        guowang_tle=None,
+        guowang_veto=True,
+    ):
         self.eph = parse_rinex_nav(
             fetch_brdc(datetime.fromtimestamp(day_unix + 43200, tz=timezone.utc))
         )
+        self.day_unix = day_unix
+        self.guowang_db = guowang_db
+        self.guowang_tle = guowang_tle
+        self.guowang_veto = guowang_veto
+        self.gw = None  # GuowangSky, loaded by the first GuoWang lookup or veto
         self.veto_deg = veto_deg
         self.keep_own = keep_own
         self.bore = bore  # (az, el) deg, the array epoch's boresight
@@ -211,31 +238,27 @@ class Geometry:
                 self._all[minute] = {}
         return self._all[minute]
 
+    def guowang(self):
+        if self.gw is None:
+            try:
+                self.gw = GuowangSky(self.day_unix, self.guowang_db, self.guowang_tle)
+            except ImportError as e:
+                sys.exit(
+                    "GuoWang geometry needs skyfield (/home/kvand/gnss/venv): %s; "
+                    "--no-guowang-veto builds the GNSS chains without it" % e
+                )
+        return self.gw
+
     def at(self, sys_, prn, t):
+        if sys_ == "W":
+            return self.guowang().at(prn, t)
         key = (sys_, prn, int(t // GEOM_BIN_S))
         if key not in self._pos:
             v = self._minute(key[2]).get((sys_, prn))
             self._pos[key] = (v["el"], v["az"], v["range_m"]) if v else None
         return self._pos[key]
 
-    def vetoed(self, t, own=None):
-        """True if any satellite of any constellation is within veto_deg of boresight.
-
-        Pooled over constellations because the chains share the 4+4b nibbles: a veto computed
-        per chain would clean the one carrying the bright satellite and leave the rest
-        contaminated while they look like clean controls.
-
-        With keep_own, a row whose OWN satellite `own` ("G3", "E16": sys letter + PRN) is the
-        CLOSEST to boresight survives: that is the main lobe, railed, which the plain veto
-        removes entirely (the 10-28 element-archive maps kept it; its core is an upper bound on
-        the beam width). Rows of every other satellite in such a minute are still dropped. The
-        closest, not "the only one within": a boresight pass (G13 at 0.12 deg, 10-29) is lost
-        otherwise whenever a second satellite sits at 3-5 deg, and the closest is the one doing
-        the railing.
-        """
-        if self.veto_deg <= 0.0:
-            return False
-        m = int(t // GEOM_BIN_S)
+    def _brdc_veto(self, m):
         if m not in self._veto:
             best, name, within = 1e9, None, set()
             for (sy, prn), v in self._minute(m).items():
@@ -247,14 +270,194 @@ class Geometry:
                 if d < self.veto_deg:
                     within.add("%s%d" % (sy, prn))
             self._veto[m] = (best < self.veto_deg, best, name, within)
+        return self._veto[m]
+
+    def vetoed_rows(self, t, own=None):
+        """Per row (t[n] unix s; own[n] or None): True if any satellite of any constellation is
+        within veto_deg of boresight, BRDC in the row's minute, GuoWang at its 2 s grid point.
+
+        Pooled over constellations because the chains share the 4+4b nibbles: a veto computed
+        per chain would clean the one carrying the bright satellite and leave the rest
+        contaminated while they look like clean controls.
+
+        With keep_own, a row whose OWN satellite `own` ("G3", "E16", "W793": sys letter + PRN)
+        is the CLOSEST to boresight survives: that is the main lobe, railed, which the plain veto
+        removes entirely (the 10-28 element-archive maps kept it; its core is an upper bound on
+        the beam width). Rows of every other satellite in such a minute are still dropped. The
+        closest, not "the only one within": a boresight pass (G13 at 0.12 deg, 10-29) is lost
+        otherwise whenever a second satellite sits at 3-5 deg, and the closest is the one doing
+        the railing.
+        """
+        t = np.asarray(t, float)
+        if self.veto_deg <= 0.0:
+            return np.zeros(t.shape, bool)
+        um, inv = np.unique((t // GEOM_BIN_S).astype(np.int64), return_inverse=True)
+        brdc = [self._brdc_veto(int(m)) for m in um]
+        best = np.array([v[1] for v in brdc])[inv.ravel()]
+        name = np.array([v[2] or "" for v in brdc])[inv.ravel()]
+        if self.guowang_veto:
+            sep, who = self.guowang().near(t, self.bore)
+            closer = sep < best
+            best = np.where(closer, sep, best)
+            name = np.where(closer, who, name)
+        out = best < self.veto_deg
         if self.keep_own and own is not None:
-            return self._veto[m][0] and own != self._veto[m][2]
-        return self._veto[m][0]
+            out &= name != np.asarray(own)
+        return out
+
+    def vetoed(self, t, own=None):
+        """vetoed_rows for one row."""
+        return bool(self.vetoed_rows([t], None if own is None else [own])[0])
 
     def veto_stats(self):
         n = len(self._veto)
         v = sum(1 for x in self._veto.values() if x[0])
         return n, v
+
+
+def own_names(sys_, prn):
+    """Each row's satellite as Geometry.vetoed_rows names it ("G3", "W793")."""
+    up, inv = np.unique(prn, return_inverse=True)
+    return np.array(["%s%d" % (sys_, int(p)) for p in up])[inv.ravel()]
+
+
+def nearest_tle(day_unix, pattern=GW_TLE_GLOB):
+    """The cached GuoWang TLE file (hulianwang_YYYYMMDDTHHMMSSZ.tle) whose fetch time is nearest the
+    day's noon, and that distance in days; (None, None) if there is none."""
+    import glob
+
+    best, dist = None, None
+    for f in glob.glob(pattern):
+        stamp = os.path.basename(f).split("_")[-1].split(".")[0]
+        try:
+            t = datetime.strptime(stamp, "%Y%m%dT%H%M%SZ").replace(tzinfo=timezone.utc)
+        except ValueError:
+            continue
+        d = abs(t.timestamp() - (day_unix + 43200.0)) / 86400.0
+        if dist is None or d < dist:
+            best, dist = f, d
+    return best, dist
+
+
+class GuowangSky:
+    """GuoWang positions for one UTC day, from TLEs and the code library.
+
+    A cube row's PRN is its satellite's code + 1 (guowang/guowang_1202_db.json g2_phase). A code
+    two satellites share places a row only while exactly one of them is above the horizon; a row
+    of a code no satellite in the library has, or whose satellites are all below the horizon,
+    gets no position. Positions are on the GW_GEOM_S grid (each point at its bin's midpoint),
+    computed per PRN on first use. near() serves the railing veto from every DIGUI in the TLEs,
+    coded or not: a transmitter rails the quantiser whatever its code.
+    """
+
+    def __init__(self, day_unix, db_path=None, tle_path=None):
+        sys.path.insert(
+            0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "guowang")
+        )
+        import guowang_db
+        import guowang_passes
+        from skyfield.api import load
+
+        self.db_path = db_path or guowang_db.DB_PATH
+        self.tle_paths = [tle_path] if tle_path else []
+        if not tle_path:
+            near, dist = nearest_tle(day_unix)
+            if near is None:
+                sys.exit(
+                    "no GuoWang TLE in %s: give --guowang-tle (or --no-guowang-veto)"
+                    % GW_TLE_GLOB
+                )
+            if dist > 3.0:
+                print("  GuoWang TLE %s is %.1f days from the day" % (near, dist))
+            self.tle_paths = [near]
+            if os.path.exists(GW_HIDDEN_TLE):
+                self.tle_paths.append(GW_HIDDEN_TLE)
+        ts = load.timescale()
+        sats = {}
+        for f in self.tle_paths:
+            for sat in guowang_passes.read_tle(f, ts):
+                sats.setdefault(sat.name.split()[-1], sat)
+        self.sats = sats  # name -> EarthSatellite, every DIGUI in the TLEs
+        self.codes = defaultdict(list)  # PRN -> [EarthSatellite]
+        self.label = {}  # name -> "W<PRN>", coded satellites only
+        for name, entry in guowang_db.coded(guowang_db.load(self.db_path)).items():
+            if name in sats:
+                self.codes[int(entry["g2_phase"]) + 1].append(sats[name])
+                self.label[name] = "W%d" % (int(entry["g2_phase"]) + 1)
+        self.k0 = int(day_unix // GW_GEOM_S) - 2
+        n = int(86400.0 // GW_GEOM_S) + 5
+        self.t = (np.arange(n) + self.k0 + 0.5) * GW_GEOM_S
+        self.geo = guowang_passes.Geometry(ts, site=dict(lat=LAT, lon=LON, h=ALT))
+        # One Time for the grid: skyfield caches its frame rotations there, ~8x faster than a
+        # new Time per satellite.
+        self.T = guowang_passes.ts_unix(ts, self.t)
+        self.enu_unit = guowang_passes.enu_unit
+        self._track = {}  # PRN -> (el [m, n], az [m, n], range m [m, n]), m satellites
+        # (bore, separation deg [n], label [n]) of the satellite nearest the boresight
+        self._near = None
+        print(
+            "  GuoWang: %d coded satellite(s) on %d PRN(s) from %s; TLE %s"
+            % (
+                sum(len(v) for v in self.codes.values()),
+                len(self.codes),
+                self.db_path,
+                ", ".join(os.path.basename(f) for f in self.tle_paths),
+            )
+        )
+
+    def topo(self, sat):
+        """(unit ENU vectors [n, 3], range m [n]) on the grid."""
+        alt, az, dist = (sat - self.geo.site).at(self.T).altaz()
+        return self.enu_unit(az.degrees, alt.degrees), dist.m
+
+    def track(self, prn):
+        if prn not in self._track:
+            el, az, rng = [], [], []
+            for sat in self.codes.get(prn, []):
+                u, d = self.topo(sat)
+                el.append(np.degrees(np.arcsin(np.clip(u[:, 2], -1.0, 1.0))))
+                az.append(np.degrees(np.arctan2(u[:, 0], u[:, 1])) % 360.0)
+                rng.append(d)
+            self._track[prn] = (np.array(el), np.array(az), np.array(rng))
+        return self._track[prn]
+
+    def at(self, prn, t):
+        """(el, az, range_m) at t's grid point, or None (see the class)."""
+        el, az, rng = self.track(prn)
+        i = int(t // GW_GEOM_S) - self.k0
+        if not len(el) or not 0 <= i < el.shape[1]:
+            return None
+        up = np.nonzero(el[:, i] > 0.0)[0]
+        if len(up) != 1:
+            return None
+        j = up[0]
+        return float(el[j, i]), float(az[j, i]), float(rng[j, i])
+
+    def nearest(self, bore):
+        """(separation deg [n], label [n]) of the satellite nearest bore (az, el deg) at each
+        grid point. The label is "W<PRN>" for a coded satellite, its name for any other."""
+        if self._near is None or self._near[0] != tuple(bore):
+            b = self.enu_unit(bore[0], bore[1])
+            names = sorted(self.sats)
+            sep = np.full(len(self.t), np.inf)
+            who = np.full(len(self.t), len(names))
+            for k, name in enumerate(names):
+                u, _ = self.topo(self.sats[name])
+                d = np.degrees(np.arccos(np.clip(u @ b, -1.0, 1.0)))
+                closer = d < sep
+                sep[closer] = d[closer]
+                who[closer] = k
+            labels = np.array([self.label.get(n, n) for n in names] + [""])
+            self._near = (tuple(bore), sep, labels[who])
+        return self._near[1], self._near[2]
+
+    def near(self, t, bore):
+        """nearest() at each of t's grid points; (inf, "") off the grid."""
+        sep, who = self.nearest(bore)
+        i = (np.asarray(t, float) // GW_GEOM_S).astype(np.int64) - self.k0
+        on = (i >= 0) & (i < len(sep))
+        i = np.clip(i, 0, len(sep) - 1)
+        return np.where(on, sep[i], np.inf), np.where(on, who[i], "")
 
 
 # ─────────────────────────────────────────────────────────────────────────────────────────
@@ -587,20 +790,19 @@ def prn_gain_table(args, chain, paths, day_unix, geom, dth=5.0, dphi=90.0, iters
             continue
         tb = ((t - day_unix) // FLOOR_BIN_S).astype(int)
         floor, refl = pedestal(P, tb, inday, getattr(args, "pedestal_ref", "envelope"))
-        minute = (t // GEOM_BIN_S).astype(int)
-        uk, inv = np.unique(np.stack([prn, minute], 1), axis=0, return_inverse=True)
+        step = geom_step(sys_)
+        gbin = (t // step).astype(int)
+        uk, inv = np.unique(np.stack([prn, gbin], 1), axis=0, return_inverse=True)
         inv = inv.ravel()
         el = np.full(len(uk), np.nan)
         az = np.full(len(uk), np.nan)
         rng = np.full(len(uk), np.nan)
-        vet = np.zeros(len(uk), bool)
         for j, (pn, mn) in enumerate(uk):
-            tt = mn * GEOM_BIN_S + GEOM_BIN_S / 2
-            vet[j] = geom.vetoed(tt, "%s%d" % (sys_, int(pn)))
-            g = geom.at(sys_, int(pn), tt)
+            g = geom.at(sys_, int(pn), mn * step + step / 2)
             if g and g[0] is not None:
                 el[j], az[j], rng[j] = g
-        vet_r, el_r, az_r, rng_r = vet[inv], el[inv], az[inv], rng[inv]
+        vet_r = geom.vetoed_rows(t, own_names(sys_, prn))
+        el_r, az_r, rng_r = el[inv], az[inv], rng[inv]
         ok = inday & ~vet_r & ~np.isnan(el_r) & (el_r > args.mask_deg)
         # The chain-health mask, as in build_day_h5: a masked bin is noise, not a level.
         ok &= ~gnss_chain_health.unhealthy(getattr(args, "_health", {}), chain, t)
@@ -749,29 +951,28 @@ def build_day_h5(args, chain, paths, day_unix, geom, prn_gain=None):
         # -- pedestal (module docstring) and the reference a sample is divided by -------------
         tb = ((t - day_unix) // FLOOR_BIN_S).astype(int)
         floor, refl = pedestal(P, tb, inday, getattr(args, "pedestal_ref", "envelope"))
-        # -- geometry per (prn, minute); veto per minute -------------------------------------
-        minute = (t // GEOM_BIN_S).astype(int)
-        keys = np.stack([prn, minute], 1)
+        # -- geometry per (prn, grid point); veto per row ------------------------------------
+        step = geom_step(sys_)
+        gbin = (t // step).astype(int)
+        keys = np.stack([prn, gbin], 1)
         uk, inv = np.unique(keys, axis=0, return_inverse=True)
         inv = inv.ravel()
-        # BRDC at each minute's midpoint and at both neighbours': a row's position is linear
-        # in time between its minute and the nearer neighbour. A satellite near boresight
-        # moves ~0.5 deg a minute, a pixel at nside 128, so one position per minute leaves
-        # every other pixel of a pass empty.
+        # Positions at each grid point's midpoint (a minute for BRDC, GW_GEOM_S for GuoWang) and
+        # at both neighbours': a row's position is linear in time between its point and the
+        # nearer neighbour. A GNSS satellite near boresight moves ~0.5 deg a minute, a pixel at
+        # nside 128, so one position per minute leaves every other pixel of a pass empty.
         geo = np.full(
             (3, len(uk), 3), np.nan
-        )  # (previous, this, next minute) x key x (el, az, range)
-        vet = np.zeros(len(uk), bool)
+        )  # (previous, this, next point) x key x (el, az, range)
         for j, (pn, mn) in enumerate(uk):
-            tt = mn * GEOM_BIN_S + GEOM_BIN_S / 2
-            vet[j] = geom.vetoed(tt, "%s%d" % (sys_, int(pn)))
+            tt = mn * step + step / 2
             for k, d in enumerate((-1, 0, 1)):
-                g = geom.at(sys_, int(pn), tt + d * GEOM_BIN_S)
+                g = geom.at(sys_, int(pn), tt + d * step)
                 if g and g[0] is not None:
                     geo[k, j] = g
-        vet_r = vet[inv]
+        vet_r = geom.vetoed_rows(t, own_names(sys_, prn))
         el_r, az_r, rng_r = geo[1, inv].T
-        f = (t - (minute * GEOM_BIN_S + GEOM_BIN_S / 2)) / GEOM_BIN_S  # -0.5 .. 0.5
+        f = (t - (gbin * step + step / 2)) / step  # -0.5 .. 0.5
         nb = np.where((f >= 0)[:, None], geo[2, inv], geo[0, inv])
         w = np.abs(f)
         have = np.isfinite(nb[:, 0]) & np.isfinite(el_r)
@@ -915,7 +1116,8 @@ def cmd_build(args):
                 "%s: %s\n  Add the interval to %s (then gnss_arraymap.py check) before "
                 "building this day." % (daystr, exc, gnss_arraymap.CONFIG)
             )
-        chains = args.chains or sorted(CHAIN_SYS)
+        # GuoWang is built only when named: it needs the TLE cache and the code library.
+        chains = args.chains or sorted(c for c, s in CHAIN_SYS.items() if s != "W")
         present = [(c, find_inputs(args, c, daystr)) for c in chains]
         present = [(c, p) for c, p in present if p]
         if not present:
@@ -930,6 +1132,9 @@ def cmd_build(args):
             args.veto_deg,
             bore,
             keep_own=getattr(args, "veto_keep_own", False),
+            guowang_db=getattr(args, "guowang_db", None),
+            guowang_tle=getattr(args, "guowang_tle", None),
+            guowang_veto=not getattr(args, "no_guowang_veto", False),
         )
         out = {
             "nside": args.nside,
@@ -1016,6 +1221,7 @@ def cmd_build(args):
                 {
                     "chain": chain,
                     "sys": CHAIN_SYS[chain],
+                    "geom_step_s": geom_step(CHAIN_SYS[chain]),
                     "n_sub": int(r["n"].shape[0]),
                     "n_elem": int(r["n"].shape[1]),
                     "n_pix": int(len(r["pix"])),
@@ -1033,11 +1239,31 @@ def cmd_build(args):
                 "%s: archive says pointing %s, epoch %s records %s -- fix one before "
                 "building" % (daystr, out["pointing"], epoch.name, epoch.pointing.name)
             )
+        if any(CHAIN_SYS.get(c) == "W" for c, _ in present):
+            out["guowang"] = {
+                "db": geom.guowang().db_path,
+                "tle": geom.gw.tle_paths,
+                "n_prn": len(geom.gw.codes),
+            }
         nm, nv = geom.veto_stats()
         print(
             "  railing veto: %d/%d minute(s) vetoed (%.1f%%) at %.1f deg"
             % (nv, nm, 100.0 * nv / max(1, nm), args.veto_deg)
         )
+        out["veto_guowang"] = None
+        if args.veto_deg > 0.0 and geom.guowang_veto and geom.gw is not None:
+            sep, _ = geom.gw.nearest(geom.bore)
+            day = (geom.gw.t >= day_unix) & (geom.gw.t < day_unix + 86400.0)
+            frac = float(np.mean(sep[day] < args.veto_deg))
+            out["veto_guowang"] = {
+                "tle": geom.gw.tle_paths,
+                "n_sat": len(geom.gw.sats),
+                "frac_day": frac,
+            }
+            print(
+                "  GuoWang in the veto: %d satellite(s), one within %.1f deg %.2f%% of the day"
+                % (len(geom.gw.sats), args.veto_deg, 100.0 * frac)
+            )
         if not out["chains"]:
             continue
         path = os.path.join(args.outdir, "cube_%s_nside%d.npz" % (daystr, args.nside))
@@ -1149,6 +1375,7 @@ def cmd_export(args):
             "bore_az_deg": bore[0],
             "bore_el_deg": bore[1],
             "veto_deg": meta["veto_deg"],
+            "veto_guowang": bool(meta.get("veto_guowang")),
             "range_norm": meta["range_norm"],
             "offset_ref": ref["chain"],
             "offset_annulus_deg": list(args.offset_annulus),
@@ -1351,9 +1578,9 @@ def main():
         "--veto-deg",
         type=float,
         default=5.0,
-        help="cross-chain railing veto: drop every minute in which a satellite "
-        "of any constellation is within this many degrees of boresight, for "
-        "every chain. 0 disables it and keeps the main lobe, contaminated by "
+        help="cross-chain railing veto: drop every row while a satellite of any "
+        "constellation is within this many degrees of boresight (GNSS per minute, "
+        "GuoWang per 2 s), for every chain. 0 disables it and keeps the main lobe, contaminated by "
         "the railing -- quote its level as a lower bound",
     )
     b.add_argument(
@@ -1364,6 +1591,12 @@ def main():
         "only the other satellites' rows: the 10-28 element-archive method. Default: "
         "drop every row in a vetoed minute",
     )
+    b.add_argument(
+        "--no-guowang-veto",
+        action="store_true",
+        help="leave GuoWang satellites out of the railing veto (it needs skyfield and a "
+        "GuoWang TLE near the day); their transits then stay in every chain, railed",
+    )
     b.add_argument("--mask-deg", type=float, default=0.0)
     b.add_argument(
         "--health-mask",
@@ -1373,6 +1606,15 @@ def main():
         "'' = none" % HEALTH_DIR,
     )
     b.add_argument("--no-range-norm", action="store_true")
+    b.add_argument(
+        "--guowang-db",
+        help="GuoWang code library for gw_1202 (default guowang/guowang_1202_db.json)",
+    )
+    b.add_argument(
+        "--guowang-tle",
+        help="GuoWang TLE file for gw_1202 and the veto (default: the cached hulianwang_*.tle "
+        "nearest the day, plus ~/.cache/guowang/hidden_digui.tle)",
+    )
     b.add_argument(
         "--prn-norm",
         action="store_true",
