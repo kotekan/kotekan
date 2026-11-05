@@ -58,8 +58,7 @@ void set_log_buffer(bool on) {
     log_buffer& b = buffer();
     std::lock_guard<std::mutex> lock(b.mutex);
     b.on = on;
-    if (!on)
-        b.lines.clear();
+    b.lines.clear();
 }
 
 bool log_buffer_on() {
