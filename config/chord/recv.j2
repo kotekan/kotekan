@@ -169,6 +169,10 @@ hdf5_N2_write_subset:
     use_bitshuffle: true
     compression: "lz4"
     compression_level: 3
+    # Round vis and weights below their noise so bitshuffle drops the low bits.
+    # Adds at most err_sq_lim / 3 (0.1%) to the vis noise variance, as in CHIME.
+    err_sq_lim: 0.003
+    weight_fixed_precision: 0.001
     # Chunk /vis as [16 freq, all prods, all 40 times]: readers take whole
     # product rows, and this keeps a file to a few hundred chunks.
     blocksize_f: 16
