@@ -13,6 +13,7 @@ Base: `develop` at `419f49ab1` (#1845).
 | #1843 | `jbm/rest-logs` | `3bc9fd09a` | 2026-11-04 | 2026-11-04 | Serve recent log lines at /logs |
 | #1844 | `jbm/n2-truncate` | `3e8a3c0d3` | 2026-11-05 | 2026-11-05 | hdf5N2Write: optional weight-based truncation of vis and weights |
 | #1847 | `jbm/gpu-ring-graph` | `6b4d69c2a` | 2026-11-04 | 2026-11-04 | Pipeline graph: GPU rings as host ring nodes, GPU tables, /pipeline_gpu_svg |
+| #1849 | `jbm/n2-gains` | `e77ae14dc` | 2026-11-05 | 2026-11-05 | bufferGains: buffer posted calibration gains; N2Accumulate records them |
 
 ## Chord-only commits
 
@@ -20,4 +21,5 @@ Base: `develop` at `419f49ab1` (#1845).
 |---|---|---|
 | `cd85d6afb` | `config/chord/common.j2` | Keep recent log lines for `GET /logs` (#1843) |
 | `030e1715f` | `config/chord/recv.j2` | Truncate subset vis and weights before writing (#1844) |
-| this file's commit | `CHORD_BRANCH.md`, `AGENTS.md` | This file and the chord workflow notes |
+| `12f44fcb5` | `CHORD_BRANCH.md`, `AGENTS.md` | This file and the chord workflow notes |
+| this row's commit | `config/chord/pathfinder.j2` | Record calibration gains in the X-engine N2 frames (#1849) |

@@ -109,6 +109,19 @@ updatable_config:
         bad_inputs: []
         start_time: 1752451200.
         update_id: "initial_flags"
+    # Calibration gains, POSTed to /updatable_config/gains (eigencal via choco); see bufferGains
+    # for the format. Every update must carry all six keys; freq_id and gain are read, the rest
+    # accepted. gain {} means unit gains, so after a restart the files record unit gains until
+    # choco posts the latest solution. Gains switch when a posted update arrives, within one
+    # correlation frame, not at start_time.
+    gains:
+        kotekan_update_endpoint: json
+        update_id: "initial_gains"
+        start_time: 0.
+        transition_interval: 0.
+        freq_id: []
+        gain: {}
+        weight: {}
 
 
 # Pools
@@ -151,6 +164,23 @@ host_bf_mask_buffer{{ n.sfx }}:
     dimnames: ["Tbf", "P", "D"]
     dimscalings: [bf_mask_lifetime_in_samples, 1, 1]
     metadata_pool: bad_feed_mask_pool
+    numa_node: {{ n.id }}
+{% endfor %}
+
+# Calibration gains from /updatable_config/gains: bufferGains output, float32 "gain"
+# [F, P, D, C] in [P][D] order, one frame per posted update plus one at startup, with this
+# half's frequencies. N2Accumulate polls it and records the newest frame in its gain field.
+# Never cross the halves: the halves have different frequencies, which N2Accumulate checks.
+{% for n in numa_halves %}
+host_gains_buffer{{ n.sfx }}:
+    kotekan_buffer: ndarray
+    num_frames: 4
+    value_type: float32
+    extents: [num_local_freq, num_polarizations, num_dishes, 2]
+    quantity_name: "gain"
+    dimnames: ["F", "P", "D", "C"]
+    dimscalings: [1, 1, 1, 1]
+    metadata_pool: main_pool
     numa_node: {{ n.id }}
 {% endfor %}
 
@@ -692,6 +722,19 @@ set_bf_mask:
         out_buf: host_bf_mask_buffer{{ n.sfx }}
 {% endfor %}
 
+# Calibration gains from /updatable_config/gains (fed by eigencal via choco). One instance per
+# NUMA half, taking that half's frequencies from its voltage buffer (see host_gains_buffer_<n>).
+set_gains:
+{% for n in numa_halves %}
+    gains_{{ n.id }}:
+        kotekan_stage: bufferGains
+        cpu_affinity: {{ n.other_cpus }}
+        updatable_config:
+            gains: /updatable_config/gains
+        metadata_source: host_voltage_buffer_{{ n.id }}
+        out_buf: host_gains_buffer{{ n.sfx }}
+{% endfor %}
+
 ## Send data to GPU ringbuffers ##
 # Every cudaProcess stage below runs once per half, gpu_<n> on GPU n with that half's
 # buffers; the in_buffers/out_buffers keys are the names the commands refer to.
@@ -1086,6 +1129,7 @@ n2_accumulate:
         in_plcounts_buf: host_pl_counts_buffer{{ n.sfx }}
         in_rfiframemask_buf: host_rfi_RFIframemask_buffer{{ n.sfx }}
         in_bad_feed_mask_buf: host_bf_mask_buffer{{ n.sfx }}
+        in_gains_buf: host_gains_buffer{{ n.sfx }}
         out_buf: n2_buffer{{ n.sfx }}
 {% endfor %}
 
