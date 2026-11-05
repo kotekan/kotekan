@@ -28,6 +28,12 @@ the database are listed too ("unknown"), so the beam-dump schedule can target th
 between satellites while a slot pulls in +-0.5 chip, so their passes are cut into steps
 (sweep), each at one theta of --sweep-theta-us; a step on which the chain finds the satellite
 gives its theta (builds/gw1202/gw_sweep_harvest.py), which the sweep file then carries.
+Which theta a step tries (--sweep-order prior, the default): each satellite's next step takes
+the theta it has tried least (a step counts as tried when the harvest's steps.jsonl says the
+chain evaluated it in >= 3 cycles; steps already handed out and not yet judged count too), and
+among those the one where the known thetas are densest, so a new satellite tries the middle of
+the population first. Each step's theta is kept in assign.json beside the sweep file, so every
+run of this job gives a step the same theta. --sweep-order cycle is the older stateless cycle.
 """
 
 import argparse
@@ -331,14 +337,84 @@ def load_sweep(path):
     }
 
 
-def sweep(records, names, thetas_s, step_s):
+def prior_order(thetas_s, prior_us, bw_us=1.5):
+    """The thetas (s), densest first under a Gaussian kernel (bw_us) over the known thetas
+    prior_us (us); ties go to the one nearer the median, then the lower. No prior: unchanged."""
+    if not prior_us:
+        return list(thetas_s)
+    med = sorted(prior_us)[len(prior_us) // 2]
+
+    def dens(t):
+        return sum(math.exp(-0.5 * ((t * 1e6 - p) / bw_us) ** 2) for p in prior_us)
+
+    return sorted(thetas_s, key=lambda t: (-round(dens(t), 9), abs(t * 1e6 - med), t))
+
+
+class SweepOrder:
+    """Per-satellite theta choice for the sweep steps (see the module doc). order_s: the thetas,
+    preferred first; tried: {name: [theta_us of tried steps]}; judged: {(name, step)} the harvest
+    has judged; assign: {name: {str(step): theta_us}} from earlier runs; now_gpst: GPST seconds
+    (steps are on the GPST grid). A step handed out but not judged is pending for pending_steps
+    steps after it, then dropped (it never ran). A past or current step with no assignment (it
+    ran before this order took over, or its satellite just joined) keeps cycle_s(name, step), the
+    stateless cycle's theta, which is what an earlier run published for it."""
+
+    def __init__(self, order_s, tried, judged, assign, now_gpst, step_s, cycle_s=None, keep_s=2 * 86400.0, pending_steps=120):
+        self.order = [round(t * 1e6, 4) for t in order_s]
+        self.rank = {t: k for k, t in enumerate(self.order)}
+        self.tried = {n: [round(t, 4) for t in ts] for n, ts in tried.items()}
+        self.judged = judged
+        self.now_step = math.floor(now_gpst / step_s)
+        old = self.now_step - keep_s / step_s
+        self.assign = {n: {k: v for k, v in m.items() if int(k) >= old} for n, m in assign.items()}
+        self.pending_steps = pending_steps
+        self.cycle_s = cycle_s
+
+    def theta_s(self, name, step):
+        m = self.assign.setdefault(name, {})
+        k = str(step)
+        if k not in m and self.cycle_s is not None and step <= self.now_step + 1:
+            m[k] = round(self.cycle_s(name, step) * 1e6, 4)
+        if k not in m:
+            uses = {}
+            for t in self.tried.get(name, ()):
+                uses[t] = uses.get(t, 0) + 1
+            for ks, t in m.items():
+                if (name, int(ks)) not in self.judged and int(ks) >= self.now_step - self.pending_steps:
+                    uses[t] = uses.get(t, 0) + 1
+            m[k] = min(self.order, key=lambda t: (uses.get(t, 0), self.rank[t]))
+        return m[k] * 1e-6
+
+
+def load_sweep_history(steps_path):
+    """({name: [theta_us tried]}, {(name, step) judged}) from the harvest's steps.jsonl."""
+    tried, judged = {}, set()
+    if not os.path.exists(steps_path):
+        return tried, judged
+    with open(steps_path) as fh:
+        for line in fh:
+            try:
+                r = json.loads(line)
+            except ValueError:
+                continue
+            if not r.get("judged"):
+                continue
+            if r.get("step") is not None:  # early rows carry no step
+                judged.add((r["name"], int(r["step"])))
+            if r.get("n_eval", 0) >= 3:
+                tried.setdefault(r["name"], []).append(float(r["theta_us"]))
+    return tried, judged
+
+
+def sweep(records, names, thetas_s, step_s, chooser=None):
     """The records of the satellites in `names` cut into steps of step_s on the GPST grid, each
     step at its own clock: theta = thetas_s[(step index + crc32(name)) % len(thetas_s)], so every
     run of this job gives a step the same theta, and two satellites on one schedule are offset.
     A step keeps its grid points in [0, step_s - dt], so one grid step between steps has no
     record: the broker drops the seed there and seeds the next step afresh at its theta (a held
     seed would slew to the new code phase at 0.025 chips/s). A step needs two grid points.
-    step_s must be a multiple of the records' dt."""
+    step_s must be a multiple of the records' dt. chooser(name, step) -> theta_s, when given,
+    replaces the cycle (SweepOrder.theta_s); steps are visited in time order per record."""
     out = []
     for r in records:
         if r["name"] not in names:
@@ -355,7 +431,7 @@ def sweep(records, names, thetas_s, step_s):
         for s, js in sorted(steps.items()):
             if len(js) < 2:
                 continue
-            theta = thetas_s[(s + off) % len(thetas_s)]
+            theta = chooser(r["name"], s) if chooser else thetas_s[(s + off) % len(thetas_s)]
             out.append(
                 dict(
                     r,
@@ -423,6 +499,13 @@ def main(argv=None):
         default="-18,12,0.375",
         help="LO,HI,STEP: the thetas a sweep tries (0.375 us = 0.77 chip)",
     )
+    ap.add_argument(
+        "--sweep-order",
+        choices=("prior", "cycle"),
+        default="prior",
+        help="prior: per satellite, the least-tried theta, densest among the known thetas "
+        "first (state in assign.json beside --sweep); cycle: the stateless cycle",
+    )
     ap.add_argument("--cache-dir", default=gp.CACHE_DIR)
     ap.add_argument("--out", default=DEFAULT_OUT)
     a = ap.parse_args(argv)
@@ -464,7 +547,41 @@ def main(argv=None):
     lo, hi, st = (float(x) for x in a.sweep_theta_us.split(","))
     thetas = [(lo + k * st) * 1e-6 for k in range(int(round((hi - lo) / st)) + 1)]
     swept = {n for n, (_, th) in implied.items() if th is None}
-    records = sweep(records, swept, thetas, a.sweep_step_s)
+    # The prior order is optional: any failure falls back to the stateless cycle.
+    chooser, order_note = None, "cycle"
+    if a.sweep and a.sweep_order == "prior" and swept:
+        try:
+            sdir = os.path.dirname(os.path.abspath(a.sweep))
+            prior = [v[1] * 1e6 for v in db.values() if v[1] is not None]
+            prior += [v[1] * 1e6 for v in implied.values() if v[1] is not None]
+            tried, judged = load_sweep_history(os.path.join(sdir, "steps.jsonl"))
+            assign_path = os.path.join(sdir, "assign.json")
+            assign = {}
+            if os.path.exists(assign_path):
+                with open(assign_path) as fh:
+                    assign = json.load(fh)
+            order = SweepOrder(
+                prior_order(thetas, prior),
+                tried,
+                judged,
+                assign,
+                gnss_ephemeris.gpst_of_utc(now),
+                a.sweep_step_s,
+                cycle_s=lambda n, s: thetas[(s + zlib.crc32(n.encode())) % len(thetas)],
+            )
+            chooser = order.theta_s
+            order_note = "prior (%d known thetas, densest %+.3f us)" % (len(prior), order.order[0])
+        except Exception as e:
+            print("sweep order: prior unavailable (%s); stateless cycle" % e)
+    records = sweep(records, swept, thetas, a.sweep_step_s, chooser)
+    if chooser is not None:
+        try:
+            tmp = assign_path + ".tmp"
+            with open(tmp, "w") as fh:
+                json.dump(order.assign, fh, separators=(",", ":"), sort_keys=True)
+            os.replace(tmp, assign_path)
+        except Exception as e:
+            print("sweep order: assign.json not written (%s)" % e)
     # The extra TLEs are optional: an unreadable file costs its satellites, not the table.
     extra = []
     if a.extra_tle:
@@ -496,6 +613,7 @@ def main(argv=None):
             file=a.sweep,
             step_s=a.sweep_step_s,
             theta_us=[lo, hi, st],
+            order=order_note,
             names=sorted(swept),
         ),
         records=records,

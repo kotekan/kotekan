@@ -159,6 +159,34 @@ class TestTable(unittest.TestCase):
         self.assertIsNone(ge.best_eph(recs, steps[3]["t1_gpst"] + 5.0))
         self.assertIs(ge.best_eph(recs, steps[3]["t1_gpst"] - 5.0)["clk_s"], steps[3]["clk_s"])
 
+    def test_sweep_order_tries_the_dense_middle_first_and_remembers(self):
+        thetas = [k * 1e-6 for k in range(-4, 5)]  # -4 .. +4 us
+        order = gw.prior_order(thetas, [-1.0, -1.2, -0.8, -1.1, 3.0])
+        self.assertEqual(round(order[0] * 1e6), -1)
+        self.assertEqual(sorted(order), thetas)
+        step_s = 30.0
+        now = 1000 * step_s
+        cyc = lambda n, s: 4e-6
+        # a new satellite: future steps take distinct thetas, densest first; a past step keeps the cycle's
+        so = gw.SweepOrder(order, {}, set(), {}, now, step_s, cycle_s=cyc)
+        self.assertAlmostEqual(so.theta_s("A", 999), 4e-6)
+        got = [round(so.theta_s("A", s) * 1e6, 4) for s in range(1002, 1011)]
+        # +4 is pending on step 999 (not yet judged), so it goes last and the next round starts over
+        self.assertEqual(got, [round(t * 1e6, 4) for t in order if t != 4e-6] + [round(order[0] * 1e6, 4)])
+        # a second run: the same steps keep their thetas
+        so2 = gw.SweepOrder(order, {}, set(), so.assign, now, step_s, cycle_s=cyc)
+        self.assertEqual([round(so2.theta_s("A", s) * 1e6, 4) for s in range(1002, 1011)], got)
+        # tried thetas go last; a judged step that was not tried frees its theta
+        tried = {"B": [-1.0, -2.0]}
+        judged = {("B", 1005)}
+        so3 = gw.SweepOrder(order, tried, judged, {"B": {"1005": 0.0}}, now, step_s)
+        first = [round(so3.theta_s("B", s) * 1e6, 4) for s in range(1010, 1017)]
+        self.assertNotIn(-1.0, first)
+        self.assertNotIn(-2.0, first)
+        self.assertIn(0.0, first)
+        # every theta used once: the next round starts again at the densest
+        self.assertEqual(round(so3.theta_s("B", 1017) * 1e6, 4), -1.0)
+
     def test_segments_merge_and_pad(self):
         unix = list(range(0, 100, 10))
         sep = [30, 20, 10, 20, 30, 30, 20, 30, 30, 30]
@@ -226,8 +254,8 @@ class TestDatabase(unittest.TestCase):
         self.assertGreaterEqual(len(db), 13)
         self.assertEqual(db["DIGUI-79"][0], 2027)
         self.assertAlmostEqual(db["DIGUI-79"][1], -16.55e-6, delta=0.2e-6)
-        self.assertTrue(all(0 <= ph < 2047 for ph, _ in db.values()))
-        self.assertTrue(all(th is not None and abs(th) < 1e-3 for _, th in db.values()))
+        self.assertTrue(all(0 <= ph < 2047 for ph, *_ in db.values()))
+        self.assertTrue(all(th is not None and abs(th) < 1e-3 for _, th, *_ in db.values()))
         self.assertAlmostEqual(unknown, -9.0e-6, delta=0.5e-6)
 
     def test_an_unmeasured_epoch_takes_the_median(self):
