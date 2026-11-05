@@ -331,7 +331,7 @@ Telescope geometry and timing
        per-feed displacements from the fiducial station position).
    * - ``dish_coelev_deg``
      - float64
-     - Commanded dish co-elevation, degrees.
+     - Commanded dish co-elevation, degrees. Absent if the pointing was not set.
 
 .. note::
    Files written by older kotekan builds may lack some of these attributes
@@ -642,7 +642,9 @@ verifies consistency, within ns-level tolerance, as frames arrive).
        1.0 whatever the GPU state.
    * - ``fringestop_enabled``
      - bool
-     - Whether the visibilities in this bin were fringestopped.
+     - Whether this bin was fringestopped. Only ``ArrayDish`` inputs get
+       fringestopping phases (see the input ``type`` table); a product with
+       an RFI or missing input uses a phase of 1 for that input.
 
 Completeness tracking and configuration snapshots
 =================================================
