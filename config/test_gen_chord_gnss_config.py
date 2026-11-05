@@ -1195,6 +1195,94 @@ def steer_keys(ep, positions):
         shutil.rmtree(d)
 
 
+def _dtv_node(args):
+    """add_dtv_subtract on a two-GPU node with cx19's combs (offsets 4 and 14)."""
+    cfg = {
+        "runtime": {"record_dir": "/r"},
+        "nodes": {"cxT": {"gpu_offsets_mod16": [4, 14]}},
+        "science_band": {"min_freq_id": 1536, "max_freq_id": 7679},
+    }
+    out = {
+        "run_send_voltage": {
+            "gpu_%d" % k: {"commands": [{"name": "cudaCopyToRingbuffer"}]}
+            for k in (0, 1)
+        }
+    }
+    saved = dict(g.GPU_VARS)
+    g.GPU_VARS.update({0: [{"cores": {"sink": 7}}], 1: [{"cores": {"sink": 9}}]})
+    try:
+        with contextlib.redirect_stderr(io.StringIO()):
+            g.add_dtv_subtract(out, cfg, args, "cxT", 8192)
+    finally:
+        g.GPU_VARS.clear()
+        g.GPU_VARS.update(saved)
+    return out
+
+
+def test_dtv_targets():
+    old = argparse.Namespace(
+        dtv_targets="",
+        dtv_subtract_freq_ids="2714-2744,2898-2928",
+        dtv_lag_min=-16,
+        dtv_n_lag=64,
+        dtv_sources=3,
+        dtv_state_file="",
+        dtv_depth=8,
+        dtv_frames_per_file=24,
+        record_dir="",
+    )
+    new = copy.copy(old)
+    new.dtv_subtract_freq_ids = ""
+    new.dtv_targets = "atsc24:2714-2744:-16:64:3; atsc30:2898-2928:-16:64:3"
+    check(
+        _dtv_node(old) == _dtv_node(new),
+        "--dtv-targets with the fleet's two ATSC targets gives the old flags' node config",
+    )
+    mixed = copy.copy(new)
+    mixed.dtv_targets = "atsc24:2714-2744:-16:64:3;atsc30:2898-2928:-4:16:1"
+    m = _dtv_node(mixed)
+    st = m["run_send_voltage"]["gpu_0"]["commands"][0]
+    a24 = [f <= 2744 for f in st["dtv_freq_ids"]]
+    check(
+        st["dtv_freq_ids"] == [2724, 2740, 2900, 2916]
+        and st["dtv_lag_min"] == [-16 if x else -4 for x in a24]
+        and st["dtv_n_lag"] == [64 if x else 16 for x in a24]
+        and st["dtv_sources"] == [3 if x else 1 for x in a24]
+        and m["gnss0_dtv_buf"]["frame_size"] == g.dtv_frame_bytes(4, 3, 64, True),
+        "--dtv-targets: a GPU with two targets gets per-channel lists and the frame with the "
+        "lags section",
+    )
+    # the frame sizes the stage ran with on cf05 (11-05): version 1 and version 2, 2 x 2 x 49
+    check(
+        g.dtv_frame_bytes(2, 2, 49) == 208528
+        and g.dtv_frame_bytes(2, 2, 49, True) == 208544,
+        "dtv_frame_bytes matches the stage's output frame, both versions",
+    )
+    for spec, why in (
+        ("a:2714-2720:-16:64:3;b:2720-2730:-8:49:2", "a channel in two targets"),
+        ("a:2714-2720:-20:16:1", "lags below -16"),
+        ("a:2714-2720:0:65:1", "more than 64 lags"),
+        ("a:2714-2720:-16:64:5", "5 sources"),
+        ("a:2714-2720:-16:64", "a missing field"),
+    ):
+        bad = copy.copy(new)
+        bad.dtv_targets = spec
+        try:
+            g.dtv_targets(bad)
+            refused = False
+        except SystemExit:
+            refused = True
+        check(refused, "--dtv-targets refuses %s" % why)
+    both = copy.copy(new)
+    both.dtv_subtract_freq_ids = "2714-2744"
+    try:
+        g.dtv_targets(both)
+        refused = False
+    except SystemExit:
+        refused = True
+    check(refused, "--dtv-targets with --dtv-subtract-freq-ids is refused")
+
+
 def test_positions_by_dish():
     """A per-dish positions file maps each element to its dish's position, is keyed by the
     epoch's ref_key (pointing and wiring) and refuses another pointing or a missing dish; the
