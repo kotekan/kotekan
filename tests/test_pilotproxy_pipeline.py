@@ -248,6 +248,20 @@ def test_default_chord_template_leaves_detector_disabled():
 
 
 @pytest.mark.parametrize("apply_mask", [False, True])
+def test_pathfinder_detection_and_recording_start_off(apply_mask):
+    jinja2 = pytest.importorskip("jinja2")
+    yaml = pytest.importorskip("yaml")
+    env = jinja2.Environment(loader=jinja2.FileSystemLoader(ROOT / "config/chord"))
+    config = yaml.safe_load(
+        env.get_template("pathfinder.j2").render(
+            dtv_enabled=not apply_mask, dtv_apply_mask=apply_mask
+        )
+    )
+    assert config["dtv_detector_enabled"]["enabled"] is False
+    assert config["dtv_write_enabled"]["enabled"] is False
+
+
+@pytest.mark.parametrize("apply_mask", [False, True])
 def test_dtv_diagnostics_preserve_per_frame_metadata(apply_mask):
     jinja2 = pytest.importorskip("jinja2")
     yaml = pytest.importorskip("yaml")
