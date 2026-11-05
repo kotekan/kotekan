@@ -61,8 +61,10 @@ def sk_summary(r):
 
 def parse_drops(metrics_text, gpu):
     """Pull this instance's drop counters out of a node's /metrics dump. buffer-send drops are
-    per gnss{gpu} stage; dpdk misses/ring-full are node-level (shared by both GPUs, reported so
-    a single congested NIC is visible on every instance rather than nowhere)."""
+    per gnss{gpu} stage (telem: the GPS L5 chain's, gnss{gpu}_gps_l5_telem_send, or
+    gnss{gpu}_telem_send on a config generated before the stages carried the chain key); dpdk
+    misses/ring-full are node-level (shared by both GPUs, reported so a single congested NIC is
+    visible on every instance rather than nowhere)."""
     out = {}
     srch = re.search(
         r'kotekan_buffer_send_dropped_frame_count\{stage_name="/gnss%d_srch_send"\}\s+([0-9.eE+-]+)'
@@ -70,8 +72,8 @@ def parse_drops(metrics_text, gpu):
         metrics_text,
     )
     telem = re.search(
-        r'kotekan_buffer_send_dropped_frame_count\{stage_name="/gnss%d_telem_send"\}\s+([0-9.eE+-]+)'
-        % gpu,
+        r'kotekan_buffer_send_dropped_frame_count\{stage_name="/gnss%d(?:_gps_l5)?_telem_send"\}'
+        r"\s+([0-9.eE+-]+)" % gpu,
         metrics_text,
     )
     if srch:
@@ -232,7 +234,7 @@ def comb_mismatches(rf, table):
 
 def inst_key(u):
     """node/gpu ("cx19/1") of an instance, from a node URL (http://cx19:12048/gnss1_srch_tap,
-    .../gnss1_e5b_n2combine) or a telemetry tag (cx19.1), so a GPU's tap and its combiners
+    .../gnss1_gal_e5b_n2combine) or a telemetry tag (cx19.1), so a GPU's tap and its combiners
     match. None for anything else."""
     m = re.search(r"//(\w+):\d+/gnss(\d)_", u) or re.match(r"(\w+)\.(\d)$", u)
     return "%s/%s" % m.groups() if m else None

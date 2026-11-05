@@ -21,10 +21,11 @@ tell a hole from a loss. The plan it implements is `fixtures/recording_plan_2026
   rung60/<pointing>/<sender>/<YYYYMMDD>.h5  exact 60-window (~60 s) sums
 ```
 
-`<sender>` is `cx19_gnss0_b2b_n2assemble` — the node and the stage, i.e. the chain's full
-address as it travels in the frame. `<pointing>` comes from `config/pointings.yaml`, a DECLARED
-epoch table (a map builder must never sum two pointings by accident; undeclared time lands under
-`unknown/`, visibly).
+`<sender>` is `cx19_gnss0_bds_b2b_n2assemble` — the node and the stage, i.e. the chain's full
+address as it travels in the frame (`cx19_gnss0_b2b_n2assemble`, and `cx19_gnss0_n2assemble` for
+GPS L5, in archives written before the stages carried the broker chain key). `<pointing>` comes
+from `config/pointings.yaml`, a DECLARED epoch table (a map builder must never sum two pointings
+by accident; undeclared time lands under `unknown/`, visibly).
 
 ## 1. Sizes, measured 2026-09-05
 

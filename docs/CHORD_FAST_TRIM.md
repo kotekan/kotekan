@@ -80,7 +80,7 @@ Two small interfaces, both JSON over the gather instance's existing REST server.
     { "chains": { "gps_l5": {
         "armed":   [4, 9, 27],
         "gain_per_s": 1.4, "leak_per_s": 0.12, "clamp": 3.0, "spacing": 0.5,
-        "targets": ["http://cx19:12049/gnss0_inject/set_trim", ...] } } }
+        "targets": ["http://cx19:12049/gnss0_gps_l5_inject/set_trim", ...] } } }
 
 `gain_per_s` and `leak_per_s` are required (>= 0; 0 is the broker's freeze); the controller
 converts both to per-update values at its measured close rate (section 7a). No `base_cp`: the
@@ -132,7 +132,7 @@ window is CLOSED when any sender on that chain reports a newer one (`lag=1` in
 Today the fast thread copies the cycle's exact posted dict and substitutes one field,
 because "a POST that drops a field ZEROES it at the tracker". That dance is a symptom. Add:
 
-    POST /gnss0_inject/set_trim   [{"prn": 4, "trim_chips": -0.312, "win": 123456}]
+    POST /gnss0_gps_l5_inject/set_trim   [{"prn": 4, "trim_chips": -0.312, "win": 123456}]
 
 * carries **one number**, and it is **absolute, not a delta** -- a dropped message then
   costs latency, not authority;
@@ -145,7 +145,7 @@ because "a POST that drops a field ZEROES it at the tracker". That dance is a sy
   posting real seeds every cycle so the injector's fixed 60 s seed TTL never expires them.
 
 The endpoint is per chain and required in the config (`set_trim_endpoint`, e.g.
-`/gnss0_e5a_inject/set_trim`): a shared default path would let the last instance in a process
+`/gnss0_gal_e5a_inject/set_trim`): a shared default path would let the last instance in a process
 take every chain's trims.
 
 **Transport.** ⚠️ I first wrote that the ~60 endpoint paths could be batched into 6 POSTs

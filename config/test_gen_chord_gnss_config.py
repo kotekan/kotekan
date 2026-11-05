@@ -992,11 +992,27 @@ def test_manual_mask_reaches_the_node_config():
         st == sorted(set(range(128)) - {7} - out_set),
         "the stations leave out bffs's and the mask's inputs (%d)" % len(st),
     )
-    asm = cfg["gnss0_n2assemble"]
+    asm = cfg["gnss0_gps_l5_n2assemble"]
     proj = cfg["gnss_n2_project"]["proj_0"]
     check(
+        "gnss0_n2assemble" not in cfg
+        and cfg["gnss0_gw_1202_n2combine"]["in_bufs"] == ["gnss0_gw_1202_n2rec_buf"]
+        and all(
+            c["seed_endpoint"] == "/gnss0_%s_inject/set_seeds" % ch
+            for c, ch in zip(
+                [
+                    c
+                    for c in cfg["gnss0_n2dual"]["commands"]
+                    if c["name"] == "cudaGnssInject"
+                ],
+                ("gps_l5", "gw_1202"),
+            )
+        ),
+        "every chain's stages carry its broker key, the primary's (gps_l5) included",
+    )
+    check(
         asm["elem_proj_sys"] == "G"
-        and cfg["gnss0_1202_n2assemble"]["elem_proj_sys"] == "G",
+        and cfg["gnss0_gw_1202_n2assemble"]["elem_proj_sys"] == "G",
         "elem_proj_sys: G for GPS L5 and GuoWang",
     )
     check(
@@ -1073,11 +1089,11 @@ def test_manual_mask_reaches_the_node_config():
     check(
         len(tb) >= 1
         and all(
-            c["beam_lane_owner"] == "/gnss%d_1202_n2assemble" % gpu
+            c["beam_lane_owner"] == "/gnss%d_gw_1202_n2assemble" % gpu
             and c["beam_targets"] == 2
             and c["beam_name"] == "gnss%d_trackbeam" % gpu
             and c["elem_positions_enu"]
-            == cfg["gnss%d_1202_n2assemble" % gpu]["elem_positions_enu"]
+            == cfg["gnss%d_gw_1202_n2assemble" % gpu]["elem_positions_enu"]
             and all(6144 <= f <= 6164 for f in c["beam_freq_ids"])
             and cfg["gnss%d_trackbeam_gate" % gpu]["in_bufs"]
             == ["gnss%d_trackbeam_buf" % gpu]
@@ -1134,6 +1150,88 @@ def test_manual_mask_reaches_the_node_config():
     check(
         "1 tracker elements are outside" in err, "the tracker warning counts only B04X",
     )
+
+
+def _lane_transfer_node(*transfers):
+    """One node config with SBAS L5 and Galileo E6 beside GPS L5, lanes published, and the
+    given --lane-transfer specs: (SystemExit message or None, parsed config)."""
+    argv = [
+        "--base",
+        kotekan_src.src("config", "chord/pathfinder.j2"),
+        "--node",
+        "cx51",
+        "--telem-host",
+        "gnss",
+        "--cube-host",
+        "cf06",
+        "--n2-project",
+        "live",
+        "--rfi-excision-exempt-freq-ids",
+        "5940-6076",
+        "--n2-project-live-freq-ids",
+        "exempt",
+        "--n2-project-source",
+        "lanes+residual",
+        "--elem-dir-publish",
+        "all",
+        "--extra-signal",
+        "SBAS_L5_I_MC:131,133,135",
+        "--extra-signal",
+        "GAL_E6_C_CS:2,3,4",
+    ]
+    for t in transfers:
+        argv += ["--lane-transfer", t]
+    with stubbed(set()):
+        exc, out, _ = run_main(argv)
+    return exc, (yaml.safe_load(out) if exc is None else None)
+
+
+def test_chain_names_and_lane_transfer():
+    """Every chain's stages are named by its broker key, and --lane-transfer names the chain the
+    same way: gps_l5 reaches the GPS L5 assembler and not SBAS L5's (both on L5's carrier), and
+    a spec naming no chain of the config is refused."""
+    if kotekan_src.SRC is None:
+        print("  [SKIP] node config: no kotekan tree to render the base from")
+        return
+    exc, cfg = _lane_transfer_node("gps_l5:1160.0-1166.2")
+    check(exc is None, "the node config generates (%s)" % exc)
+    if exc is not None:
+        return
+    for g_ in (0, 1):
+        names = {"gps_l5", "sbas_l5", "gal_e6"}
+        check(
+            all("gnss%d_%s_n2assemble" % (g_, c) in cfg for c in names)
+            and not any(
+                re.fullmatch(
+                    r"gnss%d_(n2assemble|n2combine|telem_pack|cube_send)" % g_, k
+                )
+                for k in cfg
+            ),
+            "gpu%d: gnss%d_<chain>_n2assemble for gps_l5, sbas_l5 and gal_e6, none untagged"
+            % (g_, g_),
+        )
+        gps = cfg["gnss%d_gps_l5_n2assemble" % g_]
+        sbas = cfg["gnss%d_sbas_l5_n2assemble" % g_]
+        off = node_cfg()["nodes"]["cx51"]["gpu_offsets_mod16"][g_]
+        got = gps.get("lane_transfer_freq_ids", [])
+        check(
+            got
+            and all(5940 <= f <= 5970 and f % 16 == off for f in got)
+            and "lane_transfer_freq_ids" not in sbas,
+            "gpu%d: gps_l5:1160.0-1166.2 transfers GPS L5's lanes (to %s), not SBAS L5's"
+            % (g_, got),
+        )
+        check(
+            gps["elem_proj_sys"] == sbas["elem_proj_sys"] == "G"
+            and cfg["gnss%d_gal_e6_n2assemble" % g_]["elem_proj_sys"] == "E",
+            "gpu%d: elem_proj_sys G for GPS and SBAS L5, E for Galileo E6" % g_,
+        )
+    for bad in ("l5:1160.0-1166.2", "bds_b2a:1160.0-1166.2"):
+        exc, _ = _lane_transfer_node(bad)
+        check(
+            exc is not None and "is not a chain of this config" in exc,
+            "--lane-transfer %s refused (%s)" % (bad, exc),
+        )
 
 
 _ARR4 = {"live_element_ranges": [[0, 1], [64, 65]]}

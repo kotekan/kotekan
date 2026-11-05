@@ -389,6 +389,29 @@ def check_triangle_refuses():
     return 0 if ok else 1
 
 
+def check_primary_tag():
+    """The primary's tag is read from the config: '' before the tags were broker chain keys,
+    _gps_l5 after."""
+    import yaml
+
+    d = tempfile.mkdtemp(prefix="viscap_selftest_")
+    fails = 0
+    for tags, want in (([""], ""), (["_gps_l5", "_gal_e5a"], "_gps_l5")):
+        inj = [
+            {"name": "cudaGnssInject", "gnss_ctl_name": "gnss1%s_n2ctl" % t}
+            for t in reversed(tags)
+        ]
+        cp = os.path.join(d, "cfg.yaml")
+        yaml.safe_dump({"gnss1_n2dual": {"commands": inj}}, open(cp, "w"))
+        got = vr.primary_tag(cp, 1)
+        ok = got == want
+        fails += not ok
+        print(
+            "  primary tag among %s: %r -> %s" % (tags, got, "PASS" if ok else "FAIL")
+        )
+    return fails
+
+
 def main():
     fails = sum(
         check(aa, bb) for aa, bb in ((False, False), (True, False), (True, True))
@@ -403,6 +426,7 @@ def main():
         )
     )
     fails += check_triangle_refuses()
+    fails += check_primary_tag()
     print("viscap_selftest: %s" % ("PASS" if fails == 0 else "FAIL (%d)" % fails))
     sys.exit(1 if fails else 0)
 

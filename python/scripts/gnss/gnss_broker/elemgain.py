@@ -34,7 +34,7 @@ from .transport import _get, _log_rl
 
 
 def _tag(url):
-    """http://cx19:12048/gnss1_e5b_n2combine -> cx19/1 (stable, sortable, column-safe)."""
+    """http://cx19:12048/gnss1_gal_e5b_n2combine -> cx19/1 (stable, sortable, column-safe)."""
     m = re.search(r"//(\w+):\d+/\w*?(\d)[^/]*$", url)
     return "%s/%s" % (m.group(1), m.group(2)) if m else url[-12:]
 

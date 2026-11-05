@@ -37,10 +37,11 @@ Three pieces:
 
 2. **Relay** (`scripts/gnss/site/lane_relay.py`, `gnss-lanerelay.service` on the gnss VM).
    Once a second: `get_lanes` from every projecting GPU, keep the best copy of each
-   (band tag, PRN), apply the `fleet-lane-transfer` table (`TAG:LO-HI` MHz, the same form as
-   `lane-transfer`) to choose the target channels, and `POST .../set_lanes` to each GPU the
-   lanes whose targets meet its live channels, less the lanes it measured itself. The pooled
-   per-element instrumental delays ride along every ten seconds. The relay reads the fleet
+   (chain, PRN), apply the `fleet-lane-transfer` table (`CHAIN:LO-HI` MHz, the chain by its
+   broker key, the same form as `lane-transfer`) to choose the target channels, and
+   `POST .../set_lanes` to each GPU the lanes whose targets meet its live channels, less the
+   lanes it measured itself. The pooled per-element instrumental delays ride along every ten
+   seconds. The relay reads the fleet
    configuration and the generated node configs and nothing else; it never touches the
    control path. If it dies, fleet lanes age out of every node in `fleet_lane_max_age_s` and
    projection continues with the local lanes: today's state.
@@ -83,7 +84,7 @@ table is `fleet-lane-transfer` in the fleet yaml's common block, read by the rel
 The target channels must be in `n2-project-live-freq-ids`, as for the local transfers.
 
 `fleet-lane-transfer-bright` (same form) holds the targets for a close pass: a lane whose
-power is `fleet-lane-transfer-bright-db` (default 15) above the median of its band's lanes in
+power is `fleet-lane-transfer-bright-db` (default 15) above the median of its chain's lanes in
 the same cycle also goes there, on every GPU including the one that measured it. Those targets
 are the sidelobes of wideband signals (B3I and L3OC at 10.23 Mcps, GLONASS L2's P code) that a
 satellite near the boresight spreads far past its own lane's channels; without them only the
@@ -108,8 +109,8 @@ possible on cf05 (DPDK EAL): the canary is the first real construction.
    the cleanup session extracts from the branch). The relay itself can run from the
    worktree with `--root ~/gnss/gnss-broker`.
 2. Fleet yaml, `common:`: `fleet-lanes: true` and
-   `fleet-lane-transfer: [l2c:1217.4-1237.8, e6:1263.4-1273.6]` (the relay's table, the same
-   form as `lane-transfer`; the targets are already in the projected ranges). Regenerate,
+   `fleet-lane-transfer: [gps_l2c:1217.4-1237.8, gal_e6:1263.4-1273.6]` (the relay's table, the
+   same form as `lane-transfer`; the targets are already in the projected ranges). Regenerate,
    `--check`.
 3. Pick a node whose one GPU holds an L2C channel and the other does not, so the cross-GPU
    case tests itself with one node: cx51 (GPU 1 holds L2C; GPU 0 receives). Cycle it onto the

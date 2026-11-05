@@ -109,7 +109,7 @@ def iso(t):
 
 
 def sender_name(chain):
-    """'cx19//gnss0_b2b_n2assemble' -> 'cx19_gnss0_b2b_n2assemble' (a path component)."""
+    """'cx19//gnss0_bds_b2b_n2assemble' -> 'cx19_gnss0_bds_b2b_n2assemble' (a path component)."""
     host, _, stage = chain.partition("/")
     return re.sub(r"[^A-Za-z0-9_.-]+", "_", host + "_" + stage.strip("/"))
 

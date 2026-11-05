@@ -66,6 +66,9 @@ R_REF = 20.2e6  # m: the dB zero for range normalisation (semi-synchronous slant
 import gnss_arraymap  # noqa: E402  (same directory)
 import gnss_chain_health  # noqa: E402  (same directory)
 
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", "config"))
+import gnss_fleet  # noqa: E402  (config/)
+
 # The p0_dec40p73 boresight (docs/CHORD_BEAM_MAPS.md §5; not telescope.dish_coelev_deg), for a
 # master built without bore_az_deg/bore_el_deg. The build takes the boresight from the epoch.
 BORE_AZ, BORE_EL = 180.0, 81.41
@@ -94,30 +97,11 @@ CHAIN_SYS = {
     "glo_l2of": "R",
 }
 
-# Cube-archive sender ("cx19_gnss0_b2b_n2assemble") -> chain. The band token is the stage's
-# infix; the GPS L5 stage carries none. Declared, like CHAIN_SYS: a sender with an unlisted
-# infix maps to no chain, and find_inputs does not read its files.
-SENDER_BAND_CHAIN = {
-    "": "gps_l5",
-    "l2c": "gps_l2c",
-    "e5a": "gal_e5a",
-    "e5b": "gal_e5b",
-    "e6": "gal_e6",
-    "b2a": "bds_b2a",
-    "b2b": "bds_b2b",
-    "b3i": "bds_b3i",
-    "l3oc": "glo_l3oc",
-    "l2oc": "glo_l2oc",
-    "l2of": "glo_l2of",
-}
-
 
 def sender_chain(sender):
-    parts = sender.split("_")
-    if len(parts) < 3 or not parts[-1].startswith("n2assemble"):
-        return None
-    band = parts[2] if len(parts) >= 4 else ""
-    return SENDER_BAND_CHAIN.get(band)
+    """Cube-archive sender ("cx19_gnss0_bds_b2b_n2assemble", or the older
+    "cx19_gnss0_b2b_n2assemble") -> chain, or None (gnss_fleet.stage_chain)."""
+    return gnss_fleet.stage_chain(sender, "n2assemble")
 
 
 # ─────────────────────────────────────────────────────────────────────────────────────────

@@ -26,10 +26,12 @@ Derived from the list and nothing else:
     python3 config/gnss_fleet.py expand [CHAINS]  # the chains yaml's `fleet` keys, expanded
 
 Python 3 standard library + PyYAML only, so the site scripts can use it from /usr/bin/python3;
-the covering-channel computation (instances, expand_chains) imports chord_band_plan lazily.
+the covering-channel computation (instances, expand_chains) and stage_chain import
+chord_band_plan lazily.
 """
 import argparse
 import os
+import re
 import sys
 
 import yaml
@@ -87,14 +89,46 @@ def broker_chain_name(name):
 
 
 def signal_tag(name):
-    """Short buffer/endpoint suffix for an extra signal chain, e.g. GAL_E5A_Q_CS -> _e5a.
+    """The infix of a chain's buffer, stage and endpoint names: "_" and its broker chain key,
+    e.g. GAL_E5A_Q_CS -> _gal_e5a (gnss0_gal_e5a_n2assemble).
 
     Must be distinct across the chains on one node: every buffer, stage and REST endpoint of
     the chain is named from it, and kotekan keys its per-consumer bookkeeping by stage name.
     """
-    parts = name.split("_")
-    body = parts[1] if len(parts) > 1 else parts[0]
-    return "_" + body.lower()
+    return "_" + broker_chain_name(name)
+
+
+_STAGE_CHAINS = {}  # tag -> broker chain, filled by stage_chain's first call
+
+
+def stage_chain(name, stage):
+    """The broker chain of a per-chain stage `gnss<g><tag>_<stage>`, from its name alone or
+    as it sits in a lane owner or a cube sender (after `/`, `<host>/` or `<host>_`):
+    gnss0_gal_e5a_n2assemble -> gal_e5a. None when the name is not that stage's or names no
+    chain.
+
+    Names generated before the tag was the chain key are read by the rule that made them: no
+    tag is the primary (the node table's signals.primary), and a band tag is the other chain
+    on that band (gnss0_e5a_n2assemble -> gal_e5a, gnss0_l5_n2assemble -> sbas_l5).
+    """
+    m = re.search(r"(?:^|[/_])gnss\d+(?:_([a-z0-9_]+))?_%s$" % re.escape(stage), name)
+    if not m:
+        return None
+    if not _STAGE_CHAINS:
+        # Lazy: chord_band_plan imports the interface golden (gnss_broker.iface).
+        if CONF not in sys.path:
+            sys.path.insert(0, CONF)
+        from chord_band_plan import signal_table
+
+        prim = broker_chain_name(_load_yaml(NODE_FILE)["signals"]["primary"])
+        chains = {broker_chain_name(n) for n in signal_table()}
+        bands = {}
+        for c in chains - {prim}:
+            bands.setdefault(c.partition("_")[2], []).append(c)
+        _STAGE_CHAINS.update({b: cs[0] for b, cs in bands.items() if len(cs) == 1})
+        _STAGE_CHAINS.update({c: c for c in chains})
+        _STAGE_CHAINS[""] = prim
+    return _STAGE_CHAINS.get(m.group(1) or "")
 
 
 class Fleet:
@@ -180,10 +214,13 @@ class Fleet:
     # ---- chains ----------------------------------------------------------------------------
     def tracker_signals(self):
         """{broker chain: (descriptor, tag)} for every chain the nodes build: the primary
-        (node table signals.tracker, tag '') and each manifest extra-signal."""
+        (node table signals.tracker) and each manifest extra-signal."""
         sig = self.site["signals"]
         out = {
-            broker_chain_name(sig["primary"]): (sig.get("tracker", sig["primary"]), "")
+            broker_chain_name(sig["primary"]): (
+                sig.get("tracker", sig["primary"]),
+                signal_tag(sig["primary"]),
+            )
         }
         for ent in (self.man.get("common") or {}).get("extra-signal") or []:
             name = str(ent).partition(":")[0].strip()
@@ -194,6 +231,7 @@ class Fleet:
         """[(host, gpu)] of the chain's instances, slot-major: every fleet GPU holding at least
         one of the chain's covering channels, by the rule the generator builds it with."""
         sigs = self.tracker_signals()
+        prim = broker_chain_name(self.site["signals"]["primary"])
         if chain not in sigs:
             raise FleetError(
                 "chain %s: no node builds it (the primary is %s; extra-signal in %s: %s)"
@@ -201,13 +239,13 @@ class Fleet:
                     chain,
                     self.site["signals"]["primary"],
                     self.manifest_path,
-                    ", ".join(sorted(c for c in sigs if sigs[c][1])),
+                    ", ".join(sorted(c for c in sigs if c != prim)),
                 )
             )
-        name, tag = sigs[chain]
+        name = sigs[chain][0]
         out = []
         for host in self.hosts:
-            for gpu in self._chain_gpus(host, name, primary=not tag):
+            for gpu in self._chain_gpus(host, name, primary=chain == prim):
                 out.append((host, gpu))
         return out
 

@@ -162,9 +162,10 @@ triangle over all of them -- including the replica × replica blocks BETWEEN cha
 and channel that is 48 mixed + 3 AA + 300 BB = 351 tiles (20.1 MB per frame per GPU).
 
 On disk: `<node>_gnss<g>_capvistiles_NNNNNNN.raw` plus one ctl series per captured chain with
-the usual names (`<node>_gnss<g>_visctl`, `..._e5a_visctl`, `..._b2a_visctl`), gated in lockstep
-by one `gnss<g>_viscap_gate` (`viscap.py --gates gnss0_viscap_gate,gnss1_viscap_gate`, the
-default). `viscap_read.py --tag <chain>` decodes that chain's channels of the capture frame against its ctl:
+the usual names (`<node>_gnss<g>_gps_l5_visctl`, `..._gal_e5a_visctl`, `..._bds_b2a_visctl`;
+`<node>_gnss<g>_visctl` and `..._e5a_visctl` before the stages carried the broker chain key),
+gated in lockstep by one `gnss<g>_viscap_gate` (`viscap.py --gates
+gnss0_viscap_gate,gnss1_viscap_gate`, the default). `viscap_read.py --tag <chain>` decodes that chain's channels of the capture frame against its ctl:
 lane = 384-lane index, this chain's slots at `lane_base + 4·slot + row`; `vis_bb` is the full
 384 × 384 block, `vis_aa` the N² once. Gates: `n2dualtest` [7]-[9] (compact addressing, the
 512-station launch, each chain's rows bitwise equal to a one-chain launch) and the cf06 smoke

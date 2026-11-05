@@ -142,14 +142,14 @@ class TestBandConsensus(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.consensus(halves)
 
-
     def test_two_groups_take_the_phase_of_the_larger(self):
         # The 2026-10-20 b2b pol-1 split, eleven instances of one shape: six near -34 deg,
         # five near +38 deg (one at +61). Every instance keeps (same shape); the reference
         # takes the larger group's phase; the minority is listed as off, not excluded.
         p1 = (-29, -31, -30, -35, -37, -39, 37, 35, 38, 40, 61)
         halves = [
-            (model(self.rng, self.shape[0], 0.0), model(self.rng, self.shape[1], p)) for p in p1
+            (model(self.rng, self.shape[0], 0.0), model(self.rng, self.shape[1], p))
+            for p in p1
         ]
         e = self.consensus(halves)
         self.assertEqual(e["n"], [11, 11])
@@ -161,8 +161,28 @@ class TestBandConsensus(unittest.TestCase):
         # the reference's pol-1 phase is the majority group's mean: a model at that phase
         # reads an offset of ~0
         _r0, r1 = ref_halves(e)
-        maj = float(np.degrees(np.angle(np.mean([np.exp(1j * np.radians(p)) for p in p1[:6]]))))
-        self.assertLess(abs(offset_deg(r1, self.shape[1] * np.exp(1j * np.radians(maj)))), 2.0)
+        maj = float(
+            np.degrees(np.angle(np.mean([np.exp(1j * np.radians(p)) for p in p1[:6]])))
+        )
+        self.assertLess(
+            abs(offset_deg(r1, self.shape[1] * np.exp(1j * np.radians(maj)))), 2.0
+        )
+
+
+class TestBandOf(unittest.TestCase):
+    def test_both_namings(self):
+        """The snapshot's band of an assembler, named by its broker chain key or by the band
+        tag that came before it: GPS and SBAS L5 share l5, as before."""
+        for stage, band in (
+            ("gnss0_gps_l5_n2assemble", "l5"),
+            ("gnss0_n2assemble", "l5"),
+            ("gnss1_sbas_l5_n2assemble", "l5"),
+            ("gnss1_l5_n2assemble", "l5"),
+            ("gnss0_gal_e5a_n2assemble", "e5a"),
+            ("gnss0_e5a_n2assemble", "e5a"),
+            ("gnss1_gw_1202_n2assemble", "1202"),
+        ):
+            self.assertEqual(esr.band_of(stage), band, stage)
 
 
 class FakeNode:

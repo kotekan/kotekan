@@ -161,9 +161,12 @@ def test_expand():
     check(out["common"]["rest-url"] == "http://cx19:12048", "rest-url: the first host")
     check(
         c["gps_l5"]["trackers"].split(",")[:2]
-        == ["http://cx19:12048/gnss0_inject", "http://cx19:12048/gnss1_inject"]
+        == [
+            "http://cx19:12048/gnss0_gps_l5_inject",
+            "http://cx19:12048/gnss1_gps_l5_inject",
+        ]
         and len(c["gps_l5"]["trackers"].split(",")) == 12,
-        "the primary's trackers carry no tag",
+        "the primary's trackers carry its chain key like every chain's",
     )
     check(
         c["gps_l5"]["rf-stats-endpoints"].split(",")[0]
@@ -171,7 +174,7 @@ def test_expand():
         "rf-stats-endpoints are the search taps",
     )
     check(
-        c["gps_l2c"]["combiner"] == "gnss1_l2c_n2combine",
+        c["gps_l2c"]["combiner"] == "gnss1_gps_l2c_n2combine",
         "combiner: bare, the chain's GPU on rest-url's host (%s)"
         % c["gps_l2c"]["combiner"],
     )
@@ -183,7 +186,7 @@ def test_expand():
     fl = gf.Fleet(manifest({"cx44": {}, "cx51": {}}), site())
     c = gf.expand_chains(chains_cfg(), fl)["chains"]
     check(
-        c["gps_l2c"]["combiner"] == "http://cx51:12048/gnss1_l2c_n2combine",
+        c["gps_l2c"]["combiner"] == "http://cx51:12048/gnss1_gps_l2c_n2combine",
         "combiner: a URL when rest-url's host lacks the chain (%s)"
         % c["gps_l2c"]["combiner"],
     )
@@ -229,11 +232,13 @@ def test_repo_chains_follow_the_fleet():
     check(probs == [], "the repo's chains yaml follows the fleet (%s)" % probs)
     with tempfile.TemporaryDirectory() as d:
         cfg = chains_cfg()
-        cfg["chains"]["gps_l5"]["trackers"] = "http://cx19:12048/gnss{0..1}_inject"
+        cfg["chains"]["gps_l5"][
+            "trackers"
+        ] = "http://cx19:12048/gnss{0..1}_gps_l5_inject"
         cfg["chains"]["gps_l5"]["dll-combiners"] = "fleet"
         cfg["chains"]["gps_l2c"][
             "dll-combiners"
-        ] = "http://cx47:12048/gnss0_l2c_n2combine"
+        ] = "http://cx47:12048/gnss0_gps_l2c_n2combine"
         path = os.path.join(d, "chains.yaml")
         with open(path, "w") as fh:
             yaml.safe_dump(cfg, fh)
@@ -249,25 +254,67 @@ def test_repo_chains_follow_the_fleet():
 
 
 def test_built_instances_matches_derived():
+    want = {"gps_l5": {0, 1}, "gps_l2c": {1}, "gal_e5a": {0}}
     text = "# header\n" + yaml.safe_dump(
+        {
+            "gnss0_gps_l5_n2combine": {},
+            "gnss1_gps_l5_n2combine": {},
+            "gnss1_gps_l2c_n2combine": {},
+            "gnss0_gal_e5a_n2combine": {},
+            "gnss0_gal_e5a_n2assemble": {},
+        }
+    )
+    got = gen_fleet.built_instances(text)
+    check(
+        got == want, "one n2combine per chain instance is read from a config (%s)" % got
+    )
+    old = "# header\n" + yaml.safe_dump(
         {
             "gnss0_n2combine": {},
             "gnss1_n2combine": {},
             "gnss1_l2c_n2combine": {},
             "gnss0_e5a_n2combine": {},
-            "gnss0_e5a_n2assemble": {},
         }
     )
-    got = gen_fleet.built_instances(text)
-    check(
-        got == {"": {0, 1}, "_l2c": {1}, "_e5a": {0}},
-        "one n2combine per chain instance is read from a config (%s)" % got,
-    )
+    got = gen_fleet.built_instances(old)
+    check(got == want, "and from a config with the band tags (%s)" % got)
     fl = six()
     d = gen_fleet.derived_instances(fl, "cx44")
     check(
-        "_l2c" not in d and d[""] == {0, 1},
+        "gps_l2c" not in d and d["gps_l5"] == {0, 1},
         "cx44 is derived without L2C, with L5 on both GPUs",
+    )
+
+
+def test_stage_chain():
+    """stage_chain reads the chain from a stage name of either generation: the broker key, or
+    the band tag that came before it (no tag = the primary, l5 = SBAS L5)."""
+    cases = [
+        ("gnss0_gal_e5a_n2assemble", "n2assemble", "gal_e5a"),
+        ("gnss0_e5a_n2assemble", "n2assemble", "gal_e5a"),
+        ("gnss0_gps_l5_n2assemble", "n2assemble", "gps_l5"),
+        ("gnss0_n2assemble", "n2assemble", "gps_l5"),
+        ("gnss1_sbas_l5_n2assemble", "n2assemble", "sbas_l5"),
+        ("gnss1_l5_n2assemble", "n2assemble", "sbas_l5"),
+        ("gnss1_gw_1202_n2combine", "n2combine", "gw_1202"),
+        ("gnss1_1202_n2combine", "n2combine", "gw_1202"),
+        ("/gnss1_glo_l2of_n2assemble", "n2assemble", "glo_l2of"),
+        ("cx19//gnss0_n2assemble", "n2assemble", "gps_l5"),
+        ("cx19_gnss0_b2b_n2assemble", "n2assemble", "bds_b2b"),
+        ("cx19_gnss0_bds_b2b_n2assemble", "n2assemble", "bds_b2b"),
+        ("gnss0_gal_e5a_n2assemble_tiles", "n2assemble", None),
+        ("gnss0_gal_e5a_n2combine", "n2assemble", None),
+        ("gnss0_gps_l9_n2assemble", "n2assemble", None),
+        ("gnss0_x_n2assemble", "n2assemble", None),
+    ]
+    for name, stage, want in cases:
+        got = gf.stage_chain(name, stage)
+        check(got == want, "stage_chain(%r, %r) = %r (%r)" % (name, stage, want, got))
+    check(
+        gf.signal_tag("GAL_E5A_Q_CS") == "_gal_e5a"
+        and gf.signal_tag("SBAS_L5_I_MC") == "_sbas_l5"
+        and gf.signal_tag("GPS_L5_Q") == "_gps_l5",
+        "signal_tag is _ and the broker chain key",
     )
 
 

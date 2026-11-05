@@ -61,7 +61,7 @@
  * @conf  beam_ref_input        Int. The phase-reference input (a live, unflagged input).
  * @conf  beam_eig_iters        Int, default 4. Power iterations per frame per component.
  * @conf  beam_lane_owner       String, default "". The assembler whose lanes are the targets
- *                              (its unique_name, e.g. /gnss0_1202_n2assemble). "" = no targets.
+ *                              (its unique_name, e.g. /gnss0_gw_1202_n2assemble). "" = no targets.
  * @conf  beam_targets          Int, default 2. Target beams per channel.
  * @conf  elem_positions_enu    Double list [128][3]. The assembler's element positions, metres
  *                              ENU. Required with targets.

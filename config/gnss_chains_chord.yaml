@@ -350,15 +350,15 @@ chains:
         signal: gal_e5a
         joint-trk-feed: true
     # #191 step 1 (10-18): the aggregator's E5a search (`--aggregator-extra-search GAL_E5A_Q`,
-    # stage e5a_search on the merged L5/E5a comb) is read for the record only: SEARCH-MONITOR
+    # stage gal_e5a_search on the merged L5/E5a comb) is read for the record only: SEARCH-MONITOR
     # logs the search's clock against the joint clock and nothing seeds, holds, escapes or
     # feeds from it; Doppler and nh hints are still posted so the search runs. The aggregator
     # must carry the stage before the broker points here. Delete both keys to end it.
-        detectors: http://localhost:12050/e5a_search
+        detectors: http://localhost:12050/gal_e5a_search
         detectors-monitor: true
     # The search scans only hinted PRNs (require_hint), and hints go out only under
     # --narrow-search, which this chain never carried (model-primary, no search): without it
-    # e5a_search reports "0/36 PRNs hinted" and the monitor never prints (10-18 18:30Z).
+    # gal_e5a_search reports "0/36 PRNs hinted" and the monitor never prints (10-18 18:30Z).
         narrow-search: true
     # This chain cannot solve a receiver clock, so it adopts the one gps_l5 solves, through the
     # shared in-process Receiver (same band). A chain with detections ignores the flag (under
@@ -670,7 +670,8 @@ chains:
     # like glo_l3oc: no search, the dead-reckon seed from the ephemeris (a GEO's range is known
     # to metres and its Doppler is ~0), the joint clock adopted. No signal-capability: the
     # registry has no SBAS block types; the manifest's PRN list is the capable set. The
-    # chain's tag is _l5 (signal_tag of SBAS_L5_I_MC), so its node endpoints read gnss<g>_l5_*.
+    # chain's tag is _sbas_l5 (signal_tag of SBAS_L5_I_MC), so its node endpoints read
+    # gnss<g>_sbas_l5_*.
     # Every node carries SBAS_L5_I_MC (the manifest's common signal set). probe-require-slot
     # filters probes by the PRN map the listed trackers agree on, and a listed node without the
     # chain answers 404, so there is never agreement and the probes go unfiltered (no slot, no

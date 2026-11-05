@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Pack a visibility capture into the (N+M)(N+M+1)/2 triangle per record and channel.
 
-    viscap_triangle.py <dir> --node cx19 --gpu 0 --tags ,_e5a,_b2a --config <generated config> \
-        --node-yaml config/chord_gnss_node.yaml --to-h5 cx19_gnss0_tri.h5 [--p-only] [--raw]
+    viscap_triangle.py <dir> --node cx19 --gpu 0 --tags ,_gal_e5a,_bds_b2a \
+        --config <generated config> --node-yaml config/chord_gnss_node.yaml \
+        --to-h5 cx19_gnss0_tri.h5 [--p-only] [--raw]
 
 The axis is [the N live elements | the M synth lanes of the capture frame]. V[i, j] = x_i conj(x_j)
 with x an element voltage or a replica lane: the N^2 block from the AA tiles, the lanes x
@@ -45,7 +46,7 @@ def main():
     ap.add_argument(
         "--tags",
         default="",
-        help="chain tags with a ctl series, comma list, '' = "
+        help="chain tags with a ctl series as --config names them, comma list, '' = "
         "the primary (default: the primary only)",
     )
     ap.add_argument("--config", required=True)
@@ -83,7 +84,7 @@ def main():
         help="keep tile units: do not divide lanes by their 4-bit quantizer scale",
     )
     a = ap.parse_args()
-    tags = a.tags.split(",")
+    tags = [t or vr.primary_tag(a.config, a.gpu) for t in a.tags.split(",")]
     chans = {
         t or "primary": vr.config_axes(a.config, a.gpu, t, a.node_yaml)[0] for t in tags
     }

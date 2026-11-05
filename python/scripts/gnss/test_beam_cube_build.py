@@ -377,5 +377,21 @@ class TestLerpAzel(unittest.TestCase):
         self.assertAlmostEqual(a, b, 3)
 
 
+class TestSenderChain(unittest.TestCase):
+    def test_archive_senders_of_both_namings(self):
+        """L0 sender directories before and after the chains were named by their broker key:
+        the GPS L5 assembler was untagged, and l5 was SBAS L5's tag."""
+        for sender, chain in (
+            ("cx19_gnss0_n2assemble", "gps_l5"),
+            ("cx19_gnss0_gps_l5_n2assemble", "gps_l5"),
+            ("cx19_gnss1_b2b_n2assemble", "bds_b2b"),
+            ("cx19_gnss1_bds_b2b_n2assemble", "bds_b2b"),
+            ("cx51_gnss0_l5_n2assemble", "sbas_l5"),
+            ("cx51_gnss0_sbas_l5_n2assemble", "sbas_l5"),
+            ("cx51_gnss0_n2combine", None),
+        ):
+            self.assertEqual(bc.sender_chain(sender), chain, sender)
+
+
 if __name__ == "__main__":
     unittest.main()

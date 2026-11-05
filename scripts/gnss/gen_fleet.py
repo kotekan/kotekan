@@ -360,12 +360,12 @@ def check_prns(man, rise_deg=RISE_DEG, hours=24.0, step_min=10.0):
     return 1 if bad else 0
 
 
-_COMBINE = re.compile(r"^gnss(\d+)(_[a-z0-9]+)?_n2combine$")
+_COMBINE = re.compile(r"^gnss(\d+)_\w*n2combine$")
 
 
 def built_instances(text):
-    """{tag: {gpu}} of the chains a generated node config builds: one n2combine stage per
-    chain instance (gnss<g><tag>_n2combine; the primary's tag is '')."""
+    """{chain: {gpu}} of the chains a generated node config builds: one n2combine stage per
+    chain instance (gnss<g><tag>_n2combine, read by gnss_fleet.stage_chain)."""
     cfg = yaml.load(
         _split_header(text)[1], Loader=getattr(yaml, "CSafeLoader", yaml.SafeLoader)
     )
@@ -373,17 +373,18 @@ def built_instances(text):
     for k in cfg or {}:
         m = _COMBINE.match(str(k))
         if m:
-            out.setdefault(m.group(2) or "", set()).add(int(m.group(1)))
+            chain = gnss_fleet.stage_chain(str(k), "n2combine")
+            out.setdefault(chain, set()).add(int(m.group(1)))
     return out
 
 
 def derived_instances(fleet, host):
-    """{tag: {gpu}} of the chains the fleet derivation puts on this host."""
+    """{chain: {gpu}} of the chains the fleet derivation puts on this host."""
     out = {}
-    for chain, (_name, tag) in fleet.tracker_signals().items():
+    for chain in fleet.tracker_signals():
         gpus = {g for h, g in fleet.instances(chain) if h == host}
         if gpus:
-            out[tag] = gpus
+            out[chain] = gpus
     return out
 
 

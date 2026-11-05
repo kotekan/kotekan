@@ -78,6 +78,13 @@ def main():
         d1.get("srch_send_drops") != 80566 or "telem_send_drops" in d1
     ):  # gpu1 has no telem line here
         fails.append("gpu1 drops wrong: %r" % d1)
+    # the GPS L5 chain's telem_send under its chain key; another chain's is not it
+    mt2 = (
+        'kotekan_buffer_send_dropped_frame_count{stage_name="/gnss1_gal_e5a_telem_send"} 7\n'
+        'kotekan_buffer_send_dropped_frame_count{stage_name="/gnss1_gps_l5_telem_send"} 12\n'
+    )
+    if parse_drops(mt2, 1).get("telem_send_drops") != 12:
+        fails.append("gnss1_gps_l5_telem_send not read: %r" % parse_drops(mt2, 1))
 
     if fails:
         print("FAIL:\n  " + "\n  ".join(fails))

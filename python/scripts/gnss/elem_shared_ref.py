@@ -35,7 +35,8 @@
                       Without --act nothing is changed.
 
 Instances are read from config/generated/chord_gnss_<node>_multi.yaml (port 12048). Band names:
-l5 for gnss<g>_n2assemble, else the chain tag (e5a, b2a, ...).
+the band of the assembler's chain (gnss_fleet.stage_chain: gps_l5 -> l5, gal_e5a -> e5a, ...),
+so GPS and SBAS L5 share one.
 """
 import argparse
 import concurrent.futures
@@ -53,6 +54,9 @@ import numpy as np
 K = os.path.normpath(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..")
 )
+sys.path.insert(0, os.path.join(K, "config"))
+import gnss_fleet  # noqa: E402
+
 GEN = os.path.join(K, "config", "generated", "chord_gnss_%s_multi.yaml")
 PORT = 12048
 EXCLUDE_DEG = 30.0  # snapshot: the largest group this close in offset sets its phase
@@ -70,11 +74,6 @@ def nodes():
         re.sub(r".*chord_gnss_(cx\d+)_multi\.yaml$", r"\1", p)
         for p in glob.glob(GEN % "cx*")
     )
-    conf = os.path.join(K, "config")
-    if conf not in sys.path:
-        sys.path.insert(0, conf)
-    import gnss_fleet
-
     fleet = set(gnss_fleet.hosts())
     return [n for n in have if n in fleet]
 
@@ -90,8 +89,7 @@ def endpoints():
 
 
 def band_of(stage):
-    parts = stage.split("_")
-    return "l5" if len(parts) == 2 else parts[1]
+    return (gnss_fleet.stage_chain(stage, "n2assemble") or "").partition("_")[2]
 
 
 def inst_name(node, stage):

@@ -497,7 +497,7 @@ _http = {}  # key -> [n, total_s, max_s, n_fail]
 def _http_key(url):
     """host + endpoint, with the instance index folded out.
 
-    gnss0_e5a_inject and gnss1_e5a_inject are the same endpoint on two GPUs and belong in
+    gnss0_gal_e5a_inject and gnss1_gal_e5a_inject are the same endpoint on two GPUs and belong in
     one row; cx19 and cx51 are different machines and must not share one, because "one node
     is slow" and "this endpoint is slow" call for different fixes.
     """

@@ -4,10 +4,11 @@
 
   run  [--period S] [--inst-period S] [--to NODE,..] [--from NODE,..] [--status DIR] [--once]
        Every period: GET gnss_n2_project/proj_<g>/get_lanes from every projecting GPU, keep
-       the copy of best coherence of each (band, PRN), take the target channels from the
-       fleet file's fleet-lane-transfer table, and POST .../set_lanes to every receiving GPU
-       the lanes whose targets meet its live channels, less the ones it measured itself.
-       A lane whose power is fleet-lane-transfer-bright-db (15) above its band's median also
+       the copy of best coherence of each (chain, PRN), take the target channels from the
+       fleet file's fleet-lane-transfer table (by broker chain: gal_e6, gps_l2c, ...), and
+       POST .../set_lanes to every receiving GPU the lanes whose targets meet its live
+       channels, less the ones it measured itself.
+       A lane whose power is fleet-lane-transfer-bright-db (15) above its chain's median also
        goes to the fleet-lane-transfer-bright targets (a close pass's sidelobes), on every
        GPU including its own.
        Every inst-period the instrumental delays (get_lane_inst) of one transferring
@@ -36,12 +37,15 @@ import yaml
 K = os.path.normpath(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..")
 )
+sys.path.insert(0, os.path.join(K, "config"))
+import gnss_fleet  # noqa: E402
+
 FLEET = "config/gnss_fleet_chord.yaml"
 NODES = "config/chord_gnss_node.yaml"
 GEN = "config/generated/chord_gnss_%s_multi.yaml"
 PORT = 12048
 CH_MHZ = 0.1953125
-OWNER = re.compile(r"^/?gnss(\d)(?:_([a-z0-9]+))?_n2assemble/lane/(\d+)$")
+OWNER = re.compile(r"^(/?gnss\d+_\w+)/lane/(\d+)$")
 LOG_EVERY_S = 60.0
 ERR_EVERY_S = 300.0
 
@@ -76,25 +80,31 @@ def http_json(url, body=None, timeout=1.0):
     return json.loads(raw) if raw.strip() else {}
 
 
-def transfer_table(fleet_path, key="fleet-lane-transfer"):
-    """KEY TAG:LO-HI (MHz) -> {tag: [[lo_fid, hi_fid], ...]}, the channels centred inside
-    [LO, HI], as the generator reads lane-transfer."""
+def transfer_table(fleet_path, chains, key="fleet-lane-transfer"):
+    """KEY CHAIN:LO-HI (MHz) -> {chain: [[lo_fid, hi_fid], ...]}, the channels centred inside
+    [LO, HI], as the generator reads lane-transfer. A CHAIN not in `chains` is refused."""
     common = (yaml.safe_load(open(fleet_path)) or {}).get("common", {}) or {}
     out = {}
     for spec in common.get(key, []) or []:
-        tag, _, band = str(spec).partition(":")
+        chain, _, band = str(spec).partition(":")
+        chain = chain.strip()
         lo, _, hi = band.partition("-")
         lo_f = int(-(-float(lo) // CH_MHZ))  # ceil
         hi_f = int(float(hi) // CH_MHZ)
-        if not tag or hi_f < lo_f:
+        if not chain or hi_f < lo_f:
             raise SystemExit("%s: bad entry %r" % (key, spec))
-        out.setdefault(tag.strip("_"), []).append([lo_f, hi_f])
+        if chain not in chains:
+            raise SystemExit(
+                "%s: %r names %r, not a chain the fleet builds; name one by its broker "
+                "key: %s" % (key, spec, chain, ", ".join(sorted(chains)))
+            )
+        out.setdefault(chain, []).append([lo_f, hi_f])
     return out
 
 
 def bright_lanes(best, powers, gate_db):
-    """The (tag, prn) keys of best whose power is gate_db above the median of every lane
-    of their tag this cycle; none for a tag with fewer than 3 lanes."""
+    """The (chain, prn) keys of best whose power is gate_db above the median of every lane
+    of their chain this cycle; none for a chain with fewer than 3 lanes."""
     out = set()
     for key, (L, _src) in best.items():
         p = sorted(powers.get(key[0], []))
@@ -138,19 +148,23 @@ class Gpu:
 
 def inst_stage(cfg, gpu):
     """The assembler on this GPU that serves get_lane_inst, or None: one with lane transfers
-    and at least two lane channels (GnssGpuRecordAssemble's _inst_on). The untagged (GPS L5)
-    one first, then l5 (SBAS L5), then the one with the most channels."""
+    and at least two lane channels (GnssGpuRecordAssemble's _inst_on). The GPS L5 one first,
+    then SBAS L5, then the one with the most channels."""
     names = []
     for k, v in cfg.items():
-        m = re.match(r"^gnss%d(?:_([a-z0-9]+))?_n2assemble$" % gpu, k)
-        if not m or not isinstance(v, dict) or not v.get("lane_transfer_freq_ids"):
+        if not re.match(r"^gnss%d_" % gpu, k):
+            continue
+        chain = gnss_fleet.stage_chain(k, "n2assemble")
+        if not chain or not isinstance(v, dict) or not v.get("lane_transfer_freq_ids"):
             continue
         if (
             len(v.get("channel_ids") or []) < 2
             or v.get("lane_transfer_inst_slope") is False
         ):
             continue
-        names.append(({None: 0, "l5": 1}.get(m.group(1), 2), -len(v["channel_ids"]), k))
+        names.append(
+            ({"gps_l5": 0, "sbas_l5": 1}.get(chain, 2), -len(v["channel_ids"]), k)
+        )
     return min(names)[2] if names else None
 
 
@@ -176,10 +190,12 @@ def gpus(root, offsets, only_from=None, only_to=None):
 
 
 def parse_owner(owner):
+    """A lane owner ("<assembler unique_name>/lane/<prn>") -> (chain, prn), or (None, None)."""
     m = OWNER.match(owner)
-    if not m:
+    chain = m and gnss_fleet.stage_chain(m.group(1), "n2assemble")
+    if not chain:
         return None, None
-    return (m.group(2) or "l5"), int(m.group(3))
+    return chain, int(m.group(2))
 
 
 def pool_inst(replies):
@@ -206,9 +222,12 @@ class Relay:
     def __init__(self, a):
         self.a = a
         self.rl = RateLimited()
-        self.table = transfer_table(os.path.join(a.root, FLEET))
+        chains = gnss_fleet.Fleet(
+            os.path.join(a.root, FLEET), os.path.join(a.root, NODES)
+        ).tracker_signals()
+        self.table = transfer_table(os.path.join(a.root, FLEET), chains)
         self.bright = transfer_table(
-            os.path.join(a.root, FLEET), "fleet-lane-transfer-bright"
+            os.path.join(a.root, FLEET), chains, "fleet-lane-transfer-bright"
         )
         common = (yaml.safe_load(open(os.path.join(a.root, FLEET))) or {}).get(
             "common", {}
@@ -274,8 +293,8 @@ class Relay:
             return u, {"error": repr(e)[:100]}
 
     def collect(self):
-        """Every source's lanes: {(tag, prn): (lane, source Gpu)}, the best coherence, and
-        {tag: [power of every lane]}."""
+        """Every source's lanes: {(chain, prn): (lane, source Gpu)}, the best coherence, and
+        {chain: [power of every lane]}."""
         srcs = [u for u in self.units if u.source]
         status = {}
         best = {}

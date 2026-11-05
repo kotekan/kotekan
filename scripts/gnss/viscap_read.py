@@ -49,6 +49,11 @@ import sys
 
 import numpy as np
 
+sys.path.insert(
+    0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "config")
+)
+import gnss_fleet  # noqa: E402
+
 HDR = np.dtype(
     [
         ("n_rec", "<i4"),
@@ -143,6 +148,25 @@ def decode_ctl(buf):
         48 + 8 * MAX_REC + PRNCTL.itemsize * MAX_REC * n_prn,
     ).reshape(-1, n_chan)
     return h, win, ctl, energy
+
+
+def primary_tag(config_path, gpu):
+    """The primary chain's tag on this GPU: that of the injector whose gnss_ctl_name
+    (gnss<gpu><tag>_n2ctl) gnss_fleet.stage_chain reads as the primary, '' in a config generated
+    before the tags were broker chain keys and _gps_l5 after."""
+    import yaml
+
+    cfg = yaml.safe_load(open(config_path))
+    prim = gnss_fleet.stage_chain("gnss%d_n2ctl" % gpu, "n2ctl")
+    for c in cfg["gnss%d_n2dual" % gpu]["commands"]:
+        name = c.get("gnss_ctl_name", "")
+        if c.get("name") == "cudaGnssInject" and (
+            gnss_fleet.stage_chain(name, "n2ctl") == prim
+        ):
+            return name[len("gnss%d" % gpu) : -len("_n2ctl")]
+    sys.exit(
+        "%s: GPU %d has no injector of the primary (%s)" % (config_path, gpu, prim)
+    )
 
 
 def series(d, node, gpu, tag, kind):
@@ -397,9 +421,11 @@ def decode(frames, n_live, hops, has_aa, has_bb=False, num_synth=128, lane_base=
     return res
 
 
-def load(d, node, gpu, config, node_yaml, tag="", files=None, max_frames=0):
+def load(d, node, gpu, config, node_yaml, tag=None, files=None, max_frames=0):
     """One call for notebooks: (axes dict, decoded dict). `files` = slice into the numbered
-    file list (each file holds a few frames), e.g. slice(120, 140)."""
+    file list (each file holds a few frames), e.g. slice(120, 140). `tag` None is the primary."""
+    if tag is None:
+        tag = primary_tag(config, gpu)
     freq_ids, elems, hops, has_aa = config_axes(config, gpu, tag, node_yaml)
     lanes = config_lanes(config, gpu, tag)
     has_aa = has_aa or lanes["has_aa"]
@@ -457,9 +483,11 @@ def main():
     ap.add_argument("--gpu", type=int, required=True)
     ap.add_argument(
         "--tag",
-        default="",
-        help="tag of the captured chain, e.g. _e5a: selects its cudaGnssInject "
-        "(gnss<gpu><tag>_n2ctl) and its visctl series (default: the primary chain)",
+        default=None,
+        help="tag of the captured chain as --config names it, e.g. _gal_e5a (_e5a in a "
+        "config generated before the tags were broker chain keys): selects its "
+        "cudaGnssInject (gnss<gpu><tag>_n2ctl) and its visctl series (default: the primary "
+        "chain)",
     )
     ap.add_argument(
         "--config",
@@ -480,6 +508,8 @@ def main():
     ap.add_argument("--to-h5", metavar="OUT.h5")
     ap.add_argument("--max-frames", type=int, default=0)
     a = ap.parse_args()
+    if a.tag is None:
+        a.tag = primary_tag(a.config, a.gpu)
 
     freq_ids, elems, hops, has_aa = config_axes(a.config, a.gpu, a.tag, a.node_yaml)
     lanes = config_lanes(a.config, a.gpu, a.tag)

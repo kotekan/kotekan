@@ -398,7 +398,7 @@ def parse_extra_signals(cfg, args, node, primary_chans):
     if not args.extra_signal:
         return []
     table = signal_table()
-    tags = set()
+    tags = {signal_tag(cfg["signals"]["primary"])}
     chains = []
     for spec in args.extra_signal:
         name, _, prn_s = spec.partition(":")
@@ -592,7 +592,7 @@ def gnss_chain_vars(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=None):
     sig, rt, arr = cfg["signals"], cfg["runtime"], cfg["array"]
     cores = gnss_cores(rt, gpu)  # this GPU's own NUMA node (see gnss_cores)
     nc = len(cores)
-    tag = chain["tag"] if chain else ""
+    tag = chain["tag"] if chain else signal_tag(sig["primary"])
     n_chan = len(chan_idx)
     prns = chain["prns"] if chain else PRIMARY_PRNS
     n_prn = len(prns)
@@ -1032,12 +1032,22 @@ def n2_project_live_ids(args):
     return freq_id_ranges(spec)
 
 
-def lane_transfer_keys(cfg, node, gpu, tag, freq_ids, args):
-    """--lane-transfer TAG:LO-HI (MHz, repeatable): the chain tagged TAG also publishes its
-    lane directions on this GPU's channels centred in [LO, HI] that GnssN2Project writes, less
-    its own (#190 tier 1.5: the same satellites' other signals, e.g. the Galileo E6 PRS lobe
-    beside E6-B/C). Needs --elem-dir-publish all; empty otherwise."""
-    if not args.lane_transfer or args.elem_dir_publish != "all" or not tag:
+def lane_transfer_keys(cfg, node, gpu, chain, freq_ids, args):
+    """--lane-transfer CHAIN:LO-HI (MHz, repeatable): the chain CHAIN (its broker key, gal_e6,
+    gps_l2c, ...) also publishes its lane directions on this GPU's channels centred in [LO, HI]
+    that GnssN2Project writes, less its own (#190 tier 1.5: the same satellites' other signals,
+    e.g. the Galileo E6 PRS lobe beside E6-B/C). Needs --elem-dir-publish all; empty otherwise.
+    A CHAIN this config does not build is refused."""
+    chains = {broker_chain_name(cfg["signals"]["primary"])} | {
+        broker_chain_name(e.partition(":")[0]) for e in args.extra_signal or []
+    }
+    for spec in args.lane_transfer or []:
+        if spec.partition(":")[0].strip() not in chains:
+            raise SystemExit(
+                f"--lane-transfer {spec}: '{spec.partition(':')[0]}' is not a chain of this "
+                f"config; name one by its broker key: {', '.join(sorted(chains))}"
+            )
+    if not args.lane_transfer or args.elem_dir_publish != "all":
         return {}
     live = n2_project_live_ids(args)
     off = cfg["nodes"][node]["gpu_offsets_mod16"][gpu]
@@ -1046,7 +1056,7 @@ def lane_transfer_keys(cfg, node, gpu, tag, freq_ids, args):
     for spec in args.lane_transfer:
         t, _, band = spec.partition(":")
         lo, _, hi = band.partition("-")
-        if t.strip("_") != tag.strip("_"):
+        if t.strip() != chain:
             continue
         for fid, centre_hz, _width in node_channels(cfg, node):
             if (
@@ -1265,7 +1275,7 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
     """
     sig = cfg["signals"]
     arr = cfg["array"]
-    tag = chain["tag"] if chain else ""
+    tag = chain["tag"] if chain else signal_tag(sig["primary"])
     pre = f"gnss{gpu}{tag}_"
     n_chan = len(chan_idx)
     prns = chain["prns"] if chain else PRIMARY_PRNS
@@ -1529,14 +1539,15 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
             **elem_shared_keys(args),
             **elem_shared_ref_keys(
                 args,
-                (tag or signal_tag(sig["primary"])).strip("_"),
+                # The snapshot's band key (l5, e5a, ...): GPS and SBAS L5 share one.
+                V["chain"].partition("_")[2],
                 steer,
                 n_live,
                 bad_input_set(cfg, args),
             ),
             **elem_proj_keys(args),
             "elem_proj_sys": PROJ_SYS[V["chain"].partition("_")[0]],
-            **lane_transfer_keys(cfg, node, gpu, tag, freq_ids, args),
+            **lane_transfer_keys(cfg, node, gpu, V["chain"], freq_ids, args),
             **cube_assembler_keys(args, cfg, gpu, pre),
             "sample_rate": float(cfg["fengine"]["sampling_rate_MHz"]) * 1e6,
             "cpu_affinity": [V["cores"]["assemble"]],
@@ -1734,7 +1745,7 @@ def merge_n2dual_gpu(blocks, cfg, args, node, gpu, chains, spds):
     pres = []
     for c in chains:
         ch = c["chain"]
-        tag = ch["tag"] if ch else ""
+        tag = ch["tag"] if ch else signal_tag(sig["primary"])
         inj0 = next(
             cmd
             for cmd in blocks[f"gnss{gpu}{tag}_n2dual"]["commands"]
@@ -1774,7 +1785,7 @@ def merge_n2dual_gpu(blocks, cfg, args, node, gpu, chains, spds):
     num_synth = DUAL_SYNTH_LANES
 
     procs = {p["pre"]: blocks.pop(f"{p['pre']}n2dual") for p in pres}
-    primary = procs[f"gnss{gpu}_"]
+    primary = next(procs[p["pre"]] for p in pres if p["chain"] is None)
     merged = {k: v for k, v in primary.items() if k != "commands"}
     # Private CUDA streams: cuda_stream_base is a pipeline index, and 1 moves this process's
     # copy-in, copy-out and kernel streams to 3, 4, 5, leaving 0, 1, 2 to production's pipelines,
@@ -2384,9 +2395,9 @@ def build_aggregator_instance(cfg, nodes, args, port, spds=8192):
     out["gps_search"]["acquire_threads"] = nth
     out["gps_search"]["cpu_affinity"] = list(cores[-max(nth, 6) :])
     # --aggregator-extra-search: more searches on the same merged comb, one stage each, named
-    # <tag>_search (signal_tag) so a broker chain's `detectors:` can point at it. The signal
-    # must share the primary's carrier: the comb is the primary's covering set, and a signal
-    # elsewhere in the band would be searched on channels that do not carry it. The #191
+    # <chain>_search (broker_chain_name) so a broker chain's `detectors:` can point at it. The
+    # signal must share the primary's carrier: the comb is the primary's covering set, and a
+    # signal elsewhere in the band would be searched on channels that do not carry it. The #191
     # step 1 experiment is GAL_E5A_Q beside GPS_L5_Q, one frequency, identical channels.
     table = signal_table() if args.aggregator_extra_search else {}
     for spec in args.aggregator_extra_search or []:
@@ -2413,7 +2424,7 @@ def build_aggregator_instance(cfg, nodes, args, port, spds=8192):
             raise SystemExit(
                 f"--aggregator-extra-search {name}: give the PRNs, e.g. {name}:1,2,3"
             )
-        key = signal_tag(name).lstrip("_") + "_search"
+        key = broker_chain_name(name) + "_search"
         if key in out:
             raise SystemExit(
                 f"--aggregator-extra-search {name}: stage '{key}' already exists"
@@ -3472,9 +3483,9 @@ def main():
         f"{SYNTH_SLOTS} PRN slots). A chain whose covering "
         "channels match the primary's shares its voltage tap (E5a and B2a are on "
         "L5's carrier); a different carrier gets its own tap. Buffer and endpoint "
-        "names carry a tag derived from the signal name. Sideband partners given "
-        "together (E5a and E5b, B2a and B2b) must list the same PRNs. See "
-        "docs/CHORD_MULTIBAND.md.",
+        "names carry the chain's broker key (GAL_E5A_Q_CS -> gnss0_gal_e5a_n2assemble). "
+        "Sideband partners given together (E5a and E5b, B2a and B2b) must list the same "
+        "PRNs. See docs/CHORD_MULTIBAND.md.",
     )
     ap.add_argument(
         "--elem-positions-file",
@@ -3617,10 +3628,11 @@ def main():
         "--lane-transfer",
         action="append",
         default=[],
-        help="TAG:LO-HI (MHz), repeatable: the chain tagged TAG (e6, l2c, e5a, ...) also "
-        "publishes its lane directions on the channels centred in [LO, HI] that GnssN2Project "
-        "writes, turned through each satellite's geometric delay (#190 tier 1.5: the same "
-        "satellites' other signals, e.g. e6:1263.4-1273.6 for the Galileo E6 PRS lobe)",
+        help="CHAIN:LO-HI (MHz), repeatable: the chain CHAIN (its broker key: gal_e6, gps_l2c, "
+        "gps_l5, ...) also publishes its lane directions on the channels centred in [LO, HI] "
+        "that GnssN2Project writes, turned through each satellite's geometric delay (#190 tier "
+        "1.5: the same satellites' other signals, e.g. gal_e6:1263.4-1273.6 for the Galileo E6 "
+        "PRS lobe). A CHAIN the config does not build is refused",
     )
     ap.add_argument(
         "--fleet-lanes",
@@ -3910,8 +3922,8 @@ def main():
         "descriptor name whose carrier is the primary's (e.g. GAL_E5A_Q beside GPS L5). "
         "Repeatable. PRNS is a comma list; without it the search scans the constellation's "
         "broadcast PRN range by name prefix (GPS 1-32, GAL 1-36, BDS 19-63, GLO 1-24), and "
-        "any other prefix needs PRNS. The stage is named <tag>_search (GAL_E5A_Q -> "
-        "e5a_search), the endpoint a broker chain's --detectors names; like every search "
+        "any other prefix needs PRNS. The stage is named <chain>_search (GAL_E5A_Q -> "
+        "gal_e5a_search), the endpoint a broker chain's --detectors names; like every search "
         "it scans only the PRNs a broker hints (that chain's --narrow-search).",
     )
     ap.add_argument(
