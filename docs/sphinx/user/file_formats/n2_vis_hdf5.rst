@@ -581,7 +581,8 @@ All are 1-D of length :math:`N_t` (axis ``time``) unless noted. "Bin" values
 refer to the *nominal* accumulation bin on the upstream bin grid;
 "time-centre" values refer to the midpoint of the data actually accumulated.
 Identical values are shared by all frequencies of a time slot (the writer
-verifies consistency, within ns-level tolerance, as frames arrive).
+verifies consistency, within ns-level tolerance, as frames arrive), except in
+the datasets with a frequency axis, which hold one value per stream.
 
 .. list-table::
    :header-rows: 1
@@ -633,18 +634,19 @@ verifies consistency, within ns-level tolerance, as frames arrive).
      - Local ERA (ERA + ITRS longitude + :math:`s'`) at the bin edges,
        degrees.
    * - ``rfi_frame_excision_enabled``
-     - bool
+     - bool (:math:`N_f`, :math:`N_t`)
      - Whether second-stage (frame-level) RFI excision was active for this
-       bin.
+       frequency and bin. Each frequency comes from one stream, and the
+       streams switch independently.
    * - ``rfi_frame_excision_num``
-     - int32
+     - int32 (:math:`N_f`, :math:`N_t`)
      - Number of active excision thresholds (<= :math:`N_k`); only the
        first this many entries of the two datasets below are meaningful.
    * - ``rfi_frame_excision_threshold``
-     - float32 (:math:`N_t`, :math:`N_k`)
+     - float32 (:math:`N_f`, :math:`N_t`, :math:`N_k`)
      - Spectral-kurtosis thresholds, in sigma, used for excision.
    * - ``rfi_frame_excision_fraction``
-     - float32 (:math:`N_t`, :math:`N_k`)
+     - float32 (:math:`N_f`, :math:`N_t`, :math:`N_k`)
      - Fraction of samples above the corresponding threshold required to
        trigger excision.
    * - ``frac_rfi_first_stage_enabled``
@@ -656,10 +658,11 @@ verifies consistency, within ns-level tolerance, as frames arrive).
        ``rfi_first_stage_enabled_updatable_config`` is set; otherwise this is
        1.0 whatever the GPU state.
    * - ``fringestop_enabled``
-     - bool
-     - Whether this bin was fringestopped. Only ``ArrayDish`` inputs get
-       fringestopping phases (see the input ``type`` table); a product with
-       an RFI or missing input uses a phase of 1 for that input.
+     - bool (:math:`N_f`, :math:`N_t`)
+     - Whether the visibilities of this frequency and bin were
+       fringestopped. Only ``ArrayDish`` inputs get fringestopping phases
+       (see the input ``type`` table); a product with an RFI or missing
+       input uses a phase of 1 for that input.
 
 Completeness tracking and configuration snapshots
 =================================================

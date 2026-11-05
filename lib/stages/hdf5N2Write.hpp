@@ -51,13 +51,14 @@
  *   grid_x_idx, grid_y_idx, feed_pos_disp_m, coelev_disp_deg, type, label), and
  *   /index_map/dish_positions_in_grid_coords per dish.
  * - Per-(f, p, t)/(f, t) datasets: /vis, /eval, /evec, /erms, /gain, /radiometer_chi2,
- * /frames_added, /frac_rfi_first_stage_enabled; vis_weight, flags, frac_lost, and frac_rfi live
+ * /frames_added, /frac_rfi_first_stage_enabled, /rfi_frame_excision_enabled,
+ * /rfi_frame_excision_num, /rfi_frame_excision_threshold, /rfi_frame_excision_fraction,
+ * /fringestop_enabled; vis_weight, flags, frac_lost, and frac_rfi live
  *   at the root (CHORD) or under /flags/{vis_weight, flags, frac_lost, frac_rfi} when
  *   file_mode == CHIME.
  * - Per-time metadata: /fpga_start_tick, /frame_length_fpga_ticks,
  *   /time_center_ut1_ns, /bin_ut1_ns, /bin_start_ERA_deg, /bin_end_ERA_deg,
- *   /bin_start_ERAL, /bin_end_ERAL, /rfi_frame_excision_enabled, /rfi_frame_excision_num,
- *   /rfi_frame_excision_threshold, /rfi_frame_excision_fraction, /fringestop_enabled.
+ *   /bin_start_ERAL, /bin_end_ERAL.
  * - /config_json grows on flush with snapshots from configTracker.
  *
  * @par Chunking and compression
@@ -130,28 +131,29 @@ protected:
     std::vector<float> radiometer_chi2;        // (f, t, pp)
     // (f, t) ; uses n_rfi_first_stage_enabled_fpga_ticks
     std::vector<float> frac_rfi_first_stage_enabled;
+    // (f, t) ; 0 or 1, written as bool (std::vector<bool> has no 2-D write)
+    std::vector<uint8_t> rfi_frame_excision_enabled;
+    std::vector<uint8_t> fringestop_enabled;
+    std::vector<int32_t> rfi_frame_excision_num;     // (f, t)
+    std::vector<float> rfi_frame_excision_threshold; // (f, t, k)
+    std::vector<float> rfi_frame_excision_fraction;  // (f, t, k)
 
     // t-dependent metadata
-    std::vector<uint64_t> fpga_start_tick;           // (t)
-    std::vector<uint64_t> frame_length_fpga_ticks;   // (t)
-    std::vector<uint64_t> bin_abs_index;             // (t)
-    std::vector<int64_t> time_center_t_inst_ns;      // (t)
-    std::vector<int64_t> time_center_ut1_ns;         // (t)
-    std::vector<int64_t> bin_t_inst_ns;              // (t)
-    std::vector<int64_t> bin_ut1_ns;                 // (t)
-    std::vector<double> bin_delta_ut1_inst;          // (t)
-    std::vector<double> bin_era_deg;                 // (t)
-    std::vector<double> bin_xp_as;                   // (t)
-    std::vector<double> bin_yp_as;                   // (t)
-    std::vector<double> bin_start_ERA_deg;           // (t)
-    std::vector<double> bin_end_ERA_deg;             // (t)
-    std::vector<double> bin_start_ERAL_deg;          // (t)
-    std::vector<double> bin_end_ERAL_deg;            // (t)
-    std::vector<bool> rfi_frame_excision_enabled;    // (t)
-    std::vector<int32_t> rfi_frame_excision_num;     // (t)
-    std::vector<float> rfi_frame_excision_threshold; // (t, k)
-    std::vector<float> rfi_frame_excision_fraction;  // (t, k)
-    std::vector<bool> fringestop_enabled;            // (t)
+    std::vector<uint64_t> fpga_start_tick;         // (t)
+    std::vector<uint64_t> frame_length_fpga_ticks; // (t)
+    std::vector<uint64_t> bin_abs_index;           // (t)
+    std::vector<int64_t> time_center_t_inst_ns;    // (t)
+    std::vector<int64_t> time_center_ut1_ns;       // (t)
+    std::vector<int64_t> bin_t_inst_ns;            // (t)
+    std::vector<int64_t> bin_ut1_ns;               // (t)
+    std::vector<double> bin_delta_ut1_inst;        // (t)
+    std::vector<double> bin_era_deg;               // (t)
+    std::vector<double> bin_xp_as;                 // (t)
+    std::vector<double> bin_yp_as;                 // (t)
+    std::vector<double> bin_start_ERA_deg;         // (t)
+    std::vector<double> bin_end_ERA_deg;           // (t)
+    std::vector<double> bin_start_ERAL_deg;        // (t)
+    std::vector<double> bin_end_ERAL_deg;          // (t)
 
     // Tracking what (f, t) pairs have been added
     std::vector<uint8_t> added_ft; // size = num_file_f * num_file_t

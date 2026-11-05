@@ -18,13 +18,16 @@ The kotekan framework registers a number of points
 ``/start`` ``[POST]``
     Request an idle instance to begin operation,
     requires a (``json``-encoded) config to be passed.
+    Returns once the config passes the static checks; the stages are
+    built on another thread, and ``/status`` reports ``starting``
+    meanwhile.
 
 ``/stop`` ``[GET]``
     Tell an active kotekan to shut down and clean up its
     current running configuration.
 
 ``/status`` ``[GET]``
-    returns the state of the system (active or not).
+    returns the state of the system: ``running`` and ``starting``.
 
 ``/config`` ``[GET]``
     Returns the current system configuration.

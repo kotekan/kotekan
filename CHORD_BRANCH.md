@@ -2,7 +2,7 @@
 
 This file exists only on the `chord` branch. It lists how `chord` differs from `develop`. See the "chord branch" section of AGENTS.md for the workflow.
 
-Base: `develop` at `419f49ab1` (#1845).
+Base: `develop` at `7e1dc5433` (#1850).
 
 ## Open PRs carried in chord
 
@@ -13,7 +13,9 @@ Base: `develop` at `419f49ab1` (#1845).
 | #1843 | `jbm/rest-logs` | `294bc2188` | 2026-11-04 | 2026-11-05 | Serve recent log lines at /logs |
 | #1844 | `jbm/n2-truncate` | `def072ff5` | 2026-11-05 | 2026-11-05 | hdf5N2Write: optional weight-based truncation of vis and weights |
 | #1847 | `jbm/gpu-ring-graph` | `7b3fc8f2b` | 2026-11-04 | 2026-11-05 | Pipeline graph: GPU rings as host ring nodes, GPU tables, /pipeline_gpu_svg |
+| #1848 | `jbm/n2-switch-per-freq` | `9d6821aeb` | 2026-11-05 | 2026-11-05 | hdf5N2Write: record fringestop and second-stage RFI switches per frequency |
 | #1849 | `jbm/n2-gains` | `f76d2aba0` | 2026-11-05 | 2026-11-05 | bufferGains: buffer posted calibration gains; N2Accumulate records them |
+| #1851 | `jbm/async-start` | `6acfe2756` | 2026-11-05 | 2026-11-05 | kotekan: start the pipeline on its own thread, report it in /status |
 
 ## Chord-only commits
 

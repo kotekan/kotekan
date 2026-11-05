@@ -339,6 +339,7 @@ void restServer::handle_request(struct evhttp_request* request, void* cb_data) {
         connectionInstance conn(request);
         std::function<void(connectionInstance&)> callback;
         busy_guard busy;
+        bool held;
         {
             // Resolve the alias and look the callback up under one shared
             // lock, but invoke a copy of it after releasing the lock:
@@ -349,11 +350,16 @@ void restServer::handle_request(struct evhttp_request* request, void* cb_data) {
             if (alias != server->aliases.end()) {
                 url = alias->second;
             }
+            held = server->_held.count(url) > 0;
             auto it = server->get_callbacks.find(url);
-            if (it != server->get_callbacks.end()) {
+            if (!held && it != server->get_callbacks.end()) {
                 callback = it->second;
                 busy.set(server, url);
             }
+        }
+        if (held) {
+            conn.send_error("kotekan is starting", HTTP_RESPONSE::SERVICE_UNAVAILABLE);
+            return;
         }
         if (!callback) {
             DEBUG_NON_OO("restServer: GET Endpoint {:s} called, but not found", url);
@@ -376,6 +382,7 @@ void restServer::handle_request(struct evhttp_request* request, void* cb_data) {
         connectionInstance conn(request);
         std::function<void(connectionInstance&, json&)> callback;
         busy_guard busy;
+        bool held;
         {
             // See the GET block above for the locking scheme.
             std::shared_lock<std::shared_timed_mutex> lock(server->callback_map_lock);
@@ -383,11 +390,16 @@ void restServer::handle_request(struct evhttp_request* request, void* cb_data) {
             if (alias != server->aliases.end()) {
                 url = alias->second;
             }
+            held = server->_held.count(url) > 0;
             auto it = server->json_callbacks.find(url);
-            if (it != server->json_callbacks.end()) {
+            if (!held && it != server->json_callbacks.end()) {
                 callback = it->second;
                 busy.set(server, url);
             }
+        }
+        if (held) {
+            conn.send_error("kotekan is starting", HTTP_RESPONSE::SERVICE_UNAVAILABLE);
+            return;
         }
         if (!callback) {
             DEBUG_NON_OO("restServer: POST Endpoint {:s} called, but not found", url);
@@ -432,6 +444,8 @@ void restServer::register_get_callback(string endpoint,
                         endpoint);
         }
         get_callbacks[endpoint] = callback;
+        if (_holding)
+            _held.insert(endpoint);
     }
     INFO_NON_OO("restServer: Adding GET endpoint: {:s}", endpoint);
 }
@@ -449,6 +463,8 @@ void restServer::register_post_callback(string endpoint,
                         endpoint);
         }
         json_callbacks[endpoint] = callback;
+        if (_holding)
+            _held.insert(endpoint);
     }
     INFO_NON_OO("restServer: Adding POST endpoint: {:s}", endpoint);
 }
@@ -469,6 +485,17 @@ void restServer::drain_endpoint(const std::string& endpoint) {
         FATAL_ERROR_NON_OO("restServer: timed out waiting for the in-flight request on endpoint "
                            "{:s} to finish; cannot safely destroy the callback's owner.",
                            endpoint);
+}
+
+void restServer::hold_new_endpoints() {
+    std::unique_lock<std::shared_timed_mutex> lock(callback_map_lock);
+    _holding = true;
+}
+
+void restServer::release_new_endpoints() {
+    std::unique_lock<std::shared_timed_mutex> lock(callback_map_lock);
+    _holding = false;
+    _held.clear();
 }
 
 void restServer::remove_get_callback(string endpoint) {
