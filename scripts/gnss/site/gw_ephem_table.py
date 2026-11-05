@@ -112,7 +112,11 @@ def load_db(path=guowang_codes.GUOWANG_1202_DB):
     with open(path) as fh:
         d = json.load(fh)
     sats = {
-        n: (s["g2_phase"], s["theta_us"] * 1e-6 if "theta_us" in s else None)
+        n: (
+            s["g2_phase"],
+            s["theta_us"] * 1e-6 if "theta_us" in s else None,
+            s.get("nav_pages"),
+        )
         for n, s in d["satellites"].items()
         if s.get("g2_phase") is not None
     }
@@ -165,7 +169,8 @@ def build(
             g0 = math.floor(g0 / step) * step
             n = int(math.ceil((gnss_ephemeris.gpst_of_utc(t1) - g0) / step)) + 1
             pos, vel = state_grid(sat, ts, g0, n, step)
-            phase, theta = db[name]
+            phase, theta = db[name][:2]
+            pages = db[name][2] if len(db[name]) > 2 else None
             records.append(
                 dict(
                     prn=int(phase) + 1,
@@ -178,6 +183,7 @@ def build(
                     t1_gpst=g0 + (n - 1) * step,
                     dt=step,
                     toe_gpst=gnss_ephemeris.gpst_of_utc(tmin),
+                    **({"nav_pages": list(pages)} if pages else {}),
                     tca_unix=tmin,
                     min_sep_deg=round(smin, 3),
                     tle_epoch_gpst=tle_epoch_gpst,
@@ -291,7 +297,10 @@ def load_sweep(path):
     with open(path) as fh:
         d = json.load(fh)
     return {
-        n: (s["g2_phase"], s["theta_us"] * 1e-6 if s.get("theta_us") is not None else None)
+        n: (
+            s["g2_phase"],
+            s["theta_us"] * 1e-6 if s.get("theta_us") is not None else None,
+        )
         for n, s in d["satellites"].items()
     }
 
@@ -378,7 +387,7 @@ def main(argv=None):
     )
     ap.add_argument(
         "--sweep",
-        help="JSON of satellites with a predicted code, tabled too (\"implied\" in their "
+        help='JSON of satellites with a predicted code, tabled too ("implied" in their '
         "records): at their theta_us where it is given, else in --sweep-step-s steps "
         "across --sweep-theta-us (sweep)",
     )
@@ -458,7 +467,10 @@ def main(argv=None):
         known=sorted(db),
         implied=sorted(implied),
         sweep=dict(
-            file=a.sweep, step_s=a.sweep_step_s, theta_us=[lo, hi, st], names=sorted(swept)
+            file=a.sweep,
+            step_s=a.sweep_step_s,
+            theta_us=[lo, hi, st],
+            names=sorted(swept),
         ),
         records=records,
         unknown=unknown,
@@ -482,7 +494,13 @@ def main(argv=None):
             len({r["name"] for r in records if r["name"] in db}),
             sum(1 for r in records if "sweep_step" in r),
             len({r["name"] for r in records if "sweep_step" in r}),
-            len({r["name"] for r in records if r.get("implied") and "sweep_step" not in r}),
+            len(
+                {
+                    r["name"]
+                    for r in records
+                    if r.get("implied") and "sweep_step" not in r
+                }
+            ),
             len(unknown),
             ", ".join(cut) or "none",
             len(tr),
