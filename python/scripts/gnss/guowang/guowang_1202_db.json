@@ -1423,6 +1423,19 @@
     ["2026-11-03T05:13:32Z", 3.27, true]
    ]
   },
+  "DIGUI-147": {
+   "status": "no_transmission",
+   "catnum": 67523,
+   "g2_phase": null,
+   "last_observed_utc": null,
+   "last_checked_utc": "2026-11-05T03:14:57Z",
+   "last_checked_sep_deg": 0.99,
+   "passes_found": 0,
+   "passes_silent": 1,
+   "passes": [
+    ["2026-11-05T03:14:57Z", 0.99, false]
+   ]
+  },
   "DIGUI-148": {
    "status": "transmitting",
    "catnum": 67524,
