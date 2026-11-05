@@ -135,12 +135,21 @@ to every sender, but each sender carries its own subset, so same-second messages
   azimuth, bearing, PRN or system (within a system it follows the ephemeris age). Forecast value:
   within an epoch a sender's next superframe repeats its records verbatim; the first superframe
   after an epoch step carries re-fitted values no receiver can predict.
-- The table entry (1029-1308 = [11-bit index][flag][268 bits]): two tables by sender group. The
-  polar planes with RAAN 204/235/265 deg cycle indices 41..11 each with both flags plus 218 (62 s);
-  everyone else cycles 54 indices (flag 0: 310..257, flag 1: 309..256) descending once per 54 s.
-  Entries are identical across senders and replaced about every 6 h. They match no ephemeris or
-  almanac parameter under index = BeiDou PRN / GPS PRN = index - 255 / Galileo PRN = index - 274,
-  and no field looks like sqrtA at any 2^k scale. Identity open.
+- The table entry (1029-1308 = [11-bit index][flag][268 bits]) is the GUOWANG ALMANAC (11-05
+  evening, `table_umatch.py`, `table_decode*.py`, `almanac_map.json`). Each entry is one GuoWang
+  satellite: satellite ID = 2 x index + flag, with index bit 8 (256) the shell bit (1 = 50 deg
+  shell, 0 = polar), the same bit as bit 2 of the message header's ID word; 80 of 80 decoded
+  senders agree. The 50 deg-shell senders cycle 108 entries (IDs 1-108, nine per plane in the
+  system's plane order, one entry per second, 54 s per flag); the polar senders cycle the polar
+  shell's 62 (IDs 22-83, including the two silent planes). Entry fields after a 28-bit table header
+  (0x3b7afc4 / 0x3b7a7be): @92/30 x 360/2^30 = node minus GMST at the reference epoch (residual
+  0.000 deg), @122/30 = omega and @152/30 = M0 (x 360/2^30; their sum, the argument of latitude,
+  matches the TLE to 0.003 deg, the two trading off between re-fits), @67/25 = inclination offset
+  at 2^-19 semicircles from a per-shell reference, @40/27 holds the eccentricity (~2^-20), @28/12,
+  @182/22 and @204/64 open. The reference epoch is 00:00:00 BDT of the day; the table is
+  re-issued about every 6 h (00:20, 06:25, 12:20 UTC) at the same epoch. It covers 170
+  satellites: the nine extra per plane in planes 0, 1, 2, 11 (the inferred H sets among them) are
+  not in it. Not a GNSS almanac, not code biases (both tested).
 
 ## What is not in it
 
