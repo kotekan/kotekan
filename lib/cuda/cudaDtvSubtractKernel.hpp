@@ -36,24 +36,28 @@ static constexpr int DTV_MAX_LAGS = 64;
 static constexpr int DTV_MAX_SRC = 4;
 
 /// Frame header of the command's output, 64 bytes; seq0 at byte 0 is FrameWindowGate's clock.
+/// Version 1: every channel has the lags lag_min .. lag_min + n_lag - 1. Version 2: each channel
+/// has its own lag window (the lags section) and n_lag is the largest, the stride of the lag axis.
 struct DtvOutHdr {
     int64_t seq0;     ///< absolute hop of sample 0
     int32_t magic;    ///< DTV_OUT_MAGIC
-    int32_t version;  ///< DTV_OUT_VERSION
+    int32_t version;  ///< DTV_OUT_VERSION or DTV_OUT_VERSION_LAGS
     int32_t n_chan;   ///< selected channels
     int32_t n_times;  ///< samples per frame
     int32_t n_inputs; ///< DTV_INPUTS
-    int32_t n_lag;    ///< lags per source
-    int32_t lag_min;  ///< lag of index 0 (lag j = lag_min + j, in hops; s(t - lag))
+    int32_t n_lag;    ///< lags per source (version 2: the largest window, the stride)
+    int32_t lag_min;  ///< lag of index 0 (lag j = lag_min + j, in hops; s(t - lag)); version 2: 0
     int32_t n_src;    ///< sources per channel (slots; see act)
     int32_t reserved[6];
 };
 static constexpr int32_t DTV_OUT_MAGIC = 0x4f565444; // "DTVO"
 static constexpr int32_t DTV_OUT_VERSION = 1;
+static constexpr int32_t DTV_OUT_VERSION_LAGS = 2;
 
 /// Byte offsets of the output frame's sections, each 16-byte aligned.
 struct DtvOutLayout {
     size_t off_freq;   ///< int32 [n_chan]
+    size_t off_lags;   ///< int32 [n_chan][2]: lag_min, n_lag (version 2 only; empty in version 1)
     size_t off_act;    ///< int32 [n_chan][n_src]: 1 = source active (w set), 2 = also subtracting
     size_t off_pw_raw; ///< float [n_chan][DTV_INPUTS]: mean |x|^2 per input before subtraction
     size_t
@@ -64,15 +68,17 @@ struct DtvOutLayout {
     size_t off_rxs; ///< float2 [n_chan][n_src][n_lag][DTV_INPUTS]: sum_t x_i(t) conj(s(t - lag))
     size_t bytes;
 };
+// A channel's rss and rxs beyond its own window are zero.
 
 inline size_t dtv_align(size_t off) {
     return (off + 15) & ~size_t(15);
 }
 
-inline DtvOutLayout dtv_out_layout(int n_chan, int n_src, int n_lag) {
+inline DtvOutLayout dtv_out_layout(int n_chan, int n_src, int n_lag, bool lags_section = false) {
     DtvOutLayout L;
     L.off_freq = sizeof(DtvOutHdr);
-    L.off_act = dtv_align(L.off_freq + sizeof(int32_t) * n_chan);
+    L.off_lags = dtv_align(L.off_freq + sizeof(int32_t) * n_chan);
+    L.off_act = lags_section ? dtv_align(L.off_lags + sizeof(int32_t) * 2 * n_chan) : L.off_lags;
     L.off_pw_raw = dtv_align(L.off_act + sizeof(int32_t) * n_chan * n_src);
     L.off_pw_res = dtv_align(L.off_pw_raw + sizeof(float) * DTV_INPUTS * n_chan);
     L.off_ps = dtv_align(L.off_pw_res + sizeof(float) * DTV_INPUTS * n_chan);
@@ -83,11 +89,14 @@ inline DtvOutLayout dtv_out_layout(int n_chan, int n_src, int n_lag) {
     return L;
 }
 
-/// State file (scripts/gnss/dtv_state.py writes it): the header, then n_chan records of
-/// DtvStateRec followed by float2 w[n_src][DTV_INPUTS] and float2 g[n_src][n_lag][DTV_INPUTS].
+/// State file (scripts/gnss/dtv_state.py writes it): the header, then n_chan records, each a
+/// record header followed by float2 w[n_src][DTV_INPUTS] and float2 g[n_src][n_lag][DTV_INPUTS].
+/// Version 1: DtvStateRec, and every record has the header's lags. Version 2: DtvStateRecLags,
+/// and each record has its own lag window (g has that record's n_lag lags); the header's n_lag
+/// and lag_min are 0.
 struct DtvStateHdr {
     int32_t magic;   ///< DTV_STATE_MAGIC
-    int32_t version; ///< DTV_STATE_VERSION
+    int32_t version; ///< DTV_STATE_VERSION or DTV_STATE_VERSION_LAGS
     int32_t n_chan;
     int32_t n_inputs;
     int32_t n_lag;
@@ -101,8 +110,17 @@ struct DtvStateRec {
     int32_t subtract;  ///< 0: observe only (g ignored), 1: subtract
     int32_t reserved;
 };
+struct DtvStateRecLags {
+    int32_t freq_id;
+    int32_t n_src_set;
+    int32_t subtract;
+    int32_t lag_min;
+    int32_t n_lag;
+    int32_t reserved[3];
+};
 static constexpr int32_t DTV_STATE_MAGIC = 0x53565444; // "DTVS"
 static constexpr int32_t DTV_STATE_VERSION = 1;
+static constexpr int32_t DTV_STATE_VERSION_LAGS = 2;
 
 /// The selected channels of a 4+4b frame into float: x[c][t][i], and sum |x|^2 over the frame
 /// per input (pw_raw, zeroed here). in is [n_times][n_freq][DTV_INPUTS] bytes; sel the local
@@ -119,17 +137,20 @@ void launch_dtv_shift(float2* s, int n_chan, int n_src, int n_times, cudaStream_
 void launch_dtv_beam(const float2* x, const float2* w, const int* act, int k, int n_chan, int n_src,
                      int n_times, float2* s, float* ps, cudaStream_t stream);
 
-/// rxs[c][k][j][i] = sum_t x[c][t][i] conj(s[c][k][DTV_HIST + t - lag_j]), lag_j = lag_min + j,
-/// over the frame's samples (s beyond the frame's end, needed by negative lags, counts as 0),
-/// and rss[c][k][d] = sum_t s(t) conj(s(t - d)) for d = 0..n_lag-1, the lag differences of the
-/// normal equations. Both are accumulated: the caller zeroes them each frame.
-void launch_dtv_lagcorr(const float2* x, const float2* s, const int* act, int k, int n_chan,
-                        int n_src, int n_times, int n_lag, int lag_min, float2* rxs, float2* rss,
+/// rxs[c][k][j][i] = sum_t x[c][t][i] conj(s[c][k][DTV_HIST + t - lag_j]), lag_j = lag_min_c + j
+/// for j < n_lag_c, over the frame's samples (s beyond the frame's end, needed by negative lags,
+/// counts as 0), and rss[c][k][d] = sum_t s(t) conj(s(t - d)) for d = 0..n_lag_c-1, the lag
+/// differences of the normal equations. lags is int [n_chan][2]: lag_min_c, n_lag_c (n_lag_c <=
+/// n_lag, the stride of the lag axis; -16 <= lag_min_c, lag_min_c + n_lag_c <= DTV_HIST). Both
+/// are accumulated: the caller zeroes them each frame, which leaves the lags beyond n_lag_c 0.
+void launch_dtv_lagcorr(const float2* x, const float2* s, const int* act, const int* lags, int k,
+                        int n_chan, int n_src, int n_times, int n_lag, float2* rxs, float2* rss,
                         cudaStream_t stream);
 
-/// x[c][t][i] -= sum_j g[c][k][j][i] s[c][k][DTV_HIST + t - lag_j] where act[c][k] == 2.
-void launch_dtv_subtract(float2* x, const float2* s, const float2* g, const int* act, int k,
-                         int n_chan, int n_src, int n_times, int n_lag, int lag_min,
+/// x[c][t][i] -= sum_{j < n_lag_c} g[c][k][j][i] s[c][k][DTV_HIST + t - lag_j] where act[c][k]
+/// == 2; lags and n_lag as for launch_dtv_lagcorr.
+void launch_dtv_subtract(float2* x, const float2* s, const float2* g, const int* act,
+                         const int* lags, int k, int n_chan, int n_src, int n_times, int n_lag,
                          cudaStream_t stream);
 
 /// Re-quantise x into the frame in place (round to the nearest integer, clipped to [-7, 7],

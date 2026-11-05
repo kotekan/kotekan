@@ -66,10 +66,13 @@
  * @conf  dtv_freq_ids        List of Int. Their freq_ids, same order; checked against the
  *                            frame metadata's coarse frequencies on the first frame.
  * @conf  dtv_out_name        String. Output NDArrayBuffer name, e.g. gnss0_dtv.
- * @conf  dtv_lag_min         Int, default -8. Lag of index 0, hops (s(t - lag)).
- * @conf  dtv_n_lag           Int, default 49. Lags per source (lag_min .. lag_min + n_lag - 1,
- *                            within [-16, 63]).
- * @conf  dtv_sources         Int, default 1. Source slots per channel (<= 4).
+ * @conf  dtv_lag_min         Int, or List of Int with one per channel, default -8. Lag of index
+ *                            0, hops (s(t - lag)).
+ * @conf  dtv_n_lag           Int or List of Int, default 49. Lags per source (lag_min .. lag_min
+ *                            + n_lag - 1, within [-16, 63]). Channels with different windows
+ *                            make the output frames and state files version 2.
+ * @conf  dtv_sources         Int or List of Int, default 1. Source slots per channel (<= 4); an
+ *                            eigen start or a load leaves a channel's slots beyond its own off.
  * @conf  dtv_state_file      String, default "". State file to load at start.
  * @conf  dtv_eig_iters       Int, default 24. Power iterations of the eigen start.
  * @conf  dtv_roll            Bool, default false. Rolling fit on at start.
@@ -154,9 +157,12 @@ private:
     const std::vector<std::int32_t> _local_channels;
     const std::vector<std::int32_t> _freq_ids;
     const std::string _out_name;
-    const int _lag_min;
-    const int _n_lag;
-    const int _n_src;
+    /// [n_chan][2]: each channel's lag_min and n_lag, as the kernels and the output take them
+    const std::vector<std::int32_t> _lags;
+    const std::vector<int> _src; ///< [n_chan] source slots each channel uses
+    const int _n_lag;            ///< the largest window: the stride of the lag axis
+    const int _n_src;            ///< the most source slots of any channel
+    const bool _uniform_lags;    ///< one window for every channel: version 1 output and states
     const int _eig_iters;
     const gnss_cuda::DtvOutLayout _layout;
 

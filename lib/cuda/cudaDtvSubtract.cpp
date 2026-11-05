@@ -24,7 +24,45 @@ REGISTER_CUDA_COMMAND(cudaDtvSubtract);
 
 namespace {
 constexpr double HOP_S = 5.12e-6; // one sample of a 195.3125 kHz channel
+
+/// A per-channel setting: one Int for every channel, or a List with one per channel (the caller
+/// checks the length).
+std::vector<int> per_channel(const Config& config, const std::string& unique_name,
+                             const std::string& name, int def, size_t n) {
+    if (!config.exists(unique_name, name))
+        return std::vector<int>(n, def);
+    if (config.get_value(unique_name, name).is_array())
+        return config.get<std::vector<int>>(unique_name, name);
+    return std::vector<int>(n, config.get<int>(unique_name, name));
 }
+
+/// [n][2]: lag_min, n_lag per channel.
+std::vector<std::int32_t> lag_windows(const Config& config, const std::string& unique_name,
+                                      size_t n) {
+    const std::vector<int> lo = per_channel(config, unique_name, "dtv_lag_min", -8, n);
+    const std::vector<int> nl = per_channel(config, unique_name, "dtv_n_lag", 49, n);
+    std::vector<std::int32_t> out;
+    for (size_t c = 0; c < std::min(lo.size(), nl.size()); c++) {
+        out.push_back(lo[c]);
+        out.push_back(nl[c]);
+    }
+    return out;
+}
+
+int max_every(const std::vector<std::int32_t>& v, size_t first, size_t step) {
+    int m = 0;
+    for (size_t q = first; q < v.size(); q += step)
+        m = std::max(m, (int)v[q]);
+    return m;
+}
+
+bool all_equal_windows(const std::vector<std::int32_t>& lags) {
+    for (size_t q = 2; q < lags.size(); q += 2)
+        if (lags[q] != lags[0] || lags[q + 1] != lags[1])
+            return false;
+    return true;
+}
+} // namespace
 
 std::shared_ptr<cudaDtvSubtract::Shared> cudaDtvSubtract::shared_for(const std::string& name) {
     static std::mutex mtx;
@@ -47,11 +85,12 @@ cudaDtvSubtract::cudaDtvSubtract(Config& config, const std::string& unique_name,
     _local_channels(config.get<std::vector<std::int32_t>>(unique_name, "dtv_local_channels")),
     _freq_ids(config.get<std::vector<std::int32_t>>(unique_name, "dtv_freq_ids")),
     _out_name(config.get<std::string>(unique_name, "dtv_out_name")),
-    _lag_min(config.get_default<int>(unique_name, "dtv_lag_min", -8)),
-    _n_lag(config.get_default<int>(unique_name, "dtv_n_lag", 49)),
-    _n_src(config.get_default<int>(unique_name, "dtv_sources", 1)),
+    _lags(lag_windows(config, unique_name, _local_channels.size())),
+    _src(per_channel(config, unique_name, "dtv_sources", 1, _local_channels.size())),
+    _n_lag(max_every(_lags, 1, 2)), _n_src(max_every(_src, 0, 1)),
+    _uniform_lags(all_equal_windows(_lags)),
     _eig_iters(config.get_default<int>(unique_name, "dtv_eig_iters", 24)),
-    _layout(dtv_out_layout((int)_local_channels.size(), _n_src, _n_lag)),
+    _layout(dtv_out_layout((int)_local_channels.size(), _n_src, _n_lag, !_uniform_lags)),
     out(_out_name, "dtv_out", std::array<std::ptrdiff_t, 2>{1, (std::ptrdiff_t)_layout.bytes},
         std::array<std::string, 2>{"B", "X"}, std::array<std::ptrdiff_t, 2>{1, 1}, *this),
     _sh(shared_for(unique_name)), _owner(instance_num == 0) {
@@ -76,12 +115,20 @@ cudaDtvSubtract::cudaDtvSubtract(Config& config, const std::string& unique_name,
             FATAL_ERROR("cudaDtvSubtract: dtv_local_channels entry {:d} outside [0, {:d}) -- "
                         "LOCAL indices, not freq_ids",
                         f, _num_local_freq);
-    if (_n_lag < 1 || _n_lag > DTV_MAX_LAGS || _lag_min < -16
-        || _lag_min + _n_lag - 1 > DTV_HIST - 1)
-        FATAL_ERROR("cudaDtvSubtract: lags {:d}..{:d} outside [-16, {:d}] or more than {:d}",
-                    _lag_min, _lag_min + _n_lag - 1, DTV_HIST - 1, DTV_MAX_LAGS);
-    if (_n_src < 1 || _n_src > DTV_MAX_SRC)
-        FATAL_ERROR("cudaDtvSubtract: dtv_sources {:d} outside [1, {:d}]", _n_src, DTV_MAX_SRC);
+    if (_lags.size() != (size_t)2 * n || _src.size() != (size_t)n)
+        FATAL_ERROR("cudaDtvSubtract: dtv_lag_min, dtv_n_lag and dtv_sources must be an Int or a "
+                    "List with one entry per channel ({:d})",
+                    n);
+    for (int c = 0; c < n; c++) {
+        const int lo = _lags[(size_t)2 * c], nl = _lags[(size_t)2 * c + 1];
+        if (nl < 1 || nl > DTV_MAX_LAGS || lo < -16 || lo + nl - 1 > DTV_HIST - 1)
+            FATAL_ERROR("cudaDtvSubtract: freq_id {:d}: lags {:d}..{:d} outside [-16, {:d}] or "
+                        "more than {:d}",
+                        _freq_ids[(size_t)c], lo, lo + nl - 1, DTV_HIST - 1, DTV_MAX_LAGS);
+        if (_src[(size_t)c] < 1 || _src[(size_t)c] > DTV_MAX_SRC)
+            FATAL_ERROR("cudaDtvSubtract: freq_id {:d}: dtv_sources {:d} outside [1, {:d}]",
+                        _freq_ids[(size_t)c], _src[(size_t)c], DTV_MAX_SRC);
+    }
     if (_eig_iters < 1 || _eig_iters > 256)
         FATAL_ERROR("cudaDtvSubtract: dtv_eig_iters {:d} outside [1, 256]", _eig_iters);
     std::vector<double> roll_tau = config.get_default<std::vector<double>>(
@@ -115,6 +162,7 @@ cudaDtvSubtract::cudaDtvSubtract(Config& config, const std::string& unique_name,
     void* d_g = device.get_gpu_memory(unique_name + "_g", g_bytes);
     void* d_act = device.get_gpu_memory(unique_name + "_act", (size_t)n * _n_src * sizeof(int));
     void* d_sel = device.get_gpu_memory(unique_name + "_sel", (size_t)n * sizeof(int));
+    void* d_lags = device.get_gpu_memory(unique_name + "_lags", (size_t)n * 2 * sizeof(int));
     device.get_gpu_memory(unique_name + "_cov", cov_bytes);
     device.get_gpu_memory(unique_name + "_q1", q_bytes);
     device.get_gpu_memory(unique_name + "_q2", q_bytes);
@@ -137,6 +185,8 @@ cudaDtvSubtract::cudaDtvSubtract(Config& config, const std::string& unique_name,
         CHECK_CUDA_ERROR(cudaMemset(d_acc_pw, 0, pw_bytes));
         CHECK_CUDA_ERROR(cudaMemcpy(d_sel, _local_channels.data(), (size_t)n * sizeof(int),
                                     cudaMemcpyHostToDevice));
+        CHECK_CUDA_ERROR(
+            cudaMemcpy(d_lags, _lags.data(), (size_t)n * 2 * sizeof(int), cudaMemcpyHostToDevice));
         std::lock_guard<std::mutex> lk(_sh->mtx);
         _sh->w.assign((size_t)n * _n_src * DTV_INPUTS, make_float2(0.0f, 0.0f));
         _sh->g.assign((size_t)n * _n_src * _n_lag * DTV_INPUTS, make_float2(0.0f, 0.0f));
@@ -157,17 +207,20 @@ cudaDtvSubtract::cudaDtvSubtract(Config& config, const std::string& unique_name,
         CHECK_CUDA_ERROR(cudaEventCreateWithFlags(&_sh->snap_event, cudaEventDisableTiming));
     }
 
-    _hdr_stage.assign(_layout.off_freq + sizeof(std::int32_t) * n, 0);
+    _hdr_stage.assign(_layout.off_act, 0); // the header, the freq_ids and the windows
     auto* hdr = reinterpret_cast<DtvOutHdr*>(_hdr_stage.data());
     hdr->magic = DTV_OUT_MAGIC;
-    hdr->version = DTV_OUT_VERSION;
+    hdr->version = _uniform_lags ? DTV_OUT_VERSION : DTV_OUT_VERSION_LAGS;
     hdr->n_chan = n;
     hdr->n_times = _num_times;
     hdr->n_inputs = DTV_INPUTS;
     hdr->n_lag = _n_lag;
-    hdr->lag_min = _lag_min;
+    hdr->lag_min = _uniform_lags ? _lags[0] : 0;
     hdr->n_src = _n_src;
     std::memcpy(_hdr_stage.data() + _layout.off_freq, _freq_ids.data(), sizeof(std::int32_t) * n);
+    if (!_uniform_lags)
+        std::memcpy(_hdr_stage.data() + _layout.off_lags, _lags.data(),
+                    sizeof(std::int32_t) * 2 * n);
     _lam_stage.assign((size_t)n * 4, 0.0f);
     _w_stage.assign((size_t)n * _n_src * DTV_INPUTS, make_float2(0.0f, 0.0f));
     CHECK_CUDA_ERROR(cudaEventCreateWithFlags(&_lam_event, cudaEventDisableTiming));
@@ -257,13 +310,16 @@ cudaDtvSubtract::cudaDtvSubtract(Config& config, const std::string& unique_name,
                 r["last_error"] = sh->last_error;
                 r["start_source"] = sh->start_src;
                 r["start_frames_left"] = sh->start_left;
-                r["lag_min"] = _lag_min;
-                r["n_lag"] = _n_lag;
+                r["lag_min"] = _uniform_lags ? nlohmann::json(_lags[0]) : nlohmann::json();
+                r["n_lag"] = _uniform_lags ? nlohmann::json(_lags[1]) : nlohmann::json();
                 nlohmann::json ch = nlohmann::json::array();
                 for (int c = 0; c < n; c++) {
                     nlohmann::json e;
                     e["freq_id"] = _freq_ids[(size_t)c];
                     e["local_channel"] = _local_channels[(size_t)c];
+                    e["lag_min"] = _lags[(size_t)2 * c];
+                    e["n_lag"] = _lags[(size_t)2 * c + 1];
+                    e["sources"] = _src[(size_t)c];
                     e["act"] = std::vector<int>(sh->act.begin() + (size_t)c * n_src,
                                                 sh->act.begin() + (size_t)(c + 1) * n_src);
                     ch.push_back(e);
@@ -351,9 +407,11 @@ cudaDtvSubtract::cudaDtvSubtract(Config& config, const std::string& unique_name,
         _sh->roll_thread = std::thread(&cudaDtvSubtract::roll_main, this);
     }
 
-    INFO("cudaDtvSubtract: {:d} channels (freq_ids {:d}..{:d}) x {:d} samples, lags {:d}..{:d}, "
+    INFO("cudaDtvSubtract: {:d} channels (freq_ids {:d}..{:d}) x {:d} samples, lags {:s}, up to "
          "{:d} source slot(s), output '{:s}' ({:.3f} MB/frame)",
-         n, _freq_ids.front(), _freq_ids.back(), _num_times, _lag_min, _lag_min + _n_lag - 1,
+         n, _freq_ids.front(), _freq_ids.back(), _num_times,
+         _uniform_lags ? fmt::format("{:d}..{:d}", _lags[0], _lags[0] + _lags[1] - 1)
+                       : fmt::format("per channel (up to {:d})", _n_lag),
          _n_src, _out_name, _layout.bytes / 1.0e6);
 }
 
@@ -424,10 +482,14 @@ void cudaDtvSubtract::roll_main() {
     const double frame_s = _num_times * HOP_S;
     const size_t blk = (size_t)_n_lag * DTV_INPUTS; // complex entries per (channel, source)
     std::vector<float> g_cur(_sh->g.size() * 2), g_new(_sh->g.size() * 2);
+    std::vector<int> n_lag_ch((size_t)n);
+    for (int c = 0; c < n; c++)
+        n_lag_ch[(size_t)c] = _lags[(size_t)2 * c + 1];
     DtvRollSnapshot s;
     s.n_chan = n;
     s.n_src = _n_src;
     s.n_lag = _n_lag;
+    s.n_lag_ch = n_lag_ch.data();
     s.ni = DTV_INPUTS;
     s.rxs = _sh->snap_rxs;
     s.rss = _sh->snap_rss;
@@ -529,22 +591,36 @@ bool cudaDtvSubtract::save_state_file(const std::string& path, std::string& err)
             return false;
         }
         DtvStateHdr h{DTV_STATE_MAGIC, DTV_STATE_VERSION, n,      DTV_INPUTS,
-                      _n_lag,          _lag_min,          _n_src, 0};
+                      _lags[1],        _lags[0],          _n_src, 0};
+        if (!_uniform_lags) {
+            h.version = DTV_STATE_VERSION_LAGS;
+            h.n_lag = h.lag_min = 0;
+        }
         fh.write(reinterpret_cast<const char*>(&h), sizeof(h));
         for (int c = 0; c < n; c++) {
-            DtvStateRec rec{_freq_ids[(size_t)c], 0, 0, 0};
+            const int lo = _lags[(size_t)2 * c], nl = _lags[(size_t)2 * c + 1];
+            int n_set = 0, subtract = 0;
             for (int k = 0; k < _n_src; k++) {
                 const int a = act[(size_t)c * _n_src + k];
                 if (a >= 1)
-                    rec.n_src_set = k + 1;
+                    n_set = k + 1;
                 if (a >= 2)
-                    rec.subtract = 1;
+                    subtract = 1;
             }
-            fh.write(reinterpret_cast<const char*>(&rec), sizeof(rec));
+            if (_uniform_lags) {
+                const DtvStateRec rec{_freq_ids[(size_t)c], n_set, subtract, 0};
+                fh.write(reinterpret_cast<const char*>(&rec), sizeof(rec));
+            } else {
+                const DtvStateRecLags rec{_freq_ids[(size_t)c], n_set, subtract, lo, nl, {0, 0, 0}};
+                fh.write(reinterpret_cast<const char*>(&rec), sizeof(rec));
+            }
             fh.write(reinterpret_cast<const char*>(&w[(size_t)c * _n_src * DTV_INPUTS]),
                      (size_t)_n_src * DTV_INPUTS * sizeof(float2));
-            fh.write(reinterpret_cast<const char*>(&g[(size_t)c * _n_src * _n_lag * DTV_INPUTS]),
-                     (size_t)_n_src * _n_lag * DTV_INPUTS * sizeof(float2));
+            // the record's own lags: the first nl of each source's block
+            for (int k = 0; k < _n_src; k++)
+                fh.write(reinterpret_cast<const char*>(
+                             &g[((size_t)c * _n_src + k) * _n_lag * DTV_INPUTS]),
+                         (size_t)nl * DTV_INPUTS * sizeof(float2));
         }
         if (!fh) {
             err = "write to " + tmp + " failed";
@@ -567,26 +643,44 @@ bool cudaDtvSubtract::load_state_file(const std::string& path, std::string& err)
     }
     DtvStateHdr h;
     fh.read(reinterpret_cast<char*>(&h), sizeof(h));
-    if (!fh || h.magic != DTV_STATE_MAGIC || h.version != DTV_STATE_VERSION) {
+    const bool per_rec = h.version == DTV_STATE_VERSION_LAGS;
+    if (!fh || h.magic != DTV_STATE_MAGIC || (h.version != DTV_STATE_VERSION && !per_rec)) {
         err = path + ": not a DTV state file (magic/version)";
         return false;
     }
-    if (h.n_inputs != DTV_INPUTS || h.n_lag != _n_lag || h.lag_min != _lag_min || h.n_src < 1
-        || h.n_src > DTV_MAX_SRC) {
-        err = path + ": lags " + std::to_string(h.lag_min) + "+" + std::to_string(h.n_lag) + " x "
-              + std::to_string(h.n_src) + " sources, " + std::to_string(h.n_inputs)
-              + " inputs; this command has " + std::to_string(_lag_min) + "+"
-              + std::to_string(_n_lag) + " x " + std::to_string(_n_src) + ", 128";
+    if (h.n_inputs != DTV_INPUTS || h.n_src < 1 || h.n_src > DTV_MAX_SRC) {
+        err = path + ": " + std::to_string(h.n_src) + " sources, " + std::to_string(h.n_inputs)
+              + " inputs; expected 1.." + std::to_string(DTV_MAX_SRC) + " and "
+              + std::to_string(DTV_INPUTS);
         return false;
     }
     std::vector<float2> w((size_t)n * _n_src * DTV_INPUTS, make_float2(0.0f, 0.0f));
     std::vector<float2> g((size_t)n * _n_src * _n_lag * DTV_INPUTS, make_float2(0.0f, 0.0f));
     std::vector<int> act((size_t)n * _n_src, 0);
-    std::vector<float2> rw((size_t)h.n_src * DTV_INPUTS), rg((size_t)h.n_src * _n_lag * DTV_INPUTS);
+    std::vector<float2> rw((size_t)h.n_src * DTV_INPUTS), rg;
     int matched = 0;
     for (int r = 0; r < h.n_chan; r++) {
-        DtvStateRec rec;
-        fh.read(reinterpret_cast<char*>(&rec), sizeof(rec));
+        int freq_id, n_set, subtract, lo = h.lag_min, nl = h.n_lag;
+        if (per_rec) {
+            DtvStateRecLags rec;
+            fh.read(reinterpret_cast<char*>(&rec), sizeof(rec));
+            freq_id = rec.freq_id;
+            n_set = rec.n_src_set;
+            subtract = rec.subtract;
+            lo = rec.lag_min;
+            nl = rec.n_lag;
+        } else {
+            DtvStateRec rec;
+            fh.read(reinterpret_cast<char*>(&rec), sizeof(rec));
+            freq_id = rec.freq_id;
+            n_set = rec.n_src_set;
+            subtract = rec.subtract;
+        }
+        if (fh && (nl < 1 || nl > DTV_MAX_LAGS)) {
+            err = path + ": record " + std::to_string(r) + " has " + std::to_string(nl) + " lags";
+            return false;
+        }
+        rg.resize((size_t)h.n_src * nl * DTV_INPUTS);
         fh.read(reinterpret_cast<char*>(rw.data()), rw.size() * sizeof(float2));
         fh.read(reinterpret_cast<char*>(rg.data()), rg.size() * sizeof(float2));
         if (!fh) {
@@ -594,17 +688,24 @@ bool cudaDtvSubtract::load_state_file(const std::string& path, std::string& err)
             return false;
         }
         for (int c = 0; c < n; c++) {
-            if (_freq_ids[(size_t)c] != rec.freq_id)
+            if (_freq_ids[(size_t)c] != freq_id)
                 continue;
+            if (lo != _lags[(size_t)2 * c] || nl != _lags[(size_t)2 * c + 1]) {
+                err =
+                    fmt::format("{:s}: freq_id {:d} has lags {:d}..{:d}; this command's {:d}..{:d}",
+                                path, freq_id, lo, lo + nl - 1, _lags[(size_t)2 * c],
+                                _lags[(size_t)2 * c] + _lags[(size_t)2 * c + 1] - 1);
+                return false;
+            }
             matched++;
-            const int ks = std::min({rec.n_src_set, h.n_src, _n_src});
+            const int ks = std::min({n_set, h.n_src, _src[(size_t)c]});
             for (int k = 0; k < ks; k++) {
                 std::memcpy(&w[((size_t)c * _n_src + k) * DTV_INPUTS], &rw[(size_t)k * DTV_INPUTS],
                             DTV_INPUTS * sizeof(float2));
                 std::memcpy(&g[((size_t)c * _n_src + k) * _n_lag * DTV_INPUTS],
-                            &rg[(size_t)k * _n_lag * DTV_INPUTS],
-                            (size_t)_n_lag * DTV_INPUTS * sizeof(float2));
-                act[(size_t)c * _n_src + k] = rec.subtract ? 2 : 1;
+                            &rg[(size_t)k * nl * DTV_INPUTS],
+                            (size_t)nl * DTV_INPUTS * sizeof(float2));
+                act[(size_t)c * _n_src + k] = subtract ? 2 : 1;
             }
         }
     }
@@ -697,6 +798,8 @@ cudaEvent_t cudaDtvSubtract::execute(cudaPipelineState& pipestate,
     auto* d_g = (float2*)device.get_gpu_memory(unique_name + "_g", g_bytes);
     auto* d_act = (int*)device.get_gpu_memory(unique_name + "_act", act_bytes);
     auto* d_sel = (const int*)device.get_gpu_memory(unique_name + "_sel", (size_t)n * sizeof(int));
+    auto* d_lags =
+        (const int*)device.get_gpu_memory(unique_name + "_lags", (size_t)n * 2 * sizeof(int));
     auto* d_cov = (float2*)device.get_gpu_memory(unique_name + "_cov", cov_bytes);
     auto* d_q1 = (float2*)device.get_gpu_memory(unique_name + "_q1", q_bytes);
     auto* d_q2 = (float2*)device.get_gpu_memory(unique_name + "_q2", q_bytes);
@@ -770,6 +873,8 @@ cudaEvent_t cudaDtvSubtract::execute(cudaPipelineState& pipestate,
                 start_total = _sh->start_total;
                 _sh->start_src = -1;
                 for (int c = 0; c < n; c++) {
+                    if (start_src >= _src[(size_t)c])
+                        continue;
                     _sh->act[(size_t)c * _n_src + start_src] =
                         std::max(_sh->act[(size_t)c * _n_src + start_src], 1);
                     for (int k = start_src; k < _n_src; k++)
@@ -840,11 +945,10 @@ cudaEvent_t cudaDtvSubtract::execute(cudaPipelineState& pipestate,
         }
         launch_dtv_beam(d_x, d_w, d_act, k, n, _n_src, _num_times, d_s,
                         (float*)(d_out + _layout.off_ps), stream);
-        launch_dtv_lagcorr(d_x, d_s, d_act, k, n, _n_src, _num_times, _n_lag, _lag_min,
+        launch_dtv_lagcorr(d_x, d_s, d_act, d_lags, k, n, _n_src, _num_times, _n_lag,
                            (float2*)(d_out + _layout.off_rxs), (float2*)(d_out + _layout.off_rss),
                            stream);
-        launch_dtv_subtract(d_x, d_s, d_g, d_act, k, n, _n_src, _num_times, _n_lag, _lag_min,
-                            stream);
+        launch_dtv_subtract(d_x, d_s, d_g, d_act, d_lags, k, n, _n_src, _num_times, _n_lag, stream);
     }
     launch_dtv_encode(d_x, d_sel, d_act, n, _n_src, _num_local_freq, _num_times, d_frame,
                       (float*)(d_out + _layout.off_pw_res), stream);

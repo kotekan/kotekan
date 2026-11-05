@@ -11,6 +11,7 @@
 //    refresh with its checks, and the decaying sums against a CPU sum
 //  - the subtraction with the true response: the residual power per input against the noise,
 //    and the re-quantised bytes against a CPU subtraction
+// The two channels have different lag windows (dtv_lag_min, dtv_n_lag per channel).
 // Exits 0 when every check passes.   ./cuda_dtv_subtract_test [n_times]
 
 #include "cudaDtvSubtractKernel.hpp"
@@ -60,8 +61,10 @@ static void check(bool ok, const char* what, double got, double want) {
 
 int main(int argc, char** argv) {
     const int NT = argc > 1 ? atoi(argv[1]) : 8192;
-    const int NI = DTV_INPUTS, NF = 3, NC = 2, NSRC = 2, NLAG = 49, LAG_MIN = -8;
+    const int NI = DTV_INPUTS, NF = 3, NC = 2, NSRC = 2, NLAG = 49; // NLAG: the largest window
     const int sel_h[NC] = {0, 2};
+    const int lags_h[2 * NC] = {-8, 49, -4, 40}; // per channel: lag_min, n_lag
+    const int lag_min_h[NC] = {lags_h[0], lags_h[2]}, nlag_h[NC] = {lags_h[1], lags_h[3]};
     std::mt19937 rng(11);
     std::normal_distribution<float> gauss(0.0f, 1.0f);
     std::uniform_real_distribution<float> uni(0.0f, 1.0f);
@@ -82,11 +85,11 @@ int main(int argc, char** argv) {
             const float amp = (c == 0 ? 2.5f : 1.8f) * (0.6f + 0.8f * uni(rng));
             const float ph = 6.2831853f * uni(rng);
             steer[c][i] = cf(amp * cosf(ph), amp * sinf(ph));
-            g_true[c][(size_t)(0 - LAG_MIN) * NI + i] = steer[c][i];
+            g_true[c][(size_t)(0 - lag_min_h[c]) * NI + i] = steer[c][i];
             for (int r = 0; r < 2; r++) {
                 const int lag = 1 + (int)(uni(rng) * 30.0f);
                 const float a = 0.5f * amp * uni(rng), p2 = 6.2831853f * uni(rng);
-                g_true[c][(size_t)(lag - LAG_MIN) * NI + i] += cf(a * cosf(p2), a * sinf(p2));
+                g_true[c][(size_t)(lag - lag_min_h[c]) * NI + i] += cf(a * cosf(p2), a * sinf(p2));
             }
         }
     }
@@ -99,8 +102,8 @@ int main(int argc, char** argv) {
                 for (int c = 0; c < NC; c++) {
                     if (sel_h[c] != f)
                         continue;
-                    for (int j = 0; j < NLAG; j++) {
-                        const int idx = DTV_HIST + t - (LAG_MIN + j);
+                    for (int j = 0; j < nlag_h[c]; j++) {
+                        const int idx = DTV_HIST + t - (lag_min_h[c] + j);
                         if (idx >= 0 && idx < NS)
                             v += g_true[c][(size_t)j * NI + i] * s_true[c][idx];
                     }
@@ -116,11 +119,12 @@ int main(int argc, char** argv) {
 
     // device buffers
     unsigned char* d_frame;
-    int *d_sel, *d_act, *d_ref;
+    int *d_sel, *d_act, *d_ref, *d_lags;
     float2 *d_x, *d_s, *d_w, *d_g, *d_cov, *d_q1, *d_q2, *d_wtmp, *d_rxs, *d_rss;
     float *d_pw_raw, *d_pw_res, *d_ps, *d_pwtmp, *d_lam;
     CK(cudaMalloc(&d_frame, frame.size()));
     CK(cudaMalloc(&d_sel, NC * sizeof(int)));
+    CK(cudaMalloc(&d_lags, 2 * NC * sizeof(int)));
     CK(cudaMalloc(&d_act, NC * NSRC * sizeof(int)));
     CK(cudaMalloc(&d_ref, NC * sizeof(int)));
     CK(cudaMalloc(&d_x, (size_t)NC * NT * NI * sizeof(float2)));
@@ -140,6 +144,7 @@ int main(int argc, char** argv) {
     CK(cudaMalloc(&d_lam, NC * 4 * sizeof(float)));
     CK(cudaMemcpy(d_frame, frame.data(), frame.size(), cudaMemcpyHostToDevice));
     CK(cudaMemcpy(d_sel, sel_h, NC * sizeof(int), cudaMemcpyHostToDevice));
+    CK(cudaMemcpy(d_lags, lags_h, 2 * NC * sizeof(int), cudaMemcpyHostToDevice));
     CK(cudaMemset(d_s, 0, (size_t)NC * NSRC * NS * sizeof(float2)));
     CK(cudaMemset(d_g, 0, (size_t)NC * NSRC * NLAG * NI * sizeof(float2)));
     CK(cudaMemset(d_cov, 0, (size_t)NC * NI * NI * sizeof(float2)));
@@ -225,8 +230,7 @@ int main(int argc, char** argv) {
     // a previous frame's tail of s: the test's history is zero, as after a cold start
     gnss_cuda::launch_dtv_shift(d_s, NC, NSRC, NT, st);
     gnss_cuda::launch_dtv_beam(d_x, d_w, d_act, 0, NC, NSRC, NT, d_s, d_ps, st);
-    gnss_cuda::launch_dtv_lagcorr(d_x, d_s, d_act, 0, NC, NSRC, NT, NLAG, LAG_MIN, d_rxs, d_rss,
-                                  st);
+    gnss_cuda::launch_dtv_lagcorr(d_x, d_s, d_act, d_lags, 0, NC, NSRC, NT, NLAG, d_rxs, d_rss, st);
     CK(cudaDeviceSynchronize());
     std::vector<float2> s_dev((size_t)NC * NSRC * NS), rxs((size_t)NC * NSRC * NLAG * NI),
         rss((size_t)NC * NSRC * NLAG);
@@ -235,7 +239,7 @@ int main(int argc, char** argv) {
     CK(cudaMemcpy(rxs.data(), d_rxs, rxs.size() * sizeof(float2), cudaMemcpyDeviceToHost));
     CK(cudaMemcpy(rss.data(), d_rss, rss.size() * sizeof(float2), cudaMemcpyDeviceToHost));
     CK(cudaMemcpy(ps.data(), d_ps, ps.size() * sizeof(float), cudaMemcpyDeviceToHost));
-    double smax = 0.0, rmax = 0.0, rsmax = 0.0, psmax = 0.0;
+    double smax = 0.0, rmax = 0.0, rsmax = 0.0, psmax = 0.0, zmax = 0.0;
     std::vector<std::vector<cf>> s_est(NC, std::vector<cf>(NS, cf(0.0f, 0.0f)));
     for (int c = 0; c < NC; c++) {
         double pss = 0.0;
@@ -250,8 +254,16 @@ int main(int argc, char** argv) {
             pss += std::norm(acc);
         }
         psmax = std::max(psmax, std::abs(pss - ps[c * NSRC]) / pss);
-        for (int j = 0; j < NLAG; j++) {
-            const int lag = LAG_MIN + j;
+        for (int j = nlag_h[c]; j < NLAG; j++) { // beyond the channel's window: zero
+            zmax = std::max(zmax, (double)std::abs(cf(rss[((size_t)c * NSRC + 0) * NLAG + j].x,
+                                                      rss[((size_t)c * NSRC + 0) * NLAG + j].y)));
+            for (int i = 0; i < NI; i++) {
+                const float2 d = rxs[(((size_t)c * NSRC + 0) * NLAG + j) * NI + i];
+                zmax = std::max(zmax, (double)std::abs(cf(d.x, d.y)));
+            }
+        }
+        for (int j = 0; j < nlag_h[c]; j++) {
+            const int lag = lag_min_h[c] + j;
             cd ass(0.0, 0.0); // R_ss at lag difference d = j
             for (int t = 0; t < NT; t++)
                 ass += cd(s_est[c][DTV_HIST + t]) * std::conj(cd(s_est[c][DTV_HIST + t - j]));
@@ -273,6 +285,7 @@ int main(int argc, char** argv) {
     check(psmax < 1e-4, "beam power rel error", psmax, 0.0);
     check(rsmax < 1e-3, "R_ss max rel error", rsmax, 0.0);
     check(rmax < 1e-3, "R_xs max rel error (sampled)", rmax, 0.0);
+    check(zmax == 0.0, "R_xs, R_ss zero beyond each channel's window", zmax, 0.0);
 
     // 4. the host fit: Toeplitz normal equations T g_i = r_i with T[j][m] = R_ss(lag_j - lag_m)
     //    (from R_ss at the lag differences, conjugate for negative ones), solved by Gaussian
@@ -281,54 +294,55 @@ int main(int argc, char** argv) {
     //    Judge by the residual power after subtracting with the fit (step 5 does it on the GPU).
     std::vector<std::vector<cf>> g_fit(NC, std::vector<cf>((size_t)NLAG * NI));
     for (int c = 0; c < NC; c++) {
-        // R_ss at lag difference d in [-(NLAG-1), NLAG-1]: rss[d] for d >= 0, its conjugate for
+        const int NL = nlag_h[c]; // this channel's window
+        // R_ss at lag difference d in [-(NL-1), NL-1]: rss[d] for d >= 0, its conjugate for
         // d < 0 (R_ss(-d) = conj(R_ss(d)))
-        std::vector<cd> rl(2 * NLAG - 1);
-        for (int d = 0; d < NLAG; d++) {
+        std::vector<cd> rl(2 * NL - 1);
+        for (int d = 0; d < NL; d++) {
             const float2 q = rss[((size_t)c * NSRC + 0) * NLAG + d];
-            rl[(size_t)(d + NLAG - 1)] = cd(q.x, q.y);
-            rl[(size_t)(-d + NLAG - 1)] = std::conj(cd(q.x, q.y));
+            rl[(size_t)(d + NL - 1)] = cd(q.x, q.y);
+            rl[(size_t)(-d + NL - 1)] = std::conj(cd(q.x, q.y));
         }
         // T[j][m] = sum_t s(t - lag_j) conj(s(t - lag_m)) ~ R_ss(lag_m - lag_j)
-        std::vector<cd> T((size_t)NLAG * NLAG);
-        for (int j = 0; j < NLAG; j++)
-            for (int m = 0; m < NLAG; m++)
-                T[(size_t)j * NLAG + m] = rl[(size_t)((m - j) + NLAG - 1)];
+        std::vector<cd> T((size_t)NL * NL);
+        for (int j = 0; j < NL; j++)
+            for (int m = 0; m < NL; m++)
+                T[(size_t)j * NL + m] = rl[(size_t)((m - j) + NL - 1)];
         for (int i = 0; i < NI; i++) {
-            std::vector<cd> A(T), b(NLAG);
-            for (int j = 0; j < NLAG; j++) {
+            std::vector<cd> A(T), b(NL);
+            for (int j = 0; j < NL; j++) {
                 const float2 q = rxs[(((size_t)c * NSRC + 0) * NLAG + j) * NI + i];
                 b[(size_t)j] = cd(q.x, q.y);
             }
             // r_i(lag_j) = sum_m g_i(lag_m) T[m][j]^*? Derive: x_i(t) = sum_m g_m s(t - lag_m);
             // R_xs,i(lag_j) = sum_t x_i(t) conj(s(t - lag_j)) = sum_m g_m sum_t s(t - lag_m)
             // conj(s(t - lag_j)) = sum_m g_m T[m][j]. Solve T^T g = b.
-            std::vector<cd> M((size_t)NLAG * NLAG);
-            for (int j = 0; j < NLAG; j++)
-                for (int m = 0; m < NLAG; m++)
-                    M[(size_t)j * NLAG + m] = A[(size_t)m * NLAG + j];
-            for (int p = 0; p < NLAG; p++) {
+            std::vector<cd> M((size_t)NL * NL);
+            for (int j = 0; j < NL; j++)
+                for (int m = 0; m < NL; m++)
+                    M[(size_t)j * NL + m] = A[(size_t)m * NL + j];
+            for (int p = 0; p < NL; p++) {
                 int piv = p;
-                for (int q = p + 1; q < NLAG; q++)
-                    if (std::abs(M[(size_t)q * NLAG + p]) > std::abs(M[(size_t)piv * NLAG + p]))
+                for (int q = p + 1; q < NL; q++)
+                    if (std::abs(M[(size_t)q * NL + p]) > std::abs(M[(size_t)piv * NL + p]))
                         piv = q;
                 if (piv != p) {
-                    for (int m = 0; m < NLAG; m++)
-                        std::swap(M[(size_t)p * NLAG + m], M[(size_t)piv * NLAG + m]);
+                    for (int m = 0; m < NL; m++)
+                        std::swap(M[(size_t)p * NL + m], M[(size_t)piv * NL + m]);
                     std::swap(b[(size_t)p], b[(size_t)piv]);
                 }
-                for (int q = p + 1; q < NLAG; q++) {
-                    const cd f = M[(size_t)q * NLAG + p] / M[(size_t)p * NLAG + p];
-                    for (int m = p; m < NLAG; m++)
-                        M[(size_t)q * NLAG + m] -= f * M[(size_t)p * NLAG + m];
+                for (int q = p + 1; q < NL; q++) {
+                    const cd f = M[(size_t)q * NL + p] / M[(size_t)p * NL + p];
+                    for (int m = p; m < NL; m++)
+                        M[(size_t)q * NL + m] -= f * M[(size_t)p * NL + m];
                     b[(size_t)q] -= f * b[(size_t)p];
                 }
             }
-            for (int p = NLAG - 1; p >= 0; p--) {
+            for (int p = NL - 1; p >= 0; p--) {
                 cd acc = b[(size_t)p];
-                for (int m = p + 1; m < NLAG; m++)
-                    acc -= M[(size_t)p * NLAG + m] * cd(g_fit[c][(size_t)m * NI + i]);
-                g_fit[c][(size_t)p * NI + i] = cf(acc / M[(size_t)p * NLAG + p]);
+                for (int m = p + 1; m < NL; m++)
+                    acc -= M[(size_t)p * NL + m] * cd(g_fit[c][(size_t)m * NI + i]);
+                g_fit[c][(size_t)p * NI + i] = cf(acc / M[(size_t)p * NL + p]);
             }
         }
     }
@@ -345,7 +359,8 @@ int main(int argc, char** argv) {
         for (int c = 0; c < NC; c++) {
             const float* rxs_c = rxs_f + (size_t)c * NSRC * blk * 2;
             gnss_cuda::DtvLsq lsq;
-            const bool ok = lsq.factor(rss_f + (size_t)c * NSRC * NLAG * 2, NLAG)
+            std::fill(g_roll.begin(), g_roll.end(), 0.0f);
+            const bool ok = lsq.factor(rss_f + (size_t)c * NSRC * NLAG * 2, nlag_h[c])
                             && lsq.solve(rxs_c, NI, g_roll.data());
             check(ok, "rolling solver: factor and solve", ok, 1);
             double dmax = 0.0, gmax = 0.0;
@@ -361,8 +376,8 @@ int main(int argc, char** argv) {
                 for (int i = 0; i < NI; i++) {
                     const cf x = x_true[c][(size_t)t * NI + i];
                     cf r = x;
-                    for (int j = 0; j < NLAG; j++) {
-                        const int idx = DTV_HIST + t - (LAG_MIN + j);
+                    for (int j = 0; j < nlag_h[c]; j++) {
+                        const int idx = DTV_HIST + t - (lag_min_h[c] + j);
                         if (idx < NS)
                             r -= cf(g_roll[2 * ((size_t)j * NI + i)],
                                     g_roll[2 * ((size_t)j * NI + i) + 1])
@@ -396,12 +411,20 @@ int main(int argc, char** argv) {
         snap.pw = pw.data();
         snap.act = act_r.data();
         snap.since = since.data();
+        snap.n_lag_ch = nlag_h;
         gnss_cuda::DtvRollParams par;
         par.warm.assign(NSRC, 24);
         par.freeze.assign(NSRC, 0);
         std::vector<float> g0((size_t)NC * NSRC * blk * 2, 0.0f), g1(g0), g2(g0);
+        // channel 1's block beyond its window starts non-zero: a refit must clear it
+        float* tail1 = g1.data() + (size_t)(1 * NSRC + 0) * blk * 2;
+        std::fill(tail1 + (size_t)nlag_h[1] * NI * 2, tail1 + blk * 2, 1.0f);
         gnss_cuda::DtvRollOutcome o = gnss_cuda::dtv_roll_step(snap, par, g0.data(), g1.data());
         check(o.n_upd == NC, "refresh: source 0 refitted on every channel", o.n_upd, NC);
+        double tmax = 0.0;
+        for (size_t q = (size_t)nlag_h[1] * NI * 2; q < blk * 2; q++)
+            tmax = std::max(tmax, (double)std::abs(tail1[q]));
+        check(tmax == 0.0, "refresh: g zero beyond channel 1's window", tmax, 0.0);
         double emax = 0.0, smax = 0.0;
         for (int c = 0; c < NC; c++) {
             emax = std::max(emax, std::abs(o.expl0[c] - removed[c] / raw[c]) / o.expl0[c]);
@@ -443,7 +466,7 @@ int main(int argc, char** argv) {
     for (int c = 0; c < NC; c++)
         act[c * NSRC] = 2;
     CK(cudaMemcpy(d_act, act.data(), act.size() * sizeof(int), cudaMemcpyHostToDevice));
-    gnss_cuda::launch_dtv_subtract(d_x, d_s, d_g, d_act, 0, NC, NSRC, NT, NLAG, LAG_MIN, st);
+    gnss_cuda::launch_dtv_subtract(d_x, d_s, d_g, d_act, d_lags, 0, NC, NSRC, NT, NLAG, st);
     gnss_cuda::launch_dtv_encode(d_x, d_sel, d_act, NC, NSRC, NF, NT, d_frame, d_pw_res, st);
     CK(cudaDeviceSynchronize());
     std::vector<float> pw_res(NC * NI);
@@ -460,8 +483,8 @@ int main(int argc, char** argv) {
         for (int t = 0; t < NT; t++)
             for (int i = 0; i < NI; i++) {
                 cf r = x_true[c][(size_t)t * NI + i];
-                for (int j = 0; j < NLAG; j++) {
-                    const int idx = DTV_HIST + t - (LAG_MIN + j);
+                for (int j = 0; j < nlag_h[c]; j++) {
+                    const int idx = DTV_HIST + t - (lag_min_h[c] + j);
                     if (idx < NS)
                         r -= g_fit[c][(size_t)j * NI + i] * s_est[c][idx];
                 }
