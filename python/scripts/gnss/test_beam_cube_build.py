@@ -33,8 +33,8 @@ class StubGeom:
 
     bore = (bc.BORE_AZ, bc.BORE_EL)
 
-    def vetoed(self, t, own=None):
-        return False
+    def vetoed_rows(self, t, own=None):
+        return np.zeros(len(t), bool)
 
     def at(self, sys_, prn, t):
         return (70.0, 180.0, bc.R_REF) if prn <= 5 else None
@@ -193,6 +193,7 @@ class TestBuild(unittest.TestCase):
             outdir=os.path.join(self.d, "out"),
             nside=8,
             veto_deg=5.0,
+            no_guowang_veto=True,  # the stub sky has no GuoWang; TestGuowangVeto covers it
             mask_deg=0.0,
             health_mask=health_mask,
             no_range_norm=False,
@@ -277,6 +278,7 @@ class TestVetoKeepOwn(unittest.TestCase):
     def _geom(self, keep_own, sats):
         g = bc.Geometry.__new__(bc.Geometry)
         g.veto_deg, g.keep_own, g.bore = 5.0, keep_own, (180.0, 62.7)
+        g.guowang_veto = False
         g._pos, g._all, g._veto = {}, {}, {}
         g._all[0] = {k: dict(az=az, el=el, range_m=2e7) for k, (az, el) in sats.items()}
         return g
@@ -384,6 +386,71 @@ class TestGuowangSky(unittest.TestCase):
         i, _ = self.up_and_down(gw)
         self.assertIsNone(gw.at(6, gw.t[i]), "DIGUI-999 has no TLE")
         self.assertIsNone(gw.at(42, gw.t[i]), "no satellite has code 41")
+
+
+@unittest.skipUnless(has_skyfield(), "needs skyfield (/home/kvand/gnss/venv)")
+class TestGuowangVeto(unittest.TestCase):
+    """GuoWang joins the railing veto both ways: a DIGUI near boresight vetoes a GNSS row, a GNSS
+    satellite near boresight vetoes a gw_1202 row. The boresight is put on DIGUI-112 at one grid
+    point; the BRDC sky is empty unless a test places G3 on the boresight."""
+
+    DAY = TestGuowangSky.DAY
+
+    def setUp(self):
+        self.d = tempfile.mkdtemp(prefix="test_beam_cube_gwveto-")
+        self.tle = os.path.join(self.d, "g.tle")
+        with open(self.tle, "w") as fh:
+            fh.write(GW_TLE)
+        self.db = os.path.join(self.d, "db.json")
+
+    def tearDown(self):
+        shutil.rmtree(self.d, ignore_errors=True)
+
+    def geom(self, keep_own=False, codes=None, g3_on_bore=False):
+        with open(self.db, "w") as fh:
+            sats = codes if codes is not None else {"DIGUI-112": 792}
+            json.dump({"satellites": {k: {"g2_phase": v} for k, v in sats.items()}}, fh)
+        with contextlib.redirect_stdout(io.StringIO()):
+            gw = bc.GuowangSky(self.DAY, self.db, self.tle)
+        u, _ = gw.geo.topo(gw.sats["DIGUI-112"], gw.t)
+        el = np.degrees(np.arcsin(np.clip(u[:, 2], -1.0, 1.0)))
+        az = np.degrees(np.arctan2(u[:, 0], u[:, 1])) % 360.0
+        self.i = int(np.nonzero(el > 30.0)[0][0])
+        self.j = int(np.nonzero(el < -20.0)[0][0])
+        g = bc.Geometry.__new__(bc.Geometry)
+        g.veto_deg, g.keep_own, g.bore = 5.0, keep_own, (az[self.i], el[self.i])
+        g.guowang_veto, g.gw = True, gw
+        g._pos, g._all, g._veto = {}, {}, {}
+        g3 = {("G", 3): dict(az=g.bore[0], el=g.bore[1], range_m=2e7)}
+        g._minute = lambda m: g3 if g3_on_bore else {}
+        return g, gw
+
+    def test_a_guowang_transit_vetoes_a_gnss_row(self):
+        g, gw = self.geom()
+        self.assertTrue(g.vetoed(gw.t[self.i], "G3"))
+        self.assertFalse(g.vetoed(gw.t[self.j], "G3"), "DIGUI-112 below the horizon")
+
+    def test_the_veto_resolves_the_crossing(self):
+        g, gw = self.geom()
+        # ~0.3 deg/s near boresight: 40 s on, the satellite is far outside 5 deg
+        v = g.vetoed_rows(gw.t[self.i] + np.array([0.0, 40.0]), ["G3", "G3"])
+        self.assertEqual(list(v), [True, False])
+
+    def test_a_gnss_transit_vetoes_a_guowang_row(self):
+        g, gw = self.geom(g3_on_bore=True)
+        self.assertTrue(g.vetoed(gw.t[self.j], "W793"))
+
+    def test_keep_own_keeps_the_guowang_main_lobe(self):
+        g, gw = self.geom(keep_own=True)
+        self.assertFalse(g.vetoed(gw.t[self.i], "W793"))
+        self.assertTrue(g.vetoed(gw.t[self.i], "G3"))
+
+    def test_an_uncoded_satellite_still_vetoes(self):
+        g, gw = self.geom(keep_own=True, codes={"DIGUI-999": 5})
+        self.assertTrue(g.vetoed(gw.t[self.i], "G3"))
+        self.assertTrue(
+            g.vetoed(gw.t[self.i], "W793"), "no code: not anyone's own lobe"
+        )
 
 
 class TestGeomStep(unittest.TestCase):
