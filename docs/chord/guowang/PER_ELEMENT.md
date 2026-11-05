@@ -99,6 +99,25 @@ latency, which the alternative (decoding the bits) does not.
    untouched. The track beam decodes the true signs of the strong satellites, so f is measured
    live. Code tracking is unaffected (the DLL discriminator is sign-blind).
 
+**Built 11-05 00:30Z (branch kv/gw-navbits, 881e86f28):** `guowang1202Nav` (generator + test),
+the tracker's seed fields `nav_frame_at_ref` / `nav_pages`, the record frame index from the
+unwrapped phase, `PsiJob::nav` applied in `psi_hop` by the wrap count, the broker's exact frame
+arithmetic at the seed birth (`gw_nav_frame`, moved with the DLL trim) and the table's
+`nav_pages` from the library. GPU-verified: `cuda_gnss_psi_bench tiled` shows synthesis = sign x
+plain on every hop with alternating signs (24576 hops, exact); the despread test and the fused
+bench are unchanged with the signs off.
+
+**Finding that changes the template supply (11-05 00:20Z):** the two satellites whose pages
+were constant are the inferred-orbit H ones, which the table never writes records for. Three
+catalogued satellites decoded from their 11-04 main-lobe windows (DIGUI-121, -139, -142) carry
+CHANGING content in every page: 20-36 of 316 bits per 12 s cycle, a union of 30-120 positions
+per page over a pass, and 25-35 % of a page differs between satellites. So for catalogued
+satellites a page template must come from the satellite's own recent decode, and ages: ~92 %
+of the bits hold over a minute, less over hours. Expected wipe gain with a live template +5 dB,
+with a stale one +3 to +4 dB, +7 dB for the H satellites. Next: decode the low-rate pages of the
+track beam's targets in the cf05 loop every cycle (it has the code-half correlations) and feed
+them to the library/table, so the strongest satellites always carry a fresh template.
+
 Fallback that needs no bits: accumulate element x conj(reference element) per 1 ms code half.
 The common sign cancels and the relative response adds coherently, but it is a quadratic
 estimator, efficient only while rho per half is above ~0.5 (inside ~45 deg); in the far

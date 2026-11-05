@@ -28,7 +28,11 @@ of the CSK half (high rate). ITU-R M.1787-6 files them as 125 / 1500 bit/s; meas
   header's numbering][17 bits 0x21fa|1, common][10-bit per-satellite field: 481 / 812][~50 bits
   common: ...bfffea88000002][a 24-28-bit per-page word with ~5 satellite-specific bits][filler].
   Pages 2-4: filler only, the byte 0x2d + 8 x (page - 1) repeated. Payloads are constant over a
-  pass. Placeholder content; no ephemeris.
+  pass. Placeholder content; no ephemeris. **That holds for the two inferred-orbit satellites
+  decoded first (H24-4, H84-1). Catalogued satellites do not send filler (11-05): DIGUI-121,
+  -139 and -142 carry changing content in all four pages, 20-36 of 316 bits per 12 s cycle over
+  a union of 30-120 positions per page, 25-35 % differing between satellites at other times.
+  What it encodes is open; it is where an ephemeris or clock would sit.**
 - CN115685267A (Qixin receiver) describes this pilot channel as convolutional (Viterbi) + CRC
   with week number and SOW, 6 s subframes in its example; ours are 3 s.
 
