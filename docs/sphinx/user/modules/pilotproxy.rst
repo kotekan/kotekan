@@ -134,12 +134,16 @@ and ``dtv_runtime_bundle_dir`` switches. It records masks, powers and fine
 support in 1024-block files (about 43 seconds), under ``dtv_output_dir``
 (default ``/scratch/dtv``).
 
-While running, POST ``{"enabled": false}`` to ``/dtv_write_enabled`` to stop
-recording. POST ``{"enabled": false, "valid_at_time_ns": 0}`` to
-``/dtv_detector_enabled`` to stop detection at the next block. Set ``enabled``
-to true to resume; recording starts a new file. A nonzero ``valid_at_time_ns``
-applies the detector change at the first block starting at or after that
-instrument time. Both switches start enabled.
+Detection and recording both start off, so the visibilities do not change
+until the detector is turned on. POST
+``{"enabled": true, "valid_at_time_ns": 0}`` to ``/dtv_detector_enabled`` to
+start detection at the next block. POST ``{"enabled": true}`` to
+``/dtv_write_enabled`` to start recording. Set ``enabled`` to false to stop,
+and recording starts a new file when it resumes. A nonzero
+``valid_at_time_ns`` applies the detector change at the first block starting
+at or after that instrument time. A restart returns both switches to off. A
+POST sent before the stages have started returns 200 but has no effect, so the
+detector log line ``PilotProxy detector on`` confirms the change.
 
 Each X-engine node writes to its own disk, and each file name starts with the
 node's hostname, so files from different nodes do not collide when gathered.

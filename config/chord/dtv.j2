@@ -1,6 +1,7 @@
 {#-
   dtv.j2
-  dtv_enabled runs detection; dtv_apply_mask also applies its mask to N2.
+  dtv_enabled adds the detector, and dtv_apply_mask also applies its mask to N2.
+  Detection and recording start off until enabled over REST.
   Disable /rfi_first_stage_enabled for a DTV-only first-stage mask.
   Profiles bind by receiver_channel_id against each NUMA half's coarse_freq.
   Every bound channel must be calibrated; halves without matches emit zero masks/powers.
@@ -35,17 +36,17 @@ host_dtv_{{ product }}{{ suffix }}_buffer{{ n.sfx }}:
 {% endfor %}
 {% endfor %}
 {% endfor %}
-# POST {"enabled": false} to /dtv_write_enabled to stop recording.
+# POST {"enabled": true} to /dtv_write_enabled to start recording.
 # Detector updates also require valid_at_time_ns (0: next block). Disabled detection emits
 # zero masks/powers and (-1,-1) fine support.
 dtv_detector_enabled:
     kotekan_update_endpoint: json
-    enabled: true
+    enabled: false
     valid_at_time_ns: 0
 
 dtv_write_enabled:
     kotekan_update_endpoint: json
-    enabled: true
+    enabled: false
 
 run_dtv_detector:
 {% for n in numa_halves %}
