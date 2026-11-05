@@ -31,6 +31,7 @@ gives its theta (builds/gw1202/gw_sweep_harvest.py), which the sweep file then c
 """
 
 import argparse
+import calendar
 import json
 import math
 import os
@@ -111,16 +112,41 @@ def load_db(path=guowang_codes.GUOWANG_1202_DB):
     """{name: (G2' phase, theta_s or None)} and theta_unknown_s, from the satellite database."""
     with open(path) as fh:
         d = json.load(fh)
+    live = load_live_pages()
     sats = {
         n: (
             s["g2_phase"],
             s["theta_us"] * 1e-6 if "theta_us" in s else None,
-            s.get("nav_pages"),
+            live.get(n, s.get("nav_pages")),
         )
         for n, s in d["satellites"].items()
         if s.get("g2_phase") is not None
     }
     return sats, d["theta_unknown_us"] * 1e-6
+
+
+LIVE_PAGES = "/home/kvand/gnss/builds/gw1202/nav_pages_live.json"
+LIVE_PAGES_MAX_AGE_S = 6 * 3600.0
+
+
+def load_live_pages(path=LIVE_PAGES, max_age_s=LIVE_PAGES_MAX_AGE_S):
+    """{name: nav_pages} decoded live by the track-beam loop (gw_nav_live), newer than
+    max_age_s; they override the library's. Missing or unreadable file: nothing."""
+    try:
+        with open(path) as fh:
+            live = json.load(fh)
+    except (OSError, ValueError):
+        return {}
+    out = {}
+    now = time.time()
+    for n, e in live.items():
+        try:
+            t = calendar.timegm(time.strptime(e["utc"], "%Y-%m-%dT%H:%M:%SZ"))
+        except (KeyError, ValueError):
+            continue
+        if now - t <= max_age_s and len(e.get("nav_pages") or []) == 4:
+            out[n] = list(e["nav_pages"])
+    return out
 
 
 def build(
