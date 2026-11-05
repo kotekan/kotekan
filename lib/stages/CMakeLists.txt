@@ -92,6 +92,7 @@ add_library(
     lostSamplesToN2Counts.cpp
     rfiBroadcast.cpp
     bufferBadInputs.cpp
+    bufferGains.cpp
     RfiFrameDrop.cpp
     VisSharedMemWriter.cpp
     DataQuality.cpp
