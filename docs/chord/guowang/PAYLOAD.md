@@ -150,6 +150,18 @@ to every sender, but each sender carries its own subset, so same-second messages
   re-issued about every 6 h (00:20, 06:25, 12:20 UTC) at the same epoch. It covers 170
   satellites: the nine extra per plane in planes 0, 1, 2, 11 (the inferred H sets among them) are
   not in it. Not a GNSS almanac, not code biases (both tested).
+- Propagating the almanac (`builds/gw1202/table_prop2.py`): it is an SGP4-style mean-element set
+  (a plain Kepler conversion is 190 km off, exactly as it is for the TLE's own mean elements).
+  Build a pseudo-TLE: epoch = toa (header bits 0-14 = BDT day number, 00:00 BDT); inclination =
+  shell reference + @67/25 (signed) x 2^-29 semicircles, reference 50.017 deg for the 50 deg
+  shell (index bit 8 set) and 86.50 for polar; RAAN = @92/30 x 360/2^30 + GMST(toa); omega =
+  @122/30 and M0 = @152/30 (x 360/2^30); e = bits 45-66 x 2^-32 for the polar shell (the 50 deg
+  shell's e field is elsewhere; e ~ 1e-4, so 0 costs < 1.5 km); mean motion = the shell's nominal
+  Kozai value (the within-shell spread costs < 1 km/day); bstar = 0; run sgp4. Against the real
+  TLEs over 15 h: 3D median 0.86 km (50 deg shell) and 0.93 km (polar), i.e. the TLE's own
+  precision, so the almanac is a TLE-equivalent orbit source for its 170 satellites with a 6 h
+  refresh. Consecutive daily issues give each satellite's own rates of argument of latitude and
+  node, agreeing with SGP4 to 0.002 and 0.0002 deg/day.
 
 ## What is not in it
 
