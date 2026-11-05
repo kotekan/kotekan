@@ -154,6 +154,8 @@ struct DtvRollSnapshot {
     const float* pw = nullptr;
     const int* act = nullptr;    ///< [n_chan][n_src] at the snapshot: 2 = subtracting
     const long* since = nullptr; ///< [n_chan][n_src] frames in the sums since they were zeroed
+    /// [n_chan] lags in use per channel, the first of the n_lag on the lag axis (null: all n_lag)
+    const int* n_lag_ch = nullptr;
 };
 
 /// The refresh's settings.
@@ -180,7 +182,7 @@ struct DtvRollOutcome {
 /// last interval (trip), fit every subtracting, unfrozen, warmed-up source from the sums, hold
 /// the channel if source 0's fit explains too little (no signal: sky or analog chain off), and
 /// write the accepted fits into g_out (same layout as the stage's g: [n_chan][n_src][n_lag][ni]
-/// complex; blocks not updated are left as they are).
+/// complex, zero beyond the channel's n_lag_ch; blocks not updated are left as they are).
 inline DtvRollOutcome dtv_roll_step(const DtvRollSnapshot& s, const DtvRollParams& p,
                                     const float* g_cur, float* g_out) {
     const int n = s.n_chan, ns = s.n_src, nl = s.n_lag, ni = s.ni;
@@ -201,6 +203,7 @@ inline DtvRollOutcome dtv_roll_step(const DtvRollSnapshot& s, const DtvRollParam
             sub = sub || s.act[(size_t)c * ns + k] >= 2;
         if (!sub)
             continue;
+        const int nlc = s.n_lag_ch ? s.n_lag_ch[c] : nl;
         const float raw_int = s.pw[(size_t)n + c], res_int = s.pw[(size_t)2 * n + c];
         if (raw_int > 0.0f) {
             o.ratio[(size_t)c] = res_int / raw_int;
@@ -217,10 +220,11 @@ inline DtvRollOutcome dtv_roll_step(const DtvRollSnapshot& s, const DtvRollParam
                 continue;
             const float* rxs = s.rxs + ck * blk;
             const float* gc = g_cur + ck * blk;
-            if (!lsq.factor(s.rss + ck * nl * 2, nl) || !lsq.solve(rxs, ni, gn.data())) {
+            if (!lsq.factor(s.rss + ck * nl * 2, nlc) || !lsq.solve(rxs, ni, gn.data())) {
                 o.n_bad++;
                 continue;
             }
+            std::fill(gn.begin() + (size_t)nlc * ni * 2, gn.end(), 0.0f);
             const double cn = lsq.cost(rxs, gn.data(), ni), cc = lsq.cost(rxs, gc, ni);
             o.gain[ck] = (float)((cc - cn) / std::max(-cn, 1e-30));
             double dg = 0.0, g2 = 0.0;

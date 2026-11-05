@@ -138,15 +138,16 @@ __device__ __forceinline__ void load_s_tile(const float2* __restrict__ sk, int t
 // One block per (lag group, channel, tile of TT samples); the tiles' partial sums are added with
 // atomics into memory the caller zeroed.
 __global__ void dtv_lagcorr_kernel(const float2* __restrict__ x, const float2* __restrict__ s,
-                                   const int* __restrict__ act, int k, int n_src, int n_times,
-                                   int n_lag, int lag_min, float2* __restrict__ rxs) {
+                                   const int* __restrict__ act, const int* __restrict__ lags, int k,
+                                   int n_src, int n_times, int n_lag, float2* __restrict__ rxs) {
     __shared__ float2 tile[TILE];
     const int c = blockIdx.y;
-    if (act[c * n_src + k] < 1)
+    const int lag_min = lags[2 * c], n_lag_c = lags[2 * c + 1];
+    const int j0 = blockIdx.x * LAG_GROUP;
+    if (act[c * n_src + k] < 1 || j0 >= n_lag_c)
         return;
     const int i = threadIdx.x;
-    const int j0 = blockIdx.x * LAG_GROUP;
-    const int nj = n_lag - j0 < LAG_GROUP ? n_lag - j0 : LAG_GROUP;
+    const int nj = n_lag_c - j0 < LAG_GROUP ? n_lag_c - j0 : LAG_GROUP;
     const int t0 = blockIdx.z * TT;
     const float2* sk = s + (size_t)(c * n_src + k) * (HIST + n_times);
     const float2* xc = x + (size_t)c * n_times * NI;
@@ -176,14 +177,15 @@ __global__ void dtv_lagcorr_kernel(const float2* __restrict__ x, const float2* _
     }
 }
 
-// rss[d] = sum_t s(t) conj(s(t - d)) for d = 0..n_lag-1: every lag difference the normal
+// rss[d] = sum_t s(t) conj(s(t - d)) for d = 0..n_lag_c-1: every lag difference the normal
 // equations need (negative ones by conjugate symmetry). d < DTV_HIST, so s(t - d) is always held.
 // One block per (channel, tile of TT samples), added with atomics like dtv_lagcorr_kernel.
-__global__ void dtv_rss_kernel(const float2* __restrict__ s, const int* __restrict__ act, int k,
-                               int n_src, int n_times, int n_lag, float2* __restrict__ rss) {
+__global__ void dtv_rss_kernel(const float2* __restrict__ s, const int* __restrict__ act,
+                               const int* __restrict__ lags, int k, int n_src, int n_times,
+                               int n_lag, float2* __restrict__ rss) {
     const int c = blockIdx.x;
     const int d = threadIdx.x;
-    if (d >= n_lag || act[c * n_src + k] < 1)
+    if (d >= lags[2 * c + 1] || act[c * n_src + k] < 1)
         return;
     const float2* sk = s + (size_t)(c * n_src + k) * (HIST + n_times) + HIST;
     const int t0 = blockIdx.y * TT;
@@ -201,11 +203,13 @@ __global__ void dtv_rss_kernel(const float2* __restrict__ s, const int* __restri
 
 __global__ void dtv_subtract_kernel(float2* __restrict__ x, const float2* __restrict__ s,
                                     const float2* __restrict__ g, const int* __restrict__ act,
-                                    int k, int n_src, int n_times, int n_lag, int lag_min) {
+                                    const int* __restrict__ lags, int k, int n_src, int n_times,
+                                    int n_lag) {
     __shared__ float2 tile[TILE];
     const int c = blockIdx.y;
     if (act[c * n_src + k] < 2)
         return;
+    const int lag_min = lags[2 * c], n_lag_c = lags[2 * c + 1];
     const int i = threadIdx.x;
     const int t0 = blockIdx.x * TT;
     const float2* sk = s + (size_t)(c * n_src + k) * (HIST + n_times);
@@ -216,7 +220,7 @@ __global__ void dtv_subtract_kernel(float2* __restrict__ x, const float2* __rest
     for (int tt = 0; tt < tn; tt++) {
         float2 acc = make_float2(0.0f, 0.0f);
         const float2* sp = tile + tt + HIST - lag_min; // lag j: sp[-j]
-        for (int j = 0; j < n_lag; j++) {
+        for (int j = 0; j < n_lag_c; j++) {
             const float2 gv = gk[(size_t)j * NI];
             const float2 sv = sp[-j];
             acc.x += gv.x * sv.x - gv.y * sv.y;
@@ -370,25 +374,25 @@ void launch_dtv_beam(const float2* x, const float2* w, const int* act, int k, in
     dtv_beam_kernel<<<grid, ROW_THREADS, 0, stream>>>(x, w, act, k, n_src, n_times, s, ps);
 }
 
-void launch_dtv_lagcorr(const float2* x, const float2* s, const int* act, int k, int n_chan,
-                        int n_src, int n_times, int n_lag, int lag_min, float2* rxs, float2* rss,
+void launch_dtv_lagcorr(const float2* x, const float2* s, const int* act, const int* lags, int k,
+                        int n_chan, int n_src, int n_times, int n_lag, float2* rxs, float2* rss,
                         cudaStream_t stream) {
     if (n_chan <= 0)
         return;
     const int n_tiles = (n_times + TT - 1) / TT;
     const dim3 grid((n_lag + LAG_GROUP - 1) / LAG_GROUP, n_chan, n_tiles);
-    dtv_lagcorr_kernel<<<grid, NI, 0, stream>>>(x, s, act, k, n_src, n_times, n_lag, lag_min, rxs);
-    dtv_rss_kernel<<<dim3(n_chan, n_tiles), DTV_MAX_LAGS, 0, stream>>>(s, act, k, n_src, n_times,
-                                                                       n_lag, rss);
+    dtv_lagcorr_kernel<<<grid, NI, 0, stream>>>(x, s, act, lags, k, n_src, n_times, n_lag, rxs);
+    dtv_rss_kernel<<<dim3(n_chan, n_tiles), DTV_MAX_LAGS, 0, stream>>>(s, act, lags, k, n_src,
+                                                                       n_times, n_lag, rss);
 }
 
-void launch_dtv_subtract(float2* x, const float2* s, const float2* g, const int* act, int k,
-                         int n_chan, int n_src, int n_times, int n_lag, int lag_min,
+void launch_dtv_subtract(float2* x, const float2* s, const float2* g, const int* act,
+                         const int* lags, int k, int n_chan, int n_src, int n_times, int n_lag,
                          cudaStream_t stream) {
     if (n_chan <= 0)
         return;
     const dim3 grid((n_times + TT - 1) / TT, n_chan);
-    dtv_subtract_kernel<<<grid, NI, 0, stream>>>(x, s, g, act, k, n_src, n_times, n_lag, lag_min);
+    dtv_subtract_kernel<<<grid, NI, 0, stream>>>(x, s, g, act, lags, k, n_src, n_times, n_lag);
 }
 
 void launch_dtv_encode(const float2* x, const int* sel, const int* act, int n_chan, int n_src,

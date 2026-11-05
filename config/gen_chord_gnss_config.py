@@ -827,10 +827,13 @@ def elem_positions_from_arraymap(arr, n_elem):
     return out, ep
 
 
-def dtv_frame_bytes(n_chan, n_src, n_lag):
-    """Bytes of one cudaDtvSubtract output frame: mirrors gnss_cuda::dtv_out_layout."""
+def dtv_frame_bytes(n_chan, n_src, n_lag, lags_section=False):
+    """Bytes of one cudaDtvSubtract output frame: mirrors gnss_cuda::dtv_out_layout (the lags
+    section is there when the channels' lag windows differ)."""
     align = lambda off: (off + 15) & ~15
     off = align(64 + 4 * n_chan)  # header, freq_ids
+    if lags_section:
+        off = align(off + 8 * n_chan)  # lag_min, n_lag per channel
     off = align(off + 4 * n_chan * n_src)  # act
     off = align(off + 4 * 128 * n_chan)  # pw_raw
     off = align(off + 4 * 128 * n_chan)  # pw_res
@@ -840,14 +843,72 @@ def dtv_frame_bytes(n_chan, n_src, n_lag):
     return align(off + 8 * n_lag * 128 * n_chan * n_src)  # rxs
 
 
+def one_or_list(v):
+    """v[0] when every entry is the same, else v."""
+    return v[0] if len(set(v)) == 1 else v
+
+
+def dtv_targets(args):
+    """[(name, freq_ids, lag_min, n_lag, sources)] from --dtv-targets, or one target from
+    --dtv-subtract-freq-ids with --dtv-lag-min, --dtv-n-lag and --dtv-sources."""
+    spec = (getattr(args, "dtv_targets", "") or "").strip()
+    if not spec:
+        ids = sorted(freq_id_ranges(args.dtv_subtract_freq_ids))
+        return (
+            [("dtv", ids, args.dtv_lag_min, args.dtv_n_lag, args.dtv_sources)]
+            if ids
+            else []
+        )
+    if args.dtv_subtract_freq_ids:
+        raise SystemExit(
+            "--dtv-targets replaces --dtv-subtract-freq-ids; give only one"
+        )
+    out, owner = [], {}
+    for part in (p.strip() for p in spec.split(";")):
+        if not part:
+            continue
+        f = [x.strip() for x in part.split(":")]
+        if len(f) != 5:
+            raise SystemExit(
+                f"--dtv-targets: {part!r}: expected NAME:RANGES:LAG_MIN:N_LAG:SOURCES"
+            )
+        name, ids = f[0], sorted(freq_id_ranges(f[1]))
+        lag_min, n_lag, sources = int(f[2]), int(f[3]), int(f[4])
+        if not (
+            ids
+            and 1 <= n_lag <= 64
+            and lag_min >= -16
+            and lag_min + n_lag <= 64
+            and 1 <= sources <= 4
+        ):
+            raise SystemExit(
+                f"--dtv-targets: {name}: no channels, or lags {lag_min}..{lag_min + n_lag - 1} "
+                f"outside [-16, 63] or more than 64, or sources {sources} outside 1..4"
+            )
+        for fid in ids:
+            if fid in owner:
+                raise SystemExit(
+                    f"--dtv-targets: freq_id {fid} is in both {owner[fid]} and {name}"
+                )
+            owner[fid] = name
+        out.append((name, ids, lag_min, n_lag, sources))
+    return out
+
+
 def add_dtv_subtract(out, cfg, args, node, spds):
     """cudaDtvSubtract (lib/cuda/cudaDtvSubtract.cpp) in place of cudaCopyToRingbuffer in
     run_send_voltage on every GPU holding one of --dtv-subtract-freq-ids: the voltage ring's
     copy-in with the lagged subtraction of a terrestrial transmitter on those channels, so every
     consumer of the ring sees the same frame. Its per-frame output (weights, powers, lag
     correlations) goes through a FrameWindowGate and a rawFileWrite under <record_dir>/dtv,
-    as the beam dump's does."""
-    ids = sorted(freq_id_ranges(args.dtv_subtract_freq_ids))
+    as the beam dump's does. Each channel takes its target's lag window and source slots
+    (--dtv-targets); a GPU whose channels share a value gets it as one Int, as before."""
+    per = {
+        fid: (lag_min, n_lag, sources)
+        for _, ids, lag_min, n_lag, sources in dtv_targets(args)
+        for fid in ids
+    }
+    ids = sorted(per)
     if not ids:
         return
     rt = cfg["runtime"]
@@ -869,15 +930,16 @@ def add_dtv_subtract(out, cfg, args, node, spds):
                 "cudaCopyToRingbuffer commands, expected one"
             )
         out_name = f"gnss{gpu}_dtv"
+        lag_min, n_lag, sources = ([per[fid][q] for fid, _ in pairs] for q in range(3))
         copies[0].update(
             {
                 "name": "cudaDtvSubtract",
                 "dtv_local_channels": [idx for _, idx in pairs],
                 "dtv_freq_ids": [fid for fid, _ in pairs],
                 "dtv_out_name": out_name,
-                "dtv_lag_min": args.dtv_lag_min,
-                "dtv_n_lag": args.dtv_n_lag,
-                "dtv_sources": args.dtv_sources,
+                "dtv_lag_min": one_or_list(lag_min),
+                "dtv_n_lag": one_or_list(n_lag),
+                "dtv_sources": one_or_list(sources),
                 "dtv_state_file": args.dtv_state_file,
             }
         )
@@ -898,7 +960,9 @@ def add_dtv_subtract(out, cfg, args, node, spds):
                 "out_buf": "host_gnss_dtv",
             },
         ]
-        frame_bytes = dtv_frame_bytes(len(pairs), args.dtv_sources, args.dtv_n_lag)
+        frame_bytes = dtv_frame_bytes(
+            len(pairs), max(sources), max(n_lag), len(set(zip(lag_min, n_lag))) > 1
+        )
         core = GPU_VARS[gpu][0]["cores"]["sink"]
         for name, depth in ((buf, BUFFER_DEPTH), (gated, args.dtv_depth)):
             out[name] = {
@@ -3314,6 +3378,16 @@ def main():
         "on the GPU holding each, subtracting the transmitter from the voltage ring as the "
         "frames are written (docs/CHORD_DTV_SUBTRACTION_20261102.md); its per-frame output is "
         "gated by seq like the beam dump and written under <record_dir>/dtv. Empty = stock.",
+    )
+    ap.add_argument(
+        "--dtv-targets",
+        default="",
+        metavar="TARGETS",
+        dest="dtv_targets",
+        help="the transmitters to subtract, 'NAME:RANGES:LAG_MIN:N_LAG:SOURCES;...' (e.g. "
+        "'atsc24:2714-2744:-16:64:3;muos:1843-1946:-4:16:1'): each target's channels get its lag "
+        "window and source slots. Replaces --dtv-subtract-freq-ids, --dtv-lag-min, --dtv-n-lag "
+        "and --dtv-sources, which give one target. Empty = those.",
     )
     ap.add_argument(
         "--dtv-state-file",
