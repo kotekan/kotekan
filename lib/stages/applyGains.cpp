@@ -10,7 +10,6 @@
 #include "datasetManager.hpp"    // for datasetManager, state_id_t, dset_id_t
 #include "datasetState.hpp"      // for gainState, freqState, inputState
 #include "kotekanLogging.hpp"    // for WARN, FATAL_ERROR, DEBUG, INFO, ERROR
-#include "modp_b64.hpp"          // for modp_b64_decode, MODP_B64_ERROR, modp_b64_decode_len
 #include "prometheusMetrics.hpp" // for Metrics, Counter, Gauge
 #include "restClient.hpp"        // for restClient
 #include "visBuffer.hpp"         // for VisFrameView, VisField
@@ -18,12 +17,12 @@
 
 #include "fmt.hpp"      // for compile_string_to_view, format, fmt, format_string
 #include "gsl-lite.hpp" // for span
+#include "jsonUtil.hpp" // for json_base64_to_array
 
 #include <assert.h>                 // for assert
 #include <chrono>                   // for operator""s
 #include <cmath>                    // for pow, abs
 #include <complex>                  // for operator*, complex, operator+, abs, conj, operator==
-#include <cstring>                  // for memcpy
 #include <exception>                // for exception
 #include <functional>               // for bind, function, _1
 #include <highfive/H5DataSet.hpp>   // for DataSet, DataSet::getDataType, DataSet::getMemSpace
@@ -489,53 +488,6 @@ std::optional<applyGains::GainData> applyGains::read_gain_file(std::string updat
     return g;
 }
 
-
-template<typename T>
-std::pair<std::vector<T>, std::vector<uint32_t>> json_base64_to_array(const json& j) {
-
-    auto shape = j.at("shape").get<std::vector<uint32_t>>();
-    const auto& data_json = j.at("data");
-
-    if (!data_json.is_string()) {
-        throw std::runtime_error("Value for data key must be a string.");
-    }
-
-    auto string_data = data_json.get_ref<const json::string_t&>();
-    auto enc_size = string_data.size();
-
-    // Must be a multiple of 4 bytes to be base64 decodable
-    if (enc_size % 4 != 0) {
-        throw std::runtime_error(fmt::format(
-            "base64 encoded data must be a multiple of four bytes. Length: {}.", enc_size));
-    }
-
-    // Decode the base64 data into a temporary buffer
-    std::vector<char> decoded_data(modp_b64_decode_len(enc_size));
-    auto dec_len = modp_b64_decode(decoded_data.data(), string_data.c_str(), string_data.size());
-
-    if (dec_len == MODP_B64_ERROR) {
-        throw std::runtime_error("Could not base64 decode the array data.");
-    }
-
-    // Calculate the total array size
-    uint64_t size = 1;
-    for (const auto& axsize : shape)
-        size *= axsize;
-    auto size_bytes = size * sizeof(T);
-
-    if (dec_len != size_bytes) {
-        throw std::runtime_error(fmt::format("Size of decoded data different from expectation."
-                                             "Got {}, expected {}",
-                                             dec_len, size_bytes));
-    }
-
-    // Copy data into a vector of the correct length and alignment,
-    // (decoded_data likely has padding bytes at the end)
-    std::vector<T> arr(size);
-    std::memcpy(arr.data(), decoded_data.data(), size_bytes);
-
-    return {std::move(arr), std::move(shape)};
-}
 
 template<typename T, typename U = T>
 std::vector<std::vector<U>> unpack_2d(const std::vector<T>& arr1d, uint32_t nr, uint32_t nc) {
