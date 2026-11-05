@@ -19,7 +19,7 @@ using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
 
-#define DIM(v) (sizeof(v)/sizeof(v[0]))
+#define DIM(v) (sizeof(v) / sizeof(v[0]))
 
 // Register the stage with the stage factory.
 REGISTER_KOTEKAN_STAGE(PulsarNetworkProducer);
@@ -61,7 +61,8 @@ void PulsarNetworkProducer::main_thread() {
             break;
 
         out_buf->allocate_new_metadata_object(frame_id);
-        get_chord_metadata(out_buf, frame_id)->set_from_frame_desc(out_buf->get_frame_desc<kotekan::GenericNDArray>());
+        get_chord_metadata(out_buf, frame_id)
+            ->set_from_frame_desc(out_buf->get_frame_desc<kotekan::GenericNDArray>());
         get_chord_metadata(out_buf, frame_id)->set_fpga_seq_num(seq_num);
         get_chord_metadata(out_buf, frame_id)->set_stream_id(stream_id);
 
@@ -73,48 +74,24 @@ void PulsarNetworkProducer::main_thread() {
         // just make up some random numbers (not necessarily in physcial range)
         // note: arrays have different lenght to mix things up when repeating
         float right_ascension[] = {
-                                    217.80,
-                                    82.46,
-                                    258.67,
-                                    196.04,
-                                    176.02,
-                                    127.40,
-                                    298.89,
-                                    90.67,
-                                    87.11,
-                                    282.91,
-                                  };
-       float declination[] = {
-                               256.52,
-                               264.16,
-                               49.39,
-                               227.15,
-                               9.72,
-                               21.46,
-                               21.73,
-                               51.71,
-                               326.49,
-                             };
-      float scaling[] = {
-                         3,
-                         2,
-                         2,
-                         2,
-                         1,
-                         2,
-                         2,
-                         3,
-                    };
-        for(int i = 0 ; i < num_beams ; ++i) {
-          beam_coord.right_ascension[i] = right_ascension[i % DIM(right_ascension)];
-          beam_coord.declination[i] = declination[i % DIM(declination)];
-          beam_coord.scaling[i] = scaling[i % DIM(scaling)];
+            217.80, 82.46, 258.67, 196.04, 176.02, 127.40, 298.89, 90.67, 87.11, 282.91,
+        };
+        float declination[] = {
+            256.52, 264.16, 49.39, 227.15, 9.72, 21.46, 21.73, 51.71, 326.49,
+        };
+        float scaling[] = {
+            3, 2, 2, 2, 1, 2, 2, 3,
+        };
+        for (int i = 0; i < num_beams; ++i) {
+            beam_coord.right_ascension[i] = right_ascension[i % DIM(right_ascension)];
+            beam_coord.declination[i] = declination[i % DIM(declination)];
+            beam_coord.scaling[i] = scaling[i % DIM(scaling)];
         }
         get_chord_metadata(out_buf, frame_id)->set_beam_coord(beam_coord);
 
         std::vector<int> coarse_freq(num_freqs);
-        for(int i = 0 ; i < num_freqs ; ++i) {
-          coarse_freq[i] = 2*i;
+        for (int i = 0; i < num_freqs; ++i) {
+            coarse_freq[i] = 2 * i;
         }
         get_chord_metadata(out_buf, frame_id)->set_coarse_freq(coarse_freq);
 
