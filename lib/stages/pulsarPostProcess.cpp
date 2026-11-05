@@ -67,10 +67,12 @@ pulsarPostProcess::pulsarPostProcess(Config& config_, const std::string& unique_
 
     in_buffer = get_buffer("network_input_buffer");
     in_buffer->register_consumer(unique_name);
-    in_buffer->require_frame_desc(kotekan:::GenericNDArray::describe(kotekan::int4x2_swapped_withoffset, "J",
-    {1, _num_beams, _num_freqs_per_gpu, _num_pol, _samples_per_data_set},
-    {"Thi", "B", "F", "P", "T"},
-    {_samples_per_data_set, 1, 1, 1, 1}));
+    in_buffer->require_frame_desc(
+        kotekan::
+            : GenericNDArray::describe(
+                kotekan::int4x2_swapped_withoffset, "J",
+                {1, _num_beams, _num_freqs_per_gpu, _num_pol, _samples_per_data_set},
+                {"Thi", "B", "F", "P", "T"}, {_samples_per_data_set, 1, 1, 1, 1}));
     pulsar_buf = get_buffer("pulsar_out_buf");
     pulsar_buf->register_producer(unique_name);
 }
@@ -193,7 +195,8 @@ void pulsarPostProcess::main_thread() {
         const uint8_t* in_frame = in_buffer->wait_for_full_frame(unique_name, in_buffer_ID);
         if (in_frame == nullptr)
             return;
-        const int64_t new_frame_fpga_seq_num = get_chord_metadata(in_buffer, in_buffer_ID)->get_fpga_seq_num();
+        const int64_t new_frame_fpga_seq_num =
+            get_chord_metadata(in_buffer, in_buffer_ID)->get_fpga_seq_num();
 
         // Initialize data for header info, namely position and frequency labels.
         beam_coord = get_chord_metadata(in_buffer, in_buffer_ID)->get_beam_coord();
@@ -202,8 +205,8 @@ void pulsarPostProcess::main_thread() {
         for (unsigned int f = 1; f < _num_freqs_per_gpu; f++)
             thread_ids[f] = thread_ids[0];
 
-#if 0   // station id is strange since more than one F-engine would have contributed anyway, so for
-        // now, just make up something
+#if 0 // station id is strange since more than one F-engine would have contributed anyway, so for
+      // now, just make up something
         ice_stream_id_t stream_id = ice_extract_stream_id_t(get_chord_metadata(in_buf[0], in_buffer_ID[0])->get_stream_id());
         psr_header.station_id =
             (uint16_t)(stream_id.crate_id * 16 + stream_id.slot_id + stream_id.link_id * 32);
@@ -306,8 +309,12 @@ void pulsarPostProcess::main_thread() {
                         frame = 0;
                         for (uint32_t freq_block = 0; freq_block < num_out_frames; ++freq_block) {
                             // TODO: set actual metadata? No one uses it...
-                            pulsar_buf->allocate_new_metadata_object((out_buffer_ID + freq_block) % pulsar_buf->num_frames);
-                            get_chord_metadata(pulsar_buf, (out_buffer_ID + freq_block) % pulsar_buf->num_frames)->set_from_frame_desc(pulsar_buf->get_frame_desc<kotekan::GenericNDArray>());
+                            pulsar_buf->allocate_new_metadata_object((out_buffer_ID + freq_block)
+                                                                     % pulsar_buf->num_frames);
+                            get_chord_metadata(pulsar_buf, (out_buffer_ID + freq_block)
+                                                               % pulsar_buf->num_frames)
+                                ->set_from_frame_desc(
+                                    pulsar_buf->get_frame_desc<kotekan::GenericNDArray>());
 
                             pulsar_buf->mark_frame_full(unique_name, (out_buffer_ID + freq_block)
                                                                          % pulsar_buf->num_frames);
