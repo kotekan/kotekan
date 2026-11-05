@@ -205,10 +205,9 @@ enum : int {
 
 kotekanMode* kotekan_mode = nullptr;
 bool running = false;
-// A start in progress on start_thread (from /start or -c): the stages are
-// being built. /status reports it; /start and /stop are refused meanwhile.
+// A start in progress on main's start_thread (from /start or -c): the stages
+// are being built. /status reports it; /start and /stop are refused meanwhile.
 bool starting = false;
-std::thread start_thread;
 std::mutex kotekan_state_lock;
 volatile std::sig_atomic_t sig_value = 0;
 
@@ -473,45 +472,54 @@ void start_new_kotekan_mode(Config& config, bool dump_config) {
 }
 
 /**
- * @brief Body of start_thread: builds and starts the pipeline from @c config.
+ * @brief Body of the start thread: builds and starts the pipeline from @c config.
  *
  * A config that fails to start is fatal, as it was when /start ran the start
  * itself: some stages cannot clean up after a failed build (ticket #464).
  * FATAL_ERROR throws, and the throw is caught here so that it cannot leave the
- * thread; main shuts down on the SIGTERM it raised.
+ * thread; main shuts down on the SIGTERM it raised, and stops and deletes the
+ * half-built mode.
  */
 void run_start(Config* config, bool dump_config) {
     try {
         start_new_kotekan_mode(*config, dump_config);
     } catch (const std::exception& ex) {
-        std::lock_guard<std::mutex> lock(kotekan_state_lock);
-        delete kotekan_mode;
-        kotekan_mode = nullptr;
-        starting = false;
+        {
+            std::lock_guard<std::mutex> lock(kotekan_state_lock);
+            starting = false;
+        }
         try {
             FATAL_ERROR_NON_OO("Failed to start kotekan: {:s}", ex.what());
         } catch (const FatalError&) {
         }
         return;
     }
+    restServer::instance().release_new_endpoints();
     std::lock_guard<std::mutex> lock(kotekan_state_lock);
     running = true;
     starting = false;
 }
 
 /**
- * @brief Starts the pipeline from @c config on start_thread and returns at once.
+ * @brief Starts the pipeline from @c config on @c start_thread and returns at once.
  *
  * The REST server has one thread. A start run on it, which takes seconds to a
  * minute for the DPDK, GPU and buffer setup, answered no other request
- * meanwhile. The caller holds kotekan_state_lock and has checked that nothing
- * is running or starting.
+ * meanwhile. The endpoints the start registers answer 503 until it is done.
+ * The caller holds kotekan_state_lock and has checked that nothing is running
+ * or starting.
  */
-void start_in_thread(Config& config, bool dump_config) {
+void start_in_thread(std::thread& start_thread, Config& config, bool dump_config) {
     if (start_thread.joinable())
         start_thread.join();
+    restServer::instance().hold_new_endpoints();
+    try {
+        start_thread = std::thread(run_start, &config, dump_config);
+    } catch (...) {
+        restServer::instance().release_new_endpoints();
+        throw;
+    }
     starting = true;
-    start_thread = std::thread(run_start, &config, dump_config);
 }
 
 /// A stage/buffer/metadata-pool block found in the config tree.
@@ -829,6 +837,9 @@ int main(int argc, char** argv) {
     INFO_NON_OO("Kotekan version {:s} starting...", get_kotekan_version());
 
     Config config;
+    // Local to main, not static: exit() from any thread runs the static
+    // destructors, and destroying a joinable std::thread calls std::terminate.
+    std::thread start_thread;
 
     restServer& rest_server = restServer::instance();
     // ipv4[,ipv4...]:port, e.g. 127.0.0.1,10.1.2.3:12048 to serve localhost and one interface
@@ -950,8 +961,24 @@ int main(int argc, char** argv) {
         }
 
         config.update_config(json_config);
+        // The start itself replies before the stages are built, so refuse here
+        // what the static checks can find.
+        int problems;
+        try {
+            problems = validate_config_static(config);
+        } catch (const std::exception& ex) {
+            conn.send_error(std::string("Config check failed: ") + ex.what(),
+                            HTTP_RESPONSE::BAD_REQUEST);
+            return;
+        }
+        if (problems != 0) {
+            conn.send_error(
+                fmt::format(fmt("Config check found {:d} problem(s); see the log"), problems),
+                HTTP_RESPONSE::BAD_REQUEST);
+            return;
+        }
         INFO_NON_OO("Starting new kotekan mode using POSTed config.");
-        start_in_thread(config, dump_config);
+        start_in_thread(start_thread, config, dump_config);
         conn.send_empty_reply(HTTP_RESPONSE::OK);
     });
 
@@ -1013,7 +1040,7 @@ int main(int argc, char** argv) {
     // while the stages are built.
     if (start_from_file) {
         std::lock_guard<std::mutex> lock(kotekan_state_lock);
-        start_in_thread(config, dump_config);
+        start_in_thread(start_thread, config, dump_config);
     }
 
     for (EVER) {
