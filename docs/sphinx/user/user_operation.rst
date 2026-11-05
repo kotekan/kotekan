@@ -20,8 +20,8 @@ REST endpoints
   arguments.
 - ``/pipeline_gpu_svg?gpu=<id>`` (GET) – one GPU's memory and commands as an SVG: a row
   per memory region (with a fill gauge for rings), a column per command in data-flow
-  order, marking the rows it reads and writes. ``gpu`` defaults to 0; takes the same
-  query arguments as ``/pipeline_dot``.
+  order, marking the rows it reads and writes. ``gpu`` defaults to 0; ``runtime=0`` drops
+  the gauges and the full colouring.
 - ``/buffer_frame?name=<buffer>`` (GET) – copy of the newest full frame in ``<buffer>`` as
   JSON: base64 ``data``, the frame's metadata, and the buffer's frame descriptor. ``&len=N``
   sets how many data bytes come back (64 KiB without it; ``len=0`` for metadata only).
@@ -95,6 +95,8 @@ Query arguments (all boolean ones take ``0``/``1``):
   is one table, as in ``/pipeline_gpu_svg`` but with a row per command. Host buffer edges
   end on the row of the command that copies them; a horizontal line joins what each
   command reads and writes, and a vertical one joins each region's writer to its readers.
+  A host buffer that only the GPU's own stages touch is drawn beside the table. The stage
+  CPU and affinity lines and the memory layouts appear only with ``gpu_table=0``.
 - ``runtime=0`` – structure only, no live numbers or state colouring. Use this to compare
   two runs: the live figures differ on every fetch.
 - ``urls=0`` – no links on buffer nodes.
