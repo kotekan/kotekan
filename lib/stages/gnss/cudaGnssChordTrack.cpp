@@ -7,9 +7,12 @@
 #include "kotekanLogging.hpp"
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <functional>
+#include <stdexcept>
+#include <string>
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -405,6 +408,20 @@ void cudaGnssChordTrackState::set_seeds_callback(kotekan::connectionInstance& co
                     // rate, so the sender's Doppler error arrives multiplied by thousands of
                     // chips per Hz (~5095 at 6.8 days of uptime). A phase has no such lever.
                     sd.phase_ref_chips = s.value("code_phase_at_ref_chips", -1.0);
+                    // GuoWang data-sign wipe: both or neither.
+                    sd.nav_frame_at_ref = s.value("nav_frame_at_ref", (long long)-1);
+                    if (s.contains("nav_pages")) {
+                        const auto& arr = s.at("nav_pages");
+                        std::array<std::string, guowang::GW1202_NAV_PAGES> hex;
+                        if (!arr.is_array() || arr.size() != hex.size())
+                            throw std::runtime_error("nav_pages: expected 4 hex strings");
+                        for (size_t k = 0; k < hex.size(); k++)
+                            hex[k] = arr.at(k).get<std::string>();
+                        auto pages = std::make_shared<guowang::Gw1202NavPages>();
+                        if (!guowang::parse_gw1202_nav_pages(hex, *pages))
+                            throw std::runtime_error("nav_pages: 79 hex digits per page");
+                        sd.nav_pages = pages;
+                    }
                     upd.emplace_back(i, sd);
                     break;
                 }

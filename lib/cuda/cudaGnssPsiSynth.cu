@@ -118,13 +118,17 @@ __device__ __forceinline__ void
 psi_hop(const gnss_cuda::DespreadJob& job, const gnss_cuda::PsiJob& pj, const PsiBlk<TAB>& B,
         int fft_len, int mh, double& CGr, long long& Cfr, float2& pb) {
     float2 pa;
+    int qw; // code-period wraps since cp_ref: the hop's period, for the data sign
     if (FIXED) {
         // The wrap count (<= ~11 per record at CHORD) from a float estimate, then one
         // conditional fix-up each way: a 64-bit modulo is emulated through fp64.
         const int q = (int)(fmaf((float)mh, pj.dcg_r, pj.cg_r));
         Cfr = pj.cg_ref + (long long)mh * pj.dcg - (long long)q * B.GLf;
-        Cfr += (Cfr < 0) ? B.GLf : 0;
-        Cfr -= (Cfr >= B.GLf) ? B.GLf : 0;
+        const bool lo = Cfr < 0;
+        Cfr += lo ? B.GLf : 0;
+        const bool hi = Cfr >= B.GLf;
+        Cfr -= hi ? B.GLf : 0;
+        qw = q - (lo ? 1 : 0) + (hi ? 1 : 0);
         CGr = 0.0;
         const unsigned long long at = pj.ang0_t + (unsigned long long)mh * pj.dturn_t;
         // top 24 bits of the turn fraction -> [0, 2) half-turns for sincospif
@@ -138,14 +142,21 @@ psi_hop(const gnss_cuda::DespreadJob& job, const gnss_cuda::PsiJob& pj, const Ps
         const double dn = (double)((long long)mh * (long long)fft_len);
         const double C_P = job.cp_ref + dn * job.cps;
         const double CG = C_P * (double)pj.G;
-        CGr = CG - floor(CG / B.GLd) * B.GLd;
+        const double wr = floor(CG / B.GLd);
+        CGr = CG - wr * B.GLd;
         Cfr = 0;
+        qw = (int)wr;
         const double ang = job.ang0 + fmod(job.wc * dn, 2.0 * M_PI);
         float sn, cn;
         sincosf((float)ang, &sn, &cn);
         pa = make_float2(cn, sn);
     }
-    pb = make_float2(pa.x, -pa.y);
+    float sg = 1.f;
+    if (pj.nav_on) {
+        const int k = qw < 0 ? 0 : (qw >= gnss_cuda::PSI_NAV_N ? gnss_cuda::PSI_NAV_N - 1 : qw);
+        sg = (float)pj.nav[k];
+    }
+    pb = make_float2(sg * pa.x, -sg * pa.y);
 }
 
 /// One trial of the hop: tt = 0 prompt (C), 1 early (C - ds), 2 late (C + ds). Per trial:

@@ -1293,8 +1293,17 @@ def stage_push_seeds(ctx):
     them before each call."""
     for prn, v in sorted(ctx.seeds.items()):
         d = dict(prn=prn, **v)
+        # GuoWang data-sign wipe: the frame index follows the at-ref phase across a wrap when
+        # the trim moves it; the phase within the frame is the broker's own bookkeeping.
+        _nav_phase = d.pop("nav_phase_at_ref", None)
         if ctx.dls.trim.get(prn):
             d["code_phase_chips"] = d["code_phase_chips"] + ctx.dls.trim[prn]
+            if _nav_phase is not None and "nav_frame_at_ref" in d:
+                from gnss_broker.deadreckon import GW_NAV_FRAME_CHIPS
+
+                d["nav_frame_at_ref"] += int(
+                    math.floor((_nav_phase + ctx.dls.trim[prn]) / GW_NAV_FRAME_CHIPS)
+                )
             # The trim must move the at-ref phase too: propagate_seed prefers
             # code_phase_at_ref_chips whenever the payload carries it (search-fed seeds on an
             # overlaid code, and dead-reckoned ones under --seed-phase-transport), so a trim written

@@ -24,6 +24,10 @@
  *
  * Built only when USE_CUDA=ON.
  */
+namespace guowang {
+struct Gw1202NavPages;
+}
+
 class GnssCudaDespread {
 public:
     /// @param bank the replica bank (code tables, filter builder, geometry), held by reference
@@ -77,6 +81,11 @@ public:
         /// applied here. Last and defaulted so that brace-initialized Specs listing only the
         /// members before it carry no trim.
         double ctrim_hz = 0.0;
+        /// GuoWang data-sign wipe (guowang1202Nav): the satellite's absolute 2 ms frame index
+        /// at this record's reference sample and its message pages. nav_frame < 0 or no pages
+        /// = no wipe. Defaulted and last, as ctrim_hz.
+        long long nav_frame = -1;
+        const guowang::Gw1202NavPages* nav_pages = nullptr;
     };
 
     /// Despread every spec's E/P/L in one kernel launch, against the uploaded window, and wait

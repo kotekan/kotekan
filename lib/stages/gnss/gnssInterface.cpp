@@ -410,7 +410,7 @@ json enums() {
 // (GnssGpuRecordAssemble) and tap (GnssChordVoltageTap). Bump a family's version when one of its
 // endpoints adds, removes or renames a key, or changes a unit or meaning.
 json rest() {
-    return {{"tracker", 1},    {"combiner", 1},  {"search", 1},
+    return {{"tracker", 2},    {"combiner", 1},  {"search", 1},
             {"fleet_trim", 1}, {"assembler", 1}, {"tap", 1}};
 }
 

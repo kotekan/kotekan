@@ -3,6 +3,7 @@
 #include "cudaGnssChordDespread.hpp"
 #include "cudaGnssDespreadKernel.hpp"
 #include "cudaGnssPsiSynth.hpp"
+#include "guowang1202Nav.hpp" // for gw1202_nav_signs
 #include "kotekanLogging.hpp"
 #include "kotekanNvtx.hpp"
 
@@ -1092,6 +1093,13 @@ int GnssCudaDespread::enqueue_psi_pack(long long window_start_sample,
             pj.G = pc.G;
             pj.n_prev = pc.n_prev;
             gnss_cuda::psi_fixed_setup(j, pj, im.bank.fft_len(), im.n_hops);
+            // The data signs of the periods this record spans, from the spec's frame index.
+            const Spec& sp = specs[(size_t)i];
+            if (sp.nav_frame >= 0 && sp.nav_pages != nullptr) {
+                guowang::gw1202_nav_signs(*sp.nav_pages, sp.nav_frame, gnss_cuda::PSI_NAV_N,
+                                          pj.nav);
+                pj.nav_on = 1;
+            }
             // The interpolation ramp per channel at this job's carrier (trim included), in
             // the kernel's grid units: theta_B * inv_cps / G.
             for (int ci = 0; ci < im.n_chan; ++ci)

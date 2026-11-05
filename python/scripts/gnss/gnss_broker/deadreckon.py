@@ -30,6 +30,7 @@ not by the donor's age alone; see dr_clock_adopt_rx.
 @author Keith Vanderlinde
 """
 
+import math
 import threading
 import os
 import statistics
@@ -1641,6 +1642,96 @@ def seeds_are_model_owned(ctx, prn):
     )
 
 
+GW_NAV_FRAME_S = 0.002  # one GuoWang 1202 frame
+GW_NAV_FRAME_CHIPS = 4092
+GW_NAV_BDT_MINUS_GPST_S = -14
+GW_NAV_WEEK_S = 604800
+
+
+def gw_nav_frame(
+    gpst_sample0,
+    t_ref_s,
+    range_m,
+    sat_clk_s,
+    off_chips,
+    chip_rate_hz,
+    shipped_phase_chips=None,
+):
+    """(frame, phase_chips): the GuoWang satellite's absolute 2 ms frame index, counted from the
+    BDT week start, of the transmit time the model puts at receiver time t_ref_s, and the code
+    phase within that frame in chips (0..4092). Exact arithmetic on the large GPST, as
+    t_mod_code; the remainder is what cp_predicted reduces mod the frame, so the frame and the
+    shipped phase describe one instant. With `shipped_phase_chips` (the at-ref phase actually
+    sent, a few chips from the model under a slew) the frame follows that phase across a
+    wrap."""
+    from fractions import Fraction
+
+    t_tx = (
+        Fraction(gpst_sample0)
+        + Fraction(t_ref_s)
+        - Fraction(range_m) / Fraction(299792458)
+        + Fraction(sat_clk_s)
+        + Fraction(off_chips) / Fraction(int(round(chip_rate_hz)))
+        + GW_NAV_BDT_MINUS_GPST_S
+    ) % GW_NAV_WEEK_S
+    f = t_tx / Fraction(GW_NAV_FRAME_S)
+    frame = int(f // 1)
+    phase = float((f - frame) * GW_NAV_FRAME_CHIPS)
+    if shipped_phase_chips is not None:
+        L = GW_NAV_FRAME_CHIPS
+        delta = ((shipped_phase_chips - phase + L / 2) % L) - L / 2
+        frame += int(math.floor((phase + delta) / L))
+        phase = (phase + delta) % L
+    return frame, phase
+
+
+def gw_nav_fields(ctx, v, prn, ref_hop, off_chips, shipped_phase_chips=None):
+    """The GuoWang data-sign wipe fields for a seed at ref_hop, or None: the table record's
+    message pages (gw_ephem_table nav_pages, from the library) and the frame index of the phase
+    at ref_hop (gw_nav_frame). nav_phase_at_ref is for stage_push_seeds, which moves the frame
+    with the trim; it is not posted."""
+    if ctx.args.dr_constellation != "W" or not ctx.utc0_sample0:
+        return None
+    recs = (ctx.dr_state.get("eph") or {}).get(("W", int(prn))) or []
+    t_ref = ref_hop / ctx.args.hops_per_sec
+    g0 = ctx.dr_eph_mod.gpst_of_utc(ctx.utc0_sample0)
+    g = g0 + t_ref
+    pages = None
+    for r in recs:
+        if (
+            r.get("nav_pages")
+            and r.get("t0_gpst", g) - 60 <= g <= r.get("t1_gpst", g) + 60
+        ):
+            pages = r["nav_pages"]
+            break
+    if pages is None:
+        for r in recs:
+            if r.get("nav_pages"):
+                pages = r["nav_pages"]
+                break
+    if pages is None:
+        return None
+    dt = t_ref - ctx.drp.t_eph_age
+    range_m = (
+        v["range_m"]
+        + v.get("tropo_m", 0.0)
+        + v.get("iono_m", 0.0)
+        + v.get("gdv_m", 0.0)
+        + v["range_rate_mps"] * dt
+        + 0.5 * v.get("range_acc_mps2", 0.0) * dt * dt
+    )
+    frame, phase = gw_nav_frame(
+        g0,
+        t_ref,
+        range_m,
+        v["sat_clk_s"],
+        off_chips,
+        ctx.args.chip_rate_hz,
+        shipped_phase_chips,
+    )
+    return dict(nav_frame_at_ref=frame, nav_pages=list(pages), nav_phase_at_ref=phase)
+
+
 def dr_seed(ctx):
     """Birth, re-pin or slew the seed of every visible satellite this chain dead-reckons, and drop
     model-owned seeds that have set or whose satellite lacks the signal. Computes ctx.drp.clk_now.
@@ -2006,6 +2097,11 @@ def dr_seed(ctx):
                             ctx.drp.mod,
                         ),
                     )
+                _nav = gw_nav_fields(
+                    ctx, v, prn, h1, _off, (_held + _step) % ctx.drp.mod
+                )
+                if _nav:
+                    ctx.seeds[prn].put("gw_nav", epoch=h1, **_nav)
                 ctx.dr_state["pin"][prn] = ctx.drp.now_w
                 # The gap left to close, on the cycle clock, for the trim loops' slew hold
                 # (trimarm.slewing counts only a recent entry: a PRN that leaves dead reckoning
@@ -2044,6 +2140,9 @@ def dr_seed(ctx):
                 ref_hop=_rh_birth,
                 doppler_rate_hz_s=drate,
             )
+            _nav = gw_nav_fields(ctx, v, prn, _rh_birth, _off)
+            if _nav:
+                ctx.seeds[prn].put("gw_nav", epoch=_rh_birth, **_nav)
             # Birth and re-pin arm: the shipped phase is the model's at the labelled hop
             # _rh_birth, not at t_fc_abs. Without --dr-forecast-lead-s, t_fc_abs is not a whole
             # hop, and the phase at t_fc_abs is up to half a hop (~26 chips at 10.23 Mcps) from

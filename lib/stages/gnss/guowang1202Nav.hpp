@@ -22,10 +22,10 @@
  */
 namespace guowang {
 
-constexpr int GW1202_NAV_PERIOD_BITS = 375;   ///< 3 s at 125 bit/s
-constexpr int GW1202_NAV_TRAILER_BITS = 12;   ///< bits 0..11 of a period: content unknown, taken as 0
-constexpr int GW1202_NAV_PAGE_BITS = 316;     ///< payload bits per page
-constexpr int GW1202_NAV_PAGES = 4;           ///< pages 1..4, one per period, 12 s cycle
+constexpr int GW1202_NAV_PERIOD_BITS = 375; ///< 3 s at 125 bit/s
+constexpr int GW1202_NAV_TRAILER_BITS = 12; ///< bits 0..11 of a period: content unknown, taken as 0
+constexpr int GW1202_NAV_PAGE_BITS = 316;   ///< payload bits per page
+constexpr int GW1202_NAV_PAGES = 4;         ///< pages 1..4, one per period, 12 s cycle
 constexpr int GW1202_NAV_PERIOD_SYMBOLS = 750; ///< 250 symbols/s x 3 s
 constexpr int GW1202_NAV_PERIOD_FRAMES = 1500; ///< 2 ms frames per period
 constexpr int GW1202_NAV_PERIODS_PER_WEEK = 201600;

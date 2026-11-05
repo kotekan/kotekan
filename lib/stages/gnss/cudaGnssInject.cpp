@@ -11,6 +11,7 @@
 #include <algorithm> // for find
 #include <array>
 #include <chordMetadata.hpp>
+#include <cmath>
 #include <cstring>
 
 using kotekan::bufferContainer;
@@ -301,6 +302,15 @@ cudaEvent_t cudaGnssInject::execute(cudaPipelineState& pipestate, const std::vec
             sp.spacing_chips = S.dll_spacing;
             sp.ctrim_hz = sd.ctrim_hz;
             sp.covering = fdma ? S.slot_covering[(size_t)p] : S.covering;
+            // GuoWang data-sign wipe: the frame at this record's reference sample is the
+            // seed's frame at ref_hop plus the whole periods the phase advanced since (the
+            // phase at ref_hop is in [0, L)).
+            if (sd.nav_pages && sd.nav_frame_at_ref >= 0) {
+                sp.nav_pages = sd.nav_pages.get();
+                sp.nav_frame =
+                    sd.nav_frame_at_ref
+                    + (long long)std::floor(pr.phase_now / (double)S.replica->eff_code_length());
+            }
 
             // PrnCtl, the gnssGpuChain.hpp contract the assembler reads. job0 indexes the 4 rows
             // (E/P/L/P_HEAD) this spec occupies in the consumer's corr/energy arrays.

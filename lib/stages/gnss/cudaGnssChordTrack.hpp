@@ -13,6 +13,7 @@
 #include "cudaCommand.hpp"
 #include "cudaDeviceInterface.hpp"
 #include "gnssChannelizedReplica.hpp"
+#include "guowang1202Nav.hpp" // for Gw1202NavPages
 #include "restServer.hpp"
 
 #include <memory>
@@ -166,6 +167,11 @@ public:
         long long ref_hop = 0;
         double phase_ref_chips = -1.0; ///< physical code phase at ref_hop (-1 = derive from cp)
         double t_recv = 0.0;           ///< steady_clock seconds when this seed last arrived
+        /// GuoWang data-sign wipe: the satellite's absolute 2 ms frame index (from the BDT
+        /// week start) of the phase at ref_hop, -1 = none, and its message pages
+        /// (guowang1202Nav); shared so that the per-frame seed snapshot copies a pointer.
+        long long nav_frame_at_ref = -1;
+        std::shared_ptr<const guowang::Gw1202NavPages> nav_pages;
     };
     /// Drop a seed not refreshed within this many seconds, so a satellite that has set stops
     /// being despread within a minute. The broker re-seeds every cycle, so this is many

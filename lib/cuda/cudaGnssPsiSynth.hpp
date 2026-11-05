@@ -53,6 +53,9 @@ class ChannelizedReplicaBank;
 
 namespace gnss_cuda {
 
+/// Entries of PsiJob::nav: code-period wraps a record can span (<= ~11 at CHORD).
+constexpr int PSI_NAV_N = 16;
+
 /// Per-job table geometry for @ref launch_psi_waveform. The code phase, carrier, spacing,
 /// chan_mask and m_head come from the matching @ref DespreadJob (the production struct, so the
 /// host builds one set of jobs for both kernels); only the tables differ.
@@ -79,6 +82,12 @@ struct PsiJob {
     unsigned long long dturn_t = 0; ///< frac(wc * fft_len / 2pi) in 2^-64 turns
     float dcg_r = 0.f;              ///< dcg / (G*L*2^shift): the per-hop wrap-count estimate
     float cg_r = 0.f;               ///< cg_ref / (G*L*2^shift)
+    /// Data sign per code-period wrap since cp_ref (nav[0] = hop 0's period, nav[k] = the k-th
+    /// wrap), +-1, applied to the hop's carrier phasor; the index is clamped to the table.
+    /// nav_on = 0 applies none. GuoWang's ranging frame carries a 4 ms data sign that the host
+    /// predicts (guowang1202Nav); a record of ~10 ms spans up to six periods.
+    int8_t nav[PSI_NAV_N] = {};
+    int nav_on = 0;
 };
 
 /**

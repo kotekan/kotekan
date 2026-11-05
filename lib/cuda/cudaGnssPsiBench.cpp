@@ -366,6 +366,51 @@ int run_tiled(int n_job) {
     printf("   energy rows split vs full: max rel %.3e\n", emax);
     print_stats("PSI full-length table vs NOA (NH bank)",
                 compare_sets(w_full, w_noa, n_job, n_chan, n_hops), chans);
+    // Data-sign mechanism (PsiJob::nav): with alternating signs per code period every hop's
+    // synthesis must be the plain one times the sign of the period the host counts from
+    // cp_ref, flipping exactly where the kernel's wrap count (psi_hop qw) steps.
+    {
+        std::vector<gnss_cuda::PsiJob> pn = pf;
+        for (auto& P : pn) {
+            P.nav_on = 1;
+            for (int k = 0; k < gnss_cuda::PSI_NAV_N; ++k)
+                P.nav[k] = (k & 1) ? -1 : 1;
+        }
+        CK(cudaMemcpy(d_pf, pn.data(), pn.size() * sizeof(gnss_cuda::PsiJob),
+                      cudaMemcpyHostToDevice));
+        std::vector<float2> w_nav(wn);
+        CK(gnss_cuda::launch_psi_waveform(d_jn, d_pf, d_theta, n_job, n_chan, p, nullptr, 1, d_wave,
+                                          d_energy, 0));
+        CK(cudaDeviceSynchronize());
+        CK(cudaMemcpy(w_nav.data(), d_wave, wn * sizeof(float2), cudaMemcpyDeviceToHost));
+        CK(cudaMemcpy(d_pf, pf.data(), pf.size() * sizeof(gnss_cuda::PsiJob),
+                      cudaMemcpyHostToDevice));
+        double worst = 0.0;
+        long n_flip = 0, n_border = 0;
+        for (int j = 0; j < n_job; ++j)
+            for (int mh = 0; mh < n_hops; ++mh) {
+                const double C = jn[(size_t)j].cp_ref + (double)mh * fft_len * jn[(size_t)j].cps;
+                const double qd = std::floor(C / L);
+                const double frac = C / L - qd;
+                if (frac < 1e-6 || frac > 1.0 - 1e-6) {
+                    ++n_border; // the kernel's float wrap estimate may land either side
+                    continue;
+                }
+                const int q = std::min((int)qd, gnss_cuda::PSI_NAV_N - 1);
+                const float sg = (q & 1) ? -1.f : 1.f;
+                n_flip += (q & 1);
+                for (int t = 0; t < 3; ++t)
+                    for (int c = 0; c < n_chan; ++c) {
+                        const size_t i = ((size_t)(3 * j + t) * n_chan + c) * n_hops + (size_t)mh;
+                        worst = std::max(worst, (double)std::fabs(w_nav[i].x - sg * w_full[i].x));
+                        worst = std::max(worst, (double)std::fabs(w_nav[i].y - sg * w_full[i].y));
+                    }
+            }
+        printf("   data signs (nav, alternating per period): max |nav - sign x plain| %.3e over "
+               "%ld hops (%ld flipped, %ld at a period edge skipped) %s\n",
+               worst, (long)n_job * n_hops - n_border, n_flip, n_border,
+               worst < 1e-6 ? "OK" : "MISMATCH");
+    }
     double mn, md;
     time_launch(
         "NH NOA (fp32, 212 chips, 3 trials)",
