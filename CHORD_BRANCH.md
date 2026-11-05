@@ -2,7 +2,7 @@
 
 This file exists only on the `chord` branch. It lists how `chord` differs from `develop`. See the "chord branch" section of AGENTS.md for the workflow.
 
-Base: `develop` at `5c60f1c7f` (#1840).
+Base: `develop` at `419f49ab1` (#1845).
 
 ## Open PRs carried in chord
 
@@ -18,7 +18,6 @@ Base: `develop` at `5c60f1c7f` (#1840).
 
 | Commit | Files | Change |
 |---|---|---|
-| `a3354181d` | `config/chord/dtv.j2` | Start the DTV detector and writer switched off |
 | `cd85d6afb` | `config/chord/common.j2` | Keep recent log lines for `GET /logs` (#1843) |
 | `030e1715f` | `config/chord/recv.j2` | Truncate subset vis and weights before writing (#1844) |
 | this file's commit | `CHORD_BRANCH.md`, `AGENTS.md` | This file and the chord workflow notes |
