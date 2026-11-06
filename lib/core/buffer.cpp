@@ -6,6 +6,7 @@
 #include <errno.h>    // for errno
 #include <exception>  // for exception_ptr, current_exception, rethrow_exception
 #include <json.hpp>   // for basic_json, json
+#include <limits>     // for numeric_limits
 #include <pthread.h>  // for pthread_create, pthread_detach, pthread_exit, pthread_seta...
 #include <sched.h>    // for CPU_SET, CPU_ZERO, cpu_set_t
 #include <sstream>    // for ostringstream
@@ -248,6 +249,10 @@ void GenericBuffer::json_description(nlohmann::json& buf_json) {
 
 kotekan::BufferState GenericBuffer::dot_buffer_state() {
     return kotekan::BufferState::Unknown;
+}
+
+double GenericBuffer::dot_occupancy() {
+    return std::numeric_limits<double>::quiet_NaN();
 }
 
 std::vector<std::string> GenericBuffer::dot_label_lines(const kotekan::GraphOptions&) {
