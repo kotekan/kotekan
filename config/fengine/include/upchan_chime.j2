@@ -16,6 +16,10 @@ upchannelization_factor: 16
 # not share an output buffer with the FRB chain and sets its own value, see
 # `upchan_hfb_chime.j2` and `hfb_chime.j2`.
 max_upchannelization_factor: 16
+# As config/chime_upgrade_frb.j2: the L1 receiver requires the FRB output to begin at a multiple
+# of 3 frames. The upchannelizers round their output delay up to a multiple of this, so the input
+# must begin at a multiple of it as well. The HFB chain's delay (U = 128) rounds to the same.
+upchan_output_alignment: 3 * num_times
 
 upchan_factors: [16]
 # ranges are [min, max)
