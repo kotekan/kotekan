@@ -236,7 +236,7 @@ def pull_save(node, g, tag, clock):
 def cmd_identify(a, fids, clock, sky, r):
     n = max(2, int(a.minutes * 60 / a.every) + 1)
     snaps = {}  # (node, g) -> [(path, seq)]
-    status = {}
+    status, first = {}, {}  # the latest and the first /status of each GPU
     for q in range(n):
         tag = "%s_%02d" % (time.strftime("%H%M%S", time.gmtime()), q)
         for node in a.nodes:
@@ -245,6 +245,7 @@ def cmd_identify(a, fids, clock, sky, r):
                 if "error" in st:
                     continue
                 status[(node, g)] = st
+                first.setdefault((node, g), st)
                 p, seq = pull_save(node, g, tag, clock)
                 if p:
                     snaps.setdefault((node, g), []).append((p, seq))
@@ -262,15 +263,24 @@ def cmd_identify(a, fids, clock, sky, r):
         s1 = {n_: sky.enu(n_, t1) for n_ in s0}
         st0, st1 = dtv_state.read_state(p0), dtv_state.read_state(p1)
         st = status[(node, g)]
+        if st["frames"] < first[(node, g)]["frames"]:
+            print(
+                "%s %s g%d restarted during the window: not identified"
+                % (stamp(), node, g)
+            )
+            continue
+        ch_first = targets(first[(node, g)], fids)
         for fid, ch in sorted(targets(st, fids).items()):
             steered = ch.get(
                 "steered", [0] * ch["sources"]
             )  # absent before the steering stage
             anchor = ch.get("anchor_seq", [-1] * ch["sources"])
+            anchor0 = ch_first.get(fid, ch).get("anchor_seq", anchor)
             for k in range(ch["sources"]):
                 if (
                     ch["act"][k] < 2
                     or steered[k]
+                    or anchor0[k] != anchor[k]
                     or fid not in st0["recs"]
                     or fid not in st1["recs"]
                 ):
