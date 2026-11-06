@@ -168,6 +168,14 @@ void launch_dtv_fused(float* x, float2* s, const float* gs, const float2* w, con
                       const int* lags, int k, int n_chan, int n_src, int n_times, int n_lag,
                       float2* rxs, float* ps, cudaStream_t stream);
 
+/// The beams in use from their anchors, for a source whose emitter moves (cudaDtvSubtract's
+/// /steer): input i's response to the emitter of (c, k) has turned by psi[c][k][i] radians since
+/// the anchor, so w[c][k][i] = w_anchor e^{-i psi} keeps the timestream's gain and gs = gs_anchor
+/// e^{+i psi} follows the response. psi is float [n_chan][n_src][DTV_INPUTS] (zero: the anchor
+/// itself); gs and gs_anchor are de-interleaved as launch_dtv_fused takes them.
+void launch_dtv_steer(const float2* w_anchor, const float* gs_anchor, const float* psi, int n_chan,
+                      int n_src, int n_lag, float2* w, float* gs, cudaStream_t stream);
+
 /// Re-quantise x into the frame in place (round to the nearest integer, clipped to [-7, 7],
 /// offset-encoded as the F-engine does) and pw_res[c][i] = sum |x|^2 over the frame before the
 /// rounding (zeroed here). Channels with no subtracting source are left untouched.
