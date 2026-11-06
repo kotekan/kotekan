@@ -220,25 +220,34 @@ How a decoded page reaches the trackers' wipe, with the latencies measured on th
 | measured, loop | decode stamp minus block end, 185 blocks | p10 80, p50 101, p90 129 s |
 | table | `gw_ephem_table.py` cron every 2 min reads `nav_pages_live.json` (180-s cap) | mean +60 s |
 | broker pickup | table mtime polled every 2-s cycle | +2 s |
-| broker to seed | pages attached only at a seed's SLEW or birth (`gw_nav_fields`) | median +30, p90 146 s |
+| broker to seed | pages attached at a seed's slew or re-birth (`gw_nav_fields`): every 2 s for a locked seed, every `--dr-repin-s` (10 s) otherwise (SEEDAUDIT dt) | +1-5 s |
 | push | seeds posted every cycle; the node applies them on the next frame | +2 s |
 
-Three polling periods stacked on a 10-s file: 3-4 min at use, past the template's break-even,
-and under the 180-s cap 2 of 390 table records carried pages. The 11-06 changes:
+Two polling periods stacked on a 10-s file: 2.5-3.5 min at use, past the template's
+break-even, and under the 180-s cap 2 of 390 table records carried pages. The 11-06 changes:
 
 - the loop pulls every 10 s and, after each page write, rsyncs the file to the VM beside the
   table (`/var/tmp/gnss-guowang/nav_pages_live.json`): the broker then polls a local file, where
   an `os.stat` on the NFS home can lag a write by the attribute cache's 60 s. First hour: loop
   lag after block end p50 34 s, a page decoded 24 s after its last symbol.
-- the broker (kv/gw-pages-live, `gnss_broker/deadreckon.py`) polls that file's mtime every
-  cycle and `dr_nav_pages` attaches, replaces or drops every seed's pages on each cycle's push.
-  Pages are looked up by the covering table record's satellite name, never from another record
-  of the same PRN (that was a code-mate's pages), and aged by their transmit time
-  (`--gw-live-pages-max-age-s`, 180 s); the table's own pages are the fallback.
+- the broker (kv/gw-pages-live, `gnss_broker/deadreckon.py`, live 01:13:32Z) polls that file's
+  mtime every cycle, so the table cron drops out of the chain; `dr_nav_pages` also refreshes
+  seeds that are held between re-births. Pages are looked up by the covering table record's
+  satellite name, never from another record of the same PRN (that was a code-mate's pages), and
+  aged by their transmit time (`--gw-live-pages-max-age-s`, 180 s); the table's own pages are
+  the fallback.
 
-Expected with both: pages 25-35 s old at use (the 24-s row of the echo table, ~+3.7 dB). The
-10-s node file is what separates that from the 12-s row: `num_frames_per_file` 240 -> 48 and a
-loop that decodes a period as soon as its frames are in.
+Measured at 01:18Z: pages 33-42 s old at use (the 24-60 s rows of the echo table), and the
+loop's own check of the template one block old against the next decoded periods: 0.86-0.89 of
+symbols right. The 10-s node file is what separates that from the 12-s row:
+`num_frames_per_file` 240 -> 48 and a loop that decodes a period as soon as its frames are in.
+
+Coverage, not latency, is now the limit. The track beam steers at the two strongest gw_1202
+satellites (`gnss_fleet_chord.yaml`), so pages exist for at most two of the ~10 seeded ones;
+at 01:18Z 2 of 11 covered PRNs carried live pages. One satellite's pages cannot stand in for
+another's: DIGUI-126 and DIGUI-57, decoded at the same SOW, differ in 74 (page 2) and 102
+(page 3) of 316 payload bits. A wipe on every tracked satellite needs a track beam and a decode
+per satellite.
 
 ## Literature consulted
 
