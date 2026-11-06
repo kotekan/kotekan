@@ -30,6 +30,8 @@ not by the donor's age alone; see dr_clock_adopt_rx.
 @author Keith Vanderlinde
 """
 
+import calendar
+import json
 import math
 import threading
 import os
@@ -1685,34 +1687,161 @@ def gw_nav_frame(
     return frame, phase
 
 
+# The track-beam loop (cf05) decodes every tracked GuoWang satellite's four newest message pages
+# into nav_pages_live.json ({name: {nav_pages, sow{1..4}, utc}}): on the NFS home for the table
+# writer, and a copy beside the table on this host for the broker, which polls the copy's mtime
+# every cycle (an os.stat on the NFS home can lag a write by the attribute cache's 60 s). The
+# table's own nav_pages (gw_ephem_table, every 2 min) are the fallback. A page's age is its
+# transmit time (its BDT second of week), not its decode stamp: the wipe's prediction decays with
+# the template's age (12 s old: 85% of symbols right, +4 dB over no wipe; 5 min: 68%, -2 dB),
+# so a stale template is worse than none.
+BDT_EPOCH_UNIX = (
+    1136073600  # 2006-01-01T00:00:00Z; BDT = UTC + 4 s, no leap seconds since
+)
+BDT_MINUS_UTC_S = 4
+GW_LIVE_PAGES_MAX_AGE_S = 180.0
+
+
+def gw_page_tx_unix(sow, now):
+    """Unix time of the BDT second of week `sow` in the week of `now`; a sow more than 5 min
+    ahead of now is last week's (a page decoded across the week rollover)."""
+    week = math.floor((now + BDT_MINUS_UTC_S - BDT_EPOCH_UNIX) / 604800.0)
+    t = BDT_EPOCH_UNIX + week * 604800 + sow - BDT_MINUS_UTC_S
+    if t > now + 300.0:
+        t -= 604800
+    return t
+
+
+def gw_live_pages_path(args):
+    """--gw-live-pages, else nav_pages_live.json beside --gw-table."""
+    p = getattr(args, "gw_live_pages", None)
+    if not p:
+        p = os.path.join(
+            os.path.dirname(getattr(args, "gw_table", None) or ""),
+            "nav_pages_live.json",
+        )
+    return p
+
+
+def gw_live_pages(ctx, now):
+    """{name: (pages, tx_unix)} from the live file, re-read when its mtime changes. The last
+    good read stands through a missing or malformed file. tx_unix is the newest of the entry's
+    four page transmit times (its sow), else its decode stamp (utc)."""
+    st = ctx.dr_state.setdefault("gw_pages", {"mtime": None, "by_name": {}})
+    path = gw_live_pages_path(ctx.args)
+    try:
+        mtime = os.stat(path).st_mtime_ns
+    except OSError:
+        return st["by_name"]
+    if mtime == st["mtime"]:
+        return st["by_name"]
+    st["mtime"] = mtime
+    try:
+        with open(path) as fh:
+            doc = json.load(fh)
+        out = {}
+        for name, e in doc.items():
+            pages = e.get("nav_pages") or []
+            if len(pages) != 4:
+                continue
+            sows = [float(s) for s in (e.get("sow") or {}).values()]
+            if sows:
+                tx = max(gw_page_tx_unix(s, now) for s in sows)
+            else:
+                tx = calendar.timegm(time.strptime(e["utc"], "%Y-%m-%dT%H:%M:%SZ"))
+            out[name] = (list(pages), tx)
+    except Exception as e:
+        _log(
+            "GW-PAGES: %s failed to load (%s); keeping %d satellite(s)"
+            % (path, e, len(st["by_name"]))
+        )
+        return st["by_name"]
+    st["by_name"] = out
+    ages = sorted(now - tx for _, tx in out.values())
+    _log_rl(
+        "gw-pages",
+        "GW-PAGES: %d satellite(s) in %s; page age newest %.0f s, median %.0f s"
+        % (len(out), path, ages[0], ages[len(ages) // 2])
+        if ages
+        else "GW-PAGES: no satellite with four pages in %s" % path,
+        every_s=60.0,
+    )
+    return out
+
+
+def gw_pages_for(ctx, prn, g, now):
+    """(pages, age_s) the wipe may use for PRN at GPST g, or None: the live store's for the
+    satellite the table record covering g names, no older than --gw-live-pages-max-age-s
+    (age_s), else that record's own nav_pages (the table's, age-capped when written; age_s
+    None). Never another record's: on a code two satellites share, the other record's pages
+    are the code-mate's."""
+    rec = None
+    for r in (ctx.dr_state.get("eph") or {}).get(("W", int(prn))) or []:
+        if r.get("t0_gpst", g) - 60 <= g <= r.get("t1_gpst", g) + 60:
+            rec = r
+            break
+    if rec is None:
+        return None
+    live = gw_live_pages(ctx, now).get(rec.get("name"))
+    if live is not None:
+        age = now - live[1]
+        cap = getattr(ctx.args, "gw_live_pages_max_age_s", GW_LIVE_PAGES_MAX_AGE_S)
+        if age <= float(cap):
+            return list(live[0]), age
+    if rec.get("nav_pages"):
+        return list(rec["nav_pages"]), None
+    return None
+
+
+def dr_nav_pages(ctx):
+    """Every cycle, after dr_seed: the pages of every seed that carries a wipe frame index
+    follow the live store (gw_pages_for at the seed's ref_hop). Pages that arrived since the
+    seed's birth or slew attach, newer pages replace, pages past the age cap drop; the frame
+    index stays, it is the seed's phase bookkeeping, not the pages'. The trackers get the change
+    on this cycle's push, where a slew or re-birth was the only carrier (median 30 s, p90
+    146 s on 11-05)."""
+    if getattr(ctx.args, "dr_constellation", None) != "W" or not getattr(
+        ctx, "utc0_sample0", None
+    ):
+        return
+    g0 = ctx.dr_eph_mod.gpst_of_utc(ctx.utc0_sample0)
+    now = _now()
+    for prn, s in list(ctx.seeds.items()):
+        if "nav_frame_at_ref" not in s or "ref_hop" not in s:
+            continue
+        got = gw_pages_for(ctx, prn, g0 + s["ref_hop"] / ctx.args.hops_per_sec, now)
+        cur = s.get("nav_pages")
+        if got is None:
+            if cur is not None:
+                s.pop("nav_pages", None)
+                _log("GW-PAGES PRN %d: pages dropped (none within the age cap)" % prn)
+        elif cur is None or list(cur) != got[0]:
+            s.put("gw_nav", epoch=s["ref_hop"], nav_pages=got[0])
+            _log_rl(
+                "gwpages-%d" % prn,
+                "GW-PAGES PRN %d: pages %s (%s)"
+                % (
+                    prn,
+                    "attached" if cur is None else "refreshed",
+                    "table" if got[1] is None else "live, %.0f s old" % got[1],
+                ),
+                every_s=60.0,
+            )
+
+
 def gw_nav_fields(ctx, v, prn, ref_hop, off_chips, shipped_phase_chips=None):
-    """The GuoWang data-sign wipe fields for a seed at ref_hop, or None: the table record's
-    message pages (gw_ephem_table nav_pages, from the library) and the frame index of the phase
-    at ref_hop (gw_nav_frame). nav_phase_at_ref is for stage_push_seeds, which moves the frame
-    with the trim; it is not posted."""
+    """The GuoWang data-sign wipe fields for a seed at ref_hop, or None off a GuoWang chain:
+    the frame index of the phase at ref_hop (gw_nav_frame), always, and the satellite's message
+    pages (gw_pages_for) when there are any. A tracker wipes only with both; dr_nav_pages
+    attaches pages that arrive later. nav_phase_at_ref is for stage_push_seeds, which moves the
+    frame with the trim; it is not posted."""
     if getattr(ctx.args, "dr_constellation", None) != "W" or not getattr(
         ctx, "utc0_sample0", None
     ):
         return None
-    recs = (ctx.dr_state.get("eph") or {}).get(("W", int(prn))) or []
     t_ref = ref_hop / ctx.args.hops_per_sec
     g0 = ctx.dr_eph_mod.gpst_of_utc(ctx.utc0_sample0)
-    g = g0 + t_ref
-    pages = None
-    for r in recs:
-        if (
-            r.get("nav_pages")
-            and r.get("t0_gpst", g) - 60 <= g <= r.get("t1_gpst", g) + 60
-        ):
-            pages = r["nav_pages"]
-            break
-    if pages is None:
-        for r in recs:
-            if r.get("nav_pages"):
-                pages = r["nav_pages"]
-                break
-    if pages is None:
-        return None
+    pages = gw_pages_for(ctx, prn, g0 + t_ref, _now())
     dt = t_ref - ctx.drp.t_eph_age
     range_m = (
         v["range_m"]
@@ -1731,7 +1860,11 @@ def gw_nav_fields(ctx, v, prn, ref_hop, off_chips, shipped_phase_chips=None):
         ctx.args.chip_rate_hz,
         shipped_phase_chips,
     )
-    return dict(nav_frame_at_ref=frame, nav_pages=list(pages), nav_phase_at_ref=phase)
+    out = dict(nav_frame_at_ref=frame)
+    if pages is not None:
+        out["nav_pages"] = pages[0]
+    out["nav_phase_at_ref"] = phase
+    return out
 
 
 def dr_seed(ctx):
@@ -3147,3 +3280,4 @@ def stage_dead_reckon(ctx):
             if (prn in ctx.best and prn not in ctx.mp_flipped) or prn not in ctx.seeds:
                 ctx.dr_state["seeded"].discard(prn)
                 ctx.dr_state["pin"].pop(prn, None)
+        dr_nav_pages(ctx)

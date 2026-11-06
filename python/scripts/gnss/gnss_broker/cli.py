@@ -848,6 +848,22 @@ def build_parser(description):
         "(--gw-transits). Default /var/tmp/gnss-guowang/gw_ephem.json.",
     )
     ap.add_argument(
+        "--gw-live-pages",
+        default="",
+        help="the live GuoWang message pages (the track-beam loop's nav_pages_live.json, "
+        "copied beside the table) a constellation W chain's data-sign wipe ships to the "
+        "trackers, polled every cycle; the table's own nav_pages are the fallback. "
+        "Default: nav_pages_live.json in --gw-table's directory.",
+    )
+    ap.add_argument(
+        "--gw-live-pages-max-age-s",
+        type=float,
+        default=180.0,
+        help="a live page older than this, by its transmit time, is not shipped: the "
+        "wipe's prediction decays with the template's age (12 s old +4 dB over no wipe, "
+        "3 min break-even). Default 180.",
+    )
+    ap.add_argument(
         "--gw-transits",
         type=int,
         default=0,
