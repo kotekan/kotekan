@@ -13,13 +13,13 @@
       "fine_calibration": {
         "status": "calibrated",
         "decision_version": "fine_decision_v1",
-        "cfar_multiplier_q16": 115479,
+        "cfar_multiplier_q16": 122071,
         "anchor_bin": 82,
-        "designated_half_width": 2,
-        "cfar_rank": 62,
+        "designated_half_width": 32,
+        "cfar_rank": 47,
         "bulk_mask_words_hex": [
-          "0x5555555555555555",
-          "0x5555555555405555",
+          "0x0001555555555555",
+          "0x5550000000000000",
           "0x5555555555555555",
           "0x5555555555555555"
         ],
@@ -28,10 +28,10 @@
             "2026-10-29 Pathfinder recording, five spaced files"
           ],
           "source_product_sha256": [
-            "74c5c9d41080dd9384001095fca76bb09942ea9943ac0e784da32e23f8e8292f"
+            "a8d805f2dfb612eefe45c8f6e002e8df5ab11862df04d0385bd6aeb770fb9d48"
           ],
-          "null_quantile": 0.99,
-          "note": "Commissioning word from control channel. Detect-only, not a calibration."
+          "null_quantile": 0.98,
+          "note": "Word from floor, 5 captures of 30, floor from control channel. Detect-only, not a calibration."
         }
       },
       "null_power_ratio": 1.0107799619530755,
@@ -57,25 +57,25 @@
       "fine_calibration": {
         "status": "calibrated",
         "decision_version": "fine_decision_v1",
-        "cfar_multiplier_q16": 115479,
+        "cfar_multiplier_q16": 122071,
         "anchor_bin": 180,
-        "designated_half_width": 2,
-        "cfar_rank": 62,
+        "designated_half_width": 32,
+        "cfar_rank": 47,
         "bulk_mask_words_hex": [
           "0x5555555555555555",
           "0x5555555555555555",
-          "0x5501555555555555",
-          "0x5555555555555555"
+          "0x0000000000055555",
+          "0x5555555555400000"
         ],
         "provenance": {
           "epochs": [
             "2026-10-29 Pathfinder recording, five spaced files"
           ],
           "source_product_sha256": [
-            "74c5c9d41080dd9384001095fca76bb09942ea9943ac0e784da32e23f8e8292f"
+            "a8d805f2dfb612eefe45c8f6e002e8df5ab11862df04d0385bd6aeb770fb9d48"
           ],
-          "null_quantile": 0.99,
-          "note": "Commissioning word from control channel. Detect-only, not a calibration."
+          "null_quantile": 0.98,
+          "note": "Word from floor, 5 captures of 30, floor from control channel. Detect-only, not a calibration."
         }
       },
       "null_power_ratio": 1.0052058684335068,
@@ -101,13 +101,13 @@
       "fine_calibration": {
         "status": "calibrated",
         "decision_version": "fine_decision_v1",
-        "cfar_multiplier_q16": 115479,
+        "cfar_multiplier_q16": 122071,
         "anchor_bin": 51,
-        "designated_half_width": 2,
-        "cfar_rank": 62,
+        "designated_half_width": 32,
+        "cfar_rank": 47,
         "bulk_mask_words_hex": [
-          "0x5541555555555555",
-          "0x5555555555555555",
+          "0x0000000000055555",
+          "0x5555555555500000",
           "0x5555555555555555",
           "0x5555555555555555"
         ],
@@ -116,10 +116,10 @@
             "2026-10-29 Pathfinder recording, five spaced files"
           ],
           "source_product_sha256": [
-            "74c5c9d41080dd9384001095fca76bb09942ea9943ac0e784da32e23f8e8292f"
+            "a8d805f2dfb612eefe45c8f6e002e8df5ab11862df04d0385bd6aeb770fb9d48"
           ],
-          "null_quantile": 0.99,
-          "note": "Commissioning word from control channel. Detect-only, not a calibration."
+          "null_quantile": 0.98,
+          "note": "Word from floor, no pilot, floor from control channel. Detect-only, not a calibration."
         }
       },
       "null_power_ratio": 1.0101233786776336,

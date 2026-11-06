@@ -1,7 +1,7 @@
 {
-  "detector_contract_sha256": "81860add059bcfcf26efb004fb1e32a85757a493a5ed1be281127f85c8876cf9",
-  "detector_core_profile_path": "configs/detector_core/pilotproxy_cuda_local_reference_power_ratio.json",
-  "input_coordinate_system": "post_spectral_sense_normalized",
+  "detector_contract_sha256": "b2c503e2edc7b96ab69f4d27b7b8fa2345df5201185f893b43e49b4cf2f5041e",
+  "detector_core_profile_path": "pilotproxy_cuda_local_reference_power_ratio.json",
+  "input_coordinate_system": "post_nyquist_zone_normalized",
   "input_preprocessing": {
     "time_reverse_detector_windows_before_kernel": true
   },
@@ -10,8 +10,8 @@
     29,
     35
   ],
-  "receiver_profile_hash": "840a1eef62345583e84eca3641b5f65b8de4f55e3c3e4eb433dd4f60d8658236",
-  "receiver_profile_path": "configs/receiver_profiles/chime_dtv_fengine.json",
+  "receiver_profile_hash": "c06744b1b4362d21f4ecfdf1dfd495d85c301b99307e9642f79622991bf8efa2",
+  "receiver_profile_path": "chime_dtv_fengine.json",
   "schema_version": "pilotproxy_runtime_weights_manifest_v1",
   "target_reference_layout": [
     {
@@ -167,7 +167,7 @@
       "upper_skipped_guard_bins": 1
     }
   ],
-  "weight_coordinate_system": "post_spectral_sense_normalization",
+  "weight_coordinate_system": "post_nyquist_zone_normalization",
   "weight_format": "concatenated_int8_weight_profiles_v1",
   "weight_profile_dtype": "int8",
   "weight_profile_nbytes": 384,

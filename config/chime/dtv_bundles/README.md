@@ -4,4 +4,4 @@ Each directory is a PilotProxy runtime bundle, named `<purpose>-<first 8 digits 
 
 | Bundle | Channels | Use |
 |---|---|---|
-| `chime-hello-world-ee112439` | 29 (quiet), 35 (strong) | First detect-only run, never with `dtv_apply_mask` |
+| `chime-hello-world-d1ed7815` | 29, 35 | First detect-only run, never with `dtv_apply_mask` |

@@ -4,7 +4,7 @@
   "combine_mode": "all_rows_summed_before_ratio",
   "detector_window_samples": 128,
   "equivalent_mask_rule": "R_coarse > R_null; R_null = 2*target_norm_sq/reference_norm_sum_sq",
-  "input_coordinate_system": "post_spectral_sense_normalized",
+  "input_coordinate_system": "post_nyquist_zone_normalized",
   "input_format": "complex_int4_packed_int8",
   "input_preprocessing": {
     "time_reverse_detector_windows_before_kernel": true
@@ -37,5 +37,5 @@
   "skipped_guard_bins": 1,
   "threshold_mode": "none",
   "valid_rule": "p_ref_sum != 0",
-  "weight_coordinate_system": "post_spectral_sense_normalization"
+  "weight_coordinate_system": "post_nyquist_zone_normalization"
 }

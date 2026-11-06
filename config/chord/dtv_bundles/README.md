@@ -4,4 +4,4 @@ Each directory is a PilotProxy runtime bundle, named `<purpose>-<first 8 digits 
 
 | Bundle | Channels | Use |
 |---|---|---|
-| `pathfinder-commissioning-5547008e` | 18 (weak), 24 (strong), 29 (quiet) | Detect-only runs, never with `dtv_apply_mask` |
+| `pathfinder-commissioning-b8026807` | 18, 24, 29 | Detect-only runs, never with `dtv_apply_mask` |
