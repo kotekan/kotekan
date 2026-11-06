@@ -54,7 +54,7 @@ def main():
         parts = []
         for g in (0, 1):
             r, nf = ratios(a, a.tag, g)
-            s = dtv_live.get(a, dtv_live.cmd_path(g) + "/status").get("rolling", {})
+            s = dtv_live.get(a, dtv_live.cmd_path(a, g) + "/status").get("rolling", {})
             parts.append(
                 "g%d %s refits %s (%d fr) %s"
                 % (
