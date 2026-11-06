@@ -119,7 +119,19 @@ Message content: `PAYLOAD.md`.
 - The carrier phase steps between the five frame classes in a 10 ms pattern, UTC-locked and the
   same on every satellite, ~[0, +0.26, +0.45, -0.70, +0.11] rad (~0.7 dB over five frames); the
   frame-to-frame sign reader models per-class steps of ~+8, +16, +10, -67, +76 deg. It puts weak
-  100 Hz sidelines on the order-2 line; confirm carriers by the code.
+  100 Hz sidelines on the order-2 line; confirm carriers by the code. 11-05: the pattern is one
+  ranging half in five rotated ~-80..-90 deg at full amplitude, carrying no page symbol (12-15 %
+  of frames; seen in the track beam on 80 satellites and on the 10-30 baseband).
+- That rotation is locked to RECEIVER time, not to the satellite (11-06, `builds/gw1202/rot5_lock.py`
+  on the track-beam syms): within a pass the rotated frame's position in the satellite's frame
+  count (n mod 5) walks by the integrated range change, one slot per 2 ms of propagation delay,
+  rising while the satellite approaches and reversing at closest approach. DIGUI-57 (PRN 857,
+  01:15-01:30Z 11-06): slot 0 -> 2 -> 4 (= -1) against a predicted +2.1 then -3.5; PRN 1276
+  (01:13-01:24Z): 3, 3, 3, 2, 1, 0, 0 against 3, 3, 3, 2, 1, 0, 0. Simultaneous satellites walk in
+  opposite directions. A transmitter feature would hold its slot. So it is a 100 Hz phase effect in
+  our chain upstream of both the GPU tracker and the baseband capture (analog, digitiser or
+  F-engine), and the page-symbol erasure it causes (~-1.9 dB of the wipe) is ours to remove.
+  Not yet checked: whether other constellations' channels show it.
 - LEO geometry: Doppler rate -115..-140 Hz/s, passes 1-2 min near boresight; TLEs predict the
   chip-rate Doppler to 0.2-1.2 Hz, which identifies satellites in a far sidelobe.
 
