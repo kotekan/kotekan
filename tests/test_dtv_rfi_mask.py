@@ -642,26 +642,34 @@ def test_chime_mask_visibility_and_counts_across_ring_wrap(tmp_path, runtime):
     )
 
 
-def test_chime_diagnostic_include_has_no_mask_consumer():
-    env = Environment(loader=FileSystemLoader(str(ROOT / "config/include")))
-    cfg = yaml.safe_load(env.get_template("dtv_chime_upgrade.j2").render())
-    gpu = cfg["run_dtv_detector"]["gpu_0"]
-    detector = gpu["commands"][0]
-    assert detector["receiver_channel_id_namespace"] == "chime_freq_id"
-    assert detector["voltage_name"] == "xposed_voltage"
-    assert detector["cuda_stream"] == 3
-    assert all(command["cuda_stream"] == 4 for command in gpu["commands"][1:])
-    assert gpu["num_times"] == "samples_per_data_set"
-    assert set(cfg) == {
-        "host_dtv_mask_buffer",
-        "host_dtv_powers_buffer",
-        "host_dtv_fine_support_buffer",
-        "run_dtv_detector",
-        "write_dtv",
-    }
-    assert all(
-        row["kotekan_stage"] == "rawFileWrite" for row in cfg["write_dtv"].values()
-    )
+def test_chime_detector_is_diagnostic_in_each_numa_domain():
+    env = Environment(loader=FileSystemLoader(str(ROOT / "config/chime")))
+    template = env.get_template("chime_upgrade_2numa.j2")
+    base = yaml.safe_load(template.render())
+    cfg = yaml.safe_load(template.render(dtv_enabled=True))
+    assert "run_dtv_detector" not in base["numa_0"]
+    for numa in (0, 1):
+        domain = cfg[f"numa_{numa}"]
+        stage = domain["run_dtv_detector"]
+        detector = stage["commands"][0]
+        assert detector["receiver_channel_id_namespace"] == "chime_freq_id"
+        assert detector["voltage_name"] == "xposed_voltage"
+        assert stage["in_buffers"]["host_xposed_voltage_ringbuffer"].endswith(
+            f"_n{numa}"
+        )
+        assert all(
+            row["kotekan_stage"] == "rawFileWrite"
+            and row["file_name"].endswith(f"_n{numa}")
+            for row in domain["write_dtv"].values()
+        )
+        added = set(domain) - set(base[f"numa_{numa}"])
+        assert added == {
+            f"host_dtv_mask_buffer_n{numa}",
+            f"host_dtv_powers_buffer_n{numa}",
+            f"host_dtv_fine_support_buffer_n{numa}",
+            "run_dtv_detector",
+            "write_dtv",
+        }
 
 
 @pytest.mark.parametrize("reject_finite", [False, True])
