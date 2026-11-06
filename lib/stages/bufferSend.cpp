@@ -273,6 +273,7 @@ void bufferSend::connect_to_server() {
                  "to retry...",
                  server_ip, server_port, strerror(errno), errno, reconnect_time);
             close(socket_fd);
+            socket_fd = -1;
             // TODO Add a Stage level "breakable sleep" so this doesn't
             // lock up the shutdown process for upto reconnect_time seconds.
             sleep(reconnect_time);
