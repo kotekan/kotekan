@@ -169,8 +169,10 @@ jobs:
             needs_build=1
           fi
 
-          # Rebuild if Dockerfile changed in the latest push
-          if [[ "$DOCKERFILE_RECENT_CHANGED" == "true" ]]; then
+          # A PR that reverts its Dockerfile changes uses the base image again.
+          # Rebuild only if the selected image's Dockerfile changed.
+          if [[ "$DOCKERFILE_RECENT_CHANGED" == "true" &&
+                ( "$event" != "pull_request" || "$DOCKERFILE_EVER_CHANGED" == "true" ) ]]; then
             echo "Dockerfile changed in latest push. Forcing docker rebuild."
             needs_build=1
           fi
