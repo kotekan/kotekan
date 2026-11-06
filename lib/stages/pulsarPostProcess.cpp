@@ -173,6 +173,8 @@ void pulsarPostProcess::main_thread() {
     uint in_frame_location = 0; // goes from 0 to 3125 or 625
     uint64_t fpga_seq_num = 0;
 
+    bool have_warned = false;
+
     chordMetadata::beamCoord beam_coord;
     const uint32_t num_out_frames = _num_freqs_per_gpu / num_freqs_per_frame;
     assert(num_out_frames > 0);
@@ -188,7 +190,6 @@ void pulsarPostProcess::main_thread() {
         out_frames[freq_block] = out_frame;
     }
 
-    bool have_warned = false;
     while (!stop_thread) {
         // Get an input buffer, This call is blocking!
         const uint8_t* in_frame = in_buffer->wait_for_full_frame(unique_name, in_buffer_ID);
@@ -211,7 +212,7 @@ void pulsarPostProcess::main_thread() {
                 ERROR("No beam coord metadata found, will make up ra/dec/scaling numbers");
                 have_warned = true;
             }
-            for (int psr = 0; psr < _num_pulsar_beams; ++psr) {
+            for (unsigned int psr = 0; psr < _num_pulsar_beams; ++psr) {
                 beam_coord.right_ascension[psr] = 12.;
                 beam_coord.declination[psr] = 45.;
                 beam_coord.scaling[psr] = 1.;
@@ -393,6 +394,9 @@ void pulsarPostProcess::main_thread() {
                                 // offset for packet header
                                 + udp_pulsar_header_size;
 
+                            // this assumes that the pulsar beams are the first
+                            // first _num_pulsar_beams beams of the _num_beams
+                            // beams in the input buffer
                             const uint32_t in_index =
                                 psr * _num_freqs_per_gpu * _num_pol * _samples_per_data_set
                                 + thread_id * _num_pol * _samples_per_data_set
