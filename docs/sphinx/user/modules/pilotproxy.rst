@@ -30,8 +30,8 @@ Components
     two reference frame powers, each the sum of the 256 fine powers of that
     term), and optionally ``dtv_fine_support`` (``int32[1, F, 2]``, described
     below). Frequencies without a pilot get zero masks and powers. The
-    detector sums every input in the ring, even the inputs that the correlator
-    flags as bad.
+    detector sums every input in the ring, unless ``bf_mask_name`` names the bad
+    feed mask ring, and a flagged input is then packed as zero.
     The leading ``T`` axis holds one block, scaled by its FPGA sequence period,
     so ``hdf5FileWrite`` can concatenate blocks with ``frames_per_file``.
 

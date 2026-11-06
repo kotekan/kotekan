@@ -270,6 +270,14 @@ public:
             FATAL_ERROR("PilotProxy_Create failed: {:s}", core.LastError());
 
         std::vector<std::int8_t> packed_gpu(packed_count), packed_cpu(packed_count);
+        std::vector<std::int8_t> packed_masked(packed_count);
+        std::vector<std::int8_t> stream_good(std::size_t(num_polarizations) * num_dishes);
+        for (std::size_t s = 0; s < stream_good.size(); ++s)
+            stream_good[s] = s % 3 != 0;
+        std::int8_t* d_stream_good = nullptr;
+        CHECK_CUDA_ERROR(cudaMalloc(&d_stream_good, stream_good.size()));
+        CHECK_CUDA_ERROR(cudaMemcpy(d_stream_good, stream_good.data(), stream_good.size(),
+                                    cudaMemcpyHostToDevice));
         std::vector<std::int32_t> row_sums_gpu(std::size_t(NUM_TERMS) * detector_rows * 2);
         std::vector<std::int32_t> row_sums_cpu(row_sums_gpu.size());
         std::vector<uint64_t> fine_gpu(std::size_t(NUM_TERMS) * FINE_BINS);
@@ -279,16 +287,35 @@ public:
         for (const bool reverse : {false, true}) {
             for (int freq_index = 0; freq_index < num_frequencies; ++freq_index) {
                 for (const ptrdiff_t pos : ring_positions) {
+                    // A bad input packs as zero and the good inputs are unchanged.
+                    launch_pilotproxy_pack(d_packed, d_ring, num_dishes, num_polarizations,
+                                           num_frequencies, freq_index, num_time_samples, ring_size,
+                                           pos, K, reverse, d_stream_good, /*stream=*/nullptr);
+                    CHECK_CUDA_ERROR(cudaDeviceSynchronize());
+                    CHECK_CUDA_ERROR(cudaMemcpy(packed_masked.data(), d_packed, packed_count,
+                                                cudaMemcpyDeviceToHost));
+                    cpu_pilotproxy_pack(packed_cpu.data(), ring.data(), num_dishes,
+                                        num_polarizations, num_frequencies, freq_index,
+                                        num_time_samples, ring_size, pos, K, reverse,
+                                        stream_good.data());
+                    for (ptrdiff_t i = 0; i < packed_count; ++i) {
+                        const bool good = stream_good[i / num_time_samples] != 0;
+                        if (packed_masked[i] != packed_cpu[i] || (!good && packed_cpu[i] != 0))
+                            FATAL_ERROR("masked packer mismatch at index {:d}", i);
+                    }
+
                     // The GPU and CPU packer outputs are compared bit for bit.
                     launch_pilotproxy_pack(d_packed, d_ring, num_dishes, num_polarizations,
                                            num_frequencies, freq_index, num_time_samples, ring_size,
-                                           pos, K, reverse, /*stream=*/nullptr);
+                                           pos, K, reverse, /*stream_good=*/nullptr,
+                                           /*stream=*/nullptr);
                     CHECK_CUDA_ERROR(cudaDeviceSynchronize());
                     CHECK_CUDA_ERROR(cudaMemcpy(packed_gpu.data(), d_packed, packed_count,
                                                 cudaMemcpyDeviceToHost));
                     cpu_pilotproxy_pack(packed_cpu.data(), ring.data(), num_dishes,
                                         num_polarizations, num_frequencies, freq_index,
-                                        num_time_samples, ring_size, pos, K, reverse);
+                                        num_time_samples, ring_size, pos, K, reverse,
+                                        /*stream_good=*/nullptr);
                     for (ptrdiff_t i = 0; i < packed_count; ++i)
                         if (packed_gpu[i] != packed_cpu[i])
                             FATAL_ERROR("packer mismatch: case(rev={:d},f={:d},pos={:d}) "
@@ -423,6 +450,7 @@ public:
         }
 
         core.Destroy(handle);
+        CHECK_CUDA_ERROR(cudaFree(d_stream_good));
         CHECK_CUDA_ERROR(cudaFree(d_ring));
         CHECK_CUDA_ERROR(cudaFree(d_packed));
         CHECK_CUDA_ERROR(cudaFree(d_powers));

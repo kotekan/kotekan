@@ -566,6 +566,11 @@ private:
  * @conf weights_path               String. Runtime bundle weights.bin.
  * @conf receiver_channel_id_namespace String. coarse_freq namespace: chord_freq_id (default)
  *                                  or chime_freq_id. Must match the bundle.
+ * @conf bf_mask_name               String. Optional base name of the bad feed mask ring
+ *                                  buffer (default empty, every input is summed). A bad
+ *                                  input is packed as zero, as if it carried no signal.
+ * @conf bf_mask_lifetime_in_samples Int. Samples each bad feed mask element covers, a
+ *                                  multiple of the detector block. Required with bf_mask_name.
  * @conf enabled_updatable_config   Optional block with `enabled` and `valid_at_time_ns`.
  *                                  First block at or after that time; 0 selects the next block.
  *                                  While off, mask/powers are 0 and support is (-1,-1).
@@ -606,6 +611,7 @@ private:
     const std::string dtv_powers_name;
     const std::string dtv_fine_support_name; // empty: no fine-support output
     const std::string enabled_config_path;
+    const std::string bf_mask_name; // empty: every input is summed
 
     // Block geometry
     const int detector_window_samples;    // K
@@ -616,6 +622,8 @@ private:
     NDArrayBuffer<std::int8_t, 2> dtv_mask;
     NDArrayBuffer<std::uint64_t, 3> dtv_powers;
     std::unique_ptr<NDArrayBuffer<std::int32_t, 3>> dtv_fine_support;
+    std::unique_ptr<NDArrayRingBuffer<std::int8_t, 3>> bf_mask;
+    std::int64_t bf_mask_lifetime_in_samples = 0;
 };
 
 REGISTER_CUDA_COMMAND_WITH_STATE(cudaPilotProxyDetector, cudaPilotProxyDetectorState);
@@ -654,6 +662,7 @@ cudaPilotProxyDetector::cudaPilotProxyDetector(kotekan::Config& config,
         config.get_default<std::string>(unique_name, "dtv_fine_support_name", "")),
     enabled_config_path(
         config.get_default<std::string>(unique_name, "enabled_updatable_config", "")),
+    bf_mask_name(config.get_default<std::string>(unique_name, "bf_mask_name", "")),
     // Block geometry
     detector_window_samples(query_window_samples(*detector_state->core)),
     samples_per_detector_frame(detector_window_samples * query_fine_windows(*detector_state->core)),
@@ -704,6 +713,22 @@ cudaPilotProxyDetector::cudaPilotProxyDetector(kotekan::Config& config,
         dtv_fine_support->register_producer();
     }
 
+    if (!bf_mask_name.empty()) {
+        bf_mask_lifetime_in_samples =
+            config.get<std::int64_t>(unique_name, "bf_mask_lifetime_in_samples");
+        if (bf_mask_lifetime_in_samples <= 0
+            || bf_mask_lifetime_in_samples % samples_per_detector_frame != 0)
+            FATAL_ERROR("bf_mask_lifetime_in_samples {:d} must be a multiple of the detector "
+                        "block ({:d})",
+                        bf_mask_lifetime_in_samples, samples_per_detector_frame);
+        bf_mask = std::make_unique<NDArrayRingBuffer<std::int8_t, 3>>(
+            bf_mask_name, "bf_mask",
+            std::array<std::ptrdiff_t, 3>{buffer_depth, num_polarizations, num_dishes},
+            std::array<std::string, 3>{"Tbf", "P", "D"},
+            std::array<std::ptrdiff_t, 3>{bf_mask_lifetime_in_samples, 1, 1}, *this);
+        bf_mask->register_consumer();
+    }
+
     // The switch lives in the state shared by all instances, so subscribe once.
     if (!enabled_config_path.empty() && get_instance_num() == 0)
         kotekan::configUpdater::instance().subscribe(
@@ -726,6 +751,19 @@ int cudaPilotProxyDetector::wait_on_precondition() {
     if (errcode < 0)
         return errcode;
     DEBUG("Done waiting for voltage ring buffer data for frame {:d}", gpu_frame_id);
+
+    if (bf_mask) {
+        // Claim the mask element at the last block of its lifetime, as cudaRFIS012tilde does.
+        const bool last_use = voltage.get_read_valid().end() % bf_mask_lifetime_in_samples == 0;
+        const int bf_mask_errcode =
+            bf_mask->wait_and_claim_readable([&](const std::ptrdiff_t available) {
+                if (available < 1)
+                    return read_descriptor_t{.claimed = 0, .read = 0};
+                return read_descriptor_t{.claimed = last_use ? 1 : 0, .read = 1};
+            });
+        if (bf_mask_errcode < 0)
+            return bf_mask_errcode;
+    }
     return 0;
 }
 
@@ -891,15 +929,28 @@ cudaEvent_t cudaPilotProxyDetector::execute(cudaPipelineState& /*pipestate*/,
     const std::ptrdiff_t ring_size = voltage.get_ndarray().extent(0);
     const std::ptrdiff_t ring_pos = block_start_sample % ring_size;
 
+    const std::int8_t* stream_good = nullptr;
+    if (bf_mask) {
+        // The mask is looked up by ring position, so both streams must start together.
+        if (bf_mask->get_metadata()->get_fpga_seq_num() != in_metadata->get_fpga_seq_num())
+            FATAL_ERROR("The bad feed mask stream starts at seq {:d} but the voltage stream at "
+                        "{:d}: clock bufferBadInputs to this GPU's voltage buffer",
+                        bf_mask->get_metadata()->get_fpga_seq_num(),
+                        in_metadata->get_fpga_seq_num());
+        const std::ptrdiff_t element =
+            bf_mask->get_read_valid().begin() % bf_mask->get_ndarray().extent(0);
+        stream_good = bf_mask->get_ndarray().data() + element * bf_mask->get_ndarray().stride(0);
+    }
+
     // Channels are packed and detected one at a time, and the staging region
     // and the scratch are reused in stream order.
     for (const auto& channel : state.bound_channels) {
         const auto& profile = *channel.profile;
-        launch_pilotproxy_pack(state.d_packed,
-                               reinterpret_cast<const std::uint8_t*>(voltage_memory), num_dishes,
-                               num_polarizations, num_frequencies, channel.freq_index,
-                               samples_per_detector_frame, ring_size, ring_pos,
-                               detector_window_samples, state.time_reverse_windows, kotekan_stream);
+        launch_pilotproxy_pack(
+            state.d_packed, reinterpret_cast<const std::uint8_t*>(voltage_memory), num_dishes,
+            num_polarizations, num_frequencies, channel.freq_index, samples_per_detector_frame,
+            ring_size, ring_pos, detector_window_samples, state.time_reverse_windows, stream_good,
+            kotekan_stream);
         const std::int8_t* const weights = state.weights_for(profile);
         unsigned long long* const channel_powers =
             reinterpret_cast<unsigned long long*>(powers_memory + 3 * channel.freq_index);
@@ -966,5 +1017,7 @@ bool cudaPilotProxyDetector::receive_enabled(nlohmann::json& json) {
 
 void cudaPilotProxyDetector::finalize_frame() {
     voltage.finish_read();
+    if (bf_mask)
+        bf_mask->finish_read();
     cudaCommand::finalize_frame();
 }
