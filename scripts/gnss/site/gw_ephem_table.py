@@ -132,23 +132,43 @@ def load_db(path=guowang_codes.GUOWANG_1202_DB):
 
 
 LIVE_PAGES = "/home/kvand/gnss/builds/gw1202/nav_pages_live.json"
-LIVE_PAGES_MAX_AGE_S = 6 * 3600.0
+# The echoed pages' live fields change every 12 s cycle, so the wipe's sign agreement falls with
+# the page's age (builds/gw1202/nav_predict_eval.py: 85 % at 12 s, 78 % at 2 min, 69 % at 5 min) and a
+# record's coherent gain 5(2p-1)^2 crosses 1 (no better than unpaged) at ~3.5 min: older pages cost.
+LIVE_PAGES_MAX_AGE_S = 180.0
+BDT_EPOCH_UNIX = 1136073600  # 2006-01-01 00:00:00 UTC
+BDT_MINUS_UTC_S = 4
 
 
-def load_live_pages(path=LIVE_PAGES, max_age_s=LIVE_PAGES_MAX_AGE_S):
-    """{name: nav_pages} decoded live by the track-beam loop (gw_nav_live), newer than
-    max_age_s; they override the library's. Missing or unreadable file: nothing."""
+def page_tx_unix(sow, now):
+    """Unix time of a BDT second of week, in the week that puts it nearest before now."""
+    week = math.floor((now + BDT_MINUS_UTC_S - BDT_EPOCH_UNIX) / 604800.0)
+    t = BDT_EPOCH_UNIX + week * 604800 + sow - BDT_MINUS_UTC_S
+    if t > now + 300:
+        t -= 604800
+    return t
+
+
+def load_live_pages(path=LIVE_PAGES, max_age_s=LIVE_PAGES_MAX_AGE_S, now=None):
+    """{name: nav_pages} decoded live by the track-beam loop (gw_nav_live), no older than
+    max_age_s; they override the library's. A page's age runs from its own transmit time (the
+    entry's per-page BDT second of week; the oldest of the four counts), else from the loop's
+    decode stamp. Missing or unreadable file: nothing."""
     try:
         with open(path) as fh:
             live = json.load(fh)
     except (OSError, ValueError):
         return {}
     out = {}
-    now = time.time()
+    now = time.time() if now is None else now
     for n, e in live.items():
         try:
-            t = calendar.timegm(time.strptime(e["utc"], "%Y-%m-%dT%H:%M:%SZ"))
-        except (KeyError, ValueError):
+            sows = e.get("sow") or {}
+            if len(sows) == 4:
+                t = min(page_tx_unix(float(v), now) for v in sows.values())
+            else:
+                t = calendar.timegm(time.strptime(e["utc"], "%Y-%m-%dT%H:%M:%SZ"))
+        except (KeyError, ValueError, TypeError, AttributeError):
             continue
         if now - t <= max_age_s and len(e.get("nav_pages") or []) == 4:
             out[n] = list(e["nav_pages"])

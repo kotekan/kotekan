@@ -7,6 +7,7 @@ import math
 import os
 import sys
 import tempfile
+import time
 import unittest
 import zlib
 
@@ -186,6 +187,27 @@ class TestTable(unittest.TestCase):
         self.assertIn(0.0, first)
         # every theta used once: the next round starts again at the densest
         self.assertEqual(round(so3.theta_s("B", 1017) * 1e6, 4), -1.0)
+
+    def test_live_pages_age_from_their_own_transmit_time(self):
+        now = 1793923300.0  # 2026-11-06 00:01:40 UTC
+        sow_now = (now + 4 - 1136073600) % 604800
+        pages = ["0" * 79] * 4
+        live = {
+            "FRESH": dict(nav_pages=pages, utc="2026-11-01T00:00:00Z",
+                          sow={str(k): sow_now - 100 - 3 * k for k in range(1, 5)}),
+            "STALE": dict(nav_pages=pages, utc="2026-11-06T00:01:00Z",
+                          sow={str(k): sow_now - 400 - 3 * k for k in range(1, 5)}),
+            "NOSOW": dict(nav_pages=pages, utc=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now - 60))),
+        }
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "live.json")
+            with open(path, "w") as fh:
+                json.dump(live, fh)
+            got = gw.load_live_pages(path, 180.0, now=now)
+        self.assertEqual(sorted(got), ["FRESH", "NOSOW"])
+        # the week boundary: SOW 604790 seen at SOW 20 of the next week is 30 s old
+        t = gw.page_tx_unix(604790, gw.BDT_EPOCH_UNIX + 1087 * 604800 + 20 - 4)
+        self.assertAlmostEqual(gw.BDT_EPOCH_UNIX + 1087 * 604800 + 20 - 4 - t, 30.0)
 
     def test_segments_merge_and_pad(self):
         unix = list(range(0, 100, 10))
