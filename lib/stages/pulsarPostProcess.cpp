@@ -251,7 +251,7 @@ void pulsarPostProcess::main_thread() {
                 time_dummy = time_now; // modified (!) by fill_headers
                 assert(freq_block < num_out_frames);
                 assert((freq_block+1) * num_freqs_per_frame <= thread_ids.size());
-                fill_headers((unsigned char*)out_frames[freq_block], &psr_header, fpga_seq_num,
+                fill_headers((unsigned char*)out_frames.at(freq_block), &psr_header, fpga_seq_num,
                              &time_dummy, beam_coord,
                              &thread_ids.at(freq_block * num_freqs_per_frame));
             }
@@ -296,7 +296,7 @@ void pulsarPostProcess::main_thread() {
                     time_dummy = time_now; // modified (!) by fill_headers
                     assert(freq_block < num_out_frames);
                     assert((freq_block+1) * num_freqs_per_frame <= thread_ids.size());
-                    fill_headers((unsigned char*)out_frames[freq_block], &psr_header, fpga_seq_num,
+                    fill_headers((unsigned char*)out_frames.at(freq_block), &psr_header, fpga_seq_num,
                                  &time_dummy, beam_coord,
                                  &thread_ids.at(freq_block * num_freqs_per_frame));
                 }
@@ -343,7 +343,7 @@ void pulsarPostProcess::main_thread() {
                             time_dummy = time_now; // modified (!) by fill_headers
                             assert(freq_block < num_out_frames);
                             assert((freq_block+1) * num_freqs_per_frame <= thread_ids.size());
-                            fill_headers((unsigned char*)out_frames[freq_block], &psr_header,
+                            fill_headers((unsigned char*)out_frames.at(freq_block), &psr_header,
                                          fpga_seq_num, &time_dummy, beam_coord,
                                          &thread_ids.at(freq_block * num_freqs_per_frame));
                         }
