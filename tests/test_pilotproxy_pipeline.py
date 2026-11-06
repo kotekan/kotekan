@@ -247,6 +247,20 @@ def test_default_chord_template_leaves_detector_disabled():
     assert "host_dtv_powers_buffer" not in config
 
 
+@pytest.mark.parametrize("record", [False, True])
+def test_pathfinder_records_fine_powers_on_request(record):
+    jinja2 = pytest.importorskip("jinja2")
+    yaml = pytest.importorskip("yaml")
+    env = jinja2.Environment(loader=jinja2.FileSystemLoader(ROOT / "config/chord"))
+    config = yaml.safe_load(
+        env.get_template("pathfinder.j2").render(
+            dtv_enabled=True, dtv_record_fine_powers=record
+        )
+    )
+    assert ("host_dtv_fine_powers_buffer_0" in config) is record
+    assert ("fine_powers_0" in config["write_dtv"]) is record
+
+
 @pytest.mark.parametrize("apply_mask", [False, True])
 def test_pathfinder_detection_and_recording_start_off(apply_mask):
     jinja2 = pytest.importorskip("jinja2")

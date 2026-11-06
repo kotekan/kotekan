@@ -196,6 +196,75 @@ def pipeline(tmp_path, runtime):
     return Pipeline(tmp_path, runtime)
 
 
+def test_fine_powers_sum_to_the_frame_powers(pipeline):
+    pipeline.calibrate()
+    config = pipeline.config
+    num_freq = len(pipeline.generator["manual_freq_ids"])
+    config["host_dtv_fine_powers_buffer"] = copy.deepcopy(
+        config["host_dtv_powers_buffer"]
+    )
+    config["host_dtv_fine_powers_buffer"]["frame_size"] = num_freq * 3 * 256 * 8
+    gpu = config["run_dtv_detector"]["gpu_0"]
+    gpu["out_buffers"]["host_dtv_fine_powers"] = "host_dtv_fine_powers_buffer"
+    pipeline.detector["dtv_fine_powers_name"] = "dtv_fine_powers"
+    gpu["commands"].append(
+        dict(
+            name="cudaOutputData",
+            cuda_stream=4,
+            gpu_mem="dtv_fine_powers_buffer",
+            out_buf="host_dtv_fine_powers",
+        )
+    )
+    config["dump_dtv_fine_powers"] = copy.deepcopy(config["dump_dtv_mask"])
+    config["dump_dtv_fine_powers"].update(
+        in_buf="host_dtv_fine_powers_buffer", file_name="dtv_fine_powers"
+    )
+    code, output = pipeline.run()
+    assert code == 0, output[-12000:]
+    pipeline.verify()
+    out = pipeline.directory / "out"
+    fine = reference.read_raw_frames(
+        str(out / "dtv_fine_powers_*.raw"), num_freq * 3 * 256 * 8
+    )
+    powers = reference.read_raw_frames(str(out / "dtv_powers_*.raw"), num_freq * 3 * 8)
+    assert len(fine) == len(powers) > 0
+    bound = 0
+    for got_fine, got_powers in zip(fine, powers):
+        rows = got_fine.payload.view("<u8").reshape(num_freq, 3, 256)
+        want = got_powers.payload.view("<u8").reshape(num_freq, 3)
+        np.testing.assert_array_equal(rows.sum(axis=2, dtype=np.uint64), want)
+        bound += np.count_nonzero(want.any(axis=1))
+    assert bound > 0
+
+
+def test_control_channel_is_recorded_and_never_masked(pipeline):
+    pipeline.calibrate()
+    profiles = pipeline.bundle["profiles"]
+    for profile in profiles:
+        profile["fine_calibration"]["cfar_multiplier_q16"] = 1
+    profiles[0]["fine_calibration"]["status"] = "control"
+    profiles[0]["physical_channel"] = 37
+    code, output = pipeline.run()
+    assert code == 0, output[-12000:]
+    ids = pipeline.generator["manual_freq_ids"]
+    num_freq = len(ids)
+    out = pipeline.directory / "out"
+    masks = reference.read_raw_frames(str(out / "dtv_mask_*.raw"), num_freq)
+    powers = reference.read_raw_frames(str(out / "dtv_powers_*.raw"), num_freq * 24)
+    mask = np.array([frame.payload.view("i1") for frame in masks])
+    power = np.array([frame.payload.view("<u8") for frame in powers])
+    power = power.reshape(len(powers), num_freq, 3)
+    control = ids.index(profiles[0]["receiver_channel_id"])
+    others = [
+        ids.index(p["receiver_channel_id"])
+        for p in profiles[1:]
+        if p["receiver_channel_id"] in ids
+    ]
+    assert power[:, control].any()
+    assert not mask[:, control].any()
+    assert mask[:, others].any()
+
+
 def test_independent_detectors_share_gpu(pipeline):
     pipeline.calibrate()
     other_dir = pipeline.directory / "other"

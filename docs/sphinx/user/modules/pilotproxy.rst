@@ -15,6 +15,9 @@ presence or absence of the pilot is decided once per 8192-sample block
 (41.94304 ms, one n2k integration).
 
 The tests are described in :ref:`dev_pilotproxy_testing`.
+To calibrate, test, and deploy a bundle on a telescope, see
+``docs/RUNNING_THE_DETECTOR.md`` in the
+`PilotProxy repository <https://github.com/WVURAIL/pilotproxy>`_.
 
 
 Components
@@ -29,7 +32,8 @@ Components
     rejects the block), ``dtv_powers`` (``uint64[1, F, 3]``, the target and the
     two reference frame powers, each the sum of the 256 fine powers of that
     term), and optionally ``dtv_fine_support`` (``int32[1, F, 2]``, described
-    below). Frequencies without a pilot get zero masks and powers. The
+    below) and ``dtv_fine_powers`` (``uint64[1, F, 3, 256]``, the fine powers
+    behind each decision). Frequencies without a pilot get zero masks and powers. The
     detector sums every input in the ring, even the inputs that the correlator
     flags as bad.
     The leading ``T`` axis holds one block, scaled by its FPGA sequence period,
@@ -227,3 +231,10 @@ Monitoring
 * ``dtv_powers`` holds the pilot and reference powers of every block, so a
   moved pilot or a new line near a reference bin can be seen there even when
   the mask does not fire. Either one requires a recalibration.
+* With ``dtv_record_fine_powers``, ``config/chord/dtv.j2`` also writes
+  ``dtv_fine_powers``. PilotProxy calibrates a bundle from these files, so a
+  detect-only run replaces baseband captures for calibration. Only rows with a
+  bound channel are filled, so the compressed files stay small.
+* A bundle profile with the status ``control`` (channel 37, which has no DTV) is
+  decided and recorded like a pilot, and its mask stays zero. Calibration uses
+  it to set the noise floor.
