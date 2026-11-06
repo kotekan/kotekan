@@ -28,8 +28,11 @@ The minimal toolchain for a standard build includes:
 
 * C++ compiler: GCC or Clang (C++17), plus build tools: ``build-essential``, ``cmake``, ``pkg-config``, ``make``, ``git``
 * Libraries: ``libevent-dev``, ``libssl-dev``, ``libyaml-cpp-dev``
-* Python: ``python3``, ``python3-dev``; Python packages: ``pyyaml``, ``jinja2``, ``requests``, ``tabulate``, ``futures``
+* Python 3.12 or newer: ``python3``, ``python3-dev``; Python packages: ``pyyaml``, ``jinja2``, ``requests``, ``tabulate``
 * Optional but useful: ``ccache``, ``clang-format``, ``iwyu``
+
+The Ubuntu 24.04 runtime images use Python 3.12. CI checks Python package
+installation and the debug viewer on this minimum supported version.
 
 On Ubuntu (24.04 reference), install with:
 
