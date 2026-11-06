@@ -41,7 +41,8 @@ struct BeamDumpHdr {
     int32_t n_inputs;  ///< BEAM_INPUTS
     int32_t ref_input; ///< the phase-reference input
     int32_t conj;      ///< 0: samples in the F-engine's (re high, im low) convention
-    int32_t eig_iters; ///< power iterations per frame
+    int32_t eig_iters; ///< power iterations run for this frame; 0: the eigen sections (lambda,
+                       ///< powers, weights, beam) were not formed and are zero
     int32_t n_targets; ///< tracked-satellite beams per channel (the target sections; 0 = none)
     int32_t reserved[5];
 };

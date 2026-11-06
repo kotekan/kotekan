@@ -43,6 +43,10 @@
  *                          between consecutive frames, so a caller can align a window to frame
  *                          edges without knowing the pipeline's geometry.
  *
+ * The gate publishes its window on the process-wide gnss::FrameWindowBoard, so a stage upstream
+ * of it (cudaGnssBeamDump) can ask whether the frame it is about to produce would pass, and
+ * skip the work the gate would drop.
+ *
  * @par Buffers
  * @buffer in_bufs   Input frames, consumed in lockstep.
  *         @buffer_format any

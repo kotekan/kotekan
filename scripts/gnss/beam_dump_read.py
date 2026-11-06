@@ -71,8 +71,9 @@ def layout(n_chan, n_times, n_targets=0):
 
 def frames(path):
     """Yield per frame: seq0, freq_ids, lam [n,4], pw [n,128], w [n,128] complex64, beam
-    [n, n_times] complex64, ref, conj, n_times, n_targets, and with targets tgt [nt, n] (TGT),
-    tw [nt, n, 128] complex64, tbeam [nt, n, n_times] complex64 (else None)."""
+    [n, n_times] complex64, ref, conj, n_times, eig_iters (0: the eigen beam was not formed,
+    those sections are zero), n_targets, and with targets tgt [nt, n] (TGT), tw [nt, n, 128]
+    complex64, tbeam [nt, n, n_times] complex64 (else None)."""
     with open(path, "rb") as fh:
         data = fh.read()
     pos = 0
@@ -156,6 +157,7 @@ def frames(path):
             ref=ref,
             conj=conj,
             n_times=n_times,
+            eig_iters=iters,
             n_targets=n_targets,
             tgt=tgt.copy() if tgt is not None else None,
             tw=tw.copy() if tw is not None else None,

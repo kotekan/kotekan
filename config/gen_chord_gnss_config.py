@@ -1958,6 +1958,8 @@ def merge_n2dual_gpu(blocks, cfg, args, node, gpu, chains, spds):
                 "beam_freq_ids": [fid for fid, _ in bd_pairs],
                 "beam_ref_input": args.beam_dump_ref_input,
                 "beam_eig_iters": args.beam_dump_eig_iters,
+                "beam_eig_mode": args.beam_dump_eig_mode,
+                "beam_eig_gate": f"/gnss{gpu}_beamdump_gate",
             }
         ]
         out_buffers["host_gnss_beam"] = bd_buf
@@ -2047,6 +2049,8 @@ def merge_n2dual_gpu(blocks, cfg, args, node, gpu, chains, spds):
                 "beam_freq_ids": [fid for fid, _ in tb_pairs],
                 "beam_ref_input": args.beam_dump_ref_input,
                 "beam_eig_iters": args.beam_dump_eig_iters,
+                "beam_eig_mode": args.beam_dump_eig_mode,
+                "beam_eig_gate": f"/gnss{gpu}_trackbeam_gate",
                 "beam_lane_owner": f"/gnss{gpu}{tb_chain['tag']}_n2assemble",
                 "beam_targets": args.track_beam_targets,
                 "elem_positions_enu": asm["elem_positions_enu"],
@@ -3333,6 +3337,15 @@ def main():
         metavar="N",
         dest="beam_dump_eig_iters",
         help="power iterations per frame per component (default 4)",
+    )
+    ap.add_argument(
+        "--beam-dump-eig-mode",
+        choices=("off", "gated", "always"),
+        default="gated",
+        dest="beam_dump_eig_mode",
+        help="when the beam dumps' eigen beam is formed, on both cudaGnssBeamDump instances "
+        "of a GPU: only for frames inside their gate's armed window (gated, default), never "
+        "(off) or every frame (always); POST <instance>/eig_mode changes it live",
     )
     ap.add_argument(
         "--beam-dump-frames-per-file",

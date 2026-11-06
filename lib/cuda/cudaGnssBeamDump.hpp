@@ -16,7 +16,10 @@
 #include "gnssProjSubspace.hpp"       // for gnss::ProjEntry
 
 #include <complex>
+#include <cstdint>
 #include <map>
+#include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -31,7 +34,12 @@
  * weights, so the beam reads in the reference input's units. The frame it writes carries the
  * weights, the per-input powers and the two largest eigenvalues beside the samples
  * (cudaGnssBeamDumpKernel.hpp). It is a consumer of the voltage ring like cudaCorrelatorDual,
- * in the same process and on the same stream.
+ * in the same process and on the same stream. With beam_eig_mode "gated" the eigen beam is
+ * formed only for the frames its dump gate would pass (FrameWindowGate::in_window), so the
+ * covariance and the power iterations cost nothing between dumps; the other frames carry zeros
+ * in the eigen sections and eig_iters 0 in the header. A window armed in the tens of ms
+ * between this command's frame and the gate's passes such a frame: arm ahead. The target beams
+ * are formed every frame whatever the mode.
  *
  * Target beams (beam_lane_owner). The chain's assembler publishes, per channel, each tracked
  * PRN's element direction on the process-wide ProjBoard (gnssLaneDirection.hpp: the averaged
@@ -80,6 +88,17 @@
  * @conf  frame0_utc            Double, default 0 (the telescope's GPS time0). The record epoch
  *                              override cudaGnssChordTrack takes: the frame times that place
  *                              the re-steer must share the assembler's axis.
+ * @conf  beam_eig_mode         String, default "always". When the eigen beam is formed:
+ *                              "always" every frame; "gated" only for the frames the
+ *                              FrameWindowGate beam_eig_gate would pass; "off" never.
+ *                              POST <unique_name>/eig_mode {"mode": "off"|"gated"|"always"}
+ *                              changes it live; GET <unique_name>/eig_status reports it with
+ *                              the counts of frames formed and skipped.
+ * @conf  beam_eig_gate         String, default "". The gate's unique_name (the leading "/" is
+ *                              optional), required by "gated"; it must be a FrameWindowGate of
+ *                              this config.
+ * @conf  beam_eig_resume_iters Int, default 16. Power iterations on the first frame formed
+ *                              after a skip (and on the first frame): the warm start is stale.
  */
 class cudaGnssBeamDump : public cudaCommand {
 public:
@@ -93,7 +112,24 @@ public:
                         const std::vector<cudaEvent_t>& pre_events) override;
     void finalize_frame() override;
 
+    enum EigMode { EIG_OFF = 0, EIG_GATED = 1, EIG_ALWAYS = 2 };
+
+    /// State shared by the command's instances (one per pipeline slot); instance 0 registers
+    /// the REST endpoints that change it.
+    struct Shared {
+        std::mutex mtx;
+        int mode = EIG_ALWAYS;
+        bool in_window = false; ///< the last frame's decision
+        bool resume = true;     ///< the next eigen beam follows a skip: beam_eig_resume_iters
+        bool warned_gate = false;
+        uint64_t computed = 0; ///< frames with the eigen beam
+        uint64_t skipped = 0;  ///< frames without
+    };
+
 private:
+    static std::shared_ptr<Shared> shared_for(const std::string& name);
+    /// The power iterations this frame's eigen beam runs; 0 = the frame gets none.
+    int eig_iters_for(long long seq0);
     /// UTC of hop @p seq on the assembler's record axis.
     double frame_utc(long long seq) const;
     /// The best-scoring lane that is not a target; 0 if none.
@@ -117,6 +153,10 @@ private:
     const std::string _lane_owner;
     const int _n_targets;
     const gnss_cuda::BeamDumpLayout _layout;
+    const std::string _eig_gate;
+    const int _eig_resume_iters;
+    std::shared_ptr<Shared> _eig;
+    const bool _owner; ///< instance 0: registers and removes the REST endpoints
 
     NDArrayRingBuffer<kotekan::int4x2_swapped_withoffset_t, 4> voltage;
     NDArrayBuffer<unsigned char, 2> beam;
