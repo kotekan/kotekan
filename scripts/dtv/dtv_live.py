@@ -62,13 +62,13 @@ def post(a, path, body):
         return {"error": e.code, "message": e.read().decode()[:300]}
 
 
-def cmd_path(g):
-    return "/run_send_voltage/gpu_%d/commands/0" % g
+def cmd_path(a, g):
+    return dtv_state.stage_path(a.node, g)
 
 
 def cmd_status(a):
     for g in (0, 1):
-        s = get(a, cmd_path(g) + "/status")
+        s = get(a, cmd_path(a, g) + "/status")
         print(
             "gpu%d: frames %d, state %s, start source %d (%d left), last error %r; channels %s"
             % (
@@ -169,7 +169,9 @@ def cmd_start(a):
             % (
                 g,
                 post(
-                    a, cmd_path(g) + "/start", {"source": a.source, "frames": a.frames}
+                    a,
+                    cmd_path(a, g) + "/start",
+                    {"source": a.source, "frames": a.frames},
                 ),
             )
         )
@@ -208,7 +210,7 @@ def cmd_load(a):
         p = os.path.join(STATES, a.node, "st_g%d_%s.bin" % (g, a.tag))
         print(
             "gpu%d load %s: %s"
-            % (g, os.path.basename(p), post(a, cmd_path(g) + "/load", {"file": p}))
+            % (g, os.path.basename(p), post(a, cmd_path(a, g) + "/load", {"file": p}))
         )
 
 
@@ -216,7 +218,7 @@ def cmd_clear(a):
     for g in (0, 1):
         print(
             "gpu%d clear: %s"
-            % (g, post(a, cmd_path(g) + "/clear", {"source": a.source}))
+            % (g, post(a, cmd_path(a, g) + "/clear", {"source": a.source}))
         )
 
 
@@ -274,7 +276,7 @@ def gpu_slots(a):
     """{gpu: the stage's source slots}: the most any of its channels has (dtv_sources)."""
     out = {}
     for g in (0, 1):
-        ch = get(a, cmd_path(g) + "/status")["channels"]
+        ch = get(a, cmd_path(a, g) + "/status")["channels"]
         out[g] = len(ch[0]["act"]) if ch else 1
     return out
 
@@ -362,7 +364,8 @@ def cmd_refit(a):
         )
         for g in (0, 1):
             print(
-                "gpu%d clear: %s" % (g, post(a, cmd_path(g) + "/clear", {"source": 0}))
+                "gpu%d clear: %s"
+                % (g, post(a, cmd_path(a, g) + "/clear", {"source": 0}))
             )
         drop_window(a, t + "r0")
         return

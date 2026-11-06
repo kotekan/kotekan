@@ -71,7 +71,7 @@ def ranges(spec):
 
 
 def url(node, g, ep):
-    return "http://%s:12048/run_send_voltage/gpu_%d/commands/0/%s" % (node, g, ep)
+    return "http://%s:12048%s/%s" % (node, dtv_state.stage_path(node, g), ep)
 
 
 def get(node, g, ep="status"):
@@ -79,6 +79,7 @@ def get(node, g, ep="status"):
         with urllib.request.urlopen(url(node, g, ep), timeout=8) as r:
             return json.loads(r.read())
     except (urllib.error.URLError, OSError, ValueError) as e:
+        dtv_state.forget_stage(node, g)
         return {"error": str(e)}
 
 
@@ -92,8 +93,10 @@ def post(node, g, ep, body):
         with urllib.request.urlopen(req, timeout=8) as r:
             return json.loads(r.read() or b"{}")
     except urllib.error.HTTPError as e:
+        dtv_state.forget_stage(node, g)
         return {"error": e.code, "message": e.read().decode()[:300]}
     except (urllib.error.URLError, OSError, ValueError) as e:
+        dtv_state.forget_stage(node, g)
         return {"error": str(e)}
 
 
