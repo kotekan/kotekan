@@ -25,9 +25,11 @@
  * within a post interval: a GPS satellite turns ~1.5e-4 rad/s, so the path difference across a
  * 44 m baseline moves ~7 mm/s, ~0.2 m (most of an L-band wavelength) in 30 s. So a post may
  * carry the az/el rates and the epoch they describe, and refresh() re-evaluates the table at
- * the record's own time, every REBUILD_S, from the line-of-sight unit vector extrapolated
- * linearly (az/el themselves are not linear near zenith, where the az rate diverges; the
- * vector is).
+ * the record's own time from the line-of-sight unit vector extrapolated linearly (az/el
+ * themselves are not linear near zenith, where the az rate diverges; the vector is). It does so
+ * every REBUILD_S, or sooner once the path error across the array reaches REBUILD_PATH_M: a
+ * GuoWang LEO satellite turns ~5e-3 rad/s, ~35 times a GPS satellite, and a table 0.5 s old is
+ * ~0.15 deg behind it.
  *
  * Header-only and independent of the stage; GnssGpuRecordAssemble is the consumer.
  */
@@ -54,7 +56,7 @@ public:
     /// @param hold_s how long a post's geometry stays valid, seconds.
     ElemSteer(std::vector<double> positions_enu, std::vector<double> freq_mhz, int n_prn,
               double sign, double hold_s) :
-        _pos(std::move(positions_enu)), _f_mhz(std::move(freq_mhz)),
+        _pos(std::move(positions_enu)), _f_mhz(std::move(freq_mhz)), _extent_m(extent(_pos)),
         _n_elem((int)(_pos.size() / 3)), _n_chan((int)_f_mhz.size()), _sign(sign), _hold_s(hold_s),
         _tab((size_t)n_prn * _n_chan * _n_elem, cf(1.0f, 0.0f)), _fresh_t((size_t)n_prn, -1.0e18),
         _trk((size_t)n_prn) {}
@@ -107,6 +109,7 @@ public:
         k.edot[0] = -std::sin(el) * std::sin(az) * del + std::cos(el) * std::cos(az) * daz;
         k.edot[1] = -std::sin(el) * std::cos(az) * del - std::cos(el) * std::sin(az) * daz;
         k.edot[2] = std::cos(el) * del;
+        k.rate = std::sqrt(k.edot[0] * k.edot[0] + k.edot[1] * k.edot[1] + k.edot[2] * k.edot[2]);
         k.t0_utc = t_utc;
         k.moving = t_utc > 0.0 && (az_rate_dps != 0.0 || el_rate_dps != 0.0);
         build(slot, k.e);
@@ -115,13 +118,16 @@ public:
     }
 
     /// Re-evaluate one slot's table at record time @p t_utc if it carries rates and the table
-    /// is at least REBUILD_S old. Extrapolation is capped at hold_s from the post's epoch:
-    /// beyond that warm() refuses the slot anyway. Cheap when nothing is due (a compare).
+    /// is due: REBUILD_S old, or turned far enough that the path error across the array reaches
+    /// REBUILD_PATH_M (a GuoWang satellite at ~5e-3 rad/s is due every few ms). Extrapolation is
+    /// capped at hold_s from the post's epoch: beyond that warm() refuses the slot anyway. Cheap
+    /// when nothing is due (a compare).
     void refresh(int slot, double t_utc) {
         if (!enabled() || slot < 0 || (size_t)slot >= _trk.size() || !(t_utc > 0.0))
             return;
         Track& k = _trk[(size_t)slot];
-        if (!k.moving || std::fabs(t_utc - k.built_utc) < REBUILD_S)
+        const double age = std::fabs(t_utc - k.built_utc);
+        if (!k.moving || (age < REBUILD_S && age * k.rate * _extent_m < REBUILD_PATH_M))
             return;
         const double dt = std::max(-_hold_s, std::min(_hold_s, t_utc - k.t0_utc));
         double e[3] = {k.e[0] + k.edot[0] * dt, k.e[1] + k.edot[1] * dt, k.e[2] + k.edot[2] * dt};
@@ -189,14 +195,17 @@ public:
     }
 
 private:
-    /// How often a slot with rates is re-evaluated along its track, seconds; between rebuilds
-    /// the path error grows at the path rate (~3.5 mm in 0.5 s at 7 mm/s).
+    /// The longest a slot with rates goes between re-evaluations along its track, seconds;
+    /// between rebuilds the path error grows at the path rate (~3.5 mm in 0.5 s at 7 mm/s).
     static constexpr double REBUILD_S = 0.5;
+    /// The path error across the array, metres, at which a table is due before REBUILD_S.
+    static constexpr double REBUILD_PATH_M = 3.5e-3;
 
     /// One slot's posted direction and its rate: e(t) = e + edot * (t - t0_utc), renormalised.
     struct Track {
         double e[3] = {0.0, 0.0, 1.0};
         double edot[3] = {0.0, 0.0, 0.0};
+        double rate = 0.0;      ///< |edot|, rad/s
         double t0_utc = 0.0;    ///< the instant e describes (unix s); 0 = no epoch
         double built_utc = 0.0; ///< the instant the table currently describes
         bool moving = false;    ///< rates and epoch present: refresh() extrapolates
@@ -217,8 +226,18 @@ private:
         }
     }
 
+    /// The farthest element from the reference point, metres.
+    static double extent(const std::vector<double>& pos) {
+        double m = 0.0;
+        for (size_t i = 0; i + 2 < pos.size(); i += 3)
+            m = std::max(
+                m, std::sqrt(pos[i] * pos[i] + pos[i + 1] * pos[i + 1] + pos[i + 2] * pos[i + 2]));
+        return m;
+    }
+
     std::vector<double> _pos;   // [n_elem][3] ENU metres
     std::vector<double> _f_mhz; // [n_chan] RF MHz
+    double _extent_m = 0.0;     // extent(_pos)
     int _n_elem = 0;
     int _n_chan = 0;
     double _sign = 1.0;
