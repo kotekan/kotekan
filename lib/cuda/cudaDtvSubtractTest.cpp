@@ -14,6 +14,8 @@
 //    residual with a small random response): the second timestream, its correlations, the
 //    residual and its power against the CPU, the residual power against the noise, and the
 //    re-quantised bytes against a CPU subtraction
+//  - steering: the weights and g turned by a per-input phase against a CPU turn, and the
+//    subtraction of a source whose response has turned, with and without the turn
 // The two channels have different lag windows (dtv_lag_min, dtv_n_lag per channel).
 // Exits 0 when every check passes.   ./cuda_dtv_subtract_test [n_times]
 
@@ -710,6 +712,118 @@ int main(int argc, char** argv) {
         cudaFree(d_arxs);
         cudaFree(d_arss);
         cudaFree(d_apw);
+    }
+
+    // 7. steering: the source's response on every input turned by a known psi (an emitter that has
+    //    moved since its weights were set). launch_dtv_steer against a CPU turn, then the
+    //    subtraction of that frame with the anchors turned by psi, and with the anchors as they
+    //    are.
+    {
+        std::vector<float> psi((size_t)NC * NSRC * NI, 0.0f);
+        for (int c = 0; c < NC; c++)
+            for (int i = 0; i < NI; i++)
+                psi[((size_t)c * NSRC + 0) * NI + i] = 3.0f * (uni(rng) - 0.5f);
+        std::vector<unsigned char> frame3(frame.size());
+        for (int t = 0; t < NT; t++)
+            for (int f = 0; f < NF; f++)
+                for (int i = 0; i < NI; i++) {
+                    cf v(gauss(rng), gauss(rng));
+                    for (int c = 0; c < NC; c++) {
+                        if (sel_h[c] != f)
+                            continue;
+                        const cf turn = std::polar(1.0f, psi[((size_t)c * NSRC + 0) * NI + i]);
+                        for (int j = 0; j < nlag_h[c]; j++) {
+                            const int idx = DTV_HIST + t - (lag_min_h[c] + j);
+                            if (idx >= 0 && idx < NS)
+                                v += turn * g_true[c][(size_t)j * NI + i] * s_true[c][idx];
+                        }
+                        if (c == 1 && i == 5)
+                            v = cf(0.0f, 0.0f);
+                    }
+                    frame3[((size_t)t * NF + f) * NI + i] = enc44(v.real(), v.imag());
+                }
+        float2* d_wa;
+        float *d_ga, *d_psi, *d_ps7, *d_pw7, *d_pr7;
+        float2 *d_rxs7, *d_rss7;
+        CK(cudaMalloc(&d_wa, w_all.size() * sizeof(float2)));
+        CK(cudaMalloc(&d_ga, g_n * sizeof(float)));
+        CK(cudaMalloc(&d_psi, psi.size() * sizeof(float)));
+        CK(cudaMalloc(&d_ps7, NC * NSRC * sizeof(float)));
+        CK(cudaMalloc(&d_pw7, NC * NI * sizeof(float)));
+        CK(cudaMalloc(&d_pr7, NC * NI * sizeof(float)));
+        CK(cudaMalloc(&d_rxs7, (size_t)NC * NSRC * NLAG * NI * sizeof(float2)));
+        CK(cudaMalloc(&d_rss7, (size_t)NC * NSRC * NLAG * sizeof(float2)));
+        CK(cudaMemcpy(d_wa, w_all.data(), w_all.size() * sizeof(float2), cudaMemcpyHostToDevice));
+        CK(cudaMemcpy(d_ga, g_dev.data(), g_n * sizeof(float), cudaMemcpyHostToDevice));
+        CK(cudaMemcpy(d_psi, psi.data(), psi.size() * sizeof(float), cudaMemcpyHostToDevice));
+        for (int c = 0; c < NC; c++) {
+            act[c * NSRC] = 2;
+            act[c * NSRC + 1] = 0;
+        }
+        CK(cudaMemcpy(d_act, act.data(), act.size() * sizeof(int), cudaMemcpyHostToDevice));
+        gnss_cuda::launch_dtv_steer(d_wa, d_ga, d_psi, NC, NSRC, NLAG, d_w, d_g, st);
+        std::vector<float2> w7(w_all.size());
+        std::vector<float> g7(g_n);
+        CK(cudaMemcpy(w7.data(), d_w, w7.size() * sizeof(float2), cudaMemcpyDeviceToHost));
+        CK(cudaMemcpy(g7.data(), d_g, g_n * sizeof(float), cudaMemcpyDeviceToHost));
+        double tmax = 0.0;
+        for (int ck = 0; ck < NC * NSRC; ck++)
+            for (int i = 0; i < NI; i++) {
+                const cf turn = std::polar(1.0f, psi[(size_t)ck * NI + i]);
+                const cf w(w_all[(size_t)ck * NI + i].x, w_all[(size_t)ck * NI + i].y);
+                const cf wt = w * std::conj(turn);
+                tmax = std::max(
+                    tmax,
+                    (double)std::abs(cf(w7[(size_t)ck * NI + i].x, w7[(size_t)ck * NI + i].y) - wt)
+                        / (1e-6 + std::abs(w)));
+                for (int j = 0; j < L16; j++) {
+                    const size_t re = ((size_t)ck * 2 * L16 + j) * NI + i,
+                                 im = ((size_t)ck * 2 * L16 + L16 + j) * NI + i;
+                    const cf g(g_dev[re], g_dev[im]), gt = g * turn;
+                    tmax = std::max(tmax, (double)std::abs(cf(g7[re], g7[im]) - gt)
+                                              / (1e-6 + std::abs(g)));
+                }
+            }
+        check(tmax < 1e-5, "steer: weights and g turned as the CPU turns them", tmax, 0.0);
+        double pres[2][NC];
+        for (int turned = 1; turned >= 0; turned--) {
+            if (!turned) { // the anchors themselves
+                CK(cudaMemcpy(d_w, d_wa, w_all.size() * sizeof(float2), cudaMemcpyDeviceToDevice));
+                CK(cudaMemcpy(d_g, d_ga, g_n * sizeof(float), cudaMemcpyDeviceToDevice));
+            }
+            CK(cudaMemcpy(d_frame, frame3.data(), frame3.size(), cudaMemcpyHostToDevice));
+            CK(cudaMemset(d_ps7, 0, NC * NSRC * sizeof(float)));
+            CK(cudaMemset(d_rxs7, 0, (size_t)NC * NSRC * NLAG * NI * sizeof(float2)));
+            CK(cudaMemset(d_rss7, 0, (size_t)NC * NSRC * NLAG * sizeof(float2)));
+            gnss_cuda::launch_dtv_decode(d_frame, d_sel, d_w, d_act, NC, NSRC, NF, NT, d_x, d_pr7,
+                                         d_s, d_ps7, st);
+            gnss_cuda::launch_dtv_rss(d_s, d_act, d_lags, 0, NC, NSRC, NT, NLAG, d_rss7, st);
+            gnss_cuda::launch_dtv_fused(d_x, d_s, d_g, d_w, d_act, d_lags, 0, NC, NSRC, NT, NLAG,
+                                        d_rxs7, d_ps7, st);
+            gnss_cuda::launch_dtv_encode(d_x, d_sel, d_act, NC, NSRC, NF, NT, d_frame, d_pw7, st);
+            CK(cudaDeviceSynchronize());
+            std::vector<float> pw7(NC * NI);
+            CK(cudaMemcpy(pw7.data(), d_pw7, pw7.size() * sizeof(float), cudaMemcpyDeviceToHost));
+            for (int c = 0; c < NC; c++) {
+                pres[turned][c] = 0.0;
+                for (int i = 0; i < NI; i++)
+                    pres[turned][c] += pw7[c * NI + i];
+            }
+        }
+        for (int c = 0; c < NC; c++) {
+            const double noise = 2.0 * NT * (c == 1 ? NI - 1 : NI);
+            printf(
+                "   channel %d, response turned by up to 1.5 rad: residual / noise %.3f steered, "
+                "%.3f with the anchors\n",
+                c, pres[1][c] / noise, pres[0][c] / noise);
+            check(pres[1][c] < 1.35 * noise, "steered: residual power within 35 % of the noise",
+                  pres[1][c] / noise, 1.0);
+            check(pres[0][c] > 1.5 * pres[1][c], "unsteered: the turn leaves the source behind",
+                  pres[0][c] / pres[1][c], 1.5);
+        }
+        for (void* p : {(void*)d_wa, (void*)d_ga, (void*)d_psi, (void*)d_ps7, (void*)d_pw7,
+                        (void*)d_pr7, (void*)d_rxs7, (void*)d_rss7})
+            cudaFree(p);
     }
 
     printf(fails ? "FAILED (%d)\n" : "all checks passed\n", fails);

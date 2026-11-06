@@ -437,6 +437,27 @@ __global__ void __launch_bounds__(F_THREADS, 1)
         atomicAdd(&ps[c * n_src + k + 1], psum);
 }
 
+// One block per (channel, source); thread i rotates input i's weight and its g at every lag.
+__global__ void dtv_steer_kernel(const float2* __restrict__ w_anchor,
+                                 const float* __restrict__ gs_anchor, const float* __restrict__ psi,
+                                 int l16, float2* __restrict__ w, float* __restrict__ gs) {
+    const size_t ck = blockIdx.x;
+    const int i = threadIdx.x;
+    float sn, cs;
+    sincosf(psi[ck * NI + i], &sn, &cs);
+    const float2 a = w_anchor[ck * NI + i];
+    w[ck * NI + i] = make_float2(a.x * cs + a.y * sn, a.y * cs - a.x * sn); // a e^{-i psi}
+    const float* gr = gs_anchor + ck * 2 * l16 * NI;
+    const float* gi = gr + (size_t)l16 * NI;
+    float* hr = gs + ck * 2 * l16 * NI;
+    float* hi = hr + (size_t)l16 * NI;
+    for (int j = 0; j < l16; j++) {
+        const float re = gr[j * NI + i], im = gi[j * NI + i];
+        hr[j * NI + i] = re * cs - im * sn; // g e^{+i psi}
+        hi[j * NI + i] = im * cs + re * sn;
+    }
+}
+
 __global__ void dtv_encode_kernel(const float* __restrict__ x, const int* __restrict__ sel,
                                   const int* __restrict__ act, int n_src, int n_freq, int n_times,
                                   unsigned char* __restrict__ out, float* __restrict__ pw) {
@@ -635,6 +656,14 @@ void launch_dtv_fused(float* x, float2* s, const float* gs, const float2* w, con
                             rxs, ps);
             break;
     }
+}
+
+void launch_dtv_steer(const float2* w_anchor, const float* gs_anchor, const float* psi, int n_chan,
+                      int n_src, int n_lag, float2* w, float* gs, cudaStream_t stream) {
+    if (n_chan * n_src <= 0)
+        return;
+    dtv_steer_kernel<<<n_chan * n_src, NI, 0, stream>>>(w_anchor, gs_anchor, psi, dtv_l16(n_lag), w,
+                                                        gs);
 }
 
 void launch_dtv_encode(const float* x, const int* sel, const int* act, int n_chan, int n_src,

@@ -62,6 +62,42 @@ bool all_equal_windows(const std::vector<std::int32_t>& lags) {
             return false;
     return true;
 }
+
+/// g[n_lag][DTV_INPUTS] times e^{sign i psi_i}.
+void turn_g(float2* g, int n_lag, const float* psi, float sign) {
+    for (int i = 0; i < DTV_INPUTS; i++) {
+        const float c = std::cos(psi[i]), s = sign * std::sin(psi[i]);
+        for (int j = 0; j < n_lag; j++) {
+            const float2 v = g[(size_t)j * DTV_INPUTS + i];
+            g[(size_t)j * DTV_INPUTS + i] = make_float2(v.x * c - v.y * s, v.y * c + v.x * s);
+        }
+    }
+}
+
+/// The weights and g in use for a turn psi: w e^{-i psi}, g e^{+i psi} (launch_dtv_steer on the
+/// host).
+void turn_wg(float2* w, float2* g, int n_lag, const float* psi) {
+    for (int i = 0; i < DTV_INPUTS; i++) {
+        const float c = std::cos(psi[i]), s = std::sin(psi[i]);
+        w[i] = make_float2(w[i].x * c + w[i].y * s, w[i].y * c - w[i].x * s);
+    }
+    turn_g(g, n_lag, psi, 1.0f);
+}
+
+/// sel[c] for the listed freq_ids; false with the reason if one is not a channel of the command.
+bool select_channels(const nlohmann::json& ids, const std::vector<std::int32_t>& freq_ids,
+                     std::vector<char>& sel, std::string& err) {
+    sel.assign(freq_ids.size(), 0);
+    for (int f : ids.get<std::vector<int>>()) {
+        auto it = std::find(freq_ids.begin(), freq_ids.end(), f);
+        if (it == freq_ids.end()) {
+            err = "freq_id " + std::to_string(f) + " is not one of this command's channels";
+            return false;
+        }
+        sel[(size_t)(it - freq_ids.begin())] = 1;
+    }
+    return true;
+}
 } // namespace
 
 std::shared_ptr<cudaDtvSubtract::Shared> cudaDtvSubtract::shared_for(const std::string& name) {
@@ -155,12 +191,16 @@ cudaDtvSubtract::cudaDtvSubtract(Config& config, const std::string& unique_name,
     const size_t w_bytes = (size_t)n * _n_src * DTV_INPUTS * sizeof(float2);
     const size_t g_bytes = (size_t)n * _n_src * _n_lag * DTV_INPUTS * sizeof(float2);
     const size_t gs_bytes = (size_t)n * _n_src * 2 * dtv_l16(_n_lag) * DTV_INPUTS * sizeof(float);
+    const size_t psi_bytes = (size_t)n * _n_src * DTV_INPUTS * sizeof(float);
     const size_t cov_bytes = (size_t)n * DTV_INPUTS * DTV_INPUTS * sizeof(float2);
     const size_t q_bytes = (size_t)n * DTV_INPUTS * sizeof(float2);
     device.get_gpu_memory(unique_name + "_x", x_bytes);
     void* d_s = device.get_gpu_memory(unique_name + "_s", s_bytes);
     void* d_w = device.get_gpu_memory(unique_name + "_w", w_bytes);
     void* d_g = device.get_gpu_memory(unique_name + "_g", gs_bytes);
+    void* d_w_anchor = device.get_gpu_memory(unique_name + "_w_anchor", w_bytes);
+    void* d_g_anchor = device.get_gpu_memory(unique_name + "_g_anchor", gs_bytes);
+    void* d_psi = device.get_gpu_memory(unique_name + "_psi", psi_bytes);
     void* d_act = device.get_gpu_memory(unique_name + "_act", (size_t)n * _n_src * sizeof(int));
     void* d_sel = device.get_gpu_memory(unique_name + "_sel", (size_t)n * sizeof(int));
     void* d_lags = device.get_gpu_memory(unique_name + "_lags", (size_t)n * 2 * sizeof(int));
@@ -180,6 +220,9 @@ cudaDtvSubtract::cudaDtvSubtract(Config& config, const std::string& unique_name,
         CHECK_CUDA_ERROR(cudaMemset(d_s, 0, s_bytes));
         CHECK_CUDA_ERROR(cudaMemset(d_w, 0, w_bytes));
         CHECK_CUDA_ERROR(cudaMemset(d_g, 0, gs_bytes));
+        CHECK_CUDA_ERROR(cudaMemset(d_w_anchor, 0, w_bytes));
+        CHECK_CUDA_ERROR(cudaMemset(d_g_anchor, 0, gs_bytes));
+        CHECK_CUDA_ERROR(cudaMemset(d_psi, 0, psi_bytes));
         CHECK_CUDA_ERROR(cudaMemset(d_act, 0, (size_t)n * _n_src * sizeof(int)));
         CHECK_CUDA_ERROR(cudaMemset(d_acc_rxs, 0, g_bytes));
         CHECK_CUDA_ERROR(cudaMemset(d_acc_rss, 0, rss_bytes));
@@ -202,6 +245,11 @@ cudaDtvSubtract::cudaDtvSubtract(Config& config, const std::string& unique_name,
         _sh->roll_reset.assign((size_t)n * _n_src, 0);
         _sh->roll_since.assign((size_t)n * _n_src, 0);
         _sh->roll_trip.assign((size_t)n, 0);
+        _sh->steer_ph.assign((size_t)n * _n_src * DTV_INPUTS, 0.0f);
+        _sh->steer_rate.assign((size_t)n * _n_src * DTV_INPUTS, 0.0f);
+        _sh->steer_ref.assign((size_t)n * _n_src, -1);
+        _sh->anchor_seq.assign((size_t)n * _n_src, -1);
+        _sh->start_sel.assign((size_t)n, 1);
         CHECK_CUDA_ERROR(cudaHostAlloc((void**)&_sh->snap_rxs, g_bytes, cudaHostAllocDefault));
         CHECK_CUDA_ERROR(cudaHostAlloc((void**)&_sh->snap_rss, rss_bytes, cudaHostAllocDefault));
         CHECK_CUDA_ERROR(cudaHostAlloc((void**)&_sh->snap_pw, pw_bytes, cudaHostAllocDefault));
@@ -224,6 +272,7 @@ cudaDtvSubtract::cudaDtvSubtract(Config& config, const std::string& unique_name,
                     sizeof(std::int32_t) * 2 * n);
     _lam_stage.assign((size_t)n * 4, 0.0f);
     _w_stage.assign((size_t)n * _n_src * DTV_INPUTS, make_float2(0.0f, 0.0f));
+    _psi_stage.assign((size_t)n * _n_src * DTV_INPUTS, 0.0f);
     CHECK_CUDA_ERROR(cudaEventCreateWithFlags(&_lam_event, cudaEventDisableTiming));
 
     if (instance_num == 0) {
@@ -236,26 +285,45 @@ cudaDtvSubtract::cudaDtvSubtract(Config& config, const std::string& unique_name,
         const int n_src = _n_src;
         auto& rest = kotekan::restServer::instance();
         rest.register_post_callback(
-            unique_name + "/start", [this, sh, n_src, unique_name](
+            unique_name + "/start", [this, sh, n_src, n, unique_name](
                                         kotekan::connectionInstance& conn, nlohmann::json& json) {
                 const int k = json.value("source", 0);
                 const int frames = json.value("frames", 24);
                 if (k < 0 || k >= n_src || frames < 1 || frames > 100000) {
                     conn.send_error("expected {\"source\": 0.." + std::to_string(n_src - 1)
-                                        + ", \"frames\": 1..100000}",
+                                        + ", \"frames\": 1..100000, \"freq_ids\": [...]}",
                                     kotekan::HTTP_RESPONSE::BAD_REQUEST);
                     return;
                 }
+                std::vector<char> sel((size_t)n, 1);
+                std::string err;
+                try {
+                    if (json.contains("freq_ids")
+                        && !select_channels(json["freq_ids"], _freq_ids, sel, err)) {
+                        conn.send_error(err, kotekan::HTTP_RESPONSE::BAD_REQUEST);
+                        return;
+                    }
+                } catch (const std::exception& ex) {
+                    conn.send_error(std::string("freq_ids: ") + ex.what(),
+                                    kotekan::HTTP_RESPONSE::BAD_REQUEST);
+                    return;
+                }
+                const int n_sel = (int)std::count(sel.begin(), sel.end(), 1);
+                const bool subtract = json.value("subtract", false);
                 {
                     std::lock_guard<std::mutex> lk(sh->mtx);
                     sh->start_src = k;
                     sh->start_left = sh->start_total = frames;
+                    sh->start_sel = sel;
+                    sh->start_subtract = subtract;
                 }
-                INFO("cudaDtvSubtract[{:s}]: eigen start of source {:d} over {:d} frames",
-                     unique_name, k, frames);
+                INFO("cudaDtvSubtract[{:s}]: eigen start of source {:d} over {:d} frames on {:d} "
+                     "channels",
+                     unique_name, k, frames, n_sel);
                 nlohmann::json r;
                 r["source"] = k;
                 r["frames"] = frames;
+                r["channels"] = n_sel;
                 conn.send_json_reply(r);
             });
         rest.register_post_callback(
@@ -291,8 +359,10 @@ cudaDtvSubtract::cudaDtvSubtract(Config& config, const std::string& unique_name,
                 {
                     std::lock_guard<std::mutex> lk(sh->mtx);
                     for (int c = 0; c < n; c++)
-                        for (int j = k; j < n_src; j++)
+                        for (int j = k; j < n_src; j++) {
                             sh->act[(size_t)c * n_src + j] = 0;
+                            sh->steer_ref[(size_t)c * n_src + j] = -1;
+                        }
                     sh->start_src = -1;
                     sh->roll_gen++;
                     sh->dirty_w = true;
@@ -307,6 +377,7 @@ cudaDtvSubtract::cudaDtvSubtract(Config& config, const std::string& unique_name,
                 nlohmann::json r;
                 std::lock_guard<std::mutex> lk(sh->mtx);
                 r["frames"] = sh->frames;
+                r["seq"] = sh->seq;
                 r["state_file"] = sh->state_file;
                 r["last_error"] = sh->last_error;
                 r["start_source"] = sh->start_src;
@@ -323,6 +394,13 @@ cudaDtvSubtract::cudaDtvSubtract(Config& config, const std::string& unique_name,
                     e["sources"] = _src[(size_t)c];
                     e["act"] = std::vector<int>(sh->act.begin() + (size_t)c * n_src,
                                                 sh->act.begin() + (size_t)(c + 1) * n_src);
+                    e["anchor_seq"] =
+                        std::vector<long long>(sh->anchor_seq.begin() + (size_t)c * n_src,
+                                               sh->anchor_seq.begin() + (size_t)(c + 1) * n_src);
+                    std::vector<int> steered;
+                    for (int k = 0; k < n_src; k++)
+                        steered.push_back(sh->steer_ref[(size_t)c * n_src + k] >= 0);
+                    e["steered"] = steered;
                     ch.push_back(e);
                 }
                 r["channels"] = ch;
@@ -405,6 +483,97 @@ cudaDtvSubtract::cudaDtvSubtract(Config& config, const std::string& unique_name,
                 }
                 conn.send_json_reply(r);
             });
+        rest.register_post_callback(unique_name + "/steer", [this, sh, n_src, n, unique_name](
+                                                                kotekan::connectionInstance& conn,
+                                                                nlohmann::json& json) {
+            const int k = json.value("source", -1);
+            if (k < 0 || k >= n_src) {
+                conn.send_error("expected {\"source\": 0.." + std::to_string(n_src - 1)
+                                    + ", \"ref_seq\": seq, \"channels\": [{\"freq_id\": f, "
+                                      "\"phase\": [128], \"rate\": [128]}]} or {\"source\": k, "
+                                      "\"stop\": true, \"freq_ids\": [...]}",
+                                kotekan::HTTP_RESPONSE::BAD_REQUEST);
+                return;
+            }
+            std::string err;
+            std::vector<char> sel;
+            std::vector<size_t> chans;
+            std::vector<std::vector<float>> ph, rate;
+            long long ref = -1;
+            const bool stop = json.value("stop", false);
+            try {
+                if (stop) {
+                    if (json.contains("freq_ids"))
+                        select_channels(json["freq_ids"], _freq_ids, sel, err);
+                } else {
+                    ref = json.at("ref_seq").get<long long>();
+                    for (const auto& e : json.at("channels")) {
+                        const int f = e.at("freq_id").get<int>();
+                        auto it = std::find(_freq_ids.begin(), _freq_ids.end(), f);
+                        if (it == _freq_ids.end() || k >= _src[(size_t)(it - _freq_ids.begin())]) {
+                            err = "freq_id " + std::to_string(f)
+                                  + " is not a channel of this "
+                                    "command with source slot "
+                                  + std::to_string(k);
+                            break;
+                        }
+                        chans.push_back((size_t)(it - _freq_ids.begin()));
+                        ph.push_back(e.at("phase").get<std::vector<float>>());
+                        rate.push_back(e.at("rate").get<std::vector<float>>());
+                        bool ok =
+                            ph.back().size() == DTV_INPUTS && rate.back().size() == DTV_INPUTS;
+                        for (size_t i = 0; ok && i < DTV_INPUTS; i++)
+                            ok = std::isfinite(ph.back()[i]) && std::isfinite(rate.back()[i]);
+                        if (!ok) {
+                            err = "freq_id " + std::to_string(f) + ": phase and rate must be "
+                                  + std::to_string(DTV_INPUTS) + " finite numbers each";
+                            break;
+                        }
+                    }
+                }
+            } catch (const std::exception& ex) {
+                err = std::string("bad /steer request: ") + ex.what();
+            }
+            if (!err.empty()) {
+                conn.send_error(err, kotekan::HTTP_RESPONSE::BAD_REQUEST);
+                return;
+            }
+            nlohmann::json r;
+            r["source"] = k;
+            {
+                std::lock_guard<std::mutex> lk(sh->mtx);
+                if (stop) {
+                    steer_bake(k, sel);
+                    r["stopped"] = true;
+                } else {
+                    for (size_t q = 0; q < chans.size(); q++) {
+                        const size_t ck = chans[q] * n_src + k;
+                        const bool fresh = sh->steer_ref[ck] < 0;
+                        std::copy(ph[q].begin(), ph[q].end(),
+                                  sh->steer_ph.begin() + ck * DTV_INPUTS);
+                        std::copy(rate[q].begin(), rate[q].end(),
+                                  sh->steer_rate.begin() + ck * DTV_INPUTS);
+                        sh->steer_ref[ck] = ref;
+                        // the rolling fit has followed the response so far: the g in use stays as
+                        // it is, and only the weights turn to the emitter
+                        float psi[DTV_INPUTS];
+                        if (fresh && steer_psi(ck, sh->seq, psi)) {
+                            turn_g(&sh->g[ck * _n_lag * DTV_INPUTS], _n_lag, psi, -1.0f);
+                            sh->dirty_g = true;
+                        }
+                    }
+                    r["channels"] = chans.size();
+                    r["ref_seq"] = ref;
+                }
+            }
+            if (stop)
+                INFO("cudaDtvSubtract[{:s}]: steering of source {:d} stopped", unique_name, k);
+            else
+                DEBUG("cudaDtvSubtract[{:s}]: steering source {:d} on {:d} channels from seq "
+                      "{:d}",
+                      unique_name, k, chans.size(), ref);
+            conn.send_json_reply(r);
+        });
         _sh->roll_thread = std::thread(&cudaDtvSubtract::roll_main, this);
     }
 
@@ -438,6 +607,30 @@ cudaDtvSubtract::~cudaDtvSubtract() {
 void cudaDtvSubtract::roll_reset_all() {
     std::fill(_sh->roll_reset.begin(), _sh->roll_reset.end(), 1);
     _sh->roll_gen++;
+}
+
+bool cudaDtvSubtract::steer_psi(size_t ck, long long seq, float* out) const {
+    const long long ref = _sh->steer_ref[ck];
+    if (ref < 0)
+        return false;
+    const double dt = (double)(seq - ref) * HOP_S;
+    for (size_t i = 0; i < DTV_INPUTS; i++)
+        out[i] = (float)(_sh->steer_ph[ck * DTV_INPUTS + i]
+                         + (double)_sh->steer_rate[ck * DTV_INPUTS + i] * dt);
+    return true;
+}
+
+void cudaDtvSubtract::steer_bake(int k, const std::vector<char>& sel) {
+    float psi[DTV_INPUTS];
+    for (size_t c = 0; c < _local_channels.size(); c++) {
+        const size_t ck = c * _n_src + k;
+        if ((!sel.empty() && !sel[c]) || !steer_psi(ck, _sh->seq, psi))
+            continue;
+        turn_wg(&_sh->w[ck * DTV_INPUTS], &_sh->g[ck * _n_lag * DTV_INPUTS], _n_lag, psi);
+        _sh->steer_ref[ck] = -1;
+        _sh->anchor_seq[ck] = _sh->seq;
+        _sh->dirty_w = _sh->dirty_g = true;
+    }
 }
 
 nlohmann::json cudaDtvSubtract::roll_status() const {
@@ -486,6 +679,7 @@ void cudaDtvSubtract::roll_main() {
     std::vector<int> n_lag_ch((size_t)n);
     for (int c = 0; c < n; c++)
         n_lag_ch[(size_t)c] = _lags[(size_t)2 * c + 1];
+    float psi[DTV_INPUTS];
     DtvRollSnapshot s;
     s.n_chan = n;
     s.n_src = _n_src;
@@ -551,6 +745,9 @@ void cudaDtvSubtract::roll_main() {
                 if (!o.upd[ck] || _sh->act[ck] != 2)
                     continue;
                 std::memcpy(&_sh->g[ck * blk], &g_new[ck * blk * 2], blk * sizeof(float2));
+                // fitted to the turned weights of the snapshot: kept as the anchor's
+                if (steer_psi(ck, _sh->snap_seq, psi))
+                    turn_g(&_sh->g[ck * blk], _n_lag, psi, -1.0f);
                 _sh->dirty_g = true;
             }
         }
@@ -583,6 +780,10 @@ bool cudaDtvSubtract::save_state_file(const std::string& path, std::string& err)
         w = _sh->w;
         g = _sh->g;
         act = _sh->act;
+        float psi[DTV_INPUTS];
+        for (size_t ck = 0; ck < act.size(); ck++)
+            if (steer_psi(ck, _sh->seq, psi))
+                turn_wg(&w[ck * DTV_INPUTS], &g[ck * _n_lag * DTV_INPUTS], _n_lag, psi);
     }
     const std::string tmp = path + ".tmp";
     {
@@ -659,6 +860,7 @@ bool cudaDtvSubtract::load_state_file(const std::string& path, std::string& err)
     std::vector<float2> g((size_t)n * _n_src * _n_lag * DTV_INPUTS, make_float2(0.0f, 0.0f));
     std::vector<int> act((size_t)n * _n_src, 0);
     std::vector<float2> rw((size_t)h.n_src * DTV_INPUTS), rg;
+    std::vector<char> loaded((size_t)n, 0);
     int matched = 0;
     for (int r = 0; r < h.n_chan; r++) {
         int freq_id, n_set, subtract, lo = h.lag_min, nl = h.n_lag;
@@ -699,6 +901,7 @@ bool cudaDtvSubtract::load_state_file(const std::string& path, std::string& err)
                 return false;
             }
             matched++;
+            loaded[(size_t)c] = 1;
             const int ks = std::min({n_set, h.n_src, _src[(size_t)c]});
             for (int k = 0; k < ks; k++) {
                 std::memcpy(&w[((size_t)c * _n_src + k) * DTV_INPUTS], &rw[(size_t)k * DTV_INPUTS],
@@ -735,6 +938,11 @@ bool cudaDtvSubtract::load_state_file(const std::string& path, std::string& err)
     }
     _sh->roll_trip.assign((size_t)n, 0);
     _sh->roll_gen++;
+    for (int c = 0; c < n; c++)
+        for (int k = 0; loaded[(size_t)c] && k < _n_src; k++) {
+            _sh->steer_ref[(size_t)c * _n_src + k] = -1;
+            _sh->anchor_seq[(size_t)c * _n_src + k] = _sh->seq;
+        }
     _sh->w.swap(w);
     _sh->g.swap(g);
     _sh->act.swap(act);
@@ -798,6 +1006,10 @@ cudaEvent_t cudaDtvSubtract::execute(cudaPipelineState& pipestate,
     auto* d_s = (float2*)device.get_gpu_memory(unique_name + "_s", s_bytes);
     auto* d_w = (float2*)device.get_gpu_memory(unique_name + "_w", w_bytes);
     auto* d_g = (float*)device.get_gpu_memory(unique_name + "_g", gs_bytes);
+    auto* d_w_anchor = (float2*)device.get_gpu_memory(unique_name + "_w_anchor", w_bytes);
+    auto* d_g_anchor = (float*)device.get_gpu_memory(unique_name + "_g_anchor", gs_bytes);
+    auto* d_psi =
+        (float*)device.get_gpu_memory(unique_name + "_psi", _psi_stage.size() * sizeof(float));
     auto* d_act = (int*)device.get_gpu_memory(unique_name + "_act", act_bytes);
     auto* d_sel = (const int*)device.get_gpu_memory(unique_name + "_sel", (size_t)n * sizeof(int));
     auto* d_lags =
@@ -836,12 +1048,14 @@ cudaEvent_t cudaDtvSubtract::execute(cudaPipelineState& pipestate,
     // State changes from the REST side, under the shared lock; the uploads are pageable copies,
     // which return once the bytes are staged.
     int start_src = -1, start_total = 0;
-    bool do_cov = false, do_finish = false;
+    bool do_cov = false, do_finish = false, do_steer = false;
     bool roll = false, roll_ready = false;
     bool src_on[DTV_MAX_SRC]; // any channel observing source k
+    std::vector<char> start_sel;
     DtvDecay lam = {};
     {
         std::lock_guard<std::mutex> lk(_sh->mtx);
+        _sh->seq = seq0;
         // a finished snapshot copy goes to the refit thread
         if (_sh->roll_copying) {
             const cudaError_t e = cudaEventQuery(_sh->snap_event);
@@ -852,30 +1066,7 @@ cudaEvent_t cudaDtvSubtract::execute(cudaPipelineState& pipestate,
                 CHECK_CUDA_ERROR(e);
             }
         }
-        if (_sh->dirty_w || _sh->dirty_g) {
-            if (_sh->dirty_w)
-                CHECK_CUDA_ERROR(
-                    cudaMemcpyAsync(d_w, _sh->w.data(), w_bytes, cudaMemcpyHostToDevice, stream));
-            // g de-interleaved as the fused pass takes it, zero where a source does not subtract
-            const size_t blk = (size_t)_n_lag * DTV_INPUTS, l16_blk = dtv_l16(_n_lag) * DTV_INPUTS;
-            _g_upload.assign(gs_bytes / sizeof(float), 0.0f);
-            for (size_t ck = 0; ck < _sh->act.size(); ck++) {
-                if (_sh->act[ck] < 2)
-                    continue;
-                const float2* g = _sh->g.data() + ck * blk;
-                float* re = _g_upload.data() + ck * 2 * l16_blk;
-                float* im = re + l16_blk;
-                for (size_t q = 0; q < blk; q++) {
-                    re[q] = g[q].x;
-                    im[q] = g[q].y;
-                }
-            }
-            CHECK_CUDA_ERROR(
-                cudaMemcpyAsync(d_g, _g_upload.data(), gs_bytes, cudaMemcpyHostToDevice, stream));
-            CHECK_CUDA_ERROR(
-                cudaMemcpyAsync(d_act, _sh->act.data(), act_bytes, cudaMemcpyHostToDevice, stream));
-            _sh->dirty_w = _sh->dirty_g = false;
-        }
+        const size_t blk = (size_t)_n_lag * DTV_INPUTS;
         if (_sh->start_src >= 0 && _sh->start_left > 0) {
             start_src = _sh->start_src;
             do_cov = true;
@@ -888,19 +1079,74 @@ cudaEvent_t cudaDtvSubtract::execute(cudaPipelineState& pipestate,
                 do_finish = true;
                 start_total = _sh->start_total;
                 _sh->start_src = -1;
+                start_sel = _sh->start_sel;
                 for (int c = 0; c < n; c++) {
-                    if (start_src >= _src[(size_t)c])
+                    const size_t ck = (size_t)c * _n_src + start_src;
+                    if (start_src >= _src[(size_t)c] || !start_sel[(size_t)c]) {
+                        start_sel[(size_t)c] = 0;
                         continue;
-                    _sh->act[(size_t)c * _n_src + start_src] =
-                        std::max(_sh->act[(size_t)c * _n_src + start_src], 1);
+                    }
+                    // the g of a subtracting source does not fit its new weights: it subtracts
+                    // nothing until the rolling fit or a load gives it one
+                    if (_sh->act[ck] == 2 || _sh->start_subtract) {
+                        std::fill(_sh->g.begin() + ck * blk, _sh->g.begin() + (ck + 1) * blk,
+                                  make_float2(0.0f, 0.0f));
+                        _sh->act[ck] = 2;
+                    }
+                    _sh->act[ck] = std::max(_sh->act[ck], 1);
+                    _sh->steer_ref[ck] = -1;
+                    _sh->anchor_seq[ck] = seq0;
                     for (int k = start_src; k < _n_src; k++)
                         _sh->roll_reset[(size_t)c * _n_src + k] = 1;
                 }
                 _sh->roll_gen++;
-                CHECK_CUDA_ERROR(cudaMemcpyAsync(d_act, _sh->act.data(), act_bytes,
-                                                 cudaMemcpyHostToDevice, stream));
+                _sh->dirty_g = true; // uploads act with g
             }
         }
+        const bool upload = _sh->dirty_w || _sh->dirty_g;
+        if (upload) {
+            if (_sh->dirty_w)
+                CHECK_CUDA_ERROR(cudaMemcpyAsync(d_w_anchor, _sh->w.data(), w_bytes,
+                                                 cudaMemcpyHostToDevice, stream));
+            // g de-interleaved as the fused pass takes it, zero where a source does not subtract
+            const size_t l16_blk = dtv_l16(_n_lag) * DTV_INPUTS;
+            _g_upload.assign(gs_bytes / sizeof(float), 0.0f);
+            for (size_t ck = 0; ck < _sh->act.size(); ck++) {
+                if (_sh->act[ck] < 2)
+                    continue;
+                const float2* g = _sh->g.data() + ck * blk;
+                float* re = _g_upload.data() + ck * 2 * l16_blk;
+                float* im = re + l16_blk;
+                for (size_t q = 0; q < blk; q++) {
+                    re[q] = g[q].x;
+                    im[q] = g[q].y;
+                }
+            }
+            CHECK_CUDA_ERROR(cudaMemcpyAsync(d_g_anchor, _g_upload.data(), gs_bytes,
+                                             cudaMemcpyHostToDevice, stream));
+            CHECK_CUDA_ERROR(
+                cudaMemcpyAsync(d_act, _sh->act.data(), act_bytes, cudaMemcpyHostToDevice, stream));
+            _sh->dirty_w = _sh->dirty_g = false;
+        }
+        // the turn of each steered source at the middle of the frame (zero elsewhere); the weights
+        // and g in use follow from the anchors whenever either changes
+        bool steering = false;
+        for (size_t ck = 0; ck < _sh->steer_ref.size(); ck++)
+            if (steer_psi(ck, seq0 + _num_times / 2, &_psi_stage[ck * DTV_INPUTS]))
+                steering = true;
+        if (steering) {
+            for (size_t ck = 0; ck < _sh->steer_ref.size(); ck++)
+                if (_sh->steer_ref[ck] < 0)
+                    std::fill(_psi_stage.begin() + ck * DTV_INPUTS,
+                              _psi_stage.begin() + (ck + 1) * DTV_INPUTS, 0.0f);
+        } else if (upload) {
+            std::fill(_psi_stage.begin(), _psi_stage.end(), 0.0f);
+        }
+        do_steer = steering || upload;
+        if (do_steer)
+            CHECK_CUDA_ERROR(cudaMemcpyAsync(d_psi, _psi_stage.data(),
+                                             _psi_stage.size() * sizeof(float),
+                                             cudaMemcpyHostToDevice, stream));
         for (int k = 0; k < _n_src; k++) {
             src_on[k] = false;
             for (int c = 0; c < n; c++)
@@ -941,6 +1187,8 @@ cudaEvent_t cudaDtvSubtract::execute(cudaPipelineState& pipestate,
         cudaMemsetAsync(d_out + _layout.off_ps, 0, _layout.bytes - _layout.off_ps, stream));
 
     float* d_ps = (float*)(d_out + _layout.off_ps);
+    if (do_steer)
+        launch_dtv_steer(d_w_anchor, d_g_anchor, d_psi, n, _n_src, _n_lag, d_w, d_g, stream);
     launch_dtv_shift(d_s, n, _n_src, _num_times, stream);
     launch_dtv_decode(d_frame, d_sel, d_w, d_act, n, _n_src, _num_local_freq, _num_times, d_x,
                       (float*)(d_out + _layout.off_pw_raw), d_s, d_ps, stream);
@@ -951,10 +1199,16 @@ cudaEvent_t cudaDtvSubtract::execute(cudaPipelineState& pipestate,
                 launch_dtv_pick_ref(d_cov, n, d_ref, stream);
                 launch_beam_eig(d_cov, n, start_total * _num_times, 0, _eig_iters, d_q1, d_q2,
                                 d_wtmp, d_pwtmp, d_lam, stream, d_ref);
-                CHECK_CUDA_ERROR(cudaMemcpy2DAsync(
-                    d_w + (size_t)k * DTV_INPUTS, (size_t)_n_src * DTV_INPUTS * sizeof(float2),
-                    d_wtmp, DTV_INPUTS * sizeof(float2), DTV_INPUTS * sizeof(float2), n,
-                    cudaMemcpyDeviceToDevice, stream));
+                // the new weights, unturned, on the channels the start re-points
+                for (int c = 0; c < n; c++) {
+                    if (!start_sel[(size_t)c])
+                        continue;
+                    const size_t off = ((size_t)c * _n_src + k) * DTV_INPUTS;
+                    for (float2* dst : {d_w_anchor + off, d_w + off})
+                        CHECK_CUDA_ERROR(cudaMemcpyAsync(dst, d_wtmp + (size_t)c * DTV_INPUTS,
+                                                         DTV_INPUTS * sizeof(float2),
+                                                         cudaMemcpyDeviceToDevice, stream));
+                }
                 // source k's timestream again, with the new weights
                 CHECK_CUDA_ERROR(cudaMemset2DAsync(d_ps + k, (size_t)_n_src * sizeof(float), 0,
                                                    sizeof(float), n, stream));
@@ -962,8 +1216,8 @@ cudaEvent_t cudaDtvSubtract::execute(cudaPipelineState& pipestate,
                 CHECK_CUDA_ERROR(cudaMemcpyAsync(_lam_stage.data(), d_lam,
                                                  _lam_stage.size() * sizeof(float),
                                                  cudaMemcpyDeviceToHost, stream));
-                CHECK_CUDA_ERROR(
-                    cudaMemcpyAsync(_w_stage.data(), d_w, w_bytes, cudaMemcpyDeviceToHost, stream));
+                CHECK_CUDA_ERROR(cudaMemcpyAsync(_w_stage.data(), d_w_anchor, w_bytes,
+                                                 cudaMemcpyDeviceToHost, stream));
                 CHECK_CUDA_ERROR(cudaEventRecord(_lam_event, stream));
                 _lam_pending = true;
                 _lam_src = k;
@@ -1000,6 +1254,7 @@ cudaEvent_t cudaDtvSubtract::execute(cudaPipelineState& pipestate,
             _sh->snap_since = _sh->roll_since;
             _sh->snap_gen = _sh->roll_gen;
             _sh->snap_frame = _sh->frames;
+            _sh->snap_seq = seq0;
             _sh->roll_copying = true;
             _sh->roll_frames = 0;
         }

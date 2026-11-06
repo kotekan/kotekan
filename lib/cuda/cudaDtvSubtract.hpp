@@ -38,10 +38,12 @@
  * TF32 tensor cores (relative error ~4e-4, ~100 times below the re-quantisation's).
  *
  * The weights w come from an eigen start on request (POST `<unique_name>/start`, {"source": k,
- * "frames": n}: the covariance of the residual entering source k over n frames, its whitened
- * top eigenvector referenced to the strongest input) or from a state file; the impulse
- * responses g come from a state file written by scripts/gnss/dtv_state.py from the lag
- * correlations this command writes (POST `<unique_name>/load`, {"file": path}; also
+ * "frames": n, "freq_ids": [...], "subtract": bool}: the covariance of the residual entering source
+ * k over n frames, its whitened top eigenvector referenced to the strongest input, on the listed
+ * channels or every channel; a source that was subtracting, or every re-pointed source with
+ * "subtract", subtracts with a zero g until the rolling fit refits it for the new weights) or from
+ * a state file; the impulse responses g come from a state file written by scripts/gnss/dtv_state.py
+ * from the lag correlations this command writes (POST `<unique_name>/load`, {"file": path}; also
  * `dtv_state_file` at start). Without weights a channel passes through untouched; with weights
  * but no g it is observed (correlations written, nothing subtracted). POST `/clear`
  * ({"source": k}) drops sources k and above; GET `/status` reports the state.
@@ -56,6 +58,18 @@
  * `<unique_name>/rolling` changes the settings ({"enable": bool, "tau_s": [s per source],
  * "interval": frames, "freeze": [0/1 per source], "min_explained", "max_power", "reset": true,
  * "save": path}; "save" writes the state in use as a state file).
+ *
+ * Steering (POST `<unique_name>/steer`): for an emitter that moves across the sky (a satellite), a
+ * host gives a source's channels a per-input phase track, {"source": k, "ref_seq": seq, "channels":
+ * [{"freq_id": f, "phase": [128], "rate": [128]}]}: input i's response to the emitter has turned by
+ * psi_i = phase_i + rate_i (t - ref_seq) radians (rate per second) since the weights were set. Each
+ * frame the stage uses w e^{-i psi} and g e^{+i psi} (launch_dtv_steer), so the timestream keeps
+ * its gain and the rolling sums carry on; refits are turned back by psi before they are kept, and a
+ * saved state carries the turn at the time of the save. When a source starts steering its g in use
+ * stays as it is (the rolling fit has followed the response) and its weights turn to the emitter.
+ * {"source": k, "stop": true, "freq_ids":
+ * [...]} keeps the current turn as the new weights and stops. An eigen start or a load of a channel
+ * stops its steering.
  *
  * The output is an NDArrayBuffer `dtv_out_name` (on the device `<dtv_out_name>_buffer`) for
  * cudaOutputData: per frame the header (the int64 seq0 at byte 0 is FrameWindowGate's clock),
@@ -139,6 +153,17 @@ private:
         long roll_updates = 0, roll_holds = 0, roll_trips = 0, roll_bad = 0, roll_last = -1;
         double roll_ms = 0.0;
         gnss_cuda::DtvRollOutcome roll_out; ///< the last refit
+
+        // steering: input i's response to the emitter of (c, k) has turned by steer_ph + steer_rate
+        // (t - steer_ref) radians since w and g above were set
+        std::vector<float> steer_ph;       ///< [n_chan][n_src][DTV_INPUTS] at steer_ref
+        std::vector<float> steer_rate;     ///< [n_chan][n_src][DTV_INPUTS] per second
+        std::vector<long long> steer_ref;  ///< [n_chan][n_src] seq of steer_ph; -1: not steered
+        std::vector<long long> anchor_seq; ///< [n_chan][n_src] seq of the frame w was set at
+        std::vector<char> start_sel;       ///< [n_chan] the channels the eigen start re-points
+        bool start_subtract = false;       ///< the re-pointed sources subtract once refitted
+        long long seq = -1;                ///< seq0 of the latest frame
+        long long snap_seq = -1;           ///< seq0 of the frame of the last snapshot
     };
     static std::shared_ptr<Shared> shared_for(const std::string& name);
 
@@ -150,6 +175,12 @@ private:
     void roll_main();
     /// Mark the sums of every source of every channel to restart (caller holds the lock).
     void roll_reset_all();
+    /// psi of (channel, source) ck at seq into out[DTV_INPUTS]; false if ck is not steered (caller
+    /// holds the lock).
+    bool steer_psi(size_t ck, long long seq, float* out) const;
+    /// Keep the turn of the steered (c, k) at the latest frame as their w and g, and stop steering
+    /// them; every channel when sel is empty (caller holds the lock).
+    void steer_bake(int k, const std::vector<char>& sel);
     /// The rolling fit's settings and last refit, for /status and /rolling (caller holds the lock).
     nlohmann::json roll_status() const;
 
@@ -175,6 +206,7 @@ private:
     std::vector<float2> _w_stage;  ///< the device weights after an eigen start, read back
     cudaEvent_t _lam_event = nullptr;
     std::vector<float> _g_upload; ///< g as the device takes it (de-interleaved): zero where act < 2
+    std::vector<float> _psi_stage; ///< psi of every (channel, source, input) for the frame
     bool _lam_pending = false;
     int _lam_src = -1;
     bool _checked_freqs = false;
