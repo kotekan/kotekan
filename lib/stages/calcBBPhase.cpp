@@ -1,11 +1,12 @@
-#include "Config.hpp"          // for Config
-#include "Stage.hpp"           // for Stage
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
-#include "Telescope.hpp"       // for Telescope
-#include "buffer.hpp"          // for Buffer
-#include "bufferContainer.hpp" // for bufferContainer
-#include "chordMetadata.hpp"   // for chordMetadata, get_chord_metadata
-#include "kotekanLogging.hpp"  // for DEBUG, FATAL_ERROR
+#include "Config.hpp"                   // for Config
+#include "Stage.hpp"                    // for Stage
+#include "StageFactory.hpp"             // for REGISTER_KOTEKAN_STAGE
+#include "Telescope.hpp"                // for Telescope
+#include "UpchannelizationSchedule.hpp" // for wait_for_coarse_freq
+#include "buffer.hpp"                   // for Buffer
+#include "bufferContainer.hpp"          // for bufferContainer
+#include "chordMetadata.hpp"            // for chordMetadata, get_chord_metadata
+#include "kotekanLogging.hpp"           // for DEBUG, FATAL_ERROR
 
 #include "fmt.hpp" // for compile_string_to_view, format
 
@@ -35,6 +36,7 @@
  * @buffer bf_mask           The bad feed mask, [Tbf=1][P][D], int8, 1 = good
  * @buffer bb_phase          The phases, [Tbb=1][F][P][B][D][C], int8
  * @buffer bb_shift          The shift, [F][P][B], int32; written once
+ * @buffers metadata_sources The buffers used to find out the frequency channels handled by this GPU
  *
  * @conf bb_phase_lifetime_in_samples Int. How many FPGA samples one phase matrix covers.
  */
@@ -46,9 +48,6 @@ class calcBBPhase : public kotekan::Stage {
     const int num_frequencies = config.get<int>(unique_name, "num_frequencies");
     const int num_times = config.get<int>(unique_name, "num_times");
     const int num_elements = num_dishes * num_polarizations;
-
-    const std::vector<int> frequency_channels =
-        config.get<std::vector<int>>(unique_name, "frequency_channels");
 
     // Baseband beamformer setup
     const int bb_num_beams = config.get<int>(unique_name, "bb_num_beams");
@@ -73,6 +72,7 @@ class calcBBPhase : public kotekan::Stage {
     Buffer* const bf_mask_buffer;
     Buffer* const A_buffer;
     Buffer* const s_buffer;
+    const std::vector<Buffer*> metadata_sources;
 
 public:
     calcBBPhase(kotekan::Config& config, const std::string& unique_name,
@@ -83,17 +83,20 @@ public:
               }),
         bb_beam_positions_buffer(get_buffer("bb_beam_positions")),
         bf_mask_buffer(get_buffer("bf_mask")), A_buffer(get_buffer("bb_phase")),
-        s_buffer(get_buffer("bb_shift"))
+        s_buffer(get_buffer("bb_shift")), metadata_sources(get_buffer_or_array("metadata_source"))
     //
     {
         assert(bb_beam_positions_buffer);
         assert(bf_mask_buffer);
         assert(A_buffer);
         assert(s_buffer);
+        assert(num_frequencies > 0);
         bb_beam_positions_buffer->register_consumer(unique_name);
         bf_mask_buffer->register_consumer(unique_name);
         A_buffer->register_producer(unique_name);
         s_buffer->register_producer(unique_name);
+        for (Buffer* const metadata_source : metadata_sources)
+            metadata_source->register_consumer(unique_name);
 
         bb_beam_positions_buffer->require_frame_desc(kotekan::NDArray<float, 2>::describe(
             "bb_beam_positions", {bb_num_beams, 2}, {"B", "X/Y"}, {1, 1}));
@@ -117,9 +120,6 @@ public:
     virtual ~calcBBPhase() {}
 
     void main_thread() override {
-        if (stop_thread)
-            return;
-
         // Telescope
         const Telescope& telescope = Telescope::instance();
 
@@ -135,14 +135,25 @@ public:
         const int bb_shift = 7 + int(std::floor(-std::log2(bb_gain)));
         const float bb_amplitude = 127.5f * float(bb_gain * std::exp2(bb_shift - 7));
 
-        // Get frequencies
+        // The coarse frequency channels handled by this GPU. These are local to
+        // a GPU and thus cannot come from the configuration, which is the same
+        // for every GPU.
+        const auto frequency_channels = wait_for_coarse_freq(metadata_sources, unique_name);
+        if (!frequency_channels)
+            return;
+
+        if (size_t(num_frequencies) != frequency_channels->size())
+            FATAL_ERROR(
+                "Option num_frequencies ({:d}) must equal number of frequencies per GPU ({:d})",
+                num_frequencies, frequency_channels->size());
+
         std::vector<float> frequencies(num_frequencies); // [Hz]
         for (int freq = 0; freq < num_frequencies; ++freq) {
-            const freq_id_t channel = static_cast<freq_id_t>(frequency_channels.at(freq));
+            const freq_id_t channel = static_cast<freq_id_t>(frequency_channels->at(freq));
             frequencies.at(freq) = telescope.to_freq_MHz(channel) * 1.0e+6f;
         }
-        const std::vector<int> freq_upchan_factor(frequency_channels.size(), 1);
-        const std::vector<int> freq_upchan_index(frequency_channels.size(), 0);
+        const std::vector<int> freq_upchan_factor(frequency_channels->size(), 1);
+        const std::vector<int> freq_upchan_index(frequency_channels->size(), 0);
 
         // Check buffer sizes
         assert(std::ptrdiff_t(bb_beam_positions_buffer->frame_size)
@@ -209,7 +220,7 @@ public:
             A_meta->set_from_frame_desc(A_buffer->get_frame_desc<kotekan::GenericNDArray>());
             A_meta->set_fpga_seq_num(seq_num);
             A_meta->set_time_downsampling_fpga(bb_phase_lifetime_in_samples);
-            A_meta->set_coarse_freq(frequency_channels);
+            A_meta->set_coarse_freq(*frequency_channels);
             A_meta->set_freq_upchan_factor(freq_upchan_factor);
             A_meta->set_freq_upchan_index(freq_upchan_index);
             A_meta->check_frame_desc(A_buffer->get_frame_desc<kotekan::GenericNDArray>());
@@ -275,7 +286,7 @@ public:
                 s_meta->set_fpga_seq_num(seq_num);
                 s_meta->set_time_downsampling_fpga(
                     bb_beam_positions_meta->get_time_downsampling_fpga());
-                s_meta->set_coarse_freq(frequency_channels);
+                s_meta->set_coarse_freq(*frequency_channels);
                 s_meta->set_freq_upchan_factor(freq_upchan_factor);
                 s_meta->set_freq_upchan_index(freq_upchan_index);
                 s_meta->check_frame_desc(s_buffer->get_frame_desc<kotekan::GenericNDArray>());
