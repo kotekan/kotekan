@@ -1430,6 +1430,18 @@ and the cube leg's unit. Until this is understood, stop the broker and gather by
 
 ## Open — the fix is in the NODE BINARY (queue for the next cycle)
 
+### #228 — gw_1202 lanes are held for up to elem_dir_hold_s = 1500 s, a GNSS-sized hold on LEO satellites: held GuoWang lanes fill the lane budget (2026-11-06, KV: "hold off on the lane hold fix, please file as a todo")
+**What:** a slot whose row falls below elem_dir_coh_min keeps publishing its last coherent direction, steered with
+the current geometry, for elem_dir_hold_s (GnssGpuRecordAssemble). The value is 1500 s on every assembler. That
+suits a MEO satellite whose bright pass takes the tracker's lock; a GuoWang satellite crosses the beam in seconds
+and sets minutes later.
+**Evidence:** cx27/gnss0 lane dump, 10:14:13Z 11-06, 1200.000 MHz: k 39 of k_lanes_max 40, with gw_1202 lanes held
+5-1058 s among them; null depth there 5.7 dB. Each lane costs 1/n of the sky. One channel only; no measurement yet
+that the held lanes cost depth on a satellite in the beam.
+**Proposal:** a per-chain hold (seconds for gw_1202), or drop a held lane once its satellite is far from boresight.
+Buys lane budget, not depth: tracked GuoWang lanes are rebuilt every frame (11-06 dumps: coh 0.68-0.76, held 0 s).
+**Status:** parked by KV 11-06; ~/gnss/builds/cube-vm-move/lanedump_read.py reads the dumps.
+
 ### #227 — GuoWang 1202.025 MHz lanes: track the constellation's ranging code for beam mapping (2026-11-03, KV: "think about using these signals for beam mapping ... collate a database of code <-> sat values ... record their second ms of data chips")
 **What:** the GuoWang downlink at 1202.025 MHz is a GNSS-style ranging signal (dg3_report_20261102.md section 7):
 BPSK at 2.046 Mcps, 2 ms frames of 4092 chips, the first millisecond a fixed 2046-chip code (B1I's G1 from phase
