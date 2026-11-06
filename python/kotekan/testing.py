@@ -110,7 +110,7 @@ def validate_vis(vis_raw, num_elements, ftime, ctime, freq):
 
     # Construct vis array
     vis = vis_raw.data["vis"]
-    valid = vis_raw.valid_frames.astype(np.bool)
+    valid = vis_raw.valid_frames.astype(bool)
 
     def compare_valid(clause):
         return ~valid.T | clause.T
@@ -147,7 +147,7 @@ def validate_eigenvectors(vis_raw, num_time, num_freq, num_ev, num_elements):
     Tests the structure of eigenvalues, eigenvectors, erms.
     """
 
-    valid = vis_raw.valid_frames.astype(np.bool)
+    valid = vis_raw.valid_frames.astype(bool)
 
     def compare_valid(clause):
         return ~valid.T | clause.T
@@ -388,7 +388,7 @@ class SharedMemValidationTest:
             ID of the reader that gave us visraw.
         """
         now = time.time()
-        times_valid = visraw.time[visraw.valid_frames.astype(np.bool)]
+        times_valid = visraw.time[visraw.valid_frames.astype(bool)]
         assert_equal(visraw.time.shape[1], visraw.num_freq)
         assert_equal(visraw.time.shape[0], self.view_sizes[r])
 
@@ -434,7 +434,7 @@ class SharedMemValidationTest:
         """Check for missing frames and if this was to be expected."""
 
         now = time.time()
-        valid = visraw.valid_frames.astype(np.bool)
+        valid = visraw.valid_frames.astype(bool)
         invalid_timeslots = np.sum(~valid) // visraw.num_freq
         times_valid = np.ma.masked_where(~valid, visraw.time, copy=False)
         times = np.unique(times_valid)
