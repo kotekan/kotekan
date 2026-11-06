@@ -244,6 +244,11 @@ common:
         - gal_e5a:1160.0-1166.2
         - bds_b2a:1160.0-1166.2
         - gps_l5:1160.0-1166.2
+    # 2026-11-06: GuoWang's lanes over its whole 1202.025 MHz lobe (BPSK at 2.046 Mcps: main lobe
+    # +-2.05 MHz, sidelobes to +-6.1). In the 11-06 Tau A window no gw_1202 lane reached
+    # 1204.688 MHz, on the upper sidelobe past the null, during the tracked passes (cx27 lane
+    # dumps). Every GPU tracks gw_1202, so the relay needs no entry.
+        - gw_1202:1196.0-1208.1
 
     # Ship the N^2 products as a stock node does: the buffer_send_n2_* legs (full n2_buffer and
     # the eigen subset, both GPUs) and the bad-feed mask legs, to the standard receiver recv1
