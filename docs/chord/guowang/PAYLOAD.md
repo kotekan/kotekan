@@ -189,6 +189,19 @@ predicted at 98.3 % from time and the page templates, `PER_ELEMENT.md` section 5
 - Unknown: the 12 bits outside the low-rate CRC; the live correction content (6-7 % of block bits
   per 10 s epoch); the CSK polarity (~54 % positive; the patent assigns it to authentication);
   the variant satellites' format.
+- Measured 11-06 for the wipe (`builds/gw1202/nav_predict_eval.py` over the 11-05 night's 6680
+  CRC-valid subframes, the node's predictor reproduced): on the catalogued satellites the "pages
+  2-4 entirely" above does not hold. Every page has ~25 live payload bits per 12 s cycle, so an
+  echo of the same page k cycles earlier gets 85 % of symbols right at 12 s, 81 % at 1 min,
+  78 % at 2 min, 69 % at 5 min. A 12-s echo still has ~39 wrong bits of 375: 24 in the payload, 12
+  in the CRC those scramble, 3 in the trailer. A record's coherent gain 5(2p-1)^2 against
+  unpaged is +4.0 dB at 12 s and +2.0 dB at 2 min, and falls below unpaged at ~3.5 min. The table
+  therefore ships live pages for 3 min after their transmit time. The H satellites' pages do
+  repeat exactly. Counters: page 1 payload bits 26-40 = (BDT SOW / 12 - 1) mod 2^15 on 94 % of
+  catalogued page-1 subframes (the H satellites send a constant there, H24-4 22407); page 2 bits
+  47-52 step every 10 s at a per-satellite phase (91 %). Advancing both adds only ~0.7 points
+  (the node advances page 1's, kv/gw-nav-counter). Trailer bits 0-5 vary with no repeat, bits
+  6-11 are nearly always 0.
 - Readability off boresight (`~/gnss/bb1030/csk_bb_test.py`, 10-30 baseband): with per-channel
   spatial prewhitening, DIGUI-94 (43 deg off) and DIGUI-112 (70 deg off) read 419/419 frames
   with 0 symbol errors, ~35 dB per symbol, while DIGUI-26 railed the quantizer; without
