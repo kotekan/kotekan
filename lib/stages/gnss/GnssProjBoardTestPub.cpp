@@ -23,10 +23,11 @@ GnssProjBoardTestPub::GnssProjBoardTestPub(Config& config, const std::string& un
     freq_ids(config.get<std::vector<int>>(unique_name, "freq_ids")),
     n_elem(config.get<int>(unique_name, "n_elem")),
     n_dirs(config.get_default<int>(unique_name, "n_dirs", 2)),
-    period_ms(config.get_default<int>(unique_name, "period_ms", 20)) {
-    if (n_elem < 1 || n_dirs < 1 || freq_ids.empty())
-        FATAL_ERROR("GnssProjBoardTestPub: n_elem {:d}, n_dirs {:d}, {:d} freq_ids", n_elem, n_dirs,
-                    (int)freq_ids.size());
+    period_ms(config.get_default<int>(unique_name, "period_ms", 20)),
+    los_rate(config.get_default<std::vector<double>>(unique_name, "los_rate", {0.0, 0.0, 0.0})) {
+    if (n_elem < 1 || n_dirs < 1 || freq_ids.empty() || los_rate.size() != 3)
+        FATAL_ERROR("GnssProjBoardTestPub: n_elem {:d}, n_dirs {:d}, {:d} freq_ids, {:d} los_rate",
+                    n_elem, n_dirs, (int)freq_ids.size(), (int)los_rate.size());
     INFO("GnssProjBoardTestPub: {:d} directions x {:d} channels on {:s} every {:d} ms", n_dirs,
          (int)freq_ids.size(), board_group, period_ms);
 }
@@ -49,6 +50,7 @@ void GnssProjBoardTestPub::main_thread() {
             e.k = 1;
             // A held track at the zenith, so get_lanes serves the entry.
             e.los[2] = 1.0;
+            std::copy(los_rate.begin(), los_rate.end(), e.los_rate);
             e.t_utc =
                 std::chrono::duration<double>(std::chrono::system_clock::now().time_since_epoch())
                     .count();

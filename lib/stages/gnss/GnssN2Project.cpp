@@ -52,7 +52,8 @@ GnssN2Project::GnssN2Project(Config& config, const std::string& unique_name,
     lane_dump_max_cand(config.get_default<int>(unique_name, "lane_dump_max_cand", 96)),
     fleet_lanes(config.get_default<bool>(unique_name, "fleet_lanes", false)),
     fleet_lane_max_age_s(config.get_default<double>(unique_name, "fleet_lane_max_age_s", 10.0)),
-    fleet_lane_rebuild_s(config.get_default<double>(unique_name, "fleet_lane_rebuild_s", 0.25)) {
+    fleet_lane_rebuild_s(config.get_default<double>(unique_name, "fleet_lane_rebuild_s", 0.25)),
+    lane_resteer(config.get_default<bool>(unique_name, "lane_resteer", false)) {
     if (source != "eigen" && source != "lanes" && source != "lanes+residual")
         FATAL_ERROR("GnssN2Project: source '{:s}' must be eigen, lanes or lanes+residual", source);
     eigen_channels = config.get_default<std::string>(unique_name, "eigen_channels", "all");
@@ -159,16 +160,21 @@ GnssN2Project::GnssN2Project(Config& config, const std::string& unique_name,
         kotekan::restServer::instance().register_get_callback(
             unique_name + "/get_lanes", std::bind(&GnssN2Project::get_lanes_callback, this, _1));
     }
-    if (fleet_lanes) {
-        if (!use_lanes)
-            FATAL_ERROR("GnssN2Project: fleet_lanes needs source lanes or lanes+residual");
+    if (fleet_lanes && !use_lanes)
+        FATAL_ERROR("GnssN2Project: fleet_lanes needs source lanes or lanes+residual");
+    if (lane_resteer && !use_lanes)
+        FATAL_ERROR("GnssN2Project: lane_resteer needs source lanes or lanes+residual");
+    double sign = 1.0;
+    if (fleet_lanes || lane_resteer) {
         std::vector<double> pos =
             config.get<std::vector<double>>(unique_name, "elem_positions_enu");
         if (pos.size() != 3 * tracker_stations.size())
             FATAL_ERROR("elem_positions_enu: {:d} positions for {:d} tracker elements",
                         (int)(pos.size() / 3), (int)tracker_stations.size());
-        const double sign = config.get_default<double>(unique_name, "elem_steer_sign", 1.0);
+        sign = config.get_default<double>(unique_name, "elem_steer_sign", 1.0);
         geo = gnss::ElemSteer(std::move(pos), std::vector<double>(), 0, sign, 0.0);
+    }
+    if (fleet_lanes) {
         using namespace std::placeholders;
         kotekan::restServer::instance().register_post_callback(
             unique_name + "/set_lanes",
@@ -177,6 +183,10 @@ GnssN2Project::GnssN2Project(Config& config, const std::string& unique_name,
              "{:.1f} s, re-evaluated every {:.2f} s",
              (int)tracker_stations.size(), sign, fleet_lane_max_age_s, fleet_lane_rebuild_s);
     }
+    if (lane_resteer)
+        INFO("GnssN2Project: lanes moving faster than {:g} rad/s are turned to each "
+             "integration's time",
+             LANE_RESTEER_RATE);
     if (config.exists(unique_name, "lane_dump_buf")) {
         if (!use_lanes)
             FATAL_ERROR("GnssN2Project: lane_dump_buf needs source lanes or lanes+residual");
@@ -202,9 +212,10 @@ GnssN2Project::GnssN2Project(Config& config, const std::string& unique_name,
          out_buf->buffer_name);
 }
 
-int GnssN2Project::build_lanes(int f, int freq_id, const cd* V, double now_s, bool diag,
-                               bool dump) {
+int GnssN2Project::build_lanes(int f, int freq_id, const cd* V, double now_s, double t_utc,
+                               bool diag, bool dump) {
     const int n = (int)stations.size();
+    const double f_hz = freq_id * 195312.5;
     lanes.clear();
     cand.clear();
     // Copy the fresh, coherent lane entries out under the board's lock, mapped onto the
@@ -221,12 +232,12 @@ int GnssN2Project::build_lanes(int f, int freq_id, const cd* V, double now_s, bo
             c.coh = e.coh;
             c.held = e.held_s > 0.0;
             c.held_s = e.held_s;
+            c.t_utc = e.t_utc;
+            std::copy(e.los, e.los + 3, c.los);
+            std::copy(e.los_rate, e.los_rate + 3, c.los_rate);
             if (dump) {
                 c.owner = e.owner;
                 c.xfer = e.xfer;
-                c.t_utc = e.t_utc;
-                std::copy(e.los, e.los + 3, c.los);
-                std::copy(e.los_rate, e.los_rate + 3, c.los_rate);
             }
             c.v.assign((size_t)n, cd(0.0, 0.0));
             for (int el = 0; el < e.n; ++el) {
@@ -237,6 +248,25 @@ int GnssN2Project::build_lanes(int f, int freq_id, const cd* V, double now_s, bo
                 c.v[(size_t)a] = lane_conj ? std::conj(x) : x;
             }
         });
+    // A fast mover's lane is turned along its track from the instant its los describes to this
+    // integration's time (the factor is in the raw frame; conjugated with the lane).
+    if (lane_resteer && t_utc > 0.0)
+        for (LaneCand& c : cand) {
+            const double* r = c.los_rate;
+            if (!(c.t_utc > 0.0)
+                || std::sqrt(r[0] * r[0] + r[1] * r[1] + r[2] * r[2]) <= LANE_RESTEER_RATE)
+                continue;
+            lane_sh.resize(e2a.size());
+            if (!gnss::lane_turn(geo, c.los, r, c.t_utc, t_utc, f_hz, lane_sh.data()))
+                continue;
+            for (size_t el = 0; el < e2a.size(); ++el) {
+                const int a = e2a[el];
+                if (a < 0)
+                    continue;
+                const cd s(lane_sh[el].real(), lane_sh[el].imag());
+                c.v[(size_t)a] *= lane_conj ? std::conj(s) : s;
+            }
+        }
     std::sort(cand.begin(), cand.end(),
               [](const LaneCand& a, const LaneCand& b) { return a.power > b.power; });
     // Fleet lanes after the board's, in the posted order: a local lane always wins the
@@ -649,15 +679,16 @@ void GnssN2Project::main_thread() {
         const double now_s =
             std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch())
                 .count();
+        // The frame's own time, the data clock; 0 without metadata.
+        double t_frame = 0.0;
+        if (use_lanes && meta)
+            t_frame = Telescope::instance().to_time_ns((uint64_t)meta->get_fpga_seq_num()) * 1e-9;
         if (use_lanes) {
             take_fleet(now_s);
             fleet_on = !fleet.empty() && now_s - fleet_t_rx <= fleet_lane_max_age_s;
             if (fleet_on) {
-                // The tracks are evaluated at the frame's own time, the data clock.
-                double t_utc = 0.0;
-                if (meta)
-                    t_utc =
-                        Telescope::instance().to_time_ns((uint64_t)meta->get_fpga_seq_num()) * 1e-9;
+                // The tracks are evaluated at the frame's own time.
+                double t_utc = t_frame;
                 if (!(t_utc > 0.0))
                     t_utc = std::chrono::duration<double>(
                                 std::chrono::system_clock::now().time_since_epoch())
@@ -705,7 +736,8 @@ void GnssN2Project::main_thread() {
                 int kl = 0;
                 if (use_lanes && live_ch[f]) {
                     const bool dump_f = dump && t == 0;
-                    kl = build_lanes(f, freq_ids[f], V.data(), now_s, solve_now, dump_f);
+                    const double t_int = t_frame > 0.0 ? t_frame + (t + 0.5) * dt_int : 0.0;
+                    kl = build_lanes(f, freq_ids[f], V.data(), now_s, t_int, solve_now, dump_f);
                     if (dump_f)
                         dump_channel(dump + 64 + (size_t)dump_ch++ * dump_slot_bytes, f, V.data());
                     if (kl > 0)

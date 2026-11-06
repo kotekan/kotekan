@@ -63,6 +63,28 @@ struct FleetLane {
     }
 };
 
+/// Per element, the factor D(f, los) conj(D(f, los(t))) that turns a raw-frame direction on a
+/// channel at @p f_hz from line of sight @p los (the instant @p t_los) along its track
+/// (@p los_rate per second) to time @p t: fleet_lane_direction's turn with f_src = f. False if
+/// the track is degenerate (out untouched).
+inline bool lane_turn(const ElemSteer& geo, const double* los, const double* los_rate, double t_los,
+                      double t, double f_hz, ElemSteer::cf* out) {
+    const double dt = t - t_los;
+    double s[3], n2 = 0.0;
+    for (int i = 0; i < 3; ++i) {
+        s[i] = los[i] + los_rate[i] * dt;
+        n2 += s[i] * s[i];
+    }
+    if (!(n2 > 0.0))
+        return false;
+    const double inv = 1.0 / std::sqrt(n2);
+    double d[3];
+    for (int i = 0; i < 3; ++i)
+        d[i] = los[i] - s[i] * inv;
+    geo.shift(d, f_hz, out); // tau is linear in the line of sight
+    return true;
+}
+
 /// The lane's raw-frame direction on a channel at @p f_hz at time @p t (see FleetLane), turned
 /// by the instrumental delays from f_src to f (@p inst_delay_s per element, or null for none).
 /// @p geo holds the element positions and the steering sign; @p sh is scratch. False if the

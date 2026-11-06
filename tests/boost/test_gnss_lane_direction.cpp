@@ -574,3 +574,130 @@ BOOST_AUTO_TEST_CASE(fleet_lane_is_the_local_transfer_moved_along_the_track) {
     std::fill(bad.los_rate, bad.los_rate + 3, 0.0);
     BOOST_CHECK(!gnss::fleet_lane_direction(bad, geo, f2 * 1e6, t0, nullptr, scratch, out.data()));
 }
+
+namespace {
+// An 8 x 8 grid at CHORD's spacing, ~44 m by ~60 m about the reference point.
+std::vector<double> grid_positions() {
+    std::vector<double> pos;
+    for (int i = 0; i < 64; ++i) {
+        pos.push_back(6.3 * (i % 8) - 22.0);
+        pos.push_back(8.5 * (i / 8) - 30.0);
+        pos.push_back(0.05 * i);
+    }
+    return pos;
+}
+
+// The largest phase difference between two tables, rad.
+double max_phase_err(const std::vector<ElemSteer::cf>& a, const std::vector<ElemSteer::cf>& b) {
+    double err = 0.0;
+    for (size_t i = 0; i < a.size(); ++i)
+        err = std::max(err, std::abs(std::arg(cd(a[i].real(), a[i].imag())
+                                              * std::conj(cd(b[i].real(), b[i].imag())))));
+    return err;
+}
+} // namespace
+
+// A GuoWang satellite turns ~5e-3 rad/s, ~35 times a GPS satellite. Refreshed at the record
+// cadence, both tables stay within 0.1 rad of the track's own line of sight; the fast track is
+// rebuilt every second record or so, the slow one every REBUILD_S. A table 0.5 s old would be more
+// than 1 rad off for the fast track.
+BOOST_AUTO_TEST_CASE(refresh_keeps_a_fast_track_current) {
+    const std::vector<double> pos = grid_positions();
+    const int n = (int)pos.size() / 3;
+    const double f_mhz = 1203.125, t0 = 1.7939e9, dt_rec = 0.0105;
+    ElemSteer S(pos, {f_mhz}, 2, 1.0, 120.0);
+    S.update(0, 180.0, 62.7, 0.0, 0.0, 0.31, t0);  // LEO
+    S.update(1, 180.0, 62.7, 0.0, 0.0, 0.008, t0); // MEO
+    ElemSteer exact(pos, {f_mhz}, 1, 1.0, 120.0);
+    std::vector<ElemSteer::cf> tab((size_t)n), want((size_t)n);
+    for (int slot = 0; slot < 2; ++slot) {
+        double err = 0.0, built_prev = t0, e[3], edot[3], built;
+        int rebuilds = 0;
+        for (int k = 1; k <= 190; ++k) {
+            const double t = t0 + k * dt_rec;
+            S.refresh(slot, t);
+            S.copy_slot(slot, tab.data());
+            BOOST_REQUIRE(S.direction(slot, t, e));
+            exact.shift(e, f_mhz * 1e6, want.data());
+            err = std::max(err, max_phase_err(tab, want));
+            BOOST_REQUIRE(S.track(slot, e, edot, &built));
+            rebuilds += built != built_prev;
+            built_prev = built;
+        }
+        BOOST_TEST_MESSAGE("slot " << slot << ": max phase error " << err << " rad, " << rebuilds
+                                   << " rebuilds in 2 s");
+        BOOST_CHECK_LT(err, 0.1);
+        if (slot == 0)
+            BOOST_CHECK_GT(rebuilds, 80);
+        else
+            BOOST_CHECK_LE(rebuilds, 6);
+    }
+    // The fast track 0.5 s apart: what a REBUILD_S-only table would be off by.
+    double e0[3], e1[3];
+    BOOST_REQUIRE(S.direction(0, t0, e0));
+    BOOST_REQUIRE(S.direction(0, t0 + 0.5, e1));
+    exact.shift(e0, f_mhz * 1e6, tab.data());
+    exact.shift(e1, f_mhz * 1e6, want.data());
+    BOOST_CHECK_GT(max_phase_err(tab, want), 1.0);
+}
+
+// A lane stamped with its track is turned to a later time: the turned direction is the true
+// one there, the stale one is not, and the turn is fleet_lane_direction's on the same channel.
+BOOST_AUTO_TEST_CASE(lane_turn_follows_the_track) {
+    const std::vector<double> pos = grid_positions();
+    const int n = (int)pos.size() / 3;
+    const double f = 1203.125e6, t0 = 1.7939e9, t1 = t0 + 0.3;
+    ElemSteer geo(pos, {}, 0, 1.0, 0.0); // as GnssN2Project builds it
+    const double el = 62.7 * M_PI / 180.0, del = 0.31 * M_PI / 180.0;
+    const double los[3] = {0.0, -std::cos(el), std::sin(el)};
+    const double rate[3] = {0.0, std::sin(el) * del, std::cos(el) * del};
+    double s1[3], n2 = 0.0;
+    for (int i = 0; i < 3; ++i) {
+        s1[i] = los[i] + rate[i] * (t1 - t0);
+        n2 += s1[i] * s1[i];
+    }
+    for (double& x : s1)
+        x /= std::sqrt(n2);
+    // raw-frame direction conj(D(f, e)) m, m a fixed instrument response
+    std::vector<ElemSteer::cf> D0((size_t)n), D1((size_t)n), fac((size_t)n);
+    geo.shift(los, f, D0.data());
+    geo.shift(s1, f, D1.data());
+    std::mt19937 rng(7);
+    std::uniform_real_distribution<double> u(-1.0, 1.0);
+    std::vector<cd> q0((size_t)n), q1((size_t)n), turned((size_t)n);
+    for (int i = 0; i < n; ++i) {
+        const cd m = std::polar(1.0 + 0.3 * u(rng), M_PI * u(rng));
+        q0[i] = std::conj(cd(D0[i].real(), D0[i].imag())) * m;
+        q1[i] = std::conj(cd(D1[i].real(), D1[i].imag())) * m;
+    }
+    BOOST_REQUIRE(gnss::lane_turn(geo, los, rate, t0, t1, f, fac.data()));
+    for (int i = 0; i < n; ++i)
+        turned[i] = q0[i] * cd(fac[i].real(), fac[i].imag());
+    auto ovl = [&](const std::vector<cd>& a) {
+        cd acc(0.0, 0.0);
+        double ea = 0.0, eb = 0.0;
+        for (int i = 0; i < n; ++i) {
+            acc += std::conj(q1[i]) * a[i];
+            ea += std::norm(a[i]);
+            eb += std::norm(q1[i]);
+        }
+        return std::norm(acc) / (ea * eb);
+    };
+    BOOST_CHECK_GT(ovl(turned), 0.9999);
+    // 0.3 s stale: an overlap under 0.9 caps the null at 10 dB (0.58 on this grid)
+    BOOST_CHECK_LT(ovl(q0), 0.9);
+
+    gnss::FleetLane L;
+    L.f_src_hz = f;
+    L.t_utc = t0;
+    std::copy(los, los + 3, L.los);
+    std::copy(rate, rate + 3, L.los_rate);
+    L.q = q0;
+    std::vector<ElemSteer::cf> sh;
+    std::vector<cd> fl((size_t)n);
+    BOOST_REQUIRE(gnss::fleet_lane_direction(L, geo, f, t1, nullptr, sh, fl.data()));
+    double diff = 0.0;
+    for (int i = 0; i < n; ++i)
+        diff = std::max(diff, std::abs(fl[i] - turned[i]));
+    BOOST_CHECK_LT(diff, 1e-5);
+}
