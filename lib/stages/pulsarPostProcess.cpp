@@ -188,6 +188,7 @@ void pulsarPostProcess::main_thread() {
         out_frames[freq_block] = out_frame;
     }
 
+    bool have_warned = false;
     while (!stop_thread) {
         // Get an input buffer, This call is blocking!
         const uint8_t* in_frame = in_buffer->wait_for_full_frame(unique_name, in_buffer_ID);
@@ -200,7 +201,23 @@ void pulsarPostProcess::main_thread() {
         // TODO: these are both likely wrong, since beam_coord is not set by the
         // CUDA code (would come from a buffer) and the frequency channels may
         // also be wrong
-        beam_coord = get_chord_metadata(in_buffer, in_buffer_ID)->get_beam_coord();
+        // TODO: these used to come out of metadata, they will likely eventually
+        // come out of a buffer for ra, dec, and scaling.
+        // For now, make up something if there is no metadata
+        if(get_chord_metadata(in_buffer, in_buffer_ID)->has_beam_coord()) {
+            beam_coord = get_chord_metadata(in_buffer, in_buffer_ID)->get_beam_coord();
+        } else {
+            if(!have_warned) {
+                ERROR("No beam coord metadata found, will make up ra/dec/scaling numbers");
+                have_warned = true;
+            }
+            for (int psr = 0; psr < _num_pulsar_beams; ++psr) {
+                beam_coord.right_ascension[psr] = 12.;
+                beam_coord.declination[psr] = 45.;
+                beam_coord.scaling[psr] = 1.;
+            }
+        }
+
         const auto coarse_freq = get_chord_metadata(in_buffer, in_buffer_ID)->get_coarse_freq();
         if (thread_ids.size() != coarse_freq.size()) {
             FATAL_ERROR(
