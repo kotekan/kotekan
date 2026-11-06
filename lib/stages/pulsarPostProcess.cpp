@@ -141,7 +141,7 @@ void pulsarPostProcess::main_thread() {
     int out_buffer_ID = 0;
     int startup = 1; // related to the likely & unlikely
 
-    uint16_t thread_ids[_num_freqs_per_gpu] = {0};
+    std::vector<uint16_t> thread_ids(_num_freqs_per_gpu);
 
     int in_buffer_ID = 0;
     uint64_t frame_fpga_seq_num = 0;     // sample starting the current input frame
@@ -197,11 +197,16 @@ void pulsarPostProcess::main_thread() {
             get_chord_metadata(in_buffer, in_buffer_ID)->get_fpga_seq_num();
 
         // Initialize data for header info, namely position and frequency labels.
+        // TODO: these are both likely wrong, since beam_coord is not set by the
+        // CUDA code (would come from a buffer) and the frequency channels may
+        // also be wrong
         beam_coord = get_chord_metadata(in_buffer, in_buffer_ID)->get_beam_coord();
-        thread_ids[0] = get_chord_metadata(in_buffer, in_buffer_ID)->get_coarse_freq()[0];
-        // TODO: replace by correct frequency ids
-        for (unsigned int f = 1; f < _num_freqs_per_gpu; f++)
-            thread_ids[f] = thread_ids[0];
+        const auto coarse_freq = get_chord_metadata(in_buffer, in_buffer_ID)->get_coarse_freq();
+        if(thread_ids.size() != coarse_freq.size()) {
+            FATAL_ERROR("Number of coarse frequencies ({:d}) in buffer {:s} is not the expected {:d}",
+                        thread_ids.size(), in_buffer->buffer_name, thread_ids.size());
+        }
+        std::copy(coarse_freq.cbegin(), coarse_freq.cend(), thread_ids.begin());
 
 #if 0 // station id is strange since more than one F-engine would have contributed anyway, so for
       // now, just make up something
@@ -245,9 +250,10 @@ void pulsarPostProcess::main_thread() {
             for (uint32_t freq_block = 0; freq_block < num_out_frames; ++freq_block) {
                 time_dummy = time_now; // modified (!) by fill_headers
                 assert(freq_block < num_out_frames);
+                assert((freq_block+1) * num_freqs_per_frame <= thread_ids.size());
                 fill_headers((unsigned char*)out_frames[freq_block], &psr_header, fpga_seq_num,
                              &time_dummy, beam_coord,
-                             &thread_ids[freq_block * num_freqs_per_frame]);
+                             &thread_ids.at(freq_block * num_freqs_per_frame));
             }
             time_now = time_dummy;
         }
@@ -289,9 +295,10 @@ void pulsarPostProcess::main_thread() {
                 for (uint32_t freq_block = 0; freq_block < num_out_frames; ++freq_block) {
                     time_dummy = time_now; // modified (!) by fill_headers
                     assert(freq_block < num_out_frames);
+                    assert((freq_block+1) * num_freqs_per_frame <= thread_ids.size());
                     fill_headers((unsigned char*)out_frames[freq_block], &psr_header, fpga_seq_num,
                                  &time_dummy, beam_coord,
-                                 &thread_ids[freq_block * num_freqs_per_frame]);
+                                 &thread_ids.at(freq_block * num_freqs_per_frame));
                 }
                 time_now = time_dummy;
             }
@@ -335,9 +342,10 @@ void pulsarPostProcess::main_thread() {
                         for (uint32_t freq_block = 0; freq_block < num_out_frames; ++freq_block) {
                             time_dummy = time_now; // modified (!) by fill_headers
                             assert(freq_block < num_out_frames);
+                            assert((freq_block+1) * num_freqs_per_frame <= thread_ids.size());
                             fill_headers((unsigned char*)out_frames[freq_block], &psr_header,
                                          fpga_seq_num, &time_dummy, beam_coord,
-                                         &thread_ids[freq_block * num_freqs_per_frame]);
+                                         &thread_ids.at(freq_block * num_freqs_per_frame));
                         }
                         time_now = time_dummy;
                     } // end if last frame
