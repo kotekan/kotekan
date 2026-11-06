@@ -207,6 +207,39 @@ predicted at 98.3 % from time and the page templates, `PER_ELEMENT.md` section 5
   with 0 symbol errors, ~35 dB per symbol, while DIGUI-26 railed the quantizer; without
   prewhitening the readout fails. DIGUI-125 at 0.6 deg elevation: not detected.
 
+### The live page chain
+
+How a decoded page reaches the trackers' wipe, with the latencies measured on the night of
+11-05/06 before the change (page's last symbol on air to its use on the node):
+
+| stage | mechanism | latency |
+|---|---|---|
+| node file | `rawFileWrite`, 240 frames = 10.07 s per file; the loop pulls a file once the next one has opened | mean +5 s |
+| pull | `track_beam_loop.py` on cf05 rsyncs the 11 GPUs' files every `--period` (60 s) | mean +30 s |
+| decode | 7-9 s per (10-s block, PRN), 12 workers, depth 4; not CPU-bound (load 5 of 64 cores) | +8-15 s |
+| measured, loop | decode stamp minus block end, 185 blocks | p10 80, p50 101, p90 129 s |
+| table | `gw_ephem_table.py` cron every 2 min reads `nav_pages_live.json` (180-s cap) | mean +60 s |
+| broker pickup | table mtime polled every 2-s cycle | +2 s |
+| broker to seed | pages attached only at a seed's SLEW or birth (`gw_nav_fields`) | median +30, p90 146 s |
+| push | seeds posted every cycle; the node applies them on the next frame | +2 s |
+
+Three polling periods stacked on a 10-s file: 3-4 min at use, past the template's break-even,
+and under the 180-s cap 2 of 390 table records carried pages. The 11-06 changes:
+
+- the loop pulls every 10 s and, after each page write, rsyncs the file to the VM beside the
+  table (`/var/tmp/gnss-guowang/nav_pages_live.json`): the broker then polls a local file, where
+  an `os.stat` on the NFS home can lag a write by the attribute cache's 60 s. First hour: loop
+  lag after block end p50 34 s, a page decoded 24 s after its last symbol.
+- the broker (kv/gw-pages-live, `gnss_broker/deadreckon.py`) polls that file's mtime every
+  cycle and `dr_nav_pages` attaches, replaces or drops every seed's pages on each cycle's push.
+  Pages are looked up by the covering table record's satellite name, never from another record
+  of the same PRN (that was a code-mate's pages), and aged by their transmit time
+  (`--gw-live-pages-max-age-s`, 180 s); the table's own pages are the fallback.
+
+Expected with both: pages 25-35 s old at use (the 24-s row of the echo table, ~+3.7 dB). The
+10-s node file is what separates that from the 12-s row: `num_frames_per_file` 240 -> 48 and a
+loop that decodes a period as soon as its frames are in.
+
 ## Literature consulted
 
 Copies in `itu_refs/` (see `SIGNAL.md` for the signal-level references).
