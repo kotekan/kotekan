@@ -1093,19 +1093,40 @@ def test_manual_mask_reaches_the_node_config():
         dtv = [c for c in sv["commands"] if c.get("name") == "cudaDtvSubtract"]
         base = int(sv.get("cuda_stream_base", 0))
         sync = [c for c in sv["commands"] if c.get("name") == "cudaSyncStream"]
+        copy = sv["commands"][0]
         check(
-            names == ["cudaDtvSubtract", "cudaSyncStream", "cudaOutputData"]
+            names
+            == [
+                "cudaCopyToRingbuffer",
+                "cudaSyncStream",
+                "cudaDtvSubtract",
+                "cudaSyncStream",
+                "cudaOutputData",
+            ]
             and len(dtv[0]["dtv_freq_ids"]) == 1
             and 2720 <= dtv[0]["dtv_freq_ids"][0] <= 2735
+            and all(
+                dtv[0][k] == copy[k]
+                for k in (
+                    "input_size",
+                    "ring_buffer_size",
+                    "signal_buf",
+                    "gpu_mem_output",
+                )
+            )
             and dtv[0]["gpu_mem_output"] == "voltage_buffer"
-            and sync[0]["cuda_stream"] == 3 * base + 1
+            and dtv[0]["cuda_stream"] == 6
+            and sync[0]["cuda_stream"] == 6
             and sync[0]["source_cuda_streams"] == [3 * base]
+            and sync[1]["cuda_stream"] == 3 * base + 1
+            and sync[1]["source_cuda_streams"] == [6]
+            and sv["num_cuda_streams"] == 7
             and sv["out_buffers"]["host_gnss_dtv"] == "gnss%d_dtv_buf" % g
             and cfg["gnss%d_dtvdump_gate" % g]["in_bufs"] == ["gnss%d_dtv_buf" % g]
             and cfg["gnss%d_dtvdump_sink" % g]["in_buf"] == "gnss%d_dtvdump_buf" % g,
-            "--dtv-subtract-freq-ids: gpu%d's ring copy-in becomes cudaDtvSubtract on its one "
-            "channel of the range, its output copied out after a sync on the copy-in stream, "
-            "gated and written" % g,
+            "--dtv-subtract-freq-ids: gpu%d's ring copy-in is followed by cudaDtvSubtract on "
+            "stream 6 (after a sync on the copy-in stream) on its one channel of the range, "
+            "its output copied out after a sync on stream 6, gated and written" % g,
         )
     check(
         not any(
@@ -1204,7 +1225,19 @@ def _dtv_node(args):
     }
     out = {
         "run_send_voltage": {
-            "gpu_%d" % k: {"commands": [{"name": "cudaCopyToRingbuffer"}]}
+            "gpu_%d"
+            % k: {
+                "commands": [
+                    {
+                        "name": "cudaCopyToRingbuffer",
+                        "input_size": "samples_per_data_set * num_elements * num_local_freq",
+                        "ring_buffer_size": "buffer_depth * input_size",
+                        "in_buf": "host_voltage_buffer_in",
+                        "signal_buf": "host_voltage_ringbuffer_out",
+                        "gpu_mem_output": "voltage_buffer",
+                    }
+                ]
+            }
             for k in (0, 1)
         }
     }
@@ -1241,7 +1274,11 @@ def test_dtv_targets():
     mixed = copy.copy(new)
     mixed.dtv_targets = "atsc24:2714-2744:-16:64:3;atsc30:2898-2928:-4:16:1"
     m = _dtv_node(mixed)
-    st = m["run_send_voltage"]["gpu_0"]["commands"][0]
+    st = [
+        c
+        for c in m["run_send_voltage"]["gpu_0"]["commands"]
+        if c["name"] == "cudaDtvSubtract"
+    ][0]
     a24 = [f <= 2744 for f in st["dtv_freq_ids"]]
     check(
         st["dtv_freq_ids"] == [2724, 2740, 2900, 2916]

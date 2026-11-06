@@ -2,39 +2,72 @@
  * @file
  * @brief Subtract a terrestrial transmitter from selected channels of the voltage ring as the
  *        frames are written into it.
- *  - cudaDtvSubtract : public cudaCopyToRingbuffer
+ *  - cudaDtvSubtract : public cudaCommand
  */
 
 #ifndef CUDA_DTV_SUBTRACT_HPP
 #define CUDA_DTV_SUBTRACT_HPP
 
-#include "NDArrayBuffer.hpp" // for NDArrayBuffer
-#include "cudaCopyToRingbuffer.hpp"
+#include "NDArrayBuffer.hpp"         // for NDArrayBuffer
+#include "cudaCommand.hpp"           // for cudaCommand, cudaPipelineState
 #include "cudaDtvSubtractKernel.hpp" // for DtvOutLayout
 #include "dtvRollingFit.hpp"         // for DtvRollOutcome
+#include "ringbuffer.hpp"            // for RingBuffer
 
 #include "json.hpp" // for json
 
 #include <condition_variable>
+#include <cstddef>
 #include <memory>
 #include <mutex>
+#include <new>
 #include <string>
 #include <thread>
 #include <vector>
 
+/// Page-locked storage (cudaHostAlloc) for a staging vector, so its copies are DMA on the
+/// stream: a pageable device-to-host copy returns only once the stream reaches it.
+template<typename T>
+struct dtvPinnedAllocator {
+    using value_type = T;
+    dtvPinnedAllocator() = default;
+    template<typename U>
+    dtvPinnedAllocator(const dtvPinnedAllocator<U>&) {}
+    T* allocate(std::size_t n) {
+        void* p = nullptr;
+        if (cudaHostAlloc(&p, n * sizeof(T), cudaHostAllocDefault) != cudaSuccess)
+            throw std::bad_alloc();
+        return static_cast<T*>(p);
+    }
+    void deallocate(T* p, std::size_t) {
+        cudaFreeHost(p);
+    }
+};
+template<typename T, typename U>
+bool operator==(const dtvPinnedAllocator<T>&, const dtvPinnedAllocator<U>&) {
+    return true;
+}
+template<typename T, typename U>
+bool operator!=(const dtvPinnedAllocator<T>&, const dtvPinnedAllocator<U>&) {
+    return false;
+}
+
 /**
  * @class cudaDtvSubtract
- * @brief The voltage ring's copy-in with a lagged subtraction on selected channels.
+ * @brief A lagged subtraction on selected channels of the frame just copied into the voltage ring.
  *
- * Replaces cudaCopyToRingbuffer in the process that fills the GPU voltage ring, so every
- * consumer of the ring (the N2 correlators, the RFI statistics, the GNSS stages) sees the same
- * frame. For each selected channel (a 195 kHz channel inside a DTV station's 6 MHz) it models
- * the inputs as one transmitter timestream through a per-input impulse response
- * (docs/CHORD_DTV_SUBTRACTION_20261102.md, cudaDtvSubtractKernel.hpp): per frame it forms the
- * timestream s = sum_i w_i x_i, correlates every input with s at the configured lags, subtracts
- * sum_tau g_i(tau) s(t - tau) from each input and re-quantises the residual in place. A second
- * source is the same on the residual. Per source, the correlations, the subtraction and the next
- * source's timestream are one pass over the frame, the first two as complex matrix products on
+ * Follows cudaCopyToRingbuffer in the process that fills the GPU voltage ring, on a stream of its
+ * own after a cudaSyncStream on the copy's, and works on the frame in place. The ring's write is
+ * finished in the copy's finalize_frame, after the whole frame's work, so every consumer of the
+ * ring (the N2 correlators, the RFI statistics, the GNSS stages) sees the subtracted frame. The
+ * frame's ring offset comes from the pipeline state (cudaCopyToRingbuffer) and its fpga_seq_num
+ * from the ring's metadata and that offset. For each selected channel (a 195 kHz channel inside a
+ * DTV station's 6 MHz) it models the inputs as one transmitter timestream through a per-input
+ * impulse response (docs/CHORD_DTV_SUBTRACTION_20261102.md, cudaDtvSubtractKernel.hpp): per frame
+ * it forms the timestream s = sum_i w_i x_i, correlates every input with s at the configured lags,
+ * subtracts sum_tau g_i(tau) s(t - tau) from each input and re-quantises the residual in place. A
+ * second source is the same on the residual. Per source, the correlations, the subtraction and the
+ * next source's timestream are one pass over the frame, the first two as complex matrix products on
  * TF32 tensor cores (relative error ~4e-4, ~100 times below the re-quantisation's).
  *
  * The weights w come from an eigen start on request (POST `<unique_name>/start`, {"source": k,
@@ -76,7 +109,7 @@
  * the weights in use, the per-input powers before and after subtraction, |s|^2 and the lag
  * correlations R_xs and R_ss (cudaDtvSubtractKernel.hpp, DtvOutLayout).
  *
- * @conf As cudaCopyToRingbuffer (input_size, ring_buffer_size, gpu_mem_output, in_buf,
+ * @conf As the cudaCopyToRingbuffer before it (input_size, ring_buffer_size, gpu_mem_output,
  *       signal_buf) and samples_per_data_set, num_elements, num_local_freq, and:
  * @conf  dtv_local_channels  List of Int. Local frame channel of each selected channel.
  * @conf  dtv_freq_ids        List of Int. Their freq_ids, same order; checked against the
@@ -98,7 +131,7 @@
  * @conf  dtv_roll_min_explained Float, default 0.05.
  * @conf  dtv_roll_max_power  Float, default 2.0.
  */
-class cudaDtvSubtract : public cudaCopyToRingbuffer {
+class cudaDtvSubtract : public cudaCommand {
 public:
     cudaDtvSubtract(kotekan::Config& config, const std::string& unique_name,
                     kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device,
@@ -184,6 +217,10 @@ private:
     /// The rolling fit's settings and last refit, for /status and /rolling (caller holds the lock).
     nlohmann::json roll_status() const;
 
+    const size_t _input_size;
+    const size_t _ring_buffer_size;
+    const std::string _gpu_mem_output;
+    RingBuffer* const _ring; ///< the voltage ring: its metadata, and its name in the pipeline state
     const int _num_times;
     const int _num_elements;
     const int _num_local_freq;
@@ -201,12 +238,16 @@ private:
 
     NDArrayBuffer<unsigned char, 2> out;
     std::shared_ptr<Shared> _sh;
-    std::vector<unsigned char> _hdr_stage;
-    std::vector<float> _lam_stage; ///< eigenvalues of the last eigen start, read back
-    std::vector<float2> _w_stage;  ///< the device weights after an eigen start, read back
+    // Page-locked staging; an instance reuses it only after its previous frame has finished.
+    std::vector<unsigned char, dtvPinnedAllocator<unsigned char>> _hdr_stage;
+    /// eigenvalues of the last eigen start, read back
+    std::vector<float, dtvPinnedAllocator<float>> _lam_stage;
+    /// the device weights after an eigen start, read back
+    std::vector<float2, dtvPinnedAllocator<float2>> _w_stage;
     cudaEvent_t _lam_event = nullptr;
     std::vector<float> _g_upload; ///< g as the device takes it (de-interleaved): zero where act < 2
-    std::vector<float> _psi_stage; ///< psi of every (channel, source, input) for the frame
+    /// psi of every (channel, source, input) for the frame
+    std::vector<float, dtvPinnedAllocator<float>> _psi_stage;
     bool _lam_pending = false;
     int _lam_src = -1;
     bool _checked_freqs = false;

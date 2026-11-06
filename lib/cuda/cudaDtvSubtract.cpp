@@ -15,6 +15,7 @@
 #include <cstring>
 #include <fstream>
 #include <map>
+#include <stdexcept>
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -113,8 +114,13 @@ std::shared_ptr<cudaDtvSubtract::Shared> cudaDtvSubtract::shared_for(const std::
 cudaDtvSubtract::cudaDtvSubtract(Config& config, const std::string& unique_name,
                                  bufferContainer& host_buffers, cudaDeviceInterface& device,
                                  int instance_num) :
-    cudaCopyToRingbuffer(config, unique_name, host_buffers, device, instance_num,
-                         "cudaDtvSubtract"),
+    cudaCommand(config, unique_name, host_buffers, device, instance_num, no_cuda_command_state,
+                "cudaDtvSubtract", ""),
+    _input_size(config.get<size_t>(unique_name, "input_size")),
+    _ring_buffer_size(config.get<size_t>(unique_name, "ring_buffer_size")),
+    _gpu_mem_output(config.get<std::string>(unique_name, "gpu_mem_output")),
+    _ring(dynamic_cast<RingBuffer*>(
+        host_buffers.get_generic_buffer(config.get<std::string>(unique_name, "signal_buf")))),
     _num_times(config.get<int>(unique_name, "samples_per_data_set")),
     _num_elements(config.get<int>(unique_name, "num_elements")),
     _num_local_freq(config.get<int>(unique_name, "num_local_freq")),
@@ -131,6 +137,18 @@ cudaDtvSubtract::cudaDtvSubtract(Config& config, const std::string& unique_name,
         std::array<std::string, 2>{"B", "X"}, std::array<std::ptrdiff_t, 2>{1, 1}, *this),
     _sh(shared_for(unique_name)), _owner(instance_num == 0) {
     const int n = (int)_local_channels.size();
+    if (!_ring)
+        FATAL_ERROR("cudaDtvSubtract: signal_buf {:s} is not a ring buffer",
+                    config.get<std::string>(unique_name, "signal_buf"));
+    set_command_type(gpuCommandType::KERNEL);
+    // The ring's store, which the copy before this command allocates; this command reads and
+    // rewrites the frame in place.
+    device.register_gpu_memory_name(_gpu_mem_output);
+    register_gpu_buffer_user({.name = _gpu_mem_output,
+                              .is_array = false,
+                              .does_read = true,
+                              .does_write = true,
+                              .signal_buffer = _ring->buffer_name});
     if (_num_elements != DTV_INPUTS)
         FATAL_ERROR("cudaDtvSubtract: num_elements {:d} != {:d}; the kernels are written for 128 "
                     "inputs",
@@ -955,24 +973,37 @@ bool cudaDtvSubtract::load_state_file(const std::string& path, std::string& err)
 }
 
 cudaEvent_t cudaDtvSubtract::execute(cudaPipelineState& pipestate,
-                                     const std::vector<cudaEvent_t>& pre_events) {
-    (void)pipestate;
+                                     const std::vector<cudaEvent_t>&) {
     pre_execute();
     record_start_event();
     const cudaStream_t stream = device.getStream(cuda_stream_id);
     const int n = (int)_local_channels.size();
 
-    const std::shared_ptr<chordMetadata> meta = copy_frame(pre_events);
-
-    // The frame just enqueued, in the ring. Whole frames: the ring is a multiple of the frame.
-    const size_t start = output_cursor % _ring_buffer_size;
+    // The frame the copy before this command just enqueued, in the ring. Whole frames: the ring
+    // is a multiple of the frame.
+    std::int64_t cursor = 0;
+    try {
+        cursor = pipestate.get_int(_ring->buffer_name);
+    } catch (const std::out_of_range&) {
+        FATAL_ERROR("cudaDtvSubtract: no ring offset for {:s} in the pipeline state; a "
+                    "cudaCopyToRingbuffer into it must come before this command",
+                    _ring->buffer_name);
+    }
+    const size_t start = (size_t)cursor % _ring_buffer_size;
     if (start + _input_size > _ring_buffer_size)
         FATAL_ERROR("cudaDtvSubtract: frame at ring offset {:d} wraps the {:d}-byte ring", start,
                     _ring_buffer_size);
     auto* d_frame =
         static_cast<unsigned char*>(device.get_gpu_memory(_gpu_mem_output, _ring_buffer_size))
         + start;
-    const long long seq0 = meta ? meta->get_fpga_seq_num() : 0;
+    // The ring's metadata are its first frame's: the frame's fpga_seq_num follows from its
+    // offset, as for the ring's readers.
+    const std::shared_ptr<chordMetadata> meta =
+        std::dynamic_pointer_cast<chordMetadata>(_ring->get_metadata(0));
+    const long long seq0 = meta ? meta->get_fpga_seq_num()
+                                      + meta->get_time_downsampling_fpga()
+                                            * (long long)((size_t)cursor / meta->sample_bytes())
+                                : 0;
 
     if (!_checked_freqs) {
         if (meta && meta->has_coarse_freq()) {
@@ -991,8 +1022,10 @@ cudaEvent_t cudaDtvSubtract::execute(cudaPipelineState& pipestate,
         }
         _checked_freqs = true;
     }
-    if (meta)
+    if (meta) {
         out.set_metadata(meta);
+        out.get_metadata()->set_fpga_seq_num(seq0);
+    }
 
     const size_t x_bytes = (size_t)n * 2 * _num_times * DTV_INPUTS * sizeof(float);
     const size_t s_bytes = (size_t)n * _n_src * (DTV_HIST + _num_times) * sizeof(float2);
@@ -1035,7 +1068,7 @@ cudaEvent_t cudaDtvSubtract::execute(cudaPipelineState& pipestate,
         _lam_pending = false;
         std::lock_guard<std::mutex> lk(_sh->mtx);
         if (!_sh->dirty_w)
-            _sh->w = _w_stage;
+            _sh->w.assign(_w_stage.begin(), _w_stage.end());
         std::string s;
         for (int c = 0; c < n; c++)
             s += fmt::format(" {:d}:{:.1f}/{:.1f}", _freq_ids[(size_t)c], _lam_stage[(size_t)c * 4],

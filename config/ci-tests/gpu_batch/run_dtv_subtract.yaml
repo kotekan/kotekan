@@ -3,8 +3,9 @@
 #
 # run_dtv_subtract.yaml
 #
-# cudaDtvSubtract as the voltage ring's copy-in, on random 4+4b voltages: two selected channels
-# of a 2048-sample frame, a ring consumer (cudaGnssBeamDump) behind it, and the stage's output
+# cudaDtvSubtract after the voltage ring's copy-in, on its own stream (6), on random 4+4b
+# voltages: two selected channels of a 2048-sample frame, a ring consumer (cudaGnssBeamDump)
+# behind it, and the stage's output
 # frames written to /tmp by rawFileWrite (two files, then exit). With no state file the channels
 # pass through and the output carries the per-input powers only; read it back with
 #   scripts/gnss/dtv_state.py info /tmp/kotekan_dtv_subtract/test_dtv_*.raw
@@ -70,16 +71,26 @@ run_send_voltage:
     gpu_0:
         kotekan_stage: cudaProcess
         gpu_id: 0
+        num_cuda_streams: 7
         in_buffers:
             host_voltage_buffer_in: host_voltage_buffer
         out_buffers:
             host_voltage_ringbuffer_out: host_voltage_ringbuffer
             host_gnss_dtv: host_test_dtv_buf
         commands:
-            - name: cudaDtvSubtract
+            - name: cudaCopyToRingbuffer
               input_size: samples_per_data_set * num_local_freq * num_elements
               ring_buffer_size: buffer_depth * input_size
               in_buf: host_voltage_buffer_in
+              signal_buf: host_voltage_ringbuffer_out
+              gpu_mem_output: voltage_buffer
+            - name: cudaSyncStream
+              cuda_stream: 6
+              source_cuda_streams: [0]
+            - name: cudaDtvSubtract
+              cuda_stream: 6
+              input_size: samples_per_data_set * num_local_freq * num_elements
+              ring_buffer_size: buffer_depth * input_size
               signal_buf: host_voltage_ringbuffer_out
               gpu_mem_output: voltage_buffer
               dtv_local_channels: [1, 5]
@@ -91,7 +102,7 @@ run_send_voltage:
               dtv_state_file: ""
             - name: cudaSyncStream
               cuda_stream: 1
-              source_cuda_streams: [0]
+              source_cuda_streams: [6]
             - name: cudaOutputData
               gpu_mem: test_dtv_buffer
               out_buf: host_gnss_dtv

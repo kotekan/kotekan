@@ -143,9 +143,11 @@ KV: "dig in on implementing a test version ... try this on a couple of channels"
 exempting the test channels from first-stage RFI excision.
 
 **What it is.** `cudaDtvSubtract` (lib/cuda/cudaDtvSubtract.{hpp,cpp}, kernels in
-cudaDtvSubtractKernel.{hpp,cu}) is `cudaCopyToRingbuffer` with the subtraction added: it replaces
-the copy-in of `run_send_voltage`, so the N2 correlators, the RFI statistics and the GNSS
-stages all read the subtracted voltages. Per frame and selected channel it decodes the channel,
+cudaDtvSubtractKernel.{hpp,cu}) follows the stock copy-in of `run_send_voltage`
+(`cudaCopyToRingbuffer`, on stream 0) on a stream of its own (6, after a `cudaSyncStream`) and
+works on the frame in the ring in place. The ring's write is finished only after the whole
+frame's work, so the N2 correlators, the RFI statistics and the GNSS stages all read the
+subtracted voltages, and the copy and the subtraction each have their own /trackers time. Per frame and selected channel it decodes the channel,
 forms each source's timestream s = sum_i w_i x_i (lag 0), accumulates R_xs,i(lag) and R_ss(d)
 on the GPU, subtracts sum_lag g_i(lag) s(t - lag) and re-quantises the residual in place. The
 host fit is not in the node: `scripts/gnss/dtv_state.py fit` solves the Toeplitz normal
@@ -153,7 +155,8 @@ equations from the recorded correlations and writes a state file; the node loads
 It is the single-fit recipe of the study above (eigen-beam start, one least-squares fit of g, no
 MMSE refinement), with up to four sources peeled in turn.
 
-**Controls** (REST, on the command, e.g. `/run_send_voltage/gpu_0/commands/0`):
+**Controls** (REST, on the command, e.g. `/run_send_voltage/gpu_0/commands/2`; `commands/0` in
+builds where the stage was the copy-in; `dtv_state.stage_path` finds it):
 `POST start {"source": k, "frames": n}` (eigen start of source k on the residual of sources
 < k: covariance over n frames, whitened top eigenvector, phase-referenced to the strongest
 input; the source then observes), `POST load {"file": path}` (weights and impulse responses
@@ -162,7 +165,7 @@ and above off: pass-through), `GET status`. Its per-frame output (weights, per-i
 before and after, |s|^2, the correlations) goes through `gnss<g>_dtvdump_gate` to
 `<record_dir>/dtv`, armed like the beam dump's gate. Generator: `--dtv-subtract-freq-ids`,
 `--dtv-sources`, `--dtv-state-file`, `--dtv-lag-min`, `--dtv-n-lag`; stock_parity.py declares
-the replaced copy-in.
+the added commands and the seventh stream.
 
 **Validation.**
 - `cuda_dtv_subtract_test` (synthetic frame, known impulse response): decode, covariance and
