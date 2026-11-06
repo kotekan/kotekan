@@ -13,12 +13,12 @@ in each profile, with ``receiver_channel_id`` values that match the metadata's
 must agree with the generic ID. Legacy CHORD-only bundles are still accepted
 with the default ``chord_freq_id`` setting.
 
-``config/include/dtv_chime_upgrade.j2`` is an optional diagnostic template for
-the packed ``xposed_voltage`` ring. It uses streams 3 and 4 and writes the
-mask, power, and fine-support products. It is not part of the production
-template, and no visibility or count consumer is routed through the detector.
-Before the file is used, the stream allocation and metadata of the target
-configuration must be reviewed.
+``config/chime/dtv.j2`` is an optional diagnostic template for the packed
+``xposed_voltage`` ring. ``chime_upgrade_2numa.j2`` includes it in each NUMA domain
+when ``dtv_enabled`` is set, and ``dtv_runtime_bundle_dir`` and ``dtv_output_dir``
+name the bundle and the output directory. It writes the mask, power, and
+fine-support products, and no visibility or count consumer is routed through the
+detector.
 
 ``DtvRfiMask`` accepts 8192- and 16384-sample blocks, and its RFImask has the
 shape ``[num_times/1024, F, 128]``. Both the visibility and count consumers
