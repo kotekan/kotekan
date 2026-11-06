@@ -295,6 +295,7 @@ void bufferSend::connect_to_server() {
                  "to retry...",
                  server_ip, server_port, strerror(errno), errno, reconnect_time);
             close(socket_fd);
+            socket_fd = -1;
             // A breakable wait, not sleep(): the stop would otherwise wait out the whole
             // interval with every sender asleep. A fleet cycle takes the receivers down on
             // its first node, so each later node's stop waited the full reconnect_time (30 s
