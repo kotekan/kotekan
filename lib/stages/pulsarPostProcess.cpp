@@ -178,7 +178,7 @@ void pulsarPostProcess::main_thread() {
     assert(num_out_frames > 0);
     assert((uint32_t)pulsar_buf->num_frames >= num_out_frames);
     assert(num_out_frames * num_freqs_per_frame == _num_freqs_per_gpu);
-    uint8_t* out_frames[num_out_frames] = {nullptr};
+    std::vector<uint8_t*> out_frames(num_out_frames);
     // Get the first output buffer which will always be id = 0 to start.
     for (uint32_t freq_block = 0; freq_block < num_out_frames; ++freq_block) {
         uint8_t* out_frame = pulsar_buf->wait_for_empty_frame(
