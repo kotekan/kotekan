@@ -6,7 +6,7 @@
 #include "buffer.hpp"            // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "configTracker.hpp"     // for ConfigTracker
-#include "kotekanLogging.hpp"    // for DEBUG2, ERROR, INFO, DEBUG, WARN
+#include "kotekanLogging.hpp"    // for DEBUG2, ERROR, FATAL_ERROR, INFO, DEBUG, WARN
 #include "metadata.hpp"          // for metadataObject
 #include "prometheusMetrics.hpp" // for Counter, Metrics
 
@@ -23,7 +23,7 @@
 #include <sys/socket.h> // for send, MSG_NOSIGNAL, AF_INET, connect, setsockopt, socket
 #include <sys/time.h>   // for timeval
 #include <thread>       // for thread
-#include <unistd.h>     // for close, sleep
+#include <unistd.h>     // for close
 
 // Some systems don't support MSG_NOSIGNAL and don't include it in socket.h
 #ifndef MSG_NOSIGNAL
@@ -45,6 +45,11 @@ bufferSend::bufferSend(Config& config, const std::string& unique_name,
         Metrics::instance().add_counter("kotekan_buffer_send_dropped_frame_count", unique_name)) {
 
     buf = get_buffer("buf");
+    // Every frame is sent with its metadata object; bufferRecv cannot accept a frame without one.
+    if (!buf->metadata_pool) {
+        FATAL_ERROR("Buffer {:s} has no metadata_pool: every frame sent needs a metadata object",
+                    buf->buffer_name);
+    }
     buf->register_consumer(unique_name);
 
     connected = false;
@@ -109,6 +114,15 @@ void bufferSend::main_thread() {
             int32_t n_sent = 0;
 
             auto meta = buf->get_metadata(frame_id);
+            if (!meta) {
+                // FATAL_ERROR throws out of this function, so end the connect thread first.
+                stop();
+                close_connection();
+                connect_thread.join();
+                FATAL_ERROR("Frame {:s}[{:d}] has no metadata object: its producer did not "
+                            "allocate one",
+                            buf->buffer_name, frame_id);
+            }
             auto metadata_size = meta->get_serialized_size();
             auto frame_size = buf->frame_size;
             bufferFrameHeader header;
@@ -273,9 +287,14 @@ void bufferSend::connect_to_server() {
                  "to retry...",
                  server_ip, server_port, strerror(errno), errno, reconnect_time);
             close(socket_fd);
-            // TODO Add a Stage level "breakable sleep" so this doesn't
-            // lock up the shutdown process for upto reconnect_time seconds.
-            sleep(reconnect_time);
+            socket_fd = -1;
+            // A stop ends this wait early: main_thread() calls close_connection(), which
+            // notifies, before it joins this thread.
+            {
+                std::unique_lock<std::mutex> connection_lock(connection_state_mutex);
+                connection_state_cv.wait_for(connection_lock, std::chrono::seconds(reconnect_time),
+                                             [&]() { return (bool)stop_thread; });
+            }
             continue;
         }
 

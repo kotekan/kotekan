@@ -275,19 +275,19 @@ else()
 endif()
 kfeature_row("Boost Tests" "${WITH_BOOST_TESTS}" "${BOOSTTEST_REASON}" OFF WITH_BOOST_TESTS)
 
-if("${WITH_SPAWN_PROCESS}" STREQUAL "ON")
-    set(SPAWN_REASON "enabled: the config can run shell commands")
-else()
-    set(SPAWN_REASON "disabled")
-endif()
-kfeature_row("SpawnProcess" "${WITH_SPAWN_PROCESS}" "${SPAWN_REASON}" OFF WITH_SPAWN_PROCESS)
-
 if("${NO_MEMLOCK}" STREQUAL "ON")
     set(NOMEMLOCK_REASON "enabled")
 else()
     set(NOMEMLOCK_REASON "disabled")
 endif()
 kfeature_row("No Memlock" "${NO_MEMLOCK}" "${NOMEMLOCK_REASON}" OFF NO_MEMLOCK)
+
+if("${DPDK_EXTRA_STATS}" STREQUAL "ON")
+    set(DPDKSTATS_REASON "enabled: times the DPDK rx poll loop")
+else()
+    set(DPDKSTATS_REASON "disabled")
+endif()
+kfeature_row("DPDK extra stats" "${DPDK_EXTRA_STATS}" "${DPDKSTATS_REASON}" OFF DPDK_EXTRA_STATS)
 
 kfeature_row("ccache" "${CCACHE}" "${CCACHE_REASON}" OFF CCACHE)
 

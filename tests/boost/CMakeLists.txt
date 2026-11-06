@@ -138,6 +138,12 @@ add_executable(test_buffer_swap test_buffer_swap.cpp)
 target_link_libraries(test_buffer_swap PRIVATE pthread libexternal kotekan_libs kotekan_utils
                                                kotekan_core kotekan_metadata)
 
+# test_bufferSend - tests for bufferSend stage
+add_executable(test_bufferSend test_bufferSend.cpp)
+target_link_libraries(test_bufferSend PRIVATE libexternal kotekan_stages kotekan_libs kotekan_utils
+                                              kotekan_core)
+target_include_directories(test_bufferSend PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages)
+
 # test_prometheus_metrics needs fmt and prometheusMetrics
 add_executable(test_prometheus_metrics test_prometheus_metrics.cpp)
 target_link_libraries(test_prometheus_metrics PRIVATE libexternal kotekan_libs kotekan_core)
@@ -156,6 +162,12 @@ add_executable(test_chime_stacking test_chime_stacking.cpp)
 target_link_libraries(test_chime_stacking PRIVATE libexternal kotekan_utils kotekan_stages
                                                   kotekan_core)
 target_include_directories(test_chime_stacking PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages)
+
+# test_rawFileWrite - tests for the rawFileWrite stage
+add_executable(test_rawFileWrite test_rawFileWrite.cpp)
+target_link_libraries(test_rawFileWrite PRIVATE libexternal kotekan_stages kotekan_libs
+                                                kotekan_utils kotekan_core)
+target_include_directories(test_rawFileWrite PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages)
 
 # source files for broker test
 add_executable(dataset_broker_producer dataset_broker_producer.cpp)

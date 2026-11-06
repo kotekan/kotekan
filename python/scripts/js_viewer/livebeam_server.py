@@ -807,11 +807,8 @@ def main():
 
         webbrowser.open(f"http://localhost:{args.http_port}/")
 
-    # Idempotent shutdown. When SpawnProcess wraps this script as a child of
-    # kotekan, a single Ctrl-C delivers SIGINT to both kotekan and to us via
-    # the foreground process group, and SpawnProcess *also* sends SIGINT on
-    # its own shutdown -- so we'd get two stop attempts and the second one
-    # raises ``ReactorNotRunning``.
+    # Idempotent shutdown: a second SIGINT or SIGTERM (e.g. a repeated Ctrl-C)
+    # would otherwise call reactor.stop() again, which raises ``ReactorNotRunning``.
     _stop_called = [False]
 
     def _safe_stop():
