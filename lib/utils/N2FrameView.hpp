@@ -119,7 +119,7 @@ public:
     float& erms;
     /// Radiometer chi2 statistic for each polarization pair
     const gsl_lite::span<float> radiometer_chi2;
-    /// View of the applied gains
+    /// View of the per-element gains recorded with the frame (not applied to the visibilities)
     const gsl_lite::span<N2::cfloat> gain;
     /// View of per-element masks (uint8_t per element). Reserved: nothing
     /// writes it but N2Accumulate's fill of 255, no consumer interprets it, and
