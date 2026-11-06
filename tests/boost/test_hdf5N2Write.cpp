@@ -29,6 +29,7 @@
 #include <boost/test/included/unit_test.hpp>
 #include <cerrno>
 #include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -100,7 +101,8 @@ class TestVisFileData : public N2FileData {
 public:
     TestVisFileData(const N2FrameView& fv, uint64_t num_file_t, double open_wall_s,
                     uint64_t abs_file_idx, std::string base_dir,
-                    std::string gains_file = TEST_GAINS_FILE) :
+                    std::string gains_file = TEST_GAINS_FILE, float err_sq_lim = 0.0f,
+                    float weight_fixed_precision = 0.0f) :
         N2FileData(N2FileData::CHORD, num_file_t, fv, open_wall_s, abs_file_idx,
                    /*input_order*/ ElementOrder::CHORDBeamformer,
                    /*blocksize_f*/ 0,
@@ -108,7 +110,8 @@ public:
                    /*blocksize_t*/ num_file_t,
                    /*compression*/ "none",
                    /*compression_level*/ 0,
-                   /*use_bitshuffle*/ false, std::move(base_dir),
+                   /*use_bitshuffle*/ false, err_sq_lim, weight_fixed_precision,
+                   std::move(base_dir),
                    /*baseband_gain_file*/ std::move(gains_file)) {}
 
     N2::cfloat get_vis(size_t f, size_t p, size_t t) const {
@@ -389,6 +392,78 @@ BOOST_AUTO_TEST_CASE(test_visfiledata_add_frame_single_slot) {
     BOOST_CHECK_EQUAL(data.get_time_center_ut1(t), int64_t(333));
     BOOST_CHECK_EQUAL(data.get_bin_ut1(t), int64_t(444));
     BOOST_CHECK_EQUAL(data.get_added_count(), size_t(1));
+    rm_tree_if_exists(base_dir);
+}
+
+// add_frame truncates each weight within weight_fixed_precision * weight and each
+// visibility within sqrt(0.5 * err_sq_lim / stored weight); nonpositive and nonfinite
+// weights leave both unchanged.
+BOOST_AUTO_TEST_CASE(test_visfiledata_add_frame_truncate) {
+    const size_t num_input = 4;
+    const size_t num_prod = N2FrameDesc::get_num_prod(num_input, N2Layout::FullUpperTri);
+    const size_t num_ev = 0;
+    const size_t num_file_t = 1;
+    const float err_sq_lim = 1e-2f;
+    const float weight_fixed_precision = 1e-3f;
+    // Product 6 has a visibility far below its error, which rounds to 0.
+    const size_t tiny_p = 6;
+    const std::array<float, 10> weights = {1.0f,     1e6f, 0.0f,     -5.0f, 1e-4f,
+                                           123.456f, 1.0f, INFINITY, NAN,   7.0f};
+    BOOST_REQUIRE_EQUAL(num_prod, weights.size());
+
+    const size_t frame_size = N2FrameDesc::calculate_frame_size(num_input, num_ev, num_prod);
+    auto pool = metadataPool::create(1, sizeof(N2Metadata), "test_pool", "N2Metadata");
+    Buffer buf(1, frame_size, pool, "n2buf", "N2", 1, false, false, std::vector<int>{}, true);
+    buf.ensure_frame_desc(std::make_shared<kotekan::N2FrameDesc>(num_input, num_ev, num_prod,
+                                                                 N2Layout::FullUpperTri));
+    buf.allocate_new_metadata_object(0);
+    auto meta = get_N2_metadata(&buf, 0);
+    BOOST_REQUIRE(meta);
+    const size_t f_index = 0;
+    meta->freq_id = get_abs_freq_id(f_index);
+    meta->frame_length_fpga_ticks = 100;
+    meta->n_valid_fpga_ticks = 100;
+
+    N2FrameView fv(&buf, 0);
+    fv.zero_frame();
+    for (size_t p = 0; p < num_prod; ++p) {
+        fv.vis[p] = N2::cfloat(10.0f * p + 1.123456f, -(10.0f * p + 2.654321f));
+        fv.weight[p] = weights[p];
+    }
+    fv.vis[tiny_p] = N2::cfloat(1e-6f, -1e-6f);
+
+    const std::string base_dir = "test_visfiledata_truncate";
+    rm_tree_if_exists(base_dir);
+    ensure_directory(base_dir);
+    ensure_directory(base_dir + "/.partial");
+    TestVisFileData data(fv, num_file_t, 100.0, 0, base_dir, TEST_GAINS_FILE, err_sq_lim,
+                         weight_fixed_precision);
+    data.add_frame(fv, 0);
+
+    float attr = 0.0f;
+    data.h5_file->getAttribute("err_sq_lim").read(attr);
+    BOOST_CHECK_EQUAL(attr, err_sq_lim);
+    data.h5_file->getAttribute("weight_fixed_precision").read(attr);
+    BOOST_CHECK_EQUAL(attr, weight_fixed_precision);
+
+    for (size_t p = 0; p < num_prod; ++p) {
+        const N2::cfloat v_in = fv.vis[p];
+        const float w_in = fv.weight[p];
+        const N2::cfloat v_out = data.get_vis(f_index, p, 0);
+        const float w_out = data.get_weight(f_index, p, 0);
+        if (!(w_in > 0.0f && std::isfinite(w_in))) {
+            BOOST_CHECK(v_out == v_in);
+            BOOST_CHECK(std::memcmp(&w_out, &w_in, sizeof(float)) == 0);
+            continue;
+        }
+        BOOST_CHECK_LE(std::abs(w_out - w_in), weight_fixed_precision * w_in);
+        const float err = std::sqrt(0.5f * err_sq_lim / w_out);
+        BOOST_CHECK_LE(std::abs(v_out.real() - v_in.real()), err);
+        BOOST_CHECK_LE(std::abs(v_out.imag() - v_in.imag()), err);
+        BOOST_CHECK(v_out != v_in);
+        if (p == tiny_p)
+            BOOST_CHECK(v_out == N2::cfloat(0.0f, 0.0f));
+    }
     rm_tree_if_exists(base_dir);
 }
 

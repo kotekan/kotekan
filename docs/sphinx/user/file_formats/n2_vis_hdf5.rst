@@ -263,6 +263,15 @@ File identity and structure
      - string
      - Element ordering of the data (an ``ElementOrder`` name; see
        :ref:`element_order`).
+   * - ``err_sq_lim``
+     - float32
+     - Truncation limit for ``vis``: each component is within
+       :math:`\sqrt{0.5 \cdot \mathrm{err\_sq\_lim} / w}` of the accumulated
+       value, where :math:`w` is its ``vis_weight``. The truncation adds at
+       most ``err_sq_lim`` / 3 of the noise variance. 0 means not truncated.
+   * - ``weight_fixed_precision``
+     - float32
+     - Relative truncation limit for ``vis_weight``. 0 means not truncated.
    * - ``num_dishes``
      - uint64
      - Dish slots in the telescope description, :math:`N_d`.
@@ -338,8 +347,9 @@ Telescope geometry and timing
    or use older names: ``itrs_lat_deg`` / ``itrs_lon_deg`` were previously
    ``origin_itrs_lat_deg`` / ``origin_itrs_lon_deg``, and ``input_order``,
    ``grid_size_x``, ``grid_size_y``, ``feed_separation_x_m``,
-   ``feed_separation_y_m``, ``main_array_grid_indices``, and
-   ``feed_positions_m`` were added later.
+   ``feed_separation_y_m``, ``main_array_grid_indices``,
+   ``feed_positions_m``, ``err_sq_lim``, and ``weight_fixed_precision`` were
+   added later. Files without the truncation attributes are not truncated.
 
 Earth orientation parameter (EOP) table
 ---------------------------------------
@@ -475,14 +485,16 @@ uncompressed.
      - complex64
      - Accumulated visibilities :math:`V_{ab}`, normalized per valid FPGA
        sample (i.e. the mean correlation over the samples actually
-       accumulated). Product ordering per ``/index_map/prod``.
+       accumulated). Product ordering per ``/index_map/prod``. Truncated
+       below the noise when the ``err_sq_lim`` attribute is nonzero.
    * - ``vis_weight`` **[c]**
      - (:math:`N_f`, :math:`N_p`, :math:`N_t`)
      - float32
      - Statistical weight of each visibility, an inverse-variance estimate
        computed by ``N2Accumulate`` from the scatter of sub-integrations
        (estimator selected by the accumulator's ``variance_mode``). 0 where
-       the visibility is missing or invalid.
+       the visibility is missing or invalid. Truncated when the
+       ``weight_fixed_precision`` attribute is nonzero.
    * - ``eval`` **[c]**
      - (:math:`N_f`, :math:`N_{ev}`, :math:`N_t`)
      - float32

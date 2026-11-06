@@ -43,8 +43,9 @@
  *
  * @par File layout
  * - Attributes: version, file_mode (CHORD/CHIME), abs_file_idx,
- *   num_file_t, num_elements, num_prod, num_ev, num_freq, n2_layout, telescope
- *   geometry (origin, orientations, dish maps), EOP tables, num_file_f.
+ *   num_file_t, num_elements, num_prod, num_ev, num_freq, n2_layout, err_sq_lim,
+ *   weight_fixed_precision, telescope geometry (origin, orientations, dish maps), EOP
+ *   tables, num_file_f.
  * - Index maps: /index_map/freq (MHz + width per file frequency), /index_map/prod,
  *   per-element input tables over the frame's elements (/index_map/dish_idx, pol,
  *   grid_x_idx, grid_y_idx, feed_pos_disp_m, coelev_disp_deg, type, label), and
@@ -67,6 +68,10 @@
  * - use_bitshuffle=true adds the bitshuffle filter and uses compression as the
  *   backend ("none", "zstd", "lz4"); compression_level=0 maps to level 9.
  *   Required HDF5 plugins must be available at runtime.
+ * - err_sq_lim > 0 rounds each visibility to a precision set by its weight, and
+ *   weight_fixed_precision > 0 rounds each weight to that relative precision, so the
+ *   compressor can drop the cleared low mantissa bits. Products with a weight that is
+ *   zero, negative or nonfinite are stored unchanged.
  */
 class N2FileData {
 public:
@@ -81,16 +86,18 @@ public:
     const size_t num_file_t;        // frames ("time" dimension)
 
     // file bookkeeping owned by this object
-    const FileMode file_mode;       // CHORD or CHIME (or other?)-type file
-    const size_t blocksize_f;       // frequency block size for chunking
-    const size_t blocksize_p;       // product/element block size for chunking
-    const size_t blocksize_t;       // time block size for chunking
-    const std::string compression;  // compression type
-    const size_t compression_level; // gzip compression level
-    const bool use_bitshuffle;      // whether to use bitshuffle filter
-    const double open_wall_s;       // time opened
-    const uint64_t abs_file_idx;    // absolute file index (abs_time_idx / num_file_t)
-    const std::string base_dir;     // base output directory (without /.partial)
+    const FileMode file_mode;           // CHORD or CHIME (or other?)-type file
+    const size_t blocksize_f;           // frequency block size for chunking
+    const size_t blocksize_p;           // product/element block size for chunking
+    const size_t blocksize_t;           // time block size for chunking
+    const std::string compression;      // compression type
+    const size_t compression_level;     // gzip compression level
+    const bool use_bitshuffle;          // whether to use bitshuffle filter
+    const float err_sq_lim;             // vis truncation limit (0 = off)
+    const float weight_fixed_precision; // relative weight truncation precision (0 = off)
+    const double open_wall_s;           // time opened
+    const uint64_t abs_file_idx;        // absolute file index (abs_time_idx / num_file_t)
+    const std::string base_dir;         // base output directory (without /.partial)
     const std::string
         baseband_gain_file;             // Path to gains HDF5 file. If empty, gains are not written.
     const int baseband_gain_update_idx; // update_time index (-1 = latest)
@@ -178,9 +185,9 @@ public:
                const double open_wall_s_, const uint64_t abs_file_idx_,
                const ElementOrder input_order_, const size_t blocksize_f_,
                const size_t blocksize_p_, const size_t blocksize_t_, const std::string compression_,
-               const size_t compression_level_, const bool use_bitshuffle_,
-               const std::string base_dir_, const std::string baseband_gain_file_,
-               const int baseband_gain_update_idx_ = -1);
+               const size_t compression_level_, const bool use_bitshuffle_, const float err_sq_lim_,
+               const float weight_fixed_precision_, const std::string base_dir_,
+               const std::string baseband_gain_file_, const int baseband_gain_update_idx_ = -1);
 
     /**
      * @brief Add a frame of data at the computed time index.
@@ -327,6 +334,14 @@ public:
  * @conf compression_level        UInt. Codec level (0 picks 4 for deflate, 9 for bitshuffle).
  * @conf use_bitshuffle           Bool. Enable bitshuffle with the selected backend codec (default:
  *                                false).
+ * @conf err_sq_lim               Float. Truncate each visibility component with an error of at
+ *                                most `sqrt(0.5 * err_sq_lim / weight)`, as VisTruncate does
+ *                                (default: 0, off). Must be finite. Requires a compressor:
+ *                                deflate, or bitshuffle with zstd or lz4.
+ * @conf weight_fixed_precision   Float. Truncate each weight with a relative error of at most
+ *                                this, in [0, 1) (default: 0, off). The visibility error
+ *                                above uses the truncated weight. Requires a compressor, as
+ *                                for err_sq_lim.
  * @conf baseband_gain_file       String. Path to the digital gains HDF5 file. If empty (default),
  *                                gains are not written. Mutually exclusive with
  *                                `baseband_gain_host_info`.
@@ -418,6 +433,8 @@ private:
     const std::string _compression;
     const std::uint64_t _compression_level;
     const bool _use_bitshuffle;
+    const float _err_sq_lim;
+    const float _weight_fixed_precision;
     const std::uint64_t _blocksize_f;
     const std::uint64_t _blocksize_p;
     const std::uint64_t _blocksize_t;
