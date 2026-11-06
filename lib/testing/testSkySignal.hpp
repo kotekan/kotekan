@@ -1,0 +1,374 @@
+#ifndef TEST_SKY_SIGNAL_HPP
+#define TEST_SKY_SIGNAL_HPP
+
+#include "Config.hpp"         // for Config
+#include "DataType.hpp"       // for int4x2_swapped_withoffset_t
+#include "kotekanLogging.hpp" // for FATAL_ERROR_NON_OO
+
+#include "json.hpp" // for json, basic_json<>::object_t, basic_json<>::value_type
+
+#include <algorithm> // for clamp, find
+#include <cmath>     // for ldexp, log, lrintf, sqrt, M_PI
+#include <complex>   // for complex, polar
+#include <cstddef>   // for ptrdiff_t, size_t
+#include <cstdint>   // for int64_t, uint64_t
+#include <string>    // for string
+#include <utility>   // for pair
+#include <vector>    // for vector
+
+/// A 64-bit hash (the splitmix64 finalizer), for reproducible test patterns
+inline std::uint64_t splitmix64(std::uint64_t x) {
+    x += 0x9e3779b97f4a7c15ULL;
+    x = (x ^ (x >> 30)) * 0xbf58476d1ce4e5b9ULL;
+    x = (x ^ (x >> 27)) * 0x94d049bb133111ebULL;
+    return x ^ (x >> 31);
+}
+
+/**
+ * @brief Simulated packet loss, shared by the test generators `inventPLMask` and `inventVoltage`.
+ *
+ * Random loss drops whole packets. A packet holds 16 FPGA samples of 4 consecutive frequencies, for
+ * all dishes and polarizations; the packet of FPGA sample `seq` and local frequency index `f` is
+ * `(p, q) = (seq / 16, f / 4)`. It is lost with probability `loss_rate`:
+ *
+ *     splitmix64(((p << 16) | q) ^ splitmix64(loss_seed)) < loss_rate * 2^64
+ *
+ * In addition, all samples in `loss_boxes` are lost. Boxes may begin and end at any even sample,
+ * the resolution of the packet loss mask. python/integration-tests/check_packetloss.py reproduces
+ * this.
+ *
+ * @conf loss_boxes  List of [begin, end), FPGA samples, multiples of 2. Default: none.
+ * @conf loss_rate   Float, in [0, 1). Default 0.
+ * @conf loss_seed   Int. Default 1.
+ */
+class testPacketLoss {
+public:
+    testPacketLoss(const kotekan::Config& config, const std::string& unique_name) :
+        boxes(config.get_default<std::vector<std::pair<std::int64_t, std::int64_t>>>(
+            unique_name, "loss_boxes", {})),
+        loss_rate(config.get_default<double>(unique_name, "loss_rate", 0)),
+        threshold(std::uint64_t(std::ldexp(loss_rate, 64))),
+        seed_hash(splitmix64(config.get_default<std::uint64_t>(unique_name, "loss_seed", 1))) {
+        if (!(loss_rate >= 0 && loss_rate < 1))
+            FATAL_ERROR_NON_OO("testPacketLoss: loss_rate={:g} must be in [0, 1)", loss_rate);
+        for (const auto& [begin, end] : boxes)
+            if (begin % 2 != 0 || end % 2 != 0)
+                FATAL_ERROR_NON_OO("testPacketLoss: loss box [{:d}, {:d}) must begin and end at "
+                                   "even FPGA samples",
+                                   begin, end);
+    }
+
+    /// Whether FPGA sample `seq` (>= 0) of local frequency index `freq` is lost
+    bool lost(const std::int64_t seq, const int freq) const {
+        for (const auto& [begin, end] : boxes)
+            if (seq >= begin && seq < end)
+                return true;
+        const std::uint64_t key = (std::uint64_t(seq / 16) << 16) | std::uint64_t(freq / 4);
+        return splitmix64(key ^ seed_hash) < threshold;
+    }
+
+private:
+    const std::vector<std::pair<std::int64_t, std::int64_t>> boxes;
+    const double loss_rate;
+    const std::uint64_t threshold; // loss_rate * 2^64
+    const std::uint64_t seed_hash;
+};
+
+/**
+ * @brief Simulated bad feeds, shared by the test generators `inventBFMask` and `inventVoltage`.
+ *
+ * Time is divided into periods of `bad_feed_change_in_samples` FPGA samples, starting at
+ * `first_fpga_seq_num`. In period `k` (>= 0), `n = min + h(k, 0) mod (max - min + 1)` inputs are
+ * bad, with `[min, max]` = `bad_feed_count`. They are the first `n` distinct values of
+ * `h(k, i) mod I` for i = 1, 2, ..., where `I` is the number of inputs, input `p * num_dishes + d`
+ * is polarization `p` of dish `d` (the order of the bad feed mask), and
+ *
+ *     h(k, i) = splitmix64(((k << 16) | i) ^ splitmix64(bad_feed_seed))
+ *
+ * There are no bad feeds before `first_fpga_seq_num`.
+ * python/integration-tests/check_badfeeds.py reproduces this.
+ *
+ * @conf bad_feed_change_in_samples Int. Default 0: no bad feeds.
+ * @conf bad_feed_count             [min, max], 0 <= min <= max <= I. Default [3, 5].
+ * @conf bad_feed_seed              Int. Default 1.
+ * @conf first_fpga_seq_num         Int. Default 0.
+ * @conf num_polarizations, num_dishes Int.
+ */
+class testBadFeeds {
+public:
+    testBadFeeds(const kotekan::Config& config, const std::string& unique_name) :
+        num_inputs(config.get<int>(unique_name, "num_polarizations")
+                   * config.get<int>(unique_name, "num_dishes")),
+        change(config.get_default<std::int64_t>(unique_name, "bad_feed_change_in_samples", 0)),
+        count(config.get_default<std::vector<int>>(unique_name, "bad_feed_count", {3, 5})),
+        seed_hash(splitmix64(config.get_default<std::uint64_t>(unique_name, "bad_feed_seed", 1))),
+        first_fpga_seq_num(config.get_default<std::int64_t>(unique_name, "first_fpga_seq_num", 0)) {
+        if (change < 0)
+            FATAL_ERROR_NON_OO("testBadFeeds: bad_feed_change_in_samples={:d} must not be negative",
+                               change);
+        if (!(count.size() == 2 && 0 <= count[0] && count[0] <= count[1] && count[1] <= num_inputs))
+            FATAL_ERROR_NON_OO("testBadFeeds: bad_feed_count must be [min, max] with 0 <= min <= "
+                               "max <= {:d}",
+                               num_inputs);
+    }
+
+    /// The length of a period in FPGA samples, or 0 if there are no bad feeds
+    std::int64_t get_change_in_samples() const {
+        return change;
+    }
+
+    /// The bad inputs at FPGA sample `seq`
+    std::vector<int> bad_inputs(const std::int64_t seq) const {
+        std::vector<int> bad;
+        if (change == 0 || seq < first_fpga_seq_num)
+            return bad;
+        const std::uint64_t k = (seq - first_fpga_seq_num) / change;
+        const int n = count[0] + int(hash(k, 0) % std::uint64_t(count[1] - count[0] + 1));
+        for (std::uint64_t i = 1; int(bad.size()) < n; ++i) {
+            const int input = int(hash(k, i) % std::uint64_t(num_inputs));
+            if (std::find(bad.begin(), bad.end(), input) == bad.end())
+                bad.push_back(input);
+        }
+        return bad;
+    }
+
+private:
+    std::uint64_t hash(const std::uint64_t k, const std::uint64_t i) const {
+        return splitmix64(((k << 16) | i) ^ seed_hash);
+    }
+
+    const int num_inputs;
+    const std::int64_t change;
+    const std::vector<int> count;
+    const std::uint64_t seed_hash;
+    const std::int64_t first_fpga_seq_num;
+};
+
+/**
+ * @brief Point-source tones plus noise as channelized F-engine voltages, for test generators.
+ *
+ * A source with amplitude `A`, phase `φ`, direction `n = (n_x, n_y)` in the telescope grid frame
+ * (the convention of the `setBBBeams` beam positions) and `k` tone cycles per frame contributes
+ *
+ *     E[d,p](f,t) = A w_p exp(iφ) exp(2πi k (t - t0) / T) exp(-2πi ν_f n·r_d / c)
+ *
+ * to dish `d`, polarization `p`, coarse channel `f` and FPGA sample `t`. Here `t0` is
+ * `first_fpga_seq_num`, `T` is `num_times`, `ν_f = ν_0 ± (channel + k/T) Δν` is the tone
+ * frequency, and `r_d` is the dish position, computed from `telescope.dish_inputs` (not via
+ * `Telescope`). As in `Telescope`, Nyquist zone `z` (`telescope.nyquist_zone`, default 1) has
+ * `ν_0 = floor(z/2) adc_frequency` and the sign `+` for odd and `-` for even zones.
+ * This is the convention of RadioTelescopeFEngine.jl, for which the `calcBBPhase` beam with
+ * position `n_b` peaks at `n = n_b`. Dishes not listed in `dish_inputs`, or listed with
+ * `type: Missing`, receive nothing.
+ *
+ * Noise is complex Gaussian with standard deviation `noise_rms` per component,
+ * independent per sample and input, and repeats every `noise_period_frames` frames. Values are
+ * rounded and clamped to [-7, +7]; -8 is reserved as the no-data value.
+ *
+ * @conf sources              List of objects, each with `amplitude` (LSB), `direction`
+ *                            ([n_x, n_y]), `tone_cycles_per_frame` (integer), optional `phase`
+ *                            (radians, default 0), optional `pol` ([w_0, w_1], default [1, 1]),
+ *                            optional `window` ([begin, end), FPGA samples; default: always
+ *                            on) and optional `active_inputs` (as below; default: all inputs)
+ * @conf noise_rms            Float. Default 0.
+ * @conf seed                 Int. Noise seed. Default 1.
+ * @conf noise_period_frames  Int. Default 4.
+ * @conf active_inputs        List of [dish, polarization]. If set, all other inputs are zero.
+ *                            A source's own `active_inputs` further restricts that source.
+ * @conf first_fpga_seq_num   Int. Default 0.
+ */
+class testSkySignal {
+public:
+    struct Source {
+        float amplitude;
+        double phase;
+        double n_x, n_y;
+        int tone_cycles_per_frame;
+        float pol[2];
+        bool windowed;
+        std::int64_t window_begin, window_end;
+        std::vector<bool> active; // [P][D]; empty: all inputs
+    };
+
+    testSkySignal(const kotekan::Config& config, const std::string& unique_name,
+                  const int num_times, const std::vector<int>& frequency_channels,
+                  const int num_polarizations, const int num_dishes) :
+        num_times(num_times), num_frequencies(frequency_channels.size()),
+        num_elements(std::ptrdiff_t(num_frequencies) * num_polarizations * num_dishes),
+        first_fpga_seq_num(config.get_default<std::int64_t>(unique_name, "first_fpga_seq_num", 0)),
+        noise_rms(config.get_default<float>(unique_name, "noise_rms", 0)),
+        seed(config.get_default<std::uint64_t>(unique_name, "seed", 1)),
+        noise_period(config.get_default<std::int64_t>(unique_name, "noise_period_frames", 4)
+                     * num_times) {
+        if (num_polarizations > 2)
+            FATAL_ERROR_NON_OO("testSkySignal supports at most 2 polarizations");
+
+        for (const auto& s :
+             config.get_default<nlohmann::json>(unique_name, "sources", nlohmann::json::array())) {
+            Source src;
+            src.amplitude = s.at("amplitude").get<float>();
+            src.phase = s.contains("phase") ? s.at("phase").get<double>() : 0.0;
+            src.n_x = s.at("direction").at(0).get<double>();
+            src.n_y = s.at("direction").at(1).get<double>();
+            src.tone_cycles_per_frame = s.at("tone_cycles_per_frame").get<int>();
+            src.pol[0] = s.contains("pol") ? s.at("pol").at(0).get<float>() : 1.0f;
+            src.pol[1] = s.contains("pol") ? s.at("pol").at(1).get<float>() : 1.0f;
+            src.windowed = s.contains("window");
+            src.window_begin = src.windowed ? s.at("window").at(0).get<std::int64_t>() : 0;
+            src.window_end = src.windowed ? s.at("window").at(1).get<std::int64_t>() : 0;
+            if (s.contains("active_inputs"))
+                src.active = input_set(s.at("active_inputs"), num_polarizations, num_dishes);
+            if (src.n_x * src.n_x + src.n_y * src.n_y > 1)
+                FATAL_ERROR_NON_OO("testSkySignal: source direction is not on the unit sphere");
+            sources.push_back(src);
+        }
+
+        // Which inputs carry signal
+        const std::vector<bool> active =
+            config.exists(unique_name, "active_inputs")
+                ? input_set(config.get<nlohmann::json>(unique_name, "active_inputs"),
+                            num_polarizations, num_dishes)
+                : std::vector<bool>(std::size_t(num_polarizations) * num_dishes, true);
+
+        // Dish positions in the grid frame
+        const double dx = config.get<double>("/telescope", "dish_separation_x_m");
+        const double dy = config.get<double>("/telescope", "dish_separation_y_m");
+        std::vector<bool> exists(num_dishes, false);
+        std::vector<double> pos_x(num_dishes), pos_y(num_dishes), pos_z(num_dishes);
+        for (const auto& dish : config.get<nlohmann::json>("/telescope", "dish_inputs")) {
+            const int d = dish.at("dish_idx").get<int>();
+            if (d < 0 || d >= num_dishes)
+                FATAL_ERROR_NON_OO("testSkySignal: dish_idx {:d} out of range", d);
+            if (dish.at("type").get<std::string>() == "Missing")
+                continue;
+            const auto& disp = dish.at("feed_pos_disp_m");
+            exists.at(d) = true;
+            pos_x.at(d) = dx * dish.at("grid_x_idx").get<int>() + disp.at(0).get<double>();
+            pos_y.at(d) = dy * dish.at("grid_y_idx").get<int>() + disp.at(1).get<double>();
+            pos_z.at(d) = disp.at(2).get<double>();
+        }
+
+        // Per-input noise switch
+        has_noise.resize(num_elements);
+        for (std::ptrdiff_t f = 0; f < num_frequencies; ++f)
+            for (int p = 0; p < num_polarizations; ++p)
+                for (int d = 0; d < num_dishes; ++d)
+                    has_noise[(f * num_polarizations + p) * num_dishes + d] =
+                        noise_rms > 0 && exists[d] && active[p * num_dishes + d];
+
+        // Geometric phases, amplitudes and polarization weights per source and input
+        const double c0 = 299792458.0; // [m/s]
+        const double adc_frequency = config.get<double>(unique_name, "adc_frequency");
+        const int nyquist_zone = config.get_default<int>("/telescope", "nyquist_zone", 1);
+        const double freq0 = (nyquist_zone / 2) * adc_frequency;
+        const double channel_width = (nyquist_zone % 2 ? 1 : -1) * adc_frequency
+                                     / config.get<double>(unique_name, "num_samples_per_frame");
+        geometry.resize(sources.size() * num_elements);
+        for (std::size_t s = 0; s < sources.size(); ++s) {
+            const Source& src = sources[s];
+            const double n_z = std::sqrt(1 - src.n_x * src.n_x - src.n_y * src.n_y);
+            for (std::ptrdiff_t f = 0; f < num_frequencies; ++f) {
+                const double nu =
+                    freq0
+                    + (frequency_channels[f] + double(src.tone_cycles_per_frame) / num_times)
+                          * channel_width;
+                for (int p = 0; p < num_polarizations; ++p) {
+                    for (int d = 0; d < num_dishes; ++d) {
+                        const std::ptrdiff_t e = (f * num_polarizations + p) * num_dishes + d;
+                        const bool on = exists[d] && active[p * num_dishes + d]
+                                        && (src.active.empty() || src.active[p * num_dishes + d]);
+                        const double delay =
+                            (src.n_x * pos_x[d] + src.n_y * pos_y[d] + n_z * pos_z[d]) / c0;
+                        geometry[s * num_elements + e] =
+                            on ? std::complex<float>(std::polar(double(src.amplitude * src.pol[p]),
+                                                                src.phase - 2 * M_PI * nu * delay))
+                               : 0.0f;
+                    }
+                }
+            }
+        }
+    }
+
+    const std::vector<Source>& get_sources() const {
+        return sources;
+    }
+
+    /// Fill rows [t_begin, t_end) of a [T, F, P, D] frame whose first sample is `frame_seq`.
+    /// With `periodic_only`, sources with a time window are left out.
+    void fill(kotekan::int4x2_swapped_withoffset_t* const frame, const std::int64_t frame_seq,
+              const int t_begin, const int t_end, const bool periodic_only) const {
+#pragma omp parallel for
+        for (int t = t_begin; t < t_end; ++t) {
+            const std::int64_t seq = frame_seq + t;
+            const std::int64_t rel = seq - first_fpga_seq_num;
+            std::vector<std::complex<float>> phasors(sources.size());
+            std::vector<std::size_t> on;
+            for (std::size_t s = 0; s < sources.size(); ++s) {
+                const Source& src = sources[s];
+                if (src.windowed
+                    && (periodic_only || seq < src.window_begin || seq >= src.window_end))
+                    continue;
+                const std::int64_t cycle = (rel % num_times + num_times) % num_times;
+                phasors[s] = std::polar(1.0, 2 * M_PI * src.tone_cycles_per_frame * double(cycle)
+                                                 / num_times);
+                on.push_back(s);
+            }
+            const std::uint64_t noise_index =
+                std::uint64_t((rel % noise_period + noise_period) % noise_period) * num_elements;
+            kotekan::int4x2_swapped_withoffset_t* const row =
+                frame + std::ptrdiff_t(t) * num_elements;
+            for (std::ptrdiff_t e = 0; e < num_elements; ++e) {
+                std::complex<float> value = 0;
+                for (const std::size_t s : on)
+                    value += geometry[s * num_elements + e] * phasors[s];
+                if (has_noise[e])
+                    value += noise(noise_index + e);
+                // The arguments are (imaginary, real)
+                row[e] = kotekan::int4x2_swapped_withoffset_t(quantize(value.imag()),
+                                                              quantize(value.real()));
+            }
+        }
+    }
+
+private:
+    // The inputs listed in `list`, a list of [dish, polarization], as flags [P][D]
+    static std::vector<bool> input_set(const nlohmann::json& list, const int num_polarizations,
+                                       const int num_dishes) {
+        std::vector<bool> set(std::size_t(num_polarizations) * num_dishes, false);
+        for (const auto& dp : list.get<std::vector<std::vector<int>>>()) {
+            if (dp.size() != 2 || dp[0] < 0 || dp[0] >= num_dishes || dp[1] < 0
+                || dp[1] >= num_polarizations)
+                FATAL_ERROR_NON_OO("testSkySignal: bad entry in `active_inputs`");
+            set.at(dp[1] * num_dishes + dp[0]) = true;
+        }
+        return set;
+    }
+
+    // Gaussian noise with standard deviation `noise_rms` per component (Box-Muller). The
+    // spectral kurtosis RFI flagging needs Gaussian statistics; approximations such as a sum of a
+    // few uniform variates have visibly lower kurtosis and are flagged.
+    std::complex<float> noise(const std::uint64_t index) const {
+        const std::uint64_t h = splitmix64(seed * 0x2545f4914f6cdd1dULL + index);
+        const double u1 = (double(h >> 32) + 1) / 4294967296.0;   // (0, 1]
+        const double u2 = double(h & 0xffffffffU) / 4294967296.0; // [0, 1)
+        return std::polar(float(noise_rms * std::sqrt(-2 * std::log(u1))), float(2 * M_PI * u2));
+    }
+
+    static std::int8_t quantize(const float x) {
+        return std::int8_t(std::clamp(long(std::lrintf(x)), -7L, +7L));
+    }
+
+    const int num_times;
+    const std::ptrdiff_t num_frequencies;
+    const std::ptrdiff_t num_elements;
+    const std::int64_t first_fpga_seq_num;
+    const float noise_rms;
+    const std::uint64_t seed;
+    const std::int64_t noise_period;
+
+    std::vector<Source> sources;
+    std::vector<std::complex<float>> geometry; // [source][F][P][D]
+    std::vector<bool> has_noise;               // [F][P][D]
+};
+
+#endif // TEST_SKY_SIGNAL_HPP

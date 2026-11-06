@@ -1,0 +1,23 @@
+# -*-yaml-*-
+
+# CHIME lost samples without packet loss, as config/chime_upgrade_frb.j2 makes them without dpdk
+
+################################################################################
+
+# Stages
+
+{% from "include/frequency_channels_chime.j2" import frequency_channels %}
+
+# Group k of 4 frequencies serves host_voltage_buffer_<4k> to <4k+3>
+{% for id in range(16 // 4) %}   # num_frequencies = 16
+fake_lost_samples_{{ id }}:
+    kotekan_stage: testDataGen
+    type: ramp # to get uint8 as data type
+    value: 0
+    name: lost_samples
+    array_shape: [16384]       # num_times
+    dim_name: [T]
+    num_local_freq: 4
+    manual_freq_ids: {{ frequency_channels[4 * id : 4 * id + 4] }}
+    out_buf: lost_samples_buffer_{{ id }}
+{% endfor %}

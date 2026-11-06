@@ -28,7 +28,7 @@ Each of the four links carries 512 of the 2048 CHIME inputs for all four
 frequencies of a ``lost_samples`` buffer. A packet lost on one link thus flags
 its time samples for all inputs and all four frequencies.
 
-The ``zeroSamples`` stage (``lib/dpdk/zeroSamples.cpp``) overwrites every
+The ``zeroSamples`` stage (``lib/stages/zeroSamples.cpp``) overwrites every
 flagged sample of the voltage buffer with ``0x88``, which is :math:`0 + 0i` in
 the offset-encoded 4+4-bit format, and adds the number of lost samples to the
 frame's metadata. Everything downstream therefore sees zeros, not stale data.
