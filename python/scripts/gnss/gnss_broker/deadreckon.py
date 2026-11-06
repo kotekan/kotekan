@@ -1797,9 +1797,9 @@ def dr_nav_pages(ctx):
     """Every cycle, after dr_seed: the pages of every seed that carries a wipe frame index
     follow the live store (gw_pages_for at the seed's ref_hop). Pages that arrived since the
     seed's birth or slew attach, newer pages replace, pages past the age cap drop; the frame
-    index stays, it is the seed's phase bookkeeping, not the pages'. The trackers get the change
-    on this cycle's push, where a slew or re-birth was the only carrier (median 30 s, p90
-    146 s on 11-05)."""
+    index stays, it is the seed's phase bookkeeping, not the pages'. A slewed seed (every cycle)
+    or a re-pinned one (every --dr-repin-s) already takes the newest pages through
+    gw_nav_fields; this covers a seed held between re-births, and drops pages that aged out."""
     if getattr(ctx.args, "dr_constellation", None) != "W" or not getattr(
         ctx, "utc0_sample0", None
     ):
