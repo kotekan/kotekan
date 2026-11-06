@@ -1074,9 +1074,12 @@ def test_manual_mask_reaches_the_node_config():
         and bd[0]["beam_freq_ids"]
         and all(
             f % 16 == bd[0]["beam_freq_ids"][0] % 16 for f in bd[0]["beam_freq_ids"]
-        ),
+        )
+        and bd[0].get("beam_eig_mode") == "gated"
+        and bd[0].get("beam_eig_gate") == "/gnss0_beamdump_gate",
         "--beam-dump-freq-ids: one cudaGnssBeamDump per GPU on its mod-16 share, reading "
-        "`voltage` (cx51 refused the config without voltage_name, 11-02)",
+        "`voltage` (cx51 refused the config without voltage_name, 11-02), its eigen beam "
+        "gated on gnss0_beamdump_gate",
     )
     from gen_chord_gnss_config import beam_dump_frame_bytes  # g is a loop variable here
 
@@ -1102,6 +1105,8 @@ def test_manual_mask_reaches_the_node_config():
             and cfg["gnss%d_trackbeam_sink" % gpu]["base_dir"].endswith("/trackbeam")
             and cfg["gnss%d_trackbeam_buf" % gpu]["frame_size"]
             == beam_dump_frame_bytes(len(c["beam_freq_ids"]), 8192, 2)
+            and c["beam_eig_mode"] == "gated"
+            and c["beam_eig_gate"] == "/gnss%d_trackbeam_gate" % gpu
             for gpu, c in tb
         ),
         "--track-beam-freq-ids: a second cudaGnssBeamDump on each GPU holding a 6144-6164 "

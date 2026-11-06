@@ -10,6 +10,13 @@ array back).
 Analysis so far: `~/gnss/bb1030/dg_*.py`, data `cf06:/var/tmp/bb1030/dg2`, notes in the gnss-main
 session memory (`chord-guowang-encoding-20261031`).
 
+2026-11-06: the eigen beam is gated. `cudaGnssBeamDump` forms it only for the frames its gate
+(`beam_eig_gate`, the `gnss<g>_beamdump_gate` or `gnss<g>_trackbeam_gate`) would pass, with
+`beam_eig_resume_iters` power iterations on the first frame of a window; the other frames carry
+zeros in the eigen sections and `eig_iters` 0 in the header. `--beam-dump-eig-mode off|gated|always`
+sets it at generation, `POST <instance>/eig_mode {"mode": ...}` changes it live, and
+`GET <instance>/eig_status` reports it. The target beams are formed every frame.
+
 ## Why
 
 The 10-30 baseband dump gave us the GuoWang (HULIANWANG DIGUI) signal parameters from one satellite

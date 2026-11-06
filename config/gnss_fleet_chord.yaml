@@ -175,6 +175,9 @@ common:
     # (1258-1284); each GPU keeps its own mod-16 share, so a stitchable band needs the whole
     # fleet. ~16 GB fleet-wide per 80 s pass under <record_dir>/beamdump on each node.
     beam-dump-freq-ids: "6122-6185,6395-6594"
+    # The eigen beam (the covariance and power iterations, ~3.7 ms of each frame per GPU)
+    # is formed only for the frames a gate passes: off | gated | always.
+    beam-dump-eig-mode: gated
     # Track beam (cudaGnssBeamDump with beam_lane_owner, docs/CHORD_GUOWANG_TRACK_BEAM.md): on
     # the 1202 main lobe (+-1.1 MHz about 1202.025 MHz, ~77 % of the signal's power) a beam per
     # tracked GuoWang satellite, steered by the gw_1202 chain's lane directions, for the two

@@ -1,9 +1,13 @@
 #include "cudaGnssBeamDump.hpp"
 
-#include "Telescope.hpp"     // for Telescope
-#include "cudaUtils.hpp"     // for CHECK_CUDA_ERROR
-#include "gnssFleetLane.hpp" // for gnss::FleetLane, gnss::fleet_lane_direction
+#include "Telescope.hpp"       // for Telescope
+#include "cudaUtils.hpp"       // for CHECK_CUDA_ERROR
+#include "gnssFleetLane.hpp"   // for gnss::FleetLane, gnss::fleet_lane_direction
+#include "gnssFrameWindow.hpp" // for gnss::FrameWindowBoard
 #include "kotekanLogging.hpp"
+#include "restServer.hpp"
+
+#include "json.hpp"
 
 #include <algorithm>
 #include <cassert>
@@ -11,6 +15,7 @@
 #include <chrono>
 #include <cstdlib>
 #include <cstring>
+#include <exception>
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -24,7 +29,41 @@ double steady_s() {
     return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch())
         .count();
 }
+
+bool parse_eig_mode(const std::string& s, int& mode) {
+    if (s == "off")
+        mode = cudaGnssBeamDump::EIG_OFF;
+    else if (s == "gated")
+        mode = cudaGnssBeamDump::EIG_GATED;
+    else if (s == "always")
+        mode = cudaGnssBeamDump::EIG_ALWAYS;
+    else
+        return false;
+    return true;
+}
+
+const char* eig_mode_name(int mode) {
+    return mode == cudaGnssBeamDump::EIG_OFF     ? "off"
+           : mode == cudaGnssBeamDump::EIG_GATED ? "gated"
+                                                 : "always";
+}
+
+std::string gate_path(std::string gate) {
+    if (!gate.empty() && gate[0] != '/')
+        gate = "/" + gate;
+    return gate;
+}
 } // namespace
+
+std::shared_ptr<cudaGnssBeamDump::Shared> cudaGnssBeamDump::shared_for(const std::string& name) {
+    static std::mutex mtx;
+    static std::map<std::string, std::shared_ptr<Shared>> by_name;
+    std::lock_guard<std::mutex> lk(mtx);
+    auto& p = by_name[name];
+    if (!p)
+        p = std::make_shared<Shared>();
+    return p;
+}
 
 cudaGnssBeamDump::cudaGnssBeamDump(Config& config, const std::string& unique_name,
                                    bufferContainer& host_buffers, cudaDeviceInterface& device,
@@ -43,6 +82,9 @@ cudaGnssBeamDump::cudaGnssBeamDump(Config& config, const std::string& unique_nam
     _lane_owner(config.get_default<std::string>(unique_name, "beam_lane_owner", "")),
     _n_targets(_lane_owner.empty() ? 0 : config.get_default<int>(unique_name, "beam_targets", 2)),
     _layout(gnss_cuda::beam_dump_layout((int)_local_channels.size(), _num_times, _n_targets)),
+    _eig_gate(gate_path(config.get_default<std::string>(unique_name, "beam_eig_gate", ""))),
+    _eig_resume_iters(config.get_default<int>(unique_name, "beam_eig_resume_iters", 16)),
+    _eig(shared_for(unique_name)), _owner(instance_num == 0),
     voltage(_voltage_name, "E",
             std::array<std::ptrdiff_t, 4>{_buffer_depth * _num_times, _num_local_freq, 2,
                                           _num_elements / 2},
@@ -72,6 +114,75 @@ cudaGnssBeamDump::cudaGnssBeamDump(Config& config, const std::string& unique_nam
         FATAL_ERROR("cudaGnssBeamDump: beam_eig_iters {:d} outside [1, 64]", _eig_iters);
     if (!_lane_owner.empty() && (_n_targets < 1 || _n_targets > 16))
         FATAL_ERROR("cudaGnssBeamDump: beam_targets {:d} outside [1, 16]", _n_targets);
+    const std::string mode_name =
+        config.get_default<std::string>(unique_name, "beam_eig_mode", "always");
+    int mode;
+    if (!parse_eig_mode(mode_name, mode))
+        FATAL_ERROR("cudaGnssBeamDump: beam_eig_mode '{:s}' is not off, gated or always",
+                    mode_name);
+    if (mode == EIG_GATED && _eig_gate.empty())
+        FATAL_ERROR("cudaGnssBeamDump: beam_eig_mode gated needs beam_eig_gate");
+    if (!_eig_gate.empty()
+        && config.get_default<std::string>(_eig_gate, "kotekan_stage", "") != "FrameWindowGate")
+        FATAL_ERROR("cudaGnssBeamDump: beam_eig_gate '{:s}' is not a FrameWindowGate of this "
+                    "config",
+                    _eig_gate);
+    if (_eig_resume_iters < 1 || _eig_resume_iters > 64)
+        FATAL_ERROR("cudaGnssBeamDump: beam_eig_resume_iters {:d} outside [1, 64]",
+                    _eig_resume_iters);
+    if (_owner) {
+        {
+            std::lock_guard<std::mutex> lk(_eig->mtx);
+            _eig->mode = mode;
+        }
+        auto sh = _eig;
+        const std::string gate = _eig_gate;
+        auto& rest = kotekan::restServer::instance();
+        rest.register_post_callback(
+            unique_name + "/eig_mode",
+            [this, sh, gate, unique_name](kotekan::connectionInstance& conn, nlohmann::json& json) {
+                std::string s;
+                try {
+                    s = json.at("mode").get<std::string>();
+                } catch (const std::exception& ex) {
+                    conn.send_error(fmt::format(fmt("expected {{\"mode\": \"off\"|\"gated\"|"
+                                                    "\"always\"}}: {:s}"),
+                                                ex.what()),
+                                    kotekan::HTTP_RESPONSE::BAD_REQUEST);
+                    return;
+                }
+                int m;
+                if (!parse_eig_mode(s, m)) {
+                    conn.send_error("mode must be off, gated or always",
+                                    kotekan::HTTP_RESPONSE::BAD_REQUEST);
+                    return;
+                }
+                if (m == EIG_GATED && gate.empty()) {
+                    conn.send_error("gated needs beam_eig_gate in the config",
+                                    kotekan::HTTP_RESPONSE::BAD_REQUEST);
+                    return;
+                }
+                {
+                    std::lock_guard<std::mutex> lk(sh->mtx);
+                    sh->mode = m;
+                }
+                INFO("cudaGnssBeamDump[{:s}]: eigen beam {:s}", unique_name, s);
+                nlohmann::json r;
+                r["mode"] = s;
+                conn.send_json_reply(r);
+            });
+        rest.register_get_callback(unique_name + "/eig_status",
+                                   [sh, gate](kotekan::connectionInstance& conn) {
+                                       nlohmann::json r;
+                                       std::lock_guard<std::mutex> lk(sh->mtx);
+                                       r["mode"] = eig_mode_name(sh->mode);
+                                       r["gate"] = gate;
+                                       r["in_window"] = sh->in_window;
+                                       r["computed"] = sh->computed;
+                                       r["skipped"] = sh->skipped;
+                                       conn.send_json_reply(r);
+                                   });
+    }
 
     voltage.register_consumer();
     gpu_buffers_used.push_back(std::make_tuple(_beam_name, true, false, true));
@@ -145,12 +256,42 @@ cudaGnssBeamDump::cudaGnssBeamDump(Config& config, const std::string& unique_nam
 
     set_command_type(gpuCommandType::KERNEL);
     INFO("cudaGnssBeamDump: {:d} channels (freq_ids {:d}..{:d}) x {:d} samples into '{:s}' "
-         "({:.2f} MB/frame), reference input {:d}, {:d} power iterations",
+         "({:.2f} MB/frame), reference input {:d}, {:d} power iterations, eigen beam {:s}{:s}{:s}",
          n, _freq_ids.front(), _freq_ids.back(), _num_times, _beam_name, _layout.bytes / 1.0e6,
-         _ref_input, _eig_iters);
+         _ref_input, _eig_iters, mode_name, _eig_gate.empty() ? "" : " on ", _eig_gate);
 }
 
-cudaGnssBeamDump::~cudaGnssBeamDump() {}
+cudaGnssBeamDump::~cudaGnssBeamDump() {
+    if (_owner) {
+        auto& rest = kotekan::restServer::instance();
+        rest.remove_json_callback(unique_name + "/eig_mode");
+        rest.remove_get_callback(unique_name + "/eig_status");
+    }
+}
+
+int cudaGnssBeamDump::eig_iters_for(long long seq0) {
+    std::lock_guard<std::mutex> lk(_eig->mtx);
+    bool on = _eig->mode == EIG_ALWAYS;
+    if (_eig->mode == EIG_GATED) {
+        bool found;
+        on = gnss::FrameWindowBoard::instance().in_window(_eig_gate, seq0, found);
+        if (!found && !_eig->warned_gate) {
+            WARN("cudaGnssBeamDump: gate '{:s}' is not running: no eigen beam until it is",
+                 _eig_gate);
+            _eig->warned_gate = true;
+        }
+    }
+    _eig->in_window = on;
+    if (!on) {
+        _eig->skipped++;
+        _eig->resume = true;
+        return 0;
+    }
+    _eig->computed++;
+    const int iters = _eig->resume ? _eig_resume_iters : _eig_iters;
+    _eig->resume = false;
+    return iters;
+}
 
 int cudaGnssBeamDump::wait_on_precondition() {
     const int errcode = voltage.wait_and_claim_readable([&](const std::ptrdiff_t available) {
@@ -373,18 +514,26 @@ cudaEvent_t cudaGnssBeamDump::execute(cudaPipelineState& pipestate,
 
     // Header + freq_ids. The staging is pageable, so this copy returns once the bytes are
     // taken, and the vector is reusable next frame.
+    const int iters = eig_iters_for(seq0);
     auto* hdr = reinterpret_cast<gnss_cuda::BeamDumpHdr*>(_hdr_stage.data());
     hdr->seq0 = seq0;
+    hdr->eig_iters = iters;
     CHECK_CUDA_ERROR(cudaMemcpyAsync(d_out, _hdr_stage.data(), _hdr_stage.size(),
                                      cudaMemcpyHostToDevice, stream));
 
-    gnss_cuda::launch_beam_cov(d_in, d_sel, n, _num_local_freq, _num_times, d_cov, stream);
-    gnss_cuda::launch_beam_eig(d_cov, n, _num_times, _ref_input, _eig_iters, d_q1, d_q2,
-                               (float2*)(d_out + _layout.off_w), (float*)(d_out + _layout.off_pw),
-                               (float*)(d_out + _layout.off_lam), stream);
-    gnss_cuda::launch_beam_form(d_in, d_sel, n, _num_local_freq, _num_times,
-                                (const float2*)(d_out + _layout.off_w), d_out + _layout.off_beam,
-                                stream);
+    if (iters > 0) {
+        gnss_cuda::launch_beam_cov(d_in, d_sel, n, _num_local_freq, _num_times, d_cov, stream);
+        gnss_cuda::launch_beam_eig(
+            d_cov, n, _num_times, _ref_input, iters, d_q1, d_q2, (float2*)(d_out + _layout.off_w),
+            (float*)(d_out + _layout.off_pw), (float*)(d_out + _layout.off_lam), stream);
+        gnss_cuda::launch_beam_form(d_in, d_sel, n, _num_local_freq, _num_times,
+                                    (const float2*)(d_out + _layout.off_w),
+                                    d_out + _layout.off_beam, stream);
+    } else {
+        // The eigen sections of a frame without the eigen beam read as zeros.
+        CHECK_CUDA_ERROR(
+            cudaMemsetAsync(d_out + _layout.off_lam, 0, _layout.off_tgt - _layout.off_lam, stream));
+    }
     if (_n_targets > 0) {
         build_targets(seq0);
         CHECK_CUDA_ERROR(cudaMemcpyAsync(d_out + _layout.off_tgt, _tgt_stage.data(),
@@ -400,8 +549,15 @@ cudaEvent_t cudaGnssBeamDump::execute(cudaPipelineState& pipestate,
         std::string targets;
         for (int t : _target_prn)
             targets += " " + std::to_string(t);
-        INFO("cudaGnssBeamDump: frame seq0 {:d}, {:d} channels{:s}{:s}", seq0, n,
-             _n_targets > 0 ? ", target PRNs" : "", targets);
+        uint64_t computed, skipped;
+        {
+            std::lock_guard<std::mutex> lk(_eig->mtx);
+            computed = _eig->computed;
+            skipped = _eig->skipped;
+        }
+        INFO("cudaGnssBeamDump: frame seq0 {:d}, {:d} channels, eigen beam on {:d} of {:d} "
+             "frames{:s}{:s}",
+             seq0, n, computed, computed + skipped, _n_targets > 0 ? ", target PRNs" : "", targets);
     }
     return record_end_event();
 }

@@ -1,6 +1,7 @@
 #include "frameWindowGate.hpp"
 
 #include "StageFactory.hpp"
+#include "gnssFrameWindow.hpp" // for gnss::FrameWindowBoard
 #include "kotekanLogging.hpp"
 #include "metadata.hpp"
 #include "restServer.hpp"
@@ -79,6 +80,7 @@ FrameWindowGate::FrameWindowGate(Config& config, const std::string& unique_name,
                 _start_seq = s;
                 _end_seq = e;
                 last = _last_seq;
+                gnss::FrameWindowBoard::instance().publish(unique_name, true, s, e);
             }
             INFO("FrameWindowGate[{:s}]: armed [{:d}, {:d}) (last seen seq {:d})", unique_name, s,
                  e, last);
@@ -97,6 +99,7 @@ FrameWindowGate::FrameWindowGate(Config& config, const std::string& unique_name,
                 std::lock_guard<std::mutex> lk(_mtx);
                 _armed = false;
                 passed = _passed;
+                gnss::FrameWindowBoard::instance().publish(unique_name, false, 0, 0);
             }
             INFO("FrameWindowGate[{:s}]: disarmed by request ({:d} frames passed in total)",
                  unique_name, passed);
@@ -118,9 +121,11 @@ FrameWindowGate::FrameWindowGate(Config& config, const std::string& unique_name,
         r["dropped_in_window"] = _dropped_in_window;
         conn.send_json_reply(r);
     });
+    gnss::FrameWindowBoard::instance().publish(unique_name, false, 0, 0);
 }
 
 FrameWindowGate::~FrameWindowGate() {
+    gnss::FrameWindowBoard::instance().remove(unique_name);
     auto& rest = kotekan::restServer::instance();
     rest.remove_json_callback(unique_name + "/arm");
     rest.remove_json_callback(unique_name + "/disarm");
@@ -185,8 +190,10 @@ void FrameWindowGate::main_thread() {
             end = _end_seq;
             past_end = armed && end > 0 && seq >= end;
             in_window = armed && seq >= start && !past_end;
-            if (past_end)
+            if (past_end) {
                 _armed = false;
+                gnss::FrameWindowBoard::instance().publish(unique_name, false, 0, 0);
+            }
         }
         prev_seq = seq;
         armed_gauge.set(in_window ? 1 : 0);
