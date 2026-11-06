@@ -170,6 +170,7 @@ dpdkCore::dpdkCore(Config& config, const string& unique_name, bufferContainer& b
     nic_xstat_port_metrics.resize(num_system_ports);
     packet_buffer_xstat_id.resize(num_system_ports, -1);
     last_packet_buffer_dropped.resize(num_system_ports, 0);
+    ring_full_dropped.resize(num_system_ports, 0);
     for (const string& name : nic_xstat_names) {
         nic_xstat_metrics.push_back(&kotekan::prometheus::Metrics::instance().add_gauge(
             "kotekan_dpdk_nic_" + name + "_total", unique_name, {"port"}));
@@ -534,8 +535,13 @@ void dpdkCore::update_port_stats() {
             uint64_t id = packet_buffer_xstat_id[port];
             rte_eth_xstats_get_by_id(port, &id, &packet_buffer_dropped, 1);
         }
-        const uint64_t ring_full_dropped =
+        // The packet buffer stat is read after imissed, so a packet buffer drop between the
+        // two reads makes this difference dip for one poll, which rate() would take for a
+        // counter reset. Hold the largest value instead, except on a NIC counter reset.
+        const uint64_t ring_full_now =
             stats.imissed >= packet_buffer_dropped ? stats.imissed - packet_buffer_dropped : 0;
+        if (stats.imissed < last_eth_stats[port].imissed || ring_full_now > ring_full_dropped[port])
+            ring_full_dropped[port] = ring_full_now;
 
         // Guard against counter resets (e.g. a link/NIC reset), which would
         // otherwise underflow the unsigned delta into a bogus WARN.
@@ -584,7 +590,7 @@ void dpdkCore::update_port_stats() {
         nic_rx_missed_total_metric.labels(port_label).set(stats.imissed);
         if (packet_buffer_xstat_id[port] >= 0)
             nic_rx_packet_buffer_dropped_metric.labels(port_label).set(packet_buffer_dropped);
-        nic_rx_ring_full_dropped_metric.labels(port_label).set(ring_full_dropped);
+        nic_rx_ring_full_dropped_metric.labels(port_label).set(ring_full_dropped[port]);
         last_packet_buffer_dropped[port] = packet_buffer_dropped;
         nic_rx_errors_total_metric.labels(port_label).set(stats.ierrors);
         nic_rx_nombuf_total_metric.labels(port_label).set(stats.rx_nombuf);

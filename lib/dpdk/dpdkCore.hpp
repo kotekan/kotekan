@@ -376,6 +376,10 @@ private:
     /// The NIC packet buffer discard count at the last poll, per port, for computing deltas.
     std::vector<uint64_t> last_packet_buffer_dropped;
 
+    /// The rx ring full drop count last exported, per port. It only decreases on a NIC
+    /// counter reset.
+    std::vector<uint64_t> ring_full_dropped;
+
     /// The pool of DPDK mbufs, one per numa node
     std::vector<struct rte_mempool*> mbuf_pools;
 
