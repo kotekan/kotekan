@@ -27,14 +27,13 @@
  * @conf allow_ndarray      Bool. Write an NDArray buffer's raw bytes instead of failing.
  *                          Default false. The frame descriptor is NOT written, so the
  *                          reader has to know the shape out of band.
- * @conf continue_numbering Bool. Resume file numbering one past the largest existing
- *                          <file_name>_NNNNNNN.<ext> in base_dir instead of at 0. Default
- *                          false (upstream behaviour). Files are opened WITHOUT O_TRUNC, so a
- *                          restart at 0 over an existing archive overwrites its oldest files;
- *                          any archive meant to survive a restart wants this true.
- * @conf create_base_dir    Bool. Create base_dir (and parents) at construction. Default
- *                          false. Without it a missing directory is fatal at the FIRST
- *                          WRITE, which for a gated writer may be hours after startup.
+ * @conf continue_numbering Bool. Number files from one past the highest existing
+ *                          file of the same name in base_dir, instead of from 0.
+ *                          Default false. Files are opened without O_TRUNC, so numbering
+ *                          from 0 overwrites existing files in place.
+ * @conf create_base_dir    Bool. Create base_dir and its parents at construction. Default
+ *                          false, in which case a missing base_dir fails at the first write,
+ *                          or at start with continue_numbering.
  *
  * @par Metrics
  * @metric kotekan_rawfilewrite_write_time_seconds

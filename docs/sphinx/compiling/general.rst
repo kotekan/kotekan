@@ -28,8 +28,11 @@ The minimal toolchain for a standard build includes:
 
 * C++ compiler: GCC or Clang (C++17), plus build tools: ``build-essential``, ``cmake``, ``pkg-config``, ``make``, ``git``
 * Libraries: ``libevent-dev``, ``libssl-dev``, ``libyaml-cpp-dev``
-* Python: ``python3``, ``python3-dev``; Python packages: ``pyyaml``, ``jinja2``, ``requests``, ``tabulate``, ``futures``
+* Python 3.12 or newer: ``python3``, ``python3-dev``; Python packages: ``pyyaml``, ``jinja2``, ``requests``, ``tabulate``
 * Optional but useful: ``ccache``, ``clang-format``, ``iwyu``
+
+The Ubuntu 24.04 runtime images use Python 3.12. CI checks Python package
+installation and the debug viewer on this minimum supported version.
 
 On Ubuntu (24.04 reference), install with:
 
@@ -247,6 +250,8 @@ feature when its dependencies are present and otherwise continues without it. Se
     Build the HIP backend when the HIP toolchain is available.
 * ``-DUSE_DPDK=<AUTO|ON|OFF>`` (default ``AUTO``)
     Enable DPDK components when ``libdpdk >= 19.11`` is discoverable via ``pkg-config``. Forced ``OFF`` when ``-DWITH_BOOST_TESTS=ON``.
+* ``-DDPDK_EXTRA_STATS=<ON|OFF>`` (default ``OFF``)
+    Time the DPDK rx poll loop and export it as the ``kotekan_dpdk_rx_loop_*`` metrics. Off by default because it costs cycles in the packet loop.
 * ``-DUSE_AIRSPY=<AUTO|ON|OFF>`` (default ``AUTO``)
     Build the Airspy capture stages when ``libairspy`` is present.
 * ``-DUSE_ASDF``, ``-DUSE_GDAL``, ``-DUSE_HDF5`` (each default ``AUTO``)

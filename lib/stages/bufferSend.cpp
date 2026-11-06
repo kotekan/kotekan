@@ -6,7 +6,7 @@
 #include "buffer.hpp"            // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "configTracker.hpp"     // for ConfigTracker
-#include "kotekanLogging.hpp"    // for DEBUG2, ERROR, INFO, DEBUG, WARN
+#include "kotekanLogging.hpp"    // for DEBUG2, ERROR, FATAL_ERROR, INFO, DEBUG, WARN
 #include "metadata.hpp"          // for metadataObject
 #include "prometheusMetrics.hpp" // for Counter, Metrics
 
@@ -23,7 +23,7 @@
 #include <sys/socket.h> // for send, MSG_NOSIGNAL, AF_INET, connect, setsockopt, socket
 #include <sys/time.h>   // for timeval
 #include <thread>       // for thread
-#include <unistd.h>     // for close, sleep
+#include <unistd.h>     // for close
 
 // Some systems don't support MSG_NOSIGNAL and don't include it in socket.h
 #ifndef MSG_NOSIGNAL
@@ -45,6 +45,11 @@ bufferSend::bufferSend(Config& config, const std::string& unique_name,
         Metrics::instance().add_counter("kotekan_buffer_send_dropped_frame_count", unique_name)) {
 
     buf = get_buffer("buf");
+    // Every frame is sent with its metadata object; bufferRecv cannot accept a frame without one.
+    if (!buf->metadata_pool) {
+        FATAL_ERROR("Buffer {:s} has no metadata_pool: every frame sent needs a metadata object",
+                    buf->buffer_name);
+    }
     buf->register_consumer(unique_name);
 
     connected = false;
@@ -55,8 +60,38 @@ bufferSend::bufferSend(Config& config, const std::string& unique_name,
     reconnect_time = config.get_default<uint32_t>(unique_name, "reconnect_time", 5);
     drop_frames = config.get_default<bool>(unique_name, "drop_frames", true);
     drop_threshold = config.get_default<float>(unique_name, "drop_threshold", 0.6);
-    const double pacing_mbps = config.get_default<double>(unique_name, "max_pacing_rate_mbps", 0.0);
-    max_pacing_rate_bps = pacing_mbps > 0.0 ? (uint32_t)(pacing_mbps * 1e6 / 8.0) : 0;
+
+    // SO_MAX_PACING_RATE is set as a uint32_t (bytes/s), the size every kernel with the option
+    // accepts. UINT32_MAX there means unlimited, so the largest cap is one less.
+    const double max_pacing_rate_mbps =
+        config.get_default<double>(unique_name, "max_pacing_rate_mbps", 0);
+    const double max_pacing_rate_bytes = max_pacing_rate_mbps * 1e6 / 8;
+    if (!(max_pacing_rate_bytes == 0
+          || (max_pacing_rate_bytes >= 1 && max_pacing_rate_bytes < UINT32_MAX)))
+        FATAL_ERROR("max_pacing_rate_mbps is {:g}, but must be 0 (off) or from {:g} to {:.3f} "
+                    "(1 to UINT32_MAX - 1 bytes/s)",
+                    max_pacing_rate_mbps, 8e-6, (UINT32_MAX - 1) * 8e-6);
+    max_pacing_rate = (uint32_t)max_pacing_rate_bytes;
+    if (max_pacing_rate > 0) {
+#ifdef SO_MAX_PACING_RATE
+        // Set the option once on a spare socket, so that a platform that refuses it stops
+        // kotekan at startup.
+        const int probe_fd = socket(AF_INET, SOCK_STREAM, 0);
+        if (probe_fd < 0)
+            FATAL_ERROR("Could not create a socket to check SO_MAX_PACING_RATE: {:s}",
+                        strerror(errno));
+        const int rc = setsockopt(probe_fd, SOL_SOCKET, SO_MAX_PACING_RATE, (void*)&max_pacing_rate,
+                                  sizeof(max_pacing_rate));
+        const int err = errno;
+        close(probe_fd);
+        if (rc < 0)
+            FATAL_ERROR("max_pacing_rate_mbps is set, but setsockopt() SO_MAX_PACING_RATE "
+                        "failed: {:s}",
+                        strerror(err));
+#else
+        FATAL_ERROR("max_pacing_rate_mbps is set, but this platform has no SO_MAX_PACING_RATE");
+#endif
+    }
 
     // Publish current dropped frame count.
 
@@ -86,7 +121,6 @@ void bufferSend::main_thread() {
     int frame_id = 0;
 
     std::thread connect_thread = std::thread(&bufferSend::connect_to_server, std::ref(*this));
-    uint64_t frames_without_metadata = 0;
 
     while (!stop_thread) {
 
@@ -113,23 +147,13 @@ void bufferSend::main_thread() {
 
             auto meta = buf->get_metadata(frame_id);
             if (!meta) {
-                // ⚠️ A FRAME WITH NO METADATA OBJECT IS A PRODUCER BUG, NOT A SEGFAULT
-                // (2026-09-05, CHORD #110). get_metadata() legitimately returns an empty
-                // shared_ptr when the producer never called allocate_new_metadata_object(),
-                // and this loop dereferenced it unconditionally -- one forgotten call in a new
-                // producer took down every node in a six-node fleet on its first frame. The wire
-                // protocol cannot carry such a frame (the receiver sizes its metadata from its
-                // pool's type and closes on a mismatch), so DROP it, loudly, and keep the process.
-                if (frames_without_metadata++ % 1000 == 0)
-                    ERROR("{:s}[{:d}] has NO metadata object -- its producer never called "
-                          "allocate_new_metadata_object(). Dropping ({:d} so far); nothing "
-                          "reaches {:s}:{:d} until the producer stamps its frames.",
-                          buf->buffer_name, frame_id, frames_without_metadata, server_ip,
-                          server_port);
-                dropped_frame_counter.inc();
-                buf->mark_frame_empty(unique_name, frame_id);
-                frame_id = (frame_id + 1) % buf->num_frames;
-                continue;
+                // FATAL_ERROR throws out of this function, so end the connect thread first.
+                stop();
+                close_connection();
+                connect_thread.join();
+                FATAL_ERROR("Frame {:s}[{:d}] has no metadata object: its producer did not "
+                            "allocate one",
+                            buf->buffer_name, frame_id);
             }
             auto metadata_size = meta->get_serialized_size();
             auto frame_size = buf->frame_size;
@@ -296,17 +320,12 @@ void bufferSend::connect_to_server() {
                  server_ip, server_port, strerror(errno), errno, reconnect_time);
             close(socket_fd);
             socket_fd = -1;
-            // A breakable wait, not sleep(): the stop would otherwise wait out the whole
-            // interval with every sender asleep. A fleet cycle takes the receivers down on
-            // its first node, so each later node's stop waited the full reconnect_time (30 s
-            // on CHORD's telemetry and beam-cube senders) before it could join this thread.
-            // Stage::stop only sets stop_thread, so the wait is sliced at one second and
-            // re-tests it; nothing notifies the condition variable on stop.
+            // A stop ends this wait early: main_thread() calls close_connection(), which
+            // notifies, before it joins this thread.
             {
                 std::unique_lock<std::mutex> connection_lock(connection_state_mutex);
-                for (uint32_t waited = 0; waited < reconnect_time && !stop_thread; ++waited)
-                    connection_state_cv.wait_for(connection_lock, std::chrono::seconds(1),
-                                                 [&]() { return (bool)stop_thread; });
+                connection_state_cv.wait_for(connection_lock, std::chrono::seconds(reconnect_time),
+                                             [&]() { return (bool)stop_thread; });
             }
             continue;
         }
@@ -331,17 +350,20 @@ void bufferSend::connect_to_server() {
         }
 
 #ifdef SO_MAX_PACING_RATE
-        // Per connection, so it must be re-applied on every reconnect.
-        if (max_pacing_rate_bps > 0
-            && setsockopt(socket_fd, SOL_SOCKET, SO_MAX_PACING_RATE, (void*)&max_pacing_rate_bps,
-                          sizeof(max_pacing_rate_bps))
+        if (max_pacing_rate > 0
+            && setsockopt(socket_fd, SOL_SOCKET, SO_MAX_PACING_RATE, (void*)&max_pacing_rate,
+                          sizeof(max_pacing_rate))
                    < 0) {
-            ERROR("bufferSend: setsockopt() SO_MAX_PACING_RATE failed: {:s}", strerror(errno));
+            // FATAL_ERROR throws, which would end this thread with std::terminate.
+            const std::string msg = fmt::format(
+                fmt("bufferSend: setsockopt() SO_MAX_PACING_RATE failed: {:s}"), strerror(errno));
+            ERROR("{:s}", msg);
+            close(socket_fd);
+            socket_fd = -1;
+            set_error_message(fmt("{:s}"), msg);
+            exit_kotekan(ReturnCode::FATAL_ERROR);
+            return;
         }
-#else
-        if (max_pacing_rate_bps > 0)
-            WARN("bufferSend: max_pacing_rate_mbps set but SO_MAX_PACING_RATE is not available "
-                 "on this platform; sending unpaced.");
 #endif
 
         INFO("Connected to server {:s}:{:d} for sending buffer {:s}", server_ip, server_port,

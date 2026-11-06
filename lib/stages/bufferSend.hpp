@@ -58,7 +58,9 @@ static_assert(sizeof(bufferFrameHeader) == 12, "bufferFrameHeader should be 12 b
  * @par buffers
  * @buffer buf The buffer to send to the remote server.
  *        @buffer_format any
- *        @buffer_metadata any
+ *        @buffer_metadata any. Every frame must carry a metadata object (a frame
+ *                         without one is a FATAL_ERROR), and a buffer without a
+ *                         metadata_pool is refused at start.
  *
  * @conf server_ip       String, the IP address of the server to send data too.
  * @conf server_port     Int, default 11024. The port number on the remote server.
@@ -71,15 +73,13 @@ static_assert(sizeof(bufferFrameHeader) == 12, "bufferFrameHeader should be 12 b
  *                         to empty frames exceeds this value.  A value of 1.0 means only drop
  *                         frames if the connection is down, otherwise generate back-pressure
  *                         This setting has no effect if drop_frames is false
- * @conf max_pacing_rate_mbps  Float, default 0 (off). Cap the socket's send rate
- *                         (SO_MAX_PACING_RATE) so a frame leaves over a span instead of as a
- *                         line-rate burst. Many senders that emit on one frame clock into one
- *                         receiver link (the GNSS fleet into a single 1 GbE) burst
- *                         simultaneously and overflow the switch's egress queue; the loss then
- *                         costs each connection a 200 ms RTO stall. Size it a little above the
- *                         stream's mean rate: the frame then spreads over most of its period
- *                         and the aggregate stays under the link. Linux paces internally when
- *                         the option is set (no fq qdisc needed).
+ * @conf max_pacing_rate_mbps  Float, default 0 (off). Cap the send rate, in Mbit/s, with the
+ *                         SO_MAX_PACING_RATE socket option, so that a frame leaves spread over
+ *                         time instead of in one burst at line rate. Set it a little above the
+ *                         stream's mean rate. Linux 4.13 and later paces TCP on its own; older
+ *                         kernels need the fq qdisc. A nonzero value must be from 8e-6 to
+ *                         34359.738 (1 to UINT32_MAX - 1 bytes/s). The stage stops at startup if
+ *                         the value is out of range or the platform cannot set the option.
  *
  * @par Metrics
  * @metric kotekan_buffer_send_dropped_frame_count
@@ -128,8 +128,8 @@ private:
     /// Threshold to drop frames
     float drop_threshold;
 
-    /// SO_MAX_PACING_RATE in bytes/s; 0 = unlimited (option not set)
-    uint32_t max_pacing_rate_bps;
+    /// SO_MAX_PACING_RATE in bytes/s, or 0 to leave the socket unpaced
+    uint32_t max_pacing_rate;
 
     /// Flag to indicate if config tracker header data should be sent
     bool use_config_tracker;

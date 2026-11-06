@@ -76,7 +76,6 @@ add_library(
     # The gnss interface document (with the band edges it lists) is served by every binary.
     gnss/gnssInterface.cpp
     gnss/gnssBandPlan.cpp
-    $<$<STREQUAL:${WITH_SPAWN_PROCESS},ON>:SpawnProcess.cpp>
     freqSplit.cpp
     FreqSubset.cpp
     prodSubset.cpp

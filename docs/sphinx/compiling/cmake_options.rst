@@ -66,6 +66,9 @@ Core & Runtime Features
 - ``USE_DPDK`` (``AUTO``): Enable DPDK features when ``libdpdk >= 19.11`` is discoverable via
   ``pkg-config``. This option is forced ``OFF`` when ``WITH_BOOST_TESTS`` is ``ON`` to avoid linker
   conflicts.
+- ``DPDK_EXTRA_STATS`` (``OFF``): Time the DPDK rx poll loop and export it as the
+  ``kotekan_dpdk_rx_loop_*`` metrics; defines ``-DDPDK_EXTRA_STATS``. Costs two ``rdtsc`` per poll,
+  so leave it off for production builds.
 - ``USE_OPENSSL`` (``AUTO``): Link OpenSSL (libcrypto) for hashing support in the core. Combine with
   ``-DOPENSSL_ROOT_DIR=<path>`` for non-standard installations.
 - ``NO_MEMLOCK`` (``OFF``): Define ``WITH_NO_MEMLOCK`` to skip memory locking and related policy calls,
@@ -88,10 +91,6 @@ Build & Tooling
 - ``WITH_TESTS`` (``OFF``): Build and link the helper stages in ``lib/testing`` into the kotekan binary.
 - ``WITH_BOOST_TESTS`` (``OFF``): Build the Boost.Test unit tests under ``tests/boost`` (requires
   ``pytest-cpp``).
-- ``WITH_SPAWN_PROCESS`` (``OFF``): Build the ``SpawnProcess`` stage, which runs the shell command
-  given in its config block. The REST ``/start`` endpoint accepts any config, so a kotekan built
-  with it runs arbitrary commands for anyone who can reach its port. Needed by the airspy
-  configs, which use it to launch the viewer.
 
 
 Common Paths and Overrides

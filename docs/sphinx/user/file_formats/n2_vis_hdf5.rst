@@ -656,7 +656,9 @@ the datasets with a frequency axis, which hold one value per stream.
        starting at or after its scheduled time, on the GPU and in this count.
        N2Accumulate reads the switch only when
        ``rfi_first_stage_enabled_updatable_config`` is set; otherwise this is
-       1.0 whatever the GPU state.
+       1.0 whatever the GPU state. Channels listed in cudaRFISKtilde's
+       ``rfi_first_stage_excision_exempt_freq_ids`` are counted as enabled
+       here although they are not excised.
    * - ``fringestop_enabled``
      - bool (:math:`N_f`, :math:`N_t`)
      - Whether the visibilities of this frequency and bin were

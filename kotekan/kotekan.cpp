@@ -493,14 +493,14 @@ void run_start(Config* config, bool dump_config) {
     try {
         start_new_kotekan_mode(*config, dump_config);
     } catch (const std::exception& ex) {
-        {
-            std::lock_guard<std::mutex> lock(kotekan_state_lock);
-            starting = false;
-        }
         try {
             FATAL_ERROR_NON_OO("Failed to start kotekan: {:s}", ex.what());
         } catch (const FatalError&) {
         }
+        // Only after the raise, which sets sig_value: a /start that sees
+        // starting cleared must also see sig_value, or it starts a second build.
+        std::lock_guard<std::mutex> lock(kotekan_state_lock);
+        starting = false;
         return;
     }
     restServer::instance().release_new_endpoints();
