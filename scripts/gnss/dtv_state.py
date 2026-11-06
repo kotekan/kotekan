@@ -38,6 +38,39 @@ ST_REC_LAGS = struct.Struct(
 ST_MAGIC, ST_VERSION, ST_VERSION_LAGS = 0x53565444, 1, 2
 
 
+# The stage's REST path on each (host, gpu): command 2 of run_send_voltage after the voltage copy
+# (cudaCopyToRingbuffer, then a cudaSyncStream), command 0 in builds where the stage was the copy.
+_STAGE_CMD = {}
+
+
+def stage_path(host, g):
+    """/run_send_voltage/gpu_<g>/commands/<k> of the stage on host (REST port 12048): the first
+    of 2, 0 whose status answers, kept until forget_stage."""
+    import urllib.request
+
+    if (host, g) not in _STAGE_CMD:
+        for k in (2, 0):
+            try:
+                urllib.request.urlopen(
+                    "http://%s:12048/run_send_voltage/gpu_%d/commands/%d/status"
+                    % (host, g, k),
+                    timeout=5,
+                ).close()
+            except Exception:  # noqa: BLE001 - not this command, or the node is down
+                continue
+            _STAGE_CMD[(host, g)] = k
+            break
+        else:
+            return "/run_send_voltage/gpu_%d/commands/0" % g
+    return "/run_send_voltage/gpu_%d/commands/%d" % (g, _STAGE_CMD[(host, g)])
+
+
+def forget_stage(host, g):
+    """Look the stage up again at the next stage_path (after an error: the node may have
+    restarted on another build)."""
+    _STAGE_CMD.pop((host, g), None)
+
+
 def align(off):
     return (off + 15) & ~15
 

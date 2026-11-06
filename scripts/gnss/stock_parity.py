@@ -68,10 +68,15 @@ DECLARED = [
     (
         "run_send_voltage.gpu_*.commands",
         "~",
-        "DTV subtraction (--dtv-subtract-freq-ids, default off): cudaDtvSubtract is "
-        "cudaCopyToRingbuffer with a lagged subtraction of a terrestrial transmitter on the "
-        "selected channels, in the voltage ring every consumer reads; then the copy-out of its "
-        "per-frame output",
+        "DTV subtraction (--dtv-subtract-freq-ids, default off): after the stock "
+        "cudaCopyToRingbuffer, cudaDtvSubtract on stream 6 subtracts a terrestrial transmitter "
+        "from the selected channels of the frame in the voltage ring every consumer reads; then "
+        "the copy-out of its per-frame output",
+    ),
+    (
+        "run_send_voltage.gpu_*.num_cuda_streams",
+        "+",
+        "that stream: 7 streams on the GPU (0-2 stock, 3-5 the GNSS chains, 6 the subtraction)",
     ),
     (
         "run_send_voltage.gpu_*.out_buffers.host_gnss_dtv",

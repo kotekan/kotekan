@@ -28,12 +28,17 @@ import time
 import urllib.error
 import urllib.request
 
+sys.path.insert(
+    0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "gnss")
+)
+import dtv_state  # noqa: E402
+
 STATES = os.environ.get("DTV_STATES", "/home/kvand/gnss/builds/dtv-live/states-rev2")
 NODE_DIR = "/tmp/gnss/dtvroll"
 
 
 def url(node, g, ep):
-    return "http://%s:12048/run_send_voltage/gpu_%d/commands/0/%s" % (node, g, ep)
+    return "http://%s:12048%s/%s" % (node, dtv_state.stage_path(node, g), ep)
 
 
 def get(node, g, ep="status"):
@@ -41,6 +46,7 @@ def get(node, g, ep="status"):
         with urllib.request.urlopen(url(node, g, ep), timeout=5) as r:
             return json.loads(r.read())
     except Exception as e:  # noqa: BLE001 - a node that does not answer is reported, not fatal
+        dtv_state.forget_stage(node, g)
         return {"error": str(e)[:120]}
 
 
@@ -54,8 +60,10 @@ def post(node, g, ep, body):
         with urllib.request.urlopen(req, timeout=10) as r:
             return json.loads(r.read())
     except urllib.error.HTTPError as e:
+        dtv_state.forget_stage(node, g)
         return {"error": e.code, "message": e.read().decode()[:200]}
     except Exception as e:  # noqa: BLE001
+        dtv_state.forget_stage(node, g)
         return {"error": str(e)[:120]}
 
 

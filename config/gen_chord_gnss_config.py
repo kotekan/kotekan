@@ -895,14 +895,21 @@ def dtv_targets(args):
     return out
 
 
+# The DTV subtraction's own CUDA stream: 0-2 are production's, 3-5 the GNSS chains'
+# (merge_n2dual_gpu), so its kernels queue behind neither the voltage copy nor N2.
+DTV_CUDA_STREAM = 6
+
+
 def add_dtv_subtract(out, cfg, args, node, spds):
-    """cudaDtvSubtract (lib/cuda/cudaDtvSubtract.cpp) in place of cudaCopyToRingbuffer in
-    run_send_voltage on every GPU holding one of --dtv-subtract-freq-ids: the voltage ring's
-    copy-in with the lagged subtraction of a terrestrial transmitter on those channels, so every
-    consumer of the ring sees the same frame. Its per-frame output (weights, powers, lag
-    correlations) goes through a FrameWindowGate and a rawFileWrite under <record_dir>/dtv,
-    as the beam dump's does. Each channel takes its target's lag window and source slots
-    (--dtv-targets); a GPU whose channels share a value gets it as one Int, as before."""
+    """cudaDtvSubtract (lib/cuda/cudaDtvSubtract.cpp) after cudaCopyToRingbuffer in
+    run_send_voltage on every GPU holding one of --dtv-subtract-freq-ids: the lagged subtraction
+    of a terrestrial transmitter on those channels, in place on the frame just copied into the
+    voltage ring and on a stream of its own, so every consumer of the ring sees the same frame
+    (the ring's write is finished after the whole frame's work). Its per-frame output (weights,
+    powers, lag correlations) goes through a FrameWindowGate and a rawFileWrite under
+    <record_dir>/dtv, as the beam dump's does. Each channel takes its target's lag window and
+    source slots (--dtv-targets); a GPU whose channels share a value gets it as one Int, as
+    before."""
     per = {
         fid: (lag_min, n_lag, sources)
         for _, ids, lag_min, n_lag, sources in dtv_targets(args)
@@ -931,9 +938,26 @@ def add_dtv_subtract(out, cfg, args, node, spds):
             )
         out_name = f"gnss{gpu}_dtv"
         lag_min, n_lag, sources = ([per[fid][q] for fid, _ in pairs] for q in range(3))
-        copies[0].update(
+        base = int(proc.get("cuda_stream_base", 0))
+        at = proc["commands"].index(copies[0]) + 1
+        proc["commands"][at:at] = [
+            {
+                "name": "cudaSyncStream",
+                "cuda_stream": DTV_CUDA_STREAM,
+                "source_cuda_streams": [3 * base],
+            },
             {
                 "name": "cudaDtvSubtract",
+                "cuda_stream": DTV_CUDA_STREAM,
+                **{
+                    k: copies[0][k]
+                    for k in (
+                        "input_size",
+                        "ring_buffer_size",
+                        "signal_buf",
+                        "gpu_mem_output",
+                    )
+                },
                 "dtv_local_channels": [idx for _, idx in pairs],
                 "dtv_freq_ids": [fid for fid, _ in pairs],
                 "dtv_out_name": out_name,
@@ -941,18 +965,20 @@ def add_dtv_subtract(out, cfg, args, node, spds):
                 "dtv_n_lag": one_or_list(n_lag),
                 "dtv_sources": one_or_list(sources),
                 "dtv_state_file": args.dtv_state_file,
-            }
+            },
+        ]
+        proc["num_cuda_streams"] = max(
+            int(proc.get("num_cuda_streams", 0)), DTV_CUDA_STREAM + 1
         )
         buf = f"gnss{gpu}_dtv_buf"
         gated = f"gnss{gpu}_dtvdump_buf"
         proc.setdefault("out_buffers", {})["host_gnss_dtv"] = buf
-        # The subtraction runs on the copy-in stream; its output's copy-out waits for it.
-        base = int(proc.get("cuda_stream_base", 0))
+        # Its output's copy-out waits for the subtraction.
         proc["commands"] += [
             {
                 "name": "cudaSyncStream",
                 "cuda_stream": 3 * base + 1,
-                "source_cuda_streams": [3 * base],
+                "source_cuda_streams": [DTV_CUDA_STREAM],
             },
             {
                 "name": "cudaOutputData",

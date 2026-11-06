@@ -18,10 +18,27 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from vis_dtv_plot import hour_angle_min  # noqa: E402
 
-STATIONS = (
-    ("ATSC 24", 2716, 2742, "Blues", "#2563eb"),
-    ("ATSC 30", 2899, 2927, "Oranges", "#ea580c"),
-)
+# per --set (vis_dtv_extract.py's sets): the stations' interior channels, a colour map and a line colour each
+STATION_SETS = {
+    "atsc2430": (
+        ("ATSC 24", 2716, 2742, "Blues", "#2563eb"),
+        ("ATSC 30", 2899, 2927, "Oranges", "#ea580c"),
+    ),
+    "weak": (
+        ("ATSC 17", 2500, 2528, "Blues", "#2563eb"),
+        ("ATSC 19", 2561, 2589, "Oranges", "#ea580c"),
+        ("ATSC 31", 2930, 2958, "Greens", "#16a34a"),
+        ("ATSC 33", 2992, 3019, "Purples", "#7c3aed"),
+        ("ATSC 35", 3053, 3081, "Reds", "#dc2626"),
+    ),
+    "muos": (
+        ("MUOS 360-365", 1846, 1866, "Blues", "#2563eb"),
+        ("MUOS 365-370", 1872, 1891, "Oranges", "#ea580c"),
+        ("MUOS 370-375", 1897, 1917, "Greens", "#16a34a"),
+        ("MUOS 375-380", 1923, 1942, "Purples", "#7c3aed"),
+    ),
+}
+STATIONS = STATION_SETS["atsc2430"]
 C_SKY = "#6b7280"
 STYLE = [
     dict(color=C_SKY, lw=1.0, ls="-", alpha=0.9),  # first night: the reference, neutral
@@ -90,8 +107,11 @@ def main():
         default=18,
         help="running median (bins) for the line panels",
     )
+    ap.add_argument("--set", default="atsc2430", choices=sorted(STATION_SETS))
     ap.add_argument("--out")
     a = ap.parse_args()
+    global STATIONS
+    STATIONS = STATION_SETS[a.set]
     nights = []
     for spec in a.night:
         label, path = spec.split("=", 1)
@@ -168,8 +188,9 @@ def main():
     import matplotlib.pyplot as plt
 
     nn = len(nights)
-    fig = plt.figure(figsize=(15, 2.3 * nn + 3.6), constrained_layout=True)
-    gs = fig.add_gridspec(nn + 1, 2, height_ratios=[1] * nn + [1.5])
+    nc = len(STATIONS)
+    fig = plt.figure(figsize=(7.5 * nc, 2.3 * nn + 3.6), constrained_layout=True)
+    gs = fig.add_gridspec(nn + 1, nc, height_ratios=[1] * nn + [1.5])
     norm = matplotlib.colors.LogNorm(1.2, 40)
     nice = (1.5, 2, 3, 5, 10, 20, 30, 50, 70, 100, 150, 200, 300, 500, 700, 1000)
     for col, (name, lo, hi, cmap, hue) in enumerate(STATIONS):
