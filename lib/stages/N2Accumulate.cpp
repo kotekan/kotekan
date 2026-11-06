@@ -766,7 +766,7 @@ void N2Accumulate::main_thread() {
                 samples_in_out_frame.set(_vis_samples_in_out_frame);
                 // set skipped frame metrics and reset counter
                 for (int64_t f = 0; f < _num_freq_per_n2k_frame; ++f) {
-                    skipped_input_frames.labels({std::to_string(f), "rfi"})
+                    skipped_input_frames.labels({std::to_string(coarse_freq.at(f)), "rfi"})
                         .set(_vis_input_frames_skipped_rfi.at(f));
                 }
                 output_and_reset(in_frame_id, in_rfiframemask_frame_id, out_frame_id);
