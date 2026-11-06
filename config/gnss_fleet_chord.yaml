@@ -88,7 +88,7 @@ common:
     # MUOS), which the SK flagger would otherwise excise, leaving nothing to judge the
     # subtraction by (docs/CHORD_DTV_SUBTRACTION_20261102.md, #226).
     rfi-excision-exempt-freq-ids: "5939-6626,2714-2744,2898-2928,2499-2529,2560-2590,2929-2959,\
-      2991-3020,3052-3082,1845-1867,1871-1892,1897-1918,1922-1943"
+      2991-3020,3052-3082,1844-1944"
     # Bright-satellite projection in each record assembler: off | shadow | live. live projects
     # the transiting satellite's element direction out of the other slots' record rows in
     # place, from the node's own rows (own slot, sibling chain, probe stack); nodes exchange
@@ -197,10 +197,11 @@ common:
     # source the PFB-edge folding (offline on the 10-30 dump: residual third mode 3.5 -> 2.0 noise
     # units in ATSC 30). The five weaker ATSC stations take two sources over the same lags. MUOS
     # (the Navy's satellite downlink, 360-380 MHz) takes a source per satellite above the horizon
-    # (MUOS-1, MUOS-5, and MUOS-2 near the horizon) over -4..+11 (8 lags do as well as 64); they
-    # drift by up to ~12 deg a day, so scripts/dtv/dtv_steer.py steers their weights. Up to 20
-    # channels per GPU, ~2 ms per frame on an L40S. The stage starts in pass-through, and the
-    # per-channel state is loaded over REST.
+    # (MUOS-1, MUOS-5, and MUOS-2 near the horizon) over -4..+11 (8 lags do as well as 64), one
+    # range over the four carriers and the gaps between them (the carriers' edges reach 75-88
+    # noise units there); they drift by up to ~12 deg a day, so scripts/dtv/dtv_steer.py steers
+    # their weights. Up to 21 channels per GPU, ~2 ms per frame on an L40S. The stage starts in
+    # pass-through, and the per-channel state is loaded over REST.
     dtv-targets: >-
       atsc24:2714-2744:-16:64:3;
       atsc30:2898-2928:-16:64:3;
@@ -209,7 +210,7 @@ common:
       atsc31:2929-2959:-16:64:2;
       atsc33:2991-3020:-16:64:2;
       atsc35:3052-3082:-16:64:2;
-      muos:1845-1867,1871-1892,1897-1918,1922-1943:-4:16:3
+      muos:1844-1944:-4:16:3
     assembler-core-slots: "2,1,3,4,8"
     # The stage on a whole idle physical core per NUMA node (15/47 and 19/51 read 0 % on
     # cx27/43/44/51 on 10-24), outside the runtime pools: 127 stations with the transfers ran at
