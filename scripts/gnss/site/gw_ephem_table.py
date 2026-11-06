@@ -7,7 +7,8 @@ venv, skyfield) propagates the satellites whose 1202 MHz code is known and write
 comes within --sep-deg of the dish boresight, their ITRS position and velocity on a --step-s
 grid. gnss_ephemeris.load_gw_table reads the file and interpolates (cubic Hermite: a 10 s step
 is good to well under a metre), so predict_all, seeding, the PRN map and the element steering
-see GuoWang satellites as constellation W, PRN = G2' phase + 1. Some satellites share a G2'
+see GuoWang satellites as constellation W, PRN = G2' phase + 1. The satellites in --extra-tle
+(the inferred uncatalogued ones) are tabled with the catalogued ones. Some satellites share a G2'
 phase; where their segments overlap, the satellite closer to the boresight keeps the time
 (one_per_prn), so the broker sees one satellite per PRN at a time.
 
@@ -56,7 +57,7 @@ import guowang_passes as gp  # noqa: E402
 
 SCHEMA = "chord-gnss-gw-ephem/0"
 DEFAULT_OUT = "/var/tmp/gnss-guowang/gw_ephem.json"
-# TLEs of the inferred uncatalogued GuoWang satellites, read for the transits when present.
+# TLEs of the inferred uncatalogued GuoWang satellites, tabled with the catalogued ones when present.
 HIDDEN_TLE = os.path.join(gp.CACHE_DIR, "hidden_digui.tle")
 
 
@@ -498,7 +499,7 @@ def main(argv=None):
     ap.add_argument(
         "--extra-tle",
         default=HIDDEN_TLE if os.path.exists(HIDDEN_TLE) else None,
-        help="more GuoWang TLEs, for the transits only (default: %s if present)"
+        help="more GuoWang TLEs, tabled and in the transits (default: %s if present)"
         % HIDDEN_TLE,
     )
     ap.add_argument(
@@ -547,8 +548,17 @@ def main(argv=None):
         except Exception as e:
             print("%s: unreadable (%s); no sweep" % (a.sweep, e))
     now = time.time()
+    # The extra TLEs are optional: an unreadable file costs its satellites, not the table.
+    extra = []
+    if a.extra_tle:
+        try:
+            extra = gp.read_tle(a.extra_tle, ts, "")
+        except Exception as e:
+            print("%s: unreadable (%s); no extra satellites" % (a.extra_tle, e))
+    catalogued = {s.model.satnum for s in sats}
+    extra = [s for s in extra if s.model.satnum not in catalogued]
     records, unknown = build(
-        sats,
+        sats + extra,
         ts,
         now - 600.0,
         now + a.hours * 3600.0,
@@ -602,15 +612,6 @@ def main(argv=None):
             os.replace(tmp, assign_path)
         except Exception as e:
             print("sweep order: assign.json not written (%s)" % e)
-    # The extra TLEs are optional: an unreadable file costs its satellites, not the table.
-    extra = []
-    if a.extra_tle:
-        try:
-            extra = gp.read_tle(a.extra_tle, ts, "")
-        except Exception as e:
-            print("%s: unreadable (%s); no extra satellites" % (a.extra_tle, e))
-    catalogued = {s.model.satnum for s in sats}
-    extra = [s for s in extra if s.model.satnum not in catalogued]
     tr = transits(
         sats + extra,
         ts,
