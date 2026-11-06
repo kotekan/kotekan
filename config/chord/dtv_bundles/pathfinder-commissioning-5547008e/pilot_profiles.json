@@ -1,0 +1,146 @@
+{
+  "detector_contract_sha256": "813193a849e024bb49ba6ebe7259c847edf51c1ee7b22d8df867be26a61c6b34",
+  "input_coordinate_system": "post_nyquist_zone_normalized",
+  "input_preprocessing": {
+    "time_reverse_detector_windows_before_kernel": true
+  },
+  "profiles": [
+    {
+      "chime_channel_id": null,
+      "chord_channel_id": 2531,
+      "coarse_channel_center_hz": 494335937.5,
+      "coarse_channel_index": 2531,
+      "fine_calibration": {
+        "status": "calibrated",
+        "decision_version": "fine_decision_v1",
+        "cfar_multiplier_q16": 115479,
+        "anchor_bin": 82,
+        "designated_half_width": 2,
+        "cfar_rank": 62,
+        "bulk_mask_words_hex": [
+          "0x5555555555555555",
+          "0x5555555555405555",
+          "0x5555555555555555",
+          "0x5555555555555555"
+        ],
+        "provenance": {
+          "epochs": [
+            "2026-10-29 Pathfinder recording, five spaced files"
+          ],
+          "source_product_sha256": [
+            "74c5c9d41080dd9384001095fca76bb09942ea9943ac0e784da32e23f8e8292f"
+          ],
+          "null_quantile": 0.99,
+          "note": "Commissioning word from control channel. Detect-only, not a calibration."
+        }
+      },
+      "null_power_ratio": 1.0107799619530755,
+      "physical_channel": 18,
+      "pilot_frequency_hz": 494309441.0,
+      "placement_warnings": "",
+      "positive_excess_half_threshold_den": 6308,
+      "positive_excess_half_threshold_num": 3188,
+      "receiver_channel_id": 2531,
+      "receiver_channel_id_namespace": "chord_freq_id",
+      "reference_norm_sum_sq": 6308,
+      "reference_placement_status": "nominal",
+      "target_norm_sq": 3188,
+      "weight_bank_index": 0,
+      "weight_bank_nbytes": 192,
+      "weight_bank_offset_bytes": 0
+    },
+    {
+      "chime_channel_id": null,
+      "chord_channel_id": 2715,
+      "coarse_channel_center_hz": 530273437.5,
+      "coarse_channel_index": 2715,
+      "fine_calibration": {
+        "status": "calibrated",
+        "decision_version": "fine_decision_v1",
+        "cfar_multiplier_q16": 115479,
+        "anchor_bin": 180,
+        "designated_half_width": 2,
+        "cfar_rank": 62,
+        "bulk_mask_words_hex": [
+          "0x5555555555555555",
+          "0x5555555555555555",
+          "0x5501555555555555",
+          "0x5555555555555555"
+        ],
+        "provenance": {
+          "epochs": [
+            "2026-10-29 Pathfinder recording, five spaced files"
+          ],
+          "source_product_sha256": [
+            "74c5c9d41080dd9384001095fca76bb09942ea9943ac0e784da32e23f8e8292f"
+          ],
+          "null_quantile": 0.99,
+          "note": "Commissioning word from control channel. Detect-only, not a calibration."
+        }
+      },
+      "null_power_ratio": 1.0052058684335068,
+      "physical_channel": 24,
+      "pilot_frequency_hz": 530309441.0,
+      "placement_warnings": "",
+      "positive_excess_half_threshold_den": 6339,
+      "positive_excess_half_threshold_num": 3186,
+      "receiver_channel_id": 2715,
+      "receiver_channel_id_namespace": "chord_freq_id",
+      "reference_norm_sum_sq": 6339,
+      "reference_placement_status": "nominal",
+      "target_norm_sq": 3186,
+      "weight_bank_index": 1,
+      "weight_bank_nbytes": 192,
+      "weight_bank_offset_bytes": 192
+    },
+    {
+      "chime_channel_id": null,
+      "chord_channel_id": 2869,
+      "coarse_channel_center_hz": 560351562.5,
+      "coarse_channel_index": 2869,
+      "fine_calibration": {
+        "status": "calibrated",
+        "decision_version": "fine_decision_v1",
+        "cfar_multiplier_q16": 115479,
+        "anchor_bin": 51,
+        "designated_half_width": 2,
+        "cfar_rank": 62,
+        "bulk_mask_words_hex": [
+          "0x5541555555555555",
+          "0x5555555555555555",
+          "0x5555555555555555",
+          "0x5555555555555555"
+        ],
+        "provenance": {
+          "epochs": [
+            "2026-10-29 Pathfinder recording, five spaced files"
+          ],
+          "source_product_sha256": [
+            "74c5c9d41080dd9384001095fca76bb09942ea9943ac0e784da32e23f8e8292f"
+          ],
+          "null_quantile": 0.99,
+          "note": "Commissioning word from control channel. Detect-only, not a calibration."
+        }
+      },
+      "null_power_ratio": 1.0101233786776336,
+      "physical_channel": 29,
+      "pilot_frequency_hz": 560309441.0,
+      "placement_warnings": "",
+      "positive_excess_half_threshold_den": 6322,
+      "positive_excess_half_threshold_num": 3193,
+      "receiver_channel_id": 2869,
+      "receiver_channel_id_namespace": "chord_freq_id",
+      "reference_norm_sum_sq": 6322,
+      "reference_placement_status": "nominal",
+      "target_norm_sq": 3193,
+      "weight_bank_index": 2,
+      "weight_bank_nbytes": 192,
+      "weight_bank_offset_bytes": 384
+    }
+  ],
+  "receiver_channel_id_namespace": "chord_freq_id",
+  "receiver_profile_id": "chord_pathfinder_dtv_fengine",
+  "schema_version": "pilotproxy_runtime_pilot_profiles_v1",
+  "weight_coordinate_system": "post_nyquist_zone_normalization",
+  "weights_sha256": "f297a0db5b7be6488fcf7177883c19c431a125f9761cb17c19cb96135e4b89f5"
+}
