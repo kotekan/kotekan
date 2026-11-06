@@ -5,9 +5,14 @@ Operation
 REST endpoints
 --------------
 
-- ``/start`` (POST JSON config) – start a pipeline from a posted config.
-- ``/stop`` (GET) – stop the running pipeline.
-- ``/status`` (GET) – returns whether kotekan is running.
+- ``/start`` (POST JSON config) – starts a pipeline from a posted config and returns at
+  once; the stages are built on their own thread, so the other endpoints keep answering
+  meanwhile. A config that fails the ``--check-config`` checks is refused with 400. A
+  config that fails to start is fatal; the log says why. Endpoints the start registers,
+  such as ``/config`` and the stages' own, answer 503 until it is done.
+- ``/stop`` (GET) – stop the running pipeline (refused while a start is in progress).
+- ``/status`` (GET) – ``running`` (a pipeline runs) and ``starting`` (a start is in
+  progress).
 - ``/config`` (GET) – returns the active config.
 - ``/version`` (GET) – version/build info.
 - ``/endpoints`` (GET) – list all registered endpoints (including aliases).
