@@ -965,6 +965,7 @@ def test_manual_mask_reaches_the_node_config():
             "--elem-shared-ref-mode",
             "live",
             "--fleet-lanes",
+            "--lane-resteer",
             "--n2-project-eigen-channels",
             "5971-5980,6000",
             "--beam-dump-freq-ids",
@@ -1021,6 +1022,9 @@ def test_manual_mask_reaches_the_node_config():
         and proj.get("elem_steer_sign") == asm["elem_steer_sign"]
         and len(proj["elem_positions_enu"]) == 3 * len(proj["tracker_stations"]),
         "--fleet-lanes: the stage carries the assemblers' positions and sign",
+    )
+    check(
+        proj.get("lane_resteer") is True, "--lane-resteer: the stage turns fast lanes"
     )
     check(
         proj.get("eigen_channels") == "list"

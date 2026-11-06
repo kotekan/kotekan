@@ -141,6 +141,12 @@
  * @conf fleet_lane_max_age_s  Double. A posted set older than this is ignored (10.0).
  * @conf fleet_lane_rebuild_s  Double. How often the posted lanes are re-evaluated along their
  *                             tracks (0.25).
+ * @conf lane_resteer          Bool. Turn each board lane whose line of sight moves faster
+ *                             than LANE_RESTEER_RATE (a LEO satellite) along its track to
+ *                             the integration's own time before using it (false). A lane is
+ *                             used up to lane_max_age_s after the instant its track
+ *                             describes, ~0.3 deg for a GuoWang satellite. Needs
+ *                             elem_positions_enu.
  *
  * auto_raw_db / auto_proj_db per freq_id: the mean auto over the live block before and
  * after projection, dB of correlator units, so a spectrum of what the projection removed
@@ -245,8 +251,10 @@ private:
     /// Read the board for local channel f, build `lanes` from the fresh, coherent entries in
     /// power order, then the fleet lanes that cover the channel; with @p diag also the two
     /// Rayleigh quotients of the strongest one against the raw block V. With @p dump, keep each
-    /// candidate's owner and track for dump_channel. Returns the basis size.
-    int build_lanes(int f, int freq_id, const cd* V, double now_s, bool diag, bool dump = false);
+    /// candidate's owner and track for dump_channel. @p t_utc is the integration's data time
+    /// (0 = unknown) for lane_resteer. Returns the basis size.
+    int build_lanes(int f, int freq_id, const cd* V, double now_s, double t_utc, bool diag,
+                    bool dump = false);
 
     // Lane dump
     Buffer* dump_buf = nullptr;
@@ -262,6 +270,11 @@ private:
     const bool fleet_lanes;
     const double fleet_lane_max_age_s;
     const double fleet_lane_rebuild_s;
+    const bool lane_resteer;
+    /// lane_resteer turns lanes whose line of sight moves faster than this, rad/s: a GuoWang
+    /// satellite ~5e-3, a GNSS satellite at most ~1.5e-4.
+    static constexpr double LANE_RESTEER_RATE = 1.0e-3;
+    std::vector<gnss::ElemSteer::cf> lane_sh; ///< lane_resteer scratch [n_elem]
     gnss::ElemSteer geo;                   ///< element positions and steering sign (shift() only)
     std::atomic<bool> labelled_pub{false}; ///< freq_ids and live_ch are resolved
     std::mutex fleet_mtx;                  ///< guards the pending set between REST and main_thread

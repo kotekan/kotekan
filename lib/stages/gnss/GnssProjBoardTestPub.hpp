@@ -25,6 +25,8 @@
  * @conf n_elem       Int. The tracker element axis length (tracker_stations' size).
  * @conf n_dirs       Int. Directions per channel (2).
  * @conf period_ms    Int. Publish period (20).
+ * @conf los_rate     Double list [3]. The tracks' line-of-sight rate, ENU per second
+ *                    (zeros: a fixed track).
  */
 class GnssProjBoardTestPub : public kotekan::Stage {
 public:
@@ -37,5 +39,6 @@ private:
     std::string board_group;
     std::vector<int> freq_ids;
     int n_elem, n_dirs, period_ms;
+    std::vector<double> los_rate;
 };
 #endif

@@ -3656,6 +3656,13 @@ def main():
         "lanes+residual",
     )
     ap.add_argument(
+        "--lane-resteer",
+        action="store_true",
+        help="GnssN2Project turns each fast-moving local lane (a LEO satellite: GuoWang at "
+        "~0.3 deg/s) along its track from the instant its geometry describes to each "
+        "integration's time. Needs --fleet-lanes (the stage's element positions)",
+    )
+    ap.add_argument(
         "--n2-project-eigen-channels",
         default="all",
         help="channels GnssN2Project's eigen path runs on: all (default; every channel gets "
@@ -4448,6 +4455,10 @@ def main():
                     _stage["fleet_lanes"] = True
                     _stage["elem_positions_enu"] = _steer["elem_positions_enu"]
                     _stage["elem_steer_sign"] = _steer["elem_steer_sign"]
+                    if args.lane_resteer:
+                        _stage["lane_resteer"] = True
+                elif args.lane_resteer:
+                    raise SystemExit("--lane-resteer needs --fleet-lanes")
                 _missing = sorted(
                     set(_stage["tracker_stations"])
                     - set(_st)

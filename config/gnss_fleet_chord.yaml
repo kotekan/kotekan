@@ -61,6 +61,9 @@ common:
     # Fleet lanes (docs/CHORD_FLEET_LANES.md): GnssN2Project takes lanes the relay carries from the
     # other nodes; fleet-lane-transfer is the relay's table (site-only, not a generator flag).
     fleet-lanes: true
+    # GuoWang lanes move ~0.3 deg/s: GnssN2Project turns them along their tracks to each
+    # integration's time (a lane is used up to 1 s after its geometry's instant).
+    lane-resteer: true
     # The relay's table: the targets of lane-transfer where a satellite's lane is not on every
     # GPU (L2C on five, each GLONASS L2OF satellite on the six that hold its comb) and E6's two
     # PRS lobes. Not the E5/B2 edges: every GPU tracks those chains, and the relay's copies of
