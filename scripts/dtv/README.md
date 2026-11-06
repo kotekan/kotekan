@@ -12,6 +12,9 @@ Several tools still use the paths of their first home, `~/gnss/bb1030` and `~/gn
   restarted nodes, Tau A freeze). Saves go through the node's `/tmp/gnss/dtvroll` (kotekan is root, /home is NFS).
 - `dtv_canary.py`: residual/raw per channel of both GPUs of one node from short windows.
 - `dtv_roll_night.py`: the watch log as a night of stage telemetry.
+- `dtv_steer.py`: sources on emitters that move (satellites from TLEs, e.g. MUOS): `anchor` (eigen starts on the
+  target's channels only), `identify` (which satellite each source follows, from its g's phase drift against each
+  satellite's predicted turn), `run` (POST /steer every few seconds), `status`. On cf06 (skyfield, ssh to the nodes).
 
 **Judging (recv1 N2 subset)**
 - `vis_dtv_extract.py` (eigenvalues, Tau A template excess per 10 s bin), `vis_dtv_plot.py` (Tau A transit),
