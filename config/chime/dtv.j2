@@ -7,6 +7,7 @@
 -#}
 {% set dtv_runtime_bundle_dir = dtv_runtime_bundle_dir|default("data/pilotproxy_bundle") %}
 {% set dtv_output_dir = dtv_output_dir|default("/scratch/dtv") %}
+{% set dtv_record_fine_powers = dtv_record_fine_powers|default(false) %}
     ############################################################################
     # DTV detector
 
@@ -44,6 +45,19 @@
         dimscalings: [16384, 1, 1]
         metadata_pool: main_pool{{ numa_sfx }}
 
+{% if dtv_record_fine_powers %}
+    # The fine powers behind each decision, for calibration from a detect-only run.
+    host_dtv_fine_powers_buffer{{ numa_sfx }}:
+        kotekan_buffer: ndarray
+        num_frames: host_buffer_depth
+        value_type: uint64
+        extents: [1, num_freq_gpu_buf, 3, 256]
+        quantity_name: "dtv_fine_powers"
+        dimnames: ["T", "F", "W", "B"]
+        dimscalings: [16384, 1, 1, 1]
+        metadata_pool: main_pool{{ numa_sfx }}
+
+{% endif %}
     # Stages
 
     run_dtv_detector:
@@ -55,10 +69,16 @@
         cuda_stream_base: 1
         in_buffers:
             host_xposed_voltage_ringbuffer: host_xposed_voltage_ringbuffer{{ numa_sfx }}
+{% if dtv_bad_feed_mask|default(false) %}
+            host_bf_mask_ringbuffer: host_bf_mask_ringbuffer{{ numa_sfx }}
+{% endif %}
         out_buffers:
             host_dtv_mask: host_dtv_mask_buffer{{ numa_sfx }}
             host_dtv_powers: host_dtv_powers_buffer{{ numa_sfx }}
             host_dtv_fine_support: host_dtv_fine_support_buffer{{ numa_sfx }}
+{% if dtv_record_fine_powers %}
+            host_dtv_fine_powers: host_dtv_fine_powers_buffer{{ numa_sfx }}
+{% endif %}
         commands:
         - name: cudaPilotProxyDetector
           num_frequencies: num_freq_gpu_buf
@@ -68,8 +88,14 @@
           dtv_mask_name: dtv_mask
           dtv_powers_name: dtv_powers
           dtv_fine_support_name: dtv_fine_support
+{% if dtv_record_fine_powers %}
+          dtv_fine_powers_name: dtv_fine_powers
+{% endif %}
           pilot_profiles_path: {{ dtv_runtime_bundle_dir }}/pilot_profiles.json
           weights_path: {{ dtv_runtime_bundle_dir }}/weights.bin
+{% if dtv_bad_feed_mask|default(false) %}
+          bf_mask_name: bf_mask
+{% endif %}
         - name: cudaSyncOutput
         - name: cudaOutputData
           gpu_mem: dtv_mask_buffer
@@ -80,6 +106,11 @@
         - name: cudaOutputData
           gpu_mem: dtv_fine_support_buffer
           out_buf: host_dtv_fine_support
+{% if dtv_record_fine_powers %}
+        - name: cudaOutputData
+          gpu_mem: dtv_fine_powers_buffer
+          out_buf: host_dtv_fine_powers
+{% endif %}
 
     write_dtv:
 {% for product in ["mask", "powers", "fine_support"] %}
@@ -92,4 +123,14 @@
             num_frames_per_file: 1024
             allow_ndarray: true
 {% endfor %}
+{% if dtv_record_fine_powers %}
+        # HDF5 for PilotProxy calibration, about 43 s per file, one capture each.
+        fine_powers:
+            kotekan_stage: hdf5FileWrite
+            log_level: warn
+            in_buf: host_dtv_fine_powers_buffer{{ numa_sfx }}
+            base_dir: {{ dtv_output_dir }}
+            file_name: dtv_fine_powers{{ numa_sfx }}
+            frames_per_file: 1024
+{% endif %}
 
