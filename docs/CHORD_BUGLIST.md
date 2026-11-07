@@ -1430,6 +1430,25 @@ and the cube leg's unit. Until this is understood, stop the broker and gather by
 
 ## Open — the fix is in the NODE BINARY (queue for the next cycle)
 
+### #229 — the projection's duplicate test keeps the strongest lane, not the best: at a bright GuoWang pass's peak a lane contaminated by GuoWang goes in first and the satellite's own lane is dropped, capping the null near 10 dB (2026-11-07, KV: "Let's add to the bug list — no need to interrupt the run for that tonight!")
+**What:** GnssN2Project builds each channel's lane basis from its candidates sorted by prompt power, local lanes
+before fleet lanes (`[tree]` GnssN2Project.cpp:270, 4534f85b4). Each goes through gnssProjSubspace::add(), which
+drops a lane carrying less than lane_min_new_frac (0.1) of new direction as a duplicate (:333). At the peak of a
+bright GuoWang pass every other lane on the channel (other gw_1202, glo_l3oc, E5b, B2b) carries the GuoWang
+direction, overlap 0.45-0.85. When one of them is stronger than the satellite's own lane it goes in first, and the
+owner lane (overlap 0.99, 20 dB alone) falls under 0.1 new and is dropped. The basis then holds only the smeared
+direction: null ~ -10 log10(new_frac) ~ 10 dB instead of ~20.
+**Evidence:** `[live]` cx27 lane dumps 11-07 00:01-00:53Z (DIGUI-121, -119, -49, -57; cf06:/var/tmp/kvand-lanedump1107/cx27,
+90 files): window A, 8 of 101 bright frames, all at the pass peak, 3-10 dB lost (e.g. lane 1941, overlap 0.84,
+entered ahead of the owner); window B, no duplicate drops; about 7 % of bright frames over both. Tools in
+~/gnss/builds/leo-steer/ (fid_scan.py, cand_at.py); narrative in memory chord-handoff-20261106-cube.md.
+**Options** (none prototyped): the channel's owner lane first; rank by coherence x power; rank by explained power
+q^H R q (most accurate, likely too costly per frame); let a better lane replace a worse near-duplicate already in
+the basis; lower lane_min_new_frac (config only, but configs install only at a cycle, and near-duplicates then
+spend the lane budget, see #228). Every option needs a node cycle.
+**Status:** filed 11-07 03:34Z, not implemented; KV: not worth interrupting the weekend run. Same basis-building
+step as #228.
+
 ### #228 — gw_1202 lanes are held for up to elem_dir_hold_s = 1500 s, a GNSS-sized hold on LEO satellites: held GuoWang lanes fill the lane budget (2026-11-06, KV: "hold off on the lane hold fix, please file as a todo")
 **What:** a slot whose row falls below elem_dir_coh_min keeps publishing its last coherent direction, steered with
 the current geometry, for elem_dir_hold_s (GnssGpuRecordAssemble). The value is 1500 s on every assembler. That
