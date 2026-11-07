@@ -112,8 +112,10 @@ public:
         std::ptrdiff_t weight_offset_bytes = 0;
         std::ptrdiff_t weight_nbytes = 0;
         // fine_calibration for the mask epilogue, used only
-        // when status == "calibrated"
+        // when status == "calibrated" or "control"
         bool fine_calibrated = false;
+        // decided and recorded like a pilot, but its mask stays zero
+        bool control = false;
         bool archive_review_only = false;
         int anchor_bin = 0;
         int designated_half_width = 0;
@@ -320,8 +322,9 @@ private:
                             "{:d} has no physical_channel",
                             bundle_profiles.size());
             profile.physical_channel = read_integer<int>(row, "physical_channel");
-            if (profile.physical_channel < 14 || profile.physical_channel > 36)
-                FATAL_ERROR("cudaPilotProxyDetector: physical channel {:d} is outside ATSC 14-36",
+            // 37 has no DTV, so it can only be the control
+            if (profile.physical_channel < 14 || profile.physical_channel > 37)
+                FATAL_ERROR("cudaPilotProxyDetector: physical channel {:d} is outside ATSC 14-37",
                             profile.physical_channel);
             if (!physical_channels.insert(profile.physical_channel).second)
                 FATAL_ERROR("cudaPilotProxyDetector: duplicate physical channel {:d}",
@@ -406,13 +409,17 @@ private:
                             "decision version for physical "
                             "channel {:d}",
                             profile.physical_channel);
-            if (calibration_status != "pending_campaign" && calibration_status != "calibrated")
+            if (calibration_status != "pending_campaign" && calibration_status != "calibrated"
+                && calibration_status != "control")
                 FATAL_ERROR("cudaPilotProxyDetector: unknown fine "
                             "calibration status {:s} for physical "
                             "channel {:d}",
                             calibration_status, profile.physical_channel);
-            if (calibration_status == "calibrated") {
+            if (profile.physical_channel == 37 && calibration_status != "control")
+                FATAL_ERROR("cudaPilotProxyDetector: physical channel 37 must have status control");
+            if (calibration_status == "calibrated" || calibration_status == "control") {
                 profile.fine_calibrated = true;
+                profile.control = calibration_status == "control";
                 require(calibration, {"anchor_bin", "designated_half_width", "cfar_rank",
                                       "cfar_multiplier_q16", "bulk_mask_words_hex"});
                 profile.anchor_bin = read_integer<int>(calibration, "anchor_bin");
@@ -535,6 +542,13 @@ private:
  *   @gpu_mem_dim_name  [@c T][@c F][@c S]
  *   @gpu_mem_shape     [@c 1][@c num_frequencies][@c 2]
  *   @gpu_mem_metadata  @c chordMetadata
+ * @gpu_mem Output fine powers (optional)
+ *   @gpu_mem_buffer    @c standard
+ *   @gpu_mem_quantity  @c dtv_fine_powers
+ *   @gpu_mem_type      @c uint64
+ *   @gpu_mem_dim_name  [@c T][@c F][@c W][@c B]
+ *   @gpu_mem_shape     [@c 1][@c num_frequencies][@c 3][@c 256]
+ *   @gpu_mem_metadata  @c chordMetadata
  *
  * @conf buffer_depth               Int. GPU frames used for pipelining.
  * @conf num_times                  Int. Voltage samples per upstream GPU
@@ -556,6 +570,9 @@ private:
  *                                  was not evaluated, (0,n) has insufficient rank
  *                                  support, and (1,n) has valid rank support. Input
  *                                  health and calibration are not covered.
+ * @conf dtv_fine_powers_name       String. Optional uint64[1,F,3,256] output (default empty).
+ *                                  The fine powers behind each decision, for calibration
+ *                                  from a detect-only run. Rows with no decision are zero.
  * @conf permanent_mask_freq_ids    List of unique receiver coarse_freq IDs for
  *                                  the reject-all limit. These IDs bypass detector
  *                                  evaluation, and their mask is applied by DtvRfiMask.
@@ -605,6 +622,7 @@ private:
     const std::string dtv_mask_name;
     const std::string dtv_powers_name;
     const std::string dtv_fine_support_name; // empty: no fine-support output
+    const std::string dtv_fine_powers_name;  // empty: no fine-power output
     const std::string enabled_config_path;
 
     // Block geometry
@@ -616,6 +634,7 @@ private:
     NDArrayBuffer<std::int8_t, 2> dtv_mask;
     NDArrayBuffer<std::uint64_t, 3> dtv_powers;
     std::unique_ptr<NDArrayBuffer<std::int32_t, 3>> dtv_fine_support;
+    std::unique_ptr<NDArrayBuffer<std::uint64_t, 4>> dtv_fine_powers;
 };
 
 REGISTER_CUDA_COMMAND_WITH_STATE(cudaPilotProxyDetector, cudaPilotProxyDetectorState);
@@ -652,6 +671,7 @@ cudaPilotProxyDetector::cudaPilotProxyDetector(kotekan::Config& config,
     dtv_powers_name(config.get_default<std::string>(unique_name, "dtv_powers_name", "dtv_powers")),
     dtv_fine_support_name(
         config.get_default<std::string>(unique_name, "dtv_fine_support_name", "")),
+    dtv_fine_powers_name(config.get_default<std::string>(unique_name, "dtv_fine_powers_name", "")),
     enabled_config_path(
         config.get_default<std::string>(unique_name, "enabled_updatable_config", "")),
     // Block geometry
@@ -702,6 +722,14 @@ cudaPilotProxyDetector::cudaPilotProxyDetector(kotekan::Config& config,
             std::array<std::string, 3>{"T", "F", "S"}, std::array<std::ptrdiff_t, 3>{1, 1, 1},
             *this);
         dtv_fine_support->register_producer();
+    }
+    if (!dtv_fine_powers_name.empty()) {
+        dtv_fine_powers = std::make_unique<NDArrayBuffer<std::uint64_t, 4>>(
+            dtv_fine_powers_name, "dtv_fine_powers",
+            std::array<std::ptrdiff_t, 4>{1, num_frequencies, 3, 256},
+            std::array<std::string, 4>{"T", "F", "W", "B"},
+            std::array<std::ptrdiff_t, 4>{1, 1, 1, 1}, *this);
+        dtv_fine_powers->register_producer();
     }
 
     // The switch lives in the state shared by all instances, so subscribe once.
@@ -846,12 +874,22 @@ cudaEvent_t cudaPilotProxyDetector::execute(cudaPipelineState& /*pipestate*/,
                                              * samples_per_detector_frame);
         metadata->dim_scaling[0] = metadata->get_time_downsampling_fpga();
     }
+    if (dtv_fine_powers) {
+        dtv_fine_powers->set_metadata(in_metadata);
+        const auto metadata = dtv_fine_powers->get_metadata();
+        metadata->set_fpga_seq_num(block_seq);
+        metadata->set_time_downsampling_fpga(in_metadata->get_time_downsampling_fpga()
+                                             * samples_per_detector_frame);
+        metadata->dim_scaling[0] = metadata->get_time_downsampling_fpga();
+    }
 
     std::int8_t* const mask_memory = dtv_mask.get_ndarray().data();
     std::uint64_t* const powers_memory = dtv_powers.get_ndarray().data();
     const cudaStream_t kotekan_stream = device.getStream(cuda_stream_id);
     std::int32_t* const support_memory =
         dtv_fine_support ? dtv_fine_support->get_ndarray().data() : nullptr;
+    std::uint64_t* const fine_powers_memory =
+        dtv_fine_powers ? dtv_fine_powers->get_ndarray().data() : nullptr;
 
     // Non-pilot channels and disabled nodes report zero masks and powers.
     CHECK_CUDA_ERROR(cudaMemsetAsync(
@@ -859,6 +897,10 @@ cudaEvent_t cudaPilotProxyDetector::execute(cudaPipelineState& /*pipestate*/,
     CHECK_CUDA_ERROR(cudaMemsetAsync(powers_memory, 0,
                                      std::size_t(num_frequencies) * 3 * sizeof(std::uint64_t),
                                      kotekan_stream));
+    constexpr std::size_t fine_row_bytes = 3 * 256 * sizeof(std::uint64_t);
+    if (fine_powers_memory)
+        CHECK_CUDA_ERROR(cudaMemsetAsync(
+            fine_powers_memory, 0, std::size_t(num_frequencies) * fine_row_bytes, kotekan_stream));
     // (-1,-1) marks no fine decision for an unbound, permanently masked, or disabled frequency
     if (support_memory)
         CHECK_CUDA_ERROR(cudaMemsetAsync(support_memory, 0xff,
@@ -921,11 +963,17 @@ cudaEvent_t cudaPilotProxyDetector::execute(cudaPipelineState& /*pipestate*/,
         if (const char* error = state.core->LastError(); error != nullptr && error[0] != '\0')
             FATAL_ERROR("PilotProxy fine detector failed for physical channel {:d}: {:s}",
                         profile.physical_channel, error);
+        if (fine_powers_memory)
+            CHECK_CUDA_ERROR(cudaMemcpyAsync(fine_powers_memory + 3 * 256 * channel.freq_index,
+                                             state.fine_power_scratch, fine_row_bytes,
+                                             cudaMemcpyDeviceToDevice, kotekan_stream));
         // The int32 mask cell is folded into the int8 mask product. The value is
         // 0 or 1, so a copy of the little-endian low byte is exact (both CUDA
         // targets are little-endian).
-        CHECK_CUDA_ERROR(cudaMemcpyAsync(mask_memory + channel.freq_index, state.mask_i32_scratch,
-                                         1, cudaMemcpyDeviceToDevice, kotekan_stream));
+        if (!profile.control)
+            CHECK_CUDA_ERROR(cudaMemcpyAsync(mask_memory + channel.freq_index,
+                                             state.mask_i32_scratch, 1, cudaMemcpyDeviceToDevice,
+                                             kotekan_stream));
     }
 
     return record_end_event();
