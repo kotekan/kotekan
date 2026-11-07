@@ -966,7 +966,14 @@
   "DIGUI-81": {
    "status": "transmitting",
    "catnum": 65313,
-   "g2_phase": null,
+   "g2_phase": 1456,
+   "theta_us": -10.909,
+   "carrier_minus_tle_ppb": 3.7,
+   "measured_utc": "2026-11-07T12:15:57Z",
+   "source": "2026-11-07 beam dump window 100 (gw_reduce, 36293 frames over 79 s)",
+   "sep_deg": 5.06,
+   "ref_input": 116,
+   "drift_ns_s": -4.03,
    "last_observed_utc": "2026-11-07T12:16:02Z",
    "last_checked_utc": "2026-11-07T12:16:02Z",
    "last_checked_sep_deg": 5.05,
@@ -1490,13 +1497,14 @@
    "ref_input": 116,
    "drift_ns_s": 2.93,
    "note": "partial copy, 56/64 channels",
-   "last_observed_utc": "2026-11-06T12:43:59Z",
-   "last_checked_utc": "2026-11-06T12:43:59Z",
-   "last_checked_sep_deg": 3.36,
-   "passes_found": 1,
+   "last_observed_utc": "2026-11-07T12:09:33Z",
+   "last_checked_utc": "2026-11-07T12:09:33Z",
+   "last_checked_sep_deg": 9.51,
+   "passes_found": 2,
    "passes_silent": 0,
    "passes": [
-    ["2026-11-06T12:43:59Z", 3.36, true]
+    ["2026-11-06T12:43:59Z", 3.36, true],
+    ["2026-11-07T12:09:33Z", 9.51, true]
    ]
   },
   "DIGUI-113": {
@@ -3050,6 +3058,27 @@
     ["2026-11-04T12:34:03Z", 10.95, true]
    ]
   },
+  "DIGUI-H84-6": {
+   "status": "transmitting",
+   "catnum": 99024,
+   "g2_phase": 2027,
+   "theta_us": -10.513,
+   "carrier_minus_tle_ppb": 17.1,
+   "measured_utc": "2026-11-07T12:21:39Z",
+   "source": "2026-11-07 beam dump window 101 (gw_reduce, 11975 frames over 24 s)",
+   "sep_deg": 7.41,
+   "ref_input": 116,
+   "drift_ns_s": -17.51,
+   "note": "inferred satellite: theta and ppb on its TLE moved +19.164 s along track (fitted to the carrier)",
+   "last_observed_utc": "2026-11-07T12:22:49Z",
+   "last_checked_utc": "2026-11-07T12:22:49Z",
+   "last_checked_sep_deg": 7.31,
+   "passes_found": 1,
+   "passes_silent": 0,
+   "passes": [
+    ["2026-11-07T12:22:49Z", 7.31, true]
+   ]
+  },
   "DIGUI-H84-7": {
    "status": "transmitting",
    "catnum": 99025,
@@ -3062,34 +3091,35 @@
    "ref_input": 116,
    "drift_ns_s": -2.62,
    "note": "inferred satellite: theta and ppb on its TLE moved +29.985 s along track (fitted to the carrier). Corrected by hand 11-07: the earlier G2' 792 (11-06 12:43:28Z, 4006 frames over 8 s at 13.5 deg, 56/64 channels) was DIGUI-112's signal taken by the inferred satellite's +-45 s along-track search; 792 is DIGUI-112's code, found at 9.6 deg in this window",
-   "last_observed_utc": "2026-11-07T12:08:57Z",
-   "last_checked_utc": "2026-11-07T12:08:57Z",
-   "last_checked_sep_deg": 2.15,
+   "last_observed_utc": "2026-11-07T12:09:33Z",
+   "last_checked_utc": "2026-11-07T12:09:33Z",
+   "last_checked_sep_deg": 2.18,
    "passes_found": 1,
    "passes_silent": 0,
    "passes": [
-    ["2026-11-07T12:08:57Z", 2.15, true]
+    ["2026-11-07T12:09:33Z", 2.18, true]
    ]
   },
   "DIGUI-H84-8": {
    "status": "transmitting",
    "catnum": 99026,
    "g2_phase": 702,
-   "theta_us": -135.196,
-   "carrier_minus_tle_ppb": 10.5,
-   "measured_utc": "2026-11-06T12:29:39Z",
-   "source": "2026-11-06 beam dump window 46 (gw_reduce, 35959 frames over 87 s)",
-   "sep_deg": 3.28,
+   "theta_us": -139.98,
+   "carrier_minus_tle_ppb": 2.3,
+   "measured_utc": "2026-11-07T11:56:16Z",
+   "source": "2026-11-07 beam dump window 97 (gw_reduce, 37977 frames over 167 s)",
+   "sep_deg": 3.27,
    "ref_input": 116,
-   "drift_ns_s": -11.32,
-   "note": "inferred satellite: theta and ppb on its TLE moved +20.601 s along track (fitted to the carrier); partial copy, 56/64 channels",
-   "last_observed_utc": "2026-11-06T12:29:39Z",
-   "last_checked_utc": "2026-11-06T12:29:39Z",
-   "last_checked_sep_deg": 3.28,
-   "passes_found": 1,
+   "drift_ns_s": 19.63,
+   "note": "inferred satellite: theta and ppb on its TLE moved +20.747 s along track (fitted to the carrier)",
+   "last_observed_utc": "2026-11-07T11:56:39Z",
+   "last_checked_utc": "2026-11-07T11:56:39Z",
+   "last_checked_sep_deg": 3.31,
+   "passes_found": 2,
    "passes_silent": 0,
    "passes": [
-    ["2026-11-06T12:29:39Z", 3.28, true]
+    ["2026-11-06T12:29:39Z", 3.28, true],
+    ["2026-11-07T11:56:39Z", 3.31, true]
    ]
   },
   "DIGUI-H84-9": {
