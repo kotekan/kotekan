@@ -1,0 +1,190 @@
+{
+  "detector_contract_sha256": "813193a849e024bb49ba6ebe7259c847edf51c1ee7b22d8df867be26a61c6b34",
+  "input_coordinate_system": "post_nyquist_zone_normalized",
+  "input_preprocessing": {
+    "time_reverse_detector_windows_before_kernel": true
+  },
+  "profiles": [
+    {
+      "chime_channel_id": null,
+      "chord_channel_id": 2531,
+      "coarse_channel_center_hz": 494335937.5,
+      "coarse_channel_index": 2531,
+      "fine_calibration": {
+        "status": "calibrated",
+        "decision_version": "fine_decision_v1",
+        "cfar_multiplier_q16": 122071,
+        "anchor_bin": 82,
+        "designated_half_width": 32,
+        "cfar_rank": 47,
+        "bulk_mask_words_hex": [
+          "0x0001555555555555",
+          "0x5550000000000000",
+          "0x5555555555555555",
+          "0x5555555555555555"
+        ],
+        "provenance": {
+          "epochs": [
+            "2026-10-29 Pathfinder recording, five spaced files"
+          ],
+          "source_product_sha256": [
+            "f926ad32fca4019922d6af1a29123d56418aa2953af10b4ba1e0b6d6a1d7c8b5"
+          ],
+          "null_quantile": 0.98,
+          "note": "Word from floor, 5 captures of 30, floor from control channel. Detect-only, not a calibration."
+        }
+      },
+      "null_power_ratio": 1.0107799619530755,
+      "physical_channel": 18,
+      "pilot_frequency_hz": 494309441.0,
+      "placement_warnings": "",
+      "positive_excess_half_threshold_den": 6308,
+      "positive_excess_half_threshold_num": 3188,
+      "receiver_channel_id": 2531,
+      "receiver_channel_id_namespace": "chord_freq_id",
+      "reference_norm_sum_sq": 6308,
+      "reference_placement_status": "nominal",
+      "target_norm_sq": 3188,
+      "weight_bank_index": 0,
+      "weight_bank_nbytes": 192,
+      "weight_bank_offset_bytes": 0
+    },
+    {
+      "chime_channel_id": null,
+      "chord_channel_id": 2715,
+      "coarse_channel_center_hz": 530273437.5,
+      "coarse_channel_index": 2715,
+      "fine_calibration": {
+        "status": "calibrated",
+        "decision_version": "fine_decision_v1",
+        "cfar_multiplier_q16": 122071,
+        "anchor_bin": 180,
+        "designated_half_width": 32,
+        "cfar_rank": 47,
+        "bulk_mask_words_hex": [
+          "0x5555555555555555",
+          "0x5555555555555555",
+          "0x0000000000055555",
+          "0x5555555555400000"
+        ],
+        "provenance": {
+          "epochs": [
+            "2026-10-29 Pathfinder recording, five spaced files"
+          ],
+          "source_product_sha256": [
+            "f926ad32fca4019922d6af1a29123d56418aa2953af10b4ba1e0b6d6a1d7c8b5"
+          ],
+          "null_quantile": 0.98,
+          "note": "Word from floor, 5 captures of 30, floor from control channel. Detect-only, not a calibration."
+        }
+      },
+      "null_power_ratio": 1.0052058684335068,
+      "physical_channel": 24,
+      "pilot_frequency_hz": 530309441.0,
+      "placement_warnings": "",
+      "positive_excess_half_threshold_den": 6339,
+      "positive_excess_half_threshold_num": 3186,
+      "receiver_channel_id": 2715,
+      "receiver_channel_id_namespace": "chord_freq_id",
+      "reference_norm_sum_sq": 6339,
+      "reference_placement_status": "nominal",
+      "target_norm_sq": 3186,
+      "weight_bank_index": 1,
+      "weight_bank_nbytes": 192,
+      "weight_bank_offset_bytes": 192
+    },
+    {
+      "chime_channel_id": null,
+      "chord_channel_id": 2869,
+      "coarse_channel_center_hz": 560351562.5,
+      "coarse_channel_index": 2869,
+      "fine_calibration": {
+        "status": "calibrated",
+        "decision_version": "fine_decision_v1",
+        "cfar_multiplier_q16": 122071,
+        "anchor_bin": 51,
+        "designated_half_width": 32,
+        "cfar_rank": 47,
+        "bulk_mask_words_hex": [
+          "0x0000000000055555",
+          "0x5555555555500000",
+          "0x5555555555555555",
+          "0x5555555555555555"
+        ],
+        "provenance": {
+          "epochs": [
+            "2026-10-29 Pathfinder recording, five spaced files"
+          ],
+          "source_product_sha256": [
+            "f926ad32fca4019922d6af1a29123d56418aa2953af10b4ba1e0b6d6a1d7c8b5"
+          ],
+          "null_quantile": 0.98,
+          "note": "Word from floor, no pilot, floor from control channel. Detect-only, not a calibration."
+        }
+      },
+      "null_power_ratio": 1.0101233786776336,
+      "physical_channel": 29,
+      "pilot_frequency_hz": 560309441.0,
+      "placement_warnings": "",
+      "positive_excess_half_threshold_den": 6322,
+      "positive_excess_half_threshold_num": 3193,
+      "receiver_channel_id": 2869,
+      "receiver_channel_id_namespace": "chord_freq_id",
+      "reference_norm_sum_sq": 6322,
+      "reference_placement_status": "nominal",
+      "target_norm_sq": 3193,
+      "weight_bank_index": 2,
+      "weight_bank_nbytes": 192,
+      "weight_bank_offset_bytes": 384
+    },
+    {
+      "chime_channel_id": null,
+      "chord_channel_id": 3115,
+      "coarse_channel_center_hz": 608398437.5,
+      "coarse_channel_index": 3115,
+      "fine_calibration": {
+        "status": "control",
+        "decision_version": "fine_decision_v1",
+        "cfar_multiplier_q16": 122071,
+        "anchor_bin": 214,
+        "designated_half_width": 32,
+        "cfar_rank": 47,
+        "bulk_mask_words_hex": [
+          "0x5555555555555555",
+          "0x5555555555555555",
+          "0x0015555555555555",
+          "0x5500000000000000"
+        ],
+        "provenance": {
+          "epochs": [
+            "2026-10-29 Pathfinder recording, five spaced files"
+          ],
+          "source_product_sha256": [
+            "f926ad32fca4019922d6af1a29123d56418aa2953af10b4ba1e0b6d6a1d7c8b5"
+          ],
+          "null_quantile": 0.98,
+          "note": "Word from floor, no pilot, floor from control channel. Detect-only, not a calibration."
+        }
+      },
+      "null_power_ratio": 1.0045647725484024,
+      "physical_channel": 37,
+      "pilot_frequency_hz": 608309441.0,
+      "placement_warnings": "",
+      "positive_excess_half_threshold_den": 6353,
+      "positive_excess_half_threshold_num": 3191,
+      "receiver_channel_id": 3115,
+      "receiver_channel_id_namespace": "chord_freq_id",
+      "reference_norm_sum_sq": 6353,
+      "reference_placement_status": "nominal",
+      "target_norm_sq": 3191,
+      "weight_bank_index": 3,
+      "weight_bank_nbytes": 192,
+      "weight_bank_offset_bytes": 576
+    }
+  ],
+  "receiver_channel_id_namespace": "chord_freq_id",
+  "receiver_profile_id": "chord_pathfinder_dtv_fengine",
+  "schema_version": "pilotproxy_runtime_pilot_profiles_v1",
+  "weight_coordinate_system": "post_nyquist_zone_normalization",
+  "weights_sha256": "b1c2055ed45c6fbf39c32354ebd01efb52cc1337f6bfd9fe1137cd0d6dfe6ab2"
+}
