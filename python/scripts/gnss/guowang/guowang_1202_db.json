@@ -3053,22 +3053,22 @@
   "DIGUI-H84-7": {
    "status": "transmitting",
    "catnum": 99025,
-   "g2_phase": 792,
-   "theta_us": 89.902,
-   "carrier_minus_tle_ppb": 10.9,
-   "measured_utc": "2026-11-06T12:43:28Z",
-   "source": "2026-11-06 beam dump window 48 (gw_reduce, 4006 frames over 8 s)",
-   "sep_deg": 13.54,
+   "g2_phase": 746,
+   "theta_us": 303.581,
+   "carrier_minus_tle_ppb": 2.0,
+   "measured_utc": "2026-11-07T12:08:57Z",
+   "source": "2026-11-07 beam dump window 99 (gw_reduce, 43520 frames over 88 s)",
+   "sep_deg": 2.15,
    "ref_input": 116,
-   "drift_ns_s": -3.87,
-   "note": "inferred satellite: theta and ppb on its TLE moved -3.353 s along track (fitted to the carrier); partial copy, 56/64 channels",
-   "last_observed_utc": "2026-11-06T12:43:28Z",
-   "last_checked_utc": "2026-11-06T12:43:28Z",
-   "last_checked_sep_deg": 13.54,
+   "drift_ns_s": -2.62,
+   "note": "inferred satellite: theta and ppb on its TLE moved +29.985 s along track (fitted to the carrier). Corrected by hand 11-07: the earlier G2' 792 (11-06 12:43:28Z, 4006 frames over 8 s at 13.5 deg, 56/64 channels) was DIGUI-112's signal taken by the inferred satellite's +-45 s along-track search; 792 is DIGUI-112's code, found at 9.6 deg in this window",
+   "last_observed_utc": "2026-11-07T12:08:57Z",
+   "last_checked_utc": "2026-11-07T12:08:57Z",
+   "last_checked_sep_deg": 2.15,
    "passes_found": 1,
    "passes_silent": 0,
    "passes": [
-    ["2026-11-06T12:43:28Z", 13.54, true]
+    ["2026-11-07T12:08:57Z", 2.15, true]
    ]
   },
   "DIGUI-H84-8": {
