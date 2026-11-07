@@ -375,7 +375,9 @@ class SharedMemValidationTest:
         self._validate_time(visraw, r)
         validate(visraw, self.config, self.test_pattern)
 
-        return set(np.unique(visraw.time)[:]["fpga_count"])
+        return set(
+            np.unique(visraw.time[visraw.valid_frames.astype(bool)])["fpga_count"]
+        )
 
     def _validate_age(self, visraw, r):
         """Check if the difference between current time and the frame timestamps is acceptable.
@@ -436,8 +438,7 @@ class SharedMemValidationTest:
         now = time.time()
         valid = visraw.valid_frames.astype(bool)
         invalid_timeslots = np.sum(~valid) // visraw.num_freq
-        times_valid = np.ma.masked_where(~valid, visraw.time, copy=False)
-        times = np.unique(times_valid)
+        times = np.unique(visraw.time[valid])
 
         # remove time slots we already checked last time from this check:
         # if the update interval of the reader is higher than the time it takes the writer to fill
