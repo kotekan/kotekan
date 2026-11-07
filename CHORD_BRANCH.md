@@ -2,7 +2,7 @@
 
 This file exists only on the `chord` branch. It lists how `chord` differs from `develop`. See the "chord branch" section of AGENTS.md for the workflow.
 
-Base: `develop` at `ad94ce5de` (#1828).
+Base: `develop` at `c2c73d601` (#1873).
 
 ## Open PRs carried in chord
 
@@ -27,4 +27,4 @@ Base: `develop` at `ad94ce5de` (#1828).
 | `12f44fcb5` | `CHORD_BRANCH.md`, `AGENTS.md` | This file and the chord workflow notes |
 | `a82b96f02` | `config/chord/pathfinder.j2` | Record calibration gains in the X-engine N2 frames (#1849) |
 | `ef35f45de` | `config/chord/common.j2` | Name the F-engine controller by its full name |
-| this row's commit | `config/chord/pathfinder.j2`, `config/chord/dtv.j2` | Render the DTV detector unless `dtv_enabled` is false |
+| `5cadbbac9` | `config/chord/pathfinder.j2`, `config/chord/dtv.j2` | Render the DTV detector unless `dtv_enabled` is false |
