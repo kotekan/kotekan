@@ -92,6 +92,24 @@ the aggregator and gather. #184–#187 below are what the removal left for later
 
 ## Open — the fix is in the BROKER or a script (ships today, no node cycle)
 
+### #230 — no alert for the first GuoWang satellites at 1174.404 MHz: the filed odd 50° planes would land inside the L5 / E5a band, and railing will be the first sign (2026-11-07, KV: "our first indication will be railing at 1174, so maybe we should set up some sort of watch there, maybe flag as a todo, we can likely hand that to Jim to add to the Prometheus / grafana alerts")
+**What:** the ITU filing (CM20 2023) puts 216 more GuoWang satellites in 12 odd 50° planes at
+1174.404 MHz (GPS L5 - 2.046 MHz), RAAN midway between the 12 flying 1202.025 MHz planes; the polar
+rings may instead use 1178.496 MHz (L5 + 2.046). None fly yet. The gw_1202 chain and the beam dump do
+not cover either carrier, but the F-engine does: a satellite at the filed pfd (-129.3 dB(W/m2/MHz), the
+same as 1202) clips the 4-bit samples in a narrow block of channels on a close pass, as the 1202 ones do.
+**Watch:** freq IDs 6003-6023 (1172.36-1176.45 MHz) for 1174.404, and 6024-6044 (1176.45-1180.54 MHz)
+for 1178.496 (f = freq ID x 195.3125 kHz). Signature: the clip fraction rising together across the
+block for 1-3 min, fleet-wide in the same seconds, with no GPS or Galileo L5 transit to explain it.
+Quiet-sky L5 already has a broad clip hump over 1173-1180 MHz, so alert on a pass-shaped excess over
+each channel's quiet-sky rate, not a fixed threshold. Source: gnss-rail.service (rail_watch.py record,
+per-channel hi/lo clip fraction every second).
+**Proposal (for Jim):** export a per-band clip fraction for the two blocks to Prometheus and add a
+Grafana alert on that excess. When it fires, match the time against the predicted 1174 slots and add the
+channels to the beam dump to decode codes and IDs.
+**Status:** filed 11-07, not started. Orbits, numbers and channels: the GuoWang Full Build page
+(https://claude.ai/artifact/FKaSJgsCPb3HYuxg6DVEMR; sources in builds/gw1202/future/).
+
 ### #222 — a broker cold start after a long outage predicts from an expired BRDC set and hints nothing for up to 15 min: the collapse guard cannot see a sky that was empty from the first parse (2026-10-30, live)
 **What:** the stack had been down 19 h. The broker started at 16:44:45Z and every chain parsed the cached
 BRDC files at 16:44:47, whose records were all more than 4 h from toe, so `brdc_predict` kept none: `ctx.pred`
