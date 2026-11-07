@@ -248,6 +248,27 @@
     ["2026-11-05T22:50:17Z", 3.6, true]
    ]
   },
+  "DIGUI-25": {
+   "status": "transmitting",
+   "catnum": 63692,
+   "g2_phase": 830,
+   "theta_us": -11.878,
+   "carrier_minus_tle_ppb": 13.0,
+   "measured_utc": "2026-11-06T10:21:15Z",
+   "source": "2026-11-06 beam dump window 40 (gw_reduce, 25955 frames over 116 s)",
+   "sep_deg": 1.19,
+   "ref_input": 116,
+   "drift_ns_s": -11.9,
+   "note": "partial copy, 56/64 channels",
+   "last_observed_utc": "2026-11-06T10:21:15Z",
+   "last_checked_utc": "2026-11-06T10:21:15Z",
+   "last_checked_sep_deg": 1.19,
+   "passes_found": 1,
+   "passes_silent": 0,
+   "passes": [
+    ["2026-11-06T10:21:15Z", 1.19, true]
+   ]
+  },
   "DIGUI-26": {
    "status": "transmitting",
    "catnum": 63693,
@@ -1470,6 +1491,27 @@
     ["2026-11-05T11:21:18Z", 4.57, true]
    ]
   },
+  "DIGUI-129": {
+   "status": "transmitting",
+   "catnum": 67237,
+   "g2_phase": 271,
+   "theta_us": -13.449,
+   "carrier_minus_tle_ppb": -1.5,
+   "measured_utc": "2026-11-06T11:00:11Z",
+   "source": "2026-11-06 beam dump window 42 (gw_reduce, 16565 frames over 50 s)",
+   "sep_deg": 3.26,
+   "ref_input": 116,
+   "drift_ns_s": 0.94,
+   "note": "partial copy, 56/64 channels",
+   "last_observed_utc": "2026-11-06T11:00:11Z",
+   "last_checked_utc": "2026-11-06T11:00:11Z",
+   "last_checked_sep_deg": 3.26,
+   "passes_found": 1,
+   "passes_silent": 0,
+   "passes": [
+    ["2026-11-06T11:00:11Z", 3.26, true]
+   ]
+  },
   "DIGUI-130": {
    "status": "transmitting",
    "catnum": 67238,
@@ -2416,6 +2458,27 @@
    "passes_silent": 0,
    "passes": [
     ["2026-11-04T10:49:17Z", 4.07, true]
+   ]
+  },
+  "DIGUI-H54-9": {
+   "status": "transmitting",
+   "catnum": 99018,
+   "g2_phase": 187,
+   "theta_us": 0.776,
+   "carrier_minus_tle_ppb": 15.0,
+   "measured_utc": "2026-11-06T10:33:05Z",
+   "source": "2026-11-06 beam dump window 41 (gw_reduce, 36166 frames over 159 s)",
+   "sep_deg": 4.78,
+   "ref_input": 116,
+   "drift_ns_s": -20.13,
+   "note": "inferred satellite: theta and ppb on its TLE moved -0.380 s along track (fitted to the carrier); partial copy, 56/64 channels",
+   "last_observed_utc": "2026-11-06T10:33:05Z",
+   "last_checked_utc": "2026-11-06T10:33:05Z",
+   "last_checked_sep_deg": 4.78,
+   "passes_found": 1,
+   "passes_silent": 0,
+   "passes": [
+    ["2026-11-06T10:33:05Z", 4.78, true]
    ]
   },
   "DIGUI-H84-1": {
