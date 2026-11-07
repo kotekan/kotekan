@@ -771,6 +771,27 @@
     ["2026-11-03T13:12:58Z", 1.64, true]
    ]
   },
+  "DIGUI-78": {
+   "status": "transmitting",
+   "catnum": 65310,
+   "g2_phase": 2027,
+   "theta_us": -14.974,
+   "carrier_minus_tle_ppb": 1.6,
+   "measured_utc": "2026-11-06T12:23:42Z",
+   "source": "2026-11-06 beam dump window 44 (gw_reduce, 39510 frames over 79 s)",
+   "sep_deg": 1.0,
+   "ref_input": 116,
+   "drift_ns_s": -2.04,
+   "note": "partial copy, 56/64 channels",
+   "last_observed_utc": "2026-11-06T12:23:42Z",
+   "last_checked_utc": "2026-11-06T12:23:42Z",
+   "last_checked_sep_deg": 1.0,
+   "passes_found": 1,
+   "passes_silent": 0,
+   "passes": [
+    ["2026-11-06T12:23:42Z", 1.0, true]
+   ]
+  },
   "DIGUI-79": {
    "status": "transmitting",
    "catnum": 65311,
@@ -2367,13 +2388,14 @@
    "ref_input": 116,
    "drift_ns_s": -24.78,
    "note": "inferred satellite: theta and ppb on its TLE moved -7.582 s along track (fitted to the carrier)",
-   "last_observed_utc": "2026-11-04T13:31:39Z",
-   "last_checked_utc": "2026-11-04T13:31:39Z",
-   "last_checked_sep_deg": 1.21,
-   "passes_found": 1,
+   "last_observed_utc": "2026-11-06T12:25:25Z",
+   "last_checked_utc": "2026-11-06T12:25:25Z",
+   "last_checked_sep_deg": 14.59,
+   "passes_found": 2,
    "passes_silent": 0,
    "passes": [
-    ["2026-11-04T13:31:39Z", 1.21, true]
+    ["2026-11-04T13:31:39Z", 1.21, true],
+    ["2026-11-06T12:25:25Z", 14.59, true]
    ]
   },
   "DIGUI-H54-1": {
@@ -2563,6 +2585,48 @@
    "passes_silent": 0,
    "passes": [
     ["2026-11-04T12:34:03Z", 10.95, true]
+   ]
+  },
+  "DIGUI-H84-8": {
+   "status": "transmitting",
+   "catnum": 99026,
+   "g2_phase": 702,
+   "theta_us": -135.196,
+   "carrier_minus_tle_ppb": 10.5,
+   "measured_utc": "2026-11-06T12:29:39Z",
+   "source": "2026-11-06 beam dump window 46 (gw_reduce, 35959 frames over 87 s)",
+   "sep_deg": 3.28,
+   "ref_input": 116,
+   "drift_ns_s": -11.32,
+   "note": "inferred satellite: theta and ppb on its TLE moved +20.601 s along track (fitted to the carrier); partial copy, 56/64 channels",
+   "last_observed_utc": "2026-11-06T12:29:39Z",
+   "last_checked_utc": "2026-11-06T12:29:39Z",
+   "last_checked_sep_deg": 3.28,
+   "passes_found": 1,
+   "passes_silent": 0,
+   "passes": [
+    ["2026-11-06T12:29:39Z", 3.28, true]
+   ]
+  },
+  "DIGUI-H84-9": {
+   "status": "transmitting",
+   "catnum": 99027,
+   "g2_phase": 1456,
+   "theta_us": 244.836,
+   "carrier_minus_tle_ppb": 1.9,
+   "measured_utc": "2026-11-06T12:17:05Z",
+   "source": "2026-11-06 beam dump window 43 (gw_reduce, 65595 frames over 169 s)",
+   "sep_deg": 2.13,
+   "ref_input": 116,
+   "drift_ns_s": 0.01,
+   "note": "inferred satellite: theta and ppb on its TLE moved +16.844 s along track (fitted to the carrier); partial copy, 56/64 channels",
+   "last_observed_utc": "2026-11-06T12:17:05Z",
+   "last_checked_utc": "2026-11-06T12:17:05Z",
+   "last_checked_sep_deg": 2.13,
+   "passes_found": 1,
+   "passes_silent": 0,
+   "passes": [
+    ["2026-11-06T12:17:05Z", 2.13, true]
    ]
   }
  },
