@@ -130,34 +130,30 @@ Pathfinder recording
 --------------------
 
 ``config/chord/pathfinder.j2`` uses the same ``dtv_enabled``, ``dtv_apply_mask``
-and ``dtv_runtime_bundle_dir`` switches. It records masks, powers and fine
-support in 1024-block files (about 43 seconds), under ``dtv_output_dir``
-(default ``/scratch/dtv``).
+and ``dtv_runtime_bundle_dir`` switches, but adds the detector unless
+``dtv_enabled`` is false. A node without the bundle needs ``dtv_enabled: false``.
+
+Each X-engine half packs 1024 blocks (about 43 seconds) of masks, powers and
+fine support into one frame with ``NDArrayTimeConcat``, and sends the frames
+to the recv node. ``config/chord/recv.j2`` writes each frame to its own file
+under ``/mnt/cs00/data/dtv``, named ``dtv_<product>.<number>.h5``. The numbers
+follow arrival order, so a file's ``coarse_freq`` attribute identifies the
+half, and its ``fpga_seq_num`` attribute gives the start of the window. The
+windows are aligned in ``fpga_seq_num``, so the halves' files cover the same
+time spans. A block missing from a window is a row of ``0xFF`` bytes: ``-1``
+for the mask and fine support, and the largest ``uint64`` for the powers.
 
 Detection and recording both start off, so the visibilities do not change
 until the detector is turned on. POST
 ``{"enabled": true, "valid_at_time_ns": 0}`` to ``/dtv_detector_enabled`` to
 start detection at the next block. POST ``{"enabled": true}`` to
-``/dtv_write_enabled`` to start recording. Set ``enabled`` to false to stop,
-and recording starts a new file when it resumes. A nonzero
-``valid_at_time_ns`` applies the detector change at the first block starting
-at or after that instrument time. A restart returns both switches to off. A
-POST sent before the stages have started returns 200 but has no effect, so the
-detector log line ``PilotProxy detector on`` confirms the change.
-
-Each X-engine node writes to its own disk, and each file name starts with the
-node's hostname, so files from different nodes do not collide when gathered.
-To collect them in one place, ``dtv_output_dir`` can be set to a directory
-shared by all nodes.
-
-Recording on the recv node would remove the gathering step, and it needs two
-changes. The 16 halves would share one receive buffer for each product, as the
-bad feed masks do, and ``hdf5FileWrite`` opens a new file at each jump in
-``fpga_seq_num``. A stage that splits frames by ``coarse_freq`` is therefore
-needed in front of the writers. Each frame also carries about 149 kB of
-``chordMetadata`` over ``bufferSend``, so the three products would use about
-1.4 Gb/s to deliver 4.8 MB/s of data. Sending several blocks in each frame
-reduces this rate by the same factor.
+``/dtv_write_enabled`` on the X-engine nodes to start sending. Set ``enabled``
+to false to stop. Both changes to ``/dtv_write_enabled`` apply to whole
+frames. A nonzero ``valid_at_time_ns`` applies the detector change at the first
+block starting at or after that instrument time. A restart returns both
+switches to off. A POST sent before the stages have started returns 200 but has
+no effect, so the detector log line ``PilotProxy detector on`` confirms the
+change.
 
 
 GPU streams
