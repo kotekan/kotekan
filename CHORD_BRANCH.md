@@ -17,6 +17,7 @@ Base: `develop` at `c2c73d601` (#1873).
 | #1849 | `jbm/n2-gains` | `f76d2aba0` | 2026-11-05 | 2026-11-05 | bufferGains: buffer posted calibration gains; N2Accumulate records them |
 | #1851 | `jbm/async-start` | `944510918` | 2026-11-05 | 2026-11-06 | kotekan: start the pipeline on its own thread, report it in /status |
 | #1872 | `jbm/n2accumulate-skipped-label` | `01237aea5` | 2026-11-06 | 2026-11-06 | N2Accumulate: label skipped_frames by channel |
+| #1878 | `jbm/dtv-recv` | `b4e7ef2c8` | 2026-11-07 | 2026-11-07 | config/chord: record DTV products on the recv node |
 
 ## Chord-only commits
 
@@ -27,4 +28,3 @@ Base: `develop` at `c2c73d601` (#1873).
 | `12f44fcb5` | `CHORD_BRANCH.md`, `AGENTS.md` | This file and the chord workflow notes |
 | `a82b96f02` | `config/chord/pathfinder.j2` | Record calibration gains in the X-engine N2 frames (#1849) |
 | `ef35f45de` | `config/chord/common.j2` | Name the F-engine controller by its full name |
-| `5cadbbac9` | `config/chord/pathfinder.j2`, `config/chord/dtv.j2` | Render the DTV detector unless `dtv_enabled` is false |

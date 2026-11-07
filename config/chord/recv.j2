@@ -32,6 +32,16 @@
 {% set samples_per_data_set = 8192 %}
 
 
+# DTV detector products from the X-engine halves (dtv.j2): one frame of dtv_blocks_per_frame
+# 8192-sample blocks per half, over 384 frequencies (num_local_freq in pathfinder.j2).
+# Shapes and ports must match dtv.j2.
+{% set dtv_blocks_per_frame = 1024 %}
+{% set dtv_products = [
+    ("mask", "int8", "384", '"F"', "1", 11031),
+    ("powers", "uint64", "384, 3", '"F", "W"', "1, 1", 11033),
+    ("fine_support", "int32", "384, 2", '"F", "S"', "1, 1", 11035),
+] %}
+
 ---
 {% include "common.j2" %}
 
@@ -115,6 +125,20 @@ bad_feed_mask_buffer:
     extents: [1, num_polarizations, num_dishes]
     metadata_pool: bad_feed_mask_pool
 
+# DTV frames from all 16 halves share one buffer per product. Each half sends one frame per
+# ~43 s, so 32 frames cover two rounds while the writer catches up.
+{% for product, value_type, extents, dimnames, dimscalings, port in dtv_products %}
+dtv_{{ product }}_buffer:
+    kotekan_buffer: ndarray
+    num_frames: 32
+    value_type: {{ value_type }}
+    extents: [{{ dtv_blocks_per_frame }}, {{ extents }}]
+    quantity_name: "dtv_{{ product }}"
+    dimnames: ["T", {{ dimnames }}]
+    dimscalings: [8192, {{ dimscalings }}]
+    metadata_pool: chord_pool
+
+{% endfor %}
 
 
 ## Receive data
@@ -143,6 +167,15 @@ buffer_recv_bad_feed_mask:
     use_frame_desc: true
     buf: bad_feed_mask_buffer
     listen_port: 11029
+
+buffer_recv_dtv:
+{% for p in dtv_products %}
+    {{ p[0] }}:
+        kotekan_stage: bufferRecv
+        use_frame_desc: true
+        buf: dtv_{{ p[0] }}_buffer
+        listen_port: {{ p[5] }}
+{% endfor %}
 
 # Live autocorrelation power vs frequency from the full N2 stream, for the
 # peek endpoint. num_pending_bins is left at its default (2).
@@ -197,3 +230,17 @@ hdf5_N2_write_subset:
 #     blocksize_f: 32
 #     late_frame_grace_seconds: 30
 #     num_file_t: 20
+
+
+# DTV products, one file per received frame: one half's ~43 s. File numbers follow arrival
+# order; the coarse_freq and fpga_seq_num attributes identify the half and the window.
+write_dtv:
+{% for p in dtv_products %}
+    {{ p[0] }}:
+        kotekan_stage: hdf5FileWrite
+        log_level: warn
+        in_buf: dtv_{{ p[0] }}_buffer
+        base_dir: /mnt/cs00/data/dtv
+        file_name: dtv_{{ p[0] }}
+        prefix_hostname: false
+{% endfor %}
