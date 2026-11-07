@@ -7,14 +7,15 @@
     dtv_roll.py --nodes cx19,cx51 status
     dtv_roll.py --nodes cx51 save            # the state in use -> STATES/<node>/st_g<g>_roll<HHMMSS>.bin, current
     dtv_roll.py --nodes cx19,cx27,... watch [--every 60] [--save-every 600] [--protect-min 25]
-        [--protect NAME:RA:DEC ...] [--rearm] [--restore]
+        [--protect NAME:RA:DEC ...] [--rearm] [--restore] [--min-explained F]
 
 watch: one status line per GPU each --every s; saves each --save-every s (keeps the last 3 per node, so a
 restarted node's restore loads a g at most minutes old); freezes sources 1.. while a protected sky source
 (--protect, J2000 degrees; default Tau A) is within --protect-min minutes of drift of the boresight (on the
 meridian at --boresight-dec), so the blind sources do not fit it as it crosses the beam; with --rearm, re-enables a GPU that subtracts with the rolling fit off (a node restart loses it); with
---restore, first loads the node's current state on a GPU in pass-through 600..30000 frames after a restart.
-Saves go through the node's local /tmp/gnss/dtvroll (kotekan is root; /home is root-squashed NFS).
+--restore, first loads the node's current state on a GPU in pass-through 600..30000 frames after a restart;
+with --min-explained, sets the rolling fit's hold on a GPU that reports another value (a node restart brings
+back its config's). Saves go through the node's local /tmp/gnss/dtvroll (kotekan is root; /home is root-squashed NFS).
 REST calls only: safe on the VM.
 """
 import argparse
@@ -213,6 +214,11 @@ def main():
         action="store_true",
         help="load STATES/<node>/current on a restarted pass-through GPU",
     )
+    p.add_argument(
+        "--min-explained",
+        type=float,
+        help="keep the rolling fit's min_explained at this value",
+    )
     a = ap.parse_args()
     a.nodes = a.nodes.split(",")
     a.gpus = [int(g) for g in a.gpus.split(",")]
@@ -289,6 +295,18 @@ def main():
                             "g%d" % g,
                             "re-arm:",
                             post(n, g, "rolling", {"enable": True}).get("enable"),
+                            flush=True,
+                        )
+                    me = a.min_explained
+                    if me is not None and r.get("min_explained") != me:
+                        print(
+                            stamp(),
+                            n,
+                            "g%d" % g,
+                            "min_explained %s ->" % r.get("min_explained"),
+                            post(n, g, "rolling", {"min_explained": me}).get(
+                                "min_explained"
+                            ),
                             flush=True,
                         )
                     if want is not None:
