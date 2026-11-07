@@ -14,10 +14,12 @@ node's files start on the same hop.
     viscap.py disarm                        # close every window now
     viscap.py watch [--every 5]             # status every 5 s until no gate is armed
 
-The seq rate is measured (two status polls) rather than assumed, and cross-checked against
-the frame geometry (8192 hops x 5.12 us). Files land in <record_dir>/viscap on each node's
-own nvme (default /tmp/gnss/viscap); see scripts/gnss/viscap_read.py for the layout and
-docs/CHORD_VIS_CAPTURE.md for the whole procedure.
+Windows are placed from the gates' last seq with the frame geometry's rate (8192 hops x
+5.12 us per frame). Two status polls check that the gates advance and warn when their rate
+disagrees; a slow poll throws a two-poll rate off, so it is not used for placement. Files
+land in <record_dir>/viscap on each node's own nvme (default /tmp/gnss/viscap); see
+scripts/gnss/viscap_read.py for the layout and docs/CHORD_VIS_CAPTURE.md for the whole
+procedure.
 """
 import argparse
 import json
@@ -30,7 +32,8 @@ CONF = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "con
 PORT = 12048
 # One gate per GPU gates every captured chain on that GPU.
 GATES = ["gnss0_viscap_gate", "gnss1_viscap_gate"]
-FRAME_S = 8192 * 5120e-9  # hops per frame x hop length -- the geometry cross-check only
+# hops per frame x hop length: windows are placed with this seq rate
+FRAME_S = 8192 * 5120e-9
 
 
 def fleet_hosts():
@@ -115,7 +118,8 @@ def status(nodes, gates, quiet=False):
 
 
 def measure_rate(nodes, gates, dt=2.0):
-    """seq per second, from two polls of the reachable gates; also the frame step in seq."""
+    """(seq per second, frame step in seq, fleet last seq). The rate is the frame geometry's; two
+    polls of the reachable gates check that they advance and warn when their rate disagrees."""
     a = status(nodes, gates, quiet=True)
     t0 = time.time()
     time.sleep(dt)
@@ -140,19 +144,21 @@ def measure_rate(nodes, gates, dt=2.0):
     if abs(rate / expect - 1.0) > 0.05:
         print(
             "  WARNING: measured seq rate %.4g/s is %.1f%% off the geometric %.4g/s "
-            "(8192 hops x 5.12 us per frame) -- check the clock source before trusting "
-            "the window length" % (rate, 100 * (rate / expect - 1), expect),
+            "(8192 hops x 5.12 us per frame); placing with the geometric rate -- a slow poll, "
+            "or check the clock source" % (rate, 100 * (rate / expect - 1), expect),
             file=sys.stderr,
         )
-    return rate, step, last
+    return expect, step, last
 
 
 def arm(nodes, gates, start_in, duration, start_seq=None, end_seq=None):
     """Arm every gate for one window; returns {"start_seq", "end_seq", "armed": ["node/gate", ...]}."""
+    t_call = time.time()
     rate, step, last = measure_rate(nodes, gates)
     if start_seq is None:
-        # Frame-aligned to the grid the gates are actually seeing: last + k frames.
-        k = max(1, int(round(start_in * rate / step)))
+        # Frame-aligned to the grid the gates are actually seeing: last + k frames. start_in
+        # counts from the call; last was read after the polls, so their time comes off it.
+        k = max(1, int(round((start_in - (time.time() - t_call)) * rate / step)))
         start_seq = last + k * step
     if end_seq is None:
         end_seq = start_seq + max(1, int(round(duration * rate / step))) * step
