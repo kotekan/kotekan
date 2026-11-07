@@ -217,6 +217,12 @@ common:
       atsc33:2991-3020:-16:64:2;
       atsc35:3052-3082:-16:64:2;
       muos:1844-1944:-4:16:4
+    # The rolling fit holds the g of a channel whose source 0 explains less than this fraction
+    # of its input power (stage default 0.05). The channels between the MUOS carriers explain
+    # 0.01-0.3 even when subtracting well, so at 0.05 they held g, their weights drifted off the
+    # moving satellites, and they were back at the unsubtracted level ~3 h after a setup
+    # (11-07); at 0.005 they keep refitting. The ATSC stations' edge channels (0.01-0.05) refit too.
+    dtv-roll-min-explained: 0.005
     assembler-core-slots: "2,1,3,4,8"
     # The stage on a whole idle physical core per NUMA node (15/47 and 19/51 read 0 % on
     # cx27/43/44/51 on 10-24), outside the runtime pools: 127 stations with the transfers ran at
