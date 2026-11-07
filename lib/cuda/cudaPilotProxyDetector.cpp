@@ -569,6 +569,7 @@ private:
  * @conf bf_mask_name               String. Optional base name of the bad feed mask ring
  *                                  buffer (default empty, every input is summed). A bad
  *                                  input is packed as zero, as if it carried no signal.
+ *                                  On CHORD, bufferBadInputs also flags the RFI antennas.
  * @conf bf_mask_lifetime_in_samples Int. Samples each bad feed mask element covers, a
  *                                  multiple of the detector block. Required with bf_mask_name.
  * @conf enabled_updatable_config   Optional block with `enabled` and `valid_at_time_ns`.
@@ -937,6 +938,12 @@ cudaEvent_t cudaPilotProxyDetector::execute(cudaPipelineState& /*pipestate*/,
                         "{:d}: clock bufferBadInputs to this GPU's voltage buffer",
                         bf_mask->get_metadata()->get_fpga_seq_num(),
                         in_metadata->get_fpga_seq_num());
+        // the element is read from the ring position, so it must cover this voltage block
+        if (bf_mask->get_read_valid().begin()
+            != voltage.get_read_valid().begin() / bf_mask_lifetime_in_samples)
+            FATAL_ERROR("bad feed mask element {:d} does not cover the voltage block at sample "
+                        "{:d}",
+                        bf_mask->get_read_valid().begin(), voltage.get_read_valid().begin());
         const std::ptrdiff_t element =
             bf_mask->get_read_valid().begin() % bf_mask->get_ndarray().extent(0);
         stream_good = bf_mask->get_ndarray().data() + element * bf_mask->get_ndarray().stride(0);

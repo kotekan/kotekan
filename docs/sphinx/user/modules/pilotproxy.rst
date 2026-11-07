@@ -115,6 +115,16 @@ The other keys are listed below.
     of these frequencies is cleared. In record-only mode, these frequencies are
     not evaluated and nothing is cleared.
 
+``dtv_bad_feed_mask``
+    The detector reads the bad feed mask ring of ``bufferBadInputs``, and a
+    flagged input is packed as zero (default false, every input is summed).
+    ``bufferBadInputs`` also flags every element outside the main array, which
+    on CHORD are the Missing dishes and the 16 RFI antennas. Thus, with this
+    switch, the detector also drops the RFI antennas, which probably see DTV
+    most strongly. ``dtv_powers`` and ``dtv_fine_powers`` fall as inputs are
+    flagged, so a bundle calibrated from recorded files must use the same
+    setting and a steady input count.
+
 ``dtv_require_fine_freq_ids``
     Receiver IDs that must have a fine test in every block. A row of
     ``(-1, -1)`` for one of these IDs stops the run instead of counting as a
