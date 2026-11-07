@@ -4,7 +4,8 @@
 # Cron, on the gnss VM.
 #
 # Each run:
-#   1. copies gw_reduce's reduce_log.jsonl from cf06 (frozen) and cf05 (the live loop); a failed
+#   1. copies gw_reduce's reduce_log.jsonl from cf06 (frozen), cf05 (the live loop) and corrcal
+#      (the 11-07 catch-up of the windows cf05 missed); a failed
 #      copy keeps the previous one
 #   2. guowang_db.py update with those logs and the published db_proposals.jsonl
 #   3. commits the library alone (git commit --only) on kv/gw1202 in the gw1202-wt worktree
@@ -25,7 +26,7 @@ flock -n 9 || { echo "$(now) another run holds the lock"; exit 0; }
 # a new F-engine start goes into the reducer's frame0 list, so its windows are placed in time
 "$PY" "$WT/scripts/gnss/site/gw_frame0_sync.py" 2>&1 | sed "s/^/$(now) frame0: /"
 
-for h in cf06 cf05; do
+for h in cf06 cf05 corrcal; do
     if timeout 120 scp -q -o BatchMode=yes -o ConnectTimeout=20 \
         "$h:/var/tmp/kvand-gw1202/reduce_log.jsonl" "$C/reduce_log_$h.jsonl.tmp"; then
         mv "$C/reduce_log_$h.jsonl.tmp" "$C/reduce_log_$h.jsonl"
@@ -41,7 +42,7 @@ if [ "$(git symbolic-ref --short HEAD 2>/dev/null)" != "$BRANCH" ]; then
 fi
 
 logs=()
-for h in cf06 cf05; do
+for h in cf06 cf05 corrcal; do
     [ -f "$C/reduce_log_$h.jsonl" ] && logs+=(--reduce-log "$C/reduce_log_$h.jsonl")
 done
 "$PY" python/scripts/gnss/guowang/guowang_db.py --db "$DB" update "${logs[@]}" \
