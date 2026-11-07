@@ -155,8 +155,8 @@ def cmd_run(a, nodes):
             "next window %s .. %s: %s; arming in %.0f s"
             % (fmt(s), fmt(e), "; ".join(names), lead)
         )
-        # arm shortly before the window so the seq rate measured now still holds; the window
-        # itself is placed by the measured rate (viscap.arm's start_in is seconds from now)
+        # arm shortly before the window; viscap.arm places it from the gates' last seq with the
+        # frame geometry's rate (start_in is seconds from now)
         if lead > a.lead:
             time.sleep(lead - a.lead)
         start_in = max(1.0, s - time.time())
