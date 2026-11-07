@@ -909,7 +909,7 @@ def add_dtv_subtract(out, cfg, args, node, spds):
     powers, lag correlations) goes through a FrameWindowGate and a rawFileWrite under
     <record_dir>/dtv, as the beam dump's does. Each channel takes its target's lag window and
     source slots (--dtv-targets); a GPU whose channels share a value gets it as one Int, as
-    before."""
+    before. --dtv-roll-min-explained sets the rolling fit's hold on every GPU."""
     per = {
         fid: (lag_min, n_lag, sources)
         for _, ids, lag_min, n_lag, sources in dtv_targets(args)
@@ -918,6 +918,9 @@ def add_dtv_subtract(out, cfg, args, node, spds):
     ids = sorted(per)
     if not ids:
         return
+    min_explained = getattr(args, "dtv_roll_min_explained", None)
+    if min_explained is not None and not 0.0 <= min_explained <= 1.0:
+        raise SystemExit(f"--dtv-roll-min-explained {min_explained:g}: outside [0, 1]")
     rt = cfg["runtime"]
     for gpu, off in enumerate(cfg["nodes"][node]["gpu_offsets_mod16"]):
         pairs = [(f, gpu_of_channel(cfg, node, f)[1]) for f in ids if f % 16 == off]
@@ -940,32 +943,35 @@ def add_dtv_subtract(out, cfg, args, node, spds):
         lag_min, n_lag, sources = ([per[fid][q] for fid, _ in pairs] for q in range(3))
         base = int(proc.get("cuda_stream_base", 0))
         at = proc["commands"].index(copies[0]) + 1
+        sub = {
+            "name": "cudaDtvSubtract",
+            "cuda_stream": DTV_CUDA_STREAM,
+            **{
+                k: copies[0][k]
+                for k in (
+                    "input_size",
+                    "ring_buffer_size",
+                    "signal_buf",
+                    "gpu_mem_output",
+                )
+            },
+            "dtv_local_channels": [idx for _, idx in pairs],
+            "dtv_freq_ids": [fid for fid, _ in pairs],
+            "dtv_out_name": out_name,
+            "dtv_lag_min": one_or_list(lag_min),
+            "dtv_n_lag": one_or_list(n_lag),
+            "dtv_sources": one_or_list(sources),
+            "dtv_state_file": args.dtv_state_file,
+        }
+        if min_explained is not None:
+            sub["dtv_roll_min_explained"] = min_explained
         proc["commands"][at:at] = [
             {
                 "name": "cudaSyncStream",
                 "cuda_stream": DTV_CUDA_STREAM,
                 "source_cuda_streams": [3 * base],
             },
-            {
-                "name": "cudaDtvSubtract",
-                "cuda_stream": DTV_CUDA_STREAM,
-                **{
-                    k: copies[0][k]
-                    for k in (
-                        "input_size",
-                        "ring_buffer_size",
-                        "signal_buf",
-                        "gpu_mem_output",
-                    )
-                },
-                "dtv_local_channels": [idx for _, idx in pairs],
-                "dtv_freq_ids": [fid for fid, _ in pairs],
-                "dtv_out_name": out_name,
-                "dtv_lag_min": one_or_list(lag_min),
-                "dtv_n_lag": one_or_list(n_lag),
-                "dtv_sources": one_or_list(sources),
-                "dtv_state_file": args.dtv_state_file,
-            },
+            sub,
         ]
         proc["num_cuda_streams"] = max(
             int(proc.get("num_cuda_streams", 0)), DTV_CUDA_STREAM + 1
@@ -3422,6 +3428,16 @@ def main():
         dest="dtv_state_file",
         help="state file (weights and impulse responses, scripts/gnss/dtv_state.py) loaded at "
         "start; empty = none (the channels pass through until a REST load or eigen start)",
+    )
+    ap.add_argument(
+        "--dtv-roll-min-explained",
+        type=float,
+        default=None,
+        metavar="F",
+        dest="dtv_roll_min_explained",
+        help="the rolling fit holds the g of a channel whose source 0 explains less than this "
+        "fraction of its input power (cudaDtvSubtract's dtv_roll_min_explained); unset = the "
+        "stage's default, 0.05",
     )
     ap.add_argument(
         "--dtv-lag-min",

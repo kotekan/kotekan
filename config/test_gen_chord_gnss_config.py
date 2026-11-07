@@ -1320,6 +1320,44 @@ def test_dtv_targets():
     check(refused, "--dtv-targets with --dtv-subtract-freq-ids is refused")
 
 
+def test_dtv_roll_min_explained():
+    args = argparse.Namespace(
+        dtv_targets="atsc24:2714-2744:-16:64:3;muos:1844-1944:-4:16:4",
+        dtv_subtract_freq_ids="",
+        dtv_state_file="",
+        dtv_depth=8,
+        dtv_frames_per_file=24,
+        record_dir="",
+    )
+
+    def stages(a):
+        n = _dtv_node(a)
+        return [
+            c
+            for k in (0, 1)
+            for c in n["run_send_voltage"]["gpu_%d" % k]["commands"]
+            if c["name"] == "cudaDtvSubtract"
+        ]
+
+    check(
+        all("dtv_roll_min_explained" not in c for c in stages(args)),
+        "without --dtv-roll-min-explained the stage keeps its default",
+    )
+    args.dtv_roll_min_explained = 0.005
+    st = stages(args)
+    check(
+        len(st) == 2 and all(c["dtv_roll_min_explained"] == 0.005 for c in st),
+        "--dtv-roll-min-explained reaches cudaDtvSubtract on both GPUs",
+    )
+    args.dtv_roll_min_explained = 1.5
+    try:
+        stages(args)
+        refused = False
+    except SystemExit:
+        refused = True
+    check(refused, "--dtv-roll-min-explained outside [0, 1] is refused")
+
+
 def test_positions_by_dish():
     """A per-dish positions file maps each element to its dish's position, is keyed by the
     epoch's ref_key (pointing and wiring) and refuses another pointing or a missing dish; the
