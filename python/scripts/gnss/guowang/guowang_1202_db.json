@@ -120,12 +120,13 @@
    "catnum": 62972,
    "g2_phase": null,
    "last_observed_utc": null,
-   "last_checked_utc": "2026-11-03T15:22:42Z",
-   "last_checked_sep_deg": 3.25,
+   "last_checked_utc": "2026-11-08T18:18:09Z",
+   "last_checked_sep_deg": 2.8,
    "passes_found": 0,
-   "passes_silent": 1,
+   "passes_silent": 2,
    "passes": [
-    ["2026-11-03T15:22:42Z", 3.25, false]
+    ["2026-11-03T15:22:42Z", 3.25, false],
+    ["2026-11-08T18:18:09Z", 2.8, false]
    ]
   },
   "DIGUI-13": {
@@ -870,13 +871,14 @@
    "sep_deg": 0.93,
    "ref_input": 116,
    "drift_ns_s": -12.37,
-   "last_observed_utc": "2026-11-03T06:34:44Z",
-   "last_checked_utc": "2026-11-03T06:34:44Z",
-   "last_checked_sep_deg": 0.6,
-   "passes_found": 1,
+   "last_observed_utc": "2026-11-08T18:28:59Z",
+   "last_checked_utc": "2026-11-08T18:28:59Z",
+   "last_checked_sep_deg": 3.83,
+   "passes_found": 2,
    "passes_silent": 0,
    "passes": [
-    ["2026-11-03T06:34:44Z", 0.6, true]
+    ["2026-11-03T06:34:44Z", 0.6, true],
+    ["2026-11-08T18:28:59Z", 3.83, true]
    ]
   },
   "DIGUI-65": {
