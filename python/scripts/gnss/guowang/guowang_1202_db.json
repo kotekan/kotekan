@@ -1855,7 +1855,7 @@
    ]
   },
   "DIGUI-124": {
-   "status": "transmitting",
+   "status": "no_transmission",
    "catnum": 67064,
    "g2_phase": 1157,
    "theta_us": -9.834,
@@ -1866,12 +1866,13 @@
    "ref_input": 116,
    "drift_ns_s": -3.02,
    "last_observed_utc": "2026-11-03T01:26:52Z",
-   "last_checked_utc": "2026-11-03T01:26:52Z",
-   "last_checked_sep_deg": 1.62,
+   "last_checked_utc": "2026-11-08T04:22:18Z",
+   "last_checked_sep_deg": 1.16,
    "passes_found": 1,
-   "passes_silent": 0,
+   "passes_silent": 1,
    "passes": [
-    ["2026-11-03T01:26:52Z", 1.62, true]
+    ["2026-11-03T01:26:52Z", 1.62, true],
+    ["2026-11-08T04:22:18Z", 1.16, false]
    ]
   },
   "DIGUI-125": {
