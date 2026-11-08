@@ -274,6 +274,123 @@ inline double mean_auto(int n, const cd* V) {
     return n > 0 ? s / n : 0.0;
 }
 
+/// A fixed, generic start for row @p j of a tracked subspace (no exact zero overlap with any
+/// direction a block can hold).
+inline cd rank_seed(int j, int i) {
+    const double x = (i + 1) * (j + 1) * 0.6180339887498949;
+    return std::polar(1.0, 2.0 * M_PI * (x - std::floor(x)));
+}
+
+/// Orthonormalise the m rows of @p U ([m][n]) in place, modified Gram-Schmidt; a row that
+/// vanishes is replaced by its seed and orthonormalised again.
+inline void rank_orth(int n, int m, cd* U) {
+    for (int j = 0; j < m; ++j) {
+        cd* u = U + (size_t)j * n;
+        for (int pass = 0; pass < 2; ++pass) {
+            double e0 = 0.0;
+            for (int i = 0; i < n; ++i)
+                e0 += std::norm(u[i]);
+            for (int l = 0; l < j; ++l) {
+                const cd* w = U + (size_t)l * n;
+                cd s(0.0, 0.0);
+                for (int i = 0; i < n; ++i)
+                    s += std::conj(w[i]) * u[i];
+                for (int i = 0; i < n; ++i)
+                    u[i] -= w[i] * s;
+            }
+            double e = 0.0;
+            for (int i = 0; i < n; ++i)
+                e += std::norm(u[i]);
+            if (e > 1e-24 * e0 && e > 0.0) {
+                const double inv = 1.0 / std::sqrt(e);
+                for (int i = 0; i < n; ++i)
+                    u[i] *= inv;
+                break;
+            }
+            for (int i = 0; i < n; ++i)
+                u[i] = rank_seed(j + pass + 1, i);
+        }
+    }
+}
+
+/// #229: the Hermitian block's dominant m-dimensional subspace, tracked by one step of subspace
+/// iteration per call. @p Un holds the iterate ([m][n]; rank_orth of seeds to start). The step
+/// moves it to @p Uk, sets S = Uk^H V Uk ([m][m], row-major: the block in that subspace), and
+/// leaves orth(V Uk) in @p Un for the next call, so a source that persists is resolved within a
+/// few calls. V u is accumulated along V's rows as conj(V(c, i)) u_c (V is Hermitian): an axpy
+/// per row, no reduction.
+inline void rank_step(int n, int m, const cd* V, cd* Uk, cd* Un, cd* S, std::vector<double>& Y) {
+    std::copy(Un, Un + (size_t)m * n, Uk);
+    Y.assign((size_t)2 * m * n, 0.0);
+    double* yr = Y.data();
+    double* yi = yr + (size_t)m * n;
+    for (int c = 0; c < n; ++c) {
+        const cd* row = V + (size_t)c * n;
+        for (int j = 0; j < m; ++j) {
+            const double ur = Uk[(size_t)j * n + c].real(), ui = Uk[(size_t)j * n + c].imag();
+            double* pr = yr + (size_t)j * n;
+            double* pi = yi + (size_t)j * n;
+            for (int i = 0; i < n; ++i) {
+                const double vr = row[i].real(), vi = row[i].imag();
+                pr[i] += vr * ur + vi * ui;
+                pi[i] += vr * ui - vi * ur;
+            }
+        }
+    }
+    for (int a = 0; a < m; ++a)
+        for (int b = 0; b < m; ++b) {
+            double sr = 0.0, si = 0.0;
+            for (int i = 0; i < n; ++i) {
+                const cd u = Uk[(size_t)a * n + i];
+                const double y1 = yr[(size_t)b * n + i], y2 = yi[(size_t)b * n + i];
+                sr += u.real() * y1 + u.imag() * y2;
+                si += u.real() * y2 - u.imag() * y1;
+            }
+            S[(size_t)a * m + b] = cd(sr, si);
+        }
+    for (int j = 0; j < m; ++j)
+        for (int i = 0; i < n; ++i)
+            Un[(size_t)j * n + i] = cd(yr[(size_t)j * n + i], yi[(size_t)j * n + i]);
+    rank_orth(n, m, Un);
+}
+
+/// The largest diagonal of S: once the subspace has settled, the block's top eigenvalue.
+inline double rank_top(int m, const cd* S) {
+    double t = 0.0;
+    for (int j = 0; j < m; ++j)
+        t = std::max(t, S[(size_t)j * m + j].real());
+    return t;
+}
+
+/// The power of the block that the direction @p q explains within the tracked subspace:
+/// a^H S a with a = Uk^H q / |q| (0 for a zero q). For a lane on a bright source this is
+/// ~ lambda |q^H u|^2, so of two lanes on the same source the better-aimed ranks first.
+inline double rank_key(int n, int m, const cd* Uk, const cd* S, const cd* q) {
+    constexpr int M_MAX = 8;
+    if (m > M_MAX)
+        return 0.0;
+    double e = 0.0;
+    for (int i = 0; i < n; ++i)
+        e += std::norm(q[i]);
+    if (!(e > 0.0))
+        return 0.0;
+    cd a[M_MAX];
+    for (int j = 0; j < m; ++j) {
+        double sr = 0.0, si = 0.0;
+        for (int i = 0; i < n; ++i) {
+            const cd u = Uk[(size_t)j * n + i];
+            sr += u.real() * q[i].real() + u.imag() * q[i].imag();
+            si += u.real() * q[i].imag() - u.imag() * q[i].real();
+        }
+        a[j] = cd(sr, si);
+    }
+    double r = 0.0;
+    for (int x = 0; x < m; ++x)
+        for (int y = 0; y < m; ++y)
+            r += (std::conj(a[x]) * S[(size_t)x * m + y] * a[y]).real();
+    return r / e;
+}
+
 } // namespace gnss_n2proj
 
 #endif

@@ -141,3 +141,96 @@ BOOST_AUTO_TEST_CASE(frame_is_station_voltage_projection) {
     // int32 rounding at scale 1000 bounds the agreement
     BOOST_CHECK_LT(std::sqrt(err / ref), 1e-4);
 }
+
+namespace {
+// V = I + sum_s p_s u_s u_s^H over unit rows u_s ([m][n]).
+std::vector<cd> sources(int n, const std::vector<cd>& u, const std::vector<double>& p) {
+    std::vector<cd> V((size_t)n * n, cd(0.0, 0.0));
+    for (int i = 0; i < n; ++i)
+        V[(size_t)i * n + i] = 1.0;
+    for (size_t s = 0; s < p.size(); ++s)
+        for (int i = 0; i < n; ++i)
+            for (int c = 0; c < n; ++c)
+                V[(size_t)i * n + c] += p[s] * u[s * n + i] * std::conj(u[s * n + c]);
+    return V;
+}
+
+// Three orthonormal random rows over n stations.
+std::vector<cd> rows3(int n) {
+    std::vector<cd> u((size_t)3 * n);
+    for (auto& x : u)
+        x = cd(g(rng), g(rng));
+    gnss_n2proj::rank_orth(n, 3, u.data());
+    return u;
+}
+
+// Track V's subspace from the seeds for `steps` frames; Uk and S describe the last.
+void track(int n, const std::vector<cd>& V, int steps, std::vector<cd>& uk, std::vector<cd>& s) {
+    std::vector<cd> un((size_t)3 * n);
+    std::vector<double> y;
+    for (int j = 0; j < 3; ++j)
+        for (int i = 0; i < n; ++i)
+            un[(size_t)j * n + i] = gnss_n2proj::rank_seed(j, i);
+    gnss_n2proj::rank_orth(n, 3, un.data());
+    uk.assign((size_t)3 * n, cd(0.0, 0.0));
+    s.assign(9, cd(0.0, 0.0));
+    for (int t = 0; t < steps; ++t)
+        gnss_n2proj::rank_step(n, 3, V.data(), uk.data(), un.data(), s.data(), y);
+}
+
+// The energy of the unit direction a left outside a duplicate-tested basis built from `order`.
+double left_after(int n, const cd* a, const std::vector<const cd*>& order) {
+    gnss::ProjBasis B;
+    B.init(n, 8);
+    for (const cd* v : order)
+        B.add(v, 0.1);
+    double e = 0.0;
+    for (int i = 0; i < n; ++i) {
+        cd r = a[i];
+        for (int j = 0; j < B.k; ++j) {
+            cd s(0.0, 0.0);
+            for (int c = 0; c < n; ++c)
+                s += std::conj(B.q[(size_t)j * n + c]) * a[c];
+            r -= B.q[(size_t)j * n + i] * s;
+        }
+        e += std::norm(r);
+    }
+    return e;
+}
+} // namespace
+
+// Two sources: a few frames from the seeds, the top of S is the bright one's eigenvalue and
+// each direction's key is the power it explains.
+BOOST_AUTO_TEST_CASE(rank_step_finds_the_bright_modes) {
+    const int n = 113;
+    const std::vector<cd> u = rows3(n);
+    const std::vector<cd> V = sources(n, u, {200.0, 30.0});
+    std::vector<cd> uk, s;
+    track(n, V, 6, uk, s);
+    BOOST_CHECK_CLOSE(gnss_n2proj::rank_top(3, s.data()), 201.0, 1.0);
+    BOOST_CHECK_CLOSE(gnss_n2proj::rank_key(n, 3, uk.data(), s.data(), &u[0]), 201.0, 1.0);
+    BOOST_CHECK_CLOSE(gnss_n2proj::rank_key(n, 3, uk.data(), s.data(), &u[n]), 31.0, 2.0);
+    // a direction orthogonal to both sources explains about the noise
+    BOOST_CHECK_LT(gnss_n2proj::rank_key(n, 3, uk.data(), s.data(), &u[2 * n]), 3.0);
+}
+
+// #229: a lane contaminated by a bright source (overlap 0.92, but stronger in its tracker) and
+// the source's own lane (overlap 0.99). In tracker-power order the own lane fails the
+// duplicate test and the null stops near 1 - 0.92; ranked by explained power it goes first.
+BOOST_AUTO_TEST_CASE(ranked_order_keeps_the_owner_lane) {
+    const int n = 113;
+    const std::vector<cd> u = rows3(n); // the source, the contaminating satellite, noise
+    const std::vector<cd> V = sources(n, u, {1000.0});
+    std::vector<cd> cont(n), own(n);
+    for (int i = 0; i < n; ++i) {
+        cont[i] = std::sqrt(0.92) * u[i] + std::sqrt(0.08) * u[n + i];
+        own[i] = std::sqrt(0.99) * u[i] + std::sqrt(0.01) * u[2 * n + i];
+    }
+    std::vector<cd> uk, s;
+    track(n, V, 4, uk, s);
+    const double kc = gnss_n2proj::rank_key(n, 3, uk.data(), s.data(), cont.data());
+    const double ko = gnss_n2proj::rank_key(n, 3, uk.data(), s.data(), own.data());
+    BOOST_CHECK_GT(ko, kc);
+    BOOST_CHECK_GT(left_after(n, u.data(), {cont.data(), own.data()}), 0.07);  // power order
+    BOOST_CHECK_LT(left_after(n, u.data(), {own.data(), cont.data()}), 0.011); // ranked
+}

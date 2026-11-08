@@ -53,7 +53,8 @@ GnssN2Project::GnssN2Project(Config& config, const std::string& unique_name,
     fleet_lanes(config.get_default<bool>(unique_name, "fleet_lanes", false)),
     fleet_lane_max_age_s(config.get_default<double>(unique_name, "fleet_lane_max_age_s", 10.0)),
     fleet_lane_rebuild_s(config.get_default<double>(unique_name, "fleet_lane_rebuild_s", 0.25)),
-    lane_resteer(config.get_default<bool>(unique_name, "lane_resteer", false)) {
+    lane_resteer(config.get_default<bool>(unique_name, "lane_resteer", false)),
+    lane_rank_min_rel(config.get_default<double>(unique_name, "lane_rank_min_rel", 0.0)) {
     if (source != "eigen" && source != "lanes" && source != "lanes+residual")
         FATAL_ERROR("GnssN2Project: source '{:s}' must be eigen, lanes or lanes+residual", source);
     eigen_channels = config.get_default<std::string>(unique_name, "eigen_channels", "all");
@@ -187,6 +188,25 @@ GnssN2Project::GnssN2Project(Config& config, const std::string& unique_name,
         INFO("GnssN2Project: lanes moving faster than {:g} rad/s are turned to each "
              "integration's time",
              LANE_RESTEER_RATE);
+    if (lane_rank_min_rel > 0.0) {
+        if (!use_lanes)
+            FATAL_ERROR("GnssN2Project: lane_rank_min_rel needs source lanes or lanes+residual");
+        const size_t un = (size_t)LANE_RANK_MODES * n;
+        rank_uk.assign(un * num_local_freq, cd(0.0, 0.0));
+        rank_un.assign(un * num_local_freq, cd(0.0, 0.0));
+        rank_s.assign((size_t)LANE_RANK_MODES * LANE_RANK_MODES * num_local_freq, cd(0.0, 0.0));
+        for (int f = 0; f < num_local_freq; ++f) {
+            cd* u = &rank_un[un * f];
+            for (int j = 0; j < LANE_RANK_MODES; ++j)
+                for (int i = 0; i < n; ++i)
+                    u[(size_t)j * n + i] = gnss_n2proj::rank_seed(j, i);
+            gnss_n2proj::rank_orth(n, LANE_RANK_MODES, u);
+        }
+        lane_ranked.assign(num_local_freq, 0);
+        INFO("GnssN2Project: where the raw block holds a mode of >= {:g} mean autos, the lanes "
+             "that explain as much of it go first",
+             lane_rank_min_rel);
+    }
     if (config.exists(unique_name, "lane_dump_buf")) {
         if (!use_lanes)
             FATAL_ERROR("GnssN2Project: lane_dump_buf needs source lanes or lanes+residual");
@@ -267,8 +287,27 @@ int GnssN2Project::build_lanes(int f, int freq_id, const cd* V, double now_s, do
                 c.v[(size_t)a] *= lane_conj ? std::conj(s) : s;
             }
         }
-    std::sort(cand.begin(), cand.end(),
-              [](const LaneCand& a, const LaneCand& b) { return a.power > b.power; });
+    // #229: on a channel with a bright mode, the lanes that explain the most of it go first,
+    // so a satellite's own lane enters ahead of the lanes its signal has leaked into.
+    if (lane_rank_min_rel > 0.0) {
+        const size_t un = (size_t)LANE_RANK_MODES * n;
+        const cd* uk = &rank_uk[un * f];
+        const cd* s = &rank_s[(size_t)LANE_RANK_MODES * LANE_RANK_MODES * f];
+        const double thr = lane_rank_min_rel * mean_auto[f];
+        int nr = 0;
+        if (thr > 0.0 && gnss_n2proj::rank_top(LANE_RANK_MODES, s) >= thr)
+            for (LaneCand& c : cand) {
+                const double r = gnss_n2proj::rank_key(n, LANE_RANK_MODES, uk, s, c.v.data());
+                if (r >= thr) {
+                    c.rank = r;
+                    ++nr;
+                }
+            }
+        lane_ranked[f] = nr;
+    }
+    std::sort(cand.begin(), cand.end(), [](const LaneCand& a, const LaneCand& b) {
+        return a.rank != b.rank ? a.rank > b.rank : a.power > b.power;
+    });
     // Fleet lanes after the board's, in the posted order: a local lane always wins the
     // duplicate test and the budget.
     const size_t n_local = cand.size();
@@ -596,6 +635,8 @@ void GnssN2Project::main_thread() {
                                                     unique_name, {"freq_id"});
     auto& g_held_k = Metrics::instance().add_gauge("kotekan_gnss_n2project_lane_held_k",
                                                    unique_name, {"freq_id"});
+    auto& g_ranked = Metrics::instance().add_gauge("kotekan_gnss_n2project_lane_ranked",
+                                                   unique_name, {"freq_id"});
     auto& g_fleet_lanes =
         Metrics::instance().add_gauge("kotekan_gnss_n2project_fleet_lanes", unique_name);
     auto& g_fleet_age =
@@ -736,6 +777,12 @@ void GnssN2Project::main_thread() {
                 int kl = 0;
                 if (use_lanes && live_ch[f]) {
                     const bool dump_f = dump && t == 0;
+                    if (lane_rank_min_rel > 0.0 && t == 0) {
+                        const size_t un = (size_t)LANE_RANK_MODES * n;
+                        gnss_n2proj::rank_step(
+                            n, LANE_RANK_MODES, V.data(), &rank_uk[un * f], &rank_un[un * f],
+                            &rank_s[(size_t)LANE_RANK_MODES * LANE_RANK_MODES * f], rank_y);
+                    }
                     const double t_int = t_frame > 0.0 ? t_frame + (t + 0.5) * dt_int : 0.0;
                     kl = build_lanes(f, freq_ids[f], V.data(), now_s, t_int, solve_now, dump_f);
                     if (dump_f)
@@ -871,6 +918,8 @@ void GnssN2Project::main_thread() {
                     g_lane_rqr.labels({fid}).set(lane_rq_raw_db[f]);
                     g_fleet_k.labels({fid}).set(fleet_k[f]);
                     g_held_k.labels({fid}).set(held_k[f]);
+                    if (lane_rank_min_rel > 0.0)
+                        g_ranked.labels({fid}).set(lane_ranked[f]);
                 }
             }
             if (use_lanes) {

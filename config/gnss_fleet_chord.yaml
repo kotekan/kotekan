@@ -64,6 +64,10 @@ common:
     # GuoWang lanes move ~0.3 deg/s: GnssN2Project turns them along their tracks to each
     # integration's time (a lane is used up to 1 s after its geometry's instant).
     lane-resteer: true
+    # #229: on a channel whose raw block holds a mode of >= 10 mean autos (~10 dB over the
+    # floor), the lanes that explain the most of it go first, so a satellite's own lane enters
+    # ahead of the lanes its signal leaked into.
+    lane-rank-min-rel: 10
     # The relay's table: the targets of lane-transfer where a satellite's lane is not on every
     # GPU (L2C on five, each GLONASS L2OF satellite on the six that hold its comb) and E6's two
     # PRS lobes. Not the E5/B2 edges: every GPU tracks those chains, and the relay's copies of
