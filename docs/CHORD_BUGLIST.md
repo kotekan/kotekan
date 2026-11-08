@@ -1464,8 +1464,15 @@ entered ahead of the owner); window B, no duplicate drops; about 7 % of bright f
 q^H R q (most accurate, likely too costly per frame); let a better lane replace a worse near-duplicate already in
 the basis; lower lane_min_new_frac (config only, but configs install only at a cycle, and near-duplicates then
 spend the lane budget, see #228). Every option needs a node cycle.
-**Status:** filed 11-07 03:34Z, not implemented; KV: not worth interrupting the weekend run. Same basis-building
-step as #228.
+**Fix:** e4008ce95 (kv/lane-rank), the explained-power option made cheap. GnssN2Project tracks each live channel's
+top 3 raw-block modes with one subspace-iteration step per frame. Where the top mode is at least lane_rank_min_rel
+mean autos (manifest: 10), the board lanes that explain at least that much go first, ordered by the power they
+explain; the rest keep tracker-power order and fleet lanes still follow. Gauge
+kotekan_gnss_n2project_lane_ranked{freq_id}. Cost on cf05 at n 113: 12 us per channel per frame, 17 us per
+ranked integration (bright channels only).
+**Status:** filed 11-07 03:34Z. KV 11-08 (in gnss-thinking's session): fix it, live from the next node cycle.
+Fix merged into the candidate kv/rel-1108, NOT LIVE until that cycle. On-sky check after the cycle: the
+lane_ranked gauge and a dump census of duplicate drops (expect ~0). Same basis-building step as #228.
 
 ### #228 — gw_1202 lanes are held for up to elem_dir_hold_s = 1500 s, a GNSS-sized hold on LEO satellites: held GuoWang lanes fill the lane budget (2026-11-06, KV: "hold off on the lane hold fix, please file as a todo")
 **What:** a slot whose row falls below elem_dir_coh_min keeps publishing its last coherent direction, steered with
