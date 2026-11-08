@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Steer cudaDtvSubtract's sources onto emitters that move across the sky: satellites from TLEs.
 
-    dtv_steer.py --nodes cx51 --freq 1845-1867,1871-1892,1897-1918,1922-1943 anchor [--sources 0,1,2]
-    dtv_steer.py --nodes cx51 --freq ... identify [--minutes 15] [--every 120]
-    dtv_steer.py --nodes cx19,cx27,... --freq ... run [--every 10]
-    dtv_steer.py --nodes cx19,cx27,... --freq ... status
+    dtv_steer.py --nodes cx51 [--freq 1844-1944] anchor [--sources 0,1,2]
+    dtv_steer.py --nodes cx51 identify [--minutes 15] [--every 120] [--near 4] [--min-match 0.85]
+    dtv_steer.py --nodes cx19,cx27,... run [--every 10]
+    dtv_steer.py --nodes cx19,cx27,... status
 
 anchor:   eigen starts of the sources on the target's channels only, in order, each subtracting with a
           zero g until the rolling fit refits it (the rolling fit must be on); waits --settle s between
@@ -13,7 +13,11 @@ identify: rolling saves every --every s for --minutes; per (GPU, channel, source
           drift of g (its strongest lag) between the first and last save, against each satellite's
           predicted turn: assigned when the best coherence is >= --min-coh and leaves at most --ratio
           of the incoherence (1 - coherence) of the next satellite and of no motion, and the drift is
-          large enough to judge (no motion's incoherence >= 0.01).
+          large enough to judge (no motion's incoherence >= 0.01). A source the drift does not assign
+          (a channel holding g, a weak or noisy track) takes the satellite of the sources it did assign
+          on channels within --near whose weights match its own (coherence >= --min-match), when only
+          one satellite's do: the channels between the MUOS carriers and their edges hear the same
+          two satellites as the carriers.
 run:      every --every s, POST /steer for each assigned source: its turn since the frame its weights
           were set (/status anchor_seq), at the latest frame, and its rate over the next 30 s. A source
           whose weights were set again since it was identified loses its assignment.
@@ -236,6 +240,27 @@ def pull_save(node, g, tag, clock):
     return (p if os.path.exists(p) else None), seq
 
 
+def borrow(pending, named, weights, near, min_match):
+    """{key: (satellite, coherence)} for the pending [(key, freq_id, source)]: the satellite of the
+    named {(freq_id, source): satellite} on channels within near whose weights match the source's
+    (coherence >= min_match), when only one satellite's do. weights {freq_id: w [n_src, inputs]}."""
+    out = {}
+    for kk, fid, k in pending:
+        if fid not in weights:
+            continue
+        w = weights[fid][k]
+        best = {}
+        for (c, j), name in named.items():
+            if c in weights and 0 < abs(c - fid) <= near:
+                v = weights[c][j]
+                m = abs(np.vdot(w, v)) / (np.linalg.norm(w) * np.linalg.norm(v) + 1e-30)
+                best[name] = max(best.get(name, 0.0), float(m))
+        hits = [(name, m) for name, m in best.items() if m >= min_match]
+        if len(hits) == 1:
+            out[kk] = hits[0]
+    return out
+
+
 def cmd_identify(a, fids, clock, sky, r):
     n = max(2, int(a.minutes * 60 / a.every) + 1)
     snaps = {}  # (node, g) -> [(path, seq)]
@@ -256,6 +281,7 @@ def cmd_identify(a, fids, clock, sky, r):
         if q + 1 < n:
             time.sleep(a.every)
     asg = load_assign()
+    weights, named, pending, anchors = {}, {}, [], {}
     for (node, g), sv in sorted(snaps.items()):
         if len(sv) < 2:
             continue
@@ -273,6 +299,7 @@ def cmd_identify(a, fids, clock, sky, r):
             )
             continue
         ch_first = targets(first[(node, g)], fids)
+        weights.update({f: rec["w"] for f, rec in st0["recs"].items() if f in fids})
         for fid, ch in sorted(targets(st, fids).items()):
             steered = ch.get(
                 "steered", [0] * ch["sources"]
@@ -341,8 +368,22 @@ def cmd_identify(a, fids, clock, sky, r):
                         coherence=round(best, 3),
                         when=stamp(),
                     )
+                    named[(fid, k)] = name
                 else:
                     asg.pop(kk, None)
+                    pending.append((kk, fid, k))
+                    anchors[kk] = anchor[k]
+    for kk, (name, m) in sorted(
+        borrow(pending, named, weights, a.near, a.min_match).items()
+    ):
+        asg[kk] = dict(
+            sat=name,
+            anchor_seq=anchors[kk],
+            coherence=round(m, 3),
+            when=stamp(),
+            via="weights",
+        )
+        print("%s %s: weights match %s %.3f -> %s" % (stamp(), kk, name, m, name))
     save_assign(asg)
 
 
@@ -459,9 +500,7 @@ def main():
     )
     ap.add_argument("--nodes", required=True, type=lambda s: s.split(","))
     ap.add_argument(
-        "--freq",
-        default="1845-1867,1871-1892,1897-1918,1922-1943",
-        help="the target's freq_ids",
+        "--freq", default="1844-1944", help="the target's freq_ids",
     )
     ap.add_argument("--tle", default=os.path.join(WORK, "muos.tle"))
     ap.add_argument(
@@ -481,6 +520,13 @@ def main():
     p.add_argument("--every", type=float, default=120.0)
     p.add_argument("--min-coh", type=float, default=0.9)
     p.add_argument("--ratio", type=float, default=0.3)
+    p.add_argument(
+        "--near",
+        type=int,
+        default=4,
+        help="channels either side whose identified sources may lend their satellite",
+    )
+    p.add_argument("--min-match", type=float, default=0.85)
     p = sub.add_parser("run")
     p.add_argument("--every", type=float, default=10.0)
     p.add_argument("--once", action="store_true")
