@@ -613,6 +613,19 @@
     ["2026-11-02T21:53:38Z", 1.3, false]
    ]
   },
+  "DIGUI-48": {
+   "status": "no_transmission",
+   "catnum": 65051,
+   "g2_phase": null,
+   "last_observed_utc": null,
+   "last_checked_utc": "2026-11-08T20:14:34Z",
+   "last_checked_sep_deg": 2.73,
+   "passes_found": 0,
+   "passes_silent": 1,
+   "passes": [
+    ["2026-11-08T20:14:34Z", 2.73, false]
+   ]
+  },
   "DIGUI-49": {
    "status": "transmitting",
    "catnum": 65106,
