@@ -2012,13 +2012,14 @@
    "sep_deg": 4.92,
    "ref_input": 116,
    "drift_ns_s": 1.43,
-   "last_observed_utc": "2026-11-04T11:41:55Z",
-   "last_checked_utc": "2026-11-04T11:41:55Z",
-   "last_checked_sep_deg": 4.87,
-   "passes_found": 1,
+   "last_observed_utc": "2026-11-08T05:39:40Z",
+   "last_checked_utc": "2026-11-08T05:39:40Z",
+   "last_checked_sep_deg": 4.92,
+   "passes_found": 2,
    "passes_silent": 0,
    "passes": [
-    ["2026-11-04T11:41:55Z", 4.87, true]
+    ["2026-11-04T11:41:55Z", 4.87, true],
+    ["2026-11-08T05:39:40Z", 4.92, true]
    ]
   },
   "DIGUI-132": {
