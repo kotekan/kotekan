@@ -147,6 +147,15 @@
  *                             used up to lane_max_age_s after the instant its track
  *                             describes, ~0.3 deg for a GuoWang satellite. Needs
  *                             elem_positions_enu.
+ * @conf lane_rank_min_rel     Double. Where the raw block holds a mode of at least this many
+ *                             mean autos, the board lanes that explain at least as much of it
+ *                             go first, in order of the power they explain, and the rest
+ *                             follow in tracker-power order (0 = off: tracker-power order).
+ *                             At a bright pass every lane on the channel carries some of the
+ *                             source; ranked by tracker power, a contaminated lane could go in
+ *                             first and drop the satellite's own lane as its duplicate (#229).
+ *                             The block's top LANE_RANK_MODES modes are tracked by one step of
+ *                             subspace iteration per frame.
  *
  * auto_raw_db / auto_proj_db per freq_id: the mean auto over the live block before and
  * after projection, dB of correlator units, so a spectrum of what the projection removed
@@ -241,6 +250,7 @@ private:
         std::vector<cd> v; ///< on the stations axis, conjugated per lane_conj
         int verdict = -1;  ///< 1 added, 0 duplicate, -1 not tested
         double new_frac = -1.0;
+        double rank = 0.0; ///< lane_rank_min_rel: the block power it explains, if ranked
         // Kept only for the lane dump
         int src = 0, xfer = 0;
         double held_s = 0.0, t_utc = 0.0;
@@ -275,6 +285,13 @@ private:
     /// satellite ~5e-3, a GNSS satellite at most ~1.5e-4.
     static constexpr double LANE_RESTEER_RATE = 1.0e-3;
     std::vector<gnss::ElemSteer::cf> lane_sh; ///< lane_resteer scratch [n_elem]
+    const double lane_rank_min_rel;
+    static constexpr int LANE_RANK_MODES = 3;
+    /// lane_rank_min_rel, per channel: the subspace S describes ([m][n]), the next iterate
+    /// ([m][n]) and S ([m][m]); rank_step's scratch
+    std::vector<cd> rank_uk, rank_un, rank_s;
+    std::vector<double> rank_y;
+    std::vector<int> lane_ranked;          ///< per channel: board lanes ranked by explained power
     gnss::ElemSteer geo;                   ///< element positions and steering sign (shift() only)
     std::atomic<bool> labelled_pub{false}; ///< freq_ids and live_ch are resolved
     std::mutex fleet_mtx;                  ///< guards the pending set between REST and main_thread

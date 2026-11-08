@@ -966,6 +966,8 @@ def test_manual_mask_reaches_the_node_config():
             "live",
             "--fleet-lanes",
             "--lane-resteer",
+            "--lane-rank-min-rel",
+            "10",
             "--n2-project-eigen-channels",
             "5971-5980,6000",
             "--beam-dump-freq-ids",
@@ -1025,6 +1027,10 @@ def test_manual_mask_reaches_the_node_config():
     )
     check(
         proj.get("lane_resteer") is True, "--lane-resteer: the stage turns fast lanes"
+    )
+    check(
+        proj.get("lane_rank_min_rel") == 10.0,
+        "--lane-rank-min-rel: the stage ranks lanes on a bright mode",
     )
     check(
         proj.get("eigen_channels") == "list"

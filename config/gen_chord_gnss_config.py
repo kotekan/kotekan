@@ -3705,6 +3705,16 @@ def main():
         "integration's time. Needs --fleet-lanes (the stage's element positions)",
     )
     ap.add_argument(
+        "--lane-rank-min-rel",
+        type=float,
+        default=0.0,
+        help="GnssN2Project: on a channel whose raw block holds a mode of at least this many "
+        "mean autos, the lanes that explain as much of it go first, in order of the power "
+        "they explain, so a satellite's own lane enters ahead of the lanes its signal leaked "
+        "into (#229). 0 (default) keeps the tracker-power order. Needs --n2-project-source "
+        "lanes or lanes+residual",
+    )
+    ap.add_argument(
         "--n2-project-eigen-channels",
         default="all",
         help="channels GnssN2Project's eigen path runs on: all (default; every channel gets "
@@ -4479,6 +4489,13 @@ def main():
                     )
                 _stage["eigen_channels"] = "list"
                 _stage["eigen_freq_ids"] = sorted(_eig)
+            if args.lane_rank_min_rel < 0 or (
+                args.lane_rank_min_rel > 0 and args.n2_project_source == "eigen"
+            ):
+                raise SystemExit(
+                    "--lane-rank-min-rel must be >= 0 and needs --n2-project-source lanes "
+                    "or lanes+residual"
+                )
             if args.n2_project_source != "eigen":
                 # #190: the chains' directions. The board group is the assemblers' unique_name
                 # up to the first '_' ("/gnss<gpu>"); tracker_stations is the chains' element
@@ -4490,6 +4507,8 @@ def main():
                     int(_t) * 16 + _i for _t in _tiles for _i in range(16)
                 ]
                 _stage["k_lanes_max"] = int(args.n2_project_lanes_max)
+                if args.lane_rank_min_rel > 0:
+                    _stage["lane_rank_min_rel"] = float(args.lane_rank_min_rel)
                 if args.fleet_lanes:
                     _steer = elem_steer_keys(
                         args, cfg["array"], len(_stage["tracker_stations"])

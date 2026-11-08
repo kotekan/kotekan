@@ -334,6 +334,7 @@ gnss_n2_project:
         fleet_lanes: true
         # The board's tracks move like a GuoWang satellite's (los_rate below).
         lane_resteer: true
+        lane_rank_min_rel: 10.0
         elem_steer_sign: 1.0
         elem_positions_enu:
             - -22.00
