@@ -46,7 +46,8 @@ Message content: `PAYLOAD.md`.
     frames (4 ms symbols, 250 sym/s): the low-rate channel.
   - ms 2, the CSK period: a second Gold code of the same family (G1 at 1206 XOR G2' at another
     phase), cyclically shifted by k = 0..63 chips: 6 bits per 2 ms, 3000 bit/s raw. Its polarity
-    varies too (~54 % positive). Correlation 2045-2046 of 2046 chips on DIGUI-150 (CSK G2' 1436)
+    is fixed (11-09: 99 % of clean frames once the ranging half's own data sign is removed; the
+    earlier "~54 % positive" was that imprint; PAYLOAD.md). Correlation 2045-2046 of 2046 chips on DIGUI-150 (CSK G2' 1436)
     and DIGUI-152 (1726). This is MCSK: China SatNet patent CN119788292A/B (filed 2025-03-04,
     "BPSK code periods and CSK code periods alternate") and CSNC 2024 Yan et al., who define
     MCSK(U, N, n_low) = U bits per CSK period, N code periods per TDM block, n_low ranging periods

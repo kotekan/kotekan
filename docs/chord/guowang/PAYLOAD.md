@@ -18,7 +18,10 @@ of the CSK half (high rate). ITU-R M.1787-6 files them as 125 / 1500 bit/s; meas
 - Code: rate-1/2, K = 7 convolutional, G1 = 171, G2 = 133 (octal, GPS convention, G1 first),
   found by an exhaustive parity-check search (`slow_code_test.py`: 97-98 % of checks, the only
   pair). Hard-decision Viterbi in `slow_bits.py`. Odd-weight generators leave the bit polarity
-  ambiguous per gap segment: both are tried per subframe.
+  ambiguous per gap segment: both are tried per subframe. Register convention that reproduces
+  the transmitted symbols (11-09, `pol_check.py`, 99 % agreement with the measured signs at
+  offset 0): the newest bit enters at the LSB, i.e. taps 0o117 / 0o155 in `nav_predict_eval.py`'s
+  encode() form (its own 0o171 / 0o133 is the mirror; harmless there, it encodes both sides).
 - Subframe = 3 s = 375 bits (125 bit/s) on the UTC 3 s grid. Layout (`parse_slow.py`): 12 bits
   outside the CRC, then [3-bit page 1..4][20-bit BDT SOW = the subframe's own start second]
   [payload][CRC-24Q]. The script's CRC covers 339 bits (page + SOW + 316-bit payload);
@@ -215,10 +218,14 @@ to every sender, but each sender carries its own subset, so same-second messages
   (2^-30 semicircles would be 7 % smaller); re-fitted daily, 0.1-0.3 % scatter per satellite;
   @204/22 signed OPEN: 0 +- 1 on every 50 deg plane except plane 5 (DIGUI-49..57, e = 1e-3, omega
   ~ 160 deg: -10..-13), 0..13 in the polar shell with no e, omega or plane relation; @226/17
-  signed = a fitted mean-motion-rate / semi-major-axis-rate term: it follows the TLE's ndot and
-  B* only while drag is active (50 deg shell Spearman -0.70 vs ndot on the 11-08 issue, -0.88 on
-  11-07; polar -0.91 on 11-07, 0.01 on 11-08), negative under drag, 1 LSB ~ 2e-9 rev/day^2 or
-  ~1.5 mm/day in a (unit not pinned); @243/25 signed = Omega-dot in 2^-44 semicircles/s: -3.59
+  signed = a fitted along-track (drag-type) parameter, UNIT NOT PINNED (`alm_words3-4.py`): in
+  the 50 deg shell it follows the TLE's own fitted drag (B*, ndot: Spearman -0.6..-0.8 on every
+  issue 11-04..11-08) but not the physical decay (a 5-day fit of the TLE semi-major axis gives
+  -0.25 m/day fleet-wide, +-0.15 between satellites, Spearman < 0.5 with the word); in the polar
+  shell it follows nothing but the operator's own day-to-day a-word change (Spearman -0.7,
+  anti-correlated: the estimator trades a against the along-track term). Sign: positive = orbit
+  rising (-ndot). Slope bracket vs the TLE's ndot: 1 LSB in 3.6e-10..2e-9 rev/day^2 (2^-31..
+  2^-29), or 1-7 mm/day in da/dt. A lower shell, where drag dominates, would calibrate it; @243/25 signed = Omega-dot in 2^-44 semicircles/s: -3.59
   deg/day for the 50 deg shell, -0.34 polar, the J2 nodal rate to the TLE's precision (11-09, via
   the slow channel's copy of the table). The reference epoch is 00:00:00 BDT of the day; the table is
   re-issued about every 6 h (00:20, 06:25, 12:20 UTC) at the same epoch. It covers 170
@@ -262,8 +269,7 @@ predicted at 98.3 % from time and the page templates, `PER_ELEMENT.md` section 5
   (epoch, page) is the same from every satellite; but each satellite's uplink lag (9-115 s)
   selects the epoch and is only known from its own message.
 - Unknown: the 12 bits outside the low-rate CRC; the live correction content (6-7 % of block bits
-  per 10 s epoch); the CSK polarity (~54 % positive; the patent puts the authentication message,
-  an ECDSA signature per T seconds, in the CSK code-period polarity); the variant satellites'
+  per 10 s epoch); the variant satellites'
   format; the almanac's @204/22 and the units of @182 and @226; the slow channel's 5-minute
   record (per sender, no fleet-wide part).
 - Measured 11-06 for the wipe (`builds/gw1202/nav_predict_eval.py` over the 11-05 night's 6680
@@ -334,6 +340,16 @@ Copies in `itu_refs/` (see `SIGNAL.md` for the signal-level references).
   example. The full 630-page proceedings (`csnc2024_full.txt`) have no SATNET message-format
   chapter; a LEO ephemeris appears only as "16 BDS parameters + 6" (ref. [12] of the
   single-satellite-positioning chapter).
+- CSK POLARITY (11-09, `pol_abs2-4.py`, cf05 syms archive 11-08/09, 1465 files, 5.2 M frames,
+  ~120 satellites): the loop reads the CSK sign relative to the same frame's ranging half, so the
+  old "~54 % positive" was the ranging half's data sign imprinted on the raw readout. Multiplied
+  by the ranging half's own sign, re-encoded from the CRC-valid slow pages, the CSK polarity is
+  CONSTANT: 0.917 of all frames, 0.991 of frames with peak/second-peak > 2, 99 % of seconds, one
+  flip per 1000 decided seconds. The residual 1 % sits in the header slots 0-42 after the sync
+  word (small-k symbols, half of them with a k different from the slot's usual symbol), at the
+  same 0.9 % rate on 57 satellites, with no UTC-second structure, normal ranging amplitude and
+  carrier-phase step: readout noise. So the CSK code period carries a fixed polarity: the
+  patent's polarity channel is unused, like its chip replacement.
 - Patents: CN119788292A/B (China SatNet, filed 2025-03-04, granted 2025-07-11; read 11-09): an
   authentication message once per period T (10 s in its example), carried by the CSK code-period
   POLARITY, holds an ECDSA signature (r, s) over the 256-bit hash of the low-rate message's time
