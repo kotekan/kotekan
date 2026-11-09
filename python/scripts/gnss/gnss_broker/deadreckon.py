@@ -2326,6 +2326,29 @@ def dr_seed(ctx):
 _DR_EPH_REFRESH_S = 900.0
 _DR_DCB_REFRESH_S = 7200.0
 
+# Every chain's reload parses the same cached files; parsing them once per process for all of them
+# keeps thirteen parallel parses (~30 CPU-s within a few seconds) from starving the telemetry fold.
+_DR_NAV_LOCK = threading.Lock()
+_DR_NAV = {"key": None, "eph": None}
+
+
+def _dr_parse_nav(mod, paths):
+    """mod.parse_rinex_nav(paths), shared by every chain while the files are unchanged. The result
+    is read-only to its users."""
+    key = [id(mod)]
+    for p in paths if isinstance(paths, (list, tuple)) else [paths]:
+        try:
+            st = os.stat(p)
+            key.append((p, st.st_mtime_ns, st.st_size))
+        except OSError:
+            key.append((p, None, None))
+    key = tuple(key)
+    with _DR_NAV_LOCK:
+        if _DR_NAV["key"] != key:
+            _DR_NAV["eph"] = mod.parse_rinex_nav(paths)
+            _DR_NAV["key"] = key
+        return _DR_NAV["eph"]
+
 
 def _dr_reload(ctx, first, with_dcb=True):
     """Fetch and parse the dead-reckon ephemeris (and, when `with_dcb`, the DCB table): the slow
@@ -2346,7 +2369,7 @@ def _dr_reload(ctx, first, with_dcb=True):
             res["eph"] = ctx.brdc_alm["eph"]
             return res
         _paths = ctx.dr_eph_mod.fetch_brdc(block=first)
-        res["eph"] = ctx.dr_eph_mod.parse_rinex_nav(_paths)
+        res["eph"] = _dr_parse_nav(ctx.dr_eph_mod, _paths)
         # Klobuchar coefficients from the nav headers (GPSA/GPSB), when a cached file carries
         # them; the merged daily product often does not. None means --iono klobuchar runs
         # with no model, logged by _dr_apply_reload.
