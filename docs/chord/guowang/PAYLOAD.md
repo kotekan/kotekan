@@ -67,10 +67,19 @@ of the CSK half (high rate). ITU-R M.1787-6 files them as 125 / 1500 bit/s; meas
   the four pages) is random-looking: every bit's mean is 0.5, consecutive values differ in half
   their bits, and no window follows the sender's orbit at the subframe time or at either 5-min
   boundary, nor copies its almanac entry: a per-satellite signature/MAC-like block (page 1 bits
-  118-138 beside it is a shared, rarely changing 20-bit word). The @59/10 ramp is a wrapping
-  phase whose rate is a per-satellite constant over days for most senders (0.3-2.5 LSB/s) but
-  is not the carrier frequency offset we measure; @77/14 is noisy. Both open. No IEEE floats
-  anywhere; no correlation with the sender's geometry.
+  118-138 beside it is a shared, rarely changing 20-bit word). The two ramps are the sender's
+  CLOCK (`ramp_dig4-6.py`): page-1 payload bits 42-68 are one signed 27-bit clock bias in
+  2^-36 s (14.55 ps per LSB, +-0.98 ms; the "own theta" field of 11-05 is its top 10 bits, the
+  @59/10 ramp its bottom 10, and the value is continuous across the ramp's wraps: 0 jumps in
+  5832 consecutive cycles). Its drift over four days against the theta drift the track-beam
+  loop measures per satellite: slope -0.954, Spearman -0.86 (85 satellites); theta_lib + bias
+  = -10.0 us (MAD 1.5 us over 98 satellites), the -10 us being our receiver and geometry
+  constant. Bits 69-90 are the signed clock DRIFT: the per-satellite median against the
+  measured bias drift gives Pearson 0.90 with 3.45e-13 s/s per LSB at bit 81 = 2^-25 s/day
+  (29.8 ns/day); the low bits (the old "@77/14 ramp") are its estimation noise (~5 LSB at bit
+  81 within a pass). Neither ramp is an inter-satellite range (best of 170 satellites R^2 0.64
+  = chance, no repeating partner) nor a range to any fixed ground point (grid best 0.46). Page
+  2 bits 24-31 remain open. No IEEE floats anywhere; no correlation with the sender's geometry.
 
 ## The high-rate CSK message
 
