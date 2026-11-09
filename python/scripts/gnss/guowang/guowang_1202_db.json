@@ -957,12 +957,13 @@
    "catnum": 65229,
    "g2_phase": null,
    "last_observed_utc": null,
-   "last_checked_utc": "2026-11-03T14:42:48Z",
-   "last_checked_sep_deg": 3.44,
+   "last_checked_utc": "2026-11-09T02:37:02Z",
+   "last_checked_sep_deg": 1.07,
    "passes_found": 0,
-   "passes_silent": 1,
+   "passes_silent": 2,
    "passes": [
-    ["2026-11-03T14:42:48Z", 3.44, false]
+    ["2026-11-03T14:42:48Z", 3.44, false],
+    ["2026-11-09T02:37:02Z", 1.07, false]
    ]
   },
   "DIGUI-70": {
