@@ -62,8 +62,15 @@ of the CSK half (high rate). ITU-R M.1787-6 files them as 125 / 1500 bit/s; meas
   per-sender time series of these bits could never fit the sender's own orbit. What remains
   per sender: the counters, the own-theta field, a per-page record (page 1 bits ~118-232 and
   similar blocks on pages 2-4) rewritten in one go at BDT 5-minute boundaries + 12 s on every
-  satellite at once (content open), and two modular ramps (page 1 @59/10 and @77/14, rate
-  varying by pass; open). No IEEE floats anywhere; no correlation with the sender's geometry.
+  satellite at once, and two modular ramps (page 1 @59/10 and @77/14). On four days of data
+  (`slow_all.npz`, 41 668 subframes, 126 senders) the 5-minute record (~300 bits per sender over
+  the four pages) is random-looking: every bit's mean is 0.5, consecutive values differ in half
+  their bits, and no window follows the sender's orbit at the subframe time or at either 5-min
+  boundary, nor copies its almanac entry: a per-satellite signature/MAC-like block (page 1 bits
+  118-138 beside it is a shared, rarely changing 20-bit word). The @59/10 ramp is a wrapping
+  phase whose rate is a per-satellite constant over days for most senders (0.3-2.5 LSB/s) but
+  is not the carrier frequency offset we measure; @77/14 is noisy. Both open. No IEEE floats
+  anywhere; no correlation with the sender's geometry.
 
 ## The high-rate CSK message
 
