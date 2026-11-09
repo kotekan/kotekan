@@ -78,8 +78,28 @@ of the CSK half (high rate). ITU-R M.1787-6 files them as 125 / 1500 bit/s; meas
   measured bias drift gives Pearson 0.90 with 3.45e-13 s/s per LSB at bit 81 = 2^-25 s/day
   (29.8 ns/day); the low bits (the old "@77/14 ramp") are its estimation noise (~5 LSB at bit
   81 within a pass). Neither ramp is an inter-satellite range (best of 170 satellites R^2 0.64
-  = chance, no repeating partner) nor a range to any fixed ground point (grid best 0.46). Page
-  2 bits 24-31 remain open. No IEEE floats anywhere; no correlation with the sender's geometry.
+  = chance, no repeating partner) nor a range to any fixed ground point (grid best 0.46). No IEEE floats anywhere; no correlation with the sender's geometry.
+- **11-09, the page-2 head (`ramp_dig7-14.py`, `slow_all.npz`):** bits 0-13 are a header
+  (00001000000000 on 91 %, bit 2 set in bursts on some senders; the H satellites send
+  01010011010100). Bits 37-52 are a 16-bit time of week in 10-s units = floor((BDT SOW - 3600 s)
+  / 10) to within our 5-s time tag, wrapping at 60480 (the "6-bit counter at 47-52" was its low
+  bits), and bits 53-65 are the BDT week (1087 -> 1088 when that counter wraps, an hour after the
+  BDT rollover): a time stamp one hour behind BDT. Bits 32-36 and 66-88 are constants. Bits 14-31
+  are an 18-bit STATE FIELD with two layouts by satellite group. Group B (97 senders): bits 14-18
+  a 5-bit value N (8-19, stepping +-1 every 2-5 min against the ramp's direction in 94 % of
+  steps) and bits 19-31 a signed 13-bit x (|x| median 167, 95 % below 500) that ramps linearly
+  within a pass (|slope| median 0.27 LSB/s, max 1.3, either sign, through zero, carries intact).
+  Group A (27 senders: DIGUI-96-98, 100-104, 119-126, 155-163, 40, 58): bits 14-24 = the BDT week
+  and bits 25-31 the same kind of ramp mod 128 (the old "ramp C" at 24-31 straddled the two).
+  The field was all zero on every catalogued satellite from between 11-05 14:45Z and 22:00Z
+  until 11-07 07:30-08:00Z, and active before and after (CRC-valid subframes; the clock bias
+  kept ramping meanwhile, so the zeros are the satellites'). Rejected for x: range or range rate
+  to any catalogued satellite (zero crossings vs range extrema no better than chance, no fixed
+  power-of-two scale, no plane relation), range to CHORD or any ground point, the sender's clock
+  bias/drift, latitude, sun beta angle, orbit-noon phase, eclipse; it is not orbit-periodic
+  (passes an orbit apart differ by hundreds). A satellite-internal state (attitude-control-like)
+  is the best guess. The page-1 shared word (bits 118-137) toggles between 0 and 0xfffff per
+  sender, independently of that idle window.
 
 ## The high-rate CSK message
 
