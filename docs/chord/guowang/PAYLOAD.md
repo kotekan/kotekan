@@ -50,6 +50,20 @@ of the CSK half (high rate). ITU-R M.1787-6 files them as 125 / 1500 bit/s; meas
   ECEF position/velocity at any power-of-two scale, so the pages do not carry the sender's orbit
   in the fast channel's form or as a state vector; what they carry is open. For the sign wipe
   this means the changing bits are not forecastable from geometry; only the counters are.
+- **11-09 (`slow_dig*.py`, session scratchpad; data `slow_night.npz`): the changing content is a
+  ROTATING TABLE, not the sender's state.** Page 1 bits 237-243 are an index k that steps -2 per
+  12 s cycle; the 50 deg senders cycle k = 1..108 and the polar senders k = 22..82, i.e. the
+  almanac IDs of the sender's OWN shell. The four pages of one cycle carry, bit for bit, the
+  268-bit fast-channel almanac entry of satellite k (same-day issue: 98-100 % of indices agree):
+  page 2 bits 232-271 = entry 0-39 (header, @28/12), page 4 232-258 = entry 40-66 (e), page 2
+  289-313 = 67-91 (delta-i), page 3 232-291 = 92-151 (node, omega), page 4 259-288 = 152-181
+  (M0), page 1 244-265 = 182-203, page 3 292-313 = 204-225, page 2 272-288 = 226-242, page 1
+  266-290 = 243-267 (Omega-dot, below); bit 243 of page 1 = k parity = the entry's flag. The
+  per-sender time series of these bits could never fit the sender's own orbit. What remains
+  per sender: the counters, the own-theta field, a per-page record (page 1 bits ~118-232 and
+  similar blocks on pages 2-4) rewritten in one go at BDT 5-minute boundaries + 12 s on every
+  satellite at once (content open), and two modular ramps (page 1 @59/10 and @77/14, rate
+  varying by pass; open). No IEEE floats anywhere; no correlation with the sender's geometry.
 
 ## The high-rate CSK message
 
@@ -145,8 +159,10 @@ to every sender, but each sender carries its own subset, so same-second messages
   (0x3b7afc4 / 0x3b7a7be): @92/30 x 360/2^30 = node minus GMST at the reference epoch (residual
   0.000 deg), @122/30 = omega and @152/30 = M0 (x 360/2^30; their sum, the argument of latitude,
   matches the TLE to 0.003 deg, the two trading off between re-fits), @67/25 = inclination offset
-  at 2^-19 semicircles from a per-shell reference, @40/27 holds the eccentricity (~2^-20), @28/12,
-  @182/22 and @204/64 open. The reference epoch is 00:00:00 BDT of the day; the table is
+  at 2^-19 semicircles from a per-shell reference, @40/27 holds the eccentricity (~2^-20), @28/12 and
+  @182/22 open; @204/64 = [@204/22 tiny signed][@226/17 signed, drag-like][@243/25 signed = Omega-dot
+  in 2^-44 semicircles/s: -3.59 deg/day for the 50 deg shell, -0.34 polar, the J2 nodal rate to
+  the TLE's precision (11-09, via the slow channel's copy of the table)]. The reference epoch is 00:00:00 BDT of the day; the table is
   re-issued about every 6 h (00:20, 06:25, 12:20 UTC) at the same epoch. It covers 170
   satellites: the nine extra per plane in planes 0, 1, 2, 11 (the inferred H sets among them) are
   not in it. Not a GNSS almanac, not code biases (both tested).
