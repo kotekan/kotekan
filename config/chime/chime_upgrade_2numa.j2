@@ -374,8 +374,10 @@ dpdk:
   pcie_block_list:
     - 0d:00.0
     - 0d:00.1
-    - 9f:00.0
-    - 9f:00.1
+    - 9f:00.0 # on upgrade-gpu[12]
+    - 9f:00.1 # on upgrade-gpu[12]
+    - a0:00.0 # on cx0g3
+    - a0:00.1 # on cx0g3
   # Format is index = lcore, value = array of port IDs
   # so [[0,1],[2,3]] maps lcore 0 to service ports 0 and 1,
   # and lcore 1 to service ports 2 and 3.
