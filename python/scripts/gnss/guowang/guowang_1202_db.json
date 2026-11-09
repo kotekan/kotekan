@@ -462,6 +462,18 @@
     ["2026-11-07T02:45:58Z", 3.18, false]
    ]
   },
+  "DIGUI-35": {
+   "status": "no_transmission",
+   "catnum": 64956,
+   "g2_phase": null,
+   "last_observed_utc": null,
+   "last_checked_utc": "2026-11-09T11:33:02Z",
+   "last_checked_sep_deg": null,
+   "passes_found": 0,
+   "passes_silent": 0,
+   "passes": [],
+   "note": "hand entry 2026-11-09 (KV): silent in the gw_1202 fleet sweep, 571 evaluated 30-s steps 2026-11-05 21:52Z to 11-09 11:33Z over all 81 theta steps (32 within 10 deg of boresight), one spurious hit; the beam-dump misses at 4.71 deg (11-08 20:38Z) and 5.5 deg (11-09 07:58Z) are outside silent_max_sep_deg, so passes stays empty; parked 18.8 deg ahead of slot 0 of polar plane 13, which DIGUI-A82 holds, with 3x its plane mates' eccentricity; almanac ID 52 still broadcast. Treated as retired/replaced; a conclusive pass overwrites this entry."
+  },
   "DIGUI-36": {
    "status": "transmitting",
    "catnum": 64957,
