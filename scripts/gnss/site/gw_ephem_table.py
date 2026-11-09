@@ -20,7 +20,9 @@ beam rails the shared quantiser like any other bright satellite.
     gw_ephem_table.py [--hours 3] [--sep-deg 25] [--step-s 10] [--transit-deg 10]
                       [--extra-tle PATH] [--out PATH] [--fetch]
 
-Run every ~10 min (a pass is a few minutes; the file always covers the next --hours). The write
+Run every 2 min: the records carry the live nav pages for the gw_1202 data wipe, which expire
+after LIVE_PAGES_MAX_AGE_S. The geometry alone needs ~10 min (a pass is a few minutes; the file
+always covers the next --hours). The write
 is atomic; the broker keeps the last file it read. Passes by satellites whose code is not yet in
 the database are listed too ("unknown"), so the beam-dump schedule can target them.
 
