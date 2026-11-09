@@ -92,6 +92,25 @@ the aggregator and gather. #184–#187 below are what the removal left for later
 
 ## Open — the fix is in the BROKER or a script (ships today, no node cycle)
 
+### #231 — CHUANGXIN 1-03 / 1-04 burst at 369.05 MHz on every pass and trip the DTV rolling fit on freq IDs 1887-1892: freeze the fit through each pass now, null the satellites later (2026-11-09, KV: "put a note in the todos to try and null these late as well, but for now, yes, let's freeze during the transits")
+**What:** two CAST store-and-forward LEO satellites (NORAD 37930, 40137; one sun-synchronous plane,
+P 100.7 min, i 98.7°) emit ~1.5 MHz at 369.05 MHz (freq IDs 1886-1893; x2 shoulders over 1880-1899 on
+strong passes). A pass above ~5° gives an 8-10 min burst, x4-220 in channel power. The rolling fit
+(tau 1.5-8 s) follows it, and the channel trips (residual / input > 2) when it ends: every pass-end
+trip from 11-06 to 11-09 was on 1887-1892, 4-9 min before the satellite set. Identified 11-09 from
+the fringe motion (bin-to-bin phase steps on the redundant 6.3 m E-W and 8.4 m N-S pairs, fitted
+against every LEO in CelesTrak's active set: 6-26°/bin for these two, 29-100 for the next best) and
+from the pass list (all 13 bursts fall on their passes). No published frequency found.
+**Freeze (status 2026-11-09):** `dtv_roll.py watch --pass-tle` (kv/dtv, not yet committed or live;
+TLEs in cf06:/var/tmp/kvand-dtvsteer/cx1.tle) freezes every source on the 8 GPUs that hold 1886-1893,
+from 60 s before each rise to 60 s after each set: about 15 % of the day. Bursts start >= 80 s after
+rise and end >= 90 s before set; the replay covers every burst in the 11-06..11-09 extracts. The
+watcher logs the TLE age at each freeze; refresh the file every week or two.
+**Todo (null them):** steer a source onto each satellite from its TLE for the pass. dtv_steer.py is
+built for MUOS: its 10 s update, 30 s rate and per-pass eigen start need checking against a LEO that
+crosses the sky in ~13 min. The other route is to project them out of the N2 from TLE directions, as
+the GuoWang lanes do (#190).
+
 ### #230 — no alert for the first GuoWang satellites at 1174.404 MHz: the filed odd 50° planes would land inside the L5 / E5a band, and railing will be the first sign (2026-11-07, KV: "our first indication will be railing at 1174, so maybe we should set up some sort of watch there, maybe flag as a todo, we can likely hand that to Jim to add to the Prometheus / grafana alerts")
 **What:** the ITU filing (CM20 2023) puts 216 more GuoWang satellites in 12 odd 50° planes at
 1174.404 MHz (GPS L5 - 2.046 MHz), RAAN midway between the 12 flying 1202.025 MHz planes; the polar
