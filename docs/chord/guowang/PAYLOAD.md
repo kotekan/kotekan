@@ -67,7 +67,13 @@ of the CSK half (high rate). ITU-R M.1787-6 files them as 125 / 1500 bit/s; meas
   the four pages) is random-looking: every bit's mean is 0.5, consecutive values differ in half
   their bits, and no window follows the sender's orbit at the subframe time or at either 5-min
   boundary, nor copies its almanac entry: a per-satellite signature/MAC-like block (page 1 bits
-  118-138 beside it is a shared, rarely changing 20-bit word). The two ramps are the sender's
+  118-138 beside it is a shared, rarely changing 20-bit word). 11-09 (`rec_shared.py`): two
+  senders decoded in the same BDT 5-minute period agree on 0.53 of the record's bits (random; the
+  bits the fleet shares are only the counters, the time stamp and the constants), so the record
+  holds no fleet-wide block: a TESLA-style disclosed key would be common to every sender. It is a
+  per-satellite MAC/signature, or an encrypted per-satellite block (the patent says the low-rate
+  message carries the sender's own ephemeris and clock, which appear nowhere in clear). Neither
+  can be checked or predicted without the operator's key material. The two ramps are the sender's
   CLOCK (`ramp_dig4-6.py`): page-1 payload bits 42-68 are one signed 27-bit clock bias in
   2^-36 s (14.55 ps per LSB, +-0.98 ms; the "own theta" field of 11-05 is its top 10 bits, the
   @59/10 ramp its bottom 10, and the value is continuous across the ramp's wraps: 0 jumps in
@@ -191,14 +197,30 @@ to every sender, but each sender carries its own subset, so same-second messages
   shell, 0 = polar), the same bit as bit 2 of the message header's ID word; 80 of 80 decoded
   senders agree. The 50 deg-shell senders cycle 108 entries (IDs 1-108, nine per plane in the
   system's plane order, one entry per second, 54 s per flag); the polar senders cycle the polar
-  shell's 62 (IDs 22-83, including the two silent planes). Entry fields after a 28-bit table header
-  (0x3b7afc4 / 0x3b7a7be): @92/30 x 360/2^30 = node minus GMST at the reference epoch (residual
-  0.000 deg), @122/30 = omega and @152/30 = M0 (x 360/2^30; their sum, the argument of latitude,
-  matches the TLE to 0.003 deg, the two trading off between re-fits), @67/25 = inclination offset
-  at 2^-19 semicircles from a per-shell reference, @40/27 holds the eccentricity (~2^-20), @28/12 and
-  @182/22 open; @204/64 = [@204/22 tiny signed][@226/17 signed, drag-like][@243/25 signed = Omega-dot
-  in 2^-44 semicircles/s: -3.59 deg/day for the 50 deg shell, -0.34 polar, the J2 nodal rate to
-  the TLE's precision (11-09, via the slow channel's copy of the table)]. The reference epoch is 00:00:00 BDT of the day; the table is
+  shell's 62 (IDs 22-83, including the two silent planes). Entry fields after a 26-bit table header
+  (bits 0-14 the BDT day, 15-25 a per-shell constant, 1009 / 495), from the 11-09 field scans
+  (`alm_words.py`, `alm_words2.py`, 168 satellites against the cached TLEs): @26/12 unsigned = the
+  semi-major axis as an offset from a per-shell reference (~7529 km for the 50 deg shell, ~7547 km
+  polar; 1 LSB ~ 6 cm; Pearson 0.93 / 0.98 vs the TLE's a); @40/27 x 2^-32 = e sin(omega), the
+  eccentricity vector's y-component (polar: the TLE's mean value, offset 1.6e-5, Pearson 0.999;
+  50 deg: the TLE value + 7.63e-4, which is the J3 frozen eccentricity -J3/(2 J2) (Re/a) sin i =
+  7.59e-4, so the 50 deg entries keep the long-period J3 term and their omega word sits at 90.4 +-
+  3 deg for the whole shell; the polar "@45/22 = e" of 11-05 was the low 22 bits of this word);
+  @67/25 = inclination offset at 2^-19 semicircles from a per-shell reference; @92/30 x 360/2^30 =
+  node minus GMST at the reference epoch (residual 0.000 deg); @122/30 = omega and @152/30 = M0
+  (x 360/2^30; their sum, the argument of latitude, matches the TLE to 0.003 deg, the two trading
+  off between re-fits); @182/22 signed = the J2 short-period argument-of-latitude coefficient
+  (J2 Re^2 / 8 p^2) (7 cos^2 i - 1), the sin 2u term SGP4 applies: both shells on one scale,
+  Pearson 1.0000, intercept -87 LSB, residual 0.13 %; 1 LSB = 2.73e-9 rad = 2.06 cm along track
+  (2^-30 semicircles would be 7 % smaller); re-fitted daily, 0.1-0.3 % scatter per satellite;
+  @204/22 signed OPEN: 0 +- 1 on every 50 deg plane except plane 5 (DIGUI-49..57, e = 1e-3, omega
+  ~ 160 deg: -10..-13), 0..13 in the polar shell with no e, omega or plane relation; @226/17
+  signed = a fitted mean-motion-rate / semi-major-axis-rate term: it follows the TLE's ndot and
+  B* only while drag is active (50 deg shell Spearman -0.70 vs ndot on the 11-08 issue, -0.88 on
+  11-07; polar -0.91 on 11-07, 0.01 on 11-08), negative under drag, 1 LSB ~ 2e-9 rev/day^2 or
+  ~1.5 mm/day in a (unit not pinned); @243/25 signed = Omega-dot in 2^-44 semicircles/s: -3.59
+  deg/day for the 50 deg shell, -0.34 polar, the J2 nodal rate to the TLE's precision (11-09, via
+  the slow channel's copy of the table). The reference epoch is 00:00:00 BDT of the day; the table is
   re-issued about every 6 h (00:20, 06:25, 12:20 UTC) at the same epoch. It covers 170
   satellites: the nine extra per plane in planes 0, 1, 2, 11 (the inferred H sets among them) are
   not in it. Not a GNSS almanac, not code biases (both tested).
@@ -207,8 +229,9 @@ to every sender, but each sender carries its own subset, so same-second messages
   Build a pseudo-TLE: epoch = toa (header bits 0-14 = BDT day number, 00:00 BDT); inclination =
   shell reference + @67/25 (signed) x 2^-29 semicircles, reference 50.017 deg for the 50 deg
   shell (index bit 8 set) and 86.50 for polar; RAAN = @92/30 x 360/2^30 + GMST(toa); omega =
-  @122/30 and M0 = @152/30 (x 360/2^30); e = bits 45-66 x 2^-32 for the polar shell (the 50 deg
-  shell's e field is elsewhere; e ~ 1e-4, so 0 costs < 1.5 km); mean motion = the shell's nominal
+  @122/30 and M0 = @152/30 (x 360/2^30); e = @40/27 x 2^-32 for the polar shell (for the 50 deg
+  shell that word carries the J3 frozen offset 7.6e-4 that SGP4 adds itself: subtract it, or use
+  e = 0, which costs < 1.5 km); mean motion = the shell's nominal
   Kozai value (the within-shell spread costs < 1 km/day); bstar = 0; run sgp4. Against the real
   TLEs over 15 h: 3D median 0.86 km (50 deg shell) and 0.93 km (polar), i.e. the TLE's own
   precision, so the almanac is a TLE-equivalent orbit source for its 170 satellites with a 6 h
@@ -239,8 +262,10 @@ predicted at 98.3 % from time and the page templates, `PER_ELEMENT.md` section 5
   (epoch, page) is the same from every satellite; but each satellite's uplink lag (9-115 s)
   selects the epoch and is only known from its own message.
 - Unknown: the 12 bits outside the low-rate CRC; the live correction content (6-7 % of block bits
-  per 10 s epoch); the CSK polarity (~54 % positive; the patent assigns it to authentication);
-  the variant satellites' format.
+  per 10 s epoch); the CSK polarity (~54 % positive; the patent puts the authentication message,
+  an ECDSA signature per T seconds, in the CSK code-period polarity); the variant satellites'
+  format; the almanac's @204/22 and the units of @182 and @226; the slow channel's 5-minute
+  record (per sender, no fleet-wide part).
 - Measured 11-06 for the wipe (`builds/gw1202/nav_predict_eval.py` over the 11-05 night's 6680
   CRC-valid subframes, the node's predictor reproduced): on the catalogued satellites the "pages
   2-4 entirely" above does not hold. Every page has ~25 live payload bits per 12 s cycle, so an
@@ -309,7 +334,18 @@ Copies in `itu_refs/` (see `SIGNAL.md` for the signal-level references).
   example. The full 630-page proceedings (`csnc2024_full.txt`) have no SATNET message-format
   chapter; a LEO ephemeris appears only as "16 BDS parameters + 6" (ref. [12] of the
   single-satellite-positioning chapter).
-- Patents: CN119788292A/B (authentication by CSK polarity + chip replacement); CN115685267A
+- Patents: CN119788292A/B (China SatNet, filed 2025-03-04, granted 2025-07-11; read 11-09): an
+  authentication message once per period T (10 s in its example), carried by the CSK code-period
+  POLARITY, holds an ECDSA signature (r, s) over the 256-bit hash of the low-rate message's time
+  tag, ephemeris and clock plus part of the high-rate message, and the positions of "encryption
+  code" chips that replace the last 200 chips of 30 CSK periods in the last second of each period
+  (the hash's first 32 bits seed the generator; we see no replaced chips). The public key comes
+  from a CA, the factory, a network, or the authentication frames themselves. No TESLA, no key
+  chain, no hash named, no bit lengths, and no authentication block in the low-rate message, which
+  it says carries the satellite's time tag, ephemeris, clock, status, almanac and ionosphere. The
+  CSNC 2024 BDSBAS chapter (Chen et al.) is the family template: an SM3 key chain, SM3-HMAC MACs
+  truncated to 30 bits (BigMAC) or 16 bits (LittleMAC), 115- or 128-bit keys disclosed one 6-s
+  epoch late, an SM2 signature on the root key. CN115685267A
   (Qixin receiver: high-rate 1 s subframes LDPC + CRC, low-rate convolutional + CRC);
   CN110244328B (MCSK multiplexing, 125 bit/s low / 2.25 kbit/s high examples). Cited paper:
   "一种低轨星座导航增强信号的电文快速同步及解码方法".
