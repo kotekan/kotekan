@@ -49,8 +49,8 @@ A pass over every open item against the five-day archive (285 822 CRC-valid high
   | Cis3, Cic3 | 1, 190 and 211 / 21 signed | 2^-34 semicircle |
 
   Zero in every record: page 2 141/22 (by position the inclination rate; it reads +-1 in 6
-  records), page 2 210/21 (the place of Cic) and page 3 107/23 (a rate after dn). Page 2 bit 87
-  tells the shells apart (1 = 50 deg).
+  records), page 2 210/21 (the place of Cic) and page 3 107/23 (a rate after dn). The shell is
+  the page-1 key word's bit 2 (1 = 50 deg).
 - Checks (338 pairs of consecutive issues; 312 in the 50 deg shell, 26 polar). Issue k
   evaluated 200 to 600 s after its toe agrees with issue k+1 to about 1 cm in radius, 1 cm along
   track and 0.4 cm across track (3-D median 1.2 cm, 95 % below 5 cm). The fit arc is
@@ -58,13 +58,25 @@ A pass over every open item against the five-day archive (285 822 CRC-valid high
   toe - 300 s and 2.3 m at toe + 900 s. Every scale was fitted freely first: dn 2^-45.000, dA
   2^-10.000, Cus and Cuc 0.99998 and 0.99999 of 2^-34, the inclination terms 1.0001, 0.9999,
   0.9999, the radial harmonics 0.999 of 2^-11 m. The harmonic argument is nu + omega (with E
-  or M the mismatch is 4 to 8 times larger). The reference radius comes out of the along-track
-  rate as 7 524 041.012 m and 7 544 945.013 m (+-0.004 m) with mu = 3.986004418e14, which is
-  Re + h - 4096 m and - 8192 m to 1.3 cm (to 2 mm with mu = 3.9860044e14).
+  or M the mismatch is 4 to 8 times larger). Fitted from the along-track rate with mu =
+  3.986004418e14, the reference radius is Re + h to 1.2 cm (50 deg shell) and 1.3 cm (polar),
+  +-0.4 cm.
 - Against SGP4 at mid-arc: radius -4 m (scatter 77 m), along track -45 m (485 m), across track
   +13 m (87 m) in the 50 deg shell; +52 (119), -616 (741), -141 (70) in the polar shell. These
   are the TLEs' errors. The mean Crc is 866 m and 1482 m (J2: 858 and 1453) and the mean Cus
   5.65e-5 and 9.33e-5 rad (J2 in the mean plane: 5.70e-5 and 9.63e-5).
+- Against CHORD's own code timing (`review_20261110b/cmp5.py`). A beam-dump theta is the sender's
+  clock offset plus the error of the range it was reduced with, so swapping the TLE range for the
+  broadcast one grades both. Over 23 beam-dump detections inside an issue's arc (23 satellites,
+  11-05 to 11-10), theta plus the page-1 clock bias agrees across satellites to 34 ns (MAD) with
+  the broadcast range and 173 ns with the TLE range; its median, -10.42 us, is our receiver
+  constant. Within a window the broadcast removes the TLE's curvature (DIGUI-36: 29 ns to 2.5 ns
+  rms about a line) and leaves our chunk noise of 2 to 5 ns. The TLE range differs from the
+  broadcast by 90 m (median) and up to 530 m at these windows. The track beam's own timing
+  follows the broadcast range with slope 1.03, but at about 0.3 us per block it is too coarse to
+  grade it.
+- One issue carried past its arc: about 2 m at t_oe + 15 min and 16 m at + 20 min. It is a
+  now-cast; the 6-hour almanac (TLE grade, about 0.3 km along track) remains the forecast.
 - The elements are re-fitted for every issue over that short arc, so dA (+-0.6 km), e (+-2e-4),
   omega (sd 7 deg) and the harmonics wander from issue to issue while the position holds. CHORD
   sees the 50 deg shell near phi = 90 deg and the polar shell near 49 and 131 deg, where the
