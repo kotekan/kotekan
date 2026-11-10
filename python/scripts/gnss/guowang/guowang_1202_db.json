@@ -1811,13 +1811,14 @@
    "sep_deg": 0.82,
    "ref_input": 116,
    "drift_ns_s": -1.7,
-   "last_observed_utc": "2026-11-03T09:20:37Z",
-   "last_checked_utc": "2026-11-03T09:20:37Z",
-   "last_checked_sep_deg": 0.44,
-   "passes_found": 1,
+   "last_observed_utc": "2026-11-10T07:20:43Z",
+   "last_checked_utc": "2026-11-10T07:20:43Z",
+   "last_checked_sep_deg": 3.16,
+   "passes_found": 2,
    "passes_silent": 0,
    "passes": [
-    ["2026-11-03T09:20:37Z", 0.44, true]
+    ["2026-11-03T09:20:37Z", 0.44, true],
+    ["2026-11-10T07:20:43Z", 3.16, true]
    ]
   },
   "DIGUI-110": {
