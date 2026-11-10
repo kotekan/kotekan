@@ -923,8 +923,8 @@ run_recv_rfi_RFImask:
           ring_buffer_size: buffer_depth * output_size
           out_buf: host_rfi_RFImask_buffer_out
 {% endfor %}
-{#- DTV detector (dtv.j2) unless dtv_enabled is false. Detection and recording start off. #}
-{%- if dtv_enabled|default(true) or dtv_apply_mask|default(false) %}
+{#- DTV detector (dtv.j2) for DTV flagging in N2 or DTV recording. #}
+{%- if dtv_apply_mask|default(false) or dtv_write_enabled|default(false) %}
 {% include "dtv.j2" %}
 {% endif %}
 

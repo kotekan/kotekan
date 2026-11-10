@@ -119,17 +119,6 @@ The other keys are listed below.
     of these frequencies is cleared. In record-only mode, these frequencies are
     not evaluated and nothing is cleared.
 
-``dtv_bad_feed_mask``
-    The detector reads the bad feed mask ring of ``bufferBadInputs``, and a
-    flagged input is packed as zero (default true in ``config/chord/dtv.j2``,
-    false sums every input).
-    ``bufferBadInputs`` also flags every element outside the main array, which
-    on CHORD are the Missing dishes and the 16 RFI antennas. Thus, with this
-    switch, the detector also drops the RFI antennas, which probably see DTV
-    most strongly. ``dtv_powers`` and ``dtv_fine_powers`` fall as inputs are
-    flagged, so a bundle calibrated from recorded files must use the same
-    setting and a steady input count.
-
 ``dtv_require_fine_freq_ids``
     Receiver IDs that must have a fine test in every block. A row of
     ``(-1, -1)`` for one of these IDs stops the run instead of counting as a
@@ -144,31 +133,45 @@ listed ID must be on the node, so the lists are set for each node.
 Pathfinder recording
 --------------------
 
-``config/chord/pathfinder.j2`` uses the same ``dtv_enabled``, ``dtv_apply_mask``
-and ``dtv_runtime_bundle_dir`` switches, but adds the detector unless
-``dtv_enabled`` is false. A node without the bundle needs ``dtv_enabled: false``.
+``config/chord/pathfinder.j2`` adds the detector when either switch below is
+true. Both switches default to false, and the node then needs no bundle.
+``dtv_runtime_bundle_dir`` sets the bundle directory, as above.
 
-Each X-engine half packs 1024 blocks (about 43 seconds) of masks, powers and
-fine support into one frame with ``NDArrayTimeConcat``, and sends the frames
-to the recv node. ``config/chord/recv.j2`` writes each frame to its own file
-under ``/mnt/cs00/data/dtv``, named ``dtv_<product>.<number>.h5``. The numbers
+``dtv_apply_mask: true``
+    As above, the merged mask is applied to the visibilities.
+
+``dtv_write_enabled: true``
+    The X-engine halves send the detector products to the recv node.
+
+The detector reads the bad feed mask ring of ``bufferBadInputs``, and a flagged
+input is packed as zero. ``bufferBadInputs`` also flags every element outside
+the main array, which on CHORD are the Missing dishes and the 16 RFI antennas,
+so the detector also drops the RFI antennas, which probably see DTV most
+strongly. ``dtv_powers`` and ``dtv_fine_powers`` fall as inputs are flagged, so
+a bundle calibrated from recorded files needs a steady input count.
+
+Each X-engine half packs 1024 blocks (about 43 seconds) of masks, powers, fine
+support and fine powers into one frame with ``NDArrayTimeConcat``, and sends
+the frames to the recv node. ``config/chord/recv.j2`` writes each frame to its
+own file under ``/mnt/cs00/data/dtv``, named ``dtv_<product>.<number>.h5``. The numbers
 follow arrival order, so a file's ``coarse_freq`` attribute identifies the
 half, and its ``fpga_seq_num`` attribute gives the start of the window. The
 windows are aligned in ``fpga_seq_num``, so the halves' files cover the same
 time spans. A block missing from a window is a row of ``0xFF`` bytes: ``-1``
-for the mask and fine support, and the largest ``uint64`` for the powers.
+for the mask and fine support, and the largest ``uint64`` for the powers and
+fine powers.
 
-Detection and recording both start off, so the visibilities do not change
-until the detector is turned on. POST
-``{"enabled": true, "valid_at_time_ns": 0}`` to ``/dtv_detector_enabled`` to
-start detection at the next block. POST ``{"enabled": true}`` to
-``/dtv_write_enabled`` on the X-engine nodes to start sending. Set ``enabled``
-to false to stop. Both changes to ``/dtv_write_enabled`` apply to whole
-frames. A nonzero ``valid_at_time_ns`` applies the detector change at the first
-block starting at or after that instrument time. A restart returns both
-switches to off. A POST sent before the stages have started returns 200 but has
-no effect, so the detector log line ``PilotProxy detector on`` confirms the
-change.
+Detection starts on, and sending starts as ``dtv_write_enabled`` sets it. Both
+can be switched at runtime. POST
+``{"enabled": false, "valid_at_time_ns": 0}`` to ``/dtv_detector_enabled`` to
+stop detection at the next block, and ``true`` to start it again. POST
+``{"enabled": true}`` or ``{"enabled": false}`` to ``/dtv_write_enabled`` on the
+X-engine nodes to start or stop sending. Both changes to ``/dtv_write_enabled``
+apply to whole frames. A nonzero ``valid_at_time_ns`` applies the detector
+change at the first block starting at or after that instrument time. A restart
+returns both to their configured values. A POST sent before the stages have
+started returns 200 but has no effect, so the detector log lines
+``PilotProxy detector on`` and ``off`` confirm the change.
 
 
 GPU streams
@@ -238,10 +241,9 @@ Monitoring
 * ``dtv_powers`` holds the pilot and reference powers of every block, so a
   moved pilot or a new line near a reference bin can be seen there even when
   the mask does not fire. Either one requires a recalibration.
-* With ``dtv_record_fine_powers``, ``config/chord/dtv.j2`` also sends
-  ``dtv_fine_powers`` to the recv node on port 11037, and ``recv.j2`` must be
-  rendered with the same ``dtv_record_fine_powers`` and ``dtv_fine_powers_rows``. PilotProxy calibrates a bundle from these files, so a
-  detect-only run replaces baseband captures for calibration. The output has
+* ``config/chord/dtv.j2`` also sends ``dtv_fine_powers`` to the recv node, on
+  port 11037. PilotProxy calibrates a bundle from these files, so a detect-only
+  run replaces baseband captures for calibration. The output has
   ``dtv_fine_powers_rows`` rows (R, 2 on the Pathfinder), with bound channel i
   in row i and its ``coarse_freq`` in the metadata (-1 for an unused row). A
   node that binds more than R channels stops at its first frame.

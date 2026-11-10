@@ -247,42 +247,43 @@ def test_default_chord_template_leaves_detector_disabled():
     assert "host_dtv_powers_buffer" not in config
 
 
-@pytest.mark.parametrize("record", [False, True])
-def test_pathfinder_records_fine_powers_on_request(record):
+def test_pathfinder_sends_what_recv_expects():
+    jinja2 = pytest.importorskip("jinja2")
+    yaml = pytest.importorskip("yaml")
+    env = jinja2.Environment(loader=jinja2.FileSystemLoader(ROOT / "config/chord"))
+    config = yaml.safe_load(
+        env.get_template("pathfinder.j2").render(dtv_write_enabled=True)
+    )
+    recv = yaml.safe_load(env.get_template("recv.j2").render())
+    products = ["mask", "powers", "fine_support", "fine_powers"]
+    assert sorted(recv["buffer_recv_dtv"]) == sorted(products)
+    for product in products:
+        sent = config[f"host_dtv_{product}_send_buffer_0"]["extents"]
+        sent = [config[e] if isinstance(e, str) else e for e in sent]
+        assert recv[f"dtv_{product}_buffer"]["extents"] == sent
+        assert recv["buffer_recv_dtv"][product]["listen_port"] == (
+            config["send_dtv"][f"{product}_0"]["server_port"]
+        )
+
+
+@pytest.mark.parametrize(
+    "apply_mask, write", [(False, False), (True, False), (False, True), (True, True)]
+)
+def test_pathfinder_dtv_switches(apply_mask, write):
     jinja2 = pytest.importorskip("jinja2")
     yaml = pytest.importorskip("yaml")
     env = jinja2.Environment(loader=jinja2.FileSystemLoader(ROOT / "config/chord"))
     config = yaml.safe_load(
         env.get_template("pathfinder.j2").render(
-            dtv_enabled=True, dtv_record_fine_powers=record
+            dtv_apply_mask=apply_mask, dtv_write_enabled=write
         )
     )
-    assert ("host_dtv_fine_powers_buffer_0" in config) is record
-    assert ("fine_powers_0" in config["send_dtv"]) is record
-    recv = yaml.safe_load(
-        env.get_template("recv.j2").render(dtv_record_fine_powers=record)
-    )
-    assert ("fine_powers" in recv["write_dtv"]) is record
-    if record:
-        sent = config["host_dtv_fine_powers_send_buffer_0"]
-        assert recv["dtv_fine_powers_buffer"]["extents"] == sent["extents"]
-        assert recv["buffer_recv_dtv"]["fine_powers"]["listen_port"] == (
-            config["send_dtv"]["fine_powers_0"]["server_port"]
-        )
-
-
-@pytest.mark.parametrize("apply_mask", [False, True])
-def test_pathfinder_detection_and_recording_start_off(apply_mask):
-    jinja2 = pytest.importorskip("jinja2")
-    yaml = pytest.importorskip("yaml")
-    env = jinja2.Environment(loader=jinja2.FileSystemLoader(ROOT / "config/chord"))
-    config = yaml.safe_load(
-        env.get_template("pathfinder.j2").render(
-            dtv_enabled=not apply_mask, dtv_apply_mask=apply_mask
-        )
-    )
-    assert config["dtv_detector_enabled"]["enabled"] is False
-    assert config["dtv_write_enabled"]["enabled"] is False
+    if not (apply_mask or write):
+        assert "run_dtv_detector" not in config
+        return
+    assert config["dtv_detector_enabled"]["enabled"] is True
+    assert config["dtv_write_enabled"]["enabled"] is write
+    assert ("merge_dtv_mask" in config) is apply_mask
 
 
 @pytest.mark.parametrize("apply_mask", [False, True])

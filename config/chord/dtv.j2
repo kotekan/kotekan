@@ -1,34 +1,27 @@
 {#-
-  dtv.j2, included by pathfinder.j2 unless dtv_enabled is false.
-  dtv_enabled adds the detector, and dtv_apply_mask also applies its mask to N2.
-  dtv_bad_feed_mask (default on) zeroes the flagged inputs in the detector, the RFI antennas too.
-  Detection and recording start off until enabled over REST.
+  dtv.j2, included by pathfinder.j2 when dtv_apply_mask or dtv_write_enabled is set.
+  dtv_apply_mask applies the detector's mask to N2, and dtv_write_enabled sends the
+  products to the recv node. Detection starts on; both can be switched over REST.
+  The detector zeroes the inputs flagged by bufferBadInputs, the RFI antennas too.
   Disable /rfi_first_stage_enabled for a DTV-only first-stage mask.
   Profiles bind by receiver_channel_id against each NUMA half's coarse_freq.
   Every bound channel must be calibrated; halves without matches emit zero masks/powers.
   See docs/sphinx/user/modules/pilotproxy.rst for bundle setup and runtime controls.
 -#}
 {% set dtv_runtime_bundle_dir = dtv_runtime_bundle_dir|default("data/pilotproxy_bundle") %}
-{% set dtv_record_fine_powers = dtv_record_fine_powers|default(false) %}
-{# a half binds one or two channels #}
-{% set dtv_fine_powers_rows = dtv_fine_powers_rows|default(2) %}
 
 # One frame per 8192-sample block: mask, target/lower/upper powers
-# (sums of 256 fine powers), and per-frequency fine support. NDArrayTimeConcat packs
+# (sums of 256 fine powers), per-frequency fine support, and the fine powers of the
+# bound channels (a half binds one or two). NDArrayTimeConcat packs
 # dtv_blocks_per_frame blocks (~43 s) into one _concat frame, which is sent to the recv
 # node (recv.j2, which must use the same shapes and ports) and written there as one file.
-# dtv_record_fine_powers adds the fine powers, for calibration from a detect-only run.
 {% set dtv_blocks_per_frame = 1024 %}
 {% set dtv_products = [
     ("mask", "int8", "num_local_freq", '"F"', "1", 11031),
     ("powers", "uint64", "num_local_freq, 3", '"F", "W"', "1, 1", 11033),
     ("fine_support", "int32", "num_local_freq, 2", '"F", "S"', "1, 1", 11035),
+    ("fine_powers", "uint64", "2, 3, 256", '"F", "W", "B"', "1, 1, 1", 11037),
 ] %}
-{% if dtv_record_fine_powers %}
-{% set dtv_products = dtv_products + [
-    ("fine_powers", "uint64", dtv_fine_powers_rows ~ ", 3, 256", '"F", "W", "B"', "1, 1, 1", 11037),
-] %}
-{% endif %}
 {% for n in numa_halves %}
 {% for product, value_type, extents, dimnames, dimscalings, port in dtv_products %}
 {% for suffix, rows, depth in [("", 1, "host_side_buffer_depth"),
@@ -50,17 +43,17 @@ host_dtv_{{ product }}{{ suffix }}_buffer{{ n.sfx }}:
 {% endfor %}
 {% endfor %}
 {% endfor %}
-# POST {"enabled": true} to /dtv_write_enabled to start recording.
+# POST {"enabled": ...} to switch detection or recording until the next restart.
 # Detector updates also require valid_at_time_ns (0: next block). Disabled detection emits
 # zero masks/powers and (-1,-1) fine support.
 dtv_detector_enabled:
     kotekan_update_endpoint: json
-    enabled: false
+    enabled: true
     valid_at_time_ns: 0
 
 dtv_write_enabled:
     kotekan_update_endpoint: json
-    enabled: false
+    enabled: {{ dtv_write_enabled|default(false)|lower }}
 
 run_dtv_detector:
 {% for n in numa_halves %}
@@ -72,16 +65,12 @@ run_dtv_detector:
         cpu_affinity: {{ n.gpu_cpus }}
         in_buffers:
             host_voltage_ringbuffer: host_voltage_ringbuffer{{ n.sfx }}
-{% if dtv_bad_feed_mask|default(true) %}
             host_bf_mask_ringbuffer: host_bf_mask_ringbuffer{{ n.sfx }}
-{% endif %}
         out_buffers:
             host_dtv_mask: host_dtv_mask_buffer{{ n.sfx }}
             host_dtv_powers: host_dtv_powers_buffer{{ n.sfx }}
             host_dtv_fine_support: host_dtv_fine_support_buffer{{ n.sfx }}
-{%- if dtv_record_fine_powers %}
             host_dtv_fine_powers: host_dtv_fine_powers_buffer{{ n.sfx }}
-{%- endif %}
         commands:
         - name: cudaPilotProxyDetector
           num_frequencies: num_local_freq
@@ -90,16 +79,12 @@ run_dtv_detector:
           dtv_mask_name: dtv_mask
           dtv_powers_name: dtv_powers
           dtv_fine_support_name: dtv_fine_support
-{%- if dtv_record_fine_powers %}
           dtv_fine_powers_name: dtv_fine_powers
-          dtv_fine_powers_rows: {{ dtv_fine_powers_rows }}
-{%- endif %}
+          dtv_fine_powers_rows: 2
           pilot_profiles_path: {{ dtv_runtime_bundle_dir }}/pilot_profiles.json
           weights_path: {{ dtv_runtime_bundle_dir }}/weights.bin
           enabled_updatable_config: /dtv_detector_enabled
-{% if dtv_bad_feed_mask|default(true) %}
           bf_mask_name: bf_mask
-{% endif %}
         - name: cudaSyncOutput
         - name: cudaOutputData
           gpu_mem: dtv_mask_buffer
@@ -110,11 +95,9 @@ run_dtv_detector:
         - name: cudaOutputData
           gpu_mem: dtv_fine_support_buffer
           out_buf: host_dtv_fine_support
-{%- if dtv_record_fine_powers %}
         - name: cudaOutputData
           gpu_mem: dtv_fine_powers_buffer
           out_buf: host_dtv_fine_powers
-{%- endif %}
 {% endfor %}
 
 # Blocks missing from a window are rows of 0xFF bytes: -1 masks and fine support,
