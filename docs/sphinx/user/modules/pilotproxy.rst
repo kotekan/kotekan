@@ -130,18 +130,23 @@ pilot is given only in the bundle. The two lists must not overlap, and every
 listed ID must be on the node, so the lists are set for each node.
 
 
-Pathfinder recording
---------------------
+Pathfinder
+----------
 
-``config/chord/pathfinder.j2`` adds the detector when either switch below is
-true. Both switches default to false, and the node then needs no bundle.
-``dtv_runtime_bundle_dir`` sets the bundle directory, as above.
+``config/chord/pathfinder.j2`` always runs the detector and ``DtvRfiMask``, so
+every node needs the bundle (``dtv_runtime_bundle_dir``, as above). n2k always
+reads ``dtv_RFImask``, so it waits for the detector even while the mask is
+off. Two switches can be changed at runtime, and their config values set the
+state at startup (both default to false):
 
-``dtv_apply_mask: true``
-    As above, the merged mask is applied to the visibilities.
+``dtv_apply_mask``, endpoint ``/dtv_mask_enabled``
+    Apply the DTV mask to the visibilities. While off, ``DtvRfiMask`` copies
+    the SK mask unchanged. ``N2Accumulate`` records the fraction of each bin
+    that the mask was on, which ``hdf5N2Write`` writes as
+    ``frac_dtv_mask_enabled``.
 
-``dtv_write_enabled: true``
-    The X-engine halves send the detector products to the recv node.
+``dtv_write_enabled``, endpoint ``/dtv_write_enabled``
+    Send the detector products to the recv node.
 
 The detector reads the bad feed mask ring of ``bufferBadInputs``, and a flagged
 input is packed as zero. ``bufferBadInputs`` also flags every element outside
@@ -161,17 +166,14 @@ time spans. A block missing from a window is a row of ``0xFF`` bytes: ``-1``
 for the mask and fine support, and the largest ``uint64`` for the powers and
 fine powers.
 
-Detection starts on, and sending starts as ``dtv_write_enabled`` sets it. Both
-can be switched at runtime. POST
-``{"enabled": false, "valid_at_time_ns": 0}`` to ``/dtv_detector_enabled`` to
-stop detection at the next block, and ``true`` to start it again. POST
-``{"enabled": true}`` or ``{"enabled": false}`` to ``/dtv_write_enabled`` on the
-X-engine nodes to start or stop sending. Both changes to ``/dtv_write_enabled``
-apply to whole frames. A nonzero ``valid_at_time_ns`` applies the detector
-change at the first block starting at or after that instrument time. A restart
-returns both to their configured values. A POST sent before the stages have
-started returns 200 but has no effect, so the detector log lines
-``PilotProxy detector on`` and ``off`` confirm the change.
+POST ``{"enabled": true, "valid_at_time_ns": 0}`` to ``/dtv_mask_enabled`` to
+apply the mask from the next frame, and ``false`` to stop. A nonzero
+``valid_at_time_ns`` applies the change at the first frame starting at or after
+that instrument time, in ``DtvRfiMask`` and in the recorded fraction. POST
+``{"enabled": true}`` or ``{"enabled": false}`` to ``/dtv_write_enabled`` to
+start or stop sending; the change applies to whole frames. A restart returns
+both to their configured values. The ``DtvRfiMask`` log line ``DTV mask on``
+or ``off`` confirms a mask change.
 
 
 GPU streams

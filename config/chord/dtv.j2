@@ -1,7 +1,7 @@
 {#-
-  dtv.j2, included by pathfinder.j2 when dtv_apply_mask or dtv_write_enabled is set.
-  dtv_apply_mask applies the detector's mask to N2, and dtv_write_enabled sends the
-  products to the recv node. Detection starts on; both can be switched over REST.
+  dtv.j2, included by pathfinder.j2. The detector always runs, and needs the bundle.
+  dtv_apply_mask and dtv_write_enabled set the starting values of /dtv_mask_enabled
+  (apply the DTV mask to N2) and /dtv_write_enabled (send the products to the recv node).
   The detector zeroes the inputs flagged by bufferBadInputs, the RFI antennas too.
   Disable /rfi_first_stage_enabled for a DTV-only first-stage mask.
   Profiles bind by receiver_channel_id against each NUMA half's coarse_freq.
@@ -43,12 +43,13 @@ host_dtv_{{ product }}{{ suffix }}_buffer{{ n.sfx }}:
 {% endfor %}
 {% endfor %}
 {% endfor %}
-# POST {"enabled": ...} to switch detection or recording until the next restart.
-# Detector updates also require valid_at_time_ns (0: next block). Disabled detection emits
-# zero masks/powers and (-1,-1) fine support.
-dtv_detector_enabled:
+# POST {"enabled": ...} to switch the mask or recording until the next restart. Mask updates
+# also require valid_at_time_ns (0: next frame). DtvRfiMask and N2Accumulate both apply a
+# mask update from the first frame starting at or after that time, and N2Accumulate
+# records the fraction of each bin the mask was on (frac_dtv_mask_enabled).
+dtv_mask_enabled:
     kotekan_update_endpoint: json
-    enabled: true
+    enabled: {{ dtv_apply_mask|default(false)|lower }}
     valid_at_time_ns: 0
 
 dtv_write_enabled:
@@ -83,7 +84,6 @@ run_dtv_detector:
           dtv_fine_powers_rows: 2
           pilot_profiles_path: {{ dtv_runtime_bundle_dir }}/pilot_profiles.json
           weights_path: {{ dtv_runtime_bundle_dir }}/weights.bin
-          enabled_updatable_config: /dtv_detector_enabled
           bf_mask_name: bf_mask
         - name: cudaSyncOutput
         - name: cudaOutputData
@@ -142,7 +142,6 @@ send_dtv:
 {% endfor %}
 {% endfor %}
 
-{% if dtv_apply_mask|default(false) %}
 # Merged mask in SK format, plus its GPU ring.
 {% for n in numa_halves %}
 host_dtv_RFImask_buffer{{ n.sfx }}:
@@ -177,6 +176,7 @@ merge_dtv_mask:
         dtv_buf: host_dtv_mask_buffer{{ n.sfx }}
         fine_support_buf: host_dtv_fine_support_buffer{{ n.sfx }}
         out_buf: host_dtv_RFImask_buffer{{ n.sfx }}
+        enabled_updatable_config: /dtv_mask_enabled
 {% endfor %}
 
 run_send_dtv_RFImask:
@@ -198,4 +198,3 @@ run_send_dtv_RFImask:
           signal_buf: host_dtv_RFImask_ringbuffer
           gpu_mem_output: dtv_RFImask_buffer
 {% endfor %}
-{% endif %}

@@ -616,6 +616,7 @@ public:
         file.createAttribute("n_pl_fpga_ticks", frame.n_pl_fpga_ticks);
         file.createAttribute("n_rfi_first_stage_enabled_fpga_ticks",
                              frame.n_rfi_first_stage_enabled_fpga_ticks);
+        file.createAttribute("n_dtv_mask_enabled_fpga_ticks", frame.n_dtv_mask_enabled_fpga_ticks);
         file.createAttribute("rfi_frame_excision_enabled", frame.rfi_frame_excision_enabled);
         file.createAttribute("fringestop_enabled", frame.fringestop_enabled);
         file.createAttribute("rfi_frame_excision_num", frame.rfi_frame_excision_num);

@@ -278,12 +278,14 @@ def test_pathfinder_dtv_switches(apply_mask, write):
             dtv_apply_mask=apply_mask, dtv_write_enabled=write
         )
     )
-    if not (apply_mask or write):
-        assert "run_dtv_detector" not in config
-        return
-    assert config["dtv_detector_enabled"]["enabled"] is True
+    # The pipeline is the same, and the switches set the endpoints' starting values.
+    assert "run_dtv_detector" in config
+    assert config["dtv_mask_enabled"]["enabled"] is apply_mask
     assert config["dtv_write_enabled"]["enabled"] is write
-    assert ("merge_dtv_mask" in config) is apply_mask
+    merge = config["merge_dtv_mask"]["half_0"]
+    assert merge["enabled_updatable_config"] == "/dtv_mask_enabled"
+    accumulate = config["n2_accumulate"]
+    assert accumulate["dtv_mask_enabled_updatable_config"] == "/dtv_mask_enabled"
 
 
 @pytest.mark.parametrize("apply_mask", [False, True])

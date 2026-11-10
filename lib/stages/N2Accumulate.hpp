@@ -191,6 +191,11 @@ void from_json(const nlohmann::json& j, N2VarianceMode& m);
  *                                          Used to count the FPGA ticks of each output frame
  *                                          during which excision was on. Without this key the
  *                                          count is the whole frame.
+ * @conf    dtv_mask_enabled_updatable_config  String. Optional path to the updatable config
+ *                                          block that switches the DTV mask, the block
+ *                                          DtvRfiMask subscribes to. Used to count the FPGA
+ *                                          ticks of each output frame during which the mask
+ *                                          was applied. Without this key the count is zero.
  */
 class N2Accumulate : public kotekan::Stage {
 public:
@@ -267,6 +272,8 @@ public:
 private:
     /// Queue an update from the `rfi_first_stage_enabled_updatable_config` block
     bool receive_rfi_first_stage_enabled(nlohmann::json& update);
+    /// Queue an update from the `dtv_mask_enabled_updatable_config` block
+    bool receive_dtv_mask_enabled(nlohmann::json& update);
 
     // Buffers to read/write
     Buffer* in_buf;               /// Buffer containing input correlations
@@ -316,6 +323,12 @@ private:
     bool _rfi_first_stage_enabled;
     bool _next_rfi_first_stage_enabled;
     int64_t _next_rfi_first_stage_valid_at_seq;
+    const std::string _dtv_mask_config_path;
+    /// DTV mask state, tracked in step with DtvRfiMask; `_next_*` hold a pending update
+    std::mutex _dtv_mask_mutex;
+    bool _dtv_mask_enabled;
+    bool _next_dtv_mask_enabled;
+    int64_t _next_dtv_mask_valid_at_seq;
 
 
     // Some derived parameters
@@ -353,6 +366,8 @@ private:
     int64_t _vis_samples_in_out_frame;
     /// FPGA ticks of the current bin during which first-stage RFI excision was enabled
     uint64_t _n_rfi_first_stage_enabled_ticks;
+    /// FPGA ticks of the current bin during which the DTV mask was applied
+    uint64_t _n_dtv_mask_enabled_ticks;
     uint64_t _accum_fpga_start_tick;
     int64_t _accum_bin_idx;
 

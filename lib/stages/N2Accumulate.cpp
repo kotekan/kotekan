@@ -91,8 +91,12 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
         unique_name, "rfi_first_stage_enabled_updatable_config", "")),
     _rfi_first_stage_enabled(true), _next_rfi_first_stage_enabled(true),
     _next_rfi_first_stage_valid_at_seq(std::numeric_limits<int64_t>::max()),
-    _tel(Telescope::instance()), _input_order(config.get_default<ElementOrder>(
-                                     unique_name, "input_order", _tel.fiducial_element_order())),
+    _dtv_mask_config_path(
+        config.get_default<std::string>(unique_name, "dtv_mask_enabled_updatable_config", "")),
+    _dtv_mask_enabled(false), _next_dtv_mask_enabled(false),
+    _next_dtv_mask_valid_at_seq(std::numeric_limits<int64_t>::max()), _tel(Telescope::instance()),
+    _input_order(config.get_default<ElementOrder>(unique_name, "input_order",
+                                                  _tel.fiducial_element_order())),
     _output_order(config.get_default<ElementOrder>(unique_name, "output_order",
                                                    _tel.fiducial_element_order())),
     _reorder([&]() {
@@ -248,6 +252,7 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
 
     _vis_samples_in_out_frame = 0;
     _n_rfi_first_stage_enabled_ticks = 0;
+    _n_dtv_mask_enabled_ticks = 0;
     _accum_fpga_start_tick = -1;
     _accum_bin_idx = -1;
 
@@ -255,6 +260,9 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
         kotekan::configUpdater::instance().subscribe(
             _rfi_first_stage_config_path,
             std::bind(&N2Accumulate::receive_rfi_first_stage_enabled, this, _1));
+    if (!_dtv_mask_config_path.empty())
+        kotekan::configUpdater::instance().subscribe(
+            _dtv_mask_config_path, std::bind(&N2Accumulate::receive_dtv_mask_enabled, this, _1));
 
     // Ensure incoming buffer shapes and type are correct
     in_buf->require_frame_desc(kotekan::GenericNDArray::describe(
@@ -620,6 +628,14 @@ void N2Accumulate::main_thread() {
                 _next_rfi_first_stage_valid_at_seq = std::numeric_limits<int64_t>::max();
             }
         }
+        // The same rule for the DTV mask, which DtvRfiMask applies per n2k frame.
+        {
+            std::lock_guard<std::mutex> lock(_dtv_mask_mutex);
+            if (seq0 >= _next_dtv_mask_valid_at_seq) {
+                _dtv_mask_enabled = _next_dtv_mask_enabled;
+                _next_dtv_mask_valid_at_seq = std::numeric_limits<int64_t>::max();
+            }
+        }
 
         // Accumulate each visibility sample in the in_frame
         // t_outer
@@ -648,6 +664,7 @@ void N2Accumulate::main_thread() {
                     assert(t_abs % 2 == 0);
                     _vis_samples_in_out_frame = 0;
                     _n_rfi_first_stage_enabled_ticks = 0;
+                    _n_dtv_mask_enabled_ticks = 0;
                     _accum_fpga_start_tick = seq;
                     _accum_bin_idx = bin_idx;
                     target_eop = get_accum_bin_EOP(bin_idx);
@@ -671,6 +688,8 @@ void N2Accumulate::main_thread() {
 
             if (_rfi_first_stage_enabled)
                 _n_rfi_first_stage_enabled_ticks += _n_fpga_samples_per_n2k_correlation;
+            if (_dtv_mask_enabled)
+                _n_dtv_mask_enabled_ticks += _n_fpga_samples_per_n2k_correlation;
 
             // AND the mask of this sample's frame into the current bin's flags: a feed
             // flagged in any frame contributing to the bin is flagged for the whole bin.
@@ -773,6 +792,7 @@ void N2Accumulate::main_thread() {
 
                 _vis_samples_in_out_frame = 0;
                 _n_rfi_first_stage_enabled_ticks = 0;
+                _n_dtv_mask_enabled_ticks = 0;
                 std::fill(_vis_input_frames_skipped_rfi.begin(),
                           _vis_input_frames_skipped_rfi.end(), 0);
                 _accum_fpga_start_tick = seq + _n_fpga_samples_per_n2k_correlation;
@@ -849,6 +869,32 @@ bool N2Accumulate::receive_rfi_first_stage_enabled(nlohmann::json& update) {
     std::lock_guard<std::mutex> lock(_rfi_first_stage_mutex);
     _next_rfi_first_stage_enabled = enabled;
     _next_rfi_first_stage_valid_at_seq = seq;
+    return true;
+}
+
+bool N2Accumulate::receive_dtv_mask_enabled(nlohmann::json& update) {
+    bool enabled;
+    int64_t time_ns;
+    try {
+        enabled = update.at("enabled").get<bool>();
+        time_ns = update.at("valid_at_time_ns").get<int64_t>();
+    } catch (const std::exception& e) {
+        WARN("Failed to read update to {:s}: {:s}", _dtv_mask_config_path, e.what());
+        return false;
+    }
+    // Same rule as DtvRfiMask
+    int64_t seq = 0;
+    if (time_ns != 0) {
+        if (time_ns < _tel.to_time_ns(0)) {
+            WARN("Got invalid start time: {:d} - keeping the current DTV mask state", time_ns);
+            return true;
+        }
+        seq = _tel.to_seq(time_ns);
+    }
+    INFO("Recording the DTV mask {:s} from seq {:d}", enabled ? "on" : "off", seq);
+    std::lock_guard<std::mutex> lock(_dtv_mask_mutex);
+    _next_dtv_mask_enabled = enabled;
+    _next_dtv_mask_valid_at_seq = seq;
     return true;
 }
 
@@ -1264,6 +1310,7 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& in_rfiframema
             ticks_in_accum - _n_valid_fpga_samples_in_vis.at(f) - _n_pl_samples_in_vis.at(f);
         meta->n_pl_fpga_ticks = _n_pl_samples_in_vis.at(f);
         meta->n_rfi_first_stage_enabled_fpga_ticks = _n_rfi_first_stage_enabled_ticks;
+        meta->n_dtv_mask_enabled_fpga_ticks = _n_dtv_mask_enabled_ticks;
 
         meta->rfi_frame_excision_enabled = rfi_frame_excision_enabled;
         meta->fringestop_enabled = _do_fringestop;
