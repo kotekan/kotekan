@@ -33,6 +33,10 @@ common:
     # (#200): the anchor falls back to any tracker host and `combiner` to dll-combiners.
     # `fleet`: the fleet's first host.
     rest-url: fleet
+    # Paced garbage collection (gnss_broker/gcpace.py): the free-threaded interpreter's automatic
+    # collections stopped the whole broker 0.2-0.9 s about nine times a minute (11-10, 20 Hz thread
+    # sample), dropping telemetry and ending fleet-ADR arcs. One collection every 10 min instead.
+    gc-interval-s: 600
     time0-endpoint: telescope/time0_ns
     hops-per-sec: 195312.5         # F-engine record geometry, not a signal property
   # The boresight is read from the nodes' running config (telescope.dish_coelev_deg) at start
