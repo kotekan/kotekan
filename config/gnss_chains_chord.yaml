@@ -35,8 +35,10 @@ common:
     rest-url: fleet
     # Paced garbage collection (gnss_broker/gcpace.py): the free-threaded interpreter's automatic
     # collections stopped the whole broker 0.2-0.9 s about nine times a minute (11-10, 20 Hz thread
-    # sample), dropping telemetry and ending fleet-ADR arcs. One collection every 10 min instead.
-    gc-interval-s: 600
+    # sample), dropping telemetry and ending fleet-ADR arcs. Each paced collection still stops the
+    # process 0.4-1.5 s (it scans the whole heap) yet finds only ~4,500 unreachable objects per
+    # 10 min, so collect every 6 h: four stops a day, and the cycles left meanwhile are a few MB.
+    gc-interval-s: 21600
     time0-endpoint: telescope/time0_ns
     hops-per-sec: 195312.5         # F-engine record geometry, not a signal property
   # The boresight is read from the nodes' running config (telescope.dish_coelev_deg) at start

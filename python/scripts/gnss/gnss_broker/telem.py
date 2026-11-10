@@ -287,7 +287,7 @@ class TelemClient(object):
         epoch_strikes=8,
         pending_max_bytes=512 << 20,
         fast_retry_after_s=10.0,
-        rcvbuf_bytes=32 << 20,
+        rcvbuf_bytes=256 << 20,
     ):
         self.host = host
         self.port = port
@@ -343,6 +343,10 @@ class TelemClient(object):
         # Receive buffer asked for on each new socket; see _connect. 0 leaves the kernel's
         # autotuning alone. `rcvbuf_actual` is what the kernel granted, which is the number
         # worth reading: the request is clamped to net.core.rmem_max and then doubled.
+        # The stream runs ~100 MB/s (11-10), and a paced garbage collection stops this process,
+        # reader thread included, for up to 1.5 s; the buffer must hold the whole stop or the
+        # gather drops us 200 ms after it fills. 256 MB asked is 512 MB granted, ~5 s, where
+        # net.core.rmem_max allows it.
         self.rcvbuf_bytes = int(rcvbuf_bytes)
         self.rcvbuf_actual = None
         self.connected = False
