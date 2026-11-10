@@ -78,6 +78,7 @@ from gnss_broker.transport import (  # noqa: E402
 from gnss_broker import nodehealth  # noqa: E402
 from gnss_broker import sky as _sky  # noqa: E402
 from gnss_broker import telem as _telem  # noqa: E402
+from gnss_broker import gcpace as _gcpace  # noqa: E402
 from gnss_broker.fits import (  # noqa: E402
     tracker_phase_at,
     rate_residuals,
@@ -377,6 +378,7 @@ def main(argv=None, rx=None, publisher=None):
         telem_gather_endpoint(args.telem_gather, args.transcript_read)
     )
     telem_client = _telem.shared_client(*_tg) if _tg else None
+    _gcpace.start_once(args.gc_interval_s)
     telem_chain = log_tag() or (args.signal or "")
     if telem_client is not None:
         _log(

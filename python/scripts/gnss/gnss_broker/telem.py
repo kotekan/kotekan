@@ -285,7 +285,7 @@ class TelemClient(object):
         read_timeout_s=30.0,
         epoch_margin=64,
         epoch_strikes=8,
-        pending_max_bytes=128 << 20,
+        pending_max_bytes=512 << 20,
         fast_retry_after_s=10.0,
         rcvbuf_bytes=32 << 20,
     ):

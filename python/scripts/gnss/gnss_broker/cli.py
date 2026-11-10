@@ -1747,6 +1747,15 @@ def build_parser(description):
         "it answers whether the satellite is up and detectable, which stays true "
         "between passes.",
     )
+    ap.add_argument(
+        "--gc-interval-s",
+        type=float,
+        default=0.0,
+        help="Seconds between paced garbage collections (gnss_broker/gcpace.py): automatic "
+        "collection is turned off for the whole process and one thread collects on this "
+        "clock, logging how long each collection stopped the process. 0 (default) leaves "
+        "the interpreter's automatic collection on.",
+    )
     # -- The frame-synced telemetry gather (gnss_broker/telem.py) ------------------------------
     ap.add_argument(
         "--telem-gather",
