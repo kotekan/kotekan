@@ -25,6 +25,25 @@ section and the text below disagree, this section holds.
   boundary's record). So toe is the 5-minute boundary. sqrtA, e, i0, the rates and the harmonics
   are not located yet: no plain semicircle or sqrt-metre field matches, so they are probably
   offsets from references, as in the almanac.
+- **The sender's ephemeris, field map (payload bits; `eph1..eph20.py`, 788 issue records, 102
+  senders).** 17 fields and two zero fields, about 430 bits. Page 1: 149/16, 165/25 s, 190/21 s,
+  211/21 s. Page 2: 88/22 = dA x 2^-32 Earth radii (1.485 mm) above a reference near Re + 1145 km
+  (50 deg shell) and Re + 1165 km (polar); 110/31 s = di x 2^-35 semicircles from 50.017 /
+  86.503 deg; 141-164 zero; 165/24 s = Omega-dot x 2^-45 semicircles/s (-3.571 / -0.338 deg/day);
+  189/21 s. Page 3: 94/13; 107-129 zero; 130/36 = M0; 166/36 = Omega0; 206/26 = e x 2^-35 (bits
+  0-93 are status-like words, not part of the issue). Page 4: 92/36 = omega; 128/26 s; 158/22;
+  180/26 s; 206/26 s. Angles: full circle = 2^36.
+- Checks: r_SGP4 + a e cos E = c + dA + 805 cos 2phi - 85 sin 2phi to 67 m rms (50 deg shell;
+  37 m polar with 1464 m), sharpest at exactly e x 2^-35 (107 m at +-5 %); consecutive issues
+  give the dA unit as 1.4835 mm (2^-9 m and 3 x 2^-11 m are excluded); di equals the TLE's mean
+  inclination to 0.0005 deg and the almanac's di x 64 (r 0.993).
+- These are mean elements of an SGP4-style theory re-fitted over a short arc every 5 minutes: A
+  (+-0.8 km), e (+-2e-4) and omega (sd 7 deg) wander between issues while the position holds.
+  Consecutive issues agree at their common epoch to 14 m in radius and, with Omega-dot and the
+  189/21 term (a sin 2u term of the inclination, about 1.3e-10 rad per LSB), 2-4 m across track.
+  About 100 m along track is unexplained: the nine open fields and the user algorithm. They do
+  not correlate with osculating elements or their rates, and the four 25/26-bit signed fields are
+  mutually correlated (0.8-0.98), so one-at-a-time role searches alias.
 - Page 1 bits 100-117 are an issue tag in 3 s units (boundary SOW / 3 + 1); bits 91-99 read 34 in
   both weeks. Page 1 bits 138-148 are two flags and a small integer, renewed every 5 minutes.
   The regions called constant below (page 1 91-148, page 3 0-93, page 4 0-100) change per issue
