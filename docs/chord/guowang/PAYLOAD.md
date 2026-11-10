@@ -44,6 +44,23 @@ section and the text below disagree, this section holds.
   About 100 m along track is unexplained: the nine open fields and the user algorithm. They do
   not correlate with osculating elements or their rates, and the four 25/26-bit signed fields are
   mutually correlated (0.8-0.98), so one-at-a-time role searches alias.
+- **Second pass (`eph22..eph35.py`, 263 pairs of consecutive issues): the radial model.** The
+  dA unit above is wrong: its LSB is 1.11115e-3 m (1/900 m fits; not identified), not 2^-32
+  Earth radii. That slope came from leaving out the radial harmonics, which dA trades against.
+  Page 4 128/26 s = Crs and 158/22 = Crc, LSB 2.951e-4 m: r = A (1 - e cos E) + Crs sin 2phi +
+  Crc cos 2phi. With them consecutive issues agree to 0.6 m in radius and 2.4 mm/s in radial
+  velocity. A_ref = 7 523 595 m (50 deg shell), 7 544 563 m (polar).
+- The receiver supplies J2 short-period terms itself. SGP4 osculating minus broadcast at the
+  epoch leaves fixed terms that no field explains: inclination +2.98e-4 cos 2phi rad (J2:
+  2.87e-4), node +3.93e-4 sin 2phi (3.75e-4), argument of latitude -1.45e-4 sin 2phi (-1.84e-4),
+  and in the radius +284 m cos 2phi (50 deg shell) and +565 m (polar), the part of the J2 term
+  that Crc (525 m and 892 m on average) does not carry.
+- Cross plane: page 2 189/21 as a sin 2phi term of the inclination (1.07e-10 rad per LSB) and
+  page 1 190/21 as its cos 2phi term (1.46e-10) take the cross-track mismatch from 45 m to 5 m.
+- Couplings among the open fields (rank correlation, 50 deg shell): page 1 165/25 = Crs / 4.79
+  (0.99); page 4 206/26 = 0.219 Crs (0.96); page 4 180/26 = -0.155 Crc (-0.81); page 1 211/21 =
+  page 2 189/21 / 3.59 (0.95). The page-4 pair has the signs of along-track harmonics. The
+  along-track part is still open: about 80 m between consecutive issues.
 - Page 1 bits 100-117 are an issue tag in 3 s units (boundary SOW / 3 + 1); bits 91-99 read 34 in
   both weeks. Page 1 bits 138-148 are two flags and a small integer, renewed every 5 minutes.
   The regions called constant below (page 1 91-148, page 3 0-93, page 4 0-100) change per issue
