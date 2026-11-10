@@ -1000,6 +1000,19 @@
     ["2026-11-09T06:00:03Z", 2.56, true]
    ]
   },
+  "DIGUI-67": {
+   "status": "no_transmission",
+   "catnum": 65173,
+   "g2_phase": null,
+   "last_observed_utc": null,
+   "last_checked_utc": "2026-11-10T05:55:51Z",
+   "last_checked_sep_deg": 1.72,
+   "passes_found": 0,
+   "passes_silent": 1,
+   "passes": [
+    ["2026-11-10T05:55:51Z", 1.72, false]
+   ]
+  },
   "DIGUI-68": {
    "status": "no_transmission",
    "catnum": 65228,
@@ -2714,13 +2727,14 @@
    "sep_deg": 1.0,
    "ref_input": 116,
    "drift_ns_s": 1.49,
-   "last_observed_utc": "2026-11-03T07:50:19Z",
-   "last_checked_utc": "2026-11-03T07:50:19Z",
-   "last_checked_sep_deg": 0.92,
-   "passes_found": 1,
+   "last_observed_utc": "2026-11-10T05:50:23Z",
+   "last_checked_utc": "2026-11-10T05:50:23Z",
+   "last_checked_sep_deg": 1.87,
+   "passes_found": 2,
    "passes_silent": 0,
    "passes": [
-    ["2026-11-03T07:50:19Z", 0.92, true]
+    ["2026-11-03T07:50:19Z", 0.92, true],
+    ["2026-11-10T05:50:23Z", 1.87, true]
    ]
   },
   "DIGUI-157": {
