@@ -646,8 +646,11 @@ def test_chime_detector_is_diagnostic_in_each_numa_domain():
     env = Environment(loader=FileSystemLoader(str(ROOT / "config/chime")))
     template = env.get_template("chime_upgrade_2numa.j2")
     base = yaml.safe_load(template.render())
-    cfg = yaml.safe_load(template.render(dtv_enabled=True))
+    cfg = yaml.safe_load(template.render(dtv_enabled=True, dtv_write_enabled=True))
+    detect_only = yaml.safe_load(template.render(dtv_enabled=True))
     assert "run_dtv_detector" not in base["numa_0"]
+    assert "run_dtv_detector" in detect_only["numa_0"]
+    assert "write_dtv" not in detect_only["numa_0"]
     for numa in (0, 1):
         domain = cfg[f"numa_{numa}"]
         stage = domain["run_dtv_detector"]
