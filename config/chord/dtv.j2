@@ -1,7 +1,6 @@
 {#-
-  dtv.j2
-  pathfinder.j2 adds the detector unless dtv_enabled is false; dtv_apply_mask also
-  applies its mask to N2.
+  dtv.j2, included by pathfinder.j2 unless dtv_enabled is false.
+  dtv_enabled adds the detector, and dtv_apply_mask also applies its mask to N2.
   Detection and recording start off until enabled over REST.
   Disable /rfi_first_stage_enabled for a DTV-only first-stage mask.
   Profiles bind by receiver_channel_id against each NUMA half's coarse_freq.
