@@ -257,13 +257,16 @@ def stage_fleet_dll(ctx):
                 )
             _log_rl(
                 "telem-stat",
-                "TELEM %s frames %d gaps %d bad %d | %s"
+                "TELEM %s frames %d gaps %d bad %d | %s | pending %d peak %d dropped %d"
                 % (
                     "up" if _st["connected"] else "DOWN",
                     _st["frames"],
                     _st["gaps"],
                     _st["bad"],
                     _msg,
+                    _st["pending"],
+                    _st["pending_peak"],
+                    _st["pending_dropped"],
                 ),
                 every_s=30.0,
             )

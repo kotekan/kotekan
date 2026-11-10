@@ -24,10 +24,12 @@ Three groups of test here, and the first is the one that matters:
 """
 import json
 import os
+import random
 import struct
 import sys
 import time
 import unittest
+from unittest import mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -758,6 +760,137 @@ class TestStats(unittest.TestCase):
         self.assertEqual(st["live"], 3)
         self.assertEqual(st["stale"], [])
         self.assertEqual(st["spread"], 3)
+
+
+def _ring_scan(c, now, stale_after_s):
+    """stats()["chains"] by walking every frame the ring holds: what stats() must equal."""
+    per_chain = {}
+    for chain, ring in c._store.items():
+        last, seen = {}, {}
+        for win, insts in ring.items():
+            for inst, f in insts.items():
+                if win > last.get(inst, -1):
+                    last[inst] = win
+                if f.rx > seen.get(inst, 0.0):
+                    seen[inst] = f.rx
+        live = {
+            i: w
+            for i, w in last.items()
+            if stale_after_s <= 0 or (now - seen.get(i, 0.0)) <= stale_after_s
+        }
+        row = {
+            "instances": len(last),
+            "live": len(live),
+            "stale": sorted(set(last) - set(live)),
+            "windows_held": len(ring),
+        }
+        if live:
+            row.update(
+                {
+                    "win_min": min(live.values()),
+                    "win_max": max(live.values()),
+                    "spread": max(live.values()) - min(live.values()),
+                }
+            )
+        per_chain[chain] = row
+    return per_chain
+
+
+class TestStatsAreTheRingScan(unittest.TestCase):
+    """B. stats() reads per-instance rows kept as frames are stored, not the ring.
+
+    The rows must follow everything that changes what the ring holds: a laggard's window
+    sorted in behind its peers, eviction (of a whole instance, and of the frame that carried
+    an instance's newest rx), a frame for a window already evicted, a frame delivered twice,
+    and the epoch reset. Compared with a walk of the ring after every frame.
+    """
+
+    INSTS = ["cx19.0", "cx19.1", "cx27.0", "cx42.0", "cx51.1"]
+
+    def _run(self, seed, depth):
+        rng = random.Random(seed)
+        c = telem.TelemClient(depth=depth, epoch_margin=12, epoch_strikes=3)
+        raws = {}
+        t = [1000.0]
+        head = {"gps_l5": 500, "gal_e5a": 9000}
+        dead = {}  # (chain, inst) -> True once it has stopped sending
+        n_checked = 0
+
+        def feed(chain, inst, win):
+            raw = raws.get((chain, inst, win))
+            if raw is None:
+                raw = raws[(chain, inst, win)] = _make_frame(
+                    chain=chain, inst=inst, win=win, n_rec=1, n_prn=1
+                )
+            # rx mostly advances, sometimes repeats or steps back (a wall clock can)
+            t[0] += rng.choice([0.0, 0.0, 0.04, 0.04, 0.3, -0.1])
+            c._store_frame(telem.TelemFrame(telem._HDR.unpack_from(raw, 0), raw, t[0]))
+
+        def check():
+            for stale_after_s in (0, 0.5, 5.0):
+                with mock.patch.object(telem.time, "time", return_value=t[0]):
+                    got = c.stats(stale_after_s=stale_after_s)["chains"]
+                self.assertEqual(got, _ring_scan(c, t[0], stale_after_s))
+
+        for step in range(1500):
+            chain = rng.choice(sorted(head))
+            what = rng.random()
+            if step == 400:
+                dead[
+                    ("gps_l5", "cx42.0")
+                ] = True  # stale, then evicted window by window
+            if step in (700, 1100):
+                # an F-engine re-base: the whole chain far below everything held, for good
+                head[chain] = rng.randrange(10, 100)
+            if what < 0.75:
+                head[chain] += rng.choice([0, 0, 1])
+                win = head[chain]
+            elif what < 0.9:
+                win = head[chain] - rng.randrange(1, 12)  # a laggard, inside the margin
+            elif what < 0.97:
+                win = head[chain] - rng.randrange(depth, depth + 10)  # already evicted
+            else:
+                win = head[chain] - rng.randrange(13, 40)  # one far-behind header
+            inst = rng.choice(self.INSTS)
+            if dead.get((chain, inst)) or win < 0:
+                continue
+            feed(chain, inst, win)
+            check()
+            n_checked += 1
+        return c, n_checked
+
+    def test_stats_equal_a_walk_of_the_ring(self):
+        resets = evicted_inst = 0
+        for seed in range(6):
+            for depth in (4, 16):
+                c, n = self._run(seed, depth)
+                self.assertGreater(n, 1000)
+                resets += c.epoch_resets
+                # the stopped instance was dropped from the listing once its frames left
+                evicted_inst += "cx42.0" not in c._inst["gps_l5"]
+        # the sequences did reach the cases they were written for
+        self.assertGreater(resets, 0)
+        self.assertGreater(evicted_inst, 0)
+
+    def test_an_instance_is_stale_before_it_is_evicted(self):
+        c = telem.TelemClient(depth=8)
+
+        def feed(inst, win, rx):
+            raw = _make_frame(inst=inst, win=win, n_rec=1, n_prn=1)
+            c._store_frame(telem.TelemFrame(telem._HDR.unpack_from(raw, 0), raw, rx))
+
+        feed("cx43.0", 100, 1000.0)
+        for w in range(100, 106):
+            feed("cx19.0", w, 1000.0 + (w - 100))
+        with mock.patch.object(telem.time, "time", return_value=1010.0):
+            st = c.stats(stale_after_s=6.0)["chains"]["gps_l5"]
+        self.assertEqual((st["instances"], st["stale"]), (2, ["cx43.0"]))
+        self.assertEqual((st["win_min"], st["win_max"]), (105, 105))
+        for w in range(106, 110):  # window 100 leaves the ring, and cx43.0 with it
+            feed("cx19.0", w, 1000.0 + (w - 100))
+        with mock.patch.object(telem.time, "time", return_value=1010.0):
+            st = c.stats(stale_after_s=6.0)["chains"]["gps_l5"]
+        self.assertEqual((st["instances"], st["stale"]), (1, []))
 
 
 def _listen():

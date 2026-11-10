@@ -351,6 +351,9 @@ class TelemClient(object):
         self.connects = 0
         self.last_rx = 0.0
         self._seen_seq = {}  # (chain, inst) -> last seq
+        # chain -> {inst: [newest window, newest rx, frames]} over the frames the ring holds,
+        # kept by _store_frame so stats() does not walk the ring under its lock.
+        self._inst = {}
         self.gaps = 0
         # Frames from senders the interface watcher fences (enforce mode only; see
         # transport.iface_fenced_sender), dropped before they are stored.
@@ -633,6 +636,7 @@ class TelemClient(object):
                             % (f.chain, newest, f.win, self.epoch_resets)
                         )
                         ring.clear()
+                        self._inst.pop(f.chain, None)
                         newest = None
                 else:
                     self._backwards[f.chain] = 0
@@ -641,11 +645,43 @@ class TelemClient(object):
                     for w in sorted(ring):
                         ring.move_to_end(w)
                 while len(ring) > self.depth:
-                    ring.popitem(last=False)
+                    _, gone = ring.popitem(last=False)
+                    for g in gone.values():
+                        self._forget_frame(ring, g)
             slot = ring.get(f.win)
             if slot is None:
                 return  # just evicted as too old to matter
+            old = slot.get(f.inst)
             slot[f.inst] = f
+            if old is not None:
+                self._forget_frame(ring, old)
+            insts = self._inst.get(f.chain)
+            if insts is None:
+                insts = self._inst[f.chain] = {}
+            st = insts.get(f.inst)
+            if st is None:
+                insts[f.inst] = [f.win, f.rx, 1]
+            else:
+                if f.win > st[0]:
+                    st[0] = f.win
+                if f.rx > st[1]:
+                    st[1] = f.rx
+                st[2] += 1
+
+    def _forget_frame(self, ring, g):
+        """Take a frame that left `ring` out of its instance's _inst row, under the ring lock.
+
+        The newest window needs no repair: the ring evicts its oldest window, and a replaced
+        frame's successor has the same one. The newest rx does when the frame carried it (a
+        laggard's late frame for an old window), and only then is the ring walked.
+        """
+        insts = self._inst[g.chain]
+        st = insts[g.inst]
+        st[2] -= 1
+        if st[2] == 0:
+            del insts[g.inst]
+        elif g.rx >= st[1]:
+            st[1] = max(slot[g.inst].rx for slot in ring.values() if g.inst in slot)
 
     # -- accessors ---------------------------------------------------------------------------
     def chains(self):
@@ -724,21 +760,15 @@ class TelemClient(object):
         with self._lock:
             per_chain = {}
             for chain, ring in self._store.items():
-                last, seen = {}, {}
-                for win, insts in ring.items():
-                    for inst, f in insts.items():
-                        if win > last.get(inst, -1):
-                            last[inst] = win
-                        if f.rx > seen.get(inst, 0.0):
-                            seen[inst] = f.rx
+                insts = self._inst.get(chain, {})
                 live = {
-                    i: w
-                    for i, w in last.items()
-                    if stale_after_s <= 0 or (now - seen.get(i, 0.0)) <= stale_after_s
+                    i: st[0]
+                    for i, st in insts.items()
+                    if stale_after_s <= 0 or (now - max(st[1], 0.0)) <= stale_after_s
                 }
-                stale = sorted(set(last) - set(live))
+                stale = sorted(set(insts) - set(live))
                 row = {
-                    "instances": len(last),
+                    "instances": len(insts),
                     "live": len(live),
                     "stale": stale,
                     "windows_held": len(ring),
