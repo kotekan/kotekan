@@ -96,16 +96,22 @@ template<typename Cfloat>
 static void check_phase_vector(const std::vector<Cfloat>& evec,
                                const std::vector<uint32_t>& exclude_inputs, size_t num_elements,
                                double phase_tol, double amp_tol) {
-    const auto base = evec[0];
-    BOOST_CHECK_GT(std::abs(base), 1e-6);
+    // The stage phases each eigenvector so that its element for the first unmasked
+    // input is real and positive.
+    size_t ref = 0;
+    while (std::find(exclude_inputs.begin(), exclude_inputs.end(), ref) != exclude_inputs.end())
+        ref++;
+    const auto base = evec[ref];
+    BOOST_CHECK_GT(static_cast<double>(base.real()), 1e-6);
+    BOOST_CHECK_SMALL(static_cast<double>(base.imag()), 1e-6);
     const double expected_amp = 1.0 / std::sqrt((double)(num_elements - exclude_inputs.size()));
     for (size_t i = 0; i < num_elements; ++i) {
         if (std::find(exclude_inputs.begin(), exclude_inputs.end(), i) != exclude_inputs.end()) {
             BOOST_CHECK_SMALL(static_cast<double>(std::abs(evec[i])), 1e-4);
             continue;
         }
-        auto ratio = evec[i] / base; // cancels global phase
-        auto expected = std::polar(1.0f, (float)i);
+        auto ratio = evec[i] / base;
+        auto expected = std::polar(1.0f, (float)i - (float)ref);
         BOOST_CHECK_SMALL(static_cast<double>(std::abs(evec[i]) - expected_amp), amp_tol);
         BOOST_CHECK_SMALL(static_cast<double>(std::abs(ratio - expected)), phase_tol);
     }
@@ -308,6 +314,18 @@ BOOST_AUTO_TEST_CASE(eigenN2Iter_flagged_inputs) {
     // The pattern is rank 1, so ask for one eigenpair: a second, ~zero
     // eigenvalue would never satisfy the fractional convergence test and erms
     // would report -eps_eval instead of the residual checked here.
+    params.num_ev = 1;
+    params.num_ev_conv = 1;
+    auto res = run_pipeline(params);
+    verify_results(res, params, 1e-4, 1e-4, 1e-4, 1e-4f);
+}
+
+// With the first inputs flagged, the phase reference moves to the first unmasked input.
+BOOST_AUTO_TEST_CASE(eigenN2Iter_flagged_first_inputs) {
+    EigenStageTestParams params;
+    params.total_frames = 4;
+    params.num_elements = 16;
+    params.flagged_inputs = {0, 1};
     params.num_ev = 1;
     params.num_ev_conv = 1;
     auto res = run_pipeline(params);
