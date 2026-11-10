@@ -117,7 +117,8 @@ The other keys are listed below.
 
 ``dtv_bad_feed_mask``
     The detector reads the bad feed mask ring of ``bufferBadInputs``, and a
-    flagged input is packed as zero (default false, every input is summed).
+    flagged input is packed as zero (default true in ``config/chord/dtv.j2``,
+    false sums every input).
     ``bufferBadInputs`` also flags every element outside the main array, which
     on CHORD are the Missing dishes and the 16 RFI antennas. Thus, with this
     switch, the detector also drops the RFI antennas, which probably see DTV
