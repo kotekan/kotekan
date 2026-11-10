@@ -248,6 +248,8 @@ feature when its dependencies are present and otherwise continues without it. Se
     Build the OpenCL backend. Set to ``AUTO``/``ON`` when OpenCL headers/libs are installed.
 * ``-DUSE_HIP=<AUTO|ON|OFF>`` (default ``OFF``)
     Build the HIP backend when the HIP toolchain is available.
+* ``-DWITH_NVTX=<ON|OFF>`` (default ``OFF``)
+    With the CUDA backend, compile NVTX ranges around the GPU frame loop for Nsight Systems.
 * ``-DUSE_DPDK=<AUTO|ON|OFF>`` (default ``AUTO``)
     Enable DPDK components when ``libdpdk >= 19.11`` is discoverable via ``pkg-config``. Forced ``OFF`` when ``-DWITH_BOOST_TESTS=ON``.
 * ``-DDPDK_EXTRA_STATS=<ON|OFF>`` (default ``OFF``)

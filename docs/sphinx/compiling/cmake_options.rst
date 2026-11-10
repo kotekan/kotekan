@@ -33,6 +33,9 @@ GPU Backends
 - ``USE_OPENCL`` (``OFF``): Enable the OpenCL backend. Set to ``AUTO``/``ON`` when OpenCL headers and
   libraries are installed; the build installs kernel files to ``/var/lib/kotekan/opencl``.
 - ``USE_HIP`` (``OFF``): Enable the HIP backend when the HIP toolchain is available.
+- ``WITH_NVTX`` (``OFF``): With the CUDA backend, compile NVTX ranges around the GPU frame loop, for
+  reading a run in Nsight Systems. Uses the header-only NVTX3 in the CUDA toolkit; off, the ranges
+  compile to nothing.
 
 
 I/O and File Formats
