@@ -13,8 +13,8 @@ of the CSK half (high rate). ITU-R M.1787-6 files them as 125 / 1500 bit/s; meas
 ## 2026-11-10 review: corrections
 
 A pass over every open item against the five-day archive (285 822 CRC-valid high-rate messages,
-134 senders; 41 668 low-rate subframes; probes in `builds/gw1202/review_20261110/`). Where this
-section and the text below disagree, this section holds.
+134 senders; 54 355 low-rate subframes; probes in `builds/gw1202/review_20261110/` and
+`review_20261110b/`). Where this section and the text below disagree, this section holds.
 
 - **The low-rate "5-minute record" is the sender's own ephemeris, not a MAC or an encrypted
   block.** Page 3 payload bits 166.. are Omega0 in the BeiDou convention, RAAN(t) - GMST(start of
@@ -22,60 +22,59 @@ section and the text below disagree, this section holds.
   subframes, 118 senders). The 11-09 scans compared with RAAN - GMST(now), where the MAD is 74 deg.
   Page 3 bits 130.. are M0 and page 4 bits 92.. are omega; M0 + omega equals the TLE's argument
   of latitude at the BDT 5-minute boundary to 0.07 s (3118 of 3333 cycles; 169 carry the previous
-  boundary's record). So toe is the 5-minute boundary. sqrtA, e, i0, the rates and the harmonics
-  are not located yet: no plain semicircle or sqrt-metre field matches, so they are probably
-  offsets from references, as in the almanac.
-- **The sender's ephemeris, field map (payload bits; `eph1..eph20.py`, 788 issue records, 102
-  senders).** 17 fields and two zero fields, about 430 bits. Page 1: 149/16, 165/25 s, 190/21 s,
-  211/21 s. Page 2: 88/22 = dA x 2^-32 Earth radii (1.485 mm) above a reference near Re + 1145 km
-  (50 deg shell) and Re + 1165 km (polar); 110/31 s = di x 2^-35 semicircles from 50.017 /
-  86.503 deg; 141-164 zero; 165/24 s = Omega-dot x 2^-45 semicircles/s (-3.571 / -0.338 deg/day);
-  189/21 s. Page 3: 94/13; 107-129 zero; 130/36 = M0; 166/36 = Omega0; 206/26 = e x 2^-35 (bits
-  0-93 are status-like words, not part of the issue). Page 4: 92/36 = omega; 128/26 s; 158/22;
-  180/26 s; 206/26 s. Angles: full circle = 2^36.
-- Checks: r_SGP4 + a e cos E = c + dA + 805 cos 2phi - 85 sin 2phi to 67 m rms (50 deg shell;
-  37 m polar with 1464 m), sharpest at exactly e x 2^-35 (107 m at +-5 %); consecutive issues
-  give the dA unit as 1.4835 mm (2^-9 m and 3 x 2^-11 m are excluded); di equals the TLE's mean
-  inclination to 0.0005 deg and the almanac's di x 64 (r 0.993).
-- These are mean elements of an SGP4-style theory re-fitted over a short arc every 5 minutes: A
-  (+-0.8 km), e (+-2e-4) and omega (sd 7 deg) wander between issues while the position holds.
-  Consecutive issues agree at their common epoch to 14 m in radius and, with Omega-dot and the
-  189/21 term (a sin 2u term of the inclination, about 1.3e-10 rad per LSB), 2-4 m across track.
-  About 100 m along track is unexplained: the nine open fields and the user algorithm. They do
-  not correlate with osculating elements or their rates, and the four 25/26-bit signed fields are
-  mutually correlated (0.8-0.98), so one-at-a-time role searches alias.
-- **Second pass (`eph22..eph35.py`, 263 pairs of consecutive issues): the radial model.** The
-  dA unit above is wrong: its LSB is 1.11115e-3 m (1/900 m fits; not identified), not 2^-32
-  Earth radii. That slope came from leaving out the radial harmonics, which dA trades against.
-  Page 4 128/26 s = Crs and 158/22 = Crc, LSB 2.951e-4 m: r = A (1 - e cos E) + Crs sin 2phi +
-  Crc cos 2phi. With them consecutive issues agree to 0.6 m in radius and 2.4 mm/s in radial
-  velocity. A_ref = 7 523 595 m (50 deg shell), 7 544 563 m (polar).
-- The receiver supplies J2 short-period terms itself. SGP4 osculating minus broadcast at the
-  epoch leaves fixed terms that no field explains: inclination +2.98e-4 cos 2phi rad (J2:
-  2.87e-4), node +3.93e-4 sin 2phi (3.75e-4), argument of latitude -1.45e-4 sin 2phi (-1.84e-4),
-  and in the radius +284 m cos 2phi (50 deg shell) and +565 m (polar), the part of the J2 term
-  that Crc (525 m and 892 m on average) does not carry.
-- Cross plane: page 2 189/21 as a sin 2phi term of the inclination (1.07e-10 rad per LSB) and
-  page 1 190/21 as its cos 2phi term (1.46e-10) take the cross-track mismatch from 45 m to 5 m.
-- Couplings among the open fields (rank correlation, 50 deg shell): page 1 165/25 = Crs / 4.79
-  (0.99); page 4 206/26 = 0.219 Crs (0.96); page 4 180/26 = -0.155 Crc (-0.81); page 1 211/21 =
-  page 2 189/21 / 3.59 (0.95). The page-4 pair has the signs of along-track harmonics. The
-  along-track part is still open: about 80 m between consecutive issues.
-- **Working user algorithm (`builds/gw1202/gw_eph_user.py`).** M = M0 + n t with n =
-  sqrt(mu/A^3) (1 - dA/2A) + n_s (the angular momentum does not follow dA; n_s = +7.47e-7 rad/s in
-  the 50 deg shell, the J2 secular rate); phi = nu + omega; r = A (1 - e cos E) + Crs sin 2phi +
-  (Crc + r2) cos 2phi; u = phi + (Crs cos 2phi - Crc sin 2phi)/r + u2 sin 2phi (the along-track
-  harmonic is the one the radial pair induces: fitted factors 1.02 and 1.01); i = i_ref + di + Cis
-  sin 2phi + (Cic + i2) cos 2phi; Omega = Omega0 + Omega-dot t + O2 sin 2phi. r2, u2, i2, O2 are
-  the fixed J2 terms above, per shell. An issue carried forward 300 s lands on the next issue to
-  0.25 m in radius, 11 m along track and 3 m across track (243 pairs, 50 deg shell). The six
-  unused fields: page 1 149/16 and page 3 94/13 change like check words; page 1 165/25 (0.209 x
-  Crs to 6 %), page 1 211/21, page 4 180/26 and 206/26 follow the harmonic terms at fixed ratios
-  and change nothing measurable in the position.
+  boundary's record). So toe is the 5-minute boundary.
+- **The sender's ephemeris, decoded (`review_20261110b/`; user algorithm `gw_eph_user.py`; 1029
+  issue records, 103 senders).** A BeiDou-style 16-parameter ephemeris plus four third-order
+  harmonic terms. The receiver adds nothing. With t the time from toe:
+
+      A = Re + h + dA                    Re = 6 378 137 m; h = 1150 km (50 deg shell), 1175 km (polar)
+      n = sqrt(mu / A^3) + dn            M = M0 + n t; Kepler gives E, nu; phi = nu + omega
+      u = phi + Cus sin 2phi + Cuc cos 2phi
+      r = A (1 - e cos E) + Crs sin 2phi + Crc cos 2phi + Crs3 sin 3phi + Crc3 cos 3phi
+      i = i_ref + di + Cis sin 2phi + Cis3 sin 3phi + Cic3 cos 3phi      i_ref = 50 deg, 86.5 deg
+      Omega = Omega0 + Omega-dot t       (Omega0 = RAAN - GMST at the start of the BDT week)
+
+  | Word | Page, first bit / width | LSB |
+  |---|---|---|
+  | dA | 2, 83/27 signed | 2^-10 m |
+  | di | 2, 110/31 signed | 2^-35 semicircle |
+  | Omega-dot | 2, 163/26 signed | 2^-45 semicircle/s |
+  | Cis | 2, 189/21 signed | 2^-34 semicircle |
+  | dn | 3, 80/27 signed | 2^-45 semicircle/s |
+  | M0, Omega0 | 3, 130/36 and 166/36 | 2^-36 circle |
+  | e | 3, 202/30 | 2^-35 |
+  | omega | 4, 92/36 | 2^-36 circle |
+  | Crs, Crc, Crs3, Crc3 | 4, 128, 154, 180, 206 / 26 signed | 2^-11 m |
+  | Cus, Cuc | 1, 140 and 165 / 25 signed | 2^-34 semicircle |
+  | Cis3, Cic3 | 1, 190 and 211 / 21 signed | 2^-34 semicircle |
+
+  Zero in every record: page 2 141/22 (by position the inclination rate; it reads +-1 in 6
+  records), page 2 210/21 (the place of Cic) and page 3 107/23 (a rate after dn). Page 2 bit 87
+  tells the shells apart (1 = 50 deg).
+- Checks (338 pairs of consecutive issues; 312 in the 50 deg shell, 26 polar). Issue k
+  evaluated 200 to 600 s after its toe agrees with issue k+1 to about 1 cm in radius, 1 cm along
+  track and 0.4 cm across track (3-D median 1.2 cm, 95 % below 5 cm). The fit arc is
+  therefore toe - 100 s to toe + 600 s; outside it the two differ by 0.7 m at toe, 10 m at
+  toe - 300 s and 2.3 m at toe + 900 s. Every scale was fitted freely first: dn 2^-45.000, dA
+  2^-10.000, Cus and Cuc 0.99998 and 0.99999 of 2^-34, the inclination terms 1.0001, 0.9999,
+  0.9999, the radial harmonics 0.999 of 2^-11 m. The harmonic argument is nu + omega (with E
+  or M the mismatch is 4 to 8 times larger). The reference radius comes out of the along-track
+  rate as 7 524 041.012 m and 7 544 945.013 m (+-0.004 m) with mu = 3.986004418e14, which is
+  Re + h - 4096 m and - 8192 m to 1.3 cm (to 2 mm with mu = 3.9860044e14).
+- Against SGP4 at mid-arc: radius -4 m (scatter 77 m), along track -45 m (485 m), across track
+  +13 m (87 m) in the 50 deg shell; +52 (119), -616 (741), -141 (70) in the polar shell. These
+  are the TLEs' errors. The mean Crc is 866 m and 1482 m (J2: 858 and 1453) and the mean Cus
+  5.65e-5 and 9.33e-5 rad (J2 in the mean plane: 5.70e-5 and 9.63e-5).
+- The elements are re-fitted for every issue over that short arc, so dA (+-0.6 km), e (+-2e-4),
+  omega (sd 7 deg) and the harmonics wander from issue to issue while the position holds. CHORD
+  sees the 50 deg shell near phi = 90 deg and the polar shell near 49 and 131 deg, where the
+  2phi and 3phi terms look alike. A model without the third harmonics therefore returns
+  plausible but wrong scales for the rest (1.111 mm for dA, 0.295 mm for Crs and Crc, apparent
+  J2 terms "added by the receiver"). Earlier revisions of this section carried those.
 - Page 1 bits 100-117 are an issue tag in 3 s units (boundary SOW / 3 + 1); bits 91-99 read 34 in
-  both weeks. Page 1 bits 138-148 are two flags and a small integer, renewed every 5 minutes.
-  The regions called constant below (page 1 91-148, page 3 0-93, page 4 0-100) change per issue
-  or per pass and belong to the same data set.
+  both weeks. Page 1 bits 138-139 are two flags. The regions called constant below (page 1
+  91-139, page 3 0-79, page 4 0-91) change per issue or per pass and belong to the same data
+  set.
 - The page-2 time stamp is 3606-3607 s behind the subframe start, not 3600 s, and is sometimes
   10 or 60 s stale: a data time tag. The page-2 count N is not the number of GNSS satellites the
   sender lists (Pearson -0.34).
