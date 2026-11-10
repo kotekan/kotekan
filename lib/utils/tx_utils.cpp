@@ -4,12 +4,61 @@
 
 #include "fmt.hpp" // for compile_string_to_view
 
-#include <cstring>   // for strlen
-#include <stdexcept> // for runtime_error
-#include <stdio.h>   // for sscanf
-#include <stdlib.h>  // for malloc, size_t
-#include <time.h>    // for timespec
-#include <unistd.h>  // for gethostname
+#include <cassert>      // for assert
+#include <cstring>      // for strlen
+#include <netdb.h>      // for addrinfo, freeaddrinfo, gai_strerror, getaddrinfo
+#include <netinet/in.h> // for sockaddr_in, AF_INET
+#include <stdexcept>    // for runtime_error
+#include <stdio.h>      // for sscanf
+#include <stdlib.h>     // for malloc, size_t
+#include <time.h>       // for timespec
+#include <unistd.h>     // for gethostname
+
+struct sockaddr_in get_my_addr(const in_addr_t netaddr, const in_addr_t netmask) {
+    // std::stringstream temp_ip[number_of_subnets];
+    char* my_host_name = (char*)malloc(sizeof(char) * 100);
+    // CHECK_MEM(my_host_name);
+    gethostname(my_host_name, sizeof(my_host_name));
+
+    // Use getaddrinfo to resolve the address (works for both IPs and hostnames)
+    struct addrinfo hints, *result = nullptr;
+    std::memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_INET;       // Only IPv4
+    hints.ai_socktype = SOCK_STREAM; // TCP socket
+    hints.ai_protocol = IPPROTO_TCP; // TCP once more
+    hints.ai_flags = AI_ADDRCONFIG;
+
+    const int status = getaddrinfo(my_host_name, nullptr, &hints, &result);
+    if (status != 0) {
+        FATAL_ERROR_NON_OO("get_my_ip: getaddrinfo failed for {:s}: {:s}", my_host_name,
+                           gai_strerror(status));
+    }
+
+    struct sockaddr_in retval = {};
+    for (struct addrinfo* rp = result; rp != nullptr; rp = rp->ai_next) {
+        // all CHIME x-engine nodes have ip addresses 10.1.X.Y
+        // similar for other telescopes given appropriate netmask and netaddr
+        if (rp->ai_family == AF_INET) {
+            struct sockaddr_in const* const addr_in =
+                reinterpret_cast<const sockaddr_in*>(rp->ai_addr);
+            // NOTE: these are all in network order (big endian)
+            if ((addr_in->sin_addr.s_addr & netmask) == netaddr) {
+                retval.sin_family = static_cast<unsigned short int>(rp->ai_family);
+                retval.sin_port = reinterpret_cast<const sockaddr_in*>(rp->ai_addr)->sin_port;
+                retval.sin_addr.s_addr =
+                    reinterpret_cast<const sockaddr_in*>(rp->ai_addr)->sin_addr.s_addr;
+            }
+            break;
+        }
+    }
+    if (retval.sin_addr.s_addr == 0) {
+        FATAL_ERROR_NON_OO(
+            "Could not find primary address matching netmask {:x} and netaddr {:x} for node {:s}",
+            netmask, netaddr, my_host_name);
+    }
+    freeaddrinfo(result);
+    return retval;
+}
 
 void parse_chime_host_name(int& my_rack, int& my_node, int& my_nos, int& my_node_id) {
     int rack = 0, node = 0, nos = 0;
