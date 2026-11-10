@@ -616,20 +616,25 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
                               HighFive::create_datatype<double>(), props_empty);
         _check_create_dataset(*file, "/bin_end_ERAL_deg", {num_file_t_}, {"time"},
                               HighFive::create_datatype<double>(), props_empty);
-        _check_create_dataset(*file, "/rfi_frame_excision_enabled", {num_file_t_}, {"time"},
-                              HighFive::create_datatype<bool>(), props_empty);
-        _check_create_dataset(*file, "/fringestop_enabled", {num_file_t_}, {"time"},
-                              HighFive::create_datatype<bool>(), props_empty);
-        _check_create_dataset(*file, "/rfi_frame_excision_num", {num_file_t_}, {"time"},
-                              HighFive::create_datatype<int32_t>(), props_empty);
+        _check_create_dataset(*file, "/rfi_frame_excision_num", {num_file_f, num_file_t_},
+                              {"frequency", "time"}, HighFive::create_datatype<int32_t>(),
+                              props_empty);
         _check_create_dataset(*file, "/rfi_frame_excision_threshold",
-                              {num_file_t_, MAX_NUM_RFI_THRESHOLDS}, {"time", "threshold"},
+                              {num_file_f, num_file_t_, MAX_NUM_RFI_THRESHOLDS},
+                              {"frequency", "time", "threshold"},
                               HighFive::create_datatype<float>(), props_empty);
         _check_create_dataset(*file, "/rfi_frame_excision_fraction",
-                              {num_file_t_, MAX_NUM_RFI_THRESHOLDS}, {"time", "threshold"},
+                              {num_file_f, num_file_t_, MAX_NUM_RFI_THRESHOLDS},
+                              {"frequency", "time", "threshold"},
                               HighFive::create_datatype<float>(), props_empty);
         _check_create_dataset(*file, "/frac_rfi_first_stage_enabled", {num_file_f, num_file_t_},
                               {"frequency", "time"}, HighFive::create_datatype<float>(),
+                              props_empty);
+        _check_create_dataset(*file, "/rfi_frame_excision_enabled", {num_file_f, num_file_t_},
+                              {"frequency", "time"}, HighFive::create_datatype<bool>(),
+                              props_empty);
+        _check_create_dataset(*file, "/fringestop_enabled", {num_file_f, num_file_t_},
+                              {"frequency", "time"}, HighFive::create_datatype<bool>(),
                               props_empty);
 
         // Digital gains: copy entire gains file verbatim into /digital_gains/ group
@@ -747,12 +752,12 @@ N2FileData::N2FileData(FileMode file_mode_, uint64_t num_file_t_, const N2FrameV
     bin_end_ERA_deg.assign(num_file_t, 0.0);
     bin_start_ERAL_deg.assign(num_file_t, 0.0);
     bin_end_ERAL_deg.assign(num_file_t, 0.0);
-    rfi_frame_excision_enabled.assign(num_file_t, false);
-    fringestop_enabled.assign(num_file_t, false);
-    rfi_frame_excision_num.assign(num_file_t, 0);
-    rfi_frame_excision_threshold.assign(num_file_t * MAX_NUM_RFI_THRESHOLDS, 0.0f);
-    rfi_frame_excision_fraction.assign(num_file_t * MAX_NUM_RFI_THRESHOLDS, 0.0f);
+    rfi_frame_excision_num.assign(num_file_f * num_file_t, 0);
+    rfi_frame_excision_threshold.assign(num_file_f * num_file_t * MAX_NUM_RFI_THRESHOLDS, 0.0f);
+    rfi_frame_excision_fraction.assign(num_file_f * num_file_t * MAX_NUM_RFI_THRESHOLDS, 0.0f);
     frac_rfi_first_stage_enabled.assign(num_file_f * num_file_t, 0.0f);
+    rfi_frame_excision_enabled.assign(num_file_f * num_file_t, 0);
+    fringestop_enabled.assign(num_file_f * num_file_t, 0);
 
 
     added_ft.assign(num_file_f * num_file_t, 0);
@@ -943,13 +948,15 @@ N2FileData::AddFrameStatus N2FileData::add_frame(const N2FrameView& fv, size_t t
     bin_end_ERA_deg[t_index] = fv.bin_end_ERA_deg;
     bin_start_ERAL_deg[t_index] = fv.bin_start_ERAL_deg;
     bin_end_ERAL_deg[t_index] = fv.bin_end_ERAL_deg;
-    rfi_frame_excision_enabled[t_index] = fv.rfi_frame_excision_enabled;
-    fringestop_enabled[t_index] = fv.fringestop_enabled;
-    rfi_frame_excision_num[t_index] = fv.rfi_frame_excision_num;
+    rfi_frame_excision_enabled[idx_ft(f_index, t_index)] = fv.rfi_frame_excision_enabled;
+    fringestop_enabled[idx_ft(f_index, t_index)] = fv.fringestop_enabled;
+    rfi_frame_excision_num[idx_ft(f_index, t_index)] = fv.rfi_frame_excision_num;
     std::copy(fv.rfi_frame_excision_threshold.begin(), fv.rfi_frame_excision_threshold.end(),
-              rfi_frame_excision_threshold.begin() + t_index * MAX_NUM_RFI_THRESHOLDS);
+              rfi_frame_excision_threshold.begin()
+                  + idx_ft(f_index, t_index) * MAX_NUM_RFI_THRESHOLDS);
     std::copy(fv.rfi_frame_excision_fraction.begin(), fv.rfi_frame_excision_fraction.end(),
-              rfi_frame_excision_fraction.begin() + t_index * MAX_NUM_RFI_THRESHOLDS);
+              rfi_frame_excision_fraction.begin()
+                  + idx_ft(f_index, t_index) * MAX_NUM_RFI_THRESHOLDS);
     frac_rfi_first_stage_enabled[idx_ft(f_index, t_index)] =
         (frame_len_ticks > 0)
             ? (float(fv.n_rfi_first_stage_enabled_fpga_ticks) / float(frame_len_ticks))
@@ -1193,18 +1200,24 @@ bool N2FileData::flush_to_disk() {
         h5_file->getDataSet("/bin_end_ERA_deg").write(bin_end_ERA_deg);
         h5_file->getDataSet("/bin_start_ERAL_deg").write(bin_start_ERAL_deg);
         h5_file->getDataSet("/bin_end_ERAL_deg").write(bin_end_ERAL_deg);
-        h5_file->getDataSet("/rfi_frame_excision_enabled").write(rfi_frame_excision_enabled);
-        h5_file->getDataSet("/fringestop_enabled").write(fringestop_enabled);
-        h5_file->getDataSet("/rfi_frame_excision_num").write(rfi_frame_excision_num);
+        h5_file->getDataSet("/rfi_frame_excision_num")
+            .select({0, 0}, {num_file_f, num_file_t})
+            .write_raw(rfi_frame_excision_num.data());
         h5_file->getDataSet("/rfi_frame_excision_threshold")
-            .select({0, 0}, {num_file_t, MAX_NUM_RFI_THRESHOLDS})
+            .select({0, 0, 0}, {num_file_f, num_file_t, MAX_NUM_RFI_THRESHOLDS})
             .write_raw(rfi_frame_excision_threshold.data());
         h5_file->getDataSet("/rfi_frame_excision_fraction")
-            .select({0, 0}, {num_file_t, MAX_NUM_RFI_THRESHOLDS})
+            .select({0, 0, 0}, {num_file_f, num_file_t, MAX_NUM_RFI_THRESHOLDS})
             .write_raw(rfi_frame_excision_fraction.data());
         h5_file->getDataSet("/frac_rfi_first_stage_enabled")
             .select({0, 0}, {num_file_f, num_file_t})
             .write_raw(frac_rfi_first_stage_enabled.data());
+        h5_file->getDataSet("/rfi_frame_excision_enabled")
+            .select({0, 0}, {num_file_f, num_file_t})
+            .write_raw(rfi_frame_excision_enabled.data(), HighFive::create_datatype<bool>());
+        h5_file->getDataSet("/fringestop_enabled")
+            .select({0, 0}, {num_file_f, num_file_t})
+            .write_raw(fringestop_enabled.data(), HighFive::create_datatype<bool>());
     } catch (const HighFive::Exception& e) {
         FATAL_ERROR_NON_OO("Failed to write data to HDF5 file {}: {}", partial_filepath, e.what());
         has_error = true;
