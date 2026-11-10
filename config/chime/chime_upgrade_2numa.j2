@@ -431,7 +431,7 @@ numa_{{ numa }}:
 
     main_pool{{ numa_sfx }}:
         kotekan_metadata_pool: chordMetadata
-        num_metadata_objects: 30 * host_buffer_depth + 5 * baseband_buffer_depth
+        num_metadata_objects: {{ 33 if dtv_enabled|default(false) else 30 }} * host_buffer_depth + 5 * baseband_buffer_depth
 
     # Baseband metadata pool
     baseband_pool{{ numa_sfx }}:
@@ -700,6 +700,9 @@ numa_{{ numa }}:
           scatter_indices_name: scatter_indices
           output_voltage_name: xposed_voltage
 
+{% if dtv_enabled|default(false) %}
+{% include "dtv.j2" %}
+{% endif %}
     ############################################################################
     # RFI setup
 
