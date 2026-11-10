@@ -41,6 +41,12 @@
     ("powers", "uint64", "384, 3", '"F", "W"', "1, 1", 11033),
     ("fine_support", "int32", "384, 2", '"F", "S"', "1, 1", 11035),
 ] %}
+{# dtv_record_fine_powers and dtv_fine_powers_rows must match pathfinder.j2 #}
+{% if dtv_record_fine_powers|default(false) %}
+{% set dtv_products = dtv_products + [
+    ("fine_powers", "uint64", dtv_fine_powers_rows|default(2) ~ ", 3, 256", '"F", "W", "B"', "1, 1, 1", 11037),
+] %}
+{% endif %}
 
 ---
 {% include "common.j2" %}
