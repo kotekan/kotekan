@@ -30,8 +30,8 @@ Components
     two reference frame powers, each the sum of the 256 fine powers of that
     term), and optionally ``dtv_fine_support`` (``int32[1, F, 2]``, described
     below). Frequencies without a pilot get zero masks and powers. The
-    detector sums every input in the ring, even the inputs that the correlator
-    flags as bad.
+    detector sums every input in the ring, unless ``bf_mask_name`` names the bad
+    feed mask ring, and a flagged input is then packed as zero.
     The leading ``T`` axis holds one block, scaled by its FPGA sequence period,
     so ``hdf5FileWrite`` can concatenate blocks with ``frames_per_file``.
 
@@ -114,6 +114,17 @@ The other keys are listed below.
     Receiver IDs that the detector skips. With ``dtv_apply_mask``, every sample
     of these frequencies is cleared. In record-only mode, these frequencies are
     not evaluated and nothing is cleared.
+
+``dtv_bad_feed_mask``
+    The detector reads the bad feed mask ring of ``bufferBadInputs``, and a
+    flagged input is packed as zero (default true in ``config/chord/dtv.j2``,
+    false sums every input).
+    ``bufferBadInputs`` also flags every element outside the main array, which
+    on CHORD are the Missing dishes and the 16 RFI antennas. Thus, with this
+    switch, the detector also drops the RFI antennas, which probably see DTV
+    most strongly. ``dtv_powers`` and ``dtv_fine_powers`` fall as inputs are
+    flagged, so a bundle calibrated from recorded files must use the same
+    setting and a steady input count.
 
 ``dtv_require_fine_freq_ids``
     Receiver IDs that must have a fine test in every block. A row of

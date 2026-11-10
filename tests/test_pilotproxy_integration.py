@@ -294,6 +294,101 @@ def test_detector_blocks_cross_input_frame_boundaries(pipeline, num_times):
     pipeline.verify()
 
 
+@pytest.mark.parametrize("lifetime_blocks", [1, 2, 4])
+def test_bad_feed_mask_zeroes_flagged_inputs(pipeline, lifetime_blocks):
+    pipeline.calibrate()
+    config = pipeline.config
+    num_dishes = config["num_dishes"]
+    lifetime = lifetime_blocks * pipeline.block_samples
+    downsample = pipeline.generator["meta_time_downsample_factor"]
+    # both streams must start at the same sequence number
+    pipeline.generator["first_frame_index"] = 16
+    config["bf_mask_lifetime_in_samples"] = lifetime
+    config["host_bf_mask_buffer"] = {
+        "kotekan_buffer": "ndarray",
+        "num_frames": "buffer_depth",
+        "value_type": "int8",
+        "extents": [1, "num_polarizations", "num_dishes"],
+        "quantity_name": "bf_mask",
+        "dimnames": ["Tbf", "P", "D"],
+        "dimscalings": ["bf_mask_lifetime_in_samples", 1, 1],
+        "metadata_pool": "main_pool",
+    }
+    config["host_bf_mask_ringbuffer"] = {
+        "kotekan_buffer": "ring",
+        "ring_buffer_size": "buffer_depth * num_polarizations * num_dishes",
+        "metadata_pool": "main_pool",
+    }
+    # elements alternate between all good and all bad, so a stale element shows in the powers
+    config["gen_bf_mask"] = {
+        "kotekan_stage": "testDataGen",
+        "out_buf": "host_bf_mask_buffer",
+        "type": "const8",
+        "values": [1, 0],
+        "wait": False,
+        "samples_per_data_set": lifetime * downsample,
+        "first_frame_index": 16 // lifetime_blocks,
+        "num_frames": config["num_gen_frames"] // lifetime_blocks,
+        "name": "bf_mask",
+        "array_shape": [1, 2, num_dishes],
+        "dim_name": ["Tbf", "P", "D"],
+        "dim_scaling": [lifetime, 1, 1],
+        "manual_freq_ids": pipeline.generator["manual_freq_ids"],
+        "meta_time_downsample_factor": downsample,
+    }
+    config["dump_bf_mask"] = dict(
+        config["dump_voltage"], in_buf="host_bf_mask_buffer", file_name="bf_mask"
+    )
+    del config["dump_bf_mask"]["exit_after_n_files"]
+    config["run_send_bf_mask"] = {
+        "gpu_0": {
+            "kotekan_stage": "cudaProcess",
+            "gpu_id": 0,
+            "in_buffers": {"host_bf_mask_buffer_in": "host_bf_mask_buffer"},
+            "out_buffers": {"host_bf_mask_ringbuffer": "host_bf_mask_ringbuffer"},
+            "commands": [
+                {
+                    "name": "cudaCopyToRingbuffer",
+                    "input_size": "num_polarizations * num_dishes",
+                    "ring_buffer_size": "buffer_depth * input_size",
+                    "in_buf": "host_bf_mask_buffer_in",
+                    "signal_buf": "host_bf_mask_ringbuffer",
+                    "gpu_mem_output": "bf_mask_buffer",
+                }
+            ],
+        }
+    }
+    stage = config["run_dtv_detector"]["gpu_0"]
+    stage["in_buffers"]["host_bf_mask_ringbuffer"] = "host_bf_mask_ringbuffer"
+    pipeline.detector["bf_mask_name"] = "bf_mask"
+    code, output = pipeline.run()
+    assert code == 0, output[-12000:]
+
+    masks = reference.read_raw_frames(
+        str(pipeline.directory / "out/bf_mask_*.raw"), 2 * num_dishes
+    )
+    assert len(masks) == config["num_gen_frames"] // lifetime_blocks
+    assert len({frame.payload.tobytes() for frame in masks}) > 1
+
+    # the stage must match a reference that sees the flagged inputs as zero
+    paths = sorted((pipeline.directory / "out").glob("voltage_*.raw"))
+    for block, path in enumerate(paths):
+        with path.open("rb") as stream:
+            metadata_size = struct.unpack("<I", stream.read(4))[0]
+        data = np.memmap(
+            path,
+            dtype=np.uint8,
+            mode="r+",
+            offset=metadata_size + 4,
+            shape=(pipeline.block_samples, 4, 2 * num_dishes),
+        )
+        bad = masks[block // lifetime_blocks].payload.view(np.int8) == 0
+        data[:, :, bad] = 0x88
+        data.flush()
+        del data
+    pipeline.verify()
+
+
 @pytest.mark.parametrize("active_inputs", [0, 16, 32])
 def test_pathfinder_sparse_padded_inputs(pipeline, active_inputs):
     pipeline.calibrate()

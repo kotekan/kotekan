@@ -1,6 +1,7 @@
 {#-
   dtv.j2
   dtv_enabled adds the detector, and dtv_apply_mask also applies its mask to N2.
+  dtv_bad_feed_mask (default on) zeroes the flagged inputs in the detector, the RFI antennas too.
   Detection and recording start off until enabled over REST.
   Disable /rfi_first_stage_enabled for a DTV-only first-stage mask.
   Profiles bind by receiver_channel_id against each NUMA half's coarse_freq.
@@ -58,6 +59,9 @@ run_dtv_detector:
         cpu_affinity: {{ n.gpu_cpus }}
         in_buffers:
             host_voltage_ringbuffer: host_voltage_ringbuffer{{ n.sfx }}
+{% if dtv_bad_feed_mask|default(true) %}
+            host_bf_mask_ringbuffer: host_bf_mask_ringbuffer{{ n.sfx }}
+{% endif %}
         out_buffers:
             host_dtv_mask: host_dtv_mask_buffer{{ n.sfx }}
             host_dtv_powers: host_dtv_powers_buffer{{ n.sfx }}
@@ -73,6 +77,9 @@ run_dtv_detector:
           pilot_profiles_path: {{ dtv_runtime_bundle_dir }}/pilot_profiles.json
           weights_path: {{ dtv_runtime_bundle_dir }}/weights.bin
           enabled_updatable_config: /dtv_detector_enabled
+{% if dtv_bad_feed_mask|default(true) %}
+          bf_mask_name: bf_mask
+{% endif %}
         - name: cudaSyncOutput
         - name: cudaOutputData
           gpu_mem: dtv_mask_buffer
