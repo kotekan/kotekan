@@ -74,9 +74,9 @@ the replica ran at from prev, so only instances that were present at prev can vo
 if fewer than min_inst can, the arc ends: an increment we cannot account for is a break, not
 a guess.
 """
-import array
 import cmath
 import math
+import struct
 from fractions import Fraction
 
 from gnss_broker.telem import (
@@ -97,6 +97,28 @@ HPS = Fraction(390625, 2)  # F-engine hops per second (3.2e9 / 16384), exact
 GRID_HOPS = 96 * 2048  # ~1.0066 s: a record hop common to every chain (see SatAdr.grid)
 GRID_KEEP = 4  # grid snapshots retained per satellite (see SatAdr.grid)
 EPOCH_MARGIN_WIN = 64  # windows: TelemClient's epoch_margin (see FleetAdr.fold_windows)
+FOUR_PI = 4.0 * math.pi
+# The record slots the fold reads and a struct that unpacks just those from a row, skipping the
+# slots between them as pad bytes. records_of_frame names them in this order, the slot order.
+_ROW_SLOTS = (
+    REC_DOPPLER,
+    REC_P_RE,
+    REC_P_IM,
+    REC_P_ENERGY,
+    REC_PH_RE,
+    REC_PH_IM,
+    REC_TRIM_INC,
+    REC_PROJ_COST,
+    REC_PROJ_K,
+    REC_PROJ_SRC,
+)
+assert list(_ROW_SLOTS) == sorted(_ROW_SLOTS)
+_ROW = struct.Struct(
+    "<"
+    + "".join(
+        "%dxf" % (4 * (s - p - 1)) for p, s in zip((-1,) + _ROW_SLOTS, _ROW_SLOTS)
+    )
+)
 
 
 class SatAdr(object):
@@ -219,21 +241,58 @@ def fold_record(
     # lvl_decay_db_h under a dip it does not learn from. |S_i| is the prompt normalised by
     # its replica energy (records_of_frame).
     decay_db = lvl_decay_db_h * (hpr / float(hps)) / 3600.0
+    inst_prev = st.inst_prev
+    inst_x = st.inst_x
+    lvl = st.lvl
+    hop_before = hop - hpr
+    prev = st.hop
+    contiguous = prev is not None and 0 < hop - prev <= max_gap_rec * hpr
+    dt = (hop - prev) / float(hps) if contiguous else 0.0
+    x0 = st.res
     z = 0j
     n_r = 0
     drops = []
+    # (level entry, power dB) of the warm instances below the margin, judged once `coherent` is
+    # known
+    dips = []
+    live = []  # the instances with a prompt
+    # Instances present at prev vouch for the step: their Doppler ran the replica from prev,
+    # and their cross-product carries the received increment with the constant cancelled. Each
+    # voucher advances its own phase. Gathered here, used only if the record is not silent.
+    vouch = []
+    v_dcmd = []
+    v_trim = []
+    xs = []
     for i, v in per_inst.items():
-        if v[2] == 0:
+        s = v[2]
+        if not s:
             continue
-        pv = st.inst_prev.get(i)
-        if pv is not None and pv[0] == hop - hpr and pv[2] != 0:
-            d = v[2] * pv[2].conjugate()
-            if d != 0:
+        live.append(i)
+        pv = inst_prev.get(i)
+        if pv is not None and pv[2]:
+            d = s * pv[2].conjugate()
+            if pv[0] == hop_before and d:
                 z += d / abs(d)
                 n_r += 1
-        h = st.lvl.get(i)
-        if h is not None and h[1] >= LVL_WARM_REC:
-            drops.append(10.0 * math.log10(abs(v[2])) - h[0])
+            if contiguous and pv[0] == prev:
+                vouch.append(i)
+                v_dcmd.append(pv[1] * dt)
+                v_trim.append(v[1])
+                xs.append(inst_x.get(i, x0) + cmath.phase(d) / FOUR_PI)
+        p_db = 10.0 * math.log10(abs(s))
+        h = lvl.get(i)  # [level dB, records learned]
+        if h is None:
+            lvl[i] = [p_db, 1]
+        elif h[1] < LVL_WARM_REC:
+            h[0] += (p_db - h[0]) / min(h[1] + 1, LVL_EMA_REC)
+            h[1] += 1
+        else:
+            drops.append(p_db - h[0])
+            if p_db >= h[0] - dark_db:
+                h[0] += (p_db - h[0]) / min(h[1] + 1, LVL_EMA_REC)
+                h[1] += 1
+            else:
+                dips.append((h, p_db))
     coherent = n_r >= R_MIN_INST and abs(z) >= R_MIN * n_r
     incoherent = n_r >= R_MIN_INST and not coherent
     down = len(drops) >= R_MIN_INST and sorted(drops)[len(drops) // 2] < -dark_db
@@ -247,53 +306,31 @@ def fold_record(
         st.run = st.run + 1 if coherent else 0
         if st.run >= SILENT_MIN_REC:
             st.silent, st.run = False, 0
-    for i, v in per_inst.items():
-        if v[2] == 0:
-            continue
-        p_db = 10.0 * math.log10(abs(v[2]))
-        h = st.lvl.get(i)  # [level dB, records learned]
-        if h is None:
-            st.lvl[i] = [p_db, 1]
-        elif coherent or h[1] < LVL_WARM_REC or p_db >= h[0] - dark_db:
+    for h, p_db in dips:
+        if coherent:
             h[0] += (p_db - h[0]) / min(h[1] + 1, LVL_EMA_REC)
             h[1] += 1
         else:
             h[0] -= decay_db
-    usable = {} if st.silent else {i: v for i, v in per_inst.items() if v[2] != 0}
-    st.n_silent = sum(1 for v in per_inst.values() if v[2] != 0) if st.silent else 0
-    if len(usable) < min_inst:
+    st.n_silent = len(live) if st.silent else 0
+    if st.silent:
+        live = vouch = v_dcmd = v_trim = xs = ()
+    n_usable = len(live)
+    if n_usable < min_inst:
         # too few usable instances (no prompt, or silent): remember them; the gap is judged
         # when enough return
         st.dark += 1
         if st.silent:
             st.dark_silent += 1
         for i, v in per_inst.items():
-            st.inst_prev[i] = (hop, v[0], v[2])
+            inst_prev[i] = (hop, v[0], v[2])
         return False
-    prev = st.hop
-    contiguous = prev is not None and 0 < hop - prev <= max_gap_rec * hpr
-    dt = (hop - prev) / float(hps) if contiguous else 0.0
-    # instances present at prev vouch for the step: their Doppler ran the replica from prev,
-    # and their cross-product carries the received increment with the constant cancelled
-    vouch = [
-        (i, v)
-        for i, v in usable.items()
-        if contiguous
-        and i in st.inst_prev
-        and st.inst_prev[i][0] == prev
-        and st.inst_prev[i][2] != 0
-    ]
-    if len(vouch) >= min_inst:
-        dcmd = sorted(st.inst_prev[i][1] * dt for i, _v in vouch)[len(vouch) // 2]
-        trim = sorted(v[1] for _i, v in vouch)[len(vouch) // 2]
-        # each voucher advances its own phase; the fleet value is the median of the phases
-        for i, v in vouch:
-            x = st.inst_x.get(i, st.res)
-            st.inst_x[i] = x + cmath.phase(v[2] * st.inst_prev[i][2].conjugate()) / (
-                4.0 * math.pi
-            )
-        xs = sorted(st.inst_x[i] for i, _v in vouch)
-        res = xs[len(xs) // 2]
+    n_vouch = len(vouch)
+    if n_vouch >= min_inst:
+        dcmd = sorted(v_dcmd)[n_vouch // 2]
+        trim = sorted(v_trim)[n_vouch // 2]
+        # the fleet value is the median of the vouchers' phases
+        res = sorted(xs)[n_vouch // 2]
         # A slip is repaired before the final median is taken, not re-seated after. The
         # squared phasor's increment is ambiguous by half a cycle, so a weak instance whose
         # prompt phase moves more than a quarter cycle in one record steps its own sum by
@@ -303,21 +340,19 @@ def fold_record(
         # step stays. Undoing each slip by whole half-cycles puts the instance back at its own
         # rank first, so the median never sees it move; re-seating remains only for an
         # excursion that is not a multiple of a half cycle.
-        repaired = False
-        for i, _v in vouch:
-            d = st.inst_x[i] - res
-            if abs(d) > 0.3:
-                st.inst_x[i] -= round(d * 2.0) / 2.0
-                repaired = True
-        if repaired:
-            xs = sorted(st.inst_x[i] for i, _v in vouch)
-            res = xs[len(xs) // 2]
-        for i, _v in vouch:
-            if abs(st.inst_x[i] - res) > 0.3:  # not a slip: an excursion, re-seat it
-                st.inst_x[i] = res
-        for i in usable:
-            if i not in st.inst_x:  # (re)joining: adopt the fleet's phase
-                st.inst_x[i] = res
+        slipped = [k for k, x in enumerate(xs) if abs(x - res) > 0.3]
+        if slipped:
+            for k in slipped:
+                xs[k] -= round((xs[k] - res) * 2.0) / 2.0
+            res = sorted(xs)[n_vouch // 2]
+            for k, x in enumerate(xs):
+                if abs(x - res) > 0.3:  # not a slip: an excursion, re-seat it
+                    xs[k] = res
+        inst_x.update(zip(vouch, xs))
+        if n_vouch != n_usable:
+            for i in live:
+                if i not in inst_x:  # (re)joining: adopt the fleet's phase
+                    inst_x[i] = res
         st.dark = 0
         st.dark_silent = 0
         st.noenergy = 0
@@ -337,7 +372,7 @@ def fold_record(
             # prompt energy on any instance never reaches the fold (records_of_frame leaves it
             # out): it is in the gap, and counted apart as noenergy when its telemetry arrived.
             _gap = (hop - prev) / float(hpr) if prev is not None else float("nan")
-            _seen = sorted(st.inst_prev.get(i, (None,))[0] or 0 for i in per_inst)
+            _seen = sorted(inst_prev.get(i, (None,))[0] or 0 for i in per_inst)
             st.last_break = {
                 "hop": hop,
                 "n_rec": st.n,
@@ -345,8 +380,8 @@ def fold_record(
                 "dark_rec": st.dark,
                 "silent_rec": st.dark_silent,
                 "noenergy_rec": st.noenergy,
-                "n_usable": len(usable),
-                "n_vouch": len(vouch),
+                "n_usable": n_usable,
+                "n_vouch": n_vouch,
                 "inst_lag_rec": [(hop - h) / float(hpr) for h in _seen[-3:]],
             }
         st.dark = 0
@@ -355,15 +390,18 @@ def fold_record(
         st.arc += 1
         st.hop0 = hop
         st.adr = st.trim = st.res = 0.0
-        st.inst_x = {i: 0.0 for i in usable}
+        st.inst_x = {i: 0.0 for i in live}
         st.n = 1
         ok = False
     st.hop = hop
-    st.n_inst = len(usable)
+    st.n_inst = n_usable
     for i, v in per_inst.items():
-        st.inst_prev[i] = (hop, v[0], v[2])
-    for i in [i for i in st.inst_x if i not in usable]:
-        del st.inst_x[i]  # gone: it rejoins at the fleet's phase
+        inst_prev[i] = (hop, v[0], v[2])
+    # every usable instance has a phase by now, so only a larger inst_x holds one that left
+    if len(st.inst_x) != n_usable:
+        here = set(live)
+        for i in [i for i in st.inst_x if i not in here]:
+            del st.inst_x[i]  # gone: it rejoins at the fleet's phase
     if hop % GRID_HOPS == 0:
         st.grid.append((hop, st.adr, st.arc, st.n))
         del st.grid[:-GRID_KEEP]
@@ -379,35 +417,35 @@ def records_of_frame(f, want):
     the module note). A record with no prompt energy (P_energy <= 0) is left out.
     """
     idx = f._index()
-    rows = {prn: p for prn, p in idx.items() if prn in want}
+    row_bytes = f.row_total * 4
+    rows = [(prn, p * row_bytes) for prn, p in idx.items() if prn in want]
     if not rows:
         return {}
-    stride = f.row_total
-    a = array.array("f")
-    a.frombytes(f._buf[_HDR_BYTES : _HDR_BYTES + f.n_rec * f.n_prn * stride * 4])
+    buf = f._buf
+    unpack = _ROW.unpack_from
     out = {}
     for r in range(f.n_rec):
         if not f.has_record(r):
             continue
-        base_r = r * f.n_prn * stride
-        for prn, p in rows.items():
-            b = base_r + p * stride
-            e = a[b + REC_P_ENERGY]
+        base_r = _HDR_BYTES + r * f.n_prn * row_bytes
+        for prn, off in rows:
+            dop, p_re, p_im, e, h_re, h_im, trim, cost, k, src = unpack(
+                buf, base_r + off
+            )
             if e <= 0.0:
                 continue
-            A = complex(a[b + REC_P_RE] / e, a[b + REC_P_IM] / e)
-            H = complex(a[b + REC_PH_RE] / e, a[b + REC_PH_IM] / e)
+            A = complex(p_re / e, p_im / e)
+            H = complex(h_re / e, h_im / e)
             if H == 0:
                 H = A  # an unsegmented tracker: head == A, tail 0
             T = A - H
-            S = H * H + T * T
             out.setdefault(prn, {})[r] = (
-                float(a[b + REC_DOPPLER]),
-                float(a[b + REC_TRIM_INC]),
-                S,
-                float(a[b + REC_PROJ_COST]),
-                int(a[b + REC_PROJ_K]),
-                int(a[b + REC_PROJ_SRC]),
+                dop,
+                trim,
+                H * H + T * T,
+                cost,
+                int(k),
+                int(src),
             )
     return out
 
@@ -452,12 +490,14 @@ class FleetAdr(object):
             frames = client.frame_set(chain, w)
             by_hop = {}  # hop -> prn -> inst -> the records_of_frame tuple
             for inst, f in frames.items():
+                hops = {}  # record slot -> hop, for the slots this frame filled
                 for r in range(f.n_rec):
                     if f.has_record(r):
-                        by_hop.setdefault(f.hop(r), {})
+                        hops[r] = f.hop(r)
+                        by_hop.setdefault(hops[r], {})
                 for prn, recs in records_of_frame(f, want).items():
                     for r, v in recs.items():
-                        by_hop.setdefault(f.hop(r), {}).setdefault(prn, {})[inst] = v
+                        by_hop[hops[r]].setdefault(prn, {})[inst] = v
             for hop in sorted(by_hop):
                 # Telemetry for this hop arrived without a record of the satellite carrying
                 # prompt energy: its rows had none, or GnssTelemPack shipped no row for it (a
@@ -470,12 +510,14 @@ class FleetAdr(object):
                     st = self.sats.get(prn)
                     if st is None:
                         st = self.sats[prn] = SatAdr()
+                    proj = st.proj
                     for v in per_inst.values():
                         if v[3] >= 0.0:
-                            st.proj[0] += v[3]
-                            st.proj[1] += 1
-                        st.proj[2] = max(st.proj[2], v[4])
-                        st.proj[3] |= v[5]
+                            proj[0] += v[3]
+                            proj[1] += 1
+                        if v[4] > proj[2]:
+                            proj[2] = v[4]
+                        proj[3] |= v[5]
                     fold_record(
                         st,
                         hop,

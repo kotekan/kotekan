@@ -382,6 +382,76 @@ class TestFold(unittest.TestCase):
         self.assertEqual(st.arc, 1)
         self.assertLess(abs(st.adr - dop_only(sky, hops[-1], hops[0])), 1e-3)
 
+    def test_the_longest_gap_bridged_is_max_gap_rec(self):
+        """A fleet gap of max_gap_rec records is one step every instance vouches for. One
+        record more and no Doppler covers it: the arc ends, and the break says why."""
+        for gap, arcs in ((3, 1), (4, 2)):
+            sky = Sky(n_inst=4)
+            hops = [HOP0 + k * HPR for k in range(120)]
+            hops += [hops[-1] + gap * HPR + k * HPR for k in range(30)]
+            st = run(sky, hops)
+            self.assertEqual(st.arc, arcs, gap)
+            if arcs == 1:
+                self.assertIsNone(st.last_break)
+                self.assertEqual((st.hop0, st.n), (hops[0], 150))
+                self.assertLess(abs(st.adr - dop_only(sky, hops[-1], hops[0])), 1e-3)
+                continue
+            self.assertEqual(
+                st.last_break,
+                {
+                    "hop": hops[120],
+                    "n_rec": 120,
+                    "gap_rec": 4.0,
+                    "dark_rec": 0,
+                    "silent_rec": 0,
+                    "noenergy_rec": 0,
+                    "n_usable": 4,
+                    "n_vouch": 0,
+                    "inst_lag_rec": [4.0, 4.0, 4.0],
+                },
+            )
+            self.assertEqual((st.hop0, st.n, st.n_inst), (hops[120], 30, 4))
+            self.assertLess(abs(st.adr - dop_only(sky, hops[-1], hops[120])), 1e-3)
+
+    def test_an_instance_that_leaves_rejoins_at_the_fleet_phase(self):
+        """An instance that stops arriving loses its own phase and the arc goes on with the
+        rest. Back, it was not there at the previous record, so it cannot vouch for its first
+        step: it takes the fleet's phase and counts again from the next record."""
+        sky = Sky(n_inst=4)
+        hops = [HOP0 + k * HPR for k in range(100)]
+        st = fa.SatAdr()
+        prev = None
+        for k, hop in enumerate(hops):
+            insts = [0, 1, 2] if 40 <= k < 60 else [0, 1, 2, 3]
+            fa.fold_record(st, hop, sky.record(hop, prev, insts=insts), HPR)
+            prev = hop
+            self.assertEqual(sorted(st.inst_x), insts)
+            self.assertEqual(st.n_inst, len(insts))
+            if 40 <= k < 60:  # its last record stays remembered, at the hop it was seen
+                self.assertEqual(st.inst_prev[3][0], hops[39])
+            if k == 60:
+                self.assertEqual(st.inst_x[3], st.res)
+        self.assertEqual((st.arc, st.n), (1, 100))
+        self.assertIsNone(st.last_break)
+        self.assertLess(abs(st.adr - dop_only(sky, hops[-1], hops[0])), 1e-3)
+
+    def test_an_excursion_left_after_the_repair_is_reseated(self):
+        """Slips are undone by whole half-cycles against the first median and the median is
+        taken again. An instance still more than 0.3 cycle from the new one, slipped or not,
+        is on an excursion and takes the fleet's phase."""
+        st = fa.SatAdr()
+        rec = {i: (-2000.0, 0.0, 1 + 0j) for i in range(5)}
+        fa.fold_record(st, HOP0, rec, HPR)
+        fa.fold_record(st, HOP0 + HPR, rec, HPR)
+        # the first median is 0.62: instances 0, 1, 3 and 4 are more than 0.3 away and step by
+        # half cycles to 0.5, 0.81, 0.43 and 0.43; the median is then 0.5, and 0.81 is 0.31 off
+        st.inst_x = dict(enumerate((0.0, 0.31, 0.62, 0.93, 0.93)))
+        fa.fold_record(st, HOP0 + 2 * HPR, rec, HPR)  # the same prompts: no increment
+        for i, want in enumerate((0.5, 0.5, 0.62, 0.43, 0.43)):
+            self.assertAlmostEqual(st.inst_x[i], want, places=12)
+        self.assertAlmostEqual(st.res, 0.5, places=12)
+        self.assertEqual((st.arc, st.n), (1, 3))
+
 
 class FakeClient(object):
     def __init__(self, frames):  # {win: {inst: TelemFrame}}
@@ -462,9 +532,10 @@ class TestFrames(unittest.TestCase):
         self.assertEqual(pub[1]["proj_src"], 6)
 
     @staticmethod
-    def _frames(sky, wins, n_rec=4, row=None):
-        """{win: {inst: TelemFrame}} for two senders carrying PRN 1 in row 0. row(win, r) may
-        return extra {slot: value} for that record."""
+    def _frames(sky, wins, n_rec=4, row=None, insts=("cx19.0", "cx20.0"), present=None):
+        """{win: {inst: TelemFrame}} for the senders carrying PRN 1 in row 0. row(win, r) may
+        return extra {slot: value} for that record, present(win, inst) the frame's mask of
+        filled record slots (None: all)."""
         import sys
         import os
 
@@ -474,7 +545,7 @@ class TestFrames(unittest.TestCase):
 
         frames = {}
         for win in wins:
-            for i, inst in enumerate(("cx19.0", "cx20.0")):
+            for i, inst in enumerate(insts):
                 rows = {}
                 for r in range(n_rec):
                     hop = (win * n_rec + r) * HPR
@@ -493,6 +564,7 @@ class TestFrames(unittest.TestCase):
                     n_rec=n_rec,
                     n_prn=1,
                     hops_per_record=HPR,
+                    present=present(win, inst) if present else None,
                     rows=rows,
                 )
                 frames.setdefault(win, {})[inst] = telem.TelemFrame(
@@ -541,6 +613,128 @@ class TestFrames(unittest.TestCase):
         self.assertEqual((b["gap_rec"], b["dark_rec"], b["noenergy_rec"]), (13, 0, 8))
         self.assertEqual(len(lines), 1)
         self.assertIn(" 1:gap13/dark0/silent0/noenergy8/", lines[0])
+
+    def test_a_frame_decodes_to_the_slots_of_its_rows(self):
+        """records_of_frame against the frame's own row(): only the wanted PRNs and the filled
+        record slots, a row without prompt energy left out, S from the head and the tail."""
+        import sys
+        import os
+
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        import test_telem
+        from gnss_broker import telem
+
+        rows = {}
+        for r in range(4):
+            for p in range(3):
+                rows[(r, p, telem.REC_DOPPLER)] = -1500.0 - 10 * p - r
+                rows[(r, p, telem.REC_P_RE)] = 0.5 + p - 0.1 * r
+                rows[(r, p, telem.REC_P_IM)] = -0.3 * (r + 1)
+                rows[(r, p, telem.REC_TRIM_INC)] = 0.001 * (r + 1)
+                rows[(r, p, telem.REC_PROJ_COST)] = -1.0 if p == 0 else 0.125 * r
+                rows[(r, p, telem.REC_PROJ_K)] = float(p)
+                rows[(r, p, telem.REC_PROJ_SRC)] = float(r)
+            rows[(r, 1, telem.REC_PH_RE)] = 0.2  # PRN 2 is segmented: a head, so a tail
+            rows[(r, 1, telem.REC_PH_IM)] = 0.1 * r
+        rows[(3, 0, telem.REC_P_ENERGY)] = 0.0
+        raw = test_telem._make_frame(n_rec=4, n_prn=3, present=0b1101, rows=rows)
+        f = telem.TelemFrame(telem._HDR.unpack_from(raw, 0), raw, 0.0)
+        got = fa.records_of_frame(f, {1, 2, 9})  # PRN 3 is carried but not wanted
+        self.assertEqual(
+            {prn: sorted(v) for prn, v in got.items()}, {1: [0, 2], 2: [0, 2, 3]}
+        )
+        for prn, recs in got.items():
+            for r, v in recs.items():
+                a = f.row(r, prn)
+                e = a[telem.REC_P_ENERGY]
+                A = complex(a[telem.REC_P_RE] / e, a[telem.REC_P_IM] / e)
+                H = complex(a[telem.REC_PH_RE] / e, a[telem.REC_PH_IM] / e)
+                self.assertEqual(H != 0, prn == 2)
+                H = H if prn == 2 else A
+                want = (
+                    a[telem.REC_DOPPLER],
+                    a[telem.REC_TRIM_INC],
+                    H * H + (A - H) * (A - H),
+                    a[telem.REC_PROJ_COST],
+                    prn - 1,
+                    r,
+                )
+                self.assertEqual(v, want, (prn, r))
+                self.assertEqual(
+                    [type(x) for x in v], [float, float, complex, float, int, int]
+                )
+        self.assertEqual(fa.records_of_frame(f, {9}), {})
+
+    def test_a_sender_with_a_hole_skips_one_step(self):
+        """One of three senders misses a record. The other two fold it, and at the next record
+        the one that skipped cannot vouch: the arc goes on, every record counted."""
+        sky = Sky(n_inst=3)
+        insts = ("cx19.0", "cx20.0", "cx21.0")
+        frames = self._frames(
+            sky,
+            range(100, 131),
+            insts=insts,
+            present=lambda win, inst: 0b1011
+            if (win, inst) == (110, "cx21.0")
+            else None,
+        )
+        seen = {}  # hop -> instances behind the record
+        fold = fa.fold_record
+
+        def spy(st, hop, per_inst, *a, **k):
+            ok = fold(st, hop, per_inst, *a, **k)
+            seen[hop] = (st.n_inst, sorted(st.inst_x))
+            return ok
+
+        fl = fa.FleetAdr(hpr=HPR, log=self.fail)
+        fa.fold_record = spy
+        try:
+            fl.fold_windows(FakeClient(frames), "gps_l5", {1}, now=1000.0)
+        finally:
+            fa.fold_record = fold
+        hole = (110 * 4 + 2) * HPR
+        self.assertEqual(seen[hole], (2, ["cx19.0", "cx20.0"]))
+        self.assertEqual(seen[hole + HPR], (3, sorted(insts)))
+        st = fl.sats[1]
+        self.assertEqual((st.arc, st.n, st.n_inst), (1, 30 * 4, 3))
+        self.assertIsNone(st.last_break)
+        self.assertLess(abs(st.adr - dop_only(sky, st.hop, st.hop0)), 1e-3)
+
+    def test_a_sender_dropping_out_leaves_too_few_and_the_arc_ends(self):
+        """One of two senders stops for three windows. Its twelve records fold dark (one
+        instance is not a measurement), and when it returns the step is thirteen records, more
+        than max_gap_rec: a new arc, and the break line names the dark records."""
+        sky = Sky(n_inst=2)
+        frames = self._frames(sky, range(100, 140))
+        for win in (130, 131, 132):
+            del frames[win]["cx20.0"]
+        lines = []
+        fl = fa.FleetAdr(hpr=HPR, log=lines.append)
+        fl.fold_windows(FakeClient(frames), "gps_l5", {1}, now=1000.0)
+        st = fl.sats[1]
+        self.assertEqual(
+            st.last_break,
+            {
+                "hop": 133 * 4 * HPR,
+                "n_rec": 30 * 4,
+                "gap_rec": 13.0,
+                "dark_rec": 12,
+                "silent_rec": 0,
+                "noenergy_rec": 0,
+                "n_usable": 2,
+                "n_vouch": 0,
+                "inst_lag_rec": [13.0, 1.0],
+                "logged": True,
+            },
+        )
+        self.assertEqual((st.arc, st.hop0, st.n), (2, 133 * 4 * HPR, 6 * 4))
+        self.assertLess(abs(st.adr - dop_only(sky, st.hop, st.hop0)), 1e-3)
+        self.assertEqual(len(lines), 1)
+        self.assertIn(
+            " 1:gap13/dark12/silent0/noenergy0/usable2/vouch0/lag13,1", lines[0]
+        )
+        pub = fl.publish(FC, 1000.0)
+        self.assertEqual((pub[1]["arc"], pub[1]["n_rec"], pub[1]["n_inst"]), (2, 24, 2))
 
 
 if __name__ == "__main__":
