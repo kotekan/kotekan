@@ -61,6 +61,17 @@ section and the text below disagree, this section holds.
   (0.99); page 4 206/26 = 0.219 Crs (0.96); page 4 180/26 = -0.155 Crc (-0.81); page 1 211/21 =
   page 2 189/21 / 3.59 (0.95). The page-4 pair has the signs of along-track harmonics. The
   along-track part is still open: about 80 m between consecutive issues.
+- **Working user algorithm (`builds/gw1202/gw_eph_user.py`).** M = M0 + n t with n =
+  sqrt(mu/A^3) (1 - dA/2A) + n_s (the angular momentum does not follow dA; n_s = +7.47e-7 rad/s in
+  the 50 deg shell, the J2 secular rate); phi = nu + omega; r = A (1 - e cos E) + Crs sin 2phi +
+  (Crc + r2) cos 2phi; u = phi + (Crs cos 2phi - Crc sin 2phi)/r + u2 sin 2phi (the along-track
+  harmonic is the one the radial pair induces: fitted factors 1.02 and 1.01); i = i_ref + di + Cis
+  sin 2phi + (Cic + i2) cos 2phi; Omega = Omega0 + Omega-dot t + O2 sin 2phi. r2, u2, i2, O2 are
+  the fixed J2 terms above, per shell. An issue carried forward 300 s lands on the next issue to
+  0.25 m in radius, 11 m along track and 3 m across track (243 pairs, 50 deg shell). The six
+  unused fields: page 1 149/16 and page 3 94/13 change like check words; page 1 165/25 (0.209 x
+  Crs to 6 %), page 1 211/21, page 4 180/26 and 206/26 follow the harmonic terms at fixed ratios
+  and change nothing measurable in the position.
 - Page 1 bits 100-117 are an issue tag in 3 s units (boundary SOW / 3 + 1); bits 91-99 read 34 in
   both weeks. Page 1 bits 138-148 are two flags and a small integer, renewed every 5 minutes.
   The regions called constant below (page 1 91-148, page 3 0-93, page 4 0-100) change per issue
