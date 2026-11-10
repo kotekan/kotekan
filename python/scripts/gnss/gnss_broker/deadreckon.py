@@ -2933,6 +2933,9 @@ def stage_dead_reckon(ctx):
                 and ctx.dr_state.get("iono")
                 else None
             )
+            # The transit sky below is at the seeds' epoch, so the two share one propagation of
+            # each record (predict_all's memo).
+            _memo = {}
             try:
                 # Three epochs, _ep_w and _ep_w +- 2 s: the centred range-rate difference is the
                 # Doppler rate dr_seed ships (the TLE almanac's rate is not used here).
@@ -3015,10 +3018,13 @@ def stage_dead_reckon(ctx):
                         dcb=ctx.dr_state.get("dcb"),
                         tropo=_tropo,
                         iono=_iono,
+                        memo=_memo,
                     )
                     # Centred pair, +-2 s about the epoch: a forward difference over [t, t+4] would
                     # estimate the rate at now+2 and hand it to the seed as the rate at now, and the
-                    # centred form has the smaller truncation error.
+                    # centred form has the smaller truncation error. The pair is read for this
+                    # chain's constellation only (dr_seed, dr_gdv, seeding), so only that is
+                    # predicted.
                     ctx.drp.pd2 = ctx.dr_eph_mod.predict_all(
                         ctx.dr_state["eph"],
                         ctx.args.lat,
@@ -3030,6 +3036,7 @@ def stage_dead_reckon(ctx):
                         dcb=ctx.dr_state.get("dcb"),
                         tropo=_tropo,
                         iono=_iono,
+                        sysc=ctx.drp.tag,
                     )
                     pd0 = ctx.dr_eph_mod.predict_all(
                         ctx.dr_state["eph"],
@@ -3042,6 +3049,7 @@ def stage_dead_reckon(ctx):
                         dcb=ctx.dr_state.get("dcb"),
                         tropo=_tropo,
                         iono=_iono,
+                        sysc=ctx.drp.tag,
                     )
             except Exception as e:
                 ctx.drp.pd, ctx.drp.pd2, pd0 = {}, {}, {}
@@ -3061,6 +3069,7 @@ def stage_dead_reckon(ctx):
                         ctx.args.alt,
                         datetime.fromtimestamp(_ep_w, tz=timezone.utc),
                         gw=ctx.gw_transits,
+                        memo=_memo,
                     )
                     ctx.dr_state["transit_pd"] = ctx.drp.transit_pd
             except Exception as e:

@@ -20,6 +20,7 @@ Usage:
     pred = predict_all(eph, lat, lon, alt, t_utc)  # {(sys,prn): dict(az, el, range_m,
                                                    #   range_rate_mps, sat_clk_s, ...)}
 """
+import bisect
 import gzip
 import math
 
@@ -168,7 +169,7 @@ def parse_rinex_nav(paths):
                         round(e["toe_gpst"], 3), e
                     )  # first (best) source wins same toe
         return {
-            k: sorted(v.values(), key=lambda e: e["toe_gpst"])
+            k: EphRecords(sorted(v.values(), key=lambda e: e["toe_gpst"]))
             for k, v in merged.items()
         }
     return _parse_rinex_nav_file(paths)
@@ -332,7 +333,7 @@ def _parse_rinex_nav_file(path):
             out.setdefault((sysc, prn), []).append(e)
         # (SBAS, QZSS and NavIC records are skipped by the sysc filter.)
     for k in out:
-        out[k].sort(key=lambda e: e["toe_gpst"])
+        out[k] = EphRecords(sorted(out[k], key=lambda e: e["toe_gpst"]))
     return out
 
 
@@ -842,15 +843,96 @@ HEALTH_GATE_EXEMPT = {
 }
 
 
+class EphRecords(list):
+    """One satellite's records, as parse_rinex_nav returns them: a list that carries best_eph's
+    index of it. Every chain asks for every satellite's record several times a pass, and a
+    scan of a list of a hundred records each time was half the cost of predict_all.
+
+    toe_index is (length, the toes in ascending order, each one's place in the list), built at
+    the first query. It lives on the list so that it is dropped with the records at a re-parse.
+    The records are not edited after the parse; a list whose length changed is indexed again.
+    """
+
+    toe_index = None
+
+
 def best_eph(records, t_gpst, max_age=14400.0):
     """The record whose toe is nearest t, within max_age (default 4 h); None if all stale.
-    A GuoWang table record (load_gw_table) is valid only inside its segment, so for those the
-    covering segment is taken and max_age does not apply."""
+    Of several equally near, the first in `records`. A GuoWang table record (load_gw_table) is
+    valid only inside its segment, so for those the covering segment is taken and max_age does
+    not apply."""
     if records and records[0].get("sys") == "W":
         cand = [e for e in records if e["t0_gpst"] <= t_gpst <= e["t1_gpst"]]
         return min(cand, key=lambda e: abs(t_gpst - e["toe_gpst"])) if cand else None
-    cand = [e for e in records if abs(t_gpst - e["toe_gpst"]) < max_age]
-    return min(cand, key=lambda e: abs(t_gpst - e["toe_gpst"])) if cand else None
+    if not isinstance(records, EphRecords):
+        cand = [e for e in records if abs(t_gpst - e["toe_gpst"]) < max_age]
+        return min(cand, key=lambda e: abs(t_gpst - e["toe_gpst"])) if cand else None
+    ent = records.toe_index
+    if ent is None or ent[0] != len(records):
+        toe = [e["toe_gpst"] for e in records]
+        order = sorted(range(len(toe)), key=toe.__getitem__)
+        ent = records.toe_index = (len(toe), [toe[i] for i in order], order)
+    n, toes, order = ent
+    # The nearest toe is one of the two that bracket t.
+    i = bisect.bisect_left(toes, t_gpst)
+    near = abs(t_gpst - toes[i - 1]) if i > 0 else None
+    if i < n and (near is None or abs(t_gpst - toes[i]) < near):
+        near = abs(t_gpst - toes[i])
+    if near is None or not near < max_age:
+        return None
+    # Equally near toes (a repeated toe, or one each side of t) sit next to the bracket.
+    first = n
+    j = i - 1
+    while j >= 0 and abs(t_gpst - toes[j]) == near:
+        first = min(first, order[j])
+        j -= 1
+    j = i
+    while j < n and abs(t_gpst - toes[j]) == near:
+        first = min(first, order[j])
+        j += 1
+    return records[first]
+
+
+def _sat_geometry(e, rx, lat, lon, t, mask_deg):
+    """One record seen from rx at reception time t (GPST): (az, el, range_m, range_rate_mps,
+    clock_s, range_acc_mps2), or None below mask_deg. range_acc_mps2 is None except for W."""
+    # light-time + Sagnac: two iterations are plenty
+    tau = 0.075
+    for _ in range(2):
+        pos, vel, clk = sat_pos_clk(e, t - tau)
+        # rotate the sat position into the ECEF frame at reception time
+        th = OMEGA_E[e["sys"]] * tau
+        px = pos[0] * math.cos(th) + pos[1] * math.sin(th)
+        py = -pos[0] * math.sin(th) + pos[1] * math.cos(th)
+        pos_rx = (px, py, pos[2])
+        az, el, rng = _azel(rx, pos_rx, lat, lon)
+        tau = rng / C_LIGHT
+    if el < mask_deg:
+        return None
+    # vel is in the transmit-epoch frame, like pos: rotate it by the same angle so the
+    # range rate is taken in the reception frame.
+    vel_rx = (
+        vel[0] * math.cos(th) + vel[1] * math.sin(th),
+        -vel[0] * math.sin(th) + vel[1] * math.cos(th),
+        vel[2],
+    )
+    # The light time tau = rng/c changes by rr/c per second, which moves the transmit epoch
+    # (scaling vel_rx by 1 - rr/c) and the Sagnac angle (d(pos_rx)/d(th) = (py, -px, 0)).
+    # With a = u.vel_rx and b = u.(py, -px, 0) for the unit line of sight u,
+    # rr = a*(1 - rr/c) + omega*b*rr/c, solved for rr. The terms are up to a few mm/s.
+    a = sum((p - r) * v for p, r, v in zip(pos_rx, rx, vel_rx)) / rng
+    b = (px * rx[1] - py * rx[0]) / rng
+    rr = a / (1.0 + (a - OMEGA_E[e["sys"]] * b) / C_LIGHT)
+    range_acc = None
+    if e["sys"] == "W":
+        # LEO: the range acceleration (~30 m/s^2 near the beam) moves the code epoch by a
+        # chip in a few seconds, so cp_predicted carries the range quadratically for W.
+        r_m, r_p = (
+            _range_m(e, rx, lat, lon, t - 1.0),
+            _range_m(e, rx, lat, lon, t + 1.0),
+        )
+        range_acc = r_p - 2.0 * rng + r_m
+    return az, el, rng, rr, clk, range_acc
 
 
 def predict_all(
@@ -866,6 +948,8 @@ def predict_all(
     health_gate=True,
     tropo=False,
     iono=None,
+    sysc=None,
+    memo=None,
 ):
     """Per visible satellite: az/el, geometric range (m) with the Earth-rotation (Sagnac)
     correction, range rate (m/s) and satellite clock (s). The receiver clock is not included:
@@ -889,11 +973,19 @@ def predict_all(
     health_gate=False keeps unhealthy records (BeiDou is never gated, see below), for geometry
     only (sky.transit_sky): an unhealthy satellite still transmits and still captures the
     array. Seeds never set it. The gate also keeps the HEALTH_GATE_EXEMPT satellites, so the
-    chains track and lane them."""
+    chains track and lane them.
+
+    `sysc` predicts one constellation only, for a caller that reads no other: the rows are
+    those of the full call. `memo` is a dict the caller owns and passes to several calls of one
+    pass, so calls at one epoch propagate each record once whatever their other options (the
+    dead-reckon sky and the transit sky); it must not outlive the pass or be shared between
+    threads."""
     t = gpst_of_utc(t_utc)
     rx = _ecef_of_llh(lat, lon, alt)
     out = {}
     for key, recs in eph.items():
+        if sysc is not None and key[0] != sysc:
+            continue
         # A clock-grade window (the default or tighter) is cut to GLONASS_MAX_AGE_S for R;
         # geometry callers that widened it keep their window.
         e = best_eph(
@@ -921,44 +1013,21 @@ def predict_all(
             # TODO: try the strict gate for C on sky; if no healthy satellite is lost, remove
             # the exemption.
             continue
-        # light-time + Sagnac: two iterations are plenty
-        tau = 0.075
-        for _ in range(2):
-            pos, vel, clk = sat_pos_clk(e, t - tau)
-            # rotate the sat position into the ECEF frame at reception time
-            th = OMEGA_E[e["sys"]] * tau
-            px = pos[0] * math.cos(th) + pos[1] * math.sin(th)
-            py = -pos[0] * math.sin(th) + pos[1] * math.cos(th)
-            pos_rx = (px, py, pos[2])
-            az, el, rng = _azel(rx, pos_rx, lat, lon)
-            tau = rng / C_LIGHT
-        if el < mask_deg:
+        if memo is None:
+            geo = _sat_geometry(e, rx, lat, lon, t, mask_deg)
+        else:
+            # The entry holds the record, so its id stays its own while the memo lives.
+            mk = (id(e), t, lat, lon, alt, mask_deg)
+            hit = memo.get(mk)
+            if hit is None:
+                hit = memo[mk] = (e, _sat_geometry(e, rx, lat, lon, t, mask_deg))
+            geo = hit[1]
+        if geo is None:
             continue
-        # vel is in the transmit-epoch frame, like pos: rotate it by the same angle so the
-        # range rate is taken in the reception frame.
-        vel_rx = (
-            vel[0] * math.cos(th) + vel[1] * math.sin(th),
-            -vel[0] * math.sin(th) + vel[1] * math.cos(th),
-            vel[2],
-        )
-        # The light time tau = rng/c changes by rr/c per second, which moves the transmit epoch
-        # (scaling vel_rx by 1 - rr/c) and the Sagnac angle (d(pos_rx)/d(th) = (py, -px, 0)).
-        # With a = u.vel_rx and b = u.(py, -px, 0) for the unit line of sight u,
-        # rr = a*(1 - rr/c) + omega*b*rr/c, solved for rr. The terms are up to a few mm/s.
-        a = sum((p - r) * v for p, r, v in zip(pos_rx, rx, vel_rx)) / rng
-        b = (px * rx[1] - py * rx[0]) / rng
-        rr = a / (1.0 + (a - OMEGA_E[e["sys"]] * b) / C_LIGHT)
+        az, el, rng, rr, clk, range_acc = geo
         # Refer the broadcast clock to `signal` (group_delay_s). Only dead reckoning passes
         # one; signal=None leaves the clock as broadcast.
         _gd = group_delay_s(e, signal, dcb)
-        if e["sys"] == "W":
-            # LEO: the range acceleration (~30 m/s^2 near the beam) moves the code epoch by a
-            # chip in a few seconds, so cp_predicted carries the range quadratically for W.
-            r_m, r_p = (
-                _range_m(e, rx, lat, lon, t - 1.0),
-                _range_m(e, rx, lat, lon, t + 1.0),
-            )
-            range_acc = r_p - 2.0 * rng + r_m
         out[key] = dict(
             az=az,
             el=el,

@@ -79,9 +79,10 @@ def brdc_predict(
             lock.release()
     eph = state["eph"]
     dt = 4.0
-    pa = ge.predict_all(eph, lat, lon, alt_m, t_utc, mask_deg=-90.0)
+    # Only sysc's rows are read below, so only sysc is predicted.
+    pa = ge.predict_all(eph, lat, lon, alt_m, t_utc, mask_deg=-90.0, sysc=sysc)
     pb = ge.predict_all(
-        eph, lat, lon, alt_m, t_utc + timedelta(seconds=dt), mask_deg=-90.0
+        eph, lat, lon, alt_m, t_utc + timedelta(seconds=dt), mask_deg=-90.0, sysc=sysc,
     )
     C = C_LIGHT
     out = {}
@@ -750,7 +751,7 @@ def nearest_boresight(pd, el0=None, az0=None, sys=None):
 TRANSIT_MAX_AGE_S = 86400.0
 
 
-def transit_sky(ge, eph, lat, lon, alt_m, t_utc, gw=None):
+def transit_sky(ge, eph, lat, lon, alt_m, t_utc, gw=None, memo=None):
     """Geometry only: {(sys, prn): {az, el, health, toe_age_s}} over every constellation in
     `eph`, with predict_all's health gate off and a day of toe validity.
 
@@ -760,7 +761,7 @@ def transit_sky(ge, eph, lat, lon, alt_m, t_utc, gw=None):
     captures the shared element model. Never for seeds, probes or hints: those keep
     predict_all's defaults, and nothing here carries a clock. Objects in no BRDC at all stay
     invisible, except GuoWang's: with `gw` (a gw_transit_store), every GuoWang satellite near
-    the boresight joins the sky as ("W", catalogue number)."""
+    the boresight joins the sky as ("W", catalogue number). `memo` is predict_all's."""
     if gw is not None:
         eph = {**eph, **gw_transits(ge, gw)}
     pa = ge.predict_all(
@@ -772,6 +773,7 @@ def transit_sky(ge, eph, lat, lon, alt_m, t_utc, gw=None):
         mask_deg=-90.0,
         max_age=TRANSIT_MAX_AGE_S,
         health_gate=False,
+        memo=memo,
     )
     t = ge.gpst_of_utc(t_utc)
     out = {}
