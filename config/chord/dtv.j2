@@ -1,5 +1,5 @@
 {#-
-  dtv.j2
+  dtv.j2, included by pathfinder.j2 unless dtv_enabled is false.
   dtv_enabled adds the detector, and dtv_apply_mask also applies its mask to N2.
   dtv_bad_feed_mask (default on) zeroes the flagged inputs in the detector, the RFI antennas too.
   Detection and recording start off until enabled over REST.
@@ -9,26 +9,30 @@
   See docs/sphinx/user/modules/pilotproxy.rst for bundle setup and runtime controls.
 -#}
 {% set dtv_runtime_bundle_dir = dtv_runtime_bundle_dir|default("data/pilotproxy_bundle") %}
-{% set dtv_output_dir = dtv_output_dir|default("/scratch/dtv") %}
 
 # One frame per 8192-sample block: mask, target/lower/upper powers
-# (sums of 256 fine powers), and per-frequency fine support.
+# (sums of 256 fine powers), and per-frequency fine support. NDArrayTimeConcat packs
+# dtv_blocks_per_frame blocks (~43 s) into one _concat frame, which is sent to the recv
+# node (recv.j2, which must use the same shapes and ports) and written there as one file.
+{% set dtv_blocks_per_frame = 1024 %}
 {% set dtv_products = [
-    ("mask", "int8", "[1, num_local_freq]", '["T", "F"]', "[8192, 1]"),
-    ("powers", "uint64", "[1, num_local_freq, 3]", '["T", "F", "W"]', "[8192, 1, 1]"),
-    ("fine_support", "int32", "[1, num_local_freq, 2]", '["T", "F", "S"]', "[8192, 1, 1]"),
+    ("mask", "int8", "num_local_freq", '"F"', "1", 11031),
+    ("powers", "uint64", "num_local_freq, 3", '"F", "W"', "1, 1", 11033),
+    ("fine_support", "int32", "num_local_freq, 2", '"F", "S"', "1, 1", 11035),
 ] %}
 {% for n in numa_halves %}
-{% for product, value_type, extents, dimnames, dimscalings in dtv_products %}
-{% for suffix in ["", "_write"] %}
+{% for product, value_type, extents, dimnames, dimscalings, port in dtv_products %}
+{% for suffix, rows, depth in [("", 1, "host_side_buffer_depth"),
+                               ("_concat", dtv_blocks_per_frame, "buffer_depth"),
+                               ("_send", dtv_blocks_per_frame, "buffer_depth")] %}
 host_dtv_{{ product }}{{ suffix }}_buffer{{ n.sfx }}:
     kotekan_buffer: ndarray
-    num_frames: host_side_buffer_depth
+    num_frames: {{ depth }}
     value_type: {{ value_type }}
-    extents: {{ extents }}
+    extents: [{{ rows }}, {{ extents }}]
     quantity_name: "dtv_{{ product }}"
-    dimnames: {{ dimnames }}
-    dimscalings: {{ dimscalings }}
+    dimnames: ["T", {{ dimnames }}]
+    dimscalings: [8192, {{ dimscalings }}]
     metadata_pool: main_pool
 {%- if n.id %}
     numa_node: {{ n.id }}
@@ -92,33 +96,45 @@ run_dtv_detector:
           out_buf: host_dtv_fine_support
 {% endfor %}
 
+# Blocks missing from a window are rows of 0xFF bytes: -1 masks and fine support,
+# the largest uint64 powers.
+concat_dtv:
+{% for n in numa_halves %}
+{% for p in dtv_products %}
+    {{ p[0] }}_{{ n.id }}:
+        kotekan_stage: NDArrayTimeConcat
+        cpu_affinity: {{ n.other_cpus }}
+        in_buf: host_dtv_{{ p[0] }}_buffer{{ n.sfx }}
+        out_buf: host_dtv_{{ p[0] }}_concat_buffer{{ n.sfx }}
+{% endfor %}
+{% endfor %}
+
+# Turning writes off and on again takes effect at the next whole frame.
 switch_dtv_write:
 {% for n in numa_halves %}
-{% for product in ["mask", "powers", "fine_support"] %}
-    {{ product }}_{{ n.id }}:
+{% for p in dtv_products %}
+    {{ p[0] }}_{{ n.id }}:
         kotekan_stage: bufferSwitch
         cpu_affinity: {{ n.other_cpus }}
         in_bufs:
-          - enabled: host_dtv_{{ product }}_buffer{{ n.sfx }}
-        out_buf: host_dtv_{{ product }}_write_buffer{{ n.sfx }}
+          - enabled: host_dtv_{{ p[0] }}_concat_buffer{{ n.sfx }}
+        out_buf: host_dtv_{{ p[0] }}_send_buffer{{ n.sfx }}
         updatable_config: /dtv_write_enabled
 {% endfor %}
 {% endfor %}
 
-# Files span ~43 s, with metadata stored once.
-# Re-enabling writes starts a new file.
-# Each node writes locally, with its hostname in the file name.
-write_dtv:
+send_dtv:
 {% for n in numa_halves %}
-{% for product in ["mask", "powers", "fine_support"] %}
-    {{ product }}_{{ n.id }}:
-        kotekan_stage: hdf5FileWrite
-        log_level: warn
+{% for p in dtv_products %}
+    {{ p[0] }}_{{ n.id }}:
+        kotekan_stage: bufferSend
         cpu_affinity: {{ n.other_cpus }}
-        in_buf: host_dtv_{{ product }}_write_buffer{{ n.sfx }}
-        base_dir: {{ dtv_output_dir }}
-        file_name: dtv_{{ product }}{{ n.sfx }}
-        frames_per_file: 1024
+        use_frame_desc: true
+        buf: host_dtv_{{ p[0] }}_send_buffer{{ n.sfx }}
+        server_ip: 10.222.0.51
+        server_port: {{ p[5] }}
+        reconnect_time: 10
+        drop_frames: true
 {% endfor %}
 {% endfor %}
 
