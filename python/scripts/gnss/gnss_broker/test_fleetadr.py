@@ -736,6 +736,39 @@ class TestFrames(unittest.TestCase):
         pub = fl.publish(FC, 1000.0)
         self.assertEqual((pub[1]["arc"], pub[1]["n_rec"], pub[1]["n_inst"]), (2, 24, 2))
 
+    def test_a_non_finite_record_is_left_out_and_the_chain_still_publishes(self):
+        """A NaN Doppler or prompt would make the arc's phase NaN, and the publish of every
+        satellite on the chain fails on one NaN arc. Such a record is a record the sender did not
+        ship; a non-finite projection slot only loses the projection of that row."""
+        from gnss_broker import telem
 
-if __name__ == "__main__":
-    unittest.main()
+        def row(win, r):
+            if win == 110 and r == 1:
+                return {telem.REC_DOPPLER: float("nan")}
+            if win == 111 and r == 2:
+                return {telem.REC_P_RE: float("inf")}
+            if win == 112:
+                return {
+                    telem.REC_PROJ_K: float("nan"),
+                    telem.REC_PROJ_SRC: float("inf"),
+                }
+            return {}
+
+        sky = Sky(n_inst=2)
+        frames = self._frames(sky, range(100, 130), row=row)
+        got = fa.records_of_frame(frames[110]["cx19.0"], {1})[1]
+        self.assertEqual(sorted(got), [0, 2, 3])
+        self.assertEqual(
+            sorted(fa.records_of_frame(frames[111]["cx19.0"], {1})[1]), [0, 1, 3]
+        )
+        self.assertEqual(
+            fa.records_of_frame(frames[112]["cx19.0"], {1})[1][0][3:], (0.0, 0, 0)
+        )
+        lines = []
+        fl = fa.FleetAdr(hpr=HPR, log=lines.append)
+        fl.fold_windows(FakeClient(frames), "gps_l5", {1}, now=1000.0)
+        pub = fl.publish(1176.45e6, now=1000.0)
+        self.assertTrue(math.isfinite(pub[1]["cycles"]))
+        # One missing record is bridged (max_gap_rec), so the arc is the one begun at window 100.
+        self.assertEqual(lines, [])
+   

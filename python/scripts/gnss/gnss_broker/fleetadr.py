@@ -414,7 +414,8 @@ def records_of_frame(f, want):
     the published row only; the fold reads the first three.
 
     S_i = H^2 + T^2 with H the head amplitude and T = A - H, as exported (no phi0 rotation; see
-    the module note). A record with no prompt energy (P_energy <= 0) is left out.
+    the module note). A record with no prompt energy (P_energy <= 0) or with a non-finite fold
+    input is left out; non-finite projection slots are published as zeros.
     """
     idx = f._index()
     row_bytes = f.row_total * 4
@@ -434,6 +435,16 @@ def records_of_frame(f, want):
             )
             if e <= 0.0:
                 continue
+            # A non-finite input would make the arc's phase NaN, and one NaN arc fails the
+            # publish of every satellite on the chain; this sender has no record here instead.
+            # x - x is 0.0 only for a finite x.
+            x = dop + p_re + p_im + e + h_re + h_im + trim
+            if x - x != 0.0:
+                continue
+            # The projection slots only ride along to the published row.
+            x = cost + k + src
+            if x - x != 0.0:
+                cost, k, src = 0.0, 0.0, 0.0
             A = complex(p_re / e, p_im / e)
             H = complex(h_re / e, h_im / e)
             if H == 0:
