@@ -10,6 +10,44 @@ Two channels share every 2 ms frame: the sign of the ranging half (low rate) and
 of the CSK half (high rate). ITU-R M.1787-6 files them as 125 / 1500 bit/s; measured 125 and
 1488 (1464 data + 24 CRC).
 
+## 2026-11-10 review: corrections
+
+A pass over every open item against the five-day archive (285 822 CRC-valid high-rate messages,
+134 senders; 41 668 low-rate subframes; probes in `builds/gw1202/review_20261110/`). Where this
+section and the text below disagree, this section holds.
+
+- **The low-rate "5-minute record" is the sender's own ephemeris, not a MAC or an encrypted
+  block.** Page 3 payload bits 166.. are Omega0 in the BeiDou convention, RAAN(t) - GMST(start of
+  the BDT week): against the TLE the median is -0.0002 deg and the MAD 0.0011 deg (10 316
+  subframes, 118 senders). The 11-09 scans compared with RAAN - GMST(now), where the MAD is 74 deg.
+  Page 3 bits 130.. are M0 and page 4 bits 92.. are omega; M0 + omega equals the TLE's argument
+  of latitude at the BDT 5-minute boundary to 0.07 s (3118 of 3333 cycles; 169 carry the previous
+  boundary's record). So toe is the 5-minute boundary. sqrtA, e, i0, the rates and the harmonics
+  are not located yet: no plain semicircle or sqrt-metre field matches, so they are probably
+  offsets from references, as in the almanac.
+- Page 1 bits 100-117 are an issue tag in 3 s units (boundary SOW / 3 + 1); bits 91-99 read 34 in
+  both weeks. Page 1 bits 138-148 are two flags and a small integer, renewed every 5 minutes.
+  The regions called constant below (page 1 91-148, page 3 0-93, page 4 0-100) change per issue
+  or per pass and belong to the same data set.
+- The page-2 time stamp is 3606-3607 s behind the subframe start, not 3600 s, and is sometimes
+  10 or 60 s stale: a data time tag. The page-2 count N is not the number of GNSS satellites the
+  sender lists (Pearson -0.34).
+- **GNSS records use BeiDou's Earth rotation rate (7.292115e-5 rad/s) for every system.** The
+  ~10 m cos u cross-track term on GPS and Galileo came from evaluating them with the GPS value.
+  With BeiDou's value: Galileo 0.37 m, GPS 0.79 m, BeiDou 0.54 m median at the epoch.
+- Record bits 346-349 are the sign extension of af1 (16 bits at 346-361). Bits 364-369 are an
+  accuracy index in the SSR class/value form (median 80 mm), refreshed every 2 h at about 35 min
+  past odd UTC hours. Bits 370-437 are a count (4) and four [4-bit signal][12-bit code bias x
+  0.017 m] entries, the PPP-B2b form: BeiDou signals 2, 5, 0, 12; GPS 0, 7, 8, 12; Galileo 2, 4,
+  8, 11. BeiDou b[0] - b[12] against the broadcast TGD1: r 0.999, slope 1.002. Galileo b[2] - b[4]
+  against BGD(E1,E5a): r -0.997, slope -0.785 (theory -0.793). Bits 438-489 are a second count
+  (4) and four 12-bit entries, 0x300 for GPS and Galileo and 0 for BeiDou: open, with bits
+  362-363 (01).
+- Message bits 1412-1431 and 1441-1460 are the fixed pattern 11110 x 4, one group per signal.
+- Almanac @204/22 is the rate of the e sin(omega) word, 2^-35 per second: Pearson 0.966 with its
+  day-to-day change over 552 satellite-day pairs in the 50 deg shell. In the polar shell it is
+  noise.
+
 ## The low-rate BPSK channel
 
 - Symbols: one sign per frame pair, pairs starting on even UTC frame numbers: 4 ms, 250 sym/s.
