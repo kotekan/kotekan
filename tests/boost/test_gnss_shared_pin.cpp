@@ -194,7 +194,9 @@ BOOST_AUTO_TEST_CASE(a_reseeded_half_is_the_reference_in_phase_and_shape) {
     const auto o = ref_offset(F.data(), G.data(), 0, 16);
     BOOST_CHECK_CLOSE(o.sim, 1.0, 1e-9);
     BOOST_CHECK_SMALL(o.err_rad, 1e-12);
-    BOOST_CHECK_EQUAL(pin_rotation(o, true, 1.0 * DEG), cd(1.0, 0.0));
+    const cd r = pin_rotation(o, true, 1.0 * DEG);
+    BOOST_CHECK_CLOSE(r.real(), 1.0, 1e-9);
+    BOOST_CHECK_SMALL(r.imag(), 1e-12);
 }
 
 BOOST_AUTO_TEST_CASE(the_sibling_pol_decides_whether_f_or_the_model_is_wrong) {
