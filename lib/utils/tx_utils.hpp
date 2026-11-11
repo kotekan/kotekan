@@ -10,6 +10,8 @@
 #include <chrono> // for clockid_t
 #endif
 
+#include <arpa/inet.h>
+
 
 /** @brief get primary IPv4 address from gethostname()
  *
