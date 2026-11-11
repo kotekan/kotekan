@@ -2292,13 +2292,14 @@
    "sep_deg": 0.68,
    "ref_input": 116,
    "drift_ns_s": 1.78,
-   "last_observed_utc": "2026-11-04T11:29:15Z",
-   "last_checked_utc": "2026-11-04T11:29:15Z",
-   "last_checked_sep_deg": 0.49,
-   "passes_found": 1,
+   "last_observed_utc": "2026-11-11T09:29:17Z",
+   "last_checked_utc": "2026-11-11T09:29:17Z",
+   "last_checked_sep_deg": 2.31,
+   "passes_found": 2,
    "passes_silent": 0,
    "passes": [
-    ["2026-11-04T11:29:15Z", 0.49, true]
+    ["2026-11-04T11:29:15Z", 0.49, true],
+    ["2026-11-11T09:29:17Z", 2.31, true]
    ]
   },
   "DIGUI-131": {
