@@ -81,6 +81,7 @@ CHAINS = [
     "bds_b3i",
     "glo_l3oc",
     "glo_l2oc",
+    "bds_b1i",
 ]
 SYS_OF = {c: gtc.SYSOF[c.split("_")[0]] for c in CHAINS}
 CN0_MIN, MIN_ARC_S, MAX_GAP_S, STEP_M, MAX_NOISE = 25.0, 300.0, 30.0, 0.05, 0.5
@@ -1170,7 +1171,7 @@ def main():
             lock_job,
             [
                 (c, days, t_lo, t_hi, keep, args.pad_s)
-                for c in ("gal_e5b", "bds_b2b", "glo_l3oc", "glo_l2oc")
+                for c in ("gal_e5b", "bds_b2b", "glo_l3oc", "glo_l2oc", "bds_b1i")
             ],
         )
         cl_async = pool.apply_async(

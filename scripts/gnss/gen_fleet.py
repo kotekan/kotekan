@@ -198,9 +198,9 @@ LAT, LON, ALT = 49.32075144444, -119.62081125, 545.0
 # out of a list is correct and must not be reported. The rule is the IGS registry's block types
 # (prnmap.signal_incapable_prns), the source the broker filters on; a PRN floor is no proxy,
 # since BeiDou re-uses low PRNs for BDS-3 satellites and GLONASS's L3OC-capable generations are
-# interspersed across the slots. A list that mirrors a sibling's (B3I follows B2a/B2b so
+# interspersed across the slots. A list that mirrors a sibling's (B3I and B1I follow B2a/B2b so
 # tau_band sees the same rays) is judged by the sibling's capability.
-MIRRORS = {"BDS_B3I_NH": "BDS_B2A_P_CS"}
+MIRRORS = {"BDS_B3I_NH": "BDS_B2A_P_CS", "BDS_B1I_NH": "BDS_B2A_P_CS"}
 # Degrees: only a satellite whose peak elevation here exceeds this counts as excluded; one that
 # merely grazes the horizon has no claim on a boot slot. The manifest's BeiDou lists are cut at
 # the same threshold.

@@ -335,13 +335,22 @@ def dll_spacing_chips(name):
     freq_ids, one per instance, summed coherently by the fleet loop, so it takes L2C's 0.33
     (first sky to confirm; FDMA puts each satellite on its own six of the comb's ~29).
 
+    BeiDou B1I also holds one or two channels per instance, but its covering set is the whole
+    main lobe, nulls included (22 freq_ids at 2.046 Mcps), so the fleet's coherent sum is the
+    band-limited chip triangle every comb chain closes on, not L2C's flat Dirichlet: |R| 0.56
+    of the peak at 0.5 chip, the first null at 1.17 chips. It takes 0.5, listed so the broker
+    side's dll-spacing has an entry to match.
+
     Must match the broker chain's dll-spacing (config/gnss_chains_chord.yaml): the C++ fleet
     loop takes its law's spacing from the arming payload while the taps come from here, so
     cycle the nodes before the broker and the taps lead the law.
     """
-    return {"GPS_L2C_CM": 0.33, "GLO_L2OC_P_OC": 0.4, "GLO_L2OF_MC": 0.33}.get(
-        name, 0.5
-    )
+    return {
+        "GPS_L2C_CM": 0.33,
+        "GLO_L2OC_P_OC": 0.4,
+        "GLO_L2OF_MC": 0.33,
+        "BDS_B1I_NH": 0.5,
+    }.get(name, 0.5)
 
 
 # Record slot 2's modulus per tracker code (GnssGpuRecordAssemble record_cp_mod_chips): the
@@ -361,6 +370,7 @@ _TELEM_ROWS = {
     "bds_b2a": 24,
     "bds_b2b": 24,
     "bds_b3i": 24,
+    "bds_b1i": 24,
     "gps_l2c": 18,
 }
 _TELEM_ROWS_DEFAULT = 14

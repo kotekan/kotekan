@@ -1552,6 +1552,31 @@ def test_fdma_slots():
     check(g.dll_spacing_chips("GLO_L2OF_MC") == 0.33, "L2OF takes L2C's DLL spacing")
 
 
+def _upper_band():
+    """(freq_id, centre, width) for 7900..8191, the top of the 150-1600 MHz band."""
+    w = 0.1953125e6
+    return [(f, f * w, w) for f in range(7900, 8192)]
+
+
+def test_bds_b1i_lobe():
+    """BeiDou B1I: a 22-channel lobe that gives each of the sixteen combs one or two channels,
+    the comb chains' DLL spacing and B3I's wire rows."""
+    from chord_band_plan import chain_covering_channels, signal_table
+
+    cov = chain_covering_channels(_upper_band(), signal_table()["BDS_B1I_NH"], 5e3)
+    check(cov == list(range(7982, 8004)), "the lobe is 7982-8003 (%s)" % cov)
+    per = [sum(1 for f in cov if f % 16 == r) for r in range(16)]
+    check(
+        min(per) == 1 and per.count(2) == 6,
+        "every comb holds one or two, six hold two (%s)" % per,
+    )
+    check(g.dll_spacing_chips("BDS_B1I_NH") == 0.5, "B1I closes on the chip triangle")
+    check(
+        g.telem_rows("bds_b1i") == g.telem_rows("bds_b3i") <= g.telem_rows_max(),
+        "B1I ships B3I's wire rows, within the gather's buffer",
+    )
+
+
 def main():
     # The generator reads relative paths from the cwd and _rel() resolves every argv token
     # against it, so the in-process calls run from the repo root, as gen_fleet and run_gen do.

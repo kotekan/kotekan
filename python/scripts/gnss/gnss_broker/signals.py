@@ -81,6 +81,10 @@ _CHAINS = {
     # B3I is broadcast by BDS-2 and BDS-3 alike, so no min_prn and no capability gate: every
     # BeiDou PRN is predicted, mapped and seeded (prn_floor).
     "bds_b3i": ("BDS_B3I", "BDS_B3I_NH", None),
+    # B1I is on BDS-2 and BDS-3 alike, as B3I, with the same D1 NH20: no min_prn and no
+    # capability gate. The tracker code bakes the NH20 into a 20 ms code, which the GEOs' D2
+    # message (no NH) does not fit; none rises here.
+    "bds_b1i": ("BDS_B1I", "BDS_B1I_NH", None),
     # L3OC is GLONASS's CDMA signal, on the K generations and the modernised M+ only (the plain
     # GLO-M satellites, half the constellation, broadcast FDMA alone). The IGS registry's block
     # types decide (prnmap.signal_incapable_prns); no PRN floor can, since the generations are
@@ -140,7 +144,7 @@ RF_BAND_BY_CARRIER = {
     1278.75: "E6",  # Galileo E6
     1268.52: "B3",  # BeiDou B3I
     1202.025: "L3",  # GLONASS L3OC
-    1561.098: "B1I",  # BeiDou B1I (BDS-2, outside CHORD's band)
+    1561.098: "B1I",  # BeiDou B1I (BDS-2 and BDS-3)
     1246.00: "G2",  # GLONASS L2OF
     1248.06: "G2",  # GLONASS L2OC
 }

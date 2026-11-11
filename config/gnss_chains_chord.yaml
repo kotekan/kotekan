@@ -285,11 +285,13 @@ chains:
         drop-stats: true
     # The stream-health panel's rows, as chain names (carriers from gnssSignal.hpp); each
     # monitored channel is labelled with the nearest declared carrier. List every band the
-    # receiver flies: the ten chains share L5 1176.45, L3 1202.025, E5b 1207.14, L2 1227.60,
-    # G2 1248.06, B3 1268.52 and E6 1278.75 MHz. Matching the full band table instead would name
-    # a band CHORD does not fly (B1I); unset, the rows read "lobe N". With glo_l3oc declared the
-    # channels below 1204.6 MHz, E5b's lower shoulder, are named L3: they are its lobe now.
-        rf-bands: "gps_l5,gal_e5a,bds_b2a,glo_l3oc,gal_e5b,bds_b2b,gps_l2c,glo_l2oc,bds_b3i,gal_e6"
+    # receiver flies: the eleven chains share L5 1176.45, L3 1202.025, E5b 1207.14, L2 1227.60,
+    # G2 1248.06, B3 1268.52, E6 1278.75 and B1I 1561.098 MHz. Matching the full band table
+    # instead would name a band CHORD does not fly (L1); unset, the rows read "lobe N". With
+    # glo_l3oc declared the channels below 1204.6 MHz, E5b's lower shoulder, are named L3: they
+    # are its lobe now.
+        rf-bands: "gps_l5,gal_e5a,bds_b2a,glo_l3oc,gal_e5b,bds_b2b,gps_l2c,glo_l2oc,bds_b3i,gal_e6,\
+          bds_b1i"
     # The record assemblers whose /get_spectrum (per-channel prompt sums before the
     # cross-channel combine) feed the fleet phase-slope delay fit (SPEC-FIT). Its tau updates
     # the per-satellite path-bias filter (b_sat) that dead-reckon seeds add to the clock.
@@ -875,5 +877,41 @@ chains:
         trackers: fleet
         combiner: fleet
     # No phase-slope fit: a slot owns at most one channel per instance.
+        spectrum-endpoints: null
+        dll-combiners: fleet
+
+  # -- 1561.098 MHz: bds_b1i --
+  # BeiDou B1I, the D1 data signal BDS-2 and BDS-3 broadcast beside B3I: the same satellites and
+  # message at a carrier 290 MHz up, so with bds_b2a BeiDou's widest TEC lever (B2a x B1I
+  # 0.126 m/TECU against B2a x B3I's 0.041). Its lobe, 7982-8003, needs the F-engine band to
+  # reach 1600 MHz and sits on the analog low-pass's shoulder, a few dB down. Data-only like
+  # B3I: the trackers despread the NH20 tiled into a 20 ms code (BDS_B1I_NH), which leaves the
+  # D1 nav sign constant over each period. Model-primary with no detectors, seeded from BRDC
+  # and gps_l5's clock; the broadcast clock is B3I's, and B1I owes TGD1
+  # (gnss_ephemeris.group_delay_s). Six GPUs hold two of the 22 channels, ten one; the fleet
+  # loop sums them coherently, as on L2C.
+    bds_b1i:
+        signal: bds_b1i
+        presence-admit-displaced: true
+        seed-phase-transport: true
+        dr-clock-adopt: true
+        joint-consume: clk,rate
+    # Not in the joint state yet: no joint-trk-feed or joint-source, and common's carrier-rate
+    # feed is off here, so this band's rates do not reach the BeiDou rows bds_b2a commands its
+    # carrier from.
+        rrate-state: false
+        rrate-kcoh-feed: 0
+    # E/L tap offset in 2.046 Mcps chips. The covering set is the whole main lobe, so the fleet
+    # sum is the band-limited chip triangle every comb chain closes on (|R| 0.56 at 0.5 chip,
+    # first null at 1.17), not L2C's Dirichlet. Must match the node taps
+    # (config/gen_chord_gnss_config.py dll_spacing_chips).
+        dll-spacing: 0.5
+        fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
+        fleet-trim-bandwidth: 2.5
+        fleet-trim-readback: 1
+        trackers: fleet
+        combiner: fleet
+    # No phase-slope fit: an instance's two channels are 16 ids (3.125 MHz) apart, a tau
+    # ambiguous by 0.65 chip, as on glo_l2oc.
         spectrum-endpoints: null
         dll-combiners: fleet

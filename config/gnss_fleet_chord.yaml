@@ -94,8 +94,9 @@ common:
     # + the DTV subtraction's channels (dtv-targets below: ATSC 24, 30, 17, 19, 31, 33, 35 and
     # MUOS), which the SK flagger would otherwise excise, leaving nothing to judge the
     # subtraction by (docs/CHORD_DTV_SUBTRACTION_20261102.md, #226).
-    rfi-excision-exempt-freq-ids: "5939-6626,2714-2744,2898-2928,2499-2529,2560-2590,2929-2959,\
-      2991-3020,3052-3082,1844-1944"
+    # + BeiDou B1I's lobe, 7982-8003 (1559.0-1563.1 MHz), on the 200-1600 MHz band.
+    rfi-excision-exempt-freq-ids: "5939-6626,7982-8003,2714-2744,2898-2928,2499-2529,2560-2590,\
+      2929-2959,2991-3020,3052-3082,1844-1944"
     # Bright-satellite projection in each record assembler: off | shadow | live. live projects
     # the transiting satellite's element direction out of the other slots' record rows in
     # place, from the node's own rows (own slot, sibling chain, probe stack); nodes exchange
@@ -134,10 +135,10 @@ common:
     psi-synth: true
     n2-project: live
     # Pinned to the GNSS band: "exempt" would follow the exemption above into the DTV channels.
-    n2-project-live-freq-ids: "5939-6626"
+    n2-project-live-freq-ids: "5939-6626,7982-8003"
     n2-project-stations: "0-6,8-127"
     # The eigen path's channels; read only with n2-project-source lanes+residual.
-    n2-project-eigen-channels: "5971-6076,6102-6338,6361-6401,6442-6573"
+    n2-project-eigen-channels: "5971-6076,6102-6338,6361-6401,6442-6573,7982-8003"
     # #190 on every projecting node (canary cx51 10-20..10-24): the tracked satellites' lane
     # directions. On 10-24 the eigen path alone removed <= 0.6 dB in the lobes while the lanes
     # removed ~80-87 % of the satellite power over the continuum (cx51). Up to 40 lanes per
@@ -398,9 +399,10 @@ common:
     # gets a 128-lane range of its GPU's synthesis array (disjoint from any chain sharing a
     # channel), at 4 lanes per PRN (E, P, L, P_HEAD), so at most 32 PRNs per chain; the
     # generator refuses more. A chain whose covering channels match GPS L5's shares its voltage
-    # tap; another carrier gets its own tap. Every carrier here lies in the science band each
-    # node already receives (freq_id 1536..7679, 300.0..1499.8 MHz); L1/E1/B1C at 1575.42 MHz
-    # is outside it.
+    # tap; another carrier gets its own tap. A carrier must lie in the science band the nodes
+    # receive (config/chord_gnss_node.yaml science_band): B1I and L1 C/A, at 1561.098 and
+    # 1575.42 MHz, need the 150-1600 MHz band (freq_id 768..8191), and on the 300-1500 MHz one
+    # (1536..7679) the generator skips their chains.
     # The lists are boot seeds: `gen_fleet.py --check-prns` compares them with live BRDC and a
     # 24 h visibility sweep, and fails on a visible, capable satellite without a slot.
     #
@@ -503,6 +505,13 @@ common:
         # Every assigned slot is pinned (25 of 32), so the chain needs no live PRN reconfig (FDMA
         # refuses it); below-horizon slots serve as its noise probes. k from BRDC 2026-10-27.
         - GLO_L2OF_MC:1@1,2@-4,3@5,4@6,5@1,6@-4,7@5,8@6,9@-2,10@-7,11@0,12@-1,13@-2,14@-7,15@0,16@-1,17@4,18@-3,19@3,20@2,21@4,22@-3,23@3,24@2,27@-5
+
+        # 1561.098 MHz: BeiDou B1I, the D1 data signal on BDS-2 and BDS-3, with the shared NH20
+        # tiled into a 20 ms code (BDS_B1I_NH, as BDS_B3I_NH). The lobe, 1559.0-1563.1 MHz, is
+        # 7982-8003 (exempt above), on the analog low-pass's shoulder: one or two channels per
+        # GPU, summed coherently across the fleet. B3I's list: the same rays at a carrier 290 MHz
+        # up, for TEC. No GEO (D2, no NH) rises here. Seeded from the broker's model.
+        - BDS_B1I_NH:6,7,8,11,12,13,14,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42
 
 nodes:
     # THE FLEET LIST: every host that runs the GNSS branch, and nothing else names one.

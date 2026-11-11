@@ -99,6 +99,7 @@ CHAIN_SYS = {
     "bds_b2a": "C",
     "bds_b2b": "C",
     "bds_b3i": "C",
+    "bds_b1i": "C",
     "glo_l3oc": "R",
     "glo_l2oc": "R",
     "glo_l2of": "R",
