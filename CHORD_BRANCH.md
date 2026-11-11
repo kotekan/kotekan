@@ -29,3 +29,4 @@ Base: `develop` at `c2c73d601` (#1873).
 | `12f44fcb5` | `CHORD_BRANCH.md`, `AGENTS.md` | This file and the chord workflow notes |
 | `a82b96f02` | `config/chord/pathfinder.j2` | Record calibration gains in the X-engine N2 frames (#1849) |
 | `ef35f45de` | `config/chord/common.j2` | Name the F-engine controller by its full name |
+| `e401a4b50` | `config/chord/{telescope,pathfinder,recv}.j2` | Science band 150-1600 MHz: 58 bins per stream, 464 frequencies per GPU |
