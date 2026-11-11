@@ -24,6 +24,9 @@ section and the text below disagree, this section holds.
   encoder restarts from the zero state after the preamble (the first coded pair averages +0.5, as
   the page number's leading bit demands) and is not flushed: 363 bits make 726 symbols. So 24 of
   every 750 symbols are known in advance on every satellite, and they fix the sign of the stream.
+  Decoding from them (preamble stripped, sign from it, zero start state) gains nothing over the
+  two-period decode: 1889 against 1912 of 3676 periods (`l2.py`); the losses are symbol errors
+  elsewhere.
 - **Three software families** (`x6.py`). Some senders write the 13-bit BDT week over payload bits
   12-24 of pages that should carry something else there. Family 0 (DIGUI-49..57, 82-86, 146-154,
   164-167): no overwrite. Family 1 (most senders): on page 3 only. Family 2 (DIGUI-40, 96-104,
@@ -50,8 +53,8 @@ section and the text below disagree, this section holds.
   order of B-CNAV's health (2 bits), data-integrity, signal-integrity and accuracy-integrity flags.
   Bits 5-18 (signed 14, "N") and 19-31 (signed 13, "x") are an offset A0 and its rate A1; bits
   32-36 hold 4; bits 37-52 the reference time in 10 s units and 53-65 its week; bits 66-82 zero.
-  - The values are fleet-wide: two senders at the same time differ by 0.5 LSB of A1 (median, 1774
-    cases) wherever they are (`x13.py`).
+  - The values are fleet-wide: two senders at the same time differ by 0.5 LSB of A1 (median, 2232
+    cases to 11-11) wherever they are (`x13.py`).
   - A1 is the rate of A0. Over spans of 6 to 8 h the change of the offset follows the time integral
     of A1 with correlation 0.985 and a unit ratio of 68-69 ks (`x22.py`): 2^16 s, the ratio of
     B-CNAV's A0UTC (2^-35 s) and A1UTC (2^-51 s/s). Within the hour the pair moves as A0 = slow
@@ -77,7 +80,7 @@ section and the text below disagree, this section holds.
   fleet-wide, a new set about every 2 h. They are the operator's own estimate: against BeiDou's
   broadcast set over the same hours the means are 23.6 / 23.4, -2.0 / -2.4, 9.0 / 9.0, 4.1 / 6.3,
   -9.1 / -9.3, 0.6 / 0.6, -0.5 / -0.4, 2.6 / 2.0, -0.2 / 0.8 TECu (`b1.py`).
-- **Page 4 bits 0-91: static, still open.** One value on every satellite for the whole week
+- **Page 4 bits 0-91: static, still open.** One value on every satellite from 11-04 to 11-11
   (`00101111110011111011`, 22 zeros, `00000100`, `1000000011100001`, 26 zeros). Laid on page 2's
   template it reads flags 00101, offset -387, rate -4096 (the most negative code), time 36, week
   225: possibly a second time-offset set marked unavailable. Bits 289-315 zero.
