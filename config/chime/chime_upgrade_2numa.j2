@@ -1569,10 +1569,6 @@ numa_{{ numa }}:
         # needs an address on each of them.
         number_of_subnets: 4
         beam_offset: 0
-        # This node's addresses on the L1 VLANs, in VLAN order. Without this list
-        # they are derived from the CHIME GPU node name (cnXgY), which this node
-        # does not follow.
-        local_ips: [10.6.200.10, 10.7.200.10, 10.8.200.10, 10.9.200.10]
         ping_dead_threshold: 30
         updatable_config: /frb/update_beam_offset
         # From the legacy CHIME config
