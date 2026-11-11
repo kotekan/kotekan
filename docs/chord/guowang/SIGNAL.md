@@ -98,6 +98,19 @@ Message content: `PAYLOAD.md`.
   never detected, DIGUI-07 passed at 0.25 deg), polar plane 330 (DIGUI-69, -70), 50 deg plane 135
   (DIGUI-41, -46, -47). The two polar planes with no code are the quiet ones. The even/odd plane
   rule does not explain them; candidates are 1174.404 / 1178.496 MHz or off.
+- 2026-11-11 state of the unknown codes (units as in `builds/gw1202/constellation.json`; r296 is
+  the plane of DIGUI-01..10, r326 that of DIGUI-30..34 and -68..72). Eight code groups have no
+  measured member. In four of them every member has been silent on a pass within 4 deg, so their
+  codes can only be measured if the operator switches one on: r326 group 0 (DIGUI-30, -32, -34,
+  -69, -71; DIGUI-32 was the last, silent at 2.71 deg on 11-11 02:29Z), and plane p3 groups 2
+  (DIGUI-41, -48), 3 (DIGUI-44, -46) and 4 (DIGUI-42). The other four each still hold satellites
+  never checked that close: r296 group 0 (DIGUI-02, -09), r296 group 1 (DIGUI-01), r326 group 1
+  (DIGUI-31, -33) and p3 group 1 (DIGUI-43, -45). Every checked plane-mate in those groups was
+  silent too.
+- Satellites that stopped: the launch batch DIGUI-119..126 was tracked from 11-05; all but DIGUI-122
+  fell silent within a day. Last decoded messages: DIGUI-121 11-07 03:53Z, -119 04:11Z, -124
+  04:58Z, -123 05:13Z, -120 05:36Z, -126 06:26Z, -125 11-08 04:16Z; DIGUI-122 still sends on
+  11-11. Silent close passes confirm DIGUI-120, -121 (2.62 deg, 11-11 03:32Z), -123 and -124.
 
 ## Timing
 
