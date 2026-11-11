@@ -1217,14 +1217,15 @@
    "sep_deg": 1.7,
    "ref_input": 116,
    "drift_ns_s": -3.06,
-   "last_observed_utc": "2026-11-07T16:41:51Z",
-   "last_checked_utc": "2026-11-07T16:41:51Z",
-   "last_checked_sep_deg": 4.41,
-   "passes_found": 2,
+   "last_observed_utc": "2026-11-11T10:39:35Z",
+   "last_checked_utc": "2026-11-11T10:39:35Z",
+   "last_checked_sep_deg": 5.39,
+   "passes_found": 3,
    "passes_silent": 0,
    "passes": [
     ["2026-11-03T13:12:58Z", 1.64, true],
-    ["2026-11-07T16:41:51Z", 4.41, true]
+    ["2026-11-07T16:41:51Z", 4.41, true],
+    ["2026-11-11T10:39:35Z", 5.39, true]
    ]
   },
   "DIGUI-78": {
