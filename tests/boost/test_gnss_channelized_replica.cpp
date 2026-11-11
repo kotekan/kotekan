@@ -499,3 +499,66 @@ BOOST_AUTO_TEST_CASE(glo_l2of_mc_is_the_ca_code_under_the_10ms_halves) {
     auto rCA = bca.channels(0, 0, 0.0, 0.0, 20 * H);
     BOOST_CHECK_LT(std::abs(amp(rMC, rCA)), 0.05);
 }
+
+// BeiDou B1I's D1 data is spread by the shared NH20, one chip per 1 ms period. BDS_B1I_NH must
+// resolve through signal_by_name and bake that overlay into one 20 ms code: the same replica as
+// BDS_B1I with its secondary applied from period 0, and not the overlay-blind one.
+BOOST_AUTO_TEST_CASE(bds_b1i_nh_is_the_b1i_code_under_the_nh20) {
+    const gnss::SignalDescriptor* nh = gnss::signal_by_name("BDS_B1I_NH");
+    BOOST_REQUIRE(nh != nullptr);
+    BOOST_CHECK_EQUAL(nh->code_length, 40920L);
+    BOOST_CHECK_EQUAL(nh->secondary_length, 0);
+    const std::vector<int> prns = {6, 38}; // an IGSO and a BDS-3 MEO (three-tap G2)
+    auto bnh = make_bank("BDS_B1I_NH", prns);
+    auto b1i = make_bank("BDS_B1I", prns);
+    BOOST_REQUIRE_EQUAL(b1i.secondary_length(), 20);
+    const int H = b1i.repl_period_hops(); // one 1 ms code period
+    BOOST_REQUIRE_EQUAL(bnh.repl_period_hops(), 20 * H);
+
+    auto amp = [](const std::vector<std::vector<cf>>& d, const std::vector<std::vector<cf>>& r) {
+        return gnss::channelized_despread(d, r).amplitude;
+    };
+    for (int p = 0; p < 2; ++p) {
+        auto rNH = bnh.channels(p, 0, 0.0, 0.0, 20 * H);
+        auto rOv = b1i.channels(p, 0, 0.0, 0.0, 20 * H, 0); // NH20 from period 0
+        auto rRaw = b1i.channels(p, 0, 0.0, 0.0, 20 * H);   // overlay off
+        BOOST_CHECK_GT(std::real(amp(rNH, rOv)), 0.99);
+        // NH20 sums to +4 of 20: the overlay-blind replica keeps ~0.2 of the amplitude.
+        BOOST_CHECK_LT(std::abs(amp(rNH, rRaw)), 0.3);
+    }
+    BOOST_CHECK_LT(
+        std::abs(amp(bnh.channels(0, 0, 0.0, 0.0, 20 * H), bnh.channels(1, 0, 0.0, 0.0, 20 * H))),
+        0.3);
+}
+
+// GPS L1 C/A has no secondary; GPS_L1CA_BIT tiles twenty identical periods into one 20 ms code,
+// so its period is the LNAV bit's while every 1 ms of it is the bare C/A code.
+BOOST_AUTO_TEST_CASE(gps_l1ca_bit_is_twenty_ca_periods) {
+    const gnss::SignalDescriptor* bit = gnss::signal_by_name("GPS_L1CA_BIT");
+    BOOST_REQUIRE(bit != nullptr);
+    BOOST_CHECK_EQUAL(bit->code_length, 20460L);
+    BOOST_CHECK_EQUAL(bit->code_period_s, 20e-3);
+    const std::vector<int> prns = {1, 32};
+    auto bbit = make_bank("GPS_L1CA_BIT", prns);
+    auto bca = make_bank("GPS_L1CA", prns);
+    const int H = bca.repl_period_hops(); // one 1 ms code period
+    BOOST_REQUIRE_EQUAL(bbit.repl_period_hops(), 20 * H);
+
+    auto amp = [](const std::vector<std::vector<cf>>& d, const std::vector<std::vector<cf>>& r) {
+        return gnss::channelized_despread(d, r).amplitude;
+    };
+    for (int p = 0; p < 2; ++p) {
+        for (int period : {0, 9, 19}) {
+            const long long ws = (long long)period * H * N * 2; // window start, samples
+            const double a =
+                std::real(amp(bbit.channels(p, ws, 0.0, 0.0, H), bca.channels(p, ws, 0.0, 0.0, H)));
+            BOOST_CHECK_MESSAGE(a > 0.99, "slot " << p << " period " << period << ": " << a);
+        }
+        BOOST_CHECK_GT(std::real(amp(bbit.channels(p, 0, 0.0, 0.0, 20 * H),
+                                     bca.channels(p, 0, 0.0, 0.0, 20 * H))),
+                       0.99);
+    }
+    BOOST_CHECK_LT(
+        std::abs(amp(bbit.channels(0, 0, 0.0, 0.0, 20 * H), bbit.channels(1, 0, 0.0, 0.0, 20 * H))),
+        0.3);
+}

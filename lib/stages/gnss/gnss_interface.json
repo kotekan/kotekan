@@ -679,6 +679,21 @@
     "tdm_phase": 0,
     "time_multiplexed": false
    },
+   "BDS_B1I_NH": {
+    "boc_m": 0,
+    "boc_n": 0,
+    "carrier_hz": "1561098000",
+    "chip_rate_hz": "2046000",
+    "code_length": 40920,
+    "code_period_s": "0.02",
+    "half_bandwidth_hz": "2046000",
+    "mod": "BPSK",
+    "occupied_hi_hz": "1563144000",
+    "occupied_lo_hz": "1559052000",
+    "secondary_length": 0,
+    "tdm_phase": 0,
+    "time_multiplexed": false
+   },
    "BDS_B2A_D": {
     "boc_m": 0,
     "boc_n": 0,
@@ -1061,6 +1076,21 @@
     "chip_rate_hz": "1023000",
     "code_length": 1023,
     "code_period_s": "0.001",
+    "half_bandwidth_hz": "1023000",
+    "mod": "BPSK",
+    "occupied_hi_hz": "1576443000",
+    "occupied_lo_hz": "1574397000",
+    "secondary_length": 0,
+    "tdm_phase": 0,
+    "time_multiplexed": false
+   },
+   "GPS_L1CA_BIT": {
+    "boc_m": 0,
+    "boc_n": 0,
+    "carrier_hz": "1575420000",
+    "chip_rate_hz": "1023000",
+    "code_length": 20460,
+    "code_period_s": "0.02",
     "half_bandwidth_hz": "1023000",
     "mod": "BPSK",
     "occupied_hi_hz": "1576443000",

@@ -113,6 +113,8 @@ std::vector<int8_t> signal_code(const std::string& name, int prn) {
         auto a = beidou::generate_b1i_code(prn);
         return std::vector<int8_t>(a.begin(), a.end());
     }
+    if (name == "BDS_B1I_NH") // the D1 NH20 baked in, as BDS_B3I_NH below
+        return bake_secondary(beidou::generate_b1i_code(prn), beidou::B1I_NH20);
     if (name == "GW_1202")
         return guowang::generate_gw1202_frame(prn);
     if (name == "BDS_B2I") {
@@ -229,6 +231,8 @@ std::vector<int8_t> signal_code(const std::string& name, int prn) {
         return gps::generate_l2cm_code(prn);
     if (name == "GPS_L2C_CL")
         return gps::generate_l2cl_code(prn);
+    if (name == "GPS_L1CA_BIT") // twenty identical periods, one 20 ms LNAV bit
+        return bake_secondary(gps::generate_ca_code(prn), std::vector<int8_t>(20, 1));
     auto a = gps::generate_ca_code(prn); // default: GPS_L1CA
     return std::vector<int8_t>(a.begin(), a.end());
 }

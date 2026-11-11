@@ -74,6 +74,26 @@ inline constexpr SignalDescriptor GPS_L1CA = {
     /*tdm_phase=*/0,
 };
 
+/// GPS L1 C/A tiled to one 50 bps LNAV bit: twenty identical periods, one 20460-chip, 20 ms
+/// code, as GLO_L2OF_MC tiles its bit. L1 C/A has no secondary, so the replica is the bare
+/// code's; the tiling moves the period boundary to the bit edge. A 10.49 ms record then holds at
+/// most one boundary, where bare GPS_L1CA would hold ten, and the data sign can flip only there.
+/// Bit edges fall on GPS time mod 20 ms. The tracker code of the gps_l1ca chain; the broker pairs
+/// it with GPS_L1CA (gnss_broker/signals.py).
+inline constexpr SignalDescriptor GPS_L1CA_BIT = {
+    "GPS_L1CA_BIT",
+    1575.42e6,
+    1.023e6,
+    20460,
+    20e-3,
+    Modulation::BPSK,
+    0,
+    0,
+    /*secondary_length=*/0,
+    /*time_multiplexed=*/false,
+    /*tdm_phase=*/0,
+};
+
 /// GPS L1C-P (1575.42 MHz), the dataless pilot: 10230-chip Weil code at 1.023 Mcps (10 ms),
 /// BOC(1,1). The per-PRN 1800-chip L1CO overlay (18 s, generate_l1co_code) is not applied: no
 /// tiled descriptor carries it. Code: gpsL1CCode (Legendre + Weil + 7-chip insertion).
@@ -544,6 +564,24 @@ inline constexpr SignalDescriptor BDS_B1I = {
     /*tdm_phase=*/0,
 };
 
+/// BeiDou B1I with the shared D1 NH20 tiled into the code: one 40920-chip, 20 ms code, built as
+/// BDS_B3I_NH. What remains is the D1 nav sign, constant over each 20 ms code period. The GEO
+/// satellites' D2 message has no NH, so this code serves the MEO and IGSO satellites. The tracker
+/// code of the bds_b1i chain; the broker pairs it with BDS_B1I (gnss_broker/signals.py).
+inline constexpr SignalDescriptor BDS_B1I_NH = {
+    "BDS_B1I_NH",
+    1561.098e6,
+    2.046e6,
+    40920,
+    20e-3,
+    Modulation::BPSK,
+    0,
+    0,
+    /*secondary_length=*/0,
+    /*time_multiplexed=*/false,
+    /*tdm_phase=*/0,
+};
+
 /// BeiDou B3I (1268.52 MHz), carrying the same D1 message as B1I: 10230-chip code at
 /// 10.23 Mcps (1 ms), BPSK(10), from two 13-stage LFSRs with G1 reset to all ones as the ICD
 /// specifies. Data only, with B1I's shared NH20 and 20 ms symbol. Code: beidouB3ICode.
@@ -770,7 +808,7 @@ inline constexpr const SignalDescriptor* ALL_SIGNALS[] = {
     &BDS_B2B_I,    &GAL_E5B_Q,   &GAL_E5B_I,    &GPS_L1C_D,     &GAL_E6_C,      &GAL_E6_B,
     &BDS_B1I,      &BDS_B3I,     &BDS_B3I_NH,   &BDS_B2I,       &GLO_L3OC_P,    &GLO_L3OC_D,
     &GLO_L2OF,     &GLO_L2OC_P,  &GAL_E6_C_CS,  &GLO_L3OC_P_NH, &GLO_L2OC_P_OC, &SBAS_L5_I,
-    &SBAS_L5_I_MC, &GLO_L2OF_MC, &GW_1202};
+    &SBAS_L5_I_MC, &GLO_L2OF_MC, &GW_1202,      &BDS_B1I_NH,    &GPS_L1CA_BIT};
 
 /// Look up a descriptor by its @c name (the config string); nullptr if unknown.
 inline const SignalDescriptor* signal_by_name(const std::string& name) {
