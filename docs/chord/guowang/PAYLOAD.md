@@ -10,6 +10,97 @@ Two channels share every 2 ms frame: the sign of the ranging half (low rate) and
 of the CSK half (high rate). ITU-R M.1787-6 files them as 125 / 1500 bit/s; measured 125 and
 1488 (1464 data + 24 CRC).
 
+## 2026-11-11: the remaining words
+
+A second pass over what was still unassigned (same archives; probes in `builds/gw1202/review_20261111/`,
+BeiDou's own broadcast data from BKG `BRD400DLR_S` days 308-313 in `builds/gw1202/brdc4/`). Where this
+section and the text below disagree, this section holds.
+
+**Low-rate channel**
+
+- **Framing.** Every 3 s subframe opens with 24 uncoded symbols, `0xE24DE8`, the preamble of BeiDou's
+  B2a message (B-CNAV2): 98.9 % symbol agreement over 7506 CRC-valid subframes from 25 senders
+  (`l1.py`). The "12 bits outside the CRC" are the Viterbi decoder's reading of those symbols. The
+  encoder restarts from the zero state after the preamble (the first coded pair averages +0.5, as
+  the page number's leading bit demands) and is not flushed: 363 bits make 726 symbols. So 24 of
+  every 750 symbols are known in advance on every satellite, and they fix the sign of the stream.
+- **Three software families** (`x6.py`). Some senders write the 13-bit BDT week over payload bits
+  12-24 of pages that should carry something else there. Family 0 (DIGUI-49..57, 82-86, 146-154,
+  164-167): no overwrite. Family 1 (most senders): on page 3 only. Family 2 (DIGUI-40, 96-104,
+  119-126, 155-163): on pages 2, 3 and 4. This is the "group A / group B" split of 11-09. Read the
+  true content of those bits on family 0 (and family 1 for pages 2 and 4; a few family-1 senders
+  do it on page 2 now and then, DIGUI-58 in 16 of 22 subframes).
+- **Page 1.** Bits 12-24 are the BDT week and bits 25-40 a 16-bit count of 12 s cycles, SOW / 12 - 1
+  (the top bit follows the count in every subframe): the clock reference time. Bit 41 is zero. The
+  clock rate word (bits 69-90) has LSB 2^-50 s/s (fit 8.83e-16 against the bias's own slope). Bits
+  94-99 are an accuracy index in the SSR class/value form: 34 = 0.12 m on every operational
+  satellite, 40-44 (0.24-0.49 m) on DIGUI-170, -173, -175. Bit 92 is set on five satellites
+  (DIGUI-38, -60, -94, -146, -150) and never on the rest; their rate word scatters 4 times more
+  within a pass (all 8 of their passes above the fleet's 90th percentile): a clock flag. Bits
+  118-139 are one signed 22-bit word, -2..+3, by position the rate of A. Applied as a linear
+  rate of A it does not improve the agreement of consecutive issues at 2^-18 to 2^-16 m/s per LSB
+  (`e2.py`), and at B-CNAV's 2^-21 m/s it would be below a millimetre; but its sign gives the sign of the
+  ripple between consecutive issues (Spearman 0.9 between the radial difference at 600 s and the
+  difference of the two words; 1.3, 0.7, 2.6 cm at 300, 450, 600 s), which shrinks to 3 mm when
+  both issues carry zero (`e3.py`). Bits 232-243 are the almanac entry's index and flag
+  in the fast channel's form, shell bit included (the "constant" 00100 / 00000). Bits 291-315 zero.
+- **Page 2 head: status flags and a time-offset set, not a satellite state.** Bits 0-4 read
+  00001; bit 2 is set when page 3's accuracy index reads 63 (98 % of those cycles, never
+  otherwise), bit 0 rarely. That is the
+  order of B-CNAV's health (2 bits), data-integrity, signal-integrity and accuracy-integrity flags.
+  Bits 5-18 (signed 14, "N") and 19-31 (signed 13, "x") are an offset A0 and its rate A1; bits
+  32-36 hold 4; bits 37-52 the reference time in 10 s units and 53-65 its week; bits 66-82 zero.
+  - The values are fleet-wide: two senders at the same time differ by 0.5 LSB of A1 (median, 1774
+    cases) wherever they are (`x13.py`).
+  - A1 is the rate of A0. Over spans of 6 to 8 h the change of the offset follows the time integral
+    of A1 with correlation 0.985 and a unit ratio of 68-69 ks (`x22.py`): 2^16 s, the ratio of
+    B-CNAV's A0UTC (2^-35 s) and A1UTC (2^-51 s/s). Within the hour the pair moves as A0 = slow
+    part - A1 / 100 (98-102 on three stretches, `x17.py`), so A0 + A1 x 655 s is the smooth
+    quantity: the offset is best known 11 min after the reference time, which is itself 1 h
+    behind the transmit time. The pair is renewed every 10 s from a fit or filter about an hour
+    long, whose slope noise is the 45-70 min quasi-period of "x".
+  - In those units A0 sits at 12-17 LSB, 0.35-0.5 ns (3 to 22 LSB on 11-09), and A1 swings
+    +-300 LSB, +-1.3e-13.
+  - Both words were zero from the 11-05 evening to 11-07 08:07-08:10Z (the 4, the reference time
+    and the flags kept running). The restart shows an acquisition transient: A1 -600, +1200, -300
+    LSB while the offset climbs from -3 to +15 LSB within an hour, with one reset at 09:10Z.
+  - The 4 is the BDT - UTC leap-second count, and the order (A0, A1, 4, time, week, zeros) is
+    B-CNAV's UTC set (A0UTC, A1UTC, dtLS, tot, WNot, ...). Reading: system time to UTC. Not
+    proven; a 5-bit system identifier is the alternative.
+  - The fast channel's clocks do not move with it (common mode 0.04 ns rms, `y1.py`).
+- **Page 3 head.** Bits 0-5 are a live accuracy index in the SSR class/value form (the count per
+  code is smooth per millimetre across the class boundaries): median 19 mm, 90 % between 7 and
+  53 mm, its own value on each satellite, changing by a step or so per cycle; 63 when invalid.
+  Invalid spells are partly fleet-wide (11-07 02Z and 12-13Z, 11-09 12-13Z: half or more of the
+  senders in view). Bits 6-79 are the nine BDGIM
+  ionosphere coefficients in BeiDou's layout (10 + 8 x 8 bits, 2^-3 TECu, alpha5 negative),
+  fleet-wide, a new set about every 2 h. They are the operator's own estimate: against BeiDou's
+  broadcast set over the same hours the means are 23.6 / 23.4, -2.0 / -2.4, 9.0 / 9.0, 4.1 / 6.3,
+  -9.1 / -9.3, 0.6 / 0.6, -0.5 / -0.4, 2.6 / 2.0, -0.2 / 0.8 TECu (`b1.py`).
+- **Page 4 bits 0-91: static, still open.** One value on every satellite for the whole week
+  (`00101111110011111011`, 22 zeros, `00000100`, `1000000011100001`, 26 zeros). Laid on page 2's
+  template it reads flags 00101, offset -387, rate -4096 (the most negative code), time 36, week
+  225: possibly a second time-offset set marked unavailable. Bits 289-315 zero.
+- Page 2 bit 231 toggles each cycle with the almanac index (the low bit of ceil(k / 2), 95 %).
+
+**High-rate channel**
+
+- **The four 5-bit groups after each record id are per-signal status.** `11110` on every signal of
+  every satellite, except `11111` on all four signals of GPS PRN 8 in all 5071 of its records (its
+  record clock is 1.6 to 6.3 us from the broadcast and drifting, though GPS broadcasts it healthy)
+  and on Galileo E34 for one minute at 11-07 02:43Z, during a 0.8 ns step of its clock (`f2.py`,
+  `f3.py`). The last bit is a "do not use" mark.
+- Record minus broadcast clock, all days: GPS -414.2 ns (MAD 1.7), Galileo -415.8 (0.7), BeiDou
+  -433 (13, per-satellite group delays). About per-satellite quadratics the records scatter 0.27 ns
+  and their common mode 0.04 ns.
+- The rest of the record is constant: bits 9-11, 27-28, 161-175 and 286-299 zero; 362-363 = 01;
+  438-441 = 4; 442-489 = four times 0x300 (GPS, Galileo) or zero (BeiDou). Open: what the second
+  per-signal list stands for, the record order key at the 60 s steps, the variant senders.
+- **Almanac entry.** Bit 16 is the shell bit and bits 17-39 one signed 23-bit word at 2^-6 m: the
+  semi-major axis less the shell's nominal value. With Re + 1150 / 1175 km it reads -3.73 to
+  -3.83 km in the 50 deg shell and about -4.2 km polar. The "per-shell constant" (1009 / 495)
+  was its top bits and bits 38-39 its last two.
+
 ## 2026-11-10 review: corrections
 
 A pass over every open item against the five-day archive (285 822 CRC-valid high-rate messages,
@@ -356,7 +447,7 @@ predicted at 98.3 % from time and the page templates, `PER_ELEMENT.md` section 5
 
 - Deterministic from UTC and the satellite identity. Low-rate: subframe (3 s) and symbol (4 ms)
   boundaries, the page (12 s cycle), the SOW field, pages 2-4 entirely, and the encoder from bits
-  to signs. High-rate: the second boundary, the sync word, the header constant, SOW and week, and
+  to signs. Also the 24 preamble symbols of every subframe (0xE24DE8, uncoded; 11-11). High-rate: the second boundary, the sync word, the header constant, SOW and week, and
   the LDPC parity and CRC given the info symbols.
 - Learned per satellite, constant over a pass: the page-1 payload (ID, the 10-bit field, the
   per-page word), the high-rate header ID and shell flag, the CSK code (from the ranging code
@@ -364,7 +455,7 @@ predicted at 98.3 % from time and the page templates, `PER_ELEMENT.md` section 5
 - Learned per second from another satellite: the body is constellation-wide, so the message at
   (epoch, page) is the same from every satellite; but each satellite's uplink lag (9-115 s)
   selects the epoch and is only known from its own message.
-- Unknown: the 12 bits outside the low-rate CRC; the live correction content (6-7 % of block bits
+- Unknown: the live correction content (6-7 % of block bits
   per 10 s epoch); the variant satellites'
   format; the almanac's @204/22 and the units of @182 and @226; the slow channel's 5-minute
   record (per sender, no fleet-wide part).
