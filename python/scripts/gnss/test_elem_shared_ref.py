@@ -97,6 +97,25 @@ class TestBandConsensus(unittest.TestCase):
         self.assertGreaterEqual(min(len(x) for x in e["off"]), 6)
         self.assertLess(max(e["R"]), 0.5)
 
+    def test_gps_and_sbas_l5_on_one_gpu_are_two_instances(self):
+        # Both chains' assemblers are band l5. Named by node/GPU alone they collided, so the
+        # consensus saw half the band while the re-take quorum counted all of it (n 16 of 22).
+        res = {}
+        for i, a in enumerate((0, 50, 100, 150, 200, 250)):
+            for chain in ("gps_l5", "sbas_l5"):
+                g = np.concatenate(
+                    [model(self.rng, self.shape[0], a), model(self.rng, self.shape[1], -a)]
+                )
+                res[(NODES[i // 2], "gnss%d_%s_n2assemble" % (i % 2, chain))] = {
+                    "shared_warm": True,
+                    "shared_frozen": False,
+                    "g_shared": [[float(x.real), float(x.imag)] for x in g],
+                }
+        e = esr.band_consensus(res, "l5", esr.EXCLUDE_DEG, esr.MIN_SIM)
+        self.assertEqual(e["n"], [12, 12])
+        self.assertEqual(esr.inst_name("cx27", "gnss1_sbas_l5_n2assemble"), "cx27/1:sbas")
+        self.assertEqual(esr.inst_name("cx27", "gnss1_gps_l5_n2assemble"), "cx27/1")
+
     def test_a_model_of_another_shape_is_left_out(self):
         halves = [
             (model(self.rng, self.shape[0], a), model(self.rng, self.shape[1], -a))

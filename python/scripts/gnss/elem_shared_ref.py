@@ -93,7 +93,10 @@ def band_of(stage):
 
 
 def inst_name(node, stage):
-    return "%s/%s" % (node, stage[4])
+    """node/GPU, plus ":sbas" for the SBAS L5 assembler: GPS and SBAS L5 share the band, so one
+    GPU holds two of its assemblers and the bare node/GPU would name both the same."""
+    system = (gnss_fleet.stage_chain(stage, "n2assemble") or "").partition("_")[0]
+    return "%s/%s%s" % (node, stage[4], ":sbas" if system == "sbas" else "")
 
 
 def epoch_of_configs():
