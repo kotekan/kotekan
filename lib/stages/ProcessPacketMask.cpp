@@ -79,6 +79,12 @@ ProcessPacketMask::ProcessPacketMask(Config& config, const std::string& unique_n
     // Get frame dimension configuration
     time_long = config.get<uint32_t>(unique_name, "time_long");
     num_frequency = config.get<uint32_t>(unique_name, "num_frequency");
+    if (num_frequency % num_stream_ids != 0) {
+        throw std::runtime_error(fmt::format(
+            fmt("ProcessPacketMask: num_frequency ({:d}) must be a multiple of {:d} streams"),
+            num_frequency, num_stream_ids));
+    }
+    num_freq_per_stream = num_frequency / num_stream_ids;
     element_long = config.get<uint32_t>(unique_name, "element_long");
     time_short = config.get_default<uint32_t>(unique_name, "time_short", 16);
     element_short = config.get_default<uint32_t>(unique_name, "element_short", 8);
@@ -211,7 +217,7 @@ void ProcessPacketMask::main_thread() {
 
     // Constants for pl_mask generation
     const size_t E_DIV_8 = (size_t)element_long * element_short / 8; // 16 for default config
-    const size_t F = num_frequency;                                  // 384
+    const size_t F = num_frequency;
 
     while (!stop_thread) {
         // Wait for voltage frame
