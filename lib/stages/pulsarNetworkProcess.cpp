@@ -69,7 +69,7 @@ pulsarNetworkProcess::~pulsarNetworkProcess() {
 void pulsarNetworkProcess::main_thread() {
     // parsing the host name
 
-    int rack, node, nos, my_node_id;
+    int my_node_id;
     std::vector<std::string> link_ip =
         config.get<std::vector<std::string>>(unique_name, "pulsar_node_ips");
     int number_of_pulsar_links = link_ip.size();
@@ -90,9 +90,13 @@ void pulsarNetworkProcess::main_thread() {
 
     // parsing the host name
 
-    parse_chime_host_name(rack, node, nos, my_node_id);
+    const struct sockaddr_in my_addr = get_my_addr(inet_addr("10.1.0.0"), inet_addr("255.255.0.0"));
+    unsigned char my_addr_octets[sizeof(uint32_t)];
+    memcpy(my_addr_octets, &my_addr.sin_addr, sizeof(my_addr_octets));
     for (int i = 0; i < number_of_subnets; i++) {
-        if (std::snprintf(my_ip_address[i], 100, "10.%d.%d.1%d", i + 15, nos + rack, node) > 100) {
+        if (std::snprintf(my_ip_address[i], 100, "10.%d.%d.1%d", i + 15, my_addr_octets[2],
+                          my_addr_octets[3])
+            > 100) {
             FATAL_ERROR("buffer spill over ");
             return;
         }
@@ -151,8 +155,8 @@ void pulsarNetworkProcess::main_thread() {
     unsigned long time_interval = num_packet_per_stream * timesamples_per_pulsar_packet
                                   * fpga_ns; // time per buffer frame in ns
 
-    int my_sequence_id =
-        (int)(my_node_id / 128) + 2 * ((my_node_id % 128) / 8) + 32 * (my_node_id % 8);
+    // TODO: come up with a better distribution of sequences
+    int my_sequence_id = my_addr_octets[2] * 256 + my_addr_octets[3];
 
     packet_buffer = in_buf->wait_for_full_frame(unique_name, frame_id);
     if (packet_buffer == nullptr)
