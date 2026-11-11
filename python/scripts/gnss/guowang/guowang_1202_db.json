@@ -708,12 +708,13 @@
    "catnum": 65051,
    "g2_phase": null,
    "last_observed_utc": null,
-   "last_checked_utc": "2026-11-08T20:14:34Z",
-   "last_checked_sep_deg": 2.73,
+   "last_checked_utc": "2026-11-11T14:45:46Z",
+   "last_checked_sep_deg": 0.56,
    "passes_found": 0,
-   "passes_silent": 1,
+   "passes_silent": 2,
    "passes": [
-    ["2026-11-08T20:14:34Z", 2.73, false]
+    ["2026-11-08T20:14:34Z", 2.73, false],
+    ["2026-11-11T14:45:46Z", 0.56, false]
    ]
   },
   "DIGUI-49": {
