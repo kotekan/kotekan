@@ -93,6 +93,7 @@ GW_HIDDEN_TLE = os.path.expanduser("~/.cache/guowang/hidden_digui.tle")
 CHAIN_SYS = {
     "gps_l5": "G",
     "gps_l2c": "G",
+    "gps_l1ca": "G",
     "gal_e5a": "E",
     "gal_e5b": "E",
     "gal_e6": "E",

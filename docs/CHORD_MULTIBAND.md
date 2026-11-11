@@ -52,7 +52,7 @@ in the whole science band; "cx19" = that node's 1-of-8; then its two GPUs' 1-of-
 | BDS B3I | 1268.52 | 10.23 | 106 (6442..6547) | 13 | 6 | 7 | DATA-only, shared NH20 + 20 ms D1 |
 | GAL E6-C | 1278.75 | 5.115 | 53 (6521..6573) | 7 | 3 | 4 | pilot, per-PRN CS100 |
 | **GPS L2C** | 1227.60 | 1.023 | **6** (6283..6288) | **1** | **0** | **1** | CM/CL TDM, CL 1.5 s time-assisted |
-| GAL E1 / BDS B1I | 1575.42 / 1561.1 | -- | **0** | -- | -- | -- | above the science band, permanently |
+| GAL E1 / BDS B1I | 1575.42 / 1561.1 | -- | **0** | -- | -- | -- | above the 300-1500 MHz band; see 3. below |
 
 Three consequences:
 
@@ -68,9 +68,15 @@ Three consequences:
    and CM's
    20 ms nav symbols straddling our 10.49 ms records, and L2C is the most work for the
    least measurement. Deferred in this plan; the gps_l2c chain came later.
-3. **The whole L1 window is permanently out of reach**: L1 C/A / L1C / E1 / B1C
-   (1575.42 MHz) and B1I (1561.098) all sit above the science band's 1499.805 MHz edge
-   (max freq_id 7679). The lower L-band is the menu; there is no upper L-band option.
+3. **The L1 window was out of reach** on the 300-1500 MHz band: L1 C/A / L1C / E1 / B1C
+   (1575.42 MHz) and B1I (1561.098) sit above its 1499.805 MHz edge (max freq_id 7679). The
+   150-1600 MHz band (freq_id 768..8191, 2026-11) takes them in, for GNSS only (joint state
+   and TEC): B1I's lobe is 7982-8003 (22 channels, one or two per GPU) and L1 C/A's 8061-8071
+   (11, one on each of eleven GPUs, L2C's geometry), on the analog low-pass's shoulder (a few
+   dB down at ~1550 MHz), with Iridium (1616-1626 MHz) aliased onto 1573.5-1584 MHz at
+   ~-10 dB. The chains are `bds_b1i` (BDS_B1I_NH, B1I's NH20 baked in as B3I's) and
+   `gps_l1ca` (GPS_L1CA_BIT, twenty C/A periods tiled into one 20 ms LNAV bit), with the
+   widest TEC levers the receiver has: B2a x B1I 0.126 m/TECU, L5 x L1 C/A 0.129.
 
 Comb-sharing bonuses for later phases: the L3OC comb overlaps the E5b comb over
 6128..6207, and the E6 comb overlaps B3I's over 6521..6547 -- a widened tap serves both

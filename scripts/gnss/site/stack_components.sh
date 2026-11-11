@@ -73,6 +73,7 @@ glo_l2oc R 1248060000  2046000 40920
 glo_l2of R 1246000000   511000   511
 sbas_l5 S 1176450000 10230000 10230
 bds_b1i C 1561098000  2046000  2046
+gps_l1ca G 1575420000  1023000  1023
 "
 
 gnss_chains() { echo "$GNSS_CHAIN_RF" | awk 'NF {print $1}'; }

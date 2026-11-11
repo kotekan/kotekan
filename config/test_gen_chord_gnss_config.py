@@ -1577,6 +1577,25 @@ def test_bds_b1i_lobe():
     )
 
 
+def test_gps_l1ca_lobe():
+    """GPS L1 C/A: an 11-channel lobe, one channel on each of eleven combs and none on 8-12, the
+    comb chains' DLL spacing, and wire rows within the gather's buffer."""
+    from chord_band_plan import chain_covering_channels, signal_table
+
+    cov = chain_covering_channels(_upper_band(), signal_table()["GPS_L1CA_BIT"], 5e3)
+    check(cov == list(range(8061, 8072)), "the lobe is 8061-8071 (%s)" % cov)
+    combs = sorted(f % 16 for f in cov)
+    check(
+        combs == [0, 1, 2, 3, 4, 5, 6, 7, 13, 14, 15],
+        "one channel on each of eleven combs, none on 8-12 (%s)" % combs,
+    )
+    check(g.dll_spacing_chips("GPS_L1CA_BIT") == 0.5, "L1 C/A takes 0.5, as B1I")
+    check(
+        g.telem_rows("gps_l1ca") <= g.telem_rows_max(),
+        "L1 C/A's wire rows fit the gather's buffer",
+    )
+
+
 def main():
     # The generator reads relative paths from the cwd and _rel() resolves every argv token
     # against it, so the in-process calls run from the repo root, as gen_fleet and run_gen do.

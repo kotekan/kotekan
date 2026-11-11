@@ -86,6 +86,9 @@ class TestGPS(unittest.TestCase):
         self.assertAlmostEqual(
             group_delay_s(_g(tgd=-8.38 * NS), "gps_l1"), +8.38 * NS, places=15
         )
+        self.assertAlmostEqual(
+            group_delay_s(_g(tgd=-8.38 * NS), "gps_l1ca"), +8.38 * NS, places=15
+        )
 
     def test_iodc_is_not_mistaken_for_a_second_delay(self):
         """orb[23] is IODC for GPS, not a group delay; the slot is shared with Galileo's

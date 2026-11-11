@@ -69,12 +69,13 @@ common:
     # ahead of the lanes its signal leaked into.
     lane-rank-min-rel: 10
     # The relay's table: the targets of lane-transfer where a satellite's lane is not on every
-    # GPU (L2C on five, each GLONASS L2OF satellite on the six that hold its comb) and E6's two
-    # PRS lobes. Not the E5/B2 edges: every GPU tracks those chains, and the relay's copies of
-    # its own satellites passed the duplicate test (the re-steer differs by the pooled delays'
-    # noise over 10-16 MHz) and filled the 40-lane budget on cx51 (2026-10-30), at ~n^2 per lane.
+    # GPU (L2C on five, L1 C/A on eleven of sixteen, each GLONASS L2OF satellite on the six that
+    # hold its comb) and E6's two PRS lobes. Not the E5/B2 edges: every GPU tracks those chains,
+    # and the relay's copies of its own satellites passed the duplicate test (the re-steer
+    # differs by the pooled delays' noise over 10-16 MHz) and filled the 40-lane budget on cx51
+    # (2026-10-30), at ~n^2 per lane.
     fleet-lane-transfer: [gps_l2c:1212.3-1242.9, gal_e6:1263.4-1273.6, gal_e6:1283.9-1294.1,
-                          glo_l2of:1237.9-1258.2]
+                          glo_l2of:1237.9-1258.2, gps_l1ca:1560.1-1590.8]
     # Channels exempt from first-stage (SK) RFI excision, absolute freq_id ranges
     # (freq_id = MHz / 0.1953125): the GNSS main lobes, one chip rate either side of each
     # carrier (10.23 MHz; E6-C's 5.115 MHz at the top), at 1176.45 (L5/E5a/B2a), 1202.025
@@ -94,8 +95,12 @@ common:
     # + the DTV subtraction's channels (dtv-targets below: ATSC 24, 30, 17, 19, 31, 33, 35 and
     # MUOS), which the SK flagger would otherwise excise, leaving nothing to judge the
     # subtraction by (docs/CHORD_DTV_SUBTRACTION_20261102.md, #226).
-    # + BeiDou B1I's lobe, 7982-8003 (1559.0-1563.1 MHz), on the 200-1600 MHz band.
-    rfi-excision-exempt-freq-ids: "5939-6626,7982-8003,2714-2744,2898-2928,2499-2529,2560-2590,\
+    # + the upper L-band on the 150-1600 MHz band, 7982-8144 (1559.0-1590.6 MHz): BeiDou B1I's
+    # lobe, 7982-8003, GPS L1 C/A's, 8061-8071, and L1 C/A's lane transfer over GPS L1's P(Y)
+    # and M-code main lobes, 1560.1-1590.8 MHz, as L2C's on L2. Iridium (1616-1626 MHz) aliases
+    # onto 1573.5-1584 MHz at ~-10 dB, over L1 C/A's lobe: excised, those channels would
+    # despread to zero.
+    rfi-excision-exempt-freq-ids: "5939-6626,7982-8144,2714-2744,2898-2928,2499-2529,2560-2590,\
       2929-2959,2991-3020,3052-3082,1844-1944"
     # Bright-satellite projection in each record assembler: off | shadow | live. live projects
     # the transiting satellite's element direction out of the other slots' record rows in
@@ -135,10 +140,10 @@ common:
     psi-synth: true
     n2-project: live
     # Pinned to the GNSS band: "exempt" would follow the exemption above into the DTV channels.
-    n2-project-live-freq-ids: "5939-6626,7982-8003"
+    n2-project-live-freq-ids: "5939-6626,7982-8144"
     n2-project-stations: "0-6,8-127"
     # The eigen path's channels; read only with n2-project-source lanes+residual.
-    n2-project-eigen-channels: "5971-6076,6102-6338,6361-6401,6442-6573,7982-8003"
+    n2-project-eigen-channels: "5971-6076,6102-6338,6361-6401,6442-6573,7982-8003,8061-8071"
     # #190 on every projecting node (canary cx51 10-20..10-24): the tracked satellites' lane
     # directions. On 10-24 the eigen path alone removed <= 0.6 dB in the lobes while the lanes
     # removed ~80-87 % of the satellite power over the continuum (cx51). Up to 40 lanes per
@@ -270,6 +275,9 @@ common:
     # main lobes (BOC(10,5): 1227.6 +-10.23 +-5.115 MHz). G13's upper M-code lobe at 1237.8 MHz
     # stayed 31-32 dB over quiet in the projected channels against 34 in control on 11-05..07,
     # and its lower lobe's outer half was left to other chains' lanes (#229 at 1212-1215 MHz).
+    # GPS L1 C/A's lanes over the same signals on L1, P(Y) and the M-code's two main lobes
+    # (1575.42 +-10.23 +-5.115 MHz), the range L2C's took on L2. Live with the 150-1600 MHz band.
+        - gps_l1ca:1560.1-1590.8
 
     # Ship the N^2 products as a stock node does: the buffer_send_n2_* legs (full n2_buffer and
     # the eigen subset, both GPUs) and the bad-feed mask legs, to the standard receiver recv1
@@ -512,6 +520,13 @@ common:
         # GPU, summed coherently across the fleet. B3I's list: the same rays at a carrier 290 MHz
         # up, for TEC. No GEO (D2, no NH) rises here. Seeded from the broker's model.
         - BDS_B1I_NH:6,7,8,11,12,13,14,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42
+
+        # 1575.42 MHz: GPS L1 C/A on every GPS satellite, twenty periods tiled into one 20 ms LNAV
+        # bit (GPS_L1CA_BIT), so a record crosses at most one bit edge. The lobe, 1574.4-1576.4
+        # MHz, is 8061-8071 (exempt above), eleven channels: one each on the combs 13-15 and 0-7,
+        # none on 8-12, summed coherently across the fleet as L2C's. Every PRN: all 32 slots,
+        # as gps_l5's. Seeded from the broker's model.
+        - GPS_L1CA_BIT:1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32
 
 nodes:
     # THE FLEET LIST: every host that runs the GNSS branch, and nothing else names one.

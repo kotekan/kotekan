@@ -126,7 +126,7 @@ def test_instances():
         % fl2.instances("gps_l2c"),
     )
     try:
-        fl.instances("gps_l1ca")
+        fl.instances("gps_l1c")
         check(False, "a chain no node builds is refused")
     except gf.FleetError as e:
         check("no node builds it" in str(e), "a chain no node builds is refused")

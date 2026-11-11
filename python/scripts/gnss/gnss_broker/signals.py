@@ -63,7 +63,10 @@ def _load_descriptors(doc=None):
 # (prnmap.signal_incapable_prns), because some PRNs below 19 (C11-C14) are BDS-3 satellites.
 # The PRN floor is the fallback when the registry is unreadable.
 _CHAINS = {
-    "gps_l1ca": ("GPS_L1CA", None, None),
+    # L1 C/A has no secondary: the tracker code tiles twenty periods into one 20 ms LNAV bit, so
+    # a record crosses at most one bit edge. Bit edges fall on GPS time mod 20 ms, so the model
+    # places the bit from absolute time, as it places B3I's NH20 segment.
+    "gps_l1ca": ("GPS_L1CA", "GPS_L1CA_BIT", None),
     "gps_l1c": ("GPS_L1C_P", None, None),
     "gps_l2c": ("GPS_L2C_CM", "GPS_L2C_CL", None),
     "gps_l5": ("GPS_L5_Q", "GPS_L5_Q_NH", None),
