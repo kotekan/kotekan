@@ -6,7 +6,7 @@
 
 # num_local_freq: number of frequency IDs processed on this GPU;
 #    must be divisible by 4 because pl_mask shapes use num_local_freq/4.
-{% set num_local_freq = 384 %}
+{% set num_local_freq = 464 %}
 
 
 # num_dishes: dishes/antennas to simulate.
@@ -220,7 +220,7 @@ network_input_buffers:
 
 # Main voltage buffer after transpose.
 # Produced by TransposeBasebandArray: int4x2_swapped_withoffset "E"
-# [timesamples_per_frame, num_local_freq, 2, NUM_ELEMENTS/2] = [samples_per_data_set, 384, 2, 64].
+# [timesamples_per_frame, num_local_freq, 2, NUM_ELEMENTS/2] = [samples_per_data_set, 464, 2, 64].
 # The stage fixes NUM_ELEMENTS=128 at compile time (it fatally checks the config num_elements
 # equals it) and takes num_local_freq from the config. These live outside the
 # network_input_buffers group: that group's frame_size is for the dpdk buffers, while
@@ -283,7 +283,7 @@ host_pl_mask_exp_buffer{{ n.sfx }}:
 # This is the PL mask, sent to GPU and used for n2k_counts and the RFI SK system.
 # Produced by PLMaskExpandedToCompact (out_buf): uint1x8 "pl_mask"
 # [samples_per_data_set/128, (num_local_freq+3)/4, 2, (num_elements/8)/2, 8]
-# {T2hi64, F4, P, D8, T2lo64}. num_local_freq=384 -> (384+3)/4 = 96 = num_local_freq/4.
+# {T2hi64, F4, P, D8, T2lo64}. num_local_freq=464 -> (464+3)/4 = 116 = num_local_freq/4.
 {% for n in numa_halves %}
 host_pl_mask_buffer{{ n.sfx }}:
     kotekan_buffer: ndarray
@@ -576,9 +576,9 @@ dpdk:
     num_mbufs: 16384
     rx_ring_size: 4096
     mbuf_cache_size: 512
-    packet_size: 6208
-    payload_size: 6144
-    max_rx_pkt_len: 6208
+    packet_size: 7488
+    payload_size: 7424
+    max_rx_pkt_len: 7488
     burst_size: 32
     # The number of stream IDs expected per worker
     num_expected_stream_ids: 4

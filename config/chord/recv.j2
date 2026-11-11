@@ -15,10 +15,10 @@
 # stall with margin, at ~0.7 GB per bin (recv1 has 1 TB).
 {% set subset_recv_depth = 16 %}
 
-# The frequency IDs the F-engine sends, 1536 + 128 index + stream for 48 indices and 128
-# streams: 1536 to 7679, the 300-1500 MHz band in telescope.j2. Rows of the auto spectrum.
-{% set first_freq_id = 1536 %}
-{% set num_sent_freq = 6144 %}
+# The frequency IDs the F-engine sends, 768 + 128 index + stream for 58 indices and 128
+# streams: 768 to 8191, the 150-1600 MHz band in telescope.j2. Rows of the auto spectrum.
+{% set first_freq_id = 768 %}
+{% set num_sent_freq = 7424 %}
 
 
 # num_dishes: dishes/antennas to simulate.
@@ -33,13 +33,13 @@
 
 
 # DTV detector products from the X-engine halves (dtv.j2): one frame of dtv_blocks_per_frame
-# 8192-sample blocks per half, over 384 frequencies (num_local_freq in pathfinder.j2).
+# 8192-sample blocks per half, over 464 frequencies (num_local_freq in pathfinder.j2).
 # Shapes and ports must match dtv.j2.
 {% set dtv_blocks_per_frame = 1024 %}
 {% set dtv_products = [
-    ("mask", "int8", "384", '"F"', "1", 11031),
-    ("powers", "uint64", "384, 3", '"F", "W"', "1, 1", 11033),
-    ("fine_support", "int32", "384, 2", '"F", "S"', "1, 1", 11035),
+    ("mask", "int8", "464", '"F"', "1", 11031),
+    ("powers", "uint64", "464, 3", '"F", "W"', "1, 1", 11033),
+    ("fine_support", "int32", "464, 2", '"F", "S"', "1, 1", 11035),
 ] %}
 
 ---
