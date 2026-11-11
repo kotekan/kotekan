@@ -678,6 +678,19 @@
     ["2026-11-07T15:56:39Z", 1.51, false]
    ]
   },
+  "DIGUI-45": {
+   "status": "no_transmission",
+   "catnum": 65048,
+   "g2_phase": null,
+   "last_observed_utc": null,
+   "last_checked_utc": "2026-11-11T19:12:17Z",
+   "last_checked_sep_deg": 1.15,
+   "passes_found": 0,
+   "passes_silent": 1,
+   "passes": [
+    ["2026-11-11T19:12:17Z", 1.15, false]
+   ]
+  },
   "DIGUI-46": {
    "status": "no_transmission",
    "catnum": 65049,
