@@ -123,9 +123,11 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
             _fleet_mode = 0;
         else if (mode == "live")
             _fleet_mode = 1;
+        else if (mode == "shape")
+            _fleet_mode = 2;
         else {
             FATAL_ERROR("GnssGpuRecordAssemble[{:s}]: elem_sum_shared_ref_mode '{:s}' is not "
-                        "off | live",
+                        "off | live | shape",
                         unique_name, mode);
             return;
         }
@@ -189,6 +191,7 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
         _cal_sim.assign((size_t)n, -1.0);
         _anchor_warned.assign((size_t)n, 0);
         _g_shared.assign((size_t)_n_elements, std::complex<double>(0.0, 0.0));
+        _g_apply = _g_shared;
         _pol_num.assign((size_t)n, std::complex<double>(0.0, 0.0));
         _pol_den.assign((size_t)n, 0.0);
         _pol_warmth.assign((size_t)n, 0.0);
@@ -2041,7 +2044,7 @@ void GnssGpuRecordAssemble::shared_consensus(double now_s) {
         _g_shared[(size_t)e] += beta * (acc[(size_t)e] / A - _g_shared[(size_t)e]);
     // Pin to the fleet reference where it applies (live mode, and F describes this half): in
     // full for a first model, slewed for a warm one. Otherwise pin to the instance's own pin.
-    const bool fleet_live = _fleet_mode.load() == 1 && !_g_fleet_ref.empty();
+    const bool fleet_live = _fleet_mode.load() >= 1 && !_g_fleet_ref.empty();
     bool fleet_used[2] = {false, false};
     gnss::RefOffset offs[2];
     if (fleet_live)
@@ -2155,7 +2158,7 @@ void GnssGpuRecordAssemble::shared_consensus(double now_s) {
 
 namespace {
 const char* fleet_mode_name(int m) {
-    return m == 1 ? "live" : "off";
+    return m == 2 ? "shape" : m == 1 ? "live" : "off";
 }
 } // namespace
 
@@ -2190,7 +2193,7 @@ void GnssGpuRecordAssemble::fleet_ref_apply_pending() {
         _fleet_slew_rad_s = slew * M_PI / 180.0;
     // Leaving live, or losing F: the own pin takes over from the model's current phase, so the
     // switch itself never steps it.
-    if (((was == 1 && _fleet_mode.load() != 1) || (ref_set && _g_fleet_ref.empty()))
+    if (((was >= 1 && _fleet_mode.load() == 0) || (ref_set && _g_fleet_ref.empty()))
         && _g_shared_warm) {
         _g_pin_ref = _g_shared;
         _g_pin_ref_ok = true;
@@ -2205,7 +2208,7 @@ void GnssGpuRecordAssemble::fleet_ref_apply_pending() {
 
 void GnssGpuRecordAssemble::set_elem_sum_shared_ref_callback(kotekan::connectionInstance& conn,
                                                              nlohmann::json& request) {
-    // {"ref": [[re, im], ...] (n_elements pairs; [] clears), "mode": "off|live",
+    // {"ref": [[re, im], ...] (n_elements pairs; [] clears), "mode": "off|live|shape",
     //  "slew_deg_s": x}, every field optional. Staged; applied at the next consensus update
     // (~1 s, while elem_sum_shared is on). Posted by python/scripts/gnss/elem_shared_ref.py.
     std::vector<std::complex<double>> ref;
@@ -2229,9 +2232,9 @@ void GnssGpuRecordAssemble::set_elem_sum_shared_ref_callback(kotekan::connection
         }
         if (request.contains("mode")) {
             const std::string m = request.at("mode").get<std::string>();
-            mode = (m == "off") ? 0 : (m == "live") ? 1 : -2;
+            mode = (m == "off") ? 0 : (m == "live") ? 1 : (m == "shape") ? 2 : -2;
             if (mode == -2)
-                throw std::runtime_error("'mode' must be off | live");
+                throw std::runtime_error("'mode' must be off | live | shape");
         }
         if (request.contains("slew_deg_s")) {
             slew = request.at("slew_deg_s").get<double>();
@@ -2279,8 +2282,10 @@ void GnssGpuRecordAssemble::shared_hold(size_t p) {
         return;
     const double now_s =
         std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
-    if (now_s - _g_shared_t >= 1.0)
+    if (now_s - _g_shared_t >= 1.0) {
         shared_consensus(now_s);
+        shared_apply(now_s);
+    }
     gnss::ElemCal& ec = _cal[p];
     if (!_g_shared_warm) {
         // Not inside a transit freeze: near boresight a bright satellite's leakage teaches the
@@ -2295,19 +2300,36 @@ void GnssGpuRecordAssemble::shared_hold(size_t p) {
     }
     const int h = (n % 2 == 0) ? n / 2 : n;
     for (int e = 0; e < h; ++e)
-        _w_scratch[(size_t)e] = _g_shared[(size_t)e];
+        _w_scratch[(size_t)e] = _g_apply[(size_t)e];
     cd c(0.0, 0.0);
     if (h < n && _pol_warmth[p] > 0.95 && _pol_den[p] > 0.0)
         c = _pol_num[p] / _pol_den[p];
     _pol_c[p] = c;
     for (int e = h; e < n; ++e)
-        _w_scratch[(size_t)e] = c * _g_shared[(size_t)e];
+        _w_scratch[(size_t)e] = c * _g_apply[(size_t)e];
     ec.hold(_w_scratch.data(), n);
+}
+
+void GnssGpuRecordAssemble::shared_apply(double now_s) {
+    // Main thread, after each consensus pass (whether or not it updated the model).
+    const double step = std::min(std::max(now_s - _shape_t, 0.0), 2.0) / _shape_ramp_s;
+    _shape_t = now_s;
+    const int n = _n_elements;
+    const bool to_ref = _fleet_mode.load() == 2 && (int)_g_fleet_ref.size() == n;
+    _shape_mix = gnss::step_toward(_shape_mix, to_ref ? 1.0 : 0.0, step);
+    if ((int)_g_fleet_ref.size() != n) {
+        _g_apply = _g_shared;
+        return;
+    }
+    const int h = (n % 2 == 0) ? n / 2 : n;
+    for (int e0 = 0; e0 < n; e0 += h)
+        gnss::blend_to_ref(_g_shared.data(), _g_fleet_ref.data(), _g_apply.data(), e0,
+                           std::min(n, e0 + h), _shape_mix);
 }
 
 void GnssGpuRecordAssemble::shared_pol_update(size_t p, const std::complex<double>* g_prompt,
                                               double dt_s) {
-    // The inter-pol coefficient from this record's two sub-beams: B0 = pol-0 model dotted with
+    // The inter-pol coefficient from this record's two sub-beams: B0 = pol-0 weights dotted with
     // the prompt, B1 = pol-1 likewise; c = <B1 conj(B0)> / <|B0|^2>. Each sub-beam has the
     // half-array's gain, so a bright satellite's leakage is rejected here as in the beam
     // itself, which makes one number per PRN safe to learn where a per-element vector is not.
@@ -2323,9 +2345,9 @@ void GnssGpuRecordAssemble::shared_pol_update(size_t p, const std::complex<doubl
     const int h = n / 2;
     cd b0(0.0, 0.0), b1(0.0, 0.0);
     for (int e = 0; e < h; ++e)
-        b0 += std::conj(_g_shared[(size_t)e]) * g_prompt[e];
+        b0 += std::conj(_g_apply[(size_t)e]) * g_prompt[e];
     for (int e = h; e < n; ++e)
-        b1 += std::conj(_g_shared[(size_t)e]) * g_prompt[e];
+        b1 += std::conj(_g_apply[(size_t)e]) * g_prompt[e];
     const double alpha = std::min(0.25, 1.0 - std::exp(-dt_s / _elem_pol_tau_s));
     _pol_num[p] += alpha * (b1 * std::conj(b0) - _pol_num[p]);
     _pol_den[p] += alpha * (std::norm(b0) - _pol_den[p]);
@@ -2369,7 +2391,8 @@ void GnssGpuRecordAssemble::get_elem_cal_callback(kotekan::connectionInstance& c
                         {"applied", {_fleet_applied[0], _fleet_applied[1]}},
                         {"reseed_s", _fleet_reseed_s},
                         {"reseed_sib_sim", _fleet_reseed_sib_sim},
-                        {"reseeds", {_fleet_reseed[0].n, _fleet_reseed[1].n}}};
+                        {"reseeds", {_fleet_reseed[0].n, _fleet_reseed[1].n}},
+                        {"shape_mix", _shape_mix}};
     nlohmann::json gs = nlohmann::json::array();
     for (const auto& g : _g_shared)
         gs.push_back({g.real(), g.imag()});

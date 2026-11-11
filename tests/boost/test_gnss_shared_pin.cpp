@@ -217,3 +217,78 @@ BOOST_AUTO_TEST_CASE(the_sibling_pol_decides_whether_f_or_the_model_is_wrong) {
     BOOST_CHECK_EQUAL(f_is_stale.n, 0);
     BOOST_CHECK_LT(f_is_stale.low_since, 0.0); // no episode is even open
 }
+
+BOOST_AUTO_TEST_CASE(shape_mode_gives_every_instance_the_same_weights) {
+    // Two instances whose models differ (independent errors on one instrument): at mix 0 each
+    // keeps its own model exactly, at mix 1 both combine with F scaled to sum|w| = 1.
+    const auto F = instrument(16, 11);
+    double s = 0.0;
+    for (const auto& x : F)
+        s += std::abs(x);
+    std::vector<std::vector<cd>> w;
+    for (unsigned seed : {12u, 13u}) {
+        auto G = instrument(16, seed);
+        for (int e = 0; e < 16; ++e)
+            G[e] = F[e] + 0.5 * G[e];
+        std::vector<cd> own(16), shape(16);
+        gnss::blend_to_ref(G.data(), F.data(), own.data(), 0, 16, 0.0);
+        gnss::blend_to_ref(G.data(), F.data(), shape.data(), 0, 16, 1.0);
+        for (int e = 0; e < 16; ++e) {
+            BOOST_CHECK_EQUAL(own[e], G[e]);
+            BOOST_CHECK_SMALL(std::abs(shape[e] - F[e] / s), 1e-12);
+        }
+        w.push_back(shape);
+    }
+    for (int e = 0; e < 16; ++e)
+        BOOST_CHECK_EQUAL(w[0][e], w[1][e]);
+}
+
+BOOST_AUTO_TEST_CASE(the_switch_moves_a_satellite_phase_gradually) {
+    // The stage's ramp: mix steps by 1 s / 60 s each consensus pass. The combined phase of a
+    // satellite, arg<w, x>, must go from the model's to F's and back with no pass carrying more
+    // than a tenth of the change.
+    const auto F = instrument(16, 14);
+    auto G = instrument(16, 15);
+    auto x = instrument(16, 16);
+    for (int e = 0; e < 16; ++e) {
+        G[e] = F[e] + 1.5 * G[e];
+        x[e] = F[e] + 1.5 * x[e];
+    }
+    // the stage's model: normalised to sum|g| = 1 and pinned on F's phase
+    double sg = 0.0;
+    for (const auto& g : G)
+        sg += std::abs(g);
+    G = rotated(G, -ref_offset(F.data(), G.data(), 0, 16).err_rad);
+    for (auto& g : G)
+        g /= sg;
+    std::vector<cd> w(16);
+    cd y0(0.0, 0.0), y1(0.0, 0.0);
+    double s = 0.0;
+    for (const auto& f : F)
+        s += std::abs(f);
+    for (int e = 0; e < 16; ++e) {
+        y0 += std::conj(G[e]) * x[e];
+        y1 += std::conj(F[e] / s) * x[e];
+    }
+    // the switch has a phase to move: the two weightings disagree on this satellite
+    const double total = std::abs(wrap(std::arg(y1) - std::arg(y0)));
+    BOOST_REQUIRE_GT(total, 10.0 * DEG);
+    double mix = 0.0, prev = 0.0;
+    bool first = true;
+    for (int pass = 0; pass < 130; ++pass) {
+        mix = gnss::step_toward(mix, pass < 65 ? 1.0 : 0.0, 1.0 / 60.0);
+        gnss::blend_to_ref(G.data(), F.data(), w.data(), 0, 16, mix);
+        cd y(0.0, 0.0);
+        for (int e = 0; e < 16; ++e)
+            y += std::conj(w[e]) * x[e];
+        if (!first)
+            BOOST_CHECK_LT(std::abs(wrap(std::arg(y) - prev)), 0.1 * total);
+        prev = std::arg(y);
+        first = false;
+        if (pass == 64) {
+            BOOST_CHECK_EQUAL(mix, 1.0);
+            BOOST_CHECK_SMALL(wrap(std::arg(y) - std::arg(y1)), 1e-12);
+        }
+    }
+    BOOST_CHECK_EQUAL(mix, 0.0);
+}

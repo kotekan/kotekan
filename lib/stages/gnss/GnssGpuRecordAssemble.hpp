@@ -138,9 +138,10 @@ private:
     /// "live" pins each pol's <F, G> real positive, in full for a first model and slewed at
     /// _fleet_slew_rad_s for a warm one (gnssSharedPin.hpp); "off" ignores F. A half F does not
     /// describe (sim < _fleet_min_sim) keeps the own pin, which follows the model's phase in
-    /// live mode so that falling back never steps it.
+    /// live mode so that falling back never steps it. "shape" is live, and the weights in force
+    /// take F's shape as well (_g_apply).
     std::vector<std::complex<double>> _g_fleet_ref; ///< [n_elem]; empty = no reference
-    std::atomic<int> _fleet_mode{0};                ///< 0 off, 1 live
+    std::atomic<int> _fleet_mode{0};                ///< 0 off, 1 live, 2 shape
     std::atomic<bool> _fleet_ref_present{false};    ///< _g_fleet_ref non-empty (for REST)
     double _fleet_slew_rad_s = M_PI / 180.0;
     double _fleet_min_sim = 0.5; ///< a 16-element noise model scores ~0.2 against any F
@@ -163,6 +164,13 @@ private:
     int _pending_fleet_mode = -1;
     double _pending_fleet_slew_deg_s = -1.0;
     void fleet_ref_apply_pending();
+    /// The weights in force for every PRN (pol 1 scaled by its _pol_c): the model, blended
+    /// toward F's shape in shape mode by _shape_mix, which ramps over _shape_ramp_s.
+    std::vector<std::complex<double>> _g_apply;
+    double _shape_mix = 0.0;
+    double _shape_ramp_s = 60.0;
+    double _shape_t = 0.0;
+    void shared_apply(double now_s);
     bool shared_frozen(double now_s);
     std::vector<std::complex<double>> _pol_num; ///< per PRN: EMA of B1 conj(B0)
     std::vector<double> _pol_den;               ///< per PRN: EMA of |B0|^2
@@ -303,7 +311,7 @@ private:
     void set_sat_geometry_callback(kotekan::connectionInstance& conn, nlohmann::json& request);
     void set_elem_sum_adapt_callback(kotekan::connectionInstance& conn, nlohmann::json& request);
     void set_elem_sum_shared_callback(kotekan::connectionInstance& conn, nlohmann::json& request);
-    /// {"ref": [[re, im], ...] ([] clears), "mode": "off|live", "slew_deg_s": x}, every
+    /// {"ref": [[re, im], ...] ([] clears), "mode": "off|live|shape", "slew_deg_s": x}, every
     /// field optional; staged, applied at the next consensus update (about once a second, and
     /// only while elem_sum_shared is on).
     void set_elem_sum_shared_ref_callback(kotekan::connectionInstance& conn,

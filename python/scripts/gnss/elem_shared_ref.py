@@ -13,6 +13,8 @@
                       (--elem-shared-ref).
   post FILE           POST every band's reference to its instances (--mode), zeroed where
                       each instance's generated config holds it at 0 (as every POST here is).
+                      --mode shape also makes the instances combine with the reference's shape
+                      instead of their own models (FILE with one band switches only that band).
   relabel IN OUT --epoch KEY [--swap I:J,...]
                       Copy a reference under another positions key (elem_positions_epoch), the
                       old one kept in epoch_relabelled_from: for an instrument that is unchanged
@@ -32,7 +34,8 @@
                         agree on a consensus, writes it to DIR/auto_ref.json and POSTs it (at most
                         every RETAKE_EVERY_S). That file is the reference in use until FILE is
                         newer, and ALERT says so until it is committed.
-                      Without --act nothing is changed.
+                      Without --act nothing is changed. A watch in live mode leaves an instance in
+                      shape mode there: shape pins like live.
 
 Instances are read from config/generated/chord_gnss_<node>_multi.yaml (port 12048). Band names:
 the band of the assembler's chain (gnss_fleet.stage_chain: gps_l5 -> l5, gal_e5a -> e5a, ...),
@@ -447,6 +450,13 @@ def instance_offsets(d, F):
     return out
 
 
+def act_mode(a, fr):
+    """The mode --act posts to an instance whose fleet_ref block is fr."""
+    if a.mode == "live" and (fr or {}).get("mode") == "shape":
+        return "shape"
+    return a.mode
+
+
 def post_note(node, stage, ref, mode, why):
     """POST ref to one assembler for --act; (ok, log line)."""
     name = "%s %s" % (inst_name(node, stage), band_of(stage))
@@ -550,7 +560,8 @@ def watch(a):
         )
         for (node, stage), d in sorted(res.items()):
             if band_of(stage) == band and "error" not in d:
-                ok, note = post_note(node, stage, new["ref"], a.mode, "re-taken")
+                mode = act_mode(a, d.get("fleet_ref"))
+                ok, note = post_note(node, stage, new["ref"], mode, "re-taken")
                 (notes if ok else lines).append(note)
                 state["acted"]["%s %s" % (inst_name(node, stage), band)] = now
     if active == auto_path:
@@ -594,7 +605,7 @@ def watch(a):
                 ],
             }
             why = []
-            if fr and (not fr.get("present") or fr.get("mode") != a.mode):
+            if fr and (not fr.get("present") or fr.get("mode") != act_mode(a, fr)):
                 why.append(
                     "node mode %s, %s"
                     % (
@@ -638,7 +649,8 @@ def watch(a):
             if not a.act:
                 lines.append("%s: %s; post the reference" % (act_key, "; ".join(why)))
             elif now - state["acted"].get(act_key, 0) >= ACT_EVERY_S:
-                ok, note = post_note(node, stage, entry["ref"], a.mode, "; ".join(why))
+                mode = act_mode(a, fr)
+                ok, note = post_note(node, stage, entry["ref"], mode, "; ".join(why))
                 (notes if ok else lines).append(note)
                 state["acted"][act_key] = now
         cur["bands"][band] = {
@@ -690,7 +702,7 @@ def main():
     s.add_argument("out")
     p = sub.add_parser("post")
     p.add_argument("file")
-    p.add_argument("--mode", choices=("off", "live"))
+    p.add_argument("--mode", choices=("off", "live", "shape"))
     r = sub.add_parser("relabel")
     r.add_argument("inp")
     r.add_argument("out")

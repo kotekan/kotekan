@@ -272,6 +272,19 @@ class TestPostZeros(unittest.TestCase):
         self.assertEqual(self.node.posts[0][1]["ref"][1], [0.0, 0.0])
 
 
+class TestActMode(unittest.TestCase):
+    """--act in live mode keeps an instance in shape mode (re-posts and re-takes alike)."""
+
+    def test_shape_is_kept(self):
+        live = argparse.Namespace(mode="live")
+        self.assertEqual(esr.act_mode(live, {"mode": "shape"}), "shape")
+        self.assertEqual(esr.act_mode(live, {"mode": "off"}), "live")
+        self.assertEqual(esr.act_mode(live, None), "live")
+        self.assertEqual(
+            esr.act_mode(argparse.Namespace(mode="off"), {"mode": "shape"}), "off"
+        )
+
+
 class TestRelabel(unittest.TestCase):
     REF = [[0.6, 0.0], [0.0, 0.8], [1.0, 0.0], [0.0, 0.0]]
 

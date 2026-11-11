@@ -17,9 +17,16 @@
 /// phase is a step in every record's carrier phase downstream, like a cycle slip; a slow ramp
 /// (1 deg/s unless /set_elem_sum_shared_ref sets slew_deg_s) is not. A first model is pinned in
 /// full: installing a model is already a one-time step, with no earlier phase to keep continuous.
+///
+/// In shape mode every instance also combines with F's shape instead of its own model, so all
+/// instances of a band apply the same weights. The model keeps learning (its similarity to F is
+/// still reported, and the re-take uses it), and the per-PRN inter-pol coefficient is learned on
+/// the weights in force. The switch blends the weights over a ramp in both directions, for the
+/// same reason the pin slews.
 
-#include <cmath>   // for sqrt
-#include <complex> // for complex, conj, norm, arg, polar
+#include <algorithm> // for min, max
+#include <cmath>     // for sqrt
+#include <complex>   // for complex, conj, norm, arg, polar, abs
 
 namespace gnss {
 
@@ -62,6 +69,25 @@ inline std::complex<double> pin_rotation(const RefOffset& o, bool limit, double 
             a = -max_step_rad;
     }
     return std::polar(1.0, a);
+}
+
+/// The weights in force over the half [e0, e1) in shape mode: (1 - mix) G + mix F, with F scaled
+/// to the model's normalisation (sum |w| = 1 over the half). mix 0 gives G exactly, as does an F
+/// that is zero over the half.
+inline void blend_to_ref(const std::complex<double>* G, const std::complex<double>* F,
+                         std::complex<double>* out, int e0, int e1, double mix) {
+    double s = 0.0;
+    for (int e = e0; e < e1; ++e)
+        s += std::abs(F[e]);
+    for (int e = e0; e < e1; ++e)
+        out[e] = (mix > 0.0 && s > 0.0) ? (1.0 - mix) * G[e] + mix * F[e] / s : G[e];
+}
+
+/// @p mix moved toward @p target by at most @p step.
+inline double step_toward(double mix, double target, double step) {
+    if (mix < target)
+        return std::min(target, mix + step);
+    return std::max(target, mix - step);
 }
 
 /// True while no first model may be formed: the last post puts the nearest satellite inside
