@@ -1188,9 +1188,14 @@ def test_manual_mask_reaches_the_node_config():
     )
 
 
-def _lane_transfer_node(*transfers):
-    """One node config with SBAS L5 and Galileo E6 beside GPS L5, lanes published, and the
-    given --lane-transfer specs: (SystemExit message or None, parsed config)."""
+def _lane_transfer_node(
+    *transfers,
+    signals=("SBAS_L5_I_MC:131,133,135", "GAL_E6_C_CS:2,3,4"),
+    exempt="5940-6076",
+):
+    """One node config (cx51) with these chains beside GPS L5 (default SBAS L5 and Galileo E6),
+    lanes published, and the given --lane-transfer specs: (SystemExit message or None, parsed
+    config)."""
     argv = [
         "--base",
         kotekan_src.src("config", "chord/pathfinder.j2"),
@@ -1203,18 +1208,16 @@ def _lane_transfer_node(*transfers):
         "--n2-project",
         "live",
         "--rfi-excision-exempt-freq-ids",
-        "5940-6076",
+        exempt,
         "--n2-project-live-freq-ids",
         "exempt",
         "--n2-project-source",
         "lanes+residual",
         "--elem-dir-publish",
         "all",
-        "--extra-signal",
-        "SBAS_L5_I_MC:131,133,135",
-        "--extra-signal",
-        "GAL_E6_C_CS:2,3,4",
     ]
+    for e in signals:
+        argv += ["--extra-signal", e]
     for t in transfers:
         argv += ["--lane-transfer", t]
     with stubbed(set()):
@@ -1267,6 +1270,43 @@ def test_chain_names_and_lane_transfer():
         check(
             exc is not None and "is not a chain of this config" in exc,
             "--lane-transfer %s refused (%s)" % (bad, exc),
+        )
+
+
+def test_upper_l_band_node():
+    """On the node table's 150-1600 MHz band cx51 (combs 7 and 13) builds bds_b1i and gps_l1ca
+    on both GPUs with the taps 0.5 chip out, and gps_l1ca's lanes transfer to the other live
+    channels of its comb in 1560.1-1590.8 MHz."""
+    if kotekan_src.SRC is None:
+        print("  [SKIP] node config: no kotekan tree to render the base from")
+        return
+    exc, cfg = _lane_transfer_node(
+        "gps_l1ca:1560.1-1590.8",
+        signals=("BDS_B1I_NH:6,7,8", "GPS_L1CA_BIT:1,2,3"),
+        exempt="5940-6076,7982-8144",
+    )
+    check(exc is None, "the node config generates (%s)" % exc)
+    if exc is not None:
+        return
+    for g_, b1i, l1 in ((0, 7991, 8071), (1, 7997, 8061)):
+        inj = {
+            c["signal"]: c
+            for c in cfg["gnss%d_n2dual" % g_]["commands"]
+            if c["name"] == "cudaGnssInject"
+        }
+        check(
+            inj["BDS_B1I_NH"]["channel_ids"] == [b1i]
+            and inj["GPS_L1CA_BIT"]["channel_ids"] == [l1]
+            and inj["BDS_B1I_NH"]["dll_spacing"]
+            == inj["GPS_L1CA_BIT"]["dll_spacing"]
+            == 0.5,
+            "gpu%d: B1I on %d and L1 C/A on %d, taps at 0.5 chip" % (g_, b1i, l1),
+        )
+        off = node_cfg()["nodes"]["cx51"]["gpu_offsets_mod16"][g_]
+        want = [f for f in range(7988, 8145) if f % 16 == off and f != l1]
+        got = cfg["gnss%d_gps_l1ca_n2assemble" % g_].get("lane_transfer_freq_ids")
+        check(
+            got == want, "gpu%d: L1 C/A's lanes transfer to %s (%s)" % (g_, want, got)
         )
 
 

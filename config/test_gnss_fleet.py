@@ -125,6 +125,20 @@ def test_instances():
         "a joining host's chains follow its combs (cx47 holds 6283 on GPU 1: %s)"
         % fl2.instances("gps_l2c"),
     )
+    # The upper L-band chains on the 150-1600 MHz band: B1I's 22 channels reach every comb,
+    # L1 C/A's 11 miss the combs 8-12 (cx27, cx52, cx44, cx47 and cx42 GPU 1).
+    eight = gf.Fleet(manifest({h: {} for h in SIX + ["cx47", "cx52"]}), site())
+    check(
+        len(eight.instances("bds_b1i")) == 16,
+        "B1I on all sixteen GPUs (%s)" % eight.instances("bds_b1i"),
+    )
+    l1 = eight.instances("gps_l1ca")
+    check(
+        len(l1) == 11
+        and not {("cx27", 1), ("cx52", 1), ("cx44", 1), ("cx47", 1), ("cx42", 1)}
+        & set(l1),
+        "L1 C/A on eleven GPUs, none on the combs 8-12 (%s)" % l1,
+    )
     try:
         fl.instances("gps_l1c")
         check(False, "a chain no node builds is refused")
