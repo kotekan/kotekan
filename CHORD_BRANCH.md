@@ -18,6 +18,8 @@ Base: `develop` at `c2c73d601` (#1873).
 | #1851 | `jbm/async-start` | `944510918` | 2026-11-05 | 2026-11-06 | kotekan: start the pipeline on its own thread, report it in /status |
 | #1872 | `jbm/n2accumulate-skipped-label` | `01237aea5` | 2026-11-06 | 2026-11-06 | N2Accumulate: label skipped_frames by channel |
 | #1878 | `jbm/dtv-recv` | `b4e7ef2c8` | 2026-11-07 | 2026-11-07 | config/chord: record DTV products on the recv node |
+| (to open) | `jbm/dpdk-ring-gauge` | `605a342f4` | 2026-11-11 | 2026-11-11 | crs16BoardDistributor: report the peak fill of each worker ring |
+| (to open) | `jbm/crs-bins-per-packet` | `3295e2878` | 2026-11-11 | 2026-11-11 | CRS capture: take the frequencies per stream from the science band |
 
 ## Chord-only commits
 
