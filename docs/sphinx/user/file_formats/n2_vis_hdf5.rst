@@ -659,6 +659,13 @@ the datasets with a frequency axis, which hold one value per stream.
        1.0 whatever the GPU state. Channels listed in cudaRFISKtilde's
        ``rfi_first_stage_excision_exempt_freq_ids`` are counted as enabled
        here although they are not excised.
+   * - ``frac_dtv_mask_enabled``
+     - float32 (:math:`N_f`, :math:`N_t`)
+     - Fraction of the bin during which the DTV mask (DtvRfiMask) was applied.
+       A switch applies from the first input frame starting at or after its
+       scheduled time, in DtvRfiMask and in this count. N2Accumulate reads the
+       switch only when ``dtv_mask_enabled_updatable_config`` is set; otherwise
+       this is 0.0.
    * - ``fringestop_enabled``
      - bool (:math:`N_f`, :math:`N_t`)
      - Whether the visibilities of this frequency and bin were

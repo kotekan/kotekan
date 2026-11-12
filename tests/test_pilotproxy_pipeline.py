@@ -247,18 +247,45 @@ def test_default_chord_template_leaves_detector_disabled():
     assert "host_dtv_powers_buffer" not in config
 
 
-@pytest.mark.parametrize("apply_mask", [False, True])
-def test_pathfinder_detection_and_recording_start_off(apply_mask):
+def test_pathfinder_sends_what_recv_expects():
+    jinja2 = pytest.importorskip("jinja2")
+    yaml = pytest.importorskip("yaml")
+    env = jinja2.Environment(loader=jinja2.FileSystemLoader(ROOT / "config/chord"))
+    config = yaml.safe_load(
+        env.get_template("pathfinder.j2").render(dtv_write_enabled=True)
+    )
+    recv = yaml.safe_load(env.get_template("recv.j2").render())
+    products = ["mask", "powers", "fine_support", "fine_powers"]
+    assert sorted(recv["buffer_recv_dtv"]) == sorted(products)
+    for product in products:
+        sent = config[f"host_dtv_{product}_send_buffer_0"]["extents"]
+        sent = [config[e] if isinstance(e, str) else e for e in sent]
+        assert recv[f"dtv_{product}_buffer"]["extents"] == sent
+        assert recv["buffer_recv_dtv"][product]["listen_port"] == (
+            config["send_dtv"][f"{product}_0"]["server_port"]
+        )
+
+
+@pytest.mark.parametrize(
+    "apply_mask, write", [(False, False), (True, False), (False, True), (True, True)]
+)
+def test_pathfinder_dtv_switches(apply_mask, write):
     jinja2 = pytest.importorskip("jinja2")
     yaml = pytest.importorskip("yaml")
     env = jinja2.Environment(loader=jinja2.FileSystemLoader(ROOT / "config/chord"))
     config = yaml.safe_load(
         env.get_template("pathfinder.j2").render(
-            dtv_enabled=not apply_mask, dtv_apply_mask=apply_mask
+            dtv_apply_mask=apply_mask, dtv_write_enabled=write
         )
     )
-    assert config["dtv_detector_enabled"]["enabled"] is False
-    assert config["dtv_write_enabled"]["enabled"] is False
+    # The pipeline is the same, and the switches set the endpoints' starting values.
+    assert "run_dtv_detector" in config
+    assert config["dtv_mask_enabled"]["enabled"] is apply_mask
+    assert config["dtv_write_enabled"]["enabled"] is write
+    merge = config["merge_dtv_mask"]["half_0"]
+    assert merge["enabled_updatable_config"] == "/dtv_mask_enabled"
+    accumulate = config["n2_accumulate"]
+    assert accumulate["dtv_mask_enabled_updatable_config"] == "/dtv_mask_enabled"
 
 
 @pytest.mark.parametrize("apply_mask", [False, True])

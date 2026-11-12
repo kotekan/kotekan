@@ -2,7 +2,7 @@
 
 This file exists only on the `chord` branch. It lists how `chord` differs from `develop`. See the "chord branch" section of AGENTS.md for the workflow.
 
-Base: `develop` at `c2c73d601` (#1873).
+Base: `develop` at `7d31da233` (#1877).
 
 ## Open PRs carried in chord
 
@@ -17,7 +17,6 @@ Base: `develop` at `c2c73d601` (#1873).
 | #1849 | `jbm/n2-gains` | `f76d2aba0` | 2026-11-05 | 2026-11-05 | bufferGains: buffer posted calibration gains; N2Accumulate records them |
 | #1851 | `jbm/async-start` | `944510918` | 2026-11-05 | 2026-11-06 | kotekan: start the pipeline on its own thread, report it in /status |
 | #1872 | `jbm/n2accumulate-skipped-label` | `01237aea5` | 2026-11-06 | 2026-11-06 | N2Accumulate: label skipped_frames by channel |
-| #1878 | `jbm/dtv-recv` | `b4e7ef2c8` | 2026-11-07 | 2026-11-07 | config/chord: record DTV products on the recv node |
 | (to open) | `jbm/crs-wide-band` | `b584c2b8a` | 2026-11-11 | 2026-11-11 | CRS capture for a wider science band: frequencies per stream from the band, n2k kernel sizes, worker ring fill gauge |
 
 ## Chord-only commits
@@ -30,3 +29,4 @@ Base: `develop` at `c2c73d601` (#1873).
 | `a82b96f02` | `config/chord/pathfinder.j2` | Record calibration gains in the X-engine N2 frames (#1849) |
 | `ef35f45de` | `config/chord/common.j2` | Name the F-engine controller by its full name |
 | `e401a4b50` | `config/chord/{telescope,pathfinder,recv}.j2` | Science band 150-1600 MHz: 58 bins per stream, 464 frequencies per GPU |
+| `a9195ef6b` | `config/chord/pathfinder.j2` | DTV detector reads the installed bundle `pathfinder-commissioning-e2e90219` |
