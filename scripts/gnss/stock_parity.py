@@ -69,7 +69,7 @@ DECLARED = [
         "run_send_voltage.gpu_*.commands",
         "~",
         "DTV subtraction (--dtv-subtract-freq-ids, default off): after the stock "
-        "cudaCopyToRingbuffer, cudaDtvSubtract on stream 6 subtracts a terrestrial transmitter "
+        "cudaCopyToRingbuffer, cudaDtvSubtract on stream 9 subtracts a terrestrial transmitter "
         "from the selected channels of the frame in the voltage ring every consumer reads; then "
         "the copy-out of its per-frame output",
     ),
@@ -109,9 +109,9 @@ def template():
     return kotekan_src.src("config", "chord", "pathfinder.j2")
 
 
-# The variables of the stock render: gen_chord_gnss_config.STOCK_RENDER_VARS (production runs without
-# the PilotProxy DTV detector that pathfinder.j2 otherwise renders). Keep the two equal.
-STOCK_RENDER_VARS = {"dtv_enabled": False}
+# The variables of the stock render: gen_chord_gnss_config.STOCK_RENDER_VARS (none: the template's
+# defaults are what production runs). Keep the two equal.
+STOCK_RENDER_VARS = {}
 
 
 def render_stock(path=None):

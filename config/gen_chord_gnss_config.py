@@ -959,9 +959,10 @@ def dtv_targets(args):
     return out
 
 
-# The DTV subtraction's own CUDA stream: 0-2 are production's, 3-5 the GNSS chains'
-# (merge_n2dual_gpu), so its kernels queue behind neither the voltage copy nor N2.
-DTV_CUDA_STREAM = 6
+# The DTV subtraction's own CUDA stream: 0-2 are production's, 3-5 the DTV detector's (dtv.j2),
+# 6-8 the GNSS chains' (merge_n2dual_gpu), so its kernels queue behind neither the voltage copy
+# nor N2.
+DTV_CUDA_STREAM = 9
 
 
 def add_dtv_subtract(out, cfg, args, node, spds):
@@ -1884,14 +1885,14 @@ def merge_n2dual_gpu(blocks, cfg, args, node, gpu, chains, spds):
     procs = {p["pre"]: blocks.pop(f"{p['pre']}n2dual") for p in pres}
     primary = next(procs[p["pre"]] for p in pres if p["chain"] is None)
     merged = {k: v for k, v in primary.items() if k != "commands"}
-    # Private CUDA streams: cuda_stream_base is a pipeline index, and 1 moves this process's
-    # copy-in, copy-out and kernel streams to 3, 4, 5, leaving 0, 1, 2 to production's pipelines,
-    # so the GNSS chains never queue against production's per-stream locks (one thread blocked in
-    # the CUDA driver there would stall the GPU's pipelines and back up to the NIC).
-    # prepareStreams only grows the device's pool, so asking for 6 holds whatever the
-    # construction order.
-    merged["cuda_stream_base"] = 1
-    merged["num_cuda_streams"] = 6
+    # Private CUDA streams: cuda_stream_base is a pipeline index, and 2 moves this process's
+    # copy-in, copy-out and kernel streams to 6, 7, 8, leaving 0, 1, 2 to production's pipelines
+    # and 3, 4, 5 to its DTV detector (dtv.j2 takes base 1), so the GNSS chains never queue
+    # against production's per-stream locks (one thread blocked in the CUDA driver there would
+    # stall the GPU's pipelines and back up to the NIC). prepareStreams only grows the device's
+    # pool, so asking for 9 holds whatever the construction order.
+    merged["cuda_stream_base"] = 2
+    merged["num_cuda_streams"] = 9
     out_buffers = {}
     injects, outputs = [], []
     for p in pres:
@@ -2768,12 +2769,12 @@ def build_gather_instance(cfg, args, port):
     return out
 
 
-# The template variables the stock render sets. pathfinder.j2 has rendered the PilotProxy DTV detector
-# unless dtv_enabled is false since chord 9a6a995a1, and the detector loads its runtime bundle
-# (data/pilotproxy_bundle, relative to the working directory) at construction, FATAL if absent, even
-# while detection is off. Production runs without it (no DTV stages in a stock node's /config,
-# 2026-11-12), and the GNSS nodes have no bundle.
-STOCK_RENDER_VARS = {"dtv_enabled": False}
+# The template variables the stock render sets: none. pathfinder.j2 always renders the PilotProxy
+# DTV detector (dtv.j2) since chord 0fbd333d0, and the detector loads its runtime bundle at
+# construction, FATAL if absent, while its mask and recording are off. The bundle is the one
+# `make install` puts under /usr/local/etc/kotekan/chord/dtv_bundles, so a node needs that
+# directory (node_up.sh checks it before a start).
+STOCK_RENDER_VARS = {}
 
 
 def render_stock_template(path):

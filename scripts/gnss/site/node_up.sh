@@ -155,6 +155,24 @@ print("%s:%s%s" % (c["host"], c["port"], c.get("timing_endpoint", "/get-frame0-t
             echo "  returns a start_ctime you believe, then retry. (GNSS_SKIP_PREFLIGHT=1 overrides.)" >&2
             exit 1
         fi
+        # The DTV detector (dtv.j2, in every config rendered from chord 0fbd333d0 on) loads its
+        # runtime bundle at construction and exits without it. The bundle is node-local
+        # (`make install` puts it under /usr/local/etc), so the node is asked.
+        _dtv=$(grep -oE '(pilot_profiles_path|weights_path): *[^ ]+' "$CFG" | awk '{print $2}' \
+               | grep '^/' | sort -u | tr '\n' ' ')
+        if [ -n "$_dtv" ]; then
+            _miss=$(timeout --foreground 30 ssh -n -o BatchMode=yes -o ConnectTimeout=10 "$N" \
+                    "for f in $_dtv; do [ -r \"\$f\" ] || echo \"\$f\"; done" 2>/dev/null) \
+                || _miss="(could not ask $N)"
+            if [ -n "$_miss" ]; then
+                echo "FAILED: the DTV detector's bundle is not readable on $N:" >&2
+                echo "$_miss" | sed 's/^/    /' >&2
+                echo "  $CFG names it and the node would exit at startup. Install that bundle" >&2
+                echo "  (kotekan's make install: <prefix>/etc/kotekan/chord/dtv_bundles), then" >&2
+                echo "  retry. (GNSS_SKIP_PREFLIGHT=1 overrides.)" >&2
+                exit 1
+            fi
+        fi
         # The binary's own interface document against the broker's golden and the frame sizes
         # this config was generated for (iface_preflight.sh). It runs on the node, where the
         # binary's libraries are; only a disagreement refuses, anything unchecked warns. ssh -n

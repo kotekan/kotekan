@@ -1151,18 +1151,18 @@ def test_manual_mask_reaches_the_node_config():
                 )
             )
             and dtv[0]["gpu_mem_output"] == "voltage_buffer"
-            and dtv[0]["cuda_stream"] == 6
-            and sync[0]["cuda_stream"] == 6
+            and dtv[0]["cuda_stream"] == 9
+            and sync[0]["cuda_stream"] == 9
             and sync[0]["source_cuda_streams"] == [3 * base]
             and sync[1]["cuda_stream"] == 3 * base + 1
-            and sync[1]["source_cuda_streams"] == [6]
-            and sv["num_cuda_streams"] == 7
+            and sync[1]["source_cuda_streams"] == [9]
+            and sv["num_cuda_streams"] == 10
             and sv["out_buffers"]["host_gnss_dtv"] == "gnss%d_dtv_buf" % g
             and cfg["gnss%d_dtvdump_gate" % g]["in_bufs"] == ["gnss%d_dtv_buf" % g]
             and cfg["gnss%d_dtvdump_sink" % g]["in_buf"] == "gnss%d_dtvdump_buf" % g,
             "--dtv-subtract-freq-ids: gpu%d's ring copy-in is followed by cudaDtvSubtract on "
-            "stream 6 (after a sync on the copy-in stream) on its one channel of the range, "
-            "its output copied out after a sync on stream 6, gated and written" % g,
+            "stream 9 (after a sync on the copy-in stream) on its one channel of the range, "
+            "its output copied out after a sync on stream 9, gated and written" % g,
         )
     check(
         not any(
